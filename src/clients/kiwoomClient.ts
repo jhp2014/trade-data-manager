@@ -1,5 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 import { logger } from "@/utils/logger";
+import fs from "fs";
+import path from "path";
 import "dotenv/config";
 
 /** [au10001] 접근토큰 발급 응답 스펙    
@@ -218,11 +220,51 @@ export class KiwoomClient {
         });
     }
 
+    private get cacheFilePath(): string {
+        const cacheDir = path.resolve(process.cwd(), ".cache");
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        return path.join(cacheDir, "kiwoom_token.json");
+    }
+
+    private isTokenValid(expiresDt: string): boolean {
+        if (!expiresDt || expiresDt.length !== 14) return false;
+        
+        const year = parseInt(expiresDt.substring(0, 4), 10);
+        const month = parseInt(expiresDt.substring(4, 6), 10) - 1;
+        const day = parseInt(expiresDt.substring(6, 8), 10);
+        const hour = parseInt(expiresDt.substring(8, 10), 10);
+        const min = parseInt(expiresDt.substring(10, 12), 10);
+        const sec = parseInt(expiresDt.substring(12, 14), 10);
+        
+        const expireTime = new Date(year, month, day, hour, min, sec).getTime();
+        const now = Date.now();
+        
+        // 만료 5분 전이면 재발급하도록 여유(buffer)를 둠
+        return expireTime > now + 5 * 60 * 1000;
+    }
+
     /**
      * [au10001] 접근 토큰 발급
      * 배치가 시작될 때 가장 먼저 실행되어야 해.
      */
     async authenticate(): Promise<void> {
+        // 캐시 확인 로직
+        if (fs.existsSync(this.cacheFilePath)) {
+            try {
+                const cached = JSON.parse(fs.readFileSync(this.cacheFilePath, "utf8"));
+                if (cached.access_token && cached.expires_dt && this.isTokenValid(cached.expires_dt)) {
+                    this.accessToken = cached.access_token;
+                    this.client.defaults.headers.common["authorization"] = `Bearer ${this.accessToken}`;
+                    logger.info("기존 캐시된 키움 API 토큰을 사용합니다.", { expiresDt: cached.expires_dt });
+                    return;
+                }
+            } catch (err) {
+                logger.warn("토큰 캐시 파일 읽기/파싱 실패, 새로 발급합니다.", err);
+            }
+        }
+
         logger.info("키움 API 인증을 시작합니다...");
         try {
             const response = await axios.post<KiwoomTokenResponse>(
@@ -230,14 +272,24 @@ export class KiwoomClient {
                 {
                     grant_type: "client_credentials",
                     appkey: this.appKey,
-                    appsecret: this.appSecret,
+                    secretkey: this.appSecret,
                 }
             );
 
             this.accessToken = response.data.access_token;
             this.client.defaults.headers.common["authorization"] = `Bearer ${this.accessToken}`;
 
-            logger.info("인증 성공: 토큰이 발급되었습니다.", {
+            // 새로운 토큰 파일 캐싱
+            fs.writeFileSync(
+                this.cacheFilePath,
+                JSON.stringify({
+                    access_token: this.accessToken,
+                    expires_dt: response.data.expires_dt,
+                }),
+                "utf8"
+            );
+
+            logger.info("인증 성공: 새 토큰이 발급되고 캐시되었습니다.", {
                 expiresIn: response.data.expires_dt,
             });
         } catch (error: any) {
