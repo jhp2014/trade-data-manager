@@ -201,6 +201,10 @@ export class KiwoomClient {
     private client: AxiosInstance;
     private accessToken: string | null = null;
 
+    // Rate Limit (1초 4건: 250ms 간격)
+    private lastRequestTime: number = 0;
+    private readonly RATE_LIMIT_DELAY_MS = 250;
+
     private readonly appKey = process.env.KIWOOM_APP_KEY;
     private readonly appSecret = process.env.KIWOOM_SECRET_KEY;
     private readonly baseURL = process.env.KIWOOM_BASE_URL;
@@ -301,11 +305,26 @@ export class KiwoomClient {
         }
     }
 
+    private async waitForRateLimit(): Promise<void> {
+        const now = Date.now();
+        // 다음에 요청 가능한 시간 = (현재시간)과 (마지막 예약시간 + 지연시간) 중 늦은 시간
+        const scheduledTime = Math.max(now, this.lastRequestTime + this.RATE_LIMIT_DELAY_MS);
+        this.lastRequestTime = scheduledTime; // 다음 요청 예약 기준시간 갱신
+
+        const delay = scheduledTime - now;
+        if (delay > 0) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+
     private async post<T>(apiId: string, endpoint: string, body: any): Promise<T> {
         if (!this.accessToken) {
             logger.error(`[${apiId}] 요청 실패: 인증 토큰이 없습니다.`);
             throw new Error("Unauthorized: Call authenticate() first.");
         }
+
+        // Rate Limit 보호 기능 실행 (큐 대기)
+        await this.waitForRateLimit();
 
         try {
             logger.debug(`[${apiId}] 요청 전송`, { endpoint, body });
