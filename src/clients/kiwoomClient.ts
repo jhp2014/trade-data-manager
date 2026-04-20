@@ -20,7 +20,7 @@ export interface KiwoomApiResponse<T> {
     }
  */
 export interface KiwoomTokenResponse {
-    access_token: string;
+    token: string;
     token_type: string;
     expires_dt: string;
 }
@@ -240,17 +240,17 @@ export class KiwoomClient {
 
     private isTokenValid(expiresDt: string): boolean {
         if (!expiresDt || expiresDt.length !== 14) return false;
-        
+
         const year = parseInt(expiresDt.substring(0, 4), 10);
         const month = parseInt(expiresDt.substring(4, 6), 10) - 1;
         const day = parseInt(expiresDt.substring(6, 8), 10);
         const hour = parseInt(expiresDt.substring(8, 10), 10);
         const min = parseInt(expiresDt.substring(10, 12), 10);
         const sec = parseInt(expiresDt.substring(12, 14), 10);
-        
+
         const expireTime = new Date(year, month, day, hour, min, sec).getTime();
         const now = Date.now();
-        
+
         // 만료 5분 전이면 재발급하도록 여유(buffer)를 둠
         return expireTime > now + 5 * 60 * 1000;
     }
@@ -286,7 +286,7 @@ export class KiwoomClient {
                 }
             );
 
-            this.accessToken = response.data.access_token;
+            this.accessToken = response.data.token;
             this.client.defaults.headers.common["authorization"] = `Bearer ${this.accessToken}`;
 
             // 새로운 토큰 파일 캐싱
@@ -324,8 +324,8 @@ export class KiwoomClient {
     }
 
     private async post<T>(
-        apiId: string, 
-        endpoint: string, 
+        apiId: string,
+        endpoint: string,
         body: any,
         contYn: string = "N",
         nextKey: string = ""
@@ -341,7 +341,7 @@ export class KiwoomClient {
         try {
             logger.debug(`[${apiId}] 요청 전송`, { endpoint, body, contYn, nextKey });
             const response = await this.client.post<T>(endpoint, body, {
-                headers: { 
+                headers: {
                     "api-id": apiId,
                     "cont-yn": contYn,
                     "next-key": nextKey
@@ -377,8 +377,8 @@ export class KiwoomClient {
     // 3. 주식분봉차트조회 (1분봉)
     async getMinuteChart(stockCode: string, baseDate: string = "", contYn: string = "N", nextKey: string = "") {
         return this.post<KiwoomKa10080Response>(
-            "ka10080", 
-            "/api/dostk/chart", 
+            "ka10080",
+            "/api/dostk/chart",
             {
                 stk_cd: stockCode,
                 tic_scope: "1",
@@ -393,8 +393,8 @@ export class KiwoomClient {
     // 4. 주식일봉차트조회
     async getDailyChart(stockCode: string, baseDate: string, contYn: string = "N", nextKey: string = "") {
         return this.post<KiwoomKa10081Response>(
-            "ka10081", 
-            "/api/dostk/chart", 
+            "ka10081",
+            "/api/dostk/chart",
             {
                 stk_cd: stockCode,
                 upd_stkpc_tp: "1",
