@@ -4,6 +4,12 @@ import fs from "fs";
 import path from "path";
 import "dotenv/config";
 
+export interface KiwoomApiResponse<T> {
+    data: T;
+    contYn: string; // 연속 조회 여부 ("Y" or "N")
+    nextKey: string; // 다음 데이터 조회를 위한 키값
+}
+
 /** [au10001] 접근토큰 발급 응답 스펙    
  * {
     "expires_dt":"20241107083713",
@@ -317,7 +323,13 @@ export class KiwoomClient {
         }
     }
 
-    private async post<T>(apiId: string, endpoint: string, body: any): Promise<T> {
+    private async post<T>(
+        apiId: string, 
+        endpoint: string, 
+        body: any,
+        contYn: string = "N",
+        nextKey: string = ""
+    ): Promise<KiwoomApiResponse<T>> {
         if (!this.accessToken) {
             logger.error(`[${apiId}] 요청 실패: 인증 토큰이 없습니다.`);
             throw new Error("Unauthorized: Call authenticate() first.");
@@ -327,15 +339,24 @@ export class KiwoomClient {
         await this.waitForRateLimit();
 
         try {
-            logger.debug(`[${apiId}] 요청 전송`, { endpoint, body });
+            logger.debug(`[${apiId}] 요청 전송`, { endpoint, body, contYn, nextKey });
             const response = await this.client.post<T>(endpoint, body, {
-                headers: { "api-id": apiId },
+                headers: { 
+                    "api-id": apiId,
+                    "cont-yn": contYn,
+                    "next-key": nextKey
+                },
             });
-            return response.data;
+            return {
+                data: response.data,
+                contYn: (response.headers["cont-yn"] as string) || "N",
+                nextKey: (response.headers["next-key"] as string) || ""
+            };
         } catch (error: any) {
             logger.error(`[${apiId}] API 응답 에러`, {
                 endpoint,
                 requestPayload: body,
+                responseHeaders: error.response?.headers,
                 responseStatus: error.response?.status,
                 responseData: error.response?.data,
             });
@@ -354,22 +375,34 @@ export class KiwoomClient {
     }
 
     // 3. 주식분봉차트조회 (1분봉)
-    async getMinuteChart(stockCode: string, baseDate: string = "") {
-        return this.post<KiwoomKa10080Response>("ka10080", "/api/dostk/chart", {
-            stk_cd: stockCode,
-            tic_scope: "1",
-            upd_stkpc_tp: "1",
-            base_dt: baseDate,
-        });
+    async getMinuteChart(stockCode: string, baseDate: string = "", contYn: string = "N", nextKey: string = "") {
+        return this.post<KiwoomKa10080Response>(
+            "ka10080", 
+            "/api/dostk/chart", 
+            {
+                stk_cd: stockCode,
+                tic_scope: "1",
+                upd_stkpc_tp: "1",
+                base_dt: baseDate,
+            },
+            contYn,
+            nextKey
+        );
     }
 
     // 4. 주식일봉차트조회
-    async getDailyChart(stockCode: string, baseDate: string) {
-        return this.post<KiwoomKa10081Response>("ka10081", "/api/dostk/chart", {
-            stk_cd: stockCode,
-            upd_stkpc_tp: "1",
-            base_dt: baseDate,
-        });
+    async getDailyChart(stockCode: string, baseDate: string, contYn: string = "N", nextKey: string = "") {
+        return this.post<KiwoomKa10081Response>(
+            "ka10081", 
+            "/api/dostk/chart", 
+            {
+                stk_cd: stockCode,
+                upd_stkpc_tp: "1",
+                base_dt: baseDate,
+            },
+            contYn,
+            nextKey
+        );
     }
 }
 
