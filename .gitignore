@@ -1,0 +1,21 @@
+# Dependency directories
+node_modules/
+
+# Build outputs
+/dist/
+/build/
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# Drizzle ORM
+/drizzle/
+
+# OS generated files
+.DS_Store
+Thumbs.db
