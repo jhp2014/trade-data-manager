@@ -31,40 +31,51 @@ export const themes = pgTable("themes", {
     themeName: varchar("theme_name", { length: 100 }).notNull().unique(),
 });
 
-// 3. 일봉 차트 (KRX / INTEGRATED 통합 관리)
+// 3. 일봉 차트 - (tradeDate, stockCode) 기준 1 row에 KRX + NXT 데이터를 통합 보관
+// FK 모호성을 제거하기 위해 source 컬럼을 없애고 컬럼을 KRX/NXT로 이중화
 export const dailyCandles = pgTable("daily_candles", {
     id: bigserial("id", { mode: "bigint" }).primaryKey(),
     tradeDate: date("trade_date").notNull(),
     stockCode: varchar("stock_code", { length: 10 }).notNull().references(() => stocks.stockCode),
-    source: varchar("source", { length: 20 }).notNull().default("KRX"),
 
-    open: numeric("open_price", { precision: 18, scale: 0 }).notNull(),
-    high: numeric("high_price", { precision: 18, scale: 0 }).notNull(),
-    low: numeric("low_price", { precision: 18, scale: 0 }).notNull(),
-    close: numeric("close_price", { precision: 18, scale: 0 }).notNull(),
+    // KRX 가격 데이터
+    openKrx: numeric("open_krx", { precision: 18, scale: 0 }).notNull(),
+    highKrx: numeric("high_krx", { precision: 18, scale: 0 }).notNull(),
+    lowKrx: numeric("low_krx", { precision: 18, scale: 0 }).notNull(),
+    closeKrx: numeric("close_krx", { precision: 18, scale: 0 }).notNull(),
 
-    tradingVolume: bigint("trading_volume", { mode: "bigint" }).notNull(),
-    tradingAmount: numeric("trading_amount", { precision: 18, scale: 0 }).notNull(),
+    // NXT 가격 데이터 (NXT 미지원 종목도 Kiwoom이 KRX값을 내려주므로 notNull)
+    openNxt: numeric("open_nxt", { precision: 18, scale: 0 }).notNull(),
+    highNxt: numeric("high_nxt", { precision: 18, scale: 0 }).notNull(),
+    lowNxt: numeric("low_nxt", { precision: 18, scale: 0 }).notNull(),
+    closeNxt: numeric("close_nxt", { precision: 18, scale: 0 }).notNull(),
 
-    // [수정] 등락률(%값) 대신 계산의 원천이 되는 전일 종가를 저장해
-    // 분봉에서 %를 계산할 때 이 값들을 참조하게 될 거야.
+    // KRX 거래량 / 거래대금
+    tradingVolumeKrx: bigint("trading_volume_krx", { mode: "bigint" }).notNull(),
+    tradingAmountKrx: numeric("trading_amount_krx", { precision: 18, scale: 0 }).notNull(),
+
+    // NXT 거래량 / 거래대금
+    tradingVolumeNxt: bigint("trading_volume_nxt", { mode: "bigint" }).notNull(),
+    tradingAmountNxt: numeric("trading_amount_nxt", { precision: 18, scale: 0 }).notNull(),
+
+    // 전일 종가 (분봉 등락률 계산의 기준)
     prevCloseKrx: numeric("prev_close_krx", { precision: 18, scale: 0 }),
     prevCloseNxt: numeric("prev_close_nxt", { precision: 18, scale: 0 }),
-    changeValue: numeric("change_value", { precision: 18, scale: 0 }),
 
+    // 전일 대비 변동값
+    changeValueKrx: numeric("change_value_krx", { precision: 18, scale: 0 }),
+    changeValueNxt: numeric("change_value_nxt", { precision: 18, scale: 0 }),
+
+    // 종목 기본 정보 (KRX 기준)
     marketCap: bigint("market_cap", { mode: "bigint" }),
     listedShares: bigint("listed_shares", { mode: "bigint" }),
     floatingShares: bigint("floating_shares", { mode: "bigint" }),
 }, (table) => [
-    // AI가 제안한 이 콜백 스타일이 복합 유니크 설정에 가장 적합해!
-    unique("uq_daily_candles_date_stock_source").on(
-        table.tradeDate,
-        table.stockCode,
-        table.source
-    ),
+    unique("uq_daily_candles_date_stock").on(table.tradeDate, table.stockCode),
     index("idx_daily_candles_date").on(table.tradeDate),
     index("idx_daily_candles_stock_code").on(table.stockCode),
 ]);
+
 
 // 4. 분봉 차트
 export const minuteCandles = pgTable("minute_candles", {

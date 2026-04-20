@@ -198,6 +198,7 @@ export interface KiwoomKa10081Response {
         open_pric: string;
         high_pric: string;
         low_pric: string;
+        pred_pre: string
         pred_pre_sig: string;
     }>;
 }
