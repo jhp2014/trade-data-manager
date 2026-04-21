@@ -14,7 +14,7 @@ logs/
 *.log
 
 # Drizzle ORM
-# drizzle/
+drizzle/
 
 # OS generated files
 .DS_Store
@@ -22,3 +22,6 @@ Thumbs.db
 
 # Cache
 .cache/
+
+# csv
+/csv
