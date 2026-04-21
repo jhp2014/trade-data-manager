@@ -48,17 +48,29 @@ npm install
 
 ---
 
-## 🗄 데이터베이스 설정 (Database Setup)
+## 🗄 데이터베이스 관리 (Database Management)
 
-Drizzle Kit을 사용하여 테이블 스키마를 생성하고 마이그레이션합니다.
+Drizzle Kit을 사용하여 DB 스키마를 관리하고 데이터를 시각적으로 탐색할 수 있습니다.
 
+### 1. 스키마 동기화 및 마이그레이션
 ```bash
-# 마이그레이션 파일 생성
+# [개발] 스키마 변경사항을 DB에 즉시 동기화 (마이그레이션 파일 미생성)
+npx drizzle-kit push
+
+# [운영/관리] 마이그레이션 파일 생성 (src/db/schema.ts 기준)
 npx drizzle-kit generate
 
-# DB에 스키마 적용
-npx drizzle-kit push
+# [운영/관리] 마이그레이션 파일을 DB에 실제 적용
+npx drizzle-kit migrate
 ```
+
+### 2. Drizzle Studio (GUI)
+데이터베이스의 내용을 웹 브라우저에서 직관적으로 확인하고 수정할 수 있습니다.
+```bash
+npx drizzle-kit studio
+```
+명령어 실행 후 기본적으로 `https://local.drizzle.studio`에서 접속 가능합니다.
+
 
 ---
 
