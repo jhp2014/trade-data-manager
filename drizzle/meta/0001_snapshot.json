@@ -1,0 +1,586 @@
+{
+  "id": "106a81ff-63f4-4e96-8406-c213e055629f",
+  "prevId": "1ea6f9fe-ab00-4321-9968-a3b628ada1f0",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.daily_candles": {
+      "name": "daily_candles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'KRX'"
+        },
+        "open_price": {
+          "name": "open_price",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "high_price": {
+          "name": "high_price",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "low_price": {
+          "name": "low_price",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "close_price": {
+          "name": "close_price",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trading_volume": {
+          "name": "trading_volume",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trading_amount": {
+          "name": "trading_amount",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prev_close_krx": {
+          "name": "prev_close_krx",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prev_close_nxt": {
+          "name": "prev_close_nxt",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "change_value": {
+          "name": "change_value",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_cap": {
+          "name": "market_cap",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "listed_shares": {
+          "name": "listed_shares",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "floating_shares": {
+          "name": "floating_shares",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_daily_candles_date": {
+          "name": "idx_daily_candles_date",
+          "columns": [
+            {
+              "expression": "trade_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_daily_candles_stock_code": {
+          "name": "idx_daily_candles_stock_code",
+          "columns": [
+            {
+              "expression": "stock_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "daily_candles_stock_code_stocks_stock_code_fk": {
+          "name": "daily_candles_stock_code_stocks_stock_code_fk",
+          "tableFrom": "daily_candles",
+          "tableTo": "stocks",
+          "columnsFrom": [
+            "stock_code"
+          ],
+          "columnsTo": [
+            "stock_code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_daily_candles_date_stock_source": {
+          "name": "uq_daily_candles_date_stock_source",
+          "nullsNotDistinct": false,
+          "columns": [
+            "trade_date",
+            "stock_code",
+            "source"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.daily_theme_mappings": {
+      "name": "daily_theme_mappings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "theme_id": {
+          "name": "theme_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "daily_candle_id": {
+          "name": "daily_candle_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_daily_theme_mapping_candle": {
+          "name": "idx_daily_theme_mapping_candle",
+          "columns": [
+            {
+              "expression": "daily_candle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "daily_theme_mappings_theme_id_themes_theme_id_fk": {
+          "name": "daily_theme_mappings_theme_id_themes_theme_id_fk",
+          "tableFrom": "daily_theme_mappings",
+          "tableTo": "themes",
+          "columnsFrom": [
+            "theme_id"
+          ],
+          "columnsTo": [
+            "theme_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "daily_theme_mappings_daily_candle_id_daily_candles_id_fk": {
+          "name": "daily_theme_mappings_daily_candle_id_daily_candles_id_fk",
+          "tableFrom": "daily_theme_mappings",
+          "tableTo": "daily_candles",
+          "columnsFrom": [
+            "daily_candle_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_daily_theme_mapping": {
+          "name": "uq_daily_theme_mapping",
+          "nullsNotDistinct": false,
+          "columns": [
+            "theme_id",
+            "daily_candle_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.intraday_program_amounts": {
+      "name": "intraday_program_amounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "daily_candle_id": {
+          "name": "daily_candle_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_time": {
+          "name": "trade_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sell_amount": {
+          "name": "sell_amount",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "buy_amount": {
+          "name": "buy_amount",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "net_buy_amount": {
+          "name": "net_buy_amount",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_program_amounts_time": {
+          "name": "idx_program_amounts_time",
+          "columns": [
+            {
+              "expression": "trade_time",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "intraday_program_amounts_daily_candle_id_daily_candles_id_fk": {
+          "name": "intraday_program_amounts_daily_candle_id_daily_candles_id_fk",
+          "tableFrom": "intraday_program_amounts",
+          "tableTo": "daily_candles",
+          "columnsFrom": [
+            "daily_candle_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_intraday_program_time": {
+          "name": "uq_intraday_program_time",
+          "nullsNotDistinct": false,
+          "columns": [
+            "daily_candle_id",
+            "trade_time"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.minute_candles": {
+      "name": "minute_candles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "daily_candle_id": {
+          "name": "daily_candle_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_time": {
+          "name": "trade_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "open_price": {
+          "name": "open_price",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "high_price": {
+          "name": "high_price",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "low_price": {
+          "name": "low_price",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "close_price": {
+          "name": "close_price",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trading_volume": {
+          "name": "trading_volume",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trading_amount": {
+          "name": "trading_amount",
+          "type": "numeric(18, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "open_rate_krx": {
+          "name": "open_rate_krx",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "high_rate_krx": {
+          "name": "high_rate_krx",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "low_rate_krx": {
+          "name": "low_rate_krx",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "close_rate_krx": {
+          "name": "close_rate_krx",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "open_rate_nxt": {
+          "name": "open_rate_nxt",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "high_rate_nxt": {
+          "name": "high_rate_nxt",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "low_rate_nxt": {
+          "name": "low_rate_nxt",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "close_rate_nxt": {
+          "name": "close_rate_nxt",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_minute_candles_daily_id": {
+          "name": "idx_minute_candles_daily_id",
+          "columns": [
+            {
+              "expression": "daily_candle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "minute_candles_daily_candle_id_daily_candles_id_fk": {
+          "name": "minute_candles_daily_candle_id_daily_candles_id_fk",
+          "tableFrom": "minute_candles",
+          "tableTo": "daily_candles",
+          "columnsFrom": [
+            "daily_candle_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_minute_candles_candle_time": {
+          "name": "uq_minute_candles_candle_time",
+          "nullsNotDistinct": false,
+          "columns": [
+            "daily_candle_id",
+            "trade_time"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.stocks": {
+      "name": "stocks",
+      "schema": "",
+      "columns": {
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "stock_name": {
+          "name": "stock_name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "market_type": {
+          "name": "market_type",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_name": {
+          "name": "market_name",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_nxt_available": {
+          "name": "is_nxt_available",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.themes": {
+      "name": "themes",
+      "schema": "",
+      "columns": {
+        "theme_id": {
+          "name": "theme_id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "theme_name": {
+          "name": "theme_name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "themes_theme_name_unique": {
+          "name": "themes_theme_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "theme_name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
