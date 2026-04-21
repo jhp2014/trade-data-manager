@@ -244,6 +244,67 @@ interface GroupedTarget {
 export class CollectorService {
 
     /**
+     * 📁 지정된 폴더의 CSV 파일을 순차적으로 처리합니다.
+     *
+     * - csv/           : 처리 대기 파일 폴더 (입력)
+     * - csv/processed/ : 처리 완료 파일 보관 (덮어쓰기 허용)
+     * - csv/failed/    : 처리 실패 파일 보관
+     *
+     * 파일명(YYYY-MM-DD.csv) 기준 오름차순으로 정렬하여 순차 처리합니다.
+     */
+    async collectFromFolder(folderPath: string): Promise<void> {
+        const processedDir = path.join(folderPath, "processed");
+        const failedDir = path.join(folderPath, "failed");
+
+        // 대상 폴더 자동 생성
+        fs.mkdirSync(processedDir, { recursive: true });
+        fs.mkdirSync(failedDir, { recursive: true });
+
+        // 직속 .csv 파일만 스캔 (processed/, failed/ 하위 제외)
+        const allEntries = fs.readdirSync(folderPath, { withFileTypes: true });
+        const csvFiles = allEntries
+            .filter((e) => e.isFile() && e.name.endsWith(".csv"))
+            .map((e) => e.name)
+            .sort(); // 파일명(날짜) 오름차순 정렬
+
+        if (csvFiles.length === 0) {
+            logger.info(`[Collector] ${folderPath} 에 처리할 CSV 파일 없음`);
+            return;
+        }
+
+        logger.info(`[Collector] 폴더 스캔 완료 — ${csvFiles.length}개 파일 처리 예정`);
+
+        for (const fileName of csvFiles) {
+            const srcPath = path.join(folderPath, fileName);
+
+            logger.info(`[Collector] ▶ 파일 처리 시작: ${fileName}`);
+
+            try {
+                await this.collectFromFile(srcPath);
+
+                // 성공 → processed/ 로 이동 (덮어쓰기)
+                const destPath = path.join(processedDir, fileName);
+                fs.copyFileSync(srcPath, destPath);
+                fs.unlinkSync(srcPath);
+                logger.info(`[Collector] ✅ 처리 완료 및 이동: ${fileName} → processed/`);
+
+            } catch (err) {
+                // 실패 → failed/ 로 이동 (덮어쓰기)
+                const destPath = path.join(failedDir, fileName);
+                try {
+                    fs.copyFileSync(srcPath, destPath);
+                    fs.unlinkSync(srcPath);
+                } catch (moveErr) {
+                    logger.error(`[Collector] ❌ 실패 파일 이동 중 오류 (${fileName}):`, moveErr);
+                }
+                logger.error(`[Collector] ❌ 처리 실패: ${fileName} → failed/ (사유: ${(err as Error).message})`);
+            }
+        }
+
+        logger.info(`[Collector] 폴더 배치 완료 — 총 ${csvFiles.length}개 처리`);
+    }
+
+    /**
      * CSV 파일을 읽어 배치를 실행합니다.
      * 파일명(YYYY-MM-DD.csv)에서 날짜를 자동으로 추출합니다.
      */
