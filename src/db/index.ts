@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "./schema";
+import * as rawSchema from "./schema/market";
+import * as featureSchema from "./schema/feature";
 import "dotenv/config";
 
 const pool = new Pool({
@@ -9,4 +10,7 @@ const pool = new Pool({
     idleTimeoutMillis: 30000,
 });
 
-export const db = drizzle(pool, { schema });
+
+const combinedSchema = { ...rawSchema, ...featureSchema };
+
+export const db = drizzle(pool, { schema: combinedSchema });

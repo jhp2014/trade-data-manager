@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } from "@/db/schema";
+import { dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } from "@/db/schema/market";
 import { eq, and, sql } from "drizzle-orm";
 import type {
     DailyCandleInsert,
