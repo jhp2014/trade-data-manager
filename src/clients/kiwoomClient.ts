@@ -31,7 +31,7 @@ export interface KiwoomTokenResponse {
     "name":"삼성전자",
     "listCount":"0000000026034239",
     "auditInfo":"정상",
-    "regDay":"20090803",
+    "regDay":"20090803",    //상장일
     "lastPrice":"00136000",
     "state":"증거금20%|담보대출|신용가능",
     "marketCode":"0",
@@ -50,6 +50,7 @@ export interface KiwoomKa10100Response {
     name: string;               // 종목명
     marketName: string;         // 시장명 (예: 코스피, 코스닥)
     nxtEnable: string;          // NXT가능여부 (Y/N)
+    regDay: string;
 }
 
 

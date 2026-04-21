@@ -62,11 +62,16 @@ export function normalizeStockInfo(
     ka10100: KiwoomKa10100Response,
     ka10001?: KiwoomKa10001Response
 ): StockInsert {
+    // regDay: "20090803" → "2009-08-03" (DB date 형식)
+    const rd = ka10100.regDay;
+    const regDay = rd ? `${rd.slice(0, 4)}-${rd.slice(4, 6)}-${rd.slice(6, 8)}` : null;
+
     return {
         stockCode: ka10100.code,
         stockName: ka10100.name,
         marketName: ka10100.marketName || null,
         isNxtAvailable: ka10100.nxtEnable === "Y",
+        regDay,
     };
 }
 

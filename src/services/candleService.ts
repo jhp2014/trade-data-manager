@@ -106,6 +106,7 @@ export async function upsertStock(stockCode: string): Promise<void> {
                 stockName: insert.stockName,
                 marketName: insert.marketName,
                 isNxtAvailable: insert.isNxtAvailable,
+                regDay: insert.regDay,
             },
         });
 
@@ -147,10 +148,34 @@ export async function upsertDailyCandles(
 
     logger.info(`[upsertDailyCandles] KRX ${krxCandles.length}개, NXT ${nxtCandles.length}개 수신`);
 
+    // DB에서 해당 종목의 상장일(regDay) 조회
+    const stockInfo = await db.query.stocks.findFirst({
+        where: eq(stocks.stockCode, stockCode),
+        columns: { regDay: true },
+    });
+
+    // regDay: DB는 "YYYY-MM-DD", API 캔들 dt는 "YYYYMMDD" → 통일하여 비교
+    const regDayFormatted = stockInfo?.regDay?.replace(/-/g, "") ?? null;
+
     const count = Math.min(krxCandles.length, nxtCandles.length);
     const rows = [];
 
+    // 마지막 인덱스(가장 오래된 캔들)는 prevClose 불명
+    // → 상장 첫날(regDay)인 경우에만 prevClose=null로 포함, 그 외는 제외
+    const oldestKrx = krxCandles[count - 1];
+    if (regDayFormatted && oldestKrx.dt === regDayFormatted) {
+        // 상장 첫날: prevClose 없이 저장
+        logger.info(`[upsertDailyCandles] ${stockCode} 상장 첫날(${oldestKrx.dt}) 캔들 포함`);
+        rows.push(normalizeDailyCandle(
+            krxCandles[count - 1],
+            nxtCandles[count - 1],
+            stockCode,
+            null,
+            null
+        ));
+    }
 
+    // 나머지 캔들 (최신 → 과거, 마지막 제외): prevClose = i+1 종가
     for (let i = 0; i < count - 1; i++) {
         const krxCandle = krxCandles[i];
         const nxtCandle = nxtCandles[i];
@@ -158,15 +183,13 @@ export async function upsertDailyCandles(
         const prevCloseKrx = krxCandles[i + 1].cur_prc;
         const prevCloseNxt = nxtCandles[i + 1].cur_prc;
 
-
-        const row = normalizeDailyCandle(
+        rows.push(normalizeDailyCandle(
             krxCandle,
             nxtCandle,
             stockCode,
             prevCloseKrx,
             prevCloseNxt
-        );
-        rows.push(row);
+        ));
     }
 
     if (rows.length === 0) {

@@ -23,7 +23,9 @@ export const stocks = pgTable("stocks", {
     stockName: varchar("stock_name", { length: 100 }).notNull(),
     marketName: varchar("market_name", { length: 50 }),
     isNxtAvailable: boolean("is_nxt_available").default(false),
+    regDay: date("reg_day"), // 상장일 (예: "2009-08-03")
 });
+
 
 // 2. 테마 마스터
 export const themes = pgTable("themes", {
