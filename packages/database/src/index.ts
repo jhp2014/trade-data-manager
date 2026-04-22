@@ -1,16 +1,15 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as rawSchema from "./schema/market";
-import * as featureSchema from "./schema/feature";
+import * as schema from "./schema";
 import "dotenv/config";
 
+// 데이터베이스 연결 풀 설정
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     max: 20,
     idleTimeoutMillis: 30000,
 });
 
-
-const combinedSchema = { ...rawSchema, ...featureSchema };
-
-export const db = drizzle(pool, { schema: combinedSchema });
+export const db = drizzle(pool, { schema });
+export { pool, schema };
+export * from "./schema";

@@ -4,7 +4,7 @@ import type {
     KiwoomKa10100Response,
     KiwoomKa10001Response,
 } from "@/clients/kiwoomClient";
-import { dailyCandles, minuteCandles, stocks } from "@/db/schema/market";
+import { dailyCandles, minuteCandles, stocks } from "@trade-data-manager/database";
 
 
 // 1. Drizzle 타입 추론을 통한 Insert 타입 정의 (Type-First)

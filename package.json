@@ -1,27 +1,19 @@
 {
   "name": "trade-data-manager",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
+  "private": true,
   "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "axios": "^1.15.1",
-    "dotenv": "^17.4.2",
-    "drizzle-orm": "^0.45.2",
-    "pg": "^8.20.0",
-    "winston": "^3.19.0"
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "db:generate": "turbo db:generate",
+    "db:push": "turbo db:push",
+    "test": "turbo test"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "@types/pg": "^8.20.0",
-    "drizzle-kit": "^0.31.10",
-    "tsx": "^4.21.0",
+    "turbo": "^2.4.4",
     "typescript": "^6.0.3"
-  }
+  },
+  "packageManager": "pnpm@10.5.2"
 }
