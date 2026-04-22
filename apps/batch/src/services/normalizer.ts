@@ -3,14 +3,9 @@ import type {
     KiwoomKa10081Response,
     KiwoomKa10100Response,
     KiwoomKa10001Response,
-} from "@/clients/kiwoomClient";
-import { dailyCandles, minuteCandles, stocks } from "@trade-data-manager/database";
+} from "../clients/kiwoomClient.js";
+import type { DailyCandleInsert, StockInsert, MinuteCandleInsert } from "@trade-data-manager/database";
 
-
-// 1. Drizzle 타입 추론을 통한 Insert 타입 정의 (Type-First)
-export type DailyCandleInsert = typeof dailyCandles.$inferInsert;
-export type StockInsert = typeof stocks.$inferInsert;
-export type MinuteCandleInsert = typeof minuteCandles.$inferInsert;
 
 type RawDailyCandle = KiwoomKa10081Response["stk_dt_pole_chart_qry"][number];
 type RawMinuteCandle = KiwoomKa10080Response["stk_min_pole_chart_qry"][number];
@@ -60,7 +55,7 @@ function formatTime(raw: string): string {
  */
 export function normalizeStockInfo(
     ka10100: KiwoomKa10100Response,
-    ka10001?: KiwoomKa10001Response
+    _ka10001?: KiwoomKa10001Response
 ): StockInsert {
     // regDay: "20090803" → "2009-08-03" (DB date 형식)
     const rd = ka10100.regDay;

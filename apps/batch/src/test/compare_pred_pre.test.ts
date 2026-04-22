@@ -1,4 +1,4 @@
-import { kiwoomClient } from "../clients/kiwoomClient";
+import { kiwoomClient } from "../clients/kiwoomClient.js";
 import "dotenv/config";
 
 async function comparePredPre() {

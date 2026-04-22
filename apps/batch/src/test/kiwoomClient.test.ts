@@ -1,4 +1,4 @@
-import { kiwoomClient } from "../clients/kiwoomClient";
+import { kiwoomClient } from "../clients/kiwoomClient.js";
 import fs from "fs";
 import path from "path";
 
@@ -34,7 +34,7 @@ async function runTests() {
         const startTime = Date.now();
 
         const promises = testStocks.map(code => kiwoomClient.getBasicInfo(code));
-        const results = await Promise.all(promises);
+        await Promise.all(promises);
 
         const endTime = Date.now();
         const elapsed = endTime - startTime;

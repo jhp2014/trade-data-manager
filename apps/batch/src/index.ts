@@ -1,8 +1,8 @@
 // src/index.ts
 import "dotenv/config";
-import { logger } from "@/utils/logger";
-import { kiwoomClient } from "@/clients/kiwoomClient";
-import { collectorService } from "@/services/collectorService";
+import { logger } from "./utils/logger.js";
+import { kiwoomClient } from "./clients/kiwoomClient.js";
+import { collectorService } from "./services/collectorService.js";
 import { pool } from "@trade-data-manager/database";
 import path from "path";
 

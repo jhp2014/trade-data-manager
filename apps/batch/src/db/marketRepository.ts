@@ -1,10 +1,6 @@
 import { db, dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } from "@trade-data-manager/database";
+import type { DailyCandleInsert, MinuteCandleInsert, StockInsert } from "@trade-data-manager/database";
 import { eq, and, sql } from "drizzle-orm";
-import type {
-    DailyCandleInsert,
-    MinuteCandleInsert,
-    StockInsert,
-} from "@/services/normalizer";
 
 // ============================================================
 // stocks

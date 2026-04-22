@@ -9,6 +9,7 @@
     "./schema": "./src/schema/index.ts"
   },
   "scripts": {
+    "build": "tsc",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push"
   },

@@ -140,3 +140,13 @@ export const intradayProgramAmount = pgTable("intraday_program_amounts", {
     unique("uq_intraday_program_time").on(table.dailyCandleId, table.tradeTime),
     index("idx_program_amounts_time").on(table.tradeTime),
 ]);
+
+// 타입 정의
+export type Stock = typeof stocks.$inferSelect;
+export type StockInsert = typeof stocks.$inferInsert;
+export type DailyCandle = typeof dailyCandles.$inferSelect;
+export type DailyCandleInsert = typeof dailyCandles.$inferInsert;
+export type MinuteCandle = typeof minuteCandles.$inferSelect;
+export type MinuteCandleInsert = typeof minuteCandles.$inferInsert;
+export type Theme = typeof themes.$inferSelect;
+export type ThemeInsert = typeof themes.$inferInsert;

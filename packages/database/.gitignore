@@ -13,14 +13,11 @@ node_modules/
 logs/
 *.log
 
+# Drizzle ORM
+drizzle/
+
 # OS generated files
 .DS_Store
 Thumbs.db
-
-# Cache
-.cache/
-
-# csv
-/csv
 
 .turbo

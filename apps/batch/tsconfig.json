@@ -1,14 +1,10 @@
 {
   "extends": "@trade-data-manager/tsconfig/base.json",
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    },
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ]
 }

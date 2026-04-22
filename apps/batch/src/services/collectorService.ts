@@ -1,12 +1,12 @@
 import fs from "fs";
 import path from "path";
-import { logger } from "@/utils/logger";
-import { kiwoomClient } from "@/clients/kiwoomClient";
+import { logger } from "../utils/logger.js";
+import { kiwoomClient } from "../clients/kiwoomClient.js";
 import {
     normalizeDailyCandle,
     normalizeMinuteCandle,
     normalizeStockInfo,
-} from "@/services/normalizer";
+} from "./normalizer.js";
 import {
     saveStock,
     saveDailyCandles,
@@ -15,8 +15,8 @@ import {
     saveThemeMapping,
     findStock,
     findDailyCandle,
-} from "@/db/marketRepository";
-import type { KiwoomKa10081Response, KiwoomKa10080Response } from "@/clients/kiwoomClient";
+} from "../db/marketRepository.js";
+import type { KiwoomKa10081Response, KiwoomKa10080Response } from "../clients/kiwoomClient.js";
 
 type RawDailyCandle = KiwoomKa10081Response["stk_dt_pole_chart_qry"][number];
 type RawMinuteCandle = KiwoomKa10080Response["stk_min_pole_chart_qry"][number];
