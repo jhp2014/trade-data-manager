@@ -1,0 +1,20 @@
+{
+    "name": "@trade-data-manager/processor",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "tsx src/index.ts",
+        "build": "tsc"
+    },
+    "dependencies": {
+        "@trade-data-manager/database": "workspace:*",
+        "dotenv": "^17.4.2",
+        "winston": "^3.19.0"
+    },
+    "devDependencies": {
+        "@trade-data-manager/tsconfig": "workspace:*",
+        "tsx": "^4.21.0",
+        "typescript": "^6.0.3"
+    }
+}

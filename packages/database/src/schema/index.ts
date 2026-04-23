@@ -1,2 +1,2 @@
 export * from "./market";
-export * from "./feature";
+export * from "./features";

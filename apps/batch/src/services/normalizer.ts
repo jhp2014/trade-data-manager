@@ -144,6 +144,8 @@ export function normalizeDailyCandle(
 export function normalizeMinuteCandle(
     candle: RawMinuteCandle,
     dailyCandleId: bigint,
+    stockCode: string,
+    tradeDate: string,
     prevCloseKrx: string | null,
     prevCloseNxt: string | null
 ): MinuteCandleInsert {
@@ -154,6 +156,8 @@ export function normalizeMinuteCandle(
 
     return {
         dailyCandleId,
+        stockCode,
+        tradeDate,
         tradeTime: formatTime(candle.cntr_tm),
         open,
         high,

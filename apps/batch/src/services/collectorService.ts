@@ -209,7 +209,7 @@ export async function collectMinuteCandles(
     logger.info(`[Collector] ${rawMinutes.length}개 분봉 수집 완료`);
 
     const rows = rawMinutes.map((candle) =>
-        normalizeMinuteCandle(candle, dailyRow.id, dailyRow.prevCloseKrx, dailyRow.prevCloseNxt)
+        normalizeMinuteCandle(candle, dailyRow.id, stockCode, tradeDate, dailyRow.prevCloseKrx, dailyRow.prevCloseNxt)
     );
 
     await saveMinuteCandles(rows);

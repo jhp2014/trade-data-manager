@@ -34,7 +34,6 @@ export const themes = pgTable("themes", {
 });
 
 // 3. 일봉 차트 - (tradeDate, stockCode) 기준 1 row에 KRX + NXT 데이터를 통합 보관
-// FK 모호성을 제거하기 위해 source 컬럼을 없애고 컬럼을 KRX/NXT로 이중화
 export const dailyCandles = pgTable("daily_candles", {
     id: bigserial("id", { mode: "bigint" }).primaryKey(),
     tradeDate: date("trade_date").notNull(),
@@ -82,9 +81,15 @@ export const dailyCandles = pgTable("daily_candles", {
 // 4. 분봉 차트
 export const minuteCandles = pgTable("minute_candles", {
     id: bigserial("id", { mode: "bigint" }).primaryKey(),
+
+    // FK (무결성 유지용)
     dailyCandleId: bigint("daily_candle_id", { mode: "bigint" })
         .notNull()
         .references(() => dailyCandles.id, { onDelete: "cascade" }),
+
+    // [비정규화 컬럼 추가] 조회 성능 극대화를 위해 추가
+    tradeDate: date("trade_date").notNull(),
+    stockCode: varchar("stock_code", { length: 10 }).notNull(),
 
     tradeTime: time("trade_time").notNull(),
     open: numeric("open_price", { precision: 18, scale: 0 }).notNull(),
@@ -93,11 +98,8 @@ export const minuteCandles = pgTable("minute_candles", {
     close: numeric("close_price", { precision: 18, scale: 0 }).notNull(),
 
     tradingVolume: bigint("trading_volume", { mode: "bigint" }).notNull(),
-    // [추가] 분봉 거래대금
     tradingAmount: numeric("trading_amount", { precision: 18, scale: 0 }).notNull(),
 
-    // [추가] KRX / NXT 전일 종가 대비 등락률 (%)
-    // 그래프 그릴 때 연산 없이 바로 가져다 쓸 수 있게 미리 계산해서 저장할 용도야.
     openRateKrx: numeric("open_rate_krx", { precision: 8, scale: 4 }),
     highRateKrx: numeric("high_rate_krx", { precision: 8, scale: 4 }),
     lowRateKrx: numeric("low_rate_krx", { precision: 8, scale: 4 }),
@@ -108,7 +110,13 @@ export const minuteCandles = pgTable("minute_candles", {
     lowRateNxt: numeric("low_rate_nxt", { precision: 8, scale: 4 }),
     closeRateNxt: numeric("close_rate_nxt", { precision: 8, scale: 4 }),
 }, (table) => [
-    unique("uq_minute_candles_candle_time").on(table.dailyCandleId, table.tradeTime),
+    // 1. 유니크 제약 조건: 동일 날짜, 동일 종목의 동일 시간 분봉은 하나만 존재해야 함
+    unique("uq_minute_candles_time").on(table.tradeDate, table.stockCode, table.tradeTime),
+
+    // 2. 핵심 조회용 복합 인덱스: "특정 종목의 특정 날짜 차트를 시간순으로 조회"할 때 최적화
+    index("idx_minute_candles_search").on(table.stockCode, table.tradeDate, table.tradeTime),
+
+    // 3. FK 인덱스 (Drizzle/Postgres에서 JOIN 성능을 위해 필요)
     index("idx_minute_candles_daily_id").on(table.dailyCandleId),
 ]);
 
@@ -131,6 +139,9 @@ export const intradayProgramAmount = pgTable("intraday_program_amounts", {
         .notNull()
         .references(() => dailyCandles.id, { onDelete: "cascade" }),
 
+    // 비정규화
+    stockCode: varchar("stock_code", { length: 10 }).notNull(),
+    tradeDate: date("trade_date").notNull(),
     tradeTime: time("trade_time").notNull(),
 
     sellAmount: numeric("sell_amount", { precision: 18, scale: 0 }).notNull(),
