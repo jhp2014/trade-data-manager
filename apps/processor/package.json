@@ -9,11 +9,16 @@
     },
     "dependencies": {
         "@trade-data-manager/database": "workspace:*",
+        "dayjs": "^1.11.10",
         "dotenv": "^17.4.2",
+        "drizzle-orm": "^0.45.2",
+        "lodash": "^4.17.21",
         "winston": "^3.19.0"
     },
     "devDependencies": {
         "@trade-data-manager/tsconfig": "workspace:*",
+        "@types/lodash": "^4.17.0",
+        "@types/node": "^25.6.0",
         "tsx": "^4.21.0",
         "typescript": "^6.0.3"
     }

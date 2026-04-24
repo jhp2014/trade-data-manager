@@ -1,10 +1,28 @@
 import { db, dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } from "@trade-data-manager/database";
 import type { DailyCandleInsert, MinuteCandleInsert, StockInsert } from "@trade-data-manager/database";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, getTableColumns } from "drizzle-orm";
 
 // ============================================================
 // stocks
 // ============================================================
+
+// ============================================================
+// 🛠️ [사수의 헬퍼 함수] 자동 Upsert Set 객체 생성기
+// ============================================================
+function buildConflictUpdateSet(table: any, excludeKeys: string[] = []) {
+    const allColumns = getTableColumns(table);
+    const setParams: Record<string, any> = {};
+
+    for (const [key, column] of Object.entries(allColumns)) {
+        if (!excludeKeys.includes(key)) {
+            // DB 실제 스네이크 케이스 컬럼명을 추출
+            const dbColName = (column as { name: string }).name;
+            setParams[key] = sql.raw(`EXCLUDED.${dbColName}`);
+        }
+    }
+    return setParams;
+}
+
 
 /**
  * 종목 정보를 저장합니다. 이미 존재하면 갱신합니다.
@@ -15,14 +33,10 @@ export async function saveStock(data: StockInsert): Promise<void> {
         .values(data)
         .onConflictDoUpdate({
             target: stocks.stockCode,
-            set: {
-                stockName: data.stockName,
-                marketName: data.marketName,
-                isNxtAvailable: data.isNxtAvailable,
-                regDay: data.regDay,
-            },
+            set: buildConflictUpdateSet(stocks, ['stockCode']),
         });
 }
+
 
 /**
  * 종목 정보를 조회합니다.
@@ -32,13 +46,13 @@ export async function findStock(
 ): Promise<{ regDay: string | null } | undefined> {
     return db.query.stocks.findFirst({
         where: eq(stocks.stockCode, stockCode),
-        columns: { regDay: true },
     });
 }
 
 // ============================================================
 // dailyCandles
 // ============================================================
+
 
 /**
  * 일봉 데이터를 저장합니다. 이미 존재하면 갱신합니다.
@@ -51,26 +65,10 @@ export async function saveDailyCandles(rows: DailyCandleInsert[]): Promise<void>
         .values(rows)
         .onConflictDoUpdate({
             target: [dailyCandles.tradeDate, dailyCandles.stockCode],
-            set: {
-                openKrx: sql`EXCLUDED.open_krx`,
-                highKrx: sql`EXCLUDED.high_krx`,
-                lowKrx: sql`EXCLUDED.low_krx`,
-                closeKrx: sql`EXCLUDED.close_krx`,
-                tradingVolumeKrx: sql`EXCLUDED.trading_volume_krx`,
-                tradingAmountKrx: sql`EXCLUDED.trading_amount_krx`,
-                openNxt: sql`EXCLUDED.open_nxt`,
-                highNxt: sql`EXCLUDED.high_nxt`,
-                lowNxt: sql`EXCLUDED.low_nxt`,
-                closeNxt: sql`EXCLUDED.close_nxt`,
-                tradingVolumeNxt: sql`EXCLUDED.trading_volume_nxt`,
-                tradingAmountNxt: sql`EXCLUDED.trading_amount_nxt`,
-                prevCloseKrx: sql`EXCLUDED.prev_close_krx`,
-                prevCloseNxt: sql`EXCLUDED.prev_close_nxt`,
-                changeValueKrx: sql`EXCLUDED.change_value_krx`,
-                changeValueNxt: sql`EXCLUDED.change_value_nxt`,
-            },
+            set: buildConflictUpdateSet(dailyCandles, ['id', 'tradeDate', 'stockCode']),
         });
 }
+
 
 /**
  * 일봉을 조회합니다. 분봉 저장 시 FK(id) 및 prevClose를 확보하는 데 사용합니다.
@@ -109,7 +107,10 @@ export async function saveMinuteCandles(rows: MinuteCandleInsert[]): Promise<voi
     await db
         .insert(minuteCandles)
         .values(rows)
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+            target: [minuteCandles.stockCode, minuteCandles.tradeDate, minuteCandles.tradeTime],
+            set: buildConflictUpdateSet(minuteCandles, ['id', 'stockCode', 'tradeDate', 'tradeTime']),
+        });
 }
 
 // ============================================================

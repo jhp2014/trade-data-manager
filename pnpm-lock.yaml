@@ -52,6 +52,43 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  apps/processor:
+    dependencies:
+      '@trade-data-manager/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      dayjs:
+        specifier: ^1.11.10
+        version: 1.11.20
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
+      lodash:
+        specifier: ^4.17.21
+        version: 4.18.1
+      winston:
+        specifier: ^3.19.0
+        version: 3.19.0
+    devDependencies:
+      '@trade-data-manager/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/lodash':
+        specifier: ^4.17.0
+        version: 4.17.24
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/database:
     dependencies:
       dotenv:
@@ -573,6 +610,9 @@ packages:
     cpu: [arm64]
     os: [win32]
 
+  '@types/lodash@4.17.24':
+    resolution: {integrity: sha512-gIW7lQLZbue7lRSWEFql49QJJWThrTFFeIMJdp3eH4tKoxm1OvEPg02rm4wCCSHS0cL3/Fizimb35b7k8atwsQ==}
+
   '@types/node@25.6.0':
     resolution: {integrity: sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ==}
 
@@ -617,6 +657,9 @@ packages:
   combined-stream@1.0.8:
     resolution: {integrity: sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==}
     engines: {node: '>= 0.8'}
+
+  dayjs@1.11.20:
+    resolution: {integrity: sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ==}
 
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
@@ -823,6 +866,9 @@ packages:
 
   kuler@2.0.0:
     resolution: {integrity: sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==}
+
+  lodash@4.18.1:
+    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
   logform@2.7.0:
     resolution: {integrity: sha512-TFYA4jnP7PVbmlBIfhlSe+WKxs9dklXMTEGcBCIvLhE/Tn3H6Gk1norupVW7m5Cnd4bLcr08AytbyV/xj7f/kQ==}
@@ -1237,6 +1283,8 @@ snapshots:
   '@turbo/windows-arm64@2.9.6':
     optional: true
 
+  '@types/lodash@4.17.24': {}
+
   '@types/node@25.6.0':
     dependencies:
       undici-types: 7.19.2
@@ -1286,6 +1334,8 @@ snapshots:
   combined-stream@1.0.8:
     dependencies:
       delayed-stream: 1.0.0
+
+  dayjs@1.11.20: {}
 
   delayed-stream@1.0.0: {}
 
@@ -1467,6 +1517,8 @@ snapshots:
   is-stream@2.0.1: {}
 
   kuler@2.0.0: {}
+
+  lodash@4.18.1: {}
 
   logform@2.7.0:
     dependencies:
