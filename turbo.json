@@ -24,6 +24,9 @@
     "db:push": {
       "cache": false
     },
+    "db:studio": {
+      "cache": false
+    },
     "test": {
       "dependsOn": [
         "^build"

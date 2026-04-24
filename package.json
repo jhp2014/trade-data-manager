@@ -9,6 +9,7 @@
     "lint": "turbo lint",
     "db:generate": "turbo db:generate",
     "db:push": "turbo db:push",
+    "db:studio": "turbo db:studio",
     "test": "turbo test"
   },
   "devDependencies": {

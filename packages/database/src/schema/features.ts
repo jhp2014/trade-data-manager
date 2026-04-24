@@ -267,8 +267,8 @@ function slotColumns(index: number) {
 
 
 // --- 타입 정의 ---
-export type MinuteCandleFeature = typeof minuteCandleFeatures.$inferSelect;
-export type MinuteCandleFeatureInsert = typeof minuteCandleFeatures.$inferInsert;
+export type MinuteCandleFeatures = typeof minuteCandleFeatures.$inferSelect;
+export type MinuteCandleFeaturesInsert = typeof minuteCandleFeatures.$inferInsert;
 export type ThemeFeature = typeof themeFeatures.$inferSelect;
 export type ThemeFeatureInsert = typeof themeFeatures.$inferInsert;
 export type ThemeStockContext = typeof themeStockContexts.$inferSelect;
