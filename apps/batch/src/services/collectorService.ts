@@ -55,13 +55,17 @@ async function fetchMinuteCandlesForDate(
     stockCode: string,
     apiDate: string
 ): Promise<RawMinuteCandle[]> {
+
     const collected: RawMinuteCandle[] = [];
+
     let contYn = "N";
     let nextKey = "";
     let done = false;
 
+    const stockCodeNxt = `${stockCode}_AL`;
+
     do {
-        const res = await kiwoomClient.getMinuteChart(stockCode, apiDate, contYn, nextKey);
+        const res = await kiwoomClient.getMinuteChart(stockCodeNxt, apiDate, contYn, nextKey);
         const candles = res.data.stk_min_pole_chart_qry ?? [];
 
         for (const candle of candles) {
