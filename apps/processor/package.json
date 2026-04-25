@@ -4,8 +4,10 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "tsx src/index.ts",
-        "build": "tsc"
+        "dev:process": "tsx src/index.ts",
+        "dev:opportunity": "tsx src/opportunity.ts",
+        "process": "node dist/index.js",
+        "opportunity": "node dist/opportunity.js"
     },
     "dependencies": {
         "@trade-data-manager/database": "workspace:*",

@@ -21,3 +21,5 @@ Thumbs.db
 .cache/
 
 .turbo
+
+/csv_opportunity/
