@@ -96,10 +96,15 @@ export class MinuteFeatureService {
                     changeRate120m: getRate(120),
 
                     // 고점 정보
-                    dayHighRate: ((dayHighRate - Number(cur.open)) / Number(cur.open) * 100).toFixed(4),
+                    dayHighRate: dayHighRate.toFixed(4),
                     dayHighTime: dayHighTime,
                     pullbackFromDayHigh: pullback.toFixed(4),
-                    minutesSinceDayHigh: i - candles.findIndex(c => c.tradeTime === dayHighTime),
+                    minutesSinceDayHigh: dayHighTime
+                        ? dayjs(cur.tradeTime, "HH:mm:ss").diff(
+                            dayjs(dayHighTime, "HH:mm:ss"),
+                            "minute"
+                          )
+                        : 0,
 
                     // 거래대금 횟수 (헬퍼 함수가 생성한 컬럼명에 맞춤)
                     ...this.mapAmtCounts(amtCounts)

@@ -5,8 +5,10 @@
     "type": "module",
     "scripts": {
         "dev:process": "tsx src/index.ts",
+        "dev:process:force": "tsx src/index.ts --force",
         "dev:opportunity": "tsx src/opportunity.ts",
         "process": "node dist/index.js",
+        "process:force": "node dist/index.js --force",
         "opportunity": "node dist/opportunity.js"
     },
     "dependencies": {

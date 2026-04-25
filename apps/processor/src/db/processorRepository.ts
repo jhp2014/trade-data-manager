@@ -1,6 +1,6 @@
 import { db, minuteCandles, minuteCandleFeatures, dailyCandles, dailyThemeMappings, themeFeatures, themeStockContexts, themes, stocks, tradingOpportunities } from "@trade-data-manager/database";
 import type { MinuteCandleFeaturesInsert } from "@trade-data-manager/database";
-import { eq, and, asc, sql, getTableColumns } from "drizzle-orm";
+import { eq, and, asc, sql, getTableColumns, isNull } from "drizzle-orm";
 
 /**
  * [사수의 헬퍼 함수]
@@ -181,6 +181,32 @@ export const processorRepository = {
      */
     async saveTradingOpportunity(data: any) {
         await db.insert(tradingOpportunities).values(data).onConflictDoNothing();
-    }
+    },
+
+    /**
+     * [증분 모드] minute_candles에 존재하지만 minute_candle_features에 없는 날짜 목록을 반환합니다.
+     * 가공이 전혀 이루어지지 않은 날짜만 대상이 됩니다.
+     */
+    async getPendingTradeDates(): Promise<{ tradeDate: string }[]> {
+        return await db
+            .selectDistinct({ tradeDate: minuteCandles.tradeDate })
+            .from(minuteCandles)
+            .leftJoin(
+                minuteCandleFeatures,
+                eq(minuteCandles.tradeDate, minuteCandleFeatures.tradeDate)
+            )
+            .where(isNull(minuteCandleFeatures.id))
+            .orderBy(asc(minuteCandles.tradeDate));
+    },
+
+    /**
+     * [강제 모드] minute_candles에 존재하는 모든 날짜 목록을 반환합니다.
+     */
+    async getAllTradeDates(): Promise<{ tradeDate: string }[]> {
+        return await db
+            .selectDistinct({ tradeDate: minuteCandles.tradeDate })
+            .from(minuteCandles)
+            .orderBy(asc(minuteCandles.tradeDate));
+    },
 
 };
