@@ -1,4 +1,4 @@
-import { db, minuteCandles, minuteCandleFeatures, dailyCandles, dailyThemeMappings, themeFeatures, themeStockContexts } from "@trade-data-manager/database";
+import { db, minuteCandles, minuteCandleFeatures, dailyCandles, dailyThemeMappings, themeFeatures, themeStockContexts, themes, stocks, tradingOpportunities } from "@trade-data-manager/database";
 import type { MinuteCandleFeaturesInsert } from "@trade-data-manager/database";
 import { eq, and, asc, sql, getTableColumns } from "drizzle-orm";
 
@@ -118,5 +118,69 @@ export const processorRepository = {
                 set: buildConflictUpdateSet(themeStockContexts, ['id', 'themeFeatureId', 'stockCode', 'createdAt']),
             });
     },
+
+    /**
+     * 특정 시점의 종목 피처 + 테마 피처 + 종목 컨텍스트를 한 번에 조회합니다.
+     * 한 종목이 여러 테마에 속할 수 있으므로 배열(Array)로 반환합니다.
+     */
+    async getOpportunitySourceData(stockCode: string, tradeDate: string, tradeTime: string) {
+        return await db
+            .select({
+                feature: minuteCandleFeatures,       // 종목의 분봉 피처
+                theme: themes,                      // 테마 정보
+                themeFeature: themeFeatures,        // 테마의 통계 피처
+                context: themeStockContexts,        // 테마 내 해당 종목의 순위
+                stock: stocks                       // 종목 마스터 정보
+            })
+            .from(minuteCandleFeatures)
+            .innerJoin(stocks, eq(minuteCandleFeatures.stockCode, stocks.stockCode))
+            .innerJoin(dailyThemeMappings, eq(minuteCandleFeatures.dailyCandleId, dailyThemeMappings.dailyCandleId))
+            .innerJoin(themes, eq(dailyThemeMappings.themeId, themes.themeId))
+            .innerJoin(
+                themeFeatures,
+                and(
+                    eq(themes.themeId, themeFeatures.themeId),
+                    eq(minuteCandleFeatures.tradeDate, themeFeatures.tradeDate),
+                    eq(minuteCandleFeatures.tradeTime, themeFeatures.tradeTime)
+                )
+            )
+            .innerJoin(
+                themeStockContexts,
+                and(
+                    eq(themeFeatures.id, themeStockContexts.themeFeatureId),
+                    eq(minuteCandleFeatures.stockCode, themeStockContexts.stockCode)
+                )
+            )
+            .where(
+                and(
+                    eq(minuteCandleFeatures.stockCode, stockCode),
+                    eq(minuteCandleFeatures.tradeDate, tradeDate),
+                    eq(minuteCandleFeatures.tradeTime, tradeTime)
+                )
+            );
+    },
+
+    /**
+     * 슬롯(S1~S6)을 채우기 위해 해당 테마의 상위 종목들을 가져옵니다.
+     */
+    async getTopStocksInTheme(themeFeatureId: bigint, limit: number = 6) {
+        return await db
+            .select({
+                context: themeStockContexts,
+                feature: minuteCandleFeatures
+            })
+            .from(themeStockContexts)
+            .innerJoin(minuteCandleFeatures, eq(themeStockContexts.minuteFeatureId, minuteCandleFeatures.id))
+            .where(eq(themeStockContexts.themeFeatureId, themeFeatureId))
+            .orderBy(asc(themeStockContexts.rankByRateNxt)) // NXT 등락률 순위 기준
+            .limit(limit);
+    },
+
+    /**
+     * 최종 기회 데이터 저장
+     */
+    async saveTradingOpportunity(data: any) {
+        await db.insert(tradingOpportunities).values(data).onConflictDoNothing();
+    }
 
 };

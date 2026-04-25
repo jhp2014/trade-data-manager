@@ -12,6 +12,7 @@ import {
     unique,
 } from "drizzle-orm/pg-core";
 import { dailyCandles, minuteCandles, stocks, themes } from "./market";
+import { STAT_RATES, STAT_AMOUNTS } from "../constants";
 
 
 /**
@@ -197,9 +198,8 @@ export const tradingOpportunities = pgTable(
 
 
 function cntNRateStockNum() {
-    const rates = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 26, 28];
     const cols: any = {};
-    rates.forEach(r => {
+    STAT_RATES.forEach(r => {
         cols[`cnt${r}RateStockNum`] = integer(`cnt_${r}_rate_stock_num`).notNull().default(0);
     });
     return cols;
@@ -212,14 +212,13 @@ function cntNRateStockNum() {
  * @param dbPrefix DB 컬럼명용 접두어 (예: 's1', 's2' 또는 '')
  */
 function cntNAmt(tsPrefix: string = "", dbPrefix: string = "") {
-    const amounts = [20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 250, 300];
     const cols: any = {};
 
     // 접두어가 있을 경우 언더바(_) 처리 여부 결정
     const tsPre = tsPrefix ? `${tsPrefix}Cnt` : "cnt";
     const dbPre = dbPrefix ? `${dbPrefix}_cnt` : "cnt";
 
-    amounts.forEach(a => {
+    STAT_AMOUNTS.forEach(a => {
         // 예: s1Cnt20Amt (TS) / s1_cnt_20_amt (DB)
         cols[`${tsPre}${a}Amt`] = integer(`${dbPre}_${a}_amt`).notNull().default(0);
     });
@@ -227,9 +226,8 @@ function cntNAmt(tsPrefix: string = "", dbPrefix: string = "") {
 }
 
 function cntNAmtStockNum() {
-    const amounts = [20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 250, 300];
     const cols: any = {};
-    amounts.forEach(a => {
+    STAT_AMOUNTS.forEach(a => {
         cols[`cnt${a}AmtStockNum`] = integer(`cnt_${a}_amt_stock_num`).notNull().default(0);
     });
     return cols;

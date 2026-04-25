@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat.js";
 import { processorRepository } from "../db/processorRepository.js";
 import { logger } from "../utils/logger.js";
-import type { MinuteCandleFeaturesInsert } from "@trade-data-manager/database";
+import { STAT_AMOUNTS, type MinuteCandleFeaturesInsert } from "@trade-data-manager/database";
 
 // dayjs 시간 파싱을 위한 플러그인 등록
 dayjs.extend(customParseFormat);
@@ -24,10 +24,8 @@ export class MinuteFeatureService {
             let cumulativeAmt = 0;
 
             // 거래대금 구간별 횟수 누적을 위한 객체
-            const amtCounts: Record<number, number> = {
-                20: 0, 30: 0, 40: 0, 50: 0, 60: 0, 70: 0, 80: 0, 90: 0,
-                100: 0, 120: 0, 140: 0, 160: 0, 180: 0, 200: 0, 250: 0, 300: 0
-            };
+            const amtCounts: Record<number, number> = {};
+            STAT_AMOUNTS.forEach(a => amtCounts[a] = 0);
 
             // 3. 단일 루프로 모든 지표 계산 (O(N))
             for (let i = 0; i < candles.length; i++) {

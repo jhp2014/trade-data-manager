@@ -1,6 +1,7 @@
 import _ from "lodash";
 import { processorRepository } from "../db/processorRepository.js";
 import { logger } from "../utils/logger.js";
+import { STAT_RATES, STAT_AMOUNTS } from "@trade-data-manager/database";
 
 export class ThemeContextService {
 
@@ -71,15 +72,14 @@ export class ThemeContextService {
      * 등락률 구간별 종목 수 계산
      */
     private calculateRateStats(features: any[]) {
-        const rates = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 26, 28];
         const stats: Record<string, number> = {};
 
         // 초기화
-        rates.forEach(r => stats[`cnt${r}RateStockNum`] = 0);
+        STAT_RATES.forEach(r => stats[`cnt${r}RateStockNum`] = 0);
 
         features.forEach(f => {
             const rate = Number(f.closeRateNxt);
-            rates.forEach(r => {
+            STAT_RATES.forEach(r => {
                 if (rate >= r) stats[`cnt${r}RateStockNum`]++;
             });
         });
@@ -91,15 +91,14 @@ export class ThemeContextService {
      * [분리] 거래대금 구간별 종목 수 계산
      */
     private calculateAmountStats(features: any[]) {
-        const amounts = [20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 250, 300];
         const stats: Record<string, number> = {};
 
         // 초기화
-        amounts.forEach(a => stats[`cnt${a}AmtStockNum`] = 0);
+        STAT_AMOUNTS.forEach(a => stats[`cnt${a}AmtStockNum`] = 0);
 
         features.forEach(f => {
             const amt = Number(f.tradingAmount) / 100000000; // 단위: 억
-            amounts.forEach(a => {
+            STAT_AMOUNTS.forEach(a => {
                 if (amt >= a) stats[`cnt${a}AmtStockNum`]++;
             });
         });
