@@ -1,4 +1,5 @@
 import _ from "lodash";
+import { db } from "@trade-data-manager/database";
 import { processorRepository } from "../db/processorRepository.js";
 import { logger } from "../utils/logger.js";
 import { STAT_RATES, STAT_AMOUNTS } from "@trade-data-manager/database";
@@ -11,59 +12,48 @@ export class ThemeContextService {
         if (rawData.length === 0) return;
 
         // 2. 시간(tradeTime)별로 데이터 그룹화 { "09:00:00": [...], "09:01:00": [...] }
-        /* 
-            {
-            "09:00:00": [
-                { stockCode: "005930", feature: { tradeTime: "09:00:00", ... } },
-                { stockCode: "000660", feature: { tradeTime: "09:00:00", ... } }
-            ],
-            "09:01:00": [
-                { stockCode: "005930", feature: { tradeTime: "09:01:00", ... } },
-                { stockCode: "000660", feature: { tradeTime: "09:01:00", ... } }
-            ],
-            // ... 장 마감까지 각 분(Minute)이 Key가 됨
-            }
-         */
         const groupedByTime = _.groupBy(rawData, (d) => d.feature.tradeTime);
 
         for (const [time, minuteData] of Object.entries(groupedByTime)) {
 
             const features = minuteData.map(d => d.feature);
 
-            // 3. theme_features 계산 및 저장
-            const themeFeatureId = await processorRepository.saveThemeFeature({
-                themeId,
-                tradeDate,
-                tradeTime: time,
-                avgRate: _.meanBy(features, f => Number(f.closeRateNxt)).toFixed(4),
-                cntTotalStock: features.length,
-                ...this.calculateRateStats(features),
-                ...this.calculateAmountStats(features)
+            // 3. theme_features + theme_stock_contexts를 하나의 트랜잭션으로 원자 처리
+            //    saveThemeFeature 성공 후 saveThemeStockContexts 실패 시 고아 레코드 방지
+            await db.transaction(async (tx) => {
+                const themeFeatureId = await processorRepository.saveThemeFeature(tx, {
+                    themeId,
+                    tradeDate,
+                    tradeTime: time,
+                    avgRate: _.meanBy(features, f => Number(f.closeRateNxt)).toFixed(4),
+                    cntTotalStock: features.length,
+                    ...this.calculateRateStats(features),
+                    ...this.calculateAmountStats(features)
+                });
+
+                // 4. 순위 매기기 (Context 준비)
+                const sortedByRateKrx = _.orderBy(features, [f => Number(f.closeRateKrx)], ['desc']);
+                const sortedByRateNxt = _.orderBy(features, [f => Number(f.closeRateNxt)], ['desc']);
+                const sortedByAmt = _.orderBy(features, [f => Number(f.cumulativeTradingAmount)], ['desc']);
+
+                const contexts = features.map(f => ({
+                    themeFeatureId,
+                    minuteFeatureId: f.id,
+                    themeId,
+                    stockCode: f.stockCode,
+                    tradeDate: f.tradeDate,
+                    tradeTime: f.tradeTime,
+                    closeRateKrx: f.closeRateKrx,
+                    closeRateNxt: f.closeRateNxt,
+                    // 순위 부여 (1부터 시작)
+                    rankByRateKrx: _.findIndex(sortedByRateKrx, { id: f.id }) + 1,
+                    rankByRateNxt: _.findIndex(sortedByRateNxt, { id: f.id }) + 1,
+                    rankByCumulativeTradingAmount: _.findIndex(sortedByAmt, { id: f.id }) + 1,
+                }));
+
+                // 5. Context 저장
+                await processorRepository.saveThemeStockContexts(tx, contexts);
             });
-
-            // 4. 순위 매기기 (Context 준비)
-            // 정렬 기준: 등락률 내림차순, 거래대금 내림차순
-            const sortedByRateKrx = _.orderBy(features, [f => Number(f.closeRateKrx)], ['desc']);
-            const sortedByRateNxt = _.orderBy(features, [f => Number(f.closeRateNxt)], ['desc']);
-            const sortedByAmt = _.orderBy(features, [f => Number(f.cumulativeTradingAmount)], ['desc']);
-
-            const contexts = features.map(f => ({
-                themeFeatureId,
-                minuteFeatureId: f.id,
-                themeId,
-                stockCode: f.stockCode,
-                tradeDate: f.tradeDate,
-                tradeTime: f.tradeTime,
-                closeRateKrx: f.closeRateKrx,
-                closeRateNxt: f.closeRateNxt,
-                // 순위 부여 (1부터 시작)
-                rankByRateKrx: _.findIndex(sortedByRateKrx, { id: f.id }) + 1,
-                rankByRateNxt: _.findIndex(sortedByRateNxt, { id: f.id }) + 1,
-                rankByCumulativeTradingAmount: _.findIndex(sortedByAmt, { id: f.id }) + 1,
-            }));
-
-            // 5. Context 저장
-            await processorRepository.saveThemeStockContexts(contexts);
         }
         logger.info(`[ThemeContext] Theme ${themeId} 가공 완료`);
     }

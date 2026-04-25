@@ -11,3 +11,9 @@ export const STAT_RATES = [
 export const STAT_AMOUNTS = [
     20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 250, 300
 ] as const;
+
+/**
+ * trading_opportunities 테이블의 슬롯(S1~SN) 수
+ * ⚠️ 이 값을 변경하면 features.ts 스키마도 함께 수정 후 DB 마이그레이션 필요
+ */
+export const MAX_SLOT_COUNT = 6;

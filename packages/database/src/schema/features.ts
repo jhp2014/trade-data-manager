@@ -178,6 +178,7 @@ export const tradingOpportunities = pgTable(
 
 
         // 슬롯 데이터 비정규화 (Slot 1 ~ 6)
+        // ⚠️ 슬롯 수는 constants.ts의 MAX_SLOT_COUNT = 6과 동기화 필요
         ...slotColumns(1),
         ...slotColumns(2),
         ...slotColumns(3),

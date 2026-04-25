@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import Papa from "papaparse";
 import { logger } from "../utils/logger.js";
 import { kiwoomClient } from "../clients/kiwoomClient.js";
 import {
@@ -352,20 +353,26 @@ export class CollectorService {
     }
 
     /**
-     * CSV 파싱 로직: 접두어(') 제거 및 불필요한 행(BLANK|) 필터링
+     * CSV 파싱 로직: papaparse를 활용해 BOM / 따옴표 필드를 안전하게 처리
+     * - header: false — 위치 기반 콜럼 접근 (헤더명 독립적)
+     * - 접두어(') 제거 및 BLANK| 행 필터링 유지
      */
     private parseAndGroupCsv(filePath: string): Map<string, GroupedTarget> {
         const content = fs.readFileSync(filePath, "utf-8");
-        const lines = content.split(/\r?\n/);
         const stockMap = new Map<string, GroupedTarget>();
 
-        // 헤더 제외 (메모,종목코드,종목명)
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
+        const { data, errors } = Papa.parse<string[]>(content, {
+            header: false,
+            skipEmptyLines: true,
+        });
 
-            if (!line || line.includes("BLANK|")) continue;
+        if (errors.length > 0) {
+            logger.warn(`[Collector] CSV 파싱 경고 ${errors.length}건 (처리는 계속)`);
+        }
 
-            const columns = line.split(",").map(col => col.trim().replace(/^'/, ""));
+        // 헤더 행(인덱스 0) 제외
+        for (let i = 1; i < data.length; i++) {
+            const columns = data[i].map(col => col.trim().replace(/^'/, ""));
 
             if (columns.length < 3) continue;
 

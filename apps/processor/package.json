@@ -17,12 +17,14 @@
         "dotenv": "^17.4.2",
         "drizzle-orm": "^0.45.2",
         "lodash": "^4.17.21",
+        "papaparse": "^5.5.3",
         "winston": "^3.19.0"
     },
     "devDependencies": {
         "@trade-data-manager/tsconfig": "workspace:*",
         "@types/lodash": "^4.17.0",
         "@types/node": "^25.6.0",
+        "@types/papaparse": "^5.5.2",
         "tsx": "^4.21.0",
         "typescript": "^6.0.3"
     }

@@ -1,6 +1,11 @@
 import { db, minuteCandles, minuteCandleFeatures, dailyCandles, dailyThemeMappings, themeFeatures, themeStockContexts, themes, stocks, tradingOpportunities } from "@trade-data-manager/database";
-import type { MinuteCandleFeaturesInsert } from "@trade-data-manager/database";
+import type { MinuteCandleFeaturesInsert, ThemeFeatureInsert, ThemeStockContextInsert, TradingOpportunityInsert } from "@trade-data-manager/database";
+import { MAX_SLOT_COUNT } from "@trade-data-manager/database";
 import { eq, and, asc, sql, getTableColumns, isNull } from "drizzle-orm";
+
+// 트랜잭션 컨텍스트와 일반 db를 모두 수용하는 유니언 타입
+type TxClient = Parameters<Parameters<typeof db["transaction"]>[0]>[0];
+type DbClient = typeof db | TxClient;
 
 /**
  * [사수의 헬퍼 함수]
@@ -92,9 +97,10 @@ export const processorRepository = {
 
     /**
      * 테마 피처를 저장하고 생성된 ID를 반환합니다.
+     * tx: 트랜잭션 컨텍스트 또는 일반 db 인스턴스 모두 허용
      */
-    async saveThemeFeature(data: any) {
-        const result = await db
+    async saveThemeFeature(tx: DbClient, data: ThemeFeatureInsert) {
+        const result = await tx
             .insert(themeFeatures)
             .values(data)
             .onConflictDoUpdate({
@@ -107,10 +113,11 @@ export const processorRepository = {
 
     /**
      * 테마 내 종목 컨텍스트(순위 등)를 Bulk 저장합니다.
+     * tx: 트랜잭션 컨텍스트 또는 일반 db 인스턴스 모두 허용
      */
-    async saveThemeStockContexts(contexts: any[]) {
+    async saveThemeStockContexts(tx: DbClient, contexts: ThemeStockContextInsert[]) {
         if (contexts.length === 0) return;
-        await db
+        await tx
             .insert(themeStockContexts)
             .values(contexts)
             .onConflictDoUpdate({
@@ -162,8 +169,9 @@ export const processorRepository = {
 
     /**
      * 슬롯(S1~S6)을 채우기 위해 해당 테마의 상위 종목들을 가져옵니다.
+     * limit 기본값은 MAX_SLOT_COUNT(6)와 동기화됩니다.
      */
-    async getTopStocksInTheme(themeFeatureId: bigint, limit: number = 6) {
+    async getTopStocksInTheme(themeFeatureId: bigint, limit: number = MAX_SLOT_COUNT) {
         return await db
             .select({
                 context: themeStockContexts,
@@ -177,9 +185,11 @@ export const processorRepository = {
     },
 
     /**
-     * 최종 기회 데이터 저장
+     * Opportunity 레코드 배열을 Bulk Insert합니다.
+     * 중복(동일 종목+날짜+시간)이 있으면 무시합니다.
      */
-    async saveTradingOpportunity(data: any) {
+    async saveTradingOpportunities(data: TradingOpportunityInsert[]) {
+        if (data.length === 0) return;
         await db.insert(tradingOpportunities).values(data).onConflictDoNothing();
     },
 

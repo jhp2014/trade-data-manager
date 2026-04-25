@@ -1,4 +1,6 @@
+import Papa from "papaparse";
 import {
+    MAX_SLOT_COUNT,
     STAT_RATES,
     STAT_AMOUNTS,
     type TradingOpportunityInsert
@@ -36,7 +38,6 @@ export class OpportunityService {
             logger.info(`[Opportunity] ▶ 파일 처리 시작: ${fileName}`);
 
             try {
-                // 파일 처리 실행
                 await this.processFromFile(srcPath);
 
                 // 성공 -> processed/ 이동
@@ -55,54 +56,76 @@ export class OpportunityService {
     }
 
     /**
-     * 개별 CSV 파일을 읽어 매핑 로직을 수행합니다.
+     * 개별 CSV 파일을 papaparse로 읽어 매핑 로직을 수행합니다.
+     *
+     * CSV 포맷 (헤더 포함, UTF-8):
+     *   날짜, 시간, 종목코드, 종목명
+     *   20260420, 091500, 041190, 우리기술투자
+     *
+     * BOM 자동 제거 및 따옴표 필드("1,000") 안전 파싱을 처리합니다.
      */
     private async processFromFile(filePath: string) {
         const content = fs.readFileSync(filePath, "utf-8");
-        const lines = content.split(/\r?\n/).filter(line => line.trim());
 
-        // 헤더: 날짜, 시간, 종목코드, 종목명 (두 번째 줄부터 처리)
-        /* 
-            예시 데이터:
-            날짜, 시간, 종목코드, 종목명
-            20260420, 091500, 041190, 우리기술투자
-            20260420, 103000, 005930, 삼성전자
-            20260420, 134500, 000660, SK하이닉스
-         */
-        for (let i = 1; i < lines.length; i++) {
-            const columns = lines[i].split(",").map(s => s.trim());
+        const { data, errors } = Papa.parse<string[]>(content, {
+            header: false,       // 위치 기반 컬럼 접근 (헤더명 독립적)
+            skipEmptyLines: true,
+        });
+
+        if (errors.length > 0) {
+            logger.warn(`[Opportunity] CSV 파싱 경고 ${errors.length}건 (처리는 계속)`);
+        }
+
+        const opportunities: TradingOpportunityInsert[] = [];
+
+        // 헤더 행(0번 인덱스) 제외
+        for (let i = 1; i < data.length; i++) {
+            const columns = (data[i] as string[]).map((s: string) => s.trim());
             if (columns.length < 3) continue;
 
-            // 🛡️ 방어적 프로그래밍: 하이픈이나 콜론이 섞여있어도 숫자만 추출하도록 처리
-            const tradeDate = columns[0].replace(/[^0-9]/g, ""); // "2026-04-20" -> "20260420"
-            const tradeTime = columns[1].replace(/[^0-9]/g, ""); // "09:30:00" -> "093000"
+            // 🛡️ 방어적 프로그래밍: 하이픈이나 콜론이 섞여있어도 숫자만 추출
+            const tradeDate = columns[0].replace(/[^0-9]/g, ""); // "2026-04-20" → "20260420"
+            const tradeTime = columns[1].replace(/[^0-9]/g, ""); // "09:30:00" → "093000"
             const stockCode = columns[2];
 
             // 시간이 4자리(0930)로 들어오면 뒤에 00을 붙여주는 센스
             const formattedTime = tradeTime.length === 4 ? `${tradeTime}00` : tradeTime;
 
-            await this.createOpportunity(stockCode, tradeDate, formattedTime);
+            const built = await this.buildOpportunity(stockCode, tradeDate, formattedTime);
+            opportunities.push(...built);
+        }
+
+        // Bulk Insert: 파일 단위로 한 번만 DB 호출
+        if (opportunities.length > 0) {
+            await processorRepository.saveTradingOpportunities(opportunities);
+            logger.info(`[Opportunity] ${opportunities.length}건 일괄 저장 완료`);
         }
     }
 
-
     /**
-     * 특정 시점의 데이터 조각들을 모아 최종 TradingOpportunityInsert 객체로 변환 및 저장합니다.
+     * 특정 시점의 데이터 조각들을 모아 TradingOpportunityInsert 배열로 변환합니다.
+     * (한 종목이 여러 테마에 속할 경우 복수 레코드 반환)
      */
-    async createOpportunity(stockCode: string, tradeDate: string, tradeTime: string) {
+    private async buildOpportunity(
+        stockCode: string,
+        tradeDate: string,
+        tradeTime: string
+    ): Promise<TradingOpportunityInsert[]> {
         // 1. 기본 데이터 조회 (종목 피처 + 테마 + 테마 통계 + 순위 + 종목마스터)
         const sourceDataList = await processorRepository.getOpportunitySourceData(stockCode, tradeDate, tradeTime);
 
         if (sourceDataList.length === 0) {
             logger.warn(`[Opportunity] 사전 계산된 피처가 없습니다. (먼저 processor를 돌려주세요): ${stockCode}`);
-            return;
+            return [];
         }
+
+        const results: TradingOpportunityInsert[] = [];
 
         for (const source of sourceDataList) {
             const { feature, theme, themeFeature, context, stock } = source;
 
-            // 2. 슬롯(Top 6) 데이터 조회 (NXT 등락률 순위 기준)
-            const topStocks = await processorRepository.getTopStocksInTheme(themeFeature.id, 6);
+            // 2. 슬롯(Top N) 데이터 조회 (NXT 등락률 순위 기준)
+            const topStocks = await processorRepository.getTopStocksInTheme(themeFeature.id, MAX_SLOT_COUNT);
 
             // 3. 데이터 매핑 (비정규화)
             const opportunity: TradingOpportunityInsert = {
@@ -110,7 +133,7 @@ export class OpportunityService {
                 tradeDate: feature.tradeDate,
                 tradeTime: feature.tradeTime,
                 stockCode: feature.stockCode,
-                stockName: stock.stockName, // CSV에서 추가하기로 한 종목명 활용
+                stockName: stock.stockName,
                 themeId: theme.themeId,
                 themeName: theme.themeName,
 
@@ -139,13 +162,15 @@ export class OpportunityService {
                 cntTotalStock: themeFeature.cntTotalStock,
                 ...this.mapThemeStats(themeFeature),
 
-                // [자동화] 슬롯 데이터 (S1 ~ S6)
+                // [자동화] 슬롯 데이터 (S1 ~ MAX_SLOT_COUNT)
                 ...this.mapAllSlots(topStocks)
             };
 
-            await processorRepository.saveTradingOpportunity(opportunity);
-            logger.info(`[Opportunity] 저장 완료: ${stock.stockName} (${theme.themeName} 테마)`);
+            results.push(opportunity);
+            logger.info(`[Opportunity] 매핑 완료: ${stock.stockName} (${theme.themeName} 테마)`);
         }
+
+        return results;
     }
 
     /**
@@ -171,11 +196,11 @@ export class OpportunityService {
     }
 
     /**
-     * S1~S6 슬롯 전체를 반복문을 통해 매핑합니다.
+     * S1~SN 슬롯 전체를 MAX_SLOT_COUNT 상수로 반복문 처리합니다.
      */
     private mapAllSlots(topStocks: any[]) {
         let allSlots: any = {};
-        for (let i = 1; i <= 6; i++) {
+        for (let i = 1; i <= MAX_SLOT_COUNT; i++) {
             allSlots = { ...allSlots, ...this.mapSingleSlot(i, topStocks[i - 1]) };
         }
         return allSlots;

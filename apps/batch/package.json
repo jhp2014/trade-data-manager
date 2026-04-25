@@ -13,12 +13,14 @@
     "axios": "^1.15.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "papaparse": "^5.5.3",
     "pg": "^8.20.0",
     "winston": "^3.19.0"
   },
   "devDependencies": {
     "@trade-data-manager/tsconfig": "workspace:*",
     "@types/node": "^25.6.0",
+    "@types/papaparse": "^5.5.2",
     "@types/pg": "^8.20.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
