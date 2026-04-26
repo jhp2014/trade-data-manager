@@ -23,6 +23,8 @@ export interface KiwoomTokenResponse {
     token: string;
     token_type: string;
     expires_dt: string;
+    return_code: number;
+    return_msg: string;
 }
 
 /* [ka10100] 종목정보조회 응답 스펙
@@ -260,24 +262,42 @@ export class KiwoomClient {
     /**
      * [au10001] 접근 토큰 발급
      * 배치가 시작될 때 가장 먼저 실행되어야 해.
+     *
+     * 흐름:
+     *   1. 캐시 파일 존재 여부 확인
+     *   2. 캐시가 유효하면 → 그대로 사용 후 return
+     *   3. 캐시가 없거나 만료 → API 호출하여 신규 발급
      */
     async authenticate(): Promise<void> {
-        // 캐시 확인 로직
+        // ── Step 1. 캐시 확인 ──────────────────────────────────────────────
         if (fs.existsSync(this.cacheFilePath)) {
             try {
-                const cached = JSON.parse(fs.readFileSync(this.cacheFilePath, "utf8"));
-                if (cached.access_token && cached.expires_dt && this.isTokenValid(cached.expires_dt)) {
-                    this.accessToken = cached.access_token;
-                    this.client.defaults.headers.common["authorization"] = `Bearer ${this.accessToken}`;
-                    logger.info("기존 캐시된 키움 API 토큰을 사용합니다.", { expiresDt: cached.expires_dt });
-                    return;
+                const raw = fs.readFileSync(this.cacheFilePath, "utf8");
+                if (raw && raw.trim() !== "") {
+                    const cached = JSON.parse(raw);
+
+                    if (cached.access_token && cached.expires_dt && this.isTokenValid(cached.expires_dt)) {
+                        // ── 캐시 토큰 정상 사용 ──
+                        this.accessToken = cached.access_token;
+                        this.client.defaults.headers.common["authorization"] = `Bearer ${this.accessToken}`;
+                        logger.info("[인증] 유효한 캐시 토큰을 사용합니다.");
+                        return;
+                    } else {
+                        logger.info("[인증] 캐시 토큰이 없거나 만료되었습니다. 새로 발급합니다.");
+                    }
                 }
-            } catch (err) {
-                logger.warn("토큰 캐시 파일 읽기/파싱 실패, 새로 발급합니다.", err);
+            } catch (err: any) {
+                logger.warn("[인증] 캐시 파일 읽기/파싱 실패. 새로 발급합니다.");
             }
+        } else {
+            logger.debug("[인증] 캐시 파일이 없습니다. 새로 발급합니다.");
         }
 
-        logger.info("키움 API 인증을 시작합니다...");
+        // ── Step 2. API 호출하여 신규 토큰 발급 ───────────────────────────
+        logger.info("[인증][API] 키움 API 인증을 시작합니다...", {
+            endpoint: `${this.baseURL}/oauth2/token`,
+        });
+
         try {
             const response = await axios.post<KiwoomTokenResponse>(
                 `${this.baseURL}/oauth2/token`,
@@ -288,30 +308,56 @@ export class KiwoomClient {
                 }
             );
 
-            this.accessToken = response.data.token;
+            // 🔍 진단 로그: 실제 API 응답의 필드명을 확인합니다.
+            const data = response.data;
+            logger.debug("[인증] API 원본 응답 데이터", { responseData: JSON.stringify(data) });
+
+            // Step 2-1. 키움 API 비즈니스 오류 확인 (HTTP 200이어도 오류일 수 있음)
+            if (data.return_code !== 0) {
+                const msg = `[인증][API] 키움 API 오류 응답 — return_code: ${data.return_code}, return_msg: "${data.return_msg}"`;
+                logger.error(msg, { return_code: data.return_code, return_msg: data.return_msg });
+                throw new Error(msg);
+            }
+
+            // Step 2-2. 토큰 추출
+            const token = data.token || null;
+            if (!token) {
+                const msg = `[인증][API] return_code=0 이지만 응답에 토큰 필드가 없습니다. 응답 키: [${Object.keys(data).join(", ")}]`;
+                logger.error(msg, { responseKeys: Object.keys(data) });
+                throw new Error(msg);
+            }
+
+            // Step 2-3. 인스턴스 및 헤더에 적용
+            this.accessToken = token;
             this.client.defaults.headers.common["authorization"] = `Bearer ${this.accessToken}`;
 
-            // 새로운 토큰 파일 캐싱
+            const expiresDt = data.expires_dt || "";
+
+            // Step 2-4. 캐시 파일 저장
             fs.writeFileSync(
                 this.cacheFilePath,
-                JSON.stringify({
-                    access_token: this.accessToken,
-                    expires_dt: response.data.expires_dt,
-                }),
+                JSON.stringify({ access_token: this.accessToken, expires_dt: expiresDt }),
                 "utf8"
             );
 
-            logger.info("인증 성공: 새 토큰이 발급되고 캐시되었습니다.", {
-                expiresIn: response.data.expires_dt,
+            logger.info("[인증][API] 토큰 발급 및 캐시 완료.", {
+                expiresDt,
+                tokenPrefix: this.accessToken.substring(0, 10) + "...",
             });
+
         } catch (error: any) {
-            logger.error("인증 실패: 토큰 발급 중 에리 발생", {
-                status: error.response?.status,
-                errorData: error.response?.data,
-            });
+            // HTTP 오류 (4xx, 5xx) 또는 위에서 throw한 비즈니스 오류 모두 여기서 처리
+            // 이미 logger.error를 호출한 경우 중복 출력을 피하기 위해 http 오류만 여기서 로깅
+            if (error.response) {
+                logger.error("[인증][API] HTTP 오류 응답 수신", {
+                    status: error.response.status,
+                    data: error.response.data,
+                });
+            }
             throw error;
         }
     }
+
 
     private async waitForRateLimit(): Promise<void> {
         const now = Date.now();

@@ -5,5 +5,8 @@
   "license": "ISC",
   "files": [
     "base.json"
-  ]
+  ],
+  "exports": {
+    "./base.json": "./base.json"
+  }
 }

@@ -26,4 +26,16 @@ Thumbs.db
 # csv
 /csv
 
+# Turborepo
 .turbo
+
+# Next.js
+.next/
+out/
+build/
+
+# TypeScript
+*.tsbuildinfo
+
+# ESLint
+.eslintcache
