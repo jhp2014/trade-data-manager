@@ -24,6 +24,13 @@
     color: var(--text-muted);
 }
 
+/* 드롭다운과 스피너를 겹치기 위한 래퍼 */
+.inputWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
 .dropdown {
     width: 100%;
     padding: 1rem 1.2rem;
@@ -35,6 +42,8 @@
     cursor: pointer;
     outline: none;
     appearance: none;
+
+    /* 기본 커스텀 화살표 */
     background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d1d4dc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
     background-repeat: no-repeat;
     background-position: right 1rem center;
@@ -42,15 +51,42 @@
     transition: all 0.2s ease;
 }
 
-.dropdown:hover,
-.dropdown:focus {
+.dropdown:hover:not(:disabled),
+.dropdown:focus:not(:disabled) {
     border-color: var(--color-down);
     box-shadow: 0 0 0 1px var(--color-down);
+}
+
+/* 로딩 중이거나 데이터가 없을 때의 비활성화 디자인 */
+.dropdown:disabled {
+    background-image: none;
+    /* 화살표 제거 */
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: rgba(0, 0, 0, 0.2);
 }
 
 .dropdown option {
     background-color: var(--bg-panel);
     color: var(--text-main);
+}
+
+/* 로딩 스피너 아이콘 */
+.spinner {
+    position: absolute;
+    right: 1rem;
+    color: var(--text-muted);
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .executeBtn {
@@ -70,11 +106,12 @@
     transition: opacity 0.2s;
 }
 
-.executeBtn:hover {
+.executeBtn:hover:not(:disabled) {
     opacity: 0.9;
 }
 
 .executeBtn:disabled {
-    opacity: 0.5;
+    opacity: 0.3;
     cursor: not-allowed;
+    background-color: var(--border-color);
 }

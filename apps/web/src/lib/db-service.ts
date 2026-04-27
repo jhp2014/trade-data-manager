@@ -15,11 +15,12 @@ export async function getAvailableDates() {
         const result = await db
             .selectDistinct({ tradeDate: schema.dailyCandles.tradeDate })
             .from(schema.dailyCandles)
+            .innerJoin(schema.dailyThemeMappings, eq(schema.dailyCandles.id, schema.dailyThemeMappings.dailyCandleId))
             .orderBy(desc(schema.dailyCandles.tradeDate));
 
-        logger.info("[db-service] getAvailableDates 완료", { 
-            count: result.length, 
-            durationMs: Date.now() - startTime 
+        logger.info("[db-service] getAvailableDates 완료", {
+            count: result.length,
+            durationMs: Date.now() - startTime
         });
         return result.map(r => r.tradeDate);
     } catch (error: any) {
@@ -47,10 +48,10 @@ export async function getThemesByDate(date: string) {
             .innerJoin(schema.dailyCandles, eq(schema.dailyThemeMappings.dailyCandleId, schema.dailyCandles.id))
             .where(eq(schema.dailyCandles.tradeDate, date));
 
-        logger.info("[db-service] getThemesByDate 완료", { 
-            date, 
+        logger.info("[db-service] getThemesByDate 완료", {
+            date,
             themeCount: themes.length,
-            durationMs: Date.now() - startTime 
+            durationMs: Date.now() - startTime
         });
 
         return themes.map((t) => ({
@@ -65,15 +66,18 @@ export async function getThemesByDate(date: string) {
 
 
 /**
- * 3. 특정 날짜와 테마에 속한 종목 및 분봉 차트 데이터 조회 (2-Step Data Fetching)
+ * [최적화] 특정 날짜의 모든 테마 데이터(분봉 + 과거 일봉)를 한 번에 조회
+ * @returns Record<string, StockData[]> (Key: themeId)
  */
-export async function getAllStockWithMinuteChart(date: string, themeId: bigint | number | string) {
+export async function getAllThemesChartDataByDate(date: string) {
     const startTime = Date.now();
-    logger.debug("[db-service] getAllStockWithMinuteChart 요청 시작", { date, themeId: themeId.toString() });
+    logger.debug("[db-service] getAllThemesChartDataByDate 요청 시작", { date });
     try {
-        // Step 1: 메타데이터 및 일봉 요약 정보 조회
-        const dailyCandleList = await db
+        // 1. 해당 날짜의 모든 테마-종목 매핑 및 요약 정보 조회
+        const dailyStockInfoList = await db
             .select({
+                themeId: schema.dailyThemeMappings.themeId,
+                themeName: schema.themes.themeName,
                 dailyCandleId: schema.dailyCandles.id,
                 stockCode: schema.stocks.stockCode,
                 stockName: schema.stocks.stockName,
@@ -84,150 +88,96 @@ export async function getAllStockWithMinuteChart(date: string, themeId: bigint |
                 tradingAmountNxt: schema.dailyCandles.tradingAmountNxt,
             })
             .from(schema.dailyThemeMappings)
+            .innerJoin(schema.themes, eq(schema.dailyThemeMappings.themeId, schema.themes.themeId))
             .innerJoin(schema.dailyCandles, eq(schema.dailyThemeMappings.dailyCandleId, schema.dailyCandles.id))
             .innerJoin(schema.stocks, eq(schema.dailyCandles.stockCode, schema.stocks.stockCode))
-            .where(
-                and(
-                    eq(schema.dailyThemeMappings.themeId, BigInt(themeId)),
-                    eq(schema.dailyCandles.tradeDate, date)
-                )
-            );
+            .where(eq(schema.dailyCandles.tradeDate, date));
 
-        if (dailyCandleList.length === 0) {
-            logger.info("[db-service] getAllStockWithMinuteChart 완료 (데이터 없음)", { date, themeId: themeId.toString(), durationMs: Date.now() - startTime });
-            return [];
-        }
+        if (dailyStockInfoList.length === 0) return {};
 
-        const dailyCandleIds = dailyCandleList.map((info) => info.dailyCandleId);
+        const uniqueCandleIds = Array.from(new Set(dailyStockInfoList.map(c => c.dailyCandleId)));
+        const uniqueStockCodes = Array.from(new Set(dailyStockInfoList.map(c => c.stockCode)));
 
-        // Step 2: 분봉 데이터 대량 조회
-        const minutes: schema.MinuteCandle[] = await db
+        // 2. 분봉 데이터 대량 조회
+        const minutesChartList = await db
             .select()
             .from(schema.minuteCandles)
-            .where(inArray(schema.minuteCandles.dailyCandleId, dailyCandleIds))
+            .where(inArray(schema.minuteCandles.dailyCandleId, uniqueCandleIds))
             .orderBy(asc(schema.minuteCandles.dailyCandleId), asc(schema.minuteCandles.tradeTime));
 
-        // Step 3: 데이터 조립 (계층형 구조)
-        // bigint 타입의 id를 string 키로 변환하여 그룹화
-        const minutesByCandleId: Record<string, schema.MinuteCandle[]> = _.groupBy(minutes, (m) => m.dailyCandleId.toString());
-
-        const result = dailyCandleList.map((info) => {
-            const candleIdStr = info.dailyCandleId.toString();
-            const stockMinutes = minutesByCandleId[candleIdStr] || [];
-
-            return {
-                stockCode: info.stockCode,
-                stockName: info.stockName,
-
-                dailyInfo: {
-                    dailyCandleId: candleIdStr,
-                    prevCloseKrx: info.prevCloseKrx ? Number(info.prevCloseKrx) : null,
-                    prevCloseNxt: info.prevCloseNxt ? Number(info.prevCloseNxt) : null,
-                    marketCap: info.marketCap?.toString() || null, // Next.js BigInt 직렬화 에러 대응
-                    // 일봉 요약 거래대금 억 단위 통일 (백만 단위이므로 / 100)
-                    tradingAmountKrx: Number((Number(info.tradingAmountKrx) / 100).toFixed(1)),
-                    tradingAmountNxt: Number((Number(info.tradingAmountNxt) / 100).toFixed(1)),
-                },
-                // 직렬화 처리 및 데이터 매핑을 최종 단계에서 수행
-                minuteCandles: stockMinutes.map((curr) => ({
-                    tradeTime: curr.tradeTime,
-                    open: Number(curr.open),
-                    high: Number(curr.high),
-                    low: Number(curr.low),
-                    close: Number(curr.close),
-                    openRateKrx: curr.openRateKrx ? Number(curr.openRateKrx) : null,
-                    highRateKrx: curr.highRateKrx ? Number(curr.highRateKrx) : null,
-                    lowRateKrx: curr.lowRateKrx ? Number(curr.lowRateKrx) : null,
-                    closeRateKrx: curr.closeRateKrx ? Number(curr.closeRateKrx) : null,
-                    openRateNxt: curr.openRateNxt ? Number(curr.openRateNxt) : null,
-                    highRateNxt: curr.highRateNxt ? Number(curr.highRateNxt) : null,
-                    lowRateNxt: curr.lowRateNxt ? Number(curr.lowRateNxt) : null,
-                    closeRateNxt: curr.closeRateNxt ? Number(curr.closeRateNxt) : null,
-                    tradingVolume: curr.tradingVolume?.toString() || "0", // Next.js BigInt 직렬화 에러 대응
-                    // 분봉 거래대금 억 단위 변환 (차트 Y축 매핑을 위해 Number 타입 반환)
-                    tradingAmount: Number((Number(curr.tradingAmount) / 100000000).toFixed(1)),
-                })),
-            };
-        });
-
-        logger.info("[db-service] getAllStockWithMinuteChart 완료", { 
-            date, 
-            themeId: themeId.toString(), 
-            stockCount: dailyCandleList.length,
-            minuteCount: minutes.length,
-            durationMs: Date.now() - startTime 
-        });
-
-        return result;
-    } catch (error: any) {
-        logger.error("[db-service] getAllStockWithMinuteChart 중 에러 발생", { date, themeId: themeId.toString(), error: error.message, stack: error.stack });
-        throw error;
-    }
-}
-
-/**
- * 4. 특정 종목의 기준일 포함 과거 일봉 차트 데이터 조회
- */
-export async function getStockDailyChartData(stockCode: string, targetDate: string) {
-    const startTime = Date.now();
-    logger.debug("[db-service] getStockDailyChartData 요청 시작", { stockCode, targetDate });
-    try {
-        // 반환 타입을 Drizzle 스키마에서 export한 DailyCandle 배열로 명시(또는 자동 추론)
-        const candles: schema.DailyCandle[] = await db
+        // 3. 과거 일봉 데이터 대량 조회 (종목별 과거 200일치)
+        // SQL 최적화를 위해 모든 종목의 과거 데이터를 한꺼번에 가져옵니다.
+        const dailyChartList = await db
             .select()
             .from(schema.dailyCandles)
             .where(
                 and(
-                    eq(schema.dailyCandles.stockCode, stockCode),
-                    lte(schema.dailyCandles.tradeDate, targetDate) // targetDate 포함 과거 데이터만 필터링
+                    inArray(schema.dailyCandles.stockCode, uniqueStockCodes),
+                    lte(schema.dailyCandles.tradeDate, date)
                 )
             )
-            .orderBy(asc(schema.dailyCandles.tradeDate)); // 차트 렌더링을 위해 과거 -> 최신(오름차순) 정렬
+            .orderBy(asc(schema.dailyCandles.stockCode), desc(schema.dailyCandles.tradeDate));
 
-        logger.info("[db-service] getStockDailyChartData 완료", { 
-            stockCode, 
-            targetDate, 
-            candleCount: candles.length,
-            durationMs: Date.now() - startTime 
+        // 데이터 그룹화 (조립 속도 향상)
+        const minutesChartByCandleId: Record<string, schema.MinuteCandle[]> = _.groupBy(minutesChartList, m => m.dailyCandleId.toString());
+        const dailyChartByStockCode: Record<string, schema.DailyCandle[]> = _.groupBy(dailyChartList, d => d.stockCode);
+
+        // 각 종목이 당일 포함된 모든 테마 이름들을 Set을 활용해 중복 없이 수집
+        const themeNamesByStockCode: Record<string, Set<string>> = {};
+        for (const { stockCode, themeName } of dailyStockInfoList) {
+            (themeNamesByStockCode[stockCode] ??= new Set()).add(themeName);
+        }
+
+        // 결과 조립: flat 배열로 먼저 만든 후 groupBy로 테마별로 묶음
+        // → _.groupBy가 타입을 자동 추론하므로 Record<string, any[]> 불필요
+        const allItems = dailyStockInfoList.map(info => {
+            const stockMinutes = minutesChartByCandleId[info.dailyCandleId.toString()] || [];
+            // spread로 복사 후 reverse → 원본 배열 변이 방지 (같은 종목이 여러 테마에 속할 때 안전)
+            const stockDaily = [...(dailyChartByStockCode[info.stockCode] || [])].reverse();
+
+            return {
+                stockCode: info.stockCode,
+                stockName: info.stockName,
+                themeId: info.themeId.toString(),
+                themeName: info.themeName,
+                allThemeNames: Array.from(themeNamesByStockCode[info.stockCode]),
+                dailyInfo: {
+                    // null guard: Number(null) = 0 방지
+                    prevCloseKrx: info.prevCloseKrx != null ? Number(info.prevCloseKrx) : null,
+                    prevCloseNxt: info.prevCloseNxt != null ? Number(info.prevCloseNxt) : null,
+                    marketCap: info.marketCap != null ? Number(info.marketCap) : null,
+                    tradingAmountKrx: Number((Number(info.tradingAmountKrx) / 100).toFixed(1)),
+                    tradingAmountNxt: Number((Number(info.tradingAmountNxt) / 100).toFixed(1)),
+                },
+                minuteCandles: stockMinutes.map(m => ({
+                    time: m.tradeTime,
+                    open: Number(m.open), high: Number(m.high), low: Number(m.low), close: Number(m.close),
+                    openRateKrx: Number(m.openRateKrx), highRateKrx: Number(m.highRateKrx), lowRateKrx: Number(m.lowRateKrx), closeRateKrx: Number(m.closeRateKrx),
+                    openRateNxt: Number(m.openRateNxt), highRateNxt: Number(m.highRateNxt), lowRateNxt: Number(m.lowRateNxt), closeRateNxt: Number(m.closeRateNxt),
+                    tradingAmount: Number((Number(m.tradingAmount) / 100000000).toFixed(1))
+                })),
+                dailyCandles: stockDaily.map(d => ({
+                    time: d.tradeDate,
+                    openKrx: Number(d.openKrx), highKrx: Number(d.highKrx), lowKrx: Number(d.lowKrx), closeKrx: Number(d.closeKrx),
+                    openNxt: Number(d.openNxt), highNxt: Number(d.highNxt), lowNxt: Number(d.lowNxt), closeNxt: Number(d.closeNxt),
+                    tradingAmountKrx: Number((Number(d.tradingAmountKrx) / 100).toFixed(1)),
+                    tradingAmountNxt: Number((Number(d.tradingAmountNxt) / 100).toFixed(1)),
+                }))
+            };
         });
 
-        return candles.map((candle) => ({
-            tradeDate: candle.tradeDate,
+        const result = _.groupBy(allItems, item => item.themeId);
 
-            // 가격 데이터 (차트 Y축 매핑을 위해 Number 변환)
-            openKrx: Number(candle.openKrx),
-            highKrx: Number(candle.highKrx),
-            lowKrx: Number(candle.lowKrx),
-            closeKrx: Number(candle.closeKrx),
-
-            openNxt: Number(candle.openNxt),
-            highNxt: Number(candle.highNxt),
-            lowNxt: Number(candle.lowNxt),
-            closeNxt: Number(candle.closeNxt),
-
-            // 거래량 BigInt 에러 방지
-            tradingVolumeKrx: candle.tradingVolumeKrx.toString(),
-            tradingAmountKrx: Number((Number(candle.tradingAmountKrx) / 100).toFixed(1)),
-            tradingVolumeNxt: candle.tradingVolumeNxt.toString(),
-            tradingAmountNxt: Number((Number(candle.tradingAmountNxt) / 100).toFixed(1)),
-
-            prevCloseKrx: candle.prevCloseKrx ? Number(candle.prevCloseKrx) : null,
-            prevCloseNxt: candle.prevCloseNxt ? Number(candle.prevCloseNxt) : null,
-            changeValueKrx: candle.changeValueKrx ? Number(candle.changeValueKrx) : null,
-            changeValueNxt: candle.changeValueNxt ? Number(candle.changeValueNxt) : null,
-
-            marketCap: candle.marketCap?.toString() || null,
-        }));
+        logger.info("[db-service] Bulk fetch completed", { duration: Date.now() - startTime });
+        return result;
     } catch (error: any) {
-        logger.error("[db-service] getStockDailyChartData 중 에러 발생", { stockCode, targetDate, error: error.message, stack: error.stack });
+        logger.error("[db-service] Error in bulk fetch", { error: error.message });
         throw error;
     }
 }
 
-// ============================================================================
-// 프론트엔드(Client Component)에서 별도 선언 없이 바로 가져다 쓸 수 있는 타입 모음
-// ============================================================================
 export type AvailableDates = Awaited<ReturnType<typeof getAvailableDates>>;
 export type ThemeItem = Awaited<ReturnType<typeof getThemesByDate>>[number];
-export type MinuteChart = Awaited<ReturnType<typeof getAllStockWithMinuteChart>>[number];
-export type DailyCandle = Awaited<ReturnType<typeof getStockDailyChartData>>[number];
+export type AllThemesChartData = Awaited<ReturnType<typeof getAllThemesChartDataByDate>>;
+export type ThemeChartData = AllThemesChartData[string];
+export type StockChartItem = ThemeChartData[number];

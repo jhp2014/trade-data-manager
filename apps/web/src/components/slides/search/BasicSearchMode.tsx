@@ -1,37 +1,51 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTradeStore } from '@/store/useTradeStore';
 import { useRouter, usePathname } from 'next/navigation';
-import { Play } from 'lucide-react';
+import { Play, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import styles from './BasicSearchMode.module.css';
 
-// TODO: 추후 DB 연동
-const AVAILABLE_DATES = ['2024-05-20', '2024-05-17', '2024-05-16'];
-const THEMES_BY_DATE: Record<string, { id: string; name: string }[]> = {
-    '2024-05-20': [{ id: '101', name: '반도체 HBM' }, { id: '102', name: '전력설비' }],
-    '2024-05-17': [{ id: '103', name: '화장품' }, { id: '101', name: '반도체 HBM' }],
-    '2024-05-16': [{ id: '104', name: '2차전지 전고체' }],
-};
+import { fetchAvailableDatesAction, fetchThemesByDateAction } from '@/actions/searchActions';
+
 
 export default function BasicSearchMode() {
     const setStep = useTradeStore((state) => state.setStep);
     const router = useRouter();
     const pathname = usePathname();
 
-    const [selectedDate, setSelectedDate] = useState(AVAILABLE_DATES[0]);
-    const availableThemes = THEMES_BY_DATE[selectedDate] || [];
-    const [selectedThemeId, setSelectedThemeId] = useState(availableThemes[0]?.id || '');
+    const [selectedDate, setSelectedDate] = useState('');
+    const [selectedThemeId, setSelectedThemeId] = useState('');
 
-    const handleDateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const newDate = e.target.value;
-        setSelectedDate(newDate);
-        const newThemes = THEMES_BY_DATE[newDate] || [];
-        setSelectedThemeId(newThemes.length > 0 ? newThemes[0].id : '');
-    };
+    const { data: dates, isLoading: isDatesLoading } = useQuery({
+        queryKey: ['availableDates'],
+        queryFn: () => fetchAvailableDatesAction(),
+    });
+
+    const { data: themes, isLoading: isThemesLoading, isFetching: isThemesFetching } = useQuery({
+        queryKey: ['themesByDate', selectedDate],
+        queryFn: () => fetchThemesByDateAction(selectedDate),
+        enabled: !!selectedDate, // 💡 핵심: 날짜가 없으면 실행하지 않음
+    });
+
+    useEffect(() => {
+        if (dates && dates.length > 0 && !selectedDate) {
+            setSelectedDate(dates[0]);
+        }
+    }, [dates, selectedDate]);
+
+    useEffect(() => {
+        if (themes && themes.length > 0) {
+            setSelectedThemeId(themes[0].themeId);
+        } else {
+            setSelectedThemeId('');
+        }
+    }, [themes]);
 
     const handleExecute = () => {
         if (!selectedDate || !selectedThemeId) return;
+
         const params = new URLSearchParams();
         params.set('mode', 'basic');
         params.set('date', selectedDate);
@@ -44,28 +58,57 @@ export default function BasicSearchMode() {
     return (
         <div className={styles.container}>
             <div className={styles.formWrapper}>
+
+                {/* 1. 날짜 선택 드롭다운 */}
                 <div className={styles.selectGroup}>
                     <label className={styles.label}>Trade Date</label>
-                    <select className={styles.dropdown} value={selectedDate} onChange={handleDateChange}>
-                        {AVAILABLE_DATES.map(date => <option key={date} value={date}>{date}</option>)}
-                    </select>
+                    <div className={styles.inputWrapper}>
+                        <select
+                            className={styles.dropdown}
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            disabled={isDatesLoading}
+                        >
+                            {isDatesLoading ? (
+                                <option value="">Loading dates...</option>
+                            ) : (
+                                dates?.map(date => <option key={date} value={date}>{date}</option>)
+                            )}
+                        </select>
+                        {isDatesLoading && <Loader2 className={styles.spinner} size={16} />}
+                    </div>
                 </div>
 
+                {/* 2. 테마 선택 드롭다운 */}
                 <div className={styles.selectGroup}>
                     <label className={styles.label}>Target Theme</label>
-                    <select
-                        className={styles.dropdown}
-                        value={selectedThemeId}
-                        onChange={(e) => setSelectedThemeId(e.target.value)}
-                        disabled={availableThemes.length === 0}
-                    >
-                        {availableThemes.map(theme => (
-                            <option key={theme.id} value={theme.id}>{theme.name}</option>
-                        ))}
-                    </select>
+                    <div className={styles.inputWrapper}>
+                        <select
+                            className={styles.dropdown}
+                            value={selectedThemeId}
+                            onChange={(e) => setSelectedThemeId(e.target.value)}
+                            disabled={isThemesLoading || !themes || themes.length === 0}
+                        >
+                            {isThemesLoading ? (
+                                <option value="">Loading themes...</option>
+                            ) : !themes || themes.length === 0 ? (
+                                <option value="">No data available</option>
+                            ) : (
+                                themes.map(theme => (
+                                    <option key={theme.themeId} value={theme.themeId}>{theme.themeName}</option>
+                                ))
+                            )}
+                        </select>
+                        {/* 새로운 날짜를 눌러서 테마를 다시 가져올 때 스피너 표시 */}
+                        {(isThemesLoading || isThemesFetching) && <Loader2 className={styles.spinner} size={16} />}
+                    </div>
                 </div>
 
-                <button className={styles.executeBtn} onClick={handleExecute} disabled={!selectedDate || !selectedThemeId}>
+                <button
+                    className={styles.executeBtn}
+                    onClick={handleExecute}
+                    disabled={!selectedDate || !selectedThemeId || isDatesLoading || isThemesLoading}
+                >
                     <Play size={18} fill="currentColor" /> Load Workspace
                 </button>
             </div>

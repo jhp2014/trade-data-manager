@@ -2,13 +2,6 @@ import { db, dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } f
 import type { DailyCandleInsert, MinuteCandleInsert, StockInsert } from "@trade-data-manager/database";
 import { eq, and, sql, getTableColumns } from "drizzle-orm";
 
-// ============================================================
-// stocks
-// ============================================================
-
-// ============================================================
-// 🛠️ [사수의 헬퍼 함수] 자동 Upsert Set 객체 생성기
-// ============================================================
 function buildConflictUpdateSet(table: any, excludeKeys: string[] = []) {
     const allColumns = getTableColumns(table);
     const setParams: Record<string, any> = {};
