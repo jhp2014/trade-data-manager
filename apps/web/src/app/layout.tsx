@@ -1,8 +1,10 @@
-import "./globals.css";
+import type { Metadata } from 'next';
+import './globals.css';
+import QueryProvider from '@/providers/QueryProvider';
 
-export const metadata = {
-    title: "Trade Data Manager",
-    description: "Advanced Trading Dashboard",
+export const metadata: Metadata = {
+    title: 'Trading Dashboard',
+    description: 'Personal Trading Architecture',
 };
 
 export default function RootLayout({
@@ -12,7 +14,11 @@ export default function RootLayout({
 }) {
     return (
         <html lang="ko">
-            <body>{children}</body>
+            <body>
+                <QueryProvider>
+                    {children}
+                </QueryProvider>
+            </body>
         </html>
     );
 }

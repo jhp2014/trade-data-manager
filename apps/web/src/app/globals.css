@@ -1,16 +1,50 @@
-/* 기본 리셋 */
-* {
-    box-sizing: border-box;
-    padding: 0;
-    margin: 0;
+/* 1. 시스템 전역 변수 설정 (색상 및 레이아웃 치수) */
+:root {
+    /* 배경 및 패널 색상 */
+    --bg-main: #131722;
+    /* 앱 전체의 아주 어두운 남색 배경 */
+    --bg-panel: #1e222d;
+    /* 상단 바 및 사이드바 배경 (약간 더 밝음) */
+
+    /* 텍스트 및 선 색상 */
+    --text-main: #d1d4dc;
+    /* 기본 글자색 (눈이 편안한 밝은 회색) */
+    --text-muted: #787b86;
+    /* 보조 글자색 (비활성화, 라벨 등) */
+    --border-color: #2b2b43;
+    /* 패널 사이를 나누는 구분선 색상 */
+
+    /* 차트 캔들 색상 */
+    --color-up: #ef5350;
+    /* 상승 (한국식 빨강) */
+    --color-down: #26a69a;
+    /* 하락 (한국식 파랑/초록) */
+
+    /* 레이아웃 기준점 */
+    --topbar-height: 250px;
+    /* 상단 오버레이 차트 영역의 기본 높이 */
 }
 
+/* 2. Body 기본 리셋 및 테마 적용 */
 html,
 body {
-    max-width: 100vw;
-    overflow-x: hidden;
-    background-color: #000;
-    /* 트레이딩 뷰 스타일 다크모드 */
-    color: #fff;
-    font-family: sans-serif;
+    height: 100%;
+    width: 100%;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    /* 데스크톱 앱처럼 보이도록 브라우저 기본 스크롤을 막습니다 */
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 모든 요소의 박스 사이즈를 테두리 기준으로 맞춥니다 */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
