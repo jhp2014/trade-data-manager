@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { fetchAllThemesChartDataAction } from '@/actions/chartActions';
+import { fetchAllChartDataByDateAction } from '@/actions/chartActions';
 import styles from './StockChartList.module.css';
 import MiniChart from '@/components/common/MiniChart';
 
@@ -14,7 +14,7 @@ export default function StockChartList() {
 
     const { data: allData, isLoading } = useQuery({
         queryKey: ['chartDataByDate', date],
-        queryFn: () => fetchAllThemesChartDataAction(date!),
+        queryFn: () => fetchAllChartDataByDateAction(date!),
         enabled: !!date,
     });
 

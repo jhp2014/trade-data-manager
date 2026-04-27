@@ -11,7 +11,7 @@ import _ from 'lodash';
 /**
  *  헬퍼 1: 날짜(YYYYMMDD)와 시간(HHmmss) 문자열을 Unix Timestamp로 변환
  */
-export function toUnixTimestamp(dateStr: string, timeStr: string): number {
+function toUnixTimestamp(dateStr: string, timeStr: string): number {
     // 1. 날짜 형식 조정 (YYYYMMDD -> YYYY-MM-DD)
     const formattedDate = dateStr.length === 8
         ? `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`
