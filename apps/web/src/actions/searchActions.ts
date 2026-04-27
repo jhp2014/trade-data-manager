@@ -1,6 +1,6 @@
 'use server';
 
-import { getAvailableDates, getThemesByDate } from '@/lib/db-service';
+import { getAvailableDates, getThemesByDate } from '@/lib/marketRepository';
 
 /**
  * [Server Action] 클라이언트에서 호출 가능한 날짜 조회 함수

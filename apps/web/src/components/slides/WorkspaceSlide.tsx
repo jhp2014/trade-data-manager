@@ -17,7 +17,7 @@ export default function WorkspaceSlide() {
             <PanelGroup direction="vertical" id="workspace-panel-group">
 
                 {/* 상단 패널: 요약 정보 및 오버레이 차트 */}
-                <Panel defaultSize={20} minSize={10} collapsible={true}>
+                <Panel defaultSize={20} minSize={10} maxSize={50} collapsible={true}>
                     <TopInsightBar />
                 </Panel>
 
@@ -27,7 +27,7 @@ export default function WorkspaceSlide() {
                 </PanelResizeHandle>
 
                 {/* 하단 패널: 실제 종목별 세로 차트 리스트 */}
-                <Panel defaultSize={80}>
+                <Panel defaultSize={80} minSize={30}>
                     <div className={styles.scrollableArea}>
                         <StockChartList />
                     </div>
