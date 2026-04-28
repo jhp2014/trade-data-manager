@@ -1,5 +1,22 @@
 /* 1. 시스템 전역 변수 설정 (색상 및 레이아웃 치수) */
 :root {
+    --bg-main: #f8f9fa;
+    --bg-panel: #ffffff;
+
+    --text-main: #212529;
+    --text-muted: #6c757d;
+
+    --border-color: #e9ecef;
+
+    --color-up: #ef5350;
+    --color-down: #26a69a;
+
+    --grid-horzLines: #e6e7ea;
+    --grid-vertLines: #e6e7ea;
+    --topbar-height: 250px;
+}
+
+[data-theme='dark'] {
     /* 배경 및 패널 색상 */
     --bg-main: #131722;
     /* 앱 전체의 아주 어두운 남색 배경 */
@@ -13,7 +30,6 @@
     /* 보조 글자색 (비활성화, 라벨 등) */
     --border-color: #2b2b43;
     /* 패널 사이를 나누는 구분선 색상 */
-
     /* 차트 캔들 색상 */
     --color-up: #ef5350;
     /* 상승 (한국식 빨강) */

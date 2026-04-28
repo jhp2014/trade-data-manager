@@ -13,8 +13,7 @@
     flex-direction: column;
     gap: 2rem;
     /* 카드 사이의 간격을 시원하게 벌립니다 */
-    max-width: 1600px;
-    /* 울트라와이드 모니터를 위해 최대 너비 제한 (선택사항) */
+    max-width: 90%;
     margin: 0 auto;
     /* 중앙 정렬 */
 }
@@ -25,7 +24,6 @@
     border-radius: 8px;
     padding: 1.5rem;
     height: 450px;
-    /* 가로가 넓어진 만큼 세로 높이도 키워줍니다 */
     display: flex;
     flex-direction: column;
     transition: border-color 0.2s ease;

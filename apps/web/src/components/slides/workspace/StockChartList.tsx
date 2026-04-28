@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAllChartDataByDateAction } from '@/actions/chartActions';
 import styles from './StockChartList.module.css';
-import MiniChart from '@/components/common/MiniChart';
+import MinutesChart from '@/components/common/MinutesChart';
 
 export default function StockChartList() {
     const searchParams = useSearchParams();
@@ -34,7 +34,9 @@ export default function StockChartList() {
                             <div>
                                 <span className={styles.stockName}>{stock.stockName}</span>
                                 <span className={styles.stockCode}>{stock.stockCode}</span>
+                                <span className={styles.stockCode}>{stock.allThemeNames.join(' | ')}</span>
                             </div>
+
                             <div className={styles.amount}>
                                 {stock.dailyInfo.tradingAmountKrx}억
                             </div>
@@ -43,8 +45,7 @@ export default function StockChartList() {
                         {/* 차트 영역 */}
                         <div className={styles.chartArea}>
                             {stock.minuteCandles && stock.minuteCandles.length > 0 ? (
-                                <MiniChart />
-                                /* 아직은 가짜 데이터가 들어간 MiniChart 입니다 */
+                                <MinutesChart stockCode={stock.stockCode} minutesCandles={stock.minuteCandles} />
                             ) : (
                                 <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                                     No chart data

@@ -45,6 +45,24 @@ function formatTime(raw: string): string {
     return `${raw.slice(8, 10)}:${raw.slice(10, 12)}:${raw.slice(12, 14)}`;
 }
 
+function toUnixTimestamp(dateStr: string, timeStr: string): number {
+    const formattedDate = dateStr.length === 8
+        ? `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`
+        : dateStr;
+
+    const formattedTime = timeStr.length === 6
+        ? `${timeStr.slice(0, 2)}:${timeStr.slice(2, 4)}:${timeStr.slice(4, 6)}`
+        : timeStr;
+
+    const dt = new Date(`${formattedDate}T${formattedTime}+09:00`);
+
+    if (isNaN(dt.getTime())) {
+        return 0;
+    }
+
+    return Math.floor(dt.getTime() / 1000);
+}
+
 // ============================================================
 // 2. stocks 테이블 Normalizer
 // ============================================================
@@ -147,27 +165,30 @@ export function normalizeMinuteCandle(
     stockCode: string,
     tradeDate: string,
     prevCloseKrx: string | null,
-    prevCloseNxt: string | null
+    prevCloseNxt: string | null,
+    prevAccumulatedTradingAmount: number,
 ): MinuteCandleInsert {
     const open = parseSigned(candle.open_pric);
     const high = parseSigned(candle.high_pric);
     const low = parseSigned(candle.low_pric);
     const close = parseSigned(candle.cur_prc);
 
+    // 거래대금 = (O+H+L+C)/4 × 거래량 (VWAP 근사치, 분봉에는 실거래대금 필드 없음)
+    const tradingAmount = String(Math.round((Number(open) + Number(high) + Number(low) + Number(close)) / 4 * Number(candle.trde_qty)))
+
     return {
         dailyCandleId,
         stockCode,
         tradeDate,
         tradeTime: formatTime(candle.cntr_tm),
+        unixTimestamp: toUnixTimestamp(formatDate(candle.cntr_tm), formatTime(candle.cntr_tm)),
         open,
         high,
         low,
         close,
         tradingVolume: BigInt(candle.trde_qty),
-        // 거래대금 = (O+H+L+C)/4 × 거래량 (VWAP 근사치, 분봉에는 실거래대금 필드 없음)
-        tradingAmount: String(
-            Math.round((Number(open) + Number(high) + Number(low) + Number(close)) / 4 * Number(candle.trde_qty))
-        ),
+        tradingAmount,
+        accumulatedTradingAmount: String(prevAccumulatedTradingAmount + Number(tradingAmount)),
 
         // KRX 등락률
         openRateKrx: prevCloseKrx ? calcRate(open, prevCloseKrx) : null,

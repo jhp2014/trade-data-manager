@@ -10,15 +10,26 @@ interface TradeState {
     // '005930' 같은 종목코드가 있으면 Slide #3 (해당 종목 정밀 분석)
     selectedStock: string | null;
     setSelectedStock: (stockCode: string | null) => void;
+
+    // 💡 테마 및 십자선 상태 추가
+    theme: 'light' | 'dark';
+    toggleTheme: () => void;
+
+    isCrosshairLocked: boolean;
+    toggleCrosshairLock: () => void;
 }
 
 export const useTradeStore = create<TradeState>((set) => ({
     // 초기값 설정
     step: 0,
     selectedStock: null,
-
-    // 액션 설정
     setStep: (step) => set({ step }),
-
     setSelectedStock: (stockCode) => set({ selectedStock: stockCode }),
+
+    theme: 'light',
+    toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
+
+    isCrosshairLocked: false,
+    toggleCrosshairLock: () => set((state) => ({ isCrosshairLocked: !state.isCrosshairLocked })),
+
 }));

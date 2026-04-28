@@ -1,0 +1,6 @@
+/* 차트가 그려질 실제 영역 */
+.chartContainer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}

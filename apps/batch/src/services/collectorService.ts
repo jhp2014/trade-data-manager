@@ -22,6 +22,7 @@ import type { KiwoomKa10081Response, KiwoomKa10080Response } from "../clients/ki
 type RawDailyCandle = KiwoomKa10081Response["stk_dt_pole_chart_qry"][number];
 type RawMinuteCandle = KiwoomKa10080Response["stk_min_pole_chart_qry"][number];
 
+
 // ============================================================
 // API Fetch Helpers (내부 전용)
 // ============================================================
@@ -204,7 +205,6 @@ export async function collectMinuteCandles(
     }
 
     const apiDate = tradeDate.replace(/-/g, "");
-    //TODO: 현재 KRX 기준으로 분봉을 조회하는 것으로 추정. NXT통합 분봉 조회로 변경해야한다.
     const rawMinutes = await fetchMinuteCandlesForDate(stockCode, apiDate);
 
     if (rawMinutes.length === 0) {
@@ -214,9 +214,26 @@ export async function collectMinuteCandles(
 
     logger.info(`[Collector] ${rawMinutes.length}개 분봉 수집 완료`);
 
-    const rows = rawMinutes.map((candle) =>
-        normalizeMinuteCandle(candle, dailyRow.id, stockCode, tradeDate, dailyRow.prevCloseKrx, dailyRow.prevCloseNxt)
-    );
+    // 오래된 순으로 정렬 (누적 대금 계산을 위해)
+    const reversedMinutes = rawMinutes.reverse();
+    let prevAccumulatedTradingAmount = 0;
+
+    const rows = reversedMinutes.map((candle) => {
+
+        const normalizedCandle = normalizeMinuteCandle(
+            candle,
+            dailyRow.id,
+            stockCode,
+            tradeDate,
+            dailyRow.prevCloseKrx,
+            dailyRow.prevCloseNxt,
+            prevAccumulatedTradingAmount,
+        );
+
+        prevAccumulatedTradingAmount = Number(normalizedCandle.accumulatedTradingAmount)
+
+        return normalizedCandle;
+    });
 
     await saveMinuteCandles(rows);
     logger.info(`[Collector] ${stockCode} ${tradeDate} ${rows.length}개 분봉 저장 완료`);

@@ -97,8 +97,10 @@ export const minuteCandles = pgTable("minute_candles", {
     low: numeric("low_price", { precision: 18, scale: 0 }).notNull(),
     close: numeric("close_price", { precision: 18, scale: 0 }).notNull(),
 
+    unixTimestamp: bigint("unix_timestamp", { mode: "number" }).notNull(),
     tradingVolume: bigint("trading_volume", { mode: "bigint" }).notNull(),
     tradingAmount: numeric("trading_amount", { precision: 18, scale: 0 }).notNull(),
+    accumulatedTradingAmount: numeric("accumulated_trading_amount", { precision: 18, scale: 0 }).notNull(),
 
     openRateKrx: numeric("open_rate_krx", { precision: 8, scale: 4 }),
     highRateKrx: numeric("high_rate_krx", { precision: 8, scale: 4 }),
