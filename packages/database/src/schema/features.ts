@@ -12,7 +12,8 @@ import {
     unique,
 } from "drizzle-orm/pg-core";
 import { dailyCandles, minuteCandles, stocks, themes } from "./market";
-import { STAT_RATES, STAT_AMOUNTS } from "../constants";
+import { commonCandleFeatureCols, commonThemeStatsCols, generateDynamicSlots, pivotHighFeatureCols, simpleMaxPriceCols } from "./utils";
+import { STAT_PIVOT_HIGH, STAT_SIMPLE_HIGH } from "./constants";
 
 
 /**
@@ -36,24 +37,7 @@ export const minuteCandleFeatures = pgTable(
             .notNull()
             .references(() => stocks.stockCode),
 
-        closeRateKrx: numeric("close_rate_krx", { precision: 8, scale: 4 }).notNull(),
-        closeRateNxt: numeric("close_rate_nxt", { precision: 8, scale: 4 }).notNull(),
-        tradingAmount: numeric("trading_amount", { precision: 18, scale: 1 }).notNull(),
-        cumulativeTradingAmount: numeric("cumulative_trading_amount", { precision: 18, scale: 1 }).notNull(),
-
-        //구간별 거래대금 횟수
-        ...cntNAmt(),
-
-        changeRate5m: numeric("change_rate_5m", { precision: 8, scale: 4 }),
-        changeRate10m: numeric("change_rate_10m", { precision: 8, scale: 4 }),
-        changeRate30m: numeric("change_rate_30m", { precision: 8, scale: 4 }),
-        changeRate60m: numeric("change_rate_60m", { precision: 8, scale: 4 }),
-        changeRate120m: numeric("change_rate_120m", { precision: 8, scale: 4 }),
-
-        dayHighRate: numeric("day_high_rate", { precision: 8, scale: 4 }),
-        dayHighTime: time("day_high_time"),
-        pullbackFromDayHigh: numeric("pullback_from_day_high", { precision: 8, scale: 4 }),
-        minutesSinceDayHigh: integer("minutes_since_day_high"),
+        ...commonCandleFeatureCols(),
 
         createdAt: timestamp("created_at").notNull().defaultNow(),
         updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -79,14 +63,7 @@ export const themeFeatures = pgTable(
         tradeDate: date("trade_date").notNull(),
         tradeTime: time("trade_time").notNull(),
 
-        avgRate: numeric("avg_rate", { precision: 8, scale: 4 }).notNull(),
-        cntTotalStock: integer("cnt_total_stock").notNull().default(0),
-
-        // 등락률 구간별 종목 수 카운트
-        ...cntNRateStockNum(),
-
-        // 거래대금 구간별 종목 수 카운트
-        ...cntNAmtStockNum(),
+        ...commonThemeStatsCols(),
 
         createdAt: timestamp("created_at").notNull().defaultNow(),
     },
@@ -132,6 +109,7 @@ export const themeStockContexts = pgTable(
     ]
 );
 
+
 /**
  * [TradingOpportunities]
  * 최종 마스터 검색 인덱스 (모든 데이터 비정규화)
@@ -149,42 +127,19 @@ export const tradingOpportunities = pgTable(
         themeId: bigint("theme_id", { mode: "bigint" }).notNull(),
         themeName: varchar("theme_name", { length: 100 }).notNull(),
 
-        // 포착 종목(Base Stock) 상세 비정규화 - 분봉 feature
-        closeRateKrx: numeric("close_rate_krx", { precision: 8, scale: 4 }).notNull(),
-        closeRateNxt: numeric("close_rate_nxt", { precision: 8, scale: 4 }).notNull(),
-        tradingAmount: numeric("trading_amount", { precision: 18, scale: 1 }).notNull(),
-        cumulativeTradingAmount: numeric("cumulative_trading_amount", { precision: 18, scale: 1 }).notNull(),
+        // 2. 포착 종목(Base Stock) 상세 비정규화 (utils.ts 재사용)
+        ...commonCandleFeatureCols(),
 
-        ...cntNAmt(),
-
-        changeRate5m: numeric("change_rate_5m", { precision: 8, scale: 4 }),
-        changeRate10m: numeric("change_rate_10m", { precision: 8, scale: 4 }),
-        changeRate30m: numeric("change_rate_30m", { precision: 8, scale: 4 }),
-        changeRate60m: numeric("change_rate_60m", { precision: 8, scale: 4 }),
-        changeRate120m: numeric("change_rate_120m", { precision: 8, scale: 4 }),
-
-
-        // 포착 종목(Base Stock) 상세 비정규화 - theme stock context
+        // 3. 포착 종목(Base Stock) 상세 비정규화 - theme stock context
         rankByRateKrx: integer("rank_by_rate_krx").notNull(),
         rankByRateNxt: integer("rank_by_rate_nxt").notNull(),
         rankByCumulativeTradingAmount: integer("rank_by_cumulative_trading_amount").notNull(),
 
+        // 4. 테마 통계 전량 비정규화 (utils.ts 재사용)
+        ...commonThemeStatsCols(),
 
-        // 테마 통계 전량 비정규화 (Theme Features)
-        avgRate: numeric("avg_rate", { precision: 8, scale: 4 }).notNull(),
-        cntTotalStock: integer("cnt_total_stock").notNull().default(0),
-        ...cntNRateStockNum(),
-        ...cntNAmtStockNum(),
-
-
-        // 슬롯 데이터 비정규화 (Slot 1 ~ 6)
-        // ⚠️ 슬롯 수는 constants.ts의 MAX_SLOT_COUNT = 6과 동기화 필요
-        ...slotColumns(1),
-        ...slotColumns(2),
-        ...slotColumns(3),
-        ...slotColumns(4),
-        ...slotColumns(5),
-        ...slotColumns(6),
+        // 5. 슬롯 데이터 비정규화 (Slot 1 ~ N) - 상수에 따라 자동 생성
+        ...generateDynamicSlots(),
 
         createdAt: timestamp("created_at").notNull().defaultNow(),
     },
@@ -195,76 +150,50 @@ export const tradingOpportunities = pgTable(
     ]
 );
 
-// --- 헬퍼 함수 (반복되는 비정규화 컬럼 자동 생성) ---
-
-
-function cntNRateStockNum() {
-    const cols: any = {};
-    STAT_RATES.forEach(r => {
-        cols[`cnt${r}RateStockNum`] = integer(`cnt_${r}_rate_stock_num`).notNull().default(0);
-    });
-    return cols;
-}
-
-
 /**
- * 1. 거래대금 구간별 횟수 헬퍼 (중첩 가능하도록 prefix 추가)
- * @param tsPrefix TypeScript 객체 키값용 접두어 (예: 's1', 's2' 또는 '')
- * @param dbPrefix DB 컬럼명용 접두어 (예: 's1', 's2' 또는 '')
+ * [DailyCandleFeatures]
+ * 일봉 기반 기술적 지표 및 통계 (종목별 Daily Fact)
  */
-function cntNAmt(tsPrefix: string = "", dbPrefix: string = "") {
-    const cols: any = {};
+export const dailyCandleFeatures = pgTable(
+    "daily_candle_features",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
 
-    // 접두어가 있을 경우 언더바(_) 처리 여부 결정
-    const tsPre = tsPrefix ? `${tsPrefix}Cnt` : "cnt";
-    const dbPre = dbPrefix ? `${dbPrefix}_cnt` : "cnt";
+        // 부모 일봉 데이터 연결 (1:1 관계)
+        dailyCandleId: bigint("daily_candle_id", { mode: "bigint" })
+            .notNull()
+            .references(() => dailyCandles.id, { onDelete: "cascade" }),
 
-    STAT_AMOUNTS.forEach(a => {
-        // 예: s1Cnt20Amt (TS) / s1_cnt_20_amt (DB)
-        cols[`${tsPre}${a}Amt`] = integer(`${dbPre}_${a}_amt`).notNull().default(0);
-    });
-    return cols;
-}
+        // 빠른 조회를 위한 비정규화
+        tradeDate: date("trade_date").notNull(),
+        stockCode: varchar("stock_code", { length: 10 })
+            .notNull()
+            .references(() => stocks.stockCode),
 
-function cntNAmtStockNum() {
-    const cols: any = {};
-    STAT_AMOUNTS.forEach(a => {
-        cols[`cnt${a}AmtStockNum`] = integer(`cnt_${a}_amt_stock_num`).notNull().default(0);
-    });
-    return cols;
-}
+        /* =========================================
+        * 🏔️ 1. 구조적 고점 (좌측 여백 20일 ~ 120일)
+        * ========================================= */
+        ...pivotHighFeatureCols(STAT_PIVOT_HIGH),
 
+        /* =========================================
+         * 📊 2. 단순 최고가 (N일 내)
+         * ========================================= */
+        ...simpleMaxPriceCols(STAT_SIMPLE_HIGH),
 
-/**
- * 2. 슬롯별 컬럼 생성 헬퍼 (내부에서 cntNAmt 호출)
- */
-function slotColumns(index: number) {
-    const p = `s${index}`; // s1, s2, s3...
+        createdAt: timestamp("created_at").notNull().defaultNow(),
+        updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    },
+    (table) => [
+        // dailyCandleId 당 하나의 feature만 존재하도록 보장
+        unique("uq_daily_features_candle_id").on(table.dailyCandleId),
+        // 특정 날짜, 특정 종목의 지표 조회 최적화
+        index("idx_daily_features_date_code").on(table.tradeDate, table.stockCode),
+    ]
+);
 
-    return {
-        [`${p}StockCode`]: varchar(`${p}_stock_code`, { length: 10 }),
-
-        [`${p}RateKrx`]: numeric(`${p}_rate_krx`, { precision: 8, scale: 4 }),
-        [`${p}RateNxt`]: numeric(`${p}_rate_nxt`, { precision: 8, scale: 4 }),
-        [`${p}TradingAmount`]: numeric(`${p}_trading_amount`, { precision: 18, scale: 1 }),
-        [`${p}CumulativeTradingAmount`]: numeric(`${p}_cumulative_trading_amount`, { precision: 18, scale: 1 }),
-
-        [`${p}ChangeRate5m`]: numeric(`${p}_change_rate_5m`, { precision: 8, scale: 4 }),
-        [`${p}ChangeRate10m`]: numeric(`${p}_change_rate_10m`, { precision: 8, scale: 4 }),
-        [`${p}ChangeRate30m`]: numeric(`${p}_change_rate_30m`, { precision: 8, scale: 4 }),
-        [`${p}ChangeRate60m`]: numeric(`${p}_change_rate_60m`, { precision: 8, scale: 4 }),
-        [`${p}ChangeRate120m`]: numeric(`${p}_change_rate_120m`, { precision: 8, scale: 4 }),
-
-        [`${p}DayHighRate`]: numeric(`${p}_day_high_rate`, { precision: 8, scale: 4 }),
-        [`${p}DayHighTime`]: time(`${p}_day_high_time`),
-        [`${p}PullbackFromDayHigh`]: numeric(`${p}_pullback_from_day_high`, { precision: 8, scale: 4 }),
-        [`${p}MinutesSinceDayHigh`]: integer(`${p}_minutes_since_day_high`),
-
-        ...cntNAmt(p, p)
-    };
-}
-
-
+// --- 타입 정의 추가 (기존 하단에 이어서 작성) ---
+export type DailyCandleFeature = typeof dailyCandleFeatures.$inferSelect;
+export type DailyCandleFeatureInsert = typeof dailyCandleFeatures.$inferInsert;
 // --- 타입 정의 ---
 export type MinuteCandleFeatures = typeof minuteCandleFeatures.$inferSelect;
 export type MinuteCandleFeaturesInsert = typeof minuteCandleFeatures.$inferInsert;

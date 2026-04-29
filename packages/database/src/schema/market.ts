@@ -92,12 +92,13 @@ export const minuteCandles = pgTable("minute_candles", {
     stockCode: varchar("stock_code", { length: 10 }).notNull(),
 
     tradeTime: time("trade_time").notNull(),
+    unixTimestamp: bigint("unix_timestamp", { mode: "number" }).notNull(),
+
     open: numeric("open_price", { precision: 18, scale: 0 }).notNull(),
     high: numeric("high_price", { precision: 18, scale: 0 }).notNull(),
     low: numeric("low_price", { precision: 18, scale: 0 }).notNull(),
     close: numeric("close_price", { precision: 18, scale: 0 }).notNull(),
 
-    unixTimestamp: bigint("unix_timestamp", { mode: "number" }).notNull(),
     tradingVolume: bigint("trading_volume", { mode: "bigint" }).notNull(),
     tradingAmount: numeric("trading_amount", { precision: 18, scale: 0 }).notNull(),
     accumulatedTradingAmount: numeric("accumulated_trading_amount", { precision: 18, scale: 0 }).notNull(),
