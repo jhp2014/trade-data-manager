@@ -1,5 +1,5 @@
-import { db, dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } from "@trade-data-manager/database";
-import type { DailyCandleInsert, MinuteCandleInsert, StockInsert } from "@trade-data-manager/database";
+import { db, dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } from "@trade-data-manager/market-data";
+import type { DailyCandleInsert, MinuteCandleInsert, StockInsert } from "@trade-data-manager/market-data";
 import { eq, and, sql, getTableColumns } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 

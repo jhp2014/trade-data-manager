@@ -9,7 +9,7 @@
     "test": "tsx --test src/test/*.test.ts"
   },
   "dependencies": {
-    "@trade-data-manager/database": "workspace:*",
+    "@trade-data-manager/market-data": "workspace:*",
     "axios": "^1.15.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",

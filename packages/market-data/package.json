@@ -1,5 +1,5 @@
 {
-  "name": "@trade-data-manager/database",
+  "name": "@trade-data-manager/market-data",
   "version": "1.0.0",
   "private": true,
   "type": "module",
