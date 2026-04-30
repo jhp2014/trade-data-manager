@@ -126,3 +126,14 @@ export function simpleMaxPriceCols(windows: number[]) {
 
     return cols;
 }
+
+
+/**
+ * 매매 의견(인사이트) 관련 공통 컬럼
+ */
+export function tradingInsightCols() {
+    return {
+        isSearchable: boolean("is_searchable").default(false).notNull(),
+        tradeType: varchar("trade_type", { length: 100 }).notNull(),
+    };
+}

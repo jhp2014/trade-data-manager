@@ -12,7 +12,7 @@ import {
     unique,
 } from "drizzle-orm/pg-core";
 import { dailyCandles, minuteCandles, stocks, themes } from "./market";
-import { commonCandleFeatureCols, commonThemeStatsCols, generateDynamicSlots, pivotHighFeatureCols, simpleMaxPriceCols } from "./utils";
+import { commonCandleFeatureCols, commonThemeStatsCols, generateDynamicSlots, pivotHighFeatureCols, simpleMaxPriceCols, tradingInsightCols } from "./utils";
 import { STAT_PIVOT_HIGH, STAT_SIMPLE_HIGH } from "./constants";
 
 
@@ -141,12 +141,16 @@ export const tradingOpportunities = pgTable(
         // 5. 슬롯 데이터 비정규화 (Slot 1 ~ N) - 상수에 따라 자동 생성
         ...generateDynamicSlots(),
 
+        ...tradingInsightCols(),
+
         createdAt: timestamp("created_at").notNull().defaultNow(),
     },
     (table) => [
         unique("uq_trading_opp_stock_time").on(table.stockCode, table.tradeDate, table.tradeTime),
         index("idx_trading_opp_date").on(table.tradeDate),
         index("idx_trading_opp_stock").on(table.stockCode),
+        index("idx_trading_opp_is_searchable").on(table.isSearchable),
+        index("idx_trading_opp_type").on(table.tradeType)
     ]
 );
 
@@ -191,10 +195,9 @@ export const dailyCandleFeatures = pgTable(
     ]
 );
 
-// --- 타입 정의 추가 (기존 하단에 이어서 작성) ---
+
 export type DailyCandleFeature = typeof dailyCandleFeatures.$inferSelect;
 export type DailyCandleFeatureInsert = typeof dailyCandleFeatures.$inferInsert;
-// --- 타입 정의 ---
 export type MinuteCandleFeatures = typeof minuteCandleFeatures.$inferSelect;
 export type MinuteCandleFeaturesInsert = typeof minuteCandleFeatures.$inferInsert;
 export type ThemeFeature = typeof themeFeatures.$inferSelect;
@@ -203,3 +206,4 @@ export type ThemeStockContext = typeof themeStockContexts.$inferSelect;
 export type ThemeStockContextInsert = typeof themeStockContexts.$inferInsert;
 export type TradingOpportunity = typeof tradingOpportunities.$inferSelect;
 export type TradingOpportunityInsert = typeof tradingOpportunities.$inferInsert;
+export type TradingInsight = ReturnType<typeof tradingInsightCols>;

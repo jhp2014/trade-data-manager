@@ -1,232 +1,24 @@
 import axios, { AxiosInstance } from "axios";
-import { logger } from "../utils/logger.js";
-import fs from "fs";
-import path from "path";
-import "dotenv/config";
-
-export interface KiwoomApiResponse<T> {
-    data: T;
-    contYn: string; // 연속 조회 여부 ("Y" or "N")
-    nextKey: string; // 다음 데이터 조회를 위한 키값
-}
-
-/** [au10001] 접근토큰 발급 응답 스펙    
- * {
-    "expires_dt":"20241107083713",
-    "token_type":"bearer",
-    "token":"WQJCwyqInphKnR3bSRtB9NE1lv..."
-    "return_code":0,
-    "return_msg":"정상적으로 처리되었습니다"
-    }
- */
-export interface KiwoomTokenResponse {
-    token: string;
-    token_type: string;
-    expires_dt: string;
-    return_code: number;
-    return_msg: string;
-}
-
-/* [ka10100] 종목정보조회 응답 스펙
-{
-    "code":"005930",
-    "name":"삼성전자",
-    "listCount":"0000000026034239",
-    "auditInfo":"정상",
-    "regDay":"20090803",    //상장일
-    "lastPrice":"00136000",
-    "state":"증거금20%|담보대출|신용가능",
-    "marketCode":"0",
-    "marketName":"거래소",
-    "upName":"금융업",
-    "upSizeName":"대형주",
-    "companyClassName":"",
-    "orderWarning":"0",
-    "nxtEnable":"Y",
-    "return_code":0,
-    "return_msg":"정상적으로 처리되었습니다"
-}
-*/
-export interface KiwoomKa10100Response {
-    code: string;               // 종목코드
-    name: string;               // 종목명
-    marketName: string;         // 시장명 (예: 코스피, 코스닥)
-    nxtEnable: string;          // NXT가능여부 (Y/N)
-    regDay: string;
-}
-
-
-/* [ka10001] 주식기본정보요청 응답 스펙
-{
-    "stk_cd":"005930",
-    "stk_nm":"삼성전자",
-    "setl_mm":"12",
-    "fav":"5000",
-    "cap":"1311",
-    "flo_stk":"25527",
-    "crd_rt":"+0.08",
-    "oyr_hgst":"+181400",
-    "oyr_lwst":"-91200",
-    "mac":"24352",
-    "mac_wght":"",
-    "for_exh_rt":"0.00",
-    "repl_pric":"66780",
-    "per":"",
-    "eps":"",
-    "roe":"",
-    "pbr":"",
-    "ev":"",
-    "bps":"-75300",
-    "sale_amt":"0",
-    "bus_pro":"0",
-    "cup_nga":"0",
-    "250hgst":"+124000",
-    "250lwst":"-66800",
-    "high_pric":"95400",
-    "open_pric":"-0",
-    "low_pric":"0",
-    "upl_pric":"20241016",
-    "lst_pric":"-47.41",
-    "base_pric":"20231024",
-    "exp_cntr_pric":"+26.69",
-    "exp_cntr_qty":"95400",
-    "250hgst_pric_dt":"3",
-    "250hgst_pric_pre_rt":"0",
-    "250lwst_pric_dt":"0.00",
-    "250lwst_pric_pre_rt":"0",
-    "cur_prc":"0.00",
-    "pre_sig":"",
-    "pred_pre":"",
-    "flu_rt":"0",
-    "trde_qty":"0",
-    "trde_pre":"0",
-    "fav_unit":"0",
-    "dstr_stk":"0", //유통주식수
-    "dstr_rt":"0",  //유통비율
-    "return_code":0,
-    "return_msg":"정상적으로 처리되었습니다"
-}
-*/
-export interface KiwoomKa10001Response {
-    stk_cd: string;
-    stk_nm: string;
-    mac: string;     // 시가총액
-    flo_stk: string; // 상장주식수
-    dstr_stk: string;   //유통주식수
-}
-
-/* [ka10080] 주식분봉차트조회 단일 캔들 스펙
-{
-    "stk_cd": "005930",
-    "stk_min_pole_chart_qry": [
-        {
-            "cur_prc": "-78800",
-            "trde_qty": "7913",
-            "cntr_tm": "20250917132000",
-            "open_pric": "-78850",
-            "high_pric": "-78900",
-            "low_pric": "-78800",
-            "acc_trde_qty": "14947571",
-            "pred_pre": "-600",
-            "pred_pre_sig": "5"     //전일대비기호 1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락
-        },
-        {
-            "cur_prc": "-78900",
-            "trde_qty": "16084",
-            "cntr_tm": "20250917131900",
-            "open_pric": "-78900",
-            "high_pric": "-78900",
-            "low_pric": "-78800",
-            "acc_trde_qty": "14939658",
-            "pred_pre": "-500",
-            "pred_pre_sig": "5"
-        },
-    ],
-    "return_code": 0,
-    "return_msg": "정상적으로 처리되었습니다"
-}
-*/
-export interface KiwoomKa10080Response {
-    stk_cd: string;
-    stk_min_pole_chart_qry: Array<{
-        cur_prc: string;    // 종가
-        trde_qty: string;   // 거래량
-        cntr_tm: string;    // 체결시간
-        open_pric: string;  // 시가
-        high_pric: string;  // 고가
-        low_pric: string;   // 저가
-    }>;
-}
-
-/* [ka10081] 주식일봉차트조회 단일 캔들 스펙
-{
-    "stk_cd": "005930",
-    "stk_dt_pole_chart_qry": [
-        {
-            "cur_prc": "70100",
-            "trde_qty": "9263135",
-            "trde_prica": "648525",
-            "dt": "20250908",
-            "open_pric": "69800",
-            "high_pric": "70500",
-            "low_pric": "69600",
-            "pred_pre": "+600",
-            "pred_pre_sig": "2",
-            "trde_tern_rt": "+0.16"
-        },
-        {
-            "cur_prc": "69500",
-            "trde_qty": "11526724",
-            "trde_prica": "804642",
-            "dt": "20250905",
-            "open_pric": "70300",
-            "high_pric": "70400",
-            "low_pric": "69500",
-            "pred_pre": "-600",
-            "pred_pre_sig": "5",    //전일대비기호 1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락
-            "trde_tern_rt": "+0.19"
-        },
-    ],
-    "return_code": 0,
-    "return_msg": "정상적으로 처리되었습니다"
-}
-*/
-export interface KiwoomKa10081Response {
-    stk_cd: string;
-    stk_dt_pole_chart_qry: Array<{
-        cur_prc: string;
-        trde_qty: string;
-        trde_prica: string; // 거래대금
-        dt: string;         // 일자
-        open_pric: string;
-        high_pric: string;
-        low_pric: string;
-        pred_pre: string
-        pred_pre_sig: string;
-    }>;
-}
-
+import { kiwoomConfig } from "./config.js";
+import { tokenManager } from "./tokenManager.js";
+import { KiwoomRequest } from "./decorators.js";
+import {
+    KiwoomKa10100Response,
+    KiwoomKa10001Response,
+    KiwoomKa10080Response,
+    KiwoomKa10081Response,
+    KiwoomApiResponse,
+    KiwoomMinuteCandle,
+    KiwoomDailyCandle
+} from "./types.js";
 
 export class KiwoomClient {
     private client: AxiosInstance;
-    private accessToken: string | null = null;
-
-    // Rate Limit (1초 4건: 250ms 간격)
     private lastRequestTime: number = 0;
-    private readonly RATE_LIMIT_DELAY_MS = 250;
-
-    private readonly appKey = process.env.KIWOOM_APP_KEY;
-    private readonly appSecret = process.env.KIWOOM_SECRET_KEY;
-    private readonly baseURL = process.env.KIWOOM_BASE_URL;
 
     constructor() {
-        if (!this.appKey || !this.appSecret) {
-            logger.error("환경변수 KIWOOM_APP_KEY 또는 KIWOOM_SECRET_KEY가 누락되었습니다.");
-            throw new Error("Missing API Credentials");
-        }
-
         this.client = axios.create({
-            baseURL: this.baseURL,
+            baseURL: kiwoomConfig.baseUrl,
             timeout: 15000,
             headers: {
                 "Content-Type": "application/json;charset=UTF-8",
@@ -234,143 +26,10 @@ export class KiwoomClient {
         });
     }
 
-    private get cacheFilePath(): string {
-        const cacheDir = path.resolve(process.cwd(), ".cache");
-        if (!fs.existsSync(cacheDir)) {
-            fs.mkdirSync(cacheDir, { recursive: true });
-        }
-        return path.join(cacheDir, "kiwoom_token.json");
-    }
-
-    private isTokenValid(expiresDt: string): boolean {
-        if (!expiresDt || expiresDt.length !== 14) return false;
-
-        const year = parseInt(expiresDt.substring(0, 4), 10);
-        const month = parseInt(expiresDt.substring(4, 6), 10) - 1;
-        const day = parseInt(expiresDt.substring(6, 8), 10);
-        const hour = parseInt(expiresDt.substring(8, 10), 10);
-        const min = parseInt(expiresDt.substring(10, 12), 10);
-        const sec = parseInt(expiresDt.substring(12, 14), 10);
-
-        const expireTime = new Date(year, month, day, hour, min, sec).getTime();
-        const now = Date.now();
-
-        // 만료 5분 전이면 재발급하도록 여유(buffer)를 둠
-        return expireTime > now + 5 * 60 * 1000;
-    }
-
     /**
-     * [au10001] 접근 토큰 발급
-     * 배치가 시작될 때 가장 먼저 실행되어야 해.
-     *
-     * 흐름:
-     *   1. 캐시 파일 존재 여부 확인
-     *   2. 캐시가 유효하면 → 그대로 사용 후 return
-     *   3. 캐시가 없거나 만료 → API 호출하여 신규 발급
+     * 💡 공통 요청 래퍼 메서드 (인터셉터 역할 대체)
+     * 인증 토큰 주입, 헤더 설정, Rate Limit 대기를 한 번에 처리합니다.
      */
-    async authenticate(): Promise<void> {
-        // ── Step 1. 캐시 확인 ──────────────────────────────────────────────
-        if (fs.existsSync(this.cacheFilePath)) {
-            try {
-                const raw = fs.readFileSync(this.cacheFilePath, "utf8");
-                if (raw && raw.trim() !== "") {
-                    const cached = JSON.parse(raw);
-
-                    if (cached.access_token && cached.expires_dt && this.isTokenValid(cached.expires_dt)) {
-                        // ── 캐시 토큰 정상 사용 ──
-                        this.accessToken = cached.access_token;
-                        this.client.defaults.headers.common["authorization"] = `Bearer ${this.accessToken}`;
-                        logger.info("[인증] 유효한 캐시 토큰을 사용합니다.");
-                        return;
-                    } else {
-                        logger.info("[인증] 캐시 토큰이 없거나 만료되었습니다. 새로 발급합니다.");
-                    }
-                }
-            } catch (err: any) {
-                logger.warn("[인증] 캐시 파일 읽기/파싱 실패. 새로 발급합니다.");
-            }
-        } else {
-            logger.debug("[인증] 캐시 파일이 없습니다. 새로 발급합니다.");
-        }
-
-        // ── Step 2. API 호출하여 신규 토큰 발급 ───────────────────────────
-        logger.info("[인증][API] 키움 API 인증을 시작합니다...", {
-            endpoint: `${this.baseURL}/oauth2/token`,
-        });
-
-        try {
-            const response = await axios.post<KiwoomTokenResponse>(
-                `${this.baseURL}/oauth2/token`,
-                {
-                    grant_type: "client_credentials",
-                    appkey: this.appKey,
-                    secretkey: this.appSecret,
-                }
-            );
-
-            // 🔍 진단 로그: 실제 API 응답의 필드명을 확인합니다.
-            const data = response.data;
-            logger.debug("[인증] API 원본 응답 데이터", { responseData: JSON.stringify(data) });
-
-            // Step 2-1. 키움 API 비즈니스 오류 확인 (HTTP 200이어도 오류일 수 있음)
-            if (data.return_code !== 0) {
-                const msg = `[인증][API] 키움 API 오류 응답 — return_code: ${data.return_code}, return_msg: "${data.return_msg}"`;
-                logger.error(msg, { return_code: data.return_code, return_msg: data.return_msg });
-                throw new Error(msg);
-            }
-
-            // Step 2-2. 토큰 추출
-            const token = data.token || null;
-            if (!token) {
-                const msg = `[인증][API] return_code=0 이지만 응답에 토큰 필드가 없습니다. 응답 키: [${Object.keys(data).join(", ")}]`;
-                logger.error(msg, { responseKeys: Object.keys(data) });
-                throw new Error(msg);
-            }
-
-            // Step 2-3. 인스턴스 및 헤더에 적용
-            this.accessToken = token;
-            this.client.defaults.headers.common["authorization"] = `Bearer ${this.accessToken}`;
-
-            const expiresDt = data.expires_dt || "";
-
-            // Step 2-4. 캐시 파일 저장
-            fs.writeFileSync(
-                this.cacheFilePath,
-                JSON.stringify({ access_token: this.accessToken, expires_dt: expiresDt }),
-                "utf8"
-            );
-
-            logger.info("[인증][API] 토큰 발급 및 캐시 완료.", {
-                expiresDt,
-                tokenPrefix: this.accessToken.substring(0, 10) + "...",
-            });
-
-        } catch (error: any) {
-            // HTTP 오류 (4xx, 5xx) 또는 위에서 throw한 비즈니스 오류 모두 여기서 처리
-            // 이미 logger.error를 호출한 경우 중복 출력을 피하기 위해 http 오류만 여기서 로깅
-            if (error.response) {
-                logger.error("[인증][API] HTTP 오류 응답 수신", {
-                    status: error.response.status,
-                    data: error.response.data,
-                });
-            }
-            throw error;
-        }
-    }
-
-
-    private async waitForRateLimit(): Promise<void> {
-        const now = Date.now();
-        // 다음에 요청 가능한 시간 = (현재시간)과 (마지막 예약시간 + 지연시간) 중 늦은 시간
-        const scheduledTime = Math.max(now, this.lastRequestTime + this.RATE_LIMIT_DELAY_MS);
-        this.lastRequestTime = scheduledTime; // 다음 요청 예약 기준시간 갱신
-
-        const delay = scheduledTime - now;
-        if (delay > 0) {
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-    }
-
     private async post<T>(
         apiId: string,
         endpoint: string,
@@ -378,52 +37,67 @@ export class KiwoomClient {
         contYn: string = "N",
         nextKey: string = ""
     ): Promise<KiwoomApiResponse<T>> {
-        if (!this.accessToken) {
-            logger.error(`[${apiId}] 요청 실패: 인증 토큰이 없습니다.`);
-            throw new Error("Unauthorized: Call authenticate() first.");
-        }
-
-        // Rate Limit 보호 기능 실행 (큐 대기)
+        // 1. Rate Limit 보호
         await this.waitForRateLimit();
 
-        try {
-            logger.debug(`[${apiId}] 요청 전송`, { endpoint, body, contYn, nextKey });
-            const response = await this.client.post<T>(endpoint, body, {
-                headers: {
-                    "api-id": apiId,
-                    "cont-yn": contYn,
-                    "next-key": nextKey
-                },
-            });
-            return {
-                data: response.data,
-                contYn: (response.headers["cont-yn"] as string) || "N",
-                nextKey: (response.headers["next-key"] as string) || ""
-            };
-        } catch (error: any) {
-            logger.error(`[${apiId}] API 응답 에러`, {
-                endpoint,
-                requestPayload: body,
-                responseHeaders: error.response?.headers,
-                responseStatus: error.response?.status,
-                responseData: error.response?.data,
-            });
-            throw error;
+        // 2. 유효한 토큰 가져오기 (비동기)
+        const token = await tokenManager.getValidToken();
+
+        // 3. 실제 요청 전송
+        const response = await this.client.post<T>(endpoint, body, {
+            headers: {
+                "authorization": `Bearer ${token}`,
+                "api-id": apiId,
+                "cont-yn": contYn,
+                "next-key": nextKey
+            },
+        });
+
+        // 4. 공통 응답 포맷 반환
+        return {
+            data: response.data,
+            contYn: (response.headers["cont-yn"] as string) || "N",
+            nextKey: (response.headers["next-key"] as string) || ""
+        };
+    }
+
+    private async waitForRateLimit(): Promise<void> {
+        const now = Date.now();
+        const scheduledTime = Math.max(now, this.lastRequestTime + kiwoomConfig.rateLimitMs);
+        this.lastRequestTime = scheduledTime;
+
+        const delay = scheduledTime - now;
+        if (delay > 0) {
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
 
-    // 1. 종목정보조회
+    /**
+     * [ka10100] 종목정보조회
+     */
+    @KiwoomRequest("ka10100")
     async getStockInfo(stockCode: string) {
         return this.post<KiwoomKa10100Response>("ka10100", "/api/dostk/stkinfo", { stk_cd: stockCode });
     }
 
-    // 2. 주식기본정보요청
+    /**
+     * [ka10001] 주식기본정보요청
+     */
+    @KiwoomRequest("ka10001")
     async getBasicInfo(stockCode: string) {
         return this.post<KiwoomKa10001Response>("ka10001", "/api/dostk/stkinfo", { stk_cd: stockCode });
     }
 
-    // 3. 주식분봉차트조회 (1분봉)
-    async getMinuteChart(stockCode: string, baseDate: string = "", contYn: string = "N", nextKey: string = "") {
+    /**
+     * [ka10080] 주식분봉차트조회 (1분봉)
+     */
+    @KiwoomRequest("ka10080")
+    async getMinuteChart(
+        stockCode: string,
+        baseDate: string = "",
+        contYn: string = "N",
+        nextKey: string = ""
+    ) {
         return this.post<KiwoomKa10080Response>(
             "ka10080",
             "/api/dostk/chart",
@@ -438,8 +112,16 @@ export class KiwoomClient {
         );
     }
 
-    // 4. 주식일봉차트조회
-    async getDailyChart(stockCode: string, baseDate: string, contYn: string = "N", nextKey: string = "") {
+    /**
+     * [ka10081] 주식일봉차트조회
+     */
+    @KiwoomRequest("ka10081")
+    async getDailyChart(
+        stockCode: string,
+        baseDate: string,
+        contYn: string = "N",
+        nextKey: string = ""
+    ) {
         return this.post<KiwoomKa10081Response>(
             "ka10081",
             "/api/dostk/chart",
@@ -451,6 +133,79 @@ export class KiwoomClient {
             contYn,
             nextKey
         );
+    }
+
+    /**
+     * [고수준 메서드] 요청한 캔들 개수를 충족할 때까지 연속 조회를 자동으로 처리합니다.
+     * @param stockCode 종목코드
+     * @param baseDate 기준일자
+     * @param targetCount 가져올 캔들의 목표 개수 (기본값: 예를 들어 100개)
+    */
+    async getDailyChartsByCount(
+        stockCode: string,
+        baseDate: string,
+        targetCount: number = 600 // 한 번에 600개
+    ): Promise<KiwoomDailyCandle[]> {
+
+        let collected: KiwoomDailyCandle[] = [];
+        let contYn = "N";
+        let nextKey = "";
+
+        do {
+            // 1. API 호출 (최초 호출 시 contYn="N", nextKey="" 적용)
+            const response = await this.getDailyChart(stockCode, baseDate, contYn, nextKey);
+            const pageCandles = response.data.stk_dt_pole_chart_qry ?? [];
+
+            // 2. 수집된 배열에 현재 페이지 데이터 병합
+            collected = [...collected, ...pageCandles];
+
+            // 3. 다음 페이지를 위한 키값 갱신
+            contYn = response.contYn;
+            nextKey = response.nextKey;
+
+        } while (collected.length < targetCount && contYn === "Y" && nextKey);
+
+        // 4. API가 한 번에 많은 데이터를 주어 targetCount를 초과했을 수 있으므로
+        //    정확히 사용자가 요청한 개수만큼만 잘라서(slice) 반환합니다.
+        return collected.slice(0, targetCount);
+    }
+
+    /**
+     * [고수준 메서드] 특정 거래일의 1분봉을 모두 수집합니다.
+     * 키움 분봉 API는 최신→과거 순으로 내려주므로,
+     * 가장 오래된 row가 tradeDate 이전이 되면 더 이상 가져올 필요 없음.
+     *
+     * @param stockCode 종목코드 (NXT 통합은 'XXXXXX_AL')
+     * @param tradeDate 'YYYYMMDD' 형식
+     * @param maxPages 안전장치 (기본 5페이지)
+     */
+    async getMinuteChartsForDate(
+        stockCode: string,
+        tradeDate: string,
+        maxPages: number = 5,
+    ): Promise<KiwoomMinuteCandle[]> {
+        let collected: KiwoomMinuteCandle[] = [];
+        let contYn = "N";
+        let nextKey = "";
+        let pages = 0;
+
+        do {
+            const response = await this.getMinuteChart(stockCode, tradeDate, contYn, nextKey);
+            const page = response.data.stk_min_pole_chart_qry ?? [];
+            if (page.length === 0) break;
+
+            collected = [...collected, ...page];
+
+            // 가장 오래된 row가 이미 tradeDate 이전이면 종료
+            const oldest = page[page.length - 1];
+            if (oldest && oldest.cntr_tm.substring(0, 8) < tradeDate) break;
+
+            contYn = response.contYn;
+            nextKey = response.nextKey;
+            pages++;
+        } while (contYn === "Y" && nextKey && pages < maxPages);
+
+        return collected;
     }
 }
 

@@ -1,117 +1,326 @@
-# 🚀 Trade Data Manager (TypeScript Batch Collector)
+# Trade Data Manager
 
-본 프로젝트는 **키움 REST API**와 **CSV 파일**을 기반으로 주식 종목 정보, 일봉 및 분봉 데이터를 수집하여 **PostgreSQL**에 정제 및 저장하는 독립형 TypeScript 배치 시스템입니다.
+키움증권 OpenAPI 기반 한국 주식 시장 데이터 수집·정제·저장 파이프라인.
 
----
-
-## 🛠 Tech Stack
-
-- **Runtime**: Node.js (v18+)
-- **Language**: TypeScript (Strict Mode)
-- **Database**: PostgreSQL
-- **ORM**: Drizzle ORM
-- **HTTP Client**: Axios
-- **Logging**: Winston
+CSV로 정의된 종목·테마 리스트를 입력받아 일봉/분봉/테마매핑 데이터를 PostgreSQL에 적재하며, 후속 단계의 기술적 지표 계산(`features`)과 매매 기회 탐색(`opportunities`)을 위한 기반 데이터를 구축한다.
 
 ---
 
-## 📂 프로젝트 구조 (Project Structure)
+## 📐 아키텍처 개요
 
-프로젝트는 관심사 분리(SoC) 원칙에 따라 설계되었습니다.
+\```
+┌─────────────────────┐
+│  CSV (입력)          │  YYYY-MM-DD.csv: theme, stockCode, stockName
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  CsvBatchService    │  폴더 순회 / 파일 라이프사이클 관리
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  CsvParserService   │  CSV → Map<stockCode, GroupedTarget>
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐      ┌─────────────────────┐
+│  MarketService      │ ◄──► │  KiwoomClient       │  Rate Limit + Token 관리
+│   ├ syncStockInfo   │      └─────────────────────┘
+│   ├ syncDailyCandles│
+│   ├ syncMinuteCandles│
+│   └ syncThemeMapping│
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  Assembler + Mapper │  배열 단위 도메인 규칙 + row 단위 변환
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  marketRepository   │  Drizzle ORM (UPSERT)
+└──────────┬──────────┘
+           │
+           ▼
+       PostgreSQL
+\```
 
-- **`src/clients/`**: 외부 API(Kiwoom) 통신 및 인증 로직
-- **`src/db/`**: Drizzle 스키마 정의 및 DB 접근 계층 (Repository)
-- **`src/services/`**
-  - `normalizer.ts`: API 응답 데이터를 DB 포맷으로 가공하는 순수 함수
-  - `collectorService.ts`: 수집 파이프라인 제어 (CSV 스캔 -> 수집 -> 저장)
-- **`src/utils/`**: 로거 등 공통 유틸리티
-- **`csv/`**: 수집 대상 CSV 파일이 위치하는 입력 폴더
+### 레이어 책임
+
+| 레이어 | 책임 | 부수효과 |
+|---|---|---|
+| **CLI** (`index.ts`) | 인자 파싱, 모드 분기, 종료 코드 | I/O |
+| **CsvBatchService** | 폴더 순회, 파일 이동(processed/failed) | 파일시스템 |
+| **CsvParserService** | CSV 파싱, 종목 단위 그룹핑 | 파일 읽기만 |
+| **MarketService** | 종목/일봉/분봉/테마 동기화 오케스트레이션 | API + DB |
+| **KiwoomClient** | 키움 API 호출, Rate Limit, 페이지네이션, 토큰 관리 | API |
+| **Assembler** | 배열 단위 도메인 규칙 (정렬, 전일종가, 누적합) | 없음 (순수) |
+| **Mapper** | row 1개 단위 변환 (Kiwoom → DB Insert) | 없음 (순수) |
+| **Repository** | DB 접근 (Drizzle UPSERT) | DB |
 
 ---
 
-## ⚙️ 환경 설정 (Prerequisites)
+## 🗂️ 프로젝트 구조
 
-### 1. 환경 변수 (.env)
-프로젝트 루트에 `.env` 파일을 생성하고 아래 항목을 설정해야 합니다.
+\```
+src/
+├── index.ts                          # CLI 엔트리 포인트
+├── clients/
+│   ├── kiwoomClient.ts               # 키움 API 클라이언트 (싱글턴)
+│   ├── config.ts                     # API 설정
+│   ├── tokenManager.ts               # OAuth 토큰 관리
+│   ├── decorators.ts                 # @KiwoomRequest 데코레이터
+│   └── types.ts                      # API 응답 타입
+├── db/
+│   └── marketRepository.ts           # Drizzle 기반 UPSERT 함수
+├── services/
+│   ├── marketService.ts              # 시장 데이터 동기화 (싱글턴)
+│   ├── decorators.ts                 # @ServiceOperation 데코레이터
+│   ├── types.ts                      # 서비스 공용 타입
+│   ├── assemblers/
+│   │   └── candleAssembler.ts        # assembleDaily/MinuteCandles
+│   ├── mappers/
+│   │   ├── marketDataMapper.ts       # toStock/Daily/MinuteCandleInsert
+│   │   └── utils/
+│   │       ├── dateTimeParser.ts
+│   │       ├── kiwoomNumberParser.ts
+│   │       └── priceCalculator.ts
+│   └── csv/
+│       ├── csvBatchService.ts        # 폴더 순회 + 파일 라이프사이클
+│       └── csvParserService.ts       # CSV 파싱 + 그룹핑
+├── utils/
+│   └── logger.ts
+└── test/
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/trade_db
+csv/                                  # 입력 CSV (런타임 생성)
+├── processed/                        # 처리 완료 보관
+└── failed/                           # 처리 실패 보관
+
+packages/database/                    # Drizzle 스키마 (워크스페이스 패키지)
+└── src/schema/
+    ├── market.ts                     # stocks, dailyCandles, minuteCandles 등
+    ├── feature.ts                    # *Features, themeFeatures, tradingOpportunities
+    ├── utils.ts                      # 동적 컬럼 생성 헬퍼
+    └── constants.ts
+\```
+
+---
+
+## 🚀 빠른 시작
+
+### 1. 사전 요구사항
+
+- Node.js 18.3+ (`parseArgs` 사용)
+- pnpm 8+
+- PostgreSQL 14+
+- 키움증권 OpenAPI 신청 및 앱키/시크릿 발급
+
+### 2. 설치
+
+\```bash
+pnpm install
+\```
+
+### 3. 환경변수 설정
+
+`.env` 파일 생성:
+
+\```bash
+# 키움 OpenAPI
 KIWOOM_APP_KEY=your_app_key
-KIWOOM_SECRET_KEY=your_secret_key
-KIWOOM_BASE_URL=https://openapi.kiwoom.com
-```
+KIWOOM_APP_SECRET=your_app_secret
+KIWOOM_BASE_URL=https://api.kiwoom.com
+KIWOOM_RATE_LIMIT_MS=200
 
-### 2. 의존성 설치
-```bash
-npm install
-```
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/trade_data
 
----
+# 로깅
+LOG_LEVEL=info
+\```
 
-## 🗄 데이터베이스 관리 (Database Management)
+### 4. DB 마이그레이션
 
-Drizzle Kit을 사용하여 DB 스키마를 관리하고 데이터를 시각적으로 탐색할 수 있습니다.
+\```bash
+pnpm --filter @trade-data-manager/database db:push
+\```
 
-### 1. 스키마 동기화 및 마이그레이션
-```bash
-# [개발] 스키마 변경사항을 DB에 즉시 동기화 (마이그레이션 파일 미생성)
-npx drizzle-kit push
+### 5. CSV 준비
 
-# [운영/관리] 마이그레이션 파일 생성 (src/db/schema.ts 기준)
-npx drizzle-kit generate
+\```bash
+mkdir -p csv
+# 파일명 규칙: YYYY-MM-DD.csv
+# 컬럼: theme, stockCode, stockName (헤더 1행 포함)
+\```
 
-# [운영/관리] 마이그레이션 파일을 DB에 실제 적용
-npx drizzle-kit migrate
-```
+CSV 예시 (`csv/2026-04-30.csv`):
 
-### 2. Drizzle Studio (GUI)
-데이터베이스의 내용을 웹 브라우저에서 직관적으로 확인하고 수정할 수 있습니다.
-```bash
-npx drizzle-kit studio
-```
-명령어 실행 후 기본적으로 `https://local.drizzle.studio`에서 접속 가능합니다.
+\```csv
+theme,code,name
+AI반도체,000660,SK하이닉스
+AI반도체,005930,삼성전자
+2차전지,006400,삼성SDI
+\```
+### 6. 실행
 
+\```bash
+# 개발
+pnpm dev
 
----
+# 빌드 후 운영
+pnpm build
+pnpm start
+\```
 
-## 🏃 수집 가이드 (Usage)
-
-### 1. CSV 데이터 준비
-`csv/` 폴더 내에 수집할 날짜 형식의 파일을 준비합니다 (예: `2026-04-20.csv`).
-- **파일 포맷**: `메모,종목코드,종목명` 형식을 기대하며, 첫 번째 열(`메모`)은 테마 정보로 활용됩니다.
-
-### 2. 배치 실행
-`tsx`를 통해 배치를 가동합니다.
-```bash
-npx tsx src/index.ts
-```
-
-### 3. 파일 처리 흐름 (In/Out 전략)
-- **성공**: `csv/processed/` 폴더로 이동 (이미 있으면 덮어쓰기)
-- **실패**: `csv/failed/` 폴더로 이동 (실패 사유 로그 기록)
+`csv/` 폴더 안의 모든 `.csv` 파일을 파일명 오름차순으로 처리한다.
+\```
 
 ---
 
-## ✨ 핵심 기능 상세 (Key Features)
+## 📥 CSV 입력 규격
 
-| 기능 | 상세 설명 | 관련 파일 |
-| :--- | :--- | :--- |
-| **토큰 캐싱** | API 토큰을 `.cache/`에 저장하여 유효 시간 내 재사용 | `kiwoomClient.ts` |
-| **호출 제한 방어** | 1초 4건 제한을 준수하기 위해 요청 간 250ms 지연 강제 | `kiwoomClient.ts` |
-| **Bulk Upsert** | 데이터 중복 시 기존 데이터를 갱신(`onConflictDoUpdate`)하여 무결성 유지 | `marketRepository.ts` |
-| **하이브리드 로깅** | 콘솔에는 색상 적용, 파일에는 분석용 JSON 포맷으로 기록 | `logger.ts` |
-| **데이터 통합** | KRX와 NXT(Nextrade) 데이터를 병렬 수집하여 단일 Row에 통합 저장 | `collectorService.ts` |
+### 파일명
+
+`YYYY-MM-DD.csv` 형식 필수. 다른 형식이면 `failed/`로 이동된다.
+
+### 컬럼 (위치 기반)
+
+| 인덱스 | 의미 | 비고 |
+|---|---|---|
+| 0 | 테마명 | 빈 값 가능 (해당 종목의 테마 매핑 스킵) |
+| 1 | 종목코드 | 6자리, 예: `005930` |
+| 2 | 종목명 | 표시용 |
+
+- 1행은 헤더로 간주하여 스킵
+- 각 셀의 앞쪽 작은따옴표(`'`)와 공백은 자동 제거 (Excel 문자열 보호용 접두어 대응)
+- 동일 종목이 여러 테마에 걸쳐 등장하면 테마는 `Set`으로 합쳐짐
 
 ---
 
-## 🧪 테스트 (Testing)
+## 🔄 처리 플로우
 
-기능별 통합 테스트 스크립트를 제공합니다.
+### 폴더 배치 모드 (`processFolder`)
 
-```bash
-# 키움 API 연동 테스트 (토큰, Rate Limit, 연속조회)
-npx tsx src/test/kiwoomClient.test.ts
+1. `csv/`, `csv/processed/`, `csv/failed/` 디렉터리 보장
+2. `csv/` 직속 `.csv` 파일을 파일명(=날짜) 오름차순으로 수집
+3. 각 파일에 대해:
+   - `processFile` 호출
+   - 성공 → `processed/`로 이동
+   - 실패 → `failed/`로 이동 + 에러 로깅
 
-# KRX vs NXT 데이터 비교 테스트
-npx tsx src/test/compare_pred_pre.test.ts
-```
+### 파일 처리 (`processFile`)
+
+1. 파일명에서 거래일 추출 (`YYYY-MM-DD`)
+2. CSV 파싱 → `Map<stockCode, { stockName, themes }>`
+3. 종목 단위로 순차 처리 (best-effort: 종목 하나 실패해도 다음 종목으로):
+   - `syncStockInfo` — 종목 마스터 upsert
+   - `syncDailyCandles` — KRX/NXT 일봉 600개 (`apiDate` 기준 과거)
+   - `syncMinuteCandles` — 해당 거래일 1분봉 전체
+   - 테마별 `syncThemeMapping` 반복
+
+### 일봉 동기화 (`syncDailyCandles`)
+
+- KRX 코드(`005930`)와 NXT 통합 코드(`005930_AL`)를 병렬 조회
+- 두 배열을 `assembleDailyCandles`로 결합:
+  - 일반 캔들: 전일 종가 = `i+1`번째 캔들의 종가
+  - 가장 오래된 캔들이 상장일과 일치하면 전일 종가 `null`로 포함
+  - 그 외(가장 오래된 캔들이 상장일이 아닌데 더 이전 데이터 없음): 전일 종가 알 수 없으므로 제외
+
+### 분봉 동기화 (`syncMinuteCandles`)
+
+- 부모 일봉(FK + prevClose) 사전 조회. 일봉 없으면 스킵
+- NXT 통합 코드(`_AL`)로 분봉 수집, 가장 오래된 row가 거래일 이전이면 페이지네이션 종료
+- `assembleMinuteCandles`로 필터/정렬/누적거래대금 계산 후 upsert
+
+---
+
+## 🗄️ 데이터 모델
+
+### 핵심 테이블 (`packages/database/src/schema/market.ts`)
+
+| 테이블 | 역할 | 유니크 키 |
+|---|---|---|
+| `stocks` | 종목 마스터 | `stockCode` |
+| `themes` | 테마 마스터 | `themeName` |
+| `daily_candles` | 일봉 (KRX+NXT 통합 1행) | `(tradeDate, stockCode)` |
+| `minute_candles` | 1분봉 | `(stockCode, tradeDate, tradeTime)` |
+| `daily_theme_mappings` | 일봉-테마 매핑 | `(themeId, dailyCandleId)` |
+| `intraday_program_amounts` | 프로그램 매매 동향 | `(dailyCandleId, tradeTime)` |
+
+### 파생 테이블 (`feature.ts` — 후속 단계에서 채움)
+
+- `daily_candle_features` — 구조적 고점, N일 최고가
+- `minute_candle_features` — 변화율, 일중 고점 추적
+- `theme_features` / `theme_stock_contexts` — 테마 통계, 종목 순위
+- `trading_opportunities` — 최종 검색 인덱스 (모든 데이터 비정규화)
+
+---
+
+## ⚙️ 키 메커니즘
+
+### Rate Limit (`KiwoomClient.waitForRateLimit`)
+
+요청 간 최소 간격(`KIWOOM_RATE_LIMIT_MS`)을 보장한다. 동시 호출이 들어와도 `lastRequestTime`을 미리 갱신해 직렬화된 슬롯을 예약하므로 폭주가 발생하지 않는다.
+
+### UPSERT (`buildConflictUpdateSet`)
+
+`marketRepository`의 모든 저장 함수는 `ON CONFLICT DO UPDATE`를 사용한다. PK/유니크 키를 제외한 모든 컬럼을 `EXCLUDED.<col>`로 자동 갱신하며, `updatedAt`은 `NOW()`로 자동 처리된다. 제네릭으로 `excludeKeys`가 컴파일 타임에 검증되므로 컬럼 오타나 스키마 변경 시 즉시 타입 에러가 발생한다.
+
+### 페이지네이션
+
+- **일봉** (`getDailyChartsByCount`): 목표 개수에 도달할 때까지 `cont-yn`/`next-key`로 연속 조회
+- **분봉** (`getMinuteChartsForDate`): 가장 오래된 row가 대상 거래일 이전이 되면 조기 종료, 안전장치로 최대 5페이지 제한
+
+### 데코레이터
+
+- `@KiwoomRequest(apiId)` — 키움 호출 로깅/에러 핸들링
+- `@ServiceOperation(domain)` — 서비스 작업 로깅/메트릭
+
+---
+
+## 🛠️ 운영 가이드
+
+### 실패한 파일 재처리
+
+`csv/failed/` 안의 파일을 `csv/`로 다시 옮기고 실행하면 된다. UPSERT 기반이므로 멱등성이 보장된다.
+
+\```bash
+mv csv/failed/2026-04-30.csv csv/
+pnpm start
+\```
+
+### 특정 종목만 재수집
+
+`csv/`에 해당 종목만 담은 임시 CSV를 넣고 실행하면 된다.
+또는 `tsx`로 직접 서비스 함수를 호출:
+
+\```bash
+pnpm exec tsx -e "
+import { marketService } from './src/services/marketService.js';
+await marketService.syncStockInfo('005930');
+await marketService.syncDailyCandles('005930', '20260430');
+await marketService.syncMinuteCandles('005930', '2026-04-30');
+"
+\```
+
+### 로그 레벨 조정
+
+`.env`의 `LOG_LEVEL`을 `debug` / `info` / `warn` / `error`로 조정.
+
+---
+
+## 📝 설계 원칙
+
+1. **순수 함수 우선** — Mapper/Assembler는 외부 I/O 없이 입력→출력만으로 동작
+2. **클래스는 상태/데코레이터가 있을 때만** — 그 외는 함수 모듈
+3. **싱글턴 인스턴스** — `kiwoomClient`, `marketService`, `csvBatchService` 등 stateful한 컴포넌트
+4. **타입 안전성** — Drizzle의 `$inferInsert`로 스키마-타입 동기화, schema drift에 강함
+5. **멱등성** — 모든 저장은 UPSERT, 재실행해도 안전
+6. **Best-effort 처리** — 종목 단위 실패는 격리되어 다른 종목 처리에 영향 없음
+
+---
+
+## 📄 라이선스
+
+Private project.
