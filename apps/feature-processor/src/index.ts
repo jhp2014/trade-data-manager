@@ -1,6 +1,9 @@
 import { Command } from "commander";
-import { db, pool } from "./db";
-import { ProcessorRepository } from "./repository/processorRepository";
+import { pool } from "./repository/db";
+import {
+    getAllTradeDates,
+    getPendingTradeDates,
+} from "./repository/processorRepository";
 import { runMinuteFeatures } from "./runners/minuteRunner";
 import { logger } from "./logger";
 
@@ -18,10 +21,8 @@ program
     .option("-a, --all", "모든 거래일 처리")
     .option("-p, --pending", "아직 가공되지 않은 거래일만 처리 (기본)")
     .action(async (opts) => {
-        const repo = new ProcessorRepository(db);
-
         try {
-            const dates = await resolveDates(repo, opts);
+            const dates = await resolveDates(opts);
             if (dates.length === 0) {
                 logger.info("처리할 거래일이 없습니다.");
                 return;
@@ -29,7 +30,7 @@ program
 
             logger.info(`처리 대상 거래일: ${dates.length}일`);
             for (const date of dates) {
-                await runMinuteFeatures(repo, { tradeDate: date });
+                await runMinuteFeatures({ tradeDate: date });
             }
             logger.info("모든 거래일 처리 완료");
         } catch (err) {
@@ -40,14 +41,14 @@ program
         }
     });
 
-async function resolveDates(
-    repo: ProcessorRepository,
-    opts: { date?: string; all?: boolean; pending?: boolean }
-): Promise<string[]> {
+async function resolveDates(opts: {
+    date?: string;
+    all?: boolean;
+    pending?: boolean;
+}): Promise<string[]> {
     if (opts.date) return [opts.date];
-    if (opts.all) return repo.getAllTradeDates();
-    // 기본: pending
-    return repo.getPendingTradeDates();
+    if (opts.all) return getAllTradeDates();
+    return getPendingTradeDates();
 }
 
 program.parseAsync(process.argv);
