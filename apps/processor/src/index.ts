@@ -1,7 +1,8 @@
 // apps/processor/src/index.ts
 import "dotenv/config";
 import { logger } from "./utils/logger.js";
-import { pool, db, stocks, themes } from "@trade-data-manager/database";
+import { stocks, themes } from "@trade-data-manager/market-data";
+import { db, pool } from "@trade-data-manager/feature-engine";
 import { MinuteFeatureService } from "./services/minuteFeatureService.js";
 import { ThemeContextService } from "./services/ThemeContextService.js";
 import { processorRepository } from "./db/processorRepository.js";

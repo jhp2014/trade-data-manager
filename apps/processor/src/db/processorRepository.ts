@@ -1,6 +1,6 @@
 import { db, minuteCandles, minuteCandleFeatures, dailyCandles, dailyThemeMappings, themeFeatures, themeStockContexts, themes, stocks, tradingOpportunities } from "@trade-data-manager/database";
 import type { MinuteCandleFeaturesInsert, ThemeFeatureInsert, ThemeStockContextInsert, TradingOpportunityInsert } from "@trade-data-manager/database";
-import { MAX_SLOT_COUNT } from "@trade-data-manager/database";
+import { MAX_SLOT_COUNT } from "@trade-data-manager/market-data";
 import { eq, and, asc, sql, getTableColumns, isNull } from "drizzle-orm";
 
 // 트랜잭션 컨텍스트와 일반 db를 모두 수용하는 유니언 타입

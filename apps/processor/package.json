@@ -12,7 +12,8 @@
         "opportunity": "node dist/opportunity.js"
     },
     "dependencies": {
-        "@trade-data-manager/database": "workspace:*",
+        "@trade-data-manager/market-data": "workspace:*",
+        "@trade-data-manager/feature-engine": "workspace:*",
         "dayjs": "^1.11.10",
         "dotenv": "^17.4.2",
         "drizzle-orm": "^0.45.2",

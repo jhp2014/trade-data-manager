@@ -1,6 +1,6 @@
 // packages/database/src/schema/utils.ts
 import { boolean, date, integer, numeric, time, varchar } from "drizzle-orm/pg-core";
-import { MAX_SLOT_COUNT, STAT_AMOUNTS, STAT_RATES } from "./constants";
+import { MAX_SLOT_COUNT, STAT_AMOUNTS, STAT_RATES } from "../constants";
 
 export function commonCandleFeatureCols(prefix: string = "") {
     const isSlot = prefix !== "";

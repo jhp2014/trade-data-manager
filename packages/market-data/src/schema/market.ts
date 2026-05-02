@@ -164,3 +164,4 @@ export type MinuteCandle = typeof minuteCandles.$inferSelect;
 export type MinuteCandleInsert = typeof minuteCandles.$inferInsert;
 export type Theme = typeof themes.$inferSelect;
 export type ThemeInsert = typeof themes.$inferInsert;
+

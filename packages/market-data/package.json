@@ -11,18 +11,16 @@
   },
   "scripts": {
     "build": "tsc",
-    "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:generate": "echo 'Use feature-engine db:generate instead' && exit 1",
+    "db:push": "echo 'Use feature-engine db:push instead' && exit 1",
+    "db:studio": "echo 'Use feature-engine db:studio instead' && exit 1"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "pg": "^8.20.0",
-    "dotenv": "^17.4.2"
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@trade-data-manager/tsconfig": "workspace:*",
-    "drizzle-kit": "^0.31.10",
     "@types/pg": "^8.20.0"
   }
 }

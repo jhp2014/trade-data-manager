@@ -18,7 +18,7 @@
         }
     },
     "dependencies": {
-        "@trade-data-manager/database": "workspace:*",
+        "@trade-data-manager/market-data": "workspace:*",
         "clsx": "^2.1.1",
         "drizzle-orm": "^0.45.2",
         "lightweight-charts": "^4.1.3",
