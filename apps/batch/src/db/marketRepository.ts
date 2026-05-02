@@ -1,7 +1,8 @@
-import { db, dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } from "@trade-data-manager/market-data";
+import { dailyCandles, dailyThemeMappings, minuteCandles, stocks, themes } from "@trade-data-manager/market-data";
 import type { DailyCandleInsert, MinuteCandleInsert, StockInsert } from "@trade-data-manager/market-data";
 import { eq, and, sql, getTableColumns } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
+import { db } from "./db";
 
 /**
  * ON CONFLICT DO UPDATE 의 SET 절을 자동 생성합니다.

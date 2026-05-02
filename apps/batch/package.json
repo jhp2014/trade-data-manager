@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "test": "tsx --test src/test/*.test.ts"
+    "dev": "tsx src/index.ts"
   },
   "dependencies": {
     "@trade-data-manager/market-data": "workspace:*",
+    "@trade-data-manager/feature-engine": "workspace:*",
     "axios": "^1.15.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",

@@ -1,0 +1,27 @@
+{
+    "name": "@trade-data-manager/feature-processor",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "tsc",
+        "start": "tsx src/index.ts",
+        "dev": "tsx watch src/index.ts"
+    },
+    "dependencies": {
+        "@trade-data-manager/market-data": "workspace:*",
+        "@trade-data-manager/feature-engine": "workspace:*",
+        "commander": "^12.1.0",
+        "dayjs": "^1.11.13",
+        "dotenv": "^16.4.5",
+        "drizzle-orm": "^0.45.2",
+        "pg": "^8.20.0"
+    },
+    "devDependencies": {
+        "@trade-data-manager/tsconfig": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@types/pg": "^8.20.0",
+        "tsx": "^4.19.0",
+        "typescript": "^6.0.3"
+    }
+}
