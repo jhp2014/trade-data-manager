@@ -13,6 +13,7 @@ import {
 import { buildColumnsFromCalculators } from "../helpers";
 import { MINUTE_CALCULATORS } from "../calculators/minute";
 import { THEME_FEATURE_CALCULATORS } from "../calculators/theme-feature";
+import { THEME_CONTEXT_CALCULATORS } from "../calculators/theme-context";
 
 /**
  * [MinuteCandleFeatures]
