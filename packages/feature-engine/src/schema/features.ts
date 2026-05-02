@@ -12,18 +12,10 @@ import {
 } from "@trade-data-manager/market-data";
 import { buildColumnsFromCalculators } from "../helpers";
 import { MINUTE_CALCULATORS } from "../calculators/minute";
-import { THEME_FEATURE_CALCULATORS } from "../calculators/theme-feature";
-import { THEME_CONTEXT_CALCULATORS } from "../calculators/theme-context";
 
 /**
  * [MinuteCandleFeatures]
  * Calculator 배열로부터 자동 생성되는 분봉 피처 테이블.
- *
- * ⚠️ 컬럼 변경은 MINUTE_CALCULATORS 배열을 수정하세요.
- *
- * 💡 (table as any) 캐스팅:
- *    Calculator로 동적 생성된 컬럼은 TypeScript 타입 추론이 약해
- *    인덱스 정의 시 캐스팅이 필요합니다 (런타임 영향 없음).
  */
 export const minuteCandleFeatures = pgTable(
     "minute_candle_features",
@@ -42,7 +34,7 @@ export const minuteCandleFeatures = pgTable(
         updatedAt: timestamp("updated_at").notNull().defaultNow(),
     },
     (table) => {
-        const t = table as any;  // Calculator 동적 생성 컬럼 접근용
+        const t = table as any;
         return [
             unique("uq_minute_features_candle_id").on(table.minuteCandleId),
             index("idx_minute_features_date_code_time").on(
@@ -51,81 +43,15 @@ export const minuteCandleFeatures = pgTable(
                 t.tradeTime
             ),
             index("idx_minute_features_pullback").on(t.pullbackFromDayHigh),
+            // 동적 검색 효율을 위한 인덱스 (선택)
+            index("idx_minute_features_search").on(
+                t.tradeDate,
+                t.cumulativeTradingAmount,
+                t.closeRateNxt
+            ),
         ];
     }
 );
 
 export type MinuteCandleFeatures = typeof minuteCandleFeatures.$inferSelect;
 export type MinuteCandleFeaturesInsert = typeof minuteCandleFeatures.$inferInsert;
-
-
-/**
- * [ThemeFeatures]
- * 시각×테마 단위로 테마 내 종목들의 통계.
- * Calculator 배열로부터 자동 생성.
- */
-export const themeFeatures = pgTable(
-    "theme_features",
-    {
-        id: bigserial("id", { mode: "bigint" }).primaryKey(),
-        ...buildColumnsFromCalculators(THEME_FEATURE_CALCULATORS),
-        createdAt: timestamp("created_at").notNull().defaultNow(),
-        updatedAt: timestamp("updated_at").notNull().defaultNow(),
-    },
-    (table) => {
-        const t = table as any;
-        return [
-            unique("uq_theme_features_time").on(
-                t.themeId,
-                t.tradeDate,
-                t.tradeTime
-            ),
-            index("idx_theme_features_date_time").on(t.tradeDate, t.tradeTime),
-        ];
-    }
-);
-
-export type ThemeFeatures = typeof themeFeatures.$inferSelect;
-export type ThemeFeaturesInsert = typeof themeFeatures.$inferInsert;
-
-
-/**
- * [ThemeStockContexts]
- * 한 시각·한 테마 내 각 종목의 위치/순위.
- * theme_features.id를 부모로 한 자식 테이블 (1:N).
- */
-export const themeStockContexts = pgTable(
-    "theme_stock_contexts",
-    {
-        id: bigserial("id", { mode: "bigint" }).primaryKey(),
-        themeFeatureId: bigint("theme_feature_id", { mode: "bigint" })
-            .notNull()
-            .references(() => themeFeatures.id, { onDelete: "cascade" }),
-        minuteFeatureId: bigint("minute_feature_id", { mode: "bigint" })
-            .notNull()
-            .references(() => minuteCandleFeatures.id, { onDelete: "cascade" }),
-        themeId: bigint("theme_id", { mode: "bigint" }).notNull(),
-
-        ...buildColumnsFromCalculators(THEME_CONTEXT_CALCULATORS),
-
-        createdAt: timestamp("created_at").notNull().defaultNow(),
-    },
-    (table) => {
-        const t = table as any;
-        return [
-            unique("uq_theme_context").on(
-                table.themeFeatureId,
-                table.minuteFeatureId
-            ),
-            index("idx_theme_context_stock_time").on(
-                t.stockCode,
-                t.tradeDate,
-                t.tradeTime
-            ),
-            index("idx_theme_context_theme_feature").on(table.themeFeatureId),
-        ];
-    }
-);
-
-export type ThemeStockContexts = typeof themeStockContexts.$inferSelect;
-export type ThemeStockContextsInsert = typeof themeStockContexts.$inferInsert;
