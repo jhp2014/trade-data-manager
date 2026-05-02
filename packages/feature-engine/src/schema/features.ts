@@ -86,3 +86,45 @@ export const themeFeatures = pgTable(
 
 export type ThemeFeatures = typeof themeFeatures.$inferSelect;
 export type ThemeFeaturesInsert = typeof themeFeatures.$inferInsert;
+
+
+/**
+ * [ThemeStockContexts]
+ * 한 시각·한 테마 내 각 종목의 위치/순위.
+ * theme_features.id를 부모로 한 자식 테이블 (1:N).
+ */
+export const themeStockContexts = pgTable(
+    "theme_stock_contexts",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        themeFeatureId: bigint("theme_feature_id", { mode: "bigint" })
+            .notNull()
+            .references(() => themeFeatures.id, { onDelete: "cascade" }),
+        minuteFeatureId: bigint("minute_feature_id", { mode: "bigint" })
+            .notNull()
+            .references(() => minuteCandleFeatures.id, { onDelete: "cascade" }),
+        themeId: bigint("theme_id", { mode: "bigint" }).notNull(),
+
+        ...buildColumnsFromCalculators(THEME_CONTEXT_CALCULATORS),
+
+        createdAt: timestamp("created_at").notNull().defaultNow(),
+    },
+    (table) => {
+        const t = table as any;
+        return [
+            unique("uq_theme_context").on(
+                table.themeFeatureId,
+                table.minuteFeatureId
+            ),
+            index("idx_theme_context_stock_time").on(
+                t.stockCode,
+                t.tradeDate,
+                t.tradeTime
+            ),
+            index("idx_theme_context_theme_feature").on(table.themeFeatureId),
+        ];
+    }
+);
+
+export type ThemeStockContexts = typeof themeStockContexts.$inferSelect;
+export type ThemeStockContextsInsert = typeof themeStockContexts.$inferInsert;

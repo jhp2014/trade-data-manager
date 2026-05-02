@@ -32,3 +32,4 @@ export * from "./constants";
 export * from "./schema";
 export { MINUTE_CALCULATORS } from "./calculators/minute";
 export { THEME_FEATURE_CALCULATORS } from "./calculators/theme-feature";
+export { THEME_CONTEXT_CALCULATORS } from "./calculators/theme-context";
