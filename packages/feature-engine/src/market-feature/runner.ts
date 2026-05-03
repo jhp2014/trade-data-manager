@@ -1,60 +1,57 @@
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat.js";
-import {
-    MINUTE_CALCULATORS,
-    mergeCalculatorOutputs,
-    type MinuteCandleContext,
-} from "@trade-data-manager/feature-engine";
 import type { MinuteCandle } from "@trade-data-manager/market-data";
+import type { Database } from "../index";
+import { MINUTE_CALCULATORS } from "./calculators";
+import { mergeCalculatorOutputs } from "./helpers";
+import type { MinuteCandleContext } from "./types";
 import {
     getStockCodesForDate,
     getMinuteCandlesForDay,
     saveMinuteFeatures,
-} from "../repository/processorRepository";
-import { logger } from "../logger";
+} from "./repository";
 
 dayjs.extend(customParseFormat);
 
 export interface MinuteRunnerOptions {
+    db: Database;
     tradeDate: string;
 }
 
 export async function runMinuteFeatures(
     opts: MinuteRunnerOptions
 ): Promise<{ stockCount: number; rowCount: number }> {
-    const { tradeDate } = opts;
-    const stockCodes = await getStockCodesForDate(tradeDate);
-    logger.info(`[minuteRunner] ${tradeDate}: ${stockCodes.length} stocks`);
+    const { db, tradeDate } = opts;
+    const stockCodes = await getStockCodesForDate(db, tradeDate);
+    console.log(`[INFO] ${new Date().toISOString()} [minuteRunner] ${tradeDate}: ${stockCodes.length} stocks`);
 
     let totalRows = 0;
     let processed = 0;
 
     for (const stockCode of stockCodes) {
-        const candles = await getMinuteCandlesForDay(stockCode, tradeDate);
+        const candles = await getMinuteCandlesForDay(db, stockCode, tradeDate);
         if (candles.length === 0) continue;
 
         const rows = computeStockFeatures(candles);
-        await saveMinuteFeatures(rows);
+        await saveMinuteFeatures(db, rows);
 
         totalRows += rows.length;
         processed++;
 
         if (processed % 50 === 0) {
-            logger.info(
-                `[minuteRunner]   progress: ${processed}/${stockCodes.length}`
+            console.log(
+                `[INFO] ${new Date().toISOString()} [minuteRunner]   progress: ${processed}/${stockCodes.length}`
             );
         }
     }
 
-    logger.info(
-        `[minuteRunner] ${tradeDate} done: ${processed} stocks, ${totalRows} rows`
+    console.log(
+        `[INFO] ${new Date().toISOString()} [minuteRunner] ${tradeDate} done: ${processed} stocks, ${totalRows} rows`
     );
     return { stockCount: processed, rowCount: totalRows };
 }
 
-function computeStockFeatures(
-    candles: MinuteCandle[]
-): Array<Record<string, any>> {
+function computeStockFeatures(candles: MinuteCandle[]): Array<Record<string, any>> {
     for (const calc of MINUTE_CALCULATORS) {
         calc.reset?.();
     }
@@ -88,10 +85,7 @@ function findCandleMinutesAgo(
     minutesAgo: number
 ): MinuteCandle | null {
     const current = candles[currentIndex];
-    const target = dayjs(current.tradeTime, "HH:mm:ss").subtract(
-        minutesAgo,
-        "minute"
-    );
+    const target = dayjs(current.tradeTime, "HH:mm:ss").subtract(minutesAgo, "minute");
 
     for (let j = currentIndex - 1; j >= 0; j--) {
         const t = dayjs(candles[j].tradeTime, "HH:mm:ss");

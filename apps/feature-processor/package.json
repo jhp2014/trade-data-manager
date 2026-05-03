@@ -9,10 +9,8 @@
         "dev": "tsx watch src/index.ts"
     },
     "dependencies": {
-        "@trade-data-manager/market-data": "workspace:*",
         "@trade-data-manager/feature-engine": "workspace:*",
         "commander": "^12.1.0",
-        "dayjs": "^1.11.13",
         "dotenv": "^16.4.5",
         "drizzle-orm": "^0.45.2",
         "pg": "^8.20.0"
