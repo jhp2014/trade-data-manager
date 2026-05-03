@@ -1,10 +1,10 @@
 import { Command } from "commander";
-import { pool } from "./repository/db";
+import { pool, db } from "./repository/db";
 import {
     getAllTradeDates,
     getPendingTradeDates,
-} from "./repository/processorRepository";
-import { runMinuteFeatures } from "./runners/minuteRunner";
+    runMinuteFeatures,
+} from "@trade-data-manager/feature-engine";
 import { logger } from "./logger";
 
 const program = new Command();
@@ -30,7 +30,7 @@ program
 
             logger.info(`처리 대상 거래일: ${dates.length}일`);
             for (const date of dates) {
-                await runMinuteFeatures({ tradeDate: date });
+                await runMinuteFeatures({ db, tradeDate: date });
             }
             logger.info("모든 거래일 처리 완료");
         } catch (err) {
@@ -47,8 +47,8 @@ async function resolveDates(opts: {
     pending?: boolean;
 }): Promise<string[]> {
     if (opts.date) return [opts.date];
-    if (opts.all) return getAllTradeDates();
-    return getPendingTradeDates();
+    if (opts.all) return getAllTradeDates(db);
+    return getPendingTradeDates(db);
 }
 
 program.parseAsync(process.argv);
