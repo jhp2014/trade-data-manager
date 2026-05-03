@@ -1,6 +1,5 @@
 import { numeric, time } from "drizzle-orm/pg-core";
-import type { MinuteFeatureCalculator, ColumnOptions, MinuteCandleContext } from "../../types";
-import { tsKey, dbKey } from "../../helpers";
+import type { MinuteFeatureCalculator, MinuteCandleContext } from "../types";
 
 /**
  * [DayHighCalculator]
@@ -20,13 +19,10 @@ export class DayHighCalculator implements MinuteFeatureCalculator {
         this.dayHighTime = "";
     }
 
-    columns(opts: ColumnOptions = {}) {
-        const { prefix } = opts;
+    columns() {
         return {
-            [tsKey("dayHighRate", prefix)]: numeric(dbKey("day_high_rate", prefix), {
-                precision: 8, scale: 4,
-            }),
-            [tsKey("dayHighTime", prefix)]: time(dbKey("day_high_time", prefix)),
+            dayHighRate: numeric("day_high_rate", { precision: 8, scale: 4 }),
+            dayHighTime: time("day_high_time"),
         };
     }
 

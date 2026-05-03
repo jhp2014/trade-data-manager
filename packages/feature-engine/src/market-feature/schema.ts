@@ -10,8 +10,8 @@ import {
     minuteCandles,
     dailyCandles,
 } from "@trade-data-manager/market-data";
-import { buildColumnsFromCalculators } from "../helpers";
-import { MINUTE_CALCULATORS } from "../calculators/minute";
+import { buildColumnsFromCalculators } from "./helpers";
+import { MINUTE_CALCULATORS } from "./calculators";
 
 /**
  * [MinuteCandleFeatures]

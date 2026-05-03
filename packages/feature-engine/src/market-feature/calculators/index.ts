@@ -1,4 +1,4 @@
-import type { MinuteFeatureCalculator } from "../../types";
+import type { MinuteFeatureCalculator } from "../types";
 import { TradeDateCalculator } from "./TradeDateCalculator";
 import { TradeTimeCalculator } from "./TradeTimeCalculator";
 import { StockCodeCalculator } from "./StockCodeCalculator";
@@ -10,7 +10,7 @@ import { DayHighCalculator } from "./DayHighCalculator";
 import { PullbackCalculator } from "./PullbackCalculator";
 import { CumulativeAmountCalculator } from "./CumulativeAmountCalculator";
 import { AmountCountCalculator } from "./AmountCountCalculator";
-import { STAT_AMOUNTS } from "../../constants";
+import { STAT_AMOUNTS } from "../constants";
 
 export {
     TradeDateCalculator,

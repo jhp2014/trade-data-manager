@@ -1,8 +1,7 @@
 import { numeric, integer } from "drizzle-orm/pg-core";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat.js";
-import type { MinuteFeatureCalculator, ColumnOptions, MinuteCandleContext } from "../../types";
-import { tsKey, dbKey } from "../../helpers";
+import type { MinuteFeatureCalculator, MinuteCandleContext } from "../types";
 
 dayjs.extend(customParseFormat);
 
@@ -12,13 +11,6 @@ dayjs.extend(customParseFormat);
  *
  *  - pullbackFromDayHigh: 현재 종가율 - 고점 등락률 (음수 = 눌림)
  *  - minutesSinceDayHigh: 고점 발생 후 경과 분
- *
- * ⚠️ 의도된 계산 순서:
- *    1) 먼저 "이전 고점" 기준으로 minutesSinceDayHigh 계산 (현재 분봉 갱신 전 상태)
- *    2) 그다음 고점 갱신
- *    3) pullback은 갱신 후 고점 기준
- *
- *  → 고점이 갱신되는 순간에도 "직전 고점에서 몇 분 지나서 새 고점이 났는지"가 보존됨.
  *
  * ⚠️ stateful.
  */
@@ -31,16 +23,12 @@ export class PullbackCalculator implements MinuteFeatureCalculator {
         this.dayHighTime = "";
     }
 
-    columns(opts: ColumnOptions = {}) {
-        const { prefix } = opts;
+    columns() {
         return {
-            [tsKey("pullbackFromDayHigh", prefix)]: numeric(
-                dbKey("pullback_from_day_high", prefix),
-                { precision: 8, scale: 4 }
-            ),
-            [tsKey("minutesSinceDayHigh", prefix)]: integer(
-                dbKey("minutes_since_day_high", prefix)
-            ),
+            pullbackFromDayHigh: numeric("pullback_from_day_high", {
+                precision: 8, scale: 4,
+            }),
+            minutesSinceDayHigh: integer("minutes_since_day_high"),
         };
     }
 
@@ -49,7 +37,6 @@ export class PullbackCalculator implements MinuteFeatureCalculator {
         const curHigh = Number(cur.highRateNxt);
 
         // ① 갱신 전 상태로 minutesSinceDayHigh 계산
-        //    (고점이 갱신되는 순간에도 "직전 고점으로부터의 거리"를 보존하기 위함)
         const minutesSince = this.dayHighTime
             ? dayjs(cur.tradeTime, "HH:mm:ss").diff(
                 dayjs(this.dayHighTime, "HH:mm:ss"),

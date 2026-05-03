@@ -1,6 +1,5 @@
 import { numeric } from "drizzle-orm/pg-core";
-import type { MinuteFeatureCalculator, ColumnOptions, MinuteCandleContext } from "../../types";
-import { tsKey, dbKey } from "../../helpers";
+import type { MinuteFeatureCalculator, MinuteCandleContext } from "../types";
 
 /**
  * [ChangeRateCalculator]
@@ -20,11 +19,10 @@ export class ChangeRateCalculator implements MinuteFeatureCalculator {
         return `change_rate_${this.minutes}m`;
     }
 
-    columns(opts: ColumnOptions = {}) {
-        const { prefix } = opts;
+    columns() {
         // 이 컬럼은 원본 스키마에서도 nullable이므로 notNull 적용 안 함.
         return {
-            [tsKey(this.tsName, prefix)]: numeric(dbKey(this.dbName, prefix), {
+            [this.tsName]: numeric(this.dbName, {
                 precision: 8,
                 scale: 4,
             }),

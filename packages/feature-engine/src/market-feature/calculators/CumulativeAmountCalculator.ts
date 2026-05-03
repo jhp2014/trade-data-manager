@@ -1,6 +1,5 @@
 import { numeric } from "drizzle-orm/pg-core";
-import type { MinuteFeatureCalculator, ColumnOptions, MinuteCandleContext } from "../../types";
-import { tsKey, dbKey } from "../../helpers";
+import type { MinuteFeatureCalculator, ColumnOptions, MinuteCandleContext } from "../types";
 
 /**
  * [CumulativeAmountCalculator]
@@ -8,26 +7,23 @@ import { tsKey, dbKey } from "../../helpers";
  * ⚠️ stateful.
  */
 export class CumulativeAmountCalculator implements MinuteFeatureCalculator {
-    private cumulative = 0n;  // bigint로 누적 (overflow 방지)
+    private cumulative = 0n;
 
     reset() {
         this.cumulative = 0n;
     }
 
     columns(opts: ColumnOptions = {}) {
-        const { prefix, nullable } = opts;
-        const isSlot = !!prefix;
-        const col = numeric(dbKey("cumulative_trading_amount", prefix), {
+        const { nullable } = opts;
+        const col = numeric("cumulative_trading_amount", {
             precision: 18, scale: 1,
         });
         return {
-            [tsKey("cumulativeTradingAmount", prefix)]:
-                isSlot || nullable ? col : col.notNull(),
+            cumulativeTradingAmount: nullable ? col : col.notNull(),
         };
     }
 
     calculate(ctx: MinuteCandleContext) {
-        // tradingAmount는 numeric이라 string으로 들어옴 → BigInt로 안전 누적
         const cur = BigInt(ctx.current.tradingAmount ?? "0");
         this.cumulative += cur;
         return {

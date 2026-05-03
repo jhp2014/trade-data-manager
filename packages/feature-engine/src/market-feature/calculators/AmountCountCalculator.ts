@@ -1,5 +1,5 @@
 import { integer } from "drizzle-orm/pg-core";
-import type { MinuteFeatureCalculator, ColumnOptions, MinuteCandleContext } from "../../types";
+import type { MinuteFeatureCalculator, MinuteCandleContext } from "../types";
 
 /**
  * [AmountCountCalculator]
@@ -26,21 +26,9 @@ export class AmountCountCalculator implements MinuteFeatureCalculator {
         this.count = 0;
     }
 
-    columns(opts: ColumnOptions = {}) {
-        const { prefix } = opts;
-
-        // 슬롯 prefix 적용:
-        //   prefix 없음: cnt20Amt → cnt_20_amt
-        //   prefix "s1": s1Cnt20Amt → s1_cnt_20_amt
-        const tsKeyName = prefix
-            ? `${prefix}Cnt${this.thresholdEok}Amt`
-            : this.tsName;
-        const dbKeyName = prefix
-            ? `${prefix}_cnt_${this.thresholdEok}_amt`
-            : this.dbName;
-
+    columns() {
         return {
-            [tsKeyName]: integer(dbKeyName).notNull().default(0),
+            [this.tsName]: integer(this.dbName).notNull().default(0),
         };
     }
 

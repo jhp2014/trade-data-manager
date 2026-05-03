@@ -1,5 +1,5 @@
 import { kiwoomClient } from "../clients/kiwoomClient.js";
-import { findDailyCandle, findStockRegDayAsApiFormat, saveDailyCandles, saveMinuteCandles, saveStock, saveTheme, saveThemeMapping } from "../db/marketRepository.js";
+import { findDailyCandle, findStockRegDayAsApiFormat, saveDailyCandles, saveMinuteCandles, saveStock, saveTheme, saveThemeMapping } from "../repository/marketRepository.js";
 import { logger } from "../utils/logger.js";
 import { assembleDailyCandles, assembleMinuteCandles } from "./assemblers/candleAssembler.js";
 import { ServiceOperation } from "./decorators.js";
