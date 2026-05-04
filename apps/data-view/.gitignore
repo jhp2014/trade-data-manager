@@ -20,27 +20,4 @@ drizzle/
 .DS_Store
 Thumbs.db
 
-# Cache
-.cache/
-
-# csv
-/csv
-
-# Turborepo
 .turbo
-
-# Next.js
-.next/
-out/
-build/
-
-# TypeScript
-*.tsbuildinfo
-
-# ESLint
-.eslintcache
-
-
-# Utils for AI
-/project_txt_export
-convert_flat.py

@@ -1,0 +1,30 @@
+{
+    "name": "@trade-data-manager/data-view",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "next dev -p 3100",
+        "build": "next build",
+        "start": "next start -p 3100",
+        "lint": "next lint",
+        "type-check": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@trade-data-manager/feature-engine": "workspace:*",
+        "@tanstack/react-query": "^5.59.0",
+        "dayjs": "^1.11.13",
+        "lightweight-charts": "^4.2.0",
+        "next": "^14.2.15",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "zustand": "^4.5.5"
+    },
+    "devDependencies": {
+        "@types/node": "^22.7.4",
+        "@types/react": "^18.3.11",
+        "@types/react-dom": "^18.3.0",
+        "eslint": "^8.57.1",
+        "eslint-config-next": "^14.2.15",
+        "typescript": "^5.6.2"
+    }
+}

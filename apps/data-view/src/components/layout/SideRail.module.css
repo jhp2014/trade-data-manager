@@ -1,0 +1,41 @@
+.rail {
+  position: fixed;
+  top: var(--header-h);
+  right: 0;
+  bottom: 0;
+  width: var(--side-rail-w);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-3) 0;
+  gap: var(--space-1);
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-subtle);
+  z-index: 20;
+}
+
+.btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.active {
+  background: var(--accent-bg);
+  color: var(--accent-primary);
+}
+
+.active:hover {
+  background: var(--accent-bg);
+  color: var(--accent-primary);
+}

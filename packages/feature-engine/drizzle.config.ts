@@ -3,7 +3,7 @@ import "dotenv/config";
 
 export default defineConfig({
     schema: [
-        "./src/schema/index.ts",
+        "./src/market-feature/schema.ts",
         "../market-data/src/schema/index.ts",
     ],
     out: "./drizzle",
