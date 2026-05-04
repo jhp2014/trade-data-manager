@@ -1,45 +1,32 @@
 /* ===========================================================
  * Deck — CSV 기반 시점 모음
- *
- * 필수 컬럼: stockCode, tradeDate, tradeTime
- * 그 외 모든 컬럼은 options에 자유롭게 들어감 (memo, pattern, strength 등)
  * =========================================================== */
 
 export interface DeckEntry {
     stockCode: string;
-    tradeDate: string;             // "YYYY-MM-DD"
-    tradeTime: string;             // "HH:mm:ss"
+    tradeDate: string;
+    tradeTime: string;
     options: Record<string, string>;
-    sourceFile: string;            // 어느 csv에서 왔는지 (디버깅용)
+    sourceFile: string;
 }
 
 export interface LoadedDecks {
-    /** 모든 csv를 합치고 (stockCode, tradeDate, tradeTime) 기준 dedupe된 entries */
     entries: DeckEntry[];
-    /** 등장한 모든 옵션 컬럼명 (csv들의 합집합) */
     optionKeys: string[];
-    /** 로드한 파일 절대 경로 목록 */
     files: string[];
-    /** dedupe 과정에서 제거된 중복 행 수 */
     duplicateCount: number;
 }
 
 /* ===========================================================
- * 필터 — 메모리 자료구조 위에서 수행
+ * 필터
  * =========================================================== */
 
 export interface DeckFilter {
-    // 옵션값 정확히 일치
     optionEquals?: Record<string, string>;
-    // 옵션값이 여러 후보 중 하나
     optionIn?: Record<string, string[]>;
-    // 옵션값에 특정 문자열 포함 (| 구분자 다중값 처리)
     optionIncludes?: Record<string, string>;
-    // 옵션값 prefix 매칭 (트리식 표현 시)
     optionPrefix?: Record<string, string>;
-    // 옵션값이 비어있지 않은 entry만
     optionPresent?: string[];
-    // 종목·날짜 범위
     stockCodes?: string[];
     fromDate?: string;
     toDate?: string;
@@ -47,21 +34,39 @@ export interface DeckFilter {
 
 /* ===========================================================
  * 분석 결과
+ *
+ * 카드 한 장이 표시할 데이터를 명시적으로 정의.
+ * v0.2: selfMetrics + stockName 까지 실데이터.
+ * v0.3 (예정): themePeers 실데이터.
  * =========================================================== */
+
+export interface StockMetrics {
+    stockCode: string;
+    stockName: string;
+    /** 현재 종가 등락률 (NXT 기준), % */
+    closeRate: number | null;
+    /** 누적 거래대금 (원) */
+    cumulativeAmount: bigint | null;
+    /** 당일 고점 등락률, % */
+    dayHighRate: number | null;
+    /** 고점 대비 현재 위치 (음수=눌림), % */
+    pullbackFromHigh: number | null;
+    /** 100억 이상 분봉 누적 횟수 */
+    cnt100Amt: number | null;
+}
 
 export interface AnalyzedEntry {
     entry: DeckEntry;
-    /** 해당 종목·날짜·시간의 분봉 피처 (없으면 null) */
-    selfFeature: Record<string, any> | null;
-    /** 같은 (themeId, tradeDate)의 동반 종목 분봉 피처 */
+    /** 자기 종목의 해당 시점 지표 (selfFeature 미존재 시 stockName만 채워지고 나머지는 null) */
+    self: StockMetrics | null;
+    /** v0.3에서 채워질 예정 — 지금은 빈 배열 */
     themePeers: ThemePeerGroup[];
 }
 
 export interface ThemePeerGroup {
-    themeId: bigint;
+    themeId: string; // bigint → 직렬화 안전을 위해 string
     themeName: string;
-    /** 자기 자신을 제외한 같은 시점의 동반 종목 분봉 피처 */
-    peers: Record<string, any>[];
+    peers: StockMetrics[];
 }
 
 /* ===========================================================

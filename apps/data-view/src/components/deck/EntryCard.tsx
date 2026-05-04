@@ -15,10 +15,10 @@ interface Props {
   data: CardData;
 }
 
-const HOVER_DELAY = 300; // ms
+const HOVER_DELAY = 300;
 
 export function EntryCard({ data }: Props) {
-  const { entry, selfStockName, selfMetrics, themeName, peers } = data;
+  const { entry, self, themePeers } = data;
   const { memo, ...restOptions } = entry.options;
 
   const router = useRouter();
@@ -58,29 +58,51 @@ export function EntryCard({ data }: Props) {
     router.push(url);
   };
 
+  const themeNames = themePeers.map((g) => g.themeName);
+  const allPeers = themePeers.flatMap((g) => g.peers);
+
   return (
     <>
       <article
         ref={cardRef}
         className={styles.card}
+        role="button"
+        tabIndex={0}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
       >
         <header className={styles.header}>
           <div className={styles.headerLeft}>
-            <div className={styles.title}>{selfStockName}</div>
+            <div className={styles.title}>
+              {self.stockName}
+              <span className={styles.codeInline}>({self.stockCode})</span>
+            </div>
             <div className={styles.meta}>
               <span>{entry.tradeDate}</span>
               <span>·</span>
               <span>{entry.tradeTime}</span>
-              <span className={styles.themeTag}>#{themeName}</span>
+              {themeNames.length > 0 && (
+                <span className={styles.themeTags}>
+                  {themeNames.map((n) => (
+                    <span key={n} className={styles.themeTag}>
+                      #{n}
+                    </span>
+                  ))}
+                </span>
+              )}
             </div>
           </div>
           <OptionChips options={restOptions} />
         </header>
 
-        <PeerTable self={selfMetrics} peers={peers} />
+        <PeerTable self={self} themeGroups={themePeers} />
 
         {memo && <div className={styles.memo}>📝 {memo}</div>}
       </article>

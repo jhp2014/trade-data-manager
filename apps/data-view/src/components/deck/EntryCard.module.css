@@ -44,6 +44,13 @@
   font-size: var(--fs-sm);
 }
 
+.themeTags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
 .themeTag {
   display: inline-flex;
   align-items: center;
@@ -67,4 +74,17 @@
   background: var(--bg-secondary);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
+}
+
+.title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+}
+
+.codeInline {
+  margin-left: 6px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular);
+  color: var(--text-tertiary);
 }

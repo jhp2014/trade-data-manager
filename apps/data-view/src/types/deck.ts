@@ -1,3 +1,9 @@
+/* ===========================================================
+ * client 측에서 쓰는 직렬화 안전 타입
+ * (server action 의 결과는 JSON 직렬화되어 넘어와서
+ *  bigint 는 string 으로 바꿔서 전달)
+ * =========================================================== */
+
 export interface DeckEntryDTO {
   stockCode: string;
   tradeDate: string;
@@ -13,21 +19,25 @@ export interface LoadedDecksDTO {
   duplicateCount: number;
 }
 
-/** v0.1 mock — 동반 종목 + 자기 종목 분봉 피처 표시용 */
-export interface PeerStockMock {
+export interface StockMetricsDTO {
   stockCode: string;
   stockName: string;
-  changeRate: number;        // 등락률 % (음수 = 하락)
-  cumulativeAmount: number;  // 누적 거래대금 (원)
-  dayHighRate: number;       // 당일 고점 대비 등락률 %
-  pullbackFromHigh: number;  // 고점 대비 하락률 %
-  cnt100Amt: number;         // 100억 돌파 횟수
+  closeRate: number | null;
+  /** bigint → string 으로 직렬화 */
+  cumulativeAmount: string | null;
+  dayHighRate: number | null;
+  pullbackFromHigh: number | null;
+  cnt100Amt: number | null;
+}
+
+export interface ThemePeerGroupDTO {
+  themeId: string;
+  themeName: string;
+  peers: StockMetricsDTO[];
 }
 
 export interface CardData {
   entry: DeckEntryDTO;
-  selfStockName: string;             // mock — 종목명
-  selfMetrics: PeerStockMock;        // 자기 종목 5지표
-  themeName: string;                 // mock — 테마명 (한 카드당 대표 1개)
-  peers: PeerStockMock[];            // 동반 종목들
+  self: StockMetricsDTO;
+  themePeers: ThemePeerGroupDTO[]; // v0.3 까지 빈 배열
 }

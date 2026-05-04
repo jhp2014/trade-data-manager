@@ -47,14 +47,44 @@
   font-weight: var(--fw-semibold);
 }
 
+.themeRow td {
+  text-align: left !important;
+  background: var(--bg-secondary);
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-2);
+}
+
+.themeLabel {
+  display: inline-block;
+  color: var(--accent-primary);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+.themeCount {
+  margin-left: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+}
+
+.emptyPeer {
+  text-align: center !important;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  padding: var(--space-2) !important;
+}
+
+.moreCell {
+  padding: var(--space-1) !important;
+  text-align: center !important;
+}
+
 .moreBtn {
-  margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  width: 100%;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
   color: var(--text-secondary);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   transition: background var(--transition-fast);
 }
