@@ -121,6 +121,7 @@ async function fetchDaily(
         low: toNum(r.low),
         close: toNum(r.close),
         volume: toNum(r.volume),
+        amount: toNum(r.amount),
         prevCloseKrx: r.prevCloseKrx != null ? Number(r.prevCloseKrx) : undefined,
         prevCloseNxt: r.prevCloseNxt != null ? Number(r.prevCloseNxt) : undefined,
     }));
@@ -316,7 +317,7 @@ async function fetchThemeOverlay(
     });
 
     // 너무 많으면 잘라냄 — 가독성 + 성능
-    const MAX_SERIES = 10;
+    const MAX_SERIES = 15;
     const remain = Math.max(0, MAX_SERIES - result.length);
     return [...result, ...peers.slice(0, remain)];
 }

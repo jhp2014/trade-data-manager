@@ -99,8 +99,6 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             localization: {
                 locale: "ko-KR",
                 timeFormatter: (t: number) => kstHHmm(t),
-                priceFormatter: (p: number) =>
-                    `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`,
             },
         });
 
@@ -111,6 +109,9 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             borderDownColor: "#3b82f6",
             wickUpColor: "#ef4444",
             wickDownColor: "#3b82f6",
+            priceScaleId: "right",
+            priceLineVisible: false,        // ← 추가 (마지막 종가 점선 제거)
+            lastValueVisible: false,        // ← 좌측 등 잔여 라벨 제거
             priceFormat: {
                 type: "custom",
                 formatter: (p: number) => `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`,
@@ -128,15 +129,22 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             title: "",
         });
 
-        // 거래대금 히스토그램 — 좌측 priceScale 사용
+        // 거래대금 히스토그램 — 좌측 priceScale 사용 (억 단위로 변환해서 set)
         const amountSeries = chart.addHistogramSeries({
             priceScaleId: "left",
             priceFormat: {
                 type: "custom",
-                formatter: (v: number) => fmtAmount(v),
+                formatter: (v: number) => `${v.toFixed(0)}억`,
                 minMove: 1,
             },
             color: "rgba(120,120,140,0.5)",
+        });
+
+        // 좌측 priceScale 옵션 강제 (캔들과 분리)
+        chart.priceScale("left").applyOptions({
+            visible: true,
+            borderVisible: false,
+            scaleMargins: { top: 0.75, bottom: 0 },
         });
 
         chartRef.current = chart;
@@ -188,15 +196,19 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             `;
             tip.style.display = "block";
 
-            // 마우스 근처 위치, 가장자리 회피
+            // 마우스 우하단에 위치 (좌측 priceScale 너비 보정)
+            const leftScaleWidth = chart.priceScale("left").width();
+            const ax = param.point.x + leftScaleWidth; // plot 좌표 → container 좌표
+            const ay = param.point.y;
+
             const TW = tip.offsetWidth || 180;
             const TH = tip.offsetHeight || 100;
-            const M = 12;
-            let left = param.point.x + M;
-            if (left + TW > c.clientWidth) left = param.point.x - M - TW;
+            const M = 16;
+            let left = ax + M;
+            let top = ay + M;
+            if (left + TW > c.clientWidth) left = ax - M - TW;
             if (left < 0) left = M;
-            let top = param.point.y + M;
-            if (top + TH > c.clientHeight) top = param.point.y - M - TH;
+            if (top + TH > c.clientHeight) top = ay - M - TH;
             if (top < 0) top = M;
             tip.style.left = `${left}px`;
             tip.style.top = `${top}px`;
@@ -241,12 +253,12 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
         for (const c of candles) {
             const a = c.amount ?? 0;
             cum += a;
-            amountMap.set(c.time, a);
+            amountMap.set(c.time, a);    // 원 단위로 저장 (모달용)
             cumMap.set(c.time, cum);
             if (c.amount != null) {
                 amountData.push({
                     time: c.time as Time,
-                    value: a,
+                    value: a / 1e8,           // ← 억 단위로 변환
                     color:
                         c.close >= c.open
                             ? "rgba(239,68,68,0.5)"

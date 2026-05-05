@@ -236,16 +236,18 @@ export function RealThemeOverlayChart({
             if (!tip || !c) return;
             const TW = tip.offsetWidth || 320;
             const TH = tip.offsetHeight || 200;
-            const M = 14;
+            const M = 16;
+            // 기본: 우하단
             let left = x + M;
+            let top = y + M;
             if (left + TW > c.clientWidth) left = x - M - TW;
             if (left < 0) left = M;
-            let top = y + M;
             if (top + TH > c.clientHeight) top = y - M - TH;
             if (top < 0) top = M;
             tip.style.left = `${left}px`;
             tip.style.top = `${top}px`;
         }
+
 
         return () => {
             if (rafRef.current !== null) {
@@ -288,7 +290,7 @@ export function RealThemeOverlayChart({
             const color = s.isSelf ? "#fbbf24" : PALETTE[idx % PALETTE.length];
             const api: ISeriesApi<"Line"> = chart.addLineSeries({
                 color,
-                lineWidth: (s.isSelf ? 2 : 1) as 1 | 2,
+                lineWidth: (s.isSelf ? 4 : 1) as 1 | 4,
                 priceLineVisible: false,
                 lastValueVisible: false,
                 crosshairMarkerVisible: true,
