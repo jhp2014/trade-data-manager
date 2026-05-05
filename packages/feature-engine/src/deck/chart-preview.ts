@@ -14,13 +14,22 @@ import type { Database } from "../index";
  * =========================================================== */
 
 export interface ChartCandle {
-    /** unix seconds (KST 기준 타임스탬프) */
-    time: number;
+    time: number; // unix seconds (UTC)
     open: number;
     high: number;
     low: number;
     close: number;
-    volume: number;
+    volume?: number;
+    amount?: number; // 분봉 거래대금 (KRW), 분봉에서만 사용
+    prevCloseKrx?: number; // 일봉에서만 사용 — 모달의 KRX% 계산용
+    prevCloseNxt?: number; // 일봉에서만 사용 — 모달의 NXT% 계산용
+}
+
+export interface ChartOverlayPoint {
+    time: number;
+    value: number;           // closeRateNxt (%)
+    amount: number;          // trading_amount (원)
+    cumAmount: number;       // cumulative_trading_amount (원)
 }
 
 export interface ChartLinePoint {
@@ -32,8 +41,7 @@ export interface ChartOverlaySeries {
     stockCode: string;
     stockName: string;
     isSelf: boolean;
-    /** 분봉 closeRateNxt 시계열 (% 단위, 당일 09:00~) */
-    series: ChartLinePoint[];
+    series: ChartOverlayPoint[];
 }
 
 export interface ChartPreviewData {
@@ -89,6 +97,9 @@ async function fetchDaily(
             low: dailyCandles.lowKrx,
             close: dailyCandles.closeKrx,
             volume: dailyCandles.tradingVolumeKrx,
+            amount: dailyCandles.tradingAmountKrx,
+            prevCloseKrx: dailyCandles.prevCloseKrx,
+            prevCloseNxt: dailyCandles.prevCloseNxt,
         })
         .from(dailyCandles)
         .where(
@@ -101,15 +112,17 @@ async function fetchDaily(
         .limit(DAILY_LOOKBACK);
 
     // ASC 로 뒤집어서 차트 시간순 정렬
-    const asc = rows.reverse();
+    const ascRows = rows.slice().reverse();
 
-    return asc.map((r) => ({
+    return ascRows.map((r) => ({
         time: dateToUnix(r.tradeDate as any),
         open: toNum(r.open),
         high: toNum(r.high),
         low: toNum(r.low),
         close: toNum(r.close),
         volume: toNum(r.volume),
+        prevCloseKrx: r.prevCloseKrx != null ? Number(r.prevCloseKrx) : undefined,
+        prevCloseNxt: r.prevCloseNxt != null ? Number(r.prevCloseNxt) : undefined,
     }));
 }
 
@@ -131,6 +144,7 @@ async function fetchMinute(
             lowRateNxt: minuteCandles.lowRateNxt,
             closeRateNxt: minuteCandles.closeRateNxt,
             volume: minuteCandles.tradingVolume,
+            amount: minuteCandles.tradingAmount,
         })
         .from(minuteCandles)
         .where(
@@ -159,13 +173,14 @@ async function fetchMinute(
             low: toNum(r.lowRateNxt),
             close: toNum(r.closeRateNxt),
             volume: toNum(r.volume),
+            amount: toNum(r.amount),
         });
     }
     return result;
 }
-
 /* ===========================================================
  * 테마 오버레이 — 같은 (themeId, tradeDate) 종목들의 당일 분봉 closeRateNxt
+ *                + trading_amount + cumulative_trading_amount
  * =========================================================== */
 
 async function fetchThemeOverlay(
@@ -175,12 +190,12 @@ async function fetchThemeOverlay(
 ): Promise<ChartOverlaySeries[]> {
     // 1) 자기 종목이 그날 속한 themeId 들
     const themeRows = await db.execute(sql`
-    SELECT DISTINCT t.theme_id, t.theme_name
-    FROM daily_candles dc
-    JOIN daily_theme_mappings dtm ON dtm.daily_candle_id = dc.id
-    JOIN themes t ON t.theme_id = dtm.theme_id
-    WHERE dc.stock_code = ${stockCode} AND dc.trade_date = ${tradeDate}::date
-  `);
+        SELECT DISTINCT t.theme_id, t.theme_name
+        FROM daily_candles dc
+        JOIN daily_theme_mappings dtm ON dtm.daily_candle_id = dc.id
+        JOIN themes t ON t.theme_id = dtm.theme_id
+        WHERE dc.stock_code = ${stockCode} AND dc.trade_date = ${tradeDate}::date
+    `);
     const themeList = (themeRows as unknown as {
         rows: Array<{ theme_id: string | bigint; theme_name: string }>;
     }).rows;
@@ -194,15 +209,15 @@ async function fetchThemeOverlay(
 
     // 2) 그 테마들에 속한 (그날의) 모든 종목 코드
     const peerCodeRows = await db.execute(sql`
-    SELECT DISTINCT dc.stock_code
-    FROM daily_theme_mappings dtm
-    JOIN daily_candles dc ON dc.id = dtm.daily_candle_id
-    WHERE dtm.theme_id IN (${sql.join(
+        SELECT DISTINCT dc.stock_code
+        FROM daily_theme_mappings dtm
+        JOIN daily_candles dc ON dc.id = dtm.daily_candle_id
+        WHERE dtm.theme_id IN (${sql.join(
         themeIds.map((id) => sql`${id}::bigint`),
         sql`, `
     )})
-      AND dc.trade_date = ${tradeDate}::date
-  `);
+          AND dc.trade_date = ${tradeDate}::date
+    `);
     const peerCodes = (peerCodeRows as unknown as {
         rows: Array<{ stock_code: string }>;
     }).rows.map((r) => r.stock_code);
@@ -222,33 +237,52 @@ async function fetchThemeOverlay(
         .where(inArray(stocks.stockCode, allCodes));
     const nameMap = new Map(nameRows.map((r) => [r.stockCode, r.stockName]));
 
-    // 4) 당일 분봉 closeRateNxt 시계열
-    const seriesRows = await db
-        .select({
-            stockCode: minuteCandles.stockCode,
-            unixTimestamp: minuteCandles.unixTimestamp,
-            closeRateNxt: minuteCandles.closeRateNxt,
-        })
-        .from(minuteCandles)
-        .where(
-            and(
-                inArray(minuteCandles.stockCode, allCodes),
-                eq(minuteCandles.tradeDate, tradeDate)
-            )
-        )
-        .orderBy(
-            asc(minuteCandles.stockCode),
-            asc(minuteCandles.tradeTime)
-        );
+    // 4) 당일 분봉 closeRateNxt + trading_amount + cumulative_trading_amount
+    //    (cumulative_trading_amount 는 minute_candle_features 에 있으므로 join 필요)
+    const seriesResult = await db.execute(sql`
+        SELECT
+            mc.stock_code,
+            mc.unix_timestamp,
+            mcf.close_rate_nxt,
+            mc.trading_amount,
+            mcf.cumulative_trading_amount
+        FROM minute_candle_features mcf
+        JOIN minute_candles mc ON mc.id = mcf.minute_candle_id
+        WHERE mc.trade_date = ${tradeDate}::date
+          AND mc.stock_code IN (${sql.join(
+        allCodes.map((c) => sql`${c}`),
+        sql`, `
+    )})
+        ORDER BY mc.stock_code, mc.trade_time
+    `);
+    const seriesRows = (seriesResult as unknown as {
+        rows: Array<{
+            stock_code: string;
+            unix_timestamp: number | string;
+            close_rate_nxt: number | string | null;
+            trading_amount: number | string | null;
+            cumulative_trading_amount: number | string | null;
+        }>;
+    }).rows;
 
     // 5) 종목별 grouping
-    const grouped = new Map<string, ChartLinePoint[]>();
+    const grouped = new Map<string, ChartOverlayPoint[]>();
     for (const r of seriesRows) {
-        const v = toNum(r.closeRateNxt);
+        if (r.close_rate_nxt === null) continue;
+        const v = toNum(r.close_rate_nxt);
         if (!Number.isFinite(v)) continue;
-        const arr = grouped.get(r.stockCode) ?? [];
-        arr.push({ time: r.unixTimestamp, value: v });
-        grouped.set(r.stockCode, arr);
+        const t =
+            typeof r.unix_timestamp === "string"
+                ? Number(r.unix_timestamp)
+                : r.unix_timestamp;
+        const arr = grouped.get(r.stock_code) ?? [];
+        arr.push({
+            time: t,
+            value: v,
+            amount: toNum(r.trading_amount),
+            cumAmount: toNum(r.cumulative_trading_amount),
+        });
+        grouped.set(r.stock_code, arr);
     }
 
     // 6) 결과 — 자기 종목을 첫번째로
@@ -283,7 +317,8 @@ async function fetchThemeOverlay(
 
     // 너무 많으면 잘라냄 — 가독성 + 성능
     const MAX_SERIES = 10;
-    return [...result, ...peers.slice(0, MAX_SERIES - result.length)];
+    const remain = Math.max(0, MAX_SERIES - result.length);
+    return [...result, ...peers.slice(0, remain)];
 }
 
 async function fetchSelfOnlyOverlay(
@@ -291,25 +326,42 @@ async function fetchSelfOnlyOverlay(
     stockCode: string,
     tradeDate: string
 ): Promise<ChartOverlaySeries[]> {
-    const rows = await db
-        .select({
-            unixTimestamp: minuteCandles.unixTimestamp,
-            closeRateNxt: minuteCandles.closeRateNxt,
-        })
-        .from(minuteCandles)
-        .where(
-            and(
-                eq(minuteCandles.stockCode, stockCode),
-                eq(minuteCandles.tradeDate, tradeDate)
-            )
-        )
-        .orderBy(asc(minuteCandles.tradeTime));
+    const rowsResult = await db.execute(sql`
+        SELECT
+            mc.unix_timestamp,
+            mcf.close_rate_nxt,
+            mc.trading_amount,
+            mcf.cumulative_trading_amount
+        FROM minute_candle_features mcf
+        JOIN minute_candles mc ON mc.id = mcf.minute_candle_id
+        WHERE mc.stock_code = ${stockCode}
+          AND mc.trade_date = ${tradeDate}::date
+        ORDER BY mc.trade_time
+    `);
+    const rows = (rowsResult as unknown as {
+        rows: Array<{
+            unix_timestamp: number | string;
+            close_rate_nxt: number | string | null;
+            trading_amount: number | string | null;
+            cumulative_trading_amount: number | string | null;
+        }>;
+    }).rows;
 
-    const series: ChartLinePoint[] = [];
+    const series: ChartOverlayPoint[] = [];
     for (const r of rows) {
-        const v = toNum(r.closeRateNxt);
+        if (r.close_rate_nxt === null) continue;
+        const v = toNum(r.close_rate_nxt);
         if (!Number.isFinite(v)) continue;
-        series.push({ time: r.unixTimestamp, value: v });
+        const t =
+            typeof r.unix_timestamp === "string"
+                ? Number(r.unix_timestamp)
+                : r.unix_timestamp;
+        series.push({
+            time: t,
+            value: v,
+            amount: toNum(r.trading_amount),
+            cumAmount: toNum(r.cumulative_trading_amount),
+        });
     }
 
     if (series.length === 0) return [];

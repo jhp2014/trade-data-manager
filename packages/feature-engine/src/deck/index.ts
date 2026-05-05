@@ -8,5 +8,6 @@ export type {
     ChartPreviewData,
     ChartCandle,
     ChartLinePoint,
+    ChartOverlayPoint,
     ChartOverlaySeries,
 } from "./chart-preview";

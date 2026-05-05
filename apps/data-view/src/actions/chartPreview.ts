@@ -5,11 +5,12 @@ import {
   type ChartPreviewData,
   type ChartCandle,
   type ChartLinePoint,
-  type ChartOverlaySeries,
+  type ChartOverlayPoint,
+  ChartOverlaySeries,
 } from "@trade-data-manager/feature-engine";
 import { getDataViewDb } from "./db";
 
-export type { ChartCandle, ChartLinePoint, ChartOverlaySeries };
+export type { ChartCandle, ChartLinePoint, ChartOverlaySeries, ChartOverlayPoint };
 export type ChartPreviewDTO = ChartPreviewData;
 
 export async function fetchChartPreviewAction(params: {

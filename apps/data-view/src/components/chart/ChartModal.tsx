@@ -17,7 +17,6 @@ export function ChartModal() {
 
     const { data, isLoading } = useChartPreview(target);
 
-    // ESC로 닫기
     useEffect(() => {
         if (!target) return;
         const onKey = (e: KeyboardEvent) => {
@@ -27,7 +26,6 @@ export function ChartModal() {
         return () => window.removeEventListener("keydown", onKey);
     }, [target, close]);
 
-    // body scroll lock
     useEffect(() => {
         if (!target) return;
         const prev = document.body.style.overflow;
@@ -37,7 +35,6 @@ export function ChartModal() {
         };
     }, [target]);
 
-    // 모달 열릴 때 default tab = minute
     useEffect(() => {
         if (target) setTab("minute");
     }, [target]);
@@ -62,7 +59,10 @@ export function ChartModal() {
                         <TabBtn active={tab === "daily"} onClick={() => setTab("daily")}>
                             일봉
                         </TabBtn>
-                        <TabBtn active={tab === "overlay"} onClick={() => setTab("overlay")}>
+                        <TabBtn
+                            active={tab === "overlay"}
+                            onClick={() => setTab("overlay")}
+                        >
                             테마 오버레이
                         </TabBtn>
                         <button type="button" className={styles.closeBtn} onClick={close}>

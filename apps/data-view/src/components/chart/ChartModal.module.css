@@ -114,3 +114,14 @@
     justify-content: center;
     color: var(--text-muted);
 }
+
+.overlayLayout {
+    display: flex;
+    gap: var(--space-3);
+    height: 100%;
+}
+
+.overlayChart {
+    flex: 1;
+    min-width: 0;
+}
