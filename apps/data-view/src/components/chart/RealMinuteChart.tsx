@@ -18,12 +18,21 @@ interface Props {
     markerTime?: number | null;
 }
 
+const fmtAmount = (v: number) => {
+    if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억`;
+    if (v >= 1e4) return `${(v / 1e4).toFixed(0)}만`;
+    return v.toFixed(0);
+};
+
 export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const labelRef = useRef<HTMLDivElement>(null);
+    const tooltipRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+    // time -> 누적거래대금 매핑 (분봉엔 직접 없으므로 setData 시 누적 계산)
+    const cumAmountMapRef = useRef<Map<number, number>>(new Map());
+    const amountMapRef = useRef<Map<number, number>>(new Map());
 
     useEffect(() => {
         const container = containerRef.current;
@@ -43,12 +52,7 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             },
             crosshair: {
                 mode: CrosshairMode.Normal,
-                // 가로선 숨김
-                horzLine: {
-                    visible: false,
-                    labelVisible: false,
-                },
-                // 세로선만 강조
+                // 가로/세로 모두 표시
                 vertLine: {
                     visible: true,
                     width: 1,
@@ -56,10 +60,25 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
                     style: LineStyle.Solid,
                     labelVisible: true,
                 },
+                horzLine: {
+                    visible: true,
+                    width: 1,
+                    color: "rgba(180,180,180,0.5)",
+                    style: LineStyle.Dashed,
+                    labelVisible: true,
+                },
             },
+            // 우측: 등락률(%)
             rightPriceScale: {
+                visible: true,
                 borderVisible: false,
                 scaleMargins: { top: 0.04, bottom: 0.30 },
+            },
+            // 좌측: 거래대금
+            leftPriceScale: {
+                visible: true,
+                borderVisible: false,
+                scaleMargins: { top: 0.75, bottom: 0 },
             },
             timeScale: {
                 borderVisible: false,
@@ -109,50 +128,78 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             title: "",
         });
 
-        // 거래대금 히스토그램 (별도 priceScale)
+        // 거래대금 히스토그램 — 좌측 priceScale 사용
         const amountSeries = chart.addHistogramSeries({
-            priceScaleId: "amount",
-            priceFormat: { type: "volume" },
+            priceScaleId: "left",
+            priceFormat: {
+                type: "custom",
+                formatter: (v: number) => fmtAmount(v),
+                minMove: 1,
+            },
             color: "rgba(120,120,140,0.5)",
         });
-        chart
-            .priceScale("amount")
-            .applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } });
 
         chartRef.current = chart;
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
 
-        // 상단 라벨: "+12.34% · 14:35"
+        // 마우스 추적 모달
         chart.subscribeCrosshairMove((param) => {
-            const label = labelRef.current;
+            const tip = tooltipRef.current;
             const c = containerRef.current;
-            if (!label || !c) return;
+            if (!tip || !c) return;
 
             if (
                 !param.point ||
                 !param.time ||
                 param.point.x < 0 ||
-                param.point.x > c.clientWidth
+                param.point.x > c.clientWidth ||
+                param.point.y < 0 ||
+                param.point.y > c.clientHeight
             ) {
-                label.style.display = "none";
+                tip.style.display = "none";
                 return;
             }
 
             const data = param.seriesData.get(candleSeries) as
-                | { close?: number; value?: number }
+                | { open?: number; high?: number; low?: number; close?: number }
                 | undefined;
-            if (!data) {
-                label.style.display = "none";
+            if (!data || data.close === undefined) {
+                tip.style.display = "none";
                 return;
             }
 
-            const v = data.close ?? data.value ?? 0;
             const t = param.time as number;
+            const v = data.close;
             const color = v >= 0 ? "#ef4444" : "#3b82f6";
-            label.innerHTML = `<span style="color:${color};font-weight:600">${v >= 0 ? "+" : ""
-                }${v.toFixed(2)}%</span> <span style="color:#a0a0a0;margin-left:8px">${kstHHmm(t)}</span>`;
-            label.style.display = "block";
+            const amount = amountMapRef.current.get(t) ?? 0;
+            const cumAmount = cumAmountMapRef.current.get(t) ?? 0;
+
+            tip.innerHTML = `
+                <div style="font-size:11px;color:#a0a0a0;margin-bottom:6px">${kstHHmm(t)}</div>
+                <div style="display:grid;grid-template-columns:auto auto;gap:4px 12px;font-size:12px">
+                  <div style="color:#a0a0a0">등락률</div>
+                  <div style="text-align:right;font-variant-numeric:tabular-nums;color:${color};font-weight:600">${v >= 0 ? "+" : ""}${v.toFixed(2)}%</div>
+                  <div style="color:#a0a0a0">분거래대금</div>
+                  <div style="text-align:right;font-variant-numeric:tabular-nums">${fmtAmount(amount)}</div>
+                  <div style="color:#a0a0a0">누적</div>
+                  <div style="text-align:right;font-variant-numeric:tabular-nums">${fmtAmount(cumAmount)}</div>
+                </div>
+            `;
+            tip.style.display = "block";
+
+            // 마우스 근처 위치, 가장자리 회피
+            const TW = tip.offsetWidth || 180;
+            const TH = tip.offsetHeight || 100;
+            const M = 12;
+            let left = param.point.x + M;
+            if (left + TW > c.clientWidth) left = param.point.x - M - TW;
+            if (left < 0) left = M;
+            let top = param.point.y + M;
+            if (top + TH > c.clientHeight) top = param.point.y - M - TH;
+            if (top < 0) top = M;
+            tip.style.left = `${left}px`;
+            tip.style.top = `${top}px`;
         });
 
         const ro = new ResizeObserver(() => {
@@ -186,27 +233,39 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
         }));
         candleSeries.setData(candleData);
 
-        const amountData = candles
-            .filter((c) => c.amount != null)
-            .map((c) => ({
-                time: c.time as Time,
-                value: c.amount as number,
-                color:
-                    c.close >= c.open
-                        ? "rgba(239,68,68,0.5)"
-                        : "rgba(59,130,246,0.5)",
-            }));
+        // amount + 누적 누적
+        const amountMap = new Map<number, number>();
+        const cumMap = new Map<number, number>();
+        const amountData: Array<{ time: Time; value: number; color: string }> = [];
+        let cum = 0;
+        for (const c of candles) {
+            const a = c.amount ?? 0;
+            cum += a;
+            amountMap.set(c.time, a);
+            cumMap.set(c.time, cum);
+            if (c.amount != null) {
+                amountData.push({
+                    time: c.time as Time,
+                    value: a,
+                    color:
+                        c.close >= c.open
+                            ? "rgba(239,68,68,0.5)"
+                            : "rgba(59,130,246,0.5)",
+                });
+            }
+        }
+        amountMapRef.current = amountMap;
+        cumAmountMapRef.current = cumMap;
         amountSeries.setData(amountData);
 
         chartRef.current?.timeScale().fitContent();
     }, [candles]);
 
-    // 진입 시점 마커 (세로선 형태로 priceLine 대신 시간축 마커)
+    // 진입 시점 마커
     useEffect(() => {
         const series = candleSeriesRef.current;
         if (!series || markerTime == null) return;
 
-        // 진입 분의 캔들에 작은 화살표 마커
         series.setMarkers([
             {
                 time: markerTime as Time,
@@ -224,20 +283,20 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             style={{ position: "relative", width: "100%", height }}
         >
             <div
-                ref={labelRef}
+                ref={tooltipRef}
                 style={{
                     position: "absolute",
-                    top: 6,
-                    left: 12,
                     display: "none",
                     pointerEvents: "none",
-                    padding: "4px 10px",
-                    background: "rgba(20,20,24,0.85)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 4,
-                    fontSize: 12,
-                    fontVariantNumeric: "tabular-nums",
+                    padding: "10px 12px",
+                    background: "rgba(20,20,24,0.95)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    borderRadius: 6,
+                    color: "#fff",
                     zIndex: 10,
+                    fontFamily: "inherit",
+                    minWidth: 180,
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
                 }}
             />
         </div>

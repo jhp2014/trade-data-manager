@@ -158,8 +158,9 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
         function renderTooltip() {
             const tip = tooltipRef.current;
             const c = containerRef.current;
+            const series = seriesRef.current;
             const p = pendingRef.current;
-            if (!tip || !c || !p) return;
+            if (!tip || !c || !series || !p) return;
 
             const candle = dataMapRef.current.get(p.time);
             if (!candle) {
@@ -167,13 +168,20 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
                 return;
             }
 
+            // 십자선 y좌표 → 절대가로 환산 (그 봉의 차트 가격 스케일 기준)
+            const cursorPrice = series.coordinateToPrice(p.y);
+            if (cursorPrice === null || !Number.isFinite(cursorPrice)) {
+                tip.style.display = "none";
+                return;
+            }
+
             const krxPct =
                 candle.prevCloseKrx && candle.prevCloseKrx > 0
-                    ? ((candle.close - candle.prevCloseKrx) / candle.prevCloseKrx) * 100
+                    ? ((cursorPrice - candle.prevCloseKrx) / candle.prevCloseKrx) * 100
                     : null;
             const nxtPct =
                 candle.prevCloseNxt && candle.prevCloseNxt > 0
-                    ? ((candle.close - candle.prevCloseNxt) / candle.prevCloseNxt) * 100
+                    ? ((cursorPrice - candle.prevCloseNxt) / candle.prevCloseNxt) * 100
                     : null;
 
             const fmtPct = (v: number | null) =>
@@ -183,18 +191,16 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
                     }">${v >= 0 ? "+" : ""}${v.toFixed(2)}%</span>`;
 
             tip.innerHTML = `
-        <div style="font-size:11px;color:#a0a0a0;margin-bottom:6px">${kstYmd(
-                p.time,
-            )}</div>
-        <div style="display:grid;grid-template-columns:auto auto;gap:4px 12px;font-size:12px">
-          <div style="color:#a0a0a0">종가</div>
-          <div style="text-align:right;font-variant-numeric:tabular-nums">${candle.close.toLocaleString()}</div>
-          <div style="color:#a0a0a0">KRX %</div>
-          <div style="text-align:right;font-variant-numeric:tabular-nums">${fmtPct(krxPct)}</div>
-          <div style="color:#a0a0a0">NXT %</div>
-          <div style="text-align:right;font-variant-numeric:tabular-nums">${fmtPct(nxtPct)}</div>
-        </div>
-      `;
+                <div style="font-size:11px;color:#a0a0a0;margin-bottom:6px">${kstYmd(p.time)}</div>
+                <div style="display:grid;grid-template-columns:auto auto;gap:4px 12px;font-size:12px">
+                <div style="color:#a0a0a0">커서 가격</div>
+                <div style="text-align:right;font-variant-numeric:tabular-nums">${Math.round(cursorPrice).toLocaleString()}</div>
+                <div style="color:#a0a0a0">KRX %</div>
+                <div style="text-align:right;font-variant-numeric:tabular-nums">${fmtPct(krxPct)}</div>
+                <div style="color:#a0a0a0">NXT %</div>
+                <div style="text-align:right;font-variant-numeric:tabular-nums">${fmtPct(nxtPct)}</div>
+                </div>
+            `;
             tip.style.display = "block";
 
             // 위치: 마우스 근처, 가장자리 회피
@@ -210,6 +216,7 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
             tip.style.left = `${left}px`;
             tip.style.top = `${top}px`;
         }
+
 
         return () => {
             if (hoverTimerRef.current !== null) {

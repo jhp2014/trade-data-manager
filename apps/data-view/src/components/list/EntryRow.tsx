@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import type { ThemeRowData, StockMetricsDTO } from "@/types/deck";
 import {
@@ -8,17 +8,22 @@ import {
     formatKrwShort,
     riseFallClass,
 } from "@/components/format/number";
-import { AmountDistribution } from "./AmountDistribution";
+import { RowHoverPanel } from "./RowHoverPanel";
 import styles from "./EntryRow.module.css";
 
 interface Props {
     row: ThemeRowData;
 }
 
+const HOVER_OPEN_DELAY = 150;
+
 export function EntryRow({ row }: Props) {
     const [expanded, setExpanded] = useState(false);
-    const [hoverAmount, setHoverAmount] = useState(false);
     const open = useChartModalStore((s) => s.open);
+
+    const [hoverAnchor, setHoverAnchor] = useState<DOMRect | null>(null);
+    const rowRef = useRef<HTMLDivElement>(null);
+    const openTimerRef = useRef<number | null>(null);
 
     const { entry, self, themeName, selfRank, themeSize, peers } = row;
 
@@ -31,9 +36,31 @@ export function EntryRow({ row }: Props) {
         });
     };
 
+    const handleRowEnter = () => {
+        if (openTimerRef.current !== null) return;
+        openTimerRef.current = window.setTimeout(() => {
+            openTimerRef.current = null;
+            if (rowRef.current) {
+                setHoverAnchor(rowRef.current.getBoundingClientRect());
+            }
+        }, HOVER_OPEN_DELAY);
+    };
+
+    const handleRowLeave = () => {
+        if (openTimerRef.current !== null) {
+            window.clearTimeout(openTimerRef.current);
+            openTimerRef.current = null;
+        }
+        setHoverAnchor(null);
+    };
+
     return (
-        <div className={styles.rowGroup}>
-            <div className={styles.row}>
+        <div
+            className={styles.rowGroup}
+            onMouseEnter={handleRowEnter}
+            onMouseLeave={handleRowLeave}
+        >
+            <div className={styles.row} ref={rowRef}>
                 {/* 좌측: 식별 */}
                 <div className={styles.identityCol}>
                     <button
@@ -69,15 +96,17 @@ export function EntryRow({ row }: Props) {
                         cumulative={self.cumulativeAmount}
                         currentMinute={self.currentMinuteAmount}
                         tradeTime={entry.tradeTime}
-                        onHover={setHoverAmount}
                     />
                 </div>
             </div>
 
-            {/* 거래대금 분포 hover 표시 */}
-            {hoverAmount && self.amountDistribution && (
-                <AmountDistribution distribution={self.amountDistribution} />
-            )}
+            {/* 행 hover 시 portal 모달 */}
+            <RowHoverPanel
+                anchor={hoverAnchor}
+                options={entry.options}
+                sourceFile={entry.sourceFile}
+                distribution={self.amountDistribution}
+            />
 
             {/* 테마 내 종목 펼침 */}
             {expanded && (
@@ -142,19 +171,13 @@ function MetricAmount({
     cumulative,
     currentMinute,
     tradeTime,
-    onHover,
 }: {
     cumulative: string | null;
     currentMinute: string | null;
     tradeTime: string;
-    onHover: (v: boolean) => void;
 }) {
     return (
-        <div
-            className={`${styles.metric} ${styles.metricAmount}`}
-            onMouseEnter={() => onHover(true)}
-            onMouseLeave={() => onHover(false)}
-        >
+        <div className={styles.metric}>
             <span className={`tabular ${styles.metricMain}`}>
                 {formatKrwShort(cumulative)}
             </span>
@@ -180,8 +203,11 @@ function PeerRow({
     tradeDate: string;
     tradeTime: string;
 }) {
-    const [hoverAmount, setHoverAmount] = useState(false);
     const open = useChartModalStore((s) => s.open);
+
+    const [hoverAnchor, setHoverAnchor] = useState<DOMRect | null>(null);
+    const rowRef = useRef<HTMLDivElement>(null);
+    const openTimerRef = useRef<number | null>(null);
 
     const handleClick = () => {
         open({
@@ -192,9 +218,31 @@ function PeerRow({
         });
     };
 
+    const handleEnter = () => {
+        if (openTimerRef.current !== null) return;
+        openTimerRef.current = window.setTimeout(() => {
+            openTimerRef.current = null;
+            if (rowRef.current) {
+                setHoverAnchor(rowRef.current.getBoundingClientRect());
+            }
+        }, HOVER_OPEN_DELAY);
+    };
+
+    const handleLeave = () => {
+        if (openTimerRef.current !== null) {
+            window.clearTimeout(openTimerRef.current);
+            openTimerRef.current = null;
+        }
+        setHoverAnchor(null);
+    };
+
     return (
-        <div className={styles.peerRowGroup}>
-            <div className={styles.peerRow}>
+        <div
+            className={styles.peerRowGroup}
+            onMouseEnter={handleEnter}
+            onMouseLeave={handleLeave}
+        >
+            <div className={styles.peerRow} ref={rowRef}>
                 <div className={styles.identityCol}>
                     <span className={styles.peerRank}>{rank}</span>
                     <button
@@ -217,13 +265,15 @@ function PeerRow({
                         cumulative={peer.cumulativeAmount}
                         currentMinute={peer.currentMinuteAmount}
                         tradeTime={tradeTime}
-                        onHover={setHoverAmount}
                     />
                 </div>
             </div>
-            {hoverAmount && peer.amountDistribution && (
-                <AmountDistribution distribution={peer.amountDistribution} />
-            )}
+            <RowHoverPanel
+                anchor={hoverAnchor}
+                options={{}}
+                sourceFile=""
+                distribution={peer.amountDistribution}
+            />
         </div>
     );
 }
