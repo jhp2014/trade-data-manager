@@ -2,16 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { ControlBar } from "@/components/deck/ControlBar";
-import { EntryCard } from "@/components/deck/EntryCard";
+import { EntryRow } from "@/components/list/EntryRow";
 import { EmptyState } from "@/components/deck/EmptyState";
-import type { CardData, LoadedDecksDTO } from "@/types/deck";
+import type { ThemeRowData, LoadedDecksDTO } from "@/types/deck";
 import { loadDeckAction } from "@/actions/deck";
+import styles from "./Filtered.module.css";
+import { ChartModal } from "@/components/chart/ChartModal";
 
 interface Props {
   initialSubDir: string;
   initialResult:
-    | { ok: true; data: LoadedDecksDTO; cards: CardData[] }
-    | { ok: false; error: string };
+  | { ok: true; data: LoadedDecksDTO; rows: ThemeRowData[] }
+  | { ok: false; error: string };
 }
 
 export function FilteredClient({ initialSubDir, initialResult }: Props) {
@@ -26,29 +28,9 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
   };
 
   return (
-    <div
-      style={{
-        padding: "var(--space-6)",
-        maxWidth: 1200,
-        margin: "0 auto",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: "var(--fs-3xl)",
-          fontWeight: "var(--fw-bold)",
-          marginBottom: "var(--space-2)",
-        }}
-      >
-        Filtered
-      </h1>
-      <p
-        style={{
-          color: "var(--text-tertiary)",
-          fontSize: "var(--fs-md)",
-          marginBottom: "var(--space-5)",
-        }}
-      >
+    <div className={styles.page}>
+      <h1 className={styles.title}>Filtered</h1>
+      <p className={styles.subtitle}>
         DECKS_DIR 의 CSV 파일들을 합쳐 시점별 분석을 보여줍니다.
       </p>
 
@@ -58,50 +40,39 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
         summary={
           result.ok
             ? {
-                files: result.data.files.length,
-                entries: result.data.entries.length,
-                optionKeys: result.data.optionKeys,
-                duplicateCount: result.data.duplicateCount,
-              }
+              files: result.data.files.length,
+              entries: result.data.entries.length,
+              optionKeys: result.data.optionKeys,
+              duplicateCount: result.data.duplicateCount,
+            }
             : undefined
         }
         onLoad={handleLoad}
       />
 
       {!result.ok && (
-        <EmptyState
-          variant="error"
-          title="덱 로드 실패"
-          body={result.error}
-        />
+        <EmptyState variant="error" title="덱 로드 실패" body={result.error} />
       )}
 
-      {result.ok && result.cards.length === 0 && (
+      {result.ok && result.rows.length === 0 && (
         <EmptyState
           title="entry 없음"
-          body={
-            "이 폴더에는 csv 파일이 없거나 모든 entry가 비어있습니다.\n" +
-            "DECKS_DIR 경로와 하위 폴더를 확인해주세요."
-          }
+          body={"이 폴더에는 csv 파일이 없거나 모든 entry가 비어있습니다."}
         />
       )}
 
-      {result.ok && result.cards.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--space-3)",
-          }}
-        >
-          {result.cards.map((c) => (
-            <EntryCard
-              key={`${c.entry.stockCode}|${c.entry.tradeDate}|${c.entry.tradeTime}`}
-              data={c}
+      {result.ok && result.rows.length > 0 && (
+        <div className={styles.list}>
+          {result.rows.map((r, idx) => (
+            <EntryRow
+              key={`${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}|${idx}`}
+              row={r}
             />
           ))}
         </div>
       )}
+
+      <ChartModal />
     </div>
   );
 }

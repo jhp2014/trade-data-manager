@@ -1,0 +1,37 @@
+.box {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: 10px 16px 14px 16px;
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.bucket {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 3px 8px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-xs);
+}
+
+.zero {
+    opacity: 0.35;
+}
+
+.amt {
+    color: var(--text-tertiary);
+}
+
+.cnt {
+    color: var(--text-primary);
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+}
+
+.empty {
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+}

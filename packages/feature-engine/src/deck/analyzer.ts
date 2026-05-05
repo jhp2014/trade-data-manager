@@ -1,11 +1,8 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import {
     stocks,
-    dailyCandles,
-    dailyThemeMappings,
-    themes,
 } from "@trade-data-manager/market-data";
-import type { Database } from "../index";
+import { STAT_AMOUNTS, type Database } from "../index";
 import type {
     DeckEntry,
     AnalyzedEntry,
@@ -67,12 +64,11 @@ export async function analyzeEntries(
                 const row = peerFeatureMap.get(makeKey(code, entry.tradeDate, entry.tradeTime));
                 peers.push(buildMetrics(code, stockNameMap, row));
             }
-            // 정렬: 누적 거래대금 큰 순 → 상위 노출 우선
+            // 정렬: 등락률 순 → 상위 노출 우선
             peers.sort((a, b) => {
-                const av = a.cumulativeAmount ?? 0n;
-                const bv = b.cumulativeAmount ?? 0n;
-                if (av === bv) return 0;
-                return av > bv ? -1 : 1;
+                const av = a.closeRate ?? -Infinity;
+                const bv = b.closeRate ?? -Infinity;
+                return bv - av; // 등락률 큰 순
             });
             return {
                 themeId: t.themeId,
@@ -101,7 +97,6 @@ async function fetchFeatures(
 ): Promise<Map<string, Record<string, any>>> {
     if (keys.length === 0) return new Map();
 
-    // dedupe (peer 호출 시 중복이 많이 발생)
     const seen = new Set<string>();
     const uniq: FeatureKey[] = [];
     for (const k of keys) {
@@ -116,18 +111,29 @@ async function fetchFeatures(
         (k) => sql`(${k.stockCode}, ${k.tradeDate}::date, ${k.tradeTime}::time)`
     );
 
+    // cnt 컬럼들 동적으로
+    const cntCols = STAT_AMOUNTS.map(
+        (a) => sql.raw(`cnt_${a}_amt`)
+    );
+
     const result = await db.execute(sql`
     SELECT
-      stock_code,
-      trade_date,
-      trade_time,
-      close_rate_nxt,
-      cumulative_trading_amount,
-      day_high_rate,
-      pullback_from_day_high,
-      cnt_100_amt
-    FROM minute_candle_features
-    WHERE (stock_code, trade_date, trade_time) IN (${sql.join(tuples, sql`, `)})
+      mcf.stock_code,
+      mcf.trade_date,
+      mcf.trade_time,
+      mcf.close_rate_nxt,
+      mcf.cumulative_trading_amount,
+      mcf.day_high_rate,
+      mcf.pullback_from_day_high,
+      mcf.minutes_since_day_high,
+      mc.trading_amount AS current_minute_amount,
+      ${sql.join(
+        STAT_AMOUNTS.map((a) => sql.raw(`mcf.cnt_${a}_amt`)),
+        sql`, `
+    )}
+    FROM minute_candle_features mcf
+    JOIN minute_candles mc ON mc.id = mcf.minute_candle_id
+    WHERE (mcf.stock_code, mcf.trade_date, mcf.trade_time) IN (${sql.join(tuples, sql`, `)})
   `);
 
     const rows = (result as unknown as { rows: Array<Record<string, any>> }).rows;
@@ -143,6 +149,7 @@ async function fetchFeatures(
     }
     return map;
 }
+
 
 /* ===========================================================
  * 2) entry 종목들의 그날 속한 테마
@@ -319,6 +326,16 @@ function buildMetrics(
     nameMap: Map<string, string>,
     row: Record<string, any> | undefined
 ): StockMetrics {
+    const distribution: Record<number, number> | null = row
+        ? (() => {
+            const d: Record<number, number> = {};
+            for (const a of STAT_AMOUNTS) {
+                d[a] = toInt(row[`cnt_${a}_amt`]) ?? 0;
+            }
+            return d;
+        })()
+        : null;
+
     return {
         stockCode,
         stockName: nameMap.get(stockCode) ?? stockCode,
@@ -326,9 +343,12 @@ function buildMetrics(
         cumulativeAmount: row ? toBigInt(row.cumulative_trading_amount) : null,
         dayHighRate: row ? toNum(row.day_high_rate) : null,
         pullbackFromHigh: row ? toNum(row.pullback_from_day_high) : null,
-        cnt100Amt: row ? toInt(row.cnt_100_amt) : null,
+        minutesSinceDayHigh: row ? toInt(row.minutes_since_day_high) : null,
+        currentMinuteAmount: row ? toBigInt(row.current_minute_amount) : null,
+        amountDistribution: distribution,
     };
 }
+
 
 function makeKey(stockCode: string, tradeDate: string, tradeTime: string): string {
     return `${stockCode}|${tradeDate}|${tradeTime}`;

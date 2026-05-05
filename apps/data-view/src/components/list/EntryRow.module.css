@@ -1,0 +1,169 @@
+.rowGroup {
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    gap: var(--space-4);
+    transition: background var(--transition-fast);
+}
+
+.row:hover {
+    background: var(--bg-hover);
+}
+
+.identityCol {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+    flex: 1;
+}
+
+.rankBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    transition: background var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.rankBtn:hover {
+    background: var(--bg-tertiary);
+}
+
+.rank {
+    font-size: var(--fs-md);
+    font-weight: var(--fw-bold);
+    color: var(--text-primary);
+}
+
+.rankSlash {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    margin-right: 4px;
+}
+
+.themeChip {
+    font-size: var(--fs-xs);
+    color: var(--accent-primary);
+    font-weight: var(--fw-semibold);
+}
+
+.stockBtn {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 0;
+    min-width: 0;
+}
+
+.stockBtn:hover .stockName {
+    color: var(--accent-primary);
+}
+
+.stockName {
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-semibold);
+    color: var(--text-primary);
+    transition: color var(--transition-fast);
+}
+
+.stockCode {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+
+.tradeTime {
+    font-size: var(--fs-sm);
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+}
+
+/* 우측: 3개 metric block */
+.metricsCol {
+    display: grid;
+    grid-template-columns: 100px 160px 200px;
+    gap: var(--space-5);
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.metric {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    line-height: 1.2;
+}
+
+.metricMain {
+    font-size: var(--fs-md);
+    font-weight: var(--fw-semibold);
+}
+
+.metricSub {
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.dot {
+    color: var(--text-muted);
+}
+
+.metricAmount {
+    cursor: help;
+}
+
+/* peer rows */
+.peerList {
+    background: var(--bg-secondary);
+    padding: 4px 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.peerRowGroup {
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.peerRowGroup:last-child {
+    border-bottom: none;
+}
+
+.peerRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 10px 40px;
+    gap: var(--space-4);
+}
+
+.peerRow:hover {
+    background: var(--bg-tertiary);
+}
+
+.peerRank {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    color: var(--text-tertiary);
+    min-width: 24px;
+    font-variant-numeric: tabular-nums;
+}
+
+.peerEmpty {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--fs-sm);
+}

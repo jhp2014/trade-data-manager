@@ -39,21 +39,23 @@ export interface DeckFilter {
  * v0.2: selfMetrics + stockName 까지 실데이터.
  * v0.3 (예정): themePeers 실데이터.
  * =========================================================== */
-
 export interface StockMetrics {
     stockCode: string;
     stockName: string;
-    /** 현재 종가 등락률 (NXT 기준), % */
     closeRate: number | null;
-    /** 누적 거래대금 (원) */
     cumulativeAmount: bigint | null;
     /** 당일 고점 등락률, % */
     dayHighRate: number | null;
-    /** 고점 대비 현재 위치 (음수=눌림), % */
+    /** 고점 대비 (음수=눌림), % */
     pullbackFromHigh: number | null;
-    /** 100억 이상 분봉 누적 횟수 */
-    cnt100Amt: number | null;
+    /** 고점 발생 후 경과 분 */
+    minutesSinceDayHigh: number | null;
+    /** 현재 분봉 거래대금 (원) */
+    currentMinuteAmount: bigint | null;
+    /** 거래대금 구간별 카운트 분포 (key=억 단위, value=카운트) */
+    amountDistribution: Record<number, number> | null;
 }
+
 
 export interface AnalyzedEntry {
     entry: DeckEntry;

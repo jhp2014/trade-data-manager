@@ -3,13 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchChartPreviewAction,
-  type ChartPreviewData,
+  type ChartPreviewDTO,
 } from "@/actions/chartPreview";
 
 export function useChartPreview(
   params: { stockCode: string; tradeDate: string; tradeTime: string } | null
 ) {
-  return useQuery<ChartPreviewData>({
+  return useQuery<ChartPreviewDTO>({
     queryKey: [
       "chart-preview",
       params?.stockCode,

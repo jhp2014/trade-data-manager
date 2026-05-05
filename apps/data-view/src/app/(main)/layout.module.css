@@ -1,0 +1,17 @@
+.shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.main {
+    flex: 1;
+    min-width: 0;
+    padding-right: var(--side-rail-w, 56px);
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 20px 48px;
+}

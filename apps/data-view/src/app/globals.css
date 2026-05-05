@@ -26,8 +26,9 @@
     --neutral: #8b95a1;
 
     /* ───── typography ───── */
-    --font-sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo",
-        "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+    --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+        "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+
 
     --fs-xs: 11px;
     --fs-sm: 12px;
@@ -74,6 +75,11 @@
     /* ───── transitions ───── */
     --transition-fast: 120ms ease;
     --transition-base: 180ms ease;
+
+    --chart-panel-w: 720px;
+    /* 우측 고정 차트 패널 폭 */
+    --chart-panel-gap: 16px;
+    /* 카드 리스트와 패널 사이 간격 */
 }
 
 * {

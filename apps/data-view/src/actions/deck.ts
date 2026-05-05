@@ -5,43 +5,16 @@ import {
   resolveDeckSubDir,
   analyzeEntries,
   type StockMetrics,
+  DeckEntry,
 } from "@trade-data-manager/feature-engine";
-import { createDb } from "@trade-data-manager/feature-engine";
-import { Pool } from "pg";
 import "dotenv/config";
 import type {
   LoadedDecksDTO,
-  CardData,
   StockMetricsDTO,
+  ThemeRowData,
 } from "@/types/deck";
+import { getDataViewDb } from "./db";  // ← 추가
 
-/* ===========================================================
- * DB pool — module-scope singleton
- *
- * Next.js dev 의 hot reload 에서 pool 이 매번 새로 생기지 않도록
- * globalThis 캐시.
- * =========================================================== */
-
-const globalForDb = globalThis as unknown as {
-  __dataViewDbPool?: Pool;
-};
-
-function getDb() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error(
-      "[data-view] DATABASE_URL is not set. " +
-      "Add it to apps/data-view/.env.local"
-    );
-  }
-  if (!globalForDb.__dataViewDbPool) {
-    globalForDb.__dataViewDbPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30000,
-    });
-  }
-  return createDb(globalForDb.__dataViewDbPool);
-}
 
 /* ===========================================================
  * loadDeckAction
@@ -50,7 +23,7 @@ function getDb() {
 export async function loadDeckAction(
   subDir: string = ""
 ): Promise<
-  | { ok: true; data: LoadedDecksDTO; cards: CardData[] }
+  | { ok: true; data: LoadedDecksDTO; rows: ThemeRowData[] }
   | { ok: false; error: string }
 > {
   try {
@@ -71,40 +44,55 @@ export async function loadDeckAction(
     };
 
     if (dto.entries.length === 0) {
-      return { ok: true, data: dto, cards: [] };
+      return { ok: true, data: dto, rows: [] };
     }
 
-    const db = getDb();
+    const db = getDataViewDb();
     const analyzed = await analyzeEntries(db, decks.entries);
 
-    const cards: CardData[] = analyzed.map((a) => ({
-      entry: {
-        stockCode: a.entry.stockCode,
-        tradeDate: a.entry.tradeDate,
-        tradeTime: a.entry.tradeTime,
-        options: a.entry.options,
-        sourceFile: a.entry.sourceFile,
-      },
-      self: a.self
+    const rows: ThemeRowData[] = [];
+    for (const a of analyzed) {
+      const self = a.self
         ? toStockMetricsDTO(a.self)
-        : {
-          stockCode: a.entry.stockCode,
-          stockName: a.entry.stockCode,
-          closeRate: null,
-          cumulativeAmount: null,
-          dayHighRate: null,
-          pullbackFromHigh: null,
-          cnt100Amt: null,
-        },
-      // v0.3 까지 빈 배열
-      themePeers: a.themePeers.map((g) => ({
-        themeId: g.themeId,
-        themeName: g.themeName,
-        peers: g.peers.map(toStockMetricsDTO),
-      })),
-    }));
+        : null;
+      if (!self) continue;
 
-    return { ok: true, data: dto, cards };
+      if (a.themePeers.length === 0) {
+        // 테마 없는 경우 — 한 줄만 표시 (가짜 테마)
+        rows.push({
+          entry: toEntryDTO(a.entry),
+          self,
+          themeId: "",
+          themeName: "(테마 없음)",
+          selfRank: 1,
+          themeSize: 1,
+          peers: [],
+        });
+        continue;
+      }
+
+      for (const g of a.themePeers) {
+        // 테마 내 자기 + peer 합쳐서 등락률 순위 계산
+        const all: StockMetricsDTO[] = [
+          self,
+          ...g.peers.map(toStockMetricsDTO),
+        ];
+        all.sort((a, b) => (b.closeRate ?? -Infinity) - (a.closeRate ?? -Infinity));
+        const selfRank = all.findIndex((s) => s.stockCode === self.stockCode) + 1;
+
+        rows.push({
+          entry: toEntryDTO(a.entry),
+          self,
+          themeId: g.themeId,
+          themeName: g.themeName,
+          selfRank,
+          themeSize: all.length,
+          peers: all.filter((s) => s.stockCode !== self.stockCode),
+        });
+      }
+    }
+
+    return { ok: true, data: dto, rows };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: msg };
@@ -120,6 +108,19 @@ function toStockMetricsDTO(m: StockMetrics): StockMetricsDTO {
       m.cumulativeAmount === null ? null : m.cumulativeAmount.toString(),
     dayHighRate: m.dayHighRate,
     pullbackFromHigh: m.pullbackFromHigh,
-    cnt100Amt: m.cnt100Amt,
+    minutesSinceDayHigh: m.minutesSinceDayHigh,
+    currentMinuteAmount:
+      m.currentMinuteAmount === null ? null : m.currentMinuteAmount.toString(),
+    amountDistribution: m.amountDistribution,
+  };
+}
+
+function toEntryDTO(e: DeckEntry) {
+  return {
+    stockCode: e.stockCode,
+    tradeDate: e.tradeDate,
+    tradeTime: e.tradeTime,
+    options: e.options,
+    sourceFile: e.sourceFile,
   };
 }

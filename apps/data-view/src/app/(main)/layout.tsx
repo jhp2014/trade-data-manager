@@ -1,26 +1,17 @@
 import { Header } from "@/components/layout/Header";
 import { SideRail } from "@/components/layout/SideRail";
 import { SidePanel } from "@/components/layout/SidePanel";
+import styles from "./layout.module.css";
 
-export default function MainLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg-primary)" }}>
+    <div className={styles.shell}>
       <Header />
-      <main
-        style={{
-          // 우측 사이드 레일만큼 padding 확보
-          paddingRight: "var(--side-rail-w)",
-          minHeight: "calc(100vh - var(--header-h))",
-        }}
-      >
-        {children}
+      <main className={styles.main}>
+        <div className={styles.container}>{children}</div>
       </main>
-      <SidePanel />
       <SideRail />
+      <SidePanel />
     </div>
   );
 }
