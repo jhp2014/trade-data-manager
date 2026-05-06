@@ -1,6 +1,6 @@
-import { createDb } from "@trade-data-manager/feature-engine";
 import "dotenv/config";
 import { Pool } from "pg";
+import { createDb } from "@trade-data-manager/data-core";
 
 if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not defined in .env");

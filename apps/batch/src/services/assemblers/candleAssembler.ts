@@ -1,5 +1,5 @@
 // services/assemblers/candleAssembler.ts
-import { DailyCandleInsert, MinuteCandleInsert } from "@trade-data-manager/market-data";
+import { DailyCandleInsert, MinuteCandleInsert } from "@trade-data-manager/data-core";
 import { KiwoomDailyCandle, KiwoomMinuteCandle } from "../../clients/types.js";
 import { toDailyCandleInsert, toMinuteCandleInsert } from "../mappers/marketDataMapper.js";
 import { computeAccumulatedAmounts } from "../mappers/utils/priceCalculator.js";
