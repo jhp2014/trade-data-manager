@@ -113,7 +113,6 @@ export function RealMinuteChart({ candles, markerTime }: Props) {
             wickDownColor: "#3b82f6",
             priceScaleId: "right",
             priceLineVisible: false,        // ← 추가 (마지막 종가 점선 제거)
-            lastValueVisible: false,        // ← 좌측 등 잔여 라벨 제거
             priceFormat: {
                 type: "custom",
                 formatter: (p: number) => `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`,
@@ -257,16 +256,17 @@ export function RealMinuteChart({ candles, markerTime }: Props) {
         const amountMap = new Map<number, number>();
         const cumMap = new Map<number, number>();
         const amountData: Array<{ time: Time; value: number; color: string }> = [];
-        let cum = 0;
         for (const c of candles) {
             const a = c.amount ?? 0;
-            cum += a;
-            amountMap.set(c.time, a);    // 원 단위로 저장 (모달용)
-            cumMap.set(c.time, cum);
-            if (c.amount != null) {
+            const acc = c.accAmount ?? 0;
+            amountMap.set(c.time, a);
+            cumMap.set(c.time, acc);
+
+            // placeholder(amount=0) 는 histogram 에서 제외 — 빈 막대 안 보이게
+            if (c.amount != null && a > 0) {
                 amountData.push({
                     time: c.time as Time,
-                    value: a / 1e8,           // ← 억 단위로 변환
+                    value: a / 1e8,           // 원 → 억
                     color:
                         c.close >= c.open
                             ? "rgba(239,68,68,0.5)"

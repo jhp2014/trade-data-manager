@@ -20,9 +20,10 @@ export interface ChartCandle {
     low: number;
     close: number;
     volume?: number;
-    amount?: number; // 분봉 거래대금 (KRW), 분봉에서만 사용
-    prevCloseKrx?: number; // 일봉에서만 사용 — 모달의 KRX% 계산용
-    prevCloseNxt?: number; // 일봉에서만 사용 — 모달의 NXT% 계산용
+    amount?: number;       // 분봉 거래대금 (원 단위, KRW), 분봉에서만 사용
+    accAmount?: number;    // ★ 분봉 누적 거래대금 (원 단위) — DB 의 accumulated_trading_amount
+    prevCloseKrx?: number; // 일봉에서만 사용
+    prevCloseNxt?: number; // 일봉에서만 사용
 }
 
 export interface ChartOverlayPoint {
@@ -146,6 +147,7 @@ async function fetchMinute(
             closeRateNxt: minuteCandles.closeRateNxt,
             volume: minuteCandles.tradingVolume,
             amount: minuteCandles.tradingAmount,
+            accAmount: minuteCandles.accumulatedTradingAmount,   // ★ 추가
         })
         .from(minuteCandles)
         .where(
@@ -156,9 +158,8 @@ async function fetchMinute(
         )
         .orderBy(asc(minuteCandles.tradeTime));
 
-    const result: ChartCandle[] = [];
+    const valid: ChartCandle[] = [];
     for (const r of rows) {
-        // RateNxt 4개 모두 존재하는 행만 캔들로 사용
         if (
             r.openRateNxt === null ||
             r.highRateNxt === null ||
@@ -167,7 +168,7 @@ async function fetchMinute(
         ) {
             continue;
         }
-        result.push({
+        valid.push({
             time: r.unixTimestamp,
             open: toNum(r.openRateNxt),
             high: toNum(r.highRateNxt),
@@ -175,10 +176,14 @@ async function fetchMinute(
             close: toNum(r.closeRateNxt),
             volume: toNum(r.volume),
             amount: toNum(r.amount),
+            accAmount: toNum(r.accAmount),   // ★ DB 값 그대로 사용
         });
     }
-    return result;
+
+    // ★ 빈 분 채우기
+    return fillMissingMinuteCandles(valid, 60);
 }
+
 /* ===========================================================
  * 테마 오버레이 — 같은 (themeId, tradeDate) 종목들의 당일 분봉 closeRateNxt
  *                + trading_amount + cumulative_trading_amount
@@ -286,6 +291,12 @@ async function fetchThemeOverlay(
         grouped.set(r.stock_code, arr);
     }
 
+    // ★ 종목별로 빈 분 채우기 (시간 오름차순 보장 후)
+    for (const [code, points] of grouped.entries()) {
+        points.sort((a, b) => a.time - b.time);
+        grouped.set(code, fillMissingOverlayPoints(points, 60));
+    }
+
     // 6) 결과 — 자기 종목을 첫번째로
     const result: ChartOverlaySeries[] = [];
     const selfPoints = grouped.get(stockCode);
@@ -380,6 +391,86 @@ async function fetchSelfOnlyOverlay(
 /* ===========================================================
  * 변환 헬퍼
  * =========================================================== */
+
+/**
+ * 분봉 빈 슬롯 채우기 (옵션 B: 첫봉~마지막봉 사이의 비어있는 분만 채움).
+ *
+ * @param candles      시간 오름차순으로 정렬된 raw 캔들
+ * @param stepSec      분봉 간격(초). 기본 60.
+ * @returns placeholder 가 끼워넣어진 새 배열.
+ *
+ * 정책:
+ *  - placeholder 는 직전 유효봉의 close 값을 OHLC 모두에 사용.
+ *  - volume / amount 는 0.
+ *  - 점심시간/장 마감/동시호가 등 별도 정책 없이 동일하게 처리.
+ *  - 입력이 비어있거나 1개면 그대로 반환.
+ *  - 첫 봉 이전 / 마지막 봉 이후는 채우지 않음 (DB 가 알려주는 구간만 신뢰).
+ */
+function fillMissingMinuteCandles(
+    candles: ChartCandle[],
+    stepSec = 60
+): ChartCandle[] {
+    if (candles.length <= 1) return candles;
+
+    const result: ChartCandle[] = [];
+    for (let i = 0; i < candles.length; i++) {
+        const cur = candles[i];
+        result.push(cur);
+
+        const next = candles[i + 1];
+        if (!next) break;
+
+        let t = cur.time + stepSec;
+        // cur 와 next 사이의 빈 슬롯을 채움
+        while (t < next.time) {
+            result.push({
+                time: t,
+                open: cur.close,
+                high: cur.close,
+                low: cur.close,
+                close: cur.close,
+                volume: 0,
+                amount: 0,
+                accAmount: cur.accAmount ?? 0,  // ★ 직전 누적값 그대로 유지
+            });
+            t += stepSec;
+        }
+    }
+    return result;
+}
+
+/**
+ * 오버레이용 빈 포인트 채우기.
+ * 분봉 placeholder 와 동일한 정책: 직전 유효 포인트의 value(=등락률) 를 그대로 사용,
+ * amount/cumAmount 는 amount=0, cumAmount 는 직전 누적 그대로.
+ */
+function fillMissingOverlayPoints(
+    points: ChartOverlayPoint[],
+    stepSec = 60
+): ChartOverlayPoint[] {
+    if (points.length <= 1) return points;
+
+    const result: ChartOverlayPoint[] = [];
+    for (let i = 0; i < points.length; i++) {
+        const cur = points[i];
+        result.push(cur);
+
+        const next = points[i + 1];
+        if (!next) break;
+
+        let t = cur.time + stepSec;
+        while (t < next.time) {
+            result.push({
+                time: t,
+                value: cur.value,        // 직전 등락률 유지
+                amount: 0,                // 분 거래대금 0
+                cumAmount: cur.cumAmount, // 누적은 직전 그대로
+            });
+            t += stepSec;
+        }
+    }
+    return result;
+}
 
 function toNum(v: unknown): number {
     if (v === null || v === undefined || v === "") return 0;

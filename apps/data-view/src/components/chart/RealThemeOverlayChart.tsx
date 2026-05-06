@@ -201,12 +201,14 @@ export function RealThemeOverlayChart({
                 return;
             }
 
+            // head html <div></div> :: row 색상 표시를 위해 필요
             const head = `
                 <div style="font-size:11px;color:#a0a0a0;margin-bottom:6px;display:flex;justify-content:space-between;gap:12px">
                     <span>Time: ${kstHHmm(p.time)}</span>
                     <span>${rows.length}종목</span>
                 </div>
                 <div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:3px 10px;font-size:11px;font-variant-numeric:tabular-nums">
+                    <div></div>
                     <div style="color:#a0a0a0">종목</div>
                     <div style="color:#a0a0a0;text-align:right">변동률</div>
                     <div style="color:#a0a0a0;text-align:right">분거래대금</div>
