@@ -18,13 +18,11 @@
     "dependencies": {
         "drizzle-orm": "^0.45.2",
         "pg": "^8.20.0",
-        "dayjs": "^1.11.10",
-        "papaparse": "^5.4.1"
+        "dayjs": "^1.11.10"
     },
     "devDependencies": {
         "@trade-data-manager/tsconfig": "workspace:*",
         "@types/pg": "^8.20.0",
-        "@types/papaparse": "^5.3.14",
         "typescript": "^6.0.3",
         "tsx": "^4.21.0",
         "drizzle-kit": "^0.31.10"

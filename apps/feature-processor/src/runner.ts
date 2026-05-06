@@ -1,15 +1,16 @@
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat.js";
-import type { MinuteCandle } from "../schema/market";
-import type { Database } from "../db";
-import { MINUTE_CALCULATORS } from "./calculators";
-import { mergeCalculatorOutputs } from "./helpers";
-import type { MinuteCandleContext } from "./types";
 import {
-    findDistinctStockCodesByDate,
-    findMinuteCandlesByStockAndDate,
-} from "../repositories/minute-candle.repository";
-import { saveMinuteFeatures } from "../repositories/market-feature.repository";
+    MINUTE_CALCULATORS,
+    mergeCalculatorOutputs,
+    saveMinuteFeatures,
+    getStockCodesByDate,
+    getMinuteCandles,
+    type Database,
+    type MinuteCandle,
+    type MinuteCandleContext,
+} from "@trade-data-manager/data-core";
+import { logger } from "./logger";
 
 dayjs.extend(customParseFormat);
 
@@ -18,18 +19,27 @@ export interface MinuteRunnerOptions {
     tradeDate: string;
 }
 
+/**
+ * 분봉 피처 가공 파이프라인.
+ *
+ * 흐름:
+ *   1) 거래일에 분봉이 있는 종목 코드 조회
+ *   2) 종목별로 하루치 분봉을 모두 읽어
+ *      MINUTE_CALCULATORS 를 순서대로 적용
+ *   3) 결과를 minute_candle_features 에 upsert
+ */
 export async function runMinuteFeatures(
-    opts: MinuteRunnerOptions
+    opts: MinuteRunnerOptions,
 ): Promise<{ stockCount: number; rowCount: number }> {
     const { db, tradeDate } = opts;
-    const stockCodes = await findDistinctStockCodesByDate(db, tradeDate);
-    console.log(`[INFO] ${new Date().toISOString()} [minuteRunner] ${tradeDate}: ${stockCodes.length} stocks`);
+    const stockCodes = await getStockCodesByDate(db, { tradeDate });
+    logger.info(`[minuteRunner] ${tradeDate}: ${stockCodes.length} stocks`);
 
     let totalRows = 0;
     let processed = 0;
 
     for (const stockCode of stockCodes) {
-        const candles = await findMinuteCandlesByStockAndDate(db, stockCode, tradeDate);
+        const candles = await getMinuteCandles(db, { stockCode, tradeDate });
         if (candles.length === 0) continue;
 
         const rows = computeStockFeatures(candles);
@@ -39,14 +49,14 @@ export async function runMinuteFeatures(
         processed++;
 
         if (processed % 50 === 0) {
-            console.log(
-                `[INFO] ${new Date().toISOString()} [minuteRunner]   progress: ${processed}/${stockCodes.length}`
+            logger.info(
+                `[minuteRunner]   progress: ${processed}/${stockCodes.length}`,
             );
         }
     }
 
-    console.log(
-        `[INFO] ${new Date().toISOString()} [minuteRunner] ${tradeDate} done: ${processed} stocks, ${totalRows} rows`
+    logger.info(
+        `[minuteRunner] ${tradeDate} done: ${processed} stocks, ${totalRows} rows`,
     );
     return { stockCount: processed, rowCount: totalRows };
 }
@@ -82,7 +92,7 @@ function computeStockFeatures(candles: MinuteCandle[]): Array<Record<string, any
 function findCandleMinutesAgo(
     candles: MinuteCandle[],
     currentIndex: number,
-    minutesAgo: number
+    minutesAgo: number,
 ): MinuteCandle | null {
     const current = candles[currentIndex];
     const target = dayjs(current.tradeTime, "HH:mm:ss").subtract(minutesAgo, "minute");
