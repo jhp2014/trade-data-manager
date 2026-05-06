@@ -7,7 +7,7 @@ import {
   type ChartLinePoint,
   type ChartOverlayPoint,
   ChartOverlaySeries,
-} from "@trade-data-manager/feature-engine";
+} from "@trade-data-manager/data-core";
 import { getDataViewDb } from "./db";
 
 export type { ChartCandle, ChartLinePoint, ChartOverlaySeries, ChartOverlayPoint };

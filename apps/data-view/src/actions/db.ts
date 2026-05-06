@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Pool } from "pg";
-import { createDb, type Database } from "@trade-data-manager/feature-engine";
+import { createDb, type Database } from "@trade-data-manager/data-core";
 
 const globalForDb = globalThis as unknown as {
     __dataViewDbPool?: Pool;
