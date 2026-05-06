@@ -1,5 +1,14 @@
+import {
+    getDailyCandle,
+    getStockRegDayApiFormat,
+    saveDailyCandles,
+    saveMinuteCandles,
+    saveStock,
+    saveThemeAndReturnId,
+    saveThemeMapping,
+} from "@trade-data-manager/data-core";
 import { kiwoomClient } from "../clients/kiwoomClient.js";
-import { findDailyCandle, findStockRegDayAsApiFormat, saveDailyCandles, saveMinuteCandles, saveStock, saveTheme, saveThemeMapping } from "../repository/marketRepository.js";
+import { db } from "../repository/db.js";
 import { logger } from "../utils/logger.js";
 import { assembleDailyCandles, assembleMinuteCandles } from "./assemblers/candleAssembler.js";
 import { ServiceOperation } from "./decorators.js";
@@ -14,7 +23,7 @@ export class MarketService {
     async syncStockInfo(stockCode: string) {
         const infoRes = await kiwoomClient.getStockInfo(stockCode);
         const data = toStockInsert(infoRes.data);
-        await saveStock(data);
+        await saveStock(db, data);
     }
 
     /**
@@ -27,7 +36,7 @@ export class MarketService {
         const [krxCandles, nxtCandles, regDay] = await Promise.all([
             kiwoomClient.getDailyChartsByCount(stockCode, apiDate, 600),
             kiwoomClient.getDailyChartsByCount(stockCodeNxt, apiDate, 600),
-            findStockRegDayAsApiFormat(stockCode),
+            getStockRegDayApiFormat(db, { stockCode }),
         ]);
 
         if (krxCandles.length === 0 || nxtCandles.length === 0) {
@@ -42,13 +51,13 @@ export class MarketService {
         });
 
         if (rows.length > 0) {
-            await saveDailyCandles(rows);
+            await saveDailyCandles(db, rows);
         }
     }
 
     @ServiceOperation("Candle-Minute")
     async syncMinuteCandles(stockCode: string, tradeDate: string) {
-        const dailyRow = await findDailyCandle(stockCode, tradeDate);
+        const dailyRow = await getDailyCandle(db, { stockCode, tradeDate });
         if (!dailyRow) {
             logger.warn(`[MarketService] 일봉 데이터가 없어 분봉 수집을 건너뜁니다.`, { stockCode, tradeDate });
             return;
@@ -77,7 +86,7 @@ export class MarketService {
             return;
         }
 
-        await saveMinuteCandles(rows);
+        await saveMinuteCandles(db, rows);
     }
 
     /**
@@ -85,11 +94,11 @@ export class MarketService {
      */
     @ServiceOperation("Theme")
     async syncThemeMapping(stockCode: string, tradeDate: string, themeName: string) {
-        const dailyRow = await findDailyCandle(stockCode, tradeDate);
+        const dailyRow = await getDailyCandle(db, { stockCode, tradeDate });
         if (!dailyRow) return;
 
-        const themeId = await saveTheme(themeName);
-        await saveThemeMapping(themeId, dailyRow.id);
+        const themeId = await saveThemeAndReturnId(db, themeName);
+        await saveThemeMapping(db, themeId, dailyRow.id);
     }
 }
 

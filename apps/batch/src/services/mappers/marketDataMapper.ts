@@ -3,7 +3,7 @@ import { normalizeSignedNumber, toBigInt } from "./utils/kiwoomNumberParser.js";
 import { toIsoDate, extractTimeFromTimestamp, toUnixTimestampKst } from "./utils/dateTimeParser.js";
 import { computeChangeValue, computeChangeRate, computeMinuteTradingAmount } from "./utils/priceCalculator.js";
 import { KiwoomKa10080Response, KiwoomKa10081Response, KiwoomKa10100Response } from "../../clients/types.js";
-import { DailyCandleInsert, StockInsert } from "@trade-data-manager/market-data";
+import { DailyCandleInsert, StockInsert } from "@trade-data-manager/data-core";
 import { MinuteCandleRowDraft } from "../types.js";
 
 type KiwoomDailyCandle = KiwoomKa10081Response["stk_dt_pole_chart_qry"][number];

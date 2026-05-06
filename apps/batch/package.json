@@ -8,8 +8,7 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@trade-data-manager/market-data": "workspace:*",
-    "@trade-data-manager/feature-engine": "workspace:*",
+    "@trade-data-manager/data-core": "workspace:*",
     "axios": "^1.15.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
