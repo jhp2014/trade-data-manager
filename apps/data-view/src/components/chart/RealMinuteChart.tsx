@@ -14,7 +14,6 @@ import { kstHHmm } from "@/lib/chartTime";
 
 interface Props {
     candles: ChartCandle[];
-    height?: number;
     markerTime?: number | null;
 }
 
@@ -24,7 +23,7 @@ const fmtAmount = (v: number) => {
     return v.toFixed(0);
 };
 
-export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
+export function RealMinuteChart({ candles, markerTime }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
@@ -38,9 +37,12 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
         const container = containerRef.current;
         if (!container) return;
 
+        const initialWidth = container.clientWidth || 800;
+        const initialHeight = container.clientHeight || 600;
+
         const chart = createChart(container, {
-            width: container.clientWidth,
-            height,
+            width: initialWidth,
+            height: initialHeight,
             layout: {
                 background: { color: "transparent" },
                 textColor: "#a0a0a0",
@@ -137,6 +139,8 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
                 formatter: (v: number) => `${v.toFixed(0)}억`,
                 minMove: 1,
             },
+            priceLineVisible: false,        // ← 추가 (마지막 종가 점선 제거)
+            lastValueVisible: false,        // ← 좌측 등 잔여 라벨 제거
             color: "rgba(120,120,140,0.5)",
         });
 
@@ -214,9 +218,13 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             tip.style.top = `${top}px`;
         });
 
+        // ResizeObserver: width/height 둘 다 추적
         const ro = new ResizeObserver(() => {
             if (containerRef.current) {
-                chart.applyOptions({ width: containerRef.current.clientWidth });
+                chart.applyOptions({
+                    width: containerRef.current.clientWidth,
+                    height: containerRef.current.clientHeight,
+                });
             }
         });
         ro.observe(container);
@@ -228,7 +236,7 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
         };
-    }, [height]);
+    }, []);
 
     // 데이터 갱신
     useEffect(() => {
@@ -292,7 +300,7 @@ export function RealMinuteChart({ candles, height = 680, markerTime }: Props) {
     return (
         <div
             ref={containerRef}
-            style={{ position: "relative", width: "100%", height }}
+            style={{ position: "relative", width: "100%", height: "100%" }}
         >
             <div
                 ref={tooltipRef}

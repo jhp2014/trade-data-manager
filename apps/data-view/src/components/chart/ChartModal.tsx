@@ -72,31 +72,31 @@ export function ChartModal() {
                 </header>
 
                 <div className={styles.body}>
-                    {isLoading ? (
-                        <div className={styles.loading}>차트 로딩 중...</div>
-                    ) : data ? (
-                        <>
-                            {tab === "minute" && (
-                                <RealMinuteChart
-                                    candles={data.minute}
-                                    height={680}
-                                    markerTime={data.markerTime}
-                                />
-                            )}
-                            {tab === "daily" && (
-                                <RealDailyChart candles={data.daily} height={680} />
-                            )}
-                            {tab === "overlay" && (
-                                <RealThemeOverlayChart
-                                    data={data.themeOverlay}
-                                    height={680}
-                                    markerTime={data.markerTime}
-                                />
-                            )}
-                        </>
-                    ) : (
-                        <div className={styles.loading}>데이터 없음</div>
-                    )}
+                    <div className={styles.chartArea}>
+                        {isLoading ? (
+                            <div className={styles.loading}>차트 로딩 중...</div>
+                        ) : data ? (
+                            <>
+                                {tab === "minute" && (
+                                    <RealMinuteChart
+                                        candles={data.minute}
+                                        markerTime={data.markerTime}
+                                    />
+                                )}
+                                {tab === "daily" && (
+                                    <RealDailyChart candles={data.daily} />
+                                )}
+                                {tab === "overlay" && (
+                                    <RealThemeOverlayChart
+                                        data={data.themeOverlay}
+                                        markerTime={data.markerTime}
+                                    />
+                                )}
+                            </>
+                        ) : (
+                            <div className={styles.loading}>데이터 없음</div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

@@ -24,7 +24,7 @@ export function RowHoverPanel({ anchor, options, sourceFile, distribution }: Pro
     const hasSource = sourceFile && sourceFile.length > 0;
     if (!hasOptions && !hasDist && !hasSource) return null;
 
-    const PANEL_W = 520;
+    const PANEL_W = Math.min(640, Math.max(440, Math.floor(window.innerWidth * 0.30)));
     const margin = 8;
 
     // 가로: 행 좌측에 정렬, 화면 밖으로 나가지 않도록 보정

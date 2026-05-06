@@ -36,7 +36,9 @@ export function EntryRow({ row }: Props) {
         });
     };
 
-    const handleRowEnter = () => {
+    // ★ 핸들러를 row(자기 자신) 에만 붙이고, peer 영역에는 닿지 않도록.
+    const handleRowEnter = (e: React.MouseEvent) => {
+        e.stopPropagation();
         if (openTimerRef.current !== null) return;
         openTimerRef.current = window.setTimeout(() => {
             openTimerRef.current = null;
@@ -46,7 +48,8 @@ export function EntryRow({ row }: Props) {
         }, HOVER_OPEN_DELAY);
     };
 
-    const handleRowLeave = () => {
+    const handleRowLeave = (e: React.MouseEvent) => {
+        e.stopPropagation();
         if (openTimerRef.current !== null) {
             window.clearTimeout(openTimerRef.current);
             openTimerRef.current = null;
@@ -55,13 +58,14 @@ export function EntryRow({ row }: Props) {
     };
 
     return (
-        <div
-            className={styles.rowGroup}
-            onMouseEnter={handleRowEnter}
-            onMouseLeave={handleRowLeave}
-        >
-            <div className={styles.row} ref={rowRef}>
-                {/* 좌측: 식별 */}
+        <div className={styles.rowGroup}>
+            {/* ★ rowGroup 이 아니라 row 자체에 hover 핸들러 */}
+            <div
+                className={styles.row}
+                ref={rowRef}
+                onMouseEnter={handleRowEnter}
+                onMouseLeave={handleRowLeave}
+            >
                 <div className={styles.identityCol}>
                     <button
                         type="button"
@@ -84,7 +88,6 @@ export function EntryRow({ row }: Props) {
                     <span className={styles.tradeTime}>{entry.tradeTime}</span>
                 </div>
 
-                {/* 우측: 지표 */}
                 <div className={styles.metricsCol}>
                     <MetricChangeRate value={self.closeRate} />
                     <MetricDayHigh
@@ -100,7 +103,6 @@ export function EntryRow({ row }: Props) {
                 </div>
             </div>
 
-            {/* 행 hover 시 portal 모달 */}
             <RowHoverPanel
                 anchor={hoverAnchor}
                 options={entry.options}
@@ -108,7 +110,6 @@ export function EntryRow({ row }: Props) {
                 distribution={self.amountDistribution}
             />
 
-            {/* 테마 내 종목 펼침 */}
             {expanded && (
                 <div className={styles.peerList}>
                     {peers.length === 0 ? (
@@ -209,7 +210,8 @@ function PeerRow({
     const rowRef = useRef<HTMLDivElement>(null);
     const openTimerRef = useRef<number | null>(null);
 
-    const handleClick = () => {
+    const handleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
         open({
             stockCode: peer.stockCode,
             stockName: peer.stockName,
@@ -218,7 +220,9 @@ function PeerRow({
         });
     };
 
-    const handleEnter = () => {
+    // ★ 핸들러를 peerRow(자기) 에만 붙이고, 부모로 버블링 차단
+    const handleEnter = (e: React.MouseEvent) => {
+        e.stopPropagation();
         if (openTimerRef.current !== null) return;
         openTimerRef.current = window.setTimeout(() => {
             openTimerRef.current = null;
@@ -228,7 +232,8 @@ function PeerRow({
         }, HOVER_OPEN_DELAY);
     };
 
-    const handleLeave = () => {
+    const handleLeave = (e: React.MouseEvent) => {
+        e.stopPropagation();
         if (openTimerRef.current !== null) {
             window.clearTimeout(openTimerRef.current);
             openTimerRef.current = null;
@@ -237,12 +242,13 @@ function PeerRow({
     };
 
     return (
-        <div
-            className={styles.peerRowGroup}
-            onMouseEnter={handleEnter}
-            onMouseLeave={handleLeave}
-        >
-            <div className={styles.peerRow} ref={rowRef}>
+        <div className={styles.peerRowGroup}>
+            <div
+                className={styles.peerRow}
+                ref={rowRef}
+                onMouseEnter={handleEnter}
+                onMouseLeave={handleLeave}
+            >
                 <div className={styles.identityCol}>
                     <span className={styles.peerRank}>{rank}</span>
                     <button

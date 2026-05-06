@@ -17,7 +17,6 @@ import { kstHHmm } from "@/lib/chartTime";
 
 interface Props {
     data: ChartOverlaySeries[];
-    height?: number;
     markerTime?: number | null;
 }
 
@@ -42,7 +41,6 @@ const fmtAmount = (v: number) => {
 
 export function RealThemeOverlayChart({
     data,
-    height = 680,
     markerTime,
 }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -68,9 +66,12 @@ export function RealThemeOverlayChart({
         const container = containerRef.current;
         if (!container) return;
 
+        const initialWidth = container.clientWidth || 800;
+        const initialHeight = container.clientHeight || 600;
+
         const chart = createChart(container, {
-            width: container.clientWidth,
-            height,
+            width: initialWidth,
+            height: initialHeight,
             layout: {
                 background: { color: "transparent" },
                 textColor: "#a0a0a0",
@@ -124,10 +125,13 @@ export function RealThemeOverlayChart({
 
         chartRef.current = chart;
 
-        // 0% 기준선은 첫 시리즈가 생성될 때 createPriceLine으로 추가
+        // ResizeObserver: width/height 둘 다 추적
         const ro = new ResizeObserver(() => {
             if (containerRef.current) {
-                chart.applyOptions({ width: containerRef.current.clientWidth });
+                chart.applyOptions({
+                    width: containerRef.current.clientWidth,
+                    height: containerRef.current.clientHeight,
+                });
             }
         });
         ro.observe(container);
@@ -198,17 +202,16 @@ export function RealThemeOverlayChart({
             }
 
             const head = `
-        <div style="font-size:11px;color:#a0a0a0;margin-bottom:6px;display:flex;justify-content:space-between;gap:12px">
-          <span>${kstHHmm(p.time)}</span>
-          <span>${rows.length}종목</span>
-        </div>
-        <div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:3px 10px;font-size:11px;font-variant-numeric:tabular-nums">
-          <div></div>
-          <div style="color:#a0a0a0">종목</div>
-          <div style="color:#a0a0a0;text-align:right">변동률</div>
-          <div style="color:#a0a0a0;text-align:right">분거래대금</div>
-          <div style="color:#a0a0a0;text-align:right">누적</div>
-      `;
+                <div style="font-size:11px;color:#a0a0a0;margin-bottom:6px;display:flex;justify-content:space-between;gap:12px">
+                    <span>Time: ${kstHHmm(p.time)}</span>
+                    <span>${rows.length}종목</span>
+                </div>
+                <div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:3px 10px;font-size:11px;font-variant-numeric:tabular-nums">
+                    <div style="color:#a0a0a0">종목</div>
+                    <div style="color:#a0a0a0;text-align:right">변동률</div>
+                    <div style="color:#a0a0a0;text-align:right">분거래대금</div>
+                    <div style="color:#a0a0a0;text-align:right">누적</div>
+            `;
             const body = rows
                 .map((r) => {
                     const rateColor = r.rate >= 0 ? "#ef4444" : "#3b82f6";
@@ -216,12 +219,12 @@ export function RealThemeOverlayChart({
                         ? "color:#fff;font-weight:600"
                         : "color:#d4d4d8";
                     return `
-            <div style="width:8px;height:8px;border-radius:50%;background:${r.color};align-self:center"></div>
-            <div style="${nameStyle};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">${r.name}</div>
-            <div style="text-align:right;color:${rateColor}">${r.rate >= 0 ? "+" : ""}${r.rate.toFixed(2)}%</div>
-            <div style="text-align:right;color:#d4d4d8">${fmtAmount(r.amount)}</div>
-            <div style="text-align:right;color:#a0a0a0">${fmtAmount(r.cumAmount)}</div>
-          `;
+                        <div style="width:8px;height:8px;border-radius:50%;background:${r.color};align-self:center"></div>
+                        <div style="${nameStyle};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">${r.name}</div>
+                        <div style="text-align:right;color:${rateColor}">${r.rate >= 0 ? "+" : ""}${r.rate.toFixed(2)}%</div>
+                        <div style="text-align:right;color:#d4d4d8">${fmtAmount(r.amount)}</div>
+                        <div style="text-align:right;color:#a0a0a0">${fmtAmount(r.cumAmount)}</div>
+                    `;
                 })
                 .join("");
 
@@ -259,7 +262,7 @@ export function RealThemeOverlayChart({
             chartRef.current = null;
             seriesMetaRef.current = [];
         };
-    }, [height]);
+    }, []);
 
     // 데이터 갱신: 기존 시리즈 제거 후 다시 생성
     useEffect(() => {
@@ -347,7 +350,7 @@ export function RealThemeOverlayChart({
     return (
         <div
             ref={containerRef}
-            style={{ position: "relative", width: "100%", height }}
+            style={{ position: "relative", width: "100%", height: "100%" }}
         >
             <div
                 ref={tooltipRef}

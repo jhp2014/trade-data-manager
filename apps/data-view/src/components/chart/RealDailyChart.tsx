@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import {
     createChart,
     CrosshairMode,
-    LineStyle,
     type IChartApi,
     type ISeriesApi,
     type Time,
@@ -14,7 +13,6 @@ import { kstYmd } from "@/lib/chartTime";
 
 interface Props {
     candles: ChartCandle[];
-    height?: number;
 }
 
 const HOVER_DELAY_MS = 200;
@@ -38,7 +36,7 @@ function highMarkerColor(pct: number | null): string | null {
     return "#7c3aed"; // 진한 자주
 }
 
-export function RealDailyChart({ candles, height = 680 }: Props) {
+export function RealDailyChart({ candles }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
@@ -56,9 +54,12 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
         const container = containerRef.current;
         if (!container) return;
 
+        const initialWidth = container.clientWidth || 800;
+        const initialHeight = container.clientHeight || 600;
+
         const chart = createChart(container, {
-            width: container.clientWidth,
-            height,
+            width: initialWidth,
+            height: initialHeight,
             layout: {
                 background: { color: "transparent" },
                 textColor: "#a0a0a0",
@@ -151,9 +152,14 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
 
+
+        // ResizeObserver: width/height 둘 다 추적
         const ro = new ResizeObserver(() => {
             if (containerRef.current) {
-                chart.applyOptions({ width: containerRef.current.clientWidth });
+                chart.applyOptions({
+                    width: containerRef.current.clientWidth,
+                    height: containerRef.current.clientHeight,
+                });
             }
         });
         ro.observe(container);
@@ -263,8 +269,6 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
 
                   <div style="color:#a0a0a0">Cursor Candle Amount</div>
                   <div style="text-align:right;font-variant-numeric:tabular-nums">${candle.amount != null ? fmtAmount(candle.amount) : "—"}</div>
-
-
                 </div>
             `;
             tip.style.display = "block";
@@ -301,7 +305,7 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
         };
-    }, [height]);
+    }, []);
 
     // 데이터 갱신
     useEffect(() => {
@@ -368,7 +372,7 @@ export function RealDailyChart({ candles, height = 680 }: Props) {
     return (
         <div
             ref={containerRef}
-            style={{ position: "relative", width: "100%", height }}
+            style={{ position: "relative", width: "100%", height: "100%" }}
         >
             <div
                 ref={tooltipRef}
