@@ -6,7 +6,7 @@ import {
   analyzeEntries,
   type StockMetrics,
   DeckEntry,
-} from "@trade-data-manager/feature-engine";
+} from "@trade-data-manager/data-core";
 import "dotenv/config";
 import type {
   LoadedDecksDTO,
