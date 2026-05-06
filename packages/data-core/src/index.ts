@@ -13,6 +13,3 @@ export * from "./queries";
 
 // market-feature (분봉 피처 가공 도메인)
 export * from "./market-feature";
-
-// deck (CSV 시점 모음 도메인)
-export * from "./deck";
