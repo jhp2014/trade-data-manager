@@ -121,6 +121,9 @@ importers:
       commander:
         specifier: ^12.1.0
         version: 12.1.0
+      dayjs:
+        specifier: ^1.11.10
+        version: 1.11.20
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
@@ -155,9 +158,6 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(gel@2.2.0)(pg@8.20.0)
-      papaparse:
-        specifier: ^5.4.1
-        version: 5.5.3
       pg:
         specifier: ^8.20.0
         version: 8.20.0
@@ -165,9 +165,6 @@ importers:
       '@trade-data-manager/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
-      '@types/papaparse':
-        specifier: ^5.3.14
-        version: 5.5.2
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
