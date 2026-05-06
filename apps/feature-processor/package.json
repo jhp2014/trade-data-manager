@@ -9,7 +9,7 @@
         "dev": "tsx watch src/index.ts"
     },
     "dependencies": {
-        "@trade-data-manager/feature-engine": "workspace:*",
+        "@trade-data-manager/data-core": "workspace:*",
         "commander": "^12.1.0",
         "dotenv": "^16.4.5",
         "drizzle-orm": "^0.45.2",
