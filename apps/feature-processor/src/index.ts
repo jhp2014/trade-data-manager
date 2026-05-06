@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import { pool, db } from "./repository/db";
 import {
     getAllTradeDates,
     getPendingTradeDates,
@@ -7,7 +6,8 @@ import {
     resolveDeckSubDir,
     loadDecksFromDir,
     analyzeEntries,
-} from "@trade-data-manager/feature-engine";
+} from "@trade-data-manager/data-core";
+import { pool, db } from "./repository/db";
 import { logger } from "./logger";
 
 const program = new Command();
@@ -78,7 +78,7 @@ program
             logger.info("분봉 피처 + 동반 종목 조회 중...");
             const analyzed = await analyzeEntries(db, decks.entries);
 
-            const withSelf = analyzed.filter((a) => a.selfFeature !== null).length;
+            const withSelf = analyzed.filter((a) => a.self !== null).length;
             const totalPeers = analyzed.reduce(
                 (sum, a) =>
                     sum + a.themePeers.reduce((s, t) => s + t.peers.length, 0),
@@ -99,7 +99,7 @@ program
                 );
                 logger.info(`  options: ${JSON.stringify(first.entry.options)}`);
                 logger.info(
-                    `  selfFeature: ${first.selfFeature ? "있음" : "없음"}`
+                    `  self: ${first.self ? "있음" : "없음"}`
                 );
                 logger.info(
                     `  themePeers: ${first.themePeers
