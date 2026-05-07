@@ -27,13 +27,12 @@ export async function saveDailyCandles(
  */
 export async function findDailyCandleByStockAndDate(
     db: Database,
-    stockCode: string,
-    tradeDate: string,
+    params: { stockCode: string; tradeDate: string },
 ) {
     return db.query.dailyCandles.findFirst({
         where: and(
-            eq(dailyCandles.stockCode, stockCode),
-            eq(dailyCandles.tradeDate, tradeDate),
+            eq(dailyCandles.stockCode, params.stockCode),
+            eq(dailyCandles.tradeDate, params.tradeDate),
         ),
         columns: { id: true, prevCloseKrx: true, prevCloseNxt: true },
     });

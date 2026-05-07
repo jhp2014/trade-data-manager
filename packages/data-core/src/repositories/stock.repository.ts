@@ -22,11 +22,11 @@ export async function saveStock(db: Database, data: StockInsert): Promise<void> 
  */
 export async function findStockRegDayApiFormat(
     db: Database,
-    stockCode: string,
+    params: { stockCode: string },
 ): Promise<string | null> {
     const row = await db.query.stocks.findFirst({
         columns: { regDay: true },
-        where: eq(stocks.stockCode, stockCode),
+        where: eq(stocks.stockCode, params.stockCode),
     });
     return row?.regDay?.replace(/-/g, "") ?? null;
 }

@@ -1,4 +1,4 @@
-import { sql, and, eq, asc, lte, desc, inArray } from "drizzle-orm";
+import { and, eq, asc, lte, desc, inArray } from "drizzle-orm";
 import {
     stocks,
     dailyCandles,
@@ -8,6 +8,10 @@ import {
 } from "../schema/market";
 import { minuteCandleFeatures } from "../schema/features";
 import type { Database } from "../db";
+import {
+    findThemesByStockAndDate,
+    findMemberCodesByThemeIds,
+} from "../repositories/theme.repository";
 
 /* ===========================================================
  * Theme Bundle — 단건 종목/거래일에 대한 테마 단위 시계열 묶음
@@ -47,10 +51,11 @@ export async function getThemeBundle(
     const { stockCode, tradeDate } = params;
 
     // 1) self 가 그날 속한 테마 목록 (없으면 가짜 테마 1 개)
-    const themes = await fetchSelfThemes(db, stockCode, tradeDate);
+    const themes = await findThemesByStockAndDate(db, { stockCode, tradeDate });
 
     // 2) 테마별 멤버 코드 (self 포함)
-    const themeToCodes = await fetchThemeMembers(db, themes, tradeDate, stockCode);
+    const themeIds = themes.map((t) => t.themeId);
+    const themeToCodes = await findMemberCodesByThemeIds(db, { themeIds, tradeDate, selfCode: stockCode });
 
     // 3) 모든 코드 합집합으로 시계열을 한 번에 조회
     const allCodes = collectAllCodes(themeToCodes, stockCode);
@@ -76,91 +81,6 @@ export async function getThemeBundle(
         }));
         return { themeId, themeName, members };
     });
-}
-
-/* ===========================================================
- * 1) 자기 종목의 (그날) 테마 목록
- * =========================================================== */
-
-interface ThemeInfo {
-    themeId: string;
-    themeName: string;
-}
-
-async function fetchSelfThemes(
-    db: Database,
-    stockCode: string,
-    tradeDate: string,
-): Promise<ThemeInfo[]> {
-    const result = await db.execute(sql`
-        SELECT DISTINCT t.theme_id, t.theme_name
-        FROM daily_candles dc
-        JOIN daily_theme_mappings dtm ON dtm.daily_candle_id = dc.id
-        JOIN themes t ON t.theme_id = dtm.theme_id
-        WHERE dc.stock_code = ${stockCode} AND dc.trade_date = ${tradeDate}::date
-        ORDER BY t.theme_name
-    `);
-    const rows = (result as unknown as {
-        rows: Array<{ theme_id: string | bigint; theme_name: string }>;
-    }).rows;
-
-    if (rows.length === 0) {
-        return [{ themeId: "", themeName: "(테마 없음)" }];
-    }
-
-    return rows.map((r) => ({
-        themeId: String(r.theme_id),
-        themeName: r.theme_name,
-    }));
-}
-
-/* ===========================================================
- * 2) 테마별 동반 종목 코드 (self 포함)
- * =========================================================== */
-
-async function fetchThemeMembers(
-    db: Database,
-    themes: ThemeInfo[],
-    tradeDate: string,
-    stockCode: string,
-): Promise<Map<string, string[]>> {
-    const realThemeIds = themes.map((t) => t.themeId).filter((id) => id !== "");
-
-    if (realThemeIds.length === 0) {
-        const map = new Map<string, string[]>();
-        map.set("", [stockCode]);
-        return map;
-    }
-
-    const result = await db.execute(sql`
-        SELECT DISTINCT dtm.theme_id, dc.stock_code
-        FROM daily_theme_mappings dtm
-        JOIN daily_candles dc ON dc.id = dtm.daily_candle_id
-        WHERE dtm.theme_id IN (${sql.join(
-        realThemeIds.map((id) => sql`${id}::bigint`),
-        sql`, `,
-    )})
-          AND dc.trade_date = ${tradeDate}::date
-    `);
-    const rows = (result as unknown as {
-        rows: Array<{ theme_id: string | bigint; stock_code: string }>;
-    }).rows;
-
-    const map = new Map<string, string[]>();
-    for (const r of rows) {
-        const tid = String(r.theme_id);
-        const arr = map.get(tid) ?? [];
-        arr.push(r.stock_code);
-        map.set(tid, arr);
-    }
-    // self 가 빠진 테마 보정 (방어적)
-    for (const t of themes) {
-        if (t.themeId === "") continue;
-        const arr = map.get(t.themeId) ?? [];
-        if (!arr.includes(stockCode)) arr.push(stockCode);
-        map.set(t.themeId, arr);
-    }
-    return map;
 }
 
 function collectAllCodes(
