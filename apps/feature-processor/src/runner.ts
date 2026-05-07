@@ -4,8 +4,8 @@ import {
     MINUTE_CALCULATORS,
     mergeCalculatorOutputs,
     saveMinuteFeatures,
-    getStockCodesByDate,
-    getMinuteCandles,
+    findDistinctStockCodesByDate,
+    findMinuteCandlesByStockAndDate,
     type Database,
     type MinuteCandle,
     type MinuteCandleContext,
@@ -32,14 +32,14 @@ export async function runMinuteFeatures(
     opts: MinuteRunnerOptions,
 ): Promise<{ stockCount: number; rowCount: number }> {
     const { db, tradeDate } = opts;
-    const stockCodes = await getStockCodesByDate(db, { tradeDate });
+    const stockCodes = await findDistinctStockCodesByDate(db, { tradeDate });
     logger.info(`[minuteRunner] ${tradeDate}: ${stockCodes.length} stocks`);
 
     let totalRows = 0;
     let processed = 0;
 
     for (const stockCode of stockCodes) {
-        const candles = await getMinuteCandles(db, { stockCode, tradeDate });
+        const candles = await findMinuteCandlesByStockAndDate(db, { stockCode, tradeDate });
         if (candles.length === 0) continue;
 
         const rows = computeStockFeatures(candles);

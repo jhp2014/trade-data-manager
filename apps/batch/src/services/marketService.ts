@@ -1,6 +1,6 @@
 import {
-    getDailyCandle,
-    getStockRegDayApiFormat,
+    findDailyCandleByStockAndDate,
+    findStockRegDayApiFormat,
     saveDailyCandles,
     saveMinuteCandles,
     saveStock,
@@ -36,7 +36,7 @@ export class MarketService {
         const [krxCandles, nxtCandles, regDay] = await Promise.all([
             kiwoomClient.getDailyChartsByCount(stockCode, apiDate, 600),
             kiwoomClient.getDailyChartsByCount(stockCodeNxt, apiDate, 600),
-            getStockRegDayApiFormat(db, { stockCode }),
+            findStockRegDayApiFormat(db, { stockCode }),
         ]);
 
         if (krxCandles.length === 0 || nxtCandles.length === 0) {
@@ -57,7 +57,7 @@ export class MarketService {
 
     @ServiceOperation("Candle-Minute")
     async syncMinuteCandles(stockCode: string, tradeDate: string) {
-        const dailyRow = await getDailyCandle(db, { stockCode, tradeDate });
+        const dailyRow = await findDailyCandleByStockAndDate(db, { stockCode, tradeDate });
         if (!dailyRow) {
             logger.warn(`[MarketService] 일봉 데이터가 없어 분봉 수집을 건너뜁니다.`, { stockCode, tradeDate });
             return;
@@ -94,7 +94,7 @@ export class MarketService {
      */
     @ServiceOperation("Theme")
     async syncThemeMapping(stockCode: string, tradeDate: string, themeName: string) {
-        const dailyRow = await getDailyCandle(db, { stockCode, tradeDate });
+        const dailyRow = await findDailyCandleByStockAndDate(db, { stockCode, tradeDate });
         if (!dailyRow) return;
 
         const themeId = await saveThemeAndReturnId(db, themeName);

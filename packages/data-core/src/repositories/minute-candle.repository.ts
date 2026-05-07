@@ -26,12 +26,12 @@ export async function saveMinuteCandles(
  */
 export async function findDistinctStockCodesByDate(
     db: Database,
-    tradeDate: string,
+    params: { tradeDate: string },
 ): Promise<string[]> {
     const rows = await db
         .selectDistinct({ stockCode: minuteCandles.stockCode })
         .from(minuteCandles)
-        .where(eq(minuteCandles.tradeDate, tradeDate));
+        .where(eq(minuteCandles.tradeDate, params.tradeDate));
     return rows.map((r) => r.stockCode);
 }
 
@@ -40,16 +40,15 @@ export async function findDistinctStockCodesByDate(
  */
 export async function findMinuteCandlesByStockAndDate(
     db: Database,
-    stockCode: string,
-    tradeDate: string,
+    params: { stockCode: string; tradeDate: string },
 ): Promise<MinuteCandle[]> {
     return db
         .select()
         .from(minuteCandles)
         .where(
             and(
-                eq(minuteCandles.stockCode, stockCode),
-                eq(minuteCandles.tradeDate, tradeDate),
+                eq(minuteCandles.stockCode, params.stockCode),
+                eq(minuteCandles.tradeDate, params.tradeDate),
             ),
         )
         .orderBy(asc(minuteCandles.tradeTime));

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import {
-    getAllTradeDates,
-    getPendingTradeDates,
+    findAllTradeDates,
+    findPendingTradeDates,
 } from "@trade-data-manager/data-core";
 import { pool, db } from "./repository/db";
 import { runMinuteFeatures } from "./runner";
@@ -49,8 +49,8 @@ async function resolveDates(opts: {
     pending?: boolean;
 }): Promise<string[]> {
     if (opts.date) return [opts.date];
-    if (opts.all) return getAllTradeDates(db);
-    return getPendingTradeDates(db);
+    if (opts.all) return findAllTradeDates(db);
+    return findPendingTradeDates(db);
 }
 
 program.parseAsync(process.argv);
