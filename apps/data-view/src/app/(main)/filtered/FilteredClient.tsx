@@ -21,8 +21,8 @@ import styles from "./Filtered.module.css";
 interface Props {
     initialSubDir: string;
     initialResult:
-        | { ok: true; data: LoadedDecksDTO; rows: ThemeRowData[] }
-        | { ok: false; error: string };
+    | { ok: true; data: LoadedDecksDTO; rows: ThemeRowData[] }
+    | { ok: false; error: string };
 }
 
 export function FilteredClient({ initialSubDir, initialResult }: Props) {
@@ -68,9 +68,9 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
 
     return (
         <div className={styles.page}>
-            <h1 className={styles.title}>Filtered</h1>
+            <h1 className={styles.title}>Data View</h1>
             <p className={styles.subtitle}>
-                DECKS_DIR 의 CSV 파일들을 합쳐 시점별 분석을 보여줍니다.
+                Read Data From CSV Files
             </p>
 
             <ControlBar
