@@ -1,3 +1,8 @@
+/**
+ * 전체 필터를 순서대로 적용해 조건을 만족하는 행만 반환한다.
+ * In: ThemeRowData[], FilterState  Out: 필터링된 ThemeRowData[]
+ * See: lib/filter/registry/index.ts (등록 배열), hooks/useFilterState.ts (URL ↔ 상태)
+ */
 import type { ThemeRowData } from "@/types/deck";
 import type { FilterState } from "@/types/filter";
 import {

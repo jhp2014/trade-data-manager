@@ -13,6 +13,8 @@ import {
     fillMissingMinuteCandles,
     fillMissingOverlayPoints,
 } from "@/lib/chartPadding";
+import { toNum, dateToUnix, composeUnix } from "@/lib/serialization";
+import { CHART_OVERLAY_MAX_SERIES } from "@/lib/constants";
 
 /* ===========================================================
  * 차트 미리보기용 DTO 정의 (data-view 전용)
@@ -56,8 +58,6 @@ export interface ChartPreviewDTO {
     themeOverlay: ChartOverlaySeries[];
     markerTime: number | null;
 }
-
-const MAX_OVERLAY_SERIES = 15;
 
 /* ===========================================================
  * fetchChartPreviewAction
@@ -114,7 +114,7 @@ function toDailyChartCandle(r: DailyCandleRow): ChartCandle {
         high: toNum(r.highKrx),
         low: toNum(r.lowKrx),
         close: toNum(r.closeKrx),
-        volume: bigIntToNum(r.tradingVolumeKrx),
+        volume: toNum(r.tradingVolumeKrx),
         amount: toNum(r.tradingAmountKrx),
         prevCloseKrx: r.prevCloseKrx != null ? Number(r.prevCloseKrx) : undefined,
         prevCloseNxt: r.prevCloseNxt != null ? Number(r.prevCloseNxt) : undefined,
@@ -141,7 +141,7 @@ function buildMinuteCandles(rows: MinuteCandleRow[]): ChartCandle[] {
             high: toNum(r.highRateNxt),
             low: toNum(r.lowRateNxt),
             close: toNum(r.closeRateNxt),
-            volume: bigIntToNum(r.tradingVolume),
+            volume: toNum(r.tradingVolume),
             amount: toNum(r.tradingAmount),
             accAmount: toNum(r.accumulatedTradingAmount),
         });
@@ -207,7 +207,7 @@ function buildThemeOverlay(
         return bv - av;
     });
 
-    const remain = Math.max(0, MAX_OVERLAY_SERIES - result.length);
+    const remain = Math.max(0, CHART_OVERLAY_MAX_SERIES - result.length);
     return [...result, ...peers.slice(0, remain)];
 }
 
@@ -246,39 +246,3 @@ function buildOverlayPoints(
     return out;
 }
 
-/* ===========================================================
- * 변환 헬퍼
- * =========================================================== */
-
-function toNum(v: unknown): number {
-    if (v === null || v === undefined || v === "") return 0;
-    if (typeof v === "bigint") return Number(v);
-    const n = typeof v === "number" ? v : Number(v);
-    return Number.isFinite(n) ? n : 0;
-}
-
-function bigIntToNum(v: unknown): number {
-    if (v === null || v === undefined) return 0;
-    if (typeof v === "bigint") return Number(v);
-    const n = typeof v === "number" ? v : Number(v);
-    return Number.isFinite(n) ? n : 0;
-}
-
-/** 'YYYY-MM-DD' (KST 가정) → unix seconds (UTC) */
-function dateToUnix(v: any): number {
-    const s = typeof v === "string" ? v.slice(0, 10) : "";
-    if (!s) {
-        if (v instanceof Date) return Math.floor(v.getTime() / 1000);
-        return 0;
-    }
-    const t = new Date(s + "T00:00:00+09:00");
-    return Math.floor(t.getTime() / 1000);
-}
-
-/** 'YYYY-MM-DD' + 'HH:mm:ss' (KST) → unix seconds */
-function composeUnix(tradeDate: string, tradeTime: string): number | null {
-    if (!tradeDate || !tradeTime) return null;
-    const t = new Date(`${tradeDate.slice(0, 10)}T${tradeTime.slice(0, 8)}+09:00`);
-    const sec = Math.floor(t.getTime() / 1000);
-    return Number.isFinite(sec) ? sec : null;
-}
