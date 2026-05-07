@@ -8,11 +8,7 @@ interface Props {
 
 export function OptionsCell({ options, visibleKeys }: Props) {
     if (visibleKeys.length === 0) {
-        return (
-            <div className={styles.optionsCell}>
-                <span className={styles.optionsEmpty}>옵션 미선택</span>
-            </div>
-        );
+        return <div className={styles.optionsCell} />;
     }
 
     return (

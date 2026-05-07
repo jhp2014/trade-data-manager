@@ -60,9 +60,11 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
         [allEntries, optionKeys],
     );
 
+    const optionKeysKey = optionKeys.join("|");
     useEffect(() => {
         initVisibleOptionKeysIfEmpty(optionKeys);
-    }, [optionKeys, initVisibleOptionKeysIfEmpty]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [optionKeysKey, initVisibleOptionKeysIfEmpty]);
 
     return (
         <div className={styles.page}>
@@ -122,18 +124,20 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
             )}
 
             {result.ok && filteredSortedRows.length > 0 && (
-                <div className={styles.list}>
+                <div className={styles.listArea}>
                     <EntryListHeader
                         optionKeys={optionKeys}
                         optionRegistry={optionRegistry}
                     />
-                    {filteredSortedRows.map((r, idx) => (
-                        <EntryRow
-                            key={`${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}|${idx}`}
-                            row={r}
-                            optionKeys={optionKeys}
-                        />
-                    ))}
+                    <div className={styles.list}>
+                        {filteredSortedRows.map((r, idx) => (
+                            <EntryRow
+                                key={`${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}|${idx}`}
+                                row={r}
+                                optionKeys={optionKeys}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
 

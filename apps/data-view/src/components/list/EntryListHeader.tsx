@@ -45,7 +45,10 @@ export function EntryListHeader({ optionKeys }: Props) {
                             className={`${styles.optionHeaderBtn} ${pickerOpen ? styles.optionHeaderActive : ""}`}
                             onClick={() => setPickerOpen((v) => !v)}
                         >
-                            옵션 ⚙
+                            옵션 ⚙{" "}
+                            <span className={styles.optionCount}>
+                                ({visibleOptionKeys.filter((k) => optionKeys.includes(k)).length}/{optionKeys.length})
+                            </span>
                         </button>
                         {pickerOpen && (
                             <OptionVisibilityPicker

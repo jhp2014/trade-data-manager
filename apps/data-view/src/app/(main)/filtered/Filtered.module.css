@@ -15,10 +15,14 @@
     margin-bottom: var(--space-4);
 }
 
-.list {
+/* 헤더 + 행 묶음 컨테이너: border-radius 클리핑. overflow:clip은 scroll container를 만들지 않아 sticky 정상 동작 */
+.listArea {
     margin-top: var(--space-4);
-    background: var(--bg-primary);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-lg);
-    overflow: hidden;
+    overflow: clip;
+}
+
+.list {
+    background: var(--bg-primary);
 }
