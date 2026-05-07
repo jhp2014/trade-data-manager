@@ -174,7 +174,9 @@
     flex-wrap: wrap;
     gap: 4px 10px;
     align-items: center;
+    justify-content: flex-end;
     min-width: 0;
+    overflow: hidden;
 }
 
 .optionPair {
@@ -208,7 +210,3 @@
     font-weight: normal;
 }
 
-.optionsEmpty {
-    font-size: var(--fs-xs);
-    color: var(--text-muted);
-}
