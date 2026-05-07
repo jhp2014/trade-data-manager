@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useEffect, useState, useTransition, useMemo } from "react";
 import { useQueryState, parseAsString } from "nuqs";
 import { ControlBar } from "@/components/deck/ControlBar";
 import { EntryRow } from "@/components/list/EntryRow";
+import { EntryListHeader } from "@/components/list/EntryListHeader";
 import { EmptyState } from "@/components/deck/EmptyState";
 import { FilterChipBar } from "@/components/filter/FilterChipBar";
 import { FilterPanel } from "@/components/filter/FilterPanel";
@@ -14,6 +15,7 @@ import { applyFilters } from "@/lib/filter/applyFilters";
 import { sortRows } from "@/lib/sort/sortRows";
 import { useFilterState } from "@/hooks/useFilterState";
 import { buildOptionRegistry } from "@/lib/options/optionRegistry";
+import { useUiStore } from "@/stores/useUiStore";
 import styles from "./Filtered.module.css";
 
 interface Props {
@@ -30,6 +32,7 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
 
     const [dir, setDir] = useQueryState("dir", parseAsString.withDefault(""));
     const { filter, setFilter, clearFilter, clearOne, activeChips } = useFilterState();
+    const initVisibleOptionKeysIfEmpty = useUiStore((s) => s.initVisibleOptionKeysIfEmpty);
 
     const handleLoad = (subDir: string) => {
         void setDir(subDir);
@@ -56,6 +59,10 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
         () => buildOptionRegistry(allEntries, optionKeys),
         [allEntries, optionKeys],
     );
+
+    useEffect(() => {
+        initVisibleOptionKeysIfEmpty(optionKeys);
+    }, [optionKeys, initVisibleOptionKeysIfEmpty]);
 
     return (
         <div className={styles.page}>
@@ -116,10 +123,15 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
 
             {result.ok && filteredSortedRows.length > 0 && (
                 <div className={styles.list}>
+                    <EntryListHeader
+                        optionKeys={optionKeys}
+                        optionRegistry={optionRegistry}
+                    />
                     {filteredSortedRows.map((r, idx) => (
                         <EntryRow
                             key={`${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}|${idx}`}
                             row={r}
+                            optionKeys={optionKeys}
                         />
                     ))}
                 </div>

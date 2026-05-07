@@ -2,24 +2,30 @@
 
 import { useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
+import { useUiStore } from "@/stores/useUiStore";
 import { useHoverAnchor } from "@/hooks/useHoverAnchor";
 import type { ThemeRowData, StockMetricsDTO } from "@/types/deck";
-import { parseOptionValue } from "@/lib/options/parseOptionValue";
 import { RowHoverPanel } from "./RowHoverPanel";
-import { COLUMNS, METRICS_GRID } from "./columns/definitions";
+import { OptionsCell } from "./OptionsCell";
+import { COLUMNS } from "./columns/definitions";
+import { buildMetricsGridTemplate } from "@/lib/columns/gridTemplate";
 import styles from "./EntryRow.module.css";
 
 interface Props {
     row: ThemeRowData;
+    optionKeys: string[];
 }
 
-export function EntryRow({ row }: Props) {
+export function EntryRow({ row, optionKeys }: Props) {
     const [expanded, setExpanded] = useState(false);
     const open = useChartModalStore((s) => s.open);
     const { anchor, bind } = useHoverAnchor();
+    const visibleOptionKeys = useUiStore((s) => s.visibleOptionKeys);
 
     const { entry, self, themeName, selfRank, themeSize, peers } = row;
     const ctx = { tradeTime: entry.tradeTime };
+    const hasOptions = optionKeys.length > 0;
+    const metricsGrid = buildMetricsGridTemplate(hasOptions);
 
     return (
         <div className={styles.rowGroup}>
@@ -55,20 +61,20 @@ export function EntryRow({ row }: Props) {
 
                 <div
                     className={styles.metricsCol}
-                    style={{ gridTemplateColumns: METRICS_GRID }}
+                    style={{ gridTemplateColumns: metricsGrid }}
                 >
                     {COLUMNS.map((col) => (
                         <div key={col.id}>{col.render(self, ctx)}</div>
                     ))}
+                    {hasOptions && (
+                        <OptionsCell options={entry.options} visibleKeys={visibleOptionKeys} />
+                    )}
                 </div>
             </div>
 
-            {Object.keys(entry.options).length > 0 && (
-                <EntryOptionsBar options={entry.options} />
-            )}
-
             <RowHoverPanel
                 anchor={anchor}
+                options={entry.options}
                 sourceFile={entry.sourceFile}
                 distribution={self.amountDistribution}
             />
@@ -85,6 +91,7 @@ export function EntryRow({ row }: Props) {
                                 rank={idx + 1 >= selfRank ? idx + 2 : idx + 1}
                                 tradeDate={entry.tradeDate}
                                 tradeTime={entry.tradeTime}
+                                hasOptions={hasOptions}
                             />
                         ))
                     )}
@@ -94,53 +101,27 @@ export function EntryRow({ row }: Props) {
     );
 }
 
-function EntryOptionsBar({ options }: { options: Record<string, string> }) {
-    const entries = Object.entries(options).filter(([, v]) => v !== "");
-    if (entries.length === 0) return null;
-    return (
-        <div className={styles.optionsBar}>
-            {entries.map(([k, v]) => {
-                const tokens = parseOptionValue(v);
-                return (
-                    <span key={k} className={styles.optionItem}>
-                        <span className={styles.optionKey}>{k}</span>
-                        <span className={styles.optionValues}>
-                            {tokens.length > 0 ? (
-                                tokens.map((t, i) => (
-                                    <span key={i} className={styles.optionToken}>{t}</span>
-                                ))
-                            ) : (
-                                <span className={styles.optionToken}>{v}</span>
-                            )}
-                        </span>
-                    </span>
-                );
-            })}
-        </div>
-    );
-}
-
 function PeerRow({
     peer,
     rank,
     tradeDate,
     tradeTime,
+    hasOptions,
 }: {
     peer: StockMetricsDTO;
     rank: number;
     tradeDate: string;
     tradeTime: string;
+    hasOptions: boolean;
 }) {
     const open = useChartModalStore((s) => s.open);
     const { anchor, bind } = useHoverAnchor();
     const ctx = { tradeTime };
+    const metricsGrid = buildMetricsGridTemplate(hasOptions);
 
     return (
         <div className={styles.peerRowGroup}>
-            <div
-                className={styles.peerRow}
-                {...bind}
-            >
+            <div className={styles.peerRow} {...bind}>
                 <div className={styles.identityCol}>
                     <span className={styles.peerRank}>{rank}</span>
                     <button
@@ -157,11 +138,12 @@ function PeerRow({
                 </div>
                 <div
                     className={styles.metricsCol}
-                    style={{ gridTemplateColumns: METRICS_GRID }}
+                    style={{ gridTemplateColumns: metricsGrid }}
                 >
                     {COLUMNS.map((col) => (
                         <div key={col.id}>{col.render(peer, ctx)}</div>
                     ))}
+                    {hasOptions && <div />}
                 </div>
             </div>
             <RowHoverPanel
