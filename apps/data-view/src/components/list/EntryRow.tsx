@@ -1,71 +1,28 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
+import { useHoverAnchor } from "@/hooks/useHoverAnchor";
 import type { ThemeRowData, StockMetricsDTO } from "@/types/deck";
-import {
-    formatPercent,
-    formatKrwShort,
-    riseFallClass,
-} from "@/components/format/number";
 import { RowHoverPanel } from "./RowHoverPanel";
+import { COLUMNS, METRICS_GRID } from "./columns/definitions";
 import styles from "./EntryRow.module.css";
 
 interface Props {
     row: ThemeRowData;
 }
 
-const HOVER_OPEN_DELAY = 150;
-
 export function EntryRow({ row }: Props) {
     const [expanded, setExpanded] = useState(false);
     const open = useChartModalStore((s) => s.open);
-
-    const [hoverAnchor, setHoverAnchor] = useState<DOMRect | null>(null);
-    const rowRef = useRef<HTMLDivElement>(null);
-    const openTimerRef = useRef<number | null>(null);
+    const { anchor, bind } = useHoverAnchor();
 
     const { entry, self, themeName, selfRank, themeSize, peers } = row;
-
-    const handleStockClick = () => {
-        open({
-            stockCode: self.stockCode,
-            stockName: self.stockName,
-            tradeDate: entry.tradeDate,
-            tradeTime: entry.tradeTime,
-        });
-    };
-
-    // ★ 핸들러를 row(자기 자신) 에만 붙이고, peer 영역에는 닿지 않도록.
-    const handleRowEnter = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (openTimerRef.current !== null) return;
-        openTimerRef.current = window.setTimeout(() => {
-            openTimerRef.current = null;
-            if (rowRef.current) {
-                setHoverAnchor(rowRef.current.getBoundingClientRect());
-            }
-        }, HOVER_OPEN_DELAY);
-    };
-
-    const handleRowLeave = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (openTimerRef.current !== null) {
-            window.clearTimeout(openTimerRef.current);
-            openTimerRef.current = null;
-        }
-        setHoverAnchor(null);
-    };
+    const ctx = { tradeTime: entry.tradeTime };
 
     return (
         <div className={styles.rowGroup}>
-            {/* ★ rowGroup 이 아니라 row 자체에 hover 핸들러 */}
-            <div
-                className={styles.row}
-                ref={rowRef}
-                onMouseEnter={handleRowEnter}
-                onMouseLeave={handleRowLeave}
-            >
+            <div className={styles.row} {...bind}>
                 <div className={styles.identityCol}>
                     <button
                         type="button"
@@ -80,7 +37,14 @@ export function EntryRow({ row }: Props) {
                     <button
                         type="button"
                         className={styles.stockBtn}
-                        onClick={handleStockClick}
+                        onClick={() =>
+                            open({
+                                stockCode: self.stockCode,
+                                stockName: self.stockName,
+                                tradeDate: entry.tradeDate,
+                                tradeTime: entry.tradeTime,
+                            })
+                        }
                     >
                         <span className={styles.stockName}>{self.stockName}</span>
                         <span className={styles.stockCode}>{self.stockCode}</span>
@@ -88,23 +52,18 @@ export function EntryRow({ row }: Props) {
                     <span className={styles.tradeTime}>{entry.tradeTime}</span>
                 </div>
 
-                <div className={styles.metricsCol}>
-                    <MetricChangeRate value={self.closeRate} />
-                    <MetricDayHigh
-                        dayHighRate={self.dayHighRate}
-                        pullback={self.pullbackFromHigh}
-                        minutesSince={self.minutesSinceDayHigh}
-                    />
-                    <MetricAmount
-                        cumulative={self.cumulativeAmount}
-                        currentMinute={self.currentMinuteAmount}
-                        tradeTime={entry.tradeTime}
-                    />
+                <div
+                    className={styles.metricsCol}
+                    style={{ gridTemplateColumns: METRICS_GRID }}
+                >
+                    {COLUMNS.map((col) => (
+                        <div key={col.id}>{col.render(self, ctx)}</div>
+                    ))}
                 </div>
             </div>
 
             <RowHoverPanel
-                anchor={hoverAnchor}
+                anchor={anchor}
                 options={entry.options}
                 sourceFile={entry.sourceFile}
                 distribution={self.amountDistribution}
@@ -131,68 +90,6 @@ export function EntryRow({ row }: Props) {
     );
 }
 
-function MetricChangeRate({ value }: { value: number | null }) {
-    return (
-        <div className={styles.metric}>
-            <span className={`tabular ${riseFallClass(value)} ${styles.metricMain}`}>
-                {formatPercent(value)}
-            </span>
-        </div>
-    );
-}
-
-function MetricDayHigh({
-    dayHighRate,
-    pullback,
-    minutesSince,
-}: {
-    dayHighRate: number | null;
-    pullback: number | null;
-    minutesSince: number | null;
-}) {
-    return (
-        <div className={styles.metric}>
-            <span className={`tabular ${riseFallClass(dayHighRate)} ${styles.metricMain}`}>
-                {formatPercent(dayHighRate)}
-            </span>
-            <span className={styles.metricSub}>
-                <span className={`tabular ${riseFallClass(pullback)}`}>
-                    {formatPercent(pullback)}
-                </span>
-                <span className={styles.dot}>·</span>
-                <span className="tabular">
-                    {minutesSince === null ? "-" : `${minutesSince}분`}
-                </span>
-            </span>
-        </div>
-    );
-}
-
-function MetricAmount({
-    cumulative,
-    currentMinute,
-    tradeTime,
-}: {
-    cumulative: string | null;
-    currentMinute: string | null;
-    tradeTime: string;
-}) {
-    return (
-        <div className={styles.metric}>
-            <span className={`tabular ${styles.metricMain}`}>
-                {formatKrwShort(cumulative)}
-            </span>
-            <span className={styles.metricSub}>
-                <span className="tabular">{tradeTime.slice(0, 5)}</span>
-                <span className={styles.dot}>·</span>
-                <span className="tabular">{formatKrwShort(currentMinute)}</span>
-            </span>
-        </div>
-    );
-}
-
-/* ===== 테마 내 동반 종목 ===== */
-
 function PeerRow({
     peer,
     rank,
@@ -205,77 +102,40 @@ function PeerRow({
     tradeTime: string;
 }) {
     const open = useChartModalStore((s) => s.open);
-
-    const [hoverAnchor, setHoverAnchor] = useState<DOMRect | null>(null);
-    const rowRef = useRef<HTMLDivElement>(null);
-    const openTimerRef = useRef<number | null>(null);
-
-    const handleClick = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        open({
-            stockCode: peer.stockCode,
-            stockName: peer.stockName,
-            tradeDate,
-            tradeTime,
-        });
-    };
-
-    // ★ 핸들러를 peerRow(자기) 에만 붙이고, 부모로 버블링 차단
-    const handleEnter = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (openTimerRef.current !== null) return;
-        openTimerRef.current = window.setTimeout(() => {
-            openTimerRef.current = null;
-            if (rowRef.current) {
-                setHoverAnchor(rowRef.current.getBoundingClientRect());
-            }
-        }, HOVER_OPEN_DELAY);
-    };
-
-    const handleLeave = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (openTimerRef.current !== null) {
-            window.clearTimeout(openTimerRef.current);
-            openTimerRef.current = null;
-        }
-        setHoverAnchor(null);
-    };
+    const { anchor, bind } = useHoverAnchor();
+    const ctx = { tradeTime };
 
     return (
         <div className={styles.peerRowGroup}>
             <div
                 className={styles.peerRow}
-                ref={rowRef}
-                onMouseEnter={handleEnter}
-                onMouseLeave={handleLeave}
+                {...bind}
             >
                 <div className={styles.identityCol}>
                     <span className={styles.peerRank}>{rank}</span>
                     <button
                         type="button"
                         className={styles.stockBtn}
-                        onClick={handleClick}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            open({ stockCode: peer.stockCode, stockName: peer.stockName, tradeDate, tradeTime });
+                        }}
                     >
                         <span className={styles.stockName}>{peer.stockName}</span>
                         <span className={styles.stockCode}>{peer.stockCode}</span>
                     </button>
                 </div>
-                <div className={styles.metricsCol}>
-                    <MetricChangeRate value={peer.closeRate} />
-                    <MetricDayHigh
-                        dayHighRate={peer.dayHighRate}
-                        pullback={peer.pullbackFromHigh}
-                        minutesSince={peer.minutesSinceDayHigh}
-                    />
-                    <MetricAmount
-                        cumulative={peer.cumulativeAmount}
-                        currentMinute={peer.currentMinuteAmount}
-                        tradeTime={tradeTime}
-                    />
+                <div
+                    className={styles.metricsCol}
+                    style={{ gridTemplateColumns: METRICS_GRID }}
+                >
+                    {COLUMNS.map((col) => (
+                        <div key={col.id}>{col.render(peer, ctx)}</div>
+                    ))}
                 </div>
             </div>
             <RowHoverPanel
-                anchor={hoverAnchor}
+                anchor={anchor}
                 options={{}}
                 sourceFile=""
                 distribution={peer.amountDistribution}

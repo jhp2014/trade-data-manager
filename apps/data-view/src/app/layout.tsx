@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { QueryProvider } from "@/providers/QueryProvider";
 
 export const metadata: Metadata = {
@@ -21,7 +22,9 @@ export default function RootLayout({
                 />
             </head>
             <body>
-                <QueryProvider>{children}</QueryProvider>
+                <NuqsAdapter>
+                    <QueryProvider>{children}</QueryProvider>
+                </NuqsAdapter>
             </body>
         </html>
     );
