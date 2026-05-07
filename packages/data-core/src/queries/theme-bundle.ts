@@ -194,13 +194,13 @@ async function fetchFeaturesByCodes(
         .from(minuteCandleFeatures)
         .where(
             and(
-                inArray((minuteCandleFeatures as any).stockCode, stockCodes),
-                eq((minuteCandleFeatures as any).tradeDate, tradeDate),
+                inArray(minuteCandleFeatures.stockCode, stockCodes),
+                eq(minuteCandleFeatures.tradeDate, tradeDate),
             ),
         )
         .orderBy(
-            asc((minuteCandleFeatures as any).stockCode),
-            asc((minuteCandleFeatures as any).tradeTime),
+            asc(minuteCandleFeatures.stockCode),
+            asc(minuteCandleFeatures.tradeTime),
         );
 
     const map = new Map<string, MinuteFeatureRow[]>();
@@ -212,3 +212,4 @@ async function fetchFeaturesByCodes(
     }
     return map;
 }
+

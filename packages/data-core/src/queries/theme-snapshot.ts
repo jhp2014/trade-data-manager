@@ -123,9 +123,9 @@ async function fetchFeaturesAt(
         .from(minuteCandleFeatures)
         .where(
             and(
-                inArray((minuteCandleFeatures as any).stockCode, stockCodes),
-                eq((minuteCandleFeatures as any).tradeDate, tradeDate),
-                eq((minuteCandleFeatures as any).tradeTime, tradeTime),
+                inArray(minuteCandleFeatures.stockCode, stockCodes),
+                eq(minuteCandleFeatures.tradeDate, tradeDate),
+                eq(minuteCandleFeatures.tradeTime, tradeTime),
             ),
         );
 
@@ -135,6 +135,7 @@ async function fetchFeaturesAt(
     }
     return map;
 }
+
 
 /* ===========================================================
  * 5) 시점 분봉 거래대금 (stockCode -> tradingAmount)

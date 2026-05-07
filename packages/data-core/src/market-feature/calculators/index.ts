@@ -1,7 +1,4 @@
 import type { MinuteFeatureCalculator } from "../types";
-import { TradeDateCalculator } from "./TradeDateCalculator";
-import { TradeTimeCalculator } from "./TradeTimeCalculator";
-import { StockCodeCalculator } from "./StockCodeCalculator";
 import { CloseRateKrxCalculator } from "./CloseRateKrxCalculator";
 import { CloseRateNxtCalculator } from "./CloseRateNxtCalculator";
 import { TradingAmountCalculator } from "./TradingAmountCalculator";
@@ -13,9 +10,6 @@ import { AmountCountCalculator } from "./AmountCountCalculator";
 import { STAT_AMOUNTS } from "../constants";
 
 export {
-    TradeDateCalculator,
-    TradeTimeCalculator,
-    StockCodeCalculator,
     CloseRateKrxCalculator,
     CloseRateNxtCalculator,
     TradingAmountCalculator,
@@ -30,14 +24,12 @@ export {
  * 분봉 피처 가공 Calculator 등록 목록.
  * ⭐ 컬럼 추가/제거는 이 배열만 수정하면 끝.
  *
- * 정렬: 식별 컬럼 → raw 데이터 → 변동률 → 고점 → 거래대금
+ * 식별 메타 컬럼(tradeDate / stockCode / tradeTime)은 schema/features.ts 에
+ * 명시적으로 정의되어 있으며 runner 가 직접 채운다. Calculator 로 다루지 않는다.
+ *
+ * 정렬: raw 데이터 → 변동률 → 고점 → 거래대금
  */
 export const MINUTE_CALCULATORS: MinuteFeatureCalculator[] = [
-    // 식별 컬럼
-    new TradeDateCalculator(),
-    new TradeTimeCalculator(),
-    new StockCodeCalculator(),
-
     // 분봉 raw 데이터
     new CloseRateKrxCalculator(),
     new CloseRateNxtCalculator(),
