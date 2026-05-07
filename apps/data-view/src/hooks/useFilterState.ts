@@ -8,18 +8,17 @@ import {
     parseAsString,
     parseAsArrayOf,
 } from "nuqs";
-import type { FilterState, OptionFilter } from "@/types/filter";
+import type { OptionFilter } from "@/types/filter";
+import { FILTERS } from "@/lib/filter/registry";
+import type { FilterChip } from "@/lib/filter/registry";
+import type { FilterUrlParams } from "@/lib/filter/registry";
 import {
     serializeOptionFilter,
     deserializeOptionFilter,
     chipLabelForOptionFilter,
 } from "@/lib/options/serializeOptionFilter";
 
-export interface FilterChip {
-    id: string;
-    label: string;
-}
-
+// nuqs 파서 정의 — FilterUrlParams의 각 키에 대응
 const filterParsers = {
     tsMin: parseAsInteger,
     tsMax: parseAsInteger,
@@ -43,95 +42,49 @@ const filterParsers = {
     opt: parseAsArrayOf(parseAsString),
 };
 
-type UrlParams = {
-    [K in keyof typeof filterParsers]: ReturnType<typeof filterParsers[K]["parseServerSide"]>;
-};
-
 export function useFilterState() {
     const [params, setParams] = useQueryStates(filterParsers, { history: "replace" });
 
-    const filter: FilterState = useMemo(
-        () => ({
-            themeSizeRange: { min: params.tsMin, max: params.tsMax },
-            themeMemberSlot: {
-                rateMin: params.tmRateMin,
-                rateMax: params.tmRateMax,
-                amountMin: params.tmAmtMin,
-                countMin: params.tmCntMin,
-            },
-            stockCodes: params.codes ?? [],
-            dateRange: { from: params.dFrom, to: params.dTo },
-            timeRange: { from: params.tFrom, to: params.tTo },
-            closeRateRange: { min: params.rateMin, max: params.rateMax },
-            rankRange: { min: params.rankMin, max: params.rankMax },
-            pullbackRange: { min: params.pbMin, max: params.pbMax },
-            minutesSinceHighRange: { min: params.mshMin, max: params.mshMax },
-            optionFilters: (params.opt ?? [])
+    // 각 필터 정의가 자신의 URL 파라미터에서 값을 추출
+    const filterValues: Record<string, unknown> = useMemo(() => {
+        const result: Record<string, unknown> = {};
+        for (const f of FILTERS) {
+            result[f.id] = f.fromUrl(params as FilterUrlParams);
+        }
+        return result;
+    }, [params]);
+
+    // 옵션 필터 (동적 키 — 레지스트리 외부에서 별도 관리)
+    const optionFilters: OptionFilter[] = useMemo(
+        () =>
+            (params.opt ?? [])
                 .map(deserializeOptionFilter)
                 .filter((f): f is OptionFilter => f !== null),
-        }),
         [params],
     );
 
-    const setFilter = useCallback(
-        (patch: Partial<FilterState>) => {
-            const urlPatch: Partial<UrlParams> = {};
-            if (patch.themeSizeRange !== undefined) {
-                urlPatch.tsMin = patch.themeSizeRange.min;
-                urlPatch.tsMax = patch.themeSizeRange.max;
-            }
-            if (patch.themeMemberSlot !== undefined) {
-                urlPatch.tmRateMin = patch.themeMemberSlot.rateMin;
-                urlPatch.tmRateMax = patch.themeMemberSlot.rateMax;
-                urlPatch.tmAmtMin = patch.themeMemberSlot.amountMin;
-                urlPatch.tmCntMin = patch.themeMemberSlot.countMin;
-            }
-            if (patch.stockCodes !== undefined) {
-                urlPatch.codes = patch.stockCodes.length > 0 ? patch.stockCodes : null;
-            }
-            if (patch.dateRange !== undefined) {
-                urlPatch.dFrom = patch.dateRange.from;
-                urlPatch.dTo = patch.dateRange.to;
-            }
-            if (patch.timeRange !== undefined) {
-                urlPatch.tFrom = patch.timeRange.from;
-                urlPatch.tTo = patch.timeRange.to;
-            }
-            if (patch.closeRateRange !== undefined) {
-                urlPatch.rateMin = patch.closeRateRange.min;
-                urlPatch.rateMax = patch.closeRateRange.max;
-            }
-            if (patch.rankRange !== undefined) {
-                urlPatch.rankMin = patch.rankRange.min;
-                urlPatch.rankMax = patch.rankRange.max;
-            }
-            if (patch.pullbackRange !== undefined) {
-                urlPatch.pbMin = patch.pullbackRange.min;
-                urlPatch.pbMax = patch.pullbackRange.max;
-            }
-            if (patch.minutesSinceHighRange !== undefined) {
-                urlPatch.mshMin = patch.minutesSinceHighRange.min;
-                urlPatch.mshMax = patch.minutesSinceHighRange.max;
-            }
-            if (patch.optionFilters !== undefined) {
-                urlPatch.opt =
-                    patch.optionFilters.length > 0
-                        ? patch.optionFilters.map(serializeOptionFilter)
-                        : null;
-            }
-            setParams(urlPatch);
+    const setFilterValue = useCallback(
+        (filterId: string, value: unknown) => {
+            const f = FILTERS.find((x) => x.id === filterId);
+            if (!f) return;
+            setParams(f.toUrl(value) as Partial<FilterUrlParams>);
         },
         [setParams],
     );
 
-    const clearFilter = useCallback(() => {
-        setParams({
-            tsMin: null, tsMax: null,
-            tmRateMin: null, tmRateMax: null, tmAmtMin: null, tmCntMin: null,
-            codes: null, dFrom: null, dTo: null, tFrom: null, tTo: null,
-            rateMin: null, rateMax: null, rankMin: null, rankMax: null,
-            pbMin: null, pbMax: null, mshMin: null, mshMax: null, opt: null,
-        });
+    const setOptionFilters = useCallback(
+        (filters: OptionFilter[]) => {
+            setParams({ opt: filters.length > 0 ? filters.map(serializeOptionFilter) : null });
+        },
+        [setParams],
+    );
+
+    const clearAll = useCallback(() => {
+        const patch: Record<string, null> = {};
+        for (const key of Object.keys(filterParsers)) {
+            patch[key] = null;
+        }
+        setParams(patch as Partial<FilterUrlParams>);
     }, [setParams]);
 
     const clearOne = useCallback(
@@ -143,59 +96,40 @@ export function useFilterState() {
                 setParams({ opt: next.length > 0 ? next : null });
                 return;
             }
-            setParams({ [chipId]: null } as Partial<UrlParams>);
+            // 어느 필터가 이 칩을 소유하는지 찾아 해당 필터 값만 업데이트
+            for (const f of FILTERS) {
+                const value = f.fromUrl(params as FilterUrlParams);
+                const chips = f.chips(value);
+                if (chips.some((c) => c.id === chipId)) {
+                    const next = f.clearChip(chipId, value);
+                    setParams(f.toUrl(next) as Partial<FilterUrlParams>);
+                    return;
+                }
+            }
         },
-        [params.opt, setParams],
+        [params, setParams],
     );
 
-    const activeChips = useMemo(() => buildActiveChips(params), [params]);
+    const activeChips: FilterChip[] = useMemo(() => {
+        const chips: FilterChip[] = [];
+        for (const f of FILTERS) {
+            chips.push(...f.chips(f.fromUrl(params as FilterUrlParams)));
+        }
+        for (const raw of params.opt ?? []) {
+            const f = deserializeOptionFilter(raw);
+            if (!f) continue;
+            chips.push({ id: `opt:${raw}`, label: chipLabelForOptionFilter(f) });
+        }
+        return chips;
+    }, [params]);
 
-    return { filter, setFilter, clearFilter, clearOne, activeChips };
-}
-
-function buildActiveChips(params: UrlParams): FilterChip[] {
-    const chips: FilterChip[] = [];
-
-    if (params.tsMin !== null) chips.push({ id: "tsMin", label: `테마종목 ≥ ${params.tsMin}` });
-    if (params.tsMax !== null) chips.push({ id: "tsMax", label: `테마종목 ≤ ${params.tsMax}` });
-
-    if (params.tmCntMin !== null) {
-        const parts: string[] = [];
-        if (params.tmRateMin !== null) parts.push(`등락률 ≥ ${params.tmRateMin}%`);
-        if (params.tmRateMax !== null) parts.push(`등락률 ≤ ${params.tmRateMax}%`);
-        if (params.tmAmtMin !== null) parts.push(`대금 ≥ ${params.tmAmtMin}억`);
-        chips.push({
-            id: "tmCntMin",
-            label: `활성종목 ${parts.length > 0 ? `[${parts.join(", ")}] ` : ""}≥ ${params.tmCntMin}개`,
-        });
-    } else {
-        if (params.tmRateMin !== null) chips.push({ id: "tmRateMin", label: `슬롯등락률 ≥ ${params.tmRateMin}%` });
-        if (params.tmRateMax !== null) chips.push({ id: "tmRateMax", label: `슬롯등락률 ≤ ${params.tmRateMax}%` });
-        if (params.tmAmtMin !== null) chips.push({ id: "tmAmtMin", label: `슬롯대금 ≥ ${params.tmAmtMin}억` });
-    }
-
-    if (params.codes && params.codes.length > 0)
-        chips.push({ id: "codes", label: `종목코드: ${params.codes.join(", ")}` });
-
-    if (params.dFrom !== null) chips.push({ id: "dFrom", label: `날짜 ≥ ${params.dFrom}` });
-    if (params.dTo !== null) chips.push({ id: "dTo", label: `날짜 ≤ ${params.dTo}` });
-    if (params.tFrom !== null) chips.push({ id: "tFrom", label: `시간 ≥ ${params.tFrom}` });
-    if (params.tTo !== null) chips.push({ id: "tTo", label: `시간 ≤ ${params.tTo}` });
-
-    if (params.rateMin !== null) chips.push({ id: "rateMin", label: `등락률 ≥ ${params.rateMin}%` });
-    if (params.rateMax !== null) chips.push({ id: "rateMax", label: `등락률 ≤ ${params.rateMax}%` });
-    if (params.rankMin !== null) chips.push({ id: "rankMin", label: `등수 ≥ ${params.rankMin}` });
-    if (params.rankMax !== null) chips.push({ id: "rankMax", label: `등수 ≤ ${params.rankMax}` });
-    if (params.pbMin !== null) chips.push({ id: "pbMin", label: `풀백 ≥ ${params.pbMin}%` });
-    if (params.pbMax !== null) chips.push({ id: "pbMax", label: `풀백 ≤ ${params.pbMax}%` });
-    if (params.mshMin !== null) chips.push({ id: "mshMin", label: `고점경과 ≥ ${params.mshMin}분` });
-    if (params.mshMax !== null) chips.push({ id: "mshMax", label: `고점경과 ≤ ${params.mshMax}분` });
-
-    for (const raw of params.opt ?? []) {
-        const f = deserializeOptionFilter(raw);
-        if (!f) continue;
-        chips.push({ id: `opt:${raw}`, label: chipLabelForOptionFilter(f) });
-    }
-
-    return chips;
+    return {
+        filterValues,
+        optionFilters,
+        setFilterValue,
+        setOptionFilters,
+        clearAll,
+        clearOne,
+        activeChips,
+    };
 }

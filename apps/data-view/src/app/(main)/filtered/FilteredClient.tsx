@@ -31,7 +31,15 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
     const [panelOpen, setPanelOpen] = useState(false);
 
     const [dir, setDir] = useQueryState("dir", parseAsString.withDefault(""));
-    const { filter, setFilter, clearFilter, clearOne, activeChips } = useFilterState();
+    const {
+        filterValues,
+        optionFilters,
+        setFilterValue,
+        setOptionFilters,
+        clearAll,
+        clearOne,
+        activeChips,
+    } = useFilterState();
     const initVisibleOptionKeysIfEmpty = useUiStore((s) => s.initVisibleOptionKeysIfEmpty);
 
     const handleLoad = (subDir: string) => {
@@ -48,8 +56,8 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
     );
 
     const filteredSortedRows = useMemo(
-        () => sortRows(applyFilters(allRows, filter)),
-        [allRows, filter],
+        () => sortRows(applyFilters(allRows, filterValues, optionFilters)),
+        [allRows, filterValues, optionFilters],
     );
 
     const optionKeys = result.ok ? result.data.optionKeys : [];
@@ -94,15 +102,17 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
             <FilterChipBar
                 chips={activeChips}
                 onClearOne={clearOne}
-                onClearAll={clearFilter}
+                onClearAll={clearAll}
                 panelOpen={panelOpen}
                 onTogglePanel={() => setPanelOpen((v) => !v)}
             />
 
             {panelOpen && (
                 <FilterPanel
-                    filter={filter}
-                    setFilter={setFilter}
+                    filterValues={filterValues}
+                    setFilterValue={setFilterValue}
+                    optionFilters={optionFilters}
+                    setOptionFilters={setOptionFilters}
                     optionKeys={optionKeys}
                     optionRegistry={optionRegistry}
                 />
