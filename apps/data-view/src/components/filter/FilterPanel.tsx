@@ -1,6 +1,7 @@
 "use client";
 
 import type { FilterState } from "@/types/filter";
+import type { OptionMeta } from "@/lib/options/optionRegistry";
 import { RangeInput } from "./inputs/RangeInput";
 import { TextMultiInput } from "./inputs/TextMultiInput";
 import { OptionRow } from "./inputs/OptionRow";
@@ -10,9 +11,10 @@ interface Props {
     filter: FilterState;
     setFilter: (patch: Partial<FilterState>) => void;
     optionKeys: string[];
+    optionRegistry: Map<string, OptionMeta>;
 }
 
-export function FilterPanel({ filter, setFilter, optionKeys }: Props) {
+export function FilterPanel({ filter, setFilter, optionKeys, optionRegistry }: Props) {
     return (
         <div className={styles.panel}>
             {/* 테마 필터 */}
@@ -144,16 +146,19 @@ export function FilterPanel({ filter, setFilter, optionKeys }: Props) {
                     <h3 className={styles.sectionTitle}>옵션</h3>
                     <div className={styles.fields}>
                         {optionKeys.map((key) => {
-                            const existing = filter.optionFilters.find((f) => f.key === key);
+                            const meta = optionRegistry.get(key);
+                            if (!meta) return null;
+                            const existing = filter.optionFilters.find((f) => f.key === key) ?? null;
                             return (
                                 <OptionRow
                                     key={key}
                                     optionKey={key}
-                                    needle={existing?.needle ?? ""}
-                                    onChange={(needle) => {
+                                    meta={meta}
+                                    filter={existing}
+                                    onChange={(next) => {
                                         const without = filter.optionFilters.filter((f) => f.key !== key);
                                         setFilter({
-                                            optionFilters: needle ? [...without, { key, needle }] : without,
+                                            optionFilters: next ? [...without, next] : without,
                                         });
                                     }}
                                 />

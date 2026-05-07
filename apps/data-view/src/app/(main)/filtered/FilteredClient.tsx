@@ -13,6 +13,7 @@ import { loadDeckAction } from "@/actions/deck";
 import { applyFilters } from "@/lib/filter/applyFilters";
 import { sortRows } from "@/lib/sort/sortRows";
 import { useFilterState } from "@/hooks/useFilterState";
+import { buildOptionRegistry } from "@/lib/options/optionRegistry";
 import styles from "./Filtered.module.css";
 
 interface Props {
@@ -49,6 +50,12 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
     );
 
     const optionKeys = result.ok ? result.data.optionKeys : [];
+    const allEntries = result.ok ? result.data.entries : [];
+
+    const optionRegistry = useMemo(
+        () => buildOptionRegistry(allEntries, optionKeys),
+        [allEntries, optionKeys],
+    );
 
     return (
         <div className={styles.page}>
@@ -88,6 +95,7 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
                     filter={filter}
                     setFilter={setFilter}
                     optionKeys={optionKeys}
+                    optionRegistry={optionRegistry}
                 />
             )}
 

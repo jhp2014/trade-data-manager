@@ -1,14 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useChartPreview } from "@/hooks/useChartPreview";
+import { useShortcut } from "@/hooks/useShortcut";
 import { RealDailyChart } from "./RealDailyChart";
 import { RealMinuteChart } from "./RealMinuteChart";
 import { RealThemeOverlayChart } from "./RealThemeOverlayChart";
 import styles from "./ChartModal.module.css";
 
-type Tab = "minute" | "daily" | "overlay";
+const TAB_ORDER = ["minute", "daily", "overlay"] as const;
+type Tab = typeof TAB_ORDER[number];
+
+const TAB_LABEL: Record<Tab, string> = {
+    minute: "분봉",
+    daily: "일봉",
+    overlay: "테마 오버레이",
+};
 
 export function ChartModal() {
     const target = useChartModalStore((s) => s.target);
@@ -17,14 +25,26 @@ export function ChartModal() {
 
     const { data, isLoading } = useChartPreview(target);
 
-    useEffect(() => {
-        if (!target) return;
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") close();
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [target, close]);
+    const isOpen = !!target;
+
+    const nextTab = useCallback((e: KeyboardEvent) => {
+        e.preventDefault();
+        setTab((prev) => {
+            const idx = TAB_ORDER.indexOf(prev);
+            return TAB_ORDER[(idx + 1) % TAB_ORDER.length];
+        });
+    }, []);
+
+    const jumpToTab = useCallback((e: KeyboardEvent) => {
+        const idx = Number(e.key) - 1;
+        if (idx >= 0 && idx < TAB_ORDER.length) {
+            setTab(TAB_ORDER[idx]);
+        }
+    }, []);
+
+    useShortcut("Escape", close, { enabled: isOpen });
+    useShortcut(" ", nextTab, { enabled: isOpen });
+    useShortcut(["1", "2", "3"], jumpToTab, { enabled: isOpen });
 
     useEffect(() => {
         if (!target) return;
@@ -53,18 +73,11 @@ export function ChartModal() {
                         </span>
                     </div>
                     <div className={styles.tabs}>
-                        <TabBtn active={tab === "minute"} onClick={() => setTab("minute")}>
-                            분봉
-                        </TabBtn>
-                        <TabBtn active={tab === "daily"} onClick={() => setTab("daily")}>
-                            일봉
-                        </TabBtn>
-                        <TabBtn
-                            active={tab === "overlay"}
-                            onClick={() => setTab("overlay")}
-                        >
-                            테마 오버레이
-                        </TabBtn>
+                        {TAB_ORDER.map((t) => (
+                            <TabBtn key={t} active={tab === t} onClick={() => setTab(t)}>
+                                {TAB_LABEL[t]}
+                            </TabBtn>
+                        ))}
                         <button type="button" className={styles.closeBtn} onClick={close}>
                             ✕
                         </button>

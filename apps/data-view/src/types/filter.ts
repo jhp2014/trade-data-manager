@@ -10,11 +10,9 @@ export interface ThemeMemberSlotFilter {
     countMin: number | null;
 }
 
-export interface OptionFilter {
-    // kind: "includes" | "equals" | "prefix" — 현재 includes 고정
-    key: string;
-    needle: string;
-}
+export type OptionFilter =
+    | { key: string; mode: "anyOf"; values: string[] }
+    | { key: string; mode: "contains"; needle: string };
 
 export interface FilterState {
     // ── 테마 단위 ──
