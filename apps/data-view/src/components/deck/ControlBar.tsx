@@ -9,6 +9,8 @@ interface Props {
   summary?: {
     files: number;
     entries: number;
+    rows: number;
+    filteredCount: number;
     optionKeys: string[];
     duplicateCount: number;
   };
@@ -54,6 +56,12 @@ export function ControlBar({
           </span>
           <span className={styles.summaryItem}>
             entries <b className={styles.summaryNum}>{summary.entries}</b>
+          </span>
+          <span className={styles.summaryItem}>
+            rows <b className={styles.summaryNum}>{summary.rows}</b>
+            {summary.filteredCount < summary.rows && (
+              <span> → <b className={styles.summaryNum}>{summary.filteredCount}</b></span>
+            )}
           </span>
           {summary.duplicateCount > 0 && (
             <span className={styles.summaryItem}>
