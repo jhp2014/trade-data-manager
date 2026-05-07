@@ -167,3 +167,45 @@
     color: var(--text-muted);
     font-size: var(--fs-sm);
 }
+
+/* 옵션 chip 줄 */
+.optionsBar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: 0 16px 10px 56px;
+    background: var(--bg-primary);
+}
+
+.optionItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-xs);
+    line-height: 1.4;
+}
+
+.optionKey {
+    color: var(--text-tertiary);
+}
+
+.optionValues {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.optionToken {
+    color: var(--text-primary);
+    font-weight: var(--fw-medium);
+}
+
+.optionToken + .optionToken::before {
+    content: "·";
+    margin-right: 4px;
+    color: var(--text-muted);
+    font-weight: normal;
+}

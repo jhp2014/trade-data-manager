@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useHoverAnchor } from "@/hooks/useHoverAnchor";
 import type { ThemeRowData, StockMetricsDTO } from "@/types/deck";
+import { parseOptionValue } from "@/lib/options/parseOptionValue";
 import { RowHoverPanel } from "./RowHoverPanel";
 import { COLUMNS, METRICS_GRID } from "./columns/definitions";
 import styles from "./EntryRow.module.css";
@@ -49,7 +50,7 @@ export function EntryRow({ row }: Props) {
                         <span className={styles.stockName}>{self.stockName}</span>
                         <span className={styles.stockCode}>{self.stockCode}</span>
                     </button>
-                    <span className={styles.tradeTime}>{entry.tradeTime}</span>
+                    <span className={styles.tradeTime}>{entry.tradeDate} {entry.tradeTime}</span>
                 </div>
 
                 <div
@@ -62,9 +63,12 @@ export function EntryRow({ row }: Props) {
                 </div>
             </div>
 
+            {Object.keys(entry.options).length > 0 && (
+                <EntryOptionsBar options={entry.options} />
+            )}
+
             <RowHoverPanel
                 anchor={anchor}
-                options={entry.options}
                 sourceFile={entry.sourceFile}
                 distribution={self.amountDistribution}
             />
@@ -86,6 +90,32 @@ export function EntryRow({ row }: Props) {
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+function EntryOptionsBar({ options }: { options: Record<string, string> }) {
+    const entries = Object.entries(options).filter(([, v]) => v !== "");
+    if (entries.length === 0) return null;
+    return (
+        <div className={styles.optionsBar}>
+            {entries.map(([k, v]) => {
+                const tokens = parseOptionValue(v);
+                return (
+                    <span key={k} className={styles.optionItem}>
+                        <span className={styles.optionKey}>{k}</span>
+                        <span className={styles.optionValues}>
+                            {tokens.length > 0 ? (
+                                tokens.map((t, i) => (
+                                    <span key={i} className={styles.optionToken}>{t}</span>
+                                ))
+                            ) : (
+                                <span className={styles.optionToken}>{v}</span>
+                            )}
+                        </span>
+                    </span>
+                );
+            })}
         </div>
     );
 }
@@ -136,7 +166,6 @@ function PeerRow({
             </div>
             <RowHoverPanel
                 anchor={anchor}
-                options={{}}
                 sourceFile=""
                 distribution={peer.amountDistribution}
             />

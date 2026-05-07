@@ -8,7 +8,12 @@ import {
     parseAsString,
     parseAsArrayOf,
 } from "nuqs";
-import type { FilterState } from "@/types/filter";
+import type { FilterState, OptionFilter } from "@/types/filter";
+import {
+    serializeOptionFilter,
+    deserializeOptionFilter,
+    chipLabelForOptionFilter,
+} from "@/lib/options/serializeOptionFilter";
 
 export interface FilterChip {
     id: string;
@@ -61,10 +66,9 @@ export function useFilterState() {
             rankRange: { min: params.rankMin, max: params.rankMax },
             pullbackRange: { min: params.pbMin, max: params.pbMax },
             minutesSinceHighRange: { min: params.mshMin, max: params.mshMax },
-            optionFilters: (params.opt ?? []).map((s) => {
-                const idx = s.indexOf(":");
-                return { key: s.slice(0, idx), needle: s.slice(idx + 1) };
-            }),
+            optionFilters: (params.opt ?? [])
+                .map(deserializeOptionFilter)
+                .filter((f): f is OptionFilter => f !== null),
         }),
         [params],
     );
@@ -112,7 +116,7 @@ export function useFilterState() {
             if (patch.optionFilters !== undefined) {
                 urlPatch.opt =
                     patch.optionFilters.length > 0
-                        ? patch.optionFilters.map((f) => `${f.key}:${f.needle}`)
+                        ? patch.optionFilters.map(serializeOptionFilter)
                         : null;
             }
             setParams(urlPatch);
@@ -135,10 +139,11 @@ export function useFilterState() {
             if (chipId.startsWith("opt:")) {
                 const raw = chipId.slice(4);
                 const current = params.opt ?? [];
-                setParams({ opt: current.filter((s) => s !== raw) || null });
-            } else {
-                setParams({ [chipId]: null } as Partial<UrlParams>);
+                const next = current.filter((s) => s !== raw);
+                setParams({ opt: next.length > 0 ? next : null });
+                return;
             }
+            setParams({ [chipId]: null } as Partial<UrlParams>);
         },
         [params.opt, setParams],
     );
@@ -187,10 +192,9 @@ function buildActiveChips(params: UrlParams): FilterChip[] {
     if (params.mshMax !== null) chips.push({ id: "mshMax", label: `고점경과 ≤ ${params.mshMax}분` });
 
     for (const raw of params.opt ?? []) {
-        const idx = raw.indexOf(":");
-        const key = raw.slice(0, idx);
-        const needle = raw.slice(idx + 1);
-        chips.push({ id: `opt:${raw}`, label: `${key}=${needle}` });
+        const f = deserializeOptionFilter(raw);
+        if (!f) continue;
+        chips.push({ id: `opt:${raw}`, label: chipLabelForOptionFilter(f) });
     }
 
     return chips;
