@@ -15,3 +15,16 @@
     margin: 0 auto;
     padding: 24px 20px 48px;
 }
+
+/* QHD(1800px~) 이상에서 컨테이너를 단계적으로 확장 */
+@media (min-width: 1800px) {
+    .container {
+        max-width: 1760px;
+    }
+}
+
+@media (min-width: 2200px) {
+    .container {
+        max-width: 2100px;
+    }
+}
