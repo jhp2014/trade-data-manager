@@ -1,3 +1,7 @@
+/**
+ * 날짜(내림차순) → 테마명 → 종목명 → 시각 순으로 행을 정렬한다.
+ * In: ThemeRowData[]  Out: 새 배열 (원본 불변)
+ */
 import type { ThemeRowData } from "@/types/deck";
 
 export function sortRows(rows: ThemeRowData[]): ThemeRowData[] {

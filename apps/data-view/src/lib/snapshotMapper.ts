@@ -1,5 +1,6 @@
 import type { ThemeSnapshotMember } from "@trade-data-manager/data-core";
 import type { StockMetricsDTO } from "@/types/deck";
+import { toNumOrNull, toInt, toBigInt, bigIntToString } from "@/lib/serialization";
 
 /**
  * ThemeSnapshotMember (data-core raw row) → 클라이언트 직렬화 안전 DTO 변환.
@@ -27,41 +28,14 @@ export function toStockMetricsDTO(
     return {
         stockCode: member.stockCode,
         stockName: member.stockName,
-        closeRate: f ? toNum(f.close_rate_nxt ?? f.closeRateNxt) : null,
+        closeRate: f ? toNumOrNull(f.close_rate_nxt ?? f.closeRateNxt) : null,
         cumulativeAmount: f
-            ? bigIntOrNullToString(toBigInt(f.cumulative_trading_amount ?? f.cumulativeTradingAmount))
+            ? bigIntToString(toBigInt(f.cumulative_trading_amount ?? f.cumulativeTradingAmount))
             : null,
-        dayHighRate: f ? toNum(f.day_high_rate ?? f.dayHighRate) : null,
-        pullbackFromHigh: f ? toNum(f.pullback_from_day_high ?? f.pullbackFromDayHigh) : null,
+        dayHighRate: f ? toNumOrNull(f.day_high_rate ?? f.dayHighRate) : null,
+        pullbackFromHigh: f ? toNumOrNull(f.pullback_from_day_high ?? f.pullbackFromDayHigh) : null,
         minutesSinceDayHigh: f ? toInt(f.minutes_since_day_high ?? f.minutesSinceDayHigh) : null,
-        currentMinuteAmount: bigIntOrNullToString(member.currentMinuteAmount),
+        currentMinuteAmount: bigIntToString(member.currentMinuteAmount),
         amountDistribution: distribution,
     };
-}
-
-function bigIntOrNullToString(v: bigint | null): string | null {
-    return v === null ? null : v.toString();
-}
-
-function toNum(v: unknown): number | null {
-    if (v === null || v === undefined || v === "") return null;
-    const n = typeof v === "number" ? v : Number(v);
-    return Number.isFinite(n) ? n : null;
-}
-
-function toInt(v: unknown): number | null {
-    const n = toNum(v);
-    return n === null ? null : Math.trunc(n);
-}
-
-function toBigInt(v: unknown): bigint | null {
-    if (v === null || v === undefined || v === "") return null;
-    try {
-        if (typeof v === "bigint") return v;
-        if (typeof v === "number") return BigInt(Math.trunc(v));
-        const s = String(v).split(".")[0];
-        return BigInt(s);
-    } catch {
-        return null;
-    }
 }
