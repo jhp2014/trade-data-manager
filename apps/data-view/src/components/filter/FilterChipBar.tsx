@@ -1,6 +1,6 @@
 "use client";
 
-import type { FilterChip } from "@/hooks/useFilterState";
+import type { FilterChip } from "@/lib/filter/registry";
 import styles from "./FilterChipBar.module.css";
 
 interface Props {
