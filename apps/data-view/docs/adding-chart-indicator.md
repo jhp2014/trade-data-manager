@@ -1,16 +1,14 @@
 # 차트 지표(Indicator) 추가 가이드
 
-## 수정해야 하는 파일
-
-| 파일 | 할 일 |
-|------|-------|
-| `src/components/chart/indicators/index.ts` | `DAILY_INDICATORS` / `MINUTE_INDICATORS` 배열에 1줄 추가 |
-
 ## 추가해야 하는 파일
 
 | 파일 | 내용 |
 |------|------|
 | `src/components/chart/indicators/<name>.ts` | `ChartIndicator` 구현체 1개 |
+
+## 수정해야 하는 파일
+
+지표를 특정 차트에 연결하려면 해당 차트 컴포넌트(`RealDailyChart`, `RealMinuteChart` 등)의 `useEffect` 내에서 `attach` / `detach` 를 호출합니다.
 
 ## ChartIndicator 인터페이스
 
@@ -24,7 +22,7 @@ interface ChartIndicator<TData, TParams = void> {
     /** 데이터 변경 시 핸들에 업데이트 */
     update(handle: IndicatorHandle, data: TData): void;
     /** 컴포넌트 언마운트 또는 지표 제거 시 cleanup */
-    detach(handle: IndicatorHandle): void;
+    detach(handle: IndicatorHandle, chart: IChartApi): void;
 }
 ```
 
@@ -32,76 +30,59 @@ interface ChartIndicator<TData, TParams = void> {
 
 ### 1. Indicator 파일 작성
 
+실제 구현 예시는 `src/components/chart/indicators/horizontalLine.ts` 를 참조합니다.
+
 ```ts
-// src/components/chart/indicators/horizontalLine.ts
-import type { IChartApi, IPriceLine, ISeriesApi } from "lightweight-charts";
-import { LineStyle } from "lightweight-charts";
+// src/components/chart/indicators/myIndicator.ts
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { ChartIndicator, IndicatorHandle } from "./types";
 
-interface HLineParams {
-    price: number;
-    color?: string;
-    title?: string;
-}
+interface MyParams { threshold: number }
 
-interface HLineHandle extends IndicatorHandle {
-    priceLine: IPriceLine;
+interface MyHandle extends IndicatorHandle {
     series: ISeriesApi<"Line">;
 }
 
-export const horizontalLineIndicator: ChartIndicator<never, HLineParams> = {
-    id: "horizontalLine",
-    label: "수평 기준선",
+export const myIndicator: ChartIndicator<never, MyParams> = {
+    id: "myIndicator",
+    label: "내 지표",
 
-    attach(chart, params): HLineHandle {
-        // 임시 라인 시리즈를 앵커로 사용 (lightweight-charts API 제약)
-        const series = chart.addLineSeries({ visible: false, priceScaleId: "right" });
-        const priceLine = series.createPriceLine({
-            price: params.price,
-            color: params.color ?? "rgba(251,191,36,0.8)",
-            lineStyle: LineStyle.Dashed,
-            lineWidth: 1,
-            axisLabelVisible: true,
-            title: params.title ?? "",
-        });
-        return { priceLine, series };
+    attach(chart: IChartApi, params: MyParams): MyHandle {
+        const series = chart.addLineSeries({ priceScaleId: "right" });
+        // 시리즈 데이터 설정...
+        return { series } as MyHandle;
     },
 
     update(_handle, _data) {
-        // 수평선은 데이터 변경에 무반응
+        // 데이터 변경 시 업데이트 로직
     },
 
-    detach(handle: HLineHandle) {
-        // series 제거 시 priceLine 도 함께 제거됨
-        handle.series.removePriceLine(handle.priceLine);
+    detach(handle: IndicatorHandle, chart: IChartApi) {
+        const h = handle as MyHandle;
+        chart.removeSeries(h.series);
     },
 };
 ```
 
-### 2. 레지스트리에 등록
+### 2. 차트 컴포넌트에서 사용
 
-`src/components/chart/indicators/index.ts` 의 배열에 한 줄 추가합니다.
+`RealDailyChart.tsx` 의 시리즈 생성 `useEffect` 내에서 attach / detach 합니다.
 
 ```ts
-import { horizontalLineIndicator } from "./horizontalLine";
+useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
 
-export const DAILY_INDICATORS = [
-    candlestickIndicator,
-    volumeIndicator,
-    horizontalLineIndicator,  // ← 추가
-] as const;
+    const handle = myIndicator.attach(chart, { threshold: 5 });
+
+    return () => {
+        myIndicator.detach(handle, chart);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 ```
 
-### 3. 차트 컴포넌트에서 파라미터 전달 (선택)
-
-```tsx
-<RealDailyChart
-    candles={daily}
-    extraIndicators={[
-        { indicator: horizontalLineIndicator, params: { price: entryPrice, title: "매수가" } }
-    ]}
-/>
-```
+데이터가 변경될 때 업데이트가 필요하면 데이터 갱신 `useEffect` 에서 `update` 를 호출합니다.
 
 ## 검증 방법
 
@@ -112,6 +93,6 @@ export const DAILY_INDICATORS = [
 
 ## 흔한 실수
 
-- `detach` 에서 시리즈를 제거하지 않으면 모달을 반복 열고 닫을 때 시리즈가 누적됩니다.
+- `detach` 에서 `chart.removeSeries()` 를 빠뜨리면 모달을 반복 열고 닫을 때 시리즈가 누적됩니다.
 - `attach` 에서 반환하는 핸들에 모든 참조를 담아야 `detach` 에서 완전히 정리할 수 있습니다.
 - `update` 는 데이터 변경마다 호출되므로 비용이 큰 연산은 메모이제이션을 고려하세요.
