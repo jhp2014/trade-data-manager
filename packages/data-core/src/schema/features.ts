@@ -4,6 +4,9 @@ import {
     timestamp,
     index,
     unique,
+    date,
+    varchar,
+    time,
 } from "drizzle-orm/pg-core";
 import {
     pgTable,
@@ -16,6 +19,10 @@ import { MINUTE_CALCULATORS } from "../market-feature/calculators";
 /**
  * [MinuteCandleFeatures]
  * Calculator 배열로부터 자동 생성되는 분봉 피처 테이블.
+ *
+ * tradeDate / stockCode / tradeTime 은 "어느 분봉의 피처인지"를 식별하는
+ * 메타(키성) 컬럼이므로 calculator 결과가 아니라 schema 에 명시적으로 둔다.
+ * runner 에서 minuteCandleId, dailyCandleId 와 함께 직접 채워준다.
  */
 export const minuteCandleFeatures = pgTable(
     "minute_candle_features",
@@ -28,6 +35,12 @@ export const minuteCandleFeatures = pgTable(
             .notNull()
             .references(() => dailyCandles.id, { onDelete: "cascade" }),
 
+        // 식별용 메타 컬럼 (비정규화) — calculator 가 아닌 runner 가 채움
+        tradeDate: date("trade_date").notNull(),
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeTime: time("trade_time").notNull(),
+
+        // calculator 가 출력하는 피처 컬럼들
         ...buildColumnsFromCalculators(MINUTE_CALCULATORS),
 
         createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -38,16 +51,15 @@ export const minuteCandleFeatures = pgTable(
         return [
             unique("uq_minute_features_candle_id").on(table.minuteCandleId),
             index("idx_minute_features_date_code_time").on(
-                t.tradeDate,
-                t.stockCode,
-                t.tradeTime
+                table.tradeDate,
+                table.stockCode,
+                table.tradeTime,
             ),
             index("idx_minute_features_pullback").on(t.pullbackFromDayHigh),
-            // 동적 검색 효율을 위한 인덱스 (선택)
             index("idx_minute_features_search").on(
-                t.tradeDate,
+                table.tradeDate,
                 t.cumulativeTradingAmount,
-                t.closeRateNxt
+                t.closeRateNxt,
             ),
         ];
     }

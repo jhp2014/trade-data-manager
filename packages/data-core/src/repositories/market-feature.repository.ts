@@ -1,4 +1,4 @@
-import { asc, sql, getTableColumns } from "drizzle-orm";
+import { asc, eq, isNull, sql, getTableColumns } from "drizzle-orm";
 import { minuteCandles } from "../schema/market";
 import { minuteCandleFeatures } from "../schema/features";
 import type { Database } from "../db";
@@ -54,17 +54,18 @@ export async function findAllTradeDates(db: Database): Promise<string[]> {
 
 /**
  * 아직 분봉 피처가 가공되지 않은 거래일 (ASC).
+ *  - minute_candles LEFT JOIN minute_candle_features 후 features 가 없는(IS NULL) 거래일.
  */
 export async function findPendingTradeDates(db: Database): Promise<string[]> {
-    const result = await db.execute(sql`
-        SELECT DISTINCT mc.trade_date
-        FROM minute_candles mc
-        LEFT JOIN minute_candle_features mcf
-          ON mcf.minute_candle_id = mc.id
-        WHERE mcf.id IS NULL
-        ORDER BY mc.trade_date ASC
-    `);
-    return (result.rows as Array<{ trade_date: string }>).map(
-        (r) => r.trade_date,
-    );
+    const rows = await db
+        .selectDistinct({ tradeDate: minuteCandles.tradeDate })
+        .from(minuteCandles)
+        .leftJoin(
+            minuteCandleFeatures,
+            eq(minuteCandleFeatures.minuteCandleId, minuteCandles.id),
+        )
+        .where(isNull(minuteCandleFeatures.id))
+        .orderBy(asc(minuteCandles.tradeDate));
+
+    return rows.map((r) => r.tradeDate);
 }

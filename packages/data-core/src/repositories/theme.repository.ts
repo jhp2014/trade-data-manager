@@ -1,5 +1,9 @@
-import { sql } from "drizzle-orm";
-import { themes, dailyThemeMappings } from "../schema/market";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import {
+    themes,
+    dailyCandles,
+    dailyThemeMappings,
+} from "../schema/market";
 import type { Database } from "../db";
 
 export interface ThemeInfo {
@@ -15,23 +19,32 @@ export async function findThemesByStockAndDate(
     db: Database,
     params: { stockCode: string; tradeDate: string },
 ): Promise<ThemeInfo[]> {
-    const { stockCode, tradeDate } = params;
-    const result = await db.execute(sql`
-        SELECT DISTINCT t.theme_id, t.theme_name
-        FROM daily_candles dc
-        JOIN daily_theme_mappings dtm ON dtm.daily_candle_id = dc.id
-        JOIN themes t ON t.theme_id = dtm.theme_id
-        WHERE dc.stock_code = ${stockCode} AND dc.trade_date = ${tradeDate}::date
-        ORDER BY t.theme_name
-    `);
-    const rows = (result as unknown as {
-        rows: Array<{ theme_id: string | bigint; theme_name: string }>;
-    }).rows;
+    const rows = await db
+        .selectDistinct({
+            themeId: themes.themeId,
+            themeName: themes.themeName,
+        })
+        .from(dailyCandles)
+        .innerJoin(
+            dailyThemeMappings,
+            eq(dailyThemeMappings.dailyCandleId, dailyCandles.id),
+        )
+        .innerJoin(themes, eq(themes.themeId, dailyThemeMappings.themeId))
+        .where(
+            and(
+                eq(dailyCandles.stockCode, params.stockCode),
+                eq(dailyCandles.tradeDate, params.tradeDate),
+            ),
+        )
+        .orderBy(asc(themes.themeName));
 
     if (rows.length === 0) {
         return [{ themeId: "", themeName: "(테마 없음)" }];
     }
-    return rows.map((r) => ({ themeId: String(r.theme_id), themeName: r.theme_name }));
+    return rows.map((r) => ({
+        themeId: String(r.themeId),
+        themeName: r.themeName,
+    }));
 }
 
 /**
@@ -49,25 +62,31 @@ export async function findMemberCodesByThemeIds(
         return new Map([["", [selfCode]]]);
     }
 
-    const result = await db.execute(sql`
-        SELECT DISTINCT dtm.theme_id, dc.stock_code
-        FROM daily_theme_mappings dtm
-        JOIN daily_candles dc ON dc.id = dtm.daily_candle_id
-        WHERE dtm.theme_id IN (${sql.join(
-            realIds.map((id) => sql`${id}::bigint`),
-            sql`, `,
-        )})
-          AND dc.trade_date = ${tradeDate}::date
-    `);
-    const rows = (result as unknown as {
-        rows: Array<{ theme_id: string | bigint; stock_code: string }>;
-    }).rows;
+    // schema 에서 themeId 는 bigint 라 string -> bigint 변환 필요
+    const realIdsBigint = realIds.map((id) => BigInt(id));
+
+    const rows = await db
+        .selectDistinct({
+            themeId: dailyThemeMappings.themeId,
+            stockCode: dailyCandles.stockCode,
+        })
+        .from(dailyThemeMappings)
+        .innerJoin(
+            dailyCandles,
+            eq(dailyCandles.id, dailyThemeMappings.dailyCandleId),
+        )
+        .where(
+            and(
+                inArray(dailyThemeMappings.themeId, realIdsBigint),
+                eq(dailyCandles.tradeDate, tradeDate),
+            ),
+        );
 
     const map = new Map<string, string[]>();
     for (const r of rows) {
-        const tid = String(r.theme_id);
+        const tid = String(r.themeId);
         const arr = map.get(tid) ?? [];
-        arr.push(r.stock_code);
+        arr.push(r.stockCode);
         map.set(tid, arr);
     }
     for (const id of realIds) {
