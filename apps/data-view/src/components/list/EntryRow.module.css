@@ -88,10 +88,9 @@
     margin-left: auto;
 }
 
-/* 우측: 3개 metric block */
+/* 우측: metric block — grid-template-columns는 definitions.tsx에서 인라인 style로 주입 */
 .metricsCol {
     display: grid;
-    grid-template-columns: 100px 160px 200px;
     gap: var(--space-5);
     align-items: center;
     flex-shrink: 0;

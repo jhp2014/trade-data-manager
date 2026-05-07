@@ -10,14 +10,18 @@ export const COLUMNS: ColumnDef[] = [
     {
         id: "changeRate",
         label: "등락률",
+        description: "장 마감 기준 전일 대비 등락률 (%)",
         width: "100px",
+        align: "right",
         render: (m) => <MetricChangeRate value={m.closeRate} />,
         sortKey: (m) => m.closeRate,
     },
     {
         id: "dayHigh",
         label: "고가/회복/경과",
+        description: "장중 고가 등락률 / 고점 대비 풀백 / 고점 경과 분",
         width: "160px",
+        align: "right",
         render: (m) => (
             <MetricDayHigh
                 dayHighRate={m.dayHighRate}
@@ -30,7 +34,9 @@ export const COLUMNS: ColumnDef[] = [
     {
         id: "amount",
         label: "거래대금",
+        description: "누적 거래대금 / 현재 분봉 거래대금",
         width: "200px",
+        align: "right",
         render: (m, ctx) => (
             <MetricAmount
                 cumulative={m.cumulativeAmount}
@@ -40,5 +46,3 @@ export const COLUMNS: ColumnDef[] = [
         ),
     },
 ];
-
-export const METRICS_GRID = COLUMNS.map((c) => c.width).join(" ");
