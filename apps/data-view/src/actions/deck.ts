@@ -14,7 +14,9 @@ import type {
 } from "@/types/deck";
 import { toStockMetricsDTO } from "@/lib/snapshotMapper";
 import { getDataViewDb } from "./db";
+import { type Result, okResult, errResult } from "@/lib/result";
 
+type DeckActionPayload = { data: LoadedDecksDTO; rows: ThemeRowData[] };
 
 /* ===========================================================
  * loadDeckAction
@@ -22,10 +24,7 @@ import { getDataViewDb } from "./db";
 
 export async function loadDeckAction(
     subDir: string = ""
-): Promise<
-    | { ok: true; data: LoadedDecksDTO; rows: ThemeRowData[] }
-    | { ok: false; error: string }
-> {
+): Promise<Result<DeckActionPayload>> {
     try {
         const absDir = resolveDeckSubDir(subDir);
         const decks = await loadDecksFromDir(absDir);
@@ -44,7 +43,7 @@ export async function loadDeckAction(
         };
 
         if (dto.entries.length === 0) {
-            return { ok: true, data: dto, rows: [] };
+            return okResult({ data: dto, rows: [] });
         }
 
         const db = getDataViewDb();
@@ -88,10 +87,9 @@ export async function loadDeckAction(
             }
         }
 
-        return { ok: true, data: dto, rows };
+        return okResult({ data: dto, rows });
     } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { ok: false, error: msg };
+        return errResult(err);
     }
 }
 
