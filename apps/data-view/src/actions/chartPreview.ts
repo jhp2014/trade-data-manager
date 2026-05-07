@@ -15,6 +15,7 @@ import {
 } from "@/lib/chartPadding";
 import { toNum, dateToUnix, composeUnix } from "@/lib/serialization";
 import { CHART_OVERLAY_MAX_SERIES } from "@/lib/constants";
+import { type Result, okResult, errResult } from "@/lib/result";
 
 /* ===========================================================
  * 차트 미리보기용 DTO 정의 (data-view 전용)
@@ -67,28 +68,32 @@ export async function fetchChartPreviewAction(params: {
     stockCode: string;
     tradeDate: string;
     tradeTime: string;
-}): Promise<ChartPreviewDTO> {
-    const db = getDataViewDb();
-    const bundles = await getThemeBundle(db, {
-        stockCode: params.stockCode,
-        tradeDate: params.tradeDate,
-    });
+}): Promise<Result<{ data: ChartPreviewDTO }>> {
+    try {
+        const db = getDataViewDb();
+        const bundles = await getThemeBundle(db, {
+            stockCode: params.stockCode,
+            tradeDate: params.tradeDate,
+        });
 
-    const self = pickSelfMember(bundles);
+        const self = pickSelfMember(bundles);
 
-    const daily: ChartCandle[] = self
-        ? self.daily.map(toDailyChartCandle)
-        : [];
+        const daily: ChartCandle[] = self
+            ? self.daily.map(toDailyChartCandle)
+            : [];
 
-    const minute: ChartCandle[] = self
-        ? fillMissingMinuteCandles(buildMinuteCandles(self.minute))
-        : [];
+        const minute: ChartCandle[] = self
+            ? fillMissingMinuteCandles(buildMinuteCandles(self.minute))
+            : [];
 
-    const themeOverlay = buildThemeOverlay(bundles, params.stockCode);
+        const themeOverlay = buildThemeOverlay(bundles, params.stockCode);
 
-    const markerTime = composeUnix(params.tradeDate, params.tradeTime);
+        const markerTime = composeUnix(params.tradeDate, params.tradeTime);
 
-    return { daily, minute, themeOverlay, markerTime };
+        return okResult({ data: { daily, minute, themeOverlay, markerTime } });
+    } catch (err) {
+        return errResult(err);
+    }
 }
 
 /* ===========================================================
