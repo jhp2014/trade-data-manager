@@ -41,6 +41,8 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
         activeChips,
     } = useFilterState();
     const initVisibleOptionKeysIfEmpty = useUiStore((s) => s.initVisibleOptionKeysIfEmpty);
+    const visibleOptionKeys = useUiStore((s) => s.visibleOptionKeys);
+    const setVisibleOptionKeys = useUiStore((s) => s.setVisibleOptionKeys);
 
     const handleLoad = (subDir: string) => {
         void setDir(subDir);
@@ -70,9 +72,17 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
 
     const optionKeysKey = optionKeys.join("|");
     useEffect(() => {
+        // 1) 빈 상태면 기본값으로 초기화 (기존 동작 유지)
         initVisibleOptionKeysIfEmpty(optionKeys);
+
+        // 2) 현재 CSV에 더 이상 존재하지 않는 stale 키 제거
+        const validKeys = visibleOptionKeys.filter((k) => optionKeys.includes(k));
+        if (validKeys.length !== visibleOptionKeys.length) {
+            setVisibleOptionKeys(validKeys);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [optionKeysKey, initVisibleOptionKeysIfEmpty]);
+    }, [optionKeysKey]);
+
 
     return (
         <div className={styles.page}>
