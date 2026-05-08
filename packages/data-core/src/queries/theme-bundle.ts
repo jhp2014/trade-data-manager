@@ -23,7 +23,7 @@ import {
  * 호출부(앱) 책임입니다.
  * =========================================================== */
 
-const DAILY_LOOKBACK = 240; // 약 1년치 거래일
+const DAILY_LOOKBACK = 600; // 약 2년 6개월 거래일
 
 export type DailyCandleRow = DailyCandle;
 export type MinuteCandleRow = MinuteCandle;
