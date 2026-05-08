@@ -11,7 +11,6 @@ import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { MinuteTooltip } from "./tooltip/MinuteTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE, assignSeriesColors } from "@/lib/chart/overlay";
-import { EntryMarker } from "./marker/EntryMarker";
 
 interface Props {
     candles: ChartCandle[];
@@ -30,7 +29,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
         },
         crosshair: {
             mode: CrosshairMode.Normal,
-            vertLine: { visible: true, width: 1, color: "rgba(60,60,60,0.6)", style: 0, labelVisible: true },
+            vertLine: { visible: true, width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dashed, labelVisible: true },
             horzLine: { visible: true, width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dashed, labelVisible: true },
         },
         rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.30 } },
@@ -99,7 +98,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const { state: tipState } = useCrosshairTooltip({
@@ -183,7 +182,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
     useEffect(() => {
         const series = candleSeriesRef.current;
         if (!series || markerTime == null) return;
-        series.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#fbbf24", shape: "arrowDown", text: "진입" }]);
+        series.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#000000ff", shape: "arrowDown", text: "🔶Point🔶" }]);
     }, [markerTime, candles]);
 
     return (
@@ -199,12 +198,6 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
             >
                 {tipState.content}
             </ChartTooltip>
-            <EntryMarker
-                chartRef={chartRef}
-                containerRef={containerRef}
-                time={markerTime}
-                dataKey={candles}
-            />
         </div>
     );
 }
