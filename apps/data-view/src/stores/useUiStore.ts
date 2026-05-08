@@ -2,17 +2,20 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type SidePanelKey = "favorite" | "note" | "alert" | "settings";
+export type DailyChartPriceMode = "krx" | "nxt";
 
 interface UiState {
   sidePanelOpen: boolean;
   activeSidePanel: SidePanelKey | null;
   visibleOptionKeys: string[];
+  dailyChartPriceMode: DailyChartPriceMode;
 
   toggleSidePanel: (key: SidePanelKey) => void;
   closeSidePanel: () => void;
   setVisibleOptionKeys: (keys: string[]) => void;
   toggleOptionKey: (key: string) => void;
   initVisibleOptionKeysIfEmpty: (allKeys: string[]) => void;
+  setDailyChartPriceMode: (mode: DailyChartPriceMode) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -21,6 +24,7 @@ export const useUiStore = create<UiState>()(
       sidePanelOpen: false,
       activeSidePanel: null,
       visibleOptionKeys: [],
+      dailyChartPriceMode: "krx" as DailyChartPriceMode,
 
       toggleSidePanel: (key) => {
         const { activeSidePanel, sidePanelOpen } = get();
@@ -50,10 +54,15 @@ export const useUiStore = create<UiState>()(
         const initial = allKeys.length <= 3 ? allKeys : allKeys.slice(0, 3);
         set({ visibleOptionKeys: initial });
       },
+
+      setDailyChartPriceMode: (mode) => set({ dailyChartPriceMode: mode }),
     }),
     {
       name: "data-view-ui",
-      partialize: (state) => ({ visibleOptionKeys: state.visibleOptionKeys }),
+      partialize: (state) => ({
+        visibleOptionKeys: state.visibleOptionKeys,
+        dailyChartPriceMode: state.dailyChartPriceMode,
+      }),
     },
   ),
 );

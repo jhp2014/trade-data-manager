@@ -5,10 +5,12 @@ import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweigh
 import type { ChartCandle } from "@/types/chart";
 import { kstYmd } from "@/lib/chartTime";
 import { HIGH_MARKER_MIN_PCT, AMOUNT_MIL_TO_EOK } from "@/lib/constants";
+import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { DailyTooltip } from "./tooltip/DailyTooltip";
+import styles from "./RealDailyChart.module.css";
 
 interface Props {
     candles: ChartCandle[];
@@ -32,6 +34,9 @@ function highMarkerColor(pct: number): string | null {
 
 export function RealDailyChart({ candles }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
+
+    const mode = useUiStore((s) => s.dailyChartPriceMode);
+    const setMode = useUiStore((s) => s.setDailyChartPriceMode);
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
@@ -100,12 +105,17 @@ export function RealDailyChart({ candles }: Props) {
             const candle = dataMapRef.current.get(t);
             if (!candle) return null;
 
+            const useNxt = mode === "nxt";
             const cursorPrice = candleSeries.coordinateToPrice(param.point!.y);
             const base = baseCandleRef.current;
+
+            // hover 봉의 표시 가격(KRX or NXT high) 기준으로 두 prev close에 대한 % 산출
+            const hoverHigh = useNxt ? (candle.highNxt ?? candle.high) : candle.high;
             const hoverHighKrxPct = candle.prevCloseKrx && candle.prevCloseKrx > 0
-                ? ((candle.high - candle.prevCloseKrx) / candle.prevCloseKrx) * 100 : null;
+                ? ((hoverHigh - candle.prevCloseKrx) / candle.prevCloseKrx) * 100 : null;
             const hoverHighNxtPct = candle.prevCloseNxt && candle.prevCloseNxt > 0
-                ? ((candle.high - candle.prevCloseNxt) / candle.prevCloseNxt) * 100 : null;
+                ? ((hoverHigh - candle.prevCloseNxt) / candle.prevCloseNxt) * 100 : null;
+
             const cursorKrxPct = cursorPrice != null && Number.isFinite(cursorPrice) && base?.prevCloseKrx
                 ? ((cursorPrice - base.prevCloseKrx) / base.prevCloseKrx) * 100 : null;
             const cursorNxtPct = cursorPrice != null && Number.isFinite(cursorPrice) && base?.prevCloseNxt
@@ -126,28 +136,45 @@ export function RealDailyChart({ candles }: Props) {
         leftOffset: () => chartRef.current?.priceScale("left").width() ?? 0,
     });
 
-    // 데이터 갱신
+    // 데이터 갱신 (mode 전환 시에도 재실행)
     useEffect(() => {
         const candleSeries = candleSeriesRef.current;
         const amountSeries = amountSeriesRef.current;
         if (!candleSeries || !amountSeries) return;
 
+        const useNxt = mode === "nxt";
         const map = new Map<number, ChartCandle>();
+
         candleSeries.setData(candles.map((c) => {
             map.set(c.time, c);
-            return { time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close };
+            return {
+                time: c.time as Time,
+                open: useNxt ? (c.openNxt ?? c.open) : c.open,
+                high: useNxt ? (c.highNxt ?? c.high) : c.high,
+                low: useNxt ? (c.lowNxt ?? c.low) : c.low,
+                close: useNxt ? (c.closeNxt ?? c.close) : c.close,
+            };
         }));
         dataMapRef.current = map;
         baseCandleRef.current = candles.length > 0 ? candles[candles.length - 1] : null;
 
         amountSeries.setData(
-            candles.filter((c) => c.amount != null).map((c) => ({
-                time: c.time as Time,
-                value: (c.amount as number) / AMOUNT_MIL_TO_EOK,
-                color: c.close >= c.open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
-            })),
+            candles.filter((c) => {
+                const amt = useNxt ? c.amountNxt : c.amount;
+                return amt != null;
+            }).map((c) => {
+                const amt = useNxt ? (c.amountNxt as number) : (c.amount as number);
+                const open = useNxt ? (c.openNxt ?? c.open) : c.open;
+                const close = useNxt ? (c.closeNxt ?? c.close) : c.close;
+                return {
+                    time: c.time as Time,
+                    value: amt / AMOUNT_MIL_TO_EOK,
+                    color: close >= open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
+                };
+            }),
         );
 
+        // 고가 마커는 모드와 무관하게 항상 KRX 기준 (ADR-009)
         const markers: Array<{ time: Time; position: "aboveBar"; color: string; shape: "circle"; text: string }> = [];
         for (const c of candles) {
             if (!c.prevCloseKrx || c.prevCloseKrx <= 0) continue;
@@ -157,10 +184,26 @@ export function RealDailyChart({ candles }: Props) {
         }
         candleSeries.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
-    }, [candles]);
+    }, [candles, mode]);
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
+            <div className={styles.modeToggle}>
+                <button
+                    type="button"
+                    className={`${styles.modeBtn} ${mode === "krx" ? styles.modeBtnActive : ""}`}
+                    onClick={() => setMode("krx")}
+                >
+                    KRX
+                </button>
+                <button
+                    type="button"
+                    className={`${styles.modeBtn} ${mode === "nxt" ? styles.modeBtnActive : ""}`}
+                    onClick={() => setMode("nxt")}
+                >
+                    NXT
+                </button>
+            </div>
             <ChartTooltip
                 visible={tipState.visible}
                 x={tipState.x}

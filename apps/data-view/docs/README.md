@@ -43,6 +43,7 @@
 | [ADR-006](./decisions/006-bigint-serialization.md) | bigint → string 직렬화 | Accepted |
 | [ADR-007](./decisions/007-unit-brand-types.md) | 단위 Brand 타입 (`Eok`/`Mil`/`Krw`) | Accepted |
 | [ADR-008](./decisions/008-option-filter-separation.md) | Option Filter를 정적 레지스트리에서 분리 | Accepted |
+| [ADR-009](./decisions/009-daily-chart-krx-nxt-toggle.md) | 일봉 차트 KRX/NXT 토글 | Accepted |
 
 ---
 
