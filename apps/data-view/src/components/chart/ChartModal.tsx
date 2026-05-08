@@ -94,6 +94,7 @@ export function ChartModal() {
                                     <RealMinuteChart
                                         candles={data.minute}
                                         markerTime={data.markerTime}
+                                        themeOverlay={data.themeOverlay}
                                     />
                                 )}
                                 {tab === "daily" && (

@@ -1,27 +1,25 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
-import type { ChartCandle } from "@/types/chart";
+import type { ChartCandle, ChartOverlaySeries } from "@/types/chart";
 import { kstHHmm } from "@/lib/chartTime";
 import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
 import { useChartShell } from "./shell/useChartShell";
-import { positionTooltip, TOOLTIP_STYLE } from "./shell/tooltipUtils";
+import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
+import { ChartTooltip } from "./tooltip/ChartTooltip";
+import { MinuteTooltip } from "./tooltip/MinuteTooltip";
+import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
+import { SELF_COLOR, PALETTE, assignSeriesColors } from "@/lib/chart/overlay";
 
 interface Props {
     candles: ChartCandle[];
     markerTime?: number | null;
+    themeOverlay?: ChartOverlaySeries[];
 }
 
-function fmtAmount(v: number) {
-    if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억`;
-    if (v >= 1e4) return `${(v / 1e4).toFixed(0)}만`;
-    return v.toFixed(0);
-}
-
-export function RealMinuteChart({ candles, markerTime }: Props) {
+export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const tooltipRef = useRef<HTMLDivElement>(null);
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#a0a0a0", fontSize: 11 },
@@ -50,7 +48,25 @@ export function RealMinuteChart({ candles, markerTime }: Props) {
     const cumAmountMapRef = useRef<Map<number, number>>(new Map());
     const amountMapRef = useRef<Map<number, number>>(new Map());
 
-    // 시리즈 생성 + 툴팁 구독 (마운트 1회)
+    // themeOverlay 변경 시 time → point lookup Map을 미리 구성 (hover 시 O(1) 조회)
+    const overlayLookup = useMemo((): Map<string, Map<number, { value: number; amount: number; cumAmount: number }>> => {
+        const outer = new Map<string, Map<number, { value: number; amount: number; cumAmount: number }>>();
+        for (const s of themeOverlay ?? []) {
+            const inner = new Map<number, { value: number; amount: number; cumAmount: number }>();
+            for (const p of s.series) {
+                inner.set(p.time, { value: p.value, amount: p.amount, cumAmount: p.cumAmount });
+            }
+            outer.set(s.stockCode, inner);
+        }
+        return outer;
+    }, [themeOverlay]);
+
+    const colorMap = useMemo(() => assignSeriesColors(themeOverlay ?? []), [themeOverlay]);
+
+    // self 종목 정보 (themeOverlay에서 첫 번째 self 시리즈 추출)
+    const selfSeries = useMemo(() => (themeOverlay ?? []).find((s) => s.isSelf) ?? null, [themeOverlay]);
+
+    // 시리즈 생성 (마운트 1회)
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
@@ -78,51 +94,58 @@ export function RealMinuteChart({ candles, markerTime }: Props) {
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
 
-        chart.subscribeCrosshairMove((param) => {
-            const tip = tooltipRef.current;
-            const c = containerRef.current;
-            if (!tip || !c) return;
-
-            if (!param.point || !param.time ||
-                param.point.x < 0 || param.point.x > c.clientWidth ||
-                param.point.y < 0 || param.point.y > c.clientHeight) {
-                tip.style.display = "none";
-                return;
-            }
-
-            const data = param.seriesData.get(candleSeries) as
-                | { open?: number; high?: number; low?: number; close?: number }
-                | undefined;
-            if (!data || data.close === undefined) { tip.style.display = "none"; return; }
-
-            const t = param.time as number;
-            const v = data.close;
-            const color = v >= 0 ? "#ef4444" : "#3b82f6";
-            const amount = amountMapRef.current.get(t) ?? 0;
-            const cumAmount = cumAmountMapRef.current.get(t) ?? 0;
-
-            tip.innerHTML = `
-                <div style="font-size:11px;color:#a0a0a0;margin-bottom:6px">${kstHHmm(t)}</div>
-                <div style="display:grid;grid-template-columns:auto auto;gap:4px 12px;font-size:12px">
-                  <div style="color:#a0a0a0">등락률</div>
-                  <div style="text-align:right;font-variant-numeric:tabular-nums;color:${color};font-weight:600">${v >= 0 ? "+" : ""}${v.toFixed(2)}%</div>
-                  <div style="color:#a0a0a0">분거래대금</div>
-                  <div style="text-align:right;font-variant-numeric:tabular-nums">${fmtAmount(amount)}</div>
-                  <div style="color:#a0a0a0">누적</div>
-                  <div style="text-align:right;font-variant-numeric:tabular-nums">${fmtAmount(cumAmount)}</div>
-                </div>`;
-            tip.style.display = "block";
-
-            const leftW = chart.priceScale("left").width();
-            positionTooltip(tip, c, param.point.x + leftW, param.point.y);
-        });
-
         return () => {
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const { state: tipState } = useCrosshairTooltip({
+        chartRef,
+        containerRef,
+        render: (param) => {
+            const t = param.time as number | undefined;
+            if (t === undefined) return null;
+
+            const data = param.seriesData.get(candleSeriesRef.current!) as
+                | { open?: number; high?: number; low?: number; close?: number }
+                | undefined;
+            if (!data || data.close === undefined) return null;
+
+            // 자기 종목 행
+            const selfRow: OverlayTooltipRow = {
+                stockCode: selfSeries?.stockCode ?? "",
+                stockName: selfSeries?.stockName ?? "",
+                color: SELF_COLOR,
+                isSelf: true,
+                rate: data.close,
+                amount: amountMapRef.current.get(t) ?? 0,
+                cumAmount: cumAmountMapRef.current.get(t) ?? 0,
+            };
+
+            // peers 행 (themeOverlay의 non-self 시리즈에서 lookup)
+            const peerRows: OverlayTooltipRow[] = [];
+            for (const s of themeOverlay ?? []) {
+                if (s.isSelf) continue;
+                const pt = overlayLookup.get(s.stockCode)?.get(t);
+                if (!pt) continue;
+                peerRows.push({
+                    stockCode: s.stockCode,
+                    stockName: s.stockName,
+                    color: colorMap.get(s.stockCode) ?? PALETTE[0],
+                    isSelf: false,
+                    rate: pt.value,
+                    amount: pt.amount,
+                    cumAmount: pt.cumAmount,
+                });
+            }
+            peerRows.sort((a, b) => b.rate - a.rate);
+
+            return <MinuteTooltip time={t} rows={[selfRow, ...peerRows]} />;
+        },
+        leftOffset: () => chartRef.current?.priceScale("left").width() ?? 0,
+    });
 
     // 데이터 갱신
     useEffect(() => {
@@ -164,7 +187,17 @@ export function RealMinuteChart({ candles, markerTime }: Props) {
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <div ref={tooltipRef} style={{ ...TOOLTIP_STYLE, minWidth: 180 }} />
+            <ChartTooltip
+                visible={tipState.visible}
+                x={tipState.x}
+                y={tipState.y}
+                containerRef={containerRef}
+                leftOffset={tipState.leftOffset}
+                minWidth={180}
+                maxWidth={420}
+            >
+                {tipState.content}
+            </ChartTooltip>
         </div>
     );
 }
