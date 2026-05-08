@@ -1,10 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import {
-    fetchChartPreviewAction,
-    type ChartPreviewDTO,
-} from "@/actions/chartPreview";
+import { fetchChartPreviewAction } from "@/actions/chartPreview";
+import type { ChartPreviewDTO } from "@/types/chart";
 
 export function useChartPreview(
     params: { stockCode: string; tradeDate: string; tradeTime: string } | null

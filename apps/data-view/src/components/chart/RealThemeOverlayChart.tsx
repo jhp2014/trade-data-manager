@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
-import type { ChartOverlaySeries, ChartOverlayPoint } from "@/actions/chartPreview";
+import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
 import { kstHHmm } from "@/lib/chartTime";
 import { useChartShell } from "./shell/useChartShell";
 import { positionTooltip, TOOLTIP_STYLE } from "./shell/tooltipUtils";

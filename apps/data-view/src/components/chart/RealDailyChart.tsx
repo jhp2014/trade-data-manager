@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
-import type { ChartCandle } from "@/actions/chartPreview";
+import type { ChartCandle } from "@/types/chart";
 import { kstYmd } from "@/lib/chartTime";
 import { CHART_HOVER_DELAY_MS, HIGH_MARKER_MIN_PCT, AMOUNT_MIL_TO_EOK } from "@/lib/constants";
 import { useChartShell } from "./shell/useChartShell";
@@ -159,7 +159,7 @@ export function RealDailyChart({ candles }: Props) {
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // 데이터 갱신

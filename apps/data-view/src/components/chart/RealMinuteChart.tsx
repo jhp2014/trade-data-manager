@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
-import type { ChartCandle } from "@/actions/chartPreview";
+import type { ChartCandle } from "@/types/chart";
 import { kstHHmm } from "@/lib/chartTime";
 import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
 import { useChartShell } from "./shell/useChartShell";
