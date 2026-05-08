@@ -1,3 +1,11 @@
+/*
+ * .container max-width 정책: clamp(1200px, 78vw, 2100px)
+ *  - FHD(1920px) → 1498px
+ *  - QHD(2560px) → 1996px
+ *  - 4K(3840px)  → 2100px (max로 클램프)
+ *  비율 78vw는 시각 검수 후 75~82vw 범위에서 미세 조정 가능.
+ */
+
 .shell {
     min-height: 100vh;
     display: flex;
@@ -11,20 +19,7 @@
 }
 
 .container {
-    max-width: 1400px;
+    max-width: clamp(1200px, 78vw, 2100px);
     margin: 0 auto;
     padding: 24px 20px 48px;
-}
-
-/* QHD(1800px~) 이상에서 컨테이너를 단계적으로 확장 */
-@media (min-width: 1800px) {
-    .container {
-        max-width: 1760px;
-    }
-}
-
-@media (min-width: 2200px) {
-    .container {
-        max-width: 2100px;
-    }
 }
