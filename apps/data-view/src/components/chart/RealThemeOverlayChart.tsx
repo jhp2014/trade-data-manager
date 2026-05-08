@@ -127,7 +127,7 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
         if (markerTime == null) return;
         const self = seriesMetaRef.current.find((m) => m.isSelf);
         if (!self) return;
-        self.api.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#000000ff", shape: "arrowDown", text: "🔷Point🔷" }]);
+        self.api.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#000000ff", shape: "arrowDown", text: "✅Point✅"}]);
     }, [markerTime, data]);
 
     return (

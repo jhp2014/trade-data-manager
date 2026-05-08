@@ -182,7 +182,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
     useEffect(() => {
         const series = candleSeriesRef.current;
         if (!series || markerTime == null) return;
-        series.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#000000ff", shape: "arrowDown", text: "🔷Point🔷" }]);
+        series.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#000000ff", shape: "arrowDown", text: "✅Point✅" }]);
     }, [markerTime, candles]);
 
     return (

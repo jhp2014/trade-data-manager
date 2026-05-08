@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useUiStore } from "@/stores/useUiStore";
 import { useHoverAnchor } from "@/hooks/useHoverAnchor";
@@ -26,6 +26,19 @@ export function EntryRow({ row, optionKeys }: Props) {
     const ctx = { tradeTime: entry.tradeTime };
     const hasOptions = optionKeys.length > 0;
     const metricsGrid = buildMetricsGridTemplate(hasOptions);
+
+    // 단축키: 1 - 차트 열기, 2 - 펼치기/접기
+    useEffect(() => {
+        if (!anchor) return;
+        const handler = (e: KeyboardEvent) => {
+            const tag = (e.target as HTMLElement).tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA") return;
+            if (e.key === "1") open({ stockCode: self.stockCode, stockName: self.stockName, tradeDate: entry.tradeDate, tradeTime: entry.tradeTime });
+            if (e.key === "2") setExpanded((v) => !v);
+        };
+        document.addEventListener("keydown", handler);
+        return () => document.removeEventListener("keydown", handler);
+    }, [anchor, open, self, entry]);
 
     return (
         <div className={styles.rowGroup}>

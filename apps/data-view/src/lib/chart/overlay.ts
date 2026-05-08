@@ -12,7 +12,7 @@ import { fillMissingOverlayPoints } from "@/lib/chartPadding";
 import { buildOverlayPoints } from "./mappers";
 import { CHART_OVERLAY_MAX_SERIES } from "@/lib/constants";
 
-export const SELF_COLOR = "#fbbf24";
+export const SELF_COLOR = "#000000";
 
 export const PALETTE = [
     "#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa",
