@@ -20,7 +20,7 @@ export const COLUMNS: ColumnDef[] = [
         id: "dayHigh",
         label: "고가/회복/경과",
         description: "장중 고가 등락률 / 고점 대비 풀백 / 고점 경과 분",
-        width: "160px",
+        width: "120px",
         align: "right",
         render: (m) => (
             <MetricDayHigh
@@ -35,7 +35,7 @@ export const COLUMNS: ColumnDef[] = [
         id: "amount",
         label: "거래대금",
         description: "누적 거래대금 / 현재 분봉 거래대금",
-        width: "200px",
+        width: "120px",
         align: "right",
         render: (m, ctx) => (
             <MetricAmount
