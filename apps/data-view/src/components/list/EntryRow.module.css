@@ -81,6 +81,32 @@
     font-variant-numeric: tabular-nums;
 }
 
+.allThemes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
+}
+
+.allThemeChip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    white-space: nowrap;
+}
+
+.allThemeChipCurrent {
+    background: var(--accent-bg);
+    color: var(--accent-primary);
+    font-weight: var(--fw-semibold);
+}
+
 .tradeTime {
     font-size: var(--fs-sm);
     color: var(--text-tertiary);

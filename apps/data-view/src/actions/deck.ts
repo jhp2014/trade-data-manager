@@ -65,6 +65,11 @@ export async function loadDeckAction(
             const self = toStockMetricsDTO(selfMember, STAT_AMOUNTS);
             if (!self) continue;
 
+            const allThemesForEntry = snapshots.map((s) => ({
+                themeId: s.themeId,
+                themeName: s.themeName,
+            }));
+
             for (const snap of snapshots) {
                 const peerDtos: StockMetricsDTO[] = snap.members
                     .filter((m) => !m.isSelf)
@@ -83,6 +88,7 @@ export async function loadDeckAction(
                     selfRank,
                     themeSize: all.length,
                     peers: all.filter((s) => s.stockCode !== self.stockCode),
+                    allThemesForEntry,
                 });
             }
         }

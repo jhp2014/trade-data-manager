@@ -56,6 +56,17 @@ export function EntryRow({ row, optionKeys }: Props) {
                         <span className={styles.stockName}>{self.stockName}</span>
                         <span className={styles.stockCode}>{self.stockCode}</span>
                     </button>
+
+                    <div className={styles.allThemes}>
+                        {row.allThemesForEntry.map((t) => (
+                            <span
+                                key={t.themeId}
+                                className={`${styles.allThemeChip} ${t.themeId === row.themeId ? styles.allThemeChipCurrent : ""}`}
+                            >
+                                #{t.themeName}
+                            </span>
+                        ))}
+                    </div>
                     <span className={styles.tradeTime}>{entry.tradeDate} {entry.tradeTime}</span>
                 </div>
 
