@@ -1,8 +1,6 @@
 /**
  * 등록된 필터 정의 배열. 배열 순서 = FilterPanel 표시 순서.
- * 새 필터: 정의 파일 1개 추가 + FILTERS 배열에 1줄 추가.
- * See: docs/adding-filter.md
- * 자동 반영 대상: FilterPanel(렌더), useFilterState(URL ↔ 값), applyFilters(매칭)
+ * See: docs/architecture/filter-system.md, docs/adding-filter.md
  */
 import { themeSizeFilter } from "./themeSize";
 import { themeMemberSlotFilter } from "./themeMemberSlot";

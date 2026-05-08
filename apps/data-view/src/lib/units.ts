@@ -1,6 +1,11 @@
+/**
+ * 거래대금 단위 Brand 타입(Eok/Mil/Krw) + 변환·포맷 함수.
+ * See: docs/decisions/007-unit-brand-types.md
+ */
+
 import { AMOUNT_MIL_TO_EOK, AMOUNT_KRW_TO_EOK } from "./constants";
 
-// ── Brand 타입 — 컴파일 타임 단위 혼용 방지 ──────────────────────────────
+// ── Brand 타입 ──────────────────────────────────────────────────────────────
 declare const _brand: unique symbol;
 type Brand<T, B extends string> = T & { readonly [_brand]: B };
 

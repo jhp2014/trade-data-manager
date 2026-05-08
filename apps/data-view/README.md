@@ -31,6 +31,8 @@ DECKS_DIR=/path/to/decks        # CSV 덱 파일 루트 디렉터리
 
 ## 데이터 흐름
 
+더 자세한 단계별 흐름은 [docs/architecture/data-flow.md](docs/architecture/data-flow.md)에서 확인할 수 있다.
+
 ```
 URL 쿼리 (?dir=…)
   → [Server Action] loadDeckAction          (actions/deck.ts)
@@ -57,6 +59,7 @@ URL 쿼리 (?dir=…)
 
 | 시나리오 | 가이드 |
 |----------|--------|
+| 구조·설계 이유를 알고 싶을 때 | [docs/README.md](docs/README.md) |
 | 새 필터 추가·제거 | [docs/adding-filter.md](docs/adding-filter.md) |
 | EntryRow 컬럼 추가·삭제·순서 변경 | [docs/adding-entry-column.md](docs/adding-entry-column.md) |
 | 차트 지표(이동평균·기준선 등) 추가 | [docs/adding-chart-indicator.md](docs/adding-chart-indicator.md) |
