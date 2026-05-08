@@ -44,6 +44,8 @@ export interface ThemeRowData {
   themeSize: number;
   /** 테마 내 모든 peer (자기 제외, 등락률 순) */
   peers: StockMetricsDTO[];
+  /** 이 entry의 종목이 같은 시점에 속한 모든 테마 (현재 행 themeId 포함) */
+  allThemesForEntry: Array<{ themeId: string; themeName: string }>;
 }
 
 export interface ThemePeerGroupDTO {

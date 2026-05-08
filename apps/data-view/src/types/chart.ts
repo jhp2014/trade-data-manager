@@ -48,4 +48,5 @@ export interface ChartPreviewDTO {
     minute: ChartCandle[];
     themeOverlay: ChartOverlaySeries[];
     markerTime: number | null;
+    themes: Array<{ themeId: string; themeName: string }>;
 }

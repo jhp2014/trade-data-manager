@@ -133,3 +133,24 @@
     justify-content: center;
     color: var(--text-muted);
 }
+
+/* 헤더에 표시되는 테마 칩 목록 */
+.headerThemes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    margin-left: var(--space-3);
+}
+
+.headerThemeChip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px clamp(6px, 0.5vw, 10px);
+    border-radius: var(--radius-sm);
+    background: var(--accent-bg);
+    color: var(--accent-primary);
+    font-size: clamp(11px, 0.75vw, 14px);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+}

@@ -29,8 +29,12 @@ export async function fetchChartPreviewAction(params: {
         const minute = self ? fillMissingMinuteCandles(buildMinuteCandles(self.minute)) : [];
         const themeOverlay = buildThemeOverlay(bundles, params.stockCode);
         const markerTime = composeUnix(params.tradeDate, params.tradeTime);
+        const themes = bundles.map((b) => ({
+            themeId: b.themeId,
+            themeName: b.themeName,
+        }));
 
-        return okResult({ data: { daily, minute, themeOverlay, markerTime } });
+        return okResult({ data: { daily, minute, themeOverlay, markerTime, themes } });
     } catch (err) {
         return errResult(err);
     }

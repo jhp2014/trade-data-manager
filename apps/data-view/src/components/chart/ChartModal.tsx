@@ -71,6 +71,15 @@ export function ChartModal() {
                         <span className={styles.meta}>
                             {target.tradeDate} {target.tradeTime}
                         </span>
+                        {data && data.themes.length > 0 && (
+                            <div className={styles.headerThemes}>
+                                {data.themes.map((t) => (
+                                    <span key={t.themeId} className={styles.headerThemeChip}>
+                                        #{t.themeName}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <div className={styles.tabs}>
                         {TAB_ORDER.map((t) => (
