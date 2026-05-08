@@ -1,7 +1,6 @@
 /**
- * Server Action ↔ 클라이언트 경계의 직렬화 헬퍼.
- * bigint·Decimal·Date 등 JSON 직렬화 불가 타입을 안전한 형태로 변환한다.
- * See: actions/chartPreview.ts, lib/snapshotMapper.ts
+ * Server Action ↔ 클라이언트 경계 직렬화 헬퍼 (bigint, Date 변환).
+ * See: docs/decisions/006-bigint-serialization.md
  */
 
 // ── 숫자 변환 ──────────────────────────────────────────────────────────────
