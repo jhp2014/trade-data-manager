@@ -11,6 +11,7 @@ import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { MinuteTooltip } from "./tooltip/MinuteTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE, assignSeriesColors } from "@/lib/chart/overlay";
+import { EntryMarker } from "./marker/EntryMarker";
 
 interface Props {
     candles: ChartCandle[];
@@ -198,6 +199,12 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
             >
                 {tipState.content}
             </ChartTooltip>
+            <EntryMarker
+                chartRef={chartRef}
+                containerRef={containerRef}
+                time={markerTime}
+                dataKey={candles}
+            />
         </div>
     );
 }
