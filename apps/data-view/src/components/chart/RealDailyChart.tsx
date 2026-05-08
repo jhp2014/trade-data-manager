@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
+import { CrosshairMode, type ISeriesApi, type Time } from "lightweight-charts";
 import type { ChartCandle } from "@/types/chart";
 import { kstYmd } from "@/lib/chartTime";
-import { CHART_HOVER_DELAY_MS, HIGH_MARKER_MIN_PCT, AMOUNT_MIL_TO_EOK } from "@/lib/constants";
+import { HIGH_MARKER_MIN_PCT, AMOUNT_MIL_TO_EOK } from "@/lib/constants";
 import { useChartShell } from "./shell/useChartShell";
-import { positionTooltip, TOOLTIP_STYLE } from "./shell/tooltipUtils";
+import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
+import { ChartTooltip } from "./tooltip/ChartTooltip";
+import { DailyTooltip } from "./tooltip/DailyTooltip";
 
 interface Props {
     candles: ChartCandle[];
@@ -19,7 +21,6 @@ function fmtEok(v: number) {
     return v.toLocaleString();
 }
 
-// 전일 KRX 종가 대비 고가 % 에 따라 봉 위 마커 색상 결정
 function highMarkerColor(pct: number): string | null {
     if (pct < HIGH_MARKER_MIN_PCT) return null;
     if (pct < 15) return "#fbbf24";
@@ -29,14 +30,8 @@ function highMarkerColor(pct: number): string | null {
     return "#7c3aed";
 }
 
-const fmtPct = (v: number | null) =>
-    v === null
-        ? "—"
-        : `<span style="color:${v >= 0 ? "#ef4444" : "#3b82f6"}">${v >= 0 ? "+" : ""}${v.toFixed(2)}%</span>`;
-
 export function RealDailyChart({ candles }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const tooltipRef = useRef<HTMLDivElement>(null);
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#a0a0a0", fontSize: 11 },
@@ -64,10 +59,8 @@ export function RealDailyChart({ candles }: Props) {
     const amountSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const dataMapRef = useRef<Map<number, ChartCandle>>(new Map());
     const baseCandleRef = useRef<ChartCandle | null>(null);
-    const hoverTimerRef = useRef<number | null>(null);
-    const pendingRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-    // 시리즈 생성 + 툴팁 구독 (마운트 1회)
+    // 시리즈 생성 (마운트 1회)
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
@@ -89,42 +82,25 @@ export function RealDailyChart({ candles }: Props) {
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
 
-        chart.subscribeCrosshairMove((param) => {
-            const tip = tooltipRef.current;
-            const c = containerRef.current;
-            if (!tip || !c) return;
+        return () => {
+            candleSeriesRef.current = null;
+            amountSeriesRef.current = null;
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-            if (!param.point || !param.time ||
-                param.point.x < 0 || param.point.x > c.clientWidth ||
-                param.point.y < 0 || param.point.y > c.clientHeight) {
-                if (hoverTimerRef.current !== null) {
-                    window.clearTimeout(hoverTimerRef.current);
-                    hoverTimerRef.current = null;
-                }
-                pendingRef.current = null;
-                tip.style.display = "none";
-                return;
-            }
+    const { state: tipState } = useCrosshairTooltip({
+        chartRef,
+        containerRef,
+        render: (param) => {
+            const candleSeries = candleSeriesRef.current;
+            if (!candleSeries || !param.time) return null;
 
-            pendingRef.current = { x: param.point.x, y: param.point.y, time: param.time as number };
-            if (tip.style.display === "block") { renderTooltip(); return; }
-            if (hoverTimerRef.current !== null) return;
-            hoverTimerRef.current = window.setTimeout(() => {
-                hoverTimerRef.current = null;
-                renderTooltip();
-            }, CHART_HOVER_DELAY_MS);
-        });
+            const t = param.time as number;
+            const candle = dataMapRef.current.get(t);
+            if (!candle) return null;
 
-        function renderTooltip() {
-            const tip = tooltipRef.current;
-            const c = containerRef.current;
-            const p = pendingRef.current;
-            if (!tip || !c || !p) return;
-
-            const candle = dataMapRef.current.get(p.time);
-            if (!candle) { tip.style.display = "none"; return; }
-
-            const cursorPrice = candleSeries.coordinateToPrice(p.y);
+            const cursorPrice = candleSeries.coordinateToPrice(param.point!.y);
             const base = baseCandleRef.current;
             const hoverHighKrxPct = candle.prevCloseKrx && candle.prevCloseKrx > 0
                 ? ((candle.high - candle.prevCloseKrx) / candle.prevCloseKrx) * 100 : null;
@@ -134,33 +110,21 @@ export function RealDailyChart({ candles }: Props) {
                 ? ((cursorPrice - base.prevCloseKrx) / base.prevCloseKrx) * 100 : null;
             const cursorNxtPct = cursorPrice != null && Number.isFinite(cursorPrice) && base?.prevCloseNxt
                 ? ((cursorPrice - base.prevCloseNxt) / base.prevCloseNxt) * 100 : null;
+            const cursorAmountEok = candle.amount != null ? fmtEok(candle.amount / AMOUNT_MIL_TO_EOK) : null;
 
-            const amt = candle.amount != null ? fmtEok(candle.amount / AMOUNT_MIL_TO_EOK) : "—";
-            tip.innerHTML = `
-                <div style="font-size:11px;color:#a0a0a0;margin-bottom:6px">${kstYmd(p.time)}</div>
-                <div style="display:grid;grid-template-columns:auto auto;gap:4px 14px;font-size:12px">
-                  <div style="color:#a0a0a0">Today KRX %</div><div style="text-align:right;font-variant-numeric:tabular-nums">${fmtPct(cursorKrxPct)}</div>
-                  <div style="color:#a0a0a0">Today NXT %</div><div style="text-align:right;font-variant-numeric:tabular-nums">${fmtPct(cursorNxtPct)}</div>
-                  <div style="color:#a0a0a0">Cursor Candle KRX %</div><div style="text-align:right;font-variant-numeric:tabular-nums">${fmtPct(hoverHighKrxPct)}</div>
-                  <div style="color:#a0a0a0">Cursor Candle NXT %</div><div style="text-align:right;font-variant-numeric:tabular-nums">${fmtPct(hoverHighNxtPct)}</div>
-                  <div style="color:#a0a0a0">Cursor Candle Amount</div><div style="text-align:right;font-variant-numeric:tabular-nums">${amt}</div>
-                </div>`;
-            tip.style.display = "block";
-
-            const leftW = chart?.priceScale("left").width() ?? 0;
-            positionTooltip(tip, c, p.x + leftW, p.y);
-        }
-
-        return () => {
-            if (hoverTimerRef.current !== null) {
-                window.clearTimeout(hoverTimerRef.current);
-                hoverTimerRef.current = null;
-            }
-            candleSeriesRef.current = null;
-            amountSeriesRef.current = null;
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+            return (
+                <DailyTooltip
+                    time={t}
+                    cursorKrxPct={cursorKrxPct}
+                    cursorNxtPct={cursorNxtPct}
+                    hoverHighKrxPct={hoverHighKrxPct}
+                    hoverHighNxtPct={hoverHighNxtPct}
+                    cursorAmountEok={cursorAmountEok}
+                />
+            );
+        },
+        leftOffset: () => chartRef.current?.priceScale("left").width() ?? 0,
+    });
 
     // 데이터 갱신
     useEffect(() => {
@@ -197,7 +161,16 @@ export function RealDailyChart({ candles }: Props) {
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <div ref={tooltipRef} style={{ ...TOOLTIP_STYLE, minWidth: 220 }} />
+            <ChartTooltip
+                visible={tipState.visible}
+                x={tipState.x}
+                y={tipState.y}
+                containerRef={containerRef}
+                leftOffset={tipState.leftOffset}
+                minWidth={220}
+            >
+                {tipState.content}
+            </ChartTooltip>
         </div>
     );
 }
