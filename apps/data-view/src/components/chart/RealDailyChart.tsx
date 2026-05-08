@@ -46,8 +46,8 @@ export function RealDailyChart({ candles }: Props) {
         },
         crosshair: {
             mode: CrosshairMode.Normal,
-            vertLine: { width: 1, color: "rgba(60,60,60,0.5)", style: 0, labelVisible: true },
-            horzLine: { width: 1, color: "rgba(60,60,60,0.5)", style: 0, labelVisible: true },
+            vertLine: { width: 1, color: "rgba(60,60,60,0.5)", style: LineStyle.Dotted, labelVisible: true },
+            horzLine: { width: 1, color: "rgba(60,60,60,0.5)", style: LineStyle.Dotted, labelVisible: true },
         },
         rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.30 } },
         leftPriceScale: { visible: false, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } },
@@ -91,7 +91,7 @@ export function RealDailyChart({ candles }: Props) {
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const { state: tipState } = useCrosshairTooltip({
