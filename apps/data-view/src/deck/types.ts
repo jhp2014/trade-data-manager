@@ -18,21 +18,6 @@ export interface LoadedDecks {
 }
 
 /* ===========================================================
- * 필터
- * =========================================================== */
-
-export interface DeckFilter {
-    optionEquals?: Record<string, string>;
-    optionIn?: Record<string, string[]>;
-    optionIncludes?: Record<string, string>;
-    optionPrefix?: Record<string, string>;
-    optionPresent?: string[];
-    stockCodes?: string[];
-    fromDate?: string;
-    toDate?: string;
-}
-
-/* ===========================================================
  * 키 헬퍼
  * =========================================================== */
 
