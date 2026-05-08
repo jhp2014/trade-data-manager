@@ -20,14 +20,14 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const chartRef = useChartShell(containerRef, () => ({
-        layout: { background: { color: "transparent" }, textColor: "#a0a0a0", fontSize: 11 },
+        layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
         grid: {
-            vertLines: { color: "rgba(255,255,255,0.04)" },
-            horzLines: { color: "rgba(255,255,255,0.04)" },
+            vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
+            horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
         },
         crosshair: {
             mode: CrosshairMode.Normal,
-            vertLine: { width: 1, color: "rgba(180,180,180,0.6)", style: 0, labelVisible: true },
+            vertLine: { width: 1, color: "rgba(60,60,60,0.5)", style: 0, labelVisible: true },
             horzLine: { visible: false, labelVisible: false },
         },
         rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.10 } },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CrosshairMode, type ISeriesApi, type Time } from "lightweight-charts";
+import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
 import type { ChartCandle } from "@/types/chart";
 import { kstYmd } from "@/lib/chartTime";
 import { HIGH_MARKER_MIN_PCT, AMOUNT_MIL_TO_EOK } from "@/lib/constants";
@@ -34,15 +34,15 @@ export function RealDailyChart({ candles }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const chartRef = useChartShell(containerRef, () => ({
-        layout: { background: { color: "transparent" }, textColor: "#a0a0a0", fontSize: 11 },
+        layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
         grid: {
-            vertLines: { color: "rgba(255,255,255,0.04)" },
-            horzLines: { color: "rgba(255,255,255,0.04)" },
+            vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
+            horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
         },
         crosshair: {
             mode: CrosshairMode.Normal,
-            vertLine: { width: 1, color: "rgba(150,150,150,0.5)", style: 0, labelVisible: true },
-            horzLine: { width: 1, color: "rgba(150,150,150,0.5)", style: 0, labelVisible: true },
+            vertLine: { width: 1, color: "rgba(60,60,60,0.5)", style: 0, labelVisible: true },
+            horzLine: { width: 1, color: "rgba(60,60,60,0.5)", style: 0, labelVisible: true },
         },
         rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.30 } },
         leftPriceScale: { visible: false, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } },
