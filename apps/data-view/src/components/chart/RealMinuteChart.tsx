@@ -22,15 +22,15 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const chartRef = useChartShell(containerRef, () => ({
-        layout: { background: { color: "transparent" }, textColor: "#a0a0a0", fontSize: 11 },
+        layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
         grid: {
-            vertLines: { color: "rgba(255,255,255,0.04)" },
-            horzLines: { color: "rgba(255,255,255,0.04)" },
+            vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
+            horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
         },
         crosshair: {
             mode: CrosshairMode.Normal,
-            vertLine: { visible: true, width: 1, color: "rgba(180,180,180,0.7)", style: 0, labelVisible: true },
-            horzLine: { visible: true, width: 1, color: "rgba(180,180,180,0.5)", style: LineStyle.Dashed, labelVisible: true },
+            vertLine: { visible: true, width: 1, color: "rgba(60,60,60,0.6)", style: 0, labelVisible: true },
+            horzLine: { visible: true, width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dashed, labelVisible: true },
         },
         rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.30 } },
         leftPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } },
