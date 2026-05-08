@@ -44,6 +44,10 @@ export async function loadDecksFromDir(absoluteDir: string): Promise<LoadedDecks
  * 내부 함수
  * =========================================================== */
 
+function isCommentColumn(header: string): boolean {
+    return header.startsWith("_");
+}
+
 async function findCsvFiles(dir: string): Promise<string[]> {
     const items = await fs.readdir(dir, { withFileTypes: true });
     const result: string[] = [];
@@ -79,7 +83,7 @@ async function loadOneCsv(filePath: string): Promise<{
     validateHeaders(headers, filePath);
 
     const optionKeys = headers.filter(
-        (h) => !REQUIRED_COLUMNS.includes(h as any)
+        (h) => !REQUIRED_COLUMNS.includes(h as any) && !isCommentColumn(h)
     );
 
     const entries: DeckEntry[] = [];
