@@ -10,6 +10,7 @@ import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { OverlayTooltip } from "./tooltip/OverlayTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE } from "@/lib/chart/overlay";
+import { EntryMarker } from "./marker/EntryMarker";
 
 interface Props {
     data: ChartOverlaySeries[];
@@ -121,14 +122,6 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
         chart.timeScale().fitContent();
     }, [data]);
 
-    // 진입 마커: self 시리즈에만
-    useEffect(() => {
-        if (markerTime == null) return;
-        const self = seriesMetaRef.current.find((m) => m.isSelf);
-        if (!self) return;
-        self.api.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#fbbf24", shape: "arrowDown", text: "" }]);
-    }, [markerTime, data]);
-
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
             <ChartTooltip
@@ -141,6 +134,12 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
             >
                 {tipState.content}
             </ChartTooltip>
+            <EntryMarker
+                chartRef={chartRef}
+                containerRef={containerRef}
+                time={markerTime}
+                dataKey={data}
+            />
         </div>
     );
 }
