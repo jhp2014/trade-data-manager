@@ -112,6 +112,8 @@
 
 - **오버레이 시리즈 정렬·색상 정책** — self가 항상 노란색(`SELF_COLOR = "#fbbf24"`) 굵은 선으로 고정되고, peers는 마지막 시점 등락률 내림차순으로 `PALETTE` 색상을 순서대로 부여받는다. `assignSeriesColors` 함수로 분봉·오버레이 두 차트가 동일한 색상 매핑을 공유한다. → `src/lib/chart/overlay.ts`
 
+- **일봉 KRX/NXT 토글** — 일봉 차트는 우상단 토글로 KRX 기준과 NXT 통합 기준을 전환할 수 있다. 선택은 `useUiStore`에 영속화되며, 고가 마커는 항상 KRX 기준이다. → [ADR-009](../decisions/009-daily-chart-krx-nxt-toggle.md)
+
 - **진입 마커 (`<EntryMarker>`)** — 분봉/오버레이 차트는 차트 컨테이너에 DOM 오버레이(`createPortal`)로 점선 세로선과 라벨을 그려 진입 시각을 강조한다. lightweight-charts의 `setMarkers`는 분봉에서 봉 위 작은 화살표를 보조로 유지한다. 가시 시간 범위 밖이면 숨겨지며, `subscribeVisibleTimeRangeChange` + RAF로 좌표를 재계산한다. → `src/components/chart/marker/EntryMarker.tsx`
 
 - **tooltip을 React로 포팅한 이유** → [ADR-002](../decisions/002-chart-tooltip-react.md)

@@ -11,12 +11,21 @@ import { toNum, dateToUnix } from "@/lib/serialization";
 export function toDailyChartCandle(r: DailyCandleRow): ChartCandle {
     return {
         time: dateToUnix(r.tradeDate),
+        // KRX
         open: toNum(r.openKrx),
         high: toNum(r.highKrx),
         low: toNum(r.lowKrx),
         close: toNum(r.closeKrx),
         volume: toNum(r.tradingVolumeKrx),
         amount: toNum(r.tradingAmountKrx),
+        // NXT
+        openNxt: toNum(r.openNxt),
+        highNxt: toNum(r.highNxt),
+        lowNxt: toNum(r.lowNxt),
+        closeNxt: toNum(r.closeNxt),
+        volumeNxt: toNum(r.tradingVolumeNxt),
+        amountNxt: toNum(r.tradingAmountNxt),
+        // prev close
         prevCloseKrx: r.prevCloseKrx != null ? Number(r.prevCloseKrx) : undefined,
         prevCloseNxt: r.prevCloseNxt != null ? Number(r.prevCloseNxt) : undefined,
     };

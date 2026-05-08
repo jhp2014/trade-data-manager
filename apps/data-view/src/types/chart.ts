@@ -1,6 +1,7 @@
 /* lightweight-charts 시계열 한 봉. time은 unix seconds, KST 기준 */
 export interface ChartCandle {
     time: number; // unix seconds (UTC)
+    // KRX 기본 필드
     open: number;
     high: number;
     low: number;
@@ -10,6 +11,13 @@ export interface ChartCandle {
     accAmount?: number;
     prevCloseKrx?: number;
     prevCloseNxt?: number;
+    // NXT 필드 (일봉 전용, optional)
+    openNxt?: number;
+    highNxt?: number;
+    lowNxt?: number;
+    closeNxt?: number;
+    volumeNxt?: number;
+    amountNxt?: number;
 }
 
 /** 오버레이 시리즈의 한 시점 데이터 (closeRateNxt 기준) */
