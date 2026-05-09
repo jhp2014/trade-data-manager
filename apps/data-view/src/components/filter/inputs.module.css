@@ -55,6 +55,24 @@
     max-width: none;
 }
 
+/* ── TimeRangeInput ── */
+.timePair {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.timePair .input {
+    width: 50px;
+    min-width: 50px;
+    max-width: 50px;
+}
+
+.timeColon {
+    color: var(--text-secondary);
+    font-weight: var(--fw-semibold);
+}
+
 /* ── OptionRow ── */
 .optionBody {
     display: flex;
