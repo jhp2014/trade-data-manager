@@ -2,25 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { OptionMeta } from "@/lib/options/optionRegistry";
-
-type OptionFilter =
-    | { key: string; mode: "anyOf"; values: string[] }
-    | { key: string; mode: "contains"; needle: string };
+import type { OptionValue } from "@/lib/filter/kinds/option";
 import styles from "../inputs.module.css";
 
 interface Props {
     optionKey: string;
     meta: OptionMeta;
-    filter: OptionFilter | null;
-    onChange: (next: OptionFilter | null) => void;
+    value: OptionValue;
+    onChange: (next: OptionValue) => void;
 }
 
-export function OptionRow({ optionKey, meta, filter, onChange }: Props) {
-    const mode = filter?.mode ?? meta.defaultMode;
+export function OptionRow({ optionKey, meta, value, onChange }: Props) {
+    const mode = value.mode;
 
     const handleToggleMode = () => {
         if (mode === "anyOf") {
-            onChange({ key: optionKey, mode: "contains", needle: "" });
+            onChange({ key: optionKey, mode: "contains" });
         } else {
             onChange({ key: optionKey, mode: "anyOf", values: [] });
         }
@@ -33,14 +30,14 @@ export function OptionRow({ optionKey, meta, filter, onChange }: Props) {
                 {mode === "contains" ? (
                     <ContainsInput
                         optionKey={optionKey}
-                        needle={filter?.mode === "contains" ? filter.needle : ""}
+                        needle={value.needle ?? ""}
                         onChange={onChange}
                     />
                 ) : (
                     <AnyOfPicker
                         optionKey={optionKey}
                         meta={meta}
-                        values={filter?.mode === "anyOf" ? filter.values : []}
+                        values={value.values ?? []}
                         onChange={onChange}
                     />
                 )}
@@ -64,7 +61,7 @@ function ContainsInput({
 }: {
     optionKey: string;
     needle: string;
-    onChange: (next: OptionFilter | null) => void;
+    onChange: (next: OptionValue) => void;
 }) {
     return (
         <input
@@ -73,8 +70,7 @@ function ContainsInput({
             placeholder="포함 문자열"
             value={needle}
             onChange={(e) => {
-                const v = e.target.value;
-                onChange(v ? { key: optionKey, mode: "contains", needle: v } : null);
+                onChange({ key: optionKey, mode: "contains", needle: e.target.value });
             }}
             aria-label={`옵션 ${optionKey} 부분일치 필터`}
         />
@@ -90,7 +86,7 @@ function AnyOfPicker({
     optionKey: string;
     meta: OptionMeta;
     values: string[];
-    onChange: (next: OptionFilter | null) => void;
+    onChange: (next: OptionValue) => void;
 }) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
@@ -113,11 +109,11 @@ function AnyOfPicker({
 
     const handleCheck = (v: string, checked: boolean) => {
         const next = checked ? [...values, v] : values.filter((x) => x !== v);
-        onChange(next.length > 0 ? { key: optionKey, mode: "anyOf", values: next } : null);
+        onChange({ key: optionKey, mode: "anyOf", values: next });
     };
 
     const handleClear = () => {
-        onChange(null);
+        onChange({ key: optionKey, mode: "anyOf", values: [] });
     };
 
     return (

@@ -29,23 +29,6 @@ function OptionKindInput({
         isMultiToken: false,
     };
 
-    const filter =
-        value.mode === "anyOf"
-            ? { key: value.key, mode: "anyOf" as const, values: value.values ?? [] }
-            : { key: value.key, mode: "contains" as const, needle: value.needle ?? "" };
-
-    const handleChange = (next: typeof filter | null) => {
-        if (!next) {
-            onChange({ key: value.key, mode: value.mode });
-            return;
-        }
-        if (next.mode === "anyOf") {
-            onChange({ key: value.key, mode: "anyOf", values: next.values });
-        } else {
-            onChange({ key: value.key, mode: "contains", needle: next.needle });
-        }
-    };
-
     const handleKeyChange = (newKey: string) => {
         const newMeta = ctx.optionRegistry.get(newKey);
         const newMode = newMeta?.defaultMode ?? "anyOf";
@@ -71,8 +54,8 @@ function OptionKindInput({
             <OptionRow
                 optionKey={value.key}
                 meta={meta}
-                filter={filter}
-                onChange={handleChange}
+                value={value}
+                onChange={onChange}
             />
         </div>
     );

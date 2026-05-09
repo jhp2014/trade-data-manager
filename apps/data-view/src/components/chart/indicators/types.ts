@@ -1,5 +1,5 @@
 import type { IChartApi } from "lightweight-charts";
-import type { ChartCandle } from "@/actions/chartPreview";
+import type { ChartCandle } from "@/types/chart";
 
 /** indicator의 내부 상태를 담는 불투명 핸들 */
 export type IndicatorHandle = Record<string, unknown>;
