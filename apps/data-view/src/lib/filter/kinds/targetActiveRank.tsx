@@ -88,13 +88,13 @@ export const targetActiveRankKind: FilterKind<ActiveRankValue> = {
         rankMax: null,
     }),
     chipLabel: (v, ctx) => {
+        if (v.rankMin === null && v.rankMax === null) return "";
         const activeOpts = ctx.activeInstances.filter((i) => i.kind === "activeMembersInTheme");
         const idx = activeOpts.findIndex((i) => i.id === v.refInstanceId);
         const label = idx >= 0 ? `Act#${idx + 1}` : "?";
         if (v.rankMin !== null && v.rankMax !== null) return `${label} 등수 ${v.rankMin}~${v.rankMax}위`;
         if (v.rankMin !== null) return `${label} ≥${v.rankMin}위`;
-        if (v.rankMax !== null) return `${label} ≤${v.rankMax}위`;
-        return `${label} 등수`;
+        return `${label} ≤${v.rankMax}위`;
     },
     match: (_row, v, derived) => {
         if (!v.refInstanceId) return false;

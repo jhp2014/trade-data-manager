@@ -74,9 +74,12 @@ export const optionKind: FilterKind<OptionValue> = {
     chipLabel: (v) => {
         if (v.mode === "anyOf") {
             const vals = v.values ?? [];
-            return vals.length > 0 ? `${v.key} ∈ {${vals.join(", ")}}` : `${v.key} (선택 없음)`;
+            if (vals.length === 0) return "";
+            return `${v.key} ∈ {${vals.join(", ")}}`;
         }
-        return `${v.key} ⊃ "${v.needle ?? ""}"`;
+        const needle = (v.needle ?? "").trim();
+        if (!needle) return "";
+        return `${v.key} ⊃ "${needle}"`;
     },
     match: (row, v) => {
         const raw = row.entry.options[v.key];

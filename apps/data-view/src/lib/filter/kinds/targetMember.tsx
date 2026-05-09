@@ -16,7 +16,7 @@ export const targetMemberKind: FilterKind<MemberPredicate> = {
     section: "target",
     multiple: false,
     defaultValue: () => ({ conditions: [] }),
-    chipLabel: (v) => `종목: ${chipLabelForPredicate(v)}`,
+    chipLabel: (v) => v.conditions.length === 0 ? "" : `종목: ${chipLabelForPredicate(v)}`,
     match: (row, v) => isMember(row.self, v),
     Input: ({ value, onChange }) => <PredicateInput value={value} onChange={onChange} />,
     serialize: serializePredicate,
