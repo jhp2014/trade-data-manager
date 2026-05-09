@@ -55,7 +55,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
         });
     };
 
-    // 단축키: Space = 차트 열기, 1/2/3... = active 풀 토글 (없으면 theme 펼침)
+    // 단축키: Space = 차트 열기, 1 = 테마 펼치기, 2/3/4 = Act#1/2/3 펼치기
     useEffect(() => {
         if (!anchor) return;
         const handler = (e: KeyboardEvent) => {
@@ -77,17 +77,17 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
             const num = parseInt(e.key, 10);
             if (isNaN(num) || num < 1) return;
 
-            if (!hasActivePools) {
-                if (num === 1) toggleView({ kind: "theme" });
-            } else {
-                const pool = activePools[num - 1];
-                if (pool) toggleView({ kind: "active", instanceId: pool.instanceId });
+            if (num === 1) {
+                toggleView({ kind: "theme" });
+                return;
             }
+            const pool = activePools[num - 2];
+            if (pool) toggleView({ kind: "active", instanceId: pool.instanceId });
         };
         document.addEventListener("keydown", handler);
         return () => document.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [anchor, open, self, entry, hasActivePools, activePools, modalTarget]);
+    }, [anchor, open, self, entry, activePools, modalTarget]);
 
     // 펼침 패널 데이터 결정
     let expandedPeers: StockMetricsDTO[] | null = null;
@@ -116,19 +116,20 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
         <div className={styles.rowGroup}>
             <div className={styles.row} {...bind}>
                 <div className={styles.identityCol}>
-                    {/* Active 풀이 없으면 기존 rankBtn, 있으면 Act 칩 목록 */}
-                    {!hasActivePools ? (
-                        <button
-                            type="button"
-                            className={styles.rankBtn}
-                            onClick={() => toggleView({ kind: "theme" })}
-                            title={`#${themeName} 펼치기`}
-                        >
-                            <span className={styles.rank}>{selfRank}</span>
-                            <span className={styles.rankSlash}>/{themeSize}</span>
-                            <span className={styles.themeChip}>#{themeName}</span>
-                        </button>
-                    ) : (
+                    {/* 1. 기본 테마 등수 — 항상 표시 */}
+                    <button
+                        type="button"
+                        className={styles.rankBtn}
+                        onClick={() => toggleView({ kind: "theme" })}
+                        title={`#${themeName} 펼치기`}
+                    >
+                        <span className={styles.rank}>{selfRank}</span>
+                        <span className={styles.rankSlash}>/{themeSize}</span>
+                        <span className={styles.themeChip}>#{themeName}</span>
+                    </button>
+
+                    {/* 2. Active 풀이 있으면 추가 표시 */}
+                    {hasActivePools && (
                         <div className={styles.activeChips}>
                             {activePools.map((pool, i) => {
                                 const isExpanded =
@@ -156,6 +157,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                         </div>
                     )}
 
+                    {/* 3. 종목 버튼 */}
                     <button
                         type="button"
                         className={styles.stockBtn}
@@ -172,7 +174,8 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                         <span className={styles.stockCode}>{self.stockCode}</span>
                     </button>
 
-                    {!hasActivePools && row.allThemesForEntry.length > 1 && (
+                    {/* 4. allThemes — 항상 평가 */}
+                    {row.allThemesForEntry.length > 1 && (
                         <div className={styles.allThemes}>
                             {row.allThemesForEntry.map((t) => (
                                 <span
