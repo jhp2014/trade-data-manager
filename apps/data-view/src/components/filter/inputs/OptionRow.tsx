@@ -17,9 +17,9 @@ export function OptionRow({ optionKey, meta, value, onChange }: Props) {
 
     const handleToggleMode = () => {
         if (mode === "anyOf") {
-            onChange({ key: optionKey, mode: "contains" });
+            onChange({ key: optionKey, mode: "contains", needle: value.needle ?? "" });
         } else {
-            onChange({ key: optionKey, mode: "anyOf", values: [] });
+            onChange({ key: optionKey, mode: "anyOf", values: value.values ?? [] });
         }
     };
 
