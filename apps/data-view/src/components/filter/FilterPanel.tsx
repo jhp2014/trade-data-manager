@@ -206,12 +206,20 @@ export function FilterPanel({
             {/* Target 종목 조건 */}
             <section className={styles.section}>
                 <h3 className={styles.sectionTitle}>Target 종목 조건</h3>
-                {targetMemberInst && TargetMemberInput && (
+                {targetMemberInst && TargetMemberInput ? (
                     <TargetMemberInput
                         value={targetMemberInst.value}
                         onChange={(v) => updateInstance(targetMemberInst.id, v)}
                         ctx={ctx}
                     />
+                ) : (
+                    <button
+                        type="button"
+                        className={styles.addInstanceBtn}
+                        onClick={() => addInstance("targetMember")}
+                    >
+                        + Target 종목 조건 추가
+                    </button>
                 )}
             </section>
 
