@@ -132,7 +132,7 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
         chart.timeScale().fitContent();
     }, [data]);
 
-    // 가시성 업데이트: selectedFilter 또는 data 변경 시 (data effect 이후 실행 보장)
+    // 가시성 업데이트: selectedFilter / data / markerTime 변경 시
     useEffect(() => {
         if (selectedFilter === "all") {
             seriesMetaRef.current.forEach((m) => m.api.applyOptions({ visible: true }));
@@ -143,19 +143,31 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
             seriesMetaRef.current.forEach((m) => m.api.applyOptions({ visible: true }));
             return;
         }
+
+        const targetTime = markerTime ?? Number.POSITIVE_INFINITY;
+
         seriesMetaRef.current.forEach((m) => {
             if (m.isSelf) {
                 m.api.applyOptions({ visible: true });
                 return;
             }
             const dataSeries = data.find((s) => s.stockCode === m.stockCode);
-            const lastPoint = dataSeries?.series[dataSeries.series.length - 1];
-            // StockMetricsDTO 부분 구성: closeRate·cumulativeAmount만 차트 데이터로 추론 가능
+            const seriesPoints = dataSeries?.series ?? [];
+
+            // markerTime 이하의 마지막 포인트 (리스트 derivedMap과 동일 시점 기준)
+            let evalPoint: ChartOverlayPoint | undefined;
+            for (let i = seriesPoints.length - 1; i >= 0; i--) {
+                if (seriesPoints[i].time <= targetTime) {
+                    evalPoint = seriesPoints[i];
+                    break;
+                }
+            }
+
             const partialMetrics: StockMetricsDTO = {
                 stockCode: m.stockCode,
                 stockName: m.name,
-                closeRate: lastPoint?.value ?? null,
-                cumulativeAmount: lastPoint != null ? String(lastPoint.cumAmount) : null,
+                closeRate: evalPoint?.value ?? null,
+                cumulativeAmount: evalPoint != null ? String(evalPoint.cumAmount) : null,
                 dayHighRate: null,
                 pullbackFromHigh: null,
                 minutesSinceDayHigh: null,
@@ -164,7 +176,7 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
             };
             m.api.applyOptions({ visible: isMember(partialMetrics, inst.predicate) });
         });
-    }, [data, selectedFilter, activePredicateInstances]);
+    }, [data, selectedFilter, activePredicateInstances, markerTime]);
 
     // 선택된 인스턴스가 사라지면 "all"로 리셋
     useEffect(() => {
