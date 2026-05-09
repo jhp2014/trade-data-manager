@@ -88,14 +88,26 @@ export function useFilterState(
 
     const removeInstance = useCallback(
         (id: string) => {
-            const next = instances.filter((inst) => inst.id !== id);
+            const target = instances.find((inst) => inst.id === id);
+            const kindDef = target ? KINDS[target.kind] : undefined;
+
+            let next: FilterInstance[];
+            if (kindDef && kindDef.multiple === false) {
+                // multiple: false — 삭제 대신 defaultValue로 리셋 (입력 UI 유지)
+                next = instances.map((inst) =>
+                    inst.id === id ? { ...inst, value: kindDef.defaultValue(ctx) } : inst,
+                );
+            } else {
+                next = instances.filter((inst) => inst.id !== id);
+            }
+
             setParams({
                 f: next.length > 0
                     ? next.map((inst) => serializeInstance(inst, KINDS)).filter(Boolean)
                     : null,
             });
         },
-        [instances, setParams],
+        [instances, ctx, setParams],
     );
 
     const clearAll = useCallback(() => {
