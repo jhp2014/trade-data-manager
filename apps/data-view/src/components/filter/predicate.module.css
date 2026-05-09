@@ -1,0 +1,117 @@
+.predicate {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-pill);
+    background: var(--bg-tertiary);
+    overflow: hidden;
+}
+
+.chipActive {
+    border-color: var(--accent-primary);
+    background: var(--accent-bg);
+}
+
+.chipLabel {
+    padding: 2px 8px 2px 10px;
+    font-size: var(--fs-xs);
+    color: var(--text-primary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    line-height: 1.5;
+}
+
+.chipActive .chipLabel {
+    color: var(--accent-primary);
+}
+
+.chipRemove {
+    padding: 2px 8px 2px 2px;
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.chipRemove:hover {
+    color: var(--text-primary);
+}
+
+.addMenu {
+    position: relative;
+}
+
+.addBtn {
+    padding: 2px 10px;
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    background: none;
+    border: 1px dashed var(--border-default);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    line-height: 1.5;
+}
+
+.addBtn:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.addPopover {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-popover);
+    z-index: 50;
+    min-width: 150px;
+    padding: var(--space-1);
+    display: flex;
+    flex-direction: column;
+}
+
+.addOption {
+    padding: 6px 10px;
+    font-size: var(--fs-sm);
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.addOption:hover {
+    background: var(--bg-hover);
+}
+
+.conditionEditor {
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+}
+
+.emptyHint {
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+    padding: 2px 0;
+}

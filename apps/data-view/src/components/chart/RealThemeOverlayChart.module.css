@@ -1,0 +1,34 @@
+.filterToggle {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 10;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.filterBtn {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    color: #374151;
+    backdrop-filter: blur(2px);
+    transition: background 0.1s, border-color 0.1s;
+    user-select: none;
+}
+
+.filterBtn:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.25);
+}
+
+.filterBtnActive {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: rgb(37, 99, 235);
+    font-weight: 600;
+}

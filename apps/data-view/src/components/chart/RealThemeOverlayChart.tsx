@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
 import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
+import type { StockMetricsDTO } from "@/types/deck";
+import type { MemberPredicate } from "@/lib/member/predicate";
+import { isMember } from "@/lib/member/predicate";
 import { kstHHmm } from "@/lib/chartTime";
 import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
@@ -10,14 +13,23 @@ import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { OverlayTooltip } from "./tooltip/OverlayTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE } from "@/lib/chart/overlay";
+import styles from "./RealThemeOverlayChart.module.css";
+
+export interface ActivePredicateInstance {
+    id: string;
+    label: string;
+    predicate: MemberPredicate;
+}
 
 interface Props {
     data: ChartOverlaySeries[];
     markerTime?: number | null;
+    activePredicateInstances?: ActivePredicateInstance[];
 }
 
-export function RealThemeOverlayChart({ data, markerTime }: Props) {
+export function RealThemeOverlayChart({ data, markerTime, activePredicateInstances = [] }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
+    const [selectedFilter, setSelectedFilter] = useState<"all" | string>("all");
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
@@ -53,7 +65,6 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
         pointMap: Map<number, ChartOverlayPoint>;
     }>>([]);
 
-    // 툴팁 구독
     const { state: tipState } = useCrosshairTooltip({
         chartRef,
         containerRef,
@@ -121,6 +132,46 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
         chart.timeScale().fitContent();
     }, [data]);
 
+    // 가시성 업데이트: selectedFilter 또는 data 변경 시 (data effect 이후 실행 보장)
+    useEffect(() => {
+        if (selectedFilter === "all") {
+            seriesMetaRef.current.forEach((m) => m.api.applyOptions({ visible: true }));
+            return;
+        }
+        const inst = activePredicateInstances.find((p) => p.id === selectedFilter);
+        if (!inst) {
+            seriesMetaRef.current.forEach((m) => m.api.applyOptions({ visible: true }));
+            return;
+        }
+        seriesMetaRef.current.forEach((m) => {
+            if (m.isSelf) {
+                m.api.applyOptions({ visible: true });
+                return;
+            }
+            const dataSeries = data.find((s) => s.stockCode === m.stockCode);
+            const lastPoint = dataSeries?.series[dataSeries.series.length - 1];
+            // StockMetricsDTO 부분 구성: closeRate·cumulativeAmount만 차트 데이터로 추론 가능
+            const partialMetrics: StockMetricsDTO = {
+                stockCode: m.stockCode,
+                stockName: m.name,
+                closeRate: lastPoint?.value ?? null,
+                cumulativeAmount: lastPoint != null ? String(lastPoint.cumAmount) : null,
+                dayHighRate: null,
+                pullbackFromHigh: null,
+                minutesSinceDayHigh: null,
+                currentMinuteAmount: null,
+                amountDistribution: null,
+            };
+            m.api.applyOptions({ visible: isMember(partialMetrics, inst.predicate) });
+        });
+    }, [data, selectedFilter, activePredicateInstances]);
+
+    // 선택된 인스턴스가 사라지면 "all"로 리셋
+    useEffect(() => {
+        if (selectedFilter !== "all" && !activePredicateInstances.find((p) => p.id === selectedFilter)) {
+            setSelectedFilter("all");
+        }
+    }, [activePredicateInstances, selectedFilter]);
 
     // 진입 마커: self 시리즈에만
     useEffect(() => {
@@ -132,6 +183,27 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
+            {activePredicateInstances.length > 0 && (
+                <div className={styles.filterToggle}>
+                    <button
+                        type="button"
+                        className={`${styles.filterBtn} ${selectedFilter === "all" ? styles.filterBtnActive : ""}`}
+                        onClick={() => setSelectedFilter("all")}
+                    >
+                        전체
+                    </button>
+                    {activePredicateInstances.map((inst) => (
+                        <button
+                            key={inst.id}
+                            type="button"
+                            className={`${styles.filterBtn} ${selectedFilter === inst.id ? styles.filterBtnActive : ""}`}
+                            onClick={() => setSelectedFilter(inst.id)}
+                        >
+                            {inst.label}
+                        </button>
+                    ))}
+                </div>
+            )}
             <ChartTooltip
                 visible={tipState.visible}
                 x={tipState.x}

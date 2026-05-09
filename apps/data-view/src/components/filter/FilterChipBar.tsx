@@ -1,7 +1,11 @@
 "use client";
 
-import type { FilterChip } from "@/lib/filter/registry";
 import styles from "./FilterChipBar.module.css";
+
+interface FilterChip {
+    id: string;
+    label: string;
+}
 
 interface Props {
     chips: FilterChip[];

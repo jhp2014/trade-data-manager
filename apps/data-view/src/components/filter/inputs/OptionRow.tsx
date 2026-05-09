@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { OptionFilter } from "@/types/filter";
 import type { OptionMeta } from "@/lib/options/optionRegistry";
+
+type OptionFilter =
+    | { key: string; mode: "anyOf"; values: string[] }
+    | { key: string; mode: "contains"; needle: string };
 import styles from "../inputs.module.css";
 
 interface Props {

@@ -11,7 +11,9 @@ import { FilterPanel } from "@/components/filter/FilterPanel";
 import { ChartModal } from "@/components/chart/ChartModal";
 import type { ThemeRowData, LoadedDecksDTO } from "@/types/deck";
 import { loadDeckAction } from "@/actions/deck";
-import { applyFilters } from "@/lib/filter/applyFilters";
+import { applyFiltersNew } from "@/lib/filter/applyFiltersNew";
+import { computeRowDerived } from "@/lib/filter/derived";
+import { KINDS } from "@/lib/filter/kinds";
 import { sortRows } from "@/lib/sort/sortRows";
 import { useFilterState } from "@/hooks/useFilterState";
 import { buildOptionRegistry } from "@/lib/options/optionRegistry";
@@ -31,15 +33,25 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
     const [panelOpen, setPanelOpen] = useState(false);
 
     const [dir, setDir] = useQueryState("dir", parseAsString.withDefault(""));
+
+    const optionKeys = result.ok ? result.data.optionKeys : [];
+    const allEntries = result.ok ? result.data.entries : [];
+
+    const optionRegistry = useMemo(
+        () => buildOptionRegistry(allEntries, optionKeys),
+        [allEntries, optionKeys],
+    );
+
     const {
-        filterValues,
-        optionFilters,
-        setFilterValue,
-        setOptionFilters,
+        instances,
+        ctx,
+        addInstance,
+        updateInstance,
+        removeInstance,
         clearAll,
-        clearOne,
         activeChips,
-    } = useFilterState();
+    } = useFilterState(optionKeys, optionRegistry);
+
     const initVisibleOptionKeysIfEmpty = useUiStore((s) => s.initVisibleOptionKeysIfEmpty);
     const visibleOptionKeys = useUiStore((s) => s.visibleOptionKeys);
     const setVisibleOptionKeys = useUiStore((s) => s.setVisibleOptionKeys);
@@ -57,32 +69,31 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
         [result],
     );
 
-    const filteredSortedRows = useMemo(
-        () => sortRows(applyFilters(allRows, filterValues, optionFilters)),
-        [allRows, filterValues, optionFilters],
+    // activeMembersInTheme 인스턴스만 추려서 derived 계산
+    const activeMemberInstances = useMemo(
+        () => instances.filter((i) => i.kind === "activeMembersInTheme"),
+        [instances],
     );
 
-    const optionKeys = result.ok ? result.data.optionKeys : [];
-    const allEntries = result.ok ? result.data.entries : [];
+    const derivedMap = useMemo(
+        () => computeRowDerived(allRows, activeMemberInstances),
+        [allRows, activeMemberInstances],
+    );
 
-    const optionRegistry = useMemo(
-        () => buildOptionRegistry(allEntries, optionKeys),
-        [allEntries, optionKeys],
+    const filteredSortedRows = useMemo(
+        () => sortRows(applyFiltersNew(allRows, instances, derivedMap, KINDS)),
+        [allRows, instances, derivedMap],
     );
 
     const optionKeysKey = optionKeys.join("|");
     useEffect(() => {
-        // 1) 빈 상태면 기본값으로 초기화 (기존 동작 유지)
         initVisibleOptionKeysIfEmpty(optionKeys);
-
-        // 2) 현재 CSV에 더 이상 존재하지 않는 stale 키 제거
         const validKeys = visibleOptionKeys.filter((k) => optionKeys.includes(k));
         if (validKeys.length !== visibleOptionKeys.length) {
             setVisibleOptionKeys(validKeys);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [optionKeysKey]);
-
 
     return (
         <div className={styles.page}>
@@ -111,7 +122,7 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
 
             <FilterChipBar
                 chips={activeChips}
-                onClearOne={clearOne}
+                onClearOne={removeInstance}
                 onClearAll={clearAll}
                 panelOpen={panelOpen}
                 onTogglePanel={() => setPanelOpen((v) => !v)}
@@ -119,12 +130,11 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
 
             {panelOpen && (
                 <FilterPanel
-                    filterValues={filterValues}
-                    setFilterValue={setFilterValue}
-                    optionFilters={optionFilters}
-                    setOptionFilters={setOptionFilters}
-                    optionKeys={optionKeys}
-                    optionRegistry={optionRegistry}
+                    instances={instances}
+                    ctx={ctx}
+                    addInstance={addInstance}
+                    updateInstance={updateInstance}
+                    removeInstance={removeInstance}
                 />
             )}
 
@@ -155,6 +165,10 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
                                 key={`${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}|${idx}`}
                                 row={r}
                                 optionKeys={optionKeys}
+                                derived={derivedMap.get(
+                                    `${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}`,
+                                ) ?? { activePools: [] }}
+                                activeInstances={activeMemberInstances}
                             />
                         ))}
                     </div>

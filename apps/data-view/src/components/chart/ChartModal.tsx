@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useChartPreview } from "@/hooks/useChartPreview";
 import { useShortcut } from "@/hooks/useShortcut";
+import { useFilterState } from "@/hooks/useFilterState";
 import { RealDailyChart } from "./RealDailyChart";
 import { RealMinuteChart } from "./RealMinuteChart";
 import { RealThemeOverlayChart } from "./RealThemeOverlayChart";
+import type { ActivePredicateInstance } from "./RealThemeOverlayChart";
+import type { MemberPredicate } from "@/lib/member/predicate";
 import styles from "./ChartModal.module.css";
 
 const TAB_ORDER = ["minute", "daily", "overlay"] as const;
@@ -24,6 +27,19 @@ export function ChartModal() {
     const [tab, setTab] = useState<Tab>("minute");
 
     const { data, isLoading } = useChartPreview(target);
+
+    const { instances } = useFilterState();
+
+    const activePredicateInstances = useMemo<ActivePredicateInstance[]>(
+        () =>
+            instances
+                .filter((i) => i.kind === "activeMembersInTheme")
+                .map((inst, idx) => {
+                    const value = inst.value as { predicate: MemberPredicate; countMin: number };
+                    return { id: inst.id, label: `Act#${idx + 1}`, predicate: value.predicate };
+                }),
+        [instances],
+    );
 
     const isOpen = !!target;
 
@@ -113,6 +129,7 @@ export function ChartModal() {
                                     <RealThemeOverlayChart
                                         data={data.themeOverlay}
                                         markerTime={data.markerTime}
+                                        activePredicateInstances={activePredicateInstances}
                                     />
                                 )}
                             </>
