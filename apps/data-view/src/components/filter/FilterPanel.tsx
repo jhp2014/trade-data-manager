@@ -154,6 +154,7 @@ export function FilterPanel({
     const activeRankInsts = instances.filter((i) => i.kind === "targetActiveRank");
     const optionInsts = instances.filter((i) => i.kind === "option");
     const stockCodeInst = instances.find((i) => i.kind === "stockCode");
+    const stockNameInst = instances.find((i) => i.kind === "stockName");
     const dateRangeInst = instances.find((i) => i.kind === "dateRange");
     const timeRangeInst = instances.find((i) => i.kind === "timeRange");
 
@@ -170,6 +171,14 @@ export function FilterPanel({
                     <SingleFilterSection
                         kind="stockCode"
                         inst={stockCodeInst}
+                        ctx={ctx}
+                        addInstance={addInstance}
+                        updateInstance={updateInstance}
+                        removeInstance={removeInstance}
+                    />
+                    <SingleFilterSection
+                        kind="stockName"
+                        inst={stockNameInst}
                         ctx={ctx}
                         addInstance={addInstance}
                         updateInstance={updateInstance}

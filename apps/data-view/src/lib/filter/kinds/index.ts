@@ -4,6 +4,7 @@ import { targetMemberKind } from "./targetMember";
 import { activeMembersInThemeKind } from "./activeMembersInTheme";
 import { targetActiveRankKind } from "./targetActiveRank";
 import { stockCodeKind } from "./stockCode";
+import { stockNameKind } from "./stockName";
 import { dateRangeKind } from "./dateRange";
 import { timeRangeKind } from "./timeRange";
 import { optionKind } from "./option";
@@ -14,6 +15,7 @@ export const KINDS: Record<string, FilterKind<any>> = { // any: 다형 레지스
     activeMembersInTheme: activeMembersInThemeKind,
     targetActiveRank: targetActiveRankKind,
     stockCode: stockCodeKind,
+    stockName: stockNameKind,
     dateRange: dateRangeKind,
     timeRange: timeRangeKind,
     option: optionKind,
