@@ -96,7 +96,7 @@
 
 **FilterKind\<TValue\>** — 필터 종류 하나의 동작(직렬화·역직렬화·매칭·UI)을 기술하는 인터페이스. `KINDS` 레지스트리에 등록된다. ([`src/lib/filter/kinds/types.ts`](../src/lib/filter/kinds/types.ts))
 
-**KINDS** — `Record<string, FilterKind<any>>` 레지스트리. `FilterPanel`, `applyFiltersNew`, `useFilterState`가 이 배열을 순회한다. ([`src/lib/filter/kinds/index.ts`](../src/lib/filter/kinds/index.ts))
+**KINDS** — `Record<string, FilterKind<any>>` 레지스트리. `FilterPanel`, `applyFilters`, `useFilterState`가 이 배열을 순회한다. ([`src/lib/filter/kinds/index.ts`](../src/lib/filter/kinds/index.ts))
 
 **BuildCtx** — `FilterKind.deserialize`에 전달되는 컨텍스트. `optionKeys`, `optionRegistry`, `activeInstances`를 포함. `activeInstances`는 `targetActiveRank`의 `refInstanceId` 역참조에 사용된다.
 

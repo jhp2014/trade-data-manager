@@ -11,7 +11,7 @@ import { FilterPanel } from "@/components/filter/FilterPanel";
 import { ChartModal } from "@/components/chart/ChartModal";
 import type { ThemeRowData, LoadedDecksDTO } from "@/types/deck";
 import { loadDeckAction } from "@/actions/deck";
-import { applyFiltersNew } from "@/lib/filter/applyFiltersNew";
+import { applyFilters } from "@/lib/filter/applyFilters";
 import { computeRowDerived, rowKey } from "@/lib/filter/derived";
 import { KINDS } from "@/lib/filter/kinds";
 import { sortRows } from "@/lib/sort/sortRows";
@@ -81,7 +81,7 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
     );
 
     const filteredSortedRows = useMemo(
-        () => sortRows(applyFiltersNew(allRows, instances, derivedMap, KINDS)),
+        () => sortRows(applyFilters(allRows, instances, derivedMap, KINDS)),
         [allRows, instances, derivedMap],
     );
 

@@ -47,8 +47,8 @@
 12. `computeRowDerived(allRows, activeMemberInstances)`:
     - 전체 행(`allRows`)에 대해 각 `activeMembersInTheme` 인스턴스별로 `isMember(peer, predicate)`를 실행
     - 결과: `derivedMap: Map<rowKey, RowDerived>`, 각 항목에 `activePools: ActivePool[]` 포함
-    - **전체 행에 실행하는 이유**: `applyFiltersNew` 실행 전에 파생 데이터가 필요하므로(닭-달걀 순환 방지)
-13. `applyFiltersNew(allRows, instances, derivedMap, KINDS)`:
+    - **전체 행에 실행하는 이유**: `applyFilters` 실행 전에 파생 데이터가 필요하므로(닭-달걀 순환 방지)
+13. `applyFilters(allRows, instances, derivedMap, KINDS)`:
     - 각 `FilterInstance`에 대해 `KINDS[inst.kind].match(row, inst.value, derived, inst.id)` 실행
     - 전체 인스턴스를 통과한 행만 남긴다
 14. `sortRows(filtered)` → 표시 순서 결정
@@ -76,7 +76,7 @@
 | `src/hooks/useFilterState.ts` | URL ↔ 인스턴스 동기화 | `useFilterState` |
 | `src/lib/filter/kinds/index.ts` | 필터 종류 레지스트리 | `KINDS` |
 | `src/lib/filter/derived.ts` | 파생 데이터 계산 | `computeRowDerived`, `rowKey` |
-| `src/lib/filter/applyFiltersNew.ts` | 전체 행 필터 실행 | `applyFiltersNew` |
+| `src/lib/filter/applyFilters.ts` | 전체 행 필터 실행 | `applyFilters` |
 | `src/lib/sort/sortRows.ts` | 정렬 | `sortRows` |
 | `src/components/list/EntryRow.tsx` | 행 렌더 (Act#N 칩 포함) | `EntryRow` |
 | `src/lib/result.ts` | 성공/실패 래퍼 | `Result<T>`, `okResult`, `errResult` |

@@ -73,7 +73,7 @@ URL (?f=[…])
   │   → 각 activeMembersInTheme 인스턴스에 대해 peers 전체를 isMember로 평가
   │   → { instanceId, selfRank, poolSize, members[] }  = ActivePool
   │
-  ├─▶ applyFiltersNew(allRows, instances, derivedMap, KINDS)
+  ├─▶ applyFilters(allRows, instances, derivedMap, KINDS)
   │   → KINDS[inst.kind].match(row, inst.value, derived, inst.id)
   │
   └─▶ sortRows(filteredRows) → 화면 렌더
@@ -115,7 +115,7 @@ URL (?f=[…])
 | `src/lib/filter/id.ts` | `newInstanceId()` |
 | `src/lib/filter/url.ts` | `serializeInstance`, `deserializeInstance` |
 | `src/lib/filter/derived.ts` | `computeRowDerived`, `rowKey` |
-| `src/lib/filter/applyFiltersNew.ts` | `applyFiltersNew` |
+| `src/lib/filter/applyFilters.ts` | `applyFilters` |
 | `src/hooks/useFilterState.ts` | URL ↔ 상태 동기화 |
 | `src/components/filter/FilterPanel.tsx` | 필터 입력 UI |
 | `src/components/filter/FilterChipBar.tsx` | 활성 칩 표시 |

@@ -5,7 +5,7 @@ import { rowKey } from "./derived";
 
 const EMPTY_DERIVED: RowDerived = { activePools: [] };
 
-export function applyFiltersNew(
+export function applyFilters(
     rows: ThemeRowData[],
     instances: FilterInstance[],
     derivedMap: Map<string, RowDerived>,
