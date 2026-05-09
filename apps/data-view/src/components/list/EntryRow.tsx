@@ -29,6 +29,7 @@ type ExpandedView =
 export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
     const [expandedView, setExpandedView] = useState<ExpandedView>(null);
     const open = useChartModalStore((s) => s.open);
+    const modalTarget = useChartModalStore((s) => s.target);
     const { anchor, bind } = useHoverAnchor();
     const visibleOptionKeys = useUiStore((s) => s.visibleOptionKeys);
 
@@ -58,6 +59,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
     useEffect(() => {
         if (!anchor) return;
         const handler = (e: KeyboardEvent) => {
+            if (modalTarget !== null) return;
             const tag = (e.target as HTMLElement).tagName;
             if (tag === "INPUT" || tag === "TEXTAREA") return;
 
@@ -85,7 +87,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
         document.addEventListener("keydown", handler);
         return () => document.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [anchor, open, self, entry, hasActivePools, activePools]);
+    }, [anchor, open, self, entry, hasActivePools, activePools, modalTarget]);
 
     // 펼침 패널 데이터 결정
     let expandedPeers: StockMetricsDTO[] | null = null;

@@ -12,7 +12,7 @@ import { ChartModal } from "@/components/chart/ChartModal";
 import type { ThemeRowData, LoadedDecksDTO } from "@/types/deck";
 import { loadDeckAction } from "@/actions/deck";
 import { applyFiltersNew } from "@/lib/filter/applyFiltersNew";
-import { computeRowDerived } from "@/lib/filter/derived";
+import { computeRowDerived, rowKey } from "@/lib/filter/derived";
 import { KINDS } from "@/lib/filter/kinds";
 import { sortRows } from "@/lib/sort/sortRows";
 import { useFilterState } from "@/hooks/useFilterState";
@@ -165,9 +165,7 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
                                 key={`${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}|${idx}`}
                                 row={r}
                                 optionKeys={optionKeys}
-                                derived={derivedMap.get(
-                                    `${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}`,
-                                ) ?? { activePools: [] }}
+                                derived={derivedMap.get(rowKey(r)) ?? { activePools: [] }}
                                 activeInstances={activeMemberInstances}
                             />
                         ))}
