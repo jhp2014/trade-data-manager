@@ -1,123 +1,130 @@
-> 이 파일이 답하려는 질문: 필터 칩이 URL과 매칭 함수와 어떻게 동기화되는가?
+> 이 파일이 답하려는 질문: 필터 인스턴스가 URL과 매칭 함수, 파생 데이터와 어떻게 동기화되는가?
 
 # 필터 시스템 (Filter System)
 
 ## 목적
 
-필터 정의 1개를 추가했을 때 URL 파라미터 파싱, 칩바 표시, 패널 입력 UI, 행 매칭이 자동으로 반영되는 메커니즘을 설명한다. 옵션 필터처럼 정적 정의가 불가능한 특수 케이스는 [option-filter.md](./option-filter.md)를 참조한다.
+필터 인스턴스를 URL에 직렬화하고, 런타임에 역직렬화해 행 필터링과 파생 데이터 계산을 수행하는 전체 흐름을 설명한다. 멤버 조건(MemberPredicate / ConditionKind)은 [member-predicate.md](./member-predicate.md)를 참조한다.
 
 ---
 
-## 흐름
+## 핵심 개념
 
-### 1. 단일 진실의 원천 — `FILTERS` 배열
-
-`src/lib/filter/registry/index.ts`의 `FILTERS: AnyFilterDef[]` 배열이 모든 필터의 정의를 담는다. 배열 순서가 `FilterPanel`의 표시 순서와 일치한다.
-
+### FilterInstance
+```ts
+{ id: string; kind: string; value: unknown }
 ```
-FILTERS = [
-    themeSizeFilter,       // section: "theme"
-    themeMemberSlotFilter, // section: "theme"
-    stockCodeFilter,       // section: "target"
-    dateRangeFilter,       // section: "target"
-    timeRangeFilter,       // section: "target"
-    closeRateFilter,       // section: "target"
-    rankFilter,            // section: "target"
-    pullbackFilter,        // section: "target"
-    minutesSinceHighFilter // section: "target"
-]
-```
+`id`는 8자 base36 랜덤 문자열. 동일 `kind`를 여러 개 동시에 사용할 수 있다.
 
-### 2. FilterDefinition — 필터 1개의 구조
+### FilterKind\<TValue\>
+필터 종류 하나의 동작을 기술하는 인터페이스. `KINDS` 레지스트리에 등록된다.
 
-각 정의는 `FilterDefinition<TValue>` 인터페이스를 구현한다:
-
-| 메서드/필드 | 설명 |
+| 필드/메서드 | 설명 |
 |------------|------|
-| `id` | 필터 고유 식별자. `filterValues` 맵의 키로 사용 |
-| `section` | `"theme"` 또는 `"target"`. 패널 섹션 그룹 결정 |
-| `defaultValue` | 비활성(빈) 상태의 기본값 |
-| `fromUrl(params)` | URL 쿼리스트링 → 필터 값 역직렬화 |
-| `toUrl(value)` | 필터 값 → URL 쿼리스트링 패치 |
-| `chips(value)` | 활성 상태면 `FilterChip[]` 반환, 비활성이면 `[]` |
-| `clearChip(chipId, current)` | 특정 칩 제거 후 새 값 반환 |
-| `match(row, value)` | `ThemeRowData` 행이 조건을 만족하면 `true` |
-| `Input` | 패널에 렌더되는 입력 UI 컴포넌트 |
+| `kind` | 식별자 문자열 |
+| `multiple` | 복수 인스턴스 허용 여부 |
+| `defaultValue(ctx)` | 초기값 생성 |
+| `chipLabel(v, ctx)` | 활성 칩 라벨 |
+| `match(row, v, derived, instanceId)` | 행이 조건을 만족하면 true |
+| `Input` | 패널 입력 UI 컴포넌트 |
+| `serialize / deserialize` | payload 문자열 변환 |
 
-### 3. URL ↔ 상태 동기화 — `useFilterState`
+현재 등록된 `KINDS`: `targetMember`, `activeMembersInTheme`, `targetActiveRank`, `stockCode`, `dateRange`, `timeRange`, `option`
 
-`useFilterState`는 nuqs의 `useQueryStates`로 URL 쿼리스트링을 구독한다.
+### RowDerived
+행별 파생 데이터. `activePools: ActivePool[]`을 포함하며, `computeRowDerived`가 필터 적용 전 전체 행에 대해 미리 계산한다.
 
-```
-URL 변경 → useQueryStates → params
-           → FILTERS.map(f => f.fromUrl(params)) → filterValues
-           → params.opt.map(deserializeOptionFilter)  → optionFilters
-```
+---
 
-`filterValues`는 `Record<filterId, value>` 형태. 각 필터 정의가 자신의 URL 파라미터 키만 읽어 값을 도출한다.
-
-### 4. 패널 입력 → URL 갱신
+## URL 형식
 
 ```
-사용자 입력 → onChange(newValue)
-           → setFilterValue(filterId, newValue)
-           → f.toUrl(newValue) → Partial<FilterUrlParams>
-           → setParams(patch)   → nuqs가 URL 갱신
-           → URL 변경이 useQueryStates 재실행
+?f=<id>:<kind>:<payload>[&f=…]
 ```
 
-URL은 `history: "replace"`로 관리되어 브라우저 히스토리를 오염시키지 않는다.
+nuqs `parseAsArrayOf(parseAsString)`. 첫 번째·두 번째 콜론에서만 분리하므로 payload 내부에 콜론이 포함될 수 있다.
 
-### 5. 행 필터링 — `applyFilters`
-
+예시:
 ```
-applyFilters(rows, filterValues, optionFilters):
-    for each row:
-        for each f in FILTERS:
-            if !f.match(row, filterValues[f.id]) → 제외
-        for each optFilter in optionFilters:
-            if !matchOption(row, optFilter) → 제외
-    → 남은 행 반환
+?f=ab12cd34:targetMember:rate:5..30;cumAmount:100
+&f=ef56gh78:activeMembersInTheme:rate:5..;cumAmount:50|2
+&f=ij90kl12:targetActiveRank:ef56gh78;1..3
 ```
 
-### 6. 칩바 — `activeChips`
+---
+
+## 데이터 흐름
 
 ```
-activeChips = FILTERS.flatMap(f => f.chips(filterValues[f.id]))
-            + optionFilters.map(f => { id: `opt:${serialized}`, label: chipLabel })
+URL (?f=[…])
+  │
+  ▼  useFilterState()
+  │  1. 1차 파싱: id/kind만 추출 → partialInstances (ctx 구성용)
+  │  2. 2차 파싱: kind.deserialize(payload, ctx) → FilterInstance[]
+  │
+  ├─▶ instances (FilterInstance[])
+  │
+  │   FilteredClient.tsx
+  │
+  ├─▶ activeMemberInstances = instances.filter(kind === "activeMembersInTheme")
+  │
+  ├─▶ computeRowDerived(allRows, activeMemberInstances)
+  │   → derivedMap: Map<rowKey, RowDerived>
+  │   → 각 activeMembersInTheme 인스턴스에 대해 peers 전체를 isMember로 평가
+  │   → { instanceId, selfRank, poolSize, members[] }  = ActivePool
+  │
+  ├─▶ applyFiltersNew(allRows, instances, derivedMap, KINDS)
+  │   → KINDS[inst.kind].match(row, inst.value, derived, inst.id)
+  │
+  └─▶ sortRows(filteredRows) → 화면 렌더
 ```
 
-칩 클릭(삭제) 시 `clearOne(chipId)`:
-- `chipId.startsWith("opt:")` → `opt` 파라미터에서 해당 직렬화 문자열 제거
-- 아니면 FILTERS에서 해당 칩을 소유한 정의를 찾아 `clearChip` 호출 → `toUrl` → `setParams`
+---
+
+## FilterPanel 섹션 구조
+
+| 섹션 | 포함 FilterKind | multiple |
+|------|----------------|---------|
+| 기본 필터 | `stockCode`, `dateRange`, `timeRange` | false |
+| Target 종목 조건 | `targetMember` | false (자동 생성) |
+| Active 멤버 슬롯 | `activeMembersInTheme` | **true** |
+| Target 활성 등수 | `targetActiveRank` | **true** |
+| 옵션 | `option` | **true** |
+
+`targetMember`는 FilterPanel 마운트 시 인스턴스가 없으면 자동으로 1개 생성된다.
+
+---
+
+## EntryRow 동작
+
+`activePools`가 없으면 기존 `rankBtn`(#테마 펼치기) 표시. 있으면 Act#N 칩 목록으로 대체.
+
+- **Space** (hover 중) → 차트 모달 열기
+- **1/2/3…** (hover 중, activePools 없음) → 1 = theme 펼치기
+- **1/2/3…** (hover 중, activePools 있음) → 해당 Act#N 풀 펼치기
 
 ---
 
 ## 핵심 파일
 
-| 파일 | 역할 | 주요 export |
-|------|------|-------------|
-| `src/lib/filter/registry/index.ts` | 필터 정의 배열 | `FILTERS`, `FilterDefinition`, `FilterChip` |
-| `src/lib/filter/registry/types.ts` | 인터페이스 정의 | `FilterDefinition<TValue>`, `AnyFilterDef` |
-| `src/lib/filter/registry/urlParams.ts` | URL 파라미터 키 타입 | `FilterUrlParams` |
-| `src/lib/filter/registry/*.ts` | 각 필터 정의 파일 | 예: `themeSizeFilter` |
-| `src/hooks/useFilterState.ts` | URL ↔ 상태 동기화 | `useFilterState` |
-| `src/lib/filter/applyFilters.ts` | 전체 행 필터 실행 | `applyFilters` |
-| `src/lib/filter/matchers/*.ts` | 개별 매칭 함수 | `matchThemeSize`, `matchOption` 등 |
-| `src/components/filter/FilterPanel.tsx` | 필터 입력 UI | `FilterPanel` |
-| `src/components/filter/FilterChipBar.tsx` | 활성 칩 표시 | `FilterChipBar` |
+| 파일 | 역할 |
+|------|------|
+| `src/lib/filter/kinds/types.ts` | `FilterKind`, `FilterInstance`, `BuildCtx`, `RowDerived`, `ActivePool` |
+| `src/lib/filter/kinds/index.ts` | `KINDS` 레지스트리 |
+| `src/lib/filter/kinds/*.tsx` | 개별 FilterKind 구현 |
+| `src/lib/filter/id.ts` | `newInstanceId()` |
+| `src/lib/filter/url.ts` | `serializeInstance`, `deserializeInstance` |
+| `src/lib/filter/derived.ts` | `computeRowDerived`, `rowKey` |
+| `src/lib/filter/applyFiltersNew.ts` | `applyFiltersNew` |
+| `src/hooks/useFilterState.ts` | URL ↔ 상태 동기화 |
+| `src/components/filter/FilterPanel.tsx` | 필터 입력 UI |
+| `src/components/filter/FilterChipBar.tsx` | 활성 칩 표시 |
+| `src/components/list/EntryRow.tsx` | Act#N 칩, 펼침 패널 |
 
 ---
 
 ## 설계 결정
 
-- **레지스트리 패턴 채택 이유** — 기존에는 필터 추가 시 7~8곳을 개별 수정해야 했다. `FilterDefinition` 객체 하나에 모든 책임을 집약함으로써 1파일 + `FILTERS` 배열 1줄 추가로 완결된다. → [ADR-001](../decisions/001-filter-registry.md)
-
-- **URL 키를 짧은 약어로 쓰는 이유** — `tsMin`, `tmRateMin` 같은 약어는 URL 길이를 줄이고, 필터 설정이 담긴 URL을 공유·북마크할 때 가독성을 높인다.
-
----
-
-## 확장 포인트
-
-- **새 필터 추가 절차** — [adding-filter.md](../adding-filter.md)에 위임.
-- **새 섹션(`section: "..."`) 추가 시 한계** — 현재 `FilterPanel`은 `theme`과 `target` 두 섹션만 하드코딩으로 그룹화한다. 세 번째 섹션을 추가하려면 `FilterPanel.tsx`의 그룹화 로직도 함께 수정해야 한다.
+- **단일 `f` 배열 파라미터** — 파라미터 종류 무관하게 직렬화 형식을 통일. → [ADR-010](../decisions/010-unified-filter-instance-model.md)
+- **ConditionKind 2단 레지스트리** — 멤버 조건 평가 로직을 FilterKind와 분리. → [ADR-011](../decisions/011-condition-kind-two-tier.md)
+- **computeRowDerived가 전체 행에 실행되는 이유** — 필터에서 제외된 행도 EntryRow를 통해 Act#N 칩을 표시해야 하기 때문이 아니라, `filteredSortedRows`를 결정하기 전에 derived가 필요하기 때문이다. 필터된 결과에만 계산하면 닭-달걀 순환이 생긴다.

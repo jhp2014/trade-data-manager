@@ -92,19 +92,39 @@
 
 ## Filter 영역
 
-**FilterDefinition** — 필터 하나의 동작을 기술하는 인터페이스. `fromUrl`, `toUrl`, `chips`, `clearChip`, `match`, `Input` 6개 메서드를 포함한다. ([`src/lib/filter/registry/types.ts`](../src/lib/filter/registry/types.ts))
+**FilterInstance** — 런타임 필터 하나. `{ id, kind, value }`. `id`는 8자 base36 랜덤 문자열. 동일 kind를 여러 개 동시에 운용할 수 있다. URL에는 `id:kind:payload` 형태로 직렬화된다. ([`src/lib/filter/kinds/types.ts`](../src/lib/filter/kinds/types.ts))
 
-**FilterChip** — 필터가 활성 상태일 때 칩바에 표시되는 UI 토큰. `{ id, label }` 구조.
+**FilterKind\<TValue\>** — 필터 종류 하나의 동작(직렬화·역직렬화·매칭·UI)을 기술하는 인터페이스. `KINDS` 레지스트리에 등록된다. ([`src/lib/filter/kinds/types.ts`](../src/lib/filter/kinds/types.ts))
 
-**FilterUrlParams** — URL 쿼리스트링 파라미터 타입. `tsMin`, `tsMax`, `opt` 등 약어 키를 가진다. ([`src/lib/filter/registry/urlParams.ts`](../src/lib/filter/registry/urlParams.ts))
+**KINDS** — `Record<string, FilterKind<any>>` 레지스트리. `FilterPanel`, `applyFiltersNew`, `useFilterState`가 이 배열을 순회한다. ([`src/lib/filter/kinds/index.ts`](../src/lib/filter/kinds/index.ts))
 
-**RangeFilter** — min/max 두 필드를 가진 범위 필터 타입. 양쪽 모두 null이면 비활성. ([`src/types/filter.ts`](../src/types/filter.ts))
+**BuildCtx** — `FilterKind.deserialize`에 전달되는 컨텍스트. `optionKeys`, `optionRegistry`, `activeInstances`를 포함. `activeInstances`는 `targetActiveRank`의 `refInstanceId` 역참조에 사용된다.
 
-**ThemeMemberSlotFilter** — 테마 멤버 조건 필터. `rateMin/rateMax`(등락률 범위) + `amountMin`(거래대금 하한) + `countMin`(조건 만족 멤버 수 하한)을 포함한다. ([`src/types/filter.ts`](../src/types/filter.ts))
+**RowDerived** — 행별 파생 데이터. `activePools: ActivePool[]`. `computeRowDerived`가 필터 적용 전 전체 행에 대해 미리 계산한다. ([`src/lib/filter/derived.ts`](../src/lib/filter/derived.ts))
 
-**OptionFilter** — 동적 옵션 컬럼 필터. `anyOf`(값 목록 중 하나 매칭)와 `contains`(부분 문자열 매칭) 두 모드를 가진다. ([`src/types/filter.ts`](../src/types/filter.ts))
+**ActivePool** — `activeMembersInTheme` 인스턴스 하나에 대응하는 파생 데이터. `instanceId`, `selfRank`(자기 종목의 풀 내 등수, null이면 풀 미포함), `poolSize`(조건 통과 종목 수), `members`(StockMetricsDTO[]).
+
+**FilterChip** — 필터가 활성 상태일 때 칩바에 표시되는 UI 토큰. `{ id, label, instanceId }` 구조.
+
+**OptionValue** — `option` FilterKind의 value 타입. `{ key, mode: 'anyOf'|'contains', values?, needle? }`. 동적 옵션 키를 같은 인스턴스 모델 안에서 다룰 수 있게 한다. ([`src/lib/filter/kinds/option.tsx`](../src/lib/filter/kinds/option.tsx))
 
 **anyOf vs contains** — `anyOf`는 파이프 구분 멀티토큰 값에서 정확한 토큰 포함 여부 검사. `contains`는 옵션 값 전체 문자열에서 대소문자 무시 부분 매칭. distinct 값 수가 20(`ANY_OF_MAX_DISTINCT`) 이하면 `anyOf`가 기본.
+
+---
+
+## MemberPredicate 영역
+
+**ConditionKind\<TValue\>** — 단일 조건의 평가·UI·직렬화를 묶은 정의 객체. `CONDITION_KINDS` 레지스트리에 등록된다. ([`src/lib/condition/types.ts`](../src/lib/condition/types.ts))
+
+**CONDITION_KINDS** — `Record<string, ConditionKind<any>>` 레지스트리. `rate`, `cumAmount`, `amountHits`, `pullback`, `dayHigh`, `minutesSinceHigh` 6종. ([`src/lib/condition/index.ts`](../src/lib/condition/index.ts))
+
+**Condition** — `{ kind: string; value: unknown }`. `CONDITION_KINDS[kind].eval(stockMetrics, value)`로 평가.
+
+**MemberPredicate** — `{ name?: string; conditions: Condition[] }`. `isMember(m, p) = p.conditions.every(c => evalCondition(m, c))`. ([`src/lib/member/predicate.ts`](../src/lib/member/predicate.ts))
+
+**isMember** — `(m: StockMetricsDTO, p: MemberPredicate) => boolean`. 조건이 0개인 predicate는 항상 true.
+
+**ActivePredicateInstance** — 차트 오버레이 토글에 전달되는 구조. `{ id, label, predicate: MemberPredicate }`. `ChartModal`이 `useFilterState()`에서 추출해 `RealThemeOverlayChart`에 prop으로 전달한다.
 
 ---
 

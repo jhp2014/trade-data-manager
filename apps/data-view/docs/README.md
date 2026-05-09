@@ -24,8 +24,8 @@
 | 문서 | 한 줄 설명 |
 |------|-----------|
 | [data-flow.md](./architecture/data-flow.md) | URL 진입부터 `EntryRow` 렌더까지 전체 데이터 파이프라인 |
-| [filter-system.md](./architecture/filter-system.md) | 필터 칩·URL·매칭 함수가 레지스트리 하나로 동기화되는 구조 |
-| [option-filter.md](./architecture/option-filter.md) | CSV별로 컬럼이 다른 옵션 필터를 정적 레지스트리 밖에서 처리하는 이유 |
+| [filter-system.md](./architecture/filter-system.md) | FilterInstance·KINDS·derivedMap이 동기화되는 구조 |
+| [member-predicate.md](./architecture/member-predicate.md) | MemberPredicate·ConditionKind 도메인 모델 |
 | [chart-modal.md](./architecture/chart-modal.md) | 행 클릭부터 차트 렌더·언마운트까지 모달 라이프사이클 |
 | [chart-tooltip.md](./architecture/chart-tooltip.md) | 마우스 hover 이벤트에서 React 툴팁이 그려지기까지의 정확한 단계 |
 
@@ -35,15 +35,18 @@
 
 | 번호 | 제목 | 상태 |
 |------|------|------|
-| [ADR-001](./decisions/001-filter-registry.md) | Filter Registry 패턴 | Accepted |
+| [ADR-001](./decisions/001-filter-registry.md) | Filter Registry 패턴 | Superseded by ADR-010 |
 | [ADR-002](./decisions/002-chart-tooltip-react.md) | Chart Tooltip을 React 컴포넌트로 | Accepted |
 | [ADR-003](./decisions/003-chartpadding-option-b.md) | chartPadding 옵션 B (범위 내 채우기) | Accepted |
 | [ADR-004](./decisions/004-clamp-container-width.md) | 컨테이너 너비 `clamp()` 적용 | Accepted |
 | [ADR-005](./decisions/005-result-type.md) | `Result<T>` 합성 타입 | Accepted |
 | [ADR-006](./decisions/006-bigint-serialization.md) | bigint → string 직렬화 | Accepted |
 | [ADR-007](./decisions/007-unit-brand-types.md) | 단위 Brand 타입 (`Eok`/`Mil`/`Krw`) | Accepted |
-| [ADR-008](./decisions/008-option-filter-separation.md) | Option Filter를 정적 레지스트리에서 분리 | Accepted |
+| [ADR-008](./decisions/008-option-filter-separation.md) | Option Filter를 정적 레지스트리에서 분리 | Superseded by ADR-010 |
 | [ADR-009](./decisions/009-daily-chart-krx-nxt-toggle.md) | 일봉 차트 KRX/NXT 토글 | Accepted |
+| [ADR-010](./decisions/010-unified-filter-instance-model.md) | 통합 필터 인스턴스 모델 | Accepted |
+| [ADR-011](./decisions/011-condition-kind-two-tier.md) | ConditionKind 2단 레지스트리 | Accepted |
+| [ADR-012](./decisions/012-chart-overlay-predicate-toggle.md) | 차트 오버레이 Active Predicate 토글 | Accepted |
 
 ---
 

@@ -37,24 +37,29 @@
 ### 4. 클라이언트 진입 — FilteredClient
 
 10. `FilteredClient`(클라이언트 컴포넌트)가 `initialResult`를 prop으로 받아 마운트된다.
-11. `useFilterState`가 nuqs로 현재 URL 쿼리스트링을 읽어 `filterValues`, `optionFilters`, `activeChips`를 계산한다.
-    - 각 필터 정의의 `fromUrl(params)`가 호출되어 정규화된 값 반환
-    - `opt` 파라미터는 `deserializeOptionFilter`로 파싱
+11. `useFilterState(optionKeys, optionRegistry)`가 nuqs `?f=` 배열 파라미터를 읽어 `FilterInstance[]`를 계산한다.
+    - 1차 파싱: `id:kind` 만 추출해 `BuildCtx`를 구성 (역참조 지원)
+    - 2차 파싱: `KINDS[kind].deserialize(payload, ctx)` 로 `value` 복원
+    - `activeMembersInTheme` 인스턴스를 추려 `activeMemberInstances` 분리
 
-### 5. 필터 + 정렬
+### 5. 파생 데이터 계산 + 필터 + 정렬
 
-12. `applyFilters(rows, filterValues, optionFilters)`:
-    - `FILTERS` 배열의 각 정의에 대해 `match(row, value)` 실행
-    - `optionFilters`를 별도 루프에서 `matchOption(row, filter)` 실행
-    - 두 조건 모두 통과한 행만 남긴다
-13. `sortRows(filtered, sortKey, sortDir)` → 표시 순서 결정
+12. `computeRowDerived(allRows, activeMemberInstances)`:
+    - 전체 행(`allRows`)에 대해 각 `activeMembersInTheme` 인스턴스별로 `isMember(peer, predicate)`를 실행
+    - 결과: `derivedMap: Map<rowKey, RowDerived>`, 각 항목에 `activePools: ActivePool[]` 포함
+    - **전체 행에 실행하는 이유**: `applyFiltersNew` 실행 전에 파생 데이터가 필요하므로(닭-달걀 순환 방지)
+13. `applyFiltersNew(allRows, instances, derivedMap, KINDS)`:
+    - 각 `FilterInstance`에 대해 `KINDS[inst.kind].match(row, inst.value, derived, inst.id)` 실행
+    - 전체 인스턴스를 통과한 행만 남긴다
+14. `sortRows(filtered)` → 표시 순서 결정
 
 ### 6. 렌더 — EntryRow
 
-14. `EntryListHeader` + `EntryRow` 렌더.
+15. `EntryListHeader` + `EntryRow` 렌더.
     - 컬럼 정의는 `columns/definitions.tsx`에서, 그리드 템플릿은 `lib/columns/gridTemplate.ts`에서 결정
     - `useUiStore.visibleOptionKeys`와 결합해 옵션 컬럼 표시 여부 제어
-15. 사용자가 종목 버튼 클릭 → `useChartModalStore.open(target)` → ChartModal 흐름은 [chart-modal.md](./chart-modal.md)로 위임.
+16. `activePools`가 1개 이상이면 `EntryRow`에 Act#N 칩이 표시된다. 클릭 시 해당 풀의 종목 목록 펼침.
+17. 사용자가 종목 버튼 클릭(또는 hover 중 Space) → `useChartModalStore.open(target)` → ChartModal 흐름은 [chart-modal.md](./chart-modal.md)로 위임.
 
 ---
 
@@ -68,11 +73,12 @@
 | `src/deck/config.ts` | 경로 해석 | `resolveDeckSubDir`, `resolveDecksBaseDir` |
 | `src/lib/snapshotMapper.ts` | raw DB row → DTO 변환 | `toStockMetricsDTO` |
 | `src/app/(main)/filtered/FilteredClient.tsx` | 클라이언트 최상위 | `FilteredClient` |
-| `src/hooks/useFilterState.ts` | URL ↔ 필터 값 동기화 | `useFilterState` |
-| `src/lib/filter/applyFilters.ts` | 전체 행 필터 실행 | `applyFilters` |
+| `src/hooks/useFilterState.ts` | URL ↔ 인스턴스 동기화 | `useFilterState` |
+| `src/lib/filter/kinds/index.ts` | 필터 종류 레지스트리 | `KINDS` |
+| `src/lib/filter/derived.ts` | 파생 데이터 계산 | `computeRowDerived`, `rowKey` |
+| `src/lib/filter/applyFiltersNew.ts` | 전체 행 필터 실행 | `applyFiltersNew` |
 | `src/lib/sort/sortRows.ts` | 정렬 | `sortRows` |
-| `src/components/list/EntryRow.tsx` | 행 렌더 | `EntryRow` |
-| `src/lib/filter/registry/index.ts` | 필터 정의 목록 | `FILTERS` |
+| `src/components/list/EntryRow.tsx` | 행 렌더 (Act#N 칩 포함) | `EntryRow` |
 | `src/lib/result.ts` | 성공/실패 래퍼 | `Result<T>`, `okResult`, `errResult` |
 
 ---
@@ -83,7 +89,7 @@
 
 - **`bigint`를 `string`으로 직렬화하는 이유** — 서버 액션 반환값은 JSON 직렬화되며, JSON은 `bigint`를 지원하지 않는다. `Number()`는 정밀도 손실 위험이 있어 `string`을 선택했다. → [ADR-006](../decisions/006-bigint-serialization.md)
 
-- **옵션 필터를 정적 레지스트리에서 분리한 이유** — CSV마다 컬럼명이 달라 컴파일 타임에 정의할 수 없다. → [ADR-008](../decisions/008-option-filter-separation.md)
+- **단일 `?f=` 배열 파라미터로 모든 필터를 직렬화하는 이유** — 복수 인스턴스 지원 및 파라미터 키 관리 파일 제거. → [ADR-010](../decisions/010-unified-filter-instance-model.md)
 
 ---
 

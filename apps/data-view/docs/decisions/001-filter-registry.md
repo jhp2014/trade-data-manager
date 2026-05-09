@@ -2,7 +2,7 @@
 
 ## 상태
 
-Accepted (2026-05-08)
+Superseded (2026-05-09) → [ADR-010](./010-unified-filter-instance-model.md) (복수 인스턴스·파생 데이터 요구로 인해 FilterInstance 모델로 교체)
 
 ## 맥락
 

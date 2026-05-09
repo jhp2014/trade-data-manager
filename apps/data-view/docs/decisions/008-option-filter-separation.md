@@ -2,7 +2,7 @@
 
 ## 상태
 
-Accepted (2026-05-08)
+Superseded (2026-05-09) → [ADR-010](./010-unified-filter-instance-model.md) (옵션 필터가 `option` FilterKind로 통합 인스턴스 모델 안으로 편입됨)
 
 ## 맥락
 
@@ -21,11 +21,10 @@ ADR-001에서 도입한 Filter Registry는 모든 필터가 컴파일 타임에 
 ## 결과
 
 - **장점**: 정적 필터 타입(`FilterDefinition`)이 깔끔하게 유지된다. 새 CSV 추가 시 코드 변경 없이 새 옵션 컬럼 자동 지원.
-- **단점/한계**: 옵션 필터와 정적 필터 두 흐름을 모두 이해해야 전체 필터 시스템을 파악할 수 있다. 이를 보완하기 위해 [architecture/option-filter.md](../architecture/option-filter.md)를 별도 문서로 작성했다.
+- **단점/한계**: 옵션 필터와 정적 필터 두 흐름을 모두 이해해야 전체 필터 시스템을 파악할 수 있다. (ADR-010에서 `option` FilterKind로 통합돼 이 문제가 해소됐다.)
 
 ## 관련
 
-- 코드: `src/lib/options/`, `src/lib/filter/matchers/option.ts`, `src/hooks/useFilterState.ts`
-- 기능 문서: [`docs/architecture/option-filter.md`](../architecture/option-filter.md)
+- 코드(당시): `src/lib/options/`, `src/hooks/useFilterState.ts` (matchers·option-filter.md는 ADR-010 채택 시 삭제)
 - 선행 ADR: [ADR-001](./001-filter-registry.md)
-- 후속 ADR: 없음
+- 후속 ADR: [ADR-010](./010-unified-filter-instance-model.md) (이 ADR을 Supersede)
