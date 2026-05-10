@@ -40,6 +40,10 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
 
     const activePools = derived.activePools;
     const hasActivePools = activePools.length > 0;
+    const activePoolsForModal = activePools.map((p) => ({
+        instanceId: p.instanceId,
+        memberStockCodes: p.members.map((m) => m.stockCode),
+    }));
 
     const toggleView = (next: ExpandedView) => {
         setExpandedView((cur) => {
@@ -70,6 +74,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                     stockName: self.stockName,
                     tradeDate: entry.tradeDate,
                     tradeTime: entry.tradeTime,
+                    activePools: activePoolsForModal,
                 });
                 return;
             }
@@ -167,6 +172,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                                 stockName: self.stockName,
                                 tradeDate: entry.tradeDate,
                                 tradeTime: entry.tradeTime,
+                                activePools: activePoolsForModal,
                             })
                         }
                     >
