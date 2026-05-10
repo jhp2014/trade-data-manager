@@ -4,13 +4,13 @@ import { getThemeBundle } from "@trade-data-manager/data-core";
 import type { ThemeBundle, ThemeBundleMember } from "@trade-data-manager/data-core";
 import { getDataViewDb } from "./db";
 import { fillMissingMinuteCandles } from "@/lib/chartPadding";
-import { composeUnix } from "@/lib/serialization";
+import { composeUnix, dateToUnix } from "@/lib/serialization";
 import { type Result, okResult, errResult } from "@/lib/result";
 import { toDailyChartCandle, buildMinuteCandles } from "@/lib/chart/mappers";
 import { buildThemeOverlay } from "@/lib/chart/overlay";
 import type { ChartPreviewDTO } from "@/types/chart";
 
-export type { ChartCandle, ChartOverlayPoint, ChartLinePoint, ChartOverlaySeries, ChartPreviewDTO } from "@/types/chart";
+export type { DailyCandle, MinuteCandle, ChartOverlayPoint, ChartLinePoint, ChartOverlaySeries, ChartPreviewDTO } from "@/types/chart";
 
 export async function fetchChartPreviewAction(params: {
     stockCode: string;
@@ -34,7 +34,13 @@ export async function fetchChartPreviewAction(params: {
             themeName: b.themeName,
         }));
 
-        return okResult({ data: { daily, minute, themeOverlay, markerTime, themes } });
+        // 진입일 일봉의 prevClose 추출 (분봉 가격 라인 % 변환 기준값)
+        const entryTime = dateToUnix(params.tradeDate);
+        const entryCandle = daily.find((c) => c.time === entryTime) ?? null;
+        const prevCloseKrx = entryCandle?.prevCloseKrx ?? null;
+        const prevCloseNxt = entryCandle?.prevCloseNxt ?? null;
+
+        return okResult({ data: { daily, minute, themeOverlay, markerTime, themes, prevCloseKrx, prevCloseNxt } });
     } catch (err) {
         return errResult(err);
     }
