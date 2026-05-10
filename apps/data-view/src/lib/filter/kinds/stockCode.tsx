@@ -9,7 +9,7 @@ export const stockCodeKind: FilterKind<string[]> = {
     section: "target",
     multiple: false,
     defaultValue: () => [],
-    chipLabel: (v) => `종목코드: ${v.join(", ")}`,
+    chipLabel: (v) => v.length === 0 ? "" : `종목코드: ${v.join(", ")}`,
     match: (row, v) => v.length === 0 || v.includes(row.entry.stockCode),
     Input: ({ value, onChange }) => (
         <TextMultiInput

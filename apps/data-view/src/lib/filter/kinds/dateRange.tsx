@@ -15,7 +15,7 @@ export const dateRangeKind: FilterKind<DateRangeValue> = {
         if (v.from && v.to) return `날짜 ${v.from}~${v.to}`;
         if (v.from) return `날짜 ≥${v.from}`;
         if (v.to) return `날짜 ≤${v.to}`;
-        return "날짜";
+        return "";
     },
     match: (row, v) => {
         const d = row.entry.tradeDate;

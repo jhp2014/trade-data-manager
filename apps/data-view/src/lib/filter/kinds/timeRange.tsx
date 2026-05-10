@@ -16,7 +16,7 @@ export const timeRangeKind: FilterKind<TimeRangeValue> = {
         if (v.from && v.to) return `시간 ${fmt(v.from)}~${fmt(v.to)}`;
         if (v.from) return `시간 ≥${fmt(v.from)}`;
         if (v.to) return `시간 ≤${fmt(v.to)}`;
-        return "시간";
+        return "";
     },
     match: (row, v) => {
         const t = row.entry.tradeTime;
