@@ -4,7 +4,7 @@ import { findStocksMapByCodes } from "@trade-data-manager/data-core";
 import type { CaptureConfig } from "../../capture.config";
 import { getCaptureDb, closeCaptureDb } from "../data/db";
 import { listCsvFiles, parseCsvFile, moveCsvFile, buildSidecarLog } from "./csvIO";
-import { startNextServer, verifyExternalServer } from "./nextServer";
+import { startNextServer, verifyExternalServer, getAppDir } from "./nextServer";
 import { createPlaywrightDriver, runWithConcurrency } from "./playwrightDriver";
 import { buildOutputPath } from "../lib/filename";
 import { logger } from "../lib/logger";
@@ -68,12 +68,11 @@ export async function runCapture(config: CaptureConfig, options: RunCaptureOptio
         if (dryRun) {
             baseUrl = `http://localhost:${config.nextPort}`;
         } else {
-            const appDir = path.resolve(__dirname, "../../");
             const handle = await startNextServer({
                 port: config.nextPort,
                 dev: config.devMode,
                 startTimeoutMs: config.nextStartTimeoutMs,
-                appDir,
+                appDir: getAppDir(),
             });
             baseUrl = handle.baseUrl;
             stopServer = handle.stop;

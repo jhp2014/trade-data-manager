@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
+import fs from "fs";
 import path from "path";
 import { logger } from "../lib/logger";
 
@@ -89,5 +90,11 @@ export async function verifyExternalServer(url: string): Promise<void> {
 }
 
 export function getAppDir(): string {
-    return path.resolve(__dirname, "../../..");
+    const dir = path.resolve(__dirname, "../../");
+    if (!fs.existsSync(path.join(dir, "package.json"))) {
+        throw new Error(
+            `[chart-capture] getAppDir() 결과가 chart-capture 루트가 아닙니다: ${dir}`,
+        );
+    }
+    return dir;
 }
