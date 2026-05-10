@@ -8,6 +8,7 @@
 
 import type { ThemeBundle, ThemeBundleMember } from "@trade-data-manager/data-core";
 import type { ChartOverlaySeries } from "@/types/chart";
+// peers 정렬 기준: 마지막 시점 valueNxt 고정 (모드 전환 시 색상 매핑 불변)
 import { fillMissingOverlayPoints } from "@/lib/chartPadding";
 import { buildOverlayPoints } from "./mappers";
 import { CHART_OVERLAY_MAX_SERIES } from "@/lib/constants";
@@ -62,8 +63,8 @@ export function buildThemeOverlay(
         });
     }
     peers.sort((a, b) => {
-        const av = a.series[a.series.length - 1]?.value ?? 0;
-        const bv = b.series[b.series.length - 1]?.value ?? 0;
+        const av = a.series[a.series.length - 1]?.valueNxt ?? 0;
+        const bv = b.series[b.series.length - 1]?.valueNxt ?? 0;
         return bv - av;
     });
 

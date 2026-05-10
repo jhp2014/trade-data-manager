@@ -3,15 +3,15 @@
  * See: docs/decisions/003-chartpadding-option-b.md
  */
 
-import type { ChartCandle, ChartOverlayPoint } from "@/types/chart";
+import type { MinuteCandle, ChartOverlayPoint } from "@/types/chart";
 
 export function fillMissingMinuteCandles(
-    candles: ChartCandle[],
+    candles: MinuteCandle[],
     stepSec = 60,
-): ChartCandle[] {
+): MinuteCandle[] {
     if (candles.length <= 1) return candles;
 
-    const result: ChartCandle[] = [];
+    const result: MinuteCandle[] = [];
     for (let i = 0; i < candles.length; i++) {
         const cur = candles[i];
         result.push(cur);
@@ -23,10 +23,8 @@ export function fillMissingMinuteCandles(
         while (t < next.time) {
             result.push({
                 time: t,
-                open: cur.close,
-                high: cur.close,
-                low: cur.close,
-                close: cur.close,
+                krx: { open: cur.krx.close, high: cur.krx.close, low: cur.krx.close, close: cur.krx.close },
+                nxt: { open: cur.nxt.close, high: cur.nxt.close, low: cur.nxt.close, close: cur.nxt.close },
                 volume: 0,
                 amount: 0,
                 accAmount: cur.accAmount ?? 0,
@@ -55,7 +53,8 @@ export function fillMissingOverlayPoints(
         while (t < next.time) {
             result.push({
                 time: t,
-                value: cur.value,        // 직전 등락률 유지
+                valueKrx: cur.valueKrx,  // 직전 KRX 등락률 유지
+                valueNxt: cur.valueNxt,   // 직전 NXT 등락률 유지
                 amount: 0,                // 분 거래대금 0
                 cumAmount: cur.cumAmount, // 누적은 직전 그대로
             });

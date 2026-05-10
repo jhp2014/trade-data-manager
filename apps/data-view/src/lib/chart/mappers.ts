@@ -5,48 +5,68 @@
  */
 
 import type { DailyCandleRow, MinuteCandleRow, MinuteFeatureRow } from "@trade-data-manager/data-core";
-import type { ChartCandle, ChartOverlayPoint } from "@/types/chart";
+import type { DailyCandle, MinuteCandle, ChartOverlayPoint } from "@/types/chart";
 import { toNum, dateToUnix } from "@/lib/serialization";
 
-export function toDailyChartCandle(r: DailyCandleRow): ChartCandle {
+export function toDailyChartCandle(r: DailyCandleRow): DailyCandle {
     return {
         time: dateToUnix(r.tradeDate),
-        // KRX
-        open: toNum(r.openKrx),
-        high: toNum(r.highKrx),
-        low: toNum(r.lowKrx),
-        close: toNum(r.closeKrx),
-        volume: toNum(r.tradingVolumeKrx),
-        amount: toNum(r.tradingAmountKrx),
-        // NXT
-        openNxt: toNum(r.openNxt),
-        highNxt: toNum(r.highNxt),
-        lowNxt: toNum(r.lowNxt),
-        closeNxt: toNum(r.closeNxt),
+        krx: {
+            open: toNum(r.openKrx),
+            high: toNum(r.highKrx),
+            low: toNum(r.lowKrx),
+            close: toNum(r.closeKrx),
+        },
+        nxt: {
+            open: toNum(r.openNxt),
+            high: toNum(r.highNxt),
+            low: toNum(r.lowNxt),
+            close: toNum(r.closeNxt),
+        },
+        volumeKrx: toNum(r.tradingVolumeKrx),
+        amountKrx: toNum(r.tradingAmountKrx),
         volumeNxt: toNum(r.tradingVolumeNxt),
         amountNxt: toNum(r.tradingAmountNxt),
-        // prev close
         prevCloseKrx: r.prevCloseKrx != null ? Number(r.prevCloseKrx) : undefined,
         prevCloseNxt: r.prevCloseNxt != null ? Number(r.prevCloseNxt) : undefined,
     };
 }
 
-export function buildMinuteCandles(rows: MinuteCandleRow[]): ChartCandle[] {
-    const out: ChartCandle[] = [];
+/**
+ * 분봉 raw → MinuteCandle[].
+ * 양쪽 다 null인 봉만 제외. 한쪽만 null이면 0으로 두되
+ * chartPadding 단계에서 직전 값으로 보간 처리됨.
+ */
+export function buildMinuteCandles(rows: MinuteCandleRow[]): MinuteCandle[] {
+    const out: MinuteCandle[] = [];
     for (const r of rows) {
-        if (
+        const krxNull =
+            r.openRateKrx === null ||
+            r.highRateKrx === null ||
+            r.lowRateKrx === null ||
+            r.closeRateKrx === null;
+        const nxtNull =
             r.openRateNxt === null ||
             r.highRateNxt === null ||
             r.lowRateNxt === null ||
-            r.closeRateNxt === null
-        ) continue;
+            r.closeRateNxt === null;
+
+        if (krxNull && nxtNull) continue;
 
         out.push({
             time: r.unixTimestamp,
-            open: toNum(r.openRateNxt),
-            high: toNum(r.highRateNxt),
-            low: toNum(r.lowRateNxt),
-            close: toNum(r.closeRateNxt),
+            krx: {
+                open: krxNull ? 0 : toNum(r.openRateKrx),
+                high: krxNull ? 0 : toNum(r.highRateKrx),
+                low: krxNull ? 0 : toNum(r.lowRateKrx),
+                close: krxNull ? 0 : toNum(r.closeRateKrx),
+            },
+            nxt: {
+                open: nxtNull ? 0 : toNum(r.openRateNxt),
+                high: nxtNull ? 0 : toNum(r.highRateNxt),
+                low: nxtNull ? 0 : toNum(r.lowRateNxt),
+                close: nxtNull ? 0 : toNum(r.closeRateNxt),
+            },
             volume: toNum(r.tradingVolume),
             amount: toNum(r.tradingAmount),
             accAmount: toNum(r.accumulatedTradingAmount),
@@ -57,7 +77,7 @@ export function buildMinuteCandles(rows: MinuteCandleRow[]): ChartCandle[] {
 
 /**
  * 분봉 raw + 분봉 피처 raw를 합쳐 ChartOverlayPoint[]로 변환.
- * - close_rate_nxt가 null인 봉은 제외
+ * - KRX/NXT 양쪽 다 null인 봉은 제외
  * - features의 cumulative_trading_amount를 시간(unix) 기준으로 매칭
  */
 export function buildOverlayPoints(
@@ -74,13 +94,15 @@ export function buildOverlayPoints(
 
     const out: ChartOverlayPoint[] = [];
     for (const r of minute) {
-        if (r.closeRateNxt === null) continue;
-        const v = toNum(r.closeRateNxt);
-        if (!Number.isFinite(v)) continue;
+        const hasKrx = r.closeRateKrx !== null && Number.isFinite(toNum(r.closeRateKrx));
+        const hasNxt = r.closeRateNxt !== null && Number.isFinite(toNum(r.closeRateNxt));
+        if (!hasKrx && !hasNxt) continue;
+
         const key = String(r.tradeTime).slice(0, 8);
         out.push({
             time: r.unixTimestamp,
-            value: v,
+            valueKrx: hasKrx ? toNum(r.closeRateKrx) : 0,
+            valueNxt: hasNxt ? toNum(r.closeRateNxt) : 0,
             amount: toNum(r.tradingAmount),
             cumAmount: toNum(cumByTime.get(key)),
         });
