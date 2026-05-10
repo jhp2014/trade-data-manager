@@ -74,14 +74,6 @@ export function ChartCaptureClient({
             style={{ width: captureBoxW, height: captureBoxH, overflow: "hidden" }}
         >
             <div style={{ height: "50%" }}>
-                <DailyChart
-                    candles={daily}
-                    variant={variant}
-                    priceLines={stableLines}
-                    onReady={() => setDailyReady(true)}
-                />
-            </div>
-            <div style={{ height: "50%" }}>
                 <MinuteChart
                     candles={minute}
                     variant={variant}
@@ -89,6 +81,14 @@ export function ChartCaptureClient({
                     prevCloseKrx={prevCloseKrx}
                     prevCloseNxt={prevCloseNxt}
                     onReady={() => setMinuteReady(true)}
+                />
+            </div>
+            <div style={{ height: "50%" }}>
+                <DailyChart
+                    candles={daily}
+                    variant={variant}
+                    priceLines={stableLines}
+                    onReady={() => setDailyReady(true)}
                 />
             </div>
         </div>
