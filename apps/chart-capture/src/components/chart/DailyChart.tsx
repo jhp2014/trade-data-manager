@@ -14,6 +14,7 @@ import type { DailyCandle } from "@/lib/chartTypes";
 import type { LineSpec } from "@/types/capture";
 import { kstYmd } from "@/lib/chartTime";
 import { computePriceLineChartValue, buildPriceLineOptions } from "@/lib/chart/priceLines";
+import { highMarkerColor } from "@/lib/chart/highMarker";
 
 interface Props {
     candles: DailyCandle[];
@@ -126,6 +127,25 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
                     };
                 }),
         );
+
+        const markers: Array<{ time: Time; position: "aboveBar"; color: string; shape: "circle"; text: string }> = [];
+        for (const c of candles) {
+            const prevClose = useNxt ? c.prevCloseNxt : c.prevCloseKrx;
+            if (prevClose == null || prevClose <= 0) continue;
+            const high = useNxt ? c.nxt.high : c.krx.high;
+            const pct = ((high - prevClose) / prevClose) * 100;
+            const color = highMarkerColor(pct);
+            if (color) {
+                markers.push({
+                    time: c.time as Time,
+                    position: "aboveBar",
+                    color,
+                    shape: "circle",
+                    text: `+${pct.toFixed(1)}`,
+                });
+            }
+        }
+        candleSeries.setMarkers(markers);
 
         chartRef.current?.timeScale().fitContent();
 
