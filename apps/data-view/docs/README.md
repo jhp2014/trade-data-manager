@@ -47,6 +47,10 @@
 | [ADR-010](./decisions/010-unified-filter-instance-model.md) | 통합 필터 인스턴스 모델 | Accepted |
 | [ADR-011](./decisions/011-condition-kind-two-tier.md) | ConditionKind 2단 레지스트리 | Accepted |
 | [ADR-012](./decisions/012-chart-overlay-predicate-toggle.md) | 차트 오버레이 Active Predicate 토글 | Accepted |
+| [ADR-013](./decisions/013-chart-candle-type-split.md) | ChartCandle 타입 분리 (DailyCandle / MinuteCandle) | Accepted |
+| [ADR-014](./decisions/014-unified-chart-mode-toggle.md) | KRX/NXT 토글 모달 헤더 통합 | Accepted |
+| [ADR-015](./decisions/015-csv-line-prefix-price-line.md) | CSV `line_` prefix 가격 라인 컬럼 분리 | Accepted |
+| [ADR-016](./decisions/016-remove-indicator-abstraction.md) | ChartIndicator 추상화 제거 및 가격 라인 인라인화 | Accepted |
 
 ---
 

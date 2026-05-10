@@ -53,13 +53,15 @@
 | `daily` | `RealDailyChart` | `candles`, `priceLines` |
 | `overlay` | `RealThemeOverlayChart` | `data`, `markerTime`, `activePredicateInstances`, `activePools` |
 
-### 5. 가격 라인 indicator (ADR-015)
+### 5. 가격 라인 (ADR-015, ADR-016)
 
-`priceLines` prop이 있을 때 `priceLineListIndicator`가 일봉·분봉 차트에 부착된다:
-- 일봉: 가격 그대로 수평선. Y축 레이블에 가격 표시.
-- 분봉: mode별 `prevClose` 기준으로 `% = (price - prevClose) / prevClose * 100` 변환. `prevClose`가 null이면 라인 미표시.
-- 컬럼명에서 `line_` prefix를 제거한 문자열이 라인 title로 표시.
+`priceLines` prop이 있을 때 각 차트 컴포넌트가 **`candleSeries.createPriceLine()`을 직접 호출**해 수평선을 부착한다:
+- 일봉: 가격 그대로 수평선. title 형식 `"label 가격"`.
+- 분봉: mode별 `prevClose` 기준으로 `% = (price - prevClose) / prevClose * 100` 변환. title 형식 `"label ±x.xx%"`. `prevClose`가 null이거나 ≤0이면 라인 미표시.
+- 컬럼명에서 `line_` prefix를 제거한 문자열이 라인 label로 사용된다.
 - 오버레이 차트에는 미적용.
+- `priceLineHandlesRef = useRef<IPriceLine[]>([])` 로 핸들을 관리. 의존 배열 변경 시 기존 라인 제거 후 재생성.
+- 순수 함수(`colorForPriceLineKey`, `computePriceLineChartValue`, `buildPriceLineOptions`)는 `src/lib/chart/priceLines.ts`에 분리됨.
 
 ### 6. 각 차트 컴포넌트의 공통 셸 구조
 
@@ -120,7 +122,7 @@
 | `src/lib/chart/mappers.ts` | raw row → DailyCandle / MinuteCandle 변환 | `toDailyChartCandle`, `buildMinuteCandles` |
 | `src/lib/chart/overlay.ts` | 테마 오버레이 조립 + 색상 | `buildThemeOverlay`, `assignSeriesColors` |
 | `src/lib/chartPadding.ts` | 빈 분봉·오버레이 포인트 채우기 | `fillMissingMinuteCandles`, `fillMissingOverlayPoints` |
-| `src/components/chart/indicators/priceLineList.ts` | 가격 라인 indicator (일봉/분봉) | `priceLineListIndicator` |
+| `src/lib/chart/priceLines.ts` | 가격 라인 순수 함수 (색상·값 변환·옵션 빌더) | `colorForPriceLineKey`, `computePriceLineChartValue`, `buildPriceLineOptions` |
 
 ---
 
@@ -137,6 +139,8 @@
 - **타입 분리** — `ChartCandle` 하나에서 `DailyCandle`(가격) / `MinuteCandle`(% 등락률) 로 분리. NXT 필드 충돌 해소. → [ADR-013](../decisions/013-chart-candle-type-split.md)
 
 - **가격 라인 컬럼** — CSV의 `line_` prefix 컬럼은 optionKeys와 분리되어 `priceLines`로 전달. 차트에 수평선으로 표시. → [ADR-015](../decisions/015-csv-line-prefix-price-line.md)
+
+- **가격 라인 인라인화** — `ChartIndicator` 추상화와 anchor lineSeries 패턴이 priceLine 좌표 계산 실패를 유발해 제거. `candleSeries`에 직접 `createPriceLine()` 호출로 변경. → [ADR-016](../decisions/016-remove-indicator-abstraction.md)
 
 - **tooltip을 React로 포팅한 이유** → [ADR-002](../decisions/002-chart-tooltip-react.md)
 

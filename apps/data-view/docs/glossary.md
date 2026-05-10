@@ -16,7 +16,7 @@
 
 **optionKeys** — CSV 헤더 중 필수 3컬럼(`stockCode`, `tradeDate`, `tradeTime`)과 `line_` prefix 컬럼, 코멘트 컬럼(`_` prefix) 이외의 컬럼 이름 목록. 옵션 필터의 동적 키 목록으로 사용된다.
 
-**priceLines** — `DeckEntry`의 필드. `line_` prefix를 갖는 CSV 컬럼에서 파싱한 가격 배열 맵 (`Record<string, number[]>`). 키는 컬럼명 그대로(`"line_target"`), 값은 `|` 구분 파싱 결과. 차트에 수평선으로 표시된다. ([`src/deck/loader.ts`](../src/deck/loader.ts), [ADR-015](../docs/decisions/015-csv-line-prefix-price-line.md))
+**priceLines** — `DeckEntry`의 필드. `line_` prefix를 갖는 CSV 컬럼에서 파싱한 가격 배열 맵 (`Record<string, number[]>`). 키는 컬럼명 그대로(`"line_target"`), 값은 `|` 구분 파싱 결과. 일봉·분봉 차트의 `candleSeries.createPriceLine()`으로 수평선으로 표시된다. ([`src/deck/loader.ts`](../src/deck/loader.ts), [ADR-015](./decisions/015-csv-line-prefix-price-line.md), [ADR-016](./decisions/016-remove-indicator-abstraction.md))
 
 **priceLineKeys** — `LoadedDecks`/`LoadedDecksDTO`의 필드. 모든 CSV 파일에서 등장한 `line_` prefix 컬럼 이름의 합집합(정렬됨).
 
@@ -92,7 +92,7 @@
 
 **markerTime** — 덱에 기록된 진입 시각을 unix seconds로 변환한 값. 분봉·오버레이 차트에서 `▼ 진입` 마커 위치로 사용한다.
 
-**accAmount** — 분봉 캔들의 누적 거래대금(원). 해당 시점까지 당일 누적합. `ChartCandle.accAmount`.
+**accAmount** — 분봉 캔들의 누적 거래대금(원). 해당 시점까지 당일 누적합. `MinuteCandle.accAmount`.
 
 **prevCloseKrx / prevCloseNxt** — 일봉 캔들의 전일 종가. `prevCloseKrx`는 KRX 기준, `prevCloseNxt`는 NXT 기준. 일봉 차트 hover 툴팁의 등락률 계산 및 분봉 가격 라인 % 변환에 사용된다. `ChartPreviewDTO`에도 포함되어 진입일 기준값으로 전달된다.
 
