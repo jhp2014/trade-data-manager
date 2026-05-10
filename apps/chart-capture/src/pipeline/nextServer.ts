@@ -31,15 +31,21 @@ export async function startNextServer(params: {
     appDir: string;
 }): Promise<NextServerHandle> {
     const { port, dev, startTimeoutMs, appDir } = params;
-    const command = dev ? "next" : "next";
-    const args = dev ? ["dev", "-p", String(port)] : ["start", "-p", String(port)];
+    // TODO:: 삭제 예정
+    // const command = dev ? "next" : "next"; 
+    // const args = dev ? ["dev", "-p", String(port)] : ["start", "-p", String(port)];
 
-    logger.info(`[next] ${dev ? "dev" : "start"} 모드로 포트 ${port}에서 기동 중...`);
+    // Windows: pnpm.cmd / Unix: pnpm
+    const isWindows = process.platform === "win32";
+    const pnpm = isWindows ? "pnpm.cmd" : "pnpm";
+    const mode = dev ? "dev" : "start";
 
-    const child: ChildProcess = spawn("pnpm", ["exec", command, ...args], {
+    logger.info(`[next] ${mode} 모드로 포트 ${port}에서 기동 중...`);
+
+    const child: ChildProcess = spawn(pnpm, ["exec", "next", mode, "-p", String(port)], {
         cwd: appDir,
         stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env },
+        shell: true,
     });
 
     child.stdout?.on("data", (d: Buffer) => {
@@ -74,7 +80,17 @@ export async function startNextServer(params: {
                 resolve();
             });
 
-            child.kill("SIGTERM");
+            // Windows: taskkill로 프로세스 트리 전체 종료
+            if (process.platform === "win32" && child.pid) {
+                const { execSync } = require("child_process");
+                try {
+                    execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: "ignore" });
+                } catch {
+                    // 이미 종료된 경우 무시
+                }
+            } else {
+                child.kill("SIGTERM");
+            }
         });
     };
 
