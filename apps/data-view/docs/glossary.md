@@ -10,11 +10,17 @@
 
 **deck** — 특정 시점의 종목 진입 후보군을 담은 CSV 파일 모음. `DECKS_DIR` 아래 날짜별 서브디렉터리(`subDir`)에 위치한다.
 
-**DeckEntry** — CSV 한 행에 해당하는 데이터 구조. `stockCode`, `tradeDate`, `tradeTime`, `options`, `sourceFile` 5개 필드를 가진다. ([`src/deck/types.ts`](../src/deck/types.ts))
+**DeckEntry** — CSV 한 행에 해당하는 데이터 구조. `stockCode`, `tradeDate`, `tradeTime`, `options`, `priceLines`, `sourceFile` 6개 필드를 가진다. ([`src/deck/types.ts`](../src/deck/types.ts))
 
-**LoadedDecks** — 한 디렉터리에서 모든 CSV를 파싱한 결과물. `entries`(전체 행), `optionKeys`(전체 옵션 컬럼 이름), `files`(파싱한 파일 목록), `duplicateCount`(중복 제거 수)를 포함한다. ([`src/deck/types.ts`](../src/deck/types.ts))
+**LoadedDecks** — 한 디렉터리에서 모든 CSV를 파싱한 결과물. `entries`(전체 행), `optionKeys`(전체 옵션 컬럼 이름), `priceLineKeys`(전체 가격 라인 컬럼 이름), `files`(파싱한 파일 목록), `duplicateCount`(중복 제거 수)를 포함한다. ([`src/deck/types.ts`](../src/deck/types.ts))
 
-**optionKeys** — CSV 헤더 중 필수 3컬럼(`stockCode`, `tradeDate`, `tradeTime`) 이외의 모든 컬럼 이름. 파일마다 다를 수 있으며, 옵션 필터의 동적 키 목록으로 사용된다.
+**optionKeys** — CSV 헤더 중 필수 3컬럼(`stockCode`, `tradeDate`, `tradeTime`)과 `line_` prefix 컬럼, 코멘트 컬럼(`_` prefix) 이외의 컬럼 이름 목록. 옵션 필터의 동적 키 목록으로 사용된다.
+
+**priceLines** — `DeckEntry`의 필드. `line_` prefix를 갖는 CSV 컬럼에서 파싱한 가격 배열 맵 (`Record<string, number[]>`). 키는 컬럼명 그대로(`"line_target"`), 값은 `|` 구분 파싱 결과. 차트에 수평선으로 표시된다. ([`src/deck/loader.ts`](../src/deck/loader.ts), [ADR-015](../docs/decisions/015-csv-line-prefix-price-line.md))
+
+**priceLineKeys** — `LoadedDecks`/`LoadedDecksDTO`의 필드. 모든 CSV 파일에서 등장한 `line_` prefix 컬럼 이름의 합집합(정렬됨).
+
+**`line_` prefix** — CSV 컬럼명 접두어. 이 prefix로 시작하는 컬럼은 옵션이 아닌 **가격 라인 컬럼**으로 분류된다. 값은 `"|"` 구분 다중 가격. 옵션 필터·picker에 노출되지 않는다. ([ADR-015](../docs/decisions/015-csv-line-prefix-price-line.md))
 
 **sourceFile** — 해당 `DeckEntry`가 어떤 CSV 파일에서 왔는지 추적하기 위한 파일명 문자열.
 
@@ -72,19 +78,23 @@
 
 ## Chart 영역
 
-**ChartCandle** — lightweight-charts에 전달하는 OHLCV 데이터 구조. `time`은 unix seconds(UTC). 일봉에서는 `prevCloseKrx`/`prevCloseNxt`를 추가로 포함해 등락률 계산에 사용한다. ([`src/types/chart.ts`](../src/types/chart.ts))
+**DailyCandle** — 일봉 1봉 데이터. `time`(unix seconds UTC), `krx`/`nxt`(중첩 OHLC 구조, 가격 단위), `volumeKrx`, `amountKrx`(MIL 단위), `volumeNxt`, `amountNxt`, `prevCloseKrx`, `prevCloseNxt`를 가진다. ([`src/types/chart.ts`](../src/types/chart.ts), [ADR-013](../docs/decisions/013-chart-candle-type-split.md))
 
-**ChartOverlayPoint** — 오버레이 시리즈의 한 시점 데이터. `time`, `value`(closeRateNxt %), `amount`(원), `cumAmount`(원)를 가진다. ([`src/types/chart.ts`](../src/types/chart.ts))
+**MinuteCandle** — 분봉 1봉 데이터. `time`, `krx`/`nxt`(중첩 OHLC 구조, % 등락률 단위), `volume`, `amount`(KRW 단위), `accAmount`를 가진다. ([`src/types/chart.ts`](../src/types/chart.ts), [ADR-013](../docs/decisions/013-chart-candle-type-split.md))
+
+**ChartOverlayPoint** — 오버레이 시리즈의 한 시점 데이터. `time`, `valueKrx`(KRX closeRate %), `valueNxt`(NXT closeRate %), `amount`(원), `cumAmount`(원)를 가진다. ([`src/types/chart.ts`](../src/types/chart.ts))
 
 **ChartOverlaySeries** — 테마 오버레이 차트에서 종목 단위 시리즈. `stockCode`, `stockName`, `isSelf`, `series: ChartOverlayPoint[]`를 포함한다. ([`src/types/chart.ts`](../src/types/chart.ts))
 
-**ChartPreviewDTO** — `fetchChartPreviewAction`이 반환하는 차트 전체 데이터 묶음. `daily`, `minute`, `themeOverlay`, `markerTime` 4개 필드. ([`src/types/chart.ts`](../src/types/chart.ts))
+**ChartPreviewDTO** — `fetchChartPreviewAction`이 반환하는 차트 전체 데이터 묶음. `daily: DailyCandle[]`, `minute: MinuteCandle[]`, `themeOverlay`, `markerTime`, `themes`, `prevCloseKrx`, `prevCloseNxt` 7개 필드. `prevCloseKrx`/`prevCloseNxt`는 진입일 일봉의 전일 종가이며, 분봉 가격 라인 % 변환 기준값으로 사용된다. ([`src/types/chart.ts`](../src/types/chart.ts))
+
+**chartPriceMode** — `useUiStore`에 persist 저장되는 KRX/NXT 전환 모드 (`"krx" | "nxt"`). 모달 헤더의 토글 버튼으로 변경하며, 일봉·분봉·오버레이 세 차트가 동일한 값을 공유한다. localStorage persist version 2 (기존 `dailyChartPriceMode`에서 마이그레이션). ([ADR-014](../docs/decisions/014-unified-chart-mode-toggle.md))
 
 **markerTime** — 덱에 기록된 진입 시각을 unix seconds로 변환한 값. 분봉·오버레이 차트에서 `▼ 진입` 마커 위치로 사용한다.
 
 **accAmount** — 분봉 캔들의 누적 거래대금(원). 해당 시점까지 당일 누적합. `ChartCandle.accAmount`.
 
-**prevCloseKrx / prevCloseNxt** — 일봉 캔들의 전일 종가. `prevCloseKrx`는 KRX 기준, `prevCloseNxt`는 NXT 기준. 일봉 차트 hover 툴팁의 등락률 계산에 사용된다.
+**prevCloseKrx / prevCloseNxt** — 일봉 캔들의 전일 종가. `prevCloseKrx`는 KRX 기준, `prevCloseNxt`는 NXT 기준. 일봉 차트 hover 툴팁의 등락률 계산 및 분봉 가격 라인 % 변환에 사용된다. `ChartPreviewDTO`에도 포함되어 진입일 기준값으로 전달된다.
 
 **placeholder candle** — `fillMissingMinuteCandles`가 거래 없는 분에 채워 넣는 가짜 봉. OHLC는 직전 봉의 close 값, volume/amount는 0. lightweight-charts가 시간축에서 끊기지 않게 연속 표시하기 위해 필요하다. ([`src/lib/chartPadding.ts`](../src/lib/chartPadding.ts))
 

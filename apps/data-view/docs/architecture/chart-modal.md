@@ -12,7 +12,7 @@
 
 ### 1. 모달 열기
 
-1. `EntryRow`에서 종목 버튼 클릭 → `useChartModalStore.open({ stockCode, stockName, tradeDate, tradeTime, activePools })`. `activePools`는 `derived.activePools`에서 `{ instanceId, memberStockCodes }` 배열로 변환해 동봉한다. 오버레이 차트 Active 토글에서 stockCode 집합 기반 가시성 조작에 사용된다.
+1. `EntryRow`에서 종목 버튼 클릭 → `useChartModalStore.open({ stockCode, stockName, tradeDate, tradeTime, activePools, priceLines })`. `activePools`는 `derived.activePools`에서 `{ instanceId, memberStockCodes }` 배열로 변환해 동봉한다. `priceLines`는 `entry.priceLines` (CSV의 `line_` prefix 컬럼에서 파싱된 가격 배열). PeerRow에서 열 때는 `priceLines` 없음(undefined).
 2. `useChartModalStore`(Zustand)의 `target` 상태가 설정된다.
 3. `ChartModal` 컴포넌트가 `target !== null`이므로 마운트된다.
 4. 기본 탭은 `"minute"` (마운트 시 `useEffect`로 강제 초기화).
@@ -27,23 +27,41 @@
    - `getDataViewDb()` → DB 연결
    - `getThemeBundle(db, { stockCode, tradeDate })` → 테마 묶음 조회
    - `pickSelfMember(bundles)` → self 멤버 선택
-   - `self.daily.map(toDailyChartCandle)` → 일봉 변환 (KRX OHLCV + prevClose)
-   - `fillMissingMinuteCandles(buildMinuteCandles(self.minute))` → 분봉 + padding
-   - `buildThemeOverlay(bundles, stockCode)` → 오버레이 시리즈 조립 (self 첫 번째 + peers 등락률 내림차순, MAX 15개)
+   - `self.daily.map(toDailyChartCandle)` → 일봉 변환 (`DailyCandle`, krx/nxt 중첩 구조)
+   - `fillMissingMinuteCandles(buildMinuteCandles(self.minute))` → 분봉 + padding (`MinuteCandle[]`)
+   - `buildThemeOverlay(bundles, stockCode)` → 오버레이 시리즈 조립 (self 첫 번째 + peers NXT 등락률 내림차순, MAX 15개)
    - `composeUnix(tradeDate, tradeTime)` → 진입 마커 시각
+   - 진입일 일봉에서 `prevCloseKrx` / `prevCloseNxt` 추출 (분봉 가격 라인 % 변환 기준값)
 8. `ChartPreviewDTO` 반환. React Query가 캐싱하므로 같은 종목/날짜/시각 재조회는 네트워크 요청 없이 즉시 반환.
 
-### 3. 탭별 차트 렌더
+### 3. KRX/NXT 모드 토글 (ADR-014)
+
+- `useUiStore.chartPriceMode` ("krx" | "nxt") 를 세 차트 컴포넌트 모두 구독한다.
+- 토글 UI는 **모달 헤더**에 위치하며, 탭 그룹 왼쪽에 배치된다.
+- 탭 전환 시 모드 유지. localStorage에 persist (version 2, 기존 `dailyChartPriceMode` 값 마이그레이션).
+- 일봉: `DailyCandle.krx.*` 또는 `.nxt.*` OHLC를 사용. 고가 마커 분모는 항상 KRX 전일종가.
+- 분봉: `MinuteCandle.krx.*` 또는 `.nxt.*` OHLC 사용. 가격 라인 % 변환도 모드별 prevClose 기준.
+- 오버레이: `ChartOverlayPoint.valueKrx` 또는 `.valueNxt` 사용. peers 정렬 기준은 NXT 고정(모드 불변).
+
+### 4. 탭별 차트 렌더
 
 모달 body에서 현재 `tab` 상태에 따라 하나의 차트만 렌더된다 (나머지는 언마운트):
 
-| 탭 | 컴포넌트 | 데이터 |
+| 탭 | 컴포넌트 | 주요 props |
 |----|---------|--------|
-| `minute` | `RealMinuteChart` | `data.minute`, `data.markerTime`, `data.themeOverlay` |
-| `daily` | `RealDailyChart` | `data.daily` |
-| `overlay` | `RealThemeOverlayChart` | `data.themeOverlay`, `data.markerTime` |
+| `minute` | `RealMinuteChart` | `candles`, `markerTime`, `themeOverlay`, `priceLines`, `prevCloseKrx`, `prevCloseNxt` |
+| `daily` | `RealDailyChart` | `candles`, `priceLines` |
+| `overlay` | `RealThemeOverlayChart` | `data`, `markerTime`, `activePredicateInstances`, `activePools` |
 
-### 4. 각 차트 컴포넌트의 공통 셸 구조
+### 5. 가격 라인 indicator (ADR-015)
+
+`priceLines` prop이 있을 때 `priceLineListIndicator`가 일봉·분봉 차트에 부착된다:
+- 일봉: 가격 그대로 수평선. Y축 레이블에 가격 표시.
+- 분봉: mode별 `prevClose` 기준으로 `% = (price - prevClose) / prevClose * 100` 변환. `prevClose`가 null이면 라인 미표시.
+- 컬럼명에서 `line_` prefix를 제거한 문자열이 라인 title로 표시.
+- 오버레이 차트에는 미적용.
+
+### 6. 각 차트 컴포넌트의 공통 셸 구조
 
 모든 차트 컴포넌트는 다음 4단계 useEffect 패턴을 따른다:
 
@@ -58,13 +76,13 @@
 3. useCrosshairTooltip({ chartRef, containerRef, render, leftOffset })
    → subscribeCrosshairMove + RAF throttle + ReactNode 상태 관리
 
-4. useEffect([data]) — 데이터 갱신
+4. useEffect([data, mode]) — 데이터 갱신
    → series.setData(...)
    → markers 설정
    → timeScale().fitContent()
 ```
 
-### 5. 키보드 단축키
+### 7. 키보드 단축키
 
 `useShortcut`으로 다음 단축키가 모달이 열린 동안만 활성화된다:
 
@@ -74,7 +92,7 @@
 | `Space` | 다음 탭으로 순환 (`minute → daily → overlay → minute`) |
 | `1` / `2` / `3` | 각각 `minute` / `daily` / `overlay` 탭으로 점프 |
 
-### 6. 모달 닫기 — 정리 순서
+### 8. 모달 닫기 — 정리 순서
 
 1. `useChartModalStore.close()` → `target = null`.
 2. `ChartModal`이 `target === null`이므로 `return null` (언마운트).
@@ -90,17 +108,19 @@
 
 | 파일 | 역할 | 주요 export |
 |------|------|-------------|
-| `src/components/chart/ChartModal.tsx` | 모달 셸, 탭 관리, 키보드 | `ChartModal` |
-| `src/components/chart/RealMinuteChart.tsx` | 분봉 차트 (NXT 등락률 OHLC + 통합 툴팁) | `RealMinuteChart` |
-| `src/components/chart/RealDailyChart.tsx` | 일봉 차트 (KRX OHLCV + 고가 마커) | `RealDailyChart` |
-| `src/components/chart/RealThemeOverlayChart.tsx` | 테마 오버레이 (멤버별 등락률 라인) | `RealThemeOverlayChart` |
+| `src/components/chart/ChartModal.tsx` | 모달 셸, 탭 관리, KRX/NXT 토글, 키보드 | `ChartModal` |
+| `src/components/chart/RealMinuteChart.tsx` | 분봉 차트 (KRX/NXT % OHLC + 통합 툴팁 + 가격 라인) | `RealMinuteChart` |
+| `src/components/chart/RealDailyChart.tsx` | 일봉 차트 (KRX/NXT OHLCV + 고가 마커 + 가격 라인) | `RealDailyChart` |
+| `src/components/chart/RealThemeOverlayChart.tsx` | 테마 오버레이 (KRX/NXT 등락률 라인, peers 정렬 NXT 고정) | `RealThemeOverlayChart` |
 | `src/components/chart/shell/useChartShell.ts` | 차트 생성·ResizeObserver·정리 | `useChartShell` |
 | `src/hooks/useChartPreview.ts` | React Query 래퍼 | `useChartPreview` |
-| `src/stores/useChartModalStore.ts` | 모달 open/close 상태 | `useChartModalStore` |
-| `src/actions/chartPreview.ts` | 서버 액션 진입점 | `fetchChartPreviewAction` |
-| `src/lib/chart/mappers.ts` | raw row → ChartCandle 변환 | `toDailyChartCandle`, `buildMinuteCandles` |
+| `src/stores/useChartModalStore.ts` | 모달 open/close 상태 (priceLines 포함) | `useChartModalStore` |
+| `src/stores/useUiStore.ts` | chartPriceMode persist (version 2) | `useUiStore` |
+| `src/actions/chartPreview.ts` | 서버 액션 진입점 (prevCloseKrx/Nxt 포함) | `fetchChartPreviewAction` |
+| `src/lib/chart/mappers.ts` | raw row → DailyCandle / MinuteCandle 변환 | `toDailyChartCandle`, `buildMinuteCandles` |
 | `src/lib/chart/overlay.ts` | 테마 오버레이 조립 + 색상 | `buildThemeOverlay`, `assignSeriesColors` |
 | `src/lib/chartPadding.ts` | 빈 분봉·오버레이 포인트 채우기 | `fillMissingMinuteCandles`, `fillMissingOverlayPoints` |
+| `src/components/chart/indicators/priceLineList.ts` | 가격 라인 indicator (일봉/분봉) | `priceLineListIndicator` |
 
 ---
 
@@ -110,9 +130,13 @@
 
 - **분봉 padding 정책 (옵션 B)** — 거래 없는 분을 직전 봉의 close로 채워 lightweight-charts가 시간축을 연속으로 표시하게 한다. 첫 봉 이전/마지막 봉 이후는 채우지 않는다. → [ADR-003](../decisions/003-chartpadding-option-b.md)
 
-- **오버레이 시리즈 정렬·색상 정책** — self가 항상 노란색(`SELF_COLOR = "#fbbf24"`) 굵은 선으로 고정되고, peers는 마지막 시점 등락률 내림차순으로 `PALETTE` 색상을 순서대로 부여받는다. `assignSeriesColors` 함수로 분봉·오버레이 두 차트가 동일한 색상 매핑을 공유한다. → `src/lib/chart/overlay.ts`
+- **오버레이 시리즈 정렬·색상 정책** — self가 항상 검정색(`SELF_COLOR = "#000000"`) 굵은 선으로 고정되고, peers는 마지막 시점 NXT 등락률 내림차순으로 `PALETTE` 색상을 순서대로 부여받는다. `assignSeriesColors` 함수로 분봉·오버레이 두 차트가 동일한 색상 매핑을 공유한다. → `src/lib/chart/overlay.ts`
 
-- **일봉 KRX/NXT 토글** — 일봉 차트는 우상단 토글로 KRX 기준과 NXT 통합 기준을 전환할 수 있다. 선택은 `useUiStore`에 영속화되며, 고가 마커는 항상 KRX 기준이다. → [ADR-009](../decisions/009-daily-chart-krx-nxt-toggle.md)
+- **KRX/NXT 토글 통합** — 일봉 내부 토글을 제거하고 모달 헤더로 이동. 세 차트가 동일한 `chartPriceMode`를 공유하여 탭 전환 시 모드가 유지된다. → [ADR-014](../decisions/014-unified-chart-mode-toggle.md)
+
+- **타입 분리** — `ChartCandle` 하나에서 `DailyCandle`(가격) / `MinuteCandle`(% 등락률) 로 분리. NXT 필드 충돌 해소. → [ADR-013](../decisions/013-chart-candle-type-split.md)
+
+- **가격 라인 컬럼** — CSV의 `line_` prefix 컬럼은 optionKeys와 분리되어 `priceLines`로 전달. 차트에 수평선으로 표시. → [ADR-015](../decisions/015-csv-line-prefix-price-line.md)
 
 - **tooltip을 React로 포팅한 이유** → [ADR-002](../decisions/002-chart-tooltip-react.md)
 

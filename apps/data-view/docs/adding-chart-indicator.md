@@ -84,6 +84,61 @@ useEffect(() => {
 
 데이터가 변경될 때 업데이트가 필요하면 데이터 갱신 `useEffect` 에서 `update` 를 호출합니다.
 
+---
+
+## 실전 예시: 가격 라인 목록 (`priceLineList`)
+
+`src/components/chart/indicators/priceLineList.ts`는 단일 시리즈가 아닌 **다중 Price Line**을 관리하는 indicator입니다.
+
+### 단일 시리즈가 아닌 다중 항목을 다루는 패턴
+
+```ts
+interface PriceLineListHandle extends IndicatorHandle {
+    series: ISeriesApi<"Line">;   // 앵커 시리즈 1개 (visible: false)
+    lines: IPriceLine[];           // 동적 개수의 가격 라인
+}
+
+export const priceLineListIndicator = {
+    attach(chart, params): PriceLineListHandle {
+        const series = chart.addLineSeries({ visible: false, priceScaleId: "right" });
+        const lines = buildLines(series, params.priceLines, params.prevClose, params.asPrice);
+        return { series, lines };
+    },
+
+    update(handle, params) {
+        const h = handle as PriceLineListHandle;
+        // 기존 라인 제거 후 재생성 (라인 수가 적어 비용 무시 가능)
+        for (const line of h.lines) h.series.removePriceLine(line);
+        h.lines = buildLines(h.series, params.priceLines, params.prevClose, params.asPrice);
+    },
+
+    detach(handle, chart) {
+        const h = handle as PriceLineListHandle;
+        for (const line of h.lines) h.series.removePriceLine(line);
+        chart.removeSeries(h.series);
+    },
+};
+```
+
+### 핵심 포인트
+
+- `IPriceLine`은 `ISeriesApi.createPriceLine()`이 반환하며, 시리즈를 통해 제거(`removePriceLine`)해야 합니다.
+- 앵커 시리즈(`visible: false`)는 price line을 attach하기 위한 용도로만 사용합니다.
+- 핸들에 `lines: IPriceLine[]` 배열을 저장해 `detach`에서 모두 정리합니다.
+- `update`에서 기존 라인 전부 제거 후 재생성하는 방식은, 라인 수가 적고 업데이트 빈도가 낮을 때 가장 단순하고 안전합니다.
+
+### params에 변환 로직 포함
+
+일봉(가격 그대로)과 분봉(% 변환)을 하나의 indicator로 처리하기 위해 `asPrice: boolean`과 `prevClose: number | null`을 params로 받습니다. 변환은 indicator 내부에서 완결됩니다.
+
+```ts
+const chartValue = asPrice
+    ? price
+    : prevClose != null ? ((price - prevClose) / prevClose) * 100 : null;
+```
+
+---
+
 ## 검증 방법
 
 1. `pnpm dev` 로 서버를 시작합니다.

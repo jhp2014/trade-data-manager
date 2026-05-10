@@ -16,7 +16,7 @@
 2. `app/(main)/filtered/page.tsx`(서버 컴포넌트)가 실행되어 `loadDeckAction("2026-04")`를 호출한다.
 3. 액션 내부 순서:
    - `resolveDeckSubDir("2026-04")` → `DECKS_DIR + "/2026-04"` 절대 경로 생성
-   - `loadDecksFromDir(absDir)` → 디렉터리 내 모든 `.csv` 파일 `Papa.parse` + 중복 제거(`dedupeEntries`) → `LoadedDecks` 반환
+   - `loadDecksFromDir(absDir)` → 디렉터리 내 모든 `.csv` 파일 `Papa.parse` + 중복 제거(`dedupeEntries`) → `LoadedDecks` 반환. 이때 컬럼명이 `line_`으로 시작하는 컬럼은 `optionKeys`와 분리되어 `priceLineKeys`로 수집되고, 각 entry의 `priceLines: Record<string, number[]>`에 `|` 구분 파싱된 가격 배열이 저장된다.
 4. `dto.entries`가 비어있으면 빈 결과를 즉시 `okResult`로 반환한다.
 
 ### 2. DB 조회 — 테마 스냅샷 수집
