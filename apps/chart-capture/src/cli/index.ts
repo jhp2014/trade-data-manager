@@ -37,12 +37,10 @@ async function main() {
         config = { ...config, variants: ["NXT"] };
     }
 
-    if (opts.file) {
-        const path = await import("path");
-        config = { ...config, inputDir: path.dirname(path.resolve(config.inputDir, opts.file)) };
-    }
-
-    const summary = await runCapture(config, opts.dryRun ?? false);
+    const summary = await runCapture(config, {
+        dryRun: opts.dryRun ?? false,
+        onlyFile: opts.file,
+    });
 
     // exit code 결정
     if (summary.failed > 0) {

@@ -20,7 +20,13 @@ export interface RunSummary {
     elapsedMs: number;
 }
 
-export async function runCapture(config: CaptureConfig, dryRun = false): Promise<RunSummary> {
+export interface RunCaptureOptions {
+    dryRun?: boolean;
+    onlyFile?: string;
+}
+
+export async function runCapture(config: CaptureConfig, options: RunCaptureOptions = {}): Promise<RunSummary> {
+    const { dryRun = false, onlyFile } = options;
     const startTime = Date.now();
 
     // 디렉토리 보장
@@ -32,7 +38,17 @@ export async function runCapture(config: CaptureConfig, dryRun = false): Promise
     ]);
 
     // CSV 목록 수집
-    const csvFiles = await listCsvFiles(config.inputDir);
+    let csvFiles = await listCsvFiles(config.inputDir);
+
+    if (onlyFile) {
+        const target = path.basename(onlyFile);
+        csvFiles = csvFiles.filter((f) => path.basename(f) === target);
+        if (csvFiles.length === 0) {
+            logger.error(`[pipeline] --file 매칭 결과 없음: ${onlyFile}`);
+            return { csvFiles: 0, rows: 0, jobs: 0, success: 0, skipped: 0, failed: 0, elapsedMs: Date.now() - startTime };
+        }
+    }
+
     if (csvFiles.length === 0) {
         logger.info("[pipeline] 처리할 CSV 파일이 없습니다.");
         return { csvFiles: 0, rows: 0, jobs: 0, success: 0, skipped: 0, failed: 0, elapsedMs: Date.now() - startTime };
