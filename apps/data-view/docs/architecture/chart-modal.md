@@ -12,7 +12,7 @@
 
 ### 1. 모달 열기
 
-1. `EntryRow`에서 종목 버튼 클릭 → `useChartModalStore.open({ stockCode, stockName, tradeDate, tradeTime })`.
+1. `EntryRow`에서 종목 버튼 클릭 → `useChartModalStore.open({ stockCode, stockName, tradeDate, tradeTime, activePools })`. `activePools`는 `derived.activePools`에서 `{ instanceId, memberStockCodes }` 배열로 변환해 동봉한다. 오버레이 차트 Active 토글에서 stockCode 집합 기반 가시성 조작에 사용된다.
 2. `useChartModalStore`(Zustand)의 `target` 상태가 설정된다.
 3. `ChartModal` 컴포넌트가 `target !== null`이므로 마운트된다.
 4. 기본 탭은 `"minute"` (마운트 시 `useEffect`로 강제 초기화).

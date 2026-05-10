@@ -86,7 +86,7 @@ for (const peer of row.peers) {
 `derived.activePools`를 그대로 표시. 칩 라벨(`chipLabelForPredicate`)로 헤더 구성.
 
 ### 3. RealThemeOverlayChart (오버레이 토글)
-`ChartModal`에서 `useFilterState()`로 읽은 인스턴스를 `activePredicateInstances`로 전달. 차트는 오버레이 시리즈의 마지막 데이터 포인트로 `closeRate`·`cumulativeAmount` 두 필드만 채운 부분 `StockMetricsDTO`를 구성해 `isMember`를 호출한다. `amountDistribution` 등 나머지 필드는 null이므로 해당 조건은 항상 불통과로 평가된다 — 알려진 한계. → [ADR-012](../decisions/012-chart-overlay-predicate-toggle.md)
+`ChartModal`에서 `useFilterState()`로 읽은 인스턴스를 `activePredicateInstances`로 전달하되, 가시성 판정은 더 이상 `isMember`를 호출하지 않는다. 대신 `EntryRow`가 `open()` 시 동봉한 `target.activePools`(리스트의 `computeRowDerived` 결과)의 stockCode 집합을 그대로 사용해 시리즈 가시성을 토글한다. `predicate`는 Active 토글 버튼 hover 툴팁 표시에만 사용된다. → [ADR-012 Amendment](../decisions/012-chart-overlay-predicate-toggle.md)
 
 ---
 
