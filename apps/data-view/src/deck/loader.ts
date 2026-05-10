@@ -5,10 +5,12 @@ import type { DeckEntry, LoadedDecks } from "./types";
 import { makeEntryKey } from "./types";
 
 const REQUIRED_COLUMNS = ["stockCode", "tradeDate", "tradeTime"] as const;
+const PRICE_LINE_PREFIX = "line_";
 
 /**
  * 지정 디렉토리 내의 모든 *.csv 파일을 로드해 하나의 LoadedDecks로 통합.
  * (stockCode, tradeDate, tradeTime) 기준 중복 제거 — 먼저 등장한 행 유지.
+ * 컬럼명이 "line_"로 시작하면 optionKeys가 아닌 priceLineKeys로 분리 (ADR-015).
  */
 export async function loadDecksFromDir(absoluteDir: string): Promise<LoadedDecks> {
     const stat = await fs.stat(absoluteDir).catch(() => null);
@@ -18,16 +20,18 @@ export async function loadDecksFromDir(absoluteDir: string): Promise<LoadedDecks
 
     const csvFiles = await findCsvFiles(absoluteDir);
     if (csvFiles.length === 0) {
-        return { entries: [], optionKeys: [], files: [], duplicateCount: 0 };
+        return { entries: [], optionKeys: [], priceLineKeys: [], files: [], duplicateCount: 0 };
     }
 
     const allEntries: DeckEntry[] = [];
     const optionKeySet = new Set<string>();
+    const priceLineKeySet = new Set<string>();
 
     for (const file of csvFiles) {
-        const { entries, optionKeys } = await loadOneCsv(file);
+        const { entries, optionKeys, priceLineKeys } = await loadOneCsv(file);
         for (const e of entries) allEntries.push(e);
         for (const k of optionKeys) optionKeySet.add(k);
+        for (const k of priceLineKeys) priceLineKeySet.add(k);
     }
 
     const { deduped, duplicateCount } = dedupeEntries(allEntries);
@@ -35,6 +39,7 @@ export async function loadDecksFromDir(absoluteDir: string): Promise<LoadedDecks
     return {
         entries: deduped,
         optionKeys: Array.from(optionKeySet).sort(),
+        priceLineKeys: Array.from(priceLineKeySet).sort(),
         files: csvFiles,
         duplicateCount,
     };
@@ -62,6 +67,7 @@ async function findCsvFiles(dir: string): Promise<string[]> {
 async function loadOneCsv(filePath: string): Promise<{
     entries: DeckEntry[];
     optionKeys: string[];
+    priceLineKeys: string[];
 }> {
     const raw = await fs.readFile(filePath, "utf-8");
 
@@ -82,9 +88,11 @@ async function loadOneCsv(filePath: string): Promise<{
     const headers = parsed.meta.fields ?? [];
     validateHeaders(headers, filePath);
 
-    const optionKeys = headers.filter(
+    const dataColumns = headers.filter(
         (h) => !REQUIRED_COLUMNS.includes(h as any) && !isCommentColumn(h)
     );
+    const priceLineKeys = dataColumns.filter((h) => h.startsWith(PRICE_LINE_PREFIX));
+    const optionKeys = dataColumns.filter((h) => !h.startsWith(PRICE_LINE_PREFIX));
 
     const entries: DeckEntry[] = [];
     parsed.data.forEach((row, idx) => {
@@ -104,16 +112,27 @@ async function loadOneCsv(filePath: string): Promise<{
             options[k] = (row[k] ?? "").trim();
         }
 
+        const priceLines: Record<string, number[]> = {};
+        for (const k of priceLineKeys) {
+            const raw = (row[k] ?? "").trim();
+            if (!raw) continue;
+            const nums = raw.split("|")
+                .map((s) => parseFloat(s.trim()))
+                .filter((n) => Number.isFinite(n) && n > 0);
+            if (nums.length > 0) priceLines[k] = nums;
+        }
+
         entries.push({
             stockCode,
             tradeDate,
             tradeTime,
             options,
+            priceLines,
             sourceFile: filePath,
         });
     });
 
-    return { entries, optionKeys };
+    return { entries, optionKeys, priceLineKeys };
 }
 
 function validateHeaders(headers: string[], filePath: string): void {

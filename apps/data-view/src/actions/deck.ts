@@ -35,9 +35,11 @@ export async function loadDeckAction(
                 tradeDate: e.tradeDate,
                 tradeTime: e.tradeTime,
                 options: e.options,
+                priceLines: e.priceLines,
                 sourceFile: e.sourceFile,
             })),
             optionKeys: decks.optionKeys,
+            priceLineKeys: decks.priceLineKeys,
             files: decks.files,
             duplicateCount: decks.duplicateCount,
         };
@@ -105,6 +107,7 @@ function toEntryDTO(e: DeckEntry) {
         tradeDate: e.tradeDate,
         tradeTime: e.tradeTime,
         options: e.options,
+        priceLines: e.priceLines,
         sourceFile: e.sourceFile,
     };
 }

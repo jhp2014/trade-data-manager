@@ -7,12 +7,14 @@ export interface DeckEntry {
     tradeDate: string;
     tradeTime: string;
     options: Record<string, string>;
+    priceLines: Record<string, number[]>;
     sourceFile: string;
 }
 
 export interface LoadedDecks {
     entries: DeckEntry[];
     optionKeys: string[];
+    priceLineKeys: string[];
     files: string[];
     duplicateCount: number;
 }

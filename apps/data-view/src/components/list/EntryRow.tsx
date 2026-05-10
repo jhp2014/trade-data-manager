@@ -75,6 +75,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                     tradeDate: entry.tradeDate,
                     tradeTime: entry.tradeTime,
                     activePools: activePoolsForModal,
+                    priceLines: entry.priceLines,
                 });
                 return;
             }
@@ -173,6 +174,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                                 tradeDate: entry.tradeDate,
                                 tradeTime: entry.tradeTime,
                                 activePools: activePoolsForModal,
+                                priceLines: entry.priceLines,
                             })
                         }
                     >

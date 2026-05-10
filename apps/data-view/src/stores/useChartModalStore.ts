@@ -9,6 +9,7 @@ export interface ChartModalTarget {
         instanceId: string;
         memberStockCodes: string[];
     }>;
+    priceLines?: Record<string, number[]>;
 }
 
 interface ChartModalState {
