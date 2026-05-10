@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
+import { CrosshairMode, LineStyle, type IPriceLine, type ISeriesApi, type Time } from "lightweight-charts";
 import type { DailyCandle } from "@/types/chart";
 import { kstYmd } from "@/lib/chartTime";
 import { HIGH_MARKER_MIN_PCT, AMOUNT_MIL_TO_EOK } from "@/lib/constants";
@@ -10,7 +10,7 @@ import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { DailyTooltip } from "./tooltip/DailyTooltip";
-import { priceLineListIndicator } from "./indicators/priceLineList";
+import { buildPriceLineOptions, computePriceLineChartValue } from "@/lib/chart/priceLines";
 
 interface Props {
     candles: DailyCandle[];
@@ -64,6 +64,7 @@ export function RealDailyChart({ candles, priceLines }: Props) {
     const amountSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const dataMapRef = useRef<Map<number, DailyCandle>>(new Map());
     const baseCandleRef = useRef<DailyCandle | null>(null);
+    const priceLineHandlesRef = useRef<IPriceLine[]>([]);
 
     // 시리즈 생성 (마운트 1회)
     useEffect(() => {
@@ -188,17 +189,29 @@ export function RealDailyChart({ candles, priceLines }: Props) {
         chartRef.current?.timeScale().fitContent();
     }, [candles, mode]);
 
-    // 가격 라인 indicator (일봉: 가격 그대로, mode 무관)
+    // 가격 라인 (일봉: 가격 그대로, candleSeries에 직접 부착)
     useEffect(() => {
-        const chart = chartRef.current;
-        if (!chart) return;
-        const handle = priceLineListIndicator.attach(chart, {
-            priceLines: priceLines ?? {},
-            prevClose: null,
-            asPrice: true,
-        });
-        return () => priceLineListIndicator.detach(handle, chart);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        const candleSeries = candleSeriesRef.current;
+        if (!candleSeries) return;
+
+        for (const line of priceLineHandlesRef.current) {
+            try { candleSeries.removePriceLine(line); } catch { /* noop */ }
+        }
+        priceLineHandlesRef.current = [];
+
+        if (!priceLines) return;
+        for (const [key, prices] of Object.entries(priceLines)) {
+            if (!prices || prices.length === 0) continue;
+            for (const price of prices) {
+                const chartValue = computePriceLineChartValue(price, null, true);
+                if (chartValue === null) continue;
+                try {
+                    const handle = candleSeries.createPriceLine(buildPriceLineOptions(key, price, chartValue, true));
+                    priceLineHandlesRef.current.push(handle);
+                } catch { /* noop */ }
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [JSON.stringify(priceLines)]);
 
     return (
