@@ -4,7 +4,7 @@ import { getCaptureDb } from "@/data/db";
 import { fetchChartData } from "@/data/fetchChartData";
 import { toDailyChartCandle, buildMinuteCandles } from "@/lib/mappers";
 import { fillMissingMinuteCandles } from "@/lib/chartPadding";
-import { loadConfig } from "../../../../../../capture.config";
+import { loadConfig } from "@root/capture.config";
 import { ChartCaptureClient } from "./ChartCaptureClient";
 
 // Next.js 캐시 없이 항상 최신 DB 데이터 사용
