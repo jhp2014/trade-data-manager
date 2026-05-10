@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
+import { CrosshairMode, LineStyle, type IPriceLine, type ISeriesApi, type Time } from "lightweight-charts";
 import type { MinuteCandle, ChartOverlaySeries } from "@/types/chart";
 import { kstHHmm } from "@/lib/chartTime";
 import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
@@ -12,7 +12,7 @@ import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { MinuteTooltip } from "./tooltip/MinuteTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE, assignSeriesColors } from "@/lib/chart/overlay";
-import { priceLineListIndicator } from "./indicators/priceLineList";
+import { buildPriceLineOptions, computePriceLineChartValue } from "@/lib/chart/priceLines";
 
 interface Props {
     candles: MinuteCandle[];
@@ -54,6 +54,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
     const amountSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const cumAmountMapRef = useRef<Map<number, number>>(new Map());
     const amountMapRef = useRef<Map<number, number>>(new Map());
+    const priceLineHandlesRef = useRef<IPriceLine[]>([]);
 
     // themeOverlay 변경 시 time → point lookup Map을 미리 구성 (hover 시 O(1) 조회)
     const overlayLookup = useMemo((): Map<string, Map<number, { valueKrx: number; valueNxt: number; amount: number; cumAmount: number }>> => {
@@ -197,18 +198,30 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
         series.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#000000ff", shape: "arrowDown", text: "✅Point✅" }]);
     }, [markerTime, candles]);
 
-    // 가격 라인 indicator (분봉: prevClose 기준 % 변환, mode별 분기)
+    // 가격 라인 (분봉: prevClose 기준 % 변환, candleSeries에 직접 부착)
     const prevClose = mode === "nxt" ? (prevCloseNxt ?? null) : (prevCloseKrx ?? null);
     useEffect(() => {
-        const chart = chartRef.current;
-        if (!chart || prevClose == null) return;
-        const handle = priceLineListIndicator.attach(chart, {
-            priceLines: priceLines ?? {},
-            prevClose,
-            asPrice: false,
-        });
-        return () => priceLineListIndicator.detach(handle, chart);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        const candleSeries = candleSeriesRef.current;
+        if (!candleSeries) return;
+
+        for (const line of priceLineHandlesRef.current) {
+            try { candleSeries.removePriceLine(line); } catch { /* noop */ }
+        }
+        priceLineHandlesRef.current = [];
+
+        if (!priceLines || prevClose == null || prevClose <= 0) return;
+        for (const [key, prices] of Object.entries(priceLines)) {
+            if (!prices || prices.length === 0) continue;
+            for (const price of prices) {
+                const chartValue = computePriceLineChartValue(price, prevClose, false);
+                if (chartValue === null) continue;
+                try {
+                    const handle = candleSeries.createPriceLine(buildPriceLineOptions(key, price, chartValue, false));
+                    priceLineHandlesRef.current.push(handle);
+                } catch { /* noop */ }
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [JSON.stringify(priceLines), prevClose]);
 
     return (
