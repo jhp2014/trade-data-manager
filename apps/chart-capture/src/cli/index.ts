@@ -2,6 +2,7 @@ import "dotenv/config";
 import { program } from "commander";
 import { loadConfig } from "../../capture.config";
 import { runCapture } from "../pipeline/runCapture";
+import { closeCaptureDb } from "../data/db";
 import { logger } from "../lib/logger";
 
 program
@@ -24,7 +25,7 @@ const opts = program.opts<{
     externalServer?: string;
 }>();
 
-async function main() {
+async function main(): Promise<number> {
     let config = loadConfig({
         concurrency: opts.concurrency,
         devMode: opts.dev ?? false,
@@ -42,19 +43,20 @@ async function main() {
         onlyFile: opts.file,
     });
 
-    // exit code 결정
-    if (summary.failed > 0) {
-        process.exit(1);
-    }
-    process.exit(0);
+    return summary.failed > 0 ? 1 : 0;
 }
 
-main().catch((err) => {
-    logger.error(`[cli] 치명적 오류: ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(2);
-});
-
-process.on("beforeExit", async () => {
-    const { closeCaptureDb } = await import("../data/db");
-    await closeCaptureDb();
-});
+main()
+    .then(async (code) => {
+        await closeCaptureDb();
+        process.exit(code);
+    })
+    .catch(async (err) => {
+        logger.error(`[cli] 치명적 오류: ${err instanceof Error ? err.message : String(err)}`);
+        try {
+            await closeCaptureDb();
+        } catch {
+            // 정리 실패는 무시
+        }
+        process.exit(2);
+    });

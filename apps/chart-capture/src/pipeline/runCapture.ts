@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { findStocksMapByCodes } from "@trade-data-manager/data-core";
 import type { CaptureConfig } from "../../capture.config";
-import { getCaptureDb, closeCaptureDb } from "../data/db";
+import { getCaptureDb } from "../data/db";
 import { listCsvFiles, parseCsvFile, moveCsvFile, buildSidecarLog } from "./csvIO";
 import { startNextServer, verifyExternalServer, getAppDir } from "./nextServer";
 import { createPlaywrightDriver, runWithConcurrency } from "./playwrightDriver";
@@ -219,7 +219,7 @@ export async function runCapture(config: CaptureConfig, options: RunCaptureOptio
 
     if (driver) await driver.close();
     if (stopServer) await stopServer();
-    await closeCaptureDb();
+    // DB Pool은 CLI 종료 시점에 정리됨 (cli/index.ts then/catch 체인)
 
     summary.elapsedMs = Date.now() - startTime;
 
