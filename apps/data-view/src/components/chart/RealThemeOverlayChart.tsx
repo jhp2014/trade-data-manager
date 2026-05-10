@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
 import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
 import type { MemberPredicate } from "@/lib/member/predicate";
+import { chipLabelForPredicate } from "@/lib/member/predicate";
 import { kstHHmm } from "@/lib/chartTime";
 import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
@@ -181,6 +182,7 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
                     <button
                         type="button"
                         className={`${styles.filterBtn} ${selectedFilter === "all" ? styles.filterBtnActive : ""}`}
+                        title="모든 종목 표시"
                         onClick={() => setSelectedFilter("all")}
                     >
                         전체
@@ -190,6 +192,7 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
                             key={inst.id}
                             type="button"
                             className={`${styles.filterBtn} ${selectedFilter === inst.id ? styles.filterBtnActive : ""}`}
+                            title={chipLabelForPredicate(inst.predicate)}
                             onClick={() => setSelectedFilter(inst.id)}
                         >
                             {inst.label}

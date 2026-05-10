@@ -10,6 +10,7 @@ import { RealMinuteChart } from "./RealMinuteChart";
 import { RealThemeOverlayChart } from "./RealThemeOverlayChart";
 import type { ActivePredicateInstance } from "./RealThemeOverlayChart";
 import type { MemberPredicate } from "@/lib/member/predicate";
+import { chipLabelForPredicate } from "@/lib/member/predicate";
 import styles from "./ChartModal.module.css";
 
 const TAB_ORDER = ["minute", "daily", "overlay"] as const;
@@ -39,6 +40,11 @@ export function ChartModal() {
                     return { id: inst.id, label: `Act#${idx + 1}`, predicate: value.predicate };
                 }),
         [instances],
+    );
+
+    const activePoolsForChart = useMemo(
+        () => target?.activePools ?? [],
+        [target],
     );
 
     const isOpen = !!target;
@@ -130,6 +136,7 @@ export function ChartModal() {
                                         data={data.themeOverlay}
                                         markerTime={data.markerTime}
                                         activePredicateInstances={activePredicateInstances}
+                                        activePools={activePoolsForChart}
                                     />
                                 )}
                             </>
