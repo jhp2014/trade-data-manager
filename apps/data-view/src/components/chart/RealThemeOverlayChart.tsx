@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
 import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
-import type { StockMetricsDTO } from "@/types/deck";
 import type { MemberPredicate } from "@/lib/member/predicate";
-import { isMember } from "@/lib/member/predicate";
 import { kstHHmm } from "@/lib/chartTime";
 import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
@@ -18,6 +16,7 @@ import styles from "./RealThemeOverlayChart.module.css";
 export interface ActivePredicateInstance {
     id: string;
     label: string;
+    // predicate is for hover label only — visibility uses precomputed stockCode sets
     predicate: MemberPredicate;
 }
 
@@ -25,11 +24,20 @@ interface Props {
     data: ChartOverlaySeries[];
     markerTime?: number | null;
     activePredicateInstances?: ActivePredicateInstance[];
+    activePools?: Array<{
+        instanceId: string;
+        memberStockCodes: string[];
+    }>;
 }
 
-export function RealThemeOverlayChart({ data, markerTime, activePredicateInstances = [] }: Props) {
+export function RealThemeOverlayChart({ data, markerTime, activePredicateInstances = [], activePools }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [selectedFilter, setSelectedFilter] = useState<"all" | string>("all");
+
+    const activePoolsByInstance = useMemo<Map<string, Set<string>>>(() => {
+        if (!activePools) return new Map();
+        return new Map(activePools.map((p) => [p.instanceId, new Set(p.memberStockCodes)]));
+    }, [activePools]);
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
@@ -132,51 +140,24 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
         chart.timeScale().fitContent();
     }, [data]);
 
-    // 가시성 업데이트: selectedFilter / data / markerTime 변경 시
+    // 가시성 업데이트: stockCode 집합 기반 (리스트 derivedMap과 항상 일치)
     useEffect(() => {
         if (selectedFilter === "all") {
             seriesMetaRef.current.forEach((m) => m.api.applyOptions({ visible: true }));
             return;
         }
-        const inst = activePredicateInstances.find((p) => p.id === selectedFilter);
-        if (!inst) {
+        const stockCodeSet = activePoolsByInstance.get(selectedFilter);
+        if (!stockCodeSet) {
+            if (activePoolsByInstance.size > 0) {
+                console.warn("[RealThemeOverlayChart] selectedFilter not found in activePoolsByInstance — showing all");
+            }
             seriesMetaRef.current.forEach((m) => m.api.applyOptions({ visible: true }));
             return;
         }
-
-        const targetTime = markerTime ?? Number.POSITIVE_INFINITY;
-
         seriesMetaRef.current.forEach((m) => {
-            if (m.isSelf) {
-                m.api.applyOptions({ visible: true });
-                return;
-            }
-            const dataSeries = data.find((s) => s.stockCode === m.stockCode);
-            const seriesPoints = dataSeries?.series ?? [];
-
-            // markerTime 이하의 마지막 포인트 (리스트 derivedMap과 동일 시점 기준)
-            let evalPoint: ChartOverlayPoint | undefined;
-            for (let i = seriesPoints.length - 1; i >= 0; i--) {
-                if (seriesPoints[i].time <= targetTime) {
-                    evalPoint = seriesPoints[i];
-                    break;
-                }
-            }
-
-            const partialMetrics: StockMetricsDTO = {
-                stockCode: m.stockCode,
-                stockName: m.name,
-                closeRate: evalPoint?.value ?? null,
-                cumulativeAmount: evalPoint != null ? String(evalPoint.cumAmount) : null,
-                dayHighRate: null,
-                pullbackFromHigh: null,
-                minutesSinceDayHigh: null,
-                currentMinuteAmount: null,
-                amountDistribution: null,
-            };
-            m.api.applyOptions({ visible: isMember(partialMetrics, inst.predicate) });
+            m.api.applyOptions({ visible: m.isSelf || stockCodeSet.has(m.stockCode) });
         });
-    }, [data, selectedFilter, activePredicateInstances, markerTime]);
+    }, [selectedFilter, activePoolsByInstance, data]);
 
     // 선택된 인스턴스가 사라지면 "all"로 리셋
     useEffect(() => {
