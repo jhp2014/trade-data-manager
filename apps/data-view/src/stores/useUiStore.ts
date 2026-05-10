@@ -2,20 +2,20 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type SidePanelKey = "favorite" | "note" | "alert" | "settings";
-export type DailyChartPriceMode = "krx" | "nxt";
+export type ChartPriceMode = "krx" | "nxt";
 
 interface UiState {
   sidePanelOpen: boolean;
   activeSidePanel: SidePanelKey | null;
   visibleOptionKeys: string[];
-  dailyChartPriceMode: DailyChartPriceMode;
+  chartPriceMode: ChartPriceMode;
 
   toggleSidePanel: (key: SidePanelKey) => void;
   closeSidePanel: () => void;
   setVisibleOptionKeys: (keys: string[]) => void;
   toggleOptionKey: (key: string) => void;
   initVisibleOptionKeysIfEmpty: (allKeys: string[]) => void;
-  setDailyChartPriceMode: (mode: DailyChartPriceMode) => void;
+  setChartPriceMode: (mode: ChartPriceMode) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -24,7 +24,7 @@ export const useUiStore = create<UiState>()(
       sidePanelOpen: false,
       activeSidePanel: null,
       visibleOptionKeys: [],
-      dailyChartPriceMode: "krx" as DailyChartPriceMode,
+      chartPriceMode: "krx" as ChartPriceMode,
 
       toggleSidePanel: (key) => {
         const { activeSidePanel, sidePanelOpen } = get();
@@ -55,13 +55,21 @@ export const useUiStore = create<UiState>()(
         set({ visibleOptionKeys: initial });
       },
 
-      setDailyChartPriceMode: (mode) => set({ dailyChartPriceMode: mode }),
+      setChartPriceMode: (mode) => set({ chartPriceMode: mode }),
     }),
     {
       name: "data-view-ui",
+      version: 2,
+      migrate: (persisted: any, version: number) => {
+        if (version < 2 && persisted?.dailyChartPriceMode) {
+          persisted.chartPriceMode = persisted.dailyChartPriceMode;
+          delete persisted.dailyChartPriceMode;
+        }
+        return persisted;
+      },
       partialize: (state) => ({
         visibleOptionKeys: state.visibleOptionKeys,
-        dailyChartPriceMode: state.dailyChartPriceMode,
+        chartPriceMode: state.chartPriceMode,
       }),
     },
   ),

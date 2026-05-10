@@ -5,6 +5,7 @@ import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useChartPreview } from "@/hooks/useChartPreview";
 import { useShortcut } from "@/hooks/useShortcut";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useUiStore } from "@/stores/useUiStore";
 import { RealDailyChart } from "./RealDailyChart";
 import { RealMinuteChart } from "./RealMinuteChart";
 import { RealThemeOverlayChart } from "./RealThemeOverlayChart";
@@ -26,6 +27,9 @@ export function ChartModal() {
     const target = useChartModalStore((s) => s.target);
     const close = useChartModalStore((s) => s.close);
     const [tab, setTab] = useState<Tab>("minute");
+
+    const mode = useUiStore((s) => s.chartPriceMode);
+    const setMode = useUiStore((s) => s.setChartPriceMode);
 
     const { data, isLoading } = useChartPreview(target);
 
@@ -104,6 +108,22 @@ export function ChartModal() {
                         )}
                     </div>
                     <div className={styles.tabs}>
+                        <div className={styles.modeToggle}>
+                            <button
+                                type="button"
+                                className={`${styles.modeBtn} ${mode === "krx" ? styles.modeBtnActive : ""}`}
+                                onClick={() => setMode("krx")}
+                            >
+                                KRX
+                            </button>
+                            <button
+                                type="button"
+                                className={`${styles.modeBtn} ${mode === "nxt" ? styles.modeBtnActive : ""}`}
+                                onClick={() => setMode("nxt")}
+                            >
+                                NXT
+                            </button>
+                        </div>
                         {TAB_ORDER.map((t) => (
                             <TabBtn key={t} active={tab === t} onClick={() => setTab(t)}>
                                 {TAB_LABEL[t]}
@@ -126,10 +146,16 @@ export function ChartModal() {
                                         candles={data.minute}
                                         markerTime={data.markerTime}
                                         themeOverlay={data.themeOverlay}
+                                        priceLines={target.priceLines}
+                                        prevCloseKrx={data.prevCloseKrx}
+                                        prevCloseNxt={data.prevCloseNxt}
                                     />
                                 )}
                                 {tab === "daily" && (
-                                    <RealDailyChart candles={data.daily} />
+                                    <RealDailyChart
+                                        candles={data.daily}
+                                        priceLines={target.priceLines}
+                                    />
                                 )}
                                 {tab === "overlay" && (
                                     <RealThemeOverlayChart

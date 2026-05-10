@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
-import type { ChartCandle, ChartOverlaySeries } from "@/types/chart";
+import type { MinuteCandle, ChartOverlaySeries } from "@/types/chart";
 import { kstHHmm } from "@/lib/chartTime";
 import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
+import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
@@ -13,13 +14,18 @@ import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE, assignSeriesColors } from "@/lib/chart/overlay";
 
 interface Props {
-    candles: ChartCandle[];
+    candles: MinuteCandle[];
     markerTime?: number | null;
     themeOverlay?: ChartOverlaySeries[];
+    priceLines?: Record<string, number[]>;
+    prevCloseKrx?: number | null;
+    prevCloseNxt?: number | null;
 }
 
-export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
+export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines: _priceLines, prevCloseKrx: _prevCloseKrx, prevCloseNxt: _prevCloseNxt }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
+
+    const mode = useUiStore((s) => s.chartPriceMode);
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
@@ -49,12 +55,12 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
     const amountMapRef = useRef<Map<number, number>>(new Map());
 
     // themeOverlay 변경 시 time → point lookup Map을 미리 구성 (hover 시 O(1) 조회)
-    const overlayLookup = useMemo((): Map<string, Map<number, { value: number; amount: number; cumAmount: number }>> => {
-        const outer = new Map<string, Map<number, { value: number; amount: number; cumAmount: number }>>();
+    const overlayLookup = useMemo((): Map<string, Map<number, { valueKrx: number; valueNxt: number; amount: number; cumAmount: number }>> => {
+        const outer = new Map<string, Map<number, { valueKrx: number; valueNxt: number; amount: number; cumAmount: number }>>();
         for (const s of themeOverlay ?? []) {
-            const inner = new Map<number, { value: number; amount: number; cumAmount: number }>();
+            const inner = new Map<number, { valueKrx: number; valueNxt: number; amount: number; cumAmount: number }>();
             for (const p of s.series) {
-                inner.set(p.time, { value: p.value, amount: p.amount, cumAmount: p.cumAmount });
+                inner.set(p.time, { valueKrx: p.valueKrx, valueNxt: p.valueNxt, amount: p.amount, cumAmount: p.cumAmount });
             }
             outer.set(s.stockCode, inner);
         }
@@ -124,7 +130,8 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
                 cumAmount: cumAmountMapRef.current.get(t) ?? 0,
             };
 
-            // peers 행 (themeOverlay의 non-self 시리즈에서 lookup)
+            // peers 행 (themeOverlay의 non-self 시리즈에서 lookup, 모드별 분기)
+            const useNxt = mode === "nxt";
             const peerRows: OverlayTooltipRow[] = [];
             for (const s of themeOverlay ?? []) {
                 if (s.isSelf) continue;
@@ -135,7 +142,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
                     stockName: s.stockName,
                     color: colorMap.get(s.stockCode) ?? PALETTE[0],
                     isSelf: false,
-                    rate: pt.value,
+                    rate: useNxt ? pt.valueNxt : pt.valueKrx,
                     amount: pt.amount,
                     cumAmount: pt.cumAmount,
                 });
@@ -147,15 +154,18 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
         leftOffset: () => chartRef.current?.priceScale("left").width() ?? 0,
     });
 
-    // 데이터 갱신
+    // 데이터 갱신 (mode 전환 시에도 재실행)
     useEffect(() => {
         const candleSeries = candleSeriesRef.current;
         const amountSeries = amountSeriesRef.current;
         if (!candleSeries || !amountSeries) return;
 
-        candleSeries.setData(candles.map((c) => ({
-            time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close,
-        })));
+        const useNxt = mode === "nxt";
+
+        candleSeries.setData(candles.map((c) => {
+            const ohlc = useNxt ? c.nxt : c.krx;
+            return { time: c.time as Time, open: ohlc.open, high: ohlc.high, low: ohlc.low, close: ohlc.close };
+        }));
 
         const amountMap = new Map<number, number>();
         const cumMap = new Map<number, number>();
@@ -165,10 +175,11 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
             amountMap.set(c.time, a);
             cumMap.set(c.time, c.accAmount ?? 0);
             if (c.amount != null && a > 0) {
+                const ohlc = useNxt ? c.nxt : c.krx;
                 amountData.push({
                     time: c.time as Time,
                     value: a / AMOUNT_KRW_TO_EOK,
-                    color: c.close >= c.open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
+                    color: ohlc.close >= ohlc.open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
                 });
             }
         }
@@ -176,7 +187,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay }: Props) {
         cumAmountMapRef.current = cumMap;
         amountSeries.setData(amountData);
         chartRef.current?.timeScale().fitContent();
-    }, [candles]);
+    }, [candles, mode]);
 
     // 진입 시점 마커
     useEffect(() => {

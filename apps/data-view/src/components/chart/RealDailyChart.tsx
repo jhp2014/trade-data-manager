@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
-import type { ChartCandle } from "@/types/chart";
+import type { DailyCandle } from "@/types/chart";
 import { kstYmd } from "@/lib/chartTime";
 import { HIGH_MARKER_MIN_PCT, AMOUNT_MIL_TO_EOK } from "@/lib/constants";
 import { useUiStore } from "@/stores/useUiStore";
@@ -10,10 +10,10 @@ import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { DailyTooltip } from "./tooltip/DailyTooltip";
-import styles from "./RealDailyChart.module.css";
 
 interface Props {
-    candles: ChartCandle[];
+    candles: DailyCandle[];
+    priceLines?: Record<string, number[]>;
 }
 
 function fmtEok(v: number) {
@@ -32,11 +32,10 @@ function highMarkerColor(pct: number): string | null {
     return "#7c3aed";
 }
 
-export function RealDailyChart({ candles }: Props) {
+export function RealDailyChart({ candles, priceLines: _priceLines }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
-    const mode = useUiStore((s) => s.dailyChartPriceMode);
-    const setMode = useUiStore((s) => s.setDailyChartPriceMode);
+    const mode = useUiStore((s) => s.chartPriceMode);
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
@@ -62,8 +61,8 @@ export function RealDailyChart({ candles }: Props) {
 
     const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-    const dataMapRef = useRef<Map<number, ChartCandle>>(new Map());
-    const baseCandleRef = useRef<ChartCandle | null>(null);
+    const dataMapRef = useRef<Map<number, DailyCandle>>(new Map());
+    const baseCandleRef = useRef<DailyCandle | null>(null);
 
     // 시리즈 생성 (마운트 1회)
     useEffect(() => {
@@ -109,8 +108,7 @@ export function RealDailyChart({ candles }: Props) {
             const cursorPrice = candleSeries.coordinateToPrice(param.point!.y);
             const base = baseCandleRef.current;
 
-            // hover 봉의 표시 가격(KRX or NXT high) 기준으로 두 prev close에 대한 % 산출
-            const hoverHigh = useNxt ? (candle.highNxt ?? candle.high) : candle.high;
+            const hoverHigh = useNxt ? candle.nxt.high : candle.krx.high;
             const hoverHighKrxPct = candle.prevCloseKrx && candle.prevCloseKrx > 0
                 ? ((hoverHigh - candle.prevCloseKrx) / candle.prevCloseKrx) * 100 : null;
             const hoverHighNxtPct = candle.prevCloseNxt && candle.prevCloseNxt > 0
@@ -120,7 +118,7 @@ export function RealDailyChart({ candles }: Props) {
                 ? ((cursorPrice - base.prevCloseKrx) / base.prevCloseKrx) * 100 : null;
             const cursorNxtPct = cursorPrice != null && Number.isFinite(cursorPrice) && base?.prevCloseNxt
                 ? ((cursorPrice - base.prevCloseNxt) / base.prevCloseNxt) * 100 : null;
-            const cursorAmountEok = candle.amount != null ? fmtEok(candle.amount / AMOUNT_MIL_TO_EOK) : null;
+            const cursorAmountEok = candle.amountKrx != null ? fmtEok(candle.amountKrx / AMOUNT_MIL_TO_EOK) : null;
 
             return (
                 <DailyTooltip
@@ -143,44 +141,36 @@ export function RealDailyChart({ candles }: Props) {
         if (!candleSeries || !amountSeries) return;
 
         const useNxt = mode === "nxt";
-        const map = new Map<number, ChartCandle>();
+        const map = new Map<number, DailyCandle>();
 
         candleSeries.setData(candles.map((c) => {
             map.set(c.time, c);
-            return {
-                time: c.time as Time,
-                open: useNxt ? (c.openNxt ?? c.open) : c.open,
-                high: useNxt ? (c.highNxt ?? c.high) : c.high,
-                low: useNxt ? (c.lowNxt ?? c.low) : c.low,
-                close: useNxt ? (c.closeNxt ?? c.close) : c.close,
-            };
+            const ohlc = useNxt ? c.nxt : c.krx;
+            return { time: c.time as Time, ...ohlc };
         }));
         dataMapRef.current = map;
         baseCandleRef.current = candles.length > 0 ? candles[candles.length - 1] : null;
 
         amountSeries.setData(
             candles.filter((c) => {
-                const amt = useNxt ? c.amountNxt : c.amount;
+                const amt = useNxt ? c.amountNxt : c.amountKrx;
                 return amt != null;
             }).map((c) => {
-                const amt = useNxt ? (c.amountNxt as number) : (c.amount as number);
-                const open = useNxt ? (c.openNxt ?? c.open) : c.open;
-                const close = useNxt ? (c.closeNxt ?? c.close) : c.close;
+                const amt = useNxt ? (c.amountNxt as number) : (c.amountKrx as number);
+                const ohlc = useNxt ? c.nxt : c.krx;
                 return {
                     time: c.time as Time,
                     value: amt / AMOUNT_MIL_TO_EOK,
-                    color: close >= open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
+                    color: ohlc.close >= ohlc.open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
                 };
             }),
         );
 
-        // 고가 마커: 분모는 항상 KRX 전일 종가 (시장 표준), 분자는 현재 모드의 high.
-        // → KRX 모드: KRX 전일종가 대비 KRX high
-        // → NXT 모드: KRX 전일종가 대비 NXT high (NXT 시간외 추가 상승 반영)
+        // 고가 마커: 분모는 항상 KRX 전일 종가 (ADR-009 정책 유지)
         const markers: Array<{ time: Time; position: "aboveBar"; color: string; shape: "circle"; text: string }> = [];
         for (const c of candles) {
             if (!c.prevCloseKrx || c.prevCloseKrx <= 0) continue;
-            const high = useNxt ? (c.highNxt ?? c.high) : c.high;
+            const high = useNxt ? c.nxt.high : c.krx.high;
             const pct = ((high - c.prevCloseKrx) / c.prevCloseKrx) * 100;
             const color = highMarkerColor(pct);
             if (color) {
@@ -199,22 +189,6 @@ export function RealDailyChart({ candles }: Props) {
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <div className={styles.modeToggle}>
-                <button
-                    type="button"
-                    className={`${styles.modeBtn} ${mode === "krx" ? styles.modeBtnActive : ""}`}
-                    onClick={() => setMode("krx")}
-                >
-                    KRX
-                </button>
-                <button
-                    type="button"
-                    className={`${styles.modeBtn} ${mode === "nxt" ? styles.modeBtnActive : ""}`}
-                    onClick={() => setMode("nxt")}
-                >
-                    NXT
-                </button>
-            </div>
             <ChartTooltip
                 visible={tipState.visible}
                 x={tipState.x}

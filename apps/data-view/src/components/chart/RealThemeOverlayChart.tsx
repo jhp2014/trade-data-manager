@@ -6,6 +6,7 @@ import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
 import type { MemberPredicate } from "@/lib/member/predicate";
 import { chipLabelForPredicate } from "@/lib/member/predicate";
 import { kstHHmm } from "@/lib/chartTime";
+import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
@@ -34,6 +35,8 @@ interface Props {
 export function RealThemeOverlayChart({ data, markerTime, activePredicateInstances = [], activePools }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [selectedFilter, setSelectedFilter] = useState<"all" | string>("all");
+
+    const mode = useUiStore((s) => s.chartPriceMode);
 
     const activePoolsByInstance = useMemo<Map<string, Set<string>>>(() => {
         if (!activePools) return new Map();
@@ -81,11 +84,12 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
             const t = param.time as number | undefined;
             if (t === undefined) return null;
 
+            const useNxt = mode === "nxt";
             const rows: OverlayTooltipRow[] = seriesMetaRef.current
                 .map((m) => {
                     const pt = m.pointMap.get(t);
                     if (!pt) return null;
-                    return { stockCode: m.stockCode, stockName: m.name, color: m.color, isSelf: m.isSelf, rate: pt.value, amount: pt.amount ?? 0, cumAmount: pt.cumAmount ?? 0 };
+                    return { stockCode: m.stockCode, stockName: m.name, color: m.color, isSelf: m.isSelf, rate: useNxt ? pt.valueNxt : pt.valueKrx, amount: pt.amount ?? 0, cumAmount: pt.cumAmount ?? 0 };
                 })
                 .filter((r): r is OverlayTooltipRow => r !== null)
                 .sort((a, b) => b.rate - a.rate);
@@ -95,7 +99,7 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
         },
     });
 
-    // 데이터 갱신: 기존 시리즈 제거 후 재생성
+    // 시리즈 생성: data 변경 시 기존 시리즈 제거 후 재생성
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
@@ -122,11 +126,8 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
                 crosshairMarkerVisible: true, crosshairMarkerRadius: 3,
             });
             const pointMap = new Map<number, ChartOverlayPoint>();
-            const points = s.series.map((p) => {
-                pointMap.set(p.time, p);
-                return { time: p.time as Time, value: p.value };
-            });
-            api.setData(points);
+            s.series.forEach((p) => pointMap.set(p.time, p));
+
             seriesMetaRef.current.push({ stockCode: s.stockCode, name: s.stockName ?? s.stockCode ?? "?", color, isSelf: s.isSelf, api, pointMap });
             if (firstSeries === null) firstSeries = api;
         });
@@ -140,6 +141,17 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
 
         chart.timeScale().fitContent();
     }, [data]);
+
+    // 데이터 갱신: data 또는 mode 변경 시 setData (시리즈 재생성 없이 값만 swap)
+    useEffect(() => {
+        const useNxt = mode === "nxt";
+        for (const m of seriesMetaRef.current) {
+            const points = Array.from(m.pointMap.values())
+                .sort((a, b) => a.time - b.time)
+                .map((p) => ({ time: p.time as Time, value: useNxt ? p.valueNxt : p.valueKrx }));
+            m.api.setData(points);
+        }
+    }, [data, mode]);
 
     // 가시성 업데이트: stockCode 집합 기반 (리스트 derivedMap과 항상 일치)
     useEffect(() => {

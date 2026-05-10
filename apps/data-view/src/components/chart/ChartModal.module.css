@@ -134,6 +134,44 @@
     color: var(--text-muted);
 }
 
+/* KRX/NXT 모드 토글 (헤더 내 위치, ADR-014) */
+.modeToggle {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    backdrop-filter: blur(4px);
+    margin-right: var(--space-3);
+}
+
+.modeBtn {
+    height: 28px;
+    padding: 0 12px;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    color: var(--text-tertiary);
+    border-radius: 4px;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.modeBtn:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+.modeBtnActive {
+    background: var(--accent-bg);
+    color: var(--accent-primary);
+    font-weight: var(--fw-semibold);
+}
+
+.modeBtnActive:hover {
+    background: var(--accent-bg);
+    color: var(--accent-primary);
+}
+
 /* 헤더에 표시되는 테마 칩 목록 */
 .headerThemes {
     display: flex;
