@@ -8,6 +8,7 @@ interface DailyTooltipProps {
     cursorNxtPct: number | null;
     hoverHighKrxPct: number | null;
     hoverHighNxtPct: number | null;
+    hoverHigh: number | null;
     cursorAmountEok: string | null;
 }
 
@@ -17,7 +18,7 @@ function fmtPct(v: number | null) {
     return <span style={{ color }}>{v >= 0 ? "+" : ""}{v.toFixed(2)}%</span>;
 }
 
-export function DailyTooltip({ time, cursorKrxPct, cursorNxtPct, hoverHighKrxPct, hoverHighNxtPct, cursorAmountEok }: DailyTooltipProps) {
+export function DailyTooltip({ time, cursorKrxPct, cursorNxtPct, hoverHighKrxPct, hoverHighNxtPct, hoverHigh, cursorAmountEok }: DailyTooltipProps) {
     return (
         <>
             <div style={{ fontSize: 11, color: "#a0a0a0", marginBottom: 6 }}>{kstYmd(time)}</div>
@@ -30,6 +31,8 @@ export function DailyTooltip({ time, cursorKrxPct, cursorNxtPct, hoverHighKrxPct
                 <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtPct(hoverHighKrxPct)}</div>
                 <div style={{ color: "#a0a0a0" }}>Cursor Candle NXT %</div>
                 <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtPct(hoverHighNxtPct)}</div>
+                <div style={{ color: "#a0a0a0" }}>Cursor Candle High</div>
+                <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{hoverHigh != null ? hoverHigh.toLocaleString() : "—"}</div>
                 <div style={{ color: "#a0a0a0" }}>Cursor Candle Amount</div>
                 <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{cursorAmountEok ?? "—"}</div>
             </div>

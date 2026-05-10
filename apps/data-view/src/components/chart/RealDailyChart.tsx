@@ -129,6 +129,7 @@ export function RealDailyChart({ candles, priceLines }: Props) {
                     cursorNxtPct={cursorNxtPct}
                     hoverHighKrxPct={hoverHighKrxPct}
                     hoverHighNxtPct={hoverHighNxtPct}
+                    hoverHigh={hoverHigh}
                     cursorAmountEok={cursorAmountEok}
                 />
             );
