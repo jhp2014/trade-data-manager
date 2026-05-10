@@ -1,5 +1,5 @@
 import type { IChartApi } from "lightweight-charts";
-import type { ChartCandle } from "@/types/chart";
+import type { DailyCandle, MinuteCandle } from "@/types/chart";
 
 /** indicator의 내부 상태를 담는 불투명 핸들 */
 export type IndicatorHandle = Record<string, unknown>;
@@ -25,11 +25,11 @@ export interface ChartIndicator<TData, TParams = void> {
 
 /** 일봉 차트 지표 데이터 */
 export interface DailyIndicatorData {
-    candles: ChartCandle[];
+    candles: DailyCandle[];
 }
 
 /** 분봉 차트 지표 데이터 */
 export interface MinuteIndicatorData {
-    candles: ChartCandle[];
+    candles: MinuteCandle[];
     markerTime?: number | null;
 }
