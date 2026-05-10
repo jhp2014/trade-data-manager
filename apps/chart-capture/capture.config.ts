@@ -75,9 +75,13 @@ export function loadConfig(overrides: Partial<CaptureConfig> = {}): CaptureConfi
         nextStartTimeoutMs: 30000,
         externalServerUrl: overrides.externalServerUrl,
         devMode: overrides.devMode ?? false,
-        ...overrides,
-        // processedSubdir/failedSubdir는 오버라이드 불가 (타입 리터럴)
-        processedSubdir: "processed",
-        failedSubdir: "failed",
+        // overrides 중 자유 필드 병합 (단, 타입 리터럴 필드는 위에서 고정)
+        ...(overrides.variants ? { variants: overrides.variants } : {}),
+        ...(overrides.filenameTemplate ? { filenameTemplate: overrides.filenameTemplate } : {}),
+        ...(overrides.dateFormat ? { dateFormat: overrides.dateFormat } : {}),
+        ...(overrides.lineColors ? { lineColors: overrides.lineColors } : {}),
+        ...(overrides.overwrite !== undefined ? { overwrite: overrides.overwrite } : {}),
+        ...(overrides.stockNameMaxLength ? { stockNameMaxLength: overrides.stockNameMaxLength } : {}),
+        ...(overrides.dailyLookbackDays ? { dailyLookbackDays: overrides.dailyLookbackDays } : {}),
     };
 }
