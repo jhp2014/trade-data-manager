@@ -10,6 +10,7 @@ import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { DailyTooltip } from "./tooltip/DailyTooltip";
+import { priceLineListIndicator } from "./indicators/priceLineList";
 
 interface Props {
     candles: DailyCandle[];
@@ -32,7 +33,7 @@ function highMarkerColor(pct: number): string | null {
     return "#7c3aed";
 }
 
-export function RealDailyChart({ candles, priceLines: _priceLines }: Props) {
+export function RealDailyChart({ candles, priceLines }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const mode = useUiStore((s) => s.chartPriceMode);
@@ -186,6 +187,19 @@ export function RealDailyChart({ candles, priceLines: _priceLines }: Props) {
         candleSeries.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
     }, [candles, mode]);
+
+    // 가격 라인 indicator (일봉: 가격 그대로, mode 무관)
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        const handle = priceLineListIndicator.attach(chart, {
+            priceLines: priceLines ?? {},
+            prevClose: null,
+            asPrice: true,
+        });
+        return () => priceLineListIndicator.detach(handle, chart);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(priceLines)]);
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>

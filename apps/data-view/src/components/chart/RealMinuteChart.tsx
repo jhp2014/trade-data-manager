@@ -12,6 +12,7 @@ import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { MinuteTooltip } from "./tooltip/MinuteTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE, assignSeriesColors } from "@/lib/chart/overlay";
+import { priceLineListIndicator } from "./indicators/priceLineList";
 
 interface Props {
     candles: MinuteCandle[];
@@ -22,7 +23,7 @@ interface Props {
     prevCloseNxt?: number | null;
 }
 
-export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines: _priceLines, prevCloseKrx: _prevCloseKrx, prevCloseNxt: _prevCloseNxt }: Props) {
+export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines, prevCloseKrx, prevCloseNxt }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const mode = useUiStore((s) => s.chartPriceMode);
@@ -195,6 +196,20 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines:
         if (!series || markerTime == null) return;
         series.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#000000ff", shape: "arrowDown", text: "✅Point✅" }]);
     }, [markerTime, candles]);
+
+    // 가격 라인 indicator (분봉: prevClose 기준 % 변환, mode별 분기)
+    const prevClose = mode === "nxt" ? (prevCloseNxt ?? null) : (prevCloseKrx ?? null);
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart || prevClose == null) return;
+        const handle = priceLineListIndicator.attach(chart, {
+            priceLines: priceLines ?? {},
+            prevClose,
+            asPrice: false,
+        });
+        return () => priceLineListIndicator.detach(handle, chart);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(priceLines), prevClose]);
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>

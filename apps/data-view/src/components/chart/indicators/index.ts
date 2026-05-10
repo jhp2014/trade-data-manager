@@ -4,4 +4,5 @@
  * See: docs/adding-chart-indicator.md
  */
 export { horizontalLineIndicator } from "./horizontalLine";
+export { priceLineListIndicator } from "./priceLineList";
 export type { ChartIndicator, IndicatorHandle, DailyIndicatorData, MinuteIndicatorData } from "./types";
