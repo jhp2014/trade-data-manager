@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DailyChart } from "../../../../../../components/chart/DailyChart";
-import { MinuteChart } from "../../../../../../components/chart/MinuteChart";
+import { DailyChart } from "@/components/chart/DailyChart";
+import { MinuteChart } from "@/components/chart/MinuteChart";
 import type { DailyCandle, MinuteCandle } from "@/lib/chartTypes";
 import type { LineSpec } from "@/types/capture";
 

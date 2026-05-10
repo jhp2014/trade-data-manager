@@ -1,0 +1,48 @@
+# Dependency directories
+node_modules/
+
+# Build outputs
+/dist/
+/build/
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# Drizzle ORM
+drizzle/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+
+# csv
+/csv
+
+# Turborepo
+.turbo
+
+# Next.js
+.next/
+out/
+build/
+
+# TypeScript
+*.tsbuildinfo
+
+# ESLint
+.eslintcache
+
+
+# Utils for AI
+/project_txt_export
+convert_flat.py
+
+/review-target
