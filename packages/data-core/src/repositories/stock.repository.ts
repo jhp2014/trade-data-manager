@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { stocks, type StockInsert } from "../schema/market";
+import { eq, inArray } from "drizzle-orm";
+import { stocks, type Stock, type StockInsert } from "../schema/market";
 import type { Database } from "../db";
 import { buildConflictUpdateSet } from "./_helpers";
 
@@ -14,6 +14,33 @@ export async function saveStock(db: Database, data: StockInsert): Promise<void> 
             target: stocks.stockCode,
             set: buildConflictUpdateSet(stocks, ["stockCode"]),
         });
+}
+
+export async function findStockByCode(
+    db: Database,
+    params: { stockCode: string },
+): Promise<Stock | null> {
+    const row = await db.query.stocks.findFirst({
+        where: eq(stocks.stockCode, params.stockCode),
+    });
+    return row ?? null;
+}
+
+export async function findStocksByCodes(
+    db: Database,
+    params: { stockCodes: string[] },
+): Promise<Stock[]> {
+    if (params.stockCodes.length === 0) return [];
+    return db.select().from(stocks).where(inArray(stocks.stockCode, params.stockCodes));
+}
+
+/** Map<stockCode, Stock> 형태로 반환. 조회 결과 없는 코드는 키 없음. */
+export async function findStocksMapByCodes(
+    db: Database,
+    params: { stockCodes: string[] },
+): Promise<Map<string, Stock>> {
+    const list = await findStocksByCodes(db, params);
+    return new Map(list.map((s) => [s.stockCode, s]));
 }
 
 /**
