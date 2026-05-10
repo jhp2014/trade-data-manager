@@ -5,7 +5,7 @@
  */
 import { COLUMNS } from "@/components/list/columns/definitions";
 
-export const OPTIONS_COLUMN_WIDTH = "300px";
+export const OPTIONS_COLUMN_WIDTH = "200px";
 export const IDENTITY_MIN_WIDTH = "320px";
 
 export function buildMetricsGridTemplate(hasOptions: boolean): string {

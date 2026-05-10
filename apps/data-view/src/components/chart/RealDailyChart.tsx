@@ -174,13 +174,24 @@ export function RealDailyChart({ candles }: Props) {
             }),
         );
 
-        // 고가 마커는 모드와 무관하게 항상 KRX 기준 (ADR-009)
+        // 고가 마커: 분모는 항상 KRX 전일 종가 (시장 표준), 분자는 현재 모드의 high.
+        // → KRX 모드: KRX 전일종가 대비 KRX high
+        // → NXT 모드: KRX 전일종가 대비 NXT high (NXT 시간외 추가 상승 반영)
         const markers: Array<{ time: Time; position: "aboveBar"; color: string; shape: "circle"; text: string }> = [];
         for (const c of candles) {
             if (!c.prevCloseKrx || c.prevCloseKrx <= 0) continue;
-            const pct = ((c.high - c.prevCloseKrx) / c.prevCloseKrx) * 100;
+            const high = useNxt ? (c.highNxt ?? c.high) : c.high;
+            const pct = ((high - c.prevCloseKrx) / c.prevCloseKrx) * 100;
             const color = highMarkerColor(pct);
-            if (color) markers.push({ time: c.time as Time, position: "aboveBar", color, shape: "circle", text: `+${pct.toFixed(1)}` });
+            if (color) {
+                markers.push({
+                    time: c.time as Time,
+                    position: "aboveBar",
+                    color,
+                    shape: "circle",
+                    text: `+${pct.toFixed(1)}`,
+                });
+            }
         }
         candleSeries.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
