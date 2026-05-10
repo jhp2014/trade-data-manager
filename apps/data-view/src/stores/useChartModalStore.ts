@@ -5,6 +5,10 @@ export interface ChartModalTarget {
     stockName: string;
     tradeDate: string;
     tradeTime: string;
+    activePools?: Array<{
+        instanceId: string;
+        memberStockCodes: string[];
+    }>;
 }
 
 interface ChartModalState {
