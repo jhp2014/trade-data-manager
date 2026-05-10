@@ -9,12 +9,14 @@ export interface DeckEntryDTO {
   tradeDate: string;
   tradeTime: string;
   options: Record<string, string>;
+  priceLines: Record<string, number[]>;
   sourceFile: string;
 }
 
 export interface LoadedDecksDTO {
   entries: DeckEntryDTO[];
   optionKeys: string[];
+  priceLineKeys: string[];
   files: string[];
   duplicateCount: number;
 }
