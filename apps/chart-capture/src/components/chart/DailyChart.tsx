@@ -172,7 +172,7 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
                 if (chartValue === null) continue;
                 try {
                     const handle = candleSeries.createPriceLine(
-                        buildPriceLineOptions(spec.color, spec.column.replace("line_", ""), chartValue),
+                        buildPriceLineOptions(spec.color, "", chartValue),
                     );
                     priceLineHandlesRef.current.push(handle);
                 } catch { /* noop */ }
