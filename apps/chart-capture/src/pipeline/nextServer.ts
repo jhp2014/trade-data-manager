@@ -88,7 +88,8 @@ export async function verifyExternalServer(url: string): Promise<void> {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         logger.info(`[next] 외부 서버 확인 완료: ${url}`);
     } catch (err) {
-        throw new Error(`외부 서버에 접근할 수 없습니다 (${healthUrl}): ${err}`);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`외부 서버에 접근할 수 없습니다 (${healthUrl}): ${message}`);
     }
 }
 

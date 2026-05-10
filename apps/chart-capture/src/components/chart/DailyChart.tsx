@@ -158,8 +158,7 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
                 } catch { /* noop */ }
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(priceLines)]);
+    }, [priceLines]);
 
     return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 }

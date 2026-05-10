@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DailyChart } from "@/components/chart/DailyChart";
 import { MinuteChart } from "@/components/chart/MinuteChart";
 import type { DailyCandle, MinuteCandle } from "@/lib/chartTypes";
@@ -39,16 +39,18 @@ export function ChartCaptureClient({
         const handler = () =>
             setLines((window as unknown as { __CAPTURE_LINES__?: LineSpec[] }).__CAPTURE_LINES__ ?? []);
         window.addEventListener("capture-lines-ready", handler);
-        // 외부 서버 디버깅용: 라인 없이도 차트만 표시
+        // 외부 서버 디버깅용 fallback (Playwright는 즉시 라인 주입하므로 정상 흐름에서는 발화하지 않음)
         const fallbackTimer = setTimeout(() => {
             setLines((prev) => (prev === null ? [] : prev));
-        }, 500);
+        }, 2000);
         return () => {
             window.removeEventListener("capture-lines-ready", handler);
             clearTimeout(fallbackTimer);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const stableLines = useMemo<LineSpec[]>(() => lines ?? [], [lines]);
 
     // pre-ready 마커: Playwright가 라인 주입 타이밍을 잡기 위함
     useEffect(() => {
@@ -75,7 +77,7 @@ export function ChartCaptureClient({
                 <DailyChart
                     candles={daily}
                     variant={variant}
-                    priceLines={lines ?? []}
+                    priceLines={stableLines}
                     onReady={() => setDailyReady(true)}
                 />
             </div>
@@ -83,7 +85,7 @@ export function ChartCaptureClient({
                 <MinuteChart
                     candles={minute}
                     variant={variant}
-                    priceLines={lines ?? []}
+                    priceLines={stableLines}
                     prevCloseKrx={prevCloseKrx}
                     prevCloseNxt={prevCloseNxt}
                     onReady={() => setMinuteReady(true)}

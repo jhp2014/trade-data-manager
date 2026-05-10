@@ -1,7 +1,6 @@
 import {
     chromium,
     type Browser,
-    type BrowserContext,
     type Page,
 } from "playwright";
 import type { CaptureConfig } from "../../capture.config";
