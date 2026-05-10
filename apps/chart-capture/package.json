@@ -2,6 +2,7 @@
     "name": "@trade-data-manager/chart-capture",
     "version": "0.1.0",
     "private": true,
+    "type": "commonjs",
     "scripts": {
         "build": "next build",
         "start:next": "next start -p ${CAPTURE_NEXT_PORT:-3939}",
