@@ -2,7 +2,8 @@
 
 ## 상태
 
-Accepted (2026-05-08)
+Superseded by ADR-014 (2026-05-10)  
+원본 결정: Accepted (2026-05-08)
 
 ## 맥락
 
