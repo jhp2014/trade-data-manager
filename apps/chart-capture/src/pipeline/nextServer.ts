@@ -61,17 +61,20 @@ export async function startNextServer(params: {
                 resolve();
                 return;
             }
-            child.once("exit", () => resolve());
-            child.kill("SIGTERM");
-            // 5초 후 SIGKILL
+
             const timer = setTimeout(() => {
-                if (!child.killed) child.kill("SIGKILL");
-                resolve();
+                if (!child.killed) {
+                    logger.warn("[next] SIGTERM 후 5초 경과, SIGKILL 송신");
+                    child.kill("SIGKILL");
+                }
             }, 5000);
+
             child.once("exit", () => {
                 clearTimeout(timer);
                 resolve();
             });
+
+            child.kill("SIGTERM");
         });
     };
 
