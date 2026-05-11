@@ -9,6 +9,7 @@ import {
     type Database,
     type MinuteCandle,
     type MinuteCandleContext,
+    type MinuteCandleFeaturesInsert,
 } from "@trade-data-manager/data-core";
 import { logger } from "./logger";
 
@@ -61,7 +62,7 @@ export async function runMinuteFeatures(
     return { stockCount: processed, rowCount: totalRows };
 }
 
-function computeStockFeatures(candles: MinuteCandle[]): Array<Record<string, any>> {
+function computeStockFeatures(candles: MinuteCandle[]): MinuteCandleFeaturesInsert[] {
     for (const calc of MINUTE_CALCULATORS) {
         calc.reset?.();
     }
@@ -80,11 +81,9 @@ function computeStockFeatures(candles: MinuteCandle[]): Array<Record<string, any
         const outputs = MINUTE_CALCULATORS.map((calc) => calc.calculate(ctx));
         const merged = mergeCalculatorOutputs(outputs);
 
-        // FK
         merged.minuteCandleId = candles[i].id;
         merged.dailyCandleId = candles[i].dailyCandleId;
 
-        // 식별용 메타 컬럼 (schema 에 명시된 키성 컬럼)
         merged.tradeDate = candles[i].tradeDate;
         merged.stockCode = candles[i].stockCode;
         merged.tradeTime = candles[i].tradeTime;
@@ -92,7 +91,7 @@ function computeStockFeatures(candles: MinuteCandle[]): Array<Record<string, any
         rows.push(merged);
     }
 
-    return rows;
+    return rows as MinuteCandleFeaturesInsert[];
 }
 
 function findCandleMinutesAgo(

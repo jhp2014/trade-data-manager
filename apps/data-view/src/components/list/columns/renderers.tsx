@@ -44,11 +44,9 @@ export function MetricDayHigh({
 
 export function MetricAmount({
     cumulative,
-    currentMinute,
     tradeTime,
 }: {
     cumulative: string | null;
-    currentMinute: string | null;
     tradeTime: string;
 }) {
     return (
@@ -58,8 +56,6 @@ export function MetricAmount({
             </span>
             <span className={styles.metricSub}>
                 <span className="tabular">{tradeTime.slice(0, 5)}</span>
-                <span className={styles.dot}>·</span>
-                <span className="tabular">{formatKrwShort(currentMinute)}</span>
             </span>
         </div>
     );

@@ -29,7 +29,6 @@ export interface StockMetricsDTO {
   dayHighRate: number | null;
   pullbackFromHigh: number | null;
   minutesSinceDayHigh: number | null;
-  currentMinuteAmount: string | null;
   amountDistribution: Record<number, number> | null;
 }
 

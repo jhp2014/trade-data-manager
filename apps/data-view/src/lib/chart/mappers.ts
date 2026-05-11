@@ -4,7 +4,7 @@
  * See: actions/chartPreview.ts (호출부), lib/serialization.ts (변환 헬퍼)
  */
 
-import type { DailyCandleRow, MinuteCandleRow, MinuteFeatureRow } from "@trade-data-manager/data-core";
+import type { DailyCandle as DailyCandleRow, MinuteCandle as MinuteCandleRow, MinuteCandleFeatures as MinuteFeatureRow } from "@trade-data-manager/data-core";
 import type { DailyCandle, MinuteCandle, ChartOverlayPoint } from "@/types/chart";
 import { toNum, dateToUnix } from "@/lib/serialization";
 
@@ -86,10 +86,8 @@ export function buildOverlayPoints(
 ): ChartOverlayPoint[] {
     const cumByTime = new Map<string, unknown>();
     for (const f of features) {
-        const t = f.tradeTime ?? f.trade_time;
-        if (t === undefined || t === null) continue;
-        const key = String(t).slice(0, 8);
-        cumByTime.set(key, f.cumulativeTradingAmount ?? f.cumulative_trading_amount);
+        const key = String(f.tradeTime).slice(0, 8);
+        cumByTime.set(key, (f as Record<string, unknown>).cumulativeTradingAmount);
     }
 
     const out: ChartOverlayPoint[] = [];

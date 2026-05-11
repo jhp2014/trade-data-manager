@@ -40,7 +40,6 @@ export const COLUMNS: ColumnDef[] = [
         render: (m, ctx) => (
             <MetricAmount
                 cumulative={m.cumulativeAmount}
-                currentMinute={m.currentMinuteAmount}
                 tradeTime={ctx.tradeTime}
             />
         ),

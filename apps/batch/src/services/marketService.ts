@@ -1,6 +1,6 @@
 import {
     findDailyCandleByStockAndDate,
-    findStockRegDayApiFormat,
+    findStockByCode,
     saveDailyCandles,
     saveMinuteCandles,
     saveStock,
@@ -33,11 +33,14 @@ export class MarketService {
     async syncDailyCandles(stockCode: string, apiDate: string = "") {
         const stockCodeNxt = `${stockCode}_AL`;
 
-        const [krxCandles, nxtCandles, regDay] = await Promise.all([
+        const [krxCandles, nxtCandles, stock] = await Promise.all([
             kiwoomClient.getDailyChartsByCount(stockCode, apiDate, 600),
             kiwoomClient.getDailyChartsByCount(stockCodeNxt, apiDate, 600),
-            findStockRegDayApiFormat(db, { stockCode }),
+            findStockByCode(db, { stockCode })
         ]);
+
+        const regDay = stock?.regDay?.replace(/-/g, "") ?? null;
+
 
         if (krxCandles.length === 0 || nxtCandles.length === 0) {
             logger.warn(`[MarketService] 일봉 데이터 없음`, {

@@ -74,6 +74,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                     stockName: self.stockName,
                     tradeDate: entry.tradeDate,
                     tradeTime: entry.tradeTime,
+                    themeId: row.themeId,
                     activePools: activePoolsForModal,
                     priceLines: entry.priceLines,
                 });
@@ -92,7 +93,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
         };
         document.addEventListener("keydown", handler);
         return () => document.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [anchor, open, self, entry, activePools, modalTarget]);
 
     // 펼침 패널 데이터 결정
@@ -111,7 +112,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                 const label = instIdx >= 0
                     ? chipLabelForPredicate(
                         (activeInstances[instIdx].value as { predicate: MemberPredicate }).predicate,
-                      )
+                    )
                     : "";
                 expandedHeader = `Active #${poolIdx + 1}: ${label} 통과 ${pool.poolSize}종목`;
             }
@@ -173,6 +174,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                                 stockName: self.stockName,
                                 tradeDate: entry.tradeDate,
                                 tradeTime: entry.tradeTime,
+                                themeId: row.themeId,
                                 activePools: activePoolsForModal,
                                 priceLines: entry.priceLines,
                             })
@@ -245,6 +247,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                                     rank={rank}
                                     tradeDate={entry.tradeDate}
                                     tradeTime={entry.tradeTime}
+                                    themeId={row.themeId}
                                     hasOptions={hasOptions}
                                 />
                             );
@@ -261,12 +264,14 @@ function PeerRow({
     rank,
     tradeDate,
     tradeTime,
+    themeId,
     hasOptions,
 }: {
     peer: StockMetricsDTO;
     rank: number;
     tradeDate: string;
     tradeTime: string;
+    themeId: string;
     hasOptions: boolean;
 }) {
     const open = useChartModalStore((s) => s.open);
@@ -284,7 +289,7 @@ function PeerRow({
                         className={styles.stockBtn}
                         onClick={(e) => {
                             e.stopPropagation();
-                            open({ stockCode: peer.stockCode, stockName: peer.stockName, tradeDate, tradeTime });
+                            open({ stockCode: peer.stockCode, stockName: peer.stockName, tradeDate, tradeTime, themeId });
                         }}
                     >
                         <span className={styles.stockName}>{peer.stockName}</span>

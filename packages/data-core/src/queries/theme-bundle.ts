@@ -1,85 +1,83 @@
-import { and, eq, asc, lte, desc, inArray } from "drizzle-orm";
-import {
-    stocks,
-    dailyCandles,
-    minuteCandles,
-    type DailyCandle,
-    type MinuteCandle,
-} from "../schema/market";
-import { minuteCandleFeatures } from "../schema/features";
+import { findThemesByStockAndDate, findMemberCodesByThemeIds } from "../repositories/theme.repository";
+import { findStocksMapByCodes } from "../repositories/stock.repository";
+import { findRecentDailyCandlesByCodes } from "../repositories/daily-candle.repository";
+import { findMinuteCandlesByCodesAndDate } from "../repositories/minute-candle.repository";
+import { findFeaturesByCodesAndDate } from "../repositories/market-feature.repository";
 import type { Database } from "../db";
-import {
-    findThemesByStockAndDate,
-    findMemberCodesByThemeIds,
-} from "../repositories/theme.repository";
+import type { DailyCandle, MinuteCandle } from "../schema/market";
+import type { MinuteCandleFeatures } from "../schema/features";
 
 /* ===========================================================
- * Theme Bundle — 단건 종목/거래일에 대한 테마 단위 시계열 묶음
+ * Theme Bundle: 차트/시계열 시각화용 묶음 응답
  *
- * 한 종목이 여러 테마에 속하면 테마별로 element 가 N 개 나옵니다.
- * 테마 매핑이 없으면 self 만 포함된 가짜 테마 (themeId="", themeName="(테마 없음)") 1 개를 반환합니다.
- *
- * raw row 만 반환합니다. padding/시간 정규화/MAX_SERIES 자르기 등은
- * 호출부(앱) 책임입니다.
+ * 한 종목은 여러 테마에 속할 수 있어 element 가 N개일 수 있음.
+ * 테마가 없는 종목(개별주)은 DB 에 placeholder 행이 들어가 있어야 함 (invariant).
+ * 비어있다면 throw.
  * =========================================================== */
 
-const DAILY_LOOKBACK = 600; // 약 2년 6개월 거래일
+const DAILY_LOOKBACK = 600;
 
-export type DailyCandleRow = DailyCandle;
-export type MinuteCandleRow = MinuteCandle;
-export type MinuteFeatureRow = Record<string, any>;
-
-export interface ThemeBundleMember {
+interface ThemeMemberBase {
     stockCode: string;
     stockName: string;
     isSelf: boolean;
-    daily: DailyCandleRow[];      // 240 거래일치 (tradeDate ASC)
-    minute: MinuteCandleRow[];     // 당일 분봉 (tradeTime ASC)
-    features: MinuteFeatureRow[];  // 당일 분봉 피처 (tradeTime ASC)
+}
+
+export interface ThemeBundleMember extends ThemeMemberBase {
+    daily: DailyCandle[];
+    minute: MinuteCandle[];
+    features: MinuteCandleFeatures[];
 }
 
 export interface ThemeBundle {
-    themeId: string;       // bigint -> string. 테마 매핑 없을 때는 ""
-    themeName: string;     // 테마 매핑 없을 때는 "(테마 없음)"
-    members: ThemeBundleMember[];  // self 항상 포함
+    themeId: string;
+    themeName: string;
+    members: ThemeBundleMember[];
 }
 
 export async function getThemeBundle(
     db: Database,
-    params: { stockCode: string; tradeDate: string }
+    params: { stockCode: string; tradeDate: string },
 ): Promise<ThemeBundle[]> {
     const { stockCode, tradeDate } = params;
 
-    // 1) self 가 그날 속한 테마 목록 (없으면 가짜 테마 1 개)
     const themes = await findThemesByStockAndDate(db, { stockCode, tradeDate });
+    if (themes.length === 0) {
+        throw new Error(
+            `[getThemeBundle] No theme mapping for stockCode=${stockCode}, tradeDate=${tradeDate}. ` +
+            `Every stock must have at least a placeholder theme row.`
+        );
+    }
 
-    // 2) 테마별 멤버 코드 (self 포함)
-    const themeIds = themes.map((t) => t.themeId);
-    const themeToCodes = await findMemberCodesByThemeIds(db, { themeIds, tradeDate, selfCode: stockCode });
+    const themeIds = themes.map((t) => String(t.themeId));
+    const themeToCodes = await findMemberCodesByThemeIds(db, {
+        themeIds,
+        tradeDate,
+        selfCode: stockCode,
+    });
 
-    // 3) 모든 코드 합집합으로 시계열을 한 번에 조회
     const allCodes = collectAllCodes(themeToCodes, stockCode);
 
-    const [nameMap, dailyByCode, minuteByCode, featuresByCode] = await Promise.all([
-        fetchStockNames(db, allCodes),
-        fetchDailyByCodes(db, allCodes, tradeDate),
-        fetchMinuteByCodes(db, allCodes, tradeDate),
-        fetchFeaturesByCodes(db, allCodes, tradeDate),
+    const [stockMap, dailyByCode, minuteByCode, featuresByCode] = await Promise.all([
+        findStocksMapByCodes(db, { stockCodes: allCodes }),
+        findRecentDailyCandlesByCodes(db, { stockCodes: allCodes, tradeDate, lookback: DAILY_LOOKBACK }),
+        findMinuteCandlesByCodesAndDate(db, { stockCodes: allCodes, tradeDate }),
+        findFeaturesByCodesAndDate(db, { stockCodes: allCodes, tradeDate }),
     ]);
 
-    return themes.map(({ themeId, themeName }) => {
+    return themes.map((t) => {
+        const themeId = String(t.themeId);
         const codes = themeToCodes.get(themeId) ?? [stockCode];
-        // self 가 첫 번째 멤버
         const ordered = [stockCode, ...codes.filter((c) => c !== stockCode)];
         const members: ThemeBundleMember[] = ordered.map((code) => ({
             stockCode: code,
-            stockName: nameMap.get(code) ?? code,
+            stockName: stockMap.get(code)?.stockName ?? code,
             isSelf: code === stockCode,
             daily: dailyByCode.get(code) ?? [],
             minute: minuteByCode.get(code) ?? [],
             features: featuresByCode.get(code) ?? [],
         }));
-        return { themeId, themeName, members };
+        return { themeId, themeName: t.themeName, members };
     });
 }
 
@@ -93,123 +91,3 @@ function collectAllCodes(
     }
     return Array.from(set);
 }
-
-/* ===========================================================
- * 3) 종목명
- * =========================================================== */
-
-async function fetchStockNames(
-    db: Database,
-    stockCodes: string[],
-): Promise<Map<string, string>> {
-    if (stockCodes.length === 0) return new Map();
-    const rows = await db
-        .select({ stockCode: stocks.stockCode, stockName: stocks.stockName })
-        .from(stocks)
-        .where(inArray(stocks.stockCode, stockCodes));
-    const map = new Map<string, string>();
-    for (const r of rows) map.set(r.stockCode, r.stockName);
-    return map;
-}
-
-/* ===========================================================
- * 4) 일봉 — 종목별 240 거래일치
- *    종목 수가 많지 않아 (보통 <= 15) 종목별 병렬 쿼리로 단순화.
- * =========================================================== */
-
-async function fetchDailyByCodes(
-    db: Database,
-    stockCodes: string[],
-    tradeDate: string,
-): Promise<Map<string, DailyCandleRow[]>> {
-    if (stockCodes.length === 0) return new Map();
-
-    const lists = await Promise.all(
-        stockCodes.map(async (code) => {
-            const rows = await db
-                .select()
-                .from(dailyCandles)
-                .where(
-                    and(
-                        eq(dailyCandles.stockCode, code),
-                        lte(dailyCandles.tradeDate, tradeDate),
-                    ),
-                )
-                .orderBy(desc(dailyCandles.tradeDate))
-                .limit(DAILY_LOOKBACK);
-            // 차트는 시간 ASC
-            return [code, rows.slice().reverse()] as const;
-        }),
-    );
-
-    const map = new Map<string, DailyCandleRow[]>();
-    for (const [code, list] of lists) map.set(code, list);
-    return map;
-}
-
-/* ===========================================================
- * 5) 분봉 — 종목별 당일 전체 (시간 ASC)
- * =========================================================== */
-
-async function fetchMinuteByCodes(
-    db: Database,
-    stockCodes: string[],
-    tradeDate: string,
-): Promise<Map<string, MinuteCandleRow[]>> {
-    if (stockCodes.length === 0) return new Map();
-
-    const rows = await db
-        .select()
-        .from(minuteCandles)
-        .where(
-            and(
-                inArray(minuteCandles.stockCode, stockCodes),
-                eq(minuteCandles.tradeDate, tradeDate),
-            ),
-        )
-        .orderBy(asc(minuteCandles.stockCode), asc(minuteCandles.tradeTime));
-
-    const map = new Map<string, MinuteCandleRow[]>();
-    for (const r of rows) {
-        const arr = map.get(r.stockCode) ?? [];
-        arr.push(r);
-        map.set(r.stockCode, arr);
-    }
-    return map;
-}
-
-/* ===========================================================
- * 6) 분봉 피처 — 종목별 당일 전체 (시간 ASC)
- * =========================================================== */
-
-async function fetchFeaturesByCodes(
-    db: Database,
-    stockCodes: string[],
-    tradeDate: string,
-): Promise<Map<string, MinuteFeatureRow[]>> {
-    if (stockCodes.length === 0) return new Map();
-
-    const rows = await db
-        .select()
-        .from(minuteCandleFeatures)
-        .where(
-            and(
-                inArray(minuteCandleFeatures.stockCode, stockCodes),
-                eq(minuteCandleFeatures.tradeDate, tradeDate),
-            ),
-        )
-        .orderBy(
-            asc(minuteCandleFeatures.stockCode),
-            asc(minuteCandleFeatures.tradeTime),
-        );
-
-    const map = new Map<string, MinuteFeatureRow[]>();
-    for (const r of rows as Array<Record<string, any>>) {
-        const code = r.stockCode as string;
-        const arr = map.get(code) ?? [];
-        arr.push(r);
-        map.set(code, arr);
-    }
-    return map;
-}
-

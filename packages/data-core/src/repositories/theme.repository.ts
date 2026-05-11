@@ -6,50 +6,45 @@ import {
 } from "../schema/market";
 import type { Database } from "../db";
 
-export interface ThemeInfo {
-    themeId: string;
-    themeName: string;
-}
-
 /**
- * 특정 종목이 해당 거래일에 속한 테마 목록.
- * 매핑이 없으면 가짜 테마 [{ themeId: "", themeName: "(테마 없음)" }] 를 반환합니다.
+ * 특정 종목/거래일에 매핑된 테마들을 조회.
+ *  - JOIN 없이 3단계 쿼리로 분리해 가독성 ↑
+ *  - 비어있을 수 있음. 호출부에서 invariant 위반으로 throw 할지 결정.
  */
 export async function findThemesByStockAndDate(
     db: Database,
     params: { stockCode: string; tradeDate: string },
-): Promise<ThemeInfo[]> {
-    const rows = await db
-        .selectDistinct({
-            themeId: themes.themeId,
-            themeName: themes.themeName,
-        })
-        .from(dailyCandles)
-        .innerJoin(
-            dailyThemeMappings,
-            eq(dailyThemeMappings.dailyCandleId, dailyCandles.id),
-        )
-        .innerJoin(themes, eq(themes.themeId, dailyThemeMappings.themeId))
-        .where(
-            and(
-                eq(dailyCandles.stockCode, params.stockCode),
-                eq(dailyCandles.tradeDate, params.tradeDate),
-            ),
-        )
-        .orderBy(asc(themes.themeName));
+) {
+    // 1) dailyCandle id
+    const candle = await db.query.dailyCandles.findFirst({
+        columns: { id: true },
+        where: and(
+            eq(dailyCandles.stockCode, params.stockCode),
+            eq(dailyCandles.tradeDate, params.tradeDate),
+        ),
+    });
+    if (!candle) return [];
 
-    if (rows.length === 0) {
-        return [{ themeId: "", themeName: "(테마 없음)" }];
-    }
-    return rows.map((r) => ({
-        themeId: String(r.themeId),
-        themeName: r.themeName,
-    }));
+    // 2) 매핑된 themeId 목록
+    const mappings = await db
+        .select({ themeId: dailyThemeMappings.themeId })
+        .from(dailyThemeMappings)
+        .where(eq(dailyThemeMappings.dailyCandleId, candle.id));
+
+    if (mappings.length === 0) return [];
+
+    // 3) themes
+    return db
+        .select()
+        .from(themes)
+        .where(inArray(themes.themeId, mappings.map((m) => m.themeId)))
+        .orderBy(asc(themes.themeName));
 }
 
 /**
- * 테마 ID 목록에 해당 거래일에 속한 종목 코드 맵 (themeId → stockCode[]).
- * selfCode 가 누락된 테마에는 방어적으로 추가합니다.
+ * 테마 ID 목록 → 각 테마의 멤버 종목코드들 (themeId 문자열 → stockCode[]).
+ * selfCode 는 항상 포함됨.
+ * JOIN 을 풀어 단일 테이블 쿼리 2회로 처리.
  */
 export async function findMemberCodesByThemeIds(
     db: Database,
@@ -62,33 +57,46 @@ export async function findMemberCodesByThemeIds(
         return new Map([["", [selfCode]]]);
     }
 
-    // schema 에서 themeId 는 bigint 라 string -> bigint 변환 필요
     const realIdsBigint = realIds.map((id) => BigInt(id));
 
-    const rows = await db
-        .selectDistinct({
-            themeId: dailyThemeMappings.themeId,
-            stockCode: dailyCandles.stockCode,
-        })
-        .from(dailyThemeMappings)
-        .innerJoin(
-            dailyCandles,
-            eq(dailyCandles.id, dailyThemeMappings.dailyCandleId),
-        )
-        .where(
-            and(
-                inArray(dailyThemeMappings.themeId, realIdsBigint),
-                eq(dailyCandles.tradeDate, tradeDate),
-            ),
-        );
+    // 1) 해당 날짜의 dailyCandle (id, stockCode)
+    const candlesOfDate = await db
+        .select({ id: dailyCandles.id, stockCode: dailyCandles.stockCode })
+        .from(dailyCandles)
+        .where(eq(dailyCandles.tradeDate, tradeDate));
+
+    const idToCode = new Map(candlesOfDate.map((c) => [c.id, c.stockCode]));
+    const candleIds = candlesOfDate.map((c) => c.id);
 
     const map = new Map<string, string[]>();
-    for (const r of rows) {
-        const tid = String(r.themeId);
-        const arr = map.get(tid) ?? [];
-        arr.push(r.stockCode);
-        map.set(tid, arr);
+
+    if (candleIds.length > 0) {
+        // 2) 매핑
+        const mappings = await db
+            .select({
+                themeId: dailyThemeMappings.themeId,
+                dailyCandleId: dailyThemeMappings.dailyCandleId,
+            })
+            .from(dailyThemeMappings)
+            .where(
+                and(
+                    inArray(dailyThemeMappings.themeId, realIdsBigint),
+                    inArray(dailyThemeMappings.dailyCandleId, candleIds),
+                ),
+            );
+
+        // 3) 조립
+        for (const m of mappings) {
+            const tid = String(m.themeId);
+            const code = idToCode.get(m.dailyCandleId);
+            if (!code) continue;
+            const arr = map.get(tid) ?? [];
+            if (!arr.includes(code)) arr.push(code);
+            map.set(tid, arr);
+        }
     }
+
+    // self 보장
     for (const id of realIds) {
         const arr = map.get(id) ?? [];
         if (!arr.includes(selfCode)) arr.push(selfCode);
@@ -98,11 +106,7 @@ export async function findMemberCodesByThemeIds(
 }
 
 /**
- * 테마를 저장하고 ID 를 반환합니다.
- *
- *  ⚠️ onConflictDoNothing + returning 조합은 충돌 시 빈 배열을 반환하므로,
- *      "있으면 그대로 두되 id 는 항상 받아오기" 위해 no-op UPDATE 패턴을 사용합니다.
- *      (PostgreSQL upsert + returning 의 표준 관용구)
+ * 테마 ID 를 upsert 하고 id 반환.
  */
 export async function saveThemeAndReturnId(
     db: Database,
@@ -121,7 +125,7 @@ export async function saveThemeAndReturnId(
 }
 
 /**
- * 일봉-테마 매핑을 저장합니다. 이미 존재하면 무시합니다.
+ * 테마-캔들 매핑. 중복은 무시.
  */
 export async function saveThemeMapping(
     db: Database,
