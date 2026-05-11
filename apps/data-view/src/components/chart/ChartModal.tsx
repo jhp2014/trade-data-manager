@@ -84,9 +84,15 @@ export function ChartModal() {
         }
     }, []);
 
+    const toggleMode = useCallback((e: KeyboardEvent) => {
+        e.preventDefault();
+        setMode(mode === "krx" ? "nxt" : "krx");
+    }, [mode, setMode]);
+
     useShortcut("Escape", close, { enabled: isOpen });
     useShortcut(" ", nextTab, { enabled: isOpen });
     useShortcut(["1", "2", "3"], jumpToTab, { enabled: isOpen });
+    useShortcut("Tab", toggleMode, { enabled: isOpen });
 
     useEffect(() => {
         if (!target) return;
