@@ -6,7 +6,7 @@ import styles from "./ModeTabs.module.css";
 
 const tabs = [
   { href: "/filtered", label: "Filtered" },
-  { href: "/from-date-theme", label: "From Date & Theme" },
+  { href: "/stock-chart", label: "Stock Chart" },
 ];
 
 export function ModeTabs() {
