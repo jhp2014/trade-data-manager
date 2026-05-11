@@ -76,3 +76,56 @@ function pickSelfMember(bundles: ThemeBundle[]): ThemeBundleMember | null {
     }
     return null;
 }
+
+/* ============================================================================
+ * Stock Chart 모드용 경량 액션
+ * ============================================================================
+ *
+ * 텍스트 입력에서 추출한 (stockCode, tradeDate) 로 테마 칩 목록을 빠르게
+ * 보여주기 위한 액션. fetchChartPreviewAction 의 캔들·오버레이 가공 비용을
+ * 생략하고 themeId / themeName 만 반환한다.
+ *
+ * 사용자가 칩을 클릭하면 ChartModal 이 열리면서 fetchChartPreviewAction 이
+ * (stockCode, tradeDate) 동일 인자로 호출되지만, 두 액션 모두 내부적으로
+ * getThemeBundle 을 호출하므로 DB I/O 자체는 동등 비용. (React Query 의
+ * 쿼리키는 분리되어 있어 캐시 공유는 하지 않는다.)
+ */
+
+export interface ChartThemeMeta {
+    themeId: string;
+    themeName: string;
+}
+
+export interface StockThemesDTO {
+    themes: ChartThemeMeta[];
+    /** self 종목 이름 (헤더 표시용) */
+    selfStockName: string;
+}
+
+export async function fetchStockThemesAction(params: {
+    stockCode: string;
+    tradeDate: string;
+}): Promise<Result<{ data: StockThemesDTO }>> {
+    try {
+        const db = getDataViewDb();
+        const bundles = await getThemeBundle(db, {
+            stockCode: params.stockCode,
+            tradeDate: params.tradeDate,
+        });
+
+        const self = pickSelfMember(bundles);
+        const themes: ChartThemeMeta[] = bundles.map((b) => ({
+            themeId: b.themeId,
+            themeName: b.themeName,
+        }));
+
+        return okResult({
+            data: {
+                themes,
+                selfStockName: self?.stockName ?? params.stockCode,
+            },
+        });
+    } catch (err) {
+        return errResult(err);
+    }
+}
