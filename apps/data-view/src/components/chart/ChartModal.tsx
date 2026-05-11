@@ -6,12 +6,12 @@ import { useChartPreview } from "@/hooks/useChartPreview";
 import { useShortcut } from "@/hooks/useShortcut";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useUiStore } from "@/stores/useUiStore";
+import { composeUnix } from "@/lib/serialization";
 import { RealDailyChart } from "./RealDailyChart";
 import { RealMinuteChart } from "./RealMinuteChart";
 import { RealThemeOverlayChart } from "./RealThemeOverlayChart";
 import type { ActivePredicateInstance } from "./RealThemeOverlayChart";
 import type { MemberPredicate } from "@/lib/member/predicate";
-import { chipLabelForPredicate } from "@/lib/member/predicate";
 import styles from "./ChartModal.module.css";
 
 const TAB_ORDER = ["minute", "daily", "overlay"] as const;
@@ -31,7 +31,23 @@ export function ChartModal() {
     const mode = useUiStore((s) => s.chartPriceMode);
     const setMode = useUiStore((s) => s.setChartPriceMode);
 
-    const { data, isLoading } = useChartPreview(target);
+    // 데이터 조회: (stockCode, tradeDate) 만 사용 (tradeTime 은 마커용으로만 사용)
+    const queryParams = target
+        ? { stockCode: target.stockCode, tradeDate: target.tradeDate }
+        : null;
+    const { data, isLoading } = useChartPreview(queryParams);
+
+    // 마커 시각은 클라이언트에서 계산
+    const markerTime = useMemo(
+        () => (target ? composeUnix(target.tradeDate, target.tradeTime) : null),
+        [target],
+    );
+
+    // 현재 row 의 테마에 해당하는 오버레이만 선택
+    const activeTheme = useMemo(() => {
+        if (!data || !target) return null;
+        return data.themes.find((t) => t.themeId === target.themeId) ?? null;
+    }, [data, target]);
 
     const { instances } = useFilterState();
 
@@ -97,13 +113,11 @@ export function ChartModal() {
                         <span className={styles.meta}>
                             {target.tradeDate} {target.tradeTime}
                         </span>
-                        {data && data.themes.length > 0 && (
+                        {activeTheme && (
                             <div className={styles.headerThemes}>
-                                {data.themes.map((t) => (
-                                    <span key={t.themeId} className={styles.headerThemeChip}>
-                                        #{t.themeName}
-                                    </span>
-                                ))}
+                                <span className={styles.headerThemeChip}>
+                                    #{activeTheme.themeName}
+                                </span>
                             </div>
                         )}
                     </div>
@@ -138,14 +152,14 @@ export function ChartModal() {
                 <div className={styles.body}>
                     <div className={styles.chartArea}>
                         {isLoading ? (
-                            <div className={styles.loading}>차트 로딩 중...</div>
+                            <div className={styles.loading}>차트 데이터 로딩중...</div>
                         ) : data ? (
                             <>
                                 {tab === "minute" && (
                                     <RealMinuteChart
                                         candles={data.minute}
-                                        markerTime={data.markerTime}
-                                        themeOverlay={data.themeOverlay}
+                                        markerTime={markerTime}
+                                        themeOverlay={activeTheme?.overlaySeries ?? []}
                                         priceLines={target.priceLines}
                                         prevCloseKrx={data.prevCloseKrx}
                                         prevCloseNxt={data.prevCloseNxt}
@@ -159,8 +173,8 @@ export function ChartModal() {
                                 )}
                                 {tab === "overlay" && (
                                     <RealThemeOverlayChart
-                                        data={data.themeOverlay}
-                                        markerTime={data.markerTime}
+                                        data={activeTheme?.overlaySeries ?? []}
+                                        markerTime={markerTime}
                                         activePredicateInstances={activePredicateInstances}
                                         activePools={activePoolsForChart}
                                     />

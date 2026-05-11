@@ -4,18 +4,31 @@ import { getThemeBundle } from "@trade-data-manager/data-core";
 import type { ThemeBundle, ThemeBundleMember } from "@trade-data-manager/data-core";
 import { getDataViewDb } from "./db";
 import { fillMissingMinuteCandles } from "@/lib/chartPadding";
-import { composeUnix, dateToUnix } from "@/lib/serialization";
+import { dateToUnix } from "@/lib/serialization";
 import { type Result, okResult, errResult } from "@/lib/result";
 import { toDailyChartCandle, buildMinuteCandles } from "@/lib/chart/mappers";
-import { buildThemeOverlay } from "@/lib/chart/overlay";
-import type { ChartPreviewDTO } from "@/types/chart";
+import { buildThemeOverlayForBundle } from "@/lib/chart/overlay";
+import type { ChartPreviewDTO, ChartThemeOverlay } from "@/types/chart";
 
-export type { DailyCandle, MinuteCandle, ChartOverlayPoint, ChartLinePoint, ChartOverlaySeries, ChartPreviewDTO } from "@/types/chart";
+export type {
+    DailyCandle,
+    MinuteCandle,
+    ChartOverlayPoint,
+    ChartLinePoint,
+    ChartOverlaySeries,
+    ChartThemeOverlay,
+    ChartPreviewDTO,
+} from "@/types/chart";
 
+/**
+ * (stockCode, tradeDate) 1회 조회로 모든 테마 번들을 가져와
+ * 테마별 오버레이 시리즈를 묶어 응답.
+ *
+ * tradeTime 은 server 가 알 필요 없음 (마커 위치는 클라이언트 책임).
+ */
 export async function fetchChartPreviewAction(params: {
     stockCode: string;
     tradeDate: string;
-    tradeTime: string;
 }): Promise<Result<{ data: ChartPreviewDTO }>> {
     try {
         const db = getDataViewDb();
@@ -27,20 +40,30 @@ export async function fetchChartPreviewAction(params: {
         const self = pickSelfMember(bundles);
         const daily = self ? self.daily.map(toDailyChartCandle) : [];
         const minute = self ? fillMissingMinuteCandles(buildMinuteCandles(self.minute)) : [];
-        const themeOverlay = buildThemeOverlay(bundles, params.stockCode);
-        const markerTime = composeUnix(params.tradeDate, params.tradeTime);
-        const themes = bundles.map((b) => ({
-            themeId: b.themeId,
-            themeName: b.themeName,
-        }));
 
-        // 진입일 일봉의 prevClose 추출 (분봉 가격 라인 % 변환 기준값)
+        // 진입일 prevClose (분봉 가격 라인 % 변환 기준)
         const entryTime = dateToUnix(params.tradeDate);
         const entryCandle = daily.find((c) => c.time === entryTime) ?? null;
         const prevCloseKrx = entryCandle?.prevCloseKrx ?? null;
         const prevCloseNxt = entryCandle?.prevCloseNxt ?? null;
 
-        return okResult({ data: { daily, minute, themeOverlay, markerTime, themes, prevCloseKrx, prevCloseNxt } });
+        const themes: ChartThemeOverlay[] = bundles.map((b) => ({
+            themeId: b.themeId,
+            themeName: b.themeName,
+            overlaySeries: buildThemeOverlayForBundle(b, params.stockCode),
+        }));
+
+        return okResult({
+            data: {
+                daily,
+                minute,
+                selfStockCode: params.stockCode,
+                selfStockName: self?.stockName ?? params.stockCode,
+                prevCloseKrx,
+                prevCloseNxt,
+                themes,
+            },
+        });
     } catch (err) {
         return errResult(err);
     }

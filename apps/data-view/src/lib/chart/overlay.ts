@@ -1,14 +1,13 @@
 /**
- * 테마 오버레이 시리즈 조립 도메인 규칙.
- *  - self를 첫 번째에 배치
- *  - peers는 마지막 시점 등락률 내림차순 정렬
- *  - CHART_OVERLAY_MAX_SERIES로 자름
+ * 테마 번들 → 오버레이 시리즈 변환 헬퍼.
+ *  - self 는 항상 포함
+ *  - peers 는 최종값 기준 내림차순 정렬
+ *  - CHART_OVERLAY_MAX_SERIES 로 컷
  * See: lib/chart/mappers.ts (buildOverlayPoints), lib/chartPadding.ts
  */
 
 import type { ThemeBundle, ThemeBundleMember } from "@trade-data-manager/data-core";
 import type { ChartOverlaySeries } from "@/types/chart";
-// peers 정렬 기준: 마지막 시점 valueNxt 고정 (모드 전환 시 색상 매핑 불변)
 import { fillMissingOverlayPoints } from "@/lib/chartPadding";
 import { buildOverlayPoints } from "./mappers";
 import { CHART_OVERLAY_MAX_SERIES } from "@/lib/constants";
@@ -20,44 +19,40 @@ export const PALETTE = [
     "#fb7185", "#22d3ee", "#fde047", "#c084fc", "#4ade80",
 ];
 
-export function buildThemeOverlay(
-    bundles: ThemeBundle[],
+/**
+ * 단일 테마 번들 → 오버레이 시리즈 배열.
+ * self 우선, peers 최종 등락률 내림차순, MAX_SERIES 컷.
+ */
+export function buildThemeOverlayForBundle(
+    bundle: ThemeBundle,
     selfStockCode: string,
 ): ChartOverlaySeries[] {
-    const memberMap = new Map<string, ThemeBundleMember>();
-    for (const b of bundles) {
-        for (const m of b.members) {
-            if (!memberMap.has(m.stockCode)) memberMap.set(m.stockCode, m);
-        }
-    }
+    const seriesByMember = new Map<string, { member: ThemeBundleMember; points: ReturnType<typeof fillMissingOverlayPoints> }>();
 
-    const seriesByCode = new Map<string, ReturnType<typeof fillMissingOverlayPoints>>();
-    for (const [code, m] of memberMap.entries()) {
+    for (const m of bundle.members) {
         const points = buildOverlayPoints(m.minute, m.features);
         if (points.length === 0) continue;
-        seriesByCode.set(code, fillMissingOverlayPoints(points));
+        seriesByMember.set(m.stockCode, { member: m, points: fillMissingOverlayPoints(points) });
     }
 
     const result: ChartOverlaySeries[] = [];
 
-    const selfPoints = seriesByCode.get(selfStockCode);
-    if (selfPoints && selfPoints.length > 0) {
-        const selfMember = memberMap.get(selfStockCode)!;
+    const selfEntry = seriesByMember.get(selfStockCode);
+    if (selfEntry) {
         result.push({
             stockCode: selfStockCode,
-            stockName: selfMember.stockName,
+            stockName: selfEntry.member.stockName,
             isSelf: true,
-            series: selfPoints,
+            series: selfEntry.points,
         });
     }
 
     const peers: ChartOverlaySeries[] = [];
-    for (const [code, points] of seriesByCode.entries()) {
+    for (const [code, { member, points }] of seriesByMember.entries()) {
         if (code === selfStockCode) continue;
-        const m = memberMap.get(code)!;
         peers.push({
             stockCode: code,
-            stockName: m.stockName,
+            stockName: member.stockName,
             isSelf: false,
             series: points,
         });
@@ -72,7 +67,7 @@ export function buildThemeOverlay(
     return [...result, ...peers.slice(0, remain)];
 }
 
-/** 종목 코드 → 색상 매핑. 두 차트(분봉/오버레이)가 동일한 색상을 공유하도록 한다. */
+/** 시리즈 배열에 색상을 할당. 첫(자기 종목)에는 검정색. */
 export function assignSeriesColors(series: ChartOverlaySeries[]): Map<string, string> {
     const map = new Map<string, string>();
     series.forEach((s, idx) => {
