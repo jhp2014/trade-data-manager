@@ -37,7 +37,7 @@ export async function parseCsvFile(
         const lineNum = i + 2; // 헤더가 1행
 
         const stockCode = (raw["stockCode"] ?? raw["stock_code"] ?? "").replace(/^'/, "");
-        if (!/^\d{6}$/.test(stockCode)) {
+        if (!/^[A-Z0-9]{6}$/i.test(stockCode)) {
             errors.push({ line: lineNum, message: `stockCode 형식 오류: "${stockCode}"` });
             continue;
         }

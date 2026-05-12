@@ -4,23 +4,19 @@
  * 등록된 파서를 순서대로 시도해서 첫 번째로 성공한 결과를 반환한다.
  *
  * 파서 우선순위:
- *   1) imageFilename — 위치 고정형 (날짜_종목코드_...)
- *   2) csvLine       — 위치 무관, CSV 한 줄
+ *   1) tokenized — 위치 무관, 다양한 구분자로 분리
  *
- * imageFilename 을 먼저 시도하는 이유: csvLine.canParse 가 "," 포함 여부만
- * 검사하므로, 이미지 파일명에 우연히 ","가 섞여 있어도 imageFilename 이
+ * tokenized 파서를 먼저 시도하는 이유: 더 유연한 파싱을 제공함
  * 선점하도록 한다 (방어적 순서).
  *
  * 새 파서 추가 시 CHART_TARGET_PARSERS 배열에 추가하면 끝 (확장 가능).
  */
 
-import { imageFilenameParser } from "./kinds/imageFilename";
-import { csvLineParser } from "./kinds/csvLine";
 import type { ChartTargetParser, ParseChartTargetResult } from "./types";
+import { tokenizedParser } from "./kinds/tokenized";
 
 export const CHART_TARGET_PARSERS: readonly ChartTargetParser[] = [
-    imageFilenameParser,
-    csvLineParser,
+    tokenizedParser,
 ];
 
 /**

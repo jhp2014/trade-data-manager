@@ -5,7 +5,7 @@
  * 정규화 기능을 제공한다.
  */
 
-const STOCK_CODE_RE = /^\d{6}$/;
+const STOCK_CODE_RE = /^[A-Z0-9]{6}$/i;
 const DATE_RES: readonly RegExp[] = [
     /^(\d{4})-(\d{2})-(\d{2})$/,    // YYYY-MM-DD
     /^(\d{4})\.(\d{2})\.(\d{2})$/,  // YYYY.MM.DD

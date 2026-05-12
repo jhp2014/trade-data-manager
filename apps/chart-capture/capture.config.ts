@@ -55,7 +55,7 @@ export function loadConfig(overrides: Partial<CaptureConfig> = {}): CaptureConfi
             height: envInt("CAPTURE_BOX_H", 1400),
         },
         dailyMinuteRatio: [1, 1],
-        filenameTemplate: "{tradeDate}_{stockCode}_{stockName}_{variant}.png",
+        filenameTemplate: "{tradeDate}_{stockName}_{stockCode}_{variant}.png",
         dateFormat: "YYYY.MM.DD",
         variants: ["KRX", "NXT"],
         overwrite: true,

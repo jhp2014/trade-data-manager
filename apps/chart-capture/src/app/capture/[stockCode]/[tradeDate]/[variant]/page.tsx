@@ -22,7 +22,7 @@ export default async function CapturePage({ params }: PageProps) {
     const { stockCode, tradeDate, variant } = params;
 
     // 파라미터 검증
-    if (!/^\d{6}$/.test(stockCode)) return notFound();
+    if (!/^[A-Z0-9]{6}$/i.test(stockCode)) return notFound();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) return notFound();
     if (variant !== "KRX" && variant !== "NXT") return notFound();
 

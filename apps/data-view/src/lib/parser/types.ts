@@ -18,7 +18,7 @@ export interface ParsedChartTarget {
 }
 
 /** 파서 식별자 */
-export type ChartTargetParserKind = "imageFilename" | "csvLine";
+export type ChartTargetParserKind = "tokenized";
 
 /** 파서 인터페이스 */
 export interface ChartTargetParser {
