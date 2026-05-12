@@ -96,16 +96,11 @@ async function loadOneCsv(filePath: string): Promise<{
 
     const entries: DeckEntry[] = [];
     parsed.data.forEach((row, idx) => {
-        const stockCode = row.stockCode ?? "";
+        const stockCode = (row.stockCode ?? "").replace(/^'/, "");
         const tradeDate = row.tradeDate ?? "";
         const tradeTime = row.tradeTime ?? "";
 
-        if (!stockCode || !tradeDate || !tradeTime) {
-            throw new Error(
-                `[loadOneCsv] Missing required field in ${filePath} row ${idx + 2}: ` +
-                `stockCode="${stockCode}", tradeDate="${tradeDate}", tradeTime="${tradeTime}"`
-            );
-        }
+        if (!stockCode || !tradeDate || !tradeTime) return;
 
         const options: Record<string, string> = {};
         for (const k of optionKeys) {

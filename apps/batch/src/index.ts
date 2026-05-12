@@ -14,7 +14,7 @@ import { logger } from "./utils/logger.js";
  *  csv/failed/      — 처리 실패
  */
 
-const CSV_FOLDER = path.resolve(process.cwd(), "csv");
+const CSV_FOLDER = path.resolve(process.cwd(), process.env.CSV_FOLDER ?? "csv");
 
 async function main(): Promise<void> {
     const startedAt = Date.now();

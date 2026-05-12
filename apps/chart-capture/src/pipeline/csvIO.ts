@@ -36,7 +36,7 @@ export async function parseCsvFile(
         const raw = rawRows[i];
         const lineNum = i + 2; // 헤더가 1행
 
-        const stockCode = raw["stockCode"] ?? raw["stock_code"] ?? "";
+        const stockCode = (raw["stockCode"] ?? raw["stock_code"] ?? "").replace(/^'/, "");
         if (!/^\d{6}$/.test(stockCode)) {
             errors.push({ line: lineNum, message: `stockCode 형식 오류: "${stockCode}"` });
             continue;
@@ -58,7 +58,27 @@ export async function parseCsvFile(
         rows.push({ stockCode, tradeDate, lines });
     }
 
-    return { rows, errors };
+    const { deduped, duplicateCount } = dedupeRows(rows);
+    return { rows: deduped, errors, duplicateCount };
+}
+
+function dedupeRows(rows: CaptureCsvRow[]): {
+    deduped: CaptureCsvRow[];
+    duplicateCount: number;
+} {
+    const seen = new Set<string>();
+    const deduped: CaptureCsvRow[] = [];
+    let duplicateCount = 0;
+    for (const row of rows) {
+        const key = `${row.stockCode}|${row.tradeDate}`;
+        if (seen.has(key)) {
+            duplicateCount++;
+        } else {
+            seen.add(key);
+            deduped.push(row);
+        }
+    }
+    return { deduped, duplicateCount };
 }
 
 function timestampSuffix(): string {

@@ -35,4 +35,5 @@ export interface JobResult {
 export interface ParsedCsv {
     rows: CaptureCsvRow[];
     errors: Array<{ line: number; message: string }>;
+    duplicateCount: number;
 }

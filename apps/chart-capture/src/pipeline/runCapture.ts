@@ -85,8 +85,11 @@ export async function runCapture(config: CaptureConfig, options: RunCaptureOptio
     const summary = { csvFiles: csvFiles.length, rows: 0, jobs: 0, success: 0, skipped: 0, failed: 0, elapsedMs: 0 };
 
     for (const csvPath of csvFiles) {
-        const { rows, errors } = await parseCsvFile(csvPath, config);
+        const { rows, errors, duplicateCount } = await parseCsvFile(csvPath, config);
         const basename = path.basename(csvPath);
+        if (duplicateCount > 0) {
+            logger.warn(`[pipeline] ${basename}: 중복 row ${duplicateCount}건 제거 (동일 종목+날짜)`);
+        }
 
         if (errors.length > 0 && rows.length === 0) {
             // 파싱 전체 실패

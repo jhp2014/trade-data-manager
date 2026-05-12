@@ -22,6 +22,7 @@ export function StockChartClient() {
     const [committedTarget, setCommittedTarget] = useState<{
         stockCode: string;
         tradeDate: string;
+        priceLines?: number[];
     } | null>(null);
     // 동일 입력으로도 다시 트리거할 수 있도록 nonce 카운터를 둔다.
     const [commitNonce, setCommitNonce] = useState(0);
@@ -37,6 +38,7 @@ export function StockChartClient() {
         setCommittedTarget({
             stockCode: result.target.stockCode,
             tradeDate: result.target.tradeDate,
+            priceLines: result.target.priceLines,
         });
         setCommitNonce((n) => n + 1);
     }, [raw]);
@@ -61,7 +63,9 @@ export function StockChartClient() {
                 tradeTime: DEFAULT_TRADE_TIME,
                 themeId,
                 activePools: undefined,
-                priceLines: undefined,
+                priceLines: committedTarget.priceLines?.length
+                    ? { TARGET: committedTarget.priceLines }
+                    : undefined,
             });
         },
         [committedTarget, themesData, open],
@@ -97,7 +101,7 @@ export function StockChartClient() {
                         value={raw}
                         onChange={(e) => setRaw(e.target.value)}
                         onKeyDown={onKeyDown}
-                        placeholder="예: 2026.04.20_005930_엑스게이트_KRX  /  079550,비에이치아이,2026-04-20,..."
+                        placeholder="예: 2026-05-11&#9;'009540&#9;HD한국조선해양  /  079550,비에이치아이,2026-04-20  /  ... -pl 51000|41000"
                         aria-label="종목·날짜 입력"
                         spellCheck={false}
                         autoComplete="off"
@@ -134,9 +138,12 @@ export function StockChartClient() {
 
 function PreviewLine({ preview }: { preview: ParseChartTargetResult }) {
     if (preview.ok) {
+        const plText = preview.target.priceLines?.length
+            ? ` · pl: ${preview.target.priceLines.join(", ")}`
+            : "";
         return (
             <div className={`${styles.preview} ${styles.previewOk}`}>
-                ✓ {preview.target.stockCode} · {preview.target.tradeDate}
+                ✓ {preview.target.stockCode} · {preview.target.tradeDate}{plText}
                 <span className={styles.previewParser}>({preview.usedParser.label})</span>
             </div>
         );

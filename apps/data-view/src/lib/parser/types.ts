@@ -7,12 +7,14 @@
  * 파서 레지스트리 패턴 — FilterKind / ConditionKind 컨벤션과 동일.
  */
 
-/** 파싱 결과: 정규화된 종목코드 + 날짜 */
+/** 파싱 결과: 정규화된 종목코드 + 날짜 + 가격라인(선택) */
 export interface ParsedChartTarget {
     /** 6자리 숫자 문자열 */
     stockCode: string;
     /** "YYYY-MM-DD" 로 정규화된 날짜 */
     tradeDate: string;
+    /** -pl 플래그로 전달된 가격 목록 */
+    priceLines?: number[];
 }
 
 /** 파서 식별자 */
