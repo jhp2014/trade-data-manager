@@ -81,26 +81,13 @@ function dedupeRows(rows: CaptureCsvRow[]): {
     return { deduped, duplicateCount };
 }
 
-function timestampSuffix(): string {
-    const now = new Date();
-    const y = now.getFullYear();
-    const mo = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    const h = String(now.getHours()).padStart(2, "0");
-    const mi = String(now.getMinutes()).padStart(2, "0");
-    const s = String(now.getSeconds()).padStart(2, "0");
-    return `${y}${mo}${d}-${h}${mi}${s}`;
-}
-
 export async function moveCsvFile(
     filePath: string,
     targetDir: string,
     sidecarContent?: { ext: string; content: string },
 ): Promise<void> {
     await fs.mkdir(targetDir, { recursive: true });
-    const basename = path.basename(filePath, ".csv");
-    const suffix = timestampSuffix();
-    const destName = `${basename}_${suffix}.csv`;
+    const destName = path.basename(filePath);
     const destPath = path.join(targetDir, destName);
 
     await fs.rename(filePath, destPath);
