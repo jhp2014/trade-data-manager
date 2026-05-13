@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { Pool } from "pg";
 import { createDb, type Database } from "@trade-data-manager/data-core";
 
@@ -10,7 +9,7 @@ export function getDataViewDb(): Database {
     if (!process.env.DATABASE_URL) {
         throw new Error(
             "[data-view] DATABASE_URL is not set. " +
-            "Add it to apps/data-view/.env.local"
+            "Add it to the root .env file."
         );
     }
     if (!globalForDb.__dataViewDbPool) {

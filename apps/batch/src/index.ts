@@ -1,5 +1,7 @@
 // src/index.ts
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve } from "path";
+config({ path: resolve(process.cwd(), "../../.env") });
 import path from "node:path";
 import { csvBatchService } from "./services/csv/csvBatchService.js";
 import { logger } from "./utils/logger.js";

@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve } from "path";
+config({ path: resolve(process.cwd(), "../../.env") });
 import { program } from "commander";
 import { loadConfig } from "../../capture.config";
 import { runCapture } from "../pipeline/runCapture";

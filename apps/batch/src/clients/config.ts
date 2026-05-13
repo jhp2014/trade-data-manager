@@ -1,5 +1,7 @@
 // src/clients/kiwoom/config.ts
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve } from "path";
+config({ path: resolve(process.cwd(), "../../.env") });
 import { z } from "zod";
 
 const envSchema = z.object({

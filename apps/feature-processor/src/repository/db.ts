@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve } from "path";
+config({ path: resolve(process.cwd(), "../../.env") });
 import { Pool } from "pg";
 import { createDb } from "@trade-data-manager/data-core";
 

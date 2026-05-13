@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve } from "path";
+config({ path: resolve(process.cwd(), "../../.env") });
 import { Pool } from "pg";
 import { createDb, type Database } from "@trade-data-manager/data-core";
 
@@ -10,7 +12,7 @@ export function getCaptureDb(): Database {
     if (!process.env.DATABASE_URL) {
         throw new Error(
             "[chart-capture] DATABASE_URL is not set. " +
-            "Add it to apps/chart-capture/.env",
+            "Add it to the root .env file.",
         );
     }
     if (!globalForDb.__captureDbPool) {

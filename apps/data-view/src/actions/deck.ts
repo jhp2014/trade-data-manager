@@ -4,7 +4,6 @@ import {
     getThemeSnapshotAt,
     STAT_AMOUNTS,
 } from "@trade-data-manager/data-core";
-import "dotenv/config";
 import { loadDecksFromDir, resolveDeckSubDir } from "@/deck";
 import type { DeckEntry } from "@/deck";
 import type {
