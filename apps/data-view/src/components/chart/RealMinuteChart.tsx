@@ -190,6 +190,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
         cumAmountMapRef.current = cumMap;
         amountSeries.setData(amountData);
         chartRef.current?.timeScale().fitContent();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [candles, mode]);
 
     // 마커 통합: 거래대금 임계 마커 + 진입 마커 (Point)
