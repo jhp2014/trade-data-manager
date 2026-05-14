@@ -76,7 +76,7 @@ async function captureJob(
     const url = `${baseUrl}/capture/${job.stockCode}/${job.tradeDate}/${job.variant}`;
 
     try {
-        await page.goto(url, { waitUntil: "networkidle", timeout: config.navTimeoutMs });
+        await page.goto(url, { waitUntil: "load", timeout: config.navTimeoutMs });
 
         // pre-ready 또는 empty 마커 중 먼저 도착하는 쪽 대기
         await Promise.race([

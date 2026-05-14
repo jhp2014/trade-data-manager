@@ -14,6 +14,7 @@ import type { MinuteCandle } from "@/lib/chartTypes";
 import type { LineSpec } from "@/types/capture";
 import { kstHHmm } from "@/lib/chartTime";
 import { computePriceLineChartValue, buildPriceLineOptions } from "@/lib/chart/priceLines";
+import { amountMarkerFor } from "@/lib/chart/amountMarker";
 
 interface Props {
     candles: MinuteCandle[];
@@ -130,6 +131,31 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
             }
         }
         amountSeries.setData(amountData);
+
+        // 거래대금 임계 마커 (작은 사각형, 캔들 위)
+        // candles는 시간 오름차순으로 들어오므로 별도 정렬 불필요
+        const markers: Array<{
+            time: Time;
+            position: "aboveBar";
+            color: string;
+            shape: "square";
+            text: string;
+            size: number;
+        }> = [];
+        for (const c of candles) {
+            const info = amountMarkerFor(c.amount);
+            if (!info) continue;
+            markers.push({
+                time: c.time as Time,
+                position: "aboveBar",
+                color: info.color,
+                shape: "square",
+                text: info.text,
+                size: 0,
+            });
+        }
+        candleSeries.setMarkers(markers);
+
         chartRef.current?.timeScale().fitContent();
 
         if (!onReadyCalled.current) {

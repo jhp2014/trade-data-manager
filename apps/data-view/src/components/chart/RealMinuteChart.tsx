@@ -13,6 +13,7 @@ import { MinuteTooltip } from "./tooltip/MinuteTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE, assignSeriesColors } from "@/lib/chart/overlay";
 import { buildPriceLineOptions, computePriceLineChartValue } from "@/lib/chart/priceLines";
+import { amountMarkerFor } from "@/lib/chart/amountMarker";
 
 interface Props {
     candles: MinuteCandle[];
@@ -191,12 +192,59 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
         chartRef.current?.timeScale().fitContent();
     }, [candles, mode]);
 
-    // 진입 시점 마커
+    // 마커 통합: 거래대금 임계 마커 + 진입 마커 (Point)
+    // lightweight-charts 제약:
+    //   1) 마커 배열은 time 오름차순으로 정렬되어야 함
+    //   2) 같은 time에 여러 마커 금지 → Map으로 중복 제거
+    //      (같은 봉이면 진입 마커 우선)
     useEffect(() => {
         const series = candleSeriesRef.current;
-        if (!series || markerTime == null) return;
-        series.setMarkers([{ time: markerTime as Time, position: "aboveBar", color: "#000000ff", shape: "arrowDown", text: "✅Point✅" }]);
+        if (!series) return;
+
+        type MarkerEntry = {
+            time: Time;
+            position: "aboveBar" | "belowBar";
+            color: string;
+            shape: "arrowDown" | "circle" | "square";
+            text: string;
+            size?: number;
+        };
+
+        const byTime = new Map<number, MarkerEntry>();
+
+        // 1) 거래대금 임계 마커 (작은 사각형, 캔들 위)
+        for (const c of candles) {
+            const info = amountMarkerFor(c.amount);
+            if (!info) continue;
+            byTime.set(c.time, {
+                time: c.time as Time,
+                position: "aboveBar",
+                color: info.color,
+                shape: "square",
+                text: info.text,
+                size: 0,
+            });
+        }
+
+        // 2) 진입 마커는 거래대금 마커를 덮어씀 (같은 봉이면 진입 마커가 우선)
+        if (markerTime != null) {
+            byTime.set(markerTime, {
+                time: markerTime as Time,
+                position: "aboveBar",
+                color: "#000000ff",
+                shape: "arrowDown",
+                text: "Point",
+            });
+        }
+
+        // 3) time 오름차순 정렬 후 setMarkers
+        const markers = Array.from(byTime.values()).sort(
+            (a, b) => (a.time as number) - (b.time as number),
+        );
+
+        series.setMarkers(markers);
     }, [markerTime, candles]);
+
 
     // 가격 라인 (분봉: prevClose 기준 % 변환, candleSeries에 직접 부착)
     const prevClose = mode === "nxt" ? (prevCloseNxt ?? null) : (prevCloseKrx ?? null);

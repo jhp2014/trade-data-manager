@@ -37,6 +37,7 @@
 | [ADR-003](./decisions/003-nxt-skip-not-fallback.md) | NXT 미지원 종목 skip (fallback 없음) | Accepted |
 | [ADR-004](./decisions/004-daily-no-line-label.md) | 일봉 차트 priceLine 라벨 제거 | Accepted |
 | [ADR-005](./decisions/005-high-rate-marker.md) | variant별 prevClose 기준 high-rate marker | Accepted |
+| [ADR-006](./decisions/006-goto-load-and-explicit-ready.md) | page.goto는 `load` + 명시적 ready signal 조합 사용 | Accepted |
 
 ---
 

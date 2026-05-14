@@ -63,6 +63,16 @@ Playwright                          Next Page
 - `page.waitForFunction(config.readySignal)`: 기본값 `() => !!window.__CHART_READY__`.
 - `page.locator("#capture-root").screenshot({ path: job.outputPath })`.
 
+
+### page.goto의 `waitUntil`
+
+`page.goto`는 항상 `waitUntil: "load"`를 사용한다. ready 판단은 위 셀렉터·`__CHART_READY__` 신호가 책임지므로 `networkidle`은 사용하지 않는다. 이유와 대안 검토는 [ADR-006](../decisions/006-goto-load-and-explicit-ready.md)을 참고한다.
+
+타임아웃 기본값은 다음과 같으며 환경변수로 오버라이드할 수 있다.
+
+- `navTimeoutMs`: 60000ms (`CAPTURE_NAV_TIMEOUT_MS`) — `page.goto`의 timeout.
+- `readyTimeoutMs`: 30000ms (`CAPTURE_READY_TIMEOUT_MS`) — pre-ready/empty race와 `waitForFunction`의 timeout. dev 모드 첫 컴파일을 수용하기 위한 기본값.
+
 ---
 
 ## 핵심 파일
@@ -82,6 +92,7 @@ Playwright                          Next Page
 
 - `page.evaluate`로 라인 데이터 주입 → [ADR-002](../decisions/002-page-evaluate-line-injection.md)
 - NXT 미지원 종목 skip → [ADR-003](../decisions/003-nxt-skip-not-fallback.md)
+- page.goto는 `load` + 명시적 ready signal 조합 → [ADR-006](../decisions/006-goto-load-and-explicit-ready.md)
 
 ---
 

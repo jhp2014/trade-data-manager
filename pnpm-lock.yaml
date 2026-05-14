@@ -222,6 +222,9 @@ importers:
       dayjs:
         specifier: ^1.11.10
         version: 1.11.20
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(gel@2.2.0)(pg@8.20.0)

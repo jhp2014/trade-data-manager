@@ -32,6 +32,12 @@ pnpm --filter chart-capture dev   # 터미널 A
 pnpm capture --external-server http://localhost:3939  # 터미널 B
 ```
 
+### prod vs dev
+
+- **일상 캡처는 `pnpm capture`(=`next start`) 사용을 권장한다.** prod 빌드는 라우트가 미리 컴파일되어 응답이 빠르고, HMR WebSocket이 없어 캡처 타이밍이 안정적이다.
+- `pnpm capture:dev`(=`next dev`)는 캡처 페이지 또는 차트 컴포넌트 코드를 수정하며 즉시 확인할 때만 사용한다. 첫 라우트 진입 시 온디맨드 컴파일 때문에 첫 캡처가 20~30초 걸릴 수 있다.
+- 자세한 배경: [ADR-006](./docs/decisions/006-goto-load-and-explicit-ready.md).
+
 ## CSV 형식
 
 ```csv

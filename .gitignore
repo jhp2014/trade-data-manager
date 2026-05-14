@@ -42,7 +42,4 @@ build/
 
 
 # Utils for AI
-/project_txt_export
-convert_flat.py
-
-/review-target
+/flattened-output
