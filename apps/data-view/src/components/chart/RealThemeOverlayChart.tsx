@@ -140,6 +140,7 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
         }
 
         chart.timeScale().fitContent();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data]);
 
     // 데이터 갱신: data 또는 mode 변경 시 setData (시리즈 재생성 없이 값만 swap)

@@ -41,15 +41,15 @@ export function buildPriceLineOptions(
     asPrice: boolean,
 ): CreatePriceLineOptions {
     const label = stripLinePrefix(key);
-    // const title = asPrice
-    //     ? `${label} ${price.toLocaleString()}`
-    //     : `${label} ${chartValue >= 0 ? "+" : ""}${chartValue.toFixed(2)}%`;
+    const title = asPrice
+        ? ``
+        : `${label} %`;
     return {
         price: chartValue,
         color: colorForPriceLineKey(key),
         lineStyle: LineStyle.Dashed,
         lineWidth: 1,
         axisLabelVisible: true,
-        title: label,
+        title: title,
     };
 }

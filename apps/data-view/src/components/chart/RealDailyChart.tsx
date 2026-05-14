@@ -188,6 +188,7 @@ export function RealDailyChart({ candles, priceLines }: Props) {
         }
         candleSeries.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [candles, mode]);
 
     // 가격 라인 (일봉: 가격 그대로, candleSeries에 직접 부착)
