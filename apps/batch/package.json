@@ -4,8 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "tsx src/index.ts",
     "build": "tsc",
-    "dev": "tsx src/index.ts"
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",
+    "clean:all": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules"
   },
   "dependencies": {
     "@trade-data-manager/data-core": "workspace:*",
@@ -22,6 +27,7 @@
     "@types/node": "^25.6.0",
     "@types/papaparse": "^5.5.2",
     "@types/pg": "^8.20.0",
+    "rimraf": "^6.0.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }

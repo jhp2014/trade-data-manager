@@ -6,13 +6,21 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "start": "turbo start",
     "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "test": "turbo test",
+    "clean": "turbo clean",
+    "clean:cache": "turbo clean:cache",
+    "clean:all": "turbo clean:all && rimraf node_modules",
+    "rebuild": "pnpm clean && pnpm build",
+    "fresh": "pnpm clean:all && pnpm install && pnpm build",
     "db:generate": "turbo db:generate",
     "db:push": "turbo db:push",
-    "db:studio": "turbo db:studio",
-    "test": "turbo test"
+    "db:studio": "turbo db:studio"
   },
   "devDependencies": {
+    "rimraf": "^6.0.1",
     "turbo": "^2.4.4",
     "typescript": "^6.0.3"
   },

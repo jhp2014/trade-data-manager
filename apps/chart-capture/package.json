@@ -4,11 +4,15 @@
     "private": true,
     "type": "commonjs",
     "scripts": {
+        "dev": "next dev -p 3939",
         "build": "next build",
-        "start:next": "next start -p ${CAPTURE_NEXT_PORT:-3939}",
+        "start": "next start -p 3939",
+        "type-check": "tsc --noEmit",
+        "clean": "rimraf .next",
+        "clean:cache": "rimraf .next node_modules/.cache .turbo tsconfig.tsbuildinfo",
+        "clean:all": "rimraf .next node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules",
         "capture": "tsx src/cli/index.ts",
-        "capture:dev": "tsx src/cli/index.ts --dev",
-        "type-check": "tsc --noEmit"
+        "capture:dev": "tsx src/cli/index.ts --dev"
     },
     "dependencies": {
         "@trade-data-manager/data-core": "workspace:*",
@@ -30,6 +34,7 @@
         "@types/react": "^18.3.11",
         "@types/react-dom": "^18.3.0",
         "@types/pg": "^8.20.0",
+        "rimraf": "^6.0.1",
         "tsx": "^4.21.0",
         "typescript": "^6.0.3"
     }
