@@ -268,7 +268,7 @@ pnpm --filter data-view build
 
 # 이후 매번
 pnpm --filter data-view start
-# → http://localhost:3000
+# → http://localhost:3100
 ```
 
 #### UI 개발 중

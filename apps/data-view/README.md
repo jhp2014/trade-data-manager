@@ -4,14 +4,26 @@
 
 ## 실행
 
+| 명령어 | 동작 | URL |
+|--------|------|-----|
+| `pnpm dev` | HMR 개발 서버 (코드 수정 시 사용) | http://localhost:3100 |
+| `pnpm build` | 프로덕션 빌드 (`.next/` 생성) | — |
+| `pnpm start` | 빌드 결과로 서버 기동 (데이터 탐색 시 추천) | http://localhost:3100 |
+
+루트에서 실행할 경우:
+
 ```bash
-pnpm dev          # http://localhost:3000
+pnpm --filter data-view dev
+pnpm --filter data-view build
+pnpm --filter data-view start
 ```
 
-필요한 환경 변수 (`.env.local`):
+### 환경 변수
+
+루트 `.env` 파일에 설정합니다 (Next.js 앱이 `next.config.mjs`를 통해 자동 로드):
 
 ```
-DATABASE_URL=postgresql://...   # @trade-data-manager/data-core DB 연결 문자열
+DATABASE_URL=postgresql://...   # PostgreSQL 연결 문자열
 DECKS_DIR=/path/to/decks        # CSV 덱 파일 루트 디렉터리
 ```
 
