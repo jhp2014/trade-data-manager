@@ -1,7 +1,12 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, execSync, type ChildProcess } from "child_process";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { logger } from "../lib/logger";
+
+// ESM 환경에서 __dirname 재구성
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export interface NextServerHandle {
     baseUrl: string;
@@ -31,9 +36,6 @@ export async function startNextServer(params: {
     appDir: string;
 }): Promise<NextServerHandle> {
     const { port, dev, startTimeoutMs, appDir } = params;
-    // TODO:: 삭제 예정
-    // const command = dev ? "next" : "next"; 
-    // const args = dev ? ["dev", "-p", String(port)] : ["start", "-p", String(port)];
 
     // Windows: pnpm.cmd / Unix: pnpm
     const isWindows = process.platform === "win32";
@@ -82,7 +84,6 @@ export async function startNextServer(params: {
 
             // Windows: taskkill로 프로세스 트리 전체 종료
             if (process.platform === "win32" && child.pid) {
-                const { execSync } = require("child_process");
                 try {
                     execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: "ignore" });
                 } catch {

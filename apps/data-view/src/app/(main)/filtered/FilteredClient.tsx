@@ -34,8 +34,14 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
 
     const [dir, setDir] = useQueryState("dir", parseAsString.withDefault(""));
 
-    const optionKeys = result.ok ? result.data.optionKeys : [];
-    const allEntries = result.ok ? result.data.entries : [];
+    const optionKeys = useMemo(
+        () => (result.ok ? result.data.optionKeys : []),
+        [result],
+    );
+    const allEntries = useMemo(
+        () => (result.ok ? result.data.entries : []),
+        [result],
+    );
 
     const optionRegistry = useMemo(
         () => buildOptionRegistry(allEntries, optionKeys),

@@ -2,7 +2,7 @@
     "name": "@trade-data-manager/chart-capture",
     "version": "0.1.0",
     "private": true,
-    "type": "commonjs",
+    "type": "module",
     "scripts": {
         "dev": "next dev -p 3939",
         "build": "next build",
@@ -16,24 +16,24 @@
     },
     "dependencies": {
         "@trade-data-manager/data-core": "workspace:*",
-        "drizzle-orm": "^0.45.2",
-        "next": "^14.2.15",
-        "react": "^18.3.1",
-        "react-dom": "^18.3.1",
-        "lightweight-charts": "^4.2.0",
-        "playwright": "^1.48.0",
         "commander": "^12.1.0",
         "csv-parse": "^5.5.6",
-        "pg": "^8.20.0",
         "dayjs": "^1.11.13",
-        "dotenv": "^16.4.5"
+        "dotenv": "^16.4.5",
+        "drizzle-orm": "^0.45.2",
+        "lightweight-charts": "^4.2.0",
+        "next": "^14.2.15",
+        "pg": "^8.20.0",
+        "playwright": "^1.48.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1"
     },
     "devDependencies": {
         "@trade-data-manager/tsconfig": "workspace:*",
         "@types/node": "^22.0.0",
+        "@types/pg": "^8.20.0",
         "@types/react": "^18.3.11",
         "@types/react-dom": "^18.3.0",
-        "@types/pg": "^8.20.0",
         "rimraf": "^6.0.1",
         "tsx": "^4.21.0",
         "typescript": "^6.0.3"
