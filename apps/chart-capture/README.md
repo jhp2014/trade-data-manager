@@ -64,6 +64,15 @@ stockCode,tradeDate,line_target,line_stop,line_entry
 | 일부 실패/스킵 | `input/processed/` | `.partial.log` |
 | 파싱 실패 | `input/failed/` | `.error.log` |
 
+## NXT 미지원 종목 처리
+
+KRX/NXT 두 variant 모두 항상 캡처됩니다. NXT 거래가 실제로 없는 종목은
+KRX와 동일한 차트가 NXT 파일명으로도 생성됩니다. 분류 작업 시 동일 차트 두 장이
+보일 수 있으니 이를 감안하세요.
+
+이는 키움 API의 `nxtEnable` 응답 신뢰도가 낮아 누락을 막기 위한 의도적 선택입니다.
+자세한 배경은 `docs/decisions/007-always-capture-both-variants.md` 참조.
+
 ## 종료 코드
 
 - `0`: 성공 또는 skipped만 있음

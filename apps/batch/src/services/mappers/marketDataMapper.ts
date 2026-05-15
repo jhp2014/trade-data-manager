@@ -23,11 +23,15 @@ type KiwoomMinuteCandle = KiwoomKa10080Response["stk_min_pole_chart_qry"][number
 // [1] 종목 마스터
 // ──────────────────────────────────────────────
 export function toStockInsert(info: KiwoomKa10100Response): StockInsert {
+    // 키움 응답의 변종(대소문자, 공백, null) 방어
+    // 단, 현재 chart-capture는 이 값을 신뢰하지 않고 항상 KRX/NXT 둘 다 캡처함.
+    // 컬럼은 참고용으로만 유지.
+    const nxtRaw = (info.nxtEnable ?? "").trim().toUpperCase();
     return {
         stockCode: info.code,
         stockName: info.name,
         marketName: info.marketName,
-        isNxtAvailable: info.nxtEnable === "Y",
+        isNxtAvailable: nxtRaw === "Y",
         regDay: toIsoDate(info.regDay),
     };
 }

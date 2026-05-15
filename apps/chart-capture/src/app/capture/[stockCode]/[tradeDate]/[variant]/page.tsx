@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { findStockByCode } from "@trade-data-manager/data-core";
 import { getCaptureDb } from "@/data/db";
 import { fetchChartData } from "@/data/fetchChartData";
 import { toDailyChartCandle, buildMinuteCandles } from "@/lib/mappers";
@@ -7,7 +6,6 @@ import { fillMissingMinuteCandles } from "@/lib/chartPadding";
 import { loadConfig } from "@root/capture.config";
 import { ChartCaptureClient } from "./ChartCaptureClient";
 
-// Next.js 캐시 없이 항상 최신 DB 데이터 사용
 export const dynamic = "force-dynamic";
 
 interface PageProps {
@@ -21,25 +19,11 @@ interface PageProps {
 export default async function CapturePage({ params }: PageProps) {
     const { stockCode, tradeDate, variant } = params;
 
-    // 파라미터 검증
     if (!/^[A-Z0-9]{6}$/i.test(stockCode)) return notFound();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) return notFound();
     if (variant !== "KRX" && variant !== "NXT") return notFound();
 
     const db = getCaptureDb();
-
-    // NXT 미지원 종목 + variant=NXT 조합 체크
-    if (variant === "NXT") {
-        const stock = await findStockByCode(db, { stockCode });
-        if (!stock || !stock.isNxtAvailable) {
-            return (
-                <div data-empty="true" data-reason="nxt-not-supported">
-                    SKIP
-                </div>
-            );
-        }
-    }
-
     const config = loadConfig();
     const { daily: dailyRaw, minute: minuteRaw } = await fetchChartData(db, {
         stockCode,

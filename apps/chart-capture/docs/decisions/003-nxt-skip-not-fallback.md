@@ -2,7 +2,10 @@
 
 ## 상태
 
-Accepted
+~~Accepted~~ **Superseded by ADR-007 (2026-05-15)**
+
+> 2026-05-15: 키움의 `nxtEnable` 응답이 부정확한 경우가 발견되어 NXT 미지원
+> 종목 skip 로직을 제거. 자세한 내용은 ADR-007 참조.
 
 ---
 

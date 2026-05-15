@@ -38,7 +38,7 @@
    - `parseCsvFile(csvPath, config)`로 `CaptureCsvRow[]`와 파싱 에러 목록을 반환받는다.
    - 파싱이 전체 실패하면 `.error.log` 동봉 후 `failedSubdir`로 이동.
    - `findStocksMapByCodes(db, { stockCodes })`로 종목 정보를 일괄 조회한다.
-   - row × variant 조합으로 `CaptureJob[]`을 생성한다. `isNxtAvailable === false`인 종목의 NXT variant는 `partialLog`에 기록하고 skip.
+   - row × variant 조합으로 `CaptureJob[]`을 생성한다. NXT 가능 여부와 무관하게 모든 variant에 대해 job을 만든다 (ADR-007).
 
 7. **job 실행** (`src/pipeline/playwrightDriver.ts`)
    - `runWithConcurrency(jobs, config.concurrency, fn)`로 job을 병렬 실행한다.
@@ -76,7 +76,7 @@
 ## 설계 결정
 
 - 별도 앱으로 분리 → [ADR-001](../decisions/001-separate-from-data-view.md)
-- NXT 미지원 종목 skip → [ADR-003](../decisions/003-nxt-skip-not-fallback.md)
+- KRX/NXT 항상 둘 다 캡처 → [ADR-007](../decisions/007-always-capture-both-variants.md)
 - page.evaluate로 라인 주입 → [ADR-002](../decisions/002-page-evaluate-line-injection.md)
 
 ---

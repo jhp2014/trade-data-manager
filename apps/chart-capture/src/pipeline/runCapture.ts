@@ -127,15 +127,6 @@ export async function runCapture(config: CaptureConfig, options: RunCaptureOptio
             }
 
             for (const variant of config.variants) {
-                if (variant === "NXT" && !stock.isNxtAvailable) {
-                    partialLog.push({
-                        rowDesc: `${row.stockCode} ${row.tradeDate} NXT`,
-                        reason: "skip-nxt-not-supported",
-                    });
-                    summary.skipped++;
-                    continue;
-                }
-
                 const outputPath = buildOutputPath({
                     template: config.filenameTemplate,
                     outputDir: config.outputDir,

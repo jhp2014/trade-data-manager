@@ -17,12 +17,11 @@
 ## 서버 컴포넌트 흐름 (`page.tsx`)
 
 1. `params.stockCode`가 6자리 숫자, `params.tradeDate`가 `YYYY-MM-DD`, `params.variant`가 `KRX` 또는 `NXT`인지 검증한다. 실패 시 `notFound()`.
-2. `variant === "NXT"`이고 `stock.isNxtAvailable === false`이면 `<div data-empty="true" data-reason="nxt-not-supported">` 반환.
-3. `fetchChartData(db, { stockCode, tradeDate, dailyLookbackDays })`로 일봉·분봉을 조회한다.
-4. 분봉이 0건이면 `<div data-empty="true" data-reason="no-minute-data">` 반환. (휴장일 등)
-5. `toDailyChartCandle`, `buildMinuteCandles`, `fillMissingMinuteCandles`로 DB raw → 차트 타입 변환.
-6. `tradeDate`에 해당하는 `entryCandle`을 찾아 `prevCloseKrx`, `prevCloseNxt`를 추출한다.
-7. `ChartCaptureClient`에 `daily`, `minute`, `variant`, `prevCloseKrx`, `prevCloseNxt`, `captureBoxW`, `captureBoxH`를 전달한다.
+2. `fetchChartData(db, { stockCode, tradeDate, dailyLookbackDays })`로 일봉·분봉을 조회한다.
+3. 분봉이 0건이면 `<div data-empty="true" data-reason="no-minute-data">` 반환. (휴장일 등)
+4. `toDailyChartCandle`, `buildMinuteCandles`, `fillMissingMinuteCandles`로 DB raw → 차트 타입 변환.
+5. `tradeDate`에 해당하는 `entryCandle`을 찾아 `prevCloseKrx`, `prevCloseNxt`를 추출한다.
+6. `ChartCaptureClient`에 `daily`, `minute`, `variant`, `prevCloseKrx`, `prevCloseNxt`, `captureBoxW`, `captureBoxH`를 전달한다.
 
 ---
 
@@ -45,8 +44,6 @@ Playwright                          Next Page
     |-- goto(url) ---------------------->|
     |                    (networkidle)   |
     |<-- data-pre-ready OR data-empty --|
-    |                                   |
-    | (data-empty 이면 skip 반환)        |
     |                                   |
     |-- page.evaluate(lines injection)->|
     |   window.__CAPTURE_LINES__ = []   |
@@ -91,7 +88,7 @@ Playwright                          Next Page
 ## 설계 결정
 
 - `page.evaluate`로 라인 데이터 주입 → [ADR-002](../decisions/002-page-evaluate-line-injection.md)
-- NXT 미지원 종목 skip → [ADR-003](../decisions/003-nxt-skip-not-fallback.md)
+- KRX/NXT 항상 둘 다 캡처 → [ADR-007](../decisions/007-always-capture-both-variants.md)
 - page.goto는 `load` + 명시적 ready signal 조합 → [ADR-006](../decisions/006-goto-load-and-explicit-ready.md)
 
 ---
