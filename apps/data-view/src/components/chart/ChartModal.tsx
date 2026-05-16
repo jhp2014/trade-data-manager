@@ -4,14 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useChartPreview } from "@/hooks/useChartPreview";
 import { useShortcut } from "@/hooks/useShortcut";
-import { useFilterState } from "@/hooks/useFilterState";
 import { useUiStore } from "@/stores/useUiStore";
 import { composeUnix } from "@/lib/serialization";
 import { RealDailyChart } from "./RealDailyChart";
 import { RealMinuteChart } from "./RealMinuteChart";
 import { RealThemeOverlayChart } from "./RealThemeOverlayChart";
-import type { ActivePredicateInstance } from "./RealThemeOverlayChart";
-import type { MemberPredicate } from "@/lib/member/predicate";
 import styles from "./ChartModal.module.css";
 
 const TAB_ORDER = ["minute", "daily", "overlay"] as const;
@@ -48,24 +45,6 @@ export function ChartModal() {
         if (!data || !target) return null;
         return data.themes.find((t) => t.themeId === target.themeId) ?? null;
     }, [data, target]);
-
-    const { instances } = useFilterState();
-
-    const activePredicateInstances = useMemo<ActivePredicateInstance[]>(
-        () =>
-            instances
-                .filter((i) => i.kind === "activeMembersInTheme")
-                .map((inst, idx) => {
-                    const value = inst.value as { predicate: MemberPredicate; countMin: number };
-                    return { id: inst.id, label: `Act#${idx + 1}`, predicate: value.predicate };
-                }),
-        [instances],
-    );
-
-    const activePoolsForChart = useMemo(
-        () => target?.activePools ?? [],
-        [target],
-    );
 
     const isOpen = !!target;
 
@@ -181,8 +160,6 @@ export function ChartModal() {
                                     <RealThemeOverlayChart
                                         data={activeTheme?.overlaySeries ?? []}
                                         markerTime={markerTime}
-                                        activePredicateInstances={activePredicateInstances}
-                                        activePools={activePoolsForChart}
                                     />
                                 )}
                             </>

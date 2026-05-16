@@ -6,10 +6,6 @@ export interface ChartModalTarget {
     tradeDate: string;
     tradeTime: string;
     themeId: string;
-    activePools?: Array<{
-        instanceId: string;
-        memberStockCodes: string[];
-    }>;
     priceLines?: Record<string, number[]>;
 }
 

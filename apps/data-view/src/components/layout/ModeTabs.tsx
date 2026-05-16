@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import styles from "./ModeTabs.module.css";
 
 const tabs = [
-  { href: "/filtered", label: "Filtered" },
   { href: "/stock-chart", label: "Stock Chart" },
 ];
 

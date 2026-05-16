@@ -24,7 +24,7 @@
 
 - **수집(batch)**: 키움 API를 통해 종목 정보, 일봉, 분봉, 테마 매핑을 수집하고 PostgreSQL에 정규화하여 저장합니다.
 - **가공(feature-processor)**: 저장된 분봉 데이터를 읽어 기술적 지표를 계산하고 피처 테이블에 저장합니다.
-- **시각화/분석(data-view, chart-capture)**: 저장된 데이터를 웹 UI로 탐색하거나, 차트를 PNG로 일괄 캡처하여 분류 작업에 활용합니다.
+- **시각화/분석(data-view, chart-capture)**: 저장된 데이터를 차트 웹 UI로 조회하거나, 차트를 PNG로 일괄 캡처하여 분류 작업에 활용합니다.
 
 ---
 
@@ -75,7 +75,7 @@ trade-data-manager/
     └─▶ minute_candle_features 테이블 UPSERT
 
 [Step 3-a] apps/data-view
-  웹 UI로 데이터 탐색 (필터, 차트 모달)
+  차트 뷰어 (종목 코드 + 날짜 → 분봉/일봉/테마 오버레이)
 
 [Step 3-b] apps/chart-capture
   CSV(종목/날짜) 입력 → KRX/NXT 차트 PNG 일괄 캡처
@@ -251,7 +251,7 @@ pnpm --filter feature-processor dev minute -- --all
 
 ### 7.3 data-view — 데이터 탐색 웹 (Next.js)
 
-**언제 쓰나**: 수집·가공된 데이터를 필터·차트로 탐색할 때.
+**언제 쓰나**: 수집·가공된 데이터를 차트로 조회할 때.
 
 **중요**: Next.js 앱은 `dev`와 `start`가 체감 속도가 크게 다릅니다.
 

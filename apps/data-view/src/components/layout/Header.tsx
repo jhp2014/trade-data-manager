@@ -6,7 +6,7 @@ export function Header() {
   return (
     <header className={styles.header}>
       <div className={styles.left}>
-        <Link href="/filtered" className={styles.logo}>
+        <Link href="/stock-chart" className={styles.logo}>
           Data View
         </Link>
         <ModeTabs />

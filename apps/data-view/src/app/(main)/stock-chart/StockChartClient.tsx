@@ -62,7 +62,6 @@ export function StockChartClient() {
                 tradeDate: committedTarget.tradeDate,
                 tradeTime: DEFAULT_TRADE_TIME,
                 themeId,
-                activePools: undefined,
                 priceLines: committedTarget.priceLines?.length
                     ? { TARGET: committedTarget.priceLines }
                     : undefined,

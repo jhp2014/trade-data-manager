@@ -12,7 +12,7 @@
 
 ### 1. 모달 열기
 
-1. `EntryRow`에서 종목 버튼 클릭 → `useChartModalStore.open({ stockCode, stockName, tradeDate, tradeTime, activePools, priceLines })`. `activePools`는 `derived.activePools`에서 `{ instanceId, memberStockCodes }` 배열로 변환해 동봉한다. `priceLines`는 `entry.priceLines` (CSV의 `line_` prefix 컬럼에서 파싱된 가격 배열). PeerRow에서 열 때는 `priceLines` 없음(undefined).
+1. `useChartModalStore.open({ stockCode, stockName, tradeDate, tradeTime, themeId, priceLines })`를 호출한다. `priceLines`는 `-pl` 플래그 또는 입력 형식에서 파싱된 가격 배열이다.
 2. `useChartModalStore`(Zustand)의 `target` 상태가 설정된다.
 3. `ChartModal` 컴포넌트가 `target !== null`이므로 마운트된다.
 4. 기본 탭은 `"minute"` (마운트 시 `useEffect`로 강제 초기화).
@@ -51,7 +51,7 @@
 |----|---------|--------|
 | `minute` | `RealMinuteChart` | `candles`, `markerTime`, `themeOverlay`, `priceLines`, `prevCloseKrx`, `prevCloseNxt` |
 | `daily` | `RealDailyChart` | `candles`, `priceLines` |
-| `overlay` | `RealThemeOverlayChart` | `data`, `markerTime`, `activePredicateInstances`, `activePools` |
+| `overlay` | `RealThemeOverlayChart` | `data`, `markerTime` |
 
 ### 5. 가격 라인 (ADR-015, ADR-016)
 

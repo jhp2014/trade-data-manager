@@ -5,7 +5,7 @@ import { QueryProvider } from "@/providers/QueryProvider";
 
 export const metadata: Metadata = {
     title: "Data View",
-    description: "Trade data manager — deck analysis",
+    description: "Trade data manager — stock chart viewer",
 };
 
 export default function RootLayout({

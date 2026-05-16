@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
 import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
-import type { MemberPredicate } from "@/lib/member/predicate";
-import { chipLabelForPredicate } from "@/lib/member/predicate";
 import { kstHHmm } from "@/lib/chartTime";
 import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
@@ -13,35 +11,16 @@ import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { OverlayTooltip } from "./tooltip/OverlayTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { SELF_COLOR, PALETTE } from "@/lib/chart/overlay";
-import styles from "./RealThemeOverlayChart.module.css";
-
-export interface ActivePredicateInstance {
-    id: string;
-    label: string;
-    // predicate is for hover label only — visibility uses precomputed stockCode sets
-    predicate: MemberPredicate;
-}
 
 interface Props {
     data: ChartOverlaySeries[];
     markerTime?: number | null;
-    activePredicateInstances?: ActivePredicateInstance[];
-    activePools?: Array<{
-        instanceId: string;
-        memberStockCodes: string[];
-    }>;
 }
 
-export function RealThemeOverlayChart({ data, markerTime, activePredicateInstances = [], activePools }: Props) {
+export function RealThemeOverlayChart({ data, markerTime }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const [selectedFilter, setSelectedFilter] = useState<"all" | string>("all");
 
     const mode = useUiStore((s) => s.chartPriceMode);
-
-    const activePoolsByInstance = useMemo<Map<string, Set<string>>>(() => {
-        if (!activePools) return new Map();
-        return new Map(activePools.map((p) => [p.instanceId, new Set(p.memberStockCodes)]));
-    }, [activePools]);
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
@@ -154,32 +133,6 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
         }
     }, [data, mode]);
 
-    // 가시성 업데이트: stockCode 집합 기반 (리스트 derivedMap과 항상 일치)
-    useEffect(() => {
-        if (selectedFilter === "all") {
-            seriesMetaRef.current.forEach((m) => m.api.applyOptions({ visible: true }));
-            return;
-        }
-        const stockCodeSet = activePoolsByInstance.get(selectedFilter);
-        if (!stockCodeSet) {
-            if (activePoolsByInstance.size > 0) {
-                console.warn("[RealThemeOverlayChart] selectedFilter not found in activePoolsByInstance — showing all");
-            }
-            seriesMetaRef.current.forEach((m) => m.api.applyOptions({ visible: true }));
-            return;
-        }
-        seriesMetaRef.current.forEach((m) => {
-            m.api.applyOptions({ visible: m.isSelf || stockCodeSet.has(m.stockCode) });
-        });
-    }, [selectedFilter, activePoolsByInstance, data]);
-
-    // 선택된 인스턴스가 사라지면 "all"로 리셋
-    useEffect(() => {
-        if (selectedFilter !== "all" && !activePredicateInstances.find((p) => p.id === selectedFilter)) {
-            setSelectedFilter("all");
-        }
-    }, [activePredicateInstances, selectedFilter]);
-
     // 진입 마커: self 시리즈에만
     useEffect(() => {
         if (markerTime == null) return;
@@ -190,29 +143,6 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-            {activePredicateInstances.length > 0 && (
-                <div className={styles.filterToggle}>
-                    <button
-                        type="button"
-                        className={`${styles.filterBtn} ${selectedFilter === "all" ? styles.filterBtnActive : ""}`}
-                        title="모든 종목 표시"
-                        onClick={() => setSelectedFilter("all")}
-                    >
-                        전체
-                    </button>
-                    {activePredicateInstances.map((inst) => (
-                        <button
-                            key={inst.id}
-                            type="button"
-                            className={`${styles.filterBtn} ${selectedFilter === inst.id ? styles.filterBtnActive : ""}`}
-                            title={chipLabelForPredicate(inst.predicate)}
-                            onClick={() => setSelectedFilter(inst.id)}
-                        >
-                            {inst.label}
-                        </button>
-                    ))}
-                </div>
-            )}
             <ChartTooltip
                 visible={tipState.visible}
                 x={tipState.x}
