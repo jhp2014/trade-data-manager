@@ -10,7 +10,15 @@
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist",
     "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",
-    "clean:all": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules"
+    "clean:all": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules",
+
+    "explore:token": "tsx scripts/explore/token.ts",
+    "explore:ka10100": "tsx scripts/explore/ka10100.ts",
+    "explore:ka10001": "tsx scripts/explore/ka10001.ts",
+    "explore:ka10080": "tsx scripts/explore/ka10080.ts",
+    "explore:ka10081": "tsx scripts/explore/ka10081.ts",
+    "explore:ka10080-paged": "tsx scripts/explore/ka10080-paginated.ts",
+    "explore:ka10081-paged": "tsx scripts/explore/ka10081-paginated.ts"
   },
   "dependencies": {
     "@trade-data-manager/data-core": "workspace:*",
