@@ -13,6 +13,8 @@ node_modules/
 logs/
 *.log
 
+apps/batch/logs/raw-samples/
+
 # OS generated files
 .DS_Store
 Thumbs.db
