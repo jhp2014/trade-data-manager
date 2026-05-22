@@ -58,7 +58,7 @@ ROOT = "."
 OUT = "../flattened-output"
 
 # 포함할 확장자 (점 없이, 소문자)
-EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "md"}
+EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "md", "css"}
 
 # 제외할 폴더명 (이름이 일치하면 통째로 스킵)
 EXCLUDE_DIRS = {
