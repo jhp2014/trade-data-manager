@@ -1,4 +1,5 @@
 import {
+    deleteThemeMappingsByStockAndDate,
     findDailyCandleByStockAndDate,
     findStockByCode,
     saveDailyCandles,
@@ -90,6 +91,15 @@ export class MarketService {
         }
 
         await saveMinuteCandles(db, rows);
+    }
+
+    /**
+     * [4-pre] 특정 종목/거래일의 기존 테마 매핑 전체 삭제.
+     * 배치 재실행 시 syncThemeMapping 전에 호출하여 테마를 교체한다.
+     */
+    @ServiceOperation("Theme-Clear")
+    async clearThemeMappings(stockCode: string, tradeDate: string) {
+        await deleteThemeMappingsByStockAndDate(db, { stockCode, tradeDate });
     }
 
     /**

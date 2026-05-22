@@ -66,6 +66,7 @@ export class CsvBatchService {
                 await marketService.syncDailyCandles(stockCode, apiDate);
                 await marketService.syncMinuteCandles(stockCode, tradeDate);
 
+                await marketService.clearThemeMappings(stockCode, tradeDate);
                 for (const theme of info.themes) {
                     await marketService.syncThemeMapping(stockCode, tradeDate, theme);
                 }

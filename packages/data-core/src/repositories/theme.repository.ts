@@ -125,6 +125,28 @@ export async function saveThemeAndReturnId(
 }
 
 /**
+ * 특정 종목/거래일의 테마 매핑 전체 삭제.
+ * 배치 재실행 시 기존 테마를 교체하기 위해 사용.
+ */
+export async function deleteThemeMappingsByStockAndDate(
+    db: Database,
+    params: { stockCode: string; tradeDate: string },
+): Promise<void> {
+    const candle = await db.query.dailyCandles.findFirst({
+        columns: { id: true },
+        where: and(
+            eq(dailyCandles.stockCode, params.stockCode),
+            eq(dailyCandles.tradeDate, params.tradeDate),
+        ),
+    });
+    if (!candle) return;
+
+    await db
+        .delete(dailyThemeMappings)
+        .where(eq(dailyThemeMappings.dailyCandleId, candle.id));
+}
+
+/**
  * 테마-캔들 매핑. 중복은 무시.
  */
 export async function saveThemeMapping(
