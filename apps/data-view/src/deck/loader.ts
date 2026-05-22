@@ -8,6 +8,14 @@ const REQUIRED_COLUMNS = ["stockCode", "tradeDate", "tradeTime"] as const;
 const PRICE_LINE_PREFIX = "line_";
 
 /**
+ * tradeTime이 비어 있을 때 채우는 fallback 시각.
+ * 사용자 매매 도메인에서 15:30은 진입 타점으로 사용되지 않으므로
+ * "진입하지 않은 row"를 장 마감 스냅샷 기준으로 평가하기 위한 값.
+ * See: docs/decisions/017-empty-trade-time-fallback.md
+ */
+const TRADE_TIME_FALLBACK = "15:30:00";
+
+/**
  * 지정 디렉토리 내의 모든 *.csv 파일을 로드해 하나의 LoadedDecks로 통합.
  * (stockCode, tradeDate, tradeTime) 기준 중복 제거 — 먼저 등장한 행 유지.
  * 컬럼명이 "line_"로 시작하면 optionKeys가 아닌 priceLineKeys로 분리 (ADR-015).
@@ -95,12 +103,15 @@ async function loadOneCsv(filePath: string): Promise<{
     const optionKeys = dataColumns.filter((h) => !h.startsWith(PRICE_LINE_PREFIX));
 
     const entries: DeckEntry[] = [];
-    parsed.data.forEach((row, idx) => {
+    parsed.data.forEach((row) => {
         const stockCode = (row.stockCode ?? "").replace(/^'/, "");
         const tradeDate = row.tradeDate ?? "";
-        const tradeTime = row.tradeTime ?? "";
+        const tradeTimeRaw = (row.tradeTime ?? "").trim();
 
-        if (!stockCode || !tradeDate || !tradeTime) return;
+        // tradeTime이 비어 있으면 장 마감 시각으로 fallback (ADR-017)
+        const tradeTime = tradeTimeRaw || TRADE_TIME_FALLBACK;
+
+        if (!stockCode || !tradeDate) return;
 
         const options: Record<string, string> = {};
         for (const k of optionKeys) {
