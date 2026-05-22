@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useChartPreview } from "@/hooks/useChartPreview";
 import { useShortcut } from "@/hooks/useShortcut";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useUiStore } from "@/stores/useUiStore";
 import { composeUnix } from "@/lib/serialization";
@@ -94,14 +95,8 @@ export function ChartModal() {
     useShortcut(["1", "2", "3"], jumpToTab, { enabled: isOpen });
     useShortcut("Tab", toggleMode, { enabled: isOpen });
 
-    useEffect(() => {
-        if (!target) return;
-        const prev = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-        return () => {
-            document.body.style.overflow = prev;
-        };
-    }, [target]);
+    // body scroll lock: 스택 방식으로 PeerListModal 과 안전하게 공존
+    useBodyScrollLock(isOpen);
 
     useEffect(() => {
         if (target) setTab("minute");

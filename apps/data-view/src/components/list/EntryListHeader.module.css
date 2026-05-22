@@ -6,9 +6,10 @@
     gap: var(--space-4);
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-default);
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    /* 가상화 컨테이너 외부에 형제로 배치되므로 sticky 불필요.
+       scrollbar-gutter: stable 로 본문 너비가 변하지 않으므로
+       padding-right 보정도 필요 없음. */
+    flex-shrink: 0;
 }
 
 .identityLabels {
