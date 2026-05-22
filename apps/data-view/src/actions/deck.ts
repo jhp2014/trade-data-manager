@@ -20,7 +20,6 @@ type DeckActionPayload = { data: LoadedDecksDTO; rows: ThemeRowData[] };
 /* ===========================================================
  * loadDeckAction
  * =========================================================== */
-
 export async function loadDeckAction(
     subDir: string = ""
 ): Promise<Result<DeckActionPayload>> {
@@ -49,15 +48,20 @@ export async function loadDeckAction(
 
         const db = getDataViewDb();
 
-        const rows: ThemeRowData[] = [];
-        for (const entry of decks.entries) {
-            const snapshots = await getThemeSnapshotAt(db, {
-                stockCode: entry.stockCode,
-                tradeDate: entry.tradeDate,
-                tradeTime: entry.tradeTime,
-            });
+        // 모든 entry에 대해 DB 스냅샷을 병렬로 조회
+        const snapshotsPerEntry = await Promise.all(
+            decks.entries.map((entry) =>
+                getThemeSnapshotAt(db, {
+                    stockCode: entry.stockCode,
+                    tradeDate: entry.tradeDate,
+                    tradeTime: entry.tradeTime,
+                }).then((snapshots) => ({ entry, snapshots })),
+            ),
+        );
 
-            // 모든 테마에서 self 멤버는 동일 — 첫 테마의 self 사용
+        const rows: ThemeRowData[] = [];
+        for (const { entry, snapshots } of snapshotsPerEntry) {
+            // 첫 번째 self 멤버를 찾아 self 메트릭을 추출
             const selfMember = snapshots
                 .map((s) => s.members.find((m) => m.isSelf))
                 .find((m) => m);
@@ -76,7 +80,7 @@ export async function loadDeckAction(
                     .filter((m) => !m.isSelf)
                     .map((m) => toStockMetricsDTO(m, STAT_AMOUNTS));
 
-                // 테마 내 등락률 순위 계산 (self 포함)
+                // 등락률 기준으로 내림차순 정렬 (self 포함)
                 const all: StockMetricsDTO[] = [self, ...peerDtos];
                 all.sort((a, b) => (b.closeRate ?? -Infinity) - (a.closeRate ?? -Infinity));
                 const selfRank = all.findIndex((s) => s.stockCode === self.stockCode) + 1;

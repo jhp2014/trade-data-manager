@@ -15,7 +15,7 @@ export function getDataViewDb(): Database {
     if (!globalForDb.__dataViewDbPool) {
         globalForDb.__dataViewDbPool = new Pool({
             connectionString: process.env.DATABASE_URL,
-            max: 10,
+            max: 30,
             idleTimeoutMillis: 30000,
         });
     }
