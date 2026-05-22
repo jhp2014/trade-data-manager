@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition, useMemo } from "react";
+import { useEffect, useState, useTransition, useMemo, useRef } from "react";
 import { useQueryState, parseAsString } from "nuqs";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ControlBar } from "@/components/deck/ControlBar";
 import { EntryRow } from "@/components/list/EntryRow";
 import { EntryListHeader } from "@/components/list/EntryListHeader";
@@ -9,6 +10,7 @@ import { EmptyState } from "@/components/deck/EmptyState";
 import { FilterChipBar } from "@/components/filter/FilterChipBar";
 import { FilterPanel } from "@/components/filter/FilterPanel";
 import { ChartModal } from "@/components/chart/ChartModal";
+import { PeerListModal } from "@/components/list/PeerListModal";
 import type { ThemeRowData, LoadedDecksDTO } from "@/types/deck";
 import { loadDeckAction } from "@/actions/deck";
 import { applyFilters } from "@/lib/filter/applyFilters";
@@ -16,6 +18,7 @@ import { computeRowDerived, rowKey } from "@/lib/filter/derived";
 import { KINDS } from "@/lib/filter/kinds";
 import { sortRows } from "@/lib/sort/sortRows";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useGlobalRowShortcuts } from "@/hooks/useGlobalRowShortcuts";
 import { buildOptionRegistry } from "@/lib/options/optionRegistry";
 import { useUiStore } from "@/stores/useUiStore";
 import styles from "./Filtered.module.css";
@@ -26,6 +29,11 @@ interface Props {
     | { ok: true; data: LoadedDecksDTO; rows: ThemeRowData[] }
     | { ok: false; error: string };
 }
+
+/** 한 row 의 기본 높이 추정값 (px). measureElement 가 실측해서 보정한다. */
+const ESTIMATED_ROW_HEIGHT = 60;
+/** 뷰포트 위/아래로 미리 마운트해둘 row 개수. */
+const VIRTUALIZER_OVERSCAN = 8;
 
 export function FilteredClient({ initialSubDir, initialResult }: Props) {
     const [result, setResult] = useState(initialResult);
@@ -101,6 +109,48 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [optionKeysKey]);
 
+    // 글로벌 단축키 등록 (Space=차트, 1=테마펼침, 2..N=Active펼침)
+    const hasOptions = optionKeys.length > 0;
+    useGlobalRowShortcuts({
+        activeInstances: activeMemberInstances,
+        hasOptions,
+    });
+
+    /* ───────── 가상화 셋업 ───────── */
+    const scrollParentRef = useRef<HTMLDivElement | null>(null);
+
+    const rowVirtualizer = useVirtualizer({
+        count: filteredSortedRows.length,
+        getScrollElement: () => scrollParentRef.current,
+        estimateSize: () => ESTIMATED_ROW_HEIGHT,
+        overscan: VIRTUALIZER_OVERSCAN,
+        // 안정적인 식별자 (idx 미포함) — 정렬/필터 변경 시 React 재사용 가능
+        getItemKey: (index) => rowKey(filteredSortedRows[index]),
+    });
+
+    // 필터/정렬 변경으로 행 집합이 바뀌면 스크롤을 최상단으로 리셋한다.
+    // virtualizer 내부 캐시도 함께 무효화하여 잘못된 측정 결과를 사용하지 않도록 한다.
+    //
+    // 키: row 개수 + 첫 row 의 식별자 정도면 사실상 모든 변화를 감지 가능.
+    //     완벽한 비교가 필요하지는 않고, "변했을 확률이 매우 높을 때 리셋" 으로 충분.
+    const resetKey = useMemo(() => {
+        if (filteredSortedRows.length === 0) return "empty";
+        const first = filteredSortedRows[0];
+        const last = filteredSortedRows[filteredSortedRows.length - 1];
+        return `${filteredSortedRows.length}|${rowKey(first)}|${rowKey(last)}`;
+    }, [filteredSortedRows]);
+
+    useEffect(() => {
+        if (scrollParentRef.current) {
+            scrollParentRef.current.scrollTop = 0;
+        }
+        rowVirtualizer.measure();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [resetKey]);
+
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    const totalHeight = rowVirtualizer.getTotalSize();
+
     return (
         <div className={styles.page}>
             <h1 className={styles.title}>Data View</h1>
@@ -165,21 +215,43 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
                         optionKeys={optionKeys}
                         optionRegistry={optionRegistry}
                     />
-                    <div className={styles.list}>
-                        {filteredSortedRows.map((r, idx) => (
-                            <EntryRow
-                                key={`${r.entry.stockCode}|${r.entry.tradeDate}|${r.entry.tradeTime}|${r.themeId}|${idx}`}
-                                row={r}
-                                optionKeys={optionKeys}
-                                derived={derivedMap.get(rowKey(r)) ?? { activePools: [] }}
-                                activeInstances={activeMemberInstances}
-                            />
-                        ))}
+                    <div
+                        ref={scrollParentRef}
+                        className={styles.list}
+                        data-virtual-scroll-container="true"
+                    >
+                        <div
+                            className={styles.listInner}
+                            style={{ height: `${totalHeight}px` }}
+                        >
+                            {virtualItems.map((virtualItem) => {
+                                const r = filteredSortedRows[virtualItem.index];
+                                return (
+                                    <div
+                                        key={virtualItem.key}
+                                        data-index={virtualItem.index}
+                                        ref={rowVirtualizer.measureElement}
+                                        className={styles.virtualRow}
+                                        style={{
+                                            transform: `translateY(${virtualItem.start}px)`,
+                                        }}
+                                    >
+                                        <EntryRow
+                                            row={r}
+                                            optionKeys={optionKeys}
+                                            derived={derivedMap.get(rowKey(r)) ?? { activePools: [] }}
+                                            activeInstances={activeMemberInstances}
+                                        />
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             )}
 
             <ChartModal />
+            <PeerListModal />
         </div>
     );
 }

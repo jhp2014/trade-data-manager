@@ -1,14 +1,14 @@
-.rowGroup {
-    border-bottom: 1px solid var(--border-subtle);
-}
-
 .row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 14px 16px;
     gap: var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
     transition: background var(--transition-fast);
+    /* 가상화 환경에서 measureElement 가 정확히 동작하도록 box-sizing 명시 */
+    box-sizing: border-box;
+    background: var(--bg-primary);
 }
 
 .row:hover {
@@ -151,48 +151,6 @@
     cursor: help;
 }
 
-/* peer rows */
-.peerList {
-    background: var(--bg-secondary);
-    padding: 4px 0;
-    border-top: 1px solid var(--border-subtle);
-}
-
-.peerRowGroup {
-    border-bottom: 1px solid var(--border-subtle);
-}
-
-.peerRowGroup:last-child {
-    border-bottom: none;
-}
-
-.peerRow {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px 10px 40px;
-    gap: var(--space-4);
-}
-
-.peerRow:hover {
-    background: var(--bg-tertiary);
-}
-
-.peerRank {
-    font-size: var(--fs-sm);
-    font-weight: var(--fw-medium);
-    color: var(--text-tertiary);
-    min-width: 24px;
-    font-variant-numeric: tabular-nums;
-}
-
-.peerEmpty {
-    padding: 16px;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: var(--fs-sm);
-}
-
 /* 옵션 컬럼 셀 */
 .optionsCell {
     display: flex;
@@ -266,12 +224,6 @@
     background: var(--bg-tertiary);
 }
 
-.activeChipActive {
-    border-color: var(--accent-primary);
-    background: var(--accent-bg);
-    color: var(--accent-primary);
-}
-
 .activeChipLabel {
     font-weight: var(--fw-semibold);
     margin-right: 4px;
@@ -280,15 +232,4 @@
 .activeChipRank {
     font-weight: normal;
     color: var(--text-secondary);
-}
-
-.activeChipActive .activeChipRank {
-    color: var(--accent-primary);
-}
-
-.peerListHeader {
-    padding: 6px 16px 4px 16px;
-    font-size: var(--fs-xs);
-    color: var(--text-secondary);
-    border-bottom: 1px solid var(--border-subtle);
 }
