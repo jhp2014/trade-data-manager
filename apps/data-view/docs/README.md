@@ -51,6 +51,7 @@
 | [ADR-014](./decisions/014-unified-chart-mode-toggle.md) | KRX/NXT 토글 모달 헤더 통합 | Accepted |
 | [ADR-015](./decisions/015-csv-line-prefix-price-line.md) | CSV `line_` prefix 가격 라인 컬럼 분리 | Accepted |
 | [ADR-016](./decisions/016-remove-indicator-abstraction.md) | ChartIndicator 추상화 제거 및 가격 라인 인라인화 | Accepted |
+| [ADR-017](./decisions/017-empty-trade-time-fallback.md) | 빈 tradeTime을 장 마감 시각으로 통일 | Accepted |
 
 ---
 

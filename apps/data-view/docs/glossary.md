@@ -22,6 +22,8 @@
 
 **`line_` prefix** — CSV 컬럼명 접두어. 이 prefix로 시작하는 컬럼은 옵션이 아닌 **가격 라인 컬럼**으로 분류된다. 값은 `"|"` 구분 다중 가격. 옵션 필터·picker에 노출되지 않는다. ([ADR-015](../docs/decisions/015-csv-line-prefix-price-line.md))
 
+**tradeTime fallback** — CSV에서 `tradeTime`이 비어 있으면 loader 단계에서 `"15:30:00"`으로 채워진다. "진입 안 한 row"는 옵션 컬럼(예: `skipReason`)으로 구분한다. ([ADR-017](./decisions/017-empty-trade-time-fallback.md))
+
 **sourceFile** — 해당 `DeckEntry`가 어떤 CSV 파일에서 왔는지 추적하기 위한 파일명 문자열.
 
 **duplicateCount** — 동일한 `(stockCode, tradeDate, tradeTime)` 조합이 여러 파일에 등장했을 때 제거된 수. 디버깅 목적.
