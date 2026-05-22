@@ -60,15 +60,27 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
 
     const key = rowKey(row);
 
-    // hover 진입 시 글로벌 hovered store 에 등록 (단축키 핸들러가 참조)
+    // 가상화 환경에서 row 가 mouseleave 없이 unmount 될 수 있으므로
+    // 안전망으로 unmount 시 자기 자신이면 hovered 를 해제한다.
     useEffect(() => {
-        if (!anchor) return;
-        setHovered({ key, row, activePools });
         return () => {
             clearHoveredIfMatches(key);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [anchor, key]);
+    }, [key]);
+
+    // hover panel 표시는 useHoverAnchor 의 150ms delay 를 따르지만,
+    // 단축키(Space=차트) 는 즉시 반응해야 하므로 hovered store 등록은
+    // delay 없이 mouseenter 시점에 바로 수행한다.
+    const handleMouseEnter = (e: React.MouseEvent) => {
+        bind.onMouseEnter(e);
+        setHovered({ key, row, activePools });
+    };
+
+    const handleMouseLeave = (e: React.MouseEvent) => {
+        bind.onMouseLeave(e);
+        clearHoveredIfMatches(key);
+    };
 
     const openThemeModal = () => {
         openPeerList({
@@ -115,7 +127,12 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
     };
 
     return (
-        <div className={styles.row} {...bind}>
+        <div
+            className={styles.row}
+            ref={bind.ref}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+        >
             <div className={styles.identityCol}>
                 {/* 1. 기본 테마 등수 — 항상 표시 */}
                 <button

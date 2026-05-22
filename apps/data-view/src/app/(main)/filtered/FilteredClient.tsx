@@ -131,14 +131,26 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
     // 필터/정렬 변경으로 행 집합이 바뀌면 스크롤을 최상단으로 리셋한다.
     // virtualizer 내부 캐시도 함께 무효화하여 잘못된 측정 결과를 사용하지 않도록 한다.
     //
-    // 키: row 개수 + 첫 row 의 식별자 정도면 사실상 모든 변화를 감지 가능.
-    //     완벽한 비교가 필요하지는 않고, "변했을 확률이 매우 높을 때 리셋" 으로 충분.
+    // 키 구성:
+    //   - dir: 덱 폴더 변경
+    //   - filteredSortedRows 의 개수 + 첫/마지막 row 식별자: 행 집합 변경
+    //   - instances 직렬화: 필터 조건 변경 (행 집합이 우연히 동일해도 감지)
+    // 행 전체를 직렬화하지 않고 인스턴스를 직렬화하여 비용을 낮춘다.
     const resetKey = useMemo(() => {
-        if (filteredSortedRows.length === 0) return "empty";
+        if (filteredSortedRows.length === 0) return `empty::${dir}`;
         const first = filteredSortedRows[0];
         const last = filteredSortedRows[filteredSortedRows.length - 1];
-        return `${filteredSortedRows.length}|${rowKey(first)}|${rowKey(last)}`;
-    }, [filteredSortedRows]);
+        const instancesKey = instances
+            .map((i) => `${i.id}:${i.kind}:${JSON.stringify(i.value)}`)
+            .join("|");
+        return [
+            dir,
+            filteredSortedRows.length,
+            rowKey(first),
+            rowKey(last),
+            instancesKey,
+        ].join("::");
+    }, [dir, filteredSortedRows, instances]);
 
     useEffect(() => {
         if (scrollParentRef.current) {
@@ -211,10 +223,7 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
 
             {result.ok && filteredSortedRows.length > 0 && (
                 <div className={styles.listArea}>
-                    <EntryListHeader
-                        optionKeys={optionKeys}
-                        optionRegistry={optionRegistry}
-                    />
+                    <EntryListHeader optionKeys={optionKeys} />
                     <div
                         ref={scrollParentRef}
                         className={styles.list}

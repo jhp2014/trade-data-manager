@@ -10,9 +10,8 @@ const DEFAULT_DELAY = 150;
  * 가상화 도입 후 고려사항:
  *  - 빠른 스크롤로 row 가 unmount 될 때 mouseleave 가 안 터질 수 있어
  *    cleanup 에서 명시적으로 anchor 를 해제한다.
- *  - 외부 스크롤 컨테이너가 스크롤될 때도 anchor 를 해제하기 위해
- *    `scrollContainerSelector` 옵션을 통해 capture-phase scroll 리스너를
- *    붙일 수 있다. (data-view 의 가상화 컨테이너에 data-attribute 부착)
+ *  - 가상화 컨테이너의 내부 스크롤까지 잡기 위해 window scroll 을
+ *    capture phase 로 listen 하여 anchor 를 해제한다.
  */
 export function useHoverAnchor(delayMs = DEFAULT_DELAY) {
     const [anchor, setAnchor] = useState<DOMRect | null>(null);

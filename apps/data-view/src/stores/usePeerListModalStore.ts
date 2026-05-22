@@ -5,8 +5,7 @@ import type { ThemeRowData, StockMetricsDTO } from "@/types/deck";
  * 펼침 영역(테마 peer / Active 풀)을 모달로 표시하기 위한 store.
  *
  * 가상화 환경에서 row 의 펼침이 동적 높이를 만들면 virtualizer 의
- * measureElement 가 매우 까다로워지므로, 펼침 자체를 별도 모달로
- * 옮긴다. (ADR-021 참조)
+ * measureElement 가 매우 까다로워지므로, 펼침 자체를 별도 모달로 옮긴다.
  */
 export type PeerListKind = "theme" | "active";
 

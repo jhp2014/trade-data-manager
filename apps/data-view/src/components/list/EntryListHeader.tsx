@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { OptionMeta } from "@/lib/options/optionRegistry";
 import { useUiStore } from "@/stores/useUiStore";
 import { COLUMNS } from "./columns/definitions";
 import { buildMetricsGridTemplate } from "@/lib/columns/gridTemplate";
@@ -10,7 +9,6 @@ import styles from "./EntryListHeader.module.css";
 
 interface Props {
     optionKeys: string[];
-    optionRegistry: Map<string, OptionMeta>;
 }
 
 export function EntryListHeader({ optionKeys }: Props) {
