@@ -22,6 +22,7 @@ export function StockChartClient() {
     const [committedTarget, setCommittedTarget] = useState<{
         stockCode: string;
         tradeDate: string;
+        tradeTime: string;            // 항상 채워진 상태로 저장 (없으면 DEFAULT_TRADE_TIME)
         priceLines?: number[];
     } | null>(null);
     // 동일 입력으로도 다시 트리거할 수 있도록 nonce 카운터를 둔다.
@@ -38,6 +39,7 @@ export function StockChartClient() {
         setCommittedTarget({
             stockCode: result.target.stockCode,
             tradeDate: result.target.tradeDate,
+            tradeTime: result.target.tradeTime ?? DEFAULT_TRADE_TIME,
             priceLines: result.target.priceLines,
         });
         setCommitNonce((n) => n + 1);
@@ -60,7 +62,7 @@ export function StockChartClient() {
                 stockCode: committedTarget.stockCode,
                 stockName: themesData.selfStockName,
                 tradeDate: committedTarget.tradeDate,
-                tradeTime: DEFAULT_TRADE_TIME,
+                tradeTime: committedTarget.tradeTime,
                 themeId,
                 activePools: undefined,
                 priceLines: committedTarget.priceLines?.length
@@ -138,12 +140,15 @@ export function StockChartClient() {
 
 function PreviewLine({ preview }: { preview: ParseChartTargetResult }) {
     if (preview.ok) {
+        const timeText = preview.target.tradeTime
+            ? ` 시간 ${preview.target.tradeTime.slice(0, 5)}`  // HH:MM만 표시
+            : "";
         const plText = preview.target.priceLines?.length
-            ? ` · pl: ${preview.target.priceLines.join(", ")}`
+            ? `, pl: ${preview.target.priceLines.join(", ")}`
             : "";
         return (
             <div className={`${styles.preview} ${styles.previewOk}`}>
-                ✓ {preview.target.stockCode} · {preview.target.tradeDate}{plText}
+                종목 {preview.target.stockCode} 날짜 {preview.target.tradeDate}{timeText}{plText}
                 <span className={styles.previewParser}>({preview.usedParser.label})</span>
             </div>
         );

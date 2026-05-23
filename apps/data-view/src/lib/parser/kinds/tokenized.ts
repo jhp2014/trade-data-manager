@@ -12,7 +12,7 @@
  */
 
 import type { ChartTargetParser, ParsedChartTarget } from "../types";
-import { isDateLike, isStockCode, normalizeDate } from "../utils";
+import { isDateLike, isStockCode, isTimeLike, normalizeDate, normalizeTime } from "../utils";
 
 // _ , \t 그리고 일반 공백을 모두 구분자로 취급
 const SEPARATOR_RE = /[_,\t ]+/;
@@ -30,6 +30,7 @@ export const tokenizedParser: ChartTargetParser = {
 
         let stockCode: string | null = null;
         let tradeDate: string | null = null;
+        let tradeTime: string | null = null;
 
         for (const token of tokens) {
             if (!stockCode && isStockCode(token)) {
@@ -39,11 +40,17 @@ export const tokenizedParser: ChartTargetParser = {
             if (!tradeDate && isDateLike(token)) {
                 const norm = normalizeDate(token);
                 if (norm) tradeDate = norm;
+                continue;
             }
-            if (stockCode && tradeDate) break;
+            if (!tradeTime && isTimeLike(token)) {
+                const norm = normalizeTime(token);
+                if (norm) tradeTime = norm;
+                continue;
+            }
+            if (stockCode && tradeDate && tradeTime) break;
         }
 
         if (!stockCode || !tradeDate) return null;
-        return { stockCode, tradeDate };
+        return { stockCode, tradeDate, tradeTime: tradeTime ?? undefined };
     },
 };

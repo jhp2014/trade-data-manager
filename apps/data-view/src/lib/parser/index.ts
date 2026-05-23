@@ -52,7 +52,7 @@ export function parseChartTarget(raw: string): ParseChartTargetResult {
             return {
                 ok: true,
                 target: {
-                    ...result,
+                    ...result,        // stockCode, tradeDate, tradeTime?
                     priceLines: priceLines.length > 0 ? priceLines : undefined,
                 },
                 usedParser: parser,

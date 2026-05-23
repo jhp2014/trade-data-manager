@@ -100,6 +100,8 @@
 
 **placeholder candle** — `fillMissingMinuteCandles`가 거래 없는 분에 채워 넣는 가짜 봉. OHLC는 직전 봉의 close 값, volume/amount는 0. lightweight-charts가 시간축에서 끊기지 않게 연속 표시하기 위해 필요하다. ([`src/lib/chartPadding.ts`](../src/lib/chartPadding.ts))
 
+**Stock Chart 입력** — 자유 형식 텍스트에서 종목코드(6자리), 날짜(YYYY-MM-DD/YYYY.MM.DD/YYYYMMDD), 시간(HH:MM 또는 HH:MM:SS)을 토큰 단위로 인식한다. 시간이 없으면 `"15:30:00"`으로 fallback. `-pl` 플래그로 가격선을 지정한다. 자세한 파서 동작은 [`src/lib/parser/`](../src/lib/parser/) 참조.
+
 ---
 
 ## Filter 영역
