@@ -17,24 +17,20 @@ import styles from "./PeerListModal.module.css";
  *
  *  - 본인 행 포함, 순위 순서대로 표시
  *  - 본인 행은 accent 배경으로 강조
- *  - row 클릭 → 차트 모달이 위에 뜨고, 닫아도 이 모달은 유지됨
- *    (ChartModal / PeerListModal 은 각각 독립 store 라 자연스럽게 동작)
- *  - ESC: PeerListModal 만 닫는다. ChartModal 이 떠있으면 ChartModal 이
- *    먼저 ESC 를 받도록 가드.
+ *  - row 클릭 → 이 모달을 닫고 ChartModal 만 띄운다 (모달 1개 정책).
+ *    ChartModal 의 테마 chip 으로 언제든 다른/같은 테마의 PeerListModal 로
+ *    되돌아갈 수 있으므로, 둘이 동시에 떠 있는 상황을 만들지 않는다.
+ *  - ESC: 단순히 PeerListModal 을 닫는다. 모달이 항상 1개이므로 가드 불필요.
  */
 export function PeerListModal() {
     const target = usePeerListModalStore((s) => s.target);
     const close = usePeerListModalStore((s) => s.close);
-    const chartTarget = useChartModalStore((s) => s.target);
 
     const isOpen = !!target;
 
-    // body scroll lock 은 스택 방식으로 ChartModal 과 안전하게 공존
     useBodyScrollLock(isOpen);
 
     const handleEsc = useCallback(() => {
-        // ChartModal 이 떠있으면 ChartModal 이 ESC 를 가져가도록 양보
-        if (useChartModalStore.getState().target !== null) return;
         close();
     }, [close]);
 
@@ -43,6 +39,8 @@ export function PeerListModal() {
     if (!target) return null;
 
     const metricsGrid = buildMetricsGridTemplate(target.hasOptions);
+    const selfStockCode = target.sourceRow.stockCode;
+    const sourcePriceLines = target.sourceRow.priceLines;
 
     return (
         <div className={styles.backdrop} onClick={close}>
@@ -107,6 +105,9 @@ export function PeerListModal() {
                                 themeId={target.themeId}
                                 hasOptions={target.hasOptions}
                                 metricsGrid={metricsGrid}
+                                selfStockCode={selfStockCode}
+                                sourcePriceLines={sourcePriceLines}
+                                closeModal={close}
                             />
                         ))
                     )}
@@ -123,6 +124,9 @@ function PeerListRow({
     themeId,
     hasOptions,
     metricsGrid,
+    selfStockCode,
+    sourcePriceLines,
+    closeModal,
 }: {
     entry: PeerListEntry;
     tradeDate: string;
@@ -130,6 +134,9 @@ function PeerListRow({
     themeId: string;
     hasOptions: boolean;
     metricsGrid: string;
+    selfStockCode: string;
+    sourcePriceLines: Record<string, number[]> | undefined;
+    closeModal: () => void;
 }) {
     const open = useChartModalStore((s) => s.open);
     const { anchor, bind } = useHoverAnchor();
@@ -151,12 +158,17 @@ function PeerListRow({
                     className={styles.stockBtn}
                     onClick={(e) => {
                         e.stopPropagation();
+                        // 모달 1개 정책: PeerListModal 닫고 ChartModal 만 띄움
+                        closeModal();
+                        const isClickedSelf = member.stockCode === selfStockCode;
                         open({
                             stockCode: member.stockCode,
                             stockName: member.stockName,
                             tradeDate,
                             tradeTime,
                             themeId,
+                            // self row 인 경우에만 sourceRow.priceLines 를 전달
+                            priceLines: isClickedSelf ? sourcePriceLines : undefined,
                         });
                     }}
                 >

@@ -133,6 +133,7 @@ export function useGlobalRowShortcuts({
                     themeId: row.themeId,
                     tradeDate: entry.tradeDate,
                     tradeTime: entry.tradeTime,
+                    priceLines: entry.priceLines,
                 },
             });
         };

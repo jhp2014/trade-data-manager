@@ -38,6 +38,9 @@ export interface PeerListModalTarget {
         themeId: string;
         tradeDate: string;
         tradeTime: string;
+        /** 해당 entry 가 들고 있던 priceLines. self row → ChartModal 진입 시에만 사용.
+         *  EntryRow 진입에서만 채워지고, chip / stock-chart 진입 시에는 비어있음. */
+        priceLines?: Record<string, number[]>;
     };
 }
 

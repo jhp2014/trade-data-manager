@@ -97,6 +97,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                 themeId: row.themeId,
                 tradeDate: entry.tradeDate,
                 tradeTime: entry.tradeTime,
+                priceLines: entry.priceLines,
             },
         });
     };
@@ -125,6 +126,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                 themeId: row.themeId,
                 tradeDate: entry.tradeDate,
                 tradeTime: entry.tradeTime,
+                priceLines: entry.priceLines,
             },
         });
     };
