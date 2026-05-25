@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     usePeerListModalStore,
     buildEntriesFromSnapshot,
@@ -9,12 +9,20 @@ import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useShortcut } from "@/hooks/useShortcut";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useHoverAnchor } from "@/hooks/useHoverAnchor";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { usePeerListSnapshot } from "@/hooks/usePeerListSnapshot";
 import { COLUMNS } from "./columns/definitions";
 import { buildMetricsGridTemplate } from "@/lib/columns/gridTemplate";
 import { RowHoverPanel } from "./RowHoverPanel";
+import {
+    TimeSlider,
+    timeStringToMinutes,
+    minutesToTimeString,
+} from "./TimeSlider";
 import type { PeerListEntry } from "@/stores/usePeerListModalStore";
 import styles from "./PeerListModal.module.css";
+
+const FETCH_DEBOUNCE_MS = 300;
 
 /**
  * 펼침 영역(테마 peer / Active 풀)을 모달로 표시한다.
@@ -22,13 +30,16 @@ import styles from "./PeerListModal.module.css";
  *  - 본인 행 포함, 순위 순서대로 표시
  *  - 본인 행은 accent 배경으로 강조
  *  - row 클릭 → 이 모달을 닫고 ChartModal 만 띄운다 (모달 1개 정책).
- *    ChartModal 의 테마 chip 으로 언제든 다른/같은 테마의 PeerListModal 로
- *    되돌아갈 수 있으므로, 둘이 동시에 떠 있는 상황을 만들지 않는다.
  *  - ESC: 단순히 PeerListModal 을 닫는다.
  *
  * 데이터 소스:
- *  - target.entries 가 있으면 그대로 사용 (EntryRow 진입 — 즉시 표시).
- *  - 없으면 useQuery (fetchPeerListAction) 결과 사용 (ChartModal chip 진입).
+ *  - target.entries 가 있고 슬라이더 시간이 초기값과 같으면 그대로 표시
+ *  - 그 외(슬라이더로 시간 변경했거나 chip 진입) 에는 useQuery 결과 사용
+ *
+ * 시간 슬라이더 (Theme 모드 전용):
+ *  - 08:00 ~ 20:00, 1분 step, 마우스 휠 지원
+ *  - 디바운스 300ms 후 fetchPeerListAction 호출 (React Query 캐시)
+ *  - row 클릭 시 ChartModal 에 현재 슬라이더 시간을 전달
  */
 export function PeerListModal() {
     const target = usePeerListModalStore((s) => s.target);
@@ -44,14 +55,38 @@ export function PeerListModal() {
 
     useShortcut("Escape", handleEsc, { enabled: isOpen });
 
-    // useQuery 는 조건부 호출 불가 — 항상 호출하되 enabled 로 컨트롤.
-    // target.entries 가 이미 있으면 fetch 하지 않는다.
-    const shouldFetch = !!target && !target.entries;
+    // 슬라이더 로컬 상태 (theme 모드에서만 의미가 있지만, hooks 일관성을 위해
+    // active 모드에서도 동일하게 둔다. active 모드는 슬라이더 UI 자체를 숨김.)
+    const initialMinutes = target ? timeStringToMinutes(target.tradeTime) : null;
+    const [minutes, setMinutes] = useState<number | null>(initialMinutes);
+
+    // target 이 바뀔 때마다(=새로 열릴 때마다) 슬라이더 초기화
+    useEffect(() => {
+        setMinutes(target ? timeStringToMinutes(target.tradeTime) : null);
+    }, [target]);
+
+    const debouncedMinutes = useDebouncedValue(minutes, FETCH_DEBOUNCE_MS);
+
+    const currentTime =
+        minutes !== null ? minutesToTimeString(minutes) : target?.tradeTime ?? "";
+    const queryTime =
+        debouncedMinutes !== null
+            ? minutesToTimeString(debouncedMinutes)
+            : target?.tradeTime ?? "";
+
+    const isSliderMode = target?.kind === "theme";
+    const initialTime = target?.tradeTime ?? "";
+
+    // entries 가 미리 채워져 있고 현재 시간이 초기값과 같으면 fetch 생략
+    const useStatic =
+        !!target?.entries && (!isSliderMode || currentTime === initialTime);
+
+    const shouldFetch = !!target && !useStatic;
     const fetchParams = shouldFetch
         ? {
             stockCode: target!.sourceRow.stockCode,
             tradeDate: target!.tradeDate,
-            tradeTime: target!.tradeTime,
+            tradeTime: queryTime,
             themeId: target!.themeId,
         }
         : null;
@@ -64,12 +99,24 @@ export function PeerListModal() {
 
     if (!target) return null;
 
-    const entries: PeerListEntry[] = target.entries ?? fetchedEntries ?? [];
-    const count = target.count ?? fetched?.members.length ?? 0;
+    // 표시 entries 결정:
+    //  - static 모드: target.entries
+    //  - fetch 모드: fetched 가 있으면 그것, 없으면 (디바운스 대기 중) target.entries 가 있으면 그걸로 가교
+    const entries: PeerListEntry[] = useStatic
+        ? target.entries!
+        : fetchedEntries ?? target.entries ?? [];
+
+    const count: number = useStatic
+        ? target.count ?? target.entries!.length
+        : fetched?.members.length ?? target.entries?.length ?? 0;
+
     const metricsGrid = buildMetricsGridTemplate(target.hasOptions);
     const selfStockCode = target.sourceRow.stockCode;
     const sourcePriceLines = target.sourceRow.priceLines;
-    const isLoading = shouldFetch && isFetching && !fetched;
+
+    // entries 가 아예 없는 초기 fetch 만 "불러오는 중" 표시
+    const isInitialFetching =
+        shouldFetch && isFetching && !fetched && (!target.entries || !useStatic && !fetchedEntries);
 
     return (
         <div className={styles.backdrop} onClick={close}>
@@ -100,6 +147,11 @@ export function PeerListModal() {
                     </button>
                 </header>
 
+                {/* 시간 슬라이더 — theme 모드 전용 */}
+                {isSliderMode && minutes !== null && (
+                    <TimeSlider minutes={minutes} onMinutesChange={setMinutes} />
+                )}
+
                 <div className={styles.listHeader}>
                     <div className={styles.listHeaderIdentity}>
                         <span className={styles.listHeaderLabel}>종목</span>
@@ -118,7 +170,7 @@ export function PeerListModal() {
                 </div>
 
                 <div className={styles.body}>
-                    {isLoading ? (
+                    {isInitialFetching ? (
                         <div className={styles.emptyRow}>불러오는 중…</div>
                     ) : entries.length === 0 ? (
                         <div className={styles.emptyRow}>
@@ -132,7 +184,7 @@ export function PeerListModal() {
                                 key={`${e.member.stockCode}|${e.rank}`}
                                 entry={e}
                                 tradeDate={target.tradeDate}
-                                tradeTime={target.tradeTime}
+                                tradeTime={currentTime}
                                 themeId={target.themeId}
                                 hasOptions={target.hasOptions}
                                 metricsGrid={metricsGrid}
