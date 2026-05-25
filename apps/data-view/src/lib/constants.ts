@@ -27,3 +27,9 @@ export const AMOUNT_KRW_TO_EOK = 1e8;
 
 /** 덱 항목 초기 페이지 사이즈 (현재 클라이언트 전체 렌더 — 추후 페이지네이션 기준값). */
 export const LIST_PAGE_SIZE = 100;
+
+/**
+ * PeerListModal row 에 항상 노출할 거래대금 누적 카운트 임계값(억 단위).
+ * 배열 순서 = 표시 순서. 첫 값이 dot 색상 판정 기준(최소 임계값).
+ */
+export const PEER_ROW_AMOUNT_HIGHLIGHT_THRESHOLDS_EOK = [50, 70, 100] as const;

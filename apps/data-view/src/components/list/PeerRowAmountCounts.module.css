@@ -1,0 +1,46 @@
+.container {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--fs-xs);
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.dotActive {
+    background: var(--accent-primary);
+}
+
+.dotInactive {
+    background: var(--rise);
+}
+
+.counts {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.threshold {
+    color: var(--text-tertiary);
+}
+
+.value {
+    color: var(--text-secondary);
+    font-weight: var(--fw-medium);
+}
