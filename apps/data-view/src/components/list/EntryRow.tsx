@@ -225,7 +225,7 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
                 anchor={anchor}
                 options={entry.options}
                 sourceFile={entry.sourceFile}
-                distribution={self.amountDistribution}
+                distribution={self.amountDistributionBucket}
             />
         </div>
     );

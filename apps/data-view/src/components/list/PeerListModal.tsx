@@ -169,7 +169,7 @@ function PeerListRow({
             <RowHoverPanel
                 anchor={anchor}
                 sourceFile=""
-                distribution={member.amountDistribution}
+                distribution={member.amountDistributionBucket}
             />
         </div>
     );

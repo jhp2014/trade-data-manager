@@ -30,6 +30,8 @@ export interface StockMetricsDTO {
   pullbackFromHigh: number | null;
   minutesSinceDayHigh: number | null;
   amountDistribution: Record<number, number> | null;
+  /** 버킷(threshold <= x < next threshold) 의미. hover panel 표시용. */
+  amountDistributionBucket: Record<number, number> | null;
 }
 
 export interface ThemeRowData {

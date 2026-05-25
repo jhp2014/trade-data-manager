@@ -27,6 +27,19 @@ export function toStockMetricsDTO(
         })()
         : null;
 
+    const distributionBucket: Record<number, number> | null = distribution
+        ? (() => {
+            const sorted = [...statAmounts].sort((a, b) => a - b);
+            const b: Record<number, number> = {};
+            for (let i = 0; i < sorted.length; i++) {
+                const cur = distribution[sorted[i]] ?? 0;
+                const next = i + 1 < sorted.length ? (distribution[sorted[i + 1]] ?? 0) : 0;
+                b[sorted[i]] = Math.max(0, cur - next);
+            }
+            return b;
+        })()
+        : null;
+
     return {
         stockCode: member.stockCode,
         stockName: member.stockName,
@@ -36,5 +49,6 @@ export function toStockMetricsDTO(
         pullbackFromHigh: f ? toNumOrNull(f.pullbackFromDayHigh) : null,
         minutesSinceDayHigh: f ? toInt(f.minutesSinceDayHigh) : null,
         amountDistribution: distribution,
+        amountDistributionBucket: distributionBucket,
     };
 }
