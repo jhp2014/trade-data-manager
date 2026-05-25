@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChartModalStore } from "@/stores/useChartModalStore";
+import { usePeerListModalStore } from "@/stores/usePeerListModalStore";
 import { useChartPreview } from "@/hooks/useChartPreview";
 import { useShortcut } from "@/hooks/useShortcut";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
@@ -27,6 +28,7 @@ const TAB_LABEL: Record<Tab, string> = {
 export function ChartModal() {
     const target = useChartModalStore((s) => s.target);
     const close = useChartModalStore((s) => s.close);
+    const openPeerList = usePeerListModalStore((s) => s.open);
     const [tab, setTab] = useState<Tab>("minute");
 
     const mode = useUiStore((s) => s.chartPriceMode);
@@ -90,10 +92,53 @@ export function ChartModal() {
         setMode(mode === "krx" ? "nxt" : "krx");
     }, [mode, setMode]);
 
+    /**
+     * 헤더 테마 chip 클릭과 동일 동작.
+     *  - ChartModal 을 닫고
+     *  - 그 themeId 로 PeerListModal 을 fetch 모드로 연다 (entries undefined).
+     *  - sourceRow 에는 현재 ChartModal 의 종목/날짜/시각/priceLines 를 그대로 전달.
+     *    PeerListModal 의 self row 를 다시 누르면 같은 차트를 같은 priceLines 로 다시 열 수 있음.
+     */
+    const openPeerListForTheme = useCallback(
+        (themeId: string, themeName: string) => {
+            if (!target) return;
+            openPeerList({
+                kind: "theme",
+                headerChip: `#${themeName}`,
+                entries: undefined,
+                count: undefined,
+                tradeDate: target.tradeDate,
+                tradeTime: target.tradeTime,
+                themeId,
+                hasOptions: false,
+                sourceRow: {
+                    stockCode: target.stockCode,
+                    themeId,
+                    tradeDate: target.tradeDate,
+                    tradeTime: target.tradeTime,
+                    priceLines: target.priceLines,
+                },
+            });
+            close();
+        },
+        [target, openPeerList, close],
+    );
+
+    // 백틱(`) — 현재 테마 chip 클릭과 동일하게 PeerListModal 진입
+    const openCurrentThemePeerList = useCallback(
+        (e: KeyboardEvent) => {
+            e.preventDefault();
+            if (!activeTheme) return;
+            openPeerListForTheme(activeTheme.themeId, activeTheme.themeName);
+        },
+        [activeTheme, openPeerListForTheme],
+    );
+
     useShortcut("Escape", close, { enabled: isOpen });
     useShortcut(" ", nextTab, { enabled: isOpen });
     useShortcut(["1", "2", "3"], jumpToTab, { enabled: isOpen });
     useShortcut("Tab", toggleMode, { enabled: isOpen });
+    useShortcut("`", openCurrentThemePeerList, { enabled: isOpen });
 
     // body scroll lock: 스택 방식으로 PeerListModal 과 안전하게 공존
     useBodyScrollLock(isOpen);
@@ -114,11 +159,22 @@ export function ChartModal() {
                         <span className={styles.meta}>
                             {target.tradeDate} {target.tradeTime}
                         </span>
-                        {activeTheme && (
+                        {data && data.themes.length > 0 && (
                             <div className={styles.headerThemes}>
-                                <span className={styles.headerThemeChip}>
-                                    #{activeTheme.themeName}
-                                </span>
+                                {data.themes.map((t) => {
+                                    const isCurrent = t.themeId === target.themeId;
+                                    return (
+                                        <button
+                                            key={t.themeId}
+                                            type="button"
+                                            className={`${styles.headerThemeChip} ${isCurrent ? styles.headerThemeChipCurrent : ""}`}
+                                            onClick={() => openPeerListForTheme(t.themeId, t.themeName)}
+                                            title={isCurrent ? "현재 테마 — 리스트 보기 (`)" : `#${t.themeName} 리스트 보기`}
+                                        >
+                                            #{t.themeName}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

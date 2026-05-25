@@ -22,10 +22,12 @@ export interface PeerListModalTarget {
     headerChip: string;
     /** 헤더 chip 옆 회색 작은 부제 (e.g. Active predicate 설명). theme 모드는 보통 비어있음. */
     headerSubtitle?: string;
-    /** 헤더 우측 회색 작은 카운트 ({count} 종목) */
-    count: number;
-    /** 본인 포함, 표시 순서대로 정렬된 row 들 */
-    entries: PeerListEntry[];
+    /** 본인 포함, 표시 순서대로 정렬된 row 들.
+     *  - EntryRow 진입 시 미리 채워서 전달 (즉시 표시).
+     *  - chip 진입 / 시간 변경 등 fetch 모드에서는 비워두면 모달이 useQuery 로 가져온다. */
+    entries?: PeerListEntry[];
+    /** 헤더 우측 회색 작은 카운트. entries 가 있으면 그 수를 권장. 없으면 fetch 결과로 자동. */
+    count?: number;
     /** row 본문의 메타 정보 (차트 모달 호출 시 사용) */
     tradeDate: string;
     tradeTime: string;
@@ -92,5 +94,20 @@ export function buildActiveEntries(
         rank: i + 1,
         member: m,
         isSelf: m.stockCode === selfStockCode,
+    }));
+}
+
+/**
+ * fetchPeerListAction 의 members(이미 정렬된 배열)와 selfStockCode(null 가능) 로
+ * PeerListEntry[] 를 생성한다. self 가 그 시점 스냅샷에 없으면 isSelf 는 모두 false.
+ */
+export function buildEntriesFromSnapshot(
+    members: StockMetricsDTO[],
+    selfStockCode: string | null,
+): PeerListEntry[] {
+    return members.map((m, i) => ({
+        rank: i + 1,
+        member: m,
+        isSelf: selfStockCode !== null && m.stockCode === selfStockCode,
     }));
 }

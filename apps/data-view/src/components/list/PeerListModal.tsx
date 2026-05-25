@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback } from "react";
-import { usePeerListModalStore } from "@/stores/usePeerListModalStore";
+import { useCallback, useMemo } from "react";
+import {
+    usePeerListModalStore,
+    buildEntriesFromSnapshot,
+} from "@/stores/usePeerListModalStore";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import { useShortcut } from "@/hooks/useShortcut";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useHoverAnchor } from "@/hooks/useHoverAnchor";
+import { usePeerListSnapshot } from "@/hooks/usePeerListSnapshot";
 import { COLUMNS } from "./columns/definitions";
 import { buildMetricsGridTemplate } from "@/lib/columns/gridTemplate";
 import { RowHoverPanel } from "./RowHoverPanel";
@@ -20,7 +24,11 @@ import styles from "./PeerListModal.module.css";
  *  - row 클릭 → 이 모달을 닫고 ChartModal 만 띄운다 (모달 1개 정책).
  *    ChartModal 의 테마 chip 으로 언제든 다른/같은 테마의 PeerListModal 로
  *    되돌아갈 수 있으므로, 둘이 동시에 떠 있는 상황을 만들지 않는다.
- *  - ESC: 단순히 PeerListModal 을 닫는다. 모달이 항상 1개이므로 가드 불필요.
+ *  - ESC: 단순히 PeerListModal 을 닫는다.
+ *
+ * 데이터 소스:
+ *  - target.entries 가 있으면 그대로 사용 (EntryRow 진입 — 즉시 표시).
+ *  - 없으면 useQuery (fetchPeerListAction) 결과 사용 (ChartModal chip 진입).
  */
 export function PeerListModal() {
     const target = usePeerListModalStore((s) => s.target);
@@ -36,11 +44,32 @@ export function PeerListModal() {
 
     useShortcut("Escape", handleEsc, { enabled: isOpen });
 
+    // useQuery 는 조건부 호출 불가 — 항상 호출하되 enabled 로 컨트롤.
+    // target.entries 가 이미 있으면 fetch 하지 않는다.
+    const shouldFetch = !!target && !target.entries;
+    const fetchParams = shouldFetch
+        ? {
+            stockCode: target!.sourceRow.stockCode,
+            tradeDate: target!.tradeDate,
+            tradeTime: target!.tradeTime,
+            themeId: target!.themeId,
+        }
+        : null;
+    const { data: fetched, isLoading: isFetching } = usePeerListSnapshot(fetchParams);
+
+    const fetchedEntries = useMemo<PeerListEntry[] | null>(() => {
+        if (!fetched) return null;
+        return buildEntriesFromSnapshot(fetched.members, fetched.selfStockCode);
+    }, [fetched]);
+
     if (!target) return null;
 
+    const entries: PeerListEntry[] = target.entries ?? fetchedEntries ?? [];
+    const count = target.count ?? fetched?.members.length ?? 0;
     const metricsGrid = buildMetricsGridTemplate(target.hasOptions);
     const selfStockCode = target.sourceRow.stockCode;
     const sourcePriceLines = target.sourceRow.priceLines;
+    const isLoading = shouldFetch && isFetching && !fetched;
 
     return (
         <div className={styles.backdrop} onClick={close}>
@@ -58,7 +87,7 @@ export function PeerListModal() {
                             </span>
                         )}
                         <span className={styles.headerCount}>
-                            {target.count} 종목
+                            {count} 종목
                         </span>
                     </div>
                     <button
@@ -89,14 +118,16 @@ export function PeerListModal() {
                 </div>
 
                 <div className={styles.body}>
-                    {target.entries.length === 0 ? (
+                    {isLoading ? (
+                        <div className={styles.emptyRow}>불러오는 중…</div>
+                    ) : entries.length === 0 ? (
                         <div className={styles.emptyRow}>
                             {target.kind === "active"
                                 ? "조건 통과 종목 없음"
-                                : "같은 테마 종목 없음"}
+                                : "데이터 없음"}
                         </div>
                     ) : (
-                        target.entries.map((e) => (
+                        entries.map((e) => (
                             <PeerListRow
                                 key={`${e.member.stockCode}|${e.rank}`}
                                 entry={e}

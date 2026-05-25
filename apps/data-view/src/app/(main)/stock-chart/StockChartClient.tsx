@@ -6,6 +6,7 @@ import { useStockThemes } from "@/hooks/useStockThemes";
 import { parseChartTarget, type ParseChartTargetResult } from "@/lib/parser";
 import { useChartModalStore } from "@/stores/useChartModalStore";
 import { ChartModal } from "@/components/chart/ChartModal";
+import { PeerListModal } from "@/components/list/PeerListModal";
 import type { ChartThemeMeta, StockThemesDTO } from "@/actions/chartPreview";
 import styles from "./StockChart.module.css";
 
@@ -132,6 +133,7 @@ export function StockChartClient() {
             </div>
 
             <ChartModal />
+            <PeerListModal />
         </div>
     );
 }
