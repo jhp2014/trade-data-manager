@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     usePeerListModalStore,
     buildEntriesFromSnapshot,
@@ -18,6 +18,7 @@ import {
     TimeSlider,
     timeStringToMinutes,
     minutesToTimeString,
+    clampMinutes,
 } from "./TimeSlider";
 import type { PeerListEntry } from "@/stores/usePeerListModalStore";
 import styles from "./PeerListModal.module.css";
@@ -65,6 +66,30 @@ export function PeerListModal() {
         setMinutes(target ? timeStringToMinutes(target.tradeTime) : null);
     }, [target]);
 
+    // Shift+휠 → 시간 ±1분 (모달 전체 영역). 일반 휠은 list 스크롤 유지.
+    // closure 캡처 회피용 ref + native passive=false listener.
+    const modalRef = useRef<HTMLDivElement>(null);
+    const minutesRef = useRef<number | null>(minutes);
+    useEffect(() => {
+        minutesRef.current = minutes;
+    }, [minutes]);
+    const isSliderActive = target?.kind === "theme";
+    useEffect(() => {
+        const el = modalRef.current;
+        if (!el || !isSliderActive) return;
+        const handler = (e: WheelEvent) => {
+            if (!e.shiftKey) return;
+            e.preventDefault();
+            const cur = minutesRef.current;
+            if (cur === null) return;
+            const delta = e.deltaY > 0 ? -1 : 1; // 위로 굴리면 시간 증가
+            const next = clampMinutes(cur + delta);
+            if (next !== cur) setMinutes(next);
+        };
+        el.addEventListener("wheel", handler, { passive: false });
+        return () => el.removeEventListener("wheel", handler);
+    }, [isSliderActive]);
+
     const debouncedMinutes = useDebouncedValue(minutes, FETCH_DEBOUNCE_MS);
 
     const currentTime =
@@ -74,12 +99,11 @@ export function PeerListModal() {
             ? minutesToTimeString(debouncedMinutes)
             : target?.tradeTime ?? "";
 
-    const isSliderMode = target?.kind === "theme";
     const initialTime = target?.tradeTime ?? "";
 
     // entries 가 미리 채워져 있고 현재 시간이 초기값과 같으면 fetch 생략
     const useStatic =
-        !!target?.entries && (!isSliderMode || currentTime === initialTime);
+        !!target?.entries && (!isSliderActive || currentTime === initialTime);
 
     const shouldFetch = !!target && !useStatic;
     const fetchParams = shouldFetch
@@ -120,7 +144,11 @@ export function PeerListModal() {
 
     return (
         <div className={styles.backdrop} onClick={close}>
-            <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div
+                className={styles.modal}
+                onClick={(e) => e.stopPropagation()}
+                ref={modalRef}
+            >
                 <header className={styles.header}>
                     <div className={styles.headerLeft}>
                         <span
@@ -137,20 +165,21 @@ export function PeerListModal() {
                             {count} 종목
                         </span>
                     </div>
-                    <button
-                        type="button"
-                        className={styles.closeBtn}
-                        onClick={close}
-                        aria-label="닫기"
-                    >
-                        ✕
-                    </button>
+                    <div className={styles.headerRight}>
+                        {/* 시간 슬라이더 — theme 모드 전용. Shift+휠로도 조작 가능 (모달 전체). */}
+                        {isSliderActive && minutes !== null && (
+                            <TimeSlider minutes={minutes} onMinutesChange={setMinutes} />
+                        )}
+                        <button
+                            type="button"
+                            className={styles.closeBtn}
+                            onClick={close}
+                            aria-label="닫기"
+                        >
+                            ✕
+                        </button>
+                    </div>
                 </header>
-
-                {/* 시간 슬라이더 — theme 모드 전용 */}
-                {isSliderMode && minutes !== null && (
-                    <TimeSlider minutes={minutes} onMinutesChange={setMinutes} />
-                )}
 
                 <div className={styles.listHeader}>
                     <div className={styles.listHeaderIdentity}>

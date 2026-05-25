@@ -1,18 +1,16 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import styles from "./TimeSlider.module.css";
 
 /* ===========================================================
- * PeerListModal 의 시간 슬라이더.
+ * PeerListModal 의 시간 슬라이더 (헤더 인라인 배치).
  *
  *  - 범위: 08:00 ~ 20:00 (NXT 거래시간 포함)
  *  - 단위: 1분
- *  - 마우스 휠로 ±1분 조작 가능
- *  - 슬라이더 위에 현재 선택 시간을 큰 글씨로 표시
+ *  - 시간 라벨은 바 좌측에 작고 회색 (종목코드 톤)
+ *  - 마우스 휠 처리는 호출자(PeerListModal) 가 Shift+휠로 모달 전체에서 처리
  *
- * fetch 디바운스는 호출자(PeerListModal) 가 useDebouncedValue 로 처리한다.
- * 슬라이더 자체는 raw 값만 부드럽게 흘려보낸다.
+ * fetch 디바운스는 호출자가 useDebouncedValue 로 처리.
  * =========================================================== */
 
 const MIN_MINUTES = 8 * 60;   // 08:00
@@ -24,31 +22,9 @@ interface Props {
 }
 
 export function TimeSlider({ minutes, onMinutesChange }: Props) {
-    const wrapperRef = useRef<HTMLDivElement>(null);
-
-    // 휠 핸들러는 native passive=false 로 등록해야 preventDefault 가 동작.
-    // closure 캡처 문제를 피하기 위해 minutes 는 ref 로 lift.
-    const minutesRef = useRef(minutes);
-    useEffect(() => {
-        minutesRef.current = minutes;
-    }, [minutes]);
-
-    useEffect(() => {
-        const el = wrapperRef.current;
-        if (!el) return;
-        const handler = (e: WheelEvent) => {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -1 : 1; // 위로 굴리면 시간 증가
-            const next = clamp(minutesRef.current + delta);
-            if (next !== minutesRef.current) onMinutesChange(next);
-        };
-        el.addEventListener("wheel", handler, { passive: false });
-        return () => el.removeEventListener("wheel", handler);
-    }, [onMinutesChange]);
-
     return (
-        <div className={styles.wrapper} ref={wrapperRef}>
-            <div className={styles.label}>{formatHHMM(minutes)}</div>
+        <div className={styles.wrapper}>
+            <span className={styles.label}>{formatHHMM(minutes)}</span>
             <input
                 type="range"
                 className={styles.range}
@@ -58,15 +34,10 @@ export function TimeSlider({ minutes, onMinutesChange }: Props) {
                 value={minutes}
                 onChange={(e) => onMinutesChange(Number(e.target.value))}
                 aria-label="시간 선택"
+                title="Shift + 휠로 ±1분"
             />
         </div>
     );
-}
-
-function clamp(m: number): number {
-    if (m < MIN_MINUTES) return MIN_MINUTES;
-    if (m > MAX_MINUTES) return MAX_MINUTES;
-    return m;
 }
 
 function formatHHMM(m: number): string {
@@ -90,3 +61,11 @@ export function timeStringToMinutes(t: string): number {
 export function minutesToTimeString(m: number): string {
     return `${formatHHMM(m)}:00`;
 }
+
+export function clampMinutes(m: number): number {
+    if (m < MIN_MINUTES) return MIN_MINUTES;
+    if (m > MAX_MINUTES) return MAX_MINUTES;
+    return m;
+}
+
+export { MIN_MINUTES as TIME_MIN_MINUTES, MAX_MINUTES as TIME_MAX_MINUTES };

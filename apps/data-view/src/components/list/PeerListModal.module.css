@@ -40,6 +40,15 @@
     min-width: 0;
 }
 
+/* 헤더 우측: 시간 슬라이더 + 닫기 버튼 */
+.headerRight {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-shrink: 0;
+    margin-left: var(--space-3);
+}
+
 /* 헤더 좌측 큰 chip (#테마명 또는 Act#N) — EntryRow 의 themeChip 과 톤 통일 + 약간 키움 */
 .headerChip {
     display: inline-flex;
@@ -83,7 +92,6 @@
     height: clamp(32px, 2.2vw, 42px);
     border-radius: var(--radius-md);
     color: var(--text-tertiary);
-    margin-left: var(--space-2);
     flex-shrink: 0;
 }
 
