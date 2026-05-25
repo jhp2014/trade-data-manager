@@ -266,34 +266,30 @@ function PeerListRow({
                 <span className={`${styles.rank} ${isSelf ? styles.rankSelf : ""}`}>
                     {rank}
                 </span>
-                <div className={styles.stockInfo}>
-                    <div className={styles.stockInfoTop}>
-                        <button
-                            type="button"
-                            className={styles.stockBtn}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                // 모달 1개 정책: PeerListModal 닫고 ChartModal 만 띄움
-                                closeModal();
-                                const isClickedSelf = member.stockCode === selfStockCode;
-                                open({
-                                    stockCode: member.stockCode,
-                                    stockName: member.stockName,
-                                    tradeDate,
-                                    tradeTime,
-                                    themeId,
-                                    // self row 인 경우에만 sourceRow.priceLines 를 전달
-                                    priceLines: isClickedSelf ? sourcePriceLines : undefined,
-                                });
-                            }}
-                        >
-                            <span className={styles.stockName}>{member.stockName}</span>
-                            <span className={styles.stockCode}>{member.stockCode}</span>
-                        </button>
-                        {isSelf && <span className={styles.selfTag}>Main</span>}
-                    </div>
-                    <PeerRowAmountCounts distribution={member.amountDistribution} />
-                </div>
+                <button
+                    type="button"
+                    className={styles.stockBtn}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // 모달 1개 정책: PeerListModal 닫고 ChartModal 만 띄움
+                        closeModal();
+                        const isClickedSelf = member.stockCode === selfStockCode;
+                        open({
+                            stockCode: member.stockCode,
+                            stockName: member.stockName,
+                            tradeDate,
+                            tradeTime,
+                            themeId,
+                            // self row 인 경우에만 sourceRow.priceLines 를 전달
+                            priceLines: isClickedSelf ? sourcePriceLines : undefined,
+                        });
+                    }}
+                >
+                    <span className={styles.stockName}>{member.stockName}</span>
+                    <span className={styles.stockCode}>{member.stockCode}</span>
+                </button>
+                <PeerRowAmountCounts distribution={member.amountDistribution} />
+                {isSelf && <span className={styles.selfTag}>Main</span>}
             </div>
             <div
                 className={styles.metricsCol}
