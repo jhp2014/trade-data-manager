@@ -49,10 +49,19 @@ export function PeerListModal() {
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
                 <header className={styles.header}>
                     <div className={styles.headerLeft}>
-                        <span className={styles.kindBadge}>
-                            {target.kind === "theme" ? "Theme" : "Active"}
+                        <span
+                            className={`${styles.headerChip} ${target.kind === "active" ? styles.headerChipActive : ""}`}
+                        >
+                            {target.headerChip}
                         </span>
-                        <span className={styles.headerLabel}>{target.headerLabel}</span>
+                        {target.headerSubtitle && (
+                            <span className={styles.headerSubtitle}>
+                                {target.headerSubtitle}
+                            </span>
+                        )}
+                        <span className={styles.headerCount}>
+                            {target.count} 종목
+                        </span>
                     </div>
                     <button
                         type="button"
@@ -154,7 +163,7 @@ function PeerListRow({
                     <span className={styles.stockName}>{member.stockName}</span>
                     <span className={styles.stockCode}>{member.stockCode}</span>
                 </button>
-                {isSelf && <span className={styles.selfTag}>본인</span>}
+                {isSelf && <span className={styles.selfTag}>Main</span>}
             </div>
             <div
                 className={styles.metricsCol}

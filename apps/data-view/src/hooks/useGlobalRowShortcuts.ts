@@ -10,7 +10,7 @@ import {
 } from "@/stores/usePeerListModalStore";
 import type { FilterInstance } from "@/lib/filter/kinds/types";
 import type { MemberPredicate } from "@/lib/member/predicate";
-import { chipLabelForPredicate } from "@/lib/member/predicate";
+import { shortLabelForPredicate } from "@/lib/member/predicate";
 
 interface Options {
     /** kind === "activeMembersInTheme" 인 인스턴스 (Act#N 라벨링용) */
@@ -90,7 +90,8 @@ export function useGlobalRowShortcuts({
                 const entries = buildThemeEntries(row);
                 usePeerListModalStore.getState().open({
                     kind: "theme",
-                    headerLabel: `#${row.themeName}  ${row.themeSize}종목`,
+                    headerChip: `#${row.themeName}`,
+                    count: row.themeSize,
                     entries,
                     tradeDate: entry.tradeDate,
                     tradeTime: entry.tradeTime,
@@ -111,15 +112,17 @@ export function useGlobalRowShortcuts({
             if (!pool) return;
             e.preventDefault();
             const instIdx = activeInstances.findIndex((i) => i.id === pool.instanceId);
-            const label = instIdx >= 0
-                ? chipLabelForPredicate(
+            const subtitle = instIdx >= 0
+                ? shortLabelForPredicate(
                     (activeInstances[instIdx].value as { predicate: MemberPredicate }).predicate,
                 )
                 : "";
             const entries = buildActiveEntries(self.stockCode, pool.members);
             usePeerListModalStore.getState().open({
                 kind: "active",
-                headerLabel: `Active #${num - 1}: ${label}  ${pool.poolSize}종목`,
+                headerChip: `Act#${num - 1}`,
+                headerSubtitle: subtitle || undefined,
+                count: pool.poolSize,
                 entries,
                 tradeDate: entry.tradeDate,
                 tradeTime: entry.tradeTime,

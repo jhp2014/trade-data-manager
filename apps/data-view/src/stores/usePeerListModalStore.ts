@@ -18,8 +18,12 @@ export interface PeerListEntry {
 
 export interface PeerListModalTarget {
     kind: PeerListKind;
-    /** 모달 헤더 라벨 (e.g. "#반도체  5/12 종목" / "Act#1: ... 통과 8종목") */
-    headerLabel: string;
+    /** 헤더 좌측 큰 chip 라벨 (e.g. "#반도체", "Act#1") */
+    headerChip: string;
+    /** 헤더 chip 옆 회색 작은 부제 (e.g. Active predicate 설명). theme 모드는 보통 비어있음. */
+    headerSubtitle?: string;
+    /** 헤더 우측 회색 작은 카운트 ({count} 종목) */
+    count: number;
     /** 본인 포함, 표시 순서대로 정렬된 row 들 */
     entries: PeerListEntry[];
     /** row 본문의 메타 정보 (차트 모달 호출 시 사용) */

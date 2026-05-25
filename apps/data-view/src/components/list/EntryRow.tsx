@@ -13,7 +13,7 @@ import { useHoverAnchor } from "@/hooks/useHoverAnchor";
 import type { ThemeRowData } from "@/types/deck";
 import type { FilterInstance, RowDerived } from "@/lib/filter/kinds/types";
 import { rowKey } from "@/lib/filter/derived";
-import { chipLabelForPredicate } from "@/lib/member/predicate";
+import { shortLabelForPredicate } from "@/lib/member/predicate";
 import type { MemberPredicate } from "@/lib/member/predicate";
 import { RowHoverPanel } from "./RowHoverPanel";
 import { OptionsCell } from "./OptionsCell";
@@ -85,7 +85,8 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
     const openThemeModal = () => {
         openPeerList({
             kind: "theme",
-            headerLabel: `#${themeName}  ${themeSize}종목`,
+            headerChip: `#${themeName}`,
+            count: themeSize,
             entries: buildThemeEntries(row),
             tradeDate: entry.tradeDate,
             tradeTime: entry.tradeTime,
@@ -104,14 +105,16 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
         const pool = activePools[poolIdx];
         if (!pool) return;
         const instIdx = activeInstances.findIndex((i) => i.id === pool.instanceId);
-        const label = instIdx >= 0
-            ? chipLabelForPredicate(
+        const subtitle = instIdx >= 0
+            ? shortLabelForPredicate(
                 (activeInstances[instIdx].value as { predicate: MemberPredicate }).predicate,
             )
             : "";
         openPeerList({
             kind: "active",
-            headerLabel: `Active #${poolIdx + 1}: ${label}  ${pool.poolSize}종목`,
+            headerChip: `Act#${poolIdx + 1}`,
+            headerSubtitle: subtitle || undefined,
+            count: pool.poolSize,
             entries: buildActiveEntries(self.stockCode, pool.members),
             tradeDate: entry.tradeDate,
             tradeTime: entry.tradeTime,
