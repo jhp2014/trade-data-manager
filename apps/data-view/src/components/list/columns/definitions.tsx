@@ -12,7 +12,7 @@ export const COLUMNS: ColumnDef[] = [
         label: "캔들",
         description: "당일 가격 흐름 (스케일: -5% ~ +30%, 점=현재가, 선=당일 고가)",
         width: "80px",
-        align: "right",
+        align: "center",
         render: (m) => (
             <MetricDayCandle closeRate={m.closeRate} dayHighRate={m.dayHighRate} />
         ),

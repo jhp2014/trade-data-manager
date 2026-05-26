@@ -191,7 +191,15 @@ export function PeerListModal() {
                         style={{ gridTemplateColumns: metricsGrid }}
                     >
                         {COLUMNS.map((col) => (
-                            <span key={col.id} className={styles.listHeaderLabel}>
+                            <span
+                                key={col.id}
+                                className={styles.listHeaderLabel}
+                                style={
+                                    col.align === "center"
+                                        ? { justifySelf: "stretch", textAlign: "center" }
+                                        : undefined
+                                }
+                            >
                                 {col.label}
                             </span>
                         ))}

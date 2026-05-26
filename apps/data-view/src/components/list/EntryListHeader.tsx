@@ -32,7 +32,15 @@ export function EntryListHeader({ optionKeys }: Props) {
                 style={{ gridTemplateColumns: metricsGrid }}
             >
                 {COLUMNS.map((col) => (
-                    <span key={col.id} className={styles.label}>
+                    <span
+                        key={col.id}
+                        className={styles.label}
+                        style={
+                            col.align === "center"
+                                ? { justifySelf: "stretch", textAlign: "center" }
+                                : undefined
+                        }
+                    >
                         {col.label}
                     </span>
                 ))}
