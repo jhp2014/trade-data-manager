@@ -15,8 +15,6 @@ import { shortLabelForPredicate } from "@/lib/member/predicate";
 interface Options {
     /** kind === "activeMembersInTheme" 인 인스턴스 (Act#N 라벨링용) */
     activeInstances: FilterInstance[];
-    /** 옵션 컬럼이 보이는지 (peer row grid 정합성용) */
-    hasOptions: boolean;
 }
 
 /**
@@ -34,7 +32,6 @@ interface Options {
  */
 export function useGlobalRowShortcuts({
     activeInstances,
-    hasOptions,
 }: Options): void {
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -96,7 +93,6 @@ export function useGlobalRowShortcuts({
                     tradeDate: entry.tradeDate,
                     tradeTime: entry.tradeTime,
                     themeId: row.themeId,
-                    hasOptions,
                     sourceRow: {
                         stockCode: self.stockCode,
                         themeId: row.themeId,
@@ -127,7 +123,6 @@ export function useGlobalRowShortcuts({
                 tradeDate: entry.tradeDate,
                 tradeTime: entry.tradeTime,
                 themeId: row.themeId,
-                hasOptions,
                 sourceRow: {
                     stockCode: self.stockCode,
                     themeId: row.themeId,
@@ -140,5 +135,5 @@ export function useGlobalRowShortcuts({
 
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [activeInstances, hasOptions]);
+    }, [activeInstances]);
 }

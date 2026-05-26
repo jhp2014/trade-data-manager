@@ -110,7 +110,6 @@ export function ChartModal() {
                 tradeDate: target.tradeDate,
                 tradeTime: target.tradeTime,
                 themeId,
-                hasOptions: false,
                 sourceRow: {
                     stockCode: target.stockCode,
                     themeId,

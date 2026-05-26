@@ -91,7 +91,6 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
             tradeDate: entry.tradeDate,
             tradeTime: entry.tradeTime,
             themeId: row.themeId,
-            hasOptions,
             sourceRow: {
                 stockCode: self.stockCode,
                 themeId: row.themeId,
@@ -120,7 +119,6 @@ export function EntryRow({ row, optionKeys, derived, activeInstances }: Props) {
             tradeDate: entry.tradeDate,
             tradeTime: entry.tradeTime,
             themeId: row.themeId,
-            hasOptions,
             sourceRow: {
                 stockCode: self.stockCode,
                 themeId: row.themeId,

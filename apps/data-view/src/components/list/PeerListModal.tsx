@@ -135,7 +135,7 @@ export function PeerListModal() {
         ? target.count ?? target.entries!.length
         : fetched?.members.length ?? target.entries?.length ?? 0;
 
-    const metricsGrid = buildMetricsGridTemplate(target.hasOptions);
+    const metricsGrid = buildMetricsGridTemplate(false);
     const selfStockCode = target.sourceRow.stockCode;
     const sourcePriceLines = target.sourceRow.priceLines;
 
@@ -195,7 +195,6 @@ export function PeerListModal() {
                                 {col.label}
                             </span>
                         ))}
-                        {target.hasOptions && <span />}
                     </div>
                 </div>
 
@@ -216,7 +215,6 @@ export function PeerListModal() {
                                 tradeDate={target.tradeDate}
                                 tradeTime={currentTime}
                                 themeId={target.themeId}
-                                hasOptions={target.hasOptions}
                                 metricsGrid={metricsGrid}
                                 selfStockCode={selfStockCode}
                                 sourcePriceLines={sourcePriceLines}
@@ -235,7 +233,6 @@ function PeerListRow({
     tradeDate,
     tradeTime,
     themeId,
-    hasOptions,
     metricsGrid,
     selfStockCode,
     sourcePriceLines,
@@ -245,7 +242,6 @@ function PeerListRow({
     tradeDate: string;
     tradeTime: string;
     themeId: string;
-    hasOptions: boolean;
     metricsGrid: string;
     selfStockCode: string;
     sourcePriceLines: Record<string, number[]> | undefined;
@@ -298,7 +294,6 @@ function PeerListRow({
                 {COLUMNS.map((col) => (
                     <div key={col.id}>{col.render(member, ctx)}</div>
                 ))}
-                {hasOptions && <div />}
             </div>
 
             <RowHoverPanel

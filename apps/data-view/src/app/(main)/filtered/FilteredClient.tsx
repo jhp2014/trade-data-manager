@@ -110,10 +110,8 @@ export function FilteredClient({ initialSubDir, initialResult }: Props) {
     }, [optionKeysKey]);
 
     // 글로벌 단축키 등록 (Space=차트, 1=테마펼침, 2..N=Active펼침)
-    const hasOptions = optionKeys.length > 0;
     useGlobalRowShortcuts({
         activeInstances: activeMemberInstances,
-        hasOptions,
     });
 
     /* ───────── 가상화 셋업 ───────── */

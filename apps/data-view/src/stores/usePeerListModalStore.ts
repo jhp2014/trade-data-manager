@@ -32,8 +32,6 @@ export interface PeerListModalTarget {
     tradeDate: string;
     tradeTime: string;
     themeId: string;
-    /** 옵션 컬럼이 보이는지 여부 (peer row 의 grid 정합성용) */
-    hasOptions: boolean;
     /** 호출한 원본 row 의 식별 정보 (필요 시 재진입 등에 사용) */
     sourceRow: {
         stockCode: string;
