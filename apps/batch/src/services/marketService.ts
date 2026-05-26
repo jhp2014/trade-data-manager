@@ -9,7 +9,9 @@ import {
     saveThemeMapping,
 } from "@trade-data-manager/data-core";
 import { kiwoomClient } from "../clients/kiwoomClient.js";
-import { db } from "../repository/db.js";
+import { getDb } from "../repository/db.js";
+
+const db = getDb();
 import { logger } from "../utils/logger.js";
 import { assembleDailyCandles, assembleMinuteCandles } from "./assemblers/candleAssembler.js";
 import { ServiceOperation } from "./decorators.js";

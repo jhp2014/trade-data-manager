@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getCaptureDb } from "@/data/db";
+import { getDb } from "@/data/db";
 import { fetchChartData } from "@/data/fetchChartData";
 import { toDailyChartCandle, buildMinuteCandles } from "@/lib/mappers";
 import { fillMissingMinuteCandles } from "@trade-data-manager/chart-utils";
@@ -23,7 +23,7 @@ export default async function CapturePage({ params }: PageProps) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) return notFound();
     if (variant !== "KRX" && variant !== "NXT") return notFound();
 
-    const db = getCaptureDb();
+    const db = getDb();
     const config = loadConfig();
     const { daily: dailyRaw, minute: minuteRaw } = await fetchChartData(db, {
         stockCode,

@@ -4,7 +4,7 @@ config({ path: resolve(process.cwd(), "../../.env") });
 import { Pool } from "pg";
 import { createDb, type Database } from "@trade-data-manager/data-core";
 
-export function getCaptureDb(): Database {
+export function getDb(): Database {
     if (!process.env.DATABASE_URL) {
         throw new Error(
             "[chart-capture] DATABASE_URL is not set. " +
@@ -21,7 +21,7 @@ export function getCaptureDb(): Database {
     return createDb(globalThis.__captureDbPool);
 }
 
-export async function closeCaptureDb(): Promise<void> {
+export async function closeDb(): Promise<void> {
     if (globalThis.__captureDbPool) {
         await globalThis.__captureDbPool.end();
         globalThis.__captureDbPool = undefined;

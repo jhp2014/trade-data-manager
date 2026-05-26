@@ -7,7 +7,7 @@ import {
 import type { StockMetricsDTO } from "@/types/deck";
 import { toStockMetricsDTO } from "@/lib/snapshotMapper";
 import { sortByCloseRateDesc } from "@/lib/sort/sortByCloseRateDesc";
-import { getDataViewDb } from "./db";
+import { getDb } from "./db";
 import { type Result, okResult, errResult } from "@/lib/result";
 
 /* ===========================================================
@@ -44,7 +44,7 @@ export async function fetchPeerListAction(params: {
     themeId: string;
 }): Promise<Result<{ data: PeerListSnapshotDTO }>> {
     try {
-        const db = getDataViewDb();
+        const db = getDb();
         const snapshots = await getThemeSnapshotAt(db, {
             stockCode: params.stockCode,
             tradeDate: params.tradeDate,

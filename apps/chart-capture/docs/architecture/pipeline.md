@@ -15,7 +15,7 @@
 1. **CLI 옵션 파싱** (`src/cli/index.ts`)
    - commander로 `--file`, `--dry-run`, `--external-server` 등 옵션을 파싱한다.
    - `loadConfig()`로 `capture.config.ts` 설정을 로드하고, CLI 옵션으로 override를 적용한다.
-   - `runCapture(config, options)`를 호출하고, 완료 후 `endCaptureDb()`로 DB 풀을 정리한다.
+   - `runCapture(config, options)`를 호출하고, 완료 후 `closeDb()`로 DB 풀을 정리한다.
 
 2. **디렉터리 보장 + CSV 목록 수집** (`src/pipeline/runCapture.ts`)
    - inputDir, outputDir, processedSubdir, failedSubdir가 없으면 생성한다.
@@ -23,7 +23,7 @@
    - `--file` 옵션(`onlyFile`)이 있으면 해당 파일명만 남긴다.
 
 3. **DB 풀 확보** (`src/data/db.ts`)
-   - `getCaptureDb()`로 singleton DB 풀을 반환한다. CLI 종료 시점에 `endCaptureDb()`가 풀을 닫는다.
+   - `getDb()`로 singleton DB 풀을 반환한다. CLI 종료 시점에 `closeDb()`가 풀을 닫는다.
 
 4. **Next 서버 기동 또는 외부 서버 검증** (`src/pipeline/nextServer.ts`)
    - `config.externalServerUrl`이 있으면 `verifyExternalServer(url)`로 헬스 체크만 수행한다.
@@ -66,7 +66,7 @@
 | `src/pipeline/csvIO.ts` | CSV 파싱, 파일 이동, sidecar log 생성 | `parseCsvFile`, `moveCsvFile`, `buildSidecarLog` |
 | `src/pipeline/nextServer.ts` | Next 서버 spawn / 헬스 체크 | `startNextServer`, `verifyExternalServer` |
 | `src/pipeline/playwrightDriver.ts` | Playwright 브라우저 제어, 스크린샷 | `createPlaywrightDriver`, `runWithConcurrency` |
-| `src/data/db.ts` | DB 풀 singleton | `getCaptureDb`, `endCaptureDb` |
+| `src/data/db.ts` | DB 풀 singleton | `getDb`, `closeDb` |
 | `src/data/fetchChartData.ts` | DB에서 일봉·분봉 조회 | `fetchChartData` |
 | `src/types/capture.ts` | 캡처 도메인 타입 | `CaptureJob`, `CaptureCsvRow`, `LineSpec` |
 | `capture.config.ts` | 런타임 설정 스키마 및 기본값 | `loadConfig`, `CaptureConfig` |

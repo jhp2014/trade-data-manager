@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { findStocksMapByCodes } from "@trade-data-manager/data-core";
 import type { CaptureConfig } from "../../capture.config";
-import { getCaptureDb } from "../data/db";
+import { getDb } from "../data/db";
 import { listCsvFiles, parseCsvFile, moveCsvFile, buildSidecarLog } from "./csvIO";
 import { startNextServer, verifyExternalServer, getAppDir } from "./nextServer";
 import { createPlaywrightDriver, runWithConcurrency } from "./playwrightDriver";
@@ -55,7 +55,7 @@ export async function runCapture(config: CaptureConfig, options: RunCaptureOptio
     }
     logger.info(`[pipeline] CSV 파일 ${csvFiles.length}건 발견`);
 
-    const db = getCaptureDb();
+    const db = getDb();
 
     // Next 서버 기동
     let baseUrl: string;

@@ -3,7 +3,9 @@ import {
     findAllTradeDates,
     findPendingTradeDates,
 } from "@trade-data-manager/data-core";
-import { pool, db } from "./repository/db";
+import { getDb, closeDb } from "./repository/db";
+
+const db = getDb();
 import { runMinuteFeatures } from "./runner";
 import { logger } from "./logger";
 
@@ -39,7 +41,7 @@ program
             logger.error("처리 중 에러 발생", err);
             process.exitCode = 1;
         } finally {
-            await pool.end();
+            await closeDb();
         }
     });
 

@@ -13,7 +13,7 @@ import type {
 } from "@/types/deck";
 import { toStockMetricsDTO } from "@/lib/snapshotMapper";
 import { sortByCloseRateDesc } from "@/lib/sort/sortByCloseRateDesc";
-import { getDataViewDb } from "./db";
+import { getDb } from "./db";
 import { type Result, okResult, errResult } from "@/lib/result";
 
 type DeckActionPayload = { data: LoadedDecksDTO; rows: ThemeRowData[] };
@@ -47,7 +47,7 @@ export async function loadDeckAction(
             return okResult({ data: dto, rows: [] });
         }
 
-        const db = getDataViewDb();
+        const db = getDb();
 
         // 모든 entry에 대해 DB 스냅샷을 병렬로 조회
         const snapshotsPerEntry = await Promise.all(

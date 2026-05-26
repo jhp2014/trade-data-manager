@@ -4,7 +4,7 @@ config({ path: resolve(process.cwd(), "../../.env") });
 import { program } from "commander";
 import { loadConfig } from "../../capture.config";
 import { runCapture } from "../pipeline/runCapture";
-import { closeCaptureDb } from "../data/db";
+import { closeDb } from "../data/db";
 import { logger } from "../lib/logger";
 
 program
@@ -50,13 +50,13 @@ async function main(): Promise<number> {
 
 main()
     .then(async (code) => {
-        await closeCaptureDb();
+        await closeDb();
         process.exit(code);
     })
     .catch(async (err) => {
         logger.error(`[cli] 치명적 오류: ${err instanceof Error ? err.message : String(err)}`);
         try {
-            await closeCaptureDb();
+            await closeDb();
         } catch {
             // 정리 실패는 무시
         }

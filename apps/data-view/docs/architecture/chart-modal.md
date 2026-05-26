@@ -24,7 +24,7 @@
    - queryKey: `["chart-preview", stockCode, tradeDate, tradeTime]`
    - staleTime: QueryProvider 기본값 (5분)
 7. 서버 액션 내부 순서:
-   - `getDataViewDb()` → DB 연결
+   - `getDb()` → DB 연결
    - `getThemeBundle(db, { stockCode, tradeDate })` → 테마 묶음 조회
    - `pickSelfMember(bundles)` → self 멤버 선택
    - `self.daily.map(toDailyChartCandle)` → 일봉 변환 (`DailyCandle`, krx/nxt 중첩 구조)

@@ -2,7 +2,7 @@
 
 import { getThemeBundle } from "@trade-data-manager/data-core";
 import type { ThemeBundle, ThemeBundleMember } from "@trade-data-manager/data-core";
-import { getDataViewDb } from "./db";
+import { getDb } from "./db";
 import { fillMissingMinuteCandles } from "@trade-data-manager/chart-utils";
 import { dateToUnix } from "@/lib/serialization";
 import { type Result, okResult, errResult } from "@/lib/result";
@@ -31,7 +31,7 @@ export async function fetchChartPreviewAction(params: {
     tradeDate: string;
 }): Promise<Result<{ data: ChartPreviewDTO }>> {
     try {
-        const db = getDataViewDb();
+        const db = getDb();
         const bundles = await getThemeBundle(db, {
             stockCode: params.stockCode,
             tradeDate: params.tradeDate,
@@ -107,7 +107,7 @@ export async function fetchStockThemesAction(params: {
     tradeDate: string;
 }): Promise<Result<{ data: StockThemesDTO }>> {
     try {
-        const db = getDataViewDb();
+        const db = getDb();
         const bundles = await getThemeBundle(db, {
             stockCode: params.stockCode,
             tradeDate: params.tradeDate,

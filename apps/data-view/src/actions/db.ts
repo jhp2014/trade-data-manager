@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import { createDb, type Database } from "@trade-data-manager/data-core";
 
-export function getDataViewDb(): Database {
+export function getDb(): Database {
     if (!process.env.DATABASE_URL) {
         throw new Error(
             "[data-view] DATABASE_URL is not set. " +
@@ -16,4 +16,11 @@ export function getDataViewDb(): Database {
         });
     }
     return createDb(globalThis.__dataViewDbPool);
+}
+
+export async function closeDb(): Promise<void> {
+    if (globalThis.__dataViewDbPool) {
+        await globalThis.__dataViewDbPool.end();
+        globalThis.__dataViewDbPool = undefined;
+    }
 }
