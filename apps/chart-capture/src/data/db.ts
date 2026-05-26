@@ -4,10 +4,6 @@ config({ path: resolve(process.cwd(), "../../.env") });
 import { Pool } from "pg";
 import { createDb, type Database } from "@trade-data-manager/data-core";
 
-const globalForDb = globalThis as unknown as {
-    __captureDbPool?: Pool;
-};
-
 export function getCaptureDb(): Database {
     if (!process.env.DATABASE_URL) {
         throw new Error(
@@ -15,19 +11,19 @@ export function getCaptureDb(): Database {
             "Add it to the root .env file.",
         );
     }
-    if (!globalForDb.__captureDbPool) {
-        globalForDb.__captureDbPool = new Pool({
+    if (!globalThis.__captureDbPool) {
+        globalThis.__captureDbPool = new Pool({
             connectionString: process.env.DATABASE_URL,
             max: 10,
             idleTimeoutMillis: 30000,
         });
     }
-    return createDb(globalForDb.__captureDbPool);
+    return createDb(globalThis.__captureDbPool);
 }
 
 export async function closeCaptureDb(): Promise<void> {
-    if (globalForDb.__captureDbPool) {
-        await globalForDb.__captureDbPool.end();
-        delete globalForDb.__captureDbPool;
+    if (globalThis.__captureDbPool) {
+        await globalThis.__captureDbPool.end();
+        globalThis.__captureDbPool = undefined;
     }
 }

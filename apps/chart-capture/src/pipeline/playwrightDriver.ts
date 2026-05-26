@@ -94,7 +94,7 @@ async function captureJob(
 
         // 라인 데이터 주입
         await page.evaluate((lines: LineSpec[]) => {
-            (window as unknown as { __CAPTURE_LINES__: LineSpec[] }).__CAPTURE_LINES__ = lines;
+            window.__CAPTURE_LINES__ = lines;
             window.dispatchEvent(new Event("capture-lines-ready"));
         }, job.lines);
 

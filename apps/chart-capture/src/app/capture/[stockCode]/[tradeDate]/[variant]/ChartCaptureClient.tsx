@@ -31,13 +31,11 @@ export function ChartCaptureClient({
 
     // 라인 데이터 수신
     useEffect(() => {
-        const w = window as unknown as { __CAPTURE_LINES__?: LineSpec[] };
-        if (w.__CAPTURE_LINES__) {
-            setLines(w.__CAPTURE_LINES__);
+        if (window.__CAPTURE_LINES__) {
+            setLines(window.__CAPTURE_LINES__);
             return;
         }
-        const handler = () =>
-            setLines((window as unknown as { __CAPTURE_LINES__?: LineSpec[] }).__CAPTURE_LINES__ ?? []);
+        const handler = () => setLines(window.__CAPTURE_LINES__ ?? []);
         window.addEventListener("capture-lines-ready", handler);
         // 외부 서버 디버깅용 fallback (Playwright는 즉시 라인 주입하므로 정상 흐름에서는 발화하지 않음)
         const fallbackTimer = setTimeout(() => {
@@ -62,7 +60,7 @@ export function ChartCaptureClient({
         if (dailyReady && minuteReady && lines !== null) {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                    (window as unknown as { __CHART_READY__: boolean }).__CHART_READY__ = true;
+                    window.__CHART_READY__ = true;
                 });
             });
         }
