@@ -10,11 +10,4 @@ export interface DailyCandle {
     prevCloseNxt?: number;
 }
 
-export interface MinuteCandle {
-    time: number;
-    krx: { open: number; high: number; low: number; close: number };
-    nxt: { open: number; high: number; low: number; close: number };
-    volume?: number;
-    amount?: number;
-    accAmount?: number;
-}
+export type { MinuteCandle } from "@trade-data-manager/chart-utils";

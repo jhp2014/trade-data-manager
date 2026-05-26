@@ -1,3 +1,8 @@
+import type { MinuteCandle } from "@trade-data-manager/chart-utils";
+
+/** 분봉 1개. KRX/NXT 등락률(%) 데이터 통합. SSOT: @trade-data-manager/chart-utils */
+export type { MinuteCandle };
+
 /** 일봉 1개. KRX/NXT 가격 데이터 통합 */
 export interface DailyCandle {
     time: number;                       // unix seconds (UTC)
@@ -9,16 +14,6 @@ export interface DailyCandle {
     amountNxt?: number;
     prevCloseKrx?: number;
     prevCloseNxt?: number;
-}
-
-/** 분봉 1개. KRX/NXT 등락률(%) 데이터 통합 */
-export interface MinuteCandle {
-    time: number;
-    krx: { open: number; high: number; low: number; close: number };  // 모두 % 단위
-    nxt: { open: number; high: number; low: number; close: number };  // 모두 % 단위
-    volume?: number;
-    amount?: number;                    // KRW 단위 (DB trading_amount)
-    accAmount?: number;                 // KRW 단위 누적
 }
 
 /** 오버레이 1개. KRX/NXT 등락률 % 포함 */

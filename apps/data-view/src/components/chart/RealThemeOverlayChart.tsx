@@ -5,7 +5,7 @@ import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweigh
 import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
 import type { MemberPredicate } from "@/lib/member/predicate";
 import { chipLabelForPredicate } from "@/lib/member/predicate";
-import { kstHHmm } from "@/lib/chartTime";
+import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";

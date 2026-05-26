@@ -15,6 +15,7 @@
         "capture:dev": "tsx src/cli/index.ts --dev"
     },
     "dependencies": {
+        "@trade-data-manager/chart-utils": "workspace:*",
         "@trade-data-manager/data-core": "workspace:*",
         "commander": "^12.1.0",
         "csv-parse": "^5.5.6",

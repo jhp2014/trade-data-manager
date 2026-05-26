@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { fillMissingMinuteCandles, fillMissingOverlayPoints } from "../chartPadding";
-import type { MinuteCandle, ChartOverlayPoint } from "@/types/chart";
+import { fillMissingMinuteCandles } from "../chartPadding";
+import type { MinuteCandle } from "../types";
 
 function ohlc(value: number) {
     return { open: value, high: value, low: value, close: value };
@@ -71,19 +71,16 @@ describe("fillMissingMinuteCandles", () => {
         const out = fillMissingMinuteCandles(input, 300);
         expect(out.map((c) => c.time)).toEqual([0, 300, 600, 900]);
     });
-});
 
-describe("fillMissingOverlayPoints", () => {
-    function point(time: number, valueKrx: number, valueNxt: number, cumAmount = 0): ChartOverlayPoint {
-        return { time, valueKrx, valueNxt, amount: 0, cumAmount };
-    }
-
-    it("빈 슬롯은 직전 등락률/누적을 유지하고 분 거래대금만 0", () => {
-        const input = [point(60, 5.0, 6.0, 100), point(240, 7.0, 8.0, 500)];
-        const out = fillMissingOverlayPoints(input);
-
-        expect(out).toHaveLength(4);
-        expect(out[1]).toEqual({ time: 120, valueKrx: 5.0, valueNxt: 6.0, amount: 0, cumAmount: 100 });
-        expect(out[2]).toEqual({ time: 180, valueKrx: 5.0, valueNxt: 6.0, amount: 0, cumAmount: 100 });
+    it("추가 필드가 있는 캔들의 확장 필드는 보존된다 (제네릭)", () => {
+        interface Extended extends MinuteCandle {
+            extra: string;
+        }
+        const input: Extended[] = [
+            { ...candle(60, 1, 2), extra: "a" },
+            { ...candle(180, 3, 4), extra: "b" },
+        ];
+        const out = fillMissingMinuteCandles(input);
+        expect(out[1].extra).toBe("a"); // 직전 캔들에서 spread되어 유지
     });
 });

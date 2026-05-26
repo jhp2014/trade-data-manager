@@ -12,7 +12,7 @@ import {
 } from "lightweight-charts";
 import type { MinuteCandle } from "@/lib/chartTypes";
 import type { LineSpec } from "@/types/capture";
-import { kstHHmm } from "@/lib/chartTime";
+import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { computePriceLineChartValue, buildPriceLineOptions } from "@/lib/chart/priceLines";
 import { amountMarkerFor } from "@/lib/chart/amountMarker";
 

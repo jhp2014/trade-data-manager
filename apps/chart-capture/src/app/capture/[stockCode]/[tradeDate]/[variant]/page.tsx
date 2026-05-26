@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getCaptureDb } from "@/data/db";
 import { fetchChartData } from "@/data/fetchChartData";
 import { toDailyChartCandle, buildMinuteCandles } from "@/lib/mappers";
-import { fillMissingMinuteCandles } from "@/lib/chartPadding";
+import { fillMissingMinuteCandles } from "@trade-data-manager/chart-utils";
 import { loadConfig } from "@root/capture.config";
 import { ChartCaptureClient } from "./ChartCaptureClient";
 

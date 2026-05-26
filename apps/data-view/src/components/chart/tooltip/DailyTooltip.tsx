@@ -1,6 +1,6 @@
 "use client";
 
-import { kstYmd } from "@/lib/chartTime";
+import { kstYmd } from "@trade-data-manager/chart-utils";
 
 interface DailyTooltipProps {
     time: number;

@@ -1,12 +1,16 @@
-import type { MinuteCandle } from "./chartTypes";
+/**
+ * 차트 시각화용 빈 분봉 슬롯 채우기.
+ * See: apps/data-view/docs/decisions/003-chartpadding-option-b.md
+ */
+import type { MinuteCandle } from "./types";
 
-export function fillMissingMinuteCandles(
-    candles: MinuteCandle[],
+export function fillMissingMinuteCandles<T extends MinuteCandle>(
+    candles: T[],
     stepSec = 60,
-): MinuteCandle[] {
+): T[] {
     if (candles.length <= 1) return candles;
 
-    const result: MinuteCandle[] = [];
+    const result: T[] = [];
     for (let i = 0; i < candles.length; i++) {
         const cur = candles[i];
         result.push(cur);
@@ -17,6 +21,7 @@ export function fillMissingMinuteCandles(
         let t = cur.time + stepSec;
         while (t < next.time) {
             result.push({
+                ...cur,
                 time: t,
                 krx: { open: cur.krx.close, high: cur.krx.close, low: cur.krx.close, close: cur.krx.close },
                 nxt: { open: cur.nxt.close, high: cur.nxt.close, low: cur.nxt.close, close: cur.nxt.close },

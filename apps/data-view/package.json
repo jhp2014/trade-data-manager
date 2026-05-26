@@ -17,6 +17,7 @@
     "dependencies": {
         "@tanstack/react-query": "^5.59.0",
         "@tanstack/react-virtual": "^3.13.25",
+        "@trade-data-manager/chart-utils": "workspace:*",
         "@trade-data-manager/data-core": "workspace:*",
         "dayjs": "^1.11.13",
         "dotenv": "^16.4.5",

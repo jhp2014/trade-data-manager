@@ -3,7 +3,7 @@
 import { getThemeBundle } from "@trade-data-manager/data-core";
 import type { ThemeBundle, ThemeBundleMember } from "@trade-data-manager/data-core";
 import { getDataViewDb } from "./db";
-import { fillMissingMinuteCandles } from "@/lib/chartPadding";
+import { fillMissingMinuteCandles } from "@trade-data-manager/chart-utils";
 import { dateToUnix } from "@/lib/serialization";
 import { type Result, okResult, errResult } from "@/lib/result";
 import { toDailyChartCandle, buildMinuteCandles } from "@/lib/chart/mappers";

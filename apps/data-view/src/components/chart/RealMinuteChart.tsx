@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { CrosshairMode, LineStyle, type IPriceLine, type ISeriesApi, type Time } from "lightweight-charts";
 import type { MinuteCandle, ChartOverlaySeries } from "@/types/chart";
-import { kstHHmm } from "@/lib/chartTime";
+import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
 import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";

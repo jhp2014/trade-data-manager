@@ -1,6 +1,6 @@
 "use client";
 
-import { kstHHmm } from "@/lib/chartTime";
+import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { ThemeRowList, type OverlayTooltipRow } from "./ThemeRowList";
 
 interface OverlayTooltipProps {
