@@ -14,7 +14,7 @@ import type { DailyCandle } from "@/lib/chartTypes";
 import type { LineSpec } from "@/types/capture";
 import { kstYmd } from "@trade-data-manager/chart-utils";
 import { computePriceLineChartValue, buildPriceLineOptions } from "@/lib/chart/priceLines";
-import { highMarkerColor } from "@/lib/chart/highMarker";
+import { highMarkerColor } from "@trade-data-manager/chart-utils";
 
 interface Props {
     candles: DailyCandle[];

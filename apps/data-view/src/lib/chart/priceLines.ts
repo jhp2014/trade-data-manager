@@ -1,10 +1,6 @@
 import { LineStyle } from "lightweight-charts";
 import type { CreatePriceLineOptions } from "lightweight-charts";
-
-export const PRICE_LINE_PALETTE = [
-    "#f59e0b", "#10b981", "#6366f1", "#ec4899", "#14b8a6",
-    "#f97316", "#8b5cf6", "#06b6d4", "#84cc16", "#ef4444",
-];
+import { PRICE_LINE_PALETTE } from "@/lib/colors";
 
 function hashKey(key: string): number {
     let h = 0;

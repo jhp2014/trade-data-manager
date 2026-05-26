@@ -3,6 +3,12 @@ import {
     formatKrwShort,
     riseFallClass,
 } from "@/components/format/number";
+import {
+    RISE_COLOR,
+    FALL_COLOR,
+    NEUTRAL_COLOR,
+    BORDER_SUBTLE_COLOR,
+} from "@/lib/colors";
 import styles from "../EntryRow.module.css";
 
 export function MetricChangeRate({ value }: { value: number | null }) {
@@ -92,10 +98,10 @@ export function MetricDayCandle({
         closeRate === null
             ? "transparent"
             : closeRate > 0
-                ? "#ef4444"
+                ? RISE_COLOR
                 : closeRate < 0
-                    ? "#3b82f6"
-                    : "#8b95a1";
+                    ? FALL_COLOR
+                    : NEUTRAL_COLOR;
 
     return (
         <svg
@@ -109,7 +115,7 @@ export function MetricDayCandle({
                 y1={2}
                 x2={zeroX}
                 y2={DAY_CANDLE_HEIGHT - 2}
-                stroke="#d1d6db"
+                stroke={BORDER_SUBTLE_COLOR}
                 strokeWidth={1}
             />
             {showHighBar && (
@@ -118,7 +124,7 @@ export function MetricDayCandle({
                     y1={cy}
                     x2={highX}
                     y2={cy}
-                    stroke="#ef4444"
+                    stroke={RISE_COLOR}
                     strokeWidth={2}
                     strokeLinecap="round"
                 />

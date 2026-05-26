@@ -6,9 +6,6 @@ export const CHART_HOVER_DELAY_MS = 200;
 /** 테마 오버레이 차트에 그릴 수 있는 시리즈 최대 수. */
 export const CHART_OVERLAY_MAX_SERIES = 15;
 
-/** 봉 위 고가 마커를 표시하기 시작하는 전일비 % 최솟값 (이 미만은 마커 없음). */
-export const HIGH_MARKER_MIN_PCT = 10;
-
 // ── 거래대금 단위 변환 ─────────────────────────────────────────────────────
 
 /**

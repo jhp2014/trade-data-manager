@@ -11,9 +11,10 @@ import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { MinuteTooltip } from "./tooltip/MinuteTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
-import { SELF_COLOR, PALETTE, assignSeriesColors } from "@/lib/chart/overlay";
+import { assignSeriesColors } from "@/lib/chart/overlay";
+import { OVERLAY_SELF_COLOR, OVERLAY_PEER_PALETTE } from "@/lib/colors";
 import { buildPriceLineOptions, computePriceLineChartValue } from "@/lib/chart/priceLines";
-import { amountMarkerFor } from "@/lib/chart/amountMarker";
+import { amountMarkerFor } from "@trade-data-manager/chart-utils";
 
 interface Props {
     candles: MinuteCandle[];
@@ -126,7 +127,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
             const selfRow: OverlayTooltipRow = {
                 stockCode: selfSeries?.stockCode ?? "",
                 stockName: selfSeries?.stockName ?? "",
-                color: SELF_COLOR,
+                color: OVERLAY_SELF_COLOR,
                 isSelf: true,
                 rate: data.close,
                 amount: amountMapRef.current.get(t) ?? 0,
@@ -143,7 +144,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
                 peerRows.push({
                     stockCode: s.stockCode,
                     stockName: s.stockName,
-                    color: colorMap.get(s.stockCode) ?? PALETTE[0],
+                    color: colorMap.get(s.stockCode) ?? OVERLAY_PEER_PALETTE[0],
                     isSelf: false,
                     rate: useNxt ? pt.valueNxt : pt.valueKrx,
                     amount: pt.amount,

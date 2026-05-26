@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 import { CrosshairMode, LineStyle, type IPriceLine, type ISeriesApi, type Time } from "lightweight-charts";
 import type { DailyCandle } from "@/types/chart";
-import { kstYmd } from "@trade-data-manager/chart-utils";
-import { HIGH_MARKER_MIN_PCT, AMOUNT_MIL_TO_EOK } from "@/lib/constants";
+import { kstYmd, highMarkerColor } from "@trade-data-manager/chart-utils";
+import { AMOUNT_MIL_TO_EOK } from "@/lib/constants";
 import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
@@ -22,15 +22,6 @@ function fmtEok(v: number) {
     if (v >= 1) return `${v.toFixed(1)}억`;
     if (v >= 0.0001) return `${(v * 10000).toFixed(0)}만`;
     return v.toLocaleString();
-}
-
-function highMarkerColor(pct: number): string | null {
-    if (pct < HIGH_MARKER_MIN_PCT) return null;
-    if (pct < 15) return "#fbbf24";
-    if (pct < 20) return "#fb923c";
-    if (pct < 25) return "#ef4444";
-    if (pct < 30) return "#a855f7";
-    return "#7c3aed";
 }
 
 export function RealDailyChart({ candles, priceLines }: Props) {

@@ -11,13 +11,7 @@ import type { ChartOverlaySeries } from "@/types/chart";
 import { fillMissingOverlayPoints } from "@/lib/chartPadding";
 import { buildOverlayPoints } from "./mappers";
 import { CHART_OVERLAY_MAX_SERIES } from "@/lib/constants";
-
-export const SELF_COLOR = "#000000";
-
-export const PALETTE = [
-    "#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa",
-    "#fb7185", "#22d3ee", "#fde047", "#c084fc", "#4ade80",
-];
+import { OVERLAY_SELF_COLOR, OVERLAY_PEER_PALETTE } from "@/lib/colors";
 
 /**
  * 단일 테마 번들 → 오버레이 시리즈 배열.
@@ -71,7 +65,7 @@ export function buildThemeOverlayForBundle(
 export function assignSeriesColors(series: ChartOverlaySeries[]): Map<string, string> {
     const map = new Map<string, string>();
     series.forEach((s, idx) => {
-        map.set(s.stockCode, s.isSelf ? SELF_COLOR : PALETTE[idx % PALETTE.length]);
+        map.set(s.stockCode, s.isSelf ? OVERLAY_SELF_COLOR : OVERLAY_PEER_PALETTE[idx % OVERLAY_PEER_PALETTE.length]);
     });
     return map;
 }

@@ -12,7 +12,7 @@ import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { OverlayTooltip } from "./tooltip/OverlayTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
-import { SELF_COLOR, PALETTE } from "@/lib/chart/overlay";
+import { OVERLAY_SELF_COLOR, OVERLAY_PEER_PALETTE } from "@/lib/colors";
 import styles from "./RealThemeOverlayChart.module.css";
 
 export interface ActivePredicateInstance {
@@ -119,7 +119,7 @@ export function RealThemeOverlayChart({ data, markerTime, activePredicateInstanc
         let firstSeries: ISeriesApi<"Line"> | null = null;
 
         ordered.forEach((s, idx) => {
-            const color = s.isSelf ? SELF_COLOR : PALETTE[idx % PALETTE.length];
+            const color = s.isSelf ? OVERLAY_SELF_COLOR : OVERLAY_PEER_PALETTE[idx % OVERLAY_PEER_PALETTE.length];
             const api = chart.addLineSeries({
                 color, lineWidth: (s.isSelf ? 4 : 1) as 1 | 4,
                 priceLineVisible: false, lastValueVisible: false,
