@@ -50,5 +50,6 @@ export function toStockMetricsDTO(
         minutesSinceDayHigh: f ? toInt(f.minutesSinceDayHigh) : null,
         amountDistribution: distribution,
         amountDistributionBucket: distributionBucket,
+        isCarriedForward: f ? Boolean(f.isCarriedForward) : false,
     };
 }

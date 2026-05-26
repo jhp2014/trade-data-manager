@@ -23,6 +23,7 @@
 
 5. `entries` 각각에 대해 `getThemeSnapshotAt(db, { stockCode, tradeDate, tradeTime })`를 호출한다.
    - 반환값: 해당 종목이 속한 테마별 `ThemeSnapshotMember[]` 배열
+   - 요청 시각에 분봉이 없는 멤버(VI 발동 등)는 같은 거래일 직전 시점 feature 로 carry-forward 되어 채워진다. carry 된 행에는 `feature.isCarriedForward = true` 가 붙는다. ([ADR-018](../decisions/018-carry-forward-vi-feature.md))
 6. 반환된 스냅샷에서 `isSelf = true`인 멤버를 찾아 `toStockMetricsDTO(selfMember, STAT_AMOUNTS)` 호출 → `StockMetricsDTO` 생성 (`bigint` → `string` 변환 포함).
 
 ### 3. 행 조립 — ThemeRowData 생성

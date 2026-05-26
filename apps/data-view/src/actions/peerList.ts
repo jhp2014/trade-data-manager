@@ -6,6 +6,7 @@ import {
 } from "@trade-data-manager/data-core";
 import type { StockMetricsDTO } from "@/types/deck";
 import { toStockMetricsDTO } from "@/lib/snapshotMapper";
+import { sortByCloseRateDesc } from "@/lib/sort/sortByCloseRateDesc";
 import { getDataViewDb } from "./db";
 import { type Result, okResult, errResult } from "@/lib/result";
 
@@ -24,7 +25,11 @@ import { type Result, okResult, errResult } from "@/lib/result";
 export interface PeerListSnapshotDTO {
     themeId: string;
     themeName: string;
-    /** self 포함, 등락률 desc 정렬. feature 가 null 인 멤버는 제외. */
+    /**
+     * self 포함, closeRate 내림차순 정렬.
+     * carry-forward 이후에도 feature 가 채워지지 않은 멤버(그날 첫 거래 전 등)는
+     * closeRate=null 로 맨 뒤에 위치.
+     */
     members: StockMetricsDTO[];
     /** self 종목 코드. 본인 row 강조용. self 가 그 시점 스냅샷에 없으면 null. */
     selfStockCode: string | null;
@@ -59,16 +64,11 @@ export async function fetchPeerListAction(params: {
             });
         }
 
-        // feature 가 null 인 멤버는 그 시점에 데이터가 없는 것이므로 표시 대상에서 제외.
-        // (Q4-e: "그 종목은 표시 안 됨, 그냥 rank 에서 빠짐")
-        const members: StockMetricsDTO[] = snap.members
-            .filter((m) => m.feature !== null)
-            .map((m) => toStockMetricsDTO(m, STAT_AMOUNTS));
-
-        // 등락률 desc 정렬 (self 포함). closeRate 가 null 인 경우 맨 끝.
-        members.sort(
-            (a, b) => (b.closeRate ?? -Infinity) - (a.closeRate ?? -Infinity),
-        );
+        // carry-forward (data-core 단에서 처리) 후에도 feature 가 null 인 멤버는
+        // 그날 첫 거래 전 케이스이므로 closeRate=null 로 매핑되어 정렬상 맨 뒤로 밀린다.
+        // See: docs/decisions/018-carry-forward-vi-feature.md
+        const mapped = snap.members.map((m) => toStockMetricsDTO(m, STAT_AMOUNTS));
+        const members: StockMetricsDTO[] = sortByCloseRateDesc(mapped);
 
         const selfDto = members.find((m) => m.stockCode === params.stockCode) ?? null;
 

@@ -12,6 +12,7 @@ import type {
     ThemeRowData,
 } from "@/types/deck";
 import { toStockMetricsDTO } from "@/lib/snapshotMapper";
+import { sortByCloseRateDesc } from "@/lib/sort/sortByCloseRateDesc";
 import { getDataViewDb } from "./db";
 import { type Result, okResult, errResult } from "@/lib/result";
 
@@ -80,9 +81,9 @@ export async function loadDeckAction(
                     .filter((m) => !m.isSelf)
                     .map((m) => toStockMetricsDTO(m, STAT_AMOUNTS));
 
-                // 등락률 기준으로 내림차순 정렬 (self 포함)
-                const all: StockMetricsDTO[] = [self, ...peerDtos];
-                all.sort((a, b) => (b.closeRate ?? -Infinity) - (a.closeRate ?? -Infinity));
+                // closeRate 내림차순. carry-forward 후에도 null 인 멤버(그날 첫 거래 전)는 맨 뒤.
+                // See: docs/decisions/018-carry-forward-vi-feature.md
+                const all: StockMetricsDTO[] = sortByCloseRateDesc([self, ...peerDtos]);
                 const selfRank = all.findIndex((s) => s.stockCode === self.stockCode) + 1;
 
                 rows.push({

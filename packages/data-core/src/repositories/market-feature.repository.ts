@@ -1,4 +1,4 @@
-import { asc, eq, isNull, and, inArray } from "drizzle-orm";
+import { asc, desc, eq, isNull, and, inArray, lt } from "drizzle-orm";
 import { minuteCandles } from "../schema/market";
 import {
     minuteCandleFeatures,
@@ -85,6 +85,39 @@ export async function findFeaturesAt(
                 eq(minuteCandleFeatures.tradeDate, tradeDate),
                 eq(minuteCandleFeatures.tradeTime, tradeTime),
             ),
+        );
+
+    const map = new Map<string, MinuteCandleFeatures>();
+    for (const r of rows) map.set(r.stockCode, r);
+    return map;
+}
+
+/**
+ * 같은 tradeDate 안에서 tradeTime 미만의 가장 최근 feature 1건씩 (stockCode → row).
+ * VI 등으로 요청 시각에 분봉이 없는 종목을 carry-forward 할 때 사용.
+ * 단일 쿼리 (DISTINCT ON) 로 N+1 회피.
+ * See: queries/theme-snapshot.ts, docs/decisions/018-carry-forward-vi-feature.md
+ */
+export async function findLatestFeaturesBeforeTime(
+    db: Database,
+    params: { stockCodes: string[]; tradeDate: string; tradeTime: string },
+): Promise<Map<string, MinuteCandleFeatures>> {
+    const { stockCodes, tradeDate, tradeTime } = params;
+    if (stockCodes.length === 0) return new Map();
+
+    const rows = await db
+        .selectDistinctOn([minuteCandleFeatures.stockCode])
+        .from(minuteCandleFeatures)
+        .where(
+            and(
+                inArray(minuteCandleFeatures.stockCode, stockCodes),
+                eq(minuteCandleFeatures.tradeDate, tradeDate),
+                lt(minuteCandleFeatures.tradeTime, tradeTime),
+            ),
+        )
+        .orderBy(
+            asc(minuteCandleFeatures.stockCode),
+            desc(minuteCandleFeatures.tradeTime),
         );
 
     const map = new Map<string, MinuteCandleFeatures>();

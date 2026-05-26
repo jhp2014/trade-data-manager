@@ -32,6 +32,11 @@ export interface StockMetricsDTO {
   amountDistribution: Record<number, number> | null;
   /** 버킷(threshold <= x < next threshold) 의미. hover panel 표시용. */
   amountDistributionBucket: Record<number, number> | null;
+  /**
+   * VI 등으로 해당 시점에 거래가 없어 직전 시점 feature 를 carry-forward 한 경우 true.
+   * See: docs/decisions/018-carry-forward-vi-feature.md
+   */
+  isCarriedForward?: boolean;
 }
 
 export interface ThemeRowData {

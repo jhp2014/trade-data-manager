@@ -46,7 +46,11 @@
 
 **ThemeBundle / ThemeBundleMember** — `data-core`의 `getThemeBundle`이 반환하는 타입. `ThemeBundle`은 테마 단위, `ThemeBundleMember`는 멤버별 일봉/분봉/피처 데이터를 포함한다. 차트 모달에서 사용.
 
-**ThemeSnapshotMember** — `data-core`의 `getThemeSnapshotAt`이 반환하는 특정 시점의 종목 스냅샷. `feature` 필드에 등락률·거래대금 등 집계 지표가 담긴다.
+**ThemeSnapshotMember** — `data-core`의 `getThemeSnapshotAt`이 반환하는 특정 시점의 종목 스냅샷. `feature` 필드에 등락률·거래대금 등 집계 지표가 담긴다. 요청 시각에 분봉이 없는 멤버는 같은 거래일 직전 시점 feature 로 carry-forward 되며 `feature.isCarriedForward = true` 가 붙는다. ([ADR-018](./decisions/018-carry-forward-vi-feature.md))
+
+**isCarriedForward** — `StockMetricsDTO`/`ThemeSnapshotFeature` 의 플래그. VI 등으로 거래 없는 분봉에서 직전 시점 feature 를 가져왔음을 나타낸다. ([ADR-018](./decisions/018-carry-forward-vi-feature.md))
+
+**carry-forward** — 거래가 없는 분의 표시 값을 직전 시점 값으로 채우는 정책. 차트 padding([ADR-003](./decisions/003-chartpadding-option-b.md)) 과 스냅샷([ADR-018](./decisions/018-carry-forward-vi-feature.md)) 두 경로에서 공통으로 적용된다.
 
 **isSelf** — 현재 조회 대상이 되는 종목(덱에 기록된 종목)을 나타내는 플래그. 테마 멤버 중 한 명만 `isSelf = true`.
 
