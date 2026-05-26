@@ -4,9 +4,19 @@
  * See: docs/adding-entry-column.md, lib/columns/gridTemplate.ts, EntryListHeader.tsx
  */
 import type { ColumnDef } from "./types";
-import { MetricChangeRate, MetricDayHigh, MetricAmount } from "./renderers";
+import { MetricChangeRate, MetricDayHigh, MetricAmount, MetricDayCandle } from "./renderers";
 
 export const COLUMNS: ColumnDef[] = [
+    {
+        id: "dayCandle",
+        label: "캔들",
+        description: "당일 가격 흐름 (스케일: -5% ~ +30%, 점=현재가, 선=당일 고가)",
+        width: "80px",
+        align: "right",
+        render: (m) => (
+            <MetricDayCandle closeRate={m.closeRate} dayHighRate={m.dayHighRate} />
+        ),
+    },
     {
         id: "changeRate",
         label: "등락률",
