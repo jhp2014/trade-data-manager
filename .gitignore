@@ -46,3 +46,6 @@ build/
 
 # Utils for AI
 /flattened-output
+
+# API Key
+chart-review-*.json

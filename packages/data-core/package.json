@@ -14,6 +14,8 @@
         "clean": "rimraf dist",
         "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",
         "clean:all": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
         "db:push": "drizzle-kit push",
@@ -21,17 +23,18 @@
         "db:check": "drizzle-kit check"
     },
     "dependencies": {
-        "drizzle-orm": "^0.45.2",
-        "pg": "^8.20.0",
         "dayjs": "^1.11.10",
-        "dotenv": "^16.4.5"
+        "dotenv": "^16.4.5",
+        "drizzle-orm": "^0.45.2",
+        "pg": "^8.20.0"
     },
     "devDependencies": {
         "@trade-data-manager/tsconfig": "workspace:*",
         "@types/pg": "^8.20.0",
-        "typescript": "^6.0.3",
-        "tsx": "^4.21.0",
+        "drizzle-kit": "^0.31.10",
         "rimraf": "^6.0.1",
-        "drizzle-kit": "^0.31.10"
+        "tsx": "^4.21.0",
+        "typescript": "^6.0.3",
+        "vitest": "^2.1.9"
     }
 }

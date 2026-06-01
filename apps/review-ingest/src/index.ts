@@ -1,9 +1,11 @@
 import { Command } from "commander";
+import { buildSheetMatrix, findReviewExportRows } from "@trade-data-manager/data-core";
 import { closeDb, getDb } from "./repository/db";
 import { ingestCaptureFolder } from "./ingestCapture";
 import { ingestMainFolder } from "./ingestMain";
 import { defaultCaptureDir, defaultMainDir } from "./paths";
 import { logger } from "./logger";
+import { writeSheet } from "./sheetClient";
 
 const program = new Command();
 const db = getDb();
@@ -41,12 +43,25 @@ program
     });
   });
 
+program
+  .command("export")
+  .description("DB의 review_target/point를 Google Sheet로 내보내기")
+  .option("--since <date>", "이 날짜 이후(tradeDate>=)만 export")
+  .action(async (opts: { since?: string }) => {
+    await runSafely(async () => {
+      const rows = await findReviewExportRows(db, { since: opts.since });
+      const matrix = buildSheetMatrix(rows);
+      await writeSheet(matrix);
+      logger.info(`export 완료: ${rows.length} rows, ${matrix[0]?.length ?? 0} cols`);
+    });
+  });
+
 async function runSafely(work: () => Promise<void>) {
   try {
     await work();
-    logger.info("인제스트 완료");
+    logger.info("작업 완료");
   } catch (err) {
-    logger.error("인제스트 실패", err);
+    logger.error("작업 실패", err);
     process.exitCode = 1;
   } finally {
     await closeDb();
