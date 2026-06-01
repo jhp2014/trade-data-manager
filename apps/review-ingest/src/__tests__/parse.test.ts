@@ -40,6 +40,24 @@ describe("review ingest parsers", () => {
     ]);
   });
 
+  it("dedupes duplicate (stockCode, tradeDate) keeping the last row", () => {
+    const csv = [
+      "tradeDate,stockCode,_종목명,tradeTime,_명령어 옵션,line_TARGET",
+      "2026-05-27,'009150,삼성전기,15:30, -pl,100",
+      "2026-05-27,'009150,삼성전기,15:30, -pl,200 | 300",
+    ].join("\n");
+
+    expect(parseCaptureCsv(csv, "Capture-2026-05-27.csv")).toEqual([
+      {
+        stockCode: "009150",
+        tradeDate: "2026-05-27",
+        stockName: "삼성전기",
+        lineTargets: [200, 300],
+        sourceFile: "Capture-2026-05-27.csv",
+      },
+    ]);
+  });
+
   it("parses main CSV targets, optional points, and payload", () => {
     const csv = [
       "\uFEFFtradeDate,stockCode,_종목명,tradeTime,_명령어 옵션,line_TARGET,skipReason,entryType,themeRank,themeStrength,dailyChart,result,_done",
