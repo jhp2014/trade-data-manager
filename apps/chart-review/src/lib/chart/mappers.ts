@@ -1,7 +1,7 @@
 /**
  * data-core raw row → 차트용 DTO 매퍼.
  * 외부 의존성 없음(순수 함수). 단위 변환·필드 매핑만 담당.
- * See: actions/chartPreview.ts (호출부), lib/serialization.ts (변환 헬퍼)
+ * See: lib/chart/loadChartPreview.ts (호출부), lib/serialization.ts (변환 헬퍼)
  */
 
 import type { DailyCandle as DailyCandleRow, MinuteCandle as MinuteCandleRow, MinuteCandleFeatures as MinuteFeatureRow } from "@trade-data-manager/data-core";

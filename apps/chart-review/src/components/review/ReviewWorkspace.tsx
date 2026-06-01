@@ -53,9 +53,13 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   const hydrateSelection = useReviewStore((state) => state.hydrateSelection);
   const priceMode = useUiStore((state) => state.chartPriceMode);
 
+  // URL(초기 선택)에서 파생된 선택값이 실제로 바뀔 때만 store 를 재설정한다.
+  // initialSelection 은 force-dynamic 페이지가 서버 액션마다 재렌더되며 매번
+  // 새 객체로 생성되므로, 객체 참조에 의존하면 store churn → 무한 재조회 루프가 발생.
   useEffect(() => {
     hydrateSelection(initialSelection);
-  }, [hydrateSelection, initialSelection]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelection.selectedGroupIndex, initialSelection.selectedPointKey]);
 
   const selectedGroupIndex = storePointKey ? storeGroupIndex : initialSelection.selectedGroupIndex;
   const selectedPointKey = storePointKey ?? initialSelection.selectedPointKey;
