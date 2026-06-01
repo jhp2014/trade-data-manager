@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo } from "react";
 import styles from "./ReviewWorkspace.module.css";
+import { RealDailyChart } from "@/components/chart/RealDailyChart";
+import { RealMinuteChart } from "@/components/chart/RealMinuteChart";
 import { createReviewCommands } from "@/lib/reviewCommands";
+import { composeUnix } from "@/lib/serialization";
+import { useChartPreview } from "@/hooks/useChartPreview";
+import { useUiStore } from "@/stores/useUiStore";
 import type {
   InitialReviewSelection,
   ReviewPoint,
@@ -44,6 +49,15 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   const selectedPointIndex = selectedGroup.points.findIndex(
     (point) => point.pointKey === selectedPoint.pointKey,
   );
+  const chartParams = useMemo(
+    () => ({ stockCode: selectedGroup.stockCode, tradeDate: selectedGroup.tradeDate }),
+    [selectedGroup.stockCode, selectedGroup.tradeDate],
+  );
+  const chartPreview = useChartPreview(chartParams);
+  const markerTime = useMemo(
+    () => composeUnix(selectedGroup.tradeDate, normalizeTradeTime(selectedPoint.tradeTime)),
+    [selectedGroup.tradeDate, selectedPoint.tradeTime],
+  );
 
   if (viewMode === "minute") {
     return (
@@ -59,7 +73,14 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
         />
         <section className={styles.singleMode}>
           <FeatureStrip point={selectedPoint} />
-          <ChartPlaceholder kind="Minute Chart" group={selectedGroup} point={selectedPoint} />
+          <MinuteChartPanel
+            data={chartPreview.data}
+            isLoading={chartPreview.isLoading}
+            error={chartPreview.error}
+            markerTime={markerTime}
+            group={selectedGroup}
+            point={selectedPoint}
+          />
         </section>
       </main>
     );
@@ -79,7 +100,13 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
         />
         <section className={styles.singleMode}>
           <FeatureStrip point={selectedPoint} />
-          <ChartPlaceholder kind="Daily Chart" group={selectedGroup} point={selectedPoint} />
+          <DailyChartPanel
+            data={chartPreview.data}
+            isLoading={chartPreview.isLoading}
+            error={chartPreview.error}
+            group={selectedGroup}
+            point={selectedPoint}
+          />
         </section>
       </main>
     );
@@ -122,7 +149,13 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
       <section className={styles.body}>
         <aside className={styles.leftPane}>
           <div className={styles.dailySlot}>
-            <ChartPlaceholder kind="Daily Chart" group={selectedGroup} point={selectedPoint} />
+            <DailyChartPanel
+              data={chartPreview.data}
+              isLoading={chartPreview.isLoading}
+              error={chartPreview.error}
+              group={selectedGroup}
+              point={selectedPoint}
+            />
           </div>
           <PointList
             points={selectedGroup.points}
@@ -132,7 +165,14 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
         </aside>
         <section className={styles.rightPane}>
           <FeatureStrip point={selectedPoint} />
-          <ChartPlaceholder kind="Minute Chart" group={selectedGroup} point={selectedPoint} />
+          <MinuteChartPanel
+            data={chartPreview.data}
+            isLoading={chartPreview.isLoading}
+            error={chartPreview.error}
+            markerTime={markerTime}
+            group={selectedGroup}
+            point={selectedPoint}
+          />
         </section>
       </section>
     </main>
@@ -160,6 +200,8 @@ function ReviewHeader({
 }: ReviewHeaderProps) {
   const filled = point.manualSummary.filledCount;
   const total = point.manualSummary.totalCount;
+  const chartPriceMode = useUiStore((state) => state.chartPriceMode);
+  const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
 
   return (
     <header className={styles.header}>
@@ -205,6 +247,22 @@ function ReviewHeader({
         >
           Next Stock
         </button>
+        <div className={styles.priceModeTabs}>
+          <button
+            className={`${styles.modeButton} ${chartPriceMode === "krx" ? styles.modeButtonActive : ""}`}
+            type="button"
+            onClick={() => setChartPriceMode("krx")}
+          >
+            KRX
+          </button>
+          <button
+            className={`${styles.modeButton} ${chartPriceMode === "nxt" ? styles.modeButtonActive : ""}`}
+            type="button"
+            onClick={() => setChartPriceMode("nxt")}
+          >
+            NXT
+          </button>
+        </div>
         <div className={styles.modeTabs}>
           {viewModes.map(({ mode, label }) => (
             <button
@@ -221,6 +279,10 @@ function ReviewHeader({
       </div>
     </header>
   );
+}
+
+function normalizeTradeTime(tradeTime: string) {
+  return tradeTime.length === 5 ? `${tradeTime}:00` : tradeTime;
 }
 
 type PointListProps = {
@@ -289,13 +351,77 @@ function FeatureStrip({ point }: { point: ReviewPoint }) {
   );
 }
 
-type ChartPlaceholderProps = {
-  kind: string;
+type ChartPreviewData = ReturnType<typeof useChartPreview>["data"];
+
+type ChartPanelProps = {
+  data: ChartPreviewData;
+  isLoading: boolean;
+  error: Error | null;
   group: ReviewStockGroup;
   point: ReviewPoint;
 };
 
-function ChartPlaceholder({ kind, group, point }: ChartPlaceholderProps) {
+type MinuteChartPanelProps = ChartPanelProps & {
+  markerTime: number | null;
+};
+
+function MinuteChartPanel({
+  data,
+  isLoading,
+  error,
+  markerTime,
+  group,
+  point,
+}: MinuteChartPanelProps) {
+  if (isLoading) {
+    return <ChartPlaceholder kind="Minute Chart" group={group} point={point} message="Loading minute candles..." />;
+  }
+  if (error) {
+    return <ChartPlaceholder kind="Minute Chart" group={group} point={point} message={error.message} />;
+  }
+  if (!data || data.minute.length === 0) {
+    return <ChartPlaceholder kind="Minute Chart" group={group} point={point} message="No minute candles found." />;
+  }
+
+  return (
+    <div className={styles.chartPanel}>
+      <RealMinuteChart
+        candles={data.minute}
+        markerTime={markerTime}
+        themeOverlay={[]}
+        prevCloseKrx={data.prevCloseKrx}
+        prevCloseNxt={data.prevCloseNxt}
+      />
+    </div>
+  );
+}
+
+function DailyChartPanel({ data, isLoading, error, group, point }: ChartPanelProps) {
+  if (isLoading) {
+    return <ChartPlaceholder kind="Daily Chart" group={group} point={point} message="Loading daily candles..." />;
+  }
+  if (error) {
+    return <ChartPlaceholder kind="Daily Chart" group={group} point={point} message={error.message} />;
+  }
+  if (!data || data.daily.length === 0) {
+    return <ChartPlaceholder kind="Daily Chart" group={group} point={point} message="No daily candles found." />;
+  }
+
+  return (
+    <div className={styles.chartPanel}>
+      <RealDailyChart candles={data.daily} />
+    </div>
+  );
+}
+
+type ChartPlaceholderProps = {
+  kind: string;
+  group: ReviewStockGroup;
+  point: ReviewPoint;
+  message?: string;
+};
+
+function ChartPlaceholder({ kind, group, point, message }: ChartPlaceholderProps) {
   return (
     <div className={styles.placeholder}>
       <div className={styles.placeholderInner}>
@@ -306,7 +432,7 @@ function ChartPlaceholder({ kind, group, point }: ChartPlaceholderProps) {
           </div>
         </div>
         <div className={styles.placeholderSub}>
-          chart rendering, Sheets API, and DB manual save are intentionally out of v1 mock scope.
+          {message ?? "This view remains a placeholder in the current phase."}
         </div>
       </div>
     </div>

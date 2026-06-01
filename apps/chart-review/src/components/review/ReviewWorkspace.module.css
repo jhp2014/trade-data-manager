@@ -90,6 +90,15 @@
   background: var(--bg-secondary);
 }
 
+.priceModeTabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
 .modeButton {
   min-width: 64px;
   border-color: transparent;
@@ -117,6 +126,8 @@
 }
 
 .rightPane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   padding: 14px;
@@ -192,6 +203,15 @@
   color: var(--text-tertiary);
 }
 
+.chartPanel {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
 .placeholder {
   position: relative;
   display: flex;
@@ -257,7 +277,10 @@
 }
 
 .singleMode {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
+  min-height: 0;
   padding: 14px;
 }
 

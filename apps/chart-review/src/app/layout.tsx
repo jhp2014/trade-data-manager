@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { QueryProvider } from "@/providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "Chart Review",
@@ -15,7 +16,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <QueryProvider>{children}</QueryProvider>
+      </body>
     </html>
   );
 }
