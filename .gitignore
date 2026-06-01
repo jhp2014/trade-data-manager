@@ -16,6 +16,8 @@ logs/
 
 # Drizzle ORM
 drizzle/
+!packages/data-core/drizzle/
+!packages/data-core/drizzle/**
 
 # OS generated files
 .DS_Store
