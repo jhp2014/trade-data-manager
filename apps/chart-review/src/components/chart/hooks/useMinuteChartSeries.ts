@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { LineStyle, type IChartApi, type ISeriesApi } from "lightweight-charts";
+import { LineStyle, type AutoscaleInfo, type IChartApi, type ISeriesApi } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR } from "@/lib/colors";
 
 /**
@@ -20,6 +20,19 @@ export function useMinuteChartSeries(chartRef: React.MutableRefObject<IChartApi 
             wickUpColor: RISE_COLOR, wickDownColor: FALL_COLOR,
             priceScaleId: "right", priceLineVisible: false,
             priceFormat: { type: "custom", formatter: (p: number) => `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`, minMove: 0.01 },
+            // 기본 0~25% 고정, 데이터가 범위를 넘으면 그에 맞춰 확장.
+            autoscaleInfoProvider: (baseImpl: () => AutoscaleInfo | null) => {
+                const base = baseImpl();
+                const dataMin = base?.priceRange?.minValue ?? 0;
+                const dataMax = base?.priceRange?.maxValue ?? 0;
+                return {
+                    priceRange: {
+                        minValue: Math.min(0, dataMin),
+                        maxValue: Math.max(25, dataMax),
+                    },
+                    margins: base?.margins,
+                };
+            },
         });
         candleSeries.createPriceLine({
             price: 0, color: "rgba(150,150,150,0.5)", lineStyle: LineStyle.Dashed,

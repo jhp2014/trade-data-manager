@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styles from "./ReviewWorkspace.module.css";
 import { RealDailyChart } from "@/components/chart/RealDailyChart";
 import { RealMinuteChart } from "@/components/chart/RealMinuteChart";
+import { ThemeSidebar } from "./ThemeSidebar";
+import { FieldVisibilityPicker } from "./FieldVisibilityPicker";
 import { createReviewCommands } from "@/lib/reviewCommands";
 import { composeUnix } from "@/lib/serialization";
+import { truncate } from "@/lib/format";
 import { useChartPreview } from "@/hooks/useChartPreview";
 import { useUiStore } from "@/stores/useUiStore";
 import type {
@@ -29,12 +32,17 @@ const viewModes: Array<{ mode: ReviewViewMode; label: string }> = [
   { mode: "theme", label: "Theme" },
 ];
 
+const VALUE_TRUNCATE = 15;
+
 export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspaceProps) {
   const commands = useMemo(() => createReviewCommands(groups), [groups]);
   const storeGroupIndex = useReviewStore((state) => state.selectedGroupIndex);
   const storePointKey = useReviewStore((state) => state.selectedPointKey);
   const viewMode = useReviewStore((state) => state.viewMode);
+  const chartOverride = useReviewStore((state) => state.chartOverride);
+  const setChartOverride = useReviewStore((state) => state.setChartOverride);
   const hydrateSelection = useReviewStore((state) => state.hydrateSelection);
+  const priceMode = useUiStore((state) => state.chartPriceMode);
 
   useEffect(() => {
     hydrateSelection(initialSelection);
@@ -49,32 +57,119 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   const selectedPointIndex = selectedGroup.points.findIndex(
     (point) => point.pointKey === selectedPoint.pointKey,
   );
+
+  // 임시 탐색(override) 중이면 차트/테마 대상은 클릭한 종목, 아니면 리뷰 종목.
+  const isOverride = chartOverride != null;
+  const effectiveStock = chartOverride ?? {
+    stockCode: selectedGroup.stockCode,
+    tradeDate: selectedGroup.tradeDate,
+    stockName: selectedGroup.stockName,
+  };
+
   const chartParams = useMemo(
-    () => ({ stockCode: selectedGroup.stockCode, tradeDate: selectedGroup.tradeDate }),
-    [selectedGroup.stockCode, selectedGroup.tradeDate],
+    () => ({ stockCode: effectiveStock.stockCode, tradeDate: effectiveStock.tradeDate }),
+    [effectiveStock.stockCode, effectiveStock.tradeDate],
   );
   const chartPreview = useChartPreview(chartParams);
+  const themes = useMemo(() => chartPreview.data?.themes ?? [], [chartPreview.data]);
+
   const markerTime = useMemo(
-    () => selectedPoint.tradeTime
-      ? composeUnix(selectedGroup.tradeDate, normalizeTradeTime(selectedPoint.tradeTime))
-      : null,
-    [selectedGroup.tradeDate, selectedPoint.tradeTime],
+    () =>
+      selectedPoint.tradeTime
+        ? composeUnix(effectiveStock.tradeDate, normalizeTradeTime(selectedPoint.tradeTime))
+        : null,
+    [effectiveStock.tradeDate, selectedPoint.tradeTime],
+  );
+
+  // 테마 탭 선택 상태. 종목(테마 집합)이 바뀌면 멤버 최다 테마로 초기화.
+  const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
+  const themeIdsKey = themes.map((t) => t.themeId).join("|");
+  useEffect(() => {
+    if (themes.length === 0) {
+      setSelectedThemeId(null);
+      return;
+    }
+    const primary = [...themes].sort((a, b) => b.overlaySeries.length - a.overlaySeries.length)[0];
+    setSelectedThemeId(primary.themeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeIdsKey]);
+
+  const selectedThemeName =
+    themes.find((t) => t.themeId === selectedThemeId)?.themeName ?? themes[0]?.themeName ?? null;
+
+  // 노출 가능한 필드 키 (전 그룹 통합).
+  const { manualFieldKeys, featureFieldKeys } = useMemo(() => collectFieldKeys(groups), [groups]);
+  const headerAvailable = useMemo(
+    () => [...manualFieldKeys, ...featureFieldKeys],
+    [manualFieldKeys, featureFieldKeys],
+  );
+
+  // 일봉 라인 타깃: 리뷰 종목의 features.lineTargets("9010 | 9450")만 표시.
+  // 다른 종목을 임시 탐색(override) 중일 때는 표시하지 않는다.
+  const dailyPriceLines = useMemo(() => {
+    if (isOverride) return undefined;
+    const targets = parseLineTargets(selectedPoint.sourceRow.features.lineTargets);
+    return targets.length > 0 ? { lineTargets: targets } : undefined;
+  }, [isOverride, selectedPoint.sourceRow.features.lineTargets]);
+
+  const handleSelectStock = (stockCode: string, stockName: string) => {
+    if (stockCode === selectedGroup.stockCode) {
+      setChartOverride(null);
+      return;
+    }
+    setChartOverride({ stockCode, tradeDate: effectiveStock.tradeDate, stockName });
+  };
+
+  const header = (
+    <ReviewHeader
+      commands={commands}
+      displayName={effectiveStock.stockName ?? effectiveStock.stockCode}
+      displayCode={effectiveStock.stockCode}
+      tradeDate={selectedGroup.tradeDate}
+      themeName={selectedThemeName}
+      point={selectedPoint}
+      pointIndex={selectedPointIndex}
+      pointCount={selectedGroup.points.length}
+      groupIndex={selectedGroupIndex}
+      groupCount={groups.length}
+      viewMode={viewMode}
+      isOverride={isOverride}
+      onResetOverride={() => setChartOverride(null)}
+      headerAvailable={headerAvailable}
+    />
+  );
+
+  const sidebar = (
+    <aside className={styles.sidebar}>
+      <div className={styles.themeSlot}>
+        <ThemeSidebar
+          themes={themes}
+          markerTime={markerTime}
+          priceMode={priceMode}
+          selectedThemeId={selectedThemeId}
+          onSelectTheme={setSelectedThemeId}
+          selfStockCode={effectiveStock.stockCode}
+          onSelectStock={handleSelectStock}
+          isLoading={chartPreview.isLoading}
+          error={chartPreview.error}
+        />
+      </div>
+      <div className={styles.pointSlot}>
+        <PointListToolbar manualFieldKeys={manualFieldKeys} />
+        <PointList
+          points={selectedGroup.points}
+          selectedPointKey={selectedPoint.pointKey}
+          onSelectPoint={commands.selectPoint}
+        />
+      </div>
+    </aside>
   );
 
   if (viewMode === "minute") {
     return (
       <main className={styles.workspace}>
-        <ReviewHeader
-          commands={commands}
-          group={selectedGroup}
-          groupIndex={selectedGroupIndex}
-          groupCount={groups.length}
-          point={selectedPoint}
-          pointIndex={selectedPointIndex}
-          viewMode={viewMode}
-        />
+        {header}
         <section className={styles.singleMode}>
-          <FeatureStrip point={selectedPoint} />
           <MinuteChartPanel
             data={chartPreview.data}
             isLoading={chartPreview.isLoading}
@@ -91,23 +186,15 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   if (viewMode === "daily") {
     return (
       <main className={styles.workspace}>
-        <ReviewHeader
-          commands={commands}
-          group={selectedGroup}
-          groupIndex={selectedGroupIndex}
-          groupCount={groups.length}
-          point={selectedPoint}
-          pointIndex={selectedPointIndex}
-          viewMode={viewMode}
-        />
+        {header}
         <section className={styles.singleMode}>
-          <FeatureStrip point={selectedPoint} />
           <DailyChartPanel
             data={chartPreview.data}
             isLoading={chartPreview.isLoading}
             error={chartPreview.error}
             group={selectedGroup}
             point={selectedPoint}
+            priceLines={dailyPriceLines}
           />
         </section>
       </main>
@@ -117,15 +204,7 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   if (viewMode === "overlay" || viewMode === "theme") {
     return (
       <main className={styles.workspace}>
-        <ReviewHeader
-          commands={commands}
-          group={selectedGroup}
-          groupIndex={selectedGroupIndex}
-          groupCount={groups.length}
-          point={selectedPoint}
-          pointIndex={selectedPointIndex}
-          viewMode={viewMode}
-        />
+        {header}
         <section className={styles.singleMode}>
           <ChartPlaceholder
             kind={viewMode === "overlay" ? "Overlay Placeholder" : "Theme Placeholder"}
@@ -139,42 +218,30 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
 
   return (
     <main className={styles.workspace}>
-      <ReviewHeader
-        commands={commands}
-        group={selectedGroup}
-        groupIndex={selectedGroupIndex}
-        groupCount={groups.length}
-        point={selectedPoint}
-        pointIndex={selectedPointIndex}
-        viewMode={viewMode}
-      />
+      {header}
       <section className={styles.body}>
-        <aside className={styles.leftPane}>
-          <div className={styles.dailySlot}>
+        {sidebar}
+        <section className={styles.mainPane}>
+          <div className={styles.chartCell}>
             <DailyChartPanel
               data={chartPreview.data}
               isLoading={chartPreview.isLoading}
               error={chartPreview.error}
               group={selectedGroup}
               point={selectedPoint}
+              priceLines={dailyPriceLines}
             />
           </div>
-          <PointList
-            points={selectedGroup.points}
-            selectedPointKey={selectedPoint.pointKey}
-            onSelectPoint={commands.selectPoint}
-          />
-        </aside>
-        <section className={styles.rightPane}>
-          <FeatureStrip point={selectedPoint} />
-          <MinuteChartPanel
-            data={chartPreview.data}
-            isLoading={chartPreview.isLoading}
-            error={chartPreview.error}
-            markerTime={markerTime}
-            group={selectedGroup}
-            point={selectedPoint}
-          />
+          <div className={styles.chartCell}>
+            <MinuteChartPanel
+              data={chartPreview.data}
+              isLoading={chartPreview.isLoading}
+              error={chartPreview.error}
+              markerTime={markerTime}
+              group={selectedGroup}
+              point={selectedPoint}
+            />
+          </div>
         </section>
       </section>
     </main>
@@ -183,56 +250,100 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
 
 type ReviewHeaderProps = {
   commands: ReturnType<typeof createReviewCommands>;
-  group: ReviewStockGroup;
-  groupIndex: number;
-  groupCount: number;
+  displayName: string;
+  displayCode: string;
+  tradeDate: string;
+  themeName: string | null;
   point: ReviewPoint;
   pointIndex: number;
+  pointCount: number;
+  groupIndex: number;
+  groupCount: number;
   viewMode: ReviewViewMode;
+  isOverride: boolean;
+  onResetOverride: () => void;
+  headerAvailable: string[];
 };
 
 function ReviewHeader({
   commands,
-  group,
-  groupIndex,
-  groupCount,
+  displayName,
+  displayCode,
+  tradeDate,
+  themeName,
   point,
   pointIndex,
+  pointCount,
+  groupIndex,
+  groupCount,
   viewMode,
+  isOverride,
+  onResetOverride,
+  headerAvailable,
 }: ReviewHeaderProps) {
   const filled = point.manualSummary.filledCount;
   const total = point.manualSummary.totalCount;
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
   const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
+  const headerFieldKeys = useUiStore((state) => state.headerFieldKeys);
+  const toggleHeaderField = useUiStore((state) => state.toggleHeaderField);
+  const clearHeaderFields = useUiStore((state) => state.clearHeaderFields);
+
+  const fieldValues = headerFieldKeys
+    .filter((key) => headerAvailable.includes(key))
+    .map((key) => ({ key, value: resolveFieldValue(key, point) }));
 
   return (
     <header className={styles.header}>
-      <div>
+      <div className={styles.headerInfo}>
         <div className={styles.titleLine}>
-          <span className={styles.stockName}>{group.stockName ?? group.stockCode}</span>
-          <span className="tabular">{group.stockCode}</span>
-          <span>|</span>
-          <span className="tabular">{group.tradeDate}</span>
-          <span>|</span>
+          <span className={styles.stockName}>{displayName}</span>
+          <span className="tabular">{displayCode}</span>
+          {isOverride && (
+            <button type="button" className={styles.overrideTag} onClick={onResetOverride}>
+              탐색중 · 본 종목으로 ✕
+            </button>
+          )}
+          <span className={styles.sep}>|</span>
+          <span className="tabular">{tradeDate}</span>
+          <span className={styles.sep}>|</span>
+          <span>{themeName ?? "테마 -"}</span>
+          <span className={styles.sep}>|</span>
+          <span>row {point.rowNumber}</span>
+          <span className={styles.sep}>|</span>
           <span className="tabular">
-            Point {formatPointTime(point.tradeTime)} ({pointIndex + 1}/{group.points.length})
+            Point {formatPointTime(point.tradeTime)} ({pointIndex + 1}/{pointCount})
           </span>
-          <span>|</span>
+          <span className={styles.sep}>|</span>
           <span>
             Group {groupIndex + 1}/{groupCount}
           </span>
-          <span>|</span>
+          <span className={styles.sep}>|</span>
           <span>
             입력 {filled}/{total}
           </span>
         </div>
-        <div className={styles.headerMeta}>
-          <span className={styles.pill}>{point.sourceRow.themeName ?? "대표 테마 없음"}</span>
-          <span className={styles.pill}>row {point.rowNumber}</span>
-          <span className={styles.pill}>{point.reviewId || "pending"}</span>
+        <div className={styles.fieldLine}>
+          {fieldValues.length === 0 ? (
+            <span className={styles.fieldHint}>표시할 필드를 선택하세요 →</span>
+          ) : (
+            fieldValues.map(({ key, value }) => (
+              <span key={key} className={styles.fieldItem} title={value || "-"}>
+                <span className={styles.fieldKey}>{key}</span>
+                <span className={styles.fieldVal}>{value ? truncate(value, VALUE_TRUNCATE) : "-"}</span>
+              </span>
+            ))
+          )}
         </div>
       </div>
       <div className={styles.controls}>
+        <FieldVisibilityPicker
+          label="헤더 필드"
+          availableKeys={headerAvailable}
+          selectedKeys={headerFieldKeys}
+          onToggle={toggleHeaderField}
+          onClear={clearHeaderFields}
+        />
         <button
           className={styles.button}
           type="button"
@@ -287,6 +398,61 @@ function normalizeTradeTime(tradeTime: string) {
   return tradeTime.length === 5 ? `${tradeTime}:00` : tradeTime;
 }
 
+/** "9010 | 9450" 형태의 파이프 구분 문자열을 유효한 양수 가격 배열로 파싱. */
+function parseLineTargets(raw: string | undefined): number[] {
+  if (!raw) return [];
+  return raw
+    .split("|")
+    .map((token) => Number(token.replace(/[^0-9.-]/g, "")))
+    .filter((value) => Number.isFinite(value) && value > 0);
+}
+
+/** 전 그룹의 manual / feature 키를 모아 정렬. manual 은 m_ 접두 라벨로 변환. */
+function collectFieldKeys(groups: ReviewStockGroup[]) {
+  const manual = new Set<string>();
+  const feature = new Set<string>();
+  for (const group of groups) {
+    for (const point of group.points) {
+      for (const key of Object.keys(point.sourceRow.manual)) manual.add(`m_${key}`);
+      for (const key of Object.keys(point.sourceRow.features)) {
+        if (key === "amountText") continue;
+        feature.add(key);
+      }
+    }
+  }
+  return {
+    manualFieldKeys: Array.from(manual).sort(),
+    featureFieldKeys: Array.from(feature).sort(),
+  };
+}
+
+/** 필드 키(m_xxx 또는 feature 명) → 현재 타점의 값. */
+function resolveFieldValue(key: string, point: ReviewPoint): string {
+  if (key.startsWith("m_")) {
+    return point.sourceRow.manual[key.slice(2)]?.trim() ?? "";
+  }
+  return point.sourceRow.features[key]?.trim() ?? "";
+}
+
+function PointListToolbar({ manualFieldKeys }: { manualFieldKeys: string[] }) {
+  const pointFieldKeys = useUiStore((state) => state.pointFieldKeys);
+  const togglePointField = useUiStore((state) => state.togglePointField);
+  const clearPointFields = useUiStore((state) => state.clearPointFields);
+
+  return (
+    <div className={styles.pointToolbar}>
+      <span className={styles.pointToolbarLabel}>Point List</span>
+      <FieldVisibilityPicker
+        label="필드"
+        availableKeys={manualFieldKeys}
+        selectedKeys={pointFieldKeys}
+        onToggle={togglePointField}
+        onClear={clearPointFields}
+      />
+    </div>
+  );
+}
+
 type PointListProps = {
   points: ReviewPoint[];
   selectedPointKey: string;
@@ -294,11 +460,14 @@ type PointListProps = {
 };
 
 function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) {
+  const pointFieldKeys = useUiStore((state) => state.pointFieldKeys);
+
   return (
     <div className={styles.pointList}>
       {points.map((point) => {
         const isActive = point.pointKey === selectedPointKey;
         const summary = point.manualSummary;
+        const fields = pointFieldKeys.map((key) => ({ key, value: resolveFieldValue(key, point) }));
 
         return (
           <button
@@ -316,39 +485,21 @@ function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) 
                 {point.amountText ?? "-"} | 입력 {summary.filledCount}/{summary.totalCount}
               </span>
             </div>
-            <div className={styles.pointManual}>
-              <div className={styles.manualPreview}>
-                {Object.entries(summary.preview).map(([key, value]) => (
-                  <span key={key} className={value ? styles.filled : styles.missing}>
-                    {key} {value ? "O" : "-"}
+            {fields.length > 0 && (
+              <div className={styles.pointFields}>
+                {fields.map(({ key, value }) => (
+                  <span key={key} className={styles.pointField} title={value || "-"}>
+                    <span className={styles.pointFieldKey}>{key}</span>
+                    <span className={value ? styles.pointFieldVal : styles.pointFieldEmpty}>
+                      {value ? truncate(value, VALUE_TRUNCATE) : "-"}
+                    </span>
                   </span>
                 ))}
               </div>
-            </div>
+            )}
           </button>
         );
       })}
-    </div>
-  );
-}
-
-function FeatureStrip({ point }: { point: ReviewPoint }) {
-  const featureEntries = Object.entries(point.sourceRow.features).filter(
-    ([key]) => key !== "amountText",
-  );
-
-  return (
-    <div className={styles.featureStrip}>
-      {featureEntries.map(([key, value]) => (
-        <div key={key} className={styles.feature}>
-          <div className={styles.featureLabel}>{key}</div>
-          <div className={styles.featureValue}>{value}</div>
-        </div>
-      ))}
-      <div className={styles.feature}>
-        <div className={styles.featureLabel}>amountText</div>
-        <div className={styles.featureValue}>{point.amountText ?? "-"}</div>
-      </div>
     </div>
   );
 }
@@ -398,7 +549,11 @@ function MinuteChartPanel({
   );
 }
 
-function DailyChartPanel({ data, isLoading, error, group, point }: ChartPanelProps) {
+type DailyChartPanelProps = ChartPanelProps & {
+  priceLines?: Record<string, number[]>;
+};
+
+function DailyChartPanel({ data, isLoading, error, group, point, priceLines }: DailyChartPanelProps) {
   if (isLoading) {
     return <ChartPlaceholder kind="Daily Chart" group={group} point={point} message="Loading daily candles..." />;
   }
@@ -411,7 +566,7 @@ function DailyChartPanel({ data, isLoading, error, group, point }: ChartPanelPro
 
   return (
     <div className={styles.chartPanel}>
-      <RealDailyChart candles={data.daily} />
+      <RealDailyChart candles={data.daily} priceLines={priceLines} />
     </div>
   );
 }

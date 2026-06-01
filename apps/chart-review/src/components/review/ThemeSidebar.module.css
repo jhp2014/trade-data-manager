@@ -1,0 +1,154 @@
+.container {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.tab {
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tab:hover {
+  border-color: var(--border-strong);
+}
+
+.tabActive {
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.body {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.row {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 2px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  text-align: left;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--bg-primary);
+}
+
+.row:hover {
+  border-color: var(--border-strong);
+}
+
+.rowSelf {
+  border-color: var(--accent-primary);
+  background: var(--accent-soft);
+}
+
+.line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.name {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.code {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.selfTag {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  line-height: 1;
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotActive {
+  background: var(--accent-primary);
+}
+
+.dotInactive {
+  background: var(--rise);
+}
+
+.countItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.countThreshold {
+  color: var(--text-tertiary);
+}
+
+.countValue {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.line2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rate {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cum {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.empty {
+  padding: 16px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}

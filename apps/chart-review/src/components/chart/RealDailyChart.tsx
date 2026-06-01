@@ -43,7 +43,7 @@ export function RealDailyChart({ candles, priceLines }: Props) {
         rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.30 } },
         leftPriceScale: { visible: false, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } },
         timeScale: {
-            borderVisible: false, barSpacing: 3, rightOffset: 4,
+            borderVisible: false, barSpacing: 3, rightOffset: 10,
             tickMarkFormatter: (t: number) => kstYmd(t).slice(5),
         },
         handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
