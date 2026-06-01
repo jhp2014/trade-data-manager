@@ -60,7 +60,12 @@ export function useMinuteChartData({
         amountMapRef.current = amountMap;
         cumAmountMapRef.current = cumMap;
         amountSeries.setData(amountData);
-        chartRef.current?.timeScale().fitContent();
+        // 전체 봉 + 좌측 5% 여백(좌측 스케일과 첫 캔들 사이 공간) + 우측 2봉.
+        const ts = chartRef.current?.timeScale();
+        if (ts && candles.length > 0) {
+            const leftGap = Math.max(1, Math.round(candles.length * 0.05));
+            ts.setVisibleLogicalRange({ from: -leftGap, to: candles.length - 1 + 2 });
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [candles, mode]);
 

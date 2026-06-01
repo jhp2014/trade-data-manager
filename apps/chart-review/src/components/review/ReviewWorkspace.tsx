@@ -7,6 +7,13 @@ import { RealMinuteChart } from "@/components/chart/RealMinuteChart";
 import { RealThemeOverlayChart } from "@/components/chart/RealThemeOverlayChart";
 import { ThemeSidebar } from "./ThemeSidebar";
 import { FieldVisibilityPicker } from "./FieldVisibilityPicker";
+import { FieldChecklistModal } from "./FieldChecklistModal";
+import {
+  TimeSlider,
+  timeStringToMinutes,
+  minutesToTimeString,
+  clampMinutes,
+} from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
 import { composeUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
@@ -75,12 +82,20 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   const chartPreview = useChartPreview(chartParams);
   const themes = useMemo(() => chartPreview.data?.themes ?? [], [chartPreview.data]);
 
+  // 마커 시간(분 단위). 타점 tradeTime 으로 초기화하되 휠/슬라이더로 조정 가능.
+  // tradeTime 이 없으면 09:00(540분) 기본.
+  const [markerMinutes, setMarkerMinutes] = useState<number>(
+    () => timeStringToMinutes(selectedPoint.tradeTime) ?? 540,
+  );
+
+  // 타점/그룹이 바뀌면 해당 타점 tradeTime 으로 재설정.
+  useEffect(() => {
+    setMarkerMinutes(timeStringToMinutes(selectedPoint.tradeTime) ?? 540);
+  }, [selectedPoint.pointKey, effectiveStock.stockCode]);
+
   const markerTime = useMemo(
-    () =>
-      selectedPoint.tradeTime
-        ? composeUnix(effectiveStock.tradeDate, normalizeTradeTime(selectedPoint.tradeTime))
-        : null,
-    [effectiveStock.tradeDate, selectedPoint.tradeTime],
+    () => composeUnix(effectiveStock.tradeDate, minutesToTimeString(markerMinutes)),
+    [effectiveStock.tradeDate, markerMinutes],
   );
 
   // 테마 탭 선택 상태. 종목(테마 집합)이 바뀌면 멤버 최다 테마로 초기화.
@@ -120,17 +135,16 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     return theme?.overlaySeries ?? [];
   }, [themes, selectedThemeId]);
 
-  // Shift+휠 → 그룹(종목) 이동
+  // Shift+휠 → 마커 시간(tradeTime) ±1분 이동 (차트 Point 마커도 함께 이동)
   useEffect(() => {
     const handler = (e: WheelEvent) => {
       if (!e.shiftKey) return;
       e.preventDefault();
-      if (e.deltaY > 0) commands.nextGroup();
-      else commands.prevGroup();
+      setMarkerMinutes((m) => clampMinutes(e.deltaY > 0 ? m + 1 : m - 1));
     };
     window.addEventListener("wheel", handler, { passive: false });
     return () => window.removeEventListener("wheel", handler);
-  }, [commands]);
+  }, []);
 
   const handleSelectStock = (stockCode: string, stockName: string) => {
     if (stockCode === selectedGroup.stockCode) {
@@ -158,6 +172,8 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
       onResetOverride={() => setChartOverride(null)}
       headerAvailable={headerAvailable}
       onOpenSettings={() => setSettingsOpen(true)}
+      markerMinutes={markerMinutes}
+      onMarkerMinutesChange={setMarkerMinutes}
     />
   );
 
@@ -302,6 +318,8 @@ type ReviewHeaderProps = {
   onResetOverride: () => void;
   headerAvailable: string[];
   onOpenSettings: () => void;
+  markerMinutes: number;
+  onMarkerMinutesChange: (m: number) => void;
 };
 
 function ReviewHeader({
@@ -319,9 +337,9 @@ function ReviewHeader({
   onResetOverride,
   headerAvailable,
   onOpenSettings,
+  markerMinutes,
+  onMarkerMinutesChange,
 }: ReviewHeaderProps) {
-  const filled = point.manualSummary.filledCount;
-  const total = point.manualSummary.totalCount;
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
   const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
   const headerFieldKeys = useUiStore((state) => state.headerFieldKeys);
@@ -354,12 +372,28 @@ function ReviewHeader({
             Point {formatPointTime(point.tradeTime)} ({pointIndex + 1}/{pointCount})
           </span>
           <span className={styles.sep}>|</span>
-          <span>
-            Group {groupIndex + 1}/{groupCount}
-          </span>
-          <span className={styles.sep}>|</span>
-          <span>
-            입력 {filled}/{total}
+          <span className={styles.navGroup} title="Shift+휠로 마커 시간 이동 / 화살표로 종목 이동">
+            <button
+              className={styles.navArrow}
+              type="button"
+              onClick={commands.prevGroup}
+              disabled={groupIndex === 0}
+              title="이전 종목"
+            >
+              ←
+            </button>
+            <span className={`${styles.navPos} tabular`}>
+              {groupIndex + 1}/{groupCount}
+            </span>
+            <button
+              className={styles.navArrow}
+              type="button"
+              onClick={commands.nextGroup}
+              disabled={groupIndex === groupCount - 1}
+              title="다음 종목"
+            >
+              →
+            </button>
           </span>
         </div>
         <div className={styles.fieldLine}>
@@ -376,29 +410,7 @@ function ReviewHeader({
         </div>
       </div>
       <div className={styles.controls}>
-        <div className={styles.navGroup} title="Shift+휠로도 이동 가능">
-          <button
-            className={styles.navArrow}
-            type="button"
-            onClick={commands.prevGroup}
-            disabled={groupIndex === 0}
-            title="이전 종목 (Shift+휠 ↑)"
-          >
-            ←
-          </button>
-          <span className={`${styles.navPos} tabular`}>
-            {groupIndex + 1}/{groupCount}
-          </span>
-          <button
-            className={styles.navArrow}
-            type="button"
-            onClick={commands.nextGroup}
-            disabled={groupIndex === groupCount - 1}
-            title="다음 종목 (Shift+휠 ↓)"
-          >
-            →
-          </button>
-        </div>
+        <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
         <div className={styles.priceModeTabs}>
           <button
             className={`${styles.modeButton} ${chartPriceMode === "krx" ? styles.modeButtonActive : ""}`}
@@ -527,11 +539,12 @@ function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) 
             {fields.length > 0 && (
               <div className={styles.pointFields}>
                 {fields.map(({ key, value }) => (
-                  <span key={key} className={styles.pointField} title={value || "-"}>
-                    <span className={styles.pointFieldKey}>{key.startsWith("m_") ? key.slice(2) : key}</span>
-                    <span className={value ? styles.pointFieldVal : styles.pointFieldEmpty}>
-                      {value ? truncate(value, VALUE_TRUNCATE) : "-"}
-                    </span>
+                  <span
+                    key={key}
+                    className={value ? styles.pointFieldVal : styles.pointFieldEmpty}
+                    title={value || "-"}
+                  >
+                    {value ? truncate(value, VALUE_TRUNCATE) : "-"}
                   </span>
                 ))}
               </div>
@@ -660,6 +673,7 @@ function SettingsModal({ manualFieldKeys, headerAvailable, onClose }: SettingsMo
   const togglePointField = useUiStore((state) => state.togglePointField);
   const clearPointFields = useUiStore((state) => state.clearPointFields);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [openPicker, setOpenPicker] = useState<"header" | "point" | null>(null);
 
   // 오버레이 클릭(배경)으로 닫기
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -676,23 +690,29 @@ function SettingsModal({ manualFieldKeys, headerAvailable, onClose }: SettingsMo
         <div className={styles.settingsBody}>
           <section className={styles.settingsSection}>
             <div className={styles.settingsSectionLabel}>헤더 표시 필드</div>
-            <FieldVisibilityPicker
-              label="헤더 필드 선택"
-              availableKeys={headerAvailable}
-              selectedKeys={headerFieldKeys}
-              onToggle={toggleHeaderField}
-              onClear={clearHeaderFields}
-            />
+            <button
+              type="button"
+              className={styles.settingsPickerBtn}
+              onClick={() => setOpenPicker("header")}
+            >
+              <span>헤더 필드 선택</span>
+              {headerFieldKeys.length > 0 && (
+                <span className={styles.settingsPickerCount}>{headerFieldKeys.length}</span>
+              )}
+            </button>
           </section>
           <section className={styles.settingsSection}>
             <div className={styles.settingsSectionLabel}>Point List 표시 필드</div>
-            <FieldVisibilityPicker
-              label="포인트 필드 선택"
-              availableKeys={manualFieldKeys}
-              selectedKeys={pointFieldKeys}
-              onToggle={togglePointField}
-              onClear={clearPointFields}
-            />
+            <button
+              type="button"
+              className={styles.settingsPickerBtn}
+              onClick={() => setOpenPicker("point")}
+            >
+              <span>포인트 필드 선택</span>
+              {pointFieldKeys.length > 0 && (
+                <span className={styles.settingsPickerCount}>{pointFieldKeys.length}</span>
+              )}
+            </button>
           </section>
           <section className={styles.settingsSection}>
             <div className={styles.settingsSectionLabel}>Google Sheet 연결</div>
@@ -700,6 +720,27 @@ function SettingsModal({ manualFieldKeys, headerAvailable, onClose }: SettingsMo
           </section>
         </div>
       </div>
+
+      {openPicker === "header" && (
+        <FieldChecklistModal
+          title="헤더 표시 필드"
+          availableKeys={headerAvailable}
+          selectedKeys={headerFieldKeys}
+          onToggle={toggleHeaderField}
+          onClear={clearHeaderFields}
+          onClose={() => setOpenPicker(null)}
+        />
+      )}
+      {openPicker === "point" && (
+        <FieldChecklistModal
+          title="Point List 표시 필드"
+          availableKeys={manualFieldKeys}
+          selectedKeys={pointFieldKeys}
+          onToggle={togglePointField}
+          onClear={clearPointFields}
+          onClose={() => setOpenPicker(null)}
+        />
+      )}
     </div>
   );
 }

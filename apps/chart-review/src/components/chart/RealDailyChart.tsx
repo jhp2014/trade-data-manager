@@ -178,13 +178,18 @@ export function RealDailyChart({ candles, priceLines }: Props) {
             }
         }
         candleSeries.setMarkers(markers);
-        // 기본 뷰: 마지막 약 252 거래일(≈1년). 전체보다 적으면 전체 표시.
+        // 기본 뷰: 마지막 약 168 거래일(≈8개월) + 우측 5% 여백. 전체보다 적으면 전체 표시.
         const ts = chartRef.current?.timeScale();
         if (ts) {
-            if (candles.length <= 252) {
-                ts.fitContent();
+            const VISIBLE_BARS = 168;
+            const rightGap = Math.round(VISIBLE_BARS * 0.05); // ≈8봉
+            if (candles.length <= VISIBLE_BARS) {
+                ts.setVisibleLogicalRange({ from: 0, to: candles.length - 1 + rightGap });
             } else {
-                ts.setVisibleLogicalRange({ from: candles.length - 252, to: candles.length - 1 });
+                ts.setVisibleLogicalRange({
+                    from: candles.length - VISIBLE_BARS,
+                    to: candles.length - 1 + rightGap,
+                });
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
