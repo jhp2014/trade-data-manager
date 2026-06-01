@@ -1,7 +1,8 @@
 import { ReviewWorkspace } from "@/components/review/ReviewWorkspace";
 import { groupSheetRows } from "@/lib/groupSheetRows";
 import { resolveInitialSelection } from "@/lib/selection";
-import { mockSheetRows } from "@/mock/sheetRows";
+import { loadSheetRows } from "@/lib/loadSheetRows";
+import { notFound } from "next/navigation";
 
 type ReviewPageProps = {
   params: {
@@ -11,8 +12,13 @@ type ReviewPageProps = {
   };
 };
 
-export default function ReviewPage({ params }: ReviewPageProps) {
-  const groups = groupSheetRows(mockSheetRows);
+export const dynamic = "force-dynamic";
+
+export default async function ReviewPage({ params }: ReviewPageProps) {
+  const rows = await loadSheetRows();
+  const groups = groupSheetRows(rows);
+  if (groups.length === 0) notFound();
+
   const initialSelection = resolveInitialSelection(groups, {
     stockCode: params.code,
     tradeDate: params.date,

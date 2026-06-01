@@ -55,7 +55,9 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   );
   const chartPreview = useChartPreview(chartParams);
   const markerTime = useMemo(
-    () => composeUnix(selectedGroup.tradeDate, normalizeTradeTime(selectedPoint.tradeTime)),
+    () => selectedPoint.tradeTime
+      ? composeUnix(selectedGroup.tradeDate, normalizeTradeTime(selectedPoint.tradeTime))
+      : null,
     [selectedGroup.tradeDate, selectedPoint.tradeTime],
   );
 
@@ -213,7 +215,7 @@ function ReviewHeader({
           <span className="tabular">{group.tradeDate}</span>
           <span>|</span>
           <span className="tabular">
-            Point {point.tradeTime} ({pointIndex + 1}/{group.points.length})
+            Point {formatPointTime(point.tradeTime)} ({pointIndex + 1}/{group.points.length})
           </span>
           <span>|</span>
           <span>
@@ -227,7 +229,7 @@ function ReviewHeader({
         <div className={styles.headerMeta}>
           <span className={styles.pill}>{point.sourceRow.themeName ?? "대표 테마 없음"}</span>
           <span className={styles.pill}>row {point.rowNumber}</span>
-          <span className={styles.pill}>{point.reviewId}</span>
+          <span className={styles.pill}>{point.reviewId || "pending"}</span>
         </div>
       </div>
       <div className={styles.controls}>
@@ -308,7 +310,7 @@ function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) 
             <div className={styles.pointTop}>
               <span>
                 <span className={styles.pointDot}>●</span>{" "}
-                <span className="tabular">{point.tradeTime}</span>
+                <span className="tabular">{formatPointTime(point.tradeTime)}</span>
               </span>
               <span className={styles.pointAmount}>
                 {point.amountText ?? "-"} | 입력 {summary.filledCount}/{summary.totalCount}
@@ -428,7 +430,7 @@ function ChartPlaceholder({ kind, group, point, message }: ChartPlaceholderProps
         <div>
           <div className={styles.placeholderTitle}>{kind}</div>
           <div className={styles.placeholderSub}>
-            {group.stockName ?? group.stockCode} {group.tradeDate} {point.tradeTime}
+            {group.stockName ?? group.stockCode} {group.tradeDate} {formatPointTime(point.tradeTime)}
           </div>
         </div>
         <div className={styles.placeholderSub}>
@@ -437,4 +439,8 @@ function ChartPlaceholder({ kind, group, point, message }: ChartPlaceholderProps
       </div>
     </div>
   );
+}
+
+function formatPointTime(tradeTime: string) {
+  return tradeTime || "미입력";
 }

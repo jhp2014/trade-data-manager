@@ -29,8 +29,10 @@ export function groupSheetRows(rows: SheetPointRow[]): ReviewStockGroup[] {
 }
 
 function toReviewPoint(row: SheetPointRow): ReviewPoint {
+  const pointKey = row.reviewId || `pending:${row.stockCode}|${row.tradeDate}|${row.rowNumber}`;
+
   return {
-    pointKey: row.reviewId,
+    pointKey,
     tradeTime: row.tradeTime,
     rowNumber: row.rowNumber,
     reviewId: row.reviewId,

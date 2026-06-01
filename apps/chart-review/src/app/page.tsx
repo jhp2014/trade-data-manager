@@ -1,7 +1,14 @@
 import { redirect } from "next/navigation";
-import { mockSheetRows } from "@/mock/sheetRows";
+import { notFound } from "next/navigation";
+import { loadSheetRows } from "@/lib/loadSheetRows";
 
-export default function HomePage() {
-  const first = mockSheetRows[0];
-  redirect(`/review/${first.stockCode}/${first.tradeDate}/${first.tradeTime}`);
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const rows = await loadSheetRows();
+  const first = rows[0];
+  if (!first) notFound();
+
+  const timeSegment = first.tradeTime || "_";
+  redirect(`/review/${first.stockCode}/${first.tradeDate}/${timeSegment}`);
 }
