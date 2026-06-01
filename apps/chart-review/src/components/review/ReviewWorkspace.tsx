@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./ReviewWorkspace.module.css";
 import { RealDailyChart } from "@/components/chart/RealDailyChart";
 import { RealMinuteChart } from "@/components/chart/RealMinuteChart";
+import { RealThemeOverlayChart } from "@/components/chart/RealThemeOverlayChart";
 import { ThemeSidebar } from "./ThemeSidebar";
 import { FieldVisibilityPicker } from "./FieldVisibilityPicker";
 import { createReviewCommands } from "@/lib/reviewCommands";
@@ -17,6 +18,7 @@ import type {
   ReviewStockGroup,
   ReviewViewMode,
 } from "@/types/review";
+import type { ChartOverlaySeries } from "@/types/chart";
 import { useReviewStore } from "@/stores/useReviewStore";
 
 type ReviewWorkspaceProps = {
@@ -112,6 +114,24 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     return targets.length > 0 ? { lineTargets: targets } : undefined;
   }, [isOverride, selectedPoint.sourceRow.features.lineTargets]);
 
+  // 활성 테마의 오버레이 시리즈 (분봉 크로스헤어·테마뷰 공용)
+  const activeThemeOverlay = useMemo(() => {
+    const theme = themes.find((t) => t.themeId === selectedThemeId) ?? themes[0];
+    return theme?.overlaySeries ?? [];
+  }, [themes, selectedThemeId]);
+
+  // Shift+휠 → 그룹(종목) 이동
+  useEffect(() => {
+    const handler = (e: WheelEvent) => {
+      if (!e.shiftKey) return;
+      e.preventDefault();
+      if (e.deltaY > 0) commands.nextGroup();
+      else commands.prevGroup();
+    };
+    window.addEventListener("wheel", handler, { passive: false });
+    return () => window.removeEventListener("wheel", handler);
+  }, [commands]);
+
   const handleSelectStock = (stockCode: string, stockName: string) => {
     if (stockCode === selectedGroup.stockCode) {
       setChartOverride(null);
@@ -120,11 +140,12 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     setChartOverride({ stockCode, tradeDate: effectiveStock.tradeDate, stockName });
   };
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   const header = (
     <ReviewHeader
       commands={commands}
       displayName={effectiveStock.stockName ?? effectiveStock.stockCode}
-      displayCode={effectiveStock.stockCode}
       tradeDate={selectedGroup.tradeDate}
       themeName={selectedThemeName}
       point={selectedPoint}
@@ -136,6 +157,7 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
       isOverride={isOverride}
       onResetOverride={() => setChartOverride(null)}
       headerAvailable={headerAvailable}
+      onOpenSettings={() => setSettingsOpen(true)}
     />
   );
 
@@ -165,10 +187,19 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     </aside>
   );
 
+  const settingsModal = settingsOpen && (
+    <SettingsModal
+      manualFieldKeys={manualFieldKeys}
+      headerAvailable={headerAvailable}
+      onClose={() => setSettingsOpen(false)}
+    />
+  );
+
   if (viewMode === "minute") {
     return (
       <main className={styles.workspace}>
         {header}
+        {settingsModal}
         <section className={styles.singleMode}>
           <MinuteChartPanel
             data={chartPreview.data}
@@ -177,6 +208,8 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
             markerTime={markerTime}
             group={selectedGroup}
             point={selectedPoint}
+            themeOverlay={activeThemeOverlay}
+            priceLines={dailyPriceLines}
           />
         </section>
       </main>
@@ -187,6 +220,7 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     return (
       <main className={styles.workspace}>
         {header}
+        {settingsModal}
         <section className={styles.singleMode}>
           <DailyChartPanel
             data={chartPreview.data}
@@ -205,12 +239,14 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     return (
       <main className={styles.workspace}>
         {header}
+        {settingsModal}
         <section className={styles.singleMode}>
-          <ChartPlaceholder
-            kind={viewMode === "overlay" ? "Overlay Placeholder" : "Theme Placeholder"}
-            group={selectedGroup}
-            point={selectedPoint}
-          />
+          <div className={styles.chartPanel}>
+            <RealThemeOverlayChart
+              data={activeThemeOverlay}
+              markerTime={markerTime}
+            />
+          </div>
         </section>
       </main>
     );
@@ -219,6 +255,7 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   return (
     <main className={styles.workspace}>
       {header}
+      {settingsModal}
       <section className={styles.body}>
         {sidebar}
         <section className={styles.mainPane}>
@@ -240,6 +277,8 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
               markerTime={markerTime}
               group={selectedGroup}
               point={selectedPoint}
+              themeOverlay={activeThemeOverlay}
+              priceLines={dailyPriceLines}
             />
           </div>
         </section>
@@ -251,7 +290,6 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
 type ReviewHeaderProps = {
   commands: ReturnType<typeof createReviewCommands>;
   displayName: string;
-  displayCode: string;
   tradeDate: string;
   themeName: string | null;
   point: ReviewPoint;
@@ -263,12 +301,12 @@ type ReviewHeaderProps = {
   isOverride: boolean;
   onResetOverride: () => void;
   headerAvailable: string[];
+  onOpenSettings: () => void;
 };
 
 function ReviewHeader({
   commands,
   displayName,
-  displayCode,
   tradeDate,
   themeName,
   point,
@@ -280,14 +318,13 @@ function ReviewHeader({
   isOverride,
   onResetOverride,
   headerAvailable,
+  onOpenSettings,
 }: ReviewHeaderProps) {
   const filled = point.manualSummary.filledCount;
   const total = point.manualSummary.totalCount;
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
   const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
   const headerFieldKeys = useUiStore((state) => state.headerFieldKeys);
-  const toggleHeaderField = useUiStore((state) => state.toggleHeaderField);
-  const clearHeaderFields = useUiStore((state) => state.clearHeaderFields);
 
   const fieldValues = headerFieldKeys
     .filter((key) => headerAvailable.includes(key))
@@ -298,7 +335,9 @@ function ReviewHeader({
       <div className={styles.headerInfo}>
         <div className={styles.titleLine}>
           <span className={styles.stockName}>{displayName}</span>
-          <span className="tabular">{displayCode}</span>
+          <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="설정">
+            ⚙
+          </button>
           {isOverride && (
             <button type="button" className={styles.overrideTag} onClick={onResetOverride}>
               탐색중 · 본 종목으로 ✕
@@ -325,7 +364,7 @@ function ReviewHeader({
         </div>
         <div className={styles.fieldLine}>
           {fieldValues.length === 0 ? (
-            <span className={styles.fieldHint}>표시할 필드를 선택하세요 →</span>
+            <span className={styles.fieldHint}>⚙ 설정에서 표시할 필드를 선택하세요</span>
           ) : (
             fieldValues.map(({ key, value }) => (
               <span key={key} className={styles.fieldItem} title={value || "-"}>
@@ -337,29 +376,29 @@ function ReviewHeader({
         </div>
       </div>
       <div className={styles.controls}>
-        <FieldVisibilityPicker
-          label="헤더 필드"
-          availableKeys={headerAvailable}
-          selectedKeys={headerFieldKeys}
-          onToggle={toggleHeaderField}
-          onClear={clearHeaderFields}
-        />
-        <button
-          className={styles.button}
-          type="button"
-          onClick={commands.prevGroup}
-          disabled={groupIndex === 0}
-        >
-          Prev Stock
-        </button>
-        <button
-          className={styles.button}
-          type="button"
-          onClick={commands.nextGroup}
-          disabled={groupIndex === groupCount - 1}
-        >
-          Next Stock
-        </button>
+        <div className={styles.navGroup} title="Shift+휠로도 이동 가능">
+          <button
+            className={styles.navArrow}
+            type="button"
+            onClick={commands.prevGroup}
+            disabled={groupIndex === 0}
+            title="이전 종목 (Shift+휠 ↑)"
+          >
+            ←
+          </button>
+          <span className={`${styles.navPos} tabular`}>
+            {groupIndex + 1}/{groupCount}
+          </span>
+          <button
+            className={styles.navArrow}
+            type="button"
+            onClick={commands.nextGroup}
+            disabled={groupIndex === groupCount - 1}
+            title="다음 종목 (Shift+휠 ↓)"
+          >
+            →
+          </button>
+        </div>
         <div className={styles.priceModeTabs}>
           <button
             className={`${styles.modeButton} ${chartPriceMode === "krx" ? styles.modeButtonActive : ""}`}
@@ -383,7 +422,7 @@ function ReviewHeader({
               className={`${styles.modeButton} ${viewMode === mode ? styles.modeButtonActive : ""}`}
               type="button"
               onClick={() => commands.setViewMode(mode)}
-              title={mode === "overlay" || mode === "theme" ? `${label} placeholder` : label}
+              title={label}
             >
               {label}
             </button>
@@ -489,7 +528,7 @@ function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) 
               <div className={styles.pointFields}>
                 {fields.map(({ key, value }) => (
                   <span key={key} className={styles.pointField} title={value || "-"}>
-                    <span className={styles.pointFieldKey}>{key}</span>
+                    <span className={styles.pointFieldKey}>{key.startsWith("m_") ? key.slice(2) : key}</span>
                     <span className={value ? styles.pointFieldVal : styles.pointFieldEmpty}>
                       {value ? truncate(value, VALUE_TRUNCATE) : "-"}
                     </span>
@@ -516,6 +555,8 @@ type ChartPanelProps = {
 
 type MinuteChartPanelProps = ChartPanelProps & {
   markerTime: number | null;
+  themeOverlay?: ChartOverlaySeries[];
+  priceLines?: Record<string, number[]>;
 };
 
 function MinuteChartPanel({
@@ -525,6 +566,8 @@ function MinuteChartPanel({
   markerTime,
   group,
   point,
+  themeOverlay,
+  priceLines,
 }: MinuteChartPanelProps) {
   if (isLoading) {
     return <ChartPlaceholder kind="Minute Chart" group={group} point={point} message="Loading minute candles..." />;
@@ -541,7 +584,8 @@ function MinuteChartPanel({
       <RealMinuteChart
         candles={data.minute}
         markerTime={markerTime}
-        themeOverlay={[]}
+        themeOverlay={themeOverlay ?? []}
+        priceLines={priceLines}
         prevCloseKrx={data.prevCloseKrx}
         prevCloseNxt={data.prevCloseNxt}
       />
@@ -598,4 +642,64 @@ function ChartPlaceholder({ kind, group, point, message }: ChartPlaceholderProps
 
 function formatPointTime(tradeTime: string) {
   return tradeTime || "미입력";
+}
+
+// ── Settings Modal ───────────────────────────────────────────
+
+type SettingsModalProps = {
+  manualFieldKeys: string[];
+  headerAvailable: string[];
+  onClose: () => void;
+};
+
+function SettingsModal({ manualFieldKeys, headerAvailable, onClose }: SettingsModalProps) {
+  const headerFieldKeys = useUiStore((state) => state.headerFieldKeys);
+  const toggleHeaderField = useUiStore((state) => state.toggleHeaderField);
+  const clearHeaderFields = useUiStore((state) => state.clearHeaderFields);
+  const pointFieldKeys = useUiStore((state) => state.pointFieldKeys);
+  const togglePointField = useUiStore((state) => state.togglePointField);
+  const clearPointFields = useUiStore((state) => state.clearPointFields);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // 오버레이 클릭(배경)으로 닫기
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === overlayRef.current) onClose();
+  };
+
+  return (
+    <div ref={overlayRef} className={styles.settingsOverlay} onClick={handleOverlayClick}>
+      <div className={styles.settingsModal}>
+        <div className={styles.settingsHeader}>
+          <span className={styles.settingsTitle}>설정</span>
+          <button type="button" className={styles.settingsClose} onClick={onClose}>✕</button>
+        </div>
+        <div className={styles.settingsBody}>
+          <section className={styles.settingsSection}>
+            <div className={styles.settingsSectionLabel}>헤더 표시 필드</div>
+            <FieldVisibilityPicker
+              label="헤더 필드 선택"
+              availableKeys={headerAvailable}
+              selectedKeys={headerFieldKeys}
+              onToggle={toggleHeaderField}
+              onClear={clearHeaderFields}
+            />
+          </section>
+          <section className={styles.settingsSection}>
+            <div className={styles.settingsSectionLabel}>Point List 표시 필드</div>
+            <FieldVisibilityPicker
+              label="포인트 필드 선택"
+              availableKeys={manualFieldKeys}
+              selectedKeys={pointFieldKeys}
+              onToggle={togglePointField}
+              onClear={clearPointFields}
+            />
+          </section>
+          <section className={styles.settingsSection}>
+            <div className={styles.settingsSectionLabel}>Google Sheet 연결</div>
+            <div className={styles.settingsPlaceholder}>추후 Sheet ID · 범위 설정 예정</div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
 }
