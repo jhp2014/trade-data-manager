@@ -122,6 +122,27 @@
   color: var(--text-tertiary);
 }
 
+/* 읽기 전용 경로 표시 박스 */
+.pathBox {
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.banner code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(22, 121, 111, 0.12);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+
 /* ── 세그먼트 토글 (Export 범위) ── */
 .segmented {
   display: grid;
