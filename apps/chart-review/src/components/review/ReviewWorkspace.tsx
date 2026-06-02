@@ -67,9 +67,6 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   const selectedPoint =
     selectedGroup.points.find((point) => point.pointKey === selectedPointKey) ??
     selectedGroup.points[0];
-  const selectedPointIndex = selectedGroup.points.findIndex(
-    (point) => point.pointKey === selectedPoint.pointKey,
-  );
 
   // 임시 탐색(override) 중이면 차트/테마 대상은 클릭한 종목, 아니면 리뷰 종목.
   const isOverride = chartOverride != null;
@@ -167,8 +164,6 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
       tradeDate={selectedGroup.tradeDate}
       themeName={selectedThemeName}
       point={selectedPoint}
-      pointIndex={selectedPointIndex}
-      pointCount={selectedGroup.points.length}
       groupIndex={selectedGroupIndex}
       groupCount={groups.length}
       viewMode={viewMode}
@@ -313,8 +308,6 @@ type ReviewHeaderProps = {
   tradeDate: string;
   themeName: string | null;
   point: ReviewPoint;
-  pointIndex: number;
-  pointCount: number;
   groupIndex: number;
   groupCount: number;
   viewMode: ReviewViewMode;
@@ -332,8 +325,6 @@ function ReviewHeader({
   tradeDate,
   themeName,
   point,
-  pointIndex,
-  pointCount,
   groupIndex,
   groupCount,
   viewMode,
@@ -357,9 +348,6 @@ function ReviewHeader({
       <div className={styles.headerInfo}>
         <div className={styles.titleLine}>
           <span className={styles.stockName}>{displayName}</span>
-          <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="설정">
-            ⚙
-          </button>
           {isOverride && (
             <button type="button" className={styles.overrideTag} onClick={onResetOverride}>
               탐색중 · 본 종목으로 ✕
@@ -370,13 +358,12 @@ function ReviewHeader({
           <span className={styles.sep}>|</span>
           <span>{themeName ?? "테마 -"}</span>
           <span className={styles.sep}>|</span>
-          <span>row {point.rowNumber}</span>
-          <span className={styles.sep}>|</span>
-          <span className="tabular">
-            Point {formatPointTime(point.tradeTime)} ({pointIndex + 1}/{pointCount})
-          </span>
-          <span className={styles.sep}>|</span>
-          <span className={styles.navGroup} title="Shift+휠로 마커 시간 이동 / 화살표로 종목 이동">
+          <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
+        </div>
+      </div>
+      <div className={styles.headerRight}>
+        <div className={styles.controls}>
+          <span className={styles.navGroup} title="화살표로 종목 이동">
             <button
               className={styles.navArrow}
               type="button"
@@ -399,6 +386,41 @@ function ReviewHeader({
               →
             </button>
           </span>
+          <span className={styles.controlSep}>|</span>
+          <div className={styles.segTabs}>
+            <button
+              className={`${styles.segButton} ${chartPriceMode === "krx" ? styles.segButtonActive : ""}`}
+              type="button"
+              onClick={() => setChartPriceMode("krx")}
+            >
+              KRX
+            </button>
+            <button
+              className={`${styles.segButton} ${chartPriceMode === "nxt" ? styles.segButtonActive : ""}`}
+              type="button"
+              onClick={() => setChartPriceMode("nxt")}
+            >
+              NXT
+            </button>
+          </div>
+          <span className={styles.controlSep}>|</span>
+          <div className={styles.segTabs}>
+            {viewModes.map(({ mode, label }) => (
+              <button
+                key={mode}
+                className={`${styles.segButton} ${viewMode === mode ? styles.segButtonActive : ""}`}
+                type="button"
+                onClick={() => commands.setViewMode(mode)}
+                title={label}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className={styles.controlSep}>|</span>
+          <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="설정">
+            ⚙
+          </button>
         </div>
         <div className={styles.fieldLine}>
           {fieldValues.length === 0 ? (
@@ -411,38 +433,6 @@ function ReviewHeader({
               </span>
             ))
           )}
-        </div>
-      </div>
-      <div className={styles.controls}>
-        <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
-        <div className={styles.priceModeTabs}>
-          <button
-            className={`${styles.modeButton} ${chartPriceMode === "krx" ? styles.modeButtonActive : ""}`}
-            type="button"
-            onClick={() => setChartPriceMode("krx")}
-          >
-            KRX
-          </button>
-          <button
-            className={`${styles.modeButton} ${chartPriceMode === "nxt" ? styles.modeButtonActive : ""}`}
-            type="button"
-            onClick={() => setChartPriceMode("nxt")}
-          >
-            NXT
-          </button>
-        </div>
-        <div className={styles.modeTabs}>
-          {viewModes.map(({ mode, label }) => (
-            <button
-              key={mode}
-              className={`${styles.modeButton} ${viewMode === mode ? styles.modeButtonActive : ""}`}
-              type="button"
-              onClick={() => commands.setViewMode(mode)}
-              title={label}
-            >
-              {label}
-            </button>
-          ))}
         </div>
       </div>
     </header>

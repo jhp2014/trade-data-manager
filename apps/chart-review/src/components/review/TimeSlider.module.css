@@ -7,18 +7,18 @@
 }
 
 .label {
-    font-size: 12px;
-    color: var(--text-tertiary);
+    font-size: 13px;
+    color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
-    min-width: 34px;
+    min-width: 36px;
     text-align: right;
 }
 
 .range {
     -webkit-appearance: none;
     appearance: none;
-    width: clamp(120px, 11vw, 200px);
+    width: clamp(110px, 9vw, 170px);
     height: 4px;
     background: var(--bg-tertiary);
     border-radius: 2px;

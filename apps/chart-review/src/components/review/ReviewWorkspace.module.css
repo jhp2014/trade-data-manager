@@ -23,6 +23,15 @@
   min-width: 0;
 }
 
+.headerRight {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  min-width: 360px;
+}
+
 .titleLine {
   display: flex;
   flex-wrap: wrap;
@@ -76,8 +85,8 @@
 .fieldLine {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px 14px;
-  margin-top: 6px;
   font-size: 12px;
 }
 
@@ -108,12 +117,11 @@
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
-.button,
-.modeButton {
+.button {
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid var(--border-default);
@@ -123,8 +131,7 @@
   font-weight: 600;
 }
 
-.button:hover,
-.modeButton:hover {
+.button:hover {
   border-color: var(--border-strong);
 }
 
@@ -133,24 +140,36 @@
   opacity: 0.45;
 }
 
-.modeTabs,
-.priceModeTabs {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--bg-secondary);
+/* 컨트롤 그룹 구분자 (헤더 타이틀의 sep 와 동일 톤) */
+.controlSep {
+  color: var(--border-default);
+  font-size: 13px;
+  user-select: none;
 }
 
-.modeButton {
-  min-width: 56px;
-  border-color: transparent;
+/* KRX/NXT, 뷰모드 토글 — ← N/M → 와 유사한 미니멀 텍스트 스타일 */
+.segTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.segButton {
+  border: none;
   background: transparent;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 0;
+  cursor: pointer;
 }
 
-.modeButtonActive {
-  background: var(--accent-soft);
+.segButton:hover {
+  color: var(--text-primary);
+}
+
+.segButtonActive {
   color: var(--accent-primary);
 }
 
@@ -337,6 +356,16 @@
   }
 
   .controls {
+    justify-content: flex-start;
+  }
+
+  .headerRight {
+    align-items: flex-start;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .fieldLine {
     justify-content: flex-start;
   }
 
