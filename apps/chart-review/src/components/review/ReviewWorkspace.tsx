@@ -33,6 +33,8 @@ import type { ChartOverlaySeries } from "@/types/chart";
 import type { ManualKeyDef } from "@/lib/loadManualKeys";
 import { useReviewStore } from "@/stores/useReviewStore";
 import { PointInputDrawer } from "./PointInputDrawer";
+import { HistorySwitcher } from "./HistorySwitcher";
+import { DEFAULT_TRADE_TIME } from "@/lib/url";
 
 type ReviewWorkspaceProps = {
   groups: ReviewStockGroup[];
@@ -77,6 +79,8 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
   const chartOverride = useReviewStore((state) => state.chartOverride);
   const setChartOverride = useReviewStore((state) => state.setChartOverride);
   const hydrateSelection = useReviewStore((state) => state.hydrateSelection);
+  const history = useReviewStore((state) => state.history);
+  const pushHistory = useReviewStore((state) => state.pushHistory);
   const priceMode = useUiStore((state) => state.chartPriceMode);
 
   // URL(초기 선택)에서 파생된 선택값이 실제로 바뀔 때만 store 를 재설정한다.
@@ -122,7 +126,10 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     () => ({ stockCode: effectiveStock.stockCode, tradeDate: effectiveStock.tradeDate }),
     [effectiveStock.stockCode, effectiveStock.tradeDate],
   );
-  const chartPreview = useChartPreview(chartParams);
+  // a/d 로 빠르게 종목을 훑을 때 중간 종목의 차트를 매번 긁어오지 않도록
+  // 차트 fetch 파라미터를 500ms 디바운스한다(선택/헤더는 즉시 반영).
+  const debouncedChartParams = useDebouncedValue(chartParams, 500);
+  const chartPreview = useChartPreview(debouncedChartParams);
   const themes = useMemo(() => chartPreview.data?.themes ?? [], [chartPreview.data]);
 
   // 마커 시간(분 단위). 타점 tradeTime 으로 초기화하되 휠/슬라이더로 조정 가능.
@@ -204,6 +211,150 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inputOpen, setInputOpen] = useState(false);
 
+  // GroupId 복붙/Tab 히스토리 탐색.
+  // 히스토리는 "복붙으로 도달한 종목"만 기록한다(a/d 순회는 기록하지 않음).
+  const navigateToGroupId = useCallback(
+    (code: string, date: string) => {
+      const idx = groups.findIndex((g) => g.stockCode === code && g.tradeDate === date);
+      if (idx >= 0) {
+        const g = groups[idx];
+        pushHistory({ stockCode: g.stockCode, tradeDate: g.tradeDate, stockName: g.stockName ?? undefined });
+        commands.goToGroup(idx);
+      } else {
+        // 현재 로드된 작업셋에 없는 그룹 → 풀 네비게이션으로 폴백.
+        router.push(`/review/${code}/${date}/${DEFAULT_TRADE_TIME}`);
+      }
+    },
+    [groups, commands, router, pushHistory],
+  );
+
+  // 브라우저 포커스 상태에서 GroupId(예: 005930-2026-05-27) 붙여넣기 → 즉시 탐색.
+  // 입력 요소/모달에 포커스가 있으면(값 붙여넣기 등) 무시한다.
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      if (inputOpen || settingsOpen) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
+        return;
+      }
+      const parsed = parseGroupId(e.clipboardData?.getData("text") ?? "");
+      if (!parsed) return;
+      e.preventDefault();
+      navigateToGroupId(parsed.code, parsed.date);
+    };
+    window.addEventListener("paste", handler);
+    return () => window.removeEventListener("paste", handler);
+  }, [inputOpen, settingsOpen, navigateToGroupId]);
+
+  // Tab 히스토리 스위처: Tab=모달 오픈, 모달에서 Tab/s=다음·Shift+Tab/w=이전,
+  // Space/Enter=선택, Esc=취소. 2초 멈추면 현재 하이라이트로 자동 확정.
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherIndex, setSwitcherIndex] = useState(0);
+  const switcherOpenRef = useRef(false);
+  const switcherIndexRef = useRef(0);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const selectedGroupKeyRef = useRef("");
+  selectedGroupKeyRef.current = `${selectedGroup.stockCode}-${selectedGroup.tradeDate}`;
+
+  const setSwitcherIdx = useCallback((i: number) => {
+    switcherIndexRef.current = i;
+    setSwitcherIndex(i);
+  }, []);
+
+  const closeSwitcher = useCallback(() => {
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    commitTimerRef.current = null;
+    switcherOpenRef.current = false;
+    setSwitcherOpen(false);
+  }, []);
+
+  const commitSwitcher = useCallback(
+    (index: number) => {
+      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+      switcherOpenRef.current = false;
+      setSwitcherOpen(false);
+      const entry = historyRef.current[index];
+      if (entry) navigateToGroupId(entry.stockCode, entry.tradeDate);
+    },
+    [navigateToGroupId],
+  );
+
+  const scheduleCommit = useCallback(() => {
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    commitTimerRef.current = setTimeout(() => commitSwitcher(switcherIndexRef.current), 2000);
+  }, [commitSwitcher]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // 닫힌 상태: Tab 으로만 연다.
+      if (!switcherOpenRef.current) {
+        if (e.key !== "Tab") return;
+        if (inputOpen || settingsOpen) return;
+        const tgt = e.target as HTMLElement | null;
+        const tag = tgt?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tgt?.isContentEditable) {
+          return;
+        }
+        const list = historyRef.current;
+        if (list.length < 1) return; // 기록 없음
+        e.preventDefault();
+        e.stopPropagation();
+        switcherOpenRef.current = true;
+        setSwitcherOpen(true);
+        // 최상단이 현재 차트면 직전 항목부터, 아니면 최상단부터.
+        const topKey = `${list[0].stockCode}-${list[0].tradeDate}`;
+        const start = list.length >= 2 && topKey === selectedGroupKeyRef.current ? 1 : 0;
+        setSwitcherIdx(start);
+        scheduleCommit();
+        return;
+      }
+      // 열린 상태: 이동/선택/취소. 처리한 키는 전역 단축키(Space=입력 등)로 새지 않게 막는다.
+      const len = historyRef.current.length;
+      const cur = switcherIndexRef.current;
+      switch (e.key) {
+        case "Tab":
+          e.preventDefault();
+          e.stopPropagation();
+          setSwitcherIdx((cur + (e.shiftKey ? -1 : 1) + len) % len);
+          scheduleCommit();
+          break;
+        case "s":
+        case "S":
+          e.preventDefault();
+          e.stopPropagation();
+          setSwitcherIdx((cur + 1) % len);
+          scheduleCommit();
+          break;
+        case "w":
+        case "W":
+          e.preventDefault();
+          e.stopPropagation();
+          setSwitcherIdx((cur - 1 + len) % len);
+          scheduleCommit();
+          break;
+        case " ":
+        case "Enter":
+          e.preventDefault();
+          e.stopPropagation();
+          commitSwitcher(cur);
+          break;
+        case "Escape":
+          e.preventDefault();
+          e.stopPropagation();
+          closeSwitcher();
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [inputOpen, settingsOpen, scheduleCommit, closeSwitcher, commitSwitcher, setSwitcherIdx]);
+
   // 입력 대상 tradeTime = 현재 마커 위치(분 → "HH:MM").
   const markerTimeStr = minutesToTimeString(markerMinutes);
   const canDeletePoint = Boolean(selectedPoint.reviewId);
@@ -228,7 +379,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
   // 모달이 열려 있거나 입력 요소에 포커스가 있으면(값 타이핑 중) 무시한다.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (inputOpen || settingsOpen) return;
+      if (inputOpen || settingsOpen || switcherOpen) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
@@ -275,7 +426,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [commands, viewMode, inputOpen, settingsOpen]);
+  }, [commands, viewMode, inputOpen, settingsOpen, switcherOpen]);
 
   const header = (
     <ReviewHeader
@@ -352,12 +503,22 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     />
   );
 
+  const historySwitcher = switcherOpen && (
+    <HistorySwitcher
+      entries={history}
+      activeIndex={switcherIndex}
+      currentKey={`${selectedGroup.stockCode}-${selectedGroup.tradeDate}`}
+      onPick={commitSwitcher}
+    />
+  );
+
   if (viewMode === "minute") {
     return (
       <main className={styles.workspace}>
         {header}
         {settingsModal}
         {inputDrawer}
+        {historySwitcher}
         <section className={styles.singleMode}>
           <MinuteChartPanel
             data={chartPreview.data}
@@ -380,6 +541,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
         {header}
         {settingsModal}
         {inputDrawer}
+        {historySwitcher}
         <section className={styles.singleMode}>
           <DailyChartPanel
             data={chartPreview.data}
@@ -400,6 +562,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
         {header}
         {settingsModal}
         {inputDrawer}
+        {historySwitcher}
         <section className={styles.singleMode}>
           <div className={styles.chartPanel}>
             <RealThemeOverlayChart
@@ -417,6 +580,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
       {header}
       {settingsModal}
       {inputDrawer}
+      {historySwitcher}
       <section className={styles.body}>
         {sidebar}
         <section className={styles.mainPane}>
@@ -584,6 +748,26 @@ function ReviewHeader({
 
 function normalizeTradeTime(tradeTime: string) {
   return tradeTime.length === 5 ? `${tradeTime}:00` : tradeTime;
+}
+
+/** 값이 delayMs 동안 안정되면 반영하는 디바운스 훅. 첫 값은 즉시 반영. */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+/**
+ * 붙여넣은 텍스트에서 GroupId(종목코드 + 거래일)를 관대하게 파싱.
+ * "005930-2026-05-27", "005930 20260527", "005930_2026/05/27" 등 허용.
+ */
+function parseGroupId(text: string): { code: string; date: string } | null {
+  const m = text.trim().match(/(\d{6})\D*(\d{4})\D?(\d{2})\D?(\d{2})/);
+  if (!m) return null;
+  return { code: m[1], date: `${m[2]}-${m[3]}-${m[4]}` };
 }
 
 /** "9010 | 9450" 형태의 파이프 구분 문자열을 유효한 양수 가격 배열로 파싱. */

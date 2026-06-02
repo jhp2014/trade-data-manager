@@ -1,4 +1,5 @@
 export const FIXED_COLUMNS = [
+    "groupId",
     "reviewId",
     "stockCode",
     "stockName",

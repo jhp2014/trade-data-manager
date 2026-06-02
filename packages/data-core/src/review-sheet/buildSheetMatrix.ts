@@ -32,6 +32,7 @@ export function buildSheetMatrix(
     return [
         [...headers],
         ...rows.map((row) => [
+            buildGroupId(row),
             row.reviewId ?? "",
             row.stockCode,
             row.stockName ?? "",
@@ -43,6 +44,11 @@ export function buildSheetMatrix(
             ...manualKeys.map((key) => formatPayloadValue(row.payload[key])),
         ]),
     ];
+}
+
+/** 복붙 탐색용 GroupId. "종목코드-거래일"(예: 005930-20240115). */
+function buildGroupId(row: ReviewExportRow): string {
+    return `${row.stockCode}-${row.tradeDate}`;
 }
 
 /** 앱 리뷰 화면 링크. tradeTime 이 없으면 09:00 으로 대체(앱 라우트 기본값과 동일). */

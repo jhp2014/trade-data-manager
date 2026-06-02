@@ -10,17 +10,30 @@ export type ChartOverride = {
   stockName?: string;
 };
 
+/** 최근 탐색한 리뷰 종목(그룹) 기록 항목. */
+export type HistoryEntry = {
+  stockCode: string;
+  tradeDate: string;
+  stockName?: string;
+};
+
+const HISTORY_LIMIT = 30;
+
 type ReviewStoreState = {
   selectedGroupIndex: number;
   selectedPointKey: string | null;
   viewMode: ReviewViewMode;
   /** null 이면 선택된 리뷰 종목(그룹) 차트를 그대로 본다. */
   chartOverride: ChartOverride | null;
+  /** 최근 탐색 순서(MRU). 맨 앞이 가장 최근(=현재 차트). */
+  history: HistoryEntry[];
   hydrateSelection: (selection: { selectedGroupIndex: number; selectedPointKey: string }) => void;
   setSelectedGroupIndex: (index: number) => void;
   setSelectedPointKey: (pointKey: string) => void;
   setViewMode: (mode: ReviewViewMode) => void;
   setChartOverride: (override: ChartOverride | null) => void;
+  /** 같은 (code,date) 가 있으면 제거 후 맨 앞으로 올린다(MRU). */
+  pushHistory: (entry: HistoryEntry) => void;
 };
 
 export const useReviewStore = create<ReviewStoreState>()((set) => ({
@@ -28,6 +41,7 @@ export const useReviewStore = create<ReviewStoreState>()((set) => ({
   selectedPointKey: null,
   viewMode: "summary",
   chartOverride: null,
+  history: [],
 
   hydrateSelection: (selection) =>
     set({
@@ -42,4 +56,17 @@ export const useReviewStore = create<ReviewStoreState>()((set) => ({
   setSelectedPointKey: (pointKey) => set({ selectedPointKey: pointKey, chartOverride: null }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setChartOverride: (override) => set({ chartOverride: override }),
+
+  pushHistory: (entry) =>
+    set((state) => {
+      const top = state.history[0];
+      // 이미 최상단이 같은 항목이면 변화 없음(불필요한 리렌더 방지).
+      if (top && top.stockCode === entry.stockCode && top.tradeDate === entry.tradeDate) {
+        return state;
+      }
+      const rest = state.history.filter(
+        (h) => !(h.stockCode === entry.stockCode && h.tradeDate === entry.tradeDate),
+      );
+      return { history: [entry, ...rest].slice(0, HISTORY_LIMIT) };
+    }),
 }));

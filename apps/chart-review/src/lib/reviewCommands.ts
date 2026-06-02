@@ -11,6 +11,8 @@ export type ReviewCommands = {
   prevPoint: () => void;
   selectPoint: (pointKey: string) => void;
   setViewMode: (mode: ReviewViewMode) => void;
+  /** 임의 그룹 인덱스로 점프(필터 순회 목록과 무관). 첫 타점 선택 + URL 동기화. */
+  goToGroup: (groupIndex: number) => void;
 };
 
 export function createReviewCommands(
@@ -87,5 +89,9 @@ export function createReviewCommands(
       select(selectedGroupIndex, pointKey);
     },
     setViewMode: (mode) => useReviewStore.getState().setViewMode(mode),
+    goToGroup: (groupIndex) => {
+      if (groupIndex < 0 || groupIndex >= groups.length) return;
+      goToGroupIndex(groupIndex);
+    },
   };
 }

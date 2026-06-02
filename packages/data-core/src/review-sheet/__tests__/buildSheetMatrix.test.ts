@@ -48,7 +48,8 @@ describe("buildSheetMatrix", () => {
             "m_result",
         ]);
 
-        expect(matrix[1].slice(0, 6)).toEqual([
+        expect(matrix[1].slice(0, 7)).toEqual([
+            "000660-2026-05-27",
             "11",
             "000660",
             "SK하이닉스",
@@ -61,7 +62,8 @@ describe("buildSheetMatrix", () => {
         expect(matrix[1][header.indexOf("m_entryType")]).toBe("분봉 재돌파(S-V) | 분봉 재돌파(L-1)");
         expect(matrix[1][header.indexOf("m_done")]).toBe("Y");
 
-        expect(matrix[2].slice(0, 6)).toEqual([
+        expect(matrix[2].slice(0, 7)).toEqual([
+            "009150-2026-05-27",
             "",
             "009150",
             "",

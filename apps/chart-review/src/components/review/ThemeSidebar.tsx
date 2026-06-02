@@ -114,11 +114,11 @@ function ThemeRow({
     >
       <span className={`${styles.rank} tabular`}>{rank}</span>
       <span className={styles.name}>{truncate(metric.stockName, 7)}</span>
-      <DayCandle closeRate={metric.rate} dayHighRate={metric.dayHighRate} />
+      <AmountCounts distribution={metric.distribution} />
       <span className={`${styles.rate} tabular`} style={{ color: rateColor }}>
         {formatPercent(metric.rate)}
       </span>
-      <AmountCounts distribution={metric.distribution} />
+      <DayCandle closeRate={metric.rate} dayHighRate={metric.dayHighRate} />
     </button>
   );
 }
