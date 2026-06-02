@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./ReviewWorkspace.module.css";
 import modalStyles from "./FieldChecklistModal.module.css";
+import sheetStyles from "./SheetModal.module.css";
 import { RealDailyChart } from "@/components/chart/RealDailyChart";
 import { RealMinuteChart } from "@/components/chart/RealMinuteChart";
 import { RealThemeOverlayChart } from "@/components/chart/RealThemeOverlayChart";
@@ -857,10 +858,12 @@ type SheetDefaults = { spreadsheetId: string; tab: string };
 /** 설정 모달 위에 겹쳐 뜨는 액션 모달 셸(읽기/Export/Import 공용). */
 function ActionModal({
   title,
+  subtitle,
   onClose,
   children,
 }: {
   title: string;
+  subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -868,12 +871,28 @@ function ActionModal({
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === overlayRef.current) onClose();
   };
+  // ESC 로 닫기
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
   return (
-    <div ref={overlayRef} className={modalStyles.overlay} onClick={handleOverlayClick}>
-      <div className={modalStyles.modal}>
-        <div className={modalStyles.header}>
-          <span className={modalStyles.title}>{title}</span>
-          <button type="button" className={modalStyles.close} onClick={onClose}>✕</button>
+    <div ref={overlayRef} className={sheetStyles.overlay} onClick={handleOverlayClick}>
+      <div className={sheetStyles.modal} role="dialog" aria-label={title}>
+        <div className={sheetStyles.header}>
+          <div className={sheetStyles.titleWrap}>
+            <span className={sheetStyles.title}>{title}</span>
+            {subtitle && <span className={sheetStyles.subtitle}>{subtitle}</span>}
+          </div>
+          <button type="button" className={sheetStyles.close} onClick={onClose} aria-label="닫기">
+            ✕
+          </button>
         </div>
         {children}
       </div>
@@ -926,50 +945,67 @@ function ExportModal({ filters, activeFilters, defaults, onClose }: ExportModalP
   };
 
   return (
-    <ActionModal title="Google Sheet Export" onClose={onClose}>
-      <div className={styles.exportForm}>
-        <div className={styles.exportRow}>
-          <button
-            type="button"
-            className={`${styles.button} ${scope === "working" ? styles.buttonActive : ""}`}
-            onClick={() => setScope("working")}
-          >
-            현재 작업셋
-          </button>
-          <button
-            type="button"
-            className={`${styles.button} ${scope === "all" ? styles.buttonActive : ""}`}
-            onClick={() => setScope("all")}
-          >
-            DB 전체
-          </button>
+    <ActionModal
+      title="Google Sheet Export"
+      subtitle="타점을 스프레드시트로 내보냅니다."
+      onClose={onClose}
+    >
+      <div className={sheetStyles.body}>
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>내보낼 범위</span>
+          <div className={sheetStyles.segmented}>
+            <button
+              type="button"
+              className={`${sheetStyles.seg} ${scope === "working" ? sheetStyles.segOn : ""}`}
+              onClick={() => setScope("working")}
+            >
+              현재 작업셋
+            </button>
+            <button
+              type="button"
+              className={`${sheetStyles.seg} ${scope === "all" ? sheetStyles.segOn : ""}`}
+              onClick={() => setScope("all")}
+            >
+              DB 전체
+            </button>
+          </div>
+          <span className={sheetStyles.hint}>
+            {scope === "all"
+              ? "DB 의 모든 타점을 내보냅니다."
+              : "현재 작업셋(읽기 시트 범위)의 타점만 내보냅니다."}
+            {activeFilters > 0 && ` · m_ 필터 ${activeFilters}개 매칭만`}
+          </span>
         </div>
-        <input
-          className={styles.exportInput}
-          type="text"
-          placeholder="스프레드시트 ID (비우면 기본값)"
-          value={spreadsheetId}
-          onChange={(e) => setSpreadsheetId(e.target.value)}
-        />
-        <input
-          className={styles.exportInput}
-          type="text"
-          placeholder="탭 이름 (비우면 기본값, 없으면 생성)"
-          value={tab}
-          onChange={(e) => setTab(e.target.value)}
-        />
-        <div className={styles.exportHint}>
-          {scope === "all"
-            ? "DB 전체 타점을 내보냅니다."
-            : "현재 작업셋(읽기 시트 범위)의 타점을 내보냅니다."}
-          {activeFilters > 0 && ` · m_ 필터 ${activeFilters}개 매칭만`}
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>스프레드시트 ID</span>
+          <input
+            className={sheetStyles.input}
+            type="text"
+            placeholder="비우면 기본값 사용"
+            value={spreadsheetId}
+            onChange={(e) => setSpreadsheetId(e.target.value)}
+          />
         </div>
-        <button type="button" className={styles.button} onClick={handleExport} disabled={busy}>
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>탭 이름</span>
+          <input
+            className={sheetStyles.input}
+            type="text"
+            placeholder="비우면 기본값 · 없으면 새로 생성"
+            value={tab}
+            onChange={(e) => setTab(e.target.value)}
+          />
+        </div>
+      </div>
+      {status && (
+        <div className={`${sheetStyles.status} ${status.ok ? sheetStyles.statusOk : sheetStyles.statusErr}`}>
+          {status.message}
+        </div>
+      )}
+      <div className={sheetStyles.footer}>
+        <button type="button" className={sheetStyles.primaryBtn} onClick={handleExport} disabled={busy}>
           {busy ? "내보내는 중…" : "Export"}
         </button>
-        {status && (
-          <div className={status.ok ? styles.exportOk : styles.exportErr}>{status.message}</div>
-        )}
       </div>
     </ActionModal>
   );
@@ -1017,31 +1053,49 @@ function ImportModal({ defaults, onClose }: { defaults: SheetDefaults; onClose: 
   };
 
   return (
-    <ActionModal title="Sheet → DB 병합 Import" onClose={onClose}>
-      <div className={styles.exportForm}>
-        <div className={styles.exportHint}>
-          시트의 m_ 값을 읽어 DB에 병합합니다. 값이 있는 셀만 덮어쓰며 빈 셀은 보존됩니다.
+    <ActionModal
+      title="Sheet → DB 병합 Import"
+      subtitle="시트의 m_ 값을 DB 타점에 병합합니다."
+      onClose={onClose}
+    >
+      <div className={sheetStyles.body}>
+        <div className={sheetStyles.banner}>
+          <span className={sheetStyles.bannerIcon}>↧</span>
+          <span>
+            값이 있는 m_ 셀만 덮어쓰고, <strong>빈 셀은 그대로 보존</strong>합니다. 찾지 못한 타점은
+            건너뛰고 결과에 보고합니다.
+          </span>
         </div>
-        <input
-          className={styles.exportInput}
-          type="text"
-          placeholder="스프레드시트 ID (비우면 읽기 시트 설정)"
-          value={spreadsheetId}
-          onChange={(e) => setSpreadsheetId(e.target.value)}
-        />
-        <input
-          className={styles.exportInput}
-          type="text"
-          placeholder="탭 이름 (비우면 읽기 시트 설정)"
-          value={tab}
-          onChange={(e) => setTab(e.target.value)}
-        />
-        <button type="button" className={styles.button} onClick={handleImport} disabled={busy}>
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>스프레드시트 ID</span>
+          <input
+            className={sheetStyles.input}
+            type="text"
+            placeholder="비우면 읽기 시트 설정 사용"
+            value={spreadsheetId}
+            onChange={(e) => setSpreadsheetId(e.target.value)}
+          />
+        </div>
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>탭 이름</span>
+          <input
+            className={sheetStyles.input}
+            type="text"
+            placeholder="비우면 읽기 시트 설정 사용"
+            value={tab}
+            onChange={(e) => setTab(e.target.value)}
+          />
+        </div>
+      </div>
+      {status && (
+        <div className={`${sheetStyles.status} ${status.ok ? sheetStyles.statusOk : sheetStyles.statusErr}`}>
+          {status.message}
+        </div>
+      )}
+      <div className={sheetStyles.footer}>
+        <button type="button" className={sheetStyles.primaryBtn} onClick={handleImport} disabled={busy}>
           {busy ? "병합 중…" : "Sheet → DB 병합"}
         </button>
-        {status && (
-          <div className={status.ok ? styles.exportOk : styles.exportErr}>{status.message}</div>
-        )}
       </div>
     </ActionModal>
   );
@@ -1114,42 +1168,57 @@ function ReadSheetModal({
         : "미설정 → DB 전체";
 
   return (
-    <ActionModal title="읽기 시트 (작업셋)" onClose={onClose}>
-      <div className={styles.exportForm}>
-        <div className={styles.exportHint}>
-          현재 작업셋: {sourceLabel}
-          {config && !config.hasCredentials && " · 서비스 계정 자격증명 없음"}
+    <ActionModal
+      title="읽기 시트 (작업셋)"
+      subtitle="작업셋을 정의할 스프레드시트를 지정합니다. 미설정 시 DB 전체를 사용합니다."
+      onClose={onClose}
+    >
+      <div className={sheetStyles.body}>
+        <div className={sheetStyles.sourceRow}>
+          <span>현재 작업셋</span>
+          <span className={sheetStyles.sourceTag}>{sourceLabel}</span>
+          {config && !config.hasCredentials && (
+            <span className={sheetStyles.sourceWarn}>· 서비스 계정 자격증명 없음</span>
+          )}
         </div>
-        <input
-          className={styles.exportInput}
-          type="text"
-          placeholder="스프레드시트 ID"
-          value={spreadsheetId}
-          onChange={(e) => setSpreadsheetId(e.target.value)}
-        />
-        <input
-          className={styles.exportInput}
-          type="text"
-          placeholder="탭 이름 (비우면 review)"
-          value={tab}
-          onChange={(e) => setTab(e.target.value)}
-        />
-        <div className={styles.exportRow}>
-          <button type="button" className={styles.button} onClick={apply} disabled={busy}>
-            {busy ? "적용 중…" : "이 시트로 불러오기"}
-          </button>
-          <button
-            type="button"
-            className={styles.button}
-            onClick={reset}
-            disabled={busy || config?.source !== "cookie"}
-          >
-            기본값으로
-          </button>
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>스프레드시트 ID</span>
+          <input
+            className={sheetStyles.input}
+            type="text"
+            placeholder="스프레드시트 ID 를 입력하세요"
+            value={spreadsheetId}
+            onChange={(e) => setSpreadsheetId(e.target.value)}
+          />
         </div>
-        {status && (
-          <div className={status.ok ? styles.exportOk : styles.exportErr}>{status.message}</div>
-        )}
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>탭 이름</span>
+          <input
+            className={sheetStyles.input}
+            type="text"
+            placeholder="비우면 review"
+            value={tab}
+            onChange={(e) => setTab(e.target.value)}
+          />
+        </div>
+      </div>
+      {status && (
+        <div className={`${sheetStyles.status} ${status.ok ? sheetStyles.statusOk : sheetStyles.statusErr}`}>
+          {status.message}
+        </div>
+      )}
+      <div className={sheetStyles.footer}>
+        <button type="button" className={sheetStyles.primaryBtn} onClick={apply} disabled={busy}>
+          {busy ? "적용 중…" : "이 시트로 불러오기"}
+        </button>
+        <button
+          type="button"
+          className={sheetStyles.ghostBtn}
+          onClick={reset}
+          disabled={busy || config?.source !== "cookie"}
+        >
+          기본값으로
+        </button>
       </div>
     </ActionModal>
   );
