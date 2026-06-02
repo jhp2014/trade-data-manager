@@ -532,29 +532,27 @@ function ReviewHeader({
               →
             </button>
           </span>
-          <span className={styles.controlSep}>|</span>
-          <div className={styles.segTabs}>
+          <div className={styles.segGroup}>
             <button
-              className={`${styles.segButton} ${chartPriceMode === "krx" ? styles.segButtonActive : ""}`}
+              className={`${styles.segChip} ${chartPriceMode === "krx" ? styles.segChipActive : ""}`}
               type="button"
               onClick={() => setChartPriceMode("krx")}
             >
               KRX
             </button>
             <button
-              className={`${styles.segButton} ${chartPriceMode === "nxt" ? styles.segButtonActive : ""}`}
+              className={`${styles.segChip} ${chartPriceMode === "nxt" ? styles.segChipActive : ""}`}
               type="button"
               onClick={() => setChartPriceMode("nxt")}
             >
               NXT
             </button>
           </div>
-          <span className={styles.controlSep}>|</span>
-          <div className={styles.segTabs}>
+          <div className={styles.segGroup}>
             {viewModes.map(({ mode, label }) => (
               <button
                 key={mode}
-                className={`${styles.segButton} ${viewMode === mode ? styles.segButtonActive : ""}`}
+                className={`${styles.segChip} ${viewMode === mode ? styles.segChipActive : ""}`}
                 type="button"
                 onClick={() => commands.setViewMode(mode)}
                 title={label}
@@ -563,7 +561,6 @@ function ReviewHeader({
               </button>
             ))}
           </div>
-          <span className={styles.controlSep}>|</span>
           <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="설정">
             ⚙
           </button>

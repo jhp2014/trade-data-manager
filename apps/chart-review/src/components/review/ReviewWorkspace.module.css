@@ -55,18 +55,22 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-size: 13px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 15px;
   line-height: 1;
   flex-shrink: 0;
   cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 .settingsBtn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
@@ -86,7 +90,7 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px 14px;
+  gap: 6px;
   font-size: 12px;
 }
 
@@ -97,8 +101,11 @@
 .fieldItem {
   display: inline-flex;
   align-items: baseline;
-  gap: 5px;
+  gap: 6px;
   max-width: 220px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: var(--bg-secondary);
 }
 
 .fieldKey {
@@ -180,6 +187,45 @@
 
 .segButton:disabled:hover {
   color: var(--text-tertiary);
+}
+
+/* 헤더 세그먼트 컨트롤 (KRX/NXT, 뷰모드) — 컨테이너에 담긴 칩 토글 */
+.segGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--bg-secondary);
+}
+
+.segChip {
+  height: 26px;
+  padding: 0 11px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.segChip:hover {
+  color: var(--text-primary);
+}
+
+.segChipActive {
+  background: var(--bg-primary);
+  color: var(--accent-primary);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(17, 24, 33, 0.12);
+}
+
+.segChipActive:hover {
+  color: var(--accent-primary);
 }
 
 /* ── Body (sidebar + main) ──────────────────────────────── */
@@ -423,23 +469,29 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--bg-secondary);
 }
 
 .navArrow {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 26px;
+  height: 26px;
   border: none;
+  border-radius: 7px;
   background: transparent;
-  color: var(--text-tertiary);
-  font-size: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .navArrow:hover:not(:disabled) {
+  background: var(--bg-primary);
   color: var(--text-primary);
 }
 
@@ -449,9 +501,10 @@
 }
 
 .navPos {
+  padding: 0 8px;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 700;
   white-space: nowrap;
   user-select: none;
 }
