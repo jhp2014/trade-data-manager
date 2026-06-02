@@ -10,9 +10,16 @@ const SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.read
 
 config({ path: resolve(process.cwd(), "../../.env") });
 
-export async function fetchSheetRowsAction(): Promise<SheetPointRow[]> {
-  const spreadsheetId = requireEnv("GOOGLE_SHEETS_ID");
-  const tab = process.env.GOOGLE_SHEETS_TAB?.trim() || "review";
+/**
+ * 시트를 읽어 행을 파싱한다.
+ * - spreadsheetId/tab 을 넘기면 그 시트를, 없으면 env(GOOGLE_SHEETS_ID/TAB)를 쓴다.
+ *   (호출부에서 쿠키 기반 설정을 해석해 넘기는 것을 권장)
+ */
+export async function fetchSheetRowsAction(
+  override?: { spreadsheetId?: string | null; tab?: string | null },
+): Promise<SheetPointRow[]> {
+  const spreadsheetId = override?.spreadsheetId?.trim() || requireEnv("GOOGLE_SHEETS_ID");
+  const tab = override?.tab?.trim() || process.env.GOOGLE_SHEETS_TAB?.trim() || "review";
   const auth = createSheetsAuth();
   const sheets = google.sheets({ version: "v4", auth });
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./ReviewWorkspace.module.css";
+import modalStyles from "./FieldChecklistModal.module.css";
 import { RealDailyChart } from "@/components/chart/RealDailyChart";
 import { RealMinuteChart } from "@/components/chart/RealMinuteChart";
 import { RealThemeOverlayChart } from "@/components/chart/RealThemeOverlayChart";
@@ -49,7 +50,26 @@ const VALUE_TRUNCATE = 15;
 
 export function ReviewWorkspace({ groups, initialSelection, manualKeys }: ReviewWorkspaceProps) {
   const router = useRouter();
-  const commands = useMemo(() => createReviewCommands(groups), [groups]);
+  const manualFilters = useUiStore((state) => state.manualFilters);
+  const filterActive = activeFilterCount(manualFilters) > 0;
+
+  // 필터 활성 시 종목 이동은 "매칭 타점이 1개 이상 있는 종목"만 순회한다.
+  // (종목 안에서는 전 타점을 그대로 보여주되 PointList 에서 매칭 배지를 표시)
+  const navigableIndices = useMemo(() => {
+    if (!filterActive) return groups.map((_, i) => i);
+    return groups
+      .map((group, i) => ({
+        i,
+        hit: group.points.some((p) => pointMatchesManualFilters(p, manualFilters)),
+      }))
+      .filter((g) => g.hit)
+      .map((g) => g.i);
+  }, [groups, filterActive, manualFilters]);
+
+  const commands = useMemo(
+    () => createReviewCommands(groups, navigableIndices),
+    [groups, navigableIndices],
+  );
   const storeGroupIndex = useReviewStore((state) => state.selectedGroupIndex);
   const storePointKey = useReviewStore((state) => state.selectedPointKey);
   const viewMode = useReviewStore((state) => state.viewMode);
@@ -72,6 +92,22 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
   const selectedPoint =
     selectedGroup.points.find((point) => point.pointKey === selectedPointKey) ??
     selectedGroup.points[0];
+
+  // 필터를 켜거나 바꿨을 때 현재 선택 종목이 매칭 목록 밖이면 첫 매칭 종목으로 스냅.
+  useEffect(() => {
+    if (!filterActive || navigableIndices.length === 0) return;
+    if (navigableIndices.includes(selectedGroupIndex)) return;
+    const first = navigableIndices[0];
+    const store = useReviewStore.getState();
+    store.setSelectedGroupIndex(first);
+    store.setSelectedPointKey(groups[first].points[0].pointKey);
+  }, [filterActive, navigableIndices, selectedGroupIndex, groups]);
+
+  // 헤더에 표시할 종목 위치/개수: 필터 활성 시 매칭 종목 기준.
+  const navPosition = filterActive
+    ? Math.max(navigableIndices.indexOf(selectedGroupIndex), 0)
+    : selectedGroupIndex;
+  const navCount = filterActive ? navigableIndices.length : groups.length;
 
   // 임시 탐색(override) 중이면 차트/테마 대상은 클릭한 종목, 아니면 리뷰 종목.
   const isOverride = chartOverride != null;
@@ -247,8 +283,8 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
       tradeDate={selectedGroup.tradeDate}
       themeName={selectedThemeName}
       point={selectedPoint}
-      groupIndex={selectedGroupIndex}
-      groupCount={groups.length}
+      groupIndex={navPosition}
+      groupCount={navCount}
       viewMode={viewMode}
       isOverride={isOverride}
       onResetOverride={() => setChartOverride(null)}
@@ -807,16 +843,57 @@ function formatPointTime(tradeTime: string) {
   return tradeTime || "미입력";
 }
 
-// ── Export Section ───────────────────────────────────────────
+// ── Sheet 설정 모달 (공용 셸) ──────────────────────────────────
 
-type ExportSectionProps = {
-  filters: Record<string, string[]>;
-  activeFilters: number;
+type ReadSheetState = {
+  spreadsheetId: string | null;
+  tab: string;
+  source: "cookie" | "env" | "none";
+  hasCredentials: boolean;
 };
 
-function ExportSection({ filters, activeFilters }: ExportSectionProps) {
-  const [spreadsheetId, setSpreadsheetId] = useState("");
-  const [tab, setTab] = useState("");
+type SheetDefaults = { spreadsheetId: string; tab: string };
+
+/** 설정 모달 위에 겹쳐 뜨는 액션 모달 셸(읽기/Export/Import 공용). */
+function ActionModal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === overlayRef.current) onClose();
+  };
+  return (
+    <div ref={overlayRef} className={modalStyles.overlay} onClick={handleOverlayClick}>
+      <div className={modalStyles.modal}>
+        <div className={modalStyles.header}>
+          <span className={modalStyles.title}>{title}</span>
+          <button type="button" className={modalStyles.close} onClick={onClose}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── Export 모달 ───────────────────────────────────────────────
+
+type ExportModalProps = {
+  filters: Record<string, string[]>;
+  activeFilters: number;
+  defaults: SheetDefaults;
+  onClose: () => void;
+};
+
+function ExportModal({ filters, activeFilters, defaults, onClose }: ExportModalProps) {
+  const [spreadsheetId, setSpreadsheetId] = useState(defaults.spreadsheetId);
+  const [tab, setTab] = useState(defaults.tab);
+  const [scope, setScope] = useState<"working" | "all">("working");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -831,13 +908,15 @@ function ExportSection({ filters, activeFilters }: ExportSectionProps) {
           spreadsheetId: spreadsheetId.trim() || undefined,
           tab: tab.trim() || undefined,
           filters,
+          scope,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Export 실패");
+      const scopeLabel = data.scope === "all" ? "DB 전체" : "작업셋";
       setStatus({
         ok: true,
-        message: `완료: '${data.tab}' 탭에 ${data.rows}행 · ${data.cols}열${data.filtered ? " (필터 적용)" : ""}`,
+        message: `완료: '${data.tab}' 탭에 ${data.rows}행 · ${data.cols}열 (${scopeLabel}${data.filtered ? " · 필터" : ""})`,
       });
     } catch (err) {
       setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
@@ -847,33 +926,232 @@ function ExportSection({ filters, activeFilters }: ExportSectionProps) {
   };
 
   return (
-    <div className={styles.exportForm}>
-      <input
-        className={styles.exportInput}
-        type="text"
-        placeholder="스프레드시트 ID (비우면 기본값)"
-        value={spreadsheetId}
-        onChange={(e) => setSpreadsheetId(e.target.value)}
-      />
-      <input
-        className={styles.exportInput}
-        type="text"
-        placeholder="탭 이름 (비우면 기본값, 없으면 생성)"
-        value={tab}
-        onChange={(e) => setTab(e.target.value)}
-      />
-      <div className={styles.exportHint}>
-        {activeFilters > 0
-          ? `활성 m_ 필터 ${activeFilters}개 → 매칭 타점만 내보냅니다.`
-          : "필터 없음 → 전체 타점을 내보냅니다."}
+    <ActionModal title="Google Sheet Export" onClose={onClose}>
+      <div className={styles.exportForm}>
+        <div className={styles.exportRow}>
+          <button
+            type="button"
+            className={`${styles.button} ${scope === "working" ? styles.buttonActive : ""}`}
+            onClick={() => setScope("working")}
+          >
+            현재 작업셋
+          </button>
+          <button
+            type="button"
+            className={`${styles.button} ${scope === "all" ? styles.buttonActive : ""}`}
+            onClick={() => setScope("all")}
+          >
+            DB 전체
+          </button>
+        </div>
+        <input
+          className={styles.exportInput}
+          type="text"
+          placeholder="스프레드시트 ID (비우면 기본값)"
+          value={spreadsheetId}
+          onChange={(e) => setSpreadsheetId(e.target.value)}
+        />
+        <input
+          className={styles.exportInput}
+          type="text"
+          placeholder="탭 이름 (비우면 기본값, 없으면 생성)"
+          value={tab}
+          onChange={(e) => setTab(e.target.value)}
+        />
+        <div className={styles.exportHint}>
+          {scope === "all"
+            ? "DB 전체 타점을 내보냅니다."
+            : "현재 작업셋(읽기 시트 범위)의 타점을 내보냅니다."}
+          {activeFilters > 0 && ` · m_ 필터 ${activeFilters}개 매칭만`}
+        </div>
+        <button type="button" className={styles.button} onClick={handleExport} disabled={busy}>
+          {busy ? "내보내는 중…" : "Export"}
+        </button>
+        {status && (
+          <div className={status.ok ? styles.exportOk : styles.exportErr}>{status.message}</div>
+        )}
       </div>
-      <button type="button" className={styles.exportBtn} onClick={handleExport} disabled={busy}>
-        {busy ? "내보내는 중…" : "Export"}
-      </button>
-      {status && (
-        <div className={status.ok ? styles.exportOk : styles.exportErr}>{status.message}</div>
-      )}
-    </div>
+    </ActionModal>
+  );
+}
+
+// ── Import (Sheet → DB 병합) 모달 ─────────────────────────────
+
+function ImportModal({ defaults, onClose }: { defaults: SheetDefaults; onClose: () => void }) {
+  const router = useRouter();
+  const [spreadsheetId, setSpreadsheetId] = useState(defaults.spreadsheetId);
+  const [tab, setTab] = useState(defaults.tab);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const handleImport = async () => {
+    if (
+      !window.confirm(
+        "시트의 비어있지 않은 m_ 값을 DB에 병합합니다.\n(빈 셀은 건드리지 않고, 값이 있는 셀만 덮어씁니다.)\n진행할까요?",
+      )
+    )
+      return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch("/api/review/import-merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          spreadsheetId: spreadsheetId.trim() || undefined,
+          tab: tab.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Import 실패");
+      const parts = [`병합 ${data.merged}건`];
+      if (data.skippedNotFound > 0) parts.push(`미발견 ${data.skippedNotFound}건`);
+      if (data.skippedNoValues > 0) parts.push(`값없음 ${data.skippedNoValues}건`);
+      setStatus({ ok: true, message: `완료: ${parts.join(" · ")} (전체 ${data.total}행)` });
+      router.refresh();
+    } catch (err) {
+      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ActionModal title="Sheet → DB 병합 Import" onClose={onClose}>
+      <div className={styles.exportForm}>
+        <div className={styles.exportHint}>
+          시트의 m_ 값을 읽어 DB에 병합합니다. 값이 있는 셀만 덮어쓰며 빈 셀은 보존됩니다.
+        </div>
+        <input
+          className={styles.exportInput}
+          type="text"
+          placeholder="스프레드시트 ID (비우면 읽기 시트 설정)"
+          value={spreadsheetId}
+          onChange={(e) => setSpreadsheetId(e.target.value)}
+        />
+        <input
+          className={styles.exportInput}
+          type="text"
+          placeholder="탭 이름 (비우면 읽기 시트 설정)"
+          value={tab}
+          onChange={(e) => setTab(e.target.value)}
+        />
+        <button type="button" className={styles.button} onClick={handleImport} disabled={busy}>
+          {busy ? "병합 중…" : "Sheet → DB 병합"}
+        </button>
+        {status && (
+          <div className={status.ok ? styles.exportOk : styles.exportErr}>{status.message}</div>
+        )}
+      </div>
+    </ActionModal>
+  );
+}
+
+// ── 읽기 시트 모달 ────────────────────────────────────────────
+
+function ReadSheetModal({
+  config,
+  defaults,
+  onClose,
+}: {
+  config: ReadSheetState | null;
+  defaults: SheetDefaults;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [spreadsheetId, setSpreadsheetId] = useState(defaults.spreadsheetId);
+  const [tab, setTab] = useState(defaults.tab);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const apply = async () => {
+    const id = spreadsheetId.trim();
+    if (!id) {
+      setStatus({ ok: false, message: "스프레드시트 ID 를 입력하세요." });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch("/api/review/read-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spreadsheetId: id, tab: tab.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "설정 저장 실패");
+      setStatus({ ok: true, message: `'${data.tab}' 탭 기준으로 작업셋을 다시 불러옵니다.` });
+      router.refresh();
+    } catch (err) {
+      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch("/api/review/read-sheet", { method: "DELETE" });
+      if (!res.ok) throw new Error("초기화 실패");
+      setSpreadsheetId("");
+      setTab("");
+      setStatus({ ok: true, message: "기본값(.env)으로 되돌렸습니다." });
+      router.refresh();
+    } catch (err) {
+      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sourceLabel =
+    config?.source === "cookie"
+      ? "앱 설정(쿠키)"
+      : config?.source === "env"
+        ? "기본값(.env)"
+        : "미설정 → DB 전체";
+
+  return (
+    <ActionModal title="읽기 시트 (작업셋)" onClose={onClose}>
+      <div className={styles.exportForm}>
+        <div className={styles.exportHint}>
+          현재 작업셋: {sourceLabel}
+          {config && !config.hasCredentials && " · 서비스 계정 자격증명 없음"}
+        </div>
+        <input
+          className={styles.exportInput}
+          type="text"
+          placeholder="스프레드시트 ID"
+          value={spreadsheetId}
+          onChange={(e) => setSpreadsheetId(e.target.value)}
+        />
+        <input
+          className={styles.exportInput}
+          type="text"
+          placeholder="탭 이름 (비우면 review)"
+          value={tab}
+          onChange={(e) => setTab(e.target.value)}
+        />
+        <div className={styles.exportRow}>
+          <button type="button" className={styles.button} onClick={apply} disabled={busy}>
+            {busy ? "적용 중…" : "이 시트로 불러오기"}
+          </button>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={reset}
+            disabled={busy || config?.source !== "cookie"}
+          >
+            기본값으로
+          </button>
+        </div>
+        {status && (
+          <div className={status.ok ? styles.exportOk : styles.exportErr}>{status.message}</div>
+        )}
+      </div>
+    </ActionModal>
   );
 }
 
@@ -897,8 +1175,32 @@ function SettingsModal({ manualFieldKeys, headerAvailable, valueSuggestions, onC
   const toggleManualFilterValue = useUiStore((state) => state.toggleManualFilterValue);
   const clearManualFilters = useUiStore((state) => state.clearManualFilters);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [openPicker, setOpenPicker] = useState<"header" | "point" | "filter" | null>(null);
+  const [openPicker, setOpenPicker] = useState<
+    "header" | "point" | "filter" | "read" | "export" | "import" | null
+  >(null);
+  const [sheetConfig, setSheetConfig] = useState<ReadSheetState | null>(null);
   const activeFilters = activeFilterCount(manualFilters);
+
+  // 읽기 시트 설정(쿠키/env) 불러오기 → 각 모달 입력 기본값으로 사용
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/review/read-sheet")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: ReadSheetState | null) => {
+        if (alive && data) setSheetConfig(data);
+      })
+      .catch(() => {
+        /* 무시: 자격증명/설정 없음 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const defaults: SheetDefaults = {
+    spreadsheetId: sheetConfig?.spreadsheetId ?? "",
+    tab: sheetConfig?.tab ?? "review",
+  };
 
   // 오버레이 클릭(배경)으로 닫기
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -952,9 +1254,35 @@ function SettingsModal({ manualFieldKeys, headerAvailable, valueSuggestions, onC
               )}
             </button>
           </section>
-          <section className={`${styles.settingsSection} ${styles.settingsSectionColumn}`}>
+          <section className={styles.settingsSection}>
+            <div className={styles.settingsSectionLabel}>읽기 시트 (작업셋)</div>
+            <button
+              type="button"
+              className={styles.settingsPickerBtn}
+              onClick={() => setOpenPicker("read")}
+            >
+              <span>읽기 시트 설정</span>
+            </button>
+          </section>
+          <section className={styles.settingsSection}>
             <div className={styles.settingsSectionLabel}>Google Sheet Export</div>
-            <ExportSection filters={manualFilters} activeFilters={activeFilters} />
+            <button
+              type="button"
+              className={styles.settingsPickerBtn}
+              onClick={() => setOpenPicker("export")}
+            >
+              <span>Sheet로 Export</span>
+            </button>
+          </section>
+          <section className={styles.settingsSection}>
+            <div className={styles.settingsSectionLabel}>Sheet → DB 병합 Import</div>
+            <button
+              type="button"
+              className={styles.settingsPickerBtn}
+              onClick={() => setOpenPicker("import")}
+            >
+              <span>Sheet → DB 병합</span>
+            </button>
           </section>
         </div>
       </div>
@@ -987,6 +1315,24 @@ function SettingsModal({ manualFieldKeys, headerAvailable, valueSuggestions, onC
           onClear={clearManualFilters}
           onClose={() => setOpenPicker(null)}
         />
+      )}
+      {openPicker === "read" && (
+        <ReadSheetModal
+          config={sheetConfig}
+          defaults={defaults}
+          onClose={() => setOpenPicker(null)}
+        />
+      )}
+      {openPicker === "export" && (
+        <ExportModal
+          filters={manualFilters}
+          activeFilters={activeFilters}
+          defaults={defaults}
+          onClose={() => setOpenPicker(null)}
+        />
+      )}
+      {openPicker === "import" && (
+        <ImportModal defaults={defaults} onClose={() => setOpenPicker(null)} />
       )}
     </div>
   );

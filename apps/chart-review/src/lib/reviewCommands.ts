@@ -13,7 +13,19 @@ export type ReviewCommands = {
   setViewMode: (mode: ReviewViewMode) => void;
 };
 
-export function createReviewCommands(groups: ReviewStockGroup[]): ReviewCommands {
+export function createReviewCommands(
+  groups: ReviewStockGroup[],
+  /**
+   * 종목 이동(a/d, prev/next)이 순회할 그룹 인덱스 목록(오름차순).
+   * 필터 활성 시 매칭 종목만 담아 넘긴다. 생략/빈 배열이면 전체 그룹을 순회.
+   */
+  navigableIndices?: number[],
+): ReviewCommands {
+  const order =
+    navigableIndices && navigableIndices.length > 0
+      ? navigableIndices
+      : groups.map((_, i) => i);
+
   const mirrorUrl = (groupIndex: number, pointKey: string) => {
     const group = groups[groupIndex];
     const point = group.points.find((candidate) => candidate.pointKey === pointKey) ?? group.points[0];
@@ -27,18 +39,34 @@ export function createReviewCommands(groups: ReviewStockGroup[]): ReviewCommands
     mirrorUrl(groupIndex, pointKey);
   };
 
+  /** order 안에서 현재 그룹의 위치. 없으면(필터 밖) -1. */
+  const positionOf = (groupIndex: number) => order.indexOf(groupIndex);
+
+  const goToGroupIndex = (groupIndex: number) => {
+    select(groupIndex, groups[groupIndex].points[0].pointKey);
+  };
+
   return {
     nextGroup: () => {
       const { selectedGroupIndex } = useReviewStore.getState();
-      const nextIndex = Math.min(selectedGroupIndex + 1, groups.length - 1);
-      const pointKey = groups[nextIndex].points[0].pointKey;
-      select(nextIndex, pointKey);
+      const pos = positionOf(selectedGroupIndex);
+      if (pos === -1) {
+        // 현재 그룹이 순회 목록 밖(필터 적용 직후 등): 다음 매칭 종목으로.
+        const after = order.find((i) => i > selectedGroupIndex);
+        goToGroupIndex(after ?? order[order.length - 1]);
+        return;
+      }
+      goToGroupIndex(order[Math.min(pos + 1, order.length - 1)]);
     },
     prevGroup: () => {
       const { selectedGroupIndex } = useReviewStore.getState();
-      const nextIndex = Math.max(selectedGroupIndex - 1, 0);
-      const pointKey = groups[nextIndex].points[0].pointKey;
-      select(nextIndex, pointKey);
+      const pos = positionOf(selectedGroupIndex);
+      if (pos === -1) {
+        const before = [...order].reverse().find((i) => i < selectedGroupIndex);
+        goToGroupIndex(before ?? order[0]);
+        return;
+      }
+      goToGroupIndex(order[Math.max(pos - 1, 0)]);
     },
     nextPoint: () => {
       const { selectedGroupIndex, selectedPointKey } = useReviewStore.getState();

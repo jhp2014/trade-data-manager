@@ -6,7 +6,7 @@ import {
   type ReviewLoadTarget,
 } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
-import { fetchSheetRowsAction } from "@/actions/sheet";
+import { resolveWorkingSetKeys } from "@/lib/workingSet";
 import { mockSheetRows } from "@/mock/sheetRows";
 import type { SheetPointRow } from "@/types/review";
 
@@ -22,17 +22,19 @@ config({ path: resolve(process.cwd(), "../../.env") });
  * - DB 가 비어있거나 DATABASE_URL 이 없으면: mock 으로 폴백.
  */
 export async function loadReviewRows(): Promise<SheetPointRow[]> {
+  // 작업셋 = 읽기 시트(쿠키/env)의 키. null 이면 DB 전체.
+  const workingKeys = await resolveWorkingSetKeys();
   let keys: ReviewLoadKey[] | undefined;
 
-  if (hasSheetsEnv()) {
-    console.info("[review] resolving work-set keys from Google Sheets");
-    keys = await loadSheetKeys();
-    if (keys.length === 0) {
+  if (workingKeys === null) {
+    console.info("[review] no read sheet configured; loading all targets from DB");
+  } else {
+    if (workingKeys.length === 0) {
       console.warn("[review] connected sheet has no rows; nothing to load");
       return [];
     }
-  } else {
-    console.info("[review] no Sheets env; loading all targets from DB");
+    console.info(`[review] work-set resolved from sheet: ${workingKeys.length} targets`);
+    keys = workingKeys;
   }
 
   if (!process.env.DATABASE_URL?.trim()) {
@@ -43,21 +45,6 @@ export async function loadReviewRows(): Promise<SheetPointRow[]> {
   const db = getDb();
   const targets = await findReviewLoadTargets(db, { keys });
   return targets.flatMap(toSheetPointRows);
-}
-
-/** 시트 전체를 읽어 (stockCode, tradeDate) 쌍만 dedupe 한 선택 키 목록. */
-async function loadSheetKeys(): Promise<ReviewLoadKey[]> {
-  const rows = await fetchSheetRowsAction();
-  const seen = new Set<string>();
-  const keys: ReviewLoadKey[] = [];
-  for (const row of rows) {
-    if (!row.stockCode || !row.tradeDate) continue;
-    const id = `${row.stockCode}|${row.tradeDate}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    keys.push({ stockCode: row.stockCode, tradeDate: row.tradeDate });
-  }
-  return keys;
 }
 
 let syntheticRow = 0;
@@ -112,14 +99,4 @@ function toManual(payload: Record<string, string | string[]>): Record<string, st
     out[key] = Array.isArray(value) ? value.join(" | ") : value;
   }
   return out;
-}
-
-function hasSheetsEnv() {
-  const hasSheet = Boolean(process.env.GOOGLE_SHEETS_ID?.trim());
-  const hasKeyFile = Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim());
-  const hasInlineKey = Boolean(
-    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim() &&
-    process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.trim(),
-  );
-  return hasSheet && (hasKeyFile || hasInlineKey);
 }

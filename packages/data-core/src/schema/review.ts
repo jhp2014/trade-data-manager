@@ -49,7 +49,7 @@ export const reviewPoints = pgTable("review_point", {
  * 수동 입력(m_) 컬럼의 전역 키 레지스트리.
  * - 입력 모달은 이 목록을 행으로 렌더(각 Point payload 에서 값만 채움)
  * - export 의 m_ 컬럼 순서도 sortOrder 로 결정
- * - 삭제는 비파괴적: 레지스트리에서만 제거하고 payload 값은 보존 → 재추가 시 복구
+ * - 삭제는 파괴적: 레지스트리 제거와 함께 모든 payload_json 에서 해당 키도 제거
  */
 export const reviewManualKeys = pgTable("review_manual_key", {
     id: bigserial("id", { mode: "bigint" }).primaryKey(),

@@ -133,7 +133,7 @@ export async function deleteReviewPointById(db: Database, id: bigint): Promise<v
 
 export async function findReviewExportRows(
     db: Database,
-    opts: { since?: string } = {},
+    opts: { since?: string; keys?: ReviewLoadKey[] } = {},
 ): Promise<ReviewExportRow[]> {
     const targets = await findExportTargets(db, opts);
     if (targets.length === 0) return [];
@@ -293,8 +293,27 @@ async function loadTargets(
 
 async function findExportTargets(
     db: Database,
-    opts: { since?: string },
+    opts: { since?: string; keys?: ReviewLoadKey[] },
 ) {
+    // keys 가 주어지면 작업셋(읽기 시트) 범위로 제한한다.
+    if (opts.keys) {
+        if (opts.keys.length === 0) return [];
+        const codes = Array.from(new Set(opts.keys.map((k) => k.stockCode)));
+        const dates = Array.from(new Set(opts.keys.map((k) => k.tradeDate)));
+        const rows = await db
+            .select()
+            .from(reviewTargets)
+            .where(
+                and(
+                    inArray(reviewTargets.stockCode, codes),
+                    inArray(reviewTargets.tradeDate, dates),
+                ),
+            )
+            .orderBy(desc(reviewTargets.tradeDate), asc(reviewTargets.stockCode));
+        const wanted = new Set(opts.keys.map((k) => `${k.stockCode}|${k.tradeDate}`));
+        return rows.filter((row) => wanted.has(`${row.stockCode}|${row.tradeDate}`));
+    }
+
     if (opts.since) {
         return db
             .select()
@@ -400,12 +419,24 @@ export async function addManualKey(
 }
 
 /**
- * 수동 입력 키 삭제(비파괴적).
- * 레지스트리 행만 제거하며 각 review_point 의 payload 값은 보존한다.
- * 동일 키를 다시 추가하면 payload 에 남아있던 값이 그대로 복구된다.
+ * 수동 입력 키 완전 삭제(파괴적).
+ * - 레지스트리 행을 제거하고,
+ * - 모든 review_point.payload_json 에서 해당 키를 제거한다(`payload_json - 'key'`).
+ * 삭제 후에는 필터/제안 목록에서도 자연히 사라진다(payload 데이터가 남지 않음).
+ * @returns payload 에서 키가 제거된 review_point 행 수
  */
-export async function deleteManualKey(db: Database, key: string): Promise<void> {
-    await db.delete(reviewManualKeys).where(eq(reviewManualKeys.key, key.trim()));
+export async function deleteManualKey(db: Database, key: string): Promise<number> {
+    const trimmed = key.trim();
+    if (!trimmed) return 0;
+
+    await db.delete(reviewManualKeys).where(eq(reviewManualKeys.key, trimmed));
+
+    const result = await db.execute(
+        sql`UPDATE ${reviewPoints}
+            SET payload_json = payload_json - ${trimmed}, updated_at = NOW()
+            WHERE payload_json ? ${trimmed}`,
+    );
+    return Number((result as { rowCount?: number | null }).rowCount ?? 0);
 }
 
 /**
@@ -430,4 +461,116 @@ export async function backfillManualKeysFromPayloads(db: Database): Promise<stri
         added.push(key);
     }
     return added;
+}
+
+// ── Sheet → DB 대량 병합 Import ──────────────────────────────────────
+
+/**
+ * 병합 대상 1건. reviewId 가 있으면 그것으로 식별(우선),
+ * 없으면 (stockCode, tradeDate, tradeTime) 좌표로 식별한다.
+ * values 는 "비어있지 않은" m_ 값만 담는다(키는 payloadJson 키 = m_ 접두 제거).
+ */
+export type PayloadMergeItem = {
+    reviewId?: string;
+    stockCode?: string;
+    tradeDate?: string;
+    tradeTime?: string;
+    values: Record<string, string | string[]>;
+    /** 리포트용 식별 문자열(예: 시트 행번호). */
+    ref: string;
+};
+
+export type PayloadMergeReport = {
+    /** payload 가 실제 병합된 타점 수. */
+    merged: number;
+    /** 병합할 값이 없어 건너뛴 행 ref 목록. */
+    skippedNoValues: string[];
+    /** 식별 실패(타점 미발견)로 건너뛴 행 ref 목록. */
+    skippedNotFound: string[];
+};
+
+/**
+ * 시트에서 읽은 값을 DB payload_json 에 대량 병합한다.
+ * - 비어있지 않은 키만 `payload_json || {…}` 로 덮어쓴다(빈 셀은 절대 삭제하지 않음).
+ * - reviewId 우선, 없으면 좌표(code+date+time HH:MM)로 식별. 못 찾으면 스킵+리포트.
+ */
+export async function mergeReviewPointPayloads(
+    db: Database,
+    items: PayloadMergeItem[],
+): Promise<PayloadMergeReport> {
+    const report: PayloadMergeReport = { merged: 0, skippedNoValues: [], skippedNotFound: [] };
+
+    // 병합할 값이 있는 항목만 추린다.
+    const effective = items.filter((item) => {
+        if (Object.keys(item.values).length === 0) {
+            report.skippedNoValues.push(item.ref);
+            return false;
+        }
+        return true;
+    });
+    if (effective.length === 0) return report;
+
+    // 1) reviewId 로 식별 가능한 항목.
+    const idItems = effective.filter((item) => item.reviewId && /^\d+$/.test(item.reviewId));
+    const existingIds = new Set<string>();
+    if (idItems.length > 0) {
+        const ids = Array.from(new Set(idItems.map((item) => BigInt(item.reviewId as string))));
+        const rows = await db
+            .select({ id: reviewPoints.id })
+            .from(reviewPoints)
+            .where(inArray(reviewPoints.id, ids));
+        for (const row of rows) existingIds.add(row.id.toString());
+    }
+
+    // 2) 좌표(code+date+time)로 식별할 항목.
+    const coordItems = effective.filter(
+        (item) =>
+            !(item.reviewId && existingIds.has(item.reviewId)) &&
+            item.stockCode &&
+            item.tradeDate &&
+            item.tradeTime,
+    );
+    const coordToId = new Map<string, string>();
+    if (coordItems.length > 0) {
+        const codes = Array.from(new Set(coordItems.map((i) => i.stockCode as string)));
+        const dates = Array.from(new Set(coordItems.map((i) => i.tradeDate as string)));
+        const rows = await db
+            .select({
+                id: reviewPoints.id,
+                code: reviewTargets.stockCode,
+                date: reviewTargets.tradeDate,
+                time: reviewPoints.tradeTime,
+            })
+            .from(reviewPoints)
+            .innerJoin(reviewTargets, eq(reviewPoints.reviewTargetId, reviewTargets.id))
+            .where(and(inArray(reviewTargets.stockCode, codes), inArray(reviewTargets.tradeDate, dates)));
+        for (const row of rows) {
+            coordToId.set(`${row.code}|${row.date}|${row.time.slice(0, 5)}`, row.id.toString());
+        }
+    }
+
+    // 3) 각 항목의 대상 id 를 확정하고 병합.
+    for (const item of effective) {
+        let id: string | undefined;
+        if (item.reviewId && existingIds.has(item.reviewId)) {
+            id = item.reviewId;
+        } else if (item.stockCode && item.tradeDate && item.tradeTime) {
+            id = coordToId.get(`${item.stockCode}|${item.tradeDate}|${item.tradeTime.slice(0, 5)}`);
+        }
+
+        if (!id) {
+            report.skippedNotFound.push(item.ref);
+            continue;
+        }
+
+        await db.execute(
+            sql`UPDATE ${reviewPoints}
+                SET payload_json = payload_json || ${JSON.stringify(item.values)}::jsonb,
+                    updated_at = NOW()
+                WHERE id = ${id}::bigint`,
+        );
+        report.merged += 1;
+    }
+
+    return report;
 }

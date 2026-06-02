@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   }
 }
 
-/** DELETE /api/review/manual-keys  body: { key } → 키 삭제(비파괴, payload 보존) */
+/** DELETE /api/review/manual-keys  body: { key } → 키 완전 삭제(payload 데이터까지 제거) */
 export async function DELETE(request: Request) {
   let body: unknown;
   try {
@@ -66,8 +66,8 @@ export async function DELETE(request: Request) {
 
   try {
     const db = getDb();
-    await deleteManualKey(db, trimmed);
-    return NextResponse.json({ ok: true });
+    const purged = await deleteManualKey(db, trimmed);
+    return NextResponse.json({ ok: true, purged });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

@@ -140,6 +140,16 @@
   opacity: 0.45;
 }
 
+/* 토글/선택 활성 상태 (Export 범위 등) */
+.buttonActive {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.buttonActive:hover {
+  border-color: var(--accent-primary);
+}
+
 /* 컨트롤 그룹 구분자 (헤더 타이틀의 sep 와 동일 톤) */
 .controlSep {
   color: var(--border-default);
@@ -576,21 +586,10 @@
   color: var(--text-tertiary);
 }
 
-.exportBtn {
-  align-self: flex-start;
-  padding: 7px 16px;
-  border: 1px solid var(--accent-primary);
-  border-radius: 7px;
-  background: var(--accent-primary);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.exportBtn:disabled {
-  opacity: 0.5;
-  cursor: default;
+.exportRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .exportOk {

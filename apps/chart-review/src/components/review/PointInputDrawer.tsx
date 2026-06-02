@@ -109,7 +109,12 @@ export function PointInputDrawer({
   };
 
   const handleDeleteKey = async (key: string) => {
-    if (!window.confirm(`'${key}' 항목을 전체에서 제거할까요? (기존 값은 보존)`)) return;
+    if (
+      !window.confirm(
+        `'${key}' 항목을 완전히 삭제할까요?\n레지스트리와 모든 타점의 저장된 값까지 함께 제거됩니다. (되돌릴 수 없음)`,
+      )
+    )
+      return;
     try {
       const res = await fetch("/api/review/manual-keys", {
         method: "DELETE",
