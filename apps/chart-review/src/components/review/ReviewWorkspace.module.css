@@ -319,12 +319,15 @@
 
 .pointItem {
   position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   width: 100%;
-  margin-bottom: 8px;
-  padding: 10px 12px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
   text-align: left;
   border: 1px solid var(--border-default);
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--bg-primary);
   cursor: pointer;
   transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
@@ -342,31 +345,40 @@
   box-shadow: 0 0 0 1px var(--accent-primary);
 }
 
-.pointTop {
-  display: flex;
+/* 좌측 ~15% 시간 컬럼 */
+.pointTime {
+  display: inline-flex;
+  flex: 0 0 15%;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
+  min-width: 58px;
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .pointDot {
   color: var(--accent-primary);
-  font-size: 14px;
+  font-size: 11px;
+}
+
+/* 우측 ~85% 값 영역: 가로로 채우다 넘치면 줄바꿈 */
+.pointVals {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  padding-top: 1px;
 }
 
 .pointAmount {
   color: var(--text-secondary);
+  font-size: 12px;
   font-weight: 600;
-}
-
-.pointFields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 8px;
+  white-space: nowrap;
 }
 
 .pointFieldVal {
@@ -831,45 +843,62 @@
 .inputRowHead {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .inputKey {
+  flex-shrink: 0;
+  max-width: 45%;
   overflow: hidden;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 키 우측에 한 줄로 늘어서는 값 칩(넘치면 잘리고 hover 로 확인) */
 .inputChips {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+  margin-left: 2px;
 }
 
 .inputChip {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 4px;
-  padding: 3px 4px 3px 9px;
-  border: 1px solid var(--border-default);
-  border-radius: 999px;
-  background: var(--bg-tertiary);
+  gap: 3px;
+  max-width: 150px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 7px;
+  background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 12px;
+  font-weight: 600;
+}
+
+.inputChipText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inputChipDel {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border: none;
-  border-radius: 50%;
+  border-radius: 5px;
   background: transparent;
   color: var(--text-tertiary);
   font-size: 10px;
@@ -877,7 +906,28 @@
 }
 
 .inputChipDel:hover {
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.inputKeyAction {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.inputKeyAction:hover {
+  background: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
@@ -895,25 +945,6 @@
 .inputField:focus {
   outline: none;
   border-color: var(--accent-primary);
-}
-
-.inputDelKey {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.inputDelKey:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
 .inputAddKey {

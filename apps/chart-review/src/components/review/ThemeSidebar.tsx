@@ -7,7 +7,7 @@ import type { ChartPriceMode } from "@/stores/useUiStore";
 import { PEER_ROW_AMOUNT_HIGHLIGHT_THRESHOLDS_EOK } from "@/lib/constants";
 import { RISE_COLOR, FALL_COLOR, NEUTRAL_COLOR, BORDER_SUBTLE_COLOR } from "@/lib/colors";
 import { computeThemeMemberMetrics, topByRate, type ThemeMemberMetric } from "@/lib/themeMetrics";
-import { formatKrwEok, formatPercent, truncate } from "@/lib/format";
+import { formatPercent, truncate } from "@/lib/format";
 
 type ThemeSidebarProps = {
   themes: ChartThemeOverlay[] | undefined;
@@ -76,9 +76,10 @@ export function ThemeSidebar({
         ) : !activeTheme || rows.length === 0 ? (
           <div className={styles.empty}>테마 데이터 없음</div>
         ) : (
-          rows.map((metric) => (
+          rows.map((metric, index) => (
             <ThemeRow
               key={metric.stockCode}
+              rank={index + 1}
               metric={metric}
               isSelf={metric.stockCode === selfStockCode}
               onSelect={() => onSelectStock(metric.stockCode, metric.stockName)}
@@ -91,10 +92,12 @@ export function ThemeSidebar({
 }
 
 function ThemeRow({
+  rank,
   metric,
   isSelf,
   onSelect,
 }: {
+  rank: number;
   metric: ThemeMemberMetric;
   isSelf: boolean;
   onSelect: () => void;
@@ -109,19 +112,13 @@ function ThemeRow({
       onClick={onSelect}
       title={`${metric.stockName} ${metric.stockCode}`}
     >
-      <div className={styles.line1}>
-        <span className={styles.name}>{truncate(metric.stockName, 6)}</span>
-        <span className={`${styles.code} tabular`}>{metric.stockCode}</span>
-        {isSelf && <span className={styles.selfTag}>본</span>}
-        <AmountCounts distribution={metric.distribution} />
-      </div>
-      <div className={styles.line2}>
-        <DayCandle closeRate={metric.rate} dayHighRate={metric.dayHighRate} />
-        <span className={`${styles.rate} tabular`} style={{ color: rateColor }}>
-          {formatPercent(metric.rate)}
-        </span>
-        <span className={`${styles.cum} tabular`}>{formatKrwEok(metric.cumAmount)}</span>
-      </div>
+      <span className={`${styles.rank} tabular`}>{rank}</span>
+      <span className={styles.name}>{truncate(metric.stockName, 7)}</span>
+      <DayCandle closeRate={metric.rate} dayHighRate={metric.dayHighRate} />
+      <span className={`${styles.rate} tabular`} style={{ color: rateColor }}>
+        {formatPercent(metric.rate)}
+      </span>
+      <AmountCounts distribution={metric.distribution} />
     </button>
   );
 }
@@ -170,7 +167,13 @@ function DayCandle({ closeRate, dayHighRate }: { closeRate: number | null; dayHi
     closeRate === null ? "transparent" : closeRate > 0 ? RISE_COLOR : closeRate < 0 ? FALL_COLOR : NEUTRAL_COLOR;
 
   return (
-    <svg width={CANDLE_W} height={CANDLE_H} viewBox={`0 0 ${CANDLE_W} ${CANDLE_H}`} aria-hidden="true">
+    <svg
+      className={styles.candle}
+      width={CANDLE_W}
+      height={CANDLE_H}
+      viewBox={`0 0 ${CANDLE_W} ${CANDLE_H}`}
+      aria-hidden="true"
+    >
       <line x1={zeroX} y1={2} x2={zeroX} y2={CANDLE_H - 2} stroke={BORDER_SUBTLE_COLOR} strokeWidth={1} />
       {showHigh && (
         <line x1={zeroX} y1={cy} x2={highX} y2={cy} stroke={RISE_COLOR} strokeWidth={2} strokeLinecap="round" />

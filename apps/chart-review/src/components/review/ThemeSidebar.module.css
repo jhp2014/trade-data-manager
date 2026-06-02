@@ -45,12 +45,12 @@
 }
 
 .row {
-  display: grid;
-  grid-template-rows: auto auto;
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   width: 100%;
-  margin-bottom: 6px;
-  padding: 7px 9px;
+  margin-bottom: 5px;
+  padding: 9px 11px;
   text-align: left;
   border: 1px solid var(--border-default);
   border-radius: 8px;
@@ -70,48 +70,47 @@
   background: var(--accent-soft);
 }
 
-.line1 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+.rank {
+  flex-shrink: 0;
+  min-width: 18px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .name {
+  flex-shrink: 0;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
   white-space: nowrap;
 }
 
-.code {
-  color: var(--text-tertiary);
-  font-size: 11px;
+.rate {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.selfTag {
-  padding: 0 4px;
-  border-radius: 4px;
-  background: var(--accent-primary);
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
+.candle {
+  flex-shrink: 0;
 }
 
 .counts {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   margin-left: auto;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-tertiary);
   line-height: 1;
 }
 
 .dot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -127,33 +126,18 @@
 .countItem {
   display: inline-flex;
   align-items: baseline;
-  gap: 2px;
+  gap: 3px;
 }
 
 .countThreshold {
   color: var(--text-tertiary);
+  font-size: 11px;
 }
 
 .countValue {
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-
-.line2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.rate {
-  font-size: 12px;
+  color: var(--text-primary);
+  font-size: 12.5px;
   font-weight: 700;
-}
-
-.cum {
-  margin-left: auto;
-  color: var(--text-secondary);
-  font-size: 11px;
 }
 
 .empty {

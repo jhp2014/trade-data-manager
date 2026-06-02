@@ -694,7 +694,6 @@ function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) 
     <div className={styles.pointList}>
       {points.map((point) => {
         const isActive = point.pointKey === selectedPointKey;
-        const summary = point.manualSummary;
         const fields = pointFieldKeys.map((key) => ({ key, value: resolveFieldValue(key, point) }));
         const matched = filterActive && pointMatchesManualFilters(point, manualFilters);
 
@@ -705,33 +704,31 @@ function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) 
             type="button"
             onClick={() => onSelectPoint(point.pointKey)}
           >
-            <div className={styles.pointTop}>
-              <span>
-                <span className={styles.pointDot}>●</span>{" "}
-                <span className="tabular">{formatPointTime(point.tradeTime)}</span>
-                {matched && (
-                  <span className={styles.pointMatchBadge} title="필터 매칭">
-                    필터
-                  </span>
-                )}
-              </span>
-              <span className={styles.pointAmount}>
-                {point.amountText ?? "-"} | 입력 {summary.filledCount}/{summary.totalCount}
-              </span>
+            <span className={styles.pointTime}>
+              <span className={styles.pointDot}>●</span>
+              <span className="tabular">{formatPointTime(point.tradeTime)}</span>
+            </span>
+            <div className={styles.pointVals}>
+              {matched && (
+                <span className={styles.pointMatchBadge} title="필터 매칭">
+                  필터
+                </span>
+              )}
+              {point.amountText && (
+                <span className={styles.pointAmount} title={point.amountText}>
+                  {point.amountText}
+                </span>
+              )}
+              {fields.map(({ key, value }) => (
+                <span
+                  key={key}
+                  className={value ? styles.pointFieldVal : styles.pointFieldEmpty}
+                  title={value || "-"}
+                >
+                  {value ? truncate(value, VALUE_TRUNCATE) : "-"}
+                </span>
+              ))}
             </div>
-            {fields.length > 0 && (
-              <div className={styles.pointFields}>
-                {fields.map(({ key, value }) => (
-                  <span
-                    key={key}
-                    className={value ? styles.pointFieldVal : styles.pointFieldEmpty}
-                    title={value || "-"}
-                  >
-                    {value ? truncate(value, VALUE_TRUNCATE) : "-"}
-                  </span>
-                ))}
-              </div>
-            )}
           </button>
         );
       })}

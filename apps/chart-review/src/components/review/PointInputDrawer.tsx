@@ -40,8 +40,9 @@ export function PointInputDrawer({
   onSaved,
 }: PointInputDrawerProps) {
   // 마커 시간에 이미 저장된 Point 가 있으면 수정, 없으면 신규.
+  // point.tradeTime 은 "HH:MM:SS", 마커 tradeTime 은 "HH:MM" 이라 앞 5자리(HH:MM)로 비교한다.
   const existing = useMemo(
-    () => points.find((p) => p.reviewId && p.tradeTime === tradeTime) ?? null,
+    () => points.find((p) => p.reviewId && p.tradeTime.slice(0, 5) === tradeTime.slice(0, 5)) ?? null,
     [points, tradeTime],
   );
   const mode: "edit" | "new" = existing ? "edit" : "new";
@@ -108,6 +109,31 @@ export function PointInputDrawer({
     }
   };
 
+  const handleRenameKey = async (key: string) => {
+    const raw = window.prompt(`'${key}' 의 새 이름(영문/숫자/밑줄)`, key);
+    const next = raw?.trim();
+    if (!next || next === key) return;
+    if (!KEY_PATTERN.test(next)) {
+      window.alert("영문/숫자/밑줄만 사용할 수 있습니다.");
+      return;
+    }
+    if (rows.some((r) => r.key === next)) {
+      window.alert("이미 있는 항목입니다.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/review/manual-keys", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: key, to: next }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "이름 변경 실패");
+      setRows((prev) => prev.map((r) => (r.key === key ? { ...r, key: next } : r)));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const handleDeleteKey = async (key: string) => {
     if (
       !window.confirm(
@@ -132,15 +158,15 @@ export function PointInputDrawer({
     if (submitting) return;
     setSubmitting(true);
     try {
-      // 숨겨진(레지스트리 삭제) 키 값은 보존하기 위해 원본 payload 를 기반으로 병합.
-      const payload: Record<string, string | string[]> = { ...sourceManual };
+      // 화면의 모든 행이 곧 payload 전체다(레거시 키도 행으로 존재). 빈 값은 제외.
+      // upsert 가 payload 를 통째로 덮어쓰므로 rows 만으로 구성해야 키 이름 변경이 정확히 반영된다.
+      const payload: Record<string, string | string[]> = {};
       for (const row of rows) {
         const values = [...row.values];
         const draft = row.draft.trim();
         if (draft && !values.includes(draft)) values.push(draft);
-        if (values.length === 0) delete payload[row.key];
-        else if (values.length === 1) payload[row.key] = values[0];
-        else payload[row.key] = values;
+        if (values.length === 1) payload[row.key] = values[0];
+        else if (values.length > 1) payload[row.key] = values;
       }
       const res = await fetch("/api/review/point", {
         method: "POST",
@@ -214,13 +240,24 @@ export function PointInputDrawer({
           return (
             <div key={row.key} className={styles.inputRow}>
               <div className={styles.inputRowHead}>
-                <label className={styles.inputKey} title={row.key}>
+                <span className={styles.inputKey} title={row.key}>
                   {row.label || row.key}
-                </label>
+                </span>
                 {row.inRegistry && (
                   <button
                     type="button"
-                    className={styles.inputDelKey}
+                    className={styles.inputKeyAction}
+                    title="이름 변경"
+                    tabIndex={-1}
+                    onClick={() => handleRenameKey(row.key)}
+                  >
+                    ✎
+                  </button>
+                )}
+                {row.inRegistry && (
+                  <button
+                    type="button"
+                    className={styles.inputKeyAction}
                     title="이 항목 전체 제거"
                     tabIndex={-1}
                     onClick={() => handleDeleteKey(row.key)}
@@ -228,24 +265,24 @@ export function PointInputDrawer({
                     ✕
                   </button>
                 )}
+                {row.values.length > 0 && (
+                  <div className={styles.inputChips} title={row.values.join(", ")}>
+                    {row.values.map((value) => (
+                      <span key={value} className={styles.inputChip} title={value}>
+                        <span className={styles.inputChipText}>{value}</span>
+                        <button
+                          type="button"
+                          className={styles.inputChipDel}
+                          tabIndex={-1}
+                          onClick={() => removeChip(row.key, value)}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-              {row.values.length > 0 && (
-                <div className={styles.inputChips}>
-                  {row.values.map((value) => (
-                    <span key={value} className={styles.inputChip}>
-                      {value}
-                      <button
-                        type="button"
-                        className={styles.inputChipDel}
-                        tabIndex={-1}
-                        onClick={() => removeChip(row.key, value)}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
               <input
                 ref={(el) => {
                   inputRefs.current[index] = el;
