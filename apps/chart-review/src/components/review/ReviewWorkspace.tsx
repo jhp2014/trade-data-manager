@@ -89,10 +89,12 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     () => timeStringToMinutes(selectedPoint.tradeTime) ?? 540,
   );
 
-  // 타점/그룹이 바뀌면 해당 타점 tradeTime 으로 재설정.
+  // 타점(Point)이 바뀔 때만 해당 타점 tradeTime 으로 재설정.
+  // 테마 내 다른 종목을 임시 조회(override)할 때는 수동으로 옮긴 마커 시간을 유지한다.
   useEffect(() => {
     setMarkerMinutes(timeStringToMinutes(selectedPoint.tradeTime) ?? 540);
-  }, [selectedPoint.pointKey, effectiveStock.stockCode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPoint.pointKey]);
 
   const markerTime = useMemo(
     () => composeUnix(effectiveStock.tradeDate, minutesToTimeString(markerMinutes)),
