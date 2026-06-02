@@ -36,7 +36,7 @@ export type ReviewStockGroup = {
   points: ReviewPoint[];
 };
 
-export type ReviewViewMode = "summary" | "minute" | "daily" | "overlay" | "theme";
+export type ReviewViewMode = "summary" | "minute" | "daily" | "overlay";
 
 export type InitialReviewSelection = {
   selectedGroupIndex: number;

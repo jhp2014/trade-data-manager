@@ -76,6 +76,61 @@ export async function insertReviewPointIfAbsent(
         });
 }
 
+/**
+ * 앱에서 Point 1건을 입력/수정한다.
+ * - 대상 Target((stockCode, tradeDate))은 이미 존재해야 한다(Target 생성은 ingest 전용).
+ * - (reviewTargetId, tradeTime) 충돌 시 payload 를 덮어쓴다(수정).
+ */
+export async function upsertReviewPoint(
+    db: Database,
+    input: {
+        stockCode: string;
+        tradeDate: string;
+        tradeTime: string;
+        payload: Record<string, string | string[]>;
+    },
+): Promise<{ id: string }> {
+    const [target] = await db
+        .select({ id: reviewTargets.id })
+        .from(reviewTargets)
+        .where(
+            and(
+                eq(reviewTargets.stockCode, input.stockCode),
+                eq(reviewTargets.tradeDate, input.tradeDate),
+            ),
+        )
+        .limit(1);
+
+    if (!target) {
+        throw new Error(
+            `[review.repository] review_target not found: stockCode=${input.stockCode}, tradeDate=${input.tradeDate}`,
+        );
+    }
+
+    const [row] = await db
+        .insert(reviewPoints)
+        .values({
+            reviewTargetId: target.id,
+            tradeTime: input.tradeTime,
+            payloadJson: input.payload,
+        })
+        .onConflictDoUpdate({
+            target: [reviewPoints.reviewTargetId, reviewPoints.tradeTime],
+            set: {
+                payloadJson: sql`EXCLUDED.payload_json`,
+                updatedAt: sql`NOW()`,
+            },
+        })
+        .returning({ id: reviewPoints.id });
+
+    return { id: row.id.toString() };
+}
+
+/** Point 1건 삭제(id 기준). */
+export async function deleteReviewPointById(db: Database, id: bigint): Promise<void> {
+    await db.delete(reviewPoints).where(eq(reviewPoints.id, id));
+}
+
 export async function findReviewExportRows(
     db: Database,
     opts: { since?: string } = {},
@@ -351,4 +406,28 @@ export async function addManualKey(
  */
 export async function deleteManualKey(db: Database, key: string): Promise<void> {
     await db.delete(reviewManualKeys).where(eq(reviewManualKeys.key, key.trim()));
+}
+
+/**
+ * 기존 review_point.payload_json 에 존재하는 모든 키를 레지스트리에 백필(1회성).
+ * 레지스트리에 없던 레거시 키를 등록해 앱에서 편집·삭제할 수 있게 한다.
+ * 멱등하며(addManualKey onConflictDoNothing) payload 값은 건드리지 않는다.
+ * @returns 새로 추가된 키 목록
+ */
+export async function backfillManualKeysFromPayloads(db: Database): Promise<string[]> {
+    const result = await db.execute<{ key: string }>(
+        sql`SELECT DISTINCT jsonb_object_keys(${reviewPoints.payloadJson}) AS key FROM ${reviewPoints}`,
+    );
+    const payloadKeys = result.rows.map((row) => row.key).filter(Boolean);
+
+    const existing = await listManualKeys(db);
+    const known = new Set(existing.map((k) => k.key));
+
+    const added: string[] = [];
+    for (const key of payloadKeys.sort()) {
+        if (known.has(key)) continue;
+        await addManualKey(db, { key });
+        added.push(key);
+    }
+    return added;
 }

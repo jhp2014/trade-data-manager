@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import styles from "./ReviewWorkspace.module.css";
 import { RealDailyChart } from "@/components/chart/RealDailyChart";
 import { RealMinuteChart } from "@/components/chart/RealMinuteChart";
 import { RealThemeOverlayChart } from "@/components/chart/RealThemeOverlayChart";
 import { ThemeSidebar } from "./ThemeSidebar";
-import { FieldVisibilityPicker } from "./FieldVisibilityPicker";
 import { FieldChecklistModal } from "./FieldChecklistModal";
 import {
   TimeSlider,
@@ -26,11 +26,14 @@ import type {
   ReviewViewMode,
 } from "@/types/review";
 import type { ChartOverlaySeries } from "@/types/chart";
+import type { ManualKeyDef } from "@/lib/loadManualKeys";
 import { useReviewStore } from "@/stores/useReviewStore";
+import { PointInputDrawer } from "./PointInputDrawer";
 
 type ReviewWorkspaceProps = {
   groups: ReviewStockGroup[];
   initialSelection: InitialReviewSelection;
+  manualKeys: ManualKeyDef[];
 };
 
 const viewModes: Array<{ mode: ReviewViewMode; label: string }> = [
@@ -38,12 +41,12 @@ const viewModes: Array<{ mode: ReviewViewMode; label: string }> = [
   { mode: "minute", label: "Minute" },
   { mode: "daily", label: "Daily" },
   { mode: "overlay", label: "Overlay" },
-  { mode: "theme", label: "Theme" },
 ];
 
 const VALUE_TRUNCATE = 15;
 
-export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspaceProps) {
+export function ReviewWorkspace({ groups, initialSelection, manualKeys }: ReviewWorkspaceProps) {
+  const router = useRouter();
   const commands = useMemo(() => createReviewCommands(groups), [groups]);
   const storeGroupIndex = useReviewStore((state) => state.selectedGroupIndex);
   const storePointKey = useReviewStore((state) => state.selectedPointKey);
@@ -119,6 +122,8 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
 
   // 노출 가능한 필드 키 (전 그룹 통합).
   const { manualFieldKeys, featureFieldKeys } = useMemo(() => collectFieldKeys(groups), [groups]);
+  // 입력 드로어 값 추천: 전 그룹의 manual 값을 키별 distinct 로 수집.
+  const valueSuggestions = useMemo(() => collectValueSuggestions(groups), [groups]);
   const headerAvailable = useMemo(
     () => [...manualFieldKeys, ...featureFieldKeys],
     [manualFieldKeys, featureFieldKeys],
@@ -158,6 +163,80 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
   };
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [inputOpen, setInputOpen] = useState(false);
+
+  // 입력 대상 tradeTime = 현재 마커 위치(분 → "HH:MM").
+  const markerTimeStr = minutesToTimeString(markerMinutes);
+  const canDeletePoint = Boolean(selectedPoint.reviewId);
+
+  const handleDeletePoint = async () => {
+    if (!selectedPoint.reviewId) return;
+    if (!window.confirm(`이 타점(${formatPointTime(selectedPoint.tradeTime)})을 삭제할까요?`)) return;
+    try {
+      const res = await fetch("/api/review/point", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewId: selectedPoint.reviewId }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "삭제 실패");
+      router.refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // 전역 단축키: a/d=종목, w/s=타점, e/q=뷰 순환, Space=입력 모달.
+  // 모달이 열려 있거나 입력 요소에 포커스가 있으면(값 타이핑 중) 무시한다.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (inputOpen || settingsOpen) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
+        return;
+      }
+      const cycle: ReviewViewMode[] = ["summary", "minute", "daily", "overlay"];
+      switch (e.key.toLowerCase()) {
+        case "a":
+          e.preventDefault();
+          commands.prevGroup();
+          break;
+        case "d":
+          e.preventDefault();
+          commands.nextGroup();
+          break;
+        case "w":
+          e.preventDefault();
+          commands.prevPoint();
+          break;
+        case "s":
+          e.preventDefault();
+          commands.nextPoint();
+          break;
+        case "e": {
+          e.preventDefault();
+          const cur = cycle.indexOf(viewMode);
+          commands.setViewMode(cycle[(cur + 1 + cycle.length) % cycle.length]);
+          break;
+        }
+        case "q": {
+          e.preventDefault();
+          const cur = cycle.indexOf(viewMode);
+          commands.setViewMode(cycle[(cur - 1 + cycle.length) % cycle.length]);
+          break;
+        }
+        case " ":
+          e.preventDefault();
+          setInputOpen(true);
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [commands, viewMode, inputOpen, settingsOpen]);
 
   const header = (
     <ReviewHeader
@@ -194,7 +273,11 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
         />
       </div>
       <div className={styles.pointSlot}>
-        <PointListToolbar manualFieldKeys={manualFieldKeys} />
+        <PointListToolbar
+          onInput={() => setInputOpen(true)}
+          onDelete={handleDeletePoint}
+          canDelete={canDeletePoint}
+        />
         <PointList
           points={selectedGroup.points}
           selectedPointKey={selectedPoint.pointKey}
@@ -212,11 +295,29 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     />
   );
 
+  const inputDrawer = inputOpen && (
+    <PointInputDrawer
+      stockCode={selectedGroup.stockCode}
+      stockName={selectedGroup.stockName}
+      tradeDate={selectedGroup.tradeDate}
+      tradeTime={markerTimeStr}
+      points={selectedGroup.points}
+      manualKeys={manualKeys}
+      valueSuggestions={valueSuggestions}
+      onClose={() => setInputOpen(false)}
+      onSaved={() => {
+        setInputOpen(false);
+        router.refresh();
+      }}
+    />
+  );
+
   if (viewMode === "minute") {
     return (
       <main className={styles.workspace}>
         {header}
         {settingsModal}
+        {inputDrawer}
         <section className={styles.singleMode}>
           <MinuteChartPanel
             data={chartPreview.data}
@@ -238,6 +339,7 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
       <main className={styles.workspace}>
         {header}
         {settingsModal}
+        {inputDrawer}
         <section className={styles.singleMode}>
           <DailyChartPanel
             data={chartPreview.data}
@@ -252,11 +354,12 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     );
   }
 
-  if (viewMode === "overlay" || viewMode === "theme") {
+  if (viewMode === "overlay") {
     return (
       <main className={styles.workspace}>
         {header}
         {settingsModal}
+        {inputDrawer}
         <section className={styles.singleMode}>
           <div className={styles.chartPanel}>
             <RealThemeOverlayChart
@@ -273,6 +376,7 @@ export function ReviewWorkspace({ groups, initialSelection }: ReviewWorkspacePro
     <main className={styles.workspace}>
       {header}
       {settingsModal}
+      {inputDrawer}
       <section className={styles.body}>
         {sidebar}
         <section className={styles.mainPane}>
@@ -473,6 +577,27 @@ function collectFieldKeys(groups: ReviewStockGroup[]) {
   };
 }
 
+/** 전 그룹 manual 값을 키별 distinct 목록으로 수집 (입력 드로어 추천용). " | " 분해. */
+function collectValueSuggestions(groups: ReviewStockGroup[]): Record<string, string[]> {
+  const byKey = new Map<string, Set<string>>();
+  for (const group of groups) {
+    for (const point of group.points) {
+      for (const [key, raw] of Object.entries(point.sourceRow.manual)) {
+        if (!raw) continue;
+        const set = byKey.get(key) ?? new Set<string>();
+        for (const token of raw.split("|")) {
+          const value = token.trim();
+          if (value) set.add(value);
+        }
+        byKey.set(key, set);
+      }
+    }
+  }
+  const result: Record<string, string[]> = {};
+  for (const [key, set] of byKey) result[key] = Array.from(set).sort();
+  return result;
+}
+
 /** 필드 키(m_xxx 또는 feature 명) → 현재 타점의 값. */
 function resolveFieldValue(key: string, point: ReviewPoint): string {
   if (key.startsWith("m_")) {
@@ -481,21 +606,30 @@ function resolveFieldValue(key: string, point: ReviewPoint): string {
   return point.sourceRow.features[key]?.trim() ?? "";
 }
 
-function PointListToolbar({ manualFieldKeys }: { manualFieldKeys: string[] }) {
-  const pointFieldKeys = useUiStore((state) => state.pointFieldKeys);
-  const togglePointField = useUiStore((state) => state.togglePointField);
-  const clearPointFields = useUiStore((state) => state.clearPointFields);
+type PointListToolbarProps = {
+  onInput: () => void;
+  onDelete: () => void;
+  canDelete: boolean;
+};
 
+function PointListToolbar({ onInput, onDelete, canDelete }: PointListToolbarProps) {
   return (
     <div className={styles.pointToolbar}>
       <span className={styles.pointToolbarLabel}>Point List</span>
-      <FieldVisibilityPicker
-        label="필드"
-        availableKeys={manualFieldKeys}
-        selectedKeys={pointFieldKeys}
-        onToggle={togglePointField}
-        onClear={clearPointFields}
-      />
+      <div className={styles.segTabs}>
+        <button type="button" className={styles.segButton} onClick={onInput}>
+          입력
+        </button>
+        <span className={styles.controlSep}>|</span>
+        <button
+          type="button"
+          className={styles.segButton}
+          onClick={onDelete}
+          disabled={!canDelete}
+        >
+          삭제
+        </button>
+      </div>
     </div>
   );
 }
