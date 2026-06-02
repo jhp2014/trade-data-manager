@@ -18,6 +18,14 @@ type UiState = {
   pointFieldKeys: string[];
   togglePointField: (key: string) => void;
   clearPointFields: () => void;
+
+  /**
+   * m_ 값 필터. key(접두사 없는 원본 m_ 키) → 허용 값 목록.
+   * 값이 1개 이상 선택된 키만 조건으로 적용한다(키 간 AND, 같은 키 값 간 OR).
+   */
+  manualFilters: Record<string, string[]>;
+  toggleManualFilterValue: (key: string, value: string) => void;
+  clearManualFilters: () => void;
 };
 
 function toggleInList(list: string[], key: string): string[] {
@@ -39,6 +47,17 @@ export const useUiStore = create<UiState>()(
       togglePointField: (key) =>
         set((state) => ({ pointFieldKeys: toggleInList(state.pointFieldKeys, key) })),
       clearPointFields: () => set({ pointFieldKeys: [] }),
+
+      manualFilters: {},
+      toggleManualFilterValue: (key, value) =>
+        set((state) => {
+          const next = toggleInList(state.manualFilters[key] ?? [], value);
+          const manualFilters = { ...state.manualFilters };
+          if (next.length === 0) delete manualFilters[key];
+          else manualFilters[key] = next;
+          return { manualFilters };
+        }),
+      clearManualFilters: () => set({ manualFilters: {} }),
     }),
     {
       name: "chart-review-ui",
@@ -46,6 +65,7 @@ export const useUiStore = create<UiState>()(
         chartPriceMode: state.chartPriceMode,
         headerFieldKeys: state.headerFieldKeys,
         pointFieldKeys: state.pointFieldKeys,
+        manualFilters: state.manualFilters,
       }),
     },
   ),

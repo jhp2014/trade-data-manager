@@ -8,6 +8,8 @@ import { RealMinuteChart } from "@/components/chart/RealMinuteChart";
 import { RealThemeOverlayChart } from "@/components/chart/RealThemeOverlayChart";
 import { ThemeSidebar } from "./ThemeSidebar";
 import { FieldChecklistModal } from "./FieldChecklistModal";
+import { ManualFilterModal } from "./ManualFilterModal";
+import { activeFilterCount, pointMatchesManualFilters } from "@/lib/manualFilter";
 import {
   TimeSlider,
   timeStringToMinutes,
@@ -291,6 +293,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     <SettingsModal
       manualFieldKeys={manualFieldKeys}
       headerAvailable={headerAvailable}
+      valueSuggestions={valueSuggestions}
       onClose={() => setSettingsOpen(false)}
     />
   );
@@ -613,9 +616,18 @@ type PointListToolbarProps = {
 };
 
 function PointListToolbar({ onInput, onDelete, canDelete }: PointListToolbarProps) {
+  const manualFilters = useUiStore((state) => state.manualFilters);
+  const activeFilters = activeFilterCount(manualFilters);
   return (
     <div className={styles.pointToolbar}>
-      <span className={styles.pointToolbarLabel}>Point List</span>
+      <span className={styles.pointToolbarLabel}>
+        Point List
+        {activeFilters > 0 && (
+          <span className={styles.pointMatchBadge} title="활성 m_ 필터 수">
+            필터 {activeFilters}
+          </span>
+        )}
+      </span>
       <div className={styles.segTabs}>
         <button type="button" className={styles.segButton} onClick={onInput}>
           입력
@@ -642,6 +654,8 @@ type PointListProps = {
 
 function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) {
   const pointFieldKeys = useUiStore((state) => state.pointFieldKeys);
+  const manualFilters = useUiStore((state) => state.manualFilters);
+  const filterActive = activeFilterCount(manualFilters) > 0;
 
   return (
     <div className={styles.pointList}>
@@ -649,6 +663,7 @@ function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) 
         const isActive = point.pointKey === selectedPointKey;
         const summary = point.manualSummary;
         const fields = pointFieldKeys.map((key) => ({ key, value: resolveFieldValue(key, point) }));
+        const matched = filterActive && pointMatchesManualFilters(point, manualFilters);
 
         return (
           <button
@@ -661,6 +676,11 @@ function PointList({ points, selectedPointKey, onSelectPoint }: PointListProps) 
               <span>
                 <span className={styles.pointDot}>●</span>{" "}
                 <span className="tabular">{formatPointTime(point.tradeTime)}</span>
+                {matched && (
+                  <span className={styles.pointMatchBadge} title="필터 매칭">
+                    필터
+                  </span>
+                )}
               </span>
               <span className={styles.pointAmount}>
                 {point.amountText ?? "-"} | 입력 {summary.filledCount}/{summary.totalCount}
@@ -787,23 +807,98 @@ function formatPointTime(tradeTime: string) {
   return tradeTime || "미입력";
 }
 
+// ── Export Section ───────────────────────────────────────────
+
+type ExportSectionProps = {
+  filters: Record<string, string[]>;
+  activeFilters: number;
+};
+
+function ExportSection({ filters, activeFilters }: ExportSectionProps) {
+  const [spreadsheetId, setSpreadsheetId] = useState("");
+  const [tab, setTab] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const handleExport = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch("/api/review/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          spreadsheetId: spreadsheetId.trim() || undefined,
+          tab: tab.trim() || undefined,
+          filters,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Export 실패");
+      setStatus({
+        ok: true,
+        message: `완료: '${data.tab}' 탭에 ${data.rows}행 · ${data.cols}열${data.filtered ? " (필터 적용)" : ""}`,
+      });
+    } catch (err) {
+      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={styles.exportForm}>
+      <input
+        className={styles.exportInput}
+        type="text"
+        placeholder="스프레드시트 ID (비우면 기본값)"
+        value={spreadsheetId}
+        onChange={(e) => setSpreadsheetId(e.target.value)}
+      />
+      <input
+        className={styles.exportInput}
+        type="text"
+        placeholder="탭 이름 (비우면 기본값, 없으면 생성)"
+        value={tab}
+        onChange={(e) => setTab(e.target.value)}
+      />
+      <div className={styles.exportHint}>
+        {activeFilters > 0
+          ? `활성 m_ 필터 ${activeFilters}개 → 매칭 타점만 내보냅니다.`
+          : "필터 없음 → 전체 타점을 내보냅니다."}
+      </div>
+      <button type="button" className={styles.exportBtn} onClick={handleExport} disabled={busy}>
+        {busy ? "내보내는 중…" : "Export"}
+      </button>
+      {status && (
+        <div className={status.ok ? styles.exportOk : styles.exportErr}>{status.message}</div>
+      )}
+    </div>
+  );
+}
+
 // ── Settings Modal ───────────────────────────────────────────
 
 type SettingsModalProps = {
   manualFieldKeys: string[];
   headerAvailable: string[];
+  valueSuggestions: Record<string, string[]>;
   onClose: () => void;
 };
 
-function SettingsModal({ manualFieldKeys, headerAvailable, onClose }: SettingsModalProps) {
+function SettingsModal({ manualFieldKeys, headerAvailable, valueSuggestions, onClose }: SettingsModalProps) {
   const headerFieldKeys = useUiStore((state) => state.headerFieldKeys);
   const toggleHeaderField = useUiStore((state) => state.toggleHeaderField);
   const clearHeaderFields = useUiStore((state) => state.clearHeaderFields);
   const pointFieldKeys = useUiStore((state) => state.pointFieldKeys);
   const togglePointField = useUiStore((state) => state.togglePointField);
   const clearPointFields = useUiStore((state) => state.clearPointFields);
+  const manualFilters = useUiStore((state) => state.manualFilters);
+  const toggleManualFilterValue = useUiStore((state) => state.toggleManualFilterValue);
+  const clearManualFilters = useUiStore((state) => state.clearManualFilters);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [openPicker, setOpenPicker] = useState<"header" | "point" | null>(null);
+  const [openPicker, setOpenPicker] = useState<"header" | "point" | "filter" | null>(null);
+  const activeFilters = activeFilterCount(manualFilters);
 
   // 오버레이 클릭(배경)으로 닫기
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -845,8 +940,21 @@ function SettingsModal({ manualFieldKeys, headerAvailable, onClose }: SettingsMo
             </button>
           </section>
           <section className={styles.settingsSection}>
-            <div className={styles.settingsSectionLabel}>Google Sheet 연결</div>
-            <div className={styles.settingsPlaceholder}>추후 Sheet ID · 범위 설정 예정</div>
+            <div className={styles.settingsSectionLabel}>m_ 값 필터 (배지 표시)</div>
+            <button
+              type="button"
+              className={styles.settingsPickerBtn}
+              onClick={() => setOpenPicker("filter")}
+            >
+              <span>필터 값 선택</span>
+              {activeFilters > 0 && (
+                <span className={styles.settingsPickerCount}>{activeFilters}</span>
+              )}
+            </button>
+          </section>
+          <section className={`${styles.settingsSection} ${styles.settingsSectionColumn}`}>
+            <div className={styles.settingsSectionLabel}>Google Sheet Export</div>
+            <ExportSection filters={manualFilters} activeFilters={activeFilters} />
           </section>
         </div>
       </div>
@@ -868,6 +976,15 @@ function SettingsModal({ manualFieldKeys, headerAvailable, onClose }: SettingsMo
           selectedKeys={pointFieldKeys}
           onToggle={togglePointField}
           onClear={clearPointFields}
+          onClose={() => setOpenPicker(null)}
+        />
+      )}
+      {openPicker === "filter" && (
+        <ManualFilterModal
+          valueSuggestions={valueSuggestions}
+          filters={manualFilters}
+          onToggle={toggleManualFilterValue}
+          onClear={clearManualFilters}
           onClose={() => setOpenPicker(null)}
         />
       )}

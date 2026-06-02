@@ -110,6 +110,41 @@
   text-align: center;
 }
 
+.group {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.group:last-child {
+  border-bottom: none;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 5px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.groupHead:hover {
+  background: var(--bg-secondary);
+}
+
+.groupArrow {
+  width: 12px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.groupValues {
+  padding: 2px 0 6px 18px;
+}
+
 .clear {
   margin-top: 8px;
   padding: 8px;

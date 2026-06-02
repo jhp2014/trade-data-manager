@@ -11,10 +11,20 @@ export type ReviewExportRow = {
     payload: Record<string, string | string[]>;
 };
 
-export function buildSheetMatrix(rows: ReviewExportRow[]): string[][] {
+export type BuildSheetMatrixOptions = {
+    /** 주어지면 'reviewUrl' 컬럼을 추가해 각 타점의 앱 링크를 채운다. */
+    baseUrl?: string;
+};
+
+export function buildSheetMatrix(
+    rows: ReviewExportRow[],
+    options: BuildSheetMatrixOptions = {},
+): string[][] {
     const manualKeys = collectManualKeys(rows);
+    const baseUrl = options.baseUrl?.trim().replace(/\/+$/, "");
     const headers = [
         ...FIXED_COLUMNS,
+        ...(baseUrl ? (["reviewUrl"] as const) : []),
         ...FEATURE_COLUMNS,
         ...manualKeys.map(toManualHeader),
     ];
@@ -28,10 +38,17 @@ export function buildSheetMatrix(rows: ReviewExportRow[]): string[][] {
             row.tradeDate,
             formatTime(row.tradeTime),
             row.lineTargets.join(" | "),
+            ...(baseUrl ? [buildReviewUrl(baseUrl, row)] : []),
             ...FEATURE_COLUMNS.map((column) => row.features[column] ?? ""),
             ...manualKeys.map((key) => formatPayloadValue(row.payload[key])),
         ]),
     ];
+}
+
+/** 앱 리뷰 화면 링크. tradeTime 이 없으면 09:00 으로 대체(앱 라우트 기본값과 동일). */
+function buildReviewUrl(baseUrl: string, row: ReviewExportRow): string {
+    const time = (row.tradeTime ?? "").slice(0, 5) || "09:00";
+    return `${baseUrl}/review/${row.stockCode}/${row.tradeDate}/${time}`;
 }
 
 function collectManualKeys(rows: ReviewExportRow[]): string[] {
