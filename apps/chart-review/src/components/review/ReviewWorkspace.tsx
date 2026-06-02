@@ -1226,6 +1226,34 @@ function ReadSheetModal({
 
 // ── Settings Modal ───────────────────────────────────────────
 
+/** 설정 모달의 리스트 행(클릭 시 하위 모달 오픈). */
+function SettingsRow({
+  label,
+  sub,
+  count,
+  onClick,
+}: {
+  label: string;
+  sub: string;
+  count?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className={styles.settingsRow} onClick={onClick}>
+      <span className={styles.settingsRowText}>
+        <span className={styles.settingsRowLabel}>{label}</span>
+        <span className={styles.settingsRowSub}>{sub}</span>
+      </span>
+      {count != null && count > 0 && (
+        <span className={styles.settingsRowCount}>{count}</span>
+      )}
+      <span className={styles.settingsRowChevron} aria-hidden>
+        ›
+      </span>
+    </button>
+  );
+}
+
 type SettingsModalProps = {
   manualFieldKeys: string[];
   headerAvailable: string[];
@@ -1271,6 +1299,15 @@ function SettingsModal({ manualFieldKeys, headerAvailable, valueSuggestions, onC
     tab: sheetConfig?.tab ?? "review",
   };
 
+  // ESC 로 닫기 (하위 모달이 열려 있으면 그 모달이 먼저 처리)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && openPicker === null) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openPicker, onClose]);
+
   // 오버레이 클릭(배경)으로 닫기
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === overlayRef.current) onClose();
@@ -1284,75 +1321,46 @@ function SettingsModal({ manualFieldKeys, headerAvailable, valueSuggestions, onC
           <button type="button" className={styles.settingsClose} onClick={onClose}>✕</button>
         </div>
         <div className={styles.settingsBody}>
-          <section className={styles.settingsSection}>
-            <div className={styles.settingsSectionLabel}>헤더 표시 필드</div>
-            <button
-              type="button"
-              className={styles.settingsPickerBtn}
+          <div className={styles.settingsGroupLabel}>표시</div>
+          <div className={styles.settingsGroup}>
+            <SettingsRow
+              label="헤더 표시 필드"
+              sub="차트 헤더에 표시할 필드"
+              count={headerFieldKeys.length}
               onClick={() => setOpenPicker("header")}
-            >
-              <span>헤더 필드 선택</span>
-              {headerFieldKeys.length > 0 && (
-                <span className={styles.settingsPickerCount}>{headerFieldKeys.length}</span>
-              )}
-            </button>
-          </section>
-          <section className={styles.settingsSection}>
-            <div className={styles.settingsSectionLabel}>Point List 표시 필드</div>
-            <button
-              type="button"
-              className={styles.settingsPickerBtn}
+            />
+            <SettingsRow
+              label="Point List 표시 필드"
+              sub="타점 목록에 표시할 필드"
+              count={pointFieldKeys.length}
               onClick={() => setOpenPicker("point")}
-            >
-              <span>포인트 필드 선택</span>
-              {pointFieldKeys.length > 0 && (
-                <span className={styles.settingsPickerCount}>{pointFieldKeys.length}</span>
-              )}
-            </button>
-          </section>
-          <section className={styles.settingsSection}>
-            <div className={styles.settingsSectionLabel}>m_ 값 필터 (배지 표시)</div>
-            <button
-              type="button"
-              className={styles.settingsPickerBtn}
+            />
+            <SettingsRow
+              label="m_ 값 필터"
+              sub="선택한 값이 있는 타점에 배지 표시"
+              count={activeFilters}
               onClick={() => setOpenPicker("filter")}
-            >
-              <span>필터 값 선택</span>
-              {activeFilters > 0 && (
-                <span className={styles.settingsPickerCount}>{activeFilters}</span>
-              )}
-            </button>
-          </section>
-          <section className={styles.settingsSection}>
-            <div className={styles.settingsSectionLabel}>읽기 시트 (작업셋)</div>
-            <button
-              type="button"
-              className={styles.settingsPickerBtn}
+            />
+          </div>
+
+          <div className={styles.settingsGroupLabel}>Sheet 연동</div>
+          <div className={styles.settingsGroup}>
+            <SettingsRow
+              label="읽기 시트 (작업셋)"
+              sub="작업셋을 정의할 스프레드시트"
               onClick={() => setOpenPicker("read")}
-            >
-              <span>읽기 시트 설정</span>
-            </button>
-          </section>
-          <section className={styles.settingsSection}>
-            <div className={styles.settingsSectionLabel}>Google Sheet Export</div>
-            <button
-              type="button"
-              className={styles.settingsPickerBtn}
+            />
+            <SettingsRow
+              label="Google Sheet Export"
+              sub="타점을 스프레드시트로 내보내기"
               onClick={() => setOpenPicker("export")}
-            >
-              <span>Sheet로 Export</span>
-            </button>
-          </section>
-          <section className={styles.settingsSection}>
-            <div className={styles.settingsSectionLabel}>Sheet → DB 병합 Import</div>
-            <button
-              type="button"
-              className={styles.settingsPickerBtn}
+            />
+            <SettingsRow
+              label="Sheet → DB 병합 Import"
+              sub="시트의 m_ 값을 DB에 병합"
               onClick={() => setOpenPicker("import")}
-            >
-              <span>Sheet → DB 병합</span>
-            </button>
-          </section>
+            />
+          </div>
         </div>
       </div>
 

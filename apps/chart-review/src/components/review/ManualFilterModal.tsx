@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./FieldChecklistModal.module.css";
 import { activeFilterCount } from "@/lib/manualFilter";
 
@@ -24,6 +24,18 @@ export function ManualFilterModal({
 }: ManualFilterModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  // ESC 로 닫기 (capture: 상위 설정 모달보다 먼저 처리)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
 
   const keys = Object.keys(valueSuggestions).sort();
   const activeCount = activeFilterCount(filters);

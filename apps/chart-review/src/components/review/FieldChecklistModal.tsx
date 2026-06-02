@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./FieldChecklistModal.module.css";
 
 type FieldChecklistModalProps = {
@@ -23,6 +23,18 @@ export function FieldChecklistModal({
 }: FieldChecklistModalProps) {
   const [search, setSearch] = useState("");
   const overlayRef = useRef<HTMLDivElement>(null);
+
+  // ESC 로 닫기 (capture: 상위 설정 모달보다 먼저 처리)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
 
   const filtered = search
     ? availableKeys.filter((k) => k.toLowerCase().includes(search.toLowerCase()))
