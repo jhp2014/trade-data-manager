@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
-import { reviewPoints, reviewTargets } from "../schema/review";
+import { reviewManualKeys, reviewPoints, reviewTargets } from "../schema/review";
+import type { ReviewManualKey } from "../schema/review";
 import { minuteCandleFeatures } from "../schema/features";
 import type { Database } from "../db";
 import { FEATURE_COLUMNS, type ReviewExportRow } from "../review-sheet";
@@ -137,6 +138,104 @@ export async function findReviewExportRows(
     return rows;
 }
 
+// ── 앱 로드용 read (DB → 작업셋) ────────────────────────────────────
+
+export type ReviewLoadPoint = {
+    reviewId: string;
+    tradeTime: string;
+    payload: Record<string, string | string[]>;
+    features: Record<string, string | null>;
+};
+
+export type ReviewLoadTarget = {
+    stockCode: string;
+    stockName: string | null;
+    tradeDate: string;
+    lineTargets: number[];
+    points: ReviewLoadPoint[];
+};
+
+export type ReviewLoadKey = { stockCode: string; tradeDate: string };
+
+/**
+ * 앱 사이드바/Point List 가 그릴 작업셋을 DB 에서 로드한다.
+ * - keys 가 주어지면 해당 (stockCode, tradeDate) 타깃만, 없으면 전체(최근순).
+ * - 각 타깃의 모든 Point + payload(m_) + minute_candle_features(feature) 포함.
+ */
+export async function findReviewLoadTargets(
+    db: Database,
+    opts: { keys?: ReviewLoadKey[]; limit?: number } = {},
+): Promise<ReviewLoadTarget[]> {
+    const targets = await loadTargets(db, opts);
+    if (targets.length === 0) return [];
+
+    const targetIds = targets.map((target) => target.id);
+    const points = await db
+        .select()
+        .from(reviewPoints)
+        .where(inArray(reviewPoints.reviewTargetId, targetIds))
+        .orderBy(asc(reviewPoints.reviewTargetId), asc(reviewPoints.tradeTime));
+
+    const pointsByTargetId = new Map<bigint, typeof points>();
+    for (const point of points) {
+        const arr = pointsByTargetId.get(point.reviewTargetId) ?? [];
+        arr.push(point);
+        pointsByTargetId.set(point.reviewTargetId, arr);
+    }
+
+    const featuresByKey = await findExportFeatures(db, targets, points);
+
+    return targets.map((target) => ({
+        stockCode: target.stockCode,
+        stockName: target.stockName ?? null,
+        tradeDate: target.tradeDate,
+        lineTargets: target.lineTargets,
+        points: (pointsByTargetId.get(target.id) ?? []).map((point) => ({
+            reviewId: point.id.toString(),
+            tradeTime: point.tradeTime,
+            payload: point.payloadJson,
+            features:
+                featuresByKey.get(
+                    exportFeatureKey(target.stockCode, target.tradeDate, point.tradeTime),
+                ) ?? {},
+        })),
+    }));
+}
+
+async function loadTargets(
+    db: Database,
+    opts: { keys?: ReviewLoadKey[]; limit?: number },
+): Promise<Array<typeof reviewTargets.$inferSelect>> {
+    const keys = opts.keys;
+    if (keys && keys.length === 0) return [];
+
+    if (keys && keys.length > 0) {
+        // 정확한 (code, date) 쌍 매칭: code/date IN 으로 좁힌 뒤 JS 에서 쌍 필터.
+        const codes = Array.from(new Set(keys.map((k) => k.stockCode)));
+        const dates = Array.from(new Set(keys.map((k) => k.tradeDate)));
+        const rows = await db
+            .select()
+            .from(reviewTargets)
+            .where(
+                and(
+                    inArray(reviewTargets.stockCode, codes),
+                    inArray(reviewTargets.tradeDate, dates),
+                ),
+            )
+            .orderBy(desc(reviewTargets.tradeDate), asc(reviewTargets.stockCode));
+
+        const wanted = new Set(keys.map((k) => `${k.stockCode}|${k.tradeDate}`));
+        return rows.filter((row) => wanted.has(`${row.stockCode}|${row.tradeDate}`));
+    }
+
+    const query = db
+        .select()
+        .from(reviewTargets)
+        .orderBy(desc(reviewTargets.tradeDate), asc(reviewTargets.stockCode));
+
+    return opts.limit ? query.limit(opts.limit) : query;
+}
+
 async function findExportTargets(
     db: Database,
     opts: { since?: string },
@@ -212,4 +311,44 @@ function formatFeatureValue(value: unknown): string | null {
 
 function exportFeatureKey(stockCode: string, tradeDate: string, tradeTime: string) {
     return `${stockCode}|${tradeDate}|${tradeTime.slice(0, 8)}`;
+}
+
+// ── Manual key registry (m_ 컬럼 전역 목록) ─────────────────────────
+
+/** sortOrder, key 순으로 정렬된 전역 수동 입력 키 목록. */
+export async function listManualKeys(db: Database): Promise<ReviewManualKey[]> {
+    return db
+        .select()
+        .from(reviewManualKeys)
+        .orderBy(asc(reviewManualKeys.sortOrder), asc(reviewManualKeys.key));
+}
+
+/**
+ * 수동 입력 키 추가. 이미 있으면 무시(멱등).
+ * sortOrder 는 현재 최대값 + 1 로 자동 부여한다.
+ */
+export async function addManualKey(
+    db: Database,
+    input: { key: string; label?: string | null },
+): Promise<void> {
+    const key = input.key.trim();
+    if (!key) throw new Error("[review.repository] manual key is empty");
+
+    const [{ maxOrder }] = await db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(${reviewManualKeys.sortOrder}), -1)` })
+        .from(reviewManualKeys);
+
+    await db
+        .insert(reviewManualKeys)
+        .values({ key, label: input.label?.trim() || null, sortOrder: Number(maxOrder) + 1 })
+        .onConflictDoNothing({ target: reviewManualKeys.key });
+}
+
+/**
+ * 수동 입력 키 삭제(비파괴적).
+ * 레지스트리 행만 제거하며 각 review_point 의 payload 값은 보존한다.
+ * 동일 키를 다시 추가하면 payload 에 남아있던 값이 그대로 복구된다.
+ */
+export async function deleteManualKey(db: Database, key: string): Promise<void> {
+    await db.delete(reviewManualKeys).where(eq(reviewManualKeys.key, key.trim()));
 }
