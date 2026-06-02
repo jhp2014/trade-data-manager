@@ -75,7 +75,7 @@ export function FieldChecklistModal({
                   checked={selectedKeys.includes(key)}
                   onChange={() => onToggle(key)}
                 />
-                <span className={styles.itemLabel}>{key.startsWith("m_") ? key.slice(2) : key}</span>
+                <span className={styles.itemLabel}>{key}</span>
               </label>
             ))
           )}

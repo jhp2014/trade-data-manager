@@ -11,7 +11,7 @@
 
 .header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 18px;
   padding: 12px 20px;
@@ -20,16 +20,16 @@
 }
 
 .headerInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
   min-width: 0;
 }
 
 .headerRight {
   display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 7px;
-  min-width: 360px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .titleLine {
@@ -89,7 +89,7 @@
 .fieldLine {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
   gap: 6px;
   font-size: 12px;
 }
@@ -147,46 +147,54 @@
   opacity: 0.45;
 }
 
-/* 컨트롤 그룹 구분자 (헤더 타이틀의 sep 와 동일 톤) */
-.controlSep {
-  color: var(--border-default);
-  font-size: 13px;
-  user-select: none;
-}
-
-/* KRX/NXT, 뷰모드 토글 — ← N/M → 와 유사한 미니멀 텍스트 스타일 */
-.segTabs {
+/* Point List 툴바 액션 버튼 (입력 / 삭제) */
+.pointActions {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
-.segButton {
+.pointAddBtn {
+  height: 28px;
+  padding: 0 12px;
   border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-size: 13px;
+  border-radius: 7px;
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.pointAddBtn:hover {
+  background: var(--accent-hover);
+}
+
+.pointDelBtn {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
-  padding: 2px 0;
   cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
 }
 
-.segButton:hover {
-  color: var(--text-primary);
+.pointDelBtn:hover:not(:disabled) {
+  border-color: #e5484d;
+  background: #fdeced;
+  color: #c0353a;
 }
 
-.segButtonActive {
-  color: var(--accent-primary);
-}
-
-.segButton:disabled {
+.pointDelBtn:disabled {
   cursor: default;
-  opacity: 0.35;
-}
-
-.segButton:disabled:hover {
-  color: var(--text-tertiary);
+  opacity: 0.4;
 }
 
 /* 헤더 세그먼트 컨트롤 (KRX/NXT, 뷰모드) — 컨테이너에 담긴 칩 토글 */
@@ -260,8 +268,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--border-default);
+  background: var(--bg-secondary);
 }
 
 .pointToolbarLabel {
@@ -309,18 +318,28 @@
 }
 
 .pointItem {
+  position: relative;
   width: 100%;
   margin-bottom: 8px;
-  padding: 10px;
+  padding: 10px 12px;
   text-align: left;
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: 9px;
   background: var(--bg-primary);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
 
-.pointItemActive {
+.pointItem:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-secondary);
+}
+
+.pointItemActive,
+.pointItemActive:hover {
   border-color: var(--accent-primary);
   background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-primary);
 }
 
 .pointTop {
@@ -660,6 +679,24 @@
 
 /* ── Point Input Drawer (우측 30% 입력 패널) ─────────────────── */
 
+.inputBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 205;
+  background: rgba(17, 24, 33, 0.28);
+  backdrop-filter: blur(1.5px);
+  animation: inputBackdropIn 0.14s ease;
+}
+
+@keyframes inputBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .inputDrawer {
   position: fixed;
   top: 0;
@@ -672,6 +709,18 @@
   border-left: 1px solid var(--border-default);
   background: var(--bg-primary);
   box-shadow: -12px 0 40px rgba(0, 0, 0, 0.22);
+  animation: inputDrawerIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes inputDrawerIn {
+  from {
+    transform: translateX(16px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .inputHeader {
@@ -679,15 +728,51 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 12px;
+  padding: 16px;
   border-bottom: 1px solid var(--border-default);
+}
+
+/* 모드별 헤더 상단 강조선 */
+.inputHeaderNew {
+  box-shadow: inset 0 3px 0 var(--accent-primary);
+}
+
+.inputHeaderEdit {
+  box-shadow: inset 0 3px 0 var(--warning);
 }
 
 .inputTitleWrap {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 5px;
   min-width: 0;
+}
+
+.inputTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inputModeBadge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.inputModeNew {
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.inputModeEdit {
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .inputTitle {
@@ -700,6 +785,26 @@
   font-size: 12px;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
+}
+
+.inputClose {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.inputClose:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .inputBody {
@@ -831,10 +936,40 @@
 
 .inputFooter {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--border-default);
+}
+
+.inputKbdHint {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--border-default);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.inputFooterBtns {
+  display: inline-flex;
+  gap: 8px;
 }
 
 .inputCancel,

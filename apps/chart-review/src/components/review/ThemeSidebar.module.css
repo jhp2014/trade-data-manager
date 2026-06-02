@@ -8,26 +8,32 @@
 .tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px 10px;
+  gap: 5px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--border-default);
+  background: var(--bg-secondary);
 }
 
 .tab {
-  padding: 2px 8px;
+  padding: 4px 10px;
   border: 1px solid transparent;
-  border-radius: 6px;
-  background: var(--bg-secondary);
+  border-radius: 999px;
+  background: var(--bg-primary);
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
 
 .tab:hover {
   border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
-.tabActive {
+.tabActive,
+.tabActive:hover {
+  border-color: var(--accent-primary);
   background: var(--accent-soft);
   color: var(--accent-primary);
 }
@@ -41,21 +47,25 @@
 .row {
   display: grid;
   grid-template-rows: auto auto;
-  gap: 2px;
+  gap: 3px;
   width: 100%;
   margin-bottom: 6px;
-  padding: 6px 8px;
+  padding: 7px 9px;
   text-align: left;
   border: 1px solid var(--border-default);
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--bg-primary);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
 }
 
 .row:hover {
   border-color: var(--border-strong);
+  background: var(--bg-secondary);
 }
 
-.rowSelf {
+.rowSelf,
+.rowSelf:hover {
   border-color: var(--accent-primary);
   background: var(--accent-soft);
 }

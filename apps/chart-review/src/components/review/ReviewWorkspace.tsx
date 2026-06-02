@@ -506,6 +506,18 @@ function ReviewHeader({
           <span className={styles.sep}>|</span>
           <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
         </div>
+        <div className={styles.fieldLine}>
+          {fieldValues.length === 0 ? (
+            <span className={styles.fieldHint}>⚙ 설정에서 표시할 필드를 선택하세요</span>
+          ) : (
+            fieldValues.map(({ key, value }) => (
+              <span key={key} className={styles.fieldItem} title={value || "-"}>
+                <span className={styles.fieldKey}>{key}</span>
+                <span className={styles.fieldVal}>{value ? truncate(value, VALUE_TRUNCATE) : "-"}</span>
+              </span>
+            ))
+          )}
+        </div>
       </div>
       <div className={styles.headerRight}>
         <div className={styles.controls}>
@@ -564,18 +576,6 @@ function ReviewHeader({
           <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="설정">
             ⚙
           </button>
-        </div>
-        <div className={styles.fieldLine}>
-          {fieldValues.length === 0 ? (
-            <span className={styles.fieldHint}>⚙ 설정에서 표시할 필드를 선택하세요</span>
-          ) : (
-            fieldValues.map(({ key, value }) => (
-              <span key={key} className={styles.fieldItem} title={value || "-"}>
-                <span className={styles.fieldKey}>{key}</span>
-                <span className={styles.fieldVal}>{value ? truncate(value, VALUE_TRUNCATE) : "-"}</span>
-              </span>
-            ))
-          )}
         </div>
       </div>
     </header>
@@ -662,14 +662,13 @@ function PointListToolbar({ onInput, onDelete, canDelete }: PointListToolbarProp
           </span>
         )}
       </span>
-      <div className={styles.segTabs}>
-        <button type="button" className={styles.segButton} onClick={onInput}>
-          입력
+      <div className={styles.pointActions}>
+        <button type="button" className={styles.pointAddBtn} onClick={onInput}>
+          + 입력
         </button>
-        <span className={styles.controlSep}>|</span>
         <button
           type="button"
-          className={styles.segButton}
+          className={styles.pointDelBtn}
           onClick={onDelete}
           disabled={!canDelete}
         >

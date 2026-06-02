@@ -174,17 +174,28 @@ export function PointInputDrawer({
   }, [submitting, rows, onClose]);
 
   return (
-    <aside className={styles.inputDrawer}>
-      <div className={styles.inputHeader}>
+    <>
+      <div className={styles.inputBackdrop} onClick={onClose} aria-hidden />
+      <aside className={styles.inputDrawer}>
+      <div
+        className={`${styles.inputHeader} ${mode === "edit" ? styles.inputHeaderEdit : styles.inputHeaderNew}`}
+      >
         <div className={styles.inputTitleWrap}>
-          <span className={styles.inputTitle}>
-            타점 {mode === "edit" ? "수정" : "입력"}
-          </span>
+          <div className={styles.inputTitleRow}>
+            <span
+              className={`${styles.inputModeBadge} ${mode === "edit" ? styles.inputModeEdit : styles.inputModeNew}`}
+            >
+              {mode === "edit" ? "수정" : "신규"}
+            </span>
+            <span className={styles.inputTitle}>
+              {mode === "edit" ? "타점 수정" : "타점 입력"}
+            </span>
+          </div>
           <span className={styles.inputSub}>
             {(stockName ?? stockCode)} · {tradeDate} · {tradeTime}
           </span>
         </div>
-        <button type="button" className={styles.settingsClose} tabIndex={-1} onClick={onClose}>
+        <button type="button" className={styles.inputClose} tabIndex={-1} onClick={onClose}>
           ✕
         </button>
       </div>
@@ -268,26 +279,36 @@ export function PointInputDrawer({
       </div>
 
       <div className={styles.inputFooter}>
-        <button
-          type="button"
-          className={styles.inputCancel}
-          tabIndex={-1}
-          onClick={onClose}
-          disabled={submitting}
-        >
-          취소
-        </button>
-        <button
-          type="button"
-          className={styles.inputSave}
-          tabIndex={-1}
-          onClick={handleSave}
-          disabled={submitting}
-        >
-          {submitting ? "저장 중…" : "저장"}
-        </button>
+        <span className={styles.inputKbdHint}>
+          <kbd className={styles.kbd}>Ctrl</kbd>
+          <kbd className={styles.kbd}>Space</kbd>
+          저장 ·
+          <kbd className={styles.kbd}>Esc</kbd>
+          닫기
+        </span>
+        <div className={styles.inputFooterBtns}>
+          <button
+            type="button"
+            className={styles.inputCancel}
+            tabIndex={-1}
+            onClick={onClose}
+            disabled={submitting}
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            className={styles.inputSave}
+            tabIndex={-1}
+            onClick={handleSave}
+            disabled={submitting}
+          >
+            {submitting ? "저장 중…" : mode === "edit" ? "변경 저장" : "타점 추가"}
+          </button>
+        </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
