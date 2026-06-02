@@ -80,9 +80,11 @@ EXCLUDE_DIRS = {
 BUNDLE_DIRS = [
     "apps/batch",
     "apps/chart-capture",
+    "apps/chart-review",
     "apps/data-view",
     "apps/feature-processor",
     "packages/data-core",
+    "packages/chart-utils",
     # "apps/web",
 ]
 
