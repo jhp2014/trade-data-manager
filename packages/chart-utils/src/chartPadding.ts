@@ -1,6 +1,6 @@
 /**
  * 차트 시각화용 빈 분봉 슬롯 채우기.
- * See: apps/data-view/docs/decisions/003-chartpadding-option-b.md
+ * 빈 구간을 null 값 슬롯으로 채워 시간축 간격을 균일하게 유지한다(Option B).
  */
 import type { MinuteCandle } from "./types";
 

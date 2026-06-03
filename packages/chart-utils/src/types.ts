@@ -1,5 +1,5 @@
 /**
- * 두 차트 앱(data-view, chart-capture)이 공유하는 최소 분봉 캔들 형태.
+ * 차트 앱(chart-capture, chart-review)이 공유하는 최소 분봉 캔들 형태.
  * 각 앱은 이 타입을 재사용하거나 자체 타입에서 호환되도록 정의한다.
  */
 export interface MinuteCandle {

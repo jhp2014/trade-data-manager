@@ -24,7 +24,7 @@
 
 - **수집(batch)**: 키움 API를 통해 종목 정보, 일봉, 분봉, 테마 매핑을 수집하고 PostgreSQL에 정규화하여 저장합니다.
 - **가공(feature-processor)**: 저장된 분봉 데이터를 읽어 기술적 지표를 계산하고 피처 테이블에 저장합니다.
-- **시각화/분석(data-view, chart-capture)**: 저장된 데이터를 웹 UI로 탐색하거나, 차트를 PNG로 일괄 캡처하여 분류 작업에 활용합니다.
+- **복기/분석(chart-review, chart-capture)**: 저장된 데이터를 웹 UI로 복기(타점 입력·검토)하거나, 차트를 PNG로 일괄 캡처하여 분류 작업에 활용합니다.
 
 ---
 
@@ -52,10 +52,11 @@ trade-data-manager/
 ├── apps/
 │   ├── batch/                     # 수집 CLI
 │   ├── feature-processor/         # 가공 CLI
-│   ├── data-view/                 # 데이터 탐색 웹 (Next.js)
+│   ├── chart-review/              # 매매 복기 웹 — 타점 입력·검토 (Next.js, port 3200)
 │   └── chart-capture/             # 차트 PNG 캡처 (Next.js + Playwright CLI)
 └── packages/
     ├── data-core/                 # SSOT: DB 스키마, 레포지토리, 쿼리
+    ├── chart-utils/               # 차트 앱 공유 유틸 (캔들 타입, 패딩 등)
     └── tsconfig/                  # 공통 TypeScript 설정
 ```
 
@@ -74,8 +75,8 @@ trade-data-manager/
     └─▶ 기술적 지표 계산 (변동률, 누적거래대금, 고점 등)
     └─▶ minute_candle_features 테이블 UPSERT
 
-[Step 3-a] apps/data-view
-  웹 UI로 데이터 탐색 (필터, 차트 모달)
+[Step 3-a] apps/chart-review
+  웹 UI로 매매 복기 (작업셋 차트 탐색, 타점 입력·검토, Sheet 내보내기/가져오기)
 
 [Step 3-b] apps/chart-capture
   CSV(종목/날짜) 입력 → KRX/NXT 차트 PNG 일괄 캡처
@@ -177,15 +178,15 @@ pnpm db:studio     # Drizzle Studio 실행
 
 ```bash
 # 특정 앱 dev
-pnpm --filter @trade-data-manager/data-view dev
+pnpm --filter @trade-data-manager/chart-review dev
 pnpm --filter @trade-data-manager/batch dev
 
 # 특정 앱 build + start
-pnpm --filter @trade-data-manager/data-view build
-pnpm --filter @trade-data-manager/data-view start
+pnpm --filter @trade-data-manager/chart-review build
+pnpm --filter @trade-data-manager/chart-review start
 
 # 단축 표기 (앱 이름의 마지막 segment만)
-pnpm --filter data-view dev
+pnpm --filter chart-review dev
 pnpm --filter chart-capture capture
 ```
 
@@ -194,8 +195,8 @@ pnpm --filter chart-capture capture
 해당 앱 폴더 안에서는 `pnpm <script>`만 입력해도 됩니다.
 
 ```bash
-cd apps/data-view
-pnpm dev          # 동일: pnpm --filter data-view dev (루트에서)
+cd apps/chart-review
+pnpm dev          # 동일: pnpm --filter chart-review dev (루트에서)
 pnpm build
 pnpm start
 ```
@@ -249,39 +250,41 @@ pnpm --filter feature-processor dev minute -- --all
 
 ---
 
-### 7.3 data-view — 데이터 탐색 웹 (Next.js)
+### 7.3 chart-review — 매매 복기 웹 (Next.js, port 3200)
 
-**언제 쓰나**: 수집·가공된 데이터를 필터·차트로 탐색할 때.
+**언제 쓰나**: 수집·가공된 데이터로 매매를 복기할 때. 작업셋(종목/날짜)을 차트로 넘겨보며 타점을 입력·검토하고, 결과를 Google Sheet로 내보내거나 시트에서 일괄 가져온다.
+
+> 사용법(단축키, 작업셋/Read Sheet 운용, Export/Import 흐름)과 코드 구조·설정값 위치는 **[`apps/chart-review/docs/`](apps/chart-review/docs/)** 참조.
 
 **중요**: Next.js 앱은 `dev`와 `start`가 체감 속도가 크게 다릅니다.
 
 | 모드 | 첫 페이지 진입 | 코드 수정 반영 | 추천 상황 |
 |------|--------------|--------------|---------|
 | `dev` | 10~30초 (온디맨드 컴파일) | HMR로 즉시 | 코드 수정하며 작업 |
-| `start` | 즉시 | 재빌드 필요 | 그냥 데이터 보기만 할 때 |
+| `start` | 즉시 | 재빌드 필요 | 그냥 복기만 할 때 |
 
-#### 일상 사용 (코드 수정 없이 데이터만 보기) — 추천
+#### 일상 사용 (코드 수정 없이 복기만) — 추천
 
 ```bash
 # 1회만 빌드
-pnpm --filter data-view build
+pnpm --filter chart-review build
 
 # 이후 매번
-pnpm --filter data-view start
-# → http://localhost:3100
+pnpm --filter chart-review start
+# → http://localhost:3200
 ```
 
 #### UI 개발 중
 
 ```bash
-pnpm --filter data-view dev
+pnpm --filter chart-review dev
 ```
 
 #### 코드 변경 후 다시 start로 돌아갈 때
 
 ```bash
-pnpm --filter data-view build  # 다시 빌드
-pnpm --filter data-view start
+pnpm --filter chart-review build  # 다시 빌드
+pnpm --filter chart-review start
 ```
 
 ---
@@ -366,7 +369,7 @@ pnpm fresh
 #### 특정 앱만 청소
 
 ```bash
-pnpm --filter data-view clean
+pnpm --filter chart-review clean
 pnpm --filter chart-capture clean:cache
 ```
 
@@ -385,8 +388,8 @@ pnpm --filter batch dev
 # 3. 가공
 pnpm --filter feature-processor dev minute -- --date 2026-04-21
 
-# 4-a. 웹에서 탐색
-pnpm --filter data-view start    # 사전에 build 1회
+# 4-a. 웹에서 복기
+pnpm --filter chart-review start    # 사전에 build 1회
 
 # 4-b. 또는 차트 PNG 캡처
 # capture-input/에 종목+날짜 CSV를 넣어두고
@@ -451,7 +454,7 @@ minute_candle_features   ← 분봉 기술적 지표
 | 처음 설치 후 한 번 | `pnpm install && pnpm db:push && pnpm build` |
 | 일상: 데이터 수집 | `pnpm --filter batch dev` |
 | 일상: 피처 가공 | `pnpm --filter feature-processor dev minute -- --pending` |
-| 일상: 웹 탐색 | `pnpm --filter data-view start` |
+| 일상: 웹 복기 | `pnpm --filter chart-review start` |
 | 일상: 차트 캡처 | `pnpm --filter chart-capture capture` |
 | 코드 수정 후 다시 start | `pnpm --filter <app> build && pnpm --filter <app> start` |
 | 빌드 오류 시 (가벼움) | `pnpm clean && pnpm build` |
