@@ -31,13 +31,34 @@ export interface ChartLinePoint {
     value: number;
 }
 
-/** 종목 1개의 오버레이 시리즈 */
+/** review_target 의 Point List 한 점 (탐색용). payload = m_/feature 값. */
+export interface ChartReviewPoint {
+    reviewId: string;
+    tradeTime: string;
+    payload: Record<string, string | string[]>;
+}
+
+/**
+ * 종목 1개의 오버레이 시리즈 + 탐색용 풀데이터.
+ * 테마 번들이 이미 모든 멤버의 raw 차트/리뷰를 내려주므로(getThemeBundle),
+ * 멤버를 클릭해 탐색할 때 추가 요청 없이 이 시리즈만으로 차트/Point List 를 그린다.
+ */
 export interface ChartOverlaySeries {
     stockCode: string;
     stockName: string;
     isSelf: boolean;
     series: ChartOverlayPoint[];
-    /** 같은 거래일의 review_target(Point List 보유) 종목이면 true. 배지용. */
+    /** 이 멤버의 일봉 raw (메인 일봉 차트용). prevClose 도 여기서 파생. */
+    daily: DailyCandle[];
+    /** 이 멤버의 분봉 raw (메인 분봉 차트용). */
+    minute: MinuteCandle[];
+    /** 차트에 그릴 가격선들(review_target.lineTargets). 없으면 []. */
+    lineTargets: number[];
+    /** 이 멤버의 Point List. review_target 아니면 []. */
+    reviewPoints: ChartReviewPoint[];
+    /** 같은 거래일의 review_target 이면 true(포인트 0개여도). 입력 가능 여부·3-state 배지용. */
+    isReviewTarget: boolean;
+    /** review_target 이고 포인트가 1개 이상이면 true. 배지용. */
     hasReview?: boolean;
 }
 

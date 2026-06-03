@@ -105,6 +105,18 @@ function ThemeRow({
   const rateColor =
     metric.rate == null ? NEUTRAL_COLOR : metric.rate > 0 ? RISE_COLOR : metric.rate < 0 ? FALL_COLOR : NEUTRAL_COLOR;
 
+  // 3-state 배지: 포인트 보유=채움, review_target(비어있음)=외곽선, 그 외=없음.
+  const badgeClass = metric.hasReview
+    ? styles.rankReview
+    : metric.isReviewTarget
+      ? styles.rankTarget
+      : "";
+  const badgeTitle = metric.hasReview
+    ? "Point List 있음"
+    : metric.isReviewTarget
+      ? "review_target · Point List 비어있음"
+      : undefined;
+
   return (
     <button
       type="button"
@@ -112,10 +124,7 @@ function ThemeRow({
       onClick={onSelect}
       title={`${metric.stockName} ${metric.stockCode}`}
     >
-      <span
-        className={`${styles.rank} ${metric.hasReview ? styles.rankReview : ""} tabular`}
-        title={metric.hasReview ? "Point List 있음" : undefined}
-      >
+      <span className={`${styles.rank} ${badgeClass} tabular`} title={badgeTitle}>
         {rank}
       </span>
       <span className={styles.name}>{truncate(metric.stockName, 7)}</span>

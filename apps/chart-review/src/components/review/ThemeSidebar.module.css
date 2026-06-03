@@ -79,17 +79,30 @@
   text-align: center;
 }
 
-/** Point List(review_target) 보유 종목: 순위 숫자에 동그라미 배지. */
-.rankReview {
+/** review_target 종목: 순위 숫자를 원형 배지로(공통 모양). */
+.rankReview,
+.rankTarget {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
   width: 18px;
   height: 18px;
-  color: var(--accent-primary);
-  border: 1.5px solid var(--accent-primary);
   border-radius: 50%;
+}
+
+/** 포인트 보유: 채운 배지(강조). */
+.rankReview {
+  color: var(--bg-primary);
+  background: var(--accent-primary);
+  border: 1.5px solid var(--accent-primary);
+}
+
+/** review_target 이지만 포인트 없음: 외곽선만(약한 표식). */
+.rankTarget {
+  color: var(--accent-primary);
+  background: transparent;
+  border: 1.5px solid var(--accent-soft);
 }
 
 .name {

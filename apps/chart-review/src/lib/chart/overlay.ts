@@ -7,11 +7,39 @@
  */
 
 import type { ThemeBundle, ThemeBundleMember } from "@trade-data-manager/data-core";
+import { fillMissingMinuteCandles } from "@trade-data-manager/chart-utils";
 import type { ChartOverlaySeries } from "@/types/chart";
 import { fillMissingOverlayPoints } from "@/lib/chartPadding";
-import { buildOverlayPoints } from "./mappers";
+import { buildOverlayPoints, toDailyChartCandle, buildMinuteCandles } from "./mappers";
 import { CHART_OVERLAY_MAX_SERIES } from "@/lib/constants";
 import { OVERLAY_SELF_COLOR, OVERLAY_PEER_PALETTE } from "@/lib/colors";
+
+/**
+ * 테마 번들 멤버 1개 → 오버레이 시리즈(+탐색용 풀데이터).
+ * 번들이 이미 멤버별 raw 차트/리뷰를 들고 있으므로 추가 요청 없이 그대로 싣는다.
+ */
+function toOverlaySeries(
+    member: ThemeBundleMember,
+    series: ReturnType<typeof fillMissingOverlayPoints>,
+    isSelf: boolean,
+): ChartOverlaySeries {
+    return {
+        stockCode: member.stockCode,
+        stockName: member.stockName,
+        isSelf,
+        series,
+        daily: member.daily.map(toDailyChartCandle),
+        minute: fillMissingMinuteCandles(buildMinuteCandles(member.minute)),
+        lineTargets: member.review?.lineTargets ?? [],
+        reviewPoints: (member.review?.points ?? []).map((p) => ({
+            reviewId: p.reviewId,
+            tradeTime: p.tradeTime,
+            payload: p.payload,
+        })),
+        isReviewTarget: member.review != null,
+        hasReview: (member.review?.points.length ?? 0) > 0,
+    };
+}
 
 /**
  * 단일 테마 번들 → 오버레이 시리즈 배열.
@@ -33,25 +61,13 @@ export function buildThemeOverlayForBundle(
 
     const selfEntry = seriesByMember.get(selfStockCode);
     if (selfEntry) {
-        result.push({
-            stockCode: selfStockCode,
-            stockName: selfEntry.member.stockName,
-            isSelf: true,
-            series: selfEntry.points,
-            hasReview: (selfEntry.member.review?.points.length ?? 0) > 0,
-        });
+        result.push(toOverlaySeries(selfEntry.member, selfEntry.points, true));
     }
 
     const peers: ChartOverlaySeries[] = [];
     for (const [code, { member, points }] of seriesByMember.entries()) {
         if (code === selfStockCode) continue;
-        peers.push({
-            stockCode: code,
-            stockName: member.stockName,
-            isSelf: false,
-            series: points,
-            hasReview: (member.review?.points.length ?? 0) > 0,
-        });
+        peers.push(toOverlaySeries(member, points, false));
     }
     peers.sort((a, b) => {
         const av = a.series[a.series.length - 1]?.valueNxt ?? 0;

@@ -31,7 +31,7 @@ import type { ManualKeyDef } from "@/lib/loadManualKeys";
 import { useReviewStore } from "@/stores/useReviewStore";
 import { PointInputDrawer } from "./PointInputDrawer";
 import { HistorySwitcher } from "./HistorySwitcher";
-import { DEFAULT_TRADE_TIME } from "@/lib/url";
+import { buildExploredGroup } from "@/lib/buildExploredGroup";
 import { CHART_PARAMS_DEBOUNCE_MS } from "@/lib/constants";
 import {
   VIEW_MODES,
@@ -106,12 +106,6 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     store.setSelectedPointKey(groups[first].points[0].pointKey);
   }, [filterActive, navigableIndices, selectedGroupIndex, groups]);
 
-  // 헤더에 표시할 종목 위치/개수: 필터 활성 시 매칭 종목 기준.
-  const navPosition = filterActive
-    ? Math.max(navigableIndices.indexOf(selectedGroupIndex), 0)
-    : selectedGroupIndex;
-  const navCount = filterActive ? navigableIndices.length : groups.length;
-
   // 임시 탐색(override) 중이면 차트/테마 대상은 클릭한 종목, 아니면 리뷰 종목.
   const isOverride = chartOverride != null;
   const effectiveStock = chartOverride ?? {
@@ -119,6 +113,30 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     tradeDate: selectedGroup.tradeDate,
     stockName: selectedGroup.stockName,
   };
+
+  // 탐색 종목의 Point List 선택 키(작업셋 store 와 분리). override 진입 시 null →
+  // 마커 스냅 없이 첫 포인트가 활성. 사용자가 리스트에서 클릭할 때만 마커가 따라온다.
+  const [exploredPointKey, setExploredPointKey] = useState<string | null>(null);
+  useEffect(() => {
+    setExploredPointKey(null);
+  }, [effectiveStock.stockCode, effectiveStock.tradeDate]);
+
+  // 헤더 위치 인디케이터 기준 작업셋 인덱스.
+  // override 중엔 탐색 종목의 작업셋 위치(없으면 -1 = 밖). 아니면 선택 인덱스.
+  const indicatorGroupIndex = isOverride
+    ? groups.findIndex(
+        (g) => g.stockCode === effectiveStock.stockCode && g.tradeDate === effectiveStock.tradeDate,
+      )
+    : selectedGroupIndex;
+
+  // 표시 위치/개수: 필터 활성 시 매칭 종목 기준. 작업셋 밖(-1)이면 -/N.
+  const navPosition =
+    indicatorGroupIndex < 0
+      ? -1
+      : filterActive
+        ? Math.max(navigableIndices.indexOf(indicatorGroupIndex), 0)
+        : indicatorGroupIndex;
+  const navCount = filterActive ? navigableIndices.length : groups.length;
 
   const chartParams = useMemo(
     () => ({ stockCode: effectiveStock.stockCode, tradeDate: effectiveStock.tradeDate }),
@@ -129,6 +147,40 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
   const debouncedChartParams = useDebouncedValue(chartParams, CHART_PARAMS_DEBOUNCE_MS);
   const chartPreview = useChartPreview(debouncedChartParams);
   const themes = useMemo(() => chartPreview.data?.themes ?? [], [chartPreview.data]);
+
+  // 탐색 중인 종목의 오버레이 시리즈(번들이 실어 보낸 review/lineTargets 포함).
+  // 작업셋 밖 종목이어도 번들에 있으면 추가 요청 없이 Point List/라인을 그린다.
+  const activeReview = useMemo<ChartOverlaySeries | null>(() => {
+    if (!isOverride) return null;
+    for (const t of themes) {
+      const found = t.overlaySeries.find((s) => s.stockCode === effectiveStock.stockCode);
+      if (found) return found;
+    }
+    return null;
+  }, [isOverride, themes, effectiveStock.stockCode]);
+
+  // override 일 때만 의미. 번들 review → 클라이언트 ReviewStockGroup(작업셋과 동일 형태).
+  const exploredGroup = useMemo(
+    () =>
+      buildExploredGroup({
+        stockCode: effectiveStock.stockCode,
+        stockName: effectiveStock.stockName ?? undefined,
+        tradeDate: effectiveStock.tradeDate,
+        lineTargets: activeReview?.lineTargets ?? [],
+        reviewPoints: activeReview?.reviewPoints ?? [],
+      }),
+    [effectiveStock.stockCode, effectiveStock.stockName, effectiveStock.tradeDate, activeReview],
+  );
+
+  // Point List/라인/입력/삭제가 모두 바라보는 "현재 활성 종목".
+  // override 면 탐색 종목, 아니면 작업셋 선택 종목.
+  const activeGroup = isOverride ? exploredGroup : selectedGroup;
+  const activePoint = isOverride
+    ? exploredGroup.points.find((p) => p.pointKey === exploredPointKey) ?? exploredGroup.points[0]
+    : selectedPoint;
+
+  // 입력 가능 = 작업셋 종목이거나, 탐색 종목이 이미 review_target 일 때(결정 1).
+  const canInput = !isOverride || (activeReview?.isReviewTarget ?? false);
 
   // 마커 시간(분 단위). 타점 tradeTime 으로 초기화하되 휠/슬라이더로 조정 가능.
   // tradeTime 이 없으면 09:00(540분) 기본.
@@ -173,13 +225,12 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     [manualFieldKeys, featureFieldKeys],
   );
 
-  // 일봉 라인 타깃: 리뷰 종목의 features.lineTargets("9010 | 9450")만 표시.
-  // 다른 종목을 임시 탐색(override) 중일 때는 표시하지 않는다.
+  // 일봉 라인 타깃: 현재 활성 종목(active)의 features.lineTargets("9010 | 9450").
+  // 탐색(override) 중이면 번들이 실어 보낸 탐색 종목의 lineTargets 로 선을 그린다(결정 3).
   const dailyPriceLines = useMemo(() => {
-    if (isOverride) return undefined;
-    const targets = parseLineTargets(selectedPoint.sourceRow.features.lineTargets);
+    const targets = parseLineTargets(activePoint.sourceRow.features.lineTargets);
     return targets.length > 0 ? { lineTargets: targets } : undefined;
-  }, [isOverride, selectedPoint.sourceRow.features.lineTargets]);
+  }, [activePoint.sourceRow.features.lineTargets]);
 
   // 활성 테마의 오버레이 시리즈 (분봉 크로스헤어·테마뷰 공용)
   const activeThemeOverlay = useMemo(() => {
@@ -210,7 +261,21 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inputOpen, setInputOpen] = useState(false);
-  const openInput = useCallback(() => setInputOpen(true), []);
+  const openInput = useCallback(() => {
+    if (canInput) setInputOpen(true);
+  }, [canInput]);
+
+  // 탐색 리스트에서 포인트 클릭: 작업셋 store 는 건드리지 않고(=a/d 복귀 유지)
+  // 탐색 선택만 바꾸고 마커를 그 tradeTime 으로 옮긴다.
+  const handleSelectExploredPoint = useCallback(
+    (pointKey: string) => {
+      setExploredPointKey(pointKey);
+      const p = exploredGroup.points.find((x) => x.pointKey === pointKey);
+      const mins = p ? timeStringToMinutes(p.tradeTime) : null;
+      if (mins != null) setMarkerMinutes(mins);
+    },
+    [exploredGroup],
+  );
 
   // GroupId 복붙/Tab 히스토리 탐색.
   // 히스토리는 "복붙으로 도달한 종목"만 기록한다(a/d 순회는 기록하지 않음).
@@ -227,11 +292,14 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
         });
         commands.goToGroup(idx);
       } else {
-        // 현재 로드된 작업셋에 없는 그룹 → 풀 네비게이션으로 폴백.
-        router.push(`/review/${code}/${date}/${DEFAULT_TRADE_TIME}`);
+        // 작업셋 밖 그룹 → 풀 네비게이션 대신 제자리(override) 탐색.
+        // 데이터는 (code,date) 테마 번들이 그대로 내려주므로 추가 라우팅이 필요 없다.
+        // stockName 은 미상이라 코드로 두고, 번들 로드 후 activeReview 에서 보정한다.
+        pushHistory({ stockCode: code, tradeDate: date });
+        setChartOverride({ stockCode: code, tradeDate: date, stockName: code });
       }
     },
-    [groups, commands, router, pushHistory],
+    [groups, commands, pushHistory, setChartOverride],
   );
 
   // 브라우저 포커스 상태에서 GroupId(예: 005930-2026-05-27) 붙여넣기 → 즉시 탐색.
@@ -366,16 +434,16 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
 
   // 입력 대상 tradeTime = 현재 마커 위치(분 → "HH:MM").
   const markerTimeStr = minutesToTimeString(markerMinutes);
-  const canDeletePoint = Boolean(selectedPoint.reviewId);
+  const canDeletePoint = Boolean(activePoint.reviewId);
 
   const handleDeletePoint = async () => {
-    if (!selectedPoint.reviewId) return;
-    if (!window.confirm(`이 타점(${formatPointTime(selectedPoint.tradeTime)})을 삭제할까요?`)) return;
+    if (!activePoint.reviewId) return;
+    if (!window.confirm(`이 타점(${formatPointTime(activePoint.tradeTime)})을 삭제할까요?`)) return;
     try {
       const res = await fetch("/api/review/point", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewId: selectedPoint.reviewId }),
+        body: JSON.stringify({ reviewId: activePoint.reviewId }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "삭제 실패");
       router.refresh();
@@ -396,10 +464,10 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
   const header = (
     <ReviewHeader
       commands={commands}
-      displayName={effectiveStock.stockName ?? effectiveStock.stockCode}
-      tradeDate={selectedGroup.tradeDate}
+      displayName={activeReview?.stockName ?? effectiveStock.stockName ?? effectiveStock.stockCode}
+      tradeDate={effectiveStock.tradeDate}
       themeName={selectedThemeName}
-      point={selectedPoint}
+      point={activePoint}
       groupIndex={navPosition}
       groupCount={navCount}
       viewMode={viewMode}
@@ -429,14 +497,15 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
       </div>
       <div className={styles.pointSlot}>
         <PointListToolbar
-          onInput={() => setInputOpen(true)}
+          onInput={openInput}
           onDelete={handleDeletePoint}
           canDelete={canDeletePoint}
+          canInput={canInput}
         />
         <PointList
-          points={selectedGroup.points}
-          selectedPointKey={selectedPoint.pointKey}
-          onSelectPoint={commands.selectPoint}
+          points={activeGroup.points}
+          selectedPointKey={activePoint.pointKey}
+          onSelectPoint={isOverride ? handleSelectExploredPoint : commands.selectPoint}
         />
       </div>
     </aside>
@@ -453,11 +522,11 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
 
   const inputDrawer = inputOpen && (
     <PointInputDrawer
-      stockCode={selectedGroup.stockCode}
-      stockName={selectedGroup.stockName}
-      tradeDate={selectedGroup.tradeDate}
+      stockCode={activeGroup.stockCode}
+      stockName={activeGroup.stockName}
+      tradeDate={activeGroup.tradeDate}
       tradeTime={markerTimeStr}
-      points={selectedGroup.points}
+      points={activeGroup.points}
       manualKeys={manualKeys}
       valueSuggestions={valueSuggestions}
       onClose={() => setInputOpen(false)}
@@ -490,8 +559,8 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
             isLoading={chartPreview.isLoading}
             error={chartPreview.error}
             markerTime={markerTime}
-            group={selectedGroup}
-            point={selectedPoint}
+            group={activeGroup}
+            point={activePoint}
             themeOverlay={activeThemeOverlay}
             priceLines={dailyPriceLines}
           />
@@ -512,8 +581,8 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
             data={chartPreview.data}
             isLoading={chartPreview.isLoading}
             error={chartPreview.error}
-            group={selectedGroup}
-            point={selectedPoint}
+            group={activeGroup}
+            point={activePoint}
             priceLines={dailyPriceLines}
           />
         </section>
@@ -554,8 +623,8 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
               data={chartPreview.data}
               isLoading={chartPreview.isLoading}
               error={chartPreview.error}
-              group={selectedGroup}
-              point={selectedPoint}
+              group={activeGroup}
+              point={activePoint}
               priceLines={dailyPriceLines}
             />
           </div>
@@ -565,8 +634,8 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
               isLoading={chartPreview.isLoading}
               error={chartPreview.error}
               markerTime={markerTime}
-              group={selectedGroup}
-              point={selectedPoint}
+              group={activeGroup}
+              point={activePoint}
               themeOverlay={activeThemeOverlay}
               priceLines={dailyPriceLines}
             />
@@ -661,7 +730,7 @@ function ReviewHeader({
               ←
             </button>
             <span className={`${styles.navPos} tabular`}>
-              {groupIndex + 1}/{groupCount}
+              {groupIndex < 0 ? "-" : groupIndex + 1}/{groupCount}
             </span>
             <button
               className={styles.navArrow}
@@ -730,9 +799,10 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
  * "005930-2026-05-27", "005930 20260527", "005930_2026/05/27" 등 허용.
  */
 function parseGroupId(text: string): { code: string; date: string } | null {
-  const m = text.trim().match(/(\d{6})\D*(\d{4})\D?(\d{2})\D?(\d{2})/);
+  // 종목코드는 6자리 영숫자(예: 0126Z0, 0009K0). 숫자만이 아님에 주의.
+  const m = text.trim().match(/([0-9A-Za-z]{6})\D*(\d{4})\D?(\d{2})\D?(\d{2})/);
   if (!m) return null;
-  return { code: m[1], date: `${m[2]}-${m[3]}-${m[4]}` };
+  return { code: m[1].toUpperCase(), date: `${m[2]}-${m[3]}-${m[4]}` };
 }
 
 /** "9010 | 9450" 형태의 파이프 구분 문자열을 유효한 양수 가격 배열로 파싱. */
@@ -796,9 +866,10 @@ type PointListToolbarProps = {
   onInput: () => void;
   onDelete: () => void;
   canDelete: boolean;
+  canInput: boolean;
 };
 
-function PointListToolbar({ onInput, onDelete, canDelete }: PointListToolbarProps) {
+function PointListToolbar({ onInput, onDelete, canDelete, canInput }: PointListToolbarProps) {
   const manualFilters = useUiStore((state) => state.manualFilters);
   const activeFilters = activeFilterCount(manualFilters);
   return (
@@ -812,7 +883,13 @@ function PointListToolbar({ onInput, onDelete, canDelete }: PointListToolbarProp
         )}
       </span>
       <div className={styles.pointActions}>
-        <button type="button" className={styles.pointAddBtn} onClick={onInput}>
+        <button
+          type="button"
+          className={styles.pointAddBtn}
+          onClick={onInput}
+          disabled={!canInput}
+          title={canInput ? "타점 입력" : "review_target 종목만 입력 가능"}
+        >
           + 입력
         </button>
         <button
