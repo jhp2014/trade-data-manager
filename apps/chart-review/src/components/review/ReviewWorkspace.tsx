@@ -16,7 +16,7 @@ import {
   clampMinutes,
 } from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
-import { composeUnix } from "@/lib/serialization";
+import { composeUnix, dateToUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
 import { useChartPreview } from "@/hooks/useChartPreview";
 import { useUiStore } from "@/stores/useUiStore";
@@ -28,7 +28,7 @@ import type {
 } from "@/types/review";
 import type { ChartOverlaySeries } from "@/types/chart";
 import type { ManualKeyDef } from "@/lib/loadManualKeys";
-import { useReviewStore } from "@/stores/useReviewStore";
+import { useReviewStore, type ChartOverride } from "@/stores/useReviewStore";
 import { PointInputDrawer } from "./PointInputDrawer";
 import { HistorySwitcher } from "./HistorySwitcher";
 import { buildExploredGroup } from "@/lib/buildExploredGroup";
@@ -121,6 +121,23 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     setExploredPointKey(null);
   }, [effectiveStock.stockCode, effectiveStock.tradeDate]);
 
+  // 번들을 어느 종목 기준으로 받을지(앵커). 테마 peer 탐색은 이미 받아둔 번들 안에
+  // 있으므로 앵커를 유지(=무요청). 작업셋 밖 종목을 붙여넣기/히스토리로 탐색할 때만
+  // 그 종목으로 앵커를 옮겨 새 번들을 받는다.
+  const [exploreAnchor, setExploreAnchor] = useState<ChartOverride | null>(null);
+  useEffect(() => {
+    if (chartOverride == null) setExploreAnchor(null);
+  }, [chartOverride]);
+
+  const anchorStock =
+    isOverride && exploreAnchor
+      ? exploreAnchor
+      : {
+          stockCode: selectedGroup.stockCode,
+          tradeDate: selectedGroup.tradeDate,
+          stockName: selectedGroup.stockName,
+        };
+
   // 헤더 위치 인디케이터 기준 작업셋 인덱스.
   // override 중엔 탐색 종목의 작업셋 위치(없으면 -1 = 밖). 아니면 선택 인덱스.
   const indicatorGroupIndex = isOverride
@@ -138,9 +155,10 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
         : indicatorGroupIndex;
   const navCount = filterActive ? navigableIndices.length : groups.length;
 
+  // 차트 fetch 는 앵커 기준(테마 peer 탐색은 무요청, 작업셋 밖만 재요청).
   const chartParams = useMemo(
-    () => ({ stockCode: effectiveStock.stockCode, tradeDate: effectiveStock.tradeDate }),
-    [effectiveStock.stockCode, effectiveStock.tradeDate],
+    () => ({ stockCode: anchorStock.stockCode, tradeDate: anchorStock.tradeDate }),
+    [anchorStock.stockCode, anchorStock.tradeDate],
   );
   // a/d 로 빠르게 종목을 훑을 때 중간 종목의 차트를 매번 긁어오지 않도록
   // 차트 fetch 파라미터를 200ms 디바운스한다(선택/헤더는 즉시 반영).
@@ -238,6 +256,23 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     return theme?.overlaySeries ?? [];
   }, [themes, selectedThemeId]);
 
+  // 메인 차트(일봉/분봉) 데이터. 탐색(override) 중이고 그 종목이 현재 번들에 있으면
+  // 이미 받아둔 멤버 raw(daily/minute)로 그려 추가 요청을 없앤다(무요청 탐색).
+  // 번들 밖(앵커 자신/로딩 중)이면 앵커 self 차트를 그대로 사용.
+  const mainChartData = useMemo(() => {
+    const data = chartPreview.data;
+    if (!data || !isOverride || !activeReview) return data;
+    const entryTime = dateToUnix(effectiveStock.tradeDate);
+    const entryCandle = activeReview.daily.find((c) => c.time === entryTime) ?? null;
+    return {
+      ...data,
+      daily: activeReview.daily,
+      minute: activeReview.minute,
+      prevCloseKrx: entryCandle?.prevCloseKrx ?? null,
+      prevCloseNxt: entryCandle?.prevCloseNxt ?? null,
+    };
+  }, [chartPreview.data, isOverride, activeReview, effectiveStock.tradeDate]);
+
   // Shift+휠 → 마커 시간(tradeTime) ±1분 이동 (차트 Point 마커도 함께 이동)
   useEffect(() => {
     const handler = (e: WheelEvent) => {
@@ -293,9 +328,10 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
         commands.goToGroup(idx);
       } else {
         // 작업셋 밖 그룹 → 풀 네비게이션 대신 제자리(override) 탐색.
-        // 데이터는 (code,date) 테마 번들이 그대로 내려주므로 추가 라우팅이 필요 없다.
+        // 작업셋 밖은 현재 번들에 없을 수 있으므로 앵커를 이 종목으로 옮겨 새 번들을 받는다.
         // stockName 은 미상이라 코드로 두고, 번들 로드 후 activeReview 에서 보정한다.
         pushHistory({ stockCode: code, tradeDate: date });
+        setExploreAnchor({ stockCode: code, tradeDate: date, stockName: code });
         setChartOverride({ stockCode: code, tradeDate: date, stockName: code });
       }
     },
@@ -555,7 +591,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
         {historySwitcher}
         <section className={styles.singleMode}>
           <MinuteChartPanel
-            data={chartPreview.data}
+            data={mainChartData}
             isLoading={chartPreview.isLoading}
             error={chartPreview.error}
             markerTime={markerTime}
@@ -578,7 +614,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
         {historySwitcher}
         <section className={styles.singleMode}>
           <DailyChartPanel
-            data={chartPreview.data}
+            data={mainChartData}
             isLoading={chartPreview.isLoading}
             error={chartPreview.error}
             group={activeGroup}
@@ -620,7 +656,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
         <section className={styles.mainPane}>
           <div className={styles.chartCell}>
             <DailyChartPanel
-              data={chartPreview.data}
+              data={mainChartData}
               isLoading={chartPreview.isLoading}
               error={chartPreview.error}
               group={activeGroup}
@@ -630,7 +666,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
           </div>
           <div className={styles.chartCell}>
             <MinuteChartPanel
-              data={chartPreview.data}
+              data={mainChartData}
               isLoading={chartPreview.isLoading}
               error={chartPreview.error}
               markerTime={markerTime}
