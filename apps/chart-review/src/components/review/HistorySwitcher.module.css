@@ -95,6 +95,15 @@
   background: var(--accent-soft);
 }
 
+/** Point List(review_target, ≥1 point) 보유 종목 표식. */
+.reviewDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
 .name {
   flex: 1 1 auto;
   min-width: 0;

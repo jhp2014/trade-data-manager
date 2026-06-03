@@ -3,6 +3,10 @@ import { findStocksMapByCodes } from "../repositories/stock.repository";
 import { findRecentDailyCandlesByCodes } from "../repositories/daily-candle.repository";
 import { findMinuteCandlesByCodesAndDate } from "../repositories/minute-candle.repository";
 import { findFeaturesByCodesAndDate } from "../repositories/market-feature.repository";
+import {
+    findReviewTargetsWithPointsByCodes,
+    type ReviewTargetBundle,
+} from "../repositories/review.repository";
 import type { Database } from "../db";
 import type { DailyCandle, MinuteCandle } from "../schema/market";
 import type { MinuteCandleFeatures } from "../schema/features";
@@ -27,6 +31,8 @@ export interface ThemeBundleMember extends ThemeMemberBase {
     daily: DailyCandle[];
     minute: MinuteCandle[];
     features: MinuteCandleFeatures[];
+    /** 이 종목이 같은 거래일의 review_target 이면 Point List(수동값 포함), 아니면 null. */
+    review: ReviewTargetBundle | null;
 }
 
 export interface ThemeBundle {
@@ -58,11 +64,12 @@ export async function getThemeBundle(
 
     const allCodes = collectAllCodes(themeToCodes, stockCode);
 
-    const [stockMap, dailyByCode, minuteByCode, featuresByCode] = await Promise.all([
+    const [stockMap, dailyByCode, minuteByCode, featuresByCode, reviewByCode] = await Promise.all([
         findStocksMapByCodes(db, { stockCodes: allCodes }),
         findRecentDailyCandlesByCodes(db, { stockCodes: allCodes, tradeDate, lookback: DAILY_LOOKBACK }),
         findMinuteCandlesByCodesAndDate(db, { stockCodes: allCodes, tradeDate }),
         findFeaturesByCodesAndDate(db, { stockCodes: allCodes, tradeDate }),
+        findReviewTargetsWithPointsByCodes(db, { stockCodes: allCodes, tradeDate }),
     ]);
 
     return themes.map((t) => {
@@ -76,6 +83,7 @@ export async function getThemeBundle(
             daily: dailyByCode.get(code) ?? [],
             minute: minuteByCode.get(code) ?? [],
             features: featuresByCode.get(code) ?? [],
+            review: reviewByCode.get(code) ?? null,
         }));
         return { themeId, themeName: t.themeName, members };
     });

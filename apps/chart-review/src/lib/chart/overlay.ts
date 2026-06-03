@@ -38,6 +38,7 @@ export function buildThemeOverlayForBundle(
             stockName: selfEntry.member.stockName,
             isSelf: true,
             series: selfEntry.points,
+            hasReview: (selfEntry.member.review?.points.length ?? 0) > 0,
         });
     }
 
@@ -49,6 +50,7 @@ export function buildThemeOverlayForBundle(
             stockName: member.stockName,
             isSelf: false,
             series: points,
+            hasReview: (member.review?.points.length ?? 0) > 0,
         });
     }
     peers.sort((a, b) => {

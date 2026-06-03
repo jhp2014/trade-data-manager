@@ -44,8 +44,6 @@ export async function loadChartPreview(params: {
     return {
         daily,
         minute,
-        selfStockCode: params.stockCode,
-        selfStockName: self?.stockName ?? params.stockCode,
         prevCloseKrx,
         prevCloseNxt,
         themes,

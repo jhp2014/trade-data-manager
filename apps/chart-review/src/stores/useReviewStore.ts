@@ -15,6 +15,8 @@ export type HistoryEntry = {
   stockCode: string;
   tradeDate: string;
   stockName?: string;
+  /** 같은 거래일의 Point List(review_target, ≥1 point) 보유 종목이면 true. 배지용. */
+  hasReview?: boolean;
 };
 
 const HISTORY_LIMIT = 30;

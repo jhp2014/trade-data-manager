@@ -79,6 +79,19 @@
   text-align: center;
 }
 
+/** Point List(review_target) 보유 종목: 순위 숫자에 동그라미 배지. */
+.rankReview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  color: var(--accent-primary);
+  border: 1.5px solid var(--accent-primary);
+  border-radius: 50%;
+}
+
 .name {
   flex-shrink: 0;
   color: var(--text-primary);

@@ -54,6 +54,9 @@ export function HistorySwitcher({ entries, activeIndex, currentKey, onPick }: Hi
                   onPick(index);
                 }}
               >
+                {entry.hasReview && (
+                  <span className={styles.reviewDot} title="Point List 있음" aria-hidden="true" />
+                )}
                 <span className={styles.name}>{entry.stockName || entry.stockCode}</span>
                 <span className={`${styles.date} tabular`}>{formatDate(entry.tradeDate)}</span>
                 {key === currentKey && <span className={styles.cur}>현재</span>}

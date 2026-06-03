@@ -112,7 +112,12 @@ function ThemeRow({
       onClick={onSelect}
       title={`${metric.stockName} ${metric.stockCode}`}
     >
-      <span className={`${styles.rank} tabular`}>{rank}</span>
+      <span
+        className={`${styles.rank} ${metric.hasReview ? styles.rankReview : ""} tabular`}
+        title={metric.hasReview ? "Point List 있음" : undefined}
+      >
+        {rank}
+      </span>
       <span className={styles.name}>{truncate(metric.stockName, 7)}</span>
       <AmountCounts distribution={metric.distribution} />
       <span className={`${styles.rate} tabular`} style={{ color: rateColor }}>

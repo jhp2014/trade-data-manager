@@ -219,7 +219,12 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
       const idx = groups.findIndex((g) => g.stockCode === code && g.tradeDate === date);
       if (idx >= 0) {
         const g = groups[idx];
-        pushHistory({ stockCode: g.stockCode, tradeDate: g.tradeDate, stockName: g.stockName ?? undefined });
+        pushHistory({
+          stockCode: g.stockCode,
+          tradeDate: g.tradeDate,
+          stockName: g.stockName ?? undefined,
+          hasReview: g.points.some((p) => !!p.tradeTime),
+        });
         commands.goToGroup(idx);
       } else {
         // 현재 로드된 작업셋에 없는 그룹 → 풀 네비게이션으로 폴백.

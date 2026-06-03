@@ -15,6 +15,8 @@ export type ThemeMemberMetric = {
   stockCode: string;
   stockName: string;
   isSelf: boolean;
+  /** 같은 거래일의 review_target(Point List 보유) 종목이면 true. 배지용. */
+  hasReview: boolean;
   /** markerTime 시점 등락률(%). 데이터 없으면 null */
   rate: number | null;
   /** markerTime 까지의 최고 등락률(%). 데이터 없으면 null */
@@ -61,6 +63,7 @@ export function computeThemeMemberMetrics(
         stockCode: s.stockCode,
         stockName: s.stockName,
         isSelf: s.isSelf,
+        hasReview: s.hasReview ?? false,
         rate: null,
         dayHighRate: null,
         cumAmount: 0,
@@ -84,6 +87,7 @@ export function computeThemeMemberMetrics(
       stockCode: s.stockCode,
       stockName: s.stockName,
       isSelf: s.isSelf,
+      hasReview: s.hasReview ?? false,
       rate: valueOf(cur, mode),
       dayHighRate: dayHigh === -Infinity ? null : dayHigh,
       cumAmount: cur.cumAmount,
