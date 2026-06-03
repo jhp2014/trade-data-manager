@@ -3,6 +3,12 @@
 /** 크로스헤어 이동 후 툴팁을 보여주기까지의 지연(ms). 과도한 리렌더 방지. */
 export const CHART_HOVER_DELAY_MS = 200;
 
+/**
+ * a/d 로 종목을 빠르게 훑을 때 중간 종목 차트를 매번 긁지 않도록
+ * 차트 fetch 파라미터에 거는 디바운스(ms). 선택/헤더는 즉시 반영.
+ */
+export const CHART_PARAMS_DEBOUNCE_MS = 200;
+
 /** 테마 오버레이 차트에 그릴 수 있는 시리즈 최대 수. */
 export const CHART_OVERLAY_MAX_SERIES = 15;
 

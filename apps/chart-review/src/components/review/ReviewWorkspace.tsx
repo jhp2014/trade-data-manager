@@ -35,19 +35,21 @@ import { useReviewStore } from "@/stores/useReviewStore";
 import { PointInputDrawer } from "./PointInputDrawer";
 import { HistorySwitcher } from "./HistorySwitcher";
 import { DEFAULT_TRADE_TIME } from "@/lib/url";
+import { CHART_PARAMS_DEBOUNCE_MS } from "@/lib/constants";
+import {
+  VIEW_MODES,
+  cycleViewMode,
+  SHORTCUT_KEYS,
+  DEFAULT_MARKER_MINUTES,
+  MARKER_WHEEL_STEP_MIN,
+  SWITCHER_AUTO_COMMIT_MS,
+} from "@/lib/shortcuts";
 
 type ReviewWorkspaceProps = {
   groups: ReviewStockGroup[];
   initialSelection: InitialReviewSelection;
   manualKeys: ManualKeyDef[];
 };
-
-const viewModes: Array<{ mode: ReviewViewMode; label: string }> = [
-  { mode: "summary", label: "Summary" },
-  { mode: "minute", label: "Minute" },
-  { mode: "daily", label: "Daily" },
-  { mode: "overlay", label: "Overlay" },
-];
 
 const VALUE_TRUNCATE = 15;
 
@@ -127,21 +129,21 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     [effectiveStock.stockCode, effectiveStock.tradeDate],
   );
   // a/d 로 빠르게 종목을 훑을 때 중간 종목의 차트를 매번 긁어오지 않도록
-  // 차트 fetch 파라미터를 500ms 디바운스한다(선택/헤더는 즉시 반영).
-  const debouncedChartParams = useDebouncedValue(chartParams, 500);
+  // 차트 fetch 파라미터를 200ms 디바운스한다(선택/헤더는 즉시 반영).
+  const debouncedChartParams = useDebouncedValue(chartParams, CHART_PARAMS_DEBOUNCE_MS);
   const chartPreview = useChartPreview(debouncedChartParams);
   const themes = useMemo(() => chartPreview.data?.themes ?? [], [chartPreview.data]);
 
   // 마커 시간(분 단위). 타점 tradeTime 으로 초기화하되 휠/슬라이더로 조정 가능.
   // tradeTime 이 없으면 09:00(540분) 기본.
   const [markerMinutes, setMarkerMinutes] = useState<number>(
-    () => timeStringToMinutes(selectedPoint.tradeTime) ?? 540,
+    () => timeStringToMinutes(selectedPoint.tradeTime) ?? DEFAULT_MARKER_MINUTES,
   );
 
   // 타점(Point)이 바뀔 때만 해당 타점 tradeTime 으로 재설정.
   // 테마 내 다른 종목을 임시 조회(override)할 때는 수동으로 옮긴 마커 시간을 유지한다.
   useEffect(() => {
-    setMarkerMinutes(timeStringToMinutes(selectedPoint.tradeTime) ?? 540);
+    setMarkerMinutes(timeStringToMinutes(selectedPoint.tradeTime) ?? DEFAULT_MARKER_MINUTES);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPoint.pointKey]);
 
@@ -194,7 +196,9 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     const handler = (e: WheelEvent) => {
       if (!e.shiftKey) return;
       e.preventDefault();
-      setMarkerMinutes((m) => clampMinutes(e.deltaY > 0 ? m + 1 : m - 1));
+      setMarkerMinutes((m) =>
+        clampMinutes(e.deltaY > 0 ? m + MARKER_WHEEL_STEP_MIN : m - MARKER_WHEEL_STEP_MIN),
+      );
     };
     window.addEventListener("wheel", handler, { passive: false });
     return () => window.removeEventListener("wheel", handler);
@@ -285,7 +289,10 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
 
   const scheduleCommit = useCallback(() => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => commitSwitcher(switcherIndexRef.current), 2000);
+    commitTimerRef.current = setTimeout(
+      () => commitSwitcher(switcherIndexRef.current),
+      SWITCHER_AUTO_COMMIT_MS,
+    );
   }, [commitSwitcher]);
 
   useEffect(() => {
@@ -386,37 +393,32 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
         return;
       }
-      const cycle: ReviewViewMode[] = ["summary", "minute", "daily", "overlay"];
       switch (e.key.toLowerCase()) {
-        case "a":
+        case SHORTCUT_KEYS.prevGroup:
           e.preventDefault();
           commands.prevGroup();
           break;
-        case "d":
+        case SHORTCUT_KEYS.nextGroup:
           e.preventDefault();
           commands.nextGroup();
           break;
-        case "w":
+        case SHORTCUT_KEYS.prevPoint:
           e.preventDefault();
           commands.prevPoint();
           break;
-        case "s":
+        case SHORTCUT_KEYS.nextPoint:
           e.preventDefault();
           commands.nextPoint();
           break;
-        case "e": {
+        case SHORTCUT_KEYS.viewNext:
           e.preventDefault();
-          const cur = cycle.indexOf(viewMode);
-          commands.setViewMode(cycle[(cur + 1 + cycle.length) % cycle.length]);
+          commands.setViewMode(cycleViewMode(viewMode, 1));
           break;
-        }
-        case "q": {
+        case SHORTCUT_KEYS.viewPrev:
           e.preventDefault();
-          const cur = cycle.indexOf(viewMode);
-          commands.setViewMode(cycle[(cur - 1 + cycle.length) % cycle.length]);
+          commands.setViewMode(cycleViewMode(viewMode, -1));
           break;
-        }
-        case " ":
+        case SHORTCUT_KEYS.openInput:
           e.preventDefault();
           setInputOpen(true);
           break;
@@ -725,7 +727,7 @@ function ReviewHeader({
             </button>
           </div>
           <div className={styles.segGroup}>
-            {viewModes.map(({ mode, label }) => (
+            {VIEW_MODES.map(({ mode, label }) => (
               <button
                 key={mode}
                 className={`${styles.segChip} ${viewMode === mode ? styles.segChipActive : ""}`}
