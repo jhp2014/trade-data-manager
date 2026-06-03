@@ -27,14 +27,32 @@ export function cycleViewMode(current: ReviewViewMode, dir: 1 | -1): ReviewViewM
 
 // ── 단축키 키 매핑 ───────────────────────────────────────────────────────────
 
-/** 전역 단축키 → 동작. 입력창/모달 포커스 시에는 무시(호출부에서 가드). */
+/**
+ * 전역 단축키 → 동작. 입력창/모달 포커스 시에는 무시(호출부에서 가드).
+ *
+ * - q/e   : 종목(그룹) 탐색
+ * - a/d         : 마커 시각 ←/→ 1분 (키 누르고 있으면 자동 반복)
+ * - Shift+a/d   : 마커 시각 ←/→ 1시간
+ * - Ctrl+a/d    : 타점 탐색 위(과거)/아래(미래) — 브라우저 기본동작 차단
+ * - w/s   : 테마 리스트 위/아래 종목 탐색(순환)
+ * - z     : 뷰 모드 순환(Summary/Minute/Daily/Overlay)
+ * - c     : 본 종목으로 복귀(override 해제)
+ * - Space : 입력 드로어
+ *
+ * markerLeft/prevPoint 는 같은 "a", markerRight/nextPoint 는 같은 "d" 키이며
+ * Shift/Ctrl 수정키 유무로 구분한다(호출부 useGlobalShortcuts 에서 분기).
+ */
 export const SHORTCUT_KEYS = {
-  prevGroup: "a",
-  nextGroup: "d",
-  prevPoint: "w",
-  nextPoint: "s",
-  viewNext: "e",
-  viewPrev: "q",
+  prevGroup: "q",
+  nextGroup: "e",
+  markerLeft: "a",
+  markerRight: "d",
+  prevPoint: "a",
+  nextPoint: "d",
+  themeUp: "w",
+  themeDown: "s",
+  cycleView: "z",
+  resetOverride: "c",
   openInput: " ",
 } as const;
 
@@ -43,8 +61,11 @@ export const SHORTCUT_KEYS = {
 /** 타점 tradeTime 이 없을 때 마커 기본 시각(분). 540 = 09:00. */
 export const DEFAULT_MARKER_MINUTES = 540;
 
-/** Shift+휠 1노치당 마커 시각 이동(분). */
+/** Shift+휠 또는 a/d 1회 마커 이동량(분). */
 export const MARKER_WHEEL_STEP_MIN = 1;
+
+/** Shift+a/Shift+d 1회 마커 이동량(분). 20 = 20분. */
+export const MARKER_HOUR_STEP_MIN = 20;
 
 /** Tab 히스토리 스위처: 무입력 시 현재 항목으로 자동 확정되기까지의 지연(ms). */
 export const SWITCHER_AUTO_COMMIT_MS = 2000;

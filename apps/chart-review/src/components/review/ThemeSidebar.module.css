@@ -98,11 +98,11 @@
   border: 1.5px solid var(--accent-primary);
 }
 
-/** review_target 이지만 포인트 없음: 외곽선만(약한 표식). */
+/** review_target 이지만 포인트 없음: 점선 외곽선 + 약한 배경(채움과 구분되되 잘 보이게). */
 .rankTarget {
   color: var(--accent-primary);
-  background: transparent;
-  border: 1.5px solid var(--accent-soft);
+  background: var(--accent-soft);
+  border: 1.5px dashed var(--accent-primary);
 }
 
 .name {

@@ -32,13 +32,16 @@ import { useReviewStore, type ChartOverride } from "@/stores/useReviewStore";
 import { PointInputDrawer } from "./PointInputDrawer";
 import { HistorySwitcher } from "./HistorySwitcher";
 import { buildExploredGroup } from "@/lib/buildExploredGroup";
-import { CHART_PARAMS_DEBOUNCE_MS } from "@/lib/constants";
+import { CHART_PARAMS_DEBOUNCE_MS, PEER_ROW_AMOUNT_HIGHLIGHT_THRESHOLDS_EOK } from "@/lib/constants";
 import {
   VIEW_MODES,
   DEFAULT_MARKER_MINUTES,
   MARKER_WHEEL_STEP_MIN,
+  MARKER_HOUR_STEP_MIN,
   SWITCHER_AUTO_COMMIT_MS,
+  cycleViewMode,
 } from "@/lib/shortcuts";
+import { computeThemeMemberMetrics, topByRate } from "@/lib/themeMetrics";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 
 type ReviewWorkspaceProps = {
@@ -79,6 +82,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
   const hydrateSelection = useReviewStore((state) => state.hydrateSelection);
   const history = useReviewStore((state) => state.history);
   const pushHistory = useReviewStore((state) => state.pushHistory);
+  const patchHistory = useReviewStore((state) => state.patchHistory);
   const priceMode = useUiStore((state) => state.chartPriceMode);
 
   // URL(초기 선택)에서 파생된 선택값이 실제로 바뀔 때만 store 를 재설정한다.
@@ -177,6 +181,18 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     return null;
   }, [isOverride, themes, effectiveStock.stockCode]);
 
+  // 작업셋 밖 종목은 히스토리에 코드만 기록된다. 번들 로드 후 진짜 종목명/배지를
+  // 알게 되면 (순서는 유지한 채) 히스토리 항목을 보정한다.
+  useEffect(() => {
+    if (!isOverride || !activeReview || !activeReview.stockName) return;
+    patchHistory({
+      stockCode: effectiveStock.stockCode,
+      tradeDate: effectiveStock.tradeDate,
+      stockName: activeReview.stockName,
+      hasReview: (activeReview.reviewPoints?.length ?? 0) > 0,
+    });
+  }, [isOverride, activeReview, effectiveStock.stockCode, effectiveStock.tradeDate, patchHistory]);
+
   // override 일 때만 의미. 번들 review → 클라이언트 ReviewStockGroup(작업셋과 동일 형태).
   const exploredGroup = useMemo(
     () =>
@@ -256,6 +272,22 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     return theme?.overlaySeries ?? [];
   }, [themes, selectedThemeId]);
 
+  // w/s 단축키가 따라갈 테마 리스트 표시 순서. ThemeSidebar 와 동일한 정렬을 재계산해
+  // 현재 보고 있는 종목 기준 위/아래 종목을 찾는다.
+  const themeRowOrder = useMemo(
+    () =>
+      topByRate(
+        computeThemeMemberMetrics(
+          activeThemeOverlay,
+          markerTime,
+          priceMode,
+          PEER_ROW_AMOUNT_HIGHLIGHT_THRESHOLDS_EOK,
+        ),
+        activeThemeOverlay.length,
+      ),
+    [activeThemeOverlay, markerTime, priceMode],
+  );
+
   // 메인 차트(일봉/분봉) 데이터. 탐색(override) 중이고 그 종목이 현재 번들에 있으면
   // 이미 받아둔 멤버 raw(daily/minute)로 그려 추가 요청을 없앤다(무요청 탐색).
   // 번들 밖(앵커 자신/로딩 중)이면 앵커 self 차트를 그대로 사용.
@@ -286,13 +318,16 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     return () => window.removeEventListener("wheel", handler);
   }, []);
 
-  const handleSelectStock = (stockCode: string, stockName: string) => {
-    if (stockCode === selectedGroup.stockCode) {
-      setChartOverride(null);
-      return;
-    }
-    setChartOverride({ stockCode, tradeDate: effectiveStock.tradeDate, stockName });
-  };
+  const handleSelectStock = useCallback(
+    (stockCode: string, stockName: string) => {
+      if (stockCode === selectedGroup.stockCode) {
+        setChartOverride(null);
+        return;
+      }
+      setChartOverride({ stockCode, tradeDate: effectiveStock.tradeDate, stockName });
+    },
+    [selectedGroup.stockCode, effectiveStock.tradeDate, setChartOverride],
+  );
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inputOpen, setInputOpen] = useState(false);
@@ -311,6 +346,62 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     },
     [exploredGroup],
   );
+
+  // a/d = 마커 시각 ±1분(키 자동반복으로 연속 이동). Shift+a/d = ±1시간.
+  const moveMarker = useCallback((dir: 1 | -1, step: number = MARKER_WHEEL_STEP_MIN) => {
+    setMarkerMinutes((m) => clampMinutes(m + dir * step));
+  }, []);
+
+  // Ctrl+a/Ctrl+d = 타점 탐색. override 중이면 작업셋 store 를 건드리지 않고
+  // 탐색 종목의 Point List 안에서 위(과거)/아래(미래)로 이동한다(버그 수정: 본 종목 복귀 방지).
+  const movePoint = useCallback(
+    (dir: 1 | -1) => {
+      if (isOverride) {
+        const pts = exploredGroup.points;
+        if (pts.length === 0) return;
+        const curIdx = pts.findIndex((p) => p.pointKey === activePoint.pointKey);
+        const base = curIdx < 0 ? 0 : curIdx;
+        const nextIdx = Math.min(pts.length - 1, Math.max(0, base + dir));
+        handleSelectExploredPoint(pts[nextIdx].pointKey);
+      } else if (dir < 0) {
+        commands.prevPoint();
+      } else {
+        commands.nextPoint();
+      }
+    },
+    [isOverride, exploredGroup, activePoint.pointKey, handleSelectExploredPoint, commands],
+  );
+
+  // w/s = 테마 리스트 위/아래 종목 탐색(가장 끝에서 순환). 표시 순서(themeRowOrder)를
+  // 기준으로 현재 보고 있는 종목의 이웃을 선택한다.
+  const navigateThemeRow = useCallback(
+    (dir: 1 | -1) => {
+      const rows = themeRowOrder;
+      if (rows.length === 0) return;
+      const curIdx = rows.findIndex((r) => r.stockCode === effectiveStock.stockCode);
+      const base = curIdx < 0 ? (dir === 1 ? -1 : 0) : curIdx;
+      const nextIdx = (base + dir + rows.length) % rows.length;
+      const row = rows[nextIdx];
+      handleSelectStock(row.stockCode, row.stockName);
+    },
+    [themeRowOrder, effectiveStock.stockCode, handleSelectStock],
+  );
+
+  const cycleView = useCallback(() => {
+    commands.setViewMode(cycleViewMode(viewMode, 1));
+  }, [commands, viewMode]);
+
+  const resetOverride = useCallback(() => setChartOverride(null), [setChartOverride]);
+
+  // useGlobalShortcuts 가 받는 무인자 콜백 어댑터(방향/스텝 인자 고정).
+  const handleMarkerLeft = useCallback(() => moveMarker(-1), [moveMarker]);
+  const handleMarkerRight = useCallback(() => moveMarker(1), [moveMarker]);
+  const handleShiftMarkerLeft = useCallback(() => moveMarker(-1, MARKER_HOUR_STEP_MIN), [moveMarker]);
+  const handleShiftMarkerRight = useCallback(() => moveMarker(1, MARKER_HOUR_STEP_MIN), [moveMarker]);
+  const handlePrevPoint = useCallback(() => movePoint(-1), [movePoint]);
+  const handleNextPoint = useCallback(() => movePoint(1), [movePoint]);
+  const handleThemeUp = useCallback(() => navigateThemeRow(-1), [navigateThemeRow]);
+  const handleThemeDown = useCallback(() => navigateThemeRow(1), [navigateThemeRow]);
 
   // GroupId 복붙/Tab 히스토리 탐색.
   // 히스토리는 "복붙으로 도달한 종목"만 기록한다(a/d 순회는 기록하지 않음).
@@ -488,12 +579,23 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     }
   };
 
-  // 전역 단축키: a/d=종목, w/s=타점, e/q=뷰 순환, Space=입력 드로어.
+  // 전역 단축키: q/e=종목, a/d=마커(연타=1시간), Ctrl+a/d=타점, w/s=테마 종목,
+  // z=뷰 순환, c=본 종목 복귀, Space=입력 드로어.
   // 모달이 열려 있는 동안에는(enabled=false) 무시한다.
   useGlobalShortcuts({
-    commands,
-    viewMode,
     enabled: !inputOpen && !settingsOpen && !switcherOpen,
+    onPrevGroup: commands.prevGroup,
+    onNextGroup: commands.nextGroup,
+    onMarkerLeft: handleMarkerLeft,
+    onMarkerRight: handleMarkerRight,
+    onShiftMarkerLeft: handleShiftMarkerLeft,
+    onShiftMarkerRight: handleShiftMarkerRight,
+    onPrevPoint: handlePrevPoint,
+    onNextPoint: handleNextPoint,
+    onThemeUp: handleThemeUp,
+    onThemeDown: handleThemeDown,
+    onCycleView: cycleView,
+    onResetOverride: resetOverride,
     onOpenInput: openInput,
   });
 

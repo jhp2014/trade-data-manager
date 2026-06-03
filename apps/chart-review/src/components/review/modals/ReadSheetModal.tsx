@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal, type ReadSheetState, type SheetDefaults } from "./ActionModal";
+import { useUiStore } from "@/stores/useUiStore";
 
 export function ReadSheetModal({
   config,
@@ -37,6 +38,8 @@ export function ReadSheetModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "설정 저장 실패");
       setStatus({ ok: true, message: `'${data.tab}' 탭 기준으로 작업셋을 다시 불러옵니다.` });
+      // 시트가 바뀌면 이전 작업셋 기준 필터는 의미가 없으므로 먼저 해제한다.
+      useUiStore.getState().clearManualFilters();
       router.refresh();
     } catch (err) {
       setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
@@ -54,6 +57,7 @@ export function ReadSheetModal({
       setSpreadsheetId("");
       setTab("");
       setStatus({ ok: true, message: "기본값(.env)으로 되돌렸습니다." });
+      useUiStore.getState().clearManualFilters();
       router.refresh();
     } catch (err) {
       setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });

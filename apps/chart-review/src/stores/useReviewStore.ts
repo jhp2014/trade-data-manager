@@ -36,6 +36,8 @@ type ReviewStoreState = {
   setChartOverride: (override: ChartOverride | null) => void;
   /** 같은 (code,date) 가 있으면 제거 후 맨 앞으로 올린다(MRU). */
   pushHistory: (entry: HistoryEntry) => void;
+  /** 순서는 유지한 채 같은 (code,date) 항목의 stockName/hasReview 만 보정한다. */
+  patchHistory: (entry: HistoryEntry) => void;
 };
 
 export const useReviewStore = create<ReviewStoreState>()((set) => ({
@@ -70,5 +72,18 @@ export const useReviewStore = create<ReviewStoreState>()((set) => ({
         (h) => !(h.stockCode === entry.stockCode && h.tradeDate === entry.tradeDate),
       );
       return { history: [entry, ...rest].slice(0, HISTORY_LIMIT) };
+    }),
+
+  patchHistory: (entry) =>
+    set((state) => {
+      let changed = false;
+      const next = state.history.map((h) => {
+        if (h.stockCode !== entry.stockCode || h.tradeDate !== entry.tradeDate) return h;
+        const merged = { ...h, ...entry };
+        if (merged.stockName === h.stockName && merged.hasReview === h.hasReview) return h;
+        changed = true;
+        return merged;
+      });
+      return changed ? { history: next } : state;
     }),
 }));
