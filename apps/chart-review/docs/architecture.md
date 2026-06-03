@@ -97,7 +97,7 @@ review_manual_key     수동 입력 키 전역 레지스트리(key, label, sortO
 
 ## 6. 클라이언트 상태 (`ReviewWorkspace` + zustand)
 
-`ReviewWorkspace.tsx`가 복기 UI 전체의 컨테이너다(현재 단일 파일 ~1700줄, 14개 컴포넌트 — Phase 3 분리 대상).
+`ReviewWorkspace.tsx`가 복기 UI 전체의 컨테이너다(~980줄). 설정·Sheet 연동 모달은 `components/review/modals/`로, 전역 단축키 처리는 `hooks/useGlobalShortcuts.ts`로 분리돼 있다.
 
 ### `useReviewStore` (세션 상태, 비영속)
 - `selectedGroupIndex`, `selectedPointKey`, `viewMode`, `chartOverride`(사이드바 임시 탐색), `history`(MRU 30).
@@ -110,9 +110,14 @@ review_manual_key     수동 입력 키 전역 레지스트리(key, label, sortO
 - `createReviewCommands(groups, navigableIndices)` → `nextGroup/prevGroup/nextPoint/prevPoint/selectPoint/setViewMode/goToGroup`.
 - 필터 활성 시 `navigableIndices`만 순회. 선택과 동시에 store 갱신 + URL 미러링.
 
+### 단축키 (`src/hooks/useGlobalShortcuts.ts` + `src/lib/shortcuts.ts`)
+- 키→동작 매핑(`SHORTCUT_KEYS`)과 뷰 순환(`VIEW_MODES`/`cycleViewMode`)은 `shortcuts.ts`가 단일 출처.
+- 입력 요소 포커스·수정키 가드는 훅이 캡슐화하고, `ReviewWorkspace`는 `enabled`/`onOpenInput`만 넘긴다.
+
 ### 주의 패턴
 - `force-dynamic` 페이지는 서버 액션마다 새 `initialSelection` 객체를 만든다 → `useEffect` 의존성을 **객체 참조가 아니라 원시값**(`selectedGroupIndex`, `selectedPointKey`)으로 둬야 store churn/무한 재조회를 피한다.
-- a/d 빠른 순회 시 중간 종목 차트를 매번 긁지 않도록 차트 fetch 파라미터를 **200ms 디바운스**(`useDebouncedValue`).
+- a/d 빠른 순회 시 중간 종목 차트를 매번 긁지 않도록 차트 fetch 파라미터를 디바운스한다(`useDebouncedValue`, `CHART_PARAMS_DEBOUNCE_MS`).
+- 설정값이 어디 사는지(env/쿠키/localStorage/코드 상수)는 [configuration.md](./configuration.md) 참조.
 
 ---
 
@@ -126,15 +131,17 @@ src/
 │   └── api/                             # chart-preview, review/* 라우트
 ├── components/
 │   ├── chart/                           # 일봉/분봉/오버레이 차트 + hooks/tooltip (data-view fork)
-│   └── review/                          # ReviewWorkspace, PointInputDrawer, 모달들, HistorySwitcher 등
+│   └── review/                          # ReviewWorkspace, PointInputDrawer, HistorySwitcher 등
+│       └── modals/                      # 설정·Sheet 연동 모달(ActionModal 셸 + Settings/Export/Import/...)
 ├── lib/                                 # 도메인 로직
 │   ├── loadReviewRows / workingSet / readSheetConfig   # 작업셋 해석
 │   ├── reviewCommands / selection / url / groupSheetRows
 │   ├── manualFilter / manualSummary / parseSheet / serialization
 │   ├── sheetsWriter / captureCsv                       # Sheet 입출력
-│   └── constants / colors / format / chartPadding      # 상수·유틸
+│   ├── constants / shortcuts                           # 코드 상수(차트 수치 / 단축키·뷰·마커)
+│   └── colors / format / chartPadding                  # 유틸
 ├── stores/                              # useReviewStore, useUiStore
-├── hooks/                               # useChartPreview
+├── hooks/                               # useChartPreview, useGlobalShortcuts
 ├── types/                               # review, chart
 └── mock/                                # DATABASE_URL 없을 때 폴백 데이터
 ```
