@@ -38,12 +38,11 @@ import { DEFAULT_TRADE_TIME } from "@/lib/url";
 import { CHART_PARAMS_DEBOUNCE_MS } from "@/lib/constants";
 import {
   VIEW_MODES,
-  cycleViewMode,
-  SHORTCUT_KEYS,
   DEFAULT_MARKER_MINUTES,
   MARKER_WHEEL_STEP_MIN,
   SWITCHER_AUTO_COMMIT_MS,
 } from "@/lib/shortcuts";
+import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 
 type ReviewWorkspaceProps = {
   groups: ReviewStockGroup[];
@@ -214,6 +213,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inputOpen, setInputOpen] = useState(false);
+  const openInput = useCallback(() => setInputOpen(true), []);
 
   // GroupId 복붙/Tab 히스토리 탐색.
   // 히스토리는 "복붙으로 도달한 종목"만 기록한다(a/d 순회는 기록하지 않음).
@@ -382,53 +382,14 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     }
   };
 
-  // 전역 단축키: a/d=종목, w/s=타점, e/q=뷰 순환, Space=입력 모달.
-  // 모달이 열려 있거나 입력 요소에 포커스가 있으면(값 타이핑 중) 무시한다.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (inputOpen || settingsOpen || switcherOpen) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
-        return;
-      }
-      switch (e.key.toLowerCase()) {
-        case SHORTCUT_KEYS.prevGroup:
-          e.preventDefault();
-          commands.prevGroup();
-          break;
-        case SHORTCUT_KEYS.nextGroup:
-          e.preventDefault();
-          commands.nextGroup();
-          break;
-        case SHORTCUT_KEYS.prevPoint:
-          e.preventDefault();
-          commands.prevPoint();
-          break;
-        case SHORTCUT_KEYS.nextPoint:
-          e.preventDefault();
-          commands.nextPoint();
-          break;
-        case SHORTCUT_KEYS.viewNext:
-          e.preventDefault();
-          commands.setViewMode(cycleViewMode(viewMode, 1));
-          break;
-        case SHORTCUT_KEYS.viewPrev:
-          e.preventDefault();
-          commands.setViewMode(cycleViewMode(viewMode, -1));
-          break;
-        case SHORTCUT_KEYS.openInput:
-          e.preventDefault();
-          setInputOpen(true);
-          break;
-        default:
-          break;
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [commands, viewMode, inputOpen, settingsOpen, switcherOpen]);
+  // 전역 단축키: a/d=종목, w/s=타점, e/q=뷰 순환, Space=입력 드로어.
+  // 모달이 열려 있는 동안에는(enabled=false) 무시한다.
+  useGlobalShortcuts({
+    commands,
+    viewMode,
+    enabled: !inputOpen && !settingsOpen && !switcherOpen,
+    onOpenInput: openInput,
+  });
 
   const header = (
     <ReviewHeader
