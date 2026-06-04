@@ -248,72 +248,65 @@
 .tabChipGroup {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--bg-secondary);
 }
 
 .tabChipWrap {
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  position: relative;
 }
 
-.tabChipLabel {
-  font-size: 10.5px;
-  font-weight: 600;
+.tabChipArrow {
+  padding: 0 3px;
   color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
-.tabChipDropdown {
-  position: relative;
+  font-size: 11px;
+  user-select: none;
+  line-height: 26px;
 }
 
 .tabChip {
   height: 26px;
-  padding: 0 9px;
-  border: 1px solid var(--border-default);
+  padding: 0 10px;
+  border: none;
   border-radius: 7px;
-  background: var(--bg-primary);
+  background: transparent;
   color: var(--text-secondary);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .tabChip:hover {
-  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
-.tabChipRead {
+.tabChipSet {
+  background: var(--bg-primary);
   color: var(--accent-primary);
-  border-color: var(--accent-soft);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(17, 24, 33, 0.12);
 }
 
-.tabChipWrite {
-  color: var(--text-secondary);
+.tabChipSet:hover {
+  color: var(--accent-primary);
 }
 
-.tabChipWriteSet {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-}
-
-/* 드롭다운 메뉴: hover 로 토글(CSS-only for read tab; write tab uses state). */
-.tabChipDropdown:hover .tabChipMenu,
-.tabChipMenu:focus-within {
-  display: flex;
+.tabChipUnset {
+  color: var(--text-tertiary);
 }
 
 .tabChipMenu {
-  display: none;
+  display: flex;
   flex-direction: column;
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
+  left: 0;
   z-index: 200;
   min-width: 130px;
   padding: 6px;
@@ -322,11 +315,6 @@
   background: var(--bg-primary);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   gap: 2px;
-}
-
-/* Write 탭은 state 제어이므로 항상 보이게(JS로 렌더링) */
-.tabChipDropdown .tabChipMenu:not(:empty) {
-  display: flex;
 }
 
 .tabChipMenuItem {

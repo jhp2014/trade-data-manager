@@ -956,22 +956,7 @@ function ReviewHeader({
           <span>{themeName ?? "테마 -"}</span>
           <span className={styles.sep}>|</span>
           <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
-        </div>
-        <div className={styles.fieldLine}>
-          {fieldValues.length === 0 ? (
-            <span className={styles.fieldHint}>⚙ 설정에서 표시할 필드를 선택하세요</span>
-          ) : (
-            fieldValues.map(({ key, value }) => (
-              <span key={key} className={styles.fieldItem} title={value || "-"}>
-                <span className={styles.fieldKey}>{key}</span>
-                <span className={styles.fieldVal}>{value ? truncate(value, VALUE_TRUNCATE) : "-"}</span>
-              </span>
-            ))
-          )}
-        </div>
-      </div>
-      <div className={styles.headerRight}>
-        <div className={styles.controls}>
+          <span className={styles.sep}>|</span>
           <span className={styles.navGroup} title="화살표로 종목 이동">
             <button
               className={styles.navArrow}
@@ -995,6 +980,34 @@ function ReviewHeader({
               →
             </button>
           </span>
+          {hasSpreadsheet && (
+            <TabChipGroup
+              tabs={tabs}
+              readTab={readTab}
+              onSwitchReadTab={onSwitchReadTab}
+              isLoadingWorkset={isLoadingWorkset}
+              onReloadTab={onReloadTab}
+              onReloadAll={onReloadAll}
+              writeTab={writeTab}
+              onSetWriteTab={onSetWriteTab}
+            />
+          )}
+        </div>
+        <div className={styles.fieldLine}>
+          {fieldValues.length === 0 ? (
+            <span className={styles.fieldHint}>⚙ 설정에서 표시할 필드를 선택하세요</span>
+          ) : (
+            fieldValues.map(({ key, value }) => (
+              <span key={key} className={styles.fieldItem} title={value || "-"}>
+                <span className={styles.fieldKey}>{key}</span>
+                <span className={styles.fieldVal}>{value ? truncate(value, VALUE_TRUNCATE) : "-"}</span>
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+      <div className={styles.headerRight}>
+        <div className={styles.controls}>
           <div className={styles.segGroup}>
             <button
               className={`${styles.segChip} ${chartPriceMode === "krx" ? styles.segChipActive : ""}`}
@@ -1024,18 +1037,6 @@ function ReviewHeader({
               </button>
             ))}
           </div>
-          {hasSpreadsheet && (
-            <TabChipGroup
-              tabs={tabs}
-              readTab={readTab}
-              onSwitchReadTab={onSwitchReadTab}
-              isLoadingWorkset={isLoadingWorkset}
-              onReloadTab={onReloadTab}
-              onReloadAll={onReloadAll}
-              writeTab={writeTab}
-              onSetWriteTab={onSetWriteTab}
-            />
-          )}
           {writeAppendStatus && (
             <span className={styles.appendStatus}>{writeAppendStatus}</span>
           )}
@@ -1354,36 +1355,44 @@ function TabChipGroup({
   writeTab,
   onSetWriteTab,
 }: TabChipGroupProps) {
-  const [writeInput, setWriteInput] = useState("");
+  const [readOpen, setReadOpen] = useState(false);
   const [writeOpen, setWriteOpen] = useState(false);
+  const [writeInput, setWriteInput] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleWriteSelect = (tab: string) => {
-    onSetWriteTab(tab);
-    setWriteOpen(false);
-  };
-
-  const handleWriteInputConfirm = () => {
-    const v = writeInput.trim();
-    if (v) { onSetWriteTab(v); setWriteInput(""); }
-    setWriteOpen(false);
-  };
+  // 컨테이너 밖 클릭 시 양쪽 드롭다운 닫기.
+  useEffect(() => {
+    if (!readOpen && !writeOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setReadOpen(false);
+        setWriteOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [readOpen, writeOpen]);
 
   return (
-    <div className={styles.tabChipGroup}>
-      {/* 읽기 탭 드롭다운 */}
+    <div className={styles.tabChipGroup} ref={containerRef}>
+      {/* 읽기 탭 */}
       <div className={styles.tabChipWrap}>
-        <span className={styles.tabChipLabel}>읽기</span>
-        <div className={styles.tabChipDropdown}>
-          <button type="button" className={`${styles.tabChip} ${styles.tabChipRead}`} title={readTab}>
-            {isLoadingWorkset ? "…" : truncate(readTab, 8)} ▾
-          </button>
+        <button
+          type="button"
+          className={`${styles.tabChip} ${styles.tabChipSet}`}
+          onClick={() => { setReadOpen((o) => !o); setWriteOpen(false); }}
+          title={readTab}
+        >
+          {isLoadingWorkset ? "…" : truncate(readTab, 10)} ▾
+        </button>
+        {readOpen && (
           <div className={styles.tabChipMenu}>
             {tabs.map((tab) => (
               <div key={tab} className={styles.tabChipMenuItem}>
                 <button
                   type="button"
                   className={`${styles.tabChipMenuBtn} ${tab === readTab ? styles.tabChipMenuBtnActive : ""}`}
-                  onClick={() => onSwitchReadTab(tab)}
+                  onClick={() => { onSwitchReadTab(tab); setReadOpen(false); }}
                 >
                   {tab}
                 </button>
@@ -1397,57 +1406,79 @@ function TabChipGroup({
                 </button>
               </div>
             ))}
-            <button type="button" className={styles.tabChipMenuAll} onClick={onReloadAll} title="전체 재로드(새 탭 인식)">
+            <button
+              type="button"
+              className={styles.tabChipMenuAll}
+              onClick={() => { onReloadAll(); setReadOpen(false); }}
+              title="전체 재로드(새 탭 인식)"
+            >
               전체 재로드 ↺
             </button>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* 쓰기 탭 드롭다운 */}
+      <span className={styles.tabChipArrow}>→</span>
+
+      {/* 쓰기 탭 */}
       <div className={styles.tabChipWrap}>
-        <span className={styles.tabChipLabel}>쓰기</span>
-        <div className={styles.tabChipDropdown}>
-          <button
-            type="button"
-            className={`${styles.tabChip} ${styles.tabChipWrite} ${writeTab ? styles.tabChipWriteSet : ""}`}
-            title={writeTab ?? "미설정"}
-            onClick={() => setWriteOpen((o) => !o)}
-          >
-            {writeTab ? truncate(writeTab, 8) : "미설정"} ▾
-          </button>
-          {writeOpen && (
-            <div className={styles.tabChipMenu}>
-              {tabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`${styles.tabChipMenuBtn} ${tab === writeTab ? styles.tabChipMenuBtnActive : ""}`}
-                  onClick={() => handleWriteSelect(tab)}
-                >
-                  {tab}
-                </button>
-              ))}
-              <div className={styles.tabChipNewInput}>
-                <input
-                  className={styles.tabChipInput}
-                  placeholder="새 탭 이름 입력"
-                  value={writeInput}
-                  onChange={(e) => setWriteInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleWriteInputConfirm(); }}
-                />
-                <button type="button" className={styles.tabChipMenuBtn} onClick={handleWriteInputConfirm}>
-                  확인
-                </button>
-              </div>
-              {writeTab && (
-                <button type="button" className={styles.tabChipMenuBtn} onClick={() => { onSetWriteTab(null); setWriteOpen(false); }}>
-                  미설정으로
-                </button>
-              )}
+        <button
+          type="button"
+          className={`${styles.tabChip} ${writeTab ? styles.tabChipSet : styles.tabChipUnset}`}
+          onClick={() => { setWriteOpen((o) => !o); setReadOpen(false); }}
+          title={writeTab ?? "미설정"}
+        >
+          {writeTab ? truncate(writeTab, 10) : "미설정"} ▾
+        </button>
+        {writeOpen && (
+          <div className={styles.tabChipMenu}>
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                className={`${styles.tabChipMenuBtn} ${tab === writeTab ? styles.tabChipMenuBtnActive : ""}`}
+                onClick={() => { onSetWriteTab(tab); setWriteOpen(false); }}
+              >
+                {tab}
+              </button>
+            ))}
+            <div className={styles.tabChipNewInput}>
+              <input
+                className={styles.tabChipInput}
+                placeholder="새 탭 이름 입력"
+                value={writeInput}
+                onChange={(e) => setWriteInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const v = writeInput.trim();
+                    if (v) { onSetWriteTab(v); setWriteInput(""); }
+                    setWriteOpen(false);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className={styles.tabChipMenuBtn}
+                onClick={() => {
+                  const v = writeInput.trim();
+                  if (v) { onSetWriteTab(v); setWriteInput(""); }
+                  setWriteOpen(false);
+                }}
+              >
+                확인
+              </button>
             </div>
-          )}
-        </div>
+            {writeTab && (
+              <button
+                type="button"
+                className={styles.tabChipMenuBtn}
+                onClick={() => { onSetWriteTab(null); setWriteOpen(false); }}
+              >
+                미설정으로
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
