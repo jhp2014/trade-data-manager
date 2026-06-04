@@ -430,29 +430,50 @@ export function ReviewWorkspace({
     [exploredGroup],
   );
 
+  // Point List 클릭 핸들러. override 면 탐색 선택(마커 항상 스냅), 아니면 작업셋 선택.
+  // 비-override 에서 이미 선택된 타점을 다시 클릭해도(=pointKey 미변경) 마커를
+  // 그 타점 시각으로 스냅한다(기존엔 pointKey 변경 시에만 마커가 따라가 복귀가 안 됐음).
+  const handleSelectPoint = useCallback(
+    (pointKey: string) => {
+      if (isOverride) {
+        handleSelectExploredPoint(pointKey);
+        return;
+      }
+      commands.selectPoint(pointKey);
+      const p = activeGroup.points.find((x) => x.pointKey === pointKey);
+      const mins = p ? timeStringToMinutes(p.tradeTime) : null;
+      if (mins != null) setMarkerMinutes(mins);
+    },
+    [isOverride, handleSelectExploredPoint, commands, activeGroup],
+  );
+
   // a/d = 마커 시각 ±1분(키 자동반복으로 연속 이동). Shift+a/d = ±1시간.
   const moveMarker = useCallback((dir: 1 | -1, step: number = MARKER_WHEEL_STEP_MIN) => {
     setMarkerMinutes((m) => clampMinutes(m + dir * step));
   }, []);
 
   // Ctrl+a/Ctrl+d = 타점 탐색. override 중이면 작업셋 store 를 건드리지 않고
-  // 탐색 종목의 Point List 안에서 위(과거)/아래(미래)로 이동한다(버그 수정: 본 종목 복귀 방지).
+  // 탐색 선택만, 아니면 작업셋 선택을 위(과거)/아래(미래)로 옮긴다(버그 수정: 본 종목 복귀 방지).
+  // 인덱스 변화 여부와 무관하게 마커를 대상 타점 시각으로 항상 스냅한다:
+  // a/d 로 마커만 벗어난 뒤 Ctrl+a/d 를 누르면, 타점이 1개거나 경계라 선택이 안 바뀌어도
+  // 마커가 해당 타점으로 복귀한다(과거엔 pointKey 변경 시에만 스냅돼 복귀가 안 됐음).
   const movePoint = useCallback(
     (dir: 1 | -1) => {
+      const pts = activeGroup.points;
+      if (pts.length === 0) return;
+      const curIdx = pts.findIndex((p) => p.pointKey === activePoint.pointKey);
+      const base = curIdx < 0 ? 0 : curIdx;
+      const nextIdx = Math.min(pts.length - 1, Math.max(0, base + dir));
+      const target = pts[nextIdx];
       if (isOverride) {
-        const pts = exploredGroup.points;
-        if (pts.length === 0) return;
-        const curIdx = pts.findIndex((p) => p.pointKey === activePoint.pointKey);
-        const base = curIdx < 0 ? 0 : curIdx;
-        const nextIdx = Math.min(pts.length - 1, Math.max(0, base + dir));
-        handleSelectExploredPoint(pts[nextIdx].pointKey);
-      } else if (dir < 0) {
-        commands.prevPoint();
+        setExploredPointKey(target.pointKey);
       } else {
-        commands.nextPoint();
+        commands.selectPoint(target.pointKey);
       }
+      const mins = timeStringToMinutes(target.tradeTime);
+      if (mins != null) setMarkerMinutes(mins);
     },
-    [isOverride, exploredGroup, activePoint.pointKey, handleSelectExploredPoint, commands],
+    [isOverride, activeGroup, activePoint.pointKey, commands],
   );
 
   // w/s = 테마 리스트 위/아래 종목 탐색(가장 끝에서 순환). 표시 순서(themeRowOrder)를
@@ -996,7 +1017,7 @@ export function ReviewWorkspace({
         <PointList
           points={activeGroup.points}
           selectedPointKey={activePoint.pointKey}
-          onSelectPoint={isOverride ? handleSelectExploredPoint : commands.selectPoint}
+          onSelectPoint={handleSelectPoint}
         />
       </div>
     </aside>
