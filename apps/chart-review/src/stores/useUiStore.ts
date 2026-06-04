@@ -26,6 +26,25 @@ type UiState = {
   manualFilters: Record<string, string[]>;
   toggleManualFilterValue: (key: string, value: string) => void;
   clearManualFilters: () => void;
+
+  /** Write Sheet Tab 이름. null 이면 미설정(f 키 비활성). */
+  writeTab: string | null;
+  setWriteTab: (tab: string | null) => void;
+
+  /**
+   * f 키 append / Export 에서 출력할 필드 키(순서 포함).
+   * m_xxx 는 "m_" 접두사 포함, feature 키는 그대로.
+   * 기본값으로 stockCode/tradeDate/tradeTime 을 제공한다.
+   */
+  exportFieldKeys: string[];
+  setExportFieldKeys: (keys: string[]) => void;
+
+  /**
+   * 탭별 탐색 위치(읽기 탭 전환 시 복원).
+   * key = 탭명, value = { groupIndex, pointKey }.
+   */
+  tabPositions: Record<string, { groupIndex: number; pointKey: string | null }>;
+  setTabPosition: (tab: string, pos: { groupIndex: number; pointKey: string | null }) => void;
 };
 
 function toggleInList(list: string[], key: string): string[] {
@@ -58,6 +77,16 @@ export const useUiStore = create<UiState>()(
           return { manualFilters };
         }),
       clearManualFilters: () => set({ manualFilters: {} }),
+
+      writeTab: null,
+      setWriteTab: (tab) => set({ writeTab: tab }),
+
+      exportFieldKeys: ["stockCode", "tradeDate", "tradeTime"],
+      setExportFieldKeys: (keys) => set({ exportFieldKeys: keys }),
+
+      tabPositions: {},
+      setTabPosition: (tab, pos) =>
+        set((state) => ({ tabPositions: { ...state.tabPositions, [tab]: pos } })),
     }),
     {
       name: "chart-review-ui",
@@ -66,6 +95,9 @@ export const useUiStore = create<UiState>()(
         headerFieldKeys: state.headerFieldKeys,
         pointFieldKeys: state.pointFieldKeys,
         manualFilters: state.manualFilters,
+        writeTab: state.writeTab,
+        exportFieldKeys: state.exportFieldKeys,
+        tabPositions: state.tabPositions,
       }),
     },
   ),

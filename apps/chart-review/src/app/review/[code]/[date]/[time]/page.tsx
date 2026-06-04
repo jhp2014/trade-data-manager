@@ -3,6 +3,7 @@ import { groupSheetRows } from "@/lib/groupSheetRows";
 import { resolveInitialSelection } from "@/lib/selection";
 import { loadReviewRows } from "@/lib/loadReviewRows";
 import { loadManualKeys } from "@/lib/loadManualKeys";
+import { getReadSheetConfig } from "@/lib/readSheetConfig";
 import { notFound } from "next/navigation";
 
 type ReviewPageProps = {
@@ -26,11 +27,15 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
     tradeTime: params.time,
   });
 
+  const sheetConfig = getReadSheetConfig();
+
   return (
     <ReviewWorkspace
       groups={groups}
       initialSelection={initialSelection}
       manualKeys={manualKeys}
+      initialTab={sheetConfig.tab}
+      hasSpreadsheet={Boolean(sheetConfig.spreadsheetId)}
     />
   );
 }

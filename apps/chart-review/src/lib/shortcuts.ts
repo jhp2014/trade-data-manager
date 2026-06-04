@@ -54,6 +54,8 @@ export const SHORTCUT_KEYS = {
   cycleView: "z",
   resetOverride: "c",
   openInput: " ",
+  /** f: Write Tab 마지막 행에 현재 탐색 종목 추가. */
+  writeAppend: "f",
 } as const;
 
 // ── 마커 / 히스토리 스위처 ───────────────────────────────────────────────────

@@ -32,6 +32,8 @@ type UseGlobalShortcutsOptions = {
   onResetOverride: () => void;
   /** Space: 입력 드로어. */
   onOpenInput: () => void;
+  /** f: Write Tab 에 현재 종목 Append. */
+  onWriteAppend: () => void;
 };
 
 /**
@@ -58,6 +60,7 @@ export function useGlobalShortcuts({
   onCycleView,
   onResetOverride,
   onOpenInput,
+  onWriteAppend,
 }: UseGlobalShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -133,6 +136,10 @@ export function useGlobalShortcuts({
           e.preventDefault();
           onOpenInput();
           break;
+        case SHORTCUT_KEYS.writeAppend:
+          e.preventDefault();
+          onWriteAppend();
+          break;
         default:
           break;
       }
@@ -154,5 +161,6 @@ export function useGlobalShortcuts({
     onCycleView,
     onResetOverride,
     onOpenInput,
+    onWriteAppend,
   ]);
 }

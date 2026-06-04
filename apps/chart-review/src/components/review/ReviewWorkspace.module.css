@@ -236,6 +236,192 @@
   color: var(--accent-primary);
 }
 
+/* ── Append 상태 표시 ─────────────────────────────────── */
+.appendStatus {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  white-space: nowrap;
+}
+
+/* ── Tab Chip Group ────────────────────────────────────── */
+.tabChipGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tabChipWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.tabChipLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.tabChipDropdown {
+  position: relative;
+}
+
+.tabChip {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.tabChip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.tabChipRead {
+  color: var(--accent-primary);
+  border-color: var(--accent-soft);
+}
+
+.tabChipWrite {
+  color: var(--text-secondary);
+}
+
+.tabChipWriteSet {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* 드롭다운 메뉴: hover 로 토글(CSS-only for read tab; write tab uses state). */
+.tabChipDropdown:hover .tabChipMenu,
+.tabChipMenu:focus-within {
+  display: flex;
+}
+
+.tabChipMenu {
+  display: none;
+  flex-direction: column;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 200;
+  min-width: 130px;
+  padding: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  gap: 2px;
+}
+
+/* Write 탭은 state 제어이므로 항상 보이게(JS로 렌더링) */
+.tabChipDropdown .tabChipMenu:not(:empty) {
+  display: flex;
+}
+
+.tabChipMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tabChipMenuBtn {
+  flex: 1;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  white-space: nowrap;
+}
+
+.tabChipMenuBtn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.tabChipMenuBtnActive {
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+}
+
+.tabChipMenuBtnActive:hover {
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.tabChipMenuReload {
+  flex-shrink: 0;
+  padding: 4px 7px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.1s ease;
+}
+
+.tabChipMenuReload:hover {
+  color: var(--text-primary);
+}
+
+.tabChipMenuAll {
+  margin-top: 4px;
+  padding: 5px 10px;
+  border: none;
+  border-top: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tabChipMenuAll:hover {
+  color: var(--text-primary);
+}
+
+.tabChipNewInput {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-default);
+  margin-top: 2px;
+}
+
+.tabChipInput {
+  flex: 1;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.tabChipInput:focus {
+  border-color: var(--accent-primary);
+}
+
 /* ── Body (sidebar + main) ──────────────────────────────── */
 
 .body {

@@ -7,6 +7,7 @@ import {
 } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
 import { resolveWorkingSetKeys } from "@/lib/workingSet";
+import { fetchSheetRowsAction } from "@/actions/sheet";
 import { mockSheetRows } from "@/mock/sheetRows";
 import type { SheetPointRow } from "@/types/review";
 
@@ -42,6 +43,30 @@ export async function loadReviewRows(): Promise<SheetPointRow[]> {
     return mockSheetRows;
   }
 
+  const db = getDb();
+  const targets = await findReviewLoadTargets(db, { keys });
+  return targets.flatMap(toSheetPointRows);
+}
+
+/**
+ * 특정 탭의 작업셋을 로드한다. API 라우트(탭별 전환)에서 사용.
+ * spreadsheetId + tab 을 직접 받아 resolveWorkingSetKeys 를 우회한다.
+ */
+export async function loadReviewRowsForTab(
+  spreadsheetId: string,
+  tab: string,
+): Promise<SheetPointRow[]> {
+  const rows = await fetchSheetRowsAction({ spreadsheetId, tab });
+  const seen = new Set<string>();
+  const keys: ReviewLoadKey[] = [];
+  for (const row of rows) {
+    if (!row.stockCode || !row.tradeDate) continue;
+    const id = `${row.stockCode}|${row.tradeDate}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    keys.push({ stockCode: row.stockCode, tradeDate: row.tradeDate });
+  }
+  if (keys.length === 0) return [];
   const db = getDb();
   const targets = await findReviewLoadTargets(db, { keys });
   return targets.flatMap(toSheetPointRows);

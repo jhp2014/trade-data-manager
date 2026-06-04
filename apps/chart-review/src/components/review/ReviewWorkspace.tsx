@@ -43,19 +43,46 @@ import {
 } from "@/lib/shortcuts";
 import { computeThemeMemberMetrics, topByRate } from "@/lib/themeMetrics";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
+import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 
 type ReviewWorkspaceProps = {
   groups: ReviewStockGroup[];
   initialSelection: InitialReviewSelection;
   manualKeys: ManualKeyDef[];
+  /** 현재 읽기 시트 탭 이름(RSC 에서 전달). 탭 칩 초기화용. */
+  initialTab: string;
+  /** 스프레드시트가 설정돼 있는지. false 면 탭 칩을 표시하지 않는다. */
+  hasSpreadsheet: boolean;
 };
 
 const VALUE_TRUNCATE = 15;
 
-export function ReviewWorkspace({ groups, initialSelection, manualKeys }: ReviewWorkspaceProps) {
+export function ReviewWorkspace({
+  groups: initialGroups,
+  initialSelection,
+  manualKeys,
+  initialTab,
+  hasSpreadsheet,
+}: ReviewWorkspaceProps) {
   const router = useRouter();
   const manualFilters = useUiStore((state) => state.manualFilters);
   const filterActive = activeFilterCount(manualFilters) > 0;
+  const writeTab = useUiStore((state) => state.writeTab);
+  const setWriteTab = useUiStore((state) => state.setWriteTab);
+  const exportFieldKeys = useUiStore((state) => state.exportFieldKeys);
+  const tabPositions = useUiStore((state) => state.tabPositions);
+  const setTabPosition = useUiStore((state) => state.setTabPosition);
+
+  // 탭별 작업셋 캐시. initialGroups は初期タブのデータとして渡す.
+  const {
+    tabs,
+    readTab,
+    groups,
+    isLoadingWorkset,
+    switchTab,
+    reloadTab,
+    reloadAll,
+  } = useWorkingSetCache(initialGroups, initialTab);
 
   // 필터 활성 시 종목 이동은 "매칭 타점이 1개 이상 있는 종목"만 순회한다.
   // (종목 안에서는 전 타점을 그대로 보여주되 PointList 에서 매칭 배지를 표시)
@@ -84,6 +111,24 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
   const pushHistory = useReviewStore((state) => state.pushHistory);
   const patchHistory = useReviewStore((state) => state.patchHistory);
   const priceMode = useUiStore((state) => state.chartPriceMode);
+
+  // Read Tab 전환: 현재 위치를 저장하고 대상 탭의 저장된 위치를 복원한다.
+  const handleSwitchReadTab = useCallback(
+    async (newTab: string) => {
+      if (newTab === readTab) return;
+      setTabPosition(readTab, { groupIndex: storeGroupIndex, pointKey: storePointKey });
+      const newGroups = await switchTab(newTab);
+      const savedPos = tabPositions[newTab];
+      const newGroupIndex = Math.min(savedPos?.groupIndex ?? 0, Math.max(0, newGroups.length - 1));
+      const newGroup = newGroups[newGroupIndex] ?? newGroups[0];
+      const newPointKey = savedPos?.pointKey ?? newGroup?.points[0]?.pointKey ?? "";
+      useReviewStore.getState().hydrateSelection({
+        selectedGroupIndex: newGroupIndex,
+        selectedPointKey: newPointKey,
+      });
+    },
+    [readTab, storeGroupIndex, storePointKey, switchTab, tabPositions, setTabPosition],
+  );
 
   // URL(초기 선택)에서 파생된 선택값이 실제로 바뀔 때만 store 를 재설정한다.
   // initialSelection 은 force-dynamic 페이지가 서버 액션마다 재렌더되며 매번
@@ -402,6 +447,33 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
 
   const resetOverride = useCallback(() => setChartOverride(null), [setChartOverride]);
 
+  // f 키: Write Tab 마지막 행에 현재 탐색 종목 데이터를 추가한다.
+  const [writeAppendStatus, setWriteAppendStatus] = useState<string | null>(null);
+  const handleWriteAppend = useCallback(async () => {
+    if (!writeTab) return;
+    const headers = exportFieldKeys;
+    const values = headers.map((key) => resolveFieldValue(key, activePoint));
+    try {
+      const res = await fetch("/api/review/write-sheet/append", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ writeTab, headers, values }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "append 실패");
+      pushHistory({
+        stockCode: effectiveStock.stockCode,
+        tradeDate: effectiveStock.tradeDate,
+        stockName: effectiveStock.stockName ?? undefined,
+      });
+      setWriteAppendStatus("✓ 추가됨");
+    } catch (err) {
+      setWriteAppendStatus(err instanceof Error ? err.message : "오류");
+    }
+    // 2초 후 상태 메시지 초기화.
+    setTimeout(() => setWriteAppendStatus(null), 2000);
+  }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory]);
+
   // useGlobalShortcuts 가 받는 무인자 콜백 어댑터(방향/스텝 인자 고정).
   const handleMarkerLeft = useCallback(() => moveMarker(-1), [moveMarker]);
   const handleMarkerRight = useCallback(() => moveMarker(1), [moveMarker]);
@@ -608,6 +680,7 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     onCycleView: cycleView,
     onResetOverride: resetOverride,
     onOpenInput: openInput,
+    onWriteAppend: handleWriteAppend,
   });
 
   const header = (
@@ -626,6 +699,16 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
       onOpenSettings={() => setSettingsOpen(true)}
       markerMinutes={markerMinutes}
       onMarkerMinutesChange={setMarkerMinutes}
+      hasSpreadsheet={hasSpreadsheet}
+      tabs={tabs}
+      readTab={readTab}
+      onSwitchReadTab={handleSwitchReadTab}
+      isLoadingWorkset={isLoadingWorkset}
+      onReloadTab={reloadTab}
+      onReloadAll={reloadAll}
+      writeTab={writeTab}
+      onSetWriteTab={setWriteTab}
+      writeAppendStatus={writeAppendStatus}
     />
   );
 
@@ -810,6 +893,17 @@ type ReviewHeaderProps = {
   onOpenSettings: () => void;
   markerMinutes: number;
   onMarkerMinutesChange: (m: number) => void;
+  // 탭 관련
+  hasSpreadsheet: boolean;
+  tabs: string[];
+  readTab: string;
+  onSwitchReadTab: (tab: string) => void;
+  isLoadingWorkset: boolean;
+  onReloadTab: (tab: string) => void;
+  onReloadAll: () => void;
+  writeTab: string | null;
+  onSetWriteTab: (tab: string | null) => void;
+  writeAppendStatus: string | null;
 };
 
 function ReviewHeader({
@@ -827,6 +921,16 @@ function ReviewHeader({
   onOpenSettings,
   markerMinutes,
   onMarkerMinutesChange,
+  hasSpreadsheet,
+  tabs,
+  readTab,
+  onSwitchReadTab,
+  isLoadingWorkset,
+  onReloadTab,
+  onReloadAll,
+  writeTab,
+  onSetWriteTab,
+  writeAppendStatus,
 }: ReviewHeaderProps) {
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
   const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
@@ -920,6 +1024,21 @@ function ReviewHeader({
               </button>
             ))}
           </div>
+          {hasSpreadsheet && (
+            <TabChipGroup
+              tabs={tabs}
+              readTab={readTab}
+              onSwitchReadTab={onSwitchReadTab}
+              isLoadingWorkset={isLoadingWorkset}
+              onReloadTab={onReloadTab}
+              onReloadAll={onReloadAll}
+              writeTab={writeTab}
+              onSetWriteTab={onSetWriteTab}
+            />
+          )}
+          {writeAppendStatus && (
+            <span className={styles.appendStatus}>{writeAppendStatus}</span>
+          )}
           <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="설정">
             ⚙
           </button>
@@ -1210,4 +1329,126 @@ function ChartPlaceholder({ kind, group, point, message }: ChartPlaceholderProps
 
 function formatPointTime(tradeTime: string) {
   return tradeTime || "미입력";
+}
+
+// ── 탭 칩 그룹 ─────────────────────────────────────────────────────────────
+
+type TabChipGroupProps = {
+  tabs: string[];
+  readTab: string;
+  onSwitchReadTab: (tab: string) => void;
+  isLoadingWorkset: boolean;
+  onReloadTab: (tab: string) => void;
+  onReloadAll: () => void;
+  writeTab: string | null;
+  onSetWriteTab: (tab: string | null) => void;
+};
+
+function TabChipGroup({
+  tabs,
+  readTab,
+  onSwitchReadTab,
+  isLoadingWorkset,
+  onReloadTab,
+  onReloadAll,
+  writeTab,
+  onSetWriteTab,
+}: TabChipGroupProps) {
+  const [writeInput, setWriteInput] = useState("");
+  const [writeOpen, setWriteOpen] = useState(false);
+
+  const handleWriteSelect = (tab: string) => {
+    onSetWriteTab(tab);
+    setWriteOpen(false);
+  };
+
+  const handleWriteInputConfirm = () => {
+    const v = writeInput.trim();
+    if (v) { onSetWriteTab(v); setWriteInput(""); }
+    setWriteOpen(false);
+  };
+
+  return (
+    <div className={styles.tabChipGroup}>
+      {/* 읽기 탭 드롭다운 */}
+      <div className={styles.tabChipWrap}>
+        <span className={styles.tabChipLabel}>읽기</span>
+        <div className={styles.tabChipDropdown}>
+          <button type="button" className={`${styles.tabChip} ${styles.tabChipRead}`} title={readTab}>
+            {isLoadingWorkset ? "…" : truncate(readTab, 8)} ▾
+          </button>
+          <div className={styles.tabChipMenu}>
+            {tabs.map((tab) => (
+              <div key={tab} className={styles.tabChipMenuItem}>
+                <button
+                  type="button"
+                  className={`${styles.tabChipMenuBtn} ${tab === readTab ? styles.tabChipMenuBtnActive : ""}`}
+                  onClick={() => onSwitchReadTab(tab)}
+                >
+                  {tab}
+                </button>
+                <button
+                  type="button"
+                  className={styles.tabChipMenuReload}
+                  onClick={() => onReloadTab(tab)}
+                  title={`${tab} 재로드`}
+                >
+                  ↺
+                </button>
+              </div>
+            ))}
+            <button type="button" className={styles.tabChipMenuAll} onClick={onReloadAll} title="전체 재로드(새 탭 인식)">
+              전체 재로드 ↺
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 쓰기 탭 드롭다운 */}
+      <div className={styles.tabChipWrap}>
+        <span className={styles.tabChipLabel}>쓰기</span>
+        <div className={styles.tabChipDropdown}>
+          <button
+            type="button"
+            className={`${styles.tabChip} ${styles.tabChipWrite} ${writeTab ? styles.tabChipWriteSet : ""}`}
+            title={writeTab ?? "미설정"}
+            onClick={() => setWriteOpen((o) => !o)}
+          >
+            {writeTab ? truncate(writeTab, 8) : "미설정"} ▾
+          </button>
+          {writeOpen && (
+            <div className={styles.tabChipMenu}>
+              {tabs.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`${styles.tabChipMenuBtn} ${tab === writeTab ? styles.tabChipMenuBtnActive : ""}`}
+                  onClick={() => handleWriteSelect(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
+              <div className={styles.tabChipNewInput}>
+                <input
+                  className={styles.tabChipInput}
+                  placeholder="새 탭 이름 입력"
+                  value={writeInput}
+                  onChange={(e) => setWriteInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleWriteInputConfirm(); }}
+                />
+                <button type="button" className={styles.tabChipMenuBtn} onClick={handleWriteInputConfirm}>
+                  확인
+                </button>
+              </div>
+              {writeTab && (
+                <button type="button" className={styles.tabChipMenuBtn} onClick={() => { onSetWriteTab(null); setWriteOpen(false); }}>
+                  미설정으로
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
