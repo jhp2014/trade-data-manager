@@ -495,20 +495,28 @@ export function ReviewWorkspace({
     setTimeout(() => setWriteAppendStatus(null), 2000);
   }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory]);
 
-  // 읽기 소스 순환: DB → tab[0] → tab[1] → ... → tab[n-1] → DB.
-  const handleCycleSource = useCallback(async () => {
+  // 시트 탭 순환: 탭 목록 안에서만 돌고 DB 모드 진입/탈출 안 함.
+  // DB 모드에서 호출되면 마지막 시트 탭으로 복귀(r키/탭 칩 클릭).
+  const handleCycleSheetTab = useCallback(async () => {
+    if (tabs.length === 0) return;
     if (readSource === "db") {
-      if (tabs.length === 0) return;
-      await handleSwitchReadTab(tabs[0]);
+      await handleSwitchReadTab(readTab);
     } else {
+      if (tabs.length <= 1) return;
       const idx = tabs.indexOf(readTab);
-      if (tabs.length === 0 || idx === tabs.length - 1) {
-        await handleSwitchToDb();
-      } else {
-        await handleSwitchReadTab(tabs[idx + 1]);
-      }
+      const nextIdx = (idx + 1) % tabs.length;
+      await handleSwitchReadTab(tabs[nextIdx]);
     }
-  }, [readSource, readTab, tabs, handleSwitchReadTab, handleSwitchToDb]);
+  }, [readSource, readTab, tabs, handleSwitchReadTab]);
+
+  // DB ↔ 시트 토글: 스위치 아이콘 전용.
+  const handleToggleDbMode = useCallback(async () => {
+    if (readSource === "db") {
+      await handleSwitchReadTab(readTab);
+    } else {
+      await handleSwitchToDb();
+    }
+  }, [readSource, readTab, handleSwitchReadTab, handleSwitchToDb]);
 
   // Write Tab 순환: 탭 목록에서 다음 탭으로 전환한다(새 탭 생성은 설정에서).
   const handleCycleWriteTab = useCallback(() => {
@@ -746,7 +754,7 @@ export function ReviewWorkspace({
     onResetOverride: resetOverride,
     onOpenInput: openInput,
     onWriteAppend: handleWriteAppend,
-    onCycleReadTab: handleCycleSource,
+    onCycleReadTab: handleCycleSheetTab,
     onTogglePriceMode: handleTogglePriceMode,
   });
 
@@ -772,7 +780,8 @@ export function ReviewWorkspace({
       writeTab={writeTab}
       tabs={tabs}
       isLoadingWorkset={isLoadingWorkset}
-      onCycleSource={handleCycleSource}
+      onCycleSheetTab={handleCycleSheetTab}
+      onToggleDbMode={handleToggleDbMode}
       onCycleWriteTab={handleCycleWriteTab}
       onReloadTab={handleReloadTab}
     />
@@ -978,7 +987,8 @@ type ReviewHeaderProps = {
   writeTab: string | null;
   tabs: string[];
   isLoadingWorkset: boolean;
-  onCycleSource: () => void;
+  onCycleSheetTab: () => void;
+  onToggleDbMode: () => void;
   onCycleWriteTab: () => void;
   onReloadTab: () => void;
 };
@@ -1004,7 +1014,8 @@ function ReviewHeader({
   writeTab,
   tabs,
   isLoadingWorkset,
-  onCycleSource,
+  onCycleSheetTab,
+  onToggleDbMode,
   onCycleWriteTab,
   onReloadTab,
 }: ReviewHeaderProps) {
@@ -1050,39 +1061,37 @@ function ReviewHeader({
       </div>
       <div className={styles.headerRight}>
         <div className={styles.controls}>
-          {/* 읽기 소스 칩 (시트 설정 여부와 무관하게 DB 모드일 때도 표시) */}
+          {/* 읽기 소스 그룹 (시트 설정 있거나 DB 모드일 때 표시) */}
           {(hasSpreadsheet || readSource === "db") && (
             <div className={styles.segGroup}>
-              {readSource === "db" ? (
-                <button
-                  type="button"
-                  className={`${styles.segChip} ${styles.segChipDb}`}
-                  onClick={onCycleSource}
-                  title={tabs.length > 0 ? "DB 모드 · 클릭·r키: 시트 탭으로 전환" : "DB 모드"}
-                >
-                  DB
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className={`${styles.segChip} ${styles.segChipActive}`}
-                    onClick={onCycleSource}
-                    title={tabs.length > 1 ? "클릭·r키: 다음 읽기 탭으로 전환" : "읽기 탭 (r키)"}
-                  >
-                    {readTab}
-                  </button>
-                  <span className={styles.segArrow}>→</span>
-                  <button
-                    type="button"
-                    className={`${styles.segChip} ${writeTab ? styles.segChipActive : ""}`}
-                    onClick={onCycleWriteTab}
-                    title={tabs.length > 0 ? "클릭: 다음 쓰기 탭으로 전환" : "쓰기 탭 미설정"}
-                  >
-                    {writeTab ?? "미설정"}
-                  </button>
-                </>
-              )}
+              {/* ⇌ 스위치: DB ↔ 시트 모드 토글 전용 */}
+              <button
+                type="button"
+                className={`${styles.segChip} ${readSource === "db" ? styles.segChipDb : ""}`}
+                onClick={onToggleDbMode}
+                title={readSource === "db" ? "DB 모드 ON · 클릭: 시트 모드로 전환" : "클릭: DB 모드로 전환"}
+              >
+                ⇌
+              </button>
+              {/* 읽기 탭 / DB 칩: 클릭·r키는 시트 탭 순환 전용 */}
+              <button
+                type="button"
+                className={`${styles.segChip} ${readSource === "db" ? styles.segChipDb : styles.segChipActive}`}
+                onClick={onCycleSheetTab}
+                title={readSource === "db" ? "r키·클릭: 시트 탭으로 전환" : (tabs.length > 1 ? "클릭·r키: 다음 읽기 탭으로 전환" : "읽기 탭")}
+              >
+                {readSource === "db" ? "DB" : readTab}
+              </button>
+              <span className={styles.segArrow}>→</span>
+              {/* 쓰기 탭: DB 모드에서도 항상 표시 */}
+              <button
+                type="button"
+                className={`${styles.segChip} ${writeTab ? styles.segChipActive : ""}`}
+                onClick={onCycleWriteTab}
+                title={tabs.length > 0 ? "클릭: 다음 쓰기 탭으로 전환" : "쓰기 탭 미설정"}
+              >
+                {writeTab ?? "미설정"}
+              </button>
               <button
                 type="button"
                 className={styles.segChip}
