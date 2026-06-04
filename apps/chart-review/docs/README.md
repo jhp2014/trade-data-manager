@@ -14,6 +14,7 @@
 |------|------|
 | [usage.md](./usage.md) | 사용법 — 단축키, 작업셋/Read Sheet 운용, GroupId 점프, Export/Import |
 | [architecture.md](./architecture.md) | 코드 흐름 — Sheet→DB 로딩 경로, 라우팅, 데이터 모델, 상태 관리, 디렉터리 맵 |
+| [code-map.md](./code-map.md) | 기능별 코드 위치 — 단축키, 탭 캐시, 차트 preview, 타점 입력, Sheet API |
 | [configuration.md](./configuration.md) | 설정값 지도 — env/쿠키/localStorage/코드 상수가 각각 어디 사는지 |
 | [decisions/](./decisions/) | ADR — 주요 설계 결정 기록 |
 | [spec/](./spec/) | 초기 작업 지시서(SPEC-phase1~5) — 역사적 기록(현재 상태와 다를 수 있음) |

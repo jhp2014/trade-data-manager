@@ -15,6 +15,7 @@
 7. [상황별 시나리오](#7-상황별-시나리오)
 8. [CSV 입력 포맷](#8-csv-입력-포맷)
 9. [데이터베이스 스키마 개요](#9-데이터베이스-스키마-개요)
+10. [상세 문서](#10-상세-문서)
 
 ---
 
@@ -444,6 +445,18 @@ minute_candle_features   ← 분봉 기술적 지표
 ```
 
 스키마 정의는 `packages/data-core/src/schema/` 참조.
+
+---
+
+## 10. 상세 문서
+
+| 문서 | 내용 |
+|------|------|
+| [`docs/project-code-map.md`](docs/project-code-map.md) | 프로젝트 전체 코드 흐름, 앱별 책임, 기능별 수정 위치 |
+| [`packages/data-core/docs/api-reference.md`](packages/data-core/docs/api-reference.md) | data-core 함수/쿼리/계산기별 입력·출력·DB 효과 예시 |
+| [`apps/chart-review/docs/usage.md`](apps/chart-review/docs/usage.md) | chart-review 사용법과 최신 단축키 |
+| [`apps/chart-review/docs/code-map.md`](apps/chart-review/docs/code-map.md) | chart-review 기능별 코드 위치와 유지보수 지도 |
+| [`apps/chart-capture/docs/architecture/pipeline.md`](apps/chart-capture/docs/architecture/pipeline.md) | chart-capture CSV → PNG 캡처 파이프라인 |
 
 ---
 

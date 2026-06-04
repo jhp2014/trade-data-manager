@@ -43,6 +43,21 @@ app/review/[code]/[date]/[time]/page.tsx (ReviewPage)
 3. `findReviewLoadTargets(db, { keys })` (data-core) → Target + Point 조인 로드.
 4. `toSheetPointRows()`로 평탄화. 타점이 없는 Target도 빈 `tradeTime` 행 1개로 노출(사이드바에 보이도록).
 
+### 탭별 작업셋 캐시 (`src/hooks/useWorkingSetCache.ts`)
+
+초기 서버 렌더는 한 탭의 `groups`만 내려준다. 클라이언트는 마운트 후 `/api/review/sheets/tabs`로 탭 목록을 가져오고, 다른 탭의 작업셋을 background preload한다.
+
+```text
+useWorkingSetCache(initialGroups, initialTab)
+  ├─ tabs/readTab/groups/readSource 상태 보유
+  ├─ switchTab(tab)   // 캐시 있으면 즉시, 없으면 /api/review/workset?tab=...
+  ├─ switchToDb()     // /api/review/workset 으로 DB 전체 로드
+  ├─ reloadTab(tab)   // 특정 탭 캐시 무효화 후 재조회
+  └─ reloadAll()      // 탭 목록과 현재 소스 전체 갱신
+```
+
+`ReviewWorkspace`는 탭 전환 직전 현재 위치를 `useUiStore.tabPositions`에 저장하고, 새 탭으로 들어갈 때 저장 위치를 복원한다. DB 모드는 `__db__` 키로 별도 저장된다.
+
 ### `resolveWorkingSetKeys()` (`src/lib/workingSet.ts`)
 
 - `getReadSheetConfig()`로 시트 설정 해석 → 시트가 없거나 자격증명이 없으면 `null`.
@@ -74,9 +89,12 @@ app/review/[code]/[date]/[time]/page.tsx (ReviewPage)
 | `point` | POST/DELETE | 타점 upsert / 삭제 |
 | `manual-keys` | GET/POST/PATCH/DELETE | 수동 키 레지스트리 CRUD (DELETE는 payload까지 파괴적 제거) |
 | `read-sheet` | GET/POST/DELETE | 작업셋 시트 설정(쿠키) 조회/저장/해제 |
+| `sheets/tabs` | GET | 현재 스프레드시트의 탭 이름 목록 |
+| `workset` | GET | `tab` 쿼리가 있으면 해당 Sheet Tab 작업셋, 없으면 DB 전체 작업셋 |
 | `export` | POST | DB → Sheet 내보내기(working/all scope + 필터) |
 | `import-merge` | POST | Sheet → DB 병합(빈 셀 무시) |
 | `import-csv` | POST | CSV 대량 입력 |
+| `write-sheet/append` | POST | 현재 active point 값을 Write Tab 마지막 행에 1줄 append |
 | `chart-preview` (`api/chart-preview`) | — | 차트(일봉/분봉/테마) 미리보기 데이터 |
 
 ---
@@ -105,6 +123,9 @@ review_manual_key     수동 입력 키 전역 레지스트리(key, label, sortO
 
 ### `useUiStore` (영속, `localStorage: chart-review-ui`)
 - `chartPriceMode`(krx/nxt), `headerFieldKeys`, `pointFieldKeys`, `manualFilters`.
+- `writeTab`, `exportFieldKeys`, `tabPositions`, `cycleTabList`.
+- `inputKeyOrder`, `inputKeyDisabled`, `quickPresetGroups`.
+- `minuteZoomCandles`, `minuteClipEnd`.
 
 ### 커맨드 레이어 (`src/lib/reviewCommands.ts`)
 - `createReviewCommands(groups, navigableIndices)` → `nextGroup/prevGroup/nextPoint/prevPoint/selectPoint/setViewMode/goToGroup`.
@@ -113,10 +134,12 @@ review_manual_key     수동 입력 키 전역 레지스트리(key, label, sortO
 ### 단축키 (`src/hooks/useGlobalShortcuts.ts` + `src/lib/shortcuts.ts`)
 - 키→동작 매핑(`SHORTCUT_KEYS`)과 뷰 순환(`VIEW_MODES`/`cycleViewMode`)은 `shortcuts.ts`가 단일 출처.
 - 입력 요소 포커스·수정키 가드는 훅이 캡슐화하고, `ReviewWorkspace`는 `enabled`/`onOpenInput`만 넘긴다.
+- 현재 키 매핑은 `q/e` 그룹 이동, `a/d` 마커 1분 이동, `Shift+a/d` 마커 20분 이동, `Ctrl+a/d` 타점 이동, `w/s` 테마 멤버 이동, `z` 뷰 순환, `c` override 해제, `f` Write Tab append, `r` 읽기 탭 순환, `t` 가격 모드 토글, `x` 분봉 확대 토글이다.
+- 숫자키 `1`~`4` 프리셋은 `ReviewWorkspace`의 별도 keydown handler가 capture 단계에서 처리한다. 전역 단축키와 충돌하지 않도록 프리셋 스위처가 열려 있으면 `useGlobalShortcuts`는 비활성화된다.
 
 ### 주의 패턴
 - `force-dynamic` 페이지는 서버 액션마다 새 `initialSelection` 객체를 만든다 → `useEffect` 의존성을 **객체 참조가 아니라 원시값**(`selectedGroupIndex`, `selectedPointKey`)으로 둬야 store churn/무한 재조회를 피한다.
-- a/d 빠른 순회 시 중간 종목 차트를 매번 긁지 않도록 차트 fetch 파라미터를 디바운스한다(`useDebouncedValue`, `CHART_PARAMS_DEBOUNCE_MS`).
+- q/e 빠른 순회 시 중간 종목 차트를 매번 긁지 않도록 차트 fetch 파라미터를 디바운스한다(`useDebouncedValue`, `CHART_PARAMS_DEBOUNCE_MS`).
 - 설정값이 어디 사는지(env/쿠키/localStorage/코드 상수)는 [configuration.md](./configuration.md) 참조.
 
 ---
@@ -136,7 +159,7 @@ src/
 ├── lib/                                 # 도메인 로직
 │   ├── loadReviewRows / workingSet / readSheetConfig   # 작업셋 해석
 │   ├── reviewCommands / selection / url / groupSheetRows
-│   ├── manualFilter / manualSummary / parseSheet / serialization
+│   ├── manualFilter / manualSummary / parseSheet / serialization / quickPreset
 │   ├── sheetsWriter / captureCsv                       # Sheet 입출력
 │   ├── constants / shortcuts                           # 코드 상수(차트 수치 / 단축키·뷰·마커)
 │   └── colors / format / chartPadding                  # 유틸
@@ -147,3 +170,5 @@ src/
 ```
 
 > 차트 React 코어(`components/chart/*`)는 (현재는 삭제된) `data-view` 앱에서 fork 해온 것이다. 공유 패키지로 추출하지 않은 이유는 [decisions/001](./decisions/001-fork-from-data-view.md) 참조.
+
+기능별 수정 위치는 [code-map.md](./code-map.md)에 더 자세히 정리했다.

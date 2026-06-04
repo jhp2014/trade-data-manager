@@ -4,6 +4,15 @@
 
 ---
 
+## 문서
+
+| 문서 | 내용 |
+|------|------|
+| [docs/api-reference.md](./docs/api-reference.md) | 함수/쿼리/계산기별 입력·출력·DB 효과 예시 |
+| 루트 [docs/project-code-map.md](../../docs/project-code-map.md) | 프로젝트 전체 흐름과 앱별 코드 위치 |
+
+---
+
 ## 스크립트
 
 | 명령어 | 동작 |
@@ -45,6 +54,14 @@ src/
     └── helpers/          # 계산기 결과 병합 유틸
 ```
 
+응집 기준:
+
+- `schema/`: DB 구조만 정의한다. 앱 런타임, HTTP, 파일 I/O를 모른다.
+- `repositories/`: DB read/write 단위 함수다. 대부분 앱에서 직접 호출해도 되는 공용 API다.
+- `queries/`: 여러 repository를 묶어 화면이 먹기 좋은 큰 응답을 만든다. 현재는 chart-review 차트용 `getThemeBundle()`이 대표적이다.
+- `market-feature/`: 분봉 피처 컬럼 정의와 계산 로직의 단일 출처다. 계산기 추가 시 schema와 runner 결과가 같이 바뀐다.
+- `review-sheet/`: DB의 review export row를 Google Sheet에 쓸 수 있는 `string[][]` 행렬로 바꾼다.
+
 ### 익스포트 진입점
 
 | 익스포트 | 내용 |
@@ -74,3 +91,42 @@ src/
 | `minute_candle_features` | 분봉 기술적 지표 | `minuteCandleId` |
 
 `minute_candle_features`의 컬럼은 `MINUTE_CALCULATORS` 배열에서 동적으로 생성됩니다. 새 지표를 추가하면 스키마에 자동 반영됩니다.
+
+---
+
+## 대표 호출 흐름
+
+### batch 수집
+
+```text
+apps/batch MarketService
+  -> saveStock()
+  -> saveDailyCandles()
+  -> findDailyCandleByStockAndDate()
+  -> saveMinuteCandles()
+  -> saveThemeAndReturnId()
+  -> saveThemeMapping()
+```
+
+### feature-processor 가공
+
+```text
+apps/feature-processor runner
+  -> findDistinctStockCodesByDate()
+  -> findMinuteCandlesByStockAndDate()
+  -> MINUTE_CALCULATORS.calculate()
+  -> mergeCalculatorOutputs()
+  -> saveMinuteFeatures()
+```
+
+### chart-review 로딩
+
+```text
+apps/chart-review
+  -> findReviewLoadTargets()        # 작업셋/Point List
+  -> getThemeBundle()               # 차트 preview/테마 멤버
+  -> upsertReviewPoint()            # 타점 저장
+  -> mergeReviewPointPayloads()     # Sheet import merge
+  -> findReviewExportRows()
+  -> buildSheetMatrix()             # Sheet export
+```
