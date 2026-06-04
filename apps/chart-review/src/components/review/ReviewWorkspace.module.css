@@ -234,10 +234,10 @@
   color: #92400e;
 }
 
-/* ── Append 토스트 (중앙 하단 고정) ─────────────────── */
+/* ── Append 토스트 (중앙 상단 고정) ─────────────────── */
 .appendToast {
   position: fixed;
-  bottom: 32px;
+  top: 68px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 300;
@@ -264,12 +264,23 @@
 @keyframes toastIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(6px);
+    transform: translateX(-50%) translateY(-6px);
   }
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+}
+
+.segChipWarn {
+  background: var(--bg-primary);
+  color: #b45309;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(17, 24, 33, 0.12);
+}
+
+.segChipWarn:hover {
+  color: #92400e;
 }
 
 /* 탭 칩 사이 화살표 구분자 */

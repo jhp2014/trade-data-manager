@@ -38,6 +38,10 @@ type ReviewStoreState = {
   pushHistory: (entry: HistoryEntry) => void;
   /** 순서는 유지한 채 같은 (code,date) 항목의 stockName/hasReview 만 보정한다. */
   patchHistory: (entry: HistoryEntry) => void;
+  /** index 위치 항목 삭제. */
+  removeHistory: (index: number) => void;
+  /** 히스토리 전체 삭제. */
+  clearHistory: () => void;
 };
 
 export const useReviewStore = create<ReviewStoreState>()((set) => ({
@@ -86,4 +90,11 @@ export const useReviewStore = create<ReviewStoreState>()((set) => ({
       });
       return changed ? { history: next } : state;
     }),
+
+  removeHistory: (index) =>
+    set((state) => ({
+      history: state.history.filter((_, i) => i !== index),
+    })),
+
+  clearHistory: () => set({ history: [] }),
 }));

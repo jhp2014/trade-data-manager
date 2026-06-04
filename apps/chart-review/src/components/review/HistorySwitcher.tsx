@@ -11,6 +11,10 @@ type HistorySwitcherProps = {
   currentKey: string;
   /** 항목을 직접 선택(클릭). */
   onPick: (index: number) => void;
+  /** 단일 항목 삭제. */
+  onDelete: (index: number) => void;
+  /** 전체 삭제. */
+  onClearAll: () => void;
 };
 
 /**
@@ -18,8 +22,8 @@ type HistorySwitcherProps = {
  * 이동/확정은 부모(ReviewWorkspace)가 관리하고,
  * 이 컴포넌트는 현재 목록과 활성 항목만 표시한다.
  */
-export function HistorySwitcher({ entries, activeIndex, currentKey, onPick }: HistorySwitcherProps) {
-  const activeRef = useRef<HTMLButtonElement>(null);
+export function HistorySwitcher({ entries, activeIndex, currentKey, onPick, onDelete, onClearAll }: HistorySwitcherProps) {
+  const activeRef = useRef<HTMLDivElement>(null);
 
   // 활성 항목이 보이도록 스크롤.
   useEffect(() => {
@@ -44,26 +48,53 @@ export function HistorySwitcher({ entries, activeIndex, currentKey, onPick }: Hi
             const isActive = index === activeIndex;
             const key = `${entry.stockCode}-${entry.tradeDate}`;
             return (
-              <button
+              <div
                 key={key}
                 ref={isActive ? activeRef : null}
-                type="button"
                 className={`${styles.row} ${isActive ? styles.rowActive : ""}`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  onPick(index);
-                }}
               >
-                {entry.hasReview && (
-                  <span className={styles.reviewDot} title="Point List 있음" aria-hidden="true" />
-                )}
-                <span className={styles.name}>{entry.stockName || entry.stockCode}</span>
-                <span className={`${styles.date} tabular`}>{formatDate(entry.tradeDate)}</span>
-                {key === currentKey && <span className={styles.cur}>현재</span>}
-              </button>
+                <button
+                  type="button"
+                  className={styles.rowBody}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onPick(index);
+                  }}
+                >
+                  {entry.hasReview && (
+                    <span className={styles.reviewDot} title="Point List 있음" aria-hidden="true" />
+                  )}
+                  <span className={styles.name}>{entry.stockName || entry.stockCode}</span>
+                  <span className={`${styles.date} tabular`}>{formatDate(entry.tradeDate)}</span>
+                  {key === currentKey && <span className={styles.cur}>현재</span>}
+                </button>
+                <button
+                  type="button"
+                  className={styles.delBtn}
+                  title="이 항목 삭제"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDelete(index);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             );
           })}
         </div>
+        {entries.length > 0 && (
+          <div className={styles.footer}>
+            <button
+              type="button"
+              className={styles.clearAllBtn}
+              onMouseDown={(e) => { e.preventDefault(); onClearAll(); }}
+            >
+              전체 삭제
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

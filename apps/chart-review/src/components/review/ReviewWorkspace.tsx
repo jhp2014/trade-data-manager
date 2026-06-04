@@ -853,12 +853,32 @@ export function ReviewWorkspace({
     />
   );
 
+  const handleDeleteHistoryEntry = useCallback(
+    (index: number) => {
+      useReviewStore.getState().removeHistory(index);
+      const newLen = history.length - 1;
+      if (newLen === 0) {
+        closeSwitcher();
+      } else {
+        setSwitcherIdx(Math.min(switcherIndex, newLen - 1));
+      }
+    },
+    [history.length, switcherIndex, closeSwitcher, setSwitcherIdx],
+  );
+
+  const handleClearHistory = useCallback(() => {
+    useReviewStore.getState().clearHistory();
+    closeSwitcher();
+  }, [closeSwitcher]);
+
   const historySwitcher = switcherOpen && (
     <HistorySwitcher
       entries={history}
       activeIndex={switcherIndex}
       currentKey={`${selectedGroup.stockCode}-${selectedGroup.tradeDate}`}
       onPick={commitSwitcher}
+      onDelete={handleDeleteHistoryEntry}
+      onClearAll={handleClearHistory}
     />
   );
 
@@ -1022,6 +1042,9 @@ function ReviewHeader({
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
   const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
   const headerFieldKeys = useUiStore((state) => state.headerFieldKeys);
+  const manualFiltersInHeader = useUiStore((state) => state.manualFilters);
+  const clearManualFiltersInHeader = useUiStore((state) => state.clearManualFilters);
+  const activeFiltersCount = activeFilterCount(manualFiltersInHeader);
 
   const fieldValues = headerFieldKeys
     .filter((key) => headerAvailable.includes(key))
@@ -1149,6 +1172,19 @@ function ReviewHeader({
               {viewLabel}
             </button>
           </div>
+          {/* 활성 필터 해제 */}
+          {activeFiltersCount > 0 && (
+            <div className={styles.segGroup}>
+              <button
+                type="button"
+                className={`${styles.segChip} ${styles.segChipWarn}`}
+                onClick={clearManualFiltersInHeader}
+                title="활성 필터 전체 해제"
+              >
+                ⊘ {activeFiltersCount}
+              </button>
+            </div>
+          )}
           {/* 설정 */}
           <div className={styles.segGroup}>
             <button type="button" className={styles.segChip} onClick={onOpenSettings} title="설정">
