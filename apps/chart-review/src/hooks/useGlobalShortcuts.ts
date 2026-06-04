@@ -38,6 +38,8 @@ type UseGlobalShortcutsOptions = {
   onCycleReadTab: () => void;
   /** t: KRX/NXT 가격 모드 토글. */
   onTogglePriceMode: () => void;
+  /** x: 분봉 마커 중심 확대 ↔ 기본 뷰 토글. */
+  onToggleMinuteZoom: () => void;
 };
 
 /**
@@ -67,6 +69,7 @@ export function useGlobalShortcuts({
   onWriteAppend,
   onCycleReadTab,
   onTogglePriceMode,
+  onToggleMinuteZoom,
 }: UseGlobalShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -154,6 +157,10 @@ export function useGlobalShortcuts({
           e.preventDefault();
           onTogglePriceMode();
           break;
+        case SHORTCUT_KEYS.toggleMinuteZoom:
+          e.preventDefault();
+          onToggleMinuteZoom();
+          break;
         default:
           break;
       }
@@ -178,5 +185,6 @@ export function useGlobalShortcuts({
     onWriteAppend,
     onCycleReadTab,
     onTogglePriceMode,
+    onToggleMinuteZoom,
   ]);
 }

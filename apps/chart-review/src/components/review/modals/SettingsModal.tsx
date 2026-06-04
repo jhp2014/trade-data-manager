@@ -48,6 +48,79 @@ function SettingsRow({
   );
 }
 
+/** 우측에 인라인 입력(숫자/시각 등)을 두는 설정 행. */
+function SettingsInputRow({
+  label,
+  sub,
+  children,
+}: {
+  label: string;
+  sub: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={styles.settingsRow}>
+      <span className={styles.settingsRowText}>
+        <span className={styles.settingsRowLabel}>{label}</span>
+        <span className={styles.settingsRowSub}>{sub}</span>
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 정수 입력(스피너 없음, 자유롭게 지웠다 다시 입력 가능).
+ * 편집 중에는 로컬 문자열을 그대로 두고, blur/Enter 시에만 clamp 후 커밋한다.
+ * 빈 값/비정상 값으로 빠져나가면 직전 유효값으로 되돌린다.
+ */
+function ClearableNumberInput({
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (n: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+
+  // 외부 값이 바뀌면(다른 경로로 변경) 로컬 텍스트도 동기화.
+  useEffect(() => {
+    setText(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const n = Math.round(Number(text));
+    if (text.trim() !== "" && Number.isFinite(n)) {
+      const clamped = Math.min(max, Math.max(min, n));
+      onCommit(clamped);
+      setText(String(clamped));
+    } else {
+      setText(String(value)); // 무효 입력 → 되돌림
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      className={styles.settingsInlineInput}
+      value={text}
+      onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, ""))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+}
+
 type SettingsModalProps = {
   manualFieldKeys: string[];
   headerAvailable: string[];
@@ -82,6 +155,10 @@ export function SettingsModal({
   const setInputKeyDisabled = useUiStore((state) => state.setInputKeyDisabled);
   const quickPresetGroups = useUiStore((state) => state.quickPresetGroups);
   const setQuickPresetGroups = useUiStore((state) => state.setQuickPresetGroups);
+  const minuteZoomCandles = useUiStore((state) => state.minuteZoomCandles);
+  const setMinuteZoomCandles = useUiStore((state) => state.setMinuteZoomCandles);
+  const minuteClipEnd = useUiStore((state) => state.minuteClipEnd);
+  const setMinuteClipEnd = useUiStore((state) => state.setMinuteClipEnd);
 
   const overlayRef = useRef<HTMLDivElement>(null);
   const [openPicker, setOpenPicker] = useState<
@@ -180,6 +257,34 @@ export function SettingsModal({
               count={activeFilters}
               onClick={() => setOpenPicker("filter")}
             />
+          </div>
+
+          <div className={styles.settingsGroupLabel}>차트</div>
+          <div className={styles.settingsGroup}>
+            <SettingsInputRow
+              label="확대 캔들 수"
+              sub="x 키 확대 시 마커 중심으로 보일 분봉 수"
+            >
+              <ClearableNumberInput
+                value={minuteZoomCandles}
+                min={20}
+                max={600}
+                onCommit={setMinuteZoomCandles}
+              />
+            </SettingsInputRow>
+            <SettingsInputRow
+              label="기본 뷰 종료 시각"
+              sub="이 시각 이후 봉은 마우스 스크롤로만 (오후장 NXT)"
+            >
+              <input
+                type="time"
+                className={styles.settingsInlineInput}
+                value={minuteClipEnd}
+                onChange={(e) => {
+                  if (e.target.value) setMinuteClipEnd(e.target.value);
+                }}
+              />
+            </SettingsInputRow>
           </div>
 
           <div className={styles.settingsGroupLabel}>타점 입력</div>

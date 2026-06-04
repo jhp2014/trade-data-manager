@@ -20,7 +20,6 @@ interface Params {
  * 툴팁이 사용할 amountMap / cumAmountMap도 함께 갱신한다.
  */
 export function useMinuteChartData({
-    chartRef,
     candleSeriesRef,
     amountSeriesRef,
     candles,
@@ -60,12 +59,7 @@ export function useMinuteChartData({
         amountMapRef.current = amountMap;
         cumAmountMapRef.current = cumMap;
         amountSeries.setData(amountData);
-        // 전체 봉 + 좌측 5% 여백(좌측 스케일과 첫 캔들 사이 공간) + 우측 2봉.
-        const ts = chartRef.current?.timeScale();
-        if (ts && candles.length > 0) {
-            const leftGap = Math.max(1, Math.round(candles.length * 0.05));
-            ts.setVisibleLogicalRange({ from: -leftGap, to: candles.length - 1 + 2 });
-        }
+        // 가시 범위(전체/확대 클립)는 useMinuteChartViewRange 가 담당한다.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [candles, mode]);
 

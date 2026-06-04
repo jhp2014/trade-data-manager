@@ -2,11 +2,14 @@ import { useEffect } from "react";
 import type { ISeriesApi, Time } from "lightweight-charts";
 import type { MinuteCandle } from "@/types/chart";
 import { amountMarkerFor } from "@trade-data-manager/chart-utils";
+import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
 
 interface Params {
     candleSeriesRef: React.MutableRefObject<ISeriesApi<"Candlestick"> | null>;
     candles: MinuteCandle[];
     markerTime?: number | null;
+    /** Point List에 저장된 타점들의 봉 시각(unix 초). 차트에 ●/거래대금 으로 표시. */
+    pointTimes?: number[];
 }
 
 type MarkerEntry = {
@@ -19,15 +22,18 @@ type MarkerEntry = {
 };
 
 /**
- * 분봉 캔들 시리즈에 두 종류의 마커를 통합 표시한다.
+ * 분봉 캔들 시리즈에 세 종류의 마커를 통합 표시한다.
  *  1) 거래대금 임계 마커 (작은 사각형, 캔들 위)
- *  2) 진입 마커 (큰 화살표) — 같은 봉이면 진입 마커가 우선
+ *  2) Point List 타점 마커 (원, ●/거래대금) — Point List에 저장된 타점 위치
+ *  3) 진입 마커 (큰 화살표) — 같은 봉이면 진입 마커가 우선
+ *
+ * 우선순위(같은 봉): 임계 사각형 < 타점 원 < 진입 화살표.
  *
  * lightweight-charts 제약:
  *  - 마커 배열은 time 오름차순이어야 함
  *  - 같은 time에 여러 마커 금지 → Map으로 중복 제거
  */
-export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime }: Params) {
+export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, pointTimes }: Params) {
     useEffect(() => {
         const series = candleSeriesRef.current;
         if (!series) return;
@@ -48,14 +54,32 @@ export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime }: 
             });
         }
 
-        // 2) 진입 마커 (덮어쓰기 — 같은 봉 우선)
+        // 2) Point List 타점 마커 (원, ●/거래대금). 현재 진입 마커와 같은 봉이면 아래 3)에서 덮어씀.
+        if (pointTimes) {
+            for (const pt of pointTimes) {
+                if (pt === markerTime) continue;
+                const pc = candles.find((c) => c.time === pt);
+                const eok = pc?.amount != null && pc.amount > 0 ? Math.round(pc.amount / AMOUNT_KRW_TO_EOK) : null;
+                byTime.set(pt, {
+                    time: pt as Time,
+                    position: "aboveBar",
+                    color: "#2563eb",
+                    shape: "circle",
+                    text: eok != null ? `/${eok}` : "",
+                });
+            }
+        }
+
+        // 3) 진입 마커 (덮어쓰기 — 같은 봉 우선). 텍스트에 해당 봉 거래대금(억, 반올림) 부착.
         if (markerTime != null) {
+            const mc = candles.find((c) => c.time === markerTime);
+            const eok = mc?.amount != null && mc.amount > 0 ? Math.round(mc.amount / AMOUNT_KRW_TO_EOK) : null;
             byTime.set(markerTime, {
                 time: markerTime as Time,
                 position: "aboveBar",
                 color: "#000000ff",
                 shape: "arrowDown",
-                text: "Point",
+                text: eok != null ? `Point/${eok}` : "Point",
             });
         }
 
@@ -64,5 +88,5 @@ export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime }: 
         );
 
         series.setMarkers(markers);
-    }, [candleSeriesRef, candles, markerTime]);
+    }, [candleSeriesRef, candles, markerTime, pointTimes]);
 }

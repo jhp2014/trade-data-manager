@@ -583,6 +583,13 @@ export function ReviewWorkspace({
     setPriceMode(priceMode === "krx" ? "nxt" : "krx");
   }, [priceMode, setPriceMode]);
 
+  // x: 분봉 마커 중심 확대 ↔ 기본 뷰 토글. 종목/날짜가 바뀌면 기본 뷰로 리셋.
+  const [minuteZoomed, setMinuteZoomed] = useState(false);
+  const handleToggleMinuteZoom = useCallback(() => setMinuteZoomed((z) => !z), []);
+  useEffect(() => {
+    setMinuteZoomed(false);
+  }, [effectiveStock.stockCode, effectiveStock.tradeDate]);
+
   // useGlobalShortcuts 가 받는 무인자 콜백 어댑터(방향/스텝 인자 고정).
   const handleMarkerLeft = useCallback(() => moveMarker(-1), [moveMarker]);
   const handleMarkerRight = useCallback(() => moveMarker(1), [moveMarker]);
@@ -933,7 +940,7 @@ export function ReviewWorkspace({
   }, [inputOpen, settingsOpen, switcherOpen, openPresetGroup, closePresetGroup, setPresetIdx]);
 
   // 전역 단축키: q/e=종목, a/d=마커(연타=1시간), Ctrl+a/d=타점, w/s=테마 종목,
-  // z=뷰 순환, c=본 종목 복귀, Space=입력 드로어.
+  // z=뷰 순환, c=본 종목 복귀, Space=입력 드로어, x=분봉 마커 중심 확대 토글.
   // 모달이 열려 있는 동안에는(enabled=false) 무시한다.
   useGlobalShortcuts({
     enabled: !inputOpen && !settingsOpen && !switcherOpen && presetGroupOpen === null,
@@ -953,6 +960,7 @@ export function ReviewWorkspace({
     onWriteAppend: handleWriteAppend,
     onCycleReadTab: handleCycleSheetTab,
     onTogglePriceMode: handleTogglePriceMode,
+    onToggleMinuteZoom: handleToggleMinuteZoom,
   });
 
   const header = (
@@ -1113,6 +1121,7 @@ export function ReviewWorkspace({
             point={activePoint}
             themeOverlay={activeThemeOverlay}
             priceLines={dailyPriceLines}
+            zoomed={minuteZoomed}
           />
         </section>
       </main>
@@ -1194,6 +1203,7 @@ export function ReviewWorkspace({
               point={activePoint}
               themeOverlay={activeThemeOverlay}
               priceLines={dailyPriceLines}
+              zoomed={minuteZoomed}
             />
           </div>
         </section>
@@ -1612,6 +1622,7 @@ type MinuteChartPanelProps = ChartPanelProps & {
   markerTime: number | null;
   themeOverlay?: ChartOverlaySeries[];
   priceLines?: Record<string, number[]>;
+  zoomed?: boolean;
 };
 
 function MinuteChartPanel({
@@ -1623,7 +1634,17 @@ function MinuteChartPanel({
   point,
   themeOverlay,
   priceLines,
+  zoomed,
 }: MinuteChartPanelProps) {
+  // Point List 타점들의 봉 시각(unix 초). 차트에 ●/거래대금 마커로 표시.
+  const pointTimes = useMemo(
+    () =>
+      group.points
+        .map((p) => composeUnix(group.tradeDate, p.tradeTime.slice(0, 5)))
+        .filter((t): t is number => t != null),
+    [group.points, group.tradeDate],
+  );
+
   if (isLoading) {
     return <ChartPlaceholder kind="Minute Chart" group={group} point={point} message="Loading minute candles..." />;
   }
@@ -1643,6 +1664,8 @@ function MinuteChartPanel({
         priceLines={priceLines}
         prevCloseKrx={data.prevCloseKrx}
         prevCloseNxt={data.prevCloseNxt}
+        zoomed={zoomed}
+        pointTimes={pointTimes}
       />
     </div>
   );

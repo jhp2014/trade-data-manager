@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { type PresetGroup, defaultPresetGroups } from "@/lib/quickPreset";
+import { DEFAULT_MINUTE_ZOOM_CANDLES, DEFAULT_MINUTE_CLIP_END } from "@/lib/constants";
 
 export type ChartPriceMode = "krx" | "nxt";
 
@@ -74,6 +75,14 @@ type UiState = {
    */
   quickPresetGroups: PresetGroup[];
   setQuickPresetGroups: (groups: PresetGroup[]) => void;
+
+  /** x 키 확대 시 마커 중심으로 보여줄 분봉 캔들 수. */
+  minuteZoomCandles: number;
+  setMinuteZoomCandles: (n: number) => void;
+
+  /** 분봉 기본 뷰 클립 종료 시각("HH:MM"). 이 시각 이후 봉은 마우스 스크롤로만. */
+  minuteClipEnd: string;
+  setMinuteClipEnd: (time: string) => void;
 };
 
 function toggleInList(list: string[], key: string): string[] {
@@ -128,6 +137,12 @@ export const useUiStore = create<UiState>()(
 
       quickPresetGroups: defaultPresetGroups(),
       setQuickPresetGroups: (groups) => set({ quickPresetGroups: groups }),
+
+      minuteZoomCandles: DEFAULT_MINUTE_ZOOM_CANDLES,
+      setMinuteZoomCandles: (n) => set({ minuteZoomCandles: n }),
+
+      minuteClipEnd: DEFAULT_MINUTE_CLIP_END,
+      setMinuteClipEnd: (time) => set({ minuteClipEnd: time }),
     }),
     {
       name: "chart-review-ui",
@@ -143,6 +158,8 @@ export const useUiStore = create<UiState>()(
         inputKeyOrder: state.inputKeyOrder,
         inputKeyDisabled: state.inputKeyDisabled,
         quickPresetGroups: state.quickPresetGroups,
+        minuteZoomCandles: state.minuteZoomCandles,
+        minuteClipEnd: state.minuteClipEnd,
       }),
     },
   ),

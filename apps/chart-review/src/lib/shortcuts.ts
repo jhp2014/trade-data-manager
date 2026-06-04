@@ -60,6 +60,8 @@ export const SHORTCUT_KEYS = {
   cycleReadTab: "r",
   /** t: KRX/NXT 가격 모드 토글. */
   togglePriceMode: "t",
+  /** x: 분봉 마커 중심 확대 ↔ 기본 뷰(클립 시각까지) 토글. */
+  toggleMinuteZoom: "x",
 } as const;
 
 // ── 마커 / 히스토리 스위처 ───────────────────────────────────────────────────

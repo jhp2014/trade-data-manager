@@ -12,6 +12,12 @@ export const CHART_PARAMS_DEBOUNCE_MS = 200;
 /** 테마 오버레이 차트에 그릴 수 있는 시리즈 최대 수. */
 export const CHART_OVERLAY_MAX_SERIES = 15;
 
+/** x 키 확대 시 마커 중심으로 보여줄 분봉 캔들 수(기본값). 설정에서 변경 가능. */
+export const DEFAULT_MINUTE_ZOOM_CANDLES = 150;
+
+/** 분봉 기본 뷰의 클립 종료 시각(기본값, "HH:MM"). 이 시각 이후 봉은 마우스로만. */
+export const DEFAULT_MINUTE_CLIP_END = "15:30";
+
 // ── 거래대금 단위 변환 ─────────────────────────────────────────────────────
 
 /**

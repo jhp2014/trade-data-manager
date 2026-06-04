@@ -14,6 +14,7 @@ import { assignSeriesColors } from "@/lib/chart/overlay";
 import { OVERLAY_SELF_COLOR, OVERLAY_PEER_PALETTE } from "@/lib/colors";
 import { useMinuteChartSeries } from "./hooks/useMinuteChartSeries";
 import { useMinuteChartData } from "./hooks/useMinuteChartData";
+import { useMinuteChartViewRange } from "./hooks/useMinuteChartViewRange";
 import { useMinuteChartMarkers } from "./hooks/useMinuteChartMarkers";
 import { useMinuteChartPriceLines } from "./hooks/useMinuteChartPriceLines";
 
@@ -24,12 +25,18 @@ interface Props {
     priceLines?: Record<string, number[]>;
     prevCloseKrx?: number | null;
     prevCloseNxt?: number | null;
+    /** x 키 확대 상태. true면 마커 중심 확대, false면 기본 뷰(클립 시각까지). */
+    zoomed?: boolean;
+    /** Point List에 저장된 타점들의 봉 시각(unix 초). 차트에 ●/거래대금 마커 표시. */
+    pointTimes?: number[];
 }
 
-export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines, prevCloseKrx, prevCloseNxt }: Props) {
+export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines, prevCloseKrx, prevCloseNxt, zoomed = false, pointTimes }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const mode = useUiStore((s) => s.chartPriceMode);
+    const zoomCandles = useUiStore((s) => s.minuteZoomCandles);
+    const clipEnd = useUiStore((s) => s.minuteClipEnd);
 
     const chartRef = useChartShell(containerRef, () => ({
         layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
@@ -63,7 +70,9 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
         mode,
     });
 
-    useMinuteChartMarkers({ candleSeriesRef, candles, markerTime });
+    useMinuteChartViewRange({ chartRef, candles, zoomed, markerTime, zoomCandles, clipEnd });
+
+    useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, pointTimes });
 
     const prevClose = mode === "nxt" ? (prevCloseNxt ?? null) : (prevCloseKrx ?? null);
     useMinuteChartPriceLines({ candleSeriesRef, priceLines, prevClose });
