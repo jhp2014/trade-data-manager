@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { type PresetGroup, defaultPresetGroups } from "@/lib/quickPreset";
 
 export type ChartPriceMode = "krx" | "nxt";
 
@@ -66,6 +67,13 @@ type UiState = {
    */
   inputKeyDisabled: string[];
   setInputKeyDisabled: (disabled: string[]) => void;
+
+  /**
+   * 퀵 입력 프리셋 그룹(숫자키 1~4). 그룹>프리셋>항목 구조.
+   * 정의 자체는 브라우저 localStorage 에만 저장(DB 무관).
+   */
+  quickPresetGroups: PresetGroup[];
+  setQuickPresetGroups: (groups: PresetGroup[]) => void;
 };
 
 function toggleInList(list: string[], key: string): string[] {
@@ -117,6 +125,9 @@ export const useUiStore = create<UiState>()(
 
       inputKeyDisabled: [],
       setInputKeyDisabled: (disabled) => set({ inputKeyDisabled: disabled }),
+
+      quickPresetGroups: defaultPresetGroups(),
+      setQuickPresetGroups: (groups) => set({ quickPresetGroups: groups }),
     }),
     {
       name: "chart-review-ui",
@@ -131,6 +142,7 @@ export const useUiStore = create<UiState>()(
         cycleTabList: state.cycleTabList,
         inputKeyOrder: state.inputKeyOrder,
         inputKeyDisabled: state.inputKeyDisabled,
+        quickPresetGroups: state.quickPresetGroups,
       }),
     },
   ),

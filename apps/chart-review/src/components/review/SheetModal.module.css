@@ -604,3 +604,154 @@
 .inputKeyToggleBtn:hover {
   background: var(--bg-tertiary);
 }
+
+/* ── 퀵 입력 프리셋 설정 (PresetConfigModal) ── */
+.presetGroupTabs {
+  display: flex;
+  gap: 6px;
+}
+
+.presetGroupTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.presetGroupTab:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.presetGroupTabActive {
+  border-color: var(--accent-primary);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.presetGroupTabActive:hover {
+  color: var(--accent-primary);
+}
+
+.presetGroupTabKey {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.presetGroupTabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.presetCard {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 11px;
+  background: var(--bg-secondary);
+}
+
+.presetCardHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.presetCardHead .input {
+  flex: 1;
+  height: 36px;
+}
+
+.presetEntryRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.presetEntryKey {
+  flex: 1.2;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.presetEntryAction {
+  flex-shrink: 0;
+  width: 84px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.presetEntryValue {
+  flex: 1.4;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+.presetEntryValue:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.presetEntryKey:focus,
+.presetEntryValue:focus,
+.presetEntryAction:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.presetAddBtn {
+  height: 40px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.presetAddBtn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+}
