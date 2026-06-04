@@ -75,6 +75,7 @@ export function ReviewWorkspace({
   const exportFieldKeys = useUiStore((state) => state.exportFieldKeys);
   const tabPositions = useUiStore((state) => state.tabPositions);
   const setTabPosition = useUiStore((state) => state.setTabPosition);
+  const cycleTabList = useUiStore((state) => state.cycleTabList);
 
   // 탭별 작업셋 캐시. initialGroups は初期タブのデータとして渡す.
   const {
@@ -487,7 +488,7 @@ export function ReviewWorkspace({
         tradeDate: effectiveStock.tradeDate,
         stockName: effectiveStock.stockName ?? undefined,
       });
-      setWriteAppendStatus("✓ 추가됨");
+      setWriteAppendStatus(`✓ ${effectiveStock.stockName ?? effectiveStock.stockCode} 추가됨`);
     } catch (err) {
       setWriteAppendStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
     }
@@ -495,19 +496,26 @@ export function ReviewWorkspace({
     setTimeout(() => setWriteAppendStatus(null), 2000);
   }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory]);
 
-  // 시트 탭 순환: 탭 목록 안에서만 돌고 DB 모드 진입/탈출 안 함.
+  // cycleTabList 필터링: null = 전체, 배열 = 해당 탭만 순환.
+  const effectiveCycleTabs = useMemo(
+    () => (cycleTabList ? tabs.filter((t) => cycleTabList.includes(t)) : tabs),
+    [tabs, cycleTabList],
+  );
+
+  // 시트 탭 순환: effectiveCycleTabs 안에서만 돌고 DB 모드 진입/탈출 안 함.
   // DB 모드에서 호출되면 마지막 시트 탭으로 복귀(r키/탭 칩 클릭).
   const handleCycleSheetTab = useCallback(async () => {
-    if (tabs.length === 0) return;
+    const cycleTabs = effectiveCycleTabs.length > 0 ? effectiveCycleTabs : tabs;
+    if (cycleTabs.length === 0) return;
     if (readSource === "db") {
-      await handleSwitchReadTab(readTab);
+      await handleSwitchReadTab(cycleTabs[0]);
     } else {
-      if (tabs.length <= 1) return;
-      const idx = tabs.indexOf(readTab);
-      const nextIdx = (idx + 1) % tabs.length;
-      await handleSwitchReadTab(tabs[nextIdx]);
+      if (cycleTabs.length <= 1) return;
+      const idx = cycleTabs.indexOf(readTab);
+      const nextIdx = (idx + 1) % cycleTabs.length;
+      await handleSwitchReadTab(cycleTabs[nextIdx]);
     }
-  }, [readSource, readTab, tabs, handleSwitchReadTab]);
+  }, [readSource, readTab, tabs, effectiveCycleTabs, handleSwitchReadTab]);
 
   // DB ↔ 시트 토글: 스위치 아이콘 전용.
   const handleToggleDbMode = useCallback(async () => {

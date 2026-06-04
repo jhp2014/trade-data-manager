@@ -23,14 +23,28 @@ export function TabSettingsModal({
   const currentReadTab = config?.tab ?? "review";
   const spreadsheetId = config?.spreadsheetId ?? "";
 
-  const [readInput, setReadInput] = useState(currentReadTab);
+  const cycleTabList = useUiStore((state) => state.cycleTabList);
+  const setCycleTabList = useUiStore((state) => state.setCycleTabList);
+
   const [writeInput, setWriteInput] = useState(writeTab ?? "");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
 
-  const applyReadTab = async () => {
-    const tab = readInput.trim();
-    if (!tab) return;
+  // 탭이 순환 목록에 포함되는지 여부.
+  const isTabCycleEnabled = (tab: string) =>
+    cycleTabList === null ? true : cycleTabList.includes(tab);
+
+  // 순환 체크박스 토글. 현재 tabs 기준으로 explicit list ↔ null(전체) 관리.
+  const toggleTabCycle = (tab: string) => {
+    const effective = cycleTabList ?? tabs;
+    const has = effective.includes(tab);
+    const newList = has ? effective.filter((t) => t !== tab) : [...effective, tab];
+    // 전체 탭이 포함되면 null(전체 순환)으로 단순화.
+    setCycleTabList(newList.length === tabs.length ? null : newList);
+  };
+
+  const applyReadTab = async (tab: string) => {
+    if (!tab || tab === currentReadTab) return;
     setBusy(true);
     setStatus(null);
     try {
@@ -65,33 +79,40 @@ export function TabSettingsModal({
             <span className={sheetStyles.label}>읽기 탭</span>
             <span className={sheetStyles.sourceTag}>{currentReadTab}</span>
           </div>
-          <div className={sheetStyles.inlineRow}>
-            <input
-              id="tab-read-input"
-              list="tab-read-list"
-              className={sheetStyles.input}
-              placeholder="탭 선택 또는 직접 입력"
-              value={readInput}
-              onChange={(e) => setReadInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") applyReadTab(); }}
-              disabled={busy}
-              autoComplete="off"
-            />
-            {tabs.length > 0 && (
-              <datalist id="tab-read-list">
-                {tabs.map((t) => <option key={t} value={t} />)}
-              </datalist>
-            )}
-            <button
-              type="button"
-              className={sheetStyles.inlineBtn}
-              onClick={applyReadTab}
-              disabled={!readInput.trim() || busy}
-            >
-              적용
-            </button>
-          </div>
-          <span className={sheetStyles.hint}>변경 시 필터가 초기화되고 작업셋이 새로고침됩니다.</span>
+          {tabs.length === 0 ? (
+            <span className={sheetStyles.hint}>불러올 수 있는 탭이 없습니다.</span>
+          ) : (
+            <>
+              <div className={sheetStyles.tabRowList}>
+                {tabs.map((t) => (
+                  <div key={t} className={sheetStyles.tabRow}>
+                    <label className={sheetStyles.tabRowCheck} title="r키·칩 클릭으로 순환">
+                      <input
+                        type="checkbox"
+                        checked={isTabCycleEnabled(t)}
+                        onChange={() => toggleTabCycle(t)}
+                      />
+                    </label>
+                    <span className={sheetStyles.tabRowLabel}>{t}</span>
+                    {t === currentReadTab && (
+                      <span className={sheetStyles.tabRowCurBadge}>현재</span>
+                    )}
+                    <button
+                      type="button"
+                      className={sheetStyles.tabRowApplyBtn}
+                      onClick={() => applyReadTab(t)}
+                      disabled={busy || t === currentReadTab}
+                    >
+                      {t === currentReadTab ? "읽는 중" : "선택"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <span className={sheetStyles.hint}>
+                체크된 탭만 r키·칩 클릭으로 순환됩니다.
+              </span>
+            </>
+          )}
         </div>
 
         <div className={sheetStyles.sectionDivider} />
@@ -113,7 +134,9 @@ export function TabSettingsModal({
               placeholder="탭 선택 또는 직접 입력"
               value={writeInput}
               onChange={(e) => setWriteInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && writeInput.trim()) applyWriteTab(writeInput.trim()); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && writeInput.trim()) applyWriteTab(writeInput.trim());
+              }}
               autoComplete="off"
             />
             {tabs.length > 0 && (

@@ -472,3 +472,135 @@
   background: #fdeced;
   color: #c0353a;
 }
+
+/* ── 탭 선택 목록 (TabSettingsModal) ── */
+.tabRowList {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tabRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: var(--bg-secondary);
+  transition: border-color 0.12s ease;
+}
+
+.tabRow:hover {
+  border-color: var(--border-strong);
+}
+
+.tabRowCheck {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tabRowCheck input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.tabRowLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabRowCurBadge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tabRowApplyBtn {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+
+.tabRowApplyBtn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.tabRowApplyBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── 입력 컬럼 설정 (InputKeyConfigModal) ── */
+.inputKeyRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.inputKeyLabel {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inputKeyLabelDisabled {
+  color: var(--text-tertiary);
+}
+
+.inputKeyActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.inputKeyToggleBtn {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+  white-space: nowrap;
+}
+
+.inputKeyToggleBtn:hover {
+  background: var(--bg-tertiary);
+}

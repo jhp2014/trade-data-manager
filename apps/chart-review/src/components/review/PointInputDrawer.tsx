@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./ReviewWorkspace.module.css";
 import type { ReviewPoint } from "@/types/review";
 import type { ManualKeyDef } from "@/lib/loadManualKeys";
+import { useUiStore } from "@/stores/useUiStore";
 
 type PointInputDrawerProps = {
   stockCode: string;
@@ -56,9 +57,25 @@ export function PointInputDrawer({
     return sibling ? sibling.sourceRow.manual : {};
   }, [existing, points]);
 
+  const inputKeyOrder = useUiStore((state) => state.inputKeyOrder);
+  const inputKeyDisabled = useUiStore((state) => state.inputKeyDisabled);
+
   const [rows, setRows] = useState<Row[]>(() => buildInitialRows(manualKeys, sourceManual));
   const [submitting, setSubmitting] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // inputKeyOrder 기준 정렬 + inputKeyDisabled 기준 숨김 적용.
+  const displayRows = useMemo(() => {
+    const sorted = [...rows].sort((a, b) => {
+      const ai = inputKeyOrder.indexOf(`m_${a.key}`);
+      const bi = inputKeyOrder.indexOf(`m_${b.key}`);
+      if (ai === -1 && bi === -1) return 0;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+    return sorted.filter((r) => !inputKeyDisabled.includes(`m_${r.key}`));
+  }, [rows, inputKeyOrder, inputKeyDisabled]);
 
   // 열릴 때 첫 입력창에 자동 포커스 (Space 로 연 직후 바로 타이핑).
   useEffect(() => {
@@ -168,6 +185,16 @@ export function PointInputDrawer({
         if (values.length === 1) payload[row.key] = values[0];
         else if (values.length > 1) payload[row.key] = values;
       }
+      // 비활성화된 컬럼: 수정 모드에서는 기존 값 유지, 신규 모드에서는 포함 안 함.
+      if (existing) {
+        for (const disabledKey of inputKeyDisabled) {
+          const rawKey = disabledKey.startsWith("m_") ? disabledKey.slice(2) : disabledKey;
+          if (!(rawKey in payload) && rawKey in existing.sourceRow.manual) {
+            const value = existing.sourceRow.manual[rawKey];
+            if (value) payload[rawKey] = value;
+          }
+        }
+      }
       const res = await fetch("/api/review/point", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,7 +259,7 @@ export function PointInputDrawer({
             입력 항목이 없습니다. 아래 ‘항목 추가’로 키를 만들어 주세요.
           </div>
         )}
-        {rows.map((row, index) => {
+        {displayRows.map((row, index) => {
           const listId = `sugg-${row.key}`;
           const suggestions = (valueSuggestions[row.key] ?? [])
             .filter((s) => !row.values.includes(s))

@@ -45,6 +45,27 @@ type UiState = {
    */
   tabPositions: Record<string, { groupIndex: number; pointKey: string | null }>;
   setTabPosition: (tab: string, pos: { groupIndex: number; pointKey: string | null }) => void;
+
+  /**
+   * r키·칩 클릭 탭 순환 대상. null = 전체 탭 순환.
+   * 일부 탭만 순환하고 싶을 때 explicit list 로 지정.
+   */
+  cycleTabList: string[] | null;
+  setCycleTabList: (list: string[] | null) => void;
+
+  /**
+   * 타점 입력창 컬럼 표시 순서 (m_ 접두사 포함).
+   * 목록에 없는 키는 뒤에 붙는다.
+   */
+  inputKeyOrder: string[];
+  setInputKeyOrder: (order: string[]) => void;
+
+  /**
+   * 타점 입력창에서 숨길 컬럼 (m_ 접두사 포함).
+   * 숨겨진 컬럼: 신규 입력 시 빈값, 수정 시 기존 값 유지.
+   */
+  inputKeyDisabled: string[];
+  setInputKeyDisabled: (disabled: string[]) => void;
 };
 
 function toggleInList(list: string[], key: string): string[] {
@@ -87,6 +108,15 @@ export const useUiStore = create<UiState>()(
       tabPositions: {},
       setTabPosition: (tab, pos) =>
         set((state) => ({ tabPositions: { ...state.tabPositions, [tab]: pos } })),
+
+      cycleTabList: null,
+      setCycleTabList: (list) => set({ cycleTabList: list }),
+
+      inputKeyOrder: [],
+      setInputKeyOrder: (order) => set({ inputKeyOrder: order }),
+
+      inputKeyDisabled: [],
+      setInputKeyDisabled: (disabled) => set({ inputKeyDisabled: disabled }),
     }),
     {
       name: "chart-review-ui",
@@ -98,6 +128,9 @@ export const useUiStore = create<UiState>()(
         writeTab: state.writeTab,
         exportFieldKeys: state.exportFieldKeys,
         tabPositions: state.tabPositions,
+        cycleTabList: state.cycleTabList,
+        inputKeyOrder: state.inputKeyOrder,
+        inputKeyDisabled: state.inputKeyDisabled,
       }),
     },
   ),

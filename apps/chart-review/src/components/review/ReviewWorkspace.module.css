@@ -917,8 +917,6 @@
   position: fixed;
   inset: 0;
   z-index: 205;
-  background: rgba(17, 24, 33, 0.28);
-  backdrop-filter: blur(1.5px);
   animation: inputBackdropIn 0.14s ease;
 }
 
