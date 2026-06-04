@@ -456,6 +456,7 @@ minute_candle_features   ← 분봉 기술적 지표
 | [`packages/data-core/docs/api-reference.md`](packages/data-core/docs/api-reference.md) | data-core 함수/쿼리/계산기별 입력·출력·DB 효과 예시 |
 | [`apps/chart-review/docs/usage.md`](apps/chart-review/docs/usage.md) | chart-review 사용법과 최신 단축키 |
 | [`apps/chart-review/docs/code-map.md`](apps/chart-review/docs/code-map.md) | chart-review 기능별 코드 위치와 유지보수 지도 |
+| [`apps/chart-review/docs/api-reference.md`](apps/chart-review/docs/api-reference.md) | chart-review API route와 핵심 lib/hook 입출력 예시 |
 | [`apps/chart-capture/docs/architecture/pipeline.md`](apps/chart-capture/docs/architecture/pipeline.md) | chart-capture CSV → PNG 캡처 파이프라인 |
 
 ---
