@@ -44,6 +44,7 @@ type SettingsModalProps = {
   manualFieldKeys: string[];
   headerAvailable: string[];
   valueSuggestions: Record<string, string[]>;
+  onReloadAll: () => void;
   onClose: () => void;
 };
 
@@ -51,6 +52,7 @@ export function SettingsModal({
   manualFieldKeys,
   headerAvailable,
   valueSuggestions,
+  onReloadAll,
   onClose,
 }: SettingsModalProps) {
   const headerFieldKeys = useUiStore((state) => state.headerFieldKeys);
@@ -195,6 +197,11 @@ export function SettingsModal({
               label="Export / 병합"
               sub="데이터 내보내기 · 시트 → DB 병합"
               onClick={() => setOpenPicker("export-import")}
+            />
+            <SettingsRow
+              label="작업셋 전체 재로드"
+              sub="탭 목록 + 전체 캐시 초기화 후 재조회"
+              onClick={() => { onReloadAll(); onClose(); }}
             />
           </div>
         </div>

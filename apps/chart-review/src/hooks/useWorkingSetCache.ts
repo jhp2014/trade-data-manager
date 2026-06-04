@@ -79,7 +79,7 @@ export function useWorkingSetCache(
   const switchTab = useCallback(
     async (tab: string): Promise<ReviewStockGroup[]> => {
       const cached = cacheRef.current.get(tab);
-      if (cached) {
+      if (cached && cached.length > 0) {
         setReadTab(tab);
         setGroups(cached);
         return cached;
@@ -87,6 +87,25 @@ export function useWorkingSetCache(
       setIsLoadingWorkset(true);
       try {
         const newGroups = await fetchWorkset(tab);
+
+        // 요청한 탭이 비어있으면 다른 탭으로 자동 fallback.
+        if (newGroups.length === 0) {
+          const currentTabs = tabs.length > 0 ? tabs : [tab];
+          for (const other of currentTabs) {
+            if (other === tab) continue;
+            try {
+              const fallbackGroups = await fetchWorkset(other);
+              if (fallbackGroups.length > 0) {
+                setReadTab(other);
+                setGroups(fallbackGroups);
+                return fallbackGroups;
+              }
+            } catch {
+              // skip
+            }
+          }
+        }
+
         setReadTab(tab);
         setGroups(newGroups);
         return newGroups;
@@ -94,7 +113,7 @@ export function useWorkingSetCache(
         setIsLoadingWorkset(false);
       }
     },
-    [fetchWorkset],
+    [fetchWorkset, tabs],
   );
 
   const reloadTab = useCallback(

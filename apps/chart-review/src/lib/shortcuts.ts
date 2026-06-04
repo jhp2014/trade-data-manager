@@ -56,6 +56,10 @@ export const SHORTCUT_KEYS = {
   openInput: " ",
   /** f: Write Tab 마지막 행에 현재 탐색 종목 추가. */
   writeAppend: "f",
+  /** r: 읽기 탭 순환(다음 Sheet Tab 으로 전환). */
+  cycleReadTab: "r",
+  /** t: KRX/NXT 가격 모드 토글. */
+  togglePriceMode: "t",
 } as const;
 
 // ── 마커 / 히스토리 스위처 ───────────────────────────────────────────────────

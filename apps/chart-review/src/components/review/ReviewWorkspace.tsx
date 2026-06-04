@@ -490,6 +490,23 @@ export function ReviewWorkspace({
     setWriteTab(tabs[nextIdx]);
   }, [tabs, writeTab, setWriteTab]);
 
+  // 현재 읽기 탭 캐시 무효화 후 재조회.
+  const handleReloadTab = useCallback(async () => {
+    await reloadTab(readTab);
+  }, [reloadTab, readTab]);
+
+  // 전체 탭 캐시 무효화 + RSC 새로고침.
+  const handleReloadAll = useCallback(async () => {
+    await reloadAll();
+    router.refresh();
+  }, [reloadAll, router]);
+
+  // KRX/NXT 토글.
+  const setPriceMode = useUiStore((state) => state.setChartPriceMode);
+  const handleTogglePriceMode = useCallback(() => {
+    setPriceMode(priceMode === "krx" ? "nxt" : "krx");
+  }, [priceMode, setPriceMode]);
+
   // useGlobalShortcuts 가 받는 무인자 콜백 어댑터(방향/스텝 인자 고정).
   const handleMarkerLeft = useCallback(() => moveMarker(-1), [moveMarker]);
   const handleMarkerRight = useCallback(() => moveMarker(1), [moveMarker]);
@@ -697,6 +714,8 @@ export function ReviewWorkspace({
     onResetOverride: resetOverride,
     onOpenInput: openInput,
     onWriteAppend: handleWriteAppend,
+    onCycleReadTab: handleCycleReadTab,
+    onTogglePriceMode: handleTogglePriceMode,
   });
 
   const header = (
@@ -719,8 +738,10 @@ export function ReviewWorkspace({
       readTab={readTab}
       writeTab={writeTab}
       tabs={tabs}
+      isLoadingWorkset={isLoadingWorkset}
       onCycleReadTab={handleCycleReadTab}
       onCycleWriteTab={handleCycleWriteTab}
+      onReloadTab={handleReloadTab}
     />
   );
 
@@ -768,6 +789,7 @@ export function ReviewWorkspace({
       manualFieldKeys={manualFieldKeys}
       headerAvailable={headerAvailable}
       valueSuggestions={valueSuggestions}
+      onReloadAll={handleReloadAll}
       onClose={() => setSettingsOpen(false)}
     />
   );
@@ -921,8 +943,10 @@ type ReviewHeaderProps = {
   readTab: string;
   writeTab: string | null;
   tabs: string[];
+  isLoadingWorkset: boolean;
   onCycleReadTab: () => void;
   onCycleWriteTab: () => void;
+  onReloadTab: () => void;
 };
 
 function ReviewHeader({
@@ -944,8 +968,10 @@ function ReviewHeader({
   readTab,
   writeTab,
   tabs,
+  isLoadingWorkset,
   onCycleReadTab,
   onCycleWriteTab,
+  onReloadTab,
 }: ReviewHeaderProps) {
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
   const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
@@ -996,7 +1022,7 @@ function ReviewHeader({
                 type="button"
                 className={`${styles.segChip} ${styles.segChipActive}`}
                 onClick={onCycleReadTab}
-                title={tabs.length > 1 ? "클릭: 다음 읽기 탭으로 전환" : "읽기 탭"}
+                title={tabs.length > 1 ? "클릭·r키: 다음 읽기 탭으로 전환" : "읽기 탭 (r키)"}
               >
                 {readTab}
               </button>
@@ -1008,6 +1034,15 @@ function ReviewHeader({
                 title={tabs.length > 0 ? "클릭: 다음 쓰기 탭으로 전환" : "쓰기 탭 미설정"}
               >
                 {writeTab ?? "미설정"}
+              </button>
+              <button
+                type="button"
+                className={styles.segChip}
+                onClick={onReloadTab}
+                disabled={isLoadingWorkset}
+                title="현재 읽기 탭 다시 불러오기"
+              >
+                {isLoadingWorkset ? "…" : "↻"}
               </button>
             </div>
           )}

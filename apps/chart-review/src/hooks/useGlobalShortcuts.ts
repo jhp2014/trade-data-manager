@@ -34,6 +34,10 @@ type UseGlobalShortcutsOptions = {
   onOpenInput: () => void;
   /** f: Write Tab 에 현재 종목 Append. */
   onWriteAppend: () => void;
+  /** r: 읽기 탭 순환. */
+  onCycleReadTab: () => void;
+  /** t: KRX/NXT 가격 모드 토글. */
+  onTogglePriceMode: () => void;
 };
 
 /**
@@ -61,6 +65,8 @@ export function useGlobalShortcuts({
   onResetOverride,
   onOpenInput,
   onWriteAppend,
+  onCycleReadTab,
+  onTogglePriceMode,
 }: UseGlobalShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -140,6 +146,14 @@ export function useGlobalShortcuts({
           e.preventDefault();
           onWriteAppend();
           break;
+        case SHORTCUT_KEYS.cycleReadTab:
+          e.preventDefault();
+          onCycleReadTab();
+          break;
+        case SHORTCUT_KEYS.togglePriceMode:
+          e.preventDefault();
+          onTogglePriceMode();
+          break;
         default:
           break;
       }
@@ -162,5 +176,7 @@ export function useGlobalShortcuts({
     onResetOverride,
     onOpenInput,
     onWriteAppend,
+    onCycleReadTab,
+    onTogglePriceMode,
   ]);
 }
