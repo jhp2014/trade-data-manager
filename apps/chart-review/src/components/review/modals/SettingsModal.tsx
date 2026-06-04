@@ -7,10 +7,10 @@ import { FieldChecklistModal } from "../FieldChecklistModal";
 import { ManualFilterModal } from "../ManualFilterModal";
 import { activeFilterCount } from "@/lib/manualFilter";
 import { useUiStore } from "@/stores/useUiStore";
-import { type ReadSheetState, type SheetDefaults, ActionModal } from "./ActionModal";
-import { ReadSheetModal } from "./ReadSheetModal";
-import { ExportModal } from "./ExportModal";
-import { ImportModal } from "./ImportModal";
+import { type ReadSheetState, ActionModal } from "./ActionModal";
+import { SheetIdModal } from "./SheetIdModal";
+import { TabSettingsModal } from "./TabSettingsModal";
+import { ExportImportModal } from "./ExportImportModal";
 import { CsvImportModal } from "./CsvImportModal";
 
 function SettingsRow({
@@ -72,10 +72,9 @@ export function SettingsModal({
     | "header"
     | "point"
     | "filter"
-    | "read"
-    | "write-tab"
-    | "export"
-    | "import"
+    | "sheet-id"
+    | "tab-settings"
+    | "export-import"
     | "csv"
     | "export-fields"
     | null
@@ -103,11 +102,6 @@ export function SettingsModal({
     };
   }, []);
 
-  const defaults: SheetDefaults = {
-    spreadsheetId: sheetConfig?.spreadsheetId ?? "",
-    tab: sheetConfig?.tab ?? "review",
-  };
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && openPicker === null) onClose();
@@ -126,6 +120,7 @@ export function SettingsModal({
     "tradeDate",
     "tradeTime",
     "stockName",
+    "groupId",
     ...headerAvailable,
   ];
 
@@ -183,24 +178,23 @@ export function SettingsModal({
           <div className={styles.settingsGroupLabel}>Sheet 연동</div>
           <div className={styles.settingsGroup}>
             <SettingsRow
-              label="읽기 시트 (작업셋)"
-              sub={sheetConfig?.spreadsheetId ? `ID: ${sheetConfig.spreadsheetId.slice(0, 20)}…` : "스프레드시트 ID · 읽기 탭 설정"}
-              onClick={() => setOpenPicker("read")}
+              label="시트 ID 설정"
+              sub={
+                sheetConfig?.spreadsheetId
+                  ? `ID: ${sheetConfig.spreadsheetId.slice(0, 24)}…`
+                  : "스프레드시트 ID 설정"
+              }
+              onClick={() => setOpenPicker("sheet-id")}
             />
             <SettingsRow
-              label="쓰기 탭"
-              sub={writeTab ? `현재: ${writeTab}` : "미설정 — f 키 Append 비활성"}
-              onClick={() => setOpenPicker("write-tab")}
+              label="탭 설정"
+              sub={`읽기: ${sheetConfig?.tab ?? "review"} → 쓰기: ${writeTab ?? "미설정"}`}
+              onClick={() => setOpenPicker("tab-settings")}
             />
             <SettingsRow
-              label="Google Sheet Export"
-              sub="타점을 스프레드시트로 내보내기"
-              onClick={() => setOpenPicker("export")}
-            />
-            <SettingsRow
-              label="Sheet → DB 병합 Import"
-              sub="시트의 m_ 값을 DB에 병합"
-              onClick={() => setOpenPicker("import")}
+              label="Export / 병합"
+              sub="데이터 내보내기 · 시트 → DB 병합"
+              onClick={() => setOpenPicker("export-import")}
             />
           </div>
         </div>
@@ -235,31 +229,28 @@ export function SettingsModal({
           onClose={() => setOpenPicker(null)}
         />
       )}
-      {openPicker === "read" && (
-        <ReadSheetModal
+      {openPicker === "sheet-id" && (
+        <SheetIdModal
           config={sheetConfig}
-          defaults={defaults}
-          tabs={tabs}
           onClose={() => setOpenPicker(null)}
         />
       )}
-      {openPicker === "write-tab" && (
-        <WriteTabModal
+      {openPicker === "tab-settings" && (
+        <TabSettingsModal
           tabs={tabs}
+          config={sheetConfig}
           writeTab={writeTab}
-          onConfirm={(t) => {
-            setWriteTab(t);
-            setOpenPicker(null);
-          }}
+          onWriteTabChange={setWriteTab}
           onClose={() => setOpenPicker(null)}
         />
       )}
-      {openPicker === "export" && (
-        <ExportModal
+      {openPicker === "export-import" && (
+        <ExportImportModal
+          spreadsheetId={sheetConfig?.spreadsheetId ?? null}
+          readTab={sheetConfig?.tab ?? "review"}
+          writeTab={writeTab}
           filters={manualFilters}
           activeFilters={activeFilters}
-          defaults={defaults}
-          tabs={tabs}
           onClose={() => setOpenPicker(null)}
         />
       )}
@@ -274,90 +265,8 @@ export function SettingsModal({
           onClose={() => setOpenPicker(null)}
         />
       )}
-      {openPicker === "import" && (
-        <ImportModal defaults={defaults} onClose={() => setOpenPicker(null)} />
-      )}
       {openPicker === "csv" && <CsvImportModal onClose={() => setOpenPicker(null)} />}
     </div>
-  );
-}
-
-// ── 쓰기 탭 설정 모달 ──────────────────────────────────────────────────────
-
-function WriteTabModal({
-  tabs,
-  writeTab,
-  onConfirm,
-  onClose,
-}: {
-  tabs: string[];
-  writeTab: string | null;
-  onConfirm: (tab: string | null) => void;
-  onClose: () => void;
-}) {
-  const [input, setInput] = useState("");
-
-  return (
-    <ActionModal
-      title="쓰기 탭 설정"
-      subtitle="f 키 Append 및 Export 의 기본 대상 탭을 지정합니다."
-      onClose={onClose}
-    >
-      <div className={sheetStyles.body}>
-        {tabs.length > 0 && (
-          <div className={sheetStyles.field}>
-            <span className={sheetStyles.label}>탭 선택</span>
-            <div className={sheetStyles.tabList}>
-              {tabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`${sheetStyles.tabItem} ${tab === writeTab ? sheetStyles.tabItemActive : ""}`}
-                  onClick={() => onConfirm(tab)}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className={sheetStyles.field}>
-          <span className={sheetStyles.label}>직접 입력 (새 탭)</span>
-          <div className={sheetStyles.inlineRow}>
-            <input
-              className={sheetStyles.input}
-              type="text"
-              placeholder="새 탭 이름 입력"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && input.trim()) onConfirm(input.trim());
-              }}
-            />
-            <button
-              type="button"
-              className={sheetStyles.inlineBtn}
-              onClick={() => {
-                if (input.trim()) onConfirm(input.trim());
-              }}
-            >
-              확인
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className={sheetStyles.footer}>
-        {writeTab && (
-          <button
-            type="button"
-            className={sheetStyles.ghostBtn}
-            onClick={() => onConfirm(null)}
-          >
-            미설정으로
-          </button>
-        )}
-      </div>
-    </ActionModal>
   );
 }
 

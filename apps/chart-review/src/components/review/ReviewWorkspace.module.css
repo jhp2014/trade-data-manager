@@ -223,12 +223,51 @@
   color: var(--accent-primary);
 }
 
-/* ── Append 상태 표시 ─────────────────────────────────── */
-.appendStatus {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--accent-primary);
+/* ── Append 토스트 (중앙 하단 고정) ─────────────────── */
+.appendToast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  padding: 10px 24px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  animation: toastIn 0.18s ease;
+}
+
+.appendToastOk {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.appendToastErr {
+  background: #c0353a;
+  color: #fff;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 탭 칩 사이 화살표 구분자 */
+.segArrow {
+  padding: 0 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  user-select: none;
+  line-height: 26px;
 }
 
 /* ── Tab Chip Group ────────────────────────────────────── */

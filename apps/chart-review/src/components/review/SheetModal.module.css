@@ -433,6 +433,25 @@
   background: var(--accent-soft);
 }
 
+/* ── 섹션 구분선 ── */
+.sectionDivider {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 4px 0;
+}
+
+/* 라벨 + 현재값 배지 행 */
+.labelRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 패널 토글(Export/병합) 감싸개 */
+.panelToggleWrap {
+  padding: 16px 24px 0;
+}
+
 /* ── 상태 메시지 ── */
 .status {
   margin: 0 24px 20px;

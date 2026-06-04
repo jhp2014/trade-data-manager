@@ -468,11 +468,27 @@ export function ReviewWorkspace({
       });
       setWriteAppendStatus("✓ 추가됨");
     } catch (err) {
-      setWriteAppendStatus(err instanceof Error ? err.message : "오류");
+      setWriteAppendStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
     }
     // 2초 후 상태 메시지 초기화.
     setTimeout(() => setWriteAppendStatus(null), 2000);
   }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory]);
+
+  // Read Tab 순환: 탭 목록에서 다음 탭으로 전환하고 작업셋을 리로드한다.
+  const handleCycleReadTab = useCallback(async () => {
+    if (tabs.length <= 1) return;
+    const idx = tabs.indexOf(readTab);
+    const nextIdx = (idx + 1) % tabs.length;
+    await handleSwitchReadTab(tabs[nextIdx]);
+  }, [tabs, readTab, handleSwitchReadTab]);
+
+  // Write Tab 순환: 탭 목록에서 다음 탭으로 전환한다(새 탭 생성은 설정에서).
+  const handleCycleWriteTab = useCallback(() => {
+    if (tabs.length === 0) return;
+    const idx = writeTab ? tabs.indexOf(writeTab) : -1;
+    const nextIdx = (idx + 1) % tabs.length;
+    setWriteTab(tabs[nextIdx]);
+  }, [tabs, writeTab, setWriteTab]);
 
   // useGlobalShortcuts 가 받는 무인자 콜백 어댑터(방향/스텝 인자 고정).
   const handleMarkerLeft = useCallback(() => moveMarker(-1), [moveMarker]);
@@ -702,8 +718,18 @@ export function ReviewWorkspace({
       hasSpreadsheet={hasSpreadsheet}
       readTab={readTab}
       writeTab={writeTab}
-      writeAppendStatus={writeAppendStatus}
+      tabs={tabs}
+      onCycleReadTab={handleCycleReadTab}
+      onCycleWriteTab={handleCycleWriteTab}
     />
+  );
+
+  const toast = writeAppendStatus && (
+    <div
+      className={`${styles.appendToast} ${writeAppendStatus.startsWith("✓") ? styles.appendToastOk : styles.appendToastErr}`}
+    >
+      {writeAppendStatus}
+    </div>
   );
 
   const sidebar = (
@@ -779,6 +805,7 @@ export function ReviewWorkspace({
         {settingsModal}
         {inputDrawer}
         {historySwitcher}
+        {toast}
         <section className={styles.singleMode}>
           <MinuteChartPanel
             data={mainChartData}
@@ -802,6 +829,7 @@ export function ReviewWorkspace({
         {settingsModal}
         {inputDrawer}
         {historySwitcher}
+        {toast}
         <section className={styles.singleMode}>
           <DailyChartPanel
             data={mainChartData}
@@ -823,6 +851,7 @@ export function ReviewWorkspace({
         {settingsModal}
         {inputDrawer}
         {historySwitcher}
+        {toast}
         <section className={styles.singleMode}>
           <div className={styles.chartPanel}>
             <RealThemeOverlayChart
@@ -841,6 +870,7 @@ export function ReviewWorkspace({
       {settingsModal}
       {inputDrawer}
       {historySwitcher}
+      {toast}
       <section className={styles.body}>
         {sidebar}
         <section className={styles.mainPane}>
@@ -890,7 +920,9 @@ type ReviewHeaderProps = {
   hasSpreadsheet: boolean;
   readTab: string;
   writeTab: string | null;
-  writeAppendStatus: string | null;
+  tabs: string[];
+  onCycleReadTab: () => void;
+  onCycleWriteTab: () => void;
 };
 
 function ReviewHeader({
@@ -911,7 +943,9 @@ function ReviewHeader({
   hasSpreadsheet,
   readTab,
   writeTab,
-  writeAppendStatus,
+  tabs,
+  onCycleReadTab,
+  onCycleWriteTab,
 }: ReviewHeaderProps) {
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
   const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
@@ -920,6 +954,8 @@ function ReviewHeader({
   const fieldValues = headerFieldKeys
     .filter((key) => headerAvailable.includes(key))
     .map((key) => ({ key, value: resolveFieldValue(key, point) }));
+
+  const viewLabel = VIEW_MODES.find((v) => v.mode === viewMode)?.label ?? viewMode;
 
   return (
     <header className={styles.header}>
@@ -937,11 +973,6 @@ function ReviewHeader({
           <span>{themeName ?? "테마 -"}</span>
           <span className={styles.sep}>|</span>
           <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
-          {hasSpreadsheet && (
-            <span className={styles.tabIndicator}>
-              {readTab} → {writeTab ?? "미설정"}
-            </span>
-          )}
         </div>
         <div className={styles.fieldLine}>
           {fieldValues.length === 0 ? (
@@ -958,6 +989,29 @@ function ReviewHeader({
       </div>
       <div className={styles.headerRight}>
         <div className={styles.controls}>
+          {/* 탭 순환 버튼 (시트가 설정된 경우에만) */}
+          {hasSpreadsheet && (
+            <div className={styles.segGroup}>
+              <button
+                type="button"
+                className={`${styles.segChip} ${styles.segChipActive}`}
+                onClick={onCycleReadTab}
+                title={tabs.length > 1 ? "클릭: 다음 읽기 탭으로 전환" : "읽기 탭"}
+              >
+                {readTab}
+              </button>
+              <span className={styles.segArrow}>→</span>
+              <button
+                type="button"
+                className={`${styles.segChip} ${writeTab ? styles.segChipActive : ""}`}
+                onClick={onCycleWriteTab}
+                title={tabs.length > 0 ? "클릭: 다음 쓰기 탭으로 전환" : "쓰기 탭 미설정"}
+              >
+                {writeTab ?? "미설정"}
+              </button>
+            </div>
+          )}
+          {/* 종목 이동 */}
           <span className={styles.navGroup} title="화살표로 종목 이동">
             <button
               className={styles.navArrow}
@@ -981,38 +1035,29 @@ function ReviewHeader({
               →
             </button>
           </span>
+          {/* 가격 모드: 클릭으로 KRX ↔ NXT 전환 */}
           <div className={styles.segGroup}>
             <button
-              className={`${styles.segChip} ${chartPriceMode === "krx" ? styles.segChipActive : ""}`}
+              className={`${styles.segChip} ${styles.segChipActive}`}
               type="button"
-              onClick={() => setChartPriceMode("krx")}
+              onClick={() => setChartPriceMode(chartPriceMode === "krx" ? "nxt" : "krx")}
+              title={`현재 ${chartPriceMode.toUpperCase()} · 클릭: 전환`}
             >
-              KRX
-            </button>
-            <button
-              className={`${styles.segChip} ${chartPriceMode === "nxt" ? styles.segChipActive : ""}`}
-              type="button"
-              onClick={() => setChartPriceMode("nxt")}
-            >
-              NXT
+              {chartPriceMode.toUpperCase()}
             </button>
           </div>
+          {/* 뷰 모드: 클릭으로 순환 */}
           <div className={styles.segGroup}>
-            {VIEW_MODES.map(({ mode, label }) => (
-              <button
-                key={mode}
-                className={`${styles.segChip} ${viewMode === mode ? styles.segChipActive : ""}`}
-                type="button"
-                onClick={() => commands.setViewMode(mode)}
-                title={label}
-              >
-                {label}
-              </button>
-            ))}
+            <button
+              className={`${styles.segChip} ${styles.segChipActive}`}
+              type="button"
+              onClick={() => commands.setViewMode(cycleViewMode(viewMode, 1))}
+              title={`현재 ${viewLabel} · 클릭: 다음 뷰로 전환`}
+            >
+              {viewLabel}
+            </button>
           </div>
-          {writeAppendStatus && (
-            <span className={styles.appendStatus}>{writeAppendStatus}</span>
-          )}
+          {/* 설정 */}
           <div className={styles.segGroup}>
             <button type="button" className={styles.segChip} onClick={onOpenSettings} title="설정">
               ⚙
@@ -1098,12 +1143,13 @@ function collectValueSuggestions(groups: ReviewStockGroup[]): Record<string, str
   return result;
 }
 
-/** 필드 키 → 현재 타점의 값. stockCode/tradeDate/tradeTime/stockName + m_xxx + feature 지원. */
+/** 필드 키 → 현재 타점의 값. stockCode/tradeDate/tradeTime/stockName/groupId + m_xxx + feature 지원. */
 function resolveFieldValue(key: string, point: ReviewPoint): string {
   if (key === "stockCode") return point.sourceRow.stockCode ?? "";
   if (key === "tradeDate") return point.sourceRow.tradeDate ?? "";
   if (key === "tradeTime") return point.tradeTime?.slice(0, 5) ?? "";
   if (key === "stockName") return point.sourceRow.stockName ?? "";
+  if (key === "groupId") return `${point.sourceRow.stockCode ?? ""}-${point.sourceRow.tradeDate ?? ""}`;
   if (key.startsWith("m_")) return point.sourceRow.manual[key.slice(2)]?.trim() ?? "";
   return point.sourceRow.features[key]?.trim() ?? "";
 }
