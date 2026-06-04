@@ -956,42 +956,6 @@ function ReviewHeader({
           <span>{themeName ?? "테마 -"}</span>
           <span className={styles.sep}>|</span>
           <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
-          <span className={styles.sep}>|</span>
-          <span className={styles.navGroup} title="화살표로 종목 이동">
-            <button
-              className={styles.navArrow}
-              type="button"
-              onClick={commands.prevGroup}
-              disabled={groupIndex === 0}
-              title="이전 종목"
-            >
-              ←
-            </button>
-            <span className={`${styles.navPos} tabular`}>
-              {groupIndex < 0 ? "-" : groupIndex + 1}/{groupCount}
-            </span>
-            <button
-              className={styles.navArrow}
-              type="button"
-              onClick={commands.nextGroup}
-              disabled={groupIndex === groupCount - 1}
-              title="다음 종목"
-            >
-              →
-            </button>
-          </span>
-          {hasSpreadsheet && (
-            <TabChipGroup
-              tabs={tabs}
-              readTab={readTab}
-              onSwitchReadTab={onSwitchReadTab}
-              isLoadingWorkset={isLoadingWorkset}
-              onReloadTab={onReloadTab}
-              onReloadAll={onReloadAll}
-              writeTab={writeTab}
-              onSetWriteTab={onSetWriteTab}
-            />
-          )}
         </div>
         <div className={styles.fieldLine}>
           {fieldValues.length === 0 ? (
@@ -1043,6 +1007,43 @@ function ReviewHeader({
           <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="설정">
             ⚙
           </button>
+        </div>
+        <div className={styles.controls}>
+          <span className={styles.navGroup} title="화살표로 종목 이동">
+            <button
+              className={styles.navArrow}
+              type="button"
+              onClick={commands.prevGroup}
+              disabled={groupIndex === 0}
+              title="이전 종목"
+            >
+              ←
+            </button>
+            <span className={`${styles.navPos} tabular`}>
+              {groupIndex < 0 ? "-" : groupIndex + 1}/{groupCount}
+            </span>
+            <button
+              className={styles.navArrow}
+              type="button"
+              onClick={commands.nextGroup}
+              disabled={groupIndex === groupCount - 1}
+              title="다음 종목"
+            >
+              →
+            </button>
+          </span>
+          {hasSpreadsheet && (
+            <TabChipGroup
+              tabs={tabs}
+              readTab={readTab}
+              onSwitchReadTab={onSwitchReadTab}
+              isLoadingWorkset={isLoadingWorkset}
+              onReloadTab={onReloadTab}
+              onReloadAll={onReloadAll}
+              writeTab={writeTab}
+              onSetWriteTab={onSetWriteTab}
+            />
+          )}
         </div>
       </div>
     </header>
