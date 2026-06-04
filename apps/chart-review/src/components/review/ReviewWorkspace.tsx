@@ -100,10 +100,19 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
     selectedGroup.points.find((point) => point.pointKey === selectedPointKey) ??
     selectedGroup.points[0];
 
+  // paste/history 등 명시적 이동 시 snap을 한 번 건너뛰는 플래그.
+  // setSelectedGroupIndex 직후 이 effect 가 snap-back 하는 것을 막는다.
+  const bypassFilterSnapRef = useRef(false);
+
   // 필터를 켜거나 바꿨을 때 현재 선택 종목이 매칭 목록 밖이면 첫 매칭 종목으로 스냅.
+  // navigateToGroupId 가 bypassFilterSnapRef 를 세우면 한 번 건너뛴다.
   useEffect(() => {
     if (!filterActive || navigableIndices.length === 0) return;
     if (navigableIndices.includes(selectedGroupIndex)) return;
+    if (bypassFilterSnapRef.current) {
+      bypassFilterSnapRef.current = false;
+      return;
+    }
     const first = navigableIndices[0];
     const store = useReviewStore.getState();
     store.setSelectedGroupIndex(first);
@@ -416,6 +425,8 @@ export function ReviewWorkspace({ groups, initialSelection, manualKeys }: Review
           stockName: g.stockName ?? undefined,
           hasReview: g.points.some((p) => !!p.tradeTime),
         });
+        // 필터 활성 시 snap effect 가 즉시 되돌리지 않도록 한 번 건너뛴다.
+        bypassFilterSnapRef.current = true;
         commands.goToGroup(idx);
       } else {
         // 작업셋 밖 그룹 → 풀 네비게이션 대신 제자리(override) 탐색.
