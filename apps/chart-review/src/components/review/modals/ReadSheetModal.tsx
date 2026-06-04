@@ -9,10 +9,12 @@ import { useUiStore } from "@/stores/useUiStore";
 export function ReadSheetModal({
   config,
   defaults,
+  tabs = [],
   onClose,
 }: {
   config: ReadSheetState | null;
   defaults: SheetDefaults;
+  tabs?: string[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -98,14 +100,29 @@ export function ReadSheetModal({
           />
         </div>
         <div className={sheetStyles.field}>
-          <span className={sheetStyles.label}>탭 이름</span>
-          <input
-            className={sheetStyles.input}
-            type="text"
-            placeholder="비우면 review"
-            value={tab}
-            onChange={(e) => setTab(e.target.value)}
-          />
+          <span className={sheetStyles.label}>읽기 탭</span>
+          {tabs.length > 0 ? (
+            <div className={sheetStyles.tabList}>
+              {tabs.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`${sheetStyles.tabItem} ${t === tab ? sheetStyles.tabItemActive : ""}`}
+                  onClick={() => setTab(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <input
+              className={sheetStyles.input}
+              type="text"
+              placeholder="비우면 review"
+              value={tab}
+              onChange={(e) => setTab(e.target.value)}
+            />
+          )}
         </div>
       </div>
       {status && (

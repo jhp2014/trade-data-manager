@@ -272,6 +272,167 @@
   opacity: 0.45;
 }
 
+/* ── 탭 목록 (WriteTabModal / ReadSheetModal) ── */
+.tabList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tabItem {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.tabItem:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.tabItemActive {
+  border-color: var(--accent-primary);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.tabItemActive:hover {
+  color: var(--accent-primary);
+}
+
+/* 인라인 입력+버튼 행 */
+.inlineRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.inlineRow .input {
+  flex: 1;
+}
+
+.inlineBtn {
+  flex-shrink: 0;
+  height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+
+.inlineBtn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* ── 내보내기 컬럼 설정 (ExportFieldsModal) ── */
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.fieldRowKey {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.fieldRowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.reorderBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.reorderBtn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.reorderBtn:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
+.removeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.removeBtn:hover {
+  background: #fdeced;
+  color: #c0353a;
+}
+
+.availableList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.addFieldBtn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
+}
+
+.addFieldBtn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+}
+
 /* ── 상태 메시지 ── */
 .status {
   margin: 0 24px 20px;

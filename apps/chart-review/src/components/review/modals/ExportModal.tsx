@@ -8,10 +8,11 @@ type ExportModalProps = {
   filters: Record<string, string[]>;
   activeFilters: number;
   defaults: SheetDefaults;
+  tabs?: string[];
   onClose: () => void;
 };
 
-export function ExportModal({ filters, activeFilters, defaults, onClose }: ExportModalProps) {
+export function ExportModal({ filters, activeFilters, defaults, tabs = [], onClose }: ExportModalProps) {
   const [spreadsheetId, setSpreadsheetId] = useState(defaults.spreadsheetId);
   const [tab, setTab] = useState(defaults.tab);
   const [scope, setScope] = useState<"working" | "all">("working");
@@ -89,11 +90,25 @@ export function ExportModal({ filters, activeFilters, defaults, onClose }: Expor
           />
         </div>
         <div className={sheetStyles.field}>
-          <span className={sheetStyles.label}>탭 이름</span>
+          <span className={sheetStyles.label}>내보낼 탭</span>
+          {tabs.length > 0 && (
+            <div className={sheetStyles.tabList}>
+              {tabs.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`${sheetStyles.tabItem} ${t === tab ? sheetStyles.tabItemActive : ""}`}
+                  onClick={() => setTab(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
           <input
             className={sheetStyles.input}
             type="text"
-            placeholder="비우면 기본값 · 없으면 새로 생성"
+            placeholder={tabs.length > 0 ? "새 탭 이름 직접 입력" : "비우면 기본값 · 없으면 새로 생성"}
             value={tab}
             onChange={(e) => setTab(e.target.value)}
           />

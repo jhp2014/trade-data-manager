@@ -2,17 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import styles from "../ReviewWorkspace.module.css";
+import sheetStyles from "../SheetModal.module.css";
 import { FieldChecklistModal } from "../FieldChecklistModal";
 import { ManualFilterModal } from "../ManualFilterModal";
 import { activeFilterCount } from "@/lib/manualFilter";
 import { useUiStore } from "@/stores/useUiStore";
-import { type ReadSheetState, type SheetDefaults } from "./ActionModal";
+import { type ReadSheetState, type SheetDefaults, ActionModal } from "./ActionModal";
 import { ReadSheetModal } from "./ReadSheetModal";
 import { ExportModal } from "./ExportModal";
 import { ImportModal } from "./ImportModal";
 import { CsvImportModal } from "./CsvImportModal";
 
-/** 설정 모달의 리스트 행(클릭 시 하위 모달 오픈). */
 function SettingsRow({
   label,
   sub,
@@ -62,14 +62,28 @@ export function SettingsModal({
   const manualFilters = useUiStore((state) => state.manualFilters);
   const toggleManualFilterValue = useUiStore((state) => state.toggleManualFilterValue);
   const clearManualFilters = useUiStore((state) => state.clearManualFilters);
+  const writeTab = useUiStore((state) => state.writeTab);
+  const setWriteTab = useUiStore((state) => state.setWriteTab);
+  const exportFieldKeys = useUiStore((state) => state.exportFieldKeys);
+  const setExportFieldKeys = useUiStore((state) => state.setExportFieldKeys);
+
   const overlayRef = useRef<HTMLDivElement>(null);
   const [openPicker, setOpenPicker] = useState<
-    "header" | "point" | "filter" | "read" | "export" | "import" | "csv" | null
+    | "header"
+    | "point"
+    | "filter"
+    | "read"
+    | "write-tab"
+    | "export"
+    | "import"
+    | "csv"
+    | "export-fields"
+    | null
   >(null);
   const [sheetConfig, setSheetConfig] = useState<ReadSheetState | null>(null);
+  const [tabs, setTabs] = useState<string[]>([]);
   const activeFilters = activeFilterCount(manualFilters);
 
-  // 읽기 시트 설정(쿠키/env) 불러오기 → 각 모달 입력 기본값으로 사용
   useEffect(() => {
     let alive = true;
     fetch("/api/review/read-sheet")
@@ -77,9 +91,13 @@ export function SettingsModal({
       .then((data: ReadSheetState | null) => {
         if (alive && data) setSheetConfig(data);
       })
-      .catch(() => {
-        /* 무시: 자격증명/설정 없음 */
-      });
+      .catch(() => {});
+    fetch("/api/review/sheets/tabs")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { tabs?: string[] } | null) => {
+        if (alive && data?.tabs) setTabs(data.tabs);
+      })
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -90,7 +108,6 @@ export function SettingsModal({
     tab: sheetConfig?.tab ?? "review",
   };
 
-  // ESC 로 닫기 (하위 모달이 열려 있으면 그 모달이 먼저 처리)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && openPicker === null) onClose();
@@ -99,17 +116,27 @@ export function SettingsModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [openPicker, onClose]);
 
-  // 오버레이 클릭(배경)으로 닫기
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === overlayRef.current) onClose();
   };
+
+  // f 키 append 및 Export 에서 쓸 수 있는 전체 필드 목록.
+  const allExportableKeys = [
+    "stockCode",
+    "tradeDate",
+    "tradeTime",
+    "stockName",
+    ...headerAvailable,
+  ];
 
   return (
     <div ref={overlayRef} className={styles.settingsOverlay} onClick={handleOverlayClick}>
       <div className={styles.settingsModal}>
         <div className={styles.settingsHeader}>
           <span className={styles.settingsTitle}>설정</span>
-          <button type="button" className={styles.settingsClose} onClick={onClose}>✕</button>
+          <button type="button" className={styles.settingsClose} onClick={onClose}>
+            ✕
+          </button>
         </div>
         <div className={styles.settingsBody}>
           <div className={styles.settingsGroupLabel}>표시</div>
@@ -134,6 +161,16 @@ export function SettingsModal({
             />
           </div>
 
+          <div className={styles.settingsGroupLabel}>내보내기</div>
+          <div className={styles.settingsGroup}>
+            <SettingsRow
+              label="컬럼 설정"
+              sub="f키 Append · Export 출력 컬럼과 순서"
+              count={exportFieldKeys.length}
+              onClick={() => setOpenPicker("export-fields")}
+            />
+          </div>
+
           <div className={styles.settingsGroupLabel}>데이터 적재</div>
           <div className={styles.settingsGroup}>
             <SettingsRow
@@ -147,8 +184,13 @@ export function SettingsModal({
           <div className={styles.settingsGroup}>
             <SettingsRow
               label="읽기 시트 (작업셋)"
-              sub="작업셋을 정의할 스프레드시트"
+              sub={sheetConfig?.spreadsheetId ? `ID: ${sheetConfig.spreadsheetId.slice(0, 20)}…` : "스프레드시트 ID · 읽기 탭 설정"}
               onClick={() => setOpenPicker("read")}
+            />
+            <SettingsRow
+              label="쓰기 탭"
+              sub={writeTab ? `현재: ${writeTab}` : "미설정 — f 키 Append 비활성"}
+              onClick={() => setOpenPicker("write-tab")}
             />
             <SettingsRow
               label="Google Sheet Export"
@@ -197,6 +239,18 @@ export function SettingsModal({
         <ReadSheetModal
           config={sheetConfig}
           defaults={defaults}
+          tabs={tabs}
+          onClose={() => setOpenPicker(null)}
+        />
+      )}
+      {openPicker === "write-tab" && (
+        <WriteTabModal
+          tabs={tabs}
+          writeTab={writeTab}
+          onConfirm={(t) => {
+            setWriteTab(t);
+            setOpenPicker(null);
+          }}
           onClose={() => setOpenPicker(null)}
         />
       )}
@@ -205,6 +259,18 @@ export function SettingsModal({
           filters={manualFilters}
           activeFilters={activeFilters}
           defaults={defaults}
+          tabs={tabs}
+          onClose={() => setOpenPicker(null)}
+        />
+      )}
+      {openPicker === "export-fields" && (
+        <ExportFieldsModal
+          allKeys={allExportableKeys}
+          selected={exportFieldKeys}
+          onConfirm={(keys) => {
+            setExportFieldKeys(keys);
+            setOpenPicker(null);
+          }}
           onClose={() => setOpenPicker(null)}
         />
       )}
@@ -213,5 +279,207 @@ export function SettingsModal({
       )}
       {openPicker === "csv" && <CsvImportModal onClose={() => setOpenPicker(null)} />}
     </div>
+  );
+}
+
+// ── 쓰기 탭 설정 모달 ──────────────────────────────────────────────────────
+
+function WriteTabModal({
+  tabs,
+  writeTab,
+  onConfirm,
+  onClose,
+}: {
+  tabs: string[];
+  writeTab: string | null;
+  onConfirm: (tab: string | null) => void;
+  onClose: () => void;
+}) {
+  const [input, setInput] = useState("");
+
+  return (
+    <ActionModal
+      title="쓰기 탭 설정"
+      subtitle="f 키 Append 및 Export 의 기본 대상 탭을 지정합니다."
+      onClose={onClose}
+    >
+      <div className={sheetStyles.body}>
+        {tabs.length > 0 && (
+          <div className={sheetStyles.field}>
+            <span className={sheetStyles.label}>탭 선택</span>
+            <div className={sheetStyles.tabList}>
+              {tabs.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`${sheetStyles.tabItem} ${tab === writeTab ? sheetStyles.tabItemActive : ""}`}
+                  onClick={() => onConfirm(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>직접 입력 (새 탭)</span>
+          <div className={sheetStyles.inlineRow}>
+            <input
+              className={sheetStyles.input}
+              type="text"
+              placeholder="새 탭 이름 입력"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && input.trim()) onConfirm(input.trim());
+              }}
+            />
+            <button
+              type="button"
+              className={sheetStyles.inlineBtn}
+              onClick={() => {
+                if (input.trim()) onConfirm(input.trim());
+              }}
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className={sheetStyles.footer}>
+        {writeTab && (
+          <button
+            type="button"
+            className={sheetStyles.ghostBtn}
+            onClick={() => onConfirm(null)}
+          >
+            미설정으로
+          </button>
+        )}
+      </div>
+    </ActionModal>
+  );
+}
+
+// ── 내보내기 컬럼 설정 모달 ────────────────────────────────────────────────
+
+function ExportFieldsModal({
+  allKeys,
+  selected,
+  onConfirm,
+  onClose,
+}: {
+  allKeys: string[];
+  selected: string[];
+  onConfirm: (keys: string[]) => void;
+  onClose: () => void;
+}) {
+  const [current, setCurrent] = useState<string[]>([...selected]);
+  const available = allKeys.filter((k) => !current.includes(k));
+
+  const moveUp = (i: number) => {
+    if (i === 0) return;
+    setCurrent((prev) => {
+      const next = [...prev];
+      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      return next;
+    });
+  };
+
+  const moveDown = (i: number) => {
+    if (i === current.length - 1) return;
+    setCurrent((prev) => {
+      const next = [...prev];
+      [next[i], next[i + 1]] = [next[i + 1], next[i]];
+      return next;
+    });
+  };
+
+  const remove = (i: number) => {
+    setCurrent((prev) => prev.filter((_, idx) => idx !== i));
+  };
+
+  const add = (key: string) => {
+    setCurrent((prev) => [...prev, key]);
+  };
+
+  return (
+    <ActionModal
+      title="내보내기 컬럼 설정"
+      subtitle="f 키 Append · Export 에서 출력할 컬럼과 순서를 설정합니다."
+      onClose={onClose}
+    >
+      <div className={sheetStyles.body}>
+        <div className={sheetStyles.field}>
+          <span className={sheetStyles.label}>내보낼 컬럼 (순서)</span>
+          {current.length === 0 && (
+            <span className={sheetStyles.hint}>아래에서 컬럼을 추가하세요.</span>
+          )}
+          {current.map((key, i) => (
+            <div key={key} className={sheetStyles.fieldRow}>
+              <span className={sheetStyles.fieldRowKey}>{key}</span>
+              <div className={sheetStyles.fieldRowActions}>
+                <button
+                  type="button"
+                  className={sheetStyles.reorderBtn}
+                  onClick={() => moveUp(i)}
+                  disabled={i === 0}
+                  title="위로"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className={sheetStyles.reorderBtn}
+                  onClick={() => moveDown(i)}
+                  disabled={i === current.length - 1}
+                  title="아래로"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  className={sheetStyles.removeBtn}
+                  onClick={() => remove(i)}
+                  title="제거"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {available.length > 0 && (
+          <div className={sheetStyles.field}>
+            <span className={sheetStyles.label}>추가 가능</span>
+            <div className={sheetStyles.availableList}>
+              {available.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={sheetStyles.addFieldBtn}
+                  onClick={() => add(key)}
+                >
+                  + {key}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className={sheetStyles.footer}>
+        <button
+          type="button"
+          className={sheetStyles.primaryBtn}
+          onClick={() => onConfirm(current)}
+        >
+          저장
+        </button>
+        <button type="button" className={sheetStyles.ghostBtn} onClick={onClose}>
+          취소
+        </button>
+      </div>
+    </ActionModal>
   );
 }

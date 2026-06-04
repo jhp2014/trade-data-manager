@@ -700,14 +700,8 @@ export function ReviewWorkspace({
       markerMinutes={markerMinutes}
       onMarkerMinutesChange={setMarkerMinutes}
       hasSpreadsheet={hasSpreadsheet}
-      tabs={tabs}
       readTab={readTab}
-      onSwitchReadTab={handleSwitchReadTab}
-      isLoadingWorkset={isLoadingWorkset}
-      onReloadTab={reloadTab}
-      onReloadAll={reloadAll}
       writeTab={writeTab}
-      onSetWriteTab={setWriteTab}
       writeAppendStatus={writeAppendStatus}
     />
   );
@@ -893,16 +887,9 @@ type ReviewHeaderProps = {
   onOpenSettings: () => void;
   markerMinutes: number;
   onMarkerMinutesChange: (m: number) => void;
-  // 탭 관련
   hasSpreadsheet: boolean;
-  tabs: string[];
   readTab: string;
-  onSwitchReadTab: (tab: string) => void;
-  isLoadingWorkset: boolean;
-  onReloadTab: (tab: string) => void;
-  onReloadAll: () => void;
   writeTab: string | null;
-  onSetWriteTab: (tab: string | null) => void;
   writeAppendStatus: string | null;
 };
 
@@ -922,14 +909,8 @@ function ReviewHeader({
   markerMinutes,
   onMarkerMinutesChange,
   hasSpreadsheet,
-  tabs,
   readTab,
-  onSwitchReadTab,
-  isLoadingWorkset,
-  onReloadTab,
-  onReloadAll,
   writeTab,
-  onSetWriteTab,
   writeAppendStatus,
 }: ReviewHeaderProps) {
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
@@ -956,6 +937,11 @@ function ReviewHeader({
           <span>{themeName ?? "테마 -"}</span>
           <span className={styles.sep}>|</span>
           <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
+          {hasSpreadsheet && (
+            <span className={styles.tabIndicator}>
+              {readTab} → {writeTab ?? "미설정"}
+            </span>
+          )}
         </div>
         <div className={styles.fieldLine}>
           {fieldValues.length === 0 ? (
@@ -972,6 +958,29 @@ function ReviewHeader({
       </div>
       <div className={styles.headerRight}>
         <div className={styles.controls}>
+          <span className={styles.navGroup} title="화살표로 종목 이동">
+            <button
+              className={styles.navArrow}
+              type="button"
+              onClick={commands.prevGroup}
+              disabled={groupIndex === 0}
+              title="이전 종목"
+            >
+              ←
+            </button>
+            <span className={`${styles.navPos} tabular`}>
+              {groupIndex < 0 ? "-" : groupIndex + 1}/{groupCount}
+            </span>
+            <button
+              className={styles.navArrow}
+              type="button"
+              onClick={commands.nextGroup}
+              disabled={groupIndex === groupCount - 1}
+              title="다음 종목"
+            >
+              →
+            </button>
+          </span>
           <div className={styles.segGroup}>
             <button
               className={`${styles.segChip} ${chartPriceMode === "krx" ? styles.segChipActive : ""}`}
@@ -1004,46 +1013,11 @@ function ReviewHeader({
           {writeAppendStatus && (
             <span className={styles.appendStatus}>{writeAppendStatus}</span>
           )}
-          <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="설정">
-            ⚙
-          </button>
-        </div>
-        <div className={styles.controls}>
-          <span className={styles.navGroup} title="화살표로 종목 이동">
-            <button
-              className={styles.navArrow}
-              type="button"
-              onClick={commands.prevGroup}
-              disabled={groupIndex === 0}
-              title="이전 종목"
-            >
-              ←
+          <div className={styles.segGroup}>
+            <button type="button" className={styles.segChip} onClick={onOpenSettings} title="설정">
+              ⚙
             </button>
-            <span className={`${styles.navPos} tabular`}>
-              {groupIndex < 0 ? "-" : groupIndex + 1}/{groupCount}
-            </span>
-            <button
-              className={styles.navArrow}
-              type="button"
-              onClick={commands.nextGroup}
-              disabled={groupIndex === groupCount - 1}
-              title="다음 종목"
-            >
-              →
-            </button>
-          </span>
-          {hasSpreadsheet && (
-            <TabChipGroup
-              tabs={tabs}
-              readTab={readTab}
-              onSwitchReadTab={onSwitchReadTab}
-              isLoadingWorkset={isLoadingWorkset}
-              onReloadTab={onReloadTab}
-              onReloadAll={onReloadAll}
-              writeTab={writeTab}
-              onSetWriteTab={onSetWriteTab}
-            />
-          )}
+          </div>
         </div>
       </div>
     </header>
@@ -1124,11 +1098,13 @@ function collectValueSuggestions(groups: ReviewStockGroup[]): Record<string, str
   return result;
 }
 
-/** 필드 키(m_xxx 또는 feature 명) → 현재 타점의 값. */
+/** 필드 키 → 현재 타점의 값. stockCode/tradeDate/tradeTime/stockName + m_xxx + feature 지원. */
 function resolveFieldValue(key: string, point: ReviewPoint): string {
-  if (key.startsWith("m_")) {
-    return point.sourceRow.manual[key.slice(2)]?.trim() ?? "";
-  }
+  if (key === "stockCode") return point.sourceRow.stockCode ?? "";
+  if (key === "tradeDate") return point.sourceRow.tradeDate ?? "";
+  if (key === "tradeTime") return point.tradeTime?.slice(0, 5) ?? "";
+  if (key === "stockName") return point.sourceRow.stockName ?? "";
+  if (key.startsWith("m_")) return point.sourceRow.manual[key.slice(2)]?.trim() ?? "";
   return point.sourceRow.features[key]?.trim() ?? "";
 }
 
@@ -1333,154 +1309,3 @@ function formatPointTime(tradeTime: string) {
   return tradeTime || "미입력";
 }
 
-// ── 탭 칩 그룹 ─────────────────────────────────────────────────────────────
-
-type TabChipGroupProps = {
-  tabs: string[];
-  readTab: string;
-  onSwitchReadTab: (tab: string) => void;
-  isLoadingWorkset: boolean;
-  onReloadTab: (tab: string) => void;
-  onReloadAll: () => void;
-  writeTab: string | null;
-  onSetWriteTab: (tab: string | null) => void;
-};
-
-function TabChipGroup({
-  tabs,
-  readTab,
-  onSwitchReadTab,
-  isLoadingWorkset,
-  onReloadTab,
-  onReloadAll,
-  writeTab,
-  onSetWriteTab,
-}: TabChipGroupProps) {
-  const [readOpen, setReadOpen] = useState(false);
-  const [writeOpen, setWriteOpen] = useState(false);
-  const [writeInput, setWriteInput] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // 컨테이너 밖 클릭 시 양쪽 드롭다운 닫기.
-  useEffect(() => {
-    if (!readOpen && !writeOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
-        setReadOpen(false);
-        setWriteOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [readOpen, writeOpen]);
-
-  return (
-    <div className={styles.tabChipGroup} ref={containerRef}>
-      {/* 읽기 탭 */}
-      <div className={styles.tabChipWrap}>
-        <button
-          type="button"
-          className={`${styles.tabChip} ${styles.tabChipSet}`}
-          onClick={() => { setReadOpen((o) => !o); setWriteOpen(false); }}
-          title={readTab}
-        >
-          {isLoadingWorkset ? "…" : truncate(readTab, 10)} ▾
-        </button>
-        {readOpen && (
-          <div className={styles.tabChipMenu}>
-            {tabs.map((tab) => (
-              <div key={tab} className={styles.tabChipMenuItem}>
-                <button
-                  type="button"
-                  className={`${styles.tabChipMenuBtn} ${tab === readTab ? styles.tabChipMenuBtnActive : ""}`}
-                  onClick={() => { onSwitchReadTab(tab); setReadOpen(false); }}
-                >
-                  {tab}
-                </button>
-                <button
-                  type="button"
-                  className={styles.tabChipMenuReload}
-                  onClick={() => onReloadTab(tab)}
-                  title={`${tab} 재로드`}
-                >
-                  ↺
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className={styles.tabChipMenuAll}
-              onClick={() => { onReloadAll(); setReadOpen(false); }}
-              title="전체 재로드(새 탭 인식)"
-            >
-              전체 재로드 ↺
-            </button>
-          </div>
-        )}
-      </div>
-
-      <span className={styles.tabChipArrow}>→</span>
-
-      {/* 쓰기 탭 */}
-      <div className={styles.tabChipWrap}>
-        <button
-          type="button"
-          className={`${styles.tabChip} ${writeTab ? styles.tabChipSet : styles.tabChipUnset}`}
-          onClick={() => { setWriteOpen((o) => !o); setReadOpen(false); }}
-          title={writeTab ?? "미설정"}
-        >
-          {writeTab ? truncate(writeTab, 10) : "미설정"} ▾
-        </button>
-        {writeOpen && (
-          <div className={styles.tabChipMenu}>
-            {tabs.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                className={`${styles.tabChipMenuBtn} ${tab === writeTab ? styles.tabChipMenuBtnActive : ""}`}
-                onClick={() => { onSetWriteTab(tab); setWriteOpen(false); }}
-              >
-                {tab}
-              </button>
-            ))}
-            <div className={styles.tabChipNewInput}>
-              <input
-                className={styles.tabChipInput}
-                placeholder="새 탭 이름 입력"
-                value={writeInput}
-                onChange={(e) => setWriteInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const v = writeInput.trim();
-                    if (v) { onSetWriteTab(v); setWriteInput(""); }
-                    setWriteOpen(false);
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className={styles.tabChipMenuBtn}
-                onClick={() => {
-                  const v = writeInput.trim();
-                  if (v) { onSetWriteTab(v); setWriteInput(""); }
-                  setWriteOpen(false);
-                }}
-              >
-                확인
-              </button>
-            </div>
-            {writeTab && (
-              <button
-                type="button"
-                className={styles.tabChipMenuBtn}
-                onClick={() => { onSetWriteTab(null); setWriteOpen(false); }}
-              >
-                미설정으로
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
