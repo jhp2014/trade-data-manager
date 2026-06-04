@@ -1,7 +1,7 @@
 import { ReviewWorkspace } from "@/components/review/ReviewWorkspace";
 import { groupSheetRows } from "@/lib/groupSheetRows";
 import { resolveInitialSelection } from "@/lib/selection";
-import { loadReviewRows, loadReviewRowsForTab } from "@/lib/loadReviewRows";
+import { loadReviewRows, loadReviewRowsForTab, loadReviewRowsFromDb } from "@/lib/loadReviewRows";
 import { loadManualKeys } from "@/lib/loadManualKeys";
 import { getReadSheetConfig, hasSheetsCredentials } from "@/lib/readSheetConfig";
 import { getSpreadsheetTabs } from "@/lib/sheetsWriter";
@@ -23,9 +23,9 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
   const [rows, manualKeys] = await Promise.all([loadReviewRows(), loadManualKeys()]);
   let groups: ReviewStockGroup[] = groupSheetRows(rows);
   let effectiveTab = sheetConfig.tab;
+  let initialReadSource: "sheet" | "db" = sheetConfig.spreadsheetId ? "sheet" : "db";
 
-  // 현재 탭이 비어있으면 다른 탭으로 자동 fallback.
-  // 스프레드시트가 설정된 경우에만 시도한다(미설정이면 DB 전체 로드이므로 바로 notFound).
+  // 현재 탭이 비어있으면 다른 시트 탭으로 자동 fallback.
   if (groups.length === 0 && sheetConfig.spreadsheetId && hasSheetsCredentials()) {
     try {
       const allTabs = await getSpreadsheetTabs(sheetConfig.spreadsheetId);
@@ -40,7 +40,21 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
         }
       }
     } catch {
-      // fallback 실패 시 아래 notFound() 로 낙하.
+      // 시트 fallback 실패 시 DB fallback 으로 낙하.
+    }
+  }
+
+  // 시트에서 찾지 못하면 DB 전체로 fallback (404 방지).
+  if (groups.length === 0) {
+    try {
+      const dbRows = await loadReviewRowsFromDb();
+      const dbGroups = groupSheetRows(dbRows);
+      if (dbGroups.length > 0) {
+        groups = dbGroups;
+        initialReadSource = "db";
+      }
+    } catch {
+      // DB fallback 실패 시 notFound.
     }
   }
 
@@ -59,6 +73,7 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
       manualKeys={manualKeys}
       initialTab={effectiveTab}
       hasSpreadsheet={Boolean(sheetConfig.spreadsheetId)}
+      initialReadSource={initialReadSource}
     />
   );
 }

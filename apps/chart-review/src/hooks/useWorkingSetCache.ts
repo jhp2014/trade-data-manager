@@ -10,12 +10,16 @@ export type UseWorkingSetCacheResult = {
   tabs: string[];
   /** 현재 읽기 탭 이름. */
   readTab: string;
-  /** 현재 탭의 작업셋 그룹. */
+  /** 현재 작업셋 그룹. */
   groups: ReviewStockGroup[];
-  /** true 면 다른 탭으로 전환 중 (초기 탭은 즉시 표시). */
+  /** true 면 전환 중 (초기 탭은 즉시 표시). */
   isLoadingWorkset: boolean;
+  /** 현재 읽기 소스: "sheet" = 시트 탭, "db" = DB 전체. */
+  readSource: "sheet" | "db";
   /** 탭 전환. 캐시에 있으면 즉시, 없으면 fetch 후 전환. 새 groups 를 반환한다. */
   switchTab: (tab: string) => Promise<ReviewStockGroup[]>;
+  /** DB 전체 모드로 전환. */
+  switchToDb: () => Promise<ReviewStockGroup[]>;
   /** 해당 탭 캐시를 무효화하고 재조회. */
   reloadTab: (tab: string) => Promise<void>;
   /** 탭 목록을 재조회하고 전체 캐시를 무효화. */
@@ -31,12 +35,14 @@ export type UseWorkingSetCacheResult = {
 export function useWorkingSetCache(
   initialGroups: ReviewStockGroup[],
   initialTab: string,
+  initialReadSource: "sheet" | "db" = "sheet",
 ): UseWorkingSetCacheResult {
   const cacheRef = useRef<WorksetCache>(new Map([[initialTab, initialGroups]]));
   const [tabs, setTabs] = useState<string[]>([initialTab]);
   const [readTab, setReadTab] = useState(initialTab);
   const [groups, setGroups] = useState(initialGroups);
   const [isLoadingWorkset, setIsLoadingWorkset] = useState(false);
+  const [readSource, setReadSource] = useState<"sheet" | "db">(initialReadSource);
 
   // 마운트 시 탭 목록 조회 + 다른 탭 eager preload.
   useEffect(() => {
@@ -82,6 +88,7 @@ export function useWorkingSetCache(
       if (cached && cached.length > 0) {
         setReadTab(tab);
         setGroups(cached);
+        setReadSource("sheet");
         return cached;
       }
       setIsLoadingWorkset(true);
@@ -98,6 +105,7 @@ export function useWorkingSetCache(
               if (fallbackGroups.length > 0) {
                 setReadTab(other);
                 setGroups(fallbackGroups);
+                setReadSource("sheet");
                 return fallbackGroups;
               }
             } catch {
@@ -108,6 +116,7 @@ export function useWorkingSetCache(
 
         setReadTab(tab);
         setGroups(newGroups);
+        setReadSource("sheet");
         return newGroups;
       } finally {
         setIsLoadingWorkset(false);
@@ -115,6 +124,20 @@ export function useWorkingSetCache(
     },
     [fetchWorkset, tabs],
   );
+
+  const switchToDb = useCallback(async (): Promise<ReviewStockGroup[]> => {
+    setIsLoadingWorkset(true);
+    try {
+      const r = await fetch("/api/review/workset");
+      const json = (await r.json()) as { groups?: ReviewStockGroup[]; error?: string };
+      if (!r.ok || !json.groups) throw new Error(json.error ?? "DB workset fetch failed");
+      setReadSource("db");
+      setGroups(json.groups);
+      return json.groups;
+    } finally {
+      setIsLoadingWorkset(false);
+    }
+  }, []);
 
   const reloadTab = useCallback(
     async (tab: string) => {
@@ -138,18 +161,28 @@ export function useWorkingSetCache(
       const r = await fetch("/api/review/sheets/tabs");
       const { tabs: allTabs } = (await r.json()) as { tabs: string[] };
       if (allTabs?.length) setTabs(allTabs);
-      // 현재 탭 먼저 갱신.
-      const current = await fetchWorkset(readTab);
-      setGroups(current);
-      // 나머지 background.
-      for (const tab of (allTabs ?? tabs)) {
-        if (tab === readTab || cacheRef.current.has(tab)) continue;
-        fetchWorkset(tab).catch(() => {});
+
+      if (readSource === "db") {
+        // DB 모드 유지하며 재조회.
+        const dbR = await fetch("/api/review/workset");
+        if (dbR.ok) {
+          const dbJson = (await dbR.json()) as { groups?: ReviewStockGroup[] };
+          if (dbJson.groups) setGroups(dbJson.groups);
+        }
+      } else {
+        // 현재 탭 먼저 갱신.
+        const current = await fetchWorkset(readTab);
+        setGroups(current);
+        // 나머지 background.
+        for (const tab of (allTabs ?? tabs)) {
+          if (tab === readTab || cacheRef.current.has(tab)) continue;
+          fetchWorkset(tab).catch(() => {});
+        }
       }
     } catch {
       /* ignore */
     }
-  }, [fetchWorkset, readTab, tabs]);
+  }, [fetchWorkset, readTab, readSource, tabs]);
 
-  return { tabs, readTab, groups, isLoadingWorkset, switchTab, reloadTab, reloadAll };
+  return { tabs, readTab, groups, isLoadingWorkset, readSource, switchTab, switchToDb, reloadTab, reloadAll };
 }

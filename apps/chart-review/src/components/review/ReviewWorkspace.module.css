@@ -223,6 +223,17 @@
   color: var(--accent-primary);
 }
 
+.segChipDb {
+  background: var(--bg-primary);
+  color: #b45309;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(17, 24, 33, 0.12);
+}
+
+.segChipDb:hover {
+  color: #92400e;
+}
+
 /* ── Append 토스트 (중앙 하단 고정) ─────────────────── */
 .appendToast {
   position: fixed;

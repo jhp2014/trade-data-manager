@@ -49,6 +49,20 @@ export async function loadReviewRows(): Promise<SheetPointRow[]> {
 }
 
 /**
+ * DB 전체 Target 을 로드한다. 시트 설정 무관.
+ * 시트가 비어있거나 미설정 시 fallback, 또는 DB 모드 직접 전환에 사용.
+ */
+export async function loadReviewRowsFromDb(): Promise<SheetPointRow[]> {
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.warn("[review] DATABASE_URL missing; using mock rows (DB mode)");
+    return mockSheetRows;
+  }
+  const db = getDb();
+  const targets = await findReviewLoadTargets(db, { keys: undefined });
+  return targets.flatMap(toSheetPointRows);
+}
+
+/**
  * 특정 탭의 작업셋을 로드한다. API 라우트(탭별 전환)에서 사용.
  * spreadsheetId + tab 을 직접 받아 resolveWorkingSetKeys 를 우회한다.
  */

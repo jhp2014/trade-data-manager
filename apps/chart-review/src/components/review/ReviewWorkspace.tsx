@@ -51,8 +51,10 @@ type ReviewWorkspaceProps = {
   manualKeys: ManualKeyDef[];
   /** 현재 읽기 시트 탭 이름(RSC 에서 전달). 탭 칩 초기화용. */
   initialTab: string;
-  /** 스프레드시트가 설정돼 있는지. false 면 탭 칩을 표시하지 않는다. */
+  /** 스프레드시트가 설정돼 있는지. false 면 시트 탭 칩을 표시하지 않는다. */
   hasSpreadsheet: boolean;
+  /** 초기 읽기 소스: "sheet" = 시트 탭, "db" = DB 전체. */
+  initialReadSource?: "sheet" | "db";
 };
 
 const VALUE_TRUNCATE = 15;
@@ -63,6 +65,7 @@ export function ReviewWorkspace({
   manualKeys,
   initialTab,
   hasSpreadsheet,
+  initialReadSource = "sheet",
 }: ReviewWorkspaceProps) {
   const router = useRouter();
   const manualFilters = useUiStore((state) => state.manualFilters);
@@ -79,10 +82,12 @@ export function ReviewWorkspace({
     readTab,
     groups,
     isLoadingWorkset,
+    readSource,
     switchTab,
+    switchToDb,
     reloadTab,
     reloadAll,
-  } = useWorkingSetCache(initialGroups, initialTab);
+  } = useWorkingSetCache(initialGroups, initialTab, initialReadSource);
 
   // 필터 활성 시 종목 이동은 "매칭 타점이 1개 이상 있는 종목"만 순회한다.
   // (종목 안에서는 전 타점을 그대로 보여주되 PointList 에서 매칭 배지를 표시)
@@ -115,8 +120,9 @@ export function ReviewWorkspace({
   // Read Tab 전환: 현재 위치를 저장하고 대상 탭의 저장된 위치를 복원한다.
   const handleSwitchReadTab = useCallback(
     async (newTab: string) => {
-      if (newTab === readTab) return;
-      setTabPosition(readTab, { groupIndex: storeGroupIndex, pointKey: storePointKey });
+      if (newTab === readTab && readSource === "sheet") return;
+      const currentKey = readSource === "db" ? "__db__" : readTab;
+      setTabPosition(currentKey, { groupIndex: storeGroupIndex, pointKey: storePointKey });
       const newGroups = await switchTab(newTab);
       const savedPos = tabPositions[newTab];
       const newGroupIndex = Math.min(savedPos?.groupIndex ?? 0, Math.max(0, newGroups.length - 1));
@@ -127,8 +133,23 @@ export function ReviewWorkspace({
         selectedPointKey: newPointKey,
       });
     },
-    [readTab, storeGroupIndex, storePointKey, switchTab, tabPositions, setTabPosition],
+    [readSource, readTab, storeGroupIndex, storePointKey, switchTab, tabPositions, setTabPosition],
   );
+
+  // DB 모드 전환: 현재 위치를 저장하고 DB 저장 위치를 복원한다.
+  const handleSwitchToDb = useCallback(async () => {
+    const currentKey = readSource === "db" ? "__db__" : readTab;
+    setTabPosition(currentKey, { groupIndex: storeGroupIndex, pointKey: storePointKey });
+    const newGroups = await switchToDb();
+    const savedPos = tabPositions["__db__"];
+    const newGroupIndex = Math.min(savedPos?.groupIndex ?? 0, Math.max(0, newGroups.length - 1));
+    const newGroup = newGroups[newGroupIndex] ?? newGroups[0];
+    const newPointKey = savedPos?.pointKey ?? newGroup?.points[0]?.pointKey ?? "";
+    useReviewStore.getState().hydrateSelection({
+      selectedGroupIndex: newGroupIndex,
+      selectedPointKey: newPointKey,
+    });
+  }, [readSource, readTab, storeGroupIndex, storePointKey, switchToDb, tabPositions, setTabPosition]);
 
   // URL(초기 선택)에서 파생된 선택값이 실제로 바뀔 때만 store 를 재설정한다.
   // initialSelection 은 force-dynamic 페이지가 서버 액션마다 재렌더되며 매번
@@ -474,13 +495,20 @@ export function ReviewWorkspace({
     setTimeout(() => setWriteAppendStatus(null), 2000);
   }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory]);
 
-  // Read Tab 순환: 탭 목록에서 다음 탭으로 전환하고 작업셋을 리로드한다.
-  const handleCycleReadTab = useCallback(async () => {
-    if (tabs.length <= 1) return;
-    const idx = tabs.indexOf(readTab);
-    const nextIdx = (idx + 1) % tabs.length;
-    await handleSwitchReadTab(tabs[nextIdx]);
-  }, [tabs, readTab, handleSwitchReadTab]);
+  // 읽기 소스 순환: DB → tab[0] → tab[1] → ... → tab[n-1] → DB.
+  const handleCycleSource = useCallback(async () => {
+    if (readSource === "db") {
+      if (tabs.length === 0) return;
+      await handleSwitchReadTab(tabs[0]);
+    } else {
+      const idx = tabs.indexOf(readTab);
+      if (tabs.length === 0 || idx === tabs.length - 1) {
+        await handleSwitchToDb();
+      } else {
+        await handleSwitchReadTab(tabs[idx + 1]);
+      }
+    }
+  }, [readSource, readTab, tabs, handleSwitchReadTab, handleSwitchToDb]);
 
   // Write Tab 순환: 탭 목록에서 다음 탭으로 전환한다(새 탭 생성은 설정에서).
   const handleCycleWriteTab = useCallback(() => {
@@ -490,10 +518,14 @@ export function ReviewWorkspace({
     setWriteTab(tabs[nextIdx]);
   }, [tabs, writeTab, setWriteTab]);
 
-  // 현재 읽기 탭 캐시 무효화 후 재조회.
+  // 현재 읽기 소스 재조회 (DB 모드면 DB 재조회, 시트 모드면 현재 탭 재조회).
   const handleReloadTab = useCallback(async () => {
-    await reloadTab(readTab);
-  }, [reloadTab, readTab]);
+    if (readSource === "db") {
+      await handleSwitchToDb();
+    } else {
+      await reloadTab(readTab);
+    }
+  }, [readSource, readTab, reloadTab, handleSwitchToDb]);
 
   // 전체 탭 캐시 무효화 + RSC 새로고침.
   const handleReloadAll = useCallback(async () => {
@@ -714,7 +746,7 @@ export function ReviewWorkspace({
     onResetOverride: resetOverride,
     onOpenInput: openInput,
     onWriteAppend: handleWriteAppend,
-    onCycleReadTab: handleCycleReadTab,
+    onCycleReadTab: handleCycleSource,
     onTogglePriceMode: handleTogglePriceMode,
   });
 
@@ -736,10 +768,11 @@ export function ReviewWorkspace({
       onMarkerMinutesChange={setMarkerMinutes}
       hasSpreadsheet={hasSpreadsheet}
       readTab={readTab}
+      readSource={readSource}
       writeTab={writeTab}
       tabs={tabs}
       isLoadingWorkset={isLoadingWorkset}
-      onCycleReadTab={handleCycleReadTab}
+      onCycleSource={handleCycleSource}
       onCycleWriteTab={handleCycleWriteTab}
       onReloadTab={handleReloadTab}
     />
@@ -941,10 +974,11 @@ type ReviewHeaderProps = {
   onMarkerMinutesChange: (m: number) => void;
   hasSpreadsheet: boolean;
   readTab: string;
+  readSource: "sheet" | "db";
   writeTab: string | null;
   tabs: string[];
   isLoadingWorkset: boolean;
-  onCycleReadTab: () => void;
+  onCycleSource: () => void;
   onCycleWriteTab: () => void;
   onReloadTab: () => void;
 };
@@ -966,10 +1000,11 @@ function ReviewHeader({
   onMarkerMinutesChange,
   hasSpreadsheet,
   readTab,
+  readSource,
   writeTab,
   tabs,
   isLoadingWorkset,
-  onCycleReadTab,
+  onCycleSource,
   onCycleWriteTab,
   onReloadTab,
 }: ReviewHeaderProps) {
@@ -1015,32 +1050,45 @@ function ReviewHeader({
       </div>
       <div className={styles.headerRight}>
         <div className={styles.controls}>
-          {/* 탭 순환 버튼 (시트가 설정된 경우에만) */}
-          {hasSpreadsheet && (
+          {/* 읽기 소스 칩 (시트 설정 여부와 무관하게 DB 모드일 때도 표시) */}
+          {(hasSpreadsheet || readSource === "db") && (
             <div className={styles.segGroup}>
-              <button
-                type="button"
-                className={`${styles.segChip} ${styles.segChipActive}`}
-                onClick={onCycleReadTab}
-                title={tabs.length > 1 ? "클릭·r키: 다음 읽기 탭으로 전환" : "읽기 탭 (r키)"}
-              >
-                {readTab}
-              </button>
-              <span className={styles.segArrow}>→</span>
-              <button
-                type="button"
-                className={`${styles.segChip} ${writeTab ? styles.segChipActive : ""}`}
-                onClick={onCycleWriteTab}
-                title={tabs.length > 0 ? "클릭: 다음 쓰기 탭으로 전환" : "쓰기 탭 미설정"}
-              >
-                {writeTab ?? "미설정"}
-              </button>
+              {readSource === "db" ? (
+                <button
+                  type="button"
+                  className={`${styles.segChip} ${styles.segChipDb}`}
+                  onClick={onCycleSource}
+                  title={tabs.length > 0 ? "DB 모드 · 클릭·r키: 시트 탭으로 전환" : "DB 모드"}
+                >
+                  DB
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={`${styles.segChip} ${styles.segChipActive}`}
+                    onClick={onCycleSource}
+                    title={tabs.length > 1 ? "클릭·r키: 다음 읽기 탭으로 전환" : "읽기 탭 (r키)"}
+                  >
+                    {readTab}
+                  </button>
+                  <span className={styles.segArrow}>→</span>
+                  <button
+                    type="button"
+                    className={`${styles.segChip} ${writeTab ? styles.segChipActive : ""}`}
+                    onClick={onCycleWriteTab}
+                    title={tabs.length > 0 ? "클릭: 다음 쓰기 탭으로 전환" : "쓰기 탭 미설정"}
+                  >
+                    {writeTab ?? "미설정"}
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 className={styles.segChip}
                 onClick={onReloadTab}
                 disabled={isLoadingWorkset}
-                title="현재 읽기 탭 다시 불러오기"
+                title={readSource === "db" ? "DB 작업셋 다시 불러오기" : "현재 읽기 탭 다시 불러오기"}
               >
                 {isLoadingWorkset ? "…" : "↻"}
               </button>
