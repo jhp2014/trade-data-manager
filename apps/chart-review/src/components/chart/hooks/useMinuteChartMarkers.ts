@@ -16,7 +16,7 @@ type MarkerEntry = {
     time: Time;
     position: "aboveBar" | "belowBar";
     color: string;
-    shape: "arrowDown" | "circle" | "square";
+    shape: "arrowDown" | "arrowUp" | "circle" | "square";
     text: string;
     size?: number;
 };
@@ -54,7 +54,9 @@ export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, po
             });
         }
 
-        // 2) Point List 타점 마커 (원, ●/거래대금). 현재 진입 마커와 같은 봉이면 아래 3)에서 덮어씀.
+        // 2) Point List 타점 마커. 캔들 "아래"에 작은 원으로 표시해 진입 화살표/거래대금
+        //    임계 사각형(둘 다 위쪽)과 시각적으로 분리한다. 텍스트는 거래대금(억)만.
+        //    현재 진입 마커와 같은 봉이면 아래 3)에서 덮어씀.
         if (pointTimes) {
             for (const pt of pointTimes) {
                 if (pt === markerTime) continue;
@@ -62,10 +64,10 @@ export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, po
                 const eok = pc?.amount != null && pc.amount > 0 ? Math.round(pc.amount / AMOUNT_KRW_TO_EOK) : null;
                 byTime.set(pt, {
                     time: pt as Time,
-                    position: "aboveBar",
-                    color: "#2563eb",
-                    shape: "circle",
-                    text: eok != null ? `/${eok}` : "",
+                    position: "belowBar",
+                    color: "#64748b",
+                    shape: "arrowUp",
+                    text: eok != null ? String(eok) : "",
                 });
             }
         }
