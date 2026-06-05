@@ -2,7 +2,7 @@
 
 import styles from "./ReviewWorkspace.module.css";
 import { activeFilterCount } from "@/lib/manualFilter";
-import { TimeSlider } from "./TimeSlider";
+import { formatHHMM } from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
 import { truncate } from "@/lib/format";
 import { VALUE_TRUNCATE, resolveFieldValue } from "@/lib/reviewFields";
@@ -24,7 +24,6 @@ type ReviewHeaderProps = {
   headerAvailable: string[];
   onOpenSettings: () => void;
   markerMinutes: number;
-  onMarkerMinutesChange: (m: number) => void;
   hasSpreadsheet: boolean;
   readTab: string;
   readSource: "sheet" | "db";
@@ -51,7 +50,6 @@ export function ReviewHeader({
   headerAvailable,
   onOpenSettings,
   markerMinutes,
-  onMarkerMinutesChange,
   hasSpreadsheet,
   readTab,
   readSource,
@@ -87,11 +85,11 @@ export function ReviewHeader({
             </button>
           )}
           <span className={styles.sep}>|</span>
-          <span className="tabular">{tradeDate}</span>
-          <span className={styles.sep}>|</span>
           <span>{themeName ?? "테마 -"}</span>
           <span className={styles.sep}>|</span>
-          <TimeSlider minutes={markerMinutes} onMinutesChange={onMarkerMinutesChange} />
+          <span className="tabular">{tradeDate}</span>
+          <span className={styles.sep}>|</span>
+          <span className="tabular">{formatHHMM(markerMinutes)}</span>
         </div>
         <div className={styles.fieldLine}>
           {fieldValues.length === 0 ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CrosshairMode, LineStyle } from "lightweight-charts";
 import type { MinuteCandle, ChartOverlaySeries } from "@/types/chart";
 import { kstHHmm } from "@trade-data-manager/chart-utils";
@@ -9,6 +9,7 @@ import { useChartShell } from "./shell/useChartShell";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { MinuteTooltip } from "./tooltip/MinuteTooltip";
+import { MinuteOhlcTooltip } from "./tooltip/MinuteOhlcTooltip";
 import type { OverlayTooltipRow } from "./tooltip/ThemeRowList";
 import { assignSeriesColors } from "@/lib/chart/overlay";
 import { OVERLAY_SELF_COLOR, OVERLAY_PEER_PALETTE } from "@/lib/colors";
@@ -29,10 +30,16 @@ interface Props {
     zoomed?: boolean;
     /** Point List에 저장된 타점들의 봉 시각(unix 초). 차트에 ●/거래대금 마커 표시. */
     pointTimes?: number[];
+    /** Shift+클릭한 봉 시각(unix 초)으로 Point 마커를 이동. */
+    onMoveMarkerToTime?: (timeUnix: number) => void;
 }
 
-export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines, prevCloseKrx, prevCloseNxt, zoomed = false, pointTimes }: Props) {
+export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines, prevCloseKrx, prevCloseNxt, zoomed = false, pointTimes, onMoveMarkerToTime }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // 분봉 툴팁 모드: "ohlc"=현재 봉 등락률/거래대금, "theme"=테마 종목 순위.
+    // 기본은 ohlc. Ctrl(또는 Meta)+클릭으로 토글하며, 화면 내에서만 유지(미영속).
+    const [tooltipMode, setTooltipMode] = useState<"ohlc" | "theme">("ohlc");
 
     const mode = useUiStore((s) => s.chartPriceMode);
     const zoomCandles = useUiStore((s) => s.minuteZoomCandles);
@@ -106,6 +113,19 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
                 | undefined;
             if (!data || data.close === undefined) return null;
 
+            if (tooltipMode === "ohlc") {
+                return (
+                    <MinuteOhlcTooltip
+                        time={t}
+                        close={data.close}
+                        high={data.high ?? data.close}
+                        low={data.low ?? data.close}
+                        open={data.open ?? data.close}
+                        amount={amountMapRef.current.get(t) ?? 0}
+                    />
+                );
+            }
+
             const selfRow: OverlayTooltipRow = {
                 stockCode: selfSeries?.stockCode ?? "",
                 stockName: selfSeries?.stockName ?? "",
@@ -138,6 +158,30 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
         },
         leftOffset: () => chartRef.current?.priceScale("left").width() ?? 0,
     });
+
+    // 차트 클릭: Ctrl/Meta+클릭 → 툴팁 모드 토글, Shift+클릭 → 클릭한 봉 시각으로 마커 이동.
+    // onMoveMarkerToTime 은 매 렌더 갱신될 수 있어 ref 로 최신값을 유지(재구독 방지).
+    const moveMarkerRef = useRef(onMoveMarkerToTime);
+    useEffect(() => { moveMarkerRef.current = onMoveMarkerToTime; });
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        const onClick = (param: import("lightweight-charts").MouseEventParams) => {
+            const src = param.sourceEvent;
+            const t = param.time as number | undefined;
+            if (!src) return;
+            if (src.ctrlKey || src.metaKey) {
+                setTooltipMode((m) => (m === "ohlc" ? "theme" : "ohlc"));
+                return;
+            }
+            if (src.shiftKey && t !== undefined) {
+                moveMarkerRef.current?.(t);
+            }
+        };
+        chart.subscribeClick(onClick);
+        return () => chart.unsubscribeClick(onClick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
         <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>

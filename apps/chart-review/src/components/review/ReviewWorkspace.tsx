@@ -11,12 +11,12 @@ import { ThemeSidebar } from "./ThemeSidebar";
 import { SettingsModal } from "./modals/SettingsModal";
 import { activeFilterCount, pointMatchesManualFilters } from "@/lib/manualFilter";
 import {
-  TimeSlider,
   timeStringToMinutes,
   minutesToTimeString,
   clampMinutes,
 } from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
+import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { composeUnix, dateToUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
 import { useChartPreview } from "@/hooks/useChartPreview";
@@ -465,6 +465,13 @@ export function ReviewWorkspace({
   // a/d = 마커 시각 ±1분(키 자동반복으로 연속 이동). Shift+a/d = ±1시간.
   const moveMarker = useCallback((dir: 1 | -1, step: number = MARKER_WHEEL_STEP_MIN) => {
     setMarkerMinutes((m) => clampMinutes(m + dir * step));
+  }, []);
+
+  // 분봉 Shift+클릭 → 클릭한 봉 시각(unix 초)으로 마커 이동.
+  // markerTime 구성(composeUnix(date, HH:MM))의 역으로 KST HH:MM 를 분으로 환산한다.
+  const handleMoveMarkerToTime = useCallback((timeUnix: number) => {
+    const mins = timeStringToMinutes(kstHHmm(timeUnix));
+    if (mins != null) setMarkerMinutes(clampMinutes(mins));
   }, []);
 
   // Ctrl+a/Ctrl+d = 타점 탐색. override 중이면 작업셋 store 를 건드리지 않고
@@ -1005,7 +1012,6 @@ export function ReviewWorkspace({
       headerAvailable={headerAvailable}
       onOpenSettings={() => setSettingsOpen(true)}
       markerMinutes={markerMinutes}
-      onMarkerMinutesChange={setMarkerMinutes}
       hasSpreadsheet={hasSpreadsheet}
       readTab={readTab}
       readSource={readSource}
@@ -1156,6 +1162,7 @@ export function ReviewWorkspace({
             themeOverlay={activeThemeOverlay}
             priceLines={dailyPriceLines}
             zoomed={minuteZoomed}
+            onMoveMarkerToTime={handleMoveMarkerToTime}
           />
         </section>
       </main>
@@ -1238,6 +1245,7 @@ export function ReviewWorkspace({
               themeOverlay={activeThemeOverlay}
               priceLines={dailyPriceLines}
               zoomed={minuteZoomed}
+              onMoveMarkerToTime={handleMoveMarkerToTime}
             />
           </div>
         </section>

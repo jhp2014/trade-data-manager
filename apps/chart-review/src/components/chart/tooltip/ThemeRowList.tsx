@@ -15,7 +15,7 @@ export interface OverlayTooltipRow {
     cumAmount: number;
 }
 
-function fmtAmount(v: number) {
+export function fmtAmount(v: number) {
     if (v >= AMOUNT_KRW_TO_EOK) return `${(v / AMOUNT_KRW_TO_EOK).toFixed(1)}억`;
     if (v >= AMOUNT_KRW_TO_MAN) return `${(v / AMOUNT_KRW_TO_MAN).toFixed(0)}만`;
     return v.toFixed(0);
