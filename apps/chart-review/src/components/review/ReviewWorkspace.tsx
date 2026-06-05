@@ -238,8 +238,8 @@ export function ReviewWorkspace({
     () => ({ stockCode: anchorStock.stockCode, tradeDate: anchorStock.tradeDate }),
     [anchorStock.stockCode, anchorStock.tradeDate],
   );
-  // a/d 로 빠르게 종목을 훑을 때 중간 종목의 차트를 매번 긁어오지 않도록
-  // 차트 fetch 파라미터를 200ms 디바운스한다(선택/헤더는 즉시 반영).
+  // q/e 로 빠르게 종목을 훑을 때 중간 종목의 차트를 매번 긁어오지 않도록
+  // 차트 fetch 파라미터를 짧게 디바운스한다(선택/헤더는 즉시 반영).
   const debouncedChartParams = useDebouncedValue(chartParams, CHART_PARAMS_DEBOUNCE_MS);
   const chartPreview = useChartPreview(debouncedChartParams);
   const themes = useMemo(() => chartPreview.data?.themes ?? [], [chartPreview.data]);
