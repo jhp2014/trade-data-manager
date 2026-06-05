@@ -400,16 +400,20 @@ export function ReviewWorkspace({
   }, [chartPreview.data, isOverride, activeReview, effectiveStock.tradeDate]);
 
   // Shift+휠 → 마커 시간(tradeTime) ±1분 이동 (차트 Point 마커도 함께 이동)
+  // 캡처 단계에서 가로채고 stopPropagation 으로 차트(lightweight-charts)의 휠 줌
+  // 리스너까지 이벤트가 닿지 않게 막는다. (버블 단계/preventDefault 만으로는 차트가
+  // JS 로 처리하는 줌을 못 막아 shift+휠 시 줌이 같이 일어난다.)
   useEffect(() => {
     const handler = (e: WheelEvent) => {
       if (!e.shiftKey) return;
       e.preventDefault();
+      e.stopPropagation();
       setMarkerMinutes((m) =>
         clampMinutes(e.deltaY > 0 ? m + MARKER_WHEEL_STEP_MIN : m - MARKER_WHEEL_STEP_MIN),
       );
     };
-    window.addEventListener("wheel", handler, { passive: false });
-    return () => window.removeEventListener("wheel", handler);
+    window.addEventListener("wheel", handler, { passive: false, capture: true });
+    return () => window.removeEventListener("wheel", handler, { capture: true });
   }, []);
 
   const handleSelectStock = useCallback(
