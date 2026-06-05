@@ -104,6 +104,8 @@ export function ReviewWorkspace({
     switchToDb,
     reloadTab,
     reloadAll,
+    upsertPointLocal,
+    removePointLocal,
   } = useWorkingSetCache(initialGroups, initialTab, initialReadSource);
 
   // 필터 활성 시 종목 이동은 "매칭 타점이 1개 이상 있는 종목"만 순회한다.
@@ -774,14 +776,24 @@ export function ReviewWorkspace({
   const handleDeletePoint = async () => {
     if (!activePoint.reviewId) return;
     if (!window.confirm(`이 타점(${formatPointTime(activePoint.tradeTime)})을 삭제할까요?`)) return;
+    const deletedId = activePoint.reviewId;
     try {
       const res = await fetch("/api/review/point", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewId: activePoint.reviewId }),
+        body: JSON.stringify({ reviewId: deletedId }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "삭제 실패");
-      router.refresh();
+      // 낙관적: 서버 재조회 없이 화면에서 즉시 제거.
+      removePointLocal(deletedId);
+      // 삭제된 타점이 선택돼 있었으므로 같은 그룹의 다른 타점으로 이동(남은 게 있으면).
+      const remaining = activeGroup.points.filter((p) => p.reviewId !== deletedId);
+      if (remaining.length > 0) {
+        useReviewStore.getState().hydrateSelection({
+          selectedGroupIndex,
+          selectedPointKey: remaining[0].pointKey,
+        });
+      }
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));
     }
@@ -839,15 +851,17 @@ export function ReviewWorkspace({
           body: JSON.stringify({ stockCode, tradeDate, tradeTime, payload }),
         });
         if (!res.ok) throw new Error((await res.json()).error ?? "적용 실패");
+        const { id } = (await res.json()) as { id: string };
+        // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신.
+        upsertPointLocal({ stockCode, tradeDate, tradeTime, reviewId: id, payload });
         setWriteAppendStatus(`✓ ${label} · ${summary || "변경 없음"}`);
-        router.refresh();
       } catch (err) {
         pendingManualRef.current = null; // 실패 시 누적 무효화
         setWriteAppendStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
       }
       setTimeout(() => setWriteAppendStatus(null), 2000);
     },
-    [canInput, activeGroup, markerTimeStr, router],
+    [canInput, activeGroup, markerTimeStr, upsertPointLocal],
   );
 
   const [presetGroupOpen, setPresetGroupOpen] = useState<string | null>(null);
@@ -1060,9 +1074,16 @@ export function ReviewWorkspace({
       manualKeys={manualKeys}
       valueSuggestions={valueSuggestions}
       onClose={() => setInputOpen(false)}
-      onSaved={() => {
+      onSaved={({ reviewId, payload }) => {
         setInputOpen(false);
-        router.refresh();
+        // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신.
+        upsertPointLocal({
+          stockCode: activeGroup.stockCode,
+          tradeDate: activeGroup.tradeDate,
+          tradeTime: markerTimeStr,
+          reviewId,
+          payload,
+        });
       }}
     />
   );

@@ -15,7 +15,8 @@ type PointInputDrawerProps = {
   manualKeys: ManualKeyDef[];
   valueSuggestions: Record<string, string[]>;
   onClose: () => void;
-  onSaved: () => void;
+  /** 저장 성공 시 호출. 낙관적 갱신을 위해 저장된 reviewId·payload 를 전달한다. */
+  onSaved: (saved: { reviewId: string; payload: Record<string, string | string[]> }) => void;
 };
 
 type Row = {
@@ -201,7 +202,8 @@ export function PointInputDrawer({
         body: JSON.stringify({ stockCode, tradeDate, tradeTime, payload }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "저장 실패");
-      onSaved();
+      const { id } = (await res.json()) as { id: string };
+      onSaved({ reviewId: id, payload });
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));
       setSubmitting(false);

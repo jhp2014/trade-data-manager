@@ -28,7 +28,7 @@ export function groupSheetRows(rows: SheetPointRow[]): ReviewStockGroup[] {
   }));
 }
 
-function toReviewPoint(row: SheetPointRow): ReviewPoint {
+export function toReviewPoint(row: SheetPointRow): ReviewPoint {
   const pointKey = row.reviewId || `pending:${row.stockCode}|${row.tradeDate}|${row.rowNumber}`;
 
   return {

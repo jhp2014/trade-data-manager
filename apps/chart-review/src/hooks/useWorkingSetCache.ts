@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReviewStockGroup } from "@/types/review";
+import {
+  upsertPointInGroups,
+  removePointFromGroups,
+  type UpsertPointInput,
+} from "@/lib/optimisticPoint";
 
 type WorksetCache = Map<string, ReviewStockGroup[]>;
 
@@ -24,6 +29,10 @@ export type UseWorkingSetCacheResult = {
   reloadTab: (tab: string) => Promise<void>;
   /** 탭 목록을 재조회하고 전체 캐시를 무효화. */
   reloadAll: () => Promise<void>;
+  /** 타점 1건 저장 후 서버 재조회 없이 현재 groups·캐시를 즉시 갱신(낙관적). */
+  upsertPointLocal: (input: UpsertPointInput) => void;
+  /** 타점 1건 삭제 후 서버 재조회 없이 현재 groups·캐시를 즉시 갱신(낙관적). */
+  removePointLocal: (reviewId: string) => void;
 };
 
 /**
@@ -184,5 +193,41 @@ export function useWorkingSetCache(
     }
   }, [fetchWorkset, readTab, readSource, tabs]);
 
-  return { tabs, readTab, groups, isLoadingWorkset, readSource, switchTab, switchToDb, reloadTab, reloadAll };
+  // groups state 와 (시트 모드일 때) 현재 탭 캐시를 함께 갱신한다.
+  // 캐시까지 갱신해야 다른 탭에 다녀와도 낙관적 변경이 유지된다.
+  const applyLocal = useCallback(
+    (mutate: (prev: ReviewStockGroup[]) => ReviewStockGroup[]) => {
+      setGroups((prev) => {
+        const next = mutate(prev);
+        if (next === prev) return prev;
+        if (readSource === "sheet") cacheRef.current.set(readTab, next);
+        return next;
+      });
+    },
+    [readSource, readTab],
+  );
+
+  const upsertPointLocal = useCallback(
+    (input: UpsertPointInput) => applyLocal((prev) => upsertPointInGroups(prev, input)),
+    [applyLocal],
+  );
+
+  const removePointLocal = useCallback(
+    (reviewId: string) => applyLocal((prev) => removePointFromGroups(prev, reviewId)),
+    [applyLocal],
+  );
+
+  return {
+    tabs,
+    readTab,
+    groups,
+    isLoadingWorkset,
+    readSource,
+    switchTab,
+    switchToDb,
+    reloadTab,
+    reloadAll,
+    upsertPointLocal,
+    removePointLocal,
+  };
 }
