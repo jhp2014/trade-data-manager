@@ -26,6 +26,7 @@ type MinuteChartPanelProps = ChartPanelProps & {
   priceLines?: Record<string, number[]>;
   zoomed?: boolean;
   onMoveMarkerToTime?: (timeUnix: number) => void;
+  onCyclePoint?: () => void;
 };
 
 export function MinuteChartPanel({
@@ -39,6 +40,7 @@ export function MinuteChartPanel({
   priceLines,
   zoomed,
   onMoveMarkerToTime,
+  onCyclePoint,
 }: MinuteChartPanelProps) {
   // Point List 타점들의 봉 시각(unix 초). 차트에 ●/거래대금 마커로 표시.
   const pointTimes = useMemo(
@@ -71,6 +73,7 @@ export function MinuteChartPanel({
         zoomed={zoomed}
         pointTimes={pointTimes}
         onMoveMarkerToTime={onMoveMarkerToTime}
+        onCyclePoint={onCyclePoint}
       />
     </div>
   );

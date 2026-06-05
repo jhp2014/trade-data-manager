@@ -498,6 +498,22 @@ export function ReviewWorkspace({
     [isOverride, activeGroup, activePoint.pointKey, commands],
   );
 
+  // 분봉 우클릭 → Point List 를 다음 타점으로 순회(끝에서 처음으로 래핑).
+  const cyclePoint = useCallback(() => {
+    const pts = activeGroup.points;
+    if (pts.length === 0) return;
+    const curIdx = pts.findIndex((p) => p.pointKey === activePoint.pointKey);
+    const base = curIdx < 0 ? 0 : curIdx;
+    const target = pts[(base + 1) % pts.length];
+    if (isOverride) {
+      setExploredPointKey(target.pointKey);
+    } else {
+      commands.selectPoint(target.pointKey);
+    }
+    const mins = timeStringToMinutes(target.tradeTime);
+    if (mins != null) setMarkerMinutes(mins);
+  }, [isOverride, activeGroup, activePoint.pointKey, commands]);
+
   // w/s = 테마 리스트 위/아래 종목 탐색(가장 끝에서 순환). 표시 순서(themeRowOrder)를
   // 기준으로 현재 보고 있는 종목의 이웃을 선택한다.
   const navigateThemeRow = useCallback(
@@ -1163,6 +1179,7 @@ export function ReviewWorkspace({
             priceLines={dailyPriceLines}
             zoomed={minuteZoomed}
             onMoveMarkerToTime={handleMoveMarkerToTime}
+            onCyclePoint={cyclePoint}
           />
         </section>
       </main>
@@ -1246,6 +1263,7 @@ export function ReviewWorkspace({
               priceLines={dailyPriceLines}
               zoomed={minuteZoomed}
               onMoveMarkerToTime={handleMoveMarkerToTime}
+              onCyclePoint={cyclePoint}
             />
           </div>
         </section>

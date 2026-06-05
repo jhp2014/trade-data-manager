@@ -30,11 +30,13 @@ interface Props {
     zoomed?: boolean;
     /** Point List에 저장된 타점들의 봉 시각(unix 초). 차트에 ●/거래대금 마커 표시. */
     pointTimes?: number[];
-    /** Shift+클릭한 봉 시각(unix 초)으로 Point 마커를 이동. */
+    /** 좌클릭한 봉 시각(unix 초)으로 Point 마커를 이동. */
     onMoveMarkerToTime?: (timeUnix: number) => void;
+    /** 우클릭 시 Point List 를 다음 타점으로 순회. */
+    onCyclePoint?: () => void;
 }
 
-export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines, prevCloseKrx, prevCloseNxt, zoomed = false, pointTimes, onMoveMarkerToTime }: Props) {
+export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines, prevCloseKrx, prevCloseNxt, zoomed = false, pointTimes, onMoveMarkerToTime, onCyclePoint }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     // 분봉 툴팁 모드: "ohlc"=현재 봉 등락률/거래대금, "theme"=테마 종목 순위.
@@ -159,8 +161,8 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
         leftOffset: () => chartRef.current?.priceScale("left").width() ?? 0,
     });
 
-    // 차트 클릭: Ctrl/Meta+클릭 → 툴팁 모드 토글, Shift+클릭 → 클릭한 봉 시각으로 마커 이동.
-    // onMoveMarkerToTime 은 매 렌더 갱신될 수 있어 ref 로 최신값을 유지(재구독 방지).
+    // 차트 좌클릭: Ctrl/Meta+클릭 → 툴팁 모드 토글, 그 외 클릭 → 클릭한 봉 시각으로 마커 이동.
+    // 콜백은 매 렌더 갱신될 수 있어 ref 로 최신값을 유지(재구독 방지).
     const moveMarkerRef = useRef(onMoveMarkerToTime);
     useEffect(() => { moveMarkerRef.current = onMoveMarkerToTime; });
     useEffect(() => {
@@ -174,13 +176,27 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
                 setTooltipMode((m) => (m === "ohlc" ? "theme" : "ohlc"));
                 return;
             }
-            if (src.shiftKey && t !== undefined) {
+            if (t !== undefined) {
                 moveMarkerRef.current?.(t);
             }
         };
         chart.subscribeClick(onClick);
         return () => chart.unsubscribeClick(onClick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // 차트 우클릭: 기본 컨텍스트 메뉴를 막고 Point List 를 다음 타점으로 순회.
+    const cyclePointRef = useRef(onCyclePoint);
+    useEffect(() => { cyclePointRef.current = onCyclePoint; });
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const onContextMenu = (e: MouseEvent) => {
+            e.preventDefault();
+            cyclePointRef.current?.();
+        };
+        el.addEventListener("contextmenu", onContextMenu);
+        return () => el.removeEventListener("contextmenu", onContextMenu);
     }, []);
 
     return (
