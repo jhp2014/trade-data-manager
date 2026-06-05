@@ -46,11 +46,11 @@ import {
   DEFAULT_MARKER_MINUTES,
   MARKER_WHEEL_STEP_MIN,
   MARKER_HOUR_STEP_MIN,
-  SWITCHER_AUTO_COMMIT_MS,
   cycleViewMode,
 } from "@/lib/shortcuts";
 import { computeThemeMemberMetrics, topByRate } from "@/lib/themeMetrics";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
+import { useHistorySwitcher } from "@/hooks/useHistorySwitcher";
 import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
@@ -682,112 +682,14 @@ export function ReviewWorkspace({
     return () => window.removeEventListener("paste", handler);
   }, [inputOpen, settingsOpen, navigateToGroupId]);
 
-  // Tab 히스토리 스위처: Tab=모달 오픈, 모달에서 Tab/s=다음·Shift+Tab/w=이전,
-  // Space/Enter=선택, Esc=취소. 2초 멈추면 현재 하이라이트로 자동 확정.
-  const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [switcherIndex, setSwitcherIndex] = useState(0);
-  const switcherOpenRef = useRef(false);
-  const switcherIndexRef = useRef(0);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const historyRef = useRef(history);
-  historyRef.current = history;
-  const selectedGroupKeyRef = useRef("");
-  selectedGroupKeyRef.current = `${selectedGroup.stockCode}-${selectedGroup.tradeDate}`;
-
-  const setSwitcherIdx = useCallback((i: number) => {
-    switcherIndexRef.current = i;
-    setSwitcherIndex(i);
-  }, []);
-
-  const closeSwitcher = useCallback(() => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = null;
-    switcherOpenRef.current = false;
-    setSwitcherOpen(false);
-  }, []);
-
-  const commitSwitcher = useCallback(
-    (index: number) => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-      commitTimerRef.current = null;
-      switcherOpenRef.current = false;
-      setSwitcherOpen(false);
-      const entry = historyRef.current[index];
-      if (entry) navigateToGroupId(entry.stockCode, entry.tradeDate);
-    },
-    [navigateToGroupId],
-  );
-
-  const scheduleCommit = useCallback(() => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(
-      () => commitSwitcher(switcherIndexRef.current),
-      SWITCHER_AUTO_COMMIT_MS,
-    );
-  }, [commitSwitcher]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // 닫힌 상태: Tab 으로만 연다.
-      if (!switcherOpenRef.current) {
-        if (e.key !== "Tab") return;
-        if (inputOpen || settingsOpen) return;
-        if (isEditableTarget(e.target)) return;
-        const list = historyRef.current;
-        if (list.length < 1) return; // 기록 없음
-        e.preventDefault();
-        e.stopPropagation();
-        switcherOpenRef.current = true;
-        setSwitcherOpen(true);
-        // 최상단이 현재 차트면 직전 항목부터, 아니면 최상단부터.
-        const topKey = `${list[0].stockCode}-${list[0].tradeDate}`;
-        const start = list.length >= 2 && topKey === selectedGroupKeyRef.current ? 1 : 0;
-        setSwitcherIdx(start);
-        scheduleCommit();
-        return;
-      }
-      // 열린 상태: 이동/선택/취소. 처리한 키는 전역 단축키(Space=입력 등)로 새지 않게 막는다.
-      const len = historyRef.current.length;
-      const cur = switcherIndexRef.current;
-      switch (e.key) {
-        case "Tab":
-          e.preventDefault();
-          e.stopPropagation();
-          setSwitcherIdx((cur + (e.shiftKey ? -1 : 1) + len) % len);
-          scheduleCommit();
-          break;
-        case "s":
-        case "S":
-          e.preventDefault();
-          e.stopPropagation();
-          setSwitcherIdx((cur + 1) % len);
-          scheduleCommit();
-          break;
-        case "w":
-        case "W":
-          e.preventDefault();
-          e.stopPropagation();
-          setSwitcherIdx((cur - 1 + len) % len);
-          scheduleCommit();
-          break;
-        case " ":
-        case "Enter":
-          e.preventDefault();
-          e.stopPropagation();
-          commitSwitcher(cur);
-          break;
-        case "Escape":
-          e.preventDefault();
-          e.stopPropagation();
-          closeSwitcher();
-          break;
-        default:
-          break;
-      }
-    };
-    window.addEventListener("keydown", handler, true);
-    return () => window.removeEventListener("keydown", handler, true);
-  }, [inputOpen, settingsOpen, scheduleCommit, closeSwitcher, commitSwitcher, setSwitcherIdx]);
+  // Tab 히스토리 스위처(상태/키 핸들링은 useHistorySwitcher 로 분리).
+  const { switcherOpen, switcherIndex, commitSwitcher, deleteEntry, clearAll } = useHistorySwitcher({
+    history,
+    selectedGroupKey: `${selectedGroup.stockCode}-${selectedGroup.tradeDate}`,
+    inputOpen,
+    settingsOpen,
+    navigateToGroupId,
+  });
 
   // 입력 대상 tradeTime = 현재 마커 위치(분 → "HH:MM").
   const markerTimeStr = minutesToTimeString(markerMinutes);
@@ -1105,32 +1007,14 @@ export function ReviewWorkspace({
     />
   );
 
-  const handleDeleteHistoryEntry = useCallback(
-    (index: number) => {
-      useReviewStore.getState().removeHistory(index);
-      const newLen = history.length - 1;
-      if (newLen === 0) {
-        closeSwitcher();
-      } else {
-        setSwitcherIdx(Math.min(switcherIndex, newLen - 1));
-      }
-    },
-    [history.length, switcherIndex, closeSwitcher, setSwitcherIdx],
-  );
-
-  const handleClearHistory = useCallback(() => {
-    useReviewStore.getState().clearHistory();
-    closeSwitcher();
-  }, [closeSwitcher]);
-
   const historySwitcher = switcherOpen && (
     <HistorySwitcher
       entries={history}
       activeIndex={switcherIndex}
       currentKey={`${selectedGroup.stockCode}-${selectedGroup.tradeDate}`}
       onPick={commitSwitcher}
-      onDelete={handleDeleteHistoryEntry}
-      onClearAll={handleClearHistory}
+      onDelete={deleteEntry}
+      onClearAll={clearAll}
     />
   );
 
