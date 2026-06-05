@@ -3,4 +3,6 @@ export * from "./daily-candle.repository";
 export * from "./minute-candle.repository";
 export * from "./theme.repository";
 export * from "./market-feature.repository";
-export * from "./review.repository";
+export * from "./review-target.repository";
+export * from "./review-point.repository";
+export * from "./review-manual-key.repository";

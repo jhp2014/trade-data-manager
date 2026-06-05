@@ -6,7 +6,7 @@ import { findFeaturesByCodesAndDate } from "../repositories/market-feature.repos
 import {
     findReviewTargetsWithPointsByCodes,
     type ReviewTargetBundle,
-} from "../repositories/review.repository";
+} from "./review-bundle.query";
 import type { Database } from "../db";
 import type { DailyCandle, MinuteCandle } from "../schema/market";
 import type { MinuteCandleFeatures } from "../schema/features";
