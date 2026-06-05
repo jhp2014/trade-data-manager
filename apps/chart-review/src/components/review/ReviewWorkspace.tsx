@@ -38,6 +38,7 @@ import { useHistorySwitcher } from "@/hooks/useHistorySwitcher";
 import { useMarkerTime } from "@/hooks/useMarkerTime";
 import { useStatusToast } from "@/hooks/useStatusToast";
 import { useQuickPresets } from "@/hooks/useQuickPresets";
+import { useTabNavigation } from "@/hooks/useTabNavigation";
 import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
@@ -124,39 +125,30 @@ export function ReviewWorkspace({
   const patchHistory = useReviewStore((state) => state.patchHistory);
   const priceMode = useUiStore((state) => state.chartPriceMode);
 
-  // Read Tab 전환: 현재 위치를 저장하고 대상 탭의 저장된 위치를 복원한다.
-  const handleSwitchReadTab = useCallback(
-    async (newTab: string) => {
-      if (newTab === readTab && readSource === "sheet") return;
-      const currentKey = readSource === "db" ? "__db__" : readTab;
-      setTabPosition(currentKey, { groupIndex: storeGroupIndex, pointKey: storePointKey });
-      const newGroups = await switchTab(newTab);
-      const savedPos = tabPositions[newTab];
-      const newGroupIndex = Math.min(savedPos?.groupIndex ?? 0, Math.max(0, newGroups.length - 1));
-      const newGroup = newGroups[newGroupIndex] ?? newGroups[0];
-      const newPointKey = savedPos?.pointKey ?? newGroup?.points[0]?.pointKey ?? "";
-      useReviewStore.getState().hydrateSelection({
-        selectedGroupIndex: newGroupIndex,
-        selectedPointKey: newPointKey,
-      });
-    },
-    [readSource, readTab, storeGroupIndex, storePointKey, switchTab, tabPositions, setTabPosition],
-  );
-
-  // DB 모드 전환: 현재 위치를 저장하고 DB 저장 위치를 복원한다.
-  const handleSwitchToDb = useCallback(async () => {
-    const currentKey = readSource === "db" ? "__db__" : readTab;
-    setTabPosition(currentKey, { groupIndex: storeGroupIndex, pointKey: storePointKey });
-    const newGroups = await switchToDb();
-    const savedPos = tabPositions["__db__"];
-    const newGroupIndex = Math.min(savedPos?.groupIndex ?? 0, Math.max(0, newGroups.length - 1));
-    const newGroup = newGroups[newGroupIndex] ?? newGroups[0];
-    const newPointKey = savedPos?.pointKey ?? newGroup?.points[0]?.pointKey ?? "";
-    useReviewStore.getState().hydrateSelection({
-      selectedGroupIndex: newGroupIndex,
-      selectedPointKey: newPointKey,
-    });
-  }, [readSource, readTab, storeGroupIndex, storePointKey, switchToDb, tabPositions, setTabPosition]);
+  // 읽기/쓰기 탭 전환·재조회 핸들러(위치 저장/복원 포함)는 useTabNavigation 으로 분리.
+  const {
+    handleCycleSheetTab,
+    handleToggleDbMode,
+    handleCycleWriteTab,
+    handleReloadTab,
+    handleReloadAll,
+  } = useTabNavigation({
+    readSource,
+    readTab,
+    tabs,
+    writeTab,
+    setWriteTab,
+    cycleTabList,
+    storeGroupIndex,
+    storePointKey,
+    tabPositions,
+    setTabPosition,
+    switchTab,
+    switchToDb,
+    reloadTab,
+    reloadAll,
+    refreshRouter: () => router.refresh(),
+  });
 
   // URL(초기 선택)에서 파생된 선택값이 실제로 바뀔 때만 store 를 재설정한다.
   // initialSelection 은 force-dynamic 페이지가 서버 액션마다 재렌더되며 매번
@@ -517,59 +509,6 @@ export function ReviewWorkspace({
       showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
     }
   }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory, showStatus]);
-
-  // cycleTabList 필터링: null = 전체, 배열 = 해당 탭만 순환.
-  const effectiveCycleTabs = useMemo(
-    () => (cycleTabList ? tabs.filter((t) => cycleTabList.includes(t)) : tabs),
-    [tabs, cycleTabList],
-  );
-
-  // 시트 탭 순환: effectiveCycleTabs 안에서만 돌고 DB 모드 진입/탈출 안 함.
-  // DB 모드에서 호출되면 마지막 시트 탭으로 복귀(r키/탭 칩 클릭).
-  const handleCycleSheetTab = useCallback(async () => {
-    const cycleTabs = effectiveCycleTabs.length > 0 ? effectiveCycleTabs : tabs;
-    if (cycleTabs.length === 0) return;
-    if (readSource === "db") {
-      await handleSwitchReadTab(cycleTabs[0]);
-    } else {
-      if (cycleTabs.length <= 1) return;
-      const idx = cycleTabs.indexOf(readTab);
-      const nextIdx = (idx + 1) % cycleTabs.length;
-      await handleSwitchReadTab(cycleTabs[nextIdx]);
-    }
-  }, [readSource, readTab, tabs, effectiveCycleTabs, handleSwitchReadTab]);
-
-  // DB ↔ 시트 토글: 스위치 아이콘 전용.
-  const handleToggleDbMode = useCallback(async () => {
-    if (readSource === "db") {
-      await handleSwitchReadTab(readTab);
-    } else {
-      await handleSwitchToDb();
-    }
-  }, [readSource, readTab, handleSwitchReadTab, handleSwitchToDb]);
-
-  // Write Tab 순환: 탭 목록에서 다음 탭으로 전환한다(새 탭 생성은 설정에서).
-  const handleCycleWriteTab = useCallback(() => {
-    if (tabs.length === 0) return;
-    const idx = writeTab ? tabs.indexOf(writeTab) : -1;
-    const nextIdx = (idx + 1) % tabs.length;
-    setWriteTab(tabs[nextIdx]);
-  }, [tabs, writeTab, setWriteTab]);
-
-  // 현재 읽기 소스 재조회 (DB 모드면 DB 재조회, 시트 모드면 현재 탭 재조회).
-  const handleReloadTab = useCallback(async () => {
-    if (readSource === "db") {
-      await handleSwitchToDb();
-    } else {
-      await reloadTab(readTab);
-    }
-  }, [readSource, readTab, reloadTab, handleSwitchToDb]);
-
-  // 전체 탭 캐시 무효화 + RSC 새로고침.
-  const handleReloadAll = useCallback(async () => {
-    await reloadAll();
-    router.refresh();
-  }, [reloadAll, router]);
 
   // KRX/NXT 토글.
   const setPriceMode = useUiStore((state) => state.setChartPriceMode);
