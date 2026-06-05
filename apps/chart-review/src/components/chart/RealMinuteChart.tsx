@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CrosshairMode, LineStyle } from "lightweight-charts";
+import type { MouseEventParams } from "lightweight-charts";
 import type { MinuteCandle, ChartOverlaySeries } from "@/types/chart";
 import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { useUiStore } from "@/stores/useUiStore";
@@ -168,7 +169,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
-        const onClick = (param: import("lightweight-charts").MouseEventParams) => {
+        const onClick = (param: MouseEventParams) => {
             const src = param.sourceEvent;
             const t = param.time as number | undefined;
             if (!src) return;
