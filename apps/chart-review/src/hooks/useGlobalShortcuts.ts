@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { SHORTCUT_KEYS } from "@/lib/shortcuts";
+import { isEditableTarget } from "@/lib/domFocus";
 
 type UseGlobalShortcutsOptions = {
   /** false면 단축키를 무시한다(모달이 열려 있는 동안 등). */
@@ -74,11 +75,7 @@ export function useGlobalShortcuts({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!enabled) return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
-        return;
-      }
+      if (isEditableTarget(e.target)) return;
       const key = e.key.toLowerCase();
 
       // Ctrl/Meta + a/d = 타점 탐색. 그 외 Ctrl/Meta 조합은 건드리지 않는다.

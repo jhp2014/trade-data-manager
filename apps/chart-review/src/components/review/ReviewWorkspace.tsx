@@ -16,6 +16,7 @@ import {
   clampMinutes,
 } from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
+import { isEditableTarget } from "@/lib/domFocus";
 import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { composeUnix, dateToUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
@@ -671,11 +672,7 @@ export function ReviewWorkspace({
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
       if (inputOpen || settingsOpen) return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
-        return;
-      }
+      if (isEditableTarget(e.target)) return;
       const parsed = parseGroupId(e.clipboardData?.getData("text") ?? "");
       if (!parsed) return;
       e.preventDefault();
@@ -735,11 +732,7 @@ export function ReviewWorkspace({
       if (!switcherOpenRef.current) {
         if (e.key !== "Tab") return;
         if (inputOpen || settingsOpen) return;
-        const tgt = e.target as HTMLElement | null;
-        const tag = tgt?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tgt?.isContentEditable) {
-          return;
-        }
+        if (isEditableTarget(e.target)) return;
         const list = historyRef.current;
         if (list.length < 1) return; // 기록 없음
         e.preventDefault();
@@ -922,9 +915,7 @@ export function ReviewWorkspace({
     const isHotkey = (k: string) => (PRESET_HOTKEYS as readonly string[]).includes(k);
     const handler = (e: KeyboardEvent) => {
       if (inputOpen || settingsOpen || switcherOpen) return;
-      const tgt = e.target as HTMLElement | null;
-      const tag = tgt?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tgt?.isContentEditable) return;
+      if (isEditableTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       const groups = quickPresetGroupsRef.current;
