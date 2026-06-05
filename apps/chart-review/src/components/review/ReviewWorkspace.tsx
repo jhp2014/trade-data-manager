@@ -29,11 +29,6 @@ import { useReviewStore, type ChartOverride } from "@/stores/useReviewStore";
 import { PointInputDrawer } from "./PointInputDrawer";
 import { HistorySwitcher } from "./HistorySwitcher";
 import { PresetSwitcher } from "./PresetSwitcher";
-import {
-  type QuickPreset,
-  PRESET_HOTKEYS,
-  mergePresetIntoManual,
-} from "@/lib/quickPreset";
 import { buildExploredGroup } from "@/lib/buildExploredGroup";
 import { CHART_PARAMS_DEBOUNCE_MS, PEER_ROW_AMOUNT_HIGHLIGHT_THRESHOLDS_EOK } from "@/lib/constants";
 import { VIEW_MODES, MARKER_HOUR_STEP_MIN, cycleViewMode } from "@/lib/shortcuts";
@@ -41,6 +36,8 @@ import { computeThemeMemberMetrics, topByRate } from "@/lib/themeMetrics";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useHistorySwitcher } from "@/hooks/useHistorySwitcher";
 import { useMarkerTime } from "@/hooks/useMarkerTime";
+import { useStatusToast } from "@/hooks/useStatusToast";
+import { useQuickPresets } from "@/hooks/useQuickPresets";
 import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
@@ -494,8 +491,10 @@ export function ReviewWorkspace({
 
   const resetOverride = useCallback(() => setChartOverride(null), [setChartOverride]);
 
+  // 짧게 떴다 사라지는 상태 토스트(f 추가/프리셋 적용 결과 공용).
+  const { status: writeAppendStatus, showStatus } = useStatusToast();
+
   // f 키: Write Tab 마지막 행에 현재 탐색 종목 데이터를 추가한다.
-  const [writeAppendStatus, setWriteAppendStatus] = useState<string | null>(null);
   const handleWriteAppend = useCallback(async () => {
     if (!writeTab) return;
     const headers = exportFieldKeys;
@@ -513,13 +512,11 @@ export function ReviewWorkspace({
         tradeDate: effectiveStock.tradeDate,
         stockName: effectiveStock.stockName ?? undefined,
       });
-      setWriteAppendStatus(`✓ ${effectiveStock.stockName ?? effectiveStock.stockCode} 추가됨`);
+      showStatus(`✓ ${effectiveStock.stockName ?? effectiveStock.stockCode} 추가됨`);
     } catch (err) {
-      setWriteAppendStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
+      showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
     }
-    // 2초 후 상태 메시지 초기화.
-    setTimeout(() => setWriteAppendStatus(null), 2000);
-  }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory]);
+  }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory, showStatus]);
 
   // cycleTabList 필터링: null = 전체, 배열 = 해당 탭만 순환.
   const effectiveCycleTabs = useMemo(
@@ -677,166 +674,19 @@ export function ReviewWorkspace({
     }
   };
 
-  // ── 퀵 입력 프리셋 ─────────────────────────────────────────────────────────
-  // 숫자키(1~4)로 그룹 스위처를 열고 w/s 순회 → Space 적용. 현재 종목/마커 대상.
-
-  // 누적 적용용: 같은 타깃(종목·날짜·마커시각)에서 연속 적용 시 직전 결과 위에 병합.
-  const pendingManualRef = useRef<{ targetKey: string; manual: Record<string, string> } | null>(
-    null,
-  );
-  // 종목·마커·입력창 상태가 바뀌면 누적 컨텍스트 무효화(서버 기준으로 재시작).
-  useEffect(() => {
-    pendingManualRef.current = null;
-  }, [activeGroup.stockCode, activeGroup.tradeDate, markerMinutes, inputOpen]);
-
-  const applyPreset = useCallback(
-    async (preset: QuickPreset) => {
-      if (!canInput) {
-        setWriteAppendStatus("✗ 입력할 수 없는 종목입니다");
-        setTimeout(() => setWriteAppendStatus(null), 2000);
-        return;
-      }
-      const stockCode = activeGroup.stockCode;
-      const tradeDate = activeGroup.tradeDate;
-      const tradeTime = markerTimeStr;
-      const targetKey = `${stockCode}|${tradeDate}|${tradeTime}`;
-
-      // 베이스 manual: 같은 타깃 연속 적용이면 직전 결과, 아니면 마커 위치의 기존 타점값.
-      let base: Record<string, string>;
-      if (pendingManualRef.current && pendingManualRef.current.targetKey === targetKey) {
-        base = pendingManualRef.current.manual;
-      } else {
-        const existing = activeGroup.points.find(
-          (p) => p.reviewId && p.tradeTime.slice(0, 5) === tradeTime.slice(0, 5),
-        );
-        base = existing ? { ...existing.sourceRow.manual } : {};
-      }
-
-      const { payload, summary } = mergePresetIntoManual(base, preset.entries);
-
-      // 다음 누적을 위해 결과 manual 을 문자열로 보관.
-      const resultManual: Record<string, string> = {};
-      for (const [k, v] of Object.entries(payload)) {
-        resultManual[k] = Array.isArray(v) ? v.join(" | ") : v;
-      }
-      pendingManualRef.current = { targetKey, manual: resultManual };
-
-      const label = activeGroup.stockName ?? stockCode;
-      try {
-        const res = await fetch("/api/review/point", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stockCode, tradeDate, tradeTime, payload }),
-        });
-        if (!res.ok) throw new Error((await res.json()).error ?? "적용 실패");
-        const { id } = (await res.json()) as { id: string };
-        // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신.
-        upsertPointLocal({ stockCode, tradeDate, tradeTime, reviewId: id, payload });
-        setWriteAppendStatus(`✓ ${label} · ${summary || "변경 없음"}`);
-      } catch (err) {
-        pendingManualRef.current = null; // 실패 시 누적 무효화
-        setWriteAppendStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
-      }
-      setTimeout(() => setWriteAppendStatus(null), 2000);
-    },
-    [canInput, activeGroup, markerTimeStr, upsertPointLocal],
-  );
-
-  const [presetGroupOpen, setPresetGroupOpen] = useState<string | null>(null);
-  const [presetIndex, setPresetIndex] = useState(0);
-  const presetGroupOpenRef = useRef<string | null>(null);
-  const presetIndexRef = useRef(0);
-  const quickPresetGroupsRef = useRef(quickPresetGroups);
-  quickPresetGroupsRef.current = quickPresetGroups;
-  const applyPresetRef = useRef(applyPreset);
-  applyPresetRef.current = applyPreset;
-
-  const setPresetIdx = useCallback((i: number) => {
-    presetIndexRef.current = i;
-    setPresetIndex(i);
-  }, []);
-
-  const openPresetGroup = useCallback((hotkey: string) => {
-    presetGroupOpenRef.current = hotkey;
-    setPresetGroupOpen(hotkey);
-    presetIndexRef.current = 0;
-    setPresetIndex(0);
-  }, []);
-
-  const closePresetGroup = useCallback(() => {
-    presetGroupOpenRef.current = null;
-    setPresetGroupOpen(null);
-  }, []);
-
-  // 숫자키 스위처 전역 핸들러(캡처 단계). 입력창/다른 모달이 떠 있으면 관여 안 함.
-  useEffect(() => {
-    const isHotkey = (k: string) => (PRESET_HOTKEYS as readonly string[]).includes(k);
-    const handler = (e: KeyboardEvent) => {
-      if (inputOpen || settingsOpen || switcherOpen) return;
-      if (isEditableTarget(e.target)) return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-      const groups = quickPresetGroupsRef.current;
-      const openHotkey = presetGroupOpenRef.current;
-
-      // 닫힌 상태: 1~4 로 그룹 열기(프리셋이 있을 때만).
-      if (openHotkey === null) {
-        if (!isHotkey(e.key)) return;
-        const g = groups.find((x) => x.hotkey === e.key);
-        if (!g || g.presets.length === 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        openPresetGroup(e.key);
-        return;
-      }
-
-      // 열린 상태.
-      const g = groups.find((x) => x.hotkey === openHotkey);
-      const len = g?.presets.length ?? 0;
-      const cur = presetIndexRef.current;
-
-      if (isHotkey(e.key)) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.key === openHotkey) {
-          if (len > 0) setPresetIdx((cur + 1) % len); // 같은 숫자 = 다음으로 순회
-        } else {
-          const ng = groups.find((x) => x.hotkey === e.key);
-          if (ng && ng.presets.length > 0) openPresetGroup(e.key); // 다른 숫자 = 그룹 점프
-        }
-        return;
-      }
-
-      switch (e.key.toLowerCase()) {
-        case "s":
-          e.preventDefault();
-          e.stopPropagation();
-          if (len > 0) setPresetIdx((cur + 1) % len);
-          break;
-        case "w":
-          e.preventDefault();
-          e.stopPropagation();
-          if (len > 0) setPresetIdx((cur - 1 + len) % len);
-          break;
-        case " ":
-        case "enter":
-          e.preventDefault();
-          e.stopPropagation();
-          if (g && g.presets[cur]) void applyPresetRef.current(g.presets[cur]);
-          closePresetGroup();
-          break;
-        case "escape":
-          e.preventDefault();
-          e.stopPropagation();
-          closePresetGroup();
-          break;
-        default:
-          break;
-      }
-    };
-    window.addEventListener("keydown", handler, true);
-    return () => window.removeEventListener("keydown", handler, true);
-  }, [inputOpen, settingsOpen, switcherOpen, openPresetGroup, closePresetGroup, setPresetIdx]);
+  // 퀵 입력 프리셋(상태/키 핸들링/적용 로직은 useQuickPresets 로 분리).
+  const { presetGroupOpen, presetIndex, applyPreset, closePresetGroup } = useQuickPresets({
+    canInput,
+    activeGroup,
+    markerTimeStr,
+    markerMinutes,
+    inputOpen,
+    settingsOpen,
+    switcherOpen,
+    quickPresetGroups,
+    upsertPointLocal,
+    showStatus,
+  });
 
   // 전역 단축키: q/e=종목, a/d=마커(연타=1시간), Ctrl+a/d=타점, w/s=테마 종목,
   // z=뷰 순환, c=본 종목 복귀, Space=입력 드로어, x=분봉 마커 중심 확대 토글.
