@@ -18,7 +18,3 @@ export function kstYmd(unixSec: number): string {
     const d = toKstDate(unixSec);
     return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
-
-export function kstYmdHm(unixSec: number): string {
-    return `${kstYmd(unixSec)} ${kstHHmm(unixSec)}`;
-}

@@ -12,6 +12,15 @@ export function formatKrwEok(krw: number | null | undefined): string {
   return `${Math.round(eok * 10000).toLocaleString("ko-KR")}만`;
 }
 
+/**
+ * 원 단위 거래대금 → 억 단위 정수(반올림). 0 이하/비정상 값은 null.
+ * 분봉 마커 등 "정수 억" 표기에 사용.
+ */
+export function amountToEokInt(krw: number | null | undefined): number | null {
+  if (krw == null || !Number.isFinite(krw) || krw <= 0) return null;
+  return Math.round(krw / AMOUNT_KRW_TO_EOK);
+}
+
 /** 등락률 % → "+12.3%" / "-4.0%". null 은 "-". */
 export function formatPercent(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "-";

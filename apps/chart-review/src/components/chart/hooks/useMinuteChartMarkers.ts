@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { ISeriesApi, Time } from "lightweight-charts";
 import type { MinuteCandle } from "@/types/chart";
 import { amountMarkerFor } from "@trade-data-manager/chart-utils";
-import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
+import { amountToEokInt } from "@/lib/format";
 
 interface Params {
     candleSeriesRef: React.MutableRefObject<ISeriesApi<"Candlestick"> | null>;
@@ -61,7 +61,7 @@ export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, po
             for (const pt of pointTimes) {
                 if (pt === markerTime) continue;
                 const pc = candles.find((c) => c.time === pt);
-                const eok = pc?.amount != null && pc.amount > 0 ? Math.round(pc.amount / AMOUNT_KRW_TO_EOK) : null;
+                const eok = amountToEokInt(pc?.amount);
                 byTime.set(pt, {
                     time: pt as Time,
                     position: "belowBar",
@@ -75,7 +75,7 @@ export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, po
         // 3) 진입 마커 (덮어쓰기 — 같은 봉 우선). 텍스트에 해당 봉 거래대금(억, 반올림) 부착.
         if (markerTime != null) {
             const mc = candles.find((c) => c.time === markerTime);
-            const eok = mc?.amount != null && mc.amount > 0 ? Math.round(mc.amount / AMOUNT_KRW_TO_EOK) : null;
+            const eok = amountToEokInt(mc?.amount);
             byTime.set(markerTime, {
                 time: markerTime as Time,
                 position: "aboveBar",

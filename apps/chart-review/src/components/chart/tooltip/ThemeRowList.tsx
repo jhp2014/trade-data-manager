@@ -1,6 +1,9 @@
 "use client";
 
 import { Fragment } from "react";
+import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
+
+const AMOUNT_KRW_TO_MAN = 1e4;
 
 export interface OverlayTooltipRow {
     stockCode: string;
@@ -13,8 +16,8 @@ export interface OverlayTooltipRow {
 }
 
 function fmtAmount(v: number) {
-    if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억`;
-    if (v >= 1e4) return `${(v / 1e4).toFixed(0)}만`;
+    if (v >= AMOUNT_KRW_TO_EOK) return `${(v / AMOUNT_KRW_TO_EOK).toFixed(1)}억`;
+    if (v >= AMOUNT_KRW_TO_MAN) return `${(v / AMOUNT_KRW_TO_MAN).toFixed(0)}만`;
     return v.toFixed(0);
 }
 
