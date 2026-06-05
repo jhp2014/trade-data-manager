@@ -487,27 +487,35 @@ export function ReviewWorkspace({
   const { status: writeAppendStatus, showStatus } = useStatusToast();
 
   // f 키: Write Tab 마지막 행에 현재 탐색 종목 데이터를 추가한다.
-  const handleWriteAppend = useCallback(async () => {
+  // 낙관적: 키 입력 즉시 피드백(토스트/히스토리)하고, 실제 Sheets append 는
+  // 백그라운드로 보낸다. 실패하면 토스트를 에러로 교체한다.
+  const handleWriteAppend = useCallback(() => {
     if (!writeTab) return;
     const headers = exportFieldKeys;
     const values = headers.map((key) => resolveFieldValue(key, activePoint));
-    try {
-      const res = await fetch("/api/review/write-sheet/append", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ writeTab, headers, values }),
+    const label = effectiveStock.stockName ?? effectiveStock.stockCode;
+
+    pushHistory({
+      stockCode: effectiveStock.stockCode,
+      tradeDate: effectiveStock.tradeDate,
+      stockName: effectiveStock.stockName ?? undefined,
+    });
+    showStatus(`✓ ${label} 추가됨`);
+
+    void fetch("/api/review/write-sheet/append", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ writeTab, headers, values }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "append 실패");
+        }
+      })
+      .catch((err) => {
+        showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "append 실패");
-      pushHistory({
-        stockCode: effectiveStock.stockCode,
-        tradeDate: effectiveStock.tradeDate,
-        stockName: effectiveStock.stockName ?? undefined,
-      });
-      showStatus(`✓ ${effectiveStock.stockName ?? effectiveStock.stockCode} 추가됨`);
-    } catch (err) {
-      showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
-    }
   }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory, showStatus]);
 
   // KRX/NXT 토글.
