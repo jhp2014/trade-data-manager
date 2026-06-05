@@ -10,15 +10,10 @@ import { PointListToolbar, PointList } from "./PointList";
 import { ThemeSidebar } from "./ThemeSidebar";
 import { SettingsModal } from "./modals/SettingsModal";
 import { activeFilterCount, pointMatchesManualFilters } from "@/lib/manualFilter";
-import {
-  timeStringToMinutes,
-  minutesToTimeString,
-  clampMinutes,
-} from "./TimeSlider";
+import { timeStringToMinutes } from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
 import { isEditableTarget } from "@/lib/domFocus";
-import { kstHHmm } from "@trade-data-manager/chart-utils";
-import { composeUnix, dateToUnix } from "@/lib/serialization";
+import { dateToUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
 import { useChartPreview } from "@/hooks/useChartPreview";
 import { useUiStore } from "@/stores/useUiStore";
@@ -41,16 +36,11 @@ import {
 } from "@/lib/quickPreset";
 import { buildExploredGroup } from "@/lib/buildExploredGroup";
 import { CHART_PARAMS_DEBOUNCE_MS, PEER_ROW_AMOUNT_HIGHLIGHT_THRESHOLDS_EOK } from "@/lib/constants";
-import {
-  VIEW_MODES,
-  DEFAULT_MARKER_MINUTES,
-  MARKER_WHEEL_STEP_MIN,
-  MARKER_HOUR_STEP_MIN,
-  cycleViewMode,
-} from "@/lib/shortcuts";
+import { VIEW_MODES, MARKER_HOUR_STEP_MIN, cycleViewMode } from "@/lib/shortcuts";
 import { computeThemeMemberMetrics, topByRate } from "@/lib/themeMetrics";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useHistorySwitcher } from "@/hooks/useHistorySwitcher";
+import { useMarkerTime } from "@/hooks/useMarkerTime";
 import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
@@ -311,23 +301,20 @@ export function ReviewWorkspace({
   // 입력 가능 = 작업셋 종목이거나, 탐색 종목이 이미 review_target 일 때(결정 1).
   const canInput = !isOverride || (activeReview?.isReviewTarget ?? false);
 
-  // 마커 시간(분 단위). 타점 tradeTime 으로 초기화하되 휠/슬라이더로 조정 가능.
-  // tradeTime 이 없으면 09:00(540분) 기본.
-  const [markerMinutes, setMarkerMinutes] = useState<number>(
-    () => timeStringToMinutes(selectedPoint.tradeTime) ?? DEFAULT_MARKER_MINUTES,
-  );
-
-  // 타점(Point)이 바뀔 때만 해당 타점 tradeTime 으로 재설정.
-  // 테마 내 다른 종목을 임시 조회(override)할 때는 수동으로 옮긴 마커 시간을 유지한다.
-  useEffect(() => {
-    setMarkerMinutes(timeStringToMinutes(selectedPoint.tradeTime) ?? DEFAULT_MARKER_MINUTES);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPoint.pointKey]);
-
-  const markerTime = useMemo(
-    () => composeUnix(effectiveStock.tradeDate, minutesToTimeString(markerMinutes)),
-    [effectiveStock.tradeDate, markerMinutes],
-  );
+  // 마커 시간(분) 상태/파생값/이동은 useMarkerTime 으로 분리.
+  // 휠(Shift)/a·d·클릭으로 조정하되 타점이 바뀔 때만 타점 시각으로 재설정한다.
+  const {
+    markerMinutes,
+    setMarkerMinutes,
+    markerTime,
+    markerTimeStr,
+    moveMarker,
+    handleMoveMarkerToTime,
+  } = useMarkerTime({
+    pointTradeTime: selectedPoint.tradeTime,
+    pointKey: selectedPoint.pointKey,
+    tradeDate: effectiveStock.tradeDate,
+  });
 
   // 테마 탭 선택 상태. 종목(테마 집합)이 바뀌면 멤버 최다 테마로 초기화.
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
@@ -400,23 +387,6 @@ export function ReviewWorkspace({
     };
   }, [chartPreview.data, isOverride, activeReview, effectiveStock.tradeDate]);
 
-  // Shift+휠 → 마커 시간(tradeTime) ±1분 이동 (차트 Point 마커도 함께 이동)
-  // 캡처 단계에서 가로채고 stopPropagation 으로 차트(lightweight-charts)의 휠 줌
-  // 리스너까지 이벤트가 닿지 않게 막는다. (버블 단계/preventDefault 만으로는 차트가
-  // JS 로 처리하는 줌을 못 막아 shift+휠 시 줌이 같이 일어난다.)
-  useEffect(() => {
-    const handler = (e: WheelEvent) => {
-      if (!e.shiftKey) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setMarkerMinutes((m) =>
-        clampMinutes(e.deltaY > 0 ? m + MARKER_WHEEL_STEP_MIN : m - MARKER_WHEEL_STEP_MIN),
-      );
-    };
-    window.addEventListener("wheel", handler, { passive: false, capture: true });
-    return () => window.removeEventListener("wheel", handler, { capture: true });
-  }, []);
-
   const handleSelectStock = useCallback(
     (stockCode: string, stockName: string) => {
       if (stockCode === selectedGroup.stockCode) {
@@ -462,18 +432,6 @@ export function ReviewWorkspace({
     },
     [isOverride, handleSelectExploredPoint, commands, activeGroup],
   );
-
-  // a/d = 마커 시각 ±1분(키 자동반복으로 연속 이동). Shift+a/d = ±1시간.
-  const moveMarker = useCallback((dir: 1 | -1, step: number = MARKER_WHEEL_STEP_MIN) => {
-    setMarkerMinutes((m) => clampMinutes(m + dir * step));
-  }, []);
-
-  // 분봉 Shift+클릭 → 클릭한 봉 시각(unix 초)으로 마커 이동.
-  // markerTime 구성(composeUnix(date, HH:MM))의 역으로 KST HH:MM 를 분으로 환산한다.
-  const handleMoveMarkerToTime = useCallback((timeUnix: number) => {
-    const mins = timeStringToMinutes(kstHHmm(timeUnix));
-    if (mins != null) setMarkerMinutes(clampMinutes(mins));
-  }, []);
 
   // Ctrl+a/Ctrl+d = 타점 탐색. override 중이면 작업셋 store 를 건드리지 않고
   // 탐색 선택만, 아니면 작업셋 선택을 위(과거)/아래(미래)로 옮긴다(버그 수정: 본 종목 복귀 방지).
@@ -691,8 +649,6 @@ export function ReviewWorkspace({
     navigateToGroupId,
   });
 
-  // 입력 대상 tradeTime = 현재 마커 위치(분 → "HH:MM").
-  const markerTimeStr = minutesToTimeString(markerMinutes);
   const canDeletePoint = Boolean(activePoint.reviewId);
 
   const handleDeletePoint = async () => {
