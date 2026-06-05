@@ -518,6 +518,31 @@ export function ReviewWorkspace({
       });
   }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory, showStatus]);
 
+  // 쓰기 탭 초기화: 탭을 비우고 첫 행에 헤더를 기록한다(시트를 수동으로 다 지운 뒤 재시작용).
+  const handleInitWriteTab = useCallback(async () => {
+    if (!writeTab) return;
+    const headers = exportFieldKeys;
+    if (headers.length === 0) {
+      showStatus("✗ 내보낼 필드(헤더)가 없습니다");
+      return;
+    }
+    if (!window.confirm(`쓰기 탭 '${writeTab}'을 초기화하고 첫 행에 헤더를 기록할까요?\n기존 내용은 모두 지워집니다.`)) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/review/write-sheet/init-header", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ writeTab, headers }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "초기화 실패");
+      showStatus(`✓ '${writeTab}' 초기화됨`);
+    } catch (err) {
+      showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
+    }
+  }, [writeTab, exportFieldKeys, showStatus]);
+
   // KRX/NXT 토글.
   const setPriceMode = useUiStore((state) => state.setChartPriceMode);
   const handleTogglePriceMode = useCallback(() => {
@@ -684,6 +709,7 @@ export function ReviewWorkspace({
       onToggleDbMode={handleToggleDbMode}
       onCycleWriteTab={handleCycleWriteTab}
       onReloadTab={handleReloadTab}
+      onInitWriteTab={handleInitWriteTab}
     />
   );
 

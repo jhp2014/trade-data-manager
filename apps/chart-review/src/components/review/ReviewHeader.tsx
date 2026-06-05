@@ -34,6 +34,7 @@ type ReviewHeaderProps = {
   onToggleDbMode: () => void;
   onCycleWriteTab: () => void;
   onReloadTab: () => void;
+  onInitWriteTab: () => void;
 };
 
 export function ReviewHeader({
@@ -60,6 +61,7 @@ export function ReviewHeader({
   onToggleDbMode,
   onCycleWriteTab,
   onReloadTab,
+  onInitWriteTab,
 }: ReviewHeaderProps) {
   const chartPriceMode = useUiStore((state) => state.chartPriceMode);
   const setChartPriceMode = useUiStore((state) => state.setChartPriceMode);
@@ -127,6 +129,16 @@ export function ReviewHeader({
               >
                 {readSource === "db" ? "DB" : readTab}
               </button>
+              {/* 읽기 탭 다시 불러오기: 읽기 탭 우측 */}
+              <button
+                type="button"
+                className={styles.segChip}
+                onClick={onReloadTab}
+                disabled={isLoadingWorkset}
+                title={readSource === "db" ? "DB 작업셋 다시 불러오기" : "현재 읽기 탭 다시 불러오기"}
+              >
+                {isLoadingWorkset ? "…" : "↻"}
+              </button>
               <span className={styles.segArrow}>→</span>
               {/* 쓰기 탭: DB 모드에서도 항상 표시 */}
               <button
@@ -137,14 +149,15 @@ export function ReviewHeader({
               >
                 {writeTab ?? "미설정"}
               </button>
+              {/* 쓰기 탭 초기화: 탭을 비우고 첫 행에 헤더 기록(쓰기 탭 우측) */}
               <button
                 type="button"
                 className={styles.segChip}
-                onClick={onReloadTab}
-                disabled={isLoadingWorkset}
-                title={readSource === "db" ? "DB 작업셋 다시 불러오기" : "현재 읽기 탭 다시 불러오기"}
+                onClick={onInitWriteTab}
+                disabled={!writeTab}
+                title="쓰기 탭 초기화 · 첫 행에 헤더 기록(기존 내용 삭제)"
               >
-                {isLoadingWorkset ? "…" : "↻"}
+                ⊞
               </button>
             </div>
           )}
