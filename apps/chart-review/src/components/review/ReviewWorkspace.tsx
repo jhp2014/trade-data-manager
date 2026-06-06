@@ -367,12 +367,15 @@ export function ReviewWorkspace({
     if (!data || !isOverride || !activeReview) return data;
     const entryTime = dateToUnix(effectiveStock.tradeDate);
     const entryCandle = activeReview.daily.find((c) => c.time === entryTime) ?? null;
+    // 상장일이면 전일종가가 없으므로 당일 첫 분봉 시가를 % 기준값으로 대체.
+    const baseFallback = activeReview.isListingDay ? activeReview.firstMinuteOpen : null;
     return {
       ...data,
       daily: activeReview.daily,
       minute: activeReview.minute,
-      prevCloseKrx: entryCandle?.prevCloseKrx ?? null,
-      prevCloseNxt: entryCandle?.prevCloseNxt ?? null,
+      prevCloseKrx: entryCandle?.prevCloseKrx ?? baseFallback,
+      prevCloseNxt: entryCandle?.prevCloseNxt ?? baseFallback,
+      isListingDay: activeReview.isListingDay,
     };
   }, [chartPreview.data, isOverride, activeReview, effectiveStock.tradeDate]);
 
@@ -695,6 +698,7 @@ export function ReviewWorkspace({
       groupCount={navCount}
       viewMode={viewMode}
       isOverride={isOverride}
+      isListingDay={mainChartData?.isListingDay ?? false}
       onResetOverride={() => setChartOverride(null)}
       headerAvailable={headerAvailable}
       onOpenSettings={() => setSettingsOpen(true)}

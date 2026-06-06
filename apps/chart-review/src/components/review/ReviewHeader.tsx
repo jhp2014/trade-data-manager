@@ -20,6 +20,7 @@ type ReviewHeaderProps = {
   groupCount: number;
   viewMode: ReviewViewMode;
   isOverride: boolean;
+  isListingDay: boolean;
   onResetOverride: () => void;
   headerAvailable: string[];
   onOpenSettings: () => void;
@@ -47,6 +48,7 @@ export function ReviewHeader({
   groupCount,
   viewMode,
   isOverride,
+  isListingDay,
   onResetOverride,
   headerAvailable,
   onOpenSettings,
@@ -92,6 +94,14 @@ export function ReviewHeader({
           <span className="tabular">{tradeDate}</span>
           <span className={styles.sep}>|</span>
           <span className="tabular">{formatHHMM(markerMinutes)}</span>
+          {isListingDay && (
+            <span
+              className={styles.listingBadge}
+              title="상장일: 전일종가가 없어 등락률을 당일 시가 기준으로 표시합니다."
+            >
+              상장일·시가기준
+            </span>
+          )}
         </div>
         <div className={styles.fieldLine}>
           {fieldValues.length === 0 ? (

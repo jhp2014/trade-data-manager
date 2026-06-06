@@ -7,6 +7,7 @@ import {
     findReviewTargetsWithPointsByCodes,
     type ReviewTargetBundle,
 } from "./review-bundle.query";
+import { fillListingDayRates, isListingDay } from "../listing";
 import type { Database } from "../db";
 import type { DailyCandle, MinuteCandle } from "../schema/market";
 import type { MinuteCandleFeatures } from "../schema/features";
@@ -28,6 +29,10 @@ interface ThemeMemberBase {
 }
 
 export interface ThemeBundleMember extends ThemeMemberBase {
+    /** 종목 상장일(YYYY-MM-DD). 없으면 null. */
+    regDay: string | null;
+    /** 이 거래일이 이 종목의 상장일이면 true. minute 등락률은 시가 기준으로 보정됨. */
+    isListingDay: boolean;
     daily: DailyCandle[];
     minute: MinuteCandle[];
     features: MinuteCandleFeatures[];
@@ -76,15 +81,23 @@ export async function getThemeBundle(
         const themeId = String(t.themeId);
         const codes = themeToCodes.get(themeId) ?? [stockCode];
         const ordered = [stockCode, ...codes.filter((c) => c !== stockCode)];
-        const members: ThemeBundleMember[] = ordered.map((code) => ({
-            stockCode: code,
-            stockName: stockMap.get(code)?.stockName ?? code,
-            isSelf: code === stockCode,
-            daily: dailyByCode.get(code) ?? [],
-            minute: minuteByCode.get(code) ?? [],
-            features: featuresByCode.get(code) ?? [],
-            review: reviewByCode.get(code) ?? null,
-        }));
+        const members: ThemeBundleMember[] = ordered.map((code) => {
+            const regDay = stockMap.get(code)?.regDay ?? null;
+            const listing = isListingDay(regDay, tradeDate);
+            const minuteRaw = minuteByCode.get(code) ?? [];
+            return {
+                stockCode: code,
+                stockName: stockMap.get(code)?.stockName ?? code,
+                isSelf: code === stockCode,
+                regDay,
+                isListingDay: listing,
+                daily: dailyByCode.get(code) ?? [],
+                // 상장일이면 전일종가가 없어 등락률이 null → 당일 첫 분봉 시가 기준으로 보정.
+                minute: listing ? fillListingDayRates(minuteRaw) : minuteRaw,
+                features: featuresByCode.get(code) ?? [],
+                review: reviewByCode.get(code) ?? null,
+            };
+        });
         return { themeId, themeName: t.themeName, members };
     });
 }

@@ -60,6 +60,10 @@ export interface ChartOverlaySeries {
     isReviewTarget: boolean;
     /** review_target 이고 포인트가 1개 이상이면 true. 배지용. */
     hasReview?: boolean;
+    /** 이 거래일이 이 종목의 상장일이면 true(등락률이 시가 기준으로 보정됨). */
+    isListingDay: boolean;
+    /** 당일 첫 분봉 시가(raw). 상장일 % 기준값으로 쓴다. 분봉 없으면 null. */
+    firstMinuteOpen: number | null;
 }
 
 /** 테마 1개에 속한 멤버들의 오버레이 묶음 */
@@ -80,9 +84,15 @@ export interface ChartPreviewDTO {
     daily: DailyCandle[];
     /** 요청 종목의 분봉 시계열 (메인 차트용) */
     minute: MinuteCandle[];
-    /** 진입일 prevClose. 분봉 가격 라인 % 변환의 기준 */
+    /**
+     * 진입일 분봉 가격 라인 % 변환의 기준값.
+     * 보통은 전일종가(prevClose). 단 상장일(isListingDay)에는 전일종가가 없어
+     * 당일 첫 분봉 시가로 대체된다(= 분봉 캔들 등락률과 같은 기준).
+     */
     prevCloseKrx: number | null;
     prevCloseNxt: number | null;
+    /** 요청 종목의 이 거래일이 상장일이면 true. 헤더 배지·기준선 의미 표시용. */
+    isListingDay: boolean;
     /** 테마별로 묶인 오버레이 시리즈들. 모달은 themeId 매칭해서 하나만 골라 사용. */
     themes: ChartThemeOverlay[];
 }

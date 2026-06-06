@@ -29,11 +29,17 @@ export async function loadChartPreview(params: {
     const daily = self ? self.daily.map(toDailyChartCandle) : [];
     const minute = self ? fillMissingMinuteCandles(buildMinuteCandles(self.minute)) : [];
 
-    // 진입일 prevClose (분봉 가격 라인 % 변환 기준)
+    const isListingDay = self?.isListingDay ?? false;
+    // 상장일은 전일종가가 없으므로 당일 첫 분봉 시가를 % 기준값으로 쓴다.
+    const firstMinuteOpen =
+        self && self.minute.length > 0 ? Number(self.minute[0].open) : null;
+    const baseFallback = isListingDay ? firstMinuteOpen : null;
+
+    // 진입일 분봉 가격 라인 % 변환 기준값(상장일이면 시가로 대체).
     const entryTime = dateToUnix(params.tradeDate);
     const entryCandle = daily.find((c) => c.time === entryTime) ?? null;
-    const prevCloseKrx = entryCandle?.prevCloseKrx ?? null;
-    const prevCloseNxt = entryCandle?.prevCloseNxt ?? null;
+    const prevCloseKrx = entryCandle?.prevCloseKrx ?? baseFallback;
+    const prevCloseNxt = entryCandle?.prevCloseNxt ?? baseFallback;
 
     const themes: ChartThemeOverlay[] = bundles.map((b) => ({
         themeId: b.themeId,
@@ -46,6 +52,7 @@ export async function loadChartPreview(params: {
         minute,
         prevCloseKrx,
         prevCloseNxt,
+        isListingDay,
         themes,
     };
 }

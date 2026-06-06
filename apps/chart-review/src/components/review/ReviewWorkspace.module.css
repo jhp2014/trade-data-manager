@@ -73,6 +73,19 @@
   font-weight: 700;
 }
 
+.listingBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--warn, #d97706);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn, #d97706) 12%, transparent);
+  color: var(--warn, #d97706);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .fieldLine {
   display: flex;
   flex-wrap: wrap;

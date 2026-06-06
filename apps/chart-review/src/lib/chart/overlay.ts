@@ -38,6 +38,8 @@ function toOverlaySeries(
         })),
         isReviewTarget: member.review != null,
         hasReview: (member.review?.points.length ?? 0) > 0,
+        isListingDay: member.isListingDay,
+        firstMinuteOpen: member.minute.length > 0 ? Number(member.minute[0].open) : null,
     };
 }
 
