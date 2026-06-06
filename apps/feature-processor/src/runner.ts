@@ -6,6 +6,9 @@ import {
     saveMinuteFeatures,
     findDistinctStockCodesByDate,
     findMinuteCandlesByStockAndDate,
+    findStocksMapByCodes,
+    fillListingDayRates,
+    isListingDay,
     type Database,
     type MinuteCandle,
     type MinuteCandleContext,
@@ -36,6 +39,9 @@ export async function runMinuteFeatures(
     const stockCodes = await findDistinctStockCodesByDate(db, { tradeDate });
     logger.info(`[minuteRunner] ${tradeDate}: ${stockCodes.length} stocks`);
 
+    // 상장일 판별용 종목 마스터(regDay) 일괄 조회.
+    const stockMap = await findStocksMapByCodes(db, { stockCodes });
+
     let totalRows = 0;
     let processed = 0;
 
@@ -43,7 +49,12 @@ export async function runMinuteFeatures(
         const candles = await findMinuteCandlesByStockAndDate(db, { stockCode, tradeDate });
         if (candles.length === 0) continue;
 
-        const rows = computeStockFeatures(candles);
+        // 상장일이면 전일종가가 없어 등락률이 null → 당일 첫 분봉 시가 기준으로 보정 후 계산.
+        // (그래야 closeRate/dayHigh/pullback 등이 0 으로 왜곡되지 않는다)
+        const listing = isListingDay(stockMap.get(stockCode)?.regDay, tradeDate);
+        const effectiveCandles = listing ? fillListingDayRates(candles) : candles;
+
+        const rows = computeStockFeatures(effectiveCandles);
         await saveMinuteFeatures(db, rows);
 
         totalRows += rows.length;
