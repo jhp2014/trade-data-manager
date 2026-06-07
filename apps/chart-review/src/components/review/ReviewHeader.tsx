@@ -130,16 +130,7 @@ export function ReviewHeader({
               >
                 ⇌
               </button>
-              {/* 읽기 탭 / DB 칩: 클릭·r키는 시트 탭 순환 전용 */}
-              <button
-                type="button"
-                className={`${styles.segChip} ${readSource === "db" ? styles.segChipDb : styles.segChipActive}`}
-                onClick={onCycleSheetTab}
-                title={readSource === "db" ? "r키·클릭: 시트 탭으로 전환" : (tabs.length > 1 ? "클릭·r키: 다음 읽기 탭으로 전환" : "읽기 탭")}
-              >
-                {readSource === "db" ? "DB" : readTab}
-              </button>
-              {/* 읽기 탭 다시 불러오기: 읽기 탭 우측 */}
+              {/* 읽기 탭 다시 불러오기: 스위치 우측 */}
               <button
                 type="button"
                 className={styles.segChip}
@@ -149,7 +140,26 @@ export function ReviewHeader({
               >
                 {isLoadingWorkset ? "…" : "↻"}
               </button>
+              {/* 읽기 탭 / DB 칩: 클릭·r키는 시트 탭 순환 전용 */}
+              <button
+                type="button"
+                className={`${styles.segChip} ${readSource === "db" ? styles.segChipDb : styles.segChipActive}`}
+                onClick={onCycleSheetTab}
+                title={readSource === "db" ? "r키·클릭: 시트 탭으로 전환" : (tabs.length > 1 ? "클릭·r키: 다음 읽기 탭으로 전환" : "읽기 탭")}
+              >
+                {readSource === "db" ? "DB" : readTab}
+              </button>
               <span className={styles.segArrow}>→</span>
+              {/* 쓰기 탭 초기화: 탭을 비우고 첫 행에 헤더 기록(쓰기 탭 좌측) */}
+              <button
+                type="button"
+                className={styles.segChip}
+                onClick={onInitWriteTab}
+                disabled={!writeTab}
+                title="쓰기 탭 초기화 · 첫 행에 헤더 기록(기존 내용 삭제)"
+              >
+                ↻
+              </button>
               {/* 쓰기 탭: DB 모드에서도 항상 표시 */}
               <button
                 type="button"
@@ -158,16 +168,6 @@ export function ReviewHeader({
                 title={tabs.length > 0 ? "클릭: 다음 쓰기 탭으로 전환" : "쓰기 탭 미설정"}
               >
                 {writeTab ?? "미설정"}
-              </button>
-              {/* 쓰기 탭 초기화: 탭을 비우고 첫 행에 헤더 기록(쓰기 탭 우측) */}
-              <button
-                type="button"
-                className={styles.segChip}
-                onClick={onInitWriteTab}
-                disabled={!writeTab}
-                title="쓰기 탭 초기화 · 첫 행에 헤더 기록(기존 내용 삭제)"
-              >
-                ⊞
               </button>
             </div>
           )}
