@@ -15,12 +15,17 @@ function required(name: string): string {
 /** 머신마다 다른 값 → .env 에서 주입 */
 export const config = {
     databaseUrl: required("DATABASE_URL"),
-    /** 덤프 생성·검증 staging + 1차 보관 (로컬 디스크) */
+    /** 덤프 생성·검증 + 로컬 보관 (1차, 빠른 복구용) */
     localDir: required("BACKUP_LOCAL_DIR"),
-    /** 검증 통과 백업의 2차 보관 (MYBOX 동기화 폴더) */
-    myboxDir: required("BACKUP_MYBOX_DIR"),
     /** pg_dump / pg_restore 등 PostgreSQL 클라이언트 도구 경로 */
     pgBinDir: required("PG_BIN_DIR"),
+    /** Google Drive 단방향 업로드 (오프사이트 2차) — OAuth 사용자 인증 */
+    gdrive: {
+        clientId: required("GDRIVE_OAUTH_CLIENT_ID"),
+        clientSecret: required("GDRIVE_OAUTH_CLIENT_SECRET"),
+        refreshToken: required("GDRIVE_OAUTH_REFRESH_TOKEN"),
+        folderId: required("GDRIVE_BACKUP_FOLDER_ID"),
+    },
 } as const;
 
 /** 백업/검증 정책 상수 (머신 비의존 → 코드에 고정) */

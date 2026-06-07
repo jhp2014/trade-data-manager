@@ -49,3 +49,7 @@ build/
 
 # API Key
 chart-review-*.json
+
+# Google OAuth / 서비스계정 자격증명 (절대 커밋 금지)
+client_secret_*.json
+*.apps.googleusercontent.com.json

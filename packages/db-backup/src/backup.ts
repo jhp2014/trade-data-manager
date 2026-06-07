@@ -1,7 +1,5 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
-import { config } from "./config";
 import { runPgTool, sourceDbName } from "./pg";
 
 /** YYYYMMDD-HHmmss (로컬 시각) */
@@ -34,10 +32,10 @@ export async function createDump(targetPath: string): Promise<void> {
     ]);
 }
 
-/** 파일 SHA-256 (스트리밍). */
-export function sha256(filePath: string): Promise<string> {
+/** 파일 해시 (스트리밍). algo: "sha256" | "md5" 등. */
+export function fileHash(filePath: string, algo: string): Promise<string> {
     return new Promise((resolve, reject) => {
-        const hash = crypto.createHash("sha256");
+        const hash = crypto.createHash(algo);
         const stream = fs.createReadStream(filePath);
         stream.on("error", reject);
         stream.on("data", (chunk) => hash.update(chunk));
@@ -45,10 +43,6 @@ export function sha256(filePath: string): Promise<string> {
     });
 }
 
-/** local 덤프를 mybox 폴더로 복사. 복사된 경로 반환. */
-export function copyToMybox(localPath: string): string {
-    fs.mkdirSync(config.myboxDir, { recursive: true });
-    const dest = path.join(config.myboxDir, path.basename(localPath));
-    fs.copyFileSync(localPath, dest);
-    return dest;
-}
+export const sha256 = (filePath: string): Promise<string> => fileHash(filePath, "sha256");
+/** Google Drive 의 md5Checksum 과 대조해 업로드 무결성 검증용. */
+export const md5 = (filePath: string): Promise<string> => fileHash(filePath, "md5");

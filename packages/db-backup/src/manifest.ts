@@ -34,27 +34,27 @@ export function emptyManifest(): Manifest {
     };
 }
 
-/** mybox(정본) 우선 → local → 둘 다 없거나 손상되면 빈 manifest. */
+/** manifest 파일의 로컬 경로 (Drive 업로드 시에도 이 파일을 올린다). */
+export function manifestPath(): string {
+    return path.join(config.localDir, FILE_NAME);
+}
+
+/** 로컬 manifest 를 정본으로 읽는다. 없거나 손상되면 빈 manifest. */
 export function readManifest(): Manifest {
-    for (const dir of [config.myboxDir, config.localDir]) {
-        const p = path.join(dir, FILE_NAME);
-        if (fs.existsSync(p)) {
-            try {
-                const parsed = JSON.parse(fs.readFileSync(p, "utf-8")) as Partial<Manifest>;
-                return { ...emptyManifest(), ...parsed };
-            } catch {
-                /* 손상 시 다음 후보로 */
-            }
+    const p = manifestPath();
+    if (fs.existsSync(p)) {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(p, "utf-8")) as Partial<Manifest>;
+            return { ...emptyManifest(), ...parsed };
+        } catch {
+            /* 손상 시 빈 manifest 로 폴백 */
         }
     }
     return emptyManifest();
 }
 
-/** local + mybox 양쪽에 기록. */
+/** 로컬에 기록 (Drive 업로드는 호출부에서 manifestPath() 로 별도 수행). */
 export function writeManifest(m: Manifest): void {
-    const json = JSON.stringify(m, null, 2);
-    for (const dir of [config.localDir, config.myboxDir]) {
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(path.join(dir, FILE_NAME), json, "utf-8");
-    }
+    fs.mkdirSync(config.localDir, { recursive: true });
+    fs.writeFileSync(manifestPath(), JSON.stringify(m, null, 2), "utf-8");
 }
