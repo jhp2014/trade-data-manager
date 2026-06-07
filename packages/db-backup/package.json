@@ -1,0 +1,25 @@
+{
+  "name": "@trade-data-manager/db-backup",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "backup": "tsx src/index.ts",
+    "type-check": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",
+    "clean:all": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@trade-data-manager/tsconfig": "workspace:*",
+    "@types/node": "^25.6.0",
+    "@types/pg": "^8.20.0",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
