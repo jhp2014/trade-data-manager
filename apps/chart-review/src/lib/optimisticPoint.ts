@@ -49,6 +49,12 @@ export function upsertPointInGroups(
       (p) => p.reviewId && p.tradeTime.slice(0, 5) === hhmm,
     );
 
+    // 신규 행도 그룹의 서버 파생 feature(lineTargets)를 이어받아야 가격선이 유지된다.
+    // lineTargets 는 모든 행에 동일하게 실려 있으므로 placeholder 포함 아무 행에서나 회수한다.
+    const inheritedLineTargets = group.points
+      .map((p) => p.sourceRow.features.lineTargets)
+      .find(Boolean);
+
     // 기존 타점이 있으면 sourceRow 를 펼쳐 manual 만 교체(features/themeName 유지). 없으면 신규 행.
     const newRow: SheetPointRow = existing
       ? { ...existing.sourceRow, reviewId: input.reviewId, tradeTime: hhmm, manual }
@@ -59,7 +65,7 @@ export function upsertPointInGroups(
           stockName: group.stockName,
           tradeDate: group.tradeDate,
           tradeTime: hhmm,
-          features: {},
+          features: inheritedLineTargets ? { lineTargets: inheritedLineTargets } : {},
           manual,
         };
     const newPoint = toReviewPoint(newRow);
