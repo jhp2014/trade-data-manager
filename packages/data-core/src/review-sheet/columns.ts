@@ -9,6 +9,8 @@ export const FIXED_COLUMNS = [
 ] as const;
 
 export const FEATURE_COLUMNS = [
+    "closeRateKrx",
+    "closeRateNxt",
     "changeRate5m",
     "changeRate10m",
     "changeRate30m",
