@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getReadSheetConfig, hasSheetsCredentials } from "@/lib/readSheetConfig";
 import { appendSheetRow } from "@/lib/sheetsWriter";
+import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
 
 type AppendBody = {
   writeTab: string;
@@ -15,10 +16,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "spreadsheet not configured" }, { status: 400 });
   }
 
-  let body: AppendBody;
-  try {
-    body = (await req.json()) as AppendBody;
-  } catch {
+  const body = await parseJsonBody<AppendBody>(req);
+  if (body === null) {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }
   const { writeTab, headers, values } = body;
@@ -30,7 +29,6 @@ export async function POST(req: NextRequest) {
     const result = await appendSheetRow(config.spreadsheetId, writeTab, headers, values);
     return Response.json({ ok: true, ...result });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return Response.json({ error: message }, { status: 500 });
+    return errorResponse(err);
   }
 }

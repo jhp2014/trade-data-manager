@@ -6,6 +6,7 @@ import {
 import { getDb } from "@/actions/db";
 import { fetchSheetRowsAction } from "@/actions/sheet";
 import { getReadSheetConfig, hasSheetsCredentials } from "@/lib/readSheetConfig";
+import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +29,10 @@ function parseManualValue(raw: string): string | string[] | undefined {
  * spreadsheetId/tab 미지정 시 읽기 시트 설정(쿠키/env)을 사용.
  */
 export async function POST(request: Request) {
-  let body: unknown = {};
-  try {
-    body = await request.json();
-  } catch {
-    // 본문 없이 호출 가능: 읽기 시트 설정을 사용.
-  }
+  // 본문 없이 호출 가능: 파싱 실패 시 빈 객체로 두고 읽기 시트 설정을 사용.
+  const body = (await parseJsonBody(request)) ?? {};
 
-  const { spreadsheetId, tab } = (body ?? {}) as { spreadsheetId?: string; tab?: string };
+  const { spreadsheetId, tab } = body as { spreadsheetId?: string; tab?: string };
 
   if (!hasSheetsCredentials()) {
     return NextResponse.json(
@@ -88,7 +85,6 @@ export async function POST(request: Request) {
       notFoundRefs: report.skippedNotFound.slice(0, 20),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err);
   }
 }

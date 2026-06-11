@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getReadSheetConfig, hasSheetsCredentials } from "@/lib/readSheetConfig";
 import { writeSheetTab } from "@/lib/sheetsWriter";
+import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
 
 type InitBody = {
   writeTab: string;
@@ -19,10 +20,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "spreadsheet not configured" }, { status: 400 });
   }
 
-  let body: InitBody;
-  try {
-    body = (await req.json()) as InitBody;
-  } catch {
+  const body = await parseJsonBody<InitBody>(req);
+  if (body === null) {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }
   const { writeTab, headers } = body;
@@ -34,7 +33,6 @@ export async function POST(req: NextRequest) {
     await writeSheetTab({ spreadsheetId: config.spreadsheetId, tab: writeTab, matrix: [headers] });
     return Response.json({ ok: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return Response.json({ error: message }, { status: 500 });
+    return errorResponse(err);
   }
 }

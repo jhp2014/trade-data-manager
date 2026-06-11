@@ -4,6 +4,7 @@ import { getDb } from "@/actions/db";
 import { writeSheetTab } from "@/lib/sheetsWriter";
 import { activeFilterCount, payloadMatchesManualFilters } from "@/lib/manualFilter";
 import { resolveWorkingSetKeys } from "@/lib/workingSet";
+import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +18,8 @@ export const dynamic = "force-dynamic";
  * spreadsheetId/tab 미지정 시 env 기본값 사용. 탭이 없으면 생성.
  */
 export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const body = await parseJsonBody(request);
+  if (body === null) {
     return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
   }
 
@@ -76,7 +75,6 @@ export async function POST(request: Request) {
       scope: keys ? "working" : "all",
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err);
   }
 }

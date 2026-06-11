@@ -5,6 +5,7 @@ import { upsertReviewTargets } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
 import { getCaptureDir } from "@/lib/captureDir";
 import { parseCaptureCsv } from "@/lib/captureCsv";
+import { errorResponse } from "@/lib/apiResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -67,8 +68,7 @@ export async function POST() {
   try {
     files = await listCaptureFiles(dir);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err);
   }
 
   if (files.length === 0) {

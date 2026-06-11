@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadChartPreview } from "@/lib/chart/loadChartPreview";
+import { errorResponse } from "@/lib/apiResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,6 @@ export async function GET(request: Request) {
         const data = await loadChartPreview({ stockCode, tradeDate });
         return NextResponse.json(data);
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return NextResponse.json({ error: message }, { status: 500 });
+        return errorResponse(err);
     }
 }

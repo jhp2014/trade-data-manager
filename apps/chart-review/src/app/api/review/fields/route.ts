@@ -1,6 +1,7 @@
 import { listManualKeys } from "@trade-data-manager/data-core";
 import { loadReviewRowsFromDb } from "@/lib/loadReviewRows";
 import { getDb } from "@/actions/db";
+import { errorResponse } from "@/lib/apiResponse";
 
 // 새로 추가한 m_ 키가 즉시 반영되도록 매 요청 동적 처리(정적 캐시 금지).
 export const dynamic = "force-dynamic";
@@ -26,7 +27,6 @@ export async function GET() {
       manualKeys: [...manual].sort(),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return Response.json({ error: message }, { status: 500 });
+    return errorResponse(err);
   }
 }

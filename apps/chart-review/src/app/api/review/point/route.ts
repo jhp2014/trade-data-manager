@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { deleteReviewPointById, upsertReviewPoint } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
 import { resolvePointFeatures } from "@/lib/loadReviewRows";
+import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +12,8 @@ export const dynamic = "force-dynamic";
  * Point 1건 입력/수정(upsert). 대상 Target 은 이미 존재해야 한다.
  */
 export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const body = await parseJsonBody(request);
+  if (body === null) {
     return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
   }
 
@@ -45,8 +44,7 @@ export async function POST(request: Request) {
     const features = await resolvePointFeatures(stockCode, tradeDate, tradeTime);
     return NextResponse.json({ ...result, features });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err);
   }
 }
 
@@ -55,10 +53,8 @@ export async function POST(request: Request) {
  * body: { reviewId }
  */
 export async function DELETE(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const body = await parseJsonBody(request);
+  if (body === null) {
     return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
   }
 
@@ -72,8 +68,7 @@ export async function DELETE(request: Request) {
     await deleteReviewPointById(db, BigInt(reviewId));
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err);
   }
 }
 
