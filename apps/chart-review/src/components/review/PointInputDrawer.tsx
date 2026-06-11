@@ -5,7 +5,8 @@ import styles from "./ReviewWorkspace.module.css";
 import type { ReviewPoint } from "@/types/review";
 import type { ManualKeyDef } from "@/lib/loadManualKeys";
 import { useUiStore } from "@/stores/useUiStore";
-import { postJson, patchJson, deleteJson } from "@/lib/apiClient";
+import { postJson } from "@/lib/apiClient";
+import { useManualKeyEditing } from "@/hooks/useManualKeyEditing";
 
 type PointInputDrawerProps = {
   stockCode: string;
@@ -36,7 +37,6 @@ type Row = {
   inRegistry: boolean;
 };
 
-const KEY_PATTERN = /^[A-Za-z0-9_]+$/;
 const MAX_SUGGESTIONS = 20;
 
 export function PointInputDrawer({
@@ -72,8 +72,6 @@ export function PointInputDrawer({
 
   const inputKeyOrder = useUiStore((state) => state.inputKeyOrder);
   const inputKeyDisabled = useUiStore((state) => state.inputKeyDisabled);
-  const purgeManualKey = useUiStore((state) => state.purgeManualKey);
-  const renameManualKeySettings = useUiStore((state) => state.renameManualKeySettings);
 
   const [rows, setRows] = useState<Row[]>(() => buildInitialRows(manualKeys, sourceManual));
   const [submitting, setSubmitting] = useState(false);
@@ -116,68 +114,18 @@ export function PointInputDrawer({
       prev.map((r) => (r.key === key ? { ...r, values: r.values.filter((v) => v !== value) } : r)),
     );
 
-  const handleAddKey = async () => {
-    const raw = window.prompt("새 입력 항목(영문/숫자/밑줄)");
-    const key = raw?.trim();
-    if (!key) return;
-    if (!KEY_PATTERN.test(key)) {
-      window.alert("영문/숫자/밑줄만 사용할 수 있습니다.");
-      return;
-    }
-    if (rows.some((r) => r.key === key)) {
-      window.alert("이미 있는 항목입니다.");
-      return;
-    }
-    try {
-      await postJson("/api/review/manual-keys", { key }, "추가 실패");
-      setRows((prev) => [...prev, { key, label: null, values: [], draft: "", inRegistry: true }]);
-      // 부모 manualKeys 에도 즉시 반영 → 재오픈 시에도 레지스트리 키로 인식(✕ 노출).
-      onKeyAdded(key);
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleRenameKey = async (key: string) => {
-    const raw = window.prompt(`'${key}' 의 새 이름(영문/숫자/밑줄)`, key);
-    const next = raw?.trim();
-    if (!next || next === key) return;
-    if (!KEY_PATTERN.test(next)) {
-      window.alert("영문/숫자/밑줄만 사용할 수 있습니다.");
-      return;
-    }
-    if (rows.some((r) => r.key === next)) {
-      window.alert("이미 있는 항목입니다.");
-      return;
-    }
-    try {
-      await patchJson("/api/review/manual-keys", { from: key, to: next }, "이름 변경 실패");
-      setRows((prev) => prev.map((r) => (r.key === key ? { ...r, key: next } : r)));
-      // 부모 manualKeys + 영속 설정(내보내기/프리셋/헤더/필터 등)의 키 참조도 즉시 from→to 로 이동.
-      onKeyRenamed(key, next);
-      renameManualKeySettings(key, next);
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleDeleteKey = async (key: string) => {
-    if (
-      !window.confirm(
-        `'${key}' 항목을 완전히 삭제할까요?\n레지스트리와 모든 타점의 저장된 값까지 함께 제거됩니다. (되돌릴 수 없음)`,
-      )
-    )
-      return;
-    try {
-      await deleteJson("/api/review/manual-keys", { key }, "삭제 실패");
-      setRows((prev) => prev.filter((r) => r.key !== key));
-      // 부모 manualKeys 에서 제거(재오픈 시 되살아나지 않게) + 영속 설정의 죽은 키 잔재 제거.
-      onKeyDeleted(key);
-      purgeManualKey(key);
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : String(err));
-    }
-  };
+  // 레지스트리 키 추가/이름변경/삭제(prompt·검증·API·부모/설정 갱신)는 useManualKeyEditing 으로 분리.
+  const { handleAddKey, handleRenameKey, handleDeleteKey } = useManualKeyEditing({
+    rows,
+    addRow: (key) =>
+      setRows((prev) => [...prev, { key, label: null, values: [], draft: "", inRegistry: true }]),
+    removeRow: (key) => setRows((prev) => prev.filter((r) => r.key !== key)),
+    renameRow: (from, to) =>
+      setRows((prev) => prev.map((r) => (r.key === from ? { ...r, key: to } : r))),
+    onKeyAdded,
+    onKeyDeleted,
+    onKeyRenamed,
+  });
 
   const handleSave = async () => {
     if (submitting) return;
