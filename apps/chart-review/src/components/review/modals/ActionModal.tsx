@@ -11,9 +11,6 @@ export type ReadSheetState = {
   hasCredentials: boolean;
 };
 
-/** Sheet 연동 모달들의 입력 기본값(읽기 시트 설정에서 파생). */
-export type SheetDefaults = { spreadsheetId: string; tab: string };
-
 /** 설정 모달 위에 겹쳐 뜨는 액션 모달 셸(읽기/Export/Import 공용). */
 export function ActionModal({
   title,
