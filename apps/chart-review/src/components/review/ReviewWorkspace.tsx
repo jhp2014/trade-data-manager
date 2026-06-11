@@ -322,7 +322,16 @@ export function ReviewWorkspace({
     themes.find((t) => t.themeId === selectedThemeId)?.themeName ?? themes[0]?.themeName ?? null;
 
   // 노출 가능한 필드 키 (전 그룹 통합).
-  const { manualFieldKeys, featureFieldKeys } = useMemo(() => collectFieldKeys(groups), [groups]);
+  // manual 키는 레지스트리(전역 m_ 등록부) + 데이터 파생 키의 합집합으로 둔다.
+  // → 아직 데이터가 없는 새 m_ 키도 설정(헤더/Point List/순서/프리셋)에 노출된다.
+  const { manualFieldKeys, featureFieldKeys } = useMemo(() => {
+    const collected = collectFieldKeys(groups);
+    const registryManual = manualKeys.map((k) => `m_${k.key}`);
+    const merged = Array.from(
+      new Set([...registryManual, ...collected.manualFieldKeys]),
+    ).sort();
+    return { manualFieldKeys: merged, featureFieldKeys: collected.featureFieldKeys };
+  }, [groups, manualKeys]);
   // 입력 드로어 값 추천: 전 그룹의 manual 값을 키별 distinct 로 수집.
   const valueSuggestions = useMemo(() => collectValueSuggestions(groups), [groups]);
   const headerAvailable = useMemo(
