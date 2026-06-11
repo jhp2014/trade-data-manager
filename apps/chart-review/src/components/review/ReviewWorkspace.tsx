@@ -66,12 +66,34 @@ type ReviewWorkspaceProps = {
 export function ReviewWorkspace({
   groups: initialGroups,
   initialSelection,
-  manualKeys,
+  manualKeys: manualKeysProp,
   initialTab,
   hasSpreadsheet,
   initialReadSource = "sheet",
 }: ReviewWorkspaceProps) {
   const router = useRouter();
+
+  // 레지스트리(m_ 키) 목록을 클라이언트 상태로 들고, 추가/삭제/이름변경을 낙관적으로 반영한다.
+  // 서버 prop 은 force-dynamic 페이지가 재렌더(브라우저 새로고침)될 때만 갱신되므로,
+  // 그 사이 드로어를 다시 열었을 때 ✕ 삭제 버튼 노출·삭제 반영이 stale 해지는 것을 막는다.
+  const [manualKeys, setManualKeys] = useState<ManualKeyDef[]>(manualKeysProp);
+  const manualKeysPropSig = manualKeysProp.map((k) => k.key).join("|");
+  useEffect(() => {
+    // 서버에서 새 레지스트리가 내려오면(새로고침/router.refresh) 권위 값으로 재동기화.
+    setManualKeys(manualKeysProp);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualKeysPropSig]);
+  const addManualKeyLocal = useCallback((key: string) => {
+    setManualKeys((prev) =>
+      prev.some((k) => k.key === key) ? prev : [...prev, { key, label: null }],
+    );
+  }, []);
+  const removeManualKeyLocal = useCallback((key: string) => {
+    setManualKeys((prev) => prev.filter((k) => k.key !== key));
+  }, []);
+  const renameManualKeyLocal = useCallback((from: string, to: string) => {
+    setManualKeys((prev) => prev.map((k) => (k.key === from ? { ...k, key: to } : k)));
+  }, []);
   const manualFilters = useUiStore((state) => state.manualFilters);
   const filterActive = activeFilterCount(manualFilters) > 0;
   const writeTab = useUiStore((state) => state.writeTab);
@@ -801,6 +823,9 @@ export function ReviewWorkspace({
       manualKeys={manualKeys}
       valueSuggestions={valueSuggestions}
       onClose={() => setInputOpen(false)}
+      onKeyAdded={addManualKeyLocal}
+      onKeyDeleted={removeManualKeyLocal}
+      onKeyRenamed={renameManualKeyLocal}
       onSaved={({ reviewId, payload }) => {
         setInputOpen(false);
         // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신.

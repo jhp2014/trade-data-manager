@@ -17,6 +17,10 @@ type PointInputDrawerProps = {
   onClose: () => void;
   /** 저장 성공 시 호출. 낙관적 갱신을 위해 저장된 reviewId·payload 를 전달한다. */
   onSaved: (saved: { reviewId: string; payload: Record<string, string | string[]> }) => void;
+  /** 레지스트리 키 추가/삭제/이름변경 성공 시 부모의 manualKeys 를 낙관적으로 갱신. */
+  onKeyAdded: (key: string) => void;
+  onKeyDeleted: (key: string) => void;
+  onKeyRenamed: (from: string, to: string) => void;
 };
 
 type Row = {
@@ -40,6 +44,9 @@ export function PointInputDrawer({
   valueSuggestions,
   onClose,
   onSaved,
+  onKeyAdded,
+  onKeyDeleted,
+  onKeyRenamed,
 }: PointInputDrawerProps) {
   // 마커 시간에 이미 저장된 Point 가 있으면 수정, 없으면 신규.
   // point.tradeTime 은 "HH:MM:SS", 마커 tradeTime 은 "HH:MM" 이라 앞 5자리(HH:MM)로 비교한다.
@@ -124,6 +131,8 @@ export function PointInputDrawer({
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "추가 실패");
       setRows((prev) => [...prev, { key, label: null, values: [], draft: "", inRegistry: true }]);
+      // 부모 manualKeys 에도 즉시 반영 → 재오픈 시에도 레지스트리 키로 인식(✕ 노출).
+      onKeyAdded(key);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));
     }
@@ -149,7 +158,8 @@ export function PointInputDrawer({
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "이름 변경 실패");
       setRows((prev) => prev.map((r) => (r.key === key ? { ...r, key: next } : r)));
-      // 영속 설정(내보내기/프리셋/헤더/필터 등)의 키 참조도 즉시 from→to 로 이동.
+      // 부모 manualKeys + 영속 설정(내보내기/프리셋/헤더/필터 등)의 키 참조도 즉시 from→to 로 이동.
+      onKeyRenamed(key, next);
       renameManualKeySettings(key, next);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));
@@ -171,7 +181,8 @@ export function PointInputDrawer({
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "삭제 실패");
       setRows((prev) => prev.filter((r) => r.key !== key));
-      // 영속 설정(내보내기/프리셋/헤더/필터 등)에 남는 죽은 키 잔재를 즉시 제거.
+      // 부모 manualKeys 에서 제거(재오픈 시 되살아나지 않게) + 영속 설정의 죽은 키 잔재 제거.
+      onKeyDeleted(key);
       purgeManualKey(key);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));
