@@ -60,6 +60,8 @@ export function PointInputDrawer({
 
   const inputKeyOrder = useUiStore((state) => state.inputKeyOrder);
   const inputKeyDisabled = useUiStore((state) => state.inputKeyDisabled);
+  const purgeManualKey = useUiStore((state) => state.purgeManualKey);
+  const renameManualKeySettings = useUiStore((state) => state.renameManualKeySettings);
 
   const [rows, setRows] = useState<Row[]>(() => buildInitialRows(manualKeys, sourceManual));
   const [submitting, setSubmitting] = useState(false);
@@ -147,6 +149,8 @@ export function PointInputDrawer({
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "이름 변경 실패");
       setRows((prev) => prev.map((r) => (r.key === key ? { ...r, key: next } : r)));
+      // 영속 설정(내보내기/프리셋/헤더/필터 등)의 키 참조도 즉시 from→to 로 이동.
+      renameManualKeySettings(key, next);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));
     }
@@ -167,6 +171,8 @@ export function PointInputDrawer({
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "삭제 실패");
       setRows((prev) => prev.filter((r) => r.key !== key));
+      // 영속 설정(내보내기/프리셋/헤더/필터 등)에 남는 죽은 키 잔재를 즉시 제거.
+      purgeManualKey(key);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));
     }

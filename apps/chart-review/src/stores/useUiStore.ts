@@ -3,6 +3,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { type PresetGroup, defaultPresetGroups } from "@/lib/quickPreset";
+import {
+  pruneManualKeysFromSettings,
+  renameManualKeyInSettings,
+} from "@/lib/reconcileManualKeys";
 import { DEFAULT_MINUTE_ZOOM_CANDLES, DEFAULT_MINUTE_CLIP_END } from "@/lib/constants";
 
 export type ChartPriceMode = "krx" | "nxt";
@@ -83,6 +87,16 @@ type UiState = {
   /** 분봉 기본 뷰 클립 종료 시각("HH:MM"). 이 시각 이후 봉은 마우스 스크롤로만. */
   minuteClipEnd: string;
   setMinuteClipEnd: (time: string) => void;
+
+  /**
+   * 살아있는 m_ 키 집합(접두사 없는 원본)을 기준으로, 영속 설정에 남은
+   * 죽은 m_ 키 잔재를 모두 제거(자가치유). DB 미연결 등으로 집합이 비면 호출하지 않는다.
+   */
+  reconcileManualKeys: (liveRawKeys: string[]) => void;
+  /** 단일 m_ 키를 모든 영속 설정에서 즉시 제거(삭제 직후 호출). raw = 접두사 없는 키. */
+  purgeManualKey: (rawKey: string) => void;
+  /** m_ 키 이름 변경(from→to)을 모든 영속 설정에 즉시 반영(이름변경 직후 호출). */
+  renameManualKeySettings: (fromRaw: string, toRaw: string) => void;
 };
 
 function toggleInList(list: string[], key: string): string[] {
@@ -143,6 +157,16 @@ export const useUiStore = create<UiState>()(
 
       minuteClipEnd: DEFAULT_MINUTE_CLIP_END,
       setMinuteClipEnd: (time) => set({ minuteClipEnd: time }),
+
+      reconcileManualKeys: (liveRawKeys) =>
+        set((state) => {
+          const live = new Set(liveRawKeys);
+          return pruneManualKeysFromSettings(state, (raw) => !live.has(raw)) ?? {};
+        }),
+      purgeManualKey: (rawKey) =>
+        set((state) => pruneManualKeysFromSettings(state, (raw) => raw === rawKey) ?? {}),
+      renameManualKeySettings: (fromRaw, toRaw) =>
+        set((state) => renameManualKeyInSettings(state, fromRaw, toRaw) ?? {}),
     }),
     {
       name: "chart-review-ui",

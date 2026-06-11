@@ -332,6 +332,22 @@ export function ReviewWorkspace({
     ).sort();
     return { manualFieldKeys: merged, featureFieldKeys: collected.featureFieldKeys };
   }, [groups, manualKeys]);
+
+  // 자가치유: 레지스트리∪데이터에 살아있는 m_ 키 기준으로, 영속 설정(useUiStore)에 남은
+  // 죽은 m_ 키 잔재(내보내기/프리셋/헤더/필터 등)를 제거한다.
+  // - manualFieldKeys 는 "m_" 접두사 포함 → 접두사를 떼어 원본 키 집합으로 만든다.
+  // - 비어 있으면(DB 미연결/키 없음) 전체를 날릴 위험이 있어 건너뛴다.
+  const reconcileManualKeys = useUiStore((state) => state.reconcileManualKeys);
+  const liveManualRawKeys = useMemo(
+    () => manualFieldKeys.map((k) => (k.startsWith("m_") ? k.slice(2) : k)),
+    [manualFieldKeys],
+  );
+  const liveManualRawKey = liveManualRawKeys.join(" ");
+  useEffect(() => {
+    if (liveManualRawKeys.length === 0) return;
+    reconcileManualKeys(liveManualRawKeys);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveManualRawKey]);
   // 입력 드로어 값 추천: 전 그룹의 manual 값을 키별 distinct 로 수집.
   const valueSuggestions = useMemo(() => collectValueSuggestions(groups), [groups]);
   const headerAvailable = useMemo(
