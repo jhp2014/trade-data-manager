@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import styles from "../ReviewWorkspace.module.css";
 import { useModalDismiss } from "@/hooks/useModalDismiss";
+import { getJsonOrNull } from "@/lib/apiClient";
 import { FieldChecklistModal } from "../FieldChecklistModal";
 import { ManualFilterModal } from "../ManualFilterModal";
 import { activeFilterCount } from "@/lib/manualFilter";
@@ -175,25 +176,18 @@ export function SettingsModal({
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/review/read-sheet")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: ReadSheetState | null) => {
-        if (alive && data) setSheetConfig(data);
-      })
-      .catch(() => {});
-    fetch("/api/review/sheets/tabs")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { tabs?: string[] } | null) => {
-        if (alive && data?.tabs) setTabs(data.tabs);
-      })
-      .catch(() => {});
-    fetch("/api/review/fields")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { featureKeys?: string[]; manualKeys?: string[] } | null) => {
+    void getJsonOrNull<ReadSheetState>("/api/review/read-sheet").then((data) => {
+      if (alive && data) setSheetConfig(data);
+    });
+    void getJsonOrNull<{ tabs?: string[] }>("/api/review/sheets/tabs").then((data) => {
+      if (alive && data?.tabs) setTabs(data.tabs);
+    });
+    void getJsonOrNull<{ featureKeys?: string[]; manualKeys?: string[] }>("/api/review/fields").then(
+      (data) => {
         if (!alive || !data) return;
         setDbFieldKeys([...(data.featureKeys ?? []), ...(data.manualKeys ?? [])]);
-      })
-      .catch(() => {});
+      },
+    );
     return () => {
       alive = false;
     };

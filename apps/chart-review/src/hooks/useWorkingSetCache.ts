@@ -9,6 +9,10 @@ import {
   renameManualKeyInGroups,
   type UpsertPointInput,
 } from "@/lib/optimisticPoint";
+import { getJson, getJsonOrNull } from "@/lib/apiClient";
+
+type WorksetResponse = { groups?: ReviewStockGroup[] };
+type TabsResponse = { tabs?: string[] };
 
 type WorksetCache = Map<string, ReviewStockGroup[]>;
 
@@ -63,36 +67,30 @@ export function useWorkingSetCache(
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const r = await fetch("/api/review/sheets/tabs");
-        if (cancelled) return;
-        const { tabs: allTabs } = (await r.json()) as { tabs: string[] };
-        if (!allTabs || allTabs.length === 0) return;
-        setTabs(allTabs);
-        // 현재 탭 제외하고 background preload.
-        for (const tab of allTabs) {
-          if (cancelled) break;
-          if (cacheRef.current.has(tab)) continue;
-          try {
-            const wr = await fetch(`/api/review/workset?tab=${encodeURIComponent(tab)}`);
-            if (cancelled) break;
-            const { groups: g } = (await wr.json()) as { groups: ReviewStockGroup[] };
-            if (g) cacheRef.current.set(tab, g);
-          } catch {
-            // 실패해도 이후 switchTab 때 재시도하므로 무시.
-          }
-        }
-      } catch {
-        // 탭 목록 조회 실패 시 초기 탭만 사용.
+      const tabsRes = await getJsonOrNull<TabsResponse>("/api/review/sheets/tabs");
+      if (cancelled || !tabsRes?.tabs?.length) return;
+      const allTabs = tabsRes.tabs;
+      setTabs(allTabs);
+      // 현재 탭 제외하고 background preload. 실패해도 이후 switchTab 때 재시도하므로 무시.
+      for (const tab of allTabs) {
+        if (cancelled) break;
+        if (cacheRef.current.has(tab)) continue;
+        const wr = await getJsonOrNull<WorksetResponse>(
+          `/api/review/workset?tab=${encodeURIComponent(tab)}`,
+        );
+        if (cancelled) break;
+        if (wr?.groups) cacheRef.current.set(tab, wr.groups);
       }
     })();
     return () => { cancelled = true; };
   }, []);
 
   const fetchWorkset = useCallback(async (tab: string): Promise<ReviewStockGroup[]> => {
-    const r = await fetch(`/api/review/workset?tab=${encodeURIComponent(tab)}`);
-    const json = (await r.json()) as { groups?: ReviewStockGroup[]; error?: string };
-    if (!r.ok || !json.groups) throw new Error(json.error ?? "workset fetch failed");
+    const json = await getJson<WorksetResponse>(
+      `/api/review/workset?tab=${encodeURIComponent(tab)}`,
+      "workset fetch failed",
+    );
+    if (!json.groups) throw new Error("workset fetch failed");
     cacheRef.current.set(tab, json.groups);
     return json.groups;
   }, []);
@@ -143,9 +141,8 @@ export function useWorkingSetCache(
   const switchToDb = useCallback(async (): Promise<ReviewStockGroup[]> => {
     setIsLoadingWorkset(true);
     try {
-      const r = await fetch("/api/review/workset");
-      const json = (await r.json()) as { groups?: ReviewStockGroup[]; error?: string };
-      if (!r.ok || !json.groups) throw new Error(json.error ?? "DB workset fetch failed");
+      const json = await getJson<WorksetResponse>("/api/review/workset", "DB workset fetch failed");
+      if (!json.groups) throw new Error("DB workset fetch failed");
       setReadSource("db");
       setGroups(json.groups);
       return json.groups;
@@ -173,17 +170,14 @@ export function useWorkingSetCache(
   const reloadAll = useCallback(async () => {
     cacheRef.current.clear();
     try {
-      const r = await fetch("/api/review/sheets/tabs");
-      const { tabs: allTabs } = (await r.json()) as { tabs: string[] };
+      const tabsRes = await getJsonOrNull<TabsResponse>("/api/review/sheets/tabs");
+      const allTabs = tabsRes?.tabs;
       if (allTabs?.length) setTabs(allTabs);
 
       if (readSource === "db") {
         // DB 모드 유지하며 재조회.
-        const dbR = await fetch("/api/review/workset");
-        if (dbR.ok) {
-          const dbJson = (await dbR.json()) as { groups?: ReviewStockGroup[] };
-          if (dbJson.groups) setGroups(dbJson.groups);
-        }
+        const dbJson = await getJsonOrNull<WorksetResponse>("/api/review/workset");
+        if (dbJson?.groups) setGroups(dbJson.groups);
       } else {
         // 현재 탭 먼저 갱신.
         const current = await fetchWorkset(readTab);

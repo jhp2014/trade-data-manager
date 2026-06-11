@@ -23,6 +23,31 @@ export async function requestJson<T = Record<string, unknown>>(
   return data as T;
 }
 
+/** GET 으로 JSON 을 받아 반환한다. 실패(!ok)면 body.error(없으면 fallback)로 throw. */
+export async function getJson<T = Record<string, unknown>>(
+  url: string,
+  fallbackError = "요청 실패",
+): Promise<T> {
+  const res = await fetch(url);
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error ?? fallbackError);
+  return data as T;
+}
+
+/**
+ * GET 으로 JSON 을 받아 반환하되, 실패(네트워크/!ok/파싱)면 null 을 돌려준다.
+ * 화면을 막지 않는 보조 read(설정·탭 목록 등)에서 에러를 조용히 흘릴 때 쓴다.
+ */
+export async function getJsonOrNull<T = Record<string, unknown>>(url: string): Promise<T | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 export const postJson = <T = Record<string, unknown>>(
   url: string,
   body?: unknown,

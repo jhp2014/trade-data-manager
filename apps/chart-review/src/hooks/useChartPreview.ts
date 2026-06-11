@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { ChartPreviewDTO } from "@/types/chart";
+import { getJson } from "@/lib/apiClient";
 
 /**
  * (stockCode, tradeDate) 단위로 캐시.
@@ -15,17 +16,12 @@ export function useChartPreview(
 ) {
     return useQuery<ChartPreviewDTO>({
         queryKey: ["chart-preview", params?.stockCode, params?.tradeDate],
-        queryFn: async () => {
+        queryFn: () => {
             const qs = new URLSearchParams({
                 stockCode: params!.stockCode,
                 tradeDate: params!.tradeDate,
             });
-            const res = await fetch(`/api/chart-preview?${qs.toString()}`);
-            if (!res.ok) {
-                const body = await res.json().catch(() => null);
-                throw new Error(body?.error ?? `차트 조회 실패 (${res.status})`);
-            }
-            return (await res.json()) as ChartPreviewDTO;
+            return getJson<ChartPreviewDTO>(`/api/chart-preview?${qs.toString()}`, "차트 조회 실패");
         },
         enabled: params !== null,
     });

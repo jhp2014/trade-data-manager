@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal } from "./ActionModal";
-import { postJson } from "@/lib/apiClient";
+import { postJson, getJsonOrNull } from "@/lib/apiClient";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type CsvDirState = {
@@ -21,14 +21,9 @@ export function CsvImportModal({ onClose }: { onClose: () => void }) {
   const { busy, status, run } = useAsyncAction();
 
   const loadInfo = useCallback(() => {
-    fetch("/api/review/import-csv")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: CsvDirState | null) => {
-        if (data) setInfo(data);
-      })
-      .catch(() => {
-        /* 무시 */
-      });
+    void getJsonOrNull<CsvDirState>("/api/review/import-csv").then((data) => {
+      if (data) setInfo(data);
+    });
   }, []);
 
   useEffect(() => {
