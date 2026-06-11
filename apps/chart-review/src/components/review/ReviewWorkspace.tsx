@@ -14,6 +14,7 @@ import { timeStringToMinutes } from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
 import { isEditableTarget } from "@/lib/domFocus";
 import { postJson, deleteJson } from "@/lib/apiClient";
+import { stripManualPrefix } from "@/lib/manualValue";
 import { dateToUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
 import { useChartPreview } from "@/hooks/useChartPreview";
@@ -347,7 +348,7 @@ export function ReviewWorkspace({
   // - 비어 있으면(DB 미연결/키 없음) 전체를 날릴 위험이 있어 건너뛴다.
   const reconcileManualKeys = useUiStore((state) => state.reconcileManualKeys);
   const liveManualRawKeys = useMemo(
-    () => manualFieldKeys.map((k) => (k.startsWith("m_") ? k.slice(2) : k)),
+    () => manualFieldKeys.map(stripManualPrefix),
     [manualFieldKeys],
   );
   const liveManualRawKey = liveManualRawKeys.join(" ");

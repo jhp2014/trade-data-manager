@@ -3,6 +3,11 @@
 
 export const MANUAL_VALUE_SEP = " | ";
 
+/** 키에서 "m_" 접두사를 떼어 원본 키 이름만 남긴다(접두사가 없으면 그대로). */
+export function stripManualPrefix(key: string): string {
+  return key.startsWith("m_") ? key.slice(2) : key;
+}
+
 /** "a | b" → ["a","b"]. 빈 값/공백은 제거한다. */
 export function splitManualValue(raw: string | undefined): string[] {
   if (!raw) return [];

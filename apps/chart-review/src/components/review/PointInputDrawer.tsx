@@ -6,7 +6,7 @@ import type { ReviewPoint } from "@/types/review";
 import type { ManualKeyDef } from "@/lib/loadManualKeys";
 import { useUiStore } from "@/stores/useUiStore";
 import { postJson } from "@/lib/apiClient";
-import { splitManualValue } from "@/lib/manualValue";
+import { splitManualValue, stripManualPrefix } from "@/lib/manualValue";
 import { useManualKeyEditing } from "@/hooks/useManualKeyEditing";
 
 type PointInputDrawerProps = {
@@ -145,7 +145,7 @@ export function PointInputDrawer({
       // 비활성화된 컬럼: 수정 모드에서는 기존 값 유지, 신규 모드에서는 포함 안 함.
       if (existing) {
         for (const disabledKey of inputKeyDisabled) {
-          const rawKey = disabledKey.startsWith("m_") ? disabledKey.slice(2) : disabledKey;
+          const rawKey = stripManualPrefix(disabledKey);
           if (!(rawKey in payload) && rawKey in existing.sourceRow.manual) {
             const value = existing.sourceRow.manual[rawKey];
             if (value) payload[rawKey] = value;

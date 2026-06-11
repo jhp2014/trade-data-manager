@@ -12,16 +12,11 @@ import {
 } from "@/lib/quickPreset";
 import { ActionModal } from "./ActionModal";
 import { moveItem } from "@/lib/reorder";
+import { stripManualPrefix } from "@/lib/manualValue";
 
 // ── 퀵 입력 프리셋 설정 모달 ──────────────────────────────────────────────────
 
 const PRESET_ACTIONS: PresetAction[] = ["overwrite", "append", "delete"];
-
-/** 앞의 "m_" 접두사를 떼어 원본 키만 남긴다. */
-function stripManualPrefix(raw: string): string {
-  const k = raw.trim();
-  return k.startsWith("m_") ? k.slice(2) : k;
-}
 
 export function PresetConfigModal({
   manualFieldKeys,
@@ -187,7 +182,7 @@ export function PresetConfigModal({
                     placeholder="m_컬럼"
                     value={entry.key ? `m_${entry.key}` : ""}
                     onChange={(e) =>
-                      updateEntry(preset.id, eIdx, { key: stripManualPrefix(e.target.value) })
+                      updateEntry(preset.id, eIdx, { key: stripManualPrefix(e.target.value.trim()) })
                     }
                   />
                   <select
