@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "../ReviewWorkspace.module.css";
+import { useModalDismiss } from "@/hooks/useModalDismiss";
 import { FieldChecklistModal } from "../FieldChecklistModal";
 import { ManualFilterModal } from "../ManualFilterModal";
 import { activeFilterCount } from "@/lib/manualFilter";
@@ -154,7 +155,6 @@ export function SettingsModal({
   const minuteClipEnd = useUiStore((state) => state.minuteClipEnd);
   const setMinuteClipEnd = useUiStore((state) => state.setMinuteClipEnd);
 
-  const overlayRef = useRef<HTMLDivElement>(null);
   const [openPicker, setOpenPicker] = useState<
     | "header"
     | "point"
@@ -199,17 +199,10 @@ export function SettingsModal({
     };
   }, []);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && openPicker === null) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [openPicker, onClose]);
-
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === overlayRef.current) onClose();
-  };
+  // 하위 피커가 열려 있으면(openPicker != null) ESC 는 그 피커가 가져가도록 비활성화.
+  const { overlayRef, onOverlayClick } = useModalDismiss(onClose, {
+    enabled: openPicker === null,
+  });
 
   // f 키 append 및 Export 에서 쓸 수 있는 전체 필드 목록.
   // DB 전체 컬럼(dbFieldKeys)과 현재 작업셋∪레지스트리(headerAvailable)의 합집합으로 둔다.
@@ -220,7 +213,7 @@ export function SettingsModal({
   );
 
   return (
-    <div ref={overlayRef} className={styles.settingsOverlay} onClick={handleOverlayClick}>
+    <div ref={overlayRef} className={styles.settingsOverlay} onClick={onOverlayClick}>
       <div className={styles.settingsModal}>
         <div className={styles.settingsHeader}>
           <span className={styles.settingsTitle}>설정</span>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import sheetStyles from "../SheetModal.module.css";
+import { useModalDismiss } from "@/hooks/useModalDismiss";
 
 /** 읽기 시트 설정(쿠키/env) 상태. read-sheet API 응답 형태. */
 export type ReadSheetState = {
@@ -23,23 +23,12 @@ export function ActionModal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === overlayRef.current) onClose();
-  };
-  // ESC 로 닫기
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  const { overlayRef, onOverlayClick } = useModalDismiss(onClose, {
+    capture: true,
+    stopPropagation: true,
+  });
   return (
-    <div ref={overlayRef} className={sheetStyles.overlay} onClick={handleOverlayClick}>
+    <div ref={overlayRef} className={sheetStyles.overlay} onClick={onOverlayClick}>
       <div className={sheetStyles.modal} role="dialog" aria-label={title}>
         <div className={sheetStyles.header}>
           <div className={sheetStyles.titleWrap}>

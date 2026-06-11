@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import styles from "./FieldChecklistModal.module.css";
 import { activeFilterCount } from "@/lib/manualFilter";
+import { useModalDismiss } from "@/hooks/useModalDismiss";
 
 type ManualFilterModalProps = {
   /** m_ 키(접두사 없는 원본) → 전 그룹에서 수집한 distinct 값 목록. */
@@ -22,30 +23,18 @@ export function ManualFilterModal({
   onClear,
   onClose,
 }: ManualFilterModalProps) {
-  const overlayRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
-
-  // ESC 로 닫기 (capture: 상위 설정 모달보다 먼저 처리)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  // 캡처 단계 ESC: 상위 설정 모달보다 먼저 닫는다.
+  const { overlayRef, onOverlayClick } = useModalDismiss(onClose, {
+    capture: true,
+    stopPropagation: true,
+  });
 
   const keys = Object.keys(valueSuggestions).sort();
   const activeCount = activeFilterCount(filters);
 
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === overlayRef.current) onClose();
-  };
-
   return (
-    <div ref={overlayRef} className={styles.overlay} onClick={handleOverlayClick}>
+    <div ref={overlayRef} className={styles.overlay} onClick={onOverlayClick}>
       <div className={styles.modal}>
         <div className={styles.header}>
           <span className={styles.title}>
