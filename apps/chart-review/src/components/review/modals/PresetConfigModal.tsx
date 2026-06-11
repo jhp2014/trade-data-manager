@@ -11,6 +11,7 @@ import {
   newPresetId,
 } from "@/lib/quickPreset";
 import { ActionModal } from "./ActionModal";
+import { moveItem } from "@/lib/reorder";
 
 // ── 퀵 입력 프리셋 설정 모달 ──────────────────────────────────────────────────
 
@@ -72,14 +73,9 @@ export function PresetConfigModal({
     updateActivePresets((presets) => presets.filter((p) => p.id !== id));
 
   const movePreset = (id: string, dir: -1 | 1) =>
-    updateActivePresets((presets) => {
-      const i = presets.findIndex((p) => p.id === id);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= presets.length) return presets;
-      const next = [...presets];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
+    updateActivePresets((presets) =>
+      moveItem(presets, presets.findIndex((p) => p.id === id), dir),
+    );
 
   const addEntry = (presetId: string) =>
     updateActivePresets((presets) =>
