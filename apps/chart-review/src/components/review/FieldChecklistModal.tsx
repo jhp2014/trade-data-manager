@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import styles from "./FieldChecklistModal.module.css";
-import { useModalDismiss } from "@/hooks/useModalDismiss";
+import { OverlayModal } from "./OverlayModal";
 
 type FieldChecklistModalProps = {
   title: string;
@@ -23,58 +23,50 @@ export function FieldChecklistModal({
   onClose,
 }: FieldChecklistModalProps) {
   const [search, setSearch] = useState("");
-  // 캡처 단계 ESC: 상위 설정 모달보다 먼저 닫는다.
-  const { overlayRef, onOverlayClick } = useModalDismiss(onClose, {
-    capture: true,
-    stopPropagation: true,
-  });
 
   const filtered = search
     ? availableKeys.filter((k) => k.toLowerCase().includes(search.toLowerCase()))
     : availableKeys;
 
   return (
-    <div ref={overlayRef} className={styles.overlay} onClick={onOverlayClick}>
-      <div className={styles.modal}>
-        <div className={styles.header}>
-          <span className={styles.title}>
-            {title}
-            {selectedKeys.length > 0 && <span className={styles.badge}>{selectedKeys.length}</span>}
-          </span>
-          <button type="button" className={styles.close} onClick={onClose}>✕</button>
-        </div>
-        {availableKeys.length >= 8 && (
-          <input
-            className={styles.search}
-            type="text"
-            placeholder="검색..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            autoFocus
-          />
-        )}
-        <div className={styles.list}>
-          {filtered.length === 0 ? (
-            <div className={styles.empty}>필드 없음</div>
-          ) : (
-            filtered.map((key) => (
-              <label key={key} className={styles.item}>
-                <input
-                  type="checkbox"
-                  checked={selectedKeys.includes(key)}
-                  onChange={() => onToggle(key)}
-                />
-                <span className={styles.itemLabel}>{key}</span>
-              </label>
-            ))
-          )}
-        </div>
-        {selectedKeys.length > 0 && (
+    <OverlayModal
+      title={title}
+      badge={selectedKeys.length}
+      onClose={onClose}
+      footer={
+        selectedKeys.length > 0 && (
           <button type="button" className={styles.clear} onClick={onClear}>
             전체 해제
           </button>
+        )
+      }
+    >
+      {availableKeys.length >= 8 && (
+        <input
+          className={styles.search}
+          type="text"
+          placeholder="검색..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          autoFocus
+        />
+      )}
+      <div className={styles.list}>
+        {filtered.length === 0 ? (
+          <div className={styles.empty}>필드 없음</div>
+        ) : (
+          filtered.map((key) => (
+            <label key={key} className={styles.item}>
+              <input
+                type="checkbox"
+                checked={selectedKeys.includes(key)}
+                onChange={() => onToggle(key)}
+              />
+              <span className={styles.itemLabel}>{key}</span>
+            </label>
+          ))
         )}
       </div>
-    </div>
+    </OverlayModal>
   );
 }
