@@ -2,14 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReviewStockGroup } from "@/types/review";
-import {
-  upsertPointInGroups,
-  removePointFromGroups,
-  purgeManualKeyInGroups,
-  renameManualKeyInGroups,
-  type UpsertPointInput,
-} from "@/lib/optimisticPoint";
+import type { UpsertPointInput } from "@/lib/optimisticPoint";
 import { getJson, getJsonOrNull } from "@/lib/apiClient";
+import { useOptimisticGroups } from "@/hooks/useOptimisticGroups";
 
 type WorksetResponse = { groups?: ReviewStockGroup[] };
 type TabsResponse = { tabs?: string[] };
@@ -193,39 +188,9 @@ export function useWorkingSetCache(
     }
   }, [fetchWorkset, readTab, readSource, tabs]);
 
-  // groups state 와 (시트 모드일 때) 현재 탭 캐시를 함께 갱신한다.
-  // 캐시까지 갱신해야 다른 탭에 다녀와도 낙관적 변경이 유지된다.
-  const applyLocal = useCallback(
-    (mutate: (prev: ReviewStockGroup[]) => ReviewStockGroup[]) => {
-      setGroups((prev) => {
-        const next = mutate(prev);
-        if (next === prev) return prev;
-        if (readSource === "sheet") cacheRef.current.set(readTab, next);
-        return next;
-      });
-    },
-    [readSource, readTab],
-  );
-
-  const upsertPointLocal = useCallback(
-    (input: UpsertPointInput) => applyLocal((prev) => upsertPointInGroups(prev, input)),
-    [applyLocal],
-  );
-
-  const removePointLocal = useCallback(
-    (reviewId: string) => applyLocal((prev) => removePointFromGroups(prev, reviewId)),
-    [applyLocal],
-  );
-
-  const purgeManualKeyLocal = useCallback(
-    (key: string) => applyLocal((prev) => purgeManualKeyInGroups(prev, key)),
-    [applyLocal],
-  );
-
-  const renameManualKeyLocal = useCallback(
-    (from: string, to: string) => applyLocal((prev) => renameManualKeyInGroups(prev, from, to)),
-    [applyLocal],
-  );
+  // 낙관적 변이(현재 groups + 시트 모드면 현재 탭 캐시 갱신)는 useOptimisticGroups 로 분리.
+  const { upsertPointLocal, removePointLocal, purgeManualKeyLocal, renameManualKeyLocal } =
+    useOptimisticGroups({ setGroups, cacheRef, readSource, readTab });
 
   return {
     tabs,
