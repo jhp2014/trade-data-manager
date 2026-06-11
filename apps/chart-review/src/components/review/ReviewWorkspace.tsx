@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./ReviewWorkspace.module.css";
 import { RealThemeOverlayChart } from "@/components/chart/RealThemeOverlayChart";
@@ -39,6 +39,7 @@ import { useMarkerTime } from "@/hooks/useMarkerTime";
 import { useStatusToast } from "@/hooks/useStatusToast";
 import { useQuickPresets } from "@/hooks/useQuickPresets";
 import { useTabNavigation } from "@/hooks/useTabNavigation";
+import { useManualKeyRegistry } from "@/hooks/useManualKeyRegistry";
 import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
@@ -73,27 +74,9 @@ export function ReviewWorkspace({
 }: ReviewWorkspaceProps) {
   const router = useRouter();
 
-  // 레지스트리(m_ 키) 목록을 클라이언트 상태로 들고, 추가/삭제/이름변경을 낙관적으로 반영한다.
-  // 서버 prop 은 force-dynamic 페이지가 재렌더(브라우저 새로고침)될 때만 갱신되므로,
-  // 그 사이 드로어를 다시 열었을 때 ✕ 삭제 버튼 노출·삭제 반영이 stale 해지는 것을 막는다.
-  const [manualKeys, setManualKeys] = useState<ManualKeyDef[]>(manualKeysProp);
-  const manualKeysPropSig = manualKeysProp.map((k) => k.key).join("|");
-  useEffect(() => {
-    // 서버에서 새 레지스트리가 내려오면(새로고침/router.refresh) 권위 값으로 재동기화.
-    setManualKeys(manualKeysProp);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualKeysPropSig]);
-  const addManualKeyLocal = useCallback((key: string) => {
-    setManualKeys((prev) =>
-      prev.some((k) => k.key === key) ? prev : [...prev, { key, label: null }],
-    );
-  }, []);
-  const removeManualKeyLocal = useCallback((key: string) => {
-    setManualKeys((prev) => prev.filter((k) => k.key !== key));
-  }, []);
-  const renameManualKeyLocal = useCallback((from: string, to: string) => {
-    setManualKeys((prev) => prev.map((k) => (k.key === from ? { ...k, key: to } : k)));
-  }, []);
+  // 레지스트리(m_ 키) 목록과 낙관적 추가/삭제/이름변경은 useManualKeyRegistry 로 분리.
+  const { manualKeys, addManualKeyLocal, removeManualKeyLocal, renameManualKeyLocal } =
+    useManualKeyRegistry(manualKeysProp);
   const manualFilters = useUiStore((state) => state.manualFilters);
   const filterActive = activeFilterCount(manualFilters) > 0;
   const writeTab = useUiStore((state) => state.writeTab);
@@ -445,74 +428,41 @@ export function ReviewWorkspace({
     if (canInput) setInputOpen(true);
   }, [canInput]);
 
-  // 탐색 리스트에서 포인트 클릭: 작업셋 store 는 건드리지 않고(=a/d 복귀 유지)
-  // 탐색 선택만 바꾸고 마커를 그 tradeTime 으로 옮긴다.
-  const handleSelectExploredPoint = useCallback(
+  // 활성 타점 선택의 단일 진입점. override 면 탐색 선택(작업셋 store 미변경 → a/d 복귀 유지),
+  // 아니면 작업셋 선택. 어느 경우든 마커를 그 타점 시각으로 항상 스냅한다.
+  // (이미 선택된 타점을 다시 골라도, 또는 선택이 경계라 안 바뀌어도 마커는 복귀한다.)
+  const selectActivePoint = useCallback(
     (pointKey: string) => {
-      setExploredPointKey(pointKey);
-      const p = exploredGroup.points.find((x) => x.pointKey === pointKey);
-      const mins = p ? timeStringToMinutes(p.tradeTime) : null;
-      if (mins != null) setMarkerMinutes(mins);
-    },
-    [exploredGroup],
-  );
-
-  // Point List 클릭 핸들러. override 면 탐색 선택(마커 항상 스냅), 아니면 작업셋 선택.
-  // 비-override 에서 이미 선택된 타점을 다시 클릭해도(=pointKey 미변경) 마커를
-  // 그 타점 시각으로 스냅한다(기존엔 pointKey 변경 시에만 마커가 따라가 복귀가 안 됐음).
-  const handleSelectPoint = useCallback(
-    (pointKey: string) => {
-      if (isOverride) {
-        handleSelectExploredPoint(pointKey);
-        return;
-      }
-      commands.selectPoint(pointKey);
+      if (isOverride) setExploredPointKey(pointKey);
+      else commands.selectPoint(pointKey);
       const p = activeGroup.points.find((x) => x.pointKey === pointKey);
       const mins = p ? timeStringToMinutes(p.tradeTime) : null;
       if (mins != null) setMarkerMinutes(mins);
     },
-    [isOverride, handleSelectExploredPoint, commands, activeGroup],
+    [isOverride, commands, activeGroup, setMarkerMinutes],
   );
 
-  // Ctrl+a/Ctrl+d = 타점 탐색. override 중이면 작업셋 store 를 건드리지 않고
-  // 탐색 선택만, 아니면 작업셋 선택을 위(과거)/아래(미래)로 옮긴다(버그 수정: 본 종목 복귀 방지).
-  // 인덱스 변화 여부와 무관하게 마커를 대상 타점 시각으로 항상 스냅한다:
-  // a/d 로 마커만 벗어난 뒤 Ctrl+a/d 를 누르면, 타점이 1개거나 경계라 선택이 안 바뀌어도
-  // 마커가 해당 타점으로 복귀한다(과거엔 pointKey 변경 시에만 스냅돼 복귀가 안 됐음).
-  const movePoint = useCallback(
-    (dir: 1 | -1) => {
+  // Point List 클릭 핸들러(= 활성 타점 선택).
+  const handleSelectPoint = selectActivePoint;
+
+  // 현재 타점에서 dir(과거/미래)로 한 칸 이동. wrap=true 면 끝에서 처음으로 순환.
+  // Ctrl+a/d(이동)와 분봉 우클릭(순회) 공용.
+  const stepPoint = useCallback(
+    (dir: 1 | -1, wrap = false) => {
       const pts = activeGroup.points;
       if (pts.length === 0) return;
       const curIdx = pts.findIndex((p) => p.pointKey === activePoint.pointKey);
       const base = curIdx < 0 ? 0 : curIdx;
-      const nextIdx = Math.min(pts.length - 1, Math.max(0, base + dir));
-      const target = pts[nextIdx];
-      if (isOverride) {
-        setExploredPointKey(target.pointKey);
-      } else {
-        commands.selectPoint(target.pointKey);
-      }
-      const mins = timeStringToMinutes(target.tradeTime);
-      if (mins != null) setMarkerMinutes(mins);
+      const nextIdx = wrap
+        ? (base + dir + pts.length) % pts.length
+        : Math.min(pts.length - 1, Math.max(0, base + dir));
+      selectActivePoint(pts[nextIdx].pointKey);
     },
-    [isOverride, activeGroup, activePoint.pointKey, commands],
+    [activeGroup, activePoint.pointKey, selectActivePoint],
   );
 
-  // 분봉 우클릭 → Point List 를 다음 타점으로 순회(끝에서 처음으로 래핑).
-  const cyclePoint = useCallback(() => {
-    const pts = activeGroup.points;
-    if (pts.length === 0) return;
-    const curIdx = pts.findIndex((p) => p.pointKey === activePoint.pointKey);
-    const base = curIdx < 0 ? 0 : curIdx;
-    const target = pts[(base + 1) % pts.length];
-    if (isOverride) {
-      setExploredPointKey(target.pointKey);
-    } else {
-      commands.selectPoint(target.pointKey);
-    }
-    const mins = timeStringToMinutes(target.tradeTime);
-    if (mins != null) setMarkerMinutes(mins);
-  }, [isOverride, activeGroup, activePoint.pointKey, commands]);
+  // 분봉 우클릭 → 다음 타점으로 순회(끝에서 처음으로 래핑).
+  const cyclePoint = useCallback(() => stepPoint(1, true), [stepPoint]);
 
   // w/s = 테마 리스트 위/아래 종목 탐색(가장 끝에서 순환). 표시 순서(themeRowOrder)를
   // 기준으로 현재 보고 있는 종목의 이웃을 선택한다.
@@ -613,8 +563,8 @@ export function ReviewWorkspace({
   const handleMarkerRight = useCallback(() => moveMarker(1), [moveMarker]);
   const handleShiftMarkerLeft = useCallback(() => moveMarker(-1, MARKER_HOUR_STEP_MIN), [moveMarker]);
   const handleShiftMarkerRight = useCallback(() => moveMarker(1, MARKER_HOUR_STEP_MIN), [moveMarker]);
-  const handlePrevPoint = useCallback(() => movePoint(-1), [movePoint]);
-  const handleNextPoint = useCallback(() => movePoint(1), [movePoint]);
+  const handlePrevPoint = useCallback(() => stepPoint(-1), [stepPoint]);
+  const handleNextPoint = useCallback(() => stepPoint(1), [stepPoint]);
   const handleThemeUp = useCallback(() => navigateThemeRow(-1), [navigateThemeRow]);
   const handleThemeDown = useCallback(() => navigateThemeRow(1), [navigateThemeRow]);
 
@@ -877,116 +827,75 @@ export function ReviewWorkspace({
     />
   );
 
-  if (viewMode === "minute") {
-    return (
-      <main className={styles.workspace}>
-        {header}
-        {settingsModal}
-        {inputDrawer}
-        {historySwitcher}
-        {presetSwitcher}
-        {toast}
-        <section className={styles.singleMode}>
-          <MinuteChartPanel
-            data={mainChartData}
-            isLoading={chartPreview.isLoading}
-            error={chartPreview.error}
-            markerTime={markerTime}
-            group={activeGroup}
-            point={activePoint}
-            themeOverlay={activeThemeOverlay}
-            priceLines={dailyPriceLines}
-            zoomed={minuteZoomed}
-            onMoveMarkerToTime={handleMoveMarkerToTime}
-            onCyclePoint={cyclePoint}
-          />
-        </section>
-      </main>
-    );
-  }
-
-  if (viewMode === "daily") {
-    return (
-      <main className={styles.workspace}>
-        {header}
-        {settingsModal}
-        {inputDrawer}
-        {historySwitcher}
-        {presetSwitcher}
-        {toast}
-        <section className={styles.singleMode}>
-          <DailyChartPanel
-            data={mainChartData}
-            isLoading={chartPreview.isLoading}
-            error={chartPreview.error}
-            group={activeGroup}
-            point={activePoint}
-            priceLines={dailyPriceLines}
-          />
-        </section>
-      </main>
-    );
-  }
-
-  if (viewMode === "overlay") {
-    return (
-      <main className={styles.workspace}>
-        {header}
-        {settingsModal}
-        {inputDrawer}
-        {historySwitcher}
-        {presetSwitcher}
-        {toast}
-        <section className={styles.singleMode}>
-          <div className={styles.chartPanel}>
-            <RealThemeOverlayChart
-              data={activeThemeOverlay}
-              markerTime={markerTime}
-            />
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className={styles.workspace}>
+  // 헤더·모달·토스트는 모든 뷰모드 공통 → 한 번만 조립한다.
+  const chrome = (
+    <>
       {header}
       {settingsModal}
       {inputDrawer}
       {historySwitcher}
       {presetSwitcher}
       {toast}
+    </>
+  );
+
+  // 일봉/분봉 패널은 단일 뷰와 대시보드(2분할)에서 동일하게 쓰이므로 한 번만 만든다.
+  const dailyPanel = (
+    <DailyChartPanel
+      data={mainChartData}
+      isLoading={chartPreview.isLoading}
+      error={chartPreview.error}
+      group={activeGroup}
+      point={activePoint}
+      priceLines={dailyPriceLines}
+    />
+  );
+
+  const minutePanel = (
+    <MinuteChartPanel
+      data={mainChartData}
+      isLoading={chartPreview.isLoading}
+      error={chartPreview.error}
+      markerTime={markerTime}
+      group={activeGroup}
+      point={activePoint}
+      themeOverlay={activeThemeOverlay}
+      priceLines={dailyPriceLines}
+      zoomed={minuteZoomed}
+      onMoveMarkerToTime={handleMoveMarkerToTime}
+      onCyclePoint={cyclePoint}
+    />
+  );
+
+  let body: ReactNode;
+  if (viewMode === "minute") {
+    body = <section className={styles.singleMode}>{minutePanel}</section>;
+  } else if (viewMode === "daily") {
+    body = <section className={styles.singleMode}>{dailyPanel}</section>;
+  } else if (viewMode === "overlay") {
+    body = (
+      <section className={styles.singleMode}>
+        <div className={styles.chartPanel}>
+          <RealThemeOverlayChart data={activeThemeOverlay} markerTime={markerTime} />
+        </div>
+      </section>
+    );
+  } else {
+    body = (
       <section className={styles.body}>
         {sidebar}
         <section className={styles.mainPane}>
-          <div className={styles.chartCell}>
-            <DailyChartPanel
-              data={mainChartData}
-              isLoading={chartPreview.isLoading}
-              error={chartPreview.error}
-              group={activeGroup}
-              point={activePoint}
-              priceLines={dailyPriceLines}
-            />
-          </div>
-          <div className={styles.chartCell}>
-            <MinuteChartPanel
-              data={mainChartData}
-              isLoading={chartPreview.isLoading}
-              error={chartPreview.error}
-              markerTime={markerTime}
-              group={activeGroup}
-              point={activePoint}
-              themeOverlay={activeThemeOverlay}
-              priceLines={dailyPriceLines}
-              zoomed={minuteZoomed}
-              onMoveMarkerToTime={handleMoveMarkerToTime}
-              onCyclePoint={cyclePoint}
-            />
-          </div>
+          <div className={styles.chartCell}>{dailyPanel}</div>
+          <div className={styles.chartCell}>{minutePanel}</div>
         </section>
       </section>
+    );
+  }
+
+  return (
+    <main className={styles.workspace}>
+      {chrome}
+      {body}
     </main>
   );
 }
