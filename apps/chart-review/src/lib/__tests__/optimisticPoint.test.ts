@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { upsertPointInGroups, removePointFromGroups } from "@/lib/optimisticPoint";
+import {
+  upsertPointInGroups,
+  removePointFromGroups,
+  purgeManualKeyInGroups,
+  renameManualKeyInGroups,
+} from "@/lib/optimisticPoint";
 import { toReviewPoint } from "@/lib/groupSheetRows";
 import type { ReviewStockGroup, SheetPointRow } from "@/types/review";
 
@@ -84,5 +89,40 @@ describe("upsertPointInGroups", () => {
     });
 
     expect(next[0].points[0].sourceRow.features).toEqual({});
+  });
+});
+
+describe("purgeManualKeyInGroups", () => {
+  it("removes the key from every point's manual across groups", () => {
+    const group = makeGroup([
+      baseRow({ reviewId: "r1", tradeTime: "09:30", manual: { day: "1", b: "x" } }),
+      baseRow({ reviewId: "r2", tradeTime: "10:00", manual: { day: "2" } }),
+    ]);
+
+    const next = purgeManualKeyInGroups([group], "day");
+    expect(next[0].points[0].sourceRow.manual).toEqual({ b: "x" });
+    expect(next[0].points[1].sourceRow.manual).toEqual({});
+  });
+
+  it("returns the same reference when the key is absent", () => {
+    const groups = [makeGroup([baseRow({ reviewId: "r1", manual: { b: "x" } })])];
+    expect(purgeManualKeyInGroups(groups, "day")).toBe(groups);
+  });
+});
+
+describe("renameManualKeyInGroups", () => {
+  it("moves a manual key from→to while keeping the value", () => {
+    const group = makeGroup([
+      baseRow({ reviewId: "r1", tradeTime: "09:30", manual: { old: "v", keep: "k" } }),
+    ]);
+
+    const next = renameManualKeyInGroups([group], "old", "new");
+    expect(next[0].points[0].sourceRow.manual).toEqual({ new: "v", keep: "k" });
+  });
+
+  it("is a no-op for equal or empty keys", () => {
+    const groups = [makeGroup([baseRow({ reviewId: "r1", manual: { old: "v" } })])];
+    expect(renameManualKeyInGroups(groups, "old", "old")).toBe(groups);
+    expect(renameManualKeyInGroups(groups, "", "new")).toBe(groups);
   });
 });

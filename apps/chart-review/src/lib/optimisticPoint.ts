@@ -82,6 +82,64 @@ export function upsertPointInGroups(
 }
 
 /**
+ * 모든 그룹·타점의 manual 에서 key 를 제거한 새 groups 를 반환.
+ * 키를 레지스트리에서 삭제(deleteManualKey)하면 서버 payload 도 함께 비워지므로,
+ * 서버 재조회 없이 클라이언트 작업셋도 같은 상태로 맞춘다(데이터 파생 키 노출 즉시 제거).
+ */
+export function purgeManualKeyInGroups(
+  groups: ReviewStockGroup[],
+  key: string,
+): ReviewStockGroup[] {
+  let changed = false;
+  const next = groups.map((group) => {
+    let groupChanged = false;
+    const points = group.points.map((p) => {
+      if (!(key in p.sourceRow.manual)) return p;
+      groupChanged = true;
+      const manual = { ...p.sourceRow.manual };
+      delete manual[key];
+      return toReviewPoint({ ...p.sourceRow, manual });
+    });
+    if (groupChanged) {
+      changed = true;
+      return { ...group, points };
+    }
+    return group;
+  });
+  return changed ? next : groups;
+}
+
+/**
+ * 모든 그룹·타점의 manual 키를 from→to 로 이동(값 유지)한 새 groups 를 반환.
+ * 레지스트리 이름변경(renameManualKey)이 서버 payload 키까지 옮기는 것과 보조를 맞춘다.
+ */
+export function renameManualKeyInGroups(
+  groups: ReviewStockGroup[],
+  from: string,
+  to: string,
+): ReviewStockGroup[] {
+  if (!from || !to || from === to) return groups;
+  let changed = false;
+  const next = groups.map((group) => {
+    let groupChanged = false;
+    const points = group.points.map((p) => {
+      if (!(from in p.sourceRow.manual)) return p;
+      groupChanged = true;
+      const manual = { ...p.sourceRow.manual };
+      manual[to] = manual[from];
+      delete manual[from];
+      return toReviewPoint({ ...p.sourceRow, manual });
+    });
+    if (groupChanged) {
+      changed = true;
+      return { ...group, points };
+    }
+    return group;
+  });
+  return changed ? next : groups;
+}
+
+/**
  * reviewId 에 해당하는 타점을 제거한 새 groups 를 반환.
  * 제거 후 그룹이 비면, 빈 tradeTime placeholder 1개를 둬서 종목이 사이드바에 남도록 한다.
  */

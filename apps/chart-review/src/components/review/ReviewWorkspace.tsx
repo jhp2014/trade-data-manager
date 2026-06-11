@@ -117,6 +117,8 @@ export function ReviewWorkspace({
     reloadAll,
     upsertPointLocal,
     removePointLocal,
+    purgeManualKeyLocal: purgeManualKeyFromWorkset,
+    renameManualKeyLocal: renameManualKeyInWorkset,
   } = useWorkingSetCache(initialGroups, initialTab, initialReadSource);
 
   // 필터 활성 시 종목 이동은 "매칭 타점이 1개 이상 있는 종목"만 순회한다.
@@ -824,8 +826,16 @@ export function ReviewWorkspace({
       valueSuggestions={valueSuggestions}
       onClose={() => setInputOpen(false)}
       onKeyAdded={addManualKeyLocal}
-      onKeyDeleted={removeManualKeyLocal}
-      onKeyRenamed={renameManualKeyLocal}
+      onKeyDeleted={(key) => {
+        // 레지스트리 상태 + 작업셋(각 타점 manual) 양쪽에서 제거해야
+        // manualFieldKeys(레지스트리∪데이터)에서 즉시 사라진다.
+        removeManualKeyLocal(key);
+        purgeManualKeyFromWorkset(key);
+      }}
+      onKeyRenamed={(from, to) => {
+        renameManualKeyLocal(from, to);
+        renameManualKeyInWorkset(from, to);
+      }}
       onSaved={({ reviewId, payload }) => {
         setInputOpen(false);
         // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신.

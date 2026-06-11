@@ -5,6 +5,8 @@ import type { ReviewStockGroup } from "@/types/review";
 import {
   upsertPointInGroups,
   removePointFromGroups,
+  purgeManualKeyInGroups,
+  renameManualKeyInGroups,
   type UpsertPointInput,
 } from "@/lib/optimisticPoint";
 
@@ -33,6 +35,10 @@ export type UseWorkingSetCacheResult = {
   upsertPointLocal: (input: UpsertPointInput) => void;
   /** 타점 1건 삭제 후 서버 재조회 없이 현재 groups·캐시를 즉시 갱신(낙관적). */
   removePointLocal: (reviewId: string) => void;
+  /** m_ 키 삭제 후 모든 타점 manual 에서 해당 키를 제거(낙관적). */
+  purgeManualKeyLocal: (key: string) => void;
+  /** m_ 키 이름변경 후 모든 타점 manual 키를 from→to 로 이동(낙관적). */
+  renameManualKeyLocal: (from: string, to: string) => void;
 };
 
 /**
@@ -217,6 +223,16 @@ export function useWorkingSetCache(
     [applyLocal],
   );
 
+  const purgeManualKeyLocal = useCallback(
+    (key: string) => applyLocal((prev) => purgeManualKeyInGroups(prev, key)),
+    [applyLocal],
+  );
+
+  const renameManualKeyLocal = useCallback(
+    (from: string, to: string) => applyLocal((prev) => renameManualKeyInGroups(prev, from, to)),
+    [applyLocal],
+  );
+
   return {
     tabs,
     readTab,
@@ -229,5 +245,7 @@ export function useWorkingSetCache(
     reloadAll,
     upsertPointLocal,
     removePointLocal,
+    purgeManualKeyLocal,
+    renameManualKeyLocal,
   };
 }
