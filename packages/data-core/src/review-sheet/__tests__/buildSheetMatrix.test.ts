@@ -79,4 +79,53 @@ describe("buildSheetMatrix", () => {
         expect(toManualHeader("_done")).toBe("m_done");
         expect(toManualHeader("entryType")).toBe("m_entryType");
     });
+
+    it("projects only fieldKeys in given order when provided", () => {
+        const rows: ReviewExportRow[] = [
+            {
+                reviewId: "11",
+                stockCode: "000660",
+                stockName: "SK하이닉스",
+                tradeDate: "2026-05-27",
+                tradeTime: "09:04:00",
+                lineTargets: [9010, 9450],
+                features: { changeRate5m: "1.23" },
+                payload: { entryType: ["S-V", "L-1"] },
+            },
+        ];
+
+        const matrix = buildSheetMatrix(rows, {
+            fieldKeys: ["tradeTime", "m_entryType", "changeRate5m", "stockCode", "missingKey"],
+        });
+
+        // 헤더는 fieldKeys 그대로(없는 키 포함), 순서 유지.
+        expect(matrix[0]).toEqual([
+            "tradeTime",
+            "m_entryType",
+            "changeRate5m",
+            "stockCode",
+            "missingKey",
+        ]);
+        // 데이터는 키별 해당 값, 매칭 안 되는 키는 빈 컬럼.
+        expect(matrix[1]).toEqual(["09:04", "S-V | L-1", "1.23", "000660", ""]);
+    });
+
+    it("falls back to full columns when fieldKeys is empty", () => {
+        const rows: ReviewExportRow[] = [
+            {
+                reviewId: "11",
+                stockCode: "000660",
+                stockName: "SK하이닉스",
+                tradeDate: "2026-05-27",
+                tradeTime: "09:04:00",
+                lineTargets: [],
+                features: {},
+                payload: {},
+            },
+        ];
+
+        const full = buildSheetMatrix(rows);
+        const empty = buildSheetMatrix(rows, { fieldKeys: [] });
+        expect(empty).toEqual(full);
+    });
 });

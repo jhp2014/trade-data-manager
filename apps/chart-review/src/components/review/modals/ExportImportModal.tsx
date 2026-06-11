@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal } from "./ActionModal";
+import { useUiStore } from "@/stores/useUiStore";
 
 type Props = {
   spreadsheetId: string | null;
@@ -23,8 +24,11 @@ export function ExportImportModal({
   onClose,
 }: Props) {
   const router = useRouter();
+  const exportFieldKeys = useUiStore((state) => state.exportFieldKeys);
   const [panel, setPanel] = useState<"export" | "import">("export");
   const [scope, setScope] = useState<"working" | "all">("working");
+  // "configured": 설정한 내보내기 컬럼만('f' 쓰기와 동일) · "all": DB 전체 컬럼
+  const [columnMode, setColumnMode] = useState<"configured" | "all">("configured");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -46,6 +50,8 @@ export function ExportImportModal({
           tab: writeTab,
           filters,
           scope,
+          // configured 모드면 설정 컬럼만 전송, all 이면 미전송(서버가 전체 컬럼 출력).
+          fields: columnMode === "configured" ? exportFieldKeys : undefined,
         }),
       });
       const data = await res.json();
@@ -152,6 +158,32 @@ export function ExportImportModal({
                   ? "DB 의 모든 타점을 내보냅니다."
                   : "현재 작업셋(읽기 시트 범위)의 타점만 내보냅니다."}
                 {activeFilters > 0 && ` · m_ 필터 ${activeFilters}개 매칭만`}
+              </span>
+            </div>
+            <div className={sheetStyles.field}>
+              <span className={sheetStyles.label}>내보낼 컬럼</span>
+              <div className={sheetStyles.segmented}>
+                <button
+                  type="button"
+                  className={`${sheetStyles.seg} ${columnMode === "configured" ? sheetStyles.segOn : ""}`}
+                  onClick={() => setColumnMode("configured")}
+                >
+                  설정 컬럼
+                </button>
+                <button
+                  type="button"
+                  className={`${sheetStyles.seg} ${columnMode === "all" ? sheetStyles.segOn : ""}`}
+                  onClick={() => setColumnMode("all")}
+                >
+                  전체 컬럼
+                </button>
+              </div>
+              <span className={sheetStyles.hint}>
+                {columnMode === "configured"
+                  ? `내보내기 컬럼 설정(${exportFieldKeys.length}개)을 그 순서로 출력합니다 · 'f' 쓰기와 동일${
+                      exportFieldKeys.length === 0 ? " · 설정이 비어 전체 컬럼으로 대체" : ""
+                    }`
+                  : "DB 의 모든 컬럼을 출력합니다."}
               </span>
             </div>
           </>

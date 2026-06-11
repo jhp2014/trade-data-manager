@@ -24,12 +24,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
   }
 
-  const { spreadsheetId, tab, filters, scope } = (body ?? {}) as {
+  const { spreadsheetId, tab, filters, scope, fields } = (body ?? {}) as {
     spreadsheetId?: string;
     tab?: string;
     filters?: Record<string, string[]>;
     scope?: "working" | "all";
+    fields?: string[];
   };
+
+  // fields 가 주어지면(비어있지 않으면) 그 컬럼만 그 순서로 내보낸다('f' 쓰기 설정과 동일).
+  const fieldKeys = Array.isArray(fields) && fields.length > 0 ? fields : undefined;
 
   const targetId = spreadsheetId?.trim() || process.env.GOOGLE_SHEETS_ID?.trim();
   const targetTab = tab?.trim() || process.env.GOOGLE_SHEETS_TAB?.trim() || "review";
@@ -57,7 +61,10 @@ export async function POST(request: Request) {
       ? rows.filter((row) => payloadMatchesManualFilters(row.payload, activeFilters))
       : rows;
 
-    const matrix = buildSheetMatrix(selected, { baseUrl: process.env.REVIEW_APP_BASE_URL });
+    const matrix = buildSheetMatrix(selected, {
+      baseUrl: process.env.REVIEW_APP_BASE_URL,
+      fieldKeys,
+    });
     await writeSheetTab({ spreadsheetId: targetId, tab: targetTab, matrix });
 
     return NextResponse.json({
