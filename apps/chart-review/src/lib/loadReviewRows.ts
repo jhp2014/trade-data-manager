@@ -7,6 +7,7 @@ import {
 } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
 import { resolveWorkingSetKeys } from "@/lib/workingSet";
+import { flattenManualPayload } from "@/lib/manualValue";
 import { fetchSheetRowsAction } from "@/actions/sheet";
 import { mockSheetRows } from "@/mock/sheetRows";
 import type { SheetPointRow } from "@/types/review";
@@ -136,7 +137,7 @@ function toSheetPointRows(target: ReviewLoadTarget): SheetPointRow[] {
     tradeDate: target.tradeDate,
     tradeTime: point.tradeTime.slice(0, 5),
     features: toFeatures(point.features, lineTargets),
-    manual: toManual(point.payload),
+    manual: flattenManualPayload(point.payload),
   }));
 }
 
@@ -152,10 +153,3 @@ function toFeatures(
   return out;
 }
 
-function toManual(payload: Record<string, string | string[]>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(payload)) {
-    out[key] = Array.isArray(value) ? value.join(" | ") : value;
-  }
-  return out;
-}

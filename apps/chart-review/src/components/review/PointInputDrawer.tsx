@@ -6,6 +6,7 @@ import type { ReviewPoint } from "@/types/review";
 import type { ManualKeyDef } from "@/lib/loadManualKeys";
 import { useUiStore } from "@/stores/useUiStore";
 import { postJson } from "@/lib/apiClient";
+import { splitManualValue } from "@/lib/manualValue";
 import { useManualKeyEditing } from "@/hooks/useManualKeyEditing";
 
 type PointInputDrawerProps = {
@@ -338,24 +339,15 @@ function buildInitialRows(
   const rows: Row[] = manualKeys.map((k) => ({
     key: k.key,
     label: k.label,
-    values: splitValues(sourceManual[k.key]),
+    values: splitManualValue(sourceManual[k.key]),
     draft: "",
     inRegistry: true,
   }));
   const registryKeys = new Set(manualKeys.map((k) => k.key));
   for (const [key, value] of Object.entries(sourceManual)) {
     if (!registryKeys.has(key)) {
-      rows.push({ key, label: null, values: splitValues(value), draft: "", inRegistry: false });
+      rows.push({ key, label: null, values: splitManualValue(value), draft: "", inRegistry: false });
     }
   }
   return rows;
-}
-
-/** "a | b" → ["a","b"]. 빈 값/공백 제거. */
-function splitValues(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw
-    .split("|")
-    .map((token) => token.trim())
-    .filter(Boolean);
 }

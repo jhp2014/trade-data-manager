@@ -8,15 +8,7 @@
 
 import type { ReviewStockGroup, SheetPointRow } from "@/types/review";
 import { toReviewPoint } from "@/lib/groupSheetRows";
-
-/** payload(string | string[]) → manual(string). 배열은 " | " 로 합친다. */
-function flattenPayload(payload: Record<string, string | string[]>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(payload)) {
-    out[key] = Array.isArray(value) ? value.join(" | ") : value;
-  }
-  return out;
-}
+import { flattenManualPayload } from "@/lib/manualValue";
 
 export type UpsertPointInput = {
   stockCode: string;
@@ -43,7 +35,7 @@ export function upsertPointInGroups(
 ): ReviewStockGroup[] {
   const groupKey = `${input.stockCode}|${input.tradeDate}`;
   const hhmm = input.tradeTime.slice(0, 5);
-  const manual = flattenPayload(input.payload);
+  const manual = flattenManualPayload(input.payload);
 
   let changed = false;
   const next = groups.map((group) => {

@@ -6,6 +6,8 @@
  * - 정의는 useUiStore + localStorage 에만 저장(DB 무관).
  */
 
+import { splitManualValue } from "@/lib/manualValue";
+
 /** 항목 액션: 덮어쓰기 / 추가(멀티값) / 삭제. */
 export type PresetAction = "overwrite" | "append" | "delete";
 
@@ -72,15 +74,6 @@ export function actionSymbol(action: PresetAction): string {
   }
 }
 
-/** "a | b" → ["a","b"]. 빈 값/공백 제거. */
-function splitValues(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw
-    .split("|")
-    .map((t) => t.trim())
-    .filter(Boolean);
-}
-
 export type PresetApplyResult = {
   /** POST /api/review/point 에 보낼 완성된 manual(전체 덮어쓰기용). */
   payload: Record<string, string | string[]>;
@@ -107,7 +100,7 @@ export function mergePresetIntoManual(
   // 작업 맵: key → 값 배열.
   const map = new Map<string, string[]>();
   for (const [k, v] of Object.entries(existingManual)) {
-    map.set(k, splitValues(v));
+    map.set(k, splitManualValue(v));
   }
 
   const changes: string[] = [];

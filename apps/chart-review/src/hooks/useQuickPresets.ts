@@ -9,6 +9,7 @@ import {
 } from "@/lib/quickPreset";
 import { isEditableTarget } from "@/lib/domFocus";
 import { postJson } from "@/lib/apiClient";
+import { flattenManualPayload } from "@/lib/manualValue";
 import type { ReviewStockGroup } from "@/types/review";
 import type { UpsertPointInput } from "@/lib/optimisticPoint";
 
@@ -96,11 +97,7 @@ export function useQuickPresets({
       const { payload, summary } = mergePresetIntoManual(base, preset.entries);
 
       // 다음 누적을 위해 결과 manual 을 문자열로 보관.
-      const resultManual: Record<string, string> = {};
-      for (const [k, v] of Object.entries(payload)) {
-        resultManual[k] = Array.isArray(v) ? v.join(" | ") : v;
-      }
-      pendingManualRef.current = { targetKey, manual: resultManual };
+      pendingManualRef.current = { targetKey, manual: flattenManualPayload(payload) };
 
       const label = activeGroup.stockName ?? stockCode;
       try {

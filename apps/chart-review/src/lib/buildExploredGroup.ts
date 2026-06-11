@@ -1,6 +1,7 @@
 import type { ChartReviewPoint } from "@/types/chart";
 import type { ReviewStockGroup, SheetPointRow } from "@/types/review";
 import { groupSheetRows } from "@/lib/groupSheetRows";
+import { flattenManualPayload } from "@/lib/manualValue";
 
 /**
  * 작업셋 밖(테마 탐색 등) 종목의 Point List 그룹을 클라이언트에서 만든다.
@@ -46,17 +47,8 @@ export function buildExploredGroup(params: {
           tradeDate,
           tradeTime: p.tradeTime.slice(0, 5),
           features,
-          manual: toManual(p.payload),
+          manual: flattenManualPayload(p.payload),
         }));
 
   return groupSheetRows(rows)[0];
-}
-
-/** payload(배열 가능) → manual 문자열. 배열은 " | " 결합. */
-function toManual(payload: Record<string, string | string[]>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(payload)) {
-    out[key] = Array.isArray(value) ? value.join(" | ") : value;
-  }
-  return out;
 }

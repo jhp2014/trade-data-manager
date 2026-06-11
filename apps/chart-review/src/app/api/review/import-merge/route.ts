@@ -7,15 +7,13 @@ import { getDb } from "@/actions/db";
 import { fetchSheetRowsAction } from "@/actions/sheet";
 import { getReadSheetConfig, hasSheetsCredentials } from "@/lib/readSheetConfig";
 import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
+import { splitManualValue } from "@/lib/manualValue";
 
 export const dynamic = "force-dynamic";
 
 /** "a | b" → ["a","b"]. 단일 값이면 string, 비어있으면 undefined. */
 function parseManualValue(raw: string): string | string[] | undefined {
-  const parts = raw
-    .split("|")
-    .map((token) => token.trim())
-    .filter(Boolean);
+  const parts = splitManualValue(raw);
   if (parts.length === 0) return undefined;
   return parts.length === 1 ? parts[0] : parts;
 }

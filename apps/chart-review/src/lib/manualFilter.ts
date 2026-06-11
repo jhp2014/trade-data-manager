@@ -1,13 +1,5 @@
 import type { ReviewPoint } from "@/types/review";
-
-/** "a | b" → ["a","b"]. 빈 값/공백 제거. */
-function splitValues(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw
-    .split("|")
-    .map((token) => token.trim())
-    .filter(Boolean);
-}
+import { splitManualValue } from "@/lib/manualValue";
 
 /** 활성 필터(값이 1개 이상 선택된 키) 개수. */
 export function activeFilterCount(filters: Record<string, string[]>): number {
@@ -38,7 +30,7 @@ export function payloadMatchesManualFilters(
   for (const [key, allowed] of Object.entries(filters)) {
     if (allowed.length === 0) continue;
     const raw = payload[key];
-    const values = Array.isArray(raw) ? raw.map((v) => v.trim()).filter(Boolean) : splitValues(raw);
+    const values = Array.isArray(raw) ? raw.map((v) => v.trim()).filter(Boolean) : splitManualValue(raw);
     if (!allowed.some((value) => values.includes(value))) return false;
   }
   return true;
