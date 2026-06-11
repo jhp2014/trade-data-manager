@@ -6,6 +6,7 @@ import sheetStyles from "../SheetModal.module.css";
 import { ActionModal, type ReadSheetState } from "./ActionModal";
 import { useUiStore } from "@/stores/useUiStore";
 import { postJson } from "@/lib/apiClient";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 export function TabSettingsModal({
   tabs,
@@ -28,8 +29,7 @@ export function TabSettingsModal({
   const setCycleTabList = useUiStore((state) => state.setCycleTabList);
 
   const [writeInput, setWriteInput] = useState(writeTab ?? "");
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const { busy, status, run } = useAsyncAction();
 
   // 탭이 순환 목록에 포함되는지 여부.
   const isTabCycleEnabled = (tab: string) =>
@@ -44,11 +44,9 @@ export function TabSettingsModal({
     setCycleTabList(newList.length === tabs.length ? null : newList);
   };
 
-  const applyReadTab = async (tab: string) => {
+  const applyReadTab = (tab: string) => {
     if (!tab || tab === currentReadTab) return;
-    setBusy(true);
-    setStatus(null);
-    try {
+    void run(async () => {
       await postJson(
         "/api/review/read-sheet",
         { spreadsheetId: spreadsheetId || undefined, tab },
@@ -57,10 +55,8 @@ export function TabSettingsModal({
       useUiStore.getState().clearManualFilters();
       router.refresh();
       onClose();
-    } catch (err) {
-      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
-      setBusy(false);
-    }
+      // 성공 시 모달이 닫히므로 status 는 띄우지 않는다(반환 없음).
+    });
   };
 
   const applyWriteTab = (tab: string | null) => {

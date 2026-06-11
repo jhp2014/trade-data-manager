@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal } from "./ActionModal";
 import { postJson } from "@/lib/apiClient";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type CsvDirState = {
   dir: string;
@@ -17,8 +18,7 @@ type CsvDirState = {
 export function CsvImportModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [info, setInfo] = useState<CsvDirState | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const { busy, status, run } = useAsyncAction();
 
   const loadInfo = useCallback(() => {
     fetch("/api/review/import-csv")
@@ -35,33 +35,25 @@ export function CsvImportModal({ onClose }: { onClose: () => void }) {
     loadInfo();
   }, [loadInfo]);
 
-  const handleRun = async () => {
-    setBusy(true);
-    setStatus(null);
-    try {
+  const handleRun = () =>
+    run(async () => {
       const data = await postJson<{
         totalFiles: number;
         totalTargets: number;
         errors: unknown[];
       }>("/api/review/import-csv", undefined, "CSV 적재 실패");
-      if (data.totalFiles === 0) {
-        setStatus({ ok: true, message: "처리할 Capture CSV 파일이 없습니다." });
-      } else {
-        const parts = [`${data.totalFiles}개 파일`, `타겟 ${data.totalTargets}건`];
-        if (data.errors.length > 0) parts.push(`오류 ${data.errors.length}건`);
-        setStatus({
-          ok: data.errors.length === 0,
-          message: `완료: ${parts.join(" · ")} (processed 로 이동)`,
-        });
-      }
       loadInfo();
       router.refresh();
-    } catch (err) {
-      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setBusy(false);
-    }
-  };
+      if (data.totalFiles === 0) {
+        return "처리할 Capture CSV 파일이 없습니다.";
+      }
+      const parts = [`${data.totalFiles}개 파일`, `타겟 ${data.totalTargets}건`];
+      if (data.errors.length > 0) parts.push(`오류 ${data.errors.length}건`);
+      return {
+        ok: data.errors.length === 0,
+        message: `완료: ${parts.join(" · ")} (processed 로 이동)`,
+      };
+    });
 
   return (
     <ActionModal

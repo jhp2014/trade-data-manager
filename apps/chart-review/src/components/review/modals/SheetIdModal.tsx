@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal, type ReadSheetState } from "./ActionModal";
 import { postJson, deleteJson } from "@/lib/apiClient";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 export function SheetIdModal({
   config,
@@ -15,42 +16,28 @@ export function SheetIdModal({
 }) {
   const router = useRouter();
   const [spreadsheetId, setSpreadsheetId] = useState(config?.spreadsheetId ?? "");
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const { busy, status, setStatus, run } = useAsyncAction();
 
-  const apply = async () => {
+  const apply = () => {
     const id = spreadsheetId.trim();
     if (!id) {
       setStatus({ ok: false, message: "스프레드시트 ID 를 입력하세요." });
       return;
     }
-    setBusy(true);
-    setStatus(null);
-    try {
+    void run(async () => {
       await postJson("/api/review/read-sheet", { spreadsheetId: id, tab: config?.tab }, "저장 실패");
-      setStatus({ ok: true, message: "저장되었습니다. 탭 목록을 새로고침합니다." });
       router.refresh();
-    } catch (err) {
-      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setBusy(false);
-    }
+      return "저장되었습니다. 탭 목록을 새로고침합니다.";
+    });
   };
 
-  const reset = async () => {
-    setBusy(true);
-    setStatus(null);
-    try {
+  const reset = () =>
+    run(async () => {
       await deleteJson("/api/review/read-sheet", undefined, "초기화 실패");
       setSpreadsheetId("");
-      setStatus({ ok: true, message: "기본값(.env)으로 되돌렸습니다." });
       router.refresh();
-    } catch (err) {
-      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setBusy(false);
-    }
-  };
+      return "기본값(.env)으로 되돌렸습니다.";
+    });
 
   const sourceLabel =
     config?.source === "cookie"

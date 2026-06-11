@@ -6,6 +6,7 @@ import sheetStyles from "../SheetModal.module.css";
 import { ActionModal } from "./ActionModal";
 import { useUiStore } from "@/stores/useUiStore";
 import { postJson } from "@/lib/apiClient";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type Props = {
   spreadsheetId: string | null;
@@ -30,19 +31,16 @@ export function ExportImportModal({
   const [scope, setScope] = useState<"working" | "all">("working");
   // "configured": 설정한 내보내기 컬럼만('f' 쓰기와 동일) · "all": DB 전체 컬럼
   const [columnMode, setColumnMode] = useState<"configured" | "all">("configured");
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const { busy, status, setStatus, run } = useAsyncAction();
 
   const switchPanel = (p: "export" | "import") => {
     setPanel(p);
     setStatus(null);
   };
 
-  const handleExport = async () => {
+  const handleExport = () => {
     if (!writeTab) return;
-    setBusy(true);
-    setStatus(null);
-    try {
+    void run(async () => {
       const data = await postJson<{
         tab: string;
         rows: number;
@@ -62,27 +60,18 @@ export function ExportImportModal({
         "Export 실패",
       );
       const scopeLabel = data.scope === "all" ? "DB 전체" : "작업셋";
-      setStatus({
-        ok: true,
-        message: `완료: '${data.tab}' 탭에 ${data.rows}행 · ${data.cols}열 (${scopeLabel}${data.filtered ? " · 필터" : ""})`,
-      });
-    } catch (err) {
-      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setBusy(false);
-    }
+      return `완료: '${data.tab}' 탭에 ${data.rows}행 · ${data.cols}열 (${scopeLabel}${data.filtered ? " · 필터" : ""})`;
+    });
   };
 
-  const handleImport = async () => {
+  const handleImport = () => {
     if (
       !window.confirm(
         "시트의 비어있지 않은 m_ 값을 DB에 병합합니다.\n(빈 셀은 건드리지 않고, 값이 있는 셀만 덮어씁니다.)\n진행할까요?",
       )
     )
       return;
-    setBusy(true);
-    setStatus(null);
-    try {
+    void run(async () => {
       const data = await postJson<{
         merged: number;
         skippedNotFound: number;
@@ -99,13 +88,9 @@ export function ExportImportModal({
       const parts = [`병합 ${data.merged}건`];
       if (data.skippedNotFound > 0) parts.push(`미발견 ${data.skippedNotFound}건`);
       if (data.skippedNoValues > 0) parts.push(`값없음 ${data.skippedNoValues}건`);
-      setStatus({ ok: true, message: `완료: ${parts.join(" · ")} (전체 ${data.total}행)` });
       router.refresh();
-    } catch (err) {
-      setStatus({ ok: false, message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setBusy(false);
-    }
+      return `완료: ${parts.join(" · ")} (전체 ${data.total}행)`;
+    });
   };
 
   return (
