@@ -1,6 +1,7 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
-import { reviewPoints, reviewTargets } from "../schema/review";
+import { and, eq, inArray } from "drizzle-orm";
+import { reviewTargets } from "../schema/review";
 import type { Database } from "../db";
+import { findPointsByTargetIds } from "../repositories/review-point.repository";
 
 // ── 탐색용 review 합류 (theme-bundle 멤버에 매달기) ──────────────────
 
@@ -42,30 +43,22 @@ export async function findReviewTargetsWithPointsByCodes(
         );
     if (targets.length === 0) return new Map();
 
-    const targetIds = targets.map((target) => target.id);
-    const points = await db
-        .select()
-        .from(reviewPoints)
-        .where(inArray(reviewPoints.reviewTargetId, targetIds))
-        .orderBy(asc(reviewPoints.reviewTargetId), asc(reviewPoints.tradeTime));
-
-    const pointsByTargetId = new Map<bigint, ReviewBundlePoint[]>();
-    for (const point of points) {
-        const arr = pointsByTargetId.get(point.reviewTargetId) ?? [];
-        arr.push({
-            reviewId: point.id.toString(),
-            tradeTime: point.tradeTime,
-            payload: point.payloadJson,
-        });
-        pointsByTargetId.set(point.reviewTargetId, arr);
-    }
+    const pointsByTargetId = await findPointsByTargetIds(
+        db,
+        targets.map((target) => target.id),
+    );
 
     const out = new Map<string, ReviewTargetBundle>();
     for (const target of targets) {
+        const points = (pointsByTargetId.get(target.id) ?? []).map((point) => ({
+            reviewId: point.id.toString(),
+            tradeTime: point.tradeTime,
+            payload: point.payloadJson,
+        }));
         out.set(target.stockCode, {
             reviewTargetId: target.id.toString(),
             lineTargets: target.lineTargets,
-            points: pointsByTargetId.get(target.id) ?? [],
+            points,
         });
     }
     return out;

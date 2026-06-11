@@ -1,8 +1,12 @@
-import { and, asc, desc, gte, inArray } from "drizzle-orm";
-import { reviewPoints, reviewTargets } from "../schema/review";
+import { asc, desc, gte } from "drizzle-orm";
+import { reviewTargets } from "../schema/review";
 import type { Database } from "../db";
 import { type ReviewExportRow } from "../review-sheet";
-import type { ReviewLoadKey } from "../repositories/review-target.repository";
+import {
+    findReviewTargetsByKeys,
+    type ReviewLoadKey,
+} from "../repositories/review-target.repository";
+import { findPointsByTargetIds } from "../repositories/review-point.repository";
 import { buildFeaturesByKey, featureKey } from "./_review-features";
 
 /**
@@ -17,21 +21,13 @@ export async function findReviewExportRows(
     const targets = await findExportTargets(db, opts);
     if (targets.length === 0) return [];
 
-    const targetIds = targets.map((target) => target.id);
-    const points = await db
-        .select()
-        .from(reviewPoints)
-        .where(inArray(reviewPoints.reviewTargetId, targetIds))
-        .orderBy(asc(reviewPoints.reviewTargetId), asc(reviewPoints.tradeTime));
+    const pointsByTargetId = await findPointsByTargetIds(
+        db,
+        targets.map((target) => target.id),
+    );
+    const allPoints = Array.from(pointsByTargetId.values()).flat();
 
-    const pointsByTargetId = new Map<bigint, typeof points>();
-    for (const point of points) {
-        const arr = pointsByTargetId.get(point.reviewTargetId) ?? [];
-        arr.push(point);
-        pointsByTargetId.set(point.reviewTargetId, arr);
-    }
-
-    const featuresByKey = await buildFeaturesByKey(db, targets, points);
+    const featuresByKey = await buildFeaturesByKey(db, targets, allPoints);
     const rows: ReviewExportRow[] = [];
 
     for (const target of targets) {
@@ -77,23 +73,7 @@ async function findExportTargets(
     opts: { since?: string; keys?: ReviewLoadKey[] },
 ) {
     // keys 가 주어지면 작업셋(읽기 시트) 범위로 제한한다.
-    if (opts.keys) {
-        if (opts.keys.length === 0) return [];
-        const codes = Array.from(new Set(opts.keys.map((k) => k.stockCode)));
-        const dates = Array.from(new Set(opts.keys.map((k) => k.tradeDate)));
-        const rows = await db
-            .select()
-            .from(reviewTargets)
-            .where(
-                and(
-                    inArray(reviewTargets.stockCode, codes),
-                    inArray(reviewTargets.tradeDate, dates),
-                ),
-            )
-            .orderBy(desc(reviewTargets.tradeDate), asc(reviewTargets.stockCode));
-        const wanted = new Set(opts.keys.map((k) => `${k.stockCode}|${k.tradeDate}`));
-        return rows.filter((row) => wanted.has(`${row.stockCode}|${row.tradeDate}`));
-    }
+    if (opts.keys) return findReviewTargetsByKeys(db, opts.keys);
 
     if (opts.since) {
         return db
