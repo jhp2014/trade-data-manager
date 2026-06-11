@@ -3,6 +3,7 @@
 import { useState } from "react";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal } from "./ActionModal";
+import { moveItem } from "@/lib/reorder";
 
 // ── 입력 컬럼 설정 모달 ───────────────────────────────────────────────────────
 
@@ -32,25 +33,8 @@ export function InputKeyConfigModal({
   const active = order.filter((k) => !disabled.includes(k));
   const hidden = order.filter((k) => disabled.includes(k));
 
-  const moveUp = (key: string) => {
-    setOrder((prev) => {
-      const i = prev.indexOf(key);
-      if (i <= 0) return prev;
-      const next = [...prev];
-      [next[i - 1], next[i]] = [next[i], next[i - 1]];
-      return next;
-    });
-  };
-
-  const moveDown = (key: string) => {
-    setOrder((prev) => {
-      const i = prev.indexOf(key);
-      if (i === -1 || i === prev.length - 1) return prev;
-      const next = [...prev];
-      [next[i], next[i + 1]] = [next[i + 1], next[i]];
-      return next;
-    });
-  };
+  const moveUp = (key: string) => setOrder((prev) => moveItem(prev, prev.indexOf(key), -1));
+  const moveDown = (key: string) => setOrder((prev) => moveItem(prev, prev.indexOf(key), 1));
 
   const hide = (key: string) => setDisabled((prev) => [...prev, key]);
   const show = (key: string) => setDisabled((prev) => prev.filter((k) => k !== key));

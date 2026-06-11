@@ -3,6 +3,7 @@
 import { useState } from "react";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal } from "./ActionModal";
+import { moveItem } from "@/lib/reorder";
 
 // ── 내보내기 컬럼 설정 모달 ────────────────────────────────────────────────
 
@@ -20,23 +21,8 @@ export function ExportFieldsModal({
   const [current, setCurrent] = useState<string[]>([...selected]);
   const available = allKeys.filter((k) => !current.includes(k));
 
-  const moveUp = (i: number) => {
-    if (i === 0) return;
-    setCurrent((prev) => {
-      const next = [...prev];
-      [next[i - 1], next[i]] = [next[i], next[i - 1]];
-      return next;
-    });
-  };
-
-  const moveDown = (i: number) => {
-    if (i === current.length - 1) return;
-    setCurrent((prev) => {
-      const next = [...prev];
-      [next[i], next[i + 1]] = [next[i + 1], next[i]];
-      return next;
-    });
-  };
+  const moveUp = (i: number) => setCurrent((prev) => moveItem(prev, i, -1));
+  const moveDown = (i: number) => setCurrent((prev) => moveItem(prev, i, 1));
 
   const remove = (i: number) => {
     setCurrent((prev) => prev.filter((_, idx) => idx !== i));
