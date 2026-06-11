@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { deleteReviewPointById, upsertReviewPoint } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
+import { resolvePointFeatures } from "@/lib/loadReviewRows";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,10 @@ export async function POST(request: Request) {
       tradeTime: normalizeTime(tradeTime),
       payload: payload ?? {},
     });
-    return NextResponse.json(result);
+    // 저장 직후 서버 파생 feature 를 함께 돌려줘, 클라이언트가 새로고침 없이도
+    // f-append/Export 에서 정확한 feature 값을 출력할 수 있게 한다.
+    const features = await resolvePointFeatures(stockCode, tradeDate, tradeTime);
+    return NextResponse.json({ ...result, features });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

@@ -109,9 +109,12 @@ export function useQuickPresets({
           body: JSON.stringify({ stockCode, tradeDate, tradeTime, payload }),
         });
         if (!res.ok) throw new Error((await res.json()).error ?? "적용 실패");
-        const { id } = (await res.json()) as { id: string };
-        // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신.
-        upsertPointLocal({ stockCode, tradeDate, tradeTime, reviewId: id, payload });
+        const { id, features } = (await res.json()) as {
+          id: string;
+          features?: Record<string, string>;
+        };
+        // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신(서버 파생 features 포함).
+        upsertPointLocal({ stockCode, tradeDate, tradeTime, reviewId: id, payload, features });
         showStatus(`✓ ${label} · ${summary || "변경 없음"}`);
       } catch (err) {
         pendingManualRef.current = null; // 실패 시 누적 무효화

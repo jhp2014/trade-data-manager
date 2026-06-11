@@ -90,6 +90,49 @@ describe("upsertPointInGroups", () => {
 
     expect(next[0].points[0].sourceRow.features).toEqual({});
   });
+
+  it("applies server-resolved features onto a brand-new point (merged with inherited lineTargets)", () => {
+    const group = makeGroup([
+      baseRow({ reviewId: "", tradeTime: "", features: { lineTargets: "9010 | 9450" } }),
+    ]);
+
+    const next = upsertPointInGroups([group], {
+      stockCode: "005930",
+      tradeDate: "2026-06-08",
+      tradeTime: "09:30",
+      reviewId: "rev-1",
+      payload: { result: "good" },
+      features: { amount: "1.2억", lineTargets: "9010 | 9450" },
+    });
+
+    // f-append/Export 가 새로고침 없이도 서버 파생 feature(amount)를 출력할 수 있어야 한다.
+    expect(next[0].points[0].sourceRow.features).toEqual({
+      lineTargets: "9010 | 9450",
+      amount: "1.2억",
+    });
+  });
+
+  it("overwrites features on an existing point when server features are provided", () => {
+    const group = makeGroup([
+      baseRow({
+        reviewId: "rev-1",
+        tradeTime: "09:30",
+        features: { lineTargets: "9010", amount: "stale" },
+        manual: { result: "watch" },
+      }),
+    ]);
+
+    const next = upsertPointInGroups([group], {
+      stockCode: "005930",
+      tradeDate: "2026-06-08",
+      tradeTime: "09:30",
+      reviewId: "rev-1",
+      payload: { result: "good" },
+      features: { lineTargets: "9010", amount: "fresh" },
+    });
+
+    expect(next[0].points[0].sourceRow.features).toEqual({ lineTargets: "9010", amount: "fresh" });
+  });
 });
 
 describe("purgeManualKeyInGroups", () => {

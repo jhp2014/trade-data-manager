@@ -836,15 +836,16 @@ export function ReviewWorkspace({
         renameManualKeyLocal(from, to);
         renameManualKeyInWorkset(from, to);
       }}
-      onSaved={({ reviewId, payload }) => {
+      onSaved={({ reviewId, payload, features }) => {
         setInputOpen(false);
-        // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신.
+        // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신(서버 파생 features 포함).
         upsertPointLocal({
           stockCode: activeGroup.stockCode,
           tradeDate: activeGroup.tradeDate,
           tradeTime: markerTimeStr,
           reviewId,
           payload,
+          features,
         });
       }}
     />

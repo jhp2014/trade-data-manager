@@ -15,8 +15,12 @@ type PointInputDrawerProps = {
   manualKeys: ManualKeyDef[];
   valueSuggestions: Record<string, string[]>;
   onClose: () => void;
-  /** 저장 성공 시 호출. 낙관적 갱신을 위해 저장된 reviewId·payload 를 전달한다. */
-  onSaved: (saved: { reviewId: string; payload: Record<string, string | string[]> }) => void;
+  /** 저장 성공 시 호출. 낙관적 갱신을 위해 저장된 reviewId·payload·서버 파생 features 를 전달한다. */
+  onSaved: (saved: {
+    reviewId: string;
+    payload: Record<string, string | string[]>;
+    features?: Record<string, string>;
+  }) => void;
   /** 레지스트리 키 추가/삭제/이름변경 성공 시 부모의 manualKeys 를 낙관적으로 갱신. */
   onKeyAdded: (key: string) => void;
   onKeyDeleted: (key: string) => void;
@@ -219,8 +223,11 @@ export function PointInputDrawer({
         body: JSON.stringify({ stockCode, tradeDate, tradeTime, payload }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "저장 실패");
-      const { id } = (await res.json()) as { id: string };
-      onSaved({ reviewId: id, payload });
+      const { id, features } = (await res.json()) as {
+        id: string;
+        features?: Record<string, string>;
+      };
+      onSaved({ reviewId: id, payload, features });
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));
       setSubmitting(false);

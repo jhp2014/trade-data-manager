@@ -86,6 +86,26 @@ export async function loadReviewRowsForTab(
   return targets.flatMap(toSheetPointRows);
 }
 
+/**
+ * 저장 직후 단일 타점의 서버 파생 feature(amount 등 + lineTargets)를 resolve 한다.
+ * 낙관적 갱신이 manual 만 채우는 한계를 보완해, 저장 응답으로 features 를 함께 돌려주기 위함.
+ * DB 미연결·미스매치 시 빈 객체.
+ */
+export async function resolvePointFeatures(
+  stockCode: string,
+  tradeDate: string,
+  tradeTime: string,
+): Promise<Record<string, string>> {
+  if (!process.env.DATABASE_URL?.trim()) return {};
+  const db = getDb();
+  const targets = await findReviewLoadTargets(db, { keys: [{ stockCode, tradeDate }] });
+  const hhmm = tradeTime.slice(0, 5);
+  const match = targets
+    .flatMap(toSheetPointRows)
+    .find((row) => row.reviewId && row.tradeTime.slice(0, 5) === hhmm);
+  return match?.features ?? {};
+}
+
 let syntheticRow = 0;
 
 /** DB 로드 결과(Target+Points)를 앱이 쓰는 SheetPointRow 형태로 매핑. */

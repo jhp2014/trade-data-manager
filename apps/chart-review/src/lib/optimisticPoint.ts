@@ -26,6 +26,11 @@ export type UpsertPointInput = {
   /** 저장 응답으로 받은 reviewId. */
   reviewId: string;
   payload: Record<string, string | string[]>;
+  /**
+   * 저장 응답으로 받은 서버 파생 feature(amount 등 + lineTargets).
+   * 있으면 그대로 반영해 f-append/Export 에서 새로고침 없이 정확한 값이 나가게 한다.
+   */
+  features?: Record<string, string>;
 };
 
 /**
@@ -54,10 +59,20 @@ export function upsertPointInGroups(
     const inheritedLineTargets = group.points
       .map((p) => p.sourceRow.features.lineTargets)
       .find(Boolean);
+    const baseFeatures: Record<string, string> = inheritedLineTargets
+      ? { lineTargets: inheritedLineTargets }
+      : {};
 
     // 기존 타점이 있으면 sourceRow 를 펼쳐 manual 만 교체(features/themeName 유지). 없으면 신규 행.
+    // 저장 응답 features 가 있으면 우선 반영(없으면 기존 동작 유지: 신규=lineTargets 만, 수정=기존 유지).
     const newRow: SheetPointRow = existing
-      ? { ...existing.sourceRow, reviewId: input.reviewId, tradeTime: hhmm, manual }
+      ? {
+          ...existing.sourceRow,
+          reviewId: input.reviewId,
+          tradeTime: hhmm,
+          manual,
+          features: input.features ?? existing.sourceRow.features,
+        }
       : {
           reviewId: input.reviewId,
           rowNumber: group.points.length,
@@ -65,7 +80,7 @@ export function upsertPointInGroups(
           stockName: group.stockName,
           tradeDate: group.tradeDate,
           tradeTime: hhmm,
-          features: inheritedLineTargets ? { lineTargets: inheritedLineTargets } : {},
+          features: input.features ? { ...baseFeatures, ...input.features } : baseFeatures,
           manual,
         };
     const newPoint = toReviewPoint(newRow);
