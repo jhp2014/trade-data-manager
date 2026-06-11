@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal, type ReadSheetState } from "./ActionModal";
 import { useUiStore } from "@/stores/useUiStore";
+import { postJson } from "@/lib/apiClient";
 
 export function TabSettingsModal({
   tabs,
@@ -48,13 +49,11 @@ export function TabSettingsModal({
     setBusy(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/review/read-sheet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spreadsheetId: spreadsheetId || undefined, tab }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "저장 실패");
+      await postJson(
+        "/api/review/read-sheet",
+        { spreadsheetId: spreadsheetId || undefined, tab },
+        "저장 실패",
+      );
       useUiStore.getState().clearManualFilters();
       router.refresh();
       onClose();

@@ -8,6 +8,7 @@ import {
   mergePresetIntoManual,
 } from "@/lib/quickPreset";
 import { isEditableTarget } from "@/lib/domFocus";
+import { postJson } from "@/lib/apiClient";
 import type { ReviewStockGroup } from "@/types/review";
 import type { UpsertPointInput } from "@/lib/optimisticPoint";
 
@@ -103,16 +104,10 @@ export function useQuickPresets({
 
       const label = activeGroup.stockName ?? stockCode;
       try {
-        const res = await fetch("/api/review/point", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stockCode, tradeDate, tradeTime, payload }),
-        });
-        if (!res.ok) throw new Error((await res.json()).error ?? "적용 실패");
-        const { id, features } = (await res.json()) as {
+        const { id, features } = await postJson<{
           id: string;
           features?: Record<string, string>;
-        };
+        }>("/api/review/point", { stockCode, tradeDate, tradeTime, payload }, "적용 실패");
         // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신(서버 파생 features 포함).
         upsertPointLocal({ stockCode, tradeDate, tradeTime, reviewId: id, payload, features });
         showStatus(`✓ ${label} · ${summary || "변경 없음"}`);

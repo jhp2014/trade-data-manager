@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal } from "./ActionModal";
 import { useUiStore } from "@/stores/useUiStore";
+import { postJson } from "@/lib/apiClient";
 
 type Props = {
   spreadsheetId: string | null;
@@ -42,20 +43,24 @@ export function ExportImportModal({
     setBusy(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/review/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await postJson<{
+        tab: string;
+        rows: number;
+        cols: number;
+        filtered: boolean;
+        scope: string;
+      }>(
+        "/api/review/export",
+        {
           spreadsheetId: spreadsheetId || undefined,
           tab: writeTab,
           filters,
           scope,
           // configured 모드면 설정 컬럼만 전송, all 이면 미전송(서버가 전체 컬럼 출력).
           fields: columnMode === "configured" ? exportFieldKeys : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Export 실패");
+        },
+        "Export 실패",
+      );
       const scopeLabel = data.scope === "all" ? "DB 전체" : "작업셋";
       setStatus({
         ok: true,
@@ -78,16 +83,19 @@ export function ExportImportModal({
     setBusy(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/review/import-merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await postJson<{
+        merged: number;
+        skippedNotFound: number;
+        skippedNoValues: number;
+        total: number;
+      }>(
+        "/api/review/import-merge",
+        {
           spreadsheetId: spreadsheetId || undefined,
           tab: readTab || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Import 실패");
+        },
+        "Import 실패",
+      );
       const parts = [`병합 ${data.merged}건`];
       if (data.skippedNotFound > 0) parts.push(`미발견 ${data.skippedNotFound}건`);
       if (data.skippedNoValues > 0) parts.push(`값없음 ${data.skippedNoValues}건`);

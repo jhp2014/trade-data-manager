@@ -13,6 +13,7 @@ import { activeFilterCount, pointMatchesManualFilters } from "@/lib/manualFilter
 import { timeStringToMinutes } from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
 import { isEditableTarget } from "@/lib/domFocus";
+import { postJson, deleteJson } from "@/lib/apiClient";
 import { dateToUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
 import { useChartPreview } from "@/hooks/useChartPreview";
@@ -504,17 +505,7 @@ export function ReviewWorkspace({
     });
     showStatus(`✓ ${label} 추가됨`);
 
-    void fetch("/api/review/write-sheet/append", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ writeTab, headers, values }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? "append 실패");
-        }
-      })
+    void postJson("/api/review/write-sheet/append", { writeTab, headers, values }, "append 실패")
       .catch((err) => {
         showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
       });
@@ -532,13 +523,7 @@ export function ReviewWorkspace({
       return;
     }
     try {
-      const res = await fetch("/api/review/write-sheet/init-header", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ writeTab, headers }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "초기화 실패");
+      await postJson("/api/review/write-sheet/init-header", { writeTab, headers }, "초기화 실패");
       showStatus(`✓ '${writeTab}' 초기화됨`);
     } catch (err) {
       showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
@@ -627,12 +612,7 @@ export function ReviewWorkspace({
     if (!window.confirm(`이 타점(${formatPointTime(activePoint.tradeTime)})을 삭제할까요?`)) return;
     const deletedId = activePoint.reviewId;
     try {
-      const res = await fetch("/api/review/point", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewId: deletedId }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "삭제 실패");
+      await deleteJson("/api/review/point", { reviewId: deletedId }, "삭제 실패");
       // 낙관적: 서버 재조회 없이 화면에서 즉시 제거.
       removePointLocal(deletedId);
       // 삭제된 타점이 선택돼 있었으므로 같은 그룹의 다른 타점으로 이동(남은 게 있으면).

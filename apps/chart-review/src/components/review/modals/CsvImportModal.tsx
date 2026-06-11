@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal } from "./ActionModal";
+import { postJson } from "@/lib/apiClient";
 
 type CsvDirState = {
   dir: string;
@@ -38,9 +39,11 @@ export function CsvImportModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/review/import-csv", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "CSV 적재 실패");
+      const data = await postJson<{
+        totalFiles: number;
+        totalTargets: number;
+        errors: unknown[];
+      }>("/api/review/import-csv", undefined, "CSV 적재 실패");
       if (data.totalFiles === 0) {
         setStatus({ ok: true, message: "처리할 Capture CSV 파일이 없습니다." });
       } else {

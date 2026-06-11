@@ -5,6 +5,7 @@ import styles from "./ReviewWorkspace.module.css";
 import type { ReviewPoint } from "@/types/review";
 import type { ManualKeyDef } from "@/lib/loadManualKeys";
 import { useUiStore } from "@/stores/useUiStore";
+import { postJson, patchJson, deleteJson } from "@/lib/apiClient";
 
 type PointInputDrawerProps = {
   stockCode: string;
@@ -128,12 +129,7 @@ export function PointInputDrawer({
       return;
     }
     try {
-      const res = await fetch("/api/review/manual-keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "추가 실패");
+      await postJson("/api/review/manual-keys", { key }, "추가 실패");
       setRows((prev) => [...prev, { key, label: null, values: [], draft: "", inRegistry: true }]);
       // 부모 manualKeys 에도 즉시 반영 → 재오픈 시에도 레지스트리 키로 인식(✕ 노출).
       onKeyAdded(key);
@@ -155,12 +151,7 @@ export function PointInputDrawer({
       return;
     }
     try {
-      const res = await fetch("/api/review/manual-keys", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from: key, to: next }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "이름 변경 실패");
+      await patchJson("/api/review/manual-keys", { from: key, to: next }, "이름 변경 실패");
       setRows((prev) => prev.map((r) => (r.key === key ? { ...r, key: next } : r)));
       // 부모 manualKeys + 영속 설정(내보내기/프리셋/헤더/필터 등)의 키 참조도 즉시 from→to 로 이동.
       onKeyRenamed(key, next);
@@ -178,12 +169,7 @@ export function PointInputDrawer({
     )
       return;
     try {
-      const res = await fetch("/api/review/manual-keys", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "삭제 실패");
+      await deleteJson("/api/review/manual-keys", { key }, "삭제 실패");
       setRows((prev) => prev.filter((r) => r.key !== key));
       // 부모 manualKeys 에서 제거(재오픈 시 되살아나지 않게) + 영속 설정의 죽은 키 잔재 제거.
       onKeyDeleted(key);
@@ -217,16 +203,10 @@ export function PointInputDrawer({
           }
         }
       }
-      const res = await fetch("/api/review/point", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stockCode, tradeDate, tradeTime, payload }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "저장 실패");
-      const { id, features } = (await res.json()) as {
+      const { id, features } = await postJson<{
         id: string;
         features?: Record<string, string>;
-      };
+      }>("/api/review/point", { stockCode, tradeDate, tradeTime, payload }, "저장 실패");
       onSaved({ reviewId: id, payload, features });
     } catch (err) {
       window.alert(err instanceof Error ? err.message : String(err));

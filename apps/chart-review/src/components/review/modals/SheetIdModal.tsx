@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import sheetStyles from "../SheetModal.module.css";
 import { ActionModal, type ReadSheetState } from "./ActionModal";
+import { postJson, deleteJson } from "@/lib/apiClient";
 
 export function SheetIdModal({
   config,
@@ -26,13 +27,7 @@ export function SheetIdModal({
     setBusy(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/review/read-sheet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spreadsheetId: id, tab: config?.tab }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "저장 실패");
+      await postJson("/api/review/read-sheet", { spreadsheetId: id, tab: config?.tab }, "저장 실패");
       setStatus({ ok: true, message: "저장되었습니다. 탭 목록을 새로고침합니다." });
       router.refresh();
     } catch (err) {
@@ -46,8 +41,7 @@ export function SheetIdModal({
     setBusy(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/review/read-sheet", { method: "DELETE" });
-      if (!res.ok) throw new Error("초기화 실패");
+      await deleteJson("/api/review/read-sheet", undefined, "초기화 실패");
       setSpreadsheetId("");
       setStatus({ ok: true, message: "기본값(.env)으로 되돌렸습니다." });
       router.refresh();
