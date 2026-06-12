@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { deleteReviewPointById, upsertReviewPoint } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
 import { resolvePointFeatures } from "@/lib/loadReviewRows";
-import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
+import { badRequest, errorResponse, requireJsonBody } from "@/lib/apiResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -12,23 +12,17 @@ export const dynamic = "force-dynamic";
  * Point 1건 입력/수정(upsert). 대상 Target 은 이미 존재해야 한다.
  */
 export async function POST(request: Request) {
-  const body = await parseJsonBody(request);
-  if (body === null) {
-    return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
-  }
-
-  const { stockCode, tradeDate, tradeTime, payload } = (body ?? {}) as {
+  const body = await requireJsonBody<{
     stockCode?: string;
     tradeDate?: string;
     tradeTime?: string;
     payload?: Record<string, string | string[]>;
-  };
+  }>(request);
+  if (body instanceof NextResponse) return body;
 
+  const { stockCode, tradeDate, tradeTime, payload } = body;
   if (!stockCode || !tradeDate || !tradeTime) {
-    return NextResponse.json(
-      { error: "stockCode, tradeDate, tradeTime 이 필요합니다." },
-      { status: 400 },
-    );
+    return badRequest("stockCode, tradeDate, tradeTime 이 필요합니다.");
   }
 
   try {
@@ -53,14 +47,12 @@ export async function POST(request: Request) {
  * body: { reviewId }
  */
 export async function DELETE(request: Request) {
-  const body = await parseJsonBody(request);
-  if (body === null) {
-    return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
-  }
+  const body = await requireJsonBody<{ reviewId?: string }>(request);
+  if (body instanceof NextResponse) return body;
 
-  const { reviewId } = (body ?? {}) as { reviewId?: string };
+  const { reviewId } = body;
   if (!reviewId || !/^\d+$/.test(reviewId)) {
-    return NextResponse.json({ error: "유효한 reviewId 가 필요합니다." }, { status: 400 });
+    return badRequest("유효한 reviewId 가 필요합니다.");
   }
 
   try {

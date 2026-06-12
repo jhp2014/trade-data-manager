@@ -5,7 +5,7 @@ import { buildSheetMatrix } from "@/lib/buildSheetMatrix";
 import { writeSheetTab } from "@/lib/sheetsWriter";
 import { activeFilterCount, payloadMatchesManualFilters } from "@/lib/manualFilter";
 import { resolveWorkingSetKeys } from "@/lib/workingSet";
-import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
+import { badRequest, errorResponse, requireJsonBody } from "@/lib/apiResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -19,18 +19,16 @@ export const dynamic = "force-dynamic";
  * spreadsheetId/tab 미지정 시 env 기본값 사용. 탭이 없으면 생성.
  */
 export async function POST(request: Request) {
-  const body = await parseJsonBody(request);
-  if (body === null) {
-    return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
-  }
-
-  const { spreadsheetId, tab, filters, scope, fields } = (body ?? {}) as {
+  const body = await requireJsonBody<{
     spreadsheetId?: string;
     tab?: string;
     filters?: Record<string, string[]>;
     scope?: "working" | "all";
     fields?: string[];
-  };
+  }>(request);
+  if (body instanceof NextResponse) return body;
+
+  const { spreadsheetId, tab, filters, scope, fields } = body;
 
   // fields 가 주어지면(비어있지 않으면) 그 컬럼만 그 순서로 내보낸다('f' 쓰기 설정과 동일).
   const fieldKeys = Array.isArray(fields) && fields.length > 0 ? fields : undefined;
@@ -38,10 +36,7 @@ export async function POST(request: Request) {
   const targetId = spreadsheetId?.trim() || process.env.GOOGLE_SHEETS_ID?.trim();
   const targetTab = tab?.trim() || process.env.GOOGLE_SHEETS_TAB?.trim() || "review";
   if (!targetId) {
-    return NextResponse.json(
-      { error: "스프레드시트 ID 가 필요합니다 (입력 또는 GOOGLE_SHEETS_ID)." },
-      { status: 400 },
-    );
+    return badRequest("스프레드시트 ID 가 필요합니다 (입력 또는 GOOGLE_SHEETS_ID).");
   }
 
   const activeFilters = filters ?? {};

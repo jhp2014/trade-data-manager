@@ -6,7 +6,7 @@ import {
   renameManualKey,
 } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
-import { errorResponse, parseJsonBody } from "@/lib/apiResponse";
+import { badRequest, errorResponse, requireJsonBody, validateManualKey } from "@/lib/apiResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -25,26 +25,15 @@ export async function GET() {
 
 /** POST /api/review/manual-keys  body: { key, label? } → 키 추가(멱등) */
 export async function POST(request: Request) {
-  const body = await parseJsonBody(request);
-  if (body === null) {
-    return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
-  }
+  const body = await requireJsonBody<{ key?: string; label?: string }>(request);
+  if (body instanceof NextResponse) return body;
 
-  const { key, label } = (body ?? {}) as { key?: string; label?: string };
-  const trimmed = key?.trim();
-  if (!trimmed) {
-    return NextResponse.json({ error: "key 가 필요합니다." }, { status: 400 });
-  }
-  if (!/^[A-Za-z0-9_]+$/.test(trimmed)) {
-    return NextResponse.json(
-      { error: "key 는 영문/숫자/밑줄만 사용할 수 있습니다." },
-      { status: 400 },
-    );
-  }
+  const key = validateManualKey(body.key);
+  if (key instanceof NextResponse) return key;
 
   try {
     const db = getDb();
-    await addManualKey(db, { key: trimmed, label: label ?? null });
+    await addManualKey(db, { key, label: body.label ?? null });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return errorResponse(err);
@@ -53,23 +42,13 @@ export async function POST(request: Request) {
 
 /** PATCH /api/review/manual-keys  body: { from, to } → 키 이름 변경(payload 키까지 이동) */
 export async function PATCH(request: Request) {
-  const body = await parseJsonBody(request);
-  if (body === null) {
-    return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
-  }
+  const body = await requireJsonBody<{ from?: string; to?: string }>(request);
+  if (body instanceof NextResponse) return body;
 
-  const { from, to } = (body ?? {}) as { from?: string; to?: string };
-  const fromKey = from?.trim();
-  const toKey = to?.trim();
-  if (!fromKey || !toKey) {
-    return NextResponse.json({ error: "from, to 가 필요합니다." }, { status: 400 });
-  }
-  if (!/^[A-Za-z0-9_]+$/.test(toKey)) {
-    return NextResponse.json(
-      { error: "key 는 영문/숫자/밑줄만 사용할 수 있습니다." },
-      { status: 400 },
-    );
-  }
+  const fromKey = body.from?.trim();
+  if (!fromKey) return badRequest("from, to 가 필요합니다.");
+  const toKey = validateManualKey(body.to);
+  if (toKey instanceof NextResponse) return toKey;
 
   try {
     const db = getDb();
@@ -82,16 +61,11 @@ export async function PATCH(request: Request) {
 
 /** DELETE /api/review/manual-keys  body: { key } → 키 완전 삭제(payload 데이터까지 제거) */
 export async function DELETE(request: Request) {
-  const body = await parseJsonBody(request);
-  if (body === null) {
-    return NextResponse.json({ error: "잘못된 JSON 본문입니다." }, { status: 400 });
-  }
+  const body = await requireJsonBody<{ key?: string }>(request);
+  if (body instanceof NextResponse) return body;
 
-  const { key } = (body ?? {}) as { key?: string };
-  const trimmed = key?.trim();
-  if (!trimmed) {
-    return NextResponse.json({ error: "key 가 필요합니다." }, { status: 400 });
-  }
+  const trimmed = body.key?.trim();
+  if (!trimmed) return badRequest("key 가 필요합니다.");
 
   try {
     const db = getDb();
