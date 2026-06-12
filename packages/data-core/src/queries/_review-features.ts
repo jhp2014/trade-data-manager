@@ -3,6 +3,7 @@ import { reviewPoints, reviewTargets } from "../schema/review";
 import { minuteCandleFeatures } from "../schema/features";
 import type { Database } from "../db";
 import { FEATURE_COLUMNS } from "../market-feature/featureColumns";
+import { findPointsByTargetIds } from "../repositories/review-point.repository";
 
 // ── export / load 쿼리가 공유하는 feature 적재 헬퍼 (private) ──────────
 // index.ts 에 export 하지 않는다(앱이 직접 호출하지 않음).
@@ -10,6 +11,23 @@ import { FEATURE_COLUMNS } from "../market-feature/featureColumns";
 /** minute_candle_features 키. (stockCode, tradeDate, tradeTime) 좌표로 feature 행을 식별한다. */
 export function featureKey(stockCode: string, tradeDate: string, tradeTime: string) {
     return `${stockCode}|${tradeDate}|${tradeTime.slice(0, 8)}`;
+}
+
+/**
+ * 주어진 타깃들의 "포인트 + 피처"를 한 번에 적재한다.
+ * load/export 쿼리가 공유하는 조립 단계로, 각 쿼리는 타깃 셀렉터와 출력 투영만 담당한다.
+ */
+export async function loadPointsAndFeatures(
+    db: Database,
+    targets: Array<typeof reviewTargets.$inferSelect>,
+): Promise<{
+    pointsByTargetId: Map<bigint, Array<typeof reviewPoints.$inferSelect>>;
+    featuresByKey: Map<string, Record<string, string | null>>;
+}> {
+    const pointsByTargetId = await findPointsByTargetIds(db, targets.map((t) => t.id));
+    const allPoints = Array.from(pointsByTargetId.values()).flat();
+    const featuresByKey = await buildFeaturesByKey(db, targets, allPoints);
+    return { pointsByTargetId, featuresByKey };
 }
 
 /**

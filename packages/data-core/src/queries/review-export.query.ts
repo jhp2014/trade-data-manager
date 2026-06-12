@@ -5,8 +5,7 @@ import {
     findReviewTargetsByKeys,
     type ReviewLoadKey,
 } from "../repositories/review-target.repository";
-import { findPointsByTargetIds } from "../repositories/review-point.repository";
-import { buildFeaturesByKey, featureKey } from "./_review-features";
+import { featureKey, loadPointsAndFeatures } from "./_review-features";
 
 /**
  * Sheet export 1행의 원천 데이터(타깃 × 타점 평탄화 + feature/payload 동봉).
@@ -35,13 +34,7 @@ export async function findReviewExportRows(
     const targets = await findExportTargets(db, opts);
     if (targets.length === 0) return [];
 
-    const pointsByTargetId = await findPointsByTargetIds(
-        db,
-        targets.map((target) => target.id),
-    );
-    const allPoints = Array.from(pointsByTargetId.values()).flat();
-
-    const featuresByKey = await buildFeaturesByKey(db, targets, allPoints);
+    const { pointsByTargetId, featuresByKey } = await loadPointsAndFeatures(db, targets);
     const rows: ReviewExportRow[] = [];
 
     for (const target of targets) {

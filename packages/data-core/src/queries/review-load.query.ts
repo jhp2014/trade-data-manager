@@ -5,8 +5,7 @@ import {
     findReviewTargetsByKeys,
     type ReviewLoadKey,
 } from "../repositories/review-target.repository";
-import { findPointsByTargetIds } from "../repositories/review-point.repository";
-import { buildFeaturesByKey, featureKey } from "./_review-features";
+import { featureKey, loadPointsAndFeatures } from "./_review-features";
 
 // ── 앱 로드용 read (DB → 작업셋) ────────────────────────────────────
 
@@ -37,13 +36,7 @@ export async function findReviewLoadTargets(
     const targets = await loadTargets(db, opts);
     if (targets.length === 0) return [];
 
-    const pointsByTargetId = await findPointsByTargetIds(
-        db,
-        targets.map((target) => target.id),
-    );
-    const allPoints = Array.from(pointsByTargetId.values()).flat();
-
-    const featuresByKey = await buildFeaturesByKey(db, targets, allPoints);
+    const { pointsByTargetId, featuresByKey } = await loadPointsAndFeatures(db, targets);
 
     return targets.map((target) => ({
         stockCode: target.stockCode,
