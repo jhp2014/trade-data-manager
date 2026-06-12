@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { buildSheetMatrix, findReviewExportRows } from "@trade-data-manager/data-core";
+import { findReviewExportRows } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
+import { buildSheetMatrix } from "@/lib/buildSheetMatrix";
 import { writeSheetTab } from "@/lib/sheetsWriter";
 import { activeFilterCount, payloadMatchesManualFilters } from "@/lib/manualFilter";
 import { resolveWorkingSetKeys } from "@/lib/workingSet";

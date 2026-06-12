@@ -1,13 +1,27 @@
 import { asc, desc, gte } from "drizzle-orm";
 import { reviewTargets } from "../schema/review";
 import type { Database } from "../db";
-import { type ReviewExportRow } from "../review-sheet";
 import {
     findReviewTargetsByKeys,
     type ReviewLoadKey,
 } from "../repositories/review-target.repository";
 import { findPointsByTargetIds } from "../repositories/review-point.repository";
 import { buildFeaturesByKey, featureKey } from "./_review-features";
+
+/**
+ * Sheet export 1행의 원천 데이터(타깃 × 타점 평탄화 + feature/payload 동봉).
+ * DB 조회 계약이라 data-core 가 소유하고, Sheet matrix 변환은 앱(chart-review)이 담당한다.
+ */
+export type ReviewExportRow = {
+    reviewId: string | null;
+    stockCode: string;
+    stockName: string | null;
+    tradeDate: string;
+    tradeTime: string | null;
+    lineTargets: number[];
+    features: Record<string, string | null>;
+    payload: Record<string, string | string[]>;
+};
 
 /**
  * 시트 익스포트용 행(타깃 × 포인트 평탄화 + feature/payload 동봉)을 조회한다.

@@ -226,9 +226,9 @@ DB에는 `review_point.payload_json`으로 저장되고, UI로 다시 읽을 때
 | f 키 append | `src/app/api/review/write-sheet/append/route.ts` |
 | Google Sheets 쓰기 | `src/lib/sheetsWriter.ts` |
 | Sheet row 파싱 | `src/lib/parseSheet.ts` |
-| Export matrix 생성 | `packages/data-core/src/review-sheet/buildSheetMatrix.ts` |
+| Export matrix 생성 | `src/lib/buildSheetMatrix.ts` (Sheet 계층) |
 
-Export는 data-core `findReviewExportRows()`로 DB row를 모으고, `buildSheetMatrix()`로 2차원 문자열 배열을 만든 뒤 Google Sheet에 씁니다.
+Export는 data-core `findReviewExportRows()`로 DB row를 모으고, 앱 Sheet 계층의 `buildSheetMatrix()`(`src/lib/buildSheetMatrix.ts`)로 2차원 문자열 배열을 만든 뒤 Google Sheet에 씁니다. 즉 DB 조회는 data-core, 시트 표현 변환(헤더·`m_` 접두·`" | "` 결합·셀 normalize)은 앱이 담당합니다.
 
 Import merge는 빈 셀을 삭제로 해석하지 않습니다. 비어있지 않은 `m_` 값만 `payload_json || newValues`로 병합합니다.
 
@@ -305,7 +305,7 @@ mergePresetIntoManual(
 | 분봉 확대 x키 | `ReviewWorkspace.minuteZoomed`, `RealMinuteChart`, `DEFAULT_MINUTE_ZOOM_CANDLES` |
 | 가격 라인 | `src/lib/chart/priceLines.ts`, chart components |
 | Sheet 탭 목록 | `src/lib/sheetsWriter.ts`, `/api/review/sheets/tabs` |
-| Export 컬럼 | `useUiStore.exportFieldKeys`, data-core `review-sheet/columns.ts` |
+| Export 컬럼 | `useUiStore.exportFieldKeys`, `src/lib/sheetColumns.ts`(고정/`m_` 헤더), data-core `FEATURE_COLUMNS`(피처 투영) |
 | Import merge 방식 | `src/app/api/review/import-merge/route.ts`, data-core `mergeReviewPointPayloads()` |
 
 ## 14. API route 지도

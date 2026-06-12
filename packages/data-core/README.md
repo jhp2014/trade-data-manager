@@ -59,8 +59,9 @@ src/
 - `schema/`: DB 구조만 정의한다. 앱 런타임, HTTP, 파일 I/O를 모른다.
 - `repositories/`: DB read/write 단위 함수다. 대부분 앱에서 직접 호출해도 되는 공용 API다.
 - `queries/`: 여러 repository를 묶어 화면이 먹기 좋은 큰 응답을 만든다. 현재는 chart-review 차트용 `getThemeBundle()`이 대표적이다.
-- `market-feature/`: 분봉 피처 컬럼 정의와 계산 로직의 단일 출처다. 계산기 추가 시 schema와 runner 결과가 같이 바뀐다.
-- `review-sheet/`: DB의 review export row를 Google Sheet에 쓸 수 있는 `string[][]` 행렬로 바꾼다.
+- `market-feature/`: 분봉 피처 컬럼 정의와 계산 로직의 단일 출처다. 계산기 추가 시 schema와 runner 결과가 같이 바뀐다. 피처 투영 목록 `FEATURE_COLUMNS`도 여기 있다(read/export 공통).
+
+> Sheet(CSV/Google Sheet) 표현 변환은 data-core 가 담당하지 않는다. data-core 는 `findReviewExportRows()`로 DB 행(`ReviewExportRow[]`)까지만 제공하고, 시트 매트릭스 생성(`buildSheetMatrix`)·헤더/`m_` 접두·`" | "` 결합은 앱(chart-review)의 Sheet 계층이 담당한다.
 
 ### 익스포트 진입점
 
@@ -127,6 +128,5 @@ apps/chart-review
   -> getThemeBundle()               # 차트 preview/테마 멤버
   -> upsertReviewPoint()            # 타점 저장
   -> mergeReviewPointPayloads()     # Sheet import merge
-  -> findReviewExportRows()
-  -> buildSheetMatrix()             # Sheet export
+  -> findReviewExportRows()         # Sheet export 원천 행(matrix 변환은 앱이 담당)
 ```

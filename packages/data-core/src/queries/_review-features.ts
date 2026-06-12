@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { reviewPoints, reviewTargets } from "../schema/review";
 import { minuteCandleFeatures } from "../schema/features";
 import type { Database } from "../db";
-import { FEATURE_COLUMNS } from "../review-sheet";
+import { FEATURE_COLUMNS } from "../market-feature/featureColumns";
 
 // ── export / load 쿼리가 공유하는 feature 적재 헬퍼 (private) ──────────
 // index.ts 에 export 하지 않는다(앱이 직접 호출하지 않음).
