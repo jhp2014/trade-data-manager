@@ -77,4 +77,20 @@ describe("getThemeBundle", () => {
 
     await expect(getThemeBundle(h.db, { stockCode: SELF, tradeDate: DATE })).rejects.toThrow(/theme/i);
   });
+
+  it("상장일(regDay=tradeDate) 멤버는 isListingDay=true 이고 분봉 등락률이 시가 기준으로 보정된다", async () => {
+    // regDay 가 거래일과 같으면 상장일 → 전일종가가 없어 분봉 등락률이 null 로 적재됨.
+    await seedStock(h.db, { stockCode: SELF, stockName: "삼성전자", regDay: DATE });
+    const dSelf = await seedDailyCandle(h.db, { stockCode: SELF, tradeDate: DATE });
+    const themeId = await seedTheme(h.db, "신규상장");
+    await seedThemeMapping(h.db, themeId, dSelf);
+    // open=1000, close=1050, 등락률 컬럼은 null(seedMinuteCandle 기본).
+    await seedMinuteCandle(h.db, { dailyCandleId: dSelf, stockCode: SELF, tradeDate: DATE, tradeTime: "09:00:00" });
+
+    const [bundle] = await getThemeBundle(h.db, { stockCode: SELF, tradeDate: DATE });
+    const self = bundle.members[0];
+    expect(self.isListingDay).toBe(true);
+    // 메모리 보정: (1050-1000)/1000*100 = 5.0000
+    expect(self.minute[0].closeRateKrx).toBe("5.0000");
+  });
 });
