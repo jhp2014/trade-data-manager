@@ -351,7 +351,7 @@ export function ReviewWorkspace({
     () => manualFieldKeys.map(stripManualPrefix),
     [manualFieldKeys],
   );
-  const liveManualRawKey = liveManualRawKeys.join(" ");
+  const liveManualRawKey = liveManualRawKeys.join(",");
   useEffect(() => {
     if (liveManualRawKeys.length === 0) return;
     reconcileManualKeys(liveManualRawKeys);
