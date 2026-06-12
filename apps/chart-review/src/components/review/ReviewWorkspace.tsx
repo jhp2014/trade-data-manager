@@ -13,7 +13,7 @@ import { activeFilterCount, pointMatchesManualFilters } from "@/lib/manualFilter
 import { timeStringToMinutes } from "./TimeSlider";
 import { createReviewCommands } from "@/lib/reviewCommands";
 import { isEditableTarget } from "@/lib/domFocus";
-import { postJson, deleteJson } from "@/lib/apiClient";
+import { deleteJson } from "@/lib/apiClient";
 import { stripManualPrefix } from "@/lib/manualValue";
 import { dateToUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
@@ -41,6 +41,7 @@ import { useMarkerTime } from "@/hooks/useMarkerTime";
 import { useStatusToast } from "@/hooks/useStatusToast";
 import { useQuickPresets } from "@/hooks/useQuickPresets";
 import { useTabNavigation } from "@/hooks/useTabNavigation";
+import { useWriteSheet } from "@/hooks/useWriteSheet";
 import { useManualKeyRegistry } from "@/hooks/useManualKeyRegistry";
 import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -50,7 +51,6 @@ import {
   parseLineTargets,
   collectFieldKeys,
   collectValueSuggestions,
-  resolveFieldValue,
   formatPointTime,
 } from "@/lib/reviewFields";
 
@@ -490,46 +490,15 @@ export function ReviewWorkspace({
   // 짧게 떴다 사라지는 상태 토스트(f 추가/프리셋 적용 결과 공용).
   const { status: writeAppendStatus, showStatus } = useStatusToast();
 
-  // f 키: Write Tab 마지막 행에 현재 탐색 종목 데이터를 추가한다.
-  // 낙관적: 키 입력 즉시 피드백(토스트/히스토리)하고, 실제 Sheets append 는
-  // 백그라운드로 보낸다. 실패하면 토스트를 에러로 교체한다.
-  const handleWriteAppend = useCallback(() => {
-    if (!writeTab) return;
-    const headers = exportFieldKeys;
-    const values = headers.map((key) => resolveFieldValue(key, activePoint));
-    const label = effectiveStock.stockName ?? effectiveStock.stockCode;
-
-    pushHistory({
-      stockCode: effectiveStock.stockCode,
-      tradeDate: effectiveStock.tradeDate,
-      stockName: effectiveStock.stockName ?? undefined,
-    });
-    showStatus(`✓ ${label} 추가됨`);
-
-    void postJson("/api/review/write-sheet/append", { writeTab, headers, values }, "append 실패")
-      .catch((err) => {
-        showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
-      });
-  }, [writeTab, exportFieldKeys, activePoint, effectiveStock, pushHistory, showStatus]);
-
-  // 쓰기 탭 초기화: 탭을 비우고 첫 행에 헤더를 기록한다(시트를 수동으로 다 지운 뒤 재시작용).
-  const handleInitWriteTab = useCallback(async () => {
-    if (!writeTab) return;
-    const headers = exportFieldKeys;
-    if (headers.length === 0) {
-      showStatus("✗ 내보낼 필드(헤더)가 없습니다");
-      return;
-    }
-    if (!window.confirm(`쓰기 탭 '${writeTab}'을 초기화하고 첫 행에 헤더를 기록할까요?\n기존 내용은 모두 지워집니다.`)) {
-      return;
-    }
-    try {
-      await postJson("/api/review/write-sheet/init-header", { writeTab, headers }, "초기화 실패");
-      showStatus(`✓ '${writeTab}' 초기화됨`);
-    } catch (err) {
-      showStatus(`✗ ${err instanceof Error ? err.message : "오류"}`);
-    }
-  }, [writeTab, exportFieldKeys, showStatus]);
+  // Write Tab append/초기화 유스케이스는 useWriteSheet 으로 분리(토스트는 공유 주입).
+  const { handleWriteAppend, handleInitWriteTab } = useWriteSheet({
+    writeTab,
+    exportFieldKeys,
+    activePoint,
+    effectiveStock,
+    pushHistory,
+    showStatus,
+  });
 
   // KRX/NXT 토글.
   const setPriceMode = useUiStore((state) => state.setChartPriceMode);
