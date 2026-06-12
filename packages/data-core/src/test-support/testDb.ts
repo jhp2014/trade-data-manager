@@ -48,6 +48,16 @@ export async function resetReviewTables(db: Database): Promise<void> {
   );
 }
 
+/** review + market/feature/theme 까지 전부 비운다(피처 조인·테마 번들 테스트용). */
+export async function resetAllTables(db: Database): Promise<void> {
+  await db.execute(sql`
+    TRUNCATE TABLE
+      review_point, review_target, review_manual_key,
+      minute_candle_features, daily_theme_mappings, minute_candles, daily_candles, themes, stocks
+    RESTART IDENTITY CASCADE
+  `);
+}
+
 // ── 시드 헬퍼 (실제 writer 를 그대로 dogfooding) ──────────────────────────────
 
 export async function seedTarget(
