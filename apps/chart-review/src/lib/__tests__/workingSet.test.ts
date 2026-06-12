@@ -9,7 +9,7 @@ vi.mock("@/actions/sheet", () => ({
   fetchSheetRowsAction: vi.fn(),
 }));
 
-import { resolveWorkingSetKeys } from "@/lib/workingSet";
+import { resolveWorkingSetKeys, rowsToReviewLoadKeys } from "@/lib/workingSet";
 import { getReadSheetConfig, hasSheetsCredentials } from "@/lib/readSheetConfig";
 import { fetchSheetRowsAction } from "@/actions/sheet";
 
@@ -22,6 +22,23 @@ type Rows = Awaited<ReturnType<typeof fetchSheetRowsAction>>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe("rowsToReviewLoadKeys", () => {
+  it("(code,date) 기준 dedupe 하고 빈 값 행은 건너뛴다", () => {
+    expect(
+      rowsToReviewLoadKeys([
+        { stockCode: "005930", tradeDate: "2026-05-27" },
+        { stockCode: "005930", tradeDate: "2026-05-27" }, // 중복
+        { stockCode: "", tradeDate: "2026-05-27" }, // code 없음
+        { stockCode: "000660", tradeDate: "" }, // date 없음
+        { stockCode: "000660", tradeDate: "2026-05-27" },
+      ]),
+    ).toEqual([
+      { stockCode: "005930", tradeDate: "2026-05-27" },
+      { stockCode: "000660", tradeDate: "2026-05-27" },
+    ]);
+  });
 });
 
 describe("resolveWorkingSetKeys", () => {

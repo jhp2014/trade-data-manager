@@ -6,7 +6,7 @@ import {
   type ReviewLoadTarget,
 } from "@trade-data-manager/data-core";
 import { getDb } from "@/actions/db";
-import { resolveWorkingSetKeys } from "@/lib/workingSet";
+import { resolveWorkingSetKeys, rowsToReviewLoadKeys } from "@/lib/workingSet";
 import { flattenManualPayload } from "@/lib/manualValue";
 import { fetchSheetRowsAction } from "@/actions/sheet";
 import { mockSheetRows } from "@/mock/sheetRows";
@@ -72,15 +72,7 @@ export async function loadReviewRowsForTab(
   tab: string,
 ): Promise<SheetPointRow[]> {
   const rows = await fetchSheetRowsAction({ spreadsheetId, tab });
-  const seen = new Set<string>();
-  const keys: ReviewLoadKey[] = [];
-  for (const row of rows) {
-    if (!row.stockCode || !row.tradeDate) continue;
-    const id = `${row.stockCode}|${row.tradeDate}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    keys.push({ stockCode: row.stockCode, tradeDate: row.tradeDate });
-  }
+  const keys = rowsToReviewLoadKeys(rows);
   if (keys.length === 0) return [];
   const db = getDb();
   const targets = await findReviewLoadTargets(db, { keys });
