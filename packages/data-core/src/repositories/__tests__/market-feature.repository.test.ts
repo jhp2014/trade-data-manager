@@ -9,9 +9,11 @@ import {
 import {
   saveMinuteFeatures,
   findFeaturesByCodesAndDate,
+} from "../market-feature.repository";
+import {
   findAllTradeDates,
   findPendingTradeDates,
-} from "../market-feature.repository";
+} from "../../queries/market-feature-processing.query";
 
 let h: TestDb;
 beforeAll(async () => {

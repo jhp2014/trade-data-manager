@@ -11,6 +11,9 @@ export * from "./repositories";
 // queries (앱이 호출하는 얇은 read API)
 export * from "./queries";
 
+// services (여러 aggregate 를 변경하는 유스케이스)
+export * from "./services";
+
 // market-feature (분봉 피처 가공 도메인)
 export * from "./market-feature";
 

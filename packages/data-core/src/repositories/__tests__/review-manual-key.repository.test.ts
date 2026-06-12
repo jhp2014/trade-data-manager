@@ -9,10 +9,12 @@ import {
 import {
   addManualKey,
   listManualKeys,
+} from "../review-manual-key.repository";
+import {
   renameManualKey,
   deleteManualKey,
   backfillManualKeysFromPayloads,
-} from "../review-manual-key.repository";
+} from "../../services/review-manual-key.service";
 import { findReviewLoadTargets } from "../../queries/review-load.query";
 
 let h: TestDb;

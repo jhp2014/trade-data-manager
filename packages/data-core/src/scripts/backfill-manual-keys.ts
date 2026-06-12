@@ -3,7 +3,7 @@ import { config } from "dotenv";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createDb } from "../db";
-import { backfillManualKeysFromPayloads } from "../repositories/review-manual-key.repository";
+import { backfillManualKeysFromPayloads } from "../services/review-manual-key.service";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "../../../../.env") });

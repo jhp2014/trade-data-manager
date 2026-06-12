@@ -6,7 +6,7 @@ import {
   seedTarget,
   type TestDb,
 } from "../../test-support/testDb";
-import { mergeReviewPointPayloads } from "../review-import.repository";
+import { mergeReviewPointPayloads } from "../review-import.service";
 import { findReviewLoadTargets } from "../../queries/review-load.query";
 
 let h: TestDb;

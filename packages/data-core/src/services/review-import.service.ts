@@ -3,7 +3,7 @@ import { reviewPoints, reviewTargets } from "../schema/review";
 import type { Database } from "../db";
 
 // ── Sheet → DB 대량 병합 Import ──────────────────────────────────────
-// 단건 Point CRUD(review-point.repository)와 책임을 분리한 import(병합) 전용 모듈.
+// 단건 Point CRUD(repository)와 책임을 분리한 import(병합) 유스케이스 모듈.
 
 /**
  * 병합 대상 1건. reviewId 가 있으면 그것으로 식별(우선),

@@ -1,4 +1,5 @@
-import { findThemesByStockAndDate, findMemberCodesByThemeIds } from "../repositories/theme.repository";
+import { findThemesByStockAndDate } from "../repositories/theme.repository";
+import { findMemberCodesByThemeIds } from "./theme-members.query";
 import { findStocksMapByCodes } from "../repositories/stock.repository";
 import { findRecentDailyCandlesByCodes } from "../repositories/daily-candle.repository";
 import { findMinuteCandlesByCodesAndDate } from "../repositories/minute-candle.repository";
