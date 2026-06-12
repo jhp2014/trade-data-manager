@@ -18,14 +18,16 @@ export async function deleteManualKey(db: Database, key: string): Promise<number
     const trimmed = key.trim();
     if (!trimmed) return 0;
 
-    await db.delete(reviewManualKeys).where(eq(reviewManualKeys.key, trimmed));
+    return db.transaction(async (tx) => {
+        await tx.delete(reviewManualKeys).where(eq(reviewManualKeys.key, trimmed));
 
-    const result = await db.execute(
-        sql`UPDATE ${reviewPoints}
-            SET payload_json = payload_json - ${trimmed}, updated_at = NOW()
-            WHERE payload_json ? ${trimmed}`,
-    );
-    return Number((result as { rowCount?: number | null }).rowCount ?? 0);
+        const result = await tx.execute(
+            sql`UPDATE ${reviewPoints}
+                SET payload_json = payload_json - ${trimmed}, updated_at = NOW()
+                WHERE payload_json ? ${trimmed}`,
+        );
+        return Number((result as { rowCount?: number | null }).rowCount ?? 0);
+    });
 }
 
 /**
@@ -47,28 +49,30 @@ export async function renameManualKey(
         throw new Error("[review-manual-key.service] manual key 는 영문/숫자/밑줄만 사용할 수 있습니다.");
     }
 
-    const conflict = await db
-        .select({ key: reviewManualKeys.key })
-        .from(reviewManualKeys)
-        .where(eq(reviewManualKeys.key, to))
-        .limit(1);
-    if (conflict.length > 0) {
-        throw new Error(`[review-manual-key.service] 이미 존재하는 키입니다: ${to}`);
-    }
+    return db.transaction(async (tx) => {
+        const conflict = await tx
+            .select({ key: reviewManualKeys.key })
+            .from(reviewManualKeys)
+            .where(eq(reviewManualKeys.key, to))
+            .limit(1);
+        if (conflict.length > 0) {
+            throw new Error(`[review-manual-key.service] 이미 존재하는 키입니다: ${to}`);
+        }
 
-    await db
-        .update(reviewManualKeys)
-        .set({ key: to, updatedAt: sql`NOW()` })
-        .where(eq(reviewManualKeys.key, from));
+        await tx
+            .update(reviewManualKeys)
+            .set({ key: to, updatedAt: sql`NOW()` })
+            .where(eq(reviewManualKeys.key, from));
 
-    const result = await db.execute(
-        sql`UPDATE ${reviewPoints}
-            SET payload_json = (payload_json - ${from})
-                || jsonb_build_object(${to}::text, payload_json -> ${from}),
-                updated_at = NOW()
-            WHERE payload_json ? ${from}`,
-    );
-    return { renamedPayloads: Number((result as { rowCount?: number | null }).rowCount ?? 0) };
+        const result = await tx.execute(
+            sql`UPDATE ${reviewPoints}
+                SET payload_json = (payload_json - ${from})
+                    || jsonb_build_object(${to}::text, payload_json -> ${from}),
+                    updated_at = NOW()
+                WHERE payload_json ? ${from}`,
+        );
+        return { renamedPayloads: Number((result as { rowCount?: number | null }).rowCount ?? 0) };
+    });
 }
 
 /**
@@ -78,19 +82,21 @@ export async function renameManualKey(
  * @returns 새로 추가된 키 목록
  */
 export async function backfillManualKeysFromPayloads(db: Database): Promise<string[]> {
-    const result = await db.execute<{ key: string }>(
-        sql`SELECT DISTINCT jsonb_object_keys(${reviewPoints.payloadJson}) AS key FROM ${reviewPoints}`,
-    );
-    const payloadKeys = result.rows.map((row) => row.key).filter(Boolean);
+    return db.transaction(async (tx) => {
+        const result = await tx.execute<{ key: string }>(
+            sql`SELECT DISTINCT jsonb_object_keys(${reviewPoints.payloadJson}) AS key FROM ${reviewPoints}`,
+        );
+        const payloadKeys = result.rows.map((row) => row.key).filter(Boolean);
 
-    const existing = await listManualKeys(db);
-    const known = new Set(existing.map((k) => k.key));
+        const existing = await listManualKeys(tx);
+        const known = new Set(existing.map((k) => k.key));
 
-    const added: string[] = [];
-    for (const key of payloadKeys.sort()) {
-        if (known.has(key)) continue;
-        await addManualKey(db, { key });
-        added.push(key);
-    }
-    return added;
+        const added: string[] = [];
+        for (const key of payloadKeys.sort()) {
+            if (known.has(key)) continue;
+            await addManualKey(tx, { key });
+            added.push(key);
+        }
+        return added;
+    });
 }

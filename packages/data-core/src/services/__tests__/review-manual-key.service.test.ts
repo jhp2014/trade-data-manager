@@ -8,9 +8,9 @@ import {
 } from "../../test-support/testDb";
 import { addManualKey, listManualKeys } from "../../repositories/review-manual-key.repository";
 import {
-  renameManualKey,
-  deleteManualKey,
   backfillManualKeysFromPayloads,
+  deleteManualKey,
+  renameManualKey,
 } from "../review-manual-key.service";
 import { findReviewLoadTargets } from "../../queries/review-load.query";
 
@@ -44,7 +44,6 @@ describe("renameManualKey", () => {
 
     await renameManualKey(h.db, { from: "result", to: "outcome" });
 
-    // 상태 검증(PGlite 는 execute rowCount 미제공 → 카운트 대신 상태로 확인)
     expect((await listManualKeys(h.db)).map((k) => k.key)).toEqual(["outcome"]);
     expect(await payloadAt("09:12:00")).toEqual({ outcome: "good" });
   });
@@ -73,12 +72,12 @@ describe("backfillManualKeysFromPayloads", () => {
   it("payload 에만 있던 키를 레지스트리에 등록하고(정렬) 멱등하다", async () => {
     await seedTarget(h.db, { stockCode: CODE, tradeDate: DATE });
     await seedPoint(h.db, { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12:00", payload: { tag: "x", result: "good" } });
-    await addManualKey(h.db, { key: "result" }); // 이미 등록된 키는 건너뜀
+    await addManualKey(h.db, { key: "result" });
 
     const added = await backfillManualKeysFromPayloads(h.db);
-    expect(added).toEqual(["tag"]); // result 는 이미 있으므로 tag 만
+    expect(added).toEqual(["tag"]);
 
     const again = await backfillManualKeysFromPayloads(h.db);
-    expect(again).toEqual([]); // 멱등
+    expect(again).toEqual([]);
   });
 });

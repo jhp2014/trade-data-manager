@@ -1,12 +1,12 @@
 import { asc, sql } from "drizzle-orm";
 import { reviewManualKeys } from "../schema/review";
 import type { ReviewManualKey } from "../schema/review";
-import type { Database } from "../db";
+import type { DbClient } from "../db";
 
 // ── Manual key registry (m_ 컬럼 전역 목록) ─────────────────────────
 
 /** sortOrder, key 순으로 정렬된 전역 수동 입력 키 목록. */
-export async function listManualKeys(db: Database): Promise<ReviewManualKey[]> {
+export async function listManualKeys(db: DbClient): Promise<ReviewManualKey[]> {
     return db
         .select()
         .from(reviewManualKeys)
@@ -18,7 +18,7 @@ export async function listManualKeys(db: Database): Promise<ReviewManualKey[]> {
  * sortOrder 는 현재 최대값 + 1 로 자동 부여한다.
  */
 export async function addManualKey(
-    db: Database,
+    db: DbClient,
     input: { key: string; label?: string | null },
 ): Promise<void> {
     const key = input.key.trim();

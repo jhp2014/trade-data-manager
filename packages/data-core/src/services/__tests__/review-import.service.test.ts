@@ -66,4 +66,25 @@ describe("mergeReviewPointPayloads", () => {
     expect(report.skippedNoValues).toEqual(["empty"]);
     expect(report.skippedNotFound).toEqual(["missing"]);
   });
+
+  it("병합 도중 실패하면 앞선 payload 업데이트도 rollback 한다", async () => {
+    await seedPoint(h.db, { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12:00", payload: {} });
+    await seedPoint(h.db, { stockCode: CODE, tradeDate: DATE, tradeTime: "09:13:00", payload: {} });
+
+    await expect(
+      mergeReviewPointPayloads(h.db, [
+        { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12", values: { result: "good" }, ref: "ok" },
+        {
+          stockCode: CODE,
+          tradeDate: DATE,
+          tradeTime: "09:13",
+          values: { broken: BigInt(1) } as unknown as Record<string, string | string[]>,
+          ref: "broken",
+        },
+      ]),
+    ).rejects.toThrow(/serialize a BigInt/);
+
+    expect((await readPayloads())["09:12:00"]).toEqual({});
+    expect((await readPayloads())["09:13:00"]).toEqual({});
+  });
 });

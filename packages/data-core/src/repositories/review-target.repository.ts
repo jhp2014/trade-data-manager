@@ -1,6 +1,6 @@
-import { and, asc, desc, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { reviewTargets } from "../schema/review";
-import type { Database } from "../db";
+import type { Database, DbClient } from "../db";
 
 export type ReviewTargetSeed = {
     stockCode: string;
@@ -19,7 +19,7 @@ export type ReviewLoadKey = { stockCode: string; tradeDate: string };
  * - load/export 쿼리가 작업셋(읽기 시트) 범위를 동일하게 좁히는 데 공통으로 쓴다.
  */
 export async function findReviewTargetsByKeys(
-    db: Database,
+    db: DbClient,
     keys: ReviewLoadKey[],
 ): Promise<Array<typeof reviewTargets.$inferSelect>> {
     if (keys.length === 0) return [];
@@ -39,6 +39,23 @@ export async function findReviewTargetsByKeys(
 
     const wanted = new Set(keys.map((k) => `${k.stockCode}|${k.tradeDate}`));
     return rows.filter((row) => wanted.has(`${row.stockCode}|${row.tradeDate}`));
+}
+
+export async function findReviewTargetIdByKey(
+    db: DbClient,
+    key: ReviewLoadKey,
+): Promise<bigint | null> {
+    const [target] = await db
+        .select({ id: reviewTargets.id })
+        .from(reviewTargets)
+        .where(
+            and(
+                eq(reviewTargets.stockCode, key.stockCode),
+                eq(reviewTargets.tradeDate, key.tradeDate),
+            ),
+        )
+        .limit(1);
+    return target?.id ?? null;
 }
 
 export async function upsertReviewTargets(

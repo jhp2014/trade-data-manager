@@ -50,67 +50,69 @@ export async function mergeReviewPointPayloads(
     });
     if (effective.length === 0) return report;
 
-    // 1) reviewId 로 식별 가능한 항목.
-    const idItems = effective.filter((item) => item.reviewId && /^\d+$/.test(item.reviewId));
-    const existingIds = new Set<string>();
-    if (idItems.length > 0) {
-        const ids = Array.from(new Set(idItems.map((item) => BigInt(item.reviewId as string))));
-        const rows = await db
-            .select({ id: reviewPoints.id })
-            .from(reviewPoints)
-            .where(inArray(reviewPoints.id, ids));
-        for (const row of rows) existingIds.add(row.id.toString());
-    }
-
-    // 2) 좌표(code+date+time)로 식별할 항목.
-    const coordItems = effective.filter(
-        (item) =>
-            !(item.reviewId && existingIds.has(item.reviewId)) &&
-            item.stockCode &&
-            item.tradeDate &&
-            item.tradeTime,
-    );
-    const coordToId = new Map<string, string>();
-    if (coordItems.length > 0) {
-        const codes = Array.from(new Set(coordItems.map((i) => i.stockCode as string)));
-        const dates = Array.from(new Set(coordItems.map((i) => i.tradeDate as string)));
-        const rows = await db
-            .select({
-                id: reviewPoints.id,
-                code: reviewTargets.stockCode,
-                date: reviewTargets.tradeDate,
-                time: reviewPoints.tradeTime,
-            })
-            .from(reviewPoints)
-            .innerJoin(reviewTargets, eq(reviewPoints.reviewTargetId, reviewTargets.id))
-            .where(and(inArray(reviewTargets.stockCode, codes), inArray(reviewTargets.tradeDate, dates)));
-        for (const row of rows) {
-            coordToId.set(`${row.code}|${row.date}|${row.time.slice(0, 5)}`, row.id.toString());
-        }
-    }
-
-    // 3) 각 항목의 대상 id 를 확정하고 병합.
-    for (const item of effective) {
-        let id: string | undefined;
-        if (item.reviewId && existingIds.has(item.reviewId)) {
-            id = item.reviewId;
-        } else if (item.stockCode && item.tradeDate && item.tradeTime) {
-            id = coordToId.get(`${item.stockCode}|${item.tradeDate}|${item.tradeTime.slice(0, 5)}`);
+    return db.transaction(async (tx) => {
+        // 1) reviewId 로 식별 가능한 항목.
+        const idItems = effective.filter((item) => item.reviewId && /^\d+$/.test(item.reviewId));
+        const existingIds = new Set<string>();
+        if (idItems.length > 0) {
+            const ids = Array.from(new Set(idItems.map((item) => BigInt(item.reviewId as string))));
+            const rows = await tx
+                .select({ id: reviewPoints.id })
+                .from(reviewPoints)
+                .where(inArray(reviewPoints.id, ids));
+            for (const row of rows) existingIds.add(row.id.toString());
         }
 
-        if (!id) {
-            report.skippedNotFound.push(item.ref);
-            continue;
-        }
-
-        await db.execute(
-            sql`UPDATE ${reviewPoints}
-                SET payload_json = payload_json || ${JSON.stringify(item.values)}::jsonb,
-                    updated_at = NOW()
-                WHERE id = ${id}::bigint`,
+        // 2) 좌표(code+date+time)로 식별할 항목.
+        const coordItems = effective.filter(
+            (item) =>
+                !(item.reviewId && existingIds.has(item.reviewId)) &&
+                item.stockCode &&
+                item.tradeDate &&
+                item.tradeTime,
         );
-        report.merged += 1;
-    }
+        const coordToId = new Map<string, string>();
+        if (coordItems.length > 0) {
+            const codes = Array.from(new Set(coordItems.map((i) => i.stockCode as string)));
+            const dates = Array.from(new Set(coordItems.map((i) => i.tradeDate as string)));
+            const rows = await tx
+                .select({
+                    id: reviewPoints.id,
+                    code: reviewTargets.stockCode,
+                    date: reviewTargets.tradeDate,
+                    time: reviewPoints.tradeTime,
+                })
+                .from(reviewPoints)
+                .innerJoin(reviewTargets, eq(reviewPoints.reviewTargetId, reviewTargets.id))
+                .where(and(inArray(reviewTargets.stockCode, codes), inArray(reviewTargets.tradeDate, dates)));
+            for (const row of rows) {
+                coordToId.set(`${row.code}|${row.date}|${row.time.slice(0, 5)}`, row.id.toString());
+            }
+        }
 
-    return report;
+        // 3) 각 항목의 대상 id 를 확정하고 병합.
+        for (const item of effective) {
+            let id: string | undefined;
+            if (item.reviewId && existingIds.has(item.reviewId)) {
+                id = item.reviewId;
+            } else if (item.stockCode && item.tradeDate && item.tradeTime) {
+                id = coordToId.get(`${item.stockCode}|${item.tradeDate}|${item.tradeTime.slice(0, 5)}`);
+            }
+
+            if (!id) {
+                report.skippedNotFound.push(item.ref);
+                continue;
+            }
+
+            await tx.execute(
+                sql`UPDATE ${reviewPoints}
+                    SET payload_json = payload_json || ${JSON.stringify(item.values)}::jsonb,
+                        updated_at = NOW()
+                    WHERE id = ${id}::bigint`,
+            );
+            report.merged += 1;
+        }
+
+        return report;
+    });
 }

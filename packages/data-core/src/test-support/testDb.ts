@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import * as schema from "../schema";
 import type { Database } from "../db";
 import { upsertReviewTargets } from "../repositories/review-target.repository";
-import { upsertReviewPoint } from "../repositories/review-point.repository";
+import { upsertReviewPoint } from "../services/review-point.service";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../drizzle", import.meta.url));
 

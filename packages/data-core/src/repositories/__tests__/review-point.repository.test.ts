@@ -6,7 +6,8 @@ import {
   seedTarget,
   type TestDb,
 } from "../../test-support/testDb";
-import { upsertReviewPoint, deleteReviewPointById } from "../review-point.repository";
+import { deleteReviewPointById, upsertReviewPointByTargetId } from "../review-point.repository";
+import { findReviewTargetIdByKey } from "../review-target.repository";
 import { findReviewLoadTargets } from "../../queries/review-load.query";
 
 let h: TestDb;
@@ -31,20 +32,17 @@ async function readPayloads(): Promise<Record<string, Record<string, string | st
   return out;
 }
 
-describe("upsertReviewPoint", () => {
+describe("upsertReviewPointByTargetId", () => {
   it("같은 (target,time) 재호출 시 payload 를 덮어쓴다", async () => {
     await seedTarget(h.db, { stockCode: CODE, tradeDate: DATE });
-    const first = await upsertReviewPoint(h.db, { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12:00", payload: { result: "good" } });
-    const second = await upsertReviewPoint(h.db, { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12:00", payload: { result: "bad" } });
+    const reviewTargetId = await findReviewTargetIdByKey(h.db, { stockCode: CODE, tradeDate: DATE });
+    if (!reviewTargetId) throw new Error("seed target missing");
+
+    const first = await upsertReviewPointByTargetId(h.db, { reviewTargetId, tradeTime: "09:12:00", payload: { result: "good" } });
+    const second = await upsertReviewPointByTargetId(h.db, { reviewTargetId, tradeTime: "09:12:00", payload: { result: "bad" } });
 
     expect(second.id).toBe(first.id); // 같은 행 갱신
     expect((await readPayloads())["09:12:00"]).toEqual({ result: "bad" });
-  });
-
-  it("대상 타깃이 없으면 에러", async () => {
-    await expect(
-      upsertReviewPoint(h.db, { stockCode: "999999", tradeDate: DATE, tradeTime: "09:12:00", payload: {} }),
-    ).rejects.toThrow(/review_target not found/);
   });
 });
 

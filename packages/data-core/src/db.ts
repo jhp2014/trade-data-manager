@@ -7,3 +7,5 @@ export function createDb(pool: Pool) {
 }
 
 export type Database = ReturnType<typeof createDb>;
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+export type DbClient = Database | Transaction;
