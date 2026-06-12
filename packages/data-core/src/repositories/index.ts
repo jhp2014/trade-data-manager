@@ -5,4 +5,5 @@ export * from "./theme.repository";
 export * from "./market-feature.repository";
 export * from "./review-target.repository";
 export * from "./review-point.repository";
+export * from "./review-import.repository";
 export * from "./review-manual-key.repository";

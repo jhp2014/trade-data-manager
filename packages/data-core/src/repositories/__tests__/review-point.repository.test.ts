@@ -6,11 +6,7 @@ import {
   seedTarget,
   type TestDb,
 } from "../../test-support/testDb";
-import {
-  upsertReviewPoint,
-  deleteReviewPointById,
-  mergeReviewPointPayloads,
-} from "../review-point.repository";
+import { upsertReviewPoint, deleteReviewPointById } from "../review-point.repository";
 import { findReviewLoadTargets } from "../../queries/review-load.query";
 
 let h: TestDb;
@@ -62,42 +58,3 @@ describe("deleteReviewPointById", () => {
   });
 });
 
-describe("mergeReviewPointPayloads", () => {
-  beforeEach(async () => {
-    await seedTarget(h.db, { stockCode: CODE, tradeDate: DATE });
-  });
-
-  it("좌표(code+date+time)로 식별해 비어있지 않은 값만 병합하고 기존 키는 보존한다", async () => {
-    await seedPoint(h.db, { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12:00", payload: { result: "good" } });
-
-    const report = await mergeReviewPointPayloads(h.db, [
-      { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12", values: { tag: "breakout" }, ref: "r1" },
-    ]);
-
-    expect(report.merged).toBe(1);
-    // result(기존) 보존 + tag(신규) 병합. 빈 셀 삭제 없음.
-    expect((await readPayloads())["09:12:00"]).toEqual({ result: "good", tag: "breakout" });
-  });
-
-  it("reviewId 로 우선 식별한다", async () => {
-    const id = await seedPoint(h.db, { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12:00", payload: {} });
-    const report = await mergeReviewPointPayloads(h.db, [
-      { reviewId: id, values: { result: "good" }, ref: "r1" },
-    ]);
-    expect(report.merged).toBe(1);
-    expect((await readPayloads())["09:12:00"]).toEqual({ result: "good" });
-  });
-
-  it("값이 없으면 skippedNoValues, 식별 실패면 skippedNotFound 로 보고하고 건너뛴다", async () => {
-    await seedPoint(h.db, { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12:00", payload: {} });
-
-    const report = await mergeReviewPointPayloads(h.db, [
-      { stockCode: CODE, tradeDate: DATE, tradeTime: "09:12", values: {}, ref: "empty" },
-      { stockCode: CODE, tradeDate: DATE, tradeTime: "23:59", values: { result: "x" }, ref: "missing" },
-    ]);
-
-    expect(report.merged).toBe(0);
-    expect(report.skippedNoValues).toEqual(["empty"]);
-    expect(report.skippedNotFound).toEqual(["missing"]);
-  });
-});
