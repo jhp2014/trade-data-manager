@@ -1,6 +1,14 @@
 import type { Database } from "../db";
-import { stocks, dailyCandles, minuteCandles, themes, dailyThemeMappings } from "../schema/market";
-import { minuteCandleFeatures } from "../schema/features";
+import {
+  stocks,
+  dailyCandles,
+  minuteCandles,
+  themes,
+  dailyThemeMappings,
+  type DailyCandleInsert,
+  type MinuteCandleInsert,
+} from "../schema/market";
+import { minuteCandleFeatures, type MinuteCandleFeaturesInsert } from "../schema/features";
 
 // market/feature/theme 테이블 시드 헬퍼. FK 체인은
 // stocks → daily_candles → minute_candles → minute_candle_features 이고,
@@ -89,6 +97,71 @@ export async function seedFeature(
     dayHighTime: p.dayHighTime ?? null,
   };
   await db.insert(minuteCandleFeatures).values(values as typeof minuteCandleFeatures.$inferInsert);
+}
+
+// ── save* 리포 함수에 넘길 Insert row 빌더 (NOT NULL 만 기본값으로 채움) ──────────
+
+export function buildDailyRow(
+  stockCode: string,
+  tradeDate: string,
+  o?: { closeKrx?: string; prevCloseKrx?: string | null; prevCloseNxt?: string | null },
+): DailyCandleInsert {
+  return {
+    stockCode,
+    tradeDate,
+    openKrx: "1000", highKrx: "1100", lowKrx: "900", closeKrx: o?.closeKrx ?? "1050",
+    openNxt: "1000", highNxt: "1100", lowNxt: "900", closeNxt: "1050",
+    tradingVolumeKrx: 0n, tradingAmountKrx: "0",
+    tradingVolumeNxt: 0n, tradingAmountNxt: "0",
+    prevCloseKrx: o?.prevCloseKrx ?? null,
+    prevCloseNxt: o?.prevCloseNxt ?? null,
+  };
+}
+
+export function buildMinuteRow(p: {
+  dailyCandleId: bigint;
+  stockCode: string;
+  tradeDate: string;
+  tradeTime: string;
+  unixTimestamp?: number;
+  close?: string;
+  closeRateKrx?: string | null;
+  closeRateNxt?: string | null;
+}): MinuteCandleInsert {
+  return {
+    dailyCandleId: p.dailyCandleId,
+    tradeDate: p.tradeDate,
+    stockCode: p.stockCode,
+    tradeTime: p.tradeTime,
+    unixTimestamp: p.unixTimestamp ?? 0,
+    open: "1000", high: "1100", low: "900", close: p.close ?? "1050",
+    tradingVolume: 0n, tradingAmount: "0", accumulatedTradingAmount: "0",
+    closeRateKrx: p.closeRateKrx ?? null,
+    closeRateNxt: p.closeRateNxt ?? null,
+  };
+}
+
+export function buildFeatureRow(p: {
+  minuteCandleId: bigint;
+  dailyCandleId: bigint;
+  stockCode: string;
+  tradeDate: string;
+  tradeTime: string;
+  closeRateKrx?: string;
+}): MinuteCandleFeaturesInsert {
+  // 동적 계산기 컬럼 때문에 $inferInsert 에 키가 정적으로 안 잡혀 Record 로 만든 뒤 캐스팅.
+  const row: Record<string, unknown> = {
+    minuteCandleId: p.minuteCandleId,
+    dailyCandleId: p.dailyCandleId,
+    stockCode: p.stockCode,
+    tradeDate: p.tradeDate,
+    tradeTime: p.tradeTime,
+    closeRateKrx: p.closeRateKrx ?? "0",
+    closeRateNxt: "0",
+    tradingAmount: "0",
+    cumulativeTradingAmount: "0",
+  };
+  return row as MinuteCandleFeaturesInsert;
 }
 
 export async function seedTheme(db: Database, themeName: string): Promise<bigint> {
