@@ -2,14 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { InitialReviewSelection, ReviewStockGroup } from "@/types/review";
+import type { ChartOverlaySeries, ChartThemeOverlay } from "@/types/chart";
 
 // ── 무거운/외부 의존 목 (차트 캔버스·라우터·차트 preview·네트워크) ──────────────
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
-vi.mock("@/hooks/useChartPreview", () => ({
-  useChartPreview: () => ({ data: undefined, isLoading: false, error: null }),
-}));
+vi.mock("@/hooks/useChartPreview", () => ({ useChartPreview: vi.fn() }));
 // lightweight-charts 는 jsdom 에서 canvas 가 없어 createChart 가 깨지므로 차트 패널을 스텁.
 vi.mock("@/components/review/ChartPanels", () => ({
   MinuteChartPanel: () => null,
@@ -20,7 +19,24 @@ vi.mock("@/components/chart/RealThemeOverlayChart", () => ({
 }));
 
 import { ReviewWorkspace } from "../ReviewWorkspace";
+import { useChartPreview } from "@/hooks/useChartPreview";
 import { useReviewStore } from "@/stores/useReviewStore";
+
+// 테마 사이드바가 렌더할 오버레이(self + 작업셋 밖 peer "카카오"). peer 클릭 → override.
+function overlay(stockCode: string, stockName: string, isSelf: boolean): ChartOverlaySeries {
+  return {
+    stockCode, stockName, isSelf,
+    series: [], daily: [], minute: [], lineTargets: [], reviewPoints: [],
+    isReviewTarget: true, hasReview: false, isListingDay: false, firstMinuteOpen: null,
+  };
+}
+const themes: ChartThemeOverlay[] = [
+  {
+    themeId: "t1",
+    themeName: "반도체",
+    overlaySeries: [overlay("005930", "삼성전자", true), overlay("035720", "카카오", false)],
+  },
+];
 
 // ── 픽스처 ────────────────────────────────────────────────────────────────────
 function makeGroup(code: string, name: string, times: string[]): ReviewStockGroup {
@@ -72,6 +88,11 @@ function renderWorkspace() {
 }
 
 beforeEach(() => {
+  vi.mocked(useChartPreview).mockReturnValue({
+    data: { themes, daily: [], minute: [], prevCloseKrx: null, prevCloseNxt: null, isListingDay: false },
+    isLoading: false,
+    error: null,
+  } as unknown as ReturnType<typeof useChartPreview>);
   // 작업셋 캐시 마운트 preload 등 네트워크는 조용히 실패시킨다(=preload 없음).
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, json: async () => ({}) })));
   // 전역 zustand 스토어를 기본값으로 리셋(테스트 간 누수 방지).
@@ -93,8 +114,9 @@ afterEach(() => {
 describe("ReviewWorkspace (smoke)", () => {
   it("초기 선택 그룹을 헤더에 렌더한다", () => {
     renderWorkspace();
-    expect(screen.getByText("삼성전자")).toBeTruthy();
-    expect(screen.getByText("1/2")).toBeTruthy(); // 작업셋 위치 1/2
+    // "삼성전자" 는 헤더와 테마 사이드바(self 행) 양쪽에 나오므로 중복 허용.
+    expect(screen.getAllByText("삼성전자").length).toBeGreaterThan(0);
+    expect(screen.getByText("1/2")).toBeTruthy(); // 작업셋 위치 1/2 (헤더 고유)
   });
 
   it("e 키로 다음 그룹으로 이동한다", () => {
@@ -108,8 +130,8 @@ describe("ReviewWorkspace (smoke)", () => {
     renderWorkspace();
     fireEvent.keyDown(window, { key: "e" }); // → 2번째
     fireEvent.keyDown(window, { key: "q" }); // → 다시 1번째
-    expect(screen.getByText("삼성전자")).toBeTruthy();
     expect(screen.getByText("1/2")).toBeTruthy();
+    expect(screen.getAllByText("삼성전자").length).toBeGreaterThan(0);
   });
 
   it("Point List 의 타점들을 렌더하고 클릭해도 깨지지 않는다", () => {
@@ -119,5 +141,17 @@ describe("ReviewWorkspace (smoke)", () => {
     // "10:30" 은 클릭 전엔 Point List 에만 있어 유일.
     fireEvent.click(screen.getByText("10:30")); // 타점 선택 → 마커 스냅(크래시 없어야 함)
     expect(screen.getAllByText("10:30").length).toBeGreaterThan(0);
+  });
+
+  it("테마 사이드바의 작업셋 밖 peer 클릭 → override, c 로 복귀", () => {
+    renderWorkspace();
+    // 테마 행 버튼(title="이름 코드")으로 작업셋 밖 종목 카카오 선택.
+    fireEvent.click(screen.getByTitle("카카오 035720"));
+    expect(screen.getByText("-/2")).toBeTruthy(); // 작업셋 밖 → 위치 -/N
+    expect(screen.getAllByText("카카오").length).toBeGreaterThan(0); // 헤더가 탐색 종목 표시
+
+    fireEvent.keyDown(window, { key: "c" }); // override 해제 → 선택 종목 복귀
+    expect(screen.getByText("1/2")).toBeTruthy();
+    expect(screen.getAllByText("삼성전자").length).toBeGreaterThan(0);
   });
 });
