@@ -1,4 +1,4 @@
-import type { SheetPointRow } from "@/types/review";
+import type { ReviewRow } from "@/types/review";
 
 const FIXED_COLUMNS = new Set([
   "reviewId",
@@ -10,7 +10,7 @@ const FIXED_COLUMNS = new Set([
 
 const REQUIRED_COLUMNS = ["stockCode", "tradeDate"] as const;
 
-export function parseSheetValues(values: string[][]): SheetPointRow[] {
+export function parseSheetValues(values: string[][]): ReviewRow[] {
   if (values.length === 0) return [];
 
   const headers = values[0].map((header) => header.trim());
@@ -22,7 +22,7 @@ export function parseSheetValues(values: string[][]): SheetPointRow[] {
     }
   }
 
-  const rows: SheetPointRow[] = [];
+  const rows: ReviewRow[] = [];
   for (let index = 1; index < values.length; index++) {
     const row = values[index] ?? [];
     if (isBlankRow(row)) continue;

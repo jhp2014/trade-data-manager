@@ -4,7 +4,7 @@ import { config } from "dotenv";
 import { resolve } from "path";
 import { google } from "googleapis";
 import { parseSheetValues } from "@/lib/parseSheet";
-import type { SheetPointRow } from "@/types/review";
+import type { ReviewRow } from "@/types/review";
 
 const SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
 
@@ -17,7 +17,7 @@ config({ path: resolve(process.cwd(), "../../.env") });
  */
 export async function fetchSheetRowsAction(
   override?: { spreadsheetId?: string | null; tab?: string | null },
-): Promise<SheetPointRow[]> {
+): Promise<ReviewRow[]> {
   const spreadsheetId = override?.spreadsheetId?.trim() || requireEnv("GOOGLE_SHEETS_ID");
   const tab = override?.tab?.trim() || process.env.GOOGLE_SHEETS_TAB?.trim() || "review";
   const auth = createSheetsAuth();

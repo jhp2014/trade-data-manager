@@ -6,9 +6,9 @@ import {
   renameManualKeyInGroups,
 } from "@/lib/optimisticPoint";
 import { toReviewPoint } from "@/lib/groupSheetRows";
-import type { ReviewStockGroup, SheetPointRow } from "@/types/review";
+import type { ReviewStockGroup, ReviewRow } from "@/types/review";
 
-function makeGroup(rows: SheetPointRow[]): ReviewStockGroup {
+function makeGroup(rows: ReviewRow[]): ReviewStockGroup {
   const first = rows[0];
   return {
     groupKey: `${first.stockCode}|${first.tradeDate}`,
@@ -19,7 +19,7 @@ function makeGroup(rows: SheetPointRow[]): ReviewStockGroup {
   };
 }
 
-const baseRow = (over: Partial<SheetPointRow>): SheetPointRow => ({
+const baseRow = (over: Partial<ReviewRow>): ReviewRow => ({
   reviewId: "",
   rowNumber: 0,
   stockCode: "005930",

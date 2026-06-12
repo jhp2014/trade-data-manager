@@ -1,14 +1,14 @@
 import type { ChartReviewPoint } from "@/types/chart";
-import type { ReviewStockGroup, SheetPointRow } from "@/types/review";
+import type { ReviewStockGroup, ReviewRow } from "@/types/review";
 import { groupSheetRows } from "@/lib/groupSheetRows";
-import { flattenManualPayload } from "@/lib/manualValue";
+import { flattenManualPayload, MANUAL_VALUE_SEP } from "@/lib/manualValue";
 
 /**
  * 작업셋 밖(테마 탐색 등) 종목의 Point List 그룹을 클라이언트에서 만든다.
  *
  * 테마 번들이 멤버마다 실어 보낸 reviewPoints(payload=m_값) + lineTargets 로
- * SheetPointRow 를 구성해 기존 groupSheetRows 파이프라인에 그대로 태운다.
- * (서버 loadReviewRows.toSheetPointRows 와 동일 규약: payload 배열은 " | " 결합,
+ * ReviewRow 를 구성해 기존 groupSheetRows 파이프라인에 그대로 태운다.
+ * (서버 loadReviewRows.toReviewRows 와 동일 규약: payload 배열은 " | " 결합,
  *  lineTargets 는 features.lineTargets 문자열로.)
  *
  * 항상 1개 그룹을 돌려준다. review_target 이지만 포인트가 없으면(빈 reviewPoints)
@@ -22,10 +22,10 @@ export function buildExploredGroup(params: {
   reviewPoints: ChartReviewPoint[];
 }): ReviewStockGroup {
   const { stockCode, stockName, tradeDate, lineTargets, reviewPoints } = params;
-  const lineTargetsStr = lineTargets.join(" | ");
+  const lineTargetsStr = lineTargets.join(MANUAL_VALUE_SEP);
   const features: Record<string, string> = lineTargetsStr ? { lineTargets: lineTargetsStr } : {};
 
-  const rows: SheetPointRow[] =
+  const rows: ReviewRow[] =
     reviewPoints.length === 0
       ? [
           {

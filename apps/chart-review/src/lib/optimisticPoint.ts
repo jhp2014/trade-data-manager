@@ -6,7 +6,7 @@
  * 않으므로 기존 값을 유지한다. 신규 타점의 feature 는 아직 DB 에 없어 어차피 빈 값이다.
  */
 
-import type { ReviewStockGroup, SheetPointRow } from "@/types/review";
+import type { ReviewStockGroup, ReviewRow } from "@/types/review";
 import { toReviewPoint } from "@/lib/groupSheetRows";
 import { flattenManualPayload } from "@/lib/manualValue";
 
@@ -57,7 +57,7 @@ export function upsertPointInGroups(
 
     // 기존 타점이 있으면 sourceRow 를 펼쳐 manual 만 교체(features/themeName 유지). 없으면 신규 행.
     // 저장 응답 features 가 있으면 우선 반영(없으면 기존 동작 유지: 신규=lineTargets 만, 수정=기존 유지).
-    const newRow: SheetPointRow = existing
+    const newRow: ReviewRow = existing
       ? {
           ...existing.sourceRow,
           reviewId: input.reviewId,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { groupSheetRows } from "@/lib/groupSheetRows";
-import type { SheetPointRow } from "@/types/review";
+import type { ReviewRow } from "@/types/review";
 
 const baseRow = {
   stockName: "테스트",
@@ -17,7 +17,7 @@ const baseRow = {
 
 describe("groupSheetRows", () => {
   it("keeps first group appearance order and sorts points by tradeTime", () => {
-    const rows: SheetPointRow[] = [
+    const rows: ReviewRow[] = [
       {
         ...baseRow,
         reviewId: "a-2",

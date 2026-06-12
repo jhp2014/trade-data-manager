@@ -1,4 +1,4 @@
-export type SheetPointRow = {
+export type ReviewRow = {
   reviewId: string;
   rowNumber: number;
   stockCode: string;
@@ -25,7 +25,7 @@ export type ReviewPoint = {
   reviewId: string;
   amountText?: string | null;
   manualSummary: ManualSummary;
-  sourceRow: SheetPointRow;
+  sourceRow: ReviewRow;
 };
 
 export type ReviewStockGroup = {

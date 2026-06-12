@@ -1,7 +1,7 @@
-import type { ReviewPoint, ReviewStockGroup, SheetPointRow } from "@/types/review";
+import type { ReviewPoint, ReviewStockGroup, ReviewRow } from "@/types/review";
 import { buildManualSummary } from "@/lib/manualSummary";
 
-export function groupSheetRows(rows: SheetPointRow[]): ReviewStockGroup[] {
+export function groupSheetRows(rows: ReviewRow[]): ReviewStockGroup[] {
   const groups = new Map<string, ReviewStockGroup>();
 
   for (const row of rows) {
@@ -28,7 +28,7 @@ export function groupSheetRows(rows: SheetPointRow[]): ReviewStockGroup[] {
   }));
 }
 
-export function toReviewPoint(row: SheetPointRow): ReviewPoint {
+export function toReviewPoint(row: ReviewRow): ReviewPoint {
   const pointKey = row.reviewId || `pending:${row.stockCode}|${row.tradeDate}|${row.rowNumber}`;
 
   return {

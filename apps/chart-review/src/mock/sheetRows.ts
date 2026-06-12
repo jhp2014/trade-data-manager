@@ -1,6 +1,6 @@
-import type { SheetPointRow } from "@/types/review";
+import type { ReviewRow } from "@/types/review";
 
-export const mockSheetRows: SheetPointRow[] = [
+export const mockSheetRows: ReviewRow[] = [
   {
     reviewId: "rvw-20260527-000660-0912",
     rowNumber: 2,
