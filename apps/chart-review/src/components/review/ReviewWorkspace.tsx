@@ -40,6 +40,7 @@ import { useQuickPresets } from "@/hooks/useQuickPresets";
 import { useTabNavigation } from "@/hooks/useTabNavigation";
 import { useWriteSheet } from "@/hooks/useWriteSheet";
 import { useExploreOverride } from "@/hooks/useExploreOverride";
+import { useModals } from "@/hooks/useModals";
 import { useManualKeyRegistry } from "@/hooks/useManualKeyRegistry";
 import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 import {
@@ -342,11 +343,9 @@ export function ReviewWorkspace({
     [selectedGroup.stockCode, effectiveStock.tradeDate, setChartOverride],
   );
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [inputOpen, setInputOpen] = useState(false);
-  const openInput = useCallback(() => {
-    if (canInput) setInputOpen(true);
-  }, [canInput]);
+  // 설정 모달 · 타점 입력 드로어 open 상태는 useModals 로 분리.
+  const { settingsOpen, openSettings, closeSettings, inputOpen, openInput, closeInput } =
+    useModals(canInput);
 
   // 활성 타점 선택의 단일 진입점. override 면 탐색 선택(작업셋 store 미변경 → a/d 복귀 유지),
   // 아니면 작업셋 선택. 어느 경우든 마커를 그 타점 시각으로 항상 스냅한다.
@@ -568,7 +567,7 @@ export function ReviewWorkspace({
       isListingDay={mainChartData?.isListingDay ?? false}
       onResetOverride={() => setChartOverride(null)}
       headerAvailable={headerAvailable}
-      onOpenSettings={() => setSettingsOpen(true)}
+      onOpenSettings={openSettings}
       markerMinutes={markerMinutes}
       hasSpreadsheet={hasSpreadsheet}
       readTab={readTab}
@@ -629,7 +628,7 @@ export function ReviewWorkspace({
       headerAvailable={headerAvailable}
       valueSuggestions={valueSuggestions}
       onReloadAll={handleReloadAll}
-      onClose={() => setSettingsOpen(false)}
+      onClose={closeSettings}
     />
   );
 
@@ -642,7 +641,7 @@ export function ReviewWorkspace({
       points={activeGroup.points}
       manualKeys={manualKeys}
       valueSuggestions={valueSuggestions}
-      onClose={() => setInputOpen(false)}
+      onClose={closeInput}
       onKeyAdded={addManualKeyLocal}
       onKeyDeleted={(key) => {
         // 레지스트리 상태 + 작업셋(각 타점 manual) 양쪽에서 제거해야
@@ -655,7 +654,7 @@ export function ReviewWorkspace({
         renameManualKeyInWorkset(from, to);
       }}
       onSaved={({ reviewId, payload, features }) => {
-        setInputOpen(false);
+        closeInput();
         // 낙관적: 서버 재조회 없이 화면의 해당 타점을 즉시 갱신(서버 파생 features 포함).
         upsertPointLocal({
           stockCode: activeGroup.stockCode,
