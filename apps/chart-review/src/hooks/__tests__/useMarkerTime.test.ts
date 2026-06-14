@@ -49,6 +49,34 @@ describe("useMarkerTime", () => {
     expect(result.current.markerTimeStr).toBe("08:00:00");
   });
 
+  it("타점이 없으면 fallbackMinutes(첫 봉)로 초기화한다", () => {
+    const { result } = renderHook(() =>
+      useMarkerTime({ pointTradeTime: "", pointKey: "p1", tradeDate: DATE, fallbackMinutes: 600 }),
+    );
+    // 빈 tradeTime → 09:00 기본이 아니라 첫 봉 10:00(600분)으로 스냅
+    expect(result.current.markerTimeStr).toBe("10:00:00");
+  });
+
+  it("타점이 없고 데이터가 늦게 로드되면(첫 봉 분 도착) 마커를 첫 봉으로 당긴다", () => {
+    const { result, rerender } = renderHook((props) => useMarkerTime(props), {
+      initialProps: { pointTradeTime: "", pointKey: "p1", tradeDate: DATE, fallbackMinutes: null as number | null },
+    });
+    // 미로드 시점엔 기본 09:00
+    expect(result.current.markerTimeStr).toBe("09:00:00");
+    // 데이터 로드 → 첫 봉 10:00 도착 시 데이터 이전(09:00)이므로 스냅
+    rerender({ pointTradeTime: "", pointKey: "p1", tradeDate: DATE, fallbackMinutes: 600 });
+    expect(result.current.markerTimeStr).toBe("10:00:00");
+  });
+
+  it("타점이 없어도 사용자가 데이터 안쪽으로 옮긴 마커는 보존한다(앞설 때만 당김)", () => {
+    const { result } = renderHook(() =>
+      useMarkerTime({ pointTradeTime: "", pointKey: "p1", tradeDate: DATE, fallbackMinutes: 600 }),
+    );
+    act(() => result.current.moveMarker(1, 60)); // 10:00 → 11:00 (데이터 안쪽)
+    expect(result.current.markerTimeStr).toBe("11:00:00");
+    // fallback 이 유지돼도 11:00 > 10:00 이므로 당기지 않음
+  });
+
   it("handleMoveMarkerToTime 은 봉 시각(unix)을 KST 분으로 스냅한다", () => {
     const { result } = renderHook(() =>
       useMarkerTime({ pointTradeTime: "09:12:00", pointKey: "p1", tradeDate: DATE }),

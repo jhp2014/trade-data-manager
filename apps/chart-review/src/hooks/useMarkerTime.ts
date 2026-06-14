@@ -17,6 +17,12 @@ type UseMarkerTimeParams = {
   pointKey: string;
   /** 차트 종목의 거래일("YYYY-MM-DD"). markerTime(unix) 구성에 사용. */
   tradeDate: string;
+  /**
+   * 타점이 없을 때(빈 tradeTime) 마커가 설 첫 데이터 분(分). 현재 차트의 첫 분봉에서
+   * 구한다. 미로드면 null. 데이터가 09:00 이후(예: 10:00)부터 시작할 때 마커가
+   * 데이터 이전 빈 구간(=등락률 null, 마커 미렌더)에 머무는 것을 막는다.
+   */
+  fallbackMinutes?: number | null;
 };
 
 export type UseMarkerTimeResult = {
@@ -45,16 +51,26 @@ export function useMarkerTime({
   pointTradeTime,
   pointKey,
   tradeDate,
+  fallbackMinutes = null,
 }: UseMarkerTimeParams): UseMarkerTimeResult {
   const [markerMinutes, setMarkerMinutes] = useState<number>(
-    () => timeStringToMinutes(pointTradeTime) ?? DEFAULT_MARKER_MINUTES,
+    () => timeStringToMinutes(pointTradeTime) ?? fallbackMinutes ?? DEFAULT_MARKER_MINUTES,
   );
 
-  // 타점(Point)이 바뀔 때만 해당 타점 tradeTime 으로 재설정.
+  // 타점(Point)이 바뀔 때만 해당 타점 tradeTime(없으면 첫 데이터 분)으로 재설정.
   useEffect(() => {
-    setMarkerMinutes(timeStringToMinutes(pointTradeTime) ?? DEFAULT_MARKER_MINUTES);
+    setMarkerMinutes(timeStringToMinutes(pointTradeTime) ?? fallbackMinutes ?? DEFAULT_MARKER_MINUTES);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pointKey]);
+
+  // 타점이 없는데 데이터가 (디바운스로) 늦게 로드/교체되면, 마커가 데이터 시작
+  // 이전(예: 기본 09:00 < 첫 봉 10:00)에 머무를 수 있다. 그 경우에만 첫 봉으로
+  // 스냅한다. 사용자가 a/d 로 데이터 안쪽으로 옮긴 위치는 보존(앞설 때만 당김).
+  useEffect(() => {
+    if (pointTradeTime) return;
+    if (fallbackMinutes == null) return;
+    setMarkerMinutes((m) => (m < fallbackMinutes ? fallbackMinutes : m));
+  }, [pointTradeTime, fallbackMinutes]);
 
   const markerTime = useMemo(
     () => composeUnix(tradeDate, minutesToTimeString(markerMinutes)),

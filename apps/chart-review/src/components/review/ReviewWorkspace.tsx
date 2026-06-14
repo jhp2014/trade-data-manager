@@ -11,6 +11,7 @@ import { ThemeSidebar } from "./ThemeSidebar";
 import { SettingsModal } from "./modals/SettingsModal";
 import { activeFilterCount, pointMatchesManualFilters } from "@/lib/manualFilter";
 import { timeStringToMinutes } from "./TimeSlider";
+import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { createReviewCommands } from "@/lib/reviewCommands";
 import { isEditableTarget } from "@/lib/domFocus";
 import { deleteJson } from "@/lib/apiClient";
@@ -218,6 +219,16 @@ export function ReviewWorkspace({
     patchHistory,
   });
 
+  // 현재 차트의 첫 분봉 분(分). 타점이 없을 때 마커 폴백 기준(데이터가 09:00 이후부터
+  // 시작하면 기본 09:00 마커가 데이터 밖에 머물러 등락률/마커가 비는 것을 막는다).
+  // 표시 중인 분봉 소스는 mainChartData 와 동일 규칙(override+번들 → 멤버 raw).
+  const firstDataMinutes = useMemo(() => {
+    const minute =
+      (isOverride && activeReview ? activeReview.minute : chartPreview.data?.minute) ?? [];
+    const t = minute[0]?.time;
+    return t != null ? timeStringToMinutes(kstHHmm(t)) : null;
+  }, [isOverride, activeReview, chartPreview.data]);
+
   // 마커 시간(분) 상태/파생값/이동은 useMarkerTime 으로 분리.
   // 휠(Shift)/a·d·클릭으로 조정하되 타점이 바뀔 때만 타점 시각으로 재설정한다.
   const {
@@ -231,6 +242,7 @@ export function ReviewWorkspace({
     pointTradeTime: selectedPoint.tradeTime,
     pointKey: selectedPoint.pointKey,
     tradeDate: effectiveStock.tradeDate,
+    fallbackMinutes: firstDataMinutes,
   });
 
   // 테마 탭 선택 상태. 종목(테마 집합)이 바뀌면 멤버 최다 테마로 초기화.
