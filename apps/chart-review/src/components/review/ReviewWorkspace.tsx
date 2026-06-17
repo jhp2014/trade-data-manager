@@ -46,7 +46,7 @@ import { useManualKeyRegistry } from "@/hooks/useManualKeyRegistry";
 import { useWorkingSetCache } from "@/hooks/useWorkingSetCache";
 import {
   VALUE_TRUNCATE,
-  parseGroupId,
+  parseCaseId,
   parseLineTargets,
   collectFieldKeys,
   collectValueSuggestions,
@@ -176,6 +176,13 @@ export function ReviewWorkspace({
   // paste/history 등 명시적 이동 시 snap을 한 번 건너뛰는 플래그.
   // setSelectedGroupIndex 직후 이 effect 가 snap-back 하는 것을 막는다.
   const bypassFilterSnapRef = useRef(false);
+
+  // CaseId 붙여넣기로 작업셋 밖 종목을 탐색할 때, 번들이 비동기로 도착하기 전까지
+  // 목표 타점 시각("HH:MM")을 보관해 두는 핀. 번들 로드 후 effect 가 해소한다.
+  const pendingCaseTimeRef = useRef<string | null>(null);
+  // ref 세팅만으로는 리렌더가 없어, 이미 탐색 중인 종목을 같은 CaseId 로 다시
+  // 붙여넣을 때 해소 effect 가 안 돌 수 있다. nonce 를 올려 매번 effect 를 깨운다.
+  const [caseResolveNonce, setCaseResolveNonce] = useState(0);
 
   // 필터를 켜거나 바꿨을 때 현재 선택 종목이 매칭 목록 밖이면 첫 매칭 종목으로 스냅.
   // navigateToGroupId 가 bypassFilterSnapRef 를 세우면 한 번 건너뛴다.
@@ -456,6 +463,9 @@ export function ReviewWorkspace({
   // 히스토리는 "복붙으로 도달한 종목"만 기록한다(a/d 순회는 기록하지 않음).
   const navigateToGroupId = useCallback(
     (code: string, date: string) => {
+      // CaseId 가 아닌 평범한 GroupId 탐색이면 이전에 걸려있던 목표 시각 핀을 비운다.
+      // (CaseId 경로는 이 호출 직후 다시 핀을 세운다.)
+      pendingCaseTimeRef.current = null;
       const idx = groups.findIndex((g) => g.stockCode === code && g.tradeDate === date);
       if (idx >= 0) {
         const g = groups[idx];
@@ -480,20 +490,60 @@ export function ReviewWorkspace({
     [groups, commands, pushHistory, setChartOverride],
   );
 
-  // 브라우저 포커스 상태에서 GroupId(예: 005930-2026-05-27) 붙여넣기 → 즉시 탐색.
-  // 입력 요소/모달에 포커스가 있으면(값 붙여넣기 등) 무시한다.
+  // CaseId 탐색(= GroupId + 타점 시각). 종목으로 이동한 뒤 시각과 일치하는 타점을
+  // 선택한다(없으면 첫 타점, 타점 자체가 없으면 기본 마커 폴백).
+  const navigateToCaseId = useCallback(
+    (code: string, date: string, time: string) => {
+      const hhmm = time.slice(0, 5);
+      const idx = groups.findIndex((g) => g.stockCode === code && g.tradeDate === date);
+      if (idx >= 0) {
+        // 작업셋 안: 타점이 이미 메모리에 있으므로 그 자리에서 즉시 해소.
+        navigateToGroupId(code, date); // 히스토리 + goToGroup(첫 타점 선택)
+        const g = groups[idx];
+        const match = g.points.find((p) => p.tradeTime.slice(0, 5) === hhmm);
+        if (match) commands.selectPoint(match.pointKey);
+        const target = match ?? g.points[0];
+        const mins = target ? timeStringToMinutes(target.tradeTime) : null;
+        if (mins != null) setMarkerMinutes(mins);
+      } else {
+        // 작업셋 밖: 번들이 비동기로 도착하므로 목표 시각을 핀에 보관하고,
+        // 아래 effect 가 탐색 종목의 타점이 채워진 뒤 해소한다.
+        navigateToGroupId(code, date); // override 진입 (핀을 비운 직후)
+        pendingCaseTimeRef.current = hhmm;
+        setCaseResolveNonce((n) => n + 1);
+      }
+    },
+    [groups, navigateToGroupId, commands, setMarkerMinutes],
+  );
+
+  // 작업셋 밖 CaseId 탐색의 지연 해소: override 번들(activeReview)이 도착해 탐색
+  // 종목의 타점이 채워지면, 보관해 둔 목표 시각으로 타점을 선택한다.
+  useEffect(() => {
+    const hhmm = pendingCaseTimeRef.current;
+    if (hhmm == null || !isOverride || !activeReview) return;
+    pendingCaseTimeRef.current = null;
+    const pts = activeGroup.points;
+    if (pts.length === 0) return; // 타점 없음 → 기본 마커 폴백 그대로.
+    const match = pts.find((p) => p.tradeTime.slice(0, 5) === hhmm);
+    selectActivePoint((match ?? pts[0]).pointKey);
+  }, [isOverride, activeReview, activeGroup, selectActivePoint, caseResolveNonce]);
+
+  // 브라우저 포커스 상태에서 GroupId/CaseId 붙여넣기 → 즉시 탐색.
+  // CaseId(시각 포함, 예: 036570-2026-06-02-1035)를 먼저 시도하고, 시각이 없으면
+  // GroupId 로 탐색한다. 입력 요소/모달에 포커스가 있으면(값 붙여넣기 등) 무시한다.
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
       if (inputOpen || settingsOpen) return;
       if (isEditableTarget(e.target)) return;
-      const parsed = parseGroupId(e.clipboardData?.getData("text") ?? "");
+      const parsed = parseCaseId(e.clipboardData?.getData("text") ?? "");
       if (!parsed) return;
       e.preventDefault();
-      navigateToGroupId(parsed.code, parsed.date);
+      if (parsed.time) navigateToCaseId(parsed.code, parsed.date, parsed.time);
+      else navigateToGroupId(parsed.code, parsed.date);
     };
     window.addEventListener("paste", handler);
     return () => window.removeEventListener("paste", handler);
-  }, [inputOpen, settingsOpen, navigateToGroupId]);
+  }, [inputOpen, settingsOpen, navigateToGroupId, navigateToCaseId]);
 
   // Tab 히스토리 스위처(상태/키 핸들링은 useHistorySwitcher 로 분리).
   const { switcherOpen, switcherIndex, commitSwitcher, deleteEntry, clearAll } = useHistorySwitcher({

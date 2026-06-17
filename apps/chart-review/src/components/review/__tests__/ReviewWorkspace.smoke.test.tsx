@@ -74,6 +74,13 @@ const initialSelection: InitialReviewSelection = {
   selectedPointKey: "005930-09:12",
 };
 
+// window 에 paste 이벤트를 쏘는 헬퍼. 핸들러는 e.clipboardData?.getData("text") 를 읽는다.
+function pasteText(text: string) {
+  const ev = new Event("paste", { bubbles: true });
+  Object.defineProperty(ev, "clipboardData", { value: { getData: () => text } });
+  fireEvent(window, ev); // fireEvent 가 act() 로 감싸 React 상태를 flush 한다.
+}
+
 function renderWorkspace() {
   return render(
     <ReviewWorkspace
@@ -141,6 +148,27 @@ describe("ReviewWorkspace (smoke)", () => {
     // "10:30" 은 클릭 전엔 Point List 에만 있어 유일.
     fireEvent.click(screen.getByText("10:30")); // 타점 선택 → 마커 스냅(크래시 없어야 함)
     expect(screen.getAllByText("10:30").length).toBeGreaterThan(0);
+  });
+
+  it("CaseId 붙여넣기 → 작업셋 종목/타점으로 이동", () => {
+    renderWorkspace();
+    pasteText("000660-2026-05-27-0905"); // SK하이닉스 09:05 타점
+    expect(screen.getByText("SK하이닉스")).toBeTruthy();
+    expect(screen.getByText("2/2")).toBeTruthy();
+  });
+
+  it("CaseId 의 시각과 일치하는 타점이 없으면 첫 타점으로 fallback(크래시 없음)", () => {
+    renderWorkspace();
+    pasteText("000660-2026-05-27-2300"); // 23:00 타점은 없음 → 첫 타점 fallback
+    expect(screen.getByText("SK하이닉스")).toBeTruthy();
+    expect(screen.getByText("2/2")).toBeTruthy();
+  });
+
+  it("시각 없는 GroupId 붙여넣기는 기존대로 종목만 이동", () => {
+    renderWorkspace();
+    pasteText("000660-2026-05-27");
+    expect(screen.getByText("SK하이닉스")).toBeTruthy();
+    expect(screen.getByText("2/2")).toBeTruthy();
   });
 
   it("테마 사이드바의 작업셋 밖 peer 클릭 → override, c 로 복귀", () => {

@@ -19,6 +19,23 @@ export function parseGroupId(text: string): { code: string; date: string } | nul
   return { code: m[1].toUpperCase(), date: `${m[2]}-${m[3]}-${m[4]}` };
 }
 
+/**
+ * 붙여넣은 텍스트에서 CaseId(GroupId + 시각)를 관대하게 파싱.
+ * "036570-2026-06-02-1035", "036570 20260602 1035", "036570-2026-06-02-10:35" 등 허용.
+ * 시각이 없으면(=GroupId 형태) 또는 시각이 무효(24시/60분 이상)면 time 은 null.
+ */
+export function parseCaseId(
+  text: string,
+): { code: string; date: string; time: string | null } | null {
+  const m = text
+    .trim()
+    .match(/([0-9A-Za-z]{6})\D*(\d{4})\D?(\d{2})\D?(\d{2})(?:\D+(\d{2})\D?(\d{2}))?/);
+  if (!m) return null;
+  const [hh, mm] = [m[5], m[6]];
+  const time = hh && mm && Number(hh) < 24 && Number(mm) < 60 ? `${hh}:${mm}` : null;
+  return { code: m[1].toUpperCase(), date: `${m[2]}-${m[3]}-${m[4]}`, time };
+}
+
 /** "9010 | 9450" 형태의 파이프 구분 문자열을 유효한 양수 가격 배열로 파싱. */
 export function parseLineTargets(raw: string | undefined): number[] {
   if (!raw) return [];
@@ -68,13 +85,28 @@ export function collectValueSuggestions(groups: ReviewStockGroup[]): Record<stri
   return result;
 }
 
-/** 필드 키 → 현재 타점의 값. stockCode/tradeDate/tradeTime/stockName/groupId + m_xxx + feature 지원. */
+/** "HH:MM[:SS]" → "HHMM"(시각 없으면 ""). caseId 시각부 구성용. */
+function tradeTimeToHHmm(tradeTime: string): string {
+  const m = tradeTime.match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}${m[2]}` : "";
+}
+
+/**
+ * 필드 키 → 현재 타점의 값.
+ * stockCode/tradeDate/tradeTime/stockName/groupId/caseId + m_xxx + feature 지원.
+ */
 export function resolveFieldValue(key: string, point: ReviewPoint): string {
   if (key === "stockCode") return point.sourceRow.stockCode ?? "";
   if (key === "tradeDate") return point.sourceRow.tradeDate ?? "";
   if (key === "tradeTime") return point.tradeTime?.slice(0, 5) ?? "";
   if (key === "stockName") return point.sourceRow.stockName ?? "";
   if (key === "groupId") return `${point.sourceRow.stockCode ?? ""}-${point.sourceRow.tradeDate ?? ""}`;
+  if (key === "caseId") {
+    // GroupId + 타점 시각(HHmm). 타점 시각이 없으면(미입력) GroupId 형태로 fallback.
+    const base = `${point.sourceRow.stockCode ?? ""}-${point.sourceRow.tradeDate ?? ""}`;
+    const hhmm = tradeTimeToHHmm(point.tradeTime ?? "");
+    return hhmm ? `${base}-${hhmm}` : base;
+  }
   if (key.startsWith("m_")) return point.sourceRow.manual[key.slice(2)]?.trim() ?? "";
   return point.sourceRow.features[key]?.trim() ?? "";
 }

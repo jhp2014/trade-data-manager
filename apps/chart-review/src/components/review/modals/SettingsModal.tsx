@@ -102,7 +102,7 @@ export function SettingsModal({
   // f 키 append 및 Export 에서 쓸 수 있는 전체 필드 목록.
   // DB 전체 컬럼(dbFieldKeys)과 현재 작업셋∪레지스트리(headerAvailable)의 합집합으로 둔다.
   // → DB fetch 가 늦거나 캐시돼도, 방금 추가한 m_ 키가 레지스트리(headerAvailable)를 통해 즉시 보인다.
-  const BASE_KEYS = ["stockCode", "tradeDate", "tradeTime", "stockName", "groupId"];
+  const BASE_KEYS = ["stockCode", "tradeDate", "tradeTime", "stockName", "groupId", "caseId"];
   const allExportableKeys = Array.from(
     new Set([...BASE_KEYS, ...dbFieldKeys, ...headerAvailable]),
   );

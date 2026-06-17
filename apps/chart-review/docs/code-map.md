@@ -164,6 +164,8 @@ ReviewWorkspace
 
 작업셋 밖 GroupId를 붙여넣은 경우도 풀 네비게이션 대신 override 탐색으로 처리합니다. 번들에 없을 수 있으므로 `exploreAnchor`를 붙여 새 chart-preview 요청을 보냅니다.
 
+CaseId(`GroupId-HHmm`, 예: `036570-2026-06-02-1035`) 붙여넣기는 `parseCaseId`로 시각까지 파싱해 `navigateToCaseId`로 처리합니다. 작업셋 안 종목이면 즉시 시각과 일치하는 타점을 선택(없으면 첫 타점)하고, 작업셋 밖(override) 종목이면 번들이 비동기로 도착하므로 목표 시각을 `pendingCaseTimeRef`에 보관했다가 `activeReview` 로드 후 effect 에서 해소합니다. GroupId/CaseId 모두 DB 값이 아니라 `resolveFieldValue`가 `sourceRow`에서 조합하는 파생 식별자이며, 설정 모달의 컬럼 설정(`BASE_KEYS`)을 통해 Export/`f` append 컬럼으로도 선택할 수 있습니다.
+
 ## 9. 타점 입력/수정/삭제
 
 관련 파일:

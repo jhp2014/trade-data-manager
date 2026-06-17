@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseGroupId,
+  parseCaseId,
   parseLineTargets,
   resolveFieldValue,
   collectFieldKeys,
@@ -45,6 +46,40 @@ describe("parseGroupId", () => {
   });
 });
 
+describe("parseCaseId", () => {
+  it("GroupId + 시각(HHmm)을 파싱하고 코드를 대문자화", () => {
+    expect(parseCaseId("036570-2026-06-02-1035")).toEqual({
+      code: "036570",
+      date: "2026-06-02",
+      time: "10:35",
+    });
+    expect(parseCaseId("0126z0 20260602 1035")).toEqual({
+      code: "0126Z0",
+      date: "2026-06-02",
+      time: "10:35",
+    });
+    expect(parseCaseId("036570-2026-06-02-10:35")).toEqual({
+      code: "036570",
+      date: "2026-06-02",
+      time: "10:35",
+    });
+  });
+  it("시각이 없으면 time 은 null (GroupId 형태도 수용)", () => {
+    expect(parseCaseId("005930-2026-05-27")).toEqual({
+      code: "005930",
+      date: "2026-05-27",
+      time: null,
+    });
+  });
+  it("시각이 무효(24시/60분 이상)면 time 은 null", () => {
+    expect(parseCaseId("036570-2026-06-02-2599")?.time).toBeNull();
+  });
+  it("형식이 안 맞으면 null", () => {
+    expect(parseCaseId("hello")).toBeNull();
+    expect(parseCaseId("")).toBeNull();
+  });
+});
+
 describe("parseLineTargets", () => {
   it("파이프 구분 양수 가격만 남긴다", () => {
     expect(parseLineTargets("9010 | 9450")).toEqual([9010, 9450]);
@@ -71,6 +106,11 @@ describe("resolveFieldValue", () => {
     expect(resolveFieldValue("stockCode", point)).toBe("005930");
     expect(resolveFieldValue("tradeTime", point)).toBe("09:12"); // HH:MM 으로 자름
     expect(resolveFieldValue("groupId", point)).toBe("005930-2026-05-27");
+    expect(resolveFieldValue("caseId", point)).toBe("005930-2026-05-27-0912"); // GroupId + HHmm
+  });
+  it("caseId 는 타점 시각이 없으면 GroupId 형태로 fallback", () => {
+    const noTime = makePoint({ stockCode: "005930", tradeDate: "2026-05-27", tradeTime: "" });
+    expect(resolveFieldValue("caseId", noTime)).toBe("005930-2026-05-27");
   });
   it("m_ 키는 manual 에서, trim 적용", () => {
     expect(resolveFieldValue("m_result", point)).toBe("good");
