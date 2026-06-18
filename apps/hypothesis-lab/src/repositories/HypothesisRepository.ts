@@ -23,6 +23,9 @@ export interface HypothesisRepository {
     /** 6테이블 + 경고를 한 번에 로드. */
     loadSnapshot(): Promise<HypothesisSnapshot>;
 
+    /** 스냅샷에 들어온 case 들의 caseId (워킹셋 snapshot 모드용, 경량 조회). */
+    listSnapshotCaseIds(): Promise<string[]>;
+
     // --- hypotheses ---
     createHypothesis(input: {
         text: string;
