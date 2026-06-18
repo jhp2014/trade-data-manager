@@ -19,13 +19,13 @@ import type {
     HypothesisTag,
     Tag,
 } from "@/domain/types";
-import type { CaseInput, HypothesisStore } from "./HypothesisStore";
+import type { CaseInput, HypothesisRepository } from "./HypothesisRepository";
 
 /**
- * 'hypothesis' Postgres schema 위의 HypothesisStore 구현.
- * warnings 계산은 다음 단계에서 computeWarnings 로 주입한다(현재 빈 배열).
+ * 'hypothesis' Postgres schema 위의 HypothesisRepository 구현.
+ * loadSnapshot 은 computeWarnings 로 relation 경고를 주입한다.
  */
-export class DbHypothesisStore implements HypothesisStore {
+export class DbHypothesisRepository implements HypothesisRepository {
     constructor(private readonly db: Database) {}
 
     async loadSnapshot(): Promise<HypothesisSnapshot> {

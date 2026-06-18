@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DbReviewPointProbe } from "@/store/DbReviewPointProbe";
-import type { ReconcileCase } from "@/store/ReviewPointProbe";
+import { DbReviewPointProbe } from "@/repositories/DbReviewPointProbe";
+import type { ReconcileCase } from "@/repositories/ReviewPointProbe";
 import { createTestDb, type TestDb } from "@/test-support/testDb";
 
 let testDb: TestDb;

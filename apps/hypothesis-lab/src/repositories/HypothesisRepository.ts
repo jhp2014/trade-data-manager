@@ -11,15 +11,15 @@ export type CaseInput = {
 };
 
 /**
- * 가설 데이터 접근의 단일 seam. UI 와 무관하며, 구현체(DbHypothesisStore)는
- * 'hypothesis' Postgres schema 만 다룬다.
+ * 가설 데이터 접근의 단일 seam(repository). UI 와 무관하며,
+ * 구현체(DbHypothesisRepository)는 'hypothesis' Postgres schema 만 다룬다.
  *
  * 설계 원칙:
  * - case snapshot 은 insert-if-absent(ensureCase) — 워킹셋을 여러 번 읽어도
  *   기존 값을 덮지 않는다. 갱신은 명시적 refreshCaseStockName 으로만.
  * - relation 순환/자기참조 등은 저장을 막지 않는다(경고는 loadSnapshot.warnings).
  */
-export interface HypothesisStore {
+export interface HypothesisRepository {
     /** 6테이블 + 경고를 한 번에 로드. */
     loadSnapshot(): Promise<HypothesisSnapshot>;
 

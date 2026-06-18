@@ -20,7 +20,7 @@ const KNOWN = new Set<string>(KNOWN_RELATION_TYPES);
 
 /**
  * 스냅샷의 relation 그래프를 검사해 경고를 만든다(저장 차단 아님).
- * 순수 함수 — Store.loadSnapshot 이 조립한 데이터에 적용한다.
+ * 순수 함수 — Repository.loadSnapshot 이 조립한 데이터에 적용한다.
  */
 export function computeWarnings(
     snapshot: Pick<HypothesisSnapshot, "hypothesisRelations">,
