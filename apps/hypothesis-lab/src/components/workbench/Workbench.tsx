@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { loadSnapshotAction, loadWorkingSetAction } from "@/actions/workbench";
 import type { WorkingSetMode } from "@/repositories/workingSetSources";
 import { useSelection } from "@/stores/selection";
+import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
 import { CaseList } from "./CaseList";
 import { HypothesisPanel } from "./HypothesisPanel";
 
@@ -24,6 +25,14 @@ export function Workbench() {
     const selectedCase =
         workingSet.data?.find((c) => c.caseId === selectedCaseId) ?? null;
 
+    const linkedToSelectedCase = useMemo(() => {
+        const snap = snapshot.data;
+        if (!snap || !selectedCaseId) return [];
+        return snap.hypothesisCases
+            .filter((hc) => hc.caseId === selectedCaseId)
+            .map((hc) => hc.hypothesisId);
+    }, [snapshot.data, selectedCaseId]);
+
     return (
         <div className="wb-grid">
             <section className="wb-col">
@@ -38,9 +47,10 @@ export function Workbench() {
                 <HypothesisPanel snapshot={snapshot.data ?? null} selectedCase={selectedCase} />
             </section>
             <section className="wb-col wb-col--graph">
-                <div className="wb-placeholder">가설 관계 그래프
-                    <span>다음 단계에서 추가</span>
-                </div>
+                <HypothesisGraph
+                    snapshot={snapshot.data ?? null}
+                    highlightHypothesisIds={linkedToSelectedCase}
+                />
             </section>
         </div>
     );
