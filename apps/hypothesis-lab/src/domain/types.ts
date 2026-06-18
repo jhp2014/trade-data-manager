@@ -70,7 +70,7 @@ export type ValidationWarning = {
     refs: string[];
 };
 
-/** Store 가 한 번에 로드하는 전체 스냅샷. */
+/** Repository 가 한 번에 로드하는 전체 스냅샷. */
 export type HypothesisSnapshot = {
     cases: Case[];
     hypotheses: Hypothesis[];
