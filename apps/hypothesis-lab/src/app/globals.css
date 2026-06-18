@@ -1,5 +1,6 @@
 :root {
     color-scheme: light dark;
+    --nav-h: 44px;
     --bg: #fbfbfd;
     --bg-elev: #ffffff;
     --border: #e7e7ee;
@@ -46,11 +47,50 @@ button {
     cursor: pointer;
 }
 
+/* ---- app shell ---- */
+.topnav {
+    height: var(--nav-h);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elev);
+}
+.topnav .brand {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+}
+.topnav-links {
+    display: flex;
+    gap: 4px;
+}
+.topnav-links a {
+    text-decoration: none;
+    color: var(--muted);
+    padding: 5px 11px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.topnav-links a:hover {
+    background: var(--chip);
+    color: var(--text);
+}
+.topnav-links a.is-active {
+    background: var(--accent-weak);
+    color: var(--accent);
+}
+.appmain {
+    height: calc(100vh - var(--nav-h));
+}
+
 /* ---- layout ---- */
 .wb-grid {
     display: grid;
     grid-template-columns: 340px minmax(0, 1fr) 380px;
-    height: 100vh;
+    height: 100%;
     gap: 1px;
     background: var(--border);
 }
@@ -334,4 +374,175 @@ button {
 .hyp-new button:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+
+/* ---- explore ---- */
+.exp-grid {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    height: 100%;
+    gap: 1px;
+    background: var(--border);
+}
+.ghost {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+}
+.ghost:hover {
+    color: var(--accent);
+}
+.filt-block {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+}
+.filt-block.grow {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+.filt-block h3 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+.filt-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.filt-label {
+    font-size: 12px;
+    color: var(--muted);
+}
+.filt-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.chip {
+    border: 1px solid var(--border-strong);
+    background: var(--bg-elev);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 11px;
+}
+.chip.is-on {
+    border-color: var(--accent);
+    background: var(--accent-weak);
+    color: var(--accent);
+}
+.filt-hyps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.filt-hyp {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+}
+.filt-hyp:hover {
+    background: var(--bg-elev);
+}
+.filt-hyp .mark {
+    width: 10px;
+    font-weight: 800;
+    text-align: center;
+}
+.filt-hyp.is-include {
+    background: var(--linked-weak);
+    border-left-color: var(--linked);
+}
+.filt-hyp.is-include .mark {
+    color: var(--linked);
+}
+.filt-hyp.is-exclude {
+    background: #fbecec;
+    border-left-color: #d9534f;
+}
+.filt-hyp.is-exclude .mark {
+    color: #d9534f;
+}
+@media (prefers-color-scheme: dark) {
+    .filt-hyp.is-exclude {
+        background: #2c1d1d;
+    }
+}
+
+.res-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.res-row {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    border-left: 2px solid transparent;
+    cursor: pointer;
+}
+.res-row:hover {
+    background: var(--bg-elev);
+}
+.res-row.is-selected {
+    background: var(--accent-weak);
+    border-left-color: var(--accent);
+}
+.res-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+.res-head .case-name {
+    font-weight: 600;
+}
+.res-sub {
+    margin-top: 1px;
+}
+.case-id-text {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    color: var(--muted);
+}
+.res-hyps {
+    margin-top: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+.hyp-chip {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: var(--chip);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+}
+.hyp-chip.is-on {
+    background: var(--accent-weak);
+    color: var(--accent);
 }
