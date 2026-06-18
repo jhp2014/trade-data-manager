@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hypothesis-lab",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@trade-data-manager/hypothesis-lab", "dev"],
+      "port": 3300
+    }
+  ]
+}
