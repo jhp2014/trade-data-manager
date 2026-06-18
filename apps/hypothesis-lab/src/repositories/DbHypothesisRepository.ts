@@ -50,6 +50,14 @@ export class DbHypothesisRepository implements HypothesisRepository {
         };
     }
 
+    async listSnapshotCaseIds(): Promise<string[]> {
+        const rows = await this.db
+            .select({ caseId: cases.caseId })
+            .from(cases)
+            .orderBy(asc(cases.caseId));
+        return rows.map((r) => r.caseId);
+    }
+
     // --- hypotheses ---
 
     async createHypothesis(input: {
