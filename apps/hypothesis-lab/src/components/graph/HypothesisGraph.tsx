@@ -126,6 +126,7 @@ export function HypothesisGraph({
                 edges={edges}
                 nodeTypes={nodeTypes}
                 fitView
+                fitViewOptions={{ padding: 0.18, maxZoom: 1.25 }}
                 minZoom={0.2}
                 nodesDraggable={false}
                 nodesConnectable={false}
