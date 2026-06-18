@@ -215,3 +215,25 @@ describe("cascade 삭제", () => {
         expect(snap.hypothesisCases).toHaveLength(0);
     });
 });
+
+describe("loadSnapshot.warnings", () => {
+    it("better_than 순환을 경고로 표면화한다(저장은 막지 않음)", async () => {
+        const a = await store.createHypothesis({ text: "A" });
+        const b = await store.createHypothesis({ text: "B" });
+        await store.upsertRelation({
+            fromHypothesisId: a.id,
+            toHypothesisId: b.id,
+            relationType: "better_than",
+        });
+        await store.upsertRelation({
+            fromHypothesisId: b.id,
+            toHypothesisId: a.id,
+            relationType: "better_than",
+        });
+
+        const snap = await store.loadSnapshot();
+        // 저장 자체는 성공한다.
+        expect(snap.hypothesisRelations).toHaveLength(2);
+        expect(snap.warnings.map((w) => w.code)).toContain("cycle_better_than");
+    });
+});

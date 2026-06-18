@@ -9,6 +9,7 @@ import {
     tags,
 } from "@/db/schema";
 import { formatHypothesisCode } from "@/domain/hypothesisCode";
+import { computeWarnings } from "@/domain/validation";
 import type {
     Case,
     Hypothesis,
@@ -37,14 +38,15 @@ export class DbHypothesisStore implements HypothesisStore {
             this.db.select().from(hypothesisRelations).orderBy(asc(hypothesisRelations.id)),
         ]);
 
+        const relations = hrRows.map(toHypothesisRelation);
         return {
             cases: caseRows.map(toCase),
             hypotheses: hypRows.map(toHypothesis),
             tags: tagRows.map(toTag),
             hypothesisTags: htRows.map(toHypothesisTag),
             hypothesisCases: hcRows.map(toHypothesisCase),
-            hypothesisRelations: hrRows.map(toHypothesisRelation),
-            warnings: [],
+            hypothesisRelations: relations,
+            warnings: computeWarnings({ hypothesisRelations: relations }),
         };
     }
 

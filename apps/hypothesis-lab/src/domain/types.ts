@@ -52,16 +52,16 @@ export type HypothesisRelation = {
     note: string | null;
 };
 
-/** 저장은 차단하지 않고 경고로만 표면화하는 검증 결과. */
+/**
+ * 저장은 차단하지 않고 경고로만 표면화하는 검증 결과.
+ * FK 가 참조 무결성을 강제하므로 "존재하지 않는 ID 참조"류는 DB 에서 불가능 →
+ * relation 그래프의 의미적 문제만 검사한다.
+ */
 export type ValidationWarningCode =
-    | "unknown_hypothesis_ref"
     | "self_relation"
-    | "cycle_better_than"
-    | "cycle_parent_of"
-    | "duplicate_relation"
     | "unknown_relation_type"
-    | "unknown_tag_ref"
-    | "unknown_case_ref";
+    | "cycle_better_than"
+    | "cycle_parent_of";
 
 export type ValidationWarning = {
     code: ValidationWarningCode;
