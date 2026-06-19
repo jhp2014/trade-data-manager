@@ -1,76 +1,70 @@
 .node {
-    width: 180px;
+    width: 190px;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
     border-radius: 10px;
-    padding: 7px 9px;
+    padding: 8px 10px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     font-size: 11px;
 }
-
 .highlight {
     border-color: var(--linked);
     box-shadow: 0 0 0 2px var(--linked-weak);
 }
-
 .selected {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-weak);
 }
-
 .top {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
 }
-
+.check {
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    accent-color: var(--linked);
+    pointer-events: none;
+    flex-shrink: 0;
+}
 .code {
     font-family: ui-monospace, Menlo, monospace;
     font-size: 11px;
     color: var(--accent);
     flex-shrink: 0;
 }
-
-.status {
+.count {
     font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: var(--chip);
     color: var(--muted);
+    background: var(--chip);
+    border-radius: 999px;
+    padding: 1px 6px;
+    margin-left: auto;
     flex-shrink: 0;
 }
-
-.activeStatus {
-    background: var(--linked-weak);
-    color: var(--linked);
-}
-
-.draftStatus {
-    background: var(--accent-weak);
-    color: var(--accent);
-}
-
 .text {
-    line-height: 1.3;
+    line-height: 1.35;
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
 }
-
 .tags {
     display: flex;
-    gap: 3px;
+    flex-wrap: wrap;
+    gap: 4px;
     margin-top: 5px;
 }
-
 .tag {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--chip);
+    border-radius: 6px;
+    padding: 0 6px;
+    white-space: nowrap;
 }
-
 .handle {
     opacity: 0;
     pointer-events: none;
