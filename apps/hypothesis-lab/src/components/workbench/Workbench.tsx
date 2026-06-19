@@ -16,8 +16,10 @@ import type { WorkingSetCase } from "@/services/workingSet";
 import { parseHypExpr, searchCasesByExpr } from "@/services/hypExpr";
 import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
 import { CaseRail } from "./CaseRail";
+import { FilterBar } from "./FilterBar";
 import { HypothesisPanel } from "./HypothesisPanel";
 import { HypothesisModal } from "./HypothesisModal";
+import { SavedFilterModal } from "./SavedFilterModal";
 import { WorkbenchSettingsModal } from "./WorkbenchSettingsModal";
 import styles from "./Workbench.module.css";
 
@@ -36,6 +38,7 @@ export function Workbench() {
     const mode = useWorkbench((s) => s.mode);
     const filterMode = useWorkbench((s) => s.filterMode);
     const expr = useWorkbench((s) => s.expr);
+    const openSettings = useWorkbench((s) => s.openSettings);
     const selectedCaseId = useSelection((s) => s.selectedCaseId);
     const selectCase = useSelection((s) => s.selectCase);
     const modalHypothesisId = useSelection((s) => s.modalHypothesisId);
@@ -157,6 +160,17 @@ export function Workbench() {
 
     return (
         <div className={styles.layout}>
+            <button
+                className={styles.settingsFab}
+                onClick={openSettings}
+                title="작업대 설정"
+                aria-label="작업대 설정"
+            >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+            </button>
             <div className={styles.rail}>
                 <CaseRail
                     cases={railCases}
@@ -173,6 +187,7 @@ export function Workbench() {
                     />
                 </div>
                 <div className={styles.graph}>
+                    <FilterBar />
                     {selectedCase && (
                         <div className={styles.caseBadge}>
                             <span className={styles.caseBadgeName}>
@@ -193,6 +208,7 @@ export function Workbench() {
                 </div>
             </div>
             <WorkbenchSettingsModal />
+            <SavedFilterModal />
             <HypothesisModal />
         </div>
     );

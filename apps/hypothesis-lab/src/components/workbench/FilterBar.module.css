@@ -1,14 +1,33 @@
+/* 그래프 좌상단 오버레이. 아이콘은 항상 좌측 끝, 켜지면 입력창이 오른쪽으로 펼쳐진다.
+   입력창은 항상 마운트돼 있고 width 트랜지션으로 열고/닫을 때 모두 늘고 준다(overflow 로 클립). */
 .bar {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    z-index: 6;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex: 1;
-    min-width: 0;
+    justify-content: flex-start;
+    gap: 7px;
+    width: 38px;
+    overflow: hidden;
+    transition: width 0.2s ease, background 0.2s ease, border-color 0.2s ease, padding 0.2s ease;
+    border: 1px solid transparent;
+    border-radius: 10px;
 }
+.barOpen {
+    width: min(620px, calc(100% - 220px));
+    padding: 5px 6px;
+    background: var(--bg-elev);
+    border-color: var(--border-strong);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
 .expr {
     flex: 1;
     min-width: 0;
-    padding: 5px 10px;
+    padding: 6px 10px;
     font-family: ui-monospace, Menlo, monospace;
     font-size: 13px;
     color: var(--text);
@@ -23,22 +42,61 @@
 .exprError {
     border-color: var(--danger, #d44);
 }
-.feedback {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
+
+.status {
     flex-shrink: 0;
     font-size: 12px;
     white-space: nowrap;
-}
-.err {
-    color: var(--danger, #d44);
 }
 .count {
     color: var(--text);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
-.unknown {
+.countWarn {
     color: var(--warning, #c80);
+}
+.err {
+    color: var(--danger, #d44);
+    font-weight: 600;
+    cursor: help;
+}
+
+/* 펼치기/접기 chevron — 배경·테두리 없이 아이콘만. */
+.toggle {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+}
+.toggle:hover {
+    color: var(--accent);
+}
+/* 입력창 우측 저장/불러오기 — 패널 안의 보조 버튼(작게, 그림자 없음). */
+.iconBtnSm {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    cursor: pointer;
+}
+.iconBtnSm:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+.iconBtnSm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }

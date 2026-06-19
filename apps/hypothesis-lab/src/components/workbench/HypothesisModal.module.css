@@ -1,19 +1,18 @@
 .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.34);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.18);
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding-top: 11vh;
+    padding-top: 9vh;
     z-index: 60;
     animation: fade 0.12s ease;
 }
 .modal {
-    width: 520px;
+    width: 680px;
     max-width: calc(100vw - 32px);
-    max-height: 78vh;
+    max-height: 86vh;
     overflow: auto;
     background: var(--bg-elev);
     border: 1px solid var(--border);
@@ -170,7 +169,16 @@
     border: 1px solid var(--border);
     border-radius: 9px;
 }
-.relIn {
+/* 화살표 방향별 옅은 색 구분. */
+.relLeft {
+    background: rgba(91, 108, 255, 0.07);
+    border-color: rgba(91, 108, 255, 0.28);
+}
+.relRight {
+    background: rgba(193, 85, 155, 0.07);
+    border-color: rgba(193, 85, 155, 0.28);
+}
+.relNone {
     background: var(--chip);
 }
 .relSelf {
@@ -196,10 +204,9 @@
 .relText {
     flex: 1;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     font-size: 12px;
+    line-height: 1.4;
+    word-break: break-word;
 }
 .relX {
     border: 0;
@@ -222,8 +229,28 @@
 .relAdd .select {
     min-width: 0;
 }
-.relAdd .select:last-of-type {
+.relAdd .select:first-of-type {
     flex: 1;
+}
+.dirBtn {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--accent);
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+.dirBtn:hover:not(:disabled) {
+    border-color: var(--accent);
+}
+.dirBtn:disabled {
+    color: var(--muted);
+    cursor: default;
 }
 .addBtn {
     border: 0;

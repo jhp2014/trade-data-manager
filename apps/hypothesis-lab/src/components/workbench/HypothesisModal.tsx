@@ -13,9 +13,26 @@ import { KNOWN_RELATION_TYPES } from "@/domain/validation";
 import { useSelection } from "@/stores/selection";
 import styles from "./HypothesisModal.module.css";
 
-function cx(...classes: Array<string | false | null | undefined>) {
-    return classes.filter(Boolean).join(" ");
+/** 화살표가 의미 있는(방향성) 관계 타입. 나머지는 무방향(—)으로 표시. */
+const DIRECTIONAL = new Set(["better_than", "parent_of"]);
+
+/**
+ * 현재 가설(좌측) 기준 화살표. 그래프와 동일하게 화살촉은 from(더 좋음/부모)을 가리킨다.
+ *   currentIsFrom → 현재가 from → 화살표는 현재(좌) 쪽: "←"
+ *   현재가 to     → 대상이 from → 화살표는 대상(우) 쪽: "→"
+ */
+function arrowFor(relationType: string, currentIsFrom: boolean): string {
+    if (!DIRECTIONAL.has(relationType)) return "—";
+    return currentIsFrom ? "←" : "→";
 }
+
+/** 정렬 순서·행 색상 모두 화살표 방향 기준. */
+const ARROW_ORDER: Record<string, number> = { "←": 0, "→": 1, "—": 2 };
+const ARROW_CLASS: Record<string, string> = {
+    "←": styles.relLeft,
+    "→": styles.relRight,
+    "—": styles.relNone,
+};
 
 /** 가설 더블클릭 시 뜨는 태그·관계 설정 모달. 그래프 노드/목록 양쪽에서 공유. */
 export function HypothesisModal() {
@@ -27,6 +44,9 @@ export function HypothesisModal() {
     const [tagName, setTagName] = useState("");
     const [relType, setRelType] = useState(KNOWN_RELATION_TYPES[0] as string);
     const [relTarget, setRelTarget] = useState("");
+    // 화살표 방향: "left" = 현재←대상(현재가 from), "right" = 현재→대상(대상이 from).
+    // 그래프는 화살촉을 from(더 좋음/부모) 쪽에 두므로 화살표가 from 을 가리킨다.
+    const [relDir, setRelDir] = useState<"left" | "right">("left");
 
     useEffect(() => {
         if (!hypId) return;
@@ -41,6 +61,7 @@ export function HypothesisModal() {
     useEffect(() => {
         setTagName("");
         setRelTarget("");
+        setRelDir("left");
     }, [hypId]);
 
     const refresh = () => {
@@ -80,13 +101,26 @@ export function HypothesisModal() {
                         const tagNameById = new Map(data!.tags.map((t) => [t.id, t.name]));
                         const hypById = new Map(data!.hypotheses.map((h) => [h.id, h]));
                         const myTags = data!.hypothesisTags.filter((ht) => ht.hypothesisId === hyp.id);
-                        const outgoing = data!.hypothesisRelations.filter(
-                            (r) => r.fromHypothesisId === hyp.id,
-                        );
-                        const incoming = data!.hypothesisRelations.filter(
-                            (r) => r.toHypothesisId === hyp.id,
-                        );
                         const others = data!.hypotheses.filter((h) => h.id !== hyp.id);
+
+                        // 현재 가설이 얽힌 모든 관계를 "현재=좌측" 기준으로 통일한다.
+                        // currentIsFrom: 현재가 from(=화살촉이 가리키는 쪽)이면 화살표는 현재(좌)를 향한다.
+                        const rels = data!.hypothesisRelations
+                            .filter((r) => r.fromHypothesisId === hyp.id || r.toHypothesisId === hyp.id)
+                            .map((r) => {
+                                const currentIsFrom = r.fromHypothesisId === hyp.id;
+                                const otherId = currentIsFrom ? r.toHypothesisId : r.fromHypothesisId;
+                                return {
+                                    id: r.id,
+                                    relationType: r.relationType,
+                                    fromHypothesisId: r.fromHypothesisId,
+                                    toHypothesisId: r.toHypothesisId,
+                                    other: hypById.get(otherId),
+                                    arrow: arrowFor(r.relationType, currentIsFrom),
+                                };
+                            })
+                            // 화살표 방향이 같은 관계끼리 모이도록 정렬(← → —).
+                            .sort((a, b) => ARROW_ORDER[a.arrow] - ARROW_ORDER[b.arrow]);
 
                         return (
                             <>
@@ -150,22 +184,21 @@ export function HypothesisModal() {
                                 <section className={styles.section}>
                                     <h3>관계</h3>
                                     <ul className={styles.relations}>
-                                        {outgoing.map((r) => (
-                                            <li key={r.id} className={styles.relRow}>
+                                        {rels.map((r) => (
+                                            <li
+                                                key={r.id}
+                                                className={`${styles.relRow} ${ARROW_CLASS[r.arrow] ?? ""}`}
+                                            >
                                                 <span className={styles.relSelf}>{hyp.code}</span>
+                                                <span className={styles.relArrow}>{r.arrow}</span>
+                                                <code className={styles.code}>{r.other?.code}</code>
+                                                <span className={styles.relText}>{r.other?.text}</span>
                                                 <span className={styles.relType}>{r.relationType}</span>
-                                                <span className={styles.relArrow}>→</span>
-                                                <code className={styles.code}>
-                                                    {hypById.get(r.toHypothesisId)?.code}
-                                                </code>
-                                                <span className={styles.relText}>
-                                                    {hypById.get(r.toHypothesisId)?.text}
-                                                </span>
                                                 <button
                                                     className={styles.relX}
                                                     onClick={() =>
                                                         mRemoveRel.mutate({
-                                                            fromHypothesisId: hyp.id,
+                                                            fromHypothesisId: r.fromHypothesisId,
                                                             toHypothesisId: r.toHypothesisId,
                                                             relationType: r.relationType,
                                                         })
@@ -176,50 +209,29 @@ export function HypothesisModal() {
                                                 </button>
                                             </li>
                                         ))}
-                                        {incoming.map((r) => (
-                                            <li key={r.id} className={cx(styles.relRow, styles.relIn)}>
-                                                <code className={styles.code}>
-                                                    {hypById.get(r.fromHypothesisId)?.code}
-                                                </code>
-                                                <span className={styles.relText}>
-                                                    {hypById.get(r.fromHypothesisId)?.text}
-                                                </span>
-                                                <span className={styles.relArrow}>→</span>
-                                                <span className={styles.relType}>{r.relationType}</span>
-                                                <span className={styles.relSelf}>{hyp.code}</span>
-                                                <button
-                                                    className={styles.relX}
-                                                    onClick={() =>
-                                                        mRemoveRel.mutate({
-                                                            fromHypothesisId: r.fromHypothesisId,
-                                                            toHypothesisId: hyp.id,
-                                                            relationType: r.relationType,
-                                                        })
-                                                    }
-                                                    aria-label="관계 제거"
-                                                >
-                                                    ×
-                                                </button>
-                                            </li>
-                                        ))}
-                                        {outgoing.length === 0 && incoming.length === 0 && (
+                                        {rels.length === 0 && (
                                             <li className={styles.empty}>관계 없음</li>
                                         )}
                                     </ul>
 
                                     <div className={styles.relAdd}>
                                         <span className={styles.relSelf}>{hyp.code}</span>
-                                        <select
-                                            className={styles.select}
-                                            value={relType}
-                                            onChange={(e) => setRelType(e.target.value)}
+                                        <button
+                                            type="button"
+                                            className={styles.dirBtn}
+                                            disabled={!DIRECTIONAL.has(relType)}
+                                            onClick={() =>
+                                                setRelDir((d) => (d === "left" ? "right" : "left"))
+                                            }
+                                            title="화살표 방향 전환 (화살촉 = 더 좋음/부모)"
+                                            aria-label="화살표 방향 전환"
                                         >
-                                            {KNOWN_RELATION_TYPES.map((t) => (
-                                                <option key={t} value={t}>
-                                                    {t}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            {DIRECTIONAL.has(relType)
+                                                ? relDir === "left"
+                                                    ? "←"
+                                                    : "→"
+                                                : "—"}
+                                        </button>
                                         <select
                                             className={styles.select}
                                             value={relTarget}
@@ -232,18 +244,31 @@ export function HypothesisModal() {
                                                 </option>
                                             ))}
                                         </select>
+                                        <select
+                                            className={styles.select}
+                                            value={relType}
+                                            onChange={(e) => setRelType(e.target.value)}
+                                        >
+                                            {KNOWN_RELATION_TYPES.map((t) => (
+                                                <option key={t} value={t}>
+                                                    {t}
+                                                </option>
+                                            ))}
+                                        </select>
                                         <button
                                             className={styles.addBtn}
                                             disabled={!relTarget}
                                             onClick={() => {
-                                                if (relTarget) {
-                                                    mAddRel.mutate({
-                                                        fromHypothesisId: hyp.id,
-                                                        toHypothesisId: relTarget,
-                                                        relationType: relType,
-                                                    });
-                                                    setRelTarget("");
-                                                }
+                                                if (!relTarget) return;
+                                                // ← 면 현재가 from, → 면 대상이 from.
+                                                const dirLeft =
+                                                    !DIRECTIONAL.has(relType) || relDir === "left";
+                                                mAddRel.mutate({
+                                                    fromHypothesisId: dirLeft ? hyp.id : relTarget,
+                                                    toHypothesisId: dirLeft ? relTarget : hyp.id,
+                                                    relationType: relType,
+                                                });
+                                                setRelTarget("");
                                             }}
                                         >
                                             추가
