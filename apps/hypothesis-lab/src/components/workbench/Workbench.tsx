@@ -8,6 +8,7 @@ import { useSelection } from "@/stores/selection";
 import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
 import { CaseList } from "./CaseList";
 import { HypothesisPanel } from "./HypothesisPanel";
+import styles from "./Workbench.module.css";
 
 export function Workbench() {
     const [mode, setMode] = useState<WorkingSetMode>({ kind: "review-recent" });
@@ -34,8 +35,8 @@ export function Workbench() {
     }, [snapshot.data, selectedCaseId]);
 
     return (
-        <div className="wb-grid">
-            <section className="wb-col">
+        <div className={styles.grid}>
+            <section className={styles.col}>
                 <CaseList
                     mode={mode}
                     onModeChange={setMode}
@@ -43,10 +44,10 @@ export function Workbench() {
                     loading={workingSet.isLoading}
                 />
             </section>
-            <section className="wb-col">
+            <section className={styles.col}>
                 <HypothesisPanel snapshot={snapshot.data ?? null} selectedCase={selectedCase} />
             </section>
-            <section className="wb-col wb-col--graph">
+            <section className={`${styles.col} ${styles.graphCol}`}>
                 <HypothesisGraph
                     snapshot={snapshot.data ?? null}
                     highlightHypothesisIds={linkedToSelectedCase}

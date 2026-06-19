@@ -1,0 +1,39 @@
+.topnav {
+    height: var(--nav-h);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elev);
+}
+
+.brand {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+}
+
+.links {
+    display: flex;
+    gap: 4px;
+}
+
+.link {
+    text-decoration: none;
+    color: var(--muted);
+    padding: 5px 11px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.link:hover {
+    background: var(--chip);
+    color: var(--text);
+}
+
+.active {
+    background: var(--accent-weak);
+    color: var(--accent);
+}

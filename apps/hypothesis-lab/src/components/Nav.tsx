@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import styles from "./Nav.module.css";
 
 const LINKS = [
     { href: "/", label: "작업대" },
@@ -12,11 +13,15 @@ const LINKS = [
 export function Nav() {
     const pathname = usePathname();
     return (
-        <nav className="topnav">
-            <span className="brand">Hypothesis Lab</span>
-            <div className="topnav-links">
+        <nav className={styles.topnav}>
+            <span className={styles.brand}>Hypothesis Lab</span>
+            <div className={styles.links}>
                 {LINKS.map((l) => (
-                    <Link key={l.href} href={l.href} className={pathname === l.href ? "is-active" : ""}>
+                    <Link
+                        key={l.href}
+                        href={l.href}
+                        className={`${styles.link}${pathname === l.href ? ` ${styles.active}` : ""}`}
+                    >
                         {l.label}
                     </Link>
                 ))}

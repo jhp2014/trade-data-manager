@@ -1,0 +1,158 @@
+.panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+.head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+.head h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+}
+
+.muted {
+    color: var(--muted);
+}
+
+.sm {
+    font-size: 11px;
+}
+
+.pad {
+    padding: 14px;
+}
+
+.list {
+    list-style: none;
+    margin: 0;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+.row:hover {
+    background: var(--bg-elev);
+}
+
+.selected {
+    background: var(--accent-weak);
+}
+
+.linked {
+    background: var(--linked-weak);
+}
+
+.linked .text {
+    font-weight: 600;
+}
+
+.selected.linked {
+    background: var(--accent-weak);
+}
+
+.check {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    accent-color: var(--linked);
+    cursor: pointer;
+}
+
+.code {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--chip);
+    color: var(--muted);
+    flex-shrink: 0;
+}
+
+.activeStatus {
+    background: var(--linked-weak);
+    color: var(--linked);
+}
+
+.draftStatus {
+    background: var(--accent-weak);
+    color: var(--accent);
+}
+
+.newHyp {
+    display: flex;
+    gap: 8px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.newHyp input {
+    flex: 1;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-elev);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font: inherit;
+}
+
+.newHyp input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.newHyp button {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 0 14px;
+    font-weight: 600;
+}
+
+.newHyp button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
