@@ -7,25 +7,31 @@
     border-bottom: 1px solid var(--border);
     background: var(--bg-elev);
 }
-.links {
-    display: flex;
-    gap: 4px;
-}
-.link {
-    text-decoration: none;
-    color: var(--muted);
-    padding: 5px 11px;
+.toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
     border-radius: 7px;
+    overflow: hidden;
+    background: var(--bg);
+}
+.tab {
+    padding: 5px 12px;
     font-size: 12px;
     font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
 }
-.link:hover {
-    background: var(--chip);
+.tab:not(:last-child) {
+    border-right: 1px solid var(--border);
+}
+.tab:hover:not(.tabActive) {
     color: var(--text);
 }
-.active {
-    background: var(--accent-weak);
-    color: var(--accent);
+.tabActive {
+    background: var(--accent);
+    color: var(--bg);
 }
 .settings {
     margin-left: auto;

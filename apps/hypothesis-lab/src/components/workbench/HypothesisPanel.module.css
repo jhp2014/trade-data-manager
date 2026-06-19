@@ -37,9 +37,13 @@
     background: var(--accent);
     color: #fff;
     border-radius: 8px;
-    padding: 0 14px;
-    font-weight: 600;
+    width: 38px;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    cursor: pointer;
 }
 .newHyp button:disabled {
     opacity: 0.45;
@@ -63,7 +67,7 @@
     gap: 9px;
     padding: 8px 9px;
     border-radius: 8px;
-    border-left: 2px solid transparent;
+    border: 1px solid transparent;
     cursor: pointer;
 }
 .row:hover {
@@ -71,7 +75,7 @@
 }
 .selected {
     background: var(--accent-weak);
-    border-left-color: var(--accent);
+    border-color: var(--accent);
 }
 .linked {
     background: var(--linked-weak);
@@ -158,4 +162,76 @@
 }
 .linked .text {
     font-weight: 600;
+}
+
+/* 불리언 식 트리 렌더 */
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--bg-elev);
+}
+.group .group {
+    background: var(--bg);
+}
+.gate {
+    align-self: center;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    line-height: 1;
+    padding: 1px 0;
+}
+.notWrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid #e7b3b0;
+    border-radius: 10px;
+    background: rgba(217, 83, 79, 0.05);
+}
+.notBadge {
+    align-self: flex-start;
+    font-size: 10px;
+    font-weight: 700;
+    color: #d9534f;
+    letter-spacing: 0.04em;
+}
+.negated .code {
+    color: #d9534f;
+}
+.notMark {
+    font-size: 10px;
+    font-weight: 700;
+    color: #d9534f;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+}
+.unknownLeaf {
+    padding: 8px 9px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    color: var(--text);
+    border-radius: 8px;
+    background: var(--chip);
+}
+.unknownLeaf span {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: #c80;
+}
+.unknownLeaf.negated {
+    color: #d9534f;
+}
+.divider {
+    margin: 10px 4px 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
 }

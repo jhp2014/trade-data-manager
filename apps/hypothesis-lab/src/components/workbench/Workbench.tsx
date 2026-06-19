@@ -13,10 +13,9 @@ import { useSelection } from "@/stores/selection";
 import { useWorkbench } from "@/stores/workbench";
 import { useSelectedCaseCopyShortcut } from "@/hooks/useSelectedCaseCopyShortcut";
 import type { WorkingSetCase } from "@/services/workingSet";
-import { parseHypExpr, searchCasesByExpr, unknownRefs } from "@/services/hypExpr";
+import { parseHypExpr, searchCasesByExpr } from "@/services/hypExpr";
 import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
 import { CaseRail } from "./CaseRail";
-import { FilterBar } from "./FilterBar";
 import { HypothesisPanel } from "./HypothesisPanel";
 import { HypothesisModal } from "./HypothesisModal";
 import { WorkbenchSettingsModal } from "./WorkbenchSettingsModal";
@@ -76,13 +75,6 @@ export function Workbench() {
                 },
             ];
         });
-    }, [snapshot.data, parsed]);
-
-    const booleanUnknown = useMemo(() => {
-        const snap = snapshot.data;
-        if (!snap || !parsed || !parsed.ok) return [];
-        const knownCodes = snap.hypotheses.map((h) => h.code);
-        return unknownRefs(parsed.expr, knownCodes);
     }, [snapshot.data, parsed]);
 
     const railCases = filterMode === "boolean" ? booleanCases : (workingSet.data ?? []);
@@ -166,11 +158,6 @@ export function Workbench() {
     return (
         <div className={styles.layout}>
             <div className={styles.rail}>
-                <FilterBar
-                    resultCount={parsed?.ok ? booleanCases.length : null}
-                    error={parsed && !parsed.ok ? parsed.error : null}
-                    unknownCodes={booleanUnknown}
-                />
                 <CaseRail
                     cases={railCases}
                     loading={railLoading}
@@ -179,7 +166,11 @@ export function Workbench() {
             </div>
             <div className={styles.bottom}>
                 <div className={styles.panel}>
-                    <HypothesisPanel snapshot={snapshot.data ?? null} selectedCase={selectedCase} />
+                    <HypothesisPanel
+                        snapshot={snapshot.data ?? null}
+                        selectedCase={selectedCase}
+                        expr={filterMode === "boolean" && parsed?.ok ? parsed.expr : null}
+                    />
                 </div>
                 <div className={styles.graph}>
                     {selectedCase && (

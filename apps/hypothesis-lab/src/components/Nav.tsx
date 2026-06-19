@@ -1,41 +1,42 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useWorkbench } from "@/stores/workbench";
+import { FilterBar } from "./workbench/FilterBar";
 import styles from "./Nav.module.css";
 
-const LINKS = [
-    { href: "/", label: "작업대" },
-    { href: "/explore", label: "탐색" },
-];
+const MODES = [
+    { value: "workingset", label: "작업셋" },
+    { value: "boolean", label: "불리언 필터" },
+] as const;
 
 export function Nav() {
-    const pathname = usePathname();
+    const filterMode = useWorkbench((s) => s.filterMode);
+    const setFilterMode = useWorkbench((s) => s.setFilterMode);
     const openSettings = useWorkbench((s) => s.openSettings);
 
     return (
         <nav className={styles.topnav}>
-            <div className={styles.links}>
-                {LINKS.map((l) => (
-                    <Link
-                        key={l.href}
-                        href={l.href}
-                        className={`${styles.link}${pathname === l.href ? ` ${styles.active}` : ""}`}
+            <div className={styles.toggle} role="tablist" aria-label="레일 모드">
+                {MODES.map((m) => (
+                    <button
+                        key={m.value}
+                        role="tab"
+                        aria-selected={filterMode === m.value}
+                        className={`${styles.tab}${filterMode === m.value ? ` ${styles.tabActive}` : ""}`}
+                        onClick={() => setFilterMode(m.value)}
                     >
-                        {l.label}
-                    </Link>
+                        {m.label}
+                    </button>
                 ))}
             </div>
-            {pathname === "/" && (
-                <button className={styles.settings} onClick={openSettings} aria-label="작업대 설정">
+            <FilterBar />
+            <button className={styles.settings} onClick={openSettings} aria-label="작업대 설정">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="12" cy="12" r="3" />
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                     </svg>
                     설정
                 </button>
-            )}
         </nav>
     );
 }
