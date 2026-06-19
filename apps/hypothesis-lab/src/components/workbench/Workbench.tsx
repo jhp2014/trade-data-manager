@@ -1,17 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { loadSnapshotAction, loadWorkingSetAction } from "@/actions/workbench";
-import type { WorkingSetMode } from "@/repositories/workingSetSources";
 import { useSelection } from "@/stores/selection";
+import { useWorkbench } from "@/stores/workbench";
+import { useSelectedCaseCopyShortcut } from "@/hooks/useSelectedCaseCopyShortcut";
 import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
-import { CaseList } from "./CaseList";
+import { CaseRail } from "./CaseRail";
 import { HypothesisPanel } from "./HypothesisPanel";
+import { WorkbenchSettingsModal } from "./WorkbenchSettingsModal";
 import styles from "./Workbench.module.css";
 
 export function Workbench() {
-    const [mode, setMode] = useState<WorkingSetMode>({ kind: "review-recent" });
+    const mode = useWorkbench((s) => s.mode);
     const selectedCaseId = useSelection((s) => s.selectedCaseId);
 
     const workingSet = useQuery({
@@ -23,8 +25,8 @@ export function Workbench() {
         queryFn: () => loadSnapshotAction(),
     });
 
-    const selectedCase =
-        workingSet.data?.find((c) => c.caseId === selectedCaseId) ?? null;
+    const selectedCase = workingSet.data?.find((c) => c.caseId === selectedCaseId) ?? null;
+    useSelectedCaseCopyShortcut(selectedCase?.caseId ?? null);
 
     const linkedToSelectedCase = useMemo(() => {
         const snap = snapshot.data;
@@ -35,24 +37,22 @@ export function Workbench() {
     }, [snapshot.data, selectedCaseId]);
 
     return (
-        <div className={styles.grid}>
-            <section className={styles.col}>
-                <CaseList
-                    mode={mode}
-                    onModeChange={setMode}
-                    cases={workingSet.data ?? []}
-                    loading={workingSet.isLoading}
-                />
-            </section>
-            <section className={styles.col}>
-                <HypothesisPanel snapshot={snapshot.data ?? null} selectedCase={selectedCase} />
-            </section>
-            <section className={`${styles.col} ${styles.graphCol}`}>
-                <HypothesisGraph
-                    snapshot={snapshot.data ?? null}
-                    highlightHypothesisIds={linkedToSelectedCase}
-                />
-            </section>
+        <div className={styles.layout}>
+            <div className={styles.rail}>
+                <CaseRail cases={workingSet.data ?? []} loading={workingSet.isLoading} />
+            </div>
+            <div className={styles.bottom}>
+                <div className={styles.panel}>
+                    <HypothesisPanel snapshot={snapshot.data ?? null} selectedCase={selectedCase} />
+                </div>
+                <div className={styles.graph}>
+                    <HypothesisGraph
+                        snapshot={snapshot.data ?? null}
+                        highlightHypothesisIds={linkedToSelectedCase}
+                    />
+                </div>
+            </div>
+            <WorkbenchSettingsModal />
         </div>
     );
 }
