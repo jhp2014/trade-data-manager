@@ -8,8 +8,12 @@ export type HypNodeData = {
     text: string;
     tags: string[];
     linkedCaseCount: number;
-    /** 현재 선택된 Case 와 연결됨(체크박스 표시 전용). */
+    /** 현재 선택된 Case 와 연결됨. */
     linkedToCase: boolean;
+    /** 토글 가능 여부(케이스가 선택돼 있어야 함). */
+    caseSelected: boolean;
+    /** 체크박스 토글 → 현재 케이스 연결/해제. */
+    onToggleLink?: () => void;
     selected: boolean;
     highlight: boolean;
 };
@@ -26,15 +30,18 @@ export function HypNode({ data }: { data: HypNodeData }) {
             <div className={styles.top}>
                 <input
                     type="checkbox"
-                    className={styles.check}
+                    className={cx(styles.check, "nodrag")}
                     checked={data.linkedToCase}
-                    readOnly
-                    tabIndex={-1}
+                    disabled={!data.caseSelected}
+                    onChange={() => data.onToggleLink?.()}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    title={data.caseSelected ? "현재 케이스에 연결/해제" : "케이스를 먼저 선택"}
                     aria-label="현재 케이스 연결 여부"
                 />
                 <code className={styles.code}>{data.code}</code>
                 {data.linkedCaseCount > 0 && (
-                    <span className={styles.count}>연결 {data.linkedCaseCount}</span>
+                    <span className={styles.count}>Case {data.linkedCaseCount}</span>
                 )}
             </div>
             <div className={styles.text}>{data.text}</div>

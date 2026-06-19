@@ -27,10 +27,12 @@ function CheckIcon() {
 export function CaseCard({
     c,
     selected,
+    linkedCount,
     onSelect,
 }: {
     c: WorkingSetCase;
     selected: boolean;
+    linkedCount: number;
     onSelect: () => void;
 }) {
     const [copied, setCopied] = useState(false);
@@ -43,12 +45,25 @@ export function CaseCard({
     }
 
     return (
-        <div className={cx(styles.card, selected && styles.selected)} onClick={onSelect}>
-            <div className={styles.body}>
+        <div
+            className={cx(styles.card, selected && styles.selected)}
+            data-case-id={c.caseId}
+            onClick={onSelect}
+        >
+            <div className={styles.line1}>
                 <span className={styles.name}>{c.stockName ?? c.stockCode}</span>
+                {c.stockName && <span className={styles.code}>{c.stockCode}</span>}
+                <span
+                    className={cx(styles.count, linkedCount === 0 && styles.countZero)}
+                    title="연결된 가설 수"
+                >
+                    {linkedCount}
+                </span>
+            </div>
+            <div className={styles.line2}>
                 <span className={styles.meta}>
                     {c.tradeDate}
-                    {c.tradeTime ? ` ${c.tradeTime}` : ""}
+                    {c.tradeTime ? ` · ${c.tradeTime}` : ""}
                 </span>
             </div>
             <button
