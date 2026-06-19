@@ -26,11 +26,35 @@ export function EditView() {
         queryClient.invalidateQueries({ queryKey: ["snapshot"] });
         queryClient.invalidateQueries({ queryKey: ["workingSet"] });
     };
-    const mUpdate = useMutation({ mutationFn: updateHypothesisAction, onSuccess: refresh });
-    const mAddTag = useMutation({ mutationFn: addTagAction, onSuccess: refresh });
-    const mRemoveTag = useMutation({ mutationFn: removeTagAction, onSuccess: refresh });
-    const mAddRel = useMutation({ mutationFn: upsertRelationAction, onSuccess: refresh });
-    const mRemoveRel = useMutation({ mutationFn: removeRelationAction, onSuccess: refresh });
+    // mutationFn 은 변수 1개만 넘기도록 화살표로 감싼다(서버 액션 직접 전달 시 직렬화 에러).
+    const mUpdate = useMutation({
+        mutationFn: (v: { id: string; text?: string; status?: string }) => updateHypothesisAction(v),
+        onSuccess: refresh,
+    });
+    const mAddTag = useMutation({
+        mutationFn: (v: { hypothesisId: string; tagName: string }) => addTagAction(v),
+        onSuccess: refresh,
+    });
+    const mRemoveTag = useMutation({
+        mutationFn: (v: { hypothesisId: string; tagId: string }) => removeTagAction(v),
+        onSuccess: refresh,
+    });
+    const mAddRel = useMutation({
+        mutationFn: (v: {
+            fromHypothesisId: string;
+            toHypothesisId: string;
+            relationType: string;
+        }) => upsertRelationAction(v),
+        onSuccess: refresh,
+    });
+    const mRemoveRel = useMutation({
+        mutationFn: (v: {
+            fromHypothesisId: string;
+            toHypothesisId: string;
+            relationType: string;
+        }) => removeRelationAction(v),
+        onSuccess: refresh,
+    });
 
     const data = snapshot.data ?? null;
     if (!data) return <p className="muted pad">불러오는 중…</p>;

@@ -61,6 +61,14 @@ export async function linkCaseAction(input: {
     await r.upsertCaseLink({ hypothesisId: input.hypothesisId, caseId: input.case.caseId });
 }
 
+/** 가설-case 연결 해제. */
+export async function unlinkCaseAction(input: {
+    hypothesisId: string;
+    caseId: string;
+}): Promise<void> {
+    await repo().removeCaseLink(input);
+}
+
 /** 새 가설 생성. case 가 주어지면 곧바로 연결까지. */
 export async function createHypothesisAction(input: {
     text: string;

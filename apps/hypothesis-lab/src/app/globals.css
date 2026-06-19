@@ -338,6 +338,28 @@ button {
 .hyp-row.is-selected {
     background: var(--accent-weak);
 }
+.all-hyps.grow {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+    padding: 8px 12px;
+}
+.hyp-check {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    accent-color: var(--linked);
+    cursor: pointer;
+}
+.hyp-row.is-linked {
+    background: var(--linked-weak);
+}
+.hyp-row.is-linked .htext {
+    font-weight: 600;
+}
+.hyp-row.is-selected.is-linked {
+    background: var(--accent-weak);
+}
 .hcode {
     font-family: ui-monospace, Menlo, monospace;
     font-size: 11px;
