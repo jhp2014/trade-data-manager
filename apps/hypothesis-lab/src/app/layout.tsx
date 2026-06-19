@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { Nav } from "@/components/Nav";
+import styles from "./layout.module.css";
 
 export const metadata: Metadata = {
     title: "Hypothesis Lab",
@@ -24,7 +25,7 @@ export default function RootLayout({
             <body>
                 <QueryProvider>
                     <Nav />
-                    <main className="appmain">{children}</main>
+                    <main className={styles.appmain}>{children}</main>
                 </QueryProvider>
             </body>
         </html>

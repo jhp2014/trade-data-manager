@@ -1,0 +1,14 @@
+.wrap {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+}
+
+.placeholder {
+    margin: auto;
+    text-align: center;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { WorkingSetMode } from "@/repositories/workingSetSources";
 import type { WorkingSetCase } from "@/services/workingSet";
 import { useSelection } from "@/stores/selection";
+import styles from "./CaseList.module.css";
 
 const MODES: { label: string; mode: WorkingSetMode }[] = [
     { label: "최근", mode: { kind: "review-recent" } },
@@ -34,14 +35,14 @@ export function CaseList({
     }
 
     return (
-        <div className="case-list">
-            <header className="col-head">
+        <div>
+            <header className={styles.head}>
                 <h2>케이스</h2>
-                <div className="seg">
+                <div className={styles.seg}>
                     {MODES.map((m) => (
                         <button
                             key={m.label}
-                            className={mode.kind === m.mode.kind ? "is-active" : ""}
+                            className={mode.kind === m.mode.kind ? styles.active : ""}
                             onClick={() => onModeChange(m.mode)}
                         >
                             {m.label}
@@ -50,34 +51,36 @@ export function CaseList({
                 </div>
             </header>
 
-            {loading && <p className="muted pad">불러오는 중…</p>}
-            {!loading && cases.length === 0 && <p className="muted pad">케이스가 없습니다.</p>}
+            {loading && <p className={`${styles.muted} ${styles.pad}`}>불러오는 중…</p>}
+            {!loading && cases.length === 0 && (
+                <p className={`${styles.muted} ${styles.pad}`}>케이스가 없습니다.</p>
+            )}
 
-            <ul className="rows">
+            <ul className={styles.rows}>
                 {cases.map((c) => {
                     const linked = c.linkedHypothesisIds.length > 0;
                     return (
                         <li
                             key={c.caseId}
-                            className={`case-row${c.caseId === selectedCaseId ? " is-selected" : ""}${
-                                linked ? " is-linked" : ""
+                            className={`${styles.row}${c.caseId === selectedCaseId ? ` ${styles.selected}` : ""}${
+                                linked ? ` ${styles.linked}` : ""
                             }`}
                             onClick={() => selectCase(c.caseId)}
                         >
-                            <span className="case-dot" title={linked ? "가설 연결됨" : "미연결"} />
-                            <span className="case-name">{c.stockName ?? c.stockCode}</span>
+                            <span className={styles.dot} title={linked ? "가설 연결됨" : "미연결"} />
+                            <span className={styles.name}>{c.stockName ?? c.stockCode}</span>
                             <button
-                                className="case-id"
+                                className={styles.id}
                                 onClick={(e) => copyCaseId(c.caseId, e)}
                                 title="클릭하면 caseId 복사"
                             >
                                 {copied === c.caseId ? "복사됨!" : c.caseId}
                             </button>
-                            <span className="case-meta">
+                            <span className={styles.meta}>
                                 {c.tradeDate}
                                 {c.tradeTime ? ` ${c.tradeTime}` : ""}
                             </span>
-                            {linked && <span className="case-count">{c.linkedHypothesisIds.length}</span>}
+                            {linked && <span className={styles.count}>{c.linkedHypothesisIds.length}</span>}
                         </li>
                     );
                 })}

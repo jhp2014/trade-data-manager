@@ -11,6 +11,17 @@ import {
 import type { HypothesisSnapshot } from "@/domain/types";
 import type { WorkingSetCase } from "@/services/workingSet";
 import { useSelection } from "@/stores/selection";
+import styles from "./HypothesisPanel.module.css";
+
+function cx(...classes: Array<string | false | null | undefined>) {
+    return classes.filter(Boolean).join(" ");
+}
+
+function statusClass(status: string) {
+    if (status === "active") return styles.activeStatus;
+    if (status === "draft") return styles.draftStatus;
+    return "";
+}
 
 function toCaseInput(c: WorkingSetCase): CaseSnapshotInput {
     return {
@@ -57,7 +68,7 @@ export function HypothesisPanel({
         },
     });
 
-    if (!snapshot) return <p className="muted pad">불러오는 중…</p>;
+    if (!snapshot) return <p className={cx(styles.muted, styles.pad)}>불러오는 중…</p>;
 
     const linkedIds = new Set(
         selectedCase
@@ -84,45 +95,47 @@ export function HypothesisPanel({
     }
 
     return (
-        <div className="hyp-panel">
-            <header className="col-head">
+        <div className={styles.panel}>
+            <header className={styles.head}>
                 <h2>가설</h2>
-                <span className="muted sm">
+                <span className={cx(styles.muted, styles.sm)}>
                     {selectedCase
                         ? `${selectedCase.stockName ?? selectedCase.stockCode} · ${linkedIds.size}개 연결`
                         : "케이스 미선택"}
                 </span>
             </header>
 
-            <ul className="all-hyps grow">
+            <ul className={styles.list}>
                 {ordered.map((h) => {
                     const linked = linkedIds.has(h.id);
                     return (
                         <li
                             key={h.id}
-                            className={`hyp-row${h.id === selectedHypothesisId ? " is-selected" : ""}${
-                                linked ? " is-linked" : ""
-                            }`}
+                            className={cx(
+                                styles.row,
+                                h.id === selectedHypothesisId && styles.selected,
+                                linked && styles.linked,
+                            )}
                             onClick={() => selectHypothesis(h.id)}
                         >
                             <input
                                 type="checkbox"
-                                className="hyp-check"
+                                className={styles.check}
                                 checked={linked}
                                 disabled={!selectedCase || linkMut.isPending || unlinkMut.isPending}
                                 onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => toggleLink(h.id, e.target.checked)}
                                 title={selectedCase ? "현재 케이스에 연결/해제" : "케이스를 먼저 선택"}
                             />
-                            <code className="hcode">{h.code}</code>
-                            <span className={`status s-${h.status}`}>{h.status}</span>
-                            <span className="htext">{h.text}</span>
+                            <code className={styles.code}>{h.code}</code>
+                            <span className={cx(styles.status, statusClass(h.status))}>{h.status}</span>
+                            <span className={styles.text}>{h.text}</span>
                         </li>
                     );
                 })}
             </ul>
 
-            <div className="hyp-new">
+            <div className={styles.newHyp}>
                 <input
                     value={text}
                     onChange={(e) => setText(e.target.value)}

@@ -5,8 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import { loadSnapshotAction } from "@/actions/workbench";
 import { searchCases, type CaseSearchCriteria } from "@/services/caseSearch";
 import { useSelection } from "@/stores/selection";
+import styles from "./ExploreView.module.css";
 
 type HypFilter = Record<string, "include" | "exclude">;
+
+function cx(...classes: Array<string | false | null | undefined>) {
+    return classes.filter(Boolean).join(" ");
+}
 
 export function ExploreView() {
     const snapshot = useQuery({ queryKey: ["snapshot"], queryFn: () => loadSnapshotAction() });
@@ -32,7 +37,7 @@ export function ExploreView() {
         return searchCases(data, criteria);
     }, [data, hypState, tagIds, matchMode, expandBetter]);
 
-    if (!data) return <p className="muted pad">불러오는 중…</p>;
+    if (!data) return <p className={cx(styles.muted, styles.pad)}>불러오는 중…</p>;
 
     const hypById = new Map(data.hypotheses.map((h) => [h.id, h]));
     const caseById = new Map(data.cases.map((c) => [c.caseId, c]));
@@ -57,34 +62,34 @@ export function ExploreView() {
     }
 
     return (
-        <div className="exp-grid">
-            <aside className="exp-controls wb-col">
-                <header className="col-head">
+        <div className={styles.grid}>
+            <aside className={styles.col}>
+                <header className={styles.head}>
                     <h2>필터</h2>
-                    <button className="ghost" onClick={reset}>
+                    <button className={styles.ghost} onClick={reset}>
                         초기화
                     </button>
                 </header>
 
-                <div className="filt-block">
-                    <div className="filt-row">
-                        <span className="filt-label">매칭</span>
-                        <div className="seg">
+                <div className={styles.block}>
+                    <div className={styles.filterRow}>
+                        <span className={styles.filterLabel}>매칭</span>
+                        <div className={styles.seg}>
                             <button
-                                className={matchMode === "or" ? "is-active" : ""}
+                                className={matchMode === "or" ? styles.active : ""}
                                 onClick={() => setMatchMode("or")}
                             >
                                 OR
                             </button>
                             <button
-                                className={matchMode === "and" ? "is-active" : ""}
+                                className={matchMode === "and" ? styles.active : ""}
                                 onClick={() => setMatchMode("and")}
                             >
                                 AND
                             </button>
                         </div>
                     </div>
-                    <label className="filt-check">
+                    <label className={styles.filterCheck}>
                         <input
                             type="checkbox"
                             checked={expandBetter}
@@ -94,13 +99,13 @@ export function ExploreView() {
                     </label>
                 </div>
 
-                <div className="filt-block">
+                <div className={styles.block}>
                     <h3>태그</h3>
-                    <div className="chips">
+                    <div className={styles.chips}>
                         {data.tags.map((t) => (
                             <button
                                 key={t.id}
-                                className={`chip${tagIds.includes(t.id) ? " is-on" : ""}`}
+                                className={cx(styles.chip, tagIds.includes(t.id) && styles.on)}
                                 onClick={() => toggleTag(t.id)}
                             >
                                 #{t.name}
@@ -109,20 +114,24 @@ export function ExploreView() {
                     </div>
                 </div>
 
-                <div className="filt-block grow">
+                <div className={cx(styles.block, styles.grow)}>
                     <h3>가설 (클릭: 포함 → 제외 → 해제)</h3>
-                    <ul className="filt-hyps">
+                    <ul className={styles.hypotheses}>
                         {data.hypotheses.map((h) => {
                             const state = hypState[h.id];
                             return (
                                 <li
                                     key={h.id}
-                                    className={`filt-hyp${state ? ` is-${state}` : ""}`}
+                                    className={cx(
+                                        styles.hypothesis,
+                                        state === "include" && styles.include,
+                                        state === "exclude" && styles.exclude,
+                                    )}
                                     onClick={() => cycle(h.id)}
                                 >
-                                    <span className="mark">{state === "include" ? "+" : state === "exclude" ? "−" : ""}</span>
-                                    <code className="hcode">{h.code}</code>
-                                    <span className="htext">{h.text}</span>
+                                    <span className={styles.mark}>{state === "include" ? "+" : state === "exclude" ? "−" : ""}</span>
+                                    <code className={styles.code}>{h.code}</code>
+                                    <span className={styles.text}>{h.text}</span>
                                 </li>
                             );
                         })}
@@ -130,36 +139,42 @@ export function ExploreView() {
                 </div>
             </aside>
 
-            <section className="exp-results wb-col">
-                <header className="col-head">
+            <section className={styles.col}>
+                <header className={styles.head}>
                     <h2>케이스 {results.length}건</h2>
                 </header>
-                {results.length === 0 && <p className="muted pad">조건에 맞는 케이스가 없습니다.</p>}
-                <ul className="res-rows">
+                {results.length === 0 && (
+                    <p className={cx(styles.muted, styles.pad)}>조건에 맞는 케이스가 없습니다.</p>
+                )}
+                <ul className={styles.resultRows}>
                     {results.map((r) => {
                         const c = caseById.get(r.caseId);
                         return (
                             <li
                                 key={r.caseId}
-                                className={`res-row${r.caseId === selectedCaseId ? " is-selected" : ""}`}
+                                className={cx(styles.resultRow, r.caseId === selectedCaseId && styles.selected)}
                                 onClick={() => selectCase(r.caseId)}
                             >
-                                <div className="res-head">
-                                    <span className="case-name">{c?.stockName ?? c?.stockCode ?? r.caseId}</span>
-                                    <span className="case-meta">
+                                <div className={styles.resultHead}>
+                                    <span className={styles.caseName}>{c?.stockName ?? c?.stockCode ?? r.caseId}</span>
+                                    <span className={styles.caseMeta}>
                                         {c?.tradeDate}
                                         {c?.tradeTime ? ` ${c.tradeTime}` : ""}
                                     </span>
                                 </div>
-                                <div className="res-sub">
-                                    <code className="case-id-text">{r.caseId}</code>
+                                <div className={styles.resultSub}>
+                                    <code className={styles.caseIdText}>{r.caseId}</code>
                                 </div>
-                                <div className="res-hyps">
+                                <div className={styles.resultHyps}>
                                     {r.linkedHypothesisIds.map((id) => {
                                         const h = hypById.get(id);
                                         const on = hypState[id] === "include";
                                         return (
-                                            <span key={id} className={`hyp-chip${on ? " is-on" : ""}`} title={h?.text}>
+                                            <span
+                                                key={id}
+                                                className={cx(styles.hypChip, on && styles.on)}
+                                                title={h?.text}
+                                            >
                                                 {h?.code} {h?.text}
                                             </span>
                                         );

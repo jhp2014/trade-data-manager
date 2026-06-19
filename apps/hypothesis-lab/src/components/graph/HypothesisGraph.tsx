@@ -13,6 +13,7 @@ import { buildGraphLayout } from "@/services/graphLayout";
 import type { HypothesisSnapshot } from "@/domain/types";
 import { useSelection } from "@/stores/selection";
 import { HypNode, type HypNodeData } from "./HypNode";
+import styles from "./HypothesisGraph.module.css";
 
 const nodeTypes = { hyp: HypNode };
 
@@ -151,11 +152,11 @@ export function HypothesisGraph({
         [layout, selectedHypothesisId],
     );
 
-    if (!snapshot) return <div className="wb-placeholder">불러오는 중…</div>;
-    if (snapshot.hypotheses.length === 0) return <div className="wb-placeholder">가설이 없습니다</div>;
+    if (!snapshot) return <div className={styles.placeholder}>불러오는 중…</div>;
+    if (snapshot.hypotheses.length === 0) return <div className={styles.placeholder}>가설이 없습니다</div>;
 
     return (
-        <div className="graph-wrap">
+        <div className={styles.wrap}>
             <ReactFlow
                 nodes={nodes}
                 edges={edges}

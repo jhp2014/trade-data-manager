@@ -13,8 +13,19 @@ import {
 import { KNOWN_RELATION_TYPES } from "@/domain/validation";
 import type { Hypothesis, HypothesisSnapshot } from "@/domain/types";
 import { useSelection } from "@/stores/selection";
+import styles from "./EditView.module.css";
 
 const STATUSES = ["draft", "active", "archived"];
+
+function cx(...classes: Array<string | false | null | undefined>) {
+    return classes.filter(Boolean).join(" ");
+}
+
+function statusClass(status: string) {
+    if (status === "active") return styles.activeStatus;
+    if (status === "draft") return styles.draftStatus;
+    return "";
+}
 
 export function EditView() {
     const queryClient = useQueryClient();
@@ -57,33 +68,33 @@ export function EditView() {
     });
 
     const data = snapshot.data ?? null;
-    if (!data) return <p className="muted pad">불러오는 중…</p>;
+    if (!data) return <p className={cx(styles.muted, styles.pad)}>불러오는 중…</p>;
 
     const selected = data.hypotheses.find((h) => h.id === selectedHypothesisId) ?? null;
 
     return (
-        <div className="edit-grid">
-            <aside className="wb-col">
-                <header className="col-head">
+        <div className={styles.grid}>
+            <aside className={styles.col}>
+                <header className={styles.head}>
                     <h2>가설</h2>
                 </header>
-                <ul className="all-hyps pad">
+                <ul className={styles.list}>
                     {data.hypotheses.map((h) => (
                         <li
                             key={h.id}
-                            className={`hyp-row${h.id === selectedHypothesisId ? " is-selected" : ""}`}
+                            className={cx(styles.hypRow, h.id === selectedHypothesisId && styles.selected)}
                             onClick={() => selectHypothesis(h.id)}
                         >
-                            <code className="hcode">{h.code}</code>
-                            <span className={`status s-${h.status}`}>{h.status}</span>
-                            <span className="htext">{h.text}</span>
+                            <code className={styles.code}>{h.code}</code>
+                            <span className={cx(styles.status, statusClass(h.status))}>{h.status}</span>
+                            <span className={styles.text}>{h.text}</span>
                         </li>
                     ))}
                 </ul>
             </aside>
 
-            <section className="wb-col">
-                {!selected && <p className="muted pad">편집할 가설을 선택하세요.</p>}
+            <section className={styles.col}>
+                {!selected && <p className={cx(styles.muted, styles.pad)}>편집할 가설을 선택하세요.</p>}
                 {selected && (
                     <HypothesisEditor
                         key={selected.id}
@@ -141,17 +152,17 @@ function HypothesisEditor({
     const dirty = text !== hyp.text || status !== hyp.status;
 
     return (
-        <div className="editor">
-            <header className="col-head">
+        <div className={styles.editor}>
+            <header className={styles.head}>
                 <h2>
-                    <code className="hcode">{hyp.code}</code> 편집
+                    <code className={styles.code}>{hyp.code}</code> 편집
                 </h2>
             </header>
 
-            <div className="ed-block">
-                <label className="ed-label">가설 내용</label>
+            <div className={styles.block}>
+                <label className={styles.label}>가설 내용</label>
                 <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} />
-                <div className="ed-row">
+                <div className={styles.row}>
                     <select value={status} onChange={(e) => setStatus(e.target.value)}>
                         {STATUSES.map((s) => (
                             <option key={s} value={s}>
@@ -159,26 +170,26 @@ function HypothesisEditor({
                             </option>
                         ))}
                     </select>
-                    <button className="primary" disabled={!dirty} onClick={() => onUpdate(text, status)}>
+                    <button className={styles.primary} disabled={!dirty} onClick={() => onUpdate(text, status)}>
                         저장
                     </button>
                 </div>
             </div>
 
-            <div className="ed-block">
-                <label className="ed-label">태그</label>
-                <div className="chips">
+            <div className={styles.block}>
+                <label className={styles.label}>태그</label>
+                <div className={styles.chips}>
                     {myTags.map((ht) => (
-                        <span key={ht.tagId} className="chip is-on">
+                        <span key={ht.tagId} className={cx(styles.chip, styles.chipOn)}>
                             #{tagNameById.get(ht.tagId) ?? ht.tagId}
-                            <button className="chip-x" onClick={() => onRemoveTag(ht.tagId)}>
+                            <button className={styles.chipClose} onClick={() => onRemoveTag(ht.tagId)}>
                                 ×
                             </button>
                         </span>
                     ))}
-                    {myTags.length === 0 && <span className="muted sm">태그 없음</span>}
+                    {myTags.length === 0 && <span className={cx(styles.muted, styles.sm)}>태그 없음</span>}
                 </div>
-                <div className="ed-row">
+                <div className={styles.row}>
                     <input
                         value={tagName}
                         onChange={(e) => setTagName(e.target.value)}
@@ -199,38 +210,44 @@ function HypothesisEditor({
                 </div>
             </div>
 
-            <div className="ed-block grow">
-                <label className="ed-label">관계</label>
-                <ul className="rel-list">
+            <div className={cx(styles.block, styles.grow)}>
+                <label className={styles.label}>관계</label>
+                <ul className={styles.relations}>
                     {outgoing.map((r) => (
                         <li key={r.id}>
-                            <span className="rel-type">{r.relationType}</span>
-                            <span className="rel-arrow">→</span>
-                            <code className="hcode">{hypById.get(r.toHypothesisId)?.code}</code>
-                            <span className="htext">{hypById.get(r.toHypothesisId)?.text}</span>
-                            <button className="chip-x" onClick={() => onRemoveRelation(r.toHypothesisId, r.relationType, false)}>
+                            <span className={styles.relType}>{r.relationType}</span>
+                            <span className={styles.relArrow}>→</span>
+                            <code className={styles.code}>{hypById.get(r.toHypothesisId)?.code}</code>
+                            <span className={styles.text}>{hypById.get(r.toHypothesisId)?.text}</span>
+                            <button
+                                className={styles.chipClose}
+                                onClick={() => onRemoveRelation(r.toHypothesisId, r.relationType, false)}
+                            >
                                 ×
                             </button>
                         </li>
                     ))}
                     {incoming.map((r) => (
-                        <li key={r.id} className="rel-in">
-                            <code className="hcode">{hypById.get(r.fromHypothesisId)?.code}</code>
-                            <span className="htext">{hypById.get(r.fromHypothesisId)?.text}</span>
-                            <span className="rel-arrow">→</span>
-                            <span className="rel-type">{r.relationType}</span>
-                            <button className="chip-x" onClick={() => onRemoveRelation(r.fromHypothesisId, r.relationType, true)}>
+                        <li key={r.id} className={styles.incoming}>
+                            <code className={styles.code}>{hypById.get(r.fromHypothesisId)?.code}</code>
+                            <span className={styles.text}>{hypById.get(r.fromHypothesisId)?.text}</span>
+                            <span className={styles.relArrow}>→</span>
+                            <span className={styles.relType}>{r.relationType}</span>
+                            <button
+                                className={styles.chipClose}
+                                onClick={() => onRemoveRelation(r.fromHypothesisId, r.relationType, true)}
+                            >
                                 ×
                             </button>
                         </li>
                     ))}
                     {outgoing.length === 0 && incoming.length === 0 && (
-                        <li className="muted sm">관계 없음</li>
+                        <li className={cx(styles.muted, styles.sm)}>관계 없음</li>
                     )}
                 </ul>
 
-                <div className="ed-row rel-add">
-                    <span className="hcode">{hyp.code}</span>
+                <div className={cx(styles.row, styles.relAdd)}>
+                    <span className={styles.code}>{hyp.code}</span>
                     <select value={relType} onChange={(e) => setRelType(e.target.value)}>
                         {KNOWN_RELATION_TYPES.map((t) => (
                             <option key={t} value={t}>
@@ -247,7 +264,7 @@ function HypothesisEditor({
                         ))}
                     </select>
                     <button
-                        className="primary"
+                        className={styles.primary}
                         disabled={!relTarget}
                         onClick={() => {
                             if (relTarget) {
