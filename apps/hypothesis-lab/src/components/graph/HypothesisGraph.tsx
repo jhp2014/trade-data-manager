@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import ReactFlow, {
     Background,
     Controls,
     MarkerType,
+    useNodesState,
     type Edge,
-    type Node,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { buildGraphLayout } from "@/services/graphLayout";
@@ -48,13 +48,27 @@ export function HypothesisGraph({
 }) {
     const selectedHypothesisId = useSelection((s) => s.selectedHypothesisId);
     const selectHypothesis = useSelection((s) => s.selectHypothesis);
+    const [nodes, setNodes, onNodesChange] = useNodesState<HypNodeData>([]);
 
+    // 가설/관계 "집합"이 바뀔 때만 dagre 재배치(드래그 보존을 위해 위치 리셋을 최소화).
+    const structureKey = useMemo(
+        () =>
+            snapshot
+                ? snapshot.hypotheses.map((h) => h.id).join(",") +
+                  "|" +
+                  snapshot.hypothesisRelations.map((r) => r.id).join(",")
+                : "",
+        [snapshot],
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const layout = useMemo(
         () =>
             snapshot
                 ? buildGraphLayout(snapshot.hypotheses, snapshot.hypothesisRelations)
                 : { nodes: [], edges: [] },
-        [snapshot],
+        // 구조 키가 같으면 레이아웃을 재계산하지 않는다.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [structureKey],
     );
 
     const tagsByHyp = useMemo(() => {
@@ -72,26 +86,47 @@ export function HypothesisGraph({
 
     const highlight = useMemo(() => new Set(highlightHypothesisIds), [highlightHypothesisIds]);
 
-    const nodes: Node<HypNodeData>[] = useMemo(() => {
-        if (!snapshot) return [];
+    function dataFor(id: string, h: { code: string; text: string; status: string }): HypNodeData {
+        return {
+            code: h.code,
+            text: h.text,
+            status: h.status,
+            tags: tagsByHyp.get(id) ?? [],
+            selected: id === selectedHypothesisId,
+            highlight: highlight.has(id),
+        };
+    }
+
+    // 구조 변화 → dagre 위치로 (재)배치.
+    useEffect(() => {
+        if (!snapshot) {
+            setNodes([]);
+            return;
+        }
         const hById = new Map(snapshot.hypotheses.map((h) => [h.id, h]));
-        return layout.nodes.map((n) => {
-            const h = hById.get(n.id)!;
-            return {
+        setNodes(
+            layout.nodes.map((n) => ({
                 id: n.id,
                 type: "hyp",
                 position: { x: n.x, y: n.y },
-                data: {
-                    code: h.code,
-                    text: h.text,
-                    status: h.status,
-                    tags: tagsByHyp.get(n.id) ?? [],
-                    selected: n.id === selectedHypothesisId,
-                    highlight: highlight.has(n.id),
-                },
-            };
-        });
-    }, [snapshot, layout, tagsByHyp, selectedHypothesisId, highlight]);
+                data: dataFor(n.id, hById.get(n.id)!),
+            })),
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [layout]);
+
+    // 선택/강조/내용 변화 → 위치는 유지하고 data 만 갱신(드래그한 위치 보존).
+    useEffect(() => {
+        if (!snapshot) return;
+        const hById = new Map(snapshot.hypotheses.map((h) => [h.id, h]));
+        setNodes((prev) =>
+            prev.map((n) => {
+                const h = hById.get(n.id);
+                return h ? { ...n, data: dataFor(n.id, h) } : n;
+            }),
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedHypothesisId, highlight, tagsByHyp, snapshot]);
 
     const edges: Edge[] = useMemo(
         () =>
@@ -124,11 +159,11 @@ export function HypothesisGraph({
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
+                onNodesChange={onNodesChange}
                 nodeTypes={nodeTypes}
                 fitView
                 fitViewOptions={{ padding: 0.18, maxZoom: 1.25 }}
                 minZoom={0.2}
-                nodesDraggable={false}
                 nodesConnectable={false}
                 onNodeClick={(_, n) => selectHypothesis(n.id)}
                 onPaneClick={() => selectHypothesis(null)}
