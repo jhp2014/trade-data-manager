@@ -38,6 +38,29 @@ describe("buildGraphLayout", () => {
         expect(byId.get("P")!.y).toBeLessThan(byId.get("C")!.y);
     });
 
+    it("관계 없는(고립) 노드는 본 그래프 오른쪽에 한 열로 모은다", () => {
+        const { nodes } = buildGraphLayout(
+            [hyp("A"), hyp("B"), hyp("X"), hyp("Y")],
+            [rel("r1", "A", "better_than", "B")],
+        );
+        const byId = new Map(nodes.map((n) => [n.id, n]));
+        const relatedMaxX = Math.max(byId.get("A")!.x, byId.get("B")!.x);
+        // 고립 노드(X, Y)는 관계 노드보다 오른쪽.
+        expect(byId.get("X")!.x).toBeGreaterThan(relatedMaxX);
+        expect(byId.get("Y")!.x).toBeGreaterThan(relatedMaxX);
+        // 같은 열(x 동일) + 세로로 다른 위치.
+        expect(byId.get("X")!.x).toBe(byId.get("Y")!.x);
+        expect(byId.get("X")!.y).not.toBe(byId.get("Y")!.y);
+    });
+
+    it("모두 고립이면 한 열로 좌상단에 쌓는다", () => {
+        const { nodes } = buildGraphLayout([hyp("A"), hyp("B")], []);
+        const byId = new Map(nodes.map((n) => [n.id, n]));
+        expect(byId.get("A")!.x).toBe(byId.get("B")!.x);
+        expect(byId.get("A")!.y).not.toBe(byId.get("B")!.y);
+        expect(nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
+    });
+
     it("비방향 관계(similar_to)는 간선으로만 — 노드 위치 랭킹에 영향 없음", () => {
         const { nodes, edges } = buildGraphLayout(
             [hyp("A"), hyp("B")],

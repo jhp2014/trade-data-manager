@@ -188,17 +188,6 @@ export function Workbench() {
                 </div>
                 <div className={styles.graph}>
                     <FilterBar />
-                    {selectedCase && (
-                        <div className={styles.caseBadge}>
-                            <span className={styles.caseBadgeName}>
-                                {selectedCase.stockName ?? selectedCase.stockCode}
-                            </span>
-                            {selectedCase.stockName && (
-                                <span className={styles.caseBadgeCode}>{selectedCase.stockCode}</span>
-                            )}
-                            <span className={styles.caseBadgeDate}>{selectedCase.tradeDate}</span>
-                        </div>
-                    )}
                     <HypothesisGraph
                         snapshot={snapshot.data ?? null}
                         highlightHypothesisIds={linkedToSelectedCase}

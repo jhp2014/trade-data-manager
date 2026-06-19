@@ -58,12 +58,18 @@ export function CaseRail({
         };
     }, []);
 
-    // 선택된 케이스(키보드 a/d 포함)가 보이도록 스크롤.
+    // 선택된 케이스(키보드 a/d 포함)를 레일 중앙으로 스크롤.
+    // sticky 변형에 영향받지 않도록 offsetLeft(자연 위치) 기준으로 직접 계산한다.
     useEffect(() => {
         const el = scrollRef.current;
         if (!el || !selectedCaseId) return;
         const card = el.querySelector<HTMLElement>(`[data-case-id="${CSS.escape(selectedCaseId)}"]`);
-        card?.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+        if (!card) return;
+        const target = card.offsetLeft - (el.clientWidth - card.offsetWidth) / 2;
+        const max = el.scrollWidth - el.clientWidth;
+        // 진행 중인 휠 이징 목표도 함께 맞춰 충돌을 막는다.
+        targetRef.current = Math.max(0, Math.min(max, target));
+        el.scrollTo({ left: targetRef.current, behavior: "smooth" });
     }, [selectedCaseId]);
 
     return (
