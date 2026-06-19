@@ -19,15 +19,16 @@ const nodeTypes = { hyp: HypNode };
 
 function edgeStyle(relationType: string): {
     style: React.CSSProperties;
-    markerEnd?: { type: MarkerType; color: string };
+    // 방향성 관계는 화살촉을 source(=from: 더 좋음/부모) 쪽에 둬서 "더 좋은 상황/부모를 가리키게" 한다.
+    markerStart?: { type: MarkerType; color: string };
 } {
     switch (relationType) {
         case "better_than":
-            return { style: { stroke: "#5b6cff" }, markerEnd: { type: MarkerType.ArrowClosed, color: "#5b6cff" } };
+            return { style: { stroke: "#5b6cff" }, markerStart: { type: MarkerType.ArrowClosed, color: "#5b6cff" } };
         case "parent_of":
             return {
                 style: { stroke: "#c1559b", strokeDasharray: "6 3" },
-                markerEnd: { type: MarkerType.ArrowClosed, color: "#c1559b" },
+                markerStart: { type: MarkerType.ArrowClosed, color: "#c1559b" },
             };
         case "similar_to":
             return { style: { stroke: "#9aa0ad", strokeDasharray: "3 4" } };
@@ -156,7 +157,7 @@ export function HypothesisGraph({
                     source: e.source,
                     target: e.target,
                     type: "default",
-                    markerEnd: s.markerEnd,
+                    markerStart: s.markerStart,
                     style: {
                         ...s.style,
                         strokeWidth: touches ? 2.4 : 1.4,
