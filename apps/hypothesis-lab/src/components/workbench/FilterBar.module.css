@@ -1,0 +1,77 @@
+.bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 14px 0;
+}
+.toggle {
+    display: inline-flex;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    overflow: hidden;
+    background: var(--bg-elev);
+}
+.tab {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 550;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+.tab:not(:last-child) {
+    border-right: 1px solid var(--border);
+}
+.tabActive {
+    color: var(--bg);
+    background: var(--accent);
+}
+.exprWrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+.expr {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+.expr:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.exprError {
+    border-color: var(--danger, #d44);
+}
+.feedback {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-shrink: 0;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.hint {
+    color: var(--muted);
+}
+.err {
+    color: var(--danger, #d44);
+}
+.count {
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.unknown {
+    color: var(--warning, #c80);
+}
