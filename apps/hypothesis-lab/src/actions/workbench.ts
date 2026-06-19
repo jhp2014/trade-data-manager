@@ -7,7 +7,7 @@ import {
     createWorkingSetSource,
     type WorkingSetMode,
 } from "@/repositories/workingSetSources";
-import { readSheetValues } from "@/lib/sheet";
+import { readSheetTabs, readSheetValues } from "@/lib/sheet";
 import { buildWorkingSet, type WorkingSetCase } from "@/services/workingSet";
 import type { HypothesisSnapshot } from "@/domain/types";
 
@@ -27,6 +27,20 @@ function sheetDep() {
 /** 가설/태그/관계/링크 + 경고 전체 스냅샷. */
 export async function loadSnapshotAction(): Promise<HypothesisSnapshot> {
     return repo().loadSnapshot();
+}
+
+/**
+ * 연결된 시트(env GOOGLE_SHEETS_ID)의 탭 title 목록.
+ * 시트 ID·자격증명이 없거나 조회 실패면 빈 배열(설정 모달에서 "탭 없음" 표시).
+ */
+export async function listSheetTabsAction(): Promise<string[]> {
+    const spreadsheetId = process.env.GOOGLE_SHEETS_ID?.trim();
+    if (!spreadsheetId) return [];
+    try {
+        return await readSheetTabs(spreadsheetId);
+    } catch {
+        return [];
+    }
 }
 
 /** 모드별 워킹셋(후보 caseId + review 값 + 스냅샷 링크상태). */

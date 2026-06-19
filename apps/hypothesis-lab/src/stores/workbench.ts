@@ -1,5 +1,13 @@
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { WorkingSetMode } from "@/repositories/workingSetSources";
+
+// 브라우저에서만 localStorage 사용. SSR·테스트(node)에선 no-op 으로 경고 회피.
+const noopStorage = {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+};
 
 /** 오늘 기준 YYYY-MM. */
 export function currentMonth(): string {
@@ -63,7 +71,9 @@ type WorkbenchState = {
     closeSavedFilter: () => void;
 };
 
-export const useWorkbench = create<WorkbenchState>((set) => ({
+export const useWorkbench = create<WorkbenchState>()(
+    persist(
+        (set) => ({
     filterMode: "workingset",
     mode: { kind: "review-month", month: currentMonth() },
     expr: "",
@@ -96,4 +106,14 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     closeSettings: () => set({ settingsOpen: false }),
     openSavedFilter: (kind) => set({ savedFilterModal: kind }),
     closeSavedFilter: () => set({ savedFilterModal: null }),
-}));
+        }),
+        {
+            name: "hypothesis-lab-workbench",
+            storage: createJSONStorage(() =>
+                typeof window !== "undefined" ? window.localStorage : noopStorage,
+            ),
+            // 레일 채우기 방식·작업셋 모드만 유지. 식·모달 상태는 새로고침 시 초기화.
+            partialize: (s) => ({ filterMode: s.filterMode, mode: s.mode }),
+        },
+    ),
+);

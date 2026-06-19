@@ -106,4 +106,26 @@ describe("createWorkingSetSource", () => {
         );
         expect(await src.listCaseIds()).toEqual(["055550-2026-06-05-0911"]);
     });
+
+    it("sheet 모드 — 사용자가 고른 탭으로 시트를 읽는다", async () => {
+        const readCalls: string[] = [];
+        const src = createWorkingSetSource(
+            { kind: "sheet", tab: "watch" },
+            baseDeps({
+                sheet: {
+                    config: { spreadsheetId: "s", tab: "default" },
+                    read: async (_spreadsheetId, tab) => {
+                        readCalls.push(tab);
+                        return [
+                            ["stockCode", "tradeDate"],
+                            ["055550", "2026-06-05"],
+                        ];
+                    },
+                },
+            }),
+        );
+
+        expect(await src.listCaseIds()).toEqual(["055550-2026-06-05"]);
+        expect(readCalls).toEqual(["watch"]);
+    });
 });
