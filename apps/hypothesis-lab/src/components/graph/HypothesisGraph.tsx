@@ -17,8 +17,6 @@ import styles from "./HypothesisGraph.module.css";
 
 const nodeTypes = { hyp: HypNode };
 
-const TAG_PALETTE = ["#5b6cff", "#2fb37a", "#e0883a", "#c1559b", "#3aa6c1", "#d9534f", "#8a7dff"];
-
 function edgeStyle(relationType: string): {
     style: React.CSSProperties;
     markerEnd?: { type: MarkerType; color: string };
@@ -73,26 +71,35 @@ export function HypothesisGraph({
     );
 
     const tagsByHyp = useMemo(() => {
-        const m = new Map<string, { name: string; color: string }[]>();
+        const m = new Map<string, string[]>();
         if (!snapshot) return m;
-        const colorOf = new Map(snapshot.tags.map((t, i) => [t.id, TAG_PALETTE[i % TAG_PALETTE.length]]));
         const nameOf = new Map(snapshot.tags.map((t) => [t.id, t.name]));
         for (const ht of snapshot.hypothesisTags) {
             const arr = m.get(ht.hypothesisId) ?? [];
-            arr.push({ name: nameOf.get(ht.tagId) ?? "", color: colorOf.get(ht.tagId) ?? "#999" });
+            arr.push(nameOf.get(ht.tagId) ?? "");
             m.set(ht.hypothesisId, arr);
+        }
+        return m;
+    }, [snapshot]);
+
+    const caseCountByHyp = useMemo(() => {
+        const m = new Map<string, number>();
+        if (!snapshot) return m;
+        for (const hc of snapshot.hypothesisCases) {
+            m.set(hc.hypothesisId, (m.get(hc.hypothesisId) ?? 0) + 1);
         }
         return m;
     }, [snapshot]);
 
     const highlight = useMemo(() => new Set(highlightHypothesisIds), [highlightHypothesisIds]);
 
-    function dataFor(id: string, h: { code: string; text: string; status: string }): HypNodeData {
+    function dataFor(id: string, h: { code: string; text: string }): HypNodeData {
         return {
             code: h.code,
             text: h.text,
-            status: h.status,
             tags: tagsByHyp.get(id) ?? [],
+            linkedCaseCount: caseCountByHyp.get(id) ?? 0,
+            linkedToCase: highlight.has(id),
             selected: id === selectedHypothesisId,
             highlight: highlight.has(id),
         };
