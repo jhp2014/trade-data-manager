@@ -26,8 +26,11 @@
     height: 13px;
     margin: 0;
     accent-color: var(--linked);
-    pointer-events: none;
+    cursor: pointer;
     flex-shrink: 0;
+}
+.check:disabled {
+    cursor: not-allowed;
 }
 .code {
     font-family: ui-monospace, Menlo, monospace;

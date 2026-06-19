@@ -79,13 +79,37 @@
 .selected.linked {
     background: var(--accent-weak);
 }
-.check {
+.left {
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding-top: 1px;
+}
+.check {
     width: 15px;
     height: 15px;
-    margin-top: 2px;
+    margin: 0;
     accent-color: var(--linked);
     cursor: pointer;
+}
+.del {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 2px;
+    border-radius: 6px;
+    line-height: 0;
+    opacity: 0;
+    transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.row:hover .del {
+    opacity: 1;
+}
+.del:hover {
+    color: #d9534f;
+    background: var(--chip);
 }
 .main {
     flex: 1;

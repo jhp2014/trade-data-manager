@@ -1,0 +1,240 @@
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 11vh;
+    z-index: 60;
+    animation: fade 0.12s ease;
+}
+.modal {
+    width: 520px;
+    max-width: calc(100vw - 32px);
+    max-height: 78vh;
+    overflow: auto;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    animation: pop 0.14s ease;
+}
+@keyframes fade {
+    from {
+        opacity: 0;
+    }
+}
+@keyframes pop {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.99);
+    }
+}
+.loading {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+}
+
+.head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px 18px;
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border);
+}
+.title {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    min-width: 0;
+}
+.titleText {
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.4;
+}
+.code {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+.x {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 22px;
+    line-height: 1;
+    padding: 0 4px;
+    flex-shrink: 0;
+}
+.x:hover {
+    color: var(--text);
+}
+
+.section {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+}
+.section:last-child {
+    border-bottom: 0;
+}
+.section h3 {
+    margin: 0 0 11px;
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--accent-weak);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 3px 6px 3px 11px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.chipX {
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font-size: 15px;
+    line-height: 1;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    opacity: 0.7;
+}
+.chipX:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.08);
+}
+.empty {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.input,
+.select {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 7px 10px;
+}
+.input {
+    width: 100%;
+}
+.input:focus,
+.select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.relations {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.relRow {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 9px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+}
+.relIn {
+    background: var(--chip);
+}
+.relSelf {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+.relType {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-weak);
+    border-radius: 6px;
+    padding: 1px 7px;
+    flex-shrink: 0;
+}
+.relArrow {
+    color: var(--muted);
+    flex-shrink: 0;
+}
+.relText {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+.relX {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+.relX:hover {
+    color: #d9534f;
+}
+
+.relAdd {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.relAdd .select {
+    min-width: 0;
+}
+.relAdd .select:last-of-type {
+    flex: 1;
+}
+.addBtn {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.addBtn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}

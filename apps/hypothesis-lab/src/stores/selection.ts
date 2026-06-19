@@ -7,13 +7,20 @@ import { create } from "zustand";
 type SelectionState = {
     selectedCaseId: string | null;
     selectedHypothesisId: string | null;
+    /** 가설 설정(태그·관계) 모달 대상. null 이면 닫힘. */
+    modalHypothesisId: string | null;
     selectCase: (caseId: string | null) => void;
     selectHypothesis: (hypothesisId: string | null) => void;
+    openHypothesisModal: (hypothesisId: string) => void;
+    closeHypothesisModal: () => void;
 };
 
 export const useSelection = create<SelectionState>((set) => ({
     selectedCaseId: null,
     selectedHypothesisId: null,
+    modalHypothesisId: null,
     selectCase: (caseId) => set({ selectedCaseId: caseId }),
     selectHypothesis: (hypothesisId) => set({ selectedHypothesisId: hypothesisId }),
+    openHypothesisModal: (hypothesisId) => set({ modalHypothesisId: hypothesisId }),
+    closeHypothesisModal: () => set({ modalHypothesisId: null }),
 }));
