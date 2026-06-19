@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     createHypothesisAction,
     linkCaseAction,
+    unlinkCaseAction,
     type CaseSnapshotInput,
 } from "@/actions/workbench";
 import type { HypothesisSnapshot } from "@/domain/types";
@@ -38,34 +39,48 @@ export function HypothesisPanel({
         queryClient.invalidateQueries({ queryKey: ["workingSet"] });
     }
 
+    // mutationFn 은 변수 1개만 넘기도록 화살표로 감싼다. 서버 액션을 직접 넘기면
+    // React Query 가 추가 인자를 전달해 "Only plain objects..." 직렬화 에러가 난다.
     const linkMut = useMutation({
-        mutationFn: linkCaseAction,
+        mutationFn: (v: { hypothesisId: string; case: CaseSnapshotInput }) => linkCaseAction(v),
+        onSuccess: refresh,
+    });
+    const unlinkMut = useMutation({
+        mutationFn: (v: { hypothesisId: string; caseId: string }) => unlinkCaseAction(v),
         onSuccess: refresh,
     });
     const createMut = useMutation({
-        mutationFn: createHypothesisAction,
-        onSuccess: refresh,
+        mutationFn: (v: { text: string; case?: CaseSnapshotInput }) => createHypothesisAction(v),
+        onSuccess: () => {
+            refresh();
+            setText("");
+        },
     });
 
     if (!snapshot) return <p className="muted pad">불러오는 중…</p>;
 
-    const linkedHere = selectedCase
-        ? snapshot.hypothesisCases.filter((hc) => hc.caseId === selectedCase.caseId)
-        : [];
-    const linkedIds = new Set(linkedHere.map((hc) => hc.hypothesisId));
-    const hypById = new Map(snapshot.hypotheses.map((h) => [h.id, h]));
+    const linkedIds = new Set(
+        selectedCase
+            ? snapshot.hypothesisCases.filter((hc) => hc.caseId === selectedCase.caseId).map((hc) => hc.hypothesisId)
+            : [],
+    );
 
-    function link(hypothesisId: string) {
+    // 현재 케이스에 연결된 가설을 위로 모아 UI 로 구분.
+    const ordered = selectedCase
+        ? [...snapshot.hypotheses].sort(
+              (a, b) => Number(linkedIds.has(b.id)) - Number(linkedIds.has(a.id)),
+          )
+        : snapshot.hypotheses;
+
+    function toggleLink(hypothesisId: string, checked: boolean) {
         if (!selectedCase) return;
-        linkMut.mutate({ hypothesisId, case: toCaseInput(selectedCase) });
+        if (checked) linkMut.mutate({ hypothesisId, case: toCaseInput(selectedCase) });
+        else unlinkMut.mutate({ hypothesisId, caseId: selectedCase.caseId });
     }
     function addHypothesis() {
         const trimmed = text.trim();
         if (!trimmed) return;
-        createMut.mutate(
-            { text: trimmed, case: selectedCase ? toCaseInput(selectedCase) : undefined },
-            { onSuccess: () => setText("") },
-        );
+        createMut.mutate({ text: trimmed, case: selectedCase ? toCaseInput(selectedCase) : undefined });
     }
 
     return (
@@ -73,66 +88,39 @@ export function HypothesisPanel({
             <header className="col-head">
                 <h2>가설</h2>
                 <span className="muted sm">
-                    {selectedCase ? `선택: ${selectedCase.stockName ?? selectedCase.stockCode}` : "케이스 미선택"}
+                    {selectedCase
+                        ? `${selectedCase.stockName ?? selectedCase.stockCode} · ${linkedIds.size}개 연결`
+                        : "케이스 미선택"}
                 </span>
             </header>
 
-            <div className="hyp-section">
-                <h3>이 케이스의 가설</h3>
-                {!selectedCase && <p className="muted sm">왼쪽에서 케이스를 선택하세요.</p>}
-                {selectedCase && linkedHere.length === 0 && (
-                    <p className="muted sm">아직 연결된 가설이 없습니다.</p>
-                )}
-                <ul className="linked">
-                    {linkedHere.map((hc) => {
-                        const h = hypById.get(hc.hypothesisId);
-                        return (
-                            <li key={hc.id}>
-                                <code className="hcode">{h?.code}</code>
-                                <span className="htext">{h?.text}</span>
-                                {hc.outcome && <span className={`outcome o-${hc.outcome}`}>{hc.outcome}</span>}
-                            </li>
-                        );
-                    })}
-                </ul>
-            </div>
-
-            <div className="hyp-section grow">
-                <h3>전체 가설</h3>
-                <ul className="all-hyps">
-                    {snapshot.hypotheses.map((h) => {
-                        const already = linkedIds.has(h.id);
-                        return (
-                            <li
-                                key={h.id}
-                                className={`hyp-row${h.id === selectedHypothesisId ? " is-selected" : ""}`}
-                                onClick={() => selectHypothesis(h.id)}
-                            >
-                                <code className="hcode">{h.code}</code>
-                                <span className={`status s-${h.status}`}>{h.status}</span>
-                                <span className="htext">{h.text}</span>
-                                {selectedCase &&
-                                    (already ? (
-                                        <span className="linked-check" title="이미 연결됨">
-                                            ✓
-                                        </span>
-                                    ) : (
-                                        <button
-                                            className="link-btn"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                link(h.id);
-                                            }}
-                                            disabled={linkMut.isPending}
-                                        >
-                                            연결
-                                        </button>
-                                    ))}
-                            </li>
-                        );
-                    })}
-                </ul>
-            </div>
+            <ul className="all-hyps grow">
+                {ordered.map((h) => {
+                    const linked = linkedIds.has(h.id);
+                    return (
+                        <li
+                            key={h.id}
+                            className={`hyp-row${h.id === selectedHypothesisId ? " is-selected" : ""}${
+                                linked ? " is-linked" : ""
+                            }`}
+                            onClick={() => selectHypothesis(h.id)}
+                        >
+                            <input
+                                type="checkbox"
+                                className="hyp-check"
+                                checked={linked}
+                                disabled={!selectedCase || linkMut.isPending || unlinkMut.isPending}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => toggleLink(h.id, e.target.checked)}
+                                title={selectedCase ? "현재 케이스에 연결/해제" : "케이스를 먼저 선택"}
+                            />
+                            <code className="hcode">{h.code}</code>
+                            <span className={`status s-${h.status}`}>{h.status}</span>
+                            <span className="htext">{h.text}</span>
+                        </li>
+                    );
+                })}
+            </ul>
 
             <div className="hyp-new">
                 <input
