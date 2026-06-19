@@ -53,7 +53,7 @@ const DEFAULT_RECENT_LIMIT = 500;
 
 /** view 에서 고를 수 있는 워킹셋 모드. */
 export type WorkingSetMode =
-    | { kind: "sheet" }
+    | { kind: "sheet"; tab?: string }
     | { kind: "review-recent"; limit?: number }
     | { kind: "review-month"; month: string }
     | { kind: "snapshot" };
@@ -80,7 +80,11 @@ export function createWorkingSetSource(
                 DEFAULT_RECENT_LIMIT,
             );
             if (!deps.sheet) return recent;
-            const sheet = new SheetWorkingSetSource(deps.sheet.config, deps.sheet.read);
+            // mode.tab 가 있으면 env 기본 탭 대신 사용자가 고른 탭으로 읽는다.
+            const config = mode.tab
+                ? { ...deps.sheet.config, tab: mode.tab }
+                : deps.sheet.config;
+            const sheet = new SheetWorkingSetSource(config, deps.sheet.read);
             return new FallbackWorkingSetSource([sheet, recent]);
         }
         case "review-recent":

@@ -94,3 +94,34 @@
     margin: 0;
     line-height: 1.6;
 }
+.tabList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 9px;
+}
+.tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    cursor: pointer;
+}
+.tab:hover {
+    border-color: var(--accent);
+}
+.tabOn {
+    border-color: var(--accent);
+    background: var(--accent-weak);
+    font-weight: 600;
+}
+.tabBadge {
+    font-size: 10px;
+    color: var(--accent);
+}
