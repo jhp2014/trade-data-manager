@@ -10,6 +10,8 @@
     gap: 8px;
     flex: 1;
     min-width: 0;
+    /* 검색 결과가 없어도 카드 한 줄 높이를 유지해 레이아웃이 출렁이지 않게. */
+    min-height: 56px;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -32,7 +34,9 @@
     display: none;
 }
 .muted {
-    color: var(--muted);
+    flex: 1;
     align-self: center;
+    text-align: center;
+    color: var(--muted);
     font-size: 12px;
 }

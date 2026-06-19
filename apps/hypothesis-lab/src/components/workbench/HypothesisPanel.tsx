@@ -13,6 +13,7 @@ import type { Hypothesis, HypothesisSnapshot } from "@/domain/types";
 import type { WorkingSetCase } from "@/services/workingSet";
 import { collectRefs, type HypExpr } from "@/services/hypExpr";
 import { useSelection } from "@/stores/selection";
+import { useWorkbench } from "@/stores/workbench";
 import styles from "./HypothesisPanel.module.css";
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -61,6 +62,7 @@ export function HypothesisPanel({
     const selectedHypothesisId = useSelection((s) => s.selectedHypothesisId);
     const selectHypothesis = useSelection((s) => s.selectHypothesis);
     const openHypothesisModal = useSelection((s) => s.openHypothesisModal);
+    const appendOrCycleRef = useWorkbench((s) => s.appendOrCycleRef);
     const [text, setText] = useState("");
 
     function refresh() {
@@ -145,6 +147,10 @@ export function HypothesisPanel({
                 )}
                 onClick={() => selectHypothesis(h.id)}
                 onDoubleClick={() => openHypothesisModal(h.id)}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    appendOrCycleRef(h.code);
+                }}
             >
                 <div className={styles.left}>
                     <input

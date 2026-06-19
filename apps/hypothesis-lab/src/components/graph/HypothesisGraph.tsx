@@ -12,6 +12,7 @@ import "reactflow/dist/style.css";
 import { buildGraphLayout } from "@/services/graphLayout";
 import type { HypothesisSnapshot } from "@/domain/types";
 import { useSelection } from "@/stores/selection";
+import { useWorkbench } from "@/stores/workbench";
 import { HypNode, type HypNodeData } from "./HypNode";
 import styles from "./HypothesisGraph.module.css";
 
@@ -53,6 +54,7 @@ export function HypothesisGraph({
     const selectedHypothesisId = useSelection((s) => s.selectedHypothesisId);
     const selectHypothesis = useSelection((s) => s.selectHypothesis);
     const openHypothesisModal = useSelection((s) => s.openHypothesisModal);
+    const appendOrCycleRef = useWorkbench((s) => s.appendOrCycleRef);
     const [nodes, setNodes, onNodesChange] = useNodesState<HypNodeData>([]);
 
     // 가설/관계 "집합"이 바뀔 때만 dagre 재배치(드래그 보존을 위해 위치 리셋을 최소화).
@@ -184,6 +186,10 @@ export function HypothesisGraph({
                 nodesConnectable={false}
                 onNodeClick={(_, n) => selectHypothesis(n.id)}
                 onNodeDoubleClick={(_, n) => openHypothesisModal(n.id)}
+                onNodeContextMenu={(e, n) => {
+                    e.preventDefault();
+                    appendOrCycleRef((n.data as HypNodeData).code);
+                }}
                 onPaneClick={() => selectHypothesis(null)}
                 proOptions={{ hideAttribution: true }}
             >

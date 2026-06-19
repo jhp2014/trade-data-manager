@@ -13,6 +13,31 @@ export function currentMonth(): string {
  */
 export type FilterMode = "workingset" | "boolean";
 
+/** 직전 우클릭 삽입 토큰. 같은 노드를 연속 우클릭하면 연산자만 순환 교체한다. */
+type LastInsert = {
+    code: string;
+    /** 토큰이 시작되는 위치(이 앞은 보존, 뒤를 교체). */
+    index: number;
+    /** 빈 식에서 시작한 첫 토큰이면 연산자 없는 2단계 순환. */
+    emptyStart: boolean;
+    cycle: number;
+    /** 삽입 직후의 expr. 현재 expr 과 다르면(사용자 편집) 순환을 끊는다. */
+    exprAfter: string;
+};
+
+// 마지막 단계는 "취소"(빈 문자열) — 토큰이 없던 것처럼 사라진다.
+// 빈 식 첫 토큰: (없음) → ! → 취소  3단계.
+// 그 외: & → | → &! → |! → 취소  5단계.
+const CONNECTORS = [" & ", " | ", " & !", " | !"];
+function suffixFor(code: string, emptyStart: boolean, cycle: number): string {
+    if (emptyStart) {
+        const m = ((cycle % 3) + 3) % 3;
+        return m === 0 ? code : m === 1 ? `!${code}` : "";
+    }
+    const m = ((cycle % 5) + 5) % 5;
+    return m < 4 ? CONNECTORS[m] + code : "";
+}
+
 /**
  * 작업대 설정 상태(클라이언트). 레일 채우기 방식·작업셋 모드·식·설정 모달 열림.
  */
@@ -21,11 +46,21 @@ type WorkbenchState = {
     mode: WorkingSetMode;
     expr: string;
     settingsOpen: boolean;
+    /** 저장/불러오기 모달. null 이면 닫힘. */
+    savedFilterModal: "save" | "load" | null;
+    _lastInsert: LastInsert | null;
     setFilterMode: (filterMode: FilterMode) => void;
     setMode: (mode: WorkingSetMode) => void;
     setExpr: (expr: string) => void;
+    /**
+     * 가설 코드를 불리언식에 추가한다(우클릭 편의). 불리언 모드로 전환하고,
+     * 같은 코드를 연속 호출하면 연산자만 순환 교체한다(&→|→&!→|!, 빈 식이면 없음↔!).
+     */
+    appendOrCycleRef: (code: string) => void;
     openSettings: () => void;
     closeSettings: () => void;
+    openSavedFilter: (kind: "save" | "load") => void;
+    closeSavedFilter: () => void;
 };
 
 export const useWorkbench = create<WorkbenchState>((set) => ({
@@ -33,9 +68,32 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     mode: { kind: "review-month", month: currentMonth() },
     expr: "",
     settingsOpen: false,
+    savedFilterModal: null,
+    _lastInsert: null,
     setFilterMode: (filterMode) => set({ filterMode }),
     setMode: (mode) => set({ mode }),
-    setExpr: (expr) => set({ expr }),
+    // 수동 편집은 순환 상태를 무효화한다.
+    setExpr: (expr) => set({ expr, _lastInsert: null }),
+    appendOrCycleRef: (code) =>
+        set((state) => {
+            const cur = state.expr;
+            const last = state._lastInsert;
+            const continuing = !!last && last.code === code && last.exprAfter === cur;
+
+            const emptyStart = continuing ? last!.emptyStart : cur.trim() === "";
+            const index = continuing ? last!.index : emptyStart ? 0 : cur.length;
+            const cycle = continuing ? last!.cycle + 1 : 0;
+            const base = continuing ? cur.slice(0, index) : emptyStart ? "" : cur;
+            const expr = base + suffixFor(code, emptyStart, cycle);
+
+            return {
+                filterMode: "boolean",
+                expr,
+                _lastInsert: { code, index, emptyStart, cycle, exprAfter: expr },
+            };
+        }),
     openSettings: () => set({ settingsOpen: true }),
     closeSettings: () => set({ settingsOpen: false }),
+    openSavedFilter: (kind) => set({ savedFilterModal: kind }),
+    closeSavedFilter: () => set({ savedFilterModal: null }),
 }));
