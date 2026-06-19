@@ -14,7 +14,15 @@
 }
 .card.selected {
     border-color: var(--accent);
-    background: var(--accent-weak);
+    /* sticky 로 다른 카드 위에 겹칠 때 비치지 않도록 불투명 배경(accent-weak 위에 bg-elev). */
+    background:
+        linear-gradient(var(--accent-weak), var(--accent-weak)),
+        var(--bg-elev);
+    /* 스크롤해도 양 끝에서 넘어가지 않고 고정(레일 마스크 14px 안쪽에 맞춤). */
+    position: sticky;
+    left: 14px;
+    right: 14px;
+    z-index: 3;
 }
 .line1 {
     display: flex;

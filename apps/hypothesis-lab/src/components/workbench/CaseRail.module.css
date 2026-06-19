@@ -5,6 +5,7 @@
     min-height: 0;
 }
 .scroll {
+    position: relative;
     display: flex;
     align-items: stretch;
     gap: 8px;

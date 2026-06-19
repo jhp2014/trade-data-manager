@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
     Background,
     Controls,
@@ -10,6 +10,12 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { buildGraphLayout } from "@/services/graphLayout";
+import {
+    clearGraphPositions,
+    loadGraphPositions,
+    saveGraphPositions,
+    type NodePositions,
+} from "@/lib/graphPositions";
 import type { HypothesisSnapshot } from "@/domain/types";
 import { useSelection } from "@/stores/selection";
 import { useWorkbench } from "@/stores/workbench";
@@ -56,6 +62,9 @@ export function HypothesisGraph({
     const openHypothesisModal = useSelection((s) => s.openHypothesisModal);
     const appendOrCycleRef = useWorkbench((s) => s.appendOrCycleRef);
     const [nodes, setNodes, onNodesChange] = useNodesState<HypNodeData>([]);
+    // 저장 버튼 클릭 직후 잠깐 체크 표시.
+    const [justSaved, setJustSaved] = useState(false);
+    const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // 가설/관계 "집합"이 바뀔 때만 dagre 재배치(드래그 보존을 위해 위치 리셋을 최소화).
     const structureKey = useMemo(
@@ -116,23 +125,50 @@ export function HypothesisGraph({
         };
     }
 
-    // 구조 변화 → dagre 위치로 (재)배치.
+    // 구조 변화 → dagre 위치로 (재)배치. 저장된 위치가 있으면 그걸 우선 복원.
     useEffect(() => {
         if (!snapshot) {
             setNodes([]);
             return;
         }
         const hById = new Map(snapshot.hypotheses.map((h) => [h.id, h]));
+        const saved = loadGraphPositions();
         setNodes(
             layout.nodes.map((n) => ({
                 id: n.id,
                 type: "hyp",
-                position: { x: n.x, y: n.y },
+                position: saved[n.id] ?? { x: n.x, y: n.y },
                 data: dataFor(n.id, hById.get(n.id)!),
             })),
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [layout]);
+
+    // 현재 노드 위치를 저장. 다음 로드부터 dagre 기본값 대신 이 위치를 복원한다.
+    const handleSavePositions = useCallback(() => {
+        const pos: NodePositions = {};
+        for (const n of nodes) pos[n.id] = { x: n.position.x, y: n.position.y };
+        saveGraphPositions(pos);
+        setJustSaved(true);
+        if (savedTimer.current) clearTimeout(savedTimer.current);
+        savedTimer.current = setTimeout(() => setJustSaved(false), 1400);
+    }, [nodes]);
+
+    // 저장 위치를 버리고 dagre 기본 배치로 되돌린다.
+    const handleResetPositions = useCallback(() => {
+        clearGraphPositions();
+        const posById = new Map(layout.nodes.map((n) => [n.id, n]));
+        setNodes((prev) =>
+            prev.map((n) => {
+                const l = posById.get(n.id);
+                return l ? { ...n, position: { x: l.x, y: l.y } } : n;
+            }),
+        );
+    }, [layout, setNodes]);
+
+    useEffect(() => () => {
+        if (savedTimer.current) clearTimeout(savedTimer.current);
+    }, []);
 
     // 선택/강조/내용 변화 → 위치는 유지하고 data 만 갱신(드래그한 위치 보존).
     useEffect(() => {
@@ -175,6 +211,38 @@ export function HypothesisGraph({
 
     return (
         <div className={styles.wrap}>
+            <div className={styles.toolbar}>
+                <button
+                    type="button"
+                    className={`${styles.toolBtn} ${justSaved ? styles.toolBtnOk : ""}`}
+                    onClick={handleSavePositions}
+                    title="현재 그래프 위치 저장"
+                    aria-label="현재 그래프 위치 저장"
+                >
+                    {justSaved ? (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                            <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                    ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                            <path d="M17 21v-8H7v8M7 3v5h8" />
+                        </svg>
+                    )}
+                </button>
+                <button
+                    type="button"
+                    className={styles.toolBtn}
+                    onClick={handleResetPositions}
+                    title="노드를 기본 위치로 리셋"
+                    aria-label="노드를 기본 위치로 리셋"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                        <path d="M3 3v5h5" />
+                    </svg>
+                </button>
+            </div>
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
