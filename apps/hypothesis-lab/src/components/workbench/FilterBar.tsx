@@ -109,17 +109,30 @@ export function FilterBar() {
                     )}
                 </span>
             )}
-            <input
-                ref={inputRef}
-                className={cx(styles.expr, error && styles.exprError)}
-                value={expr}
-                onChange={(e) => setExpr(e.target.value)}
-                placeholder="가설 코드를 &(AND) |(OR) !(NOT) 로 조합 · 노드 우클릭으로 추가"
-                spellCheck={false}
-                autoComplete="off"
-                tabIndex={open ? 0 : -1}
-                aria-hidden={!open}
-            />
+            <div className={styles.exprWrap}>
+                <input
+                    ref={inputRef}
+                    className={cx(styles.expr, error && styles.exprError)}
+                    value={expr}
+                    onChange={(e) => setExpr(e.target.value)}
+                    placeholder="가설 코드를 &(AND) |(OR) !(NOT) 로 조합 · 노드 우클릭으로 추가"
+                    spellCheck={false}
+                    autoComplete="off"
+                    tabIndex={open ? 0 : -1}
+                    aria-hidden={!open}
+                />
+                {expr !== "" && (
+                    <button
+                        className={styles.clear}
+                        onClick={() => setExpr("")}
+                        tabIndex={-1}
+                        title="식 지우기"
+                        aria-label="식 지우기"
+                    >
+                        ×
+                    </button>
+                )}
+            </div>
             <button
                 className={styles.iconBtnSm}
                 onClick={() => openSavedFilter("save")}

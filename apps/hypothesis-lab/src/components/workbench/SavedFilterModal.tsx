@@ -5,6 +5,10 @@ import { useSavedFilters } from "@/hooks/useSavedFilters";
 import { useWorkbench } from "@/stores/workbench";
 import styles from "./SavedFilterModal.module.css";
 
+function cx(...classes: Array<string | false | null | undefined>) {
+    return classes.filter(Boolean).join(" ");
+}
+
 /**
  * 불리언 필터 저장/불러오기 모달. 한 컴포넌트가 스토어의 `savedFilterModal`
  * ("save" | "load") 에 따라 두 화면을 렌더한다. 목록은 localStorage(useSavedFilters).
@@ -18,10 +22,18 @@ export function SavedFilterModal() {
     const { filters, save, remove } = useSavedFilters();
 
     const [name, setName] = useState("");
+    // 불러오기 방식: replace=현재 식 교체, append=현재 식 뒤에 부품처럼 이어붙임.
+    const [loadMode, setLoadMode] = useState<"replace" | "append">("replace");
+    // append 시 연결 연산자(none=연산자 없이 값만).
+    const [connector, setConnector] = useState<"none" | "and" | "or">("and");
 
-    // 모달이 열릴 때마다 이름 입력 초기화.
+    // 모달이 열릴 때마다 입력·토글 초기화.
     useEffect(() => {
         if (kind === "save") setName("");
+        if (kind === "load") {
+            setLoadMode("replace");
+            setConnector("and");
+        }
     }, [kind]);
 
     useEffect(() => {
@@ -46,10 +58,21 @@ export function SavedFilterModal() {
         save(trimmed, expr);
         close();
     };
-    const doLoad = (loadExpr: string) => {
+    const applyFilter = (filterExpr: string) => {
         setFilterMode("boolean");
-        setExpr(loadExpr);
-        close();
+        if (loadMode === "replace") {
+            setExpr(filterExpr);
+            close();
+            return;
+        }
+        // append: 항상 괄호로 감싼 "부품"으로 이어붙인다. 현재 식이 비어 있으면
+        // 연산자 없이 부품만, 아니면 선택한 연산자(없음이면 공백)로 연결한다.
+        const base = expr.trim();
+        const part = `(${filterExpr})`;
+        const op = connector === "and" ? "&" : connector === "or" ? "|" : "";
+        const next = base === "" ? part : op ? `${base} ${op} ${part}` : `${base} ${part}`;
+        setExpr(next);
+        // 추가 모드는 여러 부품을 연속으로 조합하도록 모달을 열어둔다.
     };
 
     return (
@@ -98,13 +121,55 @@ export function SavedFilterModal() {
                         </div>
                     </div>
                 ) : (
-                    <ul className={styles.list}>
-                        {filters.map((f) => (
+                    <>
+                        <div className={styles.toolbar}>
+                            <div className={styles.seg} role="group" aria-label="불러오기 방식">
+                                <button
+                                    className={cx(styles.segBtn, loadMode === "replace" && styles.segOn)}
+                                    onClick={() => setLoadMode("replace")}
+                                >
+                                    교체
+                                </button>
+                                <button
+                                    className={cx(styles.segBtn, loadMode === "append" && styles.segOn)}
+                                    onClick={() => setLoadMode("append")}
+                                >
+                                    추가
+                                </button>
+                            </div>
+                            {loadMode === "append" && (
+                                <div className={styles.seg} role="group" aria-label="연결 연산자">
+                                    <button
+                                        className={cx(styles.segBtn, connector === "none" && styles.segOn)}
+                                        onClick={() => setConnector("none")}
+                                        title="연산자 없이 값만"
+                                    >
+                                        없음
+                                    </button>
+                                    <button
+                                        className={cx(styles.segBtn, connector === "and" && styles.segOn)}
+                                        onClick={() => setConnector("and")}
+                                        title="AND 로 연결"
+                                    >
+                                        &
+                                    </button>
+                                    <button
+                                        className={cx(styles.segBtn, connector === "or" && styles.segOn)}
+                                        onClick={() => setConnector("or")}
+                                        title="OR 로 연결"
+                                    >
+                                        |
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        <ul className={styles.list}>
+                            {filters.map((f) => (
                             <li key={f.name} className={styles.row}>
                                 <button
                                     className={styles.rowMain}
-                                    onClick={() => doLoad(f.expr)}
-                                    title="이 필터 불러오기"
+                                    onClick={() => applyFilter(f.expr)}
+                                    title={loadMode === "append" ? "현재 식에 부품으로 추가" : "이 필터로 교체"}
                                 >
                                     <span className={styles.rowName}>{f.name}</span>
                                     <code className={styles.rowExpr}>{f.expr}</code>
@@ -119,10 +184,11 @@ export function SavedFilterModal() {
                                 </button>
                             </li>
                         ))}
-                        {filters.length === 0 && (
-                            <li className={styles.empty}>저장된 필터가 없습니다</li>
-                        )}
-                    </ul>
+                            {filters.length === 0 && (
+                                <li className={styles.empty}>저장된 필터가 없습니다</li>
+                            )}
+                        </ul>
+                    </>
                 )}
             </div>
         </div>
