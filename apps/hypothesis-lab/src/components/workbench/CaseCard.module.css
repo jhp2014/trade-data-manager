@@ -1,0 +1,51 @@
+.card {
+    position: relative;
+    flex-shrink: 0;
+    width: 152px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 11px;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+}
+.card:hover {
+    border-color: var(--border-strong);
+}
+.card.selected {
+    border-color: var(--accent);
+    background: var(--accent-weak);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+.body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding-right: 18px;
+}
+.name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.meta {
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+.copy {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 3px;
+    border-radius: 6px;
+    line-height: 0;
+}
+.copy:hover {
+    color: var(--accent);
+    background: var(--chip);
+}
