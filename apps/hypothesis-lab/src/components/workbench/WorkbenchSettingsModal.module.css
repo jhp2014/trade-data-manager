@@ -5,24 +5,29 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding-top: 12vh;
+    padding: 7vh 16px;
     z-index: 50;
 }
 .modal {
     width: 420px;
     max-width: calc(100vw - 32px);
+    max-height: 86vh;
+    overflow-y: auto;
     background: var(--bg-elev);
     border: 1px solid var(--border);
     border-radius: 14px;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
-    overflow: hidden;
 }
 .head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 14px 16px;
     border-bottom: 1px solid var(--border);
+    background: var(--bg-elev);
 }
 .head h2 {
     margin: 0;
