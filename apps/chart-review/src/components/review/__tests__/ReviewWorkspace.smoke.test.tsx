@@ -81,6 +81,14 @@ function pasteText(text: string) {
   fireEvent(window, ev); // fireEvent 가 act() 로 감싸 React 상태를 flush 한다.
 }
 
+function copyText() {
+  const setData = vi.fn();
+  const ev = new Event("copy", { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, "clipboardData", { value: { setData } });
+  fireEvent(window, ev);
+  return { ev, setData };
+}
+
 function renderWorkspace() {
   return render(
     <ReviewWorkspace
@@ -155,6 +163,15 @@ describe("ReviewWorkspace (smoke)", () => {
     pasteText("000660-2026-05-27-0905"); // SK하이닉스 09:05 타점
     expect(screen.getByText("SK하이닉스")).toBeTruthy();
     expect(screen.getByText("2/2")).toBeTruthy();
+  });
+
+  it("Ctrl+C 복사 이벤트는 현재 타점의 CaseId 를 클립보드에 쓴다", () => {
+    renderWorkspace();
+
+    const { ev, setData } = copyText();
+
+    expect(ev.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith("text/plain", "005930-2026-05-27-0912");
   });
 
   it("CaseId 의 시각과 일치하는 타점이 없으면 첫 타점으로 fallback(크래시 없음)", () => {
