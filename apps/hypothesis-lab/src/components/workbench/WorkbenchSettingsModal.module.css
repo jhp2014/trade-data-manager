@@ -152,3 +152,114 @@
     font-size: 10px;
     color: var(--accent);
 }
+
+/* outcome 종류 관리 */
+.ocList {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.ocRow {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+}
+.ocSwatch {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 5px;
+    background: var(--chip);
+}
+.ocSwatch[data-color="green"] {
+    background: var(--oc-green-fg);
+}
+.ocSwatch[data-color="red"] {
+    background: var(--oc-red-fg);
+}
+.ocSwatch[data-color="gray"] {
+    background: var(--oc-gray-fg);
+}
+.ocSwatch[data-color="amber"] {
+    background: var(--oc-amber-fg);
+}
+.ocLabel {
+    flex: 1;
+    font-weight: 550;
+}
+.ocRemove {
+    flex-shrink: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    padding: 0 4px;
+}
+.ocRemove:hover {
+    color: var(--oc-red-fg);
+}
+.ocAdd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ocInput {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    padding: 5px 9px;
+}
+.ocColors {
+    display: flex;
+    gap: 4px;
+}
+.ocColor {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 2px solid transparent;
+    padding: 0;
+}
+.ocColor[data-color="green"] {
+    background: var(--oc-green-fg);
+}
+.ocColor[data-color="red"] {
+    background: var(--oc-red-fg);
+}
+.ocColor[data-color="gray"] {
+    background: var(--oc-gray-fg);
+}
+.ocColor[data-color="amber"] {
+    background: var(--oc-amber-fg);
+}
+.ocColorOn {
+    border-color: var(--text);
+}
+.ocAddBtn {
+    flex-shrink: 0;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 550;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    padding: 5px 12px;
+}
+.ocAddBtn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.ocAddBtn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}

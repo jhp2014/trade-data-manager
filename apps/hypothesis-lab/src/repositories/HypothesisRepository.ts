@@ -42,8 +42,10 @@ export interface HypothesisRepository {
     // --- cases (snapshot) ---
     /** insert-if-absent. 이미 있으면 아무것도 덮지 않는다. */
     ensureCase(input: CaseInput): Promise<void>;
-    /** 유일한 mutable 필드(stockName) 명시적 갱신. */
+    /** stockName 명시적 갱신. */
     refreshCaseStockName(input: { caseId: string; stockName: string | null }): Promise<void>;
+    /** 케이스 레벨 outcome(트레이드 결과) 설정. null=해제. */
+    setCaseOutcome(input: { caseId: string; outcome: string | null }): Promise<void>;
     /** case 제거(연결도 cascade). */
     removeCase(caseId: string): Promise<void>;
 
@@ -51,7 +53,6 @@ export interface HypothesisRepository {
     upsertCaseLink(input: {
         hypothesisId: string;
         caseId: string;
-        outcome?: string | null;
         note?: string | null;
     }): Promise<void>;
     removeCaseLink(input: { hypothesisId: string; caseId: string }): Promise<void>;

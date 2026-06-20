@@ -11,6 +11,8 @@ export type Case = {
     stockName: string | null;
     tradeDate: string; // YYYY-MM-DD
     tradeTime: string | null; // HH:MM
+    /** 이 트레이드의 실제 결과(가설 무관). 허용값은 domain/outcome 가 고정. null=미설정. */
+    outcome: string | null;
     extra: Record<string, string>;
 };
 
@@ -33,12 +35,11 @@ export type HypothesisTag = {
     tagId: string;
 };
 
-/** 가설 ↔ case 연결 + outcome/note. outcome 은 느슨한 문자열. */
+/** 가설 ↔ case 연결 + note. (트레이드 결과 outcome 은 Case.outcome 으로 이동.) */
 export type HypothesisCase = {
     id: string;
     hypothesisId: string;
     caseId: string;
-    outcome: string | null;
     note: string | null;
     extra: Record<string, string>;
 };

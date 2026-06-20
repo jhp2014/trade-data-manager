@@ -12,6 +12,15 @@
     --linked: #2fb37a;
     --linked-weak: #e7f6ef;
     --chip: #f1f1f5;
+    /* outcome 배지 색(domain/outcome 의 color 키와 1:1). bg/fg 쌍. */
+    --oc-green-bg: #e7f6ef;
+    --oc-green-fg: #1d9d6b;
+    --oc-red-bg: #fdeaea;
+    --oc-red-fg: #d6453f;
+    --oc-gray-bg: #ececf1;
+    --oc-gray-fg: #6b6b75;
+    --oc-amber-bg: #fbf1de;
+    --oc-amber-fg: #bd820f;
     --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
         "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
 }
@@ -29,6 +38,14 @@
         --linked: #46c993;
         --linked-weak: #182a23;
         --chip: #26262d;
+        --oc-green-bg: #182a23;
+        --oc-green-fg: #46c993;
+        --oc-red-bg: #2e1d1d;
+        --oc-red-fg: #e8736d;
+        --oc-gray-bg: #2a2a31;
+        --oc-gray-fg: #9a9aa4;
+        --oc-amber-bg: #2c2519;
+        --oc-amber-fg: #e0a94a;
     }
 }
 

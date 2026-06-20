@@ -95,6 +95,14 @@ export async function unlinkCaseAction(input: {
     await repo().removeCaseLink(input);
 }
 
+/** 케이스 레벨 outcome(트레이드 결과) 설정. null=해제. */
+export async function setCaseOutcomeAction(input: {
+    caseId: string;
+    outcome: string | null;
+}): Promise<void> {
+    await repo().setCaseOutcome(input);
+}
+
 /** 새 가설 생성. case 가 주어지면 곧바로 연결까지. */
 export async function createHypothesisAction(input: {
     text: string;

@@ -59,16 +59,26 @@ const RELATIONS: { from: string; type: string; to: string; note: string | null }
     { from: "H7", type: "conflicts_with", to: "H8", note: "동시 성립 어려움" },
 ];
 
-const LINKS: { h: string; case: string; outcome: string | null; note: string | null }[] = [
-    { h: "H1", case: "MK0001-2026-06-05-0911", outcome: "fail", note: "대금 애매, 반응 약함" },
-    { h: "H6", case: "MK0001-2026-06-05-0911", outcome: "watch", note: null },
-    { h: "H2", case: "MK0002-2026-06-10-0900", outcome: "watch", note: "고점 유지 관찰" },
-    { h: "H4", case: "MK0002-2026-06-10-1320", outcome: "good", note: "갭 후 첫 눌림 지지" },
-    { h: "H3", case: "MK0002-2026-06-10-1320", outcome: "good", note: null },
-    { h: "H3", case: "MK0004-2026-05-28-1005", outcome: "watch", note: null },
-    { h: "H5", case: "MK0005-2026-06-15-0930", outcome: "pass", note: "되돌림 약함" },
-    { h: "H7", case: "MK0002-2026-06-19-0910", outcome: "watch", note: null },
+const LINKS: { h: string; case: string; note: string | null }[] = [
+    { h: "H1", case: "MK0001-2026-06-05-0911", note: "대금 애매, 반응 약함" },
+    { h: "H6", case: "MK0001-2026-06-05-0911", note: null },
+    { h: "H2", case: "MK0002-2026-06-10-0900", note: "고점 유지 관찰" },
+    { h: "H4", case: "MK0002-2026-06-10-1320", note: "갭 후 첫 눌림 지지" },
+    { h: "H3", case: "MK0002-2026-06-10-1320", note: null },
+    { h: "H3", case: "MK0004-2026-05-28-1005", note: null },
+    { h: "H5", case: "MK0005-2026-06-15-0930", note: "되돌림 약함" },
+    { h: "H7", case: "MK0002-2026-06-19-0910", note: null },
 ];
+
+/** 케이스 레벨 outcome(트레이드 결과). domain/outcome 의 value 키 사용. 없으면 미설정(null). */
+const CASE_OUTCOMES: Record<string, string> = {
+    "MK0001-2026-06-05-0911": "loss",
+    "MK0002-2026-06-10-0900": "watch",
+    "MK0002-2026-06-10-1320": "win",
+    "MK0005-2026-06-15-0930": "even",
+    "MK0002-2026-06-19-0910": "watch",
+    // MK0004-2026-05-28-1005 은 의도적으로 미설정(빈 상태 확인용).
+};
 
 type CaseInfo = { caseId: string; stockCode: string; stockName: string; tradeDate: string; tradeTime: string };
 
@@ -143,6 +153,7 @@ async function seedHypothesis(db: Db, caseInfo: Map<string, CaseInfo>): Promise<
             stockName: info.stockName,
             tradeDate: info.tradeDate,
             tradeTime: info.tradeTime,
+            outcome: CASE_OUTCOMES[caseId] ?? null,
         });
     }
 
@@ -150,7 +161,6 @@ async function seedHypothesis(db: Db, caseInfo: Map<string, CaseInfo>): Promise<
         await db.insert(hypothesisCases).values({
             hypothesisId: hypId.get(l.h)!,
             caseId: l.case,
-            outcome: l.outcome,
             note: l.note,
         });
     }
