@@ -1,14 +1,16 @@
 import dagre from "dagre";
+import { DEFAULT_RELATION_TYPES, directionalValues } from "@/domain/relationType";
 import type { Hypothesis, HypothesisRelation } from "@/domain/types";
 
 /**
  * 가설 관계 그래프 레이아웃(결정적, dagre).
- * 방향성 관계(better_than/parent_of)만 랭킹에 써서 상하 레이어를 만든다(위 = 더 좋음/상위).
- * similar_to/conflicts_with 는 위치에 영향 주지 않고 간선으로만 그린다.
+ * 방향성 관계만 랭킹에 써서 상하 레이어를 만든다(위 = from). 어떤 종류가 방향성인지는
+ * relationTypes 스토어가 정하므로 directional 집합을 인자로 받는다(미지정 시 기본 시드).
+ * 무방향 관계는 위치에 영향 주지 않고 간선으로만 그린다.
  */
 const NODE_W = 190;
 const NODE_H = 60;
-const DIRECTED = new Set(["better_than", "parent_of"]);
+const DEFAULT_DIRECTED = directionalValues(DEFAULT_RELATION_TYPES);
 const MARGIN = 24;
 // 관계 없는(고립) 노드를 본 그래프 오른쪽에 한 열로 모을 때의 간격.
 const ISOLATED_GAP = 120;
@@ -22,6 +24,7 @@ export const GRAPH_NODE_SIZE = { width: NODE_W, height: NODE_H };
 export function buildGraphLayout(
     hypotheses: Pick<Hypothesis, "id">[],
     relations: Pick<HypothesisRelation, "id" | "fromHypothesisId" | "toHypothesisId" | "relationType">[],
+    directional: Set<string> = DEFAULT_DIRECTED,
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
     // 어떤 관계에도 등장하지 않는 노드는 "고립"으로 보고 본 그래프에서 빼,
     // dagre 가 빈 랭크에 흩뿌리지 않도록 한다(아래에서 따로 한 열로 모음).
@@ -41,8 +44,8 @@ export function buildGraphLayout(
 
     for (const h of related) g.setNode(h.id, { width: NODE_W, height: NODE_H });
     for (const r of relations) {
-        if (DIRECTED.has(r.relationType) && r.fromHypothesisId !== r.toHypothesisId) {
-            // from(더 좋음/상위)이 위로 가도록 from→to.
+        if (directional.has(r.relationType) && r.fromHypothesisId !== r.toHypothesisId) {
+            // from 이 위로 가도록 from→to.
             g.setEdge(r.fromHypothesisId, r.toHypothesisId);
         }
     }
