@@ -120,18 +120,15 @@ export function CaseRail({
             ) : isEmpty ? (
                 <>
                     <div className={styles.pinned}>
-                        <div className={styles.mockWrap}>
-                            <span className={styles.mockTag}>예시 · mock</span>
-                            <div className={styles.mockCard}>
-                                <CaseCard
-                                    c={MOCK_CASE}
-                                    selected={false}
-                                    linkedCount={2}
-                                    onSelect={noop}
-                                    onSetOutcome={noop}
-                                    onSetNote={noop}
-                                />
-                            </div>
+                        <div className={styles.mockCard}>
+                            <CaseCard
+                                c={MOCK_CASE}
+                                selected={false}
+                                linkedCount={2}
+                                onSelect={noop}
+                                onSetOutcome={noop}
+                                onSetNote={noop}
+                            />
                         </div>
                     </div>
                     <div className={styles.divider} />
