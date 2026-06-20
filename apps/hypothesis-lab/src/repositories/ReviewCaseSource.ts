@@ -19,8 +19,8 @@ export interface ReviewCaseSource {
     enrich(caseIds: string[]): Promise<ReviewCase[]>;
     /** 최근 review point N개(일자·시각 내림차순). */
     listRecent(limit: number): Promise<ReviewCase[]>;
-    /** 특정 월(YYYY-MM)의 review point. */
-    listByMonth(month: string): Promise<ReviewCase[]>;
+    /** 특정 기간([from,to] YYYY-MM-DD, 양끝 포함)의 review point. */
+    listByRange(from: string, to: string): Promise<ReviewCase[]>;
     /** 주어진 caseId 중 review_point(권위)에 실재하지 않는 것(고아 caseId). */
     findOrphans(caseIds: string[]): Promise<string[]>;
 }

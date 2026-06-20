@@ -14,6 +14,22 @@ export function currentMonth(): string {
     return new Date().toISOString().slice(0, 7);
 }
 
+/** 오늘 기준 YYYY-MM-DD. */
+export function today(): string {
+    return new Date().toISOString().slice(0, 10);
+}
+
+/** 기본 기간: 이번 달 1일 ~ 오늘. */
+export function defaultRange(): DateRange {
+    return { from: `${currentMonth()}-01`, to: today() };
+}
+
+/** 작업셋 스코프 안에서 케이스를 가설 연결 여부로 구분하는 뷰. */
+export type CaseView = "all" | "todo" | "done";
+
+/** 기간 작업셋 범위([from,to] YYYY-MM-DD, 양끝 포함). */
+export type DateRange = { from: string; to: string };
+
 /** History 작업셋 기본 최대 보관 개수. */
 export const DEFAULT_HISTORY_MAX = 50;
 
@@ -88,8 +104,10 @@ export function removeRefFromExpr(expr: string, code: string): string {
 type WorkbenchState = {
     filterMode: FilterMode;
     mode: WorkingSetMode;
-    /** 월별 탭 설정값(YYYY-MM). 설정 모달에서 변경. */
-    month: string;
+    /** 기간 탭 설정값([from,to] YYYY-MM-DD). 레일에서 인라인 변경. */
+    range: DateRange;
+    /** Date/Sheet/History 스코프 안에서 All/Todo/Done 구분. */
+    view: CaseView;
     /** 시트 탭 설정값. 미설정 시 .env 기본 탭. 설정 모달에서 변경. */
     sheetTab: string | undefined;
     expr: string;
@@ -109,8 +127,10 @@ type WorkbenchState = {
     setMode: (mode: WorkingSetMode) => void;
     /** 워크셋 탭 전환(filterMode=workingset + mode 동시 설정). */
     selectWorkingSet: (mode: WorkingSetMode) => void;
-    /** 월별 탭 설정값 변경(월별 탭이 활성이면 active mode 도 갱신). */
-    setMonth: (month: string) => void;
+    /** 기간 설정값 변경(기간 탭이 활성이면 active mode 도 갱신). */
+    setRange: (range: DateRange) => void;
+    /** All/Todo/Done 뷰 전환. */
+    setView: (view: CaseView) => void;
     /** 시트 탭 설정값 변경(시트 탭이 활성이면 active mode 도 갱신). */
     setSheetTab: (tab: string | undefined) => void;
     setExpr: (expr: string) => void;
@@ -140,8 +160,9 @@ export const useWorkbench = create<WorkbenchState>()(
     persist(
         (set) => ({
     filterMode: "workingset",
-    mode: { kind: "review-month", month: currentMonth() },
-    month: currentMonth(),
+    mode: { kind: "review-range", ...defaultRange() },
+    range: defaultRange(),
+    view: "all",
     sheetTab: undefined,
     expr: "",
     settingsOpen: false,
@@ -154,14 +175,15 @@ export const useWorkbench = create<WorkbenchState>()(
     setFilterMode: (filterMode) => set({ filterMode }),
     setMode: (mode) => set({ mode }),
     selectWorkingSet: (mode) => set({ filterMode: "workingset", mode }),
-    setMonth: (month) =>
+    setRange: (range) =>
         set((s) => ({
-            month,
+            range,
             mode:
-                s.filterMode === "workingset" && s.mode.kind === "review-month"
-                    ? { kind: "review-month", month }
+                s.filterMode === "workingset" && s.mode.kind === "review-range"
+                    ? { kind: "review-range", ...range }
                     : s.mode,
         })),
+    setView: (view) => set({ view }),
     setSheetTab: (tab) =>
         set((s) => ({
             sheetTab: tab,
@@ -186,7 +208,12 @@ export const useWorkbench = create<WorkbenchState>()(
             return { historyMax: m, history: state.history.slice(0, m) };
         }),
     setPosition: (key, caseId) =>
-        set((state) => ({ positions: { ...state.positions, [key]: caseId } })),
+        // 값이 같으면 상태를 그대로 둬(참조 유지) 불필요한 리렌더/루프를 막는다.
+        set((state) =>
+            state.positions[key] === caseId
+                ? state
+                : { positions: { ...state.positions, [key]: caseId } },
+        ),
     appendOrCycleRef: (code) =>
         set((state) => {
             const cur = state.expr;
@@ -220,6 +247,22 @@ export const useWorkbench = create<WorkbenchState>()(
         }),
         {
             name: "hypothesis-lab-workbench",
+            version: 2,
+            // v1(월별/스냅샷 mode + month 필드) → v2(기간 mode + range/view).
+            // 옛 mode 는 더 이상 소스가 없어 기간 모드로 초기화한다.
+            migrate: (persisted, version) => {
+                const s = (persisted ?? {}) as Record<string, unknown>;
+                if (version < 2) {
+                    s.range = defaultRange();
+                    s.view = "all";
+                    const mode = s.mode as { kind?: string } | undefined;
+                    if (!mode || mode.kind !== "sheet") {
+                        s.mode = { kind: "review-range", ...defaultRange() };
+                    }
+                    delete s.month;
+                }
+                return s;
+            },
             storage: createJSONStorage(() =>
                 typeof window !== "undefined" ? window.localStorage : noopStorage,
             ),
@@ -228,7 +271,8 @@ export const useWorkbench = create<WorkbenchState>()(
             partialize: (s) => ({
                 filterMode: s.filterMode,
                 mode: s.mode,
-                month: s.month,
+                range: s.range,
+                view: s.view,
                 sheetTab: s.sheetTab,
                 history: s.history,
                 historyMax: s.historyMax,

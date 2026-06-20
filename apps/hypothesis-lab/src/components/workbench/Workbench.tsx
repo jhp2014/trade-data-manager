@@ -13,7 +13,7 @@ import {
     type CaseSnapshotInput,
 } from "@/actions/workbench";
 import { useSelection } from "@/stores/selection";
-import { tabKeyOf, useWorkbench } from "@/stores/workbench";
+import { tabKeyOf, useWorkbench, type CaseView } from "@/stores/workbench";
 import { useSelectedCaseCopyShortcut } from "@/hooks/useSelectedCaseCopyShortcut";
 import { usePasteCaseShortcut } from "@/hooks/usePasteCaseShortcut";
 import type { WorkingSetCase } from "@/services/workingSet";
@@ -27,6 +27,13 @@ import { HistoryModal } from "./HistoryModal";
 import { SavedFilterModal } from "./SavedFilterModal";
 import { WorkbenchSettingsModal } from "./WorkbenchSettingsModal";
 import styles from "./Workbench.module.css";
+
+/** view 토글에 맞는 케이스인지(Todo=미연결, Done=연결, All=전부). */
+function matchesView(c: WorkingSetCase, view: CaseView): boolean {
+    if (view === "all") return true;
+    const linked = c.linkedHypothesisIds.length > 0;
+    return view === "done" ? linked : !linked;
+}
 
 function toCaseInput(c: WorkingSetCase): CaseSnapshotInput {
     return {
@@ -42,6 +49,7 @@ export function Workbench() {
     const queryClient = useQueryClient();
     const mode = useWorkbench((s) => s.mode);
     const filterMode = useWorkbench((s) => s.filterMode);
+    const view = useWorkbench((s) => s.view);
     const expr = useWorkbench((s) => s.expr);
     const history = useWorkbench((s) => s.history);
     const addHistory = useWorkbench((s) => s.addHistory);
@@ -96,12 +104,28 @@ export function Workbench() {
         });
     }, [snapshot.data, parsed]);
 
-    const railCases =
-        filterMode === "boolean"
-            ? booleanCases
-            : filterMode === "history"
-              ? (historyCases.data ?? [])
-              : (workingSet.data ?? []);
+    // Date/Sheet/History 스코프: 실제 타점(point)이 있는 케이스만.
+    // existsInReview=false(리뷰에 없음) 또는 tradeTime 없음(종목-날짜 target 만, 타점 X)은 숨긴다.
+    const scopeCases = useMemo(() => {
+        const src = filterMode === "history" ? (historyCases.data ?? []) : (workingSet.data ?? []);
+        return src.filter((c) => c.existsInReview && c.tradeTime != null);
+    }, [filterMode, historyCases.data, workingSet.data]);
+
+    // All/Todo/Done 토글용 건수(스코프 전체 기준, view 필터 적용 전).
+    const viewCounts = useMemo(() => {
+        let todo = 0;
+        for (const c of scopeCases) if (c.linkedHypothesisIds.length === 0) todo++;
+        return { all: scopeCases.length, todo, done: scopeCases.length - todo };
+    }, [scopeCases]);
+
+    // memo 화 필수: 매 렌더 새 배열이면 아래 선택/위치 effect 가 무한 재실행된다.
+    const railCases = useMemo(
+        () =>
+            filterMode === "boolean"
+                ? booleanCases
+                : scopeCases.filter((c) => matchesView(c, view)),
+        [filterMode, booleanCases, scopeCases, view],
+    );
     const railLoading =
         filterMode === "boolean"
             ? snapshot.isLoading
@@ -250,7 +274,7 @@ export function Workbench() {
 
     return (
         <div className={styles.layout}>
-            <WorkingSetRail />
+            <WorkingSetRail viewCounts={viewCounts} />
             <div className={styles.rail}>
                 <CaseRail
                     cases={railCases}

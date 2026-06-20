@@ -14,8 +14,6 @@ function cx(...classes: Array<string | false | null | undefined>) {
 export function WorkbenchSettingsModal() {
     const open = useWorkbench((s) => s.settingsOpen);
     const close = useWorkbench((s) => s.closeSettings);
-    const month = useWorkbench((s) => s.month);
-    const setMonth = useWorkbench((s) => s.setMonth);
     const sheetTab = useWorkbench((s) => s.sheetTab);
     const setSheetTab = useWorkbench((s) => s.setSheetTab);
     const historyMax = useWorkbench((s) => s.historyMax);
@@ -63,20 +61,6 @@ export function WorkbenchSettingsModal() {
                         ×
                     </button>
                 </header>
-
-                <section className={styles.section}>
-                    <h3>월별 작업셋</h3>
-                    <label className={styles.opt}>
-                        <span>월 선택</span>
-                        <input
-                            type="month"
-                            className={styles.month}
-                            value={month}
-                            onChange={(e) => setMonth(e.target.value)}
-                        />
-                    </label>
-                    <p className={styles.muted}>상단 레일의 월 탭이 이 달의 review point 를 표시합니다.</p>
-                </section>
 
                 <section className={styles.section}>
                     <h3>시트 탭</h3>

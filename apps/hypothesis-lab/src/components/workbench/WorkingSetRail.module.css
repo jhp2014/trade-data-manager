@@ -55,48 +55,149 @@
     background: var(--accent);
 }
 
-/* Filter 컨트롤 — Filter 탭이 활성일 때만 펼쳐진다(콘텐츠 폭, 레일을 다 채우지 않음). */
-.filterControls {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+/* Date/Sheet/History 스코프 컨트롤 — 한 컨테이너로 묶고 내부는 세로 구분선으로 나눈다.
+   All/Todo/Done 토글 + (기간 입력|시트명). */
+.scopeControls {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: stretch;
+    height: 32px;
     min-width: 0;
-    width: 0;
-    overflow: hidden;
-    opacity: 0;
-    transition: opacity 0.18s ease;
-}
-.filterControlsOpen {
-    width: auto;
-    opacity: 1;
-}
-
-/* 카운트 배지 + 입력 + 지우기를 한 박스(검색창 느낌)로 묶는다. */
-.filterBox {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 480px;
-    max-width: 52vw;
-    padding: 3px 6px 3px 7px;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
     border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* All/Todo/Done 세그먼트 토글(각 항목에 건수). 프레임은 바깥 컨테이너가 제공. */
+.viewToggle {
+    display: inline-flex;
+    align-items: stretch;
+}
+.viewBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-left: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.viewBtn:first-child {
+    border-left: 0;
+}
+.viewBtn:hover:not(.viewOn) {
+    color: var(--text);
+    background: var(--chip);
+}
+.viewOn {
+    color: #fff;
+    background: var(--accent);
+}
+.viewNum {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    opacity: 0.85;
+}
+
+/* 토글과 부가정보(기간/시트) 사이의 구분: 굵은 세로선으로 묶음 내 분리. */
+.range,
+.sheetField {
+    display: inline-flex;
+    align-items: center;
+    border-left: 2px solid var(--border-strong);
+    background: var(--chip);
+    padding: 0 6px;
+}
+.dateInput {
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    padding: 4px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.dateInput:hover {
+    background: var(--bg-elev);
+}
+.dateInput:focus {
+    outline: none;
+    background: var(--accent-weak);
+    color: var(--accent);
+}
+.dateInput::-webkit-calendar-picker-indicator {
+    margin-left: 4px;
+    opacity: 0.45;
+    cursor: pointer;
+    transition: opacity 0.12s ease;
+}
+.dateInput:hover::-webkit-calendar-picker-indicator,
+.dateInput:focus::-webkit-calendar-picker-indicator {
+    opacity: 0.85;
+}
+.rangeSep {
+    color: var(--muted);
+    font-size: 11px;
+    padding: 0 1px;
+}
+/* 시트명 — 버튼이 아닌 "현재 읽는 탭" 정보 필드(아이콘 + 이름). */
+.sheetField {
+    gap: 6px;
+    padding: 0 12px;
+    color: var(--muted);
+}
+.sheetName {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+/* Filter 바 — 식 입력·저장/불러오기·집계를 한 컨테이너로 묶고 내부는 세로 구분선으로 나눈다. */
+.filterBar {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: stretch;
+    height: 32px;
+    min-width: 0;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    overflow: hidden;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     transition: border-color 0.12s ease;
 }
-.filterBox:focus-within {
+.filterBar:focus-within {
     border-color: var(--accent);
 }
-.filterBoxError,
-.filterBoxError:focus-within {
+.filterBarError,
+.filterBarError:focus-within {
     border-color: var(--danger, #d44);
 }
+/* 바 내부 세로 구분선. */
+.barDivider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border);
+}
 .expr {
-    flex: 1;
+    width: 440px;
+    max-width: 46vw;
     min-width: 0;
-    padding: 5px 2px;
-    font-family: ui-monospace, Menlo, monospace;
+    padding: 0 8px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
     font-size: 13px;
     color: var(--text);
     background: transparent;
@@ -105,14 +206,41 @@
 .expr:focus {
     outline: none;
 }
-/* 박스 hover/focus 시에만 노출되는 지우기 ×. */
+/* 입력 앞 카운트/오류 배지 — 바 안쪽 좌측에 inset. */
+.countBadge,
+.errBadge {
+    flex-shrink: 0;
+    align-self: center;
+    margin-left: 7px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.countBadge {
+    color: var(--accent);
+    background: var(--accent-weak);
+}
+.countWarn {
+    color: var(--warning, #c80);
+    background: transparent;
+    border: 1px solid var(--warning, #c80);
+}
+.errBadge {
+    color: var(--danger, #d44);
+    background: transparent;
+    border: 1px solid var(--danger, #d44);
+    cursor: help;
+}
+/* 바 hover/focus 시에만 노출되는 지우기 ×. */
 .clear {
     flex-shrink: 0;
     display: none;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: 22px;
     padding: 0;
     color: var(--muted);
     background: transparent;
@@ -121,74 +249,42 @@
     line-height: 1;
     cursor: pointer;
 }
-.filterBox:hover .clear,
-.filterBox:focus-within .clear {
+.filterBar:hover .clear,
+.filterBar:focus-within .clear {
     display: inline-flex;
 }
 .clear:hover {
     color: var(--text);
 }
-
-/* 결과 건수 배지(입력 앞 leading). */
-.countBadge {
-    flex-shrink: 0;
-    padding: 1px 7px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--accent);
-    background: var(--accent-weak);
-    border-radius: 5px;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-.countWarn {
-    color: var(--warning, #c80);
-    background: transparent;
-    border: 1px solid var(--warning, #c80);
-}
-.errBadge {
-    flex-shrink: 0;
-    padding: 1px 7px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--danger, #d44);
-    background: transparent;
-    border: 1px solid var(--danger, #d44);
-    border-radius: 5px;
-    white-space: nowrap;
-    cursor: help;
-}
-
-.iconBtnSm {
+/* 바 안쪽 아이콘 버튼(저장/불러오기) — 프레임은 바깥 컨테이너가 제공. */
+.barBtn {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 34px;
     color: var(--muted);
-    background: var(--bg-elev);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    background: transparent;
+    border: 0;
     cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
 }
-.iconBtnSm:hover:not(:disabled) {
+.barBtn:hover:not(:disabled) {
     color: var(--accent);
-    border-color: var(--accent);
+    background: var(--chip);
 }
-.iconBtnSm:disabled {
+.barBtn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
 
-/* 불리언 결과 outcome 집계 — 불러오기 아이콘 우측. */
+/* 불리언 결과 outcome 집계 — 바 안쪽 우측. */
 .agg {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding-left: 4px;
+    padding: 0 6px;
 }
 .aggPill {
     display: inline-flex;

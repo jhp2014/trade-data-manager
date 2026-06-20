@@ -3,7 +3,7 @@ import type { ReviewCase, ReviewCaseSource } from "@/repositories/ReviewCaseSour
 import type { WorkingSetSource } from "@/repositories/WorkingSetSource";
 import {
     FallbackWorkingSetSource,
-    ReviewMonthWorkingSetSource,
+    ReviewRangeWorkingSetSource,
     ReviewRecentWorkingSetSource,
     SnapshotWorkingSetSource,
     createWorkingSetSource,
@@ -18,12 +18,12 @@ const rc = (caseId: string): ReviewCase => ({
     tradeTime: null,
 });
 
-function fakeReview(opts: { recent?: ReviewCase[]; month?: ReviewCase[] }): ReviewCaseSource {
+function fakeReview(opts: { recent?: ReviewCase[]; range?: ReviewCase[] }): ReviewCaseSource {
     return {
         enrich: async () => [],
         findOrphans: async () => [],
         listRecent: async () => opts.recent ?? [],
-        listByMonth: async () => opts.month ?? [],
+        listByRange: async () => opts.range ?? [],
     };
 }
 
@@ -35,8 +35,12 @@ describe("개별 소스", () => {
         expect(await src.listCaseIds()).toEqual(["a", "b"]);
     });
 
-    it("ReviewMonth 는 listByMonth 의 caseId 를 낸다", async () => {
-        const src = new ReviewMonthWorkingSetSource(fakeReview({ month: [rc("m")] }), "2026-06");
+    it("ReviewRange 는 listByRange 의 caseId 를 낸다", async () => {
+        const src = new ReviewRangeWorkingSetSource(
+            fakeReview({ range: [rc("m")] }),
+            "2026-06-01",
+            "2026-06-30",
+        );
         expect(await src.listCaseIds()).toEqual(["m"]);
     });
 
@@ -74,6 +78,14 @@ describe("createWorkingSetSource", () => {
     it("review-recent 모드", async () => {
         const src = createWorkingSetSource({ kind: "review-recent" }, baseDeps({}));
         expect(await src.listCaseIds()).toEqual(["recent"]);
+    });
+
+    it("review-range 모드", async () => {
+        const src = createWorkingSetSource(
+            { kind: "review-range", from: "2026-06-01", to: "2026-06-30" },
+            baseDeps({ reviewCaseSource: fakeReview({ range: [rc("r")] }) }),
+        );
+        expect(await src.listCaseIds()).toEqual(["r"]);
     });
 
     it("sheet 모드인데 시트가 없으면 최근으로", async () => {

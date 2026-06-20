@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { currentMonth, removeRefFromExpr, tabKeyOf, useWorkbench } from "@/stores/workbench";
+import { defaultRange, removeRefFromExpr, tabKeyOf, useWorkbench } from "@/stores/workbench";
 
 beforeEach(() => {
     useWorkbench.setState({
         filterMode: "workingset",
-        mode: { kind: "review-month", month: currentMonth() },
-        month: currentMonth(),
+        mode: { kind: "review-range", ...defaultRange() },
+        range: defaultRange(),
+        view: "all",
         sheetTab: undefined,
         expr: "",
         settingsOpen: false,
@@ -99,21 +100,36 @@ describe("useWorkbench", () => {
         expect(useWorkbench.getState().history).toEqual(["C-2026-06-03"]);
     });
 
-    it("월/시트 설정은 해당 탭이 활성일 때만 active mode 에 반영된다", () => {
+    it("기간/시트 설정은 해당 탭이 활성일 때만 active mode 에 반영된다", () => {
         const s = useWorkbench.getState();
-        // 월별 탭 활성 → 월 변경이 mode 에 반영
-        s.setMonth("2025-01");
-        expect(useWorkbench.getState().mode).toEqual({ kind: "review-month", month: "2025-01" });
+        // 기간 탭 활성 → 기간 변경이 mode 에 반영
+        s.setRange({ from: "2025-01-01", to: "2025-01-31" });
+        expect(useWorkbench.getState().mode).toEqual({
+            kind: "review-range",
+            from: "2025-01-01",
+            to: "2025-01-31",
+        });
 
-        // 시트 탭이 비활성(현재 월별)이면 시트탭 변경은 mode 에 반영 안 됨
+        // 시트 탭이 비활성(현재 기간)이면 시트탭 변경은 mode 에 반영 안 됨
         useWorkbench.getState().setSheetTab("내탭");
-        expect(useWorkbench.getState().mode).toEqual({ kind: "review-month", month: "2025-01" });
+        expect(useWorkbench.getState().mode).toEqual({
+            kind: "review-range",
+            from: "2025-01-01",
+            to: "2025-01-31",
+        });
         expect(useWorkbench.getState().sheetTab).toBe("내탭");
 
         // 시트 탭으로 전환 후 시트탭 변경은 반영
         useWorkbench.getState().selectWorkingSet({ kind: "sheet", tab: "내탭" });
         useWorkbench.getState().setSheetTab("다른탭");
         expect(useWorkbench.getState().mode).toEqual({ kind: "sheet", tab: "다른탭" });
+    });
+
+    it("setView 는 All/Todo/Done 뷰를 전환한다", () => {
+        useWorkbench.getState().setView("todo");
+        expect(useWorkbench.getState().view).toBe("todo");
+        useWorkbench.getState().setView("done");
+        expect(useWorkbench.getState().view).toBe("done");
     });
 
     it("removeRef 는 코드 참조를 앞 연산자까지 지우고 불리언 모드로 둔다", () => {
@@ -128,8 +144,10 @@ describe("useWorkbench", () => {
     });
 
     it("tabKeyOf 는 workingset 은 소스별, 그 외는 filterMode 로 키를 만든다", () => {
-        expect(tabKeyOf("workingset", { kind: "review-month", month: "2026-06" })).toBe("ws:review-month");
-        expect(tabKeyOf("workingset", { kind: "snapshot" })).toBe("ws:snapshot");
+        expect(
+            tabKeyOf("workingset", { kind: "review-range", from: "2026-06-01", to: "2026-06-30" }),
+        ).toBe("ws:review-range");
+        expect(tabKeyOf("workingset", { kind: "sheet" })).toBe("ws:sheet");
         expect(tabKeyOf("history", { kind: "snapshot" })).toBe("history");
         expect(tabKeyOf("boolean", { kind: "snapshot" })).toBe("boolean");
     });

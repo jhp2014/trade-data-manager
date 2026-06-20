@@ -74,13 +74,13 @@ export class DbReviewCaseSource implements ReviewCaseSource {
         return rowsOf(res).map(rowToReviewCase);
     }
 
-    async listByMonth(month: string): Promise<ReviewCase[]> {
+    async listByRange(from: string, to: string): Promise<ReviewCase[]> {
         const res = await this.db.execute(sql`
             SELECT rt.stock_code AS stock_code, rt.trade_date::text AS trade_date,
                    rt.stock_name AS stock_name, to_char(rp.trade_time, 'HH24:MI') AS hhmm
             FROM public.review_target rt
             JOIN public.review_point rp ON rp.review_target_id = rt.id
-            WHERE to_char(rt.trade_date, 'YYYY-MM') = ${month}
+            WHERE rt.trade_date BETWEEN ${from}::date AND ${to}::date
             ORDER BY rt.trade_date DESC, rp.trade_time DESC
         `);
         return rowsOf(res).map(rowToReviewCase);
