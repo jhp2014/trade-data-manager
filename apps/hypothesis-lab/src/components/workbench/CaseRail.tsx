@@ -102,10 +102,17 @@ export function CaseRail({
                 </>
             )}
             <div className={styles.scroll} ref={scrollRef} onWheel={onWheel}>
-                {loading && <span className={styles.muted}>불러오는 중…</span>}
-                {!loading && cases.length === 0 && (
-                    <span className={styles.muted}>케이스가 없습니다</span>
-                )}
+                {(loading || cases.length === 0) &&
+                    Array.from({ length: 6 }).map((_, i) => (
+                        <div key={`skel-${i}`} className={styles.skelCard} aria-hidden>
+                            <div className={styles.skelLine1}>
+                                <span className={`${styles.skelBar} ${styles.skelName}`} />
+                                <span className={`${styles.skelBar} ${styles.skelCode}`} />
+                            </div>
+                            <span className={`${styles.skelBar} ${styles.skelSub}`} />
+                            <span className={`${styles.skelBar} ${styles.skelTag}`} />
+                        </div>
+                    ))}
                 {cases.map((c) => (
                     <CaseCard
                         key={c.caseId}

@@ -55,3 +55,62 @@
     color: var(--muted);
     font-size: 12px;
 }
+
+/* 빈/로딩 상태 스켈레톤 — 카드(188px)와 동일 폭으로 레이아웃 유지. */
+.skelCard {
+    flex-shrink: 0;
+    width: 188px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 10px 12px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+.skelLine1 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.skelBar {
+    display: block;
+    height: 11px;
+    border-radius: 6px;
+    background: linear-gradient(
+        90deg,
+        var(--chip) 25%,
+        var(--border) 37%,
+        var(--chip) 63%
+    );
+    background-size: 280px 100%;
+    animation: skelShimmer 1.3s ease-in-out infinite;
+}
+.skelName {
+    flex: 1;
+    height: 13px;
+}
+.skelCode {
+    width: 26px;
+    height: 13px;
+}
+.skelSub {
+    width: 70%;
+}
+.skelTag {
+    width: 45%;
+    height: 10px;
+}
+@keyframes skelShimmer {
+    from {
+        background-position: 280px 0;
+    }
+    to {
+        background-position: -280px 0;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .skelBar {
+        animation: none;
+    }
+}
