@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { listSheetTabsAction } from "@/actions/workbench";
-import { currentMonth, useWorkbench } from "@/stores/workbench";
+import { useWorkbench } from "@/stores/workbench";
 import styles from "./WorkbenchSettingsModal.module.css";
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -12,8 +12,13 @@ function cx(...classes: Array<string | false | null | undefined>) {
 export function WorkbenchSettingsModal() {
     const open = useWorkbench((s) => s.settingsOpen);
     const close = useWorkbench((s) => s.closeSettings);
-    const mode = useWorkbench((s) => s.mode);
-    const setMode = useWorkbench((s) => s.setMode);
+    const month = useWorkbench((s) => s.month);
+    const setMonth = useWorkbench((s) => s.setMonth);
+    const sheetTab = useWorkbench((s) => s.sheetTab);
+    const setSheetTab = useWorkbench((s) => s.setSheetTab);
+    const historyMax = useWorkbench((s) => s.historyMax);
+    const setHistoryMax = useWorkbench((s) => s.setHistoryMax);
+    const openHistoryModal = useWorkbench((s) => s.openHistoryModal);
 
     const [tabs, setTabs] = useState<string[] | null>(null);
     const [loading, setLoading] = useState(false);
@@ -37,9 +42,6 @@ export function WorkbenchSettingsModal() {
 
     if (!open) return null;
 
-    const month = mode.kind === "review-month" ? mode.month : currentMonth();
-    const selectedTab = mode.kind === "sheet" ? mode.tab : undefined;
-
     return (
         <div className={styles.overlay} onClick={close}>
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -51,43 +53,17 @@ export function WorkbenchSettingsModal() {
                 </header>
 
                 <section className={styles.section}>
-                    <h3>작업셋</h3>
-                    <div className={styles.options}>
-                        <label className={cx(styles.opt, mode.kind === "review-month" && styles.on)}>
-                            <input
-                                type="radio"
-                                name="workingset"
-                                checked={mode.kind === "review-month"}
-                                onChange={() => setMode({ kind: "review-month", month })}
-                            />
-                            <span>월별</span>
-                            <input
-                                type="month"
-                                className={styles.month}
-                                value={month}
-                                disabled={mode.kind !== "review-month"}
-                                onChange={(e) => setMode({ kind: "review-month", month: e.target.value })}
-                            />
-                        </label>
-                        <label className={cx(styles.opt, mode.kind === "sheet" && styles.on)}>
-                            <input
-                                type="radio"
-                                name="workingset"
-                                checked={mode.kind === "sheet"}
-                                onChange={() => setMode({ kind: "sheet", tab: selectedTab })}
-                            />
-                            <span>시트</span>
-                        </label>
-                        <label className={cx(styles.opt, mode.kind === "snapshot" && styles.on)}>
-                            <input
-                                type="radio"
-                                name="workingset"
-                                checked={mode.kind === "snapshot"}
-                                onChange={() => setMode({ kind: "snapshot" })}
-                            />
-                            <span>연결된 것만</span>
-                        </label>
-                    </div>
+                    <h3>월별 작업셋</h3>
+                    <label className={styles.opt}>
+                        <span>월 선택</span>
+                        <input
+                            type="month"
+                            className={styles.month}
+                            value={month}
+                            onChange={(e) => setMonth(e.target.value)}
+                        />
+                    </label>
+                    <p className={styles.muted}>상단 레일의 월 탭이 이 달의 review point 를 표시합니다.</p>
                 </section>
 
                 <section className={styles.section}>
@@ -101,27 +77,46 @@ export function WorkbenchSettingsModal() {
                     ) : (
                         <>
                             <div className={styles.tabList}>
-                                {tabs.map((t) => {
-                                    const active = mode.kind === "sheet" && selectedTab === t;
-                                    return (
-                                        <button
-                                            key={t}
-                                            type="button"
-                                            className={cx(styles.tab, active && styles.tabOn)}
-                                            onClick={() => setMode({ kind: "sheet", tab: t })}
-                                        >
-                                            {t}
-                                            {active && <span className={styles.tabBadge}>읽는 중</span>}
-                                        </button>
-                                    );
-                                })}
+                                <button
+                                    type="button"
+                                    className={cx(styles.tab, sheetTab === undefined && styles.tabOn)}
+                                    onClick={() => setSheetTab(undefined)}
+                                >
+                                    기본(.env)
+                                </button>
+                                {tabs.map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        className={cx(styles.tab, sheetTab === t && styles.tabOn)}
+                                        onClick={() => setSheetTab(t)}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
                             </div>
                             <p className={styles.muted}>
-                                탭을 고르면 작업셋이 “시트” 모드로 전환됩니다. 미선택 시 기본 탭(.env)을
-                                사용합니다.
+                                상단 레일의 시트 탭이 읽을 탭입니다. 미선택 시 기본 탭(.env)을 사용합니다.
                             </p>
                         </>
                     )}
+                </section>
+
+                <section className={styles.section}>
+                    <h3>History 설정</h3>
+                    <label className={styles.opt}>
+                        <span>최대 보관 개수</span>
+                        <input
+                            type="number"
+                            min={1}
+                            className={styles.num}
+                            value={historyMax}
+                            onChange={(e) => setHistoryMax(Number(e.target.value))}
+                        />
+                    </label>
+                    <button className={styles.manageBtn} onClick={openHistoryModal}>
+                        History 목록 관리
+                    </button>
                 </section>
             </div>
         </div>

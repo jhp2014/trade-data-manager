@@ -88,6 +88,33 @@
 .month:disabled {
     opacity: 0.4;
 }
+.num {
+    margin-left: auto;
+    width: 76px;
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    padding: 3px 7px;
+}
+.manageBtn {
+    margin-top: 10px;
+    width: 100%;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 550;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    padding: 9px 11px;
+    cursor: pointer;
+}
+.manageBtn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
 .muted {
     color: var(--muted);
     font-size: 12px;

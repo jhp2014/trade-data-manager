@@ -21,6 +21,8 @@ export function CaseRail({
     const targetRef = useRef(0);
     const rafRef = useRef<number | null>(null);
 
+    const selectedCase = cases.find((c) => c.caseId === selectedCaseId) ?? null;
+
     // 세로 휠 → 가로 스크롤. requestAnimationFrame 으로 목표값까지 이징해
     // 노치 단위로 뚝뚝 끊기지 않고 부드럽게 흐르도록 한다.
     function onWheel(e: React.WheelEvent<HTMLDivElement>) {
@@ -58,22 +60,41 @@ export function CaseRail({
         };
     }, []);
 
-    // 선택된 케이스(키보드 a/d 포함)를 레일 중앙으로 스크롤.
-    // sticky 변형에 영향받지 않도록 offsetLeft(자연 위치) 기준으로 직접 계산한다.
+    // 선택 케이스(키보드 a/d 포함)가 우측 리스트에서 안 보이면 최소한으로 스크롤해
+    // 보이게 한다(nearest). 좌측 고정 카드와 별개로, 리스트 내 현재 위치를 보여준다.
     useEffect(() => {
         const el = scrollRef.current;
         if (!el || !selectedCaseId) return;
         const card = el.querySelector<HTMLElement>(`[data-case-id="${CSS.escape(selectedCaseId)}"]`);
         if (!card) return;
-        const target = card.offsetLeft - (el.clientWidth - card.offsetWidth) / 2;
         const max = el.scrollWidth - el.clientWidth;
-        // 진행 중인 휠 이징 목표도 함께 맞춰 충돌을 막는다.
+        const left = card.offsetLeft;
+        const right = left + card.offsetWidth;
+        const viewLeft = el.scrollLeft;
+        const viewRight = viewLeft + el.clientWidth;
+        let target = viewLeft;
+        if (left < viewLeft + 14) target = left - 14;
+        else if (right > viewRight - 14) target = right - el.clientWidth + 14;
+        else return; // 이미 보이면 그대로.
         targetRef.current = Math.max(0, Math.min(max, target));
         el.scrollTo({ left: targetRef.current, behavior: "smooth" });
-    }, [selectedCaseId]);
+    }, [selectedCaseId, cases]);
 
     return (
         <div className={styles.rail}>
+            {selectedCase && (
+                <>
+                    <div className={styles.pinned}>
+                        <CaseCard
+                            c={selectedCase}
+                            selected
+                            linkedCount={linkedCountByCase.get(selectedCase.caseId) ?? 0}
+                            onSelect={() => selectCase(selectedCase.caseId)}
+                        />
+                    </div>
+                    <div className={styles.divider} />
+                </>
+            )}
             <div className={styles.scroll} ref={scrollRef} onWheel={onWheel}>
                 {loading && <span className={styles.muted}>불러오는 중…</span>}
                 {!loading && cases.length === 0 && (

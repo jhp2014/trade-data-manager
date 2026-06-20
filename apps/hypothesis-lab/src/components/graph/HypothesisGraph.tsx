@@ -20,6 +20,7 @@ import type { HypothesisSnapshot } from "@/domain/types";
 import { useSelection } from "@/stores/selection";
 import { useWorkbench } from "@/stores/workbench";
 import { HypNode, type HypNodeData } from "./HypNode";
+import { SavedLayoutModal } from "./SavedLayoutModal";
 import styles from "./HypothesisGraph.module.css";
 
 const nodeTypes = { hyp: HypNode };
@@ -65,6 +66,8 @@ export function HypothesisGraph({
     // 저장 버튼 클릭 직후 잠깐 체크 표시.
     const [justSaved, setJustSaved] = useState(false);
     const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // 이름 저장/불러오기 모달.
+    const [layoutModal, setLayoutModal] = useState<"save" | "load" | null>(null);
 
     // 가설/관계 "집합"이 바뀔 때만 dagre 재배치(드래그 보존을 위해 위치 리셋을 최소화).
     const structureKey = useMemo(
@@ -166,6 +169,29 @@ export function HypothesisGraph({
         );
     }, [layout, setNodes]);
 
+    // 현재 노드 위치를 { id: {x,y} } 로 (모달 저장용).
+    const currentPositions = useMemo(() => {
+        const pos: NodePositions = {};
+        for (const n of nodes) pos[n.id] = { x: n.position.x, y: n.position.y };
+        return pos;
+    }, [nodes]);
+
+    // 이름 저장본 불러오기: 저장된 위치를 적용하고, 작업 중 위치(자동 복원 슬롯)에도
+    // 반영해 리셋 후에도 유지되게 한다. 저장본에 없는 노드는 현재 위치를 보존.
+    const handleApplyLayout = useCallback(
+        (positions: NodePositions) => {
+            const next: NodePositions = {};
+            const applied = nodes.map((n) => {
+                const p = positions[n.id] ?? n.position;
+                next[n.id] = { x: p.x, y: p.y };
+                return { ...n, position: { x: p.x, y: p.y } };
+            });
+            setNodes(applied);
+            saveGraphPositions(next);
+        },
+        [nodes, setNodes],
+    );
+
     useEffect(() => () => {
         if (savedTimer.current) clearTimeout(savedTimer.current);
     }, []);
@@ -233,6 +259,28 @@ export function HypothesisGraph({
                 <button
                     type="button"
                     className={styles.toolBtn}
+                    onClick={() => setLayoutModal("save")}
+                    title="이름으로 레이아웃 저장"
+                    aria-label="이름으로 레이아웃 저장"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    className={styles.toolBtn}
+                    onClick={() => setLayoutModal("load")}
+                    title="저장된 레이아웃 불러오기"
+                    aria-label="저장된 레이아웃 불러오기"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    className={styles.toolBtn}
                     onClick={handleResetPositions}
                     title="노드를 기본 위치로 리셋"
                     aria-label="노드를 기본 위치로 리셋"
@@ -243,6 +291,12 @@ export function HypothesisGraph({
                     </svg>
                 </button>
             </div>
+            <SavedLayoutModal
+                kind={layoutModal}
+                currentPositions={currentPositions}
+                onApply={handleApplyLayout}
+                onClose={() => setLayoutModal(null)}
+            />
             <ReactFlow
                 nodes={nodes}
                 edges={edges}

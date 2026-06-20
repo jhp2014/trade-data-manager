@@ -1,0 +1,203 @@
+/* 상단 작업셋 탭 레일. 좌측 탭 그룹 + 우측 설정 버튼. */
+.rail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border-strong);
+    /* 본문(bg)과 구분되는 연한 회색 바. 위에 얹는 컨트롤은 bg-elev(흰색)로 대비. */
+    background: var(--chip);
+}
+
+.tabs {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* 5개 탭을 하나로 묶는 세그먼트 컨트롤. */
+.group {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* 작업셋 탭 — 비활성은 muted, 활성은 accent 배경 + 흰 글자. */
+.tab {
+    flex-shrink: 0;
+    padding: 6px 15px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-left: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.tab:first-child {
+    border-left: 0;
+}
+.tab:hover:not(.on) {
+    color: var(--text);
+    background: var(--bg-elev);
+}
+.on {
+    color: #fff;
+    background: var(--accent);
+}
+
+/* Filter 컨트롤 — Filter 탭이 활성일 때만 펼쳐진다(콘텐츠 폭, 레일을 다 채우지 않음). */
+.filterControls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+.filterControlsOpen {
+    width: auto;
+    opacity: 1;
+}
+
+/* 카운트 배지 + 입력 + 지우기를 한 박스(검색창 느낌)로 묶는다. */
+.filterBox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 480px;
+    max-width: 52vw;
+    padding: 3px 6px 3px 7px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: border-color 0.12s ease;
+}
+.filterBox:focus-within {
+    border-color: var(--accent);
+}
+.filterBoxError,
+.filterBoxError:focus-within {
+    border-color: var(--danger, #d44);
+}
+.expr {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 2px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 13px;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+}
+.expr:focus {
+    outline: none;
+}
+/* 박스 hover/focus 시에만 노출되는 지우기 ×. */
+.clear {
+    flex-shrink: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+}
+.filterBox:hover .clear,
+.filterBox:focus-within .clear {
+    display: inline-flex;
+}
+.clear:hover {
+    color: var(--text);
+}
+
+/* 결과 건수 배지(입력 앞 leading). */
+.countBadge {
+    flex-shrink: 0;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-weak);
+    border-radius: 5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.countWarn {
+    color: var(--warning, #c80);
+    background: transparent;
+    border: 1px solid var(--warning, #c80);
+}
+.errBadge {
+    flex-shrink: 0;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--danger, #d44);
+    background: transparent;
+    border: 1px solid var(--danger, #d44);
+    border-radius: 5px;
+    white-space: nowrap;
+    cursor: help;
+}
+
+.iconBtnSm {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    color: var(--muted);
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+}
+.iconBtnSm:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+.iconBtnSm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* 우측 끝 설정 버튼. */
+.settings {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    color: var(--muted);
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+}
+.settings:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}

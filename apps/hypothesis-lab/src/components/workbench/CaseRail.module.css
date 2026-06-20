@@ -1,8 +1,22 @@
 .rail {
     display: flex;
-    align-items: center;
+    align-items: stretch;
+    gap: 12px;
     padding: 10px 14px;
     min-height: 0;
+}
+/* 좌측 고정 슬롯 — 현재 선택 케이스를 항상 보여준다(우측 리스트와 별개). */
+.pinned {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+.divider {
+    flex-shrink: 0;
+    width: 1px;
+    align-self: stretch;
+    margin: 3px 0;
+    background: var(--border);
 }
 .scroll {
     position: relative;
