@@ -55,6 +55,36 @@
     letter-spacing: 0.04em;
     color: var(--muted);
 }
+.sectionHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.sectionHead h3 {
+    margin: 0;
+}
+.refreshTabs {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+.refreshTabs:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+.refreshTabs:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
 .options {
     display: flex;
     flex-direction: column;

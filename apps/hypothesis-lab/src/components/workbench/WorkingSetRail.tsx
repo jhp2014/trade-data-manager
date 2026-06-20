@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { loadSnapshotAction } from "@/actions/workbench";
 import { parseHypExpr, searchCasesByExpr, unknownRefs } from "@/services/hypExpr";
 import { aggregateOutcomes } from "@/services/outcomeAgg";
@@ -28,6 +28,15 @@ function SaveIcon() {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
             <path d="M17 21v-8H7v8M7 3v5h8" />
+        </svg>
+    );
+}
+
+function RefreshIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v5h-5" />
         </svg>
     );
 }
@@ -82,6 +91,18 @@ export function WorkingSetRail({
     const outcomeOptions = useOutcomeTypes((s) => s.options);
     const { filters } = useSavedFilters();
     const inputRef = useRef<HTMLInputElement>(null);
+    const queryClient = useQueryClient();
+
+    // 현재 작업셋(포인트/시트) 재조회. chart-review 새 타점·시트 변경 반영.
+    const refreshing =
+        useIsFetching({ queryKey: ["workingSet"] }) +
+        useIsFetching({ queryKey: ["historyCases"] }) +
+        useIsFetching({ queryKey: ["snapshot"] });
+    function refresh() {
+        queryClient.invalidateQueries({ queryKey: ["workingSet"] });
+        queryClient.invalidateQueries({ queryKey: ["historyCases"] });
+        queryClient.invalidateQueries({ queryKey: ["snapshot"] });
+    }
 
     const snapshot = useQuery({ queryKey: ["snapshot"], queryFn: () => loadSnapshotAction() });
 
@@ -279,6 +300,15 @@ export function WorkingSetRail({
                 )}
             </div>
 
+            <button
+                className={cx(styles.settings, refreshing > 0 && styles.spinning)}
+                onClick={refresh}
+                disabled={refreshing > 0}
+                title="현재 작업셋 다시 불러오기 (포인트·시트)"
+                aria-label="작업셋 새로고침"
+            >
+                <RefreshIcon />
+            </button>
             <button
                 className={styles.settings}
                 onClick={openSettings}
