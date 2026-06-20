@@ -51,6 +51,7 @@ import {
   collectFieldKeys,
   collectValueSuggestions,
   formatPointTime,
+  resolveFieldValue,
 } from "@/lib/reviewFields";
 
 type ReviewWorkspaceProps = {
@@ -544,6 +545,22 @@ export function ReviewWorkspace({
     window.addEventListener("paste", handler);
     return () => window.removeEventListener("paste", handler);
   }, [inputOpen, settingsOpen, navigateToGroupId, navigateToCaseId]);
+
+  // 붙여넣기의 역방향: 브라우저 포커스 상태에서 Ctrl+C → 현재 타점의 CaseId 복사.
+  // 입력 요소/모달 포커스나 텍스트 선택이 있으면(평범한 복사) 양보한다.
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      if (inputOpen || settingsOpen) return;
+      if (isEditableTarget(e.target)) return;
+      if (!window.getSelection()?.isCollapsed) return;
+      const caseId = resolveFieldValue("caseId", activePoint);
+      if (!caseId) return;
+      e.preventDefault();
+      e.clipboardData?.setData("text/plain", caseId);
+    };
+    window.addEventListener("copy", handler);
+    return () => window.removeEventListener("copy", handler);
+  }, [inputOpen, settingsOpen, activePoint]);
 
   // Tab 히스토리 스위처(상태/키 핸들링은 useHistorySwitcher 로 분리).
   const { switcherOpen, switcherIndex, commitSwitcher, deleteEntry, clearAll } = useHistorySwitcher({
