@@ -251,6 +251,6 @@ describe("loadSnapshot.warnings", () => {
         const snap = await repo.loadSnapshot();
         // 저장 자체는 성공한다.
         expect(snap.hypothesisRelations).toHaveLength(2);
-        expect(snap.warnings.map((w) => w.code)).toContain("cycle_better_than");
+        expect(snap.warnings.map((w) => w.code)).toContain("cycle");
     });
 });

@@ -1,3 +1,4 @@
+import { DEFAULT_RELATION_TYPES, directionalValues } from "./relationType";
 import { formatHypothesisCode } from "./hypothesisCode";
 import type {
     HypothesisRelation,
@@ -5,25 +6,17 @@ import type {
     ValidationWarning,
 } from "./types";
 
-/** App 이 의미를 아는 관계 타입. 이 외 값은 unknown_relation_type 경고. */
-export const KNOWN_RELATION_TYPES = [
-    "better_than",
-    "parent_of",
-    "similar_to",
-    "conflicts_with",
-] as const;
-
-/** 순환이 의미상 모순인(=비순환 기대) 방향성 타입. */
-const ACYCLIC_TYPES = ["better_than", "parent_of"] as const;
-
-const KNOWN = new Set<string>(KNOWN_RELATION_TYPES);
+/** 관계 종류 정의는 클라(relationTypes 스토어) 소유 — 서버 기본값은 시드의 방향성 집합. */
+const DEFAULT_DIRECTIONAL = directionalValues(DEFAULT_RELATION_TYPES);
 
 /**
  * 스냅샷의 relation 그래프를 검사해 경고를 만든다(저장 차단 아님).
- * 순수 함수 — Repository.loadSnapshot 이 조립한 데이터에 적용한다.
+ * 순수 함수 — 방향성(순환검사 대상) 종류 집합은 호출측이 정한다(미지정 시 기본 시드).
+ * 종류 정의가 클라 소유이므로 클라에서 스토어 집합으로 재계산할 수 있다.
  */
 export function computeWarnings(
     snapshot: Pick<HypothesisSnapshot, "hypothesisRelations">,
+    directionalTypes: Set<string> = DEFAULT_DIRECTIONAL,
 ): ValidationWarning[] {
     const warnings: ValidationWarning[] = [];
     const rels = snapshot.hypothesisRelations;
@@ -36,22 +29,15 @@ export function computeWarnings(
                 refs: [r.fromHypothesisId],
             });
         }
-        if (!KNOWN.has(r.relationType)) {
-            warnings.push({
-                code: "unknown_relation_type",
-                message: `알 수 없는 relationType: "${r.relationType}"`,
-                refs: [r.id],
-            });
-        }
     }
 
-    for (const type of ACYCLIC_TYPES) {
+    for (const type of directionalTypes) {
         const edges = rels.filter(
             (r) => r.relationType === type && r.fromHypothesisId !== r.toHypothesisId,
         );
         for (const cycle of findCycles(edges)) {
             warnings.push({
-                code: type === "better_than" ? "cycle_better_than" : "cycle_parent_of",
+                code: "cycle",
                 message: `${type} 순환: ${cycle.map(codeOf).join(" → ")} → ${codeOf(cycle[0])}`,
                 refs: cycle,
             });
