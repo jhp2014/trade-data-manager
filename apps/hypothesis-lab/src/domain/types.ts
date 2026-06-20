@@ -60,11 +60,7 @@ export type HypothesisRelation = {
  * FK 가 참조 무결성을 강제하므로 "존재하지 않는 ID 참조"류는 DB 에서 불가능 →
  * relation 그래프의 의미적 문제만 검사한다.
  */
-export type ValidationWarningCode =
-    | "self_relation"
-    | "unknown_relation_type"
-    | "cycle_better_than"
-    | "cycle_parent_of";
+export type ValidationWarningCode = "self_relation" | "cycle";
 
 export type ValidationWarning = {
     code: ValidationWarningCode;
