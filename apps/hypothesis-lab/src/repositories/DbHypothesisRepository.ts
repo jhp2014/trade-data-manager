@@ -258,6 +258,12 @@ export class DbHypothesisRepository implements HypothesisRepository {
                 ),
             );
     }
+
+    async deleteRelationsByType(relationType: string): Promise<void> {
+        await this.db
+            .delete(hypothesisRelations)
+            .where(eq(hypothesisRelations.relationType, relationType));
+    }
 }
 
 // --- row → domain 매핑 ---
