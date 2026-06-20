@@ -32,6 +32,15 @@ function SaveIcon() {
     );
 }
 
+function SheetIcon() {
+    return (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+        </svg>
+    );
+}
+
 function LoadIcon() {
     return (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -40,15 +49,29 @@ function LoadIcon() {
     );
 }
 
+const VIEW_LABELS: Record<"all" | "todo" | "done", string> = {
+    all: "All",
+    todo: "Todo",
+    done: "Done",
+};
+
 /**
- * 상단 작업셋 탭 레일. 월별/시트/Done(snapshot)/History/Filter 를 한 줄에서 토글한다.
- * Filter 탭이 활성이면 그 우측에 불리언식 입력 컨트롤(건수·저장·불러오기)이 펼쳐진다.
+ * 상단 작업셋 탭 레일. Date/Sheet/History/Filter 를 한 줄에서 토글한다.
+ * - Date/Sheet/History: 우측에 스코프 컨트롤(기간 입력·시트 탭명)과 All/Todo/Done 토글.
+ * - Filter: 불리언식 입력 컨트롤(건수·저장·불러오기·집계).
  * 우측 끝에는 설정(⚙) 버튼.
  */
-export function WorkingSetRail() {
+export function WorkingSetRail({
+    viewCounts,
+}: {
+    viewCounts: { all: number; todo: number; done: number };
+}) {
     const filterMode = useWorkbench((s) => s.filterMode);
     const mode = useWorkbench((s) => s.mode);
-    const month = useWorkbench((s) => s.month);
+    const range = useWorkbench((s) => s.range);
+    const setRange = useWorkbench((s) => s.setRange);
+    const view = useWorkbench((s) => s.view);
+    const setView = useWorkbench((s) => s.setView);
     const sheetTab = useWorkbench((s) => s.sheetTab);
     const selectWorkingSet = useWorkbench((s) => s.selectWorkingSet);
     const setFilterMode = useWorkbench((s) => s.setFilterMode);
@@ -88,10 +111,13 @@ export function WorkingSetRail() {
     }, [snapshot.data, parsed]);
 
     const isWs = filterMode === "workingset";
+    const isDate = isWs && mode.kind === "review-range";
+    const isSheet = isWs && mode.kind === "sheet";
+    const isHistory = filterMode === "history";
     const filterOpen = filterMode === "boolean";
+    const showViewToggle = isDate || isSheet || isHistory;
     const error = parsed && !parsed.ok ? parsed.error : null;
     const showStatus = expr.trim() !== "";
-    const monthLabel = month.replace("-", ".");
 
     // Filter 탭으로 진입하면 입력창에 포커스.
     useEffect(() => {
@@ -101,28 +127,22 @@ export function WorkingSetRail() {
     return (
         <div className={styles.rail}>
             <div className={styles.tabs}>
-                {/* 5개 탭은 세그먼트 컨트롤처럼 하나로 묶인다. 선택 탭은 accent 배경. */}
+                {/* 4개 탭은 세그먼트 컨트롤처럼 하나로 묶인다. 선택 탭은 accent 배경. */}
                 <div className={styles.group}>
                     <button
-                        className={cx(styles.tab, isWs && mode.kind === "review-month" && styles.on)}
-                        onClick={() => selectWorkingSet({ kind: "review-month", month })}
+                        className={cx(styles.tab, isDate && styles.on)}
+                        onClick={() => selectWorkingSet({ kind: "review-range", ...range })}
                     >
-                        {monthLabel}
+                        Date
                     </button>
                     <button
-                        className={cx(styles.tab, isWs && mode.kind === "sheet" && styles.on)}
+                        className={cx(styles.tab, isSheet && styles.on)}
                         onClick={() => selectWorkingSet({ kind: "sheet", tab: sheetTab })}
                     >
-                        {sheetTab ?? "시트"}
+                        Sheet
                     </button>
                     <button
-                        className={cx(styles.tab, isWs && mode.kind === "snapshot" && styles.on)}
-                        onClick={() => selectWorkingSet({ kind: "snapshot" })}
-                    >
-                        Done
-                    </button>
-                    <button
-                        className={cx(styles.tab, filterMode === "history" && styles.on)}
+                        className={cx(styles.tab, isHistory && styles.on)}
                         onClick={() => setFilterMode("history")}
                     >
                         History
@@ -135,9 +155,52 @@ export function WorkingSetRail() {
                     </button>
                 </div>
 
-                {/* Filter 탭 활성 시 우측에 식 입력 컨트롤이 펼쳐진다(고정 폭). */}
-                <div className={cx(styles.filterControls, filterOpen && styles.filterControlsOpen)}>
-                    <div className={cx(styles.filterBox, error && styles.filterBoxError)}>
+                {/* All/Todo/Done 토글(탭 그룹 우측) + 탭별 부가정보(기간/시트). 한 묶음·내부 구분선. */}
+                {showViewToggle && (
+                    <div className={styles.scopeControls}>
+                        <div className={styles.viewToggle}>
+                            {(["all", "todo", "done"] as const).map((v) => (
+                                <button
+                                    key={v}
+                                    className={cx(styles.viewBtn, view === v && styles.viewOn)}
+                                    onClick={() => setView(v)}
+                                >
+                                    {VIEW_LABELS[v]}
+                                    <span className={styles.viewNum}>{viewCounts[v]}</span>
+                                </button>
+                            ))}
+                        </div>
+                        {isDate && (
+                            <div className={styles.range}>
+                                <input
+                                    type="date"
+                                    className={styles.dateInput}
+                                    value={range.from}
+                                    max={range.to}
+                                    onChange={(e) => setRange({ ...range, from: e.target.value })}
+                                />
+                                <span className={styles.rangeSep}>–</span>
+                                <input
+                                    type="date"
+                                    className={styles.dateInput}
+                                    value={range.to}
+                                    min={range.from}
+                                    onChange={(e) => setRange({ ...range, to: e.target.value })}
+                                />
+                            </div>
+                        )}
+                        {isSheet && (
+                            <div className={styles.sheetField} title="설정에서 시트 탭 변경">
+                                <SheetIcon />
+                                <span className={styles.sheetName}>{sheetTab ?? "기본 탭(.env)"}</span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Filter 탭: 식 입력·저장/불러오기·집계를 한 바로 묶고 내부 구분선으로 나눈다. */}
+                {filterOpen && (
+                    <div className={cx(styles.filterBar, error && styles.filterBarError)}>
                         {showStatus &&
                             (error ? (
                                 <span className={styles.errBadge} title={error}>
@@ -163,8 +226,6 @@ export function WorkingSetRail() {
                             placeholder="코드를 & | ! 로 조합 · 노드 우클릭"
                             spellCheck={false}
                             autoComplete="off"
-                            tabIndex={filterOpen ? 0 : -1}
-                            aria-hidden={!filterOpen}
                         />
                         {expr !== "" && (
                             <button
@@ -177,43 +238,45 @@ export function WorkingSetRail() {
                                 ×
                             </button>
                         )}
-                    </div>
-                    <button
-                        className={styles.iconBtnSm}
-                        onClick={() => openSavedFilter("save")}
-                        disabled={expr.trim() === "" || !!error}
-                        title="현재 필터 저장"
-                        aria-label="현재 필터 저장"
-                        tabIndex={filterOpen ? 0 : -1}
-                    >
-                        <SaveIcon />
-                    </button>
-                    <button
-                        className={styles.iconBtnSm}
-                        onClick={() => openSavedFilter("load")}
-                        disabled={filters.length === 0}
-                        title="저장된 필터 불러오기"
-                        aria-label="저장된 필터 불러오기"
-                        tabIndex={filterOpen ? 0 : -1}
-                    >
-                        <LoadIcon />
-                    </button>
+                        <span className={styles.barDivider} />
+                        <button
+                            className={styles.barBtn}
+                            onClick={() => openSavedFilter("save")}
+                            disabled={expr.trim() === "" || !!error}
+                            title="현재 필터 저장"
+                            aria-label="현재 필터 저장"
+                        >
+                            <SaveIcon />
+                        </button>
+                        <button
+                            className={styles.barBtn}
+                            onClick={() => openSavedFilter("load")}
+                            disabled={filters.length === 0}
+                            title="저장된 필터 불러오기"
+                            aria-label="저장된 필터 불러오기"
+                        >
+                            <LoadIcon />
+                        </button>
 
-                    {agg && agg.items.length > 0 && (
-                        <div className={styles.agg} title={`결과 ${agg.total}건의 outcome 집계`}>
-                            {agg.items.map((it) => (
-                                <span
-                                    key={it.key}
-                                    className={styles.aggPill}
-                                    data-color={it.color ?? undefined}
-                                >
-                                    <span className={styles.aggLabel}>{it.label}</span>
-                                    <span className={styles.aggNum}>{it.count}</span>
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                        {agg && agg.items.length > 0 && (
+                            <>
+                                <span className={styles.barDivider} />
+                                <div className={styles.agg} title={`결과 ${agg.total}건의 outcome 집계`}>
+                                    {agg.items.map((it) => (
+                                        <span
+                                            key={it.key}
+                                            className={styles.aggPill}
+                                            data-color={it.color ?? undefined}
+                                        >
+                                            <span className={styles.aggLabel}>{it.label}</span>
+                                            <span className={styles.aggNum}>{it.count}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
 
             <button

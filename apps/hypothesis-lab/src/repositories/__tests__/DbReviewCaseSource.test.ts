@@ -121,13 +121,19 @@ describe("listRecent", () => {
     });
 });
 
-describe("listByMonth", () => {
-    it("해당 월의 review point 만", async () => {
+describe("listByRange", () => {
+    it("기간([from,to] 양끝 포함) 내 review point 만", async () => {
         await seedPoint(testDb.db, { stockCode: "055550", tradeDate: "2026-06-05", tradeTime: "09:11" });
         await seedPoint(testDb.db, { stockCode: "005930", tradeDate: "2026-07-01", tradeTime: "10:00" });
 
-        const june = await source.listByMonth("2026-06");
+        const june = await source.listByRange("2026-06-01", "2026-06-30");
         expect(june.map((c) => c.caseId)).toEqual(["055550-2026-06-05-0911"]);
-        expect(await source.listByMonth("2026-08")).toEqual([]);
+        // 양끝 포함: 7-01 도 to=7-01 이면 잡힌다
+        const wide = await source.listByRange("2026-06-01", "2026-07-01");
+        expect(wide.map((c) => c.caseId)).toEqual([
+            "005930-2026-07-01-1000",
+            "055550-2026-06-05-0911",
+        ]);
+        expect(await source.listByRange("2026-08-01", "2026-08-31")).toEqual([]);
     });
 });

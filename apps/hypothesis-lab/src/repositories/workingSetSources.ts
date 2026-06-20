@@ -18,14 +18,15 @@ export class ReviewRecentWorkingSetSource implements WorkingSetSource {
     }
 }
 
-/** data-core 특정 월(YYYY-MM)의 review point 를 워킹셋으로. */
-export class ReviewMonthWorkingSetSource implements WorkingSetSource {
+/** data-core 특정 기간([from,to] YYYY-MM-DD)의 review point 를 워킹셋으로. */
+export class ReviewRangeWorkingSetSource implements WorkingSetSource {
     constructor(
         private readonly source: ReviewCaseSource,
-        private readonly month: string,
+        private readonly from: string,
+        private readonly to: string,
     ) {}
     async listCaseIds(): Promise<string[]> {
-        return (await this.source.listByMonth(this.month)).map((c) => c.caseId);
+        return (await this.source.listByRange(this.from, this.to)).map((c) => c.caseId);
     }
 }
 
@@ -55,7 +56,7 @@ const DEFAULT_RECENT_LIMIT = 500;
 export type WorkingSetMode =
     | { kind: "sheet"; tab?: string }
     | { kind: "review-recent"; limit?: number }
-    | { kind: "review-month"; month: string }
+    | { kind: "review-range"; from: string; to: string }
     | { kind: "snapshot" };
 
 export type WorkingSetDeps = {
@@ -92,8 +93,8 @@ export function createWorkingSetSource(
                 deps.reviewCaseSource,
                 mode.limit ?? DEFAULT_RECENT_LIMIT,
             );
-        case "review-month":
-            return new ReviewMonthWorkingSetSource(deps.reviewCaseSource, mode.month);
+        case "review-range":
+            return new ReviewRangeWorkingSetSource(deps.reviewCaseSource, mode.from, mode.to);
         case "snapshot":
             return new SnapshotWorkingSetSource(deps.repo);
     }
