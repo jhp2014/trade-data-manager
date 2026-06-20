@@ -56,22 +56,7 @@
     font-size: 12px;
 }
 
-/* 빈 상태 예시(mock) 카드 — 실제 화면과 동일 골격, 비활성·라벨로 예시임을 표시. */
-.mockWrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-}
-.mockTag {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-    background: var(--chip);
-    border-radius: 999px;
-    padding: 2px 8px;
-}
+/* 빈 상태 예시(mock) 카드 — 실제 카드와 동일 골격, 비활성·옅게 처리해 예시임을 표시. */
 .mockCard {
     opacity: 0.7;
     pointer-events: none;
