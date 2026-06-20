@@ -9,21 +9,22 @@ import {
     removeTagAction,
     upsertRelationAction,
 } from "@/actions/edit";
-import { KNOWN_RELATION_TYPES } from "@/domain/validation";
+import { findRelationType, type RelationDirection } from "@/domain/relationType";
+import { useRelationTypes } from "@/stores/relationTypes";
 import { useSelection } from "@/stores/selection";
 import styles from "./HypothesisModal.module.css";
 
-/** 화살표가 의미 있는(방향성) 관계 타입. 나머지는 무방향(—)으로 표시. */
-const DIRECTIONAL = new Set(["better_than", "parent_of"]);
-
 /**
- * 현재 가설(좌측) 기준 화살표. 그래프와 동일하게 화살촉은 from(더 좋음/부모)을 가리킨다.
- *   currentIsFrom → 현재가 from → 화살표는 현재(좌) 쪽: "←"
- *   현재가 to     → 대상이 from → 화살표는 대상(우) 쪽: "→"
+ * 현재 가설(좌측) 기준 화살표 글리프. 그래프 렌더와 동일하게:
+ *   forward  → 화살촉이 to 를 가리킴
+ *   backward → 화살촉이 from 을 가리킴
+ *   none     → 무방향(—)
  */
-function arrowFor(relationType: string, currentIsFrom: boolean): string {
-    if (!DIRECTIONAL.has(relationType)) return "—";
-    return currentIsFrom ? "←" : "→";
+function arrowFor(direction: RelationDirection | undefined, currentIsFrom: boolean): string {
+    if (!direction || direction === "none") return "—";
+    const pointsToFrom = direction === "backward";
+    if (currentIsFrom) return pointsToFrom ? "←" : "→";
+    return pointsToFrom ? "→" : "←";
 }
 
 /** 정렬 순서·행 색상 모두 화살표 방향 기준. */
@@ -41,12 +42,16 @@ export function HypothesisModal() {
     const close = useSelection((s) => s.closeHypothesisModal);
     const snapshot = useQuery({ queryKey: ["snapshot"], queryFn: () => loadSnapshotAction() });
 
+    const relationTypes = useRelationTypes((s) => s.options);
     const [tagName, setTagName] = useState("");
-    const [relType, setRelType] = useState(KNOWN_RELATION_TYPES[0] as string);
+    const [relType, setRelType] = useState<string>(() => relationTypes[0]?.value ?? "");
     const [relTarget, setRelTarget] = useState("");
-    // 화살표 방향: "left" = 현재←대상(현재가 from), "right" = 현재→대상(대상이 from).
-    // 그래프는 화살촉을 from(더 좋음/부모) 쪽에 두므로 화살표가 from 을 가리킨다.
+    // relDir: "left" = 현재가 from(source), "right" = 대상이 from. 화살촉 위치는 종류의
+    // direction 설정이 결정하고, 이 토글은 from/to(어느 쪽이 source)만 고른다.
     const [relDir, setRelDir] = useState<"left" | "right">("left");
+
+    const curDef = findRelationType(relationTypes, relType);
+    const isDir = curDef ? curDef.direction !== "none" : false;
 
     useEffect(() => {
         if (!hypId) return;
@@ -110,13 +115,15 @@ export function HypothesisModal() {
                             .map((r) => {
                                 const currentIsFrom = r.fromHypothesisId === hyp.id;
                                 const otherId = currentIsFrom ? r.toHypothesisId : r.fromHypothesisId;
+                                const def = findRelationType(relationTypes, r.relationType);
                                 return {
                                     id: r.id,
                                     relationType: r.relationType,
+                                    relationLabel: def?.label ?? r.relationType,
                                     fromHypothesisId: r.fromHypothesisId,
                                     toHypothesisId: r.toHypothesisId,
                                     other: hypById.get(otherId),
-                                    arrow: arrowFor(r.relationType, currentIsFrom),
+                                    arrow: arrowFor(def?.direction, currentIsFrom),
                                 };
                             })
                             // 화살표 방향이 같은 관계끼리 모이도록 정렬(← → —).
@@ -193,7 +200,7 @@ export function HypothesisModal() {
                                                 <span className={styles.relArrow}>{r.arrow}</span>
                                                 <code className={styles.code}>{r.other?.code}</code>
                                                 <span className={styles.relText}>{r.other?.text}</span>
-                                                <span className={styles.relType}>{r.relationType}</span>
+                                                <span className={styles.relType}>{r.relationLabel}</span>
                                                 <button
                                                     className={styles.relX}
                                                     onClick={() =>
@@ -219,18 +226,14 @@ export function HypothesisModal() {
                                         <button
                                             type="button"
                                             className={styles.dirBtn}
-                                            disabled={!DIRECTIONAL.has(relType)}
+                                            disabled={!isDir}
                                             onClick={() =>
                                                 setRelDir((d) => (d === "left" ? "right" : "left"))
                                             }
-                                            title="화살표 방향 전환 (화살촉 = 더 좋음/부모)"
-                                            aria-label="화살표 방향 전환"
+                                            title="source(from) 방향 전환"
+                                            aria-label="source 방향 전환"
                                         >
-                                            {DIRECTIONAL.has(relType)
-                                                ? relDir === "left"
-                                                    ? "←"
-                                                    : "→"
-                                                : "—"}
+                                            {arrowFor(curDef?.direction, relDir === "left")}
                                         </button>
                                         <select
                                             className={styles.select}
@@ -249,9 +252,9 @@ export function HypothesisModal() {
                                             value={relType}
                                             onChange={(e) => setRelType(e.target.value)}
                                         >
-                                            {KNOWN_RELATION_TYPES.map((t) => (
-                                                <option key={t} value={t}>
-                                                    {t}
+                                            {relationTypes.map((t) => (
+                                                <option key={t.value} value={t.value}>
+                                                    {t.label}
                                                 </option>
                                             ))}
                                         </select>
@@ -260,9 +263,8 @@ export function HypothesisModal() {
                                             disabled={!relTarget}
                                             onClick={() => {
                                                 if (!relTarget) return;
-                                                // ← 면 현재가 from, → 면 대상이 from.
-                                                const dirLeft =
-                                                    !DIRECTIONAL.has(relType) || relDir === "left";
+                                                // 무방향이면 from/to 무의미 → 현재를 from. 방향성이면 토글대로.
+                                                const dirLeft = !isDir || relDir === "left";
                                                 mAddRel.mutate({
                                                     fromHypothesisId: dirLeft ? hyp.id : relTarget,
                                                     toHypothesisId: dirLeft ? relTarget : hyp.id,

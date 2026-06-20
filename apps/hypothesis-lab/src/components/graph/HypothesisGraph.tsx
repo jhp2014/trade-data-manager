@@ -17,7 +17,15 @@ import {
     saveGraphPositions,
     type NodePositions,
 } from "@/lib/graphPositions";
+import {
+    directionalValues,
+    findRelationType,
+    toEdgeVisual,
+    type EdgeVisual,
+    type RelationEdgeType,
+} from "@/domain/relationType";
 import type { HypothesisSnapshot } from "@/domain/types";
+import { useRelationTypes } from "@/stores/relationTypes";
 import { useSelection } from "@/stores/selection";
 import { useWorkbench } from "@/stores/workbench";
 import { HypNode, type HypNodeData } from "./HypNode";
@@ -26,26 +34,32 @@ import styles from "./HypothesisGraph.module.css";
 
 const nodeTypes = { hyp: HypNode };
 
-function edgeStyle(relationType: string): {
+/** RelationEdgeType → React Flow 빌트인 edge type. */
+function rfEdgeType(t: RelationEdgeType): string {
+    return t === "bezier" ? "default" : t;
+}
+
+/** EdgeVisual → React Flow edge 의 style/marker. */
+function edgeFromVisual(v: EdgeVisual): {
+    type: string;
     style: React.CSSProperties;
-    // 방향성 관계는 화살촉을 source(=from: 더 좋음/부모) 쪽에 둬서 "더 좋은 상황/부모를 가리키게" 한다.
     markerStart?: { type: MarkerType; color: string };
+    markerEnd?: { type: MarkerType; color: string };
 } {
-    switch (relationType) {
-        case "better_than":
-            return { style: { stroke: "#5b6cff" }, markerStart: { type: MarkerType.ArrowClosed, color: "#5b6cff" } };
-        case "parent_of":
-            return {
-                style: { stroke: "#c1559b", strokeDasharray: "6 3" },
-                markerStart: { type: MarkerType.ArrowClosed, color: "#c1559b" },
-            };
-        case "similar_to":
-            return { style: { stroke: "#9aa0ad", strokeDasharray: "3 4" } };
-        case "conflicts_with":
-            return { style: { stroke: "#d9534f", strokeDasharray: "1 5" } };
-        default:
-            return { style: { stroke: "#9aa0ad" } };
-    }
+    const marker = {
+        type: v.arrowHead === "open" ? MarkerType.Arrow : MarkerType.ArrowClosed,
+        color: v.stroke,
+    };
+    return {
+        type: rfEdgeType(v.edgeType),
+        style: {
+            stroke: v.stroke,
+            strokeDasharray: v.dash,
+            strokeLinecap: v.round ? "round" : undefined,
+        },
+        markerStart: v.arrowSide === "start" ? marker : undefined,
+        markerEnd: v.arrowSide === "end" ? marker : undefined,
+    };
 }
 
 export function HypothesisGraph({
@@ -61,6 +75,8 @@ export function HypothesisGraph({
     caseSelected: boolean;
     onToggleCaseLink: (hypothesisId: string, link: boolean) => void;
 }) {
+    const relationTypes = useRelationTypes((s) => s.options);
+    const directional = useMemo(() => directionalValues(relationTypes), [relationTypes]);
     const selectedHypothesisId = useSelection((s) => s.selectedHypothesisId);
     const selectHypothesis = useSelection((s) => s.selectHypothesis);
     const openHypothesisModal = useSelection((s) => s.openHypothesisModal);
@@ -87,9 +103,9 @@ export function HypothesisGraph({
     const layout = useMemo(
         () =>
             snapshot
-                ? buildGraphLayout(snapshot.hypotheses, snapshot.hypothesisRelations)
+                ? buildGraphLayout(snapshot.hypotheses, snapshot.hypothesisRelations, directional)
                 : { nodes: [], edges: [] },
-        // 구조 키가 같으면 레이아웃을 재계산하지 않는다.
+        // 구조 키가 같으면 레이아웃을 재계산하지 않는다(방향성 변경은 간선 렌더에만 즉시 반영).
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [structureKey],
     );
@@ -218,7 +234,7 @@ export function HypothesisGraph({
     const edges: Edge[] = useMemo(
         () =>
             layout.edges.map((e) => {
-                const s = edgeStyle(e.relationType);
+                const v = edgeFromVisual(toEdgeVisual(findRelationType(relationTypes, e.relationType)));
                 const touches =
                     selectedHypothesisId != null &&
                     (e.source === selectedHypothesisId || e.target === selectedHypothesisId);
@@ -226,16 +242,17 @@ export function HypothesisGraph({
                     id: e.id,
                     source: e.source,
                     target: e.target,
-                    type: "default",
-                    markerStart: s.markerStart,
+                    type: v.type,
+                    markerStart: v.markerStart,
+                    markerEnd: v.markerEnd,
                     style: {
-                        ...s.style,
+                        ...v.style,
                         strokeWidth: touches ? 2.4 : 1.4,
                         opacity: selectedHypothesisId && !touches ? 0.35 : 1,
                     },
                 };
             }),
-        [layout, selectedHypothesisId],
+        [layout, selectedHypothesisId, relationTypes],
     );
 
     if (!snapshot) return <div className={styles.placeholder}>불러오는 중…</div>;
