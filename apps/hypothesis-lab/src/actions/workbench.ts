@@ -57,6 +57,18 @@ export async function loadWorkingSetAction(mode: WorkingSetMode): Promise<Workin
     return buildWorkingSet({ caseIds, reviewCases, snapshot });
 }
 
+/**
+ * 임의 caseId 목록을 워킹셋 행으로 enrich(History 레일·붙여넣기용).
+ * 입력 순서를 보존하며 review/스냅샷에 없는 caseId 도 caseId 파싱으로 카드화한다.
+ */
+export async function loadCasesAction(caseIds: string[]): Promise<WorkingSetCase[]> {
+    if (caseIds.length === 0) return [];
+    const r = repo();
+    const rs = reviewSource();
+    const [reviewCases, snapshot] = await Promise.all([rs.enrich(caseIds), r.loadSnapshot()]);
+    return buildWorkingSet({ caseIds, reviewCases, snapshot });
+}
+
 export type CaseSnapshotInput = {
     caseId: string;
     stockCode: string;
