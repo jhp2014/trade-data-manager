@@ -223,34 +223,80 @@
 
 .relAdd {
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 10px;
+}
+.builder {
+    display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 6px;
 }
-.relAdd .select {
-    min-width: 0;
-}
-.relAdd .select:first-of-type {
+.endpoint {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
 }
-.dirBtn {
+.endpoint .select {
+    width: 100%;
+}
+.endpointCap {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+.selfBox {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    background: var(--accent-weak);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+}
+.connector {
     flex-shrink: 0;
-    width: 34px;
+    align-self: flex-start;
+    margin-top: 8px;
+}
+.swapBtn {
+    flex-shrink: 0;
+    align-self: flex-start;
+    width: 28px;
     height: 34px;
     border: 1px solid var(--border-strong);
     background: var(--bg);
-    color: var(--accent);
+    color: var(--text);
     border-radius: 8px;
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 14px;
     line-height: 1;
     cursor: pointer;
 }
-.dirBtn:hover:not(:disabled) {
+.swapBtn:hover:not(:disabled) {
     border-color: var(--accent);
+    color: var(--accent);
 }
-.dirBtn:disabled {
+.swapBtn:disabled {
     color: var(--muted);
+    opacity: 0.5;
     cursor: default;
+}
+.addRow2 {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.addRow2 .select {
+    flex: 1;
+    min-width: 0;
 }
 .addBtn {
     border: 0;

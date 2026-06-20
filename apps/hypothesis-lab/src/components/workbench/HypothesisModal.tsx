@@ -9,7 +9,13 @@ import {
     removeTagAction,
     upsertRelationAction,
 } from "@/actions/edit";
-import { findRelationType, type RelationDirection } from "@/domain/relationType";
+import {
+    RELATION_COLOR_HEX,
+    dashArray,
+    findRelationType,
+    type RelationDirection,
+    type RelationTypeDef,
+} from "@/domain/relationType";
 import { useRelationTypes } from "@/stores/relationTypes";
 import { useSelection } from "@/stores/selection";
 import styles from "./HypothesisModal.module.css";
@@ -25,6 +31,34 @@ function arrowFor(direction: RelationDirection | undefined, currentIsFrom: boole
     const pointsToFrom = direction === "backward";
     if (currentIsFrom) return pointsToFrom ? "←" : "→";
     return pointsToFrom ? "→" : "←";
+}
+
+/**
+ * 입력 빌더의 source(좌) → 대상(우) 사이 간선 미리보기. 그래프와 동일하게
+ * forward 는 우(대상)·backward 는 좌(source)를 가리키고, none 은 화살촉 없음.
+ */
+function EdgeConnector({ def }: { def?: RelationTypeDef }) {
+    const stroke = def ? RELATION_COLOR_HEX[def.color] : RELATION_COLOR_HEX.gray;
+    const dir = def?.direction ?? "none";
+    const dash = def ? dashArray(def.lineStyle) : undefined;
+    const right = dir === "forward";
+    const left = dir === "backward";
+    return (
+        <svg className={styles.connector} width="58" height="18" viewBox="0 0 58 18" aria-hidden>
+            <line
+                x1={left ? 9 : 3}
+                y1="9"
+                x2={right ? 49 : 55}
+                y2="9"
+                stroke={stroke}
+                strokeWidth="2"
+                strokeDasharray={dash}
+                strokeLinecap={def?.lineStyle === "dotted" ? "round" : undefined}
+            />
+            {right && <path d="M49,4 L56,9 L49,14 Z" fill={stroke} />}
+            {left && <path d="M9,4 L2,9 L9,14 Z" fill={stroke} />}
+        </svg>
+    );
 }
 
 /** 정렬 순서·행 색상 모두 화살표 방향 기준. */
@@ -221,61 +255,95 @@ export function HypothesisModal() {
                                         )}
                                     </ul>
 
-                                    <div className={styles.relAdd}>
-                                        <span className={styles.relSelf}>{hyp.code}</span>
-                                        <button
-                                            type="button"
-                                            className={styles.dirBtn}
-                                            disabled={!isDir}
-                                            onClick={() =>
-                                                setRelDir((d) => (d === "left" ? "right" : "left"))
-                                            }
-                                            title="source(from) 방향 전환"
-                                            aria-label="source 방향 전환"
-                                        >
-                                            {arrowFor(curDef?.direction, relDir === "left")}
-                                        </button>
-                                        <select
-                                            className={styles.select}
-                                            value={relTarget}
-                                            onChange={(e) => setRelTarget(e.target.value)}
-                                        >
-                                            <option value="">대상 선택…</option>
-                                            {others.map((h) => (
-                                                <option key={h.id} value={h.id}>
-                                                    {h.code} {h.text}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <select
-                                            className={styles.select}
-                                            value={relType}
-                                            onChange={(e) => setRelType(e.target.value)}
-                                        >
-                                            {relationTypes.map((t) => (
-                                                <option key={t.value} value={t.value}>
-                                                    {t.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <button
-                                            className={styles.addBtn}
-                                            disabled={!relTarget}
-                                            onClick={() => {
-                                                if (!relTarget) return;
-                                                // 무방향이면 from/to 무의미 → 현재를 from. 방향성이면 토글대로.
-                                                const dirLeft = !isDir || relDir === "left";
-                                                mAddRel.mutate({
-                                                    fromHypothesisId: dirLeft ? hyp.id : relTarget,
-                                                    toHypothesisId: dirLeft ? relTarget : hyp.id,
-                                                    relationType: relType,
-                                                });
-                                                setRelTarget("");
-                                            }}
-                                        >
-                                            추가
-                                        </button>
-                                    </div>
+                                    {(() => {
+                                        // 왼쪽 = source(from), 오른쪽 = 대상(to) 으로 위치 고정.
+                                        // 무방향이면 순서가 무의미하므로 항상 현재를 왼쪽에 둔다.
+                                        const selfIsSource = !isDir || relDir === "left";
+                                        const selfBox = (
+                                            <div className={styles.selfBox}>
+                                                <code className={styles.code}>{hyp.code}</code>
+                                            </div>
+                                        );
+                                        const targetBox = (
+                                            <select
+                                                className={`${styles.select} ${styles.targetSelect}`}
+                                                value={relTarget}
+                                                onChange={(e) => setRelTarget(e.target.value)}
+                                            >
+                                                <option value="">대상 선택…</option>
+                                                {others.map((h) => (
+                                                    <option key={h.id} value={h.id}>
+                                                        {h.code} {h.text}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        );
+                                        return (
+                                            <div className={styles.relAdd}>
+                                                <div className={styles.builder}>
+                                                    <div className={styles.endpoint}>
+                                                        {selfIsSource ? selfBox : targetBox}
+                                                        <span className={styles.endpointCap}>
+                                                            {isDir ? "source (from)" : "기준"}
+                                                        </span>
+                                                    </div>
+                                                    <EdgeConnector def={curDef} />
+                                                    <button
+                                                        type="button"
+                                                        className={styles.swapBtn}
+                                                        disabled={!isDir}
+                                                        onClick={() =>
+                                                            setRelDir((d) =>
+                                                                d === "left" ? "right" : "left",
+                                                            )
+                                                        }
+                                                        title="source ↔ 대상 맞바꾸기"
+                                                        aria-label="source 와 대상 맞바꾸기"
+                                                    >
+                                                        ⇄
+                                                    </button>
+                                                    <div className={styles.endpoint}>
+                                                        {selfIsSource ? targetBox : selfBox}
+                                                        <span className={styles.endpointCap}>
+                                                            {isDir ? "대상 (to)" : "대상"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className={styles.addRow2}>
+                                                    <select
+                                                        className={styles.select}
+                                                        value={relType}
+                                                        onChange={(e) => setRelType(e.target.value)}
+                                                    >
+                                                        {relationTypes.map((t) => (
+                                                            <option key={t.value} value={t.value}>
+                                                                {t.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <button
+                                                        className={styles.addBtn}
+                                                        disabled={!relTarget}
+                                                        onClick={() => {
+                                                            if (!relTarget) return;
+                                                            mAddRel.mutate({
+                                                                fromHypothesisId: selfIsSource
+                                                                    ? hyp.id
+                                                                    : relTarget,
+                                                                toHypothesisId: selfIsSource
+                                                                    ? relTarget
+                                                                    : hyp.id,
+                                                                relationType: relType,
+                                                            });
+                                                            setRelTarget("");
+                                                        }}
+                                                    >
+                                                        추가
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </section>
                             </>
                         );
