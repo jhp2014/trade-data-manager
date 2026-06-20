@@ -129,6 +129,20 @@ describe("setCaseOutcome", () => {
     });
 });
 
+describe("setCaseNote", () => {
+    it("케이스 메모를 설정하고 null 로 제거한다", async () => {
+        await repo.ensureCase(CASE);
+
+        await repo.setCaseNote({ caseId: CASE.caseId, note: "끼 좋았으나 거래대금 부족" });
+        let snap = await repo.loadSnapshot();
+        expect(snap.cases[0].note).toBe("끼 좋았으나 거래대금 부족");
+
+        await repo.setCaseNote({ caseId: CASE.caseId, note: null });
+        snap = await repo.loadSnapshot();
+        expect(snap.cases[0].note).toBeNull();
+    });
+});
+
 describe("addTag", () => {
     it("이름으로 태그를 보장하고 연결하며 중복 연결은 무시한다", async () => {
         const { id } = await repo.createHypothesis({ text: "H" });

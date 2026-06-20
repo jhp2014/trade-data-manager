@@ -31,6 +31,7 @@ const extra = () =>
  * stockCode/tradeDate/tradeTime 은 caseId 에서 파생되는 값이지만 조회 편의를 위해 비정규화.
  * stockName 만이 caseId 로 못 구하는 외부 enrich 대상.
  * outcome 은 이 트레이드의 실제 결과(가설 무관). 느슨한 varchar — 허용값은 App(domain/outcome)이 고정.
+ * note 는 케이스 자유 메모(가설 무관). 자유 텍스트라 길이 제한 없는 text.
  */
 export const cases = hypothesisSchema.table("cases", {
     caseId: varchar("case_id", { length: 40 }).primaryKey(),
@@ -39,6 +40,7 @@ export const cases = hypothesisSchema.table("cases", {
     tradeDate: date("trade_date").notNull(),
     tradeTime: time("trade_time"), // nullable: HHmm 없는 groupId fallback 허용
     outcome: varchar("outcome", { length: 20 }), // nullable: 미설정. 허용값은 domain/outcome 가 고정.
+    note: text("note"), // nullable: 케이스 자유 메모(가설 무관). 빈 문자열은 저장하지 않고 null.
     extra: extra(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

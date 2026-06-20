@@ -46,6 +46,8 @@ export interface HypothesisRepository {
     refreshCaseStockName(input: { caseId: string; stockName: string | null }): Promise<void>;
     /** 케이스 레벨 outcome(트레이드 결과) 설정. null=해제. */
     setCaseOutcome(input: { caseId: string; outcome: string | null }): Promise<void>;
+    /** 케이스 자유 메모 설정. null=제거. */
+    setCaseNote(input: { caseId: string; note: string | null }): Promise<void>;
     /** case 제거(연결도 cascade). */
     removeCase(caseId: string): Promise<void>;
 

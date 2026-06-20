@@ -17,6 +17,7 @@ const snapCase = (over: Partial<Case> & { caseId: string }): Case => ({
     tradeDate: "2026-06-05",
     tradeTime: "09:11",
     outcome: null,
+    note: null,
     extra: {},
     ...over,
 });
@@ -44,6 +45,7 @@ describe("buildWorkingSet", () => {
             tradeDate: "2026-06-05",
             tradeTime: "09:11",
             outcome: null,
+            note: null,
             existsInReview: true,
             linkedHypothesisIds: ["1", "2"],
         });
@@ -77,6 +79,7 @@ describe("buildWorkingSet", () => {
             tradeDate: "2026-06-10",
             tradeTime: "13:20",
             outcome: null,
+            note: null,
             existsInReview: false,
             linkedHypothesisIds: [],
         });

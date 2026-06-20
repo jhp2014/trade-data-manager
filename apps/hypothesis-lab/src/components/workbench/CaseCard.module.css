@@ -107,6 +107,13 @@
     opacity: 0.45;
     padding: 3px 4px;
 }
+.noteFlag {
+    flex-shrink: 0;
+    display: inline-flex;
+    line-height: 0;
+    color: var(--muted);
+    opacity: 0.7;
+}
 .line2 {
     display: flex;
     align-items: center;
@@ -224,4 +231,22 @@
 .clear:hover {
     color: var(--text);
     border-color: var(--border-strong);
+}
+.noteInput {
+    width: 100%;
+    margin-top: 4px;
+    box-sizing: border-box;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text);
+    background: var(--bg);
+}
+.noteInput:focus {
+    outline: none;
+    border-color: var(--accent);
 }

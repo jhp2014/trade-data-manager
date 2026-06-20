@@ -14,6 +14,7 @@ const mkCase = (caseId: string): Case => ({
     tradeDate: "2026-06-05",
     tradeTime: null,
     outcome: null,
+    note: null,
     extra: {},
 });
 

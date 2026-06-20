@@ -124,6 +124,13 @@ export class DbHypothesisRepository implements HypothesisRepository {
             .where(eq(cases.caseId, input.caseId));
     }
 
+    async setCaseNote(input: { caseId: string; note: string | null }): Promise<void> {
+        await this.db
+            .update(cases)
+            .set({ note: input.note, updatedAt: new Date() })
+            .where(eq(cases.caseId, input.caseId));
+    }
+
     async removeCase(caseId: string): Promise<void> {
         await this.db.delete(cases).where(eq(cases.caseId, caseId));
     }
@@ -270,6 +277,7 @@ function toCase(r: CaseRow): Case {
         tradeDate: r.tradeDate,
         tradeTime: r.tradeTime ? r.tradeTime.slice(0, 5) : null,
         outcome: r.outcome,
+        note: r.note,
         extra: r.extra,
     };
 }
