@@ -1,5 +1,5 @@
 {
-  "id": "db224370-6f29-4949-a497-71ab7ebb0f0d",
+  "id": "ec141f9b-10b8-456d-a926-9f0d23ce5dc0",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -35,6 +35,18 @@
         "trade_time": {
           "name": "trade_time",
           "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -142,12 +154,6 @@
           "type": "varchar(40)",
           "primaryKey": false,
           "notNull": true
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": false
         },
         "note": {
           "name": "note",

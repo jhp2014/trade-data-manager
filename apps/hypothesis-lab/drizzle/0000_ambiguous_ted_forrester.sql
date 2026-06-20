@@ -6,6 +6,8 @@ CREATE TABLE "hypothesis"."cases" (
 	"stock_name" varchar(100),
 	"trade_date" date NOT NULL,
 	"trade_time" time,
+	"outcome" varchar(20),
+	"note" text,
 	"extra" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
@@ -24,7 +26,6 @@ CREATE TABLE "hypothesis"."hypothesis_cases" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"hypothesis_id" bigint NOT NULL,
 	"case_id" varchar(40) NOT NULL,
-	"outcome" varchar(20),
 	"note" text,
 	"extra" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,

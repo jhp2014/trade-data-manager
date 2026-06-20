@@ -13,6 +13,8 @@ export type Case = {
     tradeTime: string | null; // HH:MM
     /** 이 트레이드의 실제 결과(가설 무관). 허용값은 domain/outcome 가 고정. null=미설정. */
     outcome: string | null;
+    /** 케이스 자유 메모(가설 무관). null=미설정. */
+    note: string | null;
     extra: Record<string, string>;
 };
 

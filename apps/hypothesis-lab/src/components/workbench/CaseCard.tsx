@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { findOutcome } from "@/domain/outcome";
 import { useOutcomeTypes } from "@/stores/outcomeTypes";
@@ -27,7 +27,15 @@ function CheckIcon() {
     );
 }
 
-const POPOVER_W = 150;
+function NoteIcon() {
+    return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 5h16M4 10h16M4 15h10" />
+        </svg>
+    );
+}
+
+const POPOVER_W = 230;
 
 export function CaseCard({
     c,
@@ -35,20 +43,39 @@ export function CaseCard({
     linkedCount,
     onSelect,
     onSetOutcome,
+    onSetNote,
 }: {
     c: WorkingSetCase;
     selected: boolean;
     linkedCount: number;
     onSelect: () => void;
     onSetOutcome: (outcome: string | null) => void;
+    onSetNote: (note: string | null) => void;
 }) {
     const options = useOutcomeTypes((s) => s.options);
     const opt = findOutcome(options, c.outcome);
 
     const [copied, setCopied] = useState(false);
     const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+    const [noteDraft, setNoteDraft] = useState("");
+    const noteDraftRef = useRef("");
     const cardRef = useRef<HTMLDivElement>(null);
     const popRef = useRef<HTMLDivElement>(null);
+
+    function editNote(v: string) {
+        noteDraftRef.current = v;
+        setNoteDraft(v);
+    }
+    // 닫힐 때 메모 초안을 저장한다(빈 문자열 → null=제거). 값이 그대로면 무시.
+    const commitNote = useCallback(() => {
+        const trimmed = noteDraftRef.current.trim();
+        const next = trimmed === "" ? null : trimmed;
+        if (next !== (c.note ?? null)) onSetNote(next);
+    }, [c.note, onSetNote]);
+    const closeEditor = useCallback(() => {
+        commitNote();
+        setAnchor(null);
+    }, [commitNote]);
 
     async function copy(e: React.MouseEvent) {
         e.stopPropagation();
@@ -64,26 +91,27 @@ export function CaseCard({
             Math.max(8, rect.right - POPOVER_W),
             window.innerWidth - POPOVER_W - 8,
         );
+        editNote(c.note ?? "");
         setAnchor({ top: rect.bottom + 4, left });
     }
 
     function pick(e: React.MouseEvent, value: string | null) {
         e.stopPropagation();
         onSetOutcome(value);
-        setAnchor(null);
+        closeEditor();
     }
 
     // 팝오버 바깥 클릭 / Esc / 스크롤·리사이즈 시 닫는다(fixed 라 따라가지 않으므로).
     useEffect(() => {
         if (!anchor) return;
         function onDown(ev: MouseEvent) {
-            if (!popRef.current?.contains(ev.target as Node)) setAnchor(null);
+            if (!popRef.current?.contains(ev.target as Node)) closeEditor();
         }
         function onKey(ev: KeyboardEvent) {
-            if (ev.key === "Escape") setAnchor(null);
+            if (ev.key === "Escape") closeEditor();
         }
         function onScroll() {
-            setAnchor(null);
+            closeEditor();
         }
         document.addEventListener("mousedown", onDown);
         document.addEventListener("keydown", onKey);
@@ -95,7 +123,7 @@ export function CaseCard({
             window.removeEventListener("scroll", onScroll, true);
             window.removeEventListener("resize", onScroll);
         };
-    }, [anchor]);
+    }, [anchor, closeEditor]);
 
     return (
         <div
@@ -105,7 +133,7 @@ export function CaseCard({
             onClick={onSelect}
             onDoubleClick={(e) => {
                 e.stopPropagation();
-                if (anchor) setAnchor(null);
+                if (anchor) closeEditor();
                 else openEditor();
             }}
         >
@@ -123,6 +151,11 @@ export function CaseCard({
                         {copied ? <CheckIcon /> : <CopyIcon />}
                     </button>
                 </div>
+                {c.note && (
+                    <span className={styles.noteFlag} title={c.note} aria-label="메모 있음">
+                        <NoteIcon />
+                    </span>
+                )}
                 {opt ? (
                     <span className={styles.outcome} data-color={opt.color} title={`결과: ${opt.label}`}>
                         {opt.label}
@@ -177,6 +210,15 @@ export function CaseCard({
                                 해제
                             </button>
                         )}
+                        <div className={styles.editorTitle}>메모</div>
+                        <textarea
+                            className={styles.noteInput}
+                            value={noteDraft}
+                            onChange={(e) => editNote(e.target.value)}
+                            placeholder="자유 메모 (닫으면 저장, 비우면 제거)"
+                            rows={3}
+                            autoFocus={!c.outcome}
+                        />
                     </div>,
                     document.body,
                 )}

@@ -103,6 +103,14 @@ export async function setCaseOutcomeAction(input: {
     await repo().setCaseOutcome(input);
 }
 
+/** 케이스 자유 메모 설정. null=제거. */
+export async function setCaseNoteAction(input: {
+    caseId: string;
+    note: string | null;
+}): Promise<void> {
+    await repo().setCaseNote(input);
+}
+
 /** 새 가설 생성. case 가 주어지면 곧바로 연결까지. */
 export async function createHypothesisAction(input: {
     text: string;
