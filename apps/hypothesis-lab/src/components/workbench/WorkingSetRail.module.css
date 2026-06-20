@@ -358,3 +358,14 @@
     color: var(--accent);
     border-color: var(--accent);
 }
+.settings:disabled {
+    cursor: default;
+}
+.spinning svg {
+    animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

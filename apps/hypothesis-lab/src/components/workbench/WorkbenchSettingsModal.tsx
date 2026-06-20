@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listSheetTabsAction } from "@/actions/workbench";
 import { OUTCOME_COLORS, type OutcomeColor } from "@/domain/outcome";
 import { useOutcomeTypes } from "@/stores/outcomeTypes";
@@ -33,22 +33,22 @@ export function WorkbenchSettingsModal() {
         if (addOutcome(ocLabel, ocColor)) setOcLabel("");
     }
 
-    // 모달 열릴 때 1회 탭 목록 fetch(읽기 전용). 닫히면 다음 열림에 다시 불러오도록 리셋.
+    // 탭 목록 fetch(읽기 전용). 모달 열릴 때 + 새로고침 버튼에서 호출.
+    const loadTabs = useCallback(() => {
+        setLoading(true);
+        return listSheetTabsAction()
+            .then((t) => setTabs(t))
+            .catch(() => setTabs([]))
+            .finally(() => setLoading(false));
+    }, []);
+
     useEffect(() => {
         if (!open) {
             setTabs(null);
             return;
         }
-        let alive = true;
-        setLoading(true);
-        listSheetTabsAction()
-            .then((t) => alive && setTabs(t))
-            .catch(() => alive && setTabs([]))
-            .finally(() => alive && setLoading(false));
-        return () => {
-            alive = false;
-        };
-    }, [open]);
+        loadTabs();
+    }, [open, loadTabs]);
 
     if (!open) return null;
 
@@ -63,7 +63,22 @@ export function WorkbenchSettingsModal() {
                 </header>
 
                 <section className={styles.section}>
-                    <h3>시트 탭</h3>
+                    <div className={styles.sectionHead}>
+                        <h3>시트 탭</h3>
+                        <button
+                            type="button"
+                            className={styles.refreshTabs}
+                            onClick={() => loadTabs()}
+                            disabled={loading}
+                            title="시트 탭 목록 새로고침"
+                            aria-label="시트 탭 목록 새로고침"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                                <path d="M21 3v5h-5" />
+                            </svg>
+                        </button>
+                    </div>
                     {loading ? (
                         <p className={styles.muted}>탭 목록 불러오는 중…</p>
                     ) : !tabs || tabs.length === 0 ? (
