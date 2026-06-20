@@ -76,4 +76,6 @@ export interface HypothesisRepository {
         toHypothesisId: string;
         relationType: string;
     }): Promise<void>;
+    /** 특정 종류의 관계 전부 삭제(설정에서 종류 삭제 시 cascade). */
+    deleteRelationsByType(relationType: string): Promise<void>;
 }

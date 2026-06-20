@@ -43,3 +43,7 @@ export async function removeRelationAction(input: {
 }): Promise<void> {
     await repo().removeRelation(input);
 }
+
+export async function deleteRelationsByTypeAction(relationType: string): Promise<void> {
+    await repo().deleteRelationsByType(relationType);
+}
