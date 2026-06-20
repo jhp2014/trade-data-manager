@@ -6,6 +6,21 @@ import { useSelection } from "@/stores/selection";
 import { CaseCard } from "./CaseCard";
 import styles from "./CaseRail.module.css";
 
+const noop = () => {};
+
+// 빈 상태에서 좌측에 보여줄 예시 카드 — 실제 데이터 화면과 동일한 골격을 유지한다.
+const MOCK_CASE: WorkingSetCase = {
+    caseId: "MOCK-SAMPLE",
+    stockCode: "000000",
+    stockName: "예시 종목",
+    tradeDate: "2025-01-02",
+    tradeTime: "09:31",
+    outcome: "win",
+    note: "여기는 예시(mock) 카드입니다.",
+    existsInReview: true,
+    linkedHypothesisIds: [],
+};
+
 export function CaseRail({
     cases,
     loading,
@@ -84,9 +99,11 @@ export function CaseRail({
         el.scrollTo({ left: targetRef.current, behavior: "smooth" });
     }, [selectedCaseId, cases]);
 
+    const isEmpty = cases.length === 0;
+
     return (
         <div className={styles.rail}>
-            {selectedCase && (
+            {selectedCase ? (
                 <>
                     <div className={styles.pinned}>
                         <CaseCard
@@ -100,19 +117,34 @@ export function CaseRail({
                     </div>
                     <div className={styles.divider} />
                 </>
-            )}
-            <div className={styles.scroll} ref={scrollRef} onWheel={onWheel}>
-                {(loading || cases.length === 0) &&
-                    Array.from({ length: 6 }).map((_, i) => (
-                        <div key={`skel-${i}`} className={styles.skelCard} aria-hidden>
-                            <div className={styles.skelLine1}>
-                                <span className={`${styles.skelBar} ${styles.skelName}`} />
-                                <span className={`${styles.skelBar} ${styles.skelCode}`} />
+            ) : isEmpty ? (
+                <>
+                    <div className={styles.pinned}>
+                        <div className={styles.mockWrap}>
+                            <span className={styles.mockTag}>예시 · mock</span>
+                            <div className={styles.mockCard}>
+                                <CaseCard
+                                    c={MOCK_CASE}
+                                    selected={false}
+                                    linkedCount={2}
+                                    onSelect={noop}
+                                    onSetOutcome={noop}
+                                    onSetNote={noop}
+                                />
                             </div>
-                            <span className={`${styles.skelBar} ${styles.skelSub}`} />
-                            <span className={`${styles.skelBar} ${styles.skelTag}`} />
                         </div>
-                    ))}
+                    </div>
+                    <div className={styles.divider} />
+                </>
+            ) : null}
+            <div className={styles.scroll} ref={scrollRef} onWheel={onWheel}>
+                {isEmpty && (
+                    <span className={styles.muted}>
+                        {loading
+                            ? "케이스 불러오는 중…"
+                            : "이 조건에 해당하는 케이스가 없어요. 왼쪽은 예시 카드입니다."}
+                    </span>
+                )}
                 {cases.map((c) => (
                     <CaseCard
                         key={c.caseId}
