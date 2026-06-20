@@ -98,31 +98,34 @@ describe("refreshCaseStockName", () => {
 });
 
 describe("upsertCaseLink", () => {
-    it("연결을 만들고 outcome 을 on-conflict 로 갱신한다", async () => {
+    it("연결을 만들고 note 를 on-conflict 로 갱신한다", async () => {
         const { id } = await repo.createHypothesis({ text: "H" });
         await repo.ensureCase(CASE);
 
-        await repo.upsertCaseLink({
-            hypothesisId: id,
-            caseId: CASE.caseId,
-            outcome: "watch",
-            note: "관찰",
-        });
-        await repo.upsertCaseLink({
-            hypothesisId: id,
-            caseId: CASE.caseId,
-            outcome: "fail",
-            note: "반응 약함",
-        });
+        await repo.upsertCaseLink({ hypothesisId: id, caseId: CASE.caseId, note: "관찰" });
+        await repo.upsertCaseLink({ hypothesisId: id, caseId: CASE.caseId, note: "반응 약함" });
 
         const snap = await repo.loadSnapshot();
         expect(snap.hypothesisCases).toHaveLength(1);
         expect(snap.hypothesisCases[0]).toMatchObject({
             hypothesisId: id,
             caseId: CASE.caseId,
-            outcome: "fail",
             note: "반응 약함",
         });
+    });
+});
+
+describe("setCaseOutcome", () => {
+    it("케이스 레벨 outcome 을 설정하고 null 로 해제한다", async () => {
+        await repo.ensureCase(CASE);
+
+        await repo.setCaseOutcome({ caseId: CASE.caseId, outcome: "win" });
+        let snap = await repo.loadSnapshot();
+        expect(snap.cases[0].outcome).toBe("win");
+
+        await repo.setCaseOutcome({ caseId: CASE.caseId, outcome: null });
+        snap = await repo.loadSnapshot();
+        expect(snap.cases[0].outcome).toBeNull();
     });
 });
 

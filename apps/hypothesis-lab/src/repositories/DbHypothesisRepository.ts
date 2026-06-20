@@ -117,6 +117,13 @@ export class DbHypothesisRepository implements HypothesisRepository {
             .where(eq(cases.caseId, input.caseId));
     }
 
+    async setCaseOutcome(input: { caseId: string; outcome: string | null }): Promise<void> {
+        await this.db
+            .update(cases)
+            .set({ outcome: input.outcome, updatedAt: new Date() })
+            .where(eq(cases.caseId, input.caseId));
+    }
+
     async removeCase(caseId: string): Promise<void> {
         await this.db.delete(cases).where(eq(cases.caseId, caseId));
     }
@@ -126,7 +133,6 @@ export class DbHypothesisRepository implements HypothesisRepository {
     async upsertCaseLink(input: {
         hypothesisId: string;
         caseId: string;
-        outcome?: string | null;
         note?: string | null;
     }): Promise<void> {
         await this.db
@@ -134,13 +140,11 @@ export class DbHypothesisRepository implements HypothesisRepository {
             .values({
                 hypothesisId: BigInt(input.hypothesisId),
                 caseId: input.caseId,
-                outcome: input.outcome ?? null,
                 note: input.note ?? null,
             })
             .onConflictDoUpdate({
                 target: [hypothesisCases.hypothesisId, hypothesisCases.caseId],
                 set: {
-                    outcome: input.outcome ?? null,
                     note: input.note ?? null,
                     updatedAt: new Date(),
                 },
@@ -265,6 +269,7 @@ function toCase(r: CaseRow): Case {
         stockName: r.stockName,
         tradeDate: r.tradeDate,
         tradeTime: r.tradeTime ? r.tradeTime.slice(0, 5) : null,
+        outcome: r.outcome,
         extra: r.extra,
     };
 }
@@ -292,7 +297,6 @@ function toHypothesisCase(r: HypothesisCaseRow): HypothesisCase {
         id: String(r.id),
         hypothesisId: String(r.hypothesisId),
         caseId: r.caseId,
-        outcome: r.outcome,
         note: r.note,
         extra: r.extra,
     };

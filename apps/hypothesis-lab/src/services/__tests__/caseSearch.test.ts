@@ -13,6 +13,7 @@ const mkCase = (caseId: string): Case => ({
     stockName: null,
     tradeDate: "2026-06-05",
     tradeTime: null,
+    outcome: null,
     extra: {},
 });
 
@@ -20,7 +21,6 @@ const link = (hypothesisId: string, caseId: string): HypothesisCase => ({
     id: `${hypothesisId}-${caseId}`,
     hypothesisId,
     caseId,
-    outcome: null,
     note: null,
     extra: {},
 });

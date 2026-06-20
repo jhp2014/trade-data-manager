@@ -9,6 +9,8 @@ export type WorkingSetCase = {
     stockName: string | null;
     tradeDate: string;
     tradeTime: string | null;
+    /** 케이스 레벨 outcome(트레이드 결과). 스냅샷에만 존재, 미설정이면 null. */
+    outcome: string | null;
     /** data-core review_point 에 실재하는가(false = 고아 가능성). */
     existsInReview: boolean;
     /** 이미 연결된 가설 id (스냅샷). 비어있으면 아직 미연결. */
@@ -46,6 +48,7 @@ export function buildWorkingSet(params: {
             stockName: review?.stockName ?? snap?.stockName ?? null,
             tradeDate: review?.tradeDate ?? snap?.tradeDate ?? parts?.tradeDate ?? "",
             tradeTime: review?.tradeTime ?? snap?.tradeTime ?? partsTime,
+            outcome: snap?.outcome ?? null,
             existsInReview: review !== undefined,
             linkedHypothesisIds: linkMap.get(caseId) ?? [],
         };

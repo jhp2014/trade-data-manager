@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { listSheetTabsAction } from "@/actions/workbench";
+import { OUTCOME_COLORS, type OutcomeColor } from "@/domain/outcome";
+import { useOutcomeTypes } from "@/stores/outcomeTypes";
 import { useWorkbench } from "@/stores/workbench";
 import styles from "./WorkbenchSettingsModal.module.css";
 
@@ -20,8 +22,18 @@ export function WorkbenchSettingsModal() {
     const setHistoryMax = useWorkbench((s) => s.setHistoryMax);
     const openHistoryModal = useWorkbench((s) => s.openHistoryModal);
 
+    const outcomeOptions = useOutcomeTypes((s) => s.options);
+    const addOutcome = useOutcomeTypes((s) => s.addOption);
+    const removeOutcome = useOutcomeTypes((s) => s.removeOption);
+    const [ocLabel, setOcLabel] = useState("");
+    const [ocColor, setOcColor] = useState<OutcomeColor>("green");
+
     const [tabs, setTabs] = useState<string[] | null>(null);
     const [loading, setLoading] = useState(false);
+
+    function submitOutcome() {
+        if (addOutcome(ocLabel, ocColor)) setOcLabel("");
+    }
 
     // 모달 열릴 때 1회 탭 목록 fetch(읽기 전용). 닫히면 다음 열림에 다시 불러오도록 리셋.
     useEffect(() => {
@@ -100,6 +112,59 @@ export function WorkbenchSettingsModal() {
                             </p>
                         </>
                     )}
+                </section>
+
+                <section className={styles.section}>
+                    <h3>결과(outcome) 종류</h3>
+                    <div className={styles.ocList}>
+                        {outcomeOptions.map((o) => (
+                            <div key={o.value} className={styles.ocRow}>
+                                <span className={styles.ocSwatch} data-color={o.color} />
+                                <span className={styles.ocLabel}>{o.label}</span>
+                                <button
+                                    className={styles.ocRemove}
+                                    onClick={() => removeOutcome(o.value)}
+                                    aria-label={`${o.label} 삭제`}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className={styles.ocAdd}>
+                        <input
+                            className={styles.ocInput}
+                            value={ocLabel}
+                            placeholder="새 결과 이름"
+                            maxLength={12}
+                            onChange={(e) => setOcLabel(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") submitOutcome();
+                            }}
+                        />
+                        <div className={styles.ocColors}>
+                            {OUTCOME_COLORS.map((col) => (
+                                <button
+                                    key={col}
+                                    type="button"
+                                    className={cx(styles.ocColor, ocColor === col && styles.ocColorOn)}
+                                    data-color={col}
+                                    onClick={() => setOcColor(col)}
+                                    aria-label={`색 ${col}`}
+                                />
+                            ))}
+                        </div>
+                        <button
+                            className={styles.ocAddBtn}
+                            onClick={submitOutcome}
+                            disabled={ocLabel.trim() === ""}
+                        >
+                            추가
+                        </button>
+                    </div>
+                    <p className={styles.muted}>
+                        카드를 더블클릭해 결과를 지정합니다. 종류를 지워도 기존 케이스 값은 보존됩니다.
+                    </p>
                 </section>
 
                 <section className={styles.section}>

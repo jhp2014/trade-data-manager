@@ -7,6 +7,7 @@ import {
     loadCasesAction,
     loadSnapshotAction,
     loadWorkingSetAction,
+    setCaseOutcomeAction,
     unlinkCaseAction,
     type CaseSnapshotInput,
 } from "@/actions/workbench";
@@ -85,6 +86,7 @@ export function Workbench() {
                     stockName: c.stockName,
                     tradeDate: c.tradeDate,
                     tradeTime: c.tradeTime,
+                    outcome: c.outcome,
                     existsInReview: true,
                     linkedHypothesisIds: r.linkedHypothesisIds,
                 },
@@ -165,6 +167,20 @@ export function Workbench() {
         [selectedCase, linkMutate, unlinkMutate],
     );
 
+    // 케이스 카드 더블클릭 → outcome 설정(null=해제).
+    const { mutate: outcomeMutate } = useMutation({
+        mutationFn: (v: { caseId: string; outcome: string | null }) => setCaseOutcomeAction(v),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["snapshot"] });
+            queryClient.invalidateQueries({ queryKey: ["workingSet"] });
+            queryClient.invalidateQueries({ queryKey: ["historyCases"] });
+        },
+    });
+    const handleSetOutcome = useCallback(
+        (caseId: string, outcome: string | null) => outcomeMutate({ caseId, outcome }),
+        [outcomeMutate],
+    );
+
     // a(이전) / d(다음) 으로 워킹셋 케이스 이동. 입력 중이거나 모달이 열려 있으면 무시.
     useEffect(() => {
         function onKey(e: KeyboardEvent) {
@@ -224,6 +240,7 @@ export function Workbench() {
                     cases={railCases}
                     loading={railLoading}
                     linkedCountByCase={linkedCountByCase}
+                    onSetOutcome={handleSetOutcome}
                 />
             </div>
             <div className={styles.bottom}>

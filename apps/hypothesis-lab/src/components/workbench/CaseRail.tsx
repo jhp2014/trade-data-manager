@@ -10,10 +10,12 @@ export function CaseRail({
     cases,
     loading,
     linkedCountByCase,
+    onSetOutcome,
 }: {
     cases: WorkingSetCase[];
     loading: boolean;
     linkedCountByCase: Map<string, number>;
+    onSetOutcome: (caseId: string, outcome: string | null) => void;
 }) {
     const selectedCaseId = useSelection((s) => s.selectedCaseId);
     const selectCase = useSelection((s) => s.selectCase);
@@ -90,6 +92,7 @@ export function CaseRail({
                             selected
                             linkedCount={linkedCountByCase.get(selectedCase.caseId) ?? 0}
                             onSelect={() => selectCase(selectedCase.caseId)}
+                            onSetOutcome={(o) => onSetOutcome(selectedCase.caseId, o)}
                         />
                     </div>
                     <div className={styles.divider} />
@@ -107,6 +110,7 @@ export function CaseRail({
                         selected={c.caseId === selectedCaseId}
                         linkedCount={linkedCountByCase.get(c.caseId) ?? 0}
                         onSelect={() => selectCase(c.caseId)}
+                        onSetOutcome={(o) => onSetOutcome(c.caseId, o)}
                     />
                 ))}
             </div>
