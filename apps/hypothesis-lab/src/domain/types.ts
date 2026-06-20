@@ -16,7 +16,7 @@ export type Case = {
     extra: Record<string, string>;
 };
 
-/** 가설 원본. code 는 id 에서 파생(H0001). status 는 느슨한 문자열. */
+/** 가설 원본. code 는 id 에서 파생(H1, 패딩 없음). status 는 느슨한 문자열. */
 export type Hypothesis = {
     id: string;
     code: string;

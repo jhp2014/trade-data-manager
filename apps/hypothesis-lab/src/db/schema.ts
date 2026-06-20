@@ -46,7 +46,7 @@ export const cases = hypothesisSchema.table("cases", {
 
 /**
  * 2. hypotheses — 가설 원본.
- * 표시 코드(H0001)는 저장하지 않고 id 에서 파생(`H` + zero-pad).
+ * 표시 코드(H1)는 저장하지 않고 id 에서 파생(`H` + id, 패딩 없음).
  * status 는 막지 않고 느슨하게(varchar): draft / active / archived ...
  */
 export const hypotheses = hypothesisSchema.table("hypotheses", {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { currentMonth, tabKeyOf, useWorkbench } from "@/stores/workbench";
+import { currentMonth, removeRefFromExpr, tabKeyOf, useWorkbench } from "@/stores/workbench";
 
 beforeEach(() => {
     useWorkbench.setState({
@@ -116,10 +116,44 @@ describe("useWorkbench", () => {
         expect(useWorkbench.getState().mode).toEqual({ kind: "sheet", tab: "다른탭" });
     });
 
+    it("removeRef 는 코드 참조를 앞 연산자까지 지우고 불리언 모드로 둔다", () => {
+        useWorkbench.setState({ filterMode: "workingset", expr: "H0001 & H0002" });
+        useWorkbench.getState().removeRef("H0002");
+        expect(useWorkbench.getState()).toMatchObject({ filterMode: "boolean", expr: "H0001" });
+
+        // 맨 앞 토큰은 뒤 연산자를 지우고, 뒤 항의 부정은 보존
+        useWorkbench.setState({ expr: "H0001 & !H0002" });
+        useWorkbench.getState().removeRef("H0001");
+        expect(useWorkbench.getState().expr).toBe("!H0002");
+    });
+
     it("tabKeyOf 는 workingset 은 소스별, 그 외는 filterMode 로 키를 만든다", () => {
         expect(tabKeyOf("workingset", { kind: "review-month", month: "2026-06" })).toBe("ws:review-month");
         expect(tabKeyOf("workingset", { kind: "snapshot" })).toBe("ws:snapshot");
         expect(tabKeyOf("history", { kind: "snapshot" })).toBe("history");
         expect(tabKeyOf("boolean", { kind: "snapshot" })).toBe("boolean");
+    });
+});
+
+describe("removeRefFromExpr", () => {
+    it("중간/끝 토큰은 앞 연산자(부정 포함)와 함께 제거한다", () => {
+        expect(removeRefFromExpr("H0001 & H0002 | H0003", "H0002")).toBe("H0001 | H0003");
+        expect(removeRefFromExpr("H0001 | !H0002", "H0002")).toBe("H0001");
+        expect(removeRefFromExpr("H0001 & H0002", "H0002")).toBe("H0001");
+    });
+
+    it("맨 앞 토큰은 뒤 연산자를 지우고 다음 항의 부정은 남긴다", () => {
+        expect(removeRefFromExpr("H0001 & H0002", "H0001")).toBe("H0002");
+        expect(removeRefFromExpr("!H0001 & !H0002", "H0001")).toBe("!H0002");
+    });
+
+    it("단독 토큰은 자신만 지워 빈 식이 된다", () => {
+        expect(removeRefFromExpr("H0001", "H0001")).toBe("");
+        expect(removeRefFromExpr("!H0001", "H0001")).toBe("");
+    });
+
+    it("부분 일치 코드는 건드리지 않고, 없는 코드는 식을 그대로 둔다", () => {
+        expect(removeRefFromExpr("H0001 & H00012", "H0001")).toBe("H00012");
+        expect(removeRefFromExpr("H0001 & H0002", "H0009")).toBe("H0001 & H0002");
     });
 });

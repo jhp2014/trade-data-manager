@@ -182,6 +182,67 @@
     cursor: not-allowed;
 }
 
+/* 불리언 결과 outcome 집계 — 불러오기 아이콘 우측. */
+.agg {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 4px;
+}
+.aggPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--chip);
+    color: var(--muted);
+    white-space: nowrap;
+}
+.aggPill[data-color="green"] {
+    background: var(--oc-green-bg);
+    color: var(--oc-green-fg);
+}
+.aggPill[data-color="red"] {
+    background: var(--oc-red-bg);
+    color: var(--oc-red-fg);
+}
+.aggPill[data-color="gray"] {
+    background: var(--oc-gray-bg);
+    color: var(--oc-gray-fg);
+}
+.aggPill[data-color="amber"] {
+    background: var(--oc-amber-bg);
+    color: var(--oc-amber-fg);
+}
+.aggPill[data-color="blue"] {
+    background: var(--oc-blue-bg);
+    color: var(--oc-blue-fg);
+}
+.aggPill[data-color="purple"] {
+    background: var(--oc-purple-bg);
+    color: var(--oc-purple-fg);
+}
+.aggPill[data-color="teal"] {
+    background: var(--oc-teal-bg);
+    color: var(--oc-teal-fg);
+}
+.aggPill[data-color="pink"] {
+    background: var(--oc-pink-bg);
+    color: var(--oc-pink-fg);
+}
+.aggLabel {
+    font-weight: 600;
+    opacity: 0.85;
+}
+.aggNum {
+    font-variant-numeric: tabular-nums;
+}
+
 /* 우측 끝 설정 버튼. */
 .settings {
     flex-shrink: 0;

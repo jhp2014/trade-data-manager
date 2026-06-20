@@ -63,6 +63,7 @@ export function HypothesisPanel({
     const selectHypothesis = useSelection((s) => s.selectHypothesis);
     const openHypothesisModal = useSelection((s) => s.openHypothesisModal);
     const appendOrCycleRef = useWorkbench((s) => s.appendOrCycleRef);
+    const removeRef = useWorkbench((s) => s.removeRef);
     const [text, setText] = useState("");
 
     function refresh() {
@@ -149,7 +150,8 @@ export function HypothesisPanel({
                 onDoubleClick={() => openHypothesisModal(h.id)}
                 onContextMenu={(e) => {
                     e.preventDefault();
-                    appendOrCycleRef(h.code);
+                    if (e.shiftKey) removeRef(h.code);
+                    else appendOrCycleRef(h.code);
                 }}
             >
                 <div className={styles.left}>

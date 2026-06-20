@@ -65,6 +65,7 @@ export function HypothesisGraph({
     const selectHypothesis = useSelection((s) => s.selectHypothesis);
     const openHypothesisModal = useSelection((s) => s.openHypothesisModal);
     const appendOrCycleRef = useWorkbench((s) => s.appendOrCycleRef);
+    const removeRef = useWorkbench((s) => s.removeRef);
     const [nodes, setNodes, onNodesChange] = useNodesState<HypNodeData>([]);
     // 저장 버튼 클릭 직후 잠깐 체크 표시.
     const [justSaved, setJustSaved] = useState(false);
@@ -320,7 +321,9 @@ export function HypothesisGraph({
                 onNodeDoubleClick={(_, n) => openHypothesisModal(n.id)}
                 onNodeContextMenu={(e, n) => {
                     e.preventDefault();
-                    appendOrCycleRef((n.data as HypNodeData).code);
+                    const code = (n.data as HypNodeData).code;
+                    if (e.shiftKey) removeRef(code);
+                    else appendOrCycleRef(code);
                 }}
                 onPaneClick={() => selectHypothesis(null)}
                 proOptions={{ hideAttribution: true }}

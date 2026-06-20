@@ -31,17 +31,17 @@ const CASE = {
 };
 
 describe("createHypothesis", () => {
-    it("표시코드 H0001 을 반환하고 스냅샷에 반영된다", async () => {
+    it("표시코드 H1 을 반환하고 스냅샷에 반영된다", async () => {
         const { id, code } = await repo.createHypothesis({
             text: "끼 안좋고 대금 애매한 종목",
         });
-        expect(code).toBe("H0001");
+        expect(code).toBe("H1");
 
         const snap = await repo.loadSnapshot();
         expect(snap.hypotheses).toHaveLength(1);
         expect(snap.hypotheses[0]).toMatchObject({
             id,
-            code: "H0001",
+            code: "H1",
             text: "끼 안좋고 대금 애매한 종목",
             status: "draft",
         });
@@ -50,8 +50,8 @@ describe("createHypothesis", () => {
     it("연속 생성 시 코드가 증가한다", async () => {
         const a = await repo.createHypothesis({ text: "A" });
         const b = await repo.createHypothesis({ text: "B" });
-        expect(a.code).toBe("H0001");
-        expect(b.code).toBe("H0002");
+        expect(a.code).toBe("H1");
+        expect(b.code).toBe("H2");
     });
 });
 
