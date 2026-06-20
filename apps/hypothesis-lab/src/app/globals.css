@@ -21,6 +21,14 @@
     --oc-gray-fg: #6b6b75;
     --oc-amber-bg: #fbf1de;
     --oc-amber-fg: #bd820f;
+    --oc-blue-bg: #e9f0fd;
+    --oc-blue-fg: #2f6fd6;
+    --oc-purple-bg: #f1ebfb;
+    --oc-purple-fg: #7b46c9;
+    --oc-teal-bg: #e3f5f2;
+    --oc-teal-fg: #129b86;
+    --oc-pink-bg: #fcebf2;
+    --oc-pink-fg: #d24a85;
     --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
         "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
 }
@@ -46,6 +54,14 @@
         --oc-gray-fg: #9a9aa4;
         --oc-amber-bg: #2c2519;
         --oc-amber-fg: #e0a94a;
+        --oc-blue-bg: #18233a;
+        --oc-blue-fg: #6fa3f0;
+        --oc-purple-bg: #241a36;
+        --oc-purple-fg: #a883ea;
+        --oc-teal-bg: #16292a;
+        --oc-teal-fg: #46c9b8;
+        --oc-pink-bg: #2e1a24;
+        --oc-pink-fg: #e87aa8;
     }
 }
 

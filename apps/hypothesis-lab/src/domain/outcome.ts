@@ -6,7 +6,15 @@
  * 런타임 종류 목록은 stores/outcomeTypes(localStorage 영속)가 보유하며,
  * 아래 DEFAULT_OUTCOME_OPTIONS 로 시드된다.
  */
-export type OutcomeColor = "green" | "red" | "gray" | "amber";
+export type OutcomeColor =
+    | "green"
+    | "red"
+    | "gray"
+    | "amber"
+    | "blue"
+    | "purple"
+    | "teal"
+    | "pink";
 
 export type OutcomeOption = {
     /** DB(cases.outcome)에 저장되는 안정 키. */
@@ -16,7 +24,16 @@ export type OutcomeOption = {
 };
 
 /** 색 선택 UI(설정 모달)용 전체 색 목록. */
-export const OUTCOME_COLORS: readonly OutcomeColor[] = ["green", "red", "gray", "amber"];
+export const OUTCOME_COLORS: readonly OutcomeColor[] = [
+    "green",
+    "red",
+    "gray",
+    "amber",
+    "blue",
+    "purple",
+    "teal",
+    "pink",
+];
 
 /** 종류 스토어의 초기 시드. */
 export const DEFAULT_OUTCOME_OPTIONS: readonly OutcomeOption[] = [

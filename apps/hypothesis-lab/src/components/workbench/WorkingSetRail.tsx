@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { loadSnapshotAction } from "@/actions/workbench";
 import { parseHypExpr, searchCasesByExpr, unknownRefs } from "@/services/hypExpr";
+import { aggregateOutcomes } from "@/services/outcomeAgg";
 import { useSavedFilters } from "@/hooks/useSavedFilters";
+import { useOutcomeTypes } from "@/stores/outcomeTypes";
 import { useWorkbench } from "@/stores/workbench";
 import styles from "./WorkingSetRail.module.css";
 
@@ -54,6 +56,7 @@ export function WorkingSetRail() {
     const expr = useWorkbench((s) => s.expr);
     const setExpr = useWorkbench((s) => s.setExpr);
     const openSavedFilter = useWorkbench((s) => s.openSavedFilter);
+    const outcomeOptions = useOutcomeTypes((s) => s.options);
     const { filters } = useSavedFilters();
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -63,11 +66,21 @@ export function WorkingSetRail() {
         () => (expr.trim() !== "" ? parseHypExpr(expr) : null),
         [expr],
     );
-    const resultCount = useMemo(() => {
+    const results = useMemo(() => {
         const snap = snapshot.data;
         if (!snap || !parsed || !parsed.ok) return null;
-        return searchCasesByExpr(snap, parsed.expr).length;
+        return searchCasesByExpr(snap, parsed.expr);
     }, [snapshot.data, parsed]);
+    const resultCount = results?.length ?? null;
+    const agg = useMemo(() => {
+        const snap = snapshot.data;
+        if (!snap || !results || results.length === 0) return null;
+        return aggregateOutcomes({
+            caseIds: results.map((r) => r.caseId),
+            cases: snap.cases,
+            options: outcomeOptions,
+        });
+    }, [snapshot.data, results, outcomeOptions]);
     const unknownCodes = useMemo(() => {
         const snap = snapshot.data;
         if (!snap || !parsed || !parsed.ok) return [];
@@ -185,6 +198,21 @@ export function WorkingSetRail() {
                     >
                         <LoadIcon />
                     </button>
+
+                    {agg && agg.items.length > 0 && (
+                        <div className={styles.agg} title={`결과 ${agg.total}건의 outcome 집계`}>
+                            {agg.items.map((it) => (
+                                <span
+                                    key={it.key}
+                                    className={styles.aggPill}
+                                    data-color={it.color ?? undefined}
+                                >
+                                    <span className={styles.aggLabel}>{it.label}</span>
+                                    <span className={styles.aggNum}>{it.count}</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 

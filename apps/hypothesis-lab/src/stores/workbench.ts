@@ -59,6 +59,29 @@ function suffixFor(code: string, emptyStart: boolean, cycle: number): string {
     return m < 4 ? CONNECTORS[m] + code : "";
 }
 
+function escapeRe(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 불리언식에서 code 참조 하나를 앞쪽 연산자와 함께 제거한다(shift+우클릭).
+ * 맨 앞 토큰이라 앞 연산자가 없으면 뒤쪽 연산자를, 단독 토큰이면 자신만 지운다.
+ * 부정 접두(!)도 함께 제거. 코드가 없으면 식을 그대로 반환.
+ */
+export function removeRefFromExpr(expr: string, code: string): string {
+    const c = escapeRe(code);
+    const tok = `!?${c}(?![0-9A-Za-z_])`;
+    // 1) 앞 연산자 + (부정) + 코드
+    const leading = new RegExp(`\\s*[&|]\\s*${tok}`);
+    if (leading.test(expr)) return expr.replace(leading, "").trim();
+    // 2) 맨 앞 토큰: (부정) + 코드 + 뒤 연산자 (뒤 항의 ! 는 보존)
+    const trailing = new RegExp(`(?<![0-9A-Za-z_])${tok}\\s*[&|]\\s*`);
+    if (trailing.test(expr)) return expr.replace(trailing, "").trim();
+    // 3) 단독 토큰
+    const only = new RegExp(`(?<![0-9A-Za-z_])${tok}`);
+    return expr.replace(only, "").trim();
+}
+
 /**
  * 작업대 설정 상태(클라이언트). 레일 채우기 방식·작업셋 모드·식·설정 모달 열림.
  */
@@ -103,6 +126,8 @@ type WorkbenchState = {
      * 같은 코드를 연속 호출하면 연산자만 순환 교체한다(&→|→&!→|!, 빈 식이면 없음↔!).
      */
     appendOrCycleRef: (code: string) => void;
+    /** 불리언식에서 해당 코드 참조를 앞 연산자까지 제거한다(shift+우클릭). */
+    removeRef: (code: string) => void;
     openSettings: () => void;
     closeSettings: () => void;
     openHistoryModal: () => void;
@@ -180,6 +205,12 @@ export const useWorkbench = create<WorkbenchState>()(
                 _lastInsert: { code, index, emptyStart, cycle, exprAfter: expr },
             };
         }),
+    removeRef: (code) =>
+        set((state) => ({
+            filterMode: "boolean",
+            expr: removeRefFromExpr(state.expr, code),
+            _lastInsert: null,
+        })),
     openSettings: () => set({ settingsOpen: true }),
     closeSettings: () => set({ settingsOpen: false }),
     openHistoryModal: () => set({ historyModalOpen: true }),

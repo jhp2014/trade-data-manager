@@ -187,6 +187,18 @@
 .ocSwatch[data-color="amber"] {
     background: var(--oc-amber-fg);
 }
+.ocSwatch[data-color="blue"] {
+    background: var(--oc-blue-fg);
+}
+.ocSwatch[data-color="purple"] {
+    background: var(--oc-purple-fg);
+}
+.ocSwatch[data-color="teal"] {
+    background: var(--oc-teal-fg);
+}
+.ocSwatch[data-color="pink"] {
+    background: var(--oc-pink-fg);
+}
 .ocLabel {
     flex: 1;
     font-weight: 550;
@@ -240,6 +252,18 @@
 }
 .ocColor[data-color="amber"] {
     background: var(--oc-amber-fg);
+}
+.ocColor[data-color="blue"] {
+    background: var(--oc-blue-fg);
+}
+.ocColor[data-color="purple"] {
+    background: var(--oc-purple-fg);
+}
+.ocColor[data-color="teal"] {
+    background: var(--oc-teal-fg);
+}
+.ocColor[data-color="pink"] {
+    background: var(--oc-pink-fg);
 }
 .ocColorOn {
     border-color: var(--text);

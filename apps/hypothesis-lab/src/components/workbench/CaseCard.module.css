@@ -85,6 +85,22 @@
     background: var(--oc-amber-bg);
     color: var(--oc-amber-fg);
 }
+.outcome[data-color="blue"] {
+    background: var(--oc-blue-bg);
+    color: var(--oc-blue-fg);
+}
+.outcome[data-color="purple"] {
+    background: var(--oc-purple-bg);
+    color: var(--oc-purple-fg);
+}
+.outcome[data-color="teal"] {
+    background: var(--oc-teal-bg);
+    color: var(--oc-teal-fg);
+}
+.outcome[data-color="pink"] {
+    background: var(--oc-pink-bg);
+    color: var(--oc-pink-fg);
+}
 .outcomeEmpty {
     background: transparent;
     color: var(--muted);
@@ -172,6 +188,22 @@
 .opt[data-color="amber"] {
     background: var(--oc-amber-bg);
     color: var(--oc-amber-fg);
+}
+.opt[data-color="blue"] {
+    background: var(--oc-blue-bg);
+    color: var(--oc-blue-fg);
+}
+.opt[data-color="purple"] {
+    background: var(--oc-purple-bg);
+    color: var(--oc-purple-fg);
+}
+.opt[data-color="teal"] {
+    background: var(--oc-teal-bg);
+    color: var(--oc-teal-fg);
+}
+.opt[data-color="pink"] {
+    background: var(--oc-pink-bg);
+    color: var(--oc-pink-fg);
 }
 .opt:hover {
     filter: brightness(0.96);
