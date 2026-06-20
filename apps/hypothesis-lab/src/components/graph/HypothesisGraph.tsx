@@ -5,6 +5,7 @@ import ReactFlow, {
     Background,
     Controls,
     MarkerType,
+    SelectionMode,
     useNodesState,
     type Edge,
 } from "reactflow";
@@ -50,11 +51,13 @@ function edgeStyle(relationType: string): {
 export function HypothesisGraph({
     snapshot,
     highlightHypothesisIds,
+    filterHypothesisIds,
     caseSelected,
     onToggleCaseLink,
 }: {
     snapshot: HypothesisSnapshot | null;
     highlightHypothesisIds: string[];
+    filterHypothesisIds: string[];
     caseSelected: boolean;
     onToggleCaseLink: (hypothesisId: string, link: boolean) => void;
 }) {
@@ -112,6 +115,7 @@ export function HypothesisGraph({
     }, [snapshot]);
 
     const highlight = useMemo(() => new Set(highlightHypothesisIds), [highlightHypothesisIds]);
+    const inFilter = useMemo(() => new Set(filterHypothesisIds), [filterHypothesisIds]);
 
     function dataFor(id: string, h: { code: string; text: string }): HypNodeData {
         const linkedToCase = highlight.has(id);
@@ -125,6 +129,7 @@ export function HypothesisGraph({
             onToggleLink: () => onToggleCaseLink(id, !linkedToCase),
             selected: id === selectedHypothesisId,
             highlight: highlight.has(id),
+            inFilter: inFilter.has(id),
         };
     }
 
@@ -207,7 +212,7 @@ export function HypothesisGraph({
             }),
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedHypothesisId, highlight, tagsByHyp, snapshot, caseSelected, onToggleCaseLink]);
+    }, [selectedHypothesisId, highlight, inFilter, tagsByHyp, snapshot, caseSelected, onToggleCaseLink]);
 
     const edges: Edge[] = useMemo(
         () =>
@@ -306,6 +311,11 @@ export function HypothesisGraph({
                 fitViewOptions={{ padding: 0.18, maxZoom: 1.25 }}
                 minZoom={0.2}
                 nodesConnectable={false}
+                // 빈 영역 좌-드래그 = 박스 다중선택(걸친 노드도 포함), 선택 후 하나를
+                // 잡고 옮기면 함께 이동. 화면 이동은 휠(1)/우(2) 버튼 드래그로.
+                selectionOnDrag
+                selectionMode={SelectionMode.Partial}
+                panOnDrag={[1, 2]}
                 onNodeClick={(_, n) => selectHypothesis(n.id)}
                 onNodeDoubleClick={(_, n) => openHypothesisModal(n.id)}
                 onNodeContextMenu={(e, n) => {
