@@ -16,6 +16,8 @@ export type HypNodeData = {
     onToggleLink?: () => void;
     selected: boolean;
     highlight: boolean;
+    /** 현재 불리언 필터 식에 등장하는 가설. */
+    inFilter: boolean;
 };
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -25,7 +27,14 @@ function cx(...classes: Array<string | false | null | undefined>) {
 /** React Flow 커스텀 노드: 코드·연결수·태그·텍스트. 체크박스는 표시 전용(토글은 목록에서). */
 export function HypNode({ data }: { data: HypNodeData }) {
     return (
-        <div className={cx(styles.node, data.selected && styles.selected, data.highlight && styles.highlight)}>
+        <div
+            className={cx(
+                styles.node,
+                data.inFilter && styles.inFilter,
+                data.selected && styles.selected,
+                data.highlight && styles.highlight,
+            )}
+        >
             <Handle type="target" position={Position.Top} className={styles.handle} />
             <div className={styles.top}>
                 <input

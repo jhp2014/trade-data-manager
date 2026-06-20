@@ -15,7 +15,7 @@ import { tabKeyOf, useWorkbench } from "@/stores/workbench";
 import { useSelectedCaseCopyShortcut } from "@/hooks/useSelectedCaseCopyShortcut";
 import { usePasteCaseShortcut } from "@/hooks/usePasteCaseShortcut";
 import type { WorkingSetCase } from "@/services/workingSet";
-import { parseHypExpr, searchCasesByExpr } from "@/services/hypExpr";
+import { collectRefs, parseHypExpr, searchCasesByExpr } from "@/services/hypExpr";
 import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
 import { CaseRail } from "./CaseRail";
 import { WorkingSetRail } from "./WorkingSetRail";
@@ -205,6 +205,17 @@ export function Workbench() {
             .map((hc) => hc.hypothesisId);
     }, [snapshot.data, selectedCaseId]);
 
+    // 불리언 모드에서 현재 식에 등장하는 가설 id(코드→id). 그래프 노드에 필터 칩 표시용.
+    const filterHypothesisIds = useMemo(() => {
+        const snap = snapshot.data;
+        if (!snap || filterMode !== "boolean" || !parsed || !parsed.ok) return [];
+        const idByCode = new Map(snap.hypotheses.map((h) => [h.code, h.id]));
+        return collectRefs(parsed.expr).flatMap((code) => {
+            const id = idByCode.get(code);
+            return id ? [id] : [];
+        });
+    }, [snapshot.data, filterMode, parsed]);
+
     return (
         <div className={styles.layout}>
             <WorkingSetRail />
@@ -227,6 +238,7 @@ export function Workbench() {
                     <HypothesisGraph
                         snapshot={snapshot.data ?? null}
                         highlightHypothesisIds={linkedToSelectedCase}
+                        filterHypothesisIds={filterHypothesisIds}
                         caseSelected={!!selectedCase}
                         onToggleCaseLink={handleToggleCaseLink}
                     />

@@ -47,6 +47,10 @@
     margin-left: auto;
     flex-shrink: 0;
 }
+/* 현재 불리언 필터 식에 포함된 가설: 배경색으로 표시(테두리 채널과 독립). */
+.inFilter {
+    background: var(--accent-weak);
+}
 .text {
     line-height: 1.35;
     overflow: hidden;
