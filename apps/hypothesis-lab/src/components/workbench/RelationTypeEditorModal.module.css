@@ -5,17 +5,18 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding-top: 10vh;
+    padding: 7vh 16px;
     z-index: 60;
 }
 .modal {
     width: 360px;
     max-width: calc(100vw - 32px);
+    max-height: 86vh;
+    overflow-y: auto;
     background: var(--bg-elev);
     border: 1px solid var(--border);
     border-radius: 14px;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.26);
-    overflow: hidden;
 }
 .head {
     display: flex;
@@ -77,6 +78,17 @@
 .input:focus {
     outline: none;
     border-color: var(--accent);
+}
+.input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.field > span.hint {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
 }
 .colors {
     display: flex;

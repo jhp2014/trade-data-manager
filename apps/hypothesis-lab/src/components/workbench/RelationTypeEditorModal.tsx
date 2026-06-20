@@ -102,6 +102,7 @@ export function RelationTypeEditorModal({
     const updateOption = useRelationTypes((s) => s.updateOption);
 
     const [label, setLabel] = useState("");
+    const [keyValue, setKeyValue] = useState("");
     const [color, setColor] = useState<RelationColor>("blue");
     const [lineStyle, setLineStyle] = useState<RelationLineStyle>("solid");
     const [edgeType, setEdgeType] = useState<RelationEdgeType>("bezier");
@@ -114,6 +115,7 @@ export function RelationTypeEditorModal({
         if (!target) return;
         if (target === "new") {
             setLabel("");
+            setKeyValue("");
             setColor("blue");
             setLineStyle("solid");
             setEdgeType("bezier");
@@ -122,6 +124,7 @@ export function RelationTypeEditorModal({
             return;
         }
         setLabel(target.label);
+        setKeyValue(target.value);
         setColor(target.color);
         setLineStyle(target.lineStyle);
         setEdgeType(target.edgeType);
@@ -147,7 +150,7 @@ export function RelationTypeEditorModal({
         const trimmed = label.trim();
         if (trimmed === "") return;
         const patch = { label: trimmed, color, lineStyle, edgeType, direction, arrowHead };
-        if (isNew) addOption(patch);
+        if (isNew) addOption({ ...patch, value: keyValue });
         else updateOption((target as RelationTypeDef).value, patch);
         onClose();
     }
@@ -216,13 +219,33 @@ export function RelationTypeEditorModal({
                             className={styles.input}
                             value={label}
                             maxLength={16}
-                            placeholder="관계 이름"
+                            placeholder="관계 이름(표시용)"
                             onChange={(e) => setLabel(e.target.value)}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") save();
                             }}
                             autoFocus
                         />
+                    </label>
+
+                    <label className={styles.field}>
+                        <span>키(영문, DB 저장)</span>
+                        <input
+                            className={styles.input}
+                            value={keyValue}
+                            maxLength={40}
+                            placeholder="better_than (비우면 이름에서 자동)"
+                            disabled={!isNew}
+                            onChange={(e) => setKeyValue(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") save();
+                            }}
+                        />
+                        <span className={styles.hint}>
+                            {isNew
+                                ? "DB에 저장되는 식별자. 추가 후에는 변경할 수 없습니다."
+                                : "키는 변경할 수 없습니다(이름은 자유롭게 수정 가능)."}
+                        </span>
                     </label>
 
                     <div className={styles.field}>

@@ -22,8 +22,11 @@ const noopStorage = {
  */
 type RelationTypesState = {
     options: RelationTypeDef[];
-    /** 새 종류 추가(label 에서 안전 value 자동 생성). 추가된 value 반환, 빈 label 이면 null. */
-    addOption: (def: Omit<RelationTypeDef, "value">) => string | null;
+    /**
+     * 새 종류 추가. value 를 주면 정제(슬러그화)+중복회피 후 그 키를, 비우면 label 에서
+     * 자동 생성한다. 추가된 value 반환, 빈 label 이면 null.
+     */
+    addOption: (def: Omit<RelationTypeDef, "value"> & { value?: string }) => string | null;
     /** value 로 종류 일부 필드 수정(label 변경 포함. value 자체는 불변). */
     updateOption: (value: string, patch: Partial<Omit<RelationTypeDef, "value">>) => void;
     /** value 로 종류 정의 삭제(기존 DB 간선은 보존, 중립 폴백). */
@@ -38,10 +41,9 @@ export const useRelationTypes = create<RelationTypesState>()(
                 const label = def.label.trim();
                 if (label === "") return null;
                 const existing = get().options;
-                const value = makeRelationValue(
-                    label,
-                    existing.map((o) => o.value),
-                );
+                const existingValues = existing.map((o) => o.value);
+                const desired = def.value?.trim();
+                const value = makeRelationValue(desired || label, existingValues);
                 set({ options: [...existing, { ...def, label, value }] });
                 return value;
             },
