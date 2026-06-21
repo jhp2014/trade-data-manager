@@ -111,6 +111,10 @@ type WorkbenchState = {
     /** 시트 탭 설정값. 미설정 시 .env 기본 탭. 설정 모달에서 변경. */
     sheetTab: string | undefined;
     expr: string;
+    /** 가설 패널 검색 모드 on/off(추가↔검색 토글). 영속하지 않음. */
+    searchMode: boolean;
+    /** 가설 검색식 입력값. 그래프 디밍·패널 하이라이트 공용. 영속하지 않음. */
+    searchQuery: string;
     settingsOpen: boolean;
     /** History 목록 관리 모달. */
     historyModalOpen: boolean;
@@ -134,6 +138,8 @@ type WorkbenchState = {
     /** 시트 탭 설정값 변경(시트 탭이 활성이면 active mode 도 갱신). */
     setSheetTab: (tab: string | undefined) => void;
     setExpr: (expr: string) => void;
+    setSearchMode: (on: boolean) => void;
+    setSearchQuery: (q: string) => void;
     /** caseId 를 History 앞에 추가(중복은 앞으로 이동, historyMax 로 캡). */
     addHistory: (caseId: string) => void;
     removeHistory: (caseId: string) => void;
@@ -165,6 +171,8 @@ export const useWorkbench = create<WorkbenchState>()(
     view: "all",
     sheetTab: undefined,
     expr: "",
+    searchMode: false,
+    searchQuery: "",
     settingsOpen: false,
     historyModalOpen: false,
     savedFilterModal: null,
@@ -194,6 +202,8 @@ export const useWorkbench = create<WorkbenchState>()(
         })),
     // 수동 편집은 순환 상태를 무효화한다.
     setExpr: (expr) => set({ expr, _lastInsert: null }),
+    setSearchMode: (on) => set({ searchMode: on }),
+    setSearchQuery: (q) => set({ searchQuery: q }),
     addHistory: (caseId) =>
         set((state) => {
             const next = [caseId, ...state.history.filter((id) => id !== caseId)];

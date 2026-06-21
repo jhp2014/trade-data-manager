@@ -87,8 +87,11 @@ export function HypothesisPanel({
     const appendOrCycleRef = useWorkbench((s) => s.appendOrCycleRef);
     const removeRef = useWorkbench((s) => s.removeRef);
     const [text, setText] = useState("");
-    const [searchMode, setSearchMode] = useState(false);
-    const [query, setQuery] = useState("");
+    // 검색 모드/검색어는 store(작업대 공유) — 그래프 디밍과 동일 소스를 쓴다.
+    const searchMode = useWorkbench((s) => s.searchMode);
+    const setSearchMode = useWorkbench((s) => s.setSearchMode);
+    const query = useWorkbench((s) => s.searchQuery);
+    const setQuery = useWorkbench((s) => s.setSearchQuery);
 
     // 검색 모드 식 파싱(빈 식이면 null). 매칭 평가는 snapshot 로드 후 수행.
     const searchParsed = useMemo(() => {
@@ -332,7 +335,7 @@ export function HypothesisPanel({
                     />
                     <button
                         className={cx(styles.toggle, searchMode && styles.toggleActive)}
-                        onClick={() => setSearchMode((v) => !v)}
+                        onClick={() => setSearchMode(!searchMode)}
                         title={searchMode ? "가설 추가 모드로 전환" : "가설 검색 모드로 전환"}
                         aria-label={searchMode ? "가설 추가 모드로 전환" : "가설 검색 모드로 전환"}
                     >

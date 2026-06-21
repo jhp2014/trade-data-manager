@@ -18,10 +18,21 @@ export type HypNodeData = {
     highlight: boolean;
     /** 현재 불리언 필터 식에 등장하는 가설. */
     inFilter: boolean;
+    /** 검색이 활성인데 이 가설이 매칭에 없음 → 흐리게. */
+    dimmed: boolean;
 };
 
 function cx(...classes: Array<string | false | null | undefined>) {
     return classes.filter(Boolean).join(" ");
+}
+
+/** 필터식 포함 표시(우상단 깔때기 배지). */
+function FunnelIcon() {
+    return (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 4h18l-7 8v7l-4 2v-9z" />
+        </svg>
+    );
 }
 
 /** React Flow 커스텀 노드: 코드·연결수·태그·텍스트. 체크박스는 표시 전용(토글은 목록에서). */
@@ -30,11 +41,17 @@ export function HypNode({ data }: { data: HypNodeData }) {
         <div
             className={cx(
                 styles.node,
-                data.inFilter && styles.inFilter,
+                // 채널 분리: 선택=outline, 케이스연결=좌측바, 검색비매치=opacity.
+                data.highlight && styles.linked,
                 data.selected && styles.selected,
-                data.highlight && styles.highlight,
+                data.dimmed && styles.dimmed,
             )}
         >
+            {data.inFilter && (
+                <span className={styles.filterBadge} title="현재 필터식에 포함">
+                    <FunnelIcon />
+                </span>
+            )}
             <Handle type="target" position={Position.Top} className={styles.handle} />
             <div className={styles.top}>
                 <input
