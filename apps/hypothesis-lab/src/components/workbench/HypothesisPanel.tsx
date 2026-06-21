@@ -22,15 +22,6 @@ function cx(...classes: Array<string | false | null | undefined>) {
     return classes.filter(Boolean).join(" ");
 }
 
-function TrashIcon() {
-    return (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6" />
-            <path d="M10 11v6M14 11v6" />
-        </svg>
-    );
-}
-
 function EnterIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -213,25 +204,12 @@ export function HypothesisPanel({
                         onChange={(e) => toggleLink(h.id, e.target.checked)}
                         title={selectedCase ? "현재 케이스에 연결/해제" : "케이스를 먼저 선택"}
                     />
-                    <button
-                        className={styles.del}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`${h.code} 가설을 삭제할까요? 연결·관계도 함께 제거됩니다.`)) {
-                                deleteMut.mutate(h.id);
-                            }
-                        }}
-                        title="가설 삭제"
-                        aria-label="가설 삭제"
-                    >
-                        <TrashIcon />
-                    </button>
                 </div>
                 <div className={styles.main}>
                     <div className={styles.line1}>
                         {negated && <span className={styles.notMark}>NOT</span>}
                         <code className={styles.code}>{h.code}</code>
-                        {cnt > 0 && <span className={styles.count}>Case {cnt}</span>}
+                        {cnt > 0 && <span className={styles.count}>{cnt}</span>}
                         {tags.length > 0 && (
                             <div className={styles.tags}>
                                 {tags.map((t, i) => (
@@ -244,6 +222,19 @@ export function HypothesisPanel({
                     </div>
                     <div className={styles.text}>{h.text}</div>
                 </div>
+                <button
+                    className={styles.del}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`${h.code} 가설을 삭제할까요? 연결·관계도 함께 제거됩니다.`)) {
+                            deleteMut.mutate(h.id);
+                        }
+                    }}
+                    title="가설 삭제"
+                    aria-label="가설 삭제"
+                >
+                    ×
+                </button>
             </div>
         );
     };
