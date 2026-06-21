@@ -29,6 +29,35 @@
 .field:focus-within {
     border-color: var(--accent);
 }
+.fieldError,
+.fieldError:focus-within {
+    border-color: var(--danger, #d44);
+}
+/* 검색 결과 건수 칩(입력부 앞쪽) — 그래프 필터 결과 표시와 같은 톤. */
+.matchBadge {
+    flex-shrink: 0;
+    align-self: center;
+    margin-left: 9px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-weak);
+    border-radius: 999px;
+    white-space: nowrap;
+    cursor: default;
+}
+.matchError {
+    color: var(--danger, #d44);
+    background: transparent;
+    border: 1px solid var(--danger, #d44);
+    cursor: help;
+}
+/* 추가/검색 전환 스위치 — 활성 시 액센트 채움. */
+.toggleActive {
+    background: var(--accent) !important;
+    color: #fff !important;
+}
 .field input {
     flex: 1;
     min-width: 0;
@@ -94,6 +123,14 @@
 }
 .linked {
     background: var(--linked-weak);
+}
+/* 검색 매칭 행 — 왼쪽 액센트 보더로 구분. */
+.match {
+    box-shadow: inset 3px 0 0 0 var(--accent);
+    background: var(--accent-weak);
+}
+.match .text {
+    font-weight: 600;
 }
 .selected.linked {
     background: var(--accent-weak);
