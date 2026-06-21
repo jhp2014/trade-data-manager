@@ -161,7 +161,7 @@ export function WorkingSetRail({
         }
         document.addEventListener("mousedown", onDown);
         return () => document.removeEventListener("mousedown", onDown);
-    }, [filterOpen2]);
+    }, [filterOpen2, setFilterOpen2]);
 
     return (
         <div className={styles.rail} ref={railRef}>
