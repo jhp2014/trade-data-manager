@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     linkCaseAction,
@@ -23,6 +23,7 @@ import { CaseRail } from "./CaseRail";
 import { WorkingSetRail } from "./WorkingSetRail";
 import { SelectedCaseBadge } from "./SelectedCaseBadge";
 import { GraphFilterStatus } from "./GraphFilterStatus";
+import { CopyToast } from "./CopyToast";
 import { HypothesisPanel } from "./HypothesisPanel";
 import { HypothesisModal } from "./HypothesisModal";
 import { HistoryModal } from "./HistoryModal";
@@ -176,7 +177,14 @@ export function Workbench() {
     usePasteCaseShortcut(onPasteCase);
 
     const selectedCase = railCases.find((c) => c.caseId === selectedCaseId) ?? null;
-    useSelectedCaseCopyShortcut(selectedCase?.caseId ?? null);
+    const [copyMsg, setCopyMsg] = useState<{ id: number; text: string } | null>(null);
+    const clearCopyMsg = useCallback(() => setCopyMsg(null), []);
+    const onCaseCopied = useCallback(() => {
+        if (!selectedCase) return;
+        const label = selectedCase.stockName ?? selectedCase.stockCode ?? selectedCase.caseId;
+        setCopyMsg({ id: Date.now(), text: `복사됨 · ${label}` });
+    }, [selectedCase]);
+    useSelectedCaseCopyShortcut(selectedCase?.caseId ?? null, onCaseCopied);
 
     // 그래프 노드 체크박스 → 현재 케이스 연결/해제.
     const { mutate: linkMutate } = useMutation({
@@ -330,6 +338,9 @@ export function Workbench() {
                         caseSelected={!!selectedCase}
                         onToggleCaseLink={handleToggleCaseLink}
                     />
+                    {copyMsg && (
+                        <CopyToast key={copyMsg.id} text={copyMsg.text} onDone={clearCopyMsg} />
+                    )}
                 </div>
             </div>
             <WorkbenchSettingsModal />
