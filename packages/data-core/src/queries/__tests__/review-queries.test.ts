@@ -6,7 +6,7 @@ import {
   seedTarget,
   type TestDb,
 } from "../../test-support/testDb";
-import { findReviewLoadTargets } from "../review-load.query";
+import { findLatestReviewTradeDate, findReviewLoadTargets } from "../review-load.query";
 import { findReviewExportRows } from "../review-export.query";
 import { findReviewTargetsWithPointsByCodes } from "../review-bundle.query";
 
@@ -23,6 +23,7 @@ beforeEach(async () => {
 
 const D1 = "2026-05-26";
 const D2 = "2026-05-27";
+const D3 = "2026-05-28";
 
 describe("findReviewLoadTargets", () => {
   it("keys 가 빈 배열이면 빈 결과", async () => {
@@ -63,6 +64,29 @@ describe("findReviewLoadTargets", () => {
 
     const limited = await findReviewLoadTargets(h.db, { limit: 2 });
     expect(limited).toHaveLength(2);
+  });
+
+  it("keys 없이 from/to 가 주어지면 tradeDate 범위로 제한한다", async () => {
+    await seedTarget(h.db, { stockCode: "005930", tradeDate: D1 });
+    await seedTarget(h.db, { stockCode: "000660", tradeDate: D2 });
+    await seedTarget(h.db, { stockCode: "035420", tradeDate: D3 });
+
+    const rows = await findReviewLoadTargets(h.db, { from: D2, to: D3 });
+
+    expect(rows.map((r) => `${r.stockCode}|${r.tradeDate}`)).toEqual([
+      "035420|2026-05-28",
+      "000660|2026-05-27",
+    ]);
+  });
+
+  it("가장 최근 tradeDate 를 반환하고 타깃이 없으면 null 을 반환한다", async () => {
+    expect(await findLatestReviewTradeDate(h.db)).toBeNull();
+
+    await seedTarget(h.db, { stockCode: "005930", tradeDate: D1 });
+    await seedTarget(h.db, { stockCode: "000660", tradeDate: D3 });
+    await seedTarget(h.db, { stockCode: "035420", tradeDate: D2 });
+
+    expect(await findLatestReviewTradeDate(h.db)).toBe(D3);
   });
 
   it("타깃의 포인트를 tradeTime asc 로 중첩하고 payload·lineTargets 를 보존한다", async () => {

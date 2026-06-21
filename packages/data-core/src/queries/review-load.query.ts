@@ -1,4 +1,4 @@
-import { asc, desc } from "drizzle-orm";
+import { and, asc, desc, gte, lte, max } from "drizzle-orm";
 import { reviewTargets } from "../schema/review";
 import type { Database } from "../db";
 import {
@@ -27,11 +27,12 @@ export type ReviewLoadTarget = {
 /**
  * 앱 사이드바/Point List 가 그릴 작업셋을 DB 에서 로드한다.
  * - keys 가 주어지면 해당 (stockCode, tradeDate) 타깃만, 없으면 전체(최근순).
+ * - keys 없이 from/to 가 주어지면 tradeDate 범위로 제한(DB 모드 날짜 필터).
  * - 각 타깃의 모든 Point + payload(m_) + minute_candle_features(feature) 포함.
  */
 export async function findReviewLoadTargets(
     db: Database,
-    opts: { keys?: ReviewLoadKey[]; limit?: number } = {},
+    opts: { keys?: ReviewLoadKey[]; limit?: number; from?: string; to?: string } = {},
 ): Promise<ReviewLoadTarget[]> {
     const targets = await loadTargets(db, opts);
     if (targets.length === 0) return [];
@@ -57,16 +58,34 @@ export async function findReviewLoadTargets(
 
 async function loadTargets(
     db: Database,
-    opts: { keys?: ReviewLoadKey[]; limit?: number },
+    opts: { keys?: ReviewLoadKey[]; limit?: number; from?: string; to?: string },
 ): Promise<Array<typeof reviewTargets.$inferSelect>> {
     const keys = opts.keys;
     // keys 가 주어지면(빈 배열 포함) 정확한 (code, date) 쌍 범위로 제한.
     if (keys) return findReviewTargetsByKeys(db, keys);
 
+    // keys 가 없으면 전체(또는 tradeDate 범위) 를 최근순으로.
+    const bounds = [
+        opts.from ? gte(reviewTargets.tradeDate, opts.from) : undefined,
+        opts.to ? lte(reviewTargets.tradeDate, opts.to) : undefined,
+    ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+
     const query = db
         .select()
         .from(reviewTargets)
+        .where(bounds.length > 0 ? and(...bounds) : undefined)
         .orderBy(desc(reviewTargets.tradeDate), asc(reviewTargets.stockCode));
 
     return opts.limit ? query.limit(opts.limit) : query;
+}
+
+/**
+ * DB 에 존재하는 가장 최근 tradeDate 를 반환한다(YYYY-MM-DD). 없으면 null.
+ * DB 모드 기본 날짜 범위(최신 기준 최근 1개월)의 앵커로 사용.
+ */
+export async function findLatestReviewTradeDate(db: Database): Promise<string | null> {
+    const [row] = await db
+        .select({ latest: max(reviewTargets.tradeDate) })
+        .from(reviewTargets);
+    return row?.latest ?? null;
 }

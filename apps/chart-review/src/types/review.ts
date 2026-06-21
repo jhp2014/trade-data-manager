@@ -38,6 +38,9 @@ export type ReviewStockGroup = {
 
 export type ReviewViewMode = "summary" | "minute" | "daily" | "overlay";
 
+/** DB 모드 작업셋의 tradeDate 범위. null = 전체(범위 제한 없음). */
+export type DbDateRange = { from: string; to: string } | null;
+
 export type InitialReviewSelection = {
   selectedGroupIndex: number;
   selectedPointKey: string;
