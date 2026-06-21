@@ -125,7 +125,10 @@ export function Workbench() {
     // Date/Sheet/History 스코프: 실제 타점(point)이 있는 케이스만.
     // existsInReview=false(리뷰에 없음) 또는 tradeTime 없음(종목-날짜 target 만, 타점 X)은 숨긴다.
     const scopeCases = useMemo(() => {
-        const src = filterMode === "history" ? (historyCases.data ?? []) : (workingSet.data ?? []);
+        const src =
+            filterMode === "history"
+                ? (historyCases.data ?? [])
+                : (workingSet.data?.cases ?? []);
         return src.filter((c) => c.existsInReview && c.tradeTime != null);
     }, [filterMode, historyCases.data, workingSet.data]);
 
@@ -202,6 +205,19 @@ export function Workbench() {
         setCopyMsg({ id: Date.now(), text });
     }, [selectedCase]);
     useSelectedCaseCopyShortcut(selectedCase?.caseId ?? null, onCaseCopied);
+
+    // 시트 탭을 못 읽으면 안내와 함께 기간 모드로 자동 전환한다. 전환하면 mode 가
+    // sheet 에서 벗어나 다음 쿼리엔 sheetError 가 없어 재전환 루프가 생기지 않는다.
+    const sheetError = workingSet.data?.sheetError;
+    useEffect(() => {
+        if (!sheetError) return;
+        selectWorkingSet({ kind: "review-range", ...range });
+        const text =
+            sheetError.kind === "tab-missing"
+                ? `시트 탭 '${sheetError.tab}'을(를) 찾을 수 없어 기간 모드로 전환했습니다`
+                : "시트를 읽을 수 없어 기간 모드로 전환했습니다";
+        setCopyMsg({ id: Date.now(), text });
+    }, [sheetError, selectWorkingSet, range]);
 
     // 그래프 노드 체크박스 → 현재 케이스 연결/해제.
     const { mutate: linkMutate } = useMutation({

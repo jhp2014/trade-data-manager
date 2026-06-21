@@ -8,6 +8,7 @@ import {
     type WorkingSetMode,
 } from "@/repositories/workingSetSources";
 import { readSheetTabs, readSheetValues } from "@/lib/sheet";
+import { classifySheetError, type SheetErrorInfo } from "@/lib/sheetError";
 import { buildWorkingSet, type WorkingSetCase } from "@/services/workingSet";
 import type { HypothesisSnapshot } from "@/domain/types";
 
@@ -23,6 +24,15 @@ function sheetDep() {
     const tab = process.env.GOOGLE_SHEETS_TAB?.trim() || "review";
     return { config: { spreadsheetId, tab }, read: readSheetValues };
 }
+
+/** sheet 모드에서 실제로 읽으려는 탭(모드 지정 > env 기본). 에러 안내 메시지용. */
+function effectiveSheetTab(mode: WorkingSetMode): string {
+    const fromMode = mode.kind === "sheet" ? mode.tab : undefined;
+    return fromMode ?? (process.env.GOOGLE_SHEETS_TAB?.trim() || "review");
+}
+
+/** 워킹셋 로드 결과. sheet 읽기 실패 시 cases 는 비고 sheetError 로 사유를 알린다. */
+export type WorkingSetResult = { cases: WorkingSetCase[]; sheetError?: SheetErrorInfo };
 
 /** 가설/태그/관계/링크 + 경고 전체 스냅샷. */
 export async function loadSnapshotAction(): Promise<HypothesisSnapshot> {
@@ -43,8 +53,12 @@ export async function listSheetTabsAction(): Promise<string[]> {
     }
 }
 
-/** 모드별 워킹셋(후보 caseId + review 값 + 스냅샷 링크상태). */
-export async function loadWorkingSetAction(mode: WorkingSetMode): Promise<WorkingSetCase[]> {
+/**
+ * 모드별 워킹셋(후보 caseId + review 값 + 스냅샷 링크상태).
+ * sheet 모드에서 탭을 못 읽으면(throw) 에러를 삼켜 sheetError 로 반환 — 클라가
+ * 안내와 함께 기간 모드로 전환한다. sheet 외 모드의 throw 는 그대로 표면화한다.
+ */
+export async function loadWorkingSetAction(mode: WorkingSetMode): Promise<WorkingSetResult> {
     const r = repo();
     const rs = reviewSource();
     const source = createWorkingSetSource(mode, {
@@ -52,9 +66,15 @@ export async function loadWorkingSetAction(mode: WorkingSetMode): Promise<Workin
         repo: r,
         sheet: sheetDep(),
     });
-    const caseIds = await source.listCaseIds();
+    let caseIds: string[];
+    try {
+        caseIds = await source.listCaseIds();
+    } catch (err) {
+        if (mode.kind !== "sheet") throw err;
+        return { cases: [], sheetError: classifySheetError(err, effectiveSheetTab(mode)) };
+    }
     const [reviewCases, snapshot] = await Promise.all([rs.enrich(caseIds), r.loadSnapshot()]);
-    return buildWorkingSet({ caseIds, reviewCases, snapshot });
+    return { cases: buildWorkingSet({ caseIds, reviewCases, snapshot }) };
 }
 
 /**
