@@ -34,6 +34,27 @@
     font-size: 14px;
     font-weight: 650;
 }
+.headActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.helpBtn {
+    font: inherit;
+    font-size: 12px;
+    font-weight: 550;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+.helpBtn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
 .x {
     border: 0;
     background: transparent;

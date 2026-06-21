@@ -13,6 +13,7 @@ import type { Hypothesis, HypothesisSnapshot } from "@/domain/types";
 import type { WorkingSetCase } from "@/services/workingSet";
 import { collectRefs, type HypExpr } from "@/services/hypExpr";
 import { matchHypSearch, parseHypSearchExpr } from "@/services/hypSearchExpr";
+import { HYP_INPUT_ID } from "@/lib/domIds";
 import { useSelection } from "@/stores/selection";
 import { useWorkbench } from "@/stores/workbench";
 import styles from "./HypothesisPanel.module.css";
@@ -319,11 +320,20 @@ export function HypothesisPanel({
                         </span>
                     )}
                     <input
+                        id={HYP_INPUT_ID}
                         value={searchMode ? query : text}
                         onChange={(e) =>
                             searchMode ? setQuery(e.target.value) : setText(e.target.value)
                         }
-                        onKeyDown={(e) => !searchMode && e.key === "Enter" && addHypothesis()}
+                        onKeyDown={(e) => {
+                            // Tab: 추가↔검색 모드 토글(포커스는 유지).
+                            if (e.key === "Tab") {
+                                e.preventDefault();
+                                setSearchMode(!searchMode);
+                                return;
+                            }
+                            if (!searchMode && e.key === "Enter") addHypothesis();
+                        }}
                         placeholder={
                             searchMode
                                 ? "가설 검색 — 예) 삼성 #급등 | !장기"

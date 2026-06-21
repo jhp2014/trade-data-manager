@@ -115,7 +115,11 @@ type WorkbenchState = {
     searchMode: boolean;
     /** 가설 검색식 입력값. 그래프 디밍·패널 하이라이트 공용. 영속하지 않음. */
     searchQuery: string;
+    /** Filter 식 입력 플라이아웃 열림(레일). 단축키로도 연다. 영속하지 않음. */
+    filterOpen: boolean;
     settingsOpen: boolean;
+    /** 도움말 모달(단축키·필터·검색 안내) 열림. */
+    helpOpen: boolean;
     /** History 목록 관리 모달. */
     historyModalOpen: boolean;
     /** 저장/불러오기 모달. null 이면 닫힘. */
@@ -140,6 +144,7 @@ type WorkbenchState = {
     setExpr: (expr: string) => void;
     setSearchMode: (on: boolean) => void;
     setSearchQuery: (q: string) => void;
+    setFilterOpen: (open: boolean) => void;
     /** caseId 를 History 앞에 추가(중복은 앞으로 이동, historyMax 로 캡). */
     addHistory: (caseId: string) => void;
     removeHistory: (caseId: string) => void;
@@ -156,6 +161,8 @@ type WorkbenchState = {
     removeRef: (code: string) => void;
     openSettings: () => void;
     closeSettings: () => void;
+    openHelp: () => void;
+    closeHelp: () => void;
     openHistoryModal: () => void;
     closeHistoryModal: () => void;
     openSavedFilter: (kind: "save" | "load") => void;
@@ -173,7 +180,9 @@ export const useWorkbench = create<WorkbenchState>()(
     expr: "",
     searchMode: false,
     searchQuery: "",
+    filterOpen: false,
     settingsOpen: false,
+    helpOpen: false,
     historyModalOpen: false,
     savedFilterModal: null,
     history: [],
@@ -204,6 +213,7 @@ export const useWorkbench = create<WorkbenchState>()(
     setExpr: (expr) => set({ expr, _lastInsert: null }),
     setSearchMode: (on) => set({ searchMode: on }),
     setSearchQuery: (q) => set({ searchQuery: q }),
+    setFilterOpen: (open) => set({ filterOpen: open }),
     addHistory: (caseId) =>
         set((state) => {
             const next = [caseId, ...state.history.filter((id) => id !== caseId)];
@@ -250,6 +260,8 @@ export const useWorkbench = create<WorkbenchState>()(
         })),
     openSettings: () => set({ settingsOpen: true }),
     closeSettings: () => set({ settingsOpen: false }),
+    openHelp: () => set({ helpOpen: true }),
+    closeHelp: () => set({ helpOpen: false }),
     openHistoryModal: () => set({ historyModalOpen: true }),
     closeHistoryModal: () => set({ historyModalOpen: false }),
     openSavedFilter: (kind) => set({ savedFilterModal: kind }),
