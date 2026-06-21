@@ -102,14 +102,21 @@
     background: var(--chip);
 }
 .viewNum {
+    display: inline-flex;
+    align-items: baseline;
+    padding: 1px 6px;
     color: var(--accent);
+    background: var(--accent-weak);
+    border-radius: 5px;
+    font-size: 11px;
     font-weight: 700;
+    line-height: 1.5;
     font-variant-numeric: tabular-nums;
 }
 .viewTotal {
-    color: var(--muted);
+    color: var(--accent);
     font-weight: 600;
-    opacity: 0.7;
+    opacity: 0.6;
 }
 
 /* 모드별 컨텍스트 — 가변 폭. */
