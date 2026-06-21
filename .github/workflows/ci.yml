@@ -28,12 +28,16 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # 도메인 안전망: 타입 → 테스트(데이터 계층은 PGlite 인메모리라 외부 DB 불필요) → 린트.
+      # 도메인 안전망: 타입 → 테스트(데이터 계층은 PGlite 인메모리라 외부 DB 불필요)
+      # → 빌드(Next 앱까지 확인) → 린트.
       - name: Type-check
         run: pnpm type-check
 
       - name: Test
         run: pnpm test
+
+      - name: Build
+        run: pnpm build
 
       - name: Lint
         run: pnpm lint
