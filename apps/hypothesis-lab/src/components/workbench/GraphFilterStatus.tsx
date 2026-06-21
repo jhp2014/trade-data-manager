@@ -19,6 +19,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
  */
 export function GraphFilterStatus() {
     const expr = useWorkbench((s) => s.expr);
+    const setExpr = useWorkbench((s) => s.setExpr);
     const outcomeOptions = useOutcomeTypes((s) => s.options);
     const snapshot = useQuery({ queryKey: ["snapshot"], queryFn: () => loadSnapshotAction() });
 
@@ -60,6 +61,17 @@ export function GraphFilterStatus() {
                         {results?.length ?? 0}건
                     </span>
                 )}
+                <button
+                    type="button"
+                    className={styles.clear}
+                    onClick={() => setExpr("")}
+                    title="필터 식 비우기"
+                    aria-label="필터 식 비우기"
+                >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                </button>
             </span>
             {agg && agg.items.length > 0 && (
                 <div className={styles.agg} title={`결과 ${agg.total}건의 outcome 집계`}>
