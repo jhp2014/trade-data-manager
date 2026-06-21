@@ -61,17 +61,6 @@ export function GraphFilterStatus() {
                         {results?.length ?? 0}건
                     </span>
                 )}
-                <button
-                    type="button"
-                    className={styles.clear}
-                    onClick={() => setExpr("")}
-                    title="필터 식 비우기"
-                    aria-label="필터 식 비우기"
-                >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                </button>
             </span>
             {agg && agg.items.length > 0 && (
                 <div className={styles.agg} title={`결과 ${agg.total}건의 outcome 집계`}>
@@ -83,6 +72,18 @@ export function GraphFilterStatus() {
                     ))}
                 </div>
             )}
+            {/* 식 비우기 — 항상 가장 우측 끝. */}
+            <button
+                type="button"
+                className={styles.clear}
+                onClick={() => setExpr("")}
+                title="필터 식 비우기"
+                aria-label="필터 식 비우기"
+            >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+            </button>
         </div>
     );
 }
