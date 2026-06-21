@@ -9,6 +9,8 @@ beforeEach(() => {
         view: "all",
         sheetTab: undefined,
         expr: "",
+        searchMode: false,
+        searchQuery: "",
         settingsOpen: false,
         historyModalOpen: false,
         savedFilterModal: null,
@@ -130,6 +132,18 @@ describe("useWorkbench", () => {
         expect(useWorkbench.getState().view).toBe("todo");
         useWorkbench.getState().setView("done");
         expect(useWorkbench.getState().view).toBe("done");
+    });
+
+    it("가설 검색 모드와 검색어를 전환한다", () => {
+        useWorkbench.getState().setSearchMode(true);
+        useWorkbench.getState().setSearchQuery("삼성 #급등");
+        expect(useWorkbench.getState()).toMatchObject({
+            searchMode: true,
+            searchQuery: "삼성 #급등",
+        });
+
+        useWorkbench.getState().setSearchMode(false);
+        expect(useWorkbench.getState().searchMode).toBe(false);
     });
 
     it("removeRef 는 코드 참조를 앞 연산자까지 지우고 불리언 모드로 둔다", () => {

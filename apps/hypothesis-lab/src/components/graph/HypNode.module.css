@@ -1,4 +1,5 @@
 .node {
+    position: relative;
     width: 190px;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
@@ -6,14 +7,39 @@
     padding: 8px 10px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     font-size: 11px;
+    transition: opacity 120ms ease, transform 120ms ease;
 }
-.highlight {
-    border-color: var(--linked);
-    box-shadow: 0 0 0 2px var(--linked-weak);
+/* 현재 케이스 연결: 살짝 떠오른 엘리베이션 그림자(체크박스가 주 구분 신호).
+   box-shadow 만 써 선택(outline)·디밍(opacity)과 독립적으로 함께 보인다. */
+.linked {
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26), 0 3px 8px rgba(0, 0, 0, 0.14);
 }
+/* 선택: accent 외곽선 + 살짝 확대. outline 은 box-shadow/배경과 독립이라
+   연결·필터 표시 위에 겹쳐도 또렷하게 읽힌다. */
 .selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-weak);
+    outline: 2.5px solid var(--accent);
+    outline-offset: 2px;
+    transform: scale(1.02);
+}
+/* 검색 활성 + 비매치: 흐리게(다른 채널과 무관하게 빠짐). */
+.dimmed {
+    opacity: 0.5;
+}
+/* 필터식 포함: 우상단 깔때기 배지(amber). 배경/테두리를 안 건드림. */
+.filterBadge {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 6px;
+    color: var(--oc-amber-fg);
+    background: var(--oc-amber-bg);
+    border: 1px solid var(--oc-amber-fg);
 }
 .top {
     display: flex;
@@ -48,10 +74,6 @@
     padding: 1px 6px;
     margin-left: auto;
     flex-shrink: 0;
-}
-/* 현재 불리언 필터 식에 포함된 가설: 배경색으로 표시(테두리 채널과 독립). */
-.inFilter {
-    background: var(--accent-weak);
 }
 .text {
     line-height: 1.35;

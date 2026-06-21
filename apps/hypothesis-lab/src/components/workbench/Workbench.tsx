@@ -18,6 +18,7 @@ import { useSelectedCaseCopyShortcut } from "@/hooks/useSelectedCaseCopyShortcut
 import { usePasteCaseShortcut } from "@/hooks/usePasteCaseShortcut";
 import type { WorkingSetCase } from "@/services/workingSet";
 import { collectRefs, parseHypExpr, searchCasesByExpr } from "@/services/hypExpr";
+import { matchHypSearch, parseHypSearchExpr } from "@/services/hypSearchExpr";
 import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
 import { CaseRail } from "./CaseRail";
 import { WorkingSetRail } from "./WorkingSetRail";
@@ -54,6 +55,8 @@ export function Workbench() {
     const filterMode = useWorkbench((s) => s.filterMode);
     const view = useWorkbench((s) => s.view);
     const expr = useWorkbench((s) => s.expr);
+    const searchMode = useWorkbench((s) => s.searchMode);
+    const searchQuery = useWorkbench((s) => s.searchQuery);
     const history = useWorkbench((s) => s.history);
     const addHistory = useWorkbench((s) => s.addHistory);
     const setFilterMode = useWorkbench((s) => s.setFilterMode);
@@ -299,6 +302,30 @@ export function Workbench() {
         });
     }, [snapshot.data, filterMode, parsed]);
 
+    // 가설 검색식(패널 검색 모드와 공유) → 그래프 디밍용 매칭 집합.
+    // 유효 식일 때만 활성, 비매치 노드를 흐리게 한다(다른 표시와 공존).
+    const searchParsed = useMemo(
+        () => (searchMode && searchQuery.trim() !== "" ? parseHypSearchExpr(searchQuery) : null),
+        [searchMode, searchQuery],
+    );
+    const searchActive = searchParsed?.ok === true;
+    const searchMatchedIds = useMemo(() => {
+        const snap = snapshot.data;
+        if (!snap || !searchParsed?.ok) return [];
+        const tagName = new Map(snap.tags.map((t) => [t.id, t.name]));
+        const tagsByHyp = new Map<string, string[]>();
+        for (const ht of snap.hypothesisTags) {
+            const arr = tagsByHyp.get(ht.hypothesisId) ?? [];
+            arr.push(tagName.get(ht.tagId) ?? "");
+            tagsByHyp.set(ht.hypothesisId, arr);
+        }
+        return snap.hypotheses
+            .filter((h) =>
+                matchHypSearch(searchParsed.expr, { text: h.text, tags: tagsByHyp.get(h.id) ?? [] }),
+            )
+            .map((h) => h.id);
+    }, [snapshot.data, searchParsed]);
+
     return (
         <div className={styles.layout}>
             <div className={styles.leftCol}>
@@ -337,6 +364,8 @@ export function Workbench() {
                         snapshot={snapshot.data ?? null}
                         highlightHypothesisIds={linkedToSelectedCase}
                         filterHypothesisIds={filterHypothesisIds}
+                        searchMatchedIds={searchMatchedIds}
+                        searchActive={searchActive}
                         caseSelected={!!selectedCase}
                         onToggleCaseLink={handleToggleCaseLink}
                     />

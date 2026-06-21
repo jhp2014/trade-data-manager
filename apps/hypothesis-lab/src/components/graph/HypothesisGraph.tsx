@@ -66,12 +66,18 @@ export function HypothesisGraph({
     snapshot,
     highlightHypothesisIds,
     filterHypothesisIds,
+    searchMatchedIds,
+    searchActive,
     caseSelected,
     onToggleCaseLink,
 }: {
     snapshot: HypothesisSnapshot | null;
     highlightHypothesisIds: string[];
     filterHypothesisIds: string[];
+    /** 검색 매칭 가설 id. searchActive 일 때 비매치 노드를 디밍한다. */
+    searchMatchedIds: string[];
+    /** 검색이 활성(유효 식)인가. */
+    searchActive: boolean;
     caseSelected: boolean;
     onToggleCaseLink: (hypothesisId: string, link: boolean) => void;
 }) {
@@ -133,6 +139,7 @@ export function HypothesisGraph({
 
     const highlight = useMemo(() => new Set(highlightHypothesisIds), [highlightHypothesisIds]);
     const inFilter = useMemo(() => new Set(filterHypothesisIds), [filterHypothesisIds]);
+    const searchMatched = useMemo(() => new Set(searchMatchedIds), [searchMatchedIds]);
 
     function dataFor(id: string, h: { code: string; text: string }): HypNodeData {
         const linkedToCase = highlight.has(id);
@@ -147,6 +154,7 @@ export function HypothesisGraph({
             selected: id === selectedHypothesisId,
             highlight: highlight.has(id),
             inFilter: inFilter.has(id),
+            dimmed: searchActive && !searchMatched.has(id),
         };
     }
 
@@ -229,7 +237,7 @@ export function HypothesisGraph({
             }),
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedHypothesisId, highlight, inFilter, tagsByHyp, snapshot, caseSelected, onToggleCaseLink]);
+    }, [selectedHypothesisId, highlight, inFilter, searchMatched, searchActive, tagsByHyp, snapshot, caseSelected, onToggleCaseLink]);
 
     const edges: Edge[] = useMemo(
         () =>
@@ -329,11 +337,13 @@ export function HypothesisGraph({
                 fitViewOptions={{ padding: 0.18, maxZoom: 1.25 }}
                 minZoom={0.2}
                 nodesConnectable={false}
-                // 빈 영역 좌-드래그 = 박스 다중선택(걸친 노드도 포함), 선택 후 하나를
-                // 잡고 옮기면 함께 이동. 화면 이동은 휠(1)/우(2) 버튼 드래그로.
-                selectionOnDrag
+                // 좌(0)/휠(1)/우(2) 버튼 드래그 = 화면 이동(기본).
+                // Ctrl+좌-드래그 = 박스 다중선택(걸친 노드 포함), 선택 후 하나를
+                // 잡고 옮기면 함께 이동. Shift+클릭 = 선택 추가/해제.
                 selectionMode={SelectionMode.Partial}
-                panOnDrag={[1, 2]}
+                panOnDrag={[0, 1, 2]}
+                selectionKeyCode="Control"
+                multiSelectionKeyCode="Shift"
                 onNodeClick={(_, n) => selectHypothesis(n.id)}
                 onNodeDoubleClick={(_, n) => openHypothesisModal(n.id)}
                 onNodeContextMenu={(e, n) => {
