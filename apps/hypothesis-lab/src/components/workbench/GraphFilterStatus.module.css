@@ -55,7 +55,7 @@
     background: color-mix(in srgb, var(--danger, #d44) 14%, transparent);
 }
 
-/* 식 비우기 — 평소 숨김, 배지에 hover 하면 흐릿하게 우측 끝에 나타남. */
+/* 식 비우기 — 우측 끝에 항상 흐릿하게 보이고, hover 시 진해짐. */
 .clear {
     flex-shrink: 0;
     display: inline-flex;
@@ -67,11 +67,8 @@
     color: var(--muted);
     border-radius: 4px;
     cursor: pointer;
-    opacity: 0;
+    opacity: 0.55;
     transition: opacity 0.12s, color 0.12s, background 0.12s;
-}
-.status:hover .clear {
-    opacity: 0.4;
 }
 .clear:hover {
     opacity: 1;
