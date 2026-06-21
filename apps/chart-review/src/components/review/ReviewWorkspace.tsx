@@ -432,6 +432,8 @@ export function ReviewWorkspace({
 
   // 짧게 떴다 사라지는 상태 토스트(f 추가/프리셋 적용 결과 공용).
   const { status: writeAppendStatus, showStatus } = useStatusToast();
+  // CaseId 복사 피드백(화면 중앙)용 별도 토스트.
+  const { status: copyStatus, showStatus: showCopyStatus } = useStatusToast();
 
   // Write Tab append/초기화 유스케이스는 useWriteSheet 으로 분리(토스트는 공유 주입).
   const { handleWriteAppend, handleInitWriteTab } = useWriteSheet({
@@ -563,10 +565,14 @@ export function ReviewWorkspace({
       if (!caseId) return;
       e.preventDefault();
       e.clipboardData?.setData("text/plain", caseId);
+      const stockName = resolveFieldValue("stockName", activePoint);
+      const tradeDate = resolveFieldValue("tradeDate", activePoint);
+      const tradeTime = resolveFieldValue("tradeTime", activePoint);
+      showCopyStatus([stockName, tradeDate, tradeTime].filter(Boolean).join(" "));
     };
     window.addEventListener("copy", handler);
     return () => window.removeEventListener("copy", handler);
-  }, [inputOpen, settingsOpen, activePoint]);
+  }, [inputOpen, settingsOpen, activePoint, showCopyStatus]);
 
   // Tab 히스토리 스위처(상태/키 핸들링은 useHistorySwitcher 로 분리).
   const { switcherOpen, switcherIndex, commitSwitcher, deleteEntry, clearAll } = useHistorySwitcher({
@@ -675,6 +681,13 @@ export function ReviewWorkspace({
       className={`${styles.appendToast} ${writeAppendStatus.startsWith("✓") ? styles.appendToastOk : styles.appendToastErr}`}
     >
       {writeAppendStatus}
+    </div>
+  );
+
+  const copyToast = copyStatus && (
+    <div className={styles.copyToast}>
+      <span className={styles.copyToastIcon}>✓</span>
+      <span>{copyStatus} 복사됨</span>
     </div>
   );
 
@@ -790,6 +803,7 @@ export function ReviewWorkspace({
       {historySwitcher}
       {presetSwitcher}
       {toast}
+      {copyToast}
     </>
   );
 

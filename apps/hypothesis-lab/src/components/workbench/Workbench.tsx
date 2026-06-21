@@ -181,8 +181,10 @@ export function Workbench() {
     const clearCopyMsg = useCallback(() => setCopyMsg(null), []);
     const onCaseCopied = useCallback(() => {
         if (!selectedCase) return;
-        const label = selectedCase.stockName ?? selectedCase.stockCode ?? selectedCase.caseId;
-        setCopyMsg({ id: Date.now(), text: `복사됨 · ${label}` });
+        const name = selectedCase.stockName ?? selectedCase.stockCode ?? selectedCase.caseId;
+        const when = [selectedCase.tradeDate, selectedCase.tradeTime].filter(Boolean).join(" ");
+        const text = when ? `복사됨 · ${name} · ${when}` : `복사됨 · ${name}`;
+        setCopyMsg({ id: Date.now(), text });
     }, [selectedCase]);
     useSelectedCaseCopyShortcut(selectedCase?.caseId ?? null, onCaseCopied);
 
