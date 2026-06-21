@@ -11,7 +11,9 @@ beforeEach(() => {
         expr: "",
         searchMode: false,
         searchQuery: "",
+        filterOpen: false,
         settingsOpen: false,
+        helpOpen: false,
         historyModalOpen: false,
         savedFilterModal: null,
         history: [],
@@ -144,6 +146,18 @@ describe("useWorkbench", () => {
 
         useWorkbench.getState().setSearchMode(false);
         expect(useWorkbench.getState().searchMode).toBe(false);
+    });
+
+    it("필터 입력 플라이아웃과 도움말 모달을 열고 닫는다", () => {
+        useWorkbench.getState().setFilterOpen(true);
+        expect(useWorkbench.getState().filterOpen).toBe(true);
+        useWorkbench.getState().setFilterOpen(false);
+        expect(useWorkbench.getState().filterOpen).toBe(false);
+
+        useWorkbench.getState().openHelp();
+        expect(useWorkbench.getState().helpOpen).toBe(true);
+        useWorkbench.getState().closeHelp();
+        expect(useWorkbench.getState().helpOpen).toBe(false);
     });
 
     it("removeRef 는 코드 참조를 앞 연산자까지 지우고 불리언 모드로 둔다", () => {

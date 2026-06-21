@@ -19,6 +19,8 @@ import { usePasteCaseShortcut } from "@/hooks/usePasteCaseShortcut";
 import type { WorkingSetCase } from "@/services/workingSet";
 import { collectRefs, parseHypExpr, searchCasesByExpr } from "@/services/hypExpr";
 import { matchHypSearch, parseHypSearchExpr } from "@/services/hypSearchExpr";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { HYP_INPUT_ID } from "@/lib/domIds";
 import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
 import { CaseRail } from "./CaseRail";
 import { WorkingSetRail } from "./WorkingSetRail";
@@ -30,6 +32,7 @@ import { HypothesisModal } from "./HypothesisModal";
 import { HistoryModal } from "./HistoryModal";
 import { SavedFilterModal } from "./SavedFilterModal";
 import { WorkbenchSettingsModal } from "./WorkbenchSettingsModal";
+import { HelpModal } from "./HelpModal";
 import styles from "./Workbench.module.css";
 
 /** view 토글에 맞는 케이스인지(Todo=미연결, Done=연결, All=전부). */
@@ -57,9 +60,18 @@ export function Workbench() {
     const expr = useWorkbench((s) => s.expr);
     const searchMode = useWorkbench((s) => s.searchMode);
     const searchQuery = useWorkbench((s) => s.searchQuery);
+    const range = useWorkbench((s) => s.range);
+    const sheetTab = useWorkbench((s) => s.sheetTab);
     const history = useWorkbench((s) => s.history);
     const addHistory = useWorkbench((s) => s.addHistory);
     const setFilterMode = useWorkbench((s) => s.setFilterMode);
+    const selectWorkingSet = useWorkbench((s) => s.selectWorkingSet);
+    const setFilterOpen = useWorkbench((s) => s.setFilterOpen);
+    // 모달이 열려 있으면 전역 단축키를 끈다(모달 자체 입력/조작 우선).
+    const settingsOpen = useWorkbench((s) => s.settingsOpen);
+    const historyModalOpen = useWorkbench((s) => s.historyModalOpen);
+    const savedFilterModal = useWorkbench((s) => s.savedFilterModal);
+    const helpOpen = useWorkbench((s) => s.helpOpen);
     const positions = useWorkbench((s) => s.positions);
     const setPosition = useWorkbench((s) => s.setPosition);
     const selectedCaseId = useSelection((s) => s.selectedCaseId);
@@ -251,26 +263,69 @@ export function Workbench() {
         [caseById, noteMutate],
     );
 
-    // a(이전) / d(다음) 으로 워킹셋 케이스 이동. 입력 중이거나 모달이 열려 있으면 무시.
-    useEffect(() => {
-        function onKey(e: KeyboardEvent) {
-            if (modalHypothesisId) return;
-            if (e.metaKey || e.ctrlKey || e.altKey) return;
-            const t = e.target as HTMLElement | null;
-            const tag = t?.tagName;
-            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
-            const key = e.key.toLowerCase();
-            if (key !== "a" && key !== "d") return;
+    // 레일 케이스 이동(a=이전, d=다음).
+    const moveCase = useCallback(
+        (delta: number) => {
             if (railCases.length === 0) return;
             const idx = railCases.findIndex((c) => c.caseId === selectedCaseId);
             const cur = idx < 0 ? 0 : idx;
-            const next = key === "a" ? cur - 1 : cur + 1;
+            const next = cur + delta;
             if (next < 0 || next >= railCases.length) return;
             selectCase(railCases[next].caseId);
-        }
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [railCases, selectedCaseId, selectCase, modalHypothesisId]);
+        },
+        [railCases, selectedCaseId, selectCase],
+    );
+
+    // 전역 단축키. 새 단축키는 이 목록에 항목만 추가하면 된다(입력 중 무시·수식키
+    // 매칭은 훅이 처리). 모달이 열려 있으면 전체를 끈다.
+    const anyModalOpen =
+        !!modalHypothesisId ||
+        settingsOpen ||
+        historyModalOpen ||
+        savedFilterModal !== null ||
+        helpOpen;
+    useKeyboardShortcuts(
+        [
+            // Space: 가설 추가/검색 입력칸 포커스. 버튼/링크 포커스 중이면 기본 동작 보존.
+            {
+                key: "space",
+                handler: (e) => {
+                    const tag = (document.activeElement as HTMLElement | null)?.tagName;
+                    if (tag === "BUTTON" || tag === "A") return;
+                    e.preventDefault();
+                    document.getElementById(HYP_INPUT_ID)?.focus();
+                },
+            },
+            // Ctrl+Space: 입력칸에서 포커스 해제(a/d 탐색 복귀). 입력 중에도 동작.
+            {
+                key: "space",
+                ctrl: true,
+                allowInInput: true,
+                handler: (e) => {
+                    e.preventDefault();
+                    (document.activeElement as HTMLElement | null)?.blur();
+                },
+            },
+            // f: 필터 식 입력칸 포커스(필터 모드 전환 + 플라이아웃 열기 → 자동 포커스).
+            {
+                key: "f",
+                handler: (e) => {
+                    e.preventDefault();
+                    setFilterMode("boolean");
+                    setFilterOpen(true);
+                },
+            },
+            // 1~4: 작업셋 전환.
+            { key: "1", handler: () => selectWorkingSet({ kind: "review-range", ...range }) },
+            { key: "2", handler: () => selectWorkingSet({ kind: "sheet", tab: sheetTab }) },
+            { key: "3", handler: () => setFilterMode("history") },
+            { key: "4", handler: () => setFilterMode("boolean") },
+            // a/d: 레일 케이스 이전/다음.
+            { key: "a", handler: () => moveCase(-1) },
+            { key: "d", handler: () => moveCase(1) },
+        ],
+        !anyModalOpen,
+    );
 
     // 케이스별 연결된 가설 수(카드 배지용).
     const linkedCountByCase = useMemo(() => {
@@ -375,6 +430,7 @@ export function Workbench() {
                 </div>
             </div>
             <WorkbenchSettingsModal />
+            <HelpModal />
             <HistoryModal />
             <SavedFilterModal />
             <HypothesisModal />

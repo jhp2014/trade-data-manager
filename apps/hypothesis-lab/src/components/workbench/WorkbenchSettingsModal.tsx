@@ -52,6 +52,7 @@ export function WorkbenchSettingsModal() {
     const historyMax = useWorkbench((s) => s.historyMax);
     const setHistoryMax = useWorkbench((s) => s.setHistoryMax);
     const openHistoryModal = useWorkbench((s) => s.openHistoryModal);
+    const openHelp = useWorkbench((s) => s.openHelp);
 
     const outcomeOptions = useOutcomeTypes((s) => s.options);
     const addOutcome = useOutcomeTypes((s) => s.addOption);
@@ -134,9 +135,18 @@ export function WorkbenchSettingsModal() {
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
                 <header className={styles.head}>
                     <h2>작업대 설정</h2>
-                    <button className={styles.x} onClick={close} aria-label="닫기">
-                        ×
-                    </button>
+                    <div className={styles.headActions}>
+                        <button
+                            className={styles.helpBtn}
+                            onClick={openHelp}
+                            title="단축키·필터·검색 도움말"
+                        >
+                            도움말
+                        </button>
+                        <button className={styles.x} onClick={close} aria-label="닫기">
+                            ×
+                        </button>
+                    </div>
                 </header>
 
                 <section className={styles.section}>

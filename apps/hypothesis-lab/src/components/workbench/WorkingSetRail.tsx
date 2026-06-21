@@ -106,9 +106,11 @@ export function WorkingSetRail({
     const selectWorkingSet = useWorkbench((s) => s.selectWorkingSet);
     const setFilterMode = useWorkbench((s) => s.setFilterMode);
     const openSettings = useWorkbench((s) => s.openSettings);
+    // 필터 입력 플라이아웃 열림 — store(단축키 f 로도 연다).
+    const filterOpen2 = useWorkbench((s) => s.filterOpen);
+    const setFilterOpen2 = useWorkbench((s) => s.setFilterOpen);
     const queryClient = useQueryClient();
     const [navOpen, setNavOpen] = useState(false);
-    const [filterOpen2, setFilterOpen2] = useState(false);
     const navRef = useRef<HTMLDivElement>(null);
     const railRef = useRef<HTMLDivElement>(null);
 
@@ -241,7 +243,7 @@ export function WorkingSetRail({
                                     styles.searchBtn,
                                     expr.trim() !== "" && styles.searchActive,
                                 )}
-                                onClick={() => setFilterOpen2((v) => !v)}
+                                onClick={() => setFilterOpen2(!filterOpen2)}
                                 title={filterOpen2 ? "입력창 접기" : "필터 식 입력"}
                                 aria-label="필터 식 입력"
                                 aria-expanded={filterOpen2}
