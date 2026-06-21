@@ -95,20 +95,28 @@ export async function unlinkCaseAction(input: {
     await repo().removeCaseLink(input);
 }
 
-/** 케이스 레벨 outcome(트레이드 결과) 설정. null=해제. */
+/**
+ * 케이스 레벨 outcome(트레이드 결과) 설정. null=해제.
+ * 가설에 한 번도 연결되지 않아 cases 행이 없는 케이스도 먼저 insert(ensureCase)해
+ * UPDATE 가 0건이 되지 않게 한다.
+ */
 export async function setCaseOutcomeAction(input: {
-    caseId: string;
+    case: CaseSnapshotInput;
     outcome: string | null;
 }): Promise<void> {
-    await repo().setCaseOutcome(input);
+    const r = repo();
+    await r.ensureCase(input.case);
+    await r.setCaseOutcome({ caseId: input.case.caseId, outcome: input.outcome });
 }
 
-/** 케이스 자유 메모 설정. null=제거. */
+/** 케이스 자유 메모 설정. null=제거. cases 행이 없으면 먼저 insert. */
 export async function setCaseNoteAction(input: {
-    caseId: string;
+    case: CaseSnapshotInput;
     note: string | null;
 }): Promise<void> {
-    await repo().setCaseNote(input);
+    const r = repo();
+    await r.ensureCase(input.case);
+    await r.setCaseNote({ caseId: input.case.caseId, note: input.note });
 }
 
 /** 새 가설 생성. case 가 주어지면 곧바로 연결까지. */

@@ -1,0 +1,111 @@
+/* 그래프 좌상단 불리언 식 상태 — 강조 텍스트 + 노션식 하이라이트(둥둥 뜨는 칩 X). */
+.status {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+.exprPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 360px;
+}
+/* 식 — 옅은 중립 하이라이트 위의 강조 모노스페이스 텍스트. */
+.exprText {
+    min-width: 0;
+    padding: 2px 8px;
+    border-radius: 5px;
+    background: var(--chip);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.exprError .exprText {
+    color: var(--danger, #d44);
+}
+/* 건수 — accent 하이라이트. */
+.badge {
+    flex-shrink: 0;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-weak);
+    border-radius: 5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.badgeWarn {
+    color: var(--warning, #c80);
+    background: color-mix(in srgb, var(--warning, #c80) 16%, transparent);
+}
+.exprError .badge {
+    color: var(--danger, #d44);
+    background: color-mix(in srgb, var(--danger, #d44) 14%, transparent);
+}
+
+/* outcome 집계 — 노션식 색 하이라이트. */
+.agg {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.aggPill {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--chip);
+    color: var(--muted);
+    white-space: nowrap;
+}
+.aggPill[data-color="green"] {
+    background: var(--oc-green-bg);
+    color: var(--oc-green-fg);
+}
+.aggPill[data-color="red"] {
+    background: var(--oc-red-bg);
+    color: var(--oc-red-fg);
+}
+.aggPill[data-color="gray"] {
+    background: var(--oc-gray-bg);
+    color: var(--oc-gray-fg);
+}
+.aggPill[data-color="amber"] {
+    background: var(--oc-amber-bg);
+    color: var(--oc-amber-fg);
+}
+.aggPill[data-color="blue"] {
+    background: var(--oc-blue-bg);
+    color: var(--oc-blue-fg);
+}
+.aggPill[data-color="purple"] {
+    background: var(--oc-purple-bg);
+    color: var(--oc-purple-fg);
+}
+.aggPill[data-color="teal"] {
+    background: var(--oc-teal-bg);
+    color: var(--oc-teal-fg);
+}
+.aggPill[data-color="pink"] {
+    background: var(--oc-pink-bg);
+    color: var(--oc-pink-fg);
+}
+.aggLabel {
+    font-weight: 600;
+    opacity: 0.85;
+}
+.aggNum {
+    font-variant-numeric: tabular-nums;
+}

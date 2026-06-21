@@ -1,0 +1,112 @@
+/* 그래프 좌상단 선택 케이스 — 강조 텍스트 한 줄(둥둥 뜨는 칩 X). */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* 종목·시간·가설수 — 옅은 중립 하이라이트 한 묶음(가독성용), 종목명 강조. */
+.run {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--chip);
+}
+.name {
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.meta {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.linked {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+}
+.copy {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    line-height: 0;
+    cursor: pointer;
+    transition: color 0.12s ease, background 0.12s ease;
+}
+.copy:hover {
+    color: var(--accent);
+    background: var(--chip);
+}
+
+/* outcome — 노션식 색 하이라이트. */
+.outcome {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: var(--chip);
+    color: var(--muted);
+    white-space: nowrap;
+}
+.outcome[data-color="green"] {
+    background: var(--oc-green-bg);
+    color: var(--oc-green-fg);
+}
+.outcome[data-color="red"] {
+    background: var(--oc-red-bg);
+    color: var(--oc-red-fg);
+}
+.outcome[data-color="gray"] {
+    background: var(--oc-gray-bg);
+    color: var(--oc-gray-fg);
+}
+.outcome[data-color="amber"] {
+    background: var(--oc-amber-bg);
+    color: var(--oc-amber-fg);
+}
+.outcome[data-color="blue"] {
+    background: var(--oc-blue-bg);
+    color: var(--oc-blue-fg);
+}
+.outcome[data-color="purple"] {
+    background: var(--oc-purple-bg);
+    color: var(--oc-purple-fg);
+}
+.outcome[data-color="teal"] {
+    background: var(--oc-teal-bg);
+    color: var(--oc-teal-fg);
+}
+.outcome[data-color="pink"] {
+    background: var(--oc-pink-bg);
+    color: var(--oc-pink-fg);
+}
+.outcomeEmpty {
+    background: transparent;
+    color: var(--muted);
+    opacity: 0.5;
+    padding: 3px 2px;
+}

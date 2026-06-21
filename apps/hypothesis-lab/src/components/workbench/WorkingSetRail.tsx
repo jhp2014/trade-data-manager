@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
-import { loadSnapshotAction } from "@/actions/workbench";
-import { parseHypExpr, searchCasesByExpr, unknownRefs } from "@/services/hypExpr";
-import { aggregateOutcomes } from "@/services/outcomeAgg";
-import { useSavedFilters } from "@/hooks/useSavedFilters";
-import { useOutcomeTypes } from "@/stores/outcomeTypes";
-import { useWorkbench } from "@/stores/workbench";
+import { useEffect, useRef, useState } from "react";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
+import { useWorkbench, type CaseView } from "@/stores/workbench";
 import { DateRangePicker } from "./DateRangePicker";
+import { FilterBar } from "./FilterBar";
 import styles from "./WorkingSetRail.module.css";
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -17,50 +13,79 @@ function cx(...classes: Array<string | false | null | undefined>) {
 
 function GearIcon() {
     return (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
     );
 }
 
-function SaveIcon() {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-            <path d="M17 21v-8H7v8M7 3v5h8" />
-        </svg>
-    );
-}
-
 function RefreshIcon() {
     return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 12a9 9 0 1 1-2.64-6.36" />
             <path d="M21 3v5h-5" />
         </svg>
     );
 }
 
-function LoadIcon() {
+function CaretIcon() {
     return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9l6 6 6-6" />
         </svg>
     );
 }
 
-const VIEW_LABELS: Record<"all" | "todo" | "done", string> = {
-    all: "All",
-    todo: "Todo",
-    done: "Done",
-};
+function ListIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+        </svg>
+    );
+}
+
+function TrashIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6" />
+        </svg>
+    );
+}
+
+function SearchIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+        </svg>
+    );
+}
+
+function ExpandIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M7 6l6 6-6 6M13 6l6 6-6 6" />
+        </svg>
+    );
+}
+
+function CollapseIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 6l-6 6 6 6M11 6l-6 6 6 6" />
+        </svg>
+    );
+}
+
+const VIEW_LABELS: Record<CaseView, string> = { all: "All", todo: "Todo", done: "Done" };
+const VIEW_ORDER: CaseView[] = ["all", "todo", "done"];
 
 /**
- * 상단 작업셋 탭 레일. Date/Sheet/History/Filter 를 한 줄에서 토글한다.
- * - Date/Sheet/History: 우측에 스코프 컨트롤(기간 입력·시트 탭명)과 All/Todo/Done 토글.
- * - Filter: 불리언식 입력 컨트롤(건수·저장·불러오기·집계).
- * 우측 끝에는 설정(⚙) 버튼.
+ * 좌열 상단 컨트롤 — 한 줄 압축.
+ * 모드 드롭다운(클릭) · All/Todo/Done 순환 · 모드별 컨텍스트 · 전역 액션을 한 줄에.
+ * Filter 식 입력은 토글되는 떠있는 오버레이(레일 아래)로 분리해 레이아웃을 밀지 않는다.
+ * 선택 케이스 요약은 그래프 좌상단 오버레이로 분리.
  */
 export function WorkingSetRail({
     viewCounts,
@@ -74,16 +99,18 @@ export function WorkingSetRail({
     const view = useWorkbench((s) => s.view);
     const setView = useWorkbench((s) => s.setView);
     const sheetTab = useWorkbench((s) => s.sheetTab);
+    const history = useWorkbench((s) => s.history);
+    const clearHistory = useWorkbench((s) => s.clearHistory);
+    const openHistoryModal = useWorkbench((s) => s.openHistoryModal);
+    const expr = useWorkbench((s) => s.expr);
     const selectWorkingSet = useWorkbench((s) => s.selectWorkingSet);
     const setFilterMode = useWorkbench((s) => s.setFilterMode);
     const openSettings = useWorkbench((s) => s.openSettings);
-    const expr = useWorkbench((s) => s.expr);
-    const setExpr = useWorkbench((s) => s.setExpr);
-    const openSavedFilter = useWorkbench((s) => s.openSavedFilter);
-    const outcomeOptions = useOutcomeTypes((s) => s.options);
-    const { filters } = useSavedFilters();
-    const inputRef = useRef<HTMLInputElement>(null);
     const queryClient = useQueryClient();
+    const [navOpen, setNavOpen] = useState(false);
+    const [filterOpen2, setFilterOpen2] = useState(false);
+    const navRef = useRef<HTMLDivElement>(null);
+    const railRef = useRef<HTMLDivElement>(null);
 
     // 현재 작업셋(포인트/시트) 재조회. chart-review 새 타점·시트 변경 반영.
     const refreshing =
@@ -96,201 +123,172 @@ export function WorkingSetRail({
         queryClient.invalidateQueries({ queryKey: ["snapshot"] });
     }
 
-    const snapshot = useQuery({ queryKey: ["snapshot"], queryFn: () => loadSnapshotAction() });
-
-    const parsed = useMemo(
-        () => (expr.trim() !== "" ? parseHypExpr(expr) : null),
-        [expr],
-    );
-    const results = useMemo(() => {
-        const snap = snapshot.data;
-        if (!snap || !parsed || !parsed.ok) return null;
-        return searchCasesByExpr(snap, parsed.expr);
-    }, [snapshot.data, parsed]);
-    const resultCount = results?.length ?? null;
-    const agg = useMemo(() => {
-        const snap = snapshot.data;
-        if (!snap || !results || results.length === 0) return null;
-        return aggregateOutcomes({
-            caseIds: results.map((r) => r.caseId),
-            cases: snap.cases,
-            options: outcomeOptions,
-        });
-    }, [snapshot.data, results, outcomeOptions]);
-    const unknownCodes = useMemo(() => {
-        const snap = snapshot.data;
-        if (!snap || !parsed || !parsed.ok) return [];
-        return unknownRefs(parsed.expr, snap.hypotheses.map((h) => h.code));
-    }, [snapshot.data, parsed]);
-
     const isWs = filterMode === "workingset";
     const isDate = isWs && mode.kind === "review-range";
     const isSheet = isWs && mode.kind === "sheet";
     const isHistory = filterMode === "history";
-    const filterOpen = filterMode === "boolean";
-    const showViewToggle = isDate || isSheet || isHistory;
-    const error = parsed && !parsed.ok ? parsed.error : null;
-    const showStatus = expr.trim() !== "";
+    const filterMode2 = filterMode === "boolean";
 
-    // Filter 탭으로 진입하면 입력창에 포커스.
+    const MODES = [
+        { key: "date", label: "Date", active: isDate, onSelect: () => selectWorkingSet({ kind: "review-range", ...range }) },
+        { key: "sheet", label: "Sheet", active: isSheet, onSelect: () => selectWorkingSet({ kind: "sheet", tab: sheetTab }) },
+        { key: "history", label: "History", active: isHistory, onSelect: () => setFilterMode("history") },
+        { key: "filter", label: "Filter", active: filterMode2, onSelect: () => setFilterMode("boolean") },
+    ];
+    const current = MODES.find((m) => m.active) ?? MODES[0];
+
+    function cycleView() {
+        setView(VIEW_ORDER[(VIEW_ORDER.indexOf(view) + 1) % VIEW_ORDER.length]);
+    }
+
+    // nav 메뉴 바깥 클릭 시 닫기.
     useEffect(() => {
-        if (filterOpen) inputRef.current?.focus();
-    }, [filterOpen]);
+        if (!navOpen) return;
+        function onDown(e: MouseEvent) {
+            if (!navRef.current?.contains(e.target as Node)) setNavOpen(false);
+        }
+        document.addEventListener("mousedown", onDown);
+        return () => document.removeEventListener("mousedown", onDown);
+    }, [navOpen]);
+
+    // 필터 오버레이 바깥(레일 밖) 클릭 시 닫기.
+    useEffect(() => {
+        if (!filterOpen2) return;
+        function onDown(e: MouseEvent) {
+            if (!railRef.current?.contains(e.target as Node)) setFilterOpen2(false);
+        }
+        document.addEventListener("mousedown", onDown);
+        return () => document.removeEventListener("mousedown", onDown);
+    }, [filterOpen2]);
 
     return (
-        <div className={styles.rail}>
-            <div className={styles.tabs}>
-                {/* 4개 탭은 세그먼트 컨트롤처럼 하나로 묶인다. 선택 탭은 accent 배경. */}
-                <div className={styles.group}>
+        <div className={styles.rail} ref={railRef}>
+            <div className={styles.row}>
+                {/* 모드 드롭다운(클릭). */}
+                <div className={styles.nav} ref={navRef}>
                     <button
-                        className={cx(styles.tab, isDate && styles.on)}
-                        onClick={() => selectWorkingSet({ kind: "review-range", ...range })}
+                        className={styles.navTrigger}
+                        onClick={() => setNavOpen((v) => !v)}
+                        aria-haspopup="menu"
+                        aria-expanded={navOpen}
                     >
-                        Date
+                        {current.label}
+                        <span className={cx(styles.caret, navOpen && styles.caretOpen)}>
+                            <CaretIcon />
+                        </span>
                     </button>
-                    <button
-                        className={cx(styles.tab, isSheet && styles.on)}
-                        onClick={() => selectWorkingSet({ kind: "sheet", tab: sheetTab })}
-                    >
-                        Sheet
-                    </button>
-                    <button
-                        className={cx(styles.tab, isHistory && styles.on)}
-                        onClick={() => setFilterMode("history")}
-                    >
-                        History
-                    </button>
-                    <button
-                        className={cx(styles.tab, filterOpen && styles.on)}
-                        onClick={() => setFilterMode("boolean")}
-                    >
-                        Filter
-                    </button>
-                </div>
-
-                {/* All/Todo/Done 토글(탭 그룹 우측). 기간/시트 정보는 우측에 별도 pill 로 분리. */}
-                {showViewToggle && (
-                    <div className={styles.scopeControls}>
-                        <div className={styles.viewToggle}>
-                            {(["all", "todo", "done"] as const).map((v) => (
+                    {navOpen && (
+                        <div className={styles.navMenu} role="menu">
+                            {MODES.map((m) => (
                                 <button
-                                    key={v}
-                                    className={cx(styles.viewBtn, view === v && styles.viewOn)}
-                                    onClick={() => setView(v)}
+                                    key={m.key}
+                                    className={cx(styles.navItem, m.active && styles.navItemOn)}
+                                    role="menuitem"
+                                    onClick={() => {
+                                        m.onSelect();
+                                        setNavOpen(false);
+                                    }}
                                 >
-                                    {VIEW_LABELS[v]}
-                                    <span className={styles.viewNum}>{viewCounts[v]}</span>
+                                    {m.label}
                                 </button>
                             ))}
                         </div>
-                    </div>
-                )}
-                {isDate && <DateRangePicker range={range} setRange={setRange} />}
-                {isSheet && (
-                    <div className={styles.sheetPill} title="설정에서 시트 탭 변경">
-                        <span className={styles.sheetLabel}>Sheet:</span>
-                        <span className={styles.sheetName}>{sheetTab ?? "기본 탭(.env)"}</span>
-                    </div>
-                )}
+                    )}
+                </div>
 
-                {/* Filter 탭: 식 입력·저장/불러오기·집계를 한 바로 묶고 내부 구분선으로 나눈다. */}
-                {filterOpen && (
-                    <div className={cx(styles.filterBar, error && styles.filterBarError)}>
-                        {showStatus &&
-                            (error ? (
-                                <span className={styles.errBadge} title={error}>
-                                    오류
-                                </span>
-                            ) : (
-                                <span
-                                    className={cx(styles.countBadge, unknownCodes.length > 0 && styles.countWarn)}
-                                    title={
-                                        unknownCodes.length > 0
-                                            ? `알 수 없는 코드: ${unknownCodes.join(", ")}`
-                                            : undefined
-                                    }
-                                >
-                                    {resultCount ?? 0}건
-                                </span>
-                            ))}
-                        <input
-                            ref={inputRef}
-                            className={styles.expr}
-                            value={expr}
-                            onChange={(e) => setExpr(e.target.value)}
-                            placeholder="예) A & B | !C"
-                            spellCheck={false}
-                            autoComplete="off"
-                        />
-                        {expr !== "" && (
+                {/* 뷰 순환 — 전 모드 공통. */}
+                <button className={styles.viewCycle} onClick={cycleView} title="All / Todo / Done 전환">
+                    {VIEW_LABELS[view]}
+                    <span className={styles.viewNum}>
+                        {viewCounts[view]}
+                        {view !== "all" && <span className={styles.viewTotal}>/{viewCounts.all}</span>}
+                    </span>
+                </button>
+
+                {/* 모드별 컨텍스트. */}
+                <div className={styles.scope}>
+                    {isDate && <DateRangePicker range={range} setRange={setRange} />}
+                    {isSheet && (
+                        <button className={styles.scopeBtn} onClick={openSettings} title="클릭하여 시트 탭 변경">
+                            {sheetTab ?? "기본 탭"}
+                        </button>
+                    )}
+                    {isHistory && (
+                        <div className={styles.histActions}>
                             <button
-                                className={styles.clear}
-                                onClick={() => setExpr("")}
-                                tabIndex={-1}
-                                title="식 지우기"
-                                aria-label="식 지우기"
+                                className={styles.scopeIcon}
+                                onClick={openHistoryModal}
+                                title="이력 목록 보기"
+                                aria-label="이력 목록 보기"
                             >
-                                ×
+                                <ListIcon />
                             </button>
-                        )}
-                        <span className={styles.barDivider} />
-                        <button
-                            className={styles.barBtn}
-                            onClick={() => openSavedFilter("save")}
-                            disabled={expr.trim() === "" || !!error}
-                            title="현재 필터 저장"
-                            aria-label="현재 필터 저장"
-                        >
-                            <SaveIcon />
-                        </button>
-                        <button
-                            className={styles.barBtn}
-                            onClick={() => openSavedFilter("load")}
-                            disabled={filters.length === 0}
-                            title="저장된 필터 불러오기"
-                            aria-label="저장된 필터 불러오기"
-                        >
-                            <LoadIcon />
-                        </button>
-
-                        {agg && agg.items.length > 0 && (
-                            <>
-                                <span className={styles.barDivider} />
-                                <div className={styles.agg} title={`결과 ${agg.total}건의 outcome 집계`}>
-                                    {agg.items.map((it) => (
-                                        <span
-                                            key={it.key}
-                                            className={styles.aggPill}
-                                            data-color={it.color ?? undefined}
-                                        >
-                                            <span className={styles.aggLabel}>{it.label}</span>
-                                            <span className={styles.aggNum}>{it.count}</span>
+                            <button
+                                className={styles.scopeIcon}
+                                onClick={clearHistory}
+                                disabled={history.length === 0}
+                                title="이력 비우기"
+                                aria-label="이력 비우기"
+                            >
+                                <TrashIcon />
+                            </button>
+                        </div>
+                    )}
+                    {filterMode2 && (
+                        <div className={styles.filterCtl}>
+                            <button
+                                className={cx(
+                                    styles.searchBtn,
+                                    expr.trim() !== "" && styles.searchActive,
+                                )}
+                                onClick={() => setFilterOpen2((v) => !v)}
+                                title={filterOpen2 ? "입력창 접기" : "필터 식 입력"}
+                                aria-label="필터 식 입력"
+                                aria-expanded={filterOpen2}
+                            >
+                                {filterOpen2 ? (
+                                    <CollapseIcon />
+                                ) : (
+                                    <>
+                                        <span className={styles.iconRest}>
+                                            <SearchIcon />
                                         </span>
-                                    ))}
+                                        <span className={styles.iconHover}>
+                                            <ExpandIcon />
+                                        </span>
+                                    </>
+                                )}
+                            </button>
+                            {filterOpen2 && (
+                                <div className={styles.filterFlyout}>
+                                    <FilterBar />
                                 </div>
-                            </>
-                        )}
-                    </div>
-                )}
-            </div>
+                            )}
+                        </div>
+                    )}
+                </div>
 
-            <button
-                className={cx(styles.settings, refreshing > 0 && styles.spinning)}
-                onClick={refresh}
-                disabled={refreshing > 0}
-                title="현재 작업셋 다시 불러오기 (포인트·시트)"
-                aria-label="작업셋 새로고침"
-            >
-                <RefreshIcon />
-            </button>
-            <button
-                className={styles.settings}
-                onClick={openSettings}
-                title="작업대 설정"
-                aria-label="작업대 설정"
-            >
-                <GearIcon />
-            </button>
+                <span className={styles.spacer} />
+
+                {/* 전역 액션. */}
+                <button
+                    className={cx(styles.iconBtn, refreshing > 0 && styles.spinning)}
+                    onClick={refresh}
+                    disabled={refreshing > 0}
+                    title="현재 작업셋 다시 불러오기 (포인트·시트)"
+                    aria-label="작업셋 새로고침"
+                >
+                    <RefreshIcon />
+                </button>
+                <button
+                    className={styles.iconBtn}
+                    onClick={openSettings}
+                    title="작업대 설정"
+                    aria-label="작업대 설정"
+                >
+                    <GearIcon />
+                </button>
+            </div>
         </div>
     );
 }

@@ -1,22 +1,8 @@
 .rail {
     display: flex;
     align-items: stretch;
-    gap: 12px;
     padding: 10px 14px;
     min-height: 0;
-}
-/* 좌측 고정 슬롯 — 현재 선택 케이스를 항상 보여준다(우측 리스트와 별개). */
-.pinned {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-}
-.divider {
-    flex-shrink: 0;
-    width: 1px;
-    align-self: stretch;
-    margin: 3px 0;
-    background: var(--border);
 }
 .scroll {
     position: relative;
@@ -48,17 +34,21 @@
 .scroll::-webkit-scrollbar {
     display: none;
 }
+/* 빈 상태 안내 — 행 전체에 가운데 정렬(옅게). */
 .muted {
-    flex: 1;
-    align-self: center;
-    text-align: center;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--muted);
     font-size: 12px;
-}
-
-/* 빈 상태 예시(mock) 카드 — 실제 카드와 동일 골격, 비활성·옅게 처리해 예시임을 표시. */
-.mockCard {
     opacity: 0.7;
     pointer-events: none;
-    filter: grayscale(0.2);
+}
+
+/* 보이지 않는 자리표시 카드 — 케이스 유무와 무관하게 행 높이를 동일하게 유지. */
+.spacerCard {
+    visibility: hidden;
+    pointer-events: none;
 }
