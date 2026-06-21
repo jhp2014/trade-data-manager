@@ -12,41 +12,56 @@
 }
 
 .newHyp {
-    display: flex;
-    gap: 8px;
     padding: 12px;
     border-bottom: 1px solid var(--border);
     background: var(--bg);
 }
-.newHyp input {
+/* 입력 + 추가 버튼을 하나의 필드처럼 묶는다(버튼을 필드 안쪽에 embed, 배경 구분). */
+.field {
+    display: flex;
+    align-items: stretch;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.12s ease;
+}
+.field:focus-within {
+    border-color: var(--accent);
+}
+.field input {
     flex: 1;
     min-width: 0;
-    border: 1px solid var(--border-strong);
-    background: var(--bg-elev);
+    border: 0;
+    background: transparent;
     color: var(--text);
-    border-radius: 8px;
     padding: 8px 10px;
     font: inherit;
 }
-.newHyp input:focus {
+.field input:focus {
     outline: none;
-    border-color: var(--accent);
 }
-.newHyp button {
-    border: 0;
-    background: var(--accent);
-    color: #fff;
-    border-radius: 8px;
-    width: 38px;
+/* 액션부(Enter) — 배경색으로 입력부와 구분. */
+.field button {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 38px;
+    border: 0;
+    border-left: 1px solid var(--border);
+    background: var(--accent-weak);
+    color: var(--accent);
     line-height: 0;
     cursor: pointer;
+    transition: filter 0.12s ease;
 }
-.newHyp button:disabled {
-    opacity: 0.45;
+.field button:hover:not(:disabled) {
+    filter: brightness(0.96);
+}
+.field button:disabled {
+    background: var(--chip);
+    color: var(--muted);
     cursor: not-allowed;
 }
 

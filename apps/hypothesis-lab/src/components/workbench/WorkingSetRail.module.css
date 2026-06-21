@@ -1,333 +1,248 @@
-/* 상단 작업셋 탭 레일. 좌측 탭 그룹 + 우측 설정 버튼. */
+/* 좌열 상단 컨트롤 — 한 줄(소프트 텍스트 톤). */
 .rail {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+}
+.row {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 7px 12px;
-    border-bottom: 1px solid var(--border-strong);
-    /* 본문(bg)과 구분되는 연한 회색 바. 위에 얹는 컨트롤은 bg-elev(흰색)로 대비. */
-    background: var(--chip);
+    min-height: 28px;
+}
+.spacer {
+    flex: 1;
 }
 
-.tabs {
+/* 모드 드롭다운 — 트리거(현재 모드 + 캐럿) + 클릭 메뉴. */
+.nav {
+    position: relative;
+    flex-shrink: 0;
+}
+.navTrigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px 4px 8px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+.navTrigger:hover {
+    background: var(--chip);
+}
+.caret {
+    display: inline-flex;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+}
+.caretOpen {
+    transform: rotate(180deg);
+}
+.navMenu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    min-width: 120px;
+    padding: 5px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+.navItem {
+    padding: 7px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.navItem:hover {
+    background: var(--chip);
+}
+.navItemOn {
+    color: var(--accent);
+}
+
+/* 뷰 순환 — 소프트 텍스트. */
+.viewCycle {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    padding: 4px 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease;
+}
+.viewCycle:hover {
+    background: var(--chip);
+}
+.viewNum {
+    color: var(--accent);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.viewTotal {
+    color: var(--muted);
+    font-weight: 600;
+    opacity: 0.7;
+}
+
+/* 모드별 컨텍스트 — 가변 폭. */
+.scope {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
 }
 
-/* 5개 탭을 하나로 묶는 세그먼트 컨트롤. */
-.group {
-    flex-shrink: 0;
+/* 시트 — 소프트 텍스트 버튼(클릭=설정). */
+.scopeBtn {
     display: inline-flex;
     align-items: center;
-    background: var(--bg-elev);
-    border: 1px solid var(--border-strong);
-    border-radius: 9px;
-    overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-/* 작업셋 탭 — 비활성은 muted, 활성은 accent 배경 + 흰 글자. */
-.tab {
-    flex-shrink: 0;
-    padding: 6px 15px;
-    font-size: 13px;
+    max-width: 100%;
+    padding: 4px 8px;
+    font-size: 12.5px;
     font-weight: 600;
-    color: var(--muted);
+    color: var(--text);
     background: transparent;
     border: 0;
-    border-left: 1px solid var(--border);
+    border-radius: 7px;
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.12s ease, color 0.12s ease;
-}
-.tab:first-child {
-    border-left: 0;
-}
-.tab:hover:not(.on) {
-    color: var(--text);
-    background: var(--bg-elev);
-}
-.on {
-    color: #fff;
-    background: var(--accent);
-}
-
-/* Date/Sheet/History 스코프 컨트롤 — 한 컨테이너로 묶고 내부는 세로 구분선으로 나눈다.
-   All/Todo/Done 토글 + (기간 입력|시트명). */
-.scopeControls {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: stretch;
-    height: 32px;
-    min-width: 0;
-    background: var(--bg-elev);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-/* All/Todo/Done 세그먼트 토글(각 항목에 건수). 프레임은 바깥 컨테이너가 제공. */
-.viewToggle {
-    display: inline-flex;
-    align-items: stretch;
-}
-.viewBtn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 0 12px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-    background: transparent;
-    border: 0;
-    border-left: 1px solid var(--border);
-    cursor: pointer;
-    white-space: nowrap;
+    text-overflow: ellipsis;
     transition: background 0.12s ease, color 0.12s ease;
 }
-.viewBtn:first-child {
-    border-left: 0;
-}
-.viewBtn:hover:not(.viewOn) {
-    color: var(--text);
+.scopeBtn:hover {
     background: var(--chip);
 }
-.viewOn {
-    color: #fff;
-    background: var(--accent);
-}
-.viewNum {
-    font-variant-numeric: tabular-nums;
-    font-weight: 700;
-    opacity: 0.85;
-}
 
-/* 시트 정보 — viewToggle 과 분리된 독립 pill("Sheet: 탭명"). */
-.sheetPill {
-    flex-shrink: 0;
+/* History — 목록/비우기 아이콘. */
+.histActions {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 32px;
-    padding: 0 12px;
-    background: var(--bg-elev);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    gap: 2px;
 }
-.sheetLabel {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-    white-space: nowrap;
-}
-.sheetName {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text);
-    white-space: nowrap;
-}
-
-/* Filter 바 — 식 입력·저장/불러오기·집계를 한 컨테이너로 묶고 내부는 세로 구분선으로 나눈다. */
-.filterBar {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: stretch;
-    height: 32px;
-    min-width: 0;
-    background: var(--bg-elev);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    transition: border-color 0.12s ease;
-}
-.filterBar:focus-within {
-    border-color: var(--accent);
-}
-.filterBarError,
-.filterBarError:focus-within {
-    border-color: var(--danger, #d44);
-}
-/* 바 내부 세로 구분선. */
-.barDivider {
-    width: 1px;
-    align-self: stretch;
-    background: var(--border);
-}
-.expr {
-    width: 440px;
-    max-width: 46vw;
-    min-width: 0;
-    padding: 0 8px;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 13px;
-    color: var(--text);
-    background: transparent;
-    border: 0;
-}
-.expr:focus {
-    outline: none;
-}
-/* 입력 앞 카운트/오류 배지 — 바 안쪽 좌측에 inset. */
-.countBadge,
-.errBadge {
-    flex-shrink: 0;
-    align-self: center;
-    margin-left: 7px;
-    padding: 1px 7px;
-    font-size: 11px;
-    font-weight: 700;
-    border-radius: 5px;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-.countBadge {
-    color: var(--accent);
-    background: var(--accent-weak);
-}
-.countWarn {
-    color: var(--warning, #c80);
-    background: transparent;
-    border: 1px solid var(--warning, #c80);
-}
-.errBadge {
-    color: var(--danger, #d44);
-    background: transparent;
-    border: 1px solid var(--danger, #d44);
-    cursor: help;
-}
-/* 바 hover/focus 시에만 노출되는 지우기 ×. */
-.clear {
-    flex-shrink: 0;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    padding: 0;
-    color: var(--muted);
-    background: transparent;
-    border: 0;
-    font-size: 15px;
-    line-height: 1;
-    cursor: pointer;
-}
-.filterBar:hover .clear,
-.filterBar:focus-within .clear {
-    display: inline-flex;
-}
-.clear:hover {
-    color: var(--text);
-}
-/* 바 안쪽 아이콘 버튼(저장/불러오기) — 프레임은 바깥 컨테이너가 제공. */
-.barBtn {
-    flex-shrink: 0;
+.scopeIcon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
+    width: 26px;
+    height: 26px;
     color: var(--muted);
     background: transparent;
     border: 0;
+    border-radius: 7px;
     cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease;
+    transition: color 0.12s ease, background 0.12s ease;
 }
-.barBtn:hover:not(:disabled) {
+.scopeIcon:hover:not(:disabled) {
     color: var(--accent);
     background: var(--chip);
 }
-.barBtn:disabled {
+.scopeIcon:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
 
-/* 불리언 결과 outcome 집계 — 바 안쪽 우측. */
-.agg {
-    flex-shrink: 0;
+/* Filter — 돋보기 아이콘(hover 시 펼침, 열림 시 접기) + 우측 플라이아웃. */
+.filterCtl {
+    position: relative;
     display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 0 6px;
 }
-.aggPill {
+.searchBtn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    height: 24px;
-    padding: 0 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    background: var(--chip);
+    justify-content: center;
+    width: 28px;
+    height: 26px;
     color: var(--muted);
-    white-space: nowrap;
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: color 0.12s ease, background 0.12s ease;
 }
-.aggPill[data-color="green"] {
-    background: var(--oc-green-bg);
-    color: var(--oc-green-fg);
+.searchBtn:hover {
+    background: var(--chip);
+    color: var(--text);
 }
-.aggPill[data-color="red"] {
-    background: var(--oc-red-bg);
-    color: var(--oc-red-fg);
+.searchActive {
+    color: var(--accent);
 }
-.aggPill[data-color="gray"] {
-    background: var(--oc-gray-bg);
-    color: var(--oc-gray-fg);
+/* 기본=돋보기, hover=펼침 화살표. */
+.iconRest {
+    display: inline-flex;
 }
-.aggPill[data-color="amber"] {
-    background: var(--oc-amber-bg);
-    color: var(--oc-amber-fg);
+.iconHover {
+    display: none;
 }
-.aggPill[data-color="blue"] {
-    background: var(--oc-blue-bg);
-    color: var(--oc-blue-fg);
+.searchBtn:hover .iconRest {
+    display: none;
 }
-.aggPill[data-color="purple"] {
-    background: var(--oc-purple-bg);
-    color: var(--oc-purple-fg);
+.searchBtn:hover .iconHover {
+    display: inline-flex;
 }
-.aggPill[data-color="teal"] {
-    background: var(--oc-teal-bg);
-    color: var(--oc-teal-fg);
-}
-.aggPill[data-color="pink"] {
-    background: var(--oc-pink-bg);
-    color: var(--oc-pink-fg);
-}
-.aggLabel {
-    font-weight: 600;
-    opacity: 0.85;
-}
-.aggNum {
-    font-variant-numeric: tabular-nums;
+/* 우측으로 펼쳐지는 입력 플라이아웃(케이스 row 위를 덮음). 프레임은 FilterBar 필드가 제공. */
+.filterFlyout {
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 6px);
+    transform: translateY(-50%);
+    z-index: 50;
+    width: 500px;
+    max-width: 62vw;
+    border-radius: 9px;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.18);
 }
 
-/* 우측 끝 설정 버튼. */
-.settings {
+/* 전역 액션 아이콘 — 고스트. */
+.iconBtn {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: 26px;
+    height: 26px;
     color: var(--muted);
-    background: var(--bg-elev);
-    border: 1px solid var(--border-strong);
-    border-radius: 9px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
     cursor: pointer;
+    transition: color 0.12s ease, background 0.12s ease;
 }
-.settings:hover {
+.iconBtn:hover:not(:disabled) {
     color: var(--accent);
-    border-color: var(--accent);
+    background: var(--chip);
 }
-.settings:disabled {
+.iconBtn:disabled {
     cursor: default;
+    opacity: 0.6;
 }
 .spinning svg {
     animation: spin 0.7s linear infinite;

@@ -40,8 +40,6 @@ export function CaseRail({
     const targetRef = useRef(0);
     const rafRef = useRef<number | null>(null);
 
-    const selectedCase = cases.find((c) => c.caseId === selectedCaseId) ?? null;
-
     // 세로 휠 → 가로 스크롤. requestAnimationFrame 으로 목표값까지 이징해
     // 노치 단위로 뚝뚝 끊기지 않고 부드럽게 흐르도록 한다.
     function onWheel(e: React.WheelEvent<HTMLDivElement>) {
@@ -79,8 +77,8 @@ export function CaseRail({
         };
     }, []);
 
-    // 선택 케이스(키보드 a/d 포함)가 우측 리스트에서 안 보이면 최소한으로 스크롤해
-    // 보이게 한다(nearest). 좌측 고정 카드와 별개로, 리스트 내 현재 위치를 보여준다.
+    // 선택 케이스(키보드 a/d 포함)가 리스트에서 안 보이면 최소한으로 스크롤해
+    // 보이게 한다(nearest). 리스트 내 현재 위치를 보여준다.
     useEffect(() => {
         const el = scrollRef.current;
         if (!el || !selectedCaseId) return;
@@ -103,44 +101,24 @@ export function CaseRail({
 
     return (
         <div className={styles.rail}>
-            {selectedCase ? (
-                <>
-                    <div className={styles.pinned}>
-                        <CaseCard
-                            c={selectedCase}
-                            selected
-                            linkedCount={linkedCountByCase.get(selectedCase.caseId) ?? 0}
-                            onSelect={() => selectCase(selectedCase.caseId)}
-                            onSetOutcome={(o) => onSetOutcome(selectedCase.caseId, o)}
-                            onSetNote={(n) => onSetNote(selectedCase.caseId, n)}
-                        />
-                    </div>
-                    <div className={styles.divider} />
-                </>
-            ) : isEmpty ? (
-                <>
-                    <div className={styles.pinned}>
-                        <div className={styles.mockCard}>
+            <div className={styles.scroll} ref={scrollRef} onWheel={onWheel}>
+                {isEmpty && (
+                    <>
+                        {/* 보이지 않지만 높이를 점유 — 케이스 유무와 무관하게 행 높이 고정. */}
+                        <div className={styles.spacerCard} aria-hidden>
                             <CaseCard
                                 c={MOCK_CASE}
                                 selected={false}
-                                linkedCount={2}
+                                linkedCount={0}
                                 onSelect={noop}
                                 onSetOutcome={noop}
                                 onSetNote={noop}
                             />
                         </div>
-                    </div>
-                    <div className={styles.divider} />
-                </>
-            ) : null}
-            <div className={styles.scroll} ref={scrollRef} onWheel={onWheel}>
-                {isEmpty && (
-                    <span className={styles.muted}>
-                        {loading
-                            ? "케이스 불러오는 중…"
-                            : "이 조건에 해당하는 케이스가 없어요. 왼쪽은 예시 카드입니다."}
-                    </span>
+                        <span className={styles.muted}>
+                            {loading ? "케이스 불러오는 중…" : "케이스 없음"}
+                        </span>
+                    </>
                 )}
                 {cases.map((c) => (
                     <CaseCard

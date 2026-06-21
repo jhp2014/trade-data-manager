@@ -259,21 +259,24 @@ export function HypothesisPanel({
 
     return (
         <div className={styles.panel}>
+            {/* 가설 추가 입력 — 리스트 상단. (추후 가설 검색 토글 자리) */}
             <div className={styles.newHyp}>
-                <input
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addHypothesis()}
-                    placeholder={selectedCase ? "새 가설 입력 후 Enter (선택 케이스에 연결)" : "새 가설 입력 후 Enter"}
-                />
-                <button
-                    onClick={addHypothesis}
-                    disabled={createMut.isPending || !text.trim()}
-                    title={selectedCase ? "추가 후 선택 케이스에 연결" : "가설 추가"}
-                    aria-label={selectedCase ? "추가 후 선택 케이스에 연결" : "가설 추가"}
-                >
-                    <EnterIcon />
-                </button>
+                <div className={styles.field}>
+                    <input
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && addHypothesis()}
+                        placeholder={selectedCase ? "새 가설 입력 후 Enter (선택 케이스에 연결)" : "새 가설 입력 후 Enter"}
+                    />
+                    <button
+                        onClick={addHypothesis}
+                        disabled={createMut.isPending || !text.trim()}
+                        title={selectedCase ? "추가 후 선택 케이스에 연결" : "가설 추가"}
+                        aria-label={selectedCase ? "추가 후 선택 케이스에 연결" : "가설 추가"}
+                    >
+                        <EnterIcon />
+                    </button>
+                </div>
             </div>
 
             <div className={styles.list}>

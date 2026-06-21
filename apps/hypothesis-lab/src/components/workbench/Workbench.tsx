@@ -21,6 +21,8 @@ import { collectRefs, parseHypExpr, searchCasesByExpr } from "@/services/hypExpr
 import { HypothesisGraph } from "@/components/graph/HypothesisGraph";
 import { CaseRail } from "./CaseRail";
 import { WorkingSetRail } from "./WorkingSetRail";
+import { SelectedCaseBadge } from "./SelectedCaseBadge";
+import { GraphFilterStatus } from "./GraphFilterStatus";
 import { HypothesisPanel } from "./HypothesisPanel";
 import { HypothesisModal } from "./HypothesisModal";
 import { HistoryModal } from "./HistoryModal";
@@ -111,21 +113,28 @@ export function Workbench() {
         return src.filter((c) => c.existsInReview && c.tradeTime != null);
     }, [filterMode, historyCases.data, workingSet.data]);
 
-    // All/Todo/Done 토글용 건수(스코프 전체 기준, view 필터 적용 전).
+    // 현재 모드의 기준 케이스 집합(view 필터 적용 전). boolean 도 view(All/Todo/Done)를
+    // 적용한다 — !조건 결과에 미연결(Todo) 케이스가 섞일 수 있기 때문.
+    const baseCases = useMemo(
+        () => (filterMode === "boolean" ? booleanCases : scopeCases),
+        [filterMode, booleanCases, scopeCases],
+    );
+
+    // All/Todo/Done 토글용 건수(기준 집합 기준, view 필터 적용 전).
     const viewCounts = useMemo(() => {
         let todo = 0;
-        for (const c of scopeCases) if (c.linkedHypothesisIds.length === 0) todo++;
-        return { all: scopeCases.length, todo, done: scopeCases.length - todo };
-    }, [scopeCases]);
+        for (const c of baseCases) if (c.linkedHypothesisIds.length === 0) todo++;
+        return { all: baseCases.length, todo, done: baseCases.length - todo };
+    }, [baseCases]);
 
     // memo 화 필수: 매 렌더 새 배열이면 아래 선택/위치 effect 가 무한 재실행된다.
     const railCases = useMemo(
-        () =>
-            filterMode === "boolean"
-                ? booleanCases
-                : scopeCases.filter((c) => matchesView(c, view)),
-        [filterMode, booleanCases, scopeCases, view],
+        () => baseCases.filter((c) => matchesView(c, view)),
+        [baseCases, view],
     );
+
+    // caseId → 케이스(outcome/note 저장 시 snapshot 입력 구성용). 기준 집합 전체에서.
+    const caseById = useMemo(() => new Map(baseCases.map((c) => [c.caseId, c])), [baseCases]);
     const railLoading =
         filterMode === "boolean"
             ? snapshot.isLoading
@@ -193,9 +202,11 @@ export function Workbench() {
         [selectedCase, linkMutate, unlinkMutate],
     );
 
-    // 케이스 카드 더블클릭 → outcome 설정(null=해제).
+    // 케이스 카드 더블클릭 → outcome 설정(null=해제). cases 행이 없을 수 있어
+    // 액션에서 ensureCase 하도록 케이스 스냅샷 전체를 넘긴다.
     const { mutate: outcomeMutate } = useMutation({
-        mutationFn: (v: { caseId: string; outcome: string | null }) => setCaseOutcomeAction(v),
+        mutationFn: (v: { case: CaseSnapshotInput; outcome: string | null }) =>
+            setCaseOutcomeAction(v),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["snapshot"] });
             queryClient.invalidateQueries({ queryKey: ["workingSet"] });
@@ -203,13 +214,16 @@ export function Workbench() {
         },
     });
     const handleSetOutcome = useCallback(
-        (caseId: string, outcome: string | null) => outcomeMutate({ caseId, outcome }),
-        [outcomeMutate],
+        (caseId: string, outcome: string | null) => {
+            const c = caseById.get(caseId);
+            if (c) outcomeMutate({ case: toCaseInput(c), outcome });
+        },
+        [caseById, outcomeMutate],
     );
 
     // 케이스 카드 더블클릭 → 메모 설정(null=제거).
     const { mutate: noteMutate } = useMutation({
-        mutationFn: (v: { caseId: string; note: string | null }) => setCaseNoteAction(v),
+        mutationFn: (v: { case: CaseSnapshotInput; note: string | null }) => setCaseNoteAction(v),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["snapshot"] });
             queryClient.invalidateQueries({ queryKey: ["workingSet"] });
@@ -217,8 +231,11 @@ export function Workbench() {
         },
     });
     const handleSetNote = useCallback(
-        (caseId: string, note: string | null) => noteMutate({ caseId, note }),
-        [noteMutate],
+        (caseId: string, note: string | null) => {
+            const c = caseById.get(caseId);
+            if (c) noteMutate({ case: toCaseInput(c), note });
+        },
+        [caseById, noteMutate],
     );
 
     // a(이전) / d(다음) 으로 워킹셋 케이스 이동. 입력 중이거나 모달이 열려 있으면 무시.
@@ -274,17 +291,8 @@ export function Workbench() {
 
     return (
         <div className={styles.layout}>
-            <WorkingSetRail viewCounts={viewCounts} />
-            <div className={styles.rail}>
-                <CaseRail
-                    cases={railCases}
-                    loading={railLoading}
-                    linkedCountByCase={linkedCountByCase}
-                    onSetOutcome={handleSetOutcome}
-                    onSetNote={handleSetNote}
-                />
-            </div>
-            <div className={styles.bottom}>
+            <div className={styles.leftCol}>
+                <WorkingSetRail viewCounts={viewCounts} />
                 <div className={styles.panel}>
                     <HypothesisPanel
                         snapshot={snapshot.data ?? null}
@@ -292,7 +300,29 @@ export function Workbench() {
                         expr={filterMode === "boolean" && parsed?.ok ? parsed.expr : null}
                     />
                 </div>
+            </div>
+            <div className={styles.rightCol}>
+                <div className={styles.caseRow}>
+                    <CaseRail
+                        cases={railCases}
+                        loading={railLoading}
+                        linkedCountByCase={linkedCountByCase}
+                        onSetOutcome={handleSetOutcome}
+                        onSetNote={handleSetNote}
+                    />
+                </div>
                 <div className={styles.graph}>
+                    {(selectedCase || filterMode === "boolean") && (
+                        <div className={styles.graphOverlay}>
+                            {selectedCase && (
+                                <SelectedCaseBadge
+                                    c={selectedCase}
+                                    linkedCount={linkedCountByCase.get(selectedCase.caseId) ?? 0}
+                                />
+                            )}
+                            {filterMode === "boolean" && <GraphFilterStatus />}
+                        </div>
+                    )}
                     <HypothesisGraph
                         snapshot={snapshot.data ?? null}
                         highlightHypothesisIds={linkedToSelectedCase}
