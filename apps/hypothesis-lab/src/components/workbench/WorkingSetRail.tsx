@@ -8,6 +8,7 @@ import { aggregateOutcomes } from "@/services/outcomeAgg";
 import { useSavedFilters } from "@/hooks/useSavedFilters";
 import { useOutcomeTypes } from "@/stores/outcomeTypes";
 import { useWorkbench } from "@/stores/workbench";
+import { DateRangePicker } from "./DateRangePicker";
 import styles from "./WorkingSetRail.module.css";
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -37,15 +38,6 @@ function RefreshIcon() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 12a9 9 0 1 1-2.64-6.36" />
             <path d="M21 3v5h-5" />
-        </svg>
-    );
-}
-
-function SheetIcon() {
-    return (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
         </svg>
     );
 }
@@ -176,7 +168,7 @@ export function WorkingSetRail({
                     </button>
                 </div>
 
-                {/* All/Todo/Done 토글(탭 그룹 우측) + 탭별 부가정보(기간/시트). 한 묶음·내부 구분선. */}
+                {/* All/Todo/Done 토글(탭 그룹 우측). 기간/시트 정보는 우측에 별도 pill 로 분리. */}
                 {showViewToggle && (
                     <div className={styles.scopeControls}>
                         <div className={styles.viewToggle}>
@@ -191,31 +183,13 @@ export function WorkingSetRail({
                                 </button>
                             ))}
                         </div>
-                        {isDate && (
-                            <div className={styles.range}>
-                                <input
-                                    type="date"
-                                    className={styles.dateInput}
-                                    value={range.from}
-                                    max={range.to}
-                                    onChange={(e) => setRange({ ...range, from: e.target.value })}
-                                />
-                                <span className={styles.rangeSep}>–</span>
-                                <input
-                                    type="date"
-                                    className={styles.dateInput}
-                                    value={range.to}
-                                    min={range.from}
-                                    onChange={(e) => setRange({ ...range, to: e.target.value })}
-                                />
-                            </div>
-                        )}
-                        {isSheet && (
-                            <div className={styles.sheetField} title="설정에서 시트 탭 변경">
-                                <SheetIcon />
-                                <span className={styles.sheetName}>{sheetTab ?? "기본 탭(.env)"}</span>
-                            </div>
-                        )}
+                    </div>
+                )}
+                {isDate && <DateRangePicker range={range} setRange={setRange} />}
+                {isSheet && (
+                    <div className={styles.sheetPill} title="설정에서 시트 탭 변경">
+                        <span className={styles.sheetLabel}>Sheet:</span>
+                        <span className={styles.sheetName}>{sheetTab ?? "기본 탭(.env)"}</span>
                     </div>
                 )}
 
@@ -244,7 +218,7 @@ export function WorkingSetRail({
                             className={styles.expr}
                             value={expr}
                             onChange={(e) => setExpr(e.target.value)}
-                            placeholder="코드를 & | ! 로 조합 · 노드 우클릭"
+                            placeholder="예) A & B | !C"
                             spellCheck={false}
                             autoComplete="off"
                         />
