@@ -55,9 +55,10 @@
     background: color-mix(in srgb, var(--danger, #d44) 14%, transparent);
 }
 
-/* 식 비우기 — 우측 끝에 항상 흐릿하게 보이고, hover 시 진해짐. */
+/* 식 비우기 — 항상 가장 우측 끝(집계 뒤). 흐릿하게 보이다 hover 시 진해짐. */
 .clear {
     flex-shrink: 0;
+    margin-left: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
