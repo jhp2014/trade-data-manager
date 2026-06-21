@@ -44,8 +44,9 @@ beforeEach(() => {
   // 마운트 preload 는 무력화(탭 목록 없음).
   vi.mocked(getJsonOrNull).mockResolvedValue(null);
   vi.mocked(getJson).mockImplementation(async (url: string) => {
-    if (url === "/api/review/workset") return { groups: dbGroups } as never;
-    return { groups: tab2Groups } as never; // workset?tab=...
+    // 탭 작업셋은 ?tab=, DB 작업셋은 ?months=/?all=/?from=.
+    if (url.includes("tab=")) return { groups: tab2Groups } as never;
+    return { groups: dbGroups, range: { from: "2026-04-27", to: "2026-05-27" } } as never;
   });
 });
 afterEach(() => {
@@ -84,6 +85,31 @@ describe("useWorkingSetCache", () => {
     });
     expect(result.current.readSource).toBe("db");
     expect(result.current.groups).toEqual(dbGroups);
+  });
+
+  it("switchToDb: 기본 요청은 months=1 로 호출하고 응답 range 를 노출한다", async () => {
+    const { result } = renderHook(() => useWorkingSetCache(initial, "review", "sheet"));
+    await act(async () => {
+      await result.current.switchToDb();
+    });
+    expect(vi.mocked(getJson)).toHaveBeenCalledWith(
+      "/api/review/workset?months=1",
+      expect.anything(),
+    );
+    expect(result.current.dbRange).toEqual({ from: "2026-04-27", to: "2026-05-27" });
+  });
+
+  it("setDbRange(all): all=1 로 호출하고 range=null(전체) 로 전환", async () => {
+    vi.mocked(getJson).mockImplementation(async (url: string) => {
+      if (url.includes("all=1")) return { groups: dbGroups, range: null } as never;
+      return { groups: tab2Groups } as never;
+    });
+    const { result } = renderHook(() => useWorkingSetCache(initial, "review", "sheet"));
+    await act(async () => {
+      await result.current.setDbRange({ all: true });
+    });
+    expect(result.current.readSource).toBe("db");
+    expect(result.current.dbRange).toBeNull();
   });
 
   it("마운트 시 탭 목록을 받아 tabs 를 갱신한다", async () => {

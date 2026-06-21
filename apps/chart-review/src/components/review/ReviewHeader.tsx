@@ -8,7 +8,9 @@ import { truncate } from "@/lib/format";
 import { VALUE_TRUNCATE, resolveFieldValue } from "@/lib/reviewFields";
 import { VIEW_MODES, cycleViewMode } from "@/lib/shortcuts";
 import { useUiStore } from "@/stores/useUiStore";
-import type { ReviewPoint, ReviewViewMode } from "@/types/review";
+import { DbRangePicker } from "./DbRangePicker";
+import type { DbRangeRequest } from "@/hooks/useWorkingSetCache";
+import type { DbDateRange, ReviewPoint, ReviewViewMode } from "@/types/review";
 
 type ReviewHeaderProps = {
   commands: ReturnType<typeof createReviewCommands>;
@@ -28,6 +30,8 @@ type ReviewHeaderProps = {
   hasSpreadsheet: boolean;
   readTab: string;
   readSource: "sheet" | "db";
+  dbRange: DbDateRange;
+  onSetDbRange: (req: DbRangeRequest) => void;
   writeTab: string | null;
   tabs: string[];
   isLoadingWorkset: boolean;
@@ -56,6 +60,8 @@ export function ReviewHeader({
   hasSpreadsheet,
   readTab,
   readSource,
+  dbRange,
+  onSetDbRange,
   writeTab,
   tabs,
   isLoadingWorkset,
@@ -121,6 +127,14 @@ export function ReviewHeader({
           {/* 읽기 소스 그룹 (시트 설정 있거나 DB 모드일 때 표시) */}
           {(hasSpreadsheet || readSource === "db") && (
             <div className={styles.segGroup}>
+              {/* DB 모드: 날짜 범위 피커(세그먼트 좌측) */}
+              {readSource === "db" && (
+                <DbRangePicker
+                  dbRange={dbRange}
+                  isLoading={isLoadingWorkset}
+                  onSetDbRange={onSetDbRange}
+                />
+              )}
               {/* ⇌ 스위치: DB ↔ 시트 모드 토글 전용 */}
               <button
                 type="button"
@@ -129,16 +143,6 @@ export function ReviewHeader({
                 title={readSource === "db" ? "DB 모드 ON · 클릭: 시트 모드로 전환" : "클릭: DB 모드로 전환"}
               >
                 ⇌
-              </button>
-              {/* 읽기 탭 다시 불러오기: 스위치 우측 */}
-              <button
-                type="button"
-                className={styles.segChip}
-                onClick={onReloadTab}
-                disabled={isLoadingWorkset}
-                title={readSource === "db" ? "DB 작업셋 다시 불러오기" : "현재 읽기 탭 다시 불러오기"}
-              >
-                {isLoadingWorkset ? "…" : "↻"}
               </button>
               {/* 읽기 탭 / DB 칩: 클릭·r키는 시트 탭 순환 전용 */}
               <button
@@ -149,17 +153,17 @@ export function ReviewHeader({
               >
                 {readSource === "db" ? "DB" : readTab}
               </button>
-              <span className={styles.segArrow}>→</span>
-              {/* 쓰기 탭 초기화: 탭을 비우고 첫 행에 헤더 기록(쓰기 탭 좌측) */}
+              {/* 읽기 탭 다시 불러오기: 읽기 칩 우측 */}
               <button
                 type="button"
                 className={styles.segChip}
-                onClick={onInitWriteTab}
-                disabled={!writeTab}
-                title="쓰기 탭 초기화 · 첫 행에 헤더 기록(기존 내용 삭제)"
+                onClick={onReloadTab}
+                disabled={isLoadingWorkset}
+                title={readSource === "db" ? "DB 작업셋 다시 불러오기" : "현재 읽기 탭 다시 불러오기"}
               >
-                ↻
+                {isLoadingWorkset ? "…" : "↻"}
               </button>
+              <span className={styles.segArrow}>→</span>
               {/* 쓰기 탭: DB 모드에서도 항상 표시 */}
               <button
                 type="button"
@@ -168,6 +172,16 @@ export function ReviewHeader({
                 title={tabs.length > 0 ? "클릭: 다음 쓰기 탭으로 전환" : "쓰기 탭 미설정"}
               >
                 {writeTab ?? "미설정"}
+              </button>
+              {/* 쓰기 탭 초기화: 첫 행에 헤더 기록(쓰기 칩 우측) */}
+              <button
+                type="button"
+                className={styles.segChip}
+                onClick={onInitWriteTab}
+                disabled={!writeTab}
+                title="쓰기 탭 초기화 · 첫 행에 헤더 기록(기존 내용 삭제)"
+              >
+                ↻
               </button>
             </div>
           )}

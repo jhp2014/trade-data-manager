@@ -1,7 +1,13 @@
 import { ReviewWorkspace } from "@/components/review/ReviewWorkspace";
 import { groupSheetRows } from "@/lib/groupSheetRows";
 import { resolveInitialSelection } from "@/lib/selection";
-import { loadReviewRows, loadReviewRowsForTab, loadReviewRowsFromDb } from "@/lib/loadReviewRows";
+import {
+  loadReviewRows,
+  loadReviewRowsForTab,
+  loadReviewRowsFromDb,
+  resolveDbDateRange,
+  type DbDateRange,
+} from "@/lib/loadReviewRows";
 import { loadManualKeys } from "@/lib/loadManualKeys";
 import { getReadSheetConfig, hasSheetsCredentials } from "@/lib/readSheetConfig";
 import { getSpreadsheetTabs } from "@/lib/sheetsWriter";
@@ -24,6 +30,8 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
   let groups: ReviewStockGroup[] = groupSheetRows(rows);
   let effectiveTab = sheetConfig.tab;
   let initialReadSource: "sheet" | "db" = sheetConfig.spreadsheetId ? "sheet" : "db";
+  // DB 모드 기본 날짜 범위(최신 기준 최근 1개월). 시트 모드면 무시되지만 미리 해석해 둔다.
+  let initialDbRange: DbDateRange = initialReadSource === "db" ? await resolveDbDateRange() : null;
 
   // 현재 탭이 비어있으면 다른 시트 탭으로 자동 fallback.
   if (groups.length === 0 && sheetConfig.spreadsheetId && hasSheetsCredentials()) {
@@ -44,14 +52,16 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
     }
   }
 
-  // 시트에서 찾지 못하면 DB 전체로 fallback (404 방지).
+  // 시트에서 찾지 못하면 DB(기본 날짜 범위)로 fallback (404 방지).
   if (groups.length === 0) {
     try {
-      const dbRows = await loadReviewRowsFromDb();
+      const fallbackRange = await resolveDbDateRange();
+      const dbRows = await loadReviewRowsFromDb(fallbackRange);
       const dbGroups = groupSheetRows(dbRows);
       if (dbGroups.length > 0) {
         groups = dbGroups;
         initialReadSource = "db";
+        initialDbRange = fallbackRange;
       }
     } catch {
       // DB fallback 실패 시 notFound.
@@ -74,6 +84,7 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
       initialTab={effectiveTab}
       hasSpreadsheet={Boolean(sheetConfig.spreadsheetId)}
       initialReadSource={initialReadSource}
+      initialDbRange={initialDbRange}
     />
   );
 }

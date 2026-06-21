@@ -1,6 +1,8 @@
 import { config } from "dotenv";
 import { resolve } from "path";
+import dayjs from "dayjs";
 import {
+  findLatestReviewTradeDate,
   findReviewLoadTargets,
   type ReviewLoadKey,
   type ReviewLoadTarget,
@@ -10,7 +12,7 @@ import { resolveWorkingSetKeys, rowsToReviewLoadKeys } from "@/lib/workingSet";
 import { flattenManualPayload, MANUAL_VALUE_SEP } from "@/lib/manualValue";
 import { fetchSheetRowsAction } from "@/actions/sheet";
 import { mockSheetRows } from "@/mock/sheetRows";
-import type { ReviewRow } from "@/types/review";
+import type { DbDateRange, ReviewRow } from "@/types/review";
 
 config({ path: resolve(process.cwd(), "../../.env") });
 
@@ -24,12 +26,18 @@ config({ path: resolve(process.cwd(), "../../.env") });
  * - DB 가 비어있거나 DATABASE_URL 이 없으면: mock 으로 폴백.
  */
 export async function loadReviewRows(): Promise<ReviewRow[]> {
-  // 작업셋 = 읽기 시트(쿠키/env)의 키. null 이면 DB 전체.
+  // 작업셋 = 읽기 시트(쿠키/env)의 키. null 이면 DB 모드(기본 날짜 범위).
   const workingKeys = await resolveWorkingSetKeys();
   let keys: ReviewLoadKey[] | undefined;
+  let range: DbDateRange = null;
 
   if (workingKeys === null) {
-    console.info("[review] no read sheet configured; loading all targets from DB");
+    range = await resolveDbDateRange();
+    console.info(
+      range
+        ? `[review] no read sheet; DB mode default range ${range.from}~${range.to}`
+        : "[review] no read sheet; loading all targets from DB",
+    );
   } else {
     if (workingKeys.length === 0) {
       console.warn("[review] connected sheet has no rows; nothing to load");
@@ -45,21 +53,46 @@ export async function loadReviewRows(): Promise<ReviewRow[]> {
   }
 
   const db = getDb();
-  const targets = await findReviewLoadTargets(db, { keys });
+  const targets = await findReviewLoadTargets(db, { keys, from: range?.from, to: range?.to });
   return targets.flatMap(toReviewRows);
 }
 
+export type { DbDateRange };
+
 /**
- * DB 전체 Target 을 로드한다. 시트 설정 무관.
+ * DB 모드 작업셋의 날짜 범위를 해석한다.
+ * - all=true → null(전체 로드).
+ * - from/to 둘 다 주어지면 그 범위(명시 입력).
+ * - 그 외(기본/프리셋) → 최신 tradeDate 기준 최근 N개월(months, 기본 1). DB 비었으면 null.
+ */
+export async function resolveDbDateRange(
+  params: { from?: string; to?: string; all?: boolean; months?: number } = {},
+): Promise<DbDateRange> {
+  if (params.all) return null;
+  if (params.from && params.to) return { from: params.from, to: params.to };
+  if (!process.env.DATABASE_URL?.trim()) return null;
+  const latest = await findLatestReviewTradeDate(getDb());
+  if (!latest) return null;
+  const months = params.months && params.months > 0 ? params.months : 1;
+  return { from: dayjs(latest).subtract(months, "month").format("YYYY-MM-DD"), to: latest };
+}
+
+/**
+ * DB Target 을 로드한다. 시트 설정 무관.
+ * - range 가 주어지면 tradeDate 범위로 제한, null 이면 전체.
  * 시트가 비어있거나 미설정 시 fallback, 또는 DB 모드 직접 전환에 사용.
  */
-export async function loadReviewRowsFromDb(): Promise<ReviewRow[]> {
+export async function loadReviewRowsFromDb(range: DbDateRange = null): Promise<ReviewRow[]> {
   if (!process.env.DATABASE_URL?.trim()) {
     console.warn("[review] DATABASE_URL missing; using mock rows (DB mode)");
     return mockSheetRows;
   }
   const db = getDb();
-  const targets = await findReviewLoadTargets(db, { keys: undefined });
+  const targets = await findReviewLoadTargets(db, {
+    keys: undefined,
+    from: range?.from,
+    to: range?.to,
+  });
   return targets.flatMap(toReviewRows);
 }
 

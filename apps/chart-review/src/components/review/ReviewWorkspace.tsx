@@ -20,6 +20,7 @@ import { dateToUnix } from "@/lib/serialization";
 import { truncate } from "@/lib/format";
 import { useUiStore } from "@/stores/useUiStore";
 import type {
+  DbDateRange,
   InitialReviewSelection,
   ReviewPoint,
   ReviewStockGroup,
@@ -62,8 +63,10 @@ type ReviewWorkspaceProps = {
   initialTab: string;
   /** 스프레드시트가 설정돼 있는지. false 면 시트 탭 칩을 표시하지 않는다. */
   hasSpreadsheet: boolean;
-  /** 초기 읽기 소스: "sheet" = 시트 탭, "db" = DB 전체. */
+  /** 초기 읽기 소스: "sheet" = 시트 탭, "db" = DB(날짜 범위). */
   initialReadSource?: "sheet" | "db";
+  /** DB 모드 초기 날짜 범위(RSC 에서 전달). null = 전체. */
+  initialDbRange?: DbDateRange;
 };
 
 export function ReviewWorkspace({
@@ -73,6 +76,7 @@ export function ReviewWorkspace({
   initialTab,
   hasSpreadsheet,
   initialReadSource = "sheet",
+  initialDbRange = null,
 }: ReviewWorkspaceProps) {
   const router = useRouter();
 
@@ -96,15 +100,17 @@ export function ReviewWorkspace({
     groups,
     isLoadingWorkset,
     readSource,
+    dbRange,
     switchTab,
     switchToDb,
+    setDbRange,
     reloadTab,
     reloadAll,
     upsertPointLocal,
     removePointLocal,
     purgeManualKeyLocal: purgeManualKeyFromWorkset,
     renameManualKeyLocal: renameManualKeyInWorkset,
-  } = useWorkingSetCache(initialGroups, initialTab, initialReadSource);
+  } = useWorkingSetCache(initialGroups, initialTab, initialReadSource, initialDbRange);
 
   // 필터 활성 시 종목 이동은 "매칭 타점이 1개 이상 있는 종목"만 순회한다.
   // (종목 안에서는 전 타점을 그대로 보여주되 PointList 에서 매칭 배지를 표시)
@@ -651,6 +657,8 @@ export function ReviewWorkspace({
       hasSpreadsheet={hasSpreadsheet}
       readTab={readTab}
       readSource={readSource}
+      dbRange={dbRange}
+      onSetDbRange={setDbRange}
       writeTab={writeTab}
       tabs={tabs}
       isLoadingWorkset={isLoadingWorkset}
