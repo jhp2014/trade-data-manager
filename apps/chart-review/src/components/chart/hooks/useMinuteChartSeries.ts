@@ -43,13 +43,19 @@ export function useMinuteChartSeries(chartRef: React.MutableRefObject<IChartApi 
             lineWidth: 1, axisLabelVisible: false, title: "",
         });
 
+        // 거래대금은 별도 pane(1)으로 분리해 캔들과 스케일이 섞이지 않게 한다.
         const amountSeries = chart.addSeries(HistogramSeries, {
-            priceScaleId: "left",
+            priceScaleId: "right",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(0)}억`, minMove: 1 },
             priceLineVisible: false, lastValueVisible: false,
             color: "rgba(120,120,140,0.5)",
-        });
-        chart.priceScale("left").applyOptions({ visible: true, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } });
+        }, 1);
+        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
+
+        // 캔들 pane : 거래대금 pane = 3 : 1
+        const panes = chart.panes();
+        panes[0].setStretchFactor(3);
+        panes[1].setStretchFactor(1);
 
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;

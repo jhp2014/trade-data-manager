@@ -49,7 +49,10 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
     const clipEnd = useUiStore((s) => s.minuteClipEnd);
 
     const chartRef = useChartShell(containerRef, () => ({
-        layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
+        layout: {
+            background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11,
+            panes: { separatorColor: "rgba(0,0,0,0.12)", separatorHoverColor: "rgba(0,0,0,0.2)", enableResize: true },
+        },
         grid: {
             vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
             horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
@@ -59,8 +62,8 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
             vertLine: { visible: true, width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dashed, labelVisible: true },
             horzLine: { visible: true, width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dashed, labelVisible: true },
         },
-        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.30 } },
-        leftPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } },
+        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.08 } },
+        leftPriceScale: { visible: false },
         timeScale: {
             borderVisible: false, rightOffset: 2,
             tickMarkFormatter: (t: number) => kstHHmm(t),

@@ -30,7 +30,10 @@ export function RealDailyChart({ candles, priceLines }: Props) {
     const mode = useUiStore((s) => s.chartPriceMode);
 
     const chartRef = useChartShell(containerRef, () => ({
-        layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
+        layout: {
+            background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11,
+            panes: { separatorColor: "rgba(0,0,0,0.12)", separatorHoverColor: "rgba(0,0,0,0.2)", enableResize: true },
+        },
         grid: {
             vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
             horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
@@ -40,8 +43,8 @@ export function RealDailyChart({ candles, priceLines }: Props) {
             vertLine: { width: 1, color: "rgba(60,60,60,0.5)", style: LineStyle.Dotted, labelVisible: true },
             horzLine: { width: 1, color: "rgba(60,60,60,0.5)", style: LineStyle.Dotted, labelVisible: true },
         },
-        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.30 } },
-        leftPriceScale: { visible: false, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } },
+        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.08 } },
+        leftPriceScale: { visible: false },
         timeScale: {
             borderVisible: false, barSpacing: 3, rightOffset: 10,
             tickMarkFormatter: (t: number) => kstYmd(t).slice(5),
@@ -70,12 +73,18 @@ export function RealDailyChart({ candles, priceLines }: Props) {
             priceScaleId: "right", priceLineVisible: false, lastValueVisible: false,
             priceFormat: { type: "price", precision: 0, minMove: 1 },
         });
+        // 거래대금은 별도 pane(1)으로 분리해 캔들과 스케일이 섞이지 않게 한다.
         const amountSeries = chart.addSeries(HistogramSeries, {
-            priceScaleId: "amount",
+            priceScaleId: "right",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(1)}억`, minMove: 0.1 },
             color: "rgba(120,120,140,0.5)",
-        });
-        chart.priceScale("amount").applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } });
+        }, 1);
+        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
+
+        // 캔들 pane : 거래대금 pane = 3 : 1
+        const panes = chart.panes();
+        panes[0].setStretchFactor(3);
+        panes[1].setStretchFactor(1);
 
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
