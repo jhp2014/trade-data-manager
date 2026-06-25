@@ -3,10 +3,14 @@
 import { useEffect, useRef } from "react";
 import {
     createChart,
+    CandlestickSeries,
+    HistogramSeries,
     CrosshairMode,
     LineStyle,
+    createSeriesMarkers,
     type IChartApi,
     type ISeriesApi,
+    type ISeriesMarkersPluginApi,
     type IPriceLine,
     type Time,
 } from "lightweight-charts";
@@ -27,12 +31,23 @@ interface Props {
 
 const AMOUNT_KRW_TO_EOK = 1e8;
 
+const KRX_OPEN_MIN = 9 * 60;        // 09:00 (KRX 정규장 시작)
+const KRX_CLOSE_MIN = 15 * 60 + 30; // 15:30 (KRX 정규장 종료)
+const KRX_VIEW_OPEN_MIN = 8 * 60;   // 08:00 (KRX 캡처 시 NXT 종목 좌측 경계)
+
+/** unix(초) → KST 기준 자정 이후 분(0~1439). */
+function kstMinutes(unixSec: number): number {
+    const d = new Date((unixSec + 9 * 3600) * 1000);
+    return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+
 export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCloseNxt, onReady }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const priceLineHandlesRef = useRef<IPriceLine[]>([]);
+    const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const onReadyCalled = useRef(false);
 
     // 차트 인스턴스 생성 (마운트 1회)
@@ -43,14 +58,17 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
         const chart = createChart(container, {
             width: container.clientWidth || 800,
             height: container.clientHeight || 400,
-            layout: { background: { color: "#ffffff" }, textColor: "#6b7280", fontSize: 11 },
+            layout: {
+                background: { color: "#ffffff" }, textColor: "#6b7280", fontSize: 11,
+                panes: { separatorColor: "rgba(0,0,0,0.12)", separatorHoverColor: "rgba(0,0,0,0.2)", enableResize: false },
+            },
             grid: {
                 vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
                 horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
             },
             crosshair: { mode: CrosshairMode.Normal },
-            rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.30 } },
-            leftPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } },
+            rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.08 } },
+            leftPriceScale: { visible: false },
             timeScale: {
                 borderVisible: false,
                 rightOffset: 2,
@@ -62,7 +80,7 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
         });
         chartRef.current = chart;
 
-        const candleSeries = chart.addCandlestickSeries({
+        const candleSeries = chart.addSeries(CandlestickSeries, {
             upColor: "#ef4444", downColor: "#3b82f6",
             borderUpColor: "#ef4444", borderDownColor: "#3b82f6",
             wickUpColor: "#ef4444", wickDownColor: "#3b82f6",
@@ -74,16 +92,23 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
             lineWidth: 1, axisLabelVisible: false, title: "",
         });
 
-        const amountSeries = chart.addHistogramSeries({
-            priceScaleId: "left",
+        // 거래대금은 별도 pane(1)으로 분리해 캔들과 스케일이 섞이지 않게 한다.
+        const amountSeries = chart.addSeries(HistogramSeries, {
+            priceScaleId: "right",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(0)}억`, minMove: 1 },
             priceLineVisible: false, lastValueVisible: false,
             color: "rgba(120,120,140,0.5)",
-        });
-        chart.priceScale("left").applyOptions({ visible: true, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0 } });
+        }, 1);
+        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
+
+        // 캔들 pane : 거래대금 pane = 3 : 1
+        const panes = chart.panes();
+        panes[0].setStretchFactor(3);
+        panes[1].setStretchFactor(1);
 
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
+        markersApiRef.current = createSeriesMarkers(candleSeries);
 
         const ro = new ResizeObserver(() => {
             if (containerRef.current) {
@@ -101,6 +126,7 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
             chartRef.current = null;
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
+            markersApiRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -154,9 +180,29 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
                 size: 0,
             });
         }
-        candleSeries.setMarkers(markers);
+        markersApiRef.current?.setMarkers(markers);
 
-        chartRef.current?.timeScale().fitContent();
+        // KRX 캡처: NXT 정규장 밖(프리마켓 08:00~09:00·애프터 15:30~) 봉이 있는 종목은
+        // 08:00~15:30 구간만 보이도록 시간축을 고정한다. 그 외(KRX 전용 종목, NXT variant)는 전체 맞춤.
+        const ts = chartRef.current?.timeScale();
+        if (ts) {
+            const hasOutOfHours = variant === "KRX" &&
+                candles.some((c) => {
+                    const m = kstMinutes(c.time);
+                    return m < KRX_OPEN_MIN || m > KRX_CLOSE_MIN;
+                });
+            if (hasOutOfHours) {
+                let fromIdx = candles.findIndex((c) => kstMinutes(c.time) >= KRX_VIEW_OPEN_MIN);
+                if (fromIdx < 0) fromIdx = 0;
+                let toIdx = candles.length - 1;
+                for (let i = candles.length - 1; i >= 0; i--) {
+                    if (kstMinutes(candles[i].time) <= KRX_CLOSE_MIN) { toIdx = i; break; }
+                }
+                ts.setVisibleLogicalRange({ from: fromIdx, to: toIdx + 2 });
+            } else {
+                ts.fitContent();
+            }
+        }
 
         if (!onReadyCalled.current) {
             onReadyCalled.current = true;

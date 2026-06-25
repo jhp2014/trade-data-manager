@@ -3,10 +3,14 @@
 import { useEffect, useRef } from "react";
 import {
     createChart,
+    CandlestickSeries,
+    HistogramSeries,
     CrosshairMode,
     LineStyle,
+    createSeriesMarkers,
     type IChartApi,
     type ISeriesApi,
+    type ISeriesMarkersPluginApi,
     type IPriceLine,
     type Time,
 } from "lightweight-charts";
@@ -31,6 +35,7 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
     const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const priceLineHandlesRef = useRef<IPriceLine[]>([]);
+    const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const onReadyCalled = useRef(false);
 
     // 차트 인스턴스 생성 (마운트 1회)
@@ -41,14 +46,17 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
         const chart = createChart(container, {
             width: container.clientWidth || 800,
             height: container.clientHeight || 400,
-            layout: { background: { color: "#ffffff" }, textColor: "#6b7280", fontSize: 11 },
+            layout: {
+                background: { color: "#ffffff" }, textColor: "#6b7280", fontSize: 11,
+                panes: { separatorColor: "rgba(0,0,0,0.12)", separatorHoverColor: "rgba(0,0,0,0.2)", enableResize: false },
+            },
             grid: {
                 vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
                 horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
             },
             crosshair: { mode: CrosshairMode.Normal },
-            rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.30 } },
-            leftPriceScale: { visible: false, borderVisible: false },
+            rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.08 } },
+            leftPriceScale: { visible: false },
             timeScale: {
                 borderVisible: false,
                 barSpacing: 3,
@@ -61,22 +69,29 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
         });
         chartRef.current = chart;
 
-        const candleSeries = chart.addCandlestickSeries({
+        const candleSeries = chart.addSeries(CandlestickSeries, {
             upColor: "#ef4444", downColor: "#3b82f6",
             borderUpColor: "#ef4444", borderDownColor: "#3b82f6",
             wickUpColor: "#ef4444", wickDownColor: "#3b82f6",
             priceScaleId: "right", priceLineVisible: false, lastValueVisible: false,
             priceFormat: { type: "price", precision: 0, minMove: 1 },
         });
-        const amountSeries = chart.addHistogramSeries({
-            priceScaleId: "amount",
+        // 거래대금은 별도 pane(1)으로 분리해 캔들과 스케일이 섞이지 않게 한다.
+        const amountSeries = chart.addSeries(HistogramSeries, {
+            priceScaleId: "right",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(1)}억`, minMove: 0.1 },
             color: "rgba(120,120,140,0.5)",
-        });
-        chart.priceScale("amount").applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } });
+        }, 1);
+        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
+
+        // 캔들 pane : 거래대금 pane = 3 : 1
+        const panes = chart.panes();
+        panes[0].setStretchFactor(3);
+        panes[1].setStretchFactor(1);
 
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
+        markersApiRef.current = createSeriesMarkers(candleSeries);
 
         const ro = new ResizeObserver(() => {
             if (containerRef.current) {
@@ -94,6 +109,7 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
             chartRef.current = null;
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
+            markersApiRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -145,7 +161,7 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
                 });
             }
         }
-        candleSeries.setMarkers(markers);
+        markersApiRef.current?.setMarkers(markers);
 
         chartRef.current?.timeScale().fitContent();
 
