@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CrosshairMode, LineStyle, type ISeriesApi, type Time } from "lightweight-charts";
+import { CrosshairMode, LineSeries, LineStyle, createSeriesMarkers, type ISeriesApi, type ISeriesMarkersPluginApi, type Time } from "lightweight-charts";
 import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
 import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { useUiStore } from "@/stores/useUiStore";
@@ -56,6 +56,8 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
         api: ISeriesApi<"Line">;
         pointMap: Map<number, ChartOverlayPoint>;
     }>>([]);
+    // v5: setMarkers 제거 → self 시리즈에 붙인 마커 플러그인 핸들. 시리즈 재생성 시 무효화.
+    const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
     const { state: tipState } = useCrosshairTooltip({
         chartRef,
@@ -96,6 +98,7 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
             try { chart.removeSeries(m.api); } catch { /* noop */ }
         }
         seriesMetaRef.current = [];
+        markersApiRef.current = null;
 
         if (!data || data.length === 0) return;
 
@@ -111,7 +114,7 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
             const color = s.isSelf
                 ? OVERLAY_SELF_COLOR
                 : OVERLAY_PEER_PALETTE[idx % OVERLAY_PEER_PALETTE.length];
-            const api = chart.addLineSeries({
+            const api = chart.addSeries(LineSeries, {
                 color,
                 lineWidth: (s.isSelf ? 4 : 1) as 1 | 4,
                 priceLineVisible: false,
@@ -145,6 +148,10 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
             });
         }
 
+        // 진입 마커 플러그인을 self 시리즈와 한 생명주기로 생성(아래 마커 effect는 setMarkers만)
+        const selfMeta = seriesMetaRef.current.find((m) => m.isSelf);
+        if (selfMeta) markersApiRef.current = createSeriesMarkers(selfMeta.api);
+
         chart.timeScale().fitContent();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data]);
@@ -160,12 +167,10 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
         }
     }, [data, mode]);
 
-    // 진입 마커: self 시리즈에만
+    // 진입 마커: self 시리즈 플러그인에 내용만 갱신(핸들은 위 시리즈 생성 effect가 소유)
     useEffect(() => {
         if (markerTime == null) return;
-        const self = seriesMetaRef.current.find((m) => m.isSelf);
-        if (!self) return;
-        self.api.setMarkers([{
+        markersApiRef.current?.setMarkers([{
             time: markerTime as Time,
             position: "aboveBar",
             color: "#000000ff",

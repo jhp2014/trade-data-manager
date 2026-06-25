@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CrosshairMode, LineStyle, type IPriceLine, type ISeriesApi, type Time } from "lightweight-charts";
+import { CandlestickSeries, HistogramSeries, CrosshairMode, LineStyle, createSeriesMarkers, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type Time } from "lightweight-charts";
 import type { DailyCandle } from "@/types/chart";
 import { kstYmd, highMarkerColor } from "@trade-data-manager/chart-utils";
 import { AMOUNT_MIL_TO_EOK } from "@/lib/constants";
@@ -56,20 +56,21 @@ export function RealDailyChart({ candles, priceLines }: Props) {
     const dataMapRef = useRef<Map<number, DailyCandle>>(new Map());
     const baseCandleRef = useRef<DailyCandle | null>(null);
     const priceLineHandlesRef = useRef<IPriceLine[]>([]);
+    const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
     // 시리즈 생성 (마운트 1회)
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
 
-        const candleSeries = chart.addCandlestickSeries({
+        const candleSeries = chart.addSeries(CandlestickSeries, {
             upColor: "#ef4444", downColor: "#3b82f6",
             borderUpColor: "#ef4444", borderDownColor: "#3b82f6",
             wickUpColor: "#ef4444", wickDownColor: "#3b82f6",
             priceScaleId: "right", priceLineVisible: false, lastValueVisible: false,
             priceFormat: { type: "price", precision: 0, minMove: 1 },
         });
-        const amountSeries = chart.addHistogramSeries({
+        const amountSeries = chart.addSeries(HistogramSeries, {
             priceScaleId: "amount",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(1)}억`, minMove: 0.1 },
             color: "rgba(120,120,140,0.5)",
@@ -78,10 +79,14 @@ export function RealDailyChart({ candles, priceLines }: Props) {
 
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
+        // 마커 플러그인을 캔들 시리즈와 한 생명주기로 생성(아래 cleanup에서 함께 폐기)
+        markersApiRef.current = createSeriesMarkers(candleSeries);
 
         return () => {
             candleSeriesRef.current = null;
             amountSeriesRef.current = null;
+            // 시리즈가 사라지면 마커 플러그인 핸들도 폐기(StrictMode 리마운트 시 죽은 시리즈 참조 방지)
+            markersApiRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -177,7 +182,7 @@ export function RealDailyChart({ candles, priceLines }: Props) {
                 });
             }
         }
-        candleSeries.setMarkers(markers);
+        markersApiRef.current?.setMarkers(markers);
         // 기본 뷰: 마지막 약 168 거래일(≈8개월) + 우측 5% 여백. 전체보다 적으면 전체 표시.
         const ts = chartRef.current?.timeScale();
         if (ts) {

@@ -1,11 +1,12 @@
 import { useEffect } from "react";
-import type { ISeriesApi, Time } from "lightweight-charts";
+import type { ISeriesMarkersPluginApi, Time } from "lightweight-charts";
 import type { MinuteCandle } from "@/types/chart";
 import { amountMarkerFor } from "@trade-data-manager/chart-utils";
 import { amountToEokInt } from "@/lib/format";
 
 interface Params {
-    candleSeriesRef: React.MutableRefObject<ISeriesApi<"Candlestick"> | null>;
+    /** 캔들 시리즈와 한 생명주기로 생성된 마커 플러그인 핸들(useMinuteChartSeries 소유). */
+    candleMarkersRef: React.MutableRefObject<ISeriesMarkersPluginApi<Time> | null>;
     candles: MinuteCandle[];
     markerTime?: number | null;
     /** Point List에 저장된 타점들의 봉 시각(unix 초). 차트에 ●/거래대금 으로 표시. */
@@ -33,10 +34,10 @@ type MarkerEntry = {
  *  - 마커 배열은 time 오름차순이어야 함
  *  - 같은 time에 여러 마커 금지 → Map으로 중복 제거
  */
-export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, pointTimes }: Params) {
+export function useMinuteChartMarkers({ candleMarkersRef, candles, markerTime, pointTimes }: Params) {
     useEffect(() => {
-        const series = candleSeriesRef.current;
-        if (!series) return;
+        const markersApi = candleMarkersRef.current;
+        if (!markersApi) return;
 
         const byTime = new Map<number, MarkerEntry>();
 
@@ -89,6 +90,6 @@ export function useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, po
             (a, b) => (a.time as number) - (b.time as number),
         );
 
-        series.setMarkers(markers);
-    }, [candleSeriesRef, candles, markerTime, pointTimes]);
+        markersApi.setMarkers(markers);
+    }, [candleMarkersRef, candles, markerTime, pointTimes]);
 }

@@ -70,7 +70,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
         localization: { locale: "ko-KR", timeFormatter: (t: number) => kstHHmm(t) },
     }));
 
-    const { candleSeriesRef, amountSeriesRef } = useMinuteChartSeries(chartRef);
+    const { candleSeriesRef, amountSeriesRef, candleMarkersRef } = useMinuteChartSeries(chartRef);
 
     const { amountMapRef, cumAmountMapRef } = useMinuteChartData({
         chartRef,
@@ -82,7 +82,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
 
     useMinuteChartViewRange({ chartRef, candles, zoomed, markerTime, zoomCandles, clipEnd });
 
-    useMinuteChartMarkers({ candleSeriesRef, candles, markerTime, pointTimes });
+    useMinuteChartMarkers({ candleMarkersRef, candles, markerTime, pointTimes });
 
     const prevClose = mode === "nxt" ? (prevCloseNxt ?? null) : (prevCloseKrx ?? null);
     useMinuteChartPriceLines({ candleSeriesRef, priceLines, prevClose });
