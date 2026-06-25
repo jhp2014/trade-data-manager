@@ -16,9 +16,17 @@ import {
 } from "lightweight-charts";
 import type { MinuteCandle } from "@/lib/chartTypes";
 import type { LineSpec } from "@/types/capture";
-import { kstHHmm } from "@trade-data-manager/chart-utils";
+import {
+    kstHHmm,
+    amountMarkerFor,
+    computeMinuteViewRange,
+    RISE_COLOR,
+    FALL_COLOR,
+    RISE_FILL,
+    FALL_FILL,
+    AMOUNT_BAR_COLOR,
+} from "@trade-data-manager/chart-utils";
 import { computePriceLineChartValue, buildPriceLineOptions } from "@/lib/chart/priceLines";
-import { amountMarkerFor } from "@trade-data-manager/chart-utils";
 
 interface Props {
     candles: MinuteCandle[];
@@ -30,17 +38,6 @@ interface Props {
 }
 
 const AMOUNT_KRW_TO_EOK = 1e8;
-
-const KRX_OPEN_MIN = 9 * 60;        // 09:00 (KRX 정규장 시작)
-const KRX_CLOSE_MIN = 15 * 60 + 30; // 15:30 (KRX 정규장 종료)
-const KRX_VIEW_OPEN_MIN = 8 * 60;   // 08:00 (KRX 캡처 시 NXT 종목 좌측 경계)
-const LEFT_PAD_BARS = 10;           // 첫 봉 왼쪽 여백(분). 첫 봉이 화면 좌단에 붙지 않게.
-
-/** unix(초) → KST 기준 자정 이후 분(0~1439). */
-function kstMinutes(unixSec: number): number {
-    const d = new Date((unixSec + 9 * 3600) * 1000);
-    return d.getUTCHours() * 60 + d.getUTCMinutes();
-}
 
 export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCloseNxt, onReady }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -82,9 +79,9 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
         chartRef.current = chart;
 
         const candleSeries = chart.addSeries(CandlestickSeries, {
-            upColor: "#ef4444", downColor: "#3b82f6",
-            borderUpColor: "#ef4444", borderDownColor: "#3b82f6",
-            wickUpColor: "#ef4444", wickDownColor: "#3b82f6",
+            upColor: RISE_COLOR, downColor: FALL_COLOR,
+            borderUpColor: RISE_COLOR, borderDownColor: FALL_COLOR,
+            wickUpColor: RISE_COLOR, wickDownColor: FALL_COLOR,
             priceScaleId: "right", priceLineVisible: false,
             priceFormat: { type: "custom", formatter: (p: number) => `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`, minMove: 0.01 },
         });
@@ -98,7 +95,7 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
             priceScaleId: "right",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(0)}억`, minMove: 1 },
             priceLineVisible: false, lastValueVisible: false,
-            color: "rgba(120,120,140,0.5)",
+            color: AMOUNT_BAR_COLOR,
         }, 1);
         chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
 
@@ -153,7 +150,7 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
                 amountData.push({
                     time: c.time as Time,
                     value: a / AMOUNT_KRW_TO_EOK,
-                    color: ohlc.close >= ohlc.open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
+                    color: ohlc.close >= ohlc.open ? RISE_FILL : FALL_FILL,
                 });
             }
         }
@@ -183,29 +180,10 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
         }
         markersApiRef.current?.setMarkers(markers);
 
-        // 시간축 가시 범위.
-        //  - KRX 캡처: NXT 정규장(09:00~15:30) 밖 봉이 있는 종목은 08:00~15:30으로 고정.
-        //  - 그 외(KRX 전용 종목, NXT variant): 전체 봉.
-        // 어느 경우든 첫 봉이 좌단에 붙지 않도록 LEFT_PAD_BARS(분)만큼 좌측 공백을 둔다
-        // (logical range를 음수로 시작 → 봉 이전 빈 공간).
+        // 시간축 가시 범위: KRX 캡처의 NXT 종목 클립 + 좌측 여백(순수 계산은 chart-utils).
         const ts = chartRef.current?.timeScale();
-        if (ts && candles.length > 0) {
-            const hasOutOfHours = variant === "KRX" &&
-                candles.some((c) => {
-                    const m = kstMinutes(c.time);
-                    return m < KRX_OPEN_MIN || m > KRX_CLOSE_MIN;
-                });
-            let fromIdx = 0;
-            let toIdx = candles.length - 1;
-            if (hasOutOfHours) {
-                fromIdx = candles.findIndex((c) => kstMinutes(c.time) >= KRX_VIEW_OPEN_MIN);
-                if (fromIdx < 0) fromIdx = 0;
-                for (let i = candles.length - 1; i >= 0; i--) {
-                    if (kstMinutes(candles[i].time) <= KRX_CLOSE_MIN) { toIdx = i; break; }
-                }
-            }
-            ts.setVisibleLogicalRange({ from: fromIdx - LEFT_PAD_BARS, to: toIdx + 2 });
-        }
+        const range = computeMinuteViewRange(candles, { variant });
+        if (ts && range) ts.setVisibleLogicalRange(range);
 
         if (!onReadyCalled.current) {
             onReadyCalled.current = true;

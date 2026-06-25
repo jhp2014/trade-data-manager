@@ -1,11 +1,23 @@
 /**
- * 두 앱이 공유하는 차트 마커 색상/임계값.
+ * 두 앱이 공유하는 차트 색상/임계값.
  *
+ * - 등락 의미 색상(RISE/FALL) 및 거래대금 막대 색
  * - 일봉 high-rate marker
  * - 분봉 거래대금 marker
  *
  * 임계값(threshold)이 커질수록 강조되는 그라디언트로 시각적 일관성을 유지한다.
  */
+
+/** 상승. CSS `--rise` 대응. */
+export const RISE_COLOR = "#ef4444";
+/** 하락. CSS `--fall` 대응. */
+export const FALL_COLOR = "#3b82f6";
+/** 상승 반투명 채움(거래대금 막대 등). RISE_COLOR의 50% 알파. */
+export const RISE_FILL = "rgba(239,68,68,0.5)";
+/** 하락 반투명 채움. FALL_COLOR의 50% 알파. */
+export const FALL_FILL = "rgba(59,130,246,0.5)";
+/** 거래대금 막대 기본색(방향성 없음). */
+export const AMOUNT_BAR_COLOR = "rgba(120,120,140,0.5)";
 
 /** 봉 위 고가 마커를 표시하기 시작하는 전일비 % 최솟값 (이 미만은 마커 없음). */
 export const HIGH_MARKER_MIN_PCT = 10;

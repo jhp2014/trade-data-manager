@@ -16,9 +16,16 @@ import {
 } from "lightweight-charts";
 import type { DailyCandle } from "@/lib/chartTypes";
 import type { LineSpec } from "@/types/capture";
-import { kstYmd } from "@trade-data-manager/chart-utils";
+import {
+    kstYmd,
+    highMarkerColor,
+    RISE_COLOR,
+    FALL_COLOR,
+    RISE_FILL,
+    FALL_FILL,
+    AMOUNT_BAR_COLOR,
+} from "@trade-data-manager/chart-utils";
 import { computePriceLineChartValue, buildPriceLineOptions } from "@/lib/chart/priceLines";
-import { highMarkerColor } from "@trade-data-manager/chart-utils";
 
 interface Props {
     candles: DailyCandle[];
@@ -70,9 +77,9 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
         chartRef.current = chart;
 
         const candleSeries = chart.addSeries(CandlestickSeries, {
-            upColor: "#ef4444", downColor: "#3b82f6",
-            borderUpColor: "#ef4444", borderDownColor: "#3b82f6",
-            wickUpColor: "#ef4444", wickDownColor: "#3b82f6",
+            upColor: RISE_COLOR, downColor: FALL_COLOR,
+            borderUpColor: RISE_COLOR, borderDownColor: FALL_COLOR,
+            wickUpColor: RISE_COLOR, wickDownColor: FALL_COLOR,
             priceScaleId: "right", priceLineVisible: false, lastValueVisible: false,
             priceFormat: { type: "price", precision: 0, minMove: 1 },
         });
@@ -80,7 +87,7 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
         const amountSeries = chart.addSeries(HistogramSeries, {
             priceScaleId: "right",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(1)}억`, minMove: 0.1 },
-            color: "rgba(120,120,140,0.5)",
+            color: AMOUNT_BAR_COLOR,
         }, 1);
         chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
 
@@ -139,7 +146,7 @@ export function DailyChart({ candles, variant, priceLines, onReady }: Props) {
                     return {
                         time: c.time as Time,
                         value: amt / AMOUNT_MIL_TO_EOK,
-                        color: ohlc.close >= ohlc.open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
+                        color: ohlc.close >= ohlc.open ? RISE_FILL : FALL_FILL,
                     };
                 }),
         );

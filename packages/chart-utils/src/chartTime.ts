@@ -18,3 +18,9 @@ export function kstYmd(unixSec: number): string {
     const d = toKstDate(unixSec);
     return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
+
+/** unix(초) → KST 기준 자정 이후 분(0~1439). 장 시간 비교용. */
+export function kstMinutesOfDay(unixSec: number): number {
+    const d = toKstDate(unixSec);
+    return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
