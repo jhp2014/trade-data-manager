@@ -34,6 +34,7 @@ const AMOUNT_KRW_TO_EOK = 1e8;
 const KRX_OPEN_MIN = 9 * 60;        // 09:00 (KRX 정규장 시작)
 const KRX_CLOSE_MIN = 15 * 60 + 30; // 15:30 (KRX 정규장 종료)
 const KRX_VIEW_OPEN_MIN = 8 * 60;   // 08:00 (KRX 캡처 시 NXT 종목 좌측 경계)
+const LEFT_PAD_BARS = 10;           // 첫 봉 왼쪽 여백(분). 첫 봉이 화면 좌단에 붙지 않게.
 
 /** unix(초) → KST 기준 자정 이후 분(0~1439). */
 function kstMinutes(unixSec: number): number {
@@ -182,26 +183,28 @@ export function MinuteChart({ candles, variant, priceLines, prevCloseKrx, prevCl
         }
         markersApiRef.current?.setMarkers(markers);
 
-        // KRX 캡처: NXT 정규장 밖(프리마켓 08:00~09:00·애프터 15:30~) 봉이 있는 종목은
-        // 08:00~15:30 구간만 보이도록 시간축을 고정한다. 그 외(KRX 전용 종목, NXT variant)는 전체 맞춤.
+        // 시간축 가시 범위.
+        //  - KRX 캡처: NXT 정규장(09:00~15:30) 밖 봉이 있는 종목은 08:00~15:30으로 고정.
+        //  - 그 외(KRX 전용 종목, NXT variant): 전체 봉.
+        // 어느 경우든 첫 봉이 좌단에 붙지 않도록 LEFT_PAD_BARS(분)만큼 좌측 공백을 둔다
+        // (logical range를 음수로 시작 → 봉 이전 빈 공간).
         const ts = chartRef.current?.timeScale();
-        if (ts) {
+        if (ts && candles.length > 0) {
             const hasOutOfHours = variant === "KRX" &&
                 candles.some((c) => {
                     const m = kstMinutes(c.time);
                     return m < KRX_OPEN_MIN || m > KRX_CLOSE_MIN;
                 });
+            let fromIdx = 0;
+            let toIdx = candles.length - 1;
             if (hasOutOfHours) {
-                let fromIdx = candles.findIndex((c) => kstMinutes(c.time) >= KRX_VIEW_OPEN_MIN);
+                fromIdx = candles.findIndex((c) => kstMinutes(c.time) >= KRX_VIEW_OPEN_MIN);
                 if (fromIdx < 0) fromIdx = 0;
-                let toIdx = candles.length - 1;
                 for (let i = candles.length - 1; i >= 0; i--) {
                     if (kstMinutes(candles[i].time) <= KRX_CLOSE_MIN) { toIdx = i; break; }
                 }
-                ts.setVisibleLogicalRange({ from: fromIdx, to: toIdx + 2 });
-            } else {
-                ts.fitContent();
             }
+            ts.setVisibleLogicalRange({ from: fromIdx - LEFT_PAD_BARS, to: toIdx + 2 });
         }
 
         if (!onReadyCalled.current) {
