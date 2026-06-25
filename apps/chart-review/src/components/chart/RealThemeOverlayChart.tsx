@@ -6,6 +6,7 @@ import type { ChartOverlaySeries, ChartOverlayPoint } from "@/types/chart";
 import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
+import { baseChartOptions } from "./shell/chartOptions";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { OverlayTooltip } from "./tooltip/OverlayTooltip";
@@ -24,11 +25,7 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
     const mode = useUiStore((s) => s.chartPriceMode);
 
     const chartRef = useChartShell(containerRef, () => ({
-        layout: { background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11 },
-        grid: {
-            vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
-            horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
-        },
+        ...baseChartOptions(),
         crosshair: {
             mode: CrosshairMode.Normal,
             vertLine: { width: 1, color: "rgba(60,60,60,0.5)", style: 0, labelVisible: true },
@@ -39,8 +36,6 @@ export function RealThemeOverlayChart({ data, markerTime }: Props) {
             borderVisible: false, rightOffset: 2, minBarSpacing: 1,
             tickMarkFormatter: (t: number) => kstHHmm(t),
         },
-        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-        handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
         localization: {
             locale: "ko-KR",
             timeFormatter: (t: number) => kstHHmm(t),

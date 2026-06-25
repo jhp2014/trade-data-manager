@@ -19,6 +19,13 @@ export const NEUTRAL_COLOR = "#8b95a1";
 /** 리스트 mini-chart 등에 쓰는 보조 보더 */
 export const BORDER_SUBTLE_COLOR = "#d1d6db";
 
+/** 상승 반투명 채움 (거래대금 막대 등). RISE_COLOR(#ef4444)의 50% 알파. */
+export const RISE_FILL = "rgba(239,68,68,0.5)";
+/** 하락 반투명 채움. FALL_COLOR(#3b82f6)의 50% 알파. */
+export const FALL_FILL = "rgba(59,130,246,0.5)";
+/** 거래대금 막대 기본색(방향성 없음). */
+export const AMOUNT_BAR_COLOR = "rgba(120,120,140,0.5)";
+
 /** 오버레이 시리즈에서 자기 종목 색. */
 export const OVERLAY_SELF_COLOR = "#000000";
 

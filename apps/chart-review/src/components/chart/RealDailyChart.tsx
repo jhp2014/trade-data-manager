@@ -5,8 +5,11 @@ import { CandlestickSeries, HistogramSeries, CrosshairMode, LineStyle, createSer
 import type { DailyCandle } from "@/types/chart";
 import { kstYmd, highMarkerColor } from "@trade-data-manager/chart-utils";
 import { AMOUNT_MIL_TO_EOK } from "@/lib/constants";
+import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR } from "@/lib/colors";
+import { configureAmountPane } from "@/lib/chart/panes";
 import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
+import { baseChartOptions } from "./shell/chartOptions";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { DailyTooltip } from "./tooltip/DailyTooltip";
@@ -30,14 +33,7 @@ export function RealDailyChart({ candles, priceLines }: Props) {
     const mode = useUiStore((s) => s.chartPriceMode);
 
     const chartRef = useChartShell(containerRef, () => ({
-        layout: {
-            background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11,
-            panes: { separatorColor: "rgba(0,0,0,0.12)", separatorHoverColor: "rgba(0,0,0,0.2)", enableResize: true },
-        },
-        grid: {
-            vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
-            horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
-        },
+        ...baseChartOptions(),
         crosshair: {
             mode: CrosshairMode.Normal,
             vertLine: { width: 1, color: "rgba(60,60,60,0.5)", style: LineStyle.Dotted, labelVisible: true },
@@ -49,8 +45,6 @@ export function RealDailyChart({ candles, priceLines }: Props) {
             borderVisible: false, barSpacing: 3, rightOffset: 10,
             tickMarkFormatter: (t: number) => kstYmd(t).slice(5),
         },
-        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-        handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
         localization: { locale: "ko-KR", timeFormatter: (t: number) => kstYmd(t) },
     }));
 
@@ -67,9 +61,9 @@ export function RealDailyChart({ candles, priceLines }: Props) {
         if (!chart) return;
 
         const candleSeries = chart.addSeries(CandlestickSeries, {
-            upColor: "#ef4444", downColor: "#3b82f6",
-            borderUpColor: "#ef4444", borderDownColor: "#3b82f6",
-            wickUpColor: "#ef4444", wickDownColor: "#3b82f6",
+            upColor: RISE_COLOR, downColor: FALL_COLOR,
+            borderUpColor: RISE_COLOR, borderDownColor: FALL_COLOR,
+            wickUpColor: RISE_COLOR, wickDownColor: FALL_COLOR,
             priceScaleId: "right", priceLineVisible: false, lastValueVisible: false,
             priceFormat: { type: "price", precision: 0, minMove: 1 },
         });
@@ -77,14 +71,9 @@ export function RealDailyChart({ candles, priceLines }: Props) {
         const amountSeries = chart.addSeries(HistogramSeries, {
             priceScaleId: "right",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(1)}억`, minMove: 0.1 },
-            color: "rgba(120,120,140,0.5)",
+            color: AMOUNT_BAR_COLOR,
         }, 1);
-        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
-
-        // 캔들 pane : 거래대금 pane = 3 : 1
-        const panes = chart.panes();
-        panes[0].setStretchFactor(3);
-        panes[1].setStretchFactor(1);
+        configureAmountPane(chart);
 
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;
@@ -139,7 +128,6 @@ export function RealDailyChart({ candles, priceLines }: Props) {
                 />
             );
         },
-        leftOffset: () => chartRef.current?.priceScale("left").width() ?? 0,
     });
 
     // 데이터 갱신 (mode 전환 시에도 재실행)
@@ -169,7 +157,7 @@ export function RealDailyChart({ candles, priceLines }: Props) {
                 return {
                     time: c.time as Time,
                     value: amt / AMOUNT_MIL_TO_EOK,
-                    color: ohlc.close >= ohlc.open ? "rgba(239,68,68,0.5)" : "rgba(59,130,246,0.5)",
+                    color: ohlc.close >= ohlc.open ? RISE_FILL : FALL_FILL,
                 };
             }),
         );
@@ -241,7 +229,6 @@ export function RealDailyChart({ candles, priceLines }: Props) {
                 x={tipState.x}
                 y={tipState.y}
                 containerRef={containerRef}
-                leftOffset={tipState.leftOffset}
                 minWidth={220}
             >
                 {tipState.content}

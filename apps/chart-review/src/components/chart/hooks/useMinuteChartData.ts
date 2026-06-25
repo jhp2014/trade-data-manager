@@ -3,9 +3,7 @@ import { type IChartApi, type ISeriesApi, type Time } from "lightweight-charts";
 import type { MinuteCandle } from "@/types/chart";
 import type { ChartPriceMode } from "@/stores/useUiStore";
 import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
-
-const AMOUNT_RISE_FILL = "rgba(239,68,68,0.5)";
-const AMOUNT_FALL_FILL = "rgba(59,130,246,0.5)";
+import { RISE_FILL, FALL_FILL } from "@/lib/colors";
 
 interface Params {
     chartRef: React.MutableRefObject<IChartApi | null>;
@@ -52,7 +50,7 @@ export function useMinuteChartData({
                 amountData.push({
                     time: c.time as Time,
                     value: a / AMOUNT_KRW_TO_EOK,
-                    color: ohlc.close >= ohlc.open ? AMOUNT_RISE_FILL : AMOUNT_FALL_FILL,
+                    color: ohlc.close >= ohlc.open ? RISE_FILL : FALL_FILL,
                 });
             }
         }

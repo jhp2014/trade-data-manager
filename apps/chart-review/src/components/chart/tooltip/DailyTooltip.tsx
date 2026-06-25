@@ -1,6 +1,7 @@
 "use client";
 
 import { kstYmd } from "@trade-data-manager/chart-utils";
+import { RISE_COLOR, FALL_COLOR } from "@/lib/colors";
 
 interface DailyTooltipProps {
     time: number;
@@ -14,7 +15,7 @@ interface DailyTooltipProps {
 
 function fmtPct(v: number | null) {
     if (v === null) return <span style={{ color: "#a0a0a0" }}>—</span>;
-    const color = v >= 0 ? "#ef4444" : "#3b82f6";
+    const color = v >= 0 ? RISE_COLOR : FALL_COLOR;
     return <span style={{ color }}>{v >= 0 ? "+" : ""}{v.toFixed(2)}%</span>;
 }
 

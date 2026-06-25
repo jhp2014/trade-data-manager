@@ -11,21 +11,20 @@ interface Props {
     x: number;
     y: number;
     containerRef: RefObject<HTMLDivElement | null>;
-    leftOffset?: number;
     minWidth?: number;
     maxWidth?: number;
     children: React.ReactNode;
 }
 
-function TooltipInner({ x, y, containerRef, leftOffset = 0, minWidth, maxWidth, children }: Omit<Props, "visible">) {
+function TooltipInner({ x, y, containerRef, minWidth, maxWidth, children }: Omit<Props, "visible">) {
     const tipRef = useRef<HTMLDivElement>(null);
 
     useLayoutEffect(() => {
         const tip = tipRef.current;
         const container = containerRef.current;
         if (!tip || !container) return;
-        positionTooltip(tip, container, x + leftOffset, y);
-    }, [x, y, leftOffset, containerRef]);
+        positionTooltip(tip, container, x, y);
+    }, [x, y, containerRef]);
 
     return (
         <div ref={tipRef} className={styles.tooltip} style={{ minWidth, maxWidth }}>

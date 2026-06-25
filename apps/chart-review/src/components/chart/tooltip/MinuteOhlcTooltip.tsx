@@ -1,6 +1,7 @@
 "use client";
 
 import { kstHHmm } from "@trade-data-manager/chart-utils";
+import { RISE_COLOR, FALL_COLOR } from "@/lib/colors";
 import { fmtAmount } from "./ThemeRowList";
 
 interface MinuteOhlcTooltipProps {
@@ -19,8 +20,8 @@ interface MinuteOhlcTooltipProps {
 
 /** % 값 색상: 양수 빨강, 음수 파랑, 0 회색. */
 function rateColor(v: number) {
-    if (v > 0) return "#ef4444";
-    if (v < 0) return "#3b82f6";
+    if (v > 0) return RISE_COLOR;
+    if (v < 0) return FALL_COLOR;
     return "#a0a0a0";
 }
 

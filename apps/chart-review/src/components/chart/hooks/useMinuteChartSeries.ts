@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { CandlestickSeries, HistogramSeries, LineStyle, createSeriesMarkers, type AutoscaleInfo, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type Time } from "lightweight-charts";
-import { RISE_COLOR, FALL_COLOR } from "@/lib/colors";
+import { RISE_COLOR, FALL_COLOR, AMOUNT_BAR_COLOR } from "@/lib/colors";
+import { configureAmountPane } from "@/lib/chart/panes";
 
 /**
  * 분봉 차트의 candlestick + amount(histogram) 시리즈를 마운트 시 1회 생성한다.
@@ -48,14 +49,9 @@ export function useMinuteChartSeries(chartRef: React.MutableRefObject<IChartApi 
             priceScaleId: "right",
             priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(0)}억`, minMove: 1 },
             priceLineVisible: false, lastValueVisible: false,
-            color: "rgba(120,120,140,0.5)",
+            color: AMOUNT_BAR_COLOR,
         }, 1);
-        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
-
-        // 캔들 pane : 거래대금 pane = 3 : 1
-        const panes = chart.panes();
-        panes[0].setStretchFactor(3);
-        panes[1].setStretchFactor(1);
+        configureAmountPane(chart);
 
         candleSeriesRef.current = candleSeries;
         amountSeriesRef.current = amountSeries;

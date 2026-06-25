@@ -7,6 +7,7 @@ import type { MinuteCandle, ChartOverlaySeries } from "@/types/chart";
 import { kstHHmm } from "@trade-data-manager/chart-utils";
 import { useUiStore } from "@/stores/useUiStore";
 import { useChartShell } from "./shell/useChartShell";
+import { baseChartOptions } from "./shell/chartOptions";
 import { useCrosshairTooltip } from "./shell/useCrosshairTooltip";
 import { ChartTooltip } from "./tooltip/ChartTooltip";
 import { MinuteTooltip } from "./tooltip/MinuteTooltip";
@@ -49,14 +50,7 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
     const clipEnd = useUiStore((s) => s.minuteClipEnd);
 
     const chartRef = useChartShell(containerRef, () => ({
-        layout: {
-            background: { color: "transparent" }, textColor: "#6b7280", fontSize: 11,
-            panes: { separatorColor: "rgba(0,0,0,0.12)", separatorHoverColor: "rgba(0,0,0,0.2)", enableResize: true },
-        },
-        grid: {
-            vertLines: { color: "rgba(0,0,0,0.04)", style: LineStyle.Dotted },
-            horzLines: { color: "rgba(0,0,0,0.07)", style: LineStyle.Dotted },
-        },
+        ...baseChartOptions(),
         crosshair: {
             mode: CrosshairMode.Normal,
             vertLine: { visible: true, width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dashed, labelVisible: true },
@@ -68,8 +62,6 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
             borderVisible: false, rightOffset: 2,
             tickMarkFormatter: (t: number) => kstHHmm(t),
         },
-        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-        handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
         localization: { locale: "ko-KR", timeFormatter: (t: number) => kstHHmm(t) },
     }));
 
@@ -162,7 +154,6 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
 
             return <MinuteTooltip time={t} rows={[selfRow, ...peerRows]} />;
         },
-        leftOffset: () => chartRef.current?.priceScale("left").width() ?? 0,
     });
 
     // 차트 좌클릭: Ctrl/Meta+클릭 → 툴팁 모드 토글, 그 외 클릭 → 클릭한 봉 시각으로 마커 이동.
@@ -210,7 +201,6 @@ export function RealMinuteChart({ candles, markerTime, themeOverlay, priceLines,
                 x={tipState.x}
                 y={tipState.y}
                 containerRef={containerRef}
-                leftOffset={tipState.leftOffset}
                 minWidth={180}
                 maxWidth={420}
             >

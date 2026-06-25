@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 import { AMOUNT_KRW_TO_EOK } from "@/lib/constants";
+import { RISE_COLOR, FALL_COLOR } from "@/lib/colors";
 
 const AMOUNT_KRW_TO_MAN = 1e4;
 
@@ -34,7 +35,7 @@ export function ThemeRowList({ rows }: Props) {
             <div style={{ color: "#a0a0a0", textAlign: "right" }}>분거래대금</div>
             <div style={{ color: "#a0a0a0", textAlign: "right" }}>누적</div>
             {rows.map((r) => {
-                const rateColor = r.rate >= 0 ? "#ef4444" : "#3b82f6";
+                const rateColor = r.rate >= 0 ? RISE_COLOR : FALL_COLOR;
                 const selfRowStyle: React.CSSProperties = r.isSelf
                     ? { background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.08)" }
                     : {};
