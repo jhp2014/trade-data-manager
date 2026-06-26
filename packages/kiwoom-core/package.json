@@ -19,7 +19,9 @@
         "recon:token": "tsx recon/01-token.ts",
         "recon:daily": "tsx recon/02-daily.ts",
         "recon:minute": "tsx recon/03-minute.ts",
-        "recon:rotation": "tsx recon/04-rotation.ts"
+        "recon:rotation": "tsx recon/04-rotation.ts",
+        "recon:pagination": "tsx recon/05-pagination.ts",
+        "recon:condition": "tsx recon/06-condition.ts"
     },
     "dependencies": {
         "axios": "^1.15.1",

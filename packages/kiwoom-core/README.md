@@ -39,10 +39,12 @@ KIWOOM_WS_URL=wss://...   # WS 쓸 때만
 실제 API 를 때려 원시 응답을 `logs/raw-samples/` 에 적재 → 사람/AI 검수.
 
 ```
-pnpm --filter @trade-data-manager/kiwoom-core recon:token     # 모든 키 토큰 발급 확인
+pnpm --filter @trade-data-manager/kiwoom-core recon:token       # 모든 키 토큰 발급 확인
 pnpm --filter @trade-data-manager/kiwoom-core recon:daily 005930 20260515
 pnpm --filter @trade-data-manager/kiwoom-core recon:minute 005930 20260515
-pnpm --filter @trade-data-manager/kiwoom-core recon:rotation  # 키 로테이션 분포 확인
+pnpm --filter @trade-data-manager/kiwoom-core recon:rotation    # 키 로테이션 분포 확인
+pnpm --filter @trade-data-manager/kiwoom-core recon:pagination  # 연속조회 멀티페이지 + 키핀 검증
+pnpm --filter @trade-data-manager/kiwoom-core recon:condition   # WS 조건검색(CNSRLST→CNSRREQ) [seq]
 ```
 
 ## 테스트
