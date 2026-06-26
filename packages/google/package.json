@@ -4,25 +4,32 @@
     "private": true,
     "type": "module",
     "exports": {
-        "./auth": "./src/auth/index.ts"
+        "./auth": "./src/auth/index.ts",
+        "./sheets": "./src/sheets/index.ts",
+        "./sheets/matrix": "./src/sheets/matrix.ts"
     },
     "scripts": {
         "type-check": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "login": "tsx src/auth/login-cli.ts",
         "recon:auth": "tsx recon/01-auth.ts",
+        "recon:sheets": "tsx recon/02-sheets.ts",
         "clean": "rimraf dist",
         "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",
         "clean:all": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules"
     },
     "dependencies": {
         "dotenv": "^16.4.5",
-        "google-auth-library": "^9.15.1"
+        "google-auth-library": "^9.15.1",
+        "googleapis": "^144.0.0"
     },
     "devDependencies": {
         "@trade-data-manager/tsconfig": "workspace:*",
         "@types/node": "^22.10.0",
         "rimraf": "^6.0.1",
         "tsx": "^4.21.0",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "vitest": "^2.1.9"
     }
 }
