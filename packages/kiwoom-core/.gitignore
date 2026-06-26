@@ -1,0 +1,5 @@
+dist/
+logs/
+.cache/
+.env
+*.tsbuildinfo
