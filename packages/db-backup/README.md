@@ -14,8 +14,9 @@ PostgreSQL 전체 DB를 `pg_dump -Fc` 로 백업하고, **임시 DB에 복구해
 # 백업 (스케줄러도 이 명령을 호출)
 pnpm --filter @trade-data-manager/db-backup backup
 
-# 최초 1회: Google Drive OAuth 로그인 (refresh token 발급 → .env 자동 기록)
-pnpm --filter @trade-data-manager/db-backup exec tsx src/oauth-login.ts
+# 최초 1회: Google OAuth 로그인 (refresh token 발급 → .env 자동 기록)
+# 인증은 @trade-data-manager/google/auth 로 통합됨(본인 계정, Drive+Sheets 공용 토큰)
+pnpm --filter @trade-data-manager/google login
 ```
 
 ## 흐름
@@ -47,8 +48,8 @@ pnpm --filter @trade-data-manager/db-backup exec tsx src/oauth-login.ts
 | `DATABASE_URL` | 원본 DB. host/port/user/password 는 임시 DB 접속에도 재사용 |
 | `BACKUP_LOCAL_DIR` | 생성·검증·로컬 1차 보관 |
 | `PG_BIN_DIR` | `pg_dump`/`pg_restore` 경로 (예: `C:/Program Files/PostgreSQL/17/bin`) |
-| `GDRIVE_OAUTH_CLIENT_ID` / `GDRIVE_OAUTH_CLIENT_SECRET` | GCP OAuth(Desktop) 클라이언트 |
-| `GDRIVE_OAUTH_REFRESH_TOKEN` | `oauth-login.ts` 가 자동 기록 |
+| `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` | GCP OAuth(Desktop) 클라이언트 (기존 `GDRIVE_OAUTH_*` 폴백) |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | `pnpm --filter @trade-data-manager/google login` 이 자동 기록 |
 | `GDRIVE_BACKUP_FOLDER_ID` | 업로드 대상 Drive 폴더 ID |
 
 > - `DATABASE_URL` 계정은 임시 DB 생성을 위해 `CREATEDB`(또는 superuser) 권한이 필요하다.

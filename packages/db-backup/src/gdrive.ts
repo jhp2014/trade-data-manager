@@ -1,19 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import { google, type drive_v3 } from "googleapis";
+import { createOAuthClient } from "@trade-data-manager/google/auth";
 import { config } from "./config";
 
 /**
  * drive.file 스코프: 앱(이 백업 도구)이 만든 파일만 접근.
  * → 목록/삭제가 우리 백업 + manifest 에만 작용하므로 안전하다.
+ * 인증은 @trade-data-manager/google/auth 로 위임(본인 계정 OAuth, drive·sheets 공용 토큰).
  */
 let client: drive_v3.Drive | null = null;
 
 function getDrive(): drive_v3.Drive {
     if (client) return client;
-    const oauth2 = new google.auth.OAuth2(config.gdrive.clientId, config.gdrive.clientSecret);
-    oauth2.setCredentials({ refresh_token: config.gdrive.refreshToken });
-    client = google.drive({ version: "v3", auth: oauth2 });
+    client = google.drive({ version: "v3", auth: createOAuthClient() });
     return client;
 }
 

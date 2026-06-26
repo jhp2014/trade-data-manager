@@ -398,6 +398,9 @@ importers:
 
   packages/db-backup:
     dependencies:
+      '@trade-data-manager/google':
+        specifier: workspace:*
+        version: link:../google
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -417,6 +420,31 @@ importers:
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/google:
+    dependencies:
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
+      google-auth-library:
+        specifier: ^9.15.1
+        version: 9.15.1
+    devDependencies:
+      '@trade-data-manager/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3

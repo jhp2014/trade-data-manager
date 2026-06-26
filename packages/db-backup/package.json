@@ -11,6 +11,7 @@
     "clean:all": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules"
   },
   "dependencies": {
+    "@trade-data-manager/google": "workspace:*",
     "dotenv": "^17.4.2",
     "googleapis": "^144.0.0",
     "pg": "^8.20.0"

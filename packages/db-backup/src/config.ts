@@ -19,11 +19,12 @@ export const config = {
     localDir: required("BACKUP_LOCAL_DIR"),
     /** pg_dump / pg_restore 등 PostgreSQL 클라이언트 도구 경로 */
     pgBinDir: required("PG_BIN_DIR"),
-    /** Google Drive 단방향 업로드 (오프사이트 2차) — OAuth 사용자 인증 */
+    /**
+     * Google Drive 단방향 업로드 (오프사이트 2차).
+     * OAuth 자격/토큰은 @trade-data-manager/google/auth 가 env 에서 자급(GOOGLE_OAUTH_* ← GDRIVE_OAUTH_* 폴백).
+     * 여기 남는 건 백업 도구 고유 설정인 대상 폴더뿐.
+     */
     gdrive: {
-        clientId: required("GDRIVE_OAUTH_CLIENT_ID"),
-        clientSecret: required("GDRIVE_OAUTH_CLIENT_SECRET"),
-        refreshToken: required("GDRIVE_OAUTH_REFRESH_TOKEN"),
         folderId: required("GDRIVE_BACKUP_FOLDER_ID"),
     },
 } as const;
