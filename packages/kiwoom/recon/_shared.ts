@@ -18,9 +18,15 @@ export interface SaveOptions {
     request: unknown;
     response: unknown;
     headers?: unknown;
+    /**
+     * 요약(response)과 별개로 보존할 "있는 그대로의" 전체 데이터.
+     * 넘기면 사이드카 파일 {apiId}-{label}-{ts}.raw.json 에 저장한다(console echo 안 함).
+     * 집계 정찰(예: 08-scan-prune)이 in-memory 로 버리던 raw row 들을 사후 검수용으로 남기는 용도.
+     */
+    raw?: unknown;
 }
 
-/** 탐색 결과를 콘솔 + 파일(logs/raw-samples/{apiId}-{label}-{ts}.json)로 저장. */
+/** 탐색 결과를 콘솔 + 파일(logs/raw-samples/{apiId}-{label}-{ts}.json)로 저장. raw 가 있으면 사이드카(.raw.json)도 같이. */
 export function saveExploration(opts: SaveOptions): string {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     const now = new Date();
@@ -46,6 +52,14 @@ export function saveExploration(opts: SaveOptions): string {
     if (opts.headers) console.log("📬 Headers:", JSON.stringify(opts.headers));
     console.log("📥 Response:", JSON.stringify(opts.response, null, 2));
     console.log("💾 Saved:", filePath);
+
+    // raw 사이드카 — 전체 덤프는 console 에 토하지 않고 파일로만(터미널 가독성 유지), 크기만 한 줄 표시.
+    if (opts.raw !== undefined) {
+        const rawPath = filePath.replace(/\.json$/, ".raw.json");
+        const rawJson = JSON.stringify({ apiId: opts.apiId, label: opts.label, timestamp: now.toISOString(), raw: opts.raw }, null, 2);
+        fs.writeFileSync(rawPath, rawJson, "utf-8");
+        console.log(`🗄️  Raw saved: ${rawPath} (${(Buffer.byteLength(rawJson) / 1024).toFixed(0)} KB)`);
+    }
     console.log("─".repeat(80));
     return filePath;
 }

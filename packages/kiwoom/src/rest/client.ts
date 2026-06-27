@@ -6,6 +6,7 @@ import { KiwoomError } from "../errors.js";
 import { sleep, backoffDelay } from "../util.js";
 import type {
     KiwoomApiResponse,
+    KiwoomKa10099Entry,
     KiwoomKa10100Response,
     KiwoomKa10001Response,
     KiwoomKa10080Response,
@@ -160,6 +161,36 @@ export class KiwoomRest {
     }
 
     // ── 고수준 (연속조회, 한 키에 핀 고정) ───────────────────────────
+
+    /**
+     * [ka10099] 종목정보 리스트 — 연속조회로 전부 수집한 뒤 **개별주식만**(marketName ∈ {거래소,코스닥}) 반환.
+     * ka10099 응답엔 ETF/ETN/리츠/펀드가 섞여 오지만(실측), 이 메서드는 그 정의상 "개별 상장주식"만 준다.
+     * 진짜 raw 전체(ETF/ETN 포함)가 필요하면 저수준 `request("ka10099", ...)` 를 직접 쓸 것.
+     * marketCode: 0=코스피 10=코스닥 (키움 mrkt_tp).
+     */
+    async getStockList(marketCode: string): Promise<KiwoomKa10099Entry[]> {
+        const lease = this.deps.pool.acquire(); // 시퀀스 전체를 한 키에 고정
+        const out: KiwoomKa10099Entry[] = [];
+        let contYn = "N";
+        let nextKey = "";
+        let pages = 0;
+        do {
+            const res = await this.request<{ list?: KiwoomKa10099Entry[] }>(
+                "ka10099",
+                "/api/dostk/stkinfo",
+                { mrkt_tp: marketCode },
+                { lease, contYn, nextKey },
+            );
+            for (const e of res.data.list ?? []) {
+                // 거래소(코스피)·코스닥 = 개별주식. 그 외(ETF/ETN/리츠/인프라/뮤추얼)는 제외.
+                if (e.marketName === "거래소" || e.marketName === "코스닥") out.push(e);
+            }
+            contYn = res.contYn;
+            nextKey = res.nextKey;
+            pages++;
+        } while (contYn === "Y" && nextKey && pages < 50);
+        return out;
+    }
 
     /** 목표 개수를 채울 때까지 일봉 연속조회를 자동 처리. */
     async getDailyChartsByCount(

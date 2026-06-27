@@ -19,6 +19,28 @@ export interface KiwoomKa10100Response {
     regDay: string; // 상장일
 }
 
+/**
+ * [ka10099] 종목정보 리스트 — 시장 전체 종목의 raw 엔트리(필터 없음).
+ * 주의: `kind`·일부 필드는 키움 공식 스펙에 없는 미문서 필드(실측 확인). 어댑터는 거르지 않고 그대로 반환.
+ */
+export interface KiwoomKa10099Entry {
+    code: string; // 종목코드
+    name: string; // 종목명
+    listCount: string; // 상장주식수
+    auditInfo: string; // 감리/관리/거래정지 상태 (※ 익일 새벽~05시 갱신 → 호출 시점 기준 ~T-1 lag)
+    regDay: string; // 상장일
+    lastPrice: string; // 전일종가
+    state: string; // 증거금/신용/거래상태 문자열
+    marketCode: string; // 시장코드
+    marketName: string; // 거래소(코스피)/코스닥/ETF/ETN/리츠 ... — 개별주식 식별에 사용(도메인)
+    upName: string; // 업종명 (ETF/ETN 은 빈값)
+    upSizeName: string; // 대/중/소형주
+    companyClassName: string; // 외국기업/스팩 등
+    orderWarning: string;
+    nxtEnable: string; // NXT 가능여부 (Y/N)
+    kind: string; // 미문서 필드: A=일반주(우선주 포함), Q=ETN
+}
+
 /** [ka10001] 주식기본정보요청 */
 export interface KiwoomKa10001Response {
     stk_cd: string;
@@ -47,7 +69,7 @@ export interface KiwoomKa10081Response {
     stk_dt_pole_chart_qry: Array<{
         cur_prc: string;
         trde_qty: string;
-        trde_prica: string; // 거래대금
+        trde_prica: string; // 거래대금 (단위: 백만원 — 실측 확인. 원화 환산 시 ×1e6)
         dt: string; // 일자
         open_pric: string;
         high_pric: string;

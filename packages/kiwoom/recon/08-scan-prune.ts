@@ -1,12 +1,15 @@
 // 정찰 8: 전종목 일봉 스캔 → 프루닝 후보 측정 (복기 자동스캔 ingest 설계 전제).
-// REPLAY-COLLECTION-PLAN §7 "남은 측정" ①②③⑥ + KRX/NXT·kind=Q 결정 근거를 한 번에.
 // 사용: pnpm --filter @trade-data-manager/kiwoom recon:scan [기준일 YYYYMMDD=20260626]
 // 주의: 라이브 ~4292콜 (~7~10분). 읽기 전용.
+//
+// [설계 결정] 시변 메타데이터(auditInfo: 거래정지/관리/환기, state)로는 제외하지 않는다.
+//   ka10099 의 auditInfo/state 는 익일 새벽(~05시) 갱신이라 호출 시점 기준 항상 ~T-1 상태다(키움 REST Q&A).
+//   → 당일이든 과거 baseDate 든 "그 날짜의 진짜 상태"와 시점이 어긋남. 시점 정확한 "일봉"으로만 거른다(traded & amount>0).
+// [확정] ETF/ETN 누수 제거: ETF(069500 등)·ETN(kind=Q)이 mrkt_tp 0/10 에 섞여 오지만, marketName 으로 깨끗이 갈린다.
+//   실측(20260626): 거래소920+코스닥1822=주식2742, ETF1145·ETN379(=kind Q 379 일치)·리츠23·인프라2·뮤추얼1.
+//   → loadUniverse 에서 marketName ∈ {거래소,코스닥} 만 통과(개별주식). marketNameDiag 진단은 회귀감시용으로 유지.
 import { makeKiwoom, saveExploration, argv, handleError } from "./_shared.js";
 import { silentLogger, type Kiwoom } from "../src/index.js";
-
-// 당일 제외(시변 상태). 백필은 적용 안 함 — §1 참고.
-const EXCLUDE_AUDIT = new Set(["거래정지", "관리종목", "투자주의환기종목"]);
 
 function parseNum(v: unknown): number {
     const n = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));
@@ -19,33 +22,24 @@ function signFromSig(sig: string): number {
     return 0;
 }
 
-interface Univ { code: string; name: string; market: string; kind: string }
+// marketName/upName/companyClassName 은 거르는 데 안 쓰고, ETF/ETN 정체 식별용으로만 보존(아래 진단).
+interface Univ { code: string; name: string; market: string; kind: string; marketName: string; upName: string; companyClassName: string }
 interface DayRow {
     code: string; name: string; kind: string;
     close: number; amount: number; changeRate: number; highRate: number; traded: boolean;
 }
 
+// 유니버스 로드 = 어댑터 getStockList 가 개별주식(marketName ∈ {거래소,코스닥})만 반환 → 그대로 매핑.
+// (ETF/ETN/리츠/펀드 제외는 어댑터가 처리. audit 시변상태는 안 거르고 일봉으로 필터 — 상단 결정.)
 async function loadUniverse(k: Kiwoom): Promise<Univ[]> {
     const out: Univ[] = [];
     for (const [mrkt, mname] of [["0", "KOSPI"], ["10", "KOSDAQ"]] as const) {
-        const lease = k.pool.acquire();
-        let contYn = "N", nextKey = "", pages = 0;
-        do {
-            const res = await k.rest.request<{ list?: any[] }>(
-                "ka10099", "/api/dostk/stkinfo", { mrkt_tp: mrkt }, { lease, contYn, nextKey },
-            );
-            for (const e of res.data.list ?? []) {
-                const audit = String(e.auditInfo ?? "");
-                const cls = String(e.companyClassName ?? "");
-                const name = String(e.name ?? "");
-                const kind = String(e.kind ?? "");
-                if (EXCLUDE_AUDIT.has(audit)) continue;
-                if (kind === "Q") continue; // kind=Q = ETN (코스피 리스트에 섞임). ETF는 별도 시장이라 안 옴.
-                if (cls === "스팩" || name.includes("스팩")) continue;
-                out.push({ code: String(e.code), name, market: mname, kind });
-            }
-            contYn = res.contYn; nextKey = res.nextKey; pages++;
-        } while (contYn === "Y" && nextKey && pages < 50);
+        for (const e of await k.rest.getStockList(mrkt)) {
+            out.push({
+                code: e.code, name: e.name, market: mname, kind: e.kind,
+                marketName: e.marketName, upName: e.upName, companyClassName: e.companyClassName,
+            });
+        }
     }
     return out;
 }
@@ -85,13 +79,20 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
     return out;
 }
 
+/** 문자열 배열 → 값별 카운트(내림차순). 제외 필드 어휘 발굴용. */
+function tally(arr: string[]): Record<string, number> {
+    const m: Record<string, number> = {};
+    for (const v of arr) { const key = v || "(빈값)"; m[key] = (m[key] ?? 0) + 1; }
+    return Object.fromEntries(Object.entries(m).sort((a, b) => b[1] - a[1]));
+}
+
 async function main() {
     const baseDate = argv(2, "20260626");
     const k = makeKiwoom(silentLogger);
 
-    console.log(`[1/3] 유니버스 로드 (ka10099, KOSPI+KOSDAQ, 제외 적용)...`);
+    console.log(`[1/3] 유니버스 로드 (ka10099, marketName ∈ {거래소,코스닥} 개별주식만)...`);
     const univ = await loadUniverse(k);
-    console.log(`  제외 후 ${univ.length}종목`);
+    console.log(`  개별주식 ${univ.length}종목 (ETF/ETN/리츠/펀드 제외)`);
 
     console.log(`[2/3] 일봉 스캔 ${baseDate} — ${univ.length}콜 (concurrency 8)...`);
     const t0 = Date.now();
@@ -115,23 +116,41 @@ async function main() {
         return (rr <= 50 && ar <= 400) || ar <= 100;
     });
     const qInMembers = members.filter((r) => r.kind === "Q").length;
-    // thin 게이너 = 등락률 top50 중 거래대금 rank>400 (등락률 슬롯 점유, §1)
+    // thin 게이너 = 등락률 top50 중 거래대금 rank>400 (등락률 슬롯 점유)
     const thin = byRate.slice(0, 50).filter((r) => amountRank.get(r.code)! > 400);
     // 프루닝 후보수: (거래대금순위 ≤ N) ∪ (고가등락률 ≥ cut)
     const cand = (N: number, cut: number) => traded.filter((r) => amountRank.get(r.code)! <= N || r.highRate >= cut).length;
+
+    // ── ETF/ETN 식별 진단(실측으로 거를 필드 찾기) ──────────────────────────
+    const univByCode = new Map(univ.map((u) => [u.code, u]));
+    const kindDiag = { universe: tally(univ.map((u) => u.kind)), traded: tally(traded.map((r) => r.kind)) };
+    const marketNameDiag = tally(univ.map((u) => u.marketName));
+    const upNameDiag = tally(univ.map((u) => u.upName));
+    // 거래대금 상위 30 에 분류 필드 동반 → 069500(KODEX 200) 등이 어느 필드로 구분되는지 눈으로.
+    const topAmountClassified = byAmount.slice(0, 30).map((r, i) => {
+        const u = univByCode.get(r.code);
+        return { rank: i + 1, code: r.code, name: r.name, amount: r.amount, kind: r.kind, marketName: u?.marketName ?? "", upName: u?.upName ?? "", cls: u?.companyClassName ?? "" };
+    });
 
     console.log("\n📊 분포");
     console.log(`  거래일 데이터: ${traded.length} (전체 ${univ.length})`);
     console.log(`  고가등락률 ≥2%:${cntHigh(2)}  ≥3%:${cntHigh(3)}  ≥5%:${cntHigh(5)}`);
     console.log(`  일거래대금 rank100/400/500 (raw): ${amtAtRank(100)} / ${amtAtRank(400)} / ${amtAtRank(500)}`);
-    console.log(`  ↳ 억 환산(÷1e8): ${(amtAtRank(100) / 1e8).toFixed(0)} / ${(amtAtRank(400) / 1e8).toFixed(0)} / ${(amtAtRank(500) / 1e8).toFixed(0)}`);
-    console.log(`  최상위 거래대금 raw(단위확인용): ${byAmount[0]?.amount} (${byAmount[0]?.name})`);
+    console.log(`  최상위 거래대금: ${byAmount[0]?.amount} 백만원 (${byAmount[0]?.name})`);
     console.log(`  조건(EOD) 멤버수: ${members.length}  (그중 kind=Q: ${qInMembers})`);
     console.log(`  thin 게이너(등락률top50 & 거래대금rank>400): ${thin.length}`);
     console.log("  프루닝 후보수 (거래대금순위 N ∪ 고가등락률 cut):");
     for (const N of [400, 500, 600]) {
         const line = [2, 3, 5].map((cut) => `cut${cut}%=${cand(N, cut)}`).join("  ");
         console.log(`    N=${N}: ${line}`);
+    }
+
+    console.log("\n🔎 ETF/ETN 식별 진단");
+    console.log(`  marketName 분포(universe): ${JSON.stringify(marketNameDiag)}`);
+    console.log(`  kind 분포 — universe: ${JSON.stringify(kindDiag.universe)} / traded: ${JSON.stringify(kindDiag.traded)}`);
+    console.log("  거래대금 상위 15 분류(kind·marketName·upName·cls):");
+    for (const t of topAmountClassified.slice(0, 15)) {
+        console.log(`    #${t.rank} ${t.code} ${t.name} | kind=${t.kind} mkt=${t.marketName} up=${t.upName} cls=${t.cls}`);
     }
 
     console.log(`\n[3/3] 분봉 base_dt 점프 (상위 5 후보)...`);
@@ -151,7 +170,7 @@ async function main() {
     console.log(`\n[+] KRX vs NXT(_AL) 거래대금 비교 (상위 5)...`);
     const nxtCmp: any[] = [];
     for (const r of byAmount.slice(0, 5)) {
-        const al = await fetchDay(k, { code: `${r.code}_AL`, name: r.name, market: "", kind: r.kind }, baseDate);
+        const al = await fetchDay(k, { code: `${r.code}_AL`, name: r.name, market: "", kind: r.kind, marketName: "", upName: "", companyClassName: "" }, baseDate);
         console.log(`  ${r.code} ${r.name}: KRX ${r.amount}  /  _AL ${al?.amount ?? "(실패)"}`);
         nxtCmp.push({ code: r.code, krx: r.amount, al: al?.amount ?? null });
     }
@@ -167,6 +186,10 @@ async function main() {
             topAmountSample: byAmount.slice(0, 3).map((r) => ({ name: r.name, amount: r.amount })),
             conditionMembers: members.length,
             qInMembers,
+            kindDiag,
+            marketNameDiag,
+            upNameDiag,
+            topAmountClassified,
             thinGainers: thin.length,
             pruningCandidates: Object.fromEntries(
                 [400, 500, 600].flatMap((N) => [2, 3, 5].map((cut) => [`N${N}_cut${cut}`, cand(N, cut)])),
@@ -174,8 +197,10 @@ async function main() {
             minuteProbe,
             nxtCmp,
         },
+        // 전체 raw — 사후 검수용(사이드카 .raw.json). 콘솔엔 안 토함.
+        raw: { universe: univ, rows },
     });
-    console.log("\n✅ 끝. logs/raw-samples 에 요약 저장됨.");
+    console.log("\n✅ 끝. logs/raw-samples 에 요약 + raw 사이드카 저장됨.");
 }
 
 main().catch(handleError);

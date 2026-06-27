@@ -92,6 +92,30 @@ describe("KiwoomRest — 페이지네이션은 한 키에 핀 고정", () => {
     });
 });
 
+describe("KiwoomRest — getStockList (ka10099, 개별주식만, 연속조회)", () => {
+    it("전 페이지 합산 + ETF/ETN/리츠 제외(거래소·코스닥만) + 한 키 핀 고정", async () => {
+        const pages = [
+            { list: [mkStk("005930", "삼성전자", "거래소"), mkStk("069500", "KODEX 200", "ETF")], contYn: "Y", nextKey: "k1" },
+            { list: [mkStk("500001", "신한 ETN", "ETN"), mkStk("035720", "카카오", "코스닥"), mkStk("330590", "리츠", "리츠")], contYn: "N", nextKey: "" },
+        ];
+        let i = 0;
+        const { kiwoom, calls } = kiwoomWith(["A", "B", "C"], () => {
+            const p = pages[i++];
+            return { status: 200, data: { list: p.list }, headers: { "cont-yn": p.contYn, "next-key": p.nextKey } };
+        });
+        const entries = await kiwoom.rest.getStockList("0");
+        // 거래소·코스닥만 — ETF/ETN/리츠 제외
+        expect(entries.map((e) => e.code)).toEqual(["005930", "035720"]);
+        expect(entries.map((e) => e.marketName)).toEqual(["거래소", "코스닥"]);
+
+        const listCalls = dataCalls(calls).filter((c) => c.headers["api-id"] === "ka10099");
+        expect(listCalls).toHaveLength(2);
+        expect(listCalls[0].body.mrkt_tp).toBe("0");
+        expect(listCalls[0].headers.authorization).toBe(listCalls[1].headers.authorization); // 핀 고정
+        expect(listCalls[1].headers["next-key"]).toBe("k1");
+    });
+});
+
 describe("KiwoomRest — 분봉 날짜 경계 종료 (NXT 코드 그대로 전달)", () => {
     it("가장 오래된 캔들이 tradeDate 이전이면 1페이지에서 종료", async () => {
         const { kiwoom, calls } = kiwoomWith(["A"], () => ({
@@ -126,6 +150,14 @@ function mkDaily(n: number) {
         pred_pre: "+100",
         pred_pre_sig: "2",
     }));
+}
+
+function mkStk(code: string, name: string, marketName: string) {
+    return {
+        code, name, listCount: "1000", auditInfo: "정상", regDay: "20100101", lastPrice: "100",
+        state: "증거금100%", marketCode: "0", marketName, upName: "", upSizeName: "", companyClassName: "",
+        orderWarning: "0", nxtEnable: "N", kind: "A",
+    };
 }
 
 function mkMinute(cntr_tm: string) {
