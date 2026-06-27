@@ -19,7 +19,7 @@ const ENV_VAR = "GOOGLE_OAUTH_REFRESH_TOKEN";
 const LEGACY_ENV_VAR = "GDRIVE_OAUTH_REFRESH_TOKEN";
 
 /**
- * 기본 저장소(패키지-로컬 .env 기반, kiwoom-core 와 동일 규약).
+ * 기본 저장소(패키지-로컬 .env 기반, kiwoom 와 동일 규약).
  * - load: env(GOOGLE_OAUTH_REFRESH_TOKEN, 없으면 legacy GDRIVE_OAUTH_REFRESH_TOKEN — db-backup 전환기 브리지)
  *         — 클라우드에선 플랫폼 주입 env 가 그대로 읽힘.
  * - save: packages/google/.env 에 GOOGLE_OAUTH_REFRESH_TOKEN 기록(로컬 발급 전용). 값은 process.env 에도 즉시 반영.

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createKiwoom, type Kiwoom, type Logger } from "../src/index.js";
 
-// 환경변수 로딩은 패키지가 자급자족(createKiwoom 이 packages/kiwoom-core/.env 자동 로드).
+// 환경변수 로딩은 패키지가 자급자족(createKiwoom 이 packages/kiwoom/.env 자동 로드).
 // recon 은 "아무것도 모르는 첫 소비자" 역할 → 부품이 혼자 도는지 증명한다.
 export function makeKiwoom(logger?: Logger): Kiwoom {
     return createKiwoom(logger ? { logger } : {});

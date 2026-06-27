@@ -1,4 +1,4 @@
-// @trade-data-manager/kiwoom-core — 두 앱(market-eye, trade-data-manager) 공통 키움 API 레이어.
+// @trade-data-manager/kiwoom — 두 앱(market-eye, trade-data-manager) 공통 키움 API 레이어.
 // 기본 진입점은 REST + 토큰/풀. WebSocket 은 './ws' 서브경로로 분리(REST 전용 소비자가 ws 의존성 안 끌어오게).
 
 export { KiwoomError } from "./errors.js";

@@ -1,4 +1,4 @@
-// '@trade-data-manager/kiwoom-core/ws' — WebSocket 진입점.
+// '@trade-data-manager/kiwoom/ws' — WebSocket 진입점.
 // REST 전용 소비자(배치/파이프라인)가 'ws' 패키지 의존성을 끌어오지 않도록 메인 index 와 분리.
 export { KiwoomWs, type KiwoomWsOptions, type ConnectionStatus } from "./ws/client.js";
 export {

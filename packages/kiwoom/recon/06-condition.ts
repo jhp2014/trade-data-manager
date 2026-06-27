@@ -1,7 +1,7 @@
 // 정찰 6: WebSocket 조건검색 실측 (CNSRLST 목록 → CNSRREQ 검색).
 // connect → LOGIN → 조건식 목록조회 → 첫 조건식(또는 인자 seq) 1회 검색.
 // 모든 프레임은 logs/raw-samples/ws-condition-<ts>.jsonl 로 적재된다.
-// 사용: pnpm --filter @trade-data-manager/kiwoom-core recon:condition [seq]
+// 사용: pnpm --filter @trade-data-manager/kiwoom recon:condition [seq]
 // 정본 프로토콜: market-eye/recon/02-condition-list.ts + 03-condition-search.ts
 import { makeKiwoom } from "./_shared.js";
 import { createKiwoomWs } from "../src/ws.js";

@@ -6,7 +6,7 @@ import { packageRoot } from "./paths.js";
 let envLoaded = false;
 
 /**
- * 패키지 자체 .env(packages/kiwoom-core/.env)를 1회 로드한다.
+ * 패키지 자체 .env(packages/kiwoom/.env)를 1회 로드한다.
  * dotenv 기본 동작대로 이미 설정된 process.env 는 덮지 않으므로,
  * VPS/CI 등에서 실제 환경변수를 주면 그게 우선한다(패키지 .env 는 default).
  * 소비자는 이 함수를 직접 부를 필요 없음 — createKiwoom() 이 알아서 호출.

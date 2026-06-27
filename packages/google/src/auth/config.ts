@@ -5,7 +5,7 @@ import { packageRoot } from "../paths.js";
 let envLoaded = false;
 
 /**
- * 이 패키지 자체 .env(packages/google/.env)를 1회 로드한다(kiwoom-core 와 동일 규약).
+ * 이 패키지 자체 .env(packages/google/.env)를 1회 로드한다(kiwoom 와 동일 규약).
  * → 소비 앱은 Google 설정을 몰라도 됨: createOAuthClient() 등이 여기서 자급한다.
  * dotenv 기본 동작대로 이미 설정된 process.env 는 덮지 않으므로,
  * VPS/CI 등에서 실제 환경변수를 주면 그게 우선한다(파일은 default).

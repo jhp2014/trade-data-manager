@@ -1,5 +1,5 @@
 // 정찰 1: 모든 자격증명의 접근토큰 발급 확인 (멀티키 검수)
-// 사용: pnpm --filter @trade-data-manager/kiwoom-core recon:token
+// 사용: pnpm --filter @trade-data-manager/kiwoom recon:token
 import { makeKiwoom, handleError } from "./_shared.js";
 
 async function main() {

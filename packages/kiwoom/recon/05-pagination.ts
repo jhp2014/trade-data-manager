@@ -1,7 +1,7 @@
 // 정찰 5: 연속조회(페이지네이션) + 키핀 실측.
 // getDailyChartsByCount / getMinuteChartsForDate 가 여러 페이지를 cont-yn/next-key 로
 // 안전하게 이어받는지, 시퀀스 전체가 한 키에 핀 고정되는지 실 API 로 확인한다.
-// 사용: pnpm --filter @trade-data-manager/kiwoom-core recon:pagination [종목코드] [거래일YYYYMMDD]
+// 사용: pnpm --filter @trade-data-manager/kiwoom recon:pagination [종목코드] [거래일YYYYMMDD]
 import { makeKiwoom, saveExploration, argv, today, handleError } from "./_shared.js";
 import { consoleLogger, type Logger } from "../src/index.js";
 

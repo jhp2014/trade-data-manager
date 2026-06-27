@@ -1,5 +1,5 @@
 {
-    "name": "@trade-data-manager/kiwoom-core",
+    "name": "@trade-data-manager/kiwoom",
     "version": "1.0.0",
     "private": true,
     "type": "module",
@@ -21,7 +21,9 @@
         "recon:minute": "tsx recon/03-minute.ts",
         "recon:rotation": "tsx recon/04-rotation.ts",
         "recon:pagination": "tsx recon/05-pagination.ts",
-        "recon:condition": "tsx recon/06-condition.ts"
+        "recon:condition": "tsx recon/06-condition.ts",
+        "recon:stocklist": "tsx recon/07-stocklist.ts",
+        "recon:scan": "tsx recon/08-scan-prune.ts"
     },
     "dependencies": {
         "axios": "^1.15.1",

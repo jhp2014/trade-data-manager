@@ -1,6 +1,6 @@
 // 정찰 4: 라운드로빈 키 로테이션 검수.
 // 여러 종목을 단발 조회하며 각 호출이 어느 자격증명으로 나갔는지 콘솔에 보여준다.
-// 사용: pnpm --filter @trade-data-manager/kiwoom-core recon:rotation [종목코드...]
+// 사용: pnpm --filter @trade-data-manager/kiwoom recon:rotation [종목코드...]
 import { makeKiwoom, handleError } from "./_shared.js";
 import { consoleLogger, type Logger } from "../src/index.js";
 

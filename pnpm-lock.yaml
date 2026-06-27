@@ -461,7 +461,7 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.19.17)(jsdom@29.1.1)
 
-  packages/kiwoom-core:
+  packages/kiwoom:
     dependencies:
       axios:
         specifier: ^1.15.1

@@ -15,7 +15,7 @@
 
 ## 설정 (최초 1회)
 
-이 패키지는 자기 `.env` 를 자급한다(kiwoom-core 와 동일 규약). 소비 앱은 Google 설정을 안 가져도 된다.
+이 패키지는 자기 `.env` 를 자급한다(kiwoom 와 동일 규약). 소비 앱은 Google 설정을 안 가져도 된다.
 
 ```bash
 # 1) 계약 파일 복사 후 client id/secret 기입
