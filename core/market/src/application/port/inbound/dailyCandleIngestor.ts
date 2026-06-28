@@ -1,5 +1,6 @@
 // Inbound(driving) 포트 — 일봉 ingest 유스케이스. 앱·CLI·크론이 종목 1개 단위로 호출한다.
-import type { DateRange } from "../outbound/dailyCandleProvider.js";
+// DateRange 는 도메인 값객체에서 가져온다(inbound 가 outbound 를 의존하지 않게).
+import type { DateRange } from "../../../domain/index.js";
 
 export interface DailyIngestResult {
     stockCode: string;

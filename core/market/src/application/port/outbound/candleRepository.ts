@@ -1,5 +1,4 @@
-import type { DailyCandle, MinuteCandle } from "../../../domain/index.js";
-import type { DateRange } from "./dailyCandleProvider.js";
+import type { DailyCandle, DateRange, MinuteCandle } from "../../../domain/index.js";
 
 /**
  * 일봉 저장/조회 포트(ISP — 일봉 능력만). 구현은 infra/db(Drizzle).

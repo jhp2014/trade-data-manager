@@ -1,10 +1,4 @@
-import type { DailyCandle } from "../../../domain/index.js";
-
-/** 일봉 조회 기간. YYYY-MM-DD, 양끝 포함(inclusive). */
-export interface DateRange {
-    from: string;
-    to: string;
-}
+import type { DailyCandle, DateRange } from "../../../domain/index.js";
 
 /**
  * 일봉 제공 포트(ISP — 일봉 능력만).

@@ -1,10 +1,9 @@
 // 복기 ingest 유스케이스 구현. 종목 1개 단위(전종목 스윕은 앱/크론 책임).
 // 생성자 주입(수동 DI): provider·repository 는 포트 인터페이스만 안다.
-import type { DailyBar, DailyCandle } from "../../domain/index.js";
+import type { DailyBar, DailyCandle, DateRange } from "../../domain/index.js";
 import type {
     DailyCandleProvider,
     DailyCandleRepository,
-    DateRange,
     MinuteCandleProvider,
     MinuteCandleRepository,
 } from "../port/outbound/index.js";

@@ -1,11 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { MarketDataIngestService } from "../marketDataIngestService.js";
 import { defaultDailyRange } from "../dailyRange.js";
-import type { DailyBar, DailyCandle, MinuteCandle } from "../../../domain/index.js";
+import type { DailyBar, DailyCandle, DateRange, MinuteCandle } from "../../../domain/index.js";
 import type {
     DailyCandleProvider,
     DailyCandleRepository,
-    DateRange,
     MinuteCandleProvider,
     MinuteCandleRepository,
 } from "../../port/outbound/index.js";

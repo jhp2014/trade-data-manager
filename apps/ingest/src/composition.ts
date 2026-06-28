@@ -15,10 +15,15 @@ import {
     DrizzleDailyCandleRepository,
     DrizzleMinuteCandleRepository,
 } from "@trade-data-manager/persistence";
-import { MarketDataIngestService } from "@trade-data-manager/market";
+import {
+    MarketDataIngestService,
+    type DailyCandleIngestor,
+    type MinuteCandleIngestor,
+} from "@trade-data-manager/market";
 
 export interface IngestRuntime {
-    ingest: MarketDataIngestService;
+    /** 호출자는 유스케이스(inbound 포트)만 본다 — 구현 클래스에 묶이지 않는다. */
+    ingest: DailyCandleIngestor & MinuteCandleIngestor;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
