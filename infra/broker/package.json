@@ -14,7 +14,8 @@
         "test:watch": "vitest",
         "clean": "rimraf dist",
         "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",
-        "recon:minute-compare": "tsx recon/01-minute-compare.ts"
+        "recon:minute-compare": "tsx recon/01-minute-compare.ts",
+        "recon:minute-depth": "tsx recon/02-minute-depth.ts"
     },
     "dependencies": {
         "@trade-data-manager/market": "workspace:*",
