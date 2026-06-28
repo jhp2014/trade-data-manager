@@ -35,7 +35,7 @@ describe("DrizzleStockMasterRepository (pglite)", () => {
         const rows = await t.db.select().from(stockMaster).where(eq(stockMaster.stockCode, "005930"));
         expect(rows).toHaveLength(1);
         expect(rows[0].name).toBe("삼성전자"); // 갱신
-        expect(rows[0].ipoPrice).toBe("30000"); // 보존(null 로 안 덮임)
+        expect(rows[0].ipoPrice).toBe(30000); // 보존(null 로 안 덮임). ipo_price=integer → number
     });
 
     it("삭제 없이 누적 — 다른 종목 추가해도 기존 행 유지", async () => {

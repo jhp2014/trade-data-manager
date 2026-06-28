@@ -1,5 +1,5 @@
 {
-  "id": "11c790bb-e8f6-4b78-aad4-3300a9415b25",
+  "id": "d7bc9add-c252-43f1-9719-2bac15d65cb2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -22,73 +22,73 @@
         },
         "open_krx": {
           "name": "open_krx",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "high_krx": {
           "name": "high_krx",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "low_krx": {
           "name": "low_krx",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "close_krx": {
           "name": "close_krx",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "volume_krx": {
           "name": "volume_krx",
-          "type": "numeric(20, 0)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "amount_krx": {
           "name": "amount_krx",
-          "type": "numeric(22, 0)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "open_un": {
           "name": "open_un",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "high_un": {
           "name": "high_un",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "low_un": {
           "name": "low_un",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "close_un": {
           "name": "close_un",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "volume_un": {
           "name": "volume_un",
-          "type": "numeric(20, 0)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "amount_un": {
           "name": "amount_un",
-          "type": "numeric(22, 0)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -158,7 +158,7 @@
         },
         "market_cap": {
           "name": "market_cap",
-          "type": "numeric(22, 0)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -203,101 +203,73 @@
         },
         "open_un": {
           "name": "open_un",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "high_un": {
           "name": "high_un",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "low_un": {
           "name": "low_un",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "close_un": {
           "name": "close_un",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "volume_un": {
           "name": "volume_un",
-          "type": "numeric(20, 0)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "open_krx": {
           "name": "open_krx",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
         "high_krx": {
           "name": "high_krx",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
         "low_krx": {
           "name": "low_krx",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
         "close_krx": {
           "name": "close_krx",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
         "volume_krx": {
           "name": "volume_krx",
-          "type": "numeric(20, 0)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }
       },
-      "indexes": {
-        "idx_minute_candles_search": {
-          "name": "idx_minute_candles_search",
-          "columns": [
-            {
-              "expression": "stock_code",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "trade_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "trade_time",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "minute_candles_trade_date_stock_code_trade_time_pk": {
-          "name": "minute_candles_trade_date_stock_code_trade_time_pk",
+        "minute_candles_stock_code_trade_date_trade_time_pk": {
+          "name": "minute_candles_stock_code_trade_date_trade_time_pk",
           "columns": [
-            "trade_date",
             "stock_code",
+            "trade_date",
             "trade_time"
           ]
         }
@@ -337,7 +309,7 @@
         },
         "ipo_price": {
           "name": "ipo_price",
-          "type": "numeric(18, 0)",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         }

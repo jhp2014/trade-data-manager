@@ -2,7 +2,12 @@
 // 설계 원칙(잠금): 본질(OHLCV)만 저장, 파생값(분봉거래대금·누적·등락률·전일종가·시총)은 저장 안 함 →
 //   읽을 때 도메인 순수함수(core/market price.ts)로 계산. FK 없음(무결성은 ingest 가 (종목,날) 단위로 관리).
 //   자연키 composite PK. 시총은 별 테이블(자가치유 일봉 overwrite 가 안 닿게).
-import { pgSchema, varchar, date, time, numeric, primaryKey, index } from "drizzle-orm/pg-core";
+//
+// 수치 표현(잠금): 한국 주가/수량/금액은 전부 정수(원·주). 가격류는 integer(원 단가는 int 범위 안전),
+//   수량·금액류는 bigint 로 저장한다(과거 numeric → 행/인덱스 축소 + 비교/집계 가속). 도메인은 여전히
+//   무손실 string 계약이므로(model.ts) 매퍼 경계에서만 integer↔Number / bigint↔String 변환한다.
+//   bigint 는 mode:"bigint"(네이티브 BigInt) — string 왕복이 무손실.
+import { pgSchema, varchar, date, time, integer, bigint, primaryKey, index } from "drizzle-orm/pg-core";
 
 export const market = pgSchema("market");
 
@@ -13,19 +18,19 @@ export const dailyCandles = market.table(
         tradeDate: date("trade_date").notNull(),
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
 
-        openKrx: numeric("open_krx", { precision: 18, scale: 0 }).notNull(),
-        highKrx: numeric("high_krx", { precision: 18, scale: 0 }).notNull(),
-        lowKrx: numeric("low_krx", { precision: 18, scale: 0 }).notNull(),
-        closeKrx: numeric("close_krx", { precision: 18, scale: 0 }).notNull(),
-        volumeKrx: numeric("volume_krx", { precision: 20, scale: 0 }).notNull(),
-        amountKrx: numeric("amount_krx", { precision: 22, scale: 0 }).notNull(),
+        openKrx: integer("open_krx").notNull(),
+        highKrx: integer("high_krx").notNull(),
+        lowKrx: integer("low_krx").notNull(),
+        closeKrx: integer("close_krx").notNull(),
+        volumeKrx: bigint("volume_krx", { mode: "bigint" }).notNull(),
+        amountKrx: bigint("amount_krx", { mode: "bigint" }).notNull(),
 
-        openUn: numeric("open_un", { precision: 18, scale: 0 }).notNull(),
-        highUn: numeric("high_un", { precision: 18, scale: 0 }).notNull(),
-        lowUn: numeric("low_un", { precision: 18, scale: 0 }).notNull(),
-        closeUn: numeric("close_un", { precision: 18, scale: 0 }).notNull(),
-        volumeUn: numeric("volume_un", { precision: 20, scale: 0 }).notNull(),
-        amountUn: numeric("amount_un", { precision: 22, scale: 0 }).notNull(),
+        openUn: integer("open_un").notNull(),
+        highUn: integer("high_un").notNull(),
+        lowUn: integer("low_un").notNull(),
+        closeUn: integer("close_un").notNull(),
+        volumeUn: bigint("volume_un", { mode: "bigint" }).notNull(),
+        amountUn: bigint("amount_un", { mode: "bigint" }).notNull(),
     },
     (t) => [
         primaryKey({ columns: [t.tradeDate, t.stockCode] }),
@@ -36,6 +41,10 @@ export const dailyCandles = market.table(
 
 // 2. 분봉 — UN(항상 존재) + KRX(nullable: 프리마켓/시간외 NXT단독엔 KRX 부재). (date,stock,time) 자연키.
 //    파생(amount·누적·rate) 없음. FK 없음. 적재 단위 = (종목, 하루).
+//    PK = (stockCode, tradeDate, tradeTime): 읽기는 "한 종목의 하루"(stock+date prefix, time 정렬)라 PK 가
+//    커버 → 별도 인덱스 불필요. date-only 존재조회는 파티션 프루닝이 대체.
+//    물리: trade_date RANGE 월별 파티션(대용량). 파티셔닝/파티션생성은 drizzle 로 표현 불가라
+//    마이그레이션 SQL 에서 수작업(이 스키마는 타입/쿼리용 부모 뷰). PK 에 파티션키(trade_date) 포함 필수.
 export const minuteCandles = market.table(
     "minute_candles",
     {
@@ -43,22 +52,19 @@ export const minuteCandles = market.table(
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
         tradeTime: time("trade_time").notNull(),
 
-        openUn: numeric("open_un", { precision: 18, scale: 0 }).notNull(),
-        highUn: numeric("high_un", { precision: 18, scale: 0 }).notNull(),
-        lowUn: numeric("low_un", { precision: 18, scale: 0 }).notNull(),
-        closeUn: numeric("close_un", { precision: 18, scale: 0 }).notNull(),
-        volumeUn: numeric("volume_un", { precision: 20, scale: 0 }).notNull(),
+        openUn: integer("open_un").notNull(),
+        highUn: integer("high_un").notNull(),
+        lowUn: integer("low_un").notNull(),
+        closeUn: integer("close_un").notNull(),
+        volumeUn: bigint("volume_un", { mode: "bigint" }).notNull(),
 
-        openKrx: numeric("open_krx", { precision: 18, scale: 0 }),
-        highKrx: numeric("high_krx", { precision: 18, scale: 0 }),
-        lowKrx: numeric("low_krx", { precision: 18, scale: 0 }),
-        closeKrx: numeric("close_krx", { precision: 18, scale: 0 }),
-        volumeKrx: numeric("volume_krx", { precision: 20, scale: 0 }),
+        openKrx: integer("open_krx"),
+        highKrx: integer("high_krx"),
+        lowKrx: integer("low_krx"),
+        closeKrx: integer("close_krx"),
+        volumeKrx: bigint("volume_krx", { mode: "bigint" }),
     },
-    (t) => [
-        primaryKey({ columns: [t.tradeDate, t.stockCode, t.tradeTime] }),
-        index("idx_minute_candles_search").on(t.stockCode, t.tradeDate, t.tradeTime),
-    ],
+    (t) => [primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime] })],
 );
 
 // 3. 종목 마스터 — 준정적(덮어쓰기). market = 거래소/코스닥(개별주식). ipoPrice = 공모가(최근상장만).
@@ -67,7 +73,7 @@ export const stockMaster = market.table("stock_master", {
     name: varchar("name", { length: 100 }).notNull(),
     market: varchar("market", { length: 20 }).notNull(),
     listingDate: date("listing_date"),
-    ipoPrice: numeric("ipo_price", { precision: 18, scale: 0 }),
+    ipoPrice: integer("ipo_price"),
 });
 
 // 4. 당일 시총 — 별 테이블(자가치유 일봉 overwrite 가 안 닿게). 시총 = 원주가 KRX_close(D-1) × shares(D).
@@ -76,7 +82,7 @@ export const dailyMarketCap = market.table(
     {
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
         tradeDate: date("trade_date").notNull(),
-        marketCap: numeric("market_cap", { precision: 22, scale: 0 }).notNull(),
+        marketCap: bigint("market_cap", { mode: "bigint" }).notNull(),
     },
     (t) => [primaryKey({ columns: [t.stockCode, t.tradeDate] })],
 );
