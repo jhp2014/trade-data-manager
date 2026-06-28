@@ -20,9 +20,11 @@ import {
 import {
     MarketDataIngestService,
     StockMasterIngestService,
+    DailyCandidateService,
     type DailyCandleIngestor,
     type MinuteCandleIngestor,
     type StockMasterIngestor,
+    type DailyCandidateSelector,
 } from "@trade-data-manager/market";
 
 export interface IngestRuntime {
@@ -30,6 +32,8 @@ export interface IngestRuntime {
     ingest: DailyCandleIngestor & MinuteCandleIngestor;
     /** 유니버스/종목마스터 수집(라이브 ka10099 → stock_master upsert + 스윕용 코드 리스트). */
     universe: StockMasterIngestor;
+    /** 프루닝 — 한 거래일 전종목 일봉 → 분봉 수집 후보. */
+    candidates: DailyCandidateSelector;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -64,9 +68,13 @@ export function createIngestRuntime(): IngestRuntime {
         repository: new DrizzleStockMasterRepository(db),
     });
 
+    // 프루닝 = 같은 일봉 리포(DailyScanRepository 도 구현)로 날짜별 전종목 스캔.
+    const candidates = new DailyCandidateService({ scanRepo: dailyRepo });
+
     return {
         ingest,
         universe,
+        candidates,
         close: async () => {
             await pool.end();
         },

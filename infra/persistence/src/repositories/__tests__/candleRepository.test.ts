@@ -57,6 +57,29 @@ describe("Drizzle candle repositories (pglite)", () => {
         expect(await daily.getEarliestDailyDate("000660")).toBe("2024-12-30");
     });
 
+    it("스캔: listDailyCandlesByDate(전종목) + getPreviousTradingDate(직전 거래일)", async () => {
+        // 격리용 미래 날짜. 같은 날 2종목, 직전 거래일 1개.
+        const mk = (code: string, date: string): DailyCandle => ({
+            stockCode: code,
+            date,
+            krx: dailyBar("100"),
+            un: dailyBar("100"),
+        });
+        await daily.saveDailyCandles([
+            mk("900001", "2031-03-03"),
+            mk("900001", "2031-03-05"),
+            mk("900002", "2031-03-05"),
+        ]);
+
+        const onDay = await daily.listDailyCandlesByDate("2031-03-05");
+        expect(onDay.map((c) => c.stockCode).sort()).toEqual(["900001", "900002"]);
+
+        // 2031-03-05 직전 데이터 있는 날 = 2031-03-03
+        expect(await daily.getPreviousTradingDate("2031-03-05")).toBe("2031-03-03");
+        // 그 이전이 없는 날 → null (전체 최古보다 과거)
+        expect(await daily.getPreviousTradingDate("2000-01-01")).toBeNull();
+    });
+
     it("분봉 save→get + KRX nullable(프리마켓) 보존 + 시간 오름차순", async () => {
         const rows: MinuteCandle[] = [
             // 09:00 = KRX+UN 둘 다

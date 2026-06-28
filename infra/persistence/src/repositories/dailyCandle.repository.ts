@@ -1,7 +1,8 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, lte } from "drizzle-orm";
 import type {
     DailyCandle,
     DailyCandleRepository,
+    DailyScanRepository,
     DateRange,
 } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
@@ -11,8 +12,8 @@ import { buildConflictUpdateSet } from "./_helpers.js";
 
 const CONFLICT_SET = buildConflictUpdateSet(dailyCandles, ["tradeDate", "stockCode"]);
 
-/** Drizzle 구현 — (tradeDate, stockCode) 자연키 upsert + 범위/단건 조회. */
-export class DrizzleDailyCandleRepository implements DailyCandleRepository {
+/** Drizzle 구현 — 종목별 ingest(DailyCandleRepository) + 날짜별 전종목 스캔(DailyScanRepository). 같은 daily_candles. */
+export class DrizzleDailyCandleRepository implements DailyCandleRepository, DailyScanRepository {
     constructor(private readonly db: Database) {}
 
     async saveDailyCandles(candles: DailyCandle[]): Promise<void> {
@@ -56,6 +57,26 @@ export class DrizzleDailyCandleRepository implements DailyCandleRepository {
             .from(dailyCandles)
             .where(eq(dailyCandles.stockCode, stockCode))
             .orderBy(asc(dailyCandles.tradeDate))
+            .limit(1);
+        return rows[0]?.tradeDate ?? null;
+    }
+
+    // --- DailyScanRepository (날짜별 전종목 스캔) ---
+
+    async listDailyCandlesByDate(date: string): Promise<DailyCandle[]> {
+        const rows = await this.db
+            .select()
+            .from(dailyCandles)
+            .where(eq(dailyCandles.tradeDate, date));
+        return rows.map(rowToDailyCandle);
+    }
+
+    async getPreviousTradingDate(date: string): Promise<string | null> {
+        const rows = await this.db
+            .select({ tradeDate: dailyCandles.tradeDate })
+            .from(dailyCandles)
+            .where(lt(dailyCandles.tradeDate, date))
+            .orderBy(desc(dailyCandles.tradeDate))
             .limit(1);
         return rows[0]?.tradeDate ?? null;
     }
