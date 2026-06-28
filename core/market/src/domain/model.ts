@@ -27,14 +27,18 @@ export interface MinuteBar {
     volume: string;
 }
 
-/** 한 종목·한 거래일의 일봉. KRX·UN 두 바를 함께 가진다. */
+/**
+ * 한 종목·한 거래일의 일봉. KRX·UN 두 바를 가진다.
+ * 등락률 기준가(전일종가)는 모델에 두지 않는다 — 직전 거래일 캔들의 close 를
+ * 애플리케이션/리포지토리가 조회해 계산(computeChangeRate)에 넣는다.
+ * (소스 prevClose 는 KIS=KRX 고정·키움=조회모드별 상이라 신뢰 불가. 우리 직전 캔들에서
+ *  시장별로 파생하는 편이 일관·정확하다.)
+ */
 export interface DailyCandle {
     stockCode: string;
     date: string; // YYYY-MM-DD
     krx: DailyBar;
     un: DailyBar;
-    /** 전일종가(등락률 기준). 소스가 캔들과 함께 내려주는 값. 없으면 null. */
-    prevClose: { krx: string | null; un: string | null };
 }
 
 /** 한 종목·한 거래일·한 시각의 분봉. KRX·UN 두 바를 함께 가진다. */
