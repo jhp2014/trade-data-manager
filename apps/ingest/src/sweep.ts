@@ -60,14 +60,7 @@ export async function collectDate(
     date: string,
     opts: { poolLimit?: number; concurrency?: number } = {},
 ): Promise<void> {
-    const latest = await rt.latestDailyDate();
-    if (latest === null || latest < date) {
-        console.log(`▶ 일봉 커버리지(${latest ?? "없음"}) < ${date} → 전종목 일봉 먼저 수집`);
-        const d = await sweepDailyCandles(rt, { concurrency: opts.concurrency });
-        console.log(`  일봉 ${d.ok}/${d.total} (실패 ${d.failed.length})`);
-    } else {
-        console.log(`▶ 일봉 커버리지 OK (최신 ${latest} ≥ ${date}) — 일봉 수집 생략`);
-    }
+    await ensureDailyCoverage(rt, date, opts.concurrency);
 
     const r = await rt.minuteSweep.sweepMinutesForDate(date, {
         poolLimit: opts.poolLimit,
@@ -90,7 +83,31 @@ export interface MonthSweepResult {
     totalStored: number;
 }
 
-/** 한 달의 모든 거래일에 대해 분봉 스윕. 비거래일/일봉 없는 날은 poolSize 0 으로 자연 스킵. */
+/** 일봉 커버리지가 목표일에 못 미치면 전종목 일봉을 1회 선행수집. 덮으면 생략. (collect 류 공용) */
+async function ensureDailyCoverage(rt: IngestRuntime, throughDate: string, concurrency?: number): Promise<void> {
+    const latest = await rt.latestDailyDate();
+    if (latest === null || latest < throughDate) {
+        console.log(`▶ 일봉 커버리지(${latest ?? "없음"}) < ${throughDate} → 전종목 일봉 먼저 수집`);
+        const d = await sweepDailyCandles(rt, { concurrency });
+        console.log(`  일봉 ${d.ok}/${d.total} (실패 ${d.failed.length})`);
+    } else {
+        console.log(`▶ 일봉 커버리지 OK (최신 ${latest} ≥ ${throughDate}) — 일봉 수집 생략`);
+    }
+}
+
+/** 한 달 전체 파이프라인 — 일봉 커버리지 보장(1회) 후 그 달 모든 거래일 분봉 스윕. */
+export async function collectMonth(
+    rt: IngestRuntime,
+    yearMonth: string,
+    opts: { poolLimit?: number; concurrency?: number } = {},
+): Promise<MonthSweepResult> {
+    const dates = enumerateMonthDates(yearMonth);
+    // 그 달 말일까지 일봉이 닿아야 전 거래일 프루닝 가능 → 말일 기준으로 커버리지 보장.
+    await ensureDailyCoverage(rt, dates[dates.length - 1], opts.concurrency);
+    return sweepMinuteMonth(rt, yearMonth, opts);
+}
+
+/** 한 달의 모든 거래일에 대해 분봉 스윕(일봉 보장 안 함 — 저수준). 비거래일/일봉 없는 날은 poolSize 0 으로 자연 스킵. */
 export async function sweepMinuteMonth(
     rt: IngestRuntime,
     yearMonth: string,
