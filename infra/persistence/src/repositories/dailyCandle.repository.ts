@@ -80,4 +80,13 @@ export class DrizzleDailyCandleRepository implements DailyCandleRepository, Dail
             .limit(1);
         return rows[0]?.tradeDate ?? null;
     }
+
+    async getLatestDailyDate(): Promise<string | null> {
+        const rows = await this.db
+            .select({ tradeDate: dailyCandles.tradeDate })
+            .from(dailyCandles)
+            .orderBy(desc(dailyCandles.tradeDate))
+            .limit(1);
+        return rows[0]?.tradeDate ?? null;
+    }
 }

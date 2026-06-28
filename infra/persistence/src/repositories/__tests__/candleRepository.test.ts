@@ -78,6 +78,8 @@ describe("Drizzle candle repositories (pglite)", () => {
         expect(await daily.getPreviousTradingDate("2031-03-05")).toBe("2031-03-03");
         // 그 이전이 없는 날 → null (전체 최古보다 과거)
         expect(await daily.getPreviousTradingDate("2000-01-01")).toBeNull();
+        // 전체 최신 일봉일 = 방금 넣은 2031-03-05
+        expect(await daily.getLatestDailyDate()).toBe("2031-03-05");
     });
 
     it("분봉 save→get + KRX nullable(프리마켓) 보존 + 시간 오름차순", async () => {

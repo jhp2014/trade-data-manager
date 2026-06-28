@@ -7,10 +7,13 @@
 //   start candidates-range <from> <to>    기간 날짜별 후보 수 분포(읽기 전용, API 안 침)
 //   start sweep-minute <YYYY-MM-DD> [poolLimit]  그날 pool 분봉 수집 → 선별 적재(3단계)
 //   start sweep-month <YYYY-MM> [poolLimit] [conc]  그 달 모든 거래일 분봉 수집
+//   start collect <YYYY-MM-DD> [poolLimit] [conc]   날짜 하나 = 일봉커버리지 확인+분봉 파이프라인
 //   start <종목코드> [분봉날짜 YYYY-MM-DD] 한 종목 일봉(1.5년·자가치유) + 분봉
 import { seoulToday, isValidYearMonth } from "@trade-data-manager/market";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
-import { sweepDailyCandles, sweepMinuteMonth } from "./sweep.js";
+import { sweepDailyCandles, sweepMinuteMonth, collectDate } from "./sweep.js";
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 async function runUniverse(rt: IngestRuntime): Promise<void> {
     console.log("▶ 유니버스 수집 (ka10099 코스피+코스닥)");
@@ -108,6 +111,22 @@ async function runSweepMinute(
     if (r.failed.length) console.log(`  실패: ${r.failed.slice(0, 20).map((f) => f.stockCode).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
 }
 
+async function runCollect(
+    rt: IngestRuntime,
+    date?: string,
+    poolLimitArg?: string,
+    concurrencyArg?: string,
+): Promise<void> {
+    if (!date) throw new Error("사용법: start collect <YYYY-MM-DD> [poolLimit] [concurrency]");
+    if (!DATE_RE.test(date)) throw new Error(`잘못된 날짜(YYYY-MM-DD): ${date}`);
+    if (date > seoulToday()) throw new Error(`미래 날짜는 수집 불가: ${date}`);
+    console.log(`▶ 수집 파이프라인: ${date}`);
+    await collectDate(rt, date, {
+        poolLimit: posInt(poolLimitArg, "poolLimit"),
+        concurrency: posInt(concurrencyArg, "concurrency"),
+    });
+}
+
 async function runSweepMonth(
     rt: IngestRuntime,
     yearMonth?: string,
@@ -149,6 +168,7 @@ async function main(): Promise<void> {
                 "  start candidates-range <from> <to>\n" +
                 "  start sweep-minute <YYYY-MM-DD> [poolLimit]\n" +
                 "  start sweep-month <YYYY-MM> [poolLimit] [concurrency]\n" +
+                "  start collect <YYYY-MM-DD> [poolLimit] [concurrency]\n" +
                 "  start <종목코드> [분봉날짜 YYYY-MM-DD]",
         );
         process.exit(1);
@@ -174,6 +194,9 @@ async function main(): Promise<void> {
                 break;
             case "sweep-month":
                 await runSweepMonth(rt, arg2, arg3, arg4);
+                break;
+            case "collect":
+                await runCollect(rt, arg2, arg3, arg4);
                 break;
             default:
                 await runStock(rt, arg1, arg2 ?? seoulToday());

@@ -38,6 +38,8 @@ export interface IngestRuntime {
     candidates: DailyCandidateSelector;
     /** 분봉 스윕 — 한 거래일 pool 분봉 수집·선별 적재(복기 3단계). */
     minuteSweep: MinuteSweeper;
+    /** 저장된 일봉 커버리지 최신일(collect 의 일봉 선행수집 판단용). */
+    latestDailyDate: () => Promise<string | null>;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -83,6 +85,7 @@ export function createIngestRuntime(): IngestRuntime {
         universe,
         candidates,
         minuteSweep,
+        latestDailyDate: () => dailyRepo.getLatestDailyDate(),
         close: async () => {
             await pool.end();
         },

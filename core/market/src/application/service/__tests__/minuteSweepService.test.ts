@@ -35,6 +35,10 @@ class FakeScanRepo implements DailyScanRepository {
         const earlier = Object.keys(this.byDate).filter((d) => d < date).sort();
         return earlier.length ? earlier[earlier.length - 1] : null;
     }
+    async getLatestDailyDate(): Promise<string | null> {
+        const dates = Object.keys(this.byDate).sort();
+        return dates.length ? dates[dates.length - 1] : null;
+    }
 }
 
 class FakeMinuteProvider implements MinuteCandleProvider {

@@ -10,4 +10,6 @@ export interface DailyScanRepository {
     listDailyCandlesByDate(date: string): Promise<DailyCandle[]>;
     /** date 직전의 데이터 있는 거래일(YYYY-MM-DD). 고가등락률 기준가(전일종가)용. 없으면 null. */
     getPreviousTradingDate(date: string): Promise<string | null>;
+    /** 저장된 일봉의 가장 최근 거래일(전체 종목). 일봉 커버리지 확인용. 없으면 null. */
+    getLatestDailyDate(): Promise<string | null>;
 }

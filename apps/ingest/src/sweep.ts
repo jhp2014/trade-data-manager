@@ -51,6 +51,37 @@ export async function sweepDailyCandles(rt: IngestRuntime, opts: SweepOptions = 
     return { total: targets.length, ok, healed, failed };
 }
 
+/**
+ * 한 날짜의 복기 데이터 파이프라인 — 일봉 커버리지 확인 → (못 미치면) 전종목 일봉 선행수집 → 분봉 선별 스윕.
+ * 일봉은 wholesale(전종목·전기간)이라 커버리지가 그 날짜를 덮으면 생략하고 분봉만 돈다.
+ */
+export async function collectDate(
+    rt: IngestRuntime,
+    date: string,
+    opts: { poolLimit?: number; concurrency?: number } = {},
+): Promise<void> {
+    const latest = await rt.latestDailyDate();
+    if (latest === null || latest < date) {
+        console.log(`▶ 일봉 커버리지(${latest ?? "없음"}) < ${date} → 전종목 일봉 먼저 수집`);
+        const d = await sweepDailyCandles(rt, { concurrency: opts.concurrency });
+        console.log(`  일봉 ${d.ok}/${d.total} (실패 ${d.failed.length})`);
+    } else {
+        console.log(`▶ 일봉 커버리지 OK (최신 ${latest} ≥ ${date}) — 일봉 수집 생략`);
+    }
+
+    const r = await rt.minuteSweep.sweepMinutesForDate(date, {
+        poolLimit: opts.poolLimit,
+        concurrency: opts.concurrency,
+        onFetch: (done, total) => {
+            if (done % 100 === 0 || done === total) console.log(`  분봉 fetch [${done}/${total}]`);
+        },
+    });
+    console.log(`  ✓ 분봉 pool ${r.poolSize} → 저장 ${r.stored} (실패 ${r.failed.length})`);
+    if (r.poolSize === 0) {
+        console.log("  ⚠ pool 0 — 비거래일이거나 그 날짜가 일봉 커버리지(약 1.5년) 밖.");
+    }
+}
+
 export interface MonthSweepResult {
     yearMonth: string;
     /** 데이터가 있던(poolSize>0) 거래일 수. */
