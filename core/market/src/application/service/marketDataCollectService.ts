@@ -56,7 +56,10 @@ export class MarketDataCollectService implements MarketDataCollector {
         let skippedDays = 0;
         let totalStored = 0;
         for (const date of enumerateDates(range.from, range.to)) {
-            if (!overwrite && (await minuteRepo.hasMinuteCandlesOnDate(date))) {
+            if (overwrite) {
+                // 비우고 새로 — 이전 수집에만 있던 종목(orphan) 제거.
+                await minuteRepo.deleteMinuteCandlesOnDate(date);
+            } else if (await minuteRepo.hasMinuteCandlesOnDate(date)) {
                 skippedDays++;
                 continue;
             }

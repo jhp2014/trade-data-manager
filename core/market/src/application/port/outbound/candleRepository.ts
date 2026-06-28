@@ -24,4 +24,6 @@ export interface MinuteCandleRepository {
     getMinuteCandles(stockCode: string, date: string): Promise<MinuteCandle[]>;
     /** 그 거래일에 분봉이 하나라도 저장돼 있는가. collect 의 재수집 건너뛰기(overwrite=false) 판단용. */
     hasMinuteCandlesOnDate(date: string): Promise<boolean>;
+    /** 그 거래일 전체 분봉 삭제(overwrite=true 시 비우고 새로 — orphan 방지). 삭제한 행 수. */
+    deleteMinuteCandlesOnDate(date: string): Promise<number>;
 }

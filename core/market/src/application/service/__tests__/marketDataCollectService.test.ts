@@ -52,6 +52,7 @@ class FakeMinuteProvider implements MinuteCandleProvider {
 class FakeMinuteRepo implements MinuteCandleRepository {
     existing = new Set<string>();
     saves = 0;
+    deletes: string[] = [];
     async saveMinuteCandles(): Promise<void> {
         this.saves++;
     }
@@ -60,6 +61,10 @@ class FakeMinuteRepo implements MinuteCandleRepository {
     }
     async hasMinuteCandlesOnDate(date: string): Promise<boolean> {
         return this.existing.has(date);
+    }
+    async deleteMinuteCandlesOnDate(date: string): Promise<number> {
+        this.deletes.push(date);
+        return 0;
     }
 }
 
@@ -119,5 +124,6 @@ describe("collect", () => {
         const r = await collector.collect({ from: "2026-06-26", to: "2026-06-26" }, { overwrite: true });
         expect(r.skippedDays).toBe(0);
         expect(r.dailyRefreshed).toBe(true); // overwrite 는 일봉도 강제
+        expect(minuteRepo.deletes).toContain("2026-06-26"); // 비우고 새로(orphan 제거)
     });
 });

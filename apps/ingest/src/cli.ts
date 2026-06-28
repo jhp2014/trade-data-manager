@@ -1,12 +1,10 @@
 // ingest CLI — 얇은 옵션 명령들이 두 inbound 유스케이스(collect/preview) 위에 앉는다.
 //
-// 쓰기(collect):
 //   collect <from> [to] [--overwrite]   범위 수집(to 생략=하루)
 //   today [--overwrite]                  오늘
 //   month <YYYY-MM> [--overwrite]        그 달 전체
 //   backfill [개월=12] [--overwrite]     현재부터 N개월 과거까지 전체
-// 읽기(preview):
-//   preview <from> [to] [순위N] [컷%]    날짜별 후보 수(API·저장 없음)
+// (overwrite = 그 날짜 분봉을 비우고 새로 — orphan 방지)
 import {
     seoulToday,
     isValidYearMonth,
@@ -49,48 +47,17 @@ async function runCollect(rt: IngestRuntime, range: DateRange, overwrite: boolea
     );
 }
 
-async function runPreview(rt: IngestRuntime, range: DateRange, nArg?: string, cutArg?: string): Promise<void> {
-    const options =
-        nArg || cutArg
-            ? {
-                  amountRankN: nArg ? Number(nArg) : 100,
-                  highRateCutPercent: cutArg ? Number(cutArg) : 15,
-                  amountFloorWon: "999999999999999",
-              }
-            : undefined;
-    console.log(
-        `▶ 미리보기: ${range.from} ~ ${range.to}` +
-            (options ? ` (탑${options.amountRankN} ∪ ≥${options.highRateCutPercent}%)` : ""),
-    );
-    const rows = await rt.query.previewCandidates(range, options);
-    if (rows.length === 0) {
-        console.log("  거래일 데이터 없음.");
-        return;
-    }
-    let total = 0;
-    let min = Infinity;
-    let max = 0;
-    for (const r of rows) {
-        total += r.candidates;
-        min = Math.min(min, r.candidates);
-        max = Math.max(max, r.candidates);
-        console.log(`  ${r.date}  스캔 ${r.scanned}  후보 ${r.candidates}`);
-    }
-    console.log(`  ─ ${rows.length}거래일: 평균 ${(total / rows.length).toFixed(0)} (최소 ${min}, 최대 ${max})`);
-}
-
 const USAGE =
     "사용법:\n" +
     "  collect <from> [to] [--overwrite]\n" +
     "  today [--overwrite]\n" +
     "  month <YYYY-MM> [--overwrite]\n" +
-    "  backfill [개월=12] [--overwrite]\n" +
-    "  preview <from> [to] [순위N] [고가등락률컷%]";
+    "  backfill [개월=12] [--overwrite]";
 
 async function main(): Promise<void> {
     const raw = process.argv.slice(2);
     const overwrite = raw.includes("--overwrite");
-    const [cmd, a1, a2, a3, a4] = raw.filter((a) => !a.startsWith("--"));
+    const [cmd, a1, a2] = raw.filter((a) => !a.startsWith("--"));
     if (!cmd) {
         console.error(USAGE);
         process.exit(1);
@@ -123,14 +90,6 @@ async function main(): Promise<void> {
                 const months = posInt(a1, "개월") ?? 12;
                 const to = seoulToday();
                 await runCollect(rt, { from: subtractMonths(to, months), to }, overwrite);
-                break;
-            }
-            case "preview": {
-                if (!a1) throw new Error("사용법: preview <from> [to] [순위N] [고가등락률컷%]");
-                assertDate(a1, "from");
-                const to = a2 ?? a1;
-                assertDate(to, "to");
-                await runPreview(rt, { from: a1, to }, a3, a4);
                 break;
             }
             default:

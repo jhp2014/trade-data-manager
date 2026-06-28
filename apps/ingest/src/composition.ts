@@ -21,16 +21,12 @@ import {
     StockMasterIngestService,
     MinuteSweepService,
     MarketDataCollectService,
-    CandidateQueryService,
     type MarketDataCollector,
-    type CandidateQuery,
 } from "@trade-data-manager/market";
 
 export interface IngestRuntime {
     /** 복기 데이터 수집(Command). 당일/과거/범위/월 전부 collect(range). */
     collector: MarketDataCollector;
-    /** 후보 수 미리보기(Query, 읽기 전용). */
-    query: CandidateQuery;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -61,11 +57,9 @@ export function createIngestRuntime(): IngestRuntime {
 
     // 공개 유스케이스
     const collector = new MarketDataCollectService({ universe, dailyIngest, minuteSweep, scanRepo: dailyRepo, minuteRepo });
-    const query = new CandidateQueryService({ scanRepo: dailyRepo });
 
     return {
         collector,
-        query,
         close: async () => {
             await pool.end();
         },

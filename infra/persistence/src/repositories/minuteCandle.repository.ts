@@ -48,4 +48,9 @@ export class DrizzleMinuteCandleRepository implements MinuteCandleRepository {
             .limit(1);
         return rows.length > 0;
     }
+
+    async deleteMinuteCandlesOnDate(date: string): Promise<number> {
+        const res = await this.db.delete(minuteCandles).where(eq(minuteCandles.tradeDate, date));
+        return res.rowCount ?? 0;
+    }
 }

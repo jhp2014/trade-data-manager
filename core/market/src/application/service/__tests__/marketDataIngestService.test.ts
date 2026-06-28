@@ -81,6 +81,9 @@ class FakeMinuteRepo implements MinuteCandleRepository {
     async hasMinuteCandlesOnDate(): Promise<boolean> {
         return this.saved.length > 0;
     }
+    async deleteMinuteCandlesOnDate(): Promise<number> {
+        return 0;
+    }
 }
 
 function makeService(opts: {
