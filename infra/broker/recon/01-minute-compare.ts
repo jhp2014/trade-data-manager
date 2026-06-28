@@ -130,8 +130,14 @@ async function main() {
     const result: Record<string, ReturnType<typeof diff>> = {};
     const raw: Record<string, unknown> = {};
     for (const mk of markets) {
-        const kwRows = await kw.rest.getMinuteChartsForDate(mk.kiwoomCode, date, 10);
-        const kisRows = await kis.rest.collectDayMinutes(stockCode, date, { marketDiv: mk.kisDiv });
+        // 풀데이 비교: 프리마켓(08:00)~애프터장(~20:00)까지 양쪽 동일 윈도우로 수집.
+        const kwRows = await kw.rest.getMinuteChartsForDate(mk.kiwoomCode, date, 15);
+        const kisRows = await kis.rest.collectDayMinutes(stockCode, date, {
+            marketDiv: mk.kisDiv,
+            startTime: "200000",
+            earliestTime: "080000",
+            maxPages: 20,
+        });
         result[mk.name] = diff(kiwoomMap(kwRows, date), kisMap(kisRows));
         raw[mk.name] = { kiwoom: kwRows, kis: kisRows };
     }
