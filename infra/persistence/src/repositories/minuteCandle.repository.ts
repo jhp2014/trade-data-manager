@@ -34,4 +34,13 @@ export class DrizzleMinuteCandleRepository implements MinuteCandleRepository {
             .orderBy(asc(minuteCandles.tradeTime));
         return rows.map(rowToMinuteCandle);
     }
+
+    async hasMinuteCandlesOnDate(date: string): Promise<boolean> {
+        const rows = await this.db
+            .select({ tradeDate: minuteCandles.tradeDate })
+            .from(minuteCandles)
+            .where(eq(minuteCandles.tradeDate, date))
+            .limit(1);
+        return rows.length > 0;
+    }
 }

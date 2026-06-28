@@ -22,4 +22,6 @@ export interface DailyCandleRepository {
 export interface MinuteCandleRepository {
     saveMinuteCandles(candles: MinuteCandle[]): Promise<void>;
     getMinuteCandles(stockCode: string, date: string): Promise<MinuteCandle[]>;
+    /** 그 거래일에 분봉이 하나라도 저장돼 있는가. collect 의 재수집 건너뛰기(overwrite=false) 판단용. */
+    hasMinuteCandlesOnDate(date: string): Promise<boolean>;
 }

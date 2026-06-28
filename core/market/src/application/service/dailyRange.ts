@@ -9,7 +9,7 @@ function daysInMonth(year: number, month1: number): number {
 }
 
 /** "YYYY-MM-DD" 에서 months 만큼 과거로. 말일은 대상 달 일수로 클램프(예: 03-31 −1달 → 02-28). */
-function subtractMonths(date: string, months: number): string {
+export function subtractMonths(date: string, months: number): string {
     const [y, m, d] = date.split("-").map(Number);
     const total = y * 12 + (m - 1) - months;
     const ny = Math.floor(total / 12);

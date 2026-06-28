@@ -7,13 +7,21 @@ import type {
     MinuteCandleProvider,
     MinuteCandleRepository,
 } from "../port/outbound/index.js";
-import type {
-    DailyCandleIngestor,
-    DailyIngestResult,
-    MinuteCandleIngestor,
-    MinuteIngestResult,
-} from "../port/inbound/index.js";
 import { defaultDailyRange, seoulToday } from "./dailyRange.js";
+
+// 내부 협력자(종목 1개 단위 ingest). inbound 포트 아님 — 공개 표면은 collect.
+export interface DailyIngestResult {
+    stockCode: string;
+    /** 소급조정(권리락/배당락/액면분할) 감지로 종목 전체를 재수집·덮어썼는가. */
+    healed: boolean;
+    saved: number;
+}
+
+export interface MinuteIngestResult {
+    stockCode: string;
+    date: string;
+    saved: number;
+}
 
 export interface MarketDataIngestDeps {
     dailyProvider: DailyCandleProvider;
@@ -41,7 +49,7 @@ function candleUnchanged(fresh: DailyCandle, stored: DailyCandle): boolean {
     return ohlcvEqual(fresh.krx, stored.krx) && ohlcvEqual(fresh.un, stored.un);
 }
 
-export class MarketDataIngestService implements DailyCandleIngestor, MinuteCandleIngestor {
+export class MarketDataIngestService {
     private readonly today: () => string;
 
     constructor(private readonly deps: MarketDataIngestDeps) {

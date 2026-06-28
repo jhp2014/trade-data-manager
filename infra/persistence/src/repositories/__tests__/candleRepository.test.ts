@@ -95,5 +95,9 @@ describe("Drizzle candle repositories (pglite)", () => {
         expect(got[0].krx).toBeNull(); // 프리마켓 KRX 부재 보존
         expect(got[0].un.close).toBe("338000");
         expect(got[1].krx?.close).toBe("339500");
+
+        // 날짜 존재 여부(collect 건너뛰기 판단용)
+        expect(await minute.hasMinuteCandlesOnDate("2026-06-26")).toBe(true);
+        expect(await minute.hasMinuteCandlesOnDate("2026-06-27")).toBe(false);
     });
 });

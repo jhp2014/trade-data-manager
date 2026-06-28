@@ -56,6 +56,9 @@ class FakeMinuteRepo implements MinuteCandleRepository {
     async getMinuteCandles(): Promise<MinuteCandle[]> {
         return [];
     }
+    async hasMinuteCandlesOnDate(): Promise<boolean> {
+        return false;
+    }
 }
 
 describe("sweepMinutesForDate", () => {

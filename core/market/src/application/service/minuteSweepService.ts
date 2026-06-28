@@ -15,9 +15,26 @@ import type {
     MinuteCandleProvider,
     MinuteCandleRepository,
 } from "../port/outbound/index.js";
-import type { MinuteSweeper, MinuteSweepOptions, MinuteSweepResult } from "../port/inbound/index.js";
 import { buildDailyRankInputs } from "./dailyRankInputs.js";
 import { mapWithConcurrency } from "../concurrency.js";
+
+// 내부 협력자(MarketDataCollectService 가 조합). inbound 포트 아님 — 공개 표면은 collect 하나.
+export interface MinuteSweepResult {
+    date: string;
+    poolSize: number;
+    fetched: number;
+    stored: number;
+    failed: { stockCode: string; error: string }[];
+}
+
+export interface MinuteSweepOptions {
+    poolLimit?: number;
+    /** 저장 기준 = 분단위 누적거래대금 상위 몇 위(기본 100, 확정값). 테스트/튜닝 노브. */
+    minuteTop?: number;
+    /** 분봉 fetch 동시 실행 상한(기본 8). 풀이 rate limit 자체 페이싱. */
+    concurrency?: number;
+    onFetch?: (done: number, total: number, stockCode: string) => void;
+}
 
 // 확정 파라미터(사용자): fetch 거래대금 탑400, store 분단위 누적 탑100, 게이너 고가등락률 ≥15%.
 const POOL_AMOUNT_RANK = 400;
@@ -43,7 +60,7 @@ function isGainer(i: DailyRankInput): boolean {
     return rate !== null && Number(rate) >= GAINER_RATE_PERCENT;
 }
 
-export class MinuteSweepService implements MinuteSweeper {
+export class MinuteSweepService {
     constructor(private readonly deps: MinuteSweepDeps) {}
 
     async sweepMinutesForDate(date: string, options: MinuteSweepOptions = {}): Promise<MinuteSweepResult> {
