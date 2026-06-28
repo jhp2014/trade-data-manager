@@ -384,43 +384,6 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.19.17)(jsdom@29.1.1)
 
-  infra/db:
-    dependencies:
-      '@trade-data-manager/market':
-        specifier: workspace:*
-        version: link:../../core/market
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@electric-sql/pglite@0.5.2)(@types/pg@8.20.0)(gel@2.2.0)(pg@8.20.0)
-      pg:
-        specifier: ^8.20.0
-        version: 8.20.0
-    devDependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.2
-        version: 0.5.2
-      '@types/node':
-        specifier: ^22.10.0
-        version: 22.19.17
-      '@types/pg':
-        specifier: ^8.20.0
-        version: 8.20.0
-      drizzle-kit:
-        specifier: ^0.31.10
-        version: 0.31.10
-      rimraf:
-        specifier: ^6.0.1
-        version: 6.1.3
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
-      vitest:
-        specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)(jsdom@29.1.1)
-
   infra/google:
     dependencies:
       dotenv:
@@ -501,6 +464,46 @@ importers:
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.19.17)(jsdom@29.1.1)
+
+  infra/persistence:
+    dependencies:
+      '@trade-data-manager/market':
+        specifier: workspace:*
+        version: link:../../core/market
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@electric-sql/pglite@0.5.2)(@types/pg@8.20.0)(gel@2.2.0)(pg@8.20.0)
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.2
+        version: 0.5.2
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3

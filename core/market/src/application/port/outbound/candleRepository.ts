@@ -1,4 +1,4 @@
-import type { DailyCandle, MinuteCandle } from "../../domain/index.js";
+import type { DailyCandle, MinuteCandle } from "../../../domain/index.js";
 import type { DateRange } from "./dailyCandleProvider.js";
 
 /**

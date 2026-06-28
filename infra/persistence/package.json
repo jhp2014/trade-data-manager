@@ -1,5 +1,5 @@
 {
-    "name": "@trade-data-manager/db",
+    "name": "@trade-data-manager/persistence",
     "version": "1.0.0",
     "private": true,
     "type": "module",
@@ -22,6 +22,7 @@
     },
     "dependencies": {
         "@trade-data-manager/market": "workspace:*",
+        "dotenv": "^16.4.5",
         "drizzle-orm": "^0.45.2",
         "pg": "^8.20.0"
     },

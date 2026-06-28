@@ -1,0 +1,10 @@
+# @trade-data-manager/persistence 자체 관리 ignore.
+# 비밀(자급 .env)·빌드 산출물만. drizzle/ 마이그레이션은 추적한다(스키마 정본).
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+*.tsbuildinfo
+.turbo/
