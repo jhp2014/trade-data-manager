@@ -212,6 +212,37 @@ export class KiwoomRest {
     }
 
     /**
+     * 기간[from,to] 일봉을 연속조회로 수집(both YYYYMMDD).
+     * 키움 일봉은 최신→과거 순 → baseDate=to 에서 역방향, 가장 오래된 dt 가 from 이전이면 종료.
+     * 반환은 from 이전 과거가 일부 섞일 수 있음(경계 페이지) — 정확한 [from,to] 절단은 소비자(어댑터) 책임.
+     * NXT 통합은 stockCode 를 'XXXXXX_AL' 로 넘기면 됨(그대로 전달).
+     */
+    async getDailyChartsForRange(
+        stockCode: string,
+        fromDate: string,
+        toDate: string,
+        maxPages = 20,
+    ): Promise<KiwoomDailyCandle[]> {
+        const lease = this.deps.pool.acquire(); // 시퀀스 전체를 한 키에 고정
+        let collected: KiwoomDailyCandle[] = [];
+        let contYn = "N";
+        let nextKey = "";
+        let pages = 0;
+        do {
+            const res = await this.getDailyChart(stockCode, { baseDate: toDate, contYn, nextKey, lease });
+            const page = res.data.stk_dt_pole_chart_qry ?? [];
+            if (page.length === 0) break;
+            collected = collected.concat(page);
+            const oldest = page[page.length - 1];
+            if (oldest && oldest.dt < fromDate) break;
+            contYn = res.contYn;
+            nextKey = res.nextKey;
+            pages++;
+        } while (contYn === "Y" && nextKey && pages < maxPages);
+        return collected;
+    }
+
+    /**
      * 특정 거래일의 1분봉을 모두 수집.
      * 키움 분봉은 최신→과거 순 → 가장 오래된 row 가 tradeDate 이전이 되면 종료.
      * NXT 통합은 stockCode 를 'XXXXXX_AL' 로 넘기면 됨(그대로 전달).

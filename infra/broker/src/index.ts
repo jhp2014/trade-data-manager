@@ -1,8 +1,11 @@
 // infra/broker — 포트를 아는 어댑터 계층(원시 SDK는 포트를 모른다).
 // core/market 포트를 kiwoom/kis SDK로 구현:
+//   KiwoomDailyAdapter                      implements DailyCandleProvider (일봉=키움 단독)
 //   KiwoomMinuteAdapter / KisMinuteAdapter  implements MinuteCandleProvider (단일 벤더)
 //   RoutingMinuteProvider                   implements MinuteCandleProvider ((종목,날) 분배 → 유량 2배)
-// SDK 응답 → 도메인 모델 매핑(KRX·UN 머지, "+/-" prefix 제거)도 여기.
+// SDK 응답 → 도메인 모델 매핑(KRX·UN 머지, "+/-" prefix 제거, 거래대금 원화 환산)도 여기.
+export { mergeDailyMarkets, type DateBar } from "./daily/merge.js";
+export { KiwoomDailyAdapter, type KiwoomDailySource } from "./daily/kiwoomDailyAdapter.js";
 export { mergeMarkets, type TimeBar } from "./minute/merge.js";
 export { KiwoomMinuteAdapter, type KiwoomMinuteSource } from "./minute/kiwoomMinuteAdapter.js";
 export { KisMinuteAdapter, type KisMinuteSource } from "./minute/kisMinuteAdapter.js";
