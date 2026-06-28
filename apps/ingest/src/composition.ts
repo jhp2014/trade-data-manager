@@ -21,10 +21,12 @@ import {
     MarketDataIngestService,
     StockMasterIngestService,
     DailyCandidateService,
+    MinuteSweepService,
     type DailyCandleIngestor,
     type MinuteCandleIngestor,
     type StockMasterIngestor,
     type DailyCandidateSelector,
+    type MinuteSweeper,
 } from "@trade-data-manager/market";
 
 export interface IngestRuntime {
@@ -34,6 +36,8 @@ export interface IngestRuntime {
     universe: StockMasterIngestor;
     /** 프루닝 — 한 거래일 전종목 일봉 → 분봉 수집 후보. */
     candidates: DailyCandidateSelector;
+    /** 분봉 스윕 — 한 거래일 pool 분봉 수집·선별 적재(복기 3단계). */
+    minuteSweep: MinuteSweeper;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -71,10 +75,14 @@ export function createIngestRuntime(): IngestRuntime {
     // 프루닝 = 같은 일봉 리포(DailyScanRepository 도 구현)로 날짜별 전종목 스캔.
     const candidates = new DailyCandidateService({ scanRepo: dailyRepo });
 
+    // 분봉 스윕 = 일봉 스캔(pool 선정) + 분봉 provider(fetch) + 분봉 repo(선별 저장).
+    const minuteSweep = new MinuteSweepService({ scanRepo: dailyRepo, minuteProvider, minuteRepo });
+
     return {
         ingest,
         universe,
         candidates,
+        minuteSweep,
         close: async () => {
             await pool.end();
         },
