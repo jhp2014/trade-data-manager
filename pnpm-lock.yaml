@@ -341,7 +341,7 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.19.17)(jsdom@29.1.1)
 
-  core/market-data:
+  core/market:
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -364,9 +364,9 @@ importers:
       '@trade-data-manager/kiwoom':
         specifier: workspace:*
         version: link:../kiwoom
-      '@trade-data-manager/market-data':
+      '@trade-data-manager/market':
         specifier: workspace:*
-        version: link:../../core/market-data
+        version: link:../../core/market
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

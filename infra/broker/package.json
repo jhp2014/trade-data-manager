@@ -16,7 +16,7 @@
         "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo"
     },
     "dependencies": {
-        "@trade-data-manager/market-data": "workspace:*",
+        "@trade-data-manager/market": "workspace:*",
         "@trade-data-manager/kiwoom": "workspace:*",
         "@trade-data-manager/kis": "workspace:*"
     },
