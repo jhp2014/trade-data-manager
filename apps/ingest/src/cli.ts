@@ -4,6 +4,7 @@
 //   start universe                        라이브 ka10099 → stock_master upsert-accumulate
 //   start sweep-daily [limit]             유니버스 갱신 + 전종목(또는 limit) 일봉 수집
 //   start candidates <YYYY-MM-DD>         그 거래일 프루닝 → 분봉 수집 후보 출력
+//   start candidates-range <from> <to>    기간 날짜별 후보 수 분포(읽기 전용, API 안 침)
 //   start <종목코드> [분봉날짜 YYYY-MM-DD] 한 종목 일봉(1.5년·자가치유) + 분봉
 import { seoulToday } from "@trade-data-manager/market";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
@@ -33,6 +34,37 @@ async function runCandidates(rt: IngestRuntime, date?: string): Promise<void> {
     console.log(`  샘플: ${r.candidates.slice(0, 20).join(", ")}${r.candidates.length > 20 ? " …" : ""}`);
 }
 
+/** "YYYY-MM-DD" → 다음 날(UTC 기준 산술, 타임존 무관). */
+function nextDate(date: string): string {
+    const dt = new Date(`${date}T00:00:00Z`);
+    dt.setUTCDate(dt.getUTCDate() + 1);
+    return dt.toISOString().slice(0, 10);
+}
+
+async function runCandidatesRange(rt: IngestRuntime, from?: string, to?: string): Promise<void> {
+    if (!from || !to) throw new Error("사용법: start candidates-range <from YYYY-MM-DD> <to YYYY-MM-DD>");
+    console.log(`▶ 프루닝 분포: ${from} ~ ${to}`);
+    let days = 0;
+    let totalCandidates = 0;
+    let minC = Infinity;
+    let maxC = 0;
+    for (let d = from; d <= to; d = nextDate(d)) {
+        const r = await rt.candidates.selectCandidatesForDate(d);
+        if (r.scanned === 0) continue; // 비거래일 — 스킵
+        days++;
+        totalCandidates += r.candidates.length;
+        minC = Math.min(minC, r.candidates.length);
+        maxC = Math.max(maxC, r.candidates.length);
+        const pct = ((r.candidates.length / r.scanned) * 100).toFixed(0);
+        console.log(`  ${d}  스캔 ${r.scanned}  후보 ${r.candidates.length} (${pct}%)`);
+    }
+    if (days === 0) {
+        console.log("  거래일 데이터 없음.");
+        return;
+    }
+    console.log(`  ─ ${days}거래일: 평균 ${(totalCandidates / days).toFixed(0)}종목/일 (최소 ${minC}, 최대 ${maxC})`);
+}
+
 async function runStock(rt: IngestRuntime, stockCode: string, minuteDate: string): Promise<void> {
     console.log(`▶ 일봉 수집: ${stockCode} (기본 1.5년 범위)`);
     const daily = await rt.ingest.ingestDailyCandles(stockCode);
@@ -44,13 +76,14 @@ async function runStock(rt: IngestRuntime, stockCode: string, minuteDate: string
 }
 
 async function main(): Promise<void> {
-    const [arg1, arg2] = process.argv.slice(2);
+    const [arg1, arg2, arg3] = process.argv.slice(2);
     if (!arg1) {
         console.error(
             "사용법:\n" +
                 "  start universe\n" +
                 "  start sweep-daily [limit]\n" +
                 "  start candidates <YYYY-MM-DD>\n" +
+                "  start candidates-range <from> <to>\n" +
                 "  start <종목코드> [분봉날짜 YYYY-MM-DD]",
         );
         process.exit(1);
@@ -67,6 +100,9 @@ async function main(): Promise<void> {
                 break;
             case "candidates":
                 await runCandidates(rt, arg2);
+                break;
+            case "candidates-range":
+                await runCandidatesRange(rt, arg2, arg3);
                 break;
             default:
                 await runStock(rt, arg1, arg2 ?? seoulToday());
