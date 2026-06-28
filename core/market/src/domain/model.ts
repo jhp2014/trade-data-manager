@@ -41,11 +41,15 @@ export interface DailyCandle {
     un: DailyBar;
 }
 
-/** 한 종목·한 거래일·한 시각의 분봉. KRX·UN 두 바를 함께 가진다. */
+/**
+ * 한 종목·한 거래일·한 시각의 분봉. UN(통합) 바는 항상 존재(UN ⊇ KRX).
+ * krx 는 null 가능 — NXT 단독 거래시간(정규장 전 프리마켓 08:00~09:00, 정규장 후 시간외)엔
+ * KRX 세션이 없어 KRX 바가 구조적으로 부재한다. 소비자는 krx===null 이면 KRX 계산을 건너뛴다.
+ */
 export interface MinuteCandle {
     stockCode: string;
     date: string; // YYYY-MM-DD
     time: string; // HH:MM:SS
-    krx: MinuteBar;
+    krx: MinuteBar | null;
     un: MinuteBar;
 }
