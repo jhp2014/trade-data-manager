@@ -34,6 +34,8 @@ export type {
     KisMinuteCandle,
     KisMinuteChartResponse,
     KisNewsResponse,
+    KisListInfoEvent,
+    KisListInfoResponse,
 } from "./rest/types.js";
 
 import {

@@ -43,6 +43,29 @@ export interface KisNewsResponse extends KisResponseBase {
     output: Array<Record<string, string>>;
 }
 
+/**
+ * [HHKDB669107C0] 예탁원정보(상장정보일정) 응답. output1=상장 변동 이벤트 배열.
+ * 각 행 = 한 변동(신규상장/유상증자/무상증자/감자/액면분할/전환·행사 등). 핵심:
+ *   tot_issue_stk_qty(그 이벤트 후 누적 총발행주식수) → 날짜별 주식수 타임라인 복원.
+ *   issue_price(발행가; 신규상장이면 공모가), issue_type(사유; 액분 등 일봉 수정 트리거 신호).
+ * 페이징 = CTS 쿼리 파라미터(표준 tr_cont 아님). 다음 CTS 가 응답 어디서 오는지는 recon 으로 확정.
+ * 수량/가격은 공백패딩 우측정렬 문자열일 수 있음(예 "   142184300") → 소비자가 trim/Number.
+ */
+export interface KisListInfoEvent {
+    list_dt: string; // 상장/등록(변동)일 YYYYMMDD
+    sht_cd: string; // 종목코드
+    isin_name: string; // 종목명
+    stk_kind: string; // 주식종류(보통 등)
+    issue_type: string; // 사유(신규상장/유상증자/무상증자/감자/액면분할/STOCKOPTION행사/국내CB행사…)
+    issue_stk_qty: string; // 이 이벤트 증감 주식수
+    tot_issue_stk_qty: string; // 이 이벤트 후 누적 총발행주식수
+    issue_price: string; // 발행가(신규상장=공모가)
+}
+
+export interface KisListInfoResponse extends KisResponseBase {
+    output1: KisListInfoEvent[];
+}
+
 /** tr_cont(연속조회 여부) 메타를 포함한 공통 응답 래퍼. */
 export interface KisApiResponse<T> {
     data: T;

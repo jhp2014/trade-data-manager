@@ -6,6 +6,7 @@ import { KisError } from "../errors.js";
 import { sleep, backoffDelay } from "../util.js";
 import type {
     KisApiResponse,
+    KisListInfoResponse,
     KisMinuteCandle,
     KisMinuteChartResponse,
     KisNewsResponse,
@@ -280,6 +281,35 @@ export class KisRest {
                 FID_INPUT_HOUR_1: time,
                 FID_RANK_SORT_CLS_CODE: sortClsCode,
                 FID_INPUT_SRNO: serialNo,
+            },
+            opts,
+        );
+    }
+
+    /**
+     * [HHKDB669107C0] 예탁원정보(상장정보일정) — 종목의 상장 변동 이벤트(신규상장·증자·감자·액분 등).
+     * 저수준 단발 호출(1페이지). CTS 페이징 메커니즘(다음 CTS 가 응답 어디서 오는지)은 recon 으로 확정 후
+     * 고수준 수집기를 올린다. 문서엔 응답 CTS 가 없어 실측 필요(문서 ≠ 실응답 원칙).
+     * @param shtCd 종목코드. ""(공백)이면 전체.
+     * @param fromDate 조회 From YYYYMMDD (F_DT).
+     * @param toDate 조회 To YYYYMMDD (T_DT).
+     * @param cts 연속조회 키. 최초 ""(공백).
+     */
+    getListInfo(
+        shtCd: string,
+        fromDate: string,
+        toDate: string,
+        cts = "",
+        opts: RequestOptions = {},
+    ): Promise<KisApiResponse<KisListInfoResponse>> {
+        return this.get<KisListInfoResponse>(
+            "HHKDB669107C0",
+            "/uapi/domestic-stock/v1/ksdinfo/list-info",
+            {
+                SHT_CD: shtCd,
+                T_DT: toDate,
+                F_DT: fromDate,
+                CTS: cts,
             },
             opts,
         );
