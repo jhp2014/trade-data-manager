@@ -13,3 +13,7 @@ export {
     RoutingMinuteProvider,
     type RoutingOptions,
 } from "./minute/routingMinuteProvider.js";
+export {
+    KiwoomStockListAdapter,
+    type KiwoomStockListSource,
+} from "./stockMaster/kiwoomStockListAdapter.js";

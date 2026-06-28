@@ -8,22 +8,28 @@ import {
     KiwoomMinuteAdapter,
     KisMinuteAdapter,
     RoutingMinuteProvider,
+    KiwoomStockListAdapter,
 } from "@trade-data-manager/broker";
 import {
     createDb,
     createPoolFromEnv,
     DrizzleDailyCandleRepository,
     DrizzleMinuteCandleRepository,
+    DrizzleStockMasterRepository,
 } from "@trade-data-manager/persistence";
 import {
     MarketDataIngestService,
+    StockMasterIngestService,
     type DailyCandleIngestor,
     type MinuteCandleIngestor,
+    type StockMasterIngestor,
 } from "@trade-data-manager/market";
 
 export interface IngestRuntime {
     /** 호출자는 유스케이스(inbound 포트)만 본다 — 구현 클래스에 묶이지 않는다. */
     ingest: DailyCandleIngestor & MinuteCandleIngestor;
+    /** 유니버스/종목마스터 수집(라이브 ka10099 → stock_master upsert + 스윕용 코드 리스트). */
+    universe: StockMasterIngestor;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -52,8 +58,15 @@ export function createIngestRuntime(): IngestRuntime {
         minuteRepo,
     });
 
+    // 유니버스 = 라이브 ka10099(코스피+코스닥) → stock_master upsert-accumulate.
+    const universe = new StockMasterIngestService({
+        provider: new KiwoomStockListAdapter(kiwoom.rest),
+        repository: new DrizzleStockMasterRepository(db),
+    });
+
     return {
         ingest,
+        universe,
         close: async () => {
             await pool.end();
         },

@@ -3,3 +3,5 @@
 export * from "./dailyCandleProvider.js";
 export * from "./minuteCandleProvider.js";
 export * from "./candleRepository.js";
+export * from "./stockMasterProvider.js";
+export * from "./stockMasterRepository.js";

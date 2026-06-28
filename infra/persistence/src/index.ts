@@ -5,6 +5,7 @@ export { ensureDbEnvLoaded, getDatabaseUrl } from "./env.js";
 export * as schema from "./schema/index.js";
 export { DrizzleDailyCandleRepository } from "./repositories/dailyCandle.repository.js";
 export { DrizzleMinuteCandleRepository } from "./repositories/minuteCandle.repository.js";
+export { DrizzleStockMasterRepository } from "./repositories/stockMaster.repository.js";
 export {
     dailyCandleToRow,
     rowToDailyCandle,
@@ -13,3 +14,7 @@ export {
     minuteCandleToRow,
     rowToMinuteCandle,
 } from "./mappers/minute.js";
+export {
+    stockMasterToRow,
+    rowToStockMaster,
+} from "./mappers/stockMaster.js";

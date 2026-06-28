@@ -86,4 +86,5 @@ export type DailyCandleInsert = typeof dailyCandles.$inferInsert;
 export type MinuteCandleRow = typeof minuteCandles.$inferSelect;
 export type MinuteCandleInsert = typeof minuteCandles.$inferInsert;
 export type StockMasterRow = typeof stockMaster.$inferSelect;
+export type StockMasterInsert = typeof stockMaster.$inferInsert;
 export type DailyMarketCapRow = typeof dailyMarketCap.$inferSelect;
