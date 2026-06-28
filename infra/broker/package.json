@@ -13,7 +13,8 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "clean": "rimraf dist",
-        "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo"
+        "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",
+        "recon:minute-compare": "tsx recon/01-minute-compare.ts"
     },
     "dependencies": {
         "@trade-data-manager/market": "workspace:*",
@@ -23,6 +24,7 @@
     "devDependencies": {
         "@types/node": "^22.10.0",
         "rimraf": "^6.0.1",
+        "tsx": "^4.21.0",
         "typescript": "^6.0.3",
         "vitest": "^2.1.9"
     }
