@@ -16,7 +16,9 @@ export interface MinuteSweepOptions {
     poolLimit?: number;
     /** 저장 기준 = 분단위 누적거래대금 상위 몇 위(기본 100, 확정값). 테스트/튜닝용 노브. */
     minuteTop?: number;
-    /** 종목 단위 진행 콜백(앱에서 로깅). */
+    /** 분봉 fetch 동시 실행 상한(기본 8). 풀이 rate limit 자체 페이싱하므로 천장은 안 넘는다. */
+    concurrency?: number;
+    /** 종목 단위 진행 콜백(앱에서 로깅). done 은 완료 순서(동시성이라 입력순 아님). */
     onFetch?: (done: number, total: number, stockCode: string) => void;
 }
 

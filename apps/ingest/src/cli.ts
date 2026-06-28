@@ -17,12 +17,17 @@ async function runUniverse(rt: IngestRuntime): Promise<void> {
     console.log(`  ✓ stock_master upsert=${r.saved}종목 (스윕 대상 코드 ${r.stockCodes.length}개)`);
 }
 
-async function runSweepDaily(rt: IngestRuntime, limitArg?: string): Promise<void> {
-    const limit = limitArg ? Number(limitArg) : undefined;
-    if (limitArg && (!Number.isInteger(limit) || limit! <= 0)) {
-        throw new Error(`limit 은 양의 정수여야 함: ${limitArg}`);
-    }
-    const r = await sweepDailyCandles(rt, { limit });
+function posInt(arg: string | undefined, label: string): number | undefined {
+    if (!arg) return undefined;
+    const n = Number(arg);
+    if (!Number.isInteger(n) || n <= 0) throw new Error(`${label} 은 양의 정수여야 함: ${arg}`);
+    return n;
+}
+
+async function runSweepDaily(rt: IngestRuntime, limitArg?: string, concurrencyArg?: string): Promise<void> {
+    const limit = posInt(limitArg, "limit");
+    const concurrency = posInt(concurrencyArg, "concurrency");
+    const r = await sweepDailyCandles(rt, { limit, concurrency });
     console.log(`  ✓ ${r.ok}/${r.total} 성공 (healed ${r.healed}, 실패 ${r.failed.length})`);
     if (r.failed.length) console.log(`  실패 종목: ${r.failed.slice(0, 20).map((f) => f.stockCode).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
 }
@@ -81,15 +86,19 @@ async function runCandidatesRange(
     console.log(`  ─ ${days}거래일: 평균 ${(totalCandidates / days).toFixed(0)}종목/일 (최소 ${minC}, 최대 ${maxC})`);
 }
 
-async function runSweepMinute(rt: IngestRuntime, date?: string, poolLimitArg?: string): Promise<void> {
-    if (!date) throw new Error("사용법: start sweep-minute <YYYY-MM-DD> [poolLimit]");
-    const poolLimit = poolLimitArg ? Number(poolLimitArg) : undefined;
-    if (poolLimitArg && (!Number.isInteger(poolLimit) || poolLimit! <= 0)) {
-        throw new Error(`poolLimit 은 양의 정수여야 함: ${poolLimitArg}`);
-    }
+async function runSweepMinute(
+    rt: IngestRuntime,
+    date?: string,
+    poolLimitArg?: string,
+    concurrencyArg?: string,
+): Promise<void> {
+    if (!date) throw new Error("사용법: start sweep-minute <YYYY-MM-DD> [poolLimit] [concurrency]");
+    const poolLimit = posInt(poolLimitArg, "poolLimit");
+    const concurrency = posInt(concurrencyArg, "concurrency");
     console.log(`▶ 분봉 스윕: ${date}${poolLimit ? ` (pool limit ${poolLimit})` : ""}`);
     const r = await rt.minuteSweep.sweepMinutesForDate(date, {
         poolLimit,
+        concurrency,
         onFetch: (done, total, code) => {
             if (done % 50 === 0 || done === total) console.log(`  [${done}/${total}] ${code}`);
         },
@@ -130,7 +139,7 @@ async function main(): Promise<void> {
                 await runUniverse(rt);
                 break;
             case "sweep-daily":
-                await runSweepDaily(rt, arg2);
+                await runSweepDaily(rt, arg2, arg3);
                 break;
             case "candidates":
                 await runCandidates(rt, arg2);
@@ -139,7 +148,7 @@ async function main(): Promise<void> {
                 await runCandidatesRange(rt, arg2, arg3, arg4, arg5);
                 break;
             case "sweep-minute":
-                await runSweepMinute(rt, arg2, arg3);
+                await runSweepMinute(rt, arg2, arg3, arg4);
                 break;
             default:
                 await runStock(rt, arg1, arg2 ?? seoulToday());

@@ -7,6 +7,7 @@ import {
     selectMinuteTop100Ever,
     computeChangeRate,
     type DailyRankInput,
+    type MinuteCandle,
     type PoolStockMinutes,
 } from "../../domain/index.js";
 import type {
@@ -16,12 +17,20 @@ import type {
 } from "../port/outbound/index.js";
 import type { MinuteSweeper, MinuteSweepOptions, MinuteSweepResult } from "../port/inbound/index.js";
 import { buildDailyRankInputs } from "./dailyRankInputs.js";
+import { mapWithConcurrency } from "../concurrency.js";
 
 // 확정 파라미터(사용자): fetch 거래대금 탑400, store 분단위 누적 탑100, 게이너 고가등락률 ≥15%.
 const POOL_AMOUNT_RANK = 400;
 const STORE_MINUTE_TOP = 100;
 const GAINER_RATE_PERCENT = 15;
 const NO_FLOOR = "999999999999999"; // pool 은 순위∪등락률만 — floor 비활성
+const DEFAULT_CONCURRENCY = 8;
+
+interface FetchOutcome {
+    stockCode: string;
+    candles: MinuteCandle[];
+    error?: string;
+}
 
 export interface MinuteSweepDeps {
     scanRepo: DailyScanRepository;
@@ -55,18 +64,25 @@ export class MinuteSweepService implements MinuteSweeper {
         // 저장 필터 B: ≥15% 게이너(일봉 고가등락률) — pool 의 부분집합.
         const gainers = new Set(inputs.filter(isGainer).map((i) => i.stockCode));
 
-        // pool 분봉 fetch(휘발).
-        const poolData: PoolStockMinutes[] = [];
-        const failed: MinuteSweepResult["failed"] = [];
-        for (let i = 0; i < pool.length; i++) {
-            const stockCode = pool[i];
+        // pool 분봉 fetch(휘발) — 제한 동시성으로 유량 채움(풀이 rate limit 자체 페이싱). 종목 실패는 격리.
+        const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+        let done = 0;
+        const outcomes = await mapWithConcurrency(pool, concurrency, async (stockCode): Promise<FetchOutcome> => {
             try {
                 const candles = await minuteProvider.getMinuteCandles(stockCode, date);
-                poolData.push({ stockCode, candles });
+                return { stockCode, candles };
             } catch (err) {
-                failed.push({ stockCode, error: err instanceof Error ? err.message : String(err) });
+                return { stockCode, candles: [], error: err instanceof Error ? err.message : String(err) };
+            } finally {
+                options.onFetch?.(++done, pool.length, stockCode);
             }
-            options.onFetch?.(i + 1, pool.length, stockCode);
+        });
+
+        const poolData: PoolStockMinutes[] = [];
+        const failed: MinuteSweepResult["failed"] = [];
+        for (const o of outcomes) {
+            if (o.error) failed.push({ stockCode: o.stockCode, error: o.error });
+            else poolData.push({ stockCode: o.stockCode, candles: o.candles });
         }
 
         // 저장 필터 A: 분단위 누적거래대금 ever-탑100.
