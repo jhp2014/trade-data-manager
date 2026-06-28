@@ -11,6 +11,8 @@ export interface DailyCandleRepository {
     getDailyCandles(stockCode: string, range: DateRange): Promise<DailyCandle[]>;
     /** 단일 (종목,날) 일봉. 자가치유 경계 비교용. 없으면 null. */
     getDailyCandle(stockCode: string, date: string): Promise<DailyCandle | null>;
+    /** 종목의 가장 과거 저장 거래일(YYYY-MM-DD). 자가치유 시 "저장된 전체" 재수집 하한. 데이터 없으면 null. */
+    getEarliestDailyDate(stockCode: string): Promise<string | null>;
 }
 
 /**

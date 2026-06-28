@@ -49,4 +49,14 @@ export class DrizzleDailyCandleRepository implements DailyCandleRepository {
             .limit(1);
         return rows[0] ? rowToDailyCandle(rows[0]) : null;
     }
+
+    async getEarliestDailyDate(stockCode: string): Promise<string | null> {
+        const rows = await this.db
+            .select({ tradeDate: dailyCandles.tradeDate })
+            .from(dailyCandles)
+            .where(eq(dailyCandles.stockCode, stockCode))
+            .orderBy(asc(dailyCandles.tradeDate))
+            .limit(1);
+        return rows[0]?.tradeDate ?? null;
+    }
 }

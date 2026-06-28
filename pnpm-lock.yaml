@@ -341,6 +341,37 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.19.17)(jsdom@29.1.1)
 
+  apps/ingest:
+    dependencies:
+      '@trade-data-manager/broker':
+        specifier: workspace:*
+        version: link:../../infra/broker
+      '@trade-data-manager/kis':
+        specifier: workspace:*
+        version: link:../../infra/kis
+      '@trade-data-manager/kiwoom':
+        specifier: workspace:*
+        version: link:../../infra/kiwoom
+      '@trade-data-manager/market':
+        specifier: workspace:*
+        version: link:../../core/market
+      '@trade-data-manager/persistence':
+        specifier: workspace:*
+        version: link:../../infra/persistence
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   core/market:
     devDependencies:
       '@types/node':
