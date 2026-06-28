@@ -1,6 +1,6 @@
 // 전종목 일봉 스윕 오케스트레이션(앱 책임 — core 유스케이스는 종목 1개 단위).
 // 유니버스 갱신 → 각 종목 ingestDailyCandles(제한 동시성). 종목 실패는 모아서 계속 진행.
-import { mapWithConcurrency } from "@trade-data-manager/market";
+import { mapWithConcurrency, enumerateMonthDates } from "@trade-data-manager/market";
 import type { IngestRuntime } from "./composition.js";
 
 export interface SweepOptions {
@@ -49,4 +49,39 @@ export async function sweepDailyCandles(rt: IngestRuntime, opts: SweepOptions = 
     });
 
     return { total: targets.length, ok, healed, failed };
+}
+
+export interface MonthSweepResult {
+    yearMonth: string;
+    /** 데이터가 있던(poolSize>0) 거래일 수. */
+    tradingDays: number;
+    /** 그 달 전체 저장 종목·일 합계. */
+    totalStored: number;
+}
+
+/** 한 달의 모든 거래일에 대해 분봉 스윕. 비거래일/일봉 없는 날은 poolSize 0 으로 자연 스킵. */
+export async function sweepMinuteMonth(
+    rt: IngestRuntime,
+    yearMonth: string,
+    opts: { poolLimit?: number; concurrency?: number } = {},
+): Promise<MonthSweepResult> {
+    const dates = enumerateMonthDates(yearMonth); // 형식 불량이면 throw
+    console.log(`▶ 월별 분봉 스윕: ${yearMonth} (${dates.length}일 스캔)`);
+
+    let tradingDays = 0;
+    let totalStored = 0;
+    for (const date of dates) {
+        const r = await rt.minuteSweep.sweepMinutesForDate(date, {
+            poolLimit: opts.poolLimit,
+            concurrency: opts.concurrency,
+        });
+        if (r.poolSize === 0) continue; // 비거래일·일봉 없음 → 스킵
+        tradingDays++;
+        totalStored += r.stored;
+        console.log(
+            `  ${date}  pool ${r.poolSize} → fetch ${r.fetched} → 저장 ${r.stored}` +
+                (r.failed.length ? ` (실패 ${r.failed.length})` : ""),
+        );
+    }
+    return { yearMonth, tradingDays, totalStored };
 }

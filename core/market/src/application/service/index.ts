@@ -4,3 +4,4 @@ export * from "./stockMasterIngestService.js";
 export * from "./dailyCandidateService.js";
 export * from "./minuteSweepService.js";
 export * from "./dailyRange.js";
+export * from "./yearMonth.js";

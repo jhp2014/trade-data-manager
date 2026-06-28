@@ -6,10 +6,11 @@
 //   start candidates <YYYY-MM-DD>         그 거래일 프루닝 → 분봉 수집 후보 출력
 //   start candidates-range <from> <to>    기간 날짜별 후보 수 분포(읽기 전용, API 안 침)
 //   start sweep-minute <YYYY-MM-DD> [poolLimit]  그날 pool 분봉 수집 → 선별 적재(3단계)
+//   start sweep-month <YYYY-MM> [poolLimit] [conc]  그 달 모든 거래일 분봉 수집
 //   start <종목코드> [분봉날짜 YYYY-MM-DD] 한 종목 일봉(1.5년·자가치유) + 분봉
-import { seoulToday } from "@trade-data-manager/market";
+import { seoulToday, isValidYearMonth } from "@trade-data-manager/market";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
-import { sweepDailyCandles } from "./sweep.js";
+import { sweepDailyCandles, sweepMinuteMonth } from "./sweep.js";
 
 async function runUniverse(rt: IngestRuntime): Promise<void> {
     console.log("▶ 유니버스 수집 (ka10099 코스피+코스닥)");
@@ -107,6 +108,26 @@ async function runSweepMinute(
     if (r.failed.length) console.log(`  실패: ${r.failed.slice(0, 20).map((f) => f.stockCode).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
 }
 
+async function runSweepMonth(
+    rt: IngestRuntime,
+    yearMonth?: string,
+    poolLimitArg?: string,
+    concurrencyArg?: string,
+): Promise<void> {
+    if (!yearMonth) throw new Error("사용법: start sweep-month <YYYY-MM> [poolLimit] [concurrency]");
+    if (!isValidYearMonth(yearMonth)) throw new Error(`잘못된 년월(YYYY-MM, 2000~2100): ${yearMonth}`);
+    const current = seoulToday().slice(0, 7);
+    if (yearMonth > current) throw new Error(`미래 년월은 수집 불가: ${yearMonth} (현재 ${current})`);
+
+    const poolLimit = posInt(poolLimitArg, "poolLimit");
+    const concurrency = posInt(concurrencyArg, "concurrency");
+    const r = await sweepMinuteMonth(rt, yearMonth, { poolLimit, concurrency });
+    console.log(`  ─ ${r.tradingDays}거래일, 총 저장 ${r.totalStored}종목·일`);
+    if (r.tradingDays === 0) {
+        console.log("  ⚠ 거래일 0 — 그 달 일봉이 DB에 없을 수 있음(sweep-daily 먼저 또는 더 과거 월).");
+    }
+}
+
 async function runStock(rt: IngestRuntime, stockCode: string, minuteDate: string): Promise<void> {
     console.log(`▶ 일봉 수집: ${stockCode} (기본 1.5년 범위)`);
     const daily = await rt.ingest.ingestDailyCandles(stockCode);
@@ -127,6 +148,7 @@ async function main(): Promise<void> {
                 "  start candidates <YYYY-MM-DD>\n" +
                 "  start candidates-range <from> <to>\n" +
                 "  start sweep-minute <YYYY-MM-DD> [poolLimit]\n" +
+                "  start sweep-month <YYYY-MM> [poolLimit] [concurrency]\n" +
                 "  start <종목코드> [분봉날짜 YYYY-MM-DD]",
         );
         process.exit(1);
@@ -149,6 +171,9 @@ async function main(): Promise<void> {
                 break;
             case "sweep-minute":
                 await runSweepMinute(rt, arg2, arg3, arg4);
+                break;
+            case "sweep-month":
+                await runSweepMonth(rt, arg2, arg3, arg4);
                 break;
             default:
                 await runStock(rt, arg1, arg2 ?? seoulToday());
