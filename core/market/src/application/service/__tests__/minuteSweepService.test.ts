@@ -54,18 +54,19 @@ class FakeMinuteRepo implements MinuteCandleRepository {
 }
 
 describe("sweepMinutesForDate", () => {
-    it("저장 = pool(탑400∪15%) 전체 — 받은 종목 그대로, 빈 분봉만 제외", async () => {
+    it("저장 = pool(≥200억∪10%) 전체 — 받은 종목 그대로, 빈 분봉만 제외", async () => {
         const scan = new FakeScanRepo({
+            // 셋 다 거래대금 ≥200억(floor 통과) → pool = 전부.
             "2026-06-26": [
-                daily("A", "2026-06-26", dbar("100")),
-                daily("B", "2026-06-26", dbar("100")),
-                daily("C", "2026-06-26", dbar("100")),
+                daily("A", "2026-06-26", dbar("100", "100", "30000000000")),
+                daily("B", "2026-06-26", dbar("100", "100", "30000000000")),
+                daily("C", "2026-06-26", dbar("100", "100", "30000000000")),
             ],
         });
         const provider = new FakeMinuteProvider({ A: [mcandle("A", "100", "10")], B: [mcandle("B", "100", "10")], C: [] });
         const repo = new FakeMinuteRepo();
         const r = await new MinuteSweepService({ scanRepo: scan, minuteProvider: provider, minuteRepo: repo }).sweepMinutesForDate("2026-06-26");
-        expect(r.poolSize).toBe(3); // 3종목뿐이라 탑400 = 전부
+        expect(r.poolSize).toBe(3); // 셋 다 ≥200억 → 전부 pool
         expect(r.fetched).toBe(3);
         expect(r.stored).toBe(2); // C 는 빈 분봉 → 미저장
         expect(repo.savedStocks.sort()).toEqual(["A", "B"]);
@@ -82,10 +83,11 @@ describe("sweepMinutesForDate", () => {
 
     it("poolLimit 으로 대상 수 제한", async () => {
         const scan = new FakeScanRepo({
+            // 셋 다 ≥200억 → pool=전부(입력순 A,B,C), poolLimit=2 가 앞 2개로 자름.
             "2026-06-26": [
-                daily("A", "2026-06-26", dbar("100", "100", "300")),
-                daily("B", "2026-06-26", dbar("100", "100", "200")),
-                daily("C", "2026-06-26", dbar("100", "100", "100")),
+                daily("A", "2026-06-26", dbar("100", "100", "30000000000")),
+                daily("B", "2026-06-26", dbar("100", "100", "25000000000")),
+                daily("C", "2026-06-26", dbar("100", "100", "20000000000")),
             ],
         });
         const provider = new FakeMinuteProvider({ A: [mcandle("A", "100", "10")], B: [mcandle("B", "100", "10")], C: [mcandle("C", "100", "10")] });
