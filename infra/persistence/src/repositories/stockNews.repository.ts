@@ -13,7 +13,13 @@ export class DrizzleStockNewsRepository implements StockNewsRepository {
 
     async saveHeadlines(headlines: NewsHeadline[]): Promise<void> {
         if (headlines.length === 0) return;
-        const rows = headlines.flatMap(newsHeadlineToRows);
+        // 배치 내 PK((stock_code, published_date, srno)) 중복 제거 — KIS 가 한 페이지에 같은 srno 를
+        // 중복 반환할 때(새벽 sparse/wrap 구간) ON CONFLICT 가 같은 행을 두 번 못 건드려 나는 에러 방지.
+        const byKey = new Map<string, ReturnType<typeof newsHeadlineToRows>[number]>();
+        for (const r of headlines.flatMap(newsHeadlineToRows)) {
+            byKey.set(`${r.stockCode}|${r.publishedDate}|${r.srno}`, r);
+        }
+        const rows = [...byKey.values()];
         if (rows.length === 0) return;
         // 뉴스는 published_date 월별 RANGE 파티션 → 들어올 달의 파티션을 INSERT 전에 보장(멱등).
         const months = new Set(rows.map((r) => `${r.publishedDate.slice(0, 7)}-01`));
