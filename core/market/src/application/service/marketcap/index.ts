@@ -2,3 +2,4 @@
 // 공개 진입: MarketCapBackfillService(inbound 포트 MarketCapBackfiller 구현).
 export * from "./marketCapBackfillService.js";
 export * from "./ipoPriceBackfillService.js";
+export * from "./dailyMarketCapRecordService.js";

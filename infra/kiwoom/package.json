@@ -23,6 +23,7 @@
         "recon:pagination": "tsx recon/05-pagination.ts",
         "recon:condition": "tsx recon/06-condition.ts",
         "recon:stocklist": "tsx recon/07-stocklist.ts",
+        "recon:dailymcap": "tsx recon/09-daily-mcap.ts",
         "recon:scan": "tsx recon/08-scan-prune.ts"
     },
     "dependencies": {

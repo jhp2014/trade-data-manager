@@ -5,6 +5,7 @@ import {
     KiwoomDailyAdapter,
     KiwoomMinuteAdapter,
     KiwoomStockListAdapter,
+    KiwoomMarketSnapshotAdapter,
 } from "@trade-data-manager/broker";
 import {
     createDb,
@@ -12,6 +13,7 @@ import {
     DrizzleDailyCandleRepository,
     DrizzleMinuteCandleRepository,
     DrizzleStockMasterRepository,
+    DrizzleDailyMarketCapRepository,
 } from "@trade-data-manager/persistence";
 import {
     MarketDataIngestService,
@@ -19,12 +21,16 @@ import {
     DailySweepService,
     MinuteSweepService,
     MarketDataCollectService,
+    DailyMarketCapRecordService,
     type MarketDataCollector,
+    type DailyMarketCapRecorder,
 } from "@trade-data-manager/market";
 
 export interface IngestRuntime {
     /** 복기 데이터 수집(Command). 당일/과거/범위/월 전부 collect(range). */
     collector: MarketDataCollector;
+    /** 당일 시총 입력(Command). 전일종가 × 현재주식수를 그날 칸에 1행씩. */
+    marketCapRecorder: DailyMarketCapRecorder;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -42,6 +48,7 @@ export function createIngestRuntime(): IngestRuntime {
     const dailyRepo = new DrizzleDailyCandleRepository(db);
     const minuteRepo = new DrizzleMinuteCandleRepository(db);
     const stockMasterRepo = new DrizzleStockMasterRepository(db);
+    const marketCapRepo = new DrizzleDailyMarketCapRepository(db);
 
     // 내부 협력 서비스
     const universe = new StockMasterIngestService({
@@ -54,9 +61,15 @@ export function createIngestRuntime(): IngestRuntime {
 
     // 공개 유스케이스
     const collector = new MarketDataCollectService({ universe, dailySweep, minuteSweep, scanRepo: dailyRepo, minuteRepo });
+    // 당일 시총 = ka10099 한 스윕(전일종가×현재주식수). KIS·역산 불필요 → 키움 단독.
+    const marketCapRecorder = new DailyMarketCapRecordService({
+        snapshot: new KiwoomMarketSnapshotAdapter(kiwoom.rest),
+        repo: marketCapRepo,
+    });
 
     return {
         collector,
+        marketCapRecorder,
         close: async () => {
             await pool.end();
         },

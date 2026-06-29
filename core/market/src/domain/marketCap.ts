@@ -35,6 +35,32 @@ export interface DailyMarketCap {
 }
 
 /**
+ * 당일 시총 입력용 스냅샷 1건 — 현재 상장주식수 + 전일종가(키움 ka10099 listCount·lastPrice).
+ * 단위(실측): shares=주(정확값), prevClose=원(직전거래일 종가). 둘 다 무손실 string.
+ */
+export interface MarketSnapshot {
+    stockCode: string;
+    shares: string; // 주
+    prevClose: string; // 원
+}
+
+/**
+ * 스냅샷 → 날짜별 시총 행(순수). 시총 = shares × prevClose 한 줄(역산 없음).
+ * 당일 운영: 전일종가 × 현재주식수를 실행일(date) 칸에 박는다("전날 종가 시총을 오늘 칸에" — 백필과 정합).
+ * shares·price 가 0 이하면(거래정지·데이터 결손) 제외.
+ */
+export function computeDailyMarketCaps(snapshots: MarketSnapshot[], date: string): DailyMarketCap[] {
+    const out: DailyMarketCap[] = [];
+    for (const s of snapshots) {
+        const shares = BigInt(s.shares);
+        const price = BigInt(s.prevClose);
+        if (shares <= 0n || price <= 0n) continue;
+        out.push({ stockCode: s.stockCode, date, marketCap: (shares * price).toString() });
+    }
+    return out;
+}
+
+/**
  * 이벤트들에서 현재 총발행주식수 스냅샷을 뽑는다(가장 최신 이벤트의 totalShares).
  * 이벤트가 0건이면 null — 역산 불가(호출자가 조회창을 넓혀 재시도).
  */

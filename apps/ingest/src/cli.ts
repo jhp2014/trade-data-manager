@@ -52,7 +52,8 @@ const USAGE =
     "  collect <from> [to] [--overwrite]\n" +
     "  today [--overwrite]\n" +
     "  month <YYYY-MM> [--overwrite]\n" +
-    "  backfill [개월=12] [--overwrite]";
+    "  backfill [개월=12] [--overwrite]\n" +
+    "  marketcap [YYYY-MM-DD=오늘]      당일 시총 입력(전일종가×현재주식수)";
 
 async function main(): Promise<void> {
     const raw = process.argv.slice(2);
@@ -90,6 +91,14 @@ async function main(): Promise<void> {
                 const months = posInt(a1, "개월") ?? 12;
                 const to = seoulToday();
                 await runCollect(rt, { from: subtractMonths(to, months), to }, overwrite);
+                break;
+            }
+            case "marketcap": {
+                const date = a1 ?? seoulToday();
+                assertDate(date, "date");
+                console.log(`▶ 당일 시총 입력: ${date} (전일종가×현재주식수)`);
+                const r = await rt.marketCapRecorder.record(date);
+                console.log(`  ✓ 유니버스 ${r.universe} · 저장 ${r.stored}종목`);
                 break;
             }
             default:

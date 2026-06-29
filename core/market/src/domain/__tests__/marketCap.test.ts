@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
     computeMarketCapBackfill,
+    computeDailyMarketCaps,
     currentTotalShares,
     sharesAt,
     type ListInfoEvent,
+    type MarketSnapshot,
     type RawDailyClose,
 } from "../marketCap.js";
 
@@ -101,5 +103,37 @@ describe("computeMarketCapBackfill", () => {
             range,
         });
         expect(rows.map((r) => r.date)).toEqual(["2026-06-26"]);
+    });
+});
+
+describe("computeDailyMarketCaps", () => {
+    const snap = (stockCode: string, shares: string, prevClose: string): MarketSnapshot => ({
+        stockCode,
+        shares,
+        prevClose,
+    });
+
+    it("시총 = shares × prevClose, 실행일 칸에 기록", () => {
+        const rows = computeDailyMarketCaps(
+            [snap("005930", "5846278608", "339500"), snap("000660", "712702365", "2673000")],
+            "2026-06-29",
+        );
+        expect(rows).toEqual([
+            { stockCode: "005930", date: "2026-06-29", marketCap: "1984811587416000" },
+            { stockCode: "000660", date: "2026-06-29", marketCap: "1905053421645000" },
+        ]);
+    });
+
+    it("0패딩 문자열(ka10099 원형)도 그대로 파싱", () => {
+        const rows = computeDailyMarketCaps([snap("005380", "0000000204757766", "00480500")], "2026-06-29");
+        expect(rows[0].marketCap).toBe("98386106563000");
+    });
+
+    it("shares·price 0 이하(거래정지·결손)는 제외", () => {
+        const rows = computeDailyMarketCaps(
+            [snap("000001", "0", "1000"), snap("000002", "1000", "0"), snap("000003", "10", "20")],
+            "2026-06-29",
+        );
+        expect(rows.map((r) => r.stockCode)).toEqual(["000003"]);
     });
 });

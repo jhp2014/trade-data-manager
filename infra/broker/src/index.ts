@@ -26,3 +26,7 @@ export {
     KiwoomCurrentSharesAdapter,
     type KiwoomBasicInfoSource,
 } from "./marketCap/kiwoomCurrentSharesAdapter.js";
+export {
+    KiwoomMarketSnapshotAdapter,
+    type KiwoomMarketListSource,
+} from "./marketCap/kiwoomMarketSnapshotAdapter.js";

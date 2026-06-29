@@ -11,4 +11,5 @@ export * from "./collect/stockMasterRepository.js";
 export * from "./marketcap/rawDailyCloseProvider.js";
 export * from "./marketcap/listInfoProvider.js";
 export * from "./marketcap/currentSharesProvider.js";
+export * from "./marketcap/marketSnapshotProvider.js";
 export * from "./marketcap/marketCapRepository.js";
