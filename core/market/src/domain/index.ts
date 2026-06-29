@@ -4,3 +4,4 @@ export * from "./dateRange.js";
 export * from "./price.js";
 export * from "./pruning.js";
 export * from "./minuteBackfill.js";
+export * from "./marketCap.js";

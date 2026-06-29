@@ -160,6 +160,20 @@ export class KiwoomRest {
         );
     }
 
+    /**
+     * [ka10081] 주식일봉차트조회 — 원주가(upd_stkpc_tp:"0", 미수정).
+     * 수정주가판 getDailyChart 와 의도적으로 분리: 시총 백필 등 절대가가 필요한 소비자 전용.
+     */
+    getRawDailyChart(stockCode: string, params: { baseDate: string } & RequestOptions) {
+        const { baseDate, ...opts } = params;
+        return this.request<KiwoomKa10081Response>(
+            "ka10081",
+            "/api/dostk/chart",
+            { stk_cd: stockCode, upd_stkpc_tp: "0", base_dt: baseDate },
+            opts,
+        );
+    }
+
     // ── 고수준 (연속조회, 한 키에 핀 고정) ───────────────────────────
 
     /**
@@ -230,6 +244,32 @@ export class KiwoomRest {
         let pages = 0;
         do {
             const res = await this.getDailyChart(stockCode, { baseDate: toDate, contYn, nextKey, lease });
+            const page = res.data.stk_dt_pole_chart_qry ?? [];
+            if (page.length === 0) break;
+            collected = collected.concat(page);
+            const oldest = page[page.length - 1];
+            if (oldest && oldest.dt < fromDate) break;
+            contYn = res.contYn;
+            nextKey = res.nextKey;
+            pages++;
+        } while (contYn === "Y" && nextKey && pages < maxPages);
+        return collected;
+    }
+
+    /** 기간[from,to] 원주가(미수정) 일봉을 연속조회로 수집. getDailyChartsForRange 의 원주가판(시총 백필 전용). */
+    async getRawDailyChartsForRange(
+        stockCode: string,
+        fromDate: string,
+        toDate: string,
+        maxPages = 20,
+    ): Promise<KiwoomDailyCandle[]> {
+        const lease = this.deps.pool.acquire(); // 시퀀스 전체를 한 키에 고정
+        let collected: KiwoomDailyCandle[] = [];
+        let contYn = "N";
+        let nextKey = "";
+        let pages = 0;
+        do {
+            const res = await this.getRawDailyChart(stockCode, { baseDate: toDate, contYn, nextKey, lease });
             const page = res.data.stk_dt_pole_chart_qry ?? [];
             if (page.length === 0) break;
             collected = collected.concat(page);

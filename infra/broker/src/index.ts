@@ -17,3 +17,8 @@ export {
     KiwoomStockListAdapter,
     type KiwoomStockListSource,
 } from "./stockMaster/kiwoomStockListAdapter.js";
+export { KisListInfoAdapter, type KisListInfoSource } from "./marketCap/kisListInfoAdapter.js";
+export {
+    KiwoomRawDailyAdapter,
+    type KiwoomRawDailySource,
+} from "./marketCap/kiwoomRawDailyAdapter.js";

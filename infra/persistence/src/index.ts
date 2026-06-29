@@ -6,6 +6,7 @@ export * as schema from "./schema/index.js";
 export { DrizzleDailyCandleRepository } from "./repositories/dailyCandle.repository.js";
 export { DrizzleMinuteCandleRepository } from "./repositories/minuteCandle.repository.js";
 export { DrizzleStockMasterRepository } from "./repositories/stockMaster.repository.js";
+export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.repository.js";
 export {
     dailyCandleToRow,
     rowToDailyCandle,
@@ -18,3 +19,7 @@ export {
     stockMasterToRow,
     rowToStockMaster,
 } from "./mappers/stockMaster.js";
+export {
+    marketCapToRow,
+    rowToMarketCap,
+} from "./mappers/marketCap.js";
