@@ -6,3 +6,4 @@ export * from "./pruning.js";
 export * from "./minuteBackfill.js";
 export * from "./marketCap.js";
 export * from "./ipoPrice.js";
+export * from "./news.js";

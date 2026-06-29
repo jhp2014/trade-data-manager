@@ -7,7 +7,7 @@
 //   수량·금액류는 bigint 로 저장한다(과거 numeric → 행/인덱스 축소 + 비교/집계 가속). 도메인은 여전히
 //   무손실 string 계약이므로(model.ts) 매퍼 경계에서만 integer↔Number / bigint↔String 변환한다.
 //   bigint 는 mode:"bigint"(네이티브 BigInt) — string 왕복이 무손실.
-import { pgSchema, varchar, date, time, integer, bigint, primaryKey, index } from "drizzle-orm/pg-core";
+import { pgSchema, varchar, date, time, integer, bigint, text, primaryKey, index } from "drizzle-orm/pg-core";
 
 export const market = pgSchema("market");
 
@@ -87,6 +87,26 @@ export const dailyMarketCap = market.table(
     (t) => [primaryKey({ columns: [t.stockCode, t.tradeDate] })],
 );
 
+// 5. 시황 뉴스(헤드라인) — KIS 종합시황(제목) 영구저장. 본문 없음. 한 헤드라인 다종목 태그 → (종목,srno) 행.
+//    stock_code="" = 종목 미태깅(매크로·해외·스포츠 등 — 읽을 때 news_lrdv_code 로 필터). srno=cntt_usiq_srno(19자리,
+//    시각 내장 전역 유니크 → bigint 무손실). 분봉과 동일: 본질만·FK없음·자연키 PK·published_date 월별 RANGE 파티션.
+//    PK=(stock_code, published_date, srno): 주 조회 "한 종목의 기간"이 PK prefix 커버, published_date(파티션키) 포함.
+export const stockNews = market.table(
+    "stock_news",
+    {
+        publishedDate: date("published_date").notNull(),
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        srno: bigint("srno", { mode: "bigint" }).notNull(),
+
+        publishedTime: time("published_time").notNull(),
+        title: text("title").notNull(),
+        sourceCode: varchar("source_code", { length: 4 }).notNull(),
+        sourceName: varchar("source_name", { length: 40 }).notNull(),
+        categoryCode: varchar("category_code", { length: 12 }).notNull(),
+    },
+    (t) => [primaryKey({ columns: [t.stockCode, t.publishedDate, t.srno] })],
+);
+
 export type DailyCandleRow = typeof dailyCandles.$inferSelect;
 export type DailyCandleInsert = typeof dailyCandles.$inferInsert;
 export type MinuteCandleRow = typeof minuteCandles.$inferSelect;
@@ -95,3 +115,5 @@ export type StockMasterRow = typeof stockMaster.$inferSelect;
 export type StockMasterInsert = typeof stockMaster.$inferInsert;
 export type DailyMarketCapRow = typeof dailyMarketCap.$inferSelect;
 export type DailyMarketCapInsert = typeof dailyMarketCap.$inferInsert;
+export type StockNewsRow = typeof stockNews.$inferSelect;
+export type StockNewsInsert = typeof stockNews.$inferInsert;

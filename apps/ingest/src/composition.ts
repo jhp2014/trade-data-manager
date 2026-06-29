@@ -10,6 +10,7 @@ import {
     KisListInfoAdapter,
     KiwoomRawDailyAdapter,
     KiwoomCurrentSharesAdapter,
+    KisNewsAdapter,
 } from "@trade-data-manager/broker";
 import {
     createDb,
@@ -18,6 +19,7 @@ import {
     DrizzleMinuteCandleRepository,
     DrizzleStockMasterRepository,
     DrizzleDailyMarketCapRepository,
+    DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
 import {
     MarketDataIngestService,
@@ -28,9 +30,11 @@ import {
     DailyMarketCapRecordService,
     StockMarketCapBackfillService,
     MarketCapBackfillService,
+    NewsBackfillService,
     type MarketDataCollector,
     type DailyMarketCapRecorder,
     type MarketCapBackfiller,
+    type NewsBackfiller,
 } from "@trade-data-manager/market";
 
 export interface IngestRuntime {
@@ -40,6 +44,8 @@ export interface IngestRuntime {
     marketCapRecorder: DailyMarketCapRecorder;
     /** 전종목 날짜별 시총 백필(Command). 과거 임의 구간을 KIS 역산+원주가로 재구성. */
     marketCapBackfiller: MarketCapBackfiller;
+    /** 시황 뉴스 헤드라인 백필(Command). KIS 시황 피드를 연속 역방향 워크로 과거 채움. */
+    newsBackfiller: NewsBackfiller;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -87,11 +93,17 @@ export function createIngestRuntime(): IngestRuntime {
         stockBackfill: stockMarketCapBackfill,
         scanRepo: dailyRepo,
     });
+    // 시황 뉴스 백필 = KIS 시황 피드(전부, 종목 미태깅 포함)를 시각앵커 연속 워크로 긁어 stock_news 에 적재.
+    const newsBackfiller = new NewsBackfillService({
+        source: new KisNewsAdapter(kis.rest),
+        repo: new DrizzleStockNewsRepository(db),
+    });
 
     return {
         collector,
         marketCapRecorder,
         marketCapBackfiller,
+        newsBackfiller,
         close: async () => {
             await pool.end();
         },

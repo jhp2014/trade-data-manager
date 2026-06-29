@@ -7,6 +7,7 @@ export { DrizzleDailyCandleRepository } from "./repositories/dailyCandle.reposit
 export { DrizzleMinuteCandleRepository } from "./repositories/minuteCandle.repository.js";
 export { DrizzleStockMasterRepository } from "./repositories/stockMaster.repository.js";
 export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.repository.js";
+export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.js";
 export {
     dailyCandleToRow,
     rowToDailyCandle,
@@ -23,3 +24,7 @@ export {
     marketCapToRow,
     rowToMarketCap,
 } from "./mappers/marketCap.js";
+export {
+    newsHeadlineToRows,
+    rowToNewsHeadline,
+} from "./mappers/news.js";

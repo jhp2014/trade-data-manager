@@ -30,3 +30,4 @@ export {
     KiwoomMarketSnapshotAdapter,
     type KiwoomMarketListSource,
 } from "./marketCap/kiwoomMarketSnapshotAdapter.js";
+export { KisNewsAdapter, type KisNewsSource } from "./news/kisNewsAdapter.js";

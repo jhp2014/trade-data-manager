@@ -4,4 +4,5 @@
 //   shared/    : 여러 슬라이스가 공유하는 순수 캘린더 유틸
 export * from "./collect/index.js";
 export * from "./marketcap/index.js";
+export * from "./news/index.js";
 export * from "./shared/index.js";

@@ -54,7 +54,8 @@ const USAGE =
     "  month <YYYY-MM> [--overwrite]\n" +
     "  backfill [개월=12] [--overwrite]\n" +
     "  marketcap                        당일 시총 입력(오늘 칸, 전일종가×현재주식수)\n" +
-    "  marketcap-backfill <from> [to]   전종목 과거 시총 백필(역산)";
+    "  marketcap-backfill <from> [to]   전종목 과거 시총 백필(역산)\n" +
+    "  news <from> [to]                 시황 뉴스 헤드라인 백필(to 생략=오늘)";
 
 async function main(): Promise<void> {
     const raw = process.argv.slice(2);
@@ -121,6 +122,23 @@ async function main(): Promise<void> {
                 if (r.failed.length) {
                     console.log(`    실패: ${r.failed.slice(0, 20).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
                 }
+                break;
+            }
+            case "news": {
+                if (!a1) throw new Error("사용법: news <from> [to]");
+                assertDate(a1, "from");
+                const to = a2 ?? seoulToday();
+                assertDate(to, "to");
+                console.log(`▶ 뉴스 백필: ${a1} ~ ${to} (시황 피드 연속 워크)`);
+                const r = await rt.newsBackfiller.backfill(
+                    { from: a1, to },
+                    {
+                        onProgress: (p) => {
+                            if (p.pages % 50 === 0) console.log(`  [page ${p.pages}] ~${p.anchorDate} · ${p.headlines}건`);
+                        },
+                    },
+                );
+                console.log(`  ✓ 페이지 ${r.pages} · 헤드라인 ${r.headlines}건 저장`);
                 break;
             }
             default:

@@ -13,3 +13,5 @@ export * from "./marketcap/listInfoProvider.js";
 export * from "./marketcap/currentSharesProvider.js";
 export * from "./marketcap/marketSnapshotProvider.js";
 export * from "./marketcap/marketCapRepository.js";
+export * from "./news/newsSource.js";
+export * from "./news/stockNewsRepository.js";

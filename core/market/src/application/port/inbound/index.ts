@@ -6,3 +6,4 @@ export * from "./collect/marketDataCollector.js";
 export * from "./marketcap/marketCapBackfiller.js";
 export * from "./marketcap/ipoPriceBackfiller.js";
 export * from "./marketcap/dailyMarketCapRecorder.js";
+export * from "./news/newsBackfiller.js";

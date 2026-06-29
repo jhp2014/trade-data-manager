@@ -20,6 +20,7 @@
         "recon:minute-history": "tsx recon/03-minute-history.ts",
         "recon:market": "tsx recon/04-market-compare.ts",
         "recon:news": "tsx recon/05-news.ts",
+        "recon:news-depth": "tsx recon/09-news-depth.ts",
         "recon:fake-tick": "tsx recon/06-fake-tick.ts",
         "recon:list-info": "tsx recon/08-list-info.ts"
     },
