@@ -1,21 +1,31 @@
-// Inbound(driving) 포트 — 날짜별 시총 백필(일회성 Command, 쓰기).
-// 시총은 이후 당일당일 입력 운영으로 가고, 이 백필은 과거 구간을 한 번 채우는 용도다.
+// Inbound(driving) 포트 — 전종목 날짜별 시총 백필(일회성 Command, 쓰기).
+// 공개 표면은 이 전종목 백필 하나. 단일종목 백필은 내부 협력자(StockMarketCapBackfillService)다.
+// 당일 입력(DailyMarketCapRecorder, ka10099 라이브)과 달리 이쪽은 과거 임의 구간을 KIS 역산으로 재구성한다.
 import type { DateRange } from "../../../../domain/index.js";
 
+export interface MarketCapBackfillProgress {
+    done: number;
+    total: number;
+}
+
+export interface MarketCapBackfillOptions {
+    /** fan-out 동시 실행 상한. 풀이 rate limit 자체 페이싱. */
+    concurrency?: number;
+    /** 진행 콜백 — 딜리버리(CLI)가 렌더. */
+    onProgress?: (p: MarketCapBackfillProgress) => void;
+}
+
 export interface MarketCapBackfillResult {
-    stockCode: string;
     range: DateRange;
-    /** list-info 이벤트 수(현재총수·delta 복원에 쓰인). */
-    eventCount: number;
-    /** 복원한 현재 총발행주식수(없으면 실패). */
-    totalShares: string | null;
-    /** 받은 원주가 거래일 수. */
-    rawDays: number;
-    /** 기록한 시총 행 수. */
+    /** 대상 종목 수(기간 내 거래된 전종목). */
+    universe: number;
+    /** 저장한 시총 행 합. */
     stored: number;
+    /** 실패한 종목 코드. */
+    failed: string[];
 }
 
 export interface MarketCapBackfiller {
-    /** 특정 종목의 [from,to] 날짜별 시총을 채운다(비거래일 자연 스킵). */
-    backfill(stockCode: string, range: DateRange): Promise<MarketCapBackfillResult>;
+    /** 기간 내 거래된 전종목의 날짜별 시총을 백필(종목 실패 격리). */
+    backfill(range: DateRange, options?: MarketCapBackfillOptions): Promise<MarketCapBackfillResult>;
 }

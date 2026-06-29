@@ -109,7 +109,7 @@ async function main(): Promise<void> {
                 const to = a2 ?? a1;
                 assertDate(to, "to");
                 console.log(`▶ 시총 백필: ${a1} ~ ${to} (전종목 역산)`);
-                const r = await rt.marketCapBackfiller.backfillRange(
+                const r = await rt.marketCapBackfiller.backfill(
                     { from: a1, to },
                     {
                         onProgress: (p) => {
