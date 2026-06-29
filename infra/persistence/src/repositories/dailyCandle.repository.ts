@@ -89,4 +89,13 @@ export class DrizzleDailyCandleRepository implements DailyCandleRepository, Dail
             .limit(1);
         return rows[0]?.tradeDate ?? null;
     }
+
+    async listTradedStockCodes(range: DateRange): Promise<string[]> {
+        const rows = await this.db
+            .selectDistinct({ stockCode: dailyCandles.stockCode })
+            .from(dailyCandles)
+            .where(and(gte(dailyCandles.tradeDate, range.from), lte(dailyCandles.tradeDate, range.to)))
+            .orderBy(asc(dailyCandles.stockCode));
+        return rows.map((r) => r.stockCode);
+    }
 }

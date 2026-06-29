@@ -1,11 +1,15 @@
 // composition root — 실물(키움·KIS·Postgres)을 부품에 꽂는 유일한 바깥 껍데기.
 // 공개 표면은 두 inbound 유스케이스: collector(쓰기) · query(읽기). 내부 협력 서비스는 여기서 조립한다.
 import { createKiwoom } from "@trade-data-manager/kiwoom";
+import { createKis } from "@trade-data-manager/kis";
 import {
     KiwoomDailyAdapter,
     KiwoomMinuteAdapter,
     KiwoomStockListAdapter,
     KiwoomMarketSnapshotAdapter,
+    KisListInfoAdapter,
+    KiwoomRawDailyAdapter,
+    KiwoomCurrentSharesAdapter,
 } from "@trade-data-manager/broker";
 import {
     createDb,
@@ -22,8 +26,11 @@ import {
     MinuteSweepService,
     MarketDataCollectService,
     DailyMarketCapRecordService,
+    MarketCapBackfillService,
+    MarketCapRangeBackfillService,
     type MarketDataCollector,
     type DailyMarketCapRecorder,
+    type MarketCapRangeBackfiller,
 } from "@trade-data-manager/market";
 
 export interface IngestRuntime {
@@ -31,12 +38,15 @@ export interface IngestRuntime {
     collector: MarketDataCollector;
     /** 당일 시총 입력(Command). 전일종가 × 현재주식수를 그날 칸에 1행씩. */
     marketCapRecorder: DailyMarketCapRecorder;
+    /** 전종목 날짜별 시총 백필(Command). 과거 임의 구간을 KIS 역산+원주가로 재구성. */
+    marketCapBackfiller: MarketCapRangeBackfiller;
     /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
 
 export function createIngestRuntime(): IngestRuntime {
     const kiwoom = createKiwoom();
+    const kis = createKis(); // 시총 백필의 getListInfo 역산용(당일/수집 경로엔 미사용)
     const pool = createPoolFromEnv();
     const db = createDb(pool);
 
@@ -66,10 +76,22 @@ export function createIngestRuntime(): IngestRuntime {
         snapshot: new KiwoomMarketSnapshotAdapter(kiwoom.rest),
         repo: marketCapRepo,
     });
+    // 전종목 날짜별 시총 백필 = 단일종목 백필(KIS 역산 + 키움 원주가 + 현재주식수 폴백)을 거래종목에 fan-out.
+    const marketCapBackfillService = new MarketCapBackfillService({
+        listInfo: new KisListInfoAdapter(kis.rest),
+        rawDaily: new KiwoomRawDailyAdapter(kiwoom.rest),
+        currentShares: new KiwoomCurrentSharesAdapter(kiwoom.rest),
+        repo: marketCapRepo,
+    });
+    const marketCapBackfiller = new MarketCapRangeBackfillService({
+        backfiller: marketCapBackfillService,
+        scanRepo: dailyRepo,
+    });
 
     return {
         collector,
         marketCapRecorder,
+        marketCapBackfiller,
         close: async () => {
             await pool.end();
         },

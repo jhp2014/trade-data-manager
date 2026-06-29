@@ -1,4 +1,4 @@
-import type { DailyCandle } from "../../../../domain/index.js";
+import type { DailyCandle, DateRange } from "../../../../domain/index.js";
 
 /**
  * 일봉 스캔 조회 포트(ISP — 프루닝 입력용 읽기). 한 거래일의 *전종목* 을 본다.
@@ -12,4 +12,6 @@ export interface DailyScanRepository {
     getPreviousTradingDate(date: string): Promise<string | null>;
     /** 저장된 일봉의 가장 최근 거래일(전체 종목). 일봉 커버리지 확인용. 없으면 null. */
     getLatestDailyDate(): Promise<string | null>;
+    /** [from,to] 안에 일봉(거래분)이 있는 종목 코드 distinct. 시총 백필 대상 유니버스. */
+    listTradedStockCodes(range: DateRange): Promise<string[]>;
 }

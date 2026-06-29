@@ -53,7 +53,8 @@ const USAGE =
     "  today [--overwrite]\n" +
     "  month <YYYY-MM> [--overwrite]\n" +
     "  backfill [개월=12] [--overwrite]\n" +
-    "  marketcap [YYYY-MM-DD=오늘]      당일 시총 입력(전일종가×현재주식수)";
+    "  marketcap                        당일 시총 입력(오늘 칸, 전일종가×현재주식수)\n" +
+    "  marketcap-backfill <from> [to]   전종목 과거 시총 백필(역산)";
 
 async function main(): Promise<void> {
     const raw = process.argv.slice(2);
@@ -94,11 +95,32 @@ async function main(): Promise<void> {
                 break;
             }
             case "marketcap": {
-                const date = a1 ?? seoulToday();
-                assertDate(date, "date");
+                // 당일 전용 — ka10099 라이브 스냅샷은 "지금"의 전일종가만 주므로 오늘 칸에만 유효.
+                // 과거/빠뜨린 날은 marketcap-backfill(역산)로 채운다.
+                const date = seoulToday();
                 console.log(`▶ 당일 시총 입력: ${date} (전일종가×현재주식수)`);
                 const r = await rt.marketCapRecorder.record(date);
                 console.log(`  ✓ 유니버스 ${r.universe} · 저장 ${r.stored}종목`);
+                break;
+            }
+            case "marketcap-backfill": {
+                if (!a1) throw new Error("사용법: marketcap-backfill <from> [to]");
+                assertDate(a1, "from");
+                const to = a2 ?? a1;
+                assertDate(to, "to");
+                console.log(`▶ 시총 백필: ${a1} ~ ${to} (전종목 역산)`);
+                const r = await rt.marketCapBackfiller.backfillRange(
+                    { from: a1, to },
+                    {
+                        onProgress: (p) => {
+                            if (p.done % 200 === 0 || p.done === p.total) console.log(`  [${p.done}/${p.total}]`);
+                        },
+                    },
+                );
+                console.log(`  ✓ 종목 ${r.universe} · 저장 ${r.stored}행 · 실패 ${r.failed.length}`);
+                if (r.failed.length) {
+                    console.log(`    실패: ${r.failed.slice(0, 20).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
+                }
                 break;
             }
             default:

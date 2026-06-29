@@ -30,6 +30,9 @@ class FakeScanRepo implements DailyScanRepository {
         const d = Object.keys(this.byDate).sort();
         return d.length ? d[d.length - 1] : null;
     }
+    async listTradedStockCodes(): Promise<string[]> {
+        return [];
+    }
 }
 class FakeMinuteProvider implements MinuteCandleProvider {
     constructor(private byStock: Record<string, MinuteCandle[]>) {}
