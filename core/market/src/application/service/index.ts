@@ -5,6 +5,7 @@ export * from "./marketCapBackfillService.js";
 // 내부 협력자(포트 아님 — collect 가 조합).
 export * from "./marketDataIngestService.js";
 export * from "./stockMasterIngestService.js";
+export * from "./dailySweepService.js";
 export * from "./minuteSweepService.js";
 // 헬퍼.
 export * from "./dailyRange.js";

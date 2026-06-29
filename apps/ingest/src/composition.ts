@@ -16,6 +16,7 @@ import {
 import {
     MarketDataIngestService,
     StockMasterIngestService,
+    DailySweepService,
     MinuteSweepService,
     MarketDataCollectService,
     type MarketDataCollector,
@@ -48,10 +49,11 @@ export function createIngestRuntime(): IngestRuntime {
         repository: stockMasterRepo,
     });
     const dailyIngest = new MarketDataIngestService({ dailyProvider, minuteProvider, dailyRepo, minuteRepo });
+    const dailySweep = new DailySweepService({ dailyIngest });
     const minuteSweep = new MinuteSweepService({ scanRepo: dailyRepo, minuteProvider, minuteRepo });
 
     // 공개 유스케이스
-    const collector = new MarketDataCollectService({ universe, dailyIngest, minuteSweep, scanRepo: dailyRepo, minuteRepo });
+    const collector = new MarketDataCollectService({ universe, dailySweep, minuteSweep, scanRepo: dailyRepo, minuteRepo });
 
     return {
         collector,

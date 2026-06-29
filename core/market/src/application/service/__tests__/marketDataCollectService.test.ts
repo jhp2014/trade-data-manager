@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { MarketDataCollectService } from "../marketDataCollectService.js";
 import { StockMasterIngestService } from "../stockMasterIngestService.js";
 import { MarketDataIngestService } from "../marketDataIngestService.js";
+import { DailySweepService } from "../dailySweepService.js";
 import { MinuteSweepService } from "../minuteSweepService.js";
 import type { DailyBar, DailyCandle, MinuteCandle, StockMaster } from "../../../domain/index.js";
 import type {
@@ -79,8 +80,9 @@ function makeCollector(opts: { codes: string[]; byDate: Record<string, DailyCand
         minuteRepo,
         today: () => "2026-06-28",
     });
+    const dailySweep = new DailySweepService({ dailyIngest });
     const minuteSweep = new MinuteSweepService({ scanRepo, minuteProvider: new FakeMinuteProvider(), minuteRepo });
-    const collector = new MarketDataCollectService({ universe, dailyIngest, minuteSweep, scanRepo, minuteRepo });
+    const collector = new MarketDataCollectService({ universe, dailySweep, minuteSweep, scanRepo, minuteRepo });
     return { collector, minuteRepo };
 }
 
