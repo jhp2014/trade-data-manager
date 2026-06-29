@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type { StockMaster, StockMasterRepository } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockMaster } from "../schema/market.js";
@@ -17,5 +18,13 @@ export class DrizzleStockMasterRepository implements StockMasterRepository {
             .insert(stockMaster)
             .values(masters.map(stockMasterToRow))
             .onConflictDoUpdate({ target: stockMaster.stockCode, set: CONFLICT_SET });
+    }
+
+    async updateIpoPrice(stockCode: string, ipoPrice: string): Promise<void> {
+        // 공모가만 갱신(integer 컬럼). 도메인 무손실 string → 경계에서 Number.
+        await this.db
+            .update(stockMaster)
+            .set({ ipoPrice: Number(ipoPrice) })
+            .where(eq(stockMaster.stockCode, stockCode));
     }
 }

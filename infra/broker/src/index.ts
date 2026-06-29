@@ -22,3 +22,7 @@ export {
     KiwoomRawDailyAdapter,
     type KiwoomRawDailySource,
 } from "./marketCap/kiwoomRawDailyAdapter.js";
+export {
+    KiwoomCurrentSharesAdapter,
+    type KiwoomBasicInfoSource,
+} from "./marketCap/kiwoomCurrentSharesAdapter.js";

@@ -23,6 +23,7 @@ class FakeRepo implements StockMasterRepository {
     async saveStockMasters(masters: StockMaster[]): Promise<void> {
         this.saved.push(...masters);
     }
+    async updateIpoPrice(): Promise<void> {}
 }
 
 describe("ingestStockMasters", () => {

@@ -26,6 +26,7 @@ class FakeStockMasterProvider implements StockMasterProvider {
 }
 class NoopStockMasterRepo implements StockMasterRepository {
     async saveStockMasters(): Promise<void> {}
+    async updateIpoPrice(): Promise<void> {}
 }
 class FakeDailyProvider implements DailyCandleProvider {
     async getDailyCandles(): Promise<DailyCandle[]> {

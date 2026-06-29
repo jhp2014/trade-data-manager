@@ -7,4 +7,9 @@ import type { StockMaster } from "../../../../domain/index.js";
  */
 export interface StockMasterRepository {
     saveStockMasters(masters: StockMaster[]): Promise<void>;
+    /**
+     * 공모가 enrichment — list-info 가 구한 공모가만 채운다(name·market·listingDate 등 다른 필드 불변).
+     * saveStockMasters 가 ipoPrice 를 보존만 하고 비워두던 그 자리를 이 메서드가 채운다.
+     */
+    updateIpoPrice(stockCode: string, ipoPrice: string): Promise<void>;
 }
