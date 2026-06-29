@@ -1,4 +1,4 @@
-import type { DailyCandle } from "../../../domain/index.js";
+import type { DailyCandle } from "../../../../domain/index.js";
 
 /**
  * 일봉 스캔 조회 포트(ISP — 프루닝 입력용 읽기). 한 거래일의 *전종목* 을 본다.

@@ -1,5 +1,5 @@
 // 유니버스/종목마스터 ingest 유스케이스 구현. provider(라이브 ka10099) → repo upsert-accumulate.
-import type { StockMasterProvider, StockMasterRepository } from "../port/outbound/index.js";
+import type { StockMasterProvider, StockMasterRepository } from "../../port/outbound/index.js";
 
 // 내부 협력자. inbound 포트 아님.
 export interface StockMasterIngestResult {

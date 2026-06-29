@@ -1,4 +1,4 @@
-import type { DailyCandle, DateRange } from "../../../domain/index.js";
+import type { DailyCandle, DateRange } from "../../../../domain/index.js";
 
 /**
  * 일봉 제공 포트(ISP — 일봉 능력만).

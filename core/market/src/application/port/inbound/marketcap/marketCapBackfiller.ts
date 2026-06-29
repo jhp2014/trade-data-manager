@@ -1,6 +1,6 @@
 // Inbound(driving) 포트 — 날짜별 시총 백필(일회성 Command, 쓰기).
 // 시총은 이후 당일당일 입력 운영으로 가고, 이 백필은 과거 구간을 한 번 채우는 용도다.
-import type { DateRange } from "../../../domain/index.js";
+import type { DateRange } from "../../../../domain/index.js";
 
 export interface MarketCapBackfillResult {
     stockCode: string;

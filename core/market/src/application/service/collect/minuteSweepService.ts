@@ -1,14 +1,14 @@
 // 한 거래일 분봉 수집 — 저장 대상 = 일봉 거래대금 ≥200억 ∪ 고가등락률 ≥10% (넓게).
 // 분단위 순위로 더 좁히지 않는다(최적화 대신 넓게 저장 + DB 용량은 파티셔닝으로 해결).
 // 받은 종목은 그대로 저장(빈 분봉 제외). 종목 fetch 실패는 격리.
-import { selectDailyCandidates } from "../../domain/index.js";
+import { selectDailyCandidates } from "../../../domain/index.js";
 import type {
     DailyScanRepository,
     MinuteCandleProvider,
     MinuteCandleRepository,
-} from "../port/outbound/index.js";
+} from "../../port/outbound/index.js";
 import { buildDailyRankInputs } from "./dailyRankInputs.js";
-import { mapWithConcurrency } from "../concurrency.js";
+import { mapWithConcurrency } from "../../concurrency.js";
 
 // 확정 파라미터(사용자 2026-06-29): 저장 = 일봉 거래대금 ≥200억 ∪ 고가등락률 ≥10%.
 // 순위(rank) 컷 미사용 — 절대 거래대금 floor 기준이라 저장량이 그날 시장 활기에 비례한다.

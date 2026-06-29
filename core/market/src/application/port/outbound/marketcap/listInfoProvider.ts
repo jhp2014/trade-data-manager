@@ -1,4 +1,4 @@
-import type { ListInfoEvent } from "../../../domain/index.js";
+import type { ListInfoEvent } from "../../../../domain/index.js";
 
 /**
  * 예탁원 상장정보일정 제공 포트(ISP — 발행주식수 변동 이벤트만).

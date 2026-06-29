@@ -1,5 +1,5 @@
 // 일봉 기본 수집 범위 정책 — 오늘 기준 1년 반. 순수 문자열 날짜 산술(타임존 무관).
-import type { DateRange } from "../../domain/index.js";
+import type { DateRange } from "../../../domain/index.js";
 
 const DEFAULT_LOOKBACK_MONTHS = 18;
 

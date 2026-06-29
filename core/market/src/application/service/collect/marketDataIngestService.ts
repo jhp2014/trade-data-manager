@@ -1,13 +1,13 @@
 // 복기 ingest 유스케이스 구현. 종목 1개 단위(전종목 스윕은 앱/크론 책임).
 // 생성자 주입(수동 DI): provider·repository 는 포트 인터페이스만 안다.
-import type { DailyBar, DailyCandle, DateRange } from "../../domain/index.js";
+import type { DailyBar, DailyCandle, DateRange } from "../../../domain/index.js";
 import type {
     DailyCandleProvider,
     DailyCandleRepository,
     MinuteCandleProvider,
     MinuteCandleRepository,
-} from "../port/outbound/index.js";
-import { defaultDailyRange, seoulToday } from "./dailyRange.js";
+} from "../../port/outbound/index.js";
+import { defaultDailyRange, seoulToday } from "../shared/dailyRange.js";
 
 // 내부 협력자(종목 1개 단위 ingest). inbound 포트 아님 — 공개 표면은 collect.
 export interface DailyIngestResult {

@@ -1,13 +1,7 @@
-// Application 서비스 = 유스케이스 구현 + 내부 협력자 + 정책 헬퍼.
-// 공개 진입(inbound 포트 구현): MarketDataCollectService(collect).
-export * from "./marketDataCollectService.js";
-export * from "./marketCapBackfillService.js";
-// 내부 협력자(포트 아님 — collect 가 조합).
-export * from "./marketDataIngestService.js";
-export * from "./stockMasterIngestService.js";
-export * from "./dailySweepService.js";
-export * from "./minuteSweepService.js";
-// 헬퍼.
-export * from "./dailyRange.js";
-export * from "./yearMonth.js";
-export * from "./dates.js";
+// Application 서비스 배럴 — inbound 유스케이스별 슬라이스로 분리.
+//   collect/   : 복기 데이터 수집(MarketDataCollector) + 협력자(ingest·universe·daily/minute sweep)
+//   marketcap/ : 날짜별 시총 백필(MarketCapBackfiller)
+//   shared/    : 여러 슬라이스가 공유하는 순수 캘린더 유틸
+export * from "./collect/index.js";
+export * from "./marketcap/index.js";
+export * from "./shared/index.js";

@@ -1,4 +1,4 @@
-import type { StockMaster } from "../../../domain/index.js";
+import type { StockMaster } from "../../../../domain/index.js";
 
 /**
  * 종목 마스터 영속화(ISP). **upsert-accumulate: 절대 삭제 안 함** → 폐지종목 행도 보존(과거 복기 표시용).

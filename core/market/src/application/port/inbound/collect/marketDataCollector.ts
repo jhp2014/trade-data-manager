@@ -1,6 +1,6 @@
 // Inbound(driving) 포트 — 복기 데이터 수집 단일 유스케이스(Command, 쓰기).
 // 당일/과거/범위/월 전부 collect(range) 하나로. 내부에서 유니버스·일봉커버리지·날짜별 분봉을 조합한다.
-import type { DateRange } from "../../../domain/index.js";
+import type { DateRange } from "../../../../domain/index.js";
 
 export interface CollectProgress {
     phase: "universe" | "daily" | "minute";
