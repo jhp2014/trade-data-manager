@@ -13,7 +13,9 @@ import type { StockMasterIngestService } from "./stockMasterIngestService.js";
 import type { MarketDataIngestService } from "./marketDataIngestService.js";
 import type { MinuteSweepService } from "./minuteSweepService.js";
 
-const DEFAULT_CONCURRENCY = 8;
+// 종목당 2콜(KRX+_AL)을 동시 발사하므로, 키움 멀티키(키×5콜/초)를 채우려면 in-flight 종목 수를 키운다.
+// 풀이 rate limit 을 자체 페이싱하므로 과다 설정해도 큐잉만 될 뿐 안전. 3~4키 기준 16.
+const DEFAULT_CONCURRENCY = 16;
 
 export interface MarketDataCollectDeps {
     universe: StockMasterIngestService;
