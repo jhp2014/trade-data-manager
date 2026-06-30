@@ -1,7 +1,8 @@
+import { and, eq, inArray } from "drizzle-orm";
 import type { DailyMarketCap, DailyMarketCapRepository } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { dailyMarketCap } from "../schema/market.js";
-import { marketCapToRow } from "../mappers/marketCap.js";
+import { marketCapToRow, rowToMarketCap } from "../mappers/marketCap.js";
 import { buildConflictUpdateSet } from "./_helpers.js";
 
 const CONFLICT_SET = buildConflictUpdateSet(dailyMarketCap, ["stockCode", "tradeDate"]);
@@ -19,5 +20,14 @@ export class DrizzleDailyMarketCapRepository implements DailyMarketCapRepository
                 target: [dailyMarketCap.stockCode, dailyMarketCap.tradeDate],
                 set: CONFLICT_SET,
             });
+    }
+
+    async getByDateAndCodes(date: string, codes: string[]): Promise<DailyMarketCap[]> {
+        if (codes.length === 0) return [];
+        const rows = await this.db
+            .select()
+            .from(dailyMarketCap)
+            .where(and(eq(dailyMarketCap.tradeDate, date), inArray(dailyMarketCap.stockCode, codes)));
+        return rows.map(rowToMarketCap);
     }
 }

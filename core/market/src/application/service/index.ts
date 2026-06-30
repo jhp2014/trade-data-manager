@@ -5,4 +5,5 @@
 export * from "./collect/index.js";
 export * from "./marketcap/index.js";
 export * from "./news/index.js";
+export * from "./issue/index.js";
 export * from "./shared/index.js";
