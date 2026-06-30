@@ -1,0 +1,24 @@
+{
+    "name": "@trade-data-manager/probe",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "start": "tsx src/cli.ts",
+        "type-check": "tsc --noEmit",
+        "clean": "rimraf dist",
+        "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo"
+    },
+    "dependencies": {
+        "@trade-data-manager/market": "workspace:*",
+        "@trade-data-manager/broker": "workspace:*",
+        "@trade-data-manager/persistence": "workspace:*",
+        "@trade-data-manager/google": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.0",
+        "rimraf": "^6.0.1",
+        "tsx": "^4.21.0",
+        "typescript": "^6.0.3"
+    }
+}
