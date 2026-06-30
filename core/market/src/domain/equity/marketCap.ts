@@ -5,7 +5,7 @@
 //   · 원주가 = 미수정(권리락·액분 무관 실제 시총). 저장 일봉(수정주가)과 분리해 transient 로만 쓴다.
 // shares(t) = tot_current − Σ(delta where list_dt > t)  — 현재총수에서 역산(상장일 무의존).
 //   · 역산이라 발행주식수 이벤트 조회창이 [백필기간, 오늘]만 덮으면 됨(기간 내 증감만 빼면 복원).
-import type { DateRange } from "./dateRange.js";
+import type { DateRange } from "../dateRange.js";
 
 /** 예탁원 상장정보일정 1건 — 발행주식수 변동 이벤트. 가격/수량은 무손실 string. */
 export interface ListInfoEvent {
