@@ -35,3 +35,9 @@ export {
     TelegramNewsSearchAdapter,
     type TelegramSearchSource,
 } from "./news/telegramNewsSearchAdapter.js";
+export {
+    SheetThemeMembershipAdapter,
+    type ThemeSheetSource,
+} from "./theme/sheetThemeMembershipAdapter.js";
+export { type ThemeSheetConfig, DEFAULT_THEME_SHEET } from "./theme/sheetConfig.js";
+export { toCanonical } from "./theme/codes.js";

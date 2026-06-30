@@ -392,6 +392,9 @@ importers:
 
   infra/broker:
     dependencies:
+      '@trade-data-manager/google':
+        specifier: workspace:*
+        version: link:../google
       '@trade-data-manager/kis':
         specifier: workspace:*
         version: link:../kis

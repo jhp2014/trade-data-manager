@@ -16,13 +16,15 @@
         "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",
         "recon:minute-compare": "tsx recon/01-minute-compare.ts",
         "recon:minute-depth": "tsx recon/02-minute-depth.ts",
-        "recon:daily": "tsx recon/03-daily.ts"
+        "recon:daily": "tsx recon/03-daily.ts",
+        "recon:theme": "tsx recon/04-theme.ts"
     },
     "dependencies": {
         "@trade-data-manager/market": "workspace:*",
         "@trade-data-manager/kiwoom": "workspace:*",
         "@trade-data-manager/kis": "workspace:*",
-        "@trade-data-manager/telegram": "workspace:*"
+        "@trade-data-manager/telegram": "workspace:*",
+        "@trade-data-manager/google": "workspace:*"
     },
     "devDependencies": {
         "@types/node": "^22.10.0",
