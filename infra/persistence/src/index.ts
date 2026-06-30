@@ -9,6 +9,7 @@ export { DrizzleStockMasterRepository } from "./repositories/stockMaster.reposit
 export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.repository.js";
 export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.js";
 export { DrizzleDailyIssueRepository } from "./repositories/dailyIssue.repository.js";
+export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
     dailyCandleToRow,
     rowToDailyCandle,

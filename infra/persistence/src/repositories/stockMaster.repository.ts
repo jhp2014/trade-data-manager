@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { StockMaster, StockMasterRepository } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockMaster } from "../schema/market.js";
-import { stockMasterToRow } from "../mappers/stockMaster.js";
+import { stockMasterToRow, rowToStockMaster } from "../mappers/stockMaster.js";
 import { buildConflictUpdateSet } from "./_helpers.js";
 
 // 유니버스 갱신은 name·market·listingDate 만 덮고 ipoPrice 는 보존(enrichment 가 채운 공모가 유지).
@@ -26,5 +26,14 @@ export class DrizzleStockMasterRepository implements StockMasterRepository {
             .update(stockMaster)
             .set({ ipoPrice: Number(ipoPrice) })
             .where(eq(stockMaster.stockCode, stockCode));
+    }
+
+    async getByStockCodes(codes: string[]): Promise<StockMaster[]> {
+        if (codes.length === 0) return [];
+        const rows = await this.db
+            .select()
+            .from(stockMaster)
+            .where(inArray(stockMaster.stockCode, codes));
+        return rows.map(rowToStockMaster);
     }
 }

@@ -48,4 +48,16 @@ describe("DrizzleStockMasterRepository (pglite)", () => {
     it("빈 배열은 no-op", async () => {
         await expect(repo.saveStockMasters([])).resolves.toBeUndefined();
     });
+
+    it("getByStockCodes — 배치조회, 없는 코드는 빠짐(부분결과)", async () => {
+        // 앞 테스트에서 005930·000660 저장됨. 999999 는 없는 코드.
+        const got = await repo.getByStockCodes(["005930", "999999", "000660"]);
+        expect(got.map((m) => m.stockCode).sort()).toEqual(["000660", "005930"]);
+        // ipoPrice integer↔string 왕복 보존(005930=30000)
+        expect(got.find((m) => m.stockCode === "005930")?.ipoPrice).toBe("30000");
+    });
+
+    it("getByStockCodes — 빈 배열은 빈 결과", async () => {
+        expect(await repo.getByStockCodes([])).toEqual([]);
+    });
 });

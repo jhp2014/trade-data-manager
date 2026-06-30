@@ -12,4 +12,9 @@ export interface StockMasterRepository {
      * saveStockMasters 가 ipoPrice 를 보존만 하고 비워두던 그 자리를 이 메서드가 채운다.
      */
     updateIpoPrice(stockCode: string, ipoPrice: string): Promise<void>;
+    /**
+     * 코드 배치로 마스터 조회(이 repo 의 첫 read). 1차 분류 서비스가 universe 코드 → 마스터 stitch 용.
+     * 없는 코드는 결과에서 빠진다(폐지·미수집). 순서·완전성 보장 안 함 — 호출자가 code 로 맞춘다.
+     */
+    getByStockCodes(codes: string[]): Promise<StockMaster[]>;
 }

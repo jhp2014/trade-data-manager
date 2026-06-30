@@ -9,3 +9,4 @@ export * from "./ipoPrice.js";
 export * from "./news.js";
 export * from "./newsSearch.js";
 export * from "./dailyIssue.js";
+export * from "./themeMember.js";
