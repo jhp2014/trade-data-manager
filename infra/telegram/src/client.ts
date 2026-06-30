@@ -42,16 +42,20 @@ function extractWebpage(media: Api.Message["media"]): TelegramWebpage | undefine
 }
 
 export interface TelegramSearchOptions {
+    /** 이 시각 이후(포함)까지만 거꾸로 걷는다. */
     since?: Date;
+    /** 이 시각 이전(포함)부터 시작한다(offsetDate). */
     until?: Date;
-    /** 최대 건수(기본 50). */
+    /** 안전 상한(기본 50). 시간창을 정의하는 게 아니라 폭주 방지용 — 창이 넓으면 이 수에서 끊긴다. */
     limit?: number;
 }
 
 export interface Telegram {
     /**
      * 한 방(peer) 안에서 query 토큰 검색. peer 는 @username 또는 채널 id 문자열.
-     * since/until 은 GramJS 가 범위질의를 직접 안 줘서 결과를 클라이언트단에서 거른다(best-effort).
+     * until 을 offsetDate 로 줘 "그 시각 이전부터" 서버사이드로 시작하고(최신 메시지는 서버가 건너뜀),
+     * 최신→과거로 페이지를 자동 순회하다 since 밑으로 내려가면 멈춘다 → 좁은 과거 창도 정확히 착지.
+     * (KIS 뉴스 백필의 역방향 워크와 같은 발상.) limit 은 안전 상한.
      */
     searchChannel(peer: string, query: string, opts?: TelegramSearchOptions): Promise<TelegramMessage[]>;
     disconnect(): Promise<void>;
@@ -77,18 +81,24 @@ export async function createTelegram(): Promise<Telegram> {
         async searchChannel(peer, query, opts) {
             // 숫자만이면 비공개방 id → Number(access_hash 는 세션 캐시 resolve), 아니면 @username 그대로.
             const target: string | number = /^-?\d+$/.test(peer) ? Number(peer) : peer;
-            const limit = opts?.limit ?? DEFAULT_LIMIT;
+            const cap = opts?.limit ?? DEFAULT_LIMIT;
+            // offsetDate 는 unix 초. until 포함을 위해 +1초("그 시각 이전"부터). 없으면 최신부터.
+            const offsetDate = opts?.until ? Math.floor(opts.until.getTime() / 1000) + 1 : undefined;
+            const sinceMs = opts?.since?.getTime();
 
-            const messages = await client.getMessages(target, { search: query, limit });
-            let out: TelegramMessage[] = messages.map((m) => ({
-                id: m.id,
-                date: typeof m.date === "number" ? new Date(m.date * 1000) : new Date(0),
-                text: m.message ?? "",
-                webpage: extractWebpage(m.media),
-            }));
-
-            if (opts?.since) out = out.filter((m) => m.date >= opts.since!);
-            if (opts?.until) out = out.filter((m) => m.date <= opts.until!);
+            // iterMessages 는 offsetDate 부터 최신→과거로 자동 페이지네이션한다.
+            const out: TelegramMessage[] = [];
+            for await (const m of client.iterMessages(target, { search: query, offsetDate })) {
+                const ms = typeof m.date === "number" ? m.date * 1000 : 0;
+                if (sinceMs !== undefined && ms < sinceMs) break; // since 밑 → 이후는 더 과거라 종료
+                out.push({
+                    id: m.id,
+                    date: new Date(ms),
+                    text: m.message ?? "",
+                    webpage: extractWebpage(m.media),
+                });
+                if (out.length >= cap) break; // 안전 상한
+            }
             return out;
         },
         async disconnect() {

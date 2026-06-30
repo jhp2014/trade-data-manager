@@ -70,6 +70,19 @@ function flagValue(raw: string[], name: string): string | undefined {
 const seoulStart = (d: string): Date => new Date(`${d}T00:00:00+09:00`);
 const seoulEnd = (d: string): Date => new Date(`${d}T23:59:59+09:00`);
 
+/**
+ * 검색 시간경계 파싱(Asia/Seoul). "YYYY-MM-DD" 또는 "YYYY-MM-DDTHH:MM[:SS]"(공백 대신 T — 따옴표 불필요).
+ * 날짜만이면 kind 에 따라 그 날 시작/끝. 시각 포함이면 그 정확한 순간.
+ */
+function parseSeoulBound(s: string, kind: "from" | "to", label: string): Date {
+    const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(s);
+    if (!m) throw new Error(`잘못된 ${label}(YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM): ${s}`);
+    const [, date, hh, mm, ss] = m;
+    if (date > seoulToday()) throw new Error(`미래 날짜는 불가: ${date}`);
+    if (hh === undefined) return kind === "from" ? seoulStart(date) : seoulEnd(date);
+    return new Date(`${date}T${hh}:${mm}:${ss ?? "00"}+09:00`);
+}
+
 async function runCollect(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
     console.log(`▶ 수집: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
     const r = await rt.collector.collect(range, {
@@ -98,8 +111,9 @@ const USAGE =
     "  marketcap                        당일 시총 입력(오늘 칸, 전일종가×현재주식수)\n" +
     "  marketcap-backfill <from> [to]   전종목 과거 시총 백필(역산)\n" +
     "  news <from> [to]                 시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
-    "  news-search <검색어...> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]\n" +
-    "                                   텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).";
+    "  news-search <검색어...> [--from <시각>] [--to <시각>] [--limit N]\n" +
+    "                                   텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).\n" +
+    "                                   시각=YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM (예: --from 2026-06-25T09:00).";
 
 async function main(): Promise<void> {
     const raw = process.argv.slice(2);
@@ -206,18 +220,14 @@ async function main(): Promise<void> {
                 }
                 const from = flagValue(raw, "--from");
                 const to = flagValue(raw, "--to");
-                if (from) assertDate(from, "from");
-                if (to) assertDate(to, "to");
+                const since = from ? parseSeoulBound(from, "from", "from") : undefined;
+                const until = to ? parseSeoulBound(to, "to", "to") : undefined;
                 const limitPerChannel = posInt(flagValue(raw, "--limit"), "limit") ?? 50;
                 const period = from || to ? ` · 기간 ${from ?? "~"}~${to ?? "~"}` : "";
                 console.log(`▶ 텔레그램 뉴스 검색: "${query}" (방당 최대 ${limitPerChannel}건${period})`);
 
                 const searcher = await rt.newsSearcher();
-                const items = await searcher.search(query, {
-                    since: from ? seoulStart(from) : undefined,
-                    until: to ? seoulEnd(to) : undefined,
-                    limitPerChannel,
-                });
+                const items = await searcher.search(query, { since, until, limitPerChannel });
                 printNews(items);
                 console.log(`\n  ✓ 총 ${items.length}건`);
                 break;
