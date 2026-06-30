@@ -1,0 +1,500 @@
+{
+  "id": "6266825b-81e0-4b25-a9e5-4ef81a18f642",
+  "prevId": "315b30c1-6d79-4452-aafd-589dc60324f3",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "market.daily_candles": {
+      "name": "daily_candles",
+      "schema": "market",
+      "columns": {
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "open_krx": {
+          "name": "open_krx",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "high_krx": {
+          "name": "high_krx",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "low_krx": {
+          "name": "low_krx",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "close_krx": {
+          "name": "close_krx",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "volume_krx": {
+          "name": "volume_krx",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_krx": {
+          "name": "amount_krx",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "open_un": {
+          "name": "open_un",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "high_un": {
+          "name": "high_un",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "low_un": {
+          "name": "low_un",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "close_un": {
+          "name": "close_un",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "volume_un": {
+          "name": "volume_un",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_un": {
+          "name": "amount_un",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_daily_candles_date": {
+          "name": "idx_daily_candles_date",
+          "columns": [
+            {
+              "expression": "trade_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_daily_candles_stock": {
+          "name": "idx_daily_candles_stock",
+          "columns": [
+            {
+              "expression": "stock_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "daily_candles_trade_date_stock_code_pk": {
+          "name": "daily_candles_trade_date_stock_code_pk",
+          "columns": [
+            "trade_date",
+            "stock_code"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "market.daily_issues": {
+      "name": "daily_issues",
+      "schema": "market",
+      "columns": {
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue": {
+          "name": "issue",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'미분류'"
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_daily_issues_date_issue": {
+          "name": "idx_daily_issues_date_issue",
+          "columns": [
+            {
+              "expression": "trade_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "issue",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_daily_issues_stock": {
+          "name": "idx_daily_issues_stock",
+          "columns": [
+            {
+              "expression": "stock_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "daily_issues_trade_date_stock_code_issue_pk": {
+          "name": "daily_issues_trade_date_stock_code_issue_pk",
+          "columns": [
+            "trade_date",
+            "stock_code",
+            "issue"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "market.daily_market_cap": {
+      "name": "daily_market_cap",
+      "schema": "market",
+      "columns": {
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "market_cap": {
+          "name": "market_cap",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "daily_market_cap_stock_code_trade_date_pk": {
+          "name": "daily_market_cap_stock_code_trade_date_pk",
+          "columns": [
+            "stock_code",
+            "trade_date"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "market.minute_candles": {
+      "name": "minute_candles",
+      "schema": "market",
+      "columns": {
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_time": {
+          "name": "trade_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "open_un": {
+          "name": "open_un",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "high_un": {
+          "name": "high_un",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "low_un": {
+          "name": "low_un",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "close_un": {
+          "name": "close_un",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "volume_un": {
+          "name": "volume_un",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "open_krx": {
+          "name": "open_krx",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "high_krx": {
+          "name": "high_krx",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "low_krx": {
+          "name": "low_krx",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "close_krx": {
+          "name": "close_krx",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "volume_krx": {
+          "name": "volume_krx",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "minute_candles_stock_code_trade_date_trade_time_pk": {
+          "name": "minute_candles_stock_code_trade_date_trade_time_pk",
+          "columns": [
+            "stock_code",
+            "trade_date",
+            "trade_time"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "market.stock_master": {
+      "name": "stock_master",
+      "schema": "market",
+      "columns": {
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "market": {
+          "name": "market",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "listing_date": {
+          "name": "listing_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ipo_price": {
+          "name": "ipo_price",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "market.stock_news": {
+      "name": "stock_news",
+      "schema": "market",
+      "columns": {
+        "published_date": {
+          "name": "published_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "srno": {
+          "name": "srno",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_time": {
+          "name": "published_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_code": {
+          "name": "source_code",
+          "type": "varchar(4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_name": {
+          "name": "source_name",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_code": {
+          "name": "category_code",
+          "type": "varchar(12)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "stock_news_stock_code_published_date_srno_pk": {
+          "name": "stock_news_stock_code_published_date_srno_pk",
+          "columns": [
+            "stock_code",
+            "published_date",
+            "srno"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "market": "market"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

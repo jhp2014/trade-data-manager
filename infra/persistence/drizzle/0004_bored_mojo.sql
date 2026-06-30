@@ -1,0 +1,1 @@
+ALTER TABLE "market"."daily_issues" ADD COLUMN "author" varchar(50) NOT NULL;

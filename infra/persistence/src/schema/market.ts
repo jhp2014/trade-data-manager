@@ -7,7 +7,7 @@
 //   수량·금액류는 bigint 로 저장한다(과거 numeric → 행/인덱스 축소 + 비교/집계 가속). 도메인은 여전히
 //   무손실 string 계약이므로(model.ts) 매퍼 경계에서만 integer↔Number / bigint↔String 변환한다.
 //   bigint 는 mode:"bigint"(네이티브 BigInt) — string 왕복이 무손실.
-import { pgSchema, varchar, date, time, integer, bigint, text, primaryKey, index } from "drizzle-orm/pg-core";
+import { pgSchema, varchar, date, time, timestamp, integer, bigint, text, primaryKey, index } from "drizzle-orm/pg-core";
 
 export const market = pgSchema("market");
 
@@ -107,6 +107,30 @@ export const stockNews = market.table(
     (t) => [primaryKey({ columns: [t.stockCode, t.publishedDate, t.srno] })],
 );
 
+// 6. 당일 이슈 분류 — 사람이 큐레이션하는 편집 데이터(원시수집 아님). "이 날, 이 종목이, 이 이슈로 움직였다".
+//    종목의 정적 테마(=정체성)는 Google Sheet(종목 History)에 있고, 여기엔 당일 드라이버(촉매)만 담는다.
+//    issue 가 그룹 키: 같은 (trade_date, issue) = 그날 같은 촉매로 같이 움직인 종목들(종목 가로지른 집계).
+//    한 종목이 당일 2개 이슈면 2행. issue 미정이면 sentinel '미분류'. FK 없음(자연키 조인은 trade_date·stock_code).
+//    편집모델: in-place 수정 없음 — 행 단위 add/delete 둘뿐("수정"=삭제+추가). 그래서 다른 테이블처럼
+//    불변 자연키 composite PK (trade_date, stock_code, issue) 가 성립(issue 를 절대 갱신 안 하므로). 행이 독립이라
+//    author 가 행마다 보존됨. add 는 ON CONFLICT DO NOTHING(분류기 재실행이 사람 편집을 안 덮게). 컨펌은 author 변경/삭제로.
+export const dailyIssues = market.table(
+    "daily_issues",
+    {
+        tradeDate: date("trade_date").notNull(),
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        issue: varchar("issue", { length: 100 }).notNull().default("미분류"),
+        comment: text("comment"),
+        author: varchar("author", { length: 50 }).notNull(),
+        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.tradeDate, t.stockCode, t.issue] }),
+        index("idx_daily_issues_date_issue").on(t.tradeDate, t.issue),
+        index("idx_daily_issues_stock").on(t.stockCode),
+    ],
+);
+
 export type DailyCandleRow = typeof dailyCandles.$inferSelect;
 export type DailyCandleInsert = typeof dailyCandles.$inferInsert;
 export type MinuteCandleRow = typeof minuteCandles.$inferSelect;
@@ -117,3 +141,5 @@ export type DailyMarketCapRow = typeof dailyMarketCap.$inferSelect;
 export type DailyMarketCapInsert = typeof dailyMarketCap.$inferInsert;
 export type StockNewsRow = typeof stockNews.$inferSelect;
 export type StockNewsInsert = typeof stockNews.$inferInsert;
+export type DailyIssueRow = typeof dailyIssues.$inferSelect;
+export type DailyIssueInsert = typeof dailyIssues.$inferInsert;

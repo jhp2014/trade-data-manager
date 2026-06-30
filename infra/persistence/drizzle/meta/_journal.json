@@ -15,6 +15,27 @@
       "when": 1782735774317,
       "tag": "0001_needy_red_shift",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782794598521,
+      "tag": "0002_goofy_doomsday",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782796469265,
+      "tag": "0003_mute_celestials",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782796478388,
+      "tag": "0004_bored_mojo",
+      "breakpoints": true
     }
   ]
 }

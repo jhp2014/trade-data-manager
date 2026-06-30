@@ -16,3 +16,4 @@ export * from "./marketcap/marketCapRepository.js";
 export * from "./news/newsSource.js";
 export * from "./news/stockNewsRepository.js";
 export * from "./news/newsChannelSearch.js";
+export * from "./issue/dailyIssueRepository.js";
