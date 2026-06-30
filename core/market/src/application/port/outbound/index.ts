@@ -15,3 +15,4 @@ export * from "./marketcap/marketSnapshotProvider.js";
 export * from "./marketcap/marketCapRepository.js";
 export * from "./news/newsSource.js";
 export * from "./news/stockNewsRepository.js";
+export * from "./news/newsChannelSearch.js";

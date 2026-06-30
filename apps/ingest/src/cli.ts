@@ -11,8 +11,38 @@ import {
     enumerateMonthDates,
     subtractMonths,
     type DateRange,
+    type NewsItem,
 } from "@trade-data-manager/market";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
+
+/** 절대시간 → "MM-DD HH:MM"(Asia/Seoul). 검색결과 표시용. */
+function seoulStamp(at: Date): string {
+    const parts = new Intl.DateTimeFormat("ko-KR", {
+        timeZone: "Asia/Seoul",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).formatToParts(at);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    return `${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
+/** 검색 결과를 최신순으로 출력(본문 대표 줄 + 링크 별도). */
+function printNews(items: NewsItem[]): void {
+    for (const it of items) {
+        // 본문 = URL만인 줄은 건너뛴 첫 텍스트 줄(메시지가 링크로 시작해도 제목이 보이게).
+        const headline =
+            it.text
+                .split("\n")
+                .map((l) => l.trim())
+                .find((l) => l.length > 0 && !/^https?:\/\/\S+$/.test(l)) ?? "(링크)";
+        console.log(`\n[${it.channel}] ${seoulStamp(it.at)}`);
+        console.log(`  ${headline.slice(0, 120)}`);
+        if (it.url) console.log(`  🔗 ${it.url}`);
+    }
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -27,6 +57,18 @@ function assertDate(d: string, label: string): void {
     if (!DATE_RE.test(d)) throw new Error(`잘못된 ${label}(YYYY-MM-DD): ${d}`);
     if (d > seoulToday()) throw new Error(`미래 날짜는 수집 불가: ${d}`);
 }
+
+/** `--name value` 의 value 를 꺼낸다(없거나 다음이 또 플래그면 undefined). */
+function flagValue(raw: string[], name: string): string | undefined {
+    const i = raw.indexOf(name);
+    if (i === -1) return undefined;
+    const v = raw[i + 1];
+    return v && !v.startsWith("--") ? v : undefined;
+}
+
+/** "YYYY-MM-DD" → 그 날 Asia/Seoul 자정/끝(절대시간 Date). */
+const seoulStart = (d: string): Date => new Date(`${d}T00:00:00+09:00`);
+const seoulEnd = (d: string): Date => new Date(`${d}T23:59:59+09:00`);
 
 async function runCollect(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
     console.log(`▶ 수집: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
@@ -55,7 +97,9 @@ const USAGE =
     "  backfill [개월=12] [--overwrite]\n" +
     "  marketcap                        당일 시총 입력(오늘 칸, 전일종가×현재주식수)\n" +
     "  marketcap-backfill <from> [to]   전종목 과거 시총 백필(역산)\n" +
-    "  news <from> [to]                 시황 뉴스 헤드라인 백필(to 생략=오늘)";
+    "  news <from> [to]                 시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
+    "  news-search <검색어...> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]\n" +
+    "                                   텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).";
 
 async function main(): Promise<void> {
     const raw = process.argv.slice(2);
@@ -139,6 +183,43 @@ async function main(): Promise<void> {
                     },
                 );
                 console.log(`  ✓ 페이지 ${r.pages} · 헤드라인 ${r.headlines}건 저장`);
+                break;
+            }
+            case "news-search": {
+                // cmd 이후 토큰 중 플래그(--x)와 그 값을 뺀 나머지 = 검색어
+                // (여러 단어면 Telegram 이 AND → 종목+키워드 동시검색).
+                const valueFlags = new Set(["--from", "--to", "--limit"]);
+                const terms: string[] = [];
+                for (let i = 1; i < raw.length; i++) {
+                    const t = raw[i];
+                    if (t.startsWith("--")) {
+                        if (valueFlags.has(t)) i++; // 그 플래그의 값 토큰도 건너뜀
+                        continue;
+                    }
+                    terms.push(t);
+                }
+                const query = terms.join(" ").trim();
+                if (!query) {
+                    throw new Error(
+                        "사용법: news-search <검색어...> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]",
+                    );
+                }
+                const from = flagValue(raw, "--from");
+                const to = flagValue(raw, "--to");
+                if (from) assertDate(from, "from");
+                if (to) assertDate(to, "to");
+                const limitPerChannel = posInt(flagValue(raw, "--limit"), "limit") ?? 50;
+                const period = from || to ? ` · 기간 ${from ?? "~"}~${to ?? "~"}` : "";
+                console.log(`▶ 텔레그램 뉴스 검색: "${query}" (방당 최대 ${limitPerChannel}건${period})`);
+
+                const searcher = await rt.newsSearcher();
+                const items = await searcher.search(query, {
+                    since: from ? seoulStart(from) : undefined,
+                    until: to ? seoulEnd(to) : undefined,
+                    limitPerChannel,
+                });
+                printNews(items);
+                console.log(`\n  ✓ 총 ${items.length}건`);
                 break;
             }
             default:

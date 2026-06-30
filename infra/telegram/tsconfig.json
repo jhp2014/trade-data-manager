@@ -1,0 +1,17 @@
+{
+    "extends": "@trade-data-manager/tsconfig/base.json",
+    "compilerOptions": {
+        "outDir": "./dist",
+        "rootDir": ".",
+        "noEmit": true,
+        "types": ["node"]
+    },
+    "include": [
+        "src/**/*",
+        "recon/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

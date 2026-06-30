@@ -7,3 +7,4 @@ export * from "./minuteBackfill.js";
 export * from "./marketCap.js";
 export * from "./ipoPrice.js";
 export * from "./news.js";
+export * from "./newsSearch.js";

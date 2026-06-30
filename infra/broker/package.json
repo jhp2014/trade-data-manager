@@ -21,7 +21,8 @@
     "dependencies": {
         "@trade-data-manager/market": "workspace:*",
         "@trade-data-manager/kiwoom": "workspace:*",
-        "@trade-data-manager/kis": "workspace:*"
+        "@trade-data-manager/kis": "workspace:*",
+        "@trade-data-manager/telegram": "workspace:*"
     },
     "devDependencies": {
         "@types/node": "^22.10.0",

@@ -2,6 +2,7 @@
 // 공개 표면은 두 inbound 유스케이스: collector(쓰기) · query(읽기). 내부 협력 서비스는 여기서 조립한다.
 import { createKiwoom } from "@trade-data-manager/kiwoom";
 import { createKis } from "@trade-data-manager/kis";
+import { createTelegram, NEWS_CHANNELS, type Telegram } from "@trade-data-manager/telegram";
 import {
     KiwoomDailyAdapter,
     KiwoomMinuteAdapter,
@@ -11,6 +12,7 @@ import {
     KiwoomRawDailyAdapter,
     KiwoomCurrentSharesAdapter,
     KisNewsAdapter,
+    TelegramNewsSearchAdapter,
 } from "@trade-data-manager/broker";
 import {
     createDb,
@@ -31,10 +33,12 @@ import {
     StockMarketCapBackfillService,
     MarketCapBackfillService,
     NewsBackfillService,
+    NewsSearchService,
     type MarketDataCollector,
     type DailyMarketCapRecorder,
     type MarketCapBackfiller,
     type NewsBackfiller,
+    type NewsSearcher,
 } from "@trade-data-manager/market";
 
 export interface IngestRuntime {
@@ -46,7 +50,12 @@ export interface IngestRuntime {
     marketCapBackfiller: MarketCapBackfiller;
     /** 시황 뉴스 헤드라인 백필(Command). KIS 시황 피드를 연속 역방향 워크로 과거 채움. */
     newsBackfiller: NewsBackfiller;
-    /** 보유 리소스(pg 풀) 정리. 프로세스 종료 전 호출. */
+    /**
+     * 텔레그램 뉴스 검색(Query). 등록된 방 전체에 키워드 fan-out. lazy —
+     * 처음 부를 때만 Telegram 에 접속한다(수집 명령은 접속 안 함). close 가 끊어준다.
+     */
+    newsSearcher: () => Promise<NewsSearcher>;
+    /** 보유 리소스(pg 풀·telegram) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
 
@@ -99,12 +108,29 @@ export function createIngestRuntime(): IngestRuntime {
         repo: new DrizzleStockNewsRepository(db),
     });
 
+    // 텔레그램 뉴스 검색 = 등록 방(NEWS_CHANNELS) 전체에 키워드 fan-out. lazy 접속(검색 명령에서만).
+    let telegram: Telegram | null = null;
+    let searcher: NewsSearcher | null = null;
+    const newsSearcher = async (): Promise<NewsSearcher> => {
+        if (!searcher) {
+            telegram = await createTelegram();
+            const labels = new Map(NEWS_CHANNELS.map((c) => [c.peer, c.label]));
+            searcher = new NewsSearchService({
+                source: new TelegramNewsSearchAdapter(telegram, labels),
+                channels: NEWS_CHANNELS.map((c) => c.peer),
+            });
+        }
+        return searcher;
+    };
+
     return {
         collector,
         marketCapRecorder,
         marketCapBackfiller,
         newsBackfiller,
+        newsSearcher,
         close: async () => {
+            if (telegram) await telegram.disconnect();
             await pool.end();
         },
     };
