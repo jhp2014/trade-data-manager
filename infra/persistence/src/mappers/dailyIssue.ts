@@ -1,7 +1,7 @@
 // 도메인 당일이슈 ↔ DB 행 매퍼. 거의 항등 — date/stock_code/issue/author 직결, created_at(부기)은 도메인에서 뗀다.
 // comment 는 DB nullable(null) ↔ 도메인 optional(undefined).
 import type { DailyIssue } from "@trade-data-manager/market";
-import type { DailyIssueRow, DailyIssueInsert } from "../schema/market.js";
+import type { DailyIssueRow, DailyIssueInsert } from "../schema/curation.js";
 
 export function dailyIssueToRow(i: DailyIssue): DailyIssueInsert {
     return {

@@ -9,6 +9,8 @@ export { DrizzleStockMasterRepository } from "./repositories/stockMaster.reposit
 export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.repository.js";
 export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.js";
 export { DrizzleDailyIssueRepository } from "./repositories/dailyIssue.repository.js";
+export { DrizzlePriceLineRepository } from "./repositories/priceLine.repository.js";
+export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
     dailyCandleToRow,
@@ -34,3 +36,11 @@ export {
     dailyIssueToRow,
     rowToDailyIssue,
 } from "./mappers/dailyIssue.js";
+export {
+    priceLineToRow,
+    rowToPriceLine,
+} from "./mappers/priceLine.js";
+export {
+    reviewPointToRow,
+    rowToReviewPoint,
+} from "./mappers/reviewPoint.js";

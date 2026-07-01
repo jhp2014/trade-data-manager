@@ -19,3 +19,5 @@ export * from "./news/newsChannelSearch.js";
 export * from "./issue/dailyIssueRepository.js";
 export * from "./issue/themeMembershipProvider.js";
 export * from "./issue/dailyUniverseProvider.js";
+export * from "./review/priceLineRepository.js";
+export * from "./review/reviewPointRepository.js";

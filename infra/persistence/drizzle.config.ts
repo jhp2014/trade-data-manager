@@ -12,6 +12,6 @@ export default defineConfig({
     out: "./drizzle",
     dialect: "postgresql",
     dbCredentials: { url: process.env.DATABASE_URL! },
-    // 같은 DB 의 data-core(public)·hypothesis 스키마를 절대 건드리지 않도록 push/introspection 범위를 market 으로 제한.
-    schemaFilter: ["market"],
+    // 같은 DB 의 data-core(public)·hypothesis 스키마를 절대 건드리지 않도록 push/introspection 범위를 우리 스키마로 제한.
+    schemaFilter: ["market", "curation"],
 });
