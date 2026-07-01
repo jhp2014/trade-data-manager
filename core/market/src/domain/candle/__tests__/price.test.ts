@@ -4,7 +4,10 @@ import {
     computeChangeRate,
     computeMinuteTradingAmount,
     computeAccumulatedAmounts,
+    countByAmountThreshold,
+    previousCloseFromDaily,
 } from "../price.js";
+import type { DailyCandle } from "../model.js";
 
 describe("computeChangeValue", () => {
     it("현재가 - 전일종가", () => {
@@ -66,5 +69,49 @@ describe("computeAccumulatedAmounts", () => {
     });
     it("소수부는 버리고 정수부만 누적", () => {
         expect(computeAccumulatedAmounts(["100.9", "0.4"])).toEqual(["100", "100"]);
+    });
+});
+
+describe("countByAmountThreshold", () => {
+    const thresholds = [30, 50, 100] as const; // 억
+    it("임계별 독립 카운트(누적 아님)", () => {
+        // 20억·40억·120억 → 30억↑:2, 50억↑:1, 100억↑:1
+        const amounts = ["2000000000", "4000000000", "12000000000"];
+        expect(countByAmountThreshold(amounts, thresholds)).toEqual({ 30: 2, 50: 1, 100: 1 });
+    });
+    it("경계값은 이상(≥) 포함", () => {
+        expect(countByAmountThreshold(["3000000000"], thresholds)).toEqual({ 30: 1, 50: 0, 100: 0 });
+    });
+    it("빈 입력이어도 모든 임계 키를 0으로 채움", () => {
+        expect(countByAmountThreshold([], thresholds)).toEqual({ 30: 0, 50: 0, 100: 0 });
+    });
+    it("소수부는 버리고 비교", () => {
+        expect(countByAmountThreshold(["2999999999.9"], [30])).toEqual({ 30: 0 });
+    });
+});
+
+describe("previousCloseFromDaily", () => {
+    const bar = (close: string) => ({ open: close, high: close, low: close, close, volume: "1", amount: "1" });
+    const candle = (date: string, krxClose: string, unClose: string): DailyCandle => ({
+        stockCode: "005930",
+        date,
+        krx: bar(krxClose),
+        un: bar(unClose),
+    });
+
+    it("date 직전 거래일의 시장별 종가", () => {
+        const daily = [candle("2026-06-24", "100", "101"), candle("2026-06-25", "200", "202"), candle("2026-06-26", "300", "303")];
+        expect(previousCloseFromDaily(daily, "2026-06-26")).toEqual({ krxClose: "200", unClose: "202" });
+    });
+    it("당일 일봉 미적재여도 date 비교로 직전 종가", () => {
+        const daily = [candle("2026-06-24", "100", "101"), candle("2026-06-25", "200", "202")];
+        expect(previousCloseFromDaily(daily, "2026-06-26")).toEqual({ krxClose: "200", unClose: "202" });
+    });
+    it("직전 캔들 없으면(상장일) null", () => {
+        expect(previousCloseFromDaily([candle("2026-06-26", "300", "303")], "2026-06-26")).toBeNull();
+    });
+    it("정렬 안 돼 있어도 최대 date<요청일을 고름", () => {
+        const daily = [candle("2026-06-25", "200", "202"), candle("2026-06-24", "100", "101")];
+        expect(previousCloseFromDaily(daily, "2026-06-26")).toEqual({ krxClose: "200", unClose: "202" });
     });
 });

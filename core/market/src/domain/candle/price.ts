@@ -4,6 +4,8 @@
 // 그 정규화는 벤더 특화라 어댑터(infra/broker)의 매핑 책임이며 도메인은 깨끗한 값만 받는다.
 // 가격은 음수가 아니고, 등락값만 음수가 될 수 있다. 정밀도 유지를 위해 BigInt 사용.
 
+import type { DailyCandle } from "./model.js";
+
 /**
  * 전일 대비 변동값 (현재가 - 전일종가). 전일종가가 없으면 null.
  */
@@ -60,4 +62,48 @@ export function computeAccumulatedAmounts(amounts: string[]): string[] {
         acc += BigInt(amt.split(".")[0]);
         return acc.toString();
     });
+}
+
+/** 1억(원). 거래대금 임계는 "억" 단위로 표현되므로 원 환산에 쓴다. */
+const KRW_PER_EOK = 100_000_000n;
+
+/**
+ * 거래대금(원) 배열을 억 단위 임계별로 카운트한다 — "임계 t억 이상인 분봉이 몇 개인가".
+ * 각 threshold(억)마다 독립 카운트(누적 아님): amount ≥ t억 이면 +1.
+ * 무손실 정수 비교(BigInt) — 소수부는 방어적으로 버린다(거래대금은 정수라 통상 무영향).
+ * 반환은 threshold(억) → count. 입력 thresholds 전부를 0으로 초기화해 키 누락이 없다.
+ */
+export function countByAmountThreshold(
+    amountsKrw: string[],
+    thresholdsEok: readonly number[],
+): Record<number, number> {
+    const counts: Record<number, number> = {};
+    for (const t of thresholdsEok) counts[t] = 0;
+
+    for (const amt of amountsKrw) {
+        const krw = BigInt(amt.split(".")[0]);
+        for (const t of thresholdsEok) {
+            if (krw >= BigInt(t) * KRW_PER_EOK) counts[t] += 1;
+        }
+    }
+    return counts;
+}
+
+/**
+ * 분봉 등락률(%)의 기준가 — 요청일 *직전 거래일* 일봉의 시장별 종가.
+ * 일봉 번들(date−2년…date)이 이미 이 값을 품고 있으므로 별도 조회 없이 여기서 파생한다.
+ * "date 보다 작은 마지막 캔들"을 date 비교로 고른다(배열 위치 가정 X — 당일 일봉 미적재여도 안전).
+ * 직전 캔들이 없으면(상장일 등) null → 소비자는 당일 첫 분봉 시가로 폴백한다.
+ */
+export function previousCloseFromDaily(
+    daily: DailyCandle[],
+    date: string,
+): { krxClose: string; unClose: string } | null {
+    let prev: DailyCandle | null = null;
+    for (const c of daily) {
+        if (c.date >= date) continue;
+        if (prev === null || c.date > prev.date) prev = c;
+    }
+    if (prev === null) return null;
+    return { krxClose: prev.krx.close, unClose: prev.un.close };
 }

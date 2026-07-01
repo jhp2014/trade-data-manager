@@ -27,6 +27,16 @@ export function defaultDailyRange(today: string): DateRange {
     return { from: subtractMonths(today, DEFAULT_LOOKBACK_MONTHS), to: today };
 }
 
+const CHART_LOOKBACK_MONTHS = 24;
+
+/**
+ * 차트 조회용 일봉 범위 = [date−2년, date]. inclusive.
+ * 오늘이 아니라 요청 거래일 기준(과거 어느 날의 그날까지 차트를 재현). 직전 거래일 종가(분봉 % 기준가)도 이 범위에 포함된다.
+ */
+export function chartDailyRange(date: string): DateRange {
+    return { from: subtractMonths(date, CHART_LOOKBACK_MONTHS), to: date };
+}
+
 /** Asia/Seoul 기준 오늘(YYYY-MM-DD). en-CA 로케일이 ISO 형식을 준다. */
 export function seoulToday(now: Date = new Date()): string {
     return new Intl.DateTimeFormat("en-CA", {
