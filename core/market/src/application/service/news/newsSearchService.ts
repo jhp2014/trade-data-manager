@@ -1,9 +1,9 @@
 // NewsSearchService — 키워드 1개를 등록된 방 전체에 fan-out 동시검색 → 합쳐 최신순(읽기 Query).
 // 협력: NewsChannelSearch(방 1개 검색). 방 목록은 컴포지션이 주입(출처 고유 ref 목록).
 // 한 방 실패(권한·삭제 등)는 격리 — 전체 결과를 죽이지 않고 그 방만 건너뛴다.
-import type { NewsItem } from "../../../domain/index.js";
-import type { NewsChannelSearch } from "../../port/outbound/index.js";
-import type { NewsSearcher, NewsSearchOptions } from "../../port/inbound/index.js";
+import type { NewsItem } from "#domain";
+import type { NewsChannelSearch } from "#port/outbound";
+import type { NewsSearcher, NewsSearchOptions } from "#port/inbound";
 import { mapWithConcurrency } from "../../concurrency.js";
 
 export interface NewsSearchDeps {

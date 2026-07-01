@@ -9,13 +9,13 @@ import {
     computeMarketCapBackfill,
     currentTotalShares,
     type DateRange,
-} from "../../../domain/index.js";
+} from "#domain";
 import type {
     CurrentSharesProvider,
     DailyMarketCapRepository,
     ListInfoProvider,
     RawDailyCloseProvider,
-} from "../../port/outbound/index.js";
+} from "#port/outbound";
 import { seoulToday } from "../shared/dailyRange.js";
 
 export interface StockMarketCapBackfillDeps {

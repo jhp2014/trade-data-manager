@@ -1,4 +1,4 @@
-import type { MinuteCandle } from "../../../../domain/index.js";
+import type { MinuteCandle } from "#domain";
 
 /**
  * 분봉 제공 포트(ISP — 분봉 능력만). 조회 단위는 거래일 하루.

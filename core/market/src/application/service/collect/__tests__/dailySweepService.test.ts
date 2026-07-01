@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { DailySweepService } from "../dailySweepService.js";
 import { MarketDataIngestService } from "../marketDataIngestService.js";
-import type { DailyCandle, DateRange, MinuteCandle } from "../../../../domain/index.js";
+import type { DailyCandle, DateRange, MinuteCandle } from "#domain";
 import type {
     DailyCandleProvider,
     DailyCandleRepository,
     MinuteCandleProvider,
     MinuteCandleRepository,
-} from "../../../port/outbound/index.js";
+} from "#port/outbound";
 
 const bar = (close: string) => ({ open: close, high: close, low: close, close, volume: "1", amount: "1" });
 const candle = (stockCode: string, date: string): DailyCandle => ({ stockCode, date, krx: bar("100"), un: bar("100") });

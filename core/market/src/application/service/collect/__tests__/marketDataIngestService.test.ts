@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { MarketDataIngestService } from "../marketDataIngestService.js";
 import { defaultDailyRange } from "../../shared/dailyRange.js";
-import type { DailyBar, DailyCandle, DateRange, MinuteCandle } from "../../../../domain/index.js";
+import type { DailyBar, DailyCandle, DateRange, MinuteCandle } from "#domain";
 import type {
     DailyCandleProvider,
     DailyCandleRepository,
     MinuteCandleProvider,
     MinuteCandleRepository,
-} from "../../../port/outbound/index.js";
+} from "#port/outbound";
 
 const bar = (close: string, volume = "100"): DailyBar => ({
     open: close,

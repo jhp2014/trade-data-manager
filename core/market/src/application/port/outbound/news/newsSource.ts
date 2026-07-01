@@ -1,4 +1,4 @@
-import type { NewsHeadline } from "../../../../domain/index.js";
+import type { NewsHeadline } from "#domain";
 
 /**
  * 뉴스 소스 포트(outbound) — 시각 앵커 이전의 헤드라인 한 페이지를 내림차순(최신→과거)으로 준다.

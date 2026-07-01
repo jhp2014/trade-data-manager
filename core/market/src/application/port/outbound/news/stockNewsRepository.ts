@@ -1,4 +1,4 @@
-import type { DateRange, NewsHeadline } from "../../../../domain/index.js";
+import type { DateRange, NewsHeadline } from "#domain";
 
 /**
  * 뉴스 저장 포트(outbound). 한 헤드라인은 태깅 종목 수만큼 (종목, srno) 행으로 펼쳐 저장된다

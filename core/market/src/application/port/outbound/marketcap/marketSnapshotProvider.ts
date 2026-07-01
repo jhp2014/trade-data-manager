@@ -1,4 +1,4 @@
-import type { MarketSnapshot } from "../../../../domain/index.js";
+import type { MarketSnapshot } from "#domain";
 
 /**
  * 전종목 시장 스냅샷 제공 포트(ISP — 당일 시총 입력용).

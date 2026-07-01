@@ -1,15 +1,15 @@
 // DailyReviewService — 날짜 → 그날 universe 종목들의 검수 데이터(flat read-model). 시작점 서비스.
 // universe 주도 루프: 시트에 없는 종목도 행으로(미분류), 누락 없음. 분류는 buildThemeIndex(themesOf) 한 스텝.
 // 순위/뷰 셰이핑은 클라 몫(종가 순위는 무의미 → 차트 필요) — 여긴 데이터만 stitch.
-import { buildThemeIndex, type DailyIssue } from "../../../domain/index.js";
+import { buildThemeIndex, type DailyIssue } from "#domain";
 import type {
     DailyUniverseProvider,
     ThemeMembershipProvider,
     StockMasterRepository,
     DailyMarketCapRepository,
     DailyIssueRepository,
-} from "../../port/outbound/index.js";
-import type { DailyReviewReader, ReviewRow } from "../../port/inbound/index.js";
+} from "#port/outbound";
+import type { DailyReviewReader, ReviewRow } from "#port/inbound";
 
 export interface DailyReviewDeps {
     universe: DailyUniverseProvider;

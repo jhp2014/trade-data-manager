@@ -1,4 +1,4 @@
-import type { NewsItem } from "../../../../domain/index.js";
+import type { NewsItem } from "#domain";
 
 /** 한 채널 검색 질의. channel 은 출처가 해석하는 불투명 ref(telegram: @username 또는 id 문자열). */
 export interface NewsChannelSearchQuery {

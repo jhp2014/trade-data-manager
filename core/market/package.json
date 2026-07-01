@@ -10,6 +10,11 @@
         "./domain": "./src/domain/index.ts",
         "./port": "./src/application/port/index.ts"
     },
+    "imports": {
+        "#domain": "./src/domain/index.ts",
+        "#port/inbound": "./src/application/port/inbound/index.ts",
+        "#port/outbound": "./src/application/port/outbound/index.ts"
+    },
     "scripts": {
         "type-check": "tsc --noEmit",
         "test": "vitest run",

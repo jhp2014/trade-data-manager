@@ -1,4 +1,4 @@
-import type { ThemeMember } from "../../../../domain/index.js";
+import type { ThemeMember } from "#domain";
 
 /**
  * 정적 테마 멤버십 소스 포트(outbound). 구현은 Google Sheet 어댑터(infra/broker theme 슬라이스, @tdm/google 을 transport 로).

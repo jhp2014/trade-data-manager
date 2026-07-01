@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { IssueEditService } from "../issueEditService.js";
-import type { DailyIssue } from "../../../../domain/index.js";
+import type { DailyIssue } from "#domain";
 
 function fakeRepo() {
     const added: DailyIssue[][] = [];

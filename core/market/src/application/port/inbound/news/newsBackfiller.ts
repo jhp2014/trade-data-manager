@@ -1,4 +1,4 @@
-import type { DateRange } from "../../../../domain/index.js";
+import type { DateRange } from "#domain";
 
 /** 진행 콜백 — 페이지마다 현재 앵커 날짜와 누적 헤드라인 수. */
 export interface NewsBackfillProgress {

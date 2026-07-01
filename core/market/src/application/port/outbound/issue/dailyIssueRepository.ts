@@ -1,4 +1,4 @@
-import type { DailyIssue } from "../../../../domain/index.js";
+import type { DailyIssue } from "#domain";
 
 /**
  * 당일 이슈 저장 포트(outbound). 편집모델은 행 단위 add/delete 뿐 — in-place 수정 없음("수정"=remove 후 add).

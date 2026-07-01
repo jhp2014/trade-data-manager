@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DailyReviewService } from "../dailyReviewService.js";
-import type { ThemeMember, StockMaster, DailyMarketCap, DailyIssue } from "../../../../domain/index.js";
+import type { ThemeMember, StockMaster, DailyMarketCap, DailyIssue } from "#domain";
 
 interface Data {
     universe: string[];

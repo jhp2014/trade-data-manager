@@ -1,4 +1,4 @@
-import type { NewsItem } from "../../../../domain/index.js";
+import type { NewsItem } from "#domain";
 
 export interface NewsSearchOptions {
     /** 이 시각 이후(포함)만. */

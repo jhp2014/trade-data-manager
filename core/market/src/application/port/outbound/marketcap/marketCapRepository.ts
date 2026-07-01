@@ -1,4 +1,4 @@
-import type { DailyMarketCap } from "../../../../domain/index.js";
+import type { DailyMarketCap } from "#domain";
 
 /**
  * 날짜별 시총 영속화(ISP). (stockCode, date) 자연키 upsert.

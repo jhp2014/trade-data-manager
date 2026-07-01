@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { NewsBackfillService } from "../newsBackfillService.js";
-import type { DateRange, NewsHeadline } from "../../../../domain/index.js";
-import type { NewsSource, StockNewsRepository } from "../../../port/outbound/index.js";
+import type { DateRange, NewsHeadline } from "#domain";
+import type { NewsSource, StockNewsRepository } from "#port/outbound";
 
 const hl = (srno: string, date: string, time: string, stockCodes: string[] = []): NewsHeadline => ({
     srno,

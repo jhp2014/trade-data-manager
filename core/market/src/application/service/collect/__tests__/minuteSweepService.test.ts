@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { MinuteSweepService } from "../minuteSweepService.js";
-import type { DailyBar, DailyCandle, MinuteCandle } from "../../../../domain/index.js";
+import type { DailyBar, DailyCandle, MinuteCandle } from "#domain";
 import type {
     DailyScanRepository,
     MinuteCandleProvider,
     MinuteCandleRepository,
-} from "../../../port/outbound/index.js";
+} from "#port/outbound";
 
 const dbar = (close: string, high = close, amount = "1"): DailyBar => ({ open: close, high, low: close, close, volume: "1", amount });
 const daily = (stockCode: string, date: string, un: DailyBar): DailyCandle => ({ stockCode, date, krx: un, un });

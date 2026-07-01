@@ -1,4 +1,4 @@
-import type { DailyIssue } from "../../../../domain/index.js";
+import type { DailyIssue } from "#domain";
 
 /**
  * 리뷰 한 행 — 그 날 universe 종목 1개의 검수 데이터(read-model, UI 조립용 DTO).

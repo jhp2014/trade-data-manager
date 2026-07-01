@@ -1,4 +1,4 @@
-import type { DailyIssue } from "../../../../domain/index.js";
+import type { DailyIssue } from "#domain";
 
 /**
  * 당일 이슈 확정 편집(쓰기 Command). 행 단위 add/delete 두 연산뿐 — "수정"=remove 후 add.

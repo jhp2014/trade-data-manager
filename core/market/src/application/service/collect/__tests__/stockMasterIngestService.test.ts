@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { StockMasterIngestService } from "../stockMasterIngestService.js";
-import type { StockMaster } from "../../../../domain/index.js";
-import type { StockMasterProvider, StockMasterRepository } from "../../../port/outbound/index.js";
+import type { StockMaster } from "#domain";
+import type { StockMasterProvider, StockMasterRepository } from "#port/outbound";
 
 const master = (stockCode: string, name: string): StockMaster => ({
     stockCode,

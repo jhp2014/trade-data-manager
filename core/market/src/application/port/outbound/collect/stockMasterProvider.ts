@@ -1,4 +1,4 @@
-import type { StockMaster } from "../../../../domain/index.js";
+import type { StockMaster } from "#domain";
 
 /**
  * 유니버스(현재 상장 중인 개별주식 전체) 라이브 조회 포트.

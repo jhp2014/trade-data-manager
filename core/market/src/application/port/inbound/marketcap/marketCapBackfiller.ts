@@ -1,7 +1,7 @@
 // Inbound(driving) 포트 — 전종목 날짜별 시총 백필(일회성 Command, 쓰기).
 // 공개 표면은 이 전종목 백필 하나. 단일종목 백필은 내부 협력자(StockMarketCapBackfillService)다.
 // 당일 입력(DailyMarketCapRecorder, ka10099 라이브)과 달리 이쪽은 과거 임의 구간을 KIS 역산으로 재구성한다.
-import type { DateRange } from "../../../../domain/index.js";
+import type { DateRange } from "#domain";
 
 export interface MarketCapBackfillProgress {
     done: number;

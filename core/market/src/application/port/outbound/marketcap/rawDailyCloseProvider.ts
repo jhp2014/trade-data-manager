@@ -1,4 +1,4 @@
-import type { DateRange, RawDailyClose } from "../../../../domain/index.js";
+import type { DateRange, RawDailyClose } from "#domain";
 
 /**
  * 원주가(미수정) 일별 종가 제공 포트(ISP — 시총 백필 전용).

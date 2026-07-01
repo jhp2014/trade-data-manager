@@ -4,7 +4,7 @@ import { StockMasterIngestService } from "../stockMasterIngestService.js";
 import { MarketDataIngestService } from "../marketDataIngestService.js";
 import { DailySweepService } from "../dailySweepService.js";
 import { MinuteSweepService } from "../minuteSweepService.js";
-import type { DailyBar, DailyCandle, MinuteCandle, StockMaster } from "../../../../domain/index.js";
+import type { DailyBar, DailyCandle, MinuteCandle, StockMaster } from "#domain";
 import type {
     DailyCandleProvider,
     DailyScanRepository,
@@ -12,7 +12,7 @@ import type {
     MinuteCandleRepository,
     StockMasterProvider,
     StockMasterRepository,
-} from "../../../port/outbound/index.js";
+} from "#port/outbound";
 
 // 최소 fake outbound 들 — collect 가 협력자(real 서비스)를 조합하는지 검증.
 const dbar = (close: string, high = close, amount = "1"): DailyBar => ({ open: close, high, low: close, close, volume: "1", amount });

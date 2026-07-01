@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { NewsItem } from "../../../../domain/index.js";
-import type { NewsChannelSearch, NewsChannelSearchQuery } from "../../../port/outbound/index.js";
+import type { NewsItem } from "#domain";
+import type { NewsChannelSearch, NewsChannelSearchQuery } from "#port/outbound";
 import { NewsSearchService } from "../newsSearchService.js";
 
 const hit = (channel: string, iso: string, text = "t"): NewsItem => ({

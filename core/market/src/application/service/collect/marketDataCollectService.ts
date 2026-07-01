@@ -5,9 +5,9 @@
 // 흐름: ① 유니버스 갱신 → ② 일봉 커버리지 확인(못 미치거나 overwrite 면 전종목 일봉 sweep)
 //       → ③ [from,to] 각 거래일 분봉 선별 sweep(이미 있으면 overwrite=false 시 건너뜀).
 // 일봉=wholesale(전종목·범위무관 커버리지), 분봉=날짜별 — 의 비대칭을 여기서 흡수.
-import type { DateRange } from "../../../domain/index.js";
-import type { DailyScanRepository, MinuteCandleRepository } from "../../port/outbound/index.js";
-import type { MarketDataCollector, CollectOptions, CollectResult } from "../../port/inbound/index.js";
+import type { DateRange } from "#domain";
+import type { DailyScanRepository, MinuteCandleRepository } from "#port/outbound";
+import type { MarketDataCollector, CollectOptions, CollectResult } from "#port/inbound";
 import { enumerateDates } from "../shared/dates.js";
 import type { StockMasterIngestService } from "./stockMasterIngestService.js";
 import type { DailySweepService } from "./dailySweepService.js";

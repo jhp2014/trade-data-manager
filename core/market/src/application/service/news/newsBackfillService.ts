@@ -9,13 +9,13 @@
 //        이때 앵커를 **시간만큼 강제 하강(forced step, 자정 넘으면 전날)** → 그 아래 데이터 정상 재개.
 //        (강제점프 폭만큼 stall 지점 미세 누락 가능하나 드물고 무시 가능.)
 //   ⑤ 종료: oldest 가 from 미만 · 강제하강이 from 미만 · 연속 강제하강 과다(보관 경계/영구 stall).
-import type { DateRange, NewsHeadline } from "../../../domain/index.js";
-import type { NewsSource, StockNewsRepository } from "../../port/outbound/index.js";
+import type { DateRange, NewsHeadline } from "#domain";
+import type { NewsSource, StockNewsRepository } from "#port/outbound";
 import type {
     NewsBackfiller,
     NewsBackfillOptions,
     NewsBackfillResult,
-} from "../../port/inbound/index.js";
+} from "#port/inbound";
 
 export interface NewsBackfillDeps {
     source: NewsSource;
