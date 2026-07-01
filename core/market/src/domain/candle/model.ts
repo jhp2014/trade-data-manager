@@ -53,3 +53,14 @@ export interface MinuteCandle {
     krx: MinuteBar | null;
     un: MinuteBar;
 }
+
+/**
+ * 직전 거래일 종가(등락률 기준가) — 시장별. DailyCandle 은 기준가를 모델에 안 두므로(위 주석),
+ * 스냅샷 %(등락률) 파생을 위해 애플리케이션이 직전 거래일 캔들에서 시장별 close 를 조회해 실어준다.
+ * krx/un 각각 그 종목의 date 이전 최신 캔들 close. 무손실 string.
+ */
+export interface PreviousClose {
+    stockCode: string;
+    krxClose: string;
+    unClose: string;
+}

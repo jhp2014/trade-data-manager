@@ -1,9 +1,11 @@
-import { and, asc, desc, eq, gte, lt, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
 import type {
     DailyCandle,
     DailyCandleRepository,
+    DailyCandleSnapshotReader,
     DailyScanRepository,
     DateRange,
+    PreviousClose,
 } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { dailyCandles } from "../schema/market.js";
@@ -13,7 +15,9 @@ import { buildConflictUpdateSet } from "./_helpers.js";
 const CONFLICT_SET = buildConflictUpdateSet(dailyCandles, ["tradeDate", "stockCode"]);
 
 /** Drizzle 구현 — 종목별 ingest(DailyCandleRepository) + 날짜별 전종목 스캔(DailyScanRepository). 같은 daily_candles. */
-export class DrizzleDailyCandleRepository implements DailyCandleRepository, DailyScanRepository {
+export class DrizzleDailyCandleRepository
+    implements DailyCandleRepository, DailyCandleSnapshotReader, DailyScanRepository
+{
     constructor(private readonly db: Database) {}
 
     async saveDailyCandles(candles: DailyCandle[]): Promise<void> {
@@ -59,6 +63,35 @@ export class DrizzleDailyCandleRepository implements DailyCandleRepository, Dail
             .orderBy(asc(dailyCandles.tradeDate))
             .limit(1);
         return rows[0]?.tradeDate ?? null;
+    }
+
+    async getByDateAndCodes(date: string, codes: string[]): Promise<DailyCandle[]> {
+        if (codes.length === 0) return [];
+        const rows = await this.db
+            .select()
+            .from(dailyCandles)
+            .where(and(eq(dailyCandles.tradeDate, date), inArray(dailyCandles.stockCode, codes)));
+        return rows.map(rowToDailyCandle);
+    }
+
+    async getPreviousCloses(date: string, codes: string[]): Promise<PreviousClose[]> {
+        if (codes.length === 0) return [];
+        // 코드별 date 이전 최신 캔들 1행(DISTINCT ON) → 시장별 close. 종목마다 직전 거래일이 다를 수 있어
+        // (거래정지 등) 시장 전체 전일이 아니라 각 종목의 직전 캔들에서 뽑는다.
+        const rows = await this.db
+            .selectDistinctOn([dailyCandles.stockCode], {
+                stockCode: dailyCandles.stockCode,
+                closeKrx: dailyCandles.closeKrx,
+                closeUn: dailyCandles.closeUn,
+            })
+            .from(dailyCandles)
+            .where(and(lt(dailyCandles.tradeDate, date), inArray(dailyCandles.stockCode, codes)))
+            .orderBy(dailyCandles.stockCode, desc(dailyCandles.tradeDate));
+        return rows.map((r) => ({
+            stockCode: r.stockCode,
+            krxClose: String(r.closeKrx),
+            unClose: String(r.closeUn),
+        }));
     }
 
     // --- DailyScanRepository (날짜별 전종목 스캔) ---

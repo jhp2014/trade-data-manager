@@ -82,6 +82,33 @@ describe("Drizzle candle repositories (pglite)", () => {
         expect(await daily.getLatestDailyDate()).toBe("2031-03-05");
     });
 
+    it("스냅샷 read: getByDateAndCodes(코드배치) + getPreviousCloses(코드별 직전종가)", async () => {
+        const mk = (code: string, date: string, krxClose: string, unClose: string): DailyCandle => ({
+            stockCode: code,
+            date,
+            krx: { ...dailyBar(krxClose) },
+            un: { ...dailyBar(unClose) },
+        });
+        await daily.saveDailyCandles([
+            mk("910001", "2032-02-02", "200", "201"),
+            mk("910001", "2032-02-04", "210", "211"),
+            mk("910002", "2032-02-04", "300", "301"),
+        ]);
+
+        // 그날 코드 배치 — 없는 코드(910099)는 빠짐
+        const onDay = await daily.getByDateAndCodes("2032-02-04", ["910001", "910002", "910099"]);
+        expect(onDay.map((c) => c.stockCode).sort()).toEqual(["910001", "910002"]);
+        expect(onDay.find((c) => c.stockCode === "910001")?.krx.close).toBe("210");
+
+        // 직전 거래일 종가(DISTINCT ON) — 910001 은 02-02, 910002 는 이전 없음 → 빠짐
+        const prev = await daily.getPreviousCloses("2032-02-04", ["910001", "910002"]);
+        expect(prev).toEqual([{ stockCode: "910001", krxClose: "200", unClose: "201" }]);
+
+        // 빈 배열은 빈 결과
+        expect(await daily.getByDateAndCodes("2032-02-04", [])).toEqual([]);
+        expect(await daily.getPreviousCloses("2032-02-04", [])).toEqual([]);
+    });
+
     it("분봉 save→get + KRX nullable(프리마켓) 보존 + 시간 오름차순", async () => {
         const rows: MinuteCandle[] = [
             // 09:00 = KRX+UN 둘 다

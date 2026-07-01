@@ -5,7 +5,7 @@
 //   remove  <date> <code> <issue>                확정 이슈 행 삭제
 import fs from "node:fs";
 import path from "node:path";
-import type { ReviewRow } from "@trade-data-manager/market";
+import type { DaySummary } from "@trade-data-manager/market";
 import { createProbeRuntime } from "./composition.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,26 +29,27 @@ function saveLog(name: string, payload: unknown): string {
     return file;
 }
 
-function printReview(date: string, rows: ReviewRow[]): void {
-    const unclassified = rows.filter((r) => r.candidateThemes.length === 0).length;
-    const confirmed = rows.filter((r) => r.confirmedIssues.length > 0).length;
-    const multi = rows.filter((r) => r.candidateThemes.length > 1).length;
+function printSummary(s: DaySummary): void {
+    const unclassified = s.stocks.filter((x) => x.themes.length === 0).length;
+    const confirmed = s.stocks.filter((x) => x.issues.length > 0).length;
+    const multi = s.stocks.filter((x) => x.themes.length > 1).length;
 
-    // 테마별 종목 수(한 종목 다중테마면 각 테마에 카운트).
-    const byTheme = new Map<string, number>();
-    for (const r of rows) for (const t of r.candidateThemes) byTheme.set(t, (byTheme.get(t) ?? 0) + 1);
-    const top = [...byTheme.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+    // 테마별 종목 수(byTheme 는 코드 참조 → 길이 = 종목 수).
+    const top = Object.entries(s.byTheme)
+        .map(([theme, codes]) => [theme, codes.length] as const)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15);
 
-    console.log(`▶ review ${date}`);
+    console.log(`▶ summary ${s.date}`);
     console.log(
-        `  universe ${rows.length} · 분류됨 ${rows.length - unclassified} · 미분류 ${unclassified} · ` +
+        `  universe ${s.stockCount} · 분류됨 ${s.stockCount - unclassified} · 미분류 ${unclassified} · ` +
             `다중테마 ${multi} · 확정행보유 ${confirmed}`,
     );
     console.log(`  테마 분포(상위 ${top.length}):`);
     for (const [t, n] of top) console.log(`    ${t}: ${n}`);
-    const sample = rows.slice(0, 8).map((r) => {
-        const themes = r.candidateThemes.length ? r.candidateThemes.join("·") : "미분류";
-        return `${r.stockCode}${r.name ? `(${r.name})` : ""}→${themes}`;
+    const sample = s.stocks.slice(0, 8).map((x) => {
+        const themes = x.themes.length ? x.themes.map((t) => t.theme).join("·") : "미분류";
+        return `${x.stockCode}${x.name ? `(${x.name})` : ""}→${themes}`;
     });
     console.log(`  샘플: ${sample.join("  ")}`);
 }
@@ -72,9 +73,9 @@ async function main(): Promise<void> {
         switch (cmd) {
             case "review": {
                 assertDate(a1, "date");
-                const rows = await rt.reviewer.reviewByDate(a1);
-                printReview(a1, rows);
-                console.log(`💾 ${saveLog(`review-${a1}`, { date: a1, count: rows.length, rows })}`);
+                const summary = await rt.summary.summaryByDate(a1);
+                printSummary(summary);
+                console.log(`💾 ${saveLog(`review-${a1}`, summary)}`);
                 break;
             }
             case "confirm": {

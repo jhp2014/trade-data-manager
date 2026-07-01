@@ -6,14 +6,15 @@ import {
     DrizzleDailyUniverseProvider,
     DrizzleStockMasterRepository,
     DrizzleDailyMarketCapRepository,
+    DrizzleDailyCandleRepository,
     DrizzleDailyIssueRepository,
 } from "@trade-data-manager/persistence";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { DailyReviewService, IssueEditService } from "@trade-data-manager/market";
+import { DaySummaryService, IssueEditService } from "@trade-data-manager/market";
 
 export interface ProbeRuntime {
-    reviewer: DailyReviewService;
+    summary: DaySummaryService;
     editor: IssueEditService;
     close(): Promise<void>;
 }
@@ -25,12 +26,20 @@ export function createProbeRuntime(): ProbeRuntime {
     const universe = new DrizzleDailyUniverseProvider(db);
     const stockMaster = new DrizzleStockMasterRepository(db);
     const marketCap = new DrizzleDailyMarketCapRepository(db);
+    const dailyCandle = new DrizzleDailyCandleRepository(db);
     const dailyIssue = new DrizzleDailyIssueRepository(db);
     // 시트 멤버십 — OAuth SheetsClient + 디폴트 시트(앱 생기면 선택 UI 가 config 갈아끼움).
     const membership = new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET);
 
-    const reviewer = new DailyReviewService({ universe, membership, stockMaster, marketCap, dailyIssue });
+    const summary = new DaySummaryService({
+        universe,
+        membership,
+        stockMaster,
+        marketCap,
+        dailyCandle,
+        dailyIssue,
+    });
     const editor = new IssueEditService({ dailyIssue });
 
-    return { reviewer, editor, close: () => pool.end() };
+    return { summary, editor, close: () => pool.end() };
 }

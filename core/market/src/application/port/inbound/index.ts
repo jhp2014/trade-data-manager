@@ -8,5 +8,5 @@ export * from "./marketcap/ipoPriceBackfiller.js";
 export * from "./marketcap/dailyMarketCapRecorder.js";
 export * from "./news/newsBackfiller.js";
 export * from "./news/newsSearcher.js";
-export * from "./issue/dailyReviewReader.js";
+export * from "./issue/daySummaryReader.js";
 export * from "./issue/issueEditor.js";
