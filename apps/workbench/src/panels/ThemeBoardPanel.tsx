@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 import { dailyMetric } from "../lib/dailyMetrics.js";
-import { stocksByTheme, themeParents } from "../lib/themeBoard.js";
+import { stocksByTheme, themeParents } from "@trade-data-manager/market/domain";
 import { ThemeCard, BoardCenter, MOVER_PCT, type BoardStock } from "../components/board/BoardCard.js";
 
 // 이슈정리 보드(EOD) — market-eye식 테마카드에 등락률 랭킹 + 눕힌 일봉 캔들 + 분포 미니맵 + 포함관계.

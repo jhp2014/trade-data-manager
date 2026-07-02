@@ -1,14 +1,16 @@
-// 테마 로스터 + 포함관계 — market-eye src/shared/themeView.ts 복사(순수, 의존 0).
-// [[chart-stack-architecture]] 원칙대로 렌더 헬퍼는 앱-로컬 소유. 실시간 대신 EOD/시점 스냅샷 위에서 돈다.
+// 테마 보드 순수 로직 — 로스터(테마별 등락률 랭킹) + 포함관계. 외부 import 0(제네릭).
+// 원래 market-eye(src/shared/themeView.ts)에서 왔고, 보드가 EOD/시점 스냅샷 위에서 재사용한다.
+// 클라(워크벤치)가 이걸 import 해 쓴다 — 순위/포함관계 계산의 단일 진실원본은 domain.
 
-interface ThemeStock {
+/** 테마 랭킹에 필요한 최소 형태(제네릭 제약). */
+export interface ThemeRankable {
     code: string;
     themes: string[];
     changeRate: number;
 }
 
 /** 테마 → 그 테마 멤버를 등락률 desc 정렬(1:N). 등수 = index+1. */
-export function stocksByTheme<T extends ThemeStock>(stocks: T[]): Map<string, T[]> {
+export function stocksByTheme<T extends ThemeRankable>(stocks: T[]): Map<string, T[]> {
     const m = new Map<string, T[]>();
     for (const s of stocks)
         for (const t of s.themes) {
@@ -22,7 +24,7 @@ export function stocksByTheme<T extends ThemeStock>(stocks: T[]): Map<string, T[
 
 /**
  * 포함관계 — theme → 이 테마의 멤버를 전부 포함하는 상위 테마들(멤버 많은 순).
- * "마스크 ⊆ 코로나". 로스터(byTheme)가 시점 스냅샷 기반이면 스크럽에 따라 동적으로 바뀐다.
+ * "마스크 ⊆ 코로나". 로스터가 시점 스냅샷 기반이면 스크럽에 따라 동적으로 바뀐다.
  */
 export function themeParents<T extends { code: string }>(byTheme: Map<string, T[]>): Map<string, string[]> {
     const codes = new Map<string, Set<string>>();

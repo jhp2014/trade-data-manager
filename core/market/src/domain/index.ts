@@ -23,3 +23,6 @@ export * from "./classification/dailyIssue.js";
 // review — 차트 주석(사람 편집): 수평 가격선 + 복기 타점
 export * from "./review/priceLine.js";
 export * from "./review/reviewPoint.js";
+
+// board — 테마 보드 순수 로직(로스터·포함관계·시점 유니버스 선정). 워크벤치 클라가 import.
+export * from "./board/index.js";

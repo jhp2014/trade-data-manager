@@ -4,7 +4,7 @@ import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 import { useDayBoard, useLeanIndex, leanSnapshotAt } from "../lib/leanModel.js";
 import { kstToUnix } from "../lib/derive.js";
-import { stocksByTheme, themeParents } from "../lib/themeBoard.js";
+import { stocksByTheme, themeParents, selectHotUniverse } from "@trade-data-manager/market/domain";
 import { ThemeCard, BoardCenter, MOVER_PCT, type BoardStock } from "../components/board/BoardCard.js";
 
 // 실시간 복기 보드(②) — time 스크럽으로 특정 시각의 장중 스냅샷을 market-eye식으로 재현.
@@ -58,16 +58,14 @@ export function ReplayBoardPanel(): JSX.Element {
     // 시점 t 스냅샷 → 랭킹 → top-N(거래대금 ∪ 등락률) → 테마 카드 + 포함관계.
     const board = useMemo(() => {
         if (!index) return null;
-        // 전 종목 시점 스냅샷.
-        const snaps: { code: string; rate: number; cumAmount: number; openPct: number; highPct: number; lowPct: number }[] = [];
+        // 전 종목 시점 스냅샷(도메인 순위용 형태 changeRate/amount 로 정규화).
+        const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number }[] = [];
         for (const s of index.values()) {
             const snap = leanSnapshotAt(s, tUnix);
-            if (snap) snaps.push(snap);
+            if (snap) snaps.push({ code: snap.code, changeRate: snap.rate, amount: snap.cumAmount, openPct: snap.openPct, highPct: snap.highPct, lowPct: snap.lowPct });
         }
-        // top-N 유니버스: 거래대금 desc topN ∪ 등락률 desc topN.
-        const byAmount = [...snaps].sort((a, b) => b.cumAmount - a.cumAmount).slice(0, amountN);
-        const byRate = [...snaps].sort((a, b) => b.rate - a.rate).slice(0, rateN);
-        const hotCodes = new Set<string>([...byAmount, ...byRate].map((x) => x.code));
+        // 시점 유니버스: 거래대금 top ∪ 등락률 top — core/market/domain 순수 규칙.
+        const hotCodes = selectHotUniverse(snaps, amountN, rateN);
 
         const stocks: BoardStock[] = [];
         for (const snap of snaps) {
@@ -79,12 +77,12 @@ export function ReplayBoardPanel(): JSX.Element {
                 name: meta.name,
                 market: meta.market,
                 themes: meta.themes,
-                changeRate: snap.rate,
+                changeRate: snap.changeRate,
                 openPct: snap.openPct,
                 highPct: snap.highPct,
                 lowPct: snap.lowPct,
-                amount: snap.cumAmount,
-                isMover: snap.rate >= MOVER_PCT,
+                amount: snap.amount,
+                isMover: snap.changeRate >= MOVER_PCT,
             });
         }
         const byTheme = stocksByTheme(stocks);
