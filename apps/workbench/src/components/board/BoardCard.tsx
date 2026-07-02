@@ -31,12 +31,16 @@ export function ThemeCard({
     parents,
     focusCode,
     onPick,
+    selected,
+    onSelect,
 }: {
     theme: string;
     stocks: BoardStock[];
     parents: string[];
     focusCode: string;
     onPick: (code: string) => void;
+    selected?: boolean; // NavRail/헤더에서 선택된 테마
+    onSelect?: (theme: string) => void; // 헤더 클릭 = 테마 선택
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>("collapsed");
     const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
@@ -49,19 +53,22 @@ export function ThemeCard({
         <div
             className={hot > 0 ? "board-blink" : undefined}
             style={{
-                border: `1px solid ${hasFocus ? "var(--accent-primary)" : "var(--border-default)"}`,
+                border: `1px solid ${selected || hasFocus ? "var(--accent-primary)" : "var(--border-default)"}`,
                 borderRadius: 8,
                 background: "var(--bg-primary)",
                 overflow: "hidden",
             }}
         >
             <div
+                onClick={onSelect ? () => onSelect(theme) : undefined}
                 style={{
                     display: "flex",
                     alignItems: "baseline",
                     gap: 8,
                     padding: "6px 10px",
                     borderBottom: "1px solid var(--border-subtle)",
+                    background: selected ? "var(--accent-soft)" : undefined,
+                    cursor: onSelect ? "pointer" : undefined,
                 }}
             >
                 <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{theme}</span>
