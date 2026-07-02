@@ -11,6 +11,14 @@ function FocusToolbar(): JSX.Element {
     const setCode = useWorkbench((s) => s.setCode);
     const setTimeLock = useWorkbench((s) => s.setTimeLock);
 
+    const inputStyle: React.CSSProperties = {
+        border: "1px solid var(--border-default)",
+        borderRadius: 6,
+        padding: "3px 8px",
+        background: "var(--bg-primary)",
+        color: "var(--text-primary)",
+        font: "inherit",
+    };
     return (
         <div
             style={{
@@ -18,29 +26,32 @@ function FocusToolbar(): JSX.Element {
                 gap: 12,
                 alignItems: "center",
                 padding: "8px 12px",
-                borderBottom: "1px solid #e2e2e2",
-                font: "13px system-ui, sans-serif",
+                borderBottom: "1px solid var(--border-default)",
+                background: "var(--bg-secondary)",
+                fontSize: 13,
+                color: "var(--text-secondary)",
             }}
         >
-            <label>
-                종목{" "}
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                종목
                 <input
                     value={code}
                     onChange={(e) => setCode(e.target.value.trim())}
                     placeholder="005930"
-                    style={{ width: 90 }}
+                    style={{ ...inputStyle, width: 90 }}
                 />
             </label>
-            <label>
-                날짜{" "}
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                날짜
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
             </label>
-            <label style={{ marginLeft: "auto" }}>
+            <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
                 <input
                     type="checkbox"
                     checked={timeLock}
                     onChange={(e) => setTimeLock(e.target.checked)}
-                />{" "}
+                    style={{ accentColor: "var(--accent-primary)" }}
+                />
                 timeLock
             </label>
         </div>
@@ -49,7 +60,7 @@ function FocusToolbar(): JSX.Element {
 
 export function App(): JSX.Element {
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-primary)" }}>
             <FocusToolbar />
             <WorkbenchShell />
         </div>

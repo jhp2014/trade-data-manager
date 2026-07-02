@@ -1,0 +1,88 @@
+/* workbench 글로벌 테마 — apps/chart-review globals.css 팔레트/폰트를 그대로 가져옴(라이트, teal 액센트). */
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f7f8fa;
+    --bg-tertiary: #eef1f5;
+    --bg-active: #edf6f2;
+    --text-primary: #171b21;
+    --text-secondary: #4c5664;
+    --text-tertiary: #7b8492;
+    --border-subtle: #eef0f3;
+    --border-default: #dfe4ea;
+    --border-strong: #c7ced8;
+    --accent-primary: #16796f;
+    --accent-hover: #0f625a;
+    --accent-soft: #e7f5f2;
+    --warning: #be7a00;
+    --warning-soft: #fff5db;
+    --rise: #ef4444;
+    --fall: #3b82f6;
+    --neutral: #8b95a1;
+    --chart-bg: #101418;
+    --chart-grid: #242b33;
+    --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+        "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}
+
+.tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    border-radius: 999px;
+}
+
+/* dockview 라이트 테마를 팔레트에 맞춰 정렬(있는 변수만 덮어씀, 없으면 무시). */
+.dockview-theme-light {
+    --dv-background-color: var(--bg-primary);
+    --dv-group-view-background-color: var(--bg-primary);
+    --dv-tabs-and-actions-container-background-color: var(--bg-secondary);
+    --dv-activegroup-visiblepanel-tab-background-color: var(--bg-primary);
+    --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-secondary);
+    --dv-activegroup-visiblepanel-tab-color: var(--text-primary);
+    --dv-inactivegroup-visiblepanel-tab-color: var(--text-tertiary);
+    --dv-tab-divider-color: var(--border-default);
+    --dv-separator-border: var(--border-default);
+    --dv-paneview-active-outline-color: var(--accent-primary);
+    --dv-icon-hover-background-color: var(--bg-tertiary);
+    --dv-font-family: var(--font-sans);
+}
