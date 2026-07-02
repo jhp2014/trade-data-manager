@@ -1,18 +1,12 @@
-// 테마 보드 카드 렌더 — 이슈정리 보드(EOD)와 실시간 복기 보드가 공유(market-eye식 룩 일원화).
-// 데이터 소스만 다르고(일봉 vs 시점 스냅샷) BoardStock 모양·렌더는 동일.
 import { useState } from "react";
 import type { DeltaHit } from "@trade-data-manager/market/domain";
 import { fmtRate, fmtEok } from "../../lib/format.js";
 
-export const AXIS_LO = -5; // 눕힌 캔들/분포 축 하한
-export const AXIS_HI = 30; // 상한
+export const AXIS_LO = -5; // 눕힌 캔들 축 하한
+export const AXIS_HI = 30; // 캔들/분포 축 상한
 
 // 카드 종목 표시 단계 — market-eye: 접힘(분포바만) → 주도주만 → 전체.
 type ListMode = "collapsed" | "movers" | "all";
-
-function actionBtnStyle(on?: boolean): React.CSSProperties {
-    return { padding: "0 3px", fontSize: 12, lineHeight: 1, background: "none", color: on ? "var(--warning)" : "var(--text-tertiary)", cursor: "pointer" };
-}
 
 export interface BoardStock {
     code: string;
@@ -28,6 +22,35 @@ export interface BoardStock {
     /** 1분 델타 주목 신호(복기 보드만). EOD 는 없음. */
     signal?: DeltaHit | null;
 }
+
+// ── 아이콘(market-eye SVG) ────────────────────────────────────
+function StarIcon({ filled }: { filled?: boolean }): JSX.Element {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11.5 2.6 14.3 8.3l6.3.9-4.5 4.4 1 6.3-5.6-3-5.6 3 1-6.3L2.5 9.2l6.3-.9z" />
+        </svg>
+    );
+}
+function HideIcon(): JSX.Element {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+            <path d="M6.61 6.61A18.5 18.5 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61" />
+            <line x1="2" y1="2" x2="22" y2="22" />
+        </svg>
+    );
+}
+function DragIcon(): JSX.Element {
+    return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+            <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+            <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+        </svg>
+    );
+}
+
+const iconBtn: React.CSSProperties = { display: "inline-flex", padding: "2px", background: "none", color: "var(--text-tertiary)", lineHeight: 0, cursor: "pointer" };
 
 export function ThemeCard({
     theme,
@@ -47,20 +70,21 @@ export function ThemeCard({
     parents: string[];
     focusCode: string;
     onPick: (code: string) => void;
-    selected?: boolean; // NavRail/헤더에서 선택된 테마
-    onSelect?: (theme: string) => void; // 헤더 클릭 = 테마 선택
+    selected?: boolean;
+    onSelect?: (theme: string) => void;
     isFav?: boolean;
-    onToggleFav?: (theme: string) => void; // ★ 즐겨찾기
-    onHide?: (theme: string) => void; // 👁 숨기기
-    dragHandle?: Record<string, unknown>; // 즐겨찾기 드래그 핸들(@dnd-kit attributes/listeners)
+    onToggleFav?: (theme: string) => void;
+    onHide?: (theme: string) => void;
+    dragHandle?: Record<string, unknown>;
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>("collapsed");
     const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
     const rest = stocks.filter((s) => !(s.isMover || s.signal));
-    const hot = stocks.filter((s) => s.signal).length; // 주목(1분 델타) 걸린 수
+    const hot = stocks.filter((s) => s.signal).length;
     const hasFocus = stocks.some((s) => s.code === focusCode);
-    const rankOf = new Map(stocks.map((s, i) => [s.code, i + 1])); // 전체 등락률 순위 유지
+    const rankOf = new Map(stocks.map((s, i) => [s.code, i + 1]));
     const cycle = (): void => setMode((m) => (m === "collapsed" ? "movers" : m === "movers" ? "all" : "collapsed"));
+    const stop = (e: React.MouseEvent): void => e.stopPropagation();
     return (
         <div
             className={hot > 0 ? "board-blink" : undefined}
@@ -75,7 +99,7 @@ export function ThemeCard({
                 onClick={onSelect ? () => onSelect(theme) : undefined}
                 style={{
                     display: "flex",
-                    alignItems: "baseline",
+                    alignItems: "center",
                     gap: 8,
                     padding: "6px 10px",
                     borderBottom: "1px solid var(--border-subtle)",
@@ -84,47 +108,37 @@ export function ThemeCard({
                 }}
             >
                 {dragHandle && (
-                    <button
-                        {...dragHandle}
-                        onClick={(e) => e.stopPropagation()}
-                        title="드래그로 순서 변경"
-                        style={{ padding: "0 2px", color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1, cursor: "grab", background: "none", touchAction: "none" }}
-                    >
-                        ⠿
+                    <button {...dragHandle} onClick={stop} title="드래그로 순서 변경" style={{ ...iconBtn, cursor: "grab", touchAction: "none" }}>
+                        <DragIcon />
                     </button>
                 )}
-                <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{theme}</span>
-                <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12 }} title="주도주 / 전체">
+                <span style={{ fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{theme}</span>
+                <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12, flexShrink: 0 }} title="주도주 / 전체">
                     {movers.length} / {stocks.length}
                 </span>
                 {hot > 0 && (
-                    <span className="tabular" style={{ color: "var(--rise)", fontSize: 12 }} title="지금 주목(1분 델타) 종목 수">
+                    <span className="tabular" style={{ color: "var(--rise)", fontSize: 12, flexShrink: 0 }} title="지금 주목(1분 델타) 종목 수">
                         🔥{hot}
                     </span>
                 )}
                 {parents.length > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--text-tertiary)" }} title="이 테마를 포함하는 상위 테마">
-                        ⊂ {parents.join(" · ")}
+                    <span
+                        title={`상위 테마에 포함: ${parents.join(" · ")}`}
+                        style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: "var(--accent-primary)", background: "var(--accent-soft)", borderRadius: 7, padding: "1px 6px", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                        ⊂ {parents.join("·")}
                     </span>
                 )}
                 {(onToggleFav || onHide) && (
                     <span style={{ marginLeft: "auto", display: "flex", gap: 2, flexShrink: 0 }}>
                         {onHide && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); onHide(theme); }}
-                                title="숨기기"
-                                style={actionBtnStyle(false)}
-                            >
-                                🅧
+                            <button onClick={(e) => { stop(e); onHide(theme); }} title="숨기기" style={iconBtn}>
+                                <HideIcon />
                             </button>
                         )}
                         {onToggleFav && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); onToggleFav(theme); }}
-                                title={isFav ? "즐겨찾기 해제" : "즐겨찾기"}
-                                style={actionBtnStyle(isFav)}
-                            >
-                                {isFav ? "★" : "☆"}
+                            <button onClick={(e) => { stop(e); onToggleFav(theme); }} title={isFav ? "즐겨찾기 해제" : "즐겨찾기"} style={{ ...iconBtn, color: isFav ? "var(--warning)" : "var(--text-tertiary)" }}>
+                                <StarIcon filled={isFav} />
                             </button>
                         )}
                     </span>
@@ -140,14 +154,7 @@ export function ThemeCard({
                     ))}
                     {mode === "all" &&
                         rest.map((s, i) => (
-                            <StockRow
-                                key={s.code}
-                                s={s}
-                                rank={rankOf.get(s.code)!}
-                                selected={s.code === focusCode}
-                                onPick={onPick}
-                                boundary={i === 0 && movers.length > 0}
-                            />
+                            <StockRow key={s.code} s={s} rank={rankOf.get(s.code)!} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} />
                         ))}
                 </div>
             )}
@@ -155,6 +162,7 @@ export function ThemeCard({
     );
 }
 
+// ── 종목 행 — grid: [rank+이름(1fr)] [등락률·거래대금(auto)] [캔들 28px] ──────────
 function StockRow({
     s,
     rank,
@@ -166,16 +174,17 @@ function StockRow({
     rank: number;
     selected: boolean;
     onPick: (code: string) => void;
-    boundary?: boolean; // 주도주/비주도주 경계(전체 모드)
+    boundary?: boolean;
 }): JSX.Element {
     const up = s.changeRate >= 0;
     return (
         <button
             onClick={() => onPick(s.code)}
             style={{
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto 28px",
                 alignItems: "center",
-                gap: 8,
+                gap: 10,
                 width: "100%",
                 textAlign: "left",
                 border: "none",
@@ -185,37 +194,36 @@ function StockRow({
                 cursor: "pointer",
                 background: selected ? "var(--bg-active)" : "transparent",
                 font: "inherit",
+                overflow: "hidden",
             }}
         >
-            <span className="tabular" style={{ width: 18, flexShrink: 0, color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11 }}>
-                {rank}
-            </span>
-            <span style={{ width: 92, minWidth: 40, flexShrink: 1, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {s.name}
-            </span>
-            <span className="tabular" style={{ width: 56, flexShrink: 0, textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)" }}>
-                {fmtRate(s.changeRate)}
-            </span>
-            {/* 신호(1분 델타) 있으면 거래대금 자리를 델타로 덮음(market-eye 방식). */}
-            {s.signal ? (
-                <span
-                    className="tabular"
-                    style={{ width: 52, flexShrink: 0, textAlign: "right", whiteSpace: "nowrap", color: "var(--rise)", fontSize: 11, fontWeight: 600 }}
-                    title={`1분 델타 +${s.signal.rateDelta.toFixed(1)}%p · ${fmtEok(s.signal.tvDelta)}`}
-                >
-                    +{fmtEok(s.signal.tvDelta)}
+            {/* col1: 등수 + 이름(넘치면 ellipsis) */}
+            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <span className="tabular" style={{ flexShrink: 0, width: 16, textAlign: "center", color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11, fontWeight: 700 }}>
+                    {rank}
                 </span>
-            ) : (
-                <span className="tabular" style={{ width: 52, flexShrink: 0, textAlign: "right", whiteSpace: "nowrap", color: "var(--text-tertiary)", fontSize: 11 }}>
-                    {fmtEok(s.amount)}
+                <span style={{ minWidth: 0, color: "var(--text-primary)", fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {s.name}
                 </span>
-            )}
+            </span>
+            {/* col2: 등락률 + 거래대금(신호 시 델타로 덮음) */}
+            <span style={{ display: "flex", alignItems: "baseline", gap: 8, justifyContent: "flex-end", whiteSpace: "nowrap" }}>
+                <span className="tabular" style={{ color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600 }}>{fmtRate(s.changeRate)}</span>
+                {s.signal ? (
+                    <span className="tabular" style={{ color: "var(--rise)", fontSize: 11, fontWeight: 600 }} title={`1분 델타 +${s.signal.rateDelta.toFixed(1)}%p · ${fmtEok(s.signal.tvDelta)}`}>
+                        +{fmtEok(s.signal.tvDelta)}
+                    </span>
+                ) : (
+                    <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 11 }}>{fmtEok(s.amount)}</span>
+                )}
+            </span>
+            {/* col3: 눕힌 캔들(고정 28px) */}
             <Candle s={s} />
         </button>
     );
 }
 
-/** 눕힌 캔들 — 축 AXIS_LO~AXIS_HI(0%은 좌측 근처). 양봉(종가≥시가) 빨강, 음봉 파랑. */
+/** 눕힌 일봉 캔들 — 축 AXIS_LO~AXIS_HI, 고정폭 28px. 양봉(종가≥시가) 빨강, 음봉 파랑. */
 function Candle({ s }: { s: BoardStock }): JSX.Element {
     const span = AXIS_HI - AXIS_LO;
     const x = (p: number): number => Math.max(0, Math.min(100, ((p - AXIS_LO) / span) * 100));
@@ -226,47 +234,56 @@ function Candle({ s }: { s: BoardStock }): JSX.Element {
     const wickL = x(s.lowPct);
     const wickR = x(s.highPct);
     return (
-        <span style={{ position: "relative", flex: 1, height: 12, minWidth: 60 }}>
-            <span style={{ position: "absolute", left: `${x(0)}%`, top: 0, bottom: 0, width: 1, background: "var(--border-strong)" }} />
-            <span style={{ position: "absolute", left: `${wickL}%`, width: `${Math.max(wickR - wickL, 0.5)}%`, top: 5, height: 2, background: color, opacity: 0.6 }} />
-            <span style={{ position: "absolute", left: `${bodyL}%`, width: `${Math.max(bodyR - bodyL, 1.5)}%`, top: 2, height: 8, background: color, borderRadius: 1 }} />
+        <span style={{ position: "relative", width: 28, height: 14, flexShrink: 0 }}>
+            <span style={{ position: "absolute", left: `${x(0)}%`, top: 0, height: "100%", width: 1, background: "var(--border-strong)" }} />
+            <span style={{ position: "absolute", left: `${wickL}%`, width: `${Math.max(wickR - wickL, 0.5)}%`, top: 6, height: 2, background: color, opacity: 0.55, borderRadius: 1 }} />
+            <span style={{ position: "absolute", left: `${bodyL}%`, width: `${Math.max(bodyR - bodyL, 2)}%`, top: 3, height: 8, background: color, borderRadius: 1 }} />
         </span>
     );
 }
 
-/** 분포 미니맵 — 0~AXIS_HI 범위 점. 주도주 빨강, 그 외 파랑. 클릭 = 표시단계 순환. */
+/** 분포 미니맵(수평선) — baseline + 점 + 눈금 + 축 라벨(0/5/10/20/30%). 클릭 = 표시단계 순환. */
 function DistBar({ stocks, mode, onCycle }: { stocks: BoardStock[]; mode: ListMode; onCycle: () => void }): JSX.Element {
     const x = (r: number): number => Math.max(0, Math.min(100, (r / AXIS_HI) * 100));
     const ticks = [5, 10, 20, 30];
     const next = mode === "collapsed" ? "주도주만" : mode === "movers" ? "전체" : "접기";
     return (
-        <div
-            onClick={onCycle}
-            title={`클릭: ${next}`}
-            style={{ position: "relative", height: 16, margin: "4px 10px 2px", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}
-        >
+        <div onClick={onCycle} title={`클릭: ${next}`} style={{ position: "relative", height: 28, margin: "3px 10px", cursor: "pointer" }}>
+            <div style={{ position: "absolute", left: 0, right: 0, top: 9, height: 1, background: "var(--border-default)" }} />
             {ticks.map((t) => (
-                <span key={t} style={{ position: "absolute", left: `${x(t)}%`, bottom: 0, top: 0, width: 1, background: "var(--border-subtle)" }} />
+                <div key={`t${t}`} style={{ position: "absolute", left: `${x(t)}%`, top: 5, width: 1, height: 9, background: "var(--border-default)", transform: "translateX(-50%)" }} />
             ))}
             {stocks
                 .filter((s) => s.changeRate >= 0 && s.changeRate <= AXIS_HI)
                 .map((s) => (
-                    <span
+                    <div
                         key={s.code}
                         title={`${s.name} ${fmtRate(s.changeRate)}`}
                         style={{
                             position: "absolute",
                             left: `${x(s.changeRate)}%`,
-                            top: 5,
-                            width: 5,
-                            height: 5,
-                            marginLeft: -2.5,
+                            top: 9,
+                            width: s.signal ? 8 : 6,
+                            height: s.signal ? 8 : 6,
                             borderRadius: "50%",
-                            background: s.isMover ? "var(--rise)" : "var(--fall)",
-                            opacity: 0.7,
+                            transform: "translate(-50%, -50%)",
+                            background: s.signal ? "#f59e0b" : s.isMover ? "var(--rise)" : "var(--fall)",
+                            opacity: s.signal ? 1 : s.isMover ? 0.5 : 0.38,
+                            zIndex: s.signal ? 3 : s.isMover ? 1 : 0,
                         }}
                     />
                 ))}
+            {/* 축 라벨 */}
+            <span className="tabular" style={{ position: "absolute", left: 0, top: 16, fontSize: 9, color: "var(--text-tertiary)" }}>0%</span>
+            {ticks.map((t, i) => (
+                <span
+                    key={`l${t}`}
+                    className="tabular"
+                    style={{ position: "absolute", left: `${x(t)}%`, top: 16, fontSize: 9, color: "var(--text-tertiary)", whiteSpace: "nowrap", transform: i === ticks.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}
+                >
+                    {t}%
+                </span>
+            ))}
         </div>
     );
 }

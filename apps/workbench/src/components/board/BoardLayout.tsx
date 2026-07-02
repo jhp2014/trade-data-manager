@@ -78,7 +78,8 @@ export function BoardLayout({
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
             <NavRail grouped={grouped} selected={selected} onPick={pickTheme} isHidden={isHidden} />
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8 }}>
+                {/* 폭이 커지면 카드는 일정폭까지만, 그 이상은 좌우 여백. */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8, maxWidth: 760, width: "100%", margin: "0 auto" }}>
                     {favCards.length > 0 && (
                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                             <SortableContext items={favCards.map((g) => g.theme)} strategy={verticalListSortingStrategy}>
@@ -188,29 +189,41 @@ function HiddenRail({
             <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0, alignSelf: "center" }}>숨김</span>
             {themes.map((g) => {
                 const par = parents.get(g.theme) ?? [];
+                const contained = par.length > 0;
                 return (
                     <button
                         key={g.theme}
                         onClick={() => onUnhide(g.theme)}
-                        title={`복원: ${g.theme}`}
+                        title={contained ? `복원: ${g.theme} (⊂ ${par.join(" · ")})` : `복원: ${g.theme}`}
                         style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 4,
+                            gap: 5,
                             flexShrink: 0,
-                            padding: "2px 8px",
-                            borderRadius: 12,
+                            padding: contained ? "2px 5px 2px 8px" : "2px 8px",
+                            borderRadius: 8,
                             border: "1px solid var(--border-default)",
-                            background: "var(--bg-secondary)",
+                            background: "var(--bg-primary)",
                             fontSize: 11,
                             whiteSpace: "nowrap",
-                            color: "var(--text-tertiary)",
                             cursor: "pointer",
                         }}
                     >
-                        {par.length > 0 && <span title={`⊂ ${par.join(" · ")}`}>⊂</span>}
-                        <span>{g.theme}</span>
-                        <span className="tabular">{g.stocks.length}</span>
+                        {contained ? (
+                            // 포함관계 = 박스-인-박스 `부모 [테마]` (market-eye nest-outer)
+                            <>
+                                <span style={{ fontWeight: 700, color: "var(--text-tertiary)" }}>{par.join("·")}</span>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 700, color: "var(--accent-primary)", background: "var(--accent-soft)", borderRadius: 6, padding: "2px 7px" }}>
+                                    {g.theme}
+                                    <span className="tabular" style={{ opacity: 0.7 }}>{g.stocks.length}</span>
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <span style={{ fontWeight: 700, color: "var(--text-secondary)" }}>{g.theme}</span>
+                                <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{g.stocks.length}</span>
+                            </>
+                        )}
                     </button>
                 );
             })}
