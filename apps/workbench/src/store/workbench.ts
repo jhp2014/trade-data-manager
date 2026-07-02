@@ -22,10 +22,27 @@ export interface Scope {
     theme: string | null;
 }
 
+// 보드 설정 — 전역 설정 모달(사이드바)이 편집, 각 보드가 구독. 패널별 gear 대신 전역 1개.
+export interface IssueBoardSettings {
+    showIndividuals: boolean;
+    showUnclassified: boolean;
+    filterOn: boolean;
+    filterHighGte: number; // 고가 등락률 %
+    filterAmountEok: number; // 거래대금 억
+    filterCombine: "and" | "or";
+    filterMode: "dim" | "hide";
+}
+export interface ReplayBoardSettings {
+    amountN: number; // 거래대금 top-N
+    rateN: number; // 등락률 top-N
+}
+
 interface WorkbenchState {
     focus: Focus;
     scope: Scope;
     chartPriceMode: ChartPriceMode; // 뷰 설정(축 아님) — 분봉 % 기준 시장
+    issueSettings: IssueBoardSettings;
+    replaySettings: ReplayBoardSettings;
     // Focus 액션 — 무효화규칙을 액션 안에 강제한다(패널이 규칙을 재현하지 않게).
     setDate: (date: string) => void;
     setCode: (code: string) => void;
@@ -38,6 +55,9 @@ interface WorkbenchState {
     clearScope: () => void;
     // 뷰 설정
     setChartPriceMode: (mode: ChartPriceMode) => void;
+    // 보드 설정(전역 모달이 편집)
+    setIssueSettings: (patch: Partial<IssueBoardSettings>) => void;
+    setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
 }
 
 const today = new Date().toISOString().slice(0, 10);
@@ -46,6 +66,8 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     focus: { date: today, code: "", time: null, timeLock: false },
     scope: { issue: null, theme: null },
     chartPriceMode: "un",
+    issueSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim" },
+    replaySettings: { amountN: 80, rateN: 40 },
 
     // date 최상위 무효화: time 리셋 + scope 전체 리셋(이슈·테마 모두 그날 것이라 날짜 넘어가면 stale).
     setDate: (date) =>
@@ -60,4 +82,6 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { issue: null, theme: null } })),
     setChartPriceMode: (mode) => set(() => ({ chartPriceMode: mode })),
+    setIssueSettings: (patch) => set((s) => ({ issueSettings: { ...s.issueSettings, ...patch } })),
+    setReplaySettings: (patch) => set((s) => ({ replaySettings: { ...s.replaySettings, ...patch } })),
 }));
