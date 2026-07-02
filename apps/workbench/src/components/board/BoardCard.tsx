@@ -10,6 +10,10 @@ export const AXIS_HI = 30; // 상한
 // 카드 종목 표시 단계 — market-eye: 접힘(분포바만) → 주도주만 → 전체.
 type ListMode = "collapsed" | "movers" | "all";
 
+function actionBtnStyle(on?: boolean): React.CSSProperties {
+    return { padding: "0 3px", fontSize: 12, lineHeight: 1, background: "none", color: on ? "var(--warning)" : "var(--text-tertiary)", cursor: "pointer" };
+}
+
 export interface BoardStock {
     code: string;
     name: string;
@@ -33,6 +37,9 @@ export function ThemeCard({
     onPick,
     selected,
     onSelect,
+    isFav,
+    onToggleFav,
+    onHide,
 }: {
     theme: string;
     stocks: BoardStock[];
@@ -41,6 +48,9 @@ export function ThemeCard({
     onPick: (code: string) => void;
     selected?: boolean; // NavRail/헤더에서 선택된 테마
     onSelect?: (theme: string) => void; // 헤더 클릭 = 테마 선택
+    isFav?: boolean;
+    onToggleFav?: (theme: string) => void; // ★ 즐겨찾기
+    onHide?: (theme: string) => void; // 👁 숨기기
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>("collapsed");
     const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
@@ -81,8 +91,30 @@ export function ThemeCard({
                     </span>
                 )}
                 {parents.length > 0 && (
-                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-tertiary)" }} title="이 테마를 포함하는 상위 테마">
+                    <span style={{ fontSize: 11, color: "var(--text-tertiary)" }} title="이 테마를 포함하는 상위 테마">
                         ⊂ {parents.join(" · ")}
+                    </span>
+                )}
+                {(onToggleFav || onHide) && (
+                    <span style={{ marginLeft: "auto", display: "flex", gap: 2, flexShrink: 0 }}>
+                        {onHide && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onHide(theme); }}
+                                title="숨기기"
+                                style={actionBtnStyle(false)}
+                            >
+                                🅧
+                            </button>
+                        )}
+                        {onToggleFav && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onToggleFav(theme); }}
+                                title={isFav ? "즐겨찾기 해제" : "즐겨찾기"}
+                                style={actionBtnStyle(isFav)}
+                            >
+                                {isFav ? "★" : "☆"}
+                            </button>
+                        )}
                     </span>
                 )}
             </div>
