@@ -152,11 +152,11 @@ export function ThemeCard({
             {mode !== "collapsed" && (
                 <div>
                     {movers.map((s) => (
-                        <StockRow key={s.code} s={s} rank={rankOf.get(s.code)!} selected={s.code === focusCode} onPick={onPick} />
+                        <StockRow key={s.code} s={s} rank={rankOf.get(s.code)!} selected={s.code === focusCode} onPick={onPick} home={theme} />
                     ))}
                     {mode === "all" &&
                         rest.map((s, i) => (
-                            <StockRow key={s.code} s={s} rank={rankOf.get(s.code)!} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} />
+                            <StockRow key={s.code} s={s} rank={rankOf.get(s.code)!} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} home={theme} />
                         ))}
                 </div>
             )}
@@ -252,29 +252,33 @@ function relBoxStyle(relIsChild: boolean): React.CSSProperties {
     };
 }
 
-// ── 종목 행 — grid: [rank+이름(1fr)] [등락률·거래대금(auto)] [캔들 28px] ──────────
+// ── 종목 행 — grid: [등수+이름+테마칩(1fr)] [등락률 58] [거래대금 52] [캔들 28] ──
+// 등락률·거래대금은 고정폭 우측정렬이라 행끼리 세로줄이 맞는다. 좁아지면 이름/칩이 ellipsis·clip.
 function StockRow({
     s,
     rank,
     selected,
     onPick,
     boundary,
+    home,
 }: {
     s: BoardStock;
     rank: number;
     selected: boolean;
     onPick: (code: string) => void;
     boundary?: boolean;
+    home?: string; // 카드 테마(칩에서 제외). 개별/미분류는 undefined → 전체 테마 칩.
 }): JSX.Element {
     const up = s.changeRate >= 0;
+    const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
     return (
         <button
             onClick={() => onPick(s.code)}
             style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) auto 28px",
+                gridTemplateColumns: "minmax(0, 1fr) 58px 52px 28px",
                 alignItems: "center",
-                gap: 10,
+                gap: 8,
                 width: "100%",
                 textAlign: "left",
                 border: "none",
@@ -287,27 +291,37 @@ function StockRow({
                 overflow: "hidden",
             }}
         >
-            {/* col1: 등수 + 이름(넘치면 ellipsis) */}
+            {/* col1: 등수 + 이름(ellipsis) + 테마 칩(먼저 clip) */}
             <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 <span className="tabular" style={{ flexShrink: 0, width: 16, textAlign: "center", color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11, fontWeight: 700 }}>
                     {rank}
                 </span>
-                <span style={{ minWidth: 0, color: "var(--text-primary)", fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ flexShrink: 1, minWidth: 0, color: "var(--text-primary)", fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {s.name}
                 </span>
-            </span>
-            {/* col2: 등락률 + 거래대금(신호 시 델타로 덮음) */}
-            <span style={{ display: "flex", alignItems: "baseline", gap: 8, justifyContent: "flex-end", whiteSpace: "nowrap" }}>
-                <span className="tabular" style={{ color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600 }}>{fmtRate(s.changeRate)}</span>
-                {s.signal ? (
-                    <span className="tabular" style={{ color: "var(--rise)", fontSize: 11, fontWeight: 600 }} title={`1분 델타 +${s.signal.rateDelta.toFixed(1)}%p · ${fmtEok(s.signal.tvDelta)}`}>
-                        +{fmtEok(s.signal.tvDelta)}
+                {chips.length > 0 && (
+                    <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>
+                        {chips.map((t) => (
+                            <span key={t} style={{ flexShrink: 0, fontSize: 9, color: "var(--text-tertiary)", background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
+                                {t}
+                            </span>
+                        ))}
                     </span>
-                ) : (
-                    <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 11 }}>{fmtEok(s.amount)}</span>
                 )}
             </span>
-            {/* col3: 눕힌 캔들(고정 28px) */}
+            {/* col2: 등락률(고정폭 우측정렬) */}
+            <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600 }}>
+                {fmtRate(s.changeRate)}
+            </span>
+            {/* col3: 거래대금(신호 시 델타로 덮음, 고정폭 우측정렬) */}
+            {s.signal ? (
+                <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: "var(--rise)", fontSize: 11, fontWeight: 600 }} title={`1분 델타 +${s.signal.rateDelta.toFixed(1)}%p · ${fmtEok(s.signal.tvDelta)}`}>
+                    +{fmtEok(s.signal.tvDelta)}
+                </span>
+            ) : (
+                <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: "var(--text-tertiary)", fontSize: 11 }}>{fmtEok(s.amount)}</span>
+            )}
+            {/* col4: 눕힌 캔들(고정 28px) */}
             <Candle s={s} />
         </button>
     );

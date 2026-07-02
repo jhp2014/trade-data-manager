@@ -86,7 +86,8 @@ export function BoardLayout({
     return (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
             <NavRail themes={[...favCards, ...restCards]} selected={selected} onPick={pickTheme} />
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            {/* overflowAnchor none: 카드 펼침(분포바 클릭)에 스크롤이 튀지 않게 — 연속 클릭 유지. */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowAnchor: "none" }}>
                 {/* 폭이 커지면 카드는 일정폭까지만, 그 이상은 좌우 여백. */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8, maxWidth: 760, width: "100%", margin: "0 auto" }}>
                     {favCards.length > 0 && (
