@@ -1,5 +1,10 @@
 import type { FunctionComponent } from "react";
-import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from "dockview-react";
+import {
+    DockviewReact,
+    type DockviewReadyEvent,
+    type IDockviewPanelProps,
+    type IDockviewHeaderActionsProps,
+} from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import { ChartPanel } from "../panels/ChartPanel.js";
 import { ThemeBoardPanel } from "../panels/ThemeBoardPanel.js";
@@ -30,12 +35,39 @@ function onReady(event: DockviewReadyEvent): void {
     });
 }
 
+// 그룹 헤더 우측 액션 — 플로팅 창으로 띄우기(dockview 는 드래그 기본 UI 가 없어 버튼으로 트리거).
+// 플로팅 창은 그리드 위에 떠서 겹칠 수 있고, 드래그해 다시 도킹된다.
+function HeaderActions(props: IDockviewHeaderActionsProps): JSX.Element {
+    const floating = props.api.location.type === "floating";
+    const onFloat = (): void => {
+        if (floating) return;
+        props.containerApi.addFloatingGroup(props.group, {
+            position: { left: 140, top: 90 },
+            width: 580,
+            height: 440,
+        });
+    };
+    return (
+        <div style={{ display: "flex", alignItems: "center", height: "100%", padding: "0 6px" }}>
+            <button
+                onClick={onFloat}
+                title={floating ? "플로팅 창 (드래그해 도킹)" : "플로팅 창으로 띄우기"}
+                disabled={floating}
+                style={{ padding: "0 6px", color: floating ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 14, lineHeight: 1, cursor: floating ? "default" : "pointer" }}
+            >
+                ⧉
+            </button>
+        </div>
+    );
+}
+
 export function WorkbenchShell(): JSX.Element {
     return (
         <div style={{ flex: 1, minHeight: 0 }}>
             <DockviewReact
                 components={components}
                 onReady={onReady}
+                rightHeaderActionsComponent={HeaderActions}
                 className="dockview-theme-light"
             />
         </div>
