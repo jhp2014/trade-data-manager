@@ -4,8 +4,10 @@ import {
     HistogramSeries,
     CrosshairMode,
     LineStyle,
+    createSeriesMarkers,
     type AutoscaleInfo,
     type ISeriesApi,
+    type ISeriesMarkersPluginApi,
     type Time,
     type UTCTimestamp,
 } from "lightweight-charts";
@@ -16,6 +18,7 @@ import {
     RISE_FILL,
     FALL_FILL,
     AMOUNT_BAR_COLOR,
+    amountMarkerFor,
 } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import type { MinutePoint } from "../lib/derive.js";
@@ -27,6 +30,7 @@ export function MinuteChart({ points }: { points: MinutePoint[] }): JSX.Element 
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+    const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const amountMapRef = useRef<Map<number, number>>(new Map());
     const cumMapRef = useRef<Map<number, number>>(new Map());
 
@@ -104,9 +108,11 @@ export function MinuteChart({ points }: { points: MinutePoint[] }): JSX.Element 
 
         candleRef.current = candle;
         amountRef.current = amount;
+        markersRef.current = createSeriesMarkers(candle);
         return () => {
             candleRef.current = null;
             amountRef.current = null;
+            markersRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -138,6 +144,13 @@ export function MinuteChart({ points }: { points: MinutePoint[] }): JSX.Element 
         amountMapRef.current = amountMap;
         cumMapRef.current = cumMap;
         amount.setData(bars);
+        // 거래대금 마커 — 분당 거래대금이 임계(≥30억) 넘는 분봉 아래에 표시.
+        const markers = [];
+        for (const p of points) {
+            const mk = amountMarkerFor(p.amount);
+            if (mk) markers.push({ time: p.time as UTCTimestamp, position: "belowBar" as const, color: mk.color, shape: "circle" as const, text: `${mk.thresholdEok}` });
+        }
+        markersRef.current?.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points]);
