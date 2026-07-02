@@ -29,6 +29,8 @@ export interface BoardStock {
     isMover: boolean;
     /** 1분 델타 주목 신호(복기 보드만). EOD 는 없음. */
     signal?: DeltaHit | null;
+    /** 필터 조건 불일치(흐림 모드) — 행을 흐릿하게. */
+    dim?: boolean;
 }
 
 // ── 아이콘(market-eye SVG) ────────────────────────────────────
@@ -293,6 +295,7 @@ function StockRow({
                 background: selected ? "var(--bg-active)" : "transparent",
                 font: "inherit",
                 overflow: "hidden",
+                opacity: s.dim ? 0.35 : 1,
             }}
         >
             {/* col1: 등수 + 이름(ellipsis) + 테마 칩(먼저 clip) */}
