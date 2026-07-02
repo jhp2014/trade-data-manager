@@ -2,27 +2,38 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchChart } from "../api/chart.js";
+import { useDayCharts } from "../lib/useDayCharts.js";
 import { deriveMinuteView } from "../lib/derive.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 
-// 분봉 차트 패널 — /chart raw 번들을 받아 클라에서 파생(등락률 %·거래대금) 후 렌더.
-// price 모드(KRX/UN)는 뷰 설정. code/date 는 Focus selector 구독(바뀌면 이 패널만 리렌더).
+// 분봉 차트 패널 — 우선 day store(당일 전체 페치)에서 종목 번들을 읽고(추가 페치 0),
+// 없으면 단일 /chart 로 폴백. raw → 클라 파생(등락률 %·거래대금). price 모드(KRX/UN)는 뷰 설정.
 export function ChartPanel(): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
     const date = useWorkbench((s) => s.focus.date);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const setMode = useWorkbench((s) => s.setChartPriceMode);
 
-    const query = useQuery({
+    // day store 공유 캐시에서 이 종목 번들 찾기.
+    const dayCharts = useDayCharts(date);
+    const fromDay = useMemo(
+        () => dayCharts.data?.find((b) => b.stockCode === code) ?? null,
+        [dayCharts.data, code],
+    );
+    // day store 에 없을 때만 단일 조회(딥링크·비유니버스 종목).
+    const single = useQuery({
         queryKey: ["chart", code, date],
         queryFn: () => fetchChart(code, date),
-        enabled: code.length > 0 && date.length > 0,
+        enabled: code.length > 0 && date.length > 0 && !fromDay && !dayCharts.isLoading,
     });
 
-    const view = useMemo(
-        () => (query.data ? deriveMinuteView(query.data, mode) : null),
-        [query.data, mode],
-    );
+    const bundle = fromDay ?? single.data ?? null;
+    const view = useMemo(() => (bundle ? deriveMinuteView(bundle, mode) : null), [bundle, mode]);
+
+    const isError = dayCharts.isError || single.isError;
+    const errMsg = ((dayCharts.error ?? single.error) as Error | undefined)?.message ?? "";
+    const isLoading = code.length > 0 && !bundle && !isError;
+    const query = { isLoading, isError, error: { message: errMsg } as Error };
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>

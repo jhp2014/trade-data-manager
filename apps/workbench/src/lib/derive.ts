@@ -27,7 +27,7 @@ export interface MinuteView {
 }
 
 /** KST(UTC+9) date(YYYY-MM-DD)+time(HH:MM:SS) → unix seconds. */
-function kstToUnix(date: string, time: string): number {
+export function kstToUnix(date: string, time: string): number {
     return Math.floor(Date.parse(`${date}T${time}+09:00`) / 1000);
 }
 
