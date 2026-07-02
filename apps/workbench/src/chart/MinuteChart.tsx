@@ -23,9 +23,12 @@ import {
 } from "./chartUtils.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
+import { VertLine, asPrimitive } from "./vertLine.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { PriceLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
+
+const MARKER_LINE_COLOR = "#2563eb"; // 시점 커서(Focus.time) 세로선
 
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
 // 데이터는 이미 파생된 MinutePoint[](%/원). 여기선 시리즈 렌더·툴팁만 담당.
@@ -34,26 +37,37 @@ export function MinuteChart({
     showAmountMarkers = true,
     lines,
     base,
+    markerTime = null,
     onRightClick,
+    onRemoveLine,
 }: {
     points: MinutePoint[];
     showAmountMarkers?: boolean;
     lines: PriceLine[]; // D+M 선(raw 가격). % 로 변환해 표시.
     base: number | null; // % 기준가(원)
+    markerTime?: number | null; // Focus.time 시점 세로선(unix초). null = 없음.
     onRightClick: (highPrice: number) => void;
+    onRemoveLine: (line: PriceLine) => void;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+    const vertLineRef = useRef<VertLine | null>(null);
     const amountMapRef = useRef<Map<number, number>>(new Map());
     const cumMapRef = useRef<Map<number, number>>(new Map());
     const pointMapRef = useRef<Map<number, MinutePoint>>(new Map());
     const hoveredTimeRef = useRef<number | null>(null);
     const priceLinesRef = useRef<IPriceLine[]>([]);
+    const linesRef = useRef<PriceLine[]>(lines); // 우클릭 라벨-삭제 매칭용(현재 선 데이터)
+    const baseRef = useRef<number | null>(base);
+    linesRef.current = lines;
+    baseRef.current = base;
     const onRightClickRef = useRef(onRightClick);
+    const onRemoveLineRef = useRef(onRemoveLine);
     useEffect(() => {
         onRightClickRef.current = onRightClick;
+        onRemoveLineRef.current = onRemoveLine;
     });
 
     const chartRef = useChartShell(containerRef, () => ({
@@ -131,13 +145,37 @@ export function MinuteChart({
         candleRef.current = candle;
         amountRef.current = amount;
         markersRef.current = createSeriesMarkers(candle);
+        // 시점 커서 세로선 primitive(캔들 시리즈에 부착).
+        const vl = new VertLine(null, MARKER_LINE_COLOR);
+        candle.attachPrimitive(asPrimitive(vl));
+        vertLineRef.current = vl;
         return () => {
+            try {
+                candle.detachPrimitive(asPrimitive(vl));
+            } catch {
+                /* noop */
+            }
             candleRef.current = null;
             amountRef.current = null;
             markersRef.current = null;
+            vertLineRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Focus.time 세로선 — markerTime 을 실제 봉 시각으로 스냅(≤ target 최대). 범위 밖이면 숨김.
+    useEffect(() => {
+        const vl = vertLineRef.current;
+        if (!vl) return;
+        let snapped: number | null = null;
+        if (markerTime != null) {
+            for (const p of points) {
+                if (p.time <= markerTime) snapped = p.time;
+                else break;
+            }
+        }
+        vl.setTime(snapped as UTCTimestamp | null);
+    }, [markerTime, points]);
 
     // points 변경 시 데이터 푸시 + 툴팁 lookup 갱신.
     useEffect(() => {
@@ -193,6 +231,21 @@ export function MinuteChart({
         chart.subscribeCrosshairMove(onMove);
         const onCtx = (e: MouseEvent): void => {
             e.preventDefault();
+            const candle = candleRef.current;
+            const b = baseRef.current;
+            const y = e.clientY - el.getBoundingClientRect().top;
+            // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음).
+            if (candle && b && b > 0) {
+                for (const line of linesRef.current) {
+                    const pct = ((Number(line.price) - b) / b) * 100;
+                    const ly = candle.priceToCoordinate(pct);
+                    if (ly != null && Math.abs((ly as number) - y) <= 6) {
+                        onRemoveLineRef.current(line);
+                        return;
+                    }
+                }
+            }
+            // 2) 아니면 hover 중인 분봉 고점에 M 선 추가.
             const t = hoveredTimeRef.current;
             const p = t != null ? pointMapRef.current.get(t) : null;
             if (p) onRightClickRef.current(p.highPrice);

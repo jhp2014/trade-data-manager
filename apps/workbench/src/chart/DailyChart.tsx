@@ -18,7 +18,7 @@ import { fmtRate, fmtEok } from "../lib/format.js";
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
-export function DailyChart({ points, lines, onRightClick }: { points: DailyPoint[]; lines: PriceLine[]; onRightClick: (highPrice: number) => void }): JSX.Element {
+export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { points: DailyPoint[]; lines: PriceLine[]; onRightClick: (highPrice: number) => void; onRemoveLine: (line: PriceLine) => void }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -26,9 +26,13 @@ export function DailyChart({ points, lines, onRightClick }: { points: DailyPoint
     const mapRef = useRef<Map<string, DailyPoint>>(new Map());
     const hoveredTimeRef = useRef<string | null>(null);
     const priceLinesRef = useRef<IPriceLine[]>([]);
+    const linesRef = useRef<PriceLine[]>(lines); // 우클릭 라벨-삭제 매칭용
+    linesRef.current = lines;
     const onRightClickRef = useRef(onRightClick);
+    const onRemoveLineRef = useRef(onRemoveLine);
     useEffect(() => {
         onRightClickRef.current = onRightClick;
+        onRemoveLineRef.current = onRemoveLine;
     });
 
     const chartRef = useChartShell(containerRef, () => ({
@@ -104,7 +108,7 @@ export function DailyChart({ points, lines, onRightClick }: { points: DailyPoint
             if (!p.prevClose || p.prevClose <= 0) continue;
             const pct = ((p.high - p.prevClose) / p.prevClose) * 100;
             const color = highMarkerColor(pct);
-            if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 0, text: `${pct.toFixed(1)}` });
+            if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: `${pct.toFixed(1)}` });
         }
         markersRef.current?.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
@@ -122,6 +126,19 @@ export function DailyChart({ points, lines, onRightClick }: { points: DailyPoint
         chart.subscribeCrosshairMove(onMove);
         const onCtx = (e: MouseEvent): void => {
             e.preventDefault();
+            const candle = candleRef.current;
+            const y = e.clientY - el.getBoundingClientRect().top;
+            // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제.
+            if (candle) {
+                for (const line of linesRef.current) {
+                    const ly = candle.priceToCoordinate(Number(line.price));
+                    if (ly != null && Math.abs((ly as number) - y) <= 6) {
+                        onRemoveLineRef.current(line);
+                        return;
+                    }
+                }
+            }
+            // 2) 아니면 hover 봉 고점에 D 선 추가.
             const t = hoveredTimeRef.current;
             const p = t ? mapRef.current.get(t) : null;
             if (p) onRightClickRef.current(p.high);
