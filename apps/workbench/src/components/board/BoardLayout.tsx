@@ -4,6 +4,7 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import { relatedThemes, type Grouped, type ThemeGroup } from "@trade-data-manager/market/domain";
 import { ThemeCard, BoardCenter, type BoardStock, type RelatedInfo } from "./BoardCard.js";
+import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
 
 // 보드 본문 공용 — NavRail + 카드(즐겨찾기 상단 / 나머지 / 개별·미분류) + 숨김 Rail. 두 보드 공유.
 // 즐겨찾기(★)·숨김(👁)은 세션 휘발 로컬 상태. 자동숨김=현재 시점 포함관계(비sticky — 복기 스크럽에
@@ -67,6 +68,8 @@ export function BoardLayout({
     // 자동숨김 = 현재 시점 포함관계(상위 테마에 통째 포함). 사용자 override 우선.
     const isHidden = (theme: string): boolean =>
         userHidden.has(theme) ? userHidden.get(theme)! : (parents.get(theme)?.length ?? 0) > 0;
+    // 관련테마 칩 클릭: 숨김이면 해제하고 그 카드로, 아니면 그냥 이동.
+    const gotoRelated = (theme: string): void => (isHidden(theme) ? unhideGoto : gotoTheme)(theme);
 
     const themeByName = new Map(grouped.themes.map((g) => [g.theme, g]));
     const favCards = favorites
@@ -98,7 +101,7 @@ export function BoardLayout({
                 onToggleFav={toggleFav}
                 onHide={hide}
                 related={relatedOf(g)}
-                onGoto={gotoTheme}
+                onGoto={gotoRelated}
                 isHidden={isHidden}
             />
         </div>
@@ -126,7 +129,7 @@ export function BoardLayout({
                                             onSelect={selectTheme}
                                             onToggleFav={toggleFav}
                                             onHide={hide}
-                                            onGoto={gotoTheme}
+                                            onGoto={gotoRelated}
                                             isHidden={isHidden}
                                             register={register}
                                         />
@@ -201,23 +204,6 @@ function SortableThemeCard(props: {
     );
 }
 
-// 가로 휠 스크롤 — 칩 줄에 커서 두고 세로 휠 굴리면 가로로(넘칠 때만). market-eye 동작.
-function useHorizontalWheel<T extends HTMLElement>(): React.RefObject<T> {
-    const ref = useRef<T>(null);
-    useEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-        const onWheel = (e: WheelEvent): void => {
-            if (e.deltaY === 0 || el.scrollWidth <= el.clientWidth) return;
-            e.preventDefault();
-            el.scrollLeft += e.deltaY;
-        };
-        el.addEventListener("wheel", onWheel, { passive: false });
-        return () => el.removeEventListener("wheel", onWheel);
-    }, []);
-    return ref;
-}
-
 /** 가로 스크롤 칩 줄(휠=가로). */
 function ScrollRow({ children }: { children: React.ReactNode }): JSX.Element {
     const ref = useHorizontalWheel<HTMLDivElement>();
@@ -249,9 +235,7 @@ function HiddenRail({ themes, parents, onUnhide }: { themes: ThemeGroup<BoardSto
     const normal = themes.filter((g) => (parents.get(g.theme)?.length ?? 0) === 0);
     const contained = themes.filter((g) => (parents.get(g.theme)?.length ?? 0) > 0);
     return (
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "5px 8px", borderTop: "1px solid var(--border-default)", background: "var(--bg-primary)", flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0, paddingTop: 3 }}>숨김</span>
-            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "5px 8px", borderTop: "1px solid var(--border-default)", background: "var(--bg-primary)", flexShrink: 0 }}>
                 {normal.length > 0 && (
                     <ScrollRow>
                         {normal.map((g) => {
@@ -283,7 +267,6 @@ function HiddenRail({ themes, parents, onUnhide }: { themes: ThemeGroup<BoardSto
                         })}
                     </ScrollRow>
                 )}
-            </div>
         </div>
     );
 }

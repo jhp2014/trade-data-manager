@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { DeltaHit, RelationKind } from "@trade-data-manager/market/domain";
 import { fmtRate, fmtEok } from "../../lib/format.js";
+import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
 
 /** 관련 테마 1건(하단 InfoLine 렌더용) — 포함관계 종류 + 그 테마 주도주/전체. */
 export interface RelatedInfo {
@@ -173,10 +174,12 @@ export function ThemeCard({
 /** 카드 하단 관련 테마 — 포함관계는 박스-인-박스 `[부모 [자식]]`, 부분 겹침은 알약. market-eye InfoLine.
  *  숨긴 테마인 관련칩은 흐릿하게. */
 function InfoLine({ home, related, onGoto, isHidden }: { home: string; related: RelatedInfo[]; onGoto: (theme: string) => void; isHidden?: (theme: string) => boolean }): JSX.Element {
+    const scrollRef = useHorizontalWheel<HTMLDivElement>();
     return (
         <div
+            ref={scrollRef}
             onClick={(e) => e.stopPropagation()}
-            style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 10px", borderTop: "1px solid var(--border-subtle)" }}
+            style={{ display: "flex", gap: 6, padding: "6px 10px", borderTop: "1px solid var(--border-subtle)", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}
         >
             {related.map((r) => {
                 const dim = isHidden?.(r.theme) ? 0.45 : 1;
@@ -222,6 +225,7 @@ function InfoLine({ home, related, onGoto, isHidden }: { home: string; related: 
 const overlapPill: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
+    flexShrink: 0,
     fontSize: 11,
     fontWeight: 600,
     color: "var(--text-secondary)",
@@ -236,6 +240,7 @@ function relNestStyle(relIsChild: boolean): React.CSSProperties {
     return {
         display: "inline-flex",
         alignItems: "center",
+        flexShrink: 0,
         gap: 5,
         border: relIsChild ? "1px solid var(--border-default)" : "1px solid transparent",
         background: relIsChild ? "none" : "var(--accent-soft)",
@@ -353,13 +358,23 @@ function Candle({ s }: { s: BoardStock }): JSX.Element {
     );
 }
 
-/** 분포 미니맵(수평선) — baseline + 점 + 눈금 + 축 라벨(0/5/10/20/30%). 클릭 = 표시단계 순환. */
+// 표시단계 하이라이트 밴드 시작(%) — 주도주 강조 경계. 요약 임계(3~5%) 살짝 위(market-eye lead).
+const LEAD = 6;
+
+/** 분포 미니맵(수평선) — baseline + 점 + 눈금 + 축 라벨. 클릭=표시단계 순환.
+ *  market-eye: 현재 표시단계 하이라이트 밴드(접힘=없음 / 주도주=lead~끝 / 전체=0~끝) + 활성구간 라벨 강조. */
 function DistBar({ stocks, mode, onCycle }: { stocks: BoardStock[]; mode: ListMode; onCycle: () => void }): JSX.Element {
     const x = (r: number): number => Math.max(0, Math.min(100, (r / AXIS_HI) * 100));
     const ticks = [5, 10, 20, 30];
     const next = mode === "collapsed" ? "주도주만" : mode === "movers" ? "전체" : "접기";
+    const bandFrom = mode === "all" ? 0 : mode === "movers" ? LEAD : null; // null = 밴드 없음(접힘)
+    const lblHot = (v: number): boolean => mode === "all" || (mode === "movers" && v >= LEAD);
     return (
         <div onClick={onCycle} title={`클릭: ${next}`} style={{ position: "relative", height: 28, margin: "3px 10px", cursor: "pointer" }}>
+            {/* 표시단계 하이라이트 밴드(점·눈금 뒤) */}
+            {bandFrom != null && (
+                <div style={{ position: "absolute", left: `${x(bandFrom)}%`, width: `${100 - x(bandFrom)}%`, top: 3, height: 12, background: "var(--accent-soft)", borderRadius: 3, zIndex: 0 }} />
+            )}
             <div style={{ position: "absolute", left: 0, right: 0, top: 9, height: 1, background: "var(--border-default)" }} />
             {ticks.map((t) => (
                 <div key={`t${t}`} style={{ position: "absolute", left: `${x(t)}%`, top: 5, width: 1, height: 9, background: "var(--border-default)", transform: "translateX(-50%)" }} />
@@ -384,13 +399,13 @@ function DistBar({ stocks, mode, onCycle }: { stocks: BoardStock[]; mode: ListMo
                         }}
                     />
                 ))}
-            {/* 축 라벨 */}
-            <span className="tabular" style={{ position: "absolute", left: 0, top: 16, fontSize: 9, color: "var(--text-tertiary)" }}>0%</span>
+            {/* 축 라벨(활성 구간 강조) */}
+            <span className="tabular" style={{ position: "absolute", left: 0, top: 16, fontSize: 9, color: lblHot(0) ? "var(--text-secondary)" : "var(--text-tertiary)", fontWeight: lblHot(0) ? 700 : 400 }}>0%</span>
             {ticks.map((t, i) => (
                 <span
                     key={`l${t}`}
                     className="tabular"
-                    style={{ position: "absolute", left: `${x(t)}%`, top: 16, fontSize: 9, color: "var(--text-tertiary)", whiteSpace: "nowrap", transform: i === ticks.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}
+                    style={{ position: "absolute", left: `${x(t)}%`, top: 16, fontSize: 9, color: lblHot(t) ? "var(--text-secondary)" : "var(--text-tertiary)", fontWeight: lblHot(t) ? 700 : 400, whiteSpace: "nowrap", transform: i === ticks.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}
                 >
                     {t}%
                 </span>
