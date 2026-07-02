@@ -40,6 +40,7 @@ export function ThemeCard({
     isFav,
     onToggleFav,
     onHide,
+    dragHandle,
 }: {
     theme: string;
     stocks: BoardStock[];
@@ -51,6 +52,7 @@ export function ThemeCard({
     isFav?: boolean;
     onToggleFav?: (theme: string) => void; // ★ 즐겨찾기
     onHide?: (theme: string) => void; // 👁 숨기기
+    dragHandle?: Record<string, unknown>; // 즐겨찾기 드래그 핸들(@dnd-kit attributes/listeners)
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>("collapsed");
     const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
@@ -81,6 +83,16 @@ export function ThemeCard({
                     cursor: onSelect ? "pointer" : undefined,
                 }}
             >
+                {dragHandle && (
+                    <button
+                        {...dragHandle}
+                        onClick={(e) => e.stopPropagation()}
+                        title="드래그로 순서 변경"
+                        style={{ padding: "0 2px", color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1, cursor: "grab", background: "none", touchAction: "none" }}
+                    >
+                        ⠿
+                    </button>
+                )}
                 <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{theme}</span>
                 <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12 }} title="주도주 / 전체">
                     {movers.length} / {stocks.length}

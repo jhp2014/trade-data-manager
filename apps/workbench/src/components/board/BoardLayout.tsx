@@ -1,4 +1,7 @@
 import { useRef, useState } from "react";
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { Grouped, ThemeGroup } from "@trade-data-manager/market/domain";
 import { ThemeCard, BoardCenter, type BoardStock } from "./BoardCard.js";
 
@@ -31,6 +34,14 @@ export function BoardLayout({
     };
     const toggleFav = (theme: string): void =>
         setFavorites((prev) => (prev.includes(theme) ? prev.filter((t) => t !== theme) : [...prev, theme]));
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+    const onDragEnd = (e: DragEndEvent): void => {
+        const { active, over } = e;
+        if (!over || active.id === over.id) return;
+        const from = favorites.indexOf(String(active.id));
+        const to = favorites.indexOf(String(over.id));
+        if (from >= 0 && to >= 0) setFavorites(arrayMove(favorites, from, to));
+    };
     const hide = (theme: string): void => setUserHidden((prev) => new Map(prev).set(theme, true));
     const unhide = (theme: string): void => setUserHidden((prev) => new Map(prev).set(theme, false));
     // 자동숨김 = 현재 시점 포함관계(상위 테마에 통째 포함). 사용자 override 우선.
@@ -68,7 +79,28 @@ export function BoardLayout({
             <NavRail grouped={grouped} selected={selected} onPick={pickTheme} isHidden={isHidden} />
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8 }}>
-                    {favCards.map(renderCard)}
+                    {favCards.length > 0 && (
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                            <SortableContext items={favCards.map((g) => g.theme)} strategy={verticalListSortingStrategy}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    {favCards.map((g) => (
+                                        <SortableThemeCard
+                                            key={g.theme}
+                                            g={g}
+                                            parents={parents.get(g.theme) ?? []}
+                                            focusCode={focusCode}
+                                            onPick={onPick}
+                                            selected={selected === g.theme}
+                                            onSelect={pickTheme}
+                                            onToggleFav={toggleFav}
+                                            onHide={hide}
+                                            register={register}
+                                        />
+                                    ))}
+                                </div>
+                            </SortableContext>
+                        </DndContext>
+                    )}
                     {favCards.length > 0 && restCards.length > 0 && (
                         <div style={{ height: 1, background: "var(--border-default)", margin: "0 2px" }} />
                     )}
@@ -83,6 +115,50 @@ export function BoardLayout({
                 </div>
             </div>
             {hiddenThemes.length > 0 && <HiddenRail themes={hiddenThemes} parents={parents} onUnhide={unhide} />}
+        </div>
+    );
+}
+
+/** 즐겨찾기 카드 래퍼 — @dnd-kit 세로 정렬 + 드래그 핸들. 스크롤 타깃 ref 도 겸한다. */
+function SortableThemeCard(props: {
+    g: ThemeGroup<BoardStock>;
+    parents: string[];
+    focusCode: string;
+    onPick: (code: string) => void;
+    selected: boolean;
+    onSelect: (theme: string) => void;
+    onToggleFav: (theme: string) => void;
+    onHide: (theme: string) => void;
+    register: (theme: string, el: HTMLElement | null) => void;
+}): JSX.Element {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.g.theme });
+    return (
+        <div
+            ref={(el) => {
+                setNodeRef(el);
+                props.register(props.g.theme, el);
+            }}
+            style={{
+                transform: CSS.Transform.toString(transform),
+                transition,
+                opacity: isDragging ? 0.6 : undefined,
+                zIndex: isDragging ? 5 : undefined,
+                scrollMarginTop: 8,
+            }}
+        >
+            <ThemeCard
+                theme={props.g.theme}
+                stocks={props.g.stocks}
+                parents={props.parents}
+                focusCode={props.focusCode}
+                onPick={props.onPick}
+                selected={props.selected}
+                onSelect={props.onSelect}
+                isFav
+                onToggleFav={props.onToggleFav}
+                onHide={props.onHide}
+                dragHandle={{ ...attributes, ...listeners }}
+            />
         </div>
     );
 }
