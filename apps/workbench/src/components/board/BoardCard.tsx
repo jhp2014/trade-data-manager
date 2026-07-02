@@ -1,10 +1,14 @@
 // 테마 보드 카드 렌더 — 이슈정리 보드(EOD)와 실시간 복기 보드가 공유(market-eye식 룩 일원화).
 // 데이터 소스만 다르고(일봉 vs 시점 스냅샷) BoardStock 모양·렌더는 동일.
+import { useState } from "react";
 import type { DeltaHit } from "@trade-data-manager/market/domain";
 import { fmtRate, fmtEok } from "../../lib/format.js";
 
 export const AXIS_LO = -5; // 눕힌 캔들/분포 축 하한
 export const AXIS_HI = 30; // 상한
+
+// 카드 종목 표시 단계 — market-eye: 접힘(분포바만) → 주도주만 → 전체.
+type ListMode = "collapsed" | "movers" | "all";
 
 export interface BoardStock {
     code: string;
@@ -34,9 +38,13 @@ export function ThemeCard({
     focusCode: string;
     onPick: (code: string) => void;
 }): JSX.Element {
-    const movers = stocks.filter((s) => s.isMover).length;
+    const [mode, setMode] = useState<ListMode>("collapsed");
+    const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
+    const rest = stocks.filter((s) => !(s.isMover || s.signal));
     const hot = stocks.filter((s) => s.signal).length; // 주목(1분 델타) 걸린 수
     const hasFocus = stocks.some((s) => s.code === focusCode);
+    const rankOf = new Map(stocks.map((s, i) => [s.code, i + 1])); // 전체 등락률 순위 유지
+    const cycle = (): void => setMode((m) => (m === "collapsed" ? "movers" : m === "movers" ? "all" : "collapsed"));
     return (
         <div
             className={hot > 0 ? "board-blink" : undefined}
@@ -58,7 +66,7 @@ export function ThemeCard({
             >
                 <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{theme}</span>
                 <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12 }} title="주도주 / 전체">
-                    {movers} / {stocks.length}
+                    {movers.length} / {stocks.length}
                 </span>
                 {hot > 0 && (
                     <span className="tabular" style={{ color: "var(--rise)", fontSize: 12 }} title="지금 주목(1분 델타) 종목 수">
@@ -72,13 +80,26 @@ export function ThemeCard({
                 )}
             </div>
 
-            <DistBar stocks={stocks} />
+            <DistBar stocks={stocks} mode={mode} onCycle={cycle} />
 
-            <div>
-                {stocks.map((s, i) => (
-                    <StockRow key={s.code} s={s} rank={i + 1} selected={s.code === focusCode} onPick={onPick} />
-                ))}
-            </div>
+            {mode !== "collapsed" && (
+                <div>
+                    {movers.map((s) => (
+                        <StockRow key={s.code} s={s} rank={rankOf.get(s.code)!} selected={s.code === focusCode} onPick={onPick} />
+                    ))}
+                    {mode === "all" &&
+                        rest.map((s, i) => (
+                            <StockRow
+                                key={s.code}
+                                s={s}
+                                rank={rankOf.get(s.code)!}
+                                selected={s.code === focusCode}
+                                onPick={onPick}
+                                boundary={i === 0 && movers.length > 0}
+                            />
+                        ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -88,11 +109,13 @@ function StockRow({
     rank,
     selected,
     onPick,
+    boundary,
 }: {
     s: BoardStock;
     rank: number;
     selected: boolean;
     onPick: (code: string) => void;
+    boundary?: boolean; // 주도주/비주도주 경계(전체 모드)
 }): JSX.Element {
     const up = s.changeRate >= 0;
     return (
@@ -105,6 +128,7 @@ function StockRow({
                 width: "100%",
                 textAlign: "left",
                 border: "none",
+                borderTop: boundary ? "2px solid var(--border-strong)" : undefined,
                 borderBottom: "1px solid var(--border-subtle)",
                 padding: "3px 10px",
                 cursor: "pointer",
@@ -159,12 +183,17 @@ function Candle({ s }: { s: BoardStock }): JSX.Element {
     );
 }
 
-/** 분포 미니맵 — 0~AXIS_HI 범위 점. 주도주 빨강, 그 외 파랑. */
-function DistBar({ stocks }: { stocks: BoardStock[] }): JSX.Element {
+/** 분포 미니맵 — 0~AXIS_HI 범위 점. 주도주 빨강, 그 외 파랑. 클릭 = 표시단계 순환. */
+function DistBar({ stocks, mode, onCycle }: { stocks: BoardStock[]; mode: ListMode; onCycle: () => void }): JSX.Element {
     const x = (r: number): number => Math.max(0, Math.min(100, (r / AXIS_HI) * 100));
     const ticks = [5, 10, 20, 30];
+    const next = mode === "collapsed" ? "주도주만" : mode === "movers" ? "전체" : "접기";
     return (
-        <div style={{ position: "relative", height: 16, margin: "4px 10px 2px", borderBottom: "1px solid var(--border-subtle)" }}>
+        <div
+            onClick={onCycle}
+            title={`클릭: ${next}`}
+            style={{ position: "relative", height: 16, margin: "4px 10px 2px", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}
+        >
             {ticks.map((t) => (
                 <span key={t} style={{ position: "absolute", left: `${x(t)}%`, bottom: 0, top: 0, width: 1, background: "var(--border-subtle)" }} />
             ))}
