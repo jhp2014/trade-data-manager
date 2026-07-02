@@ -1,7 +1,8 @@
 import { useState } from "react";
-import type { DeltaHit, RelationKind } from "@trade-data-manager/market/domain";
+import { AMOUNT_BUCKETS_EOK, type DeltaHit, type RelationKind } from "@trade-data-manager/market/domain";
 import { fmtRate, fmtEok } from "../../lib/format.js";
 import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
+import { AMOUNT_BUCKET_COLORS } from "../../chart/chartUtils.js";
 
 /** 관련 테마 1건(하단 InfoLine 렌더용) — 포함관계 종류 + 그 테마 주도주/전체. */
 export interface RelatedInfo {
@@ -32,8 +33,8 @@ export interface BoardStock {
     signal?: DeltaHit | null;
     /** 필터 조건 불일치(흐림 모드) — 행을 흐릿하게. */
     dim?: boolean;
-    /** 큰 거래대금 분봉(≥30억) 누적 개수 — 복기 보드만. 거래대금 옆 작은 첨자로. */
-    bigCount?: number;
+    /** 거래대금 구간별 누적 개수(길이 7) — 복기 보드만. 거래대금 hover 시 막대그래프. */
+    buckets?: number[];
 }
 
 // ── 아이콘(market-eye SVG) ────────────────────────────────────
@@ -284,12 +285,13 @@ function StockRow({
 }): JSX.Element {
     const up = s.changeRate >= 0;
     const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
+    const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
     return (
         <button
             onClick={() => onPick(s.code)}
             style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) 56px 58px 28px",
+                gridTemplateColumns: "minmax(0, 1fr) 56px 52px 28px",
                 alignItems: "center",
                 gap: 8,
                 width: "100%",
@@ -327,24 +329,53 @@ function StockRow({
             <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600 }}>
                 {fmtRate(s.changeRate)}
             </span>
-            {/* col3: 거래대금(신호 시 델타로 덮음, 고정폭 우측정렬) */}
-            {s.signal ? (
-                <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: "var(--rise)", fontSize: 11, fontWeight: 600 }} title={`1분 델타 +${s.signal.rateDelta.toFixed(1)}%p · ${fmtEok(s.signal.tvDelta)}`}>
-                    +{fmtEok(s.signal.tvDelta)}
-                </span>
-            ) : (
-                <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: "var(--text-tertiary)", fontSize: 11 }}>
-                    {fmtEok(s.amount)}
-                    {s.bigCount != null && s.bigCount > 0 && (
-                        <sup style={{ fontSize: 8, color: "var(--accent-primary)", marginLeft: 1 }} title={`큰 거래대금 분봉(≥30억) ${s.bigCount}회`}>
-                            {s.bigCount}
-                        </sup>
-                    )}
-                </span>
-            )}
+            {/* col3: 거래대금(신호 시 델타로 덮음). hover 시 거래대금 구간별 막대그래프(복기). */}
+            <span
+                className="tabular"
+                style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 11, fontWeight: s.signal ? 600 : 400, color: s.signal ? "var(--rise)" : "var(--text-tertiary)" }}
+                onMouseEnter={s.buckets ? (e) => setHoverRect(e.currentTarget.getBoundingClientRect()) : undefined}
+                onMouseLeave={s.buckets ? () => setHoverRect(null) : undefined}
+            >
+                {s.signal ? `+${fmtEok(s.signal.tvDelta)}` : fmtEok(s.amount)}
+            </span>
+            {hoverRect && s.buckets && <BucketChart buckets={s.buckets} rect={hoverRect} />}
             {/* col4: 눕힌 캔들(고정 28px) */}
             <Candle s={s} />
         </button>
+    );
+}
+
+/** 거래대금 구간별 누적 개수 막대그래프 — 거래대금 hover 시. 막대 위 횟수, 아래 구간 하한(억). */
+function BucketChart({ buckets, rect }: { buckets: number[]; rect: DOMRect }): JSX.Element {
+    const max = Math.max(1, ...buckets);
+    const H = 42;
+    return (
+        <div
+            style={{
+                position: "fixed",
+                left: rect.right,
+                top: rect.top - 68,
+                transform: "translateX(-100%)",
+                display: "flex",
+                gap: 3,
+                alignItems: "flex-end",
+                background: "rgba(20,20,24,0.95)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 6,
+                padding: "6px 8px",
+                zIndex: 200,
+                pointerEvents: "none",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+            }}
+        >
+            {buckets.map((c, i) => (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, width: 16 }}>
+                    <span className="tabular" style={{ fontSize: 8, color: "#e4e4e7", height: 10, lineHeight: "10px" }}>{c > 0 ? c : ""}</span>
+                    <div style={{ width: 11, height: Math.max(2, (c / max) * H), background: AMOUNT_BUCKET_COLORS[i], borderRadius: 1 }} />
+                    <span className="tabular" style={{ fontSize: 7, color: "#a0a0a0" }}>{AMOUNT_BUCKETS_EOK[i]}</span>
+                </div>
+            ))}
+        </div>
     );
 }
 

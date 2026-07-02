@@ -2,7 +2,7 @@
 // raw OHLCV 전체(수십MB) 대신 보드가 쓰는 것만: 시각·종가·running 고저·누적거래대금 + % 기준가.
 // 클라가 이걸 들고 시점별 랭킹·top-N·스크럽을 인메모리로(서버 무상태 온더플라이).
 // 계산은 core domain 순수함수(previousCloseFromDaily·computeMinuteTradingAmount). 시장=UN(통합).
-import { previousCloseFromDaily, computeMinuteTradingAmount } from "@trade-data-manager/market";
+import { previousCloseFromDaily, computeMinuteTradingAmount, amountBucketIndex } from "@trade-data-manager/market";
 import type { ChartBundle } from "@trade-data-manager/market";
 
 /** 종목 1개의 lean 시계열(시간 오름차순). 가격은 원(정수 문자열 아님 — 전송은 number). */
@@ -20,12 +20,9 @@ export interface LeanStock {
     low: number[];
     /** times[i] 까지 누적 거래대금(원) */
     cumAmount: number[];
-    /** times[i] 까지 "큰 거래대금 분봉"(분당 ≥ AMOUNT_MARK_KRW) 누적 개수. 활동성 지표. */
-    bigCount: number[];
+    /** 각 분봉의 거래대금 구간 인덱스(0..6, 30억 미만 -1). domain amountBucketIndex. 클라가 running count. */
+    bucket: number[];
 }
-
-/** 큰 거래대금 분봉 임계(원) = 30억. chart-review 거래대금 마커 최소 임계와 일치. */
-const AMOUNT_MARK_KRW = 3_000_000_000;
 
 export interface LeanBoard {
     date: string;
@@ -52,11 +49,10 @@ export function reduceToLeanBoard(bundles: ChartBundle[], date: string): LeanBoa
         const high = new Array<number>(n);
         const low = new Array<number>(n);
         const cumAmount = new Array<number>(n);
-        const bigCount = new Array<number>(n);
+        const bucket = new Array<number>(n);
         let hi = -Infinity;
         let lo = Infinity;
         let cum = 0;
-        let big = 0;
         for (let i = 0; i < n; i++) {
             const m = minutes[i];
             hi = Math.max(hi, Number(m.un.high));
@@ -71,15 +67,14 @@ export function reduceToLeanBoard(bundles: ChartBundle[], date: string): LeanBoa
                 }),
             );
             cum += minAmount;
-            if (minAmount >= AMOUNT_MARK_KRW) big += 1;
             times[i] = kstToUnix(m.date, m.time);
             close[i] = Number(m.un.close);
             high[i] = hi;
             low[i] = lo;
             cumAmount[i] = cum;
-            bigCount[i] = big;
+            bucket[i] = amountBucketIndex(minAmount);
         }
-        stocks.push({ code: b.stockCode, base, times, close, high, low, cumAmount, bigCount });
+        stocks.push({ code: b.stockCode, base, times, close, high, low, cumAmount, bucket });
     }
     return { date, stocks };
 }

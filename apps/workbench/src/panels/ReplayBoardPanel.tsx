@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
-import { useDayBoard, useLeanIndex, leanSnapshotAt } from "../lib/leanModel.js";
+import { useDayBoard, useLeanIndex, leanSnapshotAt, bucketCountsAt } from "../lib/leanModel.js";
 import { kstToUnix } from "../lib/derive.js";
 import { stocksByTheme, themeParents, groupStocks, selectHotUniverse, isMover, evaluateSignal } from "@trade-data-manager/market/domain";
 import { BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
@@ -39,10 +39,10 @@ export function ReplayBoardPanel(): JSX.Element {
     // 시점 t 스냅샷 → 랭킹 → top-N(거래대금 ∪ 등락률) → 테마 카드 + 포함관계.
     const board = useMemo(() => {
         if (!index) return null;
-        const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number; bigCount: number }[] = [];
+        const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number }[] = [];
         for (const s of index.values()) {
             const snap = leanSnapshotAt(s, tUnix);
-            if (snap) snaps.push({ code: snap.code, changeRate: snap.rate, amount: snap.cumAmount, openPct: snap.openPct, highPct: snap.highPct, lowPct: snap.lowPct, bigCount: snap.bigCount });
+            if (snap) snaps.push({ code: snap.code, changeRate: snap.rate, amount: snap.cumAmount, openPct: snap.openPct, highPct: snap.highPct, lowPct: snap.lowPct });
         }
         const hotCodes = selectHotUniverse(snaps, amountN, rateN);
 
@@ -66,7 +66,7 @@ export function ReplayBoardPanel(): JSX.Element {
                 amount: snap.amount,
                 isMover: isMover(marketCapEok, snap.changeRate),
                 signal,
-                bigCount: snap.bigCount,
+                buckets: bucketCountsAt(index.get(snap.code)!, tUnix),
             });
         }
         const byTheme = stocksByTheme(stocks);

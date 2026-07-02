@@ -45,22 +45,5 @@ export function highMarkerColor(pct: number): string | null {
     return "#7c3aed"; // deep purple
 }
 
-/** 분봉 거래대금 마커 표시 임계(억, 오름차순). chart-review 와 동일. */
-export const AMOUNT_MARKER_THRESHOLDS_EOK = [30, 40, 50, 60, 70, 80, 90, 100, 200, 300] as const;
-
-/** 거래대금 마커 색(억 임계). 커질수록 강조. */
-export function amountMarkerColor(thresholdEok: number): string {
-    if (thresholdEok < 50) return "#fbbf24";
-    if (thresholdEok < 80) return "#fb923c";
-    if (thresholdEok < 100) return "#ef4444";
-    if (thresholdEok < 200) return "#a855f7";
-    return "#7c3aed";
-}
-
-/** 분봉 거래대금(원) → 마커(도달한 최고 임계 + 색). 30억 미만이면 null. */
-export function amountMarkerFor(amountKrw: number): { thresholdEok: number; color: string } | null {
-    const eok = amountKrw / 1e8;
-    let hit: number | null = null;
-    for (const t of AMOUNT_MARKER_THRESHOLDS_EOK) if (eok >= t) hit = t;
-    return hit === null ? null : { thresholdEok: hit, color: amountMarkerColor(hit) };
-}
+/** 거래대금 7구간(domain AMOUNT_BUCKETS_EOK) 색 — 낮은 구간=밝음 → 높은 구간=어두움. */
+export const AMOUNT_BUCKET_COLORS = ["#fcd34d", "#fbbf24", "#fb923c", "#f97316", "#ef4444", "#b91c1c", "#7f1d1d"] as const;

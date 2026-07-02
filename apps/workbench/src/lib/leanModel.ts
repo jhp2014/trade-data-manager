@@ -2,6 +2,7 @@
 // 서버가 종목별 running 시리즈를 이미 줬으므로 클라는 이진탐색으로 시점 t 값을 뽑고 %만 파생.
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { AMOUNT_BUCKET_COUNT } from "@trade-data-manager/market/domain";
 import { fetchDayBoard, type LeanBoard, type LeanStock } from "../api/dayBoard.js";
 
 export interface LeanSnapshot {
@@ -11,7 +12,6 @@ export interface LeanSnapshot {
     highPct: number; // t 까지 고가 %
     lowPct: number; // t 까지 저가 %
     cumAmount: number; // t 까지 누적 거래대금(원)
-    bigCount: number; // t 까지 큰 거래대금 분봉 수(≥30억)
 }
 
 /** times 에서 t 이하 마지막 인덱스(이진탐색). 없으면 -1. */
@@ -44,8 +44,19 @@ export function leanSnapshotAt(s: LeanStock, t: number): LeanSnapshot | null {
         highPct: pct(s.high[i]),
         lowPct: pct(s.low[i]),
         cumAmount: s.cumAmount[i],
-        bigCount: s.bigCount[i],
     };
+}
+
+/** 시점 t 까지 거래대금 구간별 누적 개수(길이 7). 서버 bucket[](분당 구간 인덱스)에서 running count. */
+export function bucketCountsAt(s: LeanStock, t: number): number[] {
+    const i = lastIndexAtOrBefore(s.times, t);
+    const counts = new Array<number>(AMOUNT_BUCKET_COUNT).fill(0);
+    if (i < 0) return counts;
+    for (let k = 0; k <= i; k++) {
+        const b = s.bucket[k];
+        if (b >= 0) counts[b] += 1;
+    }
+    return counts;
 }
 
 /** 유니버스 전체의 시간 경계(스크러버 범위 힌트). */

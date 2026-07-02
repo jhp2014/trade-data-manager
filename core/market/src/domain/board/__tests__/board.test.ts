@@ -3,6 +3,7 @@ import { stocksByTheme, themeParents, relatedThemes } from "../roster.js";
 import { selectHotUniverse } from "../ranking.js";
 import { isMover, evaluateSignal } from "../signals.js";
 import { groupStocks } from "../grouping.js";
+import { amountBucketIndex } from "../amount.js";
 
 describe("stocksByTheme", () => {
     it("테마별로 묶고 등락률 desc 정렬", () => {
@@ -94,6 +95,20 @@ describe("evaluateSignal (1분 델타)", () => {
         expect(evaluateSignal(0.7, 7_000_000_000)).toEqual({ label: "1분", rateDelta: 0.7, tvDelta: 7_000_000_000 });
         expect(evaluateSignal(0.5, 7_000_000_000)).toBeNull(); // 등락률 부족
         expect(evaluateSignal(0.7, 5_000_000_000)).toBeNull(); // 거래대금 부족(<60억)
+    });
+});
+
+describe("amountBucketIndex (거래대금 구간)", () => {
+    const eok = (n: number) => n * 1e8;
+    it("7구간 경계 매핑, 30억 미만 -1", () => {
+        expect(amountBucketIndex(eok(29))).toBe(-1);
+        expect(amountBucketIndex(eok(30))).toBe(0); // [30,40)
+        expect(amountBucketIndex(eok(45))).toBe(1); // [40,50)
+        expect(amountBucketIndex(eok(60))).toBe(2); // [50,70)
+        expect(amountBucketIndex(eok(90))).toBe(3); // [70,100)
+        expect(amountBucketIndex(eok(120))).toBe(4); // [100,150)
+        expect(amountBucketIndex(eok(180))).toBe(5); // [150,200)
+        expect(amountBucketIndex(eok(500))).toBe(6); // [200,∞)
     });
 });
 

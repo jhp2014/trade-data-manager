@@ -18,8 +18,9 @@ import {
     RISE_FILL,
     FALL_FILL,
     AMOUNT_BAR_COLOR,
-    amountMarkerFor,
+    AMOUNT_BUCKET_COLORS,
 } from "./chartUtils.js";
+import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import type { MinutePoint } from "../lib/derive.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
@@ -144,11 +145,11 @@ export function MinuteChart({ points }: { points: MinutePoint[] }): JSX.Element 
         amountMapRef.current = amountMap;
         cumMapRef.current = cumMap;
         amount.setData(bars);
-        // 거래대금 마커 — 분당 거래대금이 임계(≥30억) 넘는 분봉 아래에 표시.
+        // 거래대금 마커 — 분당 거래대금 구간(≥30억) 봉 위에 숫자(구간 하한)만.
         const markers = [];
         for (const p of points) {
-            const mk = amountMarkerFor(p.amount);
-            if (mk) markers.push({ time: p.time as UTCTimestamp, position: "belowBar" as const, color: mk.color, shape: "circle" as const, text: `${mk.thresholdEok}` });
+            const b = amountBucketIndex(p.amount);
+            if (b >= 0) markers.push({ time: p.time as UTCTimestamp, position: "aboveBar" as const, color: AMOUNT_BUCKET_COLORS[b], shape: "circle" as const, text: `${AMOUNT_BUCKETS_EOK[b]}` });
         }
         markersRef.current?.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
