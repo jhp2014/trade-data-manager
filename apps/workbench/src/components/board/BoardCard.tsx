@@ -112,26 +112,26 @@ function StockRow({
                 font: "inherit",
             }}
         >
-            <span className="tabular" style={{ width: 18, color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11 }}>
+            <span className="tabular" style={{ width: 18, flexShrink: 0, color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11 }}>
                 {rank}
             </span>
-            <span style={{ width: 92, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ width: 92, minWidth: 40, flexShrink: 1, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {s.name}
             </span>
-            <span className="tabular" style={{ width: 60, textAlign: "right", color: up ? "var(--rise)" : "var(--fall)" }}>
+            <span className="tabular" style={{ width: 56, flexShrink: 0, textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)" }}>
                 {fmtRate(s.changeRate)}
             </span>
             {/* 신호(1분 델타) 있으면 거래대금 자리를 델타로 덮음(market-eye 방식). */}
             {s.signal ? (
                 <span
                     className="tabular"
-                    style={{ width: 52, textAlign: "right", color: "var(--rise)", fontSize: 11, fontWeight: 600 }}
+                    style={{ width: 52, flexShrink: 0, textAlign: "right", whiteSpace: "nowrap", color: "var(--rise)", fontSize: 11, fontWeight: 600 }}
                     title={`1분 델타 +${s.signal.rateDelta.toFixed(1)}%p · ${fmtEok(s.signal.tvDelta)}`}
                 >
                     +{fmtEok(s.signal.tvDelta)}
                 </span>
             ) : (
-                <span className="tabular" style={{ width: 52, textAlign: "right", color: "var(--text-tertiary)", fontSize: 11 }}>
+                <span className="tabular" style={{ width: 52, flexShrink: 0, textAlign: "right", whiteSpace: "nowrap", color: "var(--text-tertiary)", fontSize: 11 }}>
                     {fmtEok(s.amount)}
                 </span>
             )}
