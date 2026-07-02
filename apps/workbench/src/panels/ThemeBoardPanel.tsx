@@ -2,14 +2,13 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
-import { useDayModel } from "../lib/useDayCharts.js";
-import { snapshotAt } from "../lib/boardSnapshot.js";
+import { dailyMetric } from "../lib/dailyMetrics.js";
 import { stocksByTheme, themeParents } from "../lib/themeBoard.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 
-// market-eye식 테마보드(EOD) — 테마카드에 등락률 랭킹 + 눕힌 캔들 + 분포 미니맵 + 포함관계.
-// 데이터: 테마 멤버십=day-summary(byTheme), 지표=day-charts 프리컴퓨트 스냅샷(t=장마감), code로 조인.
-// 종목 클릭 → setCode(Focus) → 차트 따라옴. (즐겨찾기/숨김/NavRail/리플레이 스크러버는 후속)
+// 이슈정리 보드(EOD) — market-eye식 테마카드에 등락률 랭킹 + 눕힌 일봉 캔들 + 분포 미니맵 + 포함관계.
+// 데이터: day-summary 한 방(일봉 candle+테마 멤버십). 분봉 벌크 불필요 — EOD 복기라 일봉으로 충분.
+// 종목 클릭 → setCode(Focus) → 차트(단일 /chart) 따라옴. (실시간 복기/스크러버는 별도 보드 ②)
 
 const MOVER_PCT = 5; // 주도주 경계(등락률 %)
 const AXIS_LO = -5; // 눕힌 캔들/분포 축 하한
@@ -24,7 +23,7 @@ interface BoardStock {
     openPct: number;
     highPct: number;
     lowPct: number;
-    cumAmount: number;
+    amount: number;
     isMover: boolean;
 }
 
@@ -39,29 +38,26 @@ export function ThemeBoardPanel(): JSX.Element {
         enabled: date.length > 0,
         staleTime: Infinity,
     });
-    const { model, isLoading: chartsLoading, isError: chartsError } = useDayModel(date);
 
-    // 스냅샷(EOD) 조인 → 테마별 로스터 + 포함관계.
+    // 일봉 지표 조인 → 테마별 로스터 + 포함관계.
     const board = useMemo(() => {
-        if (!summaryQ.data || !model) return null;
-        const t = model.endTime;
+        if (!summaryQ.data) return null;
         const stocks: BoardStock[] = [];
         for (const s of summaryQ.data.stocks) {
             if (s.themes.length === 0) continue; // 카드는 테마 있는 종목만
-            const series = model.byCode.get(s.stockCode);
-            const snap = series ? snapshotAt(series, t) : null;
-            if (!snap) continue;
+            const m = dailyMetric(s);
+            if (!m) continue;
             stocks.push({
                 code: s.stockCode,
                 name: s.name ?? s.stockCode,
                 market: s.market,
                 themes: s.themes.map((x) => x.theme),
-                changeRate: snap.rate,
-                openPct: snap.openPct,
-                highPct: snap.highPct,
-                lowPct: snap.lowPct,
-                cumAmount: snap.cumAmount,
-                isMover: snap.rate >= MOVER_PCT,
+                changeRate: m.rate,
+                openPct: m.openPct,
+                highPct: m.highPct,
+                lowPct: m.lowPct,
+                amount: m.amount,
+                isMover: m.rate >= MOVER_PCT,
             });
         }
         const byTheme = stocksByTheme(stocks);
@@ -75,11 +71,10 @@ export function ThemeBoardPanel(): JSX.Element {
                 return mb - ma || b[1].length - a[1].length || a[0].localeCompare(b[0], "ko");
             });
         return { cards, parents };
-    }, [summaryQ.data, model]);
+    }, [summaryQ.data]);
 
-    if (summaryQ.isLoading || chartsLoading) return <Center text={`${date} 로딩중… (당일 전체 분봉)`} />;
+    if (summaryQ.isLoading) return <Center text={`${date} 로딩중…`} />;
     if (summaryQ.isError) return <Center text={`요약 오류: ${(summaryQ.error as Error).message}`} />;
-    if (chartsError) return <Center text="차트 데이터 오류" />;
     if (!board) return <Center text="데이터 없음" />;
 
     return (
@@ -198,7 +193,7 @@ function StockRow({
                 {fmtRate(s.changeRate)}
             </span>
             <span className="tabular" style={{ width: 52, textAlign: "right", color: "var(--text-tertiary)", fontSize: 11 }}>
-                {fmtEok(s.cumAmount)}
+                {fmtEok(s.amount)}
             </span>
             <Candle s={s} />
         </button>
