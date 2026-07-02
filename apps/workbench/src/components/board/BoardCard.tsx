@@ -80,11 +80,13 @@ export function ThemeCard({
     related,
     onGoto,
     isHidden,
+    showRank = true,
 }: {
     theme: string;
     stocks: BoardStock[];
     focusCode: string;
     onPick: (code: string) => void;
+    showRank?: boolean; // 개별/미분류 카드는 순위 미표시
     selected?: boolean;
     onSelect?: (theme: string) => void;
     isFav?: boolean;
@@ -160,11 +162,11 @@ export function ThemeCard({
             {mode !== "collapsed" && (
                 <div>
                     {movers.map((s) => (
-                        <StockRow key={s.code} s={s} rank={rankOf.get(s.code)!} selected={s.code === focusCode} onPick={onPick} home={theme} />
+                        <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} home={theme} />
                     ))}
                     {mode === "all" &&
                         rest.map((s, i) => (
-                            <StockRow key={s.code} s={s} rank={rankOf.get(s.code)!} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} home={theme} />
+                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} home={theme} />
                         ))}
                 </div>
             )}
@@ -277,7 +279,7 @@ function StockRow({
     home,
 }: {
     s: BoardStock;
-    rank: number;
+    rank: number | null; // null = 순위 미표시(개별/미분류)
     selected: boolean;
     onPick: (code: string) => void;
     boundary?: boolean;
@@ -309,9 +311,11 @@ function StockRow({
         >
             {/* col1: 등수 + 이름(ellipsis) + 테마 칩(먼저 clip) */}
             <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                <span className="tabular" style={{ flexShrink: 0, width: 16, textAlign: "center", color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11, fontWeight: 700 }}>
-                    {rank}
-                </span>
+                {rank != null && (
+                    <span className="tabular" style={{ flexShrink: 0, width: 16, textAlign: "center", color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11, fontWeight: 700 }}>
+                        {rank}
+                    </span>
+                )}
                 <span style={{ flexShrink: 1, minWidth: 0, color: "var(--text-primary)", fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {s.name}
                 </span>

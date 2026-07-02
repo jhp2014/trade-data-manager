@@ -4,7 +4,7 @@ import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 import { useDayBoard, useLeanIndex, leanSnapshotAt, bucketCountsAt } from "../lib/leanModel.js";
 import { kstToUnix } from "../lib/derive.js";
-import { stocksByTheme, themeParents, groupStocks, selectHotUniverse, isMover, evaluateSignal } from "@trade-data-manager/market/domain";
+import { stocksByTheme, themeParents, groupStocks, selectHotUniverse, isMover, evaluateSignal, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
 
@@ -15,7 +15,7 @@ export function ReplayBoardPanel(): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
     const time = useWorkbench((s) => s.focus.time);
     const setCode = useWorkbench((s) => s.setCode);
-    const { amountN, rateN } = useWorkbench((s) => s.replaySettings);
+    const rs = useWorkbench((s) => s.replaySettings);
 
     const summaryQ = useQuery({
         queryKey: ["day-summary", date],
@@ -44,7 +44,7 @@ export function ReplayBoardPanel(): JSX.Element {
             const snap = leanSnapshotAt(s, tUnix);
             if (snap) snaps.push({ code: snap.code, changeRate: snap.rate, amount: snap.cumAmount, openPct: snap.openPct, highPct: snap.highPct, lowPct: snap.lowPct });
         }
-        const hotCodes = selectHotUniverse(snaps, amountN, rateN);
+        const hotCodes = selectHotUniverse(snaps, rs.amountN, rs.rateN);
 
         const stocks: BoardStock[] = [];
         for (const snap of snaps) {
@@ -54,6 +54,17 @@ export function ReplayBoardPanel(): JSX.Element {
             const prev = leanSnapshotAt(index.get(snap.code)!, tUnix - 60);
             const signal = prev ? evaluateSignal(snap.changeRate - prev.rate, snap.amount - prev.cumAmount) : null;
             const marketCapEok = meta.marketCap ? Number(meta.marketCap) / 1e8 : null;
+            const buckets = bucketCountsAt(index.get(snap.code)!, tUnix);
+            // 분봉 거래대금 필터: 구간 ≥ filterBucketEok 인 분봉 개수 ≥ filterMinCount 인지.
+            let dim = false;
+            if (rs.filterOn) {
+                let cnt = 0;
+                for (let i = 0; i < buckets.length; i++) if (AMOUNT_BUCKETS_EOK[i] >= rs.filterBucketEok) cnt += buckets[i];
+                if (cnt < rs.filterMinCount) {
+                    if (rs.filterMode === "hide") continue;
+                    dim = true;
+                }
+            }
             stocks.push({
                 code: snap.code,
                 name: meta.name,
@@ -66,12 +77,13 @@ export function ReplayBoardPanel(): JSX.Element {
                 amount: snap.amount,
                 isMover: isMover(marketCapEok, snap.changeRate),
                 signal,
-                buckets: bucketCountsAt(index.get(snap.code)!, tUnix),
+                buckets,
+                dim,
             });
         }
         const byTheme = stocksByTheme(stocks);
         return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme) };
-    }, [index, metaByCode, tUnix, amountN, rateN]);
+    }, [index, metaByCode, tUnix, rs]);
 
     if (boardQ.isLoading || summaryQ.isLoading) return <BoardCenter text={`${date} 로딩중… (당일 lean 지표)`} />;
     if (boardQ.isError) return <BoardCenter text={`보드 오류: ${(boardQ.error as Error).message}`} />;

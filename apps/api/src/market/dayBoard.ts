@@ -34,6 +34,14 @@ function kstToUnix(date: string, time: string): number {
     return Math.floor(Date.parse(`${date}T${time}+09:00`) / 1000);
 }
 
+// 거래대금 구간 카운트 창(분, KST) — 08:00 ~ 15:20. 15:30 종가단일가·NXT 시간외 제외.
+const BUCKET_MIN_START = 8 * 60; // 08:00
+const BUCKET_MIN_END = 15 * 60 + 20; // 15:20
+function minuteOfDay(time: string): number {
+    const [h, m] = time.split(":");
+    return Number(h) * 60 + Number(m);
+}
+
 export function reduceToLeanBoard(bundles: ChartBundle[], date: string): LeanBoard {
     const stocks: LeanStock[] = [];
     for (const b of bundles) {
@@ -72,7 +80,9 @@ export function reduceToLeanBoard(bundles: ChartBundle[], date: string): LeanBoa
             high[i] = hi;
             low[i] = lo;
             cumAmount[i] = cum;
-            bucket[i] = amountBucketIndex(minAmount);
+            // 구간 카운트는 08:00~15:20 만(15:30 종가단일가·시간외 제외). 창 밖은 -1.
+            const mod = minuteOfDay(m.time);
+            bucket[i] = mod >= BUCKET_MIN_START && mod <= BUCKET_MIN_END ? amountBucketIndex(minAmount) : -1;
         }
         stocks.push({ code: b.stockCode, base, times, close, high, low, cumAmount, bucket });
     }

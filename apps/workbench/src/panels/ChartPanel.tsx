@@ -15,6 +15,7 @@ export function ChartPanel(): JSX.Element {
     const mode = useWorkbench((s) => s.chartPriceMode);
     const setMode = useWorkbench((s) => s.setChartPriceMode);
     const [expanded, setExpanded] = useState<"daily" | "minute" | null>(null);
+    const [showMarkers, setShowMarkers] = useState(true); // 분봉 거래대금 마커 ON/OFF
 
     const query = useQuery({
         queryKey: ["chart", code, date],
@@ -44,7 +45,15 @@ export function ChartPanel(): JSX.Element {
                 {name && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{code}</span>}
                 <span style={{ color: "var(--text-tertiary)" }}>{date}</span>
                 {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
-                <div style={{ marginLeft: "auto", display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
+                {/* 분봉 거래대금 마커 ON/OFF */}
+                <button
+                    onClick={() => setShowMarkers((v) => !v)}
+                    title={showMarkers ? "거래대금 마커 끄기" : "거래대금 마커 켜기"}
+                    style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 8px", borderRadius: 6, border: `1px solid ${showMarkers ? "var(--accent-primary)" : "var(--border-default)"}`, background: showMarkers ? "var(--accent-soft)" : "var(--bg-primary)", color: showMarkers ? "var(--accent-hover)" : "var(--text-tertiary)", cursor: "pointer", fontSize: 11 }}
+                >
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: showMarkers ? "var(--accent-primary)" : "var(--text-tertiary)" }} /> 대금
+                </button>
+                <div style={{ display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
                     {(["un", "krx"] as const).map((m) => (
                         <button
                             key={m}
@@ -74,7 +83,7 @@ export function ChartPanel(): JSX.Element {
                         {expanded !== "daily" && (
                             <div onDoubleClick={() => toggle("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다">
                                 <PaneLabel text="분봉" />
-                                {minuteView.points.length > 0 ? <MinuteChart points={minuteView.points} /> : <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음"} />}
+                                {minuteView.points.length > 0 ? <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} /> : <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음"} />}
                             </div>
                         )}
                     </div>

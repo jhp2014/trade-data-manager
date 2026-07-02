@@ -96,7 +96,7 @@ export function DailyChart({ points }: { points: DailyPoint[] }): JSX.Element {
             if (!p.prevClose || p.prevClose <= 0) continue;
             const pct = ((p.high - p.prevClose) / p.prevClose) * 100;
             const color = highMarkerColor(pct);
-            if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, text: `${pct.toFixed(1)}` });
+            if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 0, text: `${pct.toFixed(1)}` });
         }
         markersRef.current?.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();

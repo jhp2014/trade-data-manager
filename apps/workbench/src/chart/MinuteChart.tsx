@@ -27,7 +27,7 @@ import { fmtRate, fmtEok } from "../lib/format.js";
 
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
 // 데이터는 이미 파생된 MinutePoint[](%/원). 여기선 시리즈 렌더·툴팁만 담당.
-export function MinuteChart({ points }: { points: MinutePoint[] }): JSX.Element {
+export function MinuteChart({ points, showAmountMarkers = true }: { points: MinutePoint[]; showAmountMarkers?: boolean }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -145,16 +145,18 @@ export function MinuteChart({ points }: { points: MinutePoint[] }): JSX.Element 
         amountMapRef.current = amountMap;
         cumMapRef.current = cumMap;
         amount.setData(bars);
-        // 거래대금 마커 — 분당 거래대금 구간(≥30억) 봉 위에 숫자(구간 하한)만.
+        // 거래대금 마커 — 분당 거래대금 구간(≥30억) 봉 위에 숫자(구간 하한)만. 토글 OFF 면 비움.
         const markers = [];
-        for (const p of points) {
-            const b = amountBucketIndex(p.amount);
-            if (b >= 0) markers.push({ time: p.time as UTCTimestamp, position: "aboveBar" as const, color: AMOUNT_BUCKET_COLORS[b], shape: "circle" as const, text: `${AMOUNT_BUCKETS_EOK[b]}` });
+        if (showAmountMarkers) {
+            for (const p of points) {
+                const b = amountBucketIndex(p.amount);
+                if (b >= 0) markers.push({ time: p.time as UTCTimestamp, position: "aboveBar" as const, color: AMOUNT_BUCKET_COLORS[b], shape: "circle" as const, size: 0, text: `${AMOUNT_BUCKETS_EOK[b]}` });
+            }
         }
         markersRef.current?.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points]);
+    }, [points, showAmountMarkers]);
 
     const { state: tip } = useCrosshairTooltip({
         chartRef,

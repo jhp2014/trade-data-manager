@@ -35,6 +35,11 @@ export interface IssueBoardSettings {
 export interface ReplayBoardSettings {
     amountN: number; // 거래대금 top-N
     rateN: number; // 등락률 top-N
+    // 분봉 거래대금 필터: "구간 ≥ filterBucketEok 억 인 분봉 개수 ≥ filterMinCount" 종목만.
+    filterOn: boolean;
+    filterBucketEok: number; // 구간 하한(억) — AMOUNT_BUCKETS_EOK 중 하나
+    filterMinCount: number; // 최소 분봉 개수
+    filterMode: "dim" | "hide";
 }
 
 interface WorkbenchState {
@@ -67,7 +72,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     scope: { issue: null, theme: null },
     chartPriceMode: "un",
     issueSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim" },
-    replaySettings: { amountN: 80, rateN: 40 },
+    replaySettings: { amountN: 80, rateN: 40, filterOn: false, filterBucketEok: 50, filterMinCount: 5, filterMode: "dim" },
 
     // date 최상위 무효화: time 리셋 + scope 전체 리셋(이슈·테마 모두 그날 것이라 날짜 넘어가면 stale).
     setDate: (date) =>
