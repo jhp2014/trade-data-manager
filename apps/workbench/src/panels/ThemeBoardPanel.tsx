@@ -4,7 +4,8 @@ import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 import { dailyMetric } from "../lib/dailyMetrics.js";
 import { stocksByTheme, themeParents, groupStocks, isMover } from "@trade-data-manager/market/domain";
-import { ThemeCard, BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
+import { BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
+import { BoardLayout } from "../components/board/BoardLayout.js";
 
 // 이슈정리 보드(EOD) — market-eye식 테마카드에 등락률 랭킹 + 눕힌 일봉 캔들 + 분포 미니맵 + 포함관계.
 // 데이터: day-summary 한 방(일봉 candle+테마 멤버십). ≥2 테마=카드, 나머지=개별/미분류 버킷.
@@ -50,24 +51,11 @@ export function ThemeBoardPanel(): JSX.Element {
 
     const { grouped, parents } = board;
     return (
-        <div style={{ height: "100%", overflowY: "auto", background: "var(--bg-secondary)" }}>
-            <div style={{ padding: "8px 10px", color: "var(--text-secondary)", fontSize: 12 }}>
+        <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
+            <div style={{ padding: "8px 10px", color: "var(--text-secondary)", fontSize: 12, flexShrink: 0 }}>
                 {date} · 테마 {grouped.themes.length} · 개별 {grouped.individuals.length} · 미분류 {grouped.unclassified.length}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 8px 10px" }}>
-                {grouped.themes.map((g) => (
-                    <ThemeCard key={g.theme} theme={g.theme} stocks={g.stocks} parents={parents.get(g.theme) ?? []} focusCode={code} onPick={setCode} />
-                ))}
-                {grouped.individuals.length > 0 && (
-                    <ThemeCard theme="개별 종목" stocks={grouped.individuals} parents={[]} focusCode={code} onPick={setCode} />
-                )}
-                {grouped.unclassified.length > 0 && (
-                    <ThemeCard theme="미분류" stocks={grouped.unclassified} parents={[]} focusCode={code} onPick={setCode} />
-                )}
-                {grouped.themes.length === 0 && grouped.individuals.length === 0 && grouped.unclassified.length === 0 && (
-                    <BoardCenter text="표시할 종목 없음" />
-                )}
-            </div>
+            <BoardLayout grouped={grouped} parents={parents} focusCode={code} onPick={setCode} />
         </div>
     );
 }
