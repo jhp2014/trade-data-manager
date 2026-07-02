@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 import { dailyMetric } from "../lib/dailyMetrics.js";
-import { stocksByTheme, themeParents } from "@trade-data-manager/market/domain";
-import { ThemeCard, BoardCenter, MOVER_PCT, type BoardStock } from "../components/board/BoardCard.js";
+import { stocksByTheme, themeParents, isMover } from "@trade-data-manager/market/domain";
+import { ThemeCard, BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
 
 // 이슈정리 보드(EOD) — market-eye식 테마카드에 등락률 랭킹 + 눕힌 일봉 캔들 + 분포 미니맵 + 포함관계.
 // 데이터: day-summary 한 방(일봉 candle+테마 멤버십). 분봉 벌크 불필요 — EOD 복기라 일봉으로 충분.
@@ -39,7 +39,7 @@ export function ThemeBoardPanel(): JSX.Element {
                 highPct: m.highPct,
                 lowPct: m.lowPct,
                 amount: m.amount,
-                isMover: m.rate >= MOVER_PCT,
+                isMover: isMover(s.marketCap ? Number(s.marketCap) / 1e8 : null, m.rate),
             });
         }
         const byTheme = stocksByTheme(stocks);

@@ -1,8 +1,8 @@
 // 테마 보드 카드 렌더 — 이슈정리 보드(EOD)와 실시간 복기 보드가 공유(market-eye식 룩 일원화).
 // 데이터 소스만 다르고(일봉 vs 시점 스냅샷) BoardStock 모양·렌더는 동일.
+import type { DeltaHit } from "@trade-data-manager/market/domain";
 import { fmtRate, fmtEok } from "../../lib/format.js";
 
-export const MOVER_PCT = 5; // 주도주 경계(등락률 %)
 export const AXIS_LO = -5; // 눕힌 캔들/분포 축 하한
 export const AXIS_HI = 30; // 상한
 
@@ -17,6 +17,8 @@ export interface BoardStock {
     lowPct: number;
     amount: number; // 거래대금(원) — EOD=일봉, 복기=누적
     isMover: boolean;
+    /** 1분 델타 주목 신호(복기 보드만). EOD 는 없음. */
+    signal?: DeltaHit | null;
 }
 
 export function ThemeCard({
@@ -33,9 +35,11 @@ export function ThemeCard({
     onPick: (code: string) => void;
 }): JSX.Element {
     const movers = stocks.filter((s) => s.isMover).length;
+    const hot = stocks.filter((s) => s.signal).length; // 주목(1분 델타) 걸린 수
     const hasFocus = stocks.some((s) => s.code === focusCode);
     return (
         <div
+            className={hot > 0 ? "board-blink" : undefined}
             style={{
                 border: `1px solid ${hasFocus ? "var(--accent-primary)" : "var(--border-default)"}`,
                 borderRadius: 8,
@@ -56,6 +60,11 @@ export function ThemeCard({
                 <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12 }} title="주도주 / 전체">
                     {movers} / {stocks.length}
                 </span>
+                {hot > 0 && (
+                    <span className="tabular" style={{ color: "var(--rise)", fontSize: 12 }} title="지금 주목(1분 델타) 종목 수">
+                        🔥{hot}
+                    </span>
+                )}
                 {parents.length > 0 && (
                     <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-tertiary)" }} title="이 테마를 포함하는 상위 테마">
                         ⊂ {parents.join(" · ")}
@@ -112,9 +121,20 @@ function StockRow({
             <span className="tabular" style={{ width: 60, textAlign: "right", color: up ? "var(--rise)" : "var(--fall)" }}>
                 {fmtRate(s.changeRate)}
             </span>
-            <span className="tabular" style={{ width: 52, textAlign: "right", color: "var(--text-tertiary)", fontSize: 11 }}>
-                {fmtEok(s.amount)}
-            </span>
+            {/* 신호(1분 델타) 있으면 거래대금 자리를 델타로 덮음(market-eye 방식). */}
+            {s.signal ? (
+                <span
+                    className="tabular"
+                    style={{ width: 52, textAlign: "right", color: "var(--rise)", fontSize: 11, fontWeight: 600 }}
+                    title={`1분 델타 +${s.signal.rateDelta.toFixed(1)}%p · ${fmtEok(s.signal.tvDelta)}`}
+                >
+                    +{fmtEok(s.signal.tvDelta)}
+                </span>
+            ) : (
+                <span className="tabular" style={{ width: 52, textAlign: "right", color: "var(--text-tertiary)", fontSize: 11 }}>
+                    {fmtEok(s.amount)}
+                </span>
+            )}
             <Candle s={s} />
         </button>
     );

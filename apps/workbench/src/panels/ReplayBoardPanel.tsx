@@ -4,8 +4,8 @@ import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 import { useDayBoard, useLeanIndex, leanSnapshotAt } from "../lib/leanModel.js";
 import { kstToUnix } from "../lib/derive.js";
-import { stocksByTheme, themeParents, selectHotUniverse } from "@trade-data-manager/market/domain";
-import { ThemeCard, BoardCenter, MOVER_PCT, type BoardStock } from "../components/board/BoardCard.js";
+import { stocksByTheme, themeParents, selectHotUniverse, isMover, evaluateSignal } from "@trade-data-manager/market/domain";
+import { ThemeCard, BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
 
 // 실시간 복기 보드(②) — time 스크럽으로 특정 시각의 장중 스냅샷을 market-eye식으로 재현.
 // 서버 lean 지표(종목별 분당 running)를 통째로 들고, 시점 t의 랭킹·top-N·카드·포함관계를 인메모리로.
@@ -47,11 +47,11 @@ export function ReplayBoardPanel(): JSX.Element {
     const curMin = time ? timeToMin(time) : 15 * 60 + 30;
     const tUnix = kstToUnix(date, minToTime(curMin));
 
-    // 종목 메타(이름·시장·테마) — day-summary 조인.
+    // 종목 메타(이름·시장·테마·시총) — day-summary 조인.
     const metaByCode = useMemo(() => {
-        const m = new Map<string, { name: string; market: string | null; themes: string[] }>();
+        const m = new Map<string, { name: string; market: string | null; themes: string[]; marketCap: string | null }>();
         for (const s of summaryQ.data?.stocks ?? [])
-            m.set(s.stockCode, { name: s.name ?? s.stockCode, market: s.market, themes: s.themes.map((x) => x.theme) });
+            m.set(s.stockCode, { name: s.name ?? s.stockCode, market: s.market, themes: s.themes.map((x) => x.theme), marketCap: s.marketCap });
         return m;
     }, [summaryQ.data]);
 
@@ -72,6 +72,10 @@ export function ReplayBoardPanel(): JSX.Element {
             if (!hotCodes.has(snap.code)) continue;
             const meta = metaByCode.get(snap.code);
             if (!meta || meta.themes.length === 0) continue; // 카드는 테마 있는 종목만
+            // 1분 델타 신호: t vs t−60초 스냅샷 차분.
+            const prev = leanSnapshotAt(index.get(snap.code)!, tUnix - 60);
+            const signal = prev ? evaluateSignal(snap.changeRate - prev.rate, snap.amount - prev.cumAmount) : null;
+            const marketCapEok = meta.marketCap ? Number(meta.marketCap) / 1e8 : null;
             stocks.push({
                 code: snap.code,
                 name: meta.name,
@@ -82,7 +86,8 @@ export function ReplayBoardPanel(): JSX.Element {
                 highPct: snap.highPct,
                 lowPct: snap.lowPct,
                 amount: snap.amount,
-                isMover: snap.changeRate >= MOVER_PCT,
+                isMover: isMover(marketCapEok, snap.changeRate),
+                signal,
             });
         }
         const byTheme = stocksByTheme(stocks);

@@ -24,6 +24,8 @@ export interface DailySnapshot {
     /** 등락률 기준가 — 직전 거래일 시장별 종가. 없으면(상장일 등) null. */
     prevCloseKrx: string | null;
     prevCloseUn: string | null;
+    /** 그 거래일 시총(원, 무손실 string). 미백필이면 null. 주도주 tiered 판정에 쓴다. */
+    marketCap: string | null;
     themes: ThemeTag[];
     issues: IssueTag[];
 }

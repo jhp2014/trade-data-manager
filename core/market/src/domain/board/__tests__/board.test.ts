@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { stocksByTheme, themeParents } from "../roster.js";
 import { selectHotUniverse } from "../ranking.js";
+import { isMover, evaluateSignal } from "../signals.js";
 
 describe("stocksByTheme", () => {
     it("테마별로 묶고 등락률 desc 정렬", () => {
@@ -48,5 +49,24 @@ describe("selectHotUniverse", () => {
         const hot = selectHotUniverse(stocks, 2, 2); // 거래대금 top2 = big1,big2 / 등락률 top2 = hot1,hot2
         expect(hot).toEqual(new Set(["big1", "big2", "hot1", "hot2"]));
         expect(hot.has("none")).toBe(false);
+    });
+});
+
+describe("isMover (시총 tiered)", () => {
+    it("5조 이상은 3% 초과라야 주도주", () => {
+        expect(isMover(60_000, 4)).toBe(true); // 6조, 4% > 3%
+        expect(isMover(60_000, 2.5)).toBe(false); // 6조, 2.5% ≤ 3%
+    });
+    it("5조 미만은 5% 초과라야 주도주", () => {
+        expect(isMover(1_000, 6)).toBe(true);
+        expect(isMover(1_000, 4)).toBe(false);
+    });
+});
+
+describe("evaluateSignal (1분 델타)", () => {
+    it("등락률 AND 거래대금 동시 충족 시 hit", () => {
+        expect(evaluateSignal(0.7, 7_000_000_000)).toEqual({ label: "1분", rateDelta: 0.7, tvDelta: 7_000_000_000 });
+        expect(evaluateSignal(0.5, 7_000_000_000)).toBeNull(); // 등락률 부족
+        expect(evaluateSignal(0.7, 5_000_000_000)).toBeNull(); // 거래대금 부족(<60억)
     });
 });
