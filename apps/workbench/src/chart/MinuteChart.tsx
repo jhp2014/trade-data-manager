@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     CandlestickSeries,
     HistogramSeries,
@@ -166,9 +166,18 @@ export function MinuteChart({ points }: { points: MinutePoint[] }): JSX.Element 
         },
     });
 
+    // 툴팁 위치는 크로스헤어 좌표(pane마다 기준 다름) 대신 실제 커서 위치로 잡는다.
+    const [cursor, setCursor] = useState({ x: 0, y: 0 });
     return (
-        <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <FloatingTooltip visible={tip.visible} x={tip.x} y={tip.y} containerRef={containerRef}>
+        <div
+            ref={containerRef}
+            onMouseMove={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setCursor({ x: e.clientX - r.left, y: e.clientY - r.top });
+            }}
+            style={{ position: "relative", width: "100%", height: "100%" }}
+        >
+            <FloatingTooltip visible={tip.visible} x={cursor.x} y={cursor.y} containerRef={containerRef}>
                 {tip.content}
             </FloatingTooltip>
         </div>
@@ -240,13 +249,16 @@ function FloatingTooltip({
 }): JSX.Element | null {
     if (!visible) return null;
     const cw = containerRef.current?.clientWidth ?? 0;
-    // 커서 오른쪽에 두되 오른쪽 가장자리면 왼쪽으로 뒤집는다.
-    const flip = x > cw - 200;
+    const ch = containerRef.current?.clientHeight ?? 0;
+    // 커서 기준 우하단에 두되, 가장자리면 뒤집는다(가로/세로).
+    const flipX = x > cw - 180;
+    const flipY = y > ch - 130;
     const style: React.CSSProperties = {
         position: "absolute",
-        top: Math.max(8, y - 12),
-        left: flip ? undefined : x + 16,
-        right: flip ? cw - x + 16 : undefined,
+        left: flipX ? undefined : x + 14,
+        right: flipX ? cw - x + 14 : undefined,
+        top: flipY ? undefined : y + 14,
+        bottom: flipY ? ch - y + 14 : undefined,
         pointerEvents: "none",
         background: "rgba(20,20,24,0.95)",
         color: "#fff",

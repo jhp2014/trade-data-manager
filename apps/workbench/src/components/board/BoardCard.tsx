@@ -73,6 +73,7 @@ export function ThemeCard({
     dragHandle,
     related,
     onGoto,
+    isHidden,
 }: {
     theme: string;
     stocks: BoardStock[];
@@ -86,6 +87,7 @@ export function ThemeCard({
     dragHandle?: Record<string, unknown>;
     related?: RelatedInfo[]; // 하단 관련 테마(카드에만, 개별/미분류 없음)
     onGoto?: (theme: string) => void; // 관련 테마 클릭 = 이동
+    isHidden?: (theme: string) => boolean; // 숨긴 테마면 관련칩 흐릿
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>("collapsed");
     const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
@@ -161,19 +163,21 @@ export function ThemeCard({
                 </div>
             )}
 
-            {related && related.length > 0 && onGoto && <InfoLine home={theme} related={related} onGoto={onGoto} />}
+            {related && related.length > 0 && onGoto && <InfoLine home={theme} related={related} onGoto={onGoto} isHidden={isHidden} />}
         </div>
     );
 }
 
-/** 카드 하단 관련 테마 — 포함관계는 박스-인-박스 `[부모 [자식]]`, 부분 겹침은 알약. market-eye InfoLine. */
-function InfoLine({ home, related, onGoto }: { home: string; related: RelatedInfo[]; onGoto: (theme: string) => void }): JSX.Element {
+/** 카드 하단 관련 테마 — 포함관계는 박스-인-박스 `[부모 [자식]]`, 부분 겹침은 알약. market-eye InfoLine.
+ *  숨긴 테마인 관련칩은 흐릿하게. */
+function InfoLine({ home, related, onGoto, isHidden }: { home: string; related: RelatedInfo[]; onGoto: (theme: string) => void; isHidden?: (theme: string) => boolean }): JSX.Element {
     return (
         <div
             onClick={(e) => e.stopPropagation()}
             style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 10px", borderTop: "1px solid var(--border-subtle)" }}
         >
             {related.map((r) => {
+                const dim = isHidden?.(r.theme) ? 0.45 : 1;
                 const badge = (
                     <span className="tabular" style={{ fontSize: 10, fontWeight: 800, opacity: 0.6, marginLeft: 4 }}>
                         {r.movers}/{r.total}
@@ -181,7 +185,7 @@ function InfoLine({ home, related, onGoto }: { home: string; related: RelatedInf
                 );
                 if (r.kind === "overlap") {
                     return (
-                        <button key={r.theme} onClick={() => onGoto(r.theme)} title="관련 테마" style={overlapPill}>
+                        <button key={r.theme} onClick={() => onGoto(r.theme)} title="관련 테마" style={{ ...overlapPill, opacity: dim }}>
                             {r.theme}
                             {badge}
                         </button>
@@ -196,7 +200,7 @@ function InfoLine({ home, related, onGoto }: { home: string; related: RelatedInf
                         key={r.theme}
                         onClick={() => onGoto(r.theme)}
                         title={r.kind === "parent" ? "이 테마가 속한 상위 테마" : "이 테마에 포함된 하위 테마"}
-                        style={relNestStyle(relIsChild)}
+                        style={{ ...relNestStyle(relIsChild), opacity: dim }}
                     >
                         <span style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 700, color: relIsChild ? "var(--text-secondary)" : "var(--accent-primary)" }}>
                             {parentName}

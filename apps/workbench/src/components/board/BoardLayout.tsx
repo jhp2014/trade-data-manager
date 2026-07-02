@@ -28,14 +28,26 @@ export function BoardLayout({
     const [favorites, setFavorites] = useState<string[]>([]); // 즐겨찾기 순서
     const [userHidden, setUserHidden] = useState<Map<string, boolean>>(new Map()); // 수동 숨김/해제 override
 
+    const [scrollTarget, setScrollTarget] = useState<string | null>(null);
     const register = (theme: string, el: HTMLElement | null): void => {
         if (el) cardRefs.current.set(theme, el);
         else cardRefs.current.delete(theme);
     };
-    const pickTheme = (theme: string): void => {
-        setSelected((cur) => (cur === theme ? null : theme));
-        cardRefs.current.get(theme)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // 카드 헤더 클릭 = 선택만(스크롤 X). NavRail/레일/관련칩 클릭 = 선택 + 그 카드로 스크롤.
+    const selectTheme = (theme: string): void => setSelected((cur) => (cur === theme ? null : theme));
+    const gotoTheme = (theme: string): void => {
+        setSelected(theme);
+        setScrollTarget(theme);
     };
+    // scrollTarget 의 카드 ref 가 마운트되면 스크롤(숨김 복원 직후처럼 지연 마운트도 처리).
+    useEffect(() => {
+        if (!scrollTarget) return;
+        const el = cardRefs.current.get(scrollTarget);
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+            setScrollTarget(null);
+        }
+    });
     const toggleFav = (theme: string): void =>
         setFavorites((prev) => (prev.includes(theme) ? prev.filter((t) => t !== theme) : [...prev, theme]));
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -48,6 +60,10 @@ export function BoardLayout({
     };
     const hide = (theme: string): void => setUserHidden((prev) => new Map(prev).set(theme, true));
     const unhide = (theme: string): void => setUserHidden((prev) => new Map(prev).set(theme, false));
+    const unhideGoto = (theme: string): void => {
+        unhide(theme);
+        gotoTheme(theme);
+    };
     // 자동숨김 = 현재 시점 포함관계(상위 테마에 통째 포함). 사용자 override 우선.
     const isHidden = (theme: string): boolean =>
         userHidden.has(theme) ? userHidden.get(theme)! : (parents.get(theme)?.length ?? 0) > 0;
@@ -77,19 +93,20 @@ export function BoardLayout({
                 focusCode={focusCode}
                 onPick={onPick}
                 selected={selected === g.theme}
-                onSelect={pickTheme}
+                onSelect={selectTheme}
                 isFav={favorites.includes(g.theme)}
                 onToggleFav={toggleFav}
                 onHide={hide}
                 related={relatedOf(g)}
-                onGoto={pickTheme}
+                onGoto={gotoTheme}
+                isHidden={isHidden}
             />
         </div>
     );
 
     return (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <NavRail themes={[...favCards, ...restCards]} selected={selected} onPick={pickTheme} />
+            <NavRail themes={[...favCards, ...restCards]} selected={selected} onPick={gotoTheme} />
             {/* overflowAnchor none: 카드 펼침(분포바 클릭)에 스크롤이 튀지 않게 — 연속 클릭 유지. */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowAnchor: "none" }}>
                 {/* 폭이 커지면 카드는 일정폭까지만, 그 이상은 좌우 여백. */}
@@ -106,10 +123,11 @@ export function BoardLayout({
                                             focusCode={focusCode}
                                             onPick={onPick}
                                             selected={selected === g.theme}
-                                            onSelect={pickTheme}
+                                            onSelect={selectTheme}
                                             onToggleFav={toggleFav}
                                             onHide={hide}
-                                            onGoto={pickTheme}
+                                            onGoto={gotoTheme}
+                                            isHidden={isHidden}
                                             register={register}
                                         />
                                     ))}
@@ -130,7 +148,7 @@ export function BoardLayout({
                     {empty && <BoardCenter text="표시할 종목 없음" />}
                 </div>
             </div>
-            {hiddenThemes.length > 0 && <HiddenRail themes={hiddenThemes} parents={parents} onUnhide={unhide} />}
+            {hiddenThemes.length > 0 && <HiddenRail themes={hiddenThemes} parents={parents} onUnhide={unhideGoto} />}
         </div>
     );
 }
@@ -146,6 +164,7 @@ function SortableThemeCard(props: {
     onToggleFav: (theme: string) => void;
     onHide: (theme: string) => void;
     onGoto: (theme: string) => void;
+    isHidden: (theme: string) => boolean;
     register: (theme: string, el: HTMLElement | null) => void;
 }): JSX.Element {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.g.theme });
@@ -176,6 +195,7 @@ function SortableThemeCard(props: {
                 dragHandle={{ ...attributes, ...listeners }}
                 related={props.related}
                 onGoto={props.onGoto}
+                isHidden={props.isHidden}
             />
         </div>
     );
@@ -217,7 +237,7 @@ function hiddenChipStyle(contained: boolean): React.CSSProperties {
         padding: contained ? "2px 5px 2px 8px" : "2px 8px",
         borderRadius: 8,
         border: "1px solid var(--border-default)",
-        background: "var(--bg-primary)",
+        background: "var(--bg-secondary)",
         fontSize: 11,
         whiteSpace: "nowrap",
         cursor: "pointer",
@@ -234,12 +254,17 @@ function HiddenRail({ themes, parents, onUnhide }: { themes: ThemeGroup<BoardSto
             <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                 {normal.length > 0 && (
                     <ScrollRow>
-                        {normal.map((g) => (
-                            <button key={g.theme} onClick={() => onUnhide(g.theme)} title={`복원: ${g.theme}`} style={hiddenChipStyle(false)}>
-                                <span style={{ fontWeight: 700, color: "var(--text-secondary)" }}>{g.theme}</span>
-                                <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{g.stocks.length}</span>
-                            </button>
-                        ))}
+                        {normal.map((g) => {
+                            const movers = g.stocks.filter((s) => s.isMover || s.signal).length;
+                            const hot = g.stocks.filter((s) => s.signal).length;
+                            return (
+                                <button key={g.theme} onClick={() => onUnhide(g.theme)} title={`복원: ${g.theme}`} style={hiddenChipStyle(false)}>
+                                    <span style={{ color: "var(--text-secondary)" }}>{g.theme}</span>
+                                    <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{movers}/{g.stocks.length}</span>
+                                    {hot > 0 && <span className="tabular" style={{ color: "var(--rise)" }}>🔥{hot}</span>}
+                                </button>
+                            );
+                        })}
                     </ScrollRow>
                 )}
                 {contained.length > 0 && (
@@ -294,7 +319,7 @@ function NavChip({ g, on, onClick, hotOnly }: { g: ThemeGroup<BoardStock>; on: b
         <button
             onClick={onClick}
             title={`이동: ${g.theme}`}
-            style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, padding: "2px 8px", borderRadius: 12, border: `1px solid ${on ? "var(--accent-primary)" : "var(--border-default)"}`, background: on ? "var(--accent-soft)" : "var(--bg-secondary)", fontSize: 11, whiteSpace: "nowrap", cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, padding: "2px 8px", borderRadius: 8, border: `1px solid ${on ? "var(--accent-primary)" : "var(--border-default)"}`, background: on ? "var(--accent-soft)" : "var(--bg-secondary)", fontSize: 11, whiteSpace: "nowrap", cursor: "pointer" }}
         >
             <span style={{ color: on ? "var(--accent-hover)" : "var(--text-secondary)" }}>{g.theme}</span>
             {hotOnly ? (
