@@ -5,6 +5,7 @@ import {
     CrosshairMode,
     LineStyle,
     createSeriesMarkers,
+    type IPriceLine,
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
     type Time,
@@ -12,16 +13,23 @@ import {
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import type { DailyPoint } from "../lib/derive.js";
+import type { PriceLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
-// chart-review RealDailyChart 참고 재구현. 시각축=business day(YYYY-MM-DD).
-export function DailyChart({ points }: { points: DailyPoint[] }): JSX.Element {
+// 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
+export function DailyChart({ points, lines, onRightClick }: { points: DailyPoint[]; lines: PriceLine[]; onRightClick: (highPrice: number) => void }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const mapRef = useRef<Map<string, DailyPoint>>(new Map());
+    const hoveredTimeRef = useRef<string | null>(null);
+    const priceLinesRef = useRef<IPriceLine[]>([]);
+    const onRightClickRef = useRef(onRightClick);
+    useEffect(() => {
+        onRightClickRef.current = onRightClick;
+    });
 
     const chartRef = useChartShell(containerRef, () => ({
         ...baseChartOptions(),
@@ -102,6 +110,45 @@ export function DailyChart({ points }: { points: DailyPoint[] }): JSX.Element {
         chartRef.current?.timeScale().fitContent();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points]);
+
+    // 우클릭 대상 = crosshair 로 hover 중인 봉. contextmenu 시 그 봉 고점으로 토글.
+    useEffect(() => {
+        const chart = chartRef.current;
+        const el = containerRef.current;
+        if (!chart || !el) return;
+        const onMove = (param: { time?: unknown }): void => {
+            hoveredTimeRef.current = typeof param.time === "string" ? param.time : null;
+        };
+        chart.subscribeCrosshairMove(onMove);
+        const onCtx = (e: MouseEvent): void => {
+            e.preventDefault();
+            const t = hoveredTimeRef.current;
+            const p = t ? mapRef.current.get(t) : null;
+            if (p) onRightClickRef.current(p.high);
+        };
+        el.addEventListener("contextmenu", onCtx);
+        return () => {
+            chart.unsubscribeCrosshairMove(onMove);
+            el.removeEventListener("contextmenu", onCtx);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // 가격선(D) 렌더 — raw 가격에 수평선.
+    useEffect(() => {
+        const candle = candleRef.current;
+        if (!candle) return;
+        for (const h of priceLinesRef.current) {
+            try {
+                candle.removePriceLine(h);
+            } catch {
+                /* noop */
+            }
+        }
+        priceLinesRef.current = lines.map((line) =>
+            candle.createPriceLine({ price: Number(line.price), color: "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.memo ?? "D" }),
+        );
+    }, [lines]);
 
     const [cursor, setCursor] = useState({ x: 0, y: 0 });
     const { state: tip } = useCrosshairTooltip({

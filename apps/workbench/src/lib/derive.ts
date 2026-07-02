@@ -18,12 +18,15 @@ export interface MinutePoint {
     close: number;
     amount: number; // 이 분봉 거래대금(원)
     cumAmount: number; // 누적 거래대금(원)
+    highPrice: number; // raw 고가(원) — 우클릭 가격선(M) 기준
 }
 
 export interface MinuteView {
     points: MinutePoint[];
     /** % 기준가(직전 거래일 종가)를 못 구해 당일 첫 시가로 폴백했나(상장일 등). */
     baseFallback: boolean;
+    /** % 기준가(원). 가격선(원)→% 변환에 쓴다. */
+    base: number | null;
 }
 
 /** KST(UTC+9) date(YYYY-MM-DD)+time(HH:MM:SS) → unix seconds. */
@@ -69,7 +72,7 @@ export function deriveDailyView(bundle: ChartBundle, mode: ChartPriceMode): Dail
  */
 export function deriveMinuteView(bundle: ChartBundle, mode: ChartPriceMode): MinuteView {
     const minutes = bundle.minutes;
-    if (minutes.length === 0) return { points: [], baseFallback: false };
+    if (minutes.length === 0) return { points: [], baseFallback: false, base: null };
 
     const date = minutes[0].date;
 
@@ -112,8 +115,9 @@ export function deriveMinuteView(bundle: ChartBundle, mode: ChartPriceMode): Min
             close: Number(cl),
             amount: Number(unAmounts[i]),
             cumAmount: Number(cumAmounts[i]),
+            highPrice: Number(bar.high),
         });
     });
 
-    return { points, baseFallback };
+    return { points, baseFallback, base: base !== null ? Number(base) : null };
 }

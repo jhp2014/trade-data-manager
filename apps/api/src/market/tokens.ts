@@ -4,4 +4,5 @@
 export const CHART_READER = Symbol("ChartReader");
 export const DAY_CHARTS_READER = Symbol("DayChartsReader");
 export const DAY_SUMMARY_READER = Symbol("DaySummaryReader");
+export const PRICE_LINE_REPO = Symbol("PriceLineRepository");
 export const MARKET_POOL = Symbol("MarketPool");

@@ -6,6 +6,7 @@ import {
     LineStyle,
     createSeriesMarkers,
     type AutoscaleInfo,
+    type IPriceLine,
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
     type Time,
@@ -23,17 +24,37 @@ import {
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import type { MinutePoint } from "../lib/derive.js";
+import type { PriceLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
 // 데이터는 이미 파생된 MinutePoint[](%/원). 여기선 시리즈 렌더·툴팁만 담당.
-export function MinuteChart({ points, showAmountMarkers = true }: { points: MinutePoint[]; showAmountMarkers?: boolean }): JSX.Element {
+export function MinuteChart({
+    points,
+    showAmountMarkers = true,
+    lines,
+    base,
+    onRightClick,
+}: {
+    points: MinutePoint[];
+    showAmountMarkers?: boolean;
+    lines: PriceLine[]; // D+M 선(raw 가격). % 로 변환해 표시.
+    base: number | null; // % 기준가(원)
+    onRightClick: (highPrice: number) => void;
+}): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const amountMapRef = useRef<Map<number, number>>(new Map());
     const cumMapRef = useRef<Map<number, number>>(new Map());
+    const pointMapRef = useRef<Map<number, MinutePoint>>(new Map());
+    const hoveredTimeRef = useRef<number | null>(null);
+    const priceLinesRef = useRef<IPriceLine[]>([]);
+    const onRightClickRef = useRef(onRightClick);
+    useEffect(() => {
+        onRightClickRef.current = onRightClick;
+    });
 
     const chartRef = useChartShell(containerRef, () => ({
         ...baseChartOptions(),
@@ -130,10 +151,12 @@ export function MinuteChart({ points, showAmountMarkers = true }: { points: Minu
 
         const amountMap = new Map<number, number>();
         const cumMap = new Map<number, number>();
+        const pointMap = new Map<number, MinutePoint>();
         const bars: Array<{ time: Time; value: number; color: string }> = [];
         for (const p of points) {
             amountMap.set(p.time, p.amount);
             cumMap.set(p.time, p.cumAmount);
+            pointMap.set(p.time, p);
             if (p.amount > 0) {
                 bars.push({
                     time: p.time as UTCTimestamp,
@@ -144,6 +167,7 @@ export function MinuteChart({ points, showAmountMarkers = true }: { points: Minu
         }
         amountMapRef.current = amountMap;
         cumMapRef.current = cumMap;
+        pointMapRef.current = pointMap;
         amount.setData(bars);
         // 거래대금 마커 — 분당 거래대금 구간(≥30억) 봉 위에 숫자(구간 하한)만. 토글 OFF 면 비움.
         const markers = [];
@@ -157,6 +181,50 @@ export function MinuteChart({ points, showAmountMarkers = true }: { points: Minu
         chartRef.current?.timeScale().fitContent();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points, showAmountMarkers]);
+
+    // 우클릭 대상 = hover 중인 분봉. contextmenu 시 그 봉 고점(raw)으로 M 선 토글.
+    useEffect(() => {
+        const chart = chartRef.current;
+        const el = containerRef.current;
+        if (!chart || !el) return;
+        const onMove = (param: { time?: unknown }): void => {
+            hoveredTimeRef.current = typeof param.time === "number" ? param.time : null;
+        };
+        chart.subscribeCrosshairMove(onMove);
+        const onCtx = (e: MouseEvent): void => {
+            e.preventDefault();
+            const t = hoveredTimeRef.current;
+            const p = t != null ? pointMapRef.current.get(t) : null;
+            if (p) onRightClickRef.current(p.highPrice);
+        };
+        el.addEventListener("contextmenu", onCtx);
+        return () => {
+            chart.unsubscribeCrosshairMove(onMove);
+            el.removeEventListener("contextmenu", onCtx);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // 가격선(D+M) 렌더 — raw 가격을 base 대비 %로 변환해 표시(분봉은 % 축).
+    useEffect(() => {
+        const candle = candleRef.current;
+        if (!candle) return;
+        for (const h of priceLinesRef.current) {
+            try {
+                candle.removePriceLine(h);
+            } catch {
+                /* noop */
+            }
+        }
+        priceLinesRef.current = [];
+        if (!base || base <= 0) return;
+        for (const line of lines) {
+            const pct = ((Number(line.price) - base) / base) * 100;
+            priceLinesRef.current.push(
+                candle.createPriceLine({ price: pct, color: line.memo === "M" ? "#be7a00" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.memo ?? "D" }),
+            );
+        }
+    }, [lines, base]);
 
     const { state: tip } = useCrosshairTooltip({
         chartRef,

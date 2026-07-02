@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchChart } from "../api/chart.js";
 import { fetchDaySummary } from "../api/daySummary.js";
+import { fetchPriceLines, addPriceLine, removePriceLine } from "../api/priceLines.js";
 import { deriveMinuteView, deriveDailyView } from "../lib/derive.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
@@ -35,7 +36,31 @@ export function ChartPanel(): JSX.Element {
     const minuteView = useMemo(() => (query.data ? deriveMinuteView(query.data, mode) : null), [query.data, mode]);
     const dailyView = useMemo(() => (query.data ? deriveDailyView(query.data, mode) : null), [query.data, mode]);
 
-    const toggle = (which: "daily" | "minute"): void => setExpanded((cur) => (cur === which ? null : which));
+    const toggleExpand = (which: "daily" | "minute"): void => setExpanded((cur) => (cur === which ? null : which));
+
+    // 가격선 주석 — 조회 + 우클릭 토글(자동 저장).
+    const qc = useQueryClient();
+    const linesQ = useQuery({
+        queryKey: ["price-lines", code, date],
+        queryFn: () => fetchPriceLines(code, date),
+        enabled: code.length > 0 && date.length > 0,
+        staleTime: Infinity,
+    });
+    const lines = useMemo(() => linesQ.data ?? [], [linesQ.data]);
+    const dLines = useMemo(() => lines.filter((l) => l.memo === "D"), [lines]);
+    const invalidate = (): void => {
+        void qc.invalidateQueries({ queryKey: ["price-lines", code, date] });
+    };
+    const addMut = useMutation({ mutationFn: addPriceLine, onSuccess: invalidate });
+    const removeMut = useMutation({ mutationFn: removePriceLine, onSuccess: invalidate });
+    // 봉 우클릭 = 그 봉 고점(raw)에 kind(D/M) 선 토글. 이미 있으면 삭제, 없으면 추가.
+    const toggleLine = (priceRaw: number, kind: "D" | "M"): void => {
+        if (!code || !date) return;
+        const priceStr = String(Math.round(priceRaw));
+        const existing = lines.find((l) => l.memo === kind && l.price === priceStr);
+        if (existing?.id) removeMut.mutate(existing.id);
+        else addMut.mutate({ stockCode: code, date, price: priceStr, memo: kind });
+    };
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -74,16 +99,20 @@ export function ChartPanel(): JSX.Element {
                 {minuteView && dailyView && (
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
-                            <div onDoubleClick={() => toggle("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다">
+                            <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 고점 선(D)">
                                 <PaneLabel text="일봉" />
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} onRightClick={(h) => toggleLine(h, "D")} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
                         {expanded !== "daily" && (
-                            <div onDoubleClick={() => toggle("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다">
+                            <div onDoubleClick={() => toggleExpand("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 선(M)">
                                 <PaneLabel text="분봉" />
-                                {minuteView.points.length > 0 ? <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} /> : <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음"} />}
+                                {minuteView.points.length > 0 ? (
+                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={lines} base={minuteView.base} onRightClick={(h) => toggleLine(h, "M")} />
+                                ) : (
+                                    <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음"} />
+                                )}
                             </div>
                         )}
                     </div>
