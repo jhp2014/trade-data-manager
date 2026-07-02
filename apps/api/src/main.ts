@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import compression from "compression";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";
 
@@ -9,6 +10,8 @@ const PORT = Number(process.env.API_PORT ?? 3001);
 async function bootstrap(): Promise<void> {
     const app = await NestFactory.create(AppModule);
     app.enableCors();
+    // /day-charts 는 수십 MB raw JSON — gzip 으로 ~7MB 로 줄인다(당일 전체 분봉 통짜 전송).
+    app.use(compression());
     await app.listen(PORT);
     console.log(`▶ api listening on http://localhost:${PORT}`);
 }

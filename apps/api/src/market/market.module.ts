@@ -12,9 +12,11 @@ import {
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
 import { ChartReadService, DaySummaryService } from "@trade-data-manager/market";
-import { CHART_READER, DAY_SUMMARY_READER, MARKET_POOL } from "./tokens.js";
+import type { ChartReader } from "@trade-data-manager/market";
+import { CHART_READER, DAY_CHARTS_READER, DAY_SUMMARY_READER, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart.controller.js";
 import { DaySummaryController } from "./daySummary.controller.js";
+import { DayChartsController, type DayChartsReader } from "./dayCharts.controller.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
@@ -23,7 +25,7 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
 // 철칙: core/market 은 프레임워크-프리. @Injectable/@Inject 데코레이터는 이 가장자리(모듈/컨트롤러)에만 둔다.
 // 순수 서비스는 useFactory 로 new 해서 Symbol 토큰에 바인딩한다(타입기반 주입 미사용).
 @Module({
-    controllers: [ChartController, DaySummaryController],
+    controllers: [ChartController, DayChartsController, DaySummaryController],
     providers: [
         // Pool 은 앱 수명 단일 싱글톤. OnModuleDestroy 에서 graceful end.
         { provide: MARKET_POOL, useFactory: (): Pool => createPoolFromEnv() },
@@ -37,6 +39,20 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
                 });
             },
             inject: [MARKET_POOL],
+        },
+        {
+            // 당일 전체 차트 — apps/api 에서만 조합(core 무변경): universe 코드 → 기존 CHART_READER.chartsByCodes 벌크.
+            provide: DAY_CHARTS_READER,
+            useFactory: (pool: Pool, chart: ChartReader): DayChartsReader => {
+                const universe = new DrizzleDailyUniverseProvider(createDb(pool));
+                return {
+                    async dayCharts(date: string) {
+                        const codes = await universe.stockCodesByDate(date);
+                        return chart.chartsByCodes(codes, date);
+                    },
+                };
+            },
+            inject: [MARKET_POOL, CHART_READER],
         },
         {
             // DaySummary 는 시트 멤버십(Sheets OAuth)까지 타는 조합 — 인증은 env refresh token(읽기전용).
