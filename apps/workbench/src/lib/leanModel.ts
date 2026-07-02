@@ -11,6 +11,7 @@ export interface LeanSnapshot {
     highPct: number; // t 까지 고가 %
     lowPct: number; // t 까지 저가 %
     cumAmount: number; // t 까지 누적 거래대금(원)
+    bigCount: number; // t 까지 큰 거래대금 분봉 수(≥30억)
 }
 
 /** times 에서 t 이하 마지막 인덱스(이진탐색). 없으면 -1. */
@@ -43,6 +44,7 @@ export function leanSnapshotAt(s: LeanStock, t: number): LeanSnapshot | null {
         highPct: pct(s.high[i]),
         lowPct: pct(s.low[i]),
         cumAmount: s.cumAmount[i],
+        bigCount: s.bigCount[i],
     };
 }
 

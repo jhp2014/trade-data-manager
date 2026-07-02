@@ -39,10 +39,10 @@ export function ReplayBoardPanel(): JSX.Element {
     // 시점 t 스냅샷 → 랭킹 → top-N(거래대금 ∪ 등락률) → 테마 카드 + 포함관계.
     const board = useMemo(() => {
         if (!index) return null;
-        const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number }[] = [];
+        const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number; bigCount: number }[] = [];
         for (const s of index.values()) {
             const snap = leanSnapshotAt(s, tUnix);
-            if (snap) snaps.push({ code: snap.code, changeRate: snap.rate, amount: snap.cumAmount, openPct: snap.openPct, highPct: snap.highPct, lowPct: snap.lowPct });
+            if (snap) snaps.push({ code: snap.code, changeRate: snap.rate, amount: snap.cumAmount, openPct: snap.openPct, highPct: snap.highPct, lowPct: snap.lowPct, bigCount: snap.bigCount });
         }
         const hotCodes = selectHotUniverse(snaps, amountN, rateN);
 
@@ -66,6 +66,7 @@ export function ReplayBoardPanel(): JSX.Element {
                 amount: snap.amount,
                 isMover: isMover(marketCapEok, snap.changeRate),
                 signal,
+                bigCount: snap.bigCount,
             });
         }
         const byTheme = stocksByTheme(stocks);

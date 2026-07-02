@@ -9,6 +9,7 @@ export interface LeanStock {
     high: number[]; // running 고가(원)
     low: number[]; // running 저가(원)
     cumAmount: number[]; // 누적 거래대금(원)
+    bigCount: number[]; // 누적 "큰 거래대금 분봉"(분당 ≥30억) 개수
 }
 
 export interface LeanBoard {

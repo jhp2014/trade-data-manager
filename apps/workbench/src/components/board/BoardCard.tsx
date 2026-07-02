@@ -32,6 +32,8 @@ export interface BoardStock {
     signal?: DeltaHit | null;
     /** 필터 조건 불일치(흐림 모드) — 행을 흐릿하게. */
     dim?: boolean;
+    /** 큰 거래대금 분봉(≥30억) 누적 개수 — 복기 보드만. 거래대금 옆 작은 첨자로. */
+    bigCount?: number;
 }
 
 // ── 아이콘(market-eye SVG) ────────────────────────────────────
@@ -287,7 +289,7 @@ function StockRow({
             onClick={() => onPick(s.code)}
             style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) 58px 52px 28px",
+                gridTemplateColumns: "minmax(0, 1fr) 56px 58px 28px",
                 alignItems: "center",
                 gap: 8,
                 width: "100%",
@@ -331,7 +333,14 @@ function StockRow({
                     +{fmtEok(s.signal.tvDelta)}
                 </span>
             ) : (
-                <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: "var(--text-tertiary)", fontSize: 11 }}>{fmtEok(s.amount)}</span>
+                <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: "var(--text-tertiary)", fontSize: 11 }}>
+                    {fmtEok(s.amount)}
+                    {s.bigCount != null && s.bigCount > 0 && (
+                        <sup style={{ fontSize: 8, color: "var(--accent-primary)", marginLeft: 1 }} title={`큰 거래대금 분봉(≥30억) ${s.bigCount}회`}>
+                            {s.bigCount}
+                        </sup>
+                    )}
+                </span>
             )}
             {/* col4: 눕힌 캔들(고정 28px) */}
             <Candle s={s} />
