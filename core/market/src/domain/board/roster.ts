@@ -47,3 +47,36 @@ export function themeParents<T extends { code: string }>(byTheme: Map<string, T[
     }
     return out;
 }
+
+export type RelationKind = "parent" | "child" | "overlap";
+
+/**
+ * 한 카드(home)의 관련 테마 — 멤버들이 걸친 다른 ≥2 테마 + 포함관계 종류.
+ *  - parent: home ⊆ t (home 이 t 에 포함) / child: t ⊆ home / overlap: 부분 겹침.
+ * parent 먼저 → child → overlap 순 정렬. market-eye InfoLine 로직.
+ */
+export function relatedThemes<T extends { themes: string[] }>(
+    home: string,
+    homeStocks: readonly T[],
+    byTheme: Map<string, unknown[]>,
+    parents: Map<string, string[]>,
+): { theme: string; kind: RelationKind }[] {
+    const myParents = parents.get(home) ?? [];
+    const seen = new Set<string>();
+    const out: { theme: string; kind: RelationKind }[] = [];
+    for (const s of homeStocks)
+        for (const t of s.themes) {
+            if (t === home || seen.has(t)) continue;
+            if ((byTheme.get(t)?.length ?? 0) < 2) continue; // ≥2 멤버 테마만
+            seen.add(t);
+            const kind: RelationKind = myParents.includes(t)
+                ? "parent"
+                : (parents.get(t) ?? []).includes(home)
+                  ? "child"
+                  : "overlap";
+            out.push({ theme: t, kind });
+        }
+    const rank: Record<RelationKind, number> = { parent: 0, child: 1, overlap: 2 };
+    out.sort((a, b) => rank[a.kind] - rank[b.kind]);
+    return out;
+}

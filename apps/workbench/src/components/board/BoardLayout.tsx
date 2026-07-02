@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Grouped, ThemeGroup } from "@trade-data-manager/market/domain";
-import { ThemeCard, BoardCenter, type BoardStock } from "./BoardCard.js";
+import { relatedThemes, type Grouped, type ThemeGroup } from "@trade-data-manager/market/domain";
+import { ThemeCard, BoardCenter, type BoardStock, type RelatedInfo } from "./BoardCard.js";
 
 // 보드 본문 공용 — NavRail + 카드(즐겨찾기 상단 / 나머지 / 개별·미분류) + 숨김 Rail. 두 보드 공유.
 // 즐겨찾기(★)·숨김(👁)은 세션 휘발 로컬 상태. 자동숨김=현재 시점 포함관계(비sticky — 복기 스크럽에
@@ -57,12 +57,19 @@ export function BoardLayout({
 
     const empty = grouped.themes.length === 0 && grouped.individuals.length === 0 && grouped.unclassified.length === 0;
 
+    // 관련 테마(하단 InfoLine) — 카드 멤버들이 걸친 다른 ≥2 테마 + 포함관계. domain 순수함수.
+    const byThemeStocks = new Map(grouped.themes.map((g) => [g.theme, g.stocks]));
+    const relatedOf = (g: ThemeGroup<BoardStock>): RelatedInfo[] =>
+        relatedThemes(g.theme, g.stocks, byThemeStocks, parents).map((r) => {
+            const roster = byThemeStocks.get(r.theme) ?? [];
+            return { theme: r.theme, kind: r.kind, movers: roster.filter((s) => s.isMover || s.signal).length, total: roster.length };
+        });
+
     const renderCard = (g: ThemeGroup<BoardStock>): JSX.Element => (
         <div key={g.theme} ref={(el) => register(g.theme, el)} style={{ scrollMarginTop: 8 }}>
             <ThemeCard
                 theme={g.theme}
                 stocks={g.stocks}
-                parents={parents.get(g.theme) ?? []}
                 focusCode={focusCode}
                 onPick={onPick}
                 selected={selected === g.theme}
@@ -70,6 +77,8 @@ export function BoardLayout({
                 isFav={favorites.includes(g.theme)}
                 onToggleFav={toggleFav}
                 onHide={hide}
+                related={relatedOf(g)}
+                onGoto={pickTheme}
             />
         </div>
     );
@@ -88,13 +97,14 @@ export function BoardLayout({
                                         <SortableThemeCard
                                             key={g.theme}
                                             g={g}
-                                            parents={parents.get(g.theme) ?? []}
+                                            related={relatedOf(g)}
                                             focusCode={focusCode}
                                             onPick={onPick}
                                             selected={selected === g.theme}
                                             onSelect={pickTheme}
                                             onToggleFav={toggleFav}
                                             onHide={hide}
+                                            onGoto={pickTheme}
                                             register={register}
                                         />
                                     ))}
@@ -107,10 +117,10 @@ export function BoardLayout({
                     )}
                     {restCards.map(renderCard)}
                     {grouped.individuals.length > 0 && (
-                        <ThemeCard theme="개별 종목" stocks={grouped.individuals} parents={[]} focusCode={focusCode} onPick={onPick} />
+                        <ThemeCard theme="개별 종목" stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} />
                     )}
                     {grouped.unclassified.length > 0 && (
-                        <ThemeCard theme="미분류" stocks={grouped.unclassified} parents={[]} focusCode={focusCode} onPick={onPick} />
+                        <ThemeCard theme="미분류" stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} />
                     )}
                     {empty && <BoardCenter text="표시할 종목 없음" />}
                 </div>
@@ -123,13 +133,14 @@ export function BoardLayout({
 /** 즐겨찾기 카드 래퍼 — @dnd-kit 세로 정렬 + 드래그 핸들. 스크롤 타깃 ref 도 겸한다. */
 function SortableThemeCard(props: {
     g: ThemeGroup<BoardStock>;
-    parents: string[];
+    related: RelatedInfo[];
     focusCode: string;
     onPick: (code: string) => void;
     selected: boolean;
     onSelect: (theme: string) => void;
     onToggleFav: (theme: string) => void;
     onHide: (theme: string) => void;
+    onGoto: (theme: string) => void;
     register: (theme: string, el: HTMLElement | null) => void;
 }): JSX.Element {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.g.theme });
@@ -150,7 +161,6 @@ function SortableThemeCard(props: {
             <ThemeCard
                 theme={props.g.theme}
                 stocks={props.g.stocks}
-                parents={props.parents}
                 focusCode={props.focusCode}
                 onPick={props.onPick}
                 selected={props.selected}
@@ -159,6 +169,8 @@ function SortableThemeCard(props: {
                 onToggleFav={props.onToggleFav}
                 onHide={props.onHide}
                 dragHandle={{ ...attributes, ...listeners }}
+                related={props.related}
+                onGoto={props.onGoto}
             />
         </div>
     );

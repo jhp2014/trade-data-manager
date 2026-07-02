@@ -1,6 +1,14 @@
 import { useState } from "react";
-import type { DeltaHit } from "@trade-data-manager/market/domain";
+import type { DeltaHit, RelationKind } from "@trade-data-manager/market/domain";
 import { fmtRate, fmtEok } from "../../lib/format.js";
+
+/** 관련 테마 1건(하단 InfoLine 렌더용) — 포함관계 종류 + 그 테마 주도주/전체. */
+export interface RelatedInfo {
+    theme: string;
+    kind: RelationKind;
+    movers: number;
+    total: number;
+}
 
 export const AXIS_LO = -5; // 눕힌 캔들 축 하한
 export const AXIS_HI = 30; // 캔들/분포 축 상한
@@ -55,7 +63,6 @@ const iconBtn: React.CSSProperties = { display: "inline-flex", padding: "2px", b
 export function ThemeCard({
     theme,
     stocks,
-    parents,
     focusCode,
     onPick,
     selected,
@@ -64,10 +71,11 @@ export function ThemeCard({
     onToggleFav,
     onHide,
     dragHandle,
+    related,
+    onGoto,
 }: {
     theme: string;
     stocks: BoardStock[];
-    parents: string[];
     focusCode: string;
     onPick: (code: string) => void;
     selected?: boolean;
@@ -76,6 +84,8 @@ export function ThemeCard({
     onToggleFav?: (theme: string) => void;
     onHide?: (theme: string) => void;
     dragHandle?: Record<string, unknown>;
+    related?: RelatedInfo[]; // 하단 관련 테마(카드에만, 개별/미분류 없음)
+    onGoto?: (theme: string) => void; // 관련 테마 클릭 = 이동
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>("collapsed");
     const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
@@ -121,14 +131,6 @@ export function ThemeCard({
                         🔥{hot}
                     </span>
                 )}
-                {parents.length > 0 && (
-                    <span
-                        title={`상위 테마에 포함: ${parents.join(" · ")}`}
-                        style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: "var(--accent-primary)", background: "var(--accent-soft)", borderRadius: 7, padding: "1px 6px", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}
-                    >
-                        ⊂ {parents.join("·")}
-                    </span>
-                )}
                 {(onToggleFav || onHide) && (
                     <span style={{ marginLeft: "auto", display: "flex", gap: 2, flexShrink: 0 }}>
                         {onHide && (
@@ -158,8 +160,96 @@ export function ThemeCard({
                         ))}
                 </div>
             )}
+
+            {related && related.length > 0 && onGoto && <InfoLine home={theme} related={related} onGoto={onGoto} />}
         </div>
     );
+}
+
+/** 카드 하단 관련 테마 — 포함관계는 박스-인-박스 `[부모 [자식]]`, 부분 겹침은 알약. market-eye InfoLine. */
+function InfoLine({ home, related, onGoto }: { home: string; related: RelatedInfo[]; onGoto: (theme: string) => void }): JSX.Element {
+    return (
+        <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 10px", borderTop: "1px solid var(--border-subtle)" }}
+        >
+            {related.map((r) => {
+                const badge = (
+                    <span className="tabular" style={{ fontSize: 10, fontWeight: 800, opacity: 0.6, marginLeft: 4 }}>
+                        {r.movers}/{r.total}
+                    </span>
+                );
+                if (r.kind === "overlap") {
+                    return (
+                        <button key={r.theme} onClick={() => onGoto(r.theme)} title="관련 테마" style={overlapPill}>
+                            {r.theme}
+                            {badge}
+                        </button>
+                    );
+                }
+                // 포함관계 — [부모 [자식]]. 강조(accent)는 항상 상대 테마(r.theme).
+                const relIsChild = r.kind === "child"; // 상대가 안쪽 자식
+                const parentName = relIsChild ? home : r.theme;
+                const childName = relIsChild ? r.theme : home;
+                return (
+                    <button
+                        key={r.theme}
+                        onClick={() => onGoto(r.theme)}
+                        title={r.kind === "parent" ? "이 테마가 속한 상위 테마" : "이 테마에 포함된 하위 테마"}
+                        style={relNestStyle(relIsChild)}
+                    >
+                        <span style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 700, color: relIsChild ? "var(--text-secondary)" : "var(--accent-primary)" }}>
+                            {parentName}
+                            {!relIsChild && badge}
+                        </span>
+                        <span style={relBoxStyle(relIsChild)}>
+                            {childName}
+                            {relIsChild && badge}
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+const overlapPill: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--text-secondary)",
+    border: "1px solid var(--border-default)",
+    borderRadius: 8,
+    padding: "2px 8px",
+    background: "none",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+};
+function relNestStyle(relIsChild: boolean): React.CSSProperties {
+    return {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        border: relIsChild ? "1px solid var(--border-default)" : "1px solid transparent",
+        background: relIsChild ? "none" : "var(--accent-soft)",
+        borderRadius: 8,
+        padding: "2px 5px 2px 8px",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+    };
+}
+function relBoxStyle(relIsChild: boolean): React.CSSProperties {
+    return {
+        display: "inline-flex",
+        alignItems: "center",
+        fontSize: 11,
+        fontWeight: 700,
+        borderRadius: 6,
+        padding: "2px 8px",
+        color: relIsChild ? "var(--accent-primary)" : "var(--text-secondary)",
+        background: relIsChild ? "var(--accent-soft)" : "var(--bg-primary)",
+    };
 }
 
 // ── 종목 행 — grid: [rank+이름(1fr)] [등락률·거래대금(auto)] [캔들 28px] ──────────

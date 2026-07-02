@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stocksByTheme, themeParents } from "../roster.js";
+import { stocksByTheme, themeParents, relatedThemes } from "../roster.js";
 import { selectHotUniverse } from "../ranking.js";
 import { isMover, evaluateSignal } from "../signals.js";
 import { groupStocks } from "../grouping.js";
@@ -35,6 +35,31 @@ describe("themeParents", () => {
             ["Y", [{ code: "B" }, { code: "C" }]],
         ]);
         expect(themeParents(byTheme).size).toBe(0);
+    });
+});
+
+describe("relatedThemes", () => {
+    it("home 관점에서 child/overlap 분류", () => {
+        // 코로나={A,B,C}, 마스크={A,B}(⊆코로나=child), 백신={C,D}(overlap)
+        const stocks = [
+            { code: "A", themes: ["코로나", "마스크"] },
+            { code: "B", themes: ["코로나", "마스크"] },
+            { code: "C", themes: ["코로나", "백신"] },
+        ];
+        const byTheme = new Map<string, { themes: string[] }[]>([
+            ["코로나", stocks],
+            ["마스크", [stocks[0], stocks[1]]],
+            ["백신", [stocks[2], { code: "D", themes: ["백신"] }]],
+        ]);
+        const parents = themeParents(new Map(Object.entries({
+            코로나: stocks.map((s) => ({ code: s.code })),
+            마스크: [{ code: "A" }, { code: "B" }],
+            백신: [{ code: "C" }, { code: "D" }],
+        })));
+        const rel = relatedThemes("코로나", stocks, byTheme, parents);
+        const byName = new Map(rel.map((r) => [r.theme, r.kind]));
+        expect(byName.get("마스크")).toBe("child"); // 마스크 ⊆ 코로나
+        expect(byName.get("백신")).toBe("overlap");
     });
 });
 
