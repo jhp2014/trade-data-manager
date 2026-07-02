@@ -7,6 +7,7 @@ import { kstToUnix } from "../lib/derive.js";
 import { stocksByTheme, themeParents, groupStocks, selectHotUniverse, isMover, evaluateSignal } from "@trade-data-manager/market/domain";
 import { BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
+import { Modal, GearButton } from "../components/Modal.js";
 
 // 실시간 복기 보드(②) — time 스크럽으로 특정 시각의 장중 스냅샷을 market-eye식으로 재현.
 // 서버 lean 지표(종목별 분당 running)를 통째로 들고, 시점 t의 랭킹·top-N·카드·포함관계를 인메모리로.
@@ -34,6 +35,7 @@ export function ReplayBoardPanel(): JSX.Element {
 
     const [amountN, setAmountN] = useState(80);
     const [rateN, setRateN] = useState(40);
+    const [settingsOpen, setSettingsOpen] = useState(false);
 
     const summaryQ = useQuery({
         queryKey: ["day-summary", date],
@@ -121,19 +123,31 @@ export function ReplayBoardPanel(): JSX.Element {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, color: "var(--text-tertiary)" }}>
                     <span>{date}</span>
-                    <label style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
-                        거래대금 top
-                        <input type="number" value={amountN} min={0} onChange={(e) => setAmountN(Number(e.target.value))} style={numStyle} />
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        등락률 top
-                        <input type="number" value={rateN} min={0} onChange={(e) => setRateN(Number(e.target.value))} style={numStyle} />
-                    </label>
+                    <span style={{ marginLeft: "auto" }}>거래대금 top{amountN} ∪ 등락률 top{rateN}</span>
+                    <GearButton onClick={() => setSettingsOpen(true)} />
                 </div>
             </div>
 
             {/* 카드 + NavRail */}
             <BoardLayout grouped={board.grouped} parents={board.parents} focusCode={code} onPick={setCode} />
+
+            {settingsOpen && (
+                <Modal title="복기 보드 설정" onClose={() => setSettingsOpen(false)}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>시점 유니버스 = 두 랭킹의 합집합</div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            거래대금 상위
+                            <input type="number" value={amountN} min={0} onChange={(e) => setAmountN(Number(e.target.value))} style={numStyle} />
+                            종목
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            등락률 상위
+                            <input type="number" value={rateN} min={0} onChange={(e) => setRateN(Number(e.target.value))} style={numStyle} />
+                            종목
+                        </label>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }

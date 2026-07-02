@@ -13,11 +13,15 @@ export function BoardLayout({
     parents,
     focusCode,
     onPick,
+    showIndividuals = true,
+    showUnclassified = true,
 }: {
     grouped: Grouped<BoardStock>;
     parents: Map<string, string[]>;
     focusCode: string;
     onPick: (code: string) => void;
+    showIndividuals?: boolean;
+    showUnclassified?: boolean;
 }): JSX.Element {
     const cardRefs = useRef(new Map<string, HTMLElement>());
     const [selected, setSelected] = useState<string | null>(null);
@@ -117,10 +121,10 @@ export function BoardLayout({
                         <div style={{ height: 1, background: "var(--border-default)", margin: "0 2px" }} />
                     )}
                     {restCards.map(renderCard)}
-                    {grouped.individuals.length > 0 && (
+                    {showIndividuals && grouped.individuals.length > 0 && (
                         <ThemeCard theme="개별 종목" stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} />
                     )}
-                    {grouped.unclassified.length > 0 && (
+                    {showUnclassified && grouped.unclassified.length > 0 && (
                         <ThemeCard theme="미분류" stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} />
                     )}
                     {empty && <BoardCenter text="표시할 종목 없음" />}

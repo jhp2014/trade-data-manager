@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
@@ -6,6 +6,7 @@ import { dailyMetric } from "../lib/dailyMetrics.js";
 import { stocksByTheme, themeParents, groupStocks, isMover } from "@trade-data-manager/market/domain";
 import { BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
+import { Modal, GearButton } from "../components/Modal.js";
 
 // 이슈정리 보드(EOD) — market-eye식 테마카드에 등락률 랭킹 + 눕힌 일봉 캔들 + 분포 미니맵 + 포함관계.
 // 데이터: day-summary 한 방(일봉 candle+테마 멤버십). ≥2 테마=카드, 나머지=개별/미분류 버킷.
@@ -14,6 +15,9 @@ export function ThemeBoardPanel(): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
     const code = useWorkbench((s) => s.focus.code);
     const setCode = useWorkbench((s) => s.setCode);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [showIndiv, setShowIndiv] = useState(true);
+    const [showUnclass, setShowUnclass] = useState(false); // 미분류 기본 숨김(노이즈)
 
     const summaryQ = useQuery({
         queryKey: ["day-summary", date],
@@ -52,7 +56,24 @@ export function ThemeBoardPanel(): JSX.Element {
     const { grouped, parents } = board;
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardLayout grouped={grouped} parents={parents} focusCode={code} onPick={setCode} />
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "3px 8px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)", flexShrink: 0 }}>
+                <GearButton onClick={() => setSettingsOpen(true)} />
+            </div>
+            <BoardLayout grouped={grouped} parents={parents} focusCode={code} onPick={setCode} showIndividuals={showIndiv} showUnclassified={showUnclass} />
+            {settingsOpen && (
+                <Modal title="이슈정리 설정" onClose={() => setSettingsOpen(false)}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input type="checkbox" checked={showIndiv} onChange={(e) => setShowIndiv(e.target.checked)} style={{ accentColor: "var(--accent-primary)" }} />
+                            개별 종목 카드 표시 ({grouped.individuals.length})
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input type="checkbox" checked={showUnclass} onChange={(e) => setShowUnclass(e.target.checked)} style={{ accentColor: "var(--accent-primary)" }} />
+                            미분류 카드 표시 ({grouped.unclassified.length})
+                        </label>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }
