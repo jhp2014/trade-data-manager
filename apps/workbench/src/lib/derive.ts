@@ -31,6 +31,37 @@ export function kstToUnix(date: string, time: string): number {
     return Math.floor(Date.parse(`${date}T${time}+09:00`) / 1000);
 }
 
+/** 일봉 차트 포인트 — raw 가격(등락률 아님) + 거래대금 + 고가마커용 전일종가. time=business day 문자열. */
+export interface DailyPoint {
+    time: string; // YYYY-MM-DD (lightweight-charts business day)
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    amount: number; // 그날 거래대금(원)
+    prevClose: number | null; // 직전 거래일 종가(고가 등락률 마커 분모)
+}
+
+/** ChartBundle.daily(시간 오름차순) → 일봉 뷰(mode 시장). prevClose = 직전 거래일 종가. */
+export function deriveDailyView(bundle: ChartBundle, mode: ChartPriceMode): DailyPoint[] {
+    const daily = bundle.daily;
+    const out: DailyPoint[] = [];
+    for (let i = 0; i < daily.length; i++) {
+        const bar = mode === "un" ? daily[i].un : daily[i].krx;
+        const prevBar = i > 0 ? (mode === "un" ? daily[i - 1].un : daily[i - 1].krx) : null;
+        out.push({
+            time: daily[i].date,
+            open: Number(bar.open),
+            high: Number(bar.high),
+            low: Number(bar.low),
+            close: Number(bar.close),
+            amount: Number(bar.amount),
+            prevClose: prevBar ? Number(prevBar.close) : null,
+        });
+    }
+    return out;
+}
+
 /**
  * 분봉 뷰 파생. 캔들 O/H/L/C 는 mode 시장 바를 prevClose 대비 %로 환산(차트-리뷰식 % 캔들).
  * 거래대금은 UN(통합) 바 기준으로 통일(항상 존재, OHLC평균×거래량). 누적도 UN.

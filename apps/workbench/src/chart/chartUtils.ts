@@ -25,3 +25,22 @@ export const RISE_FILL = "rgba(239,68,68,0.5)";
 export const FALL_FILL = "rgba(59,130,246,0.5)";
 /** 거래대금 막대 기본색(방향성 없음). */
 export const AMOUNT_BAR_COLOR = "rgba(120,120,140,0.5)";
+
+/** unix(초, UTC) → KST "YYYY-MM-DD". */
+export function kstYmd(unixSec: number): string {
+    const d = new Date((unixSec + KST_OFFSET_SEC) * 1000);
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+/** 일봉 고가 마커 시작 임계(전일비 %). 이 미만은 마커 없음. */
+export const HIGH_MARKER_MIN_PCT = 10;
+
+/** 일봉 고가 마커 색(전일비 %) — 임계 미만이면 null. 임계 커질수록 강조 그라디언트. */
+export function highMarkerColor(pct: number): string | null {
+    if (pct < HIGH_MARKER_MIN_PCT) return null;
+    if (pct < 15) return "#fbbf24"; // amber
+    if (pct < 20) return "#fb923c"; // orange
+    if (pct < 25) return "#ef4444"; // red
+    if (pct < 30) return "#a855f7"; // purple
+    return "#7c3aed"; // deep purple
+}

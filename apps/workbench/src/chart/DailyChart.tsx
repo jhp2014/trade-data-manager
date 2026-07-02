@@ -1,0 +1,174 @@
+import { useEffect, useRef, useState } from "react";
+import {
+    CandlestickSeries,
+    HistogramSeries,
+    CrosshairMode,
+    LineStyle,
+    createSeriesMarkers,
+    type ISeriesApi,
+    type ISeriesMarkersPluginApi,
+    type Time,
+} from "lightweight-charts";
+import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
+import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
+import type { DailyPoint } from "../lib/derive.js";
+import { fmtRate, fmtEok } from "../lib/format.js";
+
+// 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
+// chart-review RealDailyChart 참고 재구현. 시각축=business day(YYYY-MM-DD).
+export function DailyChart({ points }: { points: DailyPoint[] }): JSX.Element {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+    const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+    const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+    const mapRef = useRef<Map<string, DailyPoint>>(new Map());
+
+    const chartRef = useChartShell(containerRef, () => ({
+        ...baseChartOptions(),
+        crosshair: {
+            mode: CrosshairMode.Normal,
+            vertLine: { width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dotted, labelVisible: true },
+            horzLine: { width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dotted, labelVisible: true },
+        },
+        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.06, bottom: 0.08 } },
+        leftPriceScale: { visible: false },
+        timeScale: { borderVisible: false, barSpacing: 3, rightOffset: 6 },
+        localization: { locale: "ko-KR" },
+    }));
+
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        const candle = chart.addSeries(CandlestickSeries, {
+            upColor: RISE_COLOR,
+            downColor: FALL_COLOR,
+            borderUpColor: RISE_COLOR,
+            borderDownColor: FALL_COLOR,
+            wickUpColor: RISE_COLOR,
+            wickDownColor: FALL_COLOR,
+            priceScaleId: "right",
+            priceLineVisible: false,
+            lastValueVisible: false,
+            priceFormat: { type: "price", precision: 0, minMove: 1 },
+        });
+        const amount = chart.addSeries(
+            HistogramSeries,
+            {
+                priceScaleId: "right",
+                priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(0)}억`, minMove: 1 },
+                priceLineVisible: false,
+                lastValueVisible: false,
+                color: AMOUNT_BAR_COLOR,
+            },
+            1,
+        );
+        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
+        const panes = chart.panes();
+        panes[0]?.setStretchFactor(3);
+        panes[1]?.setStretchFactor(1);
+        candleRef.current = candle;
+        amountRef.current = amount;
+        markersRef.current = createSeriesMarkers(candle);
+        return () => {
+            candleRef.current = null;
+            amountRef.current = null;
+            markersRef.current = null;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        const candle = candleRef.current;
+        const amount = amountRef.current;
+        if (!candle || !amount) return;
+        const map = new Map<string, DailyPoint>();
+        candle.setData(
+            points.map((p) => {
+                map.set(p.time, p);
+                return { time: p.time as Time, open: p.open, high: p.high, low: p.low, close: p.close };
+            }),
+        );
+        mapRef.current = map;
+        amount.setData(points.map((p) => ({ time: p.time as Time, value: p.amount / 1e8, color: p.close >= p.open ? RISE_FILL : FALL_FILL })));
+        // 고가 등락률(전일비) 마커 — 임계 이상만.
+        const markers = [];
+        for (const p of points) {
+            if (!p.prevClose || p.prevClose <= 0) continue;
+            const pct = ((p.high - p.prevClose) / p.prevClose) * 100;
+            const color = highMarkerColor(pct);
+            if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, text: `+${pct.toFixed(0)}` });
+        }
+        markersRef.current?.setMarkers(markers);
+        chartRef.current?.timeScale().fitContent();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [points]);
+
+    const [cursor, setCursor] = useState({ x: 0, y: 0 });
+    const { state: tip } = useCrosshairTooltip({
+        chartRef,
+        containerRef,
+        render: (param) => {
+            const t = param.time as string | undefined;
+            if (t === undefined) return null;
+            const p = mapRef.current.get(t);
+            if (!p) return null;
+            const rate = p.prevClose && p.prevClose > 0 ? ((p.close - p.prevClose) / p.prevClose) * 100 : null;
+            const highPct = p.prevClose && p.prevClose > 0 ? ((p.high - p.prevClose) / p.prevClose) * 100 : null;
+            return (
+                <div>
+                    <div style={{ fontSize: 11, color: "#a0a0a0", marginBottom: 6 }}>{p.time}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "3px 14px", fontSize: 11, fontWeight: 600 }}>
+                        <div style={{ color: "#a0a0a0" }}>종가</div>
+                        <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.close.toLocaleString()}{rate != null && <span style={{ color: rate >= 0 ? RISE_COLOR : FALL_COLOR, marginLeft: 6 }}>{fmtRate(rate)}</span>}</div>
+                        <div style={{ color: "#a0a0a0" }}>고가</div>
+                        <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.high.toLocaleString()}{highPct != null && <span style={{ color: "#d4d4d8", marginLeft: 6 }}>{fmtRate(highPct)}</span>}</div>
+                        <div style={{ color: "#a0a0a0" }}>거래대금</div>
+                        <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(p.amount)}</div>
+                    </div>
+                </div>
+            );
+        },
+    });
+
+    return (
+        <div
+            ref={containerRef}
+            onMouseMove={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setCursor({ x: e.clientX - r.left, y: e.clientY - r.top });
+            }}
+            style={{ position: "relative", width: "100%", height: "100%" }}
+        >
+            {tip.visible && <DailyTip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</DailyTip>}
+        </div>
+    );
+}
+
+function DailyTip({ x, y, containerRef, children }: { x: number; y: number; containerRef: React.RefObject<HTMLDivElement | null>; children: React.ReactNode }): JSX.Element {
+    const cw = containerRef.current?.clientWidth ?? 0;
+    const ch = containerRef.current?.clientHeight ?? 0;
+    const flipX = x > cw - 180;
+    const flipY = y > ch - 120;
+    return (
+        <div
+            style={{
+                position: "absolute",
+                left: flipX ? undefined : x + 14,
+                right: flipX ? cw - x + 14 : undefined,
+                top: flipY ? undefined : y + 14,
+                bottom: flipY ? ch - y + 14 : undefined,
+                pointerEvents: "none",
+                background: "rgba(20,20,24,0.95)",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.10)",
+                borderRadius: 6,
+                padding: "10px 12px",
+                zIndex: 10,
+                minWidth: 150,
+                boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+            }}
+        >
+            {children}
+        </div>
+    );
+}
