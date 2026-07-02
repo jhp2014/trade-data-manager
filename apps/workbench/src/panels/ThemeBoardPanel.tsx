@@ -4,29 +4,11 @@ import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 import { dailyMetric } from "../lib/dailyMetrics.js";
 import { stocksByTheme, themeParents } from "../lib/themeBoard.js";
-import { fmtRate, fmtEok } from "../lib/format.js";
+import { ThemeCard, BoardCenter, MOVER_PCT, type BoardStock } from "../components/board/BoardCard.js";
 
 // 이슈정리 보드(EOD) — market-eye식 테마카드에 등락률 랭킹 + 눕힌 일봉 캔들 + 분포 미니맵 + 포함관계.
 // 데이터: day-summary 한 방(일봉 candle+테마 멤버십). 분봉 벌크 불필요 — EOD 복기라 일봉으로 충분.
 // 종목 클릭 → setCode(Focus) → 차트(단일 /chart) 따라옴. (실시간 복기/스크러버는 별도 보드 ②)
-
-const MOVER_PCT = 5; // 주도주 경계(등락률 %)
-const AXIS_LO = -5; // 눕힌 캔들/분포 축 하한
-const AXIS_HI = 30; // 상한
-
-interface BoardStock {
-    code: string;
-    name: string;
-    market: string | null;
-    themes: string[];
-    changeRate: number;
-    openPct: number;
-    highPct: number;
-    lowPct: number;
-    amount: number;
-    isMover: boolean;
-}
-
 export function ThemeBoardPanel(): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
     const code = useWorkbench((s) => s.focus.code);
@@ -73,9 +55,9 @@ export function ThemeBoardPanel(): JSX.Element {
         return { cards, parents };
     }, [summaryQ.data]);
 
-    if (summaryQ.isLoading) return <Center text={`${date} 로딩중…`} />;
-    if (summaryQ.isError) return <Center text={`요약 오류: ${(summaryQ.error as Error).message}`} />;
-    if (!board) return <Center text="데이터 없음" />;
+    if (summaryQ.isLoading) return <BoardCenter text={`${date} 로딩중…`} />;
+    if (summaryQ.isError) return <BoardCenter text={`요약 오류: ${(summaryQ.error as Error).message}`} />;
+    if (!board) return <BoardCenter text="데이터 없음" />;
 
     return (
         <div style={{ height: "100%", overflowY: "auto", background: "var(--bg-secondary)" }}>
@@ -93,168 +75,8 @@ export function ThemeBoardPanel(): JSX.Element {
                         onPick={setCode}
                     />
                 ))}
-                {board.cards.length === 0 && <Center text="≥2 멤버 테마 없음" />}
+                {board.cards.length === 0 && <BoardCenter text="≥2 멤버 테마 없음" />}
             </div>
-        </div>
-    );
-}
-
-function ThemeCard({
-    theme,
-    stocks,
-    parents,
-    focusCode,
-    onPick,
-}: {
-    theme: string;
-    stocks: BoardStock[];
-    parents: string[];
-    focusCode: string;
-    onPick: (code: string) => void;
-}): JSX.Element {
-    const movers = stocks.filter((s) => s.isMover).length;
-    const hasFocus = stocks.some((s) => s.code === focusCode);
-    return (
-        <div
-            style={{
-                border: `1px solid ${hasFocus ? "var(--accent-primary)" : "var(--border-default)"}`,
-                borderRadius: 8,
-                background: "var(--bg-primary)",
-                overflow: "hidden",
-            }}
-        >
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: 8,
-                    padding: "6px 10px",
-                    borderBottom: "1px solid var(--border-subtle)",
-                }}
-            >
-                <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{theme}</span>
-                <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12 }} title="주도주 / 전체">
-                    {movers} / {stocks.length}
-                </span>
-                {parents.length > 0 && (
-                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-tertiary)" }} title="이 테마를 포함하는 상위 테마">
-                        ⊂ {parents.join(" · ")}
-                    </span>
-                )}
-            </div>
-
-            <DistBar stocks={stocks} />
-
-            <div>
-                {stocks.map((s, i) => (
-                    <StockRow key={s.code} s={s} rank={i + 1} selected={s.code === focusCode} onPick={onPick} />
-                ))}
-            </div>
-        </div>
-    );
-}
-
-function StockRow({
-    s,
-    rank,
-    selected,
-    onPick,
-}: {
-    s: BoardStock;
-    rank: number;
-    selected: boolean;
-    onPick: (code: string) => void;
-}): JSX.Element {
-    const up = s.changeRate >= 0;
-    return (
-        <button
-            onClick={() => onPick(s.code)}
-            style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                width: "100%",
-                textAlign: "left",
-                border: "none",
-                borderBottom: "1px solid var(--border-subtle)",
-                padding: "3px 10px",
-                cursor: "pointer",
-                background: selected ? "var(--bg-active)" : "transparent",
-                font: "inherit",
-            }}
-        >
-            <span className="tabular" style={{ width: 18, color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11 }}>
-                {rank}
-            </span>
-            <span style={{ width: 92, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {s.name}
-            </span>
-            <span className="tabular" style={{ width: 60, textAlign: "right", color: up ? "var(--rise)" : "var(--fall)" }}>
-                {fmtRate(s.changeRate)}
-            </span>
-            <span className="tabular" style={{ width: 52, textAlign: "right", color: "var(--text-tertiary)", fontSize: 11 }}>
-                {fmtEok(s.amount)}
-            </span>
-            <Candle s={s} />
-        </button>
-    );
-}
-
-/** 눕힌 캔들 — 축 AXIS_LO~AXIS_HI(0%은 좌측 근처). 양봉(종가≥시가) 빨강, 음봉 파랑. */
-function Candle({ s }: { s: BoardStock }): JSX.Element {
-    const span = AXIS_HI - AXIS_LO;
-    const x = (p: number): number => Math.max(0, Math.min(100, ((p - AXIS_LO) / span) * 100));
-    const up = s.changeRate >= s.openPct;
-    const color = up ? "var(--rise)" : "var(--fall)";
-    const bodyL = x(Math.min(s.openPct, s.changeRate));
-    const bodyR = x(Math.max(s.openPct, s.changeRate));
-    const wickL = x(s.lowPct);
-    const wickR = x(s.highPct);
-    return (
-        <span style={{ position: "relative", flex: 1, height: 12, minWidth: 60 }}>
-            <span style={{ position: "absolute", left: `${x(0)}%`, top: 0, bottom: 0, width: 1, background: "var(--border-strong)" }} />
-            <span style={{ position: "absolute", left: `${wickL}%`, width: `${Math.max(wickR - wickL, 0.5)}%`, top: 5, height: 2, background: color, opacity: 0.6 }} />
-            <span style={{ position: "absolute", left: `${bodyL}%`, width: `${Math.max(bodyR - bodyL, 1.5)}%`, top: 2, height: 8, background: color, borderRadius: 1 }} />
-        </span>
-    );
-}
-
-/** 분포 미니맵 — 0~AXIS_HI 범위 점. 주도주 빨강, 그 외 파랑. */
-function DistBar({ stocks }: { stocks: BoardStock[] }): JSX.Element {
-    const x = (r: number): number => Math.max(0, Math.min(100, (r / AXIS_HI) * 100));
-    const ticks = [5, 10, 20, 30];
-    return (
-        <div style={{ position: "relative", height: 16, margin: "4px 10px 2px", borderBottom: "1px solid var(--border-subtle)" }}>
-            {ticks.map((t) => (
-                <span key={t} style={{ position: "absolute", left: `${x(t)}%`, bottom: 0, top: 0, width: 1, background: "var(--border-subtle)" }} />
-            ))}
-            {stocks
-                .filter((s) => s.changeRate >= 0 && s.changeRate <= AXIS_HI)
-                .map((s) => (
-                    <span
-                        key={s.code}
-                        title={`${s.name} ${fmtRate(s.changeRate)}`}
-                        style={{
-                            position: "absolute",
-                            left: `${x(s.changeRate)}%`,
-                            top: 5,
-                            width: 5,
-                            height: 5,
-                            marginLeft: -2.5,
-                            borderRadius: "50%",
-                            background: s.isMover ? "var(--rise)" : "var(--fall)",
-                            opacity: 0.7,
-                        }}
-                    />
-                ))}
-        </div>
-    );
-}
-
-function Center({ text }: { text: string }): JSX.Element {
-    return (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-tertiary)", fontSize: 13 }}>
-            {text}
         </div>
     );
 }
