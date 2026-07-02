@@ -52,9 +52,6 @@ export function ThemeBoardPanel(): JSX.Element {
     const { grouped, parents } = board;
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <div style={{ padding: "8px 10px", color: "var(--text-secondary)", fontSize: 12, flexShrink: 0 }}>
-                {date} · 테마 {grouped.themes.length} · 개별 {grouped.individuals.length} · 미분류 {grouped.unclassified.length}
-            </div>
             <BoardLayout grouped={grouped} parents={parents} focusCode={code} onPick={setCode} />
         </div>
     );
