@@ -4,7 +4,7 @@ import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 import { useDayBoard, useLeanIndex, leanSnapshotAt } from "../lib/leanModel.js";
 import { kstToUnix } from "../lib/derive.js";
-import { stocksByTheme, themeParents, selectHotUniverse, isMover, evaluateSignal } from "@trade-data-manager/market/domain";
+import { stocksByTheme, themeParents, groupStocks, selectHotUniverse, isMover, evaluateSignal } from "@trade-data-manager/market/domain";
 import { ThemeCard, BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
 
 // 실시간 복기 보드(②) — time 스크럽으로 특정 시각의 장중 스냅샷을 market-eye식으로 재현.
@@ -71,7 +71,7 @@ export function ReplayBoardPanel(): JSX.Element {
         for (const snap of snaps) {
             if (!hotCodes.has(snap.code)) continue;
             const meta = metaByCode.get(snap.code);
-            if (!meta || meta.themes.length === 0) continue; // 카드는 테마 있는 종목만
+            if (!meta) continue;
             // 1분 델타 신호: t vs t−60초 스냅샷 차분.
             const prev = leanSnapshotAt(index.get(snap.code)!, tUnix - 60);
             const signal = prev ? evaluateSignal(snap.changeRate - prev.rate, snap.amount - prev.cumAmount) : null;
@@ -91,15 +91,8 @@ export function ReplayBoardPanel(): JSX.Element {
             });
         }
         const byTheme = stocksByTheme(stocks);
-        const parents = themeParents(byTheme); // 시점별 동적 포함관계
-        const cards = [...byTheme.entries()]
-            .filter(([, list]) => list.length >= 2)
-            .sort((a, b) => {
-                const ma = a[1].filter((s) => s.isMover).length;
-                const mb = b[1].filter((s) => s.isMover).length;
-                return mb - ma || b[1].length - a[1].length || a[0].localeCompare(b[0], "ko");
-            });
-        return { cards, parents, hot: hotCodes.size };
+        // ≥2 테마=카드 / 개별·미분류 버킷(시점별 동적 포함관계).
+        return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme), hot: hotCodes.size };
     }, [index, metaByCode, tUnix, amountN, rateN]);
 
     if (boardQ.isLoading || summaryQ.isLoading) return <BoardCenter text={`${date} 로딩중… (당일 lean 지표)`} />;
@@ -141,17 +134,25 @@ export function ReplayBoardPanel(): JSX.Element {
             {/* 카드 */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8 }}>
-                    {board.cards.map(([theme, list]) => (
+                    {board.grouped.themes.map((g) => (
                         <ThemeCard
-                            key={theme}
-                            theme={theme}
-                            stocks={list}
-                            parents={board.parents.get(theme) ?? []}
+                            key={g.theme}
+                            theme={g.theme}
+                            stocks={g.stocks}
+                            parents={board.parents.get(g.theme) ?? []}
                             focusCode={code}
                             onPick={setCode}
                         />
                     ))}
-                    {board.cards.length === 0 && <BoardCenter text="이 시각 ≥2 멤버 테마 없음" />}
+                    {board.grouped.individuals.length > 0 && (
+                        <ThemeCard theme="개별 종목" stocks={board.grouped.individuals} parents={[]} focusCode={code} onPick={setCode} />
+                    )}
+                    {board.grouped.unclassified.length > 0 && (
+                        <ThemeCard theme="미분류" stocks={board.grouped.unclassified} parents={[]} focusCode={code} onPick={setCode} />
+                    )}
+                    {board.grouped.themes.length === 0 && board.grouped.individuals.length === 0 && board.grouped.unclassified.length === 0 && (
+                        <BoardCenter text="이 시각 표시할 종목 없음" />
+                    )}
                 </div>
             </div>
         </div>

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { stocksByTheme, themeParents } from "../roster.js";
 import { selectHotUniverse } from "../ranking.js";
 import { isMover, evaluateSignal } from "../signals.js";
+import { groupStocks } from "../grouping.js";
 
 describe("stocksByTheme", () => {
     it("테마별로 묶고 등락률 desc 정렬", () => {
@@ -68,5 +69,25 @@ describe("evaluateSignal (1분 델타)", () => {
         expect(evaluateSignal(0.7, 7_000_000_000)).toEqual({ label: "1분", rateDelta: 0.7, tvDelta: 7_000_000_000 });
         expect(evaluateSignal(0.5, 7_000_000_000)).toBeNull(); // 등락률 부족
         expect(evaluateSignal(0.7, 5_000_000_000)).toBeNull(); // 거래대금 부족(<60억)
+    });
+});
+
+describe("groupStocks (버킷)", () => {
+    const mk = (code: string, themes: string[], changeRate: number) => ({ code, themes, changeRate, isMover: false, amount: 0 });
+    it("≥2 테마=카드 / 개별(테마있음 미카드) / 미분류(테마없음)", () => {
+        const all = [
+            mk("A", ["T"], 5),
+            mk("B", ["T"], 4), // T={A,B} ≥2 → 카드
+            mk("C", ["기타"], 3), // 기타={C} <2 → 개별
+            mk("D", [], 2), // 테마없음 → 미분류
+        ];
+        const byTheme = new Map([
+            ["T", [all[0], all[1]]],
+            ["기타", [all[2]]],
+        ]);
+        const g = groupStocks(byTheme, all);
+        expect(g.themes.map((t) => t.theme)).toEqual(["T"]);
+        expect(g.individuals.map((s) => s.code)).toEqual(["C"]);
+        expect(g.unclassified.map((s) => s.code)).toEqual(["D"]);
     });
 });
