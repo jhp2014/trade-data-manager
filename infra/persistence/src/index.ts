@@ -4,6 +4,7 @@ export { createDb, createPoolFromEnv, type Database, type Transaction, type DbCl
 export { ensureDbEnvLoaded, getDatabaseUrl } from "./env.js";
 export * as schema from "./schema/index.js";
 export { DrizzleDailyCandleRepository } from "./repositories/dailyCandle.repository.js";
+export { DrizzleRawDailyCandleRepository } from "./repositories/rawDailyCandle.repository.js";
 export { DrizzleMinuteCandleRepository } from "./repositories/minuteCandle.repository.js";
 export { DrizzleStockMasterRepository } from "./repositories/stockMaster.repository.js";
 export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.repository.js";

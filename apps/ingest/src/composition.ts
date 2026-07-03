@@ -10,6 +10,7 @@ import {
     KiwoomMarketSnapshotAdapter,
     KisListInfoAdapter,
     KiwoomRawDailyAdapter,
+    KiwoomRawDailyCandleAdapter,
     KiwoomCurrentSharesAdapter,
     KisNewsAdapter,
     TelegramNewsSearchAdapter,
@@ -18,6 +19,7 @@ import {
     createDb,
     createPoolFromEnv,
     DrizzleDailyCandleRepository,
+    DrizzleRawDailyCandleRepository,
     DrizzleMinuteCandleRepository,
     DrizzleStockMasterRepository,
     DrizzleDailyMarketCapRepository,
@@ -25,6 +27,8 @@ import {
 } from "@trade-data-manager/persistence";
 import {
     MarketDataIngestService,
+    RawDailyIngestService,
+    RawDailyBackfillService,
     StockMasterIngestService,
     DailySweepService,
     MinuteSweepService,
@@ -48,6 +52,8 @@ export interface IngestRuntime {
     marketCapRecorder: DailyMarketCapRecorder;
     /** 전종목 날짜별 시총 백필(Command). 과거 임의 구간을 KIS 역산+원주가로 재구성. */
     marketCapBackfiller: MarketCapBackfiller;
+    /** 전종목 원주가(미수정) 일봉 백필(Command). daily_candles_raw 에 append-only. 분봉 %기준·수정계수 역산용. */
+    rawDailyBackfiller: RawDailyBackfillService;
     /** 시황 뉴스 헤드라인 백필(Command). KIS 시황 피드를 연속 역방향 워크로 과거 채움. */
     newsBackfiller: NewsBackfiller;
     /**
@@ -71,6 +77,8 @@ export function createIngestRuntime(): IngestRuntime {
     // KIS 는 차트에서 느림+~15% 누락이라 제외(어댑터·패키지는 휴면 보존). 포트는 그대로라 필요 시 배선만 교체.
     const minuteProvider = new KiwoomMinuteAdapter(kiwoom.rest);
     const dailyRepo = new DrizzleDailyCandleRepository(db);
+    const rawDailyProvider = new KiwoomRawDailyCandleAdapter(kiwoom.rest); // 원주가 일봉(upd_stkpc_tp:"0", KRX+_AL)
+    const rawDailyRepo = new DrizzleRawDailyCandleRepository(db);
     const minuteRepo = new DrizzleMinuteCandleRepository(db);
     const stockMasterRepo = new DrizzleStockMasterRepository(db);
     const marketCapRepo = new DrizzleDailyMarketCapRepository(db);
@@ -82,6 +90,9 @@ export function createIngestRuntime(): IngestRuntime {
     });
     const dailyIngest = new MarketDataIngestService({ dailyProvider, minuteProvider, dailyRepo, minuteRepo });
     const dailySweep = new DailySweepService({ dailyIngest });
+    // 원주가 일봉 백필 — 유니버스 fan-out + 종목별 append-only ingest(자가치유 없음).
+    const rawDailyIngest = new RawDailyIngestService({ rawProvider: rawDailyProvider, rawRepo: rawDailyRepo });
+    const rawDailyBackfiller = new RawDailyBackfillService({ universe, rawIngest: rawDailyIngest });
     const minuteSweep = new MinuteSweepService({ scanRepo: dailyRepo, minuteProvider, minuteRepo });
 
     // 공개 유스케이스
@@ -127,6 +138,7 @@ export function createIngestRuntime(): IngestRuntime {
         collector,
         marketCapRecorder,
         marketCapBackfiller,
+        rawDailyBackfiller,
         newsBackfiller,
         newsSearcher,
         close: async () => {

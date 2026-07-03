@@ -138,13 +138,17 @@ export class KiwoomRest {
         );
     }
 
-    /** [ka10080] 주식분봉차트조회 (1분봉) */
+    /**
+     * [ka10080] 주식분봉차트조회 (1분봉) — **원주가(upd_stkpc_tp:"0", 미수정)**.
+     * 분봉은 원주가로만 저장한다(용량↑ + 소급조정 시 최대테이블 전체 재기록 회피). %·수정주가 뷰는 읽을 때
+     * 원주가 분봉 + 원주가 일봉(전일종가) 기준으로 계산. 절대 수정주가("1")로 되돌리지 말 것.
+     */
     getMinuteChart(stockCode: string, params: { baseDate?: string } & RequestOptions = {}) {
         const { baseDate = "", ...opts } = params;
         return this.request<KiwoomKa10080Response>(
             "ka10080",
             "/api/dostk/chart",
-            { stk_cd: stockCode, tic_scope: "1", upd_stkpc_tp: "1", base_dt: baseDate },
+            { stk_cd: stockCode, tic_scope: "1", upd_stkpc_tp: "0", base_dt: baseDate },
             opts,
         );
     }

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchChart } from "../api/chart.js";
 import { fetchDaySummary } from "../api/daySummary.js";
-import { fetchPriceLines, addPriceLine, removePriceLine, type PriceLine } from "../api/priceLines.js";
+import { fetchPriceLines, addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
 import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
@@ -48,23 +48,44 @@ export function ChartPanel(): JSX.Element {
         staleTime: Infinity,
     });
     const lines = useMemo(() => linesQ.data ?? [], [linesQ.data]);
-    const dLines = useMemo(() => lines.filter((l) => l.memo === "D"), [lines]);
+    // 앵커(캔들 좌표) → 로드된 캔들에서 raw 가격 해소(RenderLine). 앵커 캔들이 아직 없으면 그 선은 생략.
+    // anchorTime 유무로 일봉(D)/분봉(M) 구분. field=고/저/시/종(현재 UI 는 high).
+    const resolvedLines = useMemo<RenderLine[]>(() => {
+        if (!dailyView || !minuteView) return [];
+        const dailyByDate = new Map(dailyView.map((p) => [p.time, p] as const));
+        const minuteByKey = new Map(minuteView.points.map((p) => [`${p.date}T${p.tradeTime}`, p] as const));
+        const out: RenderLine[] = [];
+        for (const l of lines) {
+            if (!l.id) continue;
+            if (l.anchorTime) {
+                const mp = minuteByKey.get(`${l.anchorDate}T${l.anchorTime}`);
+                if (mp) out.push({ id: l.id, price: mp.highPrice, kind: "M" });
+            } else {
+                const dp = dailyByDate.get(l.anchorDate);
+                if (dp) out.push({ id: l.id, price: dp[l.field], kind: "D" });
+            }
+        }
+        return out;
+    }, [lines, dailyView, minuteView]);
+    const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
     const invalidate = (): void => {
         void qc.invalidateQueries({ queryKey: ["price-lines", code, date] });
     };
     const addMut = useMutation({ mutationFn: addPriceLine, onSuccess: invalidate });
     const removeMut = useMutation({ mutationFn: removePriceLine, onSuccess: invalidate });
-    // 봉 우클릭 = 그 봉 고점(raw)에 kind(D/M) 선 토글. 이미 있으면 삭제, 없으면 추가.
-    const toggleLine = (priceRaw: number, kind: "D" | "M"): void => {
+    // 봉 우클릭 = 그 봉 앵커에 선 토글. 같은 앵커(anchorDate+anchorTime)가 이미 있으면 삭제, 없으면 추가.
+    // D/M 구분은 anchorTime 유무로 구조적으로 결정(일봉=없음 / 분봉=있음).
+    const toggleLine = (anchorDate: string, anchorTime: string | undefined): void => {
         if (!code || !date) return;
-        const priceStr = String(Math.round(priceRaw));
-        const existing = lines.find((l) => l.memo === kind && l.price === priceStr);
+        const existing = lines.find(
+            (l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime,
+        );
         if (existing?.id) removeMut.mutate(existing.id);
-        else addMut.mutate({ stockCode: code, date, price: priceStr, memo: kind });
+        else addMut.mutate({ stockCode: code, date, anchorDate, anchorTime, field: "high" });
     };
     // 라벨/선 우클릭 삭제 — id 로 바로 제거(D/M 무관).
-    const removeLine = (line: PriceLine): void => {
-        if (line.id) removeMut.mutate(line.id);
+    const removeLine = (line: RenderLine): void => {
+        removeMut.mutate(line.id);
     };
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음.
     const markerTime = useMemo(() => (time && date ? kstToUnix(date, time) : null), [time, date]);
@@ -108,7 +129,7 @@ export function ChartPanel(): JSX.Element {
                         {expanded !== "minute" && (
                             <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 고점 선(D)">
                                 <PaneLabel text="일봉" />
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} onRightClick={(h) => toggleLine(h, "D")} onRemoveLine={removeLine} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
@@ -116,7 +137,7 @@ export function ChartPanel(): JSX.Element {
                             <div onDoubleClick={() => toggleExpand("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 선(M)">
                                 <PaneLabel text="분봉" />
                                 {minuteView.points.length > 0 ? (
-                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={lines} base={minuteView.base} markerTime={markerTime} onRightClick={(h) => toggleLine(h, "M")} onRemoveLine={removeLine} />
+                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={resolvedLines} base={minuteView.base} markerTime={markerTime} onRightClick={(a) => toggleLine(a.date, a.time)} onRemoveLine={removeLine} />
                                 ) : (
                                     <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음"} />
                                 )}

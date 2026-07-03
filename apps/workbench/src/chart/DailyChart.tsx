@@ -13,12 +13,12 @@ import {
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import type { DailyPoint } from "../lib/derive.js";
-import type { PriceLine } from "../api/priceLines.js";
+import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
-export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { points: DailyPoint[]; lines: PriceLine[]; onRightClick: (highPrice: number) => void; onRemoveLine: (line: PriceLine) => void }): JSX.Element {
+export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { points: DailyPoint[]; lines: RenderLine[]; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -26,7 +26,7 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { poin
     const mapRef = useRef<Map<string, DailyPoint>>(new Map());
     const hoveredTimeRef = useRef<string | null>(null);
     const priceLinesRef = useRef<IPriceLine[]>([]);
-    const linesRef = useRef<PriceLine[]>(lines); // 우클릭 라벨-삭제 매칭용
+    const linesRef = useRef<RenderLine[]>(lines); // 우클릭 라벨-삭제 매칭용
     linesRef.current = lines;
     const onRightClickRef = useRef(onRightClick);
     const onRemoveLineRef = useRef(onRemoveLine);
@@ -131,17 +131,17 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { poin
             // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제.
             if (candle) {
                 for (const line of linesRef.current) {
-                    const ly = candle.priceToCoordinate(Number(line.price));
+                    const ly = candle.priceToCoordinate(line.price);
                     if (ly != null && Math.abs((ly as number) - y) <= 6) {
                         onRemoveLineRef.current(line);
                         return;
                     }
                 }
             }
-            // 2) 아니면 hover 봉 고점에 D 선 추가.
+            // 2) 아니면 hover 봉에 D 선 추가 — 그 봉의 날짜(앵커). 값은 표시 시점 고가에서 읽음.
             const t = hoveredTimeRef.current;
             const p = t ? mapRef.current.get(t) : null;
-            if (p) onRightClickRef.current(p.high);
+            if (p) onRightClickRef.current(p.time);
         };
         el.addEventListener("contextmenu", onCtx);
         return () => {
@@ -163,7 +163,7 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { poin
             }
         }
         priceLinesRef.current = lines.map((line) =>
-            candle.createPriceLine({ price: Number(line.price), color: "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.memo ?? "D" }),
+            candle.createPriceLine({ price: line.price, color: "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.kind }),
         );
     }, [lines]);
 

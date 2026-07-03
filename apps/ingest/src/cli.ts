@@ -110,6 +110,7 @@ const USAGE =
     "  backfill [개월=12] [--overwrite]\n" +
     "  marketcap                        당일 시총 입력(오늘 칸, 전일종가×현재주식수)\n" +
     "  marketcap-backfill <from> [to]   전종목 과거 시총 백필(역산)\n" +
+    "  raw-daily <from> [to]            전종목 원주가(미수정) 일봉 백필(append-only, daily_candles_raw)\n" +
     "  news <from> [to]                 시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
     "  news-search <검색어...> [--from <시각>] [--to <시각>] [--limit N]\n" +
     "                                   텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).\n" +
@@ -179,6 +180,26 @@ async function main(): Promise<void> {
                 console.log(`  ✓ 종목 ${r.universe} · 저장 ${r.stored}행 · 실패 ${r.failed.length}`);
                 if (r.failed.length) {
                     console.log(`    실패: ${r.failed.slice(0, 20).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
+                }
+                break;
+            }
+            case "raw-daily": {
+                if (!a1) throw new Error("사용법: raw-daily <from> [to]");
+                assertDate(a1, "from");
+                const to = a2 ?? seoulToday();
+                assertDate(to, "to");
+                console.log(`▶ 원주가 일봉 백필: ${a1} ~ ${to} (전종목, append-only)`);
+                const r = await rt.rawDailyBackfiller.backfill(
+                    { from: a1, to },
+                    {
+                        onProgress: (done, total) => {
+                            if (done % 200 === 0 || done === total) console.log(`  [${done}/${total}]`);
+                        },
+                    },
+                );
+                console.log(`  ✓ 종목 ${r.universe} · 수집 ${r.fetched} · 실패 ${r.failed.length}`);
+                if (r.failed.length) {
+                    console.log(`    실패: ${r.failed.slice(0, 20).map((f) => f.stockCode).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
                 }
                 break;
             }

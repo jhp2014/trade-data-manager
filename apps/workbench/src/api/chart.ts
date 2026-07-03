@@ -25,10 +25,17 @@ export interface MinuteCandleWire {
     un: DailyBar;
 }
 
+/** 분봉 % 기준가 — 직전 거래일 원주가 종가(시장별) 스칼라. 상장 첫날 등 null 이면 클라가 당일 첫 시가 폴백. */
+export interface RawBase {
+    krxClose: string;
+    unClose: string;
+}
+
 export interface ChartBundle {
     stockCode: string;
     daily: DailyCandle[];
     minutes: MinuteCandleWire[];
+    rawBase: RawBase | null;
 }
 
 export async function fetchChart(code: string, date: string): Promise<ChartBundle> {

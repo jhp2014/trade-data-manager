@@ -6,6 +6,10 @@
 // SDK 응답 → 도메인 모델 매핑(KRX·UN 머지, "+/-" prefix 제거, 거래대금 원화 환산)도 여기.
 export { mergeDailyMarkets, type DateBar } from "./daily/merge.js";
 export { KiwoomDailyAdapter, type KiwoomDailySource } from "./daily/kiwoomDailyAdapter.js";
+export {
+    KiwoomRawDailyCandleAdapter,
+    type KiwoomRawDailyCandleSource,
+} from "./daily/kiwoomRawDailyCandleAdapter.js";
 export { mergeMarkets, type TimeBar } from "./minute/merge.js";
 export { KiwoomMinuteAdapter, type KiwoomMinuteSource } from "./minute/kiwoomMinuteAdapter.js";
 export { KisMinuteAdapter, type KisMinuteSource } from "./minute/kisMinuteAdapter.js";

@@ -1,17 +1,21 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
-import type { PriceLine, PriceLineRepository } from "@trade-data-manager/market";
+import type { PriceLine, PriceLineField, PriceLineRepository } from "@trade-data-manager/market";
 import { PRICE_LINE_REPO } from "./tokens.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}:\d{2}$/;
+const FIELDS = new Set<PriceLineField>(["high", "low", "open", "close"]);
 
 interface AddPriceLineBody {
     stockCode: string;
-    date: string;
-    price: string; // 원(무손실 string)
-    memo?: string; // 선 종류("D"=일봉 고점 / "M"=분봉)
+    date: string; // 차트(종목,날짜) 로드 단위
+    anchorDate: string; // 앵커 캔들 거래일 YYYY-MM-DD
+    anchorTime?: string; // HH:MM:SS — 있으면 분봉 앵커, 없으면 일봉 앵커
+    field?: PriceLineField; // 기본 high
+    memo?: string;
 }
 
-// 차트 가격선 주석 CRUD — 사람이 우클릭으로 긋는 수평선. 읽기=GET, 쓰기=POST/DELETE.
+// 차트 가격선 주석 CRUD — 사람이 우클릭으로 긋는 수평선. 가격 대신 앵커(캔들 좌표)를 저장한다.
 @Controller("price-lines")
 export class PriceLineController {
     constructor(@Inject(PRICE_LINE_REPO) private readonly repo: PriceLineRepository) {}
@@ -25,11 +29,26 @@ export class PriceLineController {
 
     @Post()
     async add(@Body() body: AddPriceLineBody): Promise<PriceLine> {
-        if (!body?.stockCode || !body?.date || !DATE_RE.test(body.date) || body.price == null) {
-            throw new BadRequestException("stockCode·date·price 필수");
+        if (!body?.stockCode || !body?.date || !DATE_RE.test(body.date)) {
+            throw new BadRequestException("stockCode·date 필수");
         }
+        if (!body.anchorDate || !DATE_RE.test(body.anchorDate)) {
+            throw new BadRequestException("anchorDate 필수(YYYY-MM-DD)");
+        }
+        if (body.anchorTime != null && !TIME_RE.test(body.anchorTime)) {
+            throw new BadRequestException("anchorTime 형식(HH:MM:SS)");
+        }
+        const field = body.field ?? "high";
+        if (!FIELDS.has(field)) throw new BadRequestException("field 는 high|low|open|close");
         const [created] = await this.repo.add([
-            { stockCode: body.stockCode, date: body.date, price: String(body.price), memo: body.memo },
+            {
+                stockCode: body.stockCode,
+                date: body.date,
+                anchorDate: body.anchorDate,
+                anchorTime: body.anchorTime,
+                field,
+                memo: body.memo,
+            },
         ]);
         return created;
     }

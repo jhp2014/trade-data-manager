@@ -1,10 +1,24 @@
 // 차트 가격선 주석 CRUD 클라이언트. 우클릭으로 긋는 수평선(자동 저장).
+// **가격이 아니라 앵커(캔들 좌표)를 저장**한다 — 표시 시점에 로드된 캔들에서 값을 읽어 RenderLine 으로 해소.
+// 이점: 수정계수가 바뀌어도 선이 캔들을 따라 자동 이동(재수정 불필요).
+export type PriceLineField = "high" | "low" | "open" | "close";
+
+/** 저장/조회되는 가격선(앵커 기반, wire). */
 export interface PriceLine {
     id?: string; // surrogate(bigint) — 저장 후 존재
     stockCode: string;
-    date: string; // YYYY-MM-DD
-    price: string; // 원(무손실 string)
-    memo?: string; // 선 종류: "D"=일봉 고점 / "M"=분봉
+    date: string; // YYYY-MM-DD — 이 선이 속한 차트(로드 단위)
+    anchorDate: string; // YYYY-MM-DD — 값을 읽어올 앵커 캔들의 거래일
+    anchorTime?: string; // HH:MM:SS — 있으면 분봉 앵커, 없으면 일봉 앵커
+    field: PriceLineField; // 앵커 캔들에서 읽을 값(기본 high)
+    memo?: string;
+}
+
+/** 차트 렌더용 — 앵커를 로드된 캔들에서 해소한 결과. 차트 컴포넌트는 이것만 안다. */
+export interface RenderLine {
+    id: string;
+    price: number; // 해소된 raw 가격(원)
+    kind: "D" | "M"; // 일봉/분봉 앵커 — 색·라벨
 }
 
 export async function fetchPriceLines(code: string, date: string): Promise<PriceLine[]> {
@@ -13,7 +27,16 @@ export async function fetchPriceLines(code: string, date: string): Promise<Price
     return res.json() as Promise<PriceLine[]>;
 }
 
-export async function addPriceLine(line: { stockCode: string; date: string; price: string; memo?: string }): Promise<PriceLine> {
+export interface AddPriceLineInput {
+    stockCode: string;
+    date: string;
+    anchorDate: string;
+    anchorTime?: string;
+    field?: PriceLineField;
+    memo?: string;
+}
+
+export async function addPriceLine(line: AddPriceLineInput): Promise<PriceLine> {
     const res = await fetch("/api/price-lines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

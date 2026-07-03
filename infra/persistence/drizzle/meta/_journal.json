@@ -50,6 +50,27 @@
       "when": 1782886536615,
       "tag": "0006_add_curation_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783054111098,
+      "tag": "0007_minor_mathemanic",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783054600122,
+      "tag": "0008_drop_price_line_price",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783054614205,
+      "tag": "0009_add_price_line_anchor",
+      "breakpoints": true
     }
   ]
 }

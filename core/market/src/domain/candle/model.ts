@@ -64,3 +64,9 @@ export interface PreviousClose {
     krxClose: string;
     unClose: string;
 }
+
+/** 시장별(KRX/UN) 종가 한 쌍. 분봉 % 기준가(원주가 전일종가) 등 스칼라 전달용. 무손실 string. */
+export interface MarketCloses {
+    krxClose: string;
+    unClose: string;
+}

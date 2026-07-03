@@ -39,6 +39,34 @@ export const dailyCandles = market.table(
     ],
 );
 
+// 1b. 원주가(미수정) 일봉 — daily_candles 의 불변 쌍둥이. 구조는 동일(KRX+UN OHLCV+거래대금)하나 **의미가 다르다**:
+//    daily_candles 는 수정주가라 소급조정 시 전체 덮어써짐(자가치유). 이 테이블은 **원주가**(kiwoom upd_stkpc_tp:"0")로
+//    사후 절대 안 바뀌는 진실 → append-only(onConflictDoNothing), 치유 안 함. dailyMarketCap 을 별테이블로 뺀 것과
+//    같은 이유(자가치유 overwrite 가 안 닿게). 쓰임: 분봉 %기준(전일 원종가) + 수정계수 역산(adj_close/raw_close).
+//    접근패턴이 종목단위(범위조회)뿐이라(날짜 전종목 스캔은 수정본 담당) PK (stockCode, tradeDate) 하나가 곧 최적 인덱스.
+export const dailyCandlesRaw = market.table(
+    "daily_candles_raw",
+    {
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(),
+
+        openKrx: integer("open_krx").notNull(),
+        highKrx: integer("high_krx").notNull(),
+        lowKrx: integer("low_krx").notNull(),
+        closeKrx: integer("close_krx").notNull(),
+        volumeKrx: bigint("volume_krx", { mode: "bigint" }).notNull(),
+        amountKrx: bigint("amount_krx", { mode: "bigint" }).notNull(),
+
+        openUn: integer("open_un").notNull(),
+        highUn: integer("high_un").notNull(),
+        lowUn: integer("low_un").notNull(),
+        closeUn: integer("close_un").notNull(),
+        volumeUn: bigint("volume_un", { mode: "bigint" }).notNull(),
+        amountUn: bigint("amount_un", { mode: "bigint" }).notNull(),
+    },
+    (t) => [primaryKey({ columns: [t.stockCode, t.tradeDate] })],
+);
+
 // 2. 분봉 — UN(항상 존재) + KRX(nullable: 프리마켓/시간외 NXT단독엔 KRX 부재). (date,stock,time) 자연키.
 //    파생(amount·누적·rate) 없음. FK 없음. 적재 단위 = (종목, 하루).
 //    PK = (stockCode, tradeDate, tradeTime): 읽기는 "한 종목의 하루"(stock+date prefix, time 정렬)라 PK 가
@@ -111,6 +139,8 @@ export const stockNews = market.table(
 
 export type DailyCandleRow = typeof dailyCandles.$inferSelect;
 export type DailyCandleInsert = typeof dailyCandles.$inferInsert;
+export type DailyCandleRawRow = typeof dailyCandlesRaw.$inferSelect;
+export type DailyCandleRawInsert = typeof dailyCandlesRaw.$inferInsert;
 export type MinuteCandleRow = typeof minuteCandles.$inferSelect;
 export type MinuteCandleInsert = typeof minuteCandles.$inferInsert;
 export type StockMasterRow = typeof stockMaster.$inferSelect;

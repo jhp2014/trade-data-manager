@@ -1,8 +1,8 @@
 // 실시간 복기 보드용 lean 감축 — ChartBundle[](raw 분봉) → 종목별 분당 running 지표(가격/누적).
 // raw OHLCV 전체(수십MB) 대신 보드가 쓰는 것만: 시각·종가·running 고저·누적거래대금 + % 기준가.
 // 클라가 이걸 들고 시점별 랭킹·top-N·스크럽을 인메모리로(서버 무상태 온더플라이).
-// 계산은 core domain 순수함수(previousCloseFromDaily·computeMinuteTradingAmount). 시장=UN(통합).
-import { previousCloseFromDaily, computeMinuteTradingAmount, amountBucketIndex } from "@trade-data-manager/market";
+// 계산은 core domain 순수함수(computeMinuteTradingAmount). base=번들 rawBase(원주가 전일종가). 시장=UN(통합).
+import { computeMinuteTradingAmount, amountBucketIndex } from "@trade-data-manager/market";
 import type { ChartBundle } from "@trade-data-manager/market";
 
 /** 종목 1개의 lean 시계열(시간 오름차순). 가격은 원(정수 문자열 아님 — 전송은 number). */
@@ -48,8 +48,8 @@ export function reduceToLeanBoard(bundles: ChartBundle[], date: string): LeanBoa
         const minutes = b.minutes;
         if (minutes.length === 0) continue;
 
-        const prev = previousCloseFromDaily(b.daily, date);
-        const base = prev ? Number(prev.unClose) : Number(minutes[0].un.open);
+        // % 기준가 = 직전 거래일 원주가 종가(서버 rawBase 스칼라). 분봉이 원주가라 base 도 원주가.
+        const base = b.rawBase ? Number(b.rawBase.unClose) : Number(minutes[0].un.open);
 
         const n = minutes.length;
         const times = new Array<number>(n);

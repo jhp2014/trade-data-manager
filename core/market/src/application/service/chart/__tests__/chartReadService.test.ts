@@ -21,6 +21,7 @@ const minute = (stockCode: string, time: string): MinuteCandle => ({
 interface Data {
     dailyByCode?: Record<string, DailyCandle[]>;
     minuteByCode?: Record<string, MinuteCandle[]>;
+    rawBaseByCode?: Record<string, { krxClose: string; unClose: string }>;
 }
 
 function service(d: Data) {
@@ -40,6 +41,12 @@ function service(d: Data) {
             saveMinuteCandles: async () => {},
             hasMinuteCandlesOnDate: async () => false,
             deleteMinuteCandlesOnDate: async () => 0,
+        },
+        rawDailyCandle: {
+            getPreviousRawClose: async (code) => d.rawBaseByCode?.[code] ?? null,
+            saveRawDailyCandles: async () => {},
+            getRawDailyCandles: async () => [],
+            getEarliestRawDailyDate: async () => null,
         },
     });
     return { svc, ranges };
@@ -67,6 +74,15 @@ describe("ChartReadService", () => {
             "09:03:00",
         ]);
         expect(bundle.minutes[1].un.volume).toBe("0"); // 채움봉
+    });
+
+    it("rawBase = 직전 거래일 원주가 종가 스칼라를 번들에 실어준다(없으면 null)", async () => {
+        const { svc } = service({ rawBaseByCode: { "005930": { krxClose: "329000", unClose: "329500" } } });
+        const bundle = await svc.chartByCode("005930", date);
+        expect(bundle.rawBase).toEqual({ krxClose: "329000", unClose: "329500" });
+        // 원주가 일봉 없는 종목(상장 첫날 등) → null
+        const empty = await svc.chartByCode("999999", date);
+        expect(empty.rawBase).toBeNull();
     });
 
     it("chartsByCodes 는 입력 코드 순서 유지, 데이터 없는 코드는 빈 배열", async () => {

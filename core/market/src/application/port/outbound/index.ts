@@ -3,8 +3,10 @@
 //   collect/   : 일봉·분봉·종목마스터 provider + candle/scan/master repository
 //   marketcap/ : 원주가·상장정보·현재주식수 provider + 시총 repository
 export * from "./collect/dailyCandleProvider.js";
+export * from "./collect/rawDailyCandleProvider.js";
 export * from "./collect/minuteCandleProvider.js";
 export * from "./collect/candleRepository.js";
+export * from "./collect/rawDailyCandleRepository.js";
 export * from "./collect/dailyScanRepository.js";
 export * from "./collect/stockMasterProvider.js";
 export * from "./collect/stockMasterRepository.js";

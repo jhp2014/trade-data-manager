@@ -6,7 +6,7 @@
 //   · review_points : 복기 타점((종목,날짜,시각) 자연키 = caseId. hypothesis 가 하류에서 읽어 의미 부여)
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
-import { pgSchema, varchar, date, time, timestamp, text, integer, bigserial, primaryKey, index } from "drizzle-orm/pg-core";
+import { pgSchema, varchar, date, time, timestamp, text, bigserial, primaryKey, index } from "drizzle-orm/pg-core";
 
 export const curation = pgSchema("curation");
 
@@ -35,15 +35,19 @@ export const dailyIssues = curation.table(
 );
 
 // 2. 가격선 — 한 종목·거래일 차트에 그은 수평 가격선. (종목,날짜) 당 N개.
-//    price 가 draggable(가변)이라 불변 자연키가 없다 → surrogate bigserial id PK(이 스키마 유일). 선끼리도 FK 없음.
-//    createdAt 없음(선 자체 부기 불필요). index(stock,date) = "이 차트의 선들" 로드용.
+//    **가격 대신 앵커(캔들 좌표)를 저장**한다: 값은 표시 시점에 그 캔들에서 읽으므로, 수정계수가 바뀌어도
+//    선이 자동으로 따라간다(가격 재수정 불필요). anchorTime NULL=일봉 앵커 / 값 있음=분봉 앵커.
+//    여러 선이 같은 앵커를 가질 수 있어(field/memo 만 다르게) 여전히 자연키 없음 → surrogate bigserial id PK.
+//    index(stock,date) = "이 차트의 선들" 로드용. 선끼리도 FK 없음.
 export const priceLines = curation.table(
     "price_lines",
     {
         id: bigserial("id", { mode: "bigint" }).primaryKey(),
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
-        tradeDate: date("trade_date").notNull(),
-        price: integer("price").notNull(),
+        tradeDate: date("trade_date").notNull(), // 이 선이 속한 차트(로드 단위)
+        anchorDate: date("anchor_date").notNull(), // 값을 읽어올 앵커 캔들의 거래일
+        anchorTime: time("anchor_time"), // nullable → 일봉 앵커 / 값 있으면 분봉 앵커
+        field: varchar("field", { length: 5 }).notNull().default("high"), // high|low|open|close
         memo: text("memo"),
     },
     (t) => [index("idx_price_lines_chart").on(t.stockCode, t.tradeDate)],

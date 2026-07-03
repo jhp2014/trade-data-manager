@@ -25,7 +25,7 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import { VertLine, asPrimitive } from "./vertLine.js";
 import type { MinutePoint } from "../lib/derive.js";
-import type { PriceLine } from "../api/priceLines.js";
+import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 시점 커서(Focus.time) 세로선
@@ -43,11 +43,11 @@ export function MinuteChart({
 }: {
     points: MinutePoint[];
     showAmountMarkers?: boolean;
-    lines: PriceLine[]; // D+M 선(raw 가격). % 로 변환해 표시.
+    lines: RenderLine[]; // D+M 선(해소된 raw 가격). % 로 변환해 표시.
     base: number | null; // % 기준가(원)
     markerTime?: number | null; // Focus.time 시점 세로선(unix초). null = 없음.
-    onRightClick: (highPrice: number) => void;
-    onRemoveLine: (line: PriceLine) => void;
+    onRightClick: (anchor: { date: string; time: string }) => void;
+    onRemoveLine: (line: RenderLine) => void;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -59,7 +59,7 @@ export function MinuteChart({
     const pointMapRef = useRef<Map<number, MinutePoint>>(new Map());
     const hoveredTimeRef = useRef<number | null>(null);
     const priceLinesRef = useRef<IPriceLine[]>([]);
-    const linesRef = useRef<PriceLine[]>(lines); // 우클릭 라벨-삭제 매칭용(현재 선 데이터)
+    const linesRef = useRef<RenderLine[]>(lines); // 우클릭 라벨-삭제 매칭용(현재 선 데이터)
     const baseRef = useRef<number | null>(base);
     linesRef.current = lines;
     baseRef.current = base;
@@ -237,7 +237,7 @@ export function MinuteChart({
             // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음).
             if (candle && b && b > 0) {
                 for (const line of linesRef.current) {
-                    const pct = ((Number(line.price) - b) / b) * 100;
+                    const pct = ((line.price - b) / b) * 100;
                     const ly = candle.priceToCoordinate(pct);
                     if (ly != null && Math.abs((ly as number) - y) <= 6) {
                         onRemoveLineRef.current(line);
@@ -245,10 +245,10 @@ export function MinuteChart({
                     }
                 }
             }
-            // 2) 아니면 hover 중인 분봉 고점에 M 선 추가.
+            // 2) 아니면 hover 중인 분봉에 M 선 추가 — 그 분의 (날짜,시각) 앵커. 값은 표시 시점 고가에서 읽음.
             const t = hoveredTimeRef.current;
             const p = t != null ? pointMapRef.current.get(t) : null;
-            if (p) onRightClickRef.current(p.highPrice);
+            if (p) onRightClickRef.current({ date: p.date, time: p.tradeTime });
         };
         el.addEventListener("contextmenu", onCtx);
         return () => {
@@ -272,9 +272,9 @@ export function MinuteChart({
         priceLinesRef.current = [];
         if (!base || base <= 0) return;
         for (const line of lines) {
-            const pct = ((Number(line.price) - base) / base) * 100;
+            const pct = ((line.price - base) / base) * 100;
             priceLinesRef.current.push(
-                candle.createPriceLine({ price: pct, color: line.memo === "M" ? "#be7a00" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.memo ?? "D" }),
+                candle.createPriceLine({ price: pct, color: line.kind === "M" ? "#be7a00" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.kind }),
             );
         }
     }, [lines, base]);

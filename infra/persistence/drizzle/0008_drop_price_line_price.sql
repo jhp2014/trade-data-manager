@@ -1,0 +1,1 @@
+ALTER TABLE "curation"."price_lines" DROP COLUMN "price";

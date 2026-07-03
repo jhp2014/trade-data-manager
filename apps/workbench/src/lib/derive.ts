@@ -5,13 +5,14 @@ import {
     computeChangeRate,
     computeMinuteTradingAmount,
     computeAccumulatedAmounts,
-    previousCloseFromDaily,
 } from "@trade-data-manager/market/domain";
 import type { ChartBundle } from "../api/chart.js";
 import type { ChartPriceMode } from "../store/workbench.js";
 
 export interface MinutePoint {
     time: number; // unix seconds (UTC) — lightweight-charts 입력, kstHHmm 가 다시 KST 렌더
+    date: string; // YYYY-MM-DD (KST 거래일) — 가격선(M) 앵커 키
+    tradeTime: string; // HH:MM:SS (KST) — 가격선(M) 앵커 키
     open: number; // 등락률 %
     high: number;
     low: number;
@@ -74,8 +75,6 @@ export function deriveMinuteView(bundle: ChartBundle, mode: ChartPriceMode): Min
     const minutes = bundle.minutes;
     if (minutes.length === 0) return { points: [], baseFallback: false, base: null };
 
-    const date = minutes[0].date;
-
     // 거래대금(UN) 시계열 + 누적 — 도메인 순수함수(BigInt 무손실).
     const unAmounts = minutes.map((c) =>
         computeMinuteTradingAmount({
@@ -88,8 +87,9 @@ export function deriveMinuteView(bundle: ChartBundle, mode: ChartPriceMode): Min
     );
     const cumAmounts = computeAccumulatedAmounts(unAmounts);
 
-    // % 기준가 — 직전 거래일 종가(시장별). 없으면 당일 첫 해당시장 시가로 폴백(상장일).
-    const prev = previousCloseFromDaily(bundle.daily, date);
+    // % 기준가 — 직전 거래일 **원주가** 종가(서버가 rawBase 스칼라로 실어줌). 분봉이 원주가라 base 도 원주가여야
+    // 스케일이 맞다(수정주가 일봉에서 뽑으면 권리락/액분 종목 % 가 틀어짐). 없으면 당일 첫 시가로 폴백(상장일).
+    const prev = bundle.rawBase;
     let base: string | null = prev ? (mode === "un" ? prev.unClose : prev.krxClose) : null;
     let baseFallback = false;
     if (base === null) {
@@ -109,6 +109,8 @@ export function deriveMinuteView(bundle: ChartBundle, mode: ChartPriceMode): Min
         if (o === null || h === null || l === null || cl === null) return;
         points.push({
             time: kstToUnix(c.date, c.time),
+            date: c.date,
+            tradeTime: c.time,
             open: Number(o),
             high: Number(h),
             low: Number(l),

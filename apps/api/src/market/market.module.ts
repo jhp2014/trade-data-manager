@@ -3,6 +3,7 @@ import {
     createDb,
     createPoolFromEnv,
     DrizzleDailyCandleRepository,
+    DrizzleRawDailyCandleRepository,
     DrizzleMinuteCandleRepository,
     DrizzleDailyUniverseProvider,
     DrizzleStockMasterRepository,
@@ -39,6 +40,7 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
                 return new ChartReadService({
                     dailyCandle: new DrizzleDailyCandleRepository(db),
                     minuteCandle: new DrizzleMinuteCandleRepository(db),
+                    rawDailyCandle: new DrizzleRawDailyCandleRepository(db),
                 });
             },
             inject: [MARKET_POOL],
