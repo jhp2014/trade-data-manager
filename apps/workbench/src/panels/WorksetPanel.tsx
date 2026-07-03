@@ -101,31 +101,42 @@ export function WorksetPanel(): JSX.Element {
                 <MonthPicker month={month} months={months} onPick={setSelMonth} />
             </div>
 
-            {/* 핀 — 현재 종목 고정(리스트 선택행과 다른 스타일: 흰 배경·accent 테두리·조준 아이콘). 클릭 = 스크롤 점프. */}
-            {focusCode && (
-                <button
-                    onClick={scrollToCurrent}
-                    title="스크롤: 현재 종목 위치로"
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        flexShrink: 0,
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        borderBottom: "2px solid var(--accent-primary)",
-                        background: "var(--bg-primary)",
-                        padding: "5px 10px",
-                        cursor: "pointer",
-                        font: "inherit",
-                        boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
-                    }}
-                >
-                    <LocateIcon />
-                    <Name name={pinnedName} code={focusCode} color="var(--accent-hover)" strong />
-                </button>
-            )}
+            {/* 핀 — 현재 종목 고정(리스트 선택행과 다른 스타일: 흰 배경·accent 테두리·조준 아이콘). 클릭 = 스크롤 점프.
+                작업셋에 없는 종목(선·타점 모두 없음)이면 코드 대신 안내 문구, 좁아지면 말줄임. */}
+            {focusCode &&
+                (pinnedName ? (
+                    <button
+                        onClick={scrollToCurrent}
+                        title="스크롤: 현재 종목 위치로"
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 7,
+                            flexShrink: 0,
+                            width: "100%",
+                            textAlign: "left",
+                            border: "none",
+                            borderBottom: "2px solid var(--accent-primary)",
+                            background: "var(--bg-primary)",
+                            padding: "5px 10px",
+                            cursor: "pointer",
+                            font: "inherit",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+                        }}
+                    >
+                        <LocateIcon />
+                        <Name name={pinnedName} code={focusCode} color="var(--accent-hover)" strong />
+                    </button>
+                ) : (
+                    <div
+                        title="선택한 종목은 작업셋에 없습니다"
+                        style={{ flexShrink: 0, borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)", padding: "5px 10px" }}
+                    >
+                        <span style={{ display: "block", color: "var(--text-tertiary)", fontSize: 12, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            선택한 종목은 작업셋에 없습니다
+                        </span>
+                    </div>
+                ))}
 
             {/* 스크롤 영역 — 이번 달 전체(날짜 → 종목 → 타점). 선만 있는 종목은 이름만. */}
             <div style={{ overflowY: "auto", flex: 1 }}>

@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { AMOUNT_BUCKETS_EOK, type DeltaHit, type RelationKind } from "@trade-data-manager/market/domain";
-import { fmtRate, fmtEok } from "../../lib/format.js";
+import { fmtEok } from "../../lib/format.js";
+
+// 보드 등락률 — 소수 1자리(부호 포함). 차트는 2자리(fmtRate) 유지, 보드만 간결하게.
+function fmtRate1(v: number): string {
+    return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+}
 import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
 import { AMOUNT_BUCKET_COLORS } from "../../chart/chartUtils.js";
 
@@ -289,13 +294,13 @@ function StockRow({
 }): JSX.Element {
     const up = s.changeRate >= 0;
     const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
-    const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+    const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
     return (
         <button
             onClick={() => onPick(s.code)}
             style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) 56px 52px 28px",
+                gridTemplateColumns: "minmax(0, 1fr) 48px 46px 28px",
                 alignItems: "center",
                 gap: 8,
                 width: "100%",
@@ -331,20 +336,21 @@ function StockRow({
                     </span>
                 )}
             </span>
-            {/* col2: 등락률(고정폭 우측정렬) */}
-            <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600 }}>
-                {fmtRate(s.changeRate)}
+            {/* col2: 등락률(고정폭 우측정렬, 1자리) */}
+            <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600, fontSize: 11 }}>
+                {fmtRate1(s.changeRate)}
             </span>
             {/* col3: 거래대금(신호 시 델타로 덮음). hover 시 거래대금 구간별 막대그래프(이슈). */}
             <span
                 className="tabular"
                 style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 11, fontWeight: s.signal ? 600 : 400, color: s.signal ? "var(--rise)" : "var(--text-tertiary)" }}
-                onMouseEnter={s.buckets ? (e) => setHoverRect(e.currentTarget.getBoundingClientRect()) : undefined}
-                onMouseLeave={s.buckets ? () => setHoverRect(null) : undefined}
+                onMouseEnter={s.buckets ? (e) => setHoverPos({ x: e.clientX, y: e.clientY }) : undefined}
+                onMouseMove={s.buckets ? (e) => setHoverPos({ x: e.clientX, y: e.clientY }) : undefined}
+                onMouseLeave={s.buckets ? () => setHoverPos(null) : undefined}
             >
                 {s.signal ? `+${fmtEok(s.signal.tvDelta)}` : fmtEok(s.amount)}
             </span>
-            {hoverRect && s.buckets && <BucketChart buckets={s.buckets} rect={hoverRect} />}
+            {hoverPos && s.buckets && <BucketChart buckets={s.buckets} pos={hoverPos} />}
             {/* col4: 눕힌 캔들(고정 28px) */}
             <Candle s={s} />
         </button>
@@ -352,16 +358,15 @@ function StockRow({
 }
 
 /** 거래대금 구간별 누적 개수 막대그래프 — 거래대금 hover 시. 막대 위 횟수, 아래 구간 하한(억). */
-function BucketChart({ buckets, rect }: { buckets: number[]; rect: DOMRect }): JSX.Element {
+function BucketChart({ buckets, pos }: { buckets: number[]; pos: { x: number; y: number } }): JSX.Element {
     const max = Math.max(1, ...buckets);
     const H = 42;
     return (
         <div
             style={{
                 position: "fixed",
-                left: rect.right,
-                top: rect.top - 68,
-                transform: "translateX(-100%)",
+                left: pos.x + 14, // 차트 툴팁처럼 커서 오른쪽으로 오프셋, y 는 살짝 위로 — 커서/행을 가리지 않게
+                top: pos.y - 28,
                 display: "flex",
                 gap: 3,
                 alignItems: "flex-end",
@@ -430,7 +435,7 @@ function DistBar({ stocks, mode, onCycle }: { stocks: BoardStock[]; mode: ListMo
                 .map((s) => (
                     <div
                         key={s.code}
-                        title={`${s.name} ${fmtRate(s.changeRate)}`}
+                        title={`${s.name} ${fmtRate1(s.changeRate)}`}
                         style={{
                             position: "absolute",
                             left: `${x(s.changeRate)}%`,
