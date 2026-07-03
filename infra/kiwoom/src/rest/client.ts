@@ -235,37 +235,24 @@ export class KiwoomRest {
      * 반환은 from 이전 과거가 일부 섞일 수 있음(경계 페이지) — 정확한 [from,to] 절단은 소비자(어댑터) 책임.
      * NXT 통합은 stockCode 를 'XXXXXX_AL' 로 넘기면 됨(그대로 전달).
      */
-    async getDailyChartsForRange(
-        stockCode: string,
-        fromDate: string,
-        toDate: string,
-        maxPages = 20,
-    ): Promise<KiwoomDailyCandle[]> {
-        const lease = this.deps.pool.acquire(); // 시퀀스 전체를 한 키에 고정
-        let collected: KiwoomDailyCandle[] = [];
-        let contYn = "N";
-        let nextKey = "";
-        let pages = 0;
-        do {
-            const res = await this.getDailyChart(stockCode, { baseDate: toDate, contYn, nextKey, lease });
-            const page = res.data.stk_dt_pole_chart_qry ?? [];
-            if (page.length === 0) break;
-            collected = collected.concat(page);
-            const oldest = page[page.length - 1];
-            if (oldest && oldest.dt < fromDate) break;
-            contYn = res.contYn;
-            nextKey = res.nextKey;
-            pages++;
-        } while (contYn === "Y" && nextKey && pages < maxPages);
-        return collected;
+    getDailyChartsForRange(stockCode: string, fromDate: string, toDate: string, maxPages = 20): Promise<KiwoomDailyCandle[]> {
+        return this.collectDailyRange((p) => this.getDailyChart(stockCode, p), fromDate, toDate, maxPages);
     }
 
     /** 기간[from,to] 원주가(미수정) 일봉을 연속조회로 수집. getDailyChartsForRange 의 원주가판(시총 백필 전용). */
-    async getRawDailyChartsForRange(
-        stockCode: string,
+    getRawDailyChartsForRange(stockCode: string, fromDate: string, toDate: string, maxPages = 20): Promise<KiwoomDailyCandle[]> {
+        return this.collectDailyRange((p) => this.getRawDailyChart(stockCode, p), fromDate, toDate, maxPages);
+    }
+
+    /**
+     * 일봉 기간 연속조회 공용 루프 — 수정/원주가는 fetchPage 차이뿐이라 페이징 로직을 공유.
+     * baseDate=to 에서 역방향(최신→과거), 가장 오래된 dt 가 from 이전이면 종료. 시퀀스 전체를 한 키에 핀 고정.
+     */
+    private async collectDailyRange(
+        fetchPage: (params: { baseDate: string } & RequestOptions) => Promise<KiwoomApiResponse<KiwoomKa10081Response>>,
         fromDate: string,
         toDate: string,
-        maxPages = 20,
+        maxPages: number,
     ): Promise<KiwoomDailyCandle[]> {
         const lease = this.deps.pool.acquire(); // 시퀀스 전체를 한 키에 고정
         let collected: KiwoomDailyCandle[] = [];
@@ -273,7 +260,7 @@ export class KiwoomRest {
         let nextKey = "";
         let pages = 0;
         do {
-            const res = await this.getRawDailyChart(stockCode, { baseDate: toDate, contYn, nextKey, lease });
+            const res = await fetchPage({ baseDate: toDate, contYn, nextKey, lease });
             const page = res.data.stk_dt_pole_chart_qry ?? [];
             if (page.length === 0) break;
             collected = collected.concat(page);
