@@ -33,7 +33,7 @@ export interface BoardStock {
     signal?: DeltaHit | null;
     /** 필터 조건 불일치(흐림 모드) — 행을 흐릿하게. */
     dim?: boolean;
-    /** 거래대금 구간별 누적 개수(길이 7) — 복기 보드만. 거래대금 hover 시 막대그래프. */
+    /** 거래대금 구간별 EOD 카운트(길이 7) — 이슈 보드만. 거래대금 hover 시 막대그래프. */
     buckets?: number[];
 }
 
@@ -333,7 +333,7 @@ function StockRow({
             <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600 }}>
                 {fmtRate(s.changeRate)}
             </span>
-            {/* col3: 거래대금(신호 시 델타로 덮음). hover 시 거래대금 구간별 막대그래프(복기). */}
+            {/* col3: 거래대금(신호 시 델타로 덮음). hover 시 거래대금 구간별 막대그래프(이슈). */}
             <span
                 className="tabular"
                 style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 11, fontWeight: s.signal ? 600 : 400, color: s.signal ? "var(--rise)" : "var(--text-tertiary)" }}

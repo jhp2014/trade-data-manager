@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { Modal } from "./Modal.js";
 import { useWorkbench } from "../store/workbench.js";
 
@@ -86,6 +85,14 @@ function IssueSettings(): JSX.Element {
                         </label>
                     ))}
                 </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
+                    <input type="checkbox" checked={st.filterNewHigh} onChange={(e) => set({ filterNewHigh: e.target.checked })} style={{ accentColor: "var(--accent-primary)" }} />
+                    신고가 근접
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, opacity: st.filterNewHigh ? 1 : 0.5, pointerEvents: st.filterNewHigh ? "auto" : "none", paddingLeft: 22, flexWrap: "wrap" }}>
+                    <input type="number" value={st.filterNewHighWindow} min={1} onChange={(e) => set({ filterNewHighWindow: Number(e.target.value) })} style={numInput} />거래일 내 최고가의
+                    <input type="number" value={st.filterNewHighTolerance} min={0} step={0.5} onChange={(e) => set({ filterNewHighTolerance: Number(e.target.value) })} style={numInput} /> % 이내
+                </label>
                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <span>불일치 종목</span>
                     {(["dim", "hide"] as const).map((m) => (
@@ -114,33 +121,6 @@ function ReplaySettings(): JSX.Element {
                 등락률 상위
                 <input type="number" value={st.rateN} min={0} onChange={(e) => set({ rateN: Number(e.target.value) })} style={numInput} /> 종목
             </label>
-
-            <div style={{ height: 1, background: "var(--border-subtle)", margin: "4px 0" }} />
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
-                <input type="checkbox" checked={st.filterOn} onChange={(e) => set({ filterOn: e.target.checked })} style={{ accentColor: "var(--accent-primary)" }} />
-                분봉 거래대금 필터
-            </label>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, opacity: st.filterOn ? 1 : 0.5, pointerEvents: st.filterOn ? "auto" : "none", paddingLeft: 22 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    거래대금
-                    <select value={st.filterBucketEok} onChange={(e) => set({ filterBucketEok: Number(e.target.value) })} style={{ ...numInput, width: "auto" }}>
-                        {AMOUNT_BUCKETS_EOK.map((b) => (
-                            <option key={b} value={b}>{b}억↑</option>
-                        ))}
-                    </select>
-                    분봉
-                    <input type="number" value={st.filterMinCount} min={0} onChange={(e) => set({ filterMinCount: Number(e.target.value) })} style={numInput} />개 이상
-                </label>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <span>불일치 종목</span>
-                    {(["dim", "hide"] as const).map((m) => (
-                        <label key={m} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <input type="radio" name="replayFilterMode" checked={st.filterMode === m} onChange={() => set({ filterMode: m })} style={{ accentColor: "var(--accent-primary)" }} />
-                            {m === "dim" ? "흐리게" : "숨김"}
-                        </label>
-                    ))}
-                </div>
-            </div>
         </div>
     );
 }

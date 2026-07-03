@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     CandlestickSeries,
     HistogramSeries,
@@ -23,21 +23,25 @@ import {
 } from "./chartUtils.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
-import { VertLine, asPrimitive } from "./vertLine.js";
+import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 
-const MARKER_LINE_COLOR = "#2563eb"; // 시점 커서(Focus.time) 세로선
+const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
+const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
 
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
-// 데이터는 이미 파생된 MinutePoint[](%/원). 여기선 시리즈 렌더·툴팁만 담당.
+// 데이터는 이미 파생된 MinutePoint[](%/원). 여기선 시리즈 렌더·툴팁·타점 상호작용을 담당.
 export function MinuteChart({
     points,
     showAmountMarkers = true,
     lines,
     base,
     markerTime = null,
+    savedTimes = [],
+    showPointInfo = false,
+    onMovePoint,
     onRightClick,
     onRemoveLine,
 }: {
@@ -45,7 +49,10 @@ export function MinuteChart({
     showAmountMarkers?: boolean;
     lines: RenderLine[]; // D+M 선(해소된 raw 가격). % 로 변환해 표시.
     base: number | null; // % 기준가(원)
-    markerTime?: number | null; // Focus.time 시점 세로선(unix초). null = 없음.
+    markerTime?: number | null; // 현재 타점 세로선(unix초). null = 없음.
+    savedTimes?: number[]; // 저장된 복기 타점 시각(unix초). 흐린 세로선 + hover 아이콘.
+    showPointInfo?: boolean; // 현재 타점 정보 박스 토글
+    onMovePoint: (time: string) => void; // 좌클릭 = 그 봉으로 타점 이동(tradeTime HH:MM:SS)
     onRightClick: (anchor: { date: string; time: string }) => void;
     onRemoveLine: (line: RenderLine) => void;
 }): JSX.Element {
@@ -53,7 +60,8 @@ export function MinuteChart({
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-    const vertLineRef = useRef<VertLine | null>(null);
+    const candleVertsRef = useRef<VertLines | null>(null);
+    const amountVertsRef = useRef<VertLines | null>(null);
     const amountMapRef = useRef<Map<number, number>>(new Map());
     const cumMapRef = useRef<Map<number, number>>(new Map());
     const pointMapRef = useRef<Map<number, MinutePoint>>(new Map());
@@ -63,9 +71,11 @@ export function MinuteChart({
     const baseRef = useRef<number | null>(base);
     linesRef.current = lines;
     baseRef.current = base;
+    const onMovePointRef = useRef(onMovePoint);
     const onRightClickRef = useRef(onRightClick);
     const onRemoveLineRef = useRef(onRemoveLine);
     useEffect(() => {
+        onMovePointRef.current = onMovePoint;
         onRightClickRef.current = onRightClick;
         onRemoveLineRef.current = onRemoveLine;
     });
@@ -86,6 +96,10 @@ export function MinuteChart({
         },
         localization: { locale: "ko-KR", timeFormatter: (t: number) => kstHHmm(t) },
     }));
+
+    // 오버레이(타점 아이콘·정보 박스) 위치 재계산 트리거 — pan/zoom·리사이즈·데이터 변경 시 bump.
+    const [overlayTick, setOverlayTick] = useState(0);
+    const bumpOverlay = (): void => setOverlayTick((v) => v + 1);
 
     // 시리즈 1회 생성(캔들 pane0 + 거래대금 pane1).
     useEffect(() => {
@@ -145,37 +159,71 @@ export function MinuteChart({
         candleRef.current = candle;
         amountRef.current = amount;
         markersRef.current = createSeriesMarkers(candle);
-        // 시점 커서 세로선 primitive(캔들 시리즈에 부착).
-        const vl = new VertLine(null, MARKER_LINE_COLOR);
-        candle.attachPrimitive(asPrimitive(vl));
-        vertLineRef.current = vl;
+        // 타점 세로선 primitive — 캔들·거래대금 두 pane 에 각각 부착(같은 timeScale x 공유 → 아래까지 이어짐).
+        const candleVerts = new VertLines();
+        const amountVerts = new VertLines();
+        candle.attachPrimitive(asPrimitive(candleVerts));
+        amount.attachPrimitive(asPrimitive(amountVerts));
+        candleVertsRef.current = candleVerts;
+        amountVertsRef.current = amountVerts;
+        // pan/zoom 시 오버레이 아이콘 위치 갱신.
+        const ts = chart.timeScale();
+        ts.subscribeVisibleLogicalRangeChange(bumpOverlay);
         return () => {
             try {
-                candle.detachPrimitive(asPrimitive(vl));
+                ts.unsubscribeVisibleLogicalRangeChange(bumpOverlay);
+                candle.detachPrimitive(asPrimitive(candleVerts));
+                amount.detachPrimitive(asPrimitive(amountVerts));
             } catch {
                 /* noop */
             }
             candleRef.current = null;
             amountRef.current = null;
             markersRef.current = null;
-            vertLineRef.current = null;
+            candleVertsRef.current = null;
+            amountVertsRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Focus.time 세로선 — markerTime 을 실제 봉 시각으로 스냅(≤ target 최대). 범위 밖이면 숨김.
-    useEffect(() => {
-        const vl = vertLineRef.current;
-        if (!vl) return;
+    // markerTime/저장타점 → 실제 봉 시각으로 스냅(≤ target 최대). 범위 밖이면 null.
+    const snapToBar = (target: number | null): number | null => {
+        if (target == null) return null;
         let snapped: number | null = null;
-        if (markerTime != null) {
-            for (const p of points) {
-                if (p.time <= markerTime) snapped = p.time;
-                else break;
+        for (const p of points) {
+            if (p.time <= target) snapped = p.time;
+            else break;
+        }
+        return snapped;
+    };
+    const currentSnapped = useMemo(() => snapToBar(markerTime), [markerTime, points]); // eslint-disable-line react-hooks/exhaustive-deps
+    const savedSnapped = useMemo(() => {
+        const seen = new Set<number>();
+        const out: number[] = [];
+        for (const t of savedTimes) {
+            const s = snapToBar(t);
+            if (s != null && !seen.has(s)) {
+                seen.add(s);
+                out.push(s);
             }
         }
-        vl.setTime(snapped as UTCTimestamp | null);
-    }, [markerTime, points]);
+        return out;
+    }, [savedTimes, points]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // 세로선 갱신 — 현재 타점(진한) + 저장 타점(흐린). 두 pane primitive 에 동일 리스트 push.
+    useEffect(() => {
+        const specs: VertLineSpec[] = [];
+        for (const t of savedSnapped) {
+            if (t === currentSnapped) continue; // 현재 타점과 겹치면 진한 선만
+            specs.push({ time: t as UTCTimestamp, color: SAVED_LINE_COLOR, width: 1, dashed: true });
+        }
+        if (currentSnapped != null) {
+            specs.push({ time: currentSnapped as UTCTimestamp, color: MARKER_LINE_COLOR, width: 1, dashed: true });
+        }
+        candleVertsRef.current?.setLines(specs);
+        amountVertsRef.current?.setLines(specs);
+        bumpOverlay();
+    }, [currentSnapped, savedSnapped]);
 
     // points 변경 시 데이터 푸시 + 툴팁 lookup 갱신.
     useEffect(() => {
@@ -217,10 +265,11 @@ export function MinuteChart({
         }
         markersRef.current?.setMarkers(markers);
         chartRef.current?.timeScale().fitContent();
+        bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points, showAmountMarkers]);
 
-    // 우클릭 대상 = hover 중인 분봉. contextmenu 시 그 봉 고점(raw)으로 M 선 토글.
+    // 좌클릭 = 그 봉으로 타점 이동. 우클릭 = 선 삭제/추가(hover 봉 기준).
     useEffect(() => {
         const chart = chartRef.current;
         const el = containerRef.current;
@@ -229,6 +278,12 @@ export function MinuteChart({
             hoveredTimeRef.current = typeof param.time === "number" ? param.time : null;
         };
         chart.subscribeCrosshairMove(onMove);
+        const onClick = (param: { time?: unknown }): void => {
+            const t = typeof param.time === "number" ? param.time : null;
+            const p = t != null ? pointMapRef.current.get(t) : null;
+            if (p) onMovePointRef.current(p.tradeTime);
+        };
+        chart.subscribeClick(onClick);
         const onCtx = (e: MouseEvent): void => {
             e.preventDefault();
             const candle = candleRef.current;
@@ -253,6 +308,7 @@ export function MinuteChart({
         el.addEventListener("contextmenu", onCtx);
         return () => {
             chart.unsubscribeCrosshairMove(onMove);
+            chart.unsubscribeClick(onClick);
             el.removeEventListener("contextmenu", onCtx);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -305,6 +361,25 @@ export function MinuteChart({
 
     // 툴팁 위치는 크로스헤어 좌표(pane마다 기준 다름) 대신 실제 커서 위치로 잡는다.
     const [cursor, setCursor] = useState({ x: 0, y: 0 });
+
+    // 오버레이(타점 아이콘·현재 타점 정보) — 저장 타점 각각에 hover 아이콘, 현재 타점엔 토글 정보 박스.
+    const [hoveredSaved, setHoveredSaved] = useState<number | null>(null);
+    const overlay = useMemo(() => {
+        void overlayTick; // 위치 재계산 의존
+        const ts = chartRef.current?.timeScale();
+        if (!ts) return { saved: [] as Array<{ x: number; point: MinutePoint | null; time: number }>, current: null as { x: number; point: MinutePoint | null } | null };
+        const saved = savedSnapped.map((time) => {
+            const c = ts.timeToCoordinate(time as UTCTimestamp);
+            return { x: c == null ? -9999 : (c as number), point: pointMapRef.current.get(time) ?? null, time };
+        });
+        let current: { x: number; point: MinutePoint | null } | null = null;
+        if (currentSnapped != null) {
+            const c = ts.timeToCoordinate(currentSnapped as UTCTimestamp);
+            if (c != null) current = { x: c as number, point: pointMapRef.current.get(currentSnapped) ?? null };
+        }
+        return { saved, current };
+    }, [overlayTick, savedSnapped, currentSnapped]);
+
     return (
         <div
             ref={containerRef}
@@ -314,6 +389,30 @@ export function MinuteChart({
             }}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
+            {/* 저장 타점 hover 아이콘 — 흐린 세로선 상단. hover 시 그 시각 정보. */}
+            {overlay.saved.map((s, i) =>
+                s.x < 0 ? null : (
+                    <div key={s.time} style={{ position: "absolute", left: s.x - 6, top: 2, zIndex: 8, pointerEvents: "auto" }}>
+                        <div
+                            onMouseEnter={() => setHoveredSaved(i)}
+                            onMouseLeave={() => setHoveredSaved((cur) => (cur === i ? null : cur))}
+                            title="저장된 타점"
+                            style={{ width: 12, height: 12, borderRadius: "50%", background: "rgba(120,120,130,0.9)", border: "1px solid #fff", cursor: "pointer" }}
+                        />
+                        {hoveredSaved === i && s.point && (
+                            <div style={{ position: "absolute", left: 14, top: -2 }}>
+                                <PointInfoBox point={s.point} />
+                            </div>
+                        )}
+                    </div>
+                ),
+            )}
+            {/* 현재 타점 정보 박스 — 토글 ON 시 활성 선 상단에 pin(hover 아님). */}
+            {showPointInfo && overlay.current && overlay.current.point && (
+                <div style={{ position: "absolute", left: overlay.current.x + 8, top: 2, zIndex: 9, pointerEvents: "none" }}>
+                    <PointInfoBox point={overlay.current.point} accent />
+                </div>
+            )}
             <FloatingTooltip visible={tip.visible} x={cursor.x} y={cursor.y} containerRef={containerRef}>
                 {tip.content}
             </FloatingTooltip>
@@ -326,6 +425,31 @@ function rateColor(v: number): string {
     if (v > 0) return RISE_COLOR;
     if (v < 0) return FALL_COLOR;
     return "#a0a0a0";
+}
+
+// 타점 정보 박스 — 저장 타점 hover / 현재 타점 토글 공용. 지금은 등락률·거래대금만, 나중에 항목 확장.
+function PointInfoBox({ point, accent = false }: { point: MinutePoint; accent?: boolean }): JSX.Element {
+    return (
+        <div
+            style={{
+                background: "rgba(20,20,24,0.95)",
+                color: "#fff",
+                border: `1px solid ${accent ? "rgba(37,99,235,0.7)" : "rgba(255,255,255,0.12)"}`,
+                borderRadius: 6,
+                padding: "7px 10px",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+                whiteSpace: "nowrap",
+            }}
+        >
+            <div style={{ fontSize: 10, color: "#a0a0a0", marginBottom: 4 }}>{kstHHmm(point.time)}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "2px 12px", fontSize: 11, fontWeight: 600 }}>
+                <div style={{ color: "#a0a0a0" }}>등락률</div>
+                <div style={{ textAlign: "right", color: rateColor(point.close), fontVariantNumeric: "tabular-nums" }}>{fmtRate(point.close)}</div>
+                <div style={{ color: "#a0a0a0" }}>거래대금</div>
+                <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(point.amount)}</div>
+            </div>
+        </div>
+    );
 }
 
 function OhlcTooltip({

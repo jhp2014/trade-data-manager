@@ -31,15 +31,14 @@ export interface IssueBoardSettings {
     filterAmountEok: number; // 거래대금 억
     filterCombine: "and" | "or";
     filterMode: "dim" | "hide";
+    // 신고가 근접 필터(추가 AND 조건, day-reduction trailingHighs 필요). 당일이 창 최고가의 tol% 이내여야 표시.
+    filterNewHigh: boolean;
+    filterNewHighWindow: number; // 거래일 창
+    filterNewHighTolerance: number; // 최고가 대비 허용 갭 %
 }
 export interface ReplayBoardSettings {
     amountN: number; // 거래대금 top-N
     rateN: number; // 등락률 top-N
-    // 분봉 거래대금 필터: "구간 ≥ filterBucketEok 억 인 분봉 개수 ≥ filterMinCount" 종목만.
-    filterOn: boolean;
-    filterBucketEok: number; // 구간 하한(억) — AMOUNT_BUCKETS_EOK 중 하나
-    filterMinCount: number; // 최소 분봉 개수
-    filterMode: "dim" | "hide";
 }
 
 interface WorkbenchState {
@@ -71,8 +70,8 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     focus: { date: today, code: "", time: null, timeLock: false },
     scope: { issue: null, theme: null },
     chartPriceMode: "un",
-    issueSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim" },
-    replaySettings: { amountN: 80, rateN: 40, filterOn: false, filterBucketEok: 50, filterMinCount: 5, filterMode: "dim" },
+    issueSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
+    replaySettings: { amountN: 80, rateN: 40 },
 
     // date 최상위 무효화: time 리셋 + scope 전체 리셋(이슈·테마 모두 그날 것이라 날짜 넘어가면 stale).
     setDate: (date) =>
