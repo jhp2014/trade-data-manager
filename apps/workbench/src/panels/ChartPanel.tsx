@@ -8,6 +8,7 @@ import { fetchReviewPoints, upsertReviewPoint, removeReviewPoint } from "../api/
 import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
+import { SegButton, PaneLabel, EyeIcon, InfoIcon, TrashIcon, Center } from "./ChartPanelChrome.js";
 
 // 차트 패널 — 일봉(상) + 분봉(하) 듀얼. 영역 더블클릭 = 그 영역만 보기 ↔ 둘 다.
 // 좌상단 종목명(day-summary 캐시 조회), 우상단 통합 세그먼트 컨트롤(마커·타점정보·clear·시장).
@@ -206,98 +207,6 @@ export function ChartPanel(): JSX.Element {
                     </div>
                 )}
             </div>
-        </div>
-    );
-}
-
-// 통합 세그먼트 버튼 — 우상단 컨트롤 바 1개 안의 칸. 첫 칸이 아니면 좌측 구분선.
-function SegButton({
-    active,
-    disabled = false,
-    first = false,
-    onClick,
-    title,
-    children,
-}: {
-    active: boolean;
-    disabled?: boolean;
-    first?: boolean;
-    onClick: () => void;
-    title: string;
-    children: React.ReactNode;
-}): JSX.Element {
-    return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            title={title}
-            style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "3px 9px",
-                border: "none",
-                borderLeft: first ? "none" : "1px solid var(--border-default)",
-                background: active ? "var(--accent-primary)" : "var(--bg-primary)",
-                color: active ? "#fff" : "var(--text-secondary)",
-                cursor: disabled ? "default" : "pointer",
-                opacity: disabled ? 0.4 : 1,
-            }}
-        >
-            {children}
-        </button>
-    );
-}
-
-function PaneLabel({ text }: { text: string }): JSX.Element {
-    return (
-        <span style={{ position: "absolute", top: 4, left: 8, zIndex: 5, fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", background: "var(--bg-primary)", padding: "0 4px", borderRadius: 4, pointerEvents: "none" }}>
-            {text}
-        </span>
-    );
-}
-
-// 거래대금 마커 표시/숨김 아이콘 — market-eye eye / eye-off.
-function EyeIcon({ off }: { off?: boolean }): JSX.Element {
-    return off ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-            <path d="M6.61 6.61A18.5 18.5 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61" />
-            <line x1="2" y1="2" x2="22" y2="22" />
-        </svg>
-    ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z" />
-            <circle cx="12" cy="12" r="3" />
-        </svg>
-    );
-}
-
-// 현재 타점 정보 토글 아이콘 — info.
-function InfoIcon(): JSX.Element {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="16" x2="12" y2="12" />
-            <line x1="12" y1="8" x2="12.01" y2="8" />
-        </svg>
-    );
-}
-
-// 가격선 전체 지우기 아이콘 — trash.
-function TrashIcon(): JSX.Element {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        </svg>
-    );
-}
-
-function Center({ text }: { text: string }): JSX.Element {
-    return (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-tertiary)", fontSize: 13, pointerEvents: "none" }}>
-            {text}
         </div>
     );
 }
