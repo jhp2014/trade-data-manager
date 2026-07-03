@@ -12,6 +12,7 @@ import {
 } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
+import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
@@ -203,36 +204,7 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { poin
             }}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
-            {tip.visible && <DailyTip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</DailyTip>}
-        </div>
-    );
-}
-
-function DailyTip({ x, y, containerRef, children }: { x: number; y: number; containerRef: React.RefObject<HTMLDivElement | null>; children: React.ReactNode }): JSX.Element {
-    const cw = containerRef.current?.clientWidth ?? 0;
-    const ch = containerRef.current?.clientHeight ?? 0;
-    const flipX = x > cw - 180;
-    const flipY = y > ch - 120;
-    return (
-        <div
-            style={{
-                position: "absolute",
-                left: flipX ? undefined : x + 14,
-                right: flipX ? cw - x + 14 : undefined,
-                top: flipY ? undefined : y + 14,
-                bottom: flipY ? ch - y + 14 : undefined,
-                pointerEvents: "none",
-                background: "rgba(20,20,24,0.95)",
-                color: "#fff",
-                border: "1px solid rgba(255,255,255,0.10)",
-                borderRadius: 6,
-                padding: "10px 12px",
-                zIndex: 10,
-                minWidth: 150,
-                boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
-            }}
-        >
-            {children}
+            {tip.visible && <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</FloatingTooltip>}
         </div>
     );
 }

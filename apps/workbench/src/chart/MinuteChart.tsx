@@ -24,9 +24,10 @@ import {
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
+import { FloatingTooltip } from "./tooltip.js";
+import { PointInfoBox, OhlcTooltip } from "./MinuteChartTooltips.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
-import { fmtRate, fmtEok } from "../lib/format.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
 const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
@@ -413,122 +414,11 @@ export function MinuteChart({
                     <PointInfoBox point={overlay.current.point} accent />
                 </div>
             )}
-            <FloatingTooltip visible={tip.visible} x={cursor.x} y={cursor.y} containerRef={containerRef}>
-                {tip.content}
-            </FloatingTooltip>
+            {tip.visible && (
+                <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>
+                    {tip.content}
+                </FloatingTooltip>
+            )}
         </div>
     );
-}
-
-// ── 툴팁 ────────────────────────────────────────────────────────────────
-function rateColor(v: number): string {
-    if (v > 0) return RISE_COLOR;
-    if (v < 0) return FALL_COLOR;
-    return "#a0a0a0";
-}
-
-// 타점 정보 박스 — 저장 타점 hover / 현재 타점 토글 공용. 지금은 등락률·거래대금만, 나중에 항목 확장.
-function PointInfoBox({ point, accent = false }: { point: MinutePoint; accent?: boolean }): JSX.Element {
-    return (
-        <div
-            style={{
-                background: "rgba(20,20,24,0.95)",
-                color: "#fff",
-                border: `1px solid ${accent ? "rgba(37,99,235,0.7)" : "rgba(255,255,255,0.12)"}`,
-                borderRadius: 6,
-                padding: "7px 10px",
-                boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
-                whiteSpace: "nowrap",
-            }}
-        >
-            <div style={{ fontSize: 10, color: "#a0a0a0", marginBottom: 4 }}>{kstHHmm(point.time)}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "2px 12px", fontSize: 11, fontWeight: 600 }}>
-                <div style={{ color: "#a0a0a0" }}>등락률</div>
-                <div style={{ textAlign: "right", color: rateColor(point.close), fontVariantNumeric: "tabular-nums" }}>{fmtRate(point.close)}</div>
-                <div style={{ color: "#a0a0a0" }}>거래대금</div>
-                <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(point.amount)}</div>
-            </div>
-        </div>
-    );
-}
-
-function OhlcTooltip({
-    time,
-    open,
-    high,
-    low,
-    close,
-    amount,
-    cumAmount,
-}: {
-    time: number;
-    open: number;
-    high: number;
-    low: number;
-    close: number;
-    amount: number;
-    cumAmount: number;
-}): JSX.Element {
-    const swing = close >= open ? high - low : -(high - low);
-    const cell = (label: string, value: number) => (
-        <>
-            <div style={{ color: "#a0a0a0" }}>{label}</div>
-            <div style={{ textAlign: "right", color: rateColor(value), fontVariantNumeric: "tabular-nums" }}>
-                {fmtRate(value)}
-            </div>
-        </>
-    );
-    return (
-        <>
-            <div style={{ fontSize: 11, color: "#a0a0a0", marginBottom: 6 }}>{kstHHmm(time)}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "3px 14px", fontSize: 11, fontWeight: 600 }}>
-                {cell("현재", close)}
-                {cell("고가", high)}
-                {cell("저가", low)}
-                {cell("변동폭", swing)}
-                <div style={{ color: "#a0a0a0" }}>거래대금</div>
-                <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(amount)}</div>
-                <div style={{ color: "#a0a0a0" }}>누적</div>
-                <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(cumAmount)}</div>
-            </div>
-        </>
-    );
-}
-
-function FloatingTooltip({
-    visible,
-    x,
-    y,
-    containerRef,
-    children,
-}: {
-    visible: boolean;
-    x: number;
-    y: number;
-    containerRef: React.RefObject<HTMLDivElement | null>;
-    children: React.ReactNode;
-}): JSX.Element | null {
-    if (!visible) return null;
-    const cw = containerRef.current?.clientWidth ?? 0;
-    const ch = containerRef.current?.clientHeight ?? 0;
-    // 커서 기준 우하단에 두되, 가장자리면 뒤집는다(가로/세로).
-    const flipX = x > cw - 180;
-    const flipY = y > ch - 130;
-    const style: React.CSSProperties = {
-        position: "absolute",
-        left: flipX ? undefined : x + 14,
-        right: flipX ? cw - x + 14 : undefined,
-        top: flipY ? undefined : y + 14,
-        bottom: flipY ? ch - y + 14 : undefined,
-        pointerEvents: "none",
-        background: "rgba(20,20,24,0.95)",
-        color: "#fff",
-        border: "1px solid rgba(255,255,255,0.10)",
-        borderRadius: 6,
-        padding: "10px 12px",
-        zIndex: 10,
-        minWidth: 150,
-        boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
-    };
-    return <div style={style}>{children}</div>;
 }
