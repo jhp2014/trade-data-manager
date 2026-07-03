@@ -3,6 +3,8 @@
 // core/market 은 이 토큰을 모른다 — 배선 지식은 전부 apps/api 가장자리에만 산다.
 export const CHART_READER = Symbol("ChartReader");
 export const DAY_CHARTS_READER = Symbol("DayChartsReader");
+export const DAY_REDUCTION_READER = Symbol("DayReductionReader");
 export const DAY_SUMMARY_READER = Symbol("DaySummaryReader");
 export const PRICE_LINE_REPO = Symbol("PriceLineRepository");
+export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
 export const MARKET_POOL = Symbol("MarketPool");
