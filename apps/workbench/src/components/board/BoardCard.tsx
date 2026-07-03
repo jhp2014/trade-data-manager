@@ -81,6 +81,7 @@ export function ThemeCard({
     onGoto,
     isHidden,
     showRank = true,
+    initialMode = "collapsed",
 }: {
     theme: string;
     stocks: BoardStock[];
@@ -96,8 +97,9 @@ export function ThemeCard({
     related?: RelatedInfo[]; // 하단 관련 테마(카드에만, 개별/미분류 없음)
     onGoto?: (theme: string) => void; // 관련 테마 클릭 = 이동
     isHidden?: (theme: string) => boolean; // 숨긴 테마면 관련칩 흐릿
+    initialMode?: ListMode; // 최초 펼침 단계(기본 접힘). 현재 종목 자동승격 카드는 movers 로 열림.
 }): JSX.Element {
-    const [mode, setMode] = useState<ListMode>("collapsed");
+    const [mode, setMode] = useState<ListMode>(initialMode);
     const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
     const rest = stocks.filter((s) => !(s.isMover || s.signal));
     const hot = stocks.filter((s) => s.signal).length;

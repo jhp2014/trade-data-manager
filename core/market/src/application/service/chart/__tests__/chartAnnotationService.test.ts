@@ -11,11 +11,13 @@ function service(d: Data) {
     return new ChartAnnotationService({
         priceLine: {
             listByChart: async (code) => d.linesByCode?.[code] ?? [],
+            listPriceLinedStocks: async () => [],
             add: async (lines) => lines,
             remove: async () => {},
         },
         reviewPoint: {
             listByChart: async (code) => d.pointsByCode?.[code] ?? [],
+            listAllPoints: async () => [],
             upsert: async () => {},
             remove: async () => {},
         },

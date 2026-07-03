@@ -1,4 +1,4 @@
-import type { PriceLine } from "#domain";
+import type { PriceLine, PriceLinedStock } from "#domain";
 
 /**
  * 가격선 저장 포트(outbound). (종목,날짜) 당 N개의 수평선.
@@ -11,6 +11,9 @@ export interface PriceLineRepository {
 
     /** 이 차트(종목,날짜)의 모든 선(그린 순서 = id 오름차순). */
     listByChart(stockCode: string, date: string): Promise<PriceLine[]>;
+
+    /** 선이 하나라도 있는 (종목,날짜)들 — 작업셋 목록(날짜 내림차순). name/lineCount 는 조회 파생. */
+    listPriceLinedStocks(): Promise<PriceLinedStock[]>;
 
     /** 선 1개 삭제(id 로 지목). */
     remove(id: string): Promise<void>;

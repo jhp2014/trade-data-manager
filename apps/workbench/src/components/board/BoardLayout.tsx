@@ -72,6 +72,10 @@ export function BoardLayout({
     const gotoRelated = (theme: string): void => (isHidden(theme) ? unhideGoto : gotoTheme)(theme);
 
     const themeByName = new Map(grouped.themes.map((g) => [g.theme, g]));
+    // 현재 종목이 속한 테마(숨김 포함) — 공통 focusCode 를 보드 로스터와 대조해 파생.
+    // 상단 승격은 안 한다(제자리 유지). 대신 해당 카드는 movers 로 펼치고, 이슈보드 NavRail 2번째 줄에 나열한다.
+    const containsFocus = (g: ThemeGroup<BoardStock>): boolean => !!focusCode && g.stocks.some((s) => s.code === focusCode);
+    const focusThemes = grouped.themes.filter(containsFocus); // 보드 로스터 기준(숨김 포함). 비면 NavRail 이 None 칩.
     const favCards = favorites
         .map((t) => themeByName.get(t))
         .filter((g): g is ThemeGroup<BoardStock> => !!g && !isHidden(g.theme));
@@ -88,28 +92,39 @@ export function BoardLayout({
             return { theme: r.theme, kind: r.kind, movers: roster.filter((s) => s.isMover || s.signal).length, total: roster.length };
         });
 
-    const renderCard = (g: ThemeGroup<BoardStock>): JSX.Element => (
-        <div key={g.theme} ref={(el) => register(g.theme, el)} style={{ scrollMarginTop: 8 }}>
-            <ThemeCard
-                theme={g.theme}
-                stocks={g.stocks}
-                focusCode={focusCode}
-                onPick={onPick}
-                selected={selected === g.theme}
-                onSelect={selectTheme}
-                isFav={favorites.includes(g.theme)}
-                onToggleFav={toggleFav}
-                onHide={hide}
-                related={relatedOf(g)}
-                onGoto={gotoRelated}
-                isHidden={isHidden}
-            />
-        </div>
-    );
+    // 현재 종목이 속한 카드는 제자리에서 movers 로 펼친다. key 에 -focus 를 붙여 focus 진입/이탈 시
+    // 리마운트되게 한다(같은 부모에서 key 가 같으면 React 가 인스턴스를 재사용해 initialMode 가 안 먹음).
+    const renderCard = (g: ThemeGroup<BoardStock>): JSX.Element => {
+        const focus = containsFocus(g);
+        return (
+            <div key={focus ? `${g.theme}-focus` : g.theme} ref={(el) => register(g.theme, el)} style={{ scrollMarginTop: 8 }}>
+                <ThemeCard
+                    theme={g.theme}
+                    stocks={g.stocks}
+                    focusCode={focusCode}
+                    onPick={onPick}
+                    selected={selected === g.theme}
+                    onSelect={selectTheme}
+                    isFav={favorites.includes(g.theme)}
+                    onToggleFav={toggleFav}
+                    onHide={hide}
+                    related={relatedOf(g)}
+                    onGoto={gotoRelated}
+                    isHidden={isHidden}
+                    initialMode={focus ? "movers" : "collapsed"}
+                />
+            </div>
+        );
+    };
 
     return (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <NavRail themes={[...favCards, ...restCards]} selected={selected} onPick={gotoTheme} />
+            <NavRail
+                themes={[...favCards, ...restCards]}
+                selected={selected}
+                onPick={gotoTheme}
+                focusRow={focusCode ? { themes: focusThemes, isHidden, onPick: gotoRelated } : undefined}
+            />
             {/* overflowAnchor none: 카드 펼침(분포바 클릭)에 스크롤이 튀지 않게 — 연속 클릭 유지. */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowAnchor: "none" }}>
                 {/* 폭이 커지면 카드는 일정폭까지만, 그 이상은 좌우 여백. */}
@@ -141,7 +156,7 @@ export function BoardLayout({
                     {favCards.length > 0 && restCards.length > 0 && (
                         <div style={{ height: 1, background: "var(--border-default)", margin: "0 2px" }} />
                     )}
-                    {restCards.map(renderCard)}
+                    {restCards.map((g) => renderCard(g))}
                     {showIndividuals && grouped.individuals.length > 0 && (
                         <ThemeCard theme="개별 종목" stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} showRank={false} />
                     )}
@@ -273,17 +288,43 @@ function HiddenRail({ themes, parents, onUnhide }: { themes: ThemeGroup<BoardSto
 
 /** 상단 sticky 테마칩 내비 — 2줄(위=보이는 테마 board순 / 아래=주목 hot 테마). 각 줄 가로 스크롤.
  *  숨긴 테마는 안 나옴(하단 숨김 Rail 에만). 칩 클릭 = 선택 + 카드로 스크롤. */
-function NavRail({ themes, selected, onPick }: { themes: ThemeGroup<BoardStock>[]; selected: string | null; onPick: (t: string) => void }): JSX.Element | null {
-    if (themes.length === 0) return null;
+function NavRail({
+    themes,
+    selected,
+    onPick,
+    focusRow,
+}: {
+    themes: ThemeGroup<BoardStock>[];
+    selected: string | null;
+    onPick: (t: string) => void;
+    // 2번째 줄 = 현재 종목의 테마(숨김 포함, dim). 3번째 줄 = HOT(주목 시그널, 있을 때만 — 복기보드만).
+    focusRow?: { themes: ThemeGroup<BoardStock>[]; isHidden: (t: string) => boolean; onPick: (t: string) => void };
+}): JSX.Element | null {
     const hotOf = (g: ThemeGroup<BoardStock>): number => g.stocks.filter((s) => s.signal).length;
     const hotThemes = themes.filter((g) => hotOf(g) > 0).sort((a, b) => hotOf(b) - hotOf(a));
+    if (themes.length === 0 && !focusRow && hotThemes.length === 0) return null;
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "5px 8px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)", flexShrink: 0 }}>
-            <ScrollRow>
-                {themes.map((g) => (
-                    <NavChip key={g.theme} g={g} on={selected === g.theme} onClick={() => onPick(g.theme)} />
+            {themes.length > 0 && (
+                <ScrollRow>
+                    {themes.map((g) => (
+                        <NavChip key={g.theme} g={g} on={selected === g.theme} onClick={() => onPick(g.theme)} />
+                    ))}
+                </ScrollRow>
+            )}
+            {/* 2번째 줄 = 현재 종목의 테마(보드 로스터 기준). 종목이 로스터에 없으면 None 칩 하나. */}
+            {focusRow &&
+                (focusRow.themes.length > 0 ? (
+                    <ScrollRow>
+                        {focusRow.themes.map((g) => (
+                            <NavChip key={g.theme} g={g} on={selected === g.theme} onClick={() => focusRow.onPick(g.theme)} dim={focusRow.isHidden(g.theme)} />
+                        ))}
+                    </ScrollRow>
+                ) : (
+                    <div style={{ display: "flex" }}>
+                        <span style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 8, border: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 11, color: "var(--text-tertiary)", opacity: 0.6 }}>None</span>
+                    </div>
                 ))}
-            </ScrollRow>
             {hotThemes.length > 0 && (
                 <ScrollRow>
                     {hotThemes.map((g) => (
@@ -295,14 +336,14 @@ function NavRail({ themes, selected, onPick }: { themes: ThemeGroup<BoardStock>[
     );
 }
 
-function NavChip({ g, on, onClick, hotOnly }: { g: ThemeGroup<BoardStock>; on: boolean; onClick: () => void; hotOnly?: boolean }): JSX.Element {
+function NavChip({ g, on, onClick, hotOnly, dim }: { g: ThemeGroup<BoardStock>; on: boolean; onClick: () => void; hotOnly?: boolean; dim?: boolean }): JSX.Element {
     const movers = g.stocks.filter((s) => s.isMover || s.signal).length;
     const hot = g.stocks.filter((s) => s.signal).length;
     return (
         <button
             onClick={onClick}
-            title={`이동: ${g.theme}`}
-            style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, padding: "2px 8px", borderRadius: 8, border: `1px solid ${on ? "var(--accent-primary)" : "var(--border-default)"}`, background: on ? "var(--accent-soft)" : "var(--bg-secondary)", fontSize: 11, whiteSpace: "nowrap", cursor: "pointer" }}
+            title={dim ? `이동: ${g.theme} (숨김)` : `이동: ${g.theme}`}
+            style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, padding: "2px 8px", borderRadius: 8, border: `1px solid ${on ? "var(--accent-primary)" : "var(--border-default)"}`, background: on ? "var(--accent-soft)" : "var(--bg-secondary)", fontSize: 11, whiteSpace: "nowrap", cursor: "pointer", opacity: dim ? 0.45 : 1 }}
         >
             <span style={{ color: on ? "var(--accent-hover)" : "var(--text-secondary)" }}>{g.theme}</span>
             {hotOnly ? (

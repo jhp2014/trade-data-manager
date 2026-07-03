@@ -37,3 +37,15 @@ export async function removeReviewPoint(code: string, date: string, time: string
     const res = await fetch(`/api/review-points?${new URLSearchParams({ code, date, time })}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`DELETE /review-points ${res.status}`);
 }
+
+/** 작업셋 타점 항목 — 타점 + 종목명(서버 조인). */
+export interface ReviewPointListItem extends ReviewPoint {
+    name: string | null;
+}
+
+/** 전체 타점 + 종목명 — 월 그룹은 클라. 날짜 내림차순, 같은 날 시각 오름차순. */
+export async function fetchAllPoints(): Promise<ReviewPointListItem[]> {
+    const res = await fetch("/api/review-points/all");
+    if (!res.ok) throw new Error(`GET /review-points/all ${res.status}`);
+    return res.json() as Promise<ReviewPointListItem[]>;
+}

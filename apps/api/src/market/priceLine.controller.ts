@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
-import type { PriceLine, PriceLineField, PriceLineRepository } from "@trade-data-manager/market";
+import type { PriceLine, PriceLinedStock, PriceLineField, PriceLineRepository } from "@trade-data-manager/market";
 import { PRICE_LINE_REPO } from "./tokens.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -19,6 +19,12 @@ interface AddPriceLineBody {
 @Controller("price-lines")
 export class PriceLineController {
     constructor(@Inject(PRICE_LINE_REPO) private readonly repo: PriceLineRepository) {}
+
+    // 작업셋 — 선이 있는 (종목,날짜) 전부(월 그룹은 클라). 정적 경로라 @Get() 인덱스와 구분됨.
+    @Get("stocks")
+    listStocks(): Promise<PriceLinedStock[]> {
+        return this.repo.listPriceLinedStocks();
+    }
 
     @Get()
     list(@Query("code") code?: string, @Query("date") date?: string): Promise<PriceLine[]> {

@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Delete, Inject, Query, Body, BadRequestException } from "@nestjs/common";
-import type { ReviewPoint, ReviewPointRepository } from "@trade-data-manager/market";
+import type { ReviewPoint, ReviewPointListItem, ReviewPointRepository } from "@trade-data-manager/market";
 import { REVIEW_POINT_REPO } from "./tokens.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -17,6 +17,12 @@ interface UpsertReviewPointBody {
 @Controller("review-points")
 export class ReviewPointController {
     constructor(@Inject(REVIEW_POINT_REPO) private readonly repo: ReviewPointRepository) {}
+
+    // 작업셋 — 전체 타점 + 종목명(월 그룹은 클라). 정적 경로라 @Get() 인덱스와 구분됨.
+    @Get("all")
+    listAll(): Promise<ReviewPointListItem[]> {
+        return this.repo.listAllPoints();
+    }
 
     @Get()
     list(@Query("code") code?: string, @Query("date") date?: string): Promise<ReviewPoint[]> {

@@ -50,3 +50,18 @@ export async function removePriceLine(id: string): Promise<void> {
     const res = await fetch(`/api/price-lines/${id}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`DELETE /price-lines/${id} ${res.status}`);
 }
+
+/** 작업셋 항목 — 선이 있는 (종목,날짜) 1건. name/lineCount 는 서버 집계 파생. */
+export interface PriceLinedStock {
+    stockCode: string;
+    date: string; // YYYY-MM-DD
+    name: string | null;
+    lineCount: number;
+}
+
+/** 선이 하나라도 있는 (종목,날짜) 전부 — 월 그룹은 클라. 날짜 내림차순. */
+export async function fetchPriceLinedStocks(): Promise<PriceLinedStock[]> {
+    const res = await fetch("/api/price-lines/stocks");
+    if (!res.ok) throw new Error(`GET /price-lines/stocks ${res.status}`);
+    return res.json() as Promise<PriceLinedStock[]>;
+}

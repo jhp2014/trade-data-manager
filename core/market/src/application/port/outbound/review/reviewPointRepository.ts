@@ -1,4 +1,4 @@
-import type { ReviewPoint } from "#domain";
+import type { ReviewPoint, ReviewPointListItem } from "#domain";
 
 /**
  * 복기 타점 저장 포트(outbound). 자연키 (stockCode, date, time) = caseId.
@@ -13,6 +13,9 @@ export interface ReviewPointRepository {
 
     /** 이 차트(종목,날짜)의 타점들(시각 오름차순). */
     listByChart(stockCode: string, date: string): Promise<ReviewPoint[]>;
+
+    /** 모든 타점 + 종목명 — 월별 작업셋 목록(날짜 내림차순, 같은 날 시각 오름차순). */
+    listAllPoints(): Promise<ReviewPointListItem[]>;
 
     /** 타점 1개 삭제(자연키로 지목). */
     remove(stockCode: string, date: string, time: string): Promise<void>;

@@ -75,6 +75,7 @@ export function ChartPanel(): JSX.Element {
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
     const invalidateLines = (): void => {
         void qc.invalidateQueries({ queryKey: ["price-lines", code, date] });
+        void qc.invalidateQueries({ queryKey: ["price-lined-stocks"] }); // 작업셋 패널 즉시 반영
     };
     const addMut = useMutation({ mutationFn: addPriceLine, onSuccess: invalidateLines });
     const removeMut = useMutation({ mutationFn: removePriceLine, onSuccess: invalidateLines });
@@ -109,6 +110,7 @@ export function ChartPanel(): JSX.Element {
     const reviewPoints = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
     const invalidateReview = (): void => {
         void qc.invalidateQueries({ queryKey: ["review-points", code, date] });
+        void qc.invalidateQueries({ queryKey: ["all-points"] }); // 작업셋 패널 즉시 반영
     };
     const upsertRpMut = useMutation({ mutationFn: upsertReviewPoint, onSuccess: invalidateReview });
     const removeRpMut = useMutation({
