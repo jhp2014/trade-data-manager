@@ -23,6 +23,14 @@ export interface Scope {
     theme: string | null;
 }
 
+// 검색 컨텍스트(Focus와 독립된 2번째 스칼라 축). 일봉 봉 클릭 = "작업공간(Focus)을 안 옮기고
+// (종목, 그 날짜)만 뉴스에서 조회". null = 검색 모드 아님(뉴스 패널이 Focus 를 따라감).
+// 종목이 바뀌면(setCode/setFocus 로 code 변경) 자동 해제 → Focus 복귀. 나중에 N개 명명 컨텍스트로 일반화될 씨앗.
+export interface Search {
+    code: string;
+    date: string; // YYYY-MM-DD
+}
+
 // 보드 설정 — 전역 설정 모달(사이드바)이 편집, 각 보드가 구독. 패널별 gear 대신 전역 1개.
 export interface IssueBoardSettings {
     showIndividuals: boolean;
@@ -45,6 +53,7 @@ export interface ReplayBoardSettings {
 interface WorkbenchState {
     focus: Focus;
     scope: Scope;
+    search: Search | null; // 검색 모드 컨텍스트(null = Focus 따라감)
     chartPriceMode: ChartPriceMode; // 뷰 설정(축 아님) — 분봉 % 기준 시장
     newsSearchEngine: NewsSearchEngine; // HTS 뉴스 제목 검색 엔진(전역 토글)
     issueSettings: IssueBoardSettings;
@@ -59,6 +68,8 @@ interface WorkbenchState {
     setIssue: (issue: string | null) => void;
     setTheme: (theme: string | null) => void;
     clearScope: () => void;
+    // 검색 모드 — 봉 클릭이 세팅, ✕ 로 해제(null). 종목 바뀌면 setCode/setFocus 가 자동 해제.
+    setSearch: (search: Search | null) => void;
     // 뷰 설정
     setChartPriceMode: (mode: ChartPriceMode) => void;
     setNewsSearchEngine: (engine: NewsSearchEngine) => void;
@@ -72,6 +83,7 @@ const today = new Date().toISOString().slice(0, 10);
 export const useWorkbench = create<WorkbenchState>((set) => ({
     focus: { date: today, code: "", time: null, timeLock: false },
     scope: { issue: null, theme: null },
+    search: null,
     chartPriceMode: "un",
     newsSearchEngine: "naver",
     issueSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
@@ -80,15 +92,18 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     // date 최상위 무효화: time 리셋 + scope 전체 리셋(이슈·테마 모두 그날 것이라 날짜 넘어가면 stale).
     setDate: (date) =>
         set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { issue: null, theme: null } })),
+    // code 변경 시 검색 모드 자동 해제(종목 바뀌면 Focus 복귀). 같은 종목이면 유지.
     setCode: (code) =>
-        set((s) => ({ focus: { ...s.focus, code, time: s.focus.timeLock ? s.focus.time : null } })),
+        set((s) => ({ focus: { ...s.focus, code, time: s.focus.timeLock ? s.focus.time : null }, search: code !== s.focus.code ? null : s.search })),
     setTime: (time) => set((s) => ({ focus: { ...s.focus, time } })),
-    setFocus: ({ date, code, time }) => set((s) => ({ focus: { ...s.focus, date, code, time } })),
+    setFocus: ({ date, code, time }) =>
+        set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search })),
     setTimeLock: (on) => set((s) => ({ focus: { ...s.focus, timeLock: on } })),
 
     setIssue: (issue) => set((s) => ({ scope: { ...s.scope, issue } })),
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { issue: null, theme: null } })),
+    setSearch: (search) => set(() => ({ search })),
     setChartPriceMode: (mode) => set(() => ({ chartPriceMode: mode })),
     setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
     setIssueSettings: (patch) => set((s) => ({ issueSettings: { ...s.issueSettings, ...patch } })),

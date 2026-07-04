@@ -18,6 +18,7 @@ export function ChartPanel(): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
     const time = useWorkbench((s) => s.focus.time);
     const setTime = useWorkbench((s) => s.setTime);
+    const setSearch = useWorkbench((s) => s.setSearch);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const setMode = useWorkbench((s) => s.setChartPriceMode);
     const [expanded, setExpanded] = useState<"daily" | "minute" | null>(null);
@@ -179,7 +180,7 @@ export function ChartPanel(): JSX.Element {
                         {expanded !== "minute" && (
                             <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 고점 선(D)">
                                 <PaneLabel text="일봉" />
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={(d) => code && setSearch({ code, date: d })} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}

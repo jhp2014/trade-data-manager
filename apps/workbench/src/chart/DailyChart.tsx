@@ -37,7 +37,7 @@ function fmtDailyCrosshair(time: Time): string {
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
-export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { points: DailyPoint[]; lines: RenderLine[]; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void }): JSX.Element {
+export function DailyChart({ points, lines, onRightClick, onRemoveLine, onCandleClick }: { points: DailyPoint[]; lines: RenderLine[]; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -49,9 +49,11 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { poin
     linesRef.current = lines;
     const onRightClickRef = useRef(onRightClick);
     const onRemoveLineRef = useRef(onRemoveLine);
+    const onCandleClickRef = useRef(onCandleClick);
     useEffect(() => {
         onRightClickRef.current = onRightClick;
         onRemoveLineRef.current = onRemoveLine;
+        onCandleClickRef.current = onCandleClick;
     });
 
     const chartRef = useChartShell(containerRef, () => ({
@@ -143,6 +145,11 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { poin
             hoveredTimeRef.current = typeof param.time === "string" ? param.time : null;
         };
         chart.subscribeCrosshairMove(onMove);
+        // 봉 좌클릭 = 그 날짜로 검색 모드(뉴스 조회). param.time 은 일봉 날짜 문자열(빈 영역 클릭이면 undefined).
+        const onClick = (param: { time?: unknown }): void => {
+            if (typeof param.time === "string") onCandleClickRef.current?.(param.time);
+        };
+        chart.subscribeClick(onClick);
         const onCtx = (e: MouseEvent): void => {
             e.preventDefault();
             const candle = candleRef.current;
@@ -165,6 +172,7 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { poin
         el.addEventListener("contextmenu", onCtx);
         return () => {
             chart.unsubscribeCrosshairMove(onMove);
+            chart.unsubscribeClick(onClick);
             el.removeEventListener("contextmenu", onCtx);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps

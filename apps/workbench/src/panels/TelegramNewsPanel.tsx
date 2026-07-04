@@ -13,23 +13,32 @@ const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const INTRADAY_BG = "rgba(22,121,111,0.14)"; // 현재시간 이전 시간값 배경 — --accent-primary 틴트
 
 export function TelegramNewsPanel(): JSX.Element {
-    const code = useWorkbench((s) => s.focus.code);
-    const date = useWorkbench((s) => s.focus.date);
+    const focusCode = useWorkbench((s) => s.focus.code);
+    const focusDate = useWorkbench((s) => s.focus.date);
     const focusTime = useWorkbench((s) => s.focus.time);
+    const search = useWorkbench((s) => s.search);
+    const setSearch = useWorkbench((s) => s.setSearch);
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
     const rafRef = useRef(0);
 
+    // 유효 code/targetDate — 검색 모드면 search, 아니면 Focus. targetDate = 검색하려는 날짜(미확정).
+    const inSearch = search != null;
+    const code = inSearch ? search.code : focusCode;
+    const targetDate = inSearch ? search.date : focusDate;
+
+    // 종목명 — Focus 날짜 캐시(code === focus.code 라 항상 해소).
     const summaryQ = useQuery({
-        queryKey: ["day-summary", date],
-        queryFn: () => fetchDaySummary(date),
-        enabled: date.length > 0,
+        queryKey: ["day-summary", focusDate],
+        queryFn: () => fetchDaySummary(focusDate),
+        enabled: focusDate.length > 0,
         staleTime: Infinity,
     });
     const name = useMemo(() => summaryQ.data?.stocks.find((s) => s.stockCode === code)?.name ?? null, [summaryQ.data, code]);
 
     const [input, setInput] = useState("");
-    const [query, setQuery] = useState(""); // 실제 검색어(수동 트리거로만 갱신)
+    const [query, setQuery] = useState(""); // 확정 검색어(수동 트리거로만 갱신)
+    const [searchDate, setSearchDate] = useState(""); // 확정 검색 날짜. targetDate 와 다르면 pending(검색 모드도 여기 걸림)
     const [editing, setEditing] = useState(false); // 사용자가 명시적으로 편집 진입(중앙 입력 autofocus)
     const [visibleAt, setVisibleAt] = useState<string | null>(null); // 스크롤 최상단 항목 시각(헤더 2줄)
     const [activeMatch, setActiveMatch] = useState(-1); // Ctrl+F 현재 매치. -1 = 활성 없음(주황 해제)
@@ -39,16 +48,16 @@ export function TelegramNewsPanel(): JSX.Element {
     }, [name]);
 
     const q = useInfiniteQuery({
-        queryKey: ["news-telegram", query, date],
-        initialPageParam: null as string | null, // beforeDate 커서(YYYY-MM-DD). null = focus.date 하루
-        queryFn: ({ pageParam }) => fetchTelegramNews({ q: query, date, beforeDate: pageParam ?? undefined }),
+        queryKey: ["news-telegram", query, searchDate],
+        initialPageParam: null as string | null, // beforeDate 커서(YYYY-MM-DD). null = searchDate 하루
+        queryFn: ({ pageParam }) => fetchTelegramNews({ q: query, date: searchDate, beforeDate: pageParam ?? undefined }),
         getNextPageParam: (lastPage, allPages) => {
             // 초기 페이지는 비어도 더보기 허용(과거에 있을 수 있음). 더보기 페이지가 비면 종료(과거 소진).
             const isInitial = allPages.length === 1;
             if (!isInitial && lastPage.items.length === 0) return undefined;
             return lastPage.oldestDate; // 이 페이지가 걸어간 가장 과거 날짜 = 다음 커서
         },
-        enabled: query.length > 0 && date.length > 0,
+        enabled: query.length > 0 && searchDate.length > 0,
         staleTime: Infinity,
     });
 
@@ -72,18 +81,22 @@ export function TelegramNewsPanel(): JSX.Element {
     }, [query]);
     const totalMatches = useMemo(() => items.reduce((a, it) => a + countMatches(it.text, hlRe), 0), [items, hlRe]);
 
-    const pending = input.trim() !== query;
-    const showEdit = editing || pending || query.length === 0; // 중앙 입력 표시(결과 숨김)
+    // 검색어 또는 날짜가 확정본과 다르면 pending → 중앙 입력(CTA). 검색 모드(봉클릭 날짜 변경)도 여기 걸려 "세팅만" 됨.
+    const pending = input.trim() !== query || targetDate !== searchDate;
+    const showEdit = editing || pending || query.length === 0;
     const canLoadMore = q.hasNextPage && !q.isFetchingNextPage;
 
-    // 현재시간 커서(당일 focus.time 의 절대 instant). 이하 = "장중 그 시점에 참고 가능".
-    const cursorMs = useMemo(() => (focusTime ? new Date(`${date}T${focusTime}+09:00`).getTime() : null), [date, focusTime]);
+    // 현재시간 커서 — 검색 모드에선 없음(그 날짜엔 focus.time 무의미). 정상 모드에서만 focus.date+focus.time.
+    const cursorMs = useMemo(() => (!inSearch && focusTime ? new Date(`${focusDate}T${focusTime}+09:00`).getTime() : null), [inSearch, focusDate, focusTime]);
 
     const runSearch = (): void => {
         const next = input.trim();
         if (!next) return;
-        if (next === query) void qc.resetQueries({ queryKey: ["news-telegram", next, date] });
-        else setQuery(next);
+        if (next === query && targetDate === searchDate) void qc.resetQueries({ queryKey: ["news-telegram", next, targetDate] });
+        else {
+            setQuery(next);
+            setSearchDate(targetDate);
+        }
         setEditing(false);
         setActiveMatch(-1);
     };
@@ -91,7 +104,7 @@ export function TelegramNewsPanel(): JSX.Element {
     useEffect(() => {
         setVisibleAt(null);
         setActiveMatch(-1);
-    }, [date, query]);
+    }, [searchDate, query]);
 
     // Ctrl+F 매치 이동 → 해당 하이라이트로 스크롤.
     useEffect(() => {
@@ -154,6 +167,11 @@ export function TelegramNewsPanel(): JSX.Element {
                         <SearchIcon />
                     </button>
                     <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                        {inSearch && (
+                            <button className="icon-btn" onClick={() => setSearch(null)} title="검색 모드 해제 — Focus 로 돌아가기" style={{ marginRight: 2 }}>
+                                <BackIcon />
+                            </button>
+                        )}
                         {!showEdit && totalMatches > 0 && (
                             <>
                                 <button className="icon-btn" onClick={() => gotoMatch(-1)} title="이전 매치" style={{ padding: "0 2px" }}>◂</button>
@@ -205,7 +223,7 @@ export function TelegramNewsPanel(): JSX.Element {
                         {q.isLoading && <Center><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>검색 중… (텔레그램)</span></Center>}
                         {q.isError && <Center><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>오류: {(q.error as Error).message}</span></Center>}
                         {!q.isLoading && !q.isError && items.length === 0 && <Center><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>결과 없음</span></Center>}
-                        <NewsList items={items} hlRe={hlRe} activeMatch={activeMatch} focusDate={date} cursorMs={cursorMs} />
+                        <NewsList items={items} hlRe={hlRe} activeMatch={activeMatch} focusDate={focusDate} cursorMs={cursorMs} />
                     </>
                 )}
             </div>
@@ -341,6 +359,16 @@ function ChevronDownIcon(): JSX.Element {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="6 9 12 15 18 9" />
+        </svg>
+    );
+}
+
+// 검색 모드 해제(←) — Focus 로 돌아가기.
+function BackIcon(): JSX.Element {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
         </svg>
     );
 }
