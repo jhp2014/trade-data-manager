@@ -17,6 +17,24 @@ import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 
+const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
+
+// 크로스헤어 세로선 날짜 라벨 — "26년 12월 26일 (금)". time 은 일봉 business-day 문자열이지만
+// BusinessDay 객체·UTCTimestamp 도 방어적으로 처리.
+function fmtDailyCrosshair(time: Time): string {
+    let y: number, mo: number, d: number;
+    if (typeof time === "string") {
+        [y, mo, d] = time.split("-").map(Number) as [number, number, number];
+    } else if (typeof time === "object" && "year" in time) {
+        ({ year: y, month: mo, day: d } = time);
+    } else {
+        const dt = new Date((time as number) * 1000);
+        [y, mo, d] = [dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate()];
+    }
+    const wd = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+    return `${String(y).slice(-2)}년 ${mo}월 ${d}일 (${WEEKDAYS_KO[wd]})`;
+}
+
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
 export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { points: DailyPoint[]; lines: RenderLine[]; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void }): JSX.Element {
@@ -46,7 +64,7 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine }: { poin
         rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.06, bottom: 0.08 } },
         leftPriceScale: { visible: false },
         timeScale: { borderVisible: false, barSpacing: 3, rightOffset: 6 },
-        localization: { locale: "ko-KR" },
+        localization: { locale: "ko-KR", timeFormatter: fmtDailyCrosshair },
     }));
 
     useEffect(() => {
