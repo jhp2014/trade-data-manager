@@ -32,7 +32,7 @@ export function TelegramNewsPanel(): JSX.Element {
     const [query, setQuery] = useState(""); // 실제 검색어(수동 트리거로만 갱신)
     const [editing, setEditing] = useState(false); // 사용자가 명시적으로 편집 진입(중앙 입력 autofocus)
     const [visibleAt, setVisibleAt] = useState<string | null>(null); // 스크롤 최상단 항목 시각(헤더 2줄)
-    const [activeMatch, setActiveMatch] = useState(0);
+    const [activeMatch, setActiveMatch] = useState(-1); // Ctrl+F 현재 매치. -1 = 활성 없음(주황 해제)
 
     useEffect(() => {
         setInput(name ?? "");
@@ -85,12 +85,12 @@ export function TelegramNewsPanel(): JSX.Element {
         if (next === query) void qc.resetQueries({ queryKey: ["news-telegram", next, date] });
         else setQuery(next);
         setEditing(false);
-        setActiveMatch(0);
+        setActiveMatch(-1);
     };
 
     useEffect(() => {
         setVisibleAt(null);
-        setActiveMatch(0);
+        setActiveMatch(-1);
     }, [date, query]);
 
     // Ctrl+F 매치 이동 → 해당 하이라이트로 스크롤.
@@ -102,17 +102,17 @@ export function TelegramNewsPanel(): JSX.Element {
     // focus.time 이동 → 그 시각 이하(과거) 중 가장 최근 항목의 첫 키워드 매치로 스크롤 + 좌우탐색 앵커를 거기로.
     // 매치 없는 항목(링크 프리뷰로만 잡힌 경우)이면 항목 자체로 스크롤. (편집 중엔 스킵)
     useEffect(() => {
-        if (cursorMs == null || showEdit) return;
-        const target = items.find((it) => new Date(it.at).getTime() <= cursorMs); // desc → 첫 항목이 그 이하 중 최근
-        if (!target) return;
-        const el = listRef.current?.querySelector<HTMLElement>(`[data-item-ref="${target.ref}"]`);
-        if (!el) return;
-        const hl = el.querySelector<HTMLElement>("[data-hl-index]");
+        if (showEdit) return;
+        // 시간 마커 없거나(null) 그 시각 이하 항목/매치가 없으면 활성(주황) 해제. 있으면 그 매치로 이동+앵커.
+        const target = cursorMs == null ? undefined : items.find((it) => new Date(it.at).getTime() <= cursorMs);
+        const el = target ? listRef.current?.querySelector<HTMLElement>(`[data-item-ref="${target.ref}"]`) : null;
+        const hl = el?.querySelector<HTMLElement>("[data-hl-index]");
         if (hl) {
-            setActiveMatch(Number(hl.dataset.hlIndex)); // ◂▸ 앵커도 이 매치로 이동
+            setActiveMatch(Number(hl.dataset.hlIndex));
             hl.scrollIntoView({ block: "center", behavior: "smooth" });
         } else {
-            el.scrollIntoView({ block: "center", behavior: "smooth" });
+            setActiveMatch(-1); // 조건 해당 항목/매치 없음 → 이전 활성 해제
+            el?.scrollIntoView({ block: "center", behavior: "smooth" });
         }
     }, [cursorMs]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -136,7 +136,7 @@ export function TelegramNewsPanel(): JSX.Element {
 
     const gotoMatch = (delta: number): void => {
         if (totalMatches === 0) return;
-        setActiveMatch((a) => (a + delta + totalMatches) % totalMatches);
+        setActiveMatch((a) => (a < 0 ? (delta > 0 ? 0 : totalMatches - 1) : (a + delta + totalMatches) % totalMatches));
     };
 
     const posAt = visibleAt ?? items[0]?.at ?? null;
@@ -157,7 +157,7 @@ export function TelegramNewsPanel(): JSX.Element {
                         {!showEdit && totalMatches > 0 && (
                             <>
                                 <button className="icon-btn" onClick={() => gotoMatch(-1)} title="이전 매치" style={{ padding: "0 2px" }}>◂</button>
-                                <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)", minWidth: 34, textAlign: "center" }}>{activeMatch + 1}/{totalMatches}</span>
+                                <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)", minWidth: 34, textAlign: "center" }}>{activeMatch >= 0 ? activeMatch + 1 : "–"}/{totalMatches}</span>
                                 <button className="icon-btn" onClick={() => gotoMatch(1)} title="다음 매치" style={{ padding: "0 2px" }}>▸</button>
                             </>
                         )}
