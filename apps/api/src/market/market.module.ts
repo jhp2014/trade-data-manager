@@ -17,12 +17,14 @@ import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-ma
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
 import { ChartReadService, DaySummaryService, mapWithConcurrency, subtractMonths } from "@trade-data-manager/market";
 import type { ChartReader } from "@trade-data-manager/market";
-import { CHART_READER, DAY_CHARTS_READER, DAY_REDUCTION_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, MARKET_POOL } from "./tokens.js";
+import { CHART_READER, DAY_CHARTS_READER, DAY_REDUCTION_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart.controller.js";
 import { DaySummaryController } from "./daySummary.controller.js";
 import { PriceLineController } from "./priceLine.controller.js";
 import { ReviewPointController } from "./reviewPoint.controller.js";
 import { NewsController } from "./news.controller.js";
+import { TelegramNewsController } from "./telegramNews.controller.js";
+import { LazyTelegramNewsSearcher } from "./telegramNewsSearcher.js";
 import { DayChartsController, type DayChartsReader } from "./dayCharts.controller.js";
 import { DayReductionController, type DayReductionReader } from "./dayReduction.controller.js";
 import { reduceStock, DAY_REDUCTION_VERSION, type ReducedStock, type DayReduction } from "./dayReduction.js";
@@ -40,7 +42,7 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
 // 철칙: core/market 은 프레임워크-프리. @Injectable/@Inject 데코레이터는 이 가장자리(모듈/컨트롤러)에만 둔다.
 // 순수 서비스는 useFactory 로 new 해서 Symbol 토큰에 바인딩한다(타입기반 주입 미사용).
 @Module({
-    controllers: [ChartController, DayChartsController, DayReductionController, DaySummaryController, NewsController, PriceLineController, ReviewPointController],
+    controllers: [ChartController, DayChartsController, DayReductionController, DaySummaryController, NewsController, TelegramNewsController, PriceLineController, ReviewPointController],
     providers: [
         // Pool 은 앱 수명 단일 싱글톤. OnModuleDestroy 에서 graceful end.
         { provide: MARKET_POOL, useFactory: (): Pool => createPoolFromEnv() },
@@ -131,12 +133,21 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
             useFactory: (pool: Pool) => new DrizzleStockNewsRepository(createDb(pool)),
             inject: [MARKET_POOL],
         },
+        {
+            // 텔레그램 뉴스 검색 — 상주 MTProto(lazy) 검색기. 앱 수명 단일 싱글톤, OnModuleDestroy 에서 close.
+            provide: NEWS_SEARCHER,
+            useFactory: () => new LazyTelegramNewsSearcher(),
+        },
     ],
 })
 export class MarketModule implements OnModuleDestroy {
-    constructor(@Inject(MARKET_POOL) private readonly pool: Pool) {}
+    constructor(
+        @Inject(MARKET_POOL) private readonly pool: Pool,
+        @Inject(NEWS_SEARCHER) private readonly newsSearcher: LazyTelegramNewsSearcher,
+    ) {}
 
     async onModuleDestroy(): Promise<void> {
+        await this.newsSearcher.close();
         await this.pool.end();
     }
 }

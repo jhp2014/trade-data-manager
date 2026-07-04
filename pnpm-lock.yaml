@@ -41,6 +41,9 @@ importers:
       '@trade-data-manager/persistence':
         specifier: workspace:*
         version: link:../../infra/persistence
+      '@trade-data-manager/telegram':
+        specifier: workspace:*
+        version: link:../../infra/telegram
       compression:
         specifier: ^1.7.5
         version: 1.8.1

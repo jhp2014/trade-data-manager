@@ -120,6 +120,21 @@ button {
     cursor: default;
 }
 
+/* 텔레그램 본문 검색어 하이라이트 — solid teal 칩(UN/KRX 버튼처럼 강렬하게). */
+.tg-hl {
+    background: var(--accent-primary);
+    color: #fff;
+    font-weight: 600;
+    border-radius: 3px;
+    padding: 0 3px;
+}
+/* 현재 이동 중인 매치(Ctrl+F 식 다음/이전) — 앰버로 더 강조 + 링. */
+.tg-hl-active {
+    background: #f59e0b;
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.4);
+}
+
 /* 검색 엔진 토글(N/G) — 브랜드 색 유지, hover 시 살짝 밝게만. */
 .engine-toggle {
     background: transparent;

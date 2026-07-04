@@ -11,6 +11,7 @@ import { ThemeBoardPanel } from "../panels/ThemeBoardPanel.js";
 import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
 import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { HtsNewsPanel } from "../panels/HtsNewsPanel.js";
+import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 
 // dockview 도킹 셸 — 패널을 컴포넌트 맵으로 등록한다(탭·분할·플로팅·persist 는 셸이 제공).
 // 레이아웃 JSON persist·기존앱 흡수는 후속.
@@ -20,6 +21,7 @@ const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
     workset: () => <WorksetPanel />,
     chart: () => <ChartPanel />,
     htsNews: () => <HtsNewsPanel />,
+    telegramNews: () => <TelegramNewsPanel />,
 };
 
 function onReady(event: DockviewReadyEvent): void {
@@ -47,6 +49,12 @@ function onReady(event: DockviewReadyEvent): void {
         id: "hts-news-1",
         component: "htsNews",
         title: "HTS뉴스",
+        position: { referencePanel: board, direction: "within" }, // 이슈정리와 탭 그룹
+    });
+    event.api.addPanel({
+        id: "telegram-news-1",
+        component: "telegramNews",
+        title: "텔레그램",
         position: { referencePanel: board, direction: "within" }, // 이슈정리와 탭 그룹
     });
 }
