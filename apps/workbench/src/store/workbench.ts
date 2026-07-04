@@ -7,6 +7,7 @@ import { create } from "zustand";
 // date/code 변경시 time 만 리셋한다(timeLock ON 이면 time 유지 = 같은시각 횡적비교).
 
 export type ChartPriceMode = "krx" | "un"; // 분봉 등락률 기준 시장(UN=통합, KRX)
+export type NewsSearchEngine = "naver" | "google"; // HTS 뉴스 제목 클릭 시 웹 검색 엔진(네이버=제목+날짜, 구글=제목만)
 
 export interface Focus {
     date: string; // YYYY-MM-DD
@@ -45,6 +46,7 @@ interface WorkbenchState {
     focus: Focus;
     scope: Scope;
     chartPriceMode: ChartPriceMode; // 뷰 설정(축 아님) — 분봉 % 기준 시장
+    newsSearchEngine: NewsSearchEngine; // HTS 뉴스 제목 검색 엔진(전역 토글)
     issueSettings: IssueBoardSettings;
     replaySettings: ReplayBoardSettings;
     // Focus 액션 — 무효화규칙을 액션 안에 강제한다(패널이 규칙을 재현하지 않게).
@@ -59,6 +61,7 @@ interface WorkbenchState {
     clearScope: () => void;
     // 뷰 설정
     setChartPriceMode: (mode: ChartPriceMode) => void;
+    setNewsSearchEngine: (engine: NewsSearchEngine) => void;
     // 보드 설정(전역 모달이 편집)
     setIssueSettings: (patch: Partial<IssueBoardSettings>) => void;
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
@@ -70,6 +73,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     focus: { date: today, code: "", time: null, timeLock: false },
     scope: { issue: null, theme: null },
     chartPriceMode: "un",
+    newsSearchEngine: "naver",
     issueSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
     replaySettings: { amountN: 80, rateN: 40 },
 
@@ -86,6 +90,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { issue: null, theme: null } })),
     setChartPriceMode: (mode) => set(() => ({ chartPriceMode: mode })),
+    setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
     setIssueSettings: (patch) => set((s) => ({ issueSettings: { ...s.issueSettings, ...patch } })),
     setReplaySettings: (patch) => set((s) => ({ replaySettings: { ...s.replaySettings, ...patch } })),
 }));

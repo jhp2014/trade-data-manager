@@ -120,6 +120,19 @@ button {
     cursor: default;
 }
 
+/* 검색 엔진 토글(N/G) — 브랜드 색 유지, hover 시 살짝 밝게만. */
+.engine-toggle {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-weight: 800;
+    line-height: 1;
+}
+.engine-toggle:hover {
+    filter: brightness(1.12);
+}
+
 /* dockview 라이트 테마를 팔레트에 맞춰 정렬(있는 변수만 덮어씀, 없으면 무시). */
 .dockview-theme-light {
     --dv-background-color: var(--bg-primary);

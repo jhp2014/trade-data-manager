@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useWorkbench } from "../store/workbench.js";
+import { useWorkbench, type NewsSearchEngine } from "../store/workbench.js";
 import { fetchHtsNews, type HtsNewsItem, type HeadlineCursor } from "../api/news.js";
 import { fetchDaySummary } from "../api/daySummary.js";
 
@@ -26,6 +26,8 @@ export function HtsNewsPanel(): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
     const focusTime = useWorkbench((s) => s.focus.time);
     const setTime = useWorkbench((s) => s.setTime);
+    const engine = useWorkbench((s) => s.newsSearchEngine);
+    const setEngine = useWorkbench((s) => s.setNewsSearchEngine);
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
     const selfSet = useRef(false); // 뉴스 클릭으로 내가 time 을 바꿨을 때 = 자동 스크롤 스킵 플래그
@@ -131,7 +133,8 @@ export function HtsNewsPanel(): JSX.Element {
                 <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>{name ?? code}</span>
                 <span className="tabular" style={{ color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 }}>{dateLabel(visibleDate)}</span>
                 {visibleCount > 0 && <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", minWidth: 0, flexShrink: 1 }}>{visibleCount}건</span>}
-                <div style={{ marginLeft: "auto", display: "flex", gap: 4, flexShrink: 0 }}>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                    <EngineToggle engine={engine} onToggle={() => setEngine(engine === "naver" ? "google" : "naver")} />
                     <IconButton onClick={refresh} title="새로고침 — 당일만 다시 보기">
                         <RefreshIcon />
                     </IconButton>
@@ -146,7 +149,7 @@ export function HtsNewsPanel(): JSX.Element {
                 {q.isLoading && <Center text="로딩중…" />}
                 {q.isError && <Center text={`오류: ${(q.error as Error).message}`} />}
                 {!q.isLoading && !q.isError && items.length === 0 && <Center text="당일 뉴스 없음" />}
-                <NewsList items={items} focusDate={date} focusTime={focusTime} onPick={pick} />
+                <NewsList items={items} focusDate={date} focusTime={focusTime} engine={engine} onPick={pick} />
             </div>
         </div>
     );
@@ -157,13 +160,16 @@ function NewsList({
     items,
     focusDate,
     focusTime,
+    engine,
     onPick,
 }: {
     items: HtsNewsItem[];
     focusDate: string;
     focusTime: string | null;
+    engine: NewsSearchEngine;
     onPick: (it: HtsNewsItem) => void;
 }): JSX.Element {
+    const isGoogle = engine === "google";
     let prevDate = "";
     return (
         <div>
@@ -210,8 +216,8 @@ function NewsList({
                             <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 8, padding: "6px 10px" }}>
                                 <span
                                     className="news-title"
-                                    title="클릭 — 네이버 뉴스에서 이 제목·날짜로 검색"
-                                    onClick={() => window.open(naverNewsUrl(it.title, it.date), "_blank", "noopener,noreferrer")}
+                                    title={isGoogle ? "클릭 — 구글에서 이 제목 검색(기준일 ±2일)" : "클릭 — 네이버 뉴스에서 이 제목·날짜로 검색"}
+                                    onClick={() => window.open(isGoogle ? googleUrl(it.title, it.date) : naverNewsUrl(it.title, it.date), "_blank", "noopener,noreferrer")}
                                     style={{ flex: 1, minWidth: 0, color: "var(--text-primary)" }}
                                 >
                                     {it.title}
@@ -271,6 +277,36 @@ function naverNewsUrl(title: string, date: string): string {
     const compact = date.replace(/-/g, ""); // 20260627
     const q = encodeURIComponent(title);
     return `https://search.naver.com/search.naver?where=news&query=${q}&pd=3&ds=${dot}&de=${dot}&nso=so:r,p:from${compact}to${compact},a:all`;
+}
+
+// 날짜 ± n일을 구글 tbs 용 미국식 M/D/YYYY 로. 로컬 파싱(KST 거래일 기준).
+function usDateShift(date: string, days: number): string {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+}
+
+// 구글 웹 검색 URL — 제목 + 기준일 ±2일 범위(tbs=cdr). 구글은 날짜 추정이 느슨해 앞뒤 여유를 둠. 커버리지·랭킹 우세.
+function googleUrl(title: string, date: string): string {
+    const q = encodeURIComponent(title);
+    const min = usDateShift(date, -2);
+    const max = usDateShift(date, 2);
+    return `https://www.google.com/search?q=${q}&tbs=cdr:1,cd_min:${min},cd_max:${max}`;
+}
+
+// 검색 엔진 전역 토글(N/G) — 새로고침 좌측. 브랜드 색으로 현재 엔진 표시, 클릭 시 전환.
+function EngineToggle({ engine, onToggle }: { engine: NewsSearchEngine; onToggle: () => void }): JSX.Element {
+    const isNaver = engine === "naver";
+    return (
+        <button
+            className="engine-toggle tabular"
+            onClick={onToggle}
+            title={`검색 엔진: ${isNaver ? "네이버(제목+날짜)" : "구글(제목+±2일)"} · 클릭해 전환`}
+            style={{ fontSize: 13, color: isNaver ? "#03C75A" : "#4285F4" }}
+        >
+            {isNaver ? "N" : "G"}
+        </button>
+    );
 }
 
 function Center({ text }: { text: string }): JSX.Element {
