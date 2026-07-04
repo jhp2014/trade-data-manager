@@ -27,11 +27,9 @@ import { TelegramNewsController } from "./telegramNews.controller.js";
 import { LazyTelegramNewsSearcher } from "./telegramNewsSearcher.js";
 import { DayChartsController, type DayChartsReader } from "./dayCharts.controller.js";
 import { DayReductionController, type DayReductionReader } from "./dayReduction.controller.js";
-import { reduceStock, DAY_REDUCTION_VERSION, type ReducedStock, type DayReduction } from "./dayReduction.js";
+import { reduceStock, RAW_DAILY_LOOKBACK_MONTHS, type ReducedStock, type DayReduction } from "./dayReduction.js";
 import { getOrBuildDayReduction } from "./dayReductionCache.js";
 
-// trailingHighs(120거래일) 를 확실히 덮을 원주가 일봉 조회 창(캘린더). 9개월 ≈ ≥180 거래일 여유.
-const RAW_DAILY_LOOKBACK_MONTHS = 9;
 // 캐시 빌드 시 종목별 fetch 인플라이트 상한(분봉+원주가일봉). 빌드는 날짜당 1회라 넉넉히.
 const REDUCTION_FETCH_CONCURRENCY = 8;
 
@@ -92,7 +90,7 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
                         return reduceStock(code, minutes, rawDaily, date);
                     });
                     const stocks = reduced.filter((s): s is ReducedStock => s !== null);
-                    return { date, version: DAY_REDUCTION_VERSION, stocks };
+                    return { date, stocks };
                 };
                 return { dayReduction: (date) => getOrBuildDayReduction(date, build) };
             },

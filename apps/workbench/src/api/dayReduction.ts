@@ -15,7 +15,6 @@ export interface ReducedStock {
 
 export interface DayReduction {
     date: string;
-    version: string;
     stocks: ReducedStock[];
 }
 

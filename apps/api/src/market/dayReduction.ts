@@ -13,10 +13,18 @@ import {
 } from "@trade-data-manager/market";
 import type { MinuteCandle, DailyCandle, CountingPolicy } from "@trade-data-manager/market";
 
-/** 캐시 계산 버전 — 축약 로직/카운팅 정책이 바뀌면 올린다(옛 캐시 자동 무효화). */
-export const DAY_REDUCTION_VERSION = "v1";
 /** trailingHighs 배열 길이(최대 거래일). 클라가 이 안에서 20/40/…/120 창을 슬라이스. */
 export const TRAILING_DAYS = 120;
+/** trailingHighs(120거래일) 를 확실히 덮을 원주가 일봉 조회 창(캘린더). 9개월 ≈ ≥180 거래일 여유. */
+export const RAW_DAILY_LOOKBACK_MONTHS = 9;
+
+/**
+ * 당일 축약물 캐시 버전. 이 값이 바뀌면 dayReductionCache 가 캐시 폴더를 통째로 비우고 다시 굽는다.
+ * 축약 출력에 영향 주는 걸 **무엇이든** 바꾸면 반드시 +1 한다 — 이 파일의 계산은 물론,
+ * core/market 의 densify(minuteBackfill)·거래대금(price)·버킷/카운팅정책(board/amount) 변경도 포함.
+ * 자동 감지는 없다(공유 코어라 파일 감지가 부적절). 단일 명시 규칙 하나로 간다.
+ */
+export const DAY_REDUCTION_VERSION = 1;
 
 /** 종목 1개의 당일 축약. 가격 시계열은 % (원주가 base 대비), 거래대금만 원. */
 export interface ReducedStock {
@@ -33,7 +41,6 @@ export interface ReducedStock {
 
 export interface DayReduction {
     date: string;
-    version: string;
     stocks: ReducedStock[];
 }
 
