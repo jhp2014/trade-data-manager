@@ -11,16 +11,18 @@ import {
     DrizzleDailyIssueRepository,
     DrizzlePriceLineRepository,
     DrizzleReviewPointRepository,
+    DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
 import { ChartReadService, DaySummaryService, mapWithConcurrency, subtractMonths } from "@trade-data-manager/market";
 import type { ChartReader } from "@trade-data-manager/market";
-import { CHART_READER, DAY_CHARTS_READER, DAY_REDUCTION_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, MARKET_POOL } from "./tokens.js";
+import { CHART_READER, DAY_CHARTS_READER, DAY_REDUCTION_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart.controller.js";
 import { DaySummaryController } from "./daySummary.controller.js";
 import { PriceLineController } from "./priceLine.controller.js";
 import { ReviewPointController } from "./reviewPoint.controller.js";
+import { NewsController } from "./news.controller.js";
 import { DayChartsController, type DayChartsReader } from "./dayCharts.controller.js";
 import { DayReductionController, type DayReductionReader } from "./dayReduction.controller.js";
 import { reduceStock, DAY_REDUCTION_VERSION, type ReducedStock, type DayReduction } from "./dayReduction.js";
@@ -38,7 +40,7 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
 // 철칙: core/market 은 프레임워크-프리. @Injectable/@Inject 데코레이터는 이 가장자리(모듈/컨트롤러)에만 둔다.
 // 순수 서비스는 useFactory 로 new 해서 Symbol 토큰에 바인딩한다(타입기반 주입 미사용).
 @Module({
-    controllers: [ChartController, DayChartsController, DayReductionController, DaySummaryController, PriceLineController, ReviewPointController],
+    controllers: [ChartController, DayChartsController, DayReductionController, DaySummaryController, NewsController, PriceLineController, ReviewPointController],
     providers: [
         // Pool 은 앱 수명 단일 싱글톤. OnModuleDestroy 에서 graceful end.
         { provide: MARKET_POOL, useFactory: (): Pool => createPoolFromEnv() },
@@ -121,6 +123,12 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
             // 복기 타점 쓰기(사람 편집) — repo 를 그대로 노출(upsert/list/remove).
             provide: REVIEW_POINT_REPO,
             useFactory: (pool: Pool) => new DrizzleReviewPointRepository(createDb(pool)),
+            inject: [MARKET_POOL],
+        },
+        {
+            // HTS(시황) 뉴스 읽기 — repo 를 그대로 노출(getHeadlines 당일 + recentHeadlines 커서 페이징).
+            provide: STOCK_NEWS_REPO,
+            useFactory: (pool: Pool) => new DrizzleStockNewsRepository(createDb(pool)),
             inject: [MARKET_POOL],
         },
     ],

@@ -1,5 +1,5 @@
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
-import type { DateRange, NewsHeadline, StockNewsRepository } from "@trade-data-manager/market";
+import { and, asc, desc, eq, gte, lt, lte, or, sql } from "drizzle-orm";
+import type { DateRange, HeadlineCursor, NewsHeadline, StockNewsRepository } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockNews } from "../schema/market.js";
 import { newsHeadlineToRows, rowToNewsHeadline } from "../mappers/news.js";
@@ -47,6 +47,28 @@ export class DrizzleStockNewsRepository implements StockNewsRepository {
                 ),
             )
             .orderBy(asc(stockNews.publishedDate), asc(stockNews.publishedTime));
+        return rows.map(rowToNewsHeadline);
+    }
+
+    async recentHeadlines(
+        stockCode: string,
+        opts: { before?: HeadlineCursor; limit: number },
+    ): Promise<NewsHeadline[]> {
+        const { before, limit } = opts;
+        // 복합 커서 (publishedDate, srno) 엄격 미만: date < d OR (date = d AND srno < s).
+        // srno 는 bigint 컬럼이라 문자열 커서를 BigInt 로 변환해 비교한다.
+        const beforeCond = before
+            ? or(
+                  lt(stockNews.publishedDate, before.publishedDate),
+                  and(eq(stockNews.publishedDate, before.publishedDate), lt(stockNews.srno, BigInt(before.srno))),
+              )
+            : undefined;
+        const rows = await this.db
+            .select()
+            .from(stockNews)
+            .where(and(eq(stockNews.stockCode, stockCode), beforeCond))
+            .orderBy(desc(stockNews.publishedDate), desc(stockNews.srno))
+            .limit(limit);
         return rows.map(rowToNewsHeadline);
     }
 }

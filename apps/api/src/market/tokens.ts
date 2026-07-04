@@ -7,4 +7,5 @@ export const DAY_REDUCTION_READER = Symbol("DayReductionReader");
 export const DAY_SUMMARY_READER = Symbol("DaySummaryReader");
 export const PRICE_LINE_REPO = Symbol("PriceLineRepository");
 export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
+export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const MARKET_POOL = Symbol("MarketPool");

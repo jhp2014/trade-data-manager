@@ -45,6 +45,9 @@ class FakeRepo implements StockNewsRepository {
     async getHeadlines(): Promise<NewsHeadline[]> {
         return [];
     }
+    async recentHeadlines(): Promise<NewsHeadline[]> {
+        return [];
+    }
 }
 
 describe("NewsBackfillService", () => {
