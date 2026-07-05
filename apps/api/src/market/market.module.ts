@@ -15,8 +15,8 @@ import {
 } from "@trade-data-manager/persistence";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { ChartReadService, DaySummaryService } from "@trade-data-manager/market";
-import { CHART_READER, DERIVED_STORE, DAY_REPLAY_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
+import { ChartReadService, applyIssues, buildDaySummary } from "@trade-data-manager/market";
+import { CHART_READER, DERIVED_STORE, META_STORE, DAY_REPLAY_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart.controller.js";
 import { DaySummaryController, type EnrichedDaySummaryReader } from "./daySummary.controller.js";
 import { PriceLineController } from "./priceLine.controller.js";
@@ -26,6 +26,7 @@ import { TelegramNewsController } from "./telegramNews.controller.js";
 import { LazyTelegramNewsSearcher } from "./telegramNewsSearcher.js";
 import { DayReplayController, type DayReplayReader } from "./dayReplay.controller.js";
 import { DerivedStore } from "./derivedStore.js";
+import { MetaStore } from "./metaStore.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
@@ -70,26 +71,38 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
             inject: [DERIVED_STORE],
         },
         {
-            // DaySummary — 시트 멤버십(Sheets OAuth) EOD 요약 + 테마 파생(bucketCounts·trailingHighs) folding.
-            // core DaySummaryService(일봉 전용)는 그대로 두고, 테마 파생은 DerivedStore(메모리 캐시)에서 받아 스냅샷에 merge.
-            provide: DAY_SUMMARY_READER,
-            useFactory: (pool: Pool, store: DerivedStore): EnrichedDaySummaryReader => {
+            // 당일 불변 meta 단일 스토어 — 시트·master·시총·일봉·전일종가 fetch + 거래일 LRU. 테마·복기 리더 공유(시트 1× 조회).
+            provide: META_STORE,
+            useFactory: (pool: Pool): MetaStore => {
                 const db = createDb(pool);
-                const summary = new DaySummaryService({
+                return new MetaStore({
                     universe: new DrizzleDailyUniverseProvider(db),
                     membership: new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET),
                     stockMaster: new DrizzleStockMasterRepository(db),
                     marketCap: new DrizzleDailyMarketCapRepository(db),
                     dailyCandle: new DrizzleDailyCandleRepository(db),
-                    dailyIssue: new DrizzleDailyIssueRepository(db),
                 });
+            },
+            inject: [MARKET_POOL],
+        },
+        {
+            // DaySummary(테마보드) — MetaStore(불변 meta 캐시) + 이슈(fresh) → core 순수조립 + 테마 파생 folding.
+            // 조립 로직(assembleBaseSnapshots·applyIssues·buildDaySummary)은 core 순수함수(DaySummaryService 와 공유).
+            provide: DAY_SUMMARY_READER,
+            useFactory: (pool: Pool, meta: MetaStore, store: DerivedStore): EnrichedDaySummaryReader => {
+                const dailyIssue = new DrizzleDailyIssueRepository(createDb(pool));
                 return {
                     async summaryByDate(date) {
-                        const [base, theme] = await Promise.all([summary.summaryByDate(date), store.themeBoard(date)]);
+                        const [base, issues, theme] = await Promise.all([
+                            meta.metaByDate(date),
+                            dailyIssue.getByDate(date),
+                            store.themeBoard(date),
+                        ]);
+                        const summary = buildDaySummary(date, applyIssues(base, issues));
                         const statsByCode = new Map(theme.stocks.map((s) => [s.code, s]));
                         return {
-                            ...base,
-                            stocks: base.stocks.map((s) => {
+                            ...summary,
+                            stocks: summary.stocks.map((s) => {
                                 const st = statsByCode.get(s.stockCode);
                                 return st ? { ...s, bucketCounts: st.bucketCounts, trailingHighs: st.trailingHighs } : s;
                             }),
@@ -97,7 +110,7 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
                     },
                 };
             },
-            inject: [MARKET_POOL, DERIVED_STORE],
+            inject: [MARKET_POOL, META_STORE, DERIVED_STORE],
         },
         {
             // 가격선 주석 쓰기(사람 편집) — repo 를 그대로 노출(add/list/remove).
