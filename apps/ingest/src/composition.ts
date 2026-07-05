@@ -27,7 +27,6 @@ import {
 import {
     MarketDataIngestService,
     RawDailyIngestService,
-    RawDailyBackfillService,
     StockMasterIngestService,
     DailySweepService,
     MinuteSweepService,
@@ -53,8 +52,6 @@ export interface IngestRuntime {
     marketCapRecorder: DailyMarketCapRecorder;
     /** 전종목 날짜별 시총 백필(Command). 과거 임의 구간을 KIS 역산+원주가로 재구성. */
     marketCapBackfiller: MarketCapBackfiller;
-    /** 전종목 원주가(미수정) 일봉 백필(Command). daily_candles_raw 에 append-only. 분봉 %기준·수정계수 역산용. */
-    rawDailyBackfiller: RawDailyBackfillService;
     /** 시황 뉴스 헤드라인 백필(Command). KIS 시황 피드를 연속 역방향 워크로 과거 채움. */
     newsBackfiller: NewsBackfiller;
     /**
@@ -93,8 +90,6 @@ export function createIngestRuntime(): IngestRuntime {
     // 원주가 일봉 ingest — 종목별 append-only(자가치유 없음). DailySweep 가 종목당 수정주가와 함께 둘 다.
     const rawDailyIngest = new RawDailyIngestService({ rawProvider: rawDailyProvider, rawRepo: rawDailyRepo });
     const dailySweep = new DailySweepService({ dailyIngest, rawDailyIngest });
-    // 원주가 일봉 백필(독립 커맨드) — 유니버스 fan-out + 종목별 append-only ingest.
-    const rawDailyBackfiller = new RawDailyBackfillService({ universe, rawIngest: rawDailyIngest });
     const minuteSweep = new MinuteSweepService({ scanRepo: dailyRepo, minuteProvider, minuteRepo });
 
     const dailyCollector = new DailyCollector({ universe, dailySweep, scanRepo: dailyRepo });
@@ -148,7 +143,6 @@ export function createIngestRuntime(): IngestRuntime {
         collector,
         marketCapRecorder,
         marketCapBackfiller,
-        rawDailyBackfiller,
         newsBackfiller,
         newsSearcher,
         close: async () => {

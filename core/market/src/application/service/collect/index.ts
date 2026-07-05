@@ -6,7 +6,6 @@ export * from "./dailyCollector.js";
 export * from "./minuteCollector.js";
 export * from "./marketDataIngestService.js";
 export * from "./rawDailyIngestService.js";
-export * from "./rawDailyBackfillService.js";
 export * from "./stockMasterIngestService.js";
 export * from "./dailySweepService.js";
 export * from "./minuteSweepService.js";
