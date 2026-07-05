@@ -27,6 +27,29 @@ export function defaultDailyRange(today: string): DateRange {
     return { from: subtractMonths(today, DEFAULT_LOOKBACK_MONTHS), to: today };
 }
 
+const COLLECT_LOOKBACK_MONTHS = 24;
+
+/**
+ * collect(최신 유지) 일봉 수집 범위 = [오늘−24개월, 오늘]. inclusive.
+ * 24개월 ≈ 500거래일 < 600(키움 한 콜) → 1콜로 끝나고, 차트 표시 깊이(chartDailyRange)와도 일치.
+ * self-heal 경계 비교는 오늘−24개월 봉이 기존 저장분과 겹치면 성립(치유는 earliest 부터 전체 재수집).
+ */
+export function collectDailyRange(today: string): DateRange {
+    return { from: subtractMonths(today, COLLECT_LOOKBACK_MONTHS), to: today };
+}
+
+// backfill 런웨이 — range.from 이전으로 ≈600거래일(2.4년) 이상을 확보해, 백필 구간 어느 날의 차트에도
+// 뒤로 충분한 일봉 히스토리가 있게 한다. 30개월(≈630거래일)이면 600봉 이상 보장.
+const BACKFILL_RUNWAY_MONTHS = 30;
+
+/**
+ * backfill 일봉 수집 범위 = [range.from−≈600봉, range.to]. inclusive.
+ * "가장 과거(range.from) 기준 600봉 깊이" — 백필 구간의 모든 거래일이 ≥600봉 차트 런웨이를 갖는다.
+ */
+export function backfillDailyRange(range: DateRange): DateRange {
+    return { from: subtractMonths(range.from, BACKFILL_RUNWAY_MONTHS), to: range.to };
+}
+
 const CHART_LOOKBACK_MONTHS = 24;
 
 /**

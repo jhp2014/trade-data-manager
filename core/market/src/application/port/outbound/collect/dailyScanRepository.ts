@@ -14,4 +14,9 @@ export interface DailyScanRepository {
     getLatestDailyDate(): Promise<string | null>;
     /** [from,to] 안에 일봉(거래분)이 있는 종목 코드 distinct. 시총 백필 대상 유니버스. */
     listTradedStockCodes(range: DateRange): Promise<string[]>;
+    /**
+     * [from,to] 안에 일봉(거래분)이 있는 거래일 distinct(오름차순). 분봉·시총 수집이 도는 날짜를 구동한다.
+     * 거래일 달력을 따로 두지 않고 "일봉 존재 = 그날 거래일"로 삼아, 휴장일·미수집일은 자연히 빠진다.
+     */
+    listTradedDates(range: DateRange): Promise<string[]>;
 }

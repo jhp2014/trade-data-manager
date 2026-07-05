@@ -131,4 +131,13 @@ export class DrizzleDailyCandleRepository
             .orderBy(asc(dailyCandles.stockCode));
         return rows.map((r) => r.stockCode);
     }
+
+    async listTradedDates(range: DateRange): Promise<string[]> {
+        const rows = await this.db
+            .selectDistinct({ tradeDate: dailyCandles.tradeDate })
+            .from(dailyCandles)
+            .where(and(gte(dailyCandles.tradeDate, range.from), lte(dailyCandles.tradeDate, range.to)))
+            .orderBy(asc(dailyCandles.tradeDate));
+        return rows.map((r) => r.tradeDate);
+    }
 }
