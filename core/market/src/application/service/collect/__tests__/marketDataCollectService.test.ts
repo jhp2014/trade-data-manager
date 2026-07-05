@@ -33,6 +33,9 @@ class NoopStockMasterRepo implements StockMasterRepository {
     async getByStockCodes(): Promise<StockMaster[]> {
         return [];
     }
+    async listNeedingIpoPrice(): Promise<{ stockCode: string; listingDate: string }[]> {
+        return [];
+    }
 }
 class FakeDailyProvider implements DailyCandleProvider {
     async getDailyCandles(): Promise<DailyCandle[]> {

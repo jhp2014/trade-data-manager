@@ -35,6 +35,7 @@ function service(d: Data) {
             getByStockCodes: async (codes) => (d.masters ?? []).filter((m) => codes.includes(m.stockCode)),
             saveStockMasters: async () => {},
             updateIpoPrice: async () => {},
+            listNeedingIpoPrice: async () => [],
         },
         marketCap: {
             getByDateAndCodes: async (_date, codes) => (d.caps ?? []).filter((c) => codes.includes(c.stockCode)),

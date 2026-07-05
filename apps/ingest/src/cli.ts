@@ -4,6 +4,7 @@
 //   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
 //   backfill-marketcap <from> [to]               전종목 과거 시총(역산)
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
+//   backfill-ipo                                 최근 1년 상장 공모가 enrichment
 //   marketcap                                    당일 시총만(ka10099)
 // (overwrite = 일봉 강제 재수집 + 그 날짜 분봉 비우고 새로 — 없으면 skip-if-present)
 import {
@@ -146,6 +147,14 @@ async function runMarketCapRecord(rt: IngestRuntime, date: string): Promise<void
     console.log(`  ✓ 유니버스 ${r.universe} · 저장 ${r.stored}종목`);
 }
 
+/** 공모가 enrichment — 최근 1년 상장 & ipoPrice 빈 종목만 채운다(steady-state 는 신규상장 소수). */
+async function runBackfillIpo(rt: IngestRuntime): Promise<void> {
+    console.log(`▶ 공모가 enrichment (최근 1년 상장 & null 만)`);
+    const r = await rt.ipoPriceEnricher.enrichAll();
+    console.log(`  ✓ 대상 ${r.needing} · 채움 ${r.filled} · 실패 ${r.failed.length}`);
+    if (r.failed.length) console.log(`    실패: ${r.failed.slice(0, 20).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
+}
+
 /** 한 영역 실행을 격리 — 실패해도 나머지 영역은 진행(복기 데이터는 필수, 뉴스 등은 best-effort). */
 async function runArea(label: string, fn: () => Promise<void>, failures: string[]): Promise<void> {
     try {
@@ -163,6 +172,7 @@ async function runDaily(rt: IngestRuntime, daysBack: number, overwrite: boolean)
     console.log(`▶ 일상 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
     const failures: string[] = [];
     await runArea("캔들", () => runBackfillCandles(rt, range, overwrite), failures);
+    await runArea("공모가", () => runBackfillIpo(rt), failures); // candles 가 stockMaster 갱신한 뒤 신규상장 null 채움
     await runArea("시총", () => runMarketCapRecord(rt, to), failures);
     await runArea("뉴스", () => runBackfillNews(rt, range), failures);
     if (failures.length) throw new Error(`일부 영역 실패: ${failures.join(", ")}`);
@@ -174,6 +184,7 @@ const USAGE =
     "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
     "  backfill-marketcap <from> [to]               전종목 과거 시총 백필(역산)\n" +
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
+    "  backfill-ipo                                  최근 1년 상장 종목 공모가 enrichment(null만)\n" +
     "  marketcap                                    당일 시총만(오늘 칸, 전일종가×현재주식수)\n" +
     "  news-search <검색어...> [--from <시각>] [--to <시각>] [--limit N]\n" +
     "                                               텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).\n" +
@@ -219,6 +230,10 @@ async function main(): Promise<void> {
                 const to = a2 ?? seoulToday();
                 assertDate(to, "to");
                 await runBackfillNews(rt, { from: a1, to });
+                break;
+            }
+            case "backfill-ipo": {
+                await runBackfillIpo(rt);
                 break;
             }
             case "marketcap": {

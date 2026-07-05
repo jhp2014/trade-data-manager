@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull } from "drizzle-orm";
 import type { StockMaster, StockMasterRepository } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockMaster } from "../schema/market.js";
@@ -35,5 +35,16 @@ export class DrizzleStockMasterRepository implements StockMasterRepository {
             .from(stockMaster)
             .where(inArray(stockMaster.stockCode, codes));
         return rows.map(rowToStockMaster);
+    }
+
+    async listNeedingIpoPrice(listedSince: string): Promise<{ stockCode: string; listingDate: string }[]> {
+        const rows = await this.db
+            .select({ stockCode: stockMaster.stockCode, listingDate: stockMaster.listingDate })
+            .from(stockMaster)
+            .where(and(isNull(stockMaster.ipoPrice), gte(stockMaster.listingDate, listedSince)))
+            .orderBy(asc(stockMaster.listingDate));
+        return rows
+            .filter((r): r is { stockCode: string; listingDate: string } => r.listingDate !== null)
+            .map((r) => ({ stockCode: r.stockCode, listingDate: r.listingDate }));
     }
 }

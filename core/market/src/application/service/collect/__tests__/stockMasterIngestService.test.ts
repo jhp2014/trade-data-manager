@@ -27,6 +27,9 @@ class FakeRepo implements StockMasterRepository {
     async getByStockCodes(): Promise<StockMaster[]> {
         return [];
     }
+    async listNeedingIpoPrice(): Promise<{ stockCode: string; listingDate: string }[]> {
+        return [];
+    }
 }
 
 describe("ingestStockMasters", () => {

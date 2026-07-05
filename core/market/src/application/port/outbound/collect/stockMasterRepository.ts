@@ -17,4 +17,9 @@ export interface StockMasterRepository {
      * 없는 코드는 결과에서 빠진다(폐지·미수집). 순서·완전성 보장 안 함 — 호출자가 code 로 맞춘다.
      */
     getByStockCodes(codes: string[]): Promise<StockMaster[]>;
+    /**
+     * 공모가 enrichment 대상 — ipoPrice 가 비었고 listingDate ≥ listedSince 인 종목(listingDate 오름차순).
+     * 실행 시점 기준 최근 상장만 채운다(오래된 종목·list-info 커버리지 밖 제외 → 대상 소수).
+     */
+    listNeedingIpoPrice(listedSince: string): Promise<{ stockCode: string; listingDate: string }[]>;
 }

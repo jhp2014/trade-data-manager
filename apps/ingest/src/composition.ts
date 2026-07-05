@@ -36,11 +36,14 @@ import {
     DailyMarketCapRecordService,
     StockMarketCapBackfillService,
     MarketCapBackfillService,
+    IpoPriceBackfillService,
+    IpoPriceEnrichService,
     NewsBackfillService,
     NewsSearchService,
     type MarketDataCollector,
     type DailyMarketCapRecorder,
     type MarketCapBackfiller,
+    type IpoPriceEnricher,
     type NewsBackfiller,
     type NewsSearcher,
 } from "@trade-data-manager/market";
@@ -52,6 +55,8 @@ export interface IngestRuntime {
     marketCapRecorder: DailyMarketCapRecorder;
     /** 전종목 날짜별 시총 백필(Command). 과거 임의 구간을 KIS 역산+원주가로 재구성. */
     marketCapBackfiller: MarketCapBackfiller;
+    /** 유니버스 공모가 enrichment(Command). 최근 1년 상장 & ipoPrice 빈 종목만 채움. */
+    ipoPriceEnricher: IpoPriceEnricher;
     /** 시황 뉴스 헤드라인 백필(Command). KIS 시황 피드를 연속 역방향 워크로 과거 채움. */
     newsBackfiller: NewsBackfiller;
     /**
@@ -110,6 +115,14 @@ export function createIngestRuntime(): IngestRuntime {
         stockBackfill: stockMarketCapBackfill,
         scanRepo: dailyRepo,
     });
+    // 공모가 enrichment — 최근 1년 상장 & ipoPrice 빈 종목을 KIS list-info 로 채운다(단일종목 추출을 fan-out).
+    const ipoPriceEnricher = new IpoPriceEnrichService({
+        stockMasterRepo,
+        stockBackfill: new IpoPriceBackfillService({
+            listInfo: new KisListInfoAdapter(kis.rest),
+            stockMasterRepo,
+        }),
+    });
 
     // 공개 유스케이스 — backfill(range) composer(일봉+분봉). 시총·뉴스·공모가는 CLI 가 함께 조립한다.
     const collector = new MarketDataCollectService({ dailyCollector, minuteCollector });
@@ -138,6 +151,7 @@ export function createIngestRuntime(): IngestRuntime {
         collector,
         marketCapRecorder,
         marketCapBackfiller,
+        ipoPriceEnricher,
         newsBackfiller,
         newsSearcher,
         close: async () => {
