@@ -2,6 +2,8 @@
 // 공개 진입: MarketDataCollectService(inbound 포트 MarketDataCollector 구현).
 export * from "./marketDataCollectService.js";
 // 내부 협력자(포트 아님 — collect 가 조합).
+export * from "./dailyCollector.js";
+export * from "./minuteCollector.js";
 export * from "./marketDataIngestService.js";
 export * from "./rawDailyIngestService.js";
 export * from "./rawDailyBackfillService.js";

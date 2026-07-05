@@ -32,6 +32,8 @@ import {
     StockMasterIngestService,
     DailySweepService,
     MinuteSweepService,
+    DailyCollector,
+    MinuteCollector,
     MarketDataCollectService,
     DailyMarketCapRecordService,
     StockMarketCapBackfillService,
@@ -96,8 +98,10 @@ export function createIngestRuntime(): IngestRuntime {
     const rawDailyBackfiller = new RawDailyBackfillService({ universe, rawIngest: rawDailyIngest });
     const minuteSweep = new MinuteSweepService({ scanRepo: dailyRepo, minuteProvider, minuteRepo });
 
-    // 공개 유스케이스
-    const collector = new MarketDataCollectService({ universe, dailySweep, minuteSweep, scanRepo: dailyRepo, minuteRepo });
+    // 공개 유스케이스 — collect()/backfill(range) composer 가 일봉·분봉 collector 를 순차 조립.
+    const dailyCollector = new DailyCollector({ universe, dailySweep, scanRepo: dailyRepo });
+    const minuteCollector = new MinuteCollector({ scanRepo: dailyRepo, minuteSweep, minuteRepo });
+    const collector = new MarketDataCollectService({ dailyCollector, minuteCollector });
     // 당일 시총 = ka10099 한 스윕(전일종가×현재주식수). KIS·역산 불필요 → 키움 단독.
     const marketCapRecorder = new DailyMarketCapRecordService({
         snapshot: new KiwoomMarketSnapshotAdapter(kiwoom.rest),

@@ -1,9 +1,12 @@
-// Inbound(driving) 포트 — 복기 데이터 수집 단일 유스케이스(Command, 쓰기).
-// 당일/과거/범위/월 전부 collect(range) 하나로. 내부에서 유니버스·일봉커버리지·날짜별 분봉을 조합한다.
+// Inbound(driving) 포트 — 복기 데이터 수집 유스케이스(Command, 쓰기).
+// 두 진입점: collect()=최신 거래일(오늘) / backfill(range)=과거 구간 재구성.
+//   · 일봉 깊이는 range 인자가 아니라 진입점이 정한다(collect=오늘−2년 / backfill=range.from−≈600봉).
+//   · 분봉은 collect=오늘 하루 / backfill=구간 전체(일봉 있는 거래일만).
 import type { DateRange } from "#domain";
 
 export interface CollectProgress {
-    phase: "universe" | "daily" | "minute";
+    phase: "daily" | "minute";
+    /** minute 단계의 거래일(YYYY-MM-DD). */
     date?: string;
     done?: number;
     total?: number;
@@ -23,7 +26,7 @@ export interface CollectOptions {
 export interface CollectResult {
     range: DateRange;
     universeCount: number;
-    /** 일봉을 (재)수집했는가. 커버리지가 충분하면 false. */
+    /** 일봉을 (재)수집했는가. 커버리지가 충분하면 false(collect 만; backfill 은 항상 true). */
     dailyRefreshed: boolean;
     /** 분봉을 수집한(데이터 있던) 거래일 수. */
     tradingDays: number;
@@ -34,6 +37,8 @@ export interface CollectResult {
 }
 
 export interface MarketDataCollector {
-    /** [from,to] 복기 데이터 수집. 비거래일은 자연 스킵. */
-    collect(range: DateRange, options?: CollectOptions): Promise<CollectResult>;
+    /** 최신 거래일(오늘) 수집 — 일봉 최근 2년 유지 + 오늘 분봉. range 없음(today() 앵커). */
+    collect(options?: CollectOptions): Promise<CollectResult>;
+    /** [from,to] 과거 구간 복기 재구성 — 일봉 깊이 시딩 + 구간 분봉. 비거래일은 자연 스킵. */
+    backfill(range: DateRange, options?: CollectOptions): Promise<CollectResult>;
 }

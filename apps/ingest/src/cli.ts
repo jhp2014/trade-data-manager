@@ -11,6 +11,8 @@ import {
     enumerateMonthDates,
     subtractMonths,
     type DateRange,
+    type CollectOptions,
+    type CollectResult,
     type NewsItem,
 } from "@trade-data-manager/market";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
@@ -83,23 +85,36 @@ function parseSeoulBound(s: string, kind: "from" | "to", label: string): Date {
     return new Date(`${date}T${hh}:${mm}:${ss ?? "00"}+09:00`);
 }
 
-async function runCollect(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
-    console.log(`▶ 수집: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
-    const r = await rt.collector.collect(range, {
+function collectOptions(overwrite: boolean): CollectOptions {
+    return {
         overwrite,
         onProgress: (e) => {
-            if (e.phase === "universe") console.log("  유니버스 갱신…");
-            else if (e.phase === "daily" && (e.done! % 500 === 0 || e.done === e.total)) {
+            if (e.phase === "daily" && (e.done! % 500 === 0 || e.done === e.total)) {
                 console.log(`  일봉 [${e.done}/${e.total}]`);
             } else if (e.phase === "minute" && e.done === e.total) {
                 console.log(`  분봉 ${e.date} (${e.total} fetch)`);
             }
         },
-    });
+    };
+}
+
+function printCollectResult(r: CollectResult): void {
     console.log(
         `  ✓ 유니버스 ${r.universeCount} · 일봉 ${r.dailyRefreshed ? "수집" : "생략"} · ` +
             `거래일 ${r.tradingDays} · 건너뜀 ${r.skippedDays} · 저장 ${r.totalStored}종목·일`,
     );
+}
+
+/** collect: 최신 거래일(오늘) — 일봉 최근2년 유지 + 오늘 분봉. */
+async function runCollectToday(rt: IngestRuntime, overwrite: boolean): Promise<void> {
+    console.log(`▶ 오늘 수집${overwrite ? " (overwrite)" : ""}`);
+    printCollectResult(await rt.collector.collect(collectOptions(overwrite)));
+}
+
+/** backfill: 과거 구간 — 일봉 깊이 시딩 + 구간 분봉. */
+async function runBackfill(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
+    console.log(`▶ 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
+    printCollectResult(await rt.collector.backfill(range, collectOptions(overwrite)));
 }
 
 const USAGE =
@@ -133,25 +148,24 @@ async function main(): Promise<void> {
                 assertDate(a1, "from");
                 const to = a2 ?? a1;
                 assertDate(to, "to");
-                await runCollect(rt, { from: a1, to }, overwrite);
+                await runBackfill(rt, { from: a1, to }, overwrite);
                 break;
             }
             case "today": {
-                const t = seoulToday();
-                await runCollect(rt, { from: t, to: t }, overwrite);
+                await runCollectToday(rt, overwrite);
                 break;
             }
             case "month": {
                 if (!a1 || !isValidYearMonth(a1)) throw new Error(`잘못된 년월(YYYY-MM, 2000~2100): ${a1}`);
                 if (a1 > seoulToday().slice(0, 7)) throw new Error(`미래 년월은 수집 불가: ${a1}`);
                 const dates = enumerateMonthDates(a1);
-                await runCollect(rt, { from: dates[0], to: dates[dates.length - 1] }, overwrite);
+                await runBackfill(rt, { from: dates[0], to: dates[dates.length - 1] }, overwrite);
                 break;
             }
             case "backfill": {
                 const months = posInt(a1, "개월") ?? 12;
                 const to = seoulToday();
-                await runCollect(rt, { from: subtractMonths(to, months), to }, overwrite);
+                await runBackfill(rt, { from: subtractMonths(to, months), to }, overwrite);
                 break;
             }
             case "marketcap": {
