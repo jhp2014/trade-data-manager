@@ -84,13 +84,4 @@ describe("ChartReadService", () => {
         const empty = await svc.chartByCode("999999", date);
         expect(empty.rawBase).toBeNull();
     });
-
-    it("chartsByCodes 는 입력 코드 순서 유지, 데이터 없는 코드는 빈 배열", async () => {
-        const { svc } = service({ dailyByCode: { "005930": [daily("005930", date)] } });
-        const bundles = await svc.chartsByCodes(["005930", "999999"], date);
-        expect(bundles.map((b) => b.stockCode)).toEqual(["005930", "999999"]);
-        expect(bundles[0].daily).toHaveLength(1);
-        expect(bundles[1].daily).toEqual([]);
-        expect(bundles[1].minutes).toEqual([]);
-    });
 });

@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
-import { useDayReduction, useReductionIndex } from "../lib/leanModel.js";
 import { dailyMetric } from "../lib/dailyMetrics.js";
 import { stocksByTheme, themeParents, groupStocks, isMover, isNearWindowHigh } from "@trade-data-manager/market/domain";
 import { BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
@@ -22,10 +21,6 @@ export function ThemeBoardPanel(): JSX.Element {
         enabled: date.length > 0,
         staleTime: Infinity,
     });
-    // 거래대금 구간 횟수(EOD) — 축약물의 bucketCounts. 블로킹 안 함(hover 부가정보, 늦게 채워짐).
-    const reductionQ = useDayReduction(date);
-    const reductionIndex = useReductionIndex(reductionQ.data);
-
     const board = useMemo(() => {
         if (!summaryQ.data) return null;
         const stocks: BoardStock[] = [];
@@ -37,9 +32,9 @@ export function ThemeBoardPanel(): JSX.Element {
                 const cHigh = m.highPct >= st.filterHighGte;
                 const cAmt = m.amount / 1e8 >= st.filterAmountEok;
                 let match = st.filterCombine === "and" ? cHigh && cAmt : cHigh || cAmt;
-                // 신고가 근접(추가 AND). trailingHighs 는 축약물 로딩 후에만 판정 — 로딩 중엔 게이트 미적용(깜빡임 방지).
-                if (st.filterNewHigh && reductionIndex) {
-                    const th = reductionIndex.get(s.stockCode)?.trailingHighs;
+                // 신고가 근접(추가 AND). trailingHighs 는 daySummary folding 으로 스냅샷에 함께 온다(별도 로딩 없음).
+                if (st.filterNewHigh) {
+                    const th = s.trailingHighs;
                     match = match && (th ? isNearWindowHigh(th, st.filterNewHighWindow, st.filterNewHighTolerance) : false);
                 }
                 if (!match) {
@@ -58,13 +53,13 @@ export function ThemeBoardPanel(): JSX.Element {
                 lowPct: m.lowPct,
                 amount: m.amount,
                 isMover: isMover(s.marketCap ? Number(s.marketCap) / 1e8 : null, m.rate),
-                buckets: reductionIndex?.get(s.stockCode)?.bucketCounts,
+                buckets: s.bucketCounts,
                 dim,
             });
         }
         const byTheme = stocksByTheme(stocks);
         return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme) };
-    }, [summaryQ.data, st, reductionIndex]);
+    }, [summaryQ.data, st]);
 
     if (summaryQ.isLoading) return <BoardCenter text={`${date} 로딩중…`} />;
     if (summaryQ.isError) return <BoardCenter text={`요약 오류: ${(summaryQ.error as Error).message}`} />;

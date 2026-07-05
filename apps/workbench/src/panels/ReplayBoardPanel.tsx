@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchDaySummary } from "../api/daySummary.js";
-import { useDayReduction, useReductionIndex, snapshotAt } from "../lib/leanModel.js";
+import { useDayReplay, useReplayIndex, snapshotAt } from "../lib/leanModel.js";
 import { kstToUnix } from "../lib/derive.js";
 import { stocksByTheme, themeParents, groupStocks, selectHotUniverse, isMover, evaluateSignal } from "@trade-data-manager/market/domain";
 import { BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
@@ -23,8 +23,8 @@ export function ReplayBoardPanel(): JSX.Element {
         enabled: date.length > 0,
         staleTime: Infinity,
     });
-    const boardQ = useDayReduction(date);
-    const index = useReductionIndex(boardQ.data);
+    const boardQ = useDayReplay(date);
+    const index = useReplayIndex(boardQ.data);
 
     const tUnix = kstToUnix(date, time ?? "15:30:00"); // 시간 미설정 시 장마감 근사
 

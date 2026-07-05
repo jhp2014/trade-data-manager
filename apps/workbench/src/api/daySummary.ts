@@ -28,6 +28,9 @@ export interface DailySnapshot {
     marketCap: string | null;
     themes: ThemeTag[];
     issues: IssueTag[];
+    /** 이슈 축약(EOD) — 서버 folding. 분봉 없는 종목은 생략. */
+    bucketCounts?: number[]; // EOD 거래대금 구간 횟수(길이 7) — 이슈보드 hover
+    trailingHighs?: number[]; // 매 거래일 high%(index=daysAgo, 0=당일) — 신고가 근접 필터
 }
 
 export interface DaySummary {

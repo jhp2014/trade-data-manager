@@ -35,7 +35,7 @@ export function computeChangeRate(
  * 분봉 거래대금 = (시가+고가+저가+종가)/4 × 거래량.
  * 분봉 소스가 거래대금을 안 주거나(키움) 다른 정의로 주므로(KIS acml_tr_pbmn) OHLC평균×량으로 통일.
  * 평균가의 소수점은 정수 나눗셈으로 내림 처리한다.
- * ⚠ day-reduction 캐시에 반영됨 — 이 공식을 바꾸면 DAY_REDUCTION_VERSION 을 +1.
+ * ⚠ 복기 파생(cumAmount)·테마 파생(bucketCounts)에 반영됨 — 이 공식을 바꾸면 day-replay 파일 캐시(.cache/day-replay)를 삭제.
  */
 export function computeMinuteTradingAmount(bar: {
     open: string;

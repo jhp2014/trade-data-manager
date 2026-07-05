@@ -1,8 +1,8 @@
-// 당일 축약물(day-reduction) 위 시점 스냅샷 + 유니버스 시간 경계.
+// 당일 복기 파생값(day-replay) 위 시점 스냅샷 + 유니버스 시간 경계.
 // 서버가 종목별 분당 % 시계열을 이미 줬으므로 클라는 이진탐색으로 시점 t 값을 뽑기만 한다(파생 없음).
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { fetchDayReduction, type DayReduction, type ReducedStock } from "../api/dayReduction.js";
+import { fetchDayReplay, type DayReplay, type MinuteDerived } from "../api/dayReplay.js";
 
 export interface Snapshot {
     code: string;
@@ -31,14 +31,14 @@ function lastIndexAtOrBefore(times: number[], t: number): number {
 }
 
 /** 시점 t의 종목 스냅샷. t 이전 데이터 없으면 null(아직 미개장). 값은 이미 % — 서버가 base 반영 완료. */
-export function snapshotAt(s: ReducedStock, t: number): Snapshot | null {
+export function snapshotAt(s: MinuteDerived, t: number): Snapshot | null {
     const i = lastIndexAtOrBefore(s.times, t);
     if (i < 0) return null;
     return { code: s.code, rate: s.rate[i], openPct: s.open, highPct: s.high[i], lowPct: s.low[i], cumAmount: s.cumAmount[i] };
 }
 
 /** 유니버스 전체의 시간 경계(스크러버 범위 힌트). */
-export function boardTimeBounds(reduction: DayReduction): { start: number; end: number } {
+export function boardTimeBounds(reduction: DayReplay): { start: number; end: number } {
     let start = Number.POSITIVE_INFINITY;
     let end = 0;
     for (const s of reduction.stocks) {
@@ -49,11 +49,11 @@ export function boardTimeBounds(reduction: DayReduction): { start: number; end: 
     return { start: Number.isFinite(start) ? start : 0, end };
 }
 
-// 역사 데이터 immutable → staleTime∞, gcTime 넉넉(브라우저 ~10거래일 캐시). 복기·이슈 보드가 같은 캐시 공유.
-export function useDayReduction(date: string): UseQueryResult<DayReduction> {
+// 역사 데이터 immutable → staleTime∞, gcTime 넉넉(브라우저 ~10거래일 캐시). 복기보드 전용(테마보드는 day-summary folding).
+export function useDayReplay(date: string): UseQueryResult<DayReplay> {
     return useQuery({
-        queryKey: ["day-reduction", date],
-        queryFn: () => fetchDayReduction(date),
+        queryKey: ["day-replay", date],
+        queryFn: () => fetchDayReplay(date),
         enabled: date.length > 0,
         staleTime: Infinity,
         gcTime: 60 * 60_000,
@@ -61,7 +61,7 @@ export function useDayReduction(date: string): UseQueryResult<DayReduction> {
 }
 
 /** byCode 인덱스(스냅샷 조회용) memo. */
-export function useReductionIndex(reduction: DayReduction | undefined): Map<string, ReducedStock> | null {
+export function useReplayIndex(reduction: DayReplay | undefined): Map<string, MinuteDerived> | null {
     return useMemo(() => {
         if (!reduction) return null;
         return new Map(reduction.stocks.map((s) => [s.code, s]));

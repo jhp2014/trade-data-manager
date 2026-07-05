@@ -10,7 +10,7 @@ const PORT = Number(process.env.API_PORT ?? 3001);
 async function bootstrap(): Promise<void> {
     const app = await NestFactory.create(AppModule);
     app.enableCors();
-    // /day-charts 는 수십 MB raw JSON — gzip 으로 ~7MB 로 줄인다(당일 전체 분봉 통짜 전송).
+    // 큰 응답(당일 축약물 등)은 raw JSON 수 MB — gzip 으로 압축해 내려보낸다.
     app.use(compression());
     await app.listen(PORT);
     console.log(`▶ api listening on http://localhost:${PORT}`);

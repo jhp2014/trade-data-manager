@@ -18,11 +18,8 @@ export interface ChartBundle {
 
 /**
  * 차트 조회 리더(읽기 Query) — (종목, 날짜)로 일봉2년+당일 dense분봉 raw 를 내려준다.
- * 테마/이슈 → 코드 해석은 DaySummary(byTheme/byIssue)가 소유하고, 그 코드들을 chartsByCodes 로 벌크 조회한다(조립은 상위 app).
  * 주석(price line·review point)은 별개 컨텍스트라 ChartAnnotationReader 로 분리한다.
  */
 export interface ChartReader {
     chartByCode(stockCode: string, date: string): Promise<ChartBundle>;
-    /** 여러 종목 벌크 — 결과는 입력 코드 순서. 데이터 없는 코드는 daily/minutes 빈 배열. */
-    chartsByCodes(stockCodes: string[], date: string): Promise<ChartBundle[]>;
 }

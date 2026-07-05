@@ -1,7 +1,7 @@
 // 분봉 거래대금 구간(억) — 서버 스냅샷 카운트·차트 마커·필터가 공유하는 단일 진실원본.
 // 7구간: [30,40) [40,50) [50,70) [70,100) [100,150) [150,200) [200,∞). 외부 import 0.
-// ⚠ 이 파일의 임계·카운팅정책은 day-reduction 캐시 출력에 반영된다 —
-//    바꾸면 apps/api dayReduction 의 DAY_REDUCTION_VERSION 을 +1 해야 옛 캐시가 무효화된다.
+// ⚠ 이 파일의 임계·카운팅정책은 테마보드 파생(bucketCounts)에 반영된다 — 그건 apps/api 의 in-memory
+//    캐시(themeStatsCache)라 서버 재시작(재배포)하면 자동 반영된다(파일 삭제 불필요).
 
 /** 각 구간의 하한(억). 인덱스 i 구간 = [AMOUNT_BUCKETS_EOK[i], 다음하한). 마지막은 [200,∞). */
 export const AMOUNT_BUCKETS_EOK = [30, 40, 50, 70, 100, 150, 200] as const;
@@ -17,8 +17,8 @@ export function amountBucketIndex(amountKrw: number): number {
 }
 
 // ── 거래대금 카운팅 정책 ─────────────────────────────────────────────
-// "어떤 분봉을 구간 카운트(bucketCounts)에 넣을지"를 한 곳에 격리한다. 값이 바뀌면 당일 축약물
-// 캐시 버전(DAY_REDUCTION_VERSION)을 +1 한다. 시간 창·음봉 규칙을 모두 이 정책이 소유한다.
+// "어떤 분봉을 구간 카운트(bucketCounts)에 넣을지"를 한 곳에 격리한다. bucketCounts 는 in-memory 이슈
+// 캐시라 값 바꿔도 서버 재시작하면 자동 반영. 시간 창·음봉 규칙을 모두 이 정책이 소유한다.
 
 export interface CountingPolicy {
     /** 카운트 시간 창(KST, "HH:MM"). 밖은 제외 — 15:30 종가단일가·NXT 오후 시간외 배제. */

@@ -40,7 +40,7 @@ export interface IssueBoardSettings {
     filterAmountEok: number; // 거래대금 억
     filterCombine: "and" | "or";
     filterMode: "dim" | "hide";
-    // 신고가 근접 필터(추가 AND 조건, day-reduction trailingHighs 필요). 당일이 창 최고가의 tol% 이내여야 표시.
+    // 신고가 근접 필터(추가 AND 조건, day-summary folding 의 trailingHighs 필요). 당일이 창 최고가의 tol% 이내여야 표시.
     filterNewHigh: boolean;
     filterNewHighWindow: number; // 거래일 창
     filterNewHighTolerance: number; // 최고가 대비 허용 갭 %

@@ -14,7 +14,7 @@
 //
 // 주의: 세션 간 빈 구간(예 정규장 마감~시간외 단일가 사이)도 내부 갭으로 보고 flat-fill 될 수 있으나,
 // 채움봉은 거래량 0이라 거래대금·누적 등 vol 가중 지표엔 무영향(직전가 반복)이라 무해하다.
-// ⚠ 이 채움 정책은 day-reduction 캐시 출력에 반영된다 — 바꾸면 DAY_REDUCTION_VERSION 을 +1.
+// ⚠ 이 채움 정책은 복기 파생(MinuteDerived) 출력에 반영된다 — 바꾸면 day-replay 파일 캐시(.cache/day-replay)를 삭제.
 import type { MinuteBar, MinuteCandle } from "./model.js";
 
 /** "HH:MM:SS" → 자정 기준 분(分). 초는 분봉상 항상 00 이라 무시. */
