@@ -1,11 +1,12 @@
 // Inbound(driving) 포트 — 복기 데이터 수집 유스케이스(Command, 쓰기).
-// 두 진입점: collectToday()=오늘 / backfill(range)=과거 구간 재구성.
+// 두 진입점: collectToday()=오늘 / backfill(range)=과거 구간 재구성. 각각 일봉→분봉→시총을 순차 처리.
 //   · 일봉 깊이는 range 인자가 아니라 진입점이 정한다(collect=오늘−2년 / backfill=range.from−≈600봉).
 //   · 분봉은 collect=오늘 하루 / backfill=구간 전체(일봉 있는 거래일만).
+//   · 시총은 collect=당일 입력(ka10099 라이브) / backfill=역산(raw 일봉 테이블).
 import type { DateRange } from "#domain";
 
 export interface CollectProgress {
-    phase: "daily" | "minute";
+    phase: "daily" | "minute" | "marketcap";
     /** minute 단계의 거래일(YYYY-MM-DD). */
     date?: string;
     done?: number;
@@ -34,6 +35,8 @@ export interface CollectResult {
     skippedDays: number;
     /** 저장한 (종목·일) 합. */
     totalStored: number;
+    /** 기록한 시총 행 수(collect=당일 1스윕 / backfill=구간 역산). */
+    marketCapStored: number;
 }
 
 export interface MarketDataCollector {

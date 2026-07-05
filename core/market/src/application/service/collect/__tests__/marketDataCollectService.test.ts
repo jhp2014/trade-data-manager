@@ -111,7 +111,18 @@ function makeCollector(opts: {
     const minuteSweep = new MinuteSweepService({ scanRepo, minuteProvider: new FakeMinuteProvider(), minuteRepo });
     const dailyCollector = new DailyCollector({ universe, dailySweep, scanRepo });
     const minuteCollector = new MinuteCollector({ scanRepo, minuteSweep, minuteRepo });
-    const collector = new MarketDataCollectService({ dailyCollector, minuteCollector, today: () => opts.today ?? "2026-06-26" });
+    // 시총은 이 composer 테스트의 관심 밖 — 고정 stored 로 폴딩 배선만 검증(collect=record / backfill=backfill).
+    const marketCapRecorder = { record: async (date: string) => ({ date, universe: 1, stored: 7 }) };
+    const marketCapBackfiller = {
+        backfill: async (range: DateRange) => ({ range, universe: 1, stored: 3, failed: [] as string[] }),
+    };
+    const collector = new MarketDataCollectService({
+        dailyCollector,
+        minuteCollector,
+        marketCapRecorder,
+        marketCapBackfiller,
+        today: () => opts.today ?? "2026-06-26",
+    });
     return { collector, minuteRepo };
 }
 
@@ -127,6 +138,7 @@ describe("collectToday (오늘)", () => {
         expect(r.dailyRefreshed).toBe(false);
         expect(r.universeCount).toBe(1);
         expect(r.range).toEqual({ from: "2026-06-26", to: "2026-06-26" });
+        expect(r.marketCapStored).toBe(7); // 당일 시총(record) 폴딩
     });
 
     it("커버리지 부족(latest < 오늘) → 일봉 재수집(dailyRefreshed=true)", async () => {
@@ -177,6 +189,7 @@ describe("backfill (과거 구간)", () => {
         expect(r.dailyRefreshed).toBe(true);
         expect(r.tradingDays).toBe(2);
         expect(r.range).toEqual({ from: "2026-06-24", to: "2026-06-25" });
+        expect(r.marketCapStored).toBe(3); // 시총 백필(backfill) 폴딩
     });
 
     it("일봉 없는 날은 목록에서 자연 제외(구간 밖·미수집)", async () => {
