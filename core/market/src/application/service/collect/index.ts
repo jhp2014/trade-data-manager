@@ -4,7 +4,7 @@ export * from "./marketDataCollectService.js";
 // 내부 협력자(포트 아님 — collect 가 조합).
 export * from "./dailyCollector.js";
 export * from "./minuteCollector.js";
-export * from "./marketDataIngestService.js";
+export * from "./dailyIngestService.js";
 export * from "./rawDailyIngestService.js";
 export * from "./stockMasterIngestService.js";
 export * from "./dailySweepService.js";

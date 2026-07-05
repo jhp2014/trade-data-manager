@@ -1,4 +1,4 @@
-// 원주가(미수정) 일봉 수집 유스케이스 — 종목 1개 단위. 수정주가 ingest(MarketDataIngestService)의 원주가 짝.
+// 원주가(미수정) 일봉 수집 유스케이스 — 종목 1개 단위. 수정주가 ingest(DailyIngestService)의 원주가 짝.
 // 결정적 차이: 원주가는 사후 불변이라 **자가치유(소급조정 감지→덮어쓰기)가 없다**. 그냥 수집해서 append-only 저장
 // (repo 가 onConflictDoNothing — 이미 있는 (종목,날)은 유지). 백필/증분 둘 다 이 한 메서드로.
 import type { DateRange } from "#domain";

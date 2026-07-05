@@ -3,7 +3,7 @@
 // 단일종목 ingest 는 DailyIngest(수정)·RawDailyIngest(원주가)가, 여기는 fan-out·실패격리·진행률만 책임.
 // MinuteSweepService(한 날짜 분봉 펼침)의 일봉 짝.
 import type { DateRange } from "#domain";
-import type { MarketDataIngestService } from "./marketDataIngestService.js";
+import type { DailyIngestService } from "./dailyIngestService.js";
 import type { RawDailyIngestService } from "./rawDailyIngestService.js";
 import { mapWithConcurrency } from "../../concurrency.js";
 
@@ -30,7 +30,7 @@ export interface DailySweepOptions {
 }
 
 export interface DailySweepDeps {
-    dailyIngest: MarketDataIngestService;
+    dailyIngest: DailyIngestService;
     rawDailyIngest: RawDailyIngestService;
 }
 

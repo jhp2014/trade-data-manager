@@ -13,7 +13,7 @@ export interface DailyIngestResult {
     saved: number;
 }
 
-export interface MarketDataIngestDeps {
+export interface DailyIngestDeps {
     dailyProvider: DailyCandleProvider;
     dailyRepo: DailyCandleRepository;
     /** 오늘(YYYY-MM-DD) 공급자. 기본 = Asia/Seoul 현재일. 기본 일봉 범위 산정에만 쓰임 — 주입 시 테스트 결정성↑. */
@@ -37,10 +37,10 @@ function candleUnchanged(fresh: DailyCandle, stored: DailyCandle): boolean {
     return ohlcvEqual(fresh.krx, stored.krx) && ohlcvEqual(fresh.un, stored.un);
 }
 
-export class MarketDataIngestService {
+export class DailyIngestService {
     private readonly today: () => string;
 
-    constructor(private readonly deps: MarketDataIngestDeps) {
+    constructor(private readonly deps: DailyIngestDeps) {
         this.today = deps.today ?? seoulToday;
     }
 

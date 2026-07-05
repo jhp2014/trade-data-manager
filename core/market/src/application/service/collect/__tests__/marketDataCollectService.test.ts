@@ -3,7 +3,7 @@ import { MarketDataCollectService } from "../marketDataCollectService.js";
 import { DailyCollector } from "../dailyCollector.js";
 import { MinuteCollector } from "../minuteCollector.js";
 import { StockMasterIngestService } from "../stockMasterIngestService.js";
-import { MarketDataIngestService } from "../marketDataIngestService.js";
+import { DailyIngestService } from "../dailyIngestService.js";
 import { RawDailyIngestService } from "../rawDailyIngestService.js";
 import { DailySweepService } from "../dailySweepService.js";
 import { MinuteSweepService } from "../minuteSweepService.js";
@@ -93,7 +93,7 @@ function makeCollector(opts: {
     const scanRepo = new FakeScanRepo(opts.byDate, opts.latest);
     const minuteRepo = new FakeMinuteRepo();
     const universe = new StockMasterIngestService({ provider: new FakeStockMasterProvider(opts.codes), repository: new NoopStockMasterRepo() });
-    const dailyIngest = new MarketDataIngestService({
+    const dailyIngest = new DailyIngestService({
         dailyProvider: new FakeDailyProvider(),
         dailyRepo: { saveDailyCandles: async () => {}, getDailyCandles: async () => [], getDailyCandle: async () => null, getEarliestDailyDate: async () => null },
         today: () => "2026-06-28",

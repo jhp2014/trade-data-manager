@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DailySweepService } from "../dailySweepService.js";
-import { MarketDataIngestService } from "../marketDataIngestService.js";
+import { DailyIngestService } from "../dailyIngestService.js";
 import { RawDailyIngestService } from "../rawDailyIngestService.js";
 import type { DailyCandle, DateRange } from "#domain";
 import type { DailyCandleProvider, DailyCandleRepository } from "#port/outbound";
@@ -46,7 +46,7 @@ class CountingDailyRepo implements DailyCandleRepository {
 }
 function makeSweep(behavior: Record<string, "ok" | "throw" | "empty">) {
     const dailyRepo = new CountingDailyRepo();
-    const dailyIngest = new MarketDataIngestService({
+    const dailyIngest = new DailyIngestService({
         dailyProvider: new FakeDailyProvider(behavior),
         dailyRepo,
         today: () => "2026-06-28",

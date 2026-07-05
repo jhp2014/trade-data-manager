@@ -25,7 +25,7 @@ import {
     DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
 import {
-    MarketDataIngestService,
+    DailyIngestService,
     RawDailyIngestService,
     StockMasterIngestService,
     DailySweepService,
@@ -86,7 +86,7 @@ export function createIngestRuntime(): IngestRuntime {
         provider: new KiwoomStockListAdapter(kiwoom.rest),
         repository: stockMasterRepo,
     });
-    const dailyIngest = new MarketDataIngestService({ dailyProvider, dailyRepo });
+    const dailyIngest = new DailyIngestService({ dailyProvider, dailyRepo });
     // 원주가 일봉 ingest — 종목별 append-only(자가치유 없음). DailySweep 가 종목당 수정주가와 함께 둘 다.
     const rawDailyIngest = new RawDailyIngestService({ rawProvider: rawDailyProvider, rawRepo: rawDailyRepo });
     const dailySweep = new DailySweepService({ dailyIngest, rawDailyIngest });

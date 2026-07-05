@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MarketDataIngestService } from "../marketDataIngestService.js";
+import { DailyIngestService } from "../dailyIngestService.js";
 import { defaultDailyRange } from "../../shared/dailyRange.js";
 import type { DailyBar, DailyCandle, DateRange } from "#domain";
 import type { DailyCandleProvider, DailyCandleRepository } from "#port/outbound";
@@ -65,7 +65,7 @@ function makeService(opts: {
 }) {
     const dailyRepo = opts.repo ?? new FakeDailyRepo();
     const dailyProvider = new FakeDailyProvider(opts.daily);
-    const service = new MarketDataIngestService({
+    const service = new DailyIngestService({
         dailyProvider,
         dailyRepo,
         today: () => opts.today ?? "2026-06-28",
