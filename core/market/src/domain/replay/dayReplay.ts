@@ -1,12 +1,11 @@
-// 당일 복기 파생값(day-replay) — 그날 raw(분봉+원주가일봉) 순회로 종목별 파생. **불변**이라 파일 캐시.
-//  · deriveMinutes → per-minute % 시계열 + 분봉 open%/high%(테마 음봉·꼬리 판정용) + trailingHighs. 파일에 통째 저장.
-//  · themeStatsOf  → 그 파일 파생값에서 테마보드 EOD(bucketCounts·trailingHighs)를 **재계산**(분봉 재조회 0).
-// 카운팅 정책(시간창·꼬리·임계)은 themeStatsOf 가 요청 때 적용 → 정책 바꾸면 파일 재빌드 없이 다음 요청에 반영.
-//
-// 모든 %는 **원주가 직전 거래일 종가(base)** 대비 — 분봉이 원주가라 base 도 원주가여야 스케일이 맞고,
-// 같은 분모라 두 %의 뺄셈이 곧 가격 갭이 된다. 거래대금만 원. 계산은 core domain 순수함수.
-import { densifyMinutes, computeMinuteTradingAmount, countAmountBuckets, DEFAULT_COUNTING_POLICY } from "@trade-data-manager/market";
-import type { MinuteCandle, DailyCandle, CountingPolicy, DerivedMinute } from "@trade-data-manager/market";
+// 당일 복기 파생값(day-replay) — 그날 raw(분봉+원주가일봉) → 종목별 순수 파생. domain(I/O 0).
+//  · deriveMinutes → per-minute % 시계열 + 분봉 open%/high%(테마 음봉·꼬리) + trailingHighs. 복기 파일 원자재.
+//  · themeStatsOf  → 그 파생값에서 테마보드 EOD(bucketCounts·trailingHighs) 재계산(분봉 재조회 0).
+// 모든 %는 원주가 직전 거래일 종가(base) 대비 — 분봉이 원주가라 base 도 원주가여야 스케일이 맞다. 거래대금만 원.
+import type { MinuteCandle, DailyCandle } from "../candle/model.js";
+import { densifyMinutes } from "../candle/minuteBackfill.js";
+import { computeMinuteTradingAmount } from "../candle/price.js";
+import { countAmountBuckets, DEFAULT_COUNTING_POLICY, type CountingPolicy, type DerivedMinute } from "../board/amount.js";
 
 /** trailingHighs 배열 길이(최대 거래일). 클라가 이 안에서 20/40/…/120 창을 슬라이스. */
 export const TRAILING_DAYS = 120;
@@ -33,7 +32,7 @@ export interface MinuteDerived {
 /** 테마보드용 EOD 파생값(파일에서 재계산). */
 export interface ThemeStats {
     code: string;
-    bucketCounts: number[]; // EOD 거래대금 구간 횟수(길이 AMOUNT_BUCKET_COUNT) — 테마보드 hover
+    bucketCounts: number[]; // EOD 거래대금 구간 횟수 — 테마보드 hover
     trailingHighs: number[]; // 신고가 근접 필터(파일에서 그대로 복사)
 }
 
@@ -54,7 +53,7 @@ function kstToUnix(date: string, time: string): number {
     return Math.floor(Date.parse(`${date}T${time}+09:00`) / 1000);
 }
 
-/** % 값 소수 2자리 반올림 — 소비측도 2자리라 무손실 + payload 다이어트(부동소수 17자리 직렬화 방지). */
+/** % 값 소수 2자리 반올림 — 소비측도 2자리라 무손실 + payload 다이어트. */
 function r2(x: number): number {
     return Math.round(x * 100) / 100;
 }
@@ -68,13 +67,13 @@ function baseAndTrailing(rawDaily: DailyCandle[], date: string): { base: number 
     const before = upto.filter((c) => c.date < date);
     const base = before.length > 0 ? Number(before[before.length - 1].un.close) : null;
     if (base === null || base === 0) return { base, trailingHighs: [] };
-    const recent = upto.slice(-TRAILING_DAYS).reverse(); // index0 = 가장 최근(≤date, 보통 당일)
+    const recent = upto.slice(-TRAILING_DAYS).reverse();
     return { base, trailingHighs: recent.map((c) => r2(((Number(c.un.high) - base) / base) * 100)) };
 }
 
 /**
  * 복기 파생 계산. 분봉 없으면 null(스킵). 시장 = UN(통합). 분봉은 densify(채움정책 단일진실).
- * base 폴백(상장일): 당일 첫 분봉 시가 → 분봉 %는 그대로 계산. per-minute open%/high% 와 trailingHighs 까지 통째 저장.
+ * base 폴백(상장일): 당일 첫 분봉 시가. per-minute open%/high% 와 trailingHighs 까지 통째 저장.
  */
 export function deriveMinutes(
     code: string,
@@ -127,8 +126,7 @@ export function deriveMinutes(
 /**
  * 파일 파생값(MinuteDerived) → 테마보드 EOD. 분봉 재조회 0.
  *  · bucketCounts — 분봉 거래대금(cumAmount 인접 차분) + open%/high%/close%(rate) 로 카운팅 정책 재적용.
- *  · trailingHighs — 파일에서 그대로.
- * times 는 unix(UTC)라 시간창 판정용으로 KST 자정기준 분으로 되돌린다.
+ *  · trailingHighs — 파일에서 그대로. times 는 unix(UTC)라 KST 자정기준 분으로 되돌려 시간창 판정.
  */
 export function themeStatsOf(md: MinuteDerived, policy: CountingPolicy = DEFAULT_COUNTING_POLICY): ThemeStats {
     const mins: DerivedMinute[] = new Array(md.times.length);

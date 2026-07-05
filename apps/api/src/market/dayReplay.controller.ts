@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
 import { DAY_REPLAY_READER } from "./tokens.js";
-import type { MinuteDerived } from "./dayReplay.js";
+import type { MinuteDerived } from "@trade-data-manager/market";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 

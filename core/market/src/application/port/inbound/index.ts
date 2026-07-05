@@ -9,6 +9,8 @@ export * from "./marketcap/dailyMarketCapRecorder.js";
 export * from "./news/newsBackfiller.js";
 export * from "./news/newsSearcher.js";
 export * from "./issue/daySummaryReader.js";
+export * from "./issue/metaReader.js";
 export * from "./issue/issueEditor.js";
 export * from "./chart/chartReader.js";
 export * from "./chart/chartAnnotationReader.js";
+export * from "./replay/replayReader.js";

@@ -15,7 +15,7 @@ import {
 } from "@trade-data-manager/persistence";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { ChartReadService, applyIssues, buildDaySummary } from "@trade-data-manager/market";
+import { ChartReadService, ReplayReadService, MetaReadService, applyIssues, buildDaySummary } from "@trade-data-manager/market";
 import { CHART_READER, DERIVED_STORE, META_STORE, DAY_REPLAY_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart.controller.js";
 import { DaySummaryController, type EnrichedDaySummaryReader } from "./daySummary.controller.js";
@@ -27,6 +27,7 @@ import { LazyTelegramNewsSearcher } from "./telegramNewsSearcher.js";
 import { DayReplayController, type DayReplayReader } from "./dayReplay.controller.js";
 import { DerivedStore } from "./derivedStore.js";
 import { MetaStore } from "./metaStore.js";
+import { CachedMembership } from "./cachedMembership.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
@@ -52,15 +53,16 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
             inject: [MARKET_POOL],
         },
         {
-            // 당일 파생값 단일 스토어 — replay(파일)·theme(메모리) 공유 fetch/build. 복기·테마 리더가 이걸 경유.
+            // 복기 파생 파일 캐시 — core ReplayReadService(fetch+deriveMinutes) 위에 파일 캐시 어댑터(inbound 포트 의존).
             provide: DERIVED_STORE,
             useFactory: (pool: Pool): DerivedStore => {
                 const db = createDb(pool);
-                return new DerivedStore({
+                const replay = new ReplayReadService({
                     universe: new DrizzleDailyUniverseProvider(db),
-                    minuteRepo: new DrizzleMinuteCandleRepository(db),
-                    rawDailyRepo: new DrizzleRawDailyCandleRepository(db),
+                    minute: new DrizzleMinuteCandleRepository(db),
+                    rawDaily: new DrizzleRawDailyCandleRepository(db),
                 });
+                return new DerivedStore(replay);
             },
             inject: [MARKET_POOL],
         },
@@ -97,17 +99,18 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
             inject: [META_STORE, DERIVED_STORE],
         },
         {
-            // 당일 불변 meta 단일 스토어 — 시트·master·시총·일봉·전일종가 fetch + 거래일 LRU. 테마·복기 리더 공유(시트 1× 조회).
+            // 불변 meta 메모리 캐시 — core MetaReadService(fetch+조립) 위에 거래일 LRU 어댑터. 테마·복기 리더 공유(시트 1× 조회).
             provide: META_STORE,
             useFactory: (pool: Pool): MetaStore => {
                 const db = createDb(pool);
-                return new MetaStore({
+                const metaRead = new MetaReadService({
                     universe: new DrizzleDailyUniverseProvider(db),
-                    membership: new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET),
+                    membership: new CachedMembership(new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET)),
                     stockMaster: new DrizzleStockMasterRepository(db),
                     marketCap: new DrizzleDailyMarketCapRepository(db),
                     dailyCandle: new DrizzleDailyCandleRepository(db),
                 });
+                return new MetaStore(metaRead);
             },
             inject: [MARKET_POOL],
         },

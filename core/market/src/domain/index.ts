@@ -26,3 +26,6 @@ export * from "./review/reviewPoint.js";
 
 // board — 테마 보드 순수 로직(로스터·포함관계·시점 유니버스 선정). 워크벤치 클라가 import.
 export * from "./board/index.js";
+
+// replay — 복기 파생 순수 계산(deriveMinutes·themeStatsOf) + 타입(MinuteDerived·ThemeStats·DayReplay).
+export * from "./replay/dayReplay.js";

@@ -12,7 +12,7 @@ import { promises as fs } from "node:fs";
 import { gzip, gunzip } from "node:zlib";
 import { promisify } from "node:util";
 import path from "node:path";
-import type { DayReplay } from "./dayReplay.js";
+import type { DayReplay } from "@trade-data-manager/market";
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
