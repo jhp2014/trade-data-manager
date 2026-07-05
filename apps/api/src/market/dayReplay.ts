@@ -1,26 +1,22 @@
-// 당일 파생값(day-derived) — 두 소비자, 두 빌더. 둘 다 그날 raw(분봉+원주가일봉) 순회에서 파생:
-//  · deriveMinutes   → 복기보드용 per-minute 시계열(times·rate·high·low·open·cumAmount) = MinuteDerived. 파일 캐시.
-//  · buildThemeStats → 테마보드용 EOD 스칼라(bucketCounts·trailingHighs)          = ThemeStats.    in-memory 캐시.
-// 공유 fetch·이중 build·캐시 라우팅은 DerivedStore 가 소유(raw 1회 조회로 둘 다). 설계: [[day-reduction-cache-design]].
+// 당일 복기 파생값(day-replay) — 그날 raw(분봉+원주가일봉) 순회로 종목별 파생. **불변**이라 파일 캐시.
+//  · deriveMinutes → per-minute % 시계열 + 분봉 open%/high%(테마 음봉·꼬리 판정용) + trailingHighs. 파일에 통째 저장.
+//  · themeStatsOf  → 그 파일 파생값에서 테마보드 EOD(bucketCounts·trailingHighs)를 **재계산**(분봉 재조회 0).
+// 카운팅 정책(시간창·꼬리·임계)은 themeStatsOf 가 요청 때 적용 → 정책 바꾸면 파일 재빌드 없이 다음 요청에 반영.
 //
 // 모든 %는 **원주가 직전 거래일 종가(base)** 대비 — 분봉이 원주가라 base 도 원주가여야 스케일이 맞고,
 // 같은 분모라 두 %의 뺄셈이 곧 가격 갭이 된다. 거래대금만 원. 계산은 core domain 순수함수.
-import {
-    densifyMinutes,
-    computeMinuteTradingAmount,
-    amountBucketIndex,
-    shouldCountMinute,
-    AMOUNT_BUCKET_COUNT,
-    DEFAULT_COUNTING_POLICY,
-} from "@trade-data-manager/market";
-import type { MinuteCandle, DailyCandle, CountingPolicy } from "@trade-data-manager/market";
+import { densifyMinutes, computeMinuteTradingAmount, countAmountBuckets, DEFAULT_COUNTING_POLICY } from "@trade-data-manager/market";
+import type { MinuteCandle, DailyCandle, CountingPolicy, DerivedMinute } from "@trade-data-manager/market";
 
 /** trailingHighs 배열 길이(최대 거래일). 클라가 이 안에서 20/40/…/120 창을 슬라이스. */
 export const TRAILING_DAYS = 120;
 /** trailingHighs(120거래일) 를 확실히 덮을 원주가 일봉 조회 창(캘린더). 9개월 ≈ ≥180 거래일 여유. */
 export const RAW_DAILY_LOOKBACK_MONTHS = 9;
 
-/** 복기보드용 per-minute 파생값. 가격 시계열은 % (원주가 base 대비), 거래대금만 원. */
+/** KST 오프셋(초). 저장된 unix(UTC) times 를 자정기준 분으로 되돌릴 때 쓴다. */
+const KST_OFFSET_SEC = 9 * 3600;
+
+/** 복기 파생값(파일 캐시 단위). 가격 시계열은 % (원주가 base 대비), 거래대금만 원. */
 export interface MinuteDerived {
     code: string;
     times: number[]; // unix seconds(UTC)
@@ -29,13 +25,16 @@ export interface MinuteDerived {
     low: number[]; // running 저가 % / 분
     open: number; // 당일 시가 %(스칼라) — 눕힌 캔들 몸통
     cumAmount: number[]; // 누적 거래대금(원) / 분
+    minuteOpen: number[]; // 분봉 시가 % / 분 — 테마 음봉/꼬리 판정
+    minuteHigh: number[]; // 분봉 고가 % / 분 — 테마 음봉/꼬리 판정
+    trailingHighs: number[]; // 매 거래일 high%(index=daysAgo, 0=당일, 최대 TRAILING_DAYS) — 테마 신고가 근접 필터
 }
 
-/** 테마보드용 EOD 파생값(분봉 순회 산출). */
+/** 테마보드용 EOD 파생값(파일에서 재계산). */
 export interface ThemeStats {
     code: string;
     bucketCounts: number[]; // EOD 거래대금 구간 횟수(길이 AMOUNT_BUCKET_COUNT) — 테마보드 hover
-    trailingHighs: number[]; // 매 거래일 high%(index=daysAgo, 0=당일, 최대 TRAILING_DAYS) — 신고가 근접 필터
+    trailingHighs: number[]; // 신고가 근접 필터(파일에서 그대로 복사)
 }
 
 /** 복기 파생 번들(파일 캐시 단위). */
@@ -44,7 +43,7 @@ export interface DayReplay {
     stocks: MinuteDerived[];
 }
 
-/** 테마 파생 번들(메모리 캐시 단위). */
+/** 테마 파생 번들(요청 때 file 에서 재계산). */
 export interface DayTheme {
     date: string;
     stocks: ThemeStats[];
@@ -74,8 +73,8 @@ function baseAndTrailing(rawDaily: DailyCandle[], date: string): { base: number 
 }
 
 /**
- * 복기보드용 per-minute 파생. 분봉 없으면 null(스킵). 시장 = UN(통합). 분봉은 densify(채움정책 단일진실).
- * base 폴백(상장일): 당일 첫 분봉 시가 → 분봉 %는 그대로 계산.
+ * 복기 파생 계산. 분봉 없으면 null(스킵). 시장 = UN(통합). 분봉은 densify(채움정책 단일진실).
+ * base 폴백(상장일): 당일 첫 분봉 시가 → 분봉 %는 그대로 계산. per-minute open%/high% 와 trailingHighs 까지 통째 저장.
  */
 export function deriveMinutes(
     code: string,
@@ -86,7 +85,7 @@ export function deriveMinutes(
     const minutes = densifyMinutes(rawMinutes);
     if (minutes.length === 0) return null;
 
-    const { base: dailyBase } = baseAndTrailing(rawDaily, date);
+    const { base: dailyBase, trailingHighs } = baseAndTrailing(rawDaily, date);
     const base = dailyBase ?? Number(minutes[0].un.open);
     const pct = (won: number): number => (base === 0 ? 0 : r2(((won - base) / base) * 100));
 
@@ -96,12 +95,15 @@ export function deriveMinutes(
     const high = new Array<number>(n);
     const low = new Array<number>(n);
     const cumAmount = new Array<number>(n);
+    const minuteOpen = new Array<number>(n);
+    const minuteHigh = new Array<number>(n);
 
     let hi = -Infinity;
     let lo = Infinity;
     let cum = 0;
     for (let i = 0; i < n; i++) {
         const m = minutes[i];
+        const o = Number(m.un.open);
         const h = Number(m.un.high);
         const l = Number(m.un.low);
         const c = Number(m.un.close);
@@ -115,43 +117,29 @@ export function deriveMinutes(
         high[i] = pct(hi);
         low[i] = pct(lo);
         cumAmount[i] = cum;
+        minuteOpen[i] = pct(o);
+        minuteHigh[i] = pct(h);
     }
 
-    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount };
+    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount, minuteOpen, minuteHigh, trailingHighs };
 }
 
 /**
- * 테마보드용 EOD 파생. 분봉 없으면 null(스킵). 시장 = UN.
- *  · bucketCounts — 카운팅정책(시간 창·꼬리없는음봉 제외) 통과 분봉의 거래대금 구간 카운트.
- *  · trailingHighs — 원주가 일봉 창의 매 거래일 high%(base 없으면 빈 배열).
- * per-minute 시계열은 만들지 않는다(테마보드가 안 씀). 채움봉(vol 0)은 거래대금 0이라 카운트 무영향 → raw 순회로 충분.
+ * 파일 파생값(MinuteDerived) → 테마보드 EOD. 분봉 재조회 0.
+ *  · bucketCounts — 분봉 거래대금(cumAmount 인접 차분) + open%/high%/close%(rate) 로 카운팅 정책 재적용.
+ *  · trailingHighs — 파일에서 그대로.
+ * times 는 unix(UTC)라 시간창 판정용으로 KST 자정기준 분으로 되돌린다.
  */
-export function buildThemeStats(
-    code: string,
-    rawMinutes: MinuteCandle[],
-    rawDaily: DailyCandle[],
-    date: string,
-    policy: CountingPolicy = DEFAULT_COUNTING_POLICY,
-): ThemeStats | null {
-    if (rawMinutes.length === 0) return null;
-
-    const { trailingHighs } = baseAndTrailing(rawDaily, date);
-    const bucketCounts = new Array<number>(AMOUNT_BUCKET_COUNT).fill(0);
-
-    for (const m of rawMinutes) {
-        const minAmount = Number(
-            computeMinuteTradingAmount({ open: m.un.open, high: m.un.high, low: m.un.low, close: m.un.close, volume: m.un.volume }),
-        );
-        if (
-            shouldCountMinute(
-                { time: m.time, open: Number(m.un.open), high: Number(m.un.high), low: Number(m.un.low), close: Number(m.un.close) },
-                policy,
-            )
-        ) {
-            const idx = amountBucketIndex(minAmount);
-            if (idx >= 0) bucketCounts[idx] += 1;
-        }
+export function themeStatsOf(md: MinuteDerived, policy: CountingPolicy = DEFAULT_COUNTING_POLICY): ThemeStats {
+    const mins: DerivedMinute[] = new Array(md.times.length);
+    for (let i = 0; i < md.times.length; i++) {
+        mins[i] = {
+            minuteOfDay: Math.floor(((md.times[i] + KST_OFFSET_SEC) % 86400) / 60),
+            openPct: md.minuteOpen[i],
+            highPct: md.minuteHigh[i],
+            closePct: md.rate[i],
+            amountWon: md.cumAmount[i] - (i > 0 ? md.cumAmount[i - 1] : 0),
+        };
     }
-
-    return { code, bucketCounts, trailingHighs };
+    return { code: md.code, bucketCounts: countAmountBuckets(mins, policy), trailingHighs: md.trailingHighs };
 }

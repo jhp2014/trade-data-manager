@@ -1,22 +1,13 @@
-// DerivedStore — 당일 파생값 단일 창구. 두 보드 다 여기로 파생값을 요청한다:
-//  · replay(date) → DayReplay(MinuteDerived[])  … 파일 캐시가 소유
-//  · theme(date)  → DayTheme(ThemeStats[])       … 메모리 캐시가 소유
-// 핵심: 어느 보드로 요청이 들어오든, 최초 요청이 raw(분봉+원주가일봉)를 **1회** fetch해서 없는 캐시를 굽는다.
+// DerivedStore — 당일 파생값 단일 창구. 두 보드 다 여기로 자기 것만 요청한다:
+//  · replayBoard(date) → DayReplay(MinuteDerived[])   … 파일에서 그대로
+//  · themeBoard(date)  → DayTheme(ThemeStats[])        … 같은 파일에서 재계산(분봉 재조회 0)
+// 파생 캐시는 **파일 하나**뿐(불변). 최초 요청이 raw(분봉+원주가일봉)를 1회 fetch → deriveMinutes → 파일 저장.
 // 동시 요청(복기+테마 같은 cold 날짜)은 날짜별 in-flight Promise 로 하나의 build 를 공유 → 중복 fetch 0.
-// 스토어는 값의 3번째 사본을 안 가진다(파사드) — 저장·수명은 각 캐시가 소유(파일=영구, 메모리=거래일 LRU).
+// 테마 bucketCounts 는 파일 파생값에서 요청 때 재계산 → 카운팅 정책 바꿔도 파일 재빌드 없이 다음 요청에 반영.
 import { mapWithConcurrency, subtractMonths } from "@trade-data-manager/market";
 import type { MinuteCandle, DailyCandle } from "@trade-data-manager/market";
-import {
-    deriveMinutes,
-    buildThemeStats,
-    RAW_DAILY_LOOKBACK_MONTHS,
-    type MinuteDerived,
-    type ThemeStats,
-    type DayReplay,
-    type DayTheme,
-} from "./dayReplay.js";
+import { deriveMinutes, themeStatsOf, RAW_DAILY_LOOKBACK_MONTHS, type MinuteDerived, type DayReplay, type DayTheme } from "./dayReplay.js";
 import { readReplay, writeReplay } from "./dayReplayCache.js";
-import { getTheme, setTheme } from "./themeStatsCache.js";
 
 /** 종목별 fetch 인플라이트 상한(분봉+원주가일봉). build 는 날짜당 1회라 넉넉히. */
 const FETCH_CONCURRENCY = 8;
@@ -33,58 +24,47 @@ export class DerivedStore {
 
     constructor(private readonly deps: DerivedStoreDeps) {}
 
-    /** 복기 파생 — 파일 warm 이면 즉시, 아니면 build(둘 다 cold면 테마까지 함께 굽는다). */
-    async replay(date: string): Promise<DayReplay> {
+    /** 복기보드 것 — 파일 파생값 그대로. */
+    async replayBoard(date: string): Promise<DayReplay> {
+        return this.ensureFile(date);
+    }
+
+    /** 테마보드 것 — 같은 파일에서 EOD(bucketCounts·trailingHighs) 재계산(분봉 재조회 0). */
+    async themeBoard(date: string): Promise<DayTheme> {
+        const replay = await this.ensureFile(date);
+        return { date, stocks: replay.stocks.map((md) => themeStatsOf(md)) };
+    }
+
+    // 파일 read-through — warm 이면 즉시, cold 면 build(1회 fetch) 후 읽는다.
+    private async ensureFile(date: string): Promise<DayReplay> {
         const hit = await readReplay(date);
         if (hit) return hit;
-        await this.ensure(date);
+        await this.build(date);
         return (await readReplay(date)) ?? { date, stocks: [] };
     }
 
-    /** 테마 파생 — 메모리 warm 이면 즉시, 아니면 build(둘 다 cold면 복기까지 함께 굽는다). */
-    async theme(date: string): Promise<DayTheme> {
-        const hit = getTheme(date);
-        if (hit) return hit;
-        await this.ensure(date);
-        return getTheme(date) ?? { date, stocks: [] };
-    }
-
-    // 날짜별 in-flight 공유 — 같은 cold 날짜로 요청이 겹쳐도 build 는 한 번만.
-    private ensure(date: string): Promise<void> {
+    // 날짜별 in-flight 공유 — 같은 cold 날짜로 복기+테마가 겹쳐도 fetch·build 는 한 번만.
+    private build(date: string): Promise<void> {
         const existing = this.inFlight.get(date);
         if (existing) return existing;
-        const p = this.build(date).finally(() => this.inFlight.delete(date));
+        const p = this.doBuild(date).finally(() => this.inFlight.delete(date));
         this.inFlight.set(date, p);
         return p;
     }
 
-    // raw 1회 fetch → 없는 캐시만 굽는다. 둘 다 있으면 fetch 자체를 건너뛴다.
-    private async build(date: string): Promise<void> {
-        const fileHit = await readReplay(date);
-        const memHit = getTheme(date);
-        if (fileHit && memHit) return;
+    private async doBuild(date: string): Promise<void> {
+        if (await readReplay(date)) return; // 다른 요청이 이미 구웠으면 skip
 
         const codes = await this.deps.universe.stockCodesByDate(date);
         const range = { from: subtractMonths(date, RAW_DAILY_LOOKBACK_MONTHS), to: date };
-        const rows = await mapWithConcurrency(codes, FETCH_CONCURRENCY, async (code) => {
+        const reduced = await mapWithConcurrency(codes, FETCH_CONCURRENCY, async (code) => {
             const [minutes, rawDaily] = await Promise.all([
                 this.deps.minuteRepo.getMinuteCandles(code, date),
                 this.deps.rawDailyRepo.getRawDailyCandles(code, range),
             ]);
-            return { code, minutes, rawDaily };
+            return deriveMinutes(code, minutes, rawDaily, date);
         });
-
-        if (!memHit) {
-            const stocks = rows
-                .map((r) => buildThemeStats(r.code, r.minutes, r.rawDaily, date))
-                .filter((s): s is ThemeStats => s !== null);
-            setTheme(date, { date, stocks }); // in-memory(무실패) 먼저
-        }
-        if (!fileHit) {
-            const stocks = rows
-                .map((r) => deriveMinutes(r.code, r.minutes, r.rawDaily, date))
-                .filter((s): s is MinuteDerived => s !== null);
-            await writeReplay({ date, stocks });
-        }
+        const stocks = reduced.filter((s): s is MinuteDerived => s !== null);
+        await writeReplay({ date, stocks });
     }
 }

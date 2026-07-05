@@ -4,9 +4,9 @@
 // ⚠ 캐시 무효화: 아래 중 하나라도 바꾸면 이 캐시가 낡는다 → DAY_REPLAY_CACHE_DIR(기본 .cache/day-replay/)를
 //    통째로 삭제해 재빌드를 유도할 것. 손으로 지우는 게 규칙(거의 바뀔 일 없어서 자동화가 오히려 과함).
 //    · DayReplay / MinuteDerived 응답 스키마 — 필드 추가·이름·타입 변경
-//    · deriveMinutes 계산 — base(직전 원주가 종가) 기준 %·running 고저·open·cumAmount·시각(kstToUnix)
+//    · deriveMinutes 계산 — base(직전 원주가 종가) 기준 %·running 고저·open·cumAmount·minuteOpen/High·trailingHighs·시각(kstToUnix)
 //    · core/market 공유 로직 — densify(candle/minuteBackfill)·분봉 거래대금(candle/price)
-//      (버킷/카운팅정책(board/amount)은 이 파일 캐시와 무관 — 테마 in-memory 캐시로 이동)
+//      (버킷/카운팅정책(board/amount)은 파일에 안 굽고 요청 때 file 에서 재계산 → 정책 변경은 이 파일 삭제와 무관)
 // DB 아님: 재생성 가능한 파생물이라 진실원천(market 스키마)의 "본질만 저장" 잠금과 무관.
 import { promises as fs } from "node:fs";
 import { gzip, gunzip } from "node:zlib";

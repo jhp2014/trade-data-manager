@@ -5,7 +5,7 @@ import { DAY_SUMMARY_READER } from "./tokens.js";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // 이슈보드용 EOD 축약(bucketCounts·trailingHighs)을 스냅샷에 folding 한 형태.
-// 분봉 없는 종목은 테마 파생이 없어 두 필드가 생략된다(옵셔널). DerivedStore(themeStatsCache 메모리) 산출.
+// 분봉 없는 종목은 테마 파생이 없어 두 필드가 생략된다(옵셔널). DerivedStore.themeBoard(복기 파일에서 재계산) 산출.
 export type EnrichedSnapshot = DailySnapshot & { bucketCounts?: number[]; trailingHighs?: number[] };
 export type EnrichedDaySummary = Omit<DaySummary, "stocks"> & { stocks: EnrichedSnapshot[] };
 export interface EnrichedDaySummaryReader {

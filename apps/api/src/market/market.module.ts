@@ -66,7 +66,7 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
         {
             // 복기 파생 리더 — DerivedStore.replay 경유(파일 캐시 read-through).
             provide: DAY_REPLAY_READER,
-            useFactory: (store: DerivedStore): DayReplayReader => ({ dayReplay: (date) => store.replay(date) }),
+            useFactory: (store: DerivedStore): DayReplayReader => ({ dayReplay: (date) => store.replayBoard(date) }),
             inject: [DERIVED_STORE],
         },
         {
@@ -85,7 +85,7 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
                 });
                 return {
                     async summaryByDate(date) {
-                        const [base, theme] = await Promise.all([summary.summaryByDate(date), store.theme(date)]);
+                        const [base, theme] = await Promise.all([summary.summaryByDate(date), store.themeBoard(date)]);
                         const statsByCode = new Map(theme.stocks.map((s) => [s.code, s]));
                         return {
                             ...base,

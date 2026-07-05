@@ -1,34 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { shouldCountMinute, DEFAULT_COUNTING_POLICY } from "../amount.js";
+import { countAmountBuckets, DEFAULT_COUNTING_POLICY, type DerivedMinute } from "../amount.js";
 import { topHighsInWindow, isNearWindowHigh } from "../trailing.js";
 
-describe("shouldCountMinute", () => {
-    const bull = { time: "10:00", open: 1000, high: 1100, low: 990, close: 1080 }; // 양봉
+describe("countAmountBuckets", () => {
+    // 10:00, 양봉(종가%>시가%), 35억 → 구간0. minuteOfDay 600.
+    const bull: DerivedMinute = { minuteOfDay: 600, openPct: 5, highPct: 10, closePct: 8, amountWon: 3.5e9 };
+    const sum = (c: number[]) => c.reduce((a, b) => a + b, 0);
 
-    it("시간 창 밖(15:30 종가단일가)은 제외", () => {
-        expect(shouldCountMinute({ ...bull, time: "15:30" })).toBe(false);
+    it("양봉 35억 → 구간0 카운트", () => {
+        expect(countAmountBuckets([bull])).toEqual([1, 0, 0, 0, 0, 0, 0]);
     });
-    it("시간 창 밖(08:00 이전)은 제외", () => {
-        expect(shouldCountMinute({ ...bull, time: "07:59" })).toBe(false);
+    it("시간 창 밖(15:30·07:59)은 제외", () => {
+        expect(sum(countAmountBuckets([{ ...bull, minuteOfDay: 930 }]))).toBe(0); // 15:30
+        expect(sum(countAmountBuckets([{ ...bull, minuteOfDay: 479 }]))).toBe(0); // 07:59
     });
-    it("창 경계(08:00, 15:20)는 포함", () => {
-        expect(shouldCountMinute({ ...bull, time: "08:00" })).toBe(true);
-        expect(shouldCountMinute({ ...bull, time: "15:20" })).toBe(true);
+    it("창 경계(08:00=480, 15:20=920)는 포함", () => {
+        expect(sum(countAmountBuckets([{ ...bull, minuteOfDay: 480 }]))).toBe(1);
+        expect(sum(countAmountBuckets([{ ...bull, minuteOfDay: 920 }]))).toBe(1);
     });
-    it("양봉은 카운트", () => {
-        expect(shouldCountMinute(bull)).toBe(true);
+    it("30억 미만은 구간 없음(제외)", () => {
+        expect(sum(countAmountBuckets([{ ...bull, amountWon: 2.5e9 }]))).toBe(0);
     });
-    it("꼬리 없는 음봉(윗꼬리 ≤1%)은 제외", () => {
-        // 종가<시가, 고가=시가(윗꼬리 0%)
-        expect(shouldCountMinute({ time: "10:00", open: 1000, high: 1005, low: 950, close: 960 })).toBe(false);
+    it("꼬리 없는 음봉(고가%−시가% ≤1)은 제외", () => {
+        // 종가%<시가%, 고가%−시가% = 0.5 ≤ 1 → 제외
+        expect(sum(countAmountBuckets([{ ...bull, openPct: 5, highPct: 5.5, closePct: 3 }]))).toBe(0);
     });
-    it("윗꼬리 있는 음봉(>1%)은 카운트", () => {
-        // 종가<시가지만 고가가 시가보다 2% 위 → 매수 시도 있었음
-        expect(shouldCountMinute({ time: "10:00", open: 1000, high: 1020, low: 950, close: 960 })).toBe(true);
+    it("윗꼬리 있는 음봉(고가%−시가% >1)은 카운트", () => {
+        // 종가%<시가%지만 고가%−시가% = 2 > 1 → 매수 시도 있었음
+        expect(sum(countAmountBuckets([{ ...bull, openPct: 5, highPct: 7, closePct: 3 }]))).toBe(1);
     });
     it("정책 off 면 음봉도 카운트", () => {
         const policy = { ...DEFAULT_COUNTING_POLICY, excludeBearishNoWick: { enabled: false, maxUpperWickPct: 1 } };
-        expect(shouldCountMinute({ time: "10:00", open: 1000, high: 1005, low: 950, close: 960 }, policy)).toBe(true);
+        expect(sum(countAmountBuckets([{ ...bull, openPct: 5, highPct: 5.5, closePct: 3 }], policy))).toBe(1);
     });
 });
 
