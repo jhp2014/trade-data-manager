@@ -1,15 +1,13 @@
-// ingest CLI — 얇은 옵션 명령들이 두 inbound 유스케이스(collect/preview) 위에 앉는다.
+// ingest CLI — 얇은 명령들. core 유스케이스는 영역별로 단일 목적이고, "무엇을 같이 돌릴지"는 여기서 조립한다.
 //
-//   collect <from> [to] [--overwrite]   범위 수집(to 생략=하루)
-//   today [--overwrite]                  오늘
-//   month <YYYY-MM> [--overwrite]        그 달 전체
-//   backfill [개월=12] [--overwrite]     현재부터 N개월 과거까지 전체
-// (overwrite = 그 날짜 분봉을 비우고 새로 — orphan 방지)
+//   backfill [일수=5] [--overwrite]              일상 한방: 최근 N일 캔들 + 당일 시총 + 뉴스 (영역별 격리)
+//   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
+//   backfill-marketcap <from> [to]               전종목 과거 시총(역산)
+//   backfill-news <from> [to]                    시황 뉴스 헤드라인
+//   marketcap                                    당일 시총만(ka10099)
+// (overwrite = 일봉 강제 재수집 + 그 날짜 분봉 비우고 새로 — 없으면 skip-if-present)
 import {
     seoulToday,
-    isValidYearMonth,
-    enumerateMonthDates,
-    subtractMonths,
     type DateRange,
     type CollectOptions,
     type CollectResult,
@@ -105,31 +103,81 @@ function printCollectResult(r: CollectResult): void {
     );
 }
 
-/** 오늘 캔들(일봉+분봉) 수집. */
-async function runCollectToday(rt: IngestRuntime, overwrite: boolean): Promise<void> {
-    const t = seoulToday();
-    console.log(`▶ 오늘 수집: ${t}${overwrite ? " (overwrite)" : ""}`);
-    printCollectResult(await rt.collector.backfill({ from: t, to: t }, collectOptions(overwrite)));
+/** "YYYY-MM-DD" 에서 days 만큼 과거로(UTC 날짜 산술 — TZ 무관). */
+function minusDays(date: string, days: number): string {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - days);
+    return d.toISOString().slice(0, 10);
 }
 
-/** backfill: 과거 구간 — 일봉 깊이 시딩 + 구간 분봉. */
-async function runBackfill(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
-    console.log(`▶ 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
+/** 캔들(일봉+분봉) 백필. */
+async function runBackfillCandles(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
+    console.log(`▶ 캔들 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
     printCollectResult(await rt.collector.backfill(range, collectOptions(overwrite)));
+}
+
+/** 전종목 과거 시총 백필(역산). */
+async function runBackfillMarketCap(rt: IngestRuntime, range: DateRange): Promise<void> {
+    console.log(`▶ 시총 백필: ${range.from} ~ ${range.to} (전종목 역산)`);
+    const r = await rt.marketCapBackfiller.backfill(range, {
+        onProgress: (p) => {
+            if (p.done % 200 === 0 || p.done === p.total) console.log(`  [${p.done}/${p.total}]`);
+        },
+    });
+    console.log(`  ✓ 종목 ${r.universe} · 저장 ${r.stored}행 · 실패 ${r.failed.length}`);
+    if (r.failed.length) console.log(`    실패: ${r.failed.slice(0, 20).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
+}
+
+/** 시황 뉴스 헤드라인 백필. */
+async function runBackfillNews(rt: IngestRuntime, range: DateRange): Promise<void> {
+    console.log(`▶ 뉴스 백필: ${range.from} ~ ${range.to} (시황 피드 연속 워크)`);
+    const r = await rt.newsBackfiller.backfill(range, {
+        onProgress: (p) => {
+            if (p.pages % 50 === 0) console.log(`  [page ${p.pages}] ~${p.anchorDate} · ${p.headlines}건`);
+        },
+    });
+    console.log(`  ✓ 페이지 ${r.pages} · 헤드라인 ${r.headlines}건 저장`);
+}
+
+/** 당일 시총 입력(ka10099 라이브) — 그날 칸에 전일종가×현재주식수. */
+async function runMarketCapRecord(rt: IngestRuntime, date: string): Promise<void> {
+    console.log(`▶ 당일 시총: ${date} (전일종가×현재주식수)`);
+    const r = await rt.marketCapRecorder.record(date);
+    console.log(`  ✓ 유니버스 ${r.universe} · 저장 ${r.stored}종목`);
+}
+
+/** 한 영역 실행을 격리 — 실패해도 나머지 영역은 진행(복기 데이터는 필수, 뉴스 등은 best-effort). */
+async function runArea(label: string, fn: () => Promise<void>, failures: string[]): Promise<void> {
+    try {
+        await fn();
+    } catch (err) {
+        failures.push(label);
+        console.error(`  ⚠ ${label} 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
+
+/** 일상 백필(한 방) — 최근 N일 캔들 + 당일 시총 + 뉴스. skip-if-present 라 넉넉히 잡아도 안전(주말·중복 자연 처리). */
+async function runDaily(rt: IngestRuntime, daysBack: number, overwrite: boolean): Promise<void> {
+    const to = seoulToday();
+    const range: DateRange = { from: minusDays(to, daysBack), to };
+    console.log(`▶ 일상 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
+    const failures: string[] = [];
+    await runArea("캔들", () => runBackfillCandles(rt, range, overwrite), failures);
+    await runArea("시총", () => runMarketCapRecord(rt, to), failures);
+    await runArea("뉴스", () => runBackfillNews(rt, range), failures);
+    if (failures.length) throw new Error(`일부 영역 실패: ${failures.join(", ")}`);
 }
 
 const USAGE =
     "사용법:\n" +
-    "  collect <from> [to] [--overwrite]\n" +
-    "  today [--overwrite]\n" +
-    "  month <YYYY-MM> [--overwrite]\n" +
-    "  backfill [개월=12] [--overwrite]\n" +
-    "  marketcap                        당일 시총 입력(오늘 칸, 전일종가×현재주식수)\n" +
-    "  marketcap-backfill <from> [to]   전종목 과거 시총 백필(역산)\n" +
-    "  news <from> [to]                 시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
+    "  backfill [일수=5] [--overwrite]              일상 한방: 최근 N일 캔들 + 당일 시총 + 뉴스 (skip-if-present)\n" +
+    "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
+    "  backfill-marketcap <from> [to]               전종목 과거 시총 백필(역산)\n" +
+    "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
+    "  marketcap                                    당일 시총만(오늘 칸, 전일종가×현재주식수)\n" +
     "  news-search <검색어...> [--from <시각>] [--to <시각>] [--limit N]\n" +
-    "                                   텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).\n" +
-    "                                   시각=YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM (예: --from 2026-06-25T09:00).";
+    "                                               텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).\n" +
+    "                                               시각=YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM (예: --from 2026-06-25T09:00).";
 
 async function main(): Promise<void> {
     const raw = process.argv.slice(2);
@@ -143,75 +191,39 @@ async function main(): Promise<void> {
     const rt = createIngestRuntime();
     try {
         switch (cmd) {
-            case "collect": {
-                if (!a1) throw new Error("사용법: collect <from> [to] [--overwrite]");
-                assertDate(a1, "from");
-                const to = a2 ?? a1;
-                assertDate(to, "to");
-                await runBackfill(rt, { from: a1, to }, overwrite);
-                break;
-            }
-            case "today": {
-                await runCollectToday(rt, overwrite);
-                break;
-            }
-            case "month": {
-                if (!a1 || !isValidYearMonth(a1)) throw new Error(`잘못된 년월(YYYY-MM, 2000~2100): ${a1}`);
-                if (a1 > seoulToday().slice(0, 7)) throw new Error(`미래 년월은 수집 불가: ${a1}`);
-                const dates = enumerateMonthDates(a1);
-                await runBackfill(rt, { from: dates[0], to: dates[dates.length - 1] }, overwrite);
-                break;
-            }
             case "backfill": {
-                const months = posInt(a1, "개월") ?? 12;
-                const to = seoulToday();
-                await runBackfill(rt, { from: subtractMonths(to, months), to }, overwrite);
+                // 일상 한방 — 최근 N일(기본 5, 주말 넉넉) 캔들+당일시총+뉴스. skip-if-present 라 재실행 안전.
+                const days = posInt(a1, "일수") ?? 5;
+                await runDaily(rt, days, overwrite);
                 break;
             }
-            case "marketcap": {
-                // 당일 전용 — ka10099 라이브 스냅샷은 "지금"의 전일종가만 주므로 오늘 칸에만 유효.
-                // 과거/빠뜨린 날은 marketcap-backfill(역산)로 채운다.
-                const date = seoulToday();
-                console.log(`▶ 당일 시총 입력: ${date} (전일종가×현재주식수)`);
-                const r = await rt.marketCapRecorder.record(date);
-                console.log(`  ✓ 유니버스 ${r.universe} · 저장 ${r.stored}종목`);
-                break;
-            }
-            case "marketcap-backfill": {
-                if (!a1) throw new Error("사용법: marketcap-backfill <from> [to]");
+            case "backfill-candles": {
+                if (!a1) throw new Error("사용법: backfill-candles <from> [to] [--overwrite]");
                 assertDate(a1, "from");
                 const to = a2 ?? a1;
                 assertDate(to, "to");
-                console.log(`▶ 시총 백필: ${a1} ~ ${to} (전종목 역산)`);
-                const r = await rt.marketCapBackfiller.backfill(
-                    { from: a1, to },
-                    {
-                        onProgress: (p) => {
-                            if (p.done % 200 === 0 || p.done === p.total) console.log(`  [${p.done}/${p.total}]`);
-                        },
-                    },
-                );
-                console.log(`  ✓ 종목 ${r.universe} · 저장 ${r.stored}행 · 실패 ${r.failed.length}`);
-                if (r.failed.length) {
-                    console.log(`    실패: ${r.failed.slice(0, 20).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
-                }
+                await runBackfillCandles(rt, { from: a1, to }, overwrite);
                 break;
             }
-            case "news": {
-                if (!a1) throw new Error("사용법: news <from> [to]");
+            case "backfill-marketcap": {
+                if (!a1) throw new Error("사용법: backfill-marketcap <from> [to]");
+                assertDate(a1, "from");
+                const to = a2 ?? a1;
+                assertDate(to, "to");
+                await runBackfillMarketCap(rt, { from: a1, to });
+                break;
+            }
+            case "backfill-news": {
+                if (!a1) throw new Error("사용법: backfill-news <from> [to]");
                 assertDate(a1, "from");
                 const to = a2 ?? seoulToday();
                 assertDate(to, "to");
-                console.log(`▶ 뉴스 백필: ${a1} ~ ${to} (시황 피드 연속 워크)`);
-                const r = await rt.newsBackfiller.backfill(
-                    { from: a1, to },
-                    {
-                        onProgress: (p) => {
-                            if (p.pages % 50 === 0) console.log(`  [page ${p.pages}] ~${p.anchorDate} · ${p.headlines}건`);
-                        },
-                    },
-                );
-                console.log(`  ✓ 페이지 ${r.pages} · 헤드라인 ${r.headlines}건 저장`);
+                await runBackfillNews(rt, { from: a1, to });
+                break;
+            }
+            case "marketcap": {
+                // 당일 전용 — ka10099 라이브(전일종가×현재주식수). 과거/빠뜨린 날은 backfill-marketcap(역산).
+                await runMarketCapRecord(rt, seoulToday());
                 break;
             }
             case "news-search": {
