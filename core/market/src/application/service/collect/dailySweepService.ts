@@ -1,7 +1,9 @@
 // 전종목 일봉 (재)수집 — 유니버스 코드 리스트를 제한 동시성으로 펼쳐(fan-out) 종목별 ingest.
-// 단일종목 ingest(자가치유 포함)는 MarketDataIngestService 가, 여기는 fan-out·실패격리·진행률만 책임.
-// MinuteSweepService(한 날짜 분봉 펼침)의 일봉 짝 — collect 의 비대칭(분봉만 sweep) 해소.
+// 종목당 수정주가(자가치유)+원주가(append-only) 둘 다를 한 스윕에서 확보한다(원주가 흡수).
+// 단일종목 ingest 는 DailyIngest(수정)·RawDailyIngest(원주가)가, 여기는 fan-out·실패격리·진행률만 책임.
+// MinuteSweepService(한 날짜 분봉 펼침)의 일봉 짝.
 import type { MarketDataIngestService } from "./marketDataIngestService.js";
+import type { RawDailyIngestService } from "./rawDailyIngestService.js";
 import { mapWithConcurrency } from "../../concurrency.js";
 
 // 종목당 2콜(KRX+_AL)을 동시 발사하므로, 키움 멀티키(키×5콜/초)를 채우려면 in-flight 종목 수를 키운다.
@@ -26,6 +28,7 @@ export interface DailySweepOptions {
 
 export interface DailySweepDeps {
     dailyIngest: MarketDataIngestService;
+    rawDailyIngest: RawDailyIngestService;
 }
 
 export class DailySweepService {
@@ -35,7 +38,7 @@ export class DailySweepService {
         stockCodes: readonly string[],
         options: DailySweepOptions = {},
     ): Promise<DailySweepResult> {
-        const { dailyIngest } = this.deps;
+        const { dailyIngest, rawDailyIngest } = this.deps;
         const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
         const failed: DailySweepResult["failed"] = [];
         let done = 0;
@@ -44,9 +47,13 @@ export class DailySweepService {
 
         await mapWithConcurrency(stockCodes, concurrency, async (stockCode) => {
             try {
-                const r = await dailyIngest.ingestDailyCandles(stockCode);
+                // 종목당 수정주가(자가치유)+원주가(append-only) 둘 다. 원주가는 소급조정 무관이라 독립.
+                const [daily] = await Promise.all([
+                    dailyIngest.ingestDailyCandles(stockCode),
+                    rawDailyIngest.ingestRawDailyCandles(stockCode),
+                ]);
                 fetched++;
-                if (r.healed) healed++;
+                if (daily.healed) healed++;
             } catch (err) {
                 // 종목 실패 격리 — 한 종목이 전체를 막지 않는다.
                 failed.push({ stockCode, error: err instanceof Error ? err.message : String(err) });

@@ -1,12 +1,8 @@
-// 복기 ingest 유스케이스 구현. 종목 1개 단위(전종목 스윕은 앱/크론 책임).
+// 일봉 ingest 유스케이스 구현(수정주가·자가치유). 종목 1개 단위(전종목 스윕은 DailySweep 책임).
+// 분봉 ingest 는 MinuteSweep 가 provider/repo 를 직접 다룬다 — 여긴 일봉 전용.
 // 생성자 주입(수동 DI): provider·repository 는 포트 인터페이스만 안다.
 import type { DailyBar, DailyCandle, DateRange } from "#domain";
-import type {
-    DailyCandleProvider,
-    DailyCandleRepository,
-    MinuteCandleProvider,
-    MinuteCandleRepository,
-} from "#port/outbound";
+import type { DailyCandleProvider, DailyCandleRepository } from "#port/outbound";
 import { defaultDailyRange, seoulToday } from "../shared/dailyRange.js";
 
 // 내부 협력자(종목 1개 단위 ingest). inbound 포트 아님 — 공개 표면은 collect.
@@ -17,18 +13,10 @@ export interface DailyIngestResult {
     saved: number;
 }
 
-export interface MinuteIngestResult {
-    stockCode: string;
-    date: string;
-    saved: number;
-}
-
 export interface MarketDataIngestDeps {
     dailyProvider: DailyCandleProvider;
-    minuteProvider: MinuteCandleProvider;
     dailyRepo: DailyCandleRepository;
-    minuteRepo: MinuteCandleRepository;
-    /** 오늘(YYYY-MM-DD) 공급자. 기본 = Asia/Seoul 현재일. 기본 일봉 범위(1.5년) 산정에만 쓰임 — 주입 시 테스트 결정성↑. */
+    /** 오늘(YYYY-MM-DD) 공급자. 기본 = Asia/Seoul 현재일. 기본 일봉 범위 산정에만 쓰임 — 주입 시 테스트 결정성↑. */
     today?: () => string;
 }
 
@@ -79,11 +67,5 @@ export class MarketDataIngestService {
 
         await dailyRepo.saveDailyCandles(fetched);
         return { stockCode, healed: false, saved: fetched.length };
-    }
-
-    async ingestMinuteCandles(stockCode: string, date: string): Promise<MinuteIngestResult> {
-        const candles = await this.deps.minuteProvider.getMinuteCandles(stockCode, date);
-        await this.deps.minuteRepo.saveMinuteCandles(candles);
-        return { stockCode, date, saved: candles.length };
     }
 }

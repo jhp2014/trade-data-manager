@@ -1,13 +1,20 @@
 import { describe, it, expect } from "vitest";
 import { DailySweepService } from "../dailySweepService.js";
 import { MarketDataIngestService } from "../marketDataIngestService.js";
-import type { DailyCandle, DateRange, MinuteCandle } from "#domain";
-import type {
-    DailyCandleProvider,
-    DailyCandleRepository,
-    MinuteCandleProvider,
-    MinuteCandleRepository,
-} from "#port/outbound";
+import { RawDailyIngestService } from "../rawDailyIngestService.js";
+import type { DailyCandle, DateRange } from "#domain";
+import type { DailyCandleProvider, DailyCandleRepository } from "#port/outbound";
+
+// 원주가 ingest 는 이 스윕 테스트의 관심 밖 — 아무것도 안 하는 leaf(수정주가 fan-out·격리만 검증).
+const noopRawIngest = new RawDailyIngestService({
+    rawProvider: { getRawDailyCandles: async () => [] },
+    rawRepo: {
+        saveRawDailyCandles: async () => {},
+        getRawDailyCandles: async () => [],
+        getEarliestRawDailyDate: async () => null,
+        getPreviousRawClose: async () => null,
+    },
+});
 
 const bar = (close: string) => ({ open: close, high: close, low: close, close, volume: "1", amount: "1" });
 const candle = (stockCode: string, date: string): DailyCandle => ({ stockCode, date, krx: bar("100"), un: bar("100") });
@@ -20,11 +27,6 @@ class FakeDailyProvider implements DailyCandleProvider {
         if (b === "throw") throw new Error(`boom ${stockCode}`);
         if (b === "empty") return [];
         return [candle(stockCode, range.to)];
-    }
-}
-class NoopMinuteProvider implements MinuteCandleProvider {
-    async getMinuteCandles(): Promise<MinuteCandle[]> {
-        return [];
     }
 }
 class CountingDailyRepo implements DailyCandleRepository {
@@ -42,29 +44,14 @@ class CountingDailyRepo implements DailyCandleRepository {
         return null;
     }
 }
-class NoopMinuteRepo implements MinuteCandleRepository {
-    async saveMinuteCandles(): Promise<void> {}
-    async getMinuteCandles(): Promise<MinuteCandle[]> {
-        return [];
-    }
-    async hasMinuteCandlesOnDate(): Promise<boolean> {
-        return false;
-    }
-    async deleteMinuteCandlesOnDate(): Promise<number> {
-        return 0;
-    }
-}
-
 function makeSweep(behavior: Record<string, "ok" | "throw" | "empty">) {
     const dailyRepo = new CountingDailyRepo();
     const dailyIngest = new MarketDataIngestService({
         dailyProvider: new FakeDailyProvider(behavior),
-        minuteProvider: new NoopMinuteProvider(),
         dailyRepo,
-        minuteRepo: new NoopMinuteRepo(),
         today: () => "2026-06-28",
     });
-    return { sweep: new DailySweepService({ dailyIngest }), dailyRepo };
+    return { sweep: new DailySweepService({ dailyIngest, rawDailyIngest: noopRawIngest }), dailyRepo };
 }
 
 describe("sweepDailyForUniverse", () => {

@@ -88,10 +88,11 @@ export function createIngestRuntime(): IngestRuntime {
         provider: new KiwoomStockListAdapter(kiwoom.rest),
         repository: stockMasterRepo,
     });
-    const dailyIngest = new MarketDataIngestService({ dailyProvider, minuteProvider, dailyRepo, minuteRepo });
-    const dailySweep = new DailySweepService({ dailyIngest });
-    // 원주가 일봉 백필 — 유니버스 fan-out + 종목별 append-only ingest(자가치유 없음).
+    const dailyIngest = new MarketDataIngestService({ dailyProvider, dailyRepo });
+    // 원주가 일봉 ingest — 종목별 append-only(자가치유 없음). DailySweep 가 종목당 수정주가와 함께 둘 다.
     const rawDailyIngest = new RawDailyIngestService({ rawProvider: rawDailyProvider, rawRepo: rawDailyRepo });
+    const dailySweep = new DailySweepService({ dailyIngest, rawDailyIngest });
+    // 원주가 일봉 백필(독립 커맨드) — 유니버스 fan-out + 종목별 append-only ingest.
     const rawDailyBackfiller = new RawDailyBackfillService({ universe, rawIngest: rawDailyIngest });
     const minuteSweep = new MinuteSweepService({ scanRepo: dailyRepo, minuteProvider, minuteRepo });
 

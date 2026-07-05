@@ -1,13 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { MarketDataIngestService } from "../marketDataIngestService.js";
 import { defaultDailyRange } from "../../shared/dailyRange.js";
-import type { DailyBar, DailyCandle, DateRange, MinuteCandle } from "#domain";
-import type {
-    DailyCandleProvider,
-    DailyCandleRepository,
-    MinuteCandleProvider,
-    MinuteCandleRepository,
-} from "#port/outbound";
+import type { DailyBar, DailyCandle, DateRange } from "#domain";
+import type { DailyCandleProvider, DailyCandleRepository } from "#port/outbound";
 
 const bar = (close: string, volume = "100"): DailyBar => ({
     open: close,
@@ -63,47 +58,19 @@ class FakeDailyProvider implements DailyCandleProvider {
     }
 }
 
-class FakeMinuteProvider implements MinuteCandleProvider {
-    constructor(private series: MinuteCandle[]) {}
-    async getMinuteCandles(): Promise<MinuteCandle[]> {
-        return this.series;
-    }
-}
-
-class FakeMinuteRepo implements MinuteCandleRepository {
-    saved: MinuteCandle[] = [];
-    async saveMinuteCandles(candles: MinuteCandle[]): Promise<void> {
-        this.saved.push(...candles);
-    }
-    async getMinuteCandles(): Promise<MinuteCandle[]> {
-        return this.saved;
-    }
-    async hasMinuteCandlesOnDate(): Promise<boolean> {
-        return this.saved.length > 0;
-    }
-    async deleteMinuteCandlesOnDate(): Promise<number> {
-        return 0;
-    }
-}
-
 function makeService(opts: {
     daily: DailyCandle[];
     repo?: FakeDailyRepo;
-    minute?: MinuteCandle[];
     today?: string;
 }) {
     const dailyRepo = opts.repo ?? new FakeDailyRepo();
     const dailyProvider = new FakeDailyProvider(opts.daily);
-    const minuteRepo = new FakeMinuteRepo();
-    const minuteProvider = new FakeMinuteProvider(opts.minute ?? []);
     const service = new MarketDataIngestService({
         dailyProvider,
-        minuteProvider,
         dailyRepo,
-        minuteRepo,
         today: () => opts.today ?? "2026-06-28",
     });
-    return { service, dailyRepo, dailyProvider, minuteRepo };
+    return { service, dailyRepo, dailyProvider };
 }
 
 describe("defaultDailyRange", () => {
@@ -198,17 +165,5 @@ describe("ingestDailyCandles", () => {
         });
         const r = await service.ingestDailyCandles("005930", { from: "2026-06-25", to: "2026-06-28" });
         expect(r.healed).toBe(true);
-    });
-});
-
-describe("ingestMinuteCandles", () => {
-    it("provider 가 준 봉을 그대로 적재", async () => {
-        const minute: MinuteCandle[] = [
-            { stockCode: "005930", date: "2026-06-26", time: "09:00:00", krx: null, un: { open: "1", high: "1", low: "1", close: "1", volume: "1" } },
-        ];
-        const { service, minuteRepo } = makeService({ daily: [], minute });
-        const r = await service.ingestMinuteCandles("005930", "2026-06-26");
-        expect(r).toEqual({ stockCode: "005930", date: "2026-06-26", saved: 1 });
-        expect(minuteRepo.saved).toHaveLength(1);
     });
 });

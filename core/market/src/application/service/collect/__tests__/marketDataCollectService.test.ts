@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { MarketDataCollectService } from "../marketDataCollectService.js";
 import { StockMasterIngestService } from "../stockMasterIngestService.js";
 import { MarketDataIngestService } from "../marketDataIngestService.js";
+import { RawDailyIngestService } from "../rawDailyIngestService.js";
 import { DailySweepService } from "../dailySweepService.js";
 import { MinuteSweepService } from "../minuteSweepService.js";
 import type { DailyBar, DailyCandle, MinuteCandle, StockMaster } from "#domain";
@@ -82,12 +83,19 @@ function makeCollector(opts: { codes: string[]; byDate: Record<string, DailyCand
     const universe = new StockMasterIngestService({ provider: new FakeStockMasterProvider(opts.codes), repository: new NoopStockMasterRepo() });
     const dailyIngest = new MarketDataIngestService({
         dailyProvider: new FakeDailyProvider(),
-        minuteProvider: new FakeMinuteProvider(),
         dailyRepo: { saveDailyCandles: async () => {}, getDailyCandles: async () => [], getDailyCandle: async () => null, getEarliestDailyDate: async () => null },
-        minuteRepo,
         today: () => "2026-06-28",
     });
-    const dailySweep = new DailySweepService({ dailyIngest });
+    const rawDailyIngest = new RawDailyIngestService({
+        rawProvider: { getRawDailyCandles: async () => [] },
+        rawRepo: {
+            saveRawDailyCandles: async () => {},
+            getRawDailyCandles: async () => [],
+            getEarliestRawDailyDate: async () => null,
+            getPreviousRawClose: async () => null,
+        },
+    });
+    const dailySweep = new DailySweepService({ dailyIngest, rawDailyIngest });
     const minuteSweep = new MinuteSweepService({ scanRepo, minuteProvider: new FakeMinuteProvider(), minuteRepo });
     const collector = new MarketDataCollectService({ universe, dailySweep, minuteSweep, scanRepo, minuteRepo });
     return { collector, minuteRepo };
