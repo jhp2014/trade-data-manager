@@ -1,6 +1,6 @@
 // ingest CLI — 얇은 명령들. core 유스케이스는 영역별로 단일 목적이고, "무엇을 같이 돌릴지"는 여기서 조립한다.
 //
-//   backfill [일수=5] [--overwrite]              일상 한방: 최근 N일 캔들 + 당일 시총 + 뉴스 (영역별 격리)
+//   backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스 + 당일 시총 + 공모가 (오늘 제외·영역별 격리)
 //   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
 //   backfill-daily <from> [to] [--overwrite]     일봉만(차트용 딥 히스토리)
 //   backfill-marketcap <from> [to]               전종목 과거 시총(역산)
@@ -173,22 +173,28 @@ async function runArea(label: string, fn: () => Promise<void>, failures: string[
     }
 }
 
-/** 일상 백필(한 방) — 최근 N일 캔들 + 당일 시총 + 뉴스. skip-if-present 라 넉넉히 잡아도 안전(주말·중복 자연 처리). */
+/**
+ * 일상 백필(한 방) — 어제까지 최근 N일의 완성된 날만 캔들·뉴스 + 당일 시총 + 공모가.
+ * **오늘은 제외**한다: 장중이면 오늘 분봉이 미완성인데 skip-if-present 라 한 번 저장되면 박제돼버림.
+ * 그래서 오늘 데이터는 내일 실행 때 완성본으로 딱 한 번 들어간다(언제 돌리든 타이밍 무관, robust).
+ * skip-if-present + 넉넉한 창이라 놓친 날도 따라잡음. 시총은 전일종가 기반이라 오늘 칸에 바로 완성값.
+ */
 async function runDaily(rt: IngestRuntime, daysBack: number, overwrite: boolean): Promise<void> {
-    const to = seoulToday();
-    const range: DateRange = { from: minusDays(to, daysBack), to };
-    console.log(`▶ 일상 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
+    const today = seoulToday();
+    // 캔들·뉴스: 어제까지(오늘 미완성 제외). from 은 오늘 기준 N일 전.
+    const range: DateRange = { from: minusDays(today, daysBack), to: minusDays(today, 1) };
+    console.log(`▶ 일상 백필: ${range.from} ~ ${range.to} (오늘 ${today} 제외)${overwrite ? " (overwrite)" : ""}`);
     const failures: string[] = [];
     await runArea("캔들", () => runBackfillCandles(rt, range, overwrite), failures);
     await runArea("공모가", () => runBackfillIpo(rt), failures); // candles 가 stockMaster 갱신한 뒤 신규상장 null 채움
-    await runArea("시총", () => runMarketCapRecord(rt, to), failures);
-    await runArea("뉴스", () => runBackfillNews(rt, range), failures);
+    await runArea("시총", () => runMarketCapRecord(rt, today), failures); // record(today)=전일종가×현재주식수(완성값)
+    await runArea("뉴스", () => runBackfillNews(rt, range), failures); // 어제까지 — 하루치 온전하게
     if (failures.length) throw new Error(`일부 영역 실패: ${failures.join(", ")}`);
 }
 
 const USAGE =
     "사용법:\n" +
-    "  backfill [일수=5] [--overwrite]              일상 한방: 최근 N일 캔들 + 당일 시총 + 뉴스 (skip-if-present)\n" +
+    "  backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스 + 당일 시총 + 공모가 (오늘 제외, skip-if-present)\n" +
     "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
     "  backfill-daily <from> [to] [--overwrite]     일봉만(분봉 없이) — 차트용 딥 히스토리\n" +
     "  backfill-marketcap <from> [to]               전종목 과거 시총 백필(역산)\n" +
