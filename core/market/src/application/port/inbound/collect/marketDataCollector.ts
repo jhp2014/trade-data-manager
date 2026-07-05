@@ -1,5 +1,5 @@
 // Inbound(driving) 포트 — 복기 데이터 수집 유스케이스(Command, 쓰기).
-// 두 진입점: collect()=최신 거래일(오늘) / backfill(range)=과거 구간 재구성.
+// 두 진입점: collectToday()=오늘 / backfill(range)=과거 구간 재구성.
 //   · 일봉 깊이는 range 인자가 아니라 진입점이 정한다(collect=오늘−2년 / backfill=range.from−≈600봉).
 //   · 분봉은 collect=오늘 하루 / backfill=구간 전체(일봉 있는 거래일만).
 import type { DateRange } from "#domain";
@@ -37,8 +37,8 @@ export interface CollectResult {
 }
 
 export interface MarketDataCollector {
-    /** 최신 거래일(오늘) 수집 — 일봉 최근 2년 유지 + 오늘 분봉. range 없음(today() 앵커). */
-    collect(options?: CollectOptions): Promise<CollectResult>;
+    /** 오늘 수집 — 일봉 최근 2년 유지 + 오늘 분봉. range 없이 today() 앵커. */
+    collectToday(options?: CollectOptions): Promise<CollectResult>;
     /** [from,to] 과거 구간 복기 재구성 — 일봉 깊이 시딩 + 구간 분봉. 비거래일은 자연 스킵. */
     backfill(range: DateRange, options?: CollectOptions): Promise<CollectResult>;
 }

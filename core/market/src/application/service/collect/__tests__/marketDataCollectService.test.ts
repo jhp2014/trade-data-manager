@@ -115,7 +115,7 @@ function makeCollector(opts: {
     return { collector, minuteRepo };
 }
 
-describe("collect (최신 거래일)", () => {
+describe("collectToday (오늘)", () => {
     it("일봉 커버리지 충분(latest ≥ 오늘) → 일봉 생략, 오늘 분봉 스윕", async () => {
         const { collector } = makeCollector({
             codes: ["A"],
@@ -123,7 +123,7 @@ describe("collect (최신 거래일)", () => {
             latest: "2026-06-26",
             today: "2026-06-26",
         });
-        const r = await collector.collect();
+        const r = await collector.collectToday();
         expect(r.dailyRefreshed).toBe(false);
         expect(r.universeCount).toBe(1);
         expect(r.range).toEqual({ from: "2026-06-26", to: "2026-06-26" });
@@ -131,7 +131,7 @@ describe("collect (최신 거래일)", () => {
 
     it("커버리지 부족(latest < 오늘) → 일봉 재수집(dailyRefreshed=true)", async () => {
         const { collector } = makeCollector({ codes: ["A", "B"], byDate: {}, latest: "2026-06-20", today: "2026-06-26" });
-        const r = await collector.collect();
+        const r = await collector.collectToday();
         expect(r.dailyRefreshed).toBe(true);
     });
 
@@ -143,7 +143,7 @@ describe("collect (최신 거래일)", () => {
             today: "2026-06-26",
         });
         minuteRepo.existing.add("2026-06-26");
-        const r = await collector.collect();
+        const r = await collector.collectToday();
         expect(r.skippedDays).toBe(1);
         expect(minuteRepo.saves).toBe(0);
     });
@@ -156,7 +156,7 @@ describe("collect (최신 거래일)", () => {
             today: "2026-06-26",
         });
         minuteRepo.existing.add("2026-06-26");
-        const r = await collector.collect({ overwrite: true });
+        const r = await collector.collectToday({ overwrite: true });
         expect(r.skippedDays).toBe(0);
         expect(r.dailyRefreshed).toBe(true); // overwrite 는 일봉도 강제
         expect(minuteRepo.deletes).toContain("2026-06-26"); // 비우고 새로(orphan 제거)

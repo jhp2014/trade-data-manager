@@ -1,5 +1,5 @@
 // MarketDataCollector 구현 — 복기 수집의 공개 진입(Command). 두 유스케이스를 조립하는 얇은 composer.
-//   collect()        최신 거래일(오늘). 일봉 최근2년 유지 → 오늘 분봉. range 인자 없이 today() 하나로 앵커.
+//   collectToday()   오늘. 일봉 최근2년 유지 → 오늘 분봉. range 인자 없이 today() 하나로 앵커.
 //   backfill(range)  과거 구간. 일봉 깊이 시딩([range.from−≈600봉, range.to]) → 구간 분봉.
 // 순서(일봉 → 분봉)만 책임진다. 유니버스·커버리지·깊이·프루닝 같은 실행 디테일은
 // DailyCollector·MinuteCollector 가 안다. 일봉이 먼저 끝나야 분봉이 "일봉 있는 거래일"을 볼 수 있다.
@@ -23,7 +23,7 @@ export class MarketDataCollectService implements MarketDataCollector {
         this.today = deps.today ?? seoulToday;
     }
 
-    async collect(options: CollectOptions = {}): Promise<CollectResult> {
+    async collectToday(options: CollectOptions = {}): Promise<CollectResult> {
         const { dailyCollector, minuteCollector } = this.deps;
         const today = this.today();
         // 일봉(최근2년 유지) → 분봉(오늘 하루).

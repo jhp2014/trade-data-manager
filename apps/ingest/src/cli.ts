@@ -108,7 +108,7 @@ function printCollectResult(r: CollectResult): void {
 /** collect: 최신 거래일(오늘) — 일봉 최근2년 유지 + 오늘 분봉. */
 async function runCollectToday(rt: IngestRuntime, overwrite: boolean): Promise<void> {
     console.log(`▶ 오늘 수집${overwrite ? " (overwrite)" : ""}`);
-    printCollectResult(await rt.collector.collect(collectOptions(overwrite)));
+    printCollectResult(await rt.collector.collectToday(collectOptions(overwrite)));
 }
 
 /** backfill: 과거 구간 — 일봉 깊이 시딩 + 구간 분봉. */
