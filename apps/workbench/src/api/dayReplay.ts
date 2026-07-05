@@ -1,4 +1,4 @@
-// /day-replay 조회 — 복기보드용 per-minute 파생값(파일 캐시). 종목별 분당 시계열.
+// /day-replay 조회 — 복기보드용 per-minute 파생값 + 메타(self-contained, daySummary 불필요).
 // 모든 %는 원주가 직전 거래일 종가 대비(서버 계산). 클라는 시점 스냅샷만 파생.
 
 export interface MinuteDerived {
@@ -11,9 +11,17 @@ export interface MinuteDerived {
     cumAmount: number[]; // 누적 거래대금(원)
 }
 
+/** per-minute 파생 + 메타(서버 stitch). 복기보드가 이 하나로 랭킹+카드 다 만든다. */
+export interface ReplayStock extends MinuteDerived {
+    name: string | null;
+    market: string | null;
+    marketCap: string | null;
+    themes: string[];
+}
+
 export interface DayReplay {
     date: string;
-    stocks: MinuteDerived[];
+    stocks: ReplayStock[];
 }
 
 export async function fetchDayReplay(date: string): Promise<DayReplay> {

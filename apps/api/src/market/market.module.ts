@@ -65,10 +65,36 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
             inject: [MARKET_POOL],
         },
         {
-            // 복기 파생 리더 — DerivedStore.replay 경유(파일 캐시 read-through).
+            // 복기 리더(self-contained) — DerivedStore.replayBoard(파일 per-minute) + MetaStore(meta) 조합.
+            // 복기보드가 daySummary 를 따로 안 받아도 되게 이름·시장·시총·테마를 여기서 stitch.
             provide: DAY_REPLAY_READER,
-            useFactory: (store: DerivedStore): DayReplayReader => ({ dayReplay: (date) => store.replayBoard(date) }),
-            inject: [DERIVED_STORE],
+            useFactory: (meta: MetaStore, store: DerivedStore): DayReplayReader => ({
+                async dayReplay(date) {
+                    const [replay, base] = await Promise.all([store.replayBoard(date), meta.metaByDate(date)]);
+                    const metaByCode = new Map(base.map((s) => [s.stockCode, s]));
+                    return {
+                        date,
+                        stocks: replay.stocks.map((md) => {
+                            const m = metaByCode.get(md.code);
+                            // 테마 전용(minuteOpen·minuteHigh·trailingHighs)은 빼고 복기 필드만 명시 pick.
+                            return {
+                                code: md.code,
+                                times: md.times,
+                                rate: md.rate,
+                                high: md.high,
+                                low: md.low,
+                                open: md.open,
+                                cumAmount: md.cumAmount,
+                                name: m?.name ?? null,
+                                market: m?.market ?? null,
+                                marketCap: m?.marketCap ?? null,
+                                themes: m ? m.themes.map((t) => t.theme) : [],
+                            };
+                        }),
+                    };
+                },
+            }),
+            inject: [META_STORE, DERIVED_STORE],
         },
         {
             // 당일 불변 meta 단일 스토어 — 시트·master·시총·일봉·전일종가 fetch + 거래일 LRU. 테마·복기 리더 공유(시트 1× 조회).

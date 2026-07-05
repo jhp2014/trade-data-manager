@@ -2,7 +2,7 @@
 // 서버가 종목별 분당 % 시계열을 이미 줬으므로 클라는 이진탐색으로 시점 t 값을 뽑기만 한다(파생 없음).
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { fetchDayReplay, type DayReplay, type MinuteDerived } from "../api/dayReplay.js";
+import { fetchDayReplay, type DayReplay, type MinuteDerived, type ReplayStock } from "../api/dayReplay.js";
 
 export interface Snapshot {
     code: string;
@@ -60,8 +60,8 @@ export function useDayReplay(date: string): UseQueryResult<DayReplay> {
     });
 }
 
-/** byCode 인덱스(스냅샷 조회용) memo. */
-export function useReplayIndex(reduction: DayReplay | undefined): Map<string, MinuteDerived> | null {
+/** byCode 인덱스(스냅샷+메타 조회용) memo. */
+export function useReplayIndex(reduction: DayReplay | undefined): Map<string, ReplayStock> | null {
     return useMemo(() => {
         if (!reduction) return null;
         return new Map(reduction.stocks.map((s) => [s.code, s]));
