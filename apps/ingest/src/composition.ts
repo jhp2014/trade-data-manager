@@ -9,7 +9,6 @@ import {
     KiwoomStockListAdapter,
     KiwoomMarketSnapshotAdapter,
     KisListInfoAdapter,
-    KiwoomRawDailyAdapter,
     KiwoomRawDailyCandleAdapter,
     KiwoomCurrentSharesAdapter,
     KisNewsAdapter,
@@ -107,10 +106,10 @@ export function createIngestRuntime(): IngestRuntime {
         snapshot: new KiwoomMarketSnapshotAdapter(kiwoom.rest),
         repo: marketCapRepo,
     });
-    // 전종목 날짜별 시총 백필 = 단일종목 백필(KIS 역산 + 키움 원주가 + 현재주식수 폴백)을 거래종목에 fan-out.
+    // 전종목 날짜별 시총 백필 = 단일종목 백필(KIS 역산 + 원주가 테이블 KRX종가 + 현재주식수 폴백)을 거래종목에 fan-out.
     const stockMarketCapBackfill = new StockMarketCapBackfillService({
         listInfo: new KisListInfoAdapter(kis.rest),
-        rawDaily: new KiwoomRawDailyAdapter(kiwoom.rest),
+        rawDailyRepo, // 원주가 일봉 테이블(collect/backfill 이 상시 수집) — API 재조회 없음
         currentShares: new KiwoomCurrentSharesAdapter(kiwoom.rest),
         repo: marketCapRepo,
     });

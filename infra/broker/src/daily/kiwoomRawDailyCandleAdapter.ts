@@ -1,6 +1,6 @@
 // infra/broker/daily/kiwoomRawDailyCandleAdapter — 키움 단독 RawDailyCandleProvider(원주가 미수정).
 // KiwoomDailyAdapter(수정주가)의 원주가판: 소스만 getRawDailyChartsForRange(upd_stkpc_tp:"0")로 다르고
-// KRX(평문코드)+UN(코드_AL) 머지 로직은 동일. close-only KiwoomRawDailyAdapter(시총용)와 달리 전체 OHLCV 캔들.
+// KRX(평문코드)+UN(코드_AL) 머지 로직은 동일. 전체 OHLCV 캔들이며, 시총 백필도 이 테이블의 krx.close 를 읽는다.
 import type {
     DailyCandle,
     DateRange,

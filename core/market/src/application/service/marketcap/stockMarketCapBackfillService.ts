@@ -3,7 +3,8 @@
 // 흐름:
 //   ① 발행주식수 이벤트 조회 [from, 오늘]. 0건이면(기간 내 변동 없음) 상장이력까지 넓혀 현재총수 확보 시도.
 //      그래도 0건(예탁원 커버리지 밖 오래된 안정주)이면 키움 현재주식수를 상수 shares 로 폴백.
-//   ② 원주가 KRX 종가 조회 [from−margin, to] — 첫날의 직전 거래일(D-1) 확보용 margin.
+//   ② 원주가 KRX 종가 — daily_candles_raw 에서 읽어 krx.close 투영([from−margin, to], D-1 확보용 margin).
+//      원주가 일봉은 collect/backfill 이 상시 수집하므로 시총은 API 재조회 없이 테이블에서 가져온다.
 //   ③ 순수 computeMarketCapBackfill 로 행 계산.  ④ upsert.
 import {
     computeMarketCapBackfill,
@@ -14,13 +15,14 @@ import type {
     CurrentSharesProvider,
     DailyMarketCapRepository,
     ListInfoProvider,
-    RawDailyCloseProvider,
+    RawDailyCandleRepository,
 } from "#port/outbound";
 import { seoulToday } from "../shared/dailyRange.js";
 
 export interface StockMarketCapBackfillDeps {
     listInfo: ListInfoProvider;
-    rawDaily: RawDailyCloseProvider;
+    /** 원주가(미수정) 일봉 저장소 — 시총 기준가(KRX 종가)를 테이블 krx.close 에서 읽는다. */
+    rawDailyRepo: RawDailyCandleRepository;
     /** 역산 폴백 — 예탁원 이벤트 0건 종목의 상수 shares(현재 상장주식수). */
     currentShares: CurrentSharesProvider;
     repo: DailyMarketCapRepository;
@@ -54,7 +56,7 @@ export class StockMarketCapBackfillService {
     constructor(private readonly deps: StockMarketCapBackfillDeps) {}
 
     async backfill(stockCode: string, range: DateRange): Promise<StockMarketCapBackfillResult> {
-        const { listInfo, rawDaily, currentShares, repo } = this.deps;
+        const { listInfo, rawDailyRepo, currentShares, repo } = this.deps;
         const today = seoulToday();
 
         // ① 발행주식수 이벤트 — 우선 [from, 오늘](13개월 수준이라 고정버퍼 100슬롯 안전).
@@ -74,11 +76,12 @@ export class StockMarketCapBackfillService {
             throw new Error(`발행주식수를 어디서도 구할 수 없음: ${stockCode}`);
         }
 
-        // ② 원주가 KRX 종가 — from 이전 거래일까지 받도록 margin.
-        const rawCloses = await rawDaily.getRawCloses(stockCode, {
+        // ② 원주가 KRX 종가 — daily_candles_raw 에서 읽어 krx.close 투영. from 이전 거래일(D-1)까지 margin.
+        const rawCandles = await rawDailyRepo.getRawDailyCandles(stockCode, {
             from: minusDays(range.from, RAW_MARGIN_DAYS),
             to: range.to,
         });
+        const rawCloses = rawCandles.map((c) => ({ date: c.date, close: c.krx.close }));
 
         // ③ 순수 계산 → ④ 저장.
         const rows = computeMarketCapBackfill({ stockCode, rawCloses, events, totalCurrent, range });
