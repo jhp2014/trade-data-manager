@@ -183,3 +183,17 @@ describe("backfill", () => {
         expect(r.tradingDays).toBe(1); // 26만 존재
     });
 });
+
+describe("backfillDaily", () => {
+    it("일봉만 — 분봉 스윕 안 함, 결과에 분봉 필드 없음", async () => {
+        const { collector, minuteRepo } = makeCollector({
+            codes: ["A"],
+            byDate: { "2026-06-26": [daily("A", "2026-06-26", dbar("100"))] },
+            latest: "2026-06-20",
+        });
+        const r = await collector.backfillDaily({ from: "2026-06-26", to: "2026-06-26" });
+        expect(r).toEqual({ range: { from: "2026-06-26", to: "2026-06-26" }, universeCount: 1, dailyRefreshed: true });
+        expect(minuteRepo.saves).toBe(0);
+        expect(minuteRepo.deletes).toEqual([]);
+    });
+});

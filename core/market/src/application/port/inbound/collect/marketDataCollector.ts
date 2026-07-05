@@ -37,7 +37,15 @@ export interface CollectResult {
     totalStored: number;
 }
 
+export interface DailyBackfillResult {
+    range: DateRange;
+    universeCount: number;
+    dailyRefreshed: boolean;
+}
+
 export interface MarketDataCollector {
     /** [from,to] 복기 캔들(일봉+분봉) 수집. 비거래일은 자연 스킵. 일상=최근 range+overwrite없음 / 과거 시딩=overwrite. */
     backfill(range: DateRange, options?: CollectOptions): Promise<CollectResult>;
+    /** 일봉만 수집(분봉 없이) — 차트용 딥 히스토리 시딩. stockMaster 갱신 포함(유니버스 fetch 선행). */
+    backfillDaily(range: DateRange, options?: CollectOptions): Promise<DailyBackfillResult>;
 }

@@ -2,6 +2,7 @@
 //
 //   backfill [일수=5] [--overwrite]              일상 한방: 최근 N일 캔들 + 당일 시총 + 뉴스 (영역별 격리)
 //   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
+//   backfill-daily <from> [to] [--overwrite]     일봉만(차트용 딥 히스토리)
 //   backfill-marketcap <from> [to]               전종목 과거 시총(역산)
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
 //   backfill-ipo                                 최근 1년 상장 공모가 enrichment
@@ -117,6 +118,13 @@ async function runBackfillCandles(rt: IngestRuntime, range: DateRange, overwrite
     printCollectResult(await rt.collector.backfill(range, collectOptions(overwrite)));
 }
 
+/** 일봉만 백필(분봉 없이) — 차트용 딥 히스토리 시딩. stockMaster 갱신 포함. */
+async function runBackfillDaily(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
+    console.log(`▶ 일봉 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
+    const r = await rt.collector.backfillDaily(range, collectOptions(overwrite));
+    console.log(`  ✓ 유니버스 ${r.universeCount} · 일봉 ${r.dailyRefreshed ? "수집" : "생략"}`);
+}
+
 /** 전종목 과거 시총 백필(역산). */
 async function runBackfillMarketCap(rt: IngestRuntime, range: DateRange): Promise<void> {
     console.log(`▶ 시총 백필: ${range.from} ~ ${range.to} (전종목 역산)`);
@@ -182,6 +190,7 @@ const USAGE =
     "사용법:\n" +
     "  backfill [일수=5] [--overwrite]              일상 한방: 최근 N일 캔들 + 당일 시총 + 뉴스 (skip-if-present)\n" +
     "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
+    "  backfill-daily <from> [to] [--overwrite]     일봉만(분봉 없이) — 차트용 딥 히스토리\n" +
     "  backfill-marketcap <from> [to]               전종목 과거 시총 백필(역산)\n" +
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
     "  backfill-ipo                                  최근 1년 상장 종목 공모가 enrichment(null만)\n" +
@@ -214,6 +223,14 @@ async function main(): Promise<void> {
                 const to = a2 ?? a1;
                 assertDate(to, "to");
                 await runBackfillCandles(rt, { from: a1, to }, overwrite);
+                break;
+            }
+            case "backfill-daily": {
+                if (!a1) throw new Error("사용법: backfill-daily <from> [to] [--overwrite]");
+                assertDate(a1, "from");
+                const to = a2 ?? a1;
+                assertDate(to, "to");
+                await runBackfillDaily(rt, { from: a1, to }, overwrite);
                 break;
             }
             case "backfill-marketcap": {
