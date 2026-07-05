@@ -111,13 +111,8 @@ export function createIngestRuntime(): IngestRuntime {
         scanRepo: dailyRepo,
     });
 
-    // 공개 유스케이스 — collectToday()/backfill(range) composer 가 일봉→분봉→시총을 순차 조립.
-    const collector = new MarketDataCollectService({
-        dailyCollector,
-        minuteCollector,
-        marketCapRecorder,
-        marketCapBackfiller,
-    });
+    // 공개 유스케이스 — backfill(range) composer(일봉+분봉). 시총·뉴스·공모가는 CLI 가 함께 조립한다.
+    const collector = new MarketDataCollectService({ dailyCollector, minuteCollector });
     // 시황 뉴스 백필 = KIS 시황 피드(전부, 종목 미태깅 포함)를 시각앵커 연속 워크로 긁어 stock_news 에 적재.
     const newsBackfiller = new NewsBackfillService({
         source: new KisNewsAdapter(kis.rest),

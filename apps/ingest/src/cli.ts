@@ -93,8 +93,6 @@ function collectOptions(overwrite: boolean): CollectOptions {
                 console.log(`  일봉 [${e.done}/${e.total}]`);
             } else if (e.phase === "minute" && e.done === e.total) {
                 console.log(`  분봉 ${e.date} (${e.total} fetch)`);
-            } else if (e.phase === "marketcap" && (e.done! % 200 === 0 || e.done === e.total)) {
-                console.log(`  시총 [${e.done}/${e.total}]`);
             }
         },
     };
@@ -103,14 +101,15 @@ function collectOptions(overwrite: boolean): CollectOptions {
 function printCollectResult(r: CollectResult): void {
     console.log(
         `  ✓ 유니버스 ${r.universeCount} · 일봉 ${r.dailyRefreshed ? "수집" : "생략"} · ` +
-            `거래일 ${r.tradingDays} · 건너뜀 ${r.skippedDays} · 저장 ${r.totalStored}종목·일 · 시총 ${r.marketCapStored}행`,
+            `거래일 ${r.tradingDays} · 건너뜀 ${r.skippedDays} · 저장 ${r.totalStored}종목·일`,
     );
 }
 
-/** collect: 최신 거래일(오늘) — 일봉 최근2년 유지 + 오늘 분봉. */
+/** 오늘 캔들(일봉+분봉) 수집. */
 async function runCollectToday(rt: IngestRuntime, overwrite: boolean): Promise<void> {
-    console.log(`▶ 오늘 수집${overwrite ? " (overwrite)" : ""}`);
-    printCollectResult(await rt.collector.collectToday(collectOptions(overwrite)));
+    const t = seoulToday();
+    console.log(`▶ 오늘 수집: ${t}${overwrite ? " (overwrite)" : ""}`);
+    printCollectResult(await rt.collector.backfill({ from: t, to: t }, collectOptions(overwrite)));
 }
 
 /** backfill: 과거 구간 — 일봉 깊이 시딩 + 구간 분봉. */

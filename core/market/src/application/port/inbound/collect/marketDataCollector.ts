@@ -1,12 +1,12 @@
-// Inbound(driving) 포트 — 복기 데이터 수집 유스케이스(Command, 쓰기).
-// 두 진입점: collectToday()=오늘 / backfill(range)=과거 구간 재구성. 각각 일봉→분봉→시총을 순차 처리.
-//   · 일봉 깊이는 range 인자가 아니라 진입점이 정한다(collect=오늘−2년 / backfill=range.from−≈600봉).
-//   · 분봉은 collect=오늘 하루 / backfill=구간 전체(일봉 있는 거래일만).
-//   · 시총은 collect=당일 입력(ka10099 라이브) / backfill=역산(raw 일봉 테이블).
+// Inbound(driving) 포트 — 복기 캔들(일봉+분봉) 수집 유스케이스(Command, 쓰기).
+// 단일 진입: backfill(range). 일상 수집도 최근 넉넉한 range 로 backfill(overwrite=false, skip-if-present)하면 된다.
+//   · 일봉 깊이는 range 인자가 아니라 [range.from−24개월, range.to] 로 파생(차트 런웨이).
+//   · overwrite=false: 일봉 skip-if-present(latest≥range.to 면 생략) · 분봉 skip-if-present(날짜별). 과거 시딩은 overwrite=true.
+// 시총·뉴스·공모가는 별도 유스케이스 — 딜리버리(CLI)가 함께 조립한다.
 import type { DateRange } from "#domain";
 
 export interface CollectProgress {
-    phase: "daily" | "minute" | "marketcap";
+    phase: "daily" | "minute";
     /** minute 단계의 거래일(YYYY-MM-DD). */
     date?: string;
     done?: number;
@@ -14,7 +14,7 @@ export interface CollectProgress {
 }
 
 export interface CollectOptions {
-    /** 이미 분봉이 수집된 날도 재수집(재fetch·덮어쓰기)하고 일봉도 강제 재수집. 기본 false = 건너뜀(재개 안전). */
+    /** true = 일봉 강제 재수집 + 분봉 delete·refetch. false(기본) = 둘 다 skip-if-present(재개 안전). */
     overwrite?: boolean;
     /** fetch 동시 실행 상한(일봉·분봉 공통). 풀이 rate limit 자체 페이싱. */
     concurrency?: number;
@@ -27,7 +27,7 @@ export interface CollectOptions {
 export interface CollectResult {
     range: DateRange;
     universeCount: number;
-    /** 일봉을 (재)수집했는가. 커버리지가 충분하면 false(collect 만; backfill 은 항상 true). */
+    /** 일봉을 (재)수집했는가. overwrite=false 면 커버리지에 따라 false. */
     dailyRefreshed: boolean;
     /** 분봉을 수집한(데이터 있던) 거래일 수. */
     tradingDays: number;
@@ -35,13 +35,9 @@ export interface CollectResult {
     skippedDays: number;
     /** 저장한 (종목·일) 합. */
     totalStored: number;
-    /** 기록한 시총 행 수(collect=당일 1스윕 / backfill=구간 역산). */
-    marketCapStored: number;
 }
 
 export interface MarketDataCollector {
-    /** 오늘 수집 — 일봉 최근 2년 유지 + 오늘 분봉. range 없이 today() 앵커. */
-    collectToday(options?: CollectOptions): Promise<CollectResult>;
-    /** [from,to] 과거 구간 복기 재구성 — 일봉 깊이 시딩 + 구간 분봉. 비거래일은 자연 스킵. */
+    /** [from,to] 복기 캔들(일봉+분봉) 수집. 비거래일은 자연 스킵. 일상=최근 range+overwrite없음 / 과거 시딩=overwrite. */
     backfill(range: DateRange, options?: CollectOptions): Promise<CollectResult>;
 }

@@ -88,7 +88,6 @@ function makeCollector(opts: {
     codes: string[];
     byDate: Record<string, DailyCandle[]>;
     latest: string | null;
-    today?: string;
 }) {
     const scanRepo = new FakeScanRepo(opts.byDate, opts.latest);
     const minuteRepo = new FakeMinuteRepo();
@@ -111,40 +110,52 @@ function makeCollector(opts: {
     const minuteSweep = new MinuteSweepService({ scanRepo, minuteProvider: new FakeMinuteProvider(), minuteRepo });
     const dailyCollector = new DailyCollector({ universe, dailySweep, scanRepo });
     const minuteCollector = new MinuteCollector({ scanRepo, minuteSweep, minuteRepo });
-    // 시총은 이 composer 테스트의 관심 밖 — 고정 stored 로 폴딩 배선만 검증(collect=record / backfill=backfill).
-    const marketCapRecorder = { record: async (date: string) => ({ date, universe: 1, stored: 7 }) };
-    const marketCapBackfiller = {
-        backfill: async (range: DateRange) => ({ range, universe: 1, stored: 3, failed: [] as string[] }),
-    };
-    const collector = new MarketDataCollectService({
-        dailyCollector,
-        minuteCollector,
-        marketCapRecorder,
-        marketCapBackfiller,
-        today: () => opts.today ?? "2026-06-26",
-    });
+    const collector = new MarketDataCollectService({ dailyCollector, minuteCollector });
     return { collector, minuteRepo };
 }
 
-describe("collectToday (오늘)", () => {
-    it("일봉 커버리지 충분(latest ≥ 오늘) → 일봉 생략, 오늘 분봉 스윕", async () => {
+describe("backfill", () => {
+    it("일봉 커버리지 충분(latest ≥ range.to) + overwrite 없음 → 일봉 생략, 분봉만 스윕", async () => {
         const { collector } = makeCollector({
             codes: ["A"],
             byDate: { "2026-06-26": [daily("A", "2026-06-26", dbar("100"))] },
             latest: "2026-06-26",
-            today: "2026-06-26",
         });
-        const r = await collector.collectToday();
+        const r = await collector.backfill({ from: "2026-06-26", to: "2026-06-26" });
         expect(r.dailyRefreshed).toBe(false);
         expect(r.universeCount).toBe(1);
         expect(r.range).toEqual({ from: "2026-06-26", to: "2026-06-26" });
-        expect(r.marketCapStored).toBe(7); // 당일 시총(record) 폴딩
     });
 
-    it("커버리지 부족(latest < 오늘) → 일봉 재수집(dailyRefreshed=true)", async () => {
-        const { collector } = makeCollector({ codes: ["A", "B"], byDate: {}, latest: "2026-06-20", today: "2026-06-26" });
-        const r = await collector.collectToday();
+    it("커버리지 부족(latest < range.to) → 일봉 재수집(dailyRefreshed=true)", async () => {
+        const { collector } = makeCollector({ codes: ["A", "B"], byDate: {}, latest: "2026-06-20" });
+        const r = await collector.backfill({ from: "2026-06-26", to: "2026-06-26" });
         expect(r.dailyRefreshed).toBe(true);
+    });
+
+    it("과거 구간은 overwrite 없으면 게이트로 일봉 생략(latest ≥ range.to)", async () => {
+        // latest(오늘)가 과거 range.to 보다 뒤 → skip-if-present 로 일봉 스윕 생략. 과거 시딩엔 overwrite 필요.
+        const { collector } = makeCollector({
+            codes: ["A"],
+            byDate: { "2026-06-25": [daily("A", "2026-06-25", dbar("100"))] },
+            latest: "2026-06-30",
+        });
+        const r = await collector.backfill({ from: "2026-06-24", to: "2026-06-26" });
+        expect(r.dailyRefreshed).toBe(false);
+        expect(r.tradingDays).toBe(1); // 일봉 있는 25만 분봉 수집
+    });
+
+    it("overwrite=true → 일봉 강제 재수집 + 분봉 delete·refetch", async () => {
+        const { collector, minuteRepo } = makeCollector({
+            codes: ["A"],
+            byDate: { "2026-06-25": [daily("A", "2026-06-25", dbar("100"))] },
+            latest: "2026-06-30",
+        });
+        minuteRepo.existing.add("2026-06-25");
+        const r = await collector.backfill({ from: "2026-06-24", to: "2026-06-26" }, { overwrite: true });
+        expect(r.dailyRefreshed).toBe(true); // 게이트 무시하고 강제
+        expect(r.skippedDays).toBe(0);
+        expect(minuteRepo.deletes).toContain("2026-06-25"); // 비우고 새로(orphan 제거)
     });
 
     it("overwrite=false: 이미 분봉 있는 날은 건너뜀(skippedDays)", async () => {
@@ -152,53 +163,20 @@ describe("collectToday (오늘)", () => {
             codes: ["A"],
             byDate: { "2026-06-26": [daily("A", "2026-06-26", dbar("100"))] },
             latest: "2026-06-26",
-            today: "2026-06-26",
         });
         minuteRepo.existing.add("2026-06-26");
-        const r = await collector.collectToday();
+        const r = await collector.backfill({ from: "2026-06-26", to: "2026-06-26" });
         expect(r.skippedDays).toBe(1);
         expect(minuteRepo.saves).toBe(0);
     });
 
-    it("overwrite=true: 건너뛰지 않고 스윕 시도 + 일봉 강제 재수집", async () => {
-        const { collector, minuteRepo } = makeCollector({
+    it("일봉 없는 날은 목록에서 자연 제외", async () => {
+        const { collector } = makeCollector({
             codes: ["A"],
             byDate: { "2026-06-26": [daily("A", "2026-06-26", dbar("100"))] },
             latest: "2026-06-26",
-            today: "2026-06-26",
-        });
-        minuteRepo.existing.add("2026-06-26");
-        const r = await collector.collectToday({ overwrite: true });
-        expect(r.skippedDays).toBe(0);
-        expect(r.dailyRefreshed).toBe(true); // overwrite 는 일봉도 강제
-        expect(minuteRepo.deletes).toContain("2026-06-26"); // 비우고 새로(orphan 제거)
-    });
-});
-
-describe("backfill (과거 구간)", () => {
-    it("이미 최신이어도 일봉 항상 시딩(dailyRefreshed=true) + 구간 거래일 분봉", async () => {
-        const { collector } = makeCollector({
-            codes: ["A"],
-            byDate: {
-                "2026-06-24": [daily("A", "2026-06-24", dbar("100"))],
-                "2026-06-25": [daily("A", "2026-06-25", dbar("100"))],
-            },
-            latest: "2026-06-30", // 최신이 range.to 보다 뒤여도 backfill 은 게이트 없이 시딩
-        });
-        const r = await collector.backfill({ from: "2026-06-24", to: "2026-06-25" });
-        expect(r.dailyRefreshed).toBe(true);
-        expect(r.tradingDays).toBe(2);
-        expect(r.range).toEqual({ from: "2026-06-24", to: "2026-06-25" });
-        expect(r.marketCapStored).toBe(3); // 시총 백필(backfill) 폴딩
-    });
-
-    it("일봉 없는 날은 목록에서 자연 제외(구간 밖·미수집)", async () => {
-        const { collector } = makeCollector({
-            codes: ["A"],
-            byDate: { "2026-06-25": [daily("A", "2026-06-25", dbar("100"))] }, // 구간 [24,26] 중 25만 존재
-            latest: "2026-06-30",
         });
         const r = await collector.backfill({ from: "2026-06-24", to: "2026-06-26" });
-        expect(r.tradingDays).toBe(1);
+        expect(r.tradingDays).toBe(1); // 26만 존재
     });
 });
