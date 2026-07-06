@@ -8,7 +8,8 @@
     "exports": {
         ".": "./src/index.ts",
         "./domain": "./src/domain/index.ts",
-        "./port": "./src/application/port/index.ts"
+        "./port": "./src/application/port/index.ts",
+        "./internal": "./src/internal.ts"
     },
     "imports": {
         "#domain": "./src/domain/index.ts",

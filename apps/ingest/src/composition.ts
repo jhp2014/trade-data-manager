@@ -25,18 +25,9 @@ import {
     DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
 import {
-    DailyIngestService,
-    RawDailyIngestService,
-    StockMasterIngestService,
-    DailySweepService,
-    MinuteSweepService,
-    DailyCollector,
-    MinuteCollector,
     MarketDataCollectService,
     DailyMarketCapRecordService,
-    StockMarketCapBackfillService,
     MarketCapBackfillService,
-    IpoPriceBackfillService,
     IpoPriceEnrichService,
     NewsBackfillService,
     NewsSearchService,
@@ -47,6 +38,17 @@ import {
     type NewsBackfiller,
     type NewsSearcher,
 } from "@trade-data-manager/market";
+import {
+    DailyIngestService,
+    RawDailyIngestService,
+    StockMasterIngestService,
+    DailySweepService,
+    MinuteSweepService,
+    DailyCollector,
+    MinuteCollector,
+    StockMarketCapBackfillService,
+    IpoPriceBackfillService,
+} from "@trade-data-manager/market/internal";
 
 export interface IngestRuntime {
     /** 복기 데이터 수집(Command). 당일/과거/범위/월 전부 collect(range). */
