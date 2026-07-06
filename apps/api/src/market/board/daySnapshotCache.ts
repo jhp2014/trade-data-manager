@@ -54,5 +54,14 @@ export async function writeSnapshot(data: DaySnapshotFile): Promise<void> {
     const fp = filePath(data.date);
     await fs.mkdir(path.dirname(fp), { recursive: true });
     const gz = await gzipAsync(Buffer.from(JSON.stringify(data), "utf8"));
-    await fs.writeFile(fp, gz);
+    // temp 파일에 쓰고 rename(원자적) — 쓰기 도중 크래시/kill 이 truncate 된 파일을 최종 경로에 남기면
+    // 이후 read 가 ENOENT 가 아닌 gunzip/JSON 에러를 던져 그 날짜가 영구히 못 읽히게 되는 걸 막는다.
+    const tmp = `${fp}.${process.pid}.${Date.now()}.tmp`;
+    try {
+        await fs.writeFile(tmp, gz);
+        await fs.rename(tmp, fp);
+    } catch (err) {
+        await fs.rm(tmp, { force: true });
+        throw err;
+    }
 }

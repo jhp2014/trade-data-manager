@@ -10,8 +10,10 @@ export class LazyTelegramNewsSearcher implements NewsSearcher {
     private tg: Telegram | null = null;
     private searcher: NewsSearcher | null = null;
     private connecting: Promise<NewsSearcher> | null = null;
+    private closed = false;
 
     private ensure(): Promise<NewsSearcher> {
+        if (this.closed) return Promise.reject(new Error("news searcher 가 이미 종료됨"));
         if (this.searcher) return Promise.resolve(this.searcher);
         if (!this.connecting) {
             this.connecting = (async () => {
@@ -38,6 +40,10 @@ export class LazyTelegramNewsSearcher implements NewsSearcher {
     }
 
     async close(): Promise<void> {
+        this.closed = true;
+        // 접속 진행 중에 종료되면, 그 접속이 끝나 this.tg 가 세팅될 때까지 기다린 뒤 disconnect 한다.
+        // (기다리지 않으면 close 가 tg=null 을 보고 지나쳐, 나중에 열린 연결이 정리되지 않고 누수된다.)
+        if (this.connecting) await this.connecting.catch(() => {});
         const tg = this.tg;
         this.tg = null;
         this.searcher = null;

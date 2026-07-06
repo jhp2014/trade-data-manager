@@ -8,7 +8,12 @@ export class CachedMembership {
     constructor(private readonly inner: { load(): Promise<ThemeMember[]> }) {}
 
     load(): Promise<ThemeMember[]> {
-        return (this.once ??= this.inner.load());
+        // 실패는 캐시하지 않는다 — 첫 로드가 (시트 오류 등) 실패하면 once 를 비워 다음 요청이 재시도하게.
+        // (안 그러면 거부된 Promise 가 영구 캐시돼 이후 모든 요청이 같은 실패를 되돌린다.)
+        return (this.once ??= this.inner.load().catch((err: unknown) => {
+            this.once = null;
+            throw err;
+        }));
     }
 
     refresh(): void {
