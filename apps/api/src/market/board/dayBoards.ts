@@ -1,18 +1,9 @@
 // DayBoards — api 읽기모델(조립부, 캐시 없음). 캐시(DerivedCache 파일 · MasterCache/Membership 메모리)를
-// 조합해 화면별 응답을 만든다. core 순수함수(assembleBaseSnapshots·buildDaySummary·themeStatsOf)로 조립.
+// 조합해 화면별 응답을 만든다. daySummary 순수함수(assembleBaseSnapshots·buildDaySummary) + core themeStatsOf 로 조립.
 //   themeBoard — EOD %·시총·분봉파생 + master·시트·이슈(fresh) + 테마 EOD folding
 //   replayBoard — 분봉파생 + master·시트(테마명). 이슈·EOD % 안 씀.
-import {
-    assembleBaseSnapshots,
-    applyIssues,
-    buildDaySummary,
-    themeStatsOf,
-    type DailySnapshot,
-    type DaySummary,
-    type MinuteDerived,
-    type ThemeMember,
-    type DailyIssueRepository,
-} from "@trade-data-manager/market";
+import { themeStatsOf, type MinuteDerived, type ThemeMember, type DailyIssueRepository } from "@trade-data-manager/market";
+import { assembleBaseSnapshots, applyIssues, buildDaySummary, type DailySnapshot, type DaySummary } from "./daySummary.js";
 import type { DerivedCache } from "./derivedCache.js";
 import type { MasterCache } from "./masterCache.js";
 

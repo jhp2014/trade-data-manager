@@ -7,6 +7,8 @@
         "start": "tsx src/main.ts",
         "dev": "tsx watch src/main.ts",
         "type-check": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "clean": "rimraf dist",
         "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo"
     },
@@ -28,6 +30,7 @@
         "@types/node": "^22.10.0",
         "rimraf": "^6.0.1",
         "tsx": "^4.21.0",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "vitest": "^2.1.9"
     }
 }

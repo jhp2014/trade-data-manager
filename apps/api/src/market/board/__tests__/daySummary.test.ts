@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDaySummary } from "../daySummary.js";
-import type { DailySnapshot } from "#port/query";
+import { buildDaySummary, type DailySnapshot } from "../daySummary.js";
 
 const snap = (over: Partial<DailySnapshot>): DailySnapshot => ({
     date: "2026-06-26",

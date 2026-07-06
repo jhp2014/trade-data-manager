@@ -2,7 +2,7 @@
 //   driven read (persistence 구현): candle·minute·rawDaily·marketCap·master·news reader + universe·theme provider
 //   큐레이션 읽기+쓰기 (앱 대면): dailyIssue · priceLine · reviewPoint
 //   조립 유스케이스 (core 서비스가 구현): chartAnnotation(주석 zip) · newsSearcher(멀티채널 fan-out)
-//   읽기모델 타입: daySummaryReader (DaySummary/DailySnapshot — 포트 아님, api DayBoards 가 조립)
+// (당일 요약 읽기모델 DaySummary/DailySnapshot 은 특정 화면 전용이라 apps/api 로 이관 — core 는 도메인만 제공.)
 export * from "./candleReader.js";
 export * from "./minuteReader.js";
 export * from "./rawDailyReader.js";
@@ -15,6 +15,5 @@ export * from "./newsChannelSearch.js";
 export * from "./dailyIssueRepository.js";
 export * from "./priceLineRepository.js";
 export * from "./reviewPointRepository.js";
-export * from "./daySummaryReader.js";
 export * from "./chartAnnotationReader.js";
 export * from "./newsSearcher.js";
