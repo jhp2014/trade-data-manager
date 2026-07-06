@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import type { PriceLine, PriceLinedStock, PriceLineField, PriceLineRepository } from "@trade-data-manager/market";
-import { PRICE_LINE_REPO } from "./tokens.js";
+import { PRICE_LINE_REPO } from "../tokens.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}:\d{2}$/;

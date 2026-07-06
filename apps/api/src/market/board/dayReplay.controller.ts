@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
-import { DAY_BOARDS } from "./tokens.js";
+import { DAY_BOARDS } from "../tokens.js";
 import type { DayBoards, ReplayBoard } from "./dayBoards.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

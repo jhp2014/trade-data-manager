@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
 import type { NewsHeadline, StockNewsReader } from "@trade-data-manager/market";
-import { STOCK_NEWS_REPO } from "./tokens.js";
+import { STOCK_NEWS_REPO } from "../tokens.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SRNO_RE = /^\d+$/;

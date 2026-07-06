@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Delete, Inject, Query, Body, BadRequestException } from "@nestjs/common";
 import type { ReviewPoint, ReviewPointListItem, ReviewPointRepository } from "@trade-data-manager/market";
-import { REVIEW_POINT_REPO } from "./tokens.js";
+import { REVIEW_POINT_REPO } from "../tokens.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}:\d{2}$/;

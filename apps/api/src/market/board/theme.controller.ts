@@ -1,5 +1,5 @@
 import { Controller, Post, Inject } from "@nestjs/common";
-import { MASTER_CACHE, MEMBERSHIP_CACHE } from "./tokens.js";
+import { MASTER_CACHE, MEMBERSHIP_CACHE } from "../tokens.js";
 import type { MasterCache } from "./masterCache.js";
 import type { CachedMembership } from "./cachedMembership.js";
 

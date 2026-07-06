@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
 import type { NewsItem, NewsSearcher } from "@trade-data-manager/market";
-import { NEWS_SEARCHER } from "./tokens.js";
+import { NEWS_SEARCHER } from "../tokens.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_LIMIT = 200; // 하루 전체를 담을 방당 상한(실제 한계는 since=하루 시작 경계).

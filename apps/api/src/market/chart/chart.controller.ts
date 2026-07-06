@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
-import { CHART_READER } from "./tokens.js";
+import { CHART_READER } from "../tokens.js";
 import type { ChartBundle, ChartReadModel } from "./chartReadModel.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

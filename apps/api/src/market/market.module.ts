@@ -16,20 +16,20 @@ import {
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
 import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
-import { ChartController } from "./chart.controller.js";
-import { ChartReadModel } from "./chartReadModel.js";
-import { DaySummaryController } from "./daySummary.controller.js";
-import { DayReplayController } from "./dayReplay.controller.js";
-import { ThemeController } from "./theme.controller.js";
-import { PriceLineController } from "./priceLine.controller.js";
-import { ReviewPointController } from "./reviewPoint.controller.js";
-import { NewsController } from "./news.controller.js";
-import { TelegramNewsController } from "./telegramNews.controller.js";
-import { LazyTelegramNewsSearcher } from "./telegramNewsSearcher.js";
-import { DerivedCache } from "./derivedCache.js";
-import { MasterCache } from "./masterCache.js";
-import { DayBoards } from "./dayBoards.js";
-import { CachedMembership } from "./cachedMembership.js";
+import { ChartController } from "./chart/chart.controller.js";
+import { ChartReadModel } from "./chart/chartReadModel.js";
+import { DaySummaryController } from "./board/daySummary.controller.js";
+import { DayReplayController } from "./board/dayReplay.controller.js";
+import { ThemeController } from "./board/theme.controller.js";
+import { PriceLineController } from "./curation/priceLine.controller.js";
+import { ReviewPointController } from "./curation/reviewPoint.controller.js";
+import { NewsController } from "./news/news.controller.js";
+import { TelegramNewsController } from "./news/telegramNews.controller.js";
+import { LazyTelegramNewsSearcher } from "./news/telegramNewsSearcher.js";
+import { DerivedCache } from "./board/derivedCache.js";
+import { MasterCache } from "./board/masterCache.js";
+import { DayBoards } from "./board/dayBoards.js";
+import { CachedMembership } from "./board/cachedMembership.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
