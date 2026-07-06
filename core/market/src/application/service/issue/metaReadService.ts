@@ -3,18 +3,18 @@
 import type {
     DailyUniverseProvider,
     ThemeMembershipProvider,
-    StockMasterRepository,
-    DailyMarketCapRepository,
+    StockMasterReader,
+    DailyMarketCapReader,
     DailyCandleSnapshotReader,
-} from "#port/outbound";
-import type { MetaReader, DailySnapshot } from "#port/inbound";
+} from "#port/query";
+import type { MetaReader, DailySnapshot } from "#port/query";
 import { assembleBaseSnapshots } from "./daySummary.js";
 
 export interface MetaReadDeps {
     universe: DailyUniverseProvider;
     membership: ThemeMembershipProvider;
-    stockMaster: StockMasterRepository;
-    marketCap: DailyMarketCapRepository;
+    stockMaster: StockMasterReader;
+    marketCap: DailyMarketCapReader;
     dailyCandle: DailyCandleSnapshotReader;
 }
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { NewsBackfillService } from "../newsBackfillService.js";
 import type { DateRange, NewsHeadline } from "#domain";
-import type { NewsSource, StockNewsRepository } from "#port/outbound";
+import type { NewsSource, StockNewsStore } from "#port/collect";
 
 const hl = (srno: string, date: string, time: string, stockCodes: string[] = []): NewsHeadline => ({
     srno,
@@ -33,7 +33,7 @@ class FakeNewsSource implements NewsSource {
     }
 }
 
-class FakeRepo implements StockNewsRepository {
+class FakeRepo implements StockNewsStore {
     saved = new Map<string, NewsHeadline>(); // srno → headline (upsert dedup)
     saveCalls = 0;
     rowsSeen = 0;

@@ -5,19 +5,19 @@
 import type {
     DailyUniverseProvider,
     ThemeMembershipProvider,
-    StockMasterRepository,
-    DailyMarketCapRepository,
+    StockMasterReader,
+    DailyMarketCapReader,
     DailyCandleSnapshotReader,
     DailyIssueRepository,
-} from "#port/outbound";
-import type { DaySummary, DaySummaryReader } from "#port/inbound";
+} from "#port/query";
+import type { DaySummary, DaySummaryReader } from "#port/query";
 import { buildDaySummary, assembleBaseSnapshots, applyIssues } from "./daySummary.js";
 
 export interface DaySummaryDeps {
     universe: DailyUniverseProvider;
     membership: ThemeMembershipProvider;
-    stockMaster: StockMasterRepository;
-    marketCap: DailyMarketCapRepository;
+    stockMaster: StockMasterReader;
+    marketCap: DailyMarketCapReader;
     dailyCandle: DailyCandleSnapshotReader;
     dailyIssue: DailyIssueRepository;
 }

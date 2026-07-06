@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { StockMasterIngestService } from "../stockMasterIngestService.js";
 import type { StockMaster } from "#domain";
-import type { StockMasterProvider, StockMasterRepository } from "#port/outbound";
+import type { StockMasterProvider, StockMasterStore } from "#port/collect";
 
 const master = (stockCode: string, name: string): StockMaster => ({
     stockCode,
@@ -18,7 +18,7 @@ class FakeProvider implements StockMasterProvider {
     }
 }
 
-class FakeRepo implements StockMasterRepository {
+class FakeRepo implements StockMasterStore {
     saved: StockMaster[] = [];
     async saveStockMasters(masters: StockMaster[]): Promise<void> {
         this.saved.push(...masters);

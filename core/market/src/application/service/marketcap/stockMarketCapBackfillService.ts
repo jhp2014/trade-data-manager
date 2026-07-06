@@ -11,21 +11,17 @@ import {
     currentTotalShares,
     type DateRange,
 } from "#domain";
-import type {
-    CurrentSharesProvider,
-    DailyMarketCapRepository,
-    ListInfoProvider,
-    RawDailyCandleRepository,
-} from "#port/outbound";
+import type { CurrentSharesProvider, DailyMarketCapStore, ListInfoProvider } from "#port/collect";
+import type { RawDailyReader } from "#port/query";
 import { seoulToday } from "../shared/dailyRange.js";
 
 export interface StockMarketCapBackfillDeps {
     listInfo: ListInfoProvider;
     /** 원주가(미수정) 일봉 저장소 — 시총 기준가(KRX 종가)를 테이블 krx.close 에서 읽는다. */
-    rawDailyRepo: RawDailyCandleRepository;
+    rawDailyRepo: RawDailyReader;
     /** 역산 폴백 — 예탁원 이벤트 0건 종목의 상수 shares(현재 상장주식수). */
     currentShares: CurrentSharesProvider;
-    repo: DailyMarketCapRepository;
+    repo: DailyMarketCapStore;
 }
 
 /** 단일종목 백필 결과(내부 — 전종목 서비스가 stored 를 집계). */

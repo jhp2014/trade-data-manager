@@ -12,8 +12,8 @@
     },
     "imports": {
         "#domain": "./src/domain/index.ts",
-        "#port/inbound": "./src/application/port/inbound/index.ts",
-        "#port/outbound": "./src/application/port/outbound/index.ts"
+        "#port/collect": "./src/application/port/collect/index.ts",
+        "#port/query": "./src/application/port/query/index.ts"
     },
     "scripts": {
         "type-check": "tsc --noEmit",

@@ -2,7 +2,7 @@
 // 분봉 ingest 는 MinuteSweep 가 provider/repo 를 직접 다룬다 — 여긴 일봉 전용.
 // 생성자 주입(수동 DI): provider·repository 는 포트 인터페이스만 안다.
 import type { DailyBar, DailyCandle, DateRange } from "#domain";
-import type { DailyCandleProvider, DailyCandleRepository } from "#port/outbound";
+import type { DailyCandleProvider, DailyCandleStore } from "#port/collect";
 import { defaultDailyRange, seoulToday } from "../shared/dailyRange.js";
 
 // 내부 협력자(종목 1개 단위 ingest). inbound 포트 아님 — 공개 표면은 collect.
@@ -15,7 +15,7 @@ export interface DailyIngestResult {
 
 export interface DailyIngestDeps {
     dailyProvider: DailyCandleProvider;
-    dailyRepo: DailyCandleRepository;
+    dailyRepo: DailyCandleStore;
     /** 오늘(YYYY-MM-DD) 공급자. 기본 = Asia/Seoul 현재일. 기본 일봉 범위 산정에만 쓰임 — 주입 시 테스트 결정성↑. */
     today?: () => string;
 }

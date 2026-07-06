@@ -12,10 +12,10 @@ import type {
     DailyCandleProvider,
     DailyScanRepository,
     MinuteCandleProvider,
-    MinuteCandleRepository,
+    MinuteCandleStore,
     StockMasterProvider,
-    StockMasterRepository,
-} from "#port/outbound";
+    StockMasterStore,
+} from "#port/collect";
 
 // 최소 fake outbound 들 — composer 가 협력자(real collector·sweep)를 조합하는지 검증.
 const dbar = (close: string, high = close, amount = "1"): DailyBar => ({ open: close, high, low: close, close, volume: "1", amount });
@@ -27,7 +27,7 @@ class FakeStockMasterProvider implements StockMasterProvider {
         return this.codes.map((stockCode) => ({ stockCode, name: stockCode, market: "거래소", listingDate: null, ipoPrice: null }));
     }
 }
-class NoopStockMasterRepo implements StockMasterRepository {
+class NoopStockMasterRepo implements StockMasterStore {
     async saveStockMasters(): Promise<void> {}
     async updateIpoPrice(): Promise<void> {}
     async getByStockCodes(): Promise<StockMaster[]> {
@@ -68,7 +68,7 @@ class FakeMinuteProvider implements MinuteCandleProvider {
         return [];
     }
 }
-class FakeMinuteRepo implements MinuteCandleRepository {
+class FakeMinuteRepo implements MinuteCandleStore {
     existing = new Set<string>();
     saves = 0;
     deletes: string[] = [];
@@ -97,16 +97,13 @@ function makeCollector(opts: {
     const universe = new StockMasterIngestService({ provider: new FakeStockMasterProvider(opts.codes), repository: new NoopStockMasterRepo() });
     const dailyIngest = new DailyIngestService({
         dailyProvider: new FakeDailyProvider(),
-        dailyRepo: { saveDailyCandles: async () => {}, getDailyCandles: async () => [], getDailyCandle: async () => null, getEarliestDailyDate: async () => null },
+        dailyRepo: { saveDailyCandles: async () => {}, getDailyCandle: async () => null, getEarliestDailyDate: async () => null },
         today: () => "2026-06-28",
     });
     const rawDailyIngest = new RawDailyIngestService({
         rawProvider: { getRawDailyCandles: async () => [] },
         rawRepo: {
             saveRawDailyCandles: async () => {},
-            getRawDailyCandles: async () => [],
-            getEarliestRawDailyDate: async () => null,
-            getPreviousRawClose: async () => null,
         },
     });
     const dailySweep = new DailySweepService({ dailyIngest, rawDailyIngest });

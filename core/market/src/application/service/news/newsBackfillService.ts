@@ -1,5 +1,5 @@
 // NewsBackfillService — 시황 헤드라인 백필(일회성 Command) 구현.
-// 협력: NewsSource(앵커 이전 한 페이지) · StockNewsRepository(멱등 저장).
+// 협력: NewsSource(앵커 이전 한 페이지) · StockNewsStore(멱등 저장).
 // 흐름(역방향 워크 + forced-stepping — recon 으로 확정):
 //   ① 앵커 = (to, 23:59:59) 부터. 어댑터가 ≤anchor 내림차순(벤더 wrap 은닉) 한 페이지(≤40) 반환.
 //   ② 직전 oldest 가 page[0] 로 재등장(앵커 inclusive) → 1건 겹침 제거.
@@ -10,16 +10,16 @@
 //        (강제점프 폭만큼 stall 지점 미세 누락 가능하나 드물고 무시 가능.)
 //   ⑤ 종료: oldest 가 from 미만 · 강제하강이 from 미만 · 연속 강제하강 과다(보관 경계/영구 stall).
 import type { DateRange, NewsHeadline } from "#domain";
-import type { NewsSource, StockNewsRepository } from "#port/outbound";
+import type { NewsSource, StockNewsStore } from "#port/collect";
 import type {
     NewsBackfiller,
     NewsBackfillOptions,
     NewsBackfillResult,
-} from "#port/inbound";
+} from "#port/collect";
 
 export interface NewsBackfillDeps {
     source: NewsSource;
-    repo: StockNewsRepository;
+    repo: StockNewsStore;
 }
 
 /** 안전 상한 — 무한루프 방지용. 1년 풀피드도 ~5만 페이지라 넉넉히. */

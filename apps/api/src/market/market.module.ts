@@ -15,9 +15,10 @@ import {
 } from "@trade-data-manager/persistence";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { ChartReadService, ReplayReadService, MetaReadService, applyIssues, buildDaySummary } from "@trade-data-manager/market";
+import { ReplayReadService, MetaReadService, applyIssues, buildDaySummary } from "@trade-data-manager/market";
 import { CHART_READER, DERIVED_STORE, META_STORE, DAY_REPLAY_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart.controller.js";
+import { ChartReadModel } from "./chartReadModel.js";
 import { DaySummaryController, type EnrichedDaySummaryReader } from "./daySummary.controller.js";
 import { PriceLineController } from "./priceLine.controller.js";
 import { ReviewPointController } from "./reviewPoint.controller.js";
@@ -42,9 +43,9 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
         { provide: MARKET_POOL, useFactory: (): Pool => createPoolFromEnv() },
         {
             provide: CHART_READER,
-            useFactory: (pool: Pool): ChartReadService => {
+            useFactory: (pool: Pool): ChartReadModel => {
                 const db = createDb(pool);
-                return new ChartReadService({
+                return new ChartReadModel({
                     dailyCandle: new DrizzleDailyCandleRepository(db),
                     minuteCandle: new DrizzleMinuteCandleRepository(db),
                     rawDailyCandle: new DrizzleRawDailyCandleRepository(db),

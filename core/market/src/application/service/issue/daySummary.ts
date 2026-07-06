@@ -2,7 +2,7 @@
 //  · assembleBaseSnapshots — 불변 meta(시트·master·시총·일봉·전일종가) 조인 → 스냅샷 스켈레톤(issues=[])
 //  · applyIssues           — 그 스켈레톤에 fresh issues 를 덮음(가변이라 캐시 밖, 편집 즉시 반영)
 //  · buildDaySummary       — 스냅샷들 → byTheme/byIssue 인덱스(flat 한 패스 파생, 단일 진실원본)
-import type { DailySnapshot, DaySummary, ThemeTag, IssueTag } from "#port/inbound";
+import type { DailySnapshot, DaySummary, ThemeTag, IssueTag } from "#port/query";
 import type { DailyCandle, StockMaster, DailyMarketCap, PreviousClose, ThemeMember, DailyIssue } from "#domain";
 
 /** 시트 멤버십 ∩ universe → 종목별 ThemeTag[](편입이슈·날짜 메타 보존, 멤버 등장순 유지). */

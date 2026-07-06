@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
 import type {
     DailyCandle,
-    DailyCandleRepository,
+    DailyCandleStore,
+    AdjustedDailyReader,
     DailyCandleSnapshotReader,
     DailyScanRepository,
     DateRange,
@@ -14,9 +15,9 @@ import { buildConflictUpdateSet } from "./_helpers.js";
 
 const CONFLICT_SET = buildConflictUpdateSet(dailyCandles, ["tradeDate", "stockCode"]);
 
-/** Drizzle 구현 — 종목별 ingest(DailyCandleRepository) + 날짜별 전종목 스캔(DailyScanRepository). 같은 daily_candles. */
+/** Drizzle 구현 — 종목별 store/read(DailyCandleStore·AdjustedDailyReader) + 스냅샷 read + 날짜별 스캔. 같은 daily_candles. */
 export class DrizzleDailyCandleRepository
-    implements DailyCandleRepository, DailyCandleSnapshotReader, DailyScanRepository
+    implements DailyCandleStore, AdjustedDailyReader, DailyCandleSnapshotReader, DailyScanRepository
 {
     constructor(private readonly db: Database) {}
 

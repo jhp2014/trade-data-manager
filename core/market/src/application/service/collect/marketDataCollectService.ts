@@ -8,7 +8,7 @@ import type {
     CollectOptions,
     CollectResult,
     DailyBackfillResult,
-} from "#port/inbound";
+} from "#port/collect";
 import type { DailyCollector } from "./dailyCollector.js";
 import type { MinuteCollector } from "./minuteCollector.js";
 

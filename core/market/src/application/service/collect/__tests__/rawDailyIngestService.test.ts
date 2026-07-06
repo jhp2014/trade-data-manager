@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DailyCandle, DateRange } from "#domain";
-import type { RawDailyCandleProvider, RawDailyCandleRepository } from "#port/outbound";
+import type { RawDailyCandleProvider, RawDailyStore } from "#port/collect";
 import { RawDailyIngestService } from "../rawDailyIngestService.js";
 
 const bar = (close: string) => ({
@@ -20,18 +20,9 @@ const candle = (date: string): DailyCandle => ({
 
 function stubRepo() {
     const saved: DailyCandle[] = [];
-    const repo: RawDailyCandleRepository = {
+    const repo: RawDailyStore = {
         async saveRawDailyCandles(c) {
             saved.push(...c);
-        },
-        async getRawDailyCandles() {
-            return [];
-        },
-        async getEarliestRawDailyDate() {
-            return null;
-        },
-        async getPreviousRawClose() {
-            return null;
         },
     };
     return { repo, saved };

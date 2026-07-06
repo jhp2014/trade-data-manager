@@ -3,16 +3,13 @@ import { DailySweepService } from "../dailySweepService.js";
 import { DailyIngestService } from "../dailyIngestService.js";
 import { RawDailyIngestService } from "../rawDailyIngestService.js";
 import type { DailyCandle, DateRange } from "#domain";
-import type { DailyCandleProvider, DailyCandleRepository } from "#port/outbound";
+import type { DailyCandleProvider, DailyCandleStore } from "#port/collect";
 
 // 원주가 ingest 는 이 스윕 테스트의 관심 밖 — 아무것도 안 하는 leaf(수정주가 fan-out·격리만 검증).
 const noopRawIngest = new RawDailyIngestService({
     rawProvider: { getRawDailyCandles: async () => [] },
     rawRepo: {
         saveRawDailyCandles: async () => {},
-        getRawDailyCandles: async () => [],
-        getEarliestRawDailyDate: async () => null,
-        getPreviousRawClose: async () => null,
     },
 });
 
@@ -29,7 +26,7 @@ class FakeDailyProvider implements DailyCandleProvider {
         return [candle(stockCode, range.to)];
     }
 }
-class CountingDailyRepo implements DailyCandleRepository {
+class CountingDailyRepo implements DailyCandleStore {
     saved: string[] = [];
     async saveDailyCandles(candles: DailyCandle[]): Promise<void> {
         if (candles.length) this.saved.push(candles[0].stockCode);

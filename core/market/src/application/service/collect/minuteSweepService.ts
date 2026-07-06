@@ -5,8 +5,8 @@ import { selectDailyCandidates } from "#domain";
 import type {
     DailyScanRepository,
     MinuteCandleProvider,
-    MinuteCandleRepository,
-} from "#port/outbound";
+    MinuteCandleStore,
+} from "#port/collect";
 import { buildDailyRankInputs } from "./dailyRankInputs.js";
 import { mapWithConcurrency } from "../../concurrency.js";
 
@@ -38,7 +38,7 @@ export interface MinuteSweepOptions {
 export interface MinuteSweepDeps {
     scanRepo: DailyScanRepository;
     minuteProvider: MinuteCandleProvider;
-    minuteRepo: MinuteCandleRepository;
+    minuteRepo: MinuteCandleStore;
 }
 
 export class MinuteSweepService {

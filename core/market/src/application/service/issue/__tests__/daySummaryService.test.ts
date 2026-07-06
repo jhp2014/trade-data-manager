@@ -33,13 +33,9 @@ function service(d: Data) {
         membership: { load: async () => d.members ?? [] },
         stockMaster: {
             getByStockCodes: async (codes) => (d.masters ?? []).filter((m) => codes.includes(m.stockCode)),
-            saveStockMasters: async () => {},
-            updateIpoPrice: async () => {},
-            listNeedingIpoPrice: async () => [],
         },
         marketCap: {
             getByDateAndCodes: async (_date, codes) => (d.caps ?? []).filter((c) => codes.includes(c.stockCode)),
-            saveMarketCaps: async () => {},
         },
         dailyCandle: {
             getByDateAndCodes: async (_date, codes) => (d.candles ?? []).filter((c) => codes.includes(c.stockCode)),

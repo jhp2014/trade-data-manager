@@ -1,5 +1,5 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import type { MinuteCandle, MinuteCandleRepository } from "@trade-data-manager/market";
+import type { MinuteCandle, MinuteCandleStore, MinuteReader } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { minuteCandles } from "../schema/market.js";
 import { minuteCandleToRow, rowToMinuteCandle } from "../mappers/minute.js";
@@ -12,7 +12,7 @@ const CONFLICT_SET = buildConflictUpdateSet(minuteCandles, [
 ]);
 
 /** Drizzle 구현 — (tradeDate, stockCode, tradeTime) 자연키 upsert + (종목,날) 시계열 조회. */
-export class DrizzleMinuteCandleRepository implements MinuteCandleRepository {
+export class DrizzleMinuteCandleRepository implements MinuteCandleStore, MinuteReader {
     constructor(private readonly db: Database) {}
 
     async saveMinuteCandles(candles: MinuteCandle[]): Promise<void> {

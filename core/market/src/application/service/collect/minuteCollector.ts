@@ -1,9 +1,9 @@
-// [배선 B: 분봉 수집 지휘]  ← MarketDataCollectService(composer)  → DailyScanRepository · MinuteSweep · MinuteCandleRepository
+// [배선 B: 분봉 수집 지휘]  ← MarketDataCollectService(composer)  → DailyScanRepository · MinuteSweep · MinuteCandleStore
 // [from,to] 안에 일봉이 있는 거래일만 순회하며 날짜별 MinuteSweep 에 위임한다.
 // 전제: 일봉(A)이 먼저 끝나 있음. "일봉 존재 = 그날 거래일"이라 휴장·미수집일은 목록에서 자연 제외
 // (거래일 달력·throw 불필요). collect()는 [today,today], backfill 은 구간 range 를 넘긴다.
 import type { DateRange } from "#domain";
-import type { DailyScanRepository, MinuteCandleRepository } from "#port/outbound";
+import type { DailyScanRepository, MinuteCandleStore } from "#port/collect";
 import type { MinuteSweepService } from "./minuteSweepService.js";
 
 export interface MinuteCollectResult {
@@ -25,7 +25,7 @@ export interface MinuteCollectOptions {
 export interface MinuteCollectorDeps {
     scanRepo: DailyScanRepository;
     minuteSweep: MinuteSweepService;
-    minuteRepo: MinuteCandleRepository;
+    minuteRepo: MinuteCandleStore;
 }
 
 export class MinuteCollector {

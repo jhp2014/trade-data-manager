@@ -2,7 +2,7 @@ import type { DailyCandle, DateRange } from "#domain";
 
 /**
  * 일봉 스캔 조회 포트(ISP — 프루닝 입력용 읽기). 한 거래일의 *전종목* 을 본다.
- * ingest 의 종목별 포트(DailyCandleRepository)와 분리 — 소비자(프루닝)가 다르다.
+ * ingest 의 종목별 포트(DailyCandleStore)와 분리 — 소비자(프루닝)가 다르다.
  * 구현은 같은 daily_candles(Drizzle).
  */
 export interface DailyScanRepository {

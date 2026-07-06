@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { DailyIngestService } from "../dailyIngestService.js";
 import { defaultDailyRange } from "../../shared/dailyRange.js";
 import type { DailyBar, DailyCandle, DateRange } from "#domain";
-import type { DailyCandleProvider, DailyCandleRepository } from "#port/outbound";
+import type { DailyCandleProvider, DailyCandleStore } from "#port/collect";
 
 const bar = (close: string, volume = "100"): DailyBar => ({
     open: close,
@@ -21,7 +21,7 @@ const candle = (date: string, close: string, volume = "100"): DailyCandle => ({
 });
 
 /** in-memory 일봉 리포 — (date,stock) 자연키 upsert. */
-class FakeDailyRepo implements DailyCandleRepository {
+class FakeDailyRepo implements DailyCandleStore {
     rows = new Map<string, DailyCandle>();
     saved: DailyCandle[][] = [];
 

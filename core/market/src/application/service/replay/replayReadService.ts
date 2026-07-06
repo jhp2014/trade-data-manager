@@ -1,7 +1,7 @@
 // ReplayReadService — ReplayReader(inbound) 구현. 유니버스 코드 → (분봉 ∪ 원주가일봉) fetch → deriveMinutes.
 // 캐시 무지(순수 오케스트레이션) — 파일 캐시는 apps/api 어댑터(DerivedStore)가 이 위에 씌운다.
-import type { MinuteCandleRepository, RawDailyCandleRepository, DailyUniverseProvider } from "#port/outbound";
-import type { ReplayReader } from "#port/inbound";
+import type { MinuteReader, RawDailyReader, DailyUniverseProvider } from "#port/query";
+import type { ReplayReader } from "#port/query";
 import { deriveMinutes, RAW_DAILY_LOOKBACK_MONTHS, type MinuteDerived, type DayReplay } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { subtractMonths } from "../shared/dailyRange.js";
@@ -11,8 +11,8 @@ const FETCH_CONCURRENCY = 8;
 
 export interface ReplayReadDeps {
     universe: DailyUniverseProvider;
-    minute: MinuteCandleRepository;
-    rawDaily: RawDailyCandleRepository;
+    minute: MinuteReader;
+    rawDaily: RawDailyReader;
 }
 
 export class ReplayReadService implements ReplayReader {

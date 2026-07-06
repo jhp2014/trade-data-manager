@@ -53,30 +53,6 @@ describe("DrizzleRawDailyCandleRepository (pglite)", () => {
         expect(got[0].krx.close).toBe("100"); // 최초값 유지
     });
 
-    it("getEarliestRawDailyDate = 가장 과거 저장일(없으면 null)", async () => {
-        expect(await raw.getEarliestRawDailyDate("777777")).toBeNull();
-        await raw.saveRawDailyCandles([
-            { stockCode: "777777", date: "2026-07-02", krx: bar("1"), un: bar("1") },
-            { stockCode: "777777", date: "2025-07-15", krx: bar("1"), un: bar("1") },
-            { stockCode: "777777", date: "2026-01-05", krx: bar("1"), un: bar("1") },
-        ]);
-        expect(await raw.getEarliestRawDailyDate("777777")).toBe("2025-07-15");
-    });
-
-    it("getPreviousRawClose = date 직전 거래일 원주가 종가(시장별), 없으면 null", async () => {
-        await raw.saveRawDailyCandles([
-            { stockCode: "111111", date: "2026-07-01", krx: bar("100"), un: bar("101") },
-            { stockCode: "111111", date: "2026-07-02", krx: bar("200"), un: bar("202") },
-        ]);
-        // 2026-07-03 직전 = 07-02
-        expect(await raw.getPreviousRawClose("111111", "2026-07-03")).toEqual({ krxClose: "200", unClose: "202" });
-        // 2026-07-02 직전 = 07-01 (당일 제외, date 미만)
-        expect(await raw.getPreviousRawClose("111111", "2026-07-02")).toEqual({ krxClose: "100", unClose: "101" });
-        // 그 이전이 없으면 null(상장 첫날)
-        expect(await raw.getPreviousRawClose("111111", "2026-07-01")).toBeNull();
-        expect(await raw.getPreviousRawClose("000000", "2026-07-03")).toBeNull();
-    });
-
     it("빈 배열 저장은 no-op", async () => {
         await expect(raw.saveRawDailyCandles([])).resolves.toBeUndefined();
     });

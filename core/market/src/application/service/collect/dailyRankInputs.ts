@@ -1,6 +1,6 @@
 // 프루닝/스윕 공통 입력 빌더 — 한 거래일 전종목 일봉(+직전 거래일 종가 페어링) → DailyRankInput[].
 import type { DailyRankInput } from "#domain";
-import type { DailyScanRepository } from "#port/outbound";
+import type { DailyScanRepository } from "#port/collect";
 
 /** date 의 전종목 일봉을 읽고 종목별 전일종가(직전 거래일 UN close)를 붙여 DailyRankInput[] 으로. 데이터 없으면 []. */
 export async function buildDailyRankInputs(

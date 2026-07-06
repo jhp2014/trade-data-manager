@@ -4,8 +4,8 @@ import type { DailyBar, DailyCandle, MinuteCandle } from "#domain";
 import type {
     DailyScanRepository,
     MinuteCandleProvider,
-    MinuteCandleRepository,
-} from "#port/outbound";
+    MinuteCandleStore,
+} from "#port/collect";
 
 const dbar = (close: string, high = close, amount = "1"): DailyBar => ({ open: close, high, low: close, close, volume: "1", amount });
 const daily = (stockCode: string, date: string, un: DailyBar): DailyCandle => ({ stockCode, date, krx: un, un });
@@ -43,7 +43,7 @@ class FakeMinuteProvider implements MinuteCandleProvider {
         return this.byStock[stockCode] ?? [];
     }
 }
-class FakeMinuteRepo implements MinuteCandleRepository {
+class FakeMinuteRepo implements MinuteCandleStore {
     savedStocks: string[] = [];
     async saveMinuteCandles(candles: MinuteCandle[]): Promise<void> {
         if (candles.length) this.savedStocks.push(candles[0].stockCode);

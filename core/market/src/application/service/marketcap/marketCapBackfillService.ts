@@ -2,12 +2,12 @@
 // 단일종목 StockMarketCapBackfillService 를 기간 내 거래된 전종목에 fan-out. 종목 실패는 격리(한 종목이 전체 안 막게).
 // 대상 유니버스 = daily_candles 에 [from,to] 거래분이 있는 종목(실제 거래 종목만 — 폐지·무데이터 제외).
 import type { DateRange } from "#domain";
-import type { DailyScanRepository } from "#port/outbound";
+import type { DailyScanRepository } from "#port/collect";
 import type {
     MarketCapBackfiller,
     MarketCapBackfillOptions,
     MarketCapBackfillResult,
-} from "#port/inbound";
+} from "#port/collect";
 import { mapWithConcurrency } from "../../concurrency.js";
 import type { StockMarketCapBackfillService } from "./stockMarketCapBackfillService.js";
 

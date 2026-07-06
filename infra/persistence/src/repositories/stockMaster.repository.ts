@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, inArray, isNull } from "drizzle-orm";
-import type { StockMaster, StockMasterRepository } from "@trade-data-manager/market";
+import type { StockMaster, StockMasterStore, StockMasterReader } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockMaster } from "../schema/market.js";
 import { stockMasterToRow, rowToStockMaster } from "../mappers/stockMaster.js";
@@ -9,7 +9,7 @@ import { buildConflictUpdateSet } from "./_helpers.js";
 const CONFLICT_SET = buildConflictUpdateSet(stockMaster, ["stockCode", "ipoPrice"]);
 
 /** Drizzle 구현 — stockCode PK upsert-accumulate(삭제 없음). 폐지종목 행 보존. */
-export class DrizzleStockMasterRepository implements StockMasterRepository {
+export class DrizzleStockMasterRepository implements StockMasterStore, StockMasterReader {
     constructor(private readonly db: Database) {}
 
     async saveStockMasters(masters: StockMaster[]): Promise<void> {

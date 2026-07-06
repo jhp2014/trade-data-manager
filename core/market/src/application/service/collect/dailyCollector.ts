@@ -4,7 +4,7 @@
 //   · overwrite=true : 항상 sweep(강제 재수집·덮어쓰기). 과거 구간 시딩은 이 경로.
 // 수집 깊이 = [range.from−24개월, range.to](차트 표시 깊이 런웨이). DailySweep 가 종목당 수정주가+원주가를 함께 수집.
 import type { DateRange } from "#domain";
-import type { DailyScanRepository } from "#port/outbound";
+import type { DailyScanRepository } from "#port/collect";
 import type { StockMasterIngestService } from "./stockMasterIngestService.js";
 import type { DailySweepService } from "./dailySweepService.js";
 import { backfillDailyRange } from "../shared/dailyRange.js";

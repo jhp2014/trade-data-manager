@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, lt, lte, or, sql } from "drizzle-orm";
-import type { DateRange, HeadlineCursor, NewsHeadline, StockNewsRepository } from "@trade-data-manager/market";
+import type { DateRange, HeadlineCursor, NewsHeadline, StockNewsStore, StockNewsReader } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockNews } from "../schema/market.js";
 import { newsHeadlineToRows, rowToNewsHeadline } from "../mappers/news.js";
@@ -8,7 +8,7 @@ import { buildConflictUpdateSet } from "./_helpers.js";
 const CONFLICT_SET = buildConflictUpdateSet(stockNews, ["stockCode", "publishedDate", "srno"]);
 
 /** Drizzle 구현 — (stockCode, publishedDate, srno) 자연키 upsert + (종목,기간) 시계열 조회. */
-export class DrizzleStockNewsRepository implements StockNewsRepository {
+export class DrizzleStockNewsRepository implements StockNewsStore, StockNewsReader {
     constructor(private readonly db: Database) {}
 
     async saveHeadlines(headlines: NewsHeadline[]): Promise<void> {

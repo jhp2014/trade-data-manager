@@ -2,7 +2,7 @@
 // 결정적 차이: 원주가는 사후 불변이라 **자가치유(소급조정 감지→덮어쓰기)가 없다**. 그냥 수집해서 append-only 저장
 // (repo 가 onConflictDoNothing — 이미 있는 (종목,날)은 유지). 백필/증분 둘 다 이 한 메서드로.
 import type { DateRange } from "#domain";
-import type { RawDailyCandleProvider, RawDailyCandleRepository } from "#port/outbound";
+import type { RawDailyCandleProvider, RawDailyStore } from "#port/collect";
 import { defaultDailyRange, seoulToday } from "../shared/dailyRange.js";
 
 export interface RawDailyIngestResult {
@@ -12,7 +12,7 @@ export interface RawDailyIngestResult {
 
 export interface RawDailyIngestDeps {
     rawProvider: RawDailyCandleProvider;
-    rawRepo: RawDailyCandleRepository;
+    rawRepo: RawDailyStore;
     /** 오늘(YYYY-MM-DD) 공급자. 기본 = Asia/Seoul 현재일(기본 범위 산정용). 주입 시 테스트 결정성↑. */
     today?: () => string;
 }

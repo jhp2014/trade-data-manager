@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
-import type { NewsHeadline, StockNewsRepository } from "@trade-data-manager/market";
+import type { NewsHeadline, StockNewsReader } from "@trade-data-manager/market";
 import { STOCK_NEWS_REPO } from "./tokens.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -27,7 +27,7 @@ function toWire(h: NewsHeadline): HtsNewsWire {
 // code 없으면 빈 배열(패널이 종목 미선택 시 조회 안 함). date 필수.
 @Controller("news/hts")
 export class NewsController {
-    constructor(@Inject(STOCK_NEWS_REPO) private readonly repo: StockNewsRepository) {}
+    constructor(@Inject(STOCK_NEWS_REPO) private readonly repo: StockNewsReader) {}
 
     @Get()
     async hts(
