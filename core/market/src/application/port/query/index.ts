@@ -17,5 +17,4 @@ export * from "./priceLineRepository.js";
 export * from "./reviewPointRepository.js";
 export * from "./daySummaryReader.js";
 export * from "./chartAnnotationReader.js";
-export * from "./issueEditor.js";
 export * from "./newsSearcher.js";
