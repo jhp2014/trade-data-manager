@@ -1,7 +1,8 @@
-// 조회(앱 대면) 포트 — in/out 구분 없음. apps/api(HTTP)가 가장자리.
-//   driven read (persistence 구현): candle·rawDaily·marketCap·master·news reader + universe·theme + snapshot
-//   큐레이션 쓰기 (앱 대면): dailyIssue · priceLine · reviewPoint
-//   유스케이스 (core 서비스가 구현, 앱이 조립·캐시 예정): replay·daySummary·meta reader · chartAnnotation · issueEditor · newsSearcher
+// 조회(앱 대면) 포트 — in/out 구분 없음(읽기 1:1 passthrough). apps/api(HTTP)가 가장자리.
+//   driven read (persistence 구현): candle·minute·rawDaily·marketCap·master·news reader + universe·theme provider
+//   큐레이션 읽기+쓰기 (앱 대면): dailyIssue · priceLine · reviewPoint
+//   조립 유스케이스 (core 서비스가 구현): chartAnnotation(주석 zip) · newsSearcher(멀티채널 fan-out)
+//   읽기모델 타입: daySummaryReader (DaySummary/DailySnapshot — 포트 아님, api DayBoards 가 조립)
 export * from "./candleReader.js";
 export * from "./minuteReader.js";
 export * from "./rawDailyReader.js";

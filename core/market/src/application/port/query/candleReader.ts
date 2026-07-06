@@ -9,7 +9,7 @@ export interface AdjustedDailyReader {
 
 /**
  * 당일 요약 스냅샷용 일봉 배치 read(query) — 코드 배치 조회 전용.
- * 검수 read 소비자(DaySummaryReader 등)만 의존하고 collect 쪽 store 는 안 건드리게 분리한다.
+ * 검수 read 소비자(api DayBoards/DerivedCache 등)만 의존하고 collect 쪽 store 는 안 건드리게 분리한다.
  */
 export interface DailyCandleSnapshotReader {
     /** 그 거래일 일봉을 코드 배치로. 없는 코드는 결과에서 빠짐. */
