@@ -1,9 +1,7 @@
 import { Controller, Get, Post, Delete, Inject, Query, Body, BadRequestException } from "@nestjs/common";
 import type { ReviewPoint, ReviewPointListItem, ReviewPointRepository } from "@trade-data-manager/market";
 import { REVIEW_POINT_REPO } from "../tokens.js";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_RE = /^\d{2}:\d{2}:\d{2}$/;
+import { assertYmd, assertHms } from "../validation.js";
 
 interface UpsertReviewPointBody {
     stockCode: string;
@@ -27,18 +25,14 @@ export class ReviewPointController {
     @Get()
     list(@Query("code") code?: string, @Query("date") date?: string): Promise<ReviewPoint[]> {
         if (!code) throw new BadRequestException("code 필수");
-        if (!date || !DATE_RE.test(date)) throw new BadRequestException("date 필수(YYYY-MM-DD)");
-        return this.repo.listByChart(code, date);
+        return this.repo.listByChart(code, assertYmd(date));
     }
 
     @Post()
     async upsert(@Body() body: UpsertReviewPointBody): Promise<ReviewPoint> {
-        if (!body?.stockCode || !body?.date || !DATE_RE.test(body.date)) {
-            throw new BadRequestException("stockCode·date 필수");
-        }
-        if (!body.time || !TIME_RE.test(body.time)) {
-            throw new BadRequestException("time 필수(HH:MM:SS)");
-        }
+        if (!body?.stockCode) throw new BadRequestException("stockCode 필수");
+        assertYmd(body.date);
+        assertHms(body.time);
         const point: ReviewPoint = { stockCode: body.stockCode, date: body.date, time: body.time, memo: body.memo };
         await this.repo.upsert([point]);
         return point;
@@ -51,9 +45,7 @@ export class ReviewPointController {
         @Query("time") time?: string,
     ): Promise<{ ok: true }> {
         if (!code) throw new BadRequestException("code 필수");
-        if (!date || !DATE_RE.test(date)) throw new BadRequestException("date 필수(YYYY-MM-DD)");
-        if (!time || !TIME_RE.test(time)) throw new BadRequestException("time 필수(HH:MM:SS)");
-        await this.repo.remove(code, date, time);
+        await this.repo.remove(code, assertYmd(date), assertHms(time));
         return { ok: true };
     }
 }

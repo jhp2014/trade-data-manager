@@ -1,8 +1,7 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
 import { CHART_READER } from "../tokens.js";
+import { assertYmd } from "../validation.js";
 import type { ChartBundle, ChartReadModel } from "./chartReadModel.js";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // GET /chart?code&date → 일봉 2년 + 당일 dense 분봉 raw 번들. 읽기=GET.
 // 조립은 app(ChartReadModel)이 소유한다(CQRS). Symbol 토큰으로 명시 주입(인터페이스는 런타임 소멸).
@@ -13,7 +12,6 @@ export class ChartController {
     @Get()
     chartByCode(@Query("code") code?: string, @Query("date") date?: string): Promise<ChartBundle> {
         if (!code) throw new BadRequestException("code 필수");
-        if (!date || !DATE_RE.test(date)) throw new BadRequestException("date 필수(YYYY-MM-DD)");
-        return this.reader.chartByCode(code, date);
+        return this.reader.chartByCode(code, assertYmd(date));
     }
 }

@@ -1,8 +1,8 @@
-import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
+import { Controller, Get, Inject, Query } from "@nestjs/common";
 import type { NewsItem, NewsSearcher } from "@trade-data-manager/market";
 import { NEWS_SEARCHER } from "../tokens.js";
+import { assertYmd } from "../validation.js";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_LIMIT = 200; // 하루 전체를 담을 방당 상한(실제 한계는 since=하루 시작 경계).
 const THRESHOLD = 5; // 더보기 한 클릭 = 이 건수를 넘길 때까지 과거 날짜를 하루씩 누적.
 const MAX_WALK_DAYS = 7; // 더보기 한 클릭이 걸어갈 최대 날짜 수(빈 구간 폭주 방지).
@@ -47,15 +47,15 @@ export class TelegramNewsController {
         @Query("beforeDate") beforeDate?: string,
     ): Promise<TelegramNewsPage> {
         const query = q?.trim();
-        if (!date || !DATE_RE.test(date)) throw new BadRequestException("date 필수(YYYY-MM-DD)");
-        if (!query) return { items: [], oldestDate: date };
+        const validDate = assertYmd(date);
+        if (!query) return { items: [], oldestDate: validDate };
 
         if (!beforeDate) {
-            const items = await this.searchDay(query, date);
-            return { items: items.map(toWire), oldestDate: date };
+            const items = await this.searchDay(query, validDate);
+            return { items: items.map(toWire), oldestDate: validDate };
         }
 
-        if (!DATE_RE.test(beforeDate)) throw new BadRequestException("beforeDate 형식(YYYY-MM-DD)");
+        assertYmd(beforeDate, "beforeDate");
         const acc: NewsItem[] = [];
         let day = addDaysStr(beforeDate, -1);
         let oldest = beforeDate;

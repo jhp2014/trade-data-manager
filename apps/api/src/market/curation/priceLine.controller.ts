@@ -1,9 +1,8 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import type { PriceLine, PriceLinedStock, PriceLineField, PriceLineRepository } from "@trade-data-manager/market";
 import { PRICE_LINE_REPO } from "../tokens.js";
+import { assertYmd, assertHms } from "../validation.js";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_RE = /^\d{2}:\d{2}:\d{2}$/;
 const FIELDS = new Set<PriceLineField>(["high", "low", "open", "close"]);
 
 interface AddPriceLineBody {
@@ -29,21 +28,15 @@ export class PriceLineController {
     @Get()
     list(@Query("code") code?: string, @Query("date") date?: string): Promise<PriceLine[]> {
         if (!code) throw new BadRequestException("code 필수");
-        if (!date || !DATE_RE.test(date)) throw new BadRequestException("date 필수(YYYY-MM-DD)");
-        return this.repo.listByChart(code, date);
+        return this.repo.listByChart(code, assertYmd(date));
     }
 
     @Post()
     async add(@Body() body: AddPriceLineBody): Promise<PriceLine> {
-        if (!body?.stockCode || !body?.date || !DATE_RE.test(body.date)) {
-            throw new BadRequestException("stockCode·date 필수");
-        }
-        if (!body.anchorDate || !DATE_RE.test(body.anchorDate)) {
-            throw new BadRequestException("anchorDate 필수(YYYY-MM-DD)");
-        }
-        if (body.anchorTime != null && !TIME_RE.test(body.anchorTime)) {
-            throw new BadRequestException("anchorTime 형식(HH:MM:SS)");
-        }
+        if (!body?.stockCode) throw new BadRequestException("stockCode 필수");
+        assertYmd(body.date);
+        assertYmd(body.anchorDate, "anchorDate");
+        if (body.anchorTime != null) assertHms(body.anchorTime, "anchorTime");
         const field = body.field ?? "high";
         if (!FIELDS.has(field)) throw new BadRequestException("field 는 high|low|open|close");
         const [created] = await this.repo.add([

@@ -1,8 +1,8 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
 import type { NewsHeadline, StockNewsReader } from "@trade-data-manager/market";
 import { STOCK_NEWS_REPO } from "../tokens.js";
+import { assertYmd } from "../validation.js";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SRNO_RE = /^\d+$/;
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
@@ -37,20 +37,20 @@ export class NewsController {
         @Query("beforeSrno") beforeSrno?: string,
         @Query("limit") limit?: string,
     ): Promise<HtsNewsWire[]> {
-        if (!date || !DATE_RE.test(date)) throw new BadRequestException("date 필수(YYYY-MM-DD)");
+        const validDate = assertYmd(date);
         if (!code) return [];
 
         // 커서 페이징 — beforeDate/beforeSrno 둘 다 있어야 유효.
         if (beforeDate || beforeSrno) {
-            if (!beforeDate || !DATE_RE.test(beforeDate)) throw new BadRequestException("beforeDate 형식(YYYY-MM-DD)");
+            const validBefore = assertYmd(beforeDate, "beforeDate");
             if (!beforeSrno || !SRNO_RE.test(beforeSrno)) throw new BadRequestException("beforeSrno 형식(숫자)");
             const n = clampLimit(limit);
-            const items = await this.repo.recentHeadlines(code, { before: { publishedDate: beforeDate, srno: beforeSrno }, limit: n });
+            const items = await this.repo.recentHeadlines(code, { before: { publishedDate: validBefore, srno: beforeSrno }, limit: n });
             return items.map(toWire); // 이미 내림차순
         }
 
         // 초기 로드 — 그 날 전체(오름차순 반환을 내림차순으로 뒤집어 최신 먼저).
-        const day = await this.repo.getHeadlines(code, { from: date, to: date });
+        const day = await this.repo.getHeadlines(code, { from: validDate, to: validDate });
         return day.reverse().map(toWire);
     }
 }
