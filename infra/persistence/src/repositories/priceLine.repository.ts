@@ -1,12 +1,12 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
-import type { PriceLine, PriceLinedStock, PriceLineRepository } from "@trade-data-manager/market";
+import type { PriceLine, PriceLinedStock, PriceLineReader, PriceLineStore } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { priceLines } from "../schema/curation.js";
 import { stockMaster } from "../schema/market.js";
 import { priceLineToRow, rowToPriceLine } from "../mappers/priceLine.js";
 
 /** Drizzle 구현 — surrogate id PK. 앵커 저장(가격 아님) → in-place 수정 없음(add/list/remove 만). */
-export class DrizzlePriceLineRepository implements PriceLineRepository {
+export class DrizzlePriceLineRepository implements PriceLineReader, PriceLineStore {
     constructor(private readonly db: Database) {}
 
     async add(lines: PriceLine[]): Promise<PriceLine[]> {

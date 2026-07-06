@@ -1,14 +1,14 @@
 // ChartAnnotationService — (종목, 날짜) → 수평 가격선 + 복기 타점. 읽기 Query.
 // 캔들 번들(app 조립)과 분리된 curation 컨텍스트 — 주석만 독립 조회/리프레시.
-import type { PriceLineRepository, ReviewPointRepository } from "#port/query";
+import type { PriceLineReader, ReviewPointReader } from "#port/query";
 import type { ChartAnnotation, ChartAnnotationReader } from "#port/query";
 import { mapWithConcurrency } from "../../concurrency.js";
 
 const ANNOTATION_FETCH_CONCURRENCY = 8;
 
 export interface ChartAnnotationDeps {
-    priceLine: PriceLineRepository;
-    reviewPoint: ReviewPointRepository;
+    priceLine: PriceLineReader;
+    reviewPoint: ReviewPointReader;
 }
 
 export class ChartAnnotationService implements ChartAnnotationReader {

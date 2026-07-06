@@ -9,17 +9,14 @@ interface Data {
 
 function service(d: Data) {
     return new ChartAnnotationService({
+        // 서비스는 읽기만 하므로 Reader 만 목킹(ISP — 쓰기 Store 메서드 불필요).
         priceLine: {
             listByChart: async (code) => d.linesByCode?.[code] ?? [],
             listPriceLinedStocks: async () => [],
-            add: async (lines) => lines,
-            remove: async () => {},
         },
         reviewPoint: {
             listByChart: async (code) => d.pointsByCode?.[code] ?? [],
             listAllPoints: async () => [],
-            upsert: async () => {},
-            remove: async () => {},
         },
     });
 }

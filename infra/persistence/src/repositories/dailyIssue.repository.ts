@@ -1,11 +1,11 @@
 import { and, asc, eq } from "drizzle-orm";
-import type { DailyIssue, DailyIssueRepository } from "@trade-data-manager/market";
+import type { DailyIssue, DailyIssueReader, DailyIssueStore } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { dailyIssues } from "../schema/curation.js";
 import { dailyIssueToRow, rowToDailyIssue } from "../mappers/dailyIssue.js";
 
 /** Drizzle 구현 — (trade_date, stock_code, issue) 자연키. 편집모델은 행 단위 add/delete(in-place 수정 없음). */
-export class DrizzleDailyIssueRepository implements DailyIssueRepository {
+export class DrizzleDailyIssueRepository implements DailyIssueReader, DailyIssueStore {
     constructor(private readonly db: Database) {}
 
     async add(issues: DailyIssue[]): Promise<void> {

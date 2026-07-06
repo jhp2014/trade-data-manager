@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
-import type { PriceLine, PriceLinedStock, PriceLineField, PriceLineRepository } from "@trade-data-manager/market";
+import type { PriceLine, PriceLinedStock, PriceLineField, PriceLineReader, PriceLineStore } from "@trade-data-manager/market";
 import { PRICE_LINE_REPO } from "../tokens.js";
 import { assertYmd, assertHms } from "../validation.js";
 
@@ -17,7 +17,7 @@ interface AddPriceLineBody {
 // 차트 가격선 주석 CRUD — 사람이 우클릭으로 긋는 수평선. 가격 대신 앵커(캔들 좌표)를 저장한다.
 @Controller("price-lines")
 export class PriceLineController {
-    constructor(@Inject(PRICE_LINE_REPO) private readonly repo: PriceLineRepository) {}
+    constructor(@Inject(PRICE_LINE_REPO) private readonly repo: PriceLineReader & PriceLineStore) {}
 
     // 작업셋 — 선이 있는 (종목,날짜) 전부(월 그룹은 클라). 정적 경로라 @Get() 인덱스와 구분됨.
     @Get("stocks")

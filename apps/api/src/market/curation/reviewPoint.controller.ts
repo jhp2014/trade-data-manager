@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Delete, Inject, Query, Body, BadRequestException } from "@nestjs/common";
-import type { ReviewPoint, ReviewPointListItem, ReviewPointRepository } from "@trade-data-manager/market";
+import type { ReviewPoint, ReviewPointListItem, ReviewPointReader, ReviewPointStore } from "@trade-data-manager/market";
 import { REVIEW_POINT_REPO } from "../tokens.js";
 import { assertYmd, assertHms } from "../validation.js";
 
@@ -14,7 +14,7 @@ interface UpsertReviewPointBody {
 // price-line 과 달리 surrogate id 가 없어 삭제도 자연키(query)로 지목한다.
 @Controller("review-points")
 export class ReviewPointController {
-    constructor(@Inject(REVIEW_POINT_REPO) private readonly repo: ReviewPointRepository) {}
+    constructor(@Inject(REVIEW_POINT_REPO) private readonly repo: ReviewPointReader & ReviewPointStore) {}
 
     // 작업셋 — 전체 타점 + 종목명(월 그룹은 클라). 정적 경로라 @Get() 인덱스와 구분됨.
     @Get("all")
