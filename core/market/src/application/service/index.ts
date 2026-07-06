@@ -7,5 +7,4 @@ export * from "./marketcap/index.js";
 export * from "./news/index.js";
 export * from "./issue/index.js";
 export * from "./chart/index.js";
-export * from "./replay/index.js";
 export * from "./shared/index.js";

@@ -15,33 +15,34 @@ import {
 } from "@trade-data-manager/persistence";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { ReplayReadService, MetaReadService, applyIssues, buildDaySummary } from "@trade-data-manager/market";
-import { CHART_READER, DERIVED_STORE, META_STORE, DAY_REPLAY_READER, DAY_SUMMARY_READER, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart.controller.js";
 import { ChartReadModel } from "./chartReadModel.js";
-import { DaySummaryController, type EnrichedDaySummaryReader } from "./daySummary.controller.js";
+import { DaySummaryController } from "./daySummary.controller.js";
+import { DayReplayController } from "./dayReplay.controller.js";
+import { ThemeController } from "./theme.controller.js";
 import { PriceLineController } from "./priceLine.controller.js";
 import { ReviewPointController } from "./reviewPoint.controller.js";
 import { NewsController } from "./news.controller.js";
 import { TelegramNewsController } from "./telegramNews.controller.js";
 import { LazyTelegramNewsSearcher } from "./telegramNewsSearcher.js";
-import { DayReplayController, type DayReplayReader } from "./dayReplay.controller.js";
-import { DerivedStore } from "./derivedStore.js";
-import { MetaStore } from "./metaStore.js";
+import { DerivedCache } from "./derivedCache.js";
+import { MasterCache } from "./masterCache.js";
+import { DayBoards } from "./dayBoards.js";
 import { CachedMembership } from "./cachedMembership.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
 
-// 조합 루트 — probe 의 composition.ts 로직을 Nest provider 로 옮긴 것(로직만 참고).
-// 철칙: core/market 은 프레임워크-프리. @Injectable/@Inject 데코레이터는 이 가장자리(모듈/컨트롤러)에만 둔다.
-// 순수 서비스는 useFactory 로 new 해서 Symbol 토큰에 바인딩한다(타입기반 주입 미사용).
+// 조합 루트 — core/market 은 프레임워크-프리. @Injectable/@Inject 데코레이터는 이 가장자리(모듈/컨트롤러)에만.
+// 읽기모델: 캐시(DerivedCache 파일 · MasterCache/Membership 메모리) → DayBoards 조립. Symbol 토큰 배선.
 @Module({
-    controllers: [ChartController, DayReplayController, DaySummaryController, NewsController, TelegramNewsController, PriceLineController, ReviewPointController],
+    controllers: [ChartController, DayReplayController, DaySummaryController, ThemeController, NewsController, TelegramNewsController, PriceLineController, ReviewPointController],
     providers: [
         // Pool 은 앱 수명 단일 싱글톤. OnModuleDestroy 에서 graceful end.
         { provide: MARKET_POOL, useFactory: (): Pool => createPoolFromEnv() },
         {
+            // 차트(종목1개) — raw 번들 조립, 무캐시(종목당이라 싸다).
             provide: CHART_READER,
             useFactory: (pool: Pool): ChartReadModel => {
                 const db = createDb(pool);
@@ -54,93 +55,31 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
             inject: [MARKET_POOL],
         },
         {
-            // 복기 파생 파일 캐시 — core ReplayReadService(fetch+deriveMinutes) 위에 파일 캐시 어댑터(inbound 포트 의존).
-            provide: DERIVED_STORE,
-            useFactory: (pool: Pool): DerivedStore => {
+            // 종목 마스터 메모리 캐시(날짜무관). 신규상장 시 /theme/refresh 로 무효화.
+            provide: MASTER_CACHE,
+            useFactory: (pool: Pool): MasterCache => new MasterCache(new DrizzleStockMasterRepository(createDb(pool))),
+            inject: [MARKET_POOL],
+        },
+        {
+            // 테마 인덱스(시트) 메모리 캐시(날짜무관, 1회 로드). 시트 편집 시 /theme/refresh 로 무효화.
+            provide: MEMBERSHIP_CACHE,
+            useFactory: (): CachedMembership => new CachedMembership(new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET)),
+        },
+        {
+            // 보드 읽기모델 — 날짜별 불변 파일 캐시(DerivedCache) + 메모리 캐시 조합. query 포트 직접 호출.
+            provide: DAY_BOARDS,
+            useFactory: (pool: Pool, master: MasterCache, membership: CachedMembership): DayBoards => {
                 const db = createDb(pool);
-                const replay = new ReplayReadService({
+                const derived = new DerivedCache({
                     universe: new DrizzleDailyUniverseProvider(db),
                     minute: new DrizzleMinuteCandleRepository(db),
                     rawDaily: new DrizzleRawDailyCandleRepository(db),
-                });
-                return new DerivedStore(replay);
-            },
-            inject: [MARKET_POOL],
-        },
-        {
-            // 복기 리더(self-contained) — DerivedStore.replayBoard(파일 per-minute) + MetaStore(meta) 조합.
-            // 복기보드가 daySummary 를 따로 안 받아도 되게 이름·시장·시총·테마를 여기서 stitch.
-            provide: DAY_REPLAY_READER,
-            useFactory: (meta: MetaStore, store: DerivedStore): DayReplayReader => ({
-                async dayReplay(date) {
-                    const [replay, base] = await Promise.all([store.replayBoard(date), meta.metaByDate(date)]);
-                    const metaByCode = new Map(base.map((s) => [s.stockCode, s]));
-                    return {
-                        date,
-                        stocks: replay.stocks.map((md) => {
-                            const m = metaByCode.get(md.code);
-                            // 테마 전용(minuteOpen·minuteHigh·trailingHighs)은 빼고 복기 필드만 명시 pick.
-                            return {
-                                code: md.code,
-                                times: md.times,
-                                rate: md.rate,
-                                high: md.high,
-                                low: md.low,
-                                open: md.open,
-                                cumAmount: md.cumAmount,
-                                name: m?.name ?? null,
-                                market: m?.market ?? null,
-                                marketCap: m?.marketCap ?? null,
-                                themes: m ? m.themes.map((t) => t.theme) : [],
-                            };
-                        }),
-                    };
-                },
-            }),
-            inject: [META_STORE, DERIVED_STORE],
-        },
-        {
-            // 불변 meta 메모리 캐시 — core MetaReadService(fetch+조립) 위에 거래일 LRU 어댑터. 테마·복기 리더 공유(시트 1× 조회).
-            provide: META_STORE,
-            useFactory: (pool: Pool): MetaStore => {
-                const db = createDb(pool);
-                const metaRead = new MetaReadService({
-                    universe: new DrizzleDailyUniverseProvider(db),
-                    membership: new CachedMembership(new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET)),
-                    stockMaster: new DrizzleStockMasterRepository(db),
-                    marketCap: new DrizzleDailyMarketCapRepository(db),
                     dailyCandle: new DrizzleDailyCandleRepository(db),
+                    marketCap: new DrizzleDailyMarketCapRepository(db),
                 });
-                return new MetaStore(metaRead);
+                return new DayBoards({ derived, master, membership, dailyIssue: new DrizzleDailyIssueRepository(db) });
             },
-            inject: [MARKET_POOL],
-        },
-        {
-            // DaySummary(테마보드) — MetaStore(불변 meta 캐시) + 이슈(fresh) → core 순수조립 + 테마 파생 folding.
-            // 조립 로직(assembleBaseSnapshots·applyIssues·buildDaySummary)은 core 순수함수(DaySummaryService 와 공유).
-            provide: DAY_SUMMARY_READER,
-            useFactory: (pool: Pool, meta: MetaStore, store: DerivedStore): EnrichedDaySummaryReader => {
-                const dailyIssue = new DrizzleDailyIssueRepository(createDb(pool));
-                return {
-                    async summaryByDate(date) {
-                        const [base, issues, theme] = await Promise.all([
-                            meta.metaByDate(date),
-                            dailyIssue.getByDate(date),
-                            store.themeBoard(date),
-                        ]);
-                        const summary = buildDaySummary(date, applyIssues(base, issues));
-                        const statsByCode = new Map(theme.stocks.map((s) => [s.code, s]));
-                        return {
-                            ...summary,
-                            stocks: summary.stocks.map((s) => {
-                                const st = statsByCode.get(s.stockCode);
-                                return st ? { ...s, bucketCounts: st.bucketCounts, trailingHighs: st.trailingHighs } : s;
-                            }),
-                        };
-                    },
-                };
-            },
-            inject: [MARKET_POOL, META_STORE, DERIVED_STORE],
+            inject: [MARKET_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
         },
         {
             // 가격선 주석 쓰기(사람 편집) — repo 를 그대로 노출(add/list/remove).

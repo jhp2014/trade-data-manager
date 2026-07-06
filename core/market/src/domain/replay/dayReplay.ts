@@ -15,6 +15,27 @@ export const RAW_DAILY_LOOKBACK_MONTHS = 9;
 /** KST 오프셋(초). 저장된 unix(UTC) times 를 자정기준 분으로 되돌릴 때 쓴다. */
 const KST_OFFSET_SEC = 9 * 3600;
 
+/**
+ * 당일 EOD 일봉 파생(불변) — 수정주가 일봉을 직전 거래일 종가 대비 %로. **조정 불변**이라 파일에 굽는다
+ * (자가치유가 close·prevClose 를 같은 계수로 곱해도 비율 보존). 시장 = UN(통합). amount(거래대금)는 원.
+ */
+export interface DayStats {
+    changeRate: number; // 종가 %
+    openPct: number;
+    highPct: number;
+    lowPct: number;
+    amount: string; // 그날 거래대금(원, 무손실 string)
+}
+
+/** 수정주가 일봉 + 직전 UN 종가 → EOD %. base 없으면 당일 시가 폴백, 0 이면 null(파생 불가). */
+export function dailyStatsOf(candle: DailyCandle, prevCloseUn: string | null): DayStats | null {
+    const un = candle.un;
+    const base = Number(prevCloseUn ?? un.open);
+    if (base === 0) return null;
+    const pct = (v: string): number => r2(((Number(v) - base) / base) * 100);
+    return { changeRate: pct(un.close), openPct: pct(un.open), highPct: pct(un.high), lowPct: pct(un.low), amount: un.amount };
+}
+
 /** 복기 파생값(파일 캐시 단위). 가격 시계열은 % (원주가 base 대비), 거래대금만 원. */
 export interface MinuteDerived {
     code: string;

@@ -1,5 +1,3 @@
-import type { DailyCandle } from "#domain";
-
 /**
  * 시트 멤버십 한 건을 스냅샷에 실은 형태 — 테마명 + 편입메타(정적 정체성).
  * admissionIssue(편입이슈)·admissionDate(편입일)는 "왜/언제 이 테마에 편입됐나"로,
@@ -20,8 +18,8 @@ export interface IssueTag {
 
 /**
  * 당일 스냅샷 — (date, stock) 그레인. 차트를 빼고 "종목의 그날"을 관심종목 한 줄로 표현하는 데 필요한 스칼라 전부.
- * universe·시트·master·시총·일봉·전일종가·이슈를 stock_code 로 합친 읽기 투영(app 레이어 — 도메인은 깨끗하게).
- * 등락률(%)은 candle + prevClose 로 소비자가 순수함수 파생(여기 굽지 않음).
+ * EOD 일봉 파생(%)은 **조정 불변**이라 미리 구워 싣는다(candle/prevClose 원값 대신 % — 자가치유 무관, 파일 캐시 가능).
+ * name·market·themes 는 조립 때 메모리 캐시(Master·Membership)에서, issues 는 fresh 로 붙인다.
  */
 export interface DailySnapshot {
     date: string;
@@ -29,11 +27,13 @@ export interface DailySnapshot {
     /** master 결손(폐지·미수집)이면 null. */
     name: string | null;
     market: string | null;
-    /** 그날 일봉(KRX+UN OHLC). 미수집이면 null. */
-    candle: DailyCandle | null;
-    /** 등락률 기준가 — 직전 거래일 시장별 종가. 없으면(신규상장 등) null → rate null. */
-    prevCloseKrx: string | null;
-    prevCloseUn: string | null;
+    /** EOD 일봉 파생(직전 UN 종가 대비 %). 일봉 미수집이면 전부 null. UN(통합) 기준. */
+    changeRate: number | null;
+    openPct: number | null;
+    highPct: number | null;
+    lowPct: number | null;
+    /** 그날 거래대금(원, UN, 무손실 string). 일봉 미수집이면 null. */
+    amount: string | null;
     /** 그 거래일 시총(원, 무손실 string). 미백필이면 null. */
     marketCap: string | null;
     /** 시트 축(정적). 빈 배열 = 미분류(시트에 없거나 universe 매칭 없음). */
@@ -57,13 +57,4 @@ export interface DaySummary {
     byIssue: Record<string, string[]>;
     /** 캐노니컬 enriched 스냅샷들. byTheme/byIssue 가 이걸 코드로 가리킨다. */
     stocks: DailySnapshot[];
-}
-
-/**
- * 당일 요약 리더(읽기 Query) — 날짜 하나로 그날 universe(분봉 있는 종목) 전체의 스냅샷 + 분류.
- * **universe 주도**라 시트에 없는 종목도 스냅샷으로 나온다(themes=[], =미분류) — 누락 없음.
- * 차트(분봉 시계열)·순위·필터는 클라 몫(스냅샷/도메인 순수함수로) — 여긴 스칼라까지만 stitch.
- */
-export interface DaySummaryReader {
-    summaryByDate(date: string): Promise<DaySummary>;
 }

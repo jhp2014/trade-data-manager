@@ -1,6 +1,6 @@
 // 분봉 거래대금 구간(억) — 서버 스냅샷 카운트·차트 마커·필터가 공유하는 단일 진실원본.
 // 7구간: [30,40) [40,50) [50,70) [70,100) [100,150) [150,200) [200,∞). 외부 import 0.
-// ⚠ bucketCounts 는 복기 파일 파생값(MinuteDerived)에서 **요청 때 재계산**된다(apps/api DerivedStore.themeBoard).
+// ⚠ bucketCounts 는 복기 파일 파생값(MinuteDerived)에서 **요청 때 재계산**된다(apps/api DayBoards.themeBoard(themeStatsOf)).
 //    그래서 이 정책(시간창·음봉/꼬리·임계)을 바꾸면 파일 재빌드 없이 **다음 요청에 자동 반영**된다(캐시 없음).
 export const AMOUNT_BUCKETS_EOK = [30, 40, 50, 70, 100, 150, 200] as const;
 export const AMOUNT_BUCKET_COUNT = AMOUNT_BUCKETS_EOK.length;

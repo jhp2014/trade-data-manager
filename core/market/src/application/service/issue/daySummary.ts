@@ -1,9 +1,9 @@
-// 당일 요약 조립(순수, IO 0). fetch 는 소비측(DaySummaryService 또는 api MetaStore)이 하고, 여긴 조립만.
-//  · assembleBaseSnapshots — 불변 meta(시트·master·시총·일봉·전일종가) 조인 → 스냅샷 스켈레톤(issues=[])
+// 당일 요약 조립(순수, IO 0). fetch 는 소비측(api DayBoards)이 하고, 여긴 조립만.
+//  · assembleBaseSnapshots — 파일 파생(EOD %·시총) + 메모리 캐시(master·시트) 조인 → 스냅샷 스켈레톤(issues=[])
 //  · applyIssues           — 그 스켈레톤에 fresh issues 를 덮음(가변이라 캐시 밖, 편집 즉시 반영)
 //  · buildDaySummary       — 스냅샷들 → byTheme/byIssue 인덱스(flat 한 패스 파생, 단일 진실원본)
 import type { DailySnapshot, DaySummary, ThemeTag, IssueTag } from "#port/query";
-import type { DailyCandle, StockMaster, DailyMarketCap, PreviousClose, ThemeMember, DailyIssue } from "#domain";
+import type { StockMaster, ThemeMember, DailyIssue, DayStats } from "#domain";
 
 /** 시트 멤버십 ∩ universe → 종목별 ThemeTag[](편입이슈·날짜 메타 보존, 멤버 등장순 유지). */
 function themeTagsByCode(members: ThemeMember[], codes: string[]): Map<string, ThemeTag[]> {
@@ -21,32 +21,38 @@ function themeTagsByCode(members: ThemeMember[], codes: string[]): Map<string, T
     return out;
 }
 
+/** 코드별 파일 파생값 — EOD 일봉 %(불변) + 시총. api DayBoards 가 파일에서 뽑아 넘긴다. */
+export interface DaySnapshotFields {
+    stats: DayStats | null;
+    marketCap: string | null;
+}
+
 /**
- * 불변 meta 를 stock_code 로 조인 → 스냅샷 스켈레톤(issues=[]). universe 주도(시트에 없는 종목도 미분류로 나옴).
- * issues 만 가변이라 여기서 뺀다 — 편집 즉시 반영 위해 소비측이 applyIssues 로 fresh 덮음.
+ * 파일 파생(EOD %·시총) + master·시트를 stock_code 로 조인 → 스냅샷 스켈레톤(issues=[]).
+ * universe 주도(시트에 없는 종목도 미분류로 나옴). issues 만 가변이라 여기서 뺀다(소비측이 applyIssues 로 fresh 덮음).
  */
 export function assembleBaseSnapshots(
     date: string,
     codes: string[],
-    meta: { members: ThemeMember[]; masters: StockMaster[]; caps: DailyMarketCap[]; candles: DailyCandle[]; prevCloses: PreviousClose[] },
+    meta: { members: ThemeMember[]; masters: StockMaster[]; byCode: Map<string, DaySnapshotFields> },
 ): DailySnapshot[] {
     const themes = themeTagsByCode(meta.members, codes);
     const masterByCode = new Map(meta.masters.map((m) => [m.stockCode, m]));
-    const capByCode = new Map(meta.caps.map((c) => [c.stockCode, c.marketCap]));
-    const candleByCode = new Map(meta.candles.map((c) => [c.stockCode, c]));
-    const prevByCode = new Map(meta.prevCloses.map((p) => [p.stockCode, p]));
     return codes.map((code) => {
         const master = masterByCode.get(code);
-        const prev = prevByCode.get(code);
+        const f = meta.byCode.get(code);
+        const s = f?.stats ?? null;
         return {
             date,
             stockCode: code,
             name: master?.name ?? null,
             market: master?.market ?? null,
-            candle: candleByCode.get(code) ?? null,
-            prevCloseKrx: prev?.krxClose ?? null,
-            prevCloseUn: prev?.unClose ?? null,
-            marketCap: capByCode.get(code) ?? null,
+            changeRate: s?.changeRate ?? null,
+            openPct: s?.openPct ?? null,
+            highPct: s?.highPct ?? null,
+            lowPct: s?.lowPct ?? null,
+            amount: s?.amount ?? null,
+            marketCap: f?.marketCap ?? null,
             themes: themes.get(code) ?? [],
             issues: [],
         };

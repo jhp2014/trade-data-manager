@@ -1,7 +1,5 @@
-// 이슈정리 보드(EOD) 파생 — day-summary 일봉 candle → 종목별 board 지표.
-// 분봉 불필요(EOD 복기라 일봉으로 충분). 등락률·눕힌 캔들은 일봉 OHLC를 prevClose 대비 %로.
-// 시장 = UN(통합) 기준. 계산은 core domain computeChangeRate(무손실 string).
-import { computeChangeRate } from "@trade-data-manager/market/domain";
+// 테마보드(EOD) 파생 — day-summary 스냅샷의 구운 %(조정 불변)를 그대로 board 지표로.
+// 서버(DerivedCache 빌드)가 일봉 OHLC를 직전 UN 종가 대비 %로 미리 구워 내려준다 — 클라 재계산 없음.
 import type { DailySnapshot } from "../api/daySummary.js";
 
 export interface DailyMetric {
@@ -12,22 +10,14 @@ export interface DailyMetric {
     amount: number; // 그날 거래대금(원, UN)
 }
 
-/** DailySnapshot → EOD 지표. candle 미수집이면 null(카드에서 제외). */
+/** DailySnapshot → EOD 지표. 일봉 미수집(파생 null)이면 null(카드에서 제외). */
 export function dailyMetric(s: DailySnapshot): DailyMetric | null {
-    const c = s.candle;
-    if (!c) return null;
-    // 기준가: 직전 거래일 UN 종가. 없으면(상장일) 당일 시가.
-    const base = s.prevCloseUn ?? c.un.open;
-    const rate = computeChangeRate(c.un.close, base);
-    const openPct = computeChangeRate(c.un.open, base);
-    const highPct = computeChangeRate(c.un.high, base);
-    const lowPct = computeChangeRate(c.un.low, base);
-    if (rate === null || openPct === null || highPct === null || lowPct === null) return null;
+    if (s.changeRate === null || s.openPct === null || s.highPct === null || s.lowPct === null || s.amount === null) return null;
     return {
-        rate: Number(rate),
-        openPct: Number(openPct),
-        highPct: Number(highPct),
-        lowPct: Number(lowPct),
-        amount: Number(c.un.amount),
+        rate: s.changeRate,
+        openPct: s.openPct,
+        highPct: s.highPct,
+        lowPct: s.lowPct,
+        amount: Number(s.amount),
     };
 }

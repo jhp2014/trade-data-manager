@@ -1,0 +1,58 @@
+// 당일 스냅샷 파일 캐시 — 날짜별 불변 파생(분봉파생 + EOD 일봉 %·시총)을 gzip 파일로. 저수준 read/write 만.
+// (build 조율·in-flight dedup 은 DerivedCache. 조립·메타 stitch 는 DayBoards.)
+//
+// 전부 **불변 입력**에서 나온다: 분봉파생(분봉+원주가일봉, append-only) · EOD %(조정 불변) · 시총(별 테이블 확정).
+// 그래서 과거 거래일은 영구 캐시 안전(자가치유가 닿지 않는다). 오늘(미마감)은 데이터 자체가 없어 대상 아님.
+//
+// ⚠ 캐시 무효화: 아래를 바꾸면 낡는다 → DAY_SNAPSHOT_CACHE_DIR(기본 .cache/day-snapshot/)를 통째 삭제.
+//    · DaySnapshot / MinuteDerived / DayStats 스키마 · deriveMinutes · dailyStatsOf · densify · 분봉 거래대금 공식
+import { promises as fs } from "node:fs";
+import { gzip, gunzip } from "node:zlib";
+import { promisify } from "node:util";
+import path from "node:path";
+import type { MinuteDerived, DayStats } from "@trade-data-manager/market";
+
+const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
+
+const CACHE_ROOT = process.env.DAY_SNAPSHOT_CACHE_DIR ?? path.resolve(process.cwd(), ".cache/day-snapshot");
+
+/** 한 종목의 그날 불변 파생. universe = 분봉 있는 종목이라 minutes 는 항상 present. */
+export interface DaySnapshot {
+    code: string;
+    /** 그 거래일 시총(원, 무손실 string). 미백필이면 null. */
+    marketCap: string | null;
+    /** EOD 일봉 파생(직전 UN 종가 대비 %, 조정 불변). 일봉 미수집이면 null. */
+    stats: DayStats | null;
+    /** 분봉 파생 시계열(복기 full + 테마 stats 재계산 원자재). */
+    minutes: MinuteDerived;
+}
+
+/** 날짜별 스냅샷 파일(캐시 단위). */
+export interface DaySnapshotFile {
+    date: string;
+    stocks: DaySnapshot[];
+}
+
+function filePath(date: string): string {
+    return path.join(CACHE_ROOT, `${date}.json.gz`);
+}
+
+/** 파일에서 스냅샷을 읽는다. 없으면 null(ENOENT). */
+export async function readSnapshot(date: string): Promise<DaySnapshotFile | null> {
+    try {
+        const buf = await fs.readFile(filePath(date));
+        return JSON.parse((await gunzipAsync(buf)).toString("utf8")) as DaySnapshotFile;
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw err;
+    }
+}
+
+/** 스냅샷을 gzip 파일로 저장한다. */
+export async function writeSnapshot(data: DaySnapshotFile): Promise<void> {
+    const fp = filePath(data.date);
+    await fs.mkdir(path.dirname(fp), { recursive: true });
+    const gz = await gzipAsync(Buffer.from(JSON.stringify(data), "utf8"));
+    await fs.writeFile(fp, gz);
+}
