@@ -1,9 +1,18 @@
 import { useState } from "react";
 import { Modal } from "./Modal.js";
 import { useWorkbench } from "../store/workbench.js";
+import { useUi, type SettingsScreen } from "../store/ui.js";
+import { commandsByCategory } from "../keymap/registry.js";
+import { formatChord } from "../keymap/keys.js";
 
 // 전역 설정 모달 — 사이드바에서 화면 선택 → 그 화면 설정. 패널별 gear 대신 우상단 전역 1개.
-type Screen = "theme" | "replay" | "point";
+type Screen = SettingsScreen;
+const SCREENS: { id: Screen; label: string }[] = [
+    { id: "theme", label: "테마" },
+    { id: "replay", label: "복기" },
+    { id: "point", label: "타점" },
+    { id: "shortcuts", label: "단축키" },
+];
 
 const numInput: React.CSSProperties = {
     width: 56,
@@ -26,33 +35,36 @@ const textInput: React.CSSProperties = {
 };
 
 export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element {
-    const [screen, setScreen] = useState<Screen>("theme");
+    // 열릴 때 UI 스토어가 지정한 화면으로 시작(커맨드가 "단축키" 화면으로 바로 열 수 있게).
+    const [screen, setScreen] = useState<Screen>(() => useUi.getState().settingsScreen);
     return (
         <Modal title="설정" onClose={onClose}>
             <div style={{ display: "flex", gap: 14, minWidth: 380 }}>
                 {/* 사이드바 */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, borderRight: "1px solid var(--border-subtle)", paddingRight: 12 }}>
-                    {(["theme", "replay", "point"] as const).map((s) => (
+                    {SCREENS.map(({ id, label }) => (
                         <button
-                            key={s}
-                            onClick={() => setScreen(s)}
+                            key={id}
+                            onClick={() => setScreen(id)}
                             style={{
                                 textAlign: "left",
                                 padding: "5px 10px",
                                 borderRadius: 6,
-                                background: screen === s ? "var(--accent-soft)" : "none",
-                                color: screen === s ? "var(--accent-hover)" : "var(--text-secondary)",
-                                fontWeight: screen === s ? 700 : 400,
+                                background: screen === id ? "var(--accent-soft)" : "none",
+                                color: screen === id ? "var(--accent-hover)" : "var(--text-secondary)",
+                                fontWeight: screen === id ? 700 : 400,
                                 cursor: "pointer",
                                 whiteSpace: "nowrap",
                             }}
                         >
-                            {s === "theme" ? "테마" : s === "replay" ? "복기" : "타점"}
+                            {label}
                         </button>
                     ))}
                 </div>
                 {/* 내용 */}
-                <div style={{ flex: 1, minWidth: 0 }}>{screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : <PointSettings />}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "point" ? <PointSettings /> : <ShortcutSettings />}
+                </div>
             </div>
         </Modal>
     );
@@ -147,6 +159,35 @@ function PointSettings(): JSX.Element {
                     <span style={{ width: 18, textAlign: "center", fontWeight: 700, color: "var(--accent-hover)" }}>{i + 1}</span>
                     <input type="text" value={v} onChange={(e) => set(i, e.target.value)} placeholder="(미설정)" style={textInput} />
                 </label>
+            ))}
+        </div>
+    );
+}
+
+// 단축키 도움말 — 커맨드 레지스트리에서 카테고리별로 자동 생성(추가된 커맨드가 즉시 반영, 문구가 안 낡음).
+const kbdStyle: React.CSSProperties = {
+    border: "1px solid var(--border-default)",
+    borderRadius: 4,
+    padding: "1px 6px",
+    background: "var(--bg-secondary)",
+    color: "var(--text-secondary)",
+    font: "12px ui-monospace, monospace",
+    whiteSpace: "nowrap",
+};
+function ShortcutSettings(): JSX.Element {
+    const groups = commandsByCategory();
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 300 }}>
+            {groups.map((g) => (
+                <div key={g.category} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ fontWeight: 700, color: "var(--text-tertiary)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }}>{g.category}</div>
+                    {g.items.map((c) => (
+                        <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                            <span style={{ color: "var(--text-primary)" }}>{c.title}</span>
+                            <kbd style={kbdStyle}>{formatChord(c.keys)}</kbd>
+                        </div>
+                    ))}
+                </div>
             ))}
         </div>
     );

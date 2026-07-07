@@ -2,10 +2,10 @@ import { create } from "zustand";
 import { kstToday } from "../lib/date.js";
 
 // 연동버스 = 2계층(레이아웃 라이브러리보다 이게 설계 본질):
-//  - Focus(커서, scalar): date·code·time(+timeLock). 차트·주석 패널이 축별 selector 로 구독.
+//  - Focus(커서, scalar): date·code·time. 차트·주석 패널이 축별 selector 로 구독.
 //  - Scope(렌즈, 집합): theme. 리스트형 패널 필터(차트 안 건드림).
 // 무효화규칙: date 최상위. 이 슬라이스는 클라에 유니버스 멤버십이 없어 code 유효성 판정은 보류하고,
-// date/code 변경시 time 만 리셋한다(timeLock ON 이면 time 유지 = 같은시각 횡적비교).
+// date 변경시 time 을 리셋한다. code 변경시엔 time 을 항상 유지한다(같은시각 횡적비교).
 
 export type ChartPriceMode = "krx" | "un"; // 분봉 등락률 기준 시장(UN=통합, KRX)
 export type NewsSearchEngine = "naver" | "google"; // HTS 뉴스 제목 클릭 시 웹 검색 엔진(네이버=제목+날짜, 구글=제목만)
@@ -14,7 +14,6 @@ export interface Focus {
     date: string; // YYYY-MM-DD
     code: string; // 종목코드
     time: string | null; // HH:MM:SS, 분봉 마커. null = 마커 없음
-    timeLock: boolean; // ON: code 바꿔도 time 유지(횡적비교)
 }
 
 export interface Scope {
@@ -67,7 +66,6 @@ interface WorkbenchState {
     setCode: (code: string, origin?: string) => void;
     setTime: (time: string | null, origin?: string) => void;
     setFocus: (next: { date: string; code: string; time: string | null }, origin?: string) => void; // review point 원자적 세팅
-    setTimeLock: (on: boolean) => void;
     // Scope 액션 — 각 축 독립 토글(차트 안 건드림).
     setTheme: (theme: string | null) => void;
     clearScope: () => void;
@@ -102,7 +100,7 @@ function loadReviewTypePresets(): string[] {
 }
 
 export const useWorkbench = create<WorkbenchState>((set) => ({
-    focus: { date: today, code: "", time: null, timeLock: false },
+    focus: { date: today, code: "", time: null },
     scope: { theme: null },
     search: null,
     chartPriceMode: "un",
@@ -116,13 +114,12 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale).
     setDate: (date, origin) =>
         set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null }, lastFocusOrigin: origin ?? null })),
-    // code 변경 시 검색 모드 자동 해제(종목 바뀌면 Focus 복귀). 같은 종목이면 유지.
+    // code 변경 시 time 유지(같은시각 횡적비교) + 검색 모드 자동 해제(종목 바뀌면 Focus 복귀). 같은 종목이면 검색 유지.
     setCode: (code, origin) =>
-        set((s) => ({ focus: { ...s.focus, code, time: s.focus.timeLock ? s.focus.time : null }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
+        set((s) => ({ focus: { ...s.focus, code }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
     setTime: (time, origin) => set((s) => ({ focus: { ...s.focus, time }, lastFocusOrigin: origin ?? null })),
     setFocus: ({ date, code, time }, origin) =>
         set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
-    setTimeLock: (on) => set((s) => ({ focus: { ...s.focus, timeLock: on } })),
 
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { theme: null } })),

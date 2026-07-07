@@ -1,9 +1,10 @@
-import { useState } from "react";
 import { useWorkbench } from "./store/workbench.js";
 import { WorkbenchShell } from "./shell/WorkbenchShell.js";
 import { GearButton } from "./components/Modal.js";
 import { SettingsModal } from "./components/SettingsModal.js";
 import { AssignThemeModal } from "./components/AssignThemeModal.js";
+import { useUi } from "./store/ui.js";
+import { useKeymap } from "./keymap/useKeymap.js";
 
 // 전역 툴바 — 종목·날짜·시간(전역값). 시간 스크러버가 Focus.time 을 움직여 복기 보드·차트가 반응.
 // 설정은 우상단 전역 버튼 1개(패널별 gear 없음).
@@ -21,11 +22,9 @@ function FocusToolbar({ onSettings }: { onSettings: () => void }): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
     const code = useWorkbench((s) => s.focus.code);
     const time = useWorkbench((s) => s.focus.time);
-    const timeLock = useWorkbench((s) => s.focus.timeLock);
     const setDate = useWorkbench((s) => s.setDate);
     const setCode = useWorkbench((s) => s.setCode);
     const setTime = useWorkbench((s) => s.setTime);
-    const setTimeLock = useWorkbench((s) => s.setTimeLock);
 
     const curMin = time ? timeToMin(time) : 15 * 60 + 30; // 기본 15:30
     const inputStyle: React.CSSProperties = {
@@ -67,24 +66,22 @@ function FocusToolbar({ onSettings }: { onSettings: () => void }): JSX.Element {
                 onChange={(e) => setTime(minToTime(Number(e.target.value)))}
                 style={{ flex: 1, minWidth: 120, accentColor: "var(--accent-primary)" }}
             />
-            <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <input type="checkbox" checked={timeLock} onChange={(e) => setTimeLock(e.target.checked)} style={{ accentColor: "var(--accent-primary)" }} />
-                timeLock
-            </label>
             <GearButton onClick={onSettings} />
         </div>
     );
 }
 
 export function App(): JSX.Element {
-    const [settingsOpen, setSettingsOpen] = useState(false);
+    useKeymap(); // 전역 단축키 디스패처(1회 마운트).
+    const settingsOpen = useUi((s) => s.settingsOpen);
+    const openSettings = useUi((s) => s.openSettings);
+    const closeSettings = useUi((s) => s.closeSettings);
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-primary)" }}>
-            <FocusToolbar onSettings={() => setSettingsOpen(true)} />
+            <FocusToolbar onSettings={() => openSettings()} />
             <WorkbenchShell />
-            {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+            {settingsOpen && <SettingsModal onClose={closeSettings} />}
             <AssignThemeModal />
-
         </div>
     );
 }
