@@ -8,6 +8,7 @@
         "build": "tsc --noEmit && vite build",
         "preview": "vite preview",
         "type-check": "tsc --noEmit",
+        "test": "vitest run",
         "clean": "rimraf dist",
         "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo"
     },
@@ -34,6 +35,7 @@
         "@vitejs/plugin-react": "^4.3.4",
         "rimraf": "^6.0.1",
         "typescript": "^6.0.3",
-        "vite": "^6.0.0"
+        "vite": "^6.0.0",
+        "vitest": "^2.1.9"
     }
 }
