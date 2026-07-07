@@ -195,5 +195,5 @@ button {
     --dv-paneview-active-outline-color: var(--accent-primary);
     --dv-icon-hover-background-color: var(--bg-tertiary);
     --dv-font-family: var(--font-sans);
-    --dv-tabs-and-actions-container-height: 28px; /* 탭 윗줄 높이 축소(기본 35 → 28) */
+    --dv-tabs-and-actions-container-height: 20px; /* 탭 윗줄 높이 축소(기본 35 → 20) */
 }
