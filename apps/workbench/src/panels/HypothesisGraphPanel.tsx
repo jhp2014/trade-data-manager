@@ -43,18 +43,32 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
             style={{
                 width: 200,
                 padding: "6px 9px",
-                borderRadius: 8,
+                borderRadius: 2,
                 background: data.selected ? "var(--accent-soft)" : "var(--bg-primary)",
                 border: `1.5px solid ${data.selected ? "var(--accent-primary)" : "var(--border-default)"}`,
-                boxShadow: data.linkedToPoint ? "inset 3px 0 0 0 var(--accent-primary)" : undefined,
                 fontSize: 12,
                 color: "var(--text-primary)",
             }}
         >
             <Handle type="target" position={Position.Top} style={handleStyle} />
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                <code style={{ fontFamily: "ui-monospace, Menlo, monospace", fontWeight: 700, color: "var(--accent-hover)" }}>H{data.id}</code>
-                {data.count > 0 && <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>·{data.count}</span>}
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
+                <span
+                    className="tabular"
+                    style={{
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        letterSpacing: "0.02em",
+                        lineHeight: "16px",
+                        height: 16,
+                        padding: "0 5px",
+                        borderRadius: 2,
+                        background: data.linkedToPoint ? "var(--accent-primary)" : "var(--bg-tertiary)",
+                        color: data.linkedToPoint ? "#fff" : "var(--text-tertiary)",
+                    }}
+                >
+                    H{data.id}
+                </span>
+                {data.count > 0 && <span className="tabular" style={{ fontSize: 10, color: "var(--text-tertiary)" }}>·{data.count}</span>}
             </div>
             <div style={{ lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{data.text}</div>
             <Handle type="source" position={Position.Bottom} style={handleStyle} />
@@ -276,7 +290,7 @@ const overlayStyle: React.CSSProperties = {
 const cardStyle: React.CSSProperties = {
     background: "var(--bg-primary)",
     border: "1px solid var(--border-default)",
-    borderRadius: 10,
+    borderRadius: 2,
     padding: 12,
     minWidth: 180,
     boxShadow: "0 6px 24px rgba(0,0,0,0.18)",
@@ -287,7 +301,7 @@ const pickerBtn: React.CSSProperties = {
     gap: 8,
     padding: "6px 8px",
     border: "1px solid var(--border-subtle)",
-    borderRadius: 6,
+    borderRadius: 2,
     background: "var(--bg-secondary)",
     color: "var(--text-primary)",
     cursor: "pointer",

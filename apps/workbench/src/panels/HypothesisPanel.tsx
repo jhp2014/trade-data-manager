@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { hypothesesForPoint } from "@trade-data-manager/market";
 import { useWorkbench } from "../store/workbench.js";
+import { fetchAllPoints } from "../api/reviewPoints.js";
 import {
     fetchHypotheses,
     fetchHypothesisLinks,
@@ -11,9 +12,9 @@ import {
     deleteHypothesis,
 } from "../api/hypotheses.js";
 
-// 가설 패널 — 얇은 단일 목록. 각 행 한 줄: `H{id} : 텍스트`(코드는 나중 필터링/그래프용). 체크박스 없음 —
-// 연결/해제·삭제는 hover 아이콘, 현재 타점 연결은 좌측 accent 바로 표시. 행 클릭=선택→연결 타점 이동.
-// 조립·필터는 클라 인메모리(옵션 A): 가설·링크 두 목록을 RQ 캐시로 받아 여기서 계산.
+// 가설 패널 — 얇은 목록. 각 행: [H{id} 태그] 텍스트, 우측 hover 액션(연결 토글·삭제).
+// 현재 타점 연결 = 태그 채움(테두리 없음). 선택 = 행 배경. 선택 시 연결 타점(종목명) 펼침→이동.
+// 타이포는 Pretendard 단일 폰트(코드도 tabular sans) — dockview 플랫·각진 톤. 필터/그래프는 클라 인메모리.
 export function HypothesisPanel(): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
     const date = useWorkbench((s) => s.focus.date);
@@ -25,8 +26,14 @@ export function HypothesisPanel(): JSX.Element {
 
     const hypQ = useQuery({ queryKey: ["hypotheses"], queryFn: fetchHypotheses, staleTime: Infinity });
     const linkQ = useQuery({ queryKey: ["hypothesis-links"], queryFn: fetchHypothesisLinks, staleTime: Infinity });
+    const pointsQ = useQuery({ queryKey: ["all-points"], queryFn: fetchAllPoints, staleTime: Infinity });
     const hypotheses = useMemo(() => hypQ.data ?? [], [hypQ.data]);
     const links = useMemo(() => linkQ.data ?? [], [linkQ.data]);
+    const nameByCode = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const p of pointsQ.data ?? []) if (p.name) m.set(p.stockCode, p.name);
+        return m;
+    }, [pointsQ.data]);
 
     const invalidate = (): void => {
         void qc.invalidateQueries({ queryKey: ["hypotheses"] });
@@ -40,7 +47,6 @@ export function HypothesisPanel(): JSX.Element {
         for (const l of links) m.set(l.hypothesisId, (m.get(l.hypothesisId) ?? 0) + 1);
         return m;
     }, [links]);
-    // 현재 타점에 연결된 가설을 위로. 타점 없으면 원순서.
     const ordered = useMemo(() => {
         if (!point) return hypotheses;
         return [...hypotheses].sort((a, b) => Number(linkedIds.has(b.id)) - Number(linkedIds.has(a.id)));
@@ -73,40 +79,30 @@ export function HypothesisPanel(): JSX.Element {
     };
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", fontSize: 13, color: "var(--text-primary)" }}>
-            {/* 헤더 — 현재 타점 */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 12, flexShrink: 0 }}>
-                <span style={{ fontWeight: 700 }}>가설</span>
-                {point ? (
-                    <span className="tabular" style={{ color: "var(--text-secondary)" }}>{point.stockCode} · {point.date} · {point.time}</span>
-                ) : (
-                    <span style={{ color: "var(--text-tertiary)" }}>분봉에서 타점(시각)을 선택</span>
-                )}
-            </div>
-
-            {/* 가설 추가 입력 — 필드 안에 버튼 embed(유지). */}
-            <div style={{ padding: 10, borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
-                <div style={{ display: "flex", alignItems: "stretch", border: "1px solid var(--border-default)", borderRadius: 8, overflow: "hidden", background: "var(--bg-primary)" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)" }}>
+            {/* 가설 추가 입력 */}
+            <div style={{ padding: 8, borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "stretch", border: "1px solid var(--border-default)", borderRadius: 2, overflow: "hidden", background: "var(--bg-primary)" }}>
                     <input
                         value={text}
                         onChange={(e) => setText(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && addHypothesis()}
-                        placeholder={point ? "새 가설 입력 후 Enter (이 타점에 연결)" : "새 가설 입력 후 Enter"}
-                        style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", color: "var(--text-primary)", padding: "7px 9px", font: "inherit", fontSize: 12, outline: "none" }}
+                        placeholder={point ? "새 가설 입력 후 Enter · 이 타점에 연결" : "새 가설 입력 후 Enter"}
+                        style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", color: "var(--text-primary)", padding: "6px 9px", font: "inherit", fontSize: 13, outline: "none" }}
                     />
                     <button
                         onClick={addHypothesis}
                         disabled={!text.trim() || createMut.isPending}
                         title={point ? "추가 후 이 타점에 연결" : "가설 추가"}
-                        style={{ flexShrink: 0, width: 36, border: 0, borderLeft: "1px solid var(--border-default)", background: "var(--accent-soft)", color: "var(--accent-hover)", cursor: "pointer", fontSize: 16, fontWeight: 600 }}
+                        style={{ flexShrink: 0, width: 34, border: 0, borderLeft: "1px solid var(--border-default)", background: "var(--accent-soft)", color: "var(--accent-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                     >
-                        ＋
+                        <PlusIcon />
                     </button>
                 </div>
             </div>
 
-            {/* 목록 — 얇은 단일 행 `H{id} : 텍스트` */}
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 6px", display: "flex", flexDirection: "column", gap: 1 }}>
+            {/* 목록 */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 0 8px" }}>
                 {hypQ.isLoading && <div style={mutedStyle}>불러오는 중…</div>}
                 {!hypQ.isLoading && hypotheses.length === 0 && <div style={mutedStyle}>아직 가설이 없습니다</div>}
                 {ordered.map((h) => {
@@ -122,27 +118,43 @@ export function HypothesisPanel(): JSX.Element {
                                 onMouseLeave={() => setHoveredId((cur) => (cur === h.id ? null : cur))}
                                 style={{
                                     display: "flex",
-                                    alignItems: "baseline",
-                                    gap: 6,
-                                    padding: "4px 8px",
-                                    borderRadius: 6,
+                                    alignItems: "flex-start",
+                                    gap: 9,
+                                    padding: "7px 10px",
                                     background: selected ? "var(--accent-soft)" : hovered ? "var(--bg-secondary)" : "transparent",
-                                    boxShadow: linked ? "inset 3px 0 0 0 var(--accent-primary)" : undefined,
                                     cursor: "pointer",
-                                    lineHeight: 1.4,
                                 }}
                             >
-                                <code style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12, fontWeight: 700, color: "var(--accent-hover)", flexShrink: 0 }}>H{h.id}</code>
-                                <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>:</span>
-                                <span style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontWeight: linked ? 600 : 400 }}>{h.text}</span>
+                                {/* 코드 태그 — 연결 시 채움. tabular sans(H+숫자 정렬). */}
+                                <span
+                                    className="tabular"
+                                    style={{
+                                        flexShrink: 0,
+                                        minWidth: 24,
+                                        textAlign: "center",
+                                        marginTop: 1,
+                                        fontSize: 10.5,
+                                        fontWeight: 700,
+                                        letterSpacing: "0.02em",
+                                        lineHeight: "16px",
+                                        height: 16,
+                                        padding: "0 5px",
+                                        borderRadius: 2,
+                                        background: linked ? "var(--accent-primary)" : "var(--bg-tertiary)",
+                                        color: linked ? "#fff" : "var(--text-tertiary)",
+                                    }}
+                                >
+                                    H{h.id}
+                                </span>
+                                <span style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontSize: 13, lineHeight: 1.5, color: linked ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: linked ? 500 : 400 }}>{h.text}</span>
 
-                                {/* 우측 클러스터 — 연결수(항상) + hover 액션(연결 토글·삭제) */}
-                                <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, alignSelf: "center" }}>
-                                    {cnt > 0 && <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)", minWidth: 10, textAlign: "right" }}>{cnt}</span>}
+                                {/* 우측 — 연결수(있을 때) + hover 액션 */}
+                                <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 2, height: 18, marginTop: 0 }}>
+                                    {cnt > 0 && <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)", minWidth: 12, textAlign: "right", marginRight: 2 }}>{cnt}</span>}
                                     {point && (
-                                        <IconBtn
+                                        <ActionBtn
                                             title={linked ? "이 타점에서 연결 해제" : "이 타점에 연결"}
-                                            color={linked ? "var(--accent-hover)" : "var(--text-tertiary)"}
+                                            active={linked}
                                             visible={hovered || linked}
                                             onClick={(e) => {
                                                 e.stopPropagation();
@@ -150,35 +162,36 @@ export function HypothesisPanel(): JSX.Element {
                                                 else linkMut.mutate({ hypothesisId: h.id, ...point });
                                             }}
                                         >
-                                            {linked ? "✓" : "＋"}
-                                        </IconBtn>
+                                            {linked ? <CheckIcon /> : <PlusIcon />}
+                                        </ActionBtn>
                                     )}
-                                    <IconBtn
+                                    <ActionBtn
                                         title="가설 삭제"
-                                        color="var(--rise)"
+                                        danger
                                         visible={hovered}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             if (confirm(`H${h.id} 가설을 삭제할까요? 연결·관계도 함께 제거됩니다.`)) deleteMut.mutate(h.id);
                                         }}
                                     >
-                                        ×
-                                    </IconBtn>
+                                        <TrashIcon />
+                                    </ActionBtn>
                                 </span>
                             </div>
 
+                            {/* 선택 시 — 연결된 타점(종목명) 펼침 → 클릭 이동 */}
                             {selected && (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 3, padding: "3px 0 6px 24px" }}>
-                                    {selectedPoints.length === 0 && <div style={mutedStyle}>연결된 타점 없음</div>}
+                                <div style={{ display: "flex", flexDirection: "column", padding: "1px 0 6px 45px", background: "var(--accent-soft)" }}>
+                                    {selectedPoints.length === 0 && <div style={{ ...mutedStyle, paddingLeft: 0 }}>연결된 타점 없음</div>}
                                     {selectedPoints.map((l, i) => (
                                         <button
                                             key={i}
                                             onClick={() => setFocus({ date: l.date, code: l.stockCode, time: l.time })}
-                                            className="tabular"
-                                            style={{ textAlign: "left", padding: "2px 6px", borderRadius: 4, background: "none", border: "none", color: "var(--accent-hover)", cursor: "pointer", fontSize: 12 }}
                                             title="이 타점으로 이동"
+                                            style={{ display: "flex", alignItems: "baseline", gap: 7, textAlign: "left", padding: "2px 10px 2px 0", background: "none", border: "none", cursor: "pointer" }}
                                         >
-                                            {l.stockCode} · {l.date} · {l.time}
+                                            <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{nameByCode.get(l.stockCode) ?? l.stockCode}</span>
+                                            <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{l.date} · {l.time.slice(0, 5)}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -191,43 +204,66 @@ export function HypothesisPanel(): JSX.Element {
     );
 }
 
-const mutedStyle: React.CSSProperties = { color: "var(--text-tertiary)", fontSize: 12, padding: "4px 2px" };
+const mutedStyle: React.CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "6px 12px" };
 
-// 우측 hover 액션 아이콘 — 기본 숨김(opacity 0), hover/활성 시 노출. 레이아웃 시프트 방지 위해 자리 유지.
-function IconBtn({
+// 우측 hover 액션 — 기본 숨김(자리 유지), hover/활성 시 노출. 색: 연결=accent, 삭제=danger.
+function ActionBtn({
     children,
     onClick,
     title,
-    color,
     visible,
+    active,
+    danger,
 }: {
     children: React.ReactNode;
     onClick: (e: React.MouseEvent) => void;
     title: string;
-    color: string;
     visible: boolean;
+    active?: boolean;
+    danger?: boolean;
 }): JSX.Element {
+    const color = danger ? "var(--rise)" : active ? "var(--accent-primary)" : "var(--text-tertiary)";
     return (
         <button
             onClick={onClick}
             title={title}
             style={{
-                width: 16,
-                height: 16,
+                width: 18,
+                height: 18,
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
                 border: 0,
                 background: "transparent",
                 color,
-                fontSize: 13,
-                lineHeight: 1,
                 cursor: "pointer",
-                opacity: visible ? 0.9 : 0,
+                opacity: visible ? 1 : 0,
                 transition: "opacity 0.12s ease",
             }}
         >
             {children}
         </button>
+    );
+}
+
+function PlusIcon(): JSX.Element {
+    return (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+        </svg>
+    );
+}
+function CheckIcon(): JSX.Element {
+    return (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+        </svg>
+    );
+}
+function TrashIcon(): JSX.Element {
+    return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+        </svg>
     );
 }
