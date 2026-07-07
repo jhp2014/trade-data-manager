@@ -28,7 +28,9 @@ interface DockState {
     api: DockviewApi | null;
     presets: PresetSlots;
     activePreset: number | null; // 1-based. null = 프리셋 밖(기본 배치/수동 변경).
+    openPanelIds: string[] | null; // 현재 열린 패널 id(작업표시줄 닫힌창 목록용). null = dock 미준비.
     setApi: (api: DockviewApi | null) => void;
+    setOpenPanels: (ids: string[]) => void;
     savePreset: (n: number) => void; // 현재 배치를 슬롯 n(1-based)에 저장
     loadPreset: (n: number) => void; // 슬롯 n 배치로 전환(빈 슬롯이면 무시)
     cyclePreset: () => void; // 저장된 프리셋들을 순환
@@ -38,7 +40,9 @@ export const useDock = create<DockState>((set, get) => ({
     api: null,
     presets: loadPresets(),
     activePreset: null,
+    openPanelIds: null,
     setApi: (api) => set({ api }),
+    setOpenPanels: (ids) => set({ openPanelIds: ids }),
     savePreset: (n) => {
         const api = get().api;
         if (!api) return;
@@ -57,7 +61,8 @@ export const useDock = create<DockState>((set, get) => ({
         if (!api || !data) return;
         try {
             api.fromJSON(data);
-            set({ activePreset: n });
+            // fromJSON 후 열린 패널 재동기화(패널 이벤트 누락 대비).
+            set({ activePreset: n, openPanelIds: api.panels.map((p) => p.id) });
         } catch {
             /* 손상/비호환 레이아웃 → 무시(현 배치 유지) */
         }

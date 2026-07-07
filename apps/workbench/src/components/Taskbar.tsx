@@ -1,11 +1,29 @@
 import { useDock, PRESET_COUNT } from "../store/dock.js";
+import { PANEL_CATALOG, type PanelEntry } from "../shell/panelCatalog.js";
 
-// 하단 작업표시줄(씨앗) — 지금은 현재 작업화면(프리셋) 표시 + 클릭 순환만.
-// 이후 브릭에서 닫힌 창 회수·종목/날짜/시간 컨텍스트가 여기 붙는다.
+const chipStyle: React.CSSProperties = {
+    padding: "1px 8px",
+    borderRadius: 4,
+    border: "1px dashed var(--border-default)",
+    background: "none",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    font: "inherit",
+};
+
+// 하단 작업표시줄(씨앗) — 현재 작업화면(프리셋) 표시·순환 + 닫힌(최소화) 창 클릭 재오픈.
+// 이후 브릭 6에서 종목/날짜/시간 컨텍스트가 여기 구석에 붙는다.
 export function Taskbar(): JSX.Element {
     const activePreset = useDock((s) => s.activePreset);
     const savedCount = useDock((s) => s.presets.filter(Boolean).length);
     const cyclePreset = useDock((s) => s.cyclePreset);
+    const openPanelIds = useDock((s) => s.openPanelIds);
+    const api = useDock((s) => s.api);
+    // 카탈로그에 있으나 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움.
+    const closed = openPanelIds === null ? [] : PANEL_CATALOG.filter((p) => !openPanelIds.includes(p.id));
+    const reopen = (e: PanelEntry): void => {
+        api?.addPanel({ id: e.id, component: e.component, title: e.title });
+    };
     return (
         <div
             style={{
@@ -41,6 +59,17 @@ export function Taskbar(): JSX.Element {
                 화면 {activePreset ?? "—"}
                 {savedCount > 0 && <span style={{ color: "var(--text-tertiary)" }}>· {savedCount}개 저장</span>}
             </button>
+            {closed.length > 0 && (
+                <>
+                    <span style={{ color: "var(--border-default)" }}>│</span>
+                    <span style={{ color: "var(--text-tertiary)" }}>최소화</span>
+                    {closed.map((e) => (
+                        <button key={e.id} onClick={() => reopen(e)} title="다시 열기" style={chipStyle}>
+                            {e.title}
+                        </button>
+                    ))}
+                </>
+            )}
             <span style={{ marginLeft: "auto" }}>Ctrl+1~{PRESET_COUNT} 전환 · 클릭 순환</span>
         </div>
     );
