@@ -2,11 +2,10 @@
 // WorksetPanel 본문(데이터 합본)에서 분리한 순수 표현 조각.
 import { useState } from "react";
 import type { ReviewPointListItem } from "../api/reviewPoints.js";
+import { weekdayOf } from "../lib/date.js";
 
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 function fmtDateHeader(date: string): string {
-    const wd = WEEKDAYS[new Date(`${date}T00:00:00`).getDay()];
-    return `${date.replace(/-/g, ".")} (${wd})`;
+    return `${date.replace(/-/g, ".")} (${weekdayOf(date)})`;
 }
 
 export function MonthPicker({ month, months, onPick }: { month: string; months: string[]; onPick: (m: string) => void }): JSX.Element {

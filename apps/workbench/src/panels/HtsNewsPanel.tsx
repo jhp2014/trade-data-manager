@@ -3,19 +3,15 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useWorkbench, type NewsSearchEngine } from "../store/workbench.js";
 import { fetchHtsNews, type HtsNewsItem, type HeadlineCursor } from "../api/news.js";
 import { daySummaryQuery } from "../api/queries.js";
+import { dateLabel } from "../lib/date.js";
+import { escapeRegExp } from "../lib/text.js";
+import { ChevronDownIcon, BackIcon } from "../components/icons.js";
 
 // HTS(시황) 뉴스 패널 — 종목의 그 날 헤드라인을 최신순으로. code/date 는 Focus 를 따르되,
 // 검색 모드(일봉 봉 클릭)면 search.{code,date} 를 사용(뱃지+✕ 로 해제). 검색 모드에선 time 상호작용 off.
 // 본문 시각 3계층(당일·장중이전/당일/과거) + 제목에 종목명 하이라이트(좌우탐색 없음). 헤더 2줄.
 const PAGE = 30;
 const INTRADAY_FILL = "rgba(22,121,111,0.14)"; // 현재시간 이전(장중 참고가능) 시각 셀 채움 — --accent-primary 틴트
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-function dateLabel(date: string): string {
-    if (!date) return "";
-    const w = WEEKDAYS[new Date(`${date}T00:00:00`).getDay()] ?? "";
-    return `${date} (${w})`;
-}
 
 export function HtsNewsPanel(): JSX.Element {
     const focusCode = useWorkbench((s) => s.focus.code);
@@ -242,10 +238,6 @@ function highlightName(title: string, re: RegExp | null): ReactNode[] {
     return nodes;
 }
 
-function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function IconButton({ children, onClick, disabled, title }: { children: ReactNode; onClick: () => void; disabled?: boolean; title?: string }): JSX.Element {
     return (
         <button className="icon-btn" onClick={onClick} disabled={disabled} title={title}>
@@ -259,24 +251,6 @@ function RefreshIcon(): JSX.Element {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="23 4 23 10 17 10" />
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-        </svg>
-    );
-}
-
-// 검색 모드 해제(←) — Focus 로 돌아가기.
-function BackIcon(): JSX.Element {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
-        </svg>
-    );
-}
-
-function ChevronDownIcon(): JSX.Element {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9" />
         </svg>
     );
 }

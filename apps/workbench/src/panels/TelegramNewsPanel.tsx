@@ -3,13 +3,15 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useWorkbench } from "../store/workbench.js";
 import { fetchTelegramNews, type TelegramNewsItem } from "../api/telegramNews.js";
 import { daySummaryQuery } from "../api/queries.js";
+import { dateLabel } from "../lib/date.js";
+import { escapeRegExp } from "../lib/text.js";
+import { ChevronDownIcon, BackIcon } from "../components/icons.js";
 
 // 텔레그램 뉴스 패널 — 등록 방 전체 키워드 검색(focus.date KST 하루 스코프), 최신순.
 // 검색어 = 포커스 종목명 자동채움 + 편집. 자동검색 안 함 = 중앙 입력창에서 Enter/검색 버튼 수동 트리거(FLOOD 회피).
 // 종목/검색어 바뀌면 결과 비우고 중앙 입력. 더보기 = before 시각 커서로 조금씩 과거 페이징(날짜 넘어감).
 // 헤더 2줄(1=키워드·검색·매치이동·더보기 / 2=현재 보는 날짜·시간). 본문 하이라이트 + Ctrl+F 식 매치 이동.
 // 현재시간 이전(focus.time 이하, 당일)은 시간값 배경으로 구분. focus.time 이동 시 그 이하 최근으로 스크롤.
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const INTRADAY_BG = "rgba(22,121,111,0.14)"; // 현재시간 이전 시간값 배경 — --accent-primary 틴트
 
 export function TelegramNewsPanel(): JSX.Element {
@@ -315,22 +317,12 @@ function countMatches(text: string, re: RegExp | null): number {
     return n;
 }
 
-function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function kstDate(iso: string): string {
     return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 }
 
 function kstHm(iso: string): string {
     return new Date(iso).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function dateLabel(date: string): string {
-    if (!date) return "";
-    const w = WEEKDAYS[new Date(`${date}T00:00:00`).getDay()] ?? "";
-    return `${date} (${w})`;
 }
 
 function hostOf(url: string): string {
@@ -346,24 +338,6 @@ function SearchIcon(): JSX.Element {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="7" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-    );
-}
-
-function ChevronDownIcon(): JSX.Element {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-        </svg>
-    );
-}
-
-// 검색 모드 해제(←) — Focus 로 돌아가기.
-function BackIcon(): JSX.Element {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
         </svg>
     );
 }
