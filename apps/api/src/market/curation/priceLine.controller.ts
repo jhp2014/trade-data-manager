@@ -1,18 +1,10 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import type { PriceLine, PriceLinedStock, PriceLineField, PriceLineReader, PriceLineStore } from "@trade-data-manager/market";
+import type { AddPriceLineInput } from "@trade-data-manager/wire";
 import { PRICE_LINE_REPO } from "../tokens.js";
 import { assertYmd, assertHms } from "../validation.js";
 
 const FIELDS = new Set<PriceLineField>(["high", "low", "open", "close"]);
-
-interface AddPriceLineBody {
-    stockCode: string;
-    date: string; // 차트(종목,날짜) 로드 단위
-    anchorDate: string; // 앵커 캔들 거래일 YYYY-MM-DD
-    anchorTime?: string; // HH:MM:SS — 있으면 분봉 앵커, 없으면 일봉 앵커
-    field?: PriceLineField; // 기본 high
-    memo?: string;
-}
 
 // 차트 가격선 주석 CRUD — 사람이 우클릭으로 긋는 수평선. 가격 대신 앵커(캔들 좌표)를 저장한다.
 @Controller("price-lines")
@@ -32,7 +24,7 @@ export class PriceLineController {
     }
 
     @Post()
-    async add(@Body() body: AddPriceLineBody): Promise<PriceLine> {
+    async add(@Body() body: AddPriceLineInput): Promise<PriceLine> {
         if (!body?.stockCode) throw new BadRequestException("stockCode 필수");
         assertYmd(body.date);
         assertYmd(body.anchorDate, "anchorDate");

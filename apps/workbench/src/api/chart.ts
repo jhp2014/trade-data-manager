@@ -1,42 +1,8 @@
-// /chart 조회 클라이언트 — 프론트를 core/market 에서 디커플링하기 위해 렌더에 필요한
-// 최소 wire 타입만 로컬 정의한다(core 의 ChartBundle 구조 부분집합). 모든 가격은 무손실 string.
+// /chart 조회 클라이언트 — wire 타입은 contracts/wire 에서 서버와 **단일 계약**으로 공유한다.
+// (예전의 로컬 재정의 폐기 — 서버 응답 모양이 바뀌면 여기가 컴파일 에러로 잡힌다.)
+import type { ChartBundle } from "@trade-data-manager/wire";
 
-export interface DailyBar {
-    open: string;
-    high: string;
-    low: string;
-    close: string;
-    volume: string;
-    amount: string;
-}
-
-export interface DailyCandle {
-    stockCode: string;
-    date: string; // YYYY-MM-DD
-    krx: DailyBar;
-    un: DailyBar;
-}
-
-export interface MinuteCandleWire {
-    stockCode: string;
-    date: string;
-    time: string; // HH:MM:SS
-    krx: DailyBar | null;
-    un: DailyBar;
-}
-
-/** 분봉 % 기준가 — 직전 거래일 원주가 종가(시장별) 스칼라. 상장 첫날 등 null 이면 클라가 당일 첫 시가 폴백. */
-export interface RawBase {
-    krxClose: string;
-    unClose: string;
-}
-
-export interface ChartBundle {
-    stockCode: string;
-    daily: DailyCandle[];
-    minutes: MinuteCandleWire[];
-    rawBase: RawBase | null;
-}
+export type { ChartBundle } from "@trade-data-manager/wire";
 
 export async function fetchChart(code: string, date: string): Promise<ChartBundle> {
     const qs = new URLSearchParams({ code, date });

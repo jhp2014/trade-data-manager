@@ -1,5 +1,6 @@
 import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
 import type { NewsHeadline, StockNewsReader } from "@trade-data-manager/market";
+import type { HtsNewsItem } from "@trade-data-manager/wire";
 import { STOCK_NEWS_REPO } from "../tokens.js";
 import { assertYmd } from "../validation.js";
 
@@ -7,17 +8,8 @@ const SRNO_RE = /^\d+$/;
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
 
-// 표시용 wire — NewsHeadline 부분집합(sourceCode·stockCodes 는 표시에 불필요). srno 는 페이징 커서로 필요.
-interface HtsNewsWire {
-    srno: string;
-    date: string;
-    time: string;
-    title: string;
-    sourceName: string;
-    categoryCode: string;
-}
-
-function toWire(h: NewsHeadline): HtsNewsWire {
+// NewsHeadline → 표시용 wire(HtsNewsItem, contracts/wire). sourceCode·stockCodes 는 표시에 불필요, srno 는 페이징 커서.
+function toWire(h: NewsHeadline): HtsNewsItem {
     return { srno: h.srno, date: h.date, time: h.time, title: h.title, sourceName: h.sourceName, categoryCode: h.categoryCode };
 }
 
@@ -36,7 +28,7 @@ export class NewsController {
         @Query("beforeDate") beforeDate?: string,
         @Query("beforeSrno") beforeSrno?: string,
         @Query("limit") limit?: string,
-    ): Promise<HtsNewsWire[]> {
+    ): Promise<HtsNewsItem[]> {
         const validDate = assertYmd(date);
         if (!code) return [];
 

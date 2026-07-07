@@ -44,6 +44,9 @@ importers:
       '@trade-data-manager/telegram':
         specifier: workspace:*
         version: link:../../infra/telegram
+      '@trade-data-manager/wire':
+        specifier: workspace:*
+        version: link:../../contracts/wire
       compression:
         specifier: ^1.7.5
         version: 1.8.1
@@ -447,6 +450,9 @@ importers:
       '@trade-data-manager/market':
         specifier: workspace:*
         version: link:../../core/market
+      '@trade-data-manager/wire':
+        specifier: workspace:*
+        version: link:../../contracts/wire
       dagre:
         specifier: ^0.8.5
         version: 0.8.5
@@ -493,6 +499,22 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.3(@types/node@22.19.17)(tsx@4.21.0)
+
+  contracts/wire:
+    dependencies:
+      '@trade-data-manager/market':
+        specifier: workspace:*
+        version: link:../../core/market
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   core/market:
     devDependencies:

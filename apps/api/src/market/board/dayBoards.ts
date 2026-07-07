@@ -2,26 +2,15 @@
 // 조합해 화면별 응답을 만든다. daySummary 순수함수(assembleBaseSnapshots·buildDaySummary) + core themeStatsOf 로 조립.
 //   themeBoard — EOD %·시총·분봉파생 + master·시트·이슈(fresh) + 테마 EOD folding
 //   replayBoard — 분봉파생 + master·시트(테마명). 이슈·EOD % 안 씀.
-import { themeStatsOf, type MinuteDerived, type ThemeMember, type DailyIssueReader } from "@trade-data-manager/market";
-import { assembleBaseSnapshots, applyIssues, buildDaySummary, type DailySnapshot, type DaySummary } from "./daySummary.js";
+// 응답 wire 계약(EnrichedDaySummary·ReplayBoard)은 contracts/wire 에 두고 서버·클라가 공유한다.
+import { themeStatsOf, type ThemeMember, type DailyIssueReader } from "@trade-data-manager/market";
+import type { EnrichedSnapshot, EnrichedDaySummary, ReplayStock, ReplayBoard } from "@trade-data-manager/wire";
+import { assembleBaseSnapshots, applyIssues, buildDaySummary } from "./daySummary.js";
 import type { DerivedCache } from "./derivedCache.js";
 import type { MasterCache } from "./masterCache.js";
 
-/** 테마보드 스냅샷 — 이슈 축약(EOD) folding. 분봉 없는 종목은 두 필드 생략(옵셔널). */
-export type EnrichedSnapshot = DailySnapshot & { bucketCounts?: number[]; trailingHighs?: number[] };
-export type EnrichedDaySummary = Omit<DaySummary, "stocks"> & { stocks: EnrichedSnapshot[] };
-
-/** 복기보드 종목 — 복기 전용 per-minute + 메타(self-contained). */
-export interface ReplayStock extends Pick<MinuteDerived, "code" | "times" | "rate" | "high" | "low" | "open" | "cumAmount"> {
-    name: string | null;
-    market: string | null;
-    marketCap: string | null; // 원, 무손실 string
-    themes: string[]; // 테마명
-}
-export interface ReplayBoard {
-    date: string;
-    stocks: ReplayStock[];
-}
+// 컨트롤러가 여기서 계속 import 하도록 wire 계약을 이 모듈 표면으로도 재노출.
+export type { EnrichedSnapshot, EnrichedDaySummary, ReplayStock, ReplayBoard };
 
 export interface DayBoardsDeps {
     derived: DerivedCache;

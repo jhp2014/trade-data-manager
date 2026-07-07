@@ -1,5 +1,6 @@
 import { Controller, Get, Inject, Query } from "@nestjs/common";
 import type { NewsItem, NewsSearcher } from "@trade-data-manager/market";
+import type { TelegramNewsItem, TelegramNewsPage } from "@trade-data-manager/wire";
 import { NEWS_SEARCHER } from "../tokens.js";
 import { assertYmd } from "../validation.js";
 
@@ -7,21 +8,8 @@ const DAY_LIMIT = 200; // 하루 전체를 담을 방당 상한(실제 한계는
 const THRESHOLD = 5; // 더보기 한 클릭 = 이 건수를 넘길 때까지 과거 날짜를 하루씩 누적.
 const MAX_WALK_DAYS = 7; // 더보기 한 클릭이 걸어갈 최대 날짜 수(빈 구간 폭주 방지).
 
-// 표시용 wire — at 은 절대시각 ISO(표시계층에서 KST 포맷).
-interface TelegramNewsWire {
-    channel: string;
-    at: string;
-    text: string;
-    url?: string;
-    ref: string;
-}
-// 봉투 — items + 이 페이지가 걸어간 가장 과거 날짜(다음 더보기 커서). 빈 날은 클라가 모르므로 서버가 알려줌.
-interface TelegramNewsPage {
-    items: TelegramNewsWire[];
-    oldestDate: string;
-}
-
-function toWire(n: NewsItem): TelegramNewsWire {
+// NewsItem → 표시용 wire(TelegramNewsItem, contracts/wire). at 은 절대시각 ISO(표시계층에서 KST 포맷).
+function toWire(n: NewsItem): TelegramNewsItem {
     return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref };
 }
 

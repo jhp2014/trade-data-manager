@@ -1,16 +1,8 @@
 import { Controller, Get, Post, Delete, Inject, Query, Body, BadRequestException } from "@nestjs/common";
 import type { ReviewPoint, ReviewPointListItem, ReviewPointReader, ReviewPointStore } from "@trade-data-manager/market";
+import type { UpsertReviewPointInput } from "@trade-data-manager/wire";
 import { REVIEW_POINT_REPO } from "../tokens.js";
 import { assertYmd, assertHms } from "../validation.js";
-
-interface UpsertReviewPointBody {
-    stockCode: string;
-    date: string; // YYYY-MM-DD 거래일
-    time: string; // HH:MM:SS 분봉 시각
-    type?: string; // 셋업 유형 라벨(선택)
-    outcome?: string; // 트레이드 결과(선택)
-    memo?: string;
-}
 
 // 복기 타점 CRUD — 차트에서 스페이스바로 찍는 관찰 지점. 자연키 (stockCode, date, time) = caseId.
 // price-line 과 달리 surrogate id 가 없어 삭제도 자연키(query)로 지목한다.
@@ -31,7 +23,7 @@ export class ReviewPointController {
     }
 
     @Post()
-    async upsert(@Body() body: UpsertReviewPointBody): Promise<ReviewPoint> {
+    async upsert(@Body() body: UpsertReviewPointInput): Promise<ReviewPoint> {
         if (!body?.stockCode) throw new BadRequestException("stockCode 필수");
         assertYmd(body.date);
         assertHms(body.time);

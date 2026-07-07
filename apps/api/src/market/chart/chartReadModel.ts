@@ -10,24 +10,14 @@ import {
     densifyMinutes,
     previousCloseFromDaily,
     RAW_DAILY_LOOKBACK_MONTHS,
-    type DailyCandle,
-    type MinuteCandle,
-    type MarketCloses,
     type AdjustedDailyReader,
     type MinuteReader,
     type RawDailyReader,
 } from "@trade-data-manager/market";
+import type { ChartBundle } from "@trade-data-manager/wire";
 
-/**
- * /chart 응답 — 파생값 0(순수 시계열). 소비자(클라)가 domain 순수함수로 %·누적·임계count 를 계산한다.
- * daily 는 수정주가(일봉 pane), minutes 는 원주가 dense(당일), rawBase 는 원주가 전일종가(분봉 % 기준).
- */
-export interface ChartBundle {
-    stockCode: string;
-    daily: DailyCandle[];
-    minutes: MinuteCandle[];
-    rawBase: MarketCloses | null;
-}
+// /chart 응답(ChartBundle)은 apps/api·apps/workbench 공유 계약(contracts/wire). 여기선 그 계약대로 조립만 한다.
+export type { ChartBundle };
 
 export interface ChartReadModelDeps {
     dailyCandle: AdjustedDailyReader;

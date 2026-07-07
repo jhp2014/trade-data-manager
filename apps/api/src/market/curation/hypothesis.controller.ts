@@ -1,11 +1,11 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import type {
-    Hypothesis,
-    HypothesisLink,
-    HypothesisRelation,
+    Hypothesis as CoreHypothesis,
+    HypothesisRelation as CoreHypothesisRelation,
     HypothesisReader,
     HypothesisStore,
 } from "@trade-data-manager/market";
+import type { Hypothesis, HypothesisLink, HypothesisRelation } from "@trade-data-manager/wire";
 import { HYPOTHESIS_REPO } from "../tokens.js";
 import { assertYmd, assertHms } from "../validation.js";
 
@@ -27,6 +27,16 @@ interface RelationBody {
     note?: string;
 }
 
+// 저장된 가설/관계는 id 가 항상 존재(포트 타입은 미저장 대비 id?). 와이어 계약(id 필수)으로 경계에서 좁힌다.
+const toWireHypothesis = (h: CoreHypothesis): Hypothesis => ({ id: h.id!, text: h.text });
+const toWireRelation = (r: CoreHypothesisRelation): HypothesisRelation => ({
+    id: r.id!,
+    fromId: r.fromId,
+    toId: r.toId,
+    relationType: r.relationType,
+    note: r.note,
+});
+
 // 가설 큐레이션 — 클라가 세 목록(가설·링크·관계)을 받아 인메모리로 조립·필터(옵션 A). 여기선 flat CRUD 만.
 // 가설↔타점 연결은 자연키(code·date·time) = review point 삼중키. 관계 편집은 후속(Phase 3).
 @Controller("hypotheses")
@@ -39,20 +49,20 @@ export class HypothesisController {
     }
 
     @Get("relations")
-    listRelations(): Promise<HypothesisRelation[]> {
-        return this.repo.listRelations();
+    async listRelations(): Promise<HypothesisRelation[]> {
+        return (await this.repo.listRelations()).map(toWireRelation);
     }
 
     @Get()
-    list(): Promise<Hypothesis[]> {
-        return this.repo.listHypotheses();
+    async list(): Promise<Hypothesis[]> {
+        return (await this.repo.listHypotheses()).map(toWireHypothesis);
     }
 
     @Post()
     async create(@Body() body: CreateHypothesisBody): Promise<Hypothesis> {
         const text = body?.text?.trim();
         if (!text) throw new BadRequestException("text 필수");
-        return this.repo.create(text);
+        return toWireHypothesis(await this.repo.create(text));
     }
 
     @Post("links")
@@ -66,7 +76,7 @@ export class HypothesisController {
         if (!body?.fromId || !body?.toId) throw new BadRequestException("fromId·toId 필수");
         if (!body?.relationType) throw new BadRequestException("relationType 필수");
         if (body.fromId === body.toId) throw new BadRequestException("자기참조 불가");
-        return this.repo.addRelation({ fromId: body.fromId, toId: body.toId, relationType: body.relationType, note: body.note });
+        return toWireRelation(await this.repo.addRelation({ fromId: body.fromId, toId: body.toId, relationType: body.relationType, note: body.note }));
     }
 
     @Delete("links")

@@ -1,16 +1,10 @@
-// /news/hts 조회 클라이언트 — HTS(시황) 헤드라인. 프론트를 core 에서 디커플하려 wire 타입만 로컬 정의.
+// /news/hts 조회 클라이언트 — HTS(시황) 헤드라인. wire 타입(HtsNewsItem)은 contracts/wire 공유.
 // 항상 최신순. 초기(before 없음)=그 날 전체, 커서(before 있음)=그보다 과거 최대 limit 건("더 가져오기").
+import type { HtsNewsItem } from "@trade-data-manager/wire";
 
-export interface HtsNewsItem {
-    srno: string; // 페이징 커서
-    date: string; // YYYY-MM-DD
-    time: string; // HH:MM:SS
-    title: string;
-    sourceName: string;
-    categoryCode: string;
-}
+export type { HtsNewsItem } from "@trade-data-manager/wire";
 
-/** 복합 커서 — 이 지점보다 과거(엄격 미만)만. oldest 항목의 (date, srno). */
+/** 복합 커서 — 이 지점보다 과거(엄격 미만)만. oldest 항목의 (date, srno). 클라 페이징 파라미터(와이어 아님). */
 export interface HeadlineCursor {
     date: string;
     srno: string;

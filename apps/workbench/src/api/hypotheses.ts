@@ -1,25 +1,8 @@
-// 가설 큐레이션 CRUD 클라이언트. 세 목록(가설·링크·관계)을 받아 패널이 인메모리로 조립·필터(옵션 A).
-// 가설↔타점 연결은 자연키(code·date·time) = review point 삼중키.
+// 가설 큐레이션 CRUD 클라이언트. wire 타입(Hypothesis·HypothesisLink·HypothesisRelation)은 contracts/wire 공유.
+// 세 목록(가설·링크·관계)을 받아 패널이 인메모리로 조립·필터. 가설↔타점 연결은 자연키(code·date·time) = review point 삼중키.
+import type { Hypothesis, HypothesisLink, HypothesisRelation } from "@trade-data-manager/wire";
 
-export interface Hypothesis {
-    id: string;
-    text: string;
-}
-
-export interface HypothesisLink {
-    hypothesisId: string;
-    stockCode: string;
-    date: string; // YYYY-MM-DD
-    time: string; // HH:MM:SS
-}
-
-export interface HypothesisRelation {
-    id: string;
-    fromId: string;
-    toId: string;
-    relationType: string;
-    note?: string;
-}
+export type { Hypothesis, HypothesisLink, HypothesisRelation } from "@trade-data-manager/wire";
 
 export async function fetchHypotheses(): Promise<Hypothesis[]> {
     const res = await fetch("/api/hypotheses");
