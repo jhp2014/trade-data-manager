@@ -6,7 +6,7 @@
 //   · review_points : 복기 타점((종목,날짜,시각) 자연키 = caseId. hypothesis 가 하류에서 읽어 의미 부여)
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
-import { pgSchema, varchar, date, time, timestamp, text, bigserial, primaryKey, index } from "drizzle-orm/pg-core";
+import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, primaryKey, foreignKey, unique, index } from "drizzle-orm/pg-core";
 
 export const curation = pgSchema("curation");
 
@@ -53,15 +53,17 @@ export const priceLines = curation.table(
     (t) => [index("idx_price_lines_chart").on(t.stockCode, t.tradeDate)],
 );
 
-// 3. 복기 타점 — 차트에서 찍은 타점. 자연키 (stockCode, tradeDate, tradeTime) = caseId 삼중키.
-//    가설 유무와 무관하게 독립 영속(먼저 있어야 hypothesis 가 붙일 대상). 의미의 풍성함은 하류 hypothesis 담당 →
-//    여기선 가벼운 앵커 + memo 한 줄(jsonb payload 는 폐기). PK 가 (stock,date) prefix 커버 → listByChart 는 별도 인덱스 불필요.
+// 3. 복기 타점 — 차트에서 찍은 타점. 자연키 (stockCode, tradeDate, tradeTime) 삼중키(시각 필수).
+//    **옛 case 를 흡수** = 이 타점이 곧 case. type(셋업 유형)·outcome(트레이드 결과)·memo 는 타점 자체 속성.
+//    가설(hypotheses)이 이 자연키를 하류에서 참조. PK 가 (stock,date) prefix 커버 → listByChart 별도 인덱스 불필요.
 export const reviewPoints = curation.table(
     "review_points",
     {
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
         tradeDate: date("trade_date").notNull(),
         tradeTime: time("trade_time").notNull(),
+        type: varchar("type", { length: 40 }), // 셋업 유형 라벨(선택). 값·트리는 클라 config.
+        outcome: varchar("outcome", { length: 20 }), // 트레이드 결과(선택, 가설 무관).
         memo: text("memo"),
     },
     (t) => [primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime] })],
@@ -73,3 +75,60 @@ export type PriceLineRow = typeof priceLines.$inferSelect;
 export type PriceLineInsert = typeof priceLines.$inferInsert;
 export type ReviewPointRow = typeof reviewPoints.$inferSelect;
 export type ReviewPointInsert = typeof reviewPoints.$inferInsert;
+
+// 4. 가설 — 매매 가설 원본. 표시코드 H1 은 저장 안 하고 id 에서 파생. tags/status/extra 없음(필요시 나중).
+export const hypotheses = curation.table("hypotheses", {
+    id: bigserial("id", { mode: "bigint" }).primaryKey(),
+    text: text("text").notNull(),
+});
+
+// 5. 가설 ↔ 복기 타점 연결 — 순수 정션(자연키). surrogate 없이 composite PK.
+//    review_points 삼중키로 FK(onDelete cascade: 타점 지우면 연결도). hypothesis 지워도 cascade.
+export const hypothesisPoints = curation.table(
+    "hypothesis_points",
+    {
+        hypothesisId: bigint("hypothesis_id", { mode: "bigint" })
+            .notNull()
+            .references(() => hypotheses.id, { onDelete: "cascade" }),
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(),
+        tradeTime: time("trade_time").notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.hypothesisId, t.stockCode, t.tradeDate, t.tradeTime] }),
+        foreignKey({
+            columns: [t.stockCode, t.tradeDate, t.tradeTime],
+            foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
+            name: "fk_hyp_points_review_point",
+        }).onDelete("cascade"),
+        index("idx_hyp_points_point").on(t.stockCode, t.tradeDate, t.tradeTime),
+    ],
+);
+
+// 6. 가설 그래프 — 가설 사이 관계(트리 아님). relationType 느슨(better_than/parent_of/similar_to/conflicts_with…).
+//    순환/자기참조는 DB 제약 아닌 App 경고. idx_to = 역방향("나를 가리키는 관계") 조회용.
+export const hypothesisRelations = curation.table(
+    "hypothesis_relations",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        fromId: bigint("from_id", { mode: "bigint" })
+            .notNull()
+            .references(() => hypotheses.id, { onDelete: "cascade" }),
+        toId: bigint("to_id", { mode: "bigint" })
+            .notNull()
+            .references(() => hypotheses.id, { onDelete: "cascade" }),
+        relationType: varchar("relation_type", { length: 20 }).notNull(),
+        note: text("note"),
+    },
+    (t) => [
+        unique("uq_hyp_rel").on(t.fromId, t.relationType, t.toId),
+        index("idx_hyp_rel_to").on(t.toId),
+    ],
+);
+
+export type HypothesisRow = typeof hypotheses.$inferSelect;
+export type HypothesisInsert = typeof hypotheses.$inferInsert;
+export type HypothesisPointRow = typeof hypothesisPoints.$inferSelect;
+export type HypothesisPointInsert = typeof hypothesisPoints.$inferInsert;
+export type HypothesisRelationRow = typeof hypothesisRelations.$inferSelect;
+export type HypothesisRelationInsert = typeof hypothesisRelations.$inferInsert;

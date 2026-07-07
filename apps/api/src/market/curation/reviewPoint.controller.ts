@@ -7,6 +7,8 @@ interface UpsertReviewPointBody {
     stockCode: string;
     date: string; // YYYY-MM-DD 거래일
     time: string; // HH:MM:SS 분봉 시각
+    type?: string; // 셋업 유형 라벨(선택)
+    outcome?: string; // 트레이드 결과(선택)
     memo?: string;
 }
 
@@ -33,7 +35,14 @@ export class ReviewPointController {
         if (!body?.stockCode) throw new BadRequestException("stockCode 필수");
         assertYmd(body.date);
         assertHms(body.time);
-        const point: ReviewPoint = { stockCode: body.stockCode, date: body.date, time: body.time, memo: body.memo };
+        const point: ReviewPoint = {
+            stockCode: body.stockCode,
+            date: body.date,
+            time: body.time,
+            type: body.type,
+            outcome: body.outcome,
+            memo: body.memo,
+        };
         await this.repo.upsert([point]);
         return point;
     }

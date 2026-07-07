@@ -11,13 +11,18 @@ export class DrizzleReviewPointRepository implements ReviewPointReader, ReviewPo
 
     async upsert(points: ReviewPoint[]): Promise<void> {
         if (points.length === 0) return;
-        // (stock,date,time) 충돌 시 memo 만 갱신 — 자연키는 불변, memo 만 가변.
+        // (stock,date,time) 충돌 시 가변 속성(type·outcome·memo) 갱신 — 자연키만 불변.
+        // 전체 덮어쓰기 계약: 클라가 현재 상태를 합쳐 full point 를 보낸다(부분갱신 아님).
         await this.db
             .insert(reviewPoints)
             .values(points.map(reviewPointToRow))
             .onConflictDoUpdate({
                 target: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
-                set: { memo: sql`EXCLUDED.memo` },
+                set: {
+                    type: sql`EXCLUDED.type`,
+                    outcome: sql`EXCLUDED.outcome`,
+                    memo: sql`EXCLUDED.memo`,
+                },
             });
     }
 
@@ -37,13 +42,23 @@ export class DrizzleReviewPointRepository implements ReviewPointReader, ReviewPo
                 stockCode: reviewPoints.stockCode,
                 date: reviewPoints.tradeDate,
                 time: reviewPoints.tradeTime,
+                type: reviewPoints.type,
+                outcome: reviewPoints.outcome,
                 memo: reviewPoints.memo,
                 name: stockMaster.name,
             })
             .from(reviewPoints)
             .leftJoin(stockMaster, eq(stockMaster.stockCode, reviewPoints.stockCode))
             .orderBy(desc(reviewPoints.tradeDate), asc(reviewPoints.tradeTime));
-        return rows.map((r) => ({ stockCode: r.stockCode, date: r.date, time: r.time, memo: r.memo ?? undefined, name: r.name ?? null }));
+        return rows.map((r) => ({
+            stockCode: r.stockCode,
+            date: r.date,
+            time: r.time,
+            type: r.type ?? undefined,
+            outcome: r.outcome ?? undefined,
+            memo: r.memo ?? undefined,
+            name: r.name ?? null,
+        }));
     }
 
     async remove(stockCode: string, date: string, time: string): Promise<void> {

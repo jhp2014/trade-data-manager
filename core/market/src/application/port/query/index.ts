@@ -15,5 +15,6 @@ export * from "./newsChannelSearch.js";
 export * from "./dailyIssue.js";
 export * from "./priceLine.js";
 export * from "./reviewPoint.js";
+export * from "./hypothesis.js";
 export * from "./chartAnnotationReader.js";
 export * from "./newsSearcher.js";

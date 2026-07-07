@@ -11,11 +11,12 @@ import {
     DrizzleDailyIssueRepository,
     DrizzlePriceLineRepository,
     DrizzleReviewPointRepository,
+    DrizzleHypothesisRepository,
     DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, PRICE_LINE_REPO, REVIEW_POINT_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, PRICE_LINE_REPO, REVIEW_POINT_REPO, HYPOTHESIS_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
@@ -23,6 +24,7 @@ import { DayReplayController } from "./board/dayReplay.controller.js";
 import { ThemeController } from "./board/theme.controller.js";
 import { PriceLineController } from "./curation/priceLine.controller.js";
 import { ReviewPointController } from "./curation/reviewPoint.controller.js";
+import { HypothesisController } from "./curation/hypothesis.controller.js";
 import { NewsController } from "./news/news.controller.js";
 import { TelegramNewsController } from "./news/telegramNews.controller.js";
 import { LazyTelegramNewsSearcher } from "./news/telegramNewsSearcher.js";
@@ -97,6 +99,12 @@ const curationProviders: Provider[] = [
         useFactory: (pool: Pool) => new DrizzleReviewPointRepository(createDb(pool)),
         inject: [MARKET_POOL],
     },
+    {
+        // 가설 큐레이션 — repo 를 그대로 노출(목록·생성·연결/해제). 조립·필터는 클라 인메모리(옵션 A).
+        provide: HYPOTHESIS_REPO,
+        useFactory: (pool: Pool) => new DrizzleHypothesisRepository(createDb(pool)),
+        inject: [MARKET_POOL],
+    },
 ];
 
 const newsProviders: Provider[] = [
@@ -123,6 +131,7 @@ const newsProviders: Provider[] = [
         ThemeController,
         PriceLineController,
         ReviewPointController,
+        HypothesisController,
         NewsController,
         TelegramNewsController,
     ],

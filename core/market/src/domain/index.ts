@@ -24,6 +24,9 @@ export * from "./classification/dailyIssue.js";
 export * from "./review/priceLine.js";
 export * from "./review/reviewPoint.js";
 
+// hypothesis — 매매 가설(사람 편집): 원본 + 타점 연결 + 그래프. review point 를 자연키로 참조.
+export * from "./hypothesis/index.js";
+
 // board — 테마 보드 순수 로직(로스터·포함관계·시점 유니버스 선정). 워크벤치 클라가 import.
 export * from "./board/index.js";
 

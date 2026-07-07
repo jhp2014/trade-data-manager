@@ -7,6 +7,8 @@ export function reviewPointToRow(p: ReviewPoint): ReviewPointInsert {
         stockCode: p.stockCode,
         tradeDate: p.date,
         tradeTime: p.time,
+        type: p.type ?? null,
+        outcome: p.outcome ?? null,
         memo: p.memo ?? null,
     };
 }
@@ -16,6 +18,8 @@ export function rowToReviewPoint(r: ReviewPointRow): ReviewPoint {
         stockCode: r.stockCode,
         date: r.tradeDate,
         time: r.tradeTime,
+        type: r.type ?? undefined,
+        outcome: r.outcome ?? undefined,
         memo: r.memo ?? undefined,
     };
 }

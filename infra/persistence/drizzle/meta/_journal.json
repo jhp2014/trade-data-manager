@@ -71,6 +71,13 @@
       "when": 1783054614205,
       "tag": "0009_add_price_line_anchor",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783351431669,
+      "tag": "0010_ordinary_fabian_cortez",
+      "breakpoints": true
     }
   ]
 }
