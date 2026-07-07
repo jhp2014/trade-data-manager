@@ -58,7 +58,7 @@ export function StockRow({
                     onContextMenu={(e) => {
                         e.preventDefault(); // 기본 브라우저 메뉴 차단(우클릭=테마 배정 팝업). 행 onClick 은 우클릭으로 안 뜸.
                         e.stopPropagation();
-                        openAssign({ code: s.code, name: s.name });
+                        openAssign({ code: s.code, name: s.name }, { x: e.clientX, y: e.clientY });
                     }}
                     title="우클릭: 테마 배정"
                     style={{ flexShrink: 1, minWidth: 0, color: "var(--text-primary)", fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}

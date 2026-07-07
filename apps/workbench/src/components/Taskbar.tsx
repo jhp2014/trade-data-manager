@@ -7,7 +7,7 @@ import { PANEL_CATALOG, type PanelEntry } from "../shell/panelCatalog.js";
 import { stockMetaQuery } from "../api/queries.js";
 import { DatePicker } from "./DatePicker.js";
 import { Popover } from "./Popover.js";
-import { GearButton } from "./Modal.js";
+import { GearButton } from "../ui/controls.js";
 
 // 하단 작업표시줄 — 작업화면(프리셋) 표시·순환 + 닫힌(최소화) 창 재오픈 + 종목/날짜/시간 컨텍스트(우측 구석).
 // 컨텍스트는 상단 툴바 대신 여기로 이전: 텍스트처럼 보이되 클릭하면 편집(날짜는 data-aware 피커).
