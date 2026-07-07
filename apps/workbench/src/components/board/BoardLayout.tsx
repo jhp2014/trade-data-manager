@@ -6,14 +6,18 @@ import { relatedThemes, type Grouped, type ThemeGroup } from "@trade-data-manage
 import { ThemeCard, BoardCenter, type BoardStock, type RelatedInfo } from "./BoardCard.js";
 import { NavRail, HiddenRail } from "./BoardRails.js";
 
-// 보드 본문 공용 — NavRail + 카드(즐겨찾기 상단 / 나머지 / 개별·미분류) + 숨김 Rail. 두 보드 공유.
+// 보드 본문 공용 — NavRail + 카드(현재 종목 밴드 / 즐겨찾기 / 나머지 / 개별·미분류) + 숨김 Rail. 두 보드 공유.
 // 즐겨찾기(★)·숨김(👁)은 세션 휘발 로컬 상태. 자동숨김=현재 시점 포함관계(비sticky — 복기 스크럽에
 // 따라 동적으로 숨김/복원). 사용자 override(userHidden)가 자동숨김보다 우선. 드래그 정렬은 후속(4b).
+// 상단 '현재 종목' 밴드: 다른 패널(외부 origin)이 종목을 바꾸면 그 종목의 보이는 테마 전부를 승격+스크롤,
+// 이 보드에서 직접 고른 내부 선택은 제자리(밴드 불변). selfOrigin vs focusOrigin(스토어 lastFocusOrigin)로 구분.
 export function BoardLayout({
     grouped,
     parents,
     focusCode,
     onPick,
+    selfOrigin,
+    focusOrigin,
     showIndividuals = true,
     showUnclassified = true,
 }: {
@@ -21,6 +25,8 @@ export function BoardLayout({
     parents: Map<string, string[]>;
     focusCode: string;
     onPick: (code: string) => void;
+    selfOrigin: string; // 이 보드 패널의 고유 id(useId). focusOrigin 과 같으면 내가 바꾼 것.
+    focusOrigin: string | null; // 마지막 Focus 변경 출처(store.lastFocusOrigin).
     showIndividuals?: boolean;
     showUnclassified?: boolean;
 }): JSX.Element {
@@ -28,6 +34,7 @@ export function BoardLayout({
     const [selected, setSelected] = useState<string | null>(null);
     const [favorites, setFavorites] = useState<string[]>([]); // 즐겨찾기 순서
     const [userHidden, setUserHidden] = useState<Map<string, boolean>>(new Map()); // 수동 숨김/해제 override
+    const [promoted, setPromoted] = useState<string[]>([]); // 외부 선택으로 상단 승격된 테마(보드순). 내부 선택엔 불변.
 
     const [scrollTarget, setScrollTarget] = useState<string | null>(null);
     const register = (theme: string, el: HTMLElement | null): void => {
@@ -71,15 +78,31 @@ export function BoardLayout({
     // 관련테마 칩 클릭: 숨김이면 해제하고 그 카드로, 아니면 그냥 이동.
     const gotoRelated = (theme: string): void => (isHidden(theme) ? unhideGoto : gotoTheme)(theme);
 
+    // 외부(다른 패널) 선택이면 그 종목이 속한 '보이는' 테마 전부를 상단 밴드로 승격 + 스크롤.
+    // 내부(이 보드에서 클릭)면 밴드 유지·스크롤 X(제자리). 코드 변경 시에만 그 시점 스냅샷으로 재계산.
+    useEffect(() => {
+        if (!focusCode) {
+            setPromoted([]);
+            return;
+        }
+        if (focusOrigin === selfOrigin) return; // 내부 선택 → 제자리(밴드 불변)
+        const themes = grouped.themes.filter((g) => !isHidden(g.theme) && g.stocks.some((s) => s.code === focusCode)).map((g) => g.theme);
+        setPromoted(themes);
+        if (themes.length > 0) setScrollTarget(themes[0]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusCode]);
+
     const themeByName = new Map(grouped.themes.map((g) => [g.theme, g]));
-    // 현재 종목이 속한 테마(숨김 포함) — 공통 focusCode 를 보드 로스터와 대조해 파생.
-    // 상단 승격은 안 한다(제자리 유지). 대신 해당 카드는 movers 로 펼치고, 이슈보드 NavRail 2번째 줄에 나열한다.
+    // 현재 종목이 속한 테마(숨김 포함) — 공통 focusCode 를 보드 로스터와 대조해 파생. NavRail 2번째 줄용.
     const containsFocus = (g: ThemeGroup<BoardStock>): boolean => !!focusCode && g.stocks.some((s) => s.code === focusCode);
     const focusThemes = grouped.themes.filter(containsFocus); // 보드 로스터 기준(숨김 포함). 비면 NavRail 이 None 칩.
+    // 상단 승격 밴드 — 외부 선택으로 올라온 테마(보드순 유지, 숨김/소멸 제외). fav/rest 에서 빠져 중복 카드 방지.
+    const promotedCards = grouped.themes.filter((g) => promoted.includes(g.theme) && !isHidden(g.theme));
+    const promotedSet = new Set(promotedCards.map((g) => g.theme));
     const favCards = favorites
         .map((t) => themeByName.get(t))
-        .filter((g): g is ThemeGroup<BoardStock> => !!g && !isHidden(g.theme));
-    const restCards = grouped.themes.filter((g) => !favorites.includes(g.theme) && !isHidden(g.theme));
+        .filter((g): g is ThemeGroup<BoardStock> => !!g && !isHidden(g.theme) && !promotedSet.has(g.theme));
+    const restCards = grouped.themes.filter((g) => !favorites.includes(g.theme) && !isHidden(g.theme) && !promotedSet.has(g.theme));
     const hiddenThemes = grouped.themes.filter((g) => isHidden(g.theme));
 
     const empty = grouped.themes.length === 0 && grouped.individuals.length === 0 && grouped.unclassified.length === 0;
@@ -92,12 +115,11 @@ export function BoardLayout({
             return { theme: r.theme, kind: r.kind, movers: roster.filter((s) => s.isMover || s.signal).length, total: roster.length };
         });
 
-    // 현재 종목이 속한 카드는 제자리에서 movers 로 펼친다. key 에 -focus 를 붙여 focus 진입/이탈 시
+    // 밴드 카드는 movers 로 열어 선택 행이 바로 보이게 한다. key 에 -promoted 를 붙여 승격 진입/이탈 시
     // 리마운트되게 한다(같은 부모에서 key 가 같으면 React 가 인스턴스를 재사용해 initialMode 가 안 먹음).
-    const renderCard = (g: ThemeGroup<BoardStock>): JSX.Element => {
-        const focus = containsFocus(g);
+    const renderCard = (g: ThemeGroup<BoardStock>, promotedCard = false): JSX.Element => {
         return (
-            <div key={focus ? `${g.theme}-focus` : g.theme} ref={(el) => register(g.theme, el)} style={{ scrollMarginTop: 8 }}>
+            <div key={promotedCard ? `${g.theme}-promoted` : g.theme} ref={(el) => register(g.theme, el)} style={{ scrollMarginTop: 8 }}>
                 <ThemeCard
                     theme={g.theme}
                     stocks={g.stocks}
@@ -111,7 +133,7 @@ export function BoardLayout({
                     related={relatedOf(g)}
                     onGoto={gotoRelated}
                     isHidden={isHidden}
-                    initialMode={focus ? "movers" : "collapsed"}
+                    initialMode={promotedCard ? "movers" : "collapsed"}
                 />
             </div>
         );
@@ -129,6 +151,18 @@ export function BoardLayout({
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowAnchor: "none" }}>
                 {/* 폭이 커지면 카드는 일정폭까지만, 그 이상은 좌우 여백. */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8, maxWidth: 760, width: "100%", margin: "0 auto" }}>
+                    {promotedCards.length > 0 && (
+                        <>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 2px" }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: "var(--text-tertiary)" }}>현재 종목</span>
+                                <div style={{ flex: 1, height: 1, background: "var(--border-subtle)" }} />
+                            </div>
+                            {promotedCards.map((g) => renderCard(g, true))}
+                            {(favCards.length > 0 || restCards.length > 0) && (
+                                <div style={{ height: 1, background: "var(--border-default)", margin: "0 2px" }} />
+                            )}
+                        </>
+                    )}
                     {favCards.length > 0 && (
                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                             <SortableContext items={favCards.map((g) => g.theme)} strategy={verticalListSortingStrategy}>

@@ -59,11 +59,14 @@ interface WorkbenchState {
     replaySettings: ReplayBoardSettings;
     reviewTypePresets: string[]; // 타점 셋업 유형 프리셋(숫자키 1~9). 클라 config.
     selectedHypothesisId: string | null; // 가설 선택 축 — 리스트↔그래프 하이라이트 동기화.
-    // Focus 액션 — 무효화규칙을 액션 안에 강제한다(패널이 규칙을 재현하지 않게).
-    setDate: (date: string) => void;
-    setCode: (code: string) => void;
-    setTime: (time: string | null) => void;
-    setFocus: (next: { date: string; code: string; time: string | null }) => void; // review point 원자적 세팅
+    // 마지막 Focus 변경의 출처(패널 id). 패널이 "내가 바꿨나(self) vs 남이 바꿨나(external)"를 구분해
+    // 자기 자신은 제자리, 남에 의한 변경은 스크롤/동기화하는 데 쓴다. origin 미전달 = null(= 외부 취급).
+    lastFocusOrigin: string | null;
+    // Focus 액션 — 무효화규칙을 액션 안에 강제한다(패널이 규칙을 재현하지 않게). origin 은 선택적 출처 태그.
+    setDate: (date: string, origin?: string) => void;
+    setCode: (code: string, origin?: string) => void;
+    setTime: (time: string | null, origin?: string) => void;
+    setFocus: (next: { date: string; code: string; time: string | null }, origin?: string) => void; // review point 원자적 세팅
     setTimeLock: (on: boolean) => void;
     // Scope 액션 — 각 축 독립 토글(차트 안 건드림).
     setTheme: (theme: string | null) => void;
@@ -108,16 +111,17 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     replaySettings: { amountN: 80, rateN: 40 },
     reviewTypePresets: loadReviewTypePresets(),
     selectedHypothesisId: null,
+    lastFocusOrigin: null,
 
     // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale).
-    setDate: (date) =>
-        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null } })),
+    setDate: (date, origin) =>
+        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null }, lastFocusOrigin: origin ?? null })),
     // code 변경 시 검색 모드 자동 해제(종목 바뀌면 Focus 복귀). 같은 종목이면 유지.
-    setCode: (code) =>
-        set((s) => ({ focus: { ...s.focus, code, time: s.focus.timeLock ? s.focus.time : null }, search: code !== s.focus.code ? null : s.search })),
-    setTime: (time) => set((s) => ({ focus: { ...s.focus, time } })),
-    setFocus: ({ date, code, time }) =>
-        set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search })),
+    setCode: (code, origin) =>
+        set((s) => ({ focus: { ...s.focus, code, time: s.focus.timeLock ? s.focus.time : null }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
+    setTime: (time, origin) => set((s) => ({ focus: { ...s.focus, time }, lastFocusOrigin: origin ?? null })),
+    setFocus: ({ date, code, time }, origin) =>
+        set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
     setTimeLock: (on) => set((s) => ({ focus: { ...s.focus, timeLock: on } })),
 
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
