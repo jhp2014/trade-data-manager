@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
-import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
-import { upsertReviewPoint, removeReviewPoint } from "../api/reviewPoints.js";
-import { chartQuery, priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery } from "../api/queries.js";
+import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
+import { usePriceLinesForChart, useReviewPointHotkeys } from "../lib/chartHooks.js";
+import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import { SegButton, PaneLabel, EyeIcon, InfoIcon, TrashIcon, Center } from "./ChartPanelChrome.js";
-import { useStockName } from "../lib/useStockName.js";
 
 // 차트 패널 — 일봉(상) + 분봉(하) 듀얼. 영역 더블클릭 = 그 영역만 보기 ↔ 둘 다.
 // 좌상단 종목명(마스터 메타 경량 조회), 우상단 통합 세그먼트 컨트롤(마커·타점정보·clear·시장).
+// 가격선/타점 편집 유스케이스는 usePriceLinesForChart·useReviewPointHotkeys 훅으로 분리 — 여긴 뷰 파생+렌더.
 // code/date/time 은 Focus 구독. 분봉 좌클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~9=유형 프리셋 입력.
 export function ChartPanel(): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
@@ -34,114 +34,12 @@ export function ChartPanel(): JSX.Element {
 
     const toggleExpand = (which: "daily" | "minute"): void => setExpanded((cur) => (cur === which ? null : which));
 
-    const qc = useQueryClient();
-
-    // 가격선 주석 — 조회 + 우클릭 토글(자동 저장) + clear(전체 삭제).
-    const linesQ = useQuery(priceLinesQuery(code, date));
-    const lines = useMemo(() => linesQ.data ?? [], [linesQ.data]);
-    // 앵커(캔들 좌표) → 로드된 캔들에서 raw 가격 해소(RenderLine). 앵커 캔들이 아직 없으면 그 선은 생략.
-    // anchorTime 유무로 일봉(D)/분봉(M) 구분. field=고/저/시/종(현재 UI 는 high).
-    const resolvedLines = useMemo<RenderLine[]>(() => {
-        if (!dailyView || !minuteView) return [];
-        const dailyByDate = new Map(dailyView.map((p) => [p.time, p] as const));
-        const minuteByKey = new Map(minuteView.points.map((p) => [`${p.date}T${p.tradeTime}`, p] as const));
-        const out: RenderLine[] = [];
-        for (const l of lines) {
-            if (!l.id) continue;
-            if (l.anchorTime) {
-                const mp = minuteByKey.get(`${l.anchorDate}T${l.anchorTime}`);
-                if (mp) out.push({ id: l.id, price: mp.highPrice, kind: "M" });
-            } else {
-                const dp = dailyByDate.get(l.anchorDate);
-                if (dp) out.push({ id: l.id, price: dp[l.field], kind: "D" });
-            }
-        }
-        return out;
-    }, [lines, dailyView, minuteView]);
-    const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
-    const invalidateLines = (): void => {
-        void qc.invalidateQueries({ queryKey: priceLinesQuery(code, date).queryKey });
-        void qc.invalidateQueries({ queryKey: priceLinedStocksQuery().queryKey }); // 작업셋 패널 즉시 반영
-    };
-    const addMut = useMutation({ mutationFn: addPriceLine, onSuccess: invalidateLines });
-    const removeMut = useMutation({ mutationFn: removePriceLine, onSuccess: invalidateLines });
-    // clear — 이 차트의 가격선 전체 삭제(우클릭이 잘 안 잡히는 경우 대비). 저장 타점은 건드리지 않음.
-    const clearMut = useMutation({
-        mutationFn: async () => {
-            await Promise.all(lines.filter((l) => l.id).map((l) => removePriceLine(l.id!)));
-        },
-        onSuccess: invalidateLines,
-    });
-    // 봉 우클릭 = 그 봉 앵커에 선 토글. 같은 앵커(anchorDate+anchorTime)가 이미 있으면 삭제, 없으면 추가.
-    const toggleLine = (anchorDate: string, anchorTime: string | undefined): void => {
-        if (!code || !date) return;
-        const existing = lines.find(
-            (l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime,
-        );
-        if (existing?.id) removeMut.mutate(existing.id);
-        else addMut.mutate({ stockCode: code, date, anchorDate, anchorTime, field: "high" });
-    };
-    // 라벨/선 우클릭 삭제 — id 로 바로 제거(D/M 무관).
-    const removeLine = (line: RenderLine): void => {
-        removeMut.mutate(line.id);
-    };
-
-    // 복기 타점 — 조회 + 스페이스바 저장(토글). 저장된 타점은 흐린 세로선 + hover 아이콘.
-    const reviewQ = useQuery(reviewPointsQuery(code, date));
-    const reviewPoints = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
-    const invalidateReview = (): void => {
-        void qc.invalidateQueries({ queryKey: reviewPointsQuery(code, date).queryKey });
-        void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey }); // 작업셋 패널 즉시 반영
-    };
-    const upsertRpMut = useMutation({ mutationFn: upsertReviewPoint, onSuccess: invalidateReview });
-    const removeRpMut = useMutation({
-        mutationFn: (v: { code: string; date: string; time: string }) => removeReviewPoint(v.code, v.date, v.time),
-        onSuccess: invalidateReview,
-    });
-    // 저장된 타점 시각(unix초) — 분봉 세로선/아이콘용.
-    const savedTimes = useMemo(
-        () => (date ? reviewPoints.map((rp) => kstToUnix(date, rp.time)) : []),
-        [reviewPoints, date],
-    );
-
-    // 스페이스바 = 현재 Focus.time 타점 저장 토글(같은 시각 있으면 삭제). 입력창 포커스 중엔 무시.
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent): void => {
-            if (e.code !== "Space") return;
-            const t = e.target as HTMLElement | null;
-            if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-            if (!code || !date || !time) return;
-            e.preventDefault();
-            const existing = reviewPoints.find((rp) => rp.time === time);
-            if (existing) removeRpMut.mutate({ code, date, time });
-            else upsertRpMut.mutate({ stockCode: code, date, time });
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [code, date, time, reviewPoints]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // 숫자키 1~9 = 현재 Focus.time 타점에 셋업 유형(프리셋) 입력. 없으면 생성, 있으면 유형 교체(outcome/memo 보존).
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent): void => {
-            if (e.key.length !== 1 || e.key < "1" || e.key > "9") return;
-            const t = e.target as HTMLElement | null;
-            if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-            if (!code || !date || !time) return;
-            const type = typePresets[Number(e.key) - 1];
-            if (!type) return; // 미설정 슬롯 무시
-            e.preventDefault();
-            const existing = reviewPoints.find((rp) => rp.time === time);
-            upsertRpMut.mutate({ stockCode: code, date, time, type, outcome: existing?.outcome, memo: existing?.memo });
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [code, date, time, reviewPoints, typePresets]); // eslint-disable-line react-hooks/exhaustive-deps
+    // 가격선 주석(조회·해소·토글/삭제/clear) + 복기 타점(조회·단축키·savedTimes) — 훅으로 분리.
+    const { resolvedLines, dLines, hasLines, toggleLine, removeLine, clear } = usePriceLinesForChart(code, date, dailyView, minuteView);
+    const { savedTimes, focusedPoint } = useReviewPointHotkeys(code, date, time, typePresets);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음.
     const markerTime = useMemo(() => (time && date ? kstToUnix(date, time) : null), [time, date]);
-    // 현재 Focus.time 에 저장된 타점(있으면) — 헤더에 유형 배지 표시용.
-    const focusedPoint = useMemo(() => reviewPoints.find((rp) => rp.time === time), [reviewPoints, time]);
-    const hasLines = lines.length > 0;
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -160,7 +58,7 @@ export function ChartPanel(): JSX.Element {
                     <SegButton active={showPointInfo} onClick={() => setShowPointInfo((v) => !v)} title={showPointInfo ? "현재 타점 정보 끄기" : "현재 타점 정보 켜기"}>
                         <InfoIcon />
                     </SegButton>
-                    <SegButton active={false} disabled={!hasLines} onClick={() => hasLines && clearMut.mutate()} title="가격선 전체 지우기">
+                    <SegButton active={false} disabled={!hasLines} onClick={() => hasLines && clear()} title="가격선 전체 지우기">
                         <TrashIcon />
                     </SegButton>
                     <SegButton active onClick={() => setMode(mode === "un" ? "krx" : "un")} title={`클릭: 시장 전환 (현재 ${mode.toUpperCase()})`}>
