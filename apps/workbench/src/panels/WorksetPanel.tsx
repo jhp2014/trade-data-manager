@@ -1,14 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
-import { fetchPriceLinedStocks } from "../api/priceLines.js";
-import { fetchAllPoints, type ReviewPointListItem } from "../api/reviewPoints.js";
+import { type ReviewPointListItem } from "../api/reviewPoints.js";
+import { priceLinedStocksQuery, allPointsQuery } from "../api/queries.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { MonthPicker, LocateIcon, DateHeader, Name, PointRow } from "./WorksetRows.js";
 
 // 작업셋 패널 — 선 있는 (종목,날짜) ∪ 타점을 한 리스트로 합쳐 월별로 본다.
 // 선만 있고 타점 없는 종목은 이름만(타점 시각 줄 없음), 타점 있으면 아래에 시각들.
-// 상단 핀 = 현재 종목 고정(이름 클릭=스크롤 점프 / 타점 클릭=이동). 스크롤 영역엔 현재 종목이 중복 표시·강조.
+// 월 헤더 우측 조준 아이콘 = 현재 종목 위치로 스크롤 점프(작업셋에 없으면 흐리게·비활성). 스크롤 영역엔 현재 종목이 강조 표시.
 // 종목 이름 클릭 → date·code focus(차트 로드). 타점 클릭 → date·code·time 전부 focus.
 
 function monthOf(date: string): string {
@@ -28,8 +28,8 @@ export function WorksetPanel(): JSX.Element {
     const focusTime = useWorkbench((s) => s.focus.time);
     const setFocus = useWorkbench((s) => s.setFocus);
 
-    const stocksQ = useQuery({ queryKey: ["price-lined-stocks"], queryFn: fetchPriceLinedStocks, staleTime: 60_000 });
-    const pointsQ = useQuery({ queryKey: ["all-points"], queryFn: fetchAllPoints, staleTime: 60_000 });
+    const stocksQ = useQuery(priceLinedStocksQuery());
+    const pointsQ = useQuery(allPointsQuery());
     const stocks = useMemo(() => stocksQ.data ?? [], [stocksQ.data]);
     const points = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);
 
@@ -92,47 +92,31 @@ export function WorksetPanel(): JSX.Element {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
-            {/* 월 선택 — 텍스트 + 아래 화살표 버튼(커스텀 팝오버) */}
+            {/* 월 선택(좌) + 조준 아이콘(우) — 아이콘 클릭 = 현재 종목 위치로 스크롤 점프.
+                선택 종목이 작업셋에 없으면 스크롤할 위치가 없어 흐리게·비활성 + 툴팁. */}
             <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--border-default)", flexShrink: 0 }}>
                 <MonthPicker month={month} months={months} onPick={setSelMonth} />
-            </div>
-
-            {/* 핀 — 현재 종목 고정(리스트 선택행과 다른 스타일: 흰 배경·accent 테두리·조준 아이콘). 클릭 = 스크롤 점프.
-                작업셋에 없는 종목(선·타점 모두 없음)이면 코드 대신 안내 문구, 좁아지면 말줄임. */}
-            {focusCode &&
-                (pinnedName ? (
+                {focusCode && (
                     <button
-                        onClick={scrollToCurrent}
-                        title="스크롤: 현재 종목 위치로"
+                        onClick={pinnedName ? scrollToCurrent : undefined}
+                        disabled={!pinnedName}
+                        title={pinnedName ? "현재 종목 위치로 스크롤" : "선택한 종목은 작업셋에 없습니다"}
                         style={{
-                            display: "flex",
+                            marginLeft: "auto",
+                            display: "inline-flex",
                             alignItems: "center",
-                            gap: 7,
-                            flexShrink: 0,
-                            width: "100%",
-                            textAlign: "left",
+                            padding: "2px 3px",
                             border: "none",
-                            borderBottom: "2px solid var(--accent-primary)",
-                            background: "var(--bg-primary)",
-                            padding: "5px 10px",
-                            cursor: "pointer",
-                            font: "inherit",
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+                            background: "none",
+                            cursor: pinnedName ? "pointer" : "default",
+                            lineHeight: 0,
+                            opacity: pinnedName ? 1 : 0.35,
                         }}
                     >
                         <LocateIcon />
-                        <Name name={pinnedName} code={focusCode} color="var(--accent-hover)" strong />
                     </button>
-                ) : (
-                    <div
-                        title="선택한 종목은 작업셋에 없습니다"
-                        style={{ flexShrink: 0, borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)", padding: "5px 10px" }}
-                    >
-                        <span style={{ display: "block", color: "var(--text-tertiary)", fontSize: 12, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            선택한 종목은 작업셋에 없습니다
-                        </span>
-                    </div>
-                ))}
+                )}
+            </div>
 
             {/* 스크롤 영역 — 이번 달 전체(날짜 → 종목 → 타점). 선만 있는 종목은 이름만. */}
             <div style={{ overflowY: "auto", flex: 1 }}>
