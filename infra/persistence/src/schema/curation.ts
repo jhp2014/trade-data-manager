@@ -1,36 +1,33 @@
 // infra/db/schema — `curation` Postgres 스키마: 사람이 편집/큐레이션하는 시장 주석.
 // 수집/기계생성(candles·market_cap·news·stock_master = `market`)과 물리 격리. FK 없음(무결성은 앱이 관리).
 // 여기 3테이블은 성격이 같다: 사람이 손으로 넣고 지우는 편집 데이터.
-//   · daily_issues  : 당일 촉매 분류(원래 market 에 있었으나 성격상 이관 — 자연키 PK)
-//   · price_lines   : 차트 수평 가격선((종목,날짜) 당 N개, price 가변 → surrogate id)
-//   · review_points : 복기 타점((종목,날짜,시각) 자연키 = caseId. hypothesis 가 하류에서 읽어 의미 부여)
+//   · daily_comments : 당일 종목 코멘트((종목,날짜) 자연키 PK — 종목당 당일 1개)
+//   · price_lines    : 차트 수평 가격선((종목,날짜) 당 N개, price 가변 → surrogate id)
+//   · review_points  : 복기 타점((종목,날짜,시각) 자연키 = caseId. hypothesis 가 하류에서 읽어 의미 부여)
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
 import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, primaryKey, foreignKey, unique, index } from "drizzle-orm/pg-core";
 
 export const curation = pgSchema("curation");
 
-// 1. 당일 이슈 분류 — 사람이 큐레이션하는 편집 데이터(원시수집 아님). "이 날, 이 종목이, 이 이슈로 움직였다".
-//    종목의 정적 테마(=정체성)는 Google Sheet(종목 History)에 있고, 여기엔 당일 드라이버(촉매)만 담는다.
-//    issue 가 그룹 키: 같은 (trade_date, issue) = 그날 같은 촉매로 같이 움직인 종목들(종목 가로지른 집계).
-//    한 종목이 당일 2개 이슈면 2행. issue 미정이면 sentinel '미분류'. FK 없음(자연키 조인은 trade_date·stock_code).
-//    편집모델: in-place 수정 없음 — 행 단위 add/delete 둘뿐("수정"=삭제+추가). 그래서 다른 테이블처럼
-//    불변 자연키 composite PK (trade_date, stock_code, issue) 가 성립(issue 를 절대 갱신 안 하므로). 행이 독립이라
-//    author 가 행마다 보존됨. add 는 ON CONFLICT DO NOTHING(분류기 재실행이 사람 편집을 안 덮게). 컨펌은 author 변경/삭제로.
-export const dailyIssues = curation.table(
-    "daily_issues",
+// 1. 당일 종목 코멘트 — 사람이 큐레이션하는 편집 데이터(원시수집 아님). "이 날, 이 종목에 남긴 메모".
+//    종목의 정적 테마(=정체성)는 Google Sheet(종목 History)에 있고, 여긴 당일 종목별 자유 주석만 담는다.
+//    (trade_date, stock_code) 자연키 PK = 종목당 당일 코멘트 1개. FK 없음(자연키 조인은 trade_date·stock_code).
+//    편집모델: comment 가 키 밖이라 갱신 가능 → upsert(review_points.memo 선례). 빈 코멘트 = 행 삭제(빈 행 없음).
+//    author = 입력자(누가 남겼나 보존). created_at/updated_at 은 부기.
+export const dailyComments = curation.table(
+    "daily_comments",
     {
         tradeDate: date("trade_date").notNull(),
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
-        issue: varchar("issue", { length: 100 }).notNull().default("미분류"),
-        comment: text("comment"),
+        comment: text("comment").notNull(),
         author: varchar("author", { length: 50 }).notNull(),
         createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+        updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     },
     (t) => [
-        primaryKey({ columns: [t.tradeDate, t.stockCode, t.issue] }),
-        index("idx_daily_issues_date_issue").on(t.tradeDate, t.issue),
-        index("idx_daily_issues_stock").on(t.stockCode),
+        primaryKey({ columns: [t.tradeDate, t.stockCode] }),
+        index("idx_daily_comments_stock").on(t.stockCode),
     ],
 );
 
@@ -69,8 +66,8 @@ export const reviewPoints = curation.table(
     (t) => [primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime] })],
 );
 
-export type DailyIssueRow = typeof dailyIssues.$inferSelect;
-export type DailyIssueInsert = typeof dailyIssues.$inferInsert;
+export type DailyCommentRow = typeof dailyComments.$inferSelect;
+export type DailyCommentInsert = typeof dailyComments.$inferInsert;
 export type PriceLineRow = typeof priceLines.$inferSelect;
 export type PriceLineInsert = typeof priceLines.$inferInsert;
 export type ReviewPointRow = typeof reviewPoints.$inferSelect;

@@ -3,7 +3,7 @@ import { kstToday } from "../lib/date.js";
 
 // 연동버스 = 2계층(레이아웃 라이브러리보다 이게 설계 본질):
 //  - Focus(커서, scalar): date·code·time(+timeLock). 차트·주석 패널이 축별 selector 로 구독.
-//  - Scope(렌즈, 집합): issue. 리스트형 패널 필터(차트 안 건드림).
+//  - Scope(렌즈, 집합): theme. 리스트형 패널 필터(차트 안 건드림).
 // 무효화규칙: date 최상위. 이 슬라이스는 클라에 유니버스 멤버십이 없어 code 유효성 판정은 보류하고,
 // date/code 변경시 time 만 리셋한다(timeLock ON 이면 time 유지 = 같은시각 횡적비교).
 
@@ -18,9 +18,7 @@ export interface Focus {
 }
 
 export interface Scope {
-    // 리스트 필터 렌즈(방송축). 둘 다 nullable·독립 → 동시 활성시 교집합으로 합성("scope.theme 추가" = additional axis).
-    // null = 그 축 미적용. issue 는 daily_issues 큐레이션(현재 sparse), theme 은 시트 멤버십(현재 rich).
-    issue: string | null;
+    // 리스트 필터 렌즈(방송축). null = 미적용. theme 은 시트 멤버십(현재 rich).
     theme: string | null;
 }
 
@@ -33,7 +31,7 @@ export interface Search {
 }
 
 // 보드 설정 — 전역 설정 모달(사이드바)이 편집, 각 보드가 구독. 패널별 gear 대신 전역 1개.
-export interface IssueBoardSettings {
+export interface ThemeBoardSettings {
     showIndividuals: boolean;
     showUnclassified: boolean;
     filterOn: boolean;
@@ -57,7 +55,7 @@ interface WorkbenchState {
     search: Search | null; // 검색 모드 컨텍스트(null = Focus 따라감)
     chartPriceMode: ChartPriceMode; // 뷰 설정(축 아님) — 분봉 % 기준 시장
     newsSearchEngine: NewsSearchEngine; // HTS 뉴스 제목 검색 엔진(전역 토글)
-    issueSettings: IssueBoardSettings;
+    themeBoardSettings: ThemeBoardSettings;
     replaySettings: ReplayBoardSettings;
     reviewTypePresets: string[]; // 타점 셋업 유형 프리셋(숫자키 1~9). 클라 config.
     selectedHypothesisId: string | null; // 가설 선택 축 — 리스트↔그래프 하이라이트 동기화.
@@ -68,7 +66,6 @@ interface WorkbenchState {
     setFocus: (next: { date: string; code: string; time: string | null }) => void; // review point 원자적 세팅
     setTimeLock: (on: boolean) => void;
     // Scope 액션 — 각 축 독립 토글(차트 안 건드림).
-    setIssue: (issue: string | null) => void;
     setTheme: (theme: string | null) => void;
     clearScope: () => void;
     // 검색 모드 — 봉 클릭이 세팅, ✕ 로 해제(null). 종목 바뀌면 setCode/setFocus 가 자동 해제.
@@ -77,7 +74,7 @@ interface WorkbenchState {
     setChartPriceMode: (mode: ChartPriceMode) => void;
     setNewsSearchEngine: (engine: NewsSearchEngine) => void;
     // 보드 설정(전역 모달이 편집)
-    setIssueSettings: (patch: Partial<IssueBoardSettings>) => void;
+    setThemeBoardSettings: (patch: Partial<ThemeBoardSettings>) => void;
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
     setReviewTypePreset: (index: number, value: string) => void;
     setSelectedHypothesis: (id: string | null) => void;
@@ -103,18 +100,18 @@ function loadReviewTypePresets(): string[] {
 
 export const useWorkbench = create<WorkbenchState>((set) => ({
     focus: { date: today, code: "", time: null, timeLock: false },
-    scope: { issue: null, theme: null },
+    scope: { theme: null },
     search: null,
     chartPriceMode: "un",
     newsSearchEngine: "naver",
-    issueSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
+    themeBoardSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
     replaySettings: { amountN: 80, rateN: 40 },
     reviewTypePresets: loadReviewTypePresets(),
     selectedHypothesisId: null,
 
-    // date 최상위 무효화: time 리셋 + scope 전체 리셋(이슈·테마 모두 그날 것이라 날짜 넘어가면 stale).
+    // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale).
     setDate: (date) =>
-        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { issue: null, theme: null } })),
+        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null } })),
     // code 변경 시 검색 모드 자동 해제(종목 바뀌면 Focus 복귀). 같은 종목이면 유지.
     setCode: (code) =>
         set((s) => ({ focus: { ...s.focus, code, time: s.focus.timeLock ? s.focus.time : null }, search: code !== s.focus.code ? null : s.search })),
@@ -123,13 +120,12 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
         set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search })),
     setTimeLock: (on) => set((s) => ({ focus: { ...s.focus, timeLock: on } })),
 
-    setIssue: (issue) => set((s) => ({ scope: { ...s.scope, issue } })),
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
-    clearScope: () => set(() => ({ scope: { issue: null, theme: null } })),
+    clearScope: () => set(() => ({ scope: { theme: null } })),
     setSearch: (search) => set(() => ({ search })),
     setChartPriceMode: (mode) => set(() => ({ chartPriceMode: mode })),
     setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
-    setIssueSettings: (patch) => set((s) => ({ issueSettings: { ...s.issueSettings, ...patch } })),
+    setThemeBoardSettings: (patch) => set((s) => ({ themeBoardSettings: { ...s.themeBoardSettings, ...patch } })),
     setReplaySettings: (patch) => set((s) => ({ replaySettings: { ...s.replaySettings, ...patch } })),
     setReviewTypePreset: (index, value) =>
         set((s) => {

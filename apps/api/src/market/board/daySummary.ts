@@ -1,12 +1,12 @@
 // 당일 요약 읽기모델(api) — /day-summary·/day-replay 응답 조립. 특정 화면 전용이라 app 이 소유(core 아님).
-//   wire 계약(ThemeTag·IssueTag·DailySnapshot·DaySummary)은 contracts/wire 에 두고 서버·클라가 공유한다.
-//   순수함수(IO 0): assembleBaseSnapshots(파일파생+master·시트 조인) · applyIssues(fresh 이슈 덮기) · buildDaySummary(byTheme/byIssue 인덱스).
+//   wire 계약(ThemeTag·DailySnapshot·DaySummary)은 contracts/wire 에 두고 서버·클라가 공유한다.
+//   순수함수(IO 0): assembleBaseSnapshots(파일파생+master·시트 조인) · applyComments(fresh 코멘트 덮기) · buildDaySummary(byTheme 인덱스).
 // fetch·캐시는 DayBoards 가 하고, 여긴 순수 조립만. core 는 도메인(DayStats 등)만 계속 제공.
-import type { StockMaster, ThemeMember, DailyIssue, DayStats } from "@trade-data-manager/market";
-import type { ThemeTag, IssueTag, DailySnapshot, DaySummary } from "@trade-data-manager/wire";
+import type { StockMaster, ThemeMember, DailyComment, DayStats } from "@trade-data-manager/market";
+import type { ThemeTag, DailySnapshot, DaySummary } from "@trade-data-manager/wire";
 
 // wire 계약을 이 모듈 표면으로도 재노출 — dayBoards·컨트롤러·테스트가 여기서 계속 import 한다.
-export type { ThemeTag, IssueTag, DailySnapshot, DaySummary };
+export type { ThemeTag, DailySnapshot, DaySummary };
 
 /** 시트 멤버십 ∩ universe → 종목별 ThemeTag[](편입이슈·날짜 메타 보존, 멤버 등장순 유지). */
 function themeTagsByCode(members: ThemeMember[], codes: string[]): Map<string, ThemeTag[]> {
@@ -31,8 +31,8 @@ export interface DaySnapshotFields {
 }
 
 /**
- * 파일 파생(EOD %·시총) + master·시트를 stock_code 로 조인 → 스냅샷 스켈레톤(issues=[]).
- * universe 주도(시트에 없는 종목도 미분류로 나옴). issues 만 가변이라 여기서 뺀다(소비측이 applyIssues 로 fresh 덮음).
+ * 파일 파생(EOD %·시총) + master·시트를 stock_code 로 조인 → 스냅샷 스켈레톤(comment=null).
+ * universe 주도(시트에 없는 종목도 미분류로 나옴). comment 만 가변이라 여기서 뺀다(소비측이 applyComments 로 fresh 덮음).
  */
 export function assembleBaseSnapshots(
     date: string,
@@ -57,30 +57,23 @@ export function assembleBaseSnapshots(
             amount: s?.amount ?? null,
             marketCap: f?.marketCap ?? null,
             themes: themes.get(code) ?? [],
-            issues: [],
+            comment: null,
         };
     });
 }
 
-/** 스냅샷 스켈레톤에 fresh issues 를 덮는다(편집 즉시 반영). issue 없는 종목은 그대로. */
-export function applyIssues(base: DailySnapshot[], issues: DailyIssue[]): DailySnapshot[] {
-    const byCode = new Map<string, IssueTag[]>();
-    for (const i of issues) {
-        const tag: IssueTag = { issue: i.issue, author: i.author };
-        if (i.comment !== undefined) tag.comment = i.comment;
-        const arr = byCode.get(i.stockCode);
-        if (arr) arr.push(tag);
-        else byCode.set(i.stockCode, [tag]);
-    }
+/** 스냅샷 스켈레톤에 fresh 코멘트를 덮는다(편집 즉시 반영). 코멘트 없는 종목은 그대로(null). */
+export function applyComments(base: DailySnapshot[], comments: DailyComment[]): DailySnapshot[] {
+    const byCode = new Map<string, string>();
+    for (const c of comments) byCode.set(c.stockCode, c.comment);
     return base.map((s) => {
-        const issueTags = byCode.get(s.stockCode);
-        return issueTags ? { ...s, issues: issueTags } : s;
+        const comment = byCode.get(s.stockCode);
+        return comment !== undefined ? { ...s, comment } : s;
     });
 }
 
 export function buildDaySummary(date: string, stocks: DailySnapshot[]): DaySummary {
     const byTheme: Record<string, string[]> = {};
-    const byIssue: Record<string, string[]> = {};
     const push = (index: Record<string, string[]>, key: string, code: string): void => {
         const arr = index[key];
         if (!arr) index[key] = [code];
@@ -88,15 +81,12 @@ export function buildDaySummary(date: string, stocks: DailySnapshot[]): DaySumma
     };
     for (const s of stocks) {
         for (const t of s.themes) push(byTheme, t.theme, s.stockCode);
-        for (const i of s.issues) push(byIssue, i.issue, s.stockCode);
     }
     return {
         date,
         stockCount: stocks.length,
         themes: Object.keys(byTheme),
-        issues: Object.keys(byIssue),
         byTheme,
-        byIssue,
         stocks,
     };
 }

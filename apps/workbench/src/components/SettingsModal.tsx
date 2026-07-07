@@ -3,7 +3,7 @@ import { Modal } from "./Modal.js";
 import { useWorkbench } from "../store/workbench.js";
 
 // 전역 설정 모달 — 사이드바에서 화면 선택 → 그 화면 설정. 패널별 gear 대신 우상단 전역 1개.
-type Screen = "issue" | "replay" | "point";
+type Screen = "theme" | "replay" | "point";
 
 const numInput: React.CSSProperties = {
     width: 56,
@@ -26,13 +26,13 @@ const textInput: React.CSSProperties = {
 };
 
 export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element {
-    const [screen, setScreen] = useState<Screen>("issue");
+    const [screen, setScreen] = useState<Screen>("theme");
     return (
         <Modal title="설정" onClose={onClose}>
             <div style={{ display: "flex", gap: 14, minWidth: 380 }}>
                 {/* 사이드바 */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, borderRight: "1px solid var(--border-subtle)", paddingRight: 12 }}>
-                    {(["issue", "replay", "point"] as const).map((s) => (
+                    {(["theme", "replay", "point"] as const).map((s) => (
                         <button
                             key={s}
                             onClick={() => setScreen(s)}
@@ -47,20 +47,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                                 whiteSpace: "nowrap",
                             }}
                         >
-                            {s === "issue" ? "당일 이슈" : s === "replay" ? "복기" : "타점"}
+                            {s === "theme" ? "테마" : s === "replay" ? "복기" : "타점"}
                         </button>
                     ))}
                 </div>
                 {/* 내용 */}
-                <div style={{ flex: 1, minWidth: 0 }}>{screen === "issue" ? <IssueSettings /> : screen === "replay" ? <ReplaySettings /> : <PointSettings />}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>{screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : <PointSettings />}</div>
             </div>
         </Modal>
     );
 }
 
-function IssueSettings(): JSX.Element {
-    const st = useWorkbench((s) => s.issueSettings);
-    const set = useWorkbench((s) => s.setIssueSettings);
+function ThemeSettings(): JSX.Element {
+    const st = useWorkbench((s) => s.themeBoardSettings);
+    const set = useWorkbench((s) => s.setThemeBoardSettings);
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>

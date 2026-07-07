@@ -6,13 +6,13 @@ import { buildThemeBoardViewModel } from "../lib/boardViewModel.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
 
-// 이슈정리 보드(EOD) — day-summary 일봉 한 방. 상단은 NavRail 만(설정은 전역 모달, 시간/날짜는 전역 툴바).
-// 설정(개별/미분류 표시·필터)은 store.issueSettings 구독.
+// 테마 보드(EOD) — day-summary 일봉 한 방. 상단은 NavRail 만(설정은 전역 모달, 시간/날짜는 전역 툴바).
+// 설정(개별/미분류 표시·필터)은 store.themeBoardSettings 구독.
 export function ThemeBoardPanel(): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
     const code = useWorkbench((s) => s.focus.code);
     const setCode = useWorkbench((s) => s.setCode);
-    const st = useWorkbench((s) => s.issueSettings);
+    const st = useWorkbench((s) => s.themeBoardSettings);
 
     const summaryQ = useQuery(daySummaryQuery(date));
     const board = useMemo(() => (summaryQ.data ? buildThemeBoardViewModel(summaryQ.data, st) : null), [summaryQ.data, st]);

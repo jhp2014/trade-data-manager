@@ -15,7 +15,7 @@ import { dailyMetric } from "./dailyMetrics.js";
 import { snapshotAt } from "./leanModel.js";
 import type { DaySummary } from "../api/daySummary.js";
 import type { ReplayStock } from "../api/dayReplay.js";
-import type { IssueBoardSettings, ReplayBoardSettings } from "../store/workbench.js";
+import type { ThemeBoardSettings, ReplayBoardSettings } from "../store/workbench.js";
 import type { BoardStock } from "../components/board/BoardCard.js";
 
 export interface BoardViewModel {
@@ -23,8 +23,8 @@ export interface BoardViewModel {
     parents: Map<string, string[]>;
 }
 
-/** day-summary(EOD) + 이슈보드 설정 → 테마보드 렌더 구조. 필터(hide/dim)·isMover·buckets 적용. */
-export function buildThemeBoardViewModel(summary: DaySummary, st: IssueBoardSettings): BoardViewModel {
+/** day-summary(EOD) + 테마보드 설정 → 테마보드 렌더 구조. 필터(hide/dim)·isMover·buckets 적용. */
+export function buildThemeBoardViewModel(summary: DaySummary, st: ThemeBoardSettings): BoardViewModel {
     const stocks: BoardStock[] = [];
     for (const s of summary.stocks) {
         const m = dailyMetric(s);

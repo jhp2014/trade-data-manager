@@ -17,9 +17,9 @@ export * from "./equity/ipoPrice.js";
 export * from "./news/news.js";
 export * from "./news/newsSearch.js";
 
-// classification — 종목 분류 두 레이어(정적 테마 정체성 + 당일 촉매)
+// classification — 정적 테마 정체성(시트) + 당일 종목 코멘트(사람 편집)
 export * from "./classification/themeMember.js";
-export * from "./classification/dailyIssue.js";
+export * from "./classification/dailyComment.js";
 
 // review — 차트 주석(사람 편집): 수평 가격선 + 복기 타점
 export * from "./review/priceLine.js";

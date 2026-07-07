@@ -8,7 +8,7 @@ import {
     DrizzleDailyUniverseProvider,
     DrizzleStockMasterRepository,
     DrizzleDailyMarketCapRepository,
-    DrizzleDailyIssueRepository,
+    DrizzleDailyCommentRepository,
     DrizzlePriceLineRepository,
     DrizzleReviewPointRepository,
     DrizzleHypothesisRepository,
@@ -87,7 +87,7 @@ const boardProviders: Provider[] = [
                 dailyCandle: new DrizzleDailyCandleRepository(db),
                 marketCap: new DrizzleDailyMarketCapRepository(db),
             });
-            return new DayBoards({ derived, master, membership, dailyIssue: new DrizzleDailyIssueRepository(db) });
+            return new DayBoards({ derived, master, membership, dailyComment: new DrizzleDailyCommentRepository(db) });
         },
         inject: [MARKET_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
     },

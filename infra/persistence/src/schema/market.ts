@@ -135,7 +135,7 @@ export const stockNews = market.table(
     (t) => [primaryKey({ columns: [t.stockCode, t.publishedDate, t.srno] })],
 );
 
-// 당일 이슈 분류(daily_issues)는 사람이 큐레이션하는 편집 데이터라 `curation` 스키마로 이관했다 → schema/curation.ts.
+// 당일 종목 코멘트(daily_comments)는 사람이 큐레이션하는 편집 데이터라 `curation` 스키마에 있다 → schema/curation.ts.
 
 export type DailyCandleRow = typeof dailyCandles.$inferSelect;
 export type DailyCandleInsert = typeof dailyCandles.$inferInsert;

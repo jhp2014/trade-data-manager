@@ -1,5 +1,5 @@
 // core/market/domain — 정적 테마 멤버십(정체성 레이어). Google Sheet(테마↔종목)의 한 행 = 1 ThemeMember.
-// 당일 드라이버(촉매)는 dailyIssue.ts, 여기엔 "이 종목이 어느 테마에 속하나"라는 준정적 정체성만.
+// 당일 종목 코멘트는 dailyComment.ts, 여기엔 "이 종목이 어느 테마에 속하나"라는 준정적 정체성만.
 // 순수 모델(외부 import 0). 시트 파싱·정규화(toCanonical)는 어댑터 경계의 몫 — 여기 도달하면 깨끗한 6자리 code.
 
 /**

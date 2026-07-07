@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildThemeBoardViewModel, buildReplayBoardViewModel, type BoardViewModel } from "./boardViewModel.js";
 import type { DaySummary, DailySnapshot } from "../api/daySummary.js";
 import type { ReplayStock } from "../api/dayReplay.js";
-import type { IssueBoardSettings, ReplayBoardSettings } from "../store/workbench.js";
+import type { ThemeBoardSettings, ReplayBoardSettings } from "../store/workbench.js";
 import type { BoardStock } from "../components/board/BoardCard.js";
 
 const EOK = 1e8;
@@ -19,7 +19,7 @@ const snap = (over: Partial<DailySnapshot>): DailySnapshot => ({
     amount: String(50 * EOK),
     marketCap: null,
     themes: [],
-    issues: [],
+    comment: null,
     ...over,
 });
 
@@ -27,13 +27,11 @@ const summary = (stocks: DailySnapshot[]): DaySummary => ({
     date: "2026-06-26",
     stockCount: stocks.length,
     themes: [],
-    issues: [],
     byTheme: {},
-    byIssue: {},
     stocks,
 });
 
-const noFilter: IssueBoardSettings = {
+const noFilter: ThemeBoardSettings = {
     showIndividuals: true,
     showUnclassified: false,
     filterOn: false,
@@ -79,7 +77,7 @@ describe("buildThemeBoardViewModel", () => {
     });
 
     it("hide 모드 — 필터 미달 종목 제외", () => {
-        const st: IssueBoardSettings = { ...noFilter, filterOn: true, filterMode: "hide" };
+        const st: ThemeBoardSettings = { ...noFilter, filterOn: true, filterMode: "hide" };
         const vm = buildThemeBoardViewModel(
             summary([
                 snap({ stockCode: "A", themes: [{ theme: "T" }], highPct: 20, amount: String(200 * EOK) }),
@@ -92,7 +90,7 @@ describe("buildThemeBoardViewModel", () => {
     });
 
     it("dim 모드 — 미달 종목은 남되 dim=true", () => {
-        const st: IssueBoardSettings = { ...noFilter, filterOn: true, filterMode: "dim" };
+        const st: ThemeBoardSettings = { ...noFilter, filterOn: true, filterMode: "dim" };
         const vm = buildThemeBoardViewModel(
             summary([
                 snap({ stockCode: "A", themes: [{ theme: "T" }], highPct: 20, amount: String(200 * EOK) }),

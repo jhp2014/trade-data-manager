@@ -13,23 +13,21 @@ const snap = (over: Partial<DailySnapshot>): DailySnapshot => ({
     amount: null,
     marketCap: null,
     themes: [],
-    issues: [],
+    comment: null,
     ...over,
 });
 
 describe("buildDaySummary", () => {
-    it("byTheme/byIssue 를 stocks 한 패스로 파생 — 다중테마 종목은 각 키에 등장", () => {
+    it("byTheme 를 stocks 한 패스로 파생 — 다중테마 종목은 각 키에 등장", () => {
         const stocks = [
-            snap({ stockCode: "A", themes: [{ theme: "반도체" }, { theme: "AI" }], issues: [{ issue: "HBM", author: "me" }] }),
+            snap({ stockCode: "A", themes: [{ theme: "반도체" }, { theme: "AI" }] }),
             snap({ stockCode: "B", themes: [{ theme: "반도체" }] }),
-            snap({ stockCode: "C" }), // 미분류·이슈없음 → 어느 인덱스에도 없음
+            snap({ stockCode: "C" }), // 미분류 → 어느 인덱스에도 없음
         ];
         const s = buildDaySummary("2026-06-26", stocks);
         expect(s.stockCount).toBe(3);
         expect(s.byTheme).toEqual({ 반도체: ["A", "B"], AI: ["A"] });
-        expect(s.byIssue).toEqual({ HBM: ["A"] });
         expect(s.themes).toEqual(["반도체", "AI"]);
-        expect(s.issues).toEqual(["HBM"]);
         expect(s.stocks).toBe(stocks); // 캐노니컬 그대로(참조 유지)
     });
 
@@ -45,9 +43,7 @@ describe("buildDaySummary", () => {
             date: "2026-06-26",
             stockCount: 0,
             themes: [],
-            issues: [],
             byTheme: {},
-            byIssue: {},
             stocks: [],
         });
     });
