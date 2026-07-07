@@ -36,4 +36,11 @@ describe("mapWithConcurrency", () => {
     it("빈 입력은 빈 배열", async () => {
         expect(await mapWithConcurrency([], 4, async () => 1)).toEqual([]);
     });
+
+    it("limit 이 NaN/Infinity/0/음수 여도 전 항목을 정상 처리(워커 0 으로 새지 않음)", async () => {
+        const fn = async (n: number): Promise<number> => n * 2;
+        for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -5]) {
+            expect(await mapWithConcurrency([1, 2, 3], bad, fn)).toEqual([2, 4, 6]);
+        }
+    });
 });

@@ -11,7 +11,8 @@ export async function mapWithConcurrency<T, R>(
     const results = new Array<R>(n);
     if (n === 0) return results;
 
-    const workers = Math.max(1, Math.min(Math.floor(limit), n));
+    // limit 이 NaN/Infinity/<1 이면 전 종목 동시(풀이 rate limit 자체 페이싱). 이상값이 워커 0(NaN) 으로 새지 않게.
+    const workers = Number.isFinite(limit) && limit >= 1 ? Math.min(Math.floor(limit), n) : n;
     let cursor = 0;
 
     async function run(): Promise<void> {
