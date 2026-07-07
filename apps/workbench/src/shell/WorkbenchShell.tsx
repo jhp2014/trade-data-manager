@@ -14,6 +14,7 @@ import { HypothesisPanel } from "../panels/HypothesisPanel.js";
 import { HypothesisGraphPanel } from "../panels/HypothesisGraphPanel.js";
 import { HtsNewsPanel } from "../panels/HtsNewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
+import { useDock } from "../store/dock.js";
 
 // dockview 도킹 셸 — 패널을 컴포넌트 맵으로 등록한다(탭·분할·플로팅·persist 는 셸이 제공).
 // 레이아웃 JSON persist·기존앱 흡수는 후속.
@@ -29,6 +30,8 @@ const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
 };
 
 function onReady(event: DockviewReadyEvent): void {
+    // 프리셋 전환·작업표시줄이 조작할 수 있게 api 를 dock 스토어에 노출.
+    useDock.getState().setApi(event.api);
     // 이슈정리 보드(좌) | 차트(우) + 복기 보드는 이슈정리 보드에 탭으로. 필요시 드래그로 띄우거나(플로팅) 분할.
     const board = event.api.addPanel({ id: "theme-board-1", component: "themeBoard", title: "이슈정리" });
     event.api.addPanel({

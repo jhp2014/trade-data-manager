@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal } from "./Modal.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi, type SettingsScreen } from "../store/ui.js";
+import { useDock } from "../store/dock.js";
 import { staticCommands, commandsByCategory } from "../keymap/registry.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { formatChord } from "../keymap/keys.js";
@@ -12,6 +13,7 @@ const SCREENS: { id: Screen; label: string }[] = [
     { id: "theme", label: "테마" },
     { id: "replay", label: "복기" },
     { id: "point", label: "타점" },
+    { id: "layout", label: "레이아웃" },
     { id: "shortcuts", label: "단축키" },
 ];
 
@@ -64,7 +66,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                 </div>
                 {/* 내용 */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "point" ? <PointSettings /> : <ShortcutSettings />}
+                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "point" ? <PointSettings /> : screen === "layout" ? <LayoutSettings /> : <ShortcutSettings />}
                 </div>
             </div>
         </Modal>
@@ -192,6 +194,42 @@ function ShortcutSettings(): JSX.Element {
                     ))}
                 </div>
             ))}
+        </div>
+    );
+}
+
+// 레이아웃 프리셋 — 현재 창 배치를 슬롯에 저장/불러오기. 전환은 Ctrl+숫자 또는 하단 작업표시줄 클릭.
+function LayoutSettings(): JSX.Element {
+    const presets = useDock((s) => s.presets);
+    const activePreset = useDock((s) => s.activePreset);
+    const savePreset = useDock((s) => s.savePreset);
+    const loadPreset = useDock((s) => s.loadPreset);
+    const btn: React.CSSProperties = {
+        border: "1px solid var(--border-default)",
+        borderRadius: 5,
+        padding: "3px 10px",
+        background: "var(--bg-secondary)",
+        color: "var(--text-primary)",
+        cursor: "pointer",
+        font: "inherit",
+    };
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 320 }}>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>현재 창 배치를 슬롯에 저장. Ctrl+숫자 또는 하단 작업표시줄 클릭으로 전환.</div>
+            {presets.map((p, i) => {
+                const n = i + 1;
+                const filled = !!p;
+                return (
+                    <div key={n} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontWeight: 700, color: activePreset === n ? "var(--accent-hover)" : "var(--text-primary)" }}>화면 {n}</span>
+                        <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{activePreset === n ? "(현재)" : filled ? "저장됨" : "비어 있음"}</span>
+                        <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                            <button style={btn} onClick={() => savePreset(n)}>현재 배치 저장</button>
+                            <button style={{ ...btn, opacity: filled ? 1 : 0.4, cursor: filled ? "pointer" : "default" }} disabled={!filled} onClick={() => loadPreset(n)}>불러오기</button>
+                        </span>
+                    </div>
+                );
+            })}
         </div>
     );
 }

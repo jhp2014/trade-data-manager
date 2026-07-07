@@ -3,6 +3,7 @@ import { WorkbenchShell } from "./shell/WorkbenchShell.js";
 import { GearButton } from "./components/Modal.js";
 import { SettingsModal } from "./components/SettingsModal.js";
 import { AssignThemeModal } from "./components/AssignThemeModal.js";
+import { Taskbar } from "./components/Taskbar.js";
 import { useUi } from "./store/ui.js";
 import { useKeymap } from "./keymap/useKeymap.js";
 
@@ -80,6 +81,7 @@ export function App(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-primary)" }}>
             <FocusToolbar onSettings={() => openSettings()} />
             <WorkbenchShell />
+            <Taskbar />
             {settingsOpen && <SettingsModal onClose={closeSettings} />}
             <AssignThemeModal />
         </div>

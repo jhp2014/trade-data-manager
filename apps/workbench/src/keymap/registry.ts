@@ -1,14 +1,24 @@
 import type { Command, Scope } from "./types.js";
 import { canonicalChord } from "./keys.js";
 import { useUi } from "../store/ui.js";
+import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useKeymapDynamic } from "./dynamic.js";
 
 // 정적 단축키(전역, 데이터 비결합). 새 전역 단축키는 여기 한 줄 추가하면 디스패치·도움말에 동시 반영.
 // 데이터 결합형(차트 타점 등)은 소유 훅이 useKeymapDynamic 로 동적 등록한다.
-const staticRaw: Command[] = [
+const appCommands: Command[] = [
     { id: "app.settings", title: "설정 열기", category: "일반", keys: "ctrl+,", run: () => useUi.getState().openSettings() },
     { id: "app.shortcuts", title: "단축키 도움말", category: "일반", keys: "?", run: () => useUi.getState().openSettings("shortcuts") },
 ];
+// 레이아웃 프리셋 전환 — Ctrl+1..N. 저장은 설정 → 레이아웃 화면.
+const presetCommands: Command[] = Array.from({ length: PRESET_COUNT }, (_, i) => ({
+    id: `layout.preset.${i + 1}`,
+    title: `화면 ${i + 1}로 전환`,
+    category: "레이아웃",
+    keys: `ctrl+${i + 1}`,
+    run: () => useDock.getState().loadPreset(i + 1),
+}));
+const staticRaw: Command[] = [...appCommands, ...presetCommands];
 
 export const staticCommands: Command[] = staticRaw.map((c) => ({ ...c, keys: canonicalChord(c.keys) }));
 
