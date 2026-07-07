@@ -15,12 +15,12 @@ import ReactFlow, {
     type NodeProps,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { hypothesesForPoint } from "@trade-data-manager/market";
 import { useWorkbench } from "../store/workbench.js";
 import { addRelation, removeRelation } from "../api/hypotheses.js";
-import { hypothesesQuery, hypothesisLinksQuery, hypothesisRelationsQuery } from "../api/queries.js";
+import { hypothesisRelationsQuery } from "../api/queries.js";
 import { buildGraphLayout } from "../lib/graphLayout.js";
 import { RELATION_TYPES, relationDef } from "../lib/relationTypes.js";
+import { useHypothesisData } from "../lib/useHypothesisData.js";
 
 // 가설 관계 그래프 — reactflow + dagre. 노드=가설, 엣지=관계(종류별 색/점선/화살표).
 // 노드 4면(상·하·좌·우) 어디서든 드래그 연결(ConnectionMode.Loose) → 관계 종류 선택 → 저장. 엣지 클릭=삭제.
@@ -121,27 +121,13 @@ function savePositions(p: Record<string, { x: number; y: number }>): void {
 }
 
 export function HypothesisGraphPanel(): JSX.Element {
-    const code = useWorkbench((s) => s.focus.code);
-    const date = useWorkbench((s) => s.focus.date);
-    const time = useWorkbench((s) => s.focus.time);
     const selectedId = useWorkbench((s) => s.selectedHypothesisId);
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
     const qc = useQueryClient();
 
-    const hypQ = useQuery(hypothesesQuery());
-    const linkQ = useQuery(hypothesisLinksQuery());
+    const { hypotheses, isLoading, linkedToPoint, countByHyp } = useHypothesisData();
     const relQ = useQuery(hypothesisRelationsQuery());
-    const hypotheses = useMemo(() => hypQ.data ?? [], [hypQ.data]);
-    const links = useMemo(() => linkQ.data ?? [], [linkQ.data]);
     const relations = useMemo(() => relQ.data ?? [], [relQ.data]);
-
-    const point = code && date && time ? { stockCode: code, date, time } : null;
-    const linkedToPoint = useMemo(() => (point ? hypothesesForPoint(links, point) : new Set<string>()), [links, point]);
-    const countByHyp = useMemo(() => {
-        const m = new Map<string, number>();
-        for (const l of links) m.set(l.hypothesisId, (m.get(l.hypothesisId) ?? 0) + 1);
-        return m;
-    }, [links]);
     const textById = useMemo(() => new Map(hypotheses.map((h) => [h.id, h.text])), [hypotheses]);
 
     const invalidateRel = (): void => void qc.invalidateQueries({ queryKey: hypothesisRelationsQuery().queryKey });
@@ -252,7 +238,7 @@ export function HypothesisGraphPanel(): JSX.Element {
         setPending(null);
     };
 
-    if (hypQ.isLoading) return <Center text="불러오는 중…" />;
+    if (isLoading) return <Center text="불러오는 중…" />;
     if (hypotheses.length === 0) return <Center text="가설이 없습니다 — 가설 패널에서 먼저 추가하세요" />;
 
     return (

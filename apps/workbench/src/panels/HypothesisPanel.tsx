@@ -1,27 +1,21 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { hypothesesForPoint } from "@trade-data-manager/market";
 import { useWorkbench } from "../store/workbench.js";
 import { createHypothesis, linkHypothesis, unlinkHypothesis, deleteHypothesis } from "../api/hypotheses.js";
 import { hypothesesQuery, hypothesisLinksQuery, allPointsQuery } from "../api/queries.js";
+import { useHypothesisData } from "../lib/useHypothesisData.js";
 
 // 가설 패널 — 얇은 목록. 각 행: [H{id} 태그] 텍스트, 우측 hover 액션(연결 토글·삭제).
 // 현재 타점 연결 = 태그 채움(테두리 없음). 선택 = 행 배경. 선택 시 연결 타점(종목명) 펼침→이동.
 // 타이포는 Pretendard 단일 폰트(코드도 tabular sans) — dockview 플랫·각진 톤. 필터/그래프는 클라 인메모리.
 export function HypothesisPanel(): JSX.Element {
-    const code = useWorkbench((s) => s.focus.code);
-    const date = useWorkbench((s) => s.focus.date);
-    const time = useWorkbench((s) => s.focus.time);
     const setFocus = useWorkbench((s) => s.setFocus);
     const selectedId = useWorkbench((s) => s.selectedHypothesisId);
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
     const qc = useQueryClient();
 
-    const hypQ = useQuery(hypothesesQuery());
-    const linkQ = useQuery(hypothesisLinksQuery());
+    const { hypotheses, links, isLoading, point, linkedToPoint: linkedIds, countByHyp } = useHypothesisData();
     const pointsQ = useQuery(allPointsQuery());
-    const hypotheses = useMemo(() => hypQ.data ?? [], [hypQ.data]);
-    const links = useMemo(() => linkQ.data ?? [], [linkQ.data]);
     const nameByCode = useMemo(() => {
         const m = new Map<string, string>();
         for (const p of pointsQ.data ?? []) if (p.name) m.set(p.stockCode, p.name);
@@ -33,13 +27,6 @@ export function HypothesisPanel(): JSX.Element {
         void qc.invalidateQueries({ queryKey: hypothesisLinksQuery().queryKey });
     };
 
-    const point = code && date && time ? { stockCode: code, date, time } : null;
-    const linkedIds = useMemo(() => (point ? hypothesesForPoint(links, point) : new Set<string>()), [links, point]);
-    const countByHyp = useMemo(() => {
-        const m = new Map<string, number>();
-        for (const l of links) m.set(l.hypothesisId, (m.get(l.hypothesisId) ?? 0) + 1);
-        return m;
-    }, [links]);
     const ordered = useMemo(() => {
         if (!point) return hypotheses;
         return [...hypotheses].sort((a, b) => Number(linkedIds.has(b.id)) - Number(linkedIds.has(a.id)));
@@ -96,8 +83,8 @@ export function HypothesisPanel(): JSX.Element {
 
             {/* 목록 */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 0 8px" }}>
-                {hypQ.isLoading && <div style={mutedStyle}>불러오는 중…</div>}
-                {!hypQ.isLoading && hypotheses.length === 0 && <div style={mutedStyle}>아직 가설이 없습니다</div>}
+                {isLoading && <div style={mutedStyle}>불러오는 중…</div>}
+                {!isLoading && hypotheses.length === 0 && <div style={mutedStyle}>아직 가설이 없습니다</div>}
                 {ordered.map((h) => {
                     const linked = linkedIds.has(h.id);
                     const cnt = countByHyp.get(h.id) ?? 0;
