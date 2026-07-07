@@ -3,14 +3,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
 import { upsertReviewPoint, removeReviewPoint } from "../api/reviewPoints.js";
-import { chartQuery, daySummaryQuery, priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery } from "../api/queries.js";
+import { chartQuery, priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery } from "../api/queries.js";
 import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import { SegButton, PaneLabel, EyeIcon, InfoIcon, TrashIcon, Center } from "./ChartPanelChrome.js";
+import { useStockName } from "../lib/useStockName.js";
 
 // 차트 패널 — 일봉(상) + 분봉(하) 듀얼. 영역 더블클릭 = 그 영역만 보기 ↔ 둘 다.
-// 좌상단 종목명(day-summary 캐시 조회), 우상단 통합 세그먼트 컨트롤(마커·타점정보·clear·시장).
+// 좌상단 종목명(마스터 메타 경량 조회), 우상단 통합 세그먼트 컨트롤(마커·타점정보·clear·시장).
 // code/date/time 은 Focus 구독. 분봉 좌클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~9=유형 프리셋 입력.
 export function ChartPanel(): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
@@ -26,9 +27,7 @@ export function ChartPanel(): JSX.Element {
     const [showPointInfo, setShowPointInfo] = useState(false); // 현재 타점 정보 박스 토글
 
     const query = useQuery(chartQuery(code, date));
-    // 종목명 — day-summary 캐시(보드가 이미 페치)에서 조회. 추가 페치 없음.
-    const summaryQ = useQuery(daySummaryQuery(date));
-    const name = summaryQ.data?.stocks.find((s) => s.stockCode === code)?.name ?? null;
+    const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
 
     const minuteView = useMemo(() => (query.data ? deriveMinuteView(query.data, mode) : null), [query.data, mode]);
     const dailyView = useMemo(() => (query.data ? deriveDailyView(query.data, mode) : null), [query.data, mode]);

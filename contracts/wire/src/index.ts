@@ -12,3 +12,4 @@ export type * from "./reviewPoint.js";
 export type * from "./hypothesis.js";
 export type * from "./news.js";
 export type * from "./telegramNews.js";
+export type * from "./stockMeta.js";

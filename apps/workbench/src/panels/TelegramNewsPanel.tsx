@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchTelegramNews, type TelegramNewsItem } from "../api/telegramNews.js";
-import { daySummaryQuery } from "../api/queries.js";
+import { useStockName } from "../lib/useStockName.js";
 import { dateLabel } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
 import { ChevronDownIcon, BackIcon } from "../components/icons.js";
@@ -29,9 +29,7 @@ export function TelegramNewsPanel(): JSX.Element {
     const code = inSearch ? search.code : focusCode;
     const targetDate = inSearch ? search.date : focusDate;
 
-    // 종목명 — Focus 날짜 캐시(code === focus.code 라 항상 해소).
-    const summaryQ = useQuery(daySummaryQuery(focusDate));
-    const name = useMemo(() => summaryQ.data?.stocks.find((s) => s.stockCode === code)?.name ?? null, [summaryQ.data, code]);
+    const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
 
     const [input, setInput] = useState("");
     const [query, setQuery] = useState(""); // 확정 검색어(수동 트리거로만 갱신)

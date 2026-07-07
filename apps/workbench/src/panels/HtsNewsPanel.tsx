@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench, type NewsSearchEngine } from "../store/workbench.js";
 import { fetchHtsNews, type HtsNewsItem, type HeadlineCursor } from "../api/news.js";
-import { daySummaryQuery } from "../api/queries.js";
+import { useStockName } from "../lib/useStockName.js";
 import { dateLabel } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
 import { ChevronDownIcon, BackIcon } from "../components/icons.js";
@@ -33,9 +33,7 @@ export function HtsNewsPanel(): JSX.Element {
     const code = inSearch ? search.code : focusCode;
     const date = inSearch ? search.date : focusDate;
 
-    // 종목명 — Focus 날짜 캐시에서 조회(search.code === focus.code 라 항상 해소, 추가 페치 없음).
-    const summaryQ = useQuery(daySummaryQuery(focusDate));
-    const name = summaryQ.data?.stocks.find((s) => s.stockCode === code)?.name ?? null;
+    const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
 
     const q = useInfiniteQuery({
         queryKey: ["news-hts", code, date],

@@ -27,6 +27,7 @@ import { ReviewPointController } from "./curation/reviewPoint.controller.js";
 import { HypothesisController } from "./curation/hypothesis.controller.js";
 import { NewsController } from "./news/news.controller.js";
 import { TelegramNewsController } from "./news/telegramNews.controller.js";
+import { StocksController } from "./stocks/stocks.controller.js";
 import { LazyTelegramNewsSearcher } from "./news/telegramNewsSearcher.js";
 import { DerivedCache } from "./board/derivedCache.js";
 import { MasterCache } from "./board/masterCache.js";
@@ -134,6 +135,7 @@ const newsProviders: Provider[] = [
         HypothesisController,
         NewsController,
         TelegramNewsController,
+        StocksController,
     ],
     providers: [poolProvider, ...chartProviders, ...boardProviders, ...curationProviders, ...newsProviders],
 })
