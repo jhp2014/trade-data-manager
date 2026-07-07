@@ -3,6 +3,7 @@ import { useWorkbench } from "./store/workbench.js";
 import { WorkbenchShell } from "./shell/WorkbenchShell.js";
 import { GearButton } from "./components/Modal.js";
 import { SettingsModal } from "./components/SettingsModal.js";
+import { AssignThemeModal } from "./components/AssignThemeModal.js";
 
 // 전역 툴바 — 종목·날짜·시간(전역값). 시간 스크러버가 Focus.time 을 움직여 복기 보드·차트가 반응.
 // 설정은 우상단 전역 버튼 1개(패널별 gear 없음).
@@ -82,6 +83,8 @@ export function App(): JSX.Element {
             <FocusToolbar onSettings={() => setSettingsOpen(true)} />
             <WorkbenchShell />
             {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+            <AssignThemeModal />
+
         </div>
     );
 }

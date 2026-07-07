@@ -16,7 +16,7 @@ import {
 } from "@trade-data-manager/persistence";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, PRICE_LINE_REPO, REVIEW_POINT_REPO, HYPOTHESIS_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, HYPOTHESIS_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
@@ -65,9 +65,15 @@ const boardProviders: Provider[] = [
         inject: [MARKET_POOL],
     },
     {
-        // 테마 인덱스(시트) 메모리 캐시(날짜무관, 1회 로드). 시트 편집 시 /theme/refresh 로 무효화.
+        // 시트 테마 어댑터 — 읽기(Provider)+쓰기(Store) 겸용 단일 인스턴스. Store 는 우클릭 배정(POST /theme/members)이 씀.
+        provide: THEME_MEMBERSHIP_STORE,
+        useFactory: (): SheetThemeMembershipAdapter => new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET),
+    },
+    {
+        // 테마 인덱스(시트) 메모리 캐시(날짜무관, 1회 로드). 시트 편집·배정 시 refresh() 로 무효화(같은 어댑터를 감싼다).
         provide: MEMBERSHIP_CACHE,
-        useFactory: (): CachedMembership => new CachedMembership(new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET)),
+        useFactory: (store: SheetThemeMembershipAdapter): CachedMembership => new CachedMembership(store),
+        inject: [THEME_MEMBERSHIP_STORE],
     },
     {
         // 보드 읽기모델 — 날짜별 불변 파일 캐시(DerivedCache) + 메모리 캐시 조합. query 포트 직접 호출.

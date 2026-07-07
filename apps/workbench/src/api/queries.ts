@@ -9,6 +9,7 @@ import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchHypotheses, fetchHypothesisLinks, fetchHypothesisRelations } from "./hypotheses.js";
 import { fetchStocksMeta } from "./stocks.js";
+import { fetchThemeContext } from "./themes.js";
 
 const IMMUTABLE = Infinity;
 const META_STALE = 30 * 60_000; // 마스터 메타 — 미수집 코드가 sticky-null 로 굳지 않게 30분마다 재시도 허용
@@ -43,3 +44,7 @@ export const hypothesisRelationsQuery = () =>
 // 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
 export const stockMetaQuery = (code: string) =>
     queryOptions({ queryKey: ["stock-meta", code], queryFn: ({ signal }) => fetchStocksMeta([code], signal), enabled: code.length > 0, staleTime: META_STALE });
+
+// 종목의 시트 테마+편입이슈(날짜무관·code 키). 배정 mutation 이 ["theme-context"] invalidate 로 갱신하므로 staleTime ∞.
+export const themeContextQuery = (code: string) =>
+    queryOptions({ queryKey: ["theme-context", code], queryFn: ({ signal }) => fetchThemeContext(code, signal), enabled: code.length > 0, staleTime: IMMUTABLE });

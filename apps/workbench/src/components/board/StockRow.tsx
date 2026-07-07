@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { fmtEok } from "../../lib/format.js";
+import { useAssign } from "../../store/assign.js";
 import { AMOUNT_BUCKET_COLORS } from "../../chart/chartUtils.js";
 import { AXIS_LO, AXIS_HI, fmtRate1, type BoardStock } from "./boardTypes.js";
 
@@ -24,6 +25,7 @@ export function StockRow({
     const up = s.changeRate >= 0;
     const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
     const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+    const openAssign = useAssign((st) => st.open);
     return (
         <button
             onClick={() => onPick(s.code)}
@@ -52,7 +54,15 @@ export function StockRow({
                         {rank}
                     </span>
                 )}
-                <span style={{ flexShrink: 1, minWidth: 0, color: "var(--text-primary)", fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span
+                    onContextMenu={(e) => {
+                        e.preventDefault(); // 기본 브라우저 메뉴 차단(우클릭=테마 배정 팝업). 행 onClick 은 우클릭으로 안 뜸.
+                        e.stopPropagation();
+                        openAssign({ code: s.code, name: s.name });
+                    }}
+                    title="우클릭: 테마 배정"
+                    style={{ flexShrink: 1, minWidth: 0, color: "var(--text-primary)", fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
                     {s.name}
                 </span>
                 {chips.length > 0 && (

@@ -12,3 +12,8 @@ export function addDaysYmd(date: string, n: number): string {
     d.setUTCDate(d.getUTCDate() + n);
     return d.toISOString().slice(0, 10);
 }
+
+/** 오늘(KST) YYYY-MM-DD. now + 9h 를 UTC 로 포맷 = KST 달력일(자정 경계 정확). */
+export function kstToday(): string {
+    return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+}

@@ -5,6 +5,7 @@ export const CHART_READER = Symbol("ChartReader");
 export const DAY_BOARDS = Symbol("DayBoards");
 export const MASTER_CACHE = Symbol("MasterCache");
 export const MEMBERSHIP_CACHE = Symbol("MembershipCache");
+export const THEME_MEMBERSHIP_STORE = Symbol("ThemeMembershipStore");
 export const PRICE_LINE_REPO = Symbol("PriceLineRepository");
 export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
 export const HYPOTHESIS_REPO = Symbol("HypothesisRepository");

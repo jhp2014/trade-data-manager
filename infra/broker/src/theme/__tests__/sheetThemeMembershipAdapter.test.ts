@@ -1,11 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { SheetThemeMembershipAdapter, type ThemeSheetSource } from "../sheetThemeMembershipAdapter.js";
 
-const src = (matrix: string[][]): ThemeSheetSource => ({
-    async readMatrix() {
-        return matrix;
-    },
-});
+type Appended = Parameters<ThemeSheetSource["appendRows"]>[0];
+/** 매트릭스를 읽어주고 append 호출을 캡처하는 스텁. */
+function src(matrix: string[][]): ThemeSheetSource & { appends: Appended[] } {
+    const appends: Appended[] = [];
+    return {
+        appends,
+        async readMatrix() {
+            return matrix;
+        },
+        async appendRows(input) {
+            appends.push(input);
+            return { wroteHeaders: false };
+        },
+    };
+}
 const cfg = { spreadsheetId: "sid", tab: "종목분류" };
 const load = (matrix: string[][]) => new SheetThemeMembershipAdapter(src(matrix), cfg).load();
 
@@ -58,5 +68,30 @@ describe("SheetThemeMembershipAdapter", () => {
     it("헤더만 / 빈 매트릭스 → 빈 배열", async () => {
         expect(await load([["테마", "종목코드"]])).toEqual([]);
         expect(await load([])).toEqual([]);
+    });
+});
+
+describe("SheetThemeMembershipAdapter.addMember", () => {
+    it("기존 헤더 순서에 맞춰 1행 append(컬럼순서 무관) + code toCanonical", async () => {
+        const s = src([["종목코드", "테마", "날짜", "종목명"]]); // 헤더 순서가 뒤섞인 시트
+        await new SheetThemeMembershipAdapter(s, cfg).addMember({ theme: "로봇", code: "660", name: "삼성", date: "2026-07-07" });
+        expect(s.appends).toHaveLength(1);
+        expect(s.appends[0]).toMatchObject({ spreadsheetId: "sid", tab: "종목분류" });
+        // 헤더 순서(코드·테마·날짜·명)대로 값이 배치돼야 함. code 는 6자리 pad.
+        expect(s.appends[0].rows).toEqual([["000660", "로봇", "2026-07-07", "삼성"]]);
+    });
+
+    it("빈 탭이면 DEFAULT_HEADER 로 초기화 + 미지정 컬럼은 공백", async () => {
+        const s = src([]); // 빈 탭
+        await new SheetThemeMembershipAdapter(s, cfg).addMember({ theme: "HBM", code: "A000660" });
+        // 기본 헤더 테마|종목코드|종목명|편입이슈|날짜 순, name/issue/date 없음 → 공백
+        expect(s.appends[0].headers).toEqual(["테마", "종목코드", "종목명", "편입이슈", "날짜"]);
+        expect(s.appends[0].rows).toEqual([["HBM", "000660", "", "", ""]]);
+    });
+
+    it("theme·code 비면 append 안 하고 throw", async () => {
+        const s = src([["테마", "종목코드"]]);
+        await expect(new SheetThemeMembershipAdapter(s, cfg).addMember({ theme: "  ", code: "660" })).rejects.toThrow();
+        expect(s.appends).toHaveLength(0);
     });
 });

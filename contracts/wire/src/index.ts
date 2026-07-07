@@ -7,6 +7,7 @@
 export type * from "./chart.js";
 export type * from "./daySummary.js";
 export type * from "./dayReplay.js";
+export type * from "./theme.js";
 export type * from "./priceLine.js";
 export type * from "./reviewPoint.js";
 export type * from "./hypothesis.js";
