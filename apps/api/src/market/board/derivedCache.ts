@@ -52,10 +52,9 @@ export class DerivedCache {
     private async doBuild(date: string): Promise<void> {
         if (await readSnapshot(date)) return; // 다른 요청이 이미 구웠으면 skip
         const codes = await this.deps.universe.stockCodesByDate(date);
-        if (codes.length === 0) {
-            await writeSnapshot({ date, stocks: [] });
-            return;
-        }
+        // universe 가 비면(오늘 EOD 전·미수집일) 빈 스냅샷을 파일로 굳히지 않는다 —
+        // 이후 데이터가 들어와도 빈 캐시가 영구히 남는 걸 막고, 다음 요청이 재빌드하게 둔다.
+        if (codes.length === 0) return;
         // EOD 스칼라(일봉·전일종가·시총)는 배치 1회. 분봉파생은 종목당 fetch(제한 동시성).
         const [candles, prevCloses, caps] = await Promise.all([
             this.deps.dailyCandle.getByDateAndCodes(date, codes),
