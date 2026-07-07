@@ -1,7 +1,7 @@
 // 차트 가격선 주석 CRUD 클라이언트. wire 타입(PriceLine·PriceLinedStock·PriceLineField·AddPriceLineInput)은 contracts/wire 공유.
 // **가격이 아니라 앵커(캔들 좌표)를 저장**한다 — 표시 시점에 로드된 캔들에서 값을 읽어 RenderLine 으로 해소.
-// 이점: 수정계수가 바뀌어도 선이 캔들을 따라 자동 이동(재수정 불필요).
 import type { PriceLine, PriceLinedStock, AddPriceLineInput } from "@trade-data-manager/wire";
+import { apiGet, apiPost, apiDelete } from "./http.js";
 
 export type { PriceLine, PriceLinedStock, PriceLineField, AddPriceLineInput } from "@trade-data-manager/wire";
 
@@ -12,30 +12,12 @@ export interface RenderLine {
     kind: "D" | "M"; // 일봉/분봉 앵커 — 색·라벨
 }
 
-export async function fetchPriceLines(code: string, date: string): Promise<PriceLine[]> {
-    const res = await fetch(`/api/price-lines?${new URLSearchParams({ code, date })}`);
-    if (!res.ok) throw new Error(`GET /price-lines ${res.status}`);
-    return res.json() as Promise<PriceLine[]>;
-}
+export const fetchPriceLines = (code: string, date: string): Promise<PriceLine[]> =>
+    apiGet<PriceLine[]>("price-lines", { code, date });
 
-export async function addPriceLine(line: AddPriceLineInput): Promise<PriceLine> {
-    const res = await fetch("/api/price-lines", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(line),
-    });
-    if (!res.ok) throw new Error(`POST /price-lines ${res.status}`);
-    return res.json() as Promise<PriceLine>;
-}
+export const addPriceLine = (line: AddPriceLineInput): Promise<PriceLine> => apiPost<PriceLine>("price-lines", line);
 
-export async function removePriceLine(id: string): Promise<void> {
-    const res = await fetch(`/api/price-lines/${id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`DELETE /price-lines/${id} ${res.status}`);
-}
+export const removePriceLine = (id: string): Promise<void> => apiDelete(`price-lines/${id}`);
 
 /** 선이 하나라도 있는 (종목,날짜) 전부 — 월 그룹은 클라. 날짜 내림차순. */
-export async function fetchPriceLinedStocks(): Promise<PriceLinedStock[]> {
-    const res = await fetch("/api/price-lines/stocks");
-    if (!res.ok) throw new Error(`GET /price-lines/stocks ${res.status}`);
-    return res.json() as Promise<PriceLinedStock[]>;
-}
+export const fetchPriceLinedStocks = (): Promise<PriceLinedStock[]> => apiGet<PriceLinedStock[]>("price-lines/stocks");
