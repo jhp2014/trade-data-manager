@@ -57,20 +57,27 @@ function onReady(event: DockviewReadyEvent): void {
 // 커스텀 탭 — 기본 X 대신 "−"(최소화) 버튼. 닫아도 사라지지 않고 작업표시줄로 회수되므로 최소화로 표기.
 function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
     const [title, setTitle] = useState(props.api.title);
+    const [active, setActive] = useState(props.api.isActive);
     useEffect(() => {
-        const d = props.api.onDidTitleChange(() => setTitle(props.api.title));
-        return () => d.dispose();
+        const d1 = props.api.onDidTitleChange(() => setTitle(props.api.title));
+        const d2 = props.api.onDidActiveChange(() => setActive(props.api.isActive));
+        return () => {
+            d1.dispose();
+            d2.dispose();
+        };
     }, [props.api]);
+    // 활성 탭은 진하게(text-primary+bold), 비활성은 text-secondary. 커스텀 탭이라 색을 직접 준다(div→자식 상속).
+    const color = active ? "var(--text-primary)" : "var(--text-secondary)";
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 13 }}>
-            <span style={{ color: "var(--text-secondary)" }}>{title}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 13, color }}>
+            <span style={{ fontWeight: active ? 600 : 400 }}>{title}</span>
             <button
                 onClick={(e) => {
                     e.stopPropagation();
                     props.api.close();
                 }}
                 title="최소화 (작업표시줄로)"
-                style={{ background: "none", border: "none", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px" }}
+                style={{ background: "none", border: "none", color: "inherit", opacity: 0.55, cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px" }}
             >
                 −
             </button>

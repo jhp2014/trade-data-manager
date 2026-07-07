@@ -186,10 +186,13 @@ button {
     --dv-activegroup-visiblepanel-tab-background-color: var(--bg-primary);
     --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-secondary);
     --dv-activegroup-visiblepanel-tab-color: var(--text-primary);
-    --dv-inactivegroup-visiblepanel-tab-color: var(--text-tertiary);
+    --dv-inactivegroup-visiblepanel-tab-color: var(--text-secondary);
+    --dv-activegroup-hiddenpanel-tab-color: var(--text-secondary);
+    --dv-inactivegroup-hiddenpanel-tab-color: var(--text-tertiary);
     --dv-tab-divider-color: var(--border-default);
     --dv-separator-border: var(--border-default);
     --dv-paneview-active-outline-color: var(--accent-primary);
     --dv-icon-hover-background-color: var(--bg-tertiary);
     --dv-font-family: var(--font-sans);
+    --dv-tabs-and-actions-container-height: 28px; /* 탭 윗줄 높이 축소(기본 35 → 28) */
 }
