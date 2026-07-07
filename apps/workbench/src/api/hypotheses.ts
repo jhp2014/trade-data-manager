@@ -5,9 +5,9 @@ import { apiGet, apiPost, apiDelete } from "./http.js";
 
 export type { Hypothesis, HypothesisLink, HypothesisRelation } from "@trade-data-manager/wire";
 
-export const fetchHypotheses = (): Promise<Hypothesis[]> => apiGet<Hypothesis[]>("hypotheses");
+export const fetchHypotheses = (signal?: AbortSignal): Promise<Hypothesis[]> => apiGet<Hypothesis[]>("hypotheses", undefined, signal);
 
-export const fetchHypothesisLinks = (): Promise<HypothesisLink[]> => apiGet<HypothesisLink[]>("hypotheses/links");
+export const fetchHypothesisLinks = (signal?: AbortSignal): Promise<HypothesisLink[]> => apiGet<HypothesisLink[]>("hypotheses/links", undefined, signal);
 
 export const createHypothesis = (text: string): Promise<Hypothesis> => apiPost<Hypothesis>("hypotheses", { text });
 
@@ -18,8 +18,8 @@ export const unlinkHypothesis = (link: HypothesisLink): Promise<void> =>
 
 export const deleteHypothesis = (id: string): Promise<void> => apiDelete(`hypotheses/${id}`);
 
-export const fetchHypothesisRelations = (): Promise<HypothesisRelation[]> =>
-    apiGet<HypothesisRelation[]>("hypotheses/relations");
+export const fetchHypothesisRelations = (signal?: AbortSignal): Promise<HypothesisRelation[]> =>
+    apiGet<HypothesisRelation[]>("hypotheses/relations", undefined, signal);
 
 export const addRelation = (r: { fromId: string; toId: string; relationType: string; note?: string }): Promise<HypothesisRelation> =>
     apiPost<HypothesisRelation>("hypotheses/relations", r);

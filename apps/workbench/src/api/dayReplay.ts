@@ -5,4 +5,4 @@ import { apiGet } from "./http.js";
 
 export type { DayReplay, ReplayStock, MinuteDerived } from "@trade-data-manager/wire";
 
-export const fetchDayReplay = (date: string): Promise<DayReplay> => apiGet<DayReplay>("day-replay", { date });
+export const fetchDayReplay = (date: string, signal?: AbortSignal): Promise<DayReplay> => apiGet<DayReplay>("day-replay", { date }, signal);

@@ -4,8 +4,8 @@ import { apiGet } from "./http.js";
 
 export type { TelegramNewsItem, TelegramNewsPage } from "@trade-data-manager/wire";
 
-export function fetchTelegramNews(args: { q: string; date: string; beforeDate?: string }): Promise<TelegramNewsPage> {
+export function fetchTelegramNews(args: { q: string; date: string; beforeDate?: string }, signal?: AbortSignal): Promise<TelegramNewsPage> {
     const query: Record<string, string> = { q: args.q, date: args.date };
     if (args.beforeDate) query.beforeDate = args.beforeDate; // 이 날짜 이전을 하루씩("더보기")
-    return apiGet<TelegramNewsPage>("news/telegram", query);
+    return apiGet<TelegramNewsPage>("news/telegram", query, signal);
 }

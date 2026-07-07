@@ -4,5 +4,5 @@ import { apiGet } from "./http.js";
 
 export type { ChartBundle } from "@trade-data-manager/wire";
 
-export const fetchChart = (code: string, date: string): Promise<ChartBundle> =>
-    apiGet<ChartBundle>("chart", { code, date });
+export const fetchChart = (code: string, date: string, signal?: AbortSignal): Promise<ChartBundle> =>
+    apiGet<ChartBundle>("chart", { code, date }, signal);

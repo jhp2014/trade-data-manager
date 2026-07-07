@@ -5,8 +5,8 @@ import { apiGet, apiPost, apiDelete } from "./http.js";
 
 export type { ReviewPoint, ReviewPointListItem, UpsertReviewPointInput } from "@trade-data-manager/wire";
 
-export const fetchReviewPoints = (code: string, date: string): Promise<ReviewPoint[]> =>
-    apiGet<ReviewPoint[]>("review-points", { code, date });
+export const fetchReviewPoints = (code: string, date: string, signal?: AbortSignal): Promise<ReviewPoint[]> =>
+    apiGet<ReviewPoint[]>("review-points", { code, date }, signal);
 
 export const upsertReviewPoint = (point: UpsertReviewPointInput): Promise<ReviewPoint> =>
     apiPost<ReviewPoint>("review-points", point);
@@ -15,4 +15,4 @@ export const removeReviewPoint = (code: string, date: string, time: string): Pro
     apiDelete("review-points", { code, date, time });
 
 /** 전체 타점 + 종목명 — 월 그룹은 클라. 날짜 내림차순, 같은 날 시각 오름차순. */
-export const fetchAllPoints = (): Promise<ReviewPointListItem[]> => apiGet<ReviewPointListItem[]>("review-points/all");
+export const fetchAllPoints = (signal?: AbortSignal): Promise<ReviewPointListItem[]> => apiGet<ReviewPointListItem[]>("review-points/all", undefined, signal);

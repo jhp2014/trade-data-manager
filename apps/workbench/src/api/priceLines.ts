@@ -12,12 +12,12 @@ export interface RenderLine {
     kind: "D" | "M"; // 일봉/분봉 앵커 — 색·라벨
 }
 
-export const fetchPriceLines = (code: string, date: string): Promise<PriceLine[]> =>
-    apiGet<PriceLine[]>("price-lines", { code, date });
+export const fetchPriceLines = (code: string, date: string, signal?: AbortSignal): Promise<PriceLine[]> =>
+    apiGet<PriceLine[]>("price-lines", { code, date }, signal);
 
 export const addPriceLine = (line: AddPriceLineInput): Promise<PriceLine> => apiPost<PriceLine>("price-lines", line);
 
 export const removePriceLine = (id: string): Promise<void> => apiDelete(`price-lines/${id}`);
 
 /** 선이 하나라도 있는 (종목,날짜) 전부 — 월 그룹은 클라. 날짜 내림차순. */
-export const fetchPriceLinedStocks = (): Promise<PriceLinedStock[]> => apiGet<PriceLinedStock[]>("price-lines/stocks");
+export const fetchPriceLinedStocks = (signal?: AbortSignal): Promise<PriceLinedStock[]> => apiGet<PriceLinedStock[]>("price-lines/stocks", undefined, signal);

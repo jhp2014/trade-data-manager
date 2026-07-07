@@ -53,7 +53,7 @@ export function boardTimeBounds(reduction: DayReplay): { start: number; end: num
 export function useDayReplay(date: string): UseQueryResult<DayReplay> {
     return useQuery({
         queryKey: ["day-replay", date],
-        queryFn: () => fetchDayReplay(date),
+        queryFn: ({ signal }) => fetchDayReplay(date, signal),
         enabled: date.length > 0,
         staleTime: Infinity,
         gcTime: 60 * 60_000,

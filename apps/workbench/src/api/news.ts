@@ -11,11 +11,11 @@ export interface HeadlineCursor {
     srno: string;
 }
 
-export function fetchHtsNews(args: { code: string; date: string; before: HeadlineCursor | null; limit: number }): Promise<HtsNewsItem[]> {
+export function fetchHtsNews(args: { code: string; date: string; before: HeadlineCursor | null; limit: number }, signal?: AbortSignal): Promise<HtsNewsItem[]> {
     const query: Record<string, string> = { code: args.code, date: args.date, limit: String(args.limit) };
     if (args.before) {
         query.beforeDate = args.before.date;
         query.beforeSrno = args.before.srno;
     }
-    return apiGet<HtsNewsItem[]>("news/hts", query);
+    return apiGet<HtsNewsItem[]>("news/hts", query, signal);
 }

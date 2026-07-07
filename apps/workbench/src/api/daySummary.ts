@@ -4,4 +4,4 @@ import { apiGet } from "./http.js";
 
 export type { EnrichedDaySummary as DaySummary, EnrichedSnapshot as DailySnapshot, ThemeTag, IssueTag } from "@trade-data-manager/wire";
 
-export const fetchDaySummary = (date: string): Promise<EnrichedDaySummary> => apiGet<EnrichedDaySummary>("day-summary", { date });
+export const fetchDaySummary = (date: string, signal?: AbortSignal): Promise<EnrichedDaySummary> => apiGet<EnrichedDaySummary>("day-summary", { date }, signal);

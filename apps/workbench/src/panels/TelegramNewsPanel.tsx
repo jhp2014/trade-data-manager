@@ -47,7 +47,7 @@ export function TelegramNewsPanel(): JSX.Element {
     const q = useInfiniteQuery({
         queryKey: ["news-telegram", query, searchDate],
         initialPageParam: null as string | null, // beforeDate 커서(YYYY-MM-DD). null = searchDate 하루
-        queryFn: ({ pageParam }) => fetchTelegramNews({ q: query, date: searchDate, beforeDate: pageParam ?? undefined }),
+        queryFn: ({ pageParam, signal }) => fetchTelegramNews({ q: query, date: searchDate, beforeDate: pageParam ?? undefined }, signal),
         getNextPageParam: (lastPage, allPages) => {
             // 초기 페이지는 비어도 더보기 허용(과거에 있을 수 있음). 더보기 페이지가 비면 종료(과거 소진).
             const isInitial = allPages.length === 1;

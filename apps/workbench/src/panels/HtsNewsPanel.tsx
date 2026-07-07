@@ -40,7 +40,7 @@ export function HtsNewsPanel(): JSX.Element {
     const q = useInfiniteQuery({
         queryKey: ["news-hts", code, date],
         initialPageParam: null as HeadlineCursor | null,
-        queryFn: ({ pageParam }) => fetchHtsNews({ code, date, before: pageParam, limit: PAGE }),
+        queryFn: ({ pageParam, signal }) => fetchHtsNews({ code, date, before: pageParam, limit: PAGE }, signal),
         getNextPageParam: (lastPage, allPages) => {
             const isDayPage = allPages.length === 1;
             if (!isDayPage && lastPage.length < PAGE) return undefined;
