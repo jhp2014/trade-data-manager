@@ -148,6 +148,36 @@ button {
     filter: brightness(1.12);
 }
 
+/* 가설 그래프 노드(reactflow, type="hyp") 4면 연결 핸들 —
+   평소엔 숨기고 노드에 hover 할 때만 은은히 노출해 시각적 노이즈를 줄인다.
+   (connectionRadius 로 정확히 점 위가 아니어도 가까운 면에 스냅되어 붙는다.) */
+.react-flow__node-hyp .react-flow__handle {
+    width: 7px;
+    height: 7px;
+    min-width: 7px;
+    min-height: 7px;
+    background: var(--text-tertiary);
+    border: 1.5px solid var(--bg-primary);
+    opacity: 0;
+    transition: opacity 120ms ease, background-color 120ms ease;
+}
+.react-flow__node-hyp:hover .react-flow__handle {
+    opacity: 0.5;
+}
+.react-flow__node-hyp .react-flow__handle:hover {
+    opacity: 1;
+    background: var(--accent-primary);
+}
+/* 연결 드래그가 진행 중일 땐 모든 노드의 핸들(connectionindicator)을 드러내 드롭 지점을 보이게 하고,
+   커서가 올라간 핸들(connecting)은 액센트로 강조한다. */
+.react-flow__node-hyp .react-flow__handle.connectionindicator {
+    opacity: 0.55;
+}
+.react-flow__node-hyp .react-flow__handle.connecting {
+    opacity: 1;
+    background: var(--accent-primary);
+}
+
 /* dockview 라이트 테마를 팔레트에 맞춰 정렬(있는 변수만 덮어씀, 없으면 무시). */
 .dockview-theme-light {
     --dv-background-color: var(--bg-primary);

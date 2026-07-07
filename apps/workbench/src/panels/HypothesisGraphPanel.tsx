@@ -6,8 +6,11 @@ import ReactFlow, {
     Handle,
     Position,
     MarkerType,
+    ConnectionMode,
+    SelectionMode,
     useNodesState,
     type Edge,
+    type Node,
     type Connection,
     type NodeProps,
 } from "reactflow";
@@ -25,7 +28,9 @@ import { buildGraphLayout } from "../lib/graphLayout.js";
 import { RELATION_TYPES, relationDef } from "../lib/relationTypes.js";
 
 // 가설 관계 그래프 — reactflow + dagre. 노드=가설, 엣지=관계(종류별 색/점선/화살표).
-// 노드 드래그 연결 → 관계 종류 선택 → 저장. 엣지 클릭=삭제. 선택은 store(selectedHypothesisId)로 리스트와 동기.
+// 노드 4면(상·하·좌·우) 어디서든 드래그 연결(ConnectionMode.Loose) → 관계 종류 선택 → 저장. 엣지 클릭=삭제.
+// 엣지는 두 노드의 상대 위치로 붙는 면을 매 렌더 계산(floating 유사) → 상하·좌우 자연스럽게.
+// 빈 공간 좌드래그=박스 선택(여러 노드 한번에 이동), 팬은 우/휠 클릭 드래그. 선택은 store로 리스트와 동기.
 // 현재 Focus 타점에 연결된 가설은 좌측 accent 바로 강조. 노드 위치는 localStorage 영속.
 interface HypNodeData {
     id: string;
@@ -34,8 +39,6 @@ interface HypNodeData {
     selected: boolean;
     linkedToPoint: boolean;
 }
-
-const handleStyle: React.CSSProperties = { width: 8, height: 8, background: "#9aa0ad", border: "none" };
 
 function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
     return (
@@ -50,7 +53,12 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
                 color: "var(--text-primary)",
             }}
         >
-            <Handle type="target" position={Position.Top} style={handleStyle} />
+            {/* 4면 핸들 — 모두 source 로 두고 ConnectionMode.Loose 로 어느 면↔어느 면이든 연결 허용.
+                평소엔 숨김, 노드 hover 시에만 은은히 노출(스타일은 theme.css 의 .react-flow__node-hyp 규칙). */}
+            <Handle id="t" type="source" position={Position.Top} />
+            <Handle id="r" type="source" position={Position.Right} />
+            <Handle id="b" type="source" position={Position.Bottom} />
+            <Handle id="l" type="source" position={Position.Left} />
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
                 <span
                     className="tabular"
@@ -71,12 +79,30 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
                 {data.count > 0 && <span className="tabular" style={{ fontSize: 10, color: "var(--text-tertiary)" }}>·{data.count}</span>}
             </div>
             <div style={{ lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{data.text}</div>
-            <Handle type="source" position={Position.Bottom} style={handleStyle} />
         </div>
     );
 }
 
 const nodeTypes = { hyp: HypNode };
+
+const NODE_FALLBACK_W = 200;
+const NODE_FALLBACK_H = 54;
+interface Center {
+    cx: number;
+    cy: number;
+}
+function centerOf(n: Node<HypNodeData>): Center {
+    const w = n.width ?? NODE_FALLBACK_W;
+    const h = n.height ?? NODE_FALLBACK_H;
+    return { cx: n.position.x + w / 2, cy: n.position.y + h / 2 };
+}
+// 두 노드 중심의 상대 위치로 엣지가 붙을 면을 고른다(주축이 더 긴 쪽). floating 엣지 유사 효과.
+function pickSides(a: Center, b: Center): [source: string, target: string] {
+    const dx = b.cx - a.cx;
+    const dy = b.cy - a.cy;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? ["r", "l"] : ["l", "r"];
+    return dy >= 0 ? ["b", "t"] : ["t", "b"];
+}
 
 const POS_KEY = "wb.hypGraphPositions";
 function loadPositions(): Record<string, { x: number; y: number }> {
@@ -175,16 +201,28 @@ export function HypothesisGraphPanel(): JSX.Element {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedId, linkedToPoint, countByHyp, textById]);
 
+    // 엣지가 붙을 면 계산용 노드 중심 맵(드래그로 위치 바뀔 때마다 갱신 → 엣지 재라우팅).
+    const centers = useMemo(() => {
+        const m = new Map<string, Center>();
+        for (const n of nodes) m.set(n.id, centerOf(n));
+        return m;
+    }, [nodes]);
+
     const edges: Edge[] = useMemo(
         () =>
             relations.map((r) => {
                 const def = relationDef(r.relationType);
                 const stroke = def?.color ?? "#9aa0ad";
                 const touches = selectedId != null && (r.fromId === selectedId || r.toId === selectedId);
+                const a = centers.get(r.fromId);
+                const b = centers.get(r.toId);
+                const [sourceHandle, targetHandle] = a && b ? pickSides(a, b) : [undefined, undefined];
                 return {
                     id: r.id,
                     source: r.fromId,
                     target: r.toId,
+                    sourceHandle,
+                    targetHandle,
                     label: def?.label,
                     labelStyle: { fontSize: 10, fill: "var(--text-tertiary)" },
                     labelBgStyle: { fill: "var(--bg-primary)", fillOpacity: 0.85 },
@@ -197,7 +235,7 @@ export function HypothesisGraphPanel(): JSX.Element {
                     },
                 };
             }),
-        [relations, selectedId],
+        [relations, selectedId, centers],
     );
 
     const onConnect = useCallback((c: Connection) => {
@@ -230,7 +268,13 @@ export function HypothesisGraphPanel(): JSX.Element {
                 onNodesChange={onNodesChange}
                 onConnect={onConnect}
                 onNodeDragStop={persistPositions}
+                onSelectionDragStop={persistPositions}
                 nodeTypes={nodeTypes}
+                connectionMode={ConnectionMode.Loose}
+                connectionRadius={30}
+                selectionOnDrag
+                selectionMode={SelectionMode.Partial}
+                panOnDrag={[1, 2]}
                 fitView
                 fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}
                 minZoom={0.2}
