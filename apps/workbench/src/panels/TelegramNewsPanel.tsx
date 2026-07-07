@@ -23,6 +23,7 @@ export function TelegramNewsPanel(): JSX.Element {
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
     const rafRef = useRef(0);
+    const scrolledForCursorRef = useRef<number | null | undefined>(undefined); // 이 cursorMs 로 이미 처리했나 — 페이징 재실행 시 재스크롤 방지
 
     // 유효 code/targetDate — 검색 모드면 search, 아니면 Focus. targetDate = 검색하려는 날짜(미확정).
     const inSearch = search != null;
@@ -108,10 +109,12 @@ export function TelegramNewsPanel(): JSX.Element {
     }, [activeMatch]);
 
     // focus.time 이동 → 그 시각 이하(과거) 중 가장 최근 항목의 첫 키워드 매치로 스크롤 + 좌우탐색 앵커를 거기로.
-    // 매치 없는 항목(링크 프리뷰로만 잡힌 경우)이면 항목 자체로 스크롤. (편집 중엔 스킵)
+    // 매치 없는 항목이면 항목 자체로 스크롤. items 가 나중에 도착해도 되게 deps 에 items 포함하되,
+    // cursorMs 단위 "이미 처리함" 가드로 페이징(items 증가) 때 재스크롤·activeMatch 리셋을 막는다. (편집 중엔 스킵)
     useEffect(() => {
         if (showEdit) return;
-        // 시간 마커 없거나(null) 그 시각 이하 항목/매치가 없으면 활성(주황) 해제. 있으면 그 매치로 이동+앵커.
+        if (scrolledForCursorRef.current === cursorMs) return; // 이 시각 이미 처리(페이징 재실행 무시)
+        if (cursorMs != null && items.length === 0) return; // 아직 미도착 → items 변경 때 재시도(미표시)
         const target = cursorMs == null ? undefined : items.find((it) => new Date(it.at).getTime() <= cursorMs);
         const el = target ? listRef.current?.querySelector<HTMLElement>(`[data-item-ref="${target.ref}"]`) : null;
         const hl = el?.querySelector<HTMLElement>("[data-hl-index]");
@@ -122,7 +125,8 @@ export function TelegramNewsPanel(): JSX.Element {
             setActiveMatch(-1); // 조건 해당 항목/매치 없음 → 이전 활성 해제
             el?.scrollIntoView({ block: "center", behavior: "smooth" });
         }
-    }, [cursorMs]); // eslint-disable-line react-hooks/exhaustive-deps
+        scrolledForCursorRef.current = cursorMs;
+    }, [cursorMs, items, showEdit]);
 
     // 스크롤 최상단 항목 시각 → 헤더 2줄.
     const onScroll = (): void => {

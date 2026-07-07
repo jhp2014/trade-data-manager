@@ -25,6 +25,7 @@ export function HtsNewsPanel(): JSX.Element {
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
     const selfSet = useRef(false);
+    const scrolledForRef = useRef<string | null>(null); // 이 (date,focus.time) 로 이미 스크롤했나 — 페이징 재실행 시 재스크롤 방지
     const rafRef = useRef(0);
     const [visibleDate, setVisibleDate] = useState(focusDate);
 
@@ -77,21 +78,25 @@ export function HtsNewsPanel(): JSX.Element {
     };
     useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
-    // focus.time 외부 변경 → 그 시각 위치로 스크롤. 검색 모드에선 스킵(그 날짜엔 focus.time 무의미).
+    // focus.time 외부 변경 → 그 시각 위치로 스크롤. 뉴스가 나중에 도착해도 스크롤되게 deps 에 items 포함하되,
+    // (date,focus.time) 단위 "이미 스크롤함" 가드로 페이징(items 증가) 때 재스크롤은 막는다. 검색 모드에선 스킵.
     useEffect(() => {
+        const key = focusTime ? `${date}|${focusTime}` : null;
         if (selfSet.current) {
             selfSet.current = false;
+            scrolledForRef.current = key; // 내가 세팅한 시각 → 스크롤 불필요, 완료로 표시
             return;
         }
         if (inSearch || !focusTime) return;
+        if (scrolledForRef.current === key) return; // 이 시각으로 이미 스크롤(페이징 재실행 무시)
         const container = listRef.current;
         if (!container) return;
         const today = items.filter((it) => it.date === date);
-        if (today.length === 0) return;
+        if (today.length === 0) return; // 아직 미도착 → items 변경 때 재시도
         const target = today.find((it) => it.time <= focusTime) ?? today[today.length - 1];
-        const el = container.querySelector(`[data-srno="${target.srno}"]`);
-        el?.scrollIntoView({ block: "center", behavior: "smooth" });
-    }, [focusTime, date]); // eslint-disable-line react-hooks/exhaustive-deps
+        container.querySelector(`[data-srno="${target.srno}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+        scrolledForRef.current = key;
+    }, [focusTime, date, items, inSearch]);
 
     const refresh = (): void => {
         void qc.resetQueries({ queryKey: ["news-hts", code, date] });
