@@ -11,6 +11,7 @@ import { fetchHypotheses, fetchHypothesisLinks, fetchHypothesisRelations } from 
 import { fetchStocksMeta } from "./stocks.js";
 
 const IMMUTABLE = Infinity;
+const META_STALE = 30 * 60_000; // 마스터 메타 — 미수집 코드가 sticky-null 로 굳지 않게 30분마다 재시도 허용
 
 export const chartQuery = (code: string, date: string) =>
     queryOptions({ queryKey: ["chart", code, date], queryFn: ({ signal }) => fetchChart(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
@@ -41,4 +42,4 @@ export const hypothesisRelationsQuery = () =>
 
 // 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
 export const stockMetaQuery = (code: string) =>
-    queryOptions({ queryKey: ["stock-meta", code], queryFn: ({ signal }) => fetchStocksMeta([code], signal), enabled: code.length > 0, staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["stock-meta", code], queryFn: ({ signal }) => fetchStocksMeta([code], signal), enabled: code.length > 0, staleTime: META_STALE });
