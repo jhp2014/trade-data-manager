@@ -1,7 +1,7 @@
 // 가설 패널·그래프가 공유하는 데이터 조회·파생(중복 제거). 선택·조립·뮤테이션은 각 패널 몫.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { hypothesesForPoint } from "@trade-data-manager/market";
+import { hypothesesForPoint } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
 import { hypothesesQuery, hypothesisLinksQuery } from "../api/queries.js";
 import type { Hypothesis, HypothesisLink } from "../api/hypotheses.js";
