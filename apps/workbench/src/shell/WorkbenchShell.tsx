@@ -70,7 +70,7 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
     // 활성 탭은 진하게(text-primary+bold), 비활성은 text-secondary. 커스텀 탭이라 색을 직접 준다(div→자식 상속).
     const color = active ? "var(--text-primary)" : "var(--text-secondary)";
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 13, color }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color }}>
             <span style={{ fontWeight: active ? 600 : 400 }}>{title}</span>
             <button
                 onClick={(e) => {
@@ -78,7 +78,7 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
                     props.api.close();
                 }}
                 title="최소화 (작업표시줄로)"
-                style={{ background: "none", border: "none", color: "inherit", opacity: 0.55, cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px" }}
+                style={{ background: "none", border: "none", color: "inherit", opacity: 0.55, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}
             >
                 −
             </button>
