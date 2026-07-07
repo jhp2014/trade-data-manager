@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { kstToday } from "../lib/date.js";
 
 // 연동버스 = 2계층(레이아웃 라이브러리보다 이게 설계 본질):
 //  - Focus(커서, scalar): date·code·time(+timeLock). 차트·주석 패널이 축별 selector 로 구독.
@@ -82,7 +83,7 @@ interface WorkbenchState {
     setSelectedHypothesis: (id: string | null) => void;
 }
 
-const today = new Date().toISOString().slice(0, 10);
+const today = kstToday();
 
 // 타점 셋업 유형 프리셋 — 숫자키 1~9. 값·의미는 사용자 config → localStorage 영속(outcome 선례).
 const PRESETS_KEY = "wb.reviewTypePresets";
