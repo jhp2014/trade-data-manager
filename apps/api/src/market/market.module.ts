@@ -14,13 +14,15 @@ import {
     DrizzleHypothesisRepository,
     DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
+import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, HYPOTHESIS_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, HYPOTHESIS_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
 import { DayReplayController } from "./board/dayReplay.controller.js";
+import { DatesController } from "./board/dates.controller.js";
 import { ThemeController } from "./board/theme.controller.js";
 import { PriceLineController } from "./curation/priceLine.controller.js";
 import { ReviewPointController } from "./curation/reviewPoint.controller.js";
@@ -91,6 +93,12 @@ const boardProviders: Provider[] = [
         },
         inject: [MARKET_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
     },
+    {
+        // 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커. 일봉 repo 의 distinct 거래일 재사용(신규 소스 없음).
+        provide: DATA_DATE_READER,
+        useFactory: (pool: Pool): DataDateReader => new DrizzleDailyCandleRepository(createDb(pool)),
+        inject: [MARKET_POOL],
+    },
 ];
 
 const curationProviders: Provider[] = [
@@ -142,6 +150,7 @@ const newsProviders: Provider[] = [
         NewsController,
         TelegramNewsController,
         StocksController,
+        DatesController,
     ],
     providers: [poolProvider, ...chartProviders, ...boardProviders, ...curationProviders, ...newsProviders],
 })

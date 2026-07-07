@@ -12,3 +12,4 @@ export const HYPOTHESIS_REPO = Symbol("HypothesisRepository");
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");
 export const MARKET_POOL = Symbol("MarketPool");
+export const DATA_DATE_READER = Symbol("DataDateReader");

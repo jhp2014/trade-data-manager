@@ -10,6 +10,7 @@ import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchHypotheses, fetchHypothesisLinks, fetchHypothesisRelations } from "./hypotheses.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
+import { fetchDataDates } from "./dataDates.js";
 
 const IMMUTABLE = Infinity;
 const META_STALE = 30 * 60_000; // 마스터 메타 — 미수집 코드가 sticky-null 로 굳지 않게 30분마다 재시도 허용
@@ -48,3 +49,7 @@ export const stockMetaQuery = (code: string) =>
 // 종목의 시트 테마+편입이슈(날짜무관·code 키). 배정 mutation 이 ["theme-context"] invalidate 로 갱신하므로 staleTime ∞.
 export const themeContextQuery = (code: string) =>
     queryOptions({ queryKey: ["theme-context", code], queryFn: ({ signal }) => fetchThemeContext(code, signal), enabled: code.length > 0, staleTime: IMMUTABLE });
+
+// 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커용. 수집으로 새 날짜가 늘 수 있어 30분 stale 후 재조회 허용.
+export const dataDatesQuery = () =>
+    queryOptions({ queryKey: ["data-dates"], queryFn: ({ signal }) => fetchDataDates(signal), staleTime: META_STALE });
