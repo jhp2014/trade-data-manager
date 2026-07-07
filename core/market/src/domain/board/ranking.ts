@@ -17,8 +17,11 @@ export function selectHotUniverse<T extends HotRankable>(
     amountN: number,
     rateN: number,
 ): Set<string> {
-    const byAmount = [...stocks].sort((a, b) => b.amount - a.amount).slice(0, amountN);
-    const byRate = [...stocks].sort((a, b) => b.changeRate - a.changeRate).slice(0, rateN);
+    // N 방어 — 음수/NaN/소수 입력(설정 UI·손상된 상태)이 이상한 slice 로 새지 않게 clamp.
+    const topA = Math.max(0, Math.floor(amountN || 0));
+    const topR = Math.max(0, Math.floor(rateN || 0));
+    const byAmount = [...stocks].sort((a, b) => b.amount - a.amount).slice(0, topA);
+    const byRate = [...stocks].sort((a, b) => b.changeRate - a.changeRate).slice(0, topR);
     const hot = new Set<string>();
     for (const s of byAmount) hot.add(s.code);
     for (const s of byRate) hot.add(s.code);
