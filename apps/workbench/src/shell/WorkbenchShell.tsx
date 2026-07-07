@@ -1,6 +1,7 @@
 import { useEffect, useState, type FunctionComponent } from "react";
 import {
     DockviewReact,
+    themeLight,
     type DockviewReadyEvent,
     type IDockviewPanelProps,
     type IDockviewHeaderActionsProps,
@@ -118,7 +119,7 @@ export function WorkbenchShell(): JSX.Element {
                 onReady={onReady}
                 defaultTabComponent={PanelTab}
                 rightHeaderActionsComponent={HeaderActions}
-                className="dockview-theme-light"
+                theme={themeLight}
             />
         </div>
     );

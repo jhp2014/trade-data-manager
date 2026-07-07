@@ -178,8 +178,9 @@ button {
     background: var(--accent-primary);
 }
 
-/* dockview 라이트 테마를 팔레트에 맞춰 정렬(있는 변수만 덮어씀, 없으면 무시). */
-.dockview-theme-light {
+/* dockview 라이트 테마(theme={themeLight})를 우리 팔레트로 재정렬.
+   dockview.css 가 나중 로드라 같은 특이도면 짐 → :root 로 특이도 올려 우리 값이 이기게 한다. */
+:root .dockview-theme-light {
     --dv-background-color: var(--bg-primary);
     --dv-group-view-background-color: var(--bg-primary);
     --dv-tabs-and-actions-container-background-color: var(--bg-secondary);
