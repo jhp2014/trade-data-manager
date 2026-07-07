@@ -10,6 +10,8 @@ import { ChartPanel } from "../panels/ChartPanel.js";
 import { ThemeBoardPanel } from "../panels/ThemeBoardPanel.js";
 import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
 import { WorksetPanel } from "../panels/WorksetPanel.js";
+import { HypothesisPanel } from "../panels/HypothesisPanel.js";
+import { HypothesisGraphPanel } from "../panels/HypothesisGraphPanel.js";
 import { HtsNewsPanel } from "../panels/HtsNewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 
@@ -19,6 +21,8 @@ const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
     themeBoard: () => <ThemeBoardPanel />,
     replayBoard: () => <ReplayBoardPanel />,
     workset: () => <WorksetPanel />,
+    hypothesis: () => <HypothesisPanel />,
+    hypothesisGraph: () => <HypothesisGraphPanel />,
     chart: () => <ChartPanel />,
     htsNews: () => <HtsNewsPanel />,
     telegramNews: () => <TelegramNewsPanel />,
@@ -43,6 +47,18 @@ function onReady(event: DockviewReadyEvent): void {
         id: "workset-1",
         component: "workset",
         title: "작업셋",
+        position: { referencePanel: board, direction: "within" }, // 이슈정리와 탭 그룹
+    });
+    event.api.addPanel({
+        id: "hypothesis-1",
+        component: "hypothesis",
+        title: "가설",
+        position: { referencePanel: board, direction: "within" }, // 이슈정리와 탭 그룹
+    });
+    event.api.addPanel({
+        id: "hypothesis-graph-1",
+        component: "hypothesisGraph",
+        title: "가설 그래프",
         position: { referencePanel: board, direction: "within" }, // 이슈정리와 탭 그룹
     });
     event.api.addPanel({

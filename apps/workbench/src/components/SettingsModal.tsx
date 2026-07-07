@@ -3,13 +3,23 @@ import { Modal } from "./Modal.js";
 import { useWorkbench } from "../store/workbench.js";
 
 // 전역 설정 모달 — 사이드바에서 화면 선택 → 그 화면 설정. 패널별 gear 대신 우상단 전역 1개.
-type Screen = "issue" | "replay";
+type Screen = "issue" | "replay" | "point";
 
 const numInput: React.CSSProperties = {
     width: 56,
     border: "1px solid var(--border-default)",
     borderRadius: 4,
     padding: "1px 4px",
+    background: "var(--bg-primary)",
+    color: "var(--text-primary)",
+    font: "inherit",
+};
+
+const textInput: React.CSSProperties = {
+    flex: 1,
+    border: "1px solid var(--border-default)",
+    borderRadius: 4,
+    padding: "2px 6px",
     background: "var(--bg-primary)",
     color: "var(--text-primary)",
     font: "inherit",
@@ -22,7 +32,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
             <div style={{ display: "flex", gap: 14, minWidth: 380 }}>
                 {/* 사이드바 */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, borderRight: "1px solid var(--border-subtle)", paddingRight: 12 }}>
-                    {(["issue", "replay"] as const).map((s) => (
+                    {(["issue", "replay", "point"] as const).map((s) => (
                         <button
                             key={s}
                             onClick={() => setScreen(s)}
@@ -37,12 +47,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                                 whiteSpace: "nowrap",
                             }}
                         >
-                            {s === "issue" ? "당일 이슈" : "복기"}
+                            {s === "issue" ? "당일 이슈" : s === "replay" ? "복기" : "타점"}
                         </button>
                     ))}
                 </div>
                 {/* 내용 */}
-                <div style={{ flex: 1, minWidth: 0 }}>{screen === "issue" ? <IssueSettings /> : <ReplaySettings />}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>{screen === "issue" ? <IssueSettings /> : screen === "replay" ? <ReplaySettings /> : <PointSettings />}</div>
             </div>
         </Modal>
     );
@@ -121,6 +131,23 @@ function ReplaySettings(): JSX.Element {
                 등락률 상위
                 <input type="number" value={st.rateN} min={0} onChange={(e) => set({ rateN: Number(e.target.value) })} style={numInput} /> 종목
             </label>
+        </div>
+    );
+}
+
+// 타점 셋업 유형 프리셋 — 숫자키 1~9 슬롯. 분봉 차트에서 그 키로 현재 타점에 유형 입력.
+function PointSettings(): JSX.Element {
+    const presets = useWorkbench((s) => s.reviewTypePresets);
+    const set = useWorkbench((s) => s.setReviewTypePreset);
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 260 }}>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>분봉 차트에서 숫자키(1~9)로 현재 타점에 셋업 유형 입력. 빈 슬롯은 무시.</div>
+            {presets.map((v, i) => (
+                <label key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 18, textAlign: "center", fontWeight: 700, color: "var(--accent-hover)" }}>{i + 1}</span>
+                    <input type="text" value={v} onChange={(e) => set(i, e.target.value)} placeholder="(미설정)" style={textInput} />
+                </label>
+            ))}
         </div>
     );
 }

@@ -447,6 +447,9 @@ importers:
       '@trade-data-manager/market':
         specifier: workspace:*
         version: link:../../core/market
+      dagre:
+        specifier: ^0.8.5
+        version: 0.8.5
       dockview-react:
         specifier: ^4.0.0
         version: 4.13.1(react@18.3.1)
@@ -459,10 +462,16 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
+      reactflow:
+        specifier: ^11.11.4
+        version: 11.11.4(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       zustand:
         specifier: ^4.5.5
         version: 4.5.7(@types/react@18.3.28)(react@18.3.1)
     devDependencies:
+      '@types/dagre':
+        specifier: ^0.7.52
+        version: 0.7.54
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.17

@@ -12,13 +12,14 @@ import { SegButton, PaneLabel, EyeIcon, InfoIcon, TrashIcon, Center } from "./Ch
 
 // 차트 패널 — 일봉(상) + 분봉(하) 듀얼. 영역 더블클릭 = 그 영역만 보기 ↔ 둘 다.
 // 좌상단 종목명(day-summary 캐시 조회), 우상단 통합 세그먼트 컨트롤(마커·타점정보·clear·시장).
-// code/date/time 은 Focus 구독. 분봉 좌클릭=타점 이동, 스페이스바=타점 저장(토글).
+// code/date/time 은 Focus 구독. 분봉 좌클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~9=유형 프리셋 입력.
 export function ChartPanel(): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
     const date = useWorkbench((s) => s.focus.date);
     const time = useWorkbench((s) => s.focus.time);
     const setTime = useWorkbench((s) => s.setTime);
     const setSearch = useWorkbench((s) => s.setSearch);
+    const typePresets = useWorkbench((s) => s.reviewTypePresets);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const setMode = useWorkbench((s) => s.setChartPriceMode);
     const [expanded, setExpanded] = useState<"daily" | "minute" | null>(null);
@@ -141,8 +142,27 @@ export function ChartPanel(): JSX.Element {
         return () => window.removeEventListener("keydown", onKey);
     }, [code, date, time, reviewPoints]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // 숫자키 1~9 = 현재 Focus.time 타점에 셋업 유형(프리셋) 입력. 없으면 생성, 있으면 유형 교체(outcome/memo 보존).
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent): void => {
+            if (e.key.length !== 1 || e.key < "1" || e.key > "9") return;
+            const t = e.target as HTMLElement | null;
+            if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+            if (!code || !date || !time) return;
+            const type = typePresets[Number(e.key) - 1];
+            if (!type) return; // 미설정 슬롯 무시
+            e.preventDefault();
+            const existing = reviewPoints.find((rp) => rp.time === time);
+            upsertRpMut.mutate({ stockCode: code, date, time, type, outcome: existing?.outcome, memo: existing?.memo });
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [code, date, time, reviewPoints, typePresets]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음.
     const markerTime = useMemo(() => (time && date ? kstToUnix(date, time) : null), [time, date]);
+    // 현재 Focus.time 에 저장된 타점(있으면) — 헤더에 유형 배지 표시용.
+    const focusedPoint = useMemo(() => reviewPoints.find((rp) => rp.time === time), [reviewPoints, time]);
     const hasLines = lines.length > 0;
 
     return (
@@ -152,6 +172,7 @@ export function ChartPanel(): JSX.Element {
                 <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>{name ?? code ?? "—"}</span>
                 {name && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{code}</span>}
                 <span style={{ color: "var(--text-tertiary)" }}>{date}</span>
+                {focusedPoint?.type && <span style={{ padding: "1px 6px", borderRadius: 4, background: "var(--accent-soft)", color: "var(--accent-hover)", fontSize: 11, fontWeight: 600 }} title="현재 타점 셋업 유형">{focusedPoint.type}</span>}
                 {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
                 {/* 통합 세그먼트 컨트롤 — 마커·타점정보·clear·시장(UN/KRX 단일 토글) */}
                 <div style={{ marginLeft: "auto", display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>

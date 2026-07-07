@@ -58,6 +58,8 @@ interface WorkbenchState {
     newsSearchEngine: NewsSearchEngine; // HTS 뉴스 제목 검색 엔진(전역 토글)
     issueSettings: IssueBoardSettings;
     replaySettings: ReplayBoardSettings;
+    reviewTypePresets: string[]; // 타점 셋업 유형 프리셋(숫자키 1~9). 클라 config.
+    selectedHypothesisId: string | null; // 가설 선택 축 — 리스트↔그래프 하이라이트 동기화.
     // Focus 액션 — 무효화규칙을 액션 안에 강제한다(패널이 규칙을 재현하지 않게).
     setDate: (date: string) => void;
     setCode: (code: string) => void;
@@ -76,9 +78,27 @@ interface WorkbenchState {
     // 보드 설정(전역 모달이 편집)
     setIssueSettings: (patch: Partial<IssueBoardSettings>) => void;
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
+    setReviewTypePreset: (index: number, value: string) => void;
+    setSelectedHypothesis: (id: string | null) => void;
 }
 
 const today = new Date().toISOString().slice(0, 10);
+
+// 타점 셋업 유형 프리셋 — 숫자키 1~9. 값·의미는 사용자 config → localStorage 영속(outcome 선례).
+const PRESETS_KEY = "wb.reviewTypePresets";
+function loadReviewTypePresets(): string[] {
+    const out = Array<string>(9).fill("");
+    try {
+        const raw = localStorage.getItem(PRESETS_KEY);
+        if (raw) {
+            const arr: unknown = JSON.parse(raw);
+            if (Array.isArray(arr)) for (let i = 0; i < 9; i++) if (typeof arr[i] === "string") out[i] = arr[i] as string;
+        }
+    } catch {
+        /* localStorage 없음/파싱 실패 → 빈 프리셋 */
+    }
+    return out;
+}
 
 export const useWorkbench = create<WorkbenchState>((set) => ({
     focus: { date: today, code: "", time: null, timeLock: false },
@@ -88,6 +108,8 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     newsSearchEngine: "naver",
     issueSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
     replaySettings: { amountN: 80, rateN: 40 },
+    reviewTypePresets: loadReviewTypePresets(),
+    selectedHypothesisId: null,
 
     // date 최상위 무효화: time 리셋 + scope 전체 리셋(이슈·테마 모두 그날 것이라 날짜 넘어가면 stale).
     setDate: (date) =>
@@ -108,4 +130,16 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
     setIssueSettings: (patch) => set((s) => ({ issueSettings: { ...s.issueSettings, ...patch } })),
     setReplaySettings: (patch) => set((s) => ({ replaySettings: { ...s.replaySettings, ...patch } })),
+    setReviewTypePreset: (index, value) =>
+        set((s) => {
+            const next = s.reviewTypePresets.slice();
+            next[index] = value;
+            try {
+                localStorage.setItem(PRESETS_KEY, JSON.stringify(next));
+            } catch {
+                /* 영속 실패 무시 */
+            }
+            return { reviewTypePresets: next };
+        }),
+    setSelectedHypothesis: (id) => set(() => ({ selectedHypothesisId: id })),
 }));
