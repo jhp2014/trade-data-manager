@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { fetchTelegramNews, type TelegramNewsItem } from "../api/telegramNews.js";
-import { fetchDaySummary } from "../api/daySummary.js";
+import { daySummaryQuery } from "../api/queries.js";
 
 // 텔레그램 뉴스 패널 — 등록 방 전체 키워드 검색(focus.date KST 하루 스코프), 최신순.
 // 검색어 = 포커스 종목명 자동채움 + 편집. 자동검색 안 함 = 중앙 입력창에서 Enter/검색 버튼 수동 트리거(FLOOD 회피).
@@ -28,12 +28,7 @@ export function TelegramNewsPanel(): JSX.Element {
     const targetDate = inSearch ? search.date : focusDate;
 
     // 종목명 — Focus 날짜 캐시(code === focus.code 라 항상 해소).
-    const summaryQ = useQuery({
-        queryKey: ["day-summary", focusDate],
-        queryFn: () => fetchDaySummary(focusDate),
-        enabled: focusDate.length > 0,
-        staleTime: Infinity,
-    });
+    const summaryQ = useQuery(daySummaryQuery(focusDate));
     const name = useMemo(() => summaryQ.data?.stocks.find((s) => s.stockCode === code)?.name ?? null, [summaryQ.data, code]);
 
     const [input, setInput] = useState("");

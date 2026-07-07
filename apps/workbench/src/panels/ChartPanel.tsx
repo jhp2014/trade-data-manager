@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
-import { fetchChart } from "../api/chart.js";
-import { fetchDaySummary } from "../api/daySummary.js";
-import { fetchPriceLines, addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
-import { fetchReviewPoints, upsertReviewPoint, removeReviewPoint } from "../api/reviewPoints.js";
+import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
+import { upsertReviewPoint, removeReviewPoint } from "../api/reviewPoints.js";
+import { chartQuery, daySummaryQuery, priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery } from "../api/queries.js";
 import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
@@ -26,19 +25,9 @@ export function ChartPanel(): JSX.Element {
     const [showMarkers, setShowMarkers] = useState(true); // 분봉 거래대금 마커 ON/OFF
     const [showPointInfo, setShowPointInfo] = useState(false); // 현재 타점 정보 박스 토글
 
-    const query = useQuery({
-        queryKey: ["chart", code, date],
-        queryFn: () => fetchChart(code, date),
-        enabled: code.length > 0 && date.length > 0,
-        staleTime: Infinity,
-    });
+    const query = useQuery(chartQuery(code, date));
     // 종목명 — day-summary 캐시(보드가 이미 페치)에서 조회. 추가 페치 없음.
-    const summaryQ = useQuery({
-        queryKey: ["day-summary", date],
-        queryFn: () => fetchDaySummary(date),
-        enabled: date.length > 0,
-        staleTime: Infinity,
-    });
+    const summaryQ = useQuery(daySummaryQuery(date));
     const name = summaryQ.data?.stocks.find((s) => s.stockCode === code)?.name ?? null;
 
     const minuteView = useMemo(() => (query.data ? deriveMinuteView(query.data, mode) : null), [query.data, mode]);
@@ -49,12 +38,7 @@ export function ChartPanel(): JSX.Element {
     const qc = useQueryClient();
 
     // 가격선 주석 — 조회 + 우클릭 토글(자동 저장) + clear(전체 삭제).
-    const linesQ = useQuery({
-        queryKey: ["price-lines", code, date],
-        queryFn: () => fetchPriceLines(code, date),
-        enabled: code.length > 0 && date.length > 0,
-        staleTime: Infinity,
-    });
+    const linesQ = useQuery(priceLinesQuery(code, date));
     const lines = useMemo(() => linesQ.data ?? [], [linesQ.data]);
     // 앵커(캔들 좌표) → 로드된 캔들에서 raw 가격 해소(RenderLine). 앵커 캔들이 아직 없으면 그 선은 생략.
     // anchorTime 유무로 일봉(D)/분봉(M) 구분. field=고/저/시/종(현재 UI 는 high).
@@ -77,8 +61,8 @@ export function ChartPanel(): JSX.Element {
     }, [lines, dailyView, minuteView]);
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
     const invalidateLines = (): void => {
-        void qc.invalidateQueries({ queryKey: ["price-lines", code, date] });
-        void qc.invalidateQueries({ queryKey: ["price-lined-stocks"] }); // 작업셋 패널 즉시 반영
+        void qc.invalidateQueries({ queryKey: priceLinesQuery(code, date).queryKey });
+        void qc.invalidateQueries({ queryKey: priceLinedStocksQuery().queryKey }); // 작업셋 패널 즉시 반영
     };
     const addMut = useMutation({ mutationFn: addPriceLine, onSuccess: invalidateLines });
     const removeMut = useMutation({ mutationFn: removePriceLine, onSuccess: invalidateLines });
@@ -104,16 +88,11 @@ export function ChartPanel(): JSX.Element {
     };
 
     // 복기 타점 — 조회 + 스페이스바 저장(토글). 저장된 타점은 흐린 세로선 + hover 아이콘.
-    const reviewQ = useQuery({
-        queryKey: ["review-points", code, date],
-        queryFn: () => fetchReviewPoints(code, date),
-        enabled: code.length > 0 && date.length > 0,
-        staleTime: Infinity,
-    });
+    const reviewQ = useQuery(reviewPointsQuery(code, date));
     const reviewPoints = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
     const invalidateReview = (): void => {
-        void qc.invalidateQueries({ queryKey: ["review-points", code, date] });
-        void qc.invalidateQueries({ queryKey: ["all-points"] }); // 작업셋 패널 즉시 반영
+        void qc.invalidateQueries({ queryKey: reviewPointsQuery(code, date).queryKey });
+        void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey }); // 작업셋 패널 즉시 반영
     };
     const upsertRpMut = useMutation({ mutationFn: upsertReviewPoint, onSuccess: invalidateReview });
     const removeRpMut = useMutation({

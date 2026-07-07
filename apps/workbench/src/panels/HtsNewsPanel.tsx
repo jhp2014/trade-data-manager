@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench, type NewsSearchEngine } from "../store/workbench.js";
 import { fetchHtsNews, type HtsNewsItem, type HeadlineCursor } from "../api/news.js";
-import { fetchDaySummary } from "../api/daySummary.js";
+import { daySummaryQuery } from "../api/queries.js";
 
 // HTS(시황) 뉴스 패널 — 종목의 그 날 헤드라인을 최신순으로. code/date 는 Focus 를 따르되,
 // 검색 모드(일봉 봉 클릭)면 search.{code,date} 를 사용(뱃지+✕ 로 해제). 검색 모드에선 time 상호작용 off.
@@ -38,12 +38,7 @@ export function HtsNewsPanel(): JSX.Element {
     const date = inSearch ? search.date : focusDate;
 
     // 종목명 — Focus 날짜 캐시에서 조회(search.code === focus.code 라 항상 해소, 추가 페치 없음).
-    const summaryQ = useQuery({
-        queryKey: ["day-summary", focusDate],
-        queryFn: () => fetchDaySummary(focusDate),
-        enabled: focusDate.length > 0,
-        staleTime: Infinity,
-    });
+    const summaryQ = useQuery(daySummaryQuery(focusDate));
     const name = summaryQ.data?.stocks.find((s) => s.stockCode === code)?.name ?? null;
 
     const q = useInfiniteQuery({

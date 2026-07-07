@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
-import { fetchDaySummary } from "../api/daySummary.js";
+import { daySummaryQuery } from "../api/queries.js";
 import { dailyMetric } from "../lib/dailyMetrics.js";
 import { stocksByTheme, themeParents, groupStocks, isMover, isNearWindowHigh } from "@trade-data-manager/market/domain";
 import { BoardCenter, type BoardStock } from "../components/board/BoardCard.js";
@@ -15,12 +15,7 @@ export function ThemeBoardPanel(): JSX.Element {
     const setCode = useWorkbench((s) => s.setCode);
     const st = useWorkbench((s) => s.issueSettings);
 
-    const summaryQ = useQuery({
-        queryKey: ["day-summary", date],
-        queryFn: () => fetchDaySummary(date),
-        enabled: date.length > 0,
-        staleTime: Infinity,
-    });
+    const summaryQ = useQuery(daySummaryQuery(date));
     const board = useMemo(() => {
         if (!summaryQ.data) return null;
         const stocks: BoardStock[] = [];

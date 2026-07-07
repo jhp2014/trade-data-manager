@@ -2,15 +2,8 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { hypothesesForPoint } from "@trade-data-manager/market";
 import { useWorkbench } from "../store/workbench.js";
-import { fetchAllPoints } from "../api/reviewPoints.js";
-import {
-    fetchHypotheses,
-    fetchHypothesisLinks,
-    createHypothesis,
-    linkHypothesis,
-    unlinkHypothesis,
-    deleteHypothesis,
-} from "../api/hypotheses.js";
+import { createHypothesis, linkHypothesis, unlinkHypothesis, deleteHypothesis } from "../api/hypotheses.js";
+import { hypothesesQuery, hypothesisLinksQuery, allPointsQuery } from "../api/queries.js";
 
 // 가설 패널 — 얇은 목록. 각 행: [H{id} 태그] 텍스트, 우측 hover 액션(연결 토글·삭제).
 // 현재 타점 연결 = 태그 채움(테두리 없음). 선택 = 행 배경. 선택 시 연결 타점(종목명) 펼침→이동.
@@ -24,9 +17,9 @@ export function HypothesisPanel(): JSX.Element {
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
     const qc = useQueryClient();
 
-    const hypQ = useQuery({ queryKey: ["hypotheses"], queryFn: fetchHypotheses, staleTime: Infinity });
-    const linkQ = useQuery({ queryKey: ["hypothesis-links"], queryFn: fetchHypothesisLinks, staleTime: Infinity });
-    const pointsQ = useQuery({ queryKey: ["all-points"], queryFn: fetchAllPoints, staleTime: Infinity });
+    const hypQ = useQuery(hypothesesQuery());
+    const linkQ = useQuery(hypothesisLinksQuery());
+    const pointsQ = useQuery(allPointsQuery());
     const hypotheses = useMemo(() => hypQ.data ?? [], [hypQ.data]);
     const links = useMemo(() => linkQ.data ?? [], [linkQ.data]);
     const nameByCode = useMemo(() => {
@@ -36,8 +29,8 @@ export function HypothesisPanel(): JSX.Element {
     }, [pointsQ.data]);
 
     const invalidate = (): void => {
-        void qc.invalidateQueries({ queryKey: ["hypotheses"] });
-        void qc.invalidateQueries({ queryKey: ["hypothesis-links"] });
+        void qc.invalidateQueries({ queryKey: hypothesesQuery().queryKey });
+        void qc.invalidateQueries({ queryKey: hypothesisLinksQuery().queryKey });
     };
 
     const point = code && date && time ? { stockCode: code, date, time } : null;

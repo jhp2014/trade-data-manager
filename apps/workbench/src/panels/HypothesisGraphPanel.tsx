@@ -17,13 +17,8 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { hypothesesForPoint } from "@trade-data-manager/market";
 import { useWorkbench } from "../store/workbench.js";
-import {
-    fetchHypotheses,
-    fetchHypothesisLinks,
-    fetchHypothesisRelations,
-    addRelation,
-    removeRelation,
-} from "../api/hypotheses.js";
+import { addRelation, removeRelation } from "../api/hypotheses.js";
+import { hypothesesQuery, hypothesisLinksQuery, hypothesisRelationsQuery } from "../api/queries.js";
 import { buildGraphLayout } from "../lib/graphLayout.js";
 import { RELATION_TYPES, relationDef } from "../lib/relationTypes.js";
 
@@ -133,9 +128,9 @@ export function HypothesisGraphPanel(): JSX.Element {
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
     const qc = useQueryClient();
 
-    const hypQ = useQuery({ queryKey: ["hypotheses"], queryFn: fetchHypotheses, staleTime: Infinity });
-    const linkQ = useQuery({ queryKey: ["hypothesis-links"], queryFn: fetchHypothesisLinks, staleTime: Infinity });
-    const relQ = useQuery({ queryKey: ["hypothesis-relations"], queryFn: fetchHypothesisRelations, staleTime: Infinity });
+    const hypQ = useQuery(hypothesesQuery());
+    const linkQ = useQuery(hypothesisLinksQuery());
+    const relQ = useQuery(hypothesisRelationsQuery());
     const hypotheses = useMemo(() => hypQ.data ?? [], [hypQ.data]);
     const links = useMemo(() => linkQ.data ?? [], [linkQ.data]);
     const relations = useMemo(() => relQ.data ?? [], [relQ.data]);
@@ -149,7 +144,7 @@ export function HypothesisGraphPanel(): JSX.Element {
     }, [links]);
     const textById = useMemo(() => new Map(hypotheses.map((h) => [h.id, h.text])), [hypotheses]);
 
-    const invalidateRel = (): void => void qc.invalidateQueries({ queryKey: ["hypothesis-relations"] });
+    const invalidateRel = (): void => void qc.invalidateQueries({ queryKey: hypothesisRelationsQuery().queryKey });
     const addMut = useMutation({ mutationFn: addRelation, onSuccess: invalidateRel });
     const removeMut = useMutation({ mutationFn: removeRelation, onSuccess: invalidateRel });
 
