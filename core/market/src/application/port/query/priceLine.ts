@@ -4,7 +4,7 @@ import type { PriceLine, PriceLinedStock } from "#domain";
 // 가격이 아니라 앵커(캔들 좌표)를 저장한다 — 값은 표시 시점에 앵커 캔들에서 읽으므로 in-place 수정이 없다.
 // 편집모델 = add/remove 둘뿐(드래그 폐기). 자세한 설계는 domain/review/priceLine.ts.
 
-/** 가격선 조회(읽기). 차트 주석 표시·작업셋 목록 소비자(ChartAnnotation 등)가 의존. */
+/** 가격선 조회(읽기). 차트 주석 표시·작업셋 목록 소비자가 의존. */
 export interface PriceLineReader {
     /** 이 차트(종목,날짜)의 모든 선(그린 순서 = id 오름차순). */
     listByChart(stockCode: string, date: string): Promise<PriceLine[]>;
