@@ -1,5 +1,25 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
+import { useWorkbench } from "../store/workbench.js";
+import { useUi } from "../store/ui.js";
 import { PANEL_CATALOG, type PanelEntry } from "../shell/panelCatalog.js";
+import { stockMetaQuery } from "../api/queries.js";
+import { DatePicker } from "./DatePicker.js";
+import { Popover } from "./Popover.js";
+import { GearButton } from "./Modal.js";
+
+// 하단 작업표시줄 — 작업화면(프리셋) 표시·순환 + 닫힌(최소화) 창 재오픈 + 종목/날짜/시간 컨텍스트(우측 구석).
+// 컨텍스트는 상단 툴바 대신 여기로 이전: 텍스트처럼 보이되 클릭하면 편집(날짜는 data-aware 피커).
+const SESSION_START_MIN = 8 * 60; // 08:00
+const SESSION_END_MIN = 20 * 60; // 20:00
+function minToTime(min: number): string {
+    return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}:00`;
+}
+function timeToMin(time: string): number {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+}
 
 const chipStyle: React.CSSProperties = {
     padding: "1px 8px",
@@ -10,15 +30,96 @@ const chipStyle: React.CSSProperties = {
     cursor: "pointer",
     font: "inherit",
 };
+const sep: React.CSSProperties = { color: "var(--border-default)" };
+const inputStyle: React.CSSProperties = {
+    border: "1px solid var(--border-default)",
+    borderRadius: 5,
+    padding: "1px 6px",
+    background: "var(--bg-primary)",
+    color: "var(--text-primary)",
+    font: "inherit",
+    width: 90,
+};
+function textBtn(active = false): React.CSSProperties {
+    return {
+        background: active ? "var(--bg-tertiary)" : "none",
+        border: "none",
+        borderRadius: 5,
+        padding: "2px 6px",
+        color: "var(--text-primary)",
+        cursor: "pointer",
+        font: "inherit",
+    };
+}
 
-// 하단 작업표시줄(씨앗) — 현재 작업화면(프리셋) 표시·순환 + 닫힌(최소화) 창 클릭 재오픈.
-// 이후 브릭 6에서 종목/날짜/시간 컨텍스트가 여기 구석에 붙는다.
+// 종목 — 텍스트(코드+이름)로 보이다 클릭하면 인라인 입력.
+function CodeControl(): JSX.Element {
+    const code = useWorkbench((s) => s.focus.code);
+    const setCode = useWorkbench((s) => s.setCode);
+    const [editing, setEditing] = useState(false);
+    const meta = useQuery(stockMetaQuery(code));
+    const name = meta.data?.[0]?.name;
+    if (editing) {
+        const commit = (v: string): void => {
+            setCode(v.trim());
+            setEditing(false);
+        };
+        return (
+            <input
+                autoFocus
+                defaultValue={code}
+                onBlur={(e) => commit(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+                    else if (e.key === "Escape") setEditing(false);
+                }}
+                placeholder="005930"
+                style={inputStyle}
+            />
+        );
+    }
+    return (
+        <button onClick={() => setEditing(true)} title="종목 변경" style={textBtn()}>
+            {code ? (name ? `${code} ${name}` : code) : "종목"}
+        </button>
+    );
+}
+
+// 시간 — 텍스트로 보이다 클릭하면 시각 스크러버(08:00~20:00) 팝오버. 차트에서도 시점 선택 가능하므로 상시 노출 안 함.
+function TimeControl(): JSX.Element {
+    const time = useWorkbench((s) => s.focus.time);
+    const setTime = useWorkbench((s) => s.setTime);
+    const curMin = time ? timeToMin(time) : 15 * 60 + 30; // 기본 15:30
+    return (
+        <Popover trigger={(open, toggle) => (
+            <button onClick={toggle} title="시간 선택" style={textBtn(open)}>{time ? time.slice(0, 5) : "시간"}</button>
+        )}>
+            {() => (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, width: 220 }}>
+                    <span className="tabular" style={{ fontWeight: 700, width: 40, color: "var(--text-primary)" }}>{minToTime(curMin).slice(0, 5)}</span>
+                    <input
+                        type="range"
+                        min={SESSION_START_MIN}
+                        max={SESSION_END_MIN}
+                        value={curMin}
+                        onChange={(e) => setTime(minToTime(Number(e.target.value)))}
+                        style={{ flex: 1, accentColor: "var(--accent-primary)" }}
+                    />
+                </div>
+            )}
+        </Popover>
+    );
+}
+
 export function Taskbar(): JSX.Element {
     const activePreset = useDock((s) => s.activePreset);
     const savedCount = useDock((s) => s.presets.filter(Boolean).length);
     const cyclePreset = useDock((s) => s.cyclePreset);
     const openPanelIds = useDock((s) => s.openPanelIds);
     const api = useDock((s) => s.api);
+    const date = useWorkbench((s) => s.focus.date);
+    const setDate = useWorkbench((s) => s.setDate);
+    const openSettings = useUi((s) => s.openSettings);
     // 카탈로그에 있으나 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움.
     const closed = openPanelIds === null ? [] : PANEL_CATALOG.filter((p) => !openPanelIds.includes(p.id));
     const reopen = (e: PanelEntry): void => {
@@ -29,8 +130,8 @@ export function Taskbar(): JSX.Element {
             style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                height: 26,
+                gap: 8,
+                height: 28,
                 padding: "0 10px",
                 borderTop: "1px solid var(--border-default)",
                 background: "var(--bg-secondary)",
@@ -42,7 +143,7 @@ export function Taskbar(): JSX.Element {
             <button
                 onClick={cyclePreset}
                 disabled={savedCount === 0}
-                title={savedCount ? "작업화면 순환" : "저장된 작업화면 없음 (설정 → 레이아웃)"}
+                title={savedCount ? `작업화면 순환 (Ctrl+1~${PRESET_COUNT} 전환)` : "저장된 작업화면 없음 (설정 → 레이아웃)"}
                 style={{
                     display: "flex",
                     alignItems: "center",
@@ -61,8 +162,8 @@ export function Taskbar(): JSX.Element {
             </button>
             {closed.length > 0 && (
                 <>
-                    <span style={{ color: "var(--border-default)" }}>│</span>
-                    <span style={{ color: "var(--text-tertiary)" }}>최소화</span>
+                    <span style={sep}>│</span>
+                    <span>최소화</span>
                     {closed.map((e) => (
                         <button key={e.id} onClick={() => reopen(e)} title="다시 열기" style={chipStyle}>
                             {e.title}
@@ -70,7 +171,16 @@ export function Taskbar(): JSX.Element {
                     ))}
                 </>
             )}
-            <span style={{ marginLeft: "auto" }}>Ctrl+1~{PRESET_COUNT} 전환 · 클릭 순환</span>
+            {/* 우측 구석: 종목 · 날짜 · 시간 · 설정 */}
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2 }}>
+                <CodeControl />
+                <span style={sep}>│</span>
+                <DatePicker value={date} onChange={setDate} />
+                <span style={sep}>│</span>
+                <TimeControl />
+                <span style={sep}>│</span>
+                <GearButton onClick={() => openSettings()} />
+            </span>
         </div>
     );
 }
