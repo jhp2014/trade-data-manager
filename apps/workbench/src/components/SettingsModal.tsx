@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Modal } from "./Modal.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi, type SettingsScreen } from "../store/ui.js";
-import { commandsByCategory } from "../keymap/registry.js";
+import { staticCommands, commandsByCategory } from "../keymap/registry.js";
+import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { formatChord } from "../keymap/keys.js";
 
 // 전역 설정 모달 — 사이드바에서 화면 선택 → 그 화면 설정. 패널별 gear 대신 우상단 전역 1개.
@@ -175,7 +176,9 @@ const kbdStyle: React.CSSProperties = {
     whiteSpace: "nowrap",
 };
 function ShortcutSettings(): JSX.Element {
-    const groups = commandsByCategory();
+    // 정적 + 동적(차트 등 마운트된 패널이 등록) 합본. 동적 스토어를 구독해 등록 변화에 반응.
+    const dynamic = useKeymapDynamic((s) => s.commands);
+    const groups = commandsByCategory([...staticCommands, ...Object.values(dynamic)]);
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 300 }}>
             {groups.map((g) => (

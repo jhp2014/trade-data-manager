@@ -1,34 +1,40 @@
-import type { Command } from "./types.js";
+import type { Command, Scope } from "./types.js";
 import { canonicalChord } from "./keys.js";
 import { useUi } from "../store/ui.js";
+import { useKeymapDynamic } from "./dynamic.js";
 
-// 단축키 단일 소스. 새 단축키는 여기에 커맨드 하나 추가하면 디스패처·도움말에 동시 반영된다.
-//  - run 있는 항목만 디스패치. run 없는 항목은 문서 전용(실동작은 패널 훅이 소유).
-//  - "1~9" 같이 표시용 키는 canonical 매칭이 아니라 도움말에만 나온다.
-const raw: Command[] = [
+// 정적 단축키(전역, 데이터 비결합). 새 전역 단축키는 여기 한 줄 추가하면 디스패치·도움말에 동시 반영.
+// 데이터 결합형(차트 타점 등)은 소유 훅이 useKeymapDynamic 로 동적 등록한다.
+const staticRaw: Command[] = [
     { id: "app.settings", title: "설정 열기", category: "일반", keys: "ctrl+,", run: () => useUi.getState().openSettings() },
     { id: "app.shortcuts", title: "단축키 도움말", category: "일반", keys: "?", run: () => useUi.getState().openSettings("shortcuts") },
-    // 아래 둘은 chartHooks.useReviewPointHotkeys 가 소유(도움말 완전성 위해 등록만). 후속 벽돌에서 이관.
-    { id: "chart.reviewToggle", title: "타점 저장/삭제(현재 시각)", category: "차트", keys: "space", scope: "chart" },
-    { id: "chart.reviewType", title: "타점 셋업 유형 입력(프리셋)", category: "차트", keys: "1~9", scope: "chart" },
 ];
 
-export const commands: Command[] = raw.map((c) => ({ ...c, keys: canonicalChord(c.keys) }));
+export const staticCommands: Command[] = staticRaw.map((c) => ({ ...c, keys: canonicalChord(c.keys) }));
 
-// 디스패치용 chord → 커맨드 조회(run 있는 것만).
-export const dispatchMap: ReadonlyMap<string, Command> = new Map(
-    commands.filter((c) => c.run).map((c) => [c.keys, c] as const),
-);
+// 정적 + 동적(런타임 등록) 합본 — 도움말·디스패치 공용.
+export function allCommands(): Command[] {
+    return [...staticCommands, ...Object.values(useKeymapDynamic.getState().commands)];
+}
+
+// chord → 발동 커맨드. 전역이 기본. 같은 키에 scope 커맨드가 있고 그 scope 가 활성이면 전역보다 우선(덧씌우기).
+export function resolveCommand(chord: string, activeScope: Scope): Command | undefined {
+    const matches = allCommands().filter((c) => c.run && c.keys === chord);
+    return (
+        matches.find((c) => (c.scope ?? "global") !== "global" && c.scope === activeScope) ??
+        matches.find((c) => (c.scope ?? "global") === "global")
+    );
+}
 
 export interface CommandGroup {
     category: string;
     items: Command[];
 }
 
-// 도움말용 — 카테고리별 그룹(등록 순서 유지).
-export function commandsByCategory(): CommandGroup[] {
+// 도움말용 — 주어진 목록을 카테고리별로 그룹(등록 순서 유지).
+export function commandsByCategory(list: Command[]): CommandGroup[] {
     const groups = new Map<string, Command[]>();
-    for (const c of commands) {
+    for (const c of list) {
         const arr = groups.get(c.category);
         if (arr) arr.push(c);
         else groups.set(c.category, [c]);

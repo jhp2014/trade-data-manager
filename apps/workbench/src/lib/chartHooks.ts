@@ -1,11 +1,13 @@
 // ChartPanel 편집 유스케이스 훅 — 가격선/타점의 조회·앵커해소·mutation·단축키를 컴포넌트에서 분리.
 // 패널은 뷰 파생(deriveMinute/DailyView)+렌더만 남긴다.
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery } from "../api/queries.js";
 import { kstToUnix, type DailyPoint, type MinuteView } from "./derive.js";
+import { useKeymapDynamic } from "../keymap/dynamic.js";
+import type { Command } from "../keymap/types.js";
 
 export interface ChartPriceLines {
     resolvedLines: RenderLine[]; // D+M 해소된 선(분봉용)
@@ -95,38 +97,41 @@ export function useReviewPointHotkeys(code: string, date: string, time: string |
         onSuccess: invalidate,
     });
 
-    // 스페이스바 = 현재 Focus.time 타점 저장 토글(같은 시각 있으면 삭제).
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent): void => {
-            if (e.code !== "Space") return;
-            const t = e.target as HTMLElement | null;
-            if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    // 단축키 = 중앙 레지스트리에 동적 등록(디스패처가 발동·입력창 포커스 가드 처리). 전역 발동(차트 포커스 불요).
+    // 핸들러는 최신 reviewPoints/뮤테이션을 써야 하므로 ref 로 안정화 → 등록은 프리셋 변경 시에만.
+    const handlersRef = useRef<{ toggle: () => void; applyType: (i: number) => void }>({ toggle: () => {}, applyType: () => {} });
+    handlersRef.current = {
+        // 스페이스바 = 현재 Focus.time 타점 저장 토글(같은 시각 있으면 삭제).
+        toggle: () => {
             if (!code || !date || !time) return;
-            e.preventDefault();
             const existing = reviewPoints.find((rp) => rp.time === time);
             if (existing) removeRpMut.mutate({ code, date, time });
             else upsertRpMut.mutate({ stockCode: code, date, time });
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [code, date, time, reviewPoints]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // 숫자키 1~9 = 현재 Focus.time 타점에 셋업 유형(프리셋) 입력. 없으면 생성, 있으면 유형 교체(outcome/memo 보존).
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent): void => {
-            if (e.key.length !== 1 || e.key < "1" || e.key > "9") return;
-            const t = e.target as HTMLElement | null;
-            if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-            if (!code || !date || !time) return;
-            const type = typePresets[Number(e.key) - 1];
-            if (!type) return; // 미설정 슬롯 무시
-            e.preventDefault();
+        },
+        // 숫자키 = 현재 Focus.time 타점에 셋업 유형 입력. 없으면 생성, 있으면 유형 교체(outcome/memo 보존).
+        applyType: (i) => {
+            const type = typePresets[i];
+            if (!type || !code || !date || !time) return;
             const existing = reviewPoints.find((rp) => rp.time === time);
             upsertRpMut.mutate({ stockCode: code, date, time, type, outcome: existing?.outcome, memo: existing?.memo });
+        },
+    };
+
+    useEffect(() => {
+        const { register, unregister } = useKeymapDynamic.getState();
+        const ids: string[] = [];
+        const put = (cmd: Command): void => {
+            register(cmd);
+            ids.push(cmd.id);
         };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [code, date, time, reviewPoints, typePresets]); // eslint-disable-line react-hooks/exhaustive-deps
+        put({ id: "chart.review.toggle", title: "타점 저장/삭제(현재 시각)", category: "차트", keys: "space", run: () => handlersRef.current.toggle() });
+        // 설정된 프리셋 슬롯만 등록 → 도움말에 실제 유형 라벨로 표시.
+        typePresets.forEach((preset, i) => {
+            if (!preset) return;
+            put({ id: `chart.review.type.${i + 1}`, title: `타점 유형: ${preset}`, category: "차트", keys: String(i + 1), run: () => handlersRef.current.applyType(i) });
+        });
+        return () => ids.forEach(unregister);
+    }, [typePresets]);
 
     const savedTimes = useMemo(() => (date ? reviewPoints.map((rp) => kstToUnix(date, rp.time)) : []), [reviewPoints, date]);
     const focusedPoint = useMemo(() => reviewPoints.find((rp) => rp.time === time), [reviewPoints, time]);
