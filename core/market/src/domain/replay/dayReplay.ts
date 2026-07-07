@@ -6,6 +6,7 @@ import type { MinuteCandle, DailyCandle } from "../candle/model.js";
 import { densifyMinutes } from "../candle/minuteBackfill.js";
 import { computeMinuteTradingAmount } from "../candle/price.js";
 import { countAmountBuckets, DEFAULT_COUNTING_POLICY, type CountingPolicy, type DerivedMinute } from "../board/amount.js";
+import { kstToUnix } from "../kst.js";
 
 /** trailingHighs 배열 길이(최대 거래일). 클라가 이 안에서 20/40/…/120 창을 슬라이스. */
 export const TRAILING_DAYS = 120;
@@ -67,11 +68,6 @@ export interface DayReplay {
 export interface DayTheme {
     date: string;
     stocks: ThemeStats[];
-}
-
-/** KST(UTC+9) date+time(HH:MM:SS) → unix seconds. */
-function kstToUnix(date: string, time: string): number {
-    return Math.floor(Date.parse(`${date}T${time}+09:00`) / 1000);
 }
 
 /** % 값 소수 2자리 반올림 — 소비측도 2자리라 무손실 + payload 다이어트. */

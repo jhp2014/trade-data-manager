@@ -1,5 +1,6 @@
 import { Controller, Get, Inject, Query } from "@nestjs/common";
 import type { NewsItem, NewsSearcher } from "@trade-data-manager/market";
+import { addDaysYmd } from "@trade-data-manager/market";
 import type { TelegramNewsItem, TelegramNewsPage } from "@trade-data-manager/wire";
 import { NEWS_SEARCHER } from "../tokens.js";
 import { assertYmd } from "../validation.js";
@@ -13,12 +14,7 @@ function toWire(n: NewsItem): TelegramNewsItem {
     return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref };
 }
 
-// "YYYY-MM-DD" ± n일. UTC 파싱/포맷으로 TZ 드리프트 없이 날짜 산술.
-function addDaysStr(date: string, n: number): string {
-    const d = new Date(`${date}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() + n);
-    return d.toISOString().slice(0, 10);
-}
+// 날짜 ± n일은 core/market addDaysYmd 단일 출처 사용.
 
 // GET /news/telegram?q&date[&beforeDate] — 등록 방 전체 키워드 fan-out, 하루 단위로.
 //  · beforeDate 없음: focus.date 하루 전체(초기).
@@ -45,13 +41,13 @@ export class TelegramNewsController {
 
         assertYmd(beforeDate, "beforeDate");
         const acc: NewsItem[] = [];
-        let day = addDaysStr(beforeDate, -1);
+        let day = addDaysYmd(beforeDate, -1);
         let oldest = beforeDate;
         for (let i = 0; i < MAX_WALK_DAYS; i++) {
             acc.push(...(await this.searchDay(query, day)));
             oldest = day;
             if (acc.length > THRESHOLD) break;
-            day = addDaysStr(day, -1);
+            day = addDaysYmd(day, -1);
         }
         acc.sort((a, b) => b.at.getTime() - a.at.getTime()); // 여러 날 섞였으니 최신순 재정렬
         return { items: acc.map(toWire), oldestDate: oldest };

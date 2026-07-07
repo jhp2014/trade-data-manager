@@ -1,5 +1,6 @@
 // 공용 값객체
 export * from "./dateRange.js";
+export * from "./kst.js";
 
 // candle — 일·분봉 OHLCV + 그 위 순수계산(등락률·거래대금·dense·후보선정)
 export * from "./candle/model.js";

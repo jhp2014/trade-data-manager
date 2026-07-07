@@ -5,6 +5,7 @@ import {
     computeChangeRate,
     computeMinuteTradingAmount,
     computeAccumulatedAmounts,
+    kstToUnix,
 } from "@trade-data-manager/market/domain";
 import type { ChartBundle } from "../api/chart.js";
 import type { ChartPriceMode } from "../store/workbench.js";
@@ -30,10 +31,8 @@ export interface MinuteView {
     base: number | null;
 }
 
-/** KST(UTC+9) date(YYYY-MM-DD)+time(HH:MM:SS) → unix seconds. */
-export function kstToUnix(date: string, time: string): number {
-    return Math.floor(Date.parse(`${date}T${time}+09:00`) / 1000);
-}
+// KST 변환은 core/market/domain 단일 출처. 소비자 편의를 위해 derive 에서 재노출.
+export { kstToUnix };
 
 /** 일봉 차트 포인트 — raw 가격(등락률 아님) + 거래대금 + 고가마커용 전일종가. time=business day 문자열. */
 export interface DailyPoint {
