@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
+import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException, InternalServerErrorException } from "@nestjs/common";
 import type {
     Hypothesis as CoreHypothesis,
     HypothesisRelation as CoreHypothesisRelation,
@@ -28,14 +28,14 @@ interface RelationBody {
 }
 
 // 저장된 가설/관계는 id 가 항상 존재(포트 타입은 미저장 대비 id?). 와이어 계약(id 필수)으로 경계에서 좁힌다.
-const toWireHypothesis = (h: CoreHypothesis): Hypothesis => ({ id: h.id!, text: h.text });
-const toWireRelation = (r: CoreHypothesisRelation): HypothesisRelation => ({
-    id: r.id!,
-    fromId: r.fromId,
-    toId: r.toId,
-    relationType: r.relationType,
-    note: r.note,
-});
+const toWireHypothesis = (h: CoreHypothesis): Hypothesis => {
+    if (h.id == null) throw new InternalServerErrorException("가설 id 누락 — repo 계약 위반");
+    return { id: h.id, text: h.text };
+};
+const toWireRelation = (r: CoreHypothesisRelation): HypothesisRelation => {
+    if (r.id == null) throw new InternalServerErrorException("가설 관계 id 누락 — repo 계약 위반");
+    return { id: r.id, fromId: r.fromId, toId: r.toId, relationType: r.relationType, note: r.note };
+};
 
 // 가설 큐레이션 — 클라가 세 목록(가설·링크·관계)을 받아 인메모리로 조립·필터(옵션 A). 여기선 flat CRUD 만.
 // 가설↔타점 연결은 자연키(code·date·time) = review point 삼중키. 관계 편집은 후속(Phase 3).
