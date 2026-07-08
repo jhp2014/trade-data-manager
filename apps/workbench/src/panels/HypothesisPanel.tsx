@@ -108,14 +108,13 @@ export function HypothesisPanel(): JSX.Element {
                                     display: "flex",
                                     alignItems: "flex-start",
                                     gap: 9,
-                                    // (A) 현재 타점 연결 = 좌측 직각 바(그래프와 공통).
-                                    borderLeft: `3px solid ${linked ? "var(--accent-primary)" : "transparent"}`,
-                                    padding: "7px 10px 7px 9px",
+                                    padding: "7px 10px",
                                     background: selected ? "var(--accent-soft)" : hovered ? "var(--bg-secondary)" : "transparent",
                                     cursor: "pointer",
                                 }}
                             >
-                                <span style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontSize: 13, lineHeight: 1.5, color: linked ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: linked ? 500 : 400 }}>{h.text}</span>
+                                {/* (A) 현재 타점 연결 = 텍스트를 accent 색+굵게(좌측 바보다 눈에 띔). 상단 정렬과 함께. */}
+                                <span style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontSize: 13, lineHeight: 1.5, color: linked ? "var(--accent-primary)" : "var(--text-secondary)", fontWeight: linked ? 600 : 400 }}>{h.text}</span>
 
                                 {/* 우측 — (B)필터 칩 + 연결수 + hover 액션 */}
                                 <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, height: 18, marginTop: 0 }}>

@@ -39,9 +39,7 @@ export function StockRow({
                 border: "none",
                 borderTop: boundary ? "2px solid var(--border-strong)" : undefined,
                 borderBottom: "1px solid var(--border-subtle)",
-                // 주석(타점/가격선) 있는 종목 = 좌측 직선 바. 투명 바로 자리 예약해 행 정렬 유지.
-                borderLeft: `3px solid ${s.annotated ? "var(--accent-primary)" : "transparent"}`,
-                padding: "3px 10px 3px 7px",
+                padding: "3px 10px",
                 cursor: "pointer",
                 background: selected ? "var(--bg-active)" : "transparent",
                 font: "inherit",
@@ -62,8 +60,19 @@ export function StockRow({
                         e.stopPropagation();
                         openAssign({ code: s.code, name: s.name }, { x: e.clientX, y: e.clientY });
                     }}
-                    title="우클릭: 테마 배정"
-                    style={{ flexShrink: 1, minWidth: 0, color: "var(--text-primary)", fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={s.annotated ? "복기 타점/가격선 있음 · 우클릭: 테마 배정" : "우클릭: 테마 배정"}
+                    style={{
+                        flexShrink: 1,
+                        minWidth: 0,
+                        color: "var(--text-primary)",
+                        fontWeight: 600,
+                        fontSize: 13,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        // 주석(타점/가격선) 있는 종목 = 이름 배경 하이라이트(형광펜). 음수 margin 으로 텍스트 위치는 안 밀림.
+                        ...(s.annotated ? { background: "var(--accent-soft)", borderRadius: 3, padding: "0 4px", margin: "0 -4px" } : null),
+                    }}
                 >
                     {s.name}
                 </span>

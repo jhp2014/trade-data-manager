@@ -25,7 +25,7 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { FloatingTooltip } from "./tooltip.js";
-import { PointInfoBox, OhlcTooltip } from "./MinuteChartTooltips.js";
+import { PointInfoBox, MarkerReadout, OhlcTooltip } from "./MinuteChartTooltips.js";
 import { kstToUnix, type MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 
@@ -428,10 +428,10 @@ export function MinuteChart({
                     </div>
                 ),
             )}
-            {/* 현재 타점 정보 박스 — 토글 ON 시 활성 선 상단에 pin(hover 아님). */}
+            {/* 현재 타점(시간선) 상단 담백 readout — 토글 ON 시 마커 x 위 최상단에 가로 한 줄. */}
             {showPointInfo && overlay.current && overlay.current.point && (
-                <div style={{ position: "absolute", left: overlay.current.x + 8, top: 2, zIndex: 9, pointerEvents: "none" }}>
-                    <PointInfoBox point={overlay.current.point} accent />
+                <div style={{ position: "absolute", left: overlay.current.x, top: 1, transform: "translateX(-50%)", zIndex: 9, pointerEvents: "none" }}>
+                    <MarkerReadout point={overlay.current.point} />
                 </div>
             )}
             {tip.visible && (

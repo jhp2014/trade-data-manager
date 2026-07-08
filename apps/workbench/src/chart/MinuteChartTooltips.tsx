@@ -5,7 +5,36 @@ import { rateColor } from "./tooltip.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 import type { MinutePoint } from "../lib/derive.js";
 
-/** 타점 정보 박스 — 저장 타점 hover / 현재 타점 토글 공용. 지금은 등락률·거래대금만, 나중에 항목 확장. */
+/** 현재 타점(시간선) 상단 담백 readout — 박스 툴팁 대신 한 줄 가로. "09:58 | +8.7% | 57억". */
+export function MarkerReadout({ point }: { point: MinutePoint }): JSX.Element {
+    const sep = <span style={{ color: "rgba(0,0,0,0.2)" }}>|</span>;
+    return (
+        <div
+            style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "rgba(255,255,255,0.9)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: 4,
+                padding: "1px 7px",
+                fontSize: 11,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                fontVariantNumeric: "tabular-nums",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            }}
+        >
+            <span style={{ color: "var(--text-secondary)" }}>{kstHHmm(point.time)}</span>
+            {sep}
+            <span style={{ color: rateColor(point.close) }}>{fmtRate(point.close)}</span>
+            {sep}
+            <span style={{ color: "var(--text-secondary)" }}>{fmtEok(point.amount)}</span>
+        </div>
+    );
+}
+
+/** 타점 정보 박스 — 저장 타점 hover 공용. 지금은 등락률·거래대금만, 나중에 항목 확장. */
 export function PointInfoBox({ point, accent = false }: { point: MinutePoint; accent?: boolean }): JSX.Element {
     return (
         <div
