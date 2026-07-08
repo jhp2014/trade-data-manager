@@ -89,9 +89,9 @@ interface WorkbenchState {
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
     setReviewTypePreset: (index: number, value: string) => void;
     setSelectedHypothesis: (id: string | null) => void;
-    // 가설 필터 편집 — 어느 surface든 같은 액션 호출(제스처↔메커니즘 분리). addFilterLeaf 는 마지막 그룹에 추가/부정/제거 순환.
+    // 가설 필터 편집 — 어느 surface든 같은 액션. 기본 OR: addFilterLeaf 는 새 OR 그룹(있으면 그 자리 순환). AND=드래그로 합침.
     addFilterLeaf: (hypothesisId: string) => void;
-    addFilterGroup: () => void;
+    moveLeafToGroup: (fromGroupIndex: number, hypothesisId: string, target: number | "new") => void; // 드래그: 그룹으로=AND / "new"=OR 분리
     removeFilterLeaf: (groupIndex: number, hypothesisId: string) => void;
     toggleFilterNegate: (groupIndex: number, hypothesisId: string) => void;
     removeFilterGroup: (groupIndex: number) => void;
@@ -171,23 +171,44 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
         }),
     setSelectedHypothesis: (id) => set(() => ({ selectedHypothesisId: id })),
 
-    // 마지막 그룹에 리프 추가 → 이미 있으면 양성→부정→제거 순환(우클릭 반복). 그룹 없으면 새로 만든다.
+    // 기본 OR: 없으면 새 OR 그룹, 이미 있으면 그 자리에서 순환(포함→제외→삭제, 우클릭 반복). AND 는 드래그로.
     addFilterLeaf: (hypothesisId) =>
         set((s) => {
             const groups = cloneGroups(s.filterDraft);
-            if (groups.length === 0) groups.push([]);
-            const last = groups[groups.length - 1];
-            const i = last.findIndex((l) => l.hypothesisId === hypothesisId);
-            if (i < 0) last.push({ hypothesisId, negated: false });
-            else if (!last[i].negated) last[i].negated = true;
-            else last.splice(i, 1);
+            for (let gi = 0; gi < groups.length; gi++) {
+                const li = groups[gi].findIndex((l) => l.hypothesisId === hypothesisId);
+                if (li >= 0) {
+                    if (!groups[gi][li].negated) groups[gi][li].negated = true;
+                    else {
+                        groups[gi].splice(li, 1);
+                        if (groups[gi].length === 0) groups.splice(gi, 1);
+                    }
+                    return { filterDraft: { groups } };
+                }
+            }
+            groups.push([{ hypothesisId, negated: false }]);
             return { filterDraft: { groups } };
         }),
-    // 새 OR 그룹 시작(마지막이 비어있지 않을 때만 — 빈 그룹 남발 방지).
-    addFilterGroup: () =>
+    // 드래그 이동 — 다른 그룹으로=AND 합침 / "new"=새 OR 그룹으로 분리. 빈 그룹은 정리, 대상 그룹에 이미 있으면 중복 안 만듦.
+    moveLeafToGroup: (fromGroupIndex, hypothesisId, target) =>
         set((s) => {
             const groups = cloneGroups(s.filterDraft);
-            if (groups.length === 0 || groups[groups.length - 1].length > 0) groups.push([]);
+            const from = groups[fromGroupIndex];
+            const li = from?.findIndex((l) => l.hypothesisId === hypothesisId) ?? -1;
+            if (!from || li < 0) return {};
+            if (target !== "new" && target === fromGroupIndex) return {}; // 자기 그룹 = no-op
+            const [leaf] = from.splice(li, 1);
+            if (target === "new") {
+                groups.push([leaf]);
+            } else {
+                const to = groups[target];
+                if (!to) {
+                    from.splice(li, 0, leaf); // 대상 없음 → 되돌림
+                    return {};
+                }
+                if (!to.some((l) => l.hypothesisId === leaf.hypothesisId)) to.push(leaf);
+            }
+            for (let i = groups.length - 1; i >= 0; i--) if (groups[i].length === 0) groups.splice(i, 1);
             return { filterDraft: { groups } };
         }),
     removeFilterLeaf: (groupIndex, hypothesisId) =>
