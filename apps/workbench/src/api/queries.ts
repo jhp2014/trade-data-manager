@@ -8,6 +8,7 @@ import { fetchDaySummary } from "./daySummary.js";
 import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchHypotheses, fetchHypothesisLinks, fetchHypothesisRelations } from "./hypotheses.js";
+import { fetchHypothesisFilters } from "./hypothesisFilters.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
@@ -42,6 +43,10 @@ export const hypothesisLinksQuery = () =>
 
 export const hypothesisRelationsQuery = () =>
     queryOptions({ queryKey: ["hypothesis-relations"], queryFn: ({ signal }) => fetchHypothesisRelations(signal), staleTime: IMMUTABLE });
+
+// 저장된 가설 필터 목록. 저장/삭제 mutation 이 이 키를 invalidate 하므로 staleTime ∞.
+export const hypothesisFiltersQuery = () =>
+    queryOptions({ queryKey: ["hypothesis-filters"], queryFn: ({ signal }) => fetchHypothesisFilters(signal), staleTime: IMMUTABLE });
 
 // 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
 export const stockMetaQuery = (code: string) =>

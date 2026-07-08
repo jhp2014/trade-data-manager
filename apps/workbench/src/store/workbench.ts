@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { type HypothesisFilterExpr, type PointAttr } from "@trade-data-manager/market/domain";
 import { kstToday } from "../lib/date.js";
 
 // 연동버스 = 2계층(레이아웃 라이브러리보다 이게 설계 본질):
@@ -58,6 +59,11 @@ interface WorkbenchState {
     replaySettings: ReplayBoardSettings;
     reviewTypePresets: string[]; // 타점 셋업 유형 프리셋(숫자키 1~9). 클라 config.
     selectedHypothesisId: string | null; // 가설 선택 축 — 리스트↔그래프 하이라이트 동기화.
+    // 가설 필터 draft(DNF: AND그룹들의 OR). 어느 surface(그래프·목록)든 addFilterLeaf 로 채운다.
+    // 활성(비어있지 않은 그룹 ≥1)이면 작업셋이 월별→전 기간 필터 모드로 전환(모드 플래그 없이 활성여부가 곧 모드).
+    filterDraft: HypothesisFilterExpr;
+    // 속성 패싯 선택(2단계 드릴다운). 값 배열(null=미분류). 임시라 저장 안 함. 필터 지우기/불러오기 시 리셋.
+    facetSelected: Record<PointAttr, (string | null)[]>;
     // 마지막 Focus 변경의 출처(패널 id). 패널이 "내가 바꿨나(self) vs 남이 바꿨나(external)"를 구분해
     // 자기 자신은 제자리, 남에 의한 변경은 스크롤/동기화하는 데 쓴다. origin 미전달 = null(= 외부 취급).
     lastFocusOrigin: string | null;
@@ -79,7 +85,20 @@ interface WorkbenchState {
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
     setReviewTypePreset: (index: number, value: string) => void;
     setSelectedHypothesis: (id: string | null) => void;
+    // 가설 필터 편집 — 어느 surface든 같은 액션 호출(제스처↔메커니즘 분리). addFilterLeaf 는 마지막 그룹에 추가/부정/제거 순환.
+    addFilterLeaf: (hypothesisId: string) => void;
+    addFilterGroup: () => void;
+    removeFilterLeaf: (groupIndex: number, hypothesisId: string) => void;
+    toggleFilterNegate: (groupIndex: number, hypothesisId: string) => void;
+    removeFilterGroup: (groupIndex: number) => void;
+    clearFilter: () => void;
+    setFilterExpr: (expr: HypothesisFilterExpr) => void; // 저장 필터 불러오기
+    toggleFacet: (attr: PointAttr, value: string | null) => void;
 }
+
+// 필터 그룹 깊은 복사(불변 편집용).
+const cloneGroups = (expr: HypothesisFilterExpr) => expr.groups.map((g) => g.map((l) => ({ ...l })));
+const EMPTY_FACETS = (): Record<PointAttr, (string | null)[]> => ({ outcome: [], type: [] });
 
 const today = kstToday();
 
@@ -109,6 +128,8 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     replaySettings: { amountN: 80, rateN: 40 },
     reviewTypePresets: loadReviewTypePresets(),
     selectedHypothesisId: null,
+    filterDraft: { groups: [] },
+    facetSelected: EMPTY_FACETS(),
     lastFocusOrigin: null,
 
     // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale).
@@ -140,4 +161,54 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
             return { reviewTypePresets: next };
         }),
     setSelectedHypothesis: (id) => set(() => ({ selectedHypothesisId: id })),
+
+    // 마지막 그룹에 리프 추가 → 이미 있으면 양성→부정→제거 순환(우클릭 반복). 그룹 없으면 새로 만든다.
+    addFilterLeaf: (hypothesisId) =>
+        set((s) => {
+            const groups = cloneGroups(s.filterDraft);
+            if (groups.length === 0) groups.push([]);
+            const last = groups[groups.length - 1];
+            const i = last.findIndex((l) => l.hypothesisId === hypothesisId);
+            if (i < 0) last.push({ hypothesisId, negated: false });
+            else if (!last[i].negated) last[i].negated = true;
+            else last.splice(i, 1);
+            return { filterDraft: { groups } };
+        }),
+    // 새 OR 그룹 시작(마지막이 비어있지 않을 때만 — 빈 그룹 남발 방지).
+    addFilterGroup: () =>
+        set((s) => {
+            const groups = cloneGroups(s.filterDraft);
+            if (groups.length === 0 || groups[groups.length - 1].length > 0) groups.push([]);
+            return { filterDraft: { groups } };
+        }),
+    removeFilterLeaf: (groupIndex, hypothesisId) =>
+        set((s) => {
+            const groups = cloneGroups(s.filterDraft);
+            if (!groups[groupIndex]) return {};
+            groups[groupIndex] = groups[groupIndex].filter((l) => l.hypothesisId !== hypothesisId);
+            if (groups[groupIndex].length === 0) groups.splice(groupIndex, 1);
+            return { filterDraft: { groups } };
+        }),
+    toggleFilterNegate: (groupIndex, hypothesisId) =>
+        set((s) => {
+            const groups = cloneGroups(s.filterDraft);
+            const leaf = groups[groupIndex]?.find((l) => l.hypothesisId === hypothesisId);
+            if (!leaf) return {};
+            leaf.negated = !leaf.negated;
+            return { filterDraft: { groups } };
+        }),
+    removeFilterGroup: (groupIndex) =>
+        set((s) => {
+            const groups = cloneGroups(s.filterDraft);
+            groups.splice(groupIndex, 1);
+            return { filterDraft: { groups } };
+        }),
+    clearFilter: () => set(() => ({ filterDraft: { groups: [] }, facetSelected: EMPTY_FACETS() })),
+    setFilterExpr: (expr) => set(() => ({ filterDraft: { groups: expr.groups.map((g) => g.map((l) => ({ ...l }))) }, facetSelected: EMPTY_FACETS() })),
+    toggleFacet: (attr, value) =>
+        set((s) => {
+            const cur = s.facetSelected[attr];
+            const next = cur.some((v) => v === value) ? cur.filter((v) => v !== value) : [...cur, value];
+            return { facetSelected: { ...s.facetSelected, [attr]: next } };
+        }),
 }));

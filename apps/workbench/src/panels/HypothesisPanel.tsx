@@ -1,17 +1,21 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { filterMembership } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
 import { createHypothesis, linkHypothesis, unlinkHypothesis, deleteHypothesis } from "../api/hypotheses.js";
 import { hypothesesQuery, hypothesisLinksQuery, allPointsQuery } from "../api/queries.js";
 import { useHypothesisData } from "../lib/useHypothesisData.js";
 
-// 가설 패널 — 얇은 목록. 각 행: [H{id} 태그] 텍스트, 우측 hover 액션(연결 토글·삭제).
-// 현재 타점 연결 = 태그 채움(테두리 없음). 선택 = 행 배경. 선택 시 연결 타점(종목명) 펼침→이동.
-// 타이포는 Pretendard 단일 폰트(코드도 tabular sans) — dockview 플랫·각진 톤. 필터/그래프는 클라 인메모리.
+// 가설 패널 — 얇은 목록. ID 는 안 보인다(필터를 UI 로 만들므로 타이핑 불필요). 3상태 인코딩(그래프와 공통):
+//   (A) 현재 타점 연결 = 좌측 직각 바 + 상단 정렬  ·  (B) 필터 포함 = 우측 칩(제외=빨강)  ·  (C) 선택 = 행 배경.
+// 우클릭 = 필터에 추가(양성→제외→해제 순환). 선택 시 연결 타점(종목명) 펼침→이동. 필터/그래프는 클라 인메모리.
 export function HypothesisPanel(): JSX.Element {
     const setFocus = useWorkbench((s) => s.setFocus);
     const selectedId = useWorkbench((s) => s.selectedHypothesisId);
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
+    const filterDraft = useWorkbench((s) => s.filterDraft);
+    const addFilterLeaf = useWorkbench((s) => s.addFilterLeaf);
+    const membership = useMemo(() => filterMembership(filterDraft), [filterDraft]);
     const qc = useQueryClient();
 
     const { hypotheses, links, isLoading, point, linkedToPoint: linkedIds, countByHyp } = useHypothesisData();
@@ -90,46 +94,36 @@ export function HypothesisPanel(): JSX.Element {
                     const cnt = countByHyp.get(h.id) ?? 0;
                     const selected = selectedId === h.id;
                     const hovered = hoveredId === h.id;
+                    const mem = membership.get(h.id);
+                    const negOnly = mem ? mem.neg && !mem.pos : false;
                     return (
                         <div key={h.id}>
                             <div
                                 onClick={() => setSelectedHypothesis(selected ? null : h.id)}
+                                onContextMenu={(e) => { e.preventDefault(); addFilterLeaf(h.id); }}
                                 onMouseEnter={() => setHoveredId(h.id)}
                                 onMouseLeave={() => setHoveredId((cur) => (cur === h.id ? null : cur))}
+                                title="우클릭 = 필터에 추가(포함→제외→해제)"
                                 style={{
                                     display: "flex",
                                     alignItems: "flex-start",
                                     gap: 9,
-                                    padding: "7px 10px",
+                                    // (A) 현재 타점 연결 = 좌측 직각 바(그래프와 공통).
+                                    borderLeft: `3px solid ${linked ? "var(--accent-primary)" : "transparent"}`,
+                                    padding: "7px 10px 7px 9px",
                                     background: selected ? "var(--accent-soft)" : hovered ? "var(--bg-secondary)" : "transparent",
                                     cursor: "pointer",
                                 }}
                             >
-                                {/* 코드 태그 — 연결 시 채움. tabular sans(H+숫자 정렬). */}
-                                <span
-                                    className="tabular"
-                                    style={{
-                                        flexShrink: 0,
-                                        minWidth: 24,
-                                        textAlign: "center",
-                                        marginTop: 1,
-                                        fontSize: 10.5,
-                                        fontWeight: 700,
-                                        letterSpacing: "0.02em",
-                                        lineHeight: "16px",
-                                        height: 16,
-                                        padding: "0 5px",
-                                        borderRadius: 2,
-                                        background: linked ? "var(--accent-primary)" : "var(--bg-tertiary)",
-                                        color: linked ? "#fff" : "var(--text-tertiary)",
-                                    }}
-                                >
-                                    H{h.id}
-                                </span>
                                 <span style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontSize: 13, lineHeight: 1.5, color: linked ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: linked ? 500 : 400 }}>{h.text}</span>
 
-                                {/* 우측 — 연결수(있을 때) + hover 액션 */}
-                                <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 2, height: 18, marginTop: 0 }}>
+                                {/* 우측 — (B)필터 칩 + 연결수 + hover 액션 */}
+                                <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, height: 18, marginTop: 0 }}>
+                                    {mem && (
+                                        <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, lineHeight: "15px", height: 15, padding: "0 6px", borderRadius: 10, background: negOnly ? "rgba(239,68,68,0.12)" : "var(--accent-soft)", color: negOnly ? "var(--rise)" : "var(--accent-primary)" }}>
+                                            {negOnly ? "제외" : "필터"}
+                                        </span>
+                                    )}
                                     {cnt > 0 && <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)", minWidth: 12, textAlign: "right", marginRight: 2 }}>{cnt}</span>}
                                     {point && (
                                         <ActionBtn

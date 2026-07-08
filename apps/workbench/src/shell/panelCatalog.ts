@@ -13,6 +13,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "workset-1", component: "workset", title: "작업셋" },
     { id: "hypothesis-1", component: "hypothesis", title: "가설" },
     { id: "hypothesis-graph-1", component: "hypothesisGraph", title: "가설 그래프" },
+    { id: "hypothesis-filter-1", component: "hypothesisFilter", title: "가설 필터" },
     { id: "hts-news-1", component: "htsNews", title: "HTS뉴스" },
     { id: "telegram-news-1", component: "telegramNews", title: "텔레그램" },
 ];

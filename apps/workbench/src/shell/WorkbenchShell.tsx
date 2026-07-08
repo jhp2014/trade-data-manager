@@ -14,6 +14,7 @@ import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
 import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { HypothesisPanel } from "../panels/HypothesisPanel.js";
 import { HypothesisGraphPanel } from "../panels/HypothesisGraphPanel.js";
+import { HypothesisFilterPanel } from "../panels/HypothesisFilterPanel.js";
 import { HtsNewsPanel } from "../panels/HtsNewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { useDock } from "../store/dock.js";
@@ -27,6 +28,7 @@ const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
     workset: () => <WorksetPanel />,
     hypothesis: () => <HypothesisPanel />,
     hypothesisGraph: () => <HypothesisGraphPanel />,
+    hypothesisFilter: () => <HypothesisFilterPanel />,
     chart: () => <ChartPanel />,
     htsNews: () => <HtsNewsPanel />,
     telegramNews: () => <TelegramNewsPanel />,

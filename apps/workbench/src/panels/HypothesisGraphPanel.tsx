@@ -15,6 +15,7 @@ import ReactFlow, {
     type NodeProps,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import { filterMembership } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
 import { addRelation, removeRelation } from "../api/hypotheses.js";
 import { hypothesisRelationsQuery } from "../api/queries.js";
@@ -33,9 +34,12 @@ interface HypNodeData {
     count: number;
     selected: boolean;
     linkedToPoint: boolean;
+    filterState: "none" | "pos" | "neg"; // (B) 필터 포함/제외
 }
 
 function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
+    // ID 는 안 보인다. 3상태 인코딩(목록과 공통): (A)연결=좌측 직각 바 / (B)필터=외곽 링(제외=빨강) / (C)선택=채움.
+    const ring = data.filterState === "pos" ? "var(--accent-primary)" : data.filterState === "neg" ? "var(--rise)" : null;
     return (
         <div
             style={{
@@ -44,6 +48,10 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
                 borderRadius: 2,
                 background: data.selected ? "var(--accent-soft)" : "var(--bg-primary)",
                 border: `1.5px solid ${data.selected ? "var(--accent-primary)" : "var(--border-default)"}`,
+                // (A) 좌측 직각 바 — 연결 시 border 왼쪽만 accent 로 덮음.
+                borderLeft: data.linkedToPoint ? "3px solid var(--accent-primary)" : undefined,
+                // (B) 외곽 링 — 필터 포함(teal) / 제외(red). 채움·바와 다른 레이어라 겹쳐도 공존.
+                boxShadow: ring ? `0 0 0 2px ${ring}` : undefined,
                 fontSize: 12,
                 color: "var(--text-primary)",
             }}
@@ -54,26 +62,8 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
             <Handle id="r" type="source" position={Position.Right} />
             <Handle id="b" type="source" position={Position.Bottom} />
             <Handle id="l" type="source" position={Position.Left} />
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
-                <span
-                    className="tabular"
-                    style={{
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        letterSpacing: "0.02em",
-                        lineHeight: "16px",
-                        height: 16,
-                        padding: "0 5px",
-                        borderRadius: 2,
-                        background: data.linkedToPoint ? "var(--accent-primary)" : "var(--bg-tertiary)",
-                        color: data.linkedToPoint ? "#fff" : "var(--text-tertiary)",
-                    }}
-                >
-                    H{data.id}
-                </span>
-                {data.count > 0 && <span className="tabular" style={{ fontSize: 10, color: "var(--text-tertiary)" }}>·{data.count}</span>}
-            </div>
             <div style={{ lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{data.text}</div>
+            {data.count > 0 && <div className="tabular" style={{ marginTop: 3, fontSize: 10, color: "var(--text-tertiary)" }}>연결 {data.count}</div>}
         </div>
     );
 }
@@ -123,6 +113,16 @@ function savePositions(p: Record<string, { x: number; y: number }>): void {
 export function HypothesisGraphPanel(): JSX.Element {
     const selectedId = useWorkbench((s) => s.selectedHypothesisId);
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
+    const filterDraft = useWorkbench((s) => s.filterDraft);
+    const addFilterLeaf = useWorkbench((s) => s.addFilterLeaf);
+    const membership = useMemo(() => filterMembership(filterDraft), [filterDraft]);
+    const filterStateOf = useCallback(
+        (id: string): "none" | "pos" | "neg" => {
+            const m = membership.get(id);
+            return !m ? "none" : m.neg && !m.pos ? "neg" : "pos";
+        },
+        [membership],
+    );
     const qc = useQueryClient();
 
     const { hypotheses, isLoading, linkedToPoint, countByHyp } = useHypothesisData();
@@ -159,6 +159,7 @@ export function HypothesisGraphPanel(): JSX.Element {
                     count: countByHyp.get(n.id) ?? 0,
                     selected: n.id === selectedId,
                     linkedToPoint: linkedToPoint.has(n.id),
+                    filterState: filterStateOf(n.id),
                 },
             })),
         );
@@ -176,11 +177,12 @@ export function HypothesisGraphPanel(): JSX.Element {
                     count: countByHyp.get(n.id) ?? 0,
                     selected: n.id === selectedId,
                     linkedToPoint: linkedToPoint.has(n.id),
+                    filterState: filterStateOf(n.id),
                 },
             })),
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedId, linkedToPoint, countByHyp, textById]);
+    }, [selectedId, linkedToPoint, countByHyp, textById, filterStateOf]);
 
     // 엣지가 붙을 면 계산용 노드 중심 맵(드래그로 위치 바뀔 때마다 갱신 → 엣지 재라우팅).
     const centers = useMemo(() => {
@@ -260,6 +262,11 @@ export function HypothesisGraphPanel(): JSX.Element {
                 fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}
                 minZoom={0.2}
                 onNodeClick={(_, n) => setSelectedHypothesis(n.id)}
+                onNodeContextMenu={(e, n) => {
+                    // 우클릭 = 필터에 추가(포함→제외→해제 순환). reactflow 드래그와 충돌 없는 제스처.
+                    e.preventDefault();
+                    addFilterLeaf(n.id);
+                }}
                 onPaneClick={() => {
                     setSelectedHypothesis(null);
                     setPending(null);
