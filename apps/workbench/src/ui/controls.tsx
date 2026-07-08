@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { CSSProperties, InputHTMLAttributes, Ref, ReactNode, TextareaHTMLAttributes } from "react";
 
 // 공용 UI 프리미티브 — theme.css 토큰만 사용, radius/padding 값 한 벌로 통일.
@@ -83,8 +84,25 @@ export function TextInput({ style, inputRef, ...rest }: InputHTMLAttributes<HTML
     return <input type="text" ref={inputRef} {...rest} style={{ ...inputBase, ...style }} />;
 }
 // 숫자 입력 — 폭이 좁고 padding 이 작은 컴팩트 변형(설정 필터·프리셋용).
-export function NumberField({ style, ...rest }: InputHTMLAttributes<HTMLInputElement>): JSX.Element {
-    return <input type="number" {...rest} style={{ ...inputBase, width: 60, padding: "1px 6px", ...style }} />;
+// 로컬 문자열 버퍼를 둔다: 제어형 type=number 는 빈 입력을 0 으로 되돌리고(React 강제),
+// 이후 숫자 loose 비교("0130" == 130) 때문에 선행 0 을 못 지워 "0130" 처럼 낀다. 버퍼가 있으면
+// 지우면 빈칸으로 보이고(0 강제 없음) 표시가 React 와 안 싸운다. onChange 는 그대로 전달(부모가 Number 파싱).
+export function NumberField({ style, value, onChange, ...rest }: InputHTMLAttributes<HTMLInputElement>): JSX.Element {
+    const [text, setText] = useState(value == null ? "" : String(value));
+    useEffect(() => {
+        // 외부에서 값이 (숫자상) 바뀌었을 때만 버퍼 동기화 — 타이핑 중(같은 수)엔 건드리지 않는다.
+        if (Number(text) !== Number(value)) setText(value == null ? "" : String(value));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value]);
+    return (
+        <input
+            type="number"
+            value={text}
+            onChange={(e) => { setText(e.target.value); onChange?.(e); }}
+            {...rest}
+            style={{ ...inputBase, width: 60, padding: "1px 6px", ...style }}
+        />
+    );
 }
 export function TextArea({ style, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>): JSX.Element {
     return <textarea {...rest} style={{ ...inputBase, resize: "vertical", lineHeight: 1.4, ...style }} />;
