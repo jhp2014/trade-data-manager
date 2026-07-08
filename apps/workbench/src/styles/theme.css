@@ -73,6 +73,16 @@ button {
     animation: board-blink 1.4s ease-in-out infinite;
 }
 
+/* 새로고침 등 진행 중 회전 표시. */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.spin {
+    animation: spin 0.7s linear infinite;
+}
+
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;

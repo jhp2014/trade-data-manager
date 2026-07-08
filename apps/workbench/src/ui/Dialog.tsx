@@ -37,7 +37,8 @@ export function Dialog({
                     borderRadius: 10,
                     border: "1px solid var(--border-default)",
                     boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
-                    font: "13px system-ui, sans-serif",
+                    fontFamily: "var(--font-sans)",
+                fontSize: 13,
                     overflow: "hidden",
                 }}
             >
@@ -118,7 +119,8 @@ export function AnchoredPopover({
                 borderRadius: 10,
                 boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
                 padding: 12,
-                font: "13px system-ui, sans-serif",
+                fontFamily: "var(--font-sans)",
+                fontSize: 13,
             }}
         >
             {children}

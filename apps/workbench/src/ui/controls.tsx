@@ -1,4 +1,4 @@
-import type { CSSProperties, InputHTMLAttributes, ReactNode } from "react";
+import type { CSSProperties, InputHTMLAttributes, Ref, ReactNode, TextareaHTMLAttributes } from "react";
 
 // 공용 UI 프리미티브 — theme.css 토큰만 사용, radius/padding 값 한 벌로 통일.
 // 지금까지 각 화면(AssignThemeModal·SettingsModal·Taskbar)이 인라인으로 각자 만들던
@@ -33,7 +33,7 @@ const chipBase: CSSProperties = {
     padding: "3px 9px",
     cursor: "pointer",
     whiteSpace: "nowrap",
-    font: "inherit",
+    // font-family 는 전역 `button { font: inherit }` 로 상속(Pretendard) — 여기서 font:inherit 를 다시 주면 fontSize 를 덮어써 버린다.
 };
 const chipVariants: Record<ChipVariant, CSSProperties> = {
     default: { color: "var(--text-secondary)", border: "1px solid var(--border-default)", background: "var(--bg-primary)" },
@@ -79,12 +79,15 @@ const inputBase: CSSProperties = {
     font: "inherit",
     fontSize: 13,
 };
-export function TextInput({ style, ...rest }: InputHTMLAttributes<HTMLInputElement>): JSX.Element {
-    return <input type="text" {...rest} style={{ ...inputBase, ...style }} />;
+export function TextInput({ style, inputRef, ...rest }: InputHTMLAttributes<HTMLInputElement> & { inputRef?: Ref<HTMLInputElement> }): JSX.Element {
+    return <input type="text" ref={inputRef} {...rest} style={{ ...inputBase, ...style }} />;
 }
 // 숫자 입력 — 폭이 좁고 padding 이 작은 컴팩트 변형(설정 필터·프리셋용).
 export function NumberField({ style, ...rest }: InputHTMLAttributes<HTMLInputElement>): JSX.Element {
     return <input type="number" {...rest} style={{ ...inputBase, width: 60, padding: "1px 6px", ...style }} />;
+}
+export function TextArea({ style, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>): JSX.Element {
+    return <textarea {...rest} style={{ ...inputBase, resize: "vertical", lineHeight: 1.4, ...style }} />;
 }
 
 // ── 체크박스 / 라디오 — accentColor 만 붙인 얇은 래퍼(반복 제거) ─────────

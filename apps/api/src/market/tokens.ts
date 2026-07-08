@@ -8,6 +8,7 @@ export const MEMBERSHIP_CACHE = Symbol("MembershipCache");
 export const THEME_MEMBERSHIP_STORE = Symbol("ThemeMembershipStore");
 export const PRICE_LINE_REPO = Symbol("PriceLineRepository");
 export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
+export const DAILY_COMMENT_REPO = Symbol("DailyCommentRepository");
 export const HYPOTHESIS_REPO = Symbol("HypothesisRepository");
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");

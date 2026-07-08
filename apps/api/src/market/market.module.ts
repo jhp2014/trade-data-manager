@@ -17,7 +17,7 @@ import {
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, HYPOTHESIS_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
@@ -26,6 +26,7 @@ import { DatesController } from "./board/dates.controller.js";
 import { ThemeController } from "./board/theme.controller.js";
 import { PriceLineController } from "./curation/priceLine.controller.js";
 import { ReviewPointController } from "./curation/reviewPoint.controller.js";
+import { CommentController } from "./curation/comment.controller.js";
 import { HypothesisController } from "./curation/hypothesis.controller.js";
 import { NewsController } from "./news/news.controller.js";
 import { TelegramNewsController } from "./news/telegramNews.controller.js";
@@ -115,6 +116,12 @@ const curationProviders: Provider[] = [
         inject: [MARKET_POOL],
     },
     {
+        // 당일 코멘트 읽기·쓰기(사람 편집) — repo 를 그대로 노출(getByDate/upsert/remove). 보드도 같은 테이블을 읽지만 그건 DayBoards 가 자체 인스턴스로.
+        provide: DAILY_COMMENT_REPO,
+        useFactory: (pool: Pool) => new DrizzleDailyCommentRepository(createDb(pool)),
+        inject: [MARKET_POOL],
+    },
+    {
         // 가설 큐레이션 — repo 를 그대로 노출(목록·생성·연결/해제). 조립·필터는 클라 인메모리(옵션 A).
         provide: HYPOTHESIS_REPO,
         useFactory: (pool: Pool) => new DrizzleHypothesisRepository(createDb(pool)),
@@ -146,6 +153,7 @@ const newsProviders: Provider[] = [
         ThemeController,
         PriceLineController,
         ReviewPointController,
+        CommentController,
         HypothesisController,
         NewsController,
         TelegramNewsController,

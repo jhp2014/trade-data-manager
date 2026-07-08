@@ -36,7 +36,8 @@ export class ThemeController {
         const code = toCanonical(body.code);
         const all = await this.membership.load();
         if (all.some((m) => m.code === code && m.theme === theme)) return { assigned: false }; // 이미 그 테마 → 시트 중복행 방지
-        await this.store.addMember({ theme, code, name: body.name, date: kstToday() });
+        const issue = body.issue?.trim() || undefined; // 편입이슈(선택) — 새 배정 행에만 기록
+        await this.store.addMember({ theme, code, name: body.name, issue, date: kstToday() });
         this.membership.refresh(); // 인덱스 캐시 무효화 — 다음 보드 조회부터 새 멤버 반영(master 는 무관)
         return { assigned: true };
     }

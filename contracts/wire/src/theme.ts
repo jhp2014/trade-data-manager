@@ -12,11 +12,12 @@ export interface ThemeContext {
     allThemes: string[];
 }
 
-/** POST /theme/members 요청 — 종목을 테마에 배정(시트에 1행 append). issue 는 표시전용이라 안 보냄. */
+/** POST /theme/members 요청 — 종목을 테마에 배정(시트에 1행 append). */
 export interface AssignThemeInput {
     code: string;
     theme: string;
     name?: string; // 시트 가독용(있으면 기록)
+    issue?: string; // 편입이슈 — 배정과 함께 append 행에 기록(선택). 새 배정에만 남는다(이미 그 테마면 skip).
 }
 
 /** POST /theme/members 응답 — assigned=false 는 이미 그 (theme,code) 라 skip 됨. */

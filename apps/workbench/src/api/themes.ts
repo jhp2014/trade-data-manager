@@ -12,3 +12,6 @@ export const fetchThemeContext = (code: string, signal?: AbortSignal): Promise<T
 /** 종목을 테마에 배정(시트 append). assigned=false = 이미 그 테마라 skip. */
 export const assignTheme = (input: AssignThemeInput): Promise<AssignThemeResult> =>
     apiPost<AssignThemeResult>("theme/members", input);
+
+/** 시트 수동편집·신규상장 후 서버 테마/마스터 캐시 무효화(다음 조회부터 시트 재로드). */
+export const refreshThemes = (): Promise<{ ok: true }> => apiPost<{ ok: true }>("theme/refresh");

@@ -10,6 +10,7 @@ import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchHypotheses, fetchHypothesisLinks, fetchHypothesisRelations } from "./hypotheses.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
+import { fetchDailyComment } from "./comment.js";
 import { fetchDataDates } from "./dataDates.js";
 
 const IMMUTABLE = Infinity;
@@ -49,6 +50,10 @@ export const stockMetaQuery = (code: string) =>
 // 종목의 시트 테마+편입이슈(날짜무관·code 키). 배정 mutation 이 ["theme-context"] invalidate 로 갱신하므로 staleTime ∞.
 export const themeContextQuery = (code: string) =>
     queryOptions({ queryKey: ["theme-context", code], queryFn: ({ signal }) => fetchThemeContext(code, signal), enabled: code.length > 0, staleTime: IMMUTABLE });
+
+// 당일 종목 코멘트(date+code 키) — 편집형이라 불변 아님. 저장 mutation 이 이 키를 invalidate 해 갱신하므로 staleTime 0.
+export const dailyCommentQuery = (date: string, code: string) =>
+    queryOptions({ queryKey: ["daily-comment", date, code], queryFn: ({ signal }) => fetchDailyComment(date, code, signal), enabled: date.length > 0 && code.length > 0, staleTime: 0 });
 
 // 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커용. 수집으로 새 날짜가 늘 수 있어 30분 stale 후 재조회 허용.
 export const dataDatesQuery = () =>

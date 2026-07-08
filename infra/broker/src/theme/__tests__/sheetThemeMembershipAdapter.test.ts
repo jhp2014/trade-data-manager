@@ -89,6 +89,12 @@ describe("SheetThemeMembershipAdapter.addMember", () => {
         expect(s.appends[0].rows).toEqual([["HBM", "000660", "", "", ""]]);
     });
 
+    it("편입이슈 지정 시 편입이슈 컬럼에 기록(배정과 함께)", async () => {
+        const s = src([]); // 빈 탭 → DEFAULT_HEADER(테마|종목코드|종목명|편입이슈|날짜)
+        await new SheetThemeMembershipAdapter(s, cfg).addMember({ theme: "HBM", code: "000660", name: "SK하이닉스", issue: "3분기 실적 서프라이즈", date: "2026-07-08" });
+        expect(s.appends[0].rows).toEqual([["HBM", "000660", "SK하이닉스", "3분기 실적 서프라이즈", "2026-07-08"]]);
+    });
+
     it("theme·code 비면 append 안 하고 throw", async () => {
         const s = src([["테마", "종목코드"]]);
         await expect(new SheetThemeMembershipAdapter(s, cfg).addMember({ theme: "  ", code: "660" })).rejects.toThrow();
