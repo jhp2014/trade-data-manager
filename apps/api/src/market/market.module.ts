@@ -12,12 +12,13 @@ import {
     DrizzlePriceLineRepository,
     DrizzleReviewPointRepository,
     DrizzleHypothesisRepository,
+    DrizzleHypothesisFilterRepository,
     DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, HYPOTHESIS_FILTER_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
@@ -28,6 +29,7 @@ import { PriceLineController } from "./curation/priceLine.controller.js";
 import { ReviewPointController } from "./curation/reviewPoint.controller.js";
 import { CommentController } from "./curation/comment.controller.js";
 import { HypothesisController } from "./curation/hypothesis.controller.js";
+import { HypothesisFilterController } from "./curation/hypothesisFilter.controller.js";
 import { NewsController } from "./news/news.controller.js";
 import { TelegramNewsController } from "./news/telegramNews.controller.js";
 import { StocksController } from "./stocks/stocks.controller.js";
@@ -127,6 +129,12 @@ const curationProviders: Provider[] = [
         useFactory: (pool: Pool) => new DrizzleHypothesisRepository(createDb(pool)),
         inject: [MARKET_POOL],
     },
+    {
+        // 저장 가설 필터 — repo 를 그대로 노출(목록·저장(이름 upsert)·삭제). 식(DNF)만 저장, 평가·집계는 클라.
+        provide: HYPOTHESIS_FILTER_REPO,
+        useFactory: (pool: Pool) => new DrizzleHypothesisFilterRepository(createDb(pool)),
+        inject: [MARKET_POOL],
+    },
 ];
 
 const newsProviders: Provider[] = [
@@ -155,6 +163,7 @@ const newsProviders: Provider[] = [
         ReviewPointController,
         CommentController,
         HypothesisController,
+        HypothesisFilterController,
         NewsController,
         TelegramNewsController,
         StocksController,

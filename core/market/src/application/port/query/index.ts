@@ -17,4 +17,5 @@ export * from "./dailyComment.js";
 export * from "./priceLine.js";
 export * from "./reviewPoint.js";
 export * from "./hypothesis.js";
+export * from "./hypothesisFilter.js";
 export * from "./newsSearcher.js";

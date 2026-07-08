@@ -6,7 +6,7 @@
 //   · review_points  : 복기 타점((종목,날짜,시각) 자연키 = caseId. hypothesis 가 하류에서 읽어 의미 부여)
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
-import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, primaryKey, foreignKey, unique, index } from "drizzle-orm/pg-core";
+import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, jsonb, primaryKey, foreignKey, unique, index } from "drizzle-orm/pg-core";
 
 export const curation = pgSchema("curation");
 
@@ -129,3 +129,20 @@ export type HypothesisPointRow = typeof hypothesisPoints.$inferSelect;
 export type HypothesisPointInsert = typeof hypothesisPoints.$inferInsert;
 export type HypothesisRelationRow = typeof hypothesisRelations.$inferSelect;
 export type HypothesisRelationInsert = typeof hypothesisRelations.$inferInsert;
+
+// 7. 가설 필터 — 저장된 가설 필터식(DNF). 워크벤치 블럭 빌더 산출물, 이름으로 저장/불러오기.
+//    expr = jsonb(HypothesisFilterExpr: AND그룹들의 OR). 패싯(outcome/type)은 임시라 저장 안 함.
+//    name unique → save 는 같은 이름 upsert(파일 저장 관례). 삭제된 가설 참조는 앱이 degrade.
+export const hypothesisFilters = curation.table(
+    "hypothesis_filters",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        name: text("name").notNull(),
+        expr: jsonb("expr").notNull(),
+        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [unique("uq_hyp_filter_name").on(t.name)],
+);
+
+export type HypothesisFilterRow = typeof hypothesisFilters.$inferSelect;
+export type HypothesisFilterInsert = typeof hypothesisFilters.$inferInsert;

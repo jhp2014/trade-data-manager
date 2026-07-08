@@ -13,6 +13,7 @@ export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repos
 export { DrizzlePriceLineRepository } from "./repositories/priceLine.repository.js";
 export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
 export { DrizzleHypothesisRepository } from "./repositories/hypothesis.repository.js";
+export { DrizzleHypothesisFilterRepository } from "./repositories/hypothesisFilter.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
     dailyCandleToRow,

@@ -26,3 +26,15 @@ export function hypothesesForPoint(
     for (const l of links) if (pointKey(l) === key) out.add(l.hypothesisId);
     return out;
 }
+
+/** 타점키 → 연결된 가설 id 집합(전 링크 1패스). 다수 타점 평가(필터)에서 타점마다 재스캔 안 하게. */
+export function linksByPoint(links: HypothesisLink[]): Map<string, Set<string>> {
+    const m = new Map<string, Set<string>>();
+    for (const l of links) {
+        const k = pointKey(l);
+        const s = m.get(k);
+        if (s) s.add(l.hypothesisId);
+        else m.set(k, new Set([l.hypothesisId]));
+    }
+    return m;
+}

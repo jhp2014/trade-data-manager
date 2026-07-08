@@ -21,9 +21,10 @@ export * from "./news/newsSearch.js";
 export * from "./classification/themeMember.js";
 export * from "./classification/dailyComment.js";
 
-// review — 차트 주석(사람 편집): 수평 가격선 + 복기 타점
+// review — 차트 주석(사람 편집): 수평 가격선 + 복기 타점 + 속성 패싯(가설필터 2단계)
 export * from "./review/priceLine.js";
 export * from "./review/reviewPoint.js";
+export * from "./review/facet.js";
 
 // hypothesis — 매매 가설(사람 편집): 원본 + 타점 연결 + 그래프. review point 를 자연키로 참조.
 export * from "./hypothesis/index.js";

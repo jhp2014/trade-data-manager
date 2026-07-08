@@ -10,6 +10,7 @@ export const PRICE_LINE_REPO = Symbol("PriceLineRepository");
 export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
 export const DAILY_COMMENT_REPO = Symbol("DailyCommentRepository");
 export const HYPOTHESIS_REPO = Symbol("HypothesisRepository");
+export const HYPOTHESIS_FILTER_REPO = Symbol("HypothesisFilterRepository");
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");
 export const MARKET_POOL = Symbol("MarketPool");
