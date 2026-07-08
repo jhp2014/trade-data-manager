@@ -7,7 +7,6 @@ import ReactFlow, {
     Position,
     MarkerType,
     ConnectionMode,
-    SelectionMode,
     useNodesState,
     type Edge,
     type Node,
@@ -256,9 +255,10 @@ export function HypothesisGraphPanel(): JSX.Element {
                 nodeTypes={nodeTypes}
                 connectionMode={ConnectionMode.Loose}
                 connectionRadius={30}
-                selectionOnDrag
-                selectionMode={SelectionMode.Partial}
-                panOnDrag={[1, 2]}
+                // 좌드래그=팬(이동), 박스선택 폐기. 다중선택은 Ctrl/Meta+클릭. 우클릭=필터추가(onNodeContextMenu) 유지.
+                panOnDrag={[0, 1, 2]}
+                selectionKeyCode={null}
+                multiSelectionKeyCode={["Control", "Meta"]}
                 fitView
                 fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}
                 minZoom={0.2}

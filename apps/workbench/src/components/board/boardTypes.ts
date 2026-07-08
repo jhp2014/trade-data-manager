@@ -32,6 +32,8 @@ export interface BoardStock {
     dim?: boolean;
     /** 거래대금 구간별 EOD 카운트(길이 7) — 이슈 보드만. 거래대금 hover 시 막대그래프. */
     buckets?: number[];
+    /** 이 보드 날짜에 복기 타점/가격선 주석이 있는 종목(좌측 바 표시). 타점·가격선 구분 없이 통합. */
+    annotated?: boolean;
 }
 
 // 보드 등락률 — 소수 1자리(부호 포함). 차트는 2자리(fmtRate) 유지, 보드만 간결하게.

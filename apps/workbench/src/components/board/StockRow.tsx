@@ -39,7 +39,9 @@ export function StockRow({
                 border: "none",
                 borderTop: boundary ? "2px solid var(--border-strong)" : undefined,
                 borderBottom: "1px solid var(--border-subtle)",
-                padding: "3px 10px",
+                // 주석(타점/가격선) 있는 종목 = 좌측 직선 바. 투명 바로 자리 예약해 행 정렬 유지.
+                borderLeft: `3px solid ${s.annotated ? "var(--accent-primary)" : "transparent"}`,
+                padding: "3px 10px 3px 7px",
                 cursor: "pointer",
                 background: selected ? "var(--bg-active)" : "transparent",
                 font: "inherit",

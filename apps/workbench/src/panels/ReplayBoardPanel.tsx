@@ -3,6 +3,7 @@ import { useWorkbench } from "../store/workbench.js";
 import { useDayReplay, useReplayIndex } from "../lib/leanModel.js";
 import { kstToUnix } from "../lib/derive.js";
 import { buildReplayBoardViewModel } from "../lib/boardViewModel.js";
+import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
 
@@ -21,8 +22,9 @@ export function ReplayBoardPanel(): JSX.Element {
     const index = useReplayIndex(boardQ.data); // Map<code, ReplayStock> — per-minute + 메타
 
     const tUnix = kstToUnix(date, time ?? "15:30:00"); // 시간 미설정 시 장마감 근사
+    const annotated = useAnnotatedCodes(date);
 
-    const board = useMemo(() => (index ? buildReplayBoardViewModel(index, tUnix, rs) : null), [index, tUnix, rs]);
+    const board = useMemo(() => (index ? buildReplayBoardViewModel(index, tUnix, rs, annotated) : null), [index, tUnix, rs, annotated]);
 
     if (boardQ.isLoading) return <BoardCenter text={`${date} 로딩중… (복기 데이터)`} />;
     if (boardQ.isError) return <BoardCenter text={`보드 오류: ${(boardQ.error as Error).message}`} />;

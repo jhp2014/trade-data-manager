@@ -23,8 +23,8 @@ export interface BoardViewModel {
     parents: Map<string, string[]>;
 }
 
-/** day-summary(EOD) + 테마보드 설정 → 테마보드 렌더 구조. 필터(hide/dim)·isMover·buckets 적용. */
-export function buildThemeBoardViewModel(summary: DaySummary, st: ThemeBoardSettings): BoardViewModel {
+/** day-summary(EOD) + 테마보드 설정 → 테마보드 렌더 구조. 필터(hide/dim)·isMover·buckets·주석 적용. */
+export function buildThemeBoardViewModel(summary: DaySummary, st: ThemeBoardSettings, annotatedCodes: Set<string>): BoardViewModel {
     const stocks: BoardStock[] = [];
     for (const s of summary.stocks) {
         const m = dailyMetric(s);
@@ -57,6 +57,7 @@ export function buildThemeBoardViewModel(summary: DaySummary, st: ThemeBoardSett
             isMover: isMover(s.marketCap ? Number(s.marketCap) / 1e8 : null, m.rate),
             buckets: s.bucketCounts,
             dim,
+            annotated: annotatedCodes.has(s.stockCode),
         });
     }
     const byTheme = stocksByTheme(stocks);
@@ -68,6 +69,7 @@ export function buildReplayBoardViewModel(
     index: Map<string, ReplayStock>,
     tUnix: number,
     rs: ReplayBoardSettings,
+    annotatedCodes: Set<string>,
 ): BoardViewModel {
     const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number }[] = [];
     for (const s of index.values()) {
@@ -96,6 +98,7 @@ export function buildReplayBoardViewModel(
             amount: snap.amount,
             isMover: isMover(marketCapEok, snap.changeRate),
             signal,
+            annotated: annotatedCodes.has(snap.code),
         });
     }
     const byTheme = stocksByTheme(stocks);

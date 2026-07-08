@@ -60,6 +60,7 @@ describe("buildThemeBoardViewModel", () => {
                 snap({ stockCode: "B", themes: [{ theme: "T" }], highPct: 5 }),
             ]),
             noFilter,
+            new Set<string>(),
         );
         expect(allStocks(vm).map((s) => s.code).sort()).toEqual(["A", "B"]);
         expect(allStocks(vm).every((s) => !s.dim)).toBe(true);
@@ -72,6 +73,7 @@ describe("buildThemeBoardViewModel", () => {
                 snap({ stockCode: "X", themes: [{ theme: "T" }], changeRate: null }), // dailyMetric → null
             ]),
             noFilter,
+            new Set<string>(),
         );
         expect(allStocks(vm).map((s) => s.code)).toEqual(["A"]);
     });
@@ -85,6 +87,7 @@ describe("buildThemeBoardViewModel", () => {
                 snap({ stockCode: "C", themes: [{ theme: "T" }], highPct: 5, amount: String(50 * EOK) }),
             ]),
             st,
+            new Set<string>(),
         );
         expect(allStocks(vm).map((s) => s.code).sort()).toEqual(["A", "B"]);
     });
@@ -98,6 +101,7 @@ describe("buildThemeBoardViewModel", () => {
                 snap({ stockCode: "C", themes: [{ theme: "T" }], highPct: 5, amount: String(50 * EOK) }),
             ]),
             st,
+            new Set<string>(),
         );
         const byCode = new Map(allStocks(vm).map((s) => [s.code, s]));
         expect(byCode.get("C")?.dim).toBe(true);
@@ -128,10 +132,16 @@ describe("buildReplayBoardViewModel", () => {
         ]);
         const rs: ReplayBoardSettings = { amountN: 1, rateN: 1 };
         // t=200 → times[1]=160 이 마지막 ≤200. amount top1 = A(100), rate top1 = A(9) → hot = {A}
-        const vm = buildReplayBoardViewModel(index, 200, rs);
+        const vm = buildReplayBoardViewModel(index, 200, rs, new Set<string>());
         const codes = allStocks(vm).map((s) => s.code);
         expect(codes).toContain("A");
         expect(codes).not.toContain("B");
         expect(allStocks(vm).find((s) => s.code === "A")?.changeRate).toBe(9);
+    });
+
+    it("annotatedCodes 에 든 종목만 annotated=true", () => {
+        const index = new Map<string, ReplayStock>([["A", rstock("A", { rate: [1, 9], cumAmount: [10, 100] })]]);
+        const vm = buildReplayBoardViewModel(index, 200, { amountN: 1, rateN: 1 }, new Set(["A"]));
+        expect(allStocks(vm).find((s) => s.code === "A")?.annotated).toBe(true);
     });
 });

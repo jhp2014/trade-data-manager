@@ -61,7 +61,10 @@ export function WorksetPanel(): JSX.Element {
     const points = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);
     const links = useMemo(() => linksQ.data ?? [], [linksQ.data]);
 
-    const filterOn = isFilterActive(filterDraft);
+    // 모드 = 명시적 토글. 필터가 활성이어도 월별로 볼 수 있게 showFilterMode 로 강제 전환 가능(기본 필터 우선).
+    const [showFilterMode, setShowFilterMode] = useState(true);
+    const filterActive = isFilterActive(filterDraft);
+    const filterOn = showFilterMode && filterActive;
 
     // ── 필터 모드 계산 — P1(가설필터) 기준 집계, outcome 패싯으로 P2 좁힘.
     const p1 = useMemo(() => (filterOn ? filterPointsByHypothesis(points, links, filterDraft) : []), [filterOn, points, links, filterDraft]);
@@ -151,12 +154,22 @@ export function WorksetPanel(): JSX.Element {
                     ) : (
                         <MonthPicker month={month} months={months} onPick={setSelMonth} />
                     )}
+                    {/* 명시적 모드 전환 — 필터가 활성일 때만. 필터↔월별 토글. */}
+                    {filterActive && (
+                        <button
+                            onClick={() => setShowFilterMode((v) => !v)}
+                            title={filterOn ? "월별 탐색 모드로 전환" : "가설 필터 결과 모드로 전환"}
+                            style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", padding: "3px", border: "1px solid var(--border-default)", borderRadius: 5, background: filterOn ? "var(--accent-soft)" : "transparent", color: filterOn ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", lineHeight: 0 }}
+                        >
+                            {filterOn ? <FunnelIcon /> : <CalendarIcon />}
+                        </button>
+                    )}
                     {focusCode && (
                         <button
                             onClick={pinnedName ? scrollToCurrent : undefined}
                             disabled={!pinnedName}
                             title={pinnedName ? "현재 종목 위치로 스크롤" : "선택한 종목은 목록에 없습니다"}
-                            style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", padding: "2px 3px", border: "none", background: "none", cursor: pinnedName ? "pointer" : "default", lineHeight: 0, opacity: pinnedName ? 1 : 0.35 }}
+                            style={{ marginLeft: filterActive ? 4 : "auto", display: "inline-flex", alignItems: "center", padding: "2px 3px", border: "none", background: "none", cursor: pinnedName ? "pointer" : "default", lineHeight: 0, opacity: pinnedName ? 1 : 0.35 }}
                         >
                             <LocateIcon />
                         </button>
@@ -247,5 +260,22 @@ export function WorksetPanel(): JSX.Element {
                 ))}
             </div>
         </div>
+    );
+}
+
+// 모드 토글 아이콘 — 필터(깔때기) / 월별(달력).
+function FunnelIcon(): JSX.Element {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+    );
+}
+function CalendarIcon(): JSX.Element {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
     );
 }

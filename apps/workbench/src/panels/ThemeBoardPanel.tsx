@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { daySummaryQuery } from "../api/queries.js";
 import { buildThemeBoardViewModel } from "../lib/boardViewModel.js";
+import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
 
@@ -17,7 +18,8 @@ export function ThemeBoardPanel(): JSX.Element {
     const originId = useId(); // 이 보드의 선택 출처 태그(self/external 구분)
 
     const summaryQ = useQuery(daySummaryQuery(date));
-    const board = useMemo(() => (summaryQ.data ? buildThemeBoardViewModel(summaryQ.data, st) : null), [summaryQ.data, st]);
+    const annotated = useAnnotatedCodes(date);
+    const board = useMemo(() => (summaryQ.data ? buildThemeBoardViewModel(summaryQ.data, st, annotated) : null), [summaryQ.data, st, annotated]);
 
     if (summaryQ.isLoading) return <BoardCenter text={`${date} 로딩중…`} />;
     if (summaryQ.isError) return <BoardCenter text={`요약 오류: ${(summaryQ.error as Error).message}`} />;
