@@ -37,7 +37,7 @@ function fmtDailyCrosshair(time: Time): string {
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
-export function DailyChart({ points, lines, onRightClick, onRemoveLine, onCandleClick }: { points: DailyPoint[]; lines: RenderLine[]; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void }): JSX.Element {
+export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -132,9 +132,17 @@ export function DailyChart({ points, lines, onRightClick, onRemoveLine, onCandle
             if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: `${pct.toFixed(1)}` });
         }
         markersRef.current?.setMarkers(markers);
-        chartRef.current?.timeScale().fitContent();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points]);
+
+    // 표시 범위 — f 줌인=최근 zoomBars 봉 / 축소=최근 zoomOutBars 봉(~1년, 데이터 적으면 전체).
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart || points.length === 0) return;
+        const n = points.length;
+        const from = Math.max(0, n - (zoom ? zoomBars : zoomOutBars));
+        chart.timeScale().setVisibleLogicalRange({ from, to: n + 1 });
+    }, [points, zoom, zoomBars, zoomOutBars]);
 
     // 우클릭 대상 = crosshair 로 hover 중인 봉. contextmenu 시 그 봉 고점으로 토글.
     useEffect(() => {

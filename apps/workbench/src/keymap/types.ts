@@ -9,5 +9,6 @@ export interface Command {
     category: string; // 도움말 그룹 키, 예: "일반" · "차트"
     keys: string; // 코드 문자열(예: "ctrl+,", "?", "space"). registry 에서 정규화됨.
     scope?: Scope; // 미지정 = "global". global 외는 활성 scope 일 때만 발동.
+    blockedInInput?: boolean; // true = 입력창 포커스 중엔 수식키 있어도 발동 안 함(예: ctrl+a 전체선택 보존).
     run?: (e: KeyboardEvent) => void; // 생략 = 문서 전용(디스패치 대상 아님).
 }

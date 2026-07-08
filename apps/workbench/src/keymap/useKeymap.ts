@@ -16,8 +16,9 @@ export function useKeymap(): void {
             const cmd = resolveCommand(chordOf(e), useUi.getState().activeScope);
             if (!cmd) return;
             // 입력창 포커스 중엔 수식키 없는 단축키(= 타이핑)를 가로채지 않는다.
+            // blockedInInput 커맨드는 수식키가 있어도 입력창에선 양보(ctrl+a 전체선택 등 기본동작 보존).
             const hasMod = e.ctrlKey || e.metaKey || e.altKey;
-            if (!hasMod && isEditable(e.target)) return;
+            if (isEditable(e.target) && (cmd.blockedInInput || !hasMod)) return;
             e.preventDefault();
             cmd.run?.(e);
         };

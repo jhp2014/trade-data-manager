@@ -15,6 +15,7 @@ const SCREENS: { id: Screen; label: string }[] = [
     { id: "theme", label: "테마" },
     { id: "replay", label: "복기" },
     { id: "point", label: "타점" },
+    { id: "chart", label: "차트" },
     { id: "layout", label: "레이아웃" },
     { id: "shortcuts", label: "단축키" },
 ];
@@ -50,7 +51,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                 </div>
                 {/* 내용 — 프레임 고정, 여기만 스크롤 */}
                 <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: 16 }}>
-                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "point" ? <PointSettings /> : screen === "layout" ? <LayoutSettings /> : <ShortcutSettings />}
+                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "point" ? <PointSettings /> : screen === "chart" ? <ChartSettingsView /> : screen === "layout" ? <LayoutSettings /> : <ShortcutSettings />}
                 </div>
             </div>
         </Dialog>
@@ -129,6 +130,38 @@ function ReplaySettings(): JSX.Element {
             <Row>
                 등락률 상위
                 <NumberField value={st.rateN} min={0} onChange={(e) => set({ rateN: Number(e.target.value) })} /> 종목
+            </Row>
+        </div>
+    );
+}
+
+// 차트 이동/줌 — a·d(±1봉)·Shift+a·d(±이동봉)·Ctrl+a·d(타점 순회)·f(줌 토글). 봉 수 조절.
+function ChartSettingsView(): JSX.Element {
+    const st = useWorkbench((s) => s.chartSettings);
+    const set = useWorkbench((s) => s.setChartSettings);
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>a·d 1봉, Shift 이동, Ctrl 타점 순회, f 확대/축소.</div>
+            <Row gap={6}>
+                Shift+a/d 이동
+                <NumberField value={st.jumpBars} min={1} onChange={(e) => set({ jumpBars: Number(e.target.value) })} /> 봉
+            </Row>
+            <div style={divider} />
+            <SectionLabel caps>f 확대(줌인)</SectionLabel>
+            <Row gap={6}>
+                분봉
+                <NumberField value={st.minuteZoomBars} min={10} onChange={(e) => set({ minuteZoomBars: Number(e.target.value) })} /> 봉(현재 시각 중심)
+            </Row>
+            <Row gap={6}>
+                일봉
+                <NumberField value={st.dailyZoomBars} min={5} onChange={(e) => set({ dailyZoomBars: Number(e.target.value) })} /> 봉
+            </Row>
+            <div style={divider} />
+            <SectionLabel caps>f 축소(줌아웃)</SectionLabel>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>분봉 = 08:00~15:20 세션 고정.</div>
+            <Row gap={6}>
+                일봉
+                <NumberField value={st.dailyZoomOutBars} min={20} onChange={(e) => set({ dailyZoomOutBars: Number(e.target.value) })} /> 봉(~1년)
             </Row>
         </div>
     );

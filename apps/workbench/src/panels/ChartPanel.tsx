@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
-import { usePriceLinesForChart, useReviewPointHotkeys } from "../lib/chartHooks.js";
+import { usePriceLinesForChart, useReviewPointHotkeys, useChartNavHotkeys } from "../lib/chartHooks.js";
 import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
@@ -22,9 +22,11 @@ export function ChartPanel(): JSX.Element {
     const typePresets = useWorkbench((s) => s.reviewTypePresets);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const setMode = useWorkbench((s) => s.setChartPriceMode);
+    const cs = useWorkbench((s) => s.chartSettings);
     const [expanded, setExpanded] = useState<"daily" | "minute" | null>(null);
     const [showMarkers, setShowMarkers] = useState(true); // 분봉 거래대금 마커 ON/OFF
     const [showPointInfo, setShowPointInfo] = useState(false); // 현재 타점 정보 박스 토글
+    const [zoom, setZoom] = useState<{ anchor: number | null } | null>(null); // f 줌(일봉+분봉). anchor=줌 시작 시각(분봉 중심)
 
     const query = useQuery(chartQuery(code, date));
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
@@ -40,6 +42,10 @@ export function ChartPanel(): JSX.Element {
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음.
     const markerTime = useMemo(() => (time && date ? kstToUnix(date, time) : null), [time, date]);
+
+    // 이동/줌 단축키 — a/d·shift·ctrl·f. f = 줌 토글(현재 시각 중심). 전역 등록(입력창 가드).
+    const toggleZoom = (): void => setZoom((z) => (z ? null : { anchor: markerTime }));
+    useChartNavHotkeys(code, date, minuteView?.points ?? [], time, cs.jumpBars, toggleZoom);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -77,7 +83,7 @@ export function ChartPanel(): JSX.Element {
                         {expanded !== "minute" && (
                             <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 고점 선(D)">
                                 <PaneLabel text="일봉" />
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={(d) => code && setSearch({ code, date: d })} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={zoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={(d) => code && setSearch({ code, date: d })} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
@@ -93,6 +99,7 @@ export function ChartPanel(): JSX.Element {
                                         markerTime={markerTime}
                                         savedTimes={savedTimes}
                                         showPointInfo={showPointInfo}
+                                        zoom={zoom ? { bars: cs.minuteZoomBars, anchorTime: zoom.anchor } : null}
                                         onMovePoint={(t) => setTime(t)}
                                         onRightClick={(a) => toggleLine(a.date, a.time)}
                                         onRemoveLine={removeLine}

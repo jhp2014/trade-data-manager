@@ -26,7 +26,7 @@ import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShe
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { FloatingTooltip } from "./tooltip.js";
 import { PointInfoBox, OhlcTooltip } from "./MinuteChartTooltips.js";
-import type { MinutePoint } from "../lib/derive.js";
+import { kstToUnix, type MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
@@ -42,6 +42,7 @@ export function MinuteChart({
     markerTime = null,
     savedTimes = [],
     showPointInfo = false,
+    zoom = null,
     onMovePoint,
     onRightClick,
     onRemoveLine,
@@ -53,6 +54,7 @@ export function MinuteChart({
     markerTime?: number | null; // 현재 타점 세로선(unix초). null = 없음.
     savedTimes?: number[]; // 저장된 복기 타점 시각(unix초). 흐린 세로선 + hover 아이콘.
     showPointInfo?: boolean; // 현재 타점 정보 박스 토글
+    zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 08:00~15:20 세션.
     onMovePoint: (time: string) => void; // 좌클릭 = 그 봉으로 타점 이동(tradeTime HH:MM:SS)
     onRightClick: (anchor: { date: string; time: string }) => void;
     onRemoveLine: (line: RenderLine) => void;
@@ -265,10 +267,28 @@ export function MinuteChart({
             }
         }
         markersRef.current?.setMarkers(markers);
-        chartRef.current?.timeScale().fitContent();
         bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points, showAmountMarkers]);
+
+    // 표시 범위 — f 줌: 현재 시각 중심 ±bars/2 봉 / 축소: 08:00~15:20 세션. (데이터·줌 변경 시 재적용)
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart || points.length === 0) return;
+        const ts = chart.timeScale();
+        if (zoom) {
+            let idx = points.length - 1;
+            if (zoom.anchorTime != null) {
+                for (let i = 0; i < points.length; i++) { if (points[i].time <= zoom.anchorTime) idx = i; else break; }
+            }
+            const half = zoom.bars / 2;
+            ts.setVisibleLogicalRange({ from: idx - half, to: idx + half });
+        } else {
+            ts.setVisibleRange({ from: points[0].time as UTCTimestamp, to: kstToUnix(points[0].date, "15:20:00") as UTCTimestamp });
+        }
+        bumpOverlay();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [points, zoom]);
 
     // 좌클릭 = 그 봉으로 타점 이동. 우클릭 = 선 삭제/추가(hover 봉 기준).
     useEffect(() => {

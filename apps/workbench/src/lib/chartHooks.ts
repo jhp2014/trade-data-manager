@@ -5,8 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery } from "../api/queries.js";
-import { kstToUnix, type DailyPoint, type MinuteView } from "./derive.js";
+import { kstToUnix, type DailyPoint, type MinuteView, type MinutePoint } from "./derive.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
+import { useWorkbench } from "../store/workbench.js";
 import type { Command } from "../keymap/types.js";
 
 export interface ChartPriceLines {
@@ -137,4 +138,59 @@ export function useReviewPointHotkeys(code: string, date: string, time: string |
     const focusedPoint = useMemo(() => reviewPoints.find((rp) => rp.time === time), [reviewPoints, time]);
 
     return { savedTimes, focusedPoint };
+}
+
+/**
+ * 차트 이동 단축키 — a/d(±1봉)·shift+a/d(±jumpBars)·ctrl+a/d(타점 순회 wrap)·f(줌 토글). 전역 등록(입력창 가드).
+ * a/d/shift = setTime(시간 드리프트, activePoint 유지). ctrl = goToPoint(타점=activePoint 갱신, 연결표시 반영).
+ * 핸들러는 최신 상태를 ref 로 읽어 등록은 1회.
+ */
+export function useChartNavHotkeys(code: string, date: string, minutePoints: MinutePoint[], time: string | null, jumpBars: number, onZoomToggle: () => void): void {
+    const reviewQ = useQuery(reviewPointsQuery(code, date)); // 위 훅과 같은 키 → RQ 캐시 공유(중복 페치 없음)
+    const reviewTimes = useMemo(() => [...(reviewQ.data ?? []).map((rp) => rp.time)].sort(), [reviewQ.data]);
+
+    const ref = useRef({ code, date, minutePoints, time, jumpBars, reviewTimes, onZoomToggle });
+    ref.current = { code, date, minutePoints, time, jumpBars, reviewTimes, onZoomToggle };
+
+    const handlers = useRef({
+        // ±delta 봉 이동(실제 분봉 bar 기준, 갭 있어도 실데이터에 안착).
+        moveBar: (delta: number): void => {
+            const { minutePoints: pts, time: t } = ref.current;
+            if (pts.length === 0) return;
+            let idx = pts.findIndex((p) => p.tradeTime === t);
+            if (idx < 0) {
+                idx = pts.length - 1;
+                if (t) for (let i = 0; i < pts.length; i++) { if (pts[i].tradeTime <= t) idx = i; else break; }
+            }
+            const ni = Math.max(0, Math.min(pts.length - 1, idx + delta));
+            useWorkbench.getState().setTime(pts[ni].tradeTime);
+        },
+        // 타점 순회(dir −1 이전 / +1 다음), 끝↔처음 wrap. 현재 시각 기준 방향탐색.
+        navPoint: (dir: number): void => {
+            const { reviewTimes: rts, time: t, code: c, date: d } = ref.current;
+            if (rts.length === 0) return;
+            let target: string;
+            if (dir > 0) {
+                target = rts.find((x) => (t ? x > t : true)) ?? rts[0];
+            } else {
+                const prevs = rts.filter((x) => (t ? x < t : true));
+                target = prevs.length ? prevs[prevs.length - 1] : rts[rts.length - 1];
+            }
+            useWorkbench.getState().goToPoint({ date: d, code: c, time: target });
+        },
+    });
+
+    useEffect(() => {
+        const { register, unregister } = useKeymapDynamic.getState();
+        const ids: string[] = [];
+        const put = (cmd: Command): void => { register(cmd); ids.push(cmd.id); };
+        put({ id: "chart.nav.prevBar", title: "1봉 이전", category: "차트", keys: "a", run: () => handlers.current.moveBar(-1) });
+        put({ id: "chart.nav.nextBar", title: "1봉 다음", category: "차트", keys: "d", run: () => handlers.current.moveBar(1) });
+        put({ id: "chart.nav.jumpPrev", title: "이동봉 이전", category: "차트", keys: "shift+a", run: () => handlers.current.moveBar(-ref.current.jumpBars) });
+        put({ id: "chart.nav.jumpNext", title: "이동봉 다음", category: "차트", keys: "shift+d", run: () => handlers.current.moveBar(ref.current.jumpBars) });
+        put({ id: "chart.nav.prevPoint", title: "이전 타점", category: "차트", keys: "ctrl+a", blockedInInput: true, run: () => handlers.current.navPoint(-1) });
+        put({ id: "chart.nav.nextPoint", title: "다음 타점", category: "차트", keys: "ctrl+d", blockedInInput: true, run: () => handlers.current.navPoint(1) });
+        put({ id: "chart.zoom.toggle", title: "확대/축소", category: "차트", keys: "f", run: () => ref.current.onZoomToggle() });
+        return () => ids.forEach(unregister);
+    }, []);
 }

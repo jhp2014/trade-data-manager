@@ -48,6 +48,13 @@ export interface ReplayBoardSettings {
     amountN: number; // 거래대금 top-N
     rateN: number; // 등락률 top-N
 }
+// 차트 이동·줌 설정 — a/d(±1봉)·shift+a/d(±jumpBars)·f(줌 토글). 봉 수는 사용자 조절.
+export interface ChartSettings {
+    jumpBars: number; // shift+a/d 이동 봉 수
+    minuteZoomBars: number; // f 줌인 분봉 봉 수(현재 시각 중심)
+    dailyZoomBars: number; // f 줌인 일봉 봉 수
+    dailyZoomOutBars: number; // f 줌아웃 일봉 봉 수(~1년)
+}
 
 interface WorkbenchState {
     focus: Focus;
@@ -60,6 +67,7 @@ interface WorkbenchState {
     newsSearchEngine: NewsSearchEngine; // HTS 뉴스 제목 검색 엔진(전역 토글)
     themeBoardSettings: ThemeBoardSettings;
     replaySettings: ReplayBoardSettings;
+    chartSettings: ChartSettings;
     reviewTypePresets: string[]; // 타점 셋업 유형 프리셋(숫자키 1~9). 클라 config.
     selectedHypothesisId: string | null; // 가설 선택 축 — 리스트↔그래프 하이라이트 동기화.
     // 가설 필터 draft(DNF: AND그룹들의 OR). 어느 surface(그래프·목록)든 addFilterLeaf 로 채운다.
@@ -87,6 +95,7 @@ interface WorkbenchState {
     // 보드 설정(전역 모달이 편집)
     setThemeBoardSettings: (patch: Partial<ThemeBoardSettings>) => void;
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
+    setChartSettings: (patch: Partial<ChartSettings>) => void;
     setReviewTypePreset: (index: number, value: string) => void;
     setSelectedHypothesis: (id: string | null) => void;
     // 가설 필터 편집 — 어느 surface든 같은 액션. 기본 OR: addFilterLeaf 는 새 OR 그룹(있으면 그 자리 순환). AND=드래그로 합침.
@@ -131,6 +140,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     newsSearchEngine: "naver",
     themeBoardSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
     replaySettings: { amountN: 80, rateN: 40 },
+    chartSettings: { jumpBars: 20, minuteZoomBars: 200, dailyZoomBars: 60, dailyZoomOutBars: 250 },
     reviewTypePresets: loadReviewTypePresets(),
     selectedHypothesisId: null,
     filterDraft: { groups: [] },
@@ -158,6 +168,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
     setThemeBoardSettings: (patch) => set((s) => ({ themeBoardSettings: { ...s.themeBoardSettings, ...patch } })),
     setReplaySettings: (patch) => set((s) => ({ replaySettings: { ...s.replaySettings, ...patch } })),
+    setChartSettings: (patch) => set((s) => ({ chartSettings: { ...s.chartSettings, ...patch } })),
     setReviewTypePreset: (index, value) =>
         set((s) => {
             const next = s.reviewTypePresets.slice();
