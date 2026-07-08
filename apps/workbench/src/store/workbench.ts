@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { type HypothesisFilterExpr, type PointAttr } from "@trade-data-manager/market/domain";
+import { type HypothesisFilterExpr, type PointAttr, type BoardFilterExpr, type BoardFilterMode, type BoardFilterGroup, defaultParams } from "@trade-data-manager/market/domain";
 import { kstToday } from "../lib/date.js";
 
 // 연동버스 = 2계층(레이아웃 라이브러리보다 이게 설계 본질):
@@ -34,15 +34,7 @@ export interface Search {
 export interface ThemeBoardSettings {
     showIndividuals: boolean;
     showUnclassified: boolean;
-    filterOn: boolean;
-    filterHighGte: number; // 고가 등락률 %
-    filterAmountEok: number; // 거래대금 억
-    filterCombine: "and" | "or";
-    filterMode: "dim" | "hide";
-    // 신고가 근접 필터(추가 AND 조건, day-summary folding 의 trailingHighs 필요). 당일이 창 최고가의 tol% 이내여야 표시.
-    filterNewHigh: boolean;
-    filterNewHighWindow: number; // 거래일 창
-    filterNewHighTolerance: number; // 최고가 대비 허용 갭 %
+    // 종목 배제 필터는 설정이 아니라 별도 "이슈 필터" 패널(store.boardFilter, DNF·그룹별 dim/hide)로 이관.
 }
 export interface ReplayBoardSettings {
     amountN: number; // 거래대금 top-N
@@ -75,6 +67,8 @@ interface WorkbenchState {
     filterDraft: HypothesisFilterExpr;
     // 속성 패싯 선택(2단계 드릴다운). 값 배열(null=미분류). 임시라 저장 안 함. 필터 지우기/불러오기 시 리셋.
     facetSelected: Record<PointAttr, (string | null)[]>;
+    // 이슈보드 배제 필터(DNF, 그룹별 dim/hide). 술어 = domain 레지스트리. localStorage 영속.
+    boardFilter: BoardFilterExpr;
     // 마지막 Focus 변경의 출처(패널 id). 패널이 "내가 바꿨나(self) vs 남이 바꿨나(external)"를 구분해
     // 자기 자신은 제자리, 남에 의한 변경은 스크롤/동기화하는 데 쓴다. origin 미전달 = null(= 외부 취급).
     lastFocusOrigin: string | null;
@@ -107,6 +101,46 @@ interface WorkbenchState {
     clearFilter: () => void;
     setFilterExpr: (expr: HypothesisFilterExpr) => void; // 저장 필터 불러오기
     toggleFacet: (attr: PointAttr, value: string | null) => void;
+    // 이슈보드 필터 편집 — ＋조건/＋OR그룹·파라미터·그룹 mode. 매 변경 localStorage 저장.
+    addBoardGroup: (kind: string) => void;
+    addBoardPredicate: (groupIndex: number, kind: string) => void;
+    setBoardPredicateKind: (groupIndex: number, predIndex: number, kind: string) => void;
+    setBoardPredicateParam: (groupIndex: number, predIndex: number, key: string, value: number) => void;
+    removeBoardPredicate: (groupIndex: number, predIndex: number) => void;
+    setBoardGroupMode: (groupIndex: number, mode: BoardFilterMode) => void;
+    removeBoardGroup: (groupIndex: number) => void;
+    clearBoardFilter: () => void;
+}
+
+// 이슈보드 필터 — localStorage 영속(그래프위치 선례). 깊은 복사로 불변 편집.
+const BOARD_FILTER_KEY = "wb.boardFilter";
+function loadBoardFilter(): BoardFilterExpr {
+    try {
+        const raw = localStorage.getItem(BOARD_FILTER_KEY);
+        if (raw) {
+            const o: unknown = JSON.parse(raw);
+            if (o && typeof o === "object" && Array.isArray((o as BoardFilterExpr).groups)) return o as BoardFilterExpr;
+        }
+    } catch {
+        /* noop */
+    }
+    return { groups: [] };
+}
+function persistBoardFilter(expr: BoardFilterExpr): void {
+    try {
+        localStorage.setItem(BOARD_FILTER_KEY, JSON.stringify(expr));
+    } catch {
+        /* noop */
+    }
+}
+const cloneBoardGroups = (expr: BoardFilterExpr): BoardFilterGroup[] =>
+    expr.groups.map((g) => ({ mode: g.mode, predicates: g.predicates.map((p) => ({ kind: p.kind, params: { ...p.params } })) }));
+function updateBoardFilter(expr: BoardFilterExpr, fn: (groups: BoardFilterGroup[]) => void): { boardFilter: BoardFilterExpr } {
+    const groups = cloneBoardGroups(expr);
+    fn(groups);
+    const next = { groups };
+    persistBoardFilter(next);
+    return { boardFilter: next };
 }
 
 // 필터 그룹 깊은 복사(불변 편집용).
@@ -138,13 +172,14 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     activePoint: null,
     chartPriceMode: "un",
     newsSearchEngine: "naver",
-    themeBoardSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
+    themeBoardSettings: { showIndividuals: true, showUnclassified: false },
     replaySettings: { amountN: 80, rateN: 40 },
     chartSettings: { jumpBars: 20, minuteZoomBars: 200, dailyZoomBars: 60, dailyZoomOutBars: 250 },
     reviewTypePresets: loadReviewTypePresets(),
     selectedHypothesisId: null,
     filterDraft: { groups: [] },
     facetSelected: EMPTY_FACETS(),
+    boardFilter: loadBoardFilter(),
     lastFocusOrigin: null,
 
     // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale) + activePoint 해제(타점 날짜 stale).
@@ -252,4 +287,14 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
             const next = cur.some((v) => v === value) ? cur.filter((v) => v !== value) : [...cur, value];
             return { facetSelected: { ...s.facetSelected, [attr]: next } };
         }),
+
+    // 이슈보드 필터 편집 — 새 그룹=dim 기본, 술어 추가 시 domain 기본 파라미터.
+    addBoardGroup: (kind) => set((s) => updateBoardFilter(s.boardFilter, (g) => g.push({ predicates: [{ kind, params: defaultParams(kind) }], mode: "dim" }))),
+    addBoardPredicate: (gi, kind) => set((s) => updateBoardFilter(s.boardFilter, (g) => { g[gi]?.predicates.push({ kind, params: defaultParams(kind) }); })),
+    setBoardPredicateKind: (gi, pi, kind) => set((s) => updateBoardFilter(s.boardFilter, (g) => { const p = g[gi]?.predicates[pi]; if (p) { p.kind = kind; p.params = defaultParams(kind); } })),
+    setBoardPredicateParam: (gi, pi, key, value) => set((s) => updateBoardFilter(s.boardFilter, (g) => { const p = g[gi]?.predicates[pi]; if (p) p.params[key] = value; })),
+    removeBoardPredicate: (gi, pi) => set((s) => updateBoardFilter(s.boardFilter, (g) => { if (!g[gi]) return; g[gi].predicates.splice(pi, 1); if (g[gi].predicates.length === 0) g.splice(gi, 1); })),
+    setBoardGroupMode: (gi, mode) => set((s) => updateBoardFilter(s.boardFilter, (g) => { if (g[gi]) g[gi].mode = mode; })),
+    removeBoardGroup: (gi) => set((s) => updateBoardFilter(s.boardFilter, (g) => { g.splice(gi, 1); })),
+    clearBoardFilter: () => set(() => { const next = { groups: [] }; persistBoardFilter(next); return { boardFilter: next }; }),
 }));

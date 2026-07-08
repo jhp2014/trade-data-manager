@@ -6,16 +6,17 @@ import {
     themeParents,
     groupStocks,
     isMover,
-    isNearWindowHigh,
     selectHotUniverse,
     evaluateSignal,
+    evalBoardFilter,
     type Grouped,
+    type BoardFilterExpr,
 } from "@trade-data-manager/market/domain";
 import { dailyMetric } from "./dailyMetrics.js";
 import { snapshotAt } from "./leanModel.js";
 import type { DaySummary } from "../api/daySummary.js";
 import type { ReplayStock } from "../api/dayReplay.js";
-import type { ThemeBoardSettings, ReplayBoardSettings } from "../store/workbench.js";
+import type { ReplayBoardSettings } from "../store/workbench.js";
 import type { BoardStock } from "../components/board/BoardCard.js";
 
 export interface BoardViewModel {
@@ -23,27 +24,15 @@ export interface BoardViewModel {
     parents: Map<string, string[]>;
 }
 
-/** day-summary(EOD) + 테마보드 설정 → 테마보드 렌더 구조. 필터(hide/dim)·isMover·buckets·주석 적용. */
-export function buildThemeBoardViewModel(summary: DaySummary, st: ThemeBoardSettings, annotatedCodes: Set<string>): BoardViewModel {
+/** day-summary(EOD) → 테마보드 렌더 구조. 배제 필터(domain evalBoardFilter, 그룹별 dim/hide+사유)·isMover·buckets·주석 적용. */
+export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Set<string>, boardFilter: BoardFilterExpr): BoardViewModel {
     const stocks: BoardStock[] = [];
     for (const s of summary.stocks) {
         const m = dailyMetric(s);
         if (!m) continue;
-        let dim = false;
-        if (st.filterOn) {
-            const cHigh = m.highPct >= st.filterHighGte;
-            const cAmt = m.amount / 1e8 >= st.filterAmountEok;
-            let match = st.filterCombine === "and" ? cHigh && cAmt : cHigh || cAmt;
-            // 신고가 근접(추가 AND). trailingHighs 는 daySummary folding 으로 스냅샷에 함께 온다(별도 로딩 없음).
-            if (st.filterNewHigh) {
-                const th = s.trailingHighs;
-                match = match && (th ? isNearWindowHigh(th, st.filterNewHighWindow, st.filterNewHighTolerance) : false);
-            }
-            if (!match) {
-                if (st.filterMode === "hide") continue;
-                dim = true;
-            }
-        }
+        // 배제 필터 — trailingHighs·bucketCounts 는 daySummary folding 으로 함께 온다(별도 로딩 없음).
+        const verdict = evalBoardFilter(boardFilter, { highPct: m.highPct, amount: m.amount, buckets: s.bucketCounts, trailingHighs: s.trailingHighs });
+        if (verdict.effect === "hide") continue;
         stocks.push({
             code: s.stockCode,
             name: s.name ?? s.stockCode,
@@ -56,7 +45,8 @@ export function buildThemeBoardViewModel(summary: DaySummary, st: ThemeBoardSett
             amount: m.amount,
             isMover: isMover(s.marketCap ? Number(s.marketCap) / 1e8 : null, m.rate),
             buckets: s.bucketCounts,
-            dim,
+            dim: verdict.effect === "dim",
+            excludedBy: verdict.reasons.length ? verdict.reasons : undefined,
             annotated: annotatedCodes.has(s.stockCode),
         });
     }

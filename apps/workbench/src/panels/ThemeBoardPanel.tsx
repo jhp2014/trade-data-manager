@@ -15,11 +15,12 @@ export function ThemeBoardPanel(): JSX.Element {
     const setCode = useWorkbench((s) => s.setCode);
     const focusOrigin = useWorkbench((s) => s.lastFocusOrigin);
     const st = useWorkbench((s) => s.themeBoardSettings);
+    const boardFilter = useWorkbench((s) => s.boardFilter);
     const originId = useId(); // 이 보드의 선택 출처 태그(self/external 구분)
 
     const summaryQ = useQuery(daySummaryQuery(date));
     const annotated = useAnnotatedCodes(date);
-    const board = useMemo(() => (summaryQ.data ? buildThemeBoardViewModel(summaryQ.data, st, annotated) : null), [summaryQ.data, st, annotated]);
+    const board = useMemo(() => (summaryQ.data ? buildThemeBoardViewModel(summaryQ.data, annotated, boardFilter) : null), [summaryQ.data, annotated, boardFilter]);
 
     if (summaryQ.isLoading) return <BoardCenter text={`${date} 로딩중…`} />;
     if (summaryQ.isError) return <BoardCenter text={`요약 오류: ${(summaryQ.error as Error).message}`} />;

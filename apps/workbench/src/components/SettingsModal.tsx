@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Dialog } from "../ui/Dialog.js";
-import { Checkbox, NumberField, Radio, Row, SectionLabel, TextInput, Kbd } from "../ui/controls.js";
+import { Checkbox, NumberField, Row, SectionLabel, TextInput, Kbd } from "../ui/controls.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi, type SettingsScreen } from "../store/ui.js";
 import { useDock } from "../store/dock.js";
@@ -71,48 +71,8 @@ function ThemeSettings(): JSX.Element {
                 <Checkbox checked={st.showUnclassified} onChange={(e) => set({ showUnclassified: e.target.checked })} />
                 미분류 카드 표시
             </Row>
-
             <div style={divider} />
-            <Row style={{ fontWeight: 600 }}>
-                <Checkbox checked={st.filterOn} onChange={(e) => set({ filterOn: e.target.checked })} />
-                종목 필터
-            </Row>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, opacity: st.filterOn ? 1 : 0.5, pointerEvents: st.filterOn ? "auto" : "none", paddingLeft: 22 }}>
-                <Row gap={6}>
-                    고가 등락률 ≥
-                    <NumberField value={st.filterHighGte} onChange={(e) => set({ filterHighGte: Number(e.target.value) })} /> %
-                </Row>
-                <Row gap={6}>
-                    거래대금 ≥
-                    <NumberField value={st.filterAmountEok} onChange={(e) => set({ filterAmountEok: Number(e.target.value) })} /> 억
-                </Row>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <span>결합</span>
-                    {(["and", "or"] as const).map((c) => (
-                        <Row key={c} gap={4}>
-                            <Radio name="combine" checked={st.filterCombine === c} onChange={() => set({ filterCombine: c })} />
-                            {c.toUpperCase()}
-                        </Row>
-                    ))}
-                </div>
-                <Row style={{ fontWeight: 600 }}>
-                    <Checkbox checked={st.filterNewHigh} onChange={(e) => set({ filterNewHigh: e.target.checked })} />
-                    신고가 근접
-                </Row>
-                <Row gap={6} style={{ opacity: st.filterNewHigh ? 1 : 0.5, pointerEvents: st.filterNewHigh ? "auto" : "none", paddingLeft: 22, flexWrap: "wrap" }}>
-                    <NumberField value={st.filterNewHighWindow} min={1} onChange={(e) => set({ filterNewHighWindow: Number(e.target.value) })} />거래일 내 최고가의
-                    <NumberField value={st.filterNewHighTolerance} min={0} step={0.5} onChange={(e) => set({ filterNewHighTolerance: Number(e.target.value) })} /> % 이내
-                </Row>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <span>불일치 종목</span>
-                    {(["dim", "hide"] as const).map((m) => (
-                        <Row key={m} gap={4}>
-                            <Radio name="filterMode" checked={st.filterMode === m} onChange={() => set({ filterMode: m })} />
-                            {m === "dim" ? "흐리게" : "숨김"}
-                        </Row>
-                    ))}
-                </div>
-            </div>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1.6 }}>종목 배제 필터는 <b style={{ color: "var(--text-secondary)" }}>이슈 필터 패널</b>로 이관됐어요(DNF·그룹별 흐리게/숨김·제외 사유).</div>
         </div>
     );
 }

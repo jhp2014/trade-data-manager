@@ -29,6 +29,7 @@ export function StockRow({
     return (
         <button
             onClick={() => onPick(s.code)}
+            title={s.excludedBy ? `제외 사유: ${s.excludedBy.join(", ")}` : undefined}
             style={{
                 display: "grid",
                 gridTemplateColumns: "minmax(0, 1fr) 48px 46px 28px",
@@ -76,7 +77,16 @@ export function StockRow({
                 >
                     {s.name}
                 </span>
-                {chips.length > 0 && (
+                {/* 제외된 종목(dim)은 테마칩 대신 제외 사유 태그(어떤 술어에 걸렸나). */}
+                {s.excludedBy ? (
+                    <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>
+                        {s.excludedBy.map((r) => (
+                            <span key={r} style={{ flexShrink: 0, fontSize: 9, color: "var(--rise)", background: "rgba(239,68,68,0.12)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
+                                {r}
+                            </span>
+                        ))}
+                    </span>
+                ) : chips.length > 0 ? (
                     <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>
                         {chips.map((t) => (
                             <span key={t} style={{ flexShrink: 0, fontSize: 9, color: "var(--text-tertiary)", background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
@@ -84,7 +94,7 @@ export function StockRow({
                             </span>
                         ))}
                     </span>
-                )}
+                ) : null}
             </span>
             {/* col2: 등락률(고정폭 우측정렬, 1자리) */}
             <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600, fontSize: 11 }}>
