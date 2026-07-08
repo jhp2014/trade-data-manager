@@ -53,6 +53,9 @@ interface WorkbenchState {
     focus: Focus;
     scope: Scope;
     search: Search | null; // 검색 모드 컨텍스트(null = Focus 따라감)
+    // 선택된 복기 타점 — (A) "현재 타점에 연결된 가설" 판정 기준. focus.time(리플레이/차트 드리프트로 휘발)과 분리한다.
+    // goToPoint(타점 클릭)에서만 세팅 → 시간만 움직이면 유지, 다른 타점으로 이동해야 바뀜. 종목/날짜 바뀌면 해제.
+    activePoint: { code: string; date: string; time: string } | null;
     chartPriceMode: ChartPriceMode; // 뷰 설정(축 아님) — 분봉 % 기준 시장
     newsSearchEngine: NewsSearchEngine; // HTS 뉴스 제목 검색 엔진(전역 토글)
     themeBoardSettings: ThemeBoardSettings;
@@ -72,6 +75,7 @@ interface WorkbenchState {
     setCode: (code: string, origin?: string) => void;
     setTime: (time: string | null, origin?: string) => void;
     setFocus: (next: { date: string; code: string; time: string | null }, origin?: string) => void; // review point 원자적 세팅
+    goToPoint: (point: { date: string; code: string; time: string }, origin?: string) => void; // 타점 이동 = focus + activePoint 원자 세팅
     // Scope 액션 — 각 축 독립 토글(차트 안 건드림).
     setTheme: (theme: string | null) => void;
     clearScope: () => void;
@@ -122,6 +126,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     focus: { date: today, code: "", time: null },
     scope: { theme: null },
     search: null,
+    activePoint: null,
     chartPriceMode: "un",
     newsSearchEngine: "naver",
     themeBoardSettings: { showIndividuals: true, showUnclassified: false, filterOn: false, filterHighGte: 10, filterAmountEok: 100, filterCombine: "and", filterMode: "dim", filterNewHigh: false, filterNewHighWindow: 20, filterNewHighTolerance: 2 },
@@ -132,15 +137,19 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     facetSelected: EMPTY_FACETS(),
     lastFocusOrigin: null,
 
-    // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale).
+    // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale) + activePoint 해제(타점 날짜 stale).
     setDate: (date, origin) =>
-        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null }, lastFocusOrigin: origin ?? null })),
-    // code 변경 시 time 유지(같은시각 횡적비교) + 검색 모드 자동 해제(종목 바뀌면 Focus 복귀). 같은 종목이면 검색 유지.
+        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null }, activePoint: null, lastFocusOrigin: origin ?? null })),
+    // code 변경 시 time 유지(같은시각 횡적비교) + 검색/activePoint 자동 해제(종목 바뀌면 타점 stale). 같은 종목이면 유지.
     setCode: (code, origin) =>
-        set((s) => ({ focus: { ...s.focus, code }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
+        set((s) => ({ focus: { ...s.focus, code }, search: code !== s.focus.code ? null : s.search, activePoint: code !== s.focus.code ? null : s.activePoint, lastFocusOrigin: origin ?? null })),
+    // 시간만 이동(리플레이/차트 드리프트) = activePoint 유지 → 연결 표시(A) 안 흔들림.
     setTime: (time, origin) => set((s) => ({ focus: { ...s.focus, time }, lastFocusOrigin: origin ?? null })),
     setFocus: ({ date, code, time }, origin) =>
-        set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
+        set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search, activePoint: code !== s.focus.code ? null : s.activePoint, lastFocusOrigin: origin ?? null })),
+    // 타점 이동 = focus + activePoint 원자 세팅(다른 타점 선택 시에만 A 바뀜).
+    goToPoint: ({ date, code, time }, origin) =>
+        set((s) => ({ focus: { ...s.focus, date, code, time }, activePoint: { code, date, time }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
 
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { theme: null } })),

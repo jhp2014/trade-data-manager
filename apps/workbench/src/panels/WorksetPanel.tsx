@@ -49,6 +49,7 @@ export function WorksetPanel(): JSX.Element {
     const focusDate = useWorkbench((s) => s.focus.date);
     const focusTime = useWorkbench((s) => s.focus.time);
     const setFocus = useWorkbench((s) => s.setFocus);
+    const goToPoint = useWorkbench((s) => s.goToPoint);
     const filterDraft = useWorkbench((s) => s.filterDraft);
     const outcomeSel = useWorkbench((s) => s.facetSelected.outcome);
     const toggleFacet = useWorkbench((s) => s.toggleFacet);
@@ -236,7 +237,7 @@ export function WorksetPanel(): JSX.Element {
                                             p={p}
                                             related={sameCode}
                                             current={sameCode && p.date === focusDate && p.time === focusTime}
-                                            onClick={() => setFocus({ date: p.date, code: p.stockCode, time: p.time })}
+                                            onClick={() => goToPoint({ date: p.date, code: p.stockCode, time: p.time })}
                                         />
                                     ))}
                                 </div>

@@ -38,20 +38,22 @@ interface HypNodeData {
 }
 
 function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
-    // ID 는 안 보인다. 3상태 인코딩(목록과 공통): (A)연결=좌측 직각 바 / (B)필터=외곽 링(제외=빨강) / (C)선택=채움.
+    // ID 안 보임. 3상태 인코딩(겹쳐도 공존): (A)연결=아래 그림자로 띄움 / (B)필터=외곽 링(제외=빨강) / (C)선택=채움.
     const ring = data.filterState === "pos" ? "var(--accent-primary)" : data.filterState === "neg" ? "var(--rise)" : null;
+    // box-shadow 합성: (B) 외곽 링 + (A) 아래 그림자. 둘 다 box-shadow라 콤마로 공존(다른 레이어라 안 뭉갬).
+    const shadows: string[] = [];
+    if (ring) shadows.push(`0 0 0 2px ${ring}`);
+    if (data.linkedToPoint) shadows.push("0 5px 14px rgba(0,0,0,0.30)");
     return (
         <div
             style={{
                 width: 200,
                 padding: "6px 9px",
                 borderRadius: 2,
+                // (C) 선택 = 채움만. 테두리는 중립(accent 안 씀) → 링·그림자와 색 안 부딪힘 + 선택 시 연결 그림자 유지.
                 background: data.selected ? "var(--accent-soft)" : "var(--bg-primary)",
-                border: `1.5px solid ${data.selected ? "var(--accent-primary)" : "var(--border-default)"}`,
-                // (A) 좌측 직각 바 — 연결 시 border 왼쪽만 accent 로 덮음.
-                borderLeft: data.linkedToPoint ? "3px solid var(--accent-primary)" : undefined,
-                // (B) 외곽 링 — 필터 포함(teal) / 제외(red). 채움·바와 다른 레이어라 겹쳐도 공존.
-                boxShadow: ring ? `0 0 0 2px ${ring}` : undefined,
+                border: "1.5px solid var(--border-default)",
+                boxShadow: shadows.length ? shadows.join(", ") : undefined,
                 fontSize: 12,
                 color: "var(--text-primary)",
             }}
@@ -63,7 +65,6 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
             <Handle id="b" type="source" position={Position.Bottom} />
             <Handle id="l" type="source" position={Position.Left} />
             <div style={{ lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{data.text}</div>
-            {data.count > 0 && <div className="tabular" style={{ marginTop: 3, fontSize: 10, color: "var(--text-tertiary)" }}>연결 {data.count}</div>}
         </div>
     );
 }

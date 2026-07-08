@@ -10,7 +10,7 @@ import { useHypothesisData } from "../lib/useHypothesisData.js";
 //   (A) 현재 타점 연결 = 좌측 직각 바 + 상단 정렬  ·  (B) 필터 포함 = 우측 칩(제외=빨강)  ·  (C) 선택 = 행 배경.
 // 우클릭 = 필터에 추가(양성→제외→해제 순환). 선택 시 연결 타점(종목명) 펼침→이동. 필터/그래프는 클라 인메모리.
 export function HypothesisPanel(): JSX.Element {
-    const setFocus = useWorkbench((s) => s.setFocus);
+    const goToPoint = useWorkbench((s) => s.goToPoint);
     const selectedId = useWorkbench((s) => s.selectedHypothesisId);
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
     const filterDraft = useWorkbench((s) => s.filterDraft);
@@ -160,7 +160,7 @@ export function HypothesisPanel(): JSX.Element {
                                     {selectedPoints.map((l, i) => (
                                         <button
                                             key={i}
-                                            onClick={() => setFocus({ date: l.date, code: l.stockCode, time: l.time })}
+                                            onClick={() => goToPoint({ date: l.date, code: l.stockCode, time: l.time })}
                                             title="이 타점으로 이동"
                                             style={{ display: "flex", alignItems: "baseline", gap: 7, textAlign: "left", padding: "2px 10px 2px 0", background: "none", border: "none", cursor: "pointer" }}
                                         >

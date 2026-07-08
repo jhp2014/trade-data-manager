@@ -26,9 +26,8 @@ export interface HypothesisData {
 }
 
 export function useHypothesisData(): HypothesisData {
-    const code = useWorkbench((s) => s.focus.code);
-    const date = useWorkbench((s) => s.focus.date);
-    const time = useWorkbench((s) => s.focus.time);
+    // (A) 연결 판정 = 선택된 타점(activePoint), focus.time(드리프트) 아님. 다른 타점으로 이동해야만 바뀐다.
+    const activePoint = useWorkbench((s) => s.activePoint);
 
     const hypQ = useQuery(hypothesesQuery());
     const linkQ = useQuery(hypothesisLinksQuery());
@@ -36,8 +35,8 @@ export function useHypothesisData(): HypothesisData {
     const links = useMemo(() => linkQ.data ?? [], [linkQ.data]);
 
     const point = useMemo<HypothesisPoint | null>(
-        () => (code && date && time ? { stockCode: code, date, time } : null),
-        [code, date, time],
+        () => (activePoint ? { stockCode: activePoint.code, date: activePoint.date, time: activePoint.time } : null),
+        [activePoint],
     );
     const linkedToPoint = useMemo(() => (point ? hypothesesForPoint(links, point) : new Set<string>()), [links, point]);
     const countByHyp = useMemo(() => {
