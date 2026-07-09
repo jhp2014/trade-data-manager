@@ -4,9 +4,10 @@
 
 ```
 @trade-data-manager/google
-  ├── /auth           OAuth 인증 (refresh token → 인증된 클라이언트). db-backup·sheets 공용.
+  ├── /auth           OAuth 인증 (refresh token → 인증된 클라이언트). sheets·drive 공용.
   ├── /sheets         Sheets 읽기/쓰기 (googleapis 위 얇은 래퍼, Layer 1: IO)
-  └── /sheets/matrix  순수 매트릭스 헬퍼 (Layer 2: googleapis 무의존)
+  ├── /sheets/matrix  순수 매트릭스 헬퍼 (Layer 2: googleapis 무의존)
+  └── /drive          Drive 파일 생성/목록/삭제/upsert (googleapis 위 얇은 래퍼, Layer 1: IO)
 ```
 
 설계 경계: **패키지는 도메인을 모른다.** transport 는 `string[][]` 만 주고받고, "어느 시트/탭" · 헤더 별칭표 · 도메인 매핑(ReviewRow/ThemeMember 등)은 **소비자 몫**.
@@ -125,6 +126,47 @@ const matrix = objectsToMatrix(objs, [
 
 ---
 
+## /drive (Layer 1 — 파일 IO)
+
+```ts
+import { createDriveClient } from "@trade-data-manager/google/drive";
+import fs from "node:fs";
+
+const drive = createDriveClient(); // auth 자급. 인스턴스 1개 만들어 재사용 권장.
+
+// 폴더에 새 파일 업로드 — id/md5/size 반환(무결성 대조용)
+const { id, md5Checksum } = await drive.uploadFile({
+  folderId,
+  name: "2026-07-09.dump",
+  body: fs.createReadStream(localPath),
+});
+
+// 폴더 내 (앱이 만든) 파일 목록 — 페이지네이션 자동
+const files = await drive.listFiles(folderId);
+
+await drive.deleteFile(id);
+
+// 같은 이름이면 내용 갱신, 없으면 생성. 동명 중복은 정리(manifest 용).
+await drive.uploadOrUpdate({ folderId, name: "manifest.json", body: fs.createReadStream(p) });
+```
+
+특징:
+- **drive.file 스코프** — 앱이 만든 파일만 접근 → 목록/삭제가 우리 파일에만 작용해 안전.
+- **패키지는 도메인을 모른다** — 대상 폴더(`folderId`)·로컬 파일경로는 소비자가 인자로 넘긴다(body 는 `Readable` 스트림). "어느 폴더/어떤 이름"·무결성 대조는 소비자 몫.
+- **공유 드라이브 지원**(`supportsAllDrives`).
+- 에러는 `DriveError`(meta 에 `op`/`status`).
+
+### 테스트 (transport 주입)
+
+googleapis 호출은 `transport.ts` 한 곳에만 갇혀 있다. fake 를 주입해 upsert/dedup 을 네트워크 없이 검증한다.
+
+```ts
+import { makeDriveClient } from "@trade-data-manager/google/drive";
+const client = makeDriveClient(fakeTransport); // DriveTransport 구현
+```
+
+---
+
 ## 스크립트
 
 | 명령 | 설명 |
@@ -139,6 +181,6 @@ const matrix = objectsToMatrix(objs, [
 
 ## 소비자 (현재 / 예정)
 
-- **db-backup**: `createOAuthClient()` 로 Drive 인증(이전 완료).
+- **db-backup(app)**: `createDriveClient()` 로 백업/manifest 를 Drive 에 단방향 업로드. folderId·로컬파일 바인딩은 앱의 `gdrive.ts` 도메인 글루(패키지는 몰라도 됨). 이전 googleapis 직접 사용분을 `/drive` 로 흡수.
 - **워크벤치(예정)**: greenfield 로 만들 때 `createSheetsClient()` 로 복기 시트 R/W 배선. 현 chart-review/hypothesis-lab 의 시트 코드는 그때 대체.
 - **market-eye(2단계)**: 모노레포 흡수 시 `sheetsThemeSource` 가 이 패키지로 수렴(헤더 별칭 → `/sheets/matrix`). 절대위치 쓰기가 필요하면 그때 `setRowsAt` 추가.

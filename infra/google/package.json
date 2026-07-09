@@ -6,7 +6,8 @@
     "exports": {
         "./auth": "./src/auth/index.ts",
         "./sheets": "./src/sheets/index.ts",
-        "./sheets/matrix": "./src/sheets/matrix.ts"
+        "./sheets/matrix": "./src/sheets/matrix.ts",
+        "./drive": "./src/drive/index.ts"
     },
     "scripts": {
         "type-check": "tsc --noEmit",

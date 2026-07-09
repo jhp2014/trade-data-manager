@@ -1,7 +1,7 @@
 import { config as loadEnv } from "dotenv";
 import { resolve } from "node:path";
 
-// 루트 .env 로드 (다른 패키지와 동일 규약: packages/db-backup → ../../.env)
+// 루트 .env 로드 (다른 패키지와 동일 규약: apps/db-backup → ../../.env)
 loadEnv({ path: resolve(process.cwd(), "../../.env") });
 
 function required(name: string): string {
