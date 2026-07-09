@@ -79,6 +79,9 @@ describe("buildThemeBoardViewModel", () => {
             filter,
         );
         expect(allStocks(vm).map((s) => s.code)).toEqual(["A"]);
+        // hide 로 빠진 종목은 로스터엔 없지만 excludedByFilter 에 사유와 함께 남는다(포커스 배지 "필터 제외"용).
+        expect(vm.excludedByFilter.get("B")).toEqual(["고가 등락률"]);
+        expect(vm.excludedByFilter.has("A")).toBe(false);
     });
 
     it("배제 필터 dim — 매칭 종목 dim + 사유(excludedBy)", () => {
@@ -163,5 +166,6 @@ describe("buildReplayBoardViewModel", () => {
         const codes = allStocks(vm).map((s) => s.code);
         expect(codes).toContain("A"); // highPct 6 ≥ 5 → 유지
         expect(codes).not.toContain("B"); // highPct 2 < 5 → hide
+        expect(vm.excludedByFilter.get("B")).toEqual(["고가 등락률"]); // 랭킹 밖이 아니라 "필터 제외"로 구분
     });
 });

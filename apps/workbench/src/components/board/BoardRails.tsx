@@ -2,6 +2,29 @@ import type { ThemeGroup } from "@trade-data-manager/market/domain";
 import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
 import type { BoardStock } from "./boardTypes.js";
 
+/**
+ * NavRail 2번째 줄(현재 종목의 위치)에서 보이는 테마 카드가 없을 때 대신 뜨는 배지.
+ *  - present  : 보드엔 있으나 테마 카드가 아님(미분류·개별) — 하단 섹션 카드에 실제로 보임.
+ *  - excluded : 보드 필터 hide 로 빠짐(필터 제외) — 붉은 톤, title 에 사유.
+ *  - absent   : 로스터에 아예 없음(복기 랭킹 밖 / 테마 보드 밖) — 가장 흐림.
+ */
+export type FocusBadge = { text: string; tone: "present" | "excluded" | "absent"; title?: string };
+
+const BADGE_TONES: Record<FocusBadge["tone"], { color: string; bg: string; border: string; opacity: number }> = {
+    present: { color: "var(--text-tertiary)", bg: "var(--bg-secondary)", border: "var(--border-default)", opacity: 1 },
+    excluded: { color: "var(--rise)", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.35)", opacity: 1 },
+    absent: { color: "var(--text-tertiary)", bg: "var(--bg-secondary)", border: "var(--border-default)", opacity: 0.6 },
+};
+
+function FocusBadgeChip({ badge }: { badge: FocusBadge }): JSX.Element {
+    const t = BADGE_TONES[badge.tone];
+    return (
+        <span title={badge.title} style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.bg, fontSize: 11, color: t.color, opacity: t.opacity, whiteSpace: "nowrap" }}>
+            {badge.text}
+        </span>
+    );
+}
+
 // 보드 상·하단 Rail — NavRail(상단 테마칩 내비) / HiddenRail(하단 숨김 복원). 둘 다 가로 스크롤 칩 줄.
 // BoardLayout 이 소유한 선택/숨김 상태를 콜백으로 받아 렌더만 한다.
 
@@ -83,8 +106,9 @@ export function NavRail({
     themes: ThemeGroup<BoardStock>[];
     selected: string | null;
     onPick: (t: string) => void;
-    // 2번째 줄 = 현재 종목의 테마(숨김 포함, dim). 3번째 줄 = HOT(주목 시그널, 있을 때만 — 복기보드만).
-    focusRow?: { themes: ThemeGroup<BoardStock>[]; isHidden: (t: string) => boolean; onPick: (t: string) => void };
+    // 2번째 줄 = 현재 종목의 테마(숨김 포함, dim). 보이는 테마 카드가 없으면 badge(미분류/개별/필터 제외/랭킹·보드 밖).
+    // 3번째 줄 = HOT(주목 시그널, 있을 때만 — 복기보드만).
+    focusRow?: { themes: ThemeGroup<BoardStock>[]; isHidden: (t: string) => boolean; onPick: (t: string) => void; badge: FocusBadge | null };
 }): JSX.Element | null {
     const hotOf = (g: ThemeGroup<BoardStock>): number => g.stocks.filter((s) => s.signal).length;
     const hotThemes = themes.filter((g) => hotOf(g) > 0).sort((a, b) => hotOf(b) - hotOf(a));
@@ -98,7 +122,7 @@ export function NavRail({
                     ))}
                 </ScrollRow>
             )}
-            {/* 2번째 줄 = 현재 종목의 테마(보드 로스터 기준). 종목이 로스터에 없으면 None 칩 하나. */}
+            {/* 2번째 줄 = 현재 종목의 테마(보드 로스터 기준). 보이는 카드가 없으면 상태 배지(미분류/개별/필터 제외/랭킹·보드 밖). */}
             {focusRow &&
                 (focusRow.themes.length > 0 ? (
                     <ScrollRow>
@@ -106,11 +130,11 @@ export function NavRail({
                             <NavChip key={g.theme} g={g} on={selected === g.theme} onClick={() => focusRow.onPick(g.theme)} dim={focusRow.isHidden(g.theme)} />
                         ))}
                     </ScrollRow>
-                ) : (
+                ) : focusRow.badge ? (
                     <div style={{ display: "flex" }}>
-                        <span style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 8, border: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 11, color: "var(--text-tertiary)", opacity: 0.6 }}>None</span>
+                        <FocusBadgeChip badge={focusRow.badge} />
                     </div>
-                ))}
+                ) : null)}
             {hotThemes.length > 0 && (
                 <ScrollRow>
                     {hotThemes.map((g) => (

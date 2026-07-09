@@ -4,7 +4,7 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import { relatedThemes, type Grouped, type ThemeGroup } from "@trade-data-manager/market/domain";
 import { ThemeCard, BoardCenter, type BoardStock, type RelatedInfo } from "./BoardCard.js";
-import { NavRail, HiddenRail } from "./BoardRails.js";
+import { NavRail, HiddenRail, type FocusBadge } from "./BoardRails.js";
 
 // 보드 본문 공용 — NavRail + 카드(현재 종목 밴드 / 즐겨찾기 / 나머지 / 개별·미분류) + 숨김 Rail. 두 보드 공유.
 // 즐겨찾기(★)·숨김(👁)은 세션 휘발 로컬 상태. 자동숨김=현재 시점 포함관계(비sticky — 복기 스크럽에
@@ -18,6 +18,8 @@ export function BoardLayout({
     onPick,
     selfOrigin,
     focusOrigin,
+    excludedByFilter,
+    absentLabel,
     showIndividuals = true,
     showUnclassified = true,
 }: {
@@ -27,6 +29,8 @@ export function BoardLayout({
     onPick: (code: string) => void;
     selfOrigin: string; // 이 보드 패널의 고유 id(useId). focusOrigin 과 같으면 내가 바꾼 것.
     focusOrigin: string | null; // 마지막 Focus 변경 출처(store.lastFocusOrigin).
+    excludedByFilter: Map<string, string[]>; // 필터 hide 로 빠진 코드→사유(포커스 배지 "필터 제외" 판정용).
+    absentLabel: string; // 로스터에 아예 없을 때 배지 문구(복기="랭킹 밖" / 테마="보드 밖").
     showIndividuals?: boolean;
     showUnclassified?: boolean;
 }): JSX.Element {
@@ -95,7 +99,16 @@ export function BoardLayout({
     const themeByName = new Map(grouped.themes.map((g) => [g.theme, g]));
     // 현재 종목이 속한 테마(숨김 포함) — 공통 focusCode 를 보드 로스터와 대조해 파생. NavRail 2번째 줄용.
     const containsFocus = (g: ThemeGroup<BoardStock>): boolean => !!focusCode && g.stocks.some((s) => s.code === focusCode);
-    const focusThemes = grouped.themes.filter(containsFocus); // 보드 로스터 기준(숨김 포함). 비면 NavRail 이 None 칩.
+    const focusThemes = grouped.themes.filter(containsFocus); // 보드 로스터 기준(숨김 포함). 비면 아래 배지로.
+    // 현재 종목이 보이는 테마 카드에 없을 때 NavRail 2번째 줄에 띄울 상태 배지 — None 을 4갈래로 구분.
+    const focusBadge = ((): FocusBadge | null => {
+        if (!focusCode || focusThemes.length > 0) return null;
+        if (grouped.unclassified.some((s) => s.code === focusCode)) return { text: "미분류", tone: "present" };
+        if (grouped.individuals.some((s) => s.code === focusCode)) return { text: "개별", tone: "present" };
+        const reasons = excludedByFilter.get(focusCode);
+        if (reasons) return { text: "필터 제외", tone: "excluded", title: reasons.length ? `필터 제외: ${reasons.join(", ")}` : undefined };
+        return { text: absentLabel, tone: "absent" };
+    })();
     // 상단 승격 밴드 — 외부 선택으로 올라온 테마(보드순 유지, 숨김/소멸 제외). fav/rest 에서 빠져 중복 카드 방지.
     const promotedCards = grouped.themes.filter((g) => promoted.includes(g.theme) && !isHidden(g.theme));
     const promotedSet = new Set(promotedCards.map((g) => g.theme));
@@ -145,7 +158,7 @@ export function BoardLayout({
                 themes={[...favCards, ...restCards]}
                 selected={selected}
                 onPick={gotoTheme}
-                focusRow={focusCode ? { themes: focusThemes, isHidden, onPick: gotoRelated } : undefined}
+                focusRow={focusCode ? { themes: focusThemes, isHidden, onPick: gotoRelated, badge: focusBadge } : undefined}
             />
             {/* overflowAnchor none: 카드 펼침(분포바 클릭)에 스크롤이 튀지 않게 — 연속 클릭 유지. */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowAnchor: "none" }}>

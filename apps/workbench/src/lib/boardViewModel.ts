@@ -24,17 +24,23 @@ import type { BoardStock } from "../components/board/BoardCard.js";
 export interface BoardViewModel {
     grouped: Grouped<BoardStock>;
     parents: Map<string, string[]>;
+    /** 배제 필터 hide 판정으로 로스터에서 빠진 종목 → 사유. NavRail 포커스 배지("필터 제외")가 "랭킹/보드 밖"과 구분하는 근거. */
+    excludedByFilter: Map<string, string[]>;
 }
 
 /** day-summary(EOD) → 테마보드 렌더 구조. 배제 필터(domain evalBoardFilter, 그룹별 dim/hide+사유)·isMover·buckets·주석 적용. */
 export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Set<string>, boardFilter: BoardFilterExpr): BoardViewModel {
     const stocks: BoardStock[] = [];
+    const excludedByFilter = new Map<string, string[]>();
     for (const s of summary.stocks) {
         const m = dailyMetric(s);
         if (!m) continue;
         // 배제 필터 — trailingHighs·bucketCounts 는 daySummary folding 으로 함께 온다(별도 로딩 없음).
         const verdict = evalBoardFilter(boardFilter, { highPct: m.highPct, amount: m.amount, buckets: s.bucketCounts, trailingHighs: s.trailingHighs });
-        if (verdict.effect === "hide") continue;
+        if (verdict.effect === "hide") {
+            excludedByFilter.set(s.stockCode, verdict.reasons);
+            continue;
+        }
         stocks.push({
             code: s.stockCode,
             name: s.name ?? s.stockCode,
@@ -53,7 +59,7 @@ export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Se
         });
     }
     const byTheme = stocksByTheme(stocks);
-    return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme) };
+    return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme), excludedByFilter };
 }
 
 /**
@@ -76,6 +82,7 @@ export function buildReplayBoardViewModel(
     const hotCodes = selectHotUniverse(snaps, rs.amountN, rs.rateN);
 
     const stocks: BoardStock[] = [];
+    const excludedByFilter = new Map<string, string[]>();
     for (const snap of snaps) {
         if (!hotCodes.has(snap.code)) continue;
         const s = index.get(snap.code);
@@ -86,7 +93,10 @@ export function buildReplayBoardViewModel(
         // 시점 t 까지 누적 버킷 — hover 히스토그램. 그리고 복기 필터 재평가(t 스냅샷 지표 기준).
         const buckets = countAmountBuckets(derivedMinutesOf(s, lastIndexAtOrBefore(s.times, tUnix)));
         const verdict = evalBoardFilter(replayFilter, { highPct: snap.highPct, amount: snap.amount, buckets, trailingHighs: s.trailingHighs });
-        if (verdict.effect === "hide") continue;
+        if (verdict.effect === "hide") {
+            excludedByFilter.set(snap.code, verdict.reasons);
+            continue;
+        }
         stocks.push({
             code: snap.code,
             name: s.name ?? snap.code,
@@ -106,5 +116,5 @@ export function buildReplayBoardViewModel(
         });
     }
     const byTheme = stocksByTheme(stocks);
-    return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme) };
+    return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme), excludedByFilter };
 }
