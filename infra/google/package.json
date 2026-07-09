@@ -26,7 +26,6 @@
         "googleapis": "^144.0.0"
     },
     "devDependencies": {
-        "@trade-data-manager/tsconfig": "workspace:*",
         "@types/node": "^22.10.0",
         "rimraf": "^6.0.1",
         "tsx": "^4.21.0",

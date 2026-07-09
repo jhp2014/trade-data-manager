@@ -3,4 +3,3 @@ packages:
   - 'core/*'
   - 'contracts/*'
   - 'infra/*'
-  - 'packages/*'
