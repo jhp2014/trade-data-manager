@@ -38,34 +38,11 @@ export const policy = {
     /** 보관: 최근 N개 + 최근 M개월 (각 월의 최신 1개) */
     keepRecent: 4,
     keepMonths: 3,
-    /** restore 정합성 비교 대상 (원본 == 복구본 count) */
-    keyTables: [
-        "stocks",
-        "themes",
-        "daily_candles",
-        "minute_candles",
-        "minute_candle_features",
-        "review_target",
-        "review_point",
-        "review_manual_key",
-    ],
     /**
-     * 행수 불감소 가드 대상 (append-only / 대체불가).
-     * review_* 는 사용자가 합법적으로 삭제할 수 있으므로 제외한다.
+     * ②b 행수 불감소 가드 대상 (append-only / 대체불가). schema.table 키.
+     * 제외: daily_candles(자가치유 overwrite)·daily_market_cap(재계산)·stock_master(덮어쓰기)·
+     *       curation.*(사람이 편집·삭제 → 정당한 감소). restore 정합성(②a)은 전 base 테이블을
+     *       런타임 열거(inspect.listBaseTables)로 대조하므로 여기 하드코딩하지 않는다.
      */
-    guardTables: ["daily_candles", "minute_candles", "minute_candle_features"],
-    /**
-     * ③ 분봉 과거월 지문이 대상으로 삼는 raw 컬럼 (키움 원본값, 불변).
-     * rate / feature 등 재계산 컬럼은 합법적으로 바뀌므로 제외한다.
-     * (실제 합산식은 inspect.ts 의 쿼리에 반영)
-     */
-    minuteRawColumns: [
-        "open_price",
-        "high_price",
-        "low_price",
-        "close_price",
-        "trading_volume",
-        "trading_amount",
-        "accumulated_trading_amount",
-    ],
+    guardTables: ["market.daily_candles_raw", "market.minute_candles", "market.stock_news"],
 } as const;

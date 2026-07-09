@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { config, policy } from "./config";
+import { config } from "./config";
 import { createLogger, type Logger } from "./logger";
 import { sourceDbName, withClient } from "./pg";
-import { minuteMaxId, tableCounts } from "./inspect";
+import { listBaseTables, minuteMaxTradeDate, tableCounts } from "./inspect";
 import {
     emptyManifest,
     manifestPath,
@@ -18,6 +18,13 @@ import * as gdrive from "./gdrive";
 
 const FAILED_MARKER = "LAST_RUN_FAILED.txt";
 
+/** 두 count 맵이 완전히 동일한지(키집합 + 값). 테이블이 늘거나 값이 바뀌면 false → 덤프 트리거. */
+function sameCounts(a: Record<string, string>, b: Record<string, string>): boolean {
+    const ak = Object.keys(a);
+    const bk = Object.keys(b);
+    return ak.length === bk.length && ak.every((k) => a[k] === b[k]);
+}
+
 async function main(): Promise<void> {
     fs.mkdirSync(config.localDir, { recursive: true });
     const log = createLogger(path.join(config.localDir, "logs"));
@@ -27,15 +34,15 @@ async function main(): Promise<void> {
     const manifest = readManifest();
 
     // 0. 현재 원본 상태 스냅샷 (변경 감지 + ②a 정합성 기준)
-    const { sourceCounts, maxId } = await withClient(sourceDbName(), async (c) => ({
-        sourceCounts: await tableCounts(c, policy.keyTables),
-        maxId: await minuteMaxId(c),
+    const { sourceCounts, minuteMaxDate } = await withClient(sourceDbName(), async (c) => ({
+        sourceCounts: await tableCounts(c, await listBaseTables(c)),
+        minuteMaxDate: await minuteMaxTradeDate(c),
     }));
 
     const unchanged =
         manifest.lastSuccessAt !== null &&
-        manifest.lastMinuteMaxId === maxId &&
-        policy.keyTables.every((t) => manifest.lastCounts[t] === sourceCounts[t]);
+        manifest.lastMinuteMaxDate === minuteMaxDate &&
+        sameCounts(manifest.lastCounts, sourceCounts);
 
     let newDumpPath: string | null = null;
     let accepted = false; // 로컬 검증 통과 시 true → 이후 실패해도 격리하지 않음
@@ -63,7 +70,7 @@ async function main(): Promise<void> {
                 ...emptyManifest(),
                 lastSuccessAt: new Date().toISOString(),
                 lastCounts: verify.newCounts,
-                lastMinuteMaxId: maxId,
+                lastMinuteMaxDate: minuteMaxDate,
                 minuteMonthly: verify.newMonthly,
                 fileHashes: Object.fromEntries(
                     Object.entries({ ...manifest.fileHashes, [fileName]: hash }).filter(([f]) =>

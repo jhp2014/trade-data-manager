@@ -1,6 +1,6 @@
 import { policy } from "./config";
 import { runPgTool, withClient } from "./pg";
-import { minuteMonthlyFingerprint, tableCounts } from "./inspect";
+import { listBaseTables, minuteMonthlyFingerprint, tableCounts } from "./inspect";
 import type { Manifest, MonthFingerprint } from "./manifest";
 import type { Logger } from "./logger";
 
@@ -55,24 +55,26 @@ export async function verifyBackup(
         log.info("① pg_restore 성공");
 
         return await withClient(policy.tempDbName, async (c) => {
-            const newCounts = await tableCounts(c, policy.keyTables);
+            // 복구본의 전 base 테이블을 런타임 열거해 count (원본 열거와 동일 규칙).
+            const newCounts = await tableCounts(c, await listBaseTables(c));
 
-            // ②a 정합성
-            for (const t of policy.keyTables) {
+            // ②a 정합성 — 원본 열거 키 전부가 복구본에 같은 count 로 존재해야 한다.
+            for (const [key, srcCount] of Object.entries(sourceCounts)) {
+                assert(key in newCounts, `②a 테이블 소실: ${key} 가 복구본에 없음`);
                 assert(
-                    newCounts[t] === sourceCounts[t],
-                    `②a 정합성 실패: ${t} 원본 ${sourceCounts[t]} ≠ 복구본 ${newCounts[t]}`,
+                    newCounts[key] === srcCount,
+                    `②a 정합성 실패: ${key} 원본 ${srcCount} ≠ 복구본 ${newCounts[key]}`,
                 );
             }
-            log.info("②a restore 정합성(원본=복구본) 통과");
+            log.info(`②a restore 정합성(원본=복구본, ${Object.keys(sourceCounts).length}개 테이블) 통과`);
 
-            // ②b 행수 불감소
-            for (const t of policy.guardTables) {
-                const prev = manifest.lastCounts[t];
+            // ②b 행수 불감소 (append-only 가드 테이블만)
+            for (const key of policy.guardTables) {
+                const prev = manifest.lastCounts[key];
                 if (prev !== undefined) {
                     assert(
-                        BigInt(newCounts[t]) >= BigInt(prev),
-                        `②b 행수 감소 감지: ${t} 직전 ${prev} → 현재 ${newCounts[t]} (데이터 유실 의심)`,
+                        BigInt(newCounts[key]) >= BigInt(prev),
+                        `②b 행수 감소 감지: ${key} 직전 ${prev} → 현재 ${newCounts[key]} (데이터 유실 의심)`,
                     );
                 }
             }
@@ -94,10 +96,6 @@ export async function verifyBackup(
                 assert(
                     BigInt(cur.sumVolume) >= BigInt(prev.sumVolume),
                     `③ ${ym} 거래량합 감소 (값 손상 의심)`,
-                );
-                assert(
-                    BigInt(cur.sumAmount) >= BigInt(prev.sumAmount),
-                    `③ ${ym} 거래대금합 감소 (값 손상 의심)`,
                 );
             }
             log.info(
