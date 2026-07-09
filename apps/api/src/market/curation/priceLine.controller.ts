@@ -1,7 +1,8 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import type { PriceLine, PriceLinedStock, PriceLineField, PriceLineReader, PriceLineStore } from "@trade-data-manager/market";
 import type { AddPriceLineInput } from "@trade-data-manager/wire";
-import { PRICE_LINE_REPO } from "../tokens.js";
+import { PRICE_LINE_REPO, MASTER_CACHE } from "../tokens.js";
+import { MasterCache } from "../board/masterCache.js";
 import { assertYmd, assertHms } from "../validation.js";
 
 const FIELDS = new Set<PriceLineField>(["high", "low", "open", "close"]);
@@ -9,12 +10,20 @@ const FIELDS = new Set<PriceLineField>(["high", "low", "open", "close"]);
 // 차트 가격선 주석 CRUD — 사람이 우클릭으로 긋는 수평선. 가격 대신 앵커(캔들 좌표)를 저장한다.
 @Controller("price-lines")
 export class PriceLineController {
-    constructor(@Inject(PRICE_LINE_REPO) private readonly repo: PriceLineReader & PriceLineStore) {}
+    constructor(
+        @Inject(PRICE_LINE_REPO) private readonly repo: PriceLineReader & PriceLineStore,
+        @Inject(MASTER_CACHE) private readonly master: MasterCache,
+    ) {}
 
-    // 작업셋 — 선이 있는 (종목,날짜) 전부(월 그룹은 클라). 정적 경로라 @Get() 인덱스와 구분됨.
+    // 작업셋 — 선이 있는 (종목,날짜) 전부(월 그룹은 클라). 선은 curation, 종목명은 market.stock_master(MasterCache)라
+    // 물리 분리 시 SQL 조인 불가 → 여기(앱레이어)서 합친다. 정적 경로라 @Get() 인덱스와 구분됨.
     @Get("stocks")
-    listStocks(): Promise<PriceLinedStock[]> {
-        return this.repo.listPriceLinedStocks();
+    async listStocks(): Promise<PriceLinedStock[]> {
+        const stocks = await this.repo.listPriceLinedStocks();
+        const codes = [...new Set(stocks.map((s) => s.stockCode))];
+        const masters = await this.master.getByStockCodes(codes);
+        const nameByCode = new Map(masters.map((m) => [m.stockCode, m.name] as const));
+        return stocks.map((s) => ({ ...s, name: nameByCode.get(s.stockCode) ?? null }));
     }
 
     @Get()

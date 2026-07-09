@@ -9,8 +9,8 @@ export interface PriceLineReader {
     /** 이 차트(종목,날짜)의 모든 선(그린 순서 = id 오름차순). */
     listByChart(stockCode: string, date: string): Promise<PriceLine[]>;
 
-    /** 선이 하나라도 있는 (종목,날짜)들 — 작업셋 목록(날짜 내림차순). name/lineCount 는 조회 파생. */
-    listPriceLinedStocks(): Promise<PriceLinedStock[]>;
+    /** 선이 하나라도 있는 (종목,날짜)들 — 작업셋 목록(날짜 내림차순). 종목명 없음(app 레이어가 market.stock_master 로 붙임), lineCount 는 집계 파생. */
+    listPriceLinedStocks(): Promise<Omit<PriceLinedStock, "name">[]>;
 }
 
 /** 가격선 편집(쓰기). 사람이 긋고 지우는 CRUD 컨트롤러가 의존. */

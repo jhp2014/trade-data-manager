@@ -1,4 +1,4 @@
-import type { ReviewPoint, ReviewPointListItem } from "#domain";
+import type { ReviewPoint } from "#domain";
 
 // 복기 타점 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
 // 자연키 (stockCode, date, time) = caseId. 자세한 설계는 domain/review/reviewPoint.ts.
@@ -8,8 +8,8 @@ export interface ReviewPointReader {
     /** 이 차트(종목,날짜)의 타점들(시각 오름차순). */
     listByChart(stockCode: string, date: string): Promise<ReviewPoint[]>;
 
-    /** 모든 타점 + 종목명 — 월별 작업셋 목록(날짜 내림차순, 같은 날 시각 오름차순). */
-    listAllPoints(): Promise<ReviewPointListItem[]>;
+    /** 모든 타점(종목명 없음 — 이름은 app 레이어가 market.stock_master 로 붙인다). 날짜 내림차순, 같은 날 시각 오름차순. */
+    listAllPoints(): Promise<ReviewPoint[]>;
 }
 
 /** 복기 타점 편집(쓰기). memo 만 가변이라 upsert 로 add/edit 를 겸한다. */

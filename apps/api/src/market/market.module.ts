@@ -2,6 +2,7 @@ import { Module, type OnModuleDestroy, type Provider, Inject } from "@nestjs/com
 import {
     createDb,
     createPoolFromEnv,
+    createCurationPoolFromEnv,
     DrizzleDailyCandleRepository,
     DrizzleRawDailyCandleRepository,
     DrizzleMinuteCandleRepository,
@@ -18,7 +19,7 @@ import {
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, HYPOTHESIS_FILTER_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, HYPOTHESIS_FILTER_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
@@ -42,8 +43,10 @@ import { CachedMembership } from "./board/cachedMembership.js";
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
 
-// Pool 은 앱 수명 단일 싱글톤. OnModuleDestroy 에서 graceful end. 모든 도메인 팩토리가 이 위에서 db 를 만든다.
+// Pool 은 앱 수명 단일 싱글톤. OnModuleDestroy 에서 graceful end. 도메인 팩토리가 이 위에서 db 를 만든다.
+// 두 풀: market(수집·읽기전용) / curation(사람 편집). curation 은 CURATION_DATABASE_URL 로 분리 가능(없으면 market 과 같은 DB로 폴백).
 const poolProvider: Provider = { provide: MARKET_POOL, useFactory: (): Pool => createPoolFromEnv() };
+const curationPoolProvider: Provider = { provide: CURATION_POOL, useFactory: (): Pool => createCurationPoolFromEnv() };
 
 // ── 화면별 팩토리 묶음 — 폴더(chart/board/curation/news)와 1:1. 변경/테스트 단위가 도메인별로 작아진다.
 const chartProviders: Provider[] = [
@@ -82,9 +85,10 @@ const boardProviders: Provider[] = [
     },
     {
         // 보드 읽기모델 — 날짜별 불변 파일 캐시(DerivedCache) + 메모리 캐시 조합. query 포트 직접 호출.
+        // 두 DB를 함께 쓰는 유일한 곳: 시세 파생(market) + 당일 코멘트(curation). SQL 조인이 아니라 각 DB에서 읽어 앱에서 합친다.
         provide: DAY_BOARDS,
-        useFactory: (pool: Pool, master: MasterCache, membership: CachedMembership): DayBoards => {
-            const db = createDb(pool);
+        useFactory: (marketPool: Pool, curationPool: Pool, master: MasterCache, membership: CachedMembership): DayBoards => {
+            const db = createDb(marketPool);
             const derived = new DerivedCache({
                 universe: new DrizzleDailyUniverseProvider(db),
                 minute: new DrizzleMinuteCandleRepository(db),
@@ -92,9 +96,10 @@ const boardProviders: Provider[] = [
                 dailyCandle: new DrizzleDailyCandleRepository(db),
                 marketCap: new DrizzleDailyMarketCapRepository(db),
             });
-            return new DayBoards({ derived, master, membership, dailyComment: new DrizzleDailyCommentRepository(db) });
+            const dailyComment = new DrizzleDailyCommentRepository(createDb(curationPool));
+            return new DayBoards({ derived, master, membership, dailyComment });
         },
-        inject: [MARKET_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
+        inject: [MARKET_POOL, CURATION_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
     },
     {
         // 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커. 일봉 repo 의 distinct 거래일 재사용(신규 소스 없음).
@@ -109,31 +114,31 @@ const curationProviders: Provider[] = [
         // 가격선 주석 쓰기(사람 편집) — repo 를 그대로 노출(add/list/remove).
         provide: PRICE_LINE_REPO,
         useFactory: (pool: Pool) => new DrizzlePriceLineRepository(createDb(pool)),
-        inject: [MARKET_POOL],
+        inject: [CURATION_POOL],
     },
     {
         // 복기 타점 쓰기(사람 편집) — repo 를 그대로 노출(upsert/list/remove).
         provide: REVIEW_POINT_REPO,
         useFactory: (pool: Pool) => new DrizzleReviewPointRepository(createDb(pool)),
-        inject: [MARKET_POOL],
+        inject: [CURATION_POOL],
     },
     {
         // 당일 코멘트 읽기·쓰기(사람 편집) — repo 를 그대로 노출(getByDate/upsert/remove). 보드도 같은 테이블을 읽지만 그건 DayBoards 가 자체 인스턴스로.
         provide: DAILY_COMMENT_REPO,
         useFactory: (pool: Pool) => new DrizzleDailyCommentRepository(createDb(pool)),
-        inject: [MARKET_POOL],
+        inject: [CURATION_POOL],
     },
     {
         // 가설 큐레이션 — repo 를 그대로 노출(목록·생성·연결/해제). 조립·필터는 클라 인메모리(옵션 A).
         provide: HYPOTHESIS_REPO,
         useFactory: (pool: Pool) => new DrizzleHypothesisRepository(createDb(pool)),
-        inject: [MARKET_POOL],
+        inject: [CURATION_POOL],
     },
     {
         // 저장 가설 필터 — repo 를 그대로 노출(목록·저장(이름 upsert)·삭제). 식(DNF)만 저장, 평가·집계는 클라.
         provide: HYPOTHESIS_FILTER_REPO,
         useFactory: (pool: Pool) => new DrizzleHypothesisFilterRepository(createDb(pool)),
-        inject: [MARKET_POOL],
+        inject: [CURATION_POOL],
     },
 ];
 
@@ -169,16 +174,18 @@ const newsProviders: Provider[] = [
         StocksController,
         DatesController,
     ],
-    providers: [poolProvider, ...chartProviders, ...boardProviders, ...curationProviders, ...newsProviders],
+    providers: [poolProvider, curationPoolProvider, ...chartProviders, ...boardProviders, ...curationProviders, ...newsProviders],
 })
 export class MarketModule implements OnModuleDestroy {
     constructor(
         @Inject(MARKET_POOL) private readonly pool: Pool,
+        @Inject(CURATION_POOL) private readonly curationPool: Pool,
         @Inject(NEWS_SEARCHER) private readonly newsSearcher: LazyTelegramNewsSearcher,
     ) {}
 
     async onModuleDestroy(): Promise<void> {
         await this.newsSearcher.close();
         await this.pool.end();
+        await this.curationPool.end();
     }
 }

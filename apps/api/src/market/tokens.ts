@@ -14,4 +14,5 @@ export const HYPOTHESIS_FILTER_REPO = Symbol("HypothesisFilterRepository");
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");
 export const MARKET_POOL = Symbol("MarketPool");
+export const CURATION_POOL = Symbol("CurationPool");
 export const DATA_DATE_READER = Symbol("DataDateReader");

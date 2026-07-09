@@ -13,7 +13,7 @@ export interface ReviewPoint {
     memo?: string; // 타점 메모(선택)
 }
 
-/** 복기 타점 1건 + 종목명 — 월별 타점 목록(작업셋)용 read model. name 은 stock_master 조인 파생(미등록 null). */
+/** 복기 타점 1건 + 종목명 — 월별 타점 목록(작업셋)용 read model. name 은 app 레이어가 stock_master 로 붙인다(미등록 null). */
 export interface ReviewPointListItem extends ReviewPoint {
     name: string | null;
 }

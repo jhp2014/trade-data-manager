@@ -2,7 +2,6 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { PriceLine, PriceLinedStock, PriceLineReader, PriceLineStore } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { priceLines } from "../schema/curation.js";
-import { stockMaster } from "../schema/market.js";
 import { priceLineToRow, rowToPriceLine } from "../mappers/priceLine.js";
 
 /** Drizzle 구현 — surrogate id PK. 앵커 저장(가격 아님) → in-place 수정 없음(add/list/remove 만). */
@@ -24,20 +23,19 @@ export class DrizzlePriceLineRepository implements PriceLineReader, PriceLineSto
         return rows.map(rowToPriceLine);
     }
 
-    async listPriceLinedStocks(): Promise<PriceLinedStock[]> {
-        // 선이 있는 (종목,날짜)로 집계 — 종목명(stock_master 조인)·선 개수. 날짜 내림차순, 같은 날 종목코드 오름차순.
+    async listPriceLinedStocks(): Promise<Omit<PriceLinedStock, "name">[]> {
+        // 선이 있는 (종목,날짜)로 집계 — 선 개수. 종목명은 app 레이어가 market.stock_master 로 붙인다(물리 분리라 조인 불가).
+        // 날짜 내림차순, 같은 날 종목코드 오름차순.
         const rows = await this.db
             .select({
                 stockCode: priceLines.stockCode,
                 date: priceLines.tradeDate,
-                name: stockMaster.name,
                 lineCount: sql<number>`count(*)::int`,
             })
             .from(priceLines)
-            .leftJoin(stockMaster, eq(stockMaster.stockCode, priceLines.stockCode))
-            .groupBy(priceLines.stockCode, priceLines.tradeDate, stockMaster.name)
+            .groupBy(priceLines.stockCode, priceLines.tradeDate)
             .orderBy(desc(priceLines.tradeDate), asc(priceLines.stockCode));
-        return rows.map((r) => ({ stockCode: r.stockCode, date: r.date, name: r.name ?? null, lineCount: Number(r.lineCount) }));
+        return rows.map((r) => ({ stockCode: r.stockCode, date: r.date, lineCount: Number(r.lineCount) }));
     }
 
     async remove(id: string): Promise<void> {

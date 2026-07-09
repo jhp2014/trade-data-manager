@@ -24,7 +24,7 @@ export interface PriceLine {
 /**
  * 가격선이 그어진 (종목, 거래일) 1건 — 작업셋 목록용 read model.
  * 한 종목이 여러 날짜에 선을 가질 수 있어 반환 단위는 종목이 아니라 (종목,날짜)다.
- * name 은 stock_master 조인(미등록이면 null), lineCount 는 그 차트의 선 개수(집계 파생).
+ * name 은 app 레이어가 stock_master 로 붙인다(미등록이면 null), lineCount 는 그 차트의 선 개수(집계 파생).
  */
 export interface PriceLinedStock {
     stockCode: string;
