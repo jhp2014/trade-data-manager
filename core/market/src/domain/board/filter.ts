@@ -42,37 +42,37 @@ function countAtLeastEok(buckets: number[] | undefined, eok: number): number {
 export const BOARD_PREDICATES: BoardPredicateDef[] = [
     {
         kind: "newHighFar",
-        title: "신고가 아님",
+        title: "매물대 내부",
         params: [
             { key: "window", label: "거래일", def: 20, min: 1 },
             { key: "tol", label: "허용 갭%", def: 2, min: 0, step: 0.5 },
         ],
         test: (m, p) => (m.trailingHighs ? !isNearWindowHigh(m.trailingHighs, p.window, p.tol) : false),
-        label: (p) => `신고가밖 ${p.window}일·${p.tol}%`,
+        label: () => "매물대 내부",
     },
     {
         kind: "minAmtFew",
-        title: "대량거래 없음",
+        title: "분봉 대금",
         params: [
             { key: "eok", label: "억", def: 50, min: 1 },
             { key: "maxCount", label: "회 이하", def: 0, min: 0 },
         ],
         test: (m, p) => countAtLeastEok(m.buckets, p.eok) <= p.maxCount,
-        label: (p) => `${p.eok}억 ${p.maxCount}회↓`,
+        label: () => "분봉 대금",
     },
     {
         kind: "smallAmount",
-        title: "소액",
+        title: "일봉 대금",
         params: [{ key: "ltEok", label: "억 미만", def: 100, min: 1 }],
         test: (m, p) => m.amount / 1e8 < p.ltEok,
-        label: (p) => `거래대금 <${p.ltEok}억`,
+        label: () => "일봉 대금",
     },
     {
         kind: "weakHigh",
-        title: "약세",
+        title: "고가 등락률",
         params: [{ key: "ltPct", label: "% 미만", def: 10, min: 0, step: 0.5 }],
         test: (m, p) => m.highPct < p.ltPct,
-        label: (p) => `고가 <${p.ltPct}%`,
+        label: () => "고가 등락률",
     },
 ];
 

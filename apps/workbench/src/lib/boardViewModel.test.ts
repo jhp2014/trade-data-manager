@@ -94,7 +94,7 @@ describe("buildThemeBoardViewModel", () => {
         const byCode = new Map(allStocks(vm).map((s) => [s.code, s]));
         expect(byCode.get("A")?.dim).toBe(false);
         expect(byCode.get("B")?.dim).toBe(true);
-        expect(byCode.get("B")?.excludedBy).toEqual(["고가 <10%"]);
+        expect(byCode.get("B")?.excludedBy).toEqual(["고가 등락률"]);
     });
 });
 

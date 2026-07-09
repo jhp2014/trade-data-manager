@@ -55,7 +55,7 @@ describe("board filter (순수)", () => {
 
     it("사유(reasons) — 매칭 술어 라벨", () => {
         const expr: BoardFilterExpr = { groups: [grp("weakHigh", { ltPct: 10 })] };
-        expect(evalBoardFilter(expr, metrics({ highPct: 8 })).reasons).toEqual(["고가 <10%"]);
+        expect(evalBoardFilter(expr, metrics({ highPct: 8 })).reasons).toEqual(["고가 등락률"]);
     });
 
     it("isBoardFilterActive", () => {

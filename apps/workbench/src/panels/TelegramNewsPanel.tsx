@@ -196,6 +196,8 @@ export function TelegramNewsPanel(): JSX.Element {
                 {showEdit ? (
                     <Center>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 280, maxWidth: "84%" }}>
+                            {/* 검색 기준 날짜 — 어느 날 기준으로 검색하는지 명시(focus.date, 봉클릭 검색이면 그 날짜). */}
+                            <div className="tabular" style={{ fontSize: 12, color: "var(--text-tertiary)", textAlign: "center" }}>기준 날짜 · {dateLabel(targetDate)}</div>
                             <input
                                 autoFocus={editing}
                                 value={input}
