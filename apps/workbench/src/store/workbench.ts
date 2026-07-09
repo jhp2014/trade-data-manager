@@ -55,6 +55,8 @@ interface WorkbenchState {
     // 선택된 복기 타점 — (A) "현재 타점에 연결된 가설" 판정 기준. focus.time(리플레이/차트 드리프트로 휘발)과 분리한다.
     // goToPoint(타점 클릭)에서만 세팅 → 시간만 움직이면 유지, 다른 타점으로 이동해야 바뀜. 종목/날짜 바뀌면 해제.
     activePoint: { code: string; date: string; time: string } | null;
+    // f 줌(일봉+분봉 전역). anchor=줌 시작 시각 unix초(분봉 중심), null=미줌. 두 차트 패널이 함께 구독 → 같이 확대/축소.
+    chartZoom: { anchor: number | null } | null;
     chartPriceMode: ChartPriceMode; // 뷰 설정(축 아님) — 분봉 % 기준 시장
     newsSearchEngine: NewsSearchEngine; // HTS 뉴스 제목 검색 엔진(전역 토글)
     themeBoardSettings: ThemeBoardSettings;
@@ -85,6 +87,7 @@ interface WorkbenchState {
     setSearch: (search: Search | null) => void;
     // 뷰 설정
     setChartPriceMode: (mode: ChartPriceMode) => void;
+    toggleChartZoom: () => void; // f — 현재 시각 중심 확대 ↔ 축소(전역, 두 차트 동시)
     setNewsSearchEngine: (engine: NewsSearchEngine) => void;
     // 보드 설정(전역 모달이 편집)
     setThemeBoardSettings: (patch: Partial<ThemeBoardSettings>) => void;
@@ -170,6 +173,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     scope: { theme: null },
     search: null,
     activePoint: null,
+    chartZoom: null,
     chartPriceMode: "un",
     newsSearchEngine: "naver",
     themeBoardSettings: { showIndividuals: true, showUnclassified: false },
@@ -184,22 +188,25 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
 
     // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale) + activePoint 해제(타점 날짜 stale).
     setDate: (date, origin) =>
-        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null }, activePoint: null, lastFocusOrigin: origin ?? null })),
+        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null }, activePoint: null, chartZoom: null, lastFocusOrigin: origin ?? null })),
     // code 변경 시 time 유지(같은시각 횡적비교) + 검색/activePoint 자동 해제(종목 바뀌면 타점 stale). 같은 종목이면 유지.
     setCode: (code, origin) =>
         set((s) => ({ focus: { ...s.focus, code }, search: code !== s.focus.code ? null : s.search, activePoint: code !== s.focus.code ? null : s.activePoint, lastFocusOrigin: origin ?? null })),
     // 시간만 이동(리플레이/차트 드리프트) = activePoint 유지 → 연결 표시(A) 안 흔들림.
     setTime: (time, origin) => set((s) => ({ focus: { ...s.focus, time }, lastFocusOrigin: origin ?? null })),
     setFocus: ({ date, code, time }, origin) =>
-        set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search, activePoint: code !== s.focus.code ? null : s.activePoint, lastFocusOrigin: origin ?? null })),
+        set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search, activePoint: code !== s.focus.code ? null : s.activePoint, chartZoom: null, lastFocusOrigin: origin ?? null })),
     // 타점 이동 = focus + activePoint 원자 세팅(다른 타점 선택 시에만 A 바뀜).
     goToPoint: ({ date, code, time }, origin) =>
-        set((s) => ({ focus: { ...s.focus, date, code, time }, activePoint: { code, date, time }, search: code !== s.focus.code ? null : s.search, lastFocusOrigin: origin ?? null })),
+        set((s) => ({ focus: { ...s.focus, date, code, time }, activePoint: { code, date, time }, search: code !== s.focus.code ? null : s.search, chartZoom: null, lastFocusOrigin: origin ?? null })),
 
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { theme: null } })),
     setSearch: (search) => set(() => ({ search })),
     setChartPriceMode: (mode) => set(() => ({ chartPriceMode: mode })),
+    // f 줌 토글 — 켤 때 현재 시각(focus.time)을 anchor(unix초)로 캡처. 시간 없으면 마지막 봉 기준(null).
+    toggleChartZoom: () =>
+        set((s) => ({ chartZoom: s.chartZoom ? null : { anchor: s.focus.time ? Math.floor(Date.parse(`${s.focus.date}T${s.focus.time}+09:00`) / 1000) : null } })),
     setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
     setThemeBoardSettings: (patch) => set((s) => ({ themeBoardSettings: { ...s.themeBoardSettings, ...patch } })),
     setReplaySettings: (patch) => set((s) => ({ replaySettings: { ...s.replaySettings, ...patch } })),

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
-import { usePriceLinesForChart, useReviewPointHotkeys, useChartNavHotkeys } from "../lib/chartHooks.js";
+import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
 import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
@@ -19,14 +19,13 @@ export function ChartPanel(): JSX.Element {
     const time = useWorkbench((s) => s.focus.time);
     const setTime = useWorkbench((s) => s.setTime);
     const setSearch = useWorkbench((s) => s.setSearch);
-    const typePresets = useWorkbench((s) => s.reviewTypePresets);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const setMode = useWorkbench((s) => s.setChartPriceMode);
     const cs = useWorkbench((s) => s.chartSettings);
-    const [expanded, setExpanded] = useState<"daily" | "minute" | null>(null);
+    const chartZoom = useWorkbench((s) => s.chartZoom); // f 줌(전역 — 두 차트 동시 확대/축소)
+    const [expanded, setExpanded] = useState<"daily" | "minute" | null>(null); // 일봉만/분봉만/둘다(패널별 독립)
     const [showMarkers, setShowMarkers] = useState(true); // 분봉 거래대금 마커 ON/OFF
     const [showPointInfo, setShowPointInfo] = useState(false); // 현재 타점 정보 박스 토글
-    const [zoom, setZoom] = useState<{ anchor: number | null } | null>(null); // f 줌(일봉+분봉). anchor=줌 시작 시각(분봉 중심)
 
     const query = useQuery(chartQuery(code, date));
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
@@ -38,14 +37,10 @@ export function ChartPanel(): JSX.Element {
 
     // 가격선 주석(조회·해소·토글/삭제/clear) + 복기 타점(조회·단축키·savedTimes) — 훅으로 분리.
     const { resolvedLines, dLines, hasLines, toggleLine, removeLine, clear } = usePriceLinesForChart(code, date, dailyView, minuteView);
-    const { savedTimes, focusedPoint } = useReviewPointHotkeys(code, date, time, typePresets);
+    const { savedTimes, focusedPoint } = useReviewPointData(code, date, time);
 
-    // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음.
+    // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. (단축키는 전역 useChartHotkeys)
     const markerTime = useMemo(() => (time && date ? kstToUnix(date, time) : null), [time, date]);
-
-    // 이동/줌 단축키 — a/d·shift·ctrl·f. f = 줌 토글(현재 시각 중심). 전역 등록(입력창 가드).
-    const toggleZoom = (): void => setZoom((z) => (z ? null : { anchor: markerTime }));
-    useChartNavHotkeys(code, date, minuteView?.points ?? [], time, cs.jumpBars, toggleZoom);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -56,8 +51,14 @@ export function ChartPanel(): JSX.Element {
                 <span style={{ color: "var(--text-tertiary)" }}>{date}</span>
                 {focusedPoint?.type && <span style={{ padding: "1px 6px", borderRadius: 4, background: "var(--accent-soft)", color: "var(--accent-hover)", fontSize: 11, fontWeight: 600 }} title="현재 타점 셋업 유형">{focusedPoint.type}</span>}
                 {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
-                {/* 통합 세그먼트 컨트롤 — 마커·타점정보·clear·시장(UN/KRX 단일 토글) */}
+                {/* 뷰 토글 — 일봉만/분봉만/둘다(패널별 독립, 차트 2개면 하나는 일봉 하나는 분봉). */}
                 <div style={{ marginLeft: "auto", display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
+                    <SegButton first active={expanded === "daily"} onClick={() => setExpanded("daily")} title="일봉만">일봉</SegButton>
+                    <SegButton active={expanded === "minute"} onClick={() => setExpanded("minute")} title="분봉만">분봉</SegButton>
+                    <SegButton active={expanded === null} onClick={() => setExpanded(null)} title="둘 다">둘다</SegButton>
+                </div>
+                {/* 통합 세그먼트 컨트롤 — 마커·타점정보·clear·시장(UN/KRX 단일 토글) */}
+                <div style={{ marginLeft: 6, display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
                     <SegButton first active={showMarkers} onClick={() => setShowMarkers((v) => !v)} title={showMarkers ? "거래대금 마커 끄기" : "거래대금 마커 켜기"}>
                         <EyeIcon off={!showMarkers} />
                     </SegButton>
@@ -83,7 +84,7 @@ export function ChartPanel(): JSX.Element {
                         {expanded !== "minute" && (
                             <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 고점 선(D)">
                                 <PaneLabel text="일봉" />
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={zoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={(d) => code && setSearch({ code, date: d })} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={(d) => code && setSearch({ code, date: d })} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
@@ -99,7 +100,7 @@ export function ChartPanel(): JSX.Element {
                                         markerTime={markerTime}
                                         savedTimes={savedTimes}
                                         showPointInfo={showPointInfo}
-                                        zoom={zoom ? { bars: cs.minuteZoomBars, anchorTime: zoom.anchor } : null}
+                                        zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                         onMovePoint={(t) => setTime(t)}
                                         onRightClick={(a) => toggleLine(a.date, a.time)}
                                         onRemoveLine={removeLine}
