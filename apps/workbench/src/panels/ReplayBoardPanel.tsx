@@ -16,6 +16,7 @@ export function ReplayBoardPanel(): JSX.Element {
     const setCode = useWorkbench((s) => s.setCode);
     const focusOrigin = useWorkbench((s) => s.lastFocusOrigin);
     const rs = useWorkbench((s) => s.replaySettings);
+    const replayFilter = useWorkbench((s) => s.replayFilter);
     const originId = useId(); // 이 보드의 선택 출처 태그(self/external 구분)
 
     const boardQ = useDayReplay(date);
@@ -24,7 +25,10 @@ export function ReplayBoardPanel(): JSX.Element {
     const tUnix = kstToUnix(date, time ?? "15:30:00"); // 시간 미설정 시 장마감 근사
     const annotated = useAnnotatedCodes(date);
 
-    const board = useMemo(() => (index ? buildReplayBoardViewModel(index, tUnix, rs, annotated) : null), [index, tUnix, rs, annotated]);
+    const board = useMemo(
+        () => (index ? buildReplayBoardViewModel(index, tUnix, rs, annotated, replayFilter) : null),
+        [index, tUnix, rs, annotated, replayFilter],
+    );
 
     if (boardQ.isLoading) return <BoardCenter text={`${date} 로딩중… (복기 데이터)`} />;
     if (boardQ.isError) return <BoardCenter text={`보드 오류: ${(boardQ.error as Error).message}`} />;

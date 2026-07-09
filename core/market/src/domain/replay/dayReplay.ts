@@ -141,13 +141,15 @@ export function deriveMinutes(
 }
 
 /**
- * 파일 파생값(MinuteDerived) → 테마보드 EOD. 분봉 재조회 0.
- *  · bucketCounts — 분봉 거래대금(cumAmount 인접 차분) + open%/high%/close%(rate) 로 카운팅 정책 재적용.
- *  · trailingHighs — 파일에서 그대로. times 는 unix(UTC)라 KST 자정기준 분으로 되돌려 시간창 판정.
+ * 복기 파생값(MinuteDerived) → 카운팅 정책 입력(DerivedMinute[]). 분봉 재조회 0.
+ *  · amountWon — 누적 거래대금(cumAmount)의 인접 차분으로 분봉 거래대금 복원.
+ *  · minuteOfDay — times(unix UTC)를 KST 자정기준 분으로 되돌려 시간창 판정.
+ * uptoIndex 지정 시 [0..uptoIndex] 만(복기 보드의 시점 t 누적). 서버(themeStatsOf)·클라(복기 hover/필터) 공유 — 같은 자.
  */
-export function themeStatsOf(md: MinuteDerived, policy: CountingPolicy = DEFAULT_COUNTING_POLICY): ThemeStats {
-    const mins: DerivedMinute[] = new Array(md.times.length);
-    for (let i = 0; i < md.times.length; i++) {
+export function derivedMinutesOf(md: MinuteDerived, uptoIndex: number = md.times.length - 1): DerivedMinute[] {
+    const n = Math.min(uptoIndex + 1, md.times.length);
+    const mins: DerivedMinute[] = new Array(Math.max(0, n));
+    for (let i = 0; i < n; i++) {
         mins[i] = {
             minuteOfDay: Math.floor(((md.times[i] + KST_OFFSET_SEC) % 86400) / 60),
             openPct: md.minuteOpen[i],
@@ -156,5 +158,14 @@ export function themeStatsOf(md: MinuteDerived, policy: CountingPolicy = DEFAULT
             amountWon: md.cumAmount[i] - (i > 0 ? md.cumAmount[i - 1] : 0),
         };
     }
-    return { code: md.code, bucketCounts: countAmountBuckets(mins, policy), trailingHighs: md.trailingHighs };
+    return mins;
+}
+
+/**
+ * 파일 파생값(MinuteDerived) → 테마보드 EOD. 분봉 재조회 0.
+ *  · bucketCounts — derivedMinutesOf(하루 전체)에 카운팅 정책 재적용.
+ *  · trailingHighs — 파일에서 그대로.
+ */
+export function themeStatsOf(md: MinuteDerived, policy: CountingPolicy = DEFAULT_COUNTING_POLICY): ThemeStats {
+    return { code: md.code, bucketCounts: countAmountBuckets(derivedMinutesOf(md), policy), trailingHighs: md.trailingHighs };
 }

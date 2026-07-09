@@ -106,6 +106,9 @@ const rstock = (code: string, over: Partial<ReplayStock>): ReplayStock => ({
     low: [0, -1],
     open: 0,
     cumAmount: [10, 20],
+    minuteOpen: [0, 1],
+    minuteHigh: [1, 6],
+    trailingHighs: [],
     name: code,
     market: "KOSPI",
     marketCap: null,
@@ -121,7 +124,7 @@ describe("buildReplayBoardViewModel", () => {
         ]);
         const rs: ReplayBoardSettings = { amountN: 1, rateN: 1 };
         // t=200 → times[1]=160 이 마지막 ≤200. amount top1 = A(100), rate top1 = A(9) → hot = {A}
-        const vm = buildReplayBoardViewModel(index, 200, rs, new Set<string>());
+        const vm = buildReplayBoardViewModel(index, 200, rs, new Set<string>(), empty);
         const codes = allStocks(vm).map((s) => s.code);
         expect(codes).toContain("A");
         expect(codes).not.toContain("B");
@@ -130,7 +133,35 @@ describe("buildReplayBoardViewModel", () => {
 
     it("annotatedCodes 에 든 종목만 annotated=true", () => {
         const index = new Map<string, ReplayStock>([["A", rstock("A", { rate: [1, 9], cumAmount: [10, 100] })]]);
-        const vm = buildReplayBoardViewModel(index, 200, { amountN: 1, rateN: 1 }, new Set(["A"]));
+        const vm = buildReplayBoardViewModel(index, 200, { amountN: 1, rateN: 1 }, new Set(["A"]), empty);
         expect(allStocks(vm).find((s) => s.code === "A")?.annotated).toBe(true);
+    });
+
+    it("buckets — 시점 t 까지 분봉 거래대금 구간 누적(서버 EOD 와 같은 정책, 창만 [0..t])", () => {
+        // 분봉1: 거래대금 50억(구간 idx2), 비음봉(close 5 ≥ open 1) → 카운트. minuteOfDay 09:0x → 시간창 안.
+        const index = new Map<string, ReplayStock>([
+            ["A", rstock("A", { times: [100, 160], rate: [1, 5], minuteOpen: [0, 1], minuteHigh: [1, 6], cumAmount: [0, 50 * EOK] })],
+        ]);
+        const rs: ReplayBoardSettings = { amountN: 5, rateN: 5 };
+        // t=100 → 분봉0 까지(거래대금 0, 구간 없음) → 전부 0
+        const at100 = buildReplayBoardViewModel(index, 100, rs, new Set(), empty);
+        expect(allStocks(at100).find((s) => s.code === "A")?.buckets).toEqual([0, 0, 0, 0, 0, 0, 0]);
+        // t=200 → 분봉1 포함(50억) → idx2 에 +1
+        const at200 = buildReplayBoardViewModel(index, 200, rs, new Set(), empty);
+        expect(allStocks(at200).find((s) => s.code === "A")?.buckets).toEqual([0, 0, 1, 0, 0, 0, 0]);
+    });
+
+    it("복기 필터 hide — 시점 t 스냅샷 지표에 매칭되면 제외", () => {
+        // weakHigh: 시점 highPct(=high[i]) < ltPct 면 제외. t=200 → A highPct=6, B highPct=2.
+        const index = new Map<string, ReplayStock>([
+            ["A", rstock("A", { high: [1, 6], rate: [1, 5], cumAmount: [10, 100] })],
+            ["B", rstock("B", { high: [1, 2], rate: [1, 2], cumAmount: [10, 90] })],
+        ]);
+        const rs: ReplayBoardSettings = { amountN: 5, rateN: 5 };
+        const filter: BoardFilterExpr = { groups: [{ predicates: [{ kind: "weakHigh", params: { ltPct: 5 } }], mode: "hide" }] };
+        const vm = buildReplayBoardViewModel(index, 200, rs, new Set(), filter);
+        const codes = allStocks(vm).map((s) => s.code);
+        expect(codes).toContain("A"); // highPct 6 ≥ 5 → 유지
+        expect(codes).not.toContain("B"); // highPct 2 < 5 → hide
     });
 });

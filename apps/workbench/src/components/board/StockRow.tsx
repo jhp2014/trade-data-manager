@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { fmtEok } from "../../lib/format.js";
 import { useAssign } from "../../store/assign.js";
@@ -110,18 +111,22 @@ export function StockRow({
             >
                 {s.signal ? `+${fmtEok(s.signal.tvDelta)}` : fmtEok(s.amount)}
             </span>
-            {hoverPos && s.buckets && <BucketChart buckets={s.buckets} pos={hoverPos} />}
+            {hoverPos && s.buckets && <BucketChart buckets={s.buckets} pos={hoverPos} dim={s.dim} />}
             {/* col4: 눕힌 캔들(고정 28px) */}
             <Candle s={s} />
         </button>
     );
 }
 
-/** 거래대금 구간별 누적 개수 막대그래프 — 거래대금 hover 시. 막대 위 횟수, 아래 구간 하한(억). */
-function BucketChart({ buckets, pos }: { buckets: number[]; pos: { x: number; y: number } }): JSX.Element {
+/**
+ * 거래대금 구간별 누적 개수 막대그래프 — 거래대금 hover 시. 막대 위 횟수, 아래 구간 하한(억).
+ * document.body 로 portal — dim 행(opacity<1)이 만드는 stacking context 밖으로 빼야 옆 카드에 안 가림(안 잘림).
+ * 흐림은 유지: dim 행이면 툴팁 자체에 opacity 를 직접 준다(같은 흐린 모양 + 최상위 렌더).
+ */
+function BucketChart({ buckets, pos, dim }: { buckets: number[]; pos: { x: number; y: number }; dim?: boolean }): JSX.Element {
     const max = Math.max(1, ...buckets);
     const H = 42;
-    return (
+    return createPortal(
         <div
             style={{
                 position: "fixed",
@@ -137,6 +142,7 @@ function BucketChart({ buckets, pos }: { buckets: number[]; pos: { x: number; y:
                 zIndex: 200,
                 pointerEvents: "none",
                 boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+                opacity: dim ? 0.35 : 1, // dim 행이면 흐린 모양 유지(portal 이라 행 opacity 를 상속 못 받음)
             }}
         >
             {buckets.map((c, i) => (
@@ -146,7 +152,8 @@ function BucketChart({ buckets, pos }: { buckets: number[]; pos: { x: number; y:
                     <span className="tabular" style={{ fontSize: 7, color: "#a0a0a0" }}>{AMOUNT_BUCKETS_EOK[i]}</span>
                 </div>
             ))}
-        </div>
+        </div>,
+        document.body,
     );
 }
 

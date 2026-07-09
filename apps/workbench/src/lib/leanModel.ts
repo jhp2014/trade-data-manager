@@ -14,7 +14,7 @@ export interface Snapshot {
 }
 
 /** times 에서 t 이하 마지막 인덱스(이진탐색). 없으면 -1. */
-function lastIndexAtOrBefore(times: number[], t: number): number {
+export function lastIndexAtOrBefore(times: number[], t: number): number {
     let lo = 0;
     let hi = times.length - 1;
     let ans = -1;

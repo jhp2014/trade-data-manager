@@ -9,11 +9,13 @@ import {
     selectHotUniverse,
     evaluateSignal,
     evalBoardFilter,
+    countAmountBuckets,
+    derivedMinutesOf,
     type Grouped,
     type BoardFilterExpr,
 } from "@trade-data-manager/market/domain";
 import { dailyMetric } from "./dailyMetrics.js";
-import { snapshotAt } from "./leanModel.js";
+import { snapshotAt, lastIndexAtOrBefore } from "./leanModel.js";
 import type { DaySummary } from "../api/daySummary.js";
 import type { ReplayStock } from "../api/dayReplay.js";
 import type { ReplayBoardSettings } from "../store/workbench.js";
@@ -54,12 +56,17 @@ export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Se
     return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme) };
 }
 
-/** day-replay 인덱스 + 시점(tUnix) + 복기 설정 → 복기보드 렌더 구조. top-N 유니버스·1분 델타 신호 적용. */
+/**
+ * day-replay 인덱스 + 시점(tUnix) + 복기 설정 → 복기보드 렌더 구조. top-N 유니버스·1분 델타 신호 적용.
+ * buckets — 시점 t 까지 누적 분봉 거래대금 구간 카운트(hover). 서버 EOD 와 같은 정책(countAmountBuckets), 창만 [0..t].
+ * replayFilter — 시점 t 스냅샷 지표에 evalBoardFilter 재평가(이슈보드와 같은 술어, 상태만 별개). 시간 밀면 동적 재평가.
+ */
 export function buildReplayBoardViewModel(
     index: Map<string, ReplayStock>,
     tUnix: number,
     rs: ReplayBoardSettings,
     annotatedCodes: Set<string>,
+    replayFilter: BoardFilterExpr,
 ): BoardViewModel {
     const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number }[] = [];
     for (const s of index.values()) {
@@ -76,6 +83,10 @@ export function buildReplayBoardViewModel(
         const prev = snapshotAt(s, tUnix - 60);
         const signal = prev ? evaluateSignal(snap.changeRate - prev.rate, snap.amount - prev.cumAmount) : null;
         const marketCapEok = s.marketCap ? Number(s.marketCap) / 1e8 : null;
+        // 시점 t 까지 누적 버킷 — hover 히스토그램. 그리고 복기 필터 재평가(t 스냅샷 지표 기준).
+        const buckets = countAmountBuckets(derivedMinutesOf(s, lastIndexAtOrBefore(s.times, tUnix)));
+        const verdict = evalBoardFilter(replayFilter, { highPct: snap.highPct, amount: snap.amount, buckets, trailingHighs: s.trailingHighs });
+        if (verdict.effect === "hide") continue;
         stocks.push({
             code: snap.code,
             name: s.name ?? snap.code,
@@ -88,6 +99,9 @@ export function buildReplayBoardViewModel(
             amount: snap.amount,
             isMover: isMover(marketCapEok, snap.changeRate),
             signal,
+            buckets,
+            dim: verdict.effect === "dim",
+            excludedBy: verdict.reasons.length ? verdict.reasons : undefined,
             annotated: annotatedCodes.has(snap.code),
         });
     }
