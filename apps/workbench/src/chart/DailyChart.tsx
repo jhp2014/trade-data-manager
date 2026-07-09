@@ -18,6 +18,8 @@ import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
+const LEFT_MARGIN_BARS = 3; // 좌측 여백(빈 논리 인덱스)
+const RIGHT_MARGIN_BARS = 4; // 우측 여백 — 가격선 라벨(D/M)이 오늘 봉을 가리지 않게
 
 // 크로스헤어 세로선 날짜 라벨 — "26년 12월 26일 (금)". time 은 일봉 business-day 문자열이지만
 // BusinessDay 객체·UTCTimestamp 도 방어적으로 처리.
@@ -140,8 +142,10 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
         const n = points.length;
-        const from = Math.max(0, n - (zoom ? zoomBars : zoomOutBars));
-        chart.timeScale().setVisibleLogicalRange({ from, to: n + 1 });
+        // 좌측에 여백(빈 논리 인덱스, 음수 from 도 허용) + 우측에 여백(오늘 봉이 축에 바짝 붙으면
+        // 가격선 라벨(D/M, priceLine title)이 오늘 봉을 가림 → 우측도 넉넉히 띄운다.
+        const from = Math.max(0, n - (zoom ? zoomBars : zoomOutBars)) - LEFT_MARGIN_BARS;
+        chart.timeScale().setVisibleLogicalRange({ from, to: n + RIGHT_MARGIN_BARS });
     }, [points, zoom, zoomBars, zoomOutBars]);
 
     // 우클릭 대상 = crosshair 로 hover 중인 봉. contextmenu 시 그 봉 고점으로 토글.

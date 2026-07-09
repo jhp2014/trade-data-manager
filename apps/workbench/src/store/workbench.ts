@@ -195,7 +195,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     chartViews: loadChartViews(),
     chartPriceMode: "un",
     newsSearchEngine: "naver",
-    themeBoardSettings: { showIndividuals: true, showUnclassified: false },
+    themeBoardSettings: { showIndividuals: true, showUnclassified: true },
     replaySettings: { amountN: 80, rateN: 40 },
     chartSettings: { jumpBars: 20, minuteZoomBars: 200, dailyZoomBars: 60, dailyZoomOutBars: 250 },
     reviewTypePresets: loadReviewTypePresets(),
