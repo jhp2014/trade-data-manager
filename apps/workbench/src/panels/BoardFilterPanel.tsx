@@ -1,6 +1,7 @@
 import { BOARD_PREDICATES, boardPredicateDef, isBoardFilterActive } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
 import { NumberField } from "../ui/controls.js";
+import { TrashIcon } from "../components/icons.js";
 
 // 이슈보드 배제 필터 패널 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 흐리게/숨김**. 술어는 domain 레지스트리.
 // 매칭(=제외)되면 이슈정리 보드에서 그룹 mode대로 흐리게/숨김 + 제외 사유 태그. 설정이 아니라 별도 패널(최소화 가능).
@@ -21,15 +22,15 @@ export function BoardFilterPanel(): JSX.Element {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 700 }}>이슈 필터</span>
-                <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>매칭 종목 제외</span>
+                <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700 }}>이슈 필터</span>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "var(--text-tertiary)" }}>매칭 종목 제외</span>
                 <button
                     onClick={() => active && confirm("필터를 모두 지울까요?") && clear()}
                     disabled={!active}
                     title="필터 지우기"
-                    style={{ marginLeft: "auto", border: "1px solid var(--border-default)", borderRadius: 5, background: "var(--bg-primary)", color: active ? "var(--text-secondary)" : "var(--text-tertiary)", padding: "3px 9px", cursor: active ? "pointer" : "default", font: "inherit", fontSize: 12, opacity: active ? 1 : 0.5 }}
+                    style={{ marginLeft: "auto", flexShrink: 0, display: "inline-flex", alignItems: "center", border: "1px solid var(--border-default)", borderRadius: 5, background: "var(--bg-primary)", color: active ? "var(--text-secondary)" : "var(--text-tertiary)", padding: "3px 6px", cursor: active ? "pointer" : "default", lineHeight: 0, opacity: active ? 1 : 0.5 }}
                 >
-                    지우기
+                    <TrashIcon />
                 </button>
             </div>
 

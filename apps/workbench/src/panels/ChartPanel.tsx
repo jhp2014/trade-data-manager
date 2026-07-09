@@ -7,7 +7,8 @@ import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js"
 import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
-import { SegButton, PaneLabel, EyeIcon, InfoIcon, TrashIcon, Center } from "./ChartPanelChrome.js";
+import { SegButton, PaneLabel, EyeIcon, InfoIcon, Center } from "./ChartPanelChrome.js";
+import { TrashIcon } from "../components/icons.js";
 
 // 차트 패널 — 일봉(상) + 분봉(하) 듀얼. 영역 더블클릭 = 그 영역만 보기 ↔ 둘 다.
 // 좌상단 종목명(마스터 메타 경량 조회), 우상단 통합 세그먼트 컨트롤(마커·타점정보·clear·시장).
@@ -56,9 +57,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
                 {/* 뷰 토글 — 일봉만/분봉만/둘다(패널별 독립, 차트 2개면 하나는 일봉 하나는 분봉). */}
                 <div style={{ marginLeft: "auto", display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
-                    <SegButton first active={view === "daily"} onClick={() => setView("daily")} title="일봉만">일봉</SegButton>
-                    <SegButton active={view === "minute"} onClick={() => setView("minute")} title="분봉만">분봉</SegButton>
-                    <SegButton active={view === "both"} onClick={() => setView("both")} title="둘 다">둘다</SegButton>
+                    <SegButton first active={view === "daily"} onClick={() => setView("daily")} title="일봉만">Day</SegButton>
+                    <SegButton active={view === "minute"} onClick={() => setView("minute")} title="분봉만">Min</SegButton>
+                    <SegButton active={view === "both"} onClick={() => setView("both")} title="둘 다">Day·Min</SegButton>
                 </div>
                 {/* 통합 세그먼트 컨트롤 — 마커·타점정보·clear·시장(UN/KRX 단일 토글) */}
                 <div style={{ marginLeft: 6, display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>

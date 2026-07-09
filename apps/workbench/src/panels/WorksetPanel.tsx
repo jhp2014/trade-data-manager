@@ -144,9 +144,9 @@ export function WorksetPanel(): JSX.Element {
             <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                     {filterOn ? (
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-primary)" }}>가설 필터</span>
-                            <span className="tabular" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0, overflow: "hidden" }}>
+                            <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: "var(--accent-primary)" }}>가설 필터</span>
+                            <span className="tabular" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, color: "var(--text-secondary)" }}>
                                 {distinctStockCount(p1)}종목 · {p1.length}타점
                                 {outcomeSel.length > 0 && <span style={{ color: "var(--text-tertiary)" }}> · {p2.length} 표시</span>}
                             </span>
