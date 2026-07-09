@@ -31,6 +31,8 @@ import type { RenderLine } from "../api/priceLines.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
 const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
+const LEFT_MARGIN_BARS = 10; // 좌측 여백(빈 논리 인덱스/시간) — 봉이 축에 바짝 붙지 않게
+const MINUTE_BAR_SEC = 60; // 분봉 1봉 간격(초) — 좌측 여백을 시간 단위로 환산
 
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
 // 데이터는 이미 파생된 MinutePoint[](%/원). 여기선 시리즈 렌더·툴팁·타점 상호작용을 담당.
@@ -271,7 +273,7 @@ export function MinuteChart({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points, showAmountMarkers]);
 
-    // 표시 범위 — f 줌: 현재 시각 중심 ±bars/2 봉 / 축소: 08:00~15:20 세션. (데이터·줌 변경 시 재적용)
+    // 표시 범위 — f 줌: 현재 시각 중심 ±bars/2 봉 / 축소: 08:00~15:20 세션. 좌측에 여백(빈 시간대) 확보. (데이터·줌 변경 시 재적용)
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
@@ -282,9 +284,9 @@ export function MinuteChart({
                 for (let i = 0; i < points.length; i++) { if (points[i].time <= zoom.anchorTime) idx = i; else break; }
             }
             const half = zoom.bars / 2;
-            ts.setVisibleLogicalRange({ from: idx - half, to: idx + half });
+            ts.setVisibleLogicalRange({ from: idx - half - LEFT_MARGIN_BARS, to: idx + half });
         } else {
-            ts.setVisibleRange({ from: points[0].time as UTCTimestamp, to: kstToUnix(points[0].date, "15:20:00") as UTCTimestamp });
+            ts.setVisibleRange({ from: (points[0].time - LEFT_MARGIN_BARS * MINUTE_BAR_SEC) as UTCTimestamp, to: kstToUnix(points[0].date, "15:20:00") as UTCTimestamp });
         }
         bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps

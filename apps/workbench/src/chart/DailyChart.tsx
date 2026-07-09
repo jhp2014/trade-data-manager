@@ -19,7 +19,7 @@ import { fmtRate, fmtEok } from "../lib/format.js";
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 const LEFT_MARGIN_BARS = 3; // 좌측 여백(빈 논리 인덱스)
-const RIGHT_MARGIN_BARS = 4; // 우측 여백 — 가격선 라벨(D/M)이 오늘 봉을 가리지 않게
+const RIGHT_MARGIN_BARS = 10; // 우측 여백 — 가격선 라벨(D/M)이 오늘 봉을 가리지 않게
 
 // 크로스헤어 세로선 날짜 라벨 — "26년 12월 26일 (금)". time 은 일봉 business-day 문자열이지만
 // BusinessDay 객체·UTCTimestamp 도 방어적으로 처리.
