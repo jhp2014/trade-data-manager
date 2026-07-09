@@ -9,6 +9,7 @@ import { kstToday } from "../lib/date.js";
 // date 변경시 time 을 리셋한다. code 변경시엔 time 을 항상 유지한다(같은시각 횡적비교).
 
 export type ChartPriceMode = "krx" | "un"; // 분봉 등락률 기준 시장(UN=통합, KRX)
+export type ChartView = "daily" | "minute" | "both"; // 차트 패널 뷰(일봉만/분봉만/둘다)
 export type NewsSearchEngine = "naver" | "google"; // HTS 뉴스 제목 클릭 시 웹 검색 엔진(네이버=제목+날짜, 구글=제목만)
 
 export interface Focus {
@@ -57,6 +58,7 @@ interface WorkbenchState {
     activePoint: { code: string; date: string; time: string } | null;
     // f 줌(일봉+분봉 전역). anchor=줌 시작 시각 unix초(분봉 중심), null=미줌. 두 차트 패널이 함께 구독 → 같이 확대/축소.
     chartZoom: { anchor: number | null } | null;
+    chartViews: Record<string, ChartView>; // 패널별 뷰(일봉만/분봉만/둘다). localStorage 영속 — 화면 전환에도 유지. 미저장 = 기본(chart-1 일봉·chart-2 분봉).
     chartPriceMode: ChartPriceMode; // 뷰 설정(축 아님) — 분봉 % 기준 시장
     newsSearchEngine: NewsSearchEngine; // HTS 뉴스 제목 검색 엔진(전역 토글)
     themeBoardSettings: ThemeBoardSettings;
@@ -87,6 +89,7 @@ interface WorkbenchState {
     setSearch: (search: Search | null) => void;
     // 뷰 설정
     setChartPriceMode: (mode: ChartPriceMode) => void;
+    setChartView: (panelId: string, view: ChartView) => void; // 패널별 일봉/분봉/둘다 (영속)
     toggleChartZoom: () => void; // f — 현재 시각 중심 확대 ↔ 축소(전역, 두 차트 동시)
     setNewsSearchEngine: (engine: NewsSearchEngine) => void;
     // 보드 설정(전역 모달이 편집)
@@ -152,6 +155,21 @@ const EMPTY_FACETS = (): Record<PointAttr, (string | null)[]> => ({ outcome: [],
 
 const today = kstToday();
 
+// 차트 패널별 뷰 — localStorage 영속(그래프위치·프리셋 선례). 화면(프리셋) 전환으로 remount 돼도 유지.
+const CHART_VIEWS_KEY = "wb.chartViews";
+function loadChartViews(): Record<string, ChartView> {
+    try {
+        const raw = localStorage.getItem(CHART_VIEWS_KEY);
+        if (raw) {
+            const o: unknown = JSON.parse(raw);
+            if (o && typeof o === "object") return o as Record<string, ChartView>;
+        }
+    } catch {
+        /* noop */
+    }
+    return {};
+}
+
 // 타점 셋업 유형 프리셋 — 숫자키 1~9. 값·의미는 사용자 config → localStorage 영속(outcome 선례).
 const PRESETS_KEY = "wb.reviewTypePresets";
 function loadReviewTypePresets(): string[] {
@@ -174,6 +192,7 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     search: null,
     activePoint: null,
     chartZoom: null,
+    chartViews: loadChartViews(),
     chartPriceMode: "un",
     newsSearchEngine: "naver",
     themeBoardSettings: { showIndividuals: true, showUnclassified: false },
@@ -204,6 +223,16 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     clearScope: () => set(() => ({ scope: { theme: null } })),
     setSearch: (search) => set(() => ({ search })),
     setChartPriceMode: (mode) => set(() => ({ chartPriceMode: mode })),
+    setChartView: (panelId, view) =>
+        set((s) => {
+            const next = { ...s.chartViews, [panelId]: view };
+            try {
+                localStorage.setItem(CHART_VIEWS_KEY, JSON.stringify(next));
+            } catch {
+                /* noop */
+            }
+            return { chartViews: next };
+        }),
     // f 줌 토글 — 켤 때 현재 시각(focus.time)을 anchor(unix초)로 캡처. 시간 없으면 마지막 봉 기준(null).
     toggleChartZoom: () =>
         set((s) => ({ chartZoom: s.chartZoom ? null : { anchor: s.focus.time ? Math.floor(Date.parse(`${s.focus.date}T${s.focus.time}+09:00`) / 1000) : null } })),

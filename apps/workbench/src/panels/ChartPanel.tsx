@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useWorkbench } from "../store/workbench.js";
+import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
 import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
@@ -13,7 +13,7 @@ import { SegButton, PaneLabel, EyeIcon, InfoIcon, TrashIcon, Center } from "./Ch
 // 좌상단 종목명(마스터 메타 경량 조회), 우상단 통합 세그먼트 컨트롤(마커·타점정보·clear·시장).
 // 가격선/타점 편집 유스케이스는 usePriceLinesForChart·useReviewPointHotkeys 훅으로 분리 — 여긴 뷰 파생+렌더.
 // code/date/time 은 Focus 구독. 분봉 좌클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~9=유형 프리셋 입력.
-export function ChartPanel(): JSX.Element {
+export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
     const date = useWorkbench((s) => s.focus.date);
     const time = useWorkbench((s) => s.focus.time);
@@ -23,9 +23,12 @@ export function ChartPanel(): JSX.Element {
     const setMode = useWorkbench((s) => s.setChartPriceMode);
     const cs = useWorkbench((s) => s.chartSettings);
     const chartZoom = useWorkbench((s) => s.chartZoom); // f 줌(전역 — 두 차트 동시 확대/축소)
-    const [expanded, setExpanded] = useState<"daily" | "minute" | null>(null); // 일봉만/분봉만/둘다(패널별 독립)
+    const view = useWorkbench((s) => s.chartViews[panelId]) ?? defaultChartView(panelId); // 일봉만/분봉만/둘다(패널별·영속)
+    const setChartView = useWorkbench((s) => s.setChartView);
+    const setView = (v: ChartView): void => setChartView(panelId, v);
+    const expanded: "daily" | "minute" | null = view === "both" ? null : view; // 기존 렌더 로직 재사용
     const [showMarkers, setShowMarkers] = useState(true); // 분봉 거래대금 마커 ON/OFF
-    const [showPointInfo, setShowPointInfo] = useState(false); // 현재 타점 정보 박스 토글
+    const [showPointInfo, setShowPointInfo] = useState(true); // 현재 타점(시간선) readout — 기본 표시
 
     const query = useQuery(chartQuery(code, date));
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
@@ -33,7 +36,7 @@ export function ChartPanel(): JSX.Element {
     const minuteView = useMemo(() => (query.data ? deriveMinuteView(query.data, mode) : null), [query.data, mode]);
     const dailyView = useMemo(() => (query.data ? deriveDailyView(query.data, mode) : null), [query.data, mode]);
 
-    const toggleExpand = (which: "daily" | "minute"): void => setExpanded((cur) => (cur === which ? null : which));
+    const toggleExpand = (which: "daily" | "minute"): void => setView(view === which ? "both" : which);
 
     // 가격선 주석(조회·해소·토글/삭제/clear) + 복기 타점(조회·단축키·savedTimes) — 훅으로 분리.
     const { resolvedLines, dLines, hasLines, toggleLine, removeLine, clear } = usePriceLinesForChart(code, date, dailyView, minuteView);
@@ -53,9 +56,9 @@ export function ChartPanel(): JSX.Element {
                 {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
                 {/* 뷰 토글 — 일봉만/분봉만/둘다(패널별 독립, 차트 2개면 하나는 일봉 하나는 분봉). */}
                 <div style={{ marginLeft: "auto", display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
-                    <SegButton first active={expanded === "daily"} onClick={() => setExpanded("daily")} title="일봉만">일봉</SegButton>
-                    <SegButton active={expanded === "minute"} onClick={() => setExpanded("minute")} title="분봉만">분봉</SegButton>
-                    <SegButton active={expanded === null} onClick={() => setExpanded(null)} title="둘 다">둘다</SegButton>
+                    <SegButton first active={view === "daily"} onClick={() => setView("daily")} title="일봉만">일봉</SegButton>
+                    <SegButton active={view === "minute"} onClick={() => setView("minute")} title="분봉만">분봉</SegButton>
+                    <SegButton active={view === "both"} onClick={() => setView("both")} title="둘 다">둘다</SegButton>
                 </div>
                 {/* 통합 세그먼트 컨트롤 — 마커·타점정보·clear·시장(UN/KRX 단일 토글) */}
                 <div style={{ marginLeft: 6, display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
@@ -115,4 +118,9 @@ export function ChartPanel(): JSX.Element {
             </div>
         </div>
     );
+}
+
+// 패널별 기본 뷰 — chart-1=일봉, chart-2=분봉, 그 외=둘다. 사용자가 바꾸면 store(영속)가 덮어씀.
+function defaultChartView(panelId: string): ChartView {
+    return panelId === "chart-1" ? "daily" : panelId === "chart-2" ? "minute" : "both";
 }

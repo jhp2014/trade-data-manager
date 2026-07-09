@@ -31,7 +31,7 @@ const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
     hypothesis: () => <HypothesisPanel />,
     hypothesisGraph: () => <HypothesisGraphPanel />,
     hypothesisFilter: () => <HypothesisFilterPanel />,
-    chart: () => <ChartPanel />,
+    chart: (props) => <ChartPanel panelId={props.api.id} />,
     htsNews: () => <HtsNewsPanel />,
     telegramNews: () => <TelegramNewsPanel />,
 };
