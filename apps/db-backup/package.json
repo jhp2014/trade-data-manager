@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@trade-data-manager/google": "workspace:*",
+    "@trade-data-manager/persistence": "workspace:*",
     "dotenv": "^17.4.2",
     "pg": "^8.20.0"
   },

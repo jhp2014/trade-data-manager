@@ -12,9 +12,9 @@ export function createPoolFromEnv(): Pool {
     return new Pool({ connectionString: getDatabaseUrl() });
 }
 
-/** curation 스키마용 Pool. CURATION_DATABASE_URL(없으면 DATABASE_URL 폴백)로 생성 — env.getCurationDatabaseUrl 참조. */
+/** curation 스키마용 Pool. 전용 URL(getCurationDatabaseUrl) 없으면 market DB 로 폴백(분리 전 과도기 = 같은 DB, 동일 동작). */
 export function createCurationPoolFromEnv(): Pool {
-    return new Pool({ connectionString: getCurationDatabaseUrl() });
+    return new Pool({ connectionString: getCurationDatabaseUrl() ?? getDatabaseUrl() });
 }
 
 export type Database = ReturnType<typeof createDb>;

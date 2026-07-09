@@ -81,6 +81,9 @@ importers:
       '@trade-data-manager/google':
         specifier: workspace:*
         version: link:../../infra/google
+      '@trade-data-manager/persistence':
+        specifier: workspace:*
+        version: link:../../infra/persistence
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2

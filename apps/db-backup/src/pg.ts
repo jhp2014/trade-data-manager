@@ -11,19 +11,25 @@ export interface PgConn {
     database: string;
 }
 
-/**
- * DATABASE_URL 을 파싱한다. dbName 을 주면 DB 이름만 갈아끼우고
- * host/port/user/password 는 그대로 재사용한다. (임시 DB / 유지보수 DB 접속용)
- */
-export function parseConn(dbName?: string): PgConn {
-    const u = new URL(config.databaseUrl);
+/** 임의 URL → PgConn. host/port/user/password/database 추출(쿼리는 무시 — SSL 은 호출부가 PGSSLMODE 로 제어). */
+export function parseConnFromUrl(url: string): PgConn {
+    const u = new URL(url);
     return {
         host: u.hostname || "localhost",
         port: u.port ? Number(u.port) : 5432,
         user: decodeURIComponent(u.username),
         password: decodeURIComponent(u.password),
-        database: dbName ?? decodeURIComponent(u.pathname.replace(/^\//, "")),
+        database: decodeURIComponent(u.pathname.replace(/^\//, "")),
     };
+}
+
+/**
+ * DATABASE_URL(로컬) 을 파싱한다. dbName 을 주면 DB 이름만 갈아끼우고
+ * host/port/user/password 는 그대로 재사용한다. (임시 DB / 유지보수 DB 접속용)
+ */
+export function parseConn(dbName?: string): PgConn {
+    const c = parseConnFromUrl(config.databaseUrl);
+    return dbName ? { ...c, database: dbName } : c;
 }
 
 /** 원본 DB 이름 (DATABASE_URL 의 path) */
@@ -37,15 +43,20 @@ function toolPath(tool: string): string {
 }
 
 /**
- * pg_dump / pg_restore 실행. 비밀번호는 PGPASSWORD 로 전달(프로세스 인자 노출 방지).
+ * 임의 커넥션으로 pg_dump / pg_restore 실행. 비밀번호는 PGPASSWORD 로 전달(프로세스 인자 노출 방지).
+ * extraEnv 로 PGSSLMODE 등 주입 가능(예: Supabase 대상은 require = libpq 암호화·인증서검증 생략).
  * 종료코드 0 이 아니면 stderr 를 담아 throw.
  */
-export function runPgTool(tool: string, dbName: string, extraArgs: string[]): Promise<string> {
-    const c = parseConn(dbName);
-    const args = ["-h", c.host, "-p", String(c.port), "-U", c.user, "-d", c.database, ...extraArgs];
+export function runPgToolOn(
+    tool: string,
+    conn: PgConn,
+    extraArgs: string[],
+    extraEnv: Record<string, string> = {},
+): Promise<string> {
+    const args = ["-h", conn.host, "-p", String(conn.port), "-U", conn.user, "-d", conn.database, ...extraArgs];
     return new Promise((resolve, reject) => {
         const child = spawn(toolPath(tool), args, {
-            env: { ...process.env, PGPASSWORD: c.password, PGCLIENTENCODING: "UTF8" },
+            env: { ...process.env, PGPASSWORD: conn.password, PGCLIENTENCODING: "UTF8", ...extraEnv },
             windowsHide: true,
         });
         let stdout = "";
@@ -58,6 +69,11 @@ export function runPgTool(tool: string, dbName: string, extraArgs: string[]): Pr
             else reject(new Error(`${tool} 종료코드 ${code}\n${stderr.trim()}`));
         });
     });
+}
+
+/** pg_dump / pg_restore 를 로컬(DATABASE_URL) DB 에 실행. runPgToolOn 을 로컬 conn 으로 감싼 것. */
+export function runPgTool(tool: string, dbName: string, extraArgs: string[]): Promise<string> {
+    return runPgToolOn(tool, parseConn(dbName), extraArgs);
 }
 
 /** 지정 DB 에 pg Client 로 접속해 콜백 실행 후 정리. */

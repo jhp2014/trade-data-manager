@@ -1,7 +1,10 @@
 import { config as loadEnv } from "dotenv";
 import { resolve } from "node:path";
+import { getDatabaseUrl, getCurationDatabaseUrl } from "@trade-data-manager/persistence/env";
 
-// 루트 .env 로드 (다른 패키지와 동일 규약: apps/db-backup → ../../.env)
+// DB 접속 문자열은 @infra/persistence 메서드(getDatabaseUrl·getCurationDatabaseUrl)로만 취득한다 —
+// 앱은 env 변수명·process.env 를 알지 않는다(인프라가 env 로딩까지 자급).
+// 백업 도구 고유 설정(보관경로·pg도구·Drive·OAuth)은 아직 루트 .env. (루트 .env 제거 시 apps/db-backup/.env 로 이관)
 loadEnv({ path: resolve(process.cwd(), "../../.env") });
 
 function required(name: string): string {
@@ -14,7 +17,10 @@ function required(name: string): string {
 
 /** 머신마다 다른 값 → .env 에서 주입 */
 export const config = {
-    databaseUrl: required("DATABASE_URL"),
+    /** @infra/persistence 단일 출처(throw if 미설정). */
+    databaseUrl: getDatabaseUrl(),
+    /** curation 미러 원본(Supabase). null = 별도 DB 아님 → 미러 스킵. */
+    curationDatabaseUrl: getCurationDatabaseUrl(),
     /** 덤프 생성·검증 + 로컬 보관 (1차, 빠른 복구용) */
     localDir: required("BACKUP_LOCAL_DIR"),
     /** pg_dump / pg_restore 등 PostgreSQL 클라이언트 도구 경로 */

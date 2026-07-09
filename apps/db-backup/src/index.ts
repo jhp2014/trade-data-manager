@@ -3,6 +3,7 @@ import path from "node:path";
 import { config } from "./config";
 import { createLogger, type Logger } from "./logger";
 import { sourceDbName, withClient } from "./pg";
+import { syncCuration } from "./syncCuration";
 import { listBaseTables, minuteMaxTradeDate, tableCounts } from "./inspect";
 import {
     emptyManifest,
@@ -31,6 +32,14 @@ async function main(): Promise<void> {
     const markerPath = path.join(config.localDir, FAILED_MARKER);
 
     log.info(`=== DB 백업 시작: ${sourceDbName()} ===`);
+
+    // curation 미러(Supabase→로컬) 먼저 — 실패해도 market 백업은 계속(curation 은 Supabase 자체가 원본 내구).
+    try {
+        await syncCuration(log);
+    } catch (e) {
+        log.error(`curation 미러 실패(백업은 계속 진행): ${e instanceof Error ? e.message : String(e)}`);
+    }
+
     const manifest = readManifest();
 
     // 0. 현재 원본 상태 스냅샷 (변경 감지 + ②a 정합성 기준)
