@@ -30,6 +30,8 @@ export interface DriveClient {
     deleteFile(fileId: string): Promise<void>;
     /** 같은 이름 파일이 있으면 내용 갱신, 없으면 생성. 중복(동명 2+)은 최신 1개만 남기고 정리. */
     uploadOrUpdate(input: UploadOrUpdateInput): Promise<void>;
+    /** 파일 내용을 읽기 스트림으로 받는다. */
+    downloadFile(fileId: string): Promise<Readable>;
 }
 
 /**
@@ -60,6 +62,10 @@ export function makeDriveClient(transport: DriveTransport): DriveClient {
             } else {
                 await transport.createFile(folderId, name, { mimeType, body });
             }
+        },
+
+        downloadFile(fileId) {
+            return transport.downloadFile(fileId);
         },
     };
 }

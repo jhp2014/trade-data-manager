@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { createDriveClient } from "@trade-data-manager/google/drive";
 import { config } from "./config";
 
@@ -43,4 +44,10 @@ export function uploadOrUpdate(localPath: string, mimeType = "application/json")
         body: fs.createReadStream(localPath),
         mimeType,
     });
+}
+
+/** Drive 파일(fileId)을 로컬 경로로 내려받는다(스트림 → 파일). restore --from-drive 용. */
+export async function downloadTo(fileId: string, localPath: string): Promise<void> {
+    const stream = await drive.downloadFile(fileId);
+    await pipeline(stream, fs.createWriteStream(localPath));
 }

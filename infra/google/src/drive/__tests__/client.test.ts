@@ -31,6 +31,10 @@ function createFake(initial: DriveFile[] = []) {
             calls.push(`delete:${fileId}`);
             files = files.filter((f) => f.id !== fileId);
         },
+        async downloadFile(fileId) {
+            calls.push(`download:${fileId}`);
+            return Readable.from(["x"]);
+        },
     };
 
     return {

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "backup": "tsx src/index.ts backup",
-    "mirror": "tsx src/index.ts mirror",
+    "sync": "tsx src/index.ts sync",
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist",
     "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",

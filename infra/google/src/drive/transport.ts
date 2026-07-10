@@ -24,6 +24,8 @@ export interface DriveTransport {
     /** 폴더 내 (앱이 만든) 파일 목록. 페이지네이션은 여기서 흡수. */
     listFilesInFolder(folderId: string): Promise<DriveFile[]>;
     deleteFile(fileId: string): Promise<void>;
+    /** 파일 내용을 읽기 스트림으로 받는다(백업 덤프 복원용). */
+    downloadFile(fileId: string): Promise<Readable>;
 }
 
 /** googleapis 에러를 DriveError(meta.status 포함)로 정규화. */
@@ -99,6 +101,17 @@ export function createGoogleapisTransport(auth: OAuth2Client): DriveTransport {
                 await drive.files.delete({ fileId, supportsAllDrives: true });
             } catch (err) {
                 throw wrap(err, "deleteFile", { fileId });
+            }
+        },
+        async downloadFile(fileId) {
+            try {
+                const res = await drive.files.get(
+                    { fileId, alt: "media", supportsAllDrives: true },
+                    { responseType: "stream" },
+                );
+                return res.data as unknown as Readable;
+            } catch (err) {
+                throw wrap(err, "downloadFile", { fileId });
             }
         },
     };

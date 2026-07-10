@@ -52,6 +52,15 @@ export function listLocalDumpNames(): string[] {
     return fs.readdirSync(config.localDir).filter((n) => parseBackupName(n) !== null);
 }
 
+/** 덤프 이름들 중 최신(타임스탬프 최대) 1개. 유효 덤프 없으면 null. (restore 기본 소스 선택용) */
+export function pickLatestDump(names: string[]): string | null {
+    const files = names
+        .map(parseBackupName)
+        .filter((f): f is BackupName => f !== null)
+        .sort((a, b) => b.ts.localeCompare(a.ts));
+    return files[0]?.name ?? null;
+}
+
 /** 로컬(파일시스템) 보관 정책 적용. 검증 통과 후에만 호출. */
 export function applyLocalRetention(log: Logger): void {
     const names = listLocalDumpNames();
