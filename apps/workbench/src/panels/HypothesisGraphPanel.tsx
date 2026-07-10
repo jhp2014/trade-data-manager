@@ -63,7 +63,19 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
             <Handle id="r" type="source" position={Position.Right} />
             <Handle id="b" type="source" position={Position.Bottom} />
             <Handle id="l" type="source" position={Position.Left} />
-            <div style={{ lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{data.text}</div>
+            {/* (A) 현재 타점 연결 = 아래 그림자(띄우기, 위 box-shadow)에 더해 테마보드식 글자 형광(accent-soft + accent 글자). */}
+            <div
+                style={{
+                    lineHeight: 1.35,
+                    display: "-webkit-box",
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                    ...(data.linkedToPoint ? { background: "var(--accent-soft)", color: "var(--accent-primary)", fontWeight: 600, borderRadius: 3, padding: "1px 4px", margin: "0 -2px" } : null),
+                }}
+            >
+                {data.text}
+            </div>
         </div>
     );
 }

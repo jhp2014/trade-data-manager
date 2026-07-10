@@ -151,9 +151,18 @@ export function HypothesisPanel(): JSX.Element {
                                     <span
                                         onDoubleClick={(e) => { e.stopPropagation(); startEdit(h); }}
                                         title="더블클릭 = 텍스트 수정"
-                                        style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontSize: 13, lineHeight: 1.5, color: linked ? "var(--accent-primary)" : "var(--text-secondary)", fontWeight: linked ? 600 : 400 }}
+                                        style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontSize: 13, lineHeight: 1.5 }}
                                     >
-                                        {h.text}
+                                        {/* (A) 현재 타점 연결 = accent 글자+굵게 + 테마보드식 글자 형광(accent-soft). 글자를 감싸는 안쪽 span(행 전체 아님). */}
+                                        <span
+                                            style={{
+                                                color: linked ? "var(--accent-primary)" : "var(--text-secondary)",
+                                                fontWeight: linked ? 600 : 400,
+                                                ...(linked ? { background: "var(--accent-soft)", borderRadius: 3, padding: "1px 4px", margin: "0 -2px", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" } : null),
+                                            }}
+                                        >
+                                            {h.text}
+                                        </span>
                                     </span>
                                 )}
 
