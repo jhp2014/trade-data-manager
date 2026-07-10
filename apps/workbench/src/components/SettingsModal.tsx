@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog } from "../ui/Dialog.js";
 import { Checkbox, NumberField, Row, SectionLabel, TextInput, Kbd } from "../ui/controls.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -172,6 +172,16 @@ function LayoutSettings(): JSX.Element {
     const activePreset = useDock((s) => s.activePreset);
     const savePreset = useDock((s) => s.savePreset);
     const loadPreset = useDock((s) => s.loadPreset);
+    // 저장 확인 — 클릭한 슬롯을 잠깐 "저장됨 ✓"로 표기(덮어쓰기도 액션이 보이게). 타이머는 재클릭/언마운트 시 정리.
+    const [justSaved, setJustSaved] = useState<number | null>(null);
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+    const save = (n: number): void => {
+        savePreset(n);
+        setJustSaved(n);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setJustSaved(null), 1500);
+    };
     const btn: React.CSSProperties = {
         border: "1px solid var(--border-default)",
         borderRadius: 5,
@@ -181,18 +191,22 @@ function LayoutSettings(): JSX.Element {
         cursor: "pointer",
         font: "inherit",
     };
+    // 라벨이 "현재 배치 저장"↔"저장됨 ✓"로 바뀌어도 폭이 안 흔들리게 minWidth 고정.
+    const saveBtn: React.CSSProperties = { ...btn, minWidth: 96, textAlign: "center" };
+    const savedBtn: React.CSSProperties = { ...saveBtn, borderColor: "var(--accent-primary)", color: "var(--accent-primary)" };
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>현재 창 배치를 슬롯에 저장. Ctrl+숫자 또는 하단 작업표시줄 클릭으로 전환.</div>
             {presets.map((p, i) => {
                 const n = i + 1;
                 const filled = !!p;
+                const saved = justSaved === n;
                 return (
                     <div key={n} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontWeight: 700, color: activePreset === n ? "var(--accent-hover)" : "var(--text-primary)" }}>화면 {n}</span>
                         <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{activePreset === n ? "(현재)" : filled ? "저장됨" : "비어 있음"}</span>
                         <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                            <button style={btn} onClick={() => savePreset(n)}>현재 배치 저장</button>
+                            <button style={saved ? savedBtn : saveBtn} onClick={() => save(n)}>{saved ? "저장됨 ✓" : "현재 배치 저장"}</button>
                             <button style={{ ...btn, opacity: filled ? 1 : 0.4, cursor: filled ? "pointer" : "default" }} disabled={!filled} onClick={() => loadPreset(n)}>불러오기</button>
                         </span>
                     </div>
