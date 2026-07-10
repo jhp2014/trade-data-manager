@@ -1,19 +1,19 @@
 /**
  * sheets 스모크 체크(읽기 전용). googleapis 전송이 실제 시트와 통신하는지 확인한다.
  * 실행: pnpm --filter @trade-data-manager/google recon:sheets
- * 사전조건: 루트 .env 의 GOOGLE_SHEETS_ID(어느 시트 = 소비자 설정), 통합 스코프 토큰(login).
+ * 사전조건: infra/google/.env 의 GOOGLE_SHEETS_ID(테스트 시트) + 통합 스코프 토큰(login).
  */
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { packageRoot } from "../src/paths.js";
 import { createSheetsClient } from "../src/sheets/index.js";
 
-// recon 편의: "어느 시트를 읽을지"는 소비자 설정이라 루트 .env 에서 가져온다(패키지 자급 대상 아님).
-loadDotenv({ path: resolve(packageRoot, "../../.env") });
+// 테스트로 읽을 시트(GOOGLE_SHEETS_ID/TAB)는 이 패키지 자체 .env 에서. (프로덕션 소비자는 시트 ID 를 직접 넘김)
+loadDotenv({ path: resolve(packageRoot, ".env") });
 
 async function main(): Promise<void> {
     const id = process.env.GOOGLE_SHEETS_ID?.trim();
-    if (!id) throw new Error("GOOGLE_SHEETS_ID 가 필요합니다(루트 .env).");
+    if (!id) throw new Error("GOOGLE_SHEETS_ID 가 필요합니다(infra/google/.env).");
 
     const sheets = createSheetsClient();
 
