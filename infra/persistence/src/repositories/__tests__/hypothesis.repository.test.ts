@@ -30,6 +30,16 @@ describe("DrizzleHypothesisRepository (pglite)", () => {
         expect(all.map((x) => x.text)).toContain("장초 급등은 눌림에서 산다");
     });
 
+    it("update — 텍스트 수정(id 유지) + 없는 id 는 no-op", async () => {
+        const h = await repo.create("오타가 있는 가서설");
+        await repo.update(h.id!, "오타를 고친 가설");
+        const found = (await repo.listHypotheses()).find((x) => x.id === h.id);
+        expect(found?.text).toBe("오타를 고친 가설");
+        // 없는 id 는 조용한 no-op(throw 없음, 아무 행도 안 바뀜).
+        await expect(repo.update("999999999", "무시됨")).resolves.toBeUndefined();
+        expect((await repo.listHypotheses()).some((x) => x.text === "무시됨")).toBe(false);
+    });
+
     it("link/unlink — 자연키 정션 + 멱등", async () => {
         const [h] = await repo.listHypotheses();
         const l = { hypothesisId: h.id!, stockCode: "005930", date: "2026-06-30", time: "09:11:00" };

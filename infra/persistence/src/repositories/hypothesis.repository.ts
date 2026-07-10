@@ -34,6 +34,11 @@ export class DrizzleHypothesisRepository implements HypothesisReader, Hypothesis
         return rowToHypothesis(row);
     }
 
+    async update(id: string, text: string): Promise<void> {
+        // 없는 id 는 0행 갱신 = 조용한 no-op(remove·unlink 와 대칭).
+        await this.db.update(hypotheses).set({ text }).where(eq(hypotheses.id, BigInt(id)));
+    }
+
     async link(l: HypothesisLink): Promise<void> {
         // 정션 composite PK 충돌 = 이미 연결됨 → 무시(멱등).
         await this.db

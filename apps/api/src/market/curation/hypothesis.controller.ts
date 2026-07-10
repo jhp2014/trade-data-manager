@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException, InternalServerErrorException } from "@nestjs/common";
+import { Controller, Get, Post, Patch, Delete, Inject, Query, Param, Body, BadRequestException, InternalServerErrorException } from "@nestjs/common";
 import type {
     Hypothesis as CoreHypothesis,
     HypothesisRelation as CoreHypothesisRelation,
@@ -63,6 +63,16 @@ export class HypothesisController {
         const text = body?.text?.trim();
         if (!text) throw new BadRequestException("text 필수");
         return toWireHypothesis(await this.repo.create(text));
+    }
+
+    // 텍스트 수정만(type/outcome 은 타점 속성이라 여기 없음). PATCH 는 별도 메서드라 :id GET/DELETE 와 라우트 충돌 없음.
+    @Patch(":id")
+    async update(@Param("id") id: string, @Body() body: CreateHypothesisBody): Promise<{ ok: true }> {
+        if (!id) throw new BadRequestException("id 필수");
+        const text = body?.text?.trim();
+        if (!text) throw new BadRequestException("text 필수");
+        await this.repo.update(id, text);
+        return { ok: true };
     }
 
     @Post("links")

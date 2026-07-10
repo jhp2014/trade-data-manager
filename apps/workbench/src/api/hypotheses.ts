@@ -1,7 +1,7 @@
 // 가설 큐레이션 CRUD 클라이언트. wire 타입(Hypothesis·HypothesisLink·HypothesisRelation)은 contracts/wire 공유.
 // 세 목록(가설·링크·관계)을 받아 패널이 인메모리로 조립·필터. 가설↔타점 연결은 자연키(code·date·time) = review point 삼중키.
 import type { Hypothesis, HypothesisLink, HypothesisRelation } from "@trade-data-manager/wire";
-import { apiGet, apiPost, apiDelete } from "./http.js";
+import { apiGet, apiPost, apiPatch, apiDelete } from "./http.js";
 
 export type { Hypothesis, HypothesisLink, HypothesisRelation } from "@trade-data-manager/wire";
 
@@ -10,6 +10,8 @@ export const fetchHypotheses = (signal?: AbortSignal): Promise<Hypothesis[]> => 
 export const fetchHypothesisLinks = (signal?: AbortSignal): Promise<HypothesisLink[]> => apiGet<HypothesisLink[]>("hypotheses/links", undefined, signal);
 
 export const createHypothesis = (text: string): Promise<Hypothesis> => apiPost<Hypothesis>("hypotheses", { text });
+
+export const updateHypothesis = (id: string, text: string): Promise<void> => apiPatch(`hypotheses/${id}`, { text });
 
 export const linkHypothesis = (link: HypothesisLink): Promise<void> => apiPost<void>("hypotheses/links", link);
 

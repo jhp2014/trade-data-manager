@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { filterMembership } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
-import { createHypothesis, linkHypothesis, unlinkHypothesis, deleteHypothesis } from "../api/hypotheses.js";
+import type { Hypothesis } from "../api/hypotheses.js";
+import { createHypothesis, updateHypothesis, linkHypothesis, unlinkHypothesis, deleteHypothesis } from "../api/hypotheses.js";
 import { hypothesesQuery, hypothesisLinksQuery, allPointsQuery } from "../api/queries.js";
 import { useHypothesisData } from "../lib/useHypothesisData.js";
 
@@ -43,6 +44,22 @@ export function HypothesisPanel(): JSX.Element {
         [links, selectedId],
     );
 
+    // 인라인 텍스트 편집 — 연필 버튼 또는 텍스트 더블클릭으로 진입. 저장/취소는 blur 한 곳으로 모은다.
+    // Enter=blur→저장, Esc=escapingRef 세우고 blur→취소. Enter/blur 이중 발화를 blur 단일화로 회피.
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editText, setEditText] = useState("");
+    const escapingRef = useRef(false);
+
+    const startEdit = (h: Hypothesis): void => {
+        setEditingId(h.id);
+        setEditText(h.text);
+    };
+    const commitEdit = (h: Hypothesis): void => {
+        const t = editText.trim();
+        setEditingId(null);
+        if (t && t !== h.text) updateMut.mutate({ id: h.id, text: t });
+    };
+
     const createMut = useMutation({
         mutationFn: async (t: string) => {
             const h = await createHypothesis(t);
@@ -53,6 +70,7 @@ export function HypothesisPanel(): JSX.Element {
             invalidate();
         },
     });
+    const updateMut = useMutation({ mutationFn: (v: { id: string; text: string }) => updateHypothesis(v.id, v.text), onSuccess: invalidate });
     const linkMut = useMutation({ mutationFn: linkHypothesis, onSuccess: invalidate });
     const unlinkMut = useMutation({ mutationFn: unlinkHypothesis, onSuccess: invalidate });
     const deleteMut = useMutation({ mutationFn: deleteHypothesis, onSuccess: invalidate });
@@ -96,10 +114,11 @@ export function HypothesisPanel(): JSX.Element {
                     const hovered = hoveredId === h.id;
                     const mem = membership.get(h.id);
                     const negOnly = mem ? mem.neg && !mem.pos : false;
+                    const editing = editingId === h.id;
                     return (
                         <div key={h.id}>
                             <div
-                                onClick={() => setSelectedHypothesis(selected ? null : h.id)}
+                                onClick={() => { if (!editing) setSelectedHypothesis(selected ? null : h.id); }}
                                 onContextMenu={(e) => { e.preventDefault(); addFilterLeaf(h.id); }}
                                 onMouseEnter={() => setHoveredId(h.id)}
                                 onMouseLeave={() => setHoveredId((cur) => (cur === h.id ? null : cur))}
@@ -113,10 +132,33 @@ export function HypothesisPanel(): JSX.Element {
                                     cursor: "pointer",
                                 }}
                             >
-                                {/* (A) 현재 타점 연결 = 텍스트를 accent 색+굵게(좌측 바보다 눈에 띔). 상단 정렬과 함께. */}
-                                <span style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontSize: 13, lineHeight: 1.5, color: linked ? "var(--accent-primary)" : "var(--text-secondary)", fontWeight: linked ? 600 : 400 }}>{h.text}</span>
+                                {/* (A) 현재 타점 연결 = 텍스트를 accent 색+굵게(좌측 바보다 눈에 띔). 상단 정렬과 함께.
+                                    편집 중이면 인라인 input(더블클릭·연필로 진입). Enter=blur→저장 / Esc=취소 / 바깥클릭=저장. */}
+                                {editing ? (
+                                    <input
+                                        autoFocus
+                                        value={editText}
+                                        onChange={(e) => setEditText(e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+                                            else if (e.key === "Escape") { e.preventDefault(); escapingRef.current = true; e.currentTarget.blur(); }
+                                        }}
+                                        onBlur={() => { if (escapingRef.current) { escapingRef.current = false; setEditingId(null); } else commitEdit(h); }}
+                                        style={{ flex: 1, minWidth: 0, border: "1px solid var(--accent-primary)", borderRadius: 2, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "3px 6px", font: "inherit", fontSize: 13, lineHeight: 1.5, outline: "none" }}
+                                    />
+                                ) : (
+                                    <span
+                                        onDoubleClick={(e) => { e.stopPropagation(); startEdit(h); }}
+                                        title="더블클릭 = 텍스트 수정"
+                                        style={{ flex: 1, minWidth: 0, wordBreak: "break-word", fontSize: 13, lineHeight: 1.5, color: linked ? "var(--accent-primary)" : "var(--text-secondary)", fontWeight: linked ? 600 : 400 }}
+                                    >
+                                        {h.text}
+                                    </span>
+                                )}
 
-                                {/* 우측 — (B)필터 칩 + 연결수 + hover 액션 */}
+                                {/* 우측 — (B)필터 칩 + 연결수 + hover 액션. 편집 중엔 숨김(input 이 폭 차지). */}
+                                {!editing && (
                                 <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, height: 18, marginTop: 0 }}>
                                     {mem && (
                                         <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, lineHeight: "15px", height: 15, padding: "0 6px", borderRadius: 10, background: negOnly ? "rgba(239,68,68,0.12)" : "var(--accent-soft)", color: negOnly ? "var(--rise)" : "var(--accent-primary)" }}>
@@ -139,6 +181,16 @@ export function HypothesisPanel(): JSX.Element {
                                         </ActionBtn>
                                     )}
                                     <ActionBtn
+                                        title="가설 텍스트 수정"
+                                        visible={hovered}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            startEdit(h);
+                                        }}
+                                    >
+                                        <PencilIcon />
+                                    </ActionBtn>
+                                    <ActionBtn
                                         title="가설 삭제"
                                         danger
                                         visible={hovered}
@@ -150,6 +202,7 @@ export function HypothesisPanel(): JSX.Element {
                                         <TrashIcon />
                                     </ActionBtn>
                                 </span>
+                                )}
                             </div>
 
                             {/* 선택 시 — 연결된 타점(종목명) 펼침 → 클릭 이동 */}
@@ -230,6 +283,14 @@ function CheckIcon(): JSX.Element {
     return (
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6 9 17l-5-5" />
+        </svg>
+    );
+}
+function PencilIcon(): JSX.Element {
+    return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
         </svg>
     );
 }

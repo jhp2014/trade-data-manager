@@ -46,4 +46,5 @@ async function request<T>(method: string, path: string, opts: { query?: Query; b
 
 export const apiGet = <T>(path: string, query?: Query, signal?: AbortSignal): Promise<T> => request<T>("GET", path, { query, signal });
 export const apiPost = <T>(path: string, body?: unknown): Promise<T> => request<T>("POST", path, { body });
+export const apiPatch = <T>(path: string, body?: unknown): Promise<T> => request<T>("PATCH", path, { body });
 export const apiDelete = (path: string, query?: Query): Promise<void> => request<void>("DELETE", path, { query });

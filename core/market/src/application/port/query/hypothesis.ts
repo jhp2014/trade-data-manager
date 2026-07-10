@@ -18,6 +18,8 @@ export interface HypothesisReader {
 export interface HypothesisStore {
     /** 새 가설 생성 → DB 가 부여한 id 를 채워 반환. */
     create(text: string): Promise<Hypothesis>;
+    /** 가설 텍스트 수정. 없는 id 는 조용한 no-op(remove·unlink 와 대칭). */
+    update(id: string, text: string): Promise<void>;
     /** 가설 ↔ 타점 연결(멱등 — 이미 있으면 무시). */
     link(link: HypothesisLink): Promise<void>;
     /** 가설 ↔ 타점 연결 해제. */
