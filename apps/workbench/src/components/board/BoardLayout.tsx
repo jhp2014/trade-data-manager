@@ -128,8 +128,8 @@ export function BoardLayout({
             return { theme: r.theme, kind: r.kind, movers: roster.filter((s) => s.isMover || s.signal).length, total: roster.length };
         });
 
-    // 밴드 카드는 movers 로 열어 선택 행이 바로 보이게 한다. key 에 -promoted 를 붙여 승격 진입/이탈 시
-    // 리마운트되게 한다(같은 부모에서 key 가 같으면 React 가 인스턴스를 재사용해 initialMode 가 안 먹음).
+    // 밴드 카드(현재 종목)는 all 로 열어 선택 종목이 주도주가 아니어도 카드에 바로 보이게 한다. key 에 -promoted 를
+    // 붙여 승격 진입/이탈 시 리마운트되게 한다(같은 부모에서 key 가 같으면 React 가 인스턴스를 재사용해 initialMode 가 안 먹음).
     const renderCard = (g: ThemeGroup<BoardStock>, promotedCard = false): JSX.Element => {
         return (
             <div key={promotedCard ? `${g.theme}-promoted` : g.theme} ref={(el) => register(g.theme, el)} style={{ scrollMarginTop: 8 }}>
@@ -146,7 +146,7 @@ export function BoardLayout({
                     related={relatedOf(g)}
                     onGoto={gotoRelated}
                     isHidden={isHidden}
-                    initialMode={promotedCard ? "movers" : "collapsed"}
+                    initialMode={promotedCard ? "all" : "collapsed"}
                 />
             </div>
         );
