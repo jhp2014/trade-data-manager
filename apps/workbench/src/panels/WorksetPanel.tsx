@@ -9,7 +9,7 @@ import {
 } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
 import { type ReviewPointListItem } from "../api/reviewPoints.js";
-import { priceLinedStocksQuery, allPointsQuery, hypothesisLinksQuery } from "../api/queries.js";
+import { priceLinedStocksQuery, allPointsQuery, hypothesisLinksQuery, hypothesesQuery } from "../api/queries.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { MonthPicker, LocateIcon, DateHeader, Name, PointRow } from "./WorksetRows.js";
 
@@ -57,9 +57,26 @@ export function WorksetPanel(): JSX.Element {
     const stocksQ = useQuery(priceLinedStocksQuery());
     const pointsQ = useQuery(allPointsQuery());
     const linksQ = useQuery(hypothesisLinksQuery());
+    const hypsQ = useQuery(hypothesesQuery());
     const stocks = useMemo(() => stocksQ.data ?? [], [stocksQ.data]);
     const points = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);
     const links = useMemo(() => linksQ.data ?? [], [linksQ.data]);
+
+    // 타점별 연결 가설 텍스트 목록 — (code,date,time) 자연키로 links 를 접어 PointRow 배지/hover 에 넘긴다.
+    const hypsByPoint = useMemo(() => {
+        const textById = new Map<string, string>();
+        for (const h of hypsQ.data ?? []) textById.set(h.id, h.text);
+        const m = new Map<string, string[]>();
+        for (const l of links) {
+            const t = textById.get(l.hypothesisId);
+            if (!t) continue;
+            const k = `${l.stockCode}|${l.date}|${l.time}`;
+            const arr = m.get(k);
+            if (arr) arr.push(t);
+            else m.set(k, [t]);
+        }
+        return m;
+    }, [links, hypsQ.data]);
 
     // 모드 = 명시적 토글. 필터가 활성이어도 월별로 볼 수 있게 showFilterMode 로 강제 전환 가능(기본 필터 우선).
     const [showFilterMode, setShowFilterMode] = useState(true);
@@ -250,6 +267,7 @@ export function WorksetPanel(): JSX.Element {
                                             p={p}
                                             related={sameCode}
                                             current={sameCode && p.date === focusDate && p.time === focusTime}
+                                            hyps={hypsByPoint.get(`${p.stockCode}|${p.date}|${p.time}`) ?? []}
                                             onClick={() => goToPoint({ date: p.date, code: p.stockCode, time: p.time })}
                                         />
                                     ))}

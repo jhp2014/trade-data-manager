@@ -1,6 +1,7 @@
 // 작업셋 패널 표현 컴포넌트 — 월 선택 팝오버·조준 아이콘·날짜 헤더·종목명·타점 행.
 // WorksetPanel 본문(데이터 합본)에서 분리한 순수 표현 조각.
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import type { ReviewPointListItem } from "../api/reviewPoints.js";
 import { weekdayOf } from "../lib/date.js";
 
@@ -76,7 +77,7 @@ export function Name({ name, code, color, strong }: { name: string | null; code:
     );
 }
 
-export function PointRow({ p, related, current, onClick }: { p: ReviewPointListItem; related?: boolean; current?: boolean; onClick: () => void }): JSX.Element {
+export function PointRow({ p, related, current, hyps = [], onClick }: { p: ReviewPointListItem; related?: boolean; current?: boolean; hyps?: string[]; onClick: () => void }): JSX.Element {
     return (
         <button
             onClick={onClick}
@@ -103,6 +104,70 @@ export function PointRow({ p, related, current, onClick }: { p: ReviewPointListI
                     {p.memo}
                 </span>
             )}
+            {hyps.length > 0 && <HypBadge texts={hyps} />}
         </button>
+    );
+}
+
+// 타점에 연결된 가설 개수 배지 — hover 시 가설 텍스트 목록 팝오버(body 로 portal, 행 위로 안 잘리게).
+function HypBadge({ texts }: { texts: string[] }): JSX.Element {
+    const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+    return (
+        <span
+            onMouseEnter={(e) => setPos({ x: e.clientX, y: e.clientY })}
+            onMouseMove={(e) => setPos({ x: e.clientX, y: e.clientY })}
+            onMouseLeave={() => setPos(null)}
+            title={`연결된 가설 ${texts.length}개`}
+            style={{
+                flexShrink: 0,
+                marginLeft: "auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                height: 15,
+                padding: "0 6px",
+                borderRadius: 10,
+                background: "var(--accent-soft)",
+                color: "var(--accent-primary)",
+                fontSize: 10,
+                fontWeight: 700,
+                lineHeight: "15px",
+                cursor: "default",
+            }}
+        >
+            H<span className="tabular">{texts.length}</span>
+            {pos && <HypPopover texts={texts} pos={pos} />}
+        </span>
+    );
+}
+
+function HypPopover({ texts, pos }: { texts: string[]; pos: { x: number; y: number } }): JSX.Element {
+    return createPortal(
+        <div
+            style={{
+                position: "fixed",
+                left: pos.x + 14,
+                top: pos.y - 8,
+                maxWidth: 320,
+                background: "var(--bg-primary)",
+                border: "1px solid var(--border-default)",
+                borderRadius: 6,
+                boxShadow: "0 4px 16px rgba(0,0,0,0.22)",
+                padding: "6px 8px",
+                zIndex: 200,
+                pointerEvents: "none",
+            }}
+        >
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", marginBottom: 4 }}>연결된 가설 {texts.length}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {texts.map((t, i) => (
+                    <div key={i} style={{ display: "flex", gap: 5, fontSize: 12, color: "var(--text-primary)", lineHeight: 1.4 }}>
+                        <span style={{ flexShrink: 0, color: "var(--accent-primary)" }}>·</span>
+                        <span>{t}</span>
+                    </div>
+                ))}
+            </div>
+        </div>,
+        document.body,
     );
 }
