@@ -1,10 +1,11 @@
 {
-  "name": "@trade-data-manager/db-backup",
+  "name": "@trade-data-manager/db-ops",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "backup": "tsx src/index.ts",
+    "backup": "tsx src/index.ts backup",
+    "mirror": "tsx src/index.ts mirror",
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist",
     "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo",

@@ -26,7 +26,11 @@ function sameCounts(a: Record<string, string>, b: Record<string, string>): boole
     return ak.length === bk.length && ak.every((k) => a[k] === b[k]);
 }
 
-async function main(): Promise<void> {
+/**
+ * 전체 백업(db-ops `backup` 커맨드): curation 미러(Supabase→로컬) → 로컬 전체 덤프 →
+ * 복원검증(임시DB) → Drive 업로드 → 보관정리. 자기 오류는 내부에서 잡아 실패 마커 + exitCode 로 처리.
+ */
+export async function runBackup(): Promise<void> {
     fs.mkdirSync(config.localDir, { recursive: true });
     const log = createLogger(path.join(config.localDir, "logs"));
     const markerPath = path.join(config.localDir, FAILED_MARKER);
@@ -151,8 +155,3 @@ async function reconcileDrive(log: Logger): Promise<void> {
         log.info("Drive manifest 갱신");
     }
 }
-
-main().catch((err) => {
-    console.error("[FATAL]", err);
-    process.exitCode = 1;
-});
