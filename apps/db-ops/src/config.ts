@@ -1,11 +1,13 @@
 import { config as loadEnv } from "dotenv";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getDatabaseUrl, getCurationDatabaseUrl } from "@trade-data-manager/persistence/env";
 
 // DB 접속 문자열은 @infra/persistence 메서드(getDatabaseUrl·getCurationDatabaseUrl)로만 취득한다 —
 // 앱은 env 변수명·process.env 를 알지 않는다(인프라가 env 로딩까지 자급).
-// 백업 도구 고유 설정(보관경로·pg도구·Drive·OAuth)은 아직 루트 .env. (루트 .env 제거 시 apps/db-backup/.env 로 이관)
-loadEnv({ path: resolve(process.cwd(), "../../.env") });
+// 백업 도구 고유 설정(보관경로·pg도구·Drive 폴더)은 이 앱 자체 .env(apps/db-ops/.env).
+// Google OAuth 는 @infra/google 이 자기 .env 로 자급 → 여기서 로딩 안 함. (루트 .env 비의존)
+loadEnv({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 
 function required(name: string): string {
     const v = process.env[name];

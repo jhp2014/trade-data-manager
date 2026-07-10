@@ -51,18 +51,19 @@ pnpm --filter @trade-data-manager/google login
 - 로컬 / Drive 양쪽에 동일 적용 (물리적으로 독립된 2차 사본).
 
 ## 환경변수
-DB 접속 문자열(`DATABASE_URL`·`CURATION_DATABASE_URL`)은 **`@trade-data-manager/persistence`(infra/persistence/.env)**
-에서 메서드로 취득한다(이 앱은 env 변수명을 모른다). 아래 백업 고유 설정만 루트 `.env`(향후 apps/db-ops/.env 로 이관).
+이 앱은 **루트 `.env` 에 비의존** — 필요한 값을 3곳에서 자급한다:
+- DB 접속(`DATABASE_URL`·`CURATION_DATABASE_URL`) → `@trade-data-manager/persistence`(메서드, infra/persistence/.env)
+- Google OAuth → `@trade-data-manager/google`(자기 .env, infra/google/.env)
+- 백업 도구 고유 설정 → **이 앱 자체 `apps/db-ops/.env`** (`.env.example` 참고)
 
 | 변수 | 설명 | 출처 |
 |---|---|---|
 | `DATABASE_URL` | 원본 로컬 DB. host/port/user/password 는 임시 DB 접속에도 재사용 | infra/persistence/.env |
 | `CURATION_DATABASE_URL` | curation 미러 원본(Supabase). 없으면 미러 스킵 | infra/persistence/.env |
-| `BACKUP_LOCAL_DIR` | 생성·검증·로컬 1차 보관 | 루트 .env |
-| `PG_BIN_DIR` | `pg_dump`/`pg_restore` 경로 (예: `C:/Program Files/PostgreSQL/17/bin`) | 루트 .env |
-| `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` | GCP OAuth(Desktop) 클라이언트 (기존 `GDRIVE_OAUTH_*` 폴백) | 루트 .env |
-| `GOOGLE_OAUTH_REFRESH_TOKEN` | `pnpm --filter @trade-data-manager/google login` 이 자동 기록 | 루트 .env |
-| `GDRIVE_BACKUP_FOLDER_ID` | 업로드 대상 Drive 폴더 ID | 루트 .env |
+| `GOOGLE_OAUTH_*` | Drive 업로드/다운로드 OAuth (`pnpm --filter @trade-data-manager/google login` 발급) | infra/google/.env |
+| `BACKUP_LOCAL_DIR` | 생성·검증·로컬 1차 보관 | **apps/db-ops/.env** |
+| `PG_BIN_DIR` | `pg_dump`/`pg_restore`/`createdb` 경로 (예: `C:/Program Files/PostgreSQL/17/bin`) | **apps/db-ops/.env** |
+| `GDRIVE_BACKUP_FOLDER_ID` | 업로드 대상 Drive 폴더 ID | **apps/db-ops/.env** |
 
 > - `DATABASE_URL` 계정은 임시 DB 생성을 위해 `CREATEDB`(또는 superuser) 권한이 필요하다.
 > - Drive 업로드는 **OAuth(사용자 본인)** 로 동작한다. 서비스 계정은 개인 Drive에 저장 할당량이 없어 업로드가 불가(`storageQuotaExceeded`)하다.
