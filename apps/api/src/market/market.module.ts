@@ -39,6 +39,7 @@ import { DerivedCache } from "./board/derivedCache.js";
 import { MasterCache } from "./board/masterCache.js";
 import { DayBoards } from "./board/dayBoards.js";
 import { CachedMembership } from "./board/cachedMembership.js";
+import { DataDatesCache } from "./board/dataDatesCache.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
@@ -102,9 +103,11 @@ const boardProviders: Provider[] = [
         inject: [MARKET_POOL, CURATION_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
     },
     {
-        // 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커. 일봉 repo 의 distinct 거래일 재사용(신규 소스 없음).
+        // 데이터(분봉) 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커.
+        // 파일 캐시: cold 전체 distinct 1회 → warm 파일 read-through, 하루 1회 꼬리 증분(파티션 프루닝).
+        // 소스가 일봉(~2년 딥 백필)이면 장중데이터 없는 과거일까지 노출되므로 분봉 실보유일로 소스 교체.
         provide: DATA_DATE_READER,
-        useFactory: (pool: Pool): DataDateReader => new DrizzleDailyCandleRepository(createDb(pool)),
+        useFactory: (pool: Pool): DataDateReader => new DataDatesCache(new DrizzleMinuteCandleRepository(createDb(pool))),
         inject: [MARKET_POOL],
     },
 ];

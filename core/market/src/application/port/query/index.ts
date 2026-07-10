@@ -6,6 +6,7 @@
 export * from "./candleReader.js";
 export * from "./dataDateReader.js";
 export * from "./minuteReader.js";
+export * from "./minuteDateReader.js";
 export * from "./rawDailyReader.js";
 export * from "./marketCapReader.js";
 export * from "./masterReader.js";

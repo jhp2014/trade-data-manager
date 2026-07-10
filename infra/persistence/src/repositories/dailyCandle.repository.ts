@@ -5,7 +5,6 @@ import type {
     AdjustedDailyReader,
     DailyCandleSnapshotReader,
     DailyScanRepository,
-    DataDateReader,
     DateRange,
     PreviousClose,
 } from "@trade-data-manager/market";
@@ -18,7 +17,7 @@ const CONFLICT_SET = buildConflictUpdateSet(dailyCandles, ["tradeDate", "stockCo
 
 /** Drizzle 구현 — 종목별 store/read(DailyCandleStore·AdjustedDailyReader) + 스냅샷 read + 날짜별 스캔. 같은 daily_candles. */
 export class DrizzleDailyCandleRepository
-    implements DailyCandleStore, AdjustedDailyReader, DailyCandleSnapshotReader, DailyScanRepository, DataDateReader
+    implements DailyCandleStore, AdjustedDailyReader, DailyCandleSnapshotReader, DailyScanRepository
 {
     constructor(private readonly db: Database) {}
 
@@ -139,16 +138,6 @@ export class DrizzleDailyCandleRepository
             .selectDistinct({ tradeDate: dailyCandles.tradeDate })
             .from(dailyCandles)
             .where(and(gte(dailyCandles.tradeDate, range.from), lte(dailyCandles.tradeDate, range.to)))
-            .orderBy(asc(dailyCandles.tradeDate));
-        return rows.map((r) => r.tradeDate);
-    }
-
-    // --- DataDateReader (data-aware 날짜피커: 전역 distinct 거래일) ---
-
-    async listDataDates(): Promise<string[]> {
-        const rows = await this.db
-            .selectDistinct({ tradeDate: dailyCandles.tradeDate })
-            .from(dailyCandles)
             .orderBy(asc(dailyCandles.tradeDate));
         return rows.map((r) => r.tradeDate);
     }
