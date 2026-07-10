@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
     isFilterActive,
@@ -8,6 +8,7 @@ import {
     distinctStockCount,
 } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
+import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { type ReviewPointListItem } from "../api/reviewPoints.js";
 import { priceLinedStocksQuery, allPointsQuery, hypothesisLinksQuery, hypothesesQuery } from "../api/queries.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
@@ -48,6 +49,8 @@ export function WorksetPanel(): JSX.Element {
     const focusCode = useWorkbench((s) => s.focus.code);
     const focusDate = useWorkbench((s) => s.focus.date);
     const focusTime = useWorkbench((s) => s.focus.time);
+    const activePoint = useWorkbench((s) => s.activePoint);
+    const lastFocusOrigin = useWorkbench((s) => s.lastFocusOrigin);
     const setFocus = useWorkbench((s) => s.setFocus);
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const filterDraft = useWorkbench((s) => s.filterDraft);
@@ -148,6 +151,37 @@ export function WorksetPanel(): JSX.Element {
         const target = exact ?? [...anchorRefs.current.entries()].find(([k]) => k.endsWith(`|${focusCode}`))?.[1];
         target?.scrollIntoView({ block: "center", behavior: "smooth" });
     };
+
+    // ── w/s 타점 순회 — 현재 보이는 타점들(groups 평탄화)을 goToPoint 로 걷는다. 끝에서 clamp.
+    //    전역 동적 커맨드(차트 a/d 선례) — navRef 로 최신 목록/현재타점을 읽어 등록은 1회.
+    type NavPoint = { code: string; date: string; time: string };
+    const flatPoints = useMemo<NavPoint[]>(() => {
+        const out: NavPoint[] = [];
+        for (const g of groups) for (const e of g.stocks) for (const p of e.points) out.push({ code: p.stockCode, date: p.date, time: p.time });
+        return out;
+    }, [groups]);
+    const navRef = useRef<{ points: NavPoint[]; current: NavPoint | null; run: (dir: number) => void }>({ points: [], current: null, run: () => {} });
+    navRef.current.points = flatPoints;
+    navRef.current.current = activePoint;
+    navRef.current.run = (dir): void => {
+        const { points, current } = navRef.current;
+        if (points.length === 0) return;
+        const idx = current ? points.findIndex((p) => p.code === current.code && p.date === current.date && p.time === current.time) : -1;
+        const ni = idx < 0 ? (dir > 0 ? 0 : points.length - 1) : Math.max(0, Math.min(points.length - 1, idx + dir));
+        const t = points[ni];
+        useWorkbench.getState().goToPoint({ date: t.date, code: t.code, time: t.time }, "workset");
+    };
+    useEffect(() => {
+        const { register, unregister } = useKeymapDynamic.getState();
+        register({ id: "workset.nav.prevPoint", title: "이전 타점(작업셋)", category: "작업셋", keys: "w", run: () => navRef.current.run(-1) });
+        register({ id: "workset.nav.nextPoint", title: "다음 타점(작업셋)", category: "작업셋", keys: "s", run: () => navRef.current.run(1) });
+        return () => { unregister("workset.nav.prevPoint"); unregister("workset.nav.nextPoint"); };
+    }, []);
+    // w/s 이동(자기 origin)일 때만 그 타점의 종목으로 스크롤(이미 보이면 안 움직임).
+    useEffect(() => {
+        if (!activePoint || lastFocusOrigin !== "workset") return;
+        anchorRefs.current.get(`${activePoint.date}|${activePoint.code}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, [activePoint, lastFocusOrigin]);
 
     if (stocksQ.isLoading || pointsQ.isLoading) return <BoardCenter text="작업셋 로딩중…" />;
     if (stocksQ.isError) return <BoardCenter text={`작업셋 오류: ${(stocksQ.error as Error).message}`} />;
