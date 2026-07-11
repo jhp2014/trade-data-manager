@@ -1,8 +1,9 @@
 // 당일 스냅샷 파일 캐시 — 날짜별 불변 파생(분봉파생 + EOD 일봉 %·시총)을 gzip 파일로. 저수준 read/write 만.
-// (build 조율·in-flight dedup 은 DerivedCache. 조립·메타 stitch 는 DayBoards.)
+// (build 조율·in-flight dedup·영구캐시 게이트는 DerivedCache. 조립·메타 stitch 는 DayBoards.)
 //
 // 전부 **불변 입력**에서 나온다: 분봉파생(분봉+원주가일봉, append-only) · EOD %(조정 불변) · 시총(별 테이블 확정).
-// 그래서 과거 거래일은 영구 캐시 안전(자가치유가 닿지 않는다). 오늘(미마감)은 데이터 자체가 없어 대상 아님.
+// 그래서 과거 거래일은 영구 캐시 안전(자가치유가 닿지 않는다). 오늘은 수집이 진행 중일 수 있어(20:30 스윕) 부분
+// 상태가 굳으면 영구 오염 → DerivedCache 가 date < KST today 인 날만 파일로 굳힌다(오늘은 매 요청 재빌드).
 //
 // ⚠ 캐시 무효화: 아래를 바꾸면 낡는다 → DAY_SNAPSHOT_CACHE_DIR(기본 .cache/day-snapshot/)를 통째 삭제.
 //    · DaySnapshot / MinuteDerived / DayStats 스키마 · deriveMinutes · dailyStatsOf · densify · 분봉 거래대금 공식
@@ -48,6 +49,21 @@ export async function readSnapshot(date: string): Promise<DaySnapshotFile | null
         throw err;
     }
 }
+
+/**
+ * 스냅샷 저장소(read/write) — DerivedCache 에 주입해 파일 I/O 를 분리(테스트는 in-memory fake).
+ * 기본 구현 = gzip 파일(fileSnapshotStore).
+ */
+export interface DaySnapshotStore {
+    read(date: string): Promise<DaySnapshotFile | null>;
+    write(file: DaySnapshotFile): Promise<void>;
+}
+
+/** 기본 파일 저장소 — 모듈 함수 read/writeSnapshot 를 그대로 노출. */
+export const fileSnapshotStore: DaySnapshotStore = {
+    read: readSnapshot,
+    write: writeSnapshot,
+};
 
 /** 스냅샷을 gzip 파일로 저장한다. */
 export async function writeSnapshot(data: DaySnapshotFile): Promise<void> {
