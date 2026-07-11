@@ -39,9 +39,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 
     const toggleExpand = (which: "daily" | "minute"): void => setView(view === which ? "both" : which);
 
-    // 가격선 주석(조회·해소·토글/삭제/clear) + 복기 타점(조회·단축키·savedTimes) — 훅으로 분리.
+    // 가격선 주석(조회·해소·토글/삭제/clear) + 복기 타점(조회·단축키·savedPoints) — 훅으로 분리.
     const { resolvedLines, dLines, hasLines, toggleLine, removeLine, clear } = usePriceLinesForChart(code, date, dailyView, minuteView);
-    const { savedTimes, focusedPoint } = useReviewPointData(code, date, time);
+    const { savedPoints, focusedPoint } = useReviewPointData(code, date, time);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. (단축키는 전역 useChartHotkeys)
     const markerTime = useMemo(() => (time && date ? kstToUnix(date, time) : null), [time, date]);
@@ -102,7 +102,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                         lines={resolvedLines}
                                         base={minuteView.base}
                                         markerTime={markerTime}
-                                        savedTimes={savedTimes}
+                                        savedPoints={savedPoints}
                                         showPointInfo={showPointInfo}
                                         zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                         onMovePoint={(t) => setTime(t)}

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
-import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery, chartQuery } from "../api/queries.js";
+import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery, chartQuery, hypothesesQuery, hypothesisLinksQuery } from "../api/queries.js";
+import { hypothesesForPoint } from "@trade-data-manager/market/domain";
 import { kstToUnix, deriveMinuteView, type DailyPoint, type MinuteView } from "./derive.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -77,18 +78,43 @@ export function usePriceLinesForChart(
     return { resolvedLines, dLines, hasLines: lines.length > 0, toggleLine, removeLine, clear };
 }
 
+export interface SavedPoint {
+    time: number; // 저장 타점 시각(unix초) — 분봉 세로선/아이콘
+    hypotheses: string[]; // 이 타점에 연결된 가설 텍스트(hover 카드용). 없으면 빈 배열.
+}
+
 export interface ChartReviewPoints {
-    savedTimes: number[]; // 저장 타점 시각(unix초) — 분봉 세로선/아이콘
+    savedPoints: SavedPoint[];
     focusedPoint: ReviewPoint | undefined; // 현재 Focus.time 에 저장된 타점(헤더 배지)
 }
 
-/** 복기 타점 조회 데이터(차트 렌더용) — 저장타점 세로선·현재타점 배지. 단축키 등록은 전역 useChartHotkeys 로 이관. */
+/**
+ * 복기 타점 조회 데이터(차트 렌더용) — 저장타점 세로선·hover 카드·현재타점 배지. 단축키 등록은 전역 useChartHotkeys 로 이관.
+ * 가설↔타점 링크는 이미 전량 로드(staleTime ∞)라 추가 fetch 없이 타점별 가설 텍스트를 인메모리로 조립.
+ */
 export function useReviewPointData(code: string, date: string, time: string | null): ChartReviewPoints {
     const reviewQ = useQuery(reviewPointsQuery(code, date));
+    const hypQ = useQuery(hypothesesQuery());
+    const linkQ = useQuery(hypothesisLinksQuery());
     const reviewPoints = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
-    const savedTimes = useMemo(() => (date ? reviewPoints.map((rp) => kstToUnix(date, rp.time)) : []), [reviewPoints, date]);
+    const links = useMemo(() => linkQ.data ?? [], [linkQ.data]);
+    const hypText = useMemo(() => new Map((hypQ.data ?? []).map((h) => [h.id, h.text] as const)), [hypQ.data]);
+
+    const savedPoints = useMemo<SavedPoint[]>(() => {
+        if (!date) return [];
+        return reviewPoints.map((rp) => {
+            const ids = hypothesesForPoint(links, { stockCode: rp.stockCode, date: rp.date, time: rp.time });
+            const hypotheses: string[] = [];
+            for (const id of ids) {
+                const t = hypText.get(id);
+                if (t) hypotheses.push(t);
+            }
+            return { time: kstToUnix(date, rp.time), hypotheses };
+        });
+    }, [reviewPoints, date, links, hypText]);
+
     const focusedPoint = useMemo(() => reviewPoints.find((rp) => rp.time === time), [reviewPoints, time]);
-    return { savedTimes, focusedPoint };
+    return { savedPoints, focusedPoint };
 }
 
 /**
