@@ -4,7 +4,7 @@
 // 예전엔 각 액션이 규칙을 제각기 재현해 setDate 만 scope/activePoint 를 지우고 setFocus·goToPoint 는
 // 날짜가 바뀌어도 옛 테마·타점을 남기던 불일치가 있었다 → 여기로 모아 한 규칙만 존재하게 한다.
 // (chartZoom 은 "점프=재중심 vs 드리프트=유지" 라는 액션 의도라 규칙이 아니라 각 액션이 명시한다.)
-import type { Focus, Scope, Search } from "./workbench.js";
+import type { Focus, Scope, Search } from "./focusSlice.js";
 
 /** 선택된 복기 타점 — (code,date,time). focus.time(휘발 드리프트)과 분리된 안정 선택. */
 export type ActivePoint = { code: string; date: string; time: string };

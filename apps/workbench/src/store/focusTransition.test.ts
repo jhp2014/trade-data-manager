@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { transitionFocus, type ActivePoint, type FocusInvariants } from "./focusTransition.js";
-import type { Focus, Scope, Search } from "./workbench.js";
+import type { Focus, Scope, Search } from "./focusSlice.js";
 
 const D1 = "2026-06-25";
 const D2 = "2026-06-26";
