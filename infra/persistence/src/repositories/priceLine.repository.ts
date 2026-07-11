@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
-import type { PriceLine, PriceLinedStock, PriceLineReader, PriceLineStore } from "@trade-data-manager/market";
+import type { NewPriceLine, PriceLine, PriceLinedStock, PriceLineReader, PriceLineStore } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { priceLines } from "../schema/curation.js";
 import { priceLineToRow, rowToPriceLine } from "../mappers/priceLine.js";
@@ -8,7 +8,7 @@ import { priceLineToRow, rowToPriceLine } from "../mappers/priceLine.js";
 export class DrizzlePriceLineRepository implements PriceLineReader, PriceLineStore {
     constructor(private readonly db: Database) {}
 
-    async add(lines: PriceLine[]): Promise<PriceLine[]> {
+    async add(lines: NewPriceLine[]): Promise<PriceLine[]> {
         if (lines.length === 0) return [];
         const rows = await this.db.insert(priceLines).values(lines.map(priceLineToRow)).returning();
         return rows.map(rowToPriceLine);

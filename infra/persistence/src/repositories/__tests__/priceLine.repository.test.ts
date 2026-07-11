@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import type { PriceLine } from "@trade-data-manager/market";
+import type { NewPriceLine } from "@trade-data-manager/market";
 import { createTestDb, type TestDb } from "../../test-support/testDb.js";
 import { DrizzlePriceLineRepository } from "../priceLine.repository.js";
 
-const pl = (over: Partial<PriceLine> = {}): PriceLine => ({
+const pl = (over: Partial<NewPriceLine> = {}): NewPriceLine => ({
     stockCode: "005930",
     date: "2026-06-30",
     anchorDate: "2026-06-30",
@@ -61,7 +61,7 @@ describe("DrizzlePriceLineRepository (pglite)", () => {
 
     it("remove — id 로 1개 삭제", async () => {
         const lines = await repo.listByChart("005930", "2026-06-30");
-        await repo.remove(lines[0].id!);
+        await repo.remove(lines[0].id);
         const rest = await repo.listByChart("005930", "2026-06-30");
         expect(rest.map((l) => l.anchorDate)).toEqual(["2026-06-28"]);
     });

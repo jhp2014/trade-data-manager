@@ -10,15 +10,19 @@
 /** 앵커 캔들에서 읽을 값. */
 export type PriceLineField = "high" | "low" | "open" | "close";
 
-/** 한 종목·거래일 차트의 수평 가격선 1개(앵커 기반). */
-export interface PriceLine {
-    id?: string; // surrogate(bigint). 신규(미저장)면 undefined, 조회/저장 후면 존재.
+/** 신규(미저장) 가격선 — add 입력. id 는 DB(serial)가 부여하므로 여기 없음. */
+export interface NewPriceLine {
     stockCode: string;
     date: string; // YYYY-MM-DD — 이 선이 속한 차트(로드 단위). 앵커 날짜와 다를 수 있음.
     anchorDate: string; // YYYY-MM-DD — 값을 읽어올 앵커 캔들의 거래일.
     anchorTime?: string; // HH:MM:SS — 있으면 분봉 앵커, 없으면 일봉 앵커.
     field: PriceLineField; // 앵커 캔들에서 읽을 값(기본 high).
     memo?: string; // 선의 의미(선택).
+}
+
+/** 저장된 가격선 — 조회/응답 단위. id(surrogate bigint) 존재가 타입으로 보장(옛 id? 는 소비자마다 filter·`!` 를 강요했다). */
+export interface PriceLine extends NewPriceLine {
+    id: string;
 }
 
 /**

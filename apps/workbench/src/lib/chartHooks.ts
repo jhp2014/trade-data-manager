@@ -38,7 +38,6 @@ export function usePriceLinesForChart(
         const minuteByKey = new Map(minuteView.points.map((p) => [`${p.date}T${p.tradeTime}`, p] as const));
         const out: RenderLine[] = [];
         for (const l of lines) {
-            if (!l.id) continue;
             if (l.anchorTime) {
                 const mp = minuteByKey.get(`${l.anchorDate}T${l.anchorTime}`);
                 if (mp) out.push({ id: l.id, price: mp.highPrice, kind: "M" });
@@ -60,7 +59,7 @@ export function usePriceLinesForChart(
     // clear — 이 차트의 가격선 전체 삭제(우클릭이 잘 안 잡히는 경우 대비). 저장 타점은 건드리지 않음.
     const clearMut = useMutation({
         mutationFn: async () => {
-            await Promise.all(lines.filter((l) => l.id).map((l) => removePriceLine(l.id!)));
+            await Promise.all(lines.map((l) => removePriceLine(l.id)));
         },
         onSuccess: invalidate,
     });
@@ -69,7 +68,7 @@ export function usePriceLinesForChart(
     const toggleLine = (anchorDate: string, anchorTime: string | undefined): void => {
         if (!code || !date) return;
         const existing = lines.find((l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime);
-        if (existing?.id) removeMut.mutate(existing.id);
+        if (existing) removeMut.mutate(existing.id);
         else addMut.mutate({ stockCode: code, date, anchorDate, anchorTime, field: "high" });
     };
     const removeLine = (line: RenderLine): void => removeMut.mutate(line.id);
