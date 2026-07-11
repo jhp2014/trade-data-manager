@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { type HypothesisFilterExpr, type PointAttr, type BoardFilterExpr, type BoardFilterMode, type BoardFilterGroup, defaultParams } from "@trade-data-manager/market/domain";
 import { kstToday } from "../lib/date.js";
+import { transitionFocus, type ActivePoint } from "./focusTransition.js";
 
 // 연동버스 = 2계층(레이아웃 라이브러리보다 이게 설계 본질):
 //  - Focus(커서, scalar): date·code·time. 차트·주석 패널이 축별 selector 로 구독.
@@ -67,7 +68,7 @@ interface WorkbenchState {
     search: Search | null; // 검색 모드 컨텍스트(null = Focus 따라감)
     // 선택된 복기 타점 — (A) "현재 타점에 연결된 가설" 판정 기준. focus.time(리플레이/차트 드리프트로 휘발)과 분리한다.
     // goToPoint(타점 클릭)에서만 세팅 → 시간만 움직이면 유지, 다른 타점으로 이동해야 바뀜. 종목/날짜 바뀌면 해제.
-    activePoint: { code: string; date: string; time: string } | null;
+    activePoint: ActivePoint | null;
     // f 줌(일봉+분봉 전역). anchor=줌 시작 시각 unix초(분봉 중심), null=미줌. 두 차트 패널이 함께 구독 → 같이 확대/축소.
     chartZoom: { anchor: number | null } | null;
     chartViews: Record<string, ChartView>; // 패널별 뷰(일봉만/분봉만/둘다). localStorage 영속 — 화면 전환에도 유지. 미저장 = 기본(chart-1 일봉·chart-2 분봉).
@@ -231,19 +232,19 @@ export const useWorkbench = create<WorkbenchState>((set) => ({
     replayFilter: loadFilter(REPLAY_FILTER_KEY),
     lastFocusOrigin: null,
 
-    // date 최상위 무효화: time 리셋 + scope 리셋(테마는 그날 것이라 날짜 넘어가면 stale) + activePoint 해제(타점 날짜 stale).
+    // 모든 Focus 액션은 무효화규칙을 transitionFocus 단일 진실에 위임한다(각 액션이 규칙을 재현하지 않게).
+    // chartZoom 만 액션 의도로 남긴다: 점프(setDate/setFocus/goToPoint)=재중심 위해 해제, 드리프트(setCode 같은시각·setTime)=유지.
     setDate: (date, origin) =>
-        set((s) => ({ focus: { ...s.focus, date, time: null }, scope: { theme: null }, activePoint: null, chartZoom: null, lastFocusOrigin: origin ?? null })),
-    // code 변경 시 time 유지(같은시각 횡적비교) + 검색/activePoint 자동 해제(종목 바뀌면 타점 stale). 같은 종목이면 유지.
-    setCode: (code, origin) =>
-        set((s) => ({ focus: { ...s.focus, code }, search: code !== s.focus.code ? null : s.search, activePoint: code !== s.focus.code ? null : s.activePoint, lastFocusOrigin: origin ?? null })),
-    // 시간만 이동(리플레이/차트 드리프트) = activePoint 유지 → 연결 표시(A) 안 흔들림.
-    setTime: (time, origin) => set((s) => ({ focus: { ...s.focus, time }, lastFocusOrigin: origin ?? null })),
+        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, time: null }, origin), chartZoom: null })),
+    // code 변경 시 time 유지(같은시각 횡적비교), zoom 유지.
+    setCode: (code, origin) => set((s) => transitionFocus(s, { ...s.focus, code }, origin)),
+    // 시간만 이동(리플레이/차트 드리프트) = 파생축 전부 유지 → 연결 표시(A) 안 흔들림.
+    setTime: (time, origin) => set((s) => transitionFocus(s, { ...s.focus, time }, origin)),
     setFocus: ({ date, code, time }, origin) =>
-        set((s) => ({ focus: { ...s.focus, date, code, time }, search: code !== s.focus.code ? null : s.search, activePoint: code !== s.focus.code ? null : s.activePoint, chartZoom: null, lastFocusOrigin: origin ?? null })),
-    // 타점 이동 = focus + activePoint 원자 세팅(다른 타점 선택 시에만 A 바뀜).
+        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), chartZoom: null })),
+    // 타점 이동 = focus 전이 + activePoint 명시 override(다른 타점 선택 시에만 A 바뀜).
     goToPoint: ({ date, code, time }, origin) =>
-        set((s) => ({ focus: { ...s.focus, date, code, time }, activePoint: { code, date, time }, search: code !== s.focus.code ? null : s.search, chartZoom: null, lastFocusOrigin: origin ?? null })),
+        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), activePoint: { code, date, time }, chartZoom: null })),
 
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { theme: null } })),
