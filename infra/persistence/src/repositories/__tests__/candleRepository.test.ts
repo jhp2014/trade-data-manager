@@ -123,8 +123,8 @@ describe("Drizzle candle repositories (pglite)", () => {
         expect(got[0].un.close).toBe("338000");
         expect(got[1].krx?.close).toBe("339500");
 
-        // 날짜 존재 여부(collect 건너뛰기 판단용)
-        expect(await minute.hasMinuteCandlesOnDate("2026-06-26")).toBe(true);
-        expect(await minute.hasMinuteCandlesOnDate("2026-06-27")).toBe(false);
+        // 그 날 저장된 종목코드들(재개 diff 의 저장집합)
+        expect(await minute.getMinuteStockCodesOnDate("2026-06-26")).toEqual(["005930"]);
+        expect(await minute.getMinuteStockCodesOnDate("2026-06-27")).toEqual([]);
     });
 });

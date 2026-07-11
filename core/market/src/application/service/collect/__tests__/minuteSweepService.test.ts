@@ -51,8 +51,8 @@ class FakeMinuteRepo implements MinuteCandleStore {
     async getMinuteCandles(): Promise<MinuteCandle[]> {
         return [];
     }
-    async hasMinuteCandlesOnDate(): Promise<boolean> {
-        return false;
+    async getMinuteStockCodesOnDate(): Promise<string[]> {
+        return [];
     }
     async deleteMinuteCandlesOnDate(): Promise<number> {
         return 0;

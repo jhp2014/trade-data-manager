@@ -69,7 +69,8 @@ class FakeMinuteProvider implements MinuteCandleProvider {
     }
 }
 class FakeMinuteRepo implements MinuteCandleStore {
-    existing = new Set<string>();
+    /** 날짜별 이미 저장된 종목코드(재개 diff 의 저장집합). */
+    storedByDate: Record<string, string[]> = {};
     saves = 0;
     deletes: string[] = [];
     async saveMinuteCandles(): Promise<void> {
@@ -78,8 +79,8 @@ class FakeMinuteRepo implements MinuteCandleStore {
     async getMinuteCandles(): Promise<MinuteCandle[]> {
         return [];
     }
-    async hasMinuteCandlesOnDate(date: string): Promise<boolean> {
-        return this.existing.has(date);
+    async getMinuteStockCodesOnDate(date: string): Promise<string[]> {
+        return this.storedByDate[date] ?? [];
     }
     async deleteMinuteCandlesOnDate(date: string): Promise<number> {
         this.deletes.push(date);
@@ -137,34 +138,33 @@ describe("backfill", () => {
         // latest(오늘)가 과거 range.to 보다 뒤 → skip-if-present 로 일봉 스윕 생략. 과거 시딩엔 overwrite 필요.
         const { collector } = makeCollector({
             codes: ["A"],
-            byDate: { "2026-06-25": [daily("A", "2026-06-25", dbar("100"))] },
+            byDate: { "2026-06-25": [daily("A", "2026-06-25", dbar("100", "100", "30000000000"))] },
             latest: "2026-06-30",
         });
         const r = await collector.backfill({ from: "2026-06-24", to: "2026-06-26" });
         expect(r.dailyRefreshed).toBe(false);
-        expect(r.tradingDays).toBe(1); // 일봉 있는 25만 분봉 수집
+        expect(r.tradingDays).toBe(1); // 일봉 있는 25만 분봉 수집(A 는 ≥200억 후보)
     });
 
     it("overwrite=true → 일봉 강제 재수집 + 분봉 delete·refetch", async () => {
         const { collector, minuteRepo } = makeCollector({
             codes: ["A"],
-            byDate: { "2026-06-25": [daily("A", "2026-06-25", dbar("100"))] },
+            byDate: { "2026-06-25": [daily("A", "2026-06-25", dbar("100", "100", "30000000000"))] },
             latest: "2026-06-30",
         });
-        minuteRepo.existing.add("2026-06-25");
         const r = await collector.backfill({ from: "2026-06-24", to: "2026-06-26" }, { overwrite: true });
         expect(r.dailyRefreshed).toBe(true); // 게이트 무시하고 강제
         expect(r.skippedDays).toBe(0);
         expect(minuteRepo.deletes).toContain("2026-06-25"); // 비우고 새로(orphan 제거)
     });
 
-    it("overwrite=false: 이미 분봉 있는 날은 건너뜀(skippedDays)", async () => {
+    it("overwrite=false: 기대집합 전부 저장된 날은 완료로 건너뜀(skippedDays)", async () => {
         const { collector, minuteRepo } = makeCollector({
             codes: ["A"],
-            byDate: { "2026-06-26": [daily("A", "2026-06-26", dbar("100"))] },
+            byDate: { "2026-06-26": [daily("A", "2026-06-26", dbar("100", "100", "30000000000"))] },
             latest: "2026-06-26",
         });
-        minuteRepo.existing.add("2026-06-26");
+        minuteRepo.storedByDate["2026-06-26"] = ["A"]; // 후보 A 가 이미 저장됨 = 완료
         const r = await collector.backfill({ from: "2026-06-26", to: "2026-06-26" });
         expect(r.skippedDays).toBe(1);
         expect(minuteRepo.saves).toBe(0);
@@ -173,7 +173,7 @@ describe("backfill", () => {
     it("일봉 없는 날은 목록에서 자연 제외", async () => {
         const { collector } = makeCollector({
             codes: ["A"],
-            byDate: { "2026-06-26": [daily("A", "2026-06-26", dbar("100"))] },
+            byDate: { "2026-06-26": [daily("A", "2026-06-26", dbar("100", "100", "30000000000"))] },
             latest: "2026-06-26",
         });
         const r = await collector.backfill({ from: "2026-06-24", to: "2026-06-26" });

@@ -40,13 +40,13 @@ export class DrizzleMinuteCandleRepository implements MinuteCandleStore, MinuteR
         return rows.map(rowToMinuteCandle);
     }
 
-    async hasMinuteCandlesOnDate(date: string): Promise<boolean> {
+    async getMinuteStockCodesOnDate(date: string): Promise<string[]> {
+        // 그 날짜 파티션의 distinct 종목코드 — 재개 diff(기대집합 − 저장집합)의 저장집합.
         const rows = await this.db
-            .select({ tradeDate: minuteCandles.tradeDate })
+            .selectDistinct({ stockCode: minuteCandles.stockCode })
             .from(minuteCandles)
-            .where(eq(minuteCandles.tradeDate, date))
-            .limit(1);
-        return rows.length > 0;
+            .where(eq(minuteCandles.tradeDate, date));
+        return rows.map((r) => r.stockCode);
     }
 
     async deleteMinuteCandlesOnDate(date: string): Promise<number> {

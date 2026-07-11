@@ -30,6 +30,11 @@ export interface MinuteSweepResult {
 
 export interface MinuteSweepOptions {
     poolLimit?: number;
+    /**
+     * 스윕 대상 종목을 명시(재개용). 주면 그대로 fetch(pool 재계산 생략),
+     * 없으면 candidatesForDate 로 그 날 전체 후보를 계산해 스윕한다.
+     */
+    codes?: readonly string[];
     /** 분봉 fetch 동시 실행 상한(기본 8). 풀이 rate limit 자체 페이싱. */
     concurrency?: number;
     onFetch?: (done: number, total: number, stockCode: string) => void;
@@ -44,18 +49,27 @@ export interface MinuteSweepDeps {
 export class MinuteSweepService {
     constructor(private readonly deps: MinuteSweepDeps) {}
 
-    async sweepMinutesForDate(date: string, options: MinuteSweepOptions = {}): Promise<MinuteSweepResult> {
-        const { scanRepo, minuteProvider, minuteRepo } = this.deps;
-
-        const inputs = await buildDailyRankInputs(scanRepo, date);
-        if (inputs.length === 0) return { date, poolSize: 0, fetched: 0, stored: 0, failed: [] };
-
-        // 저장 대상 = 거래대금 ≥200억 ∪ 고가등락률 ≥10% (일봉 기준, 넓게).
-        let pool = selectDailyCandidates(inputs, {
+    /**
+     * 그 거래일 분봉 저장 대상 종목(거래대금 ≥200억 ∪ 고가등락률 ≥10%).
+     * 일봉에서 결정적으로 재계산 — 수집 완료 판정의 "기대집합"(별도 manifest 없이 저장분과 diff).
+     * 데이터 없거나 후보 0이면 [].
+     */
+    async candidatesForDate(date: string): Promise<string[]> {
+        const inputs = await buildDailyRankInputs(this.deps.scanRepo, date);
+        if (inputs.length === 0) return [];
+        return selectDailyCandidates(inputs, {
             amountRankN: NO_RANK,
             highRateCutPercent: GAINER_RATE_PERCENT,
             amountFloorWon: STORE_AMOUNT_FLOOR_WON,
         });
+    }
+
+    async sweepMinutesForDate(date: string, options: MinuteSweepOptions = {}): Promise<MinuteSweepResult> {
+        const { minuteProvider, minuteRepo } = this.deps;
+
+        // codes 주면 그대로(재개), 없으면 그 날 전체 후보 계산.
+        let pool = options.codes ? [...options.codes] : await this.candidatesForDate(date);
+        if (pool.length === 0) return { date, poolSize: 0, fetched: 0, stored: 0, failed: [] };
         if (options.poolLimit) pool = pool.slice(0, options.poolLimit);
 
         const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;

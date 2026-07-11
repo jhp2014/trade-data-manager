@@ -21,8 +21,12 @@ export interface DailyCandleStore {
  */
 export interface MinuteCandleStore {
     saveMinuteCandles(candles: MinuteCandle[]): Promise<void>;
-    /** 그 거래일에 분봉이 하나라도 저장돼 있는가. collect 의 재수집 건너뛰기(overwrite=false) 판단용. */
-    hasMinuteCandlesOnDate(date: string): Promise<boolean>;
+    /**
+     * 그 거래일에 분봉이 저장된 종목코드들(distinct). collect 의 재개 판단용:
+     * 기대집합(일봉 재계산 후보) − 이 저장집합 = 아직 못 받은 종목. 부분 실패가 다음 실행에서 이어짐.
+     * (예전 hasMinuteCandlesOnDate 는 "1건이라도 있으면 완료"라 부분 상태를 영구 누락으로 굳혔다.)
+     */
+    getMinuteStockCodesOnDate(date: string): Promise<string[]>;
     /** 그 거래일 전체 분봉 삭제(overwrite=true 시 비우고 새로 — orphan 방지). 삭제한 행 수. */
     deleteMinuteCandlesOnDate(date: string): Promise<number>;
 }
