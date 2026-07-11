@@ -7,6 +7,7 @@ import type {
 } from "@trade-data-manager/market";
 import type { HypothesisFilter } from "@trade-data-manager/wire";
 import { HYPOTHESIS_FILTER_REPO } from "../tokens.js";
+import { assertFilterExpr } from "../validation.js";
 
 interface SaveFilterBody {
     name: string;
@@ -33,8 +34,8 @@ export class HypothesisFilterController {
     async save(@Body() body: SaveFilterBody): Promise<HypothesisFilter> {
         const name = body?.name?.trim();
         if (!name) throw new BadRequestException("name 필수");
-        if (!body?.expr || !Array.isArray(body.expr.groups)) throw new BadRequestException("expr.groups 필수");
-        return toWire(await this.repo.save(name, body.expr));
+        const expr = assertFilterExpr(body?.expr);
+        return toWire(await this.repo.save(name, expr));
     }
 
     @Delete(":id")
