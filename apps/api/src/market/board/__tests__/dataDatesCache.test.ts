@@ -65,6 +65,18 @@ describe("DataDatesCache", () => {
         expect(persisted).toMatchObject({ maxDate: "2025-07-03", checkedAt: today() });
     });
 
+    it("손상 파일(JSON 아님)은 miss 처리 — 삭제 후 cold 전체 스캔으로 자가치유", async () => {
+        await fs.mkdir(path.dirname(cacheFile), { recursive: true });
+        await fs.writeFile(cacheFile, "{ 잘린 json", "utf8");
+        const reader = new FakeReader(() => ["2025-07-01"]);
+        const cache = new DataDatesCache(reader, cacheFile);
+
+        expect(await cache.listDataDates()).toEqual(["2025-07-01"]);
+        expect(reader.calls).toEqual([undefined]); // 손상 = 파일 없음과 동일하게 전체 스캔
+        // 재생성된 파일은 정상
+        expect(JSON.parse(await fs.readFile(cacheFile, "utf8")).dates).toEqual(["2025-07-01"]);
+    });
+
     it("꼬리 증분에 새 날짜가 없으면 목록 유지 + checkedAt 만 갱신", async () => {
         await fs.mkdir(path.dirname(cacheFile), { recursive: true });
         await fs.writeFile(

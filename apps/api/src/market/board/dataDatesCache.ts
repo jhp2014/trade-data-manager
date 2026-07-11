@@ -60,7 +60,10 @@ export class DataDatesCache implements DataDateReader {
             return JSON.parse(await fs.readFile(this.cacheFile, "utf8")) as CacheFile;
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-            throw err;
+            // 손상(JSON 실패 등) — throw 로 날짜피커를 영구히 막는 대신 치우고 cold 재빌드(자가치유).
+            console.warn(`[data-dates] 손상 캐시 삭제 후 재빌드: ${this.cacheFile}`, err);
+            await fs.rm(this.cacheFile, { force: true });
+            return null;
         }
     }
 

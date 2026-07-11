@@ -39,14 +39,19 @@ function filePath(date: string): string {
     return path.join(CACHE_ROOT, `${date}.json.gz`);
 }
 
-/** 파일에서 스냅샷을 읽는다. 없으면 null(ENOENT). */
+/** 파일에서 스냅샷을 읽는다. 없으면 null(ENOENT). 손상(gunzip/JSON 실패)이면 삭제 후 null — 재빌드가 자가치유. */
 export async function readSnapshot(date: string): Promise<DaySnapshotFile | null> {
+    const fp = filePath(date);
     try {
-        const buf = await fs.readFile(filePath(date));
+        const buf = await fs.readFile(fp);
         return JSON.parse((await gunzipAsync(buf)).toString("utf8")) as DaySnapshotFile;
     } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-        throw err;
+        // 원자적 write 밖의 손상(디스크 오류·수동 편집·구버전 포맷) — throw 로 그 날짜를 영구히 막는 대신
+        // 손상 파일을 치우고 miss 처리해 다음 빌드가 재생성하게 한다.
+        console.warn(`[day-snapshot] 손상 캐시 삭제 후 재빌드: ${fp}`, err);
+        await fs.rm(fp, { force: true });
+        return null;
     }
 }
 
