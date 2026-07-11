@@ -2,7 +2,7 @@ import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/com
 import type { NewsHeadline, StockNewsReader } from "@trade-data-manager/market";
 import type { HtsNewsItem } from "@trade-data-manager/wire";
 import { STOCK_NEWS_REPO } from "../tokens.js";
-import { assertYmd } from "../validation.js";
+import { assertYmd, assertStockCode } from "../validation.js";
 
 const SRNO_RE = /^\d+$/;
 const DEFAULT_LIMIT = 30;
@@ -30,7 +30,8 @@ export class NewsController {
         @Query("limit") limit?: string,
     ): Promise<HtsNewsItem[]> {
         const validDate = assertYmd(date);
-        if (!code) return [];
+        if (!code) return []; // code 미지정 = 합법(종목 미선택) — 지정됐으면 표준형 검증
+        assertStockCode(code);
 
         // 커서 페이징 — beforeDate/beforeSrno 둘 다 있어야 유효.
         if (beforeDate || beforeSrno) {

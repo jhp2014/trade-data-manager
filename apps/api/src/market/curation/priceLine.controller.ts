@@ -3,7 +3,7 @@ import type { PriceLine, PriceLinedStock, PriceLineField, PriceLineReader, Price
 import type { AddPriceLineInput } from "@trade-data-manager/wire";
 import { PRICE_LINE_REPO, MASTER_CACHE } from "../tokens.js";
 import { MasterCache } from "../board/masterCache.js";
-import { assertYmd, assertHms } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
 const FIELDS = new Set<PriceLineField>(["high", "low", "open", "close"]);
 
@@ -28,13 +28,12 @@ export class PriceLineController {
 
     @Get()
     list(@Query("code") code?: string, @Query("date") date?: string): Promise<PriceLine[]> {
-        if (!code) throw new BadRequestException("code 필수");
-        return this.repo.listByChart(code, assertYmd(date));
+        return this.repo.listByChart(assertStockCode(code), assertYmd(date));
     }
 
     @Post()
     async add(@Body() body: AddPriceLineInput): Promise<PriceLine> {
-        if (!body?.stockCode) throw new BadRequestException("stockCode 필수");
+        const stockCode = assertStockCode(body?.stockCode, "stockCode");
         assertYmd(body.date);
         assertYmd(body.anchorDate, "anchorDate");
         if (body.anchorTime != null) assertHms(body.anchorTime, "anchorTime");
@@ -42,7 +41,7 @@ export class PriceLineController {
         if (!FIELDS.has(field)) throw new BadRequestException("field 는 high|low|open|close");
         const [created] = await this.repo.add([
             {
-                stockCode: body.stockCode,
+                stockCode,
                 date: body.date,
                 anchorDate: body.anchorDate,
                 anchorTime: body.anchorTime,

@@ -1,9 +1,8 @@
-import { Controller, Get, Post, Inject, Query, Body, BadRequestException } from "@nestjs/common";
+import { Controller, Get, Post, Inject, Query, Body } from "@nestjs/common";
 import type { DailyComment, DailyCommentReader, DailyCommentStore } from "@trade-data-manager/market";
-import { toCanonical } from "@trade-data-manager/broker";
 import type { DailyCommentDto, UpsertDailyCommentInput } from "@trade-data-manager/wire";
 import { DAILY_COMMENT_REPO } from "../tokens.js";
-import { assertYmd } from "../validation.js";
+import { assertYmd, assertStockCode } from "../validation.js";
 
 // /comment — 당일 종목 코멘트(DB curation.daily_comments) 읽기·편집. (date, code) 자연키 = 종목당 당일 1개.
 //   GET  /comment?date=&code=  종목 우클릭 팝업 프리필 — 그 (날짜,종목)의 코멘트(없으면 null)
@@ -17,8 +16,7 @@ export class CommentController {
 
     @Get()
     async get(@Query("date") date?: string, @Query("code") code?: string): Promise<DailyCommentDto | null> {
-        if (!code) throw new BadRequestException("code 필수");
-        const canon = toCanonical(code);
+        const canon = assertStockCode(code);
         const rows = await this.repo.getByDate(assertYmd(date));
         const hit = rows.find((r) => r.stockCode === canon);
         return hit ? { comment: hit.comment, author: hit.author } : null;
@@ -26,9 +24,8 @@ export class CommentController {
 
     @Post()
     async upsert(@Body() body: UpsertDailyCommentInput): Promise<{ ok: true }> {
-        if (!body?.code) throw new BadRequestException("code 필수");
-        const date = assertYmd(body.date);
-        const code = toCanonical(body.code);
+        const date = assertYmd(body?.date);
+        const code = assertStockCode(body?.code);
         const comment = (body.comment ?? "").trim();
         if (comment === "") {
             await this.repo.remove(date, code); // 빈 코멘트 = 삭제(도메인 규약)

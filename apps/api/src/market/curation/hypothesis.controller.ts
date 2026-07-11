@@ -7,7 +7,7 @@ import type {
 } from "@trade-data-manager/market";
 import type { Hypothesis, HypothesisLink, HypothesisRelation } from "@trade-data-manager/wire";
 import { HYPOTHESIS_REPO } from "../tokens.js";
-import { assertYmd, assertHms } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
 interface CreateHypothesisBody {
     text: string;
@@ -96,8 +96,8 @@ export class HypothesisController {
         @Query("date") date?: string,
         @Query("time") time?: string,
     ): Promise<{ ok: true }> {
-        if (!hypothesisId || !code) throw new BadRequestException("hypothesisId·code 필수");
-        await this.repo.unlink({ hypothesisId, stockCode: code, date: assertYmd(date), time: assertHms(time) });
+        if (!hypothesisId) throw new BadRequestException("hypothesisId 필수");
+        await this.repo.unlink({ hypothesisId, stockCode: assertStockCode(code), date: assertYmd(date), time: assertHms(time) });
         return { ok: true };
     }
 
@@ -117,13 +117,12 @@ export class HypothesisController {
     }
 }
 
-/** 링크 바디 검증 — hypothesisId·stockCode 필수 + 날짜/시각 유효성. */
+/** 링크 바디 검증 — hypothesisId 필수 + 종목코드 표준형 + 날짜/시각 유효성. */
 function assertLink(body: LinkBody): HypothesisLink {
     if (!body?.hypothesisId) throw new BadRequestException("hypothesisId 필수");
-    if (!body?.stockCode) throw new BadRequestException("stockCode 필수");
     return {
         hypothesisId: body.hypothesisId,
-        stockCode: body.stockCode,
+        stockCode: assertStockCode(body?.stockCode, "stockCode"),
         date: assertYmd(body.date),
         time: assertHms(body.time),
     };

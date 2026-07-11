@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BadRequestException } from "@nestjs/common";
-import { assertYmd, assertHms, assertFilterExpr } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode, assertFilterExpr } from "../validation.js";
 
 describe("assertYmd", () => {
     it("유효 날짜는 그대로 반환", () => {
@@ -24,6 +24,24 @@ describe("assertHms", () => {
         expect(() => assertHms("9:0:0")).toThrow(BadRequestException);
         expect(() => assertHms("24:00:00")).toThrow(BadRequestException);
         expect(() => assertHms("09:60:00")).toThrow(BadRequestException);
+    });
+});
+
+describe("assertStockCode", () => {
+    it("표준형은 그대로 반환(KRX 영숫자 포함)", () => {
+        expect(assertStockCode("005930")).toBe("005930");
+        expect(assertStockCode("0007C0")).toBe("0007C0"); // KRX 숫자고갈 영숫자 코드
+    });
+    it("비표준 표현은 보정 없이 400 — 정규화는 ingestion 경계의 몫", () => {
+        expect(() => assertStockCode(undefined)).toThrow(BadRequestException);
+        expect(() => assertStockCode("")).toThrow(BadRequestException);
+        expect(() => assertStockCode("5930")).toThrow(BadRequestException); // 앞0 생략
+        expect(() => assertStockCode("A005930")).toThrow(BadRequestException); // A접두
+        expect(() => assertStockCode("005930_AL")).toThrow(BadRequestException); // 거래소 접미
+        expect(() => assertStockCode("hello")).toThrow(BadRequestException);
+    });
+    it("field 이름이 에러 메시지에 반영", () => {
+        expect(() => assertStockCode(undefined, "stockCode")).toThrow(/stockCode/);
     });
 });
 

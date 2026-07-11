@@ -2,7 +2,7 @@
 // @tdm/google SheetsClient(OAuth)로 탭을 읽어 헤더별칭 파싱(matrixToObjects) → toCanonical → ThemeMember[].
 // 쓰기는 헤더행을 읽어 컬럼을 맞춘 뒤 1행 append(컬럼순서 무관). 시트/탭 선택은 config(생성자)로만 —
 // 코어 포트는 무인자 load()/addMember() 유지. market-eye sheetsThemeSource.ts 재구성.
-import type { ThemeMember, ThemeMembershipProvider, ThemeMembershipStore } from "@trade-data-manager/market";
+import { isCanonicalStockCode, type ThemeMember, type ThemeMembershipProvider, type ThemeMembershipStore } from "@trade-data-manager/market";
 import { matrixToObjects, headerIndexMap, type AliasMap } from "@trade-data-manager/google/sheets/matrix";
 import { toCanonical } from "./codes.js";
 import type { ThemeSheetConfig } from "./sheetConfig.js";
@@ -39,6 +39,12 @@ export class SheetThemeMembershipAdapter implements ThemeMembershipProvider, The
             const theme = o.theme ?? "";
             const code = toCanonical(o.code ?? "");
             if (!theme || !code) continue; // theme·code 필수(둘 중 하나 비면 무효 행)
+            // toCanonical 은 손실 가능한 표현 변환기(검증기 아님) — 표준 6자리가 못 되는 행은 격리(skip+로그).
+            // "core 에는 항상 표준형만 들어온다"는 전제를 ingestion 경계에서 실제로 강제한다.
+            if (!isCanonicalStockCode(code)) {
+                console.warn(`[theme-sheet] 비표준 종목코드 행 skip: "${o.code}" (테마 ${theme})`);
+                continue;
+            }
             const m: ThemeMember = { theme, code };
             if (o.name) m.name = o.name;
             if (o.issue) m.issue = o.issue;
@@ -56,6 +62,7 @@ export class SheetThemeMembershipAdapter implements ThemeMembershipProvider, The
         const theme = member.theme.trim();
         const code = toCanonical(member.code);
         if (!theme || !code) throw new Error("테마 배정: theme·code 필수");
+        if (!isCanonicalStockCode(code)) throw new Error(`테마 배정: 비표준 종목코드 "${member.code}"`); // 쓰기는 조용히 skip 대신 실패를 드러냄
 
         const rows = await this.source.readMatrix(this.config.spreadsheetId, this.config.tab);
         const header = rows[0]?.length ? rows[0] : DEFAULT_HEADER;

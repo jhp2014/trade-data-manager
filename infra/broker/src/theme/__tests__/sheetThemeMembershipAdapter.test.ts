@@ -65,6 +65,16 @@ describe("SheetThemeMembershipAdapter", () => {
         expect(m).toEqual([{ theme: "HBM", code: "000660" }]);
     });
 
+    it("toCanonical 후에도 표준형이 못 되는 코드 행은 skip(격리) — 손실 변환 결과가 core 로 새지 않게", async () => {
+        const m = await load([
+            ["테마", "종목코드"],
+            ["HBM", "hello"], // → "HELLO"(5자) 비표준
+            ["HBM", "A?X"], // → "?X" 비표준
+            ["HBM", "000660"],
+        ]);
+        expect(m).toEqual([{ theme: "HBM", code: "000660" }]);
+    });
+
     it("헤더만 / 빈 매트릭스 → 빈 배열", async () => {
         expect(await load([["테마", "종목코드"]])).toEqual([]);
         expect(await load([])).toEqual([]);
@@ -98,6 +108,12 @@ describe("SheetThemeMembershipAdapter.addMember", () => {
     it("theme·code 비면 append 안 하고 throw", async () => {
         const s = src([["테마", "종목코드"]]);
         await expect(new SheetThemeMembershipAdapter(s, cfg).addMember({ theme: "  ", code: "660" })).rejects.toThrow();
+        expect(s.appends).toHaveLength(0);
+    });
+
+    it("정규화 후에도 비표준 코드는 append 안 하고 throw(쓰기는 조용히 skip 대신 실패)", async () => {
+        const s = src([["테마", "종목코드"]]);
+        await expect(new SheetThemeMembershipAdapter(s, cfg).addMember({ theme: "HBM", code: "hello" })).rejects.toThrow(/비표준/);
         expect(s.appends).toHaveLength(0);
     });
 });

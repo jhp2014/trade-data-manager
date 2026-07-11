@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Inject, Query, Body, BadRequestException } from "@nestjs/common";
 import { kstToday, type ThemeMembershipStore } from "@trade-data-manager/market";
-import { toCanonical } from "@trade-data-manager/broker";
 import type { ThemeContext, AssignThemeInput, AssignThemeResult } from "@trade-data-manager/wire";
+import { assertStockCode } from "../validation.js";
 import { MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE } from "../tokens.js";
 import type { MasterCache } from "./masterCache.js";
 import type { CachedMembership } from "./cachedMembership.js";
@@ -20,8 +20,7 @@ export class ThemeController {
 
     @Get("members")
     async members(@Query("code") code?: string): Promise<ThemeContext> {
-        if (!code) throw new BadRequestException("code 필수");
-        const canon = toCanonical(code);
+        const canon = assertStockCode(code);
         const all = await this.membership.load();
         const current = all.filter((m) => m.code === canon); // 결정(a): 중복행도 그대로 노출(시트 진실)
         const allThemes = [...new Set(all.map((m) => m.theme))].sort((a, b) => a.localeCompare(b, "ko"));
@@ -31,9 +30,8 @@ export class ThemeController {
     @Post("members")
     async assign(@Body() body: AssignThemeInput): Promise<AssignThemeResult> {
         const theme = body?.theme?.trim();
-        if (!body?.code) throw new BadRequestException("code 필수");
         if (!theme) throw new BadRequestException("theme 필수");
-        const code = toCanonical(body.code);
+        const code = assertStockCode(body?.code);
         const all = await this.membership.load();
         if (all.some((m) => m.code === code && m.theme === theme)) return { assigned: false }; // 이미 그 테마 → 시트 중복행 방지
         const issue = body.issue?.trim() || undefined; // 편입이슈(선택) — 새 배정 행에만 기록

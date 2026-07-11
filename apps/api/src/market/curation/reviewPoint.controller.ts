@@ -1,9 +1,9 @@
-import { Controller, Get, Post, Delete, Inject, Query, Body, BadRequestException } from "@nestjs/common";
+import { Controller, Get, Post, Delete, Inject, Query, Body } from "@nestjs/common";
 import type { ReviewPoint, ReviewPointListItem, ReviewPointReader, ReviewPointStore } from "@trade-data-manager/market";
 import type { UpsertReviewPointInput } from "@trade-data-manager/wire";
 import { REVIEW_POINT_REPO, MASTER_CACHE } from "../tokens.js";
 import { MasterCache } from "../board/masterCache.js";
-import { assertYmd, assertHms } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
 // 복기 타점 CRUD — 차트에서 스페이스바로 찍는 관찰 지점. 자연키 (stockCode, date, time) = caseId.
 // price-line 과 달리 surrogate id 가 없어 삭제도 자연키(query)로 지목한다.
@@ -27,17 +27,16 @@ export class ReviewPointController {
 
     @Get()
     list(@Query("code") code?: string, @Query("date") date?: string): Promise<ReviewPoint[]> {
-        if (!code) throw new BadRequestException("code 필수");
-        return this.repo.listByChart(code, assertYmd(date));
+        return this.repo.listByChart(assertStockCode(code), assertYmd(date));
     }
 
     @Post()
     async upsert(@Body() body: UpsertReviewPointInput): Promise<ReviewPoint> {
-        if (!body?.stockCode) throw new BadRequestException("stockCode 필수");
+        const stockCode = assertStockCode(body?.stockCode, "stockCode");
         assertYmd(body.date);
         assertHms(body.time);
         const point: ReviewPoint = {
-            stockCode: body.stockCode,
+            stockCode,
             date: body.date,
             time: body.time,
             type: body.type,
@@ -54,8 +53,7 @@ export class ReviewPointController {
         @Query("date") date?: string,
         @Query("time") time?: string,
     ): Promise<{ ok: true }> {
-        if (!code) throw new BadRequestException("code 필수");
-        await this.repo.remove(code, assertYmd(date), assertHms(time));
+        await this.repo.remove(assertStockCode(code), assertYmd(date), assertHms(time));
         return { ok: true };
     }
 }

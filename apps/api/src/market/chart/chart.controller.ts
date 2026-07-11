@@ -1,6 +1,6 @@
-import { Controller, Get, Inject, Query, BadRequestException } from "@nestjs/common";
+import { Controller, Get, Inject, Query } from "@nestjs/common";
 import { CHART_READER } from "../tokens.js";
-import { assertYmd } from "../validation.js";
+import { assertYmd, assertStockCode } from "../validation.js";
 import type { ChartBundle, ChartReadModel } from "./chartReadModel.js";
 
 // GET /chart?code&date → 일봉 2년 + 당일 dense 분봉 raw 번들. 읽기=GET.
@@ -11,7 +11,6 @@ export class ChartController {
 
     @Get()
     chartByCode(@Query("code") code?: string, @Query("date") date?: string): Promise<ChartBundle> {
-        if (!code) throw new BadRequestException("code 필수");
-        return this.reader.chartByCode(code, assertYmd(date));
+        return this.reader.chartByCode(assertStockCode(code), assertYmd(date));
     }
 }

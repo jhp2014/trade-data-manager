@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -31,15 +30,6 @@ const chipStyle: React.CSSProperties = {
     font: "inherit",
 };
 const sep: React.CSSProperties = { color: "var(--border-default)" };
-const inputStyle: React.CSSProperties = {
-    border: "1px solid var(--border-default)",
-    borderRadius: 5,
-    padding: "1px 6px",
-    background: "var(--bg-primary)",
-    color: "var(--text-primary)",
-    font: "inherit",
-    width: 90,
-};
 function textBtn(active = false): React.CSSProperties {
     return {
         background: active ? "var(--bg-tertiary)" : "none",
@@ -52,36 +42,16 @@ function textBtn(active = false): React.CSSProperties {
     };
 }
 
-// 종목 — 텍스트(코드+이름)로 보이다 클릭하면 인라인 입력.
+// 종목 — 현재 Focus 종목 표시 전용(코드+이름). 종목 이동은 보드/작업셋/차트에서만 —
+// 자유 타이핑 입력을 없애 focus.code 에는 항상 API 응답발 표준 6자리 코드만 흐른다(strict 검증 전제).
 function CodeControl(): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
-    const setCode = useWorkbench((s) => s.setCode);
-    const [editing, setEditing] = useState(false);
     const meta = useQuery(stockMetaQuery(code));
     const name = meta.data?.[0]?.name;
-    if (editing) {
-        const commit = (v: string): void => {
-            setCode(v.trim());
-            setEditing(false);
-        };
-        return (
-            <input
-                autoFocus
-                defaultValue={code}
-                onBlur={(e) => commit(e.target.value)}
-                onKeyDown={(e) => {
-                    if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
-                    else if (e.key === "Escape") setEditing(false);
-                }}
-                placeholder="005930"
-                style={inputStyle}
-            />
-        );
-    }
     return (
-        <button onClick={() => setEditing(true)} title="종목 변경" style={textBtn()}>
+        <span title="현재 종목(보드/작업셋/차트에서 이동)" style={{ ...textBtn(), cursor: "default" }}>
             {code ? (name ? `${code} ${name}` : code) : "종목"}
-        </button>
+        </span>
     );
 }
 
