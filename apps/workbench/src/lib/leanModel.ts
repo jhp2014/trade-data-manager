@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchDayReplay, type DayReplay, type MinuteDerived, type ReplayStock } from "../api/dayReplay.js";
+import { histStale } from "../api/queries.js";
 
 export interface Snapshot {
     code: string;
@@ -49,13 +50,14 @@ export function boardTimeBounds(reduction: DayReplay): { start: number; end: num
     return { start: Number.isFinite(start) ? start : 0, end };
 }
 
-// 역사 데이터 immutable → staleTime∞, gcTime 넉넉(브라우저 ~10거래일 캐시). 복기보드 전용(테마보드는 day-summary folding).
+// 과거 날짜만 immutable → staleTime∞(histStale — 오늘은 수집중일 수 있어 1분), gcTime 넉넉(브라우저 ~10거래일 캐시).
+// 복기보드 전용(테마보드는 day-summary folding).
 export function useDayReplay(date: string): UseQueryResult<DayReplay> {
     return useQuery({
         queryKey: ["day-replay", date],
         queryFn: ({ signal }) => fetchDayReplay(date, signal),
         enabled: date.length > 0,
-        staleTime: Infinity,
+        staleTime: histStale(date),
         gcTime: 60 * 60_000,
     });
 }

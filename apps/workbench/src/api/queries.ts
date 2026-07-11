@@ -13,15 +13,21 @@ import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
 import { fetchDataDates } from "./dataDates.js";
+import { kstToday } from "../lib/date.js";
 
 const IMMUTABLE = Infinity;
 const META_STALE = 30 * 60_000; // 마스터 메타 — 미수집 코드가 sticky-null 로 굳지 않게 30분마다 재시도 허용
+const TODAY_STALE = 60_000; // 오늘 시세 — 수집(20:30 스윕) 중 빈/부분 응답이 세션 내내 굳지 않게 1분 후 재조회 허용
+
+// 시세 역사(chart·day-summary·day-replay)는 **과거 날짜만** 불변 — 오늘은 수집이 채우는 중일 수 있다.
+// (주석/가설류는 날짜 무관하게 편집형이지만 mutation 이 invalidate 하므로 ∞ 유지.)
+export const histStale = (date: string): number => (date < kstToday() ? IMMUTABLE : TODAY_STALE);
 
 export const chartQuery = (code: string, date: string) =>
-    queryOptions({ queryKey: ["chart", code, date], queryFn: ({ signal }) => fetchChart(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["chart", code, date], queryFn: ({ signal }) => fetchChart(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: histStale(date) });
 
 export const daySummaryQuery = (date: string) =>
-    queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: histStale(date) });
 
 export const priceLinesQuery = (code: string, date: string) =>
     queryOptions({ queryKey: ["price-lines", code, date], queryFn: ({ signal }) => fetchPriceLines(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
