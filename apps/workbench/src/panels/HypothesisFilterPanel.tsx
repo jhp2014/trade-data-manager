@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, pointerWithin, useSensor, useSensors, useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 import { unknownFilterIds, type FilterLeaf } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
+import { loadJson, saveJson } from "../store/persist.js";
 import { hypothesesQuery, hypothesisFiltersQuery } from "../api/queries.js";
 import { saveHypothesisFilter, deleteHypothesisFilter } from "../api/hypothesisFilters.js";
 
@@ -15,13 +16,7 @@ import { saveHypothesisFilter, deleteHypothesisFilter } from "../api/hypothesisF
 
 type Orientation = "vertical" | "horizontal";
 const ORIENT_KEY = "wb.hypFilterOrientation";
-function loadOrientation(): Orientation {
-    try {
-        return localStorage.getItem(ORIENT_KEY) === "horizontal" ? "horizontal" : "vertical";
-    } catch {
-        return "vertical";
-    }
-}
+const loadOrientation = (): Orientation => loadJson(ORIENT_KEY, (o) => (o === "horizontal" ? ("horizontal" as const) : null)) ?? "vertical";
 
 export function HypothesisFilterPanel(): JSX.Element {
     const draft = useWorkbench((s) => s.filterDraft);
@@ -82,11 +77,7 @@ export function HypothesisFilterPanel(): JSX.Element {
     const toggleOrientation = (): void =>
         setOrientation((o) => {
             const next: Orientation = o === "vertical" ? "horizontal" : "vertical";
-            try {
-                localStorage.setItem(ORIENT_KEY, next);
-            } catch {
-                /* noop */
-            }
+            saveJson(ORIENT_KEY, next);
             return next;
         });
 
