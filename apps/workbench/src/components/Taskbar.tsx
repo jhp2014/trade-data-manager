@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi } from "../store/ui.js";
-import { PANEL_CATALOG, type PanelEntry } from "../shell/panelCatalog.js";
+import { PANEL_CATALOG, type PanelEntry, type PanelPlane } from "../shell/panelCatalog.js";
 import { stockMetaQuery } from "../api/queries.js";
 import { DatePicker } from "./DatePicker.js";
 import { Popover } from "./Popover.js";
@@ -29,6 +29,13 @@ const chipStyle: React.CSSProperties = {
     cursor: "pointer",
     font: "inherit",
 };
+// 플레인별 최소화 칩 — 테두리·글자를 플레인 색(실시간 앰버 / 복기·분석 teal)으로.
+function planeChip(plane: PanelPlane): React.CSSProperties {
+    return { ...chipStyle, border: `1px dashed var(--plane-${plane})`, color: `var(--plane-${plane})` };
+}
+function planeLabel(plane: PanelPlane): React.CSSProperties {
+    return { fontSize: 10.5, fontWeight: 700, color: `var(--plane-${plane})` };
+}
 const sep: React.CSSProperties = { color: "var(--border-default)" };
 function textBtn(active = false): React.CSSProperties {
     return {
@@ -90,11 +97,19 @@ export function Taskbar(): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
     const setDate = useWorkbench((s) => s.setDate);
     const openSettings = useUi((s) => s.openSettings);
-    // 카탈로그에 있으나 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움.
+    // 카탈로그에 있으나 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움. 플레인별로 나눠 그룹 표시.
     const closed = openPanelIds === null ? [] : PANEL_CATALOG.filter((p) => !openPanelIds.includes(p.id));
+    const liveClosed = closed.filter((p) => p.plane === "live");
+    const eodClosed = closed.filter((p) => p.plane === "eod");
     const reopen = (e: PanelEntry): void => {
         api?.addPanel({ id: e.id, component: e.component, title: e.title });
     };
+    const chips = (items: PanelEntry[], plane: PanelPlane): JSX.Element[] =>
+        items.map((e) => (
+            <button key={e.id} onClick={() => reopen(e)} title="다시 열기" style={planeChip(plane)}>
+                {e.title}
+            </button>
+        ));
     return (
         <div
             style={{
@@ -134,11 +149,19 @@ export function Taskbar(): JSX.Element {
                 <>
                     <span style={sep}>│</span>
                     <span>최소화</span>
-                    {closed.map((e) => (
-                        <button key={e.id} onClick={() => reopen(e)} title="다시 열기" style={chipStyle}>
-                            {e.title}
-                        </button>
-                    ))}
+                    {liveClosed.length > 0 && (
+                        <>
+                            <span style={planeLabel("live")}>실시간</span>
+                            {chips(liveClosed, "live")}
+                        </>
+                    )}
+                    {liveClosed.length > 0 && eodClosed.length > 0 && <span style={sep}>│</span>}
+                    {eodClosed.length > 0 && (
+                        <>
+                            <span style={planeLabel("eod")}>복기·분석</span>
+                            {chips(eodClosed, "eod")}
+                        </>
+                    )}
                 </>
             )}
             {/* 우측 구석: 종목 · 날짜 · 시간 · 설정 */}

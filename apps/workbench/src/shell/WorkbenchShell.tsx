@@ -20,7 +20,7 @@ import { BoardFilterPanel, ReplayFilterPanel, LiveFilterPanel } from "../panels/
 import { HtsNewsPanel } from "../panels/HtsNewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { useDock } from "../store/dock.js";
-import { PANEL_CATALOG, type PanelEntry } from "./panelCatalog.js";
+import { PANEL_CATALOG, planeOf, type PanelEntry } from "./panelCatalog.js";
 
 // dockview 도킹 셸 — 패널을 컴포넌트 맵으로 등록한다(탭·분할·플로팅·persist 는 셸이 제공).
 // 레이아웃 JSON persist·기존앱 흡수는 후속.
@@ -77,8 +77,11 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
     }, [props.api]);
     // 활성 탭은 진하게(text-primary+bold), 비활성은 text-secondary. 커스텀 탭이라 색을 직접 준다(div→자식 상속).
     const color = active ? "var(--text-primary)" : "var(--text-secondary)";
+    // 플레인 점 — 실시간(앰버)/복기·분석(teal) 구분. 비활성 탭은 살짝 흐리게.
+    const dot = `var(--plane-${planeOf(props.api.id)})`;
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: dot, flexShrink: 0, opacity: active ? 1 : 0.6 }} />
             <span style={{ fontWeight: active ? 600 : 400 }}>{title}</span>
             <button
                 onClick={(e) => {

@@ -18,6 +18,11 @@
     --rise: #ef4444;
     --fall: #3b82f6;
     --neutral: #8b95a1;
+    /* 플레인 액센트 — 실시간(브로커 라이브) vs 복기·분석(DB). 작업표시줄 그룹·탭 점 색 구분. */
+    --plane-live: #e07b1a;
+    --plane-live-soft: #fbeede;
+    --plane-eod: #16796f;
+    --plane-eod-soft: #e7f5f2;
     --chart-bg: #101418;
     --chart-grid: #242b33;
     --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
