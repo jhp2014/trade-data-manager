@@ -15,12 +15,13 @@ interface DrawTarget {
     useBitmapCoordinateSpace(f: (scope: BitmapScope) => void): void;
 }
 
-/** 그릴 세로선 1개 — 시각(unix초) + 색·굵기·파선 여부. */
+/** 그릴 세로선 1개 — 시각(unix초) + 색·굵기·파선 여부 + 선택 라벨(상단 텍스트). */
 export interface VertLineSpec {
     time: UTCTimestamp;
     color: string;
     width?: number; // px (기본 1)
     dashed?: boolean; // 기본 실선
+    label?: string; // 선 상단에 표시(날짜 등). 없으면 텍스트 없음.
 }
 
 /** 화면 좌표로 해소된 선(x=null 이면 범위 밖 → 생략). */
@@ -29,6 +30,7 @@ interface ResolvedLine {
     color: string;
     width: number;
     dashed: boolean;
+    label?: string;
 }
 
 class VertLinesPaneRenderer {
@@ -53,6 +55,13 @@ class VertLinesPaneRenderer {
                 ctx.moveTo(px, 0);
                 ctx.lineTo(px, scope.bitmapSize.height);
                 ctx.stroke();
+                if (l.label) {
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = l.color;
+                    ctx.font = `${Math.round(12 * ratio)}px -apple-system, system-ui, sans-serif`;
+                    ctx.textBaseline = "top";
+                    ctx.fillText(l.label, px + 4 * ratio, 4 * ratio); // 선 상단 오른쪽
+                }
             }
             ctx.restore();
         });
@@ -72,7 +81,7 @@ class VertLinesPaneView {
         const out: ResolvedLine[] = [];
         for (const l of this._source.lines) {
             const c = ts.timeToCoordinate(l.time);
-            if (c !== null) out.push({ x: c as number, color: l.color, width: l.width ?? 1, dashed: l.dashed ?? false });
+            if (c !== null) out.push({ x: c as number, color: l.color, width: l.width ?? 1, dashed: l.dashed ?? false, label: l.label });
         }
         this._resolved = out;
     }

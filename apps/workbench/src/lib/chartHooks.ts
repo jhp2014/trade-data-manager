@@ -125,7 +125,7 @@ export function useReviewPointData(code: string, date: string, time: string | nu
  */
 export function useChartHotkeys(): void {
     const code = useWorkbench((s) => s.focus.code);
-    const date = useWorkbench((s) => s.focus.date);
+    const date = useWorkbench((s) => s.search?.date ?? s.focus.date); // 검색날짜(드리프트) 우선 — 차트 분봉이 보는 날짜와 일치(타점/이동봉이 그 날짜에 작동)
     const time = useWorkbench((s) => s.focus.time);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const jumpBars = useWorkbench((s) => s.chartSettings.jumpBars);

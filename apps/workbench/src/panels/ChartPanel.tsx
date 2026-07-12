@@ -16,7 +16,8 @@ import { TrashIcon } from "../components/icons.js";
 // code/date/time 은 Focus 구독. 분봉 좌클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~9=유형 프리셋 입력.
 export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
-    const date = useWorkbench((s) => s.focus.date);
+    const anchor = useWorkbench((s) => s.focus.date); // 기준일(앵커) — 일봉 pane 중심
+    const search = useWorkbench((s) => s.search);
     const time = useWorkbench((s) => s.focus.time);
     const setTime = useWorkbench((s) => s.setTime);
     const setSearch = useWorkbench((s) => s.setSearch);
@@ -31,20 +32,24 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [showMarkers, setShowMarkers] = useState(true); // 분봉 거래대금 마커 ON/OFF
     const [showPointInfo, setShowPointInfo] = useState(true); // 현재 타점(시간선) readout — 기본 표시
 
-    const query = useQuery(chartQuery(code, date));
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
+    // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). search=null 이면 viewDate=anchor 로 동작 무변경.
+    const viewDate = search?.date ?? anchor;
+    const drifted = viewDate !== anchor;
+    const dailyQ = useQuery(chartQuery(code, anchor));
+    const minuteQ = useQuery(chartQuery(code, viewDate)); // viewDate=anchor 면 같은 쿼리(RQ dedup)
 
-    const minuteView = useMemo(() => (query.data ? deriveMinuteView(query.data, mode) : null), [query.data, mode]);
-    const dailyView = useMemo(() => (query.data ? deriveDailyView(query.data, mode) : null), [query.data, mode]);
+    const dailyView = useMemo(() => (dailyQ.data ? deriveDailyView(dailyQ.data, mode) : null), [dailyQ.data, mode]);
+    const minuteView = useMemo(() => (minuteQ.data ? deriveMinuteView(minuteQ.data, mode) : null), [minuteQ.data, mode]);
 
     const toggleExpand = (which: "daily" | "minute"): void => setView(view === which ? "both" : which);
 
     // 가격선 주석(조회·해소·토글/삭제/clear) + 복기 타점(조회·단축키·savedPoints) — 훅으로 분리.
-    const { resolvedLines, dLines, hasLines, toggleLine, removeLine, clear } = usePriceLinesForChart(code, date, dailyView, minuteView);
-    const { savedPoints, focusedPoint } = useReviewPointData(code, date, time);
+    const { resolvedLines, dLines, hasLines, toggleLine, removeLine, clear } = usePriceLinesForChart(code, viewDate, dailyView, minuteView);
+    const { savedPoints, focusedPoint } = useReviewPointData(code, viewDate, time);
 
-    // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. (단축키는 전역 useChartHotkeys)
-    const markerTime = useMemo(() => (time && date ? kstToUnix(date, time) : null), [time, date]);
+    // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준. (단축키는 전역 useChartHotkeys)
+    const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -52,7 +57,13 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 12, flexShrink: 0 }}>
                 <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>{name ?? code ?? "—"}</span>
                 {name && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{code}</span>}
-                <span style={{ color: "var(--text-tertiary)" }}>{date}</span>
+                <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{anchor}</span>
+                {drifted && (
+                    <>
+                        <span className="tabular" style={{ color: "#e07b1a", fontWeight: 600 }}>→ {viewDate.slice(5)}</span>
+                        <button onClick={() => setSearch(null)} title="기준일로 복귀" style={{ border: "none", background: "none", color: "#e07b1a", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>↺</button>
+                    </>
+                )}
                 {focusedPoint?.type && <span style={{ padding: "1px 6px", borderRadius: 4, background: "var(--accent-soft)", color: "var(--accent-hover)", fontSize: 11, fontWeight: 600 }} title="현재 타점 셋업 유형">{focusedPoint.type}</span>}
                 {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
                 {/* 뷰 토글 — 일봉만/분봉만/둘다(패널별 독립, 차트 2개면 하나는 일봉 하나는 분봉). */}
@@ -81,14 +92,14 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
             {/* 본문 */}
             <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
                 {!code && <Center text="종목을 선택하세요" />}
-                {code && query.isLoading && <Center text={`${code} 로딩중…`} />}
-                {query.isError && <Center text={`오류: ${(query.error as Error).message}`} />}
+                {code && (dailyQ.isLoading || minuteQ.isLoading) && !dailyView && <Center text={`${code} 로딩중…`} />}
+                {(dailyQ.isError || minuteQ.isError) && <Center text="오류 — 재시도 중…" />}
                 {minuteView && dailyView && (
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
                             <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 고점 선(D)">
                                 <PaneLabel text="일봉" />
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={(d) => code && setSearch({ code, date: d })} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={(d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={drifted ? viewDate : undefined} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
