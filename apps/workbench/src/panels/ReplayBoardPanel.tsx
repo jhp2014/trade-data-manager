@@ -39,7 +39,7 @@ export function ReplayBoardPanel(): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardHeader left={<span className="tabular" style={{ color: "var(--plane-eod)" }}>● {time ? time.slice(0, 5) : "장중"}</span>} count={board.stocks.length} mode={mode} setMode={setMode} />
+            <BoardHeader dotColor="var(--plane-eod)" label={time ? time.slice(0, 5) : "장중"} count={board.stocks.length} mode={mode} setMode={setMode} />
             {mode === "flat" ? (
                 <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} empty="종목 없음" />
             ) : (

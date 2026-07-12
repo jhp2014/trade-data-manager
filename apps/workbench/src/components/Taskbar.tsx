@@ -92,7 +92,7 @@ function EodPlaneCtx({ code, date, setDate, time, setTime }: {
 }): JSX.Element {
     return (
         <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--plane-eod)", flexShrink: 0, marginRight: 2 }} title="복기" />
+            <span style={{ width: 5, height: 5, borderRadius: 999, background: "var(--plane-eod)", flexShrink: 0, marginRight: 2 }} title="복기" />
             <NameCopyControl code={code} />
             <span style={sep}>·</span>
             <DatePicker value={date} onChange={setDate} />
@@ -109,9 +109,9 @@ function LivePlaneCtx({ code }: { code: string }): JSX.Element {
     const polled = snapshot?.ts ? fmtStampKo(snapshot.ts) : null;
     return (
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`실시간 연결: ${snapshot?.status ?? "끊김"}`}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: live ? "var(--plane-live)" : "var(--text-tertiary)", flexShrink: 0 }} />
+            <span style={{ width: 5, height: 5, borderRadius: 999, background: live ? "var(--plane-live)" : "var(--text-tertiary)", flexShrink: 0 }} />
             <NameCopyControl code={code} />
-            <span style={{ color: live ? "var(--plane-live)" : "var(--text-tertiary)", fontSize: 11 }}>{live ? "● 실시간" : `○ ${snapshot?.status ?? "끊김"}`}</span>
+            <span style={{ color: live ? "var(--plane-live)" : "var(--text-tertiary)", fontSize: 11 }}>{live ? "실시간" : (snapshot?.status ?? "끊김")}</span>
             {polled && <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 11 }} title="최근 폴링 시각">{polled}</span>}
         </span>
     );

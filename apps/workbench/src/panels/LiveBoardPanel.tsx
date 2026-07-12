@@ -26,7 +26,8 @@ export function LiveBoardPanel(): JSX.Element {
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
             <BoardHeader
-                left={<span style={{ color: live ? "var(--rise)" : "var(--text-tertiary)" }}>{live ? "● 실시간" : `○ ${snapshot.status}`}</span>}
+                dotColor={live ? "var(--rise)" : "var(--text-tertiary)"}
+                label={live ? "실시간" : snapshot.status}
                 count={snapshot.hot}
                 mode={mode}
                 setMode={setMode}

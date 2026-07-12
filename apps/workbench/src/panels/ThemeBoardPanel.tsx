@@ -31,7 +31,7 @@ export function ThemeBoardPanel(): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardHeader left={<span style={{ color: "var(--plane-eod)" }}>● 장 마감</span>} count={board.stocks.length} mode={mode} setMode={setMode} />
+            <BoardHeader dotColor="var(--plane-eod)" label="장 마감" count={board.stocks.length} mode={mode} setMode={setMode} />
             {mode === "flat" ? (
                 <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} empty="종목 없음" />
             ) : (

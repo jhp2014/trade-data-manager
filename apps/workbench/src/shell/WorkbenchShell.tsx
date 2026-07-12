@@ -77,12 +77,11 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
             d2.dispose();
         };
     }, [props.api]);
-    // 플레인별 탭 틴트 — 실시간=앰버 / 복기=teal, 텍스트+옅은 배경. 활성은 굵게.
+    // 플레인 탭 구분(점 없이 UI 색으로) — 실시간=앰버 / 복기=teal. 텍스트색 + 옅은 배경 + 하단 2px 색띠(배경 겹쳐도 또렷).
     const plane = planeOf(props.api.id);
     const color = `var(--plane-${plane})`;
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color, background: `var(--plane-${plane}-soft)` }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0, opacity: active ? 1 : 0.6 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color, background: `var(--plane-${plane}-soft)`, borderBottom: `2px solid ${color}` }}>
             <span style={{ fontWeight: active ? 700 : 400, opacity: active ? 1 : 0.85 }}>{title}</span>
             <button
                 onClick={(e) => {
