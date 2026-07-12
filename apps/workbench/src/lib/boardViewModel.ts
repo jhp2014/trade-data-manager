@@ -20,6 +20,7 @@ import type { DaySummary } from "../api/daySummary.js";
 import type { ReplayStock } from "../api/dayReplay.js";
 import type { ReplayBoardSettings } from "../store/workbench.js";
 import type { BoardStock } from "../components/board/BoardCard.js";
+import type { LiveStock } from "@trade-data-manager/wire";
 
 export interface BoardViewModel {
     grouped: Grouped<BoardStock>;
@@ -117,4 +118,29 @@ export function buildReplayBoardViewModel(
     }
     const byTheme = stocksByTheme(stocks);
     return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme), excludedByFilter };
+}
+
+// ── 라이브(실시간) 보드 ─────────────────────────────────────────
+/** LiveStock(실시간 스냅샷) → BoardStock. 플랫/그룹 뷰 공용 매핑. isMover 는 core 판정(시총 억원). */
+export function liveToBoardStock(s: LiveStock): BoardStock {
+    return {
+        code: s.code,
+        name: s.name,
+        market: null,
+        themes: s.themes,
+        changeRate: s.changeRate,
+        openPct: s.openPct,
+        highPct: s.highPct,
+        lowPct: s.lowPct,
+        amount: s.tradeValue * 1_000_000, // 백만원 → 원(StockRow 는 억 포맷)
+        isMover: isMover(s.marketCap || null, s.changeRate),
+        signal: s.signal ?? null,
+    };
+}
+
+/** 라이브 스냅샷 종목들 → 테마 그룹 뷰모델(BoardLayout 입력). 배제필터는 실시간 보드에 미적용(빈 Map). */
+export function buildLiveBoardViewModel(stocks: LiveStock[]): BoardViewModel {
+    const boardStocks = stocks.map(liveToBoardStock);
+    const byTheme = stocksByTheme(boardStocks);
+    return { grouped: groupStocks(byTheme, boardStocks), parents: themeParents(byTheme), excludedByFilter: new Map() };
 }

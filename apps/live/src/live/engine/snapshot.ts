@@ -1,8 +1,10 @@
 // 라이브 스냅샷 조립 — 엔진 store + 연결상태 → 직렬화 가능한 뷰(계약은 @tdm/wire).
-// 후속: signals(델타)·themeRank·흐리게(distanceToHigh) 필드 추가.
+// 후속: themeRank·흐리게(distanceToHigh) 필드 추가.
 import type { ConnectionStatus } from "@trade-data-manager/kiwoom/ws";
 import type { LiveSnapshot, LiveStock } from "@trade-data-manager/wire";
 import type { EngineStore } from "./store.js";
+import type { MembershipSource } from "./membership.js";
+import { activeDelta } from "./signals.js";
 
 const NEWLY_HOT_MS = 60_000; // 최근 60초 내 편입 = 신규(🆕)
 
@@ -12,7 +14,7 @@ function pct(v: number, base: number): number {
 }
 
 // ConnectionStatus(kiwoom/ws)와 LiveConnectionStatus(wire)는 동일 문자열 유니언 → 그대로 대입 가능.
-export function buildSnapshot(store: EngineStore, status: ConnectionStatus, now: number): LiveSnapshot {
+export function buildSnapshot(store: EngineStore, membership: MembershipSource, status: ConnectionStatus, now: number): LiveSnapshot {
     const stocks: LiveStock[] = [];
     for (const code of store.hot) {
         const q = store.quotes.get(code);
@@ -29,6 +31,8 @@ export function buildSnapshot(store: EngineStore, status: ConnectionStatus, now:
             highPct: pct(q.high, q.base),
             lowPct: pct(q.low, q.base),
             newlyHot: since != null && now - since <= NEWLY_HOT_MS,
+            themes: membership.themesOf(code),
+            signal: activeDelta(store.historyOf(code), now) ?? undefined,
         });
     }
     return { ts: now, status, hot: store.hot.size, polled: store.quotes.size, stocks };

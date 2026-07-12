@@ -9,10 +9,12 @@ import { pollQuotes } from "./poller.js";
 import { EngineStore } from "./store.js";
 import type { LiveSnapshot } from "@trade-data-manager/wire";
 import { buildSnapshot } from "./snapshot.js";
+import type { MembershipSource } from "./membership.js";
 
 export interface LiveEngineOptions {
     conditionName: string; // 스캔할 조건식 이름(영웅문 서버저장)
     pollMs?: number;
+    membershipReloadMs?: number; // 시트 멤버십 재로드 주기(기본 5분) — 배정 반영.
 }
 
 export class LiveEngine extends EventEmitter {
@@ -24,15 +26,19 @@ export class LiveEngine extends EventEmitter {
 
     private readonly conditionName: string;
     private readonly pollMs: number;
+    private readonly membershipReloadMs: number;
+    private lastMembershipMs = 0; // 마지막 멤버십 로드 시각 — 재로드 throttle 기준.
 
     constructor(
         private readonly kiwoom: Kiwoom,
         private readonly ws: KiwoomWs,
+        private readonly membership: MembershipSource,
         opts: LiveEngineOptions,
     ) {
         super();
         this.conditionName = opts.conditionName;
         this.pollMs = opts.pollMs ?? 5_000;
+        this.membershipReloadMs = opts.membershipReloadMs ?? 300_000; // 5분 — 시트 배정 반영 주기(비차단).
     }
 
     /** WS 연결 → 스캐너 init(CNSRLST) → 즉시 1틱 → 5초 루프. 끊기면 WS 가 백오프 재연결. */
@@ -45,6 +51,8 @@ export class LiveEngine extends EventEmitter {
         await this.ws.connect();
         this.scanner = new RankingScanner(this.ws, this.conditionName);
         await this.scanner.init();
+        await this.membership.reload().catch((err) => this.emit("error", err)); // 초기 멤버십 로드(실패해도 빈 멤버십으로 진행)
+        this.lastMembershipMs = Date.now();
         this.ready = true;
         this.running = true;
         await this.tick(); // 즉시 1회
@@ -57,7 +65,7 @@ export class LiveEngine extends EventEmitter {
     }
 
     snapshot(): LiveSnapshot {
-        return buildSnapshot(this.store, this.ws.getStatus(), Date.now());
+        return buildSnapshot(this.store, this.membership, this.ws.getStatus(), Date.now());
     }
 
     /** 재연결 직후: CNSRREQ 전 CNSRLST 선조회 요구 때문에 scanner 재init. */
@@ -76,6 +84,10 @@ export class LiveEngine extends EventEmitter {
     private async tick(): Promise<void> {
         if (!this.scanner || !this.ready) return; // 재연결 중이면 보류
         const now = Date.now();
+        if (now - this.lastMembershipMs >= this.membershipReloadMs) {
+            this.lastMembershipMs = now;
+            void this.membership.reload().catch((err) => this.emit("error", err)); // 배정 반영(비차단 — 실패는 직전 맵 유지)
+        }
         const hits = await this.scanner.scan();
         this.store.setHot(hits, now);
         // 유니버스 = hot only (watchlist 는 후속 브릭에서 합집합)

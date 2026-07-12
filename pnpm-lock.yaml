@@ -152,9 +152,18 @@ importers:
       '@nestjs/platform-express':
         specifier: ^10.4.0
         version: 10.4.22(@nestjs/common@10.4.22(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)
+      '@trade-data-manager/broker':
+        specifier: workspace:*
+        version: link:../../infra/broker
+      '@trade-data-manager/google':
+        specifier: workspace:*
+        version: link:../../infra/google
       '@trade-data-manager/kiwoom':
         specifier: workspace:*
         version: link:../../infra/kiwoom
+      '@trade-data-manager/market':
+        specifier: workspace:*
+        version: link:../../core/market
       '@trade-data-manager/wire':
         specifier: workspace:*
         version: link:../../contracts/wire

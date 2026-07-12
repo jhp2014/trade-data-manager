@@ -4,7 +4,7 @@
 /** 키움 WS 연결 상태(배너용). */
 export type LiveConnectionStatus = "closed" | "connecting" | "reconnecting" | "live";
 
-/** 라이브 hot 종목 1개 — ka10095 시세 기반. (후속: signal·themeRank·dim 추가) */
+/** 라이브 hot 종목 1개 — ka10095 시세 기반. (후속: themeRank·dim 추가) */
 export interface LiveStock {
     code: string;
     name: string;
@@ -16,6 +16,10 @@ export interface LiveStock {
     highPct: number;
     lowPct: number;
     newlyHot: boolean;
+    /** 속한 테마들(시트 멤버십). 빈 배열=미분류. 칩/그룹핑용. */
+    themes: string[];
+    /** 활성 1분 델타 신호(돈유입). 미발화면 없음. core DeltaHit 과 구조 동일(wire 는 core 미의존이라 재선언). tvDelta 단위=원. */
+    signal?: { label: string; rateDelta: number; tvDelta: number };
 }
 
 /** 매 틱(5초) 스냅샷 — 서버가 조립, 클라는 표시만. */
