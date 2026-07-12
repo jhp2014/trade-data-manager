@@ -13,6 +13,12 @@ export default defineConfig({
                 changeOrigin: true,
                 rewrite: (path) => path.replace(/^\/api/, ""),
             },
+            // 실시간 백엔드(apps/live, :3002) — SSE /live/stream · 폴백 /live/snapshot
+            "/live": {
+                target: "http://localhost:3002",
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/live/, ""),
+            },
         },
     },
 });

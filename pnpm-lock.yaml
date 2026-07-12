@@ -155,6 +155,9 @@ importers:
       '@trade-data-manager/kiwoom':
         specifier: workspace:*
         version: link:../../infra/kiwoom
+      '@trade-data-manager/wire':
+        specifier: workspace:*
+        version: link:../../contracts/wire
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2

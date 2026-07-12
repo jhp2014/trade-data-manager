@@ -10,6 +10,7 @@ import {
 import "dockview-react/dist/styles/dockview.css";
 import { ChartPanel } from "../panels/ChartPanel.js";
 import { ThemeBoardPanel } from "../panels/ThemeBoardPanel.js";
+import { LiveBoardPanel } from "../panels/LiveBoardPanel.js";
 import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
 import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { HypothesisPanel } from "../panels/HypothesisPanel.js";
@@ -25,6 +26,7 @@ import { PANEL_CATALOG, type PanelEntry } from "./panelCatalog.js";
 // 레이아웃 JSON persist·기존앱 흡수는 후속.
 const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
     themeBoard: () => <ThemeBoardPanel />,
+    liveBoard: () => <LiveBoardPanel />,
     boardFilter: () => <BoardFilterPanel />,
     replayFilter: () => <ReplayFilterPanel />,
     replayBoard: () => <ReplayBoardPanel />,
@@ -50,7 +52,7 @@ function onReady(event: DockviewReadyEvent): void {
     // 이슈정리 보드(좌) | 차트(우) + 나머지는 이슈정리 보드에 탭으로. 필요시 드래그로 띄우거나(플로팅) 분할.
     const board = api.addPanel({ ...entry("theme-board-1") });
     api.addPanel({ ...entry("chart-1"), position: { referencePanel: board, direction: "right" } });
-    for (const id of ["replay-board-1", "workset-1", "hypothesis-1", "hypothesis-graph-1", "hts-news-1", "telegram-news-1"]) {
+    for (const id of ["live-board-1", "replay-board-1", "workset-1", "hypothesis-1", "hypothesis-graph-1", "hts-news-1", "telegram-news-1"]) {
         api.addPanel({ ...entry(id), position: { referencePanel: board, direction: "within" } }); // 이슈정리와 탭 그룹
     }
     // 열린 패널 추적 → 작업표시줄 "닫힌 창" 목록.

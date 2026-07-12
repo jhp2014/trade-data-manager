@@ -17,3 +17,4 @@ export type * from "./news.js";
 export type * from "./telegramNews.js";
 export type * from "./stockMeta.js";
 export type * from "./dataDate.js";
+export type * from "./live.js";

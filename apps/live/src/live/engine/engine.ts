@@ -7,7 +7,8 @@ import type { KiwoomWs, ConnectionStatus } from "@trade-data-manager/kiwoom/ws";
 import { RankingScanner } from "./scanner.js";
 import { pollQuotes } from "./poller.js";
 import { EngineStore } from "./store.js";
-import { buildSnapshot, type LiveSnapshot } from "./snapshot.js";
+import type { LiveSnapshot } from "@trade-data-manager/wire";
+import { buildSnapshot } from "./snapshot.js";
 
 export interface LiveEngineOptions {
     conditionName: string; // 스캔할 조건식 이름(영웅문 서버저장)
