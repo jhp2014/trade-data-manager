@@ -13,7 +13,7 @@ import { SegButton, PaneLabel, EyeIcon, Center } from "./ChartPanelChrome.js";
 const noop = (): void => {};
 
 export function RealtimeChartPanel(): JSX.Element {
-    const code = useWorkbench((s) => s.focus.code); // 실시간 = focus.code 만(날짜/시간 미구독)
+    const code = useWorkbench((s) => s.liveFocus.code); // 실시간 버스(복기와 독립)
     const mode = useWorkbench((s) => s.chartPriceMode);
     const setMode = useWorkbench((s) => s.setChartPriceMode);
     const cs = useWorkbench((s) => s.chartSettings);

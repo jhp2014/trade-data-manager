@@ -15,9 +15,9 @@ type LiveMode = "flat" | "group";
 
 export function LiveBoardPanel(): JSX.Element {
     const { snapshot, error } = useLiveSnapshot();
-    const code = useWorkbench((s) => s.focus.code);
-    const setCode = useWorkbench((s) => s.setCode);
-    const focusOrigin = useWorkbench((s) => s.lastFocusOrigin);
+    const code = useWorkbench((s) => s.liveFocus.code); // 실시간 버스(복기와 독립)
+    const setCode = useWorkbench((s) => s.setLiveCode);
+    const focusOrigin = useWorkbench((s) => s.liveOrigin);
     const liveFilter = useWorkbench((s) => s.liveFilter);
     const originId = useId();
     const [mode, setMode] = useState<LiveMode>("flat");

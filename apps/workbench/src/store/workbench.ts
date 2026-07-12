@@ -7,14 +7,16 @@
 // localStorage 영속은 persist.ts(loadJson/saveJson) 한 벌로 통일. 타입은 여기서 재노출(소비자 import 경로 유지).
 import { create } from "zustand";
 import { createFocusSlice, type FocusSlice } from "./focusSlice.js";
+import { createLiveFocusSlice, type LiveFocusSlice } from "./liveFocusSlice.js";
 import { createChartSlice, type ChartSlice } from "./chartSlice.js";
 import { createHypothesisSlice, type HypothesisSlice } from "./hypothesisSlice.js";
 import { createBoardFilterSlice, type BoardFilterSlice } from "./boardFilterSlice.js";
 import { createSettingsSlice, type SettingsSlice } from "./settingsSlice.js";
 
-export type WorkbenchState = FocusSlice & ChartSlice & HypothesisSlice & BoardFilterSlice & SettingsSlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & ChartSlice & HypothesisSlice & BoardFilterSlice & SettingsSlice;
 
 export type { Focus, Scope, Search, ActivePoint, FocusSlice } from "./focusSlice.js";
+export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
 export type { ChartPriceMode, ChartView, ChartSettings, ChartSlice } from "./chartSlice.js";
 export type { HypothesisSlice } from "./hypothesisSlice.js";
 export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js";
@@ -22,6 +24,7 @@ export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, Setting
 
 export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createFocusSlice(...a),
+    ...createLiveFocusSlice(...a),
     ...createChartSlice(...a),
     ...createHypothesisSlice(...a),
     ...createBoardFilterSlice(...a),

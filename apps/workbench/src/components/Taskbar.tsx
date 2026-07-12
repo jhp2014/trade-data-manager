@@ -49,10 +49,9 @@ function textBtn(active = false): React.CSSProperties {
     };
 }
 
-// 종목 — 현재 Focus 종목 표시 전용(코드+이름). 종목 이동은 보드/작업셋/차트에서만 —
-// 자유 타이핑 입력을 없애 focus.code 에는 항상 API 응답발 표준 6자리 코드만 흐른다(strict 검증 전제).
-function CodeControl(): JSX.Element {
-    const code = useWorkbench((s) => s.focus.code);
+// 종목 — 현재 종목 표시 전용(코드+이름). 종목 이동은 보드/작업셋/차트에서만 —
+// 자유 타이핑 입력을 없애 code 에는 항상 API 응답발 표준 6자리 코드만 흐른다(strict 검증 전제). 버스별로 code 를 prop 으로 받는다.
+function CodeControl({ code }: { code: string }): JSX.Element {
     const meta = useQuery(stockMetaQuery(code));
     const name = meta.data?.[0]?.name;
     return (
@@ -62,10 +61,8 @@ function CodeControl(): JSX.Element {
     );
 }
 
-// 시간 — 텍스트로 보이다 클릭하면 시각 스크러버(08:00~20:00) 팝오버. 차트에서도 시점 선택 가능하므로 상시 노출 안 함.
-function TimeControl(): JSX.Element {
-    const time = useWorkbench((s) => s.focus.time);
-    const setTime = useWorkbench((s) => s.setTime);
+// 시간 — 텍스트로 보이다 클릭하면 시각 스크러버(08:00~20:00) 팝오버. 버스별 time/setTime 을 prop 으로 받는다.
+function TimeControl({ time, setTime }: { time: string | null; setTime: (t: string | null) => void }): JSX.Element {
     const curMin = time ? timeToMin(time) : 15 * 60 + 30; // 기본 15:30
     return (
         <Popover trigger={(open, toggle) => (
@@ -88,14 +85,44 @@ function TimeControl(): JSX.Element {
     );
 }
 
+// 플레인 컨텍스트 — 색 점 + 종목·날짜·시간. 실시간(🟠)/복기(🟢) 각 버스를 나란히 표시.
+function PlaneCtx({ plane, code, date, setDate, time, setTime }: {
+    plane: PanelPlane;
+    code: string;
+    date: string;
+    setDate: (d: string) => void;
+    time: string | null;
+    setTime: (t: string | null) => void;
+}): JSX.Element {
+    return (
+        <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: `var(--plane-${plane})`, flexShrink: 0, marginRight: 2 }} title={plane === "live" ? "실시간" : "복기"} />
+            <CodeControl code={code} />
+            <span style={sep}>·</span>
+            <DatePicker value={date} onChange={setDate} />
+            <span style={sep}>·</span>
+            <TimeControl time={time} setTime={setTime} />
+        </span>
+    );
+}
+
 export function Taskbar(): JSX.Element {
     const activePreset = useDock((s) => s.activePreset);
     const savedCount = useDock((s) => s.presets.filter(Boolean).length);
     const cyclePreset = useDock((s) => s.cyclePreset);
     const openPanelIds = useDock((s) => s.openPanelIds);
     const api = useDock((s) => s.api);
+    // 복기 버스(focus) + 실시간 버스(liveFocus) — 둘 다 표시.
+    const focusCode = useWorkbench((s) => s.focus.code);
     const date = useWorkbench((s) => s.focus.date);
+    const focusTime = useWorkbench((s) => s.focus.time);
     const setDate = useWorkbench((s) => s.setDate);
+    const setTime = useWorkbench((s) => s.setTime);
+    const liveCode = useWorkbench((s) => s.liveFocus.code);
+    const liveDate = useWorkbench((s) => s.liveFocus.date);
+    const liveTime = useWorkbench((s) => s.liveFocus.time);
+    const setLiveDate = useWorkbench((s) => s.setLiveDate);
+    const setLiveTime = useWorkbench((s) => s.setLiveTime);
     const openSettings = useUi((s) => s.openSettings);
     // 카탈로그에 있으나 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움. 플레인별로 나눠 그룹 표시.
     const closed = openPanelIds === null ? [] : PANEL_CATALOG.filter((p) => !openPanelIds.includes(p.id));
@@ -164,13 +191,11 @@ export function Taskbar(): JSX.Element {
                     )}
                 </>
             )}
-            {/* 우측 구석: 종목 · 날짜 · 시간 · 설정 */}
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2 }}>
-                <CodeControl />
+            {/* 우측 구석: 실시간(🟠) / 복기(🟢) 두 버스 컨텍스트 + 설정 */}
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+                <PlaneCtx plane="live" code={liveCode} date={liveDate} setDate={setLiveDate} time={liveTime} setTime={setLiveTime} />
                 <span style={sep}>│</span>
-                <DatePicker value={date} onChange={setDate} />
-                <span style={sep}>│</span>
-                <TimeControl />
+                <PlaneCtx plane="eod" code={focusCode} date={date} setDate={setDate} time={focusTime} setTime={setTime} />
                 <span style={sep}>│</span>
                 <GearButton onClick={() => openSettings()} />
             </span>
