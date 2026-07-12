@@ -11,6 +11,7 @@ import "dockview-react/dist/styles/dockview.css";
 import { ChartPanel } from "../panels/ChartPanel.js";
 import { ThemeBoardPanel } from "../panels/ThemeBoardPanel.js";
 import { LiveBoardPanel } from "../panels/LiveBoardPanel.js";
+import { RealtimeChartPanel } from "../panels/RealtimeChartPanel.js";
 import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
 import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { HypothesisPanel } from "../panels/HypothesisPanel.js";
@@ -27,6 +28,7 @@ import { PANEL_CATALOG, planeOf, type PanelEntry } from "./panelCatalog.js";
 const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
     themeBoard: () => <ThemeBoardPanel />,
     liveBoard: () => <LiveBoardPanel />,
+    liveChart: () => <RealtimeChartPanel />,
     boardFilter: () => <BoardFilterPanel />,
     replayFilter: () => <ReplayFilterPanel />,
     liveFilter: () => <LiveFilterPanel />,

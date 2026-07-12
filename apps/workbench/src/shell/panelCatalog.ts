@@ -12,6 +12,7 @@ export interface PanelEntry {
 
 export const PANEL_CATALOG: PanelEntry[] = [
     { id: "live-board-1", component: "liveBoard", title: "실시간", plane: "live" },
+    { id: "live-chart-1", component: "liveChart", title: "실시간 차트", plane: "live" },
     { id: "live-filter-1", component: "liveFilter", title: "실시간 필터", plane: "live" },
     { id: "telegram-news-1", component: "telegramNews", title: "텔레그램", plane: "live" },
     { id: "theme-board-1", component: "themeBoard", title: "이슈정리", plane: "eod" },
