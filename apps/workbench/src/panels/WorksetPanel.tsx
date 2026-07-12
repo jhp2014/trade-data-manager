@@ -268,7 +268,8 @@ export function WorksetPanel(): JSX.Element {
                     <div key={g.date}>
                         <DateHeader date={g.date} />
                         {g.stocks.map((e) => {
-                            const sameCode = e.code === focusCode;
+                            // 선택 = 정확히 이 (날짜,종목) 항목. code 만 비교하면 같은 종목이 다른 날짜에도 있을 때 그 행들까지 선택 UI 가 켜진다.
+                            const selected = e.code === focusCode && e.date === focusDate;
                             return (
                                 <div
                                     key={e.code}
@@ -286,21 +287,21 @@ export function WorksetPanel(): JSX.Element {
                                             width: "100%",
                                             textAlign: "left",
                                             border: "none",
-                                            borderLeft: `3px solid ${sameCode ? "var(--accent-hover)" : "transparent"}`,
+                                            borderLeft: `3px solid ${selected ? "var(--accent-hover)" : "transparent"}`,
                                             padding: "3px 10px",
                                             cursor: "pointer",
                                             font: "inherit",
-                                            background: sameCode ? "var(--accent-primary)" : "var(--bg-tertiary)",
+                                            background: selected ? "var(--accent-primary)" : "var(--bg-tertiary)",
                                         }}
                                     >
-                                        <Name name={e.name} code={e.code} color={sameCode ? "#fff" : "var(--text-primary)"} strong={sameCode} />
+                                        <Name name={e.name} code={e.code} color={selected ? "#fff" : "var(--text-primary)"} strong={selected} />
                                     </button>
                                     {e.points.map((p) => (
                                         <PointRow
                                             key={`${p.date}-${p.time}`}
                                             p={p}
-                                            related={sameCode}
-                                            current={sameCode && p.date === focusDate && p.time === focusTime}
+                                            related={selected}
+                                            current={selected && p.time === focusTime}
                                             hyps={hypsByPoint.get(`${p.stockCode}|${p.date}|${p.time}`) ?? []}
                                             onClick={() => goToPoint({ date: p.date, code: p.stockCode, time: p.time })}
                                         />
