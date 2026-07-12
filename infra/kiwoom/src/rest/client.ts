@@ -11,6 +11,7 @@ import type {
     KiwoomKa10001Response,
     KiwoomKa10080Response,
     KiwoomKa10081Response,
+    KiwoomKa10095Response,
     KiwoomDailyCandle,
     KiwoomMinuteCandle,
 } from "./types.js";
@@ -134,6 +135,20 @@ export class KiwoomRest {
             "ka10001",
             "/api/dostk/stkinfo",
             { stk_cd: stockCode },
+            opts,
+        );
+    }
+
+    /**
+     * [ka10095] 관심종목정보요청 — 여러 종목 현재 시세를 한 콜에(멀티시세, 라이브 폴링용).
+     * 종목코드는 '|' 구분. 통합(_AL)/NXT(_NX) 접미사·정규화는 호출자(폴러)가 붙인다.
+     * 키움 상한 ~100종목/콜 — 초과 배치 분할은 호출자 책임.
+     */
+    getMultiQuote(codes: string[], opts?: RequestOptions) {
+        return this.request<KiwoomKa10095Response>(
+            "ka10095",
+            "/api/dostk/stkinfo",
+            { stk_cd: codes.join("|") },
             opts,
         );
     }

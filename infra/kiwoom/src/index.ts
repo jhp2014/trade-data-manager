@@ -39,6 +39,7 @@ export type {
     KiwoomKa10001Response,
     KiwoomKa10080Response,
     KiwoomKa10081Response,
+    KiwoomKa10095Response,
     KiwoomKa10100Response,
     KiwoomKa10099Entry,
     KiwoomDailyCandle,

@@ -50,6 +50,27 @@ export interface KiwoomKa10001Response {
     dstr_stk: string; // 유통주식수
 }
 
+/**
+ * [ka10095] 관심종목정보요청 — 여러 종목의 현재 시세를 한 콜에(멀티시세).
+ * 응답 배열키 `atn_stk_infr`, 종목당 ~63필드 중 실사용분만 타입화(실측). 가격류는 부호접두(-353500=하락)+콤마 → 소비자가 정리.
+ * 단위: trde_prica=백만원, mac=억원(실측). base_pric=전일종가(기준가).
+ */
+export interface KiwoomKa10095Response {
+    atn_stk_infr?: Array<{
+        stk_cd: string; // 종목코드
+        stk_nm: string; // 종목명
+        cur_prc: string; // 현재가 (부호접두)
+        flu_rt: string; // 등락률 %
+        trde_qty: string; // 누적 거래량
+        trde_prica: string; // 누적 거래대금 (백만원)
+        base_pric: string; // 전일종가(기준가)
+        open_pric: string; // 시가 (부호접두)
+        high_pric: string; // 고가 (부호접두)
+        low_pric: string; // 저가 (부호접두)
+        mac: string; // 시가총액 (억원)
+    }>;
+}
+
 /** [ka10080] 주식분봉차트조회 */
 export interface KiwoomKa10080Response {
     stk_cd: string;
