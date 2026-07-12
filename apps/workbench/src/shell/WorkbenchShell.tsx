@@ -77,12 +77,13 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
             d2.dispose();
         };
     }, [props.api]);
-    // 활성 탭은 진하게(text-primary+bold), 비활성은 text-secondary. 커스텀 탭이라 색을 직접 준다(div→자식 상속).
-    const color = active ? "var(--text-primary)" : "var(--text-secondary)";
-    // 플레인 점 — 실시간(앰버)/복기·분석(teal) 구분. 비활성 탭은 살짝 흐리게.
-    const dot = `var(--plane-${planeOf(props.api.id)})`;
+    // 실시간(live) 탭 = 앰버 텍스트 + 옅은 앰버 배경으로 창 자체를 구분(복기 탭은 뉴트럴 유지).
+    const plane = planeOf(props.api.id);
+    const isLive = plane === "live";
+    const color = isLive ? "var(--plane-live)" : active ? "var(--text-primary)" : "var(--text-secondary)";
+    const dot = `var(--plane-${plane})`;
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color, background: isLive ? "var(--plane-live-soft)" : undefined }}>
             <span style={{ width: 6, height: 6, borderRadius: 999, background: dot, flexShrink: 0, opacity: active ? 1 : 0.6 }} />
             <span style={{ fontWeight: active ? 600 : 400 }}>{title}</span>
             <button
