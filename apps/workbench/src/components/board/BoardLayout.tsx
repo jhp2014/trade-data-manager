@@ -96,6 +96,17 @@ export function BoardLayout({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focusCode]);
 
+    // 마운트(리스트→테마 전환 포함) 시 현재 종목 테마로 스크롤 + 승격(펼침) — origin 무관(전환은 의도적).
+    useEffect(() => {
+        if (!focusCode) return;
+        const themes = grouped.themes.filter((g) => !isHidden(g.theme) && g.stocks.some((s) => s.code === focusCode)).map((g) => g.theme);
+        if (themes.length > 0) {
+            setPromoted(themes);
+            setScrollTarget(themes[0]);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const themeByName = new Map(grouped.themes.map((g) => [g.theme, g]));
     // 현재 종목이 속한 테마(숨김 포함) — 공통 focusCode 를 보드 로스터와 대조해 파생. NavRail 2번째 줄용.
     const containsFocus = (g: ThemeGroup<BoardStock>): boolean => !!focusCode && g.stocks.some((s) => s.code === focusCode);

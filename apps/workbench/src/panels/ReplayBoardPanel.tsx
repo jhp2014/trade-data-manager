@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import { useWorkbench } from "../store/workbench.js";
 import { useDayReplay, useReplayIndex } from "../lib/leanModel.js";
 import { kstToUnix } from "../lib/derive.js";
@@ -6,6 +6,8 @@ import { buildReplayBoardViewModel } from "../lib/boardViewModel.js";
 import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
+import { BoardModeControls, type BoardMode } from "../components/board/BoardModeControls.js";
+import { FlatStockList } from "../components/board/FlatStockList.js";
 
 // 실시간 복기 보드(②) — 전역 시간(Focus.time) 시점의 장중 스냅샷을 market-eye식으로 재현.
 // /day-replay 하나로 self-contained(per-minute + 메타). 시간 스크러버는 전역 툴바, top-N 설정은 전역 모달.
@@ -18,6 +20,7 @@ export function ReplayBoardPanel(): JSX.Element {
     const rs = useWorkbench((s) => s.replaySettings);
     const replayFilter = useWorkbench((s) => s.replayFilter);
     const originId = useId(); // 이 보드의 선택 출처 태그(self/external 구분)
+    const [mode, setMode] = useState<BoardMode>("group"); // 리스트(거래대금순)/테마(그룹)
 
     const boardQ = useDayReplay(date);
     const index = useReplayIndex(boardQ.data); // Map<code, ReplayStock> — per-minute + 메타
@@ -36,7 +39,16 @@ export function ReplayBoardPanel(): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardLayout key={date} grouped={board.grouped} parents={board.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={board.excludedByFilter} absentLabel="랭킹 밖" />
+            <div style={{ padding: "4px 10px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", flexShrink: 0 }}>
+                <span style={{ marginLeft: "auto" }}>
+                    <BoardModeControls mode={mode} setMode={setMode} />
+                </span>
+            </div>
+            {mode === "flat" ? (
+                <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} empty="종목 없음" />
+            ) : (
+                <BoardLayout key={date} grouped={board.grouped} parents={board.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={board.excludedByFilter} absentLabel="랭킹 밖" />
+            )}
         </div>
     );
 }

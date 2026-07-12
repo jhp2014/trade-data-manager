@@ -23,6 +23,7 @@ import type { BoardStock } from "../components/board/BoardCard.js";
 import type { LiveStock } from "@trade-data-manager/wire";
 
 export interface BoardViewModel {
+    stocks: BoardStock[]; // flat 리스트(그룹 전, 배제필터 hide 제외). flat 모드 렌더용.
     grouped: Grouped<BoardStock>;
     parents: Map<string, string[]>;
     /** 배제 필터 hide 판정으로 로스터에서 빠진 종목 → 사유. NavRail 포커스 배지("필터 제외")가 "랭킹/보드 밖"과 구분하는 근거. */
@@ -60,7 +61,7 @@ export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Se
         });
     }
     const byTheme = stocksByTheme(stocks);
-    return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme), excludedByFilter };
+    return { stocks, grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme), excludedByFilter };
 }
 
 /**
@@ -117,7 +118,7 @@ export function buildReplayBoardViewModel(
         });
     }
     const byTheme = stocksByTheme(stocks);
-    return { grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme), excludedByFilter };
+    return { stocks, grouped: groupStocks(byTheme, stocks), parents: themeParents(byTheme), excludedByFilter };
 }
 
 // ── 라이브(실시간) 보드 ─────────────────────────────────────────
@@ -165,5 +166,5 @@ export function applyLiveFilter(stocks: LiveStock[], filter: BoardFilterExpr): {
 export function buildLiveBoardViewModel(stocks: LiveStock[], filter: BoardFilterExpr): BoardViewModel {
     const { boardStocks, excludedByFilter } = applyLiveFilter(stocks, filter);
     const byTheme = stocksByTheme(boardStocks);
-    return { grouped: groupStocks(byTheme, boardStocks), parents: themeParents(byTheme), excludedByFilter };
+    return { stocks: boardStocks, grouped: groupStocks(byTheme, boardStocks), parents: themeParents(byTheme), excludedByFilter };
 }

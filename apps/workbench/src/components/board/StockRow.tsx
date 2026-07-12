@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { fmtEok } from "../../lib/format.js";
 import { useAssign } from "../../store/assign.js";
+import { useUi } from "../../store/ui.js";
 import { AMOUNT_BUCKET_COLORS } from "../../chart/chartUtils.js";
 import { AXIS_LO, AXIS_HI, fmtRate1, type BoardStock } from "./boardTypes.js";
 
@@ -27,6 +28,7 @@ export function StockRow({
     const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
     const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
     const openAssign = useAssign((st) => st.open);
+    const showReasons = useUi((st) => st.boardShowReasons); // dim 종목: 제외사유 뱃지 vs 테마칩
     return (
         <button
             onClick={() => onPick(s.code)}
@@ -78,8 +80,8 @@ export function StockRow({
                 >
                     {s.name}
                 </span>
-                {/* 제외된 종목(dim)은 테마칩 대신 제외 사유 태그(어떤 술어에 걸렸나). */}
-                {s.excludedBy ? (
+                {/* dim 종목: 뱃지 토글 ON 이면 제외 사유 태그, OFF(기본)면 테마 칩. */}
+                {showReasons && s.excludedBy ? (
                     <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>
                         {s.excludedBy.map((r) => (
                             <span key={r} style={{ flexShrink: 0, fontSize: 9, color: "var(--rise)", background: "rgba(239,68,68,0.12)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
