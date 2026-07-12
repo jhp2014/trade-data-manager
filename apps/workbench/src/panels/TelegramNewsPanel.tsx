@@ -6,42 +6,56 @@ import { useStockName } from "../lib/useStockName.js";
 import { dateLabel } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
 import { ChevronDownIcon, BackIcon } from "../components/icons.js";
+import { ModeSegment, type NewsMode, type NewsPlane } from "./NewsPanel.js";
 
-// 텔레그램 뉴스 패널 — 등록 방 전체 키워드 검색(focus.date KST 하루 스코프), 최신순.
-// 검색어 = 포커스 종목명 자동채움 + 편집. 자동검색 안 함 = 중앙 입력창에서 Enter/검색 버튼 수동 트리거(FLOOD 회피).
-// 종목/검색어 바뀌면 결과 비우고 중앙 입력. 더보기 = before 시각 커서로 조금씩 과거 페이징(날짜 넘어감).
-// 헤더 2줄(1=키워드·검색·매치이동·더보기 / 2=현재 보는 날짜·시간). 본문 하이라이트 + Ctrl+F 식 매치 이동.
+// 텔레그램 뉴스 패널(양 플레인 공통) — 등록 방 전체 키워드 검색(검색날짜 KST 하루 스코프), 최신순.
+// plane 이 버스를 고른다(백엔드는 동일 — GramJS 라이브 검색이라 오늘/과거 모두 /api/news/telegram):
+//  · replay = 복기 버스(focus/search) · live = 실시간 버스(liveFocus/liveSearch, 기준일=오늘)
+// 모드 = 종목(검색어를 종목명으로 자동채움) / 전체(자동채움 없음, 빈 검색 = 방들 최근 피드).
+// 자동검색 안 함 = 중앙 입력창에서 Enter/검색 버튼 수동 트리거(FLOOD 회피).
+// 종목/검색어 바뀌면 결과 비우고 중앙 입력. 더보기 = before 날짜 커서로 하루씩 과거 페이징.
+// 헤더 2줄(1=모드·키워드·검색·매치이동·더보기 / 2=현재 보는 날짜·시간). 본문 하이라이트 + Ctrl+F 식 매치 이동.
 // 현재시간 이전(focus.time 이하, 당일)은 시간값 배경으로 구분. focus.time 이동 시 그 이하 최근으로 스크롤.
 const INTRADAY_BG = "rgba(22,121,111,0.14)"; // 현재시간 이전 시간값 배경 — --accent-primary 틴트
 
-export function TelegramNewsPanel(): JSX.Element {
-    const focusCode = useWorkbench((s) => s.focus.code);
-    const focusDate = useWorkbench((s) => s.focus.date);
-    const focusTime = useWorkbench((s) => s.focus.time);
-    const search = useWorkbench((s) => s.search);
-    const setSearch = useWorkbench((s) => s.setSearch);
+export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
+    const live = plane === "live";
+    // 플레인별 버스 — 셀렉터가 plane 상수로 갈라져 다른 플레인 상태엔 구독하지 않는다.
+    const focusDate = useWorkbench((s) => (live ? s.liveFocus.date : s.focus.date));
+    const focusTime = useWorkbench((s) => (live ? s.liveFocus.time : s.focus.time));
+    const inSearch = useWorkbench((s) => (live ? s.liveSearch != null : s.search != null));
+    const code = useWorkbench((s) => (live ? s.liveFocus.code : (s.search?.code ?? s.focus.code)));
+    const targetDate = useWorkbench((s) => (live ? (s.liveSearch?.date ?? s.liveFocus.date) : (s.search?.date ?? s.focus.date))); // 검색하려는 날짜(미확정)
+    const clearSearch = useWorkbench((s) => (live ? s.setLiveSearch : s.setSearch)) as (v: null) => void;
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
     const rafRef = useRef(0);
     const scrolledForCursorRef = useRef<number | null | undefined>(undefined); // 이 cursorMs 로 이미 처리했나 — 페이징 재실행 시 재스크롤 방지
 
-    // 유효 code/targetDate — 검색 모드면 search, 아니면 Focus. targetDate = 검색하려는 날짜(미확정).
-    const inSearch = search != null;
-    const code = inSearch ? search.code : focusCode;
-    const targetDate = inSearch ? search.date : focusDate;
-
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
 
+    const [mode, setMode] = useState<NewsMode>("stock");
     const [input, setInput] = useState("");
-    const [query, setQuery] = useState(""); // 확정 검색어(수동 트리거로만 갱신)
-    const [searchDate, setSearchDate] = useState(""); // 확정 검색 날짜. targetDate 와 다르면 pending(검색 모드도 여기 걸림)
+    const [query, setQuery] = useState(""); // 확정 검색어(수동 트리거로만 갱신). 전체 모드에선 "" 도 유효(최근 피드)
+    const [searchDate, setSearchDate] = useState(""); // 확정 검색 날짜. "" = 아직 검색 안 함. targetDate 와 다르면 pending
     const [editing, setEditing] = useState(false); // 사용자가 명시적으로 편집 진입(중앙 입력 autofocus)
     const [visibleAt, setVisibleAt] = useState<string | null>(null); // 스크롤 최상단 항목 시각(헤더 2줄)
     const [activeMatch, setActiveMatch] = useState(-1); // Ctrl+F 현재 매치. -1 = 활성 없음(주황 해제)
 
+    const stockMode = mode === "stock";
     useEffect(() => {
-        setInput(name ?? "");
-    }, [name]);
+        if (stockMode) setInput(name ?? "");
+    }, [name, stockMode]);
+
+    // 모드 전환 = 검색 리셋(확정 해제) → 중앙 입력으로.
+    const switchMode = (m: NewsMode): void => {
+        if (m === mode) return;
+        setMode(m);
+        setInput(m === "stock" ? (name ?? "") : "");
+        setQuery("");
+        setSearchDate("");
+        setActiveMatch(-1);
+    };
 
     const q = useInfiniteQuery({
         queryKey: ["news-telegram", query, searchDate],
@@ -53,7 +67,7 @@ export function TelegramNewsPanel(): JSX.Element {
             if (!isInitial && lastPage.items.length === 0) return undefined;
             return lastPage.oldestDate; // 이 페이지가 걸어간 가장 과거 날짜 = 다음 커서
         },
-        enabled: query.length > 0 && searchDate.length > 0,
+        enabled: searchDate.length > 0, // 확정된 검색이 있을 때만(빈 query 는 전체 모드의 최근 피드)
         staleTime: Infinity,
     });
 
@@ -79,7 +93,7 @@ export function TelegramNewsPanel(): JSX.Element {
 
     // 검색어 또는 날짜가 확정본과 다르면 pending → 중앙 입력(CTA). 검색 모드(봉클릭 날짜 변경)도 여기 걸려 "세팅만" 됨.
     const pending = input.trim() !== query || targetDate !== searchDate;
-    const showEdit = editing || pending || query.length === 0;
+    const showEdit = editing || pending || searchDate.length === 0;
     const canLoadMore = q.hasNextPage && !q.isFetchingNextPage;
 
     // 현재시간 커서 — 검색 모드에선 없음(그 날짜엔 focus.time 무의미). 정상 모드에서만 focus.date+focus.time.
@@ -87,7 +101,7 @@ export function TelegramNewsPanel(): JSX.Element {
 
     const runSearch = (): void => {
         const next = input.trim();
-        if (!next) return;
+        if (stockMode && !next) return; // 종목 모드는 키워드(종목명) 필수 — 전체 모드는 빈 검색 = 최근 피드
         if (next === query && targetDate === searchDate) void qc.resetQueries({ queryKey: ["news-telegram", next, targetDate] });
         else {
             setQuery(next);
@@ -157,17 +171,19 @@ export function TelegramNewsPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
             {/* 헤더 2줄 */}
             <div style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
-                {/* 1줄 — 키워드·🔍 … ◂▸·더보기 */}
+                {/* 1줄 — 플레인·모드·키워드·🔍 … ◂▸·더보기 */}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", overflow: "hidden" }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 999, background: `var(--plane-${live ? "live" : "eod"})`, flexShrink: 0 }} title={live ? "실시간 플레인" : "복기 플레인"} />
+                    <ModeSegment mode={mode} setMode={switchMode} allTitle="전체 모드 — 종목 자동채움 없음, 빈 검색 = 방들 최근 피드" />
                     <button onClick={() => setEditing(true)} title="검색어 편집" style={{ flexShrink: 1, minWidth: 0, textAlign: "left", fontWeight: 700, fontSize: 14, color: input.trim() ? "var(--text-primary)" : "var(--text-tertiary)", background: "transparent", border: "none", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {input.trim() || "검색"}
+                        {input.trim() || (stockMode ? "검색" : "전체 최근")}
                     </button>
                     <button className="icon-btn" onClick={() => setEditing(true)} title="검색" style={{ flexShrink: 0 }}>
                         <SearchIcon />
                     </button>
                     <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
                         {inSearch && (
-                            <button className="icon-btn" onClick={() => setSearch(null)} title="검색 모드 해제 — Focus 로 돌아가기" style={{ marginRight: 2 }}>
+                            <button className="icon-btn" onClick={() => clearSearch(null)} title={live ? "기준일로 복귀" : "검색 모드 해제 — Focus 로 돌아가기"} style={{ marginRight: 2 }}>
                                 <BackIcon />
                             </button>
                         )}
@@ -210,12 +226,12 @@ export function TelegramNewsPanel(): JSX.Element {
                                         setEditing(false);
                                     }
                                 }}
-                                placeholder="종목명·키워드"
+                                placeholder={stockMode ? "종목명·키워드" : "키워드 — 비우면 최근 전체"}
                                 style={{ fontSize: 14, padding: "8px 12px", color: "var(--text-primary)", background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, outline: "none", textAlign: "center" }}
                             />
-                            <button onClick={runSearch} disabled={!input.trim()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0", fontSize: 14, fontWeight: 600, color: "#fff", background: "var(--accent-primary)", border: "none", borderRadius: 8, cursor: input.trim() ? "pointer" : "default", opacity: input.trim() ? 1 : 0.5 }}>
+                            <button onClick={runSearch} disabled={stockMode && !input.trim()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0", fontSize: 14, fontWeight: 600, color: "#fff", background: "var(--accent-primary)", border: "none", borderRadius: 8, cursor: !stockMode || input.trim() ? "pointer" : "default", opacity: !stockMode || input.trim() ? 1 : 0.5 }}>
                                 <SearchIcon />
-                                <span>검색</span>
+                                <span>{!stockMode && !input.trim() ? "최근 보기" : "검색"}</span>
                             </button>
                         </div>
                     </Center>

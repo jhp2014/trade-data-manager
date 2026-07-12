@@ -53,6 +53,7 @@ export interface TelegramSearchOptions {
 export interface Telegram {
     /**
      * 한 방(peer) 안에서 query 토큰 검색. peer 는 @username 또는 채널 id 문자열.
+     * query 가 빈 문자열이면 검색 없이 최근 메시지 피드(GetHistory) — "전체 최근" 모드.
      * until 을 offsetDate 로 줘 "그 시각 이전부터" 서버사이드로 시작하고(최신 메시지는 서버가 건너뜀),
      * 최신→과거로 페이지를 자동 순회하다 since 밑으로 내려가면 멈춘다 → 좁은 과거 창도 정확히 착지.
      * (KIS 뉴스 백필의 역방향 워크와 같은 발상.) limit 은 안전 상한.
@@ -87,8 +88,9 @@ export async function createTelegram(): Promise<Telegram> {
             const sinceMs = opts?.since?.getTime();
 
             // iterMessages 는 offsetDate 부터 최신→과거로 자동 페이지네이션한다.
+            // 빈 query 는 search 키 자체를 생략 — messages.Search(q="") 의 미정의 동작 대신 GetHistory(전체 피드)를 탄다.
             const out: TelegramMessage[] = [];
-            for await (const m of client.iterMessages(target, { search: query, offsetDate })) {
+            for await (const m of client.iterMessages(target, query ? { search: query, offsetDate } : { offsetDate })) {
                 const ms = typeof m.date === "number" ? m.date * 1000 : 0;
                 if (sinceMs !== undefined && ms < sinceMs) break; // since 밑 → 이후는 더 과거라 종료
                 out.push({

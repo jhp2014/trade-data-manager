@@ -18,7 +18,7 @@ const PAGE = 30;
 const INTRADAY_FILL = "rgba(22,121,111,0.14)"; // 현재시간 이전(장중 참고가능) 시각 셀 채움 — --accent-primary 틴트
 
 export type NewsPlane = "live" | "replay";
-type NewsMode = "stock" | "all";
+export type NewsMode = "stock" | "all";
 
 interface Feed {
     q: UseInfiniteQueryResult<unknown>;
@@ -258,7 +258,7 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
     );
 }
 
-// 모드 세그먼트 — 보드 컨트롤과 같은 가벼운 텍스트 스타일(테두리·채움 없음).
+// 모드 세그먼트 — 보드 컨트롤과 같은 가벼운 텍스트 스타일(테두리·채움 없음). 텔레그램 패널과 공용.
 function segBtn(active: boolean): React.CSSProperties {
     return {
         border: "none",
@@ -272,12 +272,12 @@ function segBtn(active: boolean): React.CSSProperties {
     };
 }
 
-function ModeSegment({ mode, setMode }: { mode: NewsMode; setMode: (m: NewsMode) => void }): JSX.Element {
+export function ModeSegment({ mode, setMode, allTitle }: { mode: NewsMode; setMode: (m: NewsMode) => void; allTitle?: string }): JSX.Element {
     return (
         <span style={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
             <button style={segBtn(mode === "stock")} onClick={() => setMode("stock")} title="포커스 종목 뉴스">종목</button>
             <span style={{ color: "var(--border-default)" }}>·</span>
-            <button style={segBtn(mode === "all")} onClick={() => setMode("all")} title="전체 시황 뉴스(종목 무시)">전체</button>
+            <button style={segBtn(mode === "all")} onClick={() => setMode("all")} title={allTitle ?? "전체 시황 뉴스(종목 무시)"}>전체</button>
         </span>
     );
 }

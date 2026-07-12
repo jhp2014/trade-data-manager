@@ -17,6 +17,7 @@ function toWire(n: NewsItem): TelegramNewsItem {
 // 날짜 ± n일은 core/market addDaysYmd 단일 출처 사용.
 
 // GET /news/telegram?q&date[&beforeDate] — 등록 방 전체 키워드 fan-out, 하루 단위로.
+//  · q 생략/빈 문자열: 검색 없이 방들의 최근 메시지 피드("전체 최근" 모드, 방당 DAY_LIMIT 상한).
 //  · beforeDate 없음: focus.date 하루 전체(초기).
 //  · beforeDate 있음: 그 날짜 이전을 하루씩 통으로, 누적 > THRESHOLD 까지(또는 MAX_WALK_DAYS). "더보기".
 // 하루 단위라 방마다 since=하루시작 경계까지 완주 → 구간 누락 없음(count 커서의 skip 문제 회피).
@@ -30,9 +31,8 @@ export class TelegramNewsController {
         @Query("date") date?: string,
         @Query("beforeDate") beforeDate?: string,
     ): Promise<TelegramNewsPage> {
-        const query = q?.trim();
+        const query = q?.trim() ?? ""; // "" = 최근 전체 피드(검색 없이)
         const validDate = assertYmd(date);
-        if (!query) return { items: [], oldestDate: validDate };
 
         if (!beforeDate) {
             const items = await this.searchDay(query, validDate);
