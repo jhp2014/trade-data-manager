@@ -24,11 +24,15 @@ export class LiveChartService {
         this.minute = new KiwoomMinuteAdapter(kiwoom.rest);
     }
 
-    /** 선택 종목의 오늘(마지막 세션) ChartBundle — 일봉 2년(수정주가) + 당일 dense 분봉(원주가) + 원주가 전일종가. */
-    async chartByCode(stockCode: string): Promise<ChartBundle> {
-        const daily = await this.daily.getDailyCandles(stockCode, chartDailyRange(kstToday()));
-        // 세션일 = 일봉 최신 거래일. 장중이면 오늘 형성봉, 장외·주말이면 직전 영업일 → 분봉·base 를 이 날짜로 맞춘다.
-        const sessionDate = daily.length ? daily.reduce((mx, c) => (c.date > mx ? c.date : mx), daily[0].date) : kstToday();
+    /**
+     * 선택 종목의 ChartBundle — 일봉 2년(수정주가) + 당일/지정일 dense 분봉(원주가) + 원주가 전일종가.
+     * date 미지정=오늘(일봉 최신봉에서 세션일 도출, 주말→직전영업일). date 지정=그 날짜(실시간 과거 탐색, REST).
+     */
+    async chartByCode(stockCode: string, date?: string): Promise<ChartBundle> {
+        const anchor = date ?? kstToday();
+        const daily = await this.daily.getDailyCandles(stockCode, chartDailyRange(anchor));
+        // date 지정이면 그 날짜, 없으면 일봉 최신 거래일(장중=오늘 형성봉 / 장외·주말=직전 영업일).
+        const sessionDate = date ?? (daily.length ? daily.reduce((mx, c) => (c.date > mx ? c.date : mx), daily[0].date) : anchor);
         const rawRange = { from: subtractMonths(sessionDate, RAW_DAILY_LOOKBACK_MONTHS), to: sessionDate };
         const [rawMinutes, rawDaily] = await Promise.all([
             this.minute.getMinuteCandles(stockCode, sessionDate),

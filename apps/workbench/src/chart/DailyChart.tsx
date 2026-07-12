@@ -9,9 +9,11 @@ import {
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
     type Time,
+    type UTCTimestamp,
 } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
+import { VertLines, asPrimitive } from "./vertLine.js";
 import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
@@ -39,7 +41,7 @@ function fmtDailyCrosshair(time: Time): string {
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
-export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void }): JSX.Element {
+export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, searchDate }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; searchDate?: string }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -47,6 +49,7 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
     const mapRef = useRef<Map<string, DailyPoint>>(new Map());
     const hoveredTimeRef = useRef<string | null>(null);
     const priceLinesRef = useRef<IPriceLine[]>([]);
+    const vertRef = useRef<VertLines | null>(null); // 검색날짜 세로선
     const linesRef = useRef<RenderLine[]>(lines); // 우클릭 라벨-삭제 매칭용
     linesRef.current = lines;
     const onRightClickRef = useRef(onRightClick);
@@ -104,10 +107,14 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
         candleRef.current = candle;
         amountRef.current = amount;
         markersRef.current = createSeriesMarkers(candle);
+        const vert = new VertLines([]);
+        candle.attachPrimitive(asPrimitive(vert));
+        vertRef.current = vert;
         return () => {
             candleRef.current = null;
             amountRef.current = null;
             markersRef.current = null;
+            vertRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -205,6 +212,11 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
             candle.createPriceLine({ price: line.price, color: "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.kind }),
         );
     }, [lines]);
+
+    // 검색날짜 세로선(실시간 차트 탐색) — 지정일에 앰버 파선. 기준일=검색날짜면 없음.
+    useEffect(() => {
+        vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: "#e07b1a", width: 1, dashed: true }] : []);
+    }, [searchDate]);
 
     const [cursor, setCursor] = useState({ x: 0, y: 0 });
     const { state: tip } = useCrosshairTooltip({

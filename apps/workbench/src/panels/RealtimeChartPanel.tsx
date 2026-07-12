@@ -1,19 +1,22 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
-import { fetchLiveChart } from "../api/liveChart.js";
+import { useChartBundle } from "../lib/useChartBundle.js";
 import { deriveMinuteView, deriveDailyView } from "../lib/derive.js";
 import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import { SegButton, PaneLabel, EyeIcon, Center } from "./ChartPanelChrome.js";
 
-// 실시간 차트(실시간 플레인) — apps/live 에서 선택 종목의 오늘 ChartBundle 을 5초 폴로 받아 렌더.
-// EOD 차트와 렌더(DailyChart/MinuteChart)·derive 는 공유하되 **날짜/시간·큐레이션 주석은 없음**(실시간=종목만 구독).
+// 실시간 차트(실시간 플레인, 실시간 버스) — apps/live 에서 REST 로 ChartBundle 을 받아 렌더.
+// 두 날짜: **일봉=기준일(오늘) 앵커, 분봉=검색날짜**(일봉 봉 클릭이 드리프트, 새로고침으로 기준일 복귀).
+// 검색날짜=오늘이면 5초 폴(라이브), 과거면 정적(폴 X). 큐레이션(가격선/타점)은 없음(실시간=종목만). D/M 선은 Stage 3(메모리).
 const noop = (): void => {};
 
 export function RealtimeChartPanel(): JSX.Element {
-    const code = useWorkbench((s) => s.liveFocus.code); // 실시간 버스(복기와 독립)
+    const code = useWorkbench((s) => s.liveFocus.code);
+    const anchorDate = useWorkbench((s) => s.liveFocus.date); // 기준일(오늘)
+    const search = useWorkbench((s) => s.liveSearch);
+    const setSearch = useWorkbench((s) => s.setLiveSearch);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const setMode = useWorkbench((s) => s.setChartPriceMode);
     const cs = useWorkbench((s) => s.chartSettings);
@@ -22,26 +25,33 @@ export function RealtimeChartPanel(): JSX.Element {
     const [view, setView] = useState<ChartView>("both");
     const [showMarkers, setShowMarkers] = useState(true);
 
-    const query = useQuery({
-        queryKey: ["liveChart", code],
-        queryFn: ({ signal }) => fetchLiveChart(code, signal),
-        enabled: !!code,
-        refetchInterval: 5000, // 5초 폴(장중 라이브 갱신). 패널 닫히면 언마운트→폴 중단.
-        refetchOnWindowFocus: false,
-    });
+    const searchDate = search?.date ?? anchorDate; // 검색날짜(기본=기준일)
+    const drifted = searchDate !== anchorDate;
 
-    const minuteView = useMemo(() => (query.data ? deriveMinuteView(query.data, mode) : null), [query.data, mode]);
-    const dailyView = useMemo(() => (query.data ? deriveDailyView(query.data, mode) : null), [query.data, mode]);
+    // 일봉=기준일 앵커(2년, 오늘 봉 갱신 위해 폴), 분봉=검색날짜(오늘이면 라이브 폴, 과거면 정적).
+    const dailyQ = useChartBundle("live", code, anchorDate, { refetchInterval: 5000 });
+    const minuteQ = useChartBundle("live", code, searchDate, { refetchInterval: drifted ? false : 5000 });
+
+    const dailyView = useMemo(() => (dailyQ.data ? deriveDailyView(dailyQ.data, mode) : null), [dailyQ.data, mode]);
+    const minuteView = useMemo(() => (minuteQ.data ? deriveMinuteView(minuteQ.data, mode) : null), [minuteQ.data, mode]);
     const expanded: "daily" | "minute" | null = view === "both" ? null : view;
     const toggleExpand = (which: "daily" | "minute"): void => setView(view === which ? "both" : which);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 12, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 12, flexShrink: 0 }}>
                 <span style={{ width: 7, height: 7, borderRadius: 999, background: "var(--plane-live)", flexShrink: 0 }} title="실시간 플레인" />
                 <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>{name ?? code ?? "—"}</span>
                 {name && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{code}</span>}
-                {query.isFetching && <span style={{ color: "var(--plane-live)", fontSize: 11, fontWeight: 600 }}>● LIVE</span>}
+                {/* 기준일 + (드리프트 시) 검색날짜 + 새로고침 */}
+                <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{anchorDate.slice(5)}</span>
+                {drifted && (
+                    <>
+                        <span style={{ color: "var(--plane-live)", fontWeight: 600 }}>→ {searchDate.slice(5)}</span>
+                        <button onClick={() => setSearch(null)} title="기준일로 복귀" style={{ border: "none", background: "none", color: "var(--plane-live)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>↺</button>
+                    </>
+                )}
+                {!drifted && (dailyQ.isFetching || minuteQ.isFetching) && <span style={{ color: "var(--plane-live)", fontSize: 11, fontWeight: 600 }}>● LIVE</span>}
                 {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
                 <div style={{ marginLeft: "auto", display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
                     <SegButton first active={view === "daily"} onClick={() => setView("daily")} title="일봉만">Day</SegButton>
@@ -60,15 +70,25 @@ export function RealtimeChartPanel(): JSX.Element {
 
             <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
                 {!code && <Center text="종목을 선택하세요" />}
-                {code && query.isLoading && <Center text={`${code} 로딩중…`} />}
-                {query.isError && <Center text={`오류: ${(query.error as Error).message}`} />}
-                {minuteView && dailyView && (
+                {code && (dailyQ.isLoading || minuteQ.isLoading) && !dailyView && <Center text={`${code} 로딩중…`} />}
+                {(dailyQ.isError || minuteQ.isError) && <Center text="오류 — 재시도 중…" />}
+                {dailyView && minuteView && (
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
-                            <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다">
+                            <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 클릭: 그날 분봉 탐색">
                                 <PaneLabel text="일봉" />
                                 {dailyView.length > 0 ? (
-                                    <DailyChart points={dailyView} lines={[]} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={noop} onRemoveLine={noop} />
+                                    <DailyChart
+                                        points={dailyView}
+                                        lines={[]}
+                                        zoom={chartZoom != null}
+                                        zoomBars={cs.dailyZoomBars}
+                                        zoomOutBars={cs.dailyZoomOutBars}
+                                        onRightClick={noop}
+                                        onRemoveLine={noop}
+                                        onCandleClick={(d) => setSearch(d === anchorDate ? null : { date: d })}
+                                        searchDate={drifted ? searchDate : undefined}
+                                    />
                                 ) : (
                                     <Center text="일봉 없음" />
                                 )}
@@ -77,7 +97,7 @@ export function RealtimeChartPanel(): JSX.Element {
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
                         {expanded !== "daily" && (
                             <div onDoubleClick={() => toggleExpand("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다">
-                                <PaneLabel text="분봉" />
+                                <PaneLabel text={drifted ? `분봉 · ${searchDate.slice(5)}` : "분봉"} />
                                 {minuteView.points.length > 0 ? (
                                     <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={[]} base={minuteView.base} onMovePoint={noop} onRightClick={noop} onRemoveLine={noop} />
                                 ) : (

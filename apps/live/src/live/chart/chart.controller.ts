@@ -10,8 +10,8 @@ export class ChartController {
     constructor(@Inject(LIVE_CHART) private readonly chart: LiveChartService) {}
 
     @Get()
-    async byCode(@Query("code") code?: string): Promise<ChartBundle> {
+    async byCode(@Query("code") code?: string, @Query("date") date?: string): Promise<ChartBundle> {
         if (!code) throw new BadRequestException("code 파라미터 필요");
-        return this.chart.chartByCode(code);
+        return this.chart.chartByCode(code, date || undefined); // date 미지정=오늘, 지정=과거 탐색
     }
 }
