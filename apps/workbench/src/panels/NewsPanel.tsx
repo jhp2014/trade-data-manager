@@ -188,8 +188,7 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
     const commitKeyword = (): void => setKeyword(input.trim());
 
     const stockMode = mode === "stock";
-    if (stockMode && !focusCode) return <Center text="종목을 선택하세요" />;
-
+    const noStock = stockMode && !focusCode; // 종목 미선택 — 헤더(모드 전환)는 살리고 본문만 안내
     const canLoadMore = q.hasNextPage && !q.isFetchingNextPage;
     // 하이라이트 — 종목 모드는 종목명, 키워드가 있으면 키워드도(전체 모드는 키워드만).
     const hlTokens = [stockMode ? name : null, keyword || null].filter((t): t is string => !!t);
@@ -201,8 +200,8 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
                 <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 6, padding: "5px 10px", overflow: "hidden" }}>
                     <span style={{ width: 7, height: 7, borderRadius: 999, background: `var(--plane-${live ? "live" : "eod"})`, flexShrink: 0 }} title={live ? "실시간 플레인" : "복기 플레인"} />
                     <ModeSegment mode={mode} setMode={setMode} />
-                    <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>
-                        {stockMode ? (name ?? code) : "시황 전체"}
+                    <span style={{ fontWeight: 700, fontSize: 14, color: noStock ? "var(--text-tertiary)" : "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>
+                        {stockMode ? (name ?? (code || "종목 미선택")) : "시황 전체"}
                     </span>
                     <input
                         value={input}
@@ -249,10 +248,16 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
 
             {/* 본문 */}
             <div ref={listRef} onScroll={onScroll} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-                {q.isLoading && <Center text="로딩중…" />}
-                {q.isError && <Center text={`오류: ${(q.error as Error).message}`} />}
-                {!q.isLoading && !q.isError && items.length === 0 && <Center text={stockMode && !keyword ? "당일 뉴스 없음" : "결과 없음"} />}
-                <NewsList items={items} focusDate={date} focusTime={focusTime} timeInteractive={!inSearch} hlTokens={hlTokens} engine={engine} onPick={pick} />
+                {noStock ? (
+                    <Center text="종목을 선택하세요 — 또는 '전체'로 시황 전체 보기" />
+                ) : (
+                    <>
+                        {q.isLoading && <Center text="로딩중…" />}
+                        {q.isError && <Center text={`오류: ${(q.error as Error).message}`} />}
+                        {!q.isLoading && !q.isError && items.length === 0 && <Center text={stockMode && !keyword ? "당일 뉴스 없음" : "결과 없음"} />}
+                        <NewsList items={items} focusDate={date} focusTime={focusTime} timeInteractive={!inSearch} hlTokens={hlTokens} engine={engine} onPick={pick} />
+                    </>
+                )}
             </div>
         </div>
     );
