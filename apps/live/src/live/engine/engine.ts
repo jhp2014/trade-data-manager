@@ -1,7 +1,6 @@
-// 실시간 엔진(오케스트레이터) — framework-free. 멤버십은 조건검색 실시간 등록(REAL 푸시)이
-// 유지하고, 상시 5초 self-scheduling 루프는 그 목록의 시세 폴링→store 적재→'tick' emit 만 한다.
-// 정본: market-eye/src/engine/engine.ts 에서 theme/sheets·focus·signals 제거·슬림화.
-// NestJS 데코레이터는 여기 없음(모듈/컨트롤러 가장자리에만).
+// 실시간 엔진(오케스트레이터) — framework-free. 상시 5초 self-scheduling 루프로
+// 스캔(멤버십)→시세 폴링→store 적재→'tick' emit. 정본: market-eye/src/engine/engine.ts 에서
+// theme/sheets·focus·signals 제거·슬림화. NestJS 데코레이터는 여기 없음(모듈/컨트롤러 가장자리에만).
 import { EventEmitter } from "node:events";
 import type { Kiwoom } from "@trade-data-manager/kiwoom";
 import { kstToday } from "@trade-data-manager/market";
@@ -45,7 +44,7 @@ export class LiveEngine extends EventEmitter {
         this.membershipReloadMs = opts.membershipReloadMs ?? 300_000; // 5분 — 시트 배정 반영 주기(비차단).
     }
 
-    /** WS 연결 → 스캐너 init(CNSRLST)+실시간 등록(search_type=1) → 즉시 1틱 → 5초 루프. 끊기면 WS 가 백오프 재연결. */
+    /** WS 연결 → 스캐너 init(CNSRLST) → 즉시 1틱 → 5초 루프. 끊기면 WS 가 백오프 재연결. */
     async start(): Promise<void> {
         this.ws.on("status", (s: ConnectionStatus) => {
             if (s !== "live") this.ready = false; // 끊기면 틱 보류(직전 데이터 유지)
@@ -55,7 +54,6 @@ export class LiveEngine extends EventEmitter {
         await this.ws.connect();
         this.scanner = new RankingScanner(this.ws, this.conditionName);
         await this.scanner.init();
-        await this.scanner.register(); // 초기 충족 목록 + 실시간(I/D) 등록
         await this.membership.reload().catch((err) => this.emit("error", err)); // 초기 멤버십 로드(실패해도 빈 멤버십으로 진행)
         this.lastMembershipMs = Date.now();
         this.ready = true;
@@ -73,12 +71,11 @@ export class LiveEngine extends EventEmitter {
         return buildSnapshot(this.store, this.membership, this.trailing, this.ws.getStatus(), Date.now());
     }
 
-    /** 재연결 직후: 실시간 등록이 소켓 수명이라 scanner 재init(CNSRLST 선조회 요구) + 재등록. */
+    /** 재연결 직후: CNSRREQ 전 CNSRLST 선조회 요구 때문에 scanner 재init. */
     private async onReconnect(): Promise<void> {
         if (!this.running || !this.scanner) return;
         try {
             await this.scanner.init();
-            await this.scanner.register(); // 초기 목록 재시딩(끊긴 동안의 편입/이탈 보정)
             this.ready = true;
             this.emit("reconnected");
         } catch (err) {
@@ -86,7 +83,7 @@ export class LiveEngine extends EventEmitter {
         }
     }
 
-    /** 한 사이클: 실시간 멤버십 읽기(푸시 유지) → 시세 폴링 → store 적재 → 'tick'. */
+    /** 한 사이클: 멤버십 스캔 → 시세 폴링 → store 적재 → 'tick'. */
     private async tick(): Promise<void> {
         if (!this.scanner || !this.ready) return; // 재연결 중이면 보류
         const now = Date.now();
@@ -94,7 +91,7 @@ export class LiveEngine extends EventEmitter {
             this.lastMembershipMs = now;
             void this.membership.reload().catch((err) => this.emit("error", err)); // 배정 반영(비차단 — 실패는 직전 맵 유지)
         }
-        const hits = this.scanner.current();
+        const hits = await this.scanner.scan();
         this.store.setHot(hits, now);
         // 유니버스 = hot only (watchlist 는 후속 브릭에서 합집합)
         const quotes = await pollQuotes(this.kiwoom.rest, hits.map((h) => h.code), Date.now());
