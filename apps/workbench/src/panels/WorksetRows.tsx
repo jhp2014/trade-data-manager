@@ -59,12 +59,28 @@ export function LocateIcon(): JSX.Element {
     );
 }
 
+// 날짜 그룹 구분선 — 타점 행(회색 밴드)과 확실히 구분되도록 흰 밴드 + 좌측 accent 틱 + 볼드 날짜로 강조.
+// sticky 로 스크롤 중 현재 날짜가 상단에 고정 → "여기서부터 새 날짜 그룹" 신호.
 export function DateHeader({ date }: { date: string }): JSX.Element {
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 10px", color: "var(--text-secondary)", fontSize: 11, fontWeight: 600, background: "var(--bg-secondary)" }}>
-            <span style={{ flex: 1, height: 1, background: "var(--border-subtle)" }} />
-            <span className="tabular" style={{ flexShrink: 0 }}>{fmtDateHeader(date)}</span>
-            <span style={{ flex: 1, height: 1, background: "var(--border-subtle)" }} />
+        <div
+            style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 3,
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                padding: "5px 10px",
+                background: "var(--bg-primary)",
+                borderTop: "1px solid var(--border-strong)",
+                borderBottom: "1px solid var(--border-default)",
+            }}
+        >
+            <span style={{ width: 3, height: 12, borderRadius: 2, background: "var(--accent-primary)", flexShrink: 0 }} />
+            <span className="tabular" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "0.02em" }}>
+                {fmtDateHeader(date)}
+            </span>
         </div>
     );
 }
