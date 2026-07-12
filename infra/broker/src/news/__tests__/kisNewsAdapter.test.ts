@@ -16,7 +16,7 @@ const item = (srno: string, dt: string, tm: string, title: string, extra: Out = 
     ...extra,
 });
 
-function fakeSource(out: Out[], capture?: (p: { date?: string; time?: string }) => void): KisNewsSource {
+function fakeSource(out: Out[], capture?: (p: Parameters<KisNewsSource["getNewsTitles"]>[0]) => void): KisNewsSource {
     return {
         async getNewsTitles(params) {
             capture?.(params);
@@ -56,6 +56,15 @@ describe("KisNewsAdapter", () => {
         ];
         const page = await new KisNewsAdapter(fakeSource(out)).fetchBefore({ date: "2026-06-26", time: "17:51:41" });
         expect(page.map((h) => h.srno)).toEqual(["a", "b"]); // c(wrap) 제거, 내림차순
+    });
+
+    it("필터(stockCode/titleKeyword) → KIS 파라미터로 전달, 없으면 키 자체를 생략", async () => {
+        let sent: Record<string, string | undefined> = {};
+        const adapter = new KisNewsAdapter(fakeSource([], (p) => (sent = p)));
+        await adapter.fetchBefore({ date: "2026-06-26", time: "17:51:41" }, { stockCode: "005930", titleKeyword: "반도체" });
+        expect(sent).toEqual({ date: "0020260626", time: "0000175141", stockCode: "005930", titleKeyword: "반도체" });
+        await adapter.fetchBefore(undefined, {});
+        expect(sent).toEqual({ date: "", time: "" }); // 빈 필터 = 전체 시황(백필 경로와 동일)
     });
 
     it("이전 날짜 항목은 앵커 윈도 안(≤)이라 유지 — 자정 크로스 보존", async () => {

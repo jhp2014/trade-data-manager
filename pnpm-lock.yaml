@@ -158,6 +158,9 @@ importers:
       '@trade-data-manager/google':
         specifier: workspace:*
         version: link:../../infra/google
+      '@trade-data-manager/kis':
+        specifier: workspace:*
+        version: link:../../infra/kis
       '@trade-data-manager/kiwoom':
         specifier: workspace:*
         version: link:../../infra/kiwoom

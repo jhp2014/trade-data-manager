@@ -9,7 +9,17 @@ export interface KisNewsSource {
     getNewsTitles(params: {
         date?: string;
         time?: string;
+        stockCode?: string;
+        titleKeyword?: string;
     }): Promise<KisApiResponse<KisNewsResponse>>;
+}
+
+/** 페이지 필터 — KIS 가 서버사이드로 거른다(FID_INPUT_ISCD / FID_TITL_CNTT). 백필(전체 시황)은 안 쓴다. */
+export interface KisNewsFilter {
+    /** 종목코드(6자리) — 그 종목 태깅 뉴스만. */
+    stockCode?: string;
+    /** 제목 키워드 — 부분일치. */
+    titleKeyword?: string;
 }
 
 /** 장시간 백필 회복력 — 유량초과(클라 재시도 소진) 시 백오프 후 재시도하는 옵션. */
@@ -74,10 +84,14 @@ export class KisNewsAdapter implements NewsSource {
                 console.warn(`[news] 유량초과 — ${attempt}/${this.maxRetries} 재시도, ${waitMs}ms 대기`));
     }
 
-    async fetchBefore(anchor?: { date: string; time: string }): Promise<NewsHeadline[]> {
-        const params = anchor
-            ? { date: `00${compactDate(anchor.date)}`, time: `0000${compactTime(anchor.time)}` }
-            : { date: "", time: "" };
+    async fetchBefore(anchor?: { date: string; time: string }, filter?: KisNewsFilter): Promise<NewsHeadline[]> {
+        const params = {
+            ...(anchor
+                ? { date: `00${compactDate(anchor.date)}`, time: `0000${compactTime(anchor.time)}` }
+                : { date: "", time: "" }),
+            ...(filter?.stockCode ? { stockCode: filter.stockCode } : {}),
+            ...(filter?.titleKeyword ? { titleKeyword: filter.titleKeyword } : {}),
+        };
         // 유량초과(클라 재시도 소진) → 백오프 후 재시도. 장시간 백필이 일시 throttle 로 abort 되지 않게.
         let res: KisApiResponse<KisNewsResponse>;
         for (let attempt = 0; ; attempt++) {

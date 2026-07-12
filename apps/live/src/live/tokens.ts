@@ -4,3 +4,5 @@ export const LIVE_ENGINE = Symbol("LIVE_ENGINE");
 export const KIWOOM = Symbol("KIWOOM");
 // 실시간 차트 서비스(선택 종목 오늘 ChartBundle 조립).
 export const LIVE_CHART = Symbol("LIVE_CHART");
+// 실시간 뉴스(KIS 온디맨드, lazy — 첫 요청에서 createKis).
+export const LIVE_NEWS = Symbol("LIVE_NEWS");

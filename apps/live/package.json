@@ -18,6 +18,7 @@
         "@nestjs/platform-express": "^10.4.0",
         "@trade-data-manager/broker": "workspace:*",
         "@trade-data-manager/google": "workspace:*",
+        "@trade-data-manager/kis": "workspace:*",
         "@trade-data-manager/kiwoom": "workspace:*",
         "@trade-data-manager/market": "workspace:*",
         "@trade-data-manager/wire": "workspace:*",

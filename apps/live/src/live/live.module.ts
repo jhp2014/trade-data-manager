@@ -7,7 +7,9 @@ import { SnapshotController } from "./snapshot.controller.js";
 import { StreamController } from "./stream.controller.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { LiveChartService } from "./chart/liveChart.js";
-import { LIVE_ENGINE, KIWOOM, LIVE_CHART } from "./tokens.js";
+import { NewsController } from "./news/news.controller.js";
+import { LiveNewsService } from "./news/liveNews.js";
+import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS } from "./tokens.js";
 import { createLiveEngine } from "./engine/createLiveEngine.js";
 import type { LiveEngine } from "./engine/engine.js";
 
@@ -27,10 +29,12 @@ const chartProvider: Provider = {
     useFactory: (kiwoom: Kiwoom): LiveChartService => new LiveChartService(kiwoom),
     inject: [KIWOOM],
 };
+// 뉴스는 kiwoom 이 아니라 KIS(별도 크레덴셜 풀) — 생성 자체가 lazy 라 부팅과 무관.
+const newsProvider: Provider = { provide: LIVE_NEWS, useFactory: (): LiveNewsService => new LiveNewsService() };
 
 @Module({
-    controllers: [HealthController, SnapshotController, StreamController, ChartController],
-    providers: [kiwoomProvider, engineProvider, chartProvider],
+    controllers: [HealthController, SnapshotController, StreamController, ChartController, NewsController],
+    providers: [kiwoomProvider, engineProvider, chartProvider, newsProvider],
 })
 export class LiveModule implements OnModuleInit, OnModuleDestroy {
     private readonly log = new Logger("LiveEngine");
