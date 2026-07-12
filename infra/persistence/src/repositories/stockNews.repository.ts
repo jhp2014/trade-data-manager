@@ -1,5 +1,5 @@
-import { and, asc, desc, eq, gte, lt, lte, or, sql } from "drizzle-orm";
-import type { DateRange, HeadlineCursor, NewsHeadline, StockNewsStore, StockNewsReader } from "@trade-data-manager/market";
+import { and, asc, desc, eq, gte, ilike, lt, lte, or, sql, type SQL } from "drizzle-orm";
+import type { DateRange, HeadlineFeedOptions, NewsHeadline, StockNewsStore, StockNewsReader } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockNews } from "../schema/market.js";
 import { newsHeadlineToRows, rowToNewsHeadline } from "../mappers/news.js";
@@ -50,25 +50,36 @@ export class DrizzleStockNewsRepository implements StockNewsStore, StockNewsRead
         return rows.map(rowToNewsHeadline);
     }
 
-    async recentHeadlines(
-        stockCode: string,
-        opts: { before?: HeadlineCursor; limit: number },
-    ): Promise<NewsHeadline[]> {
-        const { before, limit } = opts;
+    async feedHeadlines(opts: HeadlineFeedOptions): Promise<NewsHeadline[]> {
+        const { stockCode, titleKeyword, before, onOrBefore, limit } = opts;
+        const conds: (SQL | undefined)[] = [];
+        if (stockCode !== undefined) conds.push(eq(stockNews.stockCode, stockCode));
+        if (titleKeyword) conds.push(ilike(stockNews.title, `%${escapeLike(titleKeyword)}%`));
         // 복합 커서 (publishedDate, srno) 엄격 미만: date < d OR (date = d AND srno < s).
         // srno 는 bigint 컬럼이라 문자열 커서를 BigInt 로 변환해 비교한다.
-        const beforeCond = before
-            ? or(
-                  lt(stockNews.publishedDate, before.publishedDate),
-                  and(eq(stockNews.publishedDate, before.publishedDate), lt(stockNews.srno, BigInt(before.srno))),
-              )
-            : undefined;
-        const rows = await this.db
-            .select()
-            .from(stockNews)
-            .where(and(eq(stockNews.stockCode, stockCode), beforeCond))
-            .orderBy(desc(stockNews.publishedDate), desc(stockNews.srno))
-            .limit(limit);
+        if (before) {
+            conds.push(
+                or(
+                    lt(stockNews.publishedDate, before.publishedDate),
+                    and(eq(stockNews.publishedDate, before.publishedDate), lt(stockNews.srno, BigInt(before.srno))),
+                ),
+            );
+        } else if (onOrBefore) {
+            conds.push(lte(stockNews.publishedDate, onOrBefore));
+        }
+        const where = and(...conds);
+        const order = [desc(stockNews.publishedDate), desc(stockNews.srno)];
+        // 전체(종목 미지정) = 한 헤드라인이 종목 수만큼 펼쳐진 행을 srno 단위로 접는다.
+        // DISTINCT ON 은 ORDER BY 선두와 같은 (publishedDate, srno) — 어느 태깅 행이 남는지는 무관(제목·시각 동일).
+        const rows =
+            stockCode === undefined
+                ? await this.db.selectDistinctOn([stockNews.publishedDate, stockNews.srno]).from(stockNews).where(where).orderBy(...order).limit(limit)
+                : await this.db.select().from(stockNews).where(where).orderBy(...order).limit(limit);
         return rows.map(rowToNewsHeadline);
     }
+}
+
+/** ILIKE 패턴 이스케이프 — 사용자 키워드의 %/_/\ 를 리터럴로. */
+function escapeLike(raw: string): string {
+    return raw.replace(/[\\%_]/g, (c) => `\\${c}`);
 }

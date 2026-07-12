@@ -42,12 +42,6 @@ class FakeRepo implements StockNewsStore {
         this.rowsSeen += headlines.length;
         for (const h of headlines) this.saved.set(h.srno, h);
     }
-    async getHeadlines(): Promise<NewsHeadline[]> {
-        return [];
-    }
-    async recentHeadlines(): Promise<NewsHeadline[]> {
-        return [];
-    }
 }
 
 describe("NewsBackfillService", () => {
