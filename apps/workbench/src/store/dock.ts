@@ -3,7 +3,7 @@ import type { DockviewApi } from "dockview-react";
 
 // 창 배치(dockview) 상태 버스 — onReady 의 DockviewApi 를 커맨드/작업표시줄이 닿을 수 있게 보관하고,
 // 레이아웃 프리셋(저장 배치)을 관리한다. UI 오버레이(ui 스토어)와 성격이 달라 전용 스토어로 둔다.
-export const PRESET_COUNT = 3;
+export const PRESET_COUNT = 5;
 const PRESETS_KEY = "wb.layoutPresets";
 
 // api.toJSON() 직렬화 형태. 버전에 안 묶이게 ReturnType 로 파생.

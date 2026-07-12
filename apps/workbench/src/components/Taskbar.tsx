@@ -177,12 +177,10 @@ export function Taskbar(): JSX.Element {
                 }}
             >
                 화면 {activePreset ?? "—"}
-                {savedCount > 0 && <span style={{ color: "var(--text-tertiary)" }}>· {savedCount}개 저장</span>}
             </button>
             {closed.length > 0 && (
                 <>
                     <span style={sep}>│</span>
-                    <span>최소화</span>
                     {liveClosed.length > 0 && (
                         <>
                             <span style={planeLabel("live")}>실시간</span>

@@ -77,15 +77,13 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
             d2.dispose();
         };
     }, [props.api]);
-    // 실시간(live) 탭 = 앰버 텍스트 + 옅은 앰버 배경으로 창 자체를 구분(복기 탭은 뉴트럴 유지).
+    // 플레인별 탭 틴트 — 실시간=앰버 / 복기=teal, 텍스트+옅은 배경. 활성은 굵게.
     const plane = planeOf(props.api.id);
-    const isLive = plane === "live";
-    const color = isLive ? "var(--plane-live)" : active ? "var(--text-primary)" : "var(--text-secondary)";
-    const dot = `var(--plane-${plane})`;
+    const color = `var(--plane-${plane})`;
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color, background: isLive ? "var(--plane-live-soft)" : undefined }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: dot, flexShrink: 0, opacity: active ? 1 : 0.6 }} />
-            <span style={{ fontWeight: active ? 600 : 400 }}>{title}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color, background: `var(--plane-${plane}-soft)` }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0, opacity: active ? 1 : 0.6 }} />
+            <span style={{ fontWeight: active ? 700 : 400, opacity: active ? 1 : 0.85 }}>{title}</span>
             <button
                 onClick={(e) => {
                     e.stopPropagation();
