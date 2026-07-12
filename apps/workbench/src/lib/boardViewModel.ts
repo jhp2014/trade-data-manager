@@ -138,9 +138,32 @@ export function liveToBoardStock(s: LiveStock): BoardStock {
     };
 }
 
-/** 라이브 스냅샷 종목들 → 테마 그룹 뷰모델(BoardLayout 입력). 배제필터는 실시간 보드에 미적용(빈 Map). */
-export function buildLiveBoardViewModel(stocks: LiveStock[]): BoardViewModel {
-    const boardStocks = stocks.map(liveToBoardStock);
+/**
+ * 라이브 종목 → BoardStock[] + 배제필터(dim/hide) 적용. 흐리게(6c)는 사용자가 실시간 필터에서 조건 지정.
+ * trailingHighs 는 index 0 에 당일 highPct 를 prepend해 "매물대 내부"(신고가 근접) 술어에 평가 — 서버 배열은 과거 완결일만.
+ * 미fetch(trailingHighs 없음)면 [highPct] 만 → 창최고=당일 → 근접=참 → 안 흐려짐(데이터 오면 반영).
+ */
+export function applyLiveFilter(stocks: LiveStock[], filter: BoardFilterExpr): { boardStocks: BoardStock[]; excludedByFilter: Map<string, string[]> } {
+    const boardStocks: BoardStock[] = [];
+    const excludedByFilter = new Map<string, string[]>();
+    for (const s of stocks) {
+        const verdict = evalBoardFilter(filter, {
+            highPct: s.highPct,
+            amount: s.tradeValue * 1_000_000, // 백만원 → 원
+            trailingHighs: [s.highPct, ...(s.trailingHighs ?? [])],
+        });
+        if (verdict.effect === "hide") {
+            excludedByFilter.set(s.code, verdict.reasons);
+            continue;
+        }
+        boardStocks.push({ ...liveToBoardStock(s), dim: verdict.effect === "dim", excludedBy: verdict.reasons.length ? verdict.reasons : undefined });
+    }
+    return { boardStocks, excludedByFilter };
+}
+
+/** 라이브 스냅샷 → 테마 그룹 뷰모델(BoardLayout 입력). 배제필터 적용. */
+export function buildLiveBoardViewModel(stocks: LiveStock[], filter: BoardFilterExpr): BoardViewModel {
+    const { boardStocks, excludedByFilter } = applyLiveFilter(stocks, filter);
     const byTheme = stocksByTheme(boardStocks);
-    return { grouped: groupStocks(byTheme, boardStocks), parents: themeParents(byTheme), excludedByFilter: new Map() };
+    return { grouped: groupStocks(byTheme, boardStocks), parents: themeParents(byTheme), excludedByFilter };
 }

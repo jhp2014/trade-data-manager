@@ -11,6 +11,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "live-board-1", component: "liveBoard", title: "실시간" },
     { id: "board-filter-1", component: "boardFilter", title: "이슈 필터" },
     { id: "replay-filter-1", component: "replayFilter", title: "복기 필터" },
+    { id: "live-filter-1", component: "liveFilter", title: "실시간 필터" },
     { id: "chart-1", component: "chart", title: "차트(1)" },
     { id: "chart-2", component: "chart", title: "차트(2)" },
     { id: "replay-board-1", component: "replayBoard", title: "복기" },

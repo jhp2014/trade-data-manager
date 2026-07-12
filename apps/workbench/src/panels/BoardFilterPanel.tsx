@@ -1,4 +1,4 @@
-import { BOARD_PREDICATES, boardPredicateDef, isBoardFilterActive, type BoardFilterExpr } from "@trade-data-manager/market/domain";
+import { BOARD_PREDICATES, boardPredicateDef, isBoardFilterActive, type BoardFilterExpr, type BoardPredicateDef } from "@trade-data-manager/market/domain";
 import { useWorkbench, type BoardFilterActions } from "../store/workbench.js";
 import { NumberField } from "../ui/controls.js";
 import { TrashIcon } from "../components/icons.js";
@@ -11,15 +11,17 @@ function FilterPanel({
     emptyHelp,
     filter,
     actions,
+    predicates = BOARD_PREDICATES,
 }: {
     title: string;
     subtitle: string;
     emptyHelp: React.ReactNode;
     filter: BoardFilterExpr;
     actions: BoardFilterActions;
+    predicates?: BoardPredicateDef[]; // 이 패널이 제공할 술어(기본=전체). 라이브는 buckets 없는 서브셋.
 }): JSX.Element {
     const active = isBoardFilterActive(filter);
-    const firstKind = BOARD_PREDICATES[0].kind;
+    const firstKind = predicates[0].kind;
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
@@ -82,7 +84,7 @@ function FilterPanel({
                                                 onChange={(e) => actions.setPredicateKind(gi, pi, e.target.value)}
                                                 style={{ border: "1px solid var(--border-default)", borderRadius: 5, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "3px 5px", font: "inherit", fontSize: 12 }}
                                             >
-                                                {BOARD_PREDICATES.map((d) => (
+                                                {predicates.map((d) => (
                                                     <option key={d.kind} value={d.kind}>{d.title}</option>
                                                 ))}
                                             </select>
@@ -134,6 +136,23 @@ export function ReplayFilterPanel(): JSX.Element {
             filter={filter}
             actions={actions}
             emptyHelp={<>조건 그룹을 만들어 <b style={{ color: "var(--text-secondary)" }}>복기</b> 보드에서 현재 시점 종목을 배제하세요.</>}
+        />
+    );
+}
+
+// 실시간 보드 배제 필터. 상태=store.liveFilter. 라이브엔 분봉 buckets 가 없어 "분봉 대금" 술어 제외(그게 있으면 buckets 없는 전 종목 오검출).
+const LIVE_PREDICATES = BOARD_PREDICATES.filter((d) => d.kind !== "minAmtFew");
+export function LiveFilterPanel(): JSX.Element {
+    const filter = useWorkbench((s) => s.liveFilter);
+    const actions = useWorkbench((s) => s.liveFilterActions);
+    return (
+        <FilterPanel
+            title="실시간 필터"
+            subtitle="매칭 종목 제외"
+            filter={filter}
+            actions={actions}
+            predicates={LIVE_PREDICATES}
+            emptyHelp={<>조건 그룹을 만들어 <b style={{ color: "var(--text-secondary)" }}>실시간</b> 보드에서 종목을 배제하세요(매물대·고가·일봉대금).</>}
         />
     );
 }

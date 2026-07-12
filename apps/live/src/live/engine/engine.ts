@@ -3,6 +3,7 @@
 // theme/sheets·focus·signals 제거·슬림화. NestJS 데코레이터는 여기 없음(모듈/컨트롤러 가장자리에만).
 import { EventEmitter } from "node:events";
 import type { Kiwoom } from "@trade-data-manager/kiwoom";
+import { kstToday } from "@trade-data-manager/market";
 import type { KiwoomWs, ConnectionStatus } from "@trade-data-manager/kiwoom/ws";
 import { RankingScanner } from "./scanner.js";
 import { pollQuotes } from "./poller.js";
@@ -10,6 +11,7 @@ import { EngineStore } from "./store.js";
 import type { LiveSnapshot } from "@trade-data-manager/wire";
 import { buildSnapshot } from "./snapshot.js";
 import type { MembershipSource } from "./membership.js";
+import type { TrailingHighsSource } from "./trailingHighs.js";
 
 export interface LiveEngineOptions {
     conditionName: string; // 스캔할 조건식 이름(영웅문 서버저장)
@@ -33,6 +35,7 @@ export class LiveEngine extends EventEmitter {
         private readonly kiwoom: Kiwoom,
         private readonly ws: KiwoomWs,
         private readonly membership: MembershipSource,
+        private readonly trailing: TrailingHighsSource,
         opts: LiveEngineOptions,
     ) {
         super();
@@ -65,7 +68,7 @@ export class LiveEngine extends EventEmitter {
     }
 
     snapshot(): LiveSnapshot {
-        return buildSnapshot(this.store, this.membership, this.ws.getStatus(), Date.now());
+        return buildSnapshot(this.store, this.membership, this.trailing, this.ws.getStatus(), Date.now());
     }
 
     /** 재연결 직후: CNSRREQ 전 CNSRLST 선조회 요구 때문에 scanner 재init. */
@@ -93,6 +96,9 @@ export class LiveEngine extends EventEmitter {
         // 유니버스 = hot only (watchlist 는 후속 브릭에서 합집합)
         const quotes = await pollQuotes(this.kiwoom.rest, hits.map((h) => h.code), Date.now());
         this.store.updateQuotes(quotes);
+        // 트레일링 고가 백그라운드 priming(멱등) — base(전일종가)는 방금 적재된 시세에서. ka10081 별도 레이트라 폴링 안 막음.
+        const today = kstToday();
+        for (const q of quotes) void this.trailing.ensure(q.code, q.base, today);
         this.emit("tick", { hot: hits.length, polled: quotes.length, ts: Date.now() });
     }
 

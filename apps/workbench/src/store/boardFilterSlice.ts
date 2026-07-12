@@ -20,14 +20,17 @@ export interface BoardFilterActions {
 export interface BoardFilterSlice {
     boardFilter: BoardFilterExpr; // 이슈정리 보드(EOD)
     replayFilter: BoardFilterExpr; // 복기 보드(시점 t 스냅샷)
+    liveFilter: BoardFilterExpr; // 실시간 보드(라이브 스냅샷) — 분봉 buckets 없어 술어 서브셋
     boardFilterActions: BoardFilterActions;
     replayFilterActions: BoardFilterActions;
+    liveFilterActions: BoardFilterActions;
 }
 
-// 배제 필터 — localStorage 영속(그래프위치 선례). 이슈/복기 각자 키·상태, 편집 로직은 팩토리 1벌.
+// 배제 필터 — localStorage 영속(그래프위치 선례). 이슈/복기/실시간 각자 키·상태, 편집 로직은 팩토리 1벌.
 const BOARD_FILTER_KEY = "wb.boardFilter";
 const REPLAY_FILTER_KEY = "wb.replayFilter";
-type FilterField = "boardFilter" | "replayFilter";
+const LIVE_FILTER_KEY = "wb.liveFilter";
+type FilterField = "boardFilter" | "replayFilter" | "liveFilter";
 type SliceSet = (fn: (s: WorkbenchState) => Partial<WorkbenchState>) => void;
 
 const loadFilter = (key: string): BoardFilterExpr =>
@@ -60,7 +63,9 @@ function makeFilterActions(set: SliceSet, field: FilterField, persistKey: string
 export const createBoardFilterSlice: StateCreator<WorkbenchState, [], [], BoardFilterSlice> = (set) => ({
     boardFilter: loadFilter(BOARD_FILTER_KEY),
     replayFilter: loadFilter(REPLAY_FILTER_KEY),
+    liveFilter: loadFilter(LIVE_FILTER_KEY),
     // 새 그룹=dim 기본, 술어 추가 시 domain 기본 파라미터. 매 변경 localStorage 저장.
     boardFilterActions: makeFilterActions(set, "boardFilter", BOARD_FILTER_KEY),
     replayFilterActions: makeFilterActions(set, "replayFilter", REPLAY_FILTER_KEY),
+    liveFilterActions: makeFilterActions(set, "liveFilter", LIVE_FILTER_KEY),
 });

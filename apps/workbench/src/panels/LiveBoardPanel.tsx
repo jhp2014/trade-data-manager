@@ -4,12 +4,12 @@ import { useWorkbench } from "../store/workbench.js";
 import { StockRow } from "../components/board/StockRow.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
-import { liveToBoardStock, buildLiveBoardViewModel } from "../lib/boardViewModel.js";
+import { applyLiveFilter, buildLiveBoardViewModel } from "../lib/boardViewModel.js";
 
 // 실시간 보드(광역) — apps/live SSE 를 구독해 조건검색 hot 종목을 표시.
 // 두 모드: "리스트"(거래대금순 flat, StockRow) / "테마"(테마 그룹 카드, 복기·테마 보드의 BoardLayout 재사용).
-// 행 렌더·테마 우클릭 배정은 StockRow 아톰 재사용(배정은 전역 모달 → apps/api). 흐리게(일봉)는 후속 6c.
-const EMPTY_EXCLUDED = new Map<string, string[]>(); // 실시간 보드엔 배제필터 없음(안정 ref).
+// 행 렌더·테마 우클릭 배정은 StockRow 아톰 재사용(배정은 전역 모달 → apps/api).
+// 흐리게(6c)=실시간 필터(store.liveFilter, "실시간 필터" 패널) 적용 — 매물대 내부 등. trailingHighs 는 서버가 스냅샷에 실음.
 
 type LiveMode = "flat" | "group";
 
@@ -18,14 +18,14 @@ export function LiveBoardPanel(): JSX.Element {
     const code = useWorkbench((s) => s.focus.code);
     const setCode = useWorkbench((s) => s.setCode);
     const focusOrigin = useWorkbench((s) => s.lastFocusOrigin);
+    const liveFilter = useWorkbench((s) => s.liveFilter);
     const originId = useId();
     const [mode, setMode] = useState<LiveMode>("flat");
 
-    const flatRows = useMemo(() => {
-        if (!snapshot) return [];
-        return [...snapshot.stocks].sort((a, b) => b.tradeValue - a.tradeValue).map(liveToBoardStock);
-    }, [snapshot]);
-    const vm = useMemo(() => (snapshot && mode === "group" ? buildLiveBoardViewModel(snapshot.stocks) : null), [snapshot, mode]);
+    // 흐리게(6c): 두 모드 모두 실시간 필터 적용(dim/hide). 플랫은 거래대금순, 그룹은 BoardLayout.
+    const flat = useMemo(() => (snapshot && mode === "flat" ? applyLiveFilter(snapshot.stocks, liveFilter) : null), [snapshot, mode, liveFilter]);
+    const flatRows = useMemo(() => (flat ? [...flat.boardStocks].sort((a, b) => b.amount - a.amount) : []), [flat]);
+    const vm = useMemo(() => (snapshot && mode === "group" ? buildLiveBoardViewModel(snapshot.stocks, liveFilter) : null), [snapshot, mode, liveFilter]);
 
     if (!snapshot) return <BoardCenter text={error ? "연결 오류 — 재연결 중…" : "연결 중…"} />;
 
@@ -74,7 +74,7 @@ export function LiveBoardPanel(): JSX.Element {
                     onPick={(c) => setCode(c, originId)}
                     selfOrigin={originId}
                     focusOrigin={focusOrigin}
-                    excludedByFilter={EMPTY_EXCLUDED}
+                    excludedByFilter={vm!.excludedByFilter}
                     absentLabel="스캔 밖"
                 />
             )}
