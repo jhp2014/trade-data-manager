@@ -48,7 +48,7 @@ export function StockRow({
                 background: selected ? "var(--bg-active)" : "transparent",
                 font: "inherit",
                 overflow: "hidden",
-                opacity: s.dim ? 0.8 : 1,
+                opacity: s.dim ? 0.5 : 1,
             }}
         >
             {/* col1: 등수 + 이름(ellipsis) + 테마 칩(먼저 clip) */}
@@ -126,11 +126,13 @@ export function StockRow({
 function BucketChart({ buckets, pos, dim }: { buckets: number[]; pos: { x: number; y: number }; dim?: boolean }): JSX.Element {
     const max = Math.max(1, ...buckets);
     const H = 42;
+    const W = 150; // 대략 폭 — 커서 오른쪽에 뒀을 때 화면 밖으로 넘치면 왼쪽으로 뒤집는다.
+    const left = pos.x + 14 + W > window.innerWidth ? pos.x - 14 - W : pos.x + 14;
     return createPortal(
         <div
             style={{
                 position: "fixed",
-                left: pos.x + 14, // 차트 툴팁처럼 커서 오른쪽으로 오프셋, y 는 살짝 위로 — 커서/행을 가리지 않게
+                left, // 기본 커서 오른쪽, 우측 넘치면 왼쪽. y 는 살짝 위로 — 커서/행을 가리지 않게
                 top: pos.y - 28,
                 display: "flex",
                 gap: 3,
