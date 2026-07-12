@@ -1,18 +1,55 @@
-// 차트 패널 크롬 — 우상단 세그먼트 컨트롤 버튼·아이콘·영역 라벨·안내 문구.
+// 차트 패널 크롬 — 우상단 경량 컨트롤(보드 헤더 계열: 테두리·채움 없음)·아이콘·영역 라벨·안내 문구.
 // ChartPanel 본문(데이터 조율)에서 분리한 순수 표현 컴포넌트.
 
-// 통합 세그먼트 버튼 — 우상단 컨트롤 바 1개 안의 칸. 첫 칸이 아니면 좌측 구분선.
-export function SegButton({
+// 경량 텍스트 토글 — 보드 컨트롤(BoardModeControls) 과 같은 계열. 테두리·채움 없이 활성 = 볼드 + 색.
+// 상호배타 선택은 기본색(text-primary), on/off 토글은 activeColor 로 accent 를 넘긴다.
+export function TextToggle({
     active,
     disabled = false,
-    first = false,
     onClick,
     title,
+    activeColor = "var(--text-primary)",
     children,
 }: {
     active: boolean;
     disabled?: boolean;
-    first?: boolean;
+    onClick: () => void;
+    title: string;
+    activeColor?: string;
+    children: React.ReactNode;
+}): JSX.Element {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            title={title}
+            style={{
+                border: "none",
+                background: "none",
+                padding: "0 3px",
+                cursor: disabled ? "default" : "pointer",
+                font: "inherit",
+                fontSize: 11,
+                fontWeight: active ? 700 : 400,
+                color: active ? activeColor : "var(--text-tertiary)",
+                opacity: disabled ? 0.4 : 1,
+            }}
+        >
+            {children}
+        </button>
+    );
+}
+
+// 경량 아이콘 토글 — 테두리·채움 없음. 활성 = accent, 기본 = tertiary. 액션(clear)은 disabled 지원.
+export function IconToggle({
+    active = false,
+    disabled = false,
+    onClick,
+    title,
+    children,
+}: {
+    active?: boolean;
+    disabled?: boolean;
     onClick: () => void;
     title: string;
     children: React.ReactNode;
@@ -26,18 +63,23 @@ export function SegButton({
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: "3px 9px",
                 border: "none",
-                borderLeft: first ? "none" : "1px solid var(--border-default)",
-                background: active ? "var(--accent-primary)" : "var(--bg-primary)",
-                color: active ? "#fff" : "var(--text-secondary)",
+                background: "none",
+                padding: "0 2px",
                 cursor: disabled ? "default" : "pointer",
-                opacity: disabled ? 0.4 : 1,
+                color: active ? "var(--accent-primary)" : "var(--text-tertiary)",
+                opacity: disabled ? 0.35 : 1,
+                lineHeight: 0,
             }}
         >
             {children}
         </button>
     );
+}
+
+// 컨트롤 옵션 구분점(·) — 보드 헤더의 리스트·테마 구분과 동일.
+export function Dot(): JSX.Element {
+    return <span style={{ color: "var(--border-default)", fontSize: 11 }}>·</span>;
 }
 
 export function PaneLabel({ text }: { text: string }): JSX.Element {

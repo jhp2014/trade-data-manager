@@ -7,7 +7,7 @@ import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js"
 import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
-import { SegButton, PaneLabel, EyeIcon, InfoIcon, Center } from "./ChartPanelChrome.js";
+import { TextToggle, IconToggle, Dot, PaneLabel, EyeIcon, InfoIcon, Center } from "./ChartPanelChrome.js";
 import { TrashIcon } from "../components/icons.js";
 import { StockNameCopy } from "../components/StockNameCopy.js";
 import { fmtDateKo } from "../lib/date.js";
@@ -69,30 +69,36 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 )}
                 {focusedPoint?.type && <span style={{ padding: "1px 6px", borderRadius: 4, background: "var(--accent-soft)", color: "var(--accent-hover)", fontSize: 11, fontWeight: 600 }} title="현재 타점 셋업 유형">{focusedPoint.type}</span>}
                 {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
-                {/* 뷰 토글 — 일봉만/분봉만/둘다(패널별 독립, 차트 2개면 하나는 일봉 하나는 분봉). */}
-                <div style={{ marginLeft: "auto", display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
-                    <SegButton first active={view === "daily"} onClick={() => setView("daily")} title="일봉만">Day</SegButton>
-                    <SegButton active={view === "minute"} onClick={() => setView("minute")} title="분봉만">Min</SegButton>
-                    <SegButton active={view === "both"} onClick={() => setView("both")} title="둘 다">Day·Min</SegButton>
-                </div>
-                <div style={{ marginLeft: 6, display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
-                    <SegButton first active={showLine} onClick={() => setShowLine((v) => !v)} title={showLine ? "검색 세로선 숨기기" : "검색 세로선 표시"}>선</SegButton>
-                    <SegButton active={pinMinute} onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</SegButton>
-                </div>
-                {/* 통합 세그먼트 컨트롤 — 마커·타점정보·clear·시장(UN/KRX 단일 토글) */}
-                <div style={{ marginLeft: 6, display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
-                    <SegButton first active={showMarkers} onClick={() => setShowMarkers((v) => !v)} title={showMarkers ? "거래대금 마커 끄기" : "거래대금 마커 켜기"}>
-                        <EyeIcon off={!showMarkers} />
-                    </SegButton>
-                    <SegButton active={showPointInfo} onClick={() => setShowPointInfo((v) => !v)} title={showPointInfo ? "현재 타점 정보 끄기" : "현재 타점 정보 켜기"}>
-                        <InfoIcon />
-                    </SegButton>
-                    <SegButton active={false} disabled={!hasLines} onClick={() => hasLines && clear()} title="가격선 전체 지우기">
-                        <TrashIcon />
-                    </SegButton>
-                    <SegButton active onClick={() => setMode(mode === "un" ? "krx" : "un")} title={`클릭: 시장 전환 (현재 ${mode.toUpperCase()})`}>
-                        <span style={{ fontWeight: 600, minWidth: 30, textAlign: "center" }}>{mode.toUpperCase()}</span>
-                    </SegButton>
+                {/* 우상단 경량 컨트롤(보드 헤더 계열) — 뷰 · 선/고정 · 마커/타점정보/clear/시장. */}
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+                    {/* 뷰 — 일봉만/분봉만/둘다(패널별 독립, 상호배타). */}
+                    <span style={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <TextToggle active={view === "daily"} onClick={() => setView("daily")} title="일봉만">일봉</TextToggle>
+                        <Dot />
+                        <TextToggle active={view === "minute"} onClick={() => setView("minute")} title="분봉만">분봉</TextToggle>
+                        <Dot />
+                        <TextToggle active={view === "both"} onClick={() => setView("both")} title="둘 다">둘다</TextToggle>
+                    </span>
+                    {/* 선/고정 — on/off. */}
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <TextToggle active={showLine} activeColor="var(--accent-primary)" onClick={() => setShowLine((v) => !v)} title={showLine ? "검색 세로선 숨기기" : "검색 세로선 표시"}>선</TextToggle>
+                        <TextToggle active={pinMinute} activeColor="var(--accent-primary)" onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</TextToggle>
+                    </span>
+                    {/* 마커·타점정보·clear·시장(UN/KRX 단일 토글). */}
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <IconToggle active={showMarkers} onClick={() => setShowMarkers((v) => !v)} title={showMarkers ? "거래대금 마커 끄기" : "거래대금 마커 켜기"}>
+                            <EyeIcon off={!showMarkers} />
+                        </IconToggle>
+                        <IconToggle active={showPointInfo} onClick={() => setShowPointInfo((v) => !v)} title={showPointInfo ? "현재 타점 정보 끄기" : "현재 타점 정보 켜기"}>
+                            <InfoIcon />
+                        </IconToggle>
+                        <IconToggle disabled={!hasLines} onClick={() => hasLines && clear()} title="가격선 전체 지우기">
+                            <TrashIcon />
+                        </IconToggle>
+                        <TextToggle active activeColor="var(--accent-primary)" onClick={() => setMode(mode === "un" ? "krx" : "un")} title={`클릭: 시장 전환 (현재 ${mode.toUpperCase()})`}>
+                            <span style={{ display: "inline-block", minWidth: 28, textAlign: "center" }}>{mode.toUpperCase()}</span>
+                        </TextToggle>
+                    </span>
                 </div>
             </div>
 
