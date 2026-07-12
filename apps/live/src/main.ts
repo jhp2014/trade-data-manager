@@ -1,3 +1,4 @@
+import "dotenv/config"; // apps/live/.env 로드(LIVE_* 설정). 파일 없으면 no-op. 키움 크레덴셜은 infra/kiwoom/.env.
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";

@@ -158,6 +158,9 @@ importers:
       '@trade-data-manager/wire':
         specifier: workspace:*
         version: link:../../contracts/wire
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
