@@ -5,6 +5,8 @@ import { useUi } from "../store/ui.js";
 import { PANEL_CATALOG, type PanelEntry, type PanelPlane } from "../shell/panelCatalog.js";
 import { stockMetaQuery } from "../api/queries.js";
 import { DatePicker } from "./DatePicker.js";
+import { StockNameCopy } from "./StockNameCopy.js";
+import { useLiveSnapshot } from "../api/live.js";
 import { Popover } from "./Popover.js";
 import { GearButton } from "../ui/controls.js";
 
@@ -49,16 +51,10 @@ function textBtn(active = false): React.CSSProperties {
     };
 }
 
-// 종목 — 현재 종목 표시 전용(코드+이름). 종목 이동은 보드/작업셋/차트에서만 —
-// 자유 타이핑 입력을 없애 code 에는 항상 API 응답발 표준 6자리 코드만 흐른다(strict 검증 전제). 버스별로 code 를 prop 으로 받는다.
-function CodeControl({ code }: { code: string }): JSX.Element {
+// 종목 — 이름만 표시(코드 숨김), 클릭하면 종목코드 클립보드 복사(HTS 붙여넣기 연동).
+function NameCopyControl({ code }: { code: string }): JSX.Element {
     const meta = useQuery(stockMetaQuery(code));
-    const name = meta.data?.[0]?.name;
-    return (
-        <span title="현재 종목(보드/작업셋/차트에서 이동)" style={{ ...textBtn(), cursor: "default" }}>
-            {code ? (name ? `${code} ${name}` : code) : "종목"}
-        </span>
-    );
+    return <StockNameCopy code={code} name={meta.data?.[0]?.name} style={{ ...textBtn(), cursor: code ? "pointer" : "default" }} />;
 }
 
 // 시간 — 텍스트로 보이다 클릭하면 시각 스크러버(08:00~20:00) 팝오버. 버스별 time/setTime 을 prop 으로 받는다.
@@ -85,9 +81,8 @@ function TimeControl({ time, setTime }: { time: string | null; setTime: (t: stri
     );
 }
 
-// 플레인 컨텍스트 — 색 점 + 종목·날짜·시간. 실시간(🟠)/복기(🟢) 각 버스를 나란히 표시.
-function PlaneCtx({ plane, code, date, setDate, time, setTime }: {
-    plane: PanelPlane;
+// 복기 버스 컨텍스트(🟢) — 종목·날짜·시간(설정 가능).
+function EodPlaneCtx({ code, date, setDate, time, setTime }: {
     code: string;
     date: string;
     setDate: (d: string) => void;
@@ -96,12 +91,27 @@ function PlaneCtx({ plane, code, date, setDate, time, setTime }: {
 }): JSX.Element {
     return (
         <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: `var(--plane-${plane})`, flexShrink: 0, marginRight: 2 }} title={plane === "live" ? "실시간" : "복기"} />
-            <CodeControl code={code} />
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--plane-eod)", flexShrink: 0, marginRight: 2 }} title="복기" />
+            <NameCopyControl code={code} />
             <span style={sep}>·</span>
             <DatePicker value={date} onChange={setDate} />
             <span style={sep}>·</span>
             <TimeControl time={time} setTime={setTime} />
+        </span>
+    );
+}
+
+// 실시간 버스 컨텍스트(🟠) — 종목 + 연결상태 + 최근 폴링시각(날짜/시간 설정 불필요, 항상 now).
+function LivePlaneCtx({ code }: { code: string }): JSX.Element {
+    const { snapshot } = useLiveSnapshot();
+    const live = snapshot?.status === "live";
+    const polled = snapshot?.ts ? new Date(snapshot.ts).toLocaleTimeString("ko-KR", { hour12: false }) : null;
+    return (
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`실시간 연결: ${snapshot?.status ?? "끊김"}`}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: live ? "var(--plane-live)" : "var(--text-tertiary)", flexShrink: 0 }} />
+            <NameCopyControl code={code} />
+            <span style={{ color: live ? "var(--plane-live)" : "var(--text-tertiary)", fontSize: 11 }}>{live ? "● 실시간" : `○ ${snapshot?.status ?? "끊김"}`}</span>
+            {polled && <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 11 }} title="최근 폴링 시각">{polled}</span>}
         </span>
     );
 }
@@ -119,10 +129,6 @@ export function Taskbar(): JSX.Element {
     const setDate = useWorkbench((s) => s.setDate);
     const setTime = useWorkbench((s) => s.setTime);
     const liveCode = useWorkbench((s) => s.liveFocus.code);
-    const liveDate = useWorkbench((s) => s.liveFocus.date);
-    const liveTime = useWorkbench((s) => s.liveFocus.time);
-    const setLiveDate = useWorkbench((s) => s.setLiveDate);
-    const setLiveTime = useWorkbench((s) => s.setLiveTime);
     const openSettings = useUi((s) => s.openSettings);
     // 카탈로그에 있으나 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움. 플레인별로 나눠 그룹 표시.
     const closed = openPanelIds === null ? [] : PANEL_CATALOG.filter((p) => !openPanelIds.includes(p.id));
@@ -193,9 +199,9 @@ export function Taskbar(): JSX.Element {
             )}
             {/* 우측 구석: 실시간(🟠) / 복기(🟢) 두 버스 컨텍스트 + 설정 */}
             <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-                <PlaneCtx plane="live" code={liveCode} date={liveDate} setDate={setLiveDate} time={liveTime} setTime={setLiveTime} />
+                <LivePlaneCtx code={liveCode} />
                 <span style={sep}>│</span>
-                <PlaneCtx plane="eod" code={focusCode} date={date} setDate={setDate} time={focusTime} setTime={setTime} />
+                <EodPlaneCtx code={focusCode} date={date} setDate={setDate} time={focusTime} setTime={setTime} />
                 <span style={sep}>│</span>
                 <GearButton onClick={() => openSettings()} />
             </span>
