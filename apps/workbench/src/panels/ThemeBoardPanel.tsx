@@ -6,7 +6,7 @@ import { buildThemeBoardViewModel } from "../lib/boardViewModel.js";
 import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
-import { BoardModeControls, type BoardMode } from "../components/board/BoardModeControls.js";
+import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 
 // 테마 보드(EOD) — day-summary 일봉 한 방. 상단은 NavRail 만(설정은 전역 모달, 시간/날짜는 전역 툴바).
@@ -31,11 +31,7 @@ export function ThemeBoardPanel(): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <div style={{ padding: "4px 10px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", flexShrink: 0 }}>
-                <span style={{ marginLeft: "auto" }}>
-                    <BoardModeControls mode={mode} setMode={setMode} />
-                </span>
-            </div>
+            <BoardHeader left={<span>장 마감</span>} count={board.stocks.length} mode={mode} setMode={setMode} />
             {mode === "flat" ? (
                 <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} empty="종목 없음" />
             ) : (

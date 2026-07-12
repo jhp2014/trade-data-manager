@@ -48,7 +48,7 @@ export function StockRow({
                 background: selected ? "var(--bg-active)" : "transparent",
                 font: "inherit",
                 overflow: "hidden",
-                opacity: s.dim ? 0.35 : 1,
+                opacity: s.dim ? 0.8 : 1,
             }}
         >
             {/* col1: 등수 + 이름(ellipsis) + 테마 칩(먼저 clip) */}
@@ -80,24 +80,22 @@ export function StockRow({
                 >
                     {s.name}
                 </span>
-                {/* dim 종목: 뱃지 토글 ON 이면 제외 사유 태그, OFF(기본)면 테마 칩. */}
-                {showReasons && s.excludedBy ? (
+                {/* 필터 칩 ON: 제외 사유 태그 먼저 + 테마 칩 뒤(폭 좁으면 뒤부터 잘림). OFF(기본): 테마 칩만. */}
+                {((showReasons && s.excludedBy) || chips.length > 0) && (
                     <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>
-                        {s.excludedBy.map((r) => (
-                            <span key={r} style={{ flexShrink: 0, fontSize: 9, color: "var(--rise)", background: "rgba(239,68,68,0.12)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
-                                {r}
-                            </span>
-                        ))}
-                    </span>
-                ) : chips.length > 0 ? (
-                    <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>
+                        {showReasons &&
+                            s.excludedBy?.map((r) => (
+                                <span key={`r-${r}`} style={{ flexShrink: 0, fontSize: 9, color: "var(--rise)", background: "rgba(239,68,68,0.12)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
+                                    {r}
+                                </span>
+                            ))}
                         {chips.map((t) => (
-                            <span key={t} style={{ flexShrink: 0, fontSize: 9, color: "var(--text-tertiary)", background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
+                            <span key={`t-${t}`} style={{ flexShrink: 0, fontSize: 9, color: "var(--text-tertiary)", background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
                                 {t}
                             </span>
                         ))}
                     </span>
-                ) : null}
+                )}
             </span>
             {/* col2: 등락률(고정폭 우측정렬, 1자리) */}
             <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600, fontSize: 11 }}>

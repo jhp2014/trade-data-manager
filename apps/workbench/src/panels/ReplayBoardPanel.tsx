@@ -6,7 +6,7 @@ import { buildReplayBoardViewModel } from "../lib/boardViewModel.js";
 import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
-import { BoardModeControls, type BoardMode } from "../components/board/BoardModeControls.js";
+import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 
 // 실시간 복기 보드(②) — 전역 시간(Focus.time) 시점의 장중 스냅샷을 market-eye식으로 재현.
@@ -39,11 +39,7 @@ export function ReplayBoardPanel(): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <div style={{ padding: "4px 10px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", flexShrink: 0 }}>
-                <span style={{ marginLeft: "auto" }}>
-                    <BoardModeControls mode={mode} setMode={setMode} />
-                </span>
-            </div>
+            <BoardHeader left={<span className="tabular">{time ? time.slice(0, 5) : "장중"}</span>} count={board.stocks.length} mode={mode} setMode={setMode} />
             {mode === "flat" ? (
                 <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} empty="종목 없음" />
             ) : (

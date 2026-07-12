@@ -3,7 +3,7 @@ import { useLiveSnapshot } from "../api/live.js";
 import { useWorkbench } from "../store/workbench.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
-import { BoardModeControls, type BoardMode } from "../components/board/BoardModeControls.js";
+import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 import { buildLiveBoardViewModel } from "../lib/boardViewModel.js";
 
@@ -25,13 +25,12 @@ export function LiveBoardPanel(): JSX.Element {
     const live = snapshot.status === "live";
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ color: live ? "var(--rise)" : "var(--text-tertiary)" }}>{live ? "● 실시간" : `○ ${snapshot.status}`}</span>
-                <span>{snapshot.hot}종목</span>
-                <span style={{ marginLeft: "auto" }}>
-                    <BoardModeControls mode={mode} setMode={setMode} />
-                </span>
-            </div>
+            <BoardHeader
+                left={<span style={{ color: live ? "var(--rise)" : "var(--text-tertiary)" }}>{live ? "● 실시간" : `○ ${snapshot.status}`}</span>}
+                count={snapshot.hot}
+                mode={mode}
+                setMode={setMode}
+            />
             {mode === "flat" ? (
                 <FlatStockList stocks={vm.stocks} code={code} onPick={(c) => setCode(c, originId)} empty={live ? "조건 편입 종목 없음" : "엔진 대기중 (LIVE_CONDITION_NAME 미설정?)"} />
             ) : (
