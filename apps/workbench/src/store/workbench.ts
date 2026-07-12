@@ -8,15 +8,17 @@
 import { create } from "zustand";
 import { createFocusSlice, type FocusSlice } from "./focusSlice.js";
 import { createLiveFocusSlice, type LiveFocusSlice } from "./liveFocusSlice.js";
+import { createLiveChartSlice, type LiveChartSlice } from "./liveChartSlice.js";
 import { createChartSlice, type ChartSlice } from "./chartSlice.js";
 import { createHypothesisSlice, type HypothesisSlice } from "./hypothesisSlice.js";
 import { createBoardFilterSlice, type BoardFilterSlice } from "./boardFilterSlice.js";
 import { createSettingsSlice, type SettingsSlice } from "./settingsSlice.js";
 
-export type WorkbenchState = FocusSlice & LiveFocusSlice & ChartSlice & HypothesisSlice & BoardFilterSlice & SettingsSlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & HypothesisSlice & BoardFilterSlice & SettingsSlice;
 
 export type { Focus, Scope, Search, ActivePoint, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
+export type { LiveLineAnchor, LiveChartSlice } from "./liveChartSlice.js";
 export type { ChartPriceMode, ChartView, ChartSettings, ChartSlice } from "./chartSlice.js";
 export type { HypothesisSlice } from "./hypothesisSlice.js";
 export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js";
@@ -25,6 +27,7 @@ export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, Setting
 export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createFocusSlice(...a),
     ...createLiveFocusSlice(...a),
+    ...createLiveChartSlice(...a),
     ...createChartSlice(...a),
     ...createHypothesisSlice(...a),
     ...createBoardFilterSlice(...a),

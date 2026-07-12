@@ -6,6 +6,7 @@ import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import { SegButton, PaneLabel, EyeIcon, Center } from "./ChartPanelChrome.js";
+import type { RenderLine } from "../api/priceLines.js";
 
 // 실시간 차트(실시간 플레인, 실시간 버스) — apps/live 에서 REST 로 ChartBundle 을 받아 렌더.
 // 두 날짜: **일봉=기준일(오늘) 앵커, 분봉=검색날짜**(일봉 봉 클릭이 드리프트, 새로고침으로 기준일 복귀).
@@ -22,6 +23,9 @@ export function RealtimeChartPanel(): JSX.Element {
     const cs = useWorkbench((s) => s.chartSettings);
     const chartZoom = useWorkbench((s) => s.chartZoom);
     const name = useStockName(code);
+    const liveLines = useWorkbench((s) => s.liveLines); // 메모리 D/M 선(당일, 영속X)
+    const toggleLine = useWorkbench((s) => s.toggleLiveLine);
+    const removeLine = useWorkbench((s) => s.removeLiveLine);
     const [view, setView] = useState<ChartView>("both");
     const [showMarkers, setShowMarkers] = useState(true);
 
@@ -36,6 +40,26 @@ export function RealtimeChartPanel(): JSX.Element {
     const minuteView = useMemo(() => (minuteQ.data ? deriveMinuteView(minuteQ.data, mode) : null), [minuteQ.data, mode]);
     const expanded: "daily" | "minute" | null = view === "both" ? null : view;
     const toggleExpand = (which: "daily" | "minute"): void => setView(view === which ? "both" : which);
+
+    // 메모리 선 앵커 → 렌더선(로드된 캔들 고가에 해소). anchorTime 있으면 M, 없으면 D.
+    const anchors = useMemo(() => liveLines[code] ?? [], [liveLines, code]);
+    const resolvedLines = useMemo<RenderLine[]>(() => {
+        if (!dailyView || !minuteView) return [];
+        const dByDate = new Map(dailyView.map((p) => [p.time, p] as const));
+        const mByKey = new Map(minuteView.points.map((p) => [`${p.date}T${p.tradeTime}`, p] as const));
+        const out: RenderLine[] = [];
+        for (const a of anchors) {
+            if (a.anchorTime) {
+                const mp = mByKey.get(`${a.anchorDate}T${a.anchorTime}`);
+                if (mp) out.push({ id: a.id, price: mp.highPrice, kind: "M" });
+            } else {
+                const dp = dByDate.get(a.anchorDate);
+                if (dp) out.push({ id: a.id, price: dp.high, kind: "D" });
+            }
+        }
+        return out;
+    }, [anchors, dailyView, minuteView]);
+    const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -80,12 +104,12 @@ export function RealtimeChartPanel(): JSX.Element {
                                 {dailyView.length > 0 ? (
                                     <DailyChart
                                         points={dailyView}
-                                        lines={[]}
+                                        lines={dLines}
                                         zoom={chartZoom != null}
                                         zoomBars={cs.dailyZoomBars}
                                         zoomOutBars={cs.dailyZoomOutBars}
-                                        onRightClick={noop}
-                                        onRemoveLine={noop}
+                                        onRightClick={(anchorDate) => toggleLine(code, { anchorDate })}
+                                        onRemoveLine={(l) => removeLine(code, l.id)}
                                         onCandleClick={(d) => setSearch(d === anchorDate ? null : { date: d })}
                                         searchDate={drifted ? searchDate : undefined}
                                     />
@@ -99,7 +123,7 @@ export function RealtimeChartPanel(): JSX.Element {
                             <div onDoubleClick={() => toggleExpand("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다">
                                 <PaneLabel text={drifted ? `분봉 · ${searchDate.slice(5)}` : "분봉"} />
                                 {minuteView.points.length > 0 ? (
-                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={[]} base={minuteView.base} onMovePoint={noop} onRightClick={noop} onRemoveLine={noop} />
+                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={resolvedLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} />
                                 ) : (
                                     <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음 (장 마감?)"} />
                                 )}
