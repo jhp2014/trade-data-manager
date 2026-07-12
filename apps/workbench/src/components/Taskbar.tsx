@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -35,9 +36,6 @@ const chipStyle: React.CSSProperties = {
 // 플레인별 최소화 칩 — 테두리·글자를 플레인 색(실시간 앰버 / 복기·분석 teal)으로.
 function planeChip(plane: PanelPlane): React.CSSProperties {
     return { ...chipStyle, border: `1px dashed var(--plane-${plane})`, color: `var(--plane-${plane})` };
-}
-function planeLabel(plane: PanelPlane): React.CSSProperties {
-    return { fontSize: 10.5, fontWeight: 700, color: `var(--plane-${plane})` };
 }
 const sep: React.CSSProperties = { color: "var(--border-default)" };
 function textBtn(active = false): React.CSSProperties {
@@ -82,39 +80,51 @@ function TimeControl({ time, setTime }: { time: string | null; setTime: (t: stri
     );
 }
 
-// 복기 버스 컨텍스트(🟢) — 종목·날짜·시간(설정 가능).
-function EodPlaneCtx({ code, date, setDate, time, setTime }: {
+// 복기·분석 그룹(🟢) — 라벨 + 종목·날짜·시간 + 이 플레인 최소화 창 칩.
+function EodPlaneGroup({ code, date, setDate, time, setTime, chips }: {
     code: string;
     date: string;
     setDate: (d: string) => void;
     time: string | null;
     setTime: (t: string | null) => void;
+    chips: JSX.Element[];
 }): JSX.Element {
     return (
-        <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <span style={{ width: 5, height: 5, borderRadius: 999, background: "var(--plane-eod)", flexShrink: 0, marginRight: 2 }} title="복기" />
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 999, background: "var(--plane-eod)", flexShrink: 0 }} />
+            <span style={{ color: "var(--plane-eod)", fontWeight: 600 }}>복기 분석</span>
             <NameCopyControl code={code} />
-            <span style={sep}>·</span>
             <DatePicker value={date} onChange={setDate} />
-            <span style={sep}>·</span>
             <TimeControl time={time} setTime={setTime} />
+            {chips}
         </span>
     );
 }
 
-// 실시간 버스 컨텍스트(🟠) — 종목 + 연결상태 + 최근 폴링시각(날짜/시간 설정 불필요, 항상 now).
-function LivePlaneCtx({ code }: { code: string }): JSX.Element {
+// 실시간 그룹(🟠) — 라벨 + 종목 + 최근 폴링 시각(HH:MM:SS) + 이 플레인 최소화 창 칩.
+function LivePlaneGroup({ code, chips }: { code: string; chips: JSX.Element[] }): JSX.Element {
     const { snapshot } = useLiveSnapshot();
     const live = snapshot?.status === "live";
-    const polled = snapshot?.ts ? fmtStampKo(snapshot.ts) : null;
+    const t = snapshot?.ts ? new Date(snapshot.ts).toLocaleTimeString("en-GB") : null;
     return (
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`실시간 연결: ${snapshot?.status ?? "끊김"}`}>
-            <span style={{ width: 5, height: 5, borderRadius: 999, background: live ? "var(--plane-live)" : "var(--text-tertiary)", flexShrink: 0 }} />
+            <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 999, background: live ? "var(--plane-live)" : "var(--text-tertiary)", flexShrink: 0 }} />
+            <span style={{ color: "var(--plane-live)", fontWeight: 600 }}>실시간</span>
             <NameCopyControl code={code} />
-            <span style={{ color: live ? "var(--plane-live)" : "var(--text-tertiary)", fontSize: 11 }}>{live ? "실시간" : (snapshot?.status ?? "끊김")}</span>
-            {polled && <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 11 }} title="최근 폴링 시각">{polled}</span>}
+            {t && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{t}</span>}
+            {chips}
         </span>
     );
+}
+
+// 현재 시각(우측·설정 근처) — 매초 갱신. "2026-07-13 (월) 03:33:36".
+function Clock(): JSX.Element {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, []);
+    return <span className="tabular" style={{ color: "var(--text-secondary)", fontSize: 11 }} title="현재 시각">{fmtStampKo(now)}</span>;
 }
 
 export function Taskbar(): JSX.Element {
@@ -178,29 +188,13 @@ export function Taskbar(): JSX.Element {
             >
                 화면 {activePreset ?? "—"}
             </button>
-            {closed.length > 0 && (
-                <>
-                    <span style={sep}>│</span>
-                    {liveClosed.length > 0 && (
-                        <>
-                            <span style={planeLabel("live")}>실시간</span>
-                            {chips(liveClosed, "live")}
-                        </>
-                    )}
-                    {liveClosed.length > 0 && eodClosed.length > 0 && <span style={sep}>│</span>}
-                    {eodClosed.length > 0 && (
-                        <>
-                            <span style={planeLabel("eod")}>복기·분석</span>
-                            {chips(eodClosed, "eod")}
-                        </>
-                    )}
-                </>
-            )}
-            {/* 우측 구석: 실시간(🟠) / 복기(🟢) 두 버스 컨텍스트 + 설정 */}
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-                <LivePlaneCtx code={liveCode} />
-                <span style={sep}>│</span>
-                <EodPlaneCtx code={focusCode} date={date} setDate={setDate} time={focusTime} setTime={setTime} />
+            <span style={sep}>│</span>
+            <LivePlaneGroup code={liveCode} chips={chips(liveClosed, "live")} />
+            <span style={sep}>│</span>
+            <EodPlaneGroup code={focusCode} date={date} setDate={setDate} time={focusTime} setTime={setTime} chips={chips(eodClosed, "eod")} />
+            {/* 우측: 현재 시각 + 설정 */}
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+                <Clock />
                 <span style={sep}>│</span>
                 <GearButton onClick={() => openSettings()} />
             </span>
