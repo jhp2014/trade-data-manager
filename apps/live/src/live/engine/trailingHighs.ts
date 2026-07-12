@@ -40,8 +40,12 @@ export class KiwoomTrailingHighs implements TrailingHighsSource {
         this.inflight.add(code);
         try {
             const candles = await this.kiwoom.rest.getRawDailyChartsForRange(code, ymdDaysAgo(LOOKBACK_CAL_DAYS), today);
-            const highsPct = candles
-                .filter((c) => c.dt < today) // 오늘(형성중) 캔들 제외 — index 0 은 라이브 highPct(클라가 prepend)
+            // 기준일 앵커: base(전일종가)와 종가가 일치하는 최신 일봉 = "직전 완결 거래일". 그보다 새 캔들(현재 세션 —
+            // 장중 형성중이거나 마지막 거래일)은 제외 — 클라가 index 0 에 라이브 highPct 를 prepend하므로 이중계산 방지.
+            // 달력 시계(kstToday)에 의존하지 않아 주말·휴일·장중 모두 정확(비거래일 kstToday 로는 마지막 거래일을 못 걸렀음).
+            const baseIdx = candles.findIndex((c) => Math.abs(Number(c.cur_prc)) === base);
+            const past = baseIdx >= 0 ? candles.slice(baseIdx) : candles.slice(1); // 매칭 실패(수정주가 등)면 최신 1개만 제외(폴백)
+            const highsPct = past
                 .slice(0, TRAILING_DAYS) // kiwoom 일봉은 최신→과거 정렬
                 .map((c) => Math.round(((Math.abs(Number(c.high_pric)) - base) / base) * 10_000) / 100); // 고가%(2dp), 부호접두 방어
             this.cache.set(code, { date: today, highsPct });
