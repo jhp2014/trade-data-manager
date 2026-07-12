@@ -9,6 +9,8 @@ import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import { SegButton, PaneLabel, EyeIcon, InfoIcon, Center } from "./ChartPanelChrome.js";
 import { TrashIcon } from "../components/icons.js";
+import { StockNameCopy } from "../components/StockNameCopy.js";
+import { fmtDateKo } from "../lib/date.js";
 
 // 차트 패널 — 일봉(상) + 분봉(하) 듀얼. 영역 더블클릭 = 그 영역만 보기 ↔ 둘 다.
 // 좌상단 종목명(마스터 메타 경량 조회), 우상단 통합 세그먼트 컨트롤(마커·타점정보·clear·시장).
@@ -31,10 +33,12 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const expanded: "daily" | "minute" | null = view === "both" ? null : view; // 기존 렌더 로직 재사용
     const [showMarkers, setShowMarkers] = useState(true); // 분봉 거래대금 마커 ON/OFF
     const [showPointInfo, setShowPointInfo] = useState(true); // 현재 타점(시간선) readout — 기본 표시
+    const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
+    const [pinMinute, setPinMinute] = useState(false); // 분봉 기준일 고정(일봉 클릭 무시)
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
-    // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). search=null 이면 viewDate=anchor 로 동작 무변경.
-    const viewDate = search?.date ?? anchor;
+    // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이. search=null 이면 viewDate=anchor 로 동작 무변경.
+    const viewDate = pinMinute ? anchor : search?.date ?? anchor;
     const drifted = viewDate !== anchor;
     const dailyQ = useQuery(chartQuery(code, anchor));
     const minuteQ = useQuery(chartQuery(code, viewDate)); // viewDate=anchor 면 같은 쿼리(RQ dedup)
@@ -55,12 +59,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
             {/* 헤더 */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 12, flexShrink: 0 }}>
-                <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>{name ?? code ?? "—"}</span>
-                {name && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{code}</span>}
-                <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{anchor}</span>
+                <StockNameCopy code={code} name={name} style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }} />
+                <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{fmtDateKo(anchor)}</span>
                 {drifted && (
                     <>
-                        <span className="tabular" style={{ color: "#e07b1a", fontWeight: 600 }}>→ {viewDate.slice(5)}</span>
+                        <span className="tabular" style={{ color: "#e07b1a", fontWeight: 600 }}>→ {fmtDateKo(viewDate)}</span>
                         <button onClick={() => setSearch(null)} title="기준일로 복귀" style={{ border: "none", background: "none", color: "#e07b1a", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>↺</button>
                     </>
                 )}
@@ -71,6 +74,10 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <SegButton first active={view === "daily"} onClick={() => setView("daily")} title="일봉만">Day</SegButton>
                     <SegButton active={view === "minute"} onClick={() => setView("minute")} title="분봉만">Min</SegButton>
                     <SegButton active={view === "both"} onClick={() => setView("both")} title="둘 다">Day·Min</SegButton>
+                </div>
+                <div style={{ marginLeft: 6, display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
+                    <SegButton first active={showLine} onClick={() => setShowLine((v) => !v)} title={showLine ? "검색 세로선 숨기기" : "검색 세로선 표시"}>선</SegButton>
+                    <SegButton active={pinMinute} onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</SegButton>
                 </div>
                 {/* 통합 세그먼트 컨트롤 — 마커·타점정보·clear·시장(UN/KRX 단일 토글) */}
                 <div style={{ marginLeft: 6, display: "flex", border: "1px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
@@ -98,14 +105,13 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
                             <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 고점 선(D)">
-                                <PaneLabel text="일봉" />
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={(d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={drifted ? viewDate : undefined} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={pinMinute ? undefined : (d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={showLine && drifted ? viewDate : undefined} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
                         {expanded !== "daily" && (
                             <div onDoubleClick={() => toggleExpand("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 좌클릭: 타점 이동 · 스페이스바: 타점 저장 · 봉 우클릭: 선(M)">
-                                <PaneLabel text="분봉" />
+                                <PaneLabel text={fmtDateKo(viewDate)} />
                                 {minuteView.points.length > 0 ? (
                                     <MinuteChart
                                         points={minuteView.points}

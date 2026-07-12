@@ -18,6 +18,7 @@ import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
+import { fmtDateKo } from "../lib/date.js";
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 const LEFT_MARGIN_BARS = 3; // 좌측 여백(빈 논리 인덱스)
@@ -39,12 +40,6 @@ function fmtDailyCrosshair(time: Time): string {
     return `${String(y).slice(-2)}년 ${mo}월 ${d}일 (${WEEKDAYS_KO[wd]})`;
 }
 
-// 검색날짜 세로선 라벨 — 연도·월·일·요일 전부. "2026년 7월 9일 (목)".
-function fmtSearchDate(date: string): string {
-    const [y, mo, d] = date.split("-").map(Number);
-    const wd = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
-    return `${y}년 ${mo}월 ${d}일 (${WEEKDAYS_KO[wd]})`;
-}
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
@@ -222,7 +217,7 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
 
     // 검색날짜 세로선(실시간 차트 탐색) — 지정일에 앰버 파선. 기준일=검색날짜면 없음.
     useEffect(() => {
-        vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: "#e07b1a", width: 1, dashed: true, label: fmtSearchDate(searchDate) }] : []);
+        vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: "#e07b1a", width: 1, dashed: true, label: fmtDateKo(searchDate) }] : []);
     }, [searchDate]);
 
     const [cursor, setCursor] = useState({ x: 0, y: 0 });

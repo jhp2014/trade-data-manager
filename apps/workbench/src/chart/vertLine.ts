@@ -60,7 +60,12 @@ class VertLinesPaneRenderer {
                     ctx.fillStyle = l.color;
                     ctx.font = `${Math.round(12 * ratio)}px -apple-system, system-ui, sans-serif`;
                     ctx.textBaseline = "top";
-                    ctx.fillText(l.label, px + 4 * ratio, 4 * ratio); // 선 상단 오른쪽
+                    const pad = 4 * ratio;
+                    // 우측으로 넘치면 선 왼쪽에 표시(분봉 라벨처럼 화면 밖 방지).
+                    const overflow = px + pad + ctx.measureText(l.label).width > scope.bitmapSize.width;
+                    ctx.textAlign = overflow ? "right" : "left";
+                    ctx.fillText(l.label, overflow ? px - pad : px + pad, pad);
+                    ctx.textAlign = "left";
                 }
             }
             ctx.restore();

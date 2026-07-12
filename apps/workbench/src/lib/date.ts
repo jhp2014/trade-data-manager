@@ -17,3 +17,10 @@ export function dateLabel(date: string): string {
     if (!date) return "";
     return `${date} (${weekdayOf(date)})`;
 }
+
+/** "2026년 7월 9일 (목)" — 차트/세로선 날짜 라벨(연·월·일·요일). */
+export function fmtDateKo(date: string): string {
+    if (!date) return "";
+    const [y, mo, d] = date.split("-").map(Number);
+    return `${y}년 ${mo}월 ${d}일 (${weekdayOf(date)})`;
+}
