@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
-import { StarIcon, HideIcon, DragIcon, iconBtn } from "./boardIcons.js";
+import { StarIcon, HideIcon, iconBtn } from "./boardIcons.js";
 import { StockRow } from "./StockRow.js";
 import { AXIS_HI, fmtRate1, type BoardStock, type ListMode, type RelatedInfo } from "./boardTypes.js";
 
@@ -24,6 +24,7 @@ export function ThemeCard({
     isHidden,
     showRank = true,
     initialMode = "collapsed",
+    subordinate = false,
 }: {
     theme: string;
     stocks: BoardStock[];
@@ -40,6 +41,7 @@ export function ThemeCard({
     onGoto?: (theme: string) => void; // 관련 테마 클릭 = 이동
     isHidden?: (theme: string) => boolean; // 숨긴 테마면 관련칩 흐릿
     initialMode?: ListMode; // 최초 펼침 단계(기본 접힘). 현재 종목 자동승격 카드는 movers 로 열림.
+    subordinate?: boolean; // 개별/미분류 카드 — 좌측 라인을 점선으로(정식 테마 아님 표시).
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>(initialMode);
     const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
@@ -49,73 +51,74 @@ export function ThemeCard({
     const rankOf = new Map(stocks.map((s, i) => [s.code, i + 1]));
     const cycle = (): void => setMode((m) => (m === "collapsed" ? "movers" : m === "movers" ? "all" : "collapsed"));
     const stop = (e: React.MouseEvent): void => e.stopPropagation();
+    // 좌측 라인 = 상태 인코딩(직교): 현재종목 포함 → teal / 개별·미분류 → 점선 / 그 외 → 회색.
+    // 클릭 선택은 라인이 아니라 헤더 틴트로만 표시(selected ? accent-soft). 즐겨찾기 카드는 이 라인이 드래그 핸들.
+    const railBg = hasFocus
+        ? "var(--accent-primary)"
+        : subordinate
+            ? "repeating-linear-gradient(var(--border-default) 0 4px, transparent 4px 8px)"
+            : "var(--border-strong)";
     return (
-        <div
-            className={hot > 0 ? "board-blink" : undefined}
-            style={{
-                border: `1px solid ${selected || hasFocus ? "var(--accent-primary)" : "var(--border-default)"}`,
-                borderRadius: 8,
-                background: "var(--bg-primary)",
-                overflow: "hidden",
-            }}
-        >
+        <div className={`board-card${hot > 0 ? " board-blink" : ""}`} style={{ display: "flex", background: "var(--bg-primary)", overflow: "hidden" }}>
             <div
-                onClick={onSelect ? () => onSelect(theme) : undefined}
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "6px 10px",
-                    borderBottom: "1px solid var(--border-subtle)",
-                    background: selected ? "var(--accent-soft)" : undefined,
-                    cursor: onSelect ? "pointer" : undefined,
-                }}
-            >
-                {dragHandle && (
-                    <button {...dragHandle} onClick={stop} title="드래그로 순서 변경" style={{ ...iconBtn, cursor: "grab", touchAction: "none" }}>
-                        <DragIcon />
-                    </button>
-                )}
-                <span style={{ fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{theme}</span>
-                <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12, flexShrink: 0 }} title="주도주 / 전체">
-                    {movers.length} / {stocks.length}
-                </span>
-                {hot > 0 && (
-                    <span className="tabular" style={{ color: "var(--rise)", fontSize: 12, flexShrink: 0 }} title="지금 주목(1분 델타) 종목 수">
-                        🔥{hot}
+                {...(dragHandle ?? {})}
+                title={dragHandle ? "드래그로 순서 변경" : undefined}
+                style={{ flexShrink: 0, width: 3, alignSelf: "stretch", background: railBg, cursor: dragHandle ? "grab" : "default", touchAction: dragHandle ? "none" : undefined }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                    onClick={onSelect ? () => onSelect(theme) : undefined}
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 10px",
+                        borderBottom: "1px solid var(--border-subtle)",
+                        background: selected ? "var(--accent-soft)" : undefined,
+                        cursor: onSelect ? "pointer" : undefined,
+                    }}
+                >
+                    <span style={{ fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{theme}</span>
+                    <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12, flexShrink: 0 }} title="주도주 / 전체">
+                        {movers.length} / {stocks.length}
                     </span>
-                )}
-                {(onToggleFav || onHide) && (
-                    <span style={{ marginLeft: "auto", display: "flex", gap: 2, flexShrink: 0 }}>
-                        {onHide && (
-                            <button onClick={(e) => { stop(e); onHide(theme); }} title="숨기기" style={iconBtn}>
-                                <HideIcon />
-                            </button>
-                        )}
-                        {onToggleFav && (
-                            <button onClick={(e) => { stop(e); onToggleFav(theme); }} title={isFav ? "즐겨찾기 해제" : "즐겨찾기"} style={{ ...iconBtn, color: isFav ? "var(--warning)" : "var(--text-tertiary)" }}>
-                                <StarIcon filled={isFav} />
-                            </button>
-                        )}
-                    </span>
-                )}
-            </div>
-
-            <DistBar stocks={stocks} mode={mode} onCycle={cycle} />
-
-            {mode !== "collapsed" && (
-                <div>
-                    {movers.map((s) => (
-                        <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} home={theme} />
-                    ))}
-                    {mode === "all" &&
-                        rest.map((s, i) => (
-                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} home={theme} />
-                        ))}
+                    {hot > 0 && (
+                        <span className="tabular" style={{ color: "var(--rise)", fontSize: 12, flexShrink: 0 }} title="지금 주목(1분 델타) 종목 수">
+                            🔥{hot}
+                        </span>
+                    )}
+                    {(onToggleFav || onHide) && (
+                        <span className="card-actions" style={{ marginLeft: "auto", display: "flex", gap: 2, flexShrink: 0 }}>
+                            {onHide && (
+                                <button className="hover-only" onClick={(e) => { stop(e); onHide(theme); }} title="숨기기" style={iconBtn}>
+                                    <HideIcon />
+                                </button>
+                            )}
+                            {onToggleFav && (
+                                <button className={isFav ? undefined : "hover-only"} onClick={(e) => { stop(e); onToggleFav(theme); }} title={isFav ? "즐겨찾기 해제" : "즐겨찾기"} style={{ ...iconBtn, color: isFav ? "var(--warning)" : "var(--text-tertiary)" }}>
+                                    <StarIcon filled={isFav} />
+                                </button>
+                            )}
+                        </span>
+                    )}
                 </div>
-            )}
 
-            {related && related.length > 0 && onGoto && <InfoLine home={theme} related={related} onGoto={onGoto} isHidden={isHidden} />}
+                <DistBar stocks={stocks} mode={mode} onCycle={cycle} />
+
+                {mode !== "collapsed" && (
+                    <div>
+                        {movers.map((s) => (
+                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} home={theme} />
+                        ))}
+                        {mode === "all" &&
+                            rest.map((s, i) => (
+                                <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} home={theme} />
+                            ))}
+                    </div>
+                )}
+
+                {related && related.length > 0 && onGoto && <InfoLine home={theme} related={related} onGoto={onGoto} isHidden={isHidden} />}
+            </div>
         </div>
     );
 }
@@ -224,14 +227,14 @@ function DistBar({ stocks, mode, onCycle }: { stocks: BoardStock[]; mode: ListMo
     const bandFrom = mode === "all" ? 0 : mode === "movers" ? LEAD : null; // null = 밴드 없음(접힘)
     const lblHot = (v: number): boolean => mode === "all" || (mode === "movers" && v >= LEAD);
     return (
-        <div onClick={onCycle} title={`클릭: ${next}`} style={{ position: "relative", height: 28, margin: "3px 10px", cursor: "pointer" }}>
+        <div onClick={onCycle} title={`클릭: ${next}`} style={{ position: "relative", height: 24, margin: "3px 10px", cursor: "pointer" }}>
             {/* 표시단계 하이라이트 밴드(점·눈금 뒤) */}
             {bandFrom != null && (
-                <div style={{ position: "absolute", left: `${x(bandFrom)}%`, width: `${100 - x(bandFrom)}%`, top: 3, height: 12, background: "var(--accent-soft)", borderRadius: 3, zIndex: 0 }} />
+                <div style={{ position: "absolute", left: `${x(bandFrom)}%`, width: `${100 - x(bandFrom)}%`, top: 2, height: 12, background: "var(--accent-soft)", borderRadius: 3, zIndex: 0 }} />
             )}
-            <div style={{ position: "absolute", left: 0, right: 0, top: 9, height: 1, background: "var(--border-default)" }} />
+            <div style={{ position: "absolute", left: 0, right: 0, top: 8, height: 1, background: "var(--border-default)" }} />
             {ticks.map((t) => (
-                <div key={`t${t}`} style={{ position: "absolute", left: `${x(t)}%`, top: 5, width: 1, height: 9, background: "var(--border-default)", transform: "translateX(-50%)" }} />
+                <div key={`t${t}`} style={{ position: "absolute", left: `${x(t)}%`, top: 4, width: 1, height: 8, background: "var(--border-subtle)", transform: "translateX(-50%)" }} />
             ))}
             {stocks
                 .filter((s) => s.changeRate >= 0 && s.changeRate <= AXIS_HI)
@@ -242,7 +245,7 @@ function DistBar({ stocks, mode, onCycle }: { stocks: BoardStock[]; mode: ListMo
                         style={{
                             position: "absolute",
                             left: `${x(s.changeRate)}%`,
-                            top: 9,
+                            top: 8,
                             width: s.signal ? 8 : 6,
                             height: s.signal ? 8 : 6,
                             borderRadius: "50%",
@@ -254,12 +257,12 @@ function DistBar({ stocks, mode, onCycle }: { stocks: BoardStock[]; mode: ListMo
                     />
                 ))}
             {/* 축 라벨(활성 구간 강조) */}
-            <span className="tabular" style={{ position: "absolute", left: 0, top: 16, fontSize: 9, color: lblHot(0) ? "var(--text-secondary)" : "var(--text-tertiary)", fontWeight: lblHot(0) ? 700 : 400 }}>0%</span>
+            <span className="tabular" style={{ position: "absolute", left: 0, top: 14, fontSize: 9, color: lblHot(0) ? "var(--text-secondary)" : "var(--text-tertiary)", fontWeight: lblHot(0) ? 700 : 400 }}>0%</span>
             {ticks.map((t, i) => (
                 <span
                     key={`l${t}`}
                     className="tabular"
-                    style={{ position: "absolute", left: `${x(t)}%`, top: 16, fontSize: 9, color: lblHot(t) ? "var(--text-secondary)" : "var(--text-tertiary)", fontWeight: lblHot(t) ? 700 : 400, whiteSpace: "nowrap", transform: i === ticks.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}
+                    style={{ position: "absolute", left: `${x(t)}%`, top: 14, fontSize: 9, color: lblHot(t) ? "var(--text-secondary)" : "var(--text-tertiary)", fontWeight: lblHot(t) ? 700 : 400, whiteSpace: "nowrap", transform: i === ticks.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}
                 >
                     {t}%
                 </span>

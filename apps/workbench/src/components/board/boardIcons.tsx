@@ -18,14 +18,4 @@ export function HideIcon(): JSX.Element {
     );
 }
 
-export function DragIcon(): JSX.Element {
-    return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
-            <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
-            <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
-        </svg>
-    );
-}
-
 export const iconBtn: React.CSSProperties = { display: "inline-flex", padding: "2px", background: "none", color: "var(--text-tertiary)", lineHeight: 0, cursor: "pointer" };

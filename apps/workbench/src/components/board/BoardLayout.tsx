@@ -216,10 +216,10 @@ export function BoardLayout({
                     )}
                     {restCards.map((g) => renderCard(g))}
                     {showIndividuals && grouped.individuals.length > 0 && (
-                        <ThemeCard theme="개별 종목" stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} showRank={false} />
+                        <ThemeCard theme="개별 종목" stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} showRank={false} subordinate />
                     )}
                     {showUnclassified && grouped.unclassified.length > 0 && (
-                        <ThemeCard theme="미분류" stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} showRank={false} />
+                        <ThemeCard theme="미분류" stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} showRank={false} subordinate />
                     )}
                     {empty && <BoardCenter text="표시할 종목 없음" />}
                 </div>

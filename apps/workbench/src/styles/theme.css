@@ -78,6 +78,17 @@ button {
     animation: board-blink 1.4s ease-in-out infinite;
 }
 
+/* 보드 카드 액션 아이콘(★/👁) — 평상시 숨김, 카드 hover/포커스 시 노출.
+   즐겨찾기 ★는 hover-only 클래스를 안 붙여 상시 노출(즐겨찾기 상태 표시). */
+.board-card .hover-only {
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.board-card:hover .hover-only,
+.board-card:focus-within .hover-only {
+    opacity: 1;
+}
+
 /* 새로고침 등 진행 중 회전 표시. */
 @keyframes spin {
     to {
