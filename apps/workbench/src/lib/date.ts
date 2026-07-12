@@ -24,3 +24,9 @@ export function fmtDateKo(date: string): string {
     const [y, mo, d] = date.split("-").map(Number);
     return `${y}년 ${mo}월 ${d}일 (${weekdayOf(date)})`;
 }
+
+/** epoch ms → "2026-05-08 (금) 01:58:43" (로컬=KST). 실시간 최근 폴링 시각 표시용. */
+export function fmtStampKo(ts: number): string {
+    const d = new Date(ts);
+    return `${d.toLocaleDateString("en-CA")} (${WEEKDAYS[d.getDay()]}) ${d.toLocaleTimeString("en-GB")}`;
+}

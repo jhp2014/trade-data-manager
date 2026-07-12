@@ -6,6 +6,7 @@ import { PANEL_CATALOG, type PanelEntry, type PanelPlane } from "../shell/panelC
 import { stockMetaQuery } from "../api/queries.js";
 import { DatePicker } from "./DatePicker.js";
 import { StockNameCopy } from "./StockNameCopy.js";
+import { fmtStampKo } from "../lib/date.js";
 import { useLiveSnapshot } from "../api/live.js";
 import { Popover } from "./Popover.js";
 import { GearButton } from "../ui/controls.js";
@@ -105,7 +106,7 @@ function EodPlaneCtx({ code, date, setDate, time, setTime }: {
 function LivePlaneCtx({ code }: { code: string }): JSX.Element {
     const { snapshot } = useLiveSnapshot();
     const live = snapshot?.status === "live";
-    const polled = snapshot?.ts ? new Date(snapshot.ts).toLocaleTimeString("ko-KR", { hour12: false }) : null;
+    const polled = snapshot?.ts ? fmtStampKo(snapshot.ts) : null;
     return (
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`실시간 연결: ${snapshot?.status ?? "끊김"}`}>
             <span style={{ width: 6, height: 6, borderRadius: 999, background: live ? "var(--plane-live)" : "var(--text-tertiary)", flexShrink: 0 }} />

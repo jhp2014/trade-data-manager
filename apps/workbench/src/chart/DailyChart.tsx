@@ -217,10 +217,26 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
 
     // 검색날짜 세로선(실시간 차트 탐색) — 지정일에 앰버 파선. 기준일=검색날짜면 없음.
     useEffect(() => {
-        vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: "#e07b1a", width: 1, dashed: true, label: fmtDateKo(searchDate) }] : []);
+        vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: "#e07b1a", width: 1, dashed: true }] : []);
+    }, [searchDate]);
+
+    // 검색날짜 세로선 x 좌표 추적(pan/zoom·searchDate 변경) → HTML 날짜 배지 위치(분봉 마커 카드 스타일).
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        const ts = chart.timeScale();
+        const update = (): void => {
+            const c = searchDate ? ts.timeToCoordinate(searchDate as unknown as Time) : null;
+            setLineX(c == null ? null : (c as number));
+        };
+        update();
+        ts.subscribeVisibleLogicalRangeChange(update);
+        return () => ts.unsubscribeVisibleLogicalRangeChange(update);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchDate]);
 
     const [cursor, setCursor] = useState({ x: 0, y: 0 });
+    const [lineX, setLineX] = useState<number | null>(null); // 검색날짜 세로선 x(HTML 배지 위치)
     const { state: tip } = useCrosshairTooltip({
         chartRef,
         containerRef,
@@ -256,6 +272,30 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
             }}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
+            {lineX != null && searchDate && (
+                <div
+                    className="tabular"
+                    style={{
+                        position: "absolute",
+                        top: 4,
+                        left: lineX,
+                        zIndex: 6,
+                        pointerEvents: "none",
+                        transform: containerRef.current && lineX > containerRef.current.clientWidth * 0.72 ? "translateX(calc(-100% - 6px))" : "translateX(6px)",
+                        background: "rgba(255,255,255,0.95)",
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: 4,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                        padding: "1px 7px",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        color: "#e07b1a",
+                    }}
+                >
+                    {fmtDateKo(searchDate)}
+                </div>
+            )}
             {tip.visible && <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</FloatingTooltip>}
         </div>
     );
