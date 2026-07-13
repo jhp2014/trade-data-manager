@@ -45,6 +45,18 @@ describe("RankingScanner(일반 재조회 폴링)", () => {
         ]);
     });
 
+    it("scan: 에러 프레임(return_code≠0)은 빈 목록이 아니라 throw — 서버 메시지 노출", async () => {
+        const ws = {
+            request: async (frame: Frame) => {
+                if (frame.trnm === "CNSRLST") return { trnm: "CNSRLST", return_code: 0, data: [["7", "거래대금"]] };
+                return { trnm: "CNSRREQ", seq: frame.seq, return_code: 1, return_msg: "조회 횟수 초과" };
+            },
+        } as unknown as KiwoomWs;
+        const s = new RankingScanner(ws, "거래대금");
+        await s.init(); // return_code=0 은 통과
+        await expect(s.scan()).rejects.toThrow(/CNSRREQ 실패.*조회 횟수 초과/);
+    });
+
     it("scan: init 전 호출은 throw, 매 호출이 재조회(폴링 — 두 번째도 CNSRREQ 전송)", async () => {
         const { ws, sent } = fakeWs([["7", "거래대금"]], []);
         const uninit = new RankingScanner(ws, "거래대금");

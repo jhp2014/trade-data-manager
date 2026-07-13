@@ -58,7 +58,7 @@ export class LiveEngine extends EventEmitter {
         this.lastMembershipMs = Date.now();
         this.ready = true;
         this.running = true;
-        await this.tick(); // 즉시 1회
+        await this.tick().catch((err) => this.emit("error", err)); // 첫 틱 실패(일시 오류)해도 루프는 시작 — scheduleNext 와 동일 정책
         this.scheduleNext();
         this.emit("started", { conditionSeq: this.scanner.conditionSeq });
     }
