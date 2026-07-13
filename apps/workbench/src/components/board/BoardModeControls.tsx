@@ -1,4 +1,5 @@
 import { useUi } from "../../store/ui.js";
+import { RefreshIcon } from "./boardIcons.js";
 
 // 보드 헤더 컨트롤 — 가벼운 텍스트 세그먼트(테두리·채움 없음). 리스트/테마 고정 2버튼 + 필터칩 토글.
 export type BoardMode = "flat" | "group";
@@ -38,19 +39,27 @@ export function BoardModeControls({ mode, setMode }: { mode: BoardMode; setMode:
 }
 
 // 보드 공용 헤더 — 작은 색 점 + 라벨(상태/시간/장마감) + 종목수 + 우측 컨트롤. 컴팩트.
-export function BoardHeader({ dotColor, label, count, mode, setMode }: {
+// onRefresh 주면 모드 토글 왼쪽에 새로고침 버튼(실시간 보드: 시트 테마 즉시 반영).
+export function BoardHeader({ dotColor, label, count, mode, setMode, onRefresh, refreshing }: {
     dotColor: string;
     label: string;
     count: number;
     mode: BoardMode;
     setMode: (m: BoardMode) => void;
+    onRefresh?: () => void;
+    refreshing?: boolean;
 }): JSX.Element {
     return (
         <div style={{ padding: "3px 10px", fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 999, background: dotColor, flexShrink: 0 }} />
             <span style={{ color: dotColor }}>{label}</span>
             <span className="tabular">{count}종목</span>
-            <span style={{ marginLeft: "auto" }}>
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+                {onRefresh && (
+                    <button className="icon-btn" style={{ width: "auto", padding: 0 }} disabled={refreshing} onClick={onRefresh} title="테마 새로고침 (시트 배정·수동편집 반영)">
+                        <RefreshIcon spinning={refreshing} />
+                    </button>
+                )}
                 <BoardModeControls mode={mode} setMode={setMode} />
             </span>
         </div>

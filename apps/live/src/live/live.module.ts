@@ -5,6 +5,7 @@ import type { Kiwoom } from "@trade-data-manager/kiwoom";
 import { HealthController } from "./health.controller.js";
 import { SnapshotController } from "./snapshot.controller.js";
 import { StreamController } from "./stream.controller.js";
+import { ThemeController } from "./theme.controller.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { LiveChartService } from "./chart/liveChart.js";
 import { NewsController } from "./news/news.controller.js";
@@ -78,7 +79,7 @@ const chartProvider: Provider = {
 const newsProvider: Provider = { provide: LIVE_NEWS, useFactory: (): LiveNewsService => new LiveNewsService() };
 
 @Module({
-    controllers: [HealthController, SnapshotController, StreamController, ChartController, NewsController, AlertsController],
+    controllers: [HealthController, SnapshotController, StreamController, ThemeController, ChartController, NewsController, AlertsController],
     providers: [kiwoomProvider, alertConfigProvider, notifierProvider, alertsProvider, engineProvider, chartProvider, newsProvider],
 })
 export class LiveModule implements OnModuleInit, OnModuleDestroy {

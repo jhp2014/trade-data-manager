@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from "react";
-import { useLiveSnapshot } from "../api/live.js";
+import { useLiveSnapshot, refreshLiveThemes } from "../api/live.js";
 import { useWorkbench } from "../store/workbench.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
@@ -17,8 +17,20 @@ export function LiveBoardPanel(): JSX.Element {
     const liveFilter = useWorkbench((s) => s.liveFilter);
     const originId = useId();
     const [mode, setMode] = useState<BoardMode>("flat");
+    const [refreshing, setRefreshing] = useState(false);
 
     const vm = useMemo(() => (snapshot ? buildLiveBoardViewModel(snapshot.stocks, liveFilter) : null), [snapshot, liveFilter]);
+
+    // 시트 테마 즉시 반영 — apps/live 멤버십 재로드 요청. 성공하면 다음 SSE 틱에 분류·칩 갱신.
+    const refresh = async (): Promise<void> => {
+        if (refreshing) return;
+        setRefreshing(true);
+        try {
+            await refreshLiveThemes();
+        } finally {
+            setRefreshing(false);
+        }
+    };
 
     if (!snapshot || !vm) return <BoardCenter text={error ? "연결 오류 — 재연결 중…" : "연결 중…"} />;
 
@@ -31,6 +43,8 @@ export function LiveBoardPanel(): JSX.Element {
                 count={snapshot.hot}
                 mode={mode}
                 setMode={setMode}
+                onRefresh={() => void refresh()}
+                refreshing={refreshing}
             />
             {mode === "flat" ? (
                 <FlatStockList stocks={vm.stocks} code={code} onPick={(c) => setCode(c, originId)} empty={live ? "조건 편입 종목 없음" : "엔진 대기중 (LIVE_CONDITION_NAME 미설정?)"} />

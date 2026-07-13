@@ -17,3 +17,10 @@ export function useLiveSnapshot(): { snapshot: LiveSnapshot | null; error: boole
     }, []);
     return { snapshot, error };
 }
+
+// 실시간 백엔드(apps/live) 테마 멤버십 즉시 재로드 — 배정(apps/api)·시트 직접편집 후 실시간 보드에 반영.
+// 보드는 SSE 라 reload 후 다음 틱에 자동 갱신(react-query invalidate 불필요). apps/live 미기동이면 throw → 호출부 best-effort.
+export async function refreshLiveThemes(): Promise<void> {
+    const res = await fetch("/live/theme/refresh", { method: "POST" });
+    if (!res.ok) throw new Error(`POST /live/theme/refresh ${res.status}`);
+}

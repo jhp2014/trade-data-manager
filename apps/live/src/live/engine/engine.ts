@@ -17,7 +17,6 @@ import type { Quote } from "./types.js";
 export interface LiveEngineOptions {
     conditionName: string; // 스캔할 조건식 이름(영웅문 서버저장)
     pollMs?: number;
-    membershipReloadMs?: number; // 시트 멤버십 재로드 주기(기본 5분) — 배정 반영.
 }
 
 /** 알람 런타임 결합점 — 유니버스 합집합(watchCodes)과 틱 평가(tick) 두 지점만. 구현=alerts/AlertsRuntime. */
@@ -35,8 +34,6 @@ export class LiveEngine extends EventEmitter {
 
     private readonly conditionName: string;
     private readonly pollMs: number;
-    private readonly membershipReloadMs: number;
-    private lastMembershipMs = 0; // 마지막 멤버십 로드 시각 — 재로드 throttle 기준.
 
     constructor(
         private readonly kiwoom: Kiwoom,
@@ -49,7 +46,6 @@ export class LiveEngine extends EventEmitter {
         super();
         this.conditionName = opts.conditionName;
         this.pollMs = opts.pollMs ?? 5_000;
-        this.membershipReloadMs = opts.membershipReloadMs ?? 300_000; // 5분 — 시트 배정 반영 주기(비차단).
     }
 
     /** WS 연결 → 스캐너 init(CNSRLST) → 즉시 1틱 → 5초 루프. 끊기면 WS 가 백오프 재연결. */
@@ -63,7 +59,6 @@ export class LiveEngine extends EventEmitter {
         this.scanner = new RankingScanner(this.ws, this.conditionName);
         await this.scanner.init();
         await this.membership.reload().catch((err) => this.emit("error", err)); // 초기 멤버십 로드(실패해도 빈 멤버십으로 진행)
-        this.lastMembershipMs = Date.now();
         this.ready = true;
         this.running = true;
         await this.tick().catch((err) => this.emit("error", err)); // 첫 틱 실패(일시 오류)해도 루프는 시작 — scheduleNext 와 동일 정책
@@ -78,6 +73,11 @@ export class LiveEngine extends EventEmitter {
     snapshot(): LiveSnapshot {
         const watch = new Set(this.alerts?.watchCodes() ?? []);
         return buildSnapshot(this.store, this.membership, this.trailing, this.ws.getStatus(), Date.now(), watch);
+    }
+
+    /** 시트 테마 멤버십 즉시 재로드 — 배정(apps/api 경유)·시트 직접편집을 실시간 보드에 바로 반영(컨트롤러가 온디맨드 호출). */
+    async reloadMembership(): Promise<void> {
+        await this.membership.reload();
     }
 
     /** 재연결 직후: CNSRREQ 전 CNSRLST 선조회 요구 때문에 scanner 재init. */
@@ -96,10 +96,6 @@ export class LiveEngine extends EventEmitter {
     private async tick(): Promise<void> {
         if (!this.scanner || !this.ready) return; // 재연결 중이면 보류
         const now = Date.now();
-        if (now - this.lastMembershipMs >= this.membershipReloadMs) {
-            this.lastMembershipMs = now;
-            void this.membership.reload().catch((err) => this.emit("error", err)); // 배정 반영(비차단 — 실패는 직전 맵 유지)
-        }
         const hits = await this.scanner.scan();
         this.store.setHot(hits, now);
         // 유니버스 = hot ∪ watchlist(타겟) — 타겟은 스캔 이탈해도 항상 폴링(2층 구조).

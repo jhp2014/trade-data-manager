@@ -8,6 +8,16 @@ export function StarIcon({ filled }: { filled?: boolean }): JSX.Element {
     );
 }
 
+// 새로고침(원형 화살표) — 진행 중이면 .spin 회전. AssignThemeModal·보드 헤더 공용.
+export function RefreshIcon({ spinning }: { spinning?: boolean }): JSX.Element {
+    return (
+        <svg className={spinning ? "spin" : undefined} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <polyline points="21 3 21 9 15 9" />
+        </svg>
+    );
+}
+
 export function HideIcon(): JSX.Element {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

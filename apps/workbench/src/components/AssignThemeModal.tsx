@@ -4,6 +4,7 @@ import { useAssign } from "../store/assign.js";
 import { useWorkbench } from "../store/workbench.js";
 import { themeContextQuery, daySummaryQuery, dailyCommentQuery } from "../api/queries.js";
 import { assignTheme, refreshThemes } from "../api/themes.js";
+import { refreshLiveThemes, useLiveSnapshot } from "../api/live.js";
 import { saveDailyComment } from "../api/comment.js";
 import { AnchoredPopover } from "../ui/Dialog.js";
 import { Chip, SectionLabel, TextInput, TextArea } from "../ui/controls.js";
@@ -31,6 +32,7 @@ function AssignBody(): JSX.Element {
 
     const ctxQ = useQuery(themeContextQuery(target.code));
     const summaryQ = useQuery(daySummaryQuery(date)); // 이미 로드돼 있으면 캐시 히트 — 빠른선택 칩용
+    const { snapshot } = useLiveSnapshot(); // 실시간 보드에 현재 뜬 테마도 후보로(실시간 배정도 장마감처럼 빠른선택)
 
     const [text, setText] = useState("");
     const [issue, setIssue] = useState(""); // 편입이슈(선택) — 아래 어떤 배정을 하든 append 행에 함께 기록
@@ -43,7 +45,10 @@ function AssignBody(): JSX.Element {
     const current = ctxQ.data?.current ?? [];
     const allThemes = ctxQ.data?.allThemes ?? [];
     const ownThemes = new Set(current.map((m) => m.theme));
-    const boardChips = (summaryQ.data?.themes ?? []).filter((t) => !ownThemes.has(t)); // 미배정분만
+    // 후보 칩 = 오늘 EOD 보드 테마 ∪ 실시간 보드에 현재 뜬 테마, 미배정분만(중복 제거).
+    const liveThemes = new Set<string>();
+    for (const s of snapshot?.stocks ?? []) for (const t of s.themes) liveThemes.add(t);
+    const boardChips = [...new Set([...(summaryQ.data?.themes ?? []), ...liveThemes])].filter((t) => !ownThemes.has(t));
 
     const q = norm(text);
     const suggestions = text.trim() ? allThemes.filter((t) => norm(t).includes(q)).slice(0, 8) : [];
@@ -61,6 +66,7 @@ function AssignBody(): JSX.Element {
                 setSkipped(t); // 이미 그 테마 — 닫지 않고 알림(다른 테마 고를 수 있게)
                 return;
             }
+            void refreshLiveThemes().catch(() => {}); // 실시간 보드(apps/live) 즉시 반영 — best-effort(미기동 무시)
             await Promise.all([
                 qc.invalidateQueries({ queryKey: ["theme-context"] }),
                 qc.invalidateQueries({ queryKey: ["day-summary"] }),
@@ -87,6 +93,7 @@ function AssignBody(): JSX.Element {
         setErr(null);
         try {
             await refreshThemes();
+            void refreshLiveThemes().catch(() => {}); // 실시간 보드(apps/live)도 함께 — best-effort(미기동 무시)
             await Promise.all([
                 qc.invalidateQueries({ queryKey: ["theme-context"] }),
                 qc.invalidateQueries({ queryKey: ["day-summary"] }),
