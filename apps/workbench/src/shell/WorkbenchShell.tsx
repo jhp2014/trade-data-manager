@@ -20,6 +20,7 @@ import { HypothesisFilterPanel } from "../panels/HypothesisFilterPanel.js";
 import { BoardFilterPanel, ReplayFilterPanel, LiveFilterPanel } from "../panels/BoardFilterPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
+import { WatchlistPanel } from "../panels/WatchlistPanel.js";
 import { useDock } from "../store/dock.js";
 import { PANEL_CATALOG, planeOf, type PanelEntry } from "./panelCatalog.js";
 
@@ -42,6 +43,7 @@ const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
     liveNews: () => <NewsPanel plane="live" />,
     telegramNews: () => <TelegramNewsPanel plane="replay" />,
     liveTelegram: () => <TelegramNewsPanel plane="live" />,
+    liveWatchlist: () => <WatchlistPanel />,
 };
 
 function entry(id: string): PanelEntry {
@@ -57,7 +59,7 @@ function onReady(event: DockviewReadyEvent): void {
     // 이슈정리 보드(좌) | 차트(우) + 나머지는 이슈정리 보드에 탭으로. 필요시 드래그로 띄우거나(플로팅) 분할.
     const board = api.addPanel({ ...entry("theme-board-1") });
     api.addPanel({ ...entry("chart-1"), position: { referencePanel: board, direction: "right" } });
-    for (const id of ["live-board-1", "live-news-1", "live-telegram-1", "replay-board-1", "workset-1", "hypothesis-1", "hypothesis-graph-1", "hts-news-1", "telegram-news-1"]) {
+    for (const id of ["live-board-1", "live-watchlist-1", "live-news-1", "live-telegram-1", "replay-board-1", "workset-1", "hypothesis-1", "hypothesis-graph-1", "hts-news-1", "telegram-news-1"]) {
         api.addPanel({ ...entry(id), position: { referencePanel: board, direction: "within" } }); // 이슈정리와 탭 그룹
     }
     // 열린 패널 추적 → 작업표시줄 "닫힌 창" 목록.
