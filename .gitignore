@@ -14,6 +14,9 @@ node_modules/
 logs/
 *.log
 
+# apps/live 알람 설정(watchlist+룰) — 사용자 로컬 상태
+apps/live/data/
+
 # Drizzle ORM — 마이그레이션은 git 으로 관리(ignore 안 함).
 
 # OS generated files

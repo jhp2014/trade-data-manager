@@ -9,7 +9,11 @@ import { ChartController } from "./chart/chart.controller.js";
 import { LiveChartService } from "./chart/liveChart.js";
 import { NewsController } from "./news/news.controller.js";
 import { LiveNewsService } from "./news/liveNews.js";
-import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS } from "./tokens.js";
+import { AlertsController } from "./alerts/alerts.controller.js";
+import { AlertConfigStore } from "./alerts/configStore.js";
+import { AlertsRuntime } from "./alerts/alertsRuntime.js";
+import { formatFiring } from "./alerts/format.js";
+import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS } from "./tokens.js";
 import { createLiveEngine } from "./engine/createLiveEngine.js";
 import type { LiveEngine } from "./engine/engine.js";
 
@@ -18,11 +22,32 @@ import type { LiveEngine } from "./engine/engine.js";
 // 엔진 시작 실패(조건 없음·장외·연결오류)해도 앱은 유지 — /snapshot 은 빈 스냅샷.
 // kiwoom 은 단일 인스턴스(엔진+차트 공유 → CredentialPool 레이트 페이싱 정합).
 const kiwoomProvider: Provider = { provide: KIWOOM, useFactory: (): Kiwoom => createKiwoom() };
+// 알람 설정(watchlist+룰) — JSON 파일 영속(DB-free). 손상 파일은 백업 후 빈 설정으로 degrade.
+const alertConfigProvider: Provider = {
+    provide: ALERT_CONFIG,
+    useFactory: (): AlertConfigStore => {
+        const store = new AlertConfigStore(process.env.LIVE_ALERT_CONFIG?.trim() || "data/live-alerts.json");
+        const corrupt = store.load();
+        if (corrupt) new Logger("Alerts").warn(`알람 설정 파일 손상 — ${corrupt} 로 백업하고 빈 설정으로 시작`);
+        return store;
+    },
+};
+// 알람 런타임 — 발화 sink 는 우선 서버 로그(텔레그램 전달은 다음 브릭에서 합성).
+const alertsProvider: Provider = {
+    provide: ALERTS,
+    useFactory: (config: AlertConfigStore): AlertsRuntime => {
+        const log = new Logger("Alerts");
+        return new AlertsRuntime(config, (firings) => {
+            for (const f of firings) log.log(`🔔 ${formatFiring(f)}`);
+        });
+    },
+    inject: [ALERT_CONFIG],
+};
 const engineProvider: Provider = {
     provide: LIVE_ENGINE,
-    useFactory: (kiwoom: Kiwoom): LiveEngine =>
-        createLiveEngine(kiwoom, process.env.LIVE_CONDITION_NAME ?? "", Number(process.env.LIVE_POLL_MS) || undefined),
-    inject: [KIWOOM],
+    useFactory: (kiwoom: Kiwoom, alerts: AlertsRuntime): LiveEngine =>
+        createLiveEngine(kiwoom, process.env.LIVE_CONDITION_NAME ?? "", Number(process.env.LIVE_POLL_MS) || undefined, alerts),
+    inject: [KIWOOM, ALERTS],
 };
 const chartProvider: Provider = {
     provide: LIVE_CHART,
@@ -33,8 +58,8 @@ const chartProvider: Provider = {
 const newsProvider: Provider = { provide: LIVE_NEWS, useFactory: (): LiveNewsService => new LiveNewsService() };
 
 @Module({
-    controllers: [HealthController, SnapshotController, StreamController, ChartController, NewsController],
-    providers: [kiwoomProvider, engineProvider, chartProvider, newsProvider],
+    controllers: [HealthController, SnapshotController, StreamController, ChartController, NewsController, AlertsController],
+    providers: [kiwoomProvider, alertConfigProvider, alertsProvider, engineProvider, chartProvider, newsProvider],
 })
 export class LiveModule implements OnModuleInit, OnModuleDestroy {
     private readonly log = new Logger("LiveEngine");

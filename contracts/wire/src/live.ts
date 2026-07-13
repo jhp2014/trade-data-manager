@@ -22,6 +22,8 @@ export interface LiveStock {
     trailingHighs?: number[];
     /** 활성 1분 델타 신호(돈유입). 미발화면 없음. core DeltaHit 과 구조 동일(wire 는 core 미의존이라 재선언). tvDelta 단위=원. */
     signal?: { label: string; rateDelta: number; tvDelta: number };
+    /** watchlist(타겟) 종목 — 스캔(hot) 이탈해도 계속 폴링·표시. 타겟 패널 필터 키. */
+    watched?: boolean;
 }
 
 /** 매 틱(5초) 스냅샷 — 서버가 조립, 클라는 표시만. */

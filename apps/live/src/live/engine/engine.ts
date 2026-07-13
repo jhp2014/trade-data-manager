@@ -12,11 +12,18 @@ import type { LiveSnapshot } from "@trade-data-manager/wire";
 import { buildSnapshot } from "./snapshot.js";
 import type { MembershipSource } from "./membership.js";
 import type { TrailingHighsSource } from "./trailingHighs.js";
+import type { Quote } from "./types.js";
 
 export interface LiveEngineOptions {
     conditionName: string; // 스캔할 조건식 이름(영웅문 서버저장)
     pollMs?: number;
     membershipReloadMs?: number; // 시트 멤버십 재로드 주기(기본 5분) — 배정 반영.
+}
+
+/** 알람 런타임 결합점 — 유니버스 합집합(watchCodes)과 틱 평가(tick) 두 지점만. 구현=alerts/AlertsRuntime. */
+export interface AlertsHook {
+    watchCodes(): string[];
+    tick(quotes: readonly Quote[], themesOf: (code: string) => string[], now: number): void;
 }
 
 export class LiveEngine extends EventEmitter {
@@ -37,6 +44,7 @@ export class LiveEngine extends EventEmitter {
         private readonly membership: MembershipSource,
         private readonly trailing: TrailingHighsSource,
         opts: LiveEngineOptions,
+        private readonly alerts?: AlertsHook, // 없으면 watchlist·알람 없이 스캔만(테스트·부분 조립 허용)
     ) {
         super();
         this.conditionName = opts.conditionName;
@@ -68,7 +76,8 @@ export class LiveEngine extends EventEmitter {
     }
 
     snapshot(): LiveSnapshot {
-        return buildSnapshot(this.store, this.membership, this.trailing, this.ws.getStatus(), Date.now());
+        const watch = new Set(this.alerts?.watchCodes() ?? []);
+        return buildSnapshot(this.store, this.membership, this.trailing, this.ws.getStatus(), Date.now(), watch);
     }
 
     /** 재연결 직후: CNSRREQ 전 CNSRLST 선조회 요구 때문에 scanner 재init. */
@@ -93,12 +102,15 @@ export class LiveEngine extends EventEmitter {
         }
         const hits = await this.scanner.scan();
         this.store.setHot(hits, now);
-        // 유니버스 = hot only (watchlist 는 후속 브릭에서 합집합)
-        const quotes = await pollQuotes(this.kiwoom.rest, hits.map((h) => h.code), Date.now());
+        // 유니버스 = hot ∪ watchlist(타겟) — 타겟은 스캔 이탈해도 항상 폴링(2층 구조).
+        const codes = [...new Set([...hits.map((h) => h.code), ...(this.alerts?.watchCodes() ?? [])])];
+        const quotes = await pollQuotes(this.kiwoom.rest, codes, Date.now());
         this.store.updateQuotes(quotes);
         // 트레일링 고가 백그라운드 priming(멱등) — base(전일종가)는 방금 적재된 시세에서. ka10081 별도 레이트라 폴링 안 막음.
         const today = kstToday();
         for (const q of quotes) void this.trailing.ensure(q.code, q.base, today);
+        // 알람 평가 — 이번 틱 신선한 시세만 넘긴다(과거 잔류 quotes 로 순위가 오염되지 않게).
+        this.alerts?.tick(quotes, (c) => this.membership.themesOf(c), Date.now());
         this.emit("tick", { hot: hits.length, polled: quotes.length, ts: Date.now() });
     }
 

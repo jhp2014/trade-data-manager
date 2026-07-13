@@ -15,11 +15,12 @@ function pct(v: number, base: number): number {
 }
 
 // ConnectionStatus(kiwoom/ws)와 LiveConnectionStatus(wire)는 동일 문자열 유니언 → 그대로 대입 가능.
-export function buildSnapshot(store: EngineStore, membership: MembershipSource, trailing: TrailingHighsSource, status: ConnectionStatus, now: number): LiveSnapshot {
+// watch = watchlist(타겟) — hot 에서 이탈해도 스냅샷에 남는다(watched 플래그로 구분).
+export function buildSnapshot(store: EngineStore, membership: MembershipSource, trailing: TrailingHighsSource, status: ConnectionStatus, now: number, watch: ReadonlySet<string> = new Set()): LiveSnapshot {
     const stocks: LiveStock[] = [];
-    for (const code of store.hot) {
+    for (const code of new Set([...store.hot, ...watch])) {
         const q = store.quotes.get(code);
-        if (!q) continue; // 시세 아직 없는 hot 은 스킵
+        if (!q) continue; // 시세 아직 없는 종목은 스킵(다음 틱 폴링에 잡힘)
         const since = store.hotSince.get(code);
         stocks.push({
             code: q.code,
@@ -35,6 +36,7 @@ export function buildSnapshot(store: EngineStore, membership: MembershipSource, 
             themes: membership.themesOf(code),
             trailingHighs: trailing.highsOf(code),
             signal: activeDelta(store.historyOf(code), now) ?? undefined,
+            watched: watch.has(code) || undefined, // false 는 생략(와이어 절약)
         });
     }
     return { ts: now, status, hot: store.hot.size, polled: store.quotes.size, stocks };

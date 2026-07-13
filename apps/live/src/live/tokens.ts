@@ -6,3 +6,7 @@ export const KIWOOM = Symbol("KIWOOM");
 export const LIVE_CHART = Symbol("LIVE_CHART");
 // 실시간 뉴스(KIS 온디맨드, lazy — 첫 요청에서 createKis).
 export const LIVE_NEWS = Symbol("LIVE_NEWS");
+// 알람 설정 영속(watchlist+룰 JSON 파일).
+export const ALERT_CONFIG = Symbol("ALERT_CONFIG");
+// 알람 런타임(평가 파이프라인 + 발화 로그) — 엔진 틱에 결합.
+export const ALERTS = Symbol("ALERTS");
