@@ -19,6 +19,8 @@ export function ReplayBoardPanel(): JSX.Element {
     const focusOrigin = useWorkbench((s) => s.lastFocusOrigin);
     const rs = useWorkbench((s) => s.replaySettings);
     const replayFilter = useWorkbench((s) => s.replayFilter);
+    const market = useWorkbench((s) => s.boardMarket.replay);
+    const setBoardMarket = useWorkbench((s) => s.setBoardMarket);
     const originId = useId(); // 이 보드의 선택 출처 태그(self/external 구분)
     const [mode, setMode] = useState<BoardMode>("group"); // 리스트(거래대금순)/테마(그룹)
 
@@ -29,8 +31,8 @@ export function ReplayBoardPanel(): JSX.Element {
     const annotated = useAnnotatedCodes(date);
 
     const board = useMemo(
-        () => (index ? buildReplayBoardViewModel(index, tUnix, rs, annotated, replayFilter) : null),
-        [index, tUnix, rs, annotated, replayFilter],
+        () => (index ? buildReplayBoardViewModel(index, tUnix, rs, annotated, replayFilter, market) : null),
+        [index, tUnix, rs, annotated, replayFilter, market],
     );
 
     if (boardQ.isLoading) return <BoardCenter text={`${date} 로딩중… (복기 데이터)`} />;
@@ -39,7 +41,7 @@ export function ReplayBoardPanel(): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardHeader dotColor="var(--plane-eod)" label={time ? time.slice(0, 5) : "장중"} count={board.stocks.length} mode={mode} setMode={setMode} />
+            <BoardHeader dotColor="var(--plane-eod)" label={time ? time.slice(0, 5) : "장중"} count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("replay", market === "un" ? "krx" : "un")} />
             {mode === "flat" ? (
                 <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} empty="종목 없음" />
             ) : (

@@ -91,7 +91,20 @@ function FilterPanel({
                                             {def?.params.map((ps) => (
                                                 <span key={ps.key} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--text-tertiary)" }}>
                                                     {ps.label}
-                                                    <NumberField value={p.params[ps.key]} min={ps.min} step={ps.step} onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))} style={{ width: 52 }} />
+                                                    {ps.options ? (
+                                                        // select 파라미터(예: newHighFar 시장) — 값=옵션 인덱스. 미지정(옛 저장 필터)이면 기본값 표시.
+                                                        <select
+                                                            value={p.params[ps.key] ?? ps.def}
+                                                            onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))}
+                                                            style={{ border: "1px solid var(--border-default)", borderRadius: 5, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "2px 4px", font: "inherit", fontSize: 11 }}
+                                                        >
+                                                            {ps.options.map((label, idx) => (
+                                                                <option key={idx} value={idx}>{label}</option>
+                                                            ))}
+                                                        </select>
+                                                    ) : (
+                                                        <NumberField value={p.params[ps.key]} min={ps.min} step={ps.step} onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))} style={{ width: 52 }} />
+                                                    )}
                                                 </span>
                                             ))}
                                             <button onClick={() => actions.removePredicate(gi, pi)} title="조건 제거" style={{ marginLeft: "auto", border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13 }}>×</button>

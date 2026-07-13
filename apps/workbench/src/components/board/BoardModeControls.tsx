@@ -40,7 +40,8 @@ export function BoardModeControls({ mode, setMode }: { mode: BoardMode; setMode:
 
 // 보드 공용 헤더 — 작은 색 점 + 라벨(상태/시간/장마감) + 종목수 + 우측 컨트롤. 컴팩트.
 // onRefresh 주면 모드 토글 왼쪽에 새로고침 버튼(실시간 보드: 시트 테마 즉시 반영).
-export function BoardHeader({ dotColor, label, count, mode, setMode, onRefresh, refreshing }: {
+// market/onMarketToggle 주면 기준 시장(KRX/UN) 토글 — 보드별 독립(% 표시·weakHigh 술어 기준).
+export function BoardHeader({ dotColor, label, count, mode, setMode, onRefresh, refreshing, market, onMarketToggle }: {
     dotColor: string;
     label: string;
     count: number;
@@ -48,6 +49,8 @@ export function BoardHeader({ dotColor, label, count, mode, setMode, onRefresh, 
     setMode: (m: BoardMode) => void;
     onRefresh?: () => void;
     refreshing?: boolean;
+    market?: "krx" | "un";
+    onMarketToggle?: () => void;
 }): JSX.Element {
     return (
         <div style={{ padding: "3px 10px", fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -55,6 +58,11 @@ export function BoardHeader({ dotColor, label, count, mode, setMode, onRefresh, 
             <span style={{ color: dotColor }}>{label}</span>
             <span className="tabular">{count}종목</span>
             <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+                {market && onMarketToggle && (
+                    <button style={{ ...txtBtn(true, "var(--accent-primary)"), minWidth: 26, textAlign: "center" }} onClick={onMarketToggle} title={`기준 시장 전환 (현재 ${market.toUpperCase()} 전일종가 기준 %)`}>
+                        {market.toUpperCase()}
+                    </button>
+                )}
                 {onRefresh && (
                     <button className="icon-btn" style={{ width: "auto", padding: 0 }} disabled={refreshing} onClick={onRefresh} title="테마 새로고침 (시트 배정·수동편집 반영)">
                         <RefreshIcon spinning={refreshing} />

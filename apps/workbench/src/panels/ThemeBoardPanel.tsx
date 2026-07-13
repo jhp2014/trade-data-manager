@@ -18,12 +18,14 @@ export function ThemeBoardPanel(): JSX.Element {
     const focusOrigin = useWorkbench((s) => s.lastFocusOrigin);
     const st = useWorkbench((s) => s.themeBoardSettings);
     const boardFilter = useWorkbench((s) => s.boardFilter);
+    const market = useWorkbench((s) => s.boardMarket.theme);
+    const setBoardMarket = useWorkbench((s) => s.setBoardMarket);
     const originId = useId(); // 이 보드의 선택 출처 태그(self/external 구분)
     const [mode, setMode] = useState<BoardMode>("group"); // 리스트(거래대금순)/테마(그룹)
 
     const summaryQ = useQuery(daySummaryQuery(date));
     const annotated = useAnnotatedCodes(date);
-    const board = useMemo(() => (summaryQ.data ? buildThemeBoardViewModel(summaryQ.data, annotated, boardFilter) : null), [summaryQ.data, annotated, boardFilter]);
+    const board = useMemo(() => (summaryQ.data ? buildThemeBoardViewModel(summaryQ.data, annotated, boardFilter, market) : null), [summaryQ.data, annotated, boardFilter, market]);
 
     if (summaryQ.isLoading) return <BoardCenter text={`${date} 로딩중…`} />;
     if (summaryQ.isError) return <BoardCenter text={`요약 오류: ${(summaryQ.error as Error).message}`} />;
@@ -31,7 +33,7 @@ export function ThemeBoardPanel(): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardHeader dotColor="var(--plane-eod)" label="장 마감" count={board.stocks.length} mode={mode} setMode={setMode} />
+            <BoardHeader dotColor="var(--plane-eod)" label="장 마감" count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("theme", market === "un" ? "krx" : "un")} />
             {mode === "flat" ? (
                 <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} empty="종목 없음" />
             ) : (

@@ -22,7 +22,7 @@ export type { LiveLineAnchor, LiveChartSlice } from "./liveChartSlice.js";
 export type { ChartPriceMode, ChartView, ChartSettings, ChartSlice } from "./chartSlice.js";
 export type { HypothesisSlice } from "./hypothesisSlice.js";
 export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js";
-export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, SettingsSlice } from "./settingsSlice.js";
+export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMarket, BoardMarketMap, SettingsSlice } from "./settingsSlice.js";
 
 export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createFocusSlice(...a),

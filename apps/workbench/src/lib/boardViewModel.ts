@@ -11,6 +11,7 @@ import {
     evalBoardFilter,
     countAmountBuckets,
     derivedMinutesOf,
+    rebasePct,
     type Grouped,
     type BoardFilterExpr,
 } from "@trade-data-manager/market/domain";
@@ -18,7 +19,7 @@ import { dailyMetric } from "./dailyMetrics.js";
 import { snapshotAt, lastIndexAtOrBefore } from "./leanModel.js";
 import type { DaySummary } from "../api/daySummary.js";
 import type { ReplayStock } from "../api/dayReplay.js";
-import type { ReplayBoardSettings } from "../store/workbench.js";
+import type { ReplayBoardSettings, BoardMarket } from "../store/workbench.js";
 import type { BoardStock } from "../components/board/BoardCard.js";
 import type { LiveStock } from "@trade-data-manager/wire";
 
@@ -30,12 +31,13 @@ export interface BoardViewModel {
     excludedByFilter: Map<string, string[]>;
 }
 
-/** day-summary(EOD) → 테마보드 렌더 구조. 배제 필터(domain evalBoardFilter, 그룹별 dim/hide+사유)·isMover·buckets·주석 적용. */
-export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Set<string>, boardFilter: BoardFilterExpr): BoardViewModel {
+/** day-summary(EOD) → 테마보드 렌더 구조. 배제 필터(domain evalBoardFilter, 그룹별 dim/hide+사유)·isMover·buckets·주석 적용.
+ *  market = 보드 기준 시장(% 표시·weakHigh 술어 기준. newHighFar 는 자체 market 파라미터로 시장을 고름). */
+export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Set<string>, boardFilter: BoardFilterExpr, market: BoardMarket): BoardViewModel {
     const stocks: BoardStock[] = [];
     const excludedByFilter = new Map<string, string[]>();
     for (const s of summary.stocks) {
-        const m = dailyMetric(s);
+        const m = dailyMetric(s, market);
         if (!m) continue;
         // 배제 필터 — trailingHighs·bucketCounts 는 daySummary folding 으로 함께 온다(별도 로딩 없음).
         const verdict = evalBoardFilter(boardFilter, { highPct: m.highPct, amount: m.amount, buckets: s.bucketCounts, trailingHighs: s.trailingHighs });
@@ -68,6 +70,8 @@ export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Se
  * day-replay 인덱스 + 시점(tUnix) + 복기 설정 → 복기보드 렌더 구조. top-N 유니버스·1분 델타 신호 적용.
  * buckets — 시점 t 까지 누적 분봉 거래대금 구간 카운트(hover). 서버 EOD 와 같은 정책(countAmountBuckets), 창만 [0..t].
  * replayFilter — 시점 t 스냅샷 지표에 evalBoardFilter 재평가(이슈보드와 같은 술어, 상태만 별개). 시간 밀면 동적 재평가.
+ * market — 기준 시장 토글. 서버 % 시계열은 UN base 한 벌 → KRX 는 rawPrevClose 두 스칼라로 일차변환(rebasePct).
+ *   유니버스 선정·1분 델타 신호는 UN 고정(잣대 고정 — 서버 EOD·라이브와 패리티), 표시 %·필터 지표만 재기저.
  */
 export function buildReplayBoardViewModel(
     index: Map<string, ReplayStock>,
@@ -75,6 +79,7 @@ export function buildReplayBoardViewModel(
     rs: ReplayBoardSettings,
     annotatedCodes: Set<string>,
     replayFilter: BoardFilterExpr,
+    market: BoardMarket,
 ): BoardViewModel {
     const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number }[] = [];
     for (const s of index.values()) {
@@ -90,11 +95,15 @@ export function buildReplayBoardViewModel(
         const s = index.get(snap.code);
         if (!s) continue;
         const prev = snapshotAt(s, tUnix - 60);
-        const signal = prev ? evaluateSignal(snap.changeRate - prev.rate, snap.amount - prev.cumAmount) : null;
+        const signal = prev ? evaluateSignal(snap.changeRate - prev.rate, snap.amount - prev.cumAmount) : null; // UN 잣대 고정
         const marketCapEok = s.marketCap ? Number(s.marketCap) / 1e8 : null;
+        // KRX 모드: UN base % → KRX base % 일차변환. base 결손(상장일 등)이면 UN 그대로(폴백).
+        const un = s.rawPrevClose.un;
+        const krx = s.rawPrevClose.krx;
+        const view = (p: number): number => (market === "krx" && un !== null && krx !== null ? rebasePct(p, un, krx) : p);
         // 시점 t 까지 누적 버킷 — hover 히스토그램. 그리고 복기 필터 재평가(t 스냅샷 지표 기준).
         const buckets = countAmountBuckets(derivedMinutesOf(s, lastIndexAtOrBefore(s.times, tUnix)));
-        const verdict = evalBoardFilter(replayFilter, { highPct: snap.highPct, amount: snap.amount, buckets, trailingHighs: s.trailingHighs });
+        const verdict = evalBoardFilter(replayFilter, { highPct: view(snap.highPct), amount: snap.amount, buckets, trailingHighs: s.trailingHighs });
         if (verdict.effect === "hide") {
             excludedByFilter.set(snap.code, verdict.reasons);
             continue;
@@ -104,10 +113,10 @@ export function buildReplayBoardViewModel(
             name: s.name ?? snap.code,
             market: s.market,
             themes: s.themes,
-            changeRate: snap.changeRate,
-            openPct: snap.openPct,
-            highPct: snap.highPct,
-            lowPct: snap.lowPct,
+            changeRate: view(snap.changeRate),
+            openPct: view(snap.openPct),
+            highPct: view(snap.highPct),
+            lowPct: view(snap.lowPct),
             amount: snap.amount,
             isMover: isMover(marketCapEok, snap.changeRate),
             signal,
@@ -148,10 +157,13 @@ export function applyLiveFilter(stocks: LiveStock[], filter: BoardFilterExpr): {
     const boardStocks: BoardStock[] = [];
     const excludedByFilter = new Map<string, string[]>();
     for (const s of stocks) {
+        // 라이브 trailing 은 아직 단일 배열(서버 KRX 단독) — KRX/UN 두벌화는 라이브 엔진 개편(브릭4)에서.
+        // 그때까지 두 시장 슬롯에 같은 배열을 넣는다(newHighFar market 파라미터가 어느 쪽이든 동일 판정).
+        const trailing = [s.highPct, ...(s.trailingHighs ?? [])];
         const verdict = evalBoardFilter(filter, {
             highPct: s.highPct,
             amount: s.tradeValue * 1_000_000, // 백만원 → 원
-            trailingHighs: [s.highPct, ...(s.trailingHighs ?? [])],
+            trailingHighs: { krx: trailing, un: trailing },
         });
         if (verdict.effect === "hide") {
             excludedByFilter.set(s.code, verdict.reasons);
