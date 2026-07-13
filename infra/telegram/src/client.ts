@@ -82,6 +82,15 @@ export async function createTelegram(): Promise<Telegram> {
     });
     (client as unknown as { setLogLevel?: (l: string) => void }).setLogLevel?.("error");
     await client.connect();
+    // 접속(transport)만으론 세션 유효성을 모른다 — 폐기(SESSION_REVOKED)는 첫 RPC 에서야 드러나므로
+    // 여기서 가벼운 getMe 로 검증해 소비자(검색·알람)가 명확한 지점에서 실패하게 한다.
+    try {
+        await client.getMe();
+    } catch (e) {
+        await client.disconnect().catch(() => {});
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(`텔레그램 세션 무효(${msg}) — recon:login 으로 재발급해 .env 의 TELEGRAM_SESSION 을 갱신하세요.`);
+    }
 
     return {
         async searchChannel(peer, query, opts) {
