@@ -9,6 +9,7 @@ import { DatePicker } from "./DatePicker.js";
 import { StockNameCopy } from "./StockNameCopy.js";
 import { fmtStampKo } from "../lib/date.js";
 import { useLiveSnapshot } from "../api/live.js";
+import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { Popover } from "./Popover.js";
 import { GearButton } from "../ui/controls.js";
 
@@ -32,12 +33,14 @@ const chipStyle: React.CSSProperties = {
     color: "var(--text-secondary)",
     cursor: "pointer",
     font: "inherit",
+    whiteSpace: "nowrap", // 폭 좁아도 글자 줄바꿈 금지 — 스트립이 대신 가로 스크롤
+    flexShrink: 0,
 };
 // 플레인별 최소화 칩 — 테두리·글자를 플레인 색(실시간 앰버 / 복기·분석 teal)으로.
 function planeChip(plane: PanelPlane): React.CSSProperties {
     return { ...chipStyle, border: `1px dashed var(--plane-${plane})`, color: `var(--plane-${plane})` };
 }
-const sep: React.CSSProperties = { color: "var(--border-default)" };
+const sep: React.CSSProperties = { color: "var(--border-default)", flexShrink: 0 };
 function textBtn(active = false): React.CSSProperties {
     return {
         background: active ? "var(--bg-tertiary)" : "none",
@@ -61,7 +64,7 @@ function TimeControl({ time, setTime }: { time: string | null; setTime: (t: stri
     const curMin = time ? timeToMin(time) : 15 * 60 + 30; // 기본 15:30
     return (
         <Popover trigger={(open, toggle) => (
-            <button onClick={toggle} title="시간 선택" style={textBtn(open)}>{time ? time.slice(0, 5) : "시간"}</button>
+            <button onClick={toggle} title="시간 선택" style={{ ...textBtn(open), padding: "2px 4px" }}>{time ? time.slice(0, 5) : "시간"}</button>
         )}>
             {() => (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, width: 220 }}>
@@ -80,7 +83,15 @@ function TimeControl({ time, setTime }: { time: string | null; setTime: (t: stri
     );
 }
 
-// 복기·분석 그룹(🟢) — 라벨 + 종목·날짜·시간 + 이 플레인 최소화 창 칩.
+// 플레인 그룹 공통 골격 — 좌측 고정 컨텍스트(라벨·종목·날짜/시간) + 우측 가로 스크롤 칩 스트립.
+// region 은 작업표시줄 가운데를 반씩(flex 1) 차지 → 창이 많아도 자기 영역 안에서만 스크롤(서로 안 밀림·줄바꿈 없음).
+const REGION: React.CSSProperties = { display: "flex", alignItems: "center", gap: 4, flex: "1 1 0", minWidth: 0, overflow: "hidden" };
+const CONTEXT: React.CSSProperties = { display: "flex", alignItems: "center", gap: 4, flexShrink: 0 };
+function planeDot(color: string): React.CSSProperties {
+    return { display: "inline-block", width: 5, height: 5, borderRadius: 999, background: color, flexShrink: 0 };
+}
+
+// 복기·분석 그룹(🟢) — 라벨 + 종목·날짜·시간(날짜/시간은 붙여 "복기 시점"으로) + 이 플레인 최소화 창 칩.
 function EodPlaneGroup({ code, date, setDate, time, setTime, chips }: {
     code: string;
     date: string;
@@ -89,14 +100,20 @@ function EodPlaneGroup({ code, date, setDate, time, setTime, chips }: {
     setTime: (t: string | null) => void;
     chips: JSX.Element[];
 }): JSX.Element {
+    const wheelRef = useHorizontalWheel<HTMLSpanElement>();
     return (
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 999, background: "var(--plane-eod)", flexShrink: 0 }} />
-            <span style={{ color: "var(--plane-eod)", fontWeight: 600 }}>복기 분석</span>
-            <NameCopyControl code={code} />
-            <DatePicker value={date} onChange={setDate} />
-            <TimeControl time={time} setTime={setTime} />
-            {chips}
+        <span style={REGION}>
+            <span style={CONTEXT}>
+                <span style={planeDot("var(--plane-eod)")} />
+                <span style={{ color: "var(--plane-eod)", fontWeight: 600 }}>분석</span>
+                <NameCopyControl code={code} />
+                {/* 날짜+시간 = 복기 시점 한 덩어리(gap 좁게) */}
+                <span style={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <DatePicker value={date} onChange={setDate} />
+                    <TimeControl time={time} setTime={setTime} />
+                </span>
+            </span>
+            <span ref={wheelRef} className="taskbar-chips">{chips}</span>
         </span>
     );
 }
@@ -104,15 +121,18 @@ function EodPlaneGroup({ code, date, setDate, time, setTime, chips }: {
 // 실시간 그룹(🟠) — 라벨 + 종목 + 최근 폴링 시각(HH:MM:SS) + 이 플레인 최소화 창 칩.
 function LivePlaneGroup({ code, chips }: { code: string; chips: JSX.Element[] }): JSX.Element {
     const { snapshot } = useLiveSnapshot();
+    const wheelRef = useHorizontalWheel<HTMLSpanElement>();
     const live = snapshot?.status === "live";
     const t = snapshot?.ts ? new Date(snapshot.ts).toLocaleTimeString("en-GB") : null;
     return (
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`실시간 연결: ${snapshot?.status ?? "끊김"}`}>
-            <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 999, background: live ? "var(--plane-live)" : "var(--text-tertiary)", flexShrink: 0 }} />
-            <span style={{ color: "var(--plane-live)", fontWeight: 600 }}>실시간</span>
-            <NameCopyControl code={code} />
-            {t && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{t}</span>}
-            {chips}
+        <span style={REGION} title={`실시간 연결: ${snapshot?.status ?? "끊김"}`}>
+            <span style={CONTEXT}>
+                <span style={planeDot(live ? "var(--plane-live)" : "var(--text-tertiary)")} />
+                <span style={{ color: "var(--plane-live)", fontWeight: 600 }}>실시간</span>
+                <NameCopyControl code={code} />
+                {t && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{t}</span>}
+            </span>
+            <span ref={wheelRef} className="taskbar-chips">{chips}</span>
         </span>
     );
 }
@@ -167,6 +187,7 @@ export function Taskbar(): JSX.Element {
                 fontSize: 12,
                 color: "var(--text-tertiary)",
                 flexShrink: 0,
+                overflow: "hidden", // 플레인 스트립이 각자 스크롤 — 바 전체는 절대 넘치거나 줄바꿈되지 않게
             }}
         >
             <button
@@ -184,6 +205,7 @@ export function Taskbar(): JSX.Element {
                     color: activePreset ? "var(--text-primary)" : "var(--text-tertiary)",
                     cursor: savedCount ? "pointer" : "default",
                     font: "inherit",
+                    flexShrink: 0,
                 }}
             >
                 화면 {activePreset ?? "—"}
@@ -193,7 +215,7 @@ export function Taskbar(): JSX.Element {
             <span style={sep}>│</span>
             <EodPlaneGroup code={focusCode} date={date} setDate={setDate} time={focusTime} setTime={setTime} chips={chips(eodClosed, "eod")} />
             {/* 우측: 현재 시각 + 설정 */}
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <Clock />
                 <span style={sep}>│</span>
                 <GearButton onClick={() => openSettings()} />

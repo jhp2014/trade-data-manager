@@ -104,7 +104,7 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (date
                         background: open ? "var(--bg-tertiary)" : "none",
                         border: "none",
                         borderRadius: 5,
-                        padding: "2px 6px",
+                        padding: "2px 4px",
                         color: "var(--text-primary)",
                         cursor: "pointer",
                         font: "inherit",

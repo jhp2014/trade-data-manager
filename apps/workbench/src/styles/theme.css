@@ -111,6 +111,22 @@ button {
     border-radius: 999px;
 }
 
+/* 작업표시줄 플레인별 최소화-창 칩 스트립 — 넘치면 가로 스크롤(휠). 28px 바라 스크롤바는 숨긴다. */
+.taskbar-chips {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none; /* Firefox */
+}
+.taskbar-chips::-webkit-scrollbar {
+    height: 0;
+    display: none;
+}
+
 /* 클릭 가능한 뉴스 제목 — hover 시 밑줄 없이 색 강조 + 살짝 두껍게(리플로우 없는 faux-bold). */
 .news-title {
     cursor: pointer;
