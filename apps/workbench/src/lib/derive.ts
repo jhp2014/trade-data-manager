@@ -45,6 +45,20 @@ export interface DailyPoint {
     prevClose: number | null; // 직전 거래일 종가(고가 등락률 마커 분모)
 }
 
+/**
+ * 검색일 기준 전일종가 — date 직전(미만) 마지막 봉의 종가(수정주가, mode 시장).
+ * date 봉이 없어도(주말·장전) 직전 거래일 종가가 나온다. 첫 봉 이전이면 null.
+ * 크로스헤어 %·+30% 가이드선의 분모(검색일 고정 base).
+ */
+export function prevCloseAsOf(points: DailyPoint[], date: string): number | null {
+    let prev: DailyPoint | null = null;
+    for (const p of points) {
+        if (p.time >= date) break; // 오름차순 — date 도달 시 종료
+        prev = p;
+    }
+    return prev ? prev.close : null;
+}
+
 /** ChartBundle.daily(시간 오름차순) → 일봉 뷰(mode 시장). prevClose = 직전 거래일 종가. */
 export function deriveDailyView(bundle: ChartBundle, mode: ChartPriceMode): DailyPoint[] {
     const daily = bundle.daily;

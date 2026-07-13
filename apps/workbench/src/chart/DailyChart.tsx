@@ -43,7 +43,8 @@ function fmtDailyCrosshair(time: Time): string {
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
-export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, searchDate }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; searchDate?: string }): JSX.Element {
+// pctBase(검색일 전일종가)가 있으면 크로스헤어 y-위치를 % 로 툴팁에 표시 + showGuide 시 +30%(상한가) 가이드선.
+export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, searchDate, pctBase, showGuide = false }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; searchDate?: string; pctBase?: number | null; showGuide?: boolean }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -220,6 +221,24 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
         vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: "#e07b1a", width: 1, dashed: true }] : []);
     }, [searchDate]);
 
+    // +30% 가이드 가로선 — 검색일 전일종가 ×1.3(= 그 세션 상한가 위치). 색은 고가마커 30%+ 와 동일(보라).
+    const guideLineRef = useRef<IPriceLine | null>(null);
+    useEffect(() => {
+        const candle = candleRef.current;
+        if (!candle) return;
+        if (guideLineRef.current) {
+            try {
+                candle.removePriceLine(guideLineRef.current);
+            } catch {
+                /* noop */
+            }
+            guideLineRef.current = null;
+        }
+        if (showGuide && pctBase != null && pctBase > 0) {
+            guideLineRef.current = candle.createPriceLine({ price: pctBase * 1.3, color: "#7c3aed", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: "+30%" });
+        }
+    }, [pctBase, showGuide]);
+
     // 검색날짜 세로선 x 좌표 추적(pan/zoom·searchDate 변경) → HTML 날짜 배지 위치(분봉 마커 카드 스타일).
     useEffect(() => {
         const chart = chartRef.current;
@@ -247,6 +266,9 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
             if (!p) return null;
             const rate = p.prevClose && p.prevClose > 0 ? ((p.close - p.prevClose) / p.prevClose) * 100 : null;
             const highPct = p.prevClose && p.prevClose > 0 ? ((p.high - p.prevClose) / p.prevClose) * 100 : null;
+            // 크로스헤어 y-위치(가로선) → 검색일 전일종가(pctBase) 대비 %. 캔들 pane(0)에서만 — 거래대금 pane 제외.
+            const cursorPrice = (param.paneIndex ?? 0) === 0 && param.point ? candleRef.current?.coordinateToPrice(param.point.y) : null;
+            const cursorPct = cursorPrice != null && pctBase != null && pctBase > 0 ? ((cursorPrice - pctBase) / pctBase) * 100 : null;
             return (
                 <div>
                     <div style={{ fontSize: 11, color: "#a0a0a0", marginBottom: 6 }}>{p.time}</div>
@@ -257,6 +279,12 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
                         <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.high.toLocaleString()}{highPct != null && <span style={{ color: "#d4d4d8", marginLeft: 6 }}>{fmtRate(highPct)}</span>}</div>
                         <div style={{ color: "#a0a0a0" }}>거래대금</div>
                         <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(p.amount)}</div>
+                        {cursorPct != null && cursorPrice != null && (
+                            <>
+                                <div style={{ color: "#a0a0a0" }}>위치</div>
+                                <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Math.round(cursorPrice).toLocaleString()}<span style={{ color: cursorPct >= 0 ? RISE_COLOR : FALL_COLOR, marginLeft: 6 }}>{fmtRate(cursorPct)}</span></div>
+                            </>
+                        )}
                     </div>
                 </div>
             );

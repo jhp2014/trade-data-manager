@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { useChartBundle } from "../lib/useChartBundle.js";
-import { deriveMinuteView, deriveDailyView } from "../lib/derive.js";
+import { deriveMinuteView, deriveDailyView, prevCloseAsOf } from "../lib/derive.js";
 import { fmtDateKo } from "../lib/date.js";
 import { useStockName } from "../lib/useStockName.js";
 import { StockNameCopy } from "../components/StockNameCopy.js";
@@ -31,6 +31,7 @@ export function RealtimeChartPanel(): JSX.Element {
     const [showMarkers, setShowMarkers] = useState(true);
     const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
     const [pinMinute, setPinMinute] = useState(false); // 분봉 기준일 고정(일봉 클릭 무시)
+    const [showGuide, setShowGuide] = useState(true); // +30% 가이드선(검색일 전일종가 ×1.3)
 
     const viewDate = pinMinute ? anchorDate : search?.date ?? anchorDate; // 고정 시 기준일 붙박이
     const drifted = viewDate !== anchorDate;
@@ -41,6 +42,8 @@ export function RealtimeChartPanel(): JSX.Element {
 
     const dailyView = useMemo(() => (dailyQ.data ? deriveDailyView(dailyQ.data, mode) : null), [dailyQ.data, mode]);
     const minuteView = useMemo(() => (minuteQ.data ? deriveMinuteView(minuteQ.data, mode) : null), [minuteQ.data, mode]);
+    // 검색일 전일종가(수정주가, mode 시장) — 크로스헤어 위치 %·+30% 가이드선의 base(검색일 고정).
+    const pctBase = useMemo(() => (dailyView ? prevCloseAsOf(dailyView, viewDate) : null), [dailyView, viewDate]);
     const expanded: "daily" | "minute" | null = view === "both" ? null : view;
     const toggleExpand = (which: "daily" | "minute"): void => setView(view === which ? "both" : which);
 
@@ -90,6 +93,7 @@ export function RealtimeChartPanel(): JSX.Element {
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <TextToggle active={showLine} activeColor="var(--accent-primary)" onClick={() => setShowLine((v) => !v)} title={showLine ? "검색 세로선 숨기기" : "검색 세로선 표시"}>선</TextToggle>
                         <TextToggle active={pinMinute} activeColor="var(--accent-primary)" onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</TextToggle>
+                        <TextToggle active={showGuide} activeColor="var(--accent-primary)" onClick={() => setShowGuide((v) => !v)} title={showGuide ? "+30% 가이드선 숨기기" : "+30% 가이드선 표시(검색일 전일종가 기준)"}>30%</TextToggle>
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <IconToggle active={showMarkers} onClick={() => setShowMarkers((v) => !v)} title={showMarkers ? "거래대금 마커 끄기" : "거래대금 마커 켜기"}>
@@ -121,6 +125,8 @@ export function RealtimeChartPanel(): JSX.Element {
                                         onRemoveLine={(l) => removeLine(code, l.id)}
                                         onCandleClick={pinMinute ? undefined : (d) => setSearch(d === anchorDate ? null : { date: d })}
                                         searchDate={showLine && drifted ? viewDate : undefined}
+                                        pctBase={pctBase}
+                                        showGuide={showGuide}
                                     />
                                 ) : (
                                     <Center text="일봉 없음" />

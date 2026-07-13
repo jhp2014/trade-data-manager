@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { chartQuery } from "../api/queries.js";
-import { deriveMinuteView, deriveDailyView, kstToUnix } from "../lib/derive.js";
+import { deriveMinuteView, deriveDailyView, prevCloseAsOf, kstToUnix } from "../lib/derive.js";
 import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
 import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
@@ -35,6 +35,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [showPointInfo, setShowPointInfo] = useState(true); // 현재 타점(시간선) readout — 기본 표시
     const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
     const [pinMinute, setPinMinute] = useState(false); // 분봉 기준일 고정(일봉 클릭 무시)
+    const [showGuide, setShowGuide] = useState(true); // +30% 가이드선(검색일 전일종가 ×1.3)
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이. search=null 이면 viewDate=anchor 로 동작 무변경.
@@ -45,6 +46,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 
     const dailyView = useMemo(() => (dailyQ.data ? deriveDailyView(dailyQ.data, mode) : null), [dailyQ.data, mode]);
     const minuteView = useMemo(() => (minuteQ.data ? deriveMinuteView(minuteQ.data, mode) : null), [minuteQ.data, mode]);
+    // 검색일 전일종가(수정주가, mode 시장) — 크로스헤어 위치 %·+30% 가이드선의 base(검색일 고정).
+    const pctBase = useMemo(() => (dailyView ? prevCloseAsOf(dailyView, viewDate) : null), [dailyView, viewDate]);
 
     const toggleExpand = (which: "daily" | "minute"): void => setView(view === which ? "both" : which);
 
@@ -83,6 +86,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <TextToggle active={showLine} activeColor="var(--accent-primary)" onClick={() => setShowLine((v) => !v)} title={showLine ? "검색 세로선 숨기기" : "검색 세로선 표시"}>선</TextToggle>
                         <TextToggle active={pinMinute} activeColor="var(--accent-primary)" onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</TextToggle>
+                        <TextToggle active={showGuide} activeColor="var(--accent-primary)" onClick={() => setShowGuide((v) => !v)} title={showGuide ? "+30% 가이드선 숨기기" : "+30% 가이드선 표시(검색일 전일종가 기준)"}>30%</TextToggle>
                     </span>
                     {/* 마커·타점정보·clear·시장(UN/KRX 단일 토글). */}
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -111,7 +115,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
                             <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 고점 선(D)">
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={pinMinute ? undefined : (d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={showLine && drifted ? viewDate : undefined} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={pinMinute ? undefined : (d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={showLine && drifted ? viewDate : undefined} pctBase={pctBase} showGuide={showGuide} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
