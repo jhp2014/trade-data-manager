@@ -13,6 +13,7 @@ import { AlertsController } from "./alerts/alerts.controller.js";
 import { AlertConfigStore } from "./alerts/configStore.js";
 import { AlertsRuntime } from "./alerts/alertsRuntime.js";
 import { formatFiring } from "./alerts/format.js";
+import { TelegramAlertNotifier, loadTelegramBotConfigFromEnv } from "./alerts/telegramNotifier.js";
 import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS } from "./tokens.js";
 import { createLiveEngine } from "./engine/createLiveEngine.js";
 import type { LiveEngine } from "./engine/engine.js";
@@ -32,13 +33,21 @@ const alertConfigProvider: Provider = {
         return store;
     },
 };
-// 알람 런타임 — 발화 sink 는 우선 서버 로그(텔레그램 전달은 다음 브릭에서 합성).
+// 알람 런타임 — 발화 sink = 서버 로그 + 텔레그램(Bot API, env 미설정이면 로그로만 degrade).
 const alertsProvider: Provider = {
     provide: ALERTS,
     useFactory: (config: AlertConfigStore): AlertsRuntime => {
         const log = new Logger("Alerts");
+        const botCfg = loadTelegramBotConfigFromEnv();
+        const telegram = botCfg ? new TelegramAlertNotifier(botCfg) : null;
+        if (!telegram) log.warn("LIVE_TELEGRAM_BOT_TOKEN/CHAT_ID 미설정 — 알람은 서버 로그로만 전달");
         return new AlertsRuntime(config, (firings) => {
             for (const f of firings) log.log(`🔔 ${formatFiring(f)}`);
+            if (telegram) {
+                void telegram.send(firings).catch((e: unknown) =>
+                    log.error(`텔레그램 알림 실패(알람 로그는 위에 남음): ${e instanceof Error ? e.message : String(e)}`),
+                );
+            }
         });
     },
     inject: [ALERT_CONFIG],
