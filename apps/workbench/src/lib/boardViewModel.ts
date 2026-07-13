@@ -131,52 +131,63 @@ export function buildReplayBoardViewModel(
 }
 
 // ── 라이브(실시간) 보드 ─────────────────────────────────────────
-/** LiveStock(실시간 스냅샷) → BoardStock. 플랫/그룹 뷰 공용 매핑. isMover 는 core 판정(시총 억원). */
-export function liveToBoardStock(s: LiveStock): BoardStock {
+// 서버는 원주가 값(price/open/high/low)+rawPrevClose{krx,un} 를 내려주고 % 는 여기서 계산(복기와 같은 잣대).
+// rawPrevClose 미도착(핫 편입 직후 몇 초)이면 ka10095 base(전일 기준가) 폴백.
+function liveBaseOf(s: LiveStock, market: BoardMarket): number | null {
+    return s.rawPrevClose?.[market] ?? (s.base > 0 ? s.base : null);
+}
+function livePct(v: number, base: number | null): number {
+    return base !== null && base > 0 ? Math.round(((v - base) / base) * 10_000) / 100 : 0;
+}
+
+/** LiveStock(실시간 스냅샷) → BoardStock(market 기준 %). 플랫/그룹 뷰 공용 매핑. isMover 는 core 판정(시총 억원). */
+export function liveToBoardStock(s: LiveStock, market: BoardMarket): BoardStock {
+    const base = liveBaseOf(s, market);
+    const changeRate = livePct(s.price, base);
     return {
         code: s.code,
         name: s.name,
         market: null,
         themes: s.themes,
-        changeRate: s.changeRate,
-        openPct: s.openPct,
-        highPct: s.highPct,
-        lowPct: s.lowPct,
+        changeRate,
+        openPct: livePct(s.open, base),
+        highPct: livePct(s.high, base),
+        lowPct: livePct(s.low, base),
         amount: s.tradeValue * 1_000_000, // 백만원 → 원(StockRow 는 억 포맷)
-        isMover: isMover(s.marketCap || null, s.changeRate),
+        isMover: isMover(s.marketCap || null, changeRate),
         signal: s.signal ?? null,
     };
 }
 
 /**
  * 라이브 종목 → BoardStock[] + 배제필터(dim/hide) 적용. 흐리게(6c)는 사용자가 실시간 필터에서 조건 지정.
- * trailingHighs 는 index 0 에 당일 highPct 를 prepend해 "매물대 내부"(신고가 근접) 술어에 평가 — 서버 배열은 과거 완결일만.
- * 미fetch(trailingHighs 없음)면 [highPct] 만 → 창최고=당일 → 근접=참 → 안 흐려짐(데이터 오면 반영).
+ * trailingHighs(수정주가 KRX/UN 두벌, 과거 완결일)는 시장별로 index 0 에 당일 고가%(그 시장 base)를 prepend
+ * — "매물대 내부" 술어의 market 파라미터가 시장을 고른다(KRX+UN AND = 둘 다 내부여야 흐리게).
+ * 미fetch(trailingHighs 없음)면 [당일 고가%] 만 → 창최고=당일 → 근접=참 → 안 흐려짐(데이터 오면 반영).
  */
-export function applyLiveFilter(stocks: LiveStock[], filter: BoardFilterExpr): { boardStocks: BoardStock[]; excludedByFilter: Map<string, string[]> } {
+export function applyLiveFilter(stocks: LiveStock[], filter: BoardFilterExpr, market: BoardMarket): { boardStocks: BoardStock[]; excludedByFilter: Map<string, string[]> } {
     const boardStocks: BoardStock[] = [];
     const excludedByFilter = new Map<string, string[]>();
     for (const s of stocks) {
-        // 라이브 trailing 은 아직 단일 배열(서버 KRX 단독) — KRX/UN 두벌화는 라이브 엔진 개편(브릭4)에서.
-        // 그때까지 두 시장 슬롯에 같은 배열을 넣는다(newHighFar market 파라미터가 어느 쪽이든 동일 판정).
-        const trailing = [s.highPct, ...(s.trailingHighs ?? [])];
+        const highK = livePct(s.high, liveBaseOf(s, "krx"));
+        const highU = livePct(s.high, liveBaseOf(s, "un"));
         const verdict = evalBoardFilter(filter, {
-            highPct: s.highPct,
+            highPct: market === "krx" ? highK : highU,
             amount: s.tradeValue * 1_000_000, // 백만원 → 원
-            trailingHighs: { krx: trailing, un: trailing },
+            trailingHighs: { krx: [highK, ...(s.trailingHighs?.krx ?? [])], un: [highU, ...(s.trailingHighs?.un ?? [])] },
         });
         if (verdict.effect === "hide") {
             excludedByFilter.set(s.code, verdict.reasons);
             continue;
         }
-        boardStocks.push({ ...liveToBoardStock(s), dim: verdict.effect === "dim", excludedBy: verdict.reasons.length ? verdict.reasons : undefined });
+        boardStocks.push({ ...liveToBoardStock(s, market), dim: verdict.effect === "dim", excludedBy: verdict.reasons.length ? verdict.reasons : undefined });
     }
     return { boardStocks, excludedByFilter };
 }
 
 /** 라이브 스냅샷 → 테마 그룹 뷰모델(BoardLayout 입력). 배제필터 적용. */
-export function buildLiveBoardViewModel(stocks: LiveStock[], filter: BoardFilterExpr): BoardViewModel {
-    const { boardStocks, excludedByFilter } = applyLiveFilter(stocks, filter);
+export function buildLiveBoardViewModel(stocks: LiveStock[], filter: BoardFilterExpr, market: BoardMarket): BoardViewModel {
+    const { boardStocks, excludedByFilter } = applyLiveFilter(stocks, filter, market);
     const byTheme = stocksByTheme(boardStocks);
     return { stocks: boardStocks, grouped: groupStocks(byTheme, boardStocks), parents: themeParents(byTheme), excludedByFilter };
 }

@@ -15,11 +15,13 @@ export function LiveBoardPanel(): JSX.Element {
     const setCode = useWorkbench((s) => s.setLiveCode);
     const focusOrigin = useWorkbench((s) => s.liveOrigin);
     const liveFilter = useWorkbench((s) => s.liveFilter);
+    const market = useWorkbench((s) => s.boardMarket.live);
+    const setBoardMarket = useWorkbench((s) => s.setBoardMarket);
     const originId = useId();
     const [mode, setMode] = useState<BoardMode>("flat");
     const [refreshing, setRefreshing] = useState(false);
 
-    const vm = useMemo(() => (snapshot ? buildLiveBoardViewModel(snapshot.stocks, liveFilter) : null), [snapshot, liveFilter]);
+    const vm = useMemo(() => (snapshot ? buildLiveBoardViewModel(snapshot.stocks, liveFilter, market) : null), [snapshot, liveFilter, market]);
 
     // 시트 테마 즉시 반영 — apps/live 멤버십 재로드 요청. 성공하면 다음 SSE 틱에 분류·칩 갱신.
     const refresh = async (): Promise<void> => {
@@ -45,6 +47,8 @@ export function LiveBoardPanel(): JSX.Element {
                 setMode={setMode}
                 onRefresh={() => void refresh()}
                 refreshing={refreshing}
+                market={market}
+                onMarketToggle={() => setBoardMarket("live", market === "un" ? "krx" : "un")}
             />
             {mode === "flat" ? (
                 <FlatStockList stocks={vm.stocks} code={code} onPick={(c) => setCode(c, originId)} empty={live ? "조건 편입 종목 없음 (조건 미선택이면 설정>조건검색)" : "엔진 대기중 — 연결 확인"} />

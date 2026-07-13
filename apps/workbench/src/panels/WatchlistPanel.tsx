@@ -18,6 +18,7 @@ export function WatchlistPanel(): JSX.Element {
     const { snapshot, error } = useLiveSnapshot();
     const focusCode = useWorkbench((s) => s.liveFocus.code);
     const setCode = useWorkbench((s) => s.setLiveCode);
+    const market = useWorkbench((s) => s.boardMarket.live); // 시세 행 % 기준 — 실시간 보드와 동일 토글 공유
     const originId = useId();
     const qc = useQueryClient();
     const [codeInput, setCodeInput] = useState("");
@@ -91,7 +92,7 @@ export function WatchlistPanel(): JSX.Element {
                     return (
                         <div key={code} style={{ borderBottom: "1px solid var(--border-default)" }}>
                             {s ? (
-                                <StockRow s={liveToBoardStock(s)} rank={null} selected={code === focusCode} onPick={(c) => setCode(c, originId)} />
+                                <StockRow s={liveToBoardStock(s, market)} rank={null} selected={code === focusCode} onPick={(c) => setCode(c, originId)} />
                             ) : (
                                 <div className="tabular" style={{ padding: "4px 10px", fontSize: 12, color: "var(--text-tertiary)" }}>
                                     {code} — 시세 대기중(다음 틱)

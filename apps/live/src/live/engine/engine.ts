@@ -11,7 +11,7 @@ import { EngineStore } from "./store.js";
 import type { LiveSnapshot, LiveConditionEntry } from "@trade-data-manager/wire";
 import { buildSnapshot } from "./snapshot.js";
 import type { MembershipSource } from "./membership.js";
-import type { TrailingHighsSource } from "./trailingHighs.js";
+import type { DailyContextSource } from "./dailyContext.js";
 import type { Quote } from "./types.js";
 
 export interface LiveEngineOptions {
@@ -39,7 +39,7 @@ export class LiveEngine extends EventEmitter {
         private readonly kiwoom: Kiwoom,
         private readonly ws: KiwoomWs,
         private readonly membership: MembershipSource,
-        private readonly trailing: TrailingHighsSource,
+        private readonly dailyCtx: DailyContextSource,
         opts: LiveEngineOptions,
         private readonly alerts?: AlertsHook, // 없으면 watchlist·알람 없이 스캔만(테스트·부분 조립 허용)
     ) {
@@ -104,7 +104,7 @@ export class LiveEngine extends EventEmitter {
 
     snapshot(): LiveSnapshot {
         const watch = new Set(this.alerts?.watchCodes() ?? []);
-        return buildSnapshot(this.store, this.membership, this.trailing, this.ws.getStatus(), Date.now(), watch);
+        return buildSnapshot(this.store, this.membership, this.dailyCtx, this.ws.getStatus(), Date.now(), watch);
     }
 
     /** 시트 테마 멤버십 즉시 재로드 — 배정(apps/api 경유)·시트 직접편집을 실시간 보드에 바로 반영(컨트롤러가 온디맨드 호출). */
@@ -134,9 +134,9 @@ export class LiveEngine extends EventEmitter {
         const codes = [...new Set([...hits.map((h) => h.code), ...(this.alerts?.watchCodes() ?? [])])];
         const quotes = await pollQuotes(this.kiwoom.rest, codes, Date.now());
         this.store.updateQuotes(quotes);
-        // 트레일링 고가 백그라운드 priming(멱등) — base(전일종가)는 방금 적재된 시세에서. ka10081 별도 레이트라 폴링 안 막음.
+        // 일봉 컨텍스트(수정 트레일링 두벌+원주가 전일종가) 백그라운드 priming(멱등). ka10081 별도 레이트라 폴링 안 막음.
         const today = kstToday();
-        for (const q of quotes) void this.trailing.ensure(q.code, q.base, today);
+        for (const q of quotes) void this.dailyCtx.ensure(q.code, today);
         // 알람 평가 — 이번 틱 신선한 시세만 넘긴다(과거 잔류 quotes 로 순위가 오염되지 않게).
         this.alerts?.tick(quotes, (c) => this.membership.themesOf(c), Date.now());
         this.emit("tick", { hot: hits.length, polled: quotes.length, ts: Date.now() });

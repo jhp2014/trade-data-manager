@@ -6,7 +6,7 @@ import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-ma
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
 import { LiveEngine, type AlertsHook } from "./engine.js";
 import { SheetMembership } from "./membership.js";
-import { KiwoomTrailingHighs } from "./trailingHighs.js";
+import { KiwoomDailyContext } from "./dailyContext.js";
 
 // kiwoom 은 모듈이 만들어 주입(차트 서비스와 공유). ws 는 이 엔진 전용이라 여기서 생성.
 export function createLiveEngine(kiwoom: Kiwoom, conditionName: string, pollMs?: number, alerts?: AlertsHook): LiveEngine {
@@ -15,7 +15,7 @@ export function createLiveEngine(kiwoom: Kiwoom, conditionName: string, pollMs?:
     const ws = createKiwoomWs(kiwoom, frameLog ? { logFrame: createFileFrameLogger(frameLog) } : {});
     // 테마 멤버십(read) — 시트 어댑터를 live 자체 인스턴스로. 자격은 @tdm/google 이 infra/google/.env 에서 자급(소비앱 무설정).
     const membership = new SheetMembership(new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET));
-    // 트레일링 고가 — kiwoom 일봉 온디맨드(hot 종목만·캐시·self-heal). DB 무의존.
-    const trailing = new KiwoomTrailingHighs(kiwoom);
-    return new LiveEngine(kiwoom, ws, membership, trailing, { conditionName, pollMs }, alerts);
+    // 일봉 컨텍스트(수정 트레일링 KRX/UN 두벌 + 원주가 전일종가) — kiwoom 일봉 온디맨드(hot 종목만·캐시·self-heal). DB 무의존.
+    const dailyCtx = new KiwoomDailyContext(kiwoom);
+    return new LiveEngine(kiwoom, ws, membership, dailyCtx, { conditionName, pollMs }, alerts);
 }
