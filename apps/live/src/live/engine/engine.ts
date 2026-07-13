@@ -5,17 +5,17 @@ import { EventEmitter } from "node:events";
 import type { Kiwoom } from "@trade-data-manager/kiwoom";
 import { kstToday } from "@trade-data-manager/market";
 import type { KiwoomWs, ConnectionStatus } from "@trade-data-manager/kiwoom/ws";
-import { RankingScanner } from "./scanner.js";
+import { RankingScanner, fetchConditionList } from "./scanner.js";
 import { pollQuotes } from "./poller.js";
 import { EngineStore } from "./store.js";
-import type { LiveSnapshot } from "@trade-data-manager/wire";
+import type { LiveSnapshot, LiveConditionEntry } from "@trade-data-manager/wire";
 import { buildSnapshot } from "./snapshot.js";
 import type { MembershipSource } from "./membership.js";
 import type { TrailingHighsSource } from "./trailingHighs.js";
 import type { Quote } from "./types.js";
 
 export interface LiveEngineOptions {
-    conditionName: string; // 스캔할 조건식 이름(영웅문 서버저장)
+    conditionName: string; // 스캔할 조건식 이름(영웅문 서버저장). 빈 문자열=미선택(스캔 없이 watchlist 만 폴링).
     pollMs?: number;
 }
 
@@ -32,7 +32,7 @@ export class LiveEngine extends EventEmitter {
     private running = false;
     private ready = false; // WS LOGIN+CNSRLST 완료 → 틱 허용. 재연결 중 false.
 
-    private readonly conditionName: string;
+    private conditionName: string; // switchCondition 으로 런타임 교체 가능
     private readonly pollMs: number;
 
     constructor(
@@ -48,7 +48,8 @@ export class LiveEngine extends EventEmitter {
         this.pollMs = opts.pollMs ?? 5_000;
     }
 
-    /** WS 연결 → 스캐너 init(CNSRLST) → 즉시 1틱 → 5초 루프. 끊기면 WS 가 백오프 재연결. */
+    /** WS 연결 → (조건 있으면) 스캐너 init(CNSRLST) → 즉시 1틱 → 5초 루프. 끊기면 WS 가 백오프 재연결.
+     *  조건 미선택(빈 이름)이어도 시작 — 스캔 없이 watchlist 폴링·알람은 동작, 조건은 switchCondition 으로 나중에. */
     async start(): Promise<void> {
         this.ws.on("status", (s: ConnectionStatus) => {
             if (s !== "live") this.ready = false; // 끊기면 틱 보류(직전 데이터 유지)
@@ -56,18 +57,49 @@ export class LiveEngine extends EventEmitter {
         });
         this.ws.on("reconnected", () => void this.onReconnect());
         await this.ws.connect();
-        this.scanner = new RankingScanner(this.ws, this.conditionName);
-        await this.scanner.init();
+        if (this.conditionName) {
+            this.scanner = new RankingScanner(this.ws, this.conditionName);
+            await this.scanner.init();
+        }
         await this.membership.reload().catch((err) => this.emit("error", err)); // 초기 멤버십 로드(실패해도 빈 멤버십으로 진행)
         this.ready = true;
         this.running = true;
         await this.tick().catch((err) => this.emit("error", err)); // 첫 틱 실패(일시 오류)해도 루프는 시작 — scheduleNext 와 동일 정책
         this.scheduleNext();
-        this.emit("started", { conditionSeq: this.scanner.conditionSeq });
+        this.emit("started", { conditionSeq: this.scanner?.conditionSeq ?? null });
     }
 
     get connectionStatus(): ConnectionStatus {
         return this.ws.getStatus();
+    }
+
+    /** 현재 선택된 조건식 이름(빈 문자열=미선택). */
+    get condition(): string {
+        return this.conditionName;
+    }
+
+    /** 서버저장 조건식 전체 목록(CNSRLST) — 설정 UI 용. WS 미연결이면 throw(컨트롤러가 503). */
+    listConditions(): Promise<LiveConditionEntry[]> {
+        return fetchConditionList(this.ws);
+    }
+
+    /**
+     * 조건식 런타임 교체 — 새 스캐너 init(이름→seq, 실패 시 기존 유지) 후 원자 스왑 + 즉시 1틱.
+     * 빈 이름 = 조건 해제(hot 비움, watchlist 폴링은 계속). 영속은 호출자(컨트롤러→config) 책임.
+     */
+    async switchCondition(name: string): Promise<void> {
+        if (!this.running) throw new Error("엔진 미기동 — 서버 로그 확인(WS 연결 실패?)");
+        if (name === "") {
+            this.scanner = null;
+            this.conditionName = "";
+            this.store.setHot([], Date.now());
+            return;
+        }
+        const next = new RankingScanner(this.ws, name);
+        await next.init(); // 목록에 없으면 throw — 기존 스캐너 무손상
+        this.scanner = next;
+        this.conditionName = name;
+        await this.tick().catch((err) => this.emit("error", err)); // 즉시 반영(실패해도 5초 루프가 재시도)
     }
 
     snapshot(): LiveSnapshot {
@@ -80,11 +112,11 @@ export class LiveEngine extends EventEmitter {
         await this.membership.reload();
     }
 
-    /** 재연결 직후: CNSRREQ 전 CNSRLST 선조회 요구 때문에 scanner 재init. */
+    /** 재연결 직후: CNSRREQ 전 CNSRLST 선조회 요구 때문에 scanner 재init. 조건 미선택이면 ready 만 복구. */
     private async onReconnect(): Promise<void> {
-        if (!this.running || !this.scanner) return;
+        if (!this.running) return;
         try {
-            await this.scanner.init();
+            await this.scanner?.init();
             this.ready = true;
             this.emit("reconnected");
         } catch (err) {
@@ -92,11 +124,11 @@ export class LiveEngine extends EventEmitter {
         }
     }
 
-    /** 한 사이클: 멤버십 스캔 → 시세 폴링 → store 적재 → 'tick'. */
+    /** 한 사이클: 멤버십 스캔 → 시세 폴링 → store 적재 → 'tick'. 조건 미선택이면 hot 없이 watchlist 만. */
     private async tick(): Promise<void> {
-        if (!this.scanner || !this.ready) return; // 재연결 중이면 보류
+        if (!this.ready) return; // 재연결 중이면 보류
         const now = Date.now();
-        const hits = await this.scanner.scan();
+        const hits = this.scanner ? await this.scanner.scan() : [];
         this.store.setHot(hits, now);
         // 유니버스 = hot ∪ watchlist(타겟) — 타겟은 스캔 이탈해도 항상 폴링(2층 구조).
         const codes = [...new Set([...hits.map((h) => h.code), ...(this.alerts?.watchCodes() ?? [])])];

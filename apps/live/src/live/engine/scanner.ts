@@ -4,6 +4,7 @@
 //  당시 "갱신 안 됨"의 실제 원인은 정규장 시간 밖이라 조건 매칭이 조용했던 것.)
 // 정본: market-eye/src/engine/rankingScanner.ts. WS 는 tdm infra/kiwoom KiwoomWs(주입).
 import type { KiwoomWs } from "@trade-data-manager/kiwoom/ws";
+import type { LiveConditionEntry } from "@trade-data-manager/wire";
 import { toCanonical } from "./codes.js";
 import type { ScanHit } from "./types.js";
 
@@ -20,6 +21,13 @@ function assertOk(frame: Record<string, unknown>, label: string): void {
     }
 }
 
+/** CNSRLST 1회 — 서버저장 조건식 전체 목록. 스캐너 init(이름→seq 해소)과 설정 UI(GET /conditions)가 공유. */
+export async function fetchConditionList(ws: KiwoomWs): Promise<LiveConditionEntry[]> {
+    const res = await ws.request({ trnm: "CNSRLST" }, (f) => f.trnm === "CNSRLST");
+    assertOk(res, "CNSRLST");
+    return ((res.data ?? []) as [string, string][]).map(([seq, name]) => ({ seq, name }));
+}
+
 export class RankingScanner {
     private seq: string | null = null;
 
@@ -30,17 +38,15 @@ export class RankingScanner {
 
     /** CNSRLST 로 목록을 받아 이름으로 seq 확정(CNSRREQ 전 선조회 요구사항 겸함). */
     async init(): Promise<void> {
-        const res = await this.ws.request({ trnm: "CNSRLST" }, (f) => f.trnm === "CNSRLST");
-        assertOk(res, "CNSRLST");
-        const list = (res.data ?? []) as [string, string][];
-        const found = list.find(([, name]) => name === this.conditionName);
+        const list = await fetchConditionList(this.ws);
+        const found = list.find((c) => c.name === this.conditionName);
         if (!found) {
-            const names = list.map(([s, n]) => `${s}:${n}`).join(", ");
+            const names = list.map((c) => `${c.seq}:${c.name}`).join(", ");
             throw new Error(
                 `조건식 '${this.conditionName}' 없음. 영웅문에서 만들고 서버저장했는지 확인.\n  현재 목록: ${names}`,
             );
         }
-        this.seq = found[0];
+        this.seq = found.seq;
     }
 
     get conditionSeq(): string | null {

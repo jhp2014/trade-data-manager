@@ -15,15 +15,28 @@ import { AlertConfigStore } from "./alerts/configStore.js";
 import { AlertsRuntime } from "./alerts/alertsRuntime.js";
 import { formatFiring } from "./alerts/format.js";
 import { createAlertNotifierFromEnv, type AlertNotifier } from "./alerts/createNotifier.js";
-import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS, ALERT_NOTIFIER } from "./tokens.js";
+import { ConditionController } from "./condition.controller.js";
+import { EngineConfigStore } from "./engine/engineConfigStore.js";
+import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS, ALERT_NOTIFIER, ENGINE_CONFIG } from "./tokens.js";
 import { createLiveEngine } from "./engine/createLiveEngine.js";
 import type { LiveEngine } from "./engine/engine.js";
 
 // 실시간 모니터 모듈. 엔진(framework-free)을 Symbol 토큰으로 주입하고 lifecycle 로 start/stop.
-// 조건식은 LIVE_CONDITION_NAME(영웅문 서버저장 이름). 미설정이면 엔진 idle(앱은 정상 부팅).
-// 엔진 시작 실패(조건 없음·장외·연결오류)해도 앱은 유지 — /snapshot 은 빈 스냅샷.
+// 조건식 = 엔진설정 파일(워크벤치 설정 모달에서 선택) > env LIVE_CONDITION_NAME(부팅 기본값).
+// 미선택이어도 엔진은 시작 — 스캔 없이 watchlist 폴링·알람 동작, 조건은 POST /condition 으로 나중에.
+// 엔진 시작 실패(장외·연결오류)해도 앱은 유지 — /snapshot 은 빈 스냅샷.
 // kiwoom 은 단일 인스턴스(엔진+차트 공유 → CredentialPool 레이트 페이싱 정합).
 const kiwoomProvider: Provider = { provide: KIWOOM, useFactory: (): Kiwoom => createKiwoom() };
+// 엔진 설정(조건검색 선택) — JSON 파일 영속. 파일값(빈 문자열=명시적 해제 포함) > env.
+const engineConfigProvider: Provider = {
+    provide: ENGINE_CONFIG,
+    useFactory: (): EngineConfigStore => {
+        const store = new EngineConfigStore(process.env.LIVE_ENGINE_CONFIG?.trim() || "data/live-engine.json");
+        const corrupt = store.load();
+        if (corrupt) new Logger("Engine").warn(`엔진 설정 파일 손상 — ${corrupt} 로 백업하고 빈 설정으로 시작`);
+        return store;
+    },
+};
 // 알람 설정(watchlist+룰) — JSON 파일 영속(DB-free). 손상 파일은 백업 후 빈 설정으로 degrade.
 const alertConfigProvider: Provider = {
     provide: ALERT_CONFIG,
@@ -66,9 +79,9 @@ const alertsProvider: Provider = {
 };
 const engineProvider: Provider = {
     provide: LIVE_ENGINE,
-    useFactory: (kiwoom: Kiwoom, alerts: AlertsRuntime): LiveEngine =>
-        createLiveEngine(kiwoom, process.env.LIVE_CONDITION_NAME ?? "", Number(process.env.LIVE_POLL_MS) || undefined, alerts),
-    inject: [KIWOOM, ALERTS],
+    useFactory: (kiwoom: Kiwoom, alerts: AlertsRuntime, config: EngineConfigStore): LiveEngine =>
+        createLiveEngine(kiwoom, config.conditionName ?? process.env.LIVE_CONDITION_NAME ?? "", Number(process.env.LIVE_POLL_MS) || undefined, alerts),
+    inject: [KIWOOM, ALERTS, ENGINE_CONFIG],
 };
 const chartProvider: Provider = {
     provide: LIVE_CHART,
@@ -79,8 +92,8 @@ const chartProvider: Provider = {
 const newsProvider: Provider = { provide: LIVE_NEWS, useFactory: (): LiveNewsService => new LiveNewsService() };
 
 @Module({
-    controllers: [HealthController, SnapshotController, StreamController, ThemeController, ChartController, NewsController, AlertsController],
-    providers: [kiwoomProvider, alertConfigProvider, notifierProvider, alertsProvider, engineProvider, chartProvider, newsProvider],
+    controllers: [HealthController, SnapshotController, StreamController, ThemeController, ChartController, NewsController, AlertsController, ConditionController],
+    providers: [kiwoomProvider, engineConfigProvider, alertConfigProvider, notifierProvider, alertsProvider, engineProvider, chartProvider, newsProvider],
 })
 export class LiveModule implements OnModuleInit, OnModuleDestroy {
     private readonly log = new Logger("LiveEngine");
@@ -91,11 +104,6 @@ export class LiveModule implements OnModuleInit, OnModuleDestroy {
     ) {}
 
     async onModuleInit(): Promise<void> {
-        const cond = process.env.LIVE_CONDITION_NAME;
-        if (!cond) {
-            this.log.warn("LIVE_CONDITION_NAME 미설정 — 엔진 idle(스캔 안 함). /snapshot 은 빈 스냅샷.");
-            return;
-        }
         this.engine.on("error", (e: unknown) =>
             this.log.error(`엔진 오류(루프 유지): ${e instanceof Error ? e.message : String(e)}`),
         );
@@ -104,7 +112,8 @@ export class LiveModule implements OnModuleInit, OnModuleDestroy {
         );
         try {
             await this.engine.start();
-            this.log.log(`엔진 시작 — 조건 '${cond}'`);
+            const cond = this.engine.condition;
+            this.log.log(cond ? `엔진 시작 — 조건 '${cond}'` : "엔진 시작 — 조건 미선택(설정 모달에서 선택, watchlist 폴링만)");
         } catch (e) {
             this.log.error(`엔진 시작 실패(앱은 유지): ${e instanceof Error ? e.message : String(e)}`);
         }

@@ -34,3 +34,15 @@ export interface LiveSnapshot {
     polled: number; // 시세 보유 종목 수
     stocks: LiveStock[];
 }
+
+/** 키움 서버저장 조건검색식 1개(CNSRLST 행). */
+export interface LiveConditionEntry {
+    seq: string;
+    name: string;
+}
+
+/** GET /conditions — 조건검색식 목록 + 현재 선택(빈 문자열=미선택, 엔진은 watchlist 만 폴링). */
+export interface LiveConditionsView {
+    current: string;
+    list: LiveConditionEntry[];
+}

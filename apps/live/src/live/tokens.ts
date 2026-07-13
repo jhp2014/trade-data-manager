@@ -8,6 +8,8 @@ export const LIVE_CHART = Symbol("LIVE_CHART");
 export const LIVE_NEWS = Symbol("LIVE_NEWS");
 // 알람 설정 영속(watchlist+룰 JSON 파일).
 export const ALERT_CONFIG = Symbol("ALERT_CONFIG");
+// 엔진 설정 영속(조건검색 선택 JSON 파일) — env LIVE_CONDITION_NAME 보다 우선.
+export const ENGINE_CONFIG = Symbol("ENGINE_CONFIG");
 // 알람 런타임(평가 파이프라인 + 발화 로그) — 엔진 틱에 결합.
 export const ALERTS = Symbol("ALERTS");
 // 알림 전송로(Bot API/MTProto, env 선택) — null 이면 로그로만.

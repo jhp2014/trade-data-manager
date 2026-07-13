@@ -47,7 +47,7 @@ export function LiveBoardPanel(): JSX.Element {
                 refreshing={refreshing}
             />
             {mode === "flat" ? (
-                <FlatStockList stocks={vm.stocks} code={code} onPick={(c) => setCode(c, originId)} empty={live ? "조건 편입 종목 없음" : "엔진 대기중 (LIVE_CONDITION_NAME 미설정?)"} />
+                <FlatStockList stocks={vm.stocks} code={code} onPick={(c) => setCode(c, originId)} empty={live ? "조건 편입 종목 없음 (조건 미선택이면 설정>조건검색)" : "엔진 대기중 — 연결 확인"} />
             ) : (
                 <BoardLayout grouped={vm.grouped} parents={vm.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={vm.excludedByFilter} absentLabel="스캔 밖" />
             )}

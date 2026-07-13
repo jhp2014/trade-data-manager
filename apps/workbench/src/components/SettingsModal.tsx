@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog } from "../ui/Dialog.js";
 import { Checkbox, NumberField, Row, SectionLabel, TextInput, Kbd } from "../ui/controls.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -7,6 +8,7 @@ import { useDock } from "../store/dock.js";
 import { staticCommands, commandsByCategory } from "../keymap/registry.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { formatChord } from "../keymap/keys.js";
+import { fetchLiveConditions, selectLiveCondition } from "../api/liveConditions.js";
 
 // 전역 설정 다이얼로그 — 사이드바에서 화면 선택 → 그 화면 설정. 패널별 gear 대신 우상단 전역 1개.
 // 프레임은 고정(폭·높이) — 화면을 바꿔도 창이 안 출렁이게, 내용 영역만 내부 스크롤한다.
@@ -16,6 +18,7 @@ const SCREENS: { id: Screen; label: string }[] = [
     { id: "replay", label: "복기" },
     { id: "point", label: "타점" },
     { id: "chart", label: "차트" },
+    { id: "condition", label: "조건검색" },
     { id: "layout", label: "레이아웃" },
     { id: "shortcuts", label: "단축키" },
 ];
@@ -51,7 +54,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                 </div>
                 {/* 내용 — 프레임 고정, 여기만 스크롤 */}
                 <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: 16 }}>
-                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "point" ? <PointSettings /> : screen === "chart" ? <ChartSettingsView /> : screen === "layout" ? <LayoutSettings /> : <ShortcutSettings />}
+                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "point" ? <PointSettings /> : screen === "chart" ? <ChartSettingsView /> : screen === "condition" ? <ConditionSettings /> : screen === "layout" ? <LayoutSettings /> : <ShortcutSettings />}
                 </div>
             </div>
         </Dialog>
@@ -140,6 +143,77 @@ function PointSettings(): JSX.Element {
                     <TextInput value={v} onChange={(e) => set(i, e.target.value)} placeholder="(미설정)" style={{ flex: 1 }} />
                 </Row>
             ))}
+        </div>
+    );
+}
+
+// 조건검색 — 실시간 엔진의 hot 유니버스 조건식 선택(영웅문 서버저장 목록 = CNSRLST).
+// 클릭 = 즉시 적용(엔진 스캐너 교체 + 서버 JSON 영속, 재기동 유지). env 는 부팅 기본값으로 강등.
+function ConditionSettings(): JSX.Element {
+    const qc = useQueryClient();
+    const q = useQuery({
+        queryKey: ["live", "conditions"],
+        queryFn: ({ signal }) => fetchLiveConditions(signal),
+        staleTime: 30_000,
+        retry: false, // 엔진 미연결(503)이면 즉시 안내 — 모달 안에서 재시도 버튼으로
+    });
+    const mut = useMutation({
+        mutationFn: selectLiveCondition,
+        onSuccess: () => void qc.invalidateQueries({ queryKey: ["live", "conditions"] }),
+    });
+    const rowBtn: React.CSSProperties = {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        textAlign: "left",
+        padding: "5px 10px",
+        borderRadius: 6,
+        border: "1px solid var(--border-subtle)",
+        background: "var(--bg-secondary)",
+        color: "var(--text-primary)",
+        cursor: "pointer",
+        font: "inherit",
+    };
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1.6 }}>
+                실시간 보드의 <b style={{ color: "var(--text-secondary)" }}>hot 유니버스</b>를 뽑는 조건식. 클릭 = 즉시 적용(재기동에도 유지). 목록은 영웅문 서버저장 조건식.
+            </div>
+            {q.isLoading && <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>목록 조회중…</div>}
+            {q.isError && (
+                <Row>
+                    <span style={{ color: "var(--danger, #dc2626)", fontSize: 12 }}>{q.error instanceof Error ? q.error.message : "목록 조회 실패"}</span>
+                    <button style={{ ...rowBtn, padding: "2px 8px" }} onClick={() => void q.refetch()}>재시도</button>
+                </Row>
+            )}
+            {q.data && (
+                <>
+                    {q.data.list.map((c) => {
+                        const active = c.name === q.data.current;
+                        const applying = mut.isPending && mut.variables === c.name;
+                        return (
+                            <button
+                                key={c.seq}
+                                style={{ ...rowBtn, ...(active ? { borderColor: "var(--accent-primary)", background: "var(--accent-soft)", fontWeight: 700 } : {}) }}
+                                disabled={mut.isPending}
+                                onClick={() => !active && mut.mutate(c.name)}
+                            >
+                                <span style={{ color: "var(--text-tertiary)", fontSize: 11, width: 20 }}>{c.seq}</span>
+                                <span style={{ flex: 1 }}>{c.name}</span>
+                                {active && <span style={{ color: "var(--accent-hover)", fontSize: 11 }}>현재</span>}
+                                {applying && <span style={{ color: "var(--text-tertiary)", fontSize: 11 }}>적용중…</span>}
+                            </button>
+                        );
+                    })}
+                    {q.data.list.length === 0 && <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>서버저장 조건식 없음 — 영웅문에서 만들고 서버저장하세요.</div>}
+                    {q.data.current && (
+                        <button style={{ ...rowBtn, justifyContent: "center", color: "var(--text-tertiary)" }} disabled={mut.isPending} onClick={() => mut.mutate("")}>
+                            조건 해제(스캔 중지, watchlist 만 폴링)
+                        </button>
+                    )}
+                </>
+            )}
+            {mut.isError && <div style={{ color: "var(--danger, #dc2626)", fontSize: 12 }}>{mut.error instanceof Error ? mut.error.message : "적용 실패"}</div>}
         </div>
     );
 }
