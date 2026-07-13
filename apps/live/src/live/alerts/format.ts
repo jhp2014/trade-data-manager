@@ -12,3 +12,14 @@ export function formatFiring(f: AlertFiring): string {
     if (f.note) parts.push(f.note);
     return parts.join(" · ");
 }
+
+/** 한 배치(한 틱) 발화 → 종목당 1메시지 텍스트 — 전송로(Bot API/MTProto) 공용. */
+export function buildAlertMessages(firings: readonly AlertFiring[]): string[] {
+    const byCode = new Map<string, AlertFiring[]>();
+    for (const f of firings) {
+        const list = byCode.get(f.code);
+        if (list) list.push(f);
+        else byCode.set(f.code, [f]);
+    }
+    return [...byCode.values()].map((group) => `🔔 ${group.map(formatFiring).join("\n")}`);
+}

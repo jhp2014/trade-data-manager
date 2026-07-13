@@ -10,3 +10,5 @@ export const LIVE_NEWS = Symbol("LIVE_NEWS");
 export const ALERT_CONFIG = Symbol("ALERT_CONFIG");
 // 알람 런타임(평가 파이프라인 + 발화 로그) — 엔진 틱에 결합.
 export const ALERTS = Symbol("ALERTS");
+// 알림 전송로(Bot API/MTProto, env 선택) — null 이면 로그로만.
+export const ALERT_NOTIFIER = Symbol("ALERT_NOTIFIER");

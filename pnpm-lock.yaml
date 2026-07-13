@@ -167,6 +167,9 @@ importers:
       '@trade-data-manager/market':
         specifier: workspace:*
         version: link:../../core/market
+      '@trade-data-manager/telegram':
+        specifier: workspace:*
+        version: link:../../infra/telegram
       '@trade-data-manager/wire':
         specifier: workspace:*
         version: link:../../contracts/wire

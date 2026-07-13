@@ -59,6 +59,11 @@ export interface Telegram {
      * (KIS 뉴스 백필의 역방향 워크와 같은 발상.) limit 은 안전 상한.
      */
     searchChannel(peer: string, query: string, opts?: TelegramSearchOptions): Promise<TelegramMessage[]>;
+    /**
+     * 한 방(peer)에 텍스트 메시지 게시 — 알람 전달용(apps/live). 내 계정 발신이므로
+     * 내 다른 기기엔 푸시가 안 온다(기록·타 구독자 알림용). 링크 미리보기 끔.
+     */
+    sendMessage(peer: string, text: string): Promise<void>;
     disconnect(): Promise<void>;
 }
 
@@ -102,6 +107,10 @@ export async function createTelegram(): Promise<Telegram> {
                 if (out.length >= cap) break; // 안전 상한
             }
             return out;
+        },
+        async sendMessage(peer, text) {
+            const target: string | number = /^-?\d+$/.test(peer) ? Number(peer) : peer;
+            await client.sendMessage(target, { message: text, linkPreview: false });
         },
         async disconnect() {
             await client.disconnect();

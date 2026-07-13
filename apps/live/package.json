@@ -21,6 +21,7 @@
         "@trade-data-manager/kis": "workspace:*",
         "@trade-data-manager/kiwoom": "workspace:*",
         "@trade-data-manager/market": "workspace:*",
+        "@trade-data-manager/telegram": "workspace:*",
         "@trade-data-manager/wire": "workspace:*",
         "dotenv": "^16.4.5",
         "reflect-metadata": "^0.2.2",

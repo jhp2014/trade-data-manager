@@ -13,8 +13,8 @@ import { AlertsController } from "./alerts/alerts.controller.js";
 import { AlertConfigStore } from "./alerts/configStore.js";
 import { AlertsRuntime } from "./alerts/alertsRuntime.js";
 import { formatFiring } from "./alerts/format.js";
-import { TelegramAlertNotifier, loadTelegramBotConfigFromEnv } from "./alerts/telegramNotifier.js";
-import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS } from "./tokens.js";
+import { createAlertNotifierFromEnv, type AlertNotifier } from "./alerts/createNotifier.js";
+import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS, ALERT_NOTIFIER } from "./tokens.js";
 import { createLiveEngine } from "./engine/createLiveEngine.js";
 import type { LiveEngine } from "./engine/engine.js";
 
@@ -33,24 +33,35 @@ const alertConfigProvider: Provider = {
         return store;
     },
 };
-// 알람 런타임 — 발화 sink = 서버 로그 + 텔레그램(Bot API, env 미설정이면 로그로만 degrade).
+// 알림 전송로(env 선택: bot=Bot API/user=MTProto) — 미설정이면 null(로그로만). 모듈 종료 시 close.
+const notifierProvider: Provider = {
+    provide: ALERT_NOTIFIER,
+    useFactory: (): AlertNotifier | null => {
+        const log = new Logger("Alerts");
+        const made = createAlertNotifierFromEnv();
+        if (!made) {
+            log.warn("텔레그램 전송 미설정(LIVE_TELEGRAM_*) — 알람은 서버 로그로만 전달");
+            return null;
+        }
+        log.log(`알람 전송로: ${made.label}`);
+        return made.notifier;
+    },
+};
+// 알람 런타임 — 발화 sink = 서버 로그(항상) + 텔레그램(설정 시).
 const alertsProvider: Provider = {
     provide: ALERTS,
-    useFactory: (config: AlertConfigStore): AlertsRuntime => {
+    useFactory: (config: AlertConfigStore, notifier: AlertNotifier | null): AlertsRuntime => {
         const log = new Logger("Alerts");
-        const botCfg = loadTelegramBotConfigFromEnv();
-        const telegram = botCfg ? new TelegramAlertNotifier(botCfg) : null;
-        if (!telegram) log.warn("LIVE_TELEGRAM_BOT_TOKEN/CHAT_ID 미설정 — 알람은 서버 로그로만 전달");
         return new AlertsRuntime(config, (firings) => {
             for (const f of firings) log.log(`🔔 ${formatFiring(f)}`);
-            if (telegram) {
-                void telegram.send(firings).catch((e: unknown) =>
+            if (notifier) {
+                void notifier.send(firings).catch((e: unknown) =>
                     log.error(`텔레그램 알림 실패(알람 로그는 위에 남음): ${e instanceof Error ? e.message : String(e)}`),
                 );
             }
         });
     },
-    inject: [ALERT_CONFIG],
+    inject: [ALERT_CONFIG, ALERT_NOTIFIER],
 };
 const engineProvider: Provider = {
     provide: LIVE_ENGINE,
@@ -68,12 +79,15 @@ const newsProvider: Provider = { provide: LIVE_NEWS, useFactory: (): LiveNewsSer
 
 @Module({
     controllers: [HealthController, SnapshotController, StreamController, ChartController, NewsController, AlertsController],
-    providers: [kiwoomProvider, alertConfigProvider, alertsProvider, engineProvider, chartProvider, newsProvider],
+    providers: [kiwoomProvider, alertConfigProvider, notifierProvider, alertsProvider, engineProvider, chartProvider, newsProvider],
 })
 export class LiveModule implements OnModuleInit, OnModuleDestroy {
     private readonly log = new Logger("LiveEngine");
 
-    constructor(@Inject(LIVE_ENGINE) private readonly engine: LiveEngine) {}
+    constructor(
+        @Inject(LIVE_ENGINE) private readonly engine: LiveEngine,
+        @Inject(ALERT_NOTIFIER) private readonly notifier: AlertNotifier | null,
+    ) {}
 
     async onModuleInit(): Promise<void> {
         const cond = process.env.LIVE_CONDITION_NAME;
@@ -97,5 +111,6 @@ export class LiveModule implements OnModuleInit, OnModuleDestroy {
 
     async onModuleDestroy(): Promise<void> {
         await this.engine.stop();
+        await this.notifier?.close?.(); // MTProto 접속 정리(Bot API 는 close 없음)
     }
 }
