@@ -19,7 +19,7 @@ afterAll(async () => {
 
 describe("daySnapshotCache read/write", () => {
     it("write→read 라운드트립, 없는 날짜는 null", async () => {
-        const file = { date: "2026-06-25", stocks: [] };
+        const file = { v: mod.SNAPSHOT_SCHEMA_VERSION, date: "2026-06-25", stocks: [] };
         await mod.writeSnapshot(file);
         expect(await mod.readSnapshot("2026-06-25")).toEqual(file);
         expect(await mod.readSnapshot("2026-06-24")).toBeNull();
@@ -30,6 +30,15 @@ describe("daySnapshotCache read/write", () => {
         await fs.writeFile(fp, "gzip 이 아닌 내용", "utf8");
         expect(await mod.readSnapshot("2026-06-26")).toBeNull();
         // 손상 파일이 치워져 다음 빌드가 재생성 가능
+        await expect(fs.access(fp)).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("구버전 스키마(v 불일치/부재)는 miss 처리 — 삭제 후 null(자동 무효화)", async () => {
+        // v 부재(구파일) — writeSnapshot 을 우회해 직접 gzip 으로 심는다.
+        const { gzipSync } = await import("node:zlib");
+        const fp = path.join(cacheDir, "2026-06-27.json.gz");
+        await fs.writeFile(fp, gzipSync(JSON.stringify({ date: "2026-06-27", stocks: [] })));
+        expect(await mod.readSnapshot("2026-06-27")).toBeNull();
         await expect(fs.access(fp)).rejects.toMatchObject({ code: "ENOENT" });
     });
 });

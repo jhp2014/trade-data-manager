@@ -3,13 +3,14 @@
 // **새 술어 추가 = BOARD_PREDICATES 에 한 항목(test·label·params)만.** UI 는 이 정의(params)로 입력을 렌더한다.
 import { isNearWindowHigh } from "./trailing.js";
 import { AMOUNT_BUCKETS_EOK } from "./amount.js";
+import type { ByMarket } from "../candle/model.js";
 
 /** 술어 평가에 필요한 종목 지표(보드가 채워 전달). */
 export interface BoardMetrics {
-    highPct: number; // 고가 등락률(전일비)
-    amount: number; // 총 거래대금(원)
+    highPct: number; // 고가 등락률(전일비) — 보드의 기준시장 토글 기준 값
+    amount: number; // 총 거래대금(원, UN 통합)
     buckets?: number[]; // 분봉 거래대금 구간 카운트(AMOUNT_BUCKETS_EOK 인덱스)
-    trailingHighs?: number[]; // 신고가용 high% 배열(0=당일)
+    trailingHighs?: ByMarket<number[]>; // 신고가용 high% 배열(0=당일) — newHighFar 의 market 파라미터가 시장을 고름
 }
 
 /** 파라미터 정의 — UI 입력 렌더용(도메인이 소유 → 술어 추가 시 한 곳만). */
@@ -19,6 +20,14 @@ export interface ParamSpec {
     def: number;
     min?: number;
     step?: number;
+    /** 있으면 select — 값은 옵션 인덱스(number). 없으면 숫자 입력. */
+    options?: string[];
+}
+
+/** newHighFar market 파라미터 값 ↔ 시장. 값=옵션 인덱스(0=KRX, 1=UN). 미지정(옛 저장 필터)=UN(기존 동작). */
+const MARKET_OPTIONS = ["KRX", "UN"] as const;
+function marketOf(p: Record<string, number>): "krx" | "un" {
+    return p.market === 0 ? "krx" : "un";
 }
 
 /** 술어 정의(레지스트리 항목). test = 매칭(=제외) 여부, label = 사유 태그/빌더 표시. */
@@ -44,11 +53,16 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
         kind: "newHighFar",
         title: "매물대 내부",
         params: [
+            { key: "market", label: "시장", def: 1, options: [...MARKET_OPTIONS] },
             { key: "window", label: "거래일", def: 20, min: 1 },
             { key: "tol", label: "허용 갭%", def: 2, min: 0, step: 0.5 },
         ],
-        test: (m, p) => (m.trailingHighs ? !isNearWindowHigh(m.trailingHighs, p.window, p.tol) : false),
-        label: () => "매물대 내부",
+        // 한 그룹에 KRX·UN 두 인스턴스를 AND 로 넣으면 "둘 다 매물대 내부여야 흐리게"(= 한쪽 돌파 시 해제).
+        test: (m, p) => {
+            const highs = m.trailingHighs?.[marketOf(p)];
+            return highs ? !isNearWindowHigh(highs, p.window, p.tol) : false;
+        },
+        label: (p) => `매물대 내부(${MARKET_OPTIONS[p.market === 0 ? 0 : 1]})`,
     },
     {
         kind: "minAmtFew",

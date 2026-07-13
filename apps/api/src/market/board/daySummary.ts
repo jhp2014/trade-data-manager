@@ -2,7 +2,7 @@
 //   wire 계약(ThemeTag·DailySnapshot·DaySummary)은 contracts/wire 에 두고 서버·클라가 공유한다.
 //   순수함수(IO 0): assembleBaseSnapshots(파일파생+master·시트 조인) · applyComments(fresh 코멘트 덮기) · buildDaySummary(byTheme 인덱스).
 // fetch·캐시는 DayBoards 가 하고, 여긴 순수 조립만. core 는 도메인(DayStats 등)만 계속 제공.
-import type { StockMaster, ThemeMember, DailyComment, DayStats } from "@trade-data-manager/market";
+import type { StockMaster, ThemeMember, DailyComment, DayStats, ByMarket } from "@trade-data-manager/market";
 import type { ThemeTag, DailySnapshot, DaySummary } from "@trade-data-manager/wire";
 
 // wire 계약을 이 모듈 표면으로도 재노출 — dayBoards·컨트롤러·테스트가 여기서 계속 import 한다.
@@ -24,9 +24,9 @@ function themeTagsByCode(members: ThemeMember[], codes: string[]): Map<string, T
     return out;
 }
 
-/** 코드별 파일 파생값 — EOD 일봉 %(불변) + 시총. DayBoards 가 파일에서 뽑아 넘긴다. */
+/** 코드별 파일 파생값 — EOD 일봉 % 두 벌(시장별) + 시총. DayBoards 가 파일에서 뽑아 넘긴다. */
 export interface DaySnapshotFields {
-    stats: DayStats | null;
+    stats: ByMarket<DayStats | null>;
     marketCap: string | null;
 }
 
@@ -44,17 +44,12 @@ export function assembleBaseSnapshots(
     return codes.map((code) => {
         const master = masterByCode.get(code);
         const f = meta.byCode.get(code);
-        const s = f?.stats ?? null;
         return {
             date,
             stockCode: code,
             name: master?.name ?? null,
             market: master?.market ?? null,
-            changeRate: s?.changeRate ?? null,
-            openPct: s?.openPct ?? null,
-            highPct: s?.highPct ?? null,
-            lowPct: s?.lowPct ?? null,
-            amount: s?.amount ?? null,
+            stats: f?.stats ?? { krx: null, un: null },
             marketCap: f?.marketCap ?? null,
             themes: themes.get(code) ?? [],
             comment: null,

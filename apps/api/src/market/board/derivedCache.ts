@@ -5,7 +5,7 @@
 //   오늘: 수집중일 수 있어 파일로 안 굳히고 매 요청 재빌드(부분 상태 영구화 방지). isCacheable(date < KST today) 게이트.
 import {
     deriveMinutes,
-    dailyStatsOf,
+    dailyStatsByMarket,
     kstToday,
     RAW_DAILY_LOOKBACK_MONTHS,
     subtractMonths,
@@ -13,10 +13,11 @@ import {
     type DailyUniverseProvider,
     type MinuteReader,
     type RawDailyReader,
+    type AdjustedDailyReader,
     type DailyCandleSnapshotReader,
     type DailyMarketCapReader,
 } from "@trade-data-manager/market";
-import { fileSnapshotStore, type DaySnapshot, type DaySnapshotFile, type DaySnapshotStore } from "./daySnapshotCache.js";
+import { fileSnapshotStore, SNAPSHOT_SCHEMA_VERSION, type DaySnapshot, type DaySnapshotFile, type DaySnapshotStore } from "./daySnapshotCache.js";
 
 /** 종목당 fetch 인플라이트 상한(분봉+원주가일봉). 날짜당 1회 빌드라 넉넉히. */
 const FETCH_CONCURRENCY = 8;
@@ -25,6 +26,8 @@ export interface DerivedCacheDeps {
     universe: DailyUniverseProvider;
     minute: MinuteReader;
     rawDaily: RawDailyReader;
+    /** 수정주가 일봉 창(종목당 range) — trailingHighs(KRX/UN 두벌, 수정주가) 원자재. */
+    adjDaily: AdjustedDailyReader;
     dailyCandle: DailyCandleSnapshotReader;
     marketCap: DailyMarketCapReader;
     /** 스냅샷 저장소(기본 파일 gzip). 테스트는 in-memory fake. */
@@ -76,7 +79,7 @@ export class DerivedCache {
         const codes = await this.deps.universe.stockCodesByDate(date);
         // universe 가 비면(오늘 EOD 전·미수집일) 빈 스냅샷을 굳히지 않는다 —
         // 이후 데이터가 들어와도 빈 캐시가 영구히 남는 걸 막고, 다음 요청이 재빌드하게 둔다.
-        if (codes.length === 0) return { date, stocks: [] };
+        if (codes.length === 0) return { v: SNAPSHOT_SCHEMA_VERSION, date, stocks: [] };
         // EOD 스칼라(일봉·전일종가·시총)는 배치 1회. 분봉파생은 종목당 fetch(제한 동시성).
         const [candles, prevCloses, caps] = await Promise.all([
             this.deps.dailyCandle.getByDateAndCodes(date, codes),
@@ -84,26 +87,27 @@ export class DerivedCache {
             this.deps.marketCap.getByDateAndCodes(date, codes),
         ]);
         const candleByCode = new Map(candles.map((c) => [c.stockCode, c]));
-        const prevUnByCode = new Map(prevCloses.map((p) => [p.stockCode, p.unClose]));
+        const prevByCode = new Map(prevCloses.map((p) => [p.stockCode, p])); // 시장별(krx·un) 전일종가 둘 다 사용
         const capByCode = new Map(caps.map((c) => [c.stockCode, c.marketCap]));
         const range = { from: subtractMonths(date, RAW_DAILY_LOOKBACK_MONTHS), to: date };
 
         const built = await mapWithConcurrency(codes, FETCH_CONCURRENCY, async (code): Promise<DaySnapshot | null> => {
-            const [minutes, rawDaily] = await Promise.all([
+            const [minutes, rawDaily, adjDaily] = await Promise.all([
                 this.deps.minute.getMinuteCandles(code, date),
                 this.deps.rawDaily.getRawDailyCandles(code, range),
+                this.deps.adjDaily.getDailyCandles(code, range),
             ]);
-            const derived = deriveMinutes(code, minutes, rawDaily, date);
+            const derived = deriveMinutes(code, minutes, rawDaily, adjDaily, date);
             if (derived === null) return null; // 분봉 없음(이론상 universe 밖) → skip
             const candle = candleByCode.get(code);
             return {
                 code,
                 marketCap: capByCode.get(code) ?? null,
-                stats: candle ? dailyStatsOf(candle, prevUnByCode.get(code) ?? null) : null,
+                stats: candle ? dailyStatsByMarket(candle, prevByCode.get(code) ?? null) : { krx: null, un: null },
                 minutes: derived,
             };
         });
-        const file: DaySnapshotFile = { date, stocks: built.filter((s): s is DaySnapshot => s !== null) };
+        const file: DaySnapshotFile = { v: SNAPSHOT_SCHEMA_VERSION, date, stocks: built.filter((s): s is DaySnapshot => s !== null) };
         // 과거 날짜만 파일로 굳힌다. 오늘은 수집 진행 중일 수 있어 부분 상태를 영구화하지 않고 반환만.
         if (cacheable) await this.store.write(file);
         return file;

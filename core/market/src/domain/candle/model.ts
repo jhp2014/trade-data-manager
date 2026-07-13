@@ -70,3 +70,9 @@ export interface MarketCloses {
     krxClose: string;
     unClose: string;
 }
+
+/** 시장별(KRX/UN) 두 벌 컨테이너 — 보드 기준가 토글·이중 파생(trailingHighs·DayStats 등) 전달용. */
+export interface ByMarket<T> {
+    krx: T;
+    un: T;
+}

@@ -5,32 +5,36 @@
 // 그래서 과거 거래일은 영구 캐시 안전(자가치유가 닿지 않는다). 오늘은 수집이 진행 중일 수 있어(20:30 스윕) 부분
 // 상태가 굳으면 영구 오염 → DerivedCache 가 date < KST today 인 날만 파일로 굳힌다(오늘은 매 요청 재빌드).
 //
-// ⚠ 캐시 무효화: 아래를 바꾸면 낡는다 → DAY_SNAPSHOT_CACHE_DIR(기본 .cache/day-snapshot/)를 통째 삭제.
-//    · DaySnapshot / MinuteDerived / DayStats 스키마 · deriveMinutes · dailyStatsOf · densify · 분봉 거래대금 공식
+// ⚠ 캐시 무효화: 스키마가 바뀌면 SNAPSHOT_SCHEMA_VERSION 을 올린다 — 구버전 파일은 read 가 miss 처리(삭제 후 재빌드).
+//    버전을 올려야 하는 변경: DaySnapshot / MinuteDerived / DayStats 스키마 · deriveMinutes · dailyStatsOf · densify · 분봉 거래대금 공식
 import { promises as fs } from "node:fs";
 import { gzip, gunzip } from "node:zlib";
 import { promisify } from "node:util";
 import path from "node:path";
-import type { MinuteDerived, DayStats } from "@trade-data-manager/market";
+import type { MinuteDerived, DayStats, ByMarket } from "@trade-data-manager/market";
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
 const CACHE_ROOT = process.env.DAY_SNAPSHOT_CACHE_DIR ?? path.resolve(process.cwd(), ".cache/day-snapshot");
 
+/** 파일 스키마 버전 — v2: 이중-시장(stats·trailingHighs KRX/UN 두벌 + rawPrevClose). v 없는 구파일=v1 취급(miss). */
+export const SNAPSHOT_SCHEMA_VERSION = 2;
+
 /** 한 종목의 그날 불변 파생. universe = 분봉 있는 종목이라 minutes 는 항상 present. */
 export interface DaySnapshot {
     code: string;
     /** 그 거래일 시총(원, 무손실 string). 미백필이면 null. */
     marketCap: string | null;
-    /** EOD 일봉 파생(직전 UN 종가 대비 %, 조정 불변). 일봉 미수집이면 null. */
-    stats: DayStats | null;
+    /** EOD 일봉 파생 두 벌(시장별 자기 전일종가 대비 %, 조정 불변). 일봉 미수집이면 둘 다 null. */
+    stats: ByMarket<DayStats | null>;
     /** 분봉 파생 시계열(복기 full + 테마 stats 재계산 원자재). */
     minutes: MinuteDerived;
 }
 
 /** 날짜별 스냅샷 파일(캐시 단위). */
 export interface DaySnapshotFile {
+    v: number; // SNAPSHOT_SCHEMA_VERSION — 스키마 변경 시 구파일 자동 무효화
     date: string;
     stocks: DaySnapshot[];
 }
@@ -39,12 +43,19 @@ function filePath(date: string): string {
     return path.join(CACHE_ROOT, `${date}.json.gz`);
 }
 
-/** 파일에서 스냅샷을 읽는다. 없으면 null(ENOENT). 손상(gunzip/JSON 실패)이면 삭제 후 null — 재빌드가 자가치유. */
+/** 파일에서 스냅샷을 읽는다. 없으면 null(ENOENT). 손상·구버전 스키마면 삭제 후 null — 재빌드가 자가치유. */
 export async function readSnapshot(date: string): Promise<DaySnapshotFile | null> {
     const fp = filePath(date);
     try {
         const buf = await fs.readFile(fp);
-        return JSON.parse((await gunzipAsync(buf)).toString("utf8")) as DaySnapshotFile;
+        const parsed = JSON.parse((await gunzipAsync(buf)).toString("utf8")) as DaySnapshotFile;
+        if (parsed.v !== SNAPSHOT_SCHEMA_VERSION) {
+            // 구버전 스키마(v 부재 포함) — 수동 캐시 삭제 대신 자동 무효화(재빌드).
+            console.warn(`[day-snapshot] 구버전 스키마(v=${String(parsed.v)}) 캐시 삭제 후 재빌드: ${fp}`);
+            await fs.rm(fp, { force: true });
+            return null;
+        }
+        return parsed;
     } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
         // 원자적 write 밖의 손상(디스크 오류·수동 편집·구버전 포맷) — throw 로 그 날짜를 영구히 막는 대신

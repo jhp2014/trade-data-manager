@@ -1,8 +1,10 @@
-// 당일 복기 파생값(day-replay) — 그날 raw(분봉+원주가일봉) → 종목별 순수 파생. domain(I/O 0).
-//  · deriveMinutes → per-minute % 시계열 + 분봉 open%/high%(테마 음봉·꼬리) + trailingHighs. 복기 파일 원자재.
+// 당일 복기 파생값(day-replay) — 그날 raw(분봉+원주가일봉)+수정주가 일봉 → 종목별 순수 파생. domain(I/O 0).
+//  · deriveMinutes → per-minute % 시계열 + 분봉 open%/high%(테마 음봉·꼬리) + trailingHighs(수정, KRX/UN 두벌). 복기 파일 원자재.
 //  · themeStatsOf  → 그 파생값에서 테마보드 EOD(bucketCounts·trailingHighs) 재계산(분봉 재조회 0).
-// 모든 %는 원주가 직전 거래일 종가(base) 대비 — 분봉이 원주가라 base 도 원주가여야 스케일이 맞다. 거래대금만 원.
-import type { MinuteCandle, DailyCandle } from "../candle/model.js";
+// 분봉 % 시계열은 원주가 UN 직전 종가(base) 대비 한 벌 — KRX 기준 %는 클라가 rawPrevClose 두 스칼라로
+// 일차변환(krx% = (unBase/krxBase)×(100+un%)−100, 같은 UN 바 가격이라 수학적 동치. 파일 이중화 불필요).
+// trailingHighs 는 **수정주가**(액분·권리락 시 옛 매물대를 현재 스케일로 정확 매핑) — 시장별 자기 전일종가 대비, 교차 없음.
+import type { MinuteCandle, DailyCandle, DailyBar, PreviousClose, ByMarket } from "../candle/model.js";
 import { densifyMinutes } from "../candle/minuteBackfill.js";
 import { computeMinuteTradingAmount } from "../candle/price.js";
 import { countAmountBuckets, DEFAULT_COUNTING_POLICY, type CountingPolicy, type DerivedMinute } from "../board/amount.js";
@@ -17,8 +19,8 @@ export const RAW_DAILY_LOOKBACK_MONTHS = 9;
 const KST_OFFSET_SEC = 9 * 3600;
 
 /**
- * 당일 EOD 일봉 파생(불변) — 수정주가 일봉을 직전 거래일 종가 대비 %로. **조정 불변**이라 파일에 굽는다
- * (자가치유가 close·prevClose 를 같은 계수로 곱해도 비율 보존). 시장 = UN(통합). amount(거래대금)는 원.
+ * 당일 EOD 일봉 파생(불변) — 수정주가 일봉 바를 같은 시장 직전 종가 대비 %로. **조정 불변**이라 파일에 굽는다
+ * (자가치유가 close·prevClose 를 같은 계수로 곱해도 비율 보존). amount(거래대금)는 원.
  */
 export interface DayStats {
     changeRate: number; // 종가 %
@@ -28,16 +30,23 @@ export interface DayStats {
     amount: string; // 그날 거래대금(원, 무손실 string)
 }
 
-/** 수정주가 일봉 + 직전 UN 종가 → EOD %. base 없으면 당일 시가 폴백, 0 이면 null(파생 불가). */
-export function dailyStatsOf(candle: DailyCandle, prevCloseUn: string | null): DayStats | null {
-    const un = candle.un;
-    const base = Number(prevCloseUn ?? un.open);
+/** 수정주가 일봉 바 + 같은 시장 직전 종가 → EOD %. base 없으면 당일 시가 폴백, 0 이면 null(파생 불가). */
+export function dailyStatsOf(bar: DailyBar, prevClose: string | null): DayStats | null {
+    const base = Number(prevClose ?? bar.open);
     if (base === 0) return null;
     const pct = (v: string): number => r2(((Number(v) - base) / base) * 100);
-    return { changeRate: pct(un.close), openPct: pct(un.open), highPct: pct(un.high), lowPct: pct(un.low), amount: un.amount };
+    return { changeRate: pct(bar.close), openPct: pct(bar.open), highPct: pct(bar.high), lowPct: pct(bar.low), amount: bar.amount };
 }
 
-/** 복기 파생값(파일 캐시 단위). 가격 시계열은 % (원주가 base 대비), 거래대금만 원. */
+/** KRX·UN 두 벌 EOD % — 각 시장은 자기 바 + 자기 전일종가로만(교차 없음). 보드 기준가 토글의 원자재. */
+export function dailyStatsByMarket(candle: DailyCandle, prev: PreviousClose | null): ByMarket<DayStats | null> {
+    return {
+        krx: dailyStatsOf(candle.krx, prev?.krxClose ?? null),
+        un: dailyStatsOf(candle.un, prev?.unClose ?? null),
+    };
+}
+
+/** 복기 파생값(파일 캐시 단위). 가격 시계열은 % (원주가 UN base 대비 한 벌), 거래대금만 원. */
 export interface MinuteDerived {
     code: string;
     times: number[]; // unix seconds(UTC)
@@ -48,14 +57,15 @@ export interface MinuteDerived {
     cumAmount: number[]; // 누적 거래대금(원) / 분
     minuteOpen: number[]; // 분봉 시가 % / 분 — 테마 음봉/꼬리 판정
     minuteHigh: number[]; // 분봉 고가 % / 분 — 테마 음봉/꼬리 판정
-    trailingHighs: number[]; // 매 거래일 high%(index=daysAgo, 0=당일, 최대 TRAILING_DAYS) — 테마 신고가 근접 필터
+    trailingHighs: ByMarket<number[]>; // 매 거래일 high%(수정주가, 시장별 자기 전일종가 대비, index=daysAgo, 0=당일, 최대 TRAILING_DAYS)
+    rawPrevClose: ByMarket<number | null>; // 원주가 전일종가 — 분봉 % 시계열의 KRX 재기저(일차변환)·기준가 토글용
 }
 
 /** 테마보드용 EOD 파생값(파일에서 재계산). */
 export interface ThemeStats {
     code: string;
     bucketCounts: number[]; // EOD 거래대금 구간 횟수 — 테마보드 hover
-    trailingHighs: number[]; // 신고가 근접 필터(파일에서 그대로 복사)
+    trailingHighs: ByMarket<number[]>; // 신고가 근접 필터(파일에서 그대로 복사)
 }
 
 /** 복기 파생 번들(파일 캐시 단위). */
@@ -76,33 +86,62 @@ function r2(x: number): number {
 }
 
 /**
- * 원주가 일봉 창 → base(직전 거래일 UN 종가) + trailingHighs%(index=daysAgo).
- * base 없으면(상장 첫날 등) trailing 은 빈 배열(폴백 base 로 상대 비교는 무의미).
+ * % 재기저(일차변환) — fromBase 대비 %를 toBase 대비 %로. 같은 가격 v 에서 나온 %라 수학적 동치:
+ * v = fromBase×(1+pct/100) → (v−toBase)/toBase×100 = fromBase×(100+pct)/toBase − 100.
+ * 복기·라이브 보드의 KRX 기준가 토글이 UN% 시계열을 즉석 변환(파일·와이어 이중화 불필요).
  */
-function baseAndTrailing(rawDaily: DailyCandle[], date: string): { base: number | null; trailingHighs: number[] } {
-    const upto = [...rawDaily].filter((c) => c.date <= date).sort((a, b) => (a.date < b.date ? -1 : 1));
-    const before = upto.filter((c) => c.date < date);
-    const base = before.length > 0 ? Number(before[before.length - 1].un.close) : null;
-    if (base === null || base === 0) return { base, trailingHighs: [] };
-    const recent = upto.slice(-TRAILING_DAYS).reverse();
-    return { base, trailingHighs: recent.map((c) => r2(((Number(c.un.high) - base) / base) * 100)) };
+export function rebasePct(pct: number, fromBase: number, toBase: number): number {
+    return r2((fromBase * (100 + pct)) / toBase - 100);
+}
+
+/** date 직전(미만) 최신 캔들의 시장별 close(숫자). 없으면(상장 첫날 등) null. */
+export function prevClosesOf(daily: DailyCandle[], date: string): ByMarket<number | null> {
+    let prev: DailyCandle | null = null;
+    for (const c of daily) {
+        if (c.date < date && (!prev || c.date > prev.date)) prev = c;
+    }
+    const num = (v: string | undefined): number | null => {
+        const n = Number(v);
+        return v !== undefined && Number.isFinite(n) && n !== 0 ? n : null;
+    };
+    return { krx: num(prev?.krx.close), un: num(prev?.un.close) };
 }
 
 /**
- * 복기 파생 계산. 분봉 없으면 null(스킵). 시장 = UN(통합). 분봉은 densify(채움정책 단일진실).
- * base 폴백(상장일): 당일 첫 분봉 시가. per-minute open%/high% 와 trailingHighs 까지 통째 저장.
+ * 수정주가 일봉 창 → trailingHighs%(KRX/UN 두 벌, index=daysAgo, 0=당일).
+ * 각 시장 base = 자기 시장 수정주가 직전 종가(교차 없음) — 수정주가라 액분·권리락 시 옛 매물대가
+ * 현재 가격 스케일로 정확히 매핑되고, %는 조정 불변(분자·분모 같은 계수). base 없으면 빈 배열.
+ * (live 엔진도 이 함수를 그대로 사용 — 실시간·복기 매물대 판정 잣대 단일진실.)
+ */
+export function trailingHighsOf(adjDaily: DailyCandle[], date: string): ByMarket<number[]> {
+    const upto = [...adjDaily].filter((c) => c.date <= date).sort((a, b) => (a.date < b.date ? -1 : 1));
+    const prev = prevClosesOf(upto, date);
+    const recent = upto.slice(-TRAILING_DAYS).reverse();
+    const per = (market: "krx" | "un"): number[] => {
+        const base = prev[market];
+        if (base === null) return [];
+        return recent.map((c) => r2(((Number(c[market].high) - base) / base) * 100));
+    };
+    return { krx: per("krx"), un: per("un") };
+}
+
+/**
+ * 복기 파생 계산. 분봉 없으면 null(스킵). 분봉 % 시계열 = UN(통합) 한 벌(원주가 UN base 대비).
+ * base 폴백(상장일): 당일 첫 분봉 시가. trailingHighs 는 수정주가 일봉(adjDaily)에서 KRX/UN 두 벌.
  */
 export function deriveMinutes(
     code: string,
     rawMinutes: MinuteCandle[],
     rawDaily: DailyCandle[],
+    adjDaily: DailyCandle[],
     date: string,
 ): MinuteDerived | null {
     const minutes = densifyMinutes(rawMinutes);
     if (minutes.length === 0) return null;
 
-    const { base: dailyBase, trailingHighs } = baseAndTrailing(rawDaily, date);
-    const base = dailyBase ?? Number(minutes[0].un.open);
+    const trailingHighs = trailingHighsOf(adjDaily, date);
+    const rawPrevClose = prevClosesOf(rawDaily, date);
+    const base = rawPrevClose.un ?? Number(minutes[0].un.open);
     const pct = (won: number): number => (base === 0 ? 0 : r2(((won - base) / base) * 100));
 
     const n = minutes.length;
@@ -137,7 +176,7 @@ export function deriveMinutes(
         minuteHigh[i] = pct(h);
     }
 
-    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount, minuteOpen, minuteHigh, trailingHighs };
+    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount, minuteOpen, minuteHigh, trailingHighs, rawPrevClose };
 }
 
 /**

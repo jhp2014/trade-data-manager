@@ -90,11 +90,13 @@ const boardProviders: Provider[] = [
         provide: DAY_BOARDS,
         useFactory: (marketPool: Pool, curationPool: Pool, master: MasterCache, membership: CachedMembership): DayBoards => {
             const db = createDb(marketPool);
+            const dailyRepo = new DrizzleDailyCandleRepository(db); // 스냅샷 배치 + 수정주가 창(AdjustedDailyReader) 겸용
             const derived = new DerivedCache({
                 universe: new DrizzleDailyUniverseProvider(db),
                 minute: new DrizzleMinuteCandleRepository(db),
                 rawDaily: new DrizzleRawDailyCandleRepository(db),
-                dailyCandle: new DrizzleDailyCandleRepository(db),
+                adjDaily: dailyRepo,
+                dailyCandle: dailyRepo,
                 marketCap: new DrizzleDailyMarketCapRepository(db),
             });
             const dailyComment = new DrizzleDailyCommentRepository(createDb(curationPool));

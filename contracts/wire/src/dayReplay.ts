@@ -5,10 +5,13 @@
 // 클라가 서버와 동일한 countAmountBuckets/evalBoardFilter 를 시점 t 까지 돌리려면 이 원자재가 있어야 한다.
 import type { MinuteDerived as CoreMinuteDerived } from "@trade-data-manager/market";
 
-/** day-replay 가 실어보내는 per-minute 시계열 부분집합. 모든 %는 원주가 직전 거래일 종가 대비(서버 계산). */
+/**
+ * day-replay 가 실어보내는 per-minute 시계열 부분집합. % 시계열은 원주가 UN 전일종가 대비 한 벌 —
+ * KRX 기준가 토글은 클라가 rawPrevClose 두 스칼라로 일차변환(rebasePct). trailingHighs 는 수정주가 KRX/UN 두 벌.
+ */
 export type MinuteDerived = Pick<
     CoreMinuteDerived,
-    "code" | "times" | "rate" | "high" | "low" | "open" | "cumAmount" | "minuteOpen" | "minuteHigh" | "trailingHighs"
+    "code" | "times" | "rate" | "high" | "low" | "open" | "cumAmount" | "minuteOpen" | "minuteHigh" | "trailingHighs" | "rawPrevClose"
 >;
 
 /** 복기보드 종목 — per-minute + 메타(서버 stitch). 이 하나로 랭킹+카드 다 만든다. */

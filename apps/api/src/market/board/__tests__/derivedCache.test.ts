@@ -3,12 +3,15 @@ import type {
     DailyUniverseProvider,
     MinuteReader,
     RawDailyReader,
+    AdjustedDailyReader,
     DailyCandleSnapshotReader,
     DailyMarketCapReader,
     MinuteCandle,
 } from "@trade-data-manager/market";
 import { DerivedCache } from "../derivedCache.js";
-import type { DaySnapshotStore, DaySnapshotFile } from "../daySnapshotCache.js";
+import { SNAPSHOT_SCHEMA_VERSION, type DaySnapshotStore, type DaySnapshotFile } from "../daySnapshotCache.js";
+
+const V = SNAPSHOT_SCHEMA_VERSION;
 
 // 영구캐시 게이트 검증: date < today 인 과거만 파일로 굳히고, 오늘(수집중 가능)은 굳히지 않는다.
 const PAST = "2026-06-25";
@@ -38,6 +41,11 @@ class FakeMinute implements MinuteReader {
 }
 class FakeRawDaily implements RawDailyReader {
     async getRawDailyCandles(): Promise<[]> {
+        return [];
+    }
+}
+class FakeAdjDaily implements AdjustedDailyReader {
+    async getDailyCandles(): Promise<[]> {
         return [];
     }
 }
@@ -72,6 +80,7 @@ function make(byDate: Record<string, string[]>, today: string, store = new MemSt
         universe,
         minute: new FakeMinute(byDate),
         rawDaily: new FakeRawDaily(),
+        adjDaily: new FakeAdjDaily(),
         dailyCandle: new FakeDailyCandle(),
         marketCap: new FakeMarketCap(),
         store,
@@ -90,10 +99,10 @@ describe("DerivedCache 영구캐시 게이트", () => {
 
     it("과거 warm: 파일 있으면 재빌드 없이 반환", async () => {
         const store = new MemStore();
-        store.map.set(PAST, { date: PAST, stocks: [] });
+        store.map.set(PAST, { v: V, date: PAST, stocks: [] });
         const { cache, universe } = make({ [PAST]: ["A"] }, TODAY, store);
         const snap = await cache.snapshot(PAST);
-        expect(snap).toEqual({ date: PAST, stocks: [] });
+        expect(snap).toEqual({ v: V, date: PAST, stocks: [] });
         expect(universe.calls).toEqual([]); // 빌드 안 함
     });
 
@@ -113,7 +122,7 @@ describe("DerivedCache 영구캐시 게이트", () => {
 
     it("오늘: 낡은 파일이 있어도 무시하고 재빌드", async () => {
         const store = new MemStore();
-        store.map.set(TODAY, { date: TODAY, stocks: [] }); // 이전 부분 스냅샷 잔재
+        store.map.set(TODAY, { v: V, date: TODAY, stocks: [] }); // 이전 부분 스냅샷 잔재
         const { cache, universe } = make({ [TODAY]: ["A"] }, TODAY, store);
         const snap = await cache.snapshot(TODAY);
         expect(snap.stocks.map((s) => s.code)).toEqual(["A"]); // 낡은 빈 파일 아닌 새 빌드
@@ -123,7 +132,7 @@ describe("DerivedCache 영구캐시 게이트", () => {
     it("빈 universe 는 굳히지 않는다", async () => {
         const { cache, store } = make({}, TODAY);
         const snap = await cache.snapshot(PAST);
-        expect(snap).toEqual({ date: PAST, stocks: [] });
+        expect(snap).toEqual({ v: V, date: PAST, stocks: [] });
         expect(store.writes).toEqual([]);
     });
 });
