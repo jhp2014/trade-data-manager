@@ -35,12 +35,12 @@ function ctx(quotes: Quote[], opts: CtxOpts = {}): AlertEvalContext {
     };
 }
 
-/** 밴드 = price≥lo AND price≤hi (한 그룹). null=그 방향 무제한(leaf 생략). */
+/** 밴드 = price≥lo AND price≤hi (leaves). null=그 방향 무제한(leaf 생략). */
 function bandRule(lo: number | null, hi: number | null, extra: Partial<AlertRule> = {}): AlertRule {
     const leaves: AlertLeaf[] = [];
     if (lo != null) leaves.push({ kind: "price", op: "gte", value: lo });
     if (hi != null) leaves.push({ kind: "price", op: "lte", value: hi });
-    return { id: "r1", code: "005930", groups: [{ leaves }], ...extra };
+    return { id: "r1", code: "005930", leaves, ...extra };
 }
 
 describe("AlertEngine — 가격(절대 임계) 밴드", () => {
@@ -74,8 +74,8 @@ describe("AlertEngine — 가격(절대 임계) 밴드", () => {
     });
 
     it("상단 무제한([≥105]) — 갭 관통도 잡고 / 유계([105,110]) — 밴드 너머 런어웨이는 패스", () => {
-        const open: AlertRule = { id: "o", code: "005930", groups: [{ leaves: [{ kind: "price", op: "gte", value: 105 }] }] };
-        const closed: AlertRule = { id: "c", code: "005930", groups: [{ leaves: [{ kind: "price", op: "gte", value: 105 }, { kind: "price", op: "lte", value: 110 }] }] };
+        const open: AlertRule = { id: "o", code: "005930", leaves: [{ kind: "price", op: "gte", value: 105 }] };
+        const closed: AlertRule = { id: "c", code: "005930", leaves: [{ kind: "price", op: "gte", value: 105 }, { kind: "price", op: "lte", value: 110 }] };
         const e = new AlertEngine();
         e.evaluate([open, closed], ctx([quote("005930", 100)]), 0); // 초기화(둘 다 밖)
         const fired = e.evaluate([open, closed], ctx([quote("005930", 120)]), 5_000); // 120 관통
@@ -83,7 +83,7 @@ describe("AlertEngine — 가격(절대 임계) 밴드", () => {
     });
 
     it("하단 무제한([≤95]) — 급락 진입 잡기", () => {
-        const r: AlertRule = { id: "dn", code: "005930", groups: [{ leaves: [{ kind: "price", op: "lte", value: 95 }] }] };
+        const r: AlertRule = { id: "dn", code: "005930", leaves: [{ kind: "price", op: "lte", value: 95 }] };
         const e = new AlertEngine();
         e.evaluate([r], ctx([quote("005930", 100)]), 0);
         expect(e.evaluate([r], ctx([quote("005930", 90)]), 5_000)).toHaveLength(1);
@@ -98,20 +98,9 @@ describe("AlertEngine — 가격(절대 임계) 밴드", () => {
     });
 });
 
-describe("AlertEngine — 등락률·순위 leaf", () => {
-    it("rate: market 전일종가 대비 등락률 임계 진입에 발화, 전일종가 없으면 스킵", () => {
-        const r: AlertRule = { id: "rt", code: "A", groups: [{ leaves: [{ kind: "rate", op: "gte", pct: 10, market: "un" }] }] };
-        const e = new AlertEngine();
-        // 전일종가 없음 → 미결(초기화도 안 됨)
-        expect(e.evaluate([r], ctx([quote("A", 110)]), 0)).toHaveLength(0);
-        expect(e.stateOf("rt")).toBeUndefined();
-        const base = { prevCloseOf: () => 100 }; // 전일종가 100
-        e.evaluate([r], ctx([quote("A", 105)], base), 5_000); // +5% < 10 → 초기화(밖)
-        expect(e.evaluate([r], ctx([quote("A", 111)], base), 10_000)).toHaveLength(1); // +11% ≥ 10 → 발화
-    });
-
+describe("AlertEngine — 순위 leaf · AND", () => {
     it("rank reach: 순위가 K 이하로 내려온 엣지에 발화", () => {
-        const r: AlertRule = { id: "rk", code: "A", groups: [{ leaves: [{ kind: "rank", theme: "HBM", market: "un", mode: "reach", threshold: 1 }] }] };
+        const r: AlertRule = { id: "rk", code: "A", leaves: [{ kind: "rank", theme: "HBM", market: "un", mode: "reach", threshold: 1 }] };
         const e = new AlertEngine();
         e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2 }), 0); // 초기화(2등)
         expect(e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 1 }), 5_000)).toHaveLength(1); // 1등 도달
@@ -119,47 +108,33 @@ describe("AlertEngine — 등락률·순위 leaf", () => {
     });
 
     it("rank delta: 60s 창 순위 상승 계단 ≥ D 에 발화, 이력 미적립이면 스킵", () => {
-        const r: AlertRule = { id: "rd", code: "A", groups: [{ leaves: [{ kind: "rank", theme: "HBM", market: "un", mode: "delta", threshold: 3 }] }], cooldownMs: 1 };
+        const r: AlertRule = { id: "rd", code: "A", leaves: [{ kind: "rank", theme: "HBM", market: "un", mode: "delta", threshold: 3 }], cooldownMs: 1 };
         const e = new AlertEngine();
-        // 이력 없음 → 스킵
-        expect(e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2, rankAgoOf: () => undefined }), 0)).toHaveLength(0);
-        // past=6, now=2 → Δ=4 ≥ 3 이지만 첫 판정은 초기화 틱
-        expect(e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2, rankAgoOf: () => 6 }), 5_000)).toHaveLength(0);
+        expect(e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2, rankAgoOf: () => undefined }), 0)).toHaveLength(0); // 이력 없음 → 스킵
+        expect(e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2, rankAgoOf: () => 6 }), 5_000)).toHaveLength(0); // Δ=4 지만 초기화 틱
         e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2, rankAgoOf: () => 3 }), 10_000); // Δ=1 < 3 → false(재무장)
-        const fired = e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2, rankAgoOf: () => 7 }), 15_000); // Δ=5 → true
-        expect(fired).toHaveLength(1);
+        expect(e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2, rankAgoOf: () => 7 }), 15_000)).toHaveLength(1); // Δ=5 → 발화
     });
 
-    it("그룹 내 AND(price+rank) — 둘 다 참이어야 발화", () => {
-        const r: AlertRule = {
-            id: "and",
-            code: "A",
-            groups: [{ leaves: [{ kind: "price", op: "gte", value: 106 }, { kind: "rank", theme: "HBM", market: "un", mode: "reach", threshold: 1 }] }],
-        };
+    it("leaves AND(price+rank) — 둘 다 참이어야 발화", () => {
+        const r: AlertRule = { id: "and", code: "A", leaves: [{ kind: "price", op: "gte", value: 106 }, { kind: "rank", theme: "HBM", market: "un", mode: "reach", threshold: 1 }] };
         const e = new AlertEngine();
         e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2 }), 0); // 초기화(둘 다 미충족)
         expect(e.evaluate([r], ctx([quote("A", 106)], { rankOf: () => 2 }), 5_000)).toHaveLength(0); // 가격만
         expect(e.evaluate([r], ctx([quote("A", 106)], { rankOf: () => 1 }), 10_000)).toHaveLength(1); // 둘 다
     });
 
-    it("그룹 간 OR — 한 그룹만 참이어도 발화, 다른 그룹 미결은 확정 true 를 막지 않음", () => {
-        const r: AlertRule = {
-            id: "or",
-            code: "A",
-            groups: [{ leaves: [{ kind: "price", op: "gte", value: 110 }] }, { leaves: [{ kind: "rank", theme: "HBM", market: "un", mode: "reach", threshold: 1 }] }],
-        };
+    it("미결 leaf(순위 데이터 없음) 있으면 가격이 참이어도 식 미결 → 스킵", () => {
+        const r: AlertRule = { id: "sk", code: "A", leaves: [{ kind: "price", op: "gte", value: 100 }, { kind: "rank", theme: "HBM", market: "un", mode: "reach", threshold: 1 }] };
         const e = new AlertEngine();
-        // rank 미도착 + price 그룹 미충족 → 식 미결 → 스킵(초기화도 안 됨)
-        expect(e.evaluate([r], ctx([quote("A", 100)]), 0)).toHaveLength(0);
-        expect(e.stateOf("or")).toBeUndefined();
-        // rank 그룹 확정 false(2위) + price 그룹 false → 식 확정 false → 초기화(무장)
-        e.evaluate([r], ctx([quote("A", 100)], { rankOf: () => 2 }), 5_000);
-        // price 그룹 true → rank 무관하게 식 true → 발화
-        expect(e.evaluate([r], ctx([quote("A", 111)], { rankOf: () => 2 }), 10_000)).toHaveLength(1);
+        expect(e.evaluate([r], ctx([quote("A", 105)]), 0)).toHaveLength(0); // 순위 미도착 → 스킵(가격 105≥100 이지만)
+        expect(e.stateOf("sk")).toBeUndefined();
+        e.evaluate([r], ctx([quote("A", 95)], { rankOf: () => 2 }), 5_000); // 가격 미충족 → 초기화(false)
+        expect(e.evaluate([r], ctx([quote("A", 105)], { rankOf: () => 1 }), 10_000)).toHaveLength(1); // 둘 다 → 발화
     });
 
     it("삭제된 조건의 무장 상태는 청소된다", () => {
-        const r: AlertRule = { id: "gone", code: "A", groups: [{ leaves: [{ kind: "price", op: "gte", value: 105 }] }] };
+        const r: AlertRule = { id: "gone", code: "A", leaves: [{ kind: "price", op: "gte", value: 105 }] };
         const e = new AlertEngine();
         e.evaluate([r], ctx([quote("A", 106)]), 0); // 초기화(안)
         e.evaluate([], ctx([quote("A", 106)]), 5_000); // 조건 삭제 → 상태 청소

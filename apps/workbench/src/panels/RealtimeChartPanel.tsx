@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
+import { fetchWatchlist } from "../api/alerts.js";
 import { useChartBundle } from "../lib/useChartBundle.js";
 import { deriveMinuteView, deriveDailyView, prevCloseAsOf } from "../lib/derive.js";
 import { fmtDateKo } from "../lib/date.js";
@@ -35,6 +37,7 @@ export function RealtimeChartPanel(): JSX.Element {
     const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
     const [pinMinute, setPinMinute] = useState(false); // 분봉 기준일 고정(일봉 클릭 무시)
     const [showGuide, setShowGuide] = useState(true); // +30% 가이드선(검색일 전일종가 ×1.3)
+    const [showAlarmLines, setShowAlarmLines] = useState(true); // 알람 가격조건 선 표시
 
     const viewDate = pinMinute ? anchorDate : search?.date ?? anchorDate; // 고정 시 기준일 붙박이
     const drifted = viewDate !== anchorDate;
@@ -69,6 +72,21 @@ export function RealtimeChartPanel(): JSX.Element {
         return out;
     }, [anchors, dailyView, minuteView]);
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
+    // 알람 가격선(빨강 🔔) — 포커스 종목의 가격 조건 값들을 수평선으로. 워치리스트 쿼리(패널과 캐시 공유).
+    const wl = useQuery({ queryKey: ["live-watchlist"], queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: 5000 });
+    const alarmLines = useMemo<RenderLine[]>(() => {
+        if (!showAlarmLines) return [];
+        const out: RenderLine[] = [];
+        for (const r of wl.data?.rules ?? []) {
+            if (r.code !== code) continue;
+            r.leaves.forEach((l, i) => {
+                if (l.kind === "price") out.push({ id: `${r.id}-${i}`, price: l.value, kind: "A" });
+            });
+        }
+        return out;
+    }, [wl.data, code, showAlarmLines]);
+    const dailyLines = useMemo(() => [...dLines, ...alarmLines], [dLines, alarmLines]);
+    const minuteLines = useMemo(() => [...resolvedLines, ...alarmLines], [resolvedLines, alarmLines]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -97,6 +115,7 @@ export function RealtimeChartPanel(): JSX.Element {
                         <TextToggle active={showLine} activeColor="var(--accent-primary)" onClick={() => setShowLine((v) => !v)} title={showLine ? "검색 세로선 숨기기" : "검색 세로선 표시"}>선</TextToggle>
                         <TextToggle active={pinMinute} activeColor="var(--accent-primary)" onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</TextToggle>
                         <TextToggle active={showGuide} activeColor="var(--accent-primary)" onClick={() => setShowGuide((v) => !v)} title={showGuide ? "+30% 가이드선 숨기기" : "+30% 가이드선 표시(검색일 전일종가 기준)"}>30%</TextToggle>
+                        <TextToggle active={showAlarmLines} activeColor="#dc2626" onClick={() => setShowAlarmLines((v) => !v)} title={showAlarmLines ? "알람 가격선 숨기기" : "알람 가격선 표시"}>알람선</TextToggle>
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <IconToggle active={showMarkers} onClick={() => setShowMarkers((v) => !v)} title={showMarkers ? "거래대금 마커 끄기" : "거래대금 마커 켜기"}>
@@ -120,7 +139,7 @@ export function RealtimeChartPanel(): JSX.Element {
                                 {dailyView.length > 0 ? (
                                     <DailyChart
                                         points={dailyView}
-                                        lines={dLines}
+                                        lines={dailyLines}
                                         zoom={chartZoom != null}
                                         zoomBars={cs.dailyZoomBars}
                                         zoomOutBars={cs.dailyZoomOutBars}
@@ -143,7 +162,7 @@ export function RealtimeChartPanel(): JSX.Element {
                             <div onDoubleClick={() => toggleExpand("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 선">
                                 <PaneLabel text={fmtDateKo(viewDate)} />
                                 {minuteView.points.length > 0 ? (
-                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={resolvedLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
+                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
                                 ) : (
                                     <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음 (장 마감?)"} />
                                 )}

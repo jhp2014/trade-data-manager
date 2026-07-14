@@ -13,16 +13,10 @@ interface AlertConfigFile {
 
 const EMPTY: AlertConfigFile = { watchlist: [], rules: [] };
 
-/** 최소 형태 검증 — 옛 스키마(band/rank)·손상 항목을 로드 시 탈락시켜 자동 리셋. leaf 상세는 쓰기(컨트롤러)에서 검증됨. */
+/** 최소 형태 검증 — 옛 스키마(band/rank·groups)·손상 항목을 로드 시 탈락시켜 자동 리셋. leaf 상세는 쓰기(컨트롤러)에서 검증됨. */
 function isRuleShape(r: unknown): r is AlertRule {
-    const o = r as { id?: unknown; code?: unknown; groups?: unknown };
-    return (
-        typeof o?.id === "string" &&
-        typeof o?.code === "string" &&
-        Array.isArray(o.groups) &&
-        o.groups.length > 0 &&
-        o.groups.every((g) => Array.isArray((g as { leaves?: unknown })?.leaves) && (g as { leaves: unknown[] }).leaves.length > 0)
-    );
+    const o = r as { id?: unknown; code?: unknown; leaves?: unknown };
+    return typeof o?.id === "string" && typeof o?.code === "string" && Array.isArray(o.leaves) && o.leaves.length > 0;
 }
 
 export class AlertConfigStore {

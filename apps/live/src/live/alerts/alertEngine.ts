@@ -1,17 +1,16 @@
 // 알람 조건 평가기 — framework-free 순수 상태기계. 틱마다 evaluate(rules, ctx, now) → 발화 목록.
-// 조건 = 그룹(OR)들의 DNF, 그룹 = leaf(AND)들. 발화는 식 전체 술어의 false→true 진입 엣지에만.
+// 조건 = leaf(AND) 리스트. 발화는 식(모든 leaf AND) 술어의 false→true 진입 엣지에만.
 // 의미론(설계 확정):
-//  · 3치 논리(Kleene): leaf 는 true/false/미결(데이터 결손). 그룹(AND)=하나라도 false 면 false·미결 있으면 미결.
-//    식(OR)=하나라도 true 면 true·미결 있으면 미결. **식이 미결이면 그 틱 스킵**(상태 불변) — 결손이 가짜 엣지를
-//    만들지 않게. 단, 한 그룹이 확정 true 면 다른 그룹이 미결이어도 식은 true(=발화 가능).
+//  · 3치 논리(Kleene): leaf 는 true/false/미결(데이터 결손). AND=하나라도 false 면 false·미결 있으면 미결.
+//    **식이 미결이면 그 틱 스킵**(상태 불변) — 결손이 가짜 엣지를 만들지 않게.
 //  · 엣지 발화: 신규 조건/재기동 첫 평가는 "초기화"(현재값으로 무장만, 발화 없음) → 이미 조건 안에서
 //    만들거나 재기동해도 발화 폭풍이 없다. 재무장 = 하강 엣지(false 복귀).
 //  · 쿨다운: 마지막 발화에서 cooldownMs 안이면 상승 엣지여도 억제(그 진입은 버림 — 진동 억제가 목적).
+//  · OR = 조건을 여러 개 다는 것으로 대체(엔진은 조건 하나당 AND 만 안다).
 import type { Quote } from "../engine/types.js";
 import {
     DEFAULT_COOLDOWN_MS,
     type AlertFiring,
-    type AlertGroup,
     type AlertLeaf,
     type AlertMarket,
     type AlertRule,
@@ -20,7 +19,7 @@ import {
 
 export interface AlertEvalContext {
     quoteOf(code: string): Quote | undefined;
-    /** market 전일종가(원). 없으면 undefined → 등락률·순위 leaf 미결. */
+    /** market 전일종가(원). 없으면 undefined → 순위 leaf 미결. */
     prevCloseOf(code: string, market: AlertMarket): number | undefined;
     /** 이번 틱 테마 등락률 순위(code,theme,market). 없으면 undefined. */
     rankOf(code: string, theme: string, market: AlertMarket): number | undefined;
@@ -33,12 +32,6 @@ function evalLeaf(leaf: AlertLeaf, quote: Quote, ctx: AlertEvalContext): boolean
     switch (leaf.kind) {
         case "price":
             return leaf.op === "gte" ? quote.price >= leaf.value : quote.price <= leaf.value;
-        case "rate": {
-            const base = ctx.prevCloseOf(quote.code, leaf.market);
-            if (base == null || !(base > 0)) return undefined; // 그 시장 전일종가 미도착
-            const rate = (quote.price / base - 1) * 100;
-            return leaf.op === "gte" ? rate >= leaf.pct : rate <= leaf.pct;
-        }
         case "rank": {
             const rank = ctx.rankOf(quote.code, leaf.theme, leaf.market);
             if (rank == null) return undefined; // 테마 미배정/멤버십 미로드/전일종가 미도착
@@ -50,26 +43,15 @@ function evalLeaf(leaf: AlertLeaf, quote: Quote, ctx: AlertEvalContext): boolean
     }
 }
 
-/** 그룹(AND) 3치 — false 하나면 false, 미결 있으면 미결, 전부 true 면 true. */
-function evalGroup(group: AlertGroup, quote: Quote, ctx: AlertEvalContext): boolean | undefined {
+/** 식(AND) 3치 — false 하나면 false, 미결 있으면 미결, 전부 true 면 true. */
+function evalLeaves(leaves: readonly AlertLeaf[], quote: Quote, ctx: AlertEvalContext): boolean | undefined {
     let anyUndef = false;
-    for (const leaf of group.leaves) {
+    for (const leaf of leaves) {
         const v = evalLeaf(leaf, quote, ctx);
         if (v === false) return false;
         if (v === undefined) anyUndef = true;
     }
     return anyUndef ? undefined : true;
-}
-
-/** 식(OR) 3치 — true 하나면 true, 미결 있으면 미결, 전부 false 면 false. */
-function evalExpr(groups: readonly AlertGroup[], quote: Quote, ctx: AlertEvalContext): boolean | undefined {
-    let anyUndef = false;
-    for (const group of groups) {
-        const v = evalGroup(group, quote, ctx);
-        if (v === true) return true;
-        if (v === undefined) anyUndef = true;
-    }
-    return anyUndef ? undefined : false;
 }
 
 export class AlertEngine {
@@ -125,7 +107,7 @@ export class AlertEngine {
     ): { hold: boolean; quote: Quote; features: AlertFiring["features"] } | null {
         const quote = ctx.quoteOf(rule.code);
         if (!quote) return null; // 시세 없으면 가격 leaf·피처 모두 불가
-        const v = evalExpr(rule.groups, quote, ctx);
+        const v = evalLeaves(rule.leaves, quote, ctx);
         if (v === undefined) return null; // 데이터 결손 — 상태 불변
         return { hold: v, quote, features: { price: quote.price, changeRate: quote.changeRate } };
     }

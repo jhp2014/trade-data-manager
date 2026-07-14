@@ -15,6 +15,7 @@ export class AlertsRuntime {
     private readonly engine = new AlertEngine();
     private readonly tracker = new RankTracker();
     private readonly firings: AlertFiring[] = []; // 최신이 앞
+    private lastRanks = new Map<string, number>(); // 이번 틱 순위(code|theme|market) — 모니터링 표시용
     constructor(
         private readonly config: AlertConfigStore,
         private readonly sink: FiringSink,
@@ -31,6 +32,7 @@ export class AlertsRuntime {
      */
     tick(quotes: readonly Quote[], themesOf: (code: string) => string[], prevCloseOf: PrevCloseLookup, now: number): void {
         const ranks = computeThemeRanks(quotes, themesOf, prevCloseOf);
+        this.lastRanks = ranks;
         this.tracker.push(ranks, now);
         const byCode = new Map(quotes.map((q) => [q.code, q] as const));
         const fired = this.engine.evaluate(this.config.rules, {
@@ -45,8 +47,13 @@ export class AlertsRuntime {
         this.sink(fired);
     }
 
-    /** 실시간 모니터링 패널 뷰 — 설정 + 조건 런타임 상태 + 최근 발화. */
+    /** 실시간 모니터링 패널 뷰 — 설정 + 조건 런타임 상태 + 최근 발화 + watchlist 종목 현재 순위. */
     view(): WatchlistView {
+        const watch = new Set(this.config.watchlist);
+        const ranks: Record<string, number> = {};
+        for (const [key, rank] of this.lastRanks) {
+            if (watch.has(key.slice(0, key.indexOf("|")))) ranks[key] = rank; // key = code|theme|market
+        }
         return {
             codes: [...this.config.watchlist],
             rules: this.config.rules.map((r) => {
@@ -54,6 +61,7 @@ export class AlertsRuntime {
                 return { ...r, inZone: s?.inZone, lastFiredAt: s?.lastFiredAt ?? null };
             }),
             firings: [...this.firings],
+            ranks,
         };
     }
 }

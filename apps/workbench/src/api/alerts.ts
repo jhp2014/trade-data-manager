@@ -1,5 +1,5 @@
 // watchlist·알람조건 클라이언트 — apps/live(/live 프록시 → :3002) REST. 계약은 contracts/wire(alerts.ts).
-import type { AlertRule, AlertGroup, WatchlistView } from "@trade-data-manager/wire";
+import type { AlertRule, AlertLeaf, WatchlistView } from "@trade-data-manager/wire";
 
 export type {
     AlertRule,
@@ -7,18 +7,16 @@ export type {
     AlertFiring,
     WatchlistView,
     AlertLeaf,
-    AlertGroup,
     AlertMarket,
     AlertOp,
     PriceLeaf,
-    RateLeaf,
     RankLeaf,
 } from "@trade-data-manager/wire";
 
-/** POST /live/alerts 요청 몸체 — 조건 = 그룹(OR)들의 DNF, 각 그룹 = leaf(AND)들. */
+/** POST /live/alerts 요청 몸체 — 조건 = leaf(AND) 리스트. */
 export interface CreateRulePayload {
     code: string;
-    groups: AlertGroup[];
+    leaves: AlertLeaf[];
     cooldownMs?: number;
     note?: string;
 }
