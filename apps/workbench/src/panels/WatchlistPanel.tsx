@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -57,7 +57,6 @@ export function WatchlistPanel(): JSX.Element {
     const qc = useQueryClient();
     const [ruleFormCode, setRuleFormCode] = useState<string | null>(null); // 조건 추가 폼이 열린 종목
     const [rankThemeByCode, setRankThemeByCode] = useState<Record<string, string>>({}); // 종목별 순위 표시 테마(칩 클릭 선택)
-    const submitRef = useRef<(() => void) | null>(null); // 열린 조건 폼의 submit — 행(MonitorRow)의 저장 버튼이 호출
     const [order, setOrder] = useState<string[]>(() => loadOrder());
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } })); // 5px 이동해야 드래그 시작(클릭은 선택 유지)
 
@@ -141,7 +140,7 @@ export function WatchlistPanel(): JSX.Element {
                                 <SortableItem key={code} id={code}>
                                     {(dragProps) => (
                                         <>
-                                            <MonitorRow dragProps={dragProps} formOpen={ruleFormCode === code} onAddCondition={() => setRuleFormCode(code)} onRemove={() => removeM.mutate(code)} onSave={() => submitRef.current?.()} onCancel={() => setRuleFormCode(null)}>
+                                            <MonitorRow dragProps={dragProps} formOpen={ruleFormCode === code} onAddCondition={() => setRuleFormCode(code)} onRemove={() => removeM.mutate(code)}>
                                                 {s ? (
                                                     <StockRow s={liveToBoardStock(s, market)} rank={selRank} selectedTheme={selTheme} onThemeClick={(t) => setRankThemeByCode((m) => ({ ...m, [code]: t }))} selected={code === focusCode} onPick={(c) => setCode(c, originId)} />
                                                 ) : (
@@ -160,7 +159,7 @@ export function WatchlistPanel(): JSX.Element {
                                                             code={code}
                                                             themes={s?.themes ?? []}
                                                             currentPrice={s?.price}
-                                                            submitRef={submitRef}
+                                                            onClose={() => setRuleFormCode(null)}
                                                             onSaved={() => {
                                                                 setRuleFormCode(null);
                                                                 invalidate();
@@ -232,39 +231,27 @@ function SortableItem({ id, children }: { id: string; children: (dragProps: Reac
     );
 }
 
-/** 모니터링 행 wrapper — 행 전체가 드래그 핸들(dragProps). hover 시 좌측 그립 힌트 + 우측 액션(추가·해제),
- *  조건 폼 열리면 우측에 저장·취소(항상). 오버레이는 pointer-events:none, 버튼만 클릭 가능. */
-function MonitorRow({ children, formOpen, onAddCondition, onRemove, onSave, onCancel, dragProps }: {
+/** 모니터링 행 wrapper — 행 전체가 드래그 핸들(dragProps). hover(폼 닫힘) 시 좌측 그립 힌트 + 우측 추가·해제.
+ *  조건 폼이 열리면 저장·취소는 폼 우측 상단에 있으므로 행 액션은 숨긴다. 오버레이는 버튼만 클릭 가능. */
+function MonitorRow({ children, formOpen, onAddCondition, onRemove, dragProps }: {
     children: ReactNode;
     formOpen: boolean;
     onAddCondition: () => void;
     onRemove: () => void;
-    onSave: () => void;
-    onCancel: () => void;
     dragProps: React.HTMLAttributes<HTMLDivElement>;
 }): JSX.Element {
     const [hover, setHover] = useState(false);
-    const show = formOpen || hover;
     return (
         <div {...dragProps} style={{ position: "relative" }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
             {children}
             {hover && !formOpen && (
-                <div aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, height: "100%", width: 12, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1 }}>⋮</div>
-            )}
-            {show && (
-                <div style={{ position: "absolute", top: 0, right: 0, height: "100%", display: "flex", alignItems: "center", gap: 8, paddingRight: 10, pointerEvents: "none" }}>
-                    {formOpen ? (
-                        <>
-                            <RowAction label="저장" onClick={onSave} accent wide />
-                            <RowAction label="취소" onClick={onCancel} />
-                        </>
-                    ) : (
-                        <>
-                            <RowAction label="추가" onClick={onAddCondition} accent wide />
-                            <RowAction label="해제" onClick={onRemove} />
-                        </>
-                    )}
-                </div>
+                <>
+                    <div aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, height: "100%", width: 12, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1 }}>⋮</div>
+                    <div style={{ position: "absolute", top: 0, right: 0, height: "100%", display: "flex", alignItems: "center", gap: 8, paddingRight: 10, pointerEvents: "none" }}>
+                        <RowAction label="추가" onClick={onAddCondition} accent wide />
+                        <RowAction label="해제" onClick={onRemove} />
+                    </div>
+                </>
             )}
         </div>
     );
@@ -364,12 +351,12 @@ function toLeaf(d: DraftLeaf): AlertLeaf | string {
     return { kind: "rank", theme: d.theme, market: d.market, mode: d.mode, threshold: t };
 }
 
-/** 조건 추가 폼 — leaf(AND) 리스트 빌더. 저장/취소는 행(MonitorRow)에 올려 submitRef 로 노출. */
-function ConditionForm({ code, themes, currentPrice, submitRef, onSaved }: {
+/** 조건 추가 폼 — leaf(AND) 리스트 빌더. 저장/취소는 폼 상단 헤더 우측. */
+function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     code: string;
     themes: string[];
     currentPrice?: number;
-    submitRef: MutableRefObject<(() => void) | null>;
+    onClose: () => void;
     onSaved: () => void;
 }): JSX.Element {
     const [leaves, setLeaves] = useState<DraftLeaf[]>(() => [newPriceLeaf(currentPrice != null ? String(currentPrice) : "")]);
@@ -448,21 +435,20 @@ function ConditionForm({ code, themes, currentPrice, submitRef, onSaved }: {
         };
         saveM.mutate(payload);
     };
-    // 저장 버튼은 행(MonitorRow)에 있으므로 submit 을 ref 로 노출(deps 없이 매 렌더 최신 closure 유지).
-    useEffect(() => {
-        submitRef.current = submit;
-        return () => {
-            submitRef.current = null;
-        };
-    });
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 10, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 6, fontSize: 12 }}>
-            {/* 쿨다운·메모 — 상단, 접기(기본 접힘) */}
+            {/* 상단 헤더 — 쿨다운·메모 접기(좌) + 저장/취소(우) */}
             <div>
-                <button onClick={() => setShowOpts((v) => !v)} style={{ border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", fontSize: 11, padding: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ fontSize: 9 }}>{showOpts ? "▾" : "▸"}</span> 쿨다운 {cooldownMin || "0"}분{note ? " · 메모 ✓" : ""}
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button onClick={() => setShowOpts((v) => !v)} style={{ border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", fontSize: 11, padding: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 9 }}>{showOpts ? "▾" : "▸"}</span> 쿨다운 {cooldownMin || "0"}분{note ? " · 메모 ✓" : ""}
+                    </button>
+                    <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                        <button onClick={submit} disabled={saveM.isPending} style={{ border: "none", background: "var(--accent-primary)", color: "#fff", borderRadius: 5, padding: "3px 12px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, opacity: saveM.isPending ? 0.6 : 1 }}>{saveM.isPending ? "저장중…" : "저장"}</button>
+                        <button onClick={onClose} style={{ border: "1px solid var(--border-default)", background: "var(--bg-primary)", color: "var(--text-secondary)", borderRadius: 5, padding: "3px 10px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600 }}>취소</button>
+                    </span>
+                </div>
                 {showOpts && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>

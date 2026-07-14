@@ -42,7 +42,7 @@ function FilterPanel({
                 {!active && (
                     <div style={{ color: "var(--text-tertiary)", fontSize: 12.5, lineHeight: 1.7, padding: "6px 2px" }}>
                         {emptyHelp}
-                        <br />한 그룹 안은 <b style={{ color: "var(--text-secondary)" }}>AND</b>, 그룹끼리는 <b style={{ color: "var(--text-secondary)" }}>OR</b>. 그룹별로 흐리게/숨김.
+                        <br />조건마다 <b style={{ color: "var(--text-secondary)" }}>흐리게/숨김</b> 지정 · 여러 조건은 <b style={{ color: "var(--text-secondary)" }}>OR</b>.
                     </div>
                 )}
 
@@ -55,63 +55,56 @@ function FilterPanel({
                                 <span style={{ flex: 1, height: 1, background: "var(--border-subtle)" }} />
                             </div>
                         )}
-                        <div style={{ border: "1px solid var(--border-default)", borderRadius: 6, background: "var(--bg-secondary)", padding: 8 }}>
-                            {/* 그룹 헤더 — 이 그룹 매칭 종목의 처리(흐리게/숨김) + 삭제 */}
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                                <span style={{ display: "inline-flex", border: "1px solid var(--border-default)", borderRadius: 5, overflow: "hidden" }}>
-                                    {(["dim", "hide"] as const).map((mo) => (
-                                        <button
-                                            key={mo}
-                                            onClick={() => actions.setGroupMode(gi, mo)}
-                                            style={{ border: "none", background: g.mode === mo ? "var(--accent-primary)" : "var(--bg-primary)", color: g.mode === mo ? "#fff" : "var(--text-secondary)", padding: "2px 9px", cursor: "pointer", font: "inherit", fontSize: 11 }}
+                        <div style={{ border: "0.5px solid var(--border-default)", borderRadius: 8, background: "var(--bg-secondary)", padding: "4px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
+                            {g.predicates.map((p, pi) => {
+                                const def = boardPredicateDef(p.kind);
+                                return (
+                                    <div key={pi} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                        <select
+                                            value={p.kind}
+                                            onChange={(e) => actions.setPredicateKind(gi, pi, e.target.value)}
+                                            style={{ border: "none", borderRadius: 4, background: "var(--bg-tertiary)", color: "var(--text-primary)", padding: "2px 4px", font: "inherit", fontSize: 12, fontWeight: 500 }}
                                         >
-                                            {mo === "dim" ? "흐리게" : "숨김"}
-                                        </button>
-                                    ))}
-                                </span>
-                                <button onClick={() => actions.removeGroup(gi)} title="그룹 삭제" style={{ marginLeft: "auto", border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 14 }}>×</button>
-                            </div>
-
-                            {/* 술어들(AND) */}
-                            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                                {g.predicates.map((p, pi) => {
-                                    const def = boardPredicateDef(p.kind);
-                                    return (
-                                        <div key={pi} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                            <select
-                                                value={p.kind}
-                                                onChange={(e) => actions.setPredicateKind(gi, pi, e.target.value)}
-                                                style={{ border: "none", borderRadius: 4, background: "var(--bg-tertiary)", color: "var(--text-primary)", padding: "2px 4px", font: "inherit", fontSize: 12, fontWeight: 500 }}
-                                            >
-                                                {predicates.map((d) => (
-                                                    <option key={d.kind} value={d.kind}>{d.title}</option>
-                                                ))}
-                                            </select>
-                                            {def?.params.map((ps) => (
-                                                <span key={ps.key} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--text-tertiary)" }}>
-                                                    {ps.label}
-                                                    {ps.options ? (
-                                                        // select 파라미터(예: newHighFar 시장) — 값=옵션 인덱스. 미지정(옛 저장 필터)이면 기본값 표시.
-                                                        <select
-                                                            value={p.params[ps.key] ?? ps.def}
-                                                            onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))}
-                                                            style={{ border: "none", borderRadius: 4, background: "var(--bg-tertiary)", color: "var(--text-primary)", padding: "2px 4px", font: "inherit", fontSize: 11 }}
-                                                        >
-                                                            {ps.options.map((label, idx) => (
-                                                                <option key={idx} value={idx}>{label}</option>
-                                                            ))}
-                                                        </select>
-                                                    ) : (
-                                                        <NumberField value={p.params[ps.key]} min={ps.min} step={ps.step} onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))} style={{ width: 46, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, textAlign: "center" }} />
-                                                    )}
-                                                </span>
+                                            {predicates.map((d) => (
+                                                <option key={d.kind} value={d.kind}>{d.title}</option>
                                             ))}
-                                            <button onClick={() => actions.removePredicate(gi, pi)} title="조건 제거" style={{ marginLeft: "auto", border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13 }}>×</button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            <button onClick={() => actions.addPredicate(gi, firstKind)} style={{ marginTop: 6, border: "1px dashed var(--border-default)", borderRadius: 5, background: "transparent", color: "var(--text-secondary)", padding: "3px 8px", cursor: "pointer", font: "inherit", fontSize: 11.5 }}>＋ AND 조건</button>
+                                        </select>
+                                        {def?.params.map((ps) => (
+                                            <span key={ps.key} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--text-tertiary)" }}>
+                                                {ps.label}
+                                                {ps.options ? (
+                                                    // select 파라미터(예: newHighFar 시장) — 값=옵션 인덱스. 미지정(옛 저장 필터)이면 기본값 표시.
+                                                    <select
+                                                        value={p.params[ps.key] ?? ps.def}
+                                                        onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))}
+                                                        style={{ border: "none", borderRadius: 4, background: "var(--bg-tertiary)", color: "var(--text-primary)", padding: "2px 4px", font: "inherit", fontSize: 11 }}
+                                                    >
+                                                        {ps.options.map((label, idx) => (
+                                                            <option key={idx} value={idx}>{label}</option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <NumberField value={p.params[ps.key]} min={ps.min} step={ps.step} onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))} style={{ width: 46, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, textAlign: "center" }} />
+                                                )}
+                                            </span>
+                                        ))}
+                                        {pi === 0 && (
+                                            <button
+                                                onClick={() => actions.setGroupMode(gi, g.mode === "dim" ? "hide" : "dim")}
+                                                title="이 그룹 매칭 종목: 흐리게 ↔ 숨김"
+                                                style={{ marginLeft: "auto", flexShrink: 0, border: "none", background: "var(--bg-tertiary)", color: g.mode === "hide" ? "var(--rise)" : "var(--accent-primary)", borderRadius: 4, padding: "1px 8px", font: "inherit", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                                            >
+                                                {g.mode === "hide" ? "숨김" : "흐리게"}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => (g.predicates.length === 1 ? actions.removeGroup(gi) : actions.removePredicate(gi, pi))}
+                                            title={g.predicates.length === 1 ? "그룹 삭제" : "조건 제거"}
+                                            style={{ marginLeft: pi === 0 ? 0 : "auto", flexShrink: 0, border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13 }}
+                                        >×</button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 ))}

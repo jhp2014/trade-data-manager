@@ -11,7 +11,7 @@ export interface HypothesisSlice {
     // 속성 패싯 선택(2단계 드릴다운). 값 배열(null=미분류). 임시라 저장 안 함. 필터 지우기/불러오기 시 리셋.
     facetSelected: Record<PointAttr, (string | null)[]>;
     setSelectedHypothesis: (id: string | null) => void;
-    // 가설 필터 편집 — 어느 surface든 같은 액션. 기본 OR: addFilterLeaf 는 새 OR 그룹(있으면 그 자리 순환). AND=드래그로 합침.
+    // 가설 필터 편집 — 어느 surface든 같은 액션. 기본 OR: addFilterLeaf 는 항상 새 OR 그룹(중복 허용, 제거는 칩 ×). AND=드래그로 합침.
     addFilterLeaf: (hypothesisId: string) => void;
     moveLeafToGroup: (fromGroupIndex: number, hypothesisId: string, target: number | "new") => void; // 드래그: 그룹으로=AND / "new"=OR 분리
     removeFilterLeaf: (groupIndex: number, hypothesisId: string) => void;
@@ -37,18 +37,7 @@ export const createHypothesisSlice: StateCreator<WorkbenchState, [], [], Hypothe
     addFilterLeaf: (hypothesisId) =>
         set((s) => {
             const groups = cloneGroups(s.filterDraft);
-            for (let gi = 0; gi < groups.length; gi++) {
-                const li = groups[gi].findIndex((l) => l.hypothesisId === hypothesisId);
-                if (li >= 0) {
-                    if (!groups[gi][li].negated) groups[gi][li].negated = true;
-                    else {
-                        groups[gi].splice(li, 1);
-                        if (groups[gi].length === 0) groups.splice(gi, 1);
-                    }
-                    return { filterDraft: { groups } };
-                }
-            }
-            groups.push([{ hypothesisId, negated: false }]);
+            groups.push([{ hypothesisId, negated: false }]); // 항상 새 OR 그룹으로 추가(중복 허용). 제거는 칩 × 로.
             return { filterDraft: { groups } };
         }),
     // 드래그 이동 — 다른 그룹으로=AND 합침 / "new"=새 OR 그룹으로 분리. 빈 그룹은 정리, 대상 그룹에 이미 있으면 중복 안 만듦.
