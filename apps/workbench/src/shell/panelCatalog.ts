@@ -17,7 +17,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "live-filter-1", component: "liveFilter", title: "실시간 테마 필터", plane: "live" },
     { id: "live-news-1", component: "liveNews", title: "실시간 뉴스", plane: "live" },
     { id: "live-telegram-1", component: "liveTelegram", title: "실시간 텔레그램", plane: "live" },
-    { id: "live-watchlist-1", component: "liveWatchlist", title: "타겟", plane: "live" },
+    { id: "live-watchlist-1", component: "liveWatchlist", title: "실시간 모니터링", plane: "live" },
     { id: "telegram-news-1", component: "telegramNews", title: "텔레그램", plane: "eod" },
     { id: "theme-board-1", component: "themeBoard", title: "테마 [장 마감]", plane: "eod" },
     { id: "board-filter-1", component: "boardFilter", title: "테마 [장 마감] 필터", plane: "eod" },

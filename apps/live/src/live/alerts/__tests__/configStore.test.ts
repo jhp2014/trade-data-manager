@@ -22,7 +22,7 @@ describe("AlertConfigStore", () => {
         expect(a.watchlist).toEqual([]);
 
         a.addWatch("005930");
-        const rule = a.addRule({ code: "005930", band: { baseline: 70000, lowerPct: 5, upperPct: null } });
+        const rule = a.addRule({ code: "005930", groups: [{ leaves: [{ kind: "price", op: "gte", value: 70000 }] }] });
 
         const b = new AlertConfigStore(p);
         b.load();
@@ -35,8 +35,8 @@ describe("AlertConfigStore", () => {
         a.load();
         expect(a.addWatch("005930")).toBe(true);
         expect(a.addWatch("005930")).toBe(false);
-        a.addRule({ code: "005930", band: { baseline: 100, lowerPct: null, upperPct: -5 } });
-        a.addRule({ code: "000660", rank: { theme: "HBM", mode: "reach", threshold: 1 } }); // watchlist 자동 승격
+        a.addRule({ code: "005930", groups: [{ leaves: [{ kind: "price", op: "lte", value: 95 }] }] });
+        a.addRule({ code: "000660", groups: [{ leaves: [{ kind: "rank", theme: "HBM", market: "un", mode: "reach", threshold: 1 }] }] }); // watchlist 자동 승격
         expect(a.watchlist).toEqual(["005930", "000660"]);
 
         a.removeWatch("005930");
@@ -47,7 +47,7 @@ describe("AlertConfigStore", () => {
     it("removeRule: 있으면 true, 없으면 false(저장 안 함)", () => {
         const a = new AlertConfigStore(fileIn(dir));
         a.load();
-        const r = a.addRule({ code: "005930", band: { baseline: 100, lowerPct: 5, upperPct: null } });
+        const r = a.addRule({ code: "005930", groups: [{ leaves: [{ kind: "price", op: "gte", value: 100 }] }] });
         expect(a.removeRule(r.id)).toBe(true);
         expect(a.removeRule(r.id)).toBe(false);
         expect(a.rules).toEqual([]);
@@ -63,5 +63,14 @@ describe("AlertConfigStore", () => {
         expect(a.watchlist).toEqual([]);
         a.addWatch("005930"); // 저장이 원본을 덮지 않고 새 파일로
         expect(JSON.parse(fs.readFileSync(p, "utf8")).watchlist).toEqual(["005930"]);
+    });
+
+    it("옛 스키마(band/rank) 조건은 로드 시 탈락 — watchlist 는 보존(자동 리셋)", () => {
+        const p = fileIn(dir);
+        fs.writeFileSync(p, JSON.stringify({ watchlist: ["005930"], rules: [{ id: "old", code: "005930", band: { baseline: 100, lowerPct: 5, upperPct: null } }] }), "utf8");
+        const a = new AlertConfigStore(p);
+        expect(a.load()).toBeNull(); // 파싱은 됨(손상 아님)
+        expect(a.watchlist).toEqual(["005930"]);
+        expect(a.rules).toEqual([]); // 옛 조건은 groups 없음 → 탈락
     });
 });

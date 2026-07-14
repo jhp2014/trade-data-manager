@@ -1,32 +1,81 @@
-// 알람 룰 평가기 — framework-free 순수 상태기계. 틱마다 evaluate(rules, ctx, now) → 발화 목록.
+// 알람 조건 평가기 — framework-free 순수 상태기계. 틱마다 evaluate(rules, ctx, now) → 발화 목록.
+// 조건 = 그룹(OR)들의 DNF, 그룹 = leaf(AND)들. 발화는 식 전체 술어의 false→true 진입 엣지에만.
 // 의미론(설계 확정):
-//  · 술어 = band(밴드 안) AND rank(도달/변동) — 룰에 있는 조건만 참여.
-//  · 엣지 발화: 술어 false→true 전이에만. 신규 룰/재기동 첫 평가는 "초기화"(현재값으로 무장만, 발화 없음)
-//    → 이미 조건 안에서 룰을 만들거나 재기동해도 발화 폭풍이 없다. 재무장 = 하강 엣지(false 복귀).
+//  · 3치 논리(Kleene): leaf 는 true/false/미결(데이터 결손). 그룹(AND)=하나라도 false 면 false·미결 있으면 미결.
+//    식(OR)=하나라도 true 면 true·미결 있으면 미결. **식이 미결이면 그 틱 스킵**(상태 불변) — 결손이 가짜 엣지를
+//    만들지 않게. 단, 한 그룹이 확정 true 면 다른 그룹이 미결이어도 식은 true(=발화 가능).
+//  · 엣지 발화: 신규 조건/재기동 첫 평가는 "초기화"(현재값으로 무장만, 발화 없음) → 이미 조건 안에서
+//    만들거나 재기동해도 발화 폭풍이 없다. 재무장 = 하강 엣지(false 복귀).
 //  · 쿨다운: 마지막 발화에서 cooldownMs 안이면 상승 엣지여도 억제(그 진입은 버림 — 진동 억제가 목적).
-//  · 데이터 결손(시세/순위 이력 없음) = 그 틱은 평가 스킵(상태 불변) — 결손이 가짜 엣지를 만들지 않게.
 import type { Quote } from "../engine/types.js";
-import { DEFAULT_COOLDOWN_MS, type AlertFiring, type AlertRule, type RuleRuntimeState } from "./types.js";
+import {
+    DEFAULT_COOLDOWN_MS,
+    type AlertFiring,
+    type AlertGroup,
+    type AlertLeaf,
+    type AlertMarket,
+    type AlertRule,
+    type RuleRuntimeState,
+} from "./types.js";
 
 export interface AlertEvalContext {
     quoteOf(code: string): Quote | undefined;
-    /** 이번 틱 themeRank(code→theme→rank). */
-    ranks: Map<string, Map<string, number>>;
-    /** ~60초 전 순위(없으면 undefined — delta 룰 평가 불가). */
-    rankAgo(code: string, theme: string): number | undefined;
+    /** market 전일종가(원). 없으면 undefined → 등락률·순위 leaf 미결. */
+    prevCloseOf(code: string, market: AlertMarket): number | undefined;
+    /** 이번 틱 테마 등락률 순위(code,theme,market). 없으면 undefined. */
+    rankOf(code: string, theme: string, market: AlertMarket): number | undefined;
+    /** ~60초 전 순위(delta leaf 용). 없으면 undefined. */
+    rankAgoOf(code: string, theme: string, market: AlertMarket): number | undefined;
 }
 
-/** 밴드 경계 — null 은 무제한. baseline 대비 %. */
-function bandBounds(baseline: number, lowerPct: number | null, upperPct: number | null): [number, number] {
-    const lo = lowerPct == null ? -Infinity : baseline * (1 + lowerPct / 100);
-    const hi = upperPct == null ? Infinity : baseline * (1 + upperPct / 100);
-    return [lo, hi];
+/** leaf 3치 평가 — true/false/undefined(데이터 결손). quote 는 이미 존재 보장. */
+function evalLeaf(leaf: AlertLeaf, quote: Quote, ctx: AlertEvalContext): boolean | undefined {
+    switch (leaf.kind) {
+        case "price":
+            return leaf.op === "gte" ? quote.price >= leaf.value : quote.price <= leaf.value;
+        case "rate": {
+            const base = ctx.prevCloseOf(quote.code, leaf.market);
+            if (base == null || !(base > 0)) return undefined; // 그 시장 전일종가 미도착
+            const rate = (quote.price / base - 1) * 100;
+            return leaf.op === "gte" ? rate >= leaf.pct : rate <= leaf.pct;
+        }
+        case "rank": {
+            const rank = ctx.rankOf(quote.code, leaf.theme, leaf.market);
+            if (rank == null) return undefined; // 테마 미배정/멤버십 미로드/전일종가 미도착
+            if (leaf.mode === "reach") return rank <= leaf.threshold;
+            const past = ctx.rankAgoOf(quote.code, leaf.theme, leaf.market);
+            if (past == null) return undefined; // 60초 이력 미적립
+            return past - rank >= leaf.threshold; // 양수 = 순위 상승
+        }
+    }
+}
+
+/** 그룹(AND) 3치 — false 하나면 false, 미결 있으면 미결, 전부 true 면 true. */
+function evalGroup(group: AlertGroup, quote: Quote, ctx: AlertEvalContext): boolean | undefined {
+    let anyUndef = false;
+    for (const leaf of group.leaves) {
+        const v = evalLeaf(leaf, quote, ctx);
+        if (v === false) return false;
+        if (v === undefined) anyUndef = true;
+    }
+    return anyUndef ? undefined : true;
+}
+
+/** 식(OR) 3치 — true 하나면 true, 미결 있으면 미결, 전부 false 면 false. */
+function evalExpr(groups: readonly AlertGroup[], quote: Quote, ctx: AlertEvalContext): boolean | undefined {
+    let anyUndef = false;
+    for (const group of groups) {
+        const v = evalGroup(group, quote, ctx);
+        if (v === true) return true;
+        if (v === undefined) anyUndef = true;
+    }
+    return anyUndef ? undefined : false;
 }
 
 export class AlertEngine {
     private state = new Map<string, RuleRuntimeState>();
 
-    /** 룰 전체를 한 틱 평가. 삭제된 룰의 상태는 청소. */
+    /** 조건 전체를 한 틱 평가. 삭제된 조건의 상태는 청소. */
     evaluate(rules: readonly AlertRule[], ctx: AlertEvalContext, now: number): AlertFiring[] {
         const firings: AlertFiring[] = [];
         const alive = new Set(rules.map((r) => r.id));
@@ -34,11 +83,11 @@ export class AlertEngine {
 
         for (const rule of rules) {
             const verdict = this.judge(rule, ctx);
-            if (verdict == null) continue; // 데이터 결손 — 상태 불변
+            if (verdict == null) continue; // 데이터 결손(식 미결) — 상태 불변
 
             const prev = this.state.get(rule.id);
             if (!prev) {
-                // 초기화 틱 — 현재값으로 무장만(발화 없음). 신규 룰·재기동 공통.
+                // 초기화 틱 — 현재값으로 무장만(발화 없음). 신규 조건·재기동 공통.
                 this.state.set(rule.id, { inZone: verdict.hold, lastFiredAt: null });
                 continue;
             }
@@ -62,53 +111,22 @@ export class AlertEngine {
         return firings;
     }
 
-    /** 룰 상태 노출(스냅샷용) — 없으면 아직 초기화 전. */
+    /** 조건 상태 노출(스냅샷용) — 없으면 아직 초기화 전. */
     stateOf(ruleId: string): RuleRuntimeState | undefined {
         return this.state.get(ruleId);
     }
 
     /**
-     * 술어 판정 + 발화 피처. null = 필요한 데이터가 없어 이 틱은 판단 불가(스킵).
-     * band 와 rank 는 룰에 있는 것만 AND 로 묶인다(최소 1개는 REST 검증이 보장).
+     * 식 판정 + 발화 피처. null = 시세 없음 또는 식 미결 → 이 틱 판단 불가(스킵, 상태 불변).
      */
     private judge(
         rule: AlertRule,
         ctx: AlertEvalContext,
     ): { hold: boolean; quote: Quote; features: AlertFiring["features"] } | null {
         const quote = ctx.quoteOf(rule.code);
-        if (!quote) return null; // 시세 없으면 밴드·피처 모두 불가
-
-        let hold = true;
-        let baselinePct: number | null = null;
-        let themeRank: number | null = null;
-        let themeRankDelta: number | null = null;
-
-        if (rule.band) {
-            const { baseline, lowerPct, upperPct } = rule.band;
-            if (!(baseline > 0)) return null; // 방어 — 생성 경계에서 걸러지지만 파일 편집 등 오염 대비
-            const [lo, hi] = bandBounds(baseline, lowerPct, upperPct);
-            baselinePct = (quote.price / baseline - 1) * 100;
-            hold &&= quote.price >= lo && quote.price <= hi;
-        }
-
-        if (rule.rank) {
-            const rank = ctx.ranks.get(rule.code)?.get(rule.rank.theme);
-            if (rank == null) return null; // 테마 미배정/멤버십 미로드 — 판단 불가
-            themeRank = rank;
-            if (rule.rank.mode === "reach") {
-                hold &&= rank <= rule.rank.threshold;
-            } else {
-                const past = ctx.rankAgo(rule.code, rule.rank.theme);
-                if (past == null) return null; // 60초 이력 미적립 — 판단 불가
-                themeRankDelta = past - rank; // 양수 = 순위 상승
-                hold &&= themeRankDelta >= rule.rank.threshold;
-            }
-        }
-
-        return {
-            hold,
-            quote,
-            features: { price: quote.price, changeRate: quote.changeRate, baselinePct, themeRank, themeRankDelta },
-        };
+        if (!quote) return null; // 시세 없으면 가격 leaf·피처 모두 불가
+        const v = evalExpr(rule.groups, quote, ctx);
+        if (v === undefined) return null; // 데이터 결손 — 상태 불변
+        return { hold: v, quote, features: { price: quote.price, changeRate: quote.changeRate } };
     }
 }

@@ -1,37 +1,69 @@
-// watchlist·알람룰 REST — 타겟 패널이 폴링·편집. 계약은 contracts/wire(alerts.ts).
-//  GET    /watchlist            전체 뷰(codes+rules+runtime state+최근 발화)
+// watchlist·알람조건 REST — 실시간 모니터링 패널이 폴링·편집. 계약은 contracts/wire(alerts.ts).
+//  GET    /watchlist            전체 뷰(codes+조건+runtime state+최근 발화)
 //  POST   /watchlist {code}     타겟 승격
-//  DELETE /watchlist/:code      타겟 해제(그 종목 룰 연쇄 삭제)
-//  POST   /alerts {code,band?,rank?,cooldownMs?,note?,baseline?}  룰 추가(baseline 서버 해소)
-//  DELETE /alerts/:id           룰 삭제
-import { Controller, Get, Post, Delete, Body, Param, Inject, BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
-import type { AlertRule, BandCondition, RankCondition, WatchlistView } from "./types.js";
+//  DELETE /watchlist/:code      타겟 해제(그 종목 조건 연쇄 삭제)
+//  POST   /alerts {code,groups,cooldownMs?,note?}  조건 추가(groups=DNF, 절대가격이라 baseline 해소 없음)
+//  DELETE /alerts/:id           조건 삭제
+import { Controller, Get, Post, Delete, Body, Param, Inject, BadRequestException, NotFoundException } from "@nestjs/common";
+import type { AlertGroup, AlertLeaf, AlertMarket, AlertOp, AlertRule, WatchlistView } from "./types.js";
 import { AlertConfigStore } from "./configStore.js";
 import type { AlertsRuntime } from "./alertsRuntime.js";
-import type { LiveEngine } from "../engine/engine.js";
-import { ALERT_CONFIG, ALERTS, LIVE_ENGINE } from "../tokens.js";
+import { ALERT_CONFIG, ALERTS } from "../tokens.js";
 
 const CODE_RE = /^\d{6}$/;
 
 interface CreateRuleBody {
     code?: string;
-    band?: { lowerPct?: number | null; upperPct?: number | null };
-    rank?: { theme?: string; mode?: string; threshold?: number };
+    groups?: unknown; // parseGroups 에서 형태 검증
     cooldownMs?: number;
     note?: string;
-    /** 서버에 아직 시세가 없을 때(방금 승격)의 폴백 — 클라가 보고 있는 현재가. */
-    baseline?: number;
 }
 
 function assertCode(code?: string): asserts code is string {
     if (!code || !CODE_RE.test(code)) throw new BadRequestException("code 형식(6자리 숫자)");
 }
 
-/** 유한수 또는 null(무제한)만 허용. undefined 는 null 로 정규화. */
-function normPct(v: number | null | undefined, label: string): number | null {
-    if (v == null) return null;
-    if (typeof v !== "number" || !Number.isFinite(v)) throw new BadRequestException(`${label} 는 숫자(%) 또는 null(무제한)`);
+function parseOp(v: unknown, at: string): AlertOp {
+    if (v !== "gte" && v !== "lte") throw new BadRequestException(`${at}.op 는 gte|lte`);
     return v;
+}
+function parseMarket(v: unknown, at: string): AlertMarket {
+    if (v !== "krx" && v !== "un") throw new BadRequestException(`${at}.market 는 krx|un`);
+    return v;
+}
+
+/** leaf 하나 검증 → 정규화된 AlertLeaf(정합하지 않으면 400). */
+function parseLeaf(raw: unknown, gi: number, li: number): AlertLeaf {
+    const at = `groups[${gi}].leaves[${li}]`;
+    const o = (raw ?? {}) as Record<string, unknown>;
+    if (o.kind === "price") {
+        const op = parseOp(o.op, at);
+        if (typeof o.value !== "number" || !Number.isFinite(o.value) || o.value <= 0) throw new BadRequestException(`${at}.value 는 0 초과 숫자(원)`);
+        return { kind: "price", op, value: o.value };
+    }
+    if (o.kind === "rate") {
+        const op = parseOp(o.op, at);
+        if (typeof o.pct !== "number" || !Number.isFinite(o.pct)) throw new BadRequestException(`${at}.pct 는 숫자(%)`);
+        return { kind: "rate", op, pct: o.pct, market: parseMarket(o.market, at) };
+    }
+    if (o.kind === "rank") {
+        const theme = typeof o.theme === "string" ? o.theme.trim() : "";
+        if (!theme) throw new BadRequestException(`${at}.theme 필요`);
+        if (o.mode !== "reach" && o.mode !== "delta") throw new BadRequestException(`${at}.mode 는 reach|delta`);
+        if (!Number.isInteger(o.threshold) || (o.threshold as number) < 1) throw new BadRequestException(`${at}.threshold 는 1 이상 정수`);
+        return { kind: "rank", theme, market: parseMarket(o.market, at), mode: o.mode, threshold: o.threshold as number };
+    }
+    throw new BadRequestException(`${at}.kind 는 price|rate|rank`);
+}
+
+/** groups(DNF) 검증 → 정규화. 최소 1그룹, 각 그룹 최소 1 leaf. */
+function parseGroups(raw: unknown): AlertGroup[] {
+    if (!Array.isArray(raw) || raw.length === 0) throw new BadRequestException("groups 는 최소 1개 필요");
+    return raw.map((g, gi) => {
+        const leaves = (g as { leaves?: unknown } | null)?.leaves;
+        if (!Array.isArray(leaves) || leaves.length === 0) throw new BadRequestException(`groups[${gi}].leaves 는 최소 1개 필요`);
+        return { leaves: leaves.map((leaf, li) => parseLeaf(leaf, gi, li)) };
+    });
 }
 
 @Controller()
@@ -39,7 +71,6 @@ export class AlertsController {
     constructor(
         @Inject(ALERT_CONFIG) private readonly config: AlertConfigStore,
         @Inject(ALERTS) private readonly alerts: AlertsRuntime,
-        @Inject(LIVE_ENGINE) private readonly engine: LiveEngine,
     ) {}
 
     @Get("watchlist")
@@ -62,40 +93,13 @@ export class AlertsController {
     @Post("alerts")
     addRule(@Body() body: CreateRuleBody): AlertRule {
         assertCode(body.code);
-        if (!body.band && !body.rank) throw new BadRequestException("band 또는 rank 중 최소 1개 필요");
-
-        let band: BandCondition | undefined;
-        if (body.band) {
-            const lowerPct = normPct(body.band.lowerPct, "band.lowerPct");
-            const upperPct = normPct(body.band.upperPct, "band.upperPct");
-            if (lowerPct == null && upperPct == null) throw new BadRequestException("밴드 양끝이 모두 무제한이면 항상 참 — 알람 불가");
-            if (lowerPct != null && upperPct != null && lowerPct >= upperPct) throw new BadRequestException("band 하단% < 상단% 이어야 함");
-            // baseline = 세팅 시점가: 서버 시세(현재가) → 클라 폴백(방금 승격해 아직 미폴링) 순.
-            const quote = this.engine.store.quotes.get(body.code);
-            const baseline = quote?.price ?? body.baseline;
-            if (baseline == null || !Number.isFinite(baseline) || baseline <= 0) {
-                throw new ConflictException("아직 시세가 없어 baseline 해소 불가 — 다음 틱(≤5초) 후 재시도하거나 baseline 을 보내세요");
-            }
-            band = { baseline, lowerPct, upperPct };
-        }
-
-        let rank: RankCondition | undefined;
-        if (body.rank) {
-            const { theme, mode, threshold } = body.rank;
-            if (!theme?.trim()) throw new BadRequestException("rank.theme 필요");
-            if (mode !== "reach" && mode !== "delta") throw new BadRequestException("rank.mode 는 reach|delta");
-            if (!Number.isInteger(threshold) || (threshold as number) < 1) throw new BadRequestException("rank.threshold 는 1 이상 정수");
-            rank = { theme: theme.trim(), mode, threshold: threshold as number };
-        }
-
+        const groups = parseGroups(body.groups);
         if (body.cooldownMs != null && (!Number.isFinite(body.cooldownMs) || body.cooldownMs < 0)) {
             throw new BadRequestException("cooldownMs 는 0 이상");
         }
-
         return this.config.addRule({
             code: body.code,
-            band,
-            rank,
+            groups,
             cooldownMs: body.cooldownMs,
             note: body.note?.trim() || undefined,
         });
@@ -103,6 +107,6 @@ export class AlertsController {
 
     @Delete("alerts/:id")
     removeRule(@Param("id") id: string): void {
-        if (!this.config.removeRule(id)) throw new NotFoundException(`룰 없음: ${id}`);
+        if (!this.config.removeRule(id)) throw new NotFoundException(`조건 없음: ${id}`);
     }
 }

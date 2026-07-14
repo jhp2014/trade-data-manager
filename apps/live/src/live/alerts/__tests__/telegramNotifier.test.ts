@@ -7,7 +7,7 @@ const firing = (code: string, name: string, note?: string): AlertFiring => ({
     code,
     name,
     at: 0,
-    features: { price: 71_000, changeRate: 2.1, baselinePct: 5.02, themeRank: null, themeRankDelta: null },
+    features: { price: 71_000, changeRate: 2.1 },
     note,
 });
 

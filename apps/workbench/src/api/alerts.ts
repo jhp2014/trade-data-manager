@@ -1,16 +1,26 @@
-// watchlist·알람룰 클라이언트 — apps/live(/live 프록시 → :3002) REST. 계약은 contracts/wire(alerts.ts).
-import type { AlertRule, WatchlistView } from "@trade-data-manager/wire";
+// watchlist·알람조건 클라이언트 — apps/live(/live 프록시 → :3002) REST. 계약은 contracts/wire(alerts.ts).
+import type { AlertRule, AlertGroup, WatchlistView } from "@trade-data-manager/wire";
 
-export type { AlertRule, AlertRuleView, AlertFiring, WatchlistView, BandCondition, RankCondition } from "@trade-data-manager/wire";
+export type {
+    AlertRule,
+    AlertRuleView,
+    AlertFiring,
+    WatchlistView,
+    AlertLeaf,
+    AlertGroup,
+    AlertMarket,
+    AlertOp,
+    PriceLeaf,
+    RateLeaf,
+    RankLeaf,
+} from "@trade-data-manager/wire";
 
-/** POST /live/alerts 요청 몸체 — baseline 은 서버(현재 시세)가 우선, 없을 때 폴백. */
+/** POST /live/alerts 요청 몸체 — 조건 = 그룹(OR)들의 DNF, 각 그룹 = leaf(AND)들. */
 export interface CreateRulePayload {
     code: string;
-    band?: { lowerPct: number | null; upperPct: number | null };
-    rank?: { theme: string; mode: "reach" | "delta"; threshold: number };
+    groups: AlertGroup[];
     cooldownMs?: number;
     note?: string;
-    baseline?: number;
 }
 
 async function liveRequest<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {

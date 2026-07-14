@@ -17,7 +17,7 @@ await made.notifier.send([
         code: "005930",
         name: "삼성전자",
         at: Date.now(),
-        features: { price: 71_000, changeRate: 2.1, baselinePct: 5.02, themeRank: 1, themeRankDelta: 3 },
+        features: { price: 71_000, changeRate: 2.1 },
         note: "배선 테스트 — 실제 알람 아님",
     },
 ]);

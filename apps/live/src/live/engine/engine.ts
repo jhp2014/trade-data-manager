@@ -22,7 +22,12 @@ export interface LiveEngineOptions {
 /** 알람 런타임 결합점 — 유니버스 합집합(watchCodes)과 틱 평가(tick) 두 지점만. 구현=alerts/AlertsRuntime. */
 export interface AlertsHook {
     watchCodes(): string[];
-    tick(quotes: readonly Quote[], themesOf: (code: string) => string[], now: number): void;
+    tick(
+        quotes: readonly Quote[],
+        themesOf: (code: string) => string[],
+        prevCloseOf: (code: string, market: "krx" | "un") => number | undefined,
+        now: number,
+    ): void;
 }
 
 export class LiveEngine extends EventEmitter {
@@ -138,7 +143,13 @@ export class LiveEngine extends EventEmitter {
         const today = kstToday();
         for (const q of quotes) void this.dailyCtx.ensure(q.code, today);
         // 알람 평가 — 이번 틱 신선한 시세만 넘긴다(과거 잔류 quotes 로 순위가 오염되지 않게).
-        this.alerts?.tick(quotes, (c) => this.membership.themesOf(c), Date.now());
+        // 등락률·순위 잣대 = 일봉 컨텍스트의 market 전일종가(미도착이면 그 leaf 미결 → 스킵).
+        this.alerts?.tick(
+            quotes,
+            (c) => this.membership.themesOf(c),
+            (c, m) => this.dailyCtx.contextOf(c)?.rawPrevClose[m] ?? undefined,
+            Date.now(),
+        );
         this.emit("tick", { hot: hits.length, polled: quotes.length, ts: Date.now() });
     }
 

@@ -3,12 +3,10 @@ import type { AlertFiring } from "./types.js";
 
 const sign = (n: number): string => (n >= 0 ? "+" : "");
 
-/** 한 발화의 요약 한 줄: 종목 · 현재가 · 등락률 · (밴드)기준가 대비 · (순위)테마 순위 · 메모. */
+/** 한 발화의 요약 한 줄: 종목 · 현재가 · 등락률 · 메모. (상세 조건은 패널에서 확인) */
 export function formatFiring(f: AlertFiring): string {
-    const { price, changeRate, baselinePct, themeRank, themeRankDelta } = f.features;
+    const { price, changeRate } = f.features;
     const parts = [`${f.name || f.code}(${f.code})`, `${price.toLocaleString("ko-KR")}원 ${sign(changeRate)}${changeRate.toFixed(2)}%`];
-    if (baselinePct != null) parts.push(`기준가 대비 ${sign(baselinePct)}${baselinePct.toFixed(2)}%`);
-    if (themeRank != null) parts.push(`테마 ${themeRank}위${themeRankDelta != null ? `(↑${themeRankDelta})` : ""}`);
     if (f.note) parts.push(f.note);
     return parts.join(" · ");
 }

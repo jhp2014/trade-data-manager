@@ -1,60 +1,75 @@
-// 알람(watchlist) 계약 — apps/live REST(/live/watchlist·/live/alerts)와 workbench 타겟 패널 공유.
-// 룰 설정 모양은 apps/live 의 JSON 영속과도 동일(단일 출처 — apps/live 가 이 타입을 import).
+// 알람(watchlist) 계약 — apps/live REST(/live/watchlist·/live/alerts)와 workbench 실시간 모니터링 패널 공유.
+// 조건 모양은 apps/live 의 JSON 영속과도 동일(단일 출처 — apps/live 가 이 타입을 import).
+//
+// 조건 모델(v2, DNF): 조건 = 그룹(OR)들, 각 그룹 = leaf(AND)들. 발화 = 식 전체 참 진입 엣지 + 쿨다운.
+//   · 밴드 = 한 그룹에 price≥하한 AND price≤상한 두 leaf 로 표현(별도 밴드 타입 없음).
+//   · 등락률·순위 leaf 는 시장(KRX/UN 전일종가) 을 고른다 — 이중-시장이라 %·순위가 시장마다 다름.
 
-/**
- * 가격 조건 — 비대칭 밴드 [하단,상단] "진입" 엣지. 경계는 baseline 대비 %(음수=아래) 또는 null=무제한.
- * 상단 null([-X,∞)): 갭으로 관통해도 잡는다 / 유계([+A,+B]): 밴드를 뛰어넘는 런어웨이는 패스.
- * baseline 은 룰 생성 시점가(장전 생성=전일종가)로 서버가 해소해 저장.
- */
-export interface BandCondition {
-    baseline: number; // 원화 절대가
-    lowerPct: number | null; // null = -∞
-    upperPct: number | null; // null = +∞
+/** 비교 방향 — gte=이상(≥) / lte=이하(≤). */
+export type AlertOp = "gte" | "lte";
+/** 등락률·순위 기준 시장(전일종가). 가격 leaf 는 절대가라 시장 무관. */
+export type AlertMarket = "krx" | "un";
+
+/** 절대가격 임계(원) — 차트 좌클릭으로 캡처. op 방향으로 상/하한. */
+export interface PriceLeaf {
+    kind: "price";
+    op: AlertOp;
+    value: number; // 원화 절대가(>0)
 }
-
-/** 순위 조건 — 테마 내 거래대금 순위(themeRank). reach=도달(rank≤threshold) / delta=변동(60s 창 상승 계단 ≥threshold). */
-export interface RankCondition {
+/** 등락률 임계(%) — market 전일종가 기준. */
+export interface RateLeaf {
+    kind: "rate";
+    op: AlertOp;
+    pct: number; // 등락률 % (하락 음수)
+    market: AlertMarket;
+}
+/** 테마 등락률 순위 — reach=도달(순위≤threshold) / delta=60초 창 상승 계단(≥threshold). market=순위 잣대. */
+export interface RankLeaf {
+    kind: "rank";
     theme: string; // 종목이 여러 테마면 사용자가 지정
+    market: AlertMarket;
     mode: "reach" | "delta";
-    threshold: number;
+    threshold: number; // reach=K(위) / delta=D(계단), 1 이상 정수
+}
+export type AlertLeaf = PriceLeaf | RateLeaf | RankLeaf;
+
+/** 그룹 — leaf 들의 AND(최소 1개). */
+export interface AlertGroup {
+    leaves: AlertLeaf[];
 }
 
-/** 알람 룰 한 개 — watchlist 종목에 귀속. band/rank 중 최소 1개, 둘 다 있으면 AND. */
+/** 알람 조건 한 개 — watchlist 종목에 귀속. groups = OR(최소 1그룹), 각 그룹 내 AND. */
 export interface AlertRule {
     id: string;
     code: string;
-    band?: BandCondition;
-    rank?: RankCondition;
+    groups: AlertGroup[];
     /** 발화 후 최소 재발화 간격 ms(생략=서버 기본 3분). 재무장(하강 엣지)과 별도로 적용. */
     cooldownMs?: number;
     /** 사용자 메모(알림 메시지에 실림). */
     note?: string;
 }
 
-/** 발화 한 건 — 알림 페이로드·최근 발화 로그. */
+/** 발화 한 건 — 알림 페이로드·최근 발화 로그. features = 발화 시점 스칼라(요약 표시용). */
 export interface AlertFiring {
     ruleId: string;
     code: string;
     name: string;
     at: number; // epoch ms
     features: {
-        price: number;
-        changeRate: number;
-        baselinePct: number | null; // 밴드 룰이면 baseline 대비 현재 %
-        themeRank: number | null;
-        themeRankDelta: number | null;
+        price: number; // 발화 시점 현재가(원)
+        changeRate: number; // ka10095 등락률 %(참고 표시용)
     };
     note?: string;
 }
 
-/** 룰 + 런타임 상태(읽기 전용) — GET /live/watchlist 응답의 룰 모양. */
+/** 조건 + 런타임 상태(읽기 전용) — GET /live/watchlist 응답의 조건 모양. */
 export interface AlertRuleView extends AlertRule {
-    /** 현재 술어값(true=조건 안). undefined = 아직 첫 평가 전. 재무장 여부 표시용. */
+    /** 현재 술어값(true=조건 안). undefined = 아직 첫 평가 전(또는 데이터 결손). 재무장 여부 표시용. */
     inZone?: boolean;
     lastFiredAt?: number | null;
 }
 
-/** GET /live/watchlist — 타겟 패널이 폴링하는 전체 뷰. */
+/** GET /live/watchlist — 실시간 모니터링 패널이 폴링하는 전체 뷰. */
 export interface WatchlistView {
     codes: string[]; // watchlist 종목(수동 정렬 없음 — 표시는 스냅샷 시세로)
     rules: AlertRuleView[];
