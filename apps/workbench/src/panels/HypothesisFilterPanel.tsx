@@ -4,6 +4,7 @@ import { DndContext, PointerSensor, pointerWithin, useSensor, useSensors, useDra
 import { unknownFilterIds, type FilterLeaf } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
 import { loadJson, saveJson } from "../store/persist.js";
+import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { hypothesesQuery, hypothesisFiltersQuery } from "../api/queries.js";
 import { saveHypothesisFilter, deleteHypothesisFilter } from "../api/hypothesisFilters.js";
 
@@ -11,7 +12,8 @@ import { saveHypothesisFilter, deleteHypothesisFilter } from "../api/hypothesisF
 // 팔레트(가설 고르기)는 그래프/목록 우클릭(addFilterLeaf → 새 OR 그룹). 여기선 만든 식 편집·저장.
 //   · 기본 OR: 가설마다 별도 그룹(OR). AND = 칩을 다른 그룹으로 **드래그해 합침**. 그룹 밖(＋OR)으로 드래그 = 다시 OR 분리.
 //   · 칩 클릭 = 제외(NOT) 토글, × = 제거. 그립(⠿)으로 드래그.
-//   · 방향 = DNF 전치(세로 OR↓·AND→ / 가로 OR→·AND↓). 툴바도 연동(세로=상단 가로 / 가로=좌측 세로).
+//   · 방향: 세로 = 그룹 세로 나열(OR↓) / 가로 = 인라인 흐름 한 줄(그룹 옆으로, AND 칩 인라인) —
+//     툴바는 두 모드 다 가로 아이콘 줄(세로=상단 / 가로=같은 줄 앞), 가로 모드는 휠=가로 스크롤(세로 스크롤 없음).
 // 결과 타점·집계·outcome 패싯은 작업셋(필터 활성 시)이 담당.
 
 type Orientation = "vertical" | "horizontal";
@@ -80,20 +82,21 @@ export function HypothesisFilterPanel(): JSX.Element {
             saveJson(ORIENT_KEY, next);
             return next;
         });
+    const wheelRef = useHorizontalWheel<HTMLDivElement>(); // 가로모드 스트립 — 휠=가로 스크롤
 
-    const menuPos: React.CSSProperties = horizontal ? { top: 0, left: "100%", marginLeft: 4 } : { top: "100%", left: 0, marginTop: 4 };
+    const menuPos: React.CSSProperties = { top: "100%", left: 0, marginTop: 4 };
 
     return (
         <div style={{ display: "flex", flexDirection: horizontal ? "row" : "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
-            {/* 아이콘 툴바 — 세로모드=상단 가로 / 가로모드=좌측 세로. */}
+            {/* 아이콘 툴바 — 두 모드 다 가로 아이콘 줄(세로=상단 바 / 가로=같은 줄 맨 앞, 세로 나열 없음). */}
             <div
                 style={{
                     display: "flex",
-                    flexDirection: horizontal ? "column" : "row",
+                    flexDirection: "row",
                     alignItems: "center",
                     gap: 2,
-                    padding: horizontal ? "8px 5px" : "5px 8px",
-                    ...(horizontal ? { borderRight: "1px solid var(--border-default)" } : { borderBottom: "1px solid var(--border-default)" }),
+                    padding: horizontal ? "0 6px" : "5px 8px",
+                    ...(horizontal ? { borderRight: "1px solid var(--border-default)", alignSelf: "stretch" } : { borderBottom: "1px solid var(--border-default)" }),
                     background: "var(--bg-secondary)",
                     flexShrink: 0,
                 }}
@@ -140,24 +143,36 @@ export function HypothesisFilterPanel(): JSX.Element {
                 </div>
                 {/* 새로고침(지우기) */}
                 <IconBtn onClick={doReset} disabled={!active} title="필터 새로고침(지우기)"><RefreshIcon /></IconBtn>
-                <span style={{ ...(horizontal ? { height: 1, width: 16, margin: "3px 0" } : { width: 1, height: 16, margin: "0 3px" }), background: "var(--border-subtle)" }} />
+                <span style={{ width: 1, height: 16, margin: "0 3px", background: "var(--border-subtle)" }} />
                 {/* 방향 전환 */}
                 <IconBtn onClick={toggleOrientation} title={`필터 방향: ${horizontal ? "가로" : "세로"} (클릭하면 ${horizontal ? "세로" : "가로"})`}>
                     {horizontal ? <ColumnsIcon /> : <RowsIcon />}
                 </IconBtn>
             </div>
 
-            {/* 빌더 본문 */}
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: horizontal ? "auto" : "hidden", padding: 10 }}>
-                {!active && (
-                    <div style={{ color: "var(--text-tertiary)", fontSize: 12.5, lineHeight: 1.7, padding: "6px 2px" }}>
-                        가설 목록 / 그래프에서 <b style={{ color: "var(--text-secondary)" }}>우클릭 → 필터에 추가</b>(각자 OR).
-                        <br /><b style={{ color: "var(--text-secondary)" }}>AND</b>는 칩을 다른 그룹으로 드래그해 합치고, 그룹 밖으로 빼면 다시 OR. 칩 클릭 = 제외(NOT).
-                    </div>
-                )}
+            {/* 빌더 본문 — 세로: 그룹 세로 나열(세로 스크롤) / 가로: 인라인 흐름 한 줄(휠=가로 스크롤). */}
+            <div
+                ref={horizontal ? wheelRef : undefined}
+                style={
+                    horizontal
+                        ? { flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden", display: "flex", alignItems: "center", padding: "0 10px" }
+                        : { flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: 10 }
+                }
+            >
+                {!active &&
+                    (horizontal ? (
+                        <span style={{ color: "var(--text-tertiary)", fontSize: 12, whiteSpace: "nowrap", flexShrink: 0, marginRight: 8 }}>
+                            가설 우클릭 → 필터에 추가 · 드래그로 AND/OR · 칩 클릭 = 제외
+                        </span>
+                    ) : (
+                        <div style={{ color: "var(--text-tertiary)", fontSize: 12.5, lineHeight: 1.7, padding: "6px 2px" }}>
+                            가설 목록 / 그래프에서 <b style={{ color: "var(--text-secondary)" }}>우클릭 → 필터에 추가</b>(각자 OR).
+                            <br /><b style={{ color: "var(--text-secondary)" }}>AND</b>는 칩을 다른 그룹으로 드래그해 합치고, 그룹 밖으로 빼면 다시 OR. 칩 클릭 = 제외(NOT).
+                        </div>
+                    ))}
 
                 <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={onDragEnd}>
-                    <div style={{ display: "flex", flexDirection: horizontal ? "row" : "column", alignItems: horizontal ? "flex-start" : "stretch", gap: 8 }}>
+                    <div style={{ display: "flex", flexDirection: horizontal ? "row" : "column", alignItems: horizontal ? "center" : "stretch", gap: 8, ...(horizontal ? { flexWrap: "nowrap" } : {}) }}>
                         {draft.groups.map((g, gi) => (
                             <Fragment key={gi}>
                                 {gi > 0 && <OrDivider horizontal={horizontal} />}
@@ -180,10 +195,13 @@ export function HypothesisFilterPanel(): JSX.Element {
                             </Fragment>
                         ))}
                         {active && <NewGroupZone horizontal={horizontal} />}
+                        {horizontal && unknown.length > 0 && (
+                            <span style={{ fontSize: 11.5, color: "var(--rise)", whiteSpace: "nowrap", flexShrink: 0 }}>삭제된 가설 {unknown.length}개 참조</span>
+                        )}
                     </div>
                 </DndContext>
 
-                {unknown.length > 0 && (
+                {!horizontal && unknown.length > 0 && (
                     <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--rise)" }}>
                         삭제된 가설 {unknown.length}개 참조 — 저장 필터를 정리하세요.
                     </div>
@@ -233,7 +251,7 @@ function FilterChip({ gi, leaf, label, isUnknown, onToggleNegate, onRemove }: { 
     );
 }
 
-// ── AND 그룹 박스(droppable) — 여기로 칩을 떨구면 그 그룹에 AND 합침.
+// ── AND 그룹 박스(droppable) — 여기로 칩을 떨구면 그 그룹에 AND 합침. 칩은 두 모드 다 인라인(가로=한 줄 고정).
 function GroupBox({ gi, horizontal, onRemoveGroup, children }: { gi: number; horizontal: boolean; onRemoveGroup: () => void; children: React.ReactNode }): JSX.Element {
     const { setNodeRef, isOver } = useDroppable({ id: `group:${gi}` });
     return (
@@ -243,15 +261,15 @@ function GroupBox({ gi, horizontal, onRemoveGroup, children }: { gi: number; hor
                 position: "relative",
                 border: `0.5px solid ${isOver ? "var(--accent-primary)" : "var(--border-default)"}`,
                 borderRadius: 8,
-                padding: "8px 8px",
+                padding: horizontal ? "5px 8px" : "8px 8px",
                 background: isOver ? "var(--accent-soft)" : "var(--bg-secondary)",
-                minWidth: horizontal ? 130 : undefined,
+                flexShrink: horizontal ? 0 : undefined,
             }}
         >
-            <div style={{ display: "flex", flexDirection: horizontal ? "column" : "row", flexWrap: horizontal ? "nowrap" : "wrap", alignItems: horizontal ? "flex-start" : "center", gap: 6, paddingRight: 18 }}>
+            <div style={{ display: "flex", flexDirection: "row", flexWrap: horizontal ? "nowrap" : "wrap", alignItems: "center", gap: 6, paddingRight: 18 }}>
                 {children}
             </div>
-            <button onClick={onRemoveGroup} title="그룹 삭제" style={{ position: "absolute", top: 4, right: 4, width: 18, height: 18, border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
+            <button onClick={onRemoveGroup} title="그룹 삭제" style={{ position: "absolute", top: horizontal ? "50%" : 4, right: 4, transform: horizontal ? "translateY(-50%)" : undefined, width: 18, height: 18, border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>×</button>
         </div>
     );
 }
@@ -272,7 +290,7 @@ function NewGroupZone({ horizontal }: { horizontal: boolean }): JSX.Element {
                 border: `1px dashed ${isOver ? "var(--accent-primary)" : "var(--border-subtle)"}`,
                 borderRadius: 6,
                 background: isOver ? "var(--accent-soft)" : "transparent",
-                ...(horizontal ? { minWidth: 56, alignSelf: "stretch", padding: "6px 4px" } : { padding: "7px 8px" }),
+                ...(horizontal ? { minWidth: 56, alignSelf: "stretch", padding: "6px 8px", flexShrink: 0, whiteSpace: "nowrap" as const } : { padding: "7px 8px" }),
             }}
         >
             OR 분리
@@ -280,16 +298,10 @@ function NewGroupZone({ horizontal }: { horizontal: boolean }): JSX.Element {
     );
 }
 
-// "또는" 구분선 — 세로 컨테이너=가로선 / 가로 컨테이너=세로선.
+// "또는" 구분 — 세로 컨테이너=가로선+텍스트 / 가로(인라인 흐름)=텍스트만.
 function OrDivider({ horizontal }: { horizontal: boolean }): JSX.Element {
     if (horizontal) {
-        return (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, alignSelf: "stretch", padding: "2px 0" }}>
-                <span style={{ flex: 1, width: 1, background: "var(--border-subtle)" }} />
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", letterSpacing: "0.05em" }}>또는</span>
-                <span style={{ flex: 1, width: 1, background: "var(--border-subtle)" }} />
-            </div>
-        );
+        return <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-primary)", flexShrink: 0 }}>또는</span>;
     }
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
