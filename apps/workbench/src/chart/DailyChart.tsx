@@ -224,7 +224,7 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
             }
         }
         priceLinesRef.current = lines.map((line) =>
-            candle.createPriceLine({ price: line.price, color: line.kind === "A" ? "#dc2626" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.kind === "A" ? "🔔" : line.kind }),
+            candle.createPriceLine({ price: line.price, color: line.kind === "A" ? "#dc2626" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
         );
     }, [lines]);
 

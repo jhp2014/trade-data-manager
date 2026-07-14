@@ -110,13 +110,12 @@ export function WatchlistPanel(): JSX.Element {
                     return (
                         <div key={code} style={{ borderBottom: "1px solid var(--border-default)" }}>
                             {s ? (
-                                <StockRow s={liveToBoardStock(s, market)} rank={null} selected={code === focusCode} onPick={(c) => setCode(c, originId)} />
+                                <StockRow s={liveToBoardStock(s, market)} rank={null} selected={code === focusCode} onPick={(c) => setCode(c, originId)} rankSlot={<RankChips code={code} themes={s.themes} ranks={ranks} market={rankMarket} />} />
                             ) : (
                                 <div className="tabular" style={{ padding: "4px 10px", fontSize: 12, color: "var(--text-tertiary)" }}>
                                     {code} — 시세 대기중(다음 틱)
                                 </div>
                             )}
-                            {s && <RankLine code={code} themes={s.themes} ranks={ranks} market={rankMarket} />}
                             <div style={{ padding: "2px 10px 6px", display: "flex", flexDirection: "column", gap: 4 }}>
                                 {rules.map((r) => (
                                     <RuleLine key={r.id} rule={r} onDelete={() => deleteRuleM.mutate(r.id)} />
@@ -133,7 +132,7 @@ export function WatchlistPanel(): JSX.Element {
                                         }}
                                     />
                                 ) : (
-                                    <div style={{ display: "flex", gap: 10 }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                         <button style={miniBtn("var(--accent-primary)")} onClick={() => setRuleFormCode(code)}>+ 조건</button>
                                         <button style={miniBtn("var(--text-tertiary)")} onClick={() => removeM.mutate(code)} title="모니터링 해제(조건 함께 삭제)">해제</button>
                                     </div>
@@ -162,27 +161,38 @@ function miniBtn(color: string): React.CSSProperties {
 const sign = (n: number): string => (n >= 0 ? "+" : "");
 const mkLabel = (m: AlertMarket): string => (m === "krx" ? "KRX" : "UN");
 
-/** 종목의 현재 테마 순위 한 줄 — 대표 1개 표시, 클릭하면 다음 테마로 순환(시장은 헤더 토글). */
-function RankLine({ code, themes, ranks, market }: { code: string; themes: string[]; ranks: Record<string, number>; market: AlertMarket }): JSX.Element | null {
-    const [idx, setIdx] = useState(0);
+/** 종목명 옆 테마 순위 칩 — 기본 대표 1개, 테마 2개 이상이면 +N 으로 펼침(시장은 헤더 토글).
+ *  StockRow 버튼 내부라 확장 토글은 span+stopPropagation(행 선택과 분리). */
+function RankChips({ code, themes, ranks, market }: { code: string; themes: string[]; ranks: Record<string, number>; market: AlertMarket }): JSX.Element | null {
+    const [showAll, setShowAll] = useState(false);
     const ranked = useMemo(
         () => themes.map((t) => ({ theme: t, rank: ranks[`${code}|${t}|${market}`] })).filter((x): x is { theme: string; rank: number } => typeof x.rank === "number"),
         [themes, ranks, code, market],
     );
     if (ranked.length === 0) return null;
-    const cur = ranked[idx % ranked.length];
+    const shown = showAll ? ranked : ranked.slice(0, 1);
     return (
-        <div style={{ padding: "0 10px 3px" }}>
-            <button
-                onClick={() => setIdx((i) => i + 1)}
-                title={ranked.length > 1 ? "클릭: 다음 테마 순위" : cur.theme}
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, padding: "1px 7px", cursor: ranked.length > 1 ? "pointer" : "default", font: "inherit", fontSize: 11, color: "var(--text-secondary)" }}
-            >
-                <span style={{ color: "var(--text-tertiary)" }}>{cur.theme}</span>
-                <span className="tabular" style={{ fontWeight: 700, color: cur.rank <= 3 ? "var(--accent-primary)" : "var(--text-secondary)" }}>{cur.rank}위</span>
-                {ranked.length > 1 && <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>▸{ranked.length}</span>}
-            </button>
-        </div>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            {shown.map((r) => (
+                <span key={r.theme} className="tabular" style={{ display: "inline-flex", gap: 3, alignItems: "center", fontSize: 10, background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 5px", whiteSpace: "nowrap", color: "var(--text-tertiary)" }}>
+                    {r.theme}
+                    <b style={{ color: r.rank <= 3 ? "var(--accent-primary)" : "var(--text-secondary)" }}>{r.rank}</b>
+                </span>
+            ))}
+            {ranked.length > 1 && (
+                <span
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowAll((v) => !v);
+                    }}
+                    title={showAll ? "접기" : "테마 순위 더 보기"}
+                    style={{ fontSize: 10, fontWeight: 700, cursor: "pointer", color: "var(--accent-primary)", flexShrink: 0 }}
+                >
+                    {showAll ? "−" : `+${ranked.length - 1}`}
+                </span>
+            )}
+        </span>
     );
 }
 
@@ -346,7 +356,8 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     );
 }
 
-/** leaf 한 줄 편집기 — 종류(가격/순위) + 종류별 필드 + 삭제. active=이 가격 leaf가 차트 캡처 대상. */
+/** leaf 한 줄 편집기 — 종류(가격/순위) + 종류별 필드 + 삭제. active=이 가격 leaf가 차트 캡처 대상.
+ *  작은 선택지(종류·≥≤·시장·도달상승)는 드롭다운 대신 글씨형 토글(클릭 전환). 테마만 드롭다운. */
 function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = false, onFocusPrice }: {
     leaf: DraftLeaf;
     themes: string[];
@@ -359,13 +370,10 @@ function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = 
 }): JSX.Element {
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: 6, background: "var(--bg-secondary)", border: `1px solid ${active ? "var(--accent-primary)" : "var(--border-subtle)"}`, borderRadius: 5 }}>
-            <select value={leaf.kind} onChange={(e) => onKind(e.target.value as DraftLeaf["kind"])} style={selStyle}>
-                <option value="price">가격</option>
-                <option value="rank">순위</option>
-            </select>
+            <Toggle label={leaf.kind === "price" ? "가격" : "순위"} onClick={() => onKind(leaf.kind === "price" ? "rank" : "price")} title="조건 종류(가격/순위) 전환" />
             {leaf.kind === "price" && (
                 <>
-                    <OpSelect op={leaf.op} onChange={(op) => onPatch({ ...leaf, op })} />
+                    <Toggle label={leaf.op === "gte" ? "≥" : "≤"} onClick={() => onPatch({ ...leaf, op: leaf.op === "gte" ? "lte" : "gte" })} title="이상(≥)/이하(≤)" />
                     <input
                         style={{ ...numStyle, width: 84, ...(active ? { color: "var(--accent-primary)", fontWeight: 600 } : {}) }}
                         className="tabular"
@@ -385,11 +393,8 @@ function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = 
                         <option value="">테마</option>
                         {themes.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
-                    <MarketSelect market={leaf.market} onChange={(m) => onPatch({ ...leaf, market: m })} />
-                    <select value={leaf.mode} onChange={(e) => onPatch({ ...leaf, mode: e.target.value as "reach" | "delta" })} style={selStyle}>
-                        <option value="reach">도달 ≤</option>
-                        <option value="delta">상승 ≥</option>
-                    </select>
+                    <Toggle label={mkLabel(leaf.market)} onClick={() => onPatch({ ...leaf, market: leaf.market === "un" ? "krx" : "un" })} title="기준 시장(전일종가)" />
+                    <Toggle label={leaf.mode === "reach" ? "도달 ≤" : "상승 ≥"} onClick={() => onPatch({ ...leaf, mode: leaf.mode === "reach" ? "delta" : "reach" })} title="도달(≤K위)/상승(≥D계단)" />
                     <input style={numStyle} className="tabular" value={leaf.threshold} onChange={(e) => onPatch({ ...leaf, threshold: e.target.value })} placeholder={leaf.mode === "reach" ? "K위" : "D계단"} />
                 </>
             )}
@@ -398,21 +403,12 @@ function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = 
     );
 }
 
-function OpSelect({ op, onChange }: { op: AlertOp; onChange: (op: AlertOp) => void }): JSX.Element {
+/** 글씨형 토글 — 작은 선택지를 드롭다운 대신 클릭 전환(칩 모양). */
+function Toggle({ label, onClick, title }: { label: string; onClick: () => void; title?: string }): JSX.Element {
     return (
-        <select value={op} onChange={(e) => onChange(e.target.value as AlertOp)} style={selStyle} title="이상(≥)/이하(≤)">
-            <option value="gte">≥</option>
-            <option value="lte">≤</option>
-        </select>
-    );
-}
-
-function MarketSelect({ market, onChange }: { market: AlertMarket; onChange: (m: AlertMarket) => void }): JSX.Element {
-    return (
-        <select value={market} onChange={(e) => onChange(e.target.value as AlertMarket)} style={selStyle} title="기준 시장(전일종가)">
-            <option value="un">UN</option>
-            <option value="krx">KRX</option>
-        </select>
+        <button onClick={onClick} title={title} style={{ border: "none", background: "var(--bg-tertiary)", borderRadius: 4, padding: "2px 8px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+            {label}
+        </button>
     );
 }
 

@@ -9,7 +9,8 @@ export type { PriceLine, PriceLinedStock, PriceLineField, AddPriceLineInput } fr
 export interface RenderLine {
     id: string;
     price: number; // 해소된 raw 가격(원)
-    kind: "D" | "M" | "A"; // 일봉/분봉 앵커(주석) 또는 A=알람 가격조건 — 색·라벨
+    kind: "D" | "M" | "A"; // 일봉/분봉 앵커(주석) 또는 A=알람 가격조건 — 색
+    label?: string; // 축 라벨 override(없으면 kind). 알람선은 방향 화살표(≥ ↑ / ≤ ↓).
 }
 
 export const fetchPriceLines = (code: string, date: string, signal?: AbortSignal): Promise<PriceLine[]> =>

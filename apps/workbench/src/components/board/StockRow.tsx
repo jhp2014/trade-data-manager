@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { fmtEok } from "../../lib/format.js";
@@ -16,6 +16,7 @@ export function StockRow({
     onPick,
     boundary,
     home,
+    rankSlot,
 }: {
     s: BoardStock;
     rank: number | null; // null = 순위 미표시(개별/미분류)
@@ -23,6 +24,7 @@ export function StockRow({
     onPick: (code: string) => void;
     boundary?: boolean;
     home?: string; // 카드 테마(칩에서 제외). 개별/미분류는 undefined → 전체 테마 칩.
+    rankSlot?: ReactNode; // 이름 옆 추가 슬롯(실시간 모니터링의 테마 순위 칩 등). 보드는 미사용.
 }): JSX.Element {
     const up = s.changeRate >= 0;
     const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
@@ -80,6 +82,7 @@ export function StockRow({
                 >
                     {s.name}
                 </span>
+                {rankSlot}
                 {/* 필터 칩 ON: 제외 사유 태그 먼저 + 테마 칩 뒤(폭 좁으면 뒤부터 잘림). OFF(기본): 테마 칩만. */}
                 {((showReasons && s.excludedBy) || chips.length > 0) && (
                     <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>

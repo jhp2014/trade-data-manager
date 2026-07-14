@@ -381,7 +381,7 @@ export function usePercentPriceLines(
         for (const line of lines) {
             const pct = ((line.price - base) / base) * 100;
             priceLinesRef.current.push(
-                candle.createPriceLine({ price: pct, color: line.kind === "A" ? "#dc2626" : line.kind === "M" ? "#be7a00" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.kind === "A" ? "🔔" : line.kind }),
+                candle.createPriceLine({ price: pct, color: line.kind === "A" ? "#dc2626" : line.kind === "M" ? "#be7a00" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
             );
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps

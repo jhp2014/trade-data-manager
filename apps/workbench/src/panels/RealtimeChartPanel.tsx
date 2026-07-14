@@ -80,7 +80,7 @@ export function RealtimeChartPanel(): JSX.Element {
         for (const r of wl.data?.rules ?? []) {
             if (r.code !== code) continue;
             r.leaves.forEach((l, i) => {
-                if (l.kind === "price") out.push({ id: `${r.id}-${i}`, price: l.value, kind: "A" });
+                if (l.kind === "price") out.push({ id: `${r.id}-${i}`, price: l.value, kind: "A", label: l.op === "gte" ? "↑" : "↓" });
             });
         }
         return out;
