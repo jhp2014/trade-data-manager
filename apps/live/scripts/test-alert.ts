@@ -3,6 +3,7 @@
 //   실행: pnpm --filter @trade-data-manager/live exec tsx scripts/test-alert.ts
 import "dotenv/config";
 import { createAlertNotifierFromEnv } from "../src/live/alerts/createNotifier.js";
+import { buildAlertMessages } from "../src/live/alerts/format.js";
 
 const made = createAlertNotifierFromEnv();
 if (!made) {
@@ -11,16 +12,22 @@ if (!made) {
 }
 console.log(`전송로: ${made.label}`);
 
-await made.notifier.send([
-    {
-        ruleId: "test",
-        code: "005930",
-        name: "삼성전자",
-        at: Date.now(),
-        features: { price: 71_000, changeRate: 2.1 },
-        note: "배선 테스트 — 실제 알람 아님",
-    },
-]);
+const now = Date.now();
+for (const text of buildAlertMessages(
+    [
+        {
+            ruleId: "test",
+            code: "005930",
+            name: "삼성전자",
+            at: now,
+            features: { price: 71_000, changeRate: 2.1 },
+            note: "배선 테스트 — 실제 알람 아님",
+        },
+    ],
+    now,
+)) {
+    await made.notifier.sendText(text);
+}
 await made.notifier.close?.();
 console.log("✅ 전송 완료 — 채널을 확인하세요");
 process.exit(0);

@@ -1,10 +1,7 @@
 // 알람 전달 — 텔레그램 Bot API(sendMessage). 봇 토큰 하나의 단순 HTTP(세션·FLOOD 리스크 없음).
-// ⚠️ 로컬 망(KT 추정)이 api.telegram.org IP 대역을 차단해 로컬에선 불통 — 호스팅(OCI) 전용 전송로.
+// ⚠️ 로컬 망(KT 추정)이 api.telegram.org IP 대역을 차단해 로컬에선 불통 — 호스팅(iwinv) 전용 전송로.
 //    로컬은 mtprotoNotifier(내 계정 MTProto, 오픈 대역 DC)가 대체. 선택은 createNotifier(env).
-// 종목당 1메시지: 같은 발화 배치(한 틱)에서 같은 종목의 룰 여러 개는 한 메시지로 묶는다.
-import type { AlertFiring } from "./types.js";
-import { buildAlertMessages } from "./format.js";
-
+// 노티파이어는 "텍스트 1건 전송"만 하는 트랜스포트 — 포맷·배치·재시도는 NotifyQueue 가 소유.
 export interface TelegramBotConfig {
     botToken: string;
     chatId: string;
@@ -38,10 +35,8 @@ export class TelegramAlertNotifier {
         private readonly sendMessage: SendMessageFn = fetchSend,
     ) {}
 
-    /** 한 배치(한 틱) 발화 전송 — 종목별 1메시지. 실패는 throw(호출측 sink 가 로그). */
-    async send(firings: readonly AlertFiring[]): Promise<void> {
-        for (const text of buildAlertMessages(firings)) {
-            await this.sendMessage(this.cfg.botToken, this.cfg.chatId, text);
-        }
+    /** 텍스트 1건 전송 — 실패는 throw(호출측 NotifyQueue 가 재시도). */
+    async sendText(text: string): Promise<void> {
+        await this.sendMessage(this.cfg.botToken, this.cfg.chatId, text);
     }
 }

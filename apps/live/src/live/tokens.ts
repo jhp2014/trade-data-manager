@@ -14,3 +14,7 @@ export const ENGINE_CONFIG = Symbol("ENGINE_CONFIG");
 export const ALERTS = Symbol("ALERTS");
 // 알림 전송로(Bot API/MTProto, env 선택) — null 이면 로그로만.
 export const ALERT_NOTIFIER = Symbol("ALERT_NOTIFIER");
+// 알림 재시도 큐(백오프·TTL) — 발화/헬스 텍스트의 유일한 전송 경로.
+export const NOTIFY_QUEUE = Symbol("NOTIFY_QUEUE");
+// 헬스 모니터(틱·WS·전송로 감시 + 하트비트·데드맨 핑 게이트).
+export const HEALTH = Symbol("HEALTH");

@@ -4,12 +4,12 @@
 //  LIVE_TELEGRAM_TRANSPORT=user      : MTProto(내 계정) — LIVE_TELEGRAM_PEER(없으면 CHAT_ID 재사용,
 //                                      같은 채널이면 값 동일). 로컬 대체 전송로. 내 폰 푸시는 안 옴.
 // 설정 불충분이면 null(호출측이 "로그로만" 경고).
-import type { AlertFiring } from "./types.js";
 import { TelegramAlertNotifier, loadTelegramBotConfigFromEnv } from "./telegramNotifier.js";
 import { MtprotoAlertNotifier } from "./mtprotoNotifier.js";
 
+/** 알림 트랜스포트 — 텍스트 1건 전송. 포맷·배치·재시도는 NotifyQueue 소유. */
 export interface AlertNotifier {
-    send(firings: readonly AlertFiring[]): Promise<void>;
+    sendText(text: string): Promise<void>;
     close?(): Promise<void>;
 }
 

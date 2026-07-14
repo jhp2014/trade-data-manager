@@ -13,11 +13,13 @@ import { LiveNewsService } from "./news/liveNews.js";
 import { AlertsController } from "./alerts/alerts.controller.js";
 import { AlertConfigStore } from "./alerts/configStore.js";
 import { AlertsRuntime } from "./alerts/alertsRuntime.js";
-import { formatFiring } from "./alerts/format.js";
+import { formatFiring, kstTime } from "./alerts/format.js";
 import { createAlertNotifierFromEnv, type AlertNotifier } from "./alerts/createNotifier.js";
+import { NotifyQueue } from "./alerts/notifyQueue.js";
+import { HealthMonitor, parseWindow } from "./health/monitor.js";
 import { ConditionController } from "./condition.controller.js";
 import { EngineConfigStore } from "./engine/engineConfigStore.js";
-import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS, ALERT_NOTIFIER, ENGINE_CONFIG } from "./tokens.js";
+import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS, ALERT_NOTIFIER, NOTIFY_QUEUE, HEALTH, ENGINE_CONFIG } from "./tokens.js";
 import { createLiveEngine } from "./engine/createLiveEngine.js";
 import type { LiveEngine } from "./engine/engine.js";
 
@@ -61,21 +63,50 @@ const notifierProvider: Provider = {
         return made.notifier;
     },
 };
-// 알람 런타임 — 발화 sink = 서버 로그(항상) + 텔레그램(설정 시).
+// 알림 재시도 큐 — 발화·헬스 텍스트의 유일한 전송 경로(백오프·TTL 10분·지연 표기). 전송로 없으면 로그 전용.
+const notifyQueueProvider: Provider = {
+    provide: NOTIFY_QUEUE,
+    useFactory: (notifier: AlertNotifier | null): NotifyQueue => {
+        const log = new Logger("Alerts");
+        return new NotifyQueue(
+            notifier,
+            ({ firstAt, summary }) => log.warn(`알림 TTL 폐기(${kstTime(firstAt)} 적재): ${summary}`),
+            (e) => log.error(`텔레그램 전송 실패(재시도 예정): ${e instanceof Error ? e.message : String(e)}`),
+        );
+    },
+    inject: [ALERT_NOTIFIER],
+};
+// 알람 런타임 — 발화 sink = 서버 로그(항상) + 재시도 큐(전송로 설정 시 배달).
 const alertsProvider: Provider = {
     provide: ALERTS,
-    useFactory: (config: AlertConfigStore, notifier: AlertNotifier | null): AlertsRuntime => {
+    useFactory: (config: AlertConfigStore, queue: NotifyQueue): AlertsRuntime => {
         const log = new Logger("Alerts");
         return new AlertsRuntime(config, (firings) => {
             for (const f of firings) log.log(`🔔 ${formatFiring(f)}`);
-            if (notifier) {
-                void notifier.send(firings).catch((e: unknown) =>
-                    log.error(`텔레그램 알림 실패(알람 로그는 위에 남음): ${e instanceof Error ? e.message : String(e)}`),
-                );
-            }
+            queue.push(firings, Date.now());
         });
     },
-    inject: [ALERT_CONFIG, ALERT_NOTIFIER],
+    inject: [ALERT_CONFIG, NOTIFY_QUEUE],
+};
+// 헬스 모니터 — 엔진 틱/WS/전송큐 감시. 알림 창·하트비트는 env(LIVE_ALERT_WINDOW·LIVE_HEARTBEAT).
+const healthProvider: Provider = {
+    provide: HEALTH,
+    useFactory: (engine: LiveEngine, queue: NotifyQueue, config: AlertConfigStore): HealthMonitor => {
+        let lastTickAt: number | null = null;
+        engine.on("tick", () => { lastTickAt = Date.now(); });
+        const win = parseWindow(process.env.LIVE_ALERT_WINDOW) ?? { start: 8 * 60, end: 15 * 60 + 40 };
+        return new HealthMonitor(
+            {
+                lastTickAt: () => lastTickAt,
+                wsStatus: () => engine.connectionStatus,
+                queueStats: () => queue.stats(),
+                ruleCount: () => config.rules.length,
+                notify: (text, now) => queue.pushText(text, now),
+            },
+            { windowStartMin: win.start, windowEndMin: win.end, heartbeat: process.env.LIVE_HEARTBEAT !== "0" },
+        );
+    },
+    inject: [LIVE_ENGINE, NOTIFY_QUEUE, ALERT_CONFIG],
 };
 const engineProvider: Provider = {
     provide: LIVE_ENGINE,
@@ -93,14 +124,17 @@ const newsProvider: Provider = { provide: LIVE_NEWS, useFactory: (): LiveNewsSer
 
 @Module({
     controllers: [HealthController, SnapshotController, StreamController, ThemeController, ChartController, NewsController, AlertsController, ConditionController],
-    providers: [kiwoomProvider, engineConfigProvider, alertConfigProvider, notifierProvider, alertsProvider, engineProvider, chartProvider, newsProvider],
+    providers: [kiwoomProvider, engineConfigProvider, alertConfigProvider, notifierProvider, notifyQueueProvider, alertsProvider, healthProvider, engineProvider, chartProvider, newsProvider],
 })
 export class LiveModule implements OnModuleInit, OnModuleDestroy {
     private readonly log = new Logger("LiveEngine");
+    private timers: NodeJS.Timeout[] = [];
 
     constructor(
         @Inject(LIVE_ENGINE) private readonly engine: LiveEngine,
         @Inject(ALERT_NOTIFIER) private readonly notifier: AlertNotifier | null,
+        @Inject(NOTIFY_QUEUE) private readonly queue: NotifyQueue,
+        @Inject(HEALTH) private readonly health: HealthMonitor,
     ) {}
 
     async onModuleInit(): Promise<void> {
@@ -110,6 +144,8 @@ export class LiveModule implements OnModuleInit, OnModuleDestroy {
         this.engine.on("tick", (t: { hot: number; polled: number }) =>
             this.log.debug(`tick hot=${t.hot} polled=${t.polled}`),
         );
+        // 알림 큐 소화 루프(1s) — 엔진과 무관하게 먼저.
+        this.timers.push(setInterval(() => void this.queue.tick(Date.now()), 1_000));
         try {
             await this.engine.start();
             const cond = this.engine.condition;
@@ -117,9 +153,27 @@ export class LiveModule implements OnModuleInit, OnModuleDestroy {
         } catch (e) {
             this.log.error(`엔진 시작 실패(앱은 유지): ${e instanceof Error ? e.message : String(e)}`);
         }
+        // 헬스 판정(15s, 하트비트·엣지알림) · 외부 데드맨 핑(60s) — 엔진 시작 시도 **후**에 걸어
+        // 부팅 수 초를 "틱 없음"으로 오탐하지 않게. 시작 실패면 첫 판정부터 이상으로 잡힘(의도).
+        this.timers.push(setInterval(() => this.health.check(Date.now()), 15_000));
+        const pingUrl = process.env.LIVE_HEALTHCHECK_URL?.trim();
+        if (pingUrl) {
+            const log = this.log;
+            this.timers.push(
+                setInterval(() => {
+                    if (this.health.shouldPing(Date.now())) {
+                        void fetch(pingUrl).catch((e: unknown) => log.warn(`데드맨 핑 실패: ${e instanceof Error ? e.message : String(e)}`));
+                    }
+                }, 60_000),
+            );
+            this.log.log("외부 데드맨 핑 활성(LIVE_HEALTHCHECK_URL)");
+        } else {
+            this.log.warn("LIVE_HEALTHCHECK_URL 미설정 — 외부 데드맨 없음(서버 전멸·텔레그램 죽음 미감지)");
+        }
     }
 
     async onModuleDestroy(): Promise<void> {
+        for (const t of this.timers) clearInterval(t);
         await this.engine.stop();
         await this.notifier?.close?.(); // MTProto 접속 정리(Bot API 는 close 없음)
     }
