@@ -87,16 +87,16 @@ export function HypothesisFilterPanel(): JSX.Element {
     const menuPos: React.CSSProperties = { top: "100%", left: 0, marginTop: 4 };
 
     return (
-        <div style={{ display: "flex", flexDirection: horizontal ? "row" : "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
-            {/* 아이콘 툴바 — 두 모드 다 가로 아이콘 줄(세로=상단 바 / 가로=같은 줄 맨 앞, 세로 나열 없음). */}
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
+            {/* 아이콘 툴바 — 두 모드 다 상단 가로 아이콘 줄. */}
             <div
                 style={{
                     display: "flex",
                     flexDirection: "row",
                     alignItems: "center",
                     gap: 2,
-                    padding: horizontal ? "0 6px" : "5px 8px",
-                    ...(horizontal ? { borderRight: "1px solid var(--border-default)", alignSelf: "stretch" } : { borderBottom: "1px solid var(--border-default)" }),
+                    padding: "5px 8px",
+                    borderBottom: "1px solid var(--border-default)",
                     background: "var(--bg-secondary)",
                     flexShrink: 0,
                 }}
@@ -155,7 +155,7 @@ export function HypothesisFilterPanel(): JSX.Element {
                 ref={horizontal ? wheelRef : undefined}
                 style={
                     horizontal
-                        ? { flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden", display: "flex", alignItems: "center", padding: "0 10px" }
+                        ? { flex: 1, minHeight: 0, overflowX: "auto", overflowY: "hidden", display: "flex", alignItems: "center", padding: "0 10px" }
                         : { flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: 10 }
                 }
             >

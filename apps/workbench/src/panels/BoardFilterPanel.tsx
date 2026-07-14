@@ -90,7 +90,7 @@ function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemo
                     <button onClick={onRemoveGroup} title="조건 삭제" style={xBtn}>✕</button>
                 </span>
             </div>
-            <div onClick={editing ? undefined : onEdit} title={editing ? undefined : "클릭: 편집"} style={{ cursor: editing ? undefined : "pointer", display: "flex", flexDirection: "column", gap: 3, fontSize: 12, color: "var(--text-primary)" }}>
+            <div onClick={editing ? undefined : onEdit} title={editing ? undefined : "클릭: 편집"} style={{ cursor: editing ? undefined : "pointer", display: "flex", flexDirection: "column", gap: editing ? 9 : 3, fontSize: 12, color: "var(--text-primary)" }}>
                 {g.predicates.map((p, pi) => {
                     const def = boardPredicateDef(p.kind);
                     return (
