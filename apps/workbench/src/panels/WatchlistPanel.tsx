@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LiveStock } from "@trade-data-manager/wire";
 import { useLiveSnapshot } from "../api/live.js";
@@ -239,6 +239,34 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     const [cooldownMin, setCooldownMin] = useState("3");
     const [note, setNote] = useState("");
     const [err, setErr] = useState<string | null>(null);
+    const [activePrice, setActivePrice] = useState<{ gi: number; li: number } | null>(null); // 캡처 대상 가격 leaf
+
+    const arm = useWorkbench((s) => s.armAlertCapture);
+    const disarm = useWorkbench((s) => s.disarmAlertCapture);
+    const setLiveCode = useWorkbench((s) => s.setLiveCode);
+    const captured = useWorkbench((s) => s.alertCapturedPrice);
+    const originId = useId();
+    const seenSeqRef = useRef<number>(-1);
+
+    useEffect(() => () => disarm(), [disarm]); // 폼 닫힘(닫기·저장) → 캡처 해제
+    // 배달된 캡처 가격을 활성 가격 leaf 에 주입 — seq 증가 감지, 마운트 시점 값은 기준선으로 무시.
+    useEffect(() => {
+        const seq = captured?.seq ?? 0;
+        if (seenSeqRef.current < 0) {
+            seenSeqRef.current = seq;
+            return;
+        }
+        if (!captured || !activePrice || seq === seenSeqRef.current) return;
+        seenSeqRef.current = seq;
+        const { gi, li } = activePrice;
+        setGroups((gs) => gs.map((g, i) => (i !== gi ? g : { leaves: g.leaves.map((x, j) => (j !== li || x.kind !== "price" ? x : { ...x, value: String(Math.round(captured.price)) })) })));
+    }, [captured, activePrice]);
+
+    const armPrice = (gi: number, li: number): void => {
+        setActivePrice({ gi, li });
+        arm(code);
+        setLiveCode(code, originId); // 차트가 이 종목을 보도록(캡처 정합)
+    };
 
     const saveM = useMutation({ mutationFn: createAlertRule, onSuccess: onSaved, onError: (e: Error) => setErr(e.message) });
 
@@ -303,6 +331,8 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
                                 onPatch={(l) => patchLeaf(gi, li, l)}
                                 onRemove={() => removeLeaf(gi, li)}
                                 canRemove={totalLeaves > 1}
+                                active={activePrice?.gi === gi && activePrice?.li === li && leaf.kind === "price"}
+                                onFocusPrice={() => armPrice(gi, li)}
                             />
                         ))}
                         <button style={miniBtn("var(--accent-primary)")} onClick={() => addLeaf(gi)}>+ 조건 추가(AND)</button>
@@ -324,14 +354,16 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     );
 }
 
-/** leaf 한 줄 편집기 — 종류 선택 + 종류별 필드 + 삭제. */
-function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove }: {
+/** leaf 한 줄 편집기 — 종류 선택 + 종류별 필드 + 삭제. active=이 가격 leaf가 차트 캡처 대상. */
+function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = false, onFocusPrice }: {
     leaf: DraftLeaf;
     themes: string[];
     onKind: (kind: DraftLeaf["kind"]) => void;
     onPatch: (leaf: DraftLeaf) => void;
     onRemove: () => void;
     canRemove: boolean;
+    active?: boolean;
+    onFocusPrice?: () => void;
 }): JSX.Element {
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
@@ -343,7 +375,16 @@ function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove }: {
             {leaf.kind === "price" && (
                 <>
                     <OpSelect op={leaf.op} onChange={(op) => onPatch({ ...leaf, op })} />
-                    <input style={numStyle} className="tabular" value={leaf.value} onChange={(e) => onPatch({ ...leaf, value: e.target.value })} placeholder="원" title="절대가격(원)" />
+                    <input
+                        style={{ ...numStyle, ...(active ? { borderBottomColor: "var(--accent-primary)", color: "var(--accent-primary)" } : {}) }}
+                        className="tabular"
+                        value={leaf.value}
+                        onChange={(e) => onPatch({ ...leaf, value: e.target.value })}
+                        onFocus={onFocusPrice}
+                        placeholder="원"
+                        title="절대가격(원) — 포커스 후 실시간 차트(일봉·분봉) 좌클릭으로 입력"
+                    />
+                    {active && <span style={{ fontSize: 10, color: "var(--accent-primary)", flexShrink: 0 }}>← 차트 클릭</span>}
                 </>
             )}
             {leaf.kind === "rate" && (

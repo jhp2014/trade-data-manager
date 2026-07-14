@@ -44,7 +44,7 @@ function fmtDailyCrosshair(time: Time): string {
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
 // pctBase(검색일 전일종가)가 있으면 크로스헤어 y-위치를 % 로 툴팁에 표시 + showGuide 시 +30%(상한가) 가이드선.
-export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, searchDate, pctBase, showGuide = false }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; searchDate?: string; pctBase?: number | null; showGuide?: boolean }): JSX.Element {
+export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, onPickPrice, capturePriceArmed = false, searchDate, pctBase, showGuide = false }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; onPickPrice?: (price: number) => void; capturePriceArmed?: boolean; searchDate?: string; pctBase?: number | null; showGuide?: boolean }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -58,10 +58,14 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
     const onRightClickRef = useRef(onRightClick);
     const onRemoveLineRef = useRef(onRemoveLine);
     const onCandleClickRef = useRef(onCandleClick);
+    const onPickPriceRef = useRef(onPickPrice);
+    const armedRef = useRef(capturePriceArmed);
     useEffect(() => {
         onRightClickRef.current = onRightClick;
         onRemoveLineRef.current = onRemoveLine;
         onCandleClickRef.current = onCandleClick;
+        onPickPriceRef.current = onPickPrice;
+        armedRef.current = capturePriceArmed;
     });
 
     const chartRef = useChartShell(containerRef, () => ({
@@ -167,8 +171,16 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
             hoveredTimeRef.current = typeof param.time === "string" ? param.time : null;
         };
         chart.subscribeCrosshairMove(onMove);
-        // 봉 좌클릭 = 그 날짜로 검색 모드(뉴스 조회). param.time 은 일봉 날짜 문자열(빈 영역 클릭이면 undefined).
-        const onClick = (param: { time?: unknown }): void => {
+        // 무장(가격 leaf 편집 중) 시 좌클릭 = 그 y좌표 가격을 캡처(캔들 pane0만) — 날짜검색 억제.
+        // 아니면 봉 좌클릭 = 그 날짜로 검색 모드. param.time = 일봉 날짜 문자열(빈 영역이면 undefined).
+        const onClick = (param: { time?: unknown; point?: { x: number; y: number }; paneIndex?: number }): void => {
+            if (armedRef.current) {
+                if (onPickPriceRef.current && param.point && (param.paneIndex ?? 0) === 0) {
+                    const price = candleRef.current?.coordinateToPrice(param.point.y);
+                    if (price != null) onPickPriceRef.current(price as number);
+                }
+                return; // 무장 중엔 클릭이 캡처 전용
+            }
             if (typeof param.time === "string") onCandleClickRef.current?.(param.time);
         };
         chart.subscribeClick(onClick);

@@ -13,6 +13,14 @@ export interface LiveChartSlice {
     liveLines: Record<string, LiveLineAnchor[]>; // code → 메모리 선
     toggleLiveLine: (code: string, anchor: { anchorDate: string; anchorTime?: string }) => void;
     removeLiveLine: (code: string, id: string) => void;
+
+    // 알람 가격 캡처 — 조건 폼의 가격 leaf 편집 시 무장(code), 실시간 차트 좌클릭이 가격을 배달.
+    //  seq 는 배달마다 증가 → 폼이 새 캡처를 감지(같은 가격 반복 클릭도 구분). 무장/배달만, 값 소유는 폼.
+    alertCaptureCode: string | null;
+    alertCapturedPrice: { seq: number; price: number } | null;
+    armAlertCapture: (code: string) => void;
+    disarmAlertCapture: () => void;
+    deliverAlertPrice: (price: number) => void;
 }
 
 export const createLiveChartSlice: StateCreator<WorkbenchState, [], [], LiveChartSlice> = (set) => ({
@@ -30,4 +38,10 @@ export const createLiveChartSlice: StateCreator<WorkbenchState, [], [], LiveChar
         }),
     removeLiveLine: (code, id) =>
         set((s) => ({ liveLines: { ...s.liveLines, [code]: (s.liveLines[code] ?? []).filter((l) => l.id !== id) } })),
+
+    alertCaptureCode: null,
+    alertCapturedPrice: null,
+    armAlertCapture: (code) => set({ alertCaptureCode: code }),
+    disarmAlertCapture: () => set({ alertCaptureCode: null }),
+    deliverAlertPrice: (price) => set((s) => ({ alertCapturedPrice: { seq: (s.alertCapturedPrice?.seq ?? 0) + 1, price } })),
 });

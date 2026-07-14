@@ -75,6 +75,8 @@ export function MinuteChart({
     onMovePoint,
     onRightClick,
     onRemoveLine,
+    onPickPrice,
+    capturePriceArmed = false,
 }: {
     points: MinutePoint[];
     showAmountMarkers?: boolean;
@@ -87,6 +89,8 @@ export function MinuteChart({
     onMovePoint: (time: string) => void; // 좌클릭 = 그 봉으로 타점 이동(tradeTime HH:MM:SS)
     onRightClick: (anchor: { date: string; time: string }) => void;
     onRemoveLine: (line: RenderLine) => void;
+    onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표 → 가격(base×(1+%/100)) 캡처
+    capturePriceArmed?: boolean;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -111,7 +115,7 @@ export function MinuteChart({
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
     const { currentSnapped, savedSnapped } = useMarkerVertLines(series, points, markerTime, savedPoints);
     useMinuteVisibleRange(chartRef, points, zoom, series.bumpOverlay);
-    useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, onMovePoint, onRightClick, onRemoveLine });
+    useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base);
 
     const { state: tip } = useCrosshairTooltip({

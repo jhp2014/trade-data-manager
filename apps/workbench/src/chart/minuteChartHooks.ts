@@ -283,8 +283,10 @@ export function useMinuteInteraction(args: {
     onMovePoint: (time: string) => void;
     onRightClick: (anchor: { date: string; time: string }) => void;
     onRemoveLine: (line: RenderLine) => void;
+    onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표(%) → 가격(base×(1+%/100)) 캡처
+    captureArmed?: boolean;
 }): void {
-    const { chartRef, containerRef, candleRef, pointMapRef, lines, base, onMovePoint, onRightClick, onRemoveLine } = args;
+    const { chartRef, containerRef, candleRef, pointMapRef, lines, base, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed } = args;
     const hoveredTimeRef = useRef<number | null>(null);
     const linesRef = useRef<RenderLine[]>(lines);
     const baseRef = useRef<number | null>(base);
@@ -293,10 +295,14 @@ export function useMinuteInteraction(args: {
     const onMovePointRef = useRef(onMovePoint);
     const onRightClickRef = useRef(onRightClick);
     const onRemoveLineRef = useRef(onRemoveLine);
+    const onPickPriceRef = useRef(onPickPrice);
+    const armedRef = useRef(captureArmed ?? false);
     useEffect(() => {
         onMovePointRef.current = onMovePoint;
         onRightClickRef.current = onRightClick;
         onRemoveLineRef.current = onRemoveLine;
+        onPickPriceRef.current = onPickPrice;
+        armedRef.current = captureArmed ?? false;
     });
 
     useEffect(() => {
@@ -307,7 +313,16 @@ export function useMinuteInteraction(args: {
             hoveredTimeRef.current = typeof param.time === "number" ? param.time : null;
         };
         chart.subscribeCrosshairMove(onMove);
-        const onClick = (param: { time?: unknown }): void => {
+        const onClick = (param: { time?: unknown; point?: { x: number; y: number }; paneIndex?: number }): void => {
+            if (armedRef.current) {
+                // 무장(가격 leaf 편집 중) 시 좌클릭 = y좌표 % → 가격 캡처(캔들 pane0만). 타점 이동 억제.
+                const b = baseRef.current;
+                if (onPickPriceRef.current && param.point && (param.paneIndex ?? 0) === 0 && b && b > 0) {
+                    const pct = candleRef.current?.coordinateToPrice(param.point.y);
+                    if (pct != null) onPickPriceRef.current(b * (1 + (pct as number) / 100));
+                }
+                return;
+            }
             const t = typeof param.time === "number" ? param.time : null;
             const p = t != null ? pointMapRef.current.get(t) : null;
             if (p) onMovePointRef.current(p.tradeTime);

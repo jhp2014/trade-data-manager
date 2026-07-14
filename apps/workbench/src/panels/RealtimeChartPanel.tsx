@@ -27,6 +27,9 @@ export function RealtimeChartPanel(): JSX.Element {
     const liveLines = useWorkbench((s) => s.liveLines); // 메모리 D/M 선(당일, 영속X)
     const toggleLine = useWorkbench((s) => s.toggleLiveLine);
     const removeLine = useWorkbench((s) => s.removeLiveLine);
+    const captureCode = useWorkbench((s) => s.alertCaptureCode); // 알람 가격 캡처 무장 종목
+    const deliverAlertPrice = useWorkbench((s) => s.deliverAlertPrice);
+    const captureArmed = captureCode != null && captureCode === code; // 이 차트(포커스 종목)가 무장 대상일 때만
     const [view, setView] = useState<ChartView>("both");
     const [showMarkers, setShowMarkers] = useState(true);
     const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
@@ -124,6 +127,8 @@ export function RealtimeChartPanel(): JSX.Element {
                                         onRightClick={(anchorD) => toggleLine(code, { anchorDate: anchorD })}
                                         onRemoveLine={(l) => removeLine(code, l.id)}
                                         onCandleClick={pinMinute ? undefined : (d) => setSearch(d === anchorDate ? null : { date: d })}
+                                        onPickPrice={deliverAlertPrice}
+                                        capturePriceArmed={captureArmed}
                                         searchDate={showLine && drifted ? viewDate : undefined}
                                         pctBase={pctBase}
                                         showGuide={showGuide}
@@ -138,7 +143,7 @@ export function RealtimeChartPanel(): JSX.Element {
                             <div onDoubleClick={() => toggleExpand("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 선">
                                 <PaneLabel text={fmtDateKo(viewDate)} />
                                 {minuteView.points.length > 0 ? (
-                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={resolvedLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} />
+                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={resolvedLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
                                 ) : (
                                     <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음 (장 마감?)"} />
                                 )}
