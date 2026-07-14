@@ -31,6 +31,7 @@ export function RealtimeChartPanel(): JSX.Element {
     const removeLine = useWorkbench((s) => s.removeLiveLine);
     const captureCode = useWorkbench((s) => s.alertCaptureCode); // 알람 가격 캡처 무장 종목
     const deliverAlertPrice = useWorkbench((s) => s.deliverAlertPrice);
+    const draftLines = useWorkbench((s) => s.alertDraftLines); // 편집 중 조건의 draft 가격선(미리보기)
     const captureArmed = captureCode != null && captureCode === code; // 이 차트(포커스 종목)가 무장 대상일 때만
     const [view, setView] = useState<ChartView>("both");
     const [showMarkers, setShowMarkers] = useState(true);
@@ -85,8 +86,13 @@ export function RealtimeChartPanel(): JSX.Element {
         }
         return out;
     }, [wl.data, code, showAlarmLines]);
-    const dailyLines = useMemo(() => [...dLines, ...alarmLines], [dLines, alarmLines]);
-    const minuteLines = useMemo(() => [...resolvedLines, ...alarmLines], [resolvedLines, alarmLines]);
+    // 편집 중 draft 가격선(미리보기) — 이 종목 편집 중일 때만. 저장 선과 같은 빨강 화살표.
+    const draftRenderLines = useMemo<RenderLine[]>(() => {
+        if (!showAlarmLines || draftLines?.code !== code) return [];
+        return draftLines.lines.map((l, i) => ({ id: `draft-${i}`, price: l.price, kind: "A", label: l.up ? "↑" : "↓" }));
+    }, [draftLines, code, showAlarmLines]);
+    const dailyLines = useMemo(() => [...dLines, ...alarmLines, ...draftRenderLines], [dLines, alarmLines, draftRenderLines]);
+    const minuteLines = useMemo(() => [...resolvedLines, ...alarmLines, ...draftRenderLines], [resolvedLines, alarmLines, draftRenderLines]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>

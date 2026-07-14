@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { fmtEok } from "../../lib/format.js";
@@ -16,7 +16,8 @@ export function StockRow({
     onPick,
     boundary,
     home,
-    rankSlot,
+    selectedTheme,
+    onThemeClick,
 }: {
     s: BoardStock;
     rank: number | null; // null = 순위 미표시(개별/미분류)
@@ -24,7 +25,8 @@ export function StockRow({
     onPick: (code: string) => void;
     boundary?: boolean;
     home?: string; // 카드 테마(칩에서 제외). 개별/미분류는 undefined → 전체 테마 칩.
-    rankSlot?: ReactNode; // 이름 옆 추가 슬롯(실시간 모니터링의 테마 순위 칩 등). 보드는 미사용.
+    selectedTheme?: string; // 강조할 테마 칩(실시간 모니터링: 어느 테마 순위를 등수로 보여줄지)
+    onThemeClick?: (theme: string) => void; // 테마 칩 클릭(보드 미사용) — 순위 표시 테마 선택
 }): JSX.Element {
     const up = s.changeRate >= 0;
     const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
@@ -82,7 +84,6 @@ export function StockRow({
                 >
                     {s.name}
                 </span>
-                {rankSlot}
                 {/* 필터 칩 ON: 제외 사유 태그 먼저 + 테마 칩 뒤(폭 좁으면 뒤부터 잘림). OFF(기본): 테마 칩만. */}
                 {((showReasons && s.excludedBy) || chips.length > 0) && (
                     <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>
@@ -92,11 +93,19 @@ export function StockRow({
                                     {r}
                                 </span>
                             ))}
-                        {chips.map((t) => (
-                            <span key={`t-${t}`} style={{ flexShrink: 0, fontSize: 9, color: "var(--text-tertiary)", background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
-                                {t}
-                            </span>
-                        ))}
+                        {chips.map((t) => {
+                            const sel = t === selectedTheme;
+                            return (
+                                <span
+                                    key={`t-${t}`}
+                                    onClick={onThemeClick ? (e) => { e.preventDefault(); e.stopPropagation(); onThemeClick(t); } : undefined}
+                                    title={onThemeClick ? `${t} 순위 보기` : undefined}
+                                    style={{ flexShrink: 0, fontSize: 9, color: sel ? "var(--accent-hover)" : "var(--text-tertiary)", background: sel ? "var(--accent-soft)" : "var(--bg-tertiary)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap", cursor: onThemeClick ? "pointer" : undefined, fontWeight: sel ? 700 : 400 }}
+                                >
+                                    {t}
+                                </span>
+                            );
+                        })}
                     </span>
                 )}
             </span>

@@ -36,6 +36,7 @@ export function WatchlistPanel(): JSX.Element {
     const [codeInput, setCodeInput] = useState("");
     const [ruleFormCode, setRuleFormCode] = useState<string | null>(null); // 조건 추가 폼이 열린 종목
     const [rankMarket, setRankMarket] = useState<AlertMarket>("un"); // 순위 표시 기준 시장
+    const [rankThemeByCode, setRankThemeByCode] = useState<Record<string, string>>({}); // 종목별 순위 표시 테마(칩 클릭 선택)
 
     const view = useQuery({ queryKey: WATCHLIST_KEY, queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: 5_000 });
     const invalidate = (): void => void qc.invalidateQueries({ queryKey: WATCHLIST_KEY });
@@ -107,10 +108,13 @@ export function WatchlistPanel(): JSX.Element {
                 {codes.map((code) => {
                     const s = stockOf.get(code);
                     const rules = rulesByCode.get(code) ?? [];
+                    // 순위 등수 = 선택 테마(칩 클릭, 기본=순위 있는 첫 테마)의 현재 순위. 보드처럼 이름 앞 숫자.
+                    const selTheme = s ? rankThemeByCode[code] ?? s.themes.find((t) => ranks[`${code}|${t}|${rankMarket}`] != null) : undefined;
+                    const selRank = selTheme != null ? ranks[`${code}|${selTheme}|${rankMarket}`] ?? null : null;
                     return (
                         <div key={code} style={{ borderBottom: "1px solid var(--border-default)" }}>
                             {s ? (
-                                <StockRow s={liveToBoardStock(s, market)} rank={null} selected={code === focusCode} onPick={(c) => setCode(c, originId)} rankSlot={<RankChips code={code} themes={s.themes} ranks={ranks} market={rankMarket} />} />
+                                <StockRow s={liveToBoardStock(s, market)} rank={selRank} selectedTheme={selTheme} onThemeClick={(t) => setRankThemeByCode((m) => ({ ...m, [code]: t }))} selected={code === focusCode} onPick={(c) => setCode(c, originId)} />
                             ) : (
                                 <div className="tabular" style={{ padding: "4px 10px", fontSize: 12, color: "var(--text-tertiary)" }}>
                                     {code} — 시세 대기중(다음 틱)
@@ -160,41 +164,6 @@ function miniBtn(color: string): React.CSSProperties {
 
 const sign = (n: number): string => (n >= 0 ? "+" : "");
 const mkLabel = (m: AlertMarket): string => (m === "krx" ? "KRX" : "UN");
-
-/** 종목명 옆 테마 순위 칩 — 기본 대표 1개, 테마 2개 이상이면 +N 으로 펼침(시장은 헤더 토글).
- *  StockRow 버튼 내부라 확장 토글은 span+stopPropagation(행 선택과 분리). */
-function RankChips({ code, themes, ranks, market }: { code: string; themes: string[]; ranks: Record<string, number>; market: AlertMarket }): JSX.Element | null {
-    const [showAll, setShowAll] = useState(false);
-    const ranked = useMemo(
-        () => themes.map((t) => ({ theme: t, rank: ranks[`${code}|${t}|${market}`] })).filter((x): x is { theme: string; rank: number } => typeof x.rank === "number"),
-        [themes, ranks, code, market],
-    );
-    if (ranked.length === 0) return null;
-    const shown = showAll ? ranked : ranked.slice(0, 1);
-    return (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-            {shown.map((r) => (
-                <span key={r.theme} className="tabular" style={{ display: "inline-flex", gap: 3, alignItems: "center", fontSize: 10, background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 5px", whiteSpace: "nowrap", color: "var(--text-tertiary)" }}>
-                    {r.theme}
-                    <b style={{ color: r.rank <= 3 ? "var(--accent-primary)" : "var(--text-secondary)" }}>{r.rank}</b>
-                </span>
-            ))}
-            {ranked.length > 1 && (
-                <span
-                    onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setShowAll((v) => !v);
-                    }}
-                    title={showAll ? "접기" : "테마 순위 더 보기"}
-                    style={{ fontSize: 10, fontWeight: 700, cursor: "pointer", color: "var(--accent-primary)", flexShrink: 0 }}
-                >
-                    {showAll ? "−" : `+${ranked.length - 1}`}
-                </span>
-            )}
-        </span>
-    );
-}
 
 /** leaf 한 개 → 짧은 텍스트. */
 function leafText(l: AlertLeaf): string {
@@ -275,6 +244,7 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     const disarm = useWorkbench((s) => s.disarmAlertCapture);
     const setLiveCode = useWorkbench((s) => s.setLiveCode);
     const captured = useWorkbench((s) => s.alertCapturedPrice);
+    const setAlertDraftLines = useWorkbench((s) => s.setAlertDraftLines);
     const originId = useId();
     const seenSeqRef = useRef<number>(-1);
 
@@ -290,6 +260,17 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
         seenSeqRef.current = seq;
         setLeaves((ls) => ls.map((x, j) => (j !== activePrice || x.kind !== "price" ? x : { ...x, value: String(Math.round(captured.price)) })));
     }, [captured, activePrice]);
+
+    // 편집 중인 가격 leaf 를 실시간 차트에 미리보기 선으로 발행(클릭하면 바로 선이 보이게). 폼 닫히면 제거.
+    useEffect(() => {
+        const lines = leaves.flatMap((l) => {
+            if (l.kind !== "price") return [];
+            const p = Number(l.value);
+            return Number.isFinite(p) && p > 0 ? [{ price: p, up: l.op === "gte" }] : [];
+        });
+        setAlertDraftLines({ code, lines });
+    }, [leaves, code, setAlertDraftLines]);
+    useEffect(() => () => setAlertDraftLines(null), [setAlertDraftLines]);
 
     const armPrice = (i: number): void => {
         setActivePrice(i);
@@ -369,7 +350,7 @@ function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = 
     onFocusPrice?: () => void;
 }): JSX.Element {
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: 6, background: "var(--bg-secondary)", border: `1px solid ${active ? "var(--accent-primary)" : "var(--border-subtle)"}`, borderRadius: 5 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: 6, background: active ? "var(--accent-soft)" : "var(--bg-secondary)", border: `1px solid ${active ? "var(--accent-primary)" : "var(--border-subtle)"}`, borderRadius: 5 }}>
             <Toggle label={leaf.kind === "price" ? "가격" : "순위"} onClick={() => onKind(leaf.kind === "price" ? "rank" : "price")} title="조건 종류(가격/순위) 전환" />
             {leaf.kind === "price" && (
                 <>
@@ -384,7 +365,7 @@ function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = 
                         title="절대가격(원) — 포커스 후 실시간 차트(일봉·분봉) 좌클릭으로 입력"
                     />
                     <span style={{ color: "var(--text-tertiary)" }}>원</span>
-                    {active && <span style={{ fontSize: 11, color: "var(--accent-primary)", flexShrink: 0 }}>← 차트 클릭</span>}
+                    {active && <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "var(--accent-primary)", borderRadius: 4, padding: "1px 8px", flexShrink: 0, whiteSpace: "nowrap" }}>🎯 차트 클릭</span>}
                 </>
             )}
             {leaf.kind === "rank" && (

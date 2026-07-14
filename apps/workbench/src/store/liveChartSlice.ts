@@ -21,6 +21,10 @@ export interface LiveChartSlice {
     armAlertCapture: (code: string) => void;
     disarmAlertCapture: () => void;
     deliverAlertPrice: (price: number) => void;
+
+    // 편집 중인 조건의 draft 가격선 — 실시간 차트가 즉시 미리보기(클릭하면 바로 선이 보이게). code 매칭 시만.
+    alertDraftLines: { code: string; lines: { price: number; up: boolean }[] } | null;
+    setAlertDraftLines: (v: { code: string; lines: { price: number; up: boolean }[] } | null) => void;
 }
 
 export const createLiveChartSlice: StateCreator<WorkbenchState, [], [], LiveChartSlice> = (set) => ({
@@ -44,4 +48,7 @@ export const createLiveChartSlice: StateCreator<WorkbenchState, [], [], LiveChar
     armAlertCapture: (code) => set({ alertCaptureCode: code }),
     disarmAlertCapture: () => set({ alertCaptureCode: null }),
     deliverAlertPrice: (price) => set((s) => ({ alertCapturedPrice: { seq: (s.alertCapturedPrice?.seq ?? 0) + 1, price } })),
+
+    alertDraftLines: null,
+    setAlertDraftLines: (v) => set({ alertDraftLines: v }),
 });
