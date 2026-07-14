@@ -204,13 +204,13 @@ function FilterChip({ gi, leaf, label, isUnknown, onToggleNegate, onRemove }: { 
             style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 3,
+                gap: 4,
                 maxWidth: 220,
                 cursor: "pointer",
                 fontSize: 12,
                 lineHeight: "18px",
-                padding: "1px 4px 1px 4px",
-                borderRadius: 4,
+                padding: "2px 8px",
+                borderRadius: 14,
                 background: leaf.negated ? "rgba(239,68,68,0.12)" : "var(--bg-tertiary)",
                 color: leaf.negated ? "var(--rise)" : isUnknown ? "var(--text-tertiary)" : "var(--text-primary)",
                 transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
@@ -240,8 +240,8 @@ function GroupBox({ gi, horizontal, onRemoveGroup, children }: { gi: number; hor
             ref={setNodeRef}
             style={{
                 position: "relative",
-                border: `1px solid ${isOver ? "var(--accent-primary)" : "var(--border-default)"}`,
-                borderRadius: 6,
+                border: `0.5px solid ${isOver ? "var(--accent-primary)" : "var(--border-default)"}`,
+                borderRadius: 8,
                 padding: "8px 8px",
                 background: isOver ? "var(--accent-soft)" : "var(--bg-secondary)",
                 minWidth: horizontal ? 130 : undefined,

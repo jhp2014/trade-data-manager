@@ -78,11 +78,10 @@ function FilterPanel({
                                     const def = boardPredicateDef(p.kind);
                                     return (
                                         <div key={pi} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                            {pi > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>AND</span>}
                                             <select
                                                 value={p.kind}
                                                 onChange={(e) => actions.setPredicateKind(gi, pi, e.target.value)}
-                                                style={{ border: "1px solid var(--border-default)", borderRadius: 5, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "3px 5px", font: "inherit", fontSize: 12 }}
+                                                style={{ border: "none", borderRadius: 4, background: "var(--bg-tertiary)", color: "var(--text-primary)", padding: "2px 4px", font: "inherit", fontSize: 12, fontWeight: 500 }}
                                             >
                                                 {predicates.map((d) => (
                                                     <option key={d.kind} value={d.kind}>{d.title}</option>
@@ -96,14 +95,14 @@ function FilterPanel({
                                                         <select
                                                             value={p.params[ps.key] ?? ps.def}
                                                             onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))}
-                                                            style={{ border: "1px solid var(--border-default)", borderRadius: 5, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "2px 4px", font: "inherit", fontSize: 11 }}
+                                                            style={{ border: "none", borderRadius: 4, background: "var(--bg-tertiary)", color: "var(--text-primary)", padding: "2px 4px", font: "inherit", fontSize: 11 }}
                                                         >
                                                             {ps.options.map((label, idx) => (
                                                                 <option key={idx} value={idx}>{label}</option>
                                                             ))}
                                                         </select>
                                                     ) : (
-                                                        <NumberField value={p.params[ps.key]} min={ps.min} step={ps.step} onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))} style={{ width: 52 }} />
+                                                        <NumberField value={p.params[ps.key]} min={ps.min} step={ps.step} onChange={(e) => actions.setPredicateParam(gi, pi, ps.key, Number(e.target.value))} style={{ width: 46, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, textAlign: "center" }} />
                                                     )}
                                                 </span>
                                             ))}

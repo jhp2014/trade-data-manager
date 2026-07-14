@@ -53,11 +53,11 @@ export function BoardHeader({ dotColor, label, count, mode, setMode, onRefresh, 
     onMarketToggle?: () => void;
 }): JSX.Element {
     return (
-        <div style={{ padding: "3px 10px", fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+        <div style={{ padding: "3px 10px", fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0, overflow: "hidden" }}>
             <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 999, background: dotColor, flexShrink: 0 }} />
-            <span style={{ color: dotColor }}>{label}</span>
-            <span className="tabular">{count}종목</span>
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: dotColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{label}</span>
+            <span className="tabular" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{count}종목</span>
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 {market && onMarketToggle && (
                     <button style={{ ...txtBtn(true, "var(--accent-primary)"), minWidth: 26, textAlign: "center" }} onClick={onMarketToggle} title={`기준 시장 전환 (현재 ${market.toUpperCase()} 전일종가 기준 %)`}>
                         {market.toUpperCase()}
