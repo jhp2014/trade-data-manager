@@ -82,7 +82,7 @@ export function HypothesisFilterPanel(): JSX.Element {
             saveJson(ORIENT_KEY, next);
             return next;
         });
-    const wheelRef = useHorizontalWheel<HTMLDivElement>(); // 가로모드 스트립 — 휠=가로 스크롤
+    const wheelRef = useHorizontalWheel<HTMLDivElement>(horizontal); // 가로모드 스트립 — 휠=가로 스크롤(토글 시 재부착)
 
     const menuPos: React.CSSProperties = { top: "100%", left: 0, marginTop: 4 };
 
