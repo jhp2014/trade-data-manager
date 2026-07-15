@@ -12,7 +12,7 @@ import {
     type UTCTimestamp,
 } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
-import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
+import { baseChartOptions, useChartShell, useCrosshairTooltip, isModifiedClick, type ChartClickParam } from "./chartShell.js";
 import { VertLines, asPrimitive } from "./vertLine.js";
 import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "../lib/derive.js";
@@ -42,6 +42,7 @@ function fmtDailyCrosshair(time: Time): string {
 
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
+// 봉 ctrl+클릭 또는 더블클릭 = 그 날짜로 검색(맨 좌클릭은 팬 몫).
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
 // pctBase(검색일 전일종가)가 있으면 크로스헤어 y-위치를 % 로 툴팁에 표시 + showGuide 시 +30%(상한가) 가이드선.
 export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, onPickPrice, capturePriceArmed = false, searchDate, pctBase, showGuide = false }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; onPickPrice?: (price: number) => void; capturePriceArmed?: boolean; searchDate?: string; pctBase?: number | null; showGuide?: boolean }): JSX.Element {
@@ -171,9 +172,13 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
             hoveredTimeRef.current = typeof param.time === "string" ? param.time : null;
         };
         chart.subscribeCrosshairMove(onMove);
+        // 봉 → 그 날짜로 검색 모드. param.time = 일봉 날짜 문자열(빈 영역이면 undefined).
+        const searchAt = (param: ChartClickParam): void => {
+            if (typeof param.time === "string") onCandleClickRef.current?.(param.time);
+        };
         // 무장(가격 leaf 편집 중) 시 좌클릭 = 그 y좌표 가격을 캡처(캔들 pane0만) — 날짜검색 억제.
-        // 아니면 봉 좌클릭 = 그 날짜로 검색 모드. param.time = 일봉 날짜 문자열(빈 영역이면 undefined).
-        const onClick = (param: { time?: unknown; point?: { x: number; y: number }; paneIndex?: number }): void => {
+        // 아니면 ctrl+클릭만 날짜검색(맨 좌클릭은 팬 몫).
+        const onClick = (param: ChartClickParam): void => {
             if (armedRef.current) {
                 if (onPickPriceRef.current && param.point && (param.paneIndex ?? 0) === 0) {
                     const price = candleRef.current?.coordinateToPrice(param.point.y);
@@ -181,9 +186,14 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
                 }
                 return; // 무장 중엔 클릭이 캡처 전용
             }
-            if (typeof param.time === "string") onCandleClickRef.current?.(param.time);
+            if (isModifiedClick(param)) searchAt(param);
+        };
+        // 더블클릭 = ctrl+클릭과 동등. 무장 중엔 캡처가 클릭을 독점하므로 날짜검색으로 새지 않게 막는다.
+        const onDblClick = (param: ChartClickParam): void => {
+            if (!armedRef.current) searchAt(param);
         };
         chart.subscribeClick(onClick);
+        chart.subscribeDblClick(onDblClick);
         const onCtx = (e: MouseEvent): void => {
             e.preventDefault();
             const candle = candleRef.current;
@@ -207,6 +217,7 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
         return () => {
             chart.unsubscribeCrosshairMove(onMove);
             chart.unsubscribeClick(onClick);
+            chart.unsubscribeDblClick(onDblClick);
             el.removeEventListener("contextmenu", onCtx);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps

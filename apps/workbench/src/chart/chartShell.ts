@@ -32,6 +32,24 @@ export function baseChartOptions(): DeepPartial<ChartOptions> {
     };
 }
 
+/** 차트 클릭 파라미터 — MouseEventParams 중 이 앱이 실제로 읽는 필드만. */
+export type ChartClickParam = {
+    time?: unknown;
+    point?: { x: number; y: number };
+    paneIndex?: number;
+    sourceEvent?: { ctrlKey: boolean; metaKey: boolean };
+};
+
+/**
+ * 수식(ctrl, 맥은 ⌘) 클릭 여부. 맨 좌클릭은 팬/크로스헤어 몫으로 비워두고, 상태를 바꾸는
+ * 클릭(일봉 날짜검색·분봉 타점이동)은 ctrl+클릭 또는 더블클릭만 받는다.
+ * sourceEvent 는 마우스/터치가 아닌 이벤트에선 없음 → 없으면 맨클릭 취급.
+ */
+export function isModifiedClick(param: ChartClickParam): boolean {
+    const e = param.sourceEvent;
+    return e != null && (e.ctrlKey || e.metaKey);
+}
+
 /** createChart + ResizeObserver + 정리. 실행 직후 useEffect 에서 chartRef.current 보장. */
 export function useChartShell(
     containerRef: RefObject<HTMLDivElement | null>,

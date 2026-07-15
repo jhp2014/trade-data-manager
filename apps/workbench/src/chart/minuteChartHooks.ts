@@ -16,6 +16,7 @@ import {
     type UTCTimestamp,
 } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, AMOUNT_BUCKET_COLORS } from "./chartUtils.js";
+import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { kstToUnix, type MinutePoint } from "../lib/derive.js";
@@ -313,7 +314,13 @@ export function useMinuteInteraction(args: {
             hoveredTimeRef.current = typeof param.time === "number" ? param.time : null;
         };
         chart.subscribeCrosshairMove(onMove);
-        const onClick = (param: { time?: unknown; point?: { x: number; y: number }; paneIndex?: number }): void => {
+        // 분봉 → 그 시각으로 타점 이동.
+        const moveTo = (param: ChartClickParam): void => {
+            const t = typeof param.time === "number" ? param.time : null;
+            const p = t != null ? pointMapRef.current.get(t) : null;
+            if (p) onMovePointRef.current(p.tradeTime);
+        };
+        const onClick = (param: ChartClickParam): void => {
             if (armedRef.current) {
                 // 무장(가격 leaf 편집 중) 시 좌클릭 = y좌표 % → 가격 캡처(캔들 pane0만). 타점 이동 억제.
                 const b = baseRef.current;
@@ -323,11 +330,14 @@ export function useMinuteInteraction(args: {
                 }
                 return;
             }
-            const t = typeof param.time === "number" ? param.time : null;
-            const p = t != null ? pointMapRef.current.get(t) : null;
-            if (p) onMovePointRef.current(p.tradeTime);
+            if (isModifiedClick(param)) moveTo(param); // 맨 좌클릭은 팬 몫
+        };
+        // 더블클릭 = ctrl+클릭과 동등. 무장 중엔 캡처가 클릭을 독점하므로 타점 이동으로 새지 않게 막는다.
+        const onDblClick = (param: ChartClickParam): void => {
+            if (!armedRef.current) moveTo(param);
         };
         chart.subscribeClick(onClick);
+        chart.subscribeDblClick(onDblClick);
         const onCtx = (e: MouseEvent): void => {
             e.preventDefault();
             const candle = candleRef.current;
@@ -353,6 +363,7 @@ export function useMinuteInteraction(args: {
         return () => {
             chart.unsubscribeCrosshairMove(onMove);
             chart.unsubscribeClick(onClick);
+            chart.unsubscribeDblClick(onDblClick);
             el.removeEventListener("contextmenu", onCtx);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
