@@ -12,10 +12,15 @@ import { buildAlertMessages } from "./format.js";
 const TTL_MS = 10 * 60_000; // 이보다 늦으면 폐기(소음 방지)
 const BACKOFF_MS = [5_000, 30_000, 120_000, 300_000]; // 연속실패 1·2·3·4회+ 후 대기
 
-type Entry = { kind: "firings"; firings: AlertFiring[]; firstAt: number } | { kind: "text"; text: string; firstAt: number };
+/** 메시지 우선순위 — ntfy 값 그대로(다른 전송로는 무시). 발화=high / 헬스🚨=urgent(무음 뚫기) / 하트비트·요약=min(무음). */
+export type NotifyPriority = "min" | "low" | "default" | "high" | "urgent";
+
+type Entry =
+    | { kind: "firings"; firings: AlertFiring[]; firstAt: number; priority: NotifyPriority }
+    | { kind: "text"; text: string; firstAt: number; priority: NotifyPriority };
 
 export interface NotifyTransport {
-    sendText(text: string): Promise<void>;
+    sendText(text: string, opts?: { priority?: NotifyPriority }): Promise<void>;
 }
 
 export interface QueueStats {
@@ -43,15 +48,15 @@ export class NotifyQueue {
         private readonly onSendError: (err: unknown) => void = () => {},
     ) {}
 
-    /** 발화 배치 적재 — 배달 시점에 포맷(지연 표기 반영). */
+    /** 발화 배치 적재 — 배달 시점에 포맷(지연 표기 반영). 발화는 high(일반 알림음). */
     push(firings: readonly AlertFiring[], now: number): void {
         this.enqueuedFirings += firings.length;
-        this.q.push({ kind: "firings", firings: [...firings], firstAt: now });
+        this.q.push({ kind: "firings", firings: [...firings], firstAt: now, priority: "high" });
     }
 
-    /** 헬스/하트비트 등 텍스트 1건 적재. */
-    pushText(text: string, now: number): void {
-        this.q.push({ kind: "text", text, firstAt: now });
+    /** 헬스/하트비트 등 텍스트 1건 적재 — 우선순위는 호출자가 지정(🚨=urgent / 하트비트=min). */
+    pushText(text: string, now: number, priority: NotifyPriority = "default"): void {
+        this.q.push({ kind: "text", text, firstAt: now, priority });
     }
 
     /** 한 사이클 — TTL 폐기 → (백오프 창 밖이면) 오래된 것부터 순차 전송. 실패 시 큐 백오프 걸고 중단. */
@@ -75,7 +80,7 @@ export class NotifyQueue {
             while (this.q.length > 0) {
                 const e = this.q[0];
                 const texts = e.kind === "text" ? [e.text] : buildAlertMessages(e.firings, now);
-                for (const t of texts) await this.transport.sendText(t);
+                for (const t of texts) await this.transport.sendText(t, { priority: e.priority });
                 this.q.shift();
                 this.consecutiveFailures = 0;
                 this.lastOkAt = now;

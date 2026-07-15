@@ -12,19 +12,24 @@ const emptyStats = (): QueueStats => ({ pending: 0, consecutiveFailures: 0, last
 function make(heartbeat = true): {
     state: { tickAt: number | null; ws: string; q: QueueStats; rules: number };
     notes: string[];
+    prios: string[];
     mon: HealthMonitor;
 } {
     const state = { tickAt: null as number | null, ws: "live", q: emptyStats(), rules: 2 };
     const notes: string[] = [];
+    const prios: string[] = [];
     const deps: HealthDeps = {
         lastTickAt: () => state.tickAt,
         wsStatus: () => state.ws,
         queueStats: () => state.q,
         ruleCount: () => state.rules,
-        notify: (text) => notes.push(text),
+        notify: (text, _now, priority) => {
+            notes.push(text);
+            prios.push(priority);
+        },
     };
     const mon = new HealthMonitor(deps, { windowStartMin: 8 * 60, windowEndMin: 15 * 60 + 40, heartbeat });
-    return { state, notes, mon };
+    return { state, notes, prios, mon };
 }
 
 describe("parseWindow", () => {
@@ -38,11 +43,12 @@ describe("parseWindow", () => {
 });
 
 describe("HealthMonitor", () => {
-    it("창 진입 첫 판정 = 아침 하트비트 1건(정상), 같은 날 반복 없음", () => {
-        const { state, notes, mon } = make();
+    it("창 진입 첫 판정 = 아침 하트비트 1건(정상·min 무음), 같은 날 반복 없음", () => {
+        const { state, notes, prios, mon } = make();
         state.tickAt = kst(WED, 8, 0);
         mon.check(kst(WED, 8, 0));
         expect(notes).toEqual(["✅ 알람 시스템 정상 — 조건 2개 감시 중"]);
+        expect(prios).toEqual(["min"]);
         state.tickAt = kst(WED, 9, 0);
         mon.check(kst(WED, 9, 0));
         expect(notes).toHaveLength(1); // 하트비트 하루 1건
@@ -56,8 +62,8 @@ describe("HealthMonitor", () => {
         expect(notes[0]).toContain("엔진 틱 없음");
     });
 
-    it("엣지 알림 — 정상→이상 1회 🚨, 유지 침묵, 회복 1회 ✅", () => {
-        const { state, notes, mon } = make();
+    it("엣지 알림 — 정상→이상 1회 🚨(urgent), 유지 침묵, 회복 1회 ✅(default)", () => {
+        const { state, notes, prios, mon } = make();
         state.tickAt = kst(WED, 9, 0);
         mon.check(kst(WED, 9, 0)); // 하트비트(정상 기준선)
         state.tickAt = kst(WED, 9, 0); // 이후 틱 멈춤
@@ -66,10 +72,12 @@ describe("HealthMonitor", () => {
         expect(notes).toHaveLength(2);
         expect(notes[1]).toContain("🚨");
         expect(notes[1]).toContain("틱 4분 중단");
+        expect(prios[1]).toBe("urgent");
         state.tickAt = kst(WED, 9, 6); // 회복
         mon.check(kst(WED, 9, 6));
         expect(notes).toHaveLength(3);
         expect(notes[2]).toContain("✅ 알람 시스템 회복");
+        expect(prios[2]).toBe("default");
     });
 
     it("전송 연속실패 4회+ 도 이상으로 판정", () => {

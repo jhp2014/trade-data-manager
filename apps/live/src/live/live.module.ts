@@ -101,7 +101,7 @@ const healthProvider: Provider = {
                 wsStatus: () => engine.connectionStatus,
                 queueStats: () => queue.stats(),
                 ruleCount: () => config.rules.length,
-                notify: (text, now) => queue.pushText(text, now),
+                notify: (text, now, priority) => queue.pushText(text, now, priority),
             },
             { windowStartMin: win.start, windowEndMin: win.end, heartbeat: process.env.LIVE_HEARTBEAT !== "0" },
         );

@@ -93,6 +93,21 @@ describe("NotifyQueue", () => {
         expect(sent).toEqual(["✅ 알람 시스템 정상"]);
     });
 
+    it("우선순위 전달 — 발화=high, pushText 기본 default·지정값 유지", async () => {
+        const got: Array<string | undefined> = [];
+        const q = new NotifyQueue({
+            sendText: async (_t, opts) => {
+                got.push(opts?.priority);
+            },
+        });
+        q.push([firing("005930", 0)], 0);
+        q.pushText("회복", 0);
+        q.pushText("🚨 이상", 0, "urgent");
+        q.pushText("하트비트", 0, "min");
+        await q.tick(1_000);
+        expect(got).toEqual(["high", "default", "urgent", "min"]);
+    });
+
     it("전송로 없음(null) — 큐만 비우고 조용히(로그는 sink 소관)", async () => {
         const q = new NotifyQueue(null);
         q.push([firing("005930", 0)], 0);

@@ -26,7 +26,7 @@ for (const text of buildAlertMessages(
     ],
     now,
 )) {
-    await made.notifier.sendText(text);
+    await made.notifier.sendText(text, { priority: "high" });
 }
 await made.notifier.close?.();
 console.log("✅ 전송 완료 — 채널을 확인하세요");

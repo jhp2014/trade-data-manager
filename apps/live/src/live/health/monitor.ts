@@ -8,7 +8,7 @@
 //  · 외부 데드맨 핑 게이트: 창 안=완전 건강할 때만 true(핑 부재→healthchecks 알림, 텔레그램 죽음도 부재로 감지),
 //    창 밖=프로세스 생존이면 true(심야 점검 오탐 방지).
 // 시계는 check(now) 주입 — 런타임은 인터벌이 Date.now() 로 호출, 테스트는 가짜 시각.
-import type { QueueStats } from "../alerts/notifyQueue.js";
+import type { NotifyPriority, QueueStats } from "../alerts/notifyQueue.js";
 import { kstTime } from "../alerts/format.js";
 
 const TICK_STALE_MS = 180_000; // 틱 3분 중단 = 이상(폴 주기 5초 대비 넉넉)
@@ -20,7 +20,8 @@ export interface HealthDeps {
     wsStatus(): string; // "live" 외 = 끊김/재연결 중
     queueStats(): QueueStats;
     ruleCount(): number; // 하트비트 표시용
-    notify(text: string, now: number): void; // 알림 적재(NotifyQueue.pushText)
+    /** 알림 적재(NotifyQueue.pushText) — priority: 🚨=urgent(무음 뚫기) / 회복=default / 하트비트·요약=min(무음). */
+    notify(text: string, now: number, priority: NotifyPriority): void;
 }
 
 export interface HealthConfig {
@@ -107,6 +108,7 @@ export class HealthMonitor {
                         ? `✅ 알람 시스템 정상 — 조건 ${this.deps.ruleCount()}개 감시 중`
                         : `🚨 장 시작 — 알람 시스템 이상\n${snap.reasons.join("\n")}`,
                     now,
+                    snap.healthy ? "min" : "urgent",
                 );
                 this.prevHealthy = snap.healthy;
                 return;
@@ -115,10 +117,10 @@ export class HealthMonitor {
             if (this.prevHealthy == null) {
                 this.prevHealthy = snap.healthy;
             } else if (this.prevHealthy && !snap.healthy) {
-                this.deps.notify(`🚨 알람 시스템 이상 — 발화가 누락될 수 있음\n${snap.reasons.join("\n")}`, now);
+                this.deps.notify(`🚨 알람 시스템 이상 — 발화가 누락될 수 있음\n${snap.reasons.join("\n")}`, now, "urgent");
                 this.prevHealthy = false;
             } else if (!this.prevHealthy && snap.healthy) {
-                this.deps.notify("✅ 알람 시스템 회복 — 감시 재개", now);
+                this.deps.notify("✅ 알람 시스템 회복 — 감시 재개", now, "default");
                 this.prevHealthy = true;
             }
             return;
@@ -133,7 +135,7 @@ export class HealthMonitor {
             const q = this.deps.queueStats();
             const fired = q.enqueuedFirings - this.openStats.enqueued;
             const dropped = q.droppedEntries - this.openStats.dropped;
-            this.deps.notify(`📊 장마감 — 알람 ${fired}건 발화${dropped > 0 ? ` · 전송실패 폐기 ${dropped}건` : ""}`, now);
+            this.deps.notify(`📊 장마감 — 알람 ${fired}건 발화${dropped > 0 ? ` · 전송실패 폐기 ${dropped}건` : ""}`, now, "min");
         }
     }
 }
