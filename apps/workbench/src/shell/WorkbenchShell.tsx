@@ -27,13 +27,13 @@ import { PANEL_CATALOG, planeOf, type PanelEntry } from "./panelCatalog.js";
 // dockview 도킹 셸 — 패널을 컴포넌트 맵으로 등록한다(탭·분할·플로팅·persist 는 셸이 제공).
 // 레이아웃 JSON persist·기존앱 흡수는 후속.
 const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
-    themeBoard: () => <ThemeBoardPanel />,
-    liveBoard: () => <LiveBoardPanel />,
-    liveChart: () => <RealtimeChartPanel />,
+    themeBoard: (props) => <ThemeBoardPanel panelId={props.api.id} />,
+    liveBoard: (props) => <LiveBoardPanel panelId={props.api.id} />,
+    liveChart: (props) => <RealtimeChartPanel panelId={props.api.id} />,
     boardFilter: () => <BoardFilterPanel />,
     replayFilter: () => <ReplayFilterPanel />,
     liveFilter: () => <LiveFilterPanel />,
-    replayBoard: () => <ReplayBoardPanel />,
+    replayBoard: (props) => <ReplayBoardPanel panelId={props.api.id} />,
     workset: () => <WorksetPanel />,
     hypothesis: () => <HypothesisPanel />,
     hypothesisGraph: () => <HypothesisGraphPanel />,

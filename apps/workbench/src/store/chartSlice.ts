@@ -17,11 +17,11 @@ export interface ChartSettings {
 export interface ChartSlice {
     // f 줌(일봉+분봉 전역). anchor=줌 시작 시각 unix초(분봉 중심), null=미줌. 두 차트 패널이 함께 구독 → 같이 확대/축소.
     chartZoom: { anchor: number | null } | null;
-    chartViews: Record<string, ChartView>; // 패널별 뷰(일봉만/분봉만/둘다). localStorage 영속 — 화면 전환에도 유지. 미저장 = 기본(chart-1 일봉·chart-2 분봉).
+    chartViews: Record<string, ChartView>; // 패널별 뷰(일봉만/분봉만/일봉+분봉). localStorage 영속 — 화면 전환에도 유지. 미저장 = 기본(chart-1 일봉·chart-2 분봉).
     chartPriceMode: ChartPriceMode; // 뷰 설정(축 아님) — 분봉 % 기준 시장
     chartSettings: ChartSettings;
     setChartPriceMode: (mode: ChartPriceMode) => void;
-    setChartView: (panelId: string, view: ChartView) => void; // 패널별 일봉/분봉/둘다 (영속)
+    setChartView: (panelId: string, view: ChartView) => void; // 패널별 일봉/분봉/일봉+분봉 (영속)
     toggleChartZoom: () => void; // f — 현재 시각 중심 확대 ↔ 축소(전역, 두 차트 동시)
     setChartSettings: (patch: Partial<ChartSettings>) => void;
 }

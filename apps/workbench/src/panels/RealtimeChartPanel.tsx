@@ -9,14 +9,15 @@ import { useStockName } from "../lib/useStockName.js";
 import { StockNameCopy } from "../components/StockNameCopy.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
-import { TextToggle, IconToggle, Dot, PaneLabel, EyeIcon, Center } from "./ChartPanelChrome.js";
+import { MarkerGroup, PaneLabel, Center } from "./ChartPanelChrome.js";
+import { TextToggle, Dot, Sep, ControlGroup, ControlBar } from "../components/ControlChrome.js";
 import type { RenderLine } from "../api/priceLines.js";
 
 // 실시간 차트(실시간 플레인, 실시간 버스) — apps/live 에서 REST 로 ChartBundle 을 받아 렌더.
-// 일봉=기준일(오늘) 앵커, 분봉=검색날짜(일봉 봉 클릭 드리프트, ↺ 복귀). 선/고정 토글. 큐레이션 없음, D/M 선은 메모리(Stage3).
+// 일봉=기준일(오늘) 앵커, 분봉=검색날짜(일봉 봉 ctrl+클릭·더블클릭이 드리프트, ↺ 복귀). 선/고정 토글. 큐레이션 없음, D/M 선은 메모리(Stage3).
 const noop = (): void => {};
 
-export function RealtimeChartPanel(): JSX.Element {
+export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const code = useWorkbench((s) => s.liveFocus.code);
     const anchorDate = useWorkbench((s) => s.liveFocus.date); // 기준일(오늘)
     const search = useWorkbench((s) => s.liveSearch);
@@ -33,6 +34,8 @@ export function RealtimeChartPanel(): JSX.Element {
     const deliverAlertPrice = useWorkbench((s) => s.deliverAlertPrice);
     const draftLines = useWorkbench((s) => s.alertDraftLines); // 편집 중 조건의 draft 가격선(미리보기)
     const captureArmed = captureCode != null && captureCode === code; // 이 차트(포커스 종목)가 무장 대상일 때만
+    const collapsed = useWorkbench((s) => s.panelControlsCollapsed[panelId]) ?? false; // 컨트롤 바 접힘(패널별·영속)
+    const toggleControls = useWorkbench((s) => s.togglePanelControls);
     const [view, setView] = useState<ChartView>("both");
     const [showMarkers, setShowMarkers] = useState(true);
     const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
@@ -52,7 +55,6 @@ export function RealtimeChartPanel(): JSX.Element {
     // 검색일 전일종가(수정주가, mode 시장) — 크로스헤어 위치 %·+30% 가이드선의 base(검색일 고정).
     const pctBase = useMemo(() => (dailyView ? prevCloseAsOf(dailyView, viewDate) : null), [dailyView, viewDate]);
     const expanded: "daily" | "minute" | null = view === "both" ? null : view;
-    const toggleExpand = (which: "daily" | "minute"): void => setView(view === which ? "both" : which);
 
     // 메모리 선 앵커 → 렌더선(로드된 캔들 고가에 해소). anchorTime 있으면 M, 없으면 D.
     const anchors = useMemo(() => liveLines[code] ?? [], [liveLines, code]);
@@ -98,40 +100,44 @@ export function RealtimeChartPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 12, flexShrink: 0 }}>
                 <span style={{ width: 7, height: 7, borderRadius: 999, background: "var(--plane-live)", flexShrink: 0 }} title="실시간 플레인" />
-                <StockNameCopy code={code} name={name} style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }} />
-                <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{fmtDateKo(anchorDate)}</span>
+                <StockNameCopy code={code} name={name} style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)", flexShrink: 0 }} />
+                <span className="tabular" style={{ color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 }}>{fmtDateKo(anchorDate)}</span>
                 {drifted && (
                     <>
-                        <span className="tabular" style={{ color: "#e07b1a", fontWeight: 600 }}>→ {fmtDateKo(viewDate)}</span>
-                        <button onClick={() => setSearch(null)} title="기준일로 복귀" style={{ border: "none", background: "none", color: "#e07b1a", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>↺</button>
+                        <span className="tabular" style={{ color: "#e07b1a", fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>→ {fmtDateKo(viewDate)}</span>
+                        <button onClick={() => setSearch(null)} title="기준일로 복귀" aria-label="기준일로 복귀" style={{ border: "none", background: "none", color: "#e07b1a", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>↺</button>
                     </>
                 )}
-                {!drifted && (dailyQ.isFetching || minuteQ.isFetching) && <span style={{ color: "var(--plane-live)", fontSize: 11, fontWeight: 600 }}>● LIVE</span>}
-                {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
-                {/* 우상단 경량 컨트롤(보드 헤더 계열) — 뷰 · 선/고정 · 마커/시장. */}
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 1 }}>
+                {!drifted && (dailyQ.isFetching || minuteQ.isFetching) && <span style={{ color: "var(--plane-live)", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>● LIVE</span>}
+                {minuteView?.baseFallback && <span style={{ color: "var(--warning)", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
+                {/* 우상단 경량 컨트롤 — 뷰 │ 고정 │ 마커 │ 시장. 통째로 접힘(패널별), 폭 부족 시 가로 휠. */}
+                <ControlBar collapsed={collapsed} onToggle={() => toggleControls(panelId)}>
+                    <ControlGroup gap={1}>
                         <TextToggle active={view === "daily"} onClick={() => setView("daily")} title="일봉만">일봉</TextToggle>
                         <Dot />
                         <TextToggle active={view === "minute"} onClick={() => setView("minute")} title="분봉만">분봉</TextToggle>
                         <Dot />
-                        <TextToggle active={view === "both"} onClick={() => setView("both")} title="둘 다">둘다</TextToggle>
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <TextToggle active={showLine} activeColor="var(--accent-primary)" onClick={() => setShowLine((v) => !v)} title={showLine ? "검색 세로선 숨기기" : "검색 세로선 표시"}>선</TextToggle>
+                        <TextToggle active={view === "both"} onClick={() => setView("both")} title="일봉+분봉 둘 다">일봉+분봉</TextToggle>
+                    </ControlGroup>
+                    <Sep />
+                    <ControlGroup>
                         <TextToggle active={pinMinute} activeColor="var(--accent-primary)" onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</TextToggle>
+                    </ControlGroup>
+                    <Sep />
+                    {/* 마커 — 차트에 얹히는 표시들. 한 덩어리(배경)로 묶고 라벨은 그룹에 1회. */}
+                    <MarkerGroup>
+                        <TextToggle active={showMarkers} activeColor="var(--accent-primary)" onClick={() => setShowMarkers((v) => !v)} title={showMarkers ? "분봉 거래대금 마커 끄기" : "분봉 거래대금 마커 켜기"}>분봉 대금</TextToggle>
+                        <TextToggle active={showLine} activeColor="var(--accent-primary)" onClick={() => setShowLine((v) => !v)} title={showLine ? "검색 날짜 세로선 숨기기" : "검색 날짜 세로선 표시"}>검색 날짜</TextToggle>
                         <TextToggle active={showGuide} activeColor="var(--accent-primary)" onClick={() => setShowGuide((v) => !v)} title={showGuide ? "+30% 가이드선 숨기기" : "+30% 가이드선 표시(검색일 전일종가 기준)"}>30%</TextToggle>
                         <TextToggle active={showAlarmLines} activeColor="#dc2626" onClick={() => setShowAlarmLines((v) => !v)} title={showAlarmLines ? "알람 가격선 숨기기" : "알람 가격선 표시"}>알람선</TextToggle>
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <IconToggle active={showMarkers} onClick={() => setShowMarkers((v) => !v)} title={showMarkers ? "거래대금 마커 끄기" : "거래대금 마커 켜기"}>
-                            <EyeIcon off={!showMarkers} />
-                        </IconToggle>
+                    </MarkerGroup>
+                    <Sep />
+                    <ControlGroup>
                         <TextToggle active activeColor="var(--accent-primary)" onClick={() => setMode(mode === "un" ? "krx" : "un")} title={`클릭: 시장 전환 (현재 ${mode.toUpperCase()})`}>
                             <span style={{ display: "inline-block", minWidth: 28, textAlign: "center" }}>{mode.toUpperCase()}</span>
                         </TextToggle>
-                    </span>
-                </div>
+                    </ControlGroup>
+                </ControlBar>
             </div>
 
             <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
@@ -141,7 +147,7 @@ export function RealtimeChartPanel(): JSX.Element {
                 {dailyView && minuteView && (
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
-                            <div onDoubleClick={() => toggleExpand("daily")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 클릭: 그날 분봉 · 봉 우클릭: 선">
+                            <div style={{ flex: 1, minHeight: 0, position: "relative" }} title="봉 ctrl+클릭 / 더블클릭: 그날 분봉 · 봉 우클릭: 선">
                                 {dailyView.length > 0 ? (
                                     <DailyChart
                                         points={dailyView}
@@ -165,7 +171,7 @@ export function RealtimeChartPanel(): JSX.Element {
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
                         {expanded !== "daily" && (
-                            <div onDoubleClick={() => toggleExpand("minute")} style={{ flex: 1, minHeight: 0, position: "relative" }} title="더블클릭: 이 영역만 / 둘 다 · 봉 우클릭: 선">
+                            <div style={{ flex: 1, minHeight: 0, position: "relative" }} title="봉 우클릭: 선">
                                 <PaneLabel text={fmtDateKo(viewDate)} />
                                 {minuteView.points.length > 0 ? (
                                     <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />

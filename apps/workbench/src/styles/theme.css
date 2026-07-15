@@ -89,6 +89,15 @@ button {
     opacity: 1;
 }
 
+/* 가로 휠 스크롤 영역(차트 컨트롤 바 등) — 스크롤바는 숨기고 휠로만 이동. 폭이 좁으면 잘려 보이는 게 정상. */
+.no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
 /* 새로고침 등 진행 중 회전 표시. */
 @keyframes spin {
     to {

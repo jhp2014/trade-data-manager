@@ -11,7 +11,7 @@ import { FlatStockList } from "../components/board/FlatStockList.js";
 
 // 테마 보드(EOD) — day-summary 일봉 한 방. 상단은 NavRail 만(설정은 전역 모달, 시간/날짜는 전역 툴바).
 // 설정(개별/미분류 표시·필터)은 store.themeBoardSettings 구독.
-export function ThemeBoardPanel(): JSX.Element {
+export function ThemeBoardPanel({ panelId }: { panelId: string }): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
     const code = useWorkbench((s) => s.focus.code);
     const setCode = useWorkbench((s) => s.setCode);
@@ -21,7 +21,7 @@ export function ThemeBoardPanel(): JSX.Element {
     const market = useWorkbench((s) => s.boardMarket.theme);
     const setBoardMarket = useWorkbench((s) => s.setBoardMarket);
     const originId = useId(); // 이 보드의 선택 출처 태그(self/external 구분)
-    const [mode, setMode] = useState<BoardMode>("group"); // 리스트(거래대금순)/테마(그룹)
+    const [mode, setMode] = useState<BoardMode>("group"); // 거래대금순/등락률순 리스트 · 테마(그룹)
 
     const summaryQ = useQuery(daySummaryQuery(date));
     const annotated = useAnnotatedCodes(date);
@@ -33,11 +33,11 @@ export function ThemeBoardPanel(): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardHeader dotColor="var(--plane-eod)" label="장 마감" count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("theme", market === "un" ? "krx" : "un")} />
-            {mode === "flat" ? (
-                <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} empty="종목 없음" />
-            ) : (
+            <BoardHeader panelId={panelId} dotColor="var(--plane-eod)" count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("theme", market === "un" ? "krx" : "un")} />
+            {mode === "group" ? (
                 <BoardLayout key={date} grouped={board.grouped} parents={board.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={board.excludedByFilter} absentLabel="보드 밖" showIndividuals={st.showIndividuals} showUnclassified={st.showUnclassified} />
+            ) : (
+                <FlatStockList stocks={board.stocks} code={code} onPick={(c) => setCode(c, originId)} sort={mode} empty="종목 없음" />
             )}
         </div>
     );

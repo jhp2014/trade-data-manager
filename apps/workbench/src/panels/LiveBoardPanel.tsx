@@ -9,7 +9,7 @@ import { buildLiveBoardViewModel } from "../lib/boardViewModel.js";
 
 // 실시간 테마 보드(광역) — apps/live SSE 구독. 리스트(거래대금순)/테마(그룹) 토글, 흐리게=실시간 필터.
 // 실시간 버스(liveFocus) 구독 — 복기와 독립. 테마 입력(우클릭 배정)은 StockRow 전역모달(→apps/api).
-export function LiveBoardPanel(): JSX.Element {
+export function LiveBoardPanel({ panelId }: { panelId: string }): JSX.Element {
     const { snapshot, error } = useLiveSnapshot();
     const code = useWorkbench((s) => s.liveFocus.code);
     const setCode = useWorkbench((s) => s.setLiveCode);
@@ -18,7 +18,7 @@ export function LiveBoardPanel(): JSX.Element {
     const market = useWorkbench((s) => s.boardMarket.live);
     const setBoardMarket = useWorkbench((s) => s.setBoardMarket);
     const originId = useId();
-    const [mode, setMode] = useState<BoardMode>("flat");
+    const [mode, setMode] = useState<BoardMode>("amount"); // 거래대금순/등락률순 리스트 · 테마(그룹)
     const [refreshing, setRefreshing] = useState(false);
 
     const vm = useMemo(() => (snapshot ? buildLiveBoardViewModel(snapshot.stocks, liveFilter, market) : null), [snapshot, liveFilter, market]);
@@ -40,8 +40,9 @@ export function LiveBoardPanel(): JSX.Element {
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
             <BoardHeader
+                panelId={panelId}
                 dotColor={live ? "var(--rise)" : "var(--text-tertiary)"}
-                label={live ? "실시간" : snapshot.status}
+                label={live ? undefined : snapshot.status} // 정상(실시간)은 빨간 점이 말해줌 — 비정상 상태만 텍스트로
                 count={snapshot.hot}
                 mode={mode}
                 setMode={setMode}
@@ -50,10 +51,10 @@ export function LiveBoardPanel(): JSX.Element {
                 market={market}
                 onMarketToggle={() => setBoardMarket("live", market === "un" ? "krx" : "un")}
             />
-            {mode === "flat" ? (
-                <FlatStockList stocks={vm.stocks} code={code} onPick={(c) => setCode(c, originId)} empty={live ? "조건 편입 종목 없음 (조건 미선택이면 설정>조건검색)" : "엔진 대기중 — 연결 확인"} />
-            ) : (
+            {mode === "group" ? (
                 <BoardLayout grouped={vm.grouped} parents={vm.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={vm.excludedByFilter} absentLabel="스캔 밖" />
+            ) : (
+                <FlatStockList stocks={vm.stocks} code={code} onPick={(c) => setCode(c, originId)} sort={mode} empty={live ? "조건 편입 종목 없음 (조건 미선택이면 설정>조건검색)" : "엔진 대기중 — 연결 확인"} />
             )}
         </div>
     );
