@@ -204,6 +204,13 @@ ssh -i ~/.ssh/tdm-live root@100.74.165.85 "systemctl restart tdm-live && journal
   ```
 - **로컬·서버가 같은 앱키를 공유해도 안전**: 두 증권사 모두 유효기간 내 재발급 시 같은 토큰을 돌려준다
   (KIS 실측 확정, 키움 정황상 유력). 서로의 토큰을 무효화하지 않는다. 자세히는 메모리 `live-vps-ops`.
+  ⚠️ 단 키움은 **아직 정황**이다 — 2026-07-15 밤 캐시 토큰이 `expires_dt` 상 유효한데도 키움이 거부한
+  사례가 있다(아래). 왜 그 키만 옛 토큰에 머물렀는지는 **규명 안 됨** — 이 줄을 근거로 단정하지 말 것.
+- **`LOGIN 실패 (805004) Token이 유효하지 않습니다`** (2026-07-15 실측): WS 는 `primaryToken`=credentials[0]
+  한 키만 쓰는데(REST 는 풀 로테이션) 그 키의 캐시 토큰이 만료 전인데도 키움이 거부 → 캐시는
+  `expires_dt` 만 보므로 서버측 무효를 모른다. **이제 자가치유된다**(main `1662353`: `autoRetryFirstConnect`
+  재시도가 `forceTokenRefresh` 를 격발 → 강제 재발급). 위 캐시 삭제는 **폴백**으로 강등 — 그래도 안 풀리면 쓸 것.
+  키움 캐시 경로는 `infra/kiwoom/.cache/kiwoom-tokens/*.json`(위 예시는 kis).
 
 ---
 
