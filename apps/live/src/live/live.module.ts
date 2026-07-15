@@ -162,7 +162,12 @@ export class LiveModule implements OnModuleInit, OnModuleDestroy {
             this.timers.push(
                 setInterval(() => {
                     if (this.health.shouldPing(Date.now())) {
-                        void fetch(pingUrl).catch((e: unknown) => log.warn(`데드맨 핑 실패: ${e instanceof Error ? e.message : String(e)}`));
+                        // res.ok 검사 필수 — 잘못된 URL(404)이면 fetch 는 성공으로 끝나 조용히 죽는다(이 축이 막으려는 그 실패).
+                        void fetch(pingUrl)
+                            .then((res) => {
+                                if (!res.ok) log.warn(`데드맨 핑 거부(HTTP ${res.status}) — LIVE_HEALTHCHECK_URL 확인`);
+                            })
+                            .catch((e: unknown) => log.warn(`데드맨 핑 실패: ${e instanceof Error ? e.message : String(e)}`));
                     }
                 }, 60_000),
             );
