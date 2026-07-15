@@ -132,6 +132,13 @@ ssh -i ~/.ssh/tdm-live root@100.74.165.85 "systemctl restart tdm-live"
 > **반드시 리포 루트에서 실행**하거나 절대경로를 써라. 상대경로 `infra/kis/.env`는
 > 셸이 다른 폴더에 있으면 "No such file or directory" 가 난다(이번에 겪은 함정).
 
+> ⚠️ **`apps/live/.env`는 로컬↔서버가 다른 파일이다 — 통째로 scp 금지**(2026-07-15 실사고).
+> 서버 전용 키가 로컬본에 없어서 덮어쓰면 소실된다:
+> - `LIVE_HOST=100.74.165.85` — 없으면 **0.0.0.0 바인딩 = 공인망 노출**(ufw 없음!)
+> - `LIVE_TELEGRAM_TRANSPORT=bot` — 로컬은 `user`(KT망 Bot API 차단). 서버가 user 로 바뀌면 폰 푸시 죽음.
+> 값 하나만 바꿀 땐 서버에서 직접 편집하거나 `ssh ... "sed -i ..."`. append 시엔 원본 끝 개행 유무 확인
+> (개행 없으면 이전 줄에 붙어 **두 키가 같이 오염**된다 — `echo >>` 전에 `tail -c1` 확인).
+
 ```bash
 # 예: KIS 자격증명 (실시간 뉴스). 리포 루트에서:
 scp -i ~/.ssh/tdm-live infra/kis/.env root@100.74.165.85:/root/trade-data-manager/infra/kis/.env
