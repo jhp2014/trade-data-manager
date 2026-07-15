@@ -12,7 +12,11 @@ import { KiwoomDailyContext } from "./dailyContext.js";
 export function createLiveEngine(kiwoom: Kiwoom, conditionName: string, pollMs?: number, alerts?: AlertsHook): LiveEngine {
     // LIVE_WS_FRAME_LOG=<path.jsonl> 이면 전 프레임 기록 — 조건검색 REAL 푸시 포맷 실측/디버깅용(평시 off).
     const frameLog = process.env.LIVE_WS_FRAME_LOG?.trim();
-    const ws = createKiwoomWs(kiwoom, frameLog ? { logFrame: createFileFrameLogger(frameLog) } : {});
+    // autoRetryFirstConnect: 상주 데몬이라 첫 연결 실패(장외·무효 토큰)에서도 자력 복구해야 한다.
+    const ws = createKiwoomWs(kiwoom, {
+        autoRetryFirstConnect: true,
+        ...(frameLog ? { logFrame: createFileFrameLogger(frameLog) } : {}),
+    });
     // 테마 멤버십(read) — 시트 어댑터를 live 자체 인스턴스로. 자격은 @tdm/google 이 infra/google/.env 에서 자급(소비앱 무설정).
     const membership = new SheetMembership(new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET));
     // 일봉 컨텍스트(수정 트레일링 KRX/UN 두벌 + 원주가 전일종가) — kiwoom 일봉 온디맨드(hot 종목만·캐시·self-heal). DB 무의존.

@@ -36,6 +36,7 @@ export class LiveEngine extends EventEmitter {
     private timer: NodeJS.Timeout | null = null;
     private running = false;
     private ready = false; // WS LOGIN+CNSRLST 완료 → 틱 허용. 재연결 중 false.
+    private startedEmitted = false; // 'started' 는 첫 성공 1회만(이후 재연결은 'reconnected')
 
     private conditionName: string; // switchCondition 으로 런타임 교체 가능
     private readonly pollMs: number;
@@ -54,24 +55,20 @@ export class LiveEngine extends EventEmitter {
     }
 
     /** WS 연결 → (조건 있으면) 스캐너 init(CNSRLST) → 즉시 1틱 → 5초 루프. 끊기면 WS 가 백오프 재연결.
-     *  조건 미선택(빈 이름)이어도 시작 — 스캔 없이 watchlist 폴링·알람은 동작, 조건은 switchCondition 으로 나중에. */
+     *  조건 미선택(빈 이름)이어도 시작 — 스캔 없이 watchlist 폴링·알람은 동작, 조건은 switchCondition 으로 나중에.
+     *
+     *  연결 수명(백오프 재연결·토큰 강제갱신)은 **KiwoomWs 가 온전히 소유**한다. 엔진은 "LOGIN 성공했다"
+     *  ('connected')에만 반응한다 — 최초든 재연결이든 할 일이 같기 때문(스캐너 재init·멤버십·ready).
+     *  첫 연결 실패는 throw 한다(호출자가 "시작 실패" 로그). 단 ws 를 autoRetryFirstConnect 로 만들었으므로
+     *  백그라운드 재시도가 계속되고, 지연 성공은 'connected' 로 들어와 엔진이 자력 복구한다. */
     async start(): Promise<void> {
         this.ws.on("status", (s: ConnectionStatus) => {
             if (s !== "live") this.ready = false; // 끊기면 틱 보류(직전 데이터 유지)
             this.emit("status", s);
         });
-        this.ws.on("reconnected", () => void this.onReconnect());
-        await this.ws.connect();
-        if (this.conditionName) {
-            this.scanner = new RankingScanner(this.ws, this.conditionName);
-            await this.scanner.init();
-        }
-        await this.membership.reload().catch((err) => this.emit("error", err)); // 초기 멤버십 로드(실패해도 빈 멤버십으로 진행)
-        this.ready = true;
-        this.running = true;
-        await this.tick().catch((err) => this.emit("error", err)); // 첫 틱 실패(일시 오류)해도 루프는 시작 — scheduleNext 와 동일 정책
-        this.scheduleNext();
-        this.emit("started", { conditionSeq: this.scanner?.conditionSeq ?? null });
+        this.ws.on("connected", () => void this.onConnected()); // 최초·재연결 공통 진입점
+        this.running = true; // 첫 연결 전에도 산다 — 지연 성공한 'connected' 를 받으려면 필요
+        await this.ws.connect(); // 첫 실패는 throw(호출자 로그) — 복구는 ws 백오프가 담당
     }
 
     get connectionStatus(): ConnectionStatus {
@@ -117,13 +114,26 @@ export class LiveEngine extends EventEmitter {
         await this.membership.reload();
     }
 
-    /** 재연결 직후: CNSRREQ 전 CNSRLST 선조회 요구 때문에 scanner 재init. 조건 미선택이면 ready 만 복구. */
-    private async onReconnect(): Promise<void> {
+    /** WS LOGIN 성공(최초·재연결 공통) → 스캐너 init(CNSRREQ 전 CNSRLST 선조회 요구) → 멤버십 → ready → 틱 루프.
+     *  조건 미선택이면 스캐너 없이 ready 만. 실패는 error 로 알리고 ready=false 유지 — 다음 재연결 사이클에서 재시도. */
+    private async onConnected(): Promise<void> {
         if (!this.running) return;
         try {
-            await this.scanner?.init();
+            if (this.conditionName) {
+                const scanner = new RankingScanner(this.ws, this.conditionName);
+                await scanner.init(); // 성공 후에만 할당 — 반쯤 초기화된 스캐너를 남기지 않는다(switchCondition 과 같은 정책)
+                this.scanner = scanner;
+            }
+            await this.membership.reload().catch((err) => this.emit("error", err)); // 실패해도 빈 멤버십으로 진행
             this.ready = true;
-            this.emit("reconnected");
+            await this.tick().catch((err) => this.emit("error", err)); // 첫 틱 실패(일시 오류)해도 루프는 유지
+            if (!this.timer) this.scheduleNext(); // 폴링 루프는 한 벌만 — 재연결 때 중복 생성 금지
+            if (this.startedEmitted) {
+                this.emit("reconnected");
+            } else {
+                this.startedEmitted = true;
+                this.emit("started", { conditionSeq: this.scanner?.conditionSeq ?? null });
+            }
         } catch (err) {
             this.emit("error", err); // 다음 끊김/재연결 사이클에서 다시 시도
         }
@@ -168,7 +178,7 @@ export class LiveEngine extends EventEmitter {
     async stop(): Promise<void> {
         this.running = false;
         if (this.timer) clearTimeout(this.timer);
-        this.ws.close();
+        this.ws.close(); // ws 가 예약해둔 재연결 타이머도 여기서 취소된다
         this.emit("stopped");
     }
 }

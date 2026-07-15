@@ -1,7 +1,9 @@
 // 키움 WebSocket 클라이언트 (조건검색/실시간). 정본: market-eye/src/lib/kiwoomWs.ts 이주.
 // 흐름: connect → LOGIN(token) → CNSRLST/CNSRREQ ... → PING echo 유지
-// 끊기면 백오프로 자동 재연결 + 재LOGIN. 재연결되면 'reconnected' emit.
-// 연결 상태는 'status' 이벤트로 통지. 모든 프레임은 logFrame 으로 기록된다.
+// 끊기면 백오프로 자동 재연결 + 재LOGIN. 연결 수명(백오프·토큰 강제갱신)은 전부 이 클래스가 소유한다.
+// 이벤트: 'connected' = LOGIN 성공 전부(최초·재연결) / 'reconnected' = 재연결만 / 'status' = 연결 상태.
+//   최초 연결 실패는 기본적으로 호출자 몫이지만(CLI 즉시 실패), autoRetryFirstConnect 면 여기서 재시도한다.
+// 모든 프레임은 logFrame 으로 기록된다.
 // 단일 상주 연결이라 CredentialPool(REST 로테이션)과 무관 — 토큰 공급자(getToken)만 주입받는다.
 import { EventEmitter } from "node:events";
 import WebSocket from "ws";
@@ -22,6 +24,17 @@ export interface KiwoomWsOptions {
     /** 토큰 공급자(보통 CredentialPool.primaryToken). force=true 면 강제 재발급. */
     getToken: (force?: boolean) => Promise<string>;
     logFrame?: FrameLogger;
+    /**
+     * **최초** 연결 실패도 백오프 재연결할지(기본 false).
+     *  · false(기본) = CLI·recon 계약: 첫 연결 실패는 즉시 호출자에게 알린다. 앱키 오류·URL 오타·조건식 부재를
+     *    5분씩 매달리며 숨기지 않는다(끊김 후 재연결은 이 값과 무관하게 항상 동작).
+     *  · true = 상주 데몬(apps/live)용: 장외·무효 토큰 같은 일시 실패에서 자력 복구한다. 재시도가
+     *    forceTokenRefresh 를 격발해 **무효 캐시 토큰까지 자가치유**한다(2026-07-15 실측: 이게 없어
+     *    LOGIN 805004 에 엔진이 영구 사망, 손으로 캐시를 지워야 복구됐다).
+     * true 여도 connect() 는 첫 실패에 reject 한다(호출자가 로그를 남기게) — 복구는 백그라운드로 계속되고,
+     * 지연 성공은 'connected' 이벤트로 알린다.
+     */
+    autoRetryFirstConnect?: boolean;
 }
 
 const BACKOFF_MIN = 1_000;
@@ -42,12 +55,14 @@ export class KiwoomWs extends EventEmitter {
     private readonly wsUrl: string;
     private readonly getToken: (force?: boolean) => Promise<string>;
     private readonly logFrame: FrameLogger;
+    private readonly autoRetryFirstConnect: boolean;
 
     constructor(opts: KiwoomWsOptions) {
         super();
         this.wsUrl = opts.wsUrl;
         this.getToken = opts.getToken;
         this.logFrame = opts.logFrame ?? noopFrameLogger;
+        this.autoRetryFirstConnect = opts.autoRetryFirstConnect ?? false;
     }
 
     getStatus(): ConnectionStatus {
@@ -116,6 +131,10 @@ export class KiwoomWs extends EventEmitter {
                                 this.started = true;
                                 this.setStatus("live");
                                 settle(resolve);
+                                // 'connected' = LOGIN 성공 전부(최초·재연결 공통). autoRetryFirstConnect 로 첫 연결이
+                                // **지연 성공**하면 connect() 는 이미 reject 됐고 wasStarted 도 false라 'reconnected' 가
+                                // 안 뜬다 — 그 성공을 소비자가 알 수 있는 유일한 통로다.
+                                this.emit("connected");
                                 if (wasStarted) this.emit("reconnected"); // 재연결 → 엔진이 scanner 재init
                             } else {
                                 this.forceTokenRefresh = true; // 토큰 문제 가능 → 다음 시도 강제 갱신
@@ -169,8 +188,9 @@ export class KiwoomWs extends EventEmitter {
         }
         this.ws = null;
 
-        // 의도적 종료거나, 아직 한 번도 연결 못 한 최초 시도 실패면 재연결 안 함(호출자가 처리).
-        if (!this.shouldRun || !this.started) {
+        // 의도적 종료면 재연결 안 함. 최초 시도 실패는 기본적으로 호출자에게 위임하되(CLI 즉시 실패),
+        // autoRetryFirstConnect 면 여기서도 백오프 재시도한다(상주 데몬 — 아래 재연결 기계를 그대로 재사용).
+        if (!this.shouldRun || (!this.started && !this.autoRetryFirstConnect)) {
             this.setStatus(this.shouldRun ? "connecting" : "closed");
             return;
         }

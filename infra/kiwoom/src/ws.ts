@@ -13,8 +13,12 @@ import { KiwoomWs } from "./ws/client.js";
 import type { FrameLogger } from "./ws/frameLogger.js";
 import { KiwoomError } from "./errors.js";
 
-/** Kiwoom 핸들로부터 WS 를 만든다. primary 자격증명의 토큰을 사용. */
-export function createKiwoomWs(kiwoom: Kiwoom, opts: { logFrame?: FrameLogger } = {}): KiwoomWs {
+/** Kiwoom 핸들로부터 WS 를 만든다. primary 자격증명의 토큰을 사용.
+ *  autoRetryFirstConnect 는 상주 데몬만 켠다(기본 false = CLI·recon 즉시 실패) — KiwoomWsOptions 참고. */
+export function createKiwoomWs(
+    kiwoom: Kiwoom,
+    opts: { logFrame?: FrameLogger; autoRetryFirstConnect?: boolean } = {},
+): KiwoomWs {
     const wsUrl = kiwoom.config.wsUrl;
     if (!wsUrl) {
         throw new KiwoomError("KIWOOM_WS_URL 이 설정되지 않아 WS 를 만들 수 없습니다");
@@ -23,5 +27,6 @@ export function createKiwoomWs(kiwoom: Kiwoom, opts: { logFrame?: FrameLogger } 
         wsUrl,
         getToken: (force) => kiwoom.pool.primaryToken(force),
         logFrame: opts.logFrame,
+        autoRetryFirstConnect: opts.autoRetryFirstConnect,
     });
 }

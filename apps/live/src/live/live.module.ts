@@ -144,14 +144,18 @@ export class LiveModule implements OnModuleInit, OnModuleDestroy {
         this.engine.on("tick", (t: { hot: number; polled: number }) =>
             this.log.debug(`tick hot=${t.hot} polled=${t.polled}`),
         );
+        // 'started' 로 로그 — 첫 연결이 인라인이든 백그라운드 재시도든 성공 시점에 한 번 찍힌다.
+        this.engine.on("started", () => {
+            const cond = this.engine.condition;
+            this.log.log(cond ? `엔진 시작 — 조건 '${cond}'` : "엔진 시작 — 조건 미선택(설정 모달에서 선택, watchlist 폴링만)");
+        });
         // 알림 큐 소화 루프(1s) — 엔진과 무관하게 먼저.
         this.timers.push(setInterval(() => void this.queue.tick(Date.now()), 1_000));
         try {
-            await this.engine.start();
-            const cond = this.engine.condition;
-            this.log.log(cond ? `엔진 시작 — 조건 '${cond}'` : "엔진 시작 — 조건 미선택(설정 모달에서 선택, watchlist 폴링만)");
+            await this.engine.start(); // 성공 로그는 'started' 핸들러가 찍는다
         } catch (e) {
-            this.log.error(`엔진 시작 실패(앱은 유지): ${e instanceof Error ? e.message : String(e)}`);
+            // 앱은 유지되고 엔진은 백그라운드로 재시도(5s→…→5m) — 복구되면 'started' 가 찍힌다.
+            this.log.error(`엔진 시작 실패(백그라운드 재시도 예약): ${e instanceof Error ? e.message : String(e)}`);
         }
         // 헬스 판정(15s, 하트비트·엣지알림) · 외부 데드맨 핑(60s) — 엔진 시작 시도 **후**에 걸어
         // 부팅 수 초를 "틱 없음"으로 오탐하지 않게. 시작 실패면 첫 판정부터 이상으로 잡힘(의도).
