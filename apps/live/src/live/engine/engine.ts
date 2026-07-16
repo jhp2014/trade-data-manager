@@ -27,6 +27,11 @@ export interface AlertsHook {
         themesOf: (code: string) => string[],
         prevCloseOf: (code: string, market: "krx" | "un") => number | undefined,
         now: number,
+        /** 유니버스 조건검색 metrics 원재료 — 링버퍼(델타)·일봉 컨텍스트(매물대). */
+        deps?: {
+            historyOf(code: string): readonly Quote[];
+            trailingHighsOf(code: string): { krx: number[]; un: number[] } | undefined;
+        },
     ): void;
 }
 
@@ -159,6 +164,10 @@ export class LiveEngine extends EventEmitter {
             (c) => this.membership.themesOf(c),
             (c, m) => this.dailyCtx.contextOf(c)?.rawPrevClose[m] ?? undefined,
             Date.now(),
+            {
+                historyOf: (c) => this.store.historyOf(c),
+                trailingHighsOf: (c) => this.dailyCtx.contextOf(c)?.trailingHighs,
+            },
         );
         this.emit("tick", { hot: hits.length, polled: quotes.length, ts: Date.now() });
     }

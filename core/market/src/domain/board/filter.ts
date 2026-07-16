@@ -57,6 +57,13 @@ export interface BoardPredicateDef {
     params: ParamSpec[];
     test: (m: BoardMetrics, p: Record<string, number>) => boolean;
     label: (p: Record<string, number>) => string;
+    /** 매칭 근거 문구(실측값 포함) — 알람 발화의 "왜 걸렸나". 생략 시 label 폴백(predicateEvidence). */
+    evidence?: (m: BoardMetrics, p: Record<string, number>) => string;
+}
+
+/** 매칭된 술어의 근거 문구 — 술어가 자신을 설명한다(로직은 core 한 곳, 소비자는 렌더만). */
+export function predicateEvidence(def: BoardPredicateDef, m: BoardMetrics, p: Record<string, number>): string {
+    return def.evidence?.(m, p) ?? def.label(p);
 }
 
 /** ≥eok억 분봉 횟수 — buckets 하한이 eok 이상인 구간 카운트 합(고정 구간이라 경계값에서 정확). */
@@ -132,6 +139,11 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
             return d != null && d.rate >= p.rateMin && d.tvEok >= p.tvMin;
         },
         label: (p) => `${p.window === 1 ? "1분" : "30초"} 시그널`,
+        evidence: (m, p) => {
+            const d = p.window === 1 ? m.deltas?.d1m : m.deltas?.d30s;
+            if (!d) return `${p.window === 1 ? "1분" : "30초"} 시그널`;
+            return `${p.window === 1 ? "1분" : "30초"} 시그널 (+${d.rate.toFixed(1)}%p · ${Math.round(d.tvEok).toLocaleString("ko-KR")}억)`;
+        },
     },
     {
         kind: "marketCap",
@@ -140,6 +152,7 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
         params: [{ key: "lteEok", label: "억 이하", def: 5_000, min: 0, step: 100 }],
         test: (m, p) => m.marketCap != null && m.marketCap <= p.lteEok,
         label: (p) => `시총 ${p.lteEok.toLocaleString("ko-KR")}억 이하`,
+        evidence: (m, p) => `시총 ${(m.marketCap ?? 0).toLocaleString("ko-KR")}억 (≤ ${p.lteEok.toLocaleString("ko-KR")}억)`,
     },
     {
         kind: "rank",
@@ -155,6 +168,11 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
             return ranks != null && ranks.length > 0 && Math.min(...ranks) <= p.threshold;
         },
         label: (p) => `테마 ${p.threshold}위 이내(${MARKET_OPTIONS[p.market === 0 ? 0 : 1]})`,
+        evidence: (m, p) => {
+            const ranks = m.ranks?.[marketOf(p)];
+            const best = ranks && ranks.length > 0 ? Math.min(...ranks) : null;
+            return `테마 ${best ?? "?"}위 (${p.threshold}위 이내·${MARKET_OPTIONS[p.market === 0 ? 0 : 1]})`;
+        },
     },
 ];
 
@@ -183,6 +201,8 @@ export function availablePredicates(provides: ReadonlySet<MetricField>): BoardPr
 export const EOD_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "buckets", "trailingHighs"]);
 /** 실시간 보드 소스 제공 필드(REST — 현재 배선분. deltas·marketCap·themeRanks 는 조각 3에서 확장). */
 export const LIVE_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs"]);
+/** 유니버스 알람 소스 제공 필드(live 서버 metrics 빌더 — buckets 빼고 전부). 규칙 검증·2b 팔레트가 사용. */
+export const LIVE_ALARM_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs", "marketCap", "deltas", "themeRanks"]);
 
 // ── 필터식(DNF, 그룹별 mode) ──
 export type BoardFilterMode = "dim" | "hide";

@@ -28,6 +28,7 @@ export function kstTime(ms: number): string {
  * "도달"이라 안 하는 이유: 계속 3위였는데 다른 leaf(가격 돌파)로 발화한 경우 순위가 방금 오른 걸로 오해.
  */
 export function renderEvidence(e: LeafEvidence): string {
+    if (e.kind === "pred") return e.text; // 유니버스 술어 — core predicateEvidence 가 이미 문구화
     if (e.kind === "price") return `${won(e.price)} ${e.op === "gte" ? "≥" : "≤"} ${won(e.value)}`;
     const head = `${e.theme} ${marketLabel(e.market)}`;
     const move = e.past == null ? `${e.rank}위` : e.past === e.rank ? `${e.rank}위 유지` : `${e.past}위→${e.rank}위`;

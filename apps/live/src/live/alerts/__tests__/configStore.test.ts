@@ -74,3 +74,48 @@ describe("AlertConfigStore", () => {
         expect(a.rules).toEqual([]); // 옛 조건은 groups 없음 → 탈락
     });
 });
+
+describe("universe 섹션", () => {
+    it("규칙·블랙리스트 저장/재로드 라운드트립 — id 없는 규칙은 발급", () => {
+        const p = fileIn(dir);
+        const a = new AlertConfigStore(p);
+        a.load();
+        const saved = a.setUniverseRules([
+            { name: "돈유입", predicates: [{ kind: "signal", params: { window: 0, rateMin: 0.4, tvMin: 40 } }], output: "telegram", cooldownKey: "code", cooldownMs: 600_000 },
+        ]);
+        expect(saved[0].id).toBeTruthy();
+        a.addBlacklist("005930", 2_000, 1_000);
+
+        const b = new AlertConfigStore(p);
+        b.load();
+        expect(b.universeRules).toEqual(saved);
+        expect(b.activeBlacklist(1_500)).toEqual([{ code: "005930", until: 2_000 }]);
+        expect(b.activeBlacklist(2_500)).toEqual([]); // 만료 — 읽기에서 걸러짐
+    });
+
+    it("universe 없는 옛 파일 → 빈 섹션(하위호환), 손상 규칙은 로드 시 탈락", () => {
+        const p = fileIn(dir);
+        fs.writeFileSync(p, JSON.stringify({ watchlist: ["005930"], rules: [], universe: { rules: [{ id: "u1", predicates: [], output: "telegram" }, { id: "u2", predicates: [{ kind: "marketCap", params: {} }], output: "log" }], blacklist: [{ code: "111111" }] } }), "utf8");
+        const a = new AlertConfigStore(p);
+        expect(a.load()).toBeNull();
+        expect(a.universeRules.map((r) => r.id)).toEqual(["u2"]); // 빈 predicates 탈락
+        expect(a.activeBlacklist(0)).toEqual([]); // until 없는 항목 탈락
+
+        const old = fileIn(dir) + ".old";
+        fs.writeFileSync(old, JSON.stringify({ watchlist: [], rules: [] }), "utf8"); // universe 필드 자체가 없음
+        const b = new AlertConfigStore(old);
+        expect(b.load()).toBeNull();
+        expect(b.universeRules).toEqual([]);
+    });
+
+    it("addBlacklist — 같은 코드 갱신 + 만료분 정리", () => {
+        const a = new AlertConfigStore(fileIn(dir));
+        a.load();
+        a.addBlacklist("005930", 2_000, 1_000);
+        a.addBlacklist("000660", 1_200, 1_000);
+        a.addBlacklist("005930", 9_000, 5_000); // 005930 갱신 + 000660(만료) 정리
+        expect(a.activeBlacklist(5_000)).toEqual([{ code: "005930", until: 9_000 }]);
+        a.removeBlacklist("005930");
+        expect(a.activeBlacklist(5_000)).toEqual([]);
+    });
+});

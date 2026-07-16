@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { activeDelta } from "../signals.js";
+import { activeDelta, computeDeltas } from "../signals.js";
 import type { Quote } from "../types.js";
 
 // activeDelta 만 ts·changeRate·tradeValue 를 읽는다. 나머지 필드는 값 무관 → 기본값 채움.
@@ -49,5 +49,30 @@ describe("activeDelta", () => {
     it("기준 틱이 갭 너머 stale(>2×창)이면 비교 거부", () => {
         // ts:0 이 유일한 과거 틱인데 now 로부터 200초 전 → 120초(2×60) 초과 → null.
         expect(activeDelta([q(0, 1, 1_000), q(200_000, 5, 20_000)], 200_000)).toBeNull();
+    });
+});
+
+// 유니버스 알람·보드 필터의 원재료 — 30초·1분 창별 rate(%p)·tvEok(억).
+describe("computeDeltas", () => {
+    it("두 창의 원재료 델타 — 기준점 있는 창만 실린다", () => {
+        const h = [q(0, 1.0, 10_000), q(35_000, 1.4, 13_000), q(65_000, 1.7, 14_500)];
+        const d = computeDeltas(h, 65_000);
+        // 30초 창: 기준 = ts 35_000(65s-30s=35s 이하 최신... ts<=35_000) → rate 0.3, tv 15억
+        expect(d.d30s).toEqual({ rate: expect.closeTo(0.3, 5), tvEok: 15 });
+        // 1분 창: 기준 = ts 0 → rate 0.7, tv 45억
+        expect(d.d1m).toEqual({ rate: expect.closeTo(0.7, 5), tvEok: 45 });
+    });
+
+    it("이력 부족(창 기준점 없음)이면 그 창은 생략 — 신규 편입 직후", () => {
+        const h = [q(0, 1.0, 10_000), q(35_000, 1.4, 13_000)];
+        const d = computeDeltas(h, 35_000); // 35초치 — 30초 창만 가능
+        expect(d.d30s).toBeDefined();
+        expect(d.d1m).toBeUndefined();
+        expect(computeDeltas([q(0, 1, 1_000)], 0)).toEqual({}); // 단일 틱
+    });
+
+    it("갭 너머 stale(>2×창) 기준점은 거부", () => {
+        const h = [q(0, 1.0, 10_000), q(70_000, 2.0, 20_000)];
+        expect(computeDeltas(h, 70_000).d30s).toBeUndefined(); // 30초 창 기준점이 70초 전 — 60초 초과 stale
     });
 });

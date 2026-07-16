@@ -8,10 +8,18 @@ import { useWorkbench } from "../store/workbench.js";
 // 문구가 텔레그램(서버 renderEvidence)과 미세하게 달라도 무방 — 다른 화면이다.
 const mkt = (m: "krx" | "un"): string => (m === "krx" ? "KRX" : "UN");
 function renderEvidence(e: LeafEvidence): string {
+    if (e.kind === "pred") return e.text; // 유니버스 술어 — 문구는 core(서버)가 채움
     if (e.kind === "price") return `${e.price.toLocaleString("ko-KR")}원 ${e.op === "gte" ? "≥" : "≤"} ${e.value.toLocaleString("ko-KR")}원`;
     const move = e.past == null ? `${e.rank}위` : e.past === e.rank ? `${e.rank}위 유지` : `${e.past}위→${e.rank}위`;
     return `${e.theme} ${mkt(e.market)} ${move} (${e.mode === "reach" ? `${e.threshold}위 이내` : `${e.threshold}계단↑`})`;
 }
+
+/** 배달 상태 배지 — sent 는 배지 없음(정상 배달), 나머지는 왜 텔레그램에 안 갔는지. */
+const DELIVERY_BADGE: Record<string, { icon: string; title: string } | undefined> = {
+    suppressed: { icon: "🔕", title: "쿨다운에 막혀 전송 안 됨(발화는 남음)" },
+    logOnly: { icon: "📋", title: "로그 전용 규칙(텔레그램 안 감)" },
+    blacklisted: { icon: "🚫", title: "당일 블랙리스트(텔레그램 차단)" },
+};
 
 // 알람 로그 패널 — 실시간 플레인. **발화 전부**를 시간순으로 누적한다(텔레그램으로 간 것 + 쿨다운에 막힌 것).
 // 존재 이유: 텔레그램은 소음을 막으려 쿨다운으로 아끼지만, 알람을 듣고 PC 앞에 앉았을 땐 시장 전체를
@@ -59,8 +67,8 @@ export function AlertLogPanel(): JSX.Element {
     const shown = useMemo(() => {
         const needle = q.trim().toLowerCase();
         return entries.filter((e) => {
-            if (delivery === "sent" && !e.notified) return false;
-            if (delivery === "held" && e.notified) return false;
+            if (delivery === "sent" && e.delivery !== "sent") return false;
+            if (delivery === "held" && e.delivery === "sent") return false;
             if (theme && !e.themes.includes(theme)) return false;
             if (!needle) return true;
             return e.firing.code.includes(needle) || (e.firing.name ?? "").toLowerCase().includes(needle);
@@ -108,15 +116,16 @@ function Empty({ text }: { text: string }): JSX.Element {
     return <div style={{ padding: "14px 10px", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center" }}>{text}</div>;
 }
 
-/** 발화 한 줄 — 시각·종목·시세 / 근거(왜 울렸는지) / 테마 미니 보드. 억제분은 🔕 + 흐리게. */
+/** 발화 한 줄 — 시각·종목·시세 / 근거(왜 울렸는지) / 테마 미니 보드. 텔레그램 미배달분은 배지 + 흐리게. */
 function LogRow({ entry, onPick }: { entry: AlertLogEntry; onPick: (code: string) => void }): JSX.Element {
-    const { firing: f, notified } = entry;
+    const { firing: f, delivery } = entry;
     const { price, changeRate } = f.features;
     const why = [...f.evidence.map(renderEvidence), ...(f.note ? [f.note] : [])].join(" · ");
+    const badge = DELIVERY_BADGE[delivery];
     return (
         <div
-            title={notified ? "텔레그램 전송됨" : "쿨다운에 막혀 전송 안 됨(발화는 남음)"}
-            style={{ padding: "4px 10px", borderBottom: "1px solid var(--border-subtle)", opacity: notified ? 1 : 0.55 }}
+            title={badge?.title ?? "텔레그램 전송됨"}
+            style={{ padding: "4px 10px", borderBottom: "1px solid var(--border-subtle)", opacity: delivery === "sent" ? 1 : 0.55 }}
         >
             <div onClick={() => onPick(f.code)} style={{ display: "flex", gap: 6, fontSize: 11, alignItems: "baseline", cursor: "pointer" }}>
                 <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)" }}>{kstTime(f.at)}</span>
@@ -124,7 +133,7 @@ function LogRow({ entry, onPick }: { entry: AlertLogEntry; onPick: (code: string
                 <span className="tabular" style={{ flexShrink: 0, color: changeRate >= 0 ? "var(--rise)" : "var(--fall)" }}>
                     {price.toLocaleString("ko-KR")}원 {sign(changeRate)}{changeRate.toFixed(2)}%
                 </span>
-                {!notified && <span style={{ flexShrink: 0, color: "var(--text-tertiary)" }}>🔕</span>}
+                {badge && <span style={{ flexShrink: 0, color: "var(--text-tertiary)" }}>{badge.icon}</span>}
                 {entry.scope === "universe" && <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)" }}>탐지</span>}
             </div>
             {why && <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 2 }}>{why}</div>}

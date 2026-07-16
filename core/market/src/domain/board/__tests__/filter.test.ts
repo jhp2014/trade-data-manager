@@ -6,6 +6,7 @@ import {
     evalBoardFilter,
     isBoardFilterActive,
     predicateAvailable,
+    predicateEvidence,
     EOD_FIELDS,
     LIVE_FIELDS,
     type BoardFilterExpr,
@@ -168,5 +169,23 @@ describe("실시간 술어(signal·marketCap·rank)", () => {
         expect(r.test(m({ ranks: { krx: [10, 4], un: [7, 2] } }), { market: 1, threshold: 3 })).toBe(true); // UN min 2 ≤ 3
         expect(r.test(m({ ranks: { krx: [10, 4], un: [7, 5] } }), { market: 1, threshold: 3 })).toBe(false); // UN min 5 > 3
         expect(r.test(m({ ranks: { krx: [1], un: [] } }), { market: 1, threshold: 3 })).toBe(false); // UN 순위 없음
+    });
+});
+
+describe("predicateEvidence — 술어가 자기 근거를 설명(label+실측값)", () => {
+    const m = (over: Partial<BoardMetrics>): BoardMetrics => ({ highPct: 0, amount: 0, ...over });
+
+    it("signal — 창·실측 델타", () => {
+        const def = boardPredicateDef("signal")!;
+        expect(predicateEvidence(def, m({ deltas: { d30s: { rate: 0.52, tvEok: 45.4 } } }), { window: 0, rateMin: 0.4, tvMin: 40 })).toBe("30초 시그널 (+0.5%p · 45억)");
+    });
+
+    it("marketCap·rank — 실측값 + 임계", () => {
+        expect(predicateEvidence(boardPredicateDef("marketCap")!, m({ marketCap: 3_000 }), { lteEok: 5_000 })).toBe("시총 3,000억 (≤ 5,000억)");
+        expect(predicateEvidence(boardPredicateDef("rank")!, m({ ranks: { krx: [], un: [7, 2] } }), { market: 1, threshold: 3 })).toBe("테마 2위 (3위 이내·UN)");
+    });
+
+    it("evidence 미구현 술어는 label 폴백", () => {
+        expect(predicateEvidence(boardPredicateDef("weakHigh")!, m({ highPct: 3 }), { ltPct: 10 })).toBe("고가 등락률");
     });
 });

@@ -3,7 +3,9 @@
 import type { Quote, ScanHit } from "./types.js";
 
 const WINDOW_MS = 70_000; // 보관 윈도우: 과거 70초. 60초 델타(signals)가 60초-과거 틱을 안정적으로 찾도록 여유.
-const RING = 16; // 개수 상한(폴링 5초 가정 시 ~75초 커버) — 70초 창 + 지터 여유.
+// 개수 상한 = 폭주 가드(진짜 프루닝은 시간 창). 폴링 최소 1초 가정으로 유도 — 상한이 시간 창보다 먼저
+// 걸리면 1분 델타가 조용히 죽는다(옛 RING=16 이 5초 폴링 가정이라 LIVE_POLL_MS=3초면 48초만 남던 버그).
+const RING = Math.ceil(WINDOW_MS / 1_000) + 10;
 
 export class EngineStore {
     /** 코드 → 최신 시세 */

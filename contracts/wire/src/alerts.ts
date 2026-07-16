@@ -47,10 +47,12 @@ export interface AlertRule {
  * flatten, 워크벤치는 자기 방식으로 렌더한다(같은 문구를 재현하는 게 아니라 매체별 뷰).
  * price: 실측가 op 임계 / rank: 테마 순위 변화 + 조건(reach=K위 이내 / delta=D계단).
  * past = ~60초 전 순위(표시용, reach 는 없을 수 있음 → 변화 표기 생략).
+ * pred: 유니버스 조건검색 술어 — 문구는 core 술어 정의(evidence/label)가 소유(서버가 채워 보냄).
  */
 export type LeafEvidence =
     | { kind: "price"; op: AlertOp; price: number; value: number }
-    | { kind: "rank"; theme: string; market: AlertMarket; mode: "reach" | "delta"; rank: number; past?: number; threshold: number };
+    | { kind: "rank"; theme: string; market: AlertMarket; mode: "reach" | "delta"; rank: number; past?: number; threshold: number }
+    | { kind: "pred"; text: string };
 
 /**
  * 테마 미니 보드의 한 멤버 — 발화 시점 스냅샷. 순위 잣대는 UN(rateKrx 는 괄호 표시용).
@@ -95,12 +97,19 @@ export interface AlertFiring {
     note?: string;
 }
 
-/** 발화 갈래 — watchlist(집중 감시) / universe(탐지, 브릭 4). 로그 필터용. */
+/** 발화 갈래 — watchlist(집중 감시) / universe(조건검색식 탐지). 로그 필터용. */
 export type AlertScope = "watchlist" | "universe";
 
 /**
+ * 배달 결과 — 로그 ⊇ 텔레그램 불변식(발화는 전부 로그에, 텔레그램은 부분집합).
+ * sent=텔레그램 배달 / suppressed=쿨다운 억제 / logOnly=규칙이 로그 전용(output:"log") /
+ * blacklisted=종목 블랙리스트(당일) — 뒤 셋은 텔레그램 미발송이지만 로그엔 남는다.
+ */
+export type AlertDelivery = "sent" | "suppressed" | "logOnly" | "blacklisted";
+
+/**
  * 발화 로그 한 줄 — 워크벤치 로그 패널이 누적한다.
- * **억제된 발화도 남는다**(notified=false) — 알람을 듣고 PC 앞에 앉았을 때 시장 전체를 보기 위함.
+ * **억제된 발화도 남는다**(delivery≠sent) — 알람을 듣고 PC 앞에 앉았을 때 시장 전체를 보기 위함.
  */
 export interface AlertLogEntry {
     /** 단조 증가 — 클라 증분 폴링 커서. at 은 같은 틱에 여러 건이라 커서로 못 쓴다. */
@@ -109,8 +118,47 @@ export interface AlertLogEntry {
     scope: AlertScope;
     /** 그 종목이 속한 **전체** 테마 — 클라 필터용. */
     themes: string[];
-    /** 텔레그램으로 배달됐나(false = 쿨다운 억제). */
-    notified: boolean;
+    delivery: AlertDelivery;
+}
+
+// ── 유니버스 조건검색 알람 — 종목을 안 고르고 유니버스(hot∪watchlist) 전체에 식을 건다. ──
+
+/** 술어 인스턴스 — kind·params 는 core 술어 레지스트리(BOARD_PREDICATES)가 해석(wire 는 불투명 운반). */
+export interface UniversePredicateInstance {
+    kind: string;
+    params: Record<string, number>;
+}
+
+/** 텔레그램 쿨다운 키 — code(종목 단위, 넓게) / codeRule(종목×규칙, 디테일). */
+export type CooldownKeyMode = "code" | "codeRule";
+
+/**
+ * 유니버스 규칙 하나 — predicates(AND). 규칙 여러 개 = OR("다양한 조건 하나라도").
+ * output: telegram=텔레그램(쿨다운)+로그 / log=로그만(넓은 상황 파악용).
+ * 발화는 엣지(식 false→true 진입)에만 — 계속 걸려 있는 동안 도배하지 않는다.
+ */
+export interface UniverseRule {
+    id: string;
+    /** 규칙 이름 — 발화 메시지에 메모로 실림(예: "돈 유입 + 매물대 돌파"). */
+    name?: string;
+    predicates: UniversePredicateInstance[];
+    output: "telegram" | "log";
+    /** 텔레그램 쿨다운 키(기본 code — 같은 종목 알림 한 번). log 규칙엔 무의미. */
+    cooldownKey?: CooldownKeyMode;
+    /** 텔레그램 재배달 최소 간격 ms(기본 서버 3분). */
+    cooldownMs?: number;
+}
+
+/** 당일 블랙리스트 한 건 — until(epoch ms) 지나면 자동 만료. 유니버스 전용(watchlist 감시엔 미적용). */
+export interface BlacklistEntry {
+    code: string;
+    until: number;
+}
+
+/** GET /live/universe — 유니버스 알람 설정 뷰. */
+export interface UniverseView {
+    rules: UniverseRule[];
+    blacklist: BlacklistEntry[];
 }
 
 /**

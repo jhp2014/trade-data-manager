@@ -4,6 +4,7 @@
 // leaf 2종(가격 절대임계·테마 등락률순위), 엣지 발화 + 쿨다운(재무장=하강 엣지).
 export type {
     AlertRule,
+    AlertDelivery,
     AlertFiring,
     AlertRuleView,
     AlertLeaf,
@@ -12,11 +13,16 @@ export type {
     AlertMarket,
     AlertOp,
     AlertScope,
+    BlacklistEntry,
+    CooldownKeyMode,
     LeafEvidence,
     PriceLeaf,
     RankLeaf,
     AlertThemeContext,
     AlertThemeMember,
+    UniversePredicateInstance,
+    UniverseRule,
+    UniverseView,
     WatchlistView,
 } from "@trade-data-manager/wire";
 
