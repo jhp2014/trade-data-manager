@@ -1,8 +1,10 @@
 import { useState } from "react";
 import {
-    BOARD_PREDICATES,
+    availablePredicates,
     boardPredicateDef,
     isBoardFilterActive,
+    EOD_FIELDS,
+    LIVE_FIELDS,
     type BoardFilterExpr,
     type BoardFilterGroup,
     type BoardPredicateDef,
@@ -124,14 +126,14 @@ function FilterPanel({
     emptyHelp,
     filter,
     actions,
-    predicates = BOARD_PREDICATES,
+    predicates,
 }: {
     title: string;
     subtitle: string;
     emptyHelp: React.ReactNode;
     filter: BoardFilterExpr;
     actions: BoardFilterActions;
-    predicates?: BoardPredicateDef[]; // 이 패널이 제공할 술어(기본=전체). 라이브는 buckets 없는 서브셋.
+    predicates: BoardPredicateDef[]; // 이 소스가 제공할 술어(capability = requires⊆provides). 소스마다 다름.
 }): JSX.Element {
     const active = isBoardFilterActive(filter);
     const firstKind = predicates[0].kind;
@@ -203,6 +205,7 @@ export function BoardFilterPanel(): JSX.Element {
             subtitle="매칭 종목 제외"
             filter={filter}
             actions={actions}
+            predicates={EOD_BOARD_PREDICATES}
             emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>이슈정리</b> 보드에서 종목을 흐리게/숨김.</>}
         />
     );
@@ -218,13 +221,18 @@ export function ReplayFilterPanel(): JSX.Element {
             subtitle="매칭 종목 제외"
             filter={filter}
             actions={actions}
+            predicates={EOD_BOARD_PREDICATES}
             emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>복기</b> 보드에서 현재 시점 종목을 흐리게/숨김.</>}
         />
     );
 }
 
-// 실시간 보드 배제 필터. 상태=store.liveFilter. 라이브엔 분봉 buckets 가 없어 "분봉 대금" 술어 제외(그게 있으면 buckets 없는 전 종목 오검출).
-const LIVE_PREDICATES = BOARD_PREDICATES.filter((d) => d.kind !== "minAmtFew");
+// 술어 팔레트 = 소스 capability(requires⊆provides)로 자동 산출. 라이브는 buckets 없어 "분봉 대금" 자동 제외
+// (옛 수동 필터 대체). deltas·marketCap·themeRanks 는 조각 3 에서 LIVE_FIELDS 확장 시 자동으로 열린다.
+const EOD_BOARD_PREDICATES = availablePredicates(EOD_FIELDS);
+const LIVE_BOARD_PREDICATES = availablePredicates(LIVE_FIELDS);
+
+// 실시간 보드 배제 필터. 상태=store.liveFilter.
 export function LiveFilterPanel(): JSX.Element {
     const filter = useWorkbench((s) => s.liveFilter);
     const actions = useWorkbench((s) => s.liveFilterActions);
@@ -234,7 +242,7 @@ export function LiveFilterPanel(): JSX.Element {
             subtitle="매칭 종목 제외"
             filter={filter}
             actions={actions}
-            predicates={LIVE_PREDICATES}
+            predicates={LIVE_BOARD_PREDICATES}
             emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>실시간</b> 보드에서 종목을 흐리게/숨김(매물대·고가·일봉대금).</>}
         />
     );
