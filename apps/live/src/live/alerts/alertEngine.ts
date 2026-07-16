@@ -5,17 +5,11 @@
 //    **식이 미결이면 그 틱 스킵**(상태 불변) — 결손이 가짜 엣지를 만들지 않게.
 //  · 엣지 발화: 신규 조건/재기동 첫 평가는 "초기화"(현재값으로 무장만, 발화 없음) → 이미 조건 안에서
 //    만들거나 재기동해도 발화 폭풍이 없다. 재무장 = 하강 엣지(false 복귀).
-//  · 쿨다운: 마지막 발화에서 cooldownMs 안이면 상승 엣지여도 억제(그 진입은 버림 — 진동 억제가 목적).
+//  · **쿨다운은 여기 없다** — 엣지면 무조건 발화한다. 알림을 아끼는 건 배달 정책(NotifyGate)이고,
+//    억제된 발화도 워크벤치 로그엔 남아야 하기 때문(엔진이 버리면 남길 것 자체가 없다).
 //  · OR = 조건을 여러 개 다는 것으로 대체(엔진은 조건 하나당 AND 만 안다).
 import type { Quote } from "../engine/types.js";
-import {
-    DEFAULT_COOLDOWN_MS,
-    type AlertFiring,
-    type AlertLeaf,
-    type AlertMarket,
-    type AlertRule,
-    type RuleRuntimeState,
-} from "./types.js";
+import type { AlertFiring, AlertLeaf, AlertMarket, AlertRule, RuleRuntimeState } from "./types.js";
 
 export interface AlertEvalContext {
     quoteOf(code: string): Quote | undefined;
@@ -74,10 +68,8 @@ export class AlertEngine {
                 continue;
             }
 
-            const cooldown = rule.cooldownMs ?? DEFAULT_COOLDOWN_MS;
-            const risingEdge = verdict.hold && !prev.inZone;
-            const cooled = prev.lastFiredAt == null || now - prev.lastFiredAt >= cooldown;
-            if (risingEdge && cooled) {
+            if (verdict.hold && !prev.inZone) {
+                // 상승 엣지 — 무조건 발화(배달 여부는 NotifyGate 가 정한다).
                 prev.lastFiredAt = now;
                 firings.push({
                     ruleId: rule.id,

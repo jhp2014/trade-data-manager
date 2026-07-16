@@ -8,7 +8,8 @@
 //  · 외부 데드맨 핑 게이트: 창 안=완전 건강할 때만 true(핑 부재→healthchecks 알림, 텔레그램 죽음도 부재로 감지),
 //    창 밖=프로세스 생존이면 true(심야 점검 오탐 방지).
 // 시계는 check(now) 주입 — 런타임은 인터벌이 Date.now() 로 호출, 테스트는 가짜 시각.
-import type { NotifyPriority, QueueStats } from "../alerts/notifyQueue.js";
+import type { QueueStats } from "../alerts/notifyQueue.js";
+import type { NotifyPriority } from "../alerts/message.js";
 import { kstTime } from "../alerts/format.js";
 
 const TICK_STALE_MS = 180_000; // 틱 3분 중단 = 이상(폴 주기 5초 대비 넉넉)

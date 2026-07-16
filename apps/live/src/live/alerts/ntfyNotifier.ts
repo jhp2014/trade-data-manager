@@ -1,8 +1,10 @@
 // 알람 전달 — ntfy(기본 공식 서버 ntfy.sh). 인증 없는 단순 HTTP POST, 토픽 = 긴 랜덤 문자열이 비밀.
-// 텔레그램(뉴스와 섞여 시끄러움)에서 분리한 전용 알람 앱 채널. 우선순위(min~urgent)를 헤더로 전달
-// — Android 에서 urgent 는 무음모드를 뚫고 반복음, min 은 무음 적재. 선택은 createNotifier(env).
-// 노티파이어는 "텍스트 1건 전송"만 하는 트랜스포트 — 포맷·배치·재시도는 NotifyQueue 가 소유.
-import type { NotifyPriority } from "./notifyQueue.js";
+// 우선순위(min~urgent)를 헤더로 전달 — Android 에서 urgent 는 무음모드를 뚫고 반복음, min 은 무음 적재.
+// 지금 기본 전송로는 텔레그램(LIVE_NOTIFY_TRANSPORT=bot)이고 이 어댑터는 대기 자산 —
+// "무음 뚫기가 필요하다" 싶으면 env 한 줄로 되살아난다. 선택은 createNotifier(env).
+// 서식·답장 미지원 전송로 → 평문 폴백(plainText) + replyTo 무시 + message_id 없음(null).
+import { plainText, type NotifyMessage } from "./message.js";
+import type { NotifyPriority } from "./message.js";
 
 export interface NtfyConfig {
     server: string; // 기본 https://ntfy.sh
@@ -38,8 +40,9 @@ export class NtfyNotifier {
         private readonly post: NtfyPostFn = fetchPost,
     ) {}
 
-    /** 텍스트 1건 전송 — 실패는 throw(호출측 NotifyQueue 가 재시도). */
-    async sendText(text: string, opts?: { priority?: NotifyPriority }): Promise<void> {
-        await this.post(`${this.cfg.server}/${this.cfg.topic}`, text, opts?.priority ?? "default");
+    /** 메시지 1건 전송(평문) — 실패는 throw(호출측 NotifyQueue 가 재시도). 답장 앵커 없음(null). */
+    async send(msg: NotifyMessage): Promise<number | null> {
+        await this.post(`${this.cfg.server}/${this.cfg.topic}`, plainText(msg), msg.priority);
+        return null;
     }
 }

@@ -62,15 +62,15 @@ describe("AlertEngine — 가격(절대 임계) 밴드", () => {
         expect(e.evaluate([rule], ctx([quote("005930", 106)]), 10_000)).toHaveLength(1); // 재진입 → 발화
     });
 
-    it("쿨다운 내 재진입은 억제(그 진입은 버림), 쿨다운 후 재진입은 발화", () => {
+    it("쿨다운은 엔진이 안 본다 — cooldownMs 가 있어도 엣지마다 발화(억제는 NotifyGate 몫)", () => {
         const e = new AlertEngine();
         const r = bandRule(105, 110, { cooldownMs: 60_000 });
         e.evaluate([r], ctx([quote("005930", 100)]), 0); // 초기화
         expect(e.evaluate([r], ctx([quote("005930", 106)]), 5_000)).toHaveLength(1); // 발화
         e.evaluate([r], ctx([quote("005930", 100)]), 10_000); // 이탈(재무장)
-        expect(e.evaluate([r], ctx([quote("005930", 106)]), 20_000)).toHaveLength(0); // 쿨다운 내 재진입 — 억제
-        e.evaluate([r], ctx([quote("005930", 100)]), 30_000); // 이탈
-        expect(e.evaluate([r], ctx([quote("005930", 106)]), 70_000)).toHaveLength(1); // 쿨다운 경과 후 재진입
+        // 쿨다운(60s) 한참 안이지만 발화는 난다 — 워크벤치 로그가 이 진입을 보여줘야 하므로 엔진은 버리지 않는다.
+        expect(e.evaluate([r], ctx([quote("005930", 106)]), 20_000)).toHaveLength(1);
+        expect(e.stateOf(r.id)?.lastFiredAt).toBe(20_000); // lastFiredAt = 마지막 "발화"(배달 아님)
     });
 
     it("상단 무제한([≥105]) — 갭 관통도 잡고 / 유계([105,110]) — 밴드 너머 런어웨이는 패스", () => {

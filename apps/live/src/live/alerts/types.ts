@@ -14,11 +14,13 @@ export type {
     WatchlistView,
 } from "@trade-data-manager/wire";
 
-export const DEFAULT_COOLDOWN_MS = 180_000; // 3분 — 진동성 재발화 억제(재무장과 AND)
+/** 종목당 텔레그램 재배달 최소 간격(룰이 cooldownMs 를 안 주면 이 값). 발화는 막지 않는다 — NotifyGate 소유. */
+export const DEFAULT_COOLDOWN_MS = 180_000; // 3분
 
 /** 조건의 런타임 무장 상태(영속 안 함 — 재기동 시 재무장). */
 export interface RuleRuntimeState {
     /** 직전 틱 술어값 — 엣지(false→true) 판정용. */
     inZone: boolean;
+    /** 마지막 **발화** 시각(배달 여부와 무관 — 배달은 NotifyGate 가 따로 억제). */
     lastFiredAt: number | null;
 }

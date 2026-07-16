@@ -13,9 +13,11 @@ import { LiveNewsService } from "./news/liveNews.js";
 import { AlertsController } from "./alerts/alerts.controller.js";
 import { AlertConfigStore } from "./alerts/configStore.js";
 import { AlertsRuntime } from "./alerts/alertsRuntime.js";
-import { formatFiring, kstTime } from "./alerts/format.js";
+import { buildFiringMessages, formatFiring, kstTime } from "./alerts/format.js";
 import { createAlertNotifierFromEnv, type AlertNotifier } from "./alerts/createNotifier.js";
 import { NotifyQueue } from "./alerts/notifyQueue.js";
+import { NotifyGate, type GatePolicy } from "./alerts/notifyGate.js";
+import { DEFAULT_COOLDOWN_MS, type AlertFiring } from "./alerts/types.js";
 import { HealthMonitor, parseWindow } from "./health/monitor.js";
 import { ConditionController } from "./condition.controller.js";
 import { EngineConfigStore } from "./engine/engineConfigStore.js";
@@ -76,14 +78,25 @@ const notifyQueueProvider: Provider = {
     },
     inject: [ALERT_NOTIFIER],
 };
-// 알람 런타임 — 발화 sink = 서버 로그(항상) + 재시도 큐(전송로 설정 시 배달).
+// 알람 런타임 — 발화 sink = 서버 로그(**항상 전부**) + 배달 게이트를 통과한 것만 재시도 큐.
+// 쿨다운에 막힌 발화도 로그에는 남는다(브릭 2 의 워크벤치 로그 뷰가 이 자리를 이어받는다).
 const alertsProvider: Provider = {
     provide: ALERTS,
     useFactory: (config: AlertConfigStore, queue: NotifyQueue): AlertsRuntime => {
         const log = new Logger("Alerts");
+        const gate = new NotifyGate();
+        // watchlist 룰은 **룰별** 억제 — 한 종목의 여러 조건("돌파"/"이탈"/"테마 1위")은 서로 다른 사건이라
+        // 하나를 알렸다고 다른 하나를 삼키면 안 된다. 유니버스 탐지 룰(브릭 4)이 들어오면 여기서 종목별로 분기.
+        const policyOf = (f: AlertFiring): GatePolicy => ({
+            key: f.ruleId,
+            cooldownMs: config.rules.find((r) => r.id === f.ruleId)?.cooldownMs ?? DEFAULT_COOLDOWN_MS,
+        });
         return new AlertsRuntime(config, (firings) => {
+            const now = Date.now();
             for (const f of firings) log.log(`🔔 ${formatFiring(f)}`);
-            queue.push(firings, Date.now());
+            const { passed, suppressed } = gate.pass(firings, policyOf, now);
+            if (suppressed.length > 0) log.debug(`쿨다운 억제 ${suppressed.length}건(로그에는 남음)`);
+            for (const msg of buildFiringMessages(passed)) queue.push(msg, now);
         });
     },
     inject: [ALERT_CONFIG, NOTIFY_QUEUE],

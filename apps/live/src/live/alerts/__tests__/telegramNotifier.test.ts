@@ -1,48 +1,76 @@
 import { describe, it, expect } from "vitest";
-import { TelegramAlertNotifier, loadTelegramBotConfigFromEnv } from "../telegramNotifier.js";
-import { buildAlertMessages } from "../format.js";
-import type { AlertFiring } from "../types.js";
+import { TelegramAlertNotifier, loadTelegramBotConfigFromEnv, renderTelegramHtml } from "../telegramNotifier.js";
+import type { NotifyMessage } from "../message.js";
 
-const firing = (code: string, name: string, at = 0, note?: string): AlertFiring => ({
-    ruleId: `r-${code}`,
-    code,
-    name,
-    at,
-    features: { price: 71_000, changeRate: 2.1 },
-    note,
-});
+const msg = (blocks: NotifyMessage["blocks"], replyTo?: number): NotifyMessage => ({ kind: "firing", priority: "high", blocks, replyTo });
+/** 한도(4096)를 확실히 넘기는 pre 본문 — 200자 × 60줄. */
+const bigText = Array.from({ length: 60 }, () => "가".repeat(200)).join("\n");
 
-describe("buildAlertMessages", () => {
-    it("종목당 1메시지 — 같은 종목 다중 조건은 묶고, 다른 종목은 따로", () => {
-        const msgs = buildAlertMessages([firing("005930", "삼성전자", 0, "돌파"), firing("005930", "삼성전자", 0, "테마 1위"), firing("000660", "SK하이닉스", 0)], 0);
-        expect(msgs).toHaveLength(2);
-        expect(msgs[0]).toContain("삼성전자(005930)");
-        expect(msgs[0]).toContain("돌파");
-        expect(msgs[0]).toContain("테마 1위");
-        expect(msgs[1]).toContain("SK하이닉스(000660)");
+describe("renderTelegramHtml", () => {
+    it("이스케이프 — 뉴스 제목의 < & 가 태그로 새지 않는다(parse_mode 400 방지)", () => {
+        expect(renderTelegramHtml(msg([{ kind: "text", text: '특징주 <급등> & "속보"' }]))).toEqual(['특징주 &lt;급등&gt; &amp; "속보"']);
     });
 
-    it("30초+ 지연 배달이면 원발화 시각 표기, 즉시 배달이면 없음", () => {
-        const at = Date.UTC(2026, 6, 15, 0, 41, 22); // KST 09:41:22
-        expect(buildAlertMessages([firing("005930", "삼성전자", at)], at + 5_000)[0]).not.toContain("지연");
-        const delayed = buildAlertMessages([firing("005930", "삼성전자", at)], at + 120_000)[0];
-        expect(delayed).toContain("09:41:22 발화(지연 전송)");
+    it("블록 서식 — bold/pre/link, href 속성값도 이스케이프", () => {
+        const [html] = renderTelegramHtml(
+            msg([
+                { kind: "text", text: "삼성전자", bold: true },
+                { kind: "pre", text: "1. A +1%\n2. B +2%" },
+                { kind: "link", text: "뉴스 <1>", url: "https://x.test/?a=1&b=2" },
+            ]),
+        );
+        expect(html).toBe('<b>삼성전자</b>\n<pre>1. A +1%\n2. B +2%</pre>\n<a href="https://x.test/?a=1&amp;b=2">뉴스 &lt;1&gt;</a>');
+    });
+
+    it("4096 분할 — 조각마다 한도 이하 + 태그 균형(pre 가 열린 채 끝나지 않는다)", () => {
+        const chunks = renderTelegramHtml(msg([{ kind: "pre", text: bigText }]));
+        expect(chunks.length).toBeGreaterThan(1);
+        for (const c of chunks) {
+            expect(c.length).toBeLessThanOrEqual(4096);
+            expect((c.match(/<pre>/g) ?? []).length).toBe((c.match(/<\/pre>/g) ?? []).length);
+        }
+    });
+
+    it("한 줄이 통째로 한도를 넘으면 그 줄만 줄여 담는다(조각은 여전히 한도 이하)", () => {
+        const chunks = renderTelegramHtml(msg([{ kind: "text", text: "&".repeat(3_000) }])); // 이스케이프 5배 팽창
+        for (const c of chunks) expect(c.length).toBeLessThanOrEqual(4096);
+        expect(chunks.join("")).toContain("…");
     });
 });
 
 describe("TelegramAlertNotifier", () => {
-    it("sendText — 전송 실패는 throw 로 전파(호출측 NotifyQueue 가 재시도)", async () => {
-        const sent: string[] = [];
-        const ok = new TelegramAlertNotifier({ botToken: "t", chatId: "c" }, async (_t, _c, text) => {
-            sent.push(text);
+    it("send — message_id 반환(컨텍스트 후속의 답장 앵커) + replyTo 전달", async () => {
+        const calls: Array<{ html: string; replyTo?: number }> = [];
+        const n = new TelegramAlertNotifier({ botToken: "t", chatId: "c" }, async (_t, _c, html, replyTo) => {
+            calls.push({ html, replyTo });
+            return 111;
         });
-        await ok.sendText("hello");
-        expect(sent).toEqual(["hello"]);
+        expect(await n.send(msg([{ kind: "text", text: "hello" }]))).toBe(111);
+        expect(calls).toEqual([{ html: "hello", replyTo: undefined }]);
 
+        calls.length = 0;
+        await n.send(msg([{ kind: "text", text: "후속" }], 111));
+        expect(calls[0].replyTo).toBe(111);
+    });
+
+    it("분할 뒷조각은 첫 조각에 답장으로 묶인다(순서·묶음 보장)", async () => {
+        const seen: Array<number | undefined> = [];
+        let next = 500;
+        const n = new TelegramAlertNotifier({ botToken: "t", chatId: "c" }, async (_t, _c, _html, replyTo) => {
+            seen.push(replyTo);
+            return next++;
+        });
+        await n.send(msg([{ kind: "pre", text: bigText }]));
+        expect(seen.length).toBeGreaterThan(1);
+        expect(seen[0]).toBeUndefined(); // 첫 조각은 답장 아님
+        expect(seen.slice(1).every((r) => r === 500)).toBe(true); // 뒷조각은 전부 첫 조각에
+    });
+
+    it("전송 실패는 throw 로 전파(호출측 NotifyQueue 가 재시도)", async () => {
         const bad = new TelegramAlertNotifier({ botToken: "t", chatId: "c" }, async () => {
             throw new Error("텔레그램 sendMessage 429: too many requests");
         });
-        await expect(bad.sendText("x")).rejects.toThrow(/429/);
+        await expect(bad.send(msg([{ kind: "text", text: "x" }]))).rejects.toThrow(/429/);
     });
 
     it("env 로드 — 둘 다 있어야 config, 하나라도 없으면 null(로그 degrade)", () => {

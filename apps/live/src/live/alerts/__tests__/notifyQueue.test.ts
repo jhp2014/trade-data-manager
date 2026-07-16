@@ -1,24 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { NotifyQueue, type NotifyTransport } from "../notifyQueue.js";
-import type { AlertFiring } from "../types.js";
+import { plainText, textMessage, type NotifyMessage, type NotifyPriority } from "../message.js";
 
-const firing = (code: string, at: number): AlertFiring => ({
-    ruleId: `r-${code}`,
-    code,
-    name: `${code}명`,
-    at,
-    features: { price: 10_000, changeRate: 1.2 },
-});
+const firingMsg = (code: string): NotifyMessage => ({ kind: "firing", priority: "high", blocks: [{ kind: "text", text: `🔔 ${code}명(${code})` }] });
 
-/** 실패 토글 가능한 스텁 트랜스포트. */
-function makeTransport(): { transport: NotifyTransport; sent: string[]; state: { fail: boolean } } {
-    const sent: string[] = [];
+/** 실패 토글 가능한 스텁 트랜스포트 — 배달된 메시지를 원형 그대로 모은다. */
+function makeTransport(): { transport: NotifyTransport; sent: NotifyMessage[]; state: { fail: boolean } } {
+    const sent: NotifyMessage[] = [];
     const state = { fail: false };
     return {
         transport: {
-            sendText: async (t: string) => {
+            send: async (msg: NotifyMessage) => {
                 if (state.fail) throw new Error("boom");
-                sent.push(t);
+                sent.push(msg);
+                return 1;
             },
         },
         sent,
@@ -27,14 +22,16 @@ function makeTransport(): { transport: NotifyTransport; sent: string[]; state: {
 }
 
 describe("NotifyQueue", () => {
-    it("정상 경로 — push 즉시 다음 tick 에 배달, 종목당 1메시지", async () => {
+    it("정상 경로 — push 즉시 다음 tick 에 배달", async () => {
         const { transport, sent } = makeTransport();
         const q = new NotifyQueue(transport);
-        q.push([firing("005930", 1_000), firing("005930", 1_000), firing("000660", 1_000)], 1_000);
+        q.push(firingMsg("005930"), 1_000);
+        q.push(firingMsg("000660"), 1_000);
         await q.tick(2_000);
-        expect(sent).toHaveLength(2); // 같은 종목 2건 묶임 + 다른 종목 1건
+        expect(sent).toHaveLength(2);
         expect(q.stats().pending).toBe(0);
         expect(q.stats().lastOkAt).toBe(2_000);
+        expect(q.stats().enqueuedFirings).toBe(2);
     });
 
     it("실패 → 큐 단위 백오프(5s→30s), 회복 후 배달·연속실패 리셋", async () => {
@@ -42,7 +39,7 @@ describe("NotifyQueue", () => {
         const errs: unknown[] = [];
         const q = new NotifyQueue(transport, undefined, (e) => errs.push(e));
         state.fail = true;
-        q.push([firing("005930", 0)], 0);
+        q.push(firingMsg("005930"), 0);
         await q.tick(0); // 실패 1 → retryAt=5s
         expect(q.stats().consecutiveFailures).toBe(1);
         await q.tick(3_000); // 백오프 창 안 — 시도 안 함
@@ -63,26 +60,37 @@ describe("NotifyQueue", () => {
         const drops: string[] = [];
         const q = new NotifyQueue(transport, (d) => drops.push(d.summary));
         state.fail = true;
-        q.push([firing("005930", 0)], 0);
+        q.push(firingMsg("005930"), 0);
         await q.tick(0); // 실패(무장)
         state.fail = false;
         await q.tick(601_000); // TTL 초과 — 전송 전에 폐기
         expect(sent).toHaveLength(0);
-        expect(drops).toHaveLength(1);
+        expect(drops).toEqual(["🔔 005930명(005930)"]);
         expect(q.stats().droppedEntries).toBe(1);
         expect(q.stats().pending).toBe(0);
     });
 
-    it("지연 배달(30s+)이면 메시지에 원발화 시각 표기", async () => {
+    it("지연 배달(30s+)이면 원발화 시각을 배달 시점에 덧붙인다(적재 시점엔 알 수 없다)", async () => {
         const { transport, sent, state } = makeTransport();
         const q = new NotifyQueue(transport);
         state.fail = true;
-        q.push([firing("005930", 0)], 0);
+        q.push(firingMsg("005930"), 0);
         await q.tick(0); // 실패
         state.fail = false;
         await q.tick(120_000); // 2분 지연 배달
         expect(sent).toHaveLength(1);
-        expect(sent[0]).toContain("발화(지연 전송)");
+        expect(plainText(sent[0])).toContain("발화(지연 전송)");
+    });
+
+    it("지연 표기는 발화만 — 헬스/하트비트엔 안 붙는다", async () => {
+        const { transport, sent, state } = makeTransport();
+        const q = new NotifyQueue(transport);
+        state.fail = true;
+        q.pushText("✅ 알람 시스템 정상", 0, "min");
+        await q.tick(0);
+        state.fail = false;
+        await q.tick(120_000);
+        expect(plainText(sent[0])).toBe("✅ 알람 시스템 정상");
     });
 
     it("pushText 는 그대로 배달(하트비트·헬스 알림 경로)", async () => {
@@ -90,17 +98,19 @@ describe("NotifyQueue", () => {
         const q = new NotifyQueue(transport);
         q.pushText("✅ 알람 시스템 정상", 0);
         await q.tick(1_000);
-        expect(sent).toEqual(["✅ 알람 시스템 정상"]);
+        expect(sent.map(plainText)).toEqual(["✅ 알람 시스템 정상"]);
+        expect(q.stats().enqueuedFirings).toBe(0); // 발화 아님 — 요약 카운트에 안 잡힘
     });
 
     it("우선순위 전달 — 발화=high, pushText 기본 default·지정값 유지", async () => {
-        const got: Array<string | undefined> = [];
+        const got: NotifyPriority[] = [];
         const q = new NotifyQueue({
-            sendText: async (_t, opts) => {
-                got.push(opts?.priority);
+            send: async (msg) => {
+                got.push(msg.priority);
+                return null;
             },
         });
-        q.push([firing("005930", 0)], 0);
+        q.push(firingMsg("005930"), 0);
         q.pushText("회복", 0);
         q.pushText("🚨 이상", 0, "urgent");
         q.pushText("하트비트", 0, "min");
@@ -110,9 +120,15 @@ describe("NotifyQueue", () => {
 
     it("전송로 없음(null) — 큐만 비우고 조용히(로그는 sink 소관)", async () => {
         const q = new NotifyQueue(null);
-        q.push([firing("005930", 0)], 0);
+        q.push(firingMsg("005930"), 0);
         await q.tick(1_000);
         expect(q.stats().pending).toBe(0);
         expect(q.stats().consecutiveFailures).toBe(0);
+    });
+});
+
+describe("textMessage", () => {
+    it("기본 갈래는 health — 발화 카운트·지연 표기 대상이 아니다", () => {
+        expect(textMessage("x", "min").kind).toBe("health");
     });
 });
