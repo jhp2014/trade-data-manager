@@ -1,11 +1,12 @@
 // watchlist·알람조건 REST — 실시간 모니터링 패널이 폴링·편집. 계약은 contracts/wire(alerts.ts).
-//  GET    /watchlist            전체 뷰(codes+조건+runtime state+최근 발화+현재 순위)
+//  GET    /watchlist            전체 뷰(codes+조건+runtime state+현재 순위)
+//  GET    /alerts/log?since=N   발화 로그 증분(억제분 포함) — 워크벤치 로그 패널이 커서로 누적
 //  POST   /watchlist {code}     타겟 승격
 //  DELETE /watchlist/:code      타겟 해제(그 종목 조건 연쇄 삭제)
 //  POST   /alerts {code,leaves,cooldownMs?,note?}  조건 추가(leaves=AND, 절대가격이라 baseline 해소 없음)
 //  DELETE /alerts/:id           조건 삭제
-import { Controller, Get, Post, Delete, Body, Param, Inject, BadRequestException, NotFoundException } from "@nestjs/common";
-import type { AlertLeaf, AlertMarket, AlertOp, AlertRule, WatchlistView } from "./types.js";
+import { Controller, Get, Post, Delete, Body, Param, Query, Inject, BadRequestException, NotFoundException } from "@nestjs/common";
+import type { AlertLeaf, AlertLogView, AlertMarket, AlertOp, AlertRule, WatchlistView } from "./types.js";
 import { AlertConfigStore } from "./configStore.js";
 import type { AlertsRuntime } from "./alertsRuntime.js";
 import { ALERT_CONFIG, ALERTS } from "../tokens.js";
@@ -67,6 +68,14 @@ export class AlertsController {
     @Get("watchlist")
     view(): WatchlistView {
         return this.alerts.view();
+    }
+
+    /** 발화 로그 증분 — since 초과분만. 생략/0 이면 서버 보유분 전체(패널 첫 로드). */
+    @Get("alerts/log")
+    log(@Query("since") since?: string): AlertLogView {
+        const n = since == null || since === "" ? 0 : Number(since);
+        if (!Number.isInteger(n) || n < 0) throw new BadRequestException("since 는 0 이상 정수(seq)");
+        return this.alerts.logSince(n);
     }
 
     @Post("watchlist")

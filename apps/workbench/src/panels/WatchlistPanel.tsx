@@ -12,12 +12,12 @@ import {
     createAlertRule,
     deleteAlertRule,
     type AlertRuleView,
-    type AlertFiring,
     type AlertLeaf,
     type AlertMarket,
     type AlertOp,
     type CreateRulePayload,
 } from "../api/alerts.js";
+import { kstTime } from "../lib/date.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useStockName } from "../lib/useStockName.js";
 import { StockRow } from "../components/board/StockRow.js";
@@ -198,13 +198,8 @@ export function WatchlistPanel(): JSX.Element {
                     </button>
                 </div>
 
-                {/* 최근 발화 로그 */}
-                {(view.data?.firings.length ?? 0) > 0 && (
-                    <div>
-                        <div style={{ padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", background: "var(--bg-tertiary)" }}>최근 발화</div>
-                        {view.data?.firings.map((f) => <FiringLine key={`${f.ruleId}-${f.at}`} f={f} />)}
-                    </div>
-                )}
+                {/* 발화 목록은 여기 없다 — "알람 로그" 패널이 watchlist·유니버스 발화를 시간순으로 함께 싣는
+                    단일 자리다(억제분 포함). 룰이 마지막에 언제 울렸는지는 조건 줄의 "발화 HH:MM:SS" 로 충분. */}
             </div>
         </div>
     );
@@ -287,7 +282,6 @@ function miniBtn(color: string): React.CSSProperties {
     return { border: "none", background: "none", padding: 0, cursor: "pointer", font: "inherit", fontSize: 11, color };
 }
 
-const sign = (n: number): string => (n >= 0 ? "+" : "");
 const mkLabel = (m: AlertMarket): string => (m === "krx" ? "KRX" : "UN");
 
 /** leaf 한 개 → 짧은 텍스트. */
@@ -309,19 +303,6 @@ function RuleLine({ rule, onDelete }: { rule: AlertRuleView; onDelete: () => voi
             <span className="tabular" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parts.join(" · ")}</span>
             {rule.lastFiredAt != null && <span className="tabular" style={{ flexShrink: 0, color: "var(--text-tertiary)" }}>발화 {kstTime(rule.lastFiredAt)}</span>}
             <button style={{ ...miniBtn("var(--text-tertiary)"), marginLeft: "auto", flexShrink: 0 }} onClick={onDelete} title="조건 삭제">✕</button>
-        </div>
-    );
-}
-
-function FiringLine({ f }: { f: AlertFiring }): JSX.Element {
-    const { price, changeRate } = f.features;
-    const bits = [`${price.toLocaleString("ko-KR")}원 ${sign(changeRate)}${changeRate.toFixed(2)}%`];
-    if (f.note) bits.push(f.note);
-    return (
-        <div style={{ display: "flex", gap: 6, padding: "3px 10px", fontSize: 11, borderBottom: "1px solid var(--border-subtle)" }}>
-            <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)" }}>{kstTime(f.at)}</span>
-            <span style={{ flexShrink: 0, fontWeight: 600, color: "var(--text-primary)" }}>{f.name || f.code}</span>
-            <span className="tabular" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-secondary)" }}>{bits.join(" · ")}</span>
         </div>
     );
 }
@@ -547,7 +528,3 @@ function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = 
 }
 
 const numStyle: React.CSSProperties = { width: 62, fontSize: 12, padding: "2px 6px", color: "var(--text-primary)", background: "var(--bg-tertiary)", border: "none", borderRadius: 4, outline: "none", textAlign: "right" };
-
-function kstTime(ms: number): string {
-    return new Date(ms).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-}

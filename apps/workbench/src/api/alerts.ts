@@ -1,10 +1,14 @@
 // watchlist·알람조건 클라이언트 — apps/live(/live 프록시 → :3002) REST. 계약은 contracts/wire(alerts.ts).
-import type { AlertRule, AlertLeaf, WatchlistView } from "@trade-data-manager/wire";
+import type { AlertRule, AlertLeaf, AlertLogView, WatchlistView } from "@trade-data-manager/wire";
 
 export type {
     AlertRule,
     AlertRuleView,
     AlertFiring,
+    AlertLogEntry,
+    AlertLogView,
+    AlertScope,
+    LeafEvidence,
     WatchlistView,
     AlertLeaf,
     AlertMarket,
@@ -43,6 +47,9 @@ async function liveRequest<T>(method: string, path: string, body?: unknown, sign
 }
 
 export const fetchWatchlist = (signal?: AbortSignal): Promise<WatchlistView> => liveRequest("GET", "watchlist", undefined, signal);
+/** 발화 로그 증분 — since 초과분만(0=전체). 전체를 매 폴링마다 내리면 5초×수 MB 라 커서로 받는다. */
+export const fetchAlertLog = (since: number, signal?: AbortSignal): Promise<AlertLogView> =>
+    liveRequest("GET", `alerts/log?since=${since}`, undefined, signal);
 export const addWatch = (code: string): Promise<{ added: boolean }> => liveRequest("POST", "watchlist", { code });
 export const removeWatch = (code: string): Promise<void> => liveRequest("DELETE", `watchlist/${code}`);
 export const createAlertRule = (payload: CreateRulePayload): Promise<AlertRule> => liveRequest("POST", "alerts", payload);

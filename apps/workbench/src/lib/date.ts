@@ -6,6 +6,11 @@ export function kstToday(): string {
     return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 }
 
+/** epoch ms → KST HH:MM:SS. 발화 시각 표시(모니터링·알람 로그 공용). */
+export function kstTime(ms: number): string {
+    return new Date(ms).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+}
+
 /** 로컬 요일 문자(일~토). 빈/비정상 입력은 빈 문자열. */
 export function weekdayOf(date: string): string {
     if (!date) return "";

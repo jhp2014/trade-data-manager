@@ -9,7 +9,8 @@
 //    억제된 발화도 워크벤치 로그엔 남아야 하기 때문(엔진이 버리면 남길 것 자체가 없다).
 //  · OR = 조건을 여러 개 다는 것으로 대체(엔진은 조건 하나당 AND 만 안다).
 import type { Quote } from "../engine/types.js";
-import type { AlertFiring, AlertLeaf, AlertMarket, AlertRule, RuleRuntimeState } from "./types.js";
+import { priceEvidence, rankEvidence } from "./format.js";
+import type { AlertFiring, AlertLeaf, AlertMarket, AlertRule, LeafEvidence, RuleRuntimeState } from "./types.js";
 
 export interface AlertEvalContext {
     quoteOf(code: string): Quote | undefined;
@@ -21,31 +22,45 @@ export interface AlertEvalContext {
     rankAgoOf(code: string, theme: string, market: AlertMarket): number | undefined;
 }
 
-/** leaf 3치 평가 — true/false/undefined(데이터 결손). quote 는 이미 존재 보장. */
-function evalLeaf(leaf: AlertLeaf, quote: Quote, ctx: AlertEvalContext): boolean | undefined {
+/** leaf 판정 + 근거. ok=true/false/undefined(데이터 결손). 근거는 판정에 **쓴 그 실측값**으로 만든다. */
+interface LeafResult {
+    ok: boolean | undefined;
+    evidence?: LeafEvidence;
+}
+
+/** leaf 3치 평가 — quote 는 이미 존재 보장. */
+function evalLeaf(leaf: AlertLeaf, quote: Quote, ctx: AlertEvalContext): LeafResult {
     switch (leaf.kind) {
         case "price":
-            return leaf.op === "gte" ? quote.price >= leaf.value : quote.price <= leaf.value;
+            return {
+                ok: leaf.op === "gte" ? quote.price >= leaf.value : quote.price <= leaf.value,
+                evidence: priceEvidence(leaf, quote.price),
+            };
         case "rank": {
             const rank = ctx.rankOf(quote.code, leaf.theme, leaf.market);
-            if (rank == null) return undefined; // 테마 미배정/멤버십 미로드/전일종가 미도착
-            if (leaf.mode === "reach") return rank <= leaf.threshold;
+            if (rank == null) return { ok: undefined }; // 테마 미배정/멤버십 미로드/전일종가 미도착
             const past = ctx.rankAgoOf(quote.code, leaf.theme, leaf.market);
-            if (past == null) return undefined; // 60초 이력 미적립
-            return past - rank >= leaf.threshold; // 양수 = 순위 상승
+            if (leaf.mode === "reach") {
+                // past 는 표시용(없으면 근거에서 생략) — reach 판정 자체는 현재 순위만 본다.
+                return { ok: rank <= leaf.threshold, evidence: rankEvidence(leaf, rank, past) };
+            }
+            if (past == null) return { ok: undefined }; // 60초 이력 미적립
+            return { ok: past - rank >= leaf.threshold, evidence: rankEvidence(leaf, rank, past) }; // 양수 = 순위 상승
         }
     }
 }
 
-/** 식(AND) 3치 — false 하나면 false, 미결 있으면 미결, 전부 true 면 true. */
-function evalLeaves(leaves: readonly AlertLeaf[], quote: Quote, ctx: AlertEvalContext): boolean | undefined {
+/** 식(AND) 3치 — false 하나면 false, 미결 있으면 미결, 전부 true 면 true. 참일 때만 근거를 모은다. */
+function evalLeaves(leaves: readonly AlertLeaf[], quote: Quote, ctx: AlertEvalContext): { ok: boolean | undefined; evidence: LeafEvidence[] } {
     let anyUndef = false;
+    const evidence: LeafEvidence[] = [];
     for (const leaf of leaves) {
-        const v = evalLeaf(leaf, quote, ctx);
-        if (v === false) return false;
-        if (v === undefined) anyUndef = true;
+        const r = evalLeaf(leaf, quote, ctx);
+        if (r.ok === false) return { ok: false, evidence: [] }; // 발화 안 함 — 근거 불필요
+        if (r.ok === undefined) anyUndef = true;
+        else if (r.evidence) evidence.push(r.evidence);
     }
-    return anyUndef ? undefined : true;
+    return { ok: anyUndef ? undefined : true, evidence };
 }
 
 export class AlertEngine {
@@ -77,6 +92,7 @@ export class AlertEngine {
                     name: verdict.quote.name,
                     at: now,
                     features: verdict.features,
+                    evidence: verdict.evidence,
                     note: rule.note,
                 });
             }
@@ -91,16 +107,16 @@ export class AlertEngine {
     }
 
     /**
-     * 식 판정 + 발화 피처. null = 시세 없음 또는 식 미결 → 이 틱 판단 불가(스킵, 상태 불변).
+     * 식 판정 + 발화 피처 + leaf 근거. null = 시세 없음 또는 식 미결 → 이 틱 판단 불가(스킵, 상태 불변).
      */
     private judge(
         rule: AlertRule,
         ctx: AlertEvalContext,
-    ): { hold: boolean; quote: Quote; features: AlertFiring["features"] } | null {
+    ): { hold: boolean; quote: Quote; features: AlertFiring["features"]; evidence: LeafEvidence[] } | null {
         const quote = ctx.quoteOf(rule.code);
         if (!quote) return null; // 시세 없으면 가격 leaf·피처 모두 불가
-        const v = evalLeaves(rule.leaves, quote, ctx);
-        if (v === undefined) return null; // 데이터 결손 — 상태 불변
-        return { hold: v, quote, features: { price: quote.price, changeRate: quote.changeRate } };
+        const { ok, evidence } = evalLeaves(rule.leaves, quote, ctx);
+        if (ok === undefined) return null; // 데이터 결손 — 상태 불변
+        return { hold: ok, quote, features: { price: quote.price, changeRate: quote.changeRate }, evidence };
     }
 }

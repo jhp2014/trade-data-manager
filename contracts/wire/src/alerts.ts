@@ -42,7 +42,18 @@ export interface AlertRule {
     note?: string;
 }
 
-/** 발화 한 건 — 알림 페이로드·최근 발화 로그. features = 발화 시점 스칼라(요약 표시용). */
+/**
+ * leaf 가 참이 된 근거 — "왜 울렸는지". 실측값과 임계를 **서버가 문구로 만들어** 싣는다:
+ * 텔레그램 메시지와 워크벤치 로그가 같은 문구를 쓰게 해 드리프트를 없앤다(포맷 단일 출처).
+ * 구조화(rank 숫자 등)는 필요해지면 additive 로 더한다 — 로그는 메모리 전용이라 마이그레이션이 없다.
+ */
+export interface LeafEvidence {
+    kind: AlertLeaf["kind"];
+    /** 예: `반도체 UN 3위 도달(60초 전 7위)` / `12,000원 ≥ 11,500원` */
+    text: string;
+}
+
+/** 발화 한 건 — 알림 페이로드·로그. features = 발화 시점 스칼라, evidence = 참이 된 leaf 들의 근거. */
 export interface AlertFiring {
     ruleId: string;
     code: string;
@@ -52,7 +63,36 @@ export interface AlertFiring {
         price: number; // 발화 시점 현재가(원)
         changeRate: number; // ka10095 등락률 %(참고 표시용)
     };
+    /** 식(AND)의 모든 leaf 근거 — 발화 시점엔 전부 참이므로 조건 전체를 설명한다. */
+    evidence: LeafEvidence[];
     note?: string;
+}
+
+/** 발화 갈래 — watchlist(집중 감시) / universe(탐지, 브릭 4). 로그 필터용. */
+export type AlertScope = "watchlist" | "universe";
+
+/**
+ * 발화 로그 한 줄 — 워크벤치 로그 패널이 누적한다.
+ * **억제된 발화도 남는다**(notified=false) — 알람을 듣고 PC 앞에 앉았을 때 시장 전체를 보기 위함.
+ */
+export interface AlertLogEntry {
+    /** 단조 증가 — 클라 증분 폴링 커서. at 은 같은 틱에 여러 건이라 커서로 못 쓴다. */
+    seq: number;
+    firing: AlertFiring;
+    scope: AlertScope;
+    /** 그 종목이 속한 **전체** 테마 — 클라 필터용. */
+    themes: string[];
+    /** 텔레그램으로 배달됐나(false = 쿨다운 억제). */
+    notified: boolean;
+}
+
+/**
+ * GET /live/alerts/log?since=<seq> — since 초과 항목만(seq 오름차순, 클라가 누적).
+ * 서버 재시작이면 seq 가 0 부터 다시 → 클라는 `latestSeq < since` 를 보고 자기 로그를 리셋한다.
+ */
+export interface AlertLogView {
+    entries: AlertLogEntry[];
+    latestSeq: number;
 }
 
 /** 조건 + 런타임 상태(읽기 전용) — GET /live/watchlist 응답의 조건 모양. */
@@ -62,11 +102,14 @@ export interface AlertRuleView extends AlertRule {
     lastFiredAt?: number | null;
 }
 
-/** GET /live/watchlist — 실시간 모니터링 패널이 폴링하는 전체 뷰. */
+/**
+ * GET /live/watchlist — 실시간 모니터링 패널이 폴링하는 전체 뷰.
+ * 발화 목록은 여기 없다 — 로그(AlertLogView)가 watchlist·유니버스 발화를 시간순으로 함께 싣는 단일 자리다.
+ * 룰이 마지막에 언제 울렸는지는 AlertRuleView.lastFiredAt 으로 충분.
+ */
 export interface WatchlistView {
     codes: string[]; // watchlist 종목(수동 정렬 없음 — 표시는 스냅샷 시세로)
     rules: AlertRuleView[];
-    firings: AlertFiring[]; // 최근 발화(최신순, 서버 메모리 상한)
     /** 이번 틱 테마 등락률 순위 — 키 `code|theme|market`(전 테마×양시장). 클라가 종목·시장·테마 골라 표시. */
     ranks: Record<string, number>;
 }

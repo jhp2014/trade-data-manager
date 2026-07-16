@@ -8,6 +8,7 @@ const firing = (code: string, ruleId: string): AlertFiring => ({
     name: `${code}명`,
     at: 0,
     features: { price: 10_000, changeRate: 1.2 },
+    evidence: [],
 });
 
 /** watchlist 정책 — 룰별 억제(조건마다 다른 사건). */
