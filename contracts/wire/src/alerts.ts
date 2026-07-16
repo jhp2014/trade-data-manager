@@ -43,14 +43,39 @@ export interface AlertRule {
 }
 
 /**
- * leaf 가 참이 된 근거 — "왜 울렸는지". 실측값과 임계를 **서버가 문구로 만들어** 싣는다:
- * 텔레그램 메시지와 워크벤치 로그가 같은 문구를 쓰게 해 드리프트를 없앤다(포맷 단일 출처).
- * 구조화(rank 숫자 등)는 필요해지면 additive 로 더한다 — 로그는 메모리 전용이라 마이그레이션이 없다.
+ * leaf 가 참이 된 근거 — "왜 울렸는지". **구조화**(실측값·임계)해서 싣고, 텔레그램은 서버가 문구로
+ * flatten, 워크벤치는 자기 방식으로 렌더한다(같은 문구를 재현하는 게 아니라 매체별 뷰).
+ * price: 실측가 op 임계 / rank: 테마 순위 변화 + 조건(reach=K위 이내 / delta=D계단).
+ * past = ~60초 전 순위(표시용, reach 는 없을 수 있음 → 변화 표기 생략).
  */
-export interface LeafEvidence {
-    kind: AlertLeaf["kind"];
-    /** 예: `반도체 UN 3위 도달(60초 전 7위)` / `12,000원 ≥ 11,500원` */
-    text: string;
+export type LeafEvidence =
+    | { kind: "price"; op: AlertOp; price: number; value: number }
+    | { kind: "rank"; theme: string; market: AlertMarket; mode: "reach" | "delta"; rank: number; past?: number; threshold: number };
+
+/**
+ * 테마 미니 보드의 한 멤버 — 발화 시점 스냅샷. 순위 잣대는 UN(rateKrx 는 괄호 표시용).
+ * 등락률은 시장별 rawPrevClose 기준(발화 종목 features.changeRate 와 달리 보드와 같은 잣대).
+ */
+export interface AlertThemeMember {
+    code: string;
+    name: string;
+    rateUn: number | null; // UN 등락률 %(순위 잣대) — 없으면 UN 전일종가 미도착
+    rateKrx: number | null; // KRX 등락률 %(괄호 표시용)
+    rank: number; // 테마 내 UN 순위(1-based)
+    tradeValue: number; // 누적 거래대금(백만원)
+    themes: string[]; // 그 종목의 연관 테마(칩) — 워크벤치가 렌더, 텔레그램은 생략(길이)
+    isSelf: boolean; // 발화 종목 자신(화살표·강조)
+}
+
+/**
+ * 발화 종목이 놓인 테마 상황 — 발화 시점 스냅샷(재계산 불가라 저장). 설정 off 면 없음.
+ * boards = 유니버스 멤버 임계 이상인 테마만 펼침(멤버 전부, UN 순위순). 각 소비자가 잘라 렌더
+ * (텔레그램=테마당 상위 N + "외 M종목" / 워크벤치=전부, 필요 시 자체 컷).
+ * (배정 팝업의 ThemeContext(theme.ts)와 다른 개념이라 Alert 접두.)
+ */
+export interface AlertThemeContext {
+    chips: string[]; // 발화 종목의 소속 테마 전부(칩만)
+    boards: { theme: string; members: AlertThemeMember[] }[];
 }
 
 /** 발화 한 건 — 알림 페이로드·로그. features = 발화 시점 스칼라, evidence = 참이 된 leaf 들의 근거. */
@@ -65,6 +90,8 @@ export interface AlertFiring {
     };
     /** 식(AND)의 모든 leaf 근거 — 발화 시점엔 전부 참이므로 조건 전체를 설명한다. */
     evidence: LeafEvidence[];
+    /** 테마 상황(설정 on 일 때만). 억제된 발화도 갖는다 — 로그 미니 보드가 남아야 하므로. */
+    themeContext?: AlertThemeContext;
     note?: string;
 }
 

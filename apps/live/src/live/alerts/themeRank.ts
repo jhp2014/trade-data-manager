@@ -4,11 +4,12 @@
 // 키 = `code|theme|market`. 전일종가 미도착(핫 편입 직후)인 (code,market)은 그 시장 순위에서 빠진다.
 // 순위 델타(60s 창)는 RankTracker 가 이력으로 제공(signals 의 링버퍼 델타와 동일 창·stale 규칙).
 import type { Quote } from "../engine/types.js";
-import type { AlertMarket } from "./types.js";
+import type { AlertMarket, AlertThemeContext, AlertThemeMember } from "./types.js";
 
 const WINDOW_MS = 60_000; // 델타 비교 창(1분)
 const KEEP_MS = 70_000; // 보관 창 — 60s-과거 틱이 안정적으로 남게 여유
 const MARKETS: readonly AlertMarket[] = ["krx", "un"];
+const CONTEXT_MIN_MEMBERS = 3; // 이 수 이상 유니버스 멤버(UN 순위 보유)인 테마만 펼친다 — "움직이는 테마"
 
 /** (code,theme,market) → rank 키. RankTracker 와 공유. */
 export function rankKey(code: string, theme: string, market: AlertMarket): string {
@@ -48,6 +49,55 @@ export function computeThemeRanks(
         members.forEach((m, i) => out.set(`${m.code}|${gk}`, i + 1));
     }
     return out;
+}
+
+/** market 등락률 % — 그 시장 전일종가 기준. 없으면 null(보드 표시 "-"). */
+function rateOf(price: number, base: number | undefined | null): number | null {
+    return base != null && base > 0 ? (price / base - 1) * 100 : null;
+}
+
+/**
+ * 발화 종목이 놓인 테마 상황 스냅샷 — 소속 테마 전부(칩) + 유니버스 멤버 CONTEXT_MIN_MEMBERS 이상인
+ * 테마만 보드로 펼침(멤버 전부, UN 순위순). 순위 잣대 UN, KRX 는 괄호 표시용.
+ * 멤버 = 이번 틱 유니버스(quotes) 중 그 테마 소속이면서 **UN 순위를 가진**(UN 전일종가 도착) 종목.
+ * ranks = computeThemeRanks 결과(키 code|theme|market) — 여기서 UN 순위를 읽어 정렬·표기.
+ */
+export function buildThemeContext(
+    firingCode: string,
+    quotes: Iterable<Quote>,
+    themesOf: (code: string) => string[],
+    prevCloseOf: PrevCloseLookup,
+    ranks: Map<string, number>,
+): AlertThemeContext {
+    const chips = themesOf(firingCode);
+    // 유니버스를 테마별로 묶는다(quotes 1회 순회). 멤버는 UN 순위 보유분만(보드가 UN 정렬이라).
+    const byTheme = new Map<string, AlertThemeMember[]>();
+    for (const q of quotes) {
+        for (const theme of themesOf(q.code)) {
+            const rank = ranks.get(rankKey(q.code, theme, "un"));
+            if (rank == null) continue; // UN 전일종가 미도착 → UN 보드에 자리 없음(테마 칩엔 남음)
+            const list = byTheme.get(theme) ?? [];
+            list.push({
+                code: q.code,
+                name: q.name,
+                rateUn: rateOf(q.price, prevCloseOf(q.code, "un")),
+                rateKrx: rateOf(q.price, prevCloseOf(q.code, "krx")),
+                rank,
+                tradeValue: q.tradeValue,
+                themes: themesOf(q.code),
+                isSelf: q.code === firingCode,
+            });
+            byTheme.set(theme, list);
+        }
+    }
+    const boards: AlertThemeContext["boards"] = [];
+    for (const theme of chips) {
+        const members = byTheme.get(theme);
+        if (!members || members.length < CONTEXT_MIN_MEMBERS) continue; // 조용한 테마 — 칩으로만
+        members.sort((a, b) => a.rank - b.rank);
+        boards.push({ theme, members });
+    }
+    return { chips, boards };
 }
 
 /** (code,theme,market)별 순위 이력 — 순위 룰 delta(창 내 상승 계단) 계산용. 키 = rankKey. */

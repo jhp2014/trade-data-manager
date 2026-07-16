@@ -9,7 +9,6 @@
 //    억제된 발화도 워크벤치 로그엔 남아야 하기 때문(엔진이 버리면 남길 것 자체가 없다).
 //  · OR = 조건을 여러 개 다는 것으로 대체(엔진은 조건 하나당 AND 만 안다).
 import type { Quote } from "../engine/types.js";
-import { priceEvidence, rankEvidence } from "./format.js";
 import type { AlertFiring, AlertLeaf, AlertMarket, AlertRule, LeafEvidence, RuleRuntimeState } from "./types.js";
 
 export interface AlertEvalContext {
@@ -28,24 +27,23 @@ interface LeafResult {
     evidence?: LeafEvidence;
 }
 
-/** leaf 3치 평가 — quote 는 이미 존재 보장. */
+/** leaf 3치 평가 — quote 는 이미 존재 보장. 근거는 판정에 쓴 그 실측값을 구조화해 담는다(문구화는 format). */
 function evalLeaf(leaf: AlertLeaf, quote: Quote, ctx: AlertEvalContext): LeafResult {
     switch (leaf.kind) {
         case "price":
             return {
                 ok: leaf.op === "gte" ? quote.price >= leaf.value : quote.price <= leaf.value,
-                evidence: priceEvidence(leaf, quote.price),
+                evidence: { kind: "price", op: leaf.op, price: quote.price, value: leaf.value },
             };
         case "rank": {
             const rank = ctx.rankOf(quote.code, leaf.theme, leaf.market);
             if (rank == null) return { ok: undefined }; // 테마 미배정/멤버십 미로드/전일종가 미도착
             const past = ctx.rankAgoOf(quote.code, leaf.theme, leaf.market);
-            if (leaf.mode === "reach") {
-                // past 는 표시용(없으면 근거에서 생략) — reach 판정 자체는 현재 순위만 본다.
-                return { ok: rank <= leaf.threshold, evidence: rankEvidence(leaf, rank, past) };
-            }
+            const evidence: LeafEvidence = { kind: "rank", theme: leaf.theme, market: leaf.market, mode: leaf.mode, rank, past, threshold: leaf.threshold };
+            // reach 판정은 현재 순위만(past 는 표시용). delta 는 past 필수 → 없으면 미결.
+            if (leaf.mode === "reach") return { ok: rank <= leaf.threshold, evidence };
             if (past == null) return { ok: undefined }; // 60초 이력 미적립
-            return { ok: past - rank >= leaf.threshold, evidence: rankEvidence(leaf, rank, past) }; // 양수 = 순위 상승
+            return { ok: past - rank >= leaf.threshold, evidence }; // 양수 = 순위 상승
         }
     }
 }

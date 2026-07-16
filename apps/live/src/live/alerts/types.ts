@@ -15,6 +15,8 @@ export type {
     LeafEvidence,
     PriceLeaf,
     RankLeaf,
+    AlertThemeContext,
+    AlertThemeMember,
     WatchlistView,
 } from "@trade-data-manager/wire";
 

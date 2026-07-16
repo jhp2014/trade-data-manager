@@ -7,7 +7,7 @@
 // 그건 게이트 판정 결과다. 배선(live.module)에 두면 로그가 그 사실을 되받을 길이 없다.
 import type { Quote } from "../engine/types.js";
 import { AlertEngine } from "./alertEngine.js";
-import { computeThemeRanks, RankTracker, rankKey, type PrevCloseLookup } from "./themeRank.js";
+import { buildThemeContext, computeThemeRanks, RankTracker, rankKey, type PrevCloseLookup } from "./themeRank.js";
 import { NotifyGate, type GatePolicy, type GateVerdict } from "./notifyGate.js";
 import { DEFAULT_COOLDOWN_MS, type AlertFiring, type AlertLogEntry, type AlertLogView, type AlertRule, type WatchlistView } from "./types.js";
 
@@ -59,6 +59,14 @@ export class AlertsRuntime {
             rankAgoOf: (c, t, m) => this.tracker.rankAgo(rankKey(c, t, m), now),
         }, now);
         if (fired.length === 0) return;
+
+        // 테마 상황 스냅샷 — 종목별 1회 계산(같은 틱 여러 발화·같은 종목이면 재사용). 발화 객체에 붙이면
+        // 로그 항목(firing 저장)과 sink(메시지 조립) 둘 다 본다. 발화 시점 데이터라 여기서만 만들 수 있다.
+        const ctxCache = new Map<string, AlertFiring["themeContext"]>();
+        for (const f of fired) {
+            if (!ctxCache.has(f.code)) ctxCache.set(f.code, buildThemeContext(f.code, quotes, themesOf, prevCloseOf, ranks));
+            f.themeContext = ctxCache.get(f.code);
+        }
 
         const verdict = this.gate.pass(fired, (f) => this.policyOf(f), now);
         const notified = new Set(verdict.passed);

@@ -1,8 +1,17 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchAlertLog, type AlertLogEntry } from "../api/alerts.js";
+import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertThemeMember, type LeafEvidence } from "../api/alerts.js";
 import { kstTime } from "../lib/date.js";
 import { useWorkbench } from "../store/workbench.js";
+
+// 서버가 구조화 근거를 주고 워크벤치가 자기 방식으로 렌더한다(텔레그램과 같은 문구 재현이 아니라 매체별 뷰).
+// 문구가 텔레그램(서버 renderEvidence)과 미세하게 달라도 무방 — 다른 화면이다.
+const mkt = (m: "krx" | "un"): string => (m === "krx" ? "KRX" : "UN");
+function renderEvidence(e: LeafEvidence): string {
+    if (e.kind === "price") return `${e.price.toLocaleString("ko-KR")}원 ${e.op === "gte" ? "≥" : "≤"} ${e.value.toLocaleString("ko-KR")}원`;
+    const move = e.past == null ? `${e.rank}위` : e.past === e.rank ? `${e.rank}위 유지` : `${e.past}위→${e.rank}위`;
+    return `${e.theme} ${mkt(e.market)} ${move} (${e.mode === "reach" ? `${e.threshold}위 이내` : `${e.threshold}계단↑`})`;
+}
 
 // 알람 로그 패널 — 실시간 플레인. **발화 전부**를 시간순으로 누적한다(텔레그램으로 간 것 + 쿨다운에 막힌 것).
 // 존재 이유: 텔레그램은 소음을 막으려 쿨다운으로 아끼지만, 알람을 듣고 PC 앞에 앉았을 땐 시장 전체를
@@ -11,7 +20,7 @@ import { useWorkbench } from "../store/workbench.js";
 // 폴링은 **커서 증분**(seq) — 로그 5,000건을 5초마다 통째로 내리면 수 MB 라, 마지막으로 본 seq 초과분만
 // 받아 클라가 누적한다. 서버 재시작이면 seq 가 0 부터 다시 → latestSeq < 커서 를 보고 리셋한다.
 const LOG_KEY = ["live-alert-log"];
-const CLIENT_MAX = 2_000; // 화면 누적 상한(서버는 5,000) — DOM·메모리 방어
+const CLIENT_MAX = 5_000; // 서버 보유분(LOG_MAX)과 동일 — 하루치(실측 <3,000)를 다 볼 수 있게. 상한은 폭주 방어용.
 
 type Delivery = "all" | "sent" | "held";
 
@@ -88,7 +97,7 @@ export function AlertLogPanel(): JSX.Element {
                 {!poll.isError && entries.length === 0 && <Empty text="아직 발화 없음 — 조건에 걸리면 여기 쌓입니다" />}
                 {!poll.isError && entries.length > 0 && shown.length === 0 && <Empty text="필터에 걸리는 발화 없음" />}
                 {shown.map((e) => (
-                    <LogRow key={e.seq} entry={e} onPick={() => setLiveCode(e.firing.code, "alert-log")} />
+                    <LogRow key={e.seq} entry={e} onPick={(code) => setLiveCode(code, "alert-log")} />
                 ))}
             </div>
         </div>
@@ -99,18 +108,17 @@ function Empty({ text }: { text: string }): JSX.Element {
     return <div style={{ padding: "14px 10px", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center" }}>{text}</div>;
 }
 
-/** 발화 한 줄 — 시각·종목·시세 / 근거(왜 울렸는지) / 테마. 억제분은 🔕 + 흐리게. */
-function LogRow({ entry, onPick }: { entry: AlertLogEntry; onPick: () => void }): JSX.Element {
-    const { firing: f, notified, themes } = entry;
+/** 발화 한 줄 — 시각·종목·시세 / 근거(왜 울렸는지) / 테마 미니 보드. 억제분은 🔕 + 흐리게. */
+function LogRow({ entry, onPick }: { entry: AlertLogEntry; onPick: (code: string) => void }): JSX.Element {
+    const { firing: f, notified } = entry;
     const { price, changeRate } = f.features;
-    const why = [...f.evidence.map((ev) => ev.text), ...(f.note ? [f.note] : [])].join(" · ");
+    const why = [...f.evidence.map(renderEvidence), ...(f.note ? [f.note] : [])].join(" · ");
     return (
         <div
-            onClick={onPick}
             title={notified ? "텔레그램 전송됨" : "쿨다운에 막혀 전송 안 됨(발화는 남음)"}
-            style={{ padding: "4px 10px", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer", opacity: notified ? 1 : 0.55 }}
+            style={{ padding: "4px 10px", borderBottom: "1px solid var(--border-subtle)", opacity: notified ? 1 : 0.55 }}
         >
-            <div style={{ display: "flex", gap: 6, fontSize: 11, alignItems: "baseline" }}>
+            <div onClick={() => onPick(f.code)} style={{ display: "flex", gap: 6, fontSize: 11, alignItems: "baseline", cursor: "pointer" }}>
                 <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)" }}>{kstTime(f.at)}</span>
                 <span style={{ flexShrink: 0, fontWeight: 600, color: "var(--text-primary)" }}>{f.name || f.code}</span>
                 <span className="tabular" style={{ flexShrink: 0, color: changeRate >= 0 ? "var(--rise)" : "var(--fall)" }}>
@@ -120,16 +128,61 @@ function LogRow({ entry, onPick }: { entry: AlertLogEntry; onPick: () => void })
                 {entry.scope === "universe" && <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)" }}>탐지</span>}
             </div>
             {why && <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 2 }}>{why}</div>}
-            {themes.length > 0 && (
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", paddingLeft: 2, marginTop: 1 }}>
-                    {themes.map((t) => (
-                        <span key={t} style={{ fontSize: 10, color: "var(--text-tertiary)", background: "var(--bg-tertiary)", borderRadius: 3, padding: "0 4px" }}>{t}</span>
-                    ))}
-                </div>
-            )}
+            {f.themeContext && <ThemeBoards ctx={f.themeContext} selfCode={f.code} onPick={onPick} />}
         </div>
     );
 }
+
+/** 테마 미니 보드 — 텔레그램보다 시각적으로 정리(색상·칩·클릭). 소속 테마 칩 + 펼친 테마별 멤버 표. */
+function ThemeBoards({ ctx, selfCode, onPick }: { ctx: AlertThemeContext; selfCode: string; onPick: (code: string) => void }): JSX.Element {
+    return (
+        <div style={{ paddingLeft: 2, marginTop: 2 }}>
+            {ctx.chips.length > 0 && (
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {ctx.chips.map((t) => (
+                        <span key={t} style={chip("var(--text-tertiary)")}>{t}</span>
+                    ))}
+                </div>
+            )}
+            {ctx.boards.map((board) => (
+                <div key={board.theme} style={{ marginTop: 3 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-tertiary)" }}>{board.theme} · UN</div>
+                    {board.members.map((m) => (
+                        <MemberRow key={m.code} m={m} highlight={m.code === selfCode} onPick={onPick} />
+                    ))}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function MemberRow({ m, highlight, onPick }: { m: AlertThemeMember; highlight: boolean; onPick: (code: string) => void }): JSX.Element {
+    const pct = (n: number | null): string => (n == null ? "-" : `${sign(n)}${n.toFixed(1)}%`);
+    return (
+        <div
+            onClick={() => onPick(m.code)}
+            style={{
+                display: "flex", gap: 5, alignItems: "baseline", fontSize: 11, padding: "1px 4px", cursor: "pointer",
+                background: highlight ? "var(--bg-tertiary)" : undefined, borderRadius: 3,
+            }}
+        >
+            <span className="tabular" style={{ flexShrink: 0, width: 16, textAlign: "right", color: "var(--text-tertiary)" }}>{m.rank}</span>
+            <span style={{ flexShrink: 0, fontWeight: highlight ? 700 : 500, color: "var(--text-primary)" }}>{m.name}</span>
+            <span className="tabular" style={{ flexShrink: 0, color: (m.rateUn ?? 0) >= 0 ? "var(--rise)" : "var(--fall)" }}>
+                {pct(m.rateUn)}
+                {m.rateKrx != null && <span style={{ color: "var(--text-tertiary)" }}>({pct(m.rateKrx)})</span>}
+            </span>
+            <span className="tabular" style={{ flexShrink: 0, color: "var(--text-tertiary)" }}>{Math.round(m.tradeValue / 100).toLocaleString("ko-KR")}억</span>
+            <span style={{ display: "flex", gap: 3, flexWrap: "wrap", minWidth: 0 }}>
+                {m.themes.slice(0, 4).map((t) => (
+                    <span key={t} style={chip("var(--text-tertiary)")}>{t}</span>
+                ))}
+            </span>
+        </div>
+    );
+}
+
+const chip = (color: string): React.CSSProperties => ({ fontSize: 10, color, background: "var(--bg-tertiary)", borderRadius: 3, padding: "0 4px", flexShrink: 0 });
 
 const selectStyle: React.CSSProperties = {
     fontSize: 11,

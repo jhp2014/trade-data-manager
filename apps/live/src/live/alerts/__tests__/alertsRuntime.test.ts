@@ -51,10 +51,27 @@ describe("AlertsRuntime 발화 로그", () => {
         expect(entries[0].notified).toBe(true);
     });
 
-    it("발화에 leaf 근거가 실린다 — 왜 울렸는지", () => {
+    it("발화에 구조화 leaf 근거가 실린다 — 왜 울렸는지(실측값·임계)", () => {
         const rt = new AlertsRuntime(config([priceRule("r1", "005930", 105)]), () => {});
         fire(rt, "005930", 110, 1_000);
-        expect(rt.logSince(0).entries[0].firing.evidence).toEqual([{ kind: "price", text: "110원 ≥ 105원" }]);
+        expect(rt.logSince(0).entries[0].firing.evidence).toEqual([{ kind: "price", op: "gte", price: 110, value: 105 }]);
+    });
+
+    it("발화에 테마 컨텍스트 — 소속 테마 칩 + 유니버스 멤버 3+ 인 테마만 보드(UN 순위순, 자신 표시)", () => {
+        // 반도체에 3종목(005930·000660·373220), AI 엔 005930 하나 → 반도체만 보드로 펼침.
+        const themes = (c: string): string[] => (["005930", "000660", "373220"].includes(c) ? (c === "005930" ? ["반도체", "AI"] : ["반도체"]) : []);
+        const rt = new AlertsRuntime(config([priceRule("r1", "005930", 105)]), () => {});
+        const universe = (p: number, at: number): Quote[] => [quote("005930", p, at), quote("000660", 130, at), quote("373220", 120, at)];
+        rt.tick(universe(100, 0), themes, prevClose, 0); // 초기화(005930 밖)
+        rt.tick(universe(110, 1_000), themes, prevClose, 1_000); // 005930 진입 → 발화
+
+        const ctx = rt.logSince(0).entries[0].firing.themeContext;
+        expect(ctx?.chips).toEqual(["반도체", "AI"]); // 소속 테마 전부
+        expect(ctx?.boards).toHaveLength(1); // AI 는 멤버 1 → 칩만
+        const board = ctx?.boards[0];
+        expect(board?.theme).toBe("반도체");
+        expect(board?.members.map((m) => m.code)).toEqual(["000660", "373220", "005930"]); // UN 순위순(등락률 130>120>110)
+        expect(board?.members.find((m) => m.code === "005930")?.isSelf).toBe(true);
     });
 
     it("쿨다운에 억제된 발화도 로그엔 남는다(notified=false) — PC 앞에서 전체를 보기 위함", () => {

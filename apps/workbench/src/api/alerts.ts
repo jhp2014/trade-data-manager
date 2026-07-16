@@ -8,6 +8,8 @@ export type {
     AlertLogEntry,
     AlertLogView,
     AlertScope,
+    AlertThemeContext,
+    AlertThemeMember,
     LeafEvidence,
     WatchlistView,
     AlertLeaf,
