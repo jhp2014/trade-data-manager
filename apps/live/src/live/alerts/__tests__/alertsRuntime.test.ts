@@ -27,11 +27,14 @@ const priceRule = (id: string, code: string, value: number, cooldownMs?: number)
     cooldownMs,
 });
 
-const config = (rules: AlertRule[], opts: { watchlist?: string[]; universeRules?: UniverseRule[]; blacklist?: string[] } = {}): AlertConfigView => ({
+const config = (rules: AlertRule[], opts: { watchlist?: string[]; universeRules?: UniverseRule[]; blacklist?: string[]; blacklistAll?: string[] } = {}): AlertConfigView => ({
     watchlist: opts.watchlist ?? ["005930"],
     rules,
     universeRules: opts.universeRules ?? [],
-    activeBlacklist: () => (opts.blacklist ?? []).map((code) => ({ code, until: Number.MAX_SAFE_INTEGER })),
+    activeBlacklist: () => [
+        ...(opts.blacklist ?? []).map((code) => ({ code, until: Number.MAX_SAFE_INTEGER })),
+        ...(opts.blacklistAll ?? []).map((code) => ({ code, until: Number.MAX_SAFE_INTEGER, scope: "all" as const })),
+    ],
 });
 
 const themesOf = (code: string): string[] => (code === "005930" ? ["반도체", "AI"] : []);
@@ -188,6 +191,20 @@ describe("AlertsRuntime 유니버스 알람", () => {
 
         expect(rt.logSince(0).entries[0].delivery).toBe("logOnly");
         expect(sinks.every((v) => v.passed.length === 0 && v.suppressed.length === 0)).toBe(true); // 게이트 밖
+    });
+
+    it("블랙리스트 scope=all — 유니버스 발화가 로그조차 안 남는다(완전 무시), watchlist 는 무관", () => {
+        const rt = new AlertsRuntime(
+            config([priceRule("w1", "005930", 105)], { universeRules: [uRule("u1")], blacklistAll: ["005930"] }),
+            () => {},
+        );
+        rt.tick([quote("005930", 100, 0, { marketCap: 8_000 })], themesOf, prevClose, 0);
+        rt.tick([quote("005930", 110, 5_000, { marketCap: 3_000 })], themesOf, prevClose, 5_000);
+
+        const { entries } = rt.logSince(0);
+        expect(entries).toHaveLength(1); // 유니버스 발화는 소거, watchlist 발화만
+        expect(entries[0].scope).toBe("watchlist");
+        expect(entries[0].delivery).toBe("sent");
     });
 
     it("블랙리스트 종목은 텔레그램 차단(blacklisted)·로그엔 남음 — watchlist 룰은 무관", () => {

@@ -172,12 +172,14 @@ export class AlertsController {
         return this.config.setUniverseRules(body.rules.map(parseUniverseRule));
     }
 
-    /** 당일 블랙리스트 — 유니버스 텔레그램만 차단(로그엔 남음, watchlist 감시 무관). KST 자정 자동 만료. */
+    /** 당일 블랙리스트 — scope: telegram(기본)=텔레그램만 차단(로그엔 남음) / all=로그조차 안 남김. KST 자정 자동 만료. */
     @Post("universe/blacklist")
-    addBlacklist(@Body() body: { code?: string }): { code: string; until: number } {
+    addBlacklist(@Body() body: { code?: string; scope?: string }): { code: string; until: number; scope?: "telegram" | "all" } {
         assertCode(body.code);
+        const scope = body.scope ?? "telegram";
+        if (scope !== "telegram" && scope !== "all") throw new BadRequestException("scope 는 telegram|all");
         const now = Date.now();
-        return this.config.addBlacklist(body.code, kstEndOfDay(now), now);
+        return this.config.addBlacklist(body.code, kstEndOfDay(now), now, scope);
     }
 
     @Delete("universe/blacklist/:code")

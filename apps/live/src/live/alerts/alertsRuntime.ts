@@ -109,6 +109,11 @@ export class AlertsRuntime {
             uFired = this.uEngine.evaluate(uRules, quotes, metricsOf, now);
         }
 
+        // 블랙리스트 scope=all 은 로그조차 안 남긴다(완전 무시). scope=telegram 은 로그에 blacklisted 로.
+        // watchlist 발화는 무관(집중 감시는 목적이 다름). 엣지 상태는 이미 갱신됨 — 해제해도 재진입해야 발화(수용).
+        const blScope = new Map(this.config.activeBlacklist(now).map((b) => [b.code, b.scope ?? "telegram"] as const));
+        uFired = uFired.filter((f) => blScope.get(f.code) !== "all");
+
         const fired = [...wFired, ...uFired];
         if (fired.length === 0) return;
 
@@ -121,12 +126,11 @@ export class AlertsRuntime {
 
         // ④ 배달 판정 — 로그전용·블랙리스트는 게이트 밖(쿨다운 상태를 소모하지 않음), 나머지만 게이트.
         const uRuleById = new Map(uRules.map((r) => [r.id, r] as const));
-        const blacklisted = new Set(this.config.activeBlacklist(now).map((b) => b.code));
         const preDelivery = new Map<AlertFiring, AlertDelivery>();
         const gateEligible: AlertFiring[] = [];
         for (const f of fired) {
             const uRule = uRuleById.get(f.ruleId);
-            if (uRule && blacklisted.has(f.code)) preDelivery.set(f, "blacklisted");
+            if (uRule && blScope.has(f.code)) preDelivery.set(f, "blacklisted"); // scope=all 은 위에서 이미 소거
             else if (uRule && uRule.output === "log") preDelivery.set(f, "logOnly");
             else gateEligible.push(f);
         }

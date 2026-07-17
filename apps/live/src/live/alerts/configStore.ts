@@ -91,10 +91,10 @@ export class AlertConfigStore {
         return [...this.cfg.universe.rules];
     }
 
-    /** 블랙리스트 추가/갱신(같은 코드는 until 연장) — 만료분 정리 겸. */
-    addBlacklist(code: string, until: number, now: number): BlacklistEntry {
+    /** 블랙리스트 추가/갱신(같은 코드는 until·scope 교체) — 만료분 정리 겸. */
+    addBlacklist(code: string, until: number, now: number, scope: "telegram" | "all" = "telegram"): BlacklistEntry {
         this.cfg.universe.blacklist = this.cfg.universe.blacklist.filter((b) => b.code !== code && b.until > now);
-        const entry: BlacklistEntry = { code, until };
+        const entry: BlacklistEntry = { code, until, scope };
         this.cfg.universe.blacklist.push(entry);
         this.save();
         return entry;

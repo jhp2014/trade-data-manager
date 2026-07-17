@@ -89,7 +89,7 @@ describe("universe 섹션", () => {
         const b = new AlertConfigStore(p);
         b.load();
         expect(b.universeRules).toEqual(saved);
-        expect(b.activeBlacklist(1_500)).toEqual([{ code: "005930", until: 2_000 }]);
+        expect(b.activeBlacklist(1_500)).toEqual([{ code: "005930", until: 2_000, scope: "telegram" }]);
         expect(b.activeBlacklist(2_500)).toEqual([]); // 만료 — 읽기에서 걸러짐
     });
 
@@ -113,8 +113,8 @@ describe("universe 섹션", () => {
         a.load();
         a.addBlacklist("005930", 2_000, 1_000);
         a.addBlacklist("000660", 1_200, 1_000);
-        a.addBlacklist("005930", 9_000, 5_000); // 005930 갱신 + 000660(만료) 정리
-        expect(a.activeBlacklist(5_000)).toEqual([{ code: "005930", until: 9_000 }]);
+        a.addBlacklist("005930", 9_000, 5_000, "all"); // 005930 갱신(scope 포함) + 000660(만료) 정리
+        expect(a.activeBlacklist(5_000)).toEqual([{ code: "005930", until: 9_000, scope: "all" }]);
         a.removeBlacklist("005930");
         expect(a.activeBlacklist(5_000)).toEqual([]);
     });

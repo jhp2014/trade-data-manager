@@ -69,5 +69,6 @@ export const deleteAlertRule = (id: string): Promise<void> => liveRequest("DELET
 // 유니버스 조건검색 알람 — 설정은 클라가 편집, 계산·발화는 서버(live)가 소유.
 export const fetchUniverse = (signal?: AbortSignal): Promise<UniverseView> => liveRequest("GET", "universe", undefined, signal);
 export const putUniverseRules = (rules: UniverseRuleDraft[]): Promise<UniverseRule[]> => liveRequest("PUT", "universe/rules", { rules });
-export const addUniverseBlacklist = (code: string): Promise<BlacklistEntry> => liveRequest("POST", "universe/blacklist", { code });
+export const addUniverseBlacklist = (code: string, scope: "telegram" | "all" = "telegram"): Promise<BlacklistEntry> =>
+    liveRequest("POST", "universe/blacklist", { code, scope });
 export const removeUniverseBlacklist = (code: string): Promise<void> => liveRequest("DELETE", `universe/blacklist/${code}`);

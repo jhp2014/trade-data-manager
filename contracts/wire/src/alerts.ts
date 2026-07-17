@@ -149,10 +149,14 @@ export interface UniverseRule {
     cooldownMs?: number;
 }
 
-/** 당일 블랙리스트 한 건 — until(epoch ms) 지나면 자동 만료. 유니버스 전용(watchlist 감시엔 미적용). */
+/**
+ * 당일 블랙리스트 한 건 — until(epoch ms) 지나면 자동 만료. 유니버스 전용(watchlist 감시엔 미적용).
+ * scope: telegram(기본)=텔레그램만 차단(로그엔 blacklisted 로 남음) / all=로그조차 안 남김(완전 무시).
+ */
 export interface BlacklistEntry {
     code: string;
     until: number;
+    scope?: "telegram" | "all";
 }
 
 /** GET /live/universe — 유니버스 알람 설정 뷰. */

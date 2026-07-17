@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
     availablePredicates,
-    boardPredicateDef,
     isBoardFilterActive,
     EOD_FIELDS,
     LIVE_FIELDS,
@@ -10,7 +9,7 @@ import {
     type BoardPredicateDef,
 } from "@trade-data-manager/market/domain";
 import { useWorkbench, type BoardFilterActions } from "../store/workbench.js";
-import { PredicateFormula } from "../components/PredicateFormula.js";
+import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
 import { TrashIcon } from "../components/icons.js";
 
 // 배제 필터 패널 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 흐리게/숨김**. 술어는 domain 레지스트리.
@@ -55,29 +54,20 @@ function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemo
                 </span>
             </div>
             <div onClick={editing ? undefined : onEdit} title={editing ? undefined : "클릭: 편집"} style={{ cursor: editing ? undefined : "pointer", display: "flex", flexDirection: "column", gap: editing ? 9 : 3, fontSize: 12, color: "var(--text-primary)" }}>
-                {g.predicates.map((p, pi) => {
-                    const def = boardPredicateDef(p.kind);
-                    return (
-                        <div key={pi} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                            {pi > 0 && <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>그리고</span>}
-                            {editing && (
-                                <button
-                                    onClick={() => { const i = kinds.indexOf(p.kind); actions.setPredicateKind(gi, pi, kinds[(i + 1) % kinds.length]); }}
-                                    title="클릭: 다음 조건 종류"
-                                    style={{ border: "none", background: "none", color: "var(--text-secondary)", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: 0, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 2 }}
-                                >
-                                    {def?.title ?? p.kind}<span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>▾</span>
-                                </button>
-                            )}
-                            <PredicateFormula p={p} def={def} edit={editing} onParam={(k, v) => actions.setPredicateParam(gi, pi, k, v)} />
-                            {editing && g.predicates.length > 1 && <button onClick={() => actions.removePredicate(gi, pi)} title="이 조건 제거" style={{ ...xBtn, marginLeft: "auto" }}>✕</button>}
-                        </div>
-                    );
-                })}
+                {g.predicates.map((p, pi) => (
+                    <PredicateRow
+                        key={pi}
+                        p={p}
+                        edit={editing}
+                        last={pi === g.predicates.length - 1}
+                        kinds={kinds}
+                        onKind={(next) => actions.setPredicateKind(gi, pi, next)}
+                        onParam={(k, v) => actions.setPredicateParam(gi, pi, k, v)}
+                        onRemove={g.predicates.length > 1 ? () => actions.removePredicate(gi, pi) : undefined}
+                    />
+                ))}
             </div>
-            {editing && (
-                <button onClick={() => actions.addPredicate(gi, kinds[0])} style={{ marginTop: 5, border: "none", background: "none", color: "var(--accent-primary)", padding: 0, cursor: "pointer", font: "inherit", fontSize: 11.5, fontWeight: 600 }}>＋ 그리고(AND)</button>
-            )}
+            {editing && <AddPredicateBox onAdd={() => actions.addPredicate(gi, kinds[0])} />}
         </div>
     );
 }
