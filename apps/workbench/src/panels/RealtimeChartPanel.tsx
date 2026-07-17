@@ -82,8 +82,9 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
         const out: RenderLine[] = [];
         for (const r of wl.data?.rules ?? []) {
             if (r.code !== code) continue;
-            r.leaves.forEach((l, i) => {
-                if (l.kind === "price") out.push({ id: `${r.id}-${i}`, price: l.value, kind: "A", label: l.op === "gte" ? "↑" : "↓" });
+            r.predicates.forEach((p, i) => {
+                // price 술어 params: op(0=≥/1=≤)·value(원) — core 레지스트리 정의와 동기.
+                if (p.kind === "price" && p.params.value > 0) out.push({ id: `${r.id}-${i}`, price: p.params.value, kind: "A", label: p.params.op === 1 ? "↓" : "↑" });
             });
         }
         return out;

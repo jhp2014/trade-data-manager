@@ -11,10 +11,9 @@ import {
     removeWatch,
     createAlertRule,
     deleteAlertRule,
-    type AlertRuleView,
-    type AlertLeaf,
+    type AlarmPredicateInstance,
+    type AlarmRuleView,
     type AlertMarket,
-    type AlertOp,
     type CreateRulePayload,
 } from "../api/alerts.js";
 import { kstTime } from "../lib/date.js";
@@ -88,8 +87,9 @@ export function WatchlistPanel(): JSX.Element {
         saveOrder(next);
     };
     const rulesByCode = useMemo(() => {
-        const m = new Map<string, AlertRuleView[]>();
+        const m = new Map<string, AlarmRuleView[]>();
         for (const r of view.data?.rules ?? []) {
+            if (r.code == null) continue; // /watchlist 뷰는 스코프 규칙만 주지만 방어적으로
             const list = m.get(r.code);
             if (list) list.push(r);
             else m.set(r.code, [r]);
@@ -284,16 +284,20 @@ function miniBtn(color: string): React.CSSProperties {
 
 const mkLabel = (m: AlertMarket): string => (m === "krx" ? "KRX" : "UN");
 
-/** leaf 한 개 → 짧은 텍스트. */
-function leafText(l: AlertLeaf): string {
-    if (l.kind === "price") return `${l.op === "gte" ? "≥" : "≤"} ${l.value.toLocaleString("ko-KR")}`;
-    return `${l.theme}(${mkLabel(l.market)}) ${l.mode === "reach" ? `${l.threshold}위 이내` : `↑${l.threshold}계단`}`;
+/** 술어 한 개 → 짧은 텍스트(price·themeRank — watchlist 빌더가 만드는 두 종류). */
+function predText(p: AlarmPredicateInstance): string {
+    if (p.kind === "price") return `${p.params.op === 1 ? "≤" : "≥"} ${p.params.value.toLocaleString("ko-KR")}`;
+    if (p.kind === "themeRank") {
+        const mk = p.params.market === 0 ? "KRX" : "UN";
+        return `${p.textParams?.theme ?? "테마"}(${mk}) ${p.params.mode === 1 ? `↑${p.params.threshold}계단` : `${p.params.threshold}위 이내`}`;
+    }
+    return p.kind; // 다른 술어(유니버스 빌더산) — 여기선 요약만
 }
 
 /** 조건 한 줄 요약(leaf AND) + 상태 점 + 삭제. */
-function RuleLine({ rule, onDelete }: { rule: AlertRuleView; onDelete: () => void }): JSX.Element {
-    const parts = [rule.leaves.map(leafText).join(" · ")];
-    if (rule.note) parts.push(rule.note);
+function RuleLine({ rule, onDelete }: { rule: AlarmRuleView; onDelete: () => void }): JSX.Element {
+    const parts = [rule.predicates.map(predText).join(" · ")];
+    if (rule.name) parts.push(rule.name);
     // 상태 점 — 조건 안(주황 solid)=재무장 대기 / 무장(회색 테두리)=다음 진입에 발화 / 미평가(옅음).
     const dot = rule.inZone == null ? { border: "1px solid var(--border-default)" } : rule.inZone ? { background: "#e07b1a" } : { border: "1px solid var(--text-tertiary)" };
     const title = rule.inZone == null ? "평가 전(또는 데이터 대기)" : rule.inZone ? "조건 안(재무장 대기)" : "무장 — 다음 진입에 발화";
@@ -309,7 +313,7 @@ function RuleLine({ rule, onDelete }: { rule: AlertRuleView; onDelete: () => voi
 
 // ── 조건 빌더 (leaf AND 리스트) ─────────────────────────────────
 type DraftLeaf =
-    | { kind: "price"; op: AlertOp; value: string }
+    | { kind: "price"; op: "gte" | "lte"; value: string }
     | { kind: "rank"; theme: string; market: AlertMarket; mode: "reach" | "delta"; threshold: string };
 
 const DEFAULT_MARKET: AlertMarket = "un"; // 순위 기본 잣대(UN)
@@ -319,17 +323,21 @@ function newLeafOfKind(kind: DraftLeaf["kind"], themes: string[]): DraftLeaf {
     return { kind: "rank", theme: themes[0] ?? "", market: DEFAULT_MARKET, mode: "reach", threshold: "" };
 }
 
-/** draft → 검증된 AlertLeaf 또는 오류 메시지(문자열). */
-function toLeaf(d: DraftLeaf): AlertLeaf | string {
+/** draft → 검증된 술어 인스턴스(core price/themeRank) 또는 오류 메시지(문자열). */
+function toPredicate(d: DraftLeaf): AlarmPredicateInstance | string {
     if (d.kind === "price") {
         const v = Number(d.value);
         if (d.value.trim() === "" || !Number.isFinite(v) || v <= 0) return "가격은 0 초과 숫자로";
-        return { kind: "price", op: d.op, value: v };
+        return { kind: "price", params: { op: d.op === "lte" ? 1 : 0, value: v } };
     }
     if (!d.theme) return "순위 조건은 테마를 골라야 함";
     const t = Number(d.threshold);
     if (!Number.isInteger(t) || t < 1) return "순위 임계는 1 이상 정수";
-    return { kind: "rank", theme: d.theme, market: d.market, mode: d.mode, threshold: t };
+    return {
+        kind: "themeRank",
+        params: { market: d.market === "krx" ? 0 : 1, mode: d.mode === "delta" ? 1 : 0, threshold: t },
+        textParams: { theme: d.theme },
+    };
 }
 
 /** 조건 추가 폼 — leaf(AND) 리스트 빌더. 저장/취소는 폼 상단 헤더 우측. */
@@ -399,9 +407,9 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     const submit = (): void => {
         if (saveM.isPending) return;
         setErr(null);
-        const out: AlertLeaf[] = [];
+        const out: AlarmPredicateInstance[] = [];
         for (const d of leaves) {
-            const r = toLeaf(d);
+            const r = toPredicate(d);
             if (typeof r === "string") {
                 setErr(r);
                 return;
@@ -410,9 +418,9 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
         }
         const payload: CreateRulePayload = {
             code,
-            leaves: out,
+            predicates: out,
             cooldownMs: cooldownMin === "" ? undefined : Math.round(Number(cooldownMin) * 60_000),
-            note: note.trim() || undefined,
+            name: note.trim() || undefined,
         };
         saveM.mutate(payload);
     };

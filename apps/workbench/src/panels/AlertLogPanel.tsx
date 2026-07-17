@@ -4,14 +4,9 @@ import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertTh
 import { kstTime } from "../lib/date.js";
 import { useWorkbench } from "../store/workbench.js";
 
-// 서버가 구조화 근거를 주고 워크벤치가 자기 방식으로 렌더한다(텔레그램과 같은 문구 재현이 아니라 매체별 뷰).
-// 문구가 텔레그램(서버 renderEvidence)과 미세하게 달라도 무방 — 다른 화면이다.
-const mkt = (m: "krx" | "un"): string => (m === "krx" ? "KRX" : "UN");
+// 근거 문구는 core 술어(predicateEvidence — 서버)가 채운다(4b 통합) — 그대로 렌더.
 function renderEvidence(e: LeafEvidence): string {
-    if (e.kind === "pred") return e.text; // 유니버스 술어 — 문구는 core(서버)가 채움
-    if (e.kind === "price") return `${e.price.toLocaleString("ko-KR")}원 ${e.op === "gte" ? "≥" : "≤"} ${e.value.toLocaleString("ko-KR")}원`;
-    const move = e.past == null ? `${e.rank}위` : e.past === e.rank ? `${e.rank}위 유지` : `${e.past}위→${e.rank}위`;
-    return `${e.theme} ${mkt(e.market)} ${move} (${e.mode === "reach" ? `${e.threshold}위 이내` : `${e.threshold}계단↑`})`;
+    return e.text;
 }
 
 /** 배달 상태 배지 — sent 는 배지 없음(정상 배달), 나머지는 왜 텔레그램에 안 갔는지. */

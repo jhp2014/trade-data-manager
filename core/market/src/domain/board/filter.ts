@@ -11,13 +11,19 @@ import { isNearWindowHigh } from "./trailing.js";
 import { AMOUNT_BUCKETS_EOK } from "./amount.js";
 import type { ByMarket } from "../candle/model.js";
 
-/** 술어가 요구할 수 있는 데이터 필드(capability 키). 소스마다 제공 집합이 다르다. */
-export type MetricField = "highPct" | "amount" | "buckets" | "trailingHighs" | "marketCap" | "deltas" | "themeRanks";
+/** 술어가 요구할 수 있는 데이터 필드(capability 키 = BoardMetrics 키). 소스마다 제공 집합이 다르다. */
+export type MetricField = "highPct" | "amount" | "buckets" | "trailingHighs" | "marketCap" | "deltas" | "themeRanks" | "price" | "themeRankMap";
 
 /** 시그널(1분 델타) 원재료 — 창별 등락률(%p)·거래대금 증가(억). 소스가 계산해 배급, 술어가 임계 적용. */
 export interface SignalDeltas {
     d30s?: { rate: number; tvEok: number };
     d1m?: { rate: number; tvEok: number };
+}
+
+/** 특정 테마×시장에서의 순위(+~60초 전, delta 표시·판정용). themeRankMap 값. */
+export interface ThemeRankEntry {
+    rank: number;
+    past?: number;
 }
 
 /** 술어 평가에 필요한 종목 지표(소스가 채워 전달). 선택 필드 = capability(있으면 그 술어 사용 가능). */
@@ -28,7 +34,10 @@ export interface BoardMetrics {
     trailingHighs?: ByMarket<number[]>; // 신고가용 high% 배열(0=당일) — newHighFar 의 market 파라미터가 시장을 고름
     marketCap?: number; // 시가총액(억원)
     deltas?: SignalDeltas; // 시그널 델타 — 실시간만
-    ranks?: ByMarket<number[]>; // 이 종목의 테마별 등락률 순위(시장별) — 실시간만. rank 술어가 min(any-theme) 사용
+    themeRanks?: ByMarket<number[]>; // 이 종목의 테마별 등락률 순위(시장별) — rank 술어가 min(any-theme) 사용
+    price?: number; // 현재가(원) — price 술어(알람)용. 시세 없으면 결손(미결)
+    /** 테마명 → 시장별 순위(+60초 전) — themeRank(지정 테마) 술어용. 알람 소스만 배급. */
+    themeRankMap?: Record<string, Partial<ByMarket<ThemeRankEntry>>>;
 }
 
 /** 파라미터 정의 — UI 입력 렌더용(도메인이 소유 → 술어 추가 시 한 곳만). */
@@ -49,21 +58,44 @@ function marketOf(p: Record<string, number>): "krx" | "un" {
     return p.market === 0 ? "krx" : "un";
 }
 
-/** 술어 정의(레지스트리 항목). test = 매칭 여부(중립: 보드=제외/알람=발화), requires = 필요한 데이터 필드. */
+/** 문자열 파라미터 정의(테마명 등) — 숫자 params 와 별도 가방(기존 술어·저장 필터 무손상). */
+export interface TextParamSpec {
+    key: string;
+    label: string;
+}
+
+/**
+ * 술어 정의(레지스트리 항목). test = 매칭 여부(중립: 보드=제외/알람=발화), requires = 필요한 데이터 필드.
+ * test3(선택) = 3치 — undefined 는 "데이터 결손이라 판단 불가"(미결). 결손 정책은 소비자가 정한다:
+ * 보드 필터·유니버스 탐지 = false 취급 / watchlist 감시 = 틱 스킵(가짜 엣지 방지). 미구현 술어는
+ * requires 필드 존재 검사(evalPredicate)가 결손을 대신 판정한다.
+ */
 export interface BoardPredicateDef {
     kind: string;
     title: string;
     requires: MetricField[];
     params: ParamSpec[];
-    test: (m: BoardMetrics, p: Record<string, number>) => boolean;
-    label: (p: Record<string, number>) => string;
+    textParams?: TextParamSpec[];
+    test: (m: BoardMetrics, p: Record<string, number>, t?: Record<string, string>) => boolean;
+    /** 필드 존재만으론 결손을 못 가리는 술어(테마별 순위 등)의 3치 판정. */
+    test3?: (m: BoardMetrics, p: Record<string, number>, t?: Record<string, string>) => boolean | undefined;
+    label: (p: Record<string, number>, t?: Record<string, string>) => string;
     /** 매칭 근거 문구(실측값 포함) — 알람 발화의 "왜 걸렸나". 생략 시 label 폴백(predicateEvidence). */
-    evidence?: (m: BoardMetrics, p: Record<string, number>) => string;
+    evidence?: (m: BoardMetrics, p: Record<string, number>, t?: Record<string, string>) => string;
+}
+
+/**
+ * 술어 3치 평가 — 정본 진입점. requires 필드가 하나라도 결손이면 undefined(미결), 아니면 test3 ?? test.
+ * 소비자별 결손 정책: 보드 필터(groupMatches)·유니버스 탐지 = undefined→false / watchlist = 틱 스킵.
+ */
+export function evalPredicate(def: BoardPredicateDef, m: BoardMetrics, pi: BoardPredicateInstance): boolean | undefined {
+    for (const f of def.requires) if (m[f] == null) return undefined;
+    return def.test3 ? def.test3(m, pi.params, pi.textParams) : def.test(m, pi.params, pi.textParams);
 }
 
 /** 매칭된 술어의 근거 문구 — 술어가 자신을 설명한다(로직은 core 한 곳, 소비자는 렌더만). */
-export function predicateEvidence(def: BoardPredicateDef, m: BoardMetrics, p: Record<string, number>): string {
-    return def.evidence?.(m, p) ?? def.label(p);
+export function predicateEvidence(def: BoardPredicateDef, m: BoardMetrics, pi: BoardPredicateInstance): string {
+    return def.evidence?.(m, pi.params, pi.textParams) ?? def.label(pi.params, pi.textParams);
 }
 
 /** ≥eok억 분봉 횟수 — buckets 하한이 eok 이상인 구간 카운트 합(고정 구간이라 경계값에서 정확). */
@@ -164,17 +196,64 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
         ],
         // any-theme reach — 그 종목이 속한 테마 중 하나라도 threshold 위 이내면 매칭("지금 어느 테마의 대장").
         test: (m, p) => {
-            const ranks = m.ranks?.[marketOf(p)];
+            const ranks = m.themeRanks?.[marketOf(p)];
             return ranks != null && ranks.length > 0 && Math.min(...ranks) <= p.threshold;
         },
         label: (p) => `테마 ${p.threshold}위 이내(${MARKET_OPTIONS[p.market === 0 ? 0 : 1]})`,
         evidence: (m, p) => {
-            const ranks = m.ranks?.[marketOf(p)];
+            const ranks = m.themeRanks?.[marketOf(p)];
             const best = ranks && ranks.length > 0 ? Math.min(...ranks) : null;
             return `테마 ${best ?? "?"}위 (${p.threshold}위 이내·${MARKET_OPTIONS[p.market === 0 ? 0 : 1]})`;
         },
     },
+    // ── watchlist(집중 감시) 이관 술어 — 옛 AlertLeaf(price/rank) 대체. 알람 소스만 배급(capability). ──
+    {
+        kind: "price",
+        title: "가격",
+        requires: ["price"],
+        params: [
+            { key: "op", label: "방향", def: 0, options: ["≥", "≤"] },
+            { key: "value", label: "원", def: 0, min: 1 },
+        ],
+        // 시세 결손은 requires 존재 검사(evalPredicate)가 미결로 — 옛 "quote 없으면 스킵" 의미 보존.
+        test: (m, p) => (m.price != null ? (p.op === 1 ? m.price <= p.value : m.price >= p.value) : false),
+        label: (p) => `가격 ${p.op === 1 ? "≤" : "≥"} ${p.value.toLocaleString("ko-KR")}원`,
+        evidence: (m, p) => `${(m.price ?? 0).toLocaleString("ko-KR")}원 ${p.op === 1 ? "≤" : "≥"} ${p.value.toLocaleString("ko-KR")}원`,
+    },
+    {
+        kind: "themeRank",
+        title: "테마 순위(지정)",
+        requires: ["themeRankMap"],
+        params: [
+            { key: "market", label: "시장", def: 1, options: [...MARKET_OPTIONS] },
+            { key: "mode", label: "방식", def: 0, options: ["도달", "상승"] },
+            { key: "threshold", label: "K/D", def: 3, min: 1 },
+        ],
+        textParams: [{ key: "theme", label: "테마" }],
+        test: (m, p, t) => testThemeRank(m, p, t) === true,
+        // 3치 — 지정 테마의 순위 미도착(전일종가·멤버십) / 상승 모드의 60초 이력 미적립 = 미결.
+        test3: testThemeRank,
+        label: (p, t) => `${t?.theme ?? "테마"} ${p.mode === 1 ? `${p.threshold}계단↑` : `${p.threshold}위 이내`}(${MARKET_OPTIONS[p.market === 0 ? 0 : 1]})`,
+        evidence: (m, p, t) => {
+            const e = t?.theme ? m.themeRankMap?.[t.theme]?.[marketOf(p)] : undefined;
+            if (!e) return `${t?.theme ?? "테마"} 순위`;
+            const move = e.past == null ? `${e.rank}위` : e.past === e.rank ? `${e.rank}위 유지` : `${e.past}위→${e.rank}위`;
+            const cond = p.mode === 1 ? `${p.threshold}계단↑` : `${p.threshold}위 이내`;
+            return `${t?.theme} ${MARKET_OPTIONS[p.market === 0 ? 0 : 1]} ${move} (${cond})`;
+        },
+    },
 ];
+
+/** themeRank 3치 본체 — reach 판정은 현재 순위만(past 는 표시용), delta 는 past 필수(없으면 미결). */
+function testThemeRank(m: BoardMetrics, p: Record<string, number>, t?: Record<string, string>): boolean | undefined {
+    const theme = t?.theme;
+    if (!theme) return false; // 테마 미지정 = 작성 오류 — 불성립(미결 아님: 데이터가 아니라 식의 문제)
+    const e = m.themeRankMap?.[theme]?.[marketOf(p)];
+    if (!e) return undefined; // 순위 미도착(전일종가·멤버십 로드 전) — 미결
+    if (p.mode !== 1) return e.rank <= p.threshold;
+    if (e.past == null) return undefined; // 60초 이력 미적립 — 미결
+    return e.past - e.rank >= p.threshold; // 양수 = 순위 상승
+}
 
 export function boardPredicateDef(kind: string): BoardPredicateDef | undefined {
     return BOARD_PREDICATES.find((d) => d.kind === kind);
@@ -201,8 +280,8 @@ export function availablePredicates(provides: ReadonlySet<MetricField>): BoardPr
 export const EOD_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "buckets", "trailingHighs"]);
 /** 실시간 보드 소스 제공 필드(REST 스냅샷 — deltas·ranks 원재료 배급으로 buckets 빼고 전부). */
 export const LIVE_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs", "marketCap", "deltas", "themeRanks"]);
-/** 유니버스 알람 소스 제공 필드(live 서버 metrics 빌더 — buckets 빼고 전부). 규칙 검증·2b 팔레트가 사용. */
-export const LIVE_ALARM_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs", "marketCap", "deltas", "themeRanks"]);
+/** 알람 소스 제공 필드(live 서버 metrics 빌더 — buckets 빼고 전부 + price·지정테마 순위). 규칙 검증·빌더 팔레트가 사용. */
+export const LIVE_ALARM_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs", "marketCap", "deltas", "themeRanks", "price", "themeRankMap"]);
 
 // ── 필터식(DNF, 그룹별 mode) ──
 /** dim/hide = 배제(흐리게/숨김) / mark = 강조(🔥 — 돈유입 등 "눈에 띄게"는 배제의 반대 방향). */
@@ -210,6 +289,8 @@ export type BoardFilterMode = "dim" | "hide" | "mark";
 export interface BoardPredicateInstance {
     kind: string;
     params: Record<string, number>;
+    /** 문자열 파라미터(테마명 등) — 숫자와 별도 가방(기존 저장 필터 무손상). */
+    textParams?: Record<string, string>;
 }
 export interface BoardFilterGroup {
     predicates: BoardPredicateInstance[];
@@ -219,14 +300,15 @@ export interface BoardFilterExpr {
     groups: BoardFilterGroup[];
 }
 
-function testPredicate(pi: BoardPredicateInstance, m: BoardMetrics): boolean {
-    const def = boardPredicateDef(pi.kind);
-    return def ? def.test(m, pi.params) : false;
-}
-
-/** 그룹 매칭 = 비어있지 않고 술어 전부 참(AND). */
+/** 그룹 매칭 = 비어있지 않고 술어 전부 참(AND). 보드 소비자의 결손 정책 = false(미결이면 제외 안 함). */
 export function groupMatches(g: BoardFilterGroup, m: BoardMetrics): boolean {
-    return g.predicates.length > 0 && g.predicates.every((pi) => testPredicate(pi, m));
+    return (
+        g.predicates.length > 0 &&
+        g.predicates.every((pi) => {
+            const def = boardPredicateDef(pi.kind);
+            return def ? evalPredicate(def, m, pi) === true : false;
+        })
+    );
 }
 
 export interface BoardFilterVerdict {
@@ -250,7 +332,7 @@ export function evalBoardFilter(expr: BoardFilterExpr, m: BoardMetrics): BoardFi
         else if (effect !== "hide") effect = "dim";
         for (const pi of g.predicates) {
             const def = boardPredicateDef(pi.kind);
-            if (def) (g.mode === "mark" ? markReasons : reasons).push(def.label(pi.params));
+            if (def) (g.mode === "mark" ? markReasons : reasons).push(def.label(pi.params, pi.textParams));
         }
     }
     return { effect, marked, reasons: [...new Set(reasons)], markReasons: [...new Set(markReasons)] };

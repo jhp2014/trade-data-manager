@@ -103,7 +103,7 @@ const healthProvider: Provider = {
                 lastTickAt: () => lastTickAt,
                 wsStatus: () => engine.connectionStatus,
                 queueStats: () => queue.stats(),
-                ruleCount: () => config.rules.length,
+                ruleCount: () => config.alarms.length,
                 notify: (text, now, priority) => queue.pushText(text, now, priority),
             },
             { windowStartMin: win.start, windowEndMin: win.end, heartbeat: process.env.LIVE_HEARTBEAT !== "0" },

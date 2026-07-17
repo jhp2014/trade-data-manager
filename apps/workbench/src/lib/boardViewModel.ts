@@ -182,7 +182,7 @@ export function applyLiveFilter(stocks: LiveStock[], filter: BoardFilterExpr, ma
             // 실시간 술어 원재료(조각 3) — 서버가 배급, 임계 판정은 술어(클라 설정). 결손 필드는 그 술어만 불발.
             ...(s.marketCap > 0 ? { marketCap: s.marketCap } : {}), // 0 = ka10095 결손("시총 이하" 오매칭 방지)
             ...(s.deltas ? { deltas: s.deltas } : {}),
-            ...(s.ranks ? { ranks: s.ranks } : {}),
+            ...(s.ranks ? { themeRanks: s.ranks } : {}),
         });
         if (verdict.effect === "hide") {
             excludedByFilter.set(s.code, verdict.reasons);

@@ -26,20 +26,8 @@ const member = (rank: number, name: string, rateUn: number | null, rateKrx: numb
 });
 
 describe("renderEvidence", () => {
-    it("가격 — 실측가 op 임계", () => {
-        expect(renderEvidence({ kind: "price", op: "gte", price: 12_000, value: 11_500 })).toBe("12,000원 ≥ 11,500원");
-        expect(renderEvidence({ kind: "price", op: "lte", price: 11_000, value: 11_500 })).toBe("11,000원 ≤ 11,500원");
-    });
-
-    it("순위 reach — 앞=실측 변화, 괄호=조건. '도달' 안 씀(가격이 돌파해 발화한 경우 순위 오해 방지)", () => {
-        const base = { kind: "rank", theme: "반도체", market: "un", mode: "reach", threshold: 3 } as const;
-        expect(renderEvidence({ ...base, rank: 3, past: 7 })).toBe("반도체 UN 7위→3위 (3위 이내)");
-        expect(renderEvidence({ ...base, rank: 3, past: 3 })).toBe("반도체 UN 3위 유지 (3위 이내)"); // 계속 3위였는데 다른 leaf 로 발화
-        expect(renderEvidence({ ...base, rank: 3, past: undefined })).toBe("반도체 UN 3위 (3위 이내)"); // 이력 미적립 — undefined 안 나옴
-    });
-
-    it("순위 delta — 변화 + 계단 조건", () => {
-        expect(renderEvidence({ kind: "rank", theme: "반도체", market: "krx", mode: "delta", rank: 3, past: 7, threshold: 3 })).toBe("반도체 KRX 7위→3위 (3계단↑)");
+    it("근거 문구는 core 술어가 채웠다 — 그대로 싣는다", () => {
+        expect(renderEvidence({ kind: "pred", text: "12,000원 ≥ 11,500원" })).toBe("12,000원 ≥ 11,500원");
     });
 });
 
@@ -110,7 +98,7 @@ describe("buildFiringMessages", () => {
 
 describe("formatFiring", () => {
     it("서버 로그 한 줄 — 종목 · 현재가 · 등락률 · 근거 · 메모", () => {
-        const f = firing("005930", "삼성전자", "돌파", [{ kind: "price", op: "gte", price: 71_000, value: 70_000 }]);
+        const f = firing("005930", "삼성전자", "돌파", [{ kind: "pred", text: "71,000원 ≥ 70,000원" }]);
         expect(formatFiring(f)).toBe("삼성전자(005930) · 71,000원 +2.10% · 71,000원 ≥ 70,000원 · 돌파");
     });
 });

@@ -24,8 +24,8 @@ const [msg] = buildFiringMessages([
         at: now,
         features: { price: 71_000, changeRate: 2.1 },
         evidence: [
-            { kind: "rank", theme: "반도체 <급등>", market: "un", mode: "reach", rank: 3, past: 7, threshold: 3 },
-            { kind: "price", op: "gte", price: 71_000, value: 70_000 },
+            { kind: "pred", text: "반도체 <급등> UN 7위→3위 (3위 이내)" },
+            { kind: "pred", text: "71,000원 ≥ 70,000원" },
         ],
         themeContext: {
             chips: ["반도체 <급등>", "AI & 로봇"],

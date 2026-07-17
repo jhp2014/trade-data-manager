@@ -1,39 +1,88 @@
-// watchlist + 알람룰 영속 — DB-free 결정: 설정만 JSON 파일, 런타임 상태(무장·발화이력)는 메모리.
+// watchlist + 알람 규칙 영속 — DB-free 결정: 설정만 JSON 파일, 런타임 상태(무장·발화이력)는 메모리.
 // 쓰기는 원자적(tmp→rename) — 저장 중 크래시로 반쪽 파일이 남지 않게. 재기동 시 load()로 재구축.
 // 손상 파일은 .corrupt-<ts> 로 옮겨두고 빈 설정으로 시작(다음 저장이 유실을 확정하지 않게 원본 보존).
+//
+// 파일 v2(4b 통합): { watchlist, alarms: AlarmRule[](code?=스코프), blacklist }.
+// v1(rules=AlertLeaf·universe 섹션)은 로드 시 **자동 변환**(사용자 규칙 보존) — price/rank leaf →
+// price/themeRank 술어. 변환 후 첫 저장부터 v2 로 쓰인다(롤백 시 옛 코드는 이 규칙들을 탈락시킴 — 수용).
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { AlertRule, BlacklistEntry, UniverseRule } from "./types.js";
-
-interface UniverseSection {
-    rules: UniverseRule[];
-    blacklist: BlacklistEntry[];
-}
+import type { AlarmPredicateInstance, AlarmRule, BlacklistEntry } from "./types.js";
 
 interface AlertConfigFile {
     watchlist: string[];
-    rules: AlertRule[];
-    universe: UniverseSection;
+    alarms: AlarmRule[];
+    blacklist: BlacklistEntry[];
 }
 
-const EMPTY: AlertConfigFile = { watchlist: [], rules: [], universe: { rules: [], blacklist: [] } };
+const EMPTY: AlertConfigFile = { watchlist: [], alarms: [], blacklist: [] };
 
-/** 최소 형태 검증 — 옛 스키마(band/rank·groups)·손상 항목을 로드 시 탈락시켜 자동 리셋. leaf 상세는 쓰기(컨트롤러)에서 검증됨. */
-function isRuleShape(r: unknown): r is AlertRule {
-    const o = r as { id?: unknown; code?: unknown; leaves?: unknown };
-    return typeof o?.id === "string" && typeof o?.code === "string" && Array.isArray(o.leaves) && o.leaves.length > 0;
-}
-
-/** 유니버스 규칙 최소 형태 — 술어 상세는 쓰기(컨트롤러)에서 검증됨. */
-function isUniverseRuleShape(r: unknown): r is UniverseRule {
-    const o = r as { id?: unknown; predicates?: unknown; output?: unknown };
-    return typeof o?.id === "string" && Array.isArray(o.predicates) && o.predicates.length > 0 && (o.output === "telegram" || o.output === "log");
+/** 최소 형태 검증 — 손상 항목을 로드 시 탈락. 술어 상세는 쓰기(컨트롤러)에서 검증됨. */
+function isAlarmShape(r: unknown): r is AlarmRule {
+    const o = r as { id?: unknown; code?: unknown; predicates?: unknown; output?: unknown };
+    return (
+        typeof o?.id === "string" &&
+        (o.code === undefined || typeof o.code === "string") &&
+        Array.isArray(o.predicates) &&
+        o.predicates.length > 0 &&
+        (o.output === "telegram" || o.output === "log")
+    );
 }
 
 function isBlacklistShape(b: unknown): b is BlacklistEntry {
     const o = b as { code?: unknown; until?: unknown };
     return typeof o?.code === "string" && typeof o?.until === "number";
+}
+
+// ── v1 → v2 변환 — 옛 AlertLeaf(price/rank)·universe 섹션을 통합 규칙으로(사용자 규칙 보존). ──
+
+interface LegacyLeaf {
+    kind?: unknown;
+    op?: unknown;
+    value?: unknown;
+    theme?: unknown;
+    market?: unknown;
+    mode?: unknown;
+    threshold?: unknown;
+}
+
+function convertLeaf(l: LegacyLeaf): AlarmPredicateInstance | null {
+    if (l.kind === "price" && typeof l.value === "number") {
+        return { kind: "price", params: { op: l.op === "lte" ? 1 : 0, value: l.value } };
+    }
+    if (l.kind === "rank" && typeof l.theme === "string" && typeof l.threshold === "number") {
+        return {
+            kind: "themeRank",
+            params: { market: l.market === "krx" ? 0 : 1, mode: l.mode === "delta" ? 1 : 0, threshold: l.threshold },
+            textParams: { theme: l.theme },
+        };
+    }
+    return null; // 미지 leaf — 탈락(규칙 자체가 버려지지 않게 호출측이 필터)
+}
+
+function convertLegacy(raw: Record<string, unknown>): AlarmRule[] {
+    const out: AlarmRule[] = [];
+    // v1 watchlist 룰: { id, code, leaves, cooldownMs?, note? }
+    if (Array.isArray(raw.rules)) {
+        for (const r of raw.rules as Array<Record<string, unknown>>) {
+            if (typeof r?.id !== "string" || typeof r?.code !== "string" || !Array.isArray(r.leaves)) continue;
+            const predicates = (r.leaves as LegacyLeaf[]).map(convertLeaf).filter((p): p is AlarmPredicateInstance => p !== null);
+            if (predicates.length === 0) continue;
+            out.push({
+                id: r.id,
+                code: r.code,
+                name: typeof r.note === "string" && r.note ? r.note : undefined,
+                predicates,
+                output: "telegram", // v1 watchlist 룰은 전부 텔레그램행이었다
+                cooldownMs: typeof r.cooldownMs === "number" ? r.cooldownMs : undefined,
+            });
+        }
+    }
+    // v1 universe 룰: 이미 술어 기반 — 모양 검증만 거쳐 그대로 승계.
+    const uni = (raw.universe ?? {}) as { rules?: unknown };
+    if (Array.isArray(uni.rules)) for (const r of uni.rules) if (isAlarmShape(r)) out.push(r);
+    return out;
 }
 
 export class AlertConfigStore {
@@ -44,22 +93,20 @@ export class AlertConfigStore {
         this.abs = path.resolve(process.cwd(), filePath);
     }
 
-    /** 파일 로드. 없음=빈 설정. 손상=원본 백업 후 빈 설정(경고는 호출자 로깅). @returns 손상 백업 경로(정상이면 null) */
+    /** 파일 로드(+v1 자동 변환). 없음=빈 설정. 손상=원본 백업 후 빈 설정. @returns 손상 백업 경로(정상이면 null) */
     load(): string | null {
         if (!fs.existsSync(this.abs)) {
             this.cfg = structuredClone(EMPTY);
             return null;
         }
         try {
-            const raw = JSON.parse(fs.readFileSync(this.abs, "utf8")) as Partial<AlertConfigFile>;
-            const uni = (raw.universe ?? {}) as Partial<UniverseSection>;
+            const raw = JSON.parse(fs.readFileSync(this.abs, "utf8")) as Record<string, unknown>;
+            const isV2 = Array.isArray(raw.alarms);
+            const uni = (raw.universe ?? {}) as { blacklist?: unknown };
             this.cfg = {
-                watchlist: Array.isArray(raw.watchlist) ? raw.watchlist.filter((c): c is string => typeof c === "string") : [],
-                rules: Array.isArray(raw.rules) ? (raw.rules as unknown[]).filter(isRuleShape) : [], // 옛 스키마·손상 항목 자동 탈락(리셋)
-                universe: {
-                    rules: Array.isArray(uni.rules) ? (uni.rules as unknown[]).filter(isUniverseRuleShape) : [],
-                    blacklist: Array.isArray(uni.blacklist) ? (uni.blacklist as unknown[]).filter(isBlacklistShape) : [],
-                },
+                watchlist: Array.isArray(raw.watchlist) ? (raw.watchlist as unknown[]).filter((c): c is string => typeof c === "string") : [],
+                alarms: isV2 ? (raw.alarms as unknown[]).filter(isAlarmShape) : convertLegacy(raw),
+                blacklist: (Array.isArray(raw.blacklist) ? (raw.blacklist as unknown[]) : Array.isArray(uni.blacklist) ? (uni.blacklist as unknown[]) : []).filter(isBlacklistShape),
             };
             return null;
         } catch {
@@ -73,36 +120,17 @@ export class AlertConfigStore {
     get watchlist(): readonly string[] {
         return this.cfg.watchlist;
     }
-    get rules(): readonly AlertRule[] {
-        return this.cfg.rules;
+    /** 전체 규칙(스코프 무관) — 엔진은 이대로 평가(스코프는 규칙이 안다). */
+    get alarms(): readonly AlarmRule[] {
+        return this.cfg.alarms;
     }
-    get universeRules(): readonly UniverseRule[] {
-        return this.cfg.universe.rules;
+    /** 유니버스(스코프 없는) 규칙 — GET/PUT /universe 표면. */
+    get universeRules(): readonly AlarmRule[] {
+        return this.cfg.alarms.filter((a) => a.code == null);
     }
     /** 활성 블랙리스트(만료분 제외). 만료 항목은 다음 저장 때 정리(읽기는 순수). */
     activeBlacklist(now: number): readonly BlacklistEntry[] {
-        return this.cfg.universe.blacklist.filter((b) => b.until > now);
-    }
-
-    /** 유니버스 규칙 전체 교체(PUT) — id 없는 규칙은 서버 발급. 교체된 규칙의 엣지 상태는 자연 초기화(무장만). */
-    setUniverseRules(rules: readonly (Omit<UniverseRule, "id"> & { id?: string })[]): UniverseRule[] {
-        this.cfg.universe.rules = rules.map((r) => ({ ...r, id: r.id ?? randomUUID() }));
-        this.save();
-        return [...this.cfg.universe.rules];
-    }
-
-    /** 블랙리스트 추가/갱신(같은 코드는 until·scope 교체) — 만료분 정리 겸. */
-    addBlacklist(code: string, until: number, now: number, scope: "telegram" | "all" = "telegram"): BlacklistEntry {
-        this.cfg.universe.blacklist = this.cfg.universe.blacklist.filter((b) => b.code !== code && b.until > now);
-        const entry: BlacklistEntry = { code, until, scope };
-        this.cfg.universe.blacklist.push(entry);
-        this.save();
-        return entry;
-    }
-
-    removeBlacklist(code: string): void {
-        this.cfg.universe.blacklist = this.cfg.universe.blacklist.filter((b) => b.code !== code);
-        this.save();
+        return this.cfg.blacklist.filter((b) => b.until > now);
     }
 
     /** watchlist 추가(멱등). @returns 새로 추가됐으면 true */
@@ -113,29 +141,52 @@ export class AlertConfigStore {
         return true;
     }
 
-    /** watchlist 제거 + 그 종목 룰 연쇄 삭제. */
+    /** watchlist 제거 + 그 종목 스코프 규칙 연쇄 삭제. */
     removeWatch(code: string): void {
         this.cfg.watchlist = this.cfg.watchlist.filter((c) => c !== code);
-        this.cfg.rules = this.cfg.rules.filter((r) => r.code !== code);
+        this.cfg.alarms = this.cfg.alarms.filter((a) => a.code !== code);
         this.save();
     }
 
-    /** 룰 추가 — id 는 서버 발급. 종목이 watchlist 에 없으면 자동 승격(알람은 타겟에만이라는 불변식 유지). */
-    addRule(input: Omit<AlertRule, "id">): AlertRule {
-        const rule: AlertRule = { ...input, id: randomUUID() };
-        if (!this.cfg.watchlist.includes(rule.code)) this.cfg.watchlist.push(rule.code);
-        this.cfg.rules.push(rule);
+    /** 규칙 추가 — id 는 서버 발급. code 스코프면 watchlist 자동 승격(알람은 타겟에만 불변식 유지). */
+    addAlarm(input: Omit<AlarmRule, "id">): AlarmRule {
+        const rule: AlarmRule = { ...input, id: randomUUID() };
+        if (rule.code && !this.cfg.watchlist.includes(rule.code)) this.cfg.watchlist.push(rule.code);
+        this.cfg.alarms.push(rule);
         this.save();
         return rule;
     }
 
     /** @returns 지웠으면 true(없는 id 면 false) */
-    removeRule(id: string): boolean {
-        const before = this.cfg.rules.length;
-        this.cfg.rules = this.cfg.rules.filter((r) => r.id !== id);
-        if (this.cfg.rules.length === before) return false;
+    removeAlarm(id: string): boolean {
+        const before = this.cfg.alarms.length;
+        this.cfg.alarms = this.cfg.alarms.filter((a) => a.id !== id);
+        if (this.cfg.alarms.length === before) return false;
         this.save();
         return true;
+    }
+
+    /** 유니버스 규칙 전체 교체(PUT) — **스코프 규칙은 보존**. id 없는 규칙은 서버 발급. */
+    setUniverseRules(rules: readonly (Omit<AlarmRule, "id" | "code"> & { id?: string })[]): AlarmRule[] {
+        const scoped = this.cfg.alarms.filter((a) => a.code != null);
+        const unscoped = rules.map((r) => ({ ...r, code: undefined, id: r.id ?? randomUUID() }));
+        this.cfg.alarms = [...scoped, ...unscoped];
+        this.save();
+        return [...unscoped];
+    }
+
+    /** 블랙리스트 추가/갱신(같은 코드는 until·scope 교체) — 만료분 정리 겸. */
+    addBlacklist(code: string, until: number, now: number, scope: "telegram" | "all" = "telegram"): BlacklistEntry {
+        this.cfg.blacklist = this.cfg.blacklist.filter((b) => b.code !== code && b.until > now);
+        const entry: BlacklistEntry = { code, until, scope };
+        this.cfg.blacklist.push(entry);
+        this.save();
+        return entry;
+    }
+
+    removeBlacklist(code: string): void {
+        this.cfg.blacklist = this.cfg.blacklist.filter((b) => b.code !== code);
+        this.save();
     }
 
     private save(): void {
