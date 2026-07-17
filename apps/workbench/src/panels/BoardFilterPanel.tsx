@@ -8,60 +8,18 @@ import {
     type BoardFilterExpr,
     type BoardFilterGroup,
     type BoardPredicateDef,
-    type BoardPredicateInstance,
 } from "@trade-data-manager/market/domain";
 import { useWorkbench, type BoardFilterActions } from "../store/workbench.js";
-import { NumberField } from "../ui/controls.js";
+import { PredicateFormula } from "../components/PredicateFormula.js";
 import { TrashIcon } from "../components/icons.js";
 
 // 배제 필터 패널 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 흐리게/숨김**. 술어는 domain 레지스트리.
 // 보기/편집 분리: 완료된 그룹 = 수식 텍스트 한 덩어리(클릭하면 그 그룹만 편집 모드).
-// 편집 모드 = 같은 수식에서 토큰만 상호작용(종류=클릭 순환, 시장=클릭 순환, 숫자=인라인 입력) — 셀렉트 없음.
+// 편집 모드 = 같은 수식에서 토큰만 상호작용(종류=클릭 순환, 옵션=클릭 순환, 숫자=인라인 입력) — 셀렉트 없음.
 // 상태·액션은 보드마다 별개(store.boardFilter / replayFilter / liveFilter)이고 표현은 이 FilterPanel 하나를 공유한다.
-
-// ── 수식 템플릿 — kind별 보기/편집 공용(편집은 토큰만 입력으로 바뀜). 없으면 제목+파라미터 폴백. ──
-// newHighFar: 매칭 = 고가에서 먼 것(당일 고가가 창최고 − tol% 아래) → 흐리게/숨김.
-type Tok = string | { p: string } | { m: true };
-const FORMULAS: Record<string, Tok[]> = {
-    newHighFar: [{ p: "window" }, "일 고가% − ", { p: "tol" }, "% > 당일 고가%", { m: true }],
-    minAmtFew: ["분봉 ", { p: "eok" }, "억+ 대금 ≤ ", { p: "maxCount" }, "회"],
-    smallAmount: ["일봉 대금 < ", { p: "ltEok" }, "억"],
-    weakHigh: ["당일 고가% < ", { p: "ltPct" }, "%"],
-};
+// 수식 렌더(PredicateFormula·FORMULAS)는 유니버스 알람 규칙 빌더와 공유.
 
 const xBtn: React.CSSProperties = { border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13, padding: 0, flexShrink: 0, font: "inherit" };
-
-/** 술어 한 개의 수식 렌더 — edit=숫자 입력·시장 순환, 아니면 순수 텍스트. */
-function Formula({ p, def, edit, onParam }: { p: BoardPredicateInstance; def?: BoardPredicateDef; edit: boolean; onParam: (key: string, v: number) => void }): JSX.Element {
-    const toks = FORMULAS[p.kind];
-    if (!toks || !def) {
-        // 폴백 — 수식 미정의 술어는 제목 + "라벨 값" 나열(새 술어 추가 시에도 안 깨짐).
-        return <span>{def?.title ?? p.kind}{def?.params.map((ps) => ` ${ps.label} ${p.params[ps.key] ?? ps.def}`).join("") ?? ""}</span>;
-    }
-    return (
-        <span className="tabular" style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 1, minWidth: 0 }}>
-            {toks.map((t, i) => {
-                if (typeof t === "string") return <span key={i} style={{ whiteSpace: "pre" }}>{t}</span>;
-                if ("m" in t) {
-                    const cur = p.params.market ?? 1; // 0=KRX / 1=UN(기본)
-                    const label = cur === 0 ? "KRX" : "UN";
-                    return edit ? (
-                        <button key={i} onClick={() => onParam("market", cur === 0 ? 1 : 0)} title="기준 시장 순환(UN↔KRX)" style={{ border: "none", background: "none", color: "var(--text-secondary)", fontWeight: 600, padding: "0 2px", marginLeft: 4, fontSize: 10.5, cursor: "pointer", font: "inherit", flexShrink: 0 }}>{label}</button>
-                    ) : (
-                        <span key={i} style={{ marginLeft: 5, fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>{label}</span>
-                    );
-                }
-                const spec = def.params.find((s) => s.key === t.p);
-                const val = p.params[t.p] ?? spec?.def ?? 0;
-                return edit ? (
-                    <NumberField key={i} value={val} min={spec?.min} step={spec?.step} onChange={(e) => onParam(t.p, Number(e.target.value))} style={{ width: 38, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, textAlign: "center", padding: "0 3px" }} />
-                ) : (
-                    <span key={i} style={{ color: "var(--accent-primary)", fontWeight: 600 }}>{val}</span>
-                );
-            })}
-        </span>
-    );
-}
 
 /** 그룹 카드 — 헤더(흐리게/숨김 좌 · 완료/삭제 우) + 수식 줄들(AND=그리고). 보기 모드에선 수식 클릭=편집. */
 function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemoveGroup }: {
@@ -107,7 +65,7 @@ function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemo
                                     {def?.title ?? p.kind}<span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>▾</span>
                                 </button>
                             )}
-                            <Formula p={p} def={def} edit={editing} onParam={(k, v) => actions.setPredicateParam(gi, pi, k, v)} />
+                            <PredicateFormula p={p} def={def} edit={editing} onParam={(k, v) => actions.setPredicateParam(gi, pi, k, v)} />
                             {editing && g.predicates.length > 1 && <button onClick={() => actions.removePredicate(gi, pi)} title="이 조건 제거" style={{ ...xBtn, marginLeft: "auto" }}>✕</button>}
                         </div>
                     );

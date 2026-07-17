@@ -1,16 +1,22 @@
 // watchlist·알람조건 클라이언트 — apps/live(/live 프록시 → :3002) REST. 계약은 contracts/wire(alerts.ts).
-import type { AlertRule, AlertLeaf, AlertLogView, WatchlistView } from "@trade-data-manager/wire";
+import type { AlertRule, AlertLeaf, AlertLogView, BlacklistEntry, UniverseRule, UniverseView, WatchlistView } from "@trade-data-manager/wire";
 
 export type {
     AlertRule,
     AlertRuleView,
+    AlertDelivery,
     AlertFiring,
     AlertLogEntry,
     AlertLogView,
     AlertScope,
     AlertThemeContext,
     AlertThemeMember,
+    BlacklistEntry,
+    CooldownKeyMode,
     LeafEvidence,
+    UniversePredicateInstance,
+    UniverseRule,
+    UniverseView,
     WatchlistView,
     AlertLeaf,
     AlertMarket,
@@ -18,6 +24,9 @@ export type {
     PriceLeaf,
     RankLeaf,
 } from "@trade-data-manager/wire";
+
+/** PUT /live/universe/rules 요청의 규칙 모양 — id 없으면 서버 발급. */
+export type UniverseRuleDraft = Omit<UniverseRule, "id"> & { id?: string };
 
 /** POST /live/alerts 요청 몸체 — 조건 = leaf(AND) 리스트. */
 export interface CreateRulePayload {
@@ -56,3 +65,9 @@ export const addWatch = (code: string): Promise<{ added: boolean }> => liveReque
 export const removeWatch = (code: string): Promise<void> => liveRequest("DELETE", `watchlist/${code}`);
 export const createAlertRule = (payload: CreateRulePayload): Promise<AlertRule> => liveRequest("POST", "alerts", payload);
 export const deleteAlertRule = (id: string): Promise<void> => liveRequest("DELETE", `alerts/${id}`);
+
+// 유니버스 조건검색 알람 — 설정은 클라가 편집, 계산·발화는 서버(live)가 소유.
+export const fetchUniverse = (signal?: AbortSignal): Promise<UniverseView> => liveRequest("GET", "universe", undefined, signal);
+export const putUniverseRules = (rules: UniverseRuleDraft[]): Promise<UniverseRule[]> => liveRequest("PUT", "universe/rules", { rules });
+export const addUniverseBlacklist = (code: string): Promise<BlacklistEntry> => liveRequest("POST", "universe/blacklist", { code });
+export const removeUniverseBlacklist = (code: string): Promise<void> => liveRequest("DELETE", `universe/blacklist/${code}`);
