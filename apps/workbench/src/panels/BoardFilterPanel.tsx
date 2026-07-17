@@ -201,7 +201,7 @@ export function LiveFilterPanel(): JSX.Element {
             filter={filter}
             actions={actions}
             predicates={LIVE_BOARD_PREDICATES}
-            emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>실시간</b> 보드에서 종목을 흐리게/숨김(매물대·고가·일봉대금).</>}
+            emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>실시간</b> 보드에서 종목을 흐리게/숨김(매물대·시그널·시총·테마순위·고가·일봉대금).</>}
         />
     );
 }

@@ -203,3 +203,48 @@ describe("buildReplayBoardViewModel", () => {
         expect(vm.excludedByFilter.get("B")).toEqual(["고가 등락률"]); // 랭킹 밖이 아니라 "필터 제외"로 구분
     });
 });
+
+// ── applyLiveFilter — 실시간 술어 원재료(deltas·marketCap·ranks) 배선(브릭 4a 조각 3) ──
+import { applyLiveFilter } from "./boardViewModel.js";
+import type { LiveStock } from "@trade-data-manager/wire";
+
+const liveStock = (over: Partial<LiveStock> = {}): LiveStock => ({
+    code: "005930",
+    name: "삼성전자",
+    price: 110,
+    changeRate: 10,
+    tradeValue: 20_000, // 백만원 = 200억
+    marketCap: 3_000,
+    open: 100,
+    high: 115,
+    low: 99,
+    base: 100,
+    newlyHot: false,
+    themes: ["반도체"],
+    rawPrevClose: { krx: 100, un: 100 },
+    ...over,
+});
+
+describe("applyLiveFilter — 실시간 술어(signal·시총·순위)", () => {
+    const expr = (kind: string, params: Record<string, number>): BoardFilterExpr => ({ groups: [{ predicates: [{ kind, params }], mode: "dim" }] });
+
+    it("signal — 서버 원시 델타에 클라 임계 적용(30초 40억/0.4%p)", () => {
+        const p = { window: 0, rateMin: 0.4, tvMin: 40 };
+        const hit = applyLiveFilter([liveStock({ deltas: { d30s: { rate: 0.5, tvEok: 45 } } })], expr("signal", p), "un");
+        expect(hit.boardStocks[0].dim).toBe(true); // 매칭 → 흐리게(배제 방향은 소비자 의미)
+        const miss = applyLiveFilter([liveStock({ deltas: { d30s: { rate: 0.5, tvEok: 30 } } })], expr("signal", p), "un");
+        expect(miss.boardStocks[0].dim).toBe(false);
+        const none = applyLiveFilter([liveStock()], expr("signal", p), "un"); // deltas 미배급(이력 부족)
+        expect(none.boardStocks[0].dim).toBe(false);
+    });
+
+    it("marketCap — 시총 이하 매칭, 0(결손)은 오매칭 안 함", () => {
+        expect(applyLiveFilter([liveStock({ marketCap: 3_000 })], expr("marketCap", { lteEok: 5_000 }), "un").boardStocks[0].dim).toBe(true);
+        expect(applyLiveFilter([liveStock({ marketCap: 0 })], expr("marketCap", { lteEok: 5_000 }), "un").boardStocks[0].dim).toBe(false);
+    });
+
+    it("rank — any-theme(UN) 순위가 임계 이내면 매칭", () => {
+        expect(applyLiveFilter([liveStock({ ranks: { krx: [8], un: [2, 7] } })], expr("rank", { market: 1, threshold: 3 }), "un").boardStocks[0].dim).toBe(true);
+        expect(applyLiveFilter([liveStock({ ranks: { krx: [1], un: [5] } })], expr("rank", { market: 1, threshold: 3 }), "un").boardStocks[0].dim).toBe(false);
+    });
+});

@@ -199,8 +199,8 @@ export function availablePredicates(provides: ReadonlySet<MetricField>): BoardPr
 }
 /** EOD/복기 소스 제공 필드(DB — 분봉 buckets 있음, 실시간 델타·순위 없음). */
 export const EOD_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "buckets", "trailingHighs"]);
-/** 실시간 보드 소스 제공 필드(REST — 현재 배선분. deltas·marketCap·themeRanks 는 조각 3에서 확장). */
-export const LIVE_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs"]);
+/** 실시간 보드 소스 제공 필드(REST 스냅샷 — deltas·ranks 원재료 배급으로 buckets 빼고 전부). */
+export const LIVE_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs", "marketCap", "deltas", "themeRanks"]);
 /** 유니버스 알람 소스 제공 필드(live 서버 metrics 빌더 — buckets 빼고 전부). 규칙 검증·2b 팔레트가 사용. */
 export const LIVE_ALARM_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs", "marketCap", "deltas", "themeRanks"]);
 

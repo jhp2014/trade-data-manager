@@ -29,6 +29,13 @@ export interface LiveStock {
     trailingHighs?: { krx: number[]; un: number[] };
     /** 활성 1분 델타 신호(돈유입). 미발화면 없음. core DeltaHit 과 구조 동일(wire 는 core 미의존이라 재선언). tvDelta 단위=원. */
     signal?: { label: string; rateDelta: number; tvDelta: number };
+    /**
+     * 30초·1분 원시 델타(등락률 %p·거래대금 억) — 클라 보드 필터의 signal 술어가 **자기 임계**로 판정
+     * (원재료 배급 철학: 임계를 서버에 박으면 필터 조절마다 왕복). 이력 부족 창은 없음. core SignalDeltas 재선언.
+     */
+    deltas?: { d30s?: { rate: number; tvEok: number }; d1m?: { rate: number; tvEok: number } };
+    /** 이 종목의 테마별 등락률 순위(시장별, 유니버스 내 — 알람 rank 술어와 같은 잣대). rank 술어(any-theme) 입력. */
+    ranks?: { krx: number[]; un: number[] };
     /** watchlist(타겟) 종목 — 스캔(hot) 이탈해도 계속 폴링·표시. 타겟 패널 필터 키. */
     watched?: boolean;
 }
