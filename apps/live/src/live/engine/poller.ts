@@ -1,7 +1,7 @@
 // 시세·거래대금 소스: ka10095 관심종목정보(_AL 통합). 유니버스 일괄 조회, 100/콜 배치.
 // 정본: market-eye/src/engine/quotePoller.ts. REST 는 tdm KiwoomRest.getMultiQuote(주입).
-import type { KiwoomRest } from "@trade-data-manager/kiwoom";
 import { toAlCode, toCanonical } from "./codes.js";
+import type { QuoteSource } from "./ports.js";
 import type { Quote } from "./types.js";
 
 const BATCH = 100;
@@ -14,7 +14,7 @@ function num(v: unknown): number {
 }
 
 /** 유니버스 종목들을 통합시세로 일괄 조회. now 는 수신 타임스탬프(호출자가 주입). */
-export async function pollQuotes(rest: KiwoomRest, codes: string[], now: number): Promise<Quote[]> {
+export async function pollQuotes(rest: QuoteSource, codes: string[], now: number): Promise<Quote[]> {
     const uniq = [...new Set(codes.map(toCanonical))].filter(Boolean);
     const out: Quote[] = [];
     for (let i = 0; i < uniq.length; i += BATCH) {

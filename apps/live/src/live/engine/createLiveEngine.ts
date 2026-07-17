@@ -21,5 +21,5 @@ export function createLiveEngine(kiwoom: Kiwoom, conditionName: string, pollMs?:
     const membership = new SheetMembership(new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET));
     // 일봉 컨텍스트(수정 트레일링 KRX/UN 두벌 + 원주가 전일종가) — kiwoom 일봉 온디맨드(hot 종목만·캐시·self-heal). DB 무의존.
     const dailyCtx = new KiwoomDailyContext(kiwoom);
-    return new LiveEngine(kiwoom, ws, membership, dailyCtx, { conditionName, pollMs }, alerts);
+    return new LiveEngine(kiwoom.rest, ws, membership, dailyCtx, { conditionName, pollMs }, alerts);
 }

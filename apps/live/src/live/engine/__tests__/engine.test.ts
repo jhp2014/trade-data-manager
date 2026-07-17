@@ -5,9 +5,9 @@
 // (forceTokenRefresh 가 토큰까지 자가치유), 엔진은 지연 성공을 'connected' 로 받아 초기화한다.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
-import type { Kiwoom } from "@trade-data-manager/kiwoom";
 import type { KiwoomWs } from "@trade-data-manager/kiwoom/ws";
 import { LiveEngine } from "../engine.js";
+import type { QuoteSource } from "../ports.js";
 import type { MembershipSource } from "../membership.js";
 import type { DailyContextSource } from "../dailyContext.js";
 
@@ -31,11 +31,11 @@ function fakeWs(connectResults: Array<"ok" | "fail">) {
 
 function makeEngine(connectResults: Array<"ok" | "fail">) {
     const ws = fakeWs(connectResults);
-    const kiwoom = { rest: { getMultiQuote: async () => ({ data: { atn_stk_infr: [] } }) } } as unknown as Kiwoom;
+    const quotes: QuoteSource = { getMultiQuote: async () => ({ data: { atn_stk_infr: [] }, contYn: "N", nextKey: "" }) };
     const membership: MembershipSource = { themesOf: () => [], reload: async () => {} };
     const dailyCtx: DailyContextSource = { contextOf: () => undefined, ensure: async () => {} };
     // conditionName="" → 스캐너 없이 watchlist 폴링만(조건검색 WS 왕복을 테스트에서 뺀다).
-    const engine = new LiveEngine(kiwoom, ws, membership, dailyCtx, { conditionName: "" });
+    const engine = new LiveEngine(quotes, ws, membership, dailyCtx, { conditionName: "" });
     const started = vi.fn();
     const reconnected = vi.fn();
     engine.on("started", started);

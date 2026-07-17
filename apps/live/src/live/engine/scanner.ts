@@ -3,8 +3,8 @@
 // (실시간(search_type=1)은 100종목 한도(과거 실측 121매칭)라 기각 — 292fe77 도입, 오진 판명 후 복원.
 //  당시 "갱신 안 됨"의 실제 원인은 정규장 시간 밖이라 조건 매칭이 조용했던 것.)
 // 정본: market-eye/src/engine/rankingScanner.ts. WS 는 tdm infra/kiwoom KiwoomWs(주입).
-import type { KiwoomWs } from "@trade-data-manager/kiwoom/ws";
 import type { LiveConditionEntry } from "@trade-data-manager/wire";
+import type { LiveWs } from "./ports.js";
 import { toCanonical } from "./codes.js";
 import type { ScanHit } from "./types.js";
 
@@ -22,7 +22,7 @@ function assertOk(frame: Record<string, unknown>, label: string): void {
 }
 
 /** CNSRLST 1회 — 서버저장 조건식 전체 목록. 스캐너 init(이름→seq 해소)과 설정 UI(GET /conditions)가 공유. */
-export async function fetchConditionList(ws: KiwoomWs): Promise<LiveConditionEntry[]> {
+export async function fetchConditionList(ws: LiveWs): Promise<LiveConditionEntry[]> {
     const res = await ws.request({ trnm: "CNSRLST" }, (f) => f.trnm === "CNSRLST");
     assertOk(res, "CNSRLST");
     return ((res.data ?? []) as [string, string][]).map(([seq, name]) => ({ seq, name }));
@@ -32,7 +32,7 @@ export class RankingScanner {
     private seq: string | null = null;
 
     constructor(
-        private readonly ws: KiwoomWs,
+        private readonly ws: LiveWs,
         private readonly conditionName: string,
     ) {}
 

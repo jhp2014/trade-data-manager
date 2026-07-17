@@ -2,9 +2,9 @@
 // 스캔(멤버십)→시세 폴링→store 적재→'tick' emit. 정본: market-eye/src/engine/engine.ts 에서
 // theme/sheets·focus·signals 제거·슬림화. NestJS 데코레이터는 여기 없음(모듈/컨트롤러 가장자리에만).
 import { EventEmitter } from "node:events";
-import type { Kiwoom } from "@trade-data-manager/kiwoom";
 import { kstToday } from "@trade-data-manager/market";
-import type { KiwoomWs, ConnectionStatus } from "@trade-data-manager/kiwoom/ws";
+import type { ConnectionStatus } from "@trade-data-manager/kiwoom/ws";
+import type { LiveWs, QuoteSource } from "./ports.js";
 import { RankingScanner, fetchConditionList } from "./scanner.js";
 import { pollQuotes } from "./poller.js";
 import { EngineStore } from "./store.js";
@@ -47,8 +47,8 @@ export class LiveEngine extends EventEmitter {
     private readonly pollMs: number;
 
     constructor(
-        private readonly kiwoom: Kiwoom,
-        private readonly ws: KiwoomWs,
+        private readonly quotes: QuoteSource,
+        private readonly ws: LiveWs,
         private readonly membership: MembershipSource,
         private readonly dailyCtx: DailyContextSource,
         opts: LiveEngineOptions,
@@ -152,7 +152,7 @@ export class LiveEngine extends EventEmitter {
         this.store.setHot(hits, now);
         // 유니버스 = hot ∪ watchlist(타겟) — 타겟은 스캔 이탈해도 항상 폴링(2층 구조).
         const codes = [...new Set([...hits.map((h) => h.code), ...(this.alerts?.watchCodes() ?? [])])];
-        const quotes = await pollQuotes(this.kiwoom.rest, codes, Date.now());
+        const quotes = await pollQuotes(this.quotes, codes, Date.now());
         this.store.updateQuotes(quotes);
         // 일봉 컨텍스트(수정 트레일링 두벌+원주가 전일종가) 백그라운드 priming(멱등). ka10081 별도 레이트라 폴링 안 막음.
         const today = kstToday();
