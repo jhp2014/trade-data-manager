@@ -80,9 +80,9 @@ export function deriveDailyView(bundle: ChartBundle, mode: ChartPriceMode): Dail
 }
 
 /**
- * 분봉 뷰 파생. 캔들 O/H/L/C 는 mode 시장 바를 prevClose 대비 %로 환산(차트-리뷰식 % 캔들).
- * 거래대금은 UN(통합) 바 기준으로 통일(항상 존재, OHLC평균×거래량). 누적도 UN.
- * KRX 모드에서 KRX 바가 없는 분(NXT 단독 시간대)은 캔들에서 건너뛴다.
+ * 분봉 뷰 파생. 캔들 O/H/L/C 는 항상 UN(통합) 바를 prevClose 대비 %로 환산(차트-리뷰식 % 캔들).
+ * 시장 토글(mode)은 % 기준가(base=직전 종가)만 KRX↔UN 으로 바꾼다 — 봉 형태는 UN 고정(UN 은 늘 존재,
+ * KRX 는 프리마켓·시간외에 부재). 거래대금·누적도 UN. base 없으면(상장일) 당일 첫 UN 시가로 폴백.
  */
 export function deriveMinuteView(bundle: ChartBundle, mode: ChartPriceMode): MinuteView {
     const minutes = bundle.minutes;
@@ -106,15 +106,13 @@ export function deriveMinuteView(bundle: ChartBundle, mode: ChartPriceMode): Min
     let base: string | null = prev ? (mode === "un" ? prev.unClose : prev.krxClose) : null;
     let baseFallback = false;
     if (base === null) {
-        const first = minutes.find((c) => (mode === "un" ? c.un : c.krx));
-        base = first ? (mode === "un" ? first.un.open : first.krx!.open) : null;
-        baseFallback = base !== null;
+        base = minutes[0].un.open; // UN 은 늘 존재 → 당일 첫 UN 시가로 폴백
+        baseFallback = true;
     }
 
     const points: MinutePoint[] = [];
     minutes.forEach((c, i) => {
-        const bar = mode === "un" ? c.un : c.krx;
-        if (!bar) return; // KRX 모드에서 KRX 없는 분 → 캔들 생략
+        const bar = c.un; // 형태는 항상 UN — 시장 토글은 base(%) 만 바꾼다
         const o = computeChangeRate(bar.open, base);
         const h = computeChangeRate(bar.high, base);
         const l = computeChangeRate(bar.low, base);

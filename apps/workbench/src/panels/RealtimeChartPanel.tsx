@@ -179,7 +179,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                                 {minuteView.points.length > 0 ? (
                                     <MinuteChart points={minuteView.points} frameKey={`${code}:${viewDate}`} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
                                 ) : (
-                                    <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음 (장 마감?)"} />
+                                    <Center text="분봉 없음 (장 마감?)" />
                                 )}
                             </div>
                         )}

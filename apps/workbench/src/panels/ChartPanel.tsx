@@ -138,7 +138,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                         onRemoveLine={removeLine}
                                     />
                                 ) : (
-                                    <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음"} />
+                                    <Center text="분봉 없음" />
                                 )}
                             </div>
                         )}

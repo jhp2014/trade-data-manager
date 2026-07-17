@@ -87,7 +87,7 @@ export function MinuteChart({
     markerTime?: number | null; // 현재 타점 세로선(unix초). null = 없음.
     savedPoints?: SavedPointInput[]; // 저장된 복기 타점(unix초 + 연결 가설). 흐린 세로선 + hover 카드.
     showPointInfo?: boolean; // 현재 타점 정보 박스 토글
-    zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 08:00~15:20 세션.
+    zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 세션 기본(07:50/08:50~15:30).
     onMovePoint: (time: string) => void; // 좌클릭 = 그 봉으로 타점 이동(tradeTime HH:MM:SS)
     onRightClick: (anchor: { date: string; time: string }) => void;
     onRemoveLine: (line: RenderLine) => void;

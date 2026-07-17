@@ -19,13 +19,19 @@ import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, AMOUNT_
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
-import { kstToUnix, type MinutePoint } from "../lib/derive.js";
+import { type MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
 const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
-const LEFT_MARGIN_BARS = 10; // 좌측 여백(빈 논리 인덱스/시간) — 봉이 축에 바짝 붙지 않게
-const MINUTE_BAR_SEC = 60; // 분봉 1봉 간격(초) — 좌측 여백을 시간 단위로 환산
+const LEFT_MARGIN_BARS = 10; // 좌측 여백(빈 논리 인덱스) — 봉이 축에 바짝 붙지 않게 + 개장 -10분 "여유"
+const RIGHT_MARGIN_BARS = 2; // 우측 여백 — 15:30 종가봉이 축에 바짝 붙지 않게
+const PREMARKET_OPEN_MIN = 8 * 60; // NXT 프리마켓 개장(08:00) — 프리마켓 봉 있는 UN 종목 세션 시작
+const REGULAR_OPEN_MIN = 9 * 60; // 정규장 개장(09:00) — KRX 전용(프리마켓 없는) 종목 세션 시작
+const SESSION_CLOSE = "15:30:00"; // 기본 뷰 우단 — 종가 단일가까지. 시간외(~20:00)는 줌아웃/스크롤로 접근
+
+/** "HH:MM:SS" → 자정 기준 분(分). 초는 분봉상 무시. */
+const hmsToMin = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 
 /** 저장 타점 입력(스냅 전) — unix초 + 연결 가설 텍스트. */
 export interface SavedPointInput {
@@ -247,7 +253,8 @@ export function useMarkerVertLines(
     return { currentSnapped, savedSnapped };
 }
 
-/** 표시 범위 — f 줌: anchor 중심 ±bars/2 봉 / 축소: 08:00~15:20 세션. 좌측 여백(빈 시간대) 확보.
+/** 표시 범위 — f 줌: anchor 중심 ±bars/2 봉 / 축소: 세션(프리마켓 있으면 07:50, 없으면 08:50 ~ 15:30).
+ *  둘 다 논리 인덱스로 프레임(음수 from = 실제 좌측 빈칸, densify 로 분당 연속이라 논리 1칸 = 1분).
  *  데이터셋(frameKey=code:date)·줌이 바뀔 때만 프레이밍 — 같은 데이터셋의 라이브 틱(폴 갱신)은 사용자
  *  줌/이동을 보존한다(setData 는 범위 유지, 새 분봉은 shiftVisibleRangeOnNewBar 가 우측에서만 추종). */
 export function useMinuteVisibleRange(
@@ -273,7 +280,15 @@ export function useMinuteVisibleRange(
             const half = zoom.bars / 2;
             ts.setVisibleLogicalRange({ from: idx - half - LEFT_MARGIN_BARS, to: idx + half });
         } else {
-            ts.setVisibleRange({ from: (points[0].time - LEFT_MARGIN_BARS * MINUTE_BAR_SEC) as UTCTimestamp, to: kstToUnix(points[0].date, "15:20:00") as UTCTimestamp });
+            // 세션 기본 뷰 — 개장 -10분 좌단 ~ 15:30 우단. 프리마켓(NXT) 봉이 있으면(첫 봉 < 09:00) UN 종목
+            // → 개장 08:00 → 좌단 07:50, 없으면 KRX 전용 → 개장 09:00 → 좌단 08:50. 좌측 여백은 첫 봉(idx 0)
+            // 기준 음수 논리 인덱스(clock 시각에 맞춰 정확히), 우단은 15:30 이하 마지막 봉(시간외는 뷰 밖·데이터 보존).
+            const firstMin = hmsToMin(points[0].tradeTime);
+            const openMin = firstMin < REGULAR_OPEN_MIN ? PREMARKET_OPEN_MIN : REGULAR_OPEN_MIN;
+            const from = Math.min(0, openMin - LEFT_MARGIN_BARS - firstMin); // 첫 봉 좌측 여백(빈 논리 인덱스)
+            let to = points.length - 1;
+            for (let i = 0; i < points.length; i++) { if (points[i].tradeTime <= SESSION_CLOSE) to = i; else break; }
+            ts.setVisibleLogicalRange({ from, to: to + RIGHT_MARGIN_BARS });
         }
         bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
