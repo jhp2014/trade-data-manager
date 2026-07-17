@@ -84,6 +84,10 @@ export function StockRow({
                 >
                     {s.name}
                 </span>
+                {/* 강조(mark) 필터 매칭 — 돈유입 등 "눈에 띄게". 배제(dim)와 직교. */}
+                {s.marked && (
+                    <span title={s.markedBy?.join(" · ") ?? "강조 필터 매칭"} style={{ flexShrink: 0, fontSize: 11, lineHeight: 1 }}>🔥</span>
+                )}
                 {/* 필터 칩 ON: 제외 사유 태그 먼저 + 테마 칩 뒤(폭 좁으면 뒤부터 잘림). OFF(기본): 테마 칩만. */}
                 {((showReasons && s.excludedBy) || chips.length > 0) && (
                     <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden", flexShrink: 100 }}>

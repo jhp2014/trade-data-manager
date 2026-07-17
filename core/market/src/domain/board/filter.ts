@@ -205,14 +205,15 @@ export const LIVE_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount
 export const LIVE_ALARM_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs", "marketCap", "deltas", "themeRanks"]);
 
 // ── 필터식(DNF, 그룹별 mode) ──
-export type BoardFilterMode = "dim" | "hide";
+/** dim/hide = 배제(흐리게/숨김) / mark = 강조(🔥 — 돈유입 등 "눈에 띄게"는 배제의 반대 방향). */
+export type BoardFilterMode = "dim" | "hide" | "mark";
 export interface BoardPredicateInstance {
     kind: string;
     params: Record<string, number>;
 }
 export interface BoardFilterGroup {
     predicates: BoardPredicateInstance[];
-    mode: BoardFilterMode; // 이 그룹에 매칭된 종목을 흐리게/숨김(그룹별 개별)
+    mode: BoardFilterMode; // 이 그룹에 매칭된 종목 처리(그룹별 개별)
 }
 export interface BoardFilterExpr {
     groups: BoardFilterGroup[];
@@ -230,23 +231,29 @@ export function groupMatches(g: BoardFilterGroup, m: BoardMetrics): boolean {
 
 export interface BoardFilterVerdict {
     effect: "show" | "dim" | "hide";
-    reasons: string[]; // 매칭된 그룹 술어 라벨(제외 사유 태그)
+    /** mark 그룹 매칭 — 배제와 직교(🔥 이면서 다른 그룹으로 dim 일 수 있다. hide 면 행이 없어 무의미). */
+    marked: boolean;
+    reasons: string[]; // 매칭된 배제(dim/hide) 그룹 술어 라벨(제외 사유 태그)
+    markReasons: string[]; // 매칭된 mark 그룹 술어 라벨(🔥 툴팁)
 }
 
-/** 종목 판정 — 매칭 그룹 중 hide 있으면 hide(우선), 없으면 dim, 매칭 없으면 show. reasons = 매칭 술어 라벨(dedup). */
+/** 종목 판정 — 배제: hide 우선 > dim > show. 강조(mark)는 별도 축. reasons/markReasons = 매칭 술어 라벨(dedup). */
 export function evalBoardFilter(expr: BoardFilterExpr, m: BoardMetrics): BoardFilterVerdict {
     let effect: "show" | "dim" | "hide" = "show";
+    let marked = false;
     const reasons: string[] = [];
+    const markReasons: string[] = [];
     for (const g of expr.groups) {
         if (!groupMatches(g, m)) continue;
-        if (g.mode === "hide") effect = "hide";
+        if (g.mode === "mark") marked = true;
+        else if (g.mode === "hide") effect = "hide";
         else if (effect !== "hide") effect = "dim";
         for (const pi of g.predicates) {
             const def = boardPredicateDef(pi.kind);
-            if (def) reasons.push(def.label(pi.params));
+            if (def) (g.mode === "mark" ? markReasons : reasons).push(def.label(pi.params));
         }
     }
-    return { effect, reasons: [...new Set(reasons)] };
+    return { effect, marked, reasons: [...new Set(reasons)], markReasons: [...new Set(markReasons)] };
 }
 
 /** 활성(비어있지 않은 그룹) 여부. */

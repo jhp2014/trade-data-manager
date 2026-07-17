@@ -45,8 +45,10 @@ export function PredicateFormula({ p, def, edit, onParam }: {
                     );
                 }
                 const val = p.params[t.p] ?? spec?.def ?? 0;
+                // 폭 = 자릿수 따라(스피너 여유 포함) — 고정폭이면 tvMin(수만 억) 같은 값이 짤린다.
+                const width = Math.max(44, String(val).length * 8.5 + 22);
                 return edit ? (
-                    <NumberField key={i} value={val} min={spec?.min} max={spec?.max} step={spec?.step} onChange={(e) => onParam(t.p, Number(e.target.value))} style={{ width: 44, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, textAlign: "center", padding: "0 3px" }} />
+                    <NumberField key={i} value={val} min={spec?.min} max={spec?.max} step={spec?.step} onChange={(e) => onParam(t.p, Number(e.target.value))} style={{ width, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, textAlign: "center", padding: "0 3px" }} />
                 ) : (
                     <span key={i} style={{ color: "var(--accent-primary)", fontWeight: 600 }}>{val}</span>
                 );

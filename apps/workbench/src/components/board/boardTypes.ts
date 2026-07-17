@@ -30,6 +30,10 @@ export interface BoardStock {
     signal?: DeltaHit | null;
     /** 필터 조건 불일치(흐림 모드) — 행을 흐릿하게. */
     dim?: boolean;
+    /** 강조(mark) 그룹 매칭 — 🔥 배지(돈유입 등, 배제와 직교). */
+    marked?: boolean;
+    /** 강조에 걸린 술어 라벨(🔥 툴팁). */
+    markedBy?: string[];
     /** 거래대금 구간별 EOD 카운트(길이 7) — 이슈 보드만. 거래대금 hover 시 막대그래프. */
     buckets?: number[];
     /** 이 보드 날짜에 복기 타점/가격선 주석이 있는 종목(이름 하이라이트). 타점·가격선 구분 없이 통합. */

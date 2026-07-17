@@ -37,11 +37,15 @@ function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemo
         <div style={{ border: `1px solid ${editing ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 8, background: "var(--bg-secondary)", padding: "6px 10px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                 <button
-                    onClick={() => actions.setGroupMode(gi, g.mode === "dim" ? "hide" : "dim")}
-                    title="매칭 종목 처리: 흐리게 ↔ 숨김"
-                    style={{ border: "none", borderRadius: 8, background: g.mode === "hide" ? "rgba(239,68,68,0.12)" : "var(--accent-soft)", color: g.mode === "hide" ? "var(--rise)" : "var(--accent-hover)", padding: "1px 9px", font: "inherit", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                    onClick={() => actions.setGroupMode(gi, g.mode === "dim" ? "hide" : g.mode === "hide" ? "mark" : "dim")}
+                    title="매칭 종목 처리 순환: 흐리게 → 숨김 → 강조(🔥)"
+                    style={{
+                        border: "none", borderRadius: 8, padding: "1px 9px", font: "inherit", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                        background: g.mode === "hide" ? "rgba(239,68,68,0.12)" : g.mode === "mark" ? "rgba(245,158,11,0.15)" : "var(--accent-soft)",
+                        color: g.mode === "hide" ? "var(--rise)" : g.mode === "mark" ? "#d97706" : "var(--accent-hover)",
+                    }}
                 >
-                    {g.mode === "hide" ? "숨김" : "흐리게"}
+                    {g.mode === "hide" ? "숨김" : g.mode === "mark" ? "🔥 강조" : "흐리게"}
                 </button>
                 <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
                     {editing && (

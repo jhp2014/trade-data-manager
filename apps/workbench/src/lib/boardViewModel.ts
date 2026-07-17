@@ -58,6 +58,8 @@ export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Se
             isMover: isMover(s.marketCap ? Number(s.marketCap) / 1e8 : null, m.rate),
             buckets: s.bucketCounts,
             dim: verdict.effect === "dim",
+            marked: verdict.marked || undefined,
+            markedBy: verdict.markReasons.length ? verdict.markReasons : undefined,
             excludedBy: verdict.reasons.length ? verdict.reasons : undefined,
             annotated: annotatedCodes.has(s.stockCode),
         });
@@ -122,6 +124,8 @@ export function buildReplayBoardViewModel(
             signal,
             buckets,
             dim: verdict.effect === "dim",
+            marked: verdict.marked || undefined,
+            markedBy: verdict.markReasons.length ? verdict.markReasons : undefined,
             excludedBy: verdict.reasons.length ? verdict.reasons : undefined,
             annotated: annotatedCodes.has(snap.code),
         });
@@ -184,7 +188,13 @@ export function applyLiveFilter(stocks: LiveStock[], filter: BoardFilterExpr, ma
             excludedByFilter.set(s.code, verdict.reasons);
             continue;
         }
-        boardStocks.push({ ...liveToBoardStock(s, market), dim: verdict.effect === "dim", excludedBy: verdict.reasons.length ? verdict.reasons : undefined });
+        boardStocks.push({
+            ...liveToBoardStock(s, market),
+            dim: verdict.effect === "dim",
+            marked: verdict.marked || undefined,
+            markedBy: verdict.markReasons.length ? verdict.markReasons : undefined,
+            excludedBy: verdict.reasons.length ? verdict.reasons : undefined,
+        });
     }
     return { boardStocks, excludedByFilter };
 }
