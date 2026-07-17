@@ -17,6 +17,7 @@ import {
     type CreateRulePayload,
 } from "../api/alerts.js";
 import { kstTime } from "../lib/date.js";
+import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useStockName } from "../lib/useStockName.js";
 import { StockRow } from "../components/board/StockRow.js";
@@ -59,7 +60,7 @@ export function WatchlistPanel(): JSX.Element {
     const [order, setOrder] = useState<string[]>(() => loadOrder());
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } })); // 5px 이동해야 드래그 시작(클릭은 선택 유지)
 
-    const view = useQuery({ queryKey: WATCHLIST_KEY, queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: 5_000 });
+    const view = useQuery({ queryKey: WATCHLIST_KEY, queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: LIVE_CADENCE_MS });
     const invalidate = (): void => void qc.invalidateQueries({ queryKey: WATCHLIST_KEY });
 
     const addM = useMutation({ mutationFn: addWatch, onSettled: invalidate });

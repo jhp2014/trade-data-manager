@@ -1,4 +1,4 @@
-// 실시간 엔진(오케스트레이터) — framework-free. 상시 5초 self-scheduling 루프로
+// 실시간 엔진(오케스트레이터) — framework-free. 상시 pollMs(기본 3초) self-scheduling 루프로
 // 스캔(멤버십)→시세 폴링→store 적재→'tick' emit. 정본: market-eye/src/engine/engine.ts 에서
 // theme/sheets·focus·signals 제거·슬림화. NestJS 데코레이터는 여기 없음(모듈/컨트롤러 가장자리에만).
 import { EventEmitter } from "node:events";
@@ -56,10 +56,10 @@ export class LiveEngine extends EventEmitter {
     ) {
         super();
         this.conditionName = opts.conditionName;
-        this.pollMs = opts.pollMs ?? 5_000;
+        this.pollMs = opts.pollMs ?? 3_000; // 조건검색/알람 판정·링버퍼 적재 주기. LIVE_POLL_MS 로 오버라이드.
     }
 
-    /** WS 연결 → (조건 있으면) 스캐너 init(CNSRLST) → 즉시 1틱 → 5초 루프. 끊기면 WS 가 백오프 재연결.
+    /** WS 연결 → (조건 있으면) 스캐너 init(CNSRLST) → 즉시 1틱 → pollMs 루프. 끊기면 WS 가 백오프 재연결.
      *  조건 미선택(빈 이름)이어도 시작 — 스캔 없이 watchlist 폴링·알람은 동작, 조건은 switchCondition 으로 나중에.
      *
      *  연결 수명(백오프 재연결·토큰 강제갱신)은 **KiwoomWs 가 온전히 소유**한다. 엔진은 "LOGIN 성공했다"

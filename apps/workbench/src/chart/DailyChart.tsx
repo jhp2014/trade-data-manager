@@ -45,7 +45,7 @@ function fmtDailyCrosshair(time: Time): string {
 // 봉 ctrl+클릭 또는 더블클릭 = 그 날짜로 검색(맨 좌클릭은 팬 몫).
 // 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
 // pctBase(검색일 전일종가)가 있으면 크로스헤어 y-위치를 % 로 툴팁에 표시 + showGuide 시 +30%(상한가) 가이드선.
-export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, onPickPrice, capturePriceArmed = false, searchDate, pctBase, showGuide = false }: { points: DailyPoint[]; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; onPickPrice?: (price: number) => void; capturePriceArmed?: boolean; searchDate?: string; pctBase?: number | null; showGuide?: boolean }): JSX.Element {
+export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, onPickPrice, capturePriceArmed = false, searchDate, pctBase, showGuide = false }: { points: DailyPoint[]; frameKey: string; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; onPickPrice?: (price: number) => void; capturePriceArmed?: boolean; searchDate?: string; pctBase?: number | null; showGuide?: boolean }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -153,15 +153,21 @@ export function DailyChart({ points, lines, zoom = false, zoomBars = 60, zoomOut
     }, [points]);
 
     // 표시 범위 — f 줌인=최근 zoomBars 봉 / 축소=최근 zoomOutBars 봉(~1년, 데이터 적으면 전체).
+    // 데이터셋(frameKey=code:date)·줌이 바뀔 때만 프레이밍. 같은 데이터셋의 라이브 틱(폴 갱신)은 강제
+    // 리프레임을 건너뛰어 사용자가 잡아둔 줌/이동을 보존한다(lightweight-charts setData 는 범위를 유지).
+    const framedSigRef = useRef<string | null>(null);
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
+        const sig = `${frameKey}|${zoom}|${zoomBars}|${zoomOutBars}`;
+        if (framedSigRef.current === sig) return; // 같은 데이터셋+줌 → 라이브 틱, 뷰 보존
+        framedSigRef.current = sig;
         const n = points.length;
         // 좌측에 여백(빈 논리 인덱스, 음수 from 도 허용) + 우측에 여백(오늘 봉이 축에 바짝 붙으면
         // 가격선 라벨(D/M, priceLine title)이 오늘 봉을 가림 → 우측도 넉넉히 띄운다.
         const from = Math.max(0, n - (zoom ? zoomBars : zoomOutBars)) - LEFT_MARGIN_BARS;
         chart.timeScale().setVisibleLogicalRange({ from, to: n + RIGHT_MARGIN_BARS });
-    }, [points, zoom, zoomBars, zoomOutBars]);
+    }, [points, frameKey, zoom, zoomBars, zoomOutBars]);
 
     // 우클릭 대상 = crosshair 로 hover 중인 봉. contextmenu 시 그 봉 고점으로 토글.
     useEffect(() => {

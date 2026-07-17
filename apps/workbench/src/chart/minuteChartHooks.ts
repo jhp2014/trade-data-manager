@@ -247,16 +247,23 @@ export function useMarkerVertLines(
     return { currentSnapped, savedSnapped };
 }
 
-/** 표시 범위 — f 줌: anchor 중심 ±bars/2 봉 / 축소: 08:00~15:20 세션. 좌측 여백(빈 시간대) 확보. */
+/** 표시 범위 — f 줌: anchor 중심 ±bars/2 봉 / 축소: 08:00~15:20 세션. 좌측 여백(빈 시간대) 확보.
+ *  데이터셋(frameKey=code:date)·줌이 바뀔 때만 프레이밍 — 같은 데이터셋의 라이브 틱(폴 갱신)은 사용자
+ *  줌/이동을 보존한다(setData 는 범위 유지, 새 분봉은 shiftVisibleRangeOnNewBar 가 우측에서만 추종). */
 export function useMinuteVisibleRange(
     chartRef: RefObject<IChartApi | null>,
     points: MinutePoint[],
     zoom: { bars: number; anchorTime: number | null } | null,
+    frameKey: string,
     bumpOverlay: () => void,
 ): void {
+    const framedSigRef = useRef<string | null>(null);
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
+        const sig = `${frameKey}|${zoom ? `${zoom.bars}:${zoom.anchorTime}` : "session"}`;
+        if (framedSigRef.current === sig) return; // 같은 데이터셋+줌 → 라이브 틱, 뷰 보존
+        framedSigRef.current = sig;
         const ts = chart.timeScale();
         if (zoom) {
             let idx = points.length - 1;
@@ -270,7 +277,7 @@ export function useMinuteVisibleRange(
         }
         bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, zoom]);
+    }, [points, zoom, frameKey]);
 }
 
 /** 마우스 상호작용 — 좌클릭=그 봉으로 타점 이동, 우클릭=선 근처면 삭제/아니면 hover 봉에 M 선 추가. */

@@ -5,6 +5,7 @@ import { fetchWatchlist } from "../api/alerts.js";
 import { useChartBundle } from "../lib/useChartBundle.js";
 import { deriveMinuteView, deriveDailyView, prevCloseAsOf } from "../lib/derive.js";
 import { fmtDateKo } from "../lib/date.js";
+import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { useStockName } from "../lib/useStockName.js";
 import { StockNameCopy } from "../components/StockNameCopy.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
@@ -47,8 +48,8 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     const drifted = viewDate !== anchorDate;
 
     // 일봉=기준일 앵커(오늘 봉 갱신 폴), 분봉=검색날짜(오늘이면 라이브 폴, 과거면 정적).
-    const dailyQ = useChartBundle("live", code, anchorDate, { refetchInterval: 5000 });
-    const minuteQ = useChartBundle("live", code, viewDate, { refetchInterval: drifted ? false : 5000 });
+    const dailyQ = useChartBundle("live", code, anchorDate, { refetchInterval: LIVE_CADENCE_MS });
+    const minuteQ = useChartBundle("live", code, viewDate, { refetchInterval: drifted ? false : LIVE_CADENCE_MS });
 
     const dailyView = useMemo(() => (dailyQ.data ? deriveDailyView(dailyQ.data, mode) : null), [dailyQ.data, mode]);
     const minuteView = useMemo(() => (minuteQ.data ? deriveMinuteView(minuteQ.data, mode) : null), [minuteQ.data, mode]);
@@ -76,7 +77,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     }, [anchors, dailyView, minuteView]);
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
     // 알람 가격선(빨강 🔔) — 포커스 종목의 가격 조건 값들을 수평선으로. 워치리스트 쿼리(패널과 캐시 공유).
-    const wl = useQuery({ queryKey: ["live-watchlist"], queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: 5000 });
+    const wl = useQuery({ queryKey: ["live-watchlist"], queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: LIVE_CADENCE_MS });
     const alarmLines = useMemo<RenderLine[]>(() => {
         if (!showAlarmLines) return [];
         const out: RenderLine[] = [];
@@ -152,6 +153,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                                 {dailyView.length > 0 ? (
                                     <DailyChart
                                         points={dailyView}
+                                        frameKey={`${code}:${anchorDate}`}
                                         lines={dailyLines}
                                         zoom={chartZoom != null}
                                         zoomBars={cs.dailyZoomBars}
@@ -175,7 +177,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                             <div style={{ flex: 1, minHeight: 0, position: "relative" }} title="봉 우클릭: 선">
                                 <PaneLabel text={fmtDateKo(viewDate)} />
                                 {minuteView.points.length > 0 ? (
-                                    <MinuteChart points={minuteView.points} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
+                                    <MinuteChart points={minuteView.points} frameKey={`${code}:${viewDate}`} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
                                 ) : (
                                     <Center text={mode === "krx" ? "KRX 분봉 없음" : "분봉 없음 (장 마감?)"} />
                                 )}

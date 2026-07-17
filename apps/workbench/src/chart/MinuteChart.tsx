@@ -65,6 +65,7 @@ function AnchoredBox({
 // 훅들이 담당하고, 여기는 훅 조합 + 오버레이(타점 ▼·정보 카드)·툴팁 렌더만.
 export function MinuteChart({
     points,
+    frameKey,
     showAmountMarkers = true,
     lines,
     base,
@@ -79,6 +80,7 @@ export function MinuteChart({
     capturePriceArmed = false,
 }: {
     points: MinutePoint[];
+    frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
     showAmountMarkers?: boolean;
     lines: RenderLine[]; // D+M 선(해소된 raw 가격). % 로 변환해 표시.
     base: number | null; // % 기준가(원)
@@ -114,7 +116,7 @@ export function MinuteChart({
     const series = useMinuteSeries(chartRef);
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
     const { currentSnapped, savedSnapped } = useMarkerVertLines(series, points, markerTime, savedPoints);
-    useMinuteVisibleRange(chartRef, points, zoom, series.bumpOverlay);
+    useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base);
 

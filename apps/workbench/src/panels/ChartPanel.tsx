@@ -115,7 +115,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
                             <div style={{ flex: 1, minHeight: 0, position: "relative" }} title="봉 ctrl+클릭 / 더블클릭: 그 날짜로 검색 · 봉 우클릭: 고점 선(D)">
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={pinMinute ? undefined : (d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={showLine && drifted ? viewDate : undefined} pctBase={pctBase} showGuide={showGuide} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} frameKey={`${code}:${anchor}`} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={pinMinute ? undefined : (d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={showLine && drifted ? viewDate : undefined} pctBase={pctBase} showGuide={showGuide} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
@@ -125,6 +125,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                 {minuteView.points.length > 0 ? (
                                     <MinuteChart
                                         points={minuteView.points}
+                                        frameKey={`${code}:${viewDate}`}
                                         showAmountMarkers={showMarkers}
                                         lines={resolvedLines}
                                         base={minuteView.base}

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertThemeMember, type LeafEvidence } from "../api/alerts.js";
 import { kstTime } from "../lib/date.js";
+import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { useWorkbench } from "../store/workbench.js";
 
 // 근거 문구는 core 술어(predicateEvidence — 서버)가 채운다(4b 통합) — 그대로 렌더.
@@ -39,7 +40,7 @@ export function AlertLogPanel(): JSX.Element {
 
     const poll = useQuery({
         queryKey: LOG_KEY,
-        refetchInterval: 5_000,
+        refetchInterval: LIVE_CADENCE_MS,
         queryFn: async ({ signal }) => {
             const view = await fetchAlertLog(cursor.current, signal);
             if (view.latestSeq < cursor.current) {
