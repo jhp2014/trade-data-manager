@@ -257,9 +257,11 @@ export function useMarkerVertLines(
  *  둘 다 논리 인덱스로 프레임(음수 from = 실제 좌측 빈칸, densify 로 분당 연속이라 논리 1칸 = 1분).
  *  데이터셋(frameKey=code:date)·줌이 바뀔 때만 프레이밍 — 같은 데이터셋의 라이브 틱(폴 갱신)은 사용자
  *  줌/이동을 보존한다(setData 는 범위 유지, 새 분봉은 shiftVisibleRangeOnNewBar 가 우측에서만 추종).
- *  lockTimeScale(스케일 고정) — 종목/날짜 전환(frameKey 변경) 시 리프레임을 건너뛰어 지금 보던 논리
- *  범위(스케일+위치)를 그대로 둔다(setData 가 범위를 유지하므로 아무것도 안 하면 됨. NXT 유무·타점 무관).
- *  단 새 차트 첫 마운트는 반드시 프레이밍(prevFrameKey null). f 줌 토글은 frameKey 동일이라 아래로 흘러 반영. */
+ *  lockTimeScale(스케일 고정) — 종목/날짜 전환(frameKey 변경) 시 직전에 보던 **clock 시각 창**을 유지한다.
+ *  두 종목의 첫 봉 시각 차(프리마켓 유무=08:00 vs 09:00)만큼 논리 인덱스를 밀어(shift) clock 기준 동일하게
+ *  맞춘다 → NXT↔KRX전용 전환도 60분 안 밀림(KRX 전용은 앞에 빈칸이 더 생길 뿐). 복원 원본(범위+첫봉시각)은
+ *  cleanup 에서 setData 이전에 캡처 — 뷰가 우측끝이면(KRX 전용=시간외 없어 세션뷰가 곧 우측끝) setData 가
+ *  최신 봉을 추종해 스냅되므로, 스냅 이전 값을 잡아야 한다. 첫 마운트는 프레이밍. f 줌 토글은 아래로 흘러 반영. */
 export function useMinuteVisibleRange(
     chartRef: RefObject<IChartApi | null>,
     points: MinutePoint[],
@@ -269,6 +271,7 @@ export function useMinuteVisibleRange(
     lockTimeScale = false,
 ): void {
     const prevFrameKeyRef = useRef<string | null>(null); // 직전 데이터셋 — 고정 시 "전환 vs 첫 마운트" 구분용
+    const lockedRef = useRef<{ from: number; to: number; firstMin: number } | null>(null); // 전환 직전 뷰(clock 복원용)
     const lockRef = useRef(lockTimeScale); // 토글 자체는 리프레임 트리거가 아님(켜는 순간 뷰 안 움직임) → ref 로만 읽는다
     lockRef.current = lockTimeScale;
     // 리프레임 트리거는 effect 의존성 비교가 곧 가드 — frameKey(데이터 파생)·줌이 바뀔 때만 돈다.
@@ -278,14 +281,16 @@ export function useMinuteVisibleRange(
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
+        const ts = chart.timeScale();
         const prevFrameKey = prevFrameKeyRef.current;
         prevFrameKeyRef.current = frameKey;
-        // 스케일 고정 — 데이터셋 전환이면 리프레임 스킵(setData 가 논리 범위 유지 → 스케일·위치 그대로).
-        // 첫 마운트(prevFrameKey null)는 스킵 안 함(빈 차트가 기본 뷰로 열리지 않게).
-        if (prevFrameKey !== null && prevFrameKey !== frameKey && lockRef.current) return;
-        const ts = chart.timeScale();
-        const firstMin = hmsToMin(points[0].tradeTime);
-        if (zoom) {
+        const firstMin = hmsToMin(points[0].tradeTime); // 이 데이터셋 첫 봉 분(分) — clock↔논리인덱스 변환 기준
+        // 스케일 고정 — 전환이면 직전 clock 창 복원. 첫 봉 시각 차만큼 논리 인덱스 시프트(논리 1칸=1분)해
+        // clock 기준 동일하게 유지(NXT↔KRX전용도 60분 안 밀림). 첫 마운트(prevFrameKey null)는 프레이밍.
+        if (prevFrameKey !== null && prevFrameKey !== frameKey && lockRef.current && lockedRef.current) {
+            const shift = lockedRef.current.firstMin - firstMin;
+            ts.setVisibleLogicalRange({ from: lockedRef.current.from + shift, to: lockedRef.current.to + shift });
+        } else if (zoom) {
             let idx = points.length - 1;
             if (zoom.anchorTime != null) {
                 for (let i = 0; i < points.length; i++) { if (points[i].time <= zoom.anchorTime) idx = i; else break; }
@@ -302,6 +307,14 @@ export function useMinuteVisibleRange(
             ts.setVisibleLogicalRange({ from, to: to + RIGHT_MARGIN_BARS });
         }
         bumpOverlay();
+        // cleanup: 다음 데이터 swap(setData) 이전에 현재 범위+첫봉시각 캡처 → 고정 복원 원본(우측끝 스냅 방지).
+        // React 는 "모든 cleanup → 모든 effect" 순이라 이 캡처가 useMinuteSeriesData 의 setData 보다 먼저 돈다.
+        return () => {
+            try {
+                const r = chartRef.current?.timeScale().getVisibleLogicalRange();
+                if (r) lockedRef.current = { from: r.from, to: r.to, firstMin };
+            } catch { /* chart 파괴됨 */ }
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [frameKey, zoomSig]);
 }
