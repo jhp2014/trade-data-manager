@@ -41,6 +41,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     const [showMarkers, setShowMarkers] = useState(true);
     const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
     const [pinMinute, setPinMinute] = useState(false); // 분봉 기준일 고정(일봉 클릭 무시)
+    const [lockScale, setLockScale] = useState(false); // 분봉 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지
     const [showGuide, setShowGuide] = useState(true); // +30% 가이드선(검색일 전일종가 ×1.3)
     const [showAlarmLines, setShowAlarmLines] = useState(true); // 알람 가격조건 선 표시
 
@@ -124,6 +125,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                     <Sep />
                     <ControlGroup>
                         <TextToggle active={pinMinute} activeColor="var(--accent-primary)" onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</TextToggle>
+                        <TextToggle active={lockScale} activeColor="var(--accent-primary)" onClick={() => setLockScale((v) => !v)} title={lockScale ? "스케일 고정 해제(전환 시 세션 뷰로 리프레임)" : "분봉 시간축 스케일 고정(종목/날짜 전환에도 보던 창 유지)"}>스케일</TextToggle>
                     </ControlGroup>
                     <Sep />
                     {/* 마커 — 차트에 얹히는 표시들. 한 덩어리(배경)로 묶고 라벨은 그룹에 1회. */}
@@ -177,7 +179,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                             <div style={{ flex: 1, minHeight: 0, position: "relative" }} title="봉 우클릭: 선">
                                 <PaneLabel text={fmtDateKo(viewDate)} />
                                 {minuteView.points.length > 0 ? (
-                                    <MinuteChart points={minuteView.points} frameKey={`${code}:${viewDate}`} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
+                                    <MinuteChart points={minuteView.points} frameKey={`${code}:${viewDate}`} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} lockTimeScale={lockScale} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
                                 ) : (
                                     <Center text="분봉 없음 (장 마감?)" />
                                 )}

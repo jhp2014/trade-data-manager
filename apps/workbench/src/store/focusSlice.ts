@@ -59,11 +59,12 @@ export const createFocusSlice: StateCreator<WorkbenchState, [], [], FocusSlice> 
     lastFocusOrigin: null,
 
     // 모든 Focus 액션은 무효화규칙을 transitionFocus 단일 진실에 위임한다(각 액션이 규칙을 재현하지 않게).
-    // chartZoom 만 액션 의도로 남긴다: 점프(setDate/setFocus/goToPoint)=재중심 위해 해제, 드리프트(setCode 같은시각·setTime)=유지.
+    // chartZoom 만 액션 의도로 남긴다: 점프·종목전환(setDate/setCode/setFocus/goToPoint)=해제(전환은 항상 세션 기본 뷰,
+    // 뷰 유지는 차트 패널의 "스케일 고정" 토글이 담당), 시간 드리프트(setTime)=유지.
     setDate: (date, origin) =>
         set((s) => ({ ...transitionFocus(s, { ...s.focus, date, time: null }, origin), chartZoom: null })),
-    // code 변경 시 time 유지(같은시각 횡적비교), zoom 유지.
-    setCode: (code, origin) => set((s) => transitionFocus(s, { ...s.focus, code }, origin)),
+    // code 변경 시 time 유지(같은시각 횡적비교). zoom 은 해제 — 안 그러면 anchor 없는 확대가 마지막 봉(시간외)에 붙는다.
+    setCode: (code, origin) => set((s) => ({ ...transitionFocus(s, { ...s.focus, code }, origin), chartZoom: null })),
     // 시간만 이동(리플레이/차트 드리프트) = 파생축 전부 유지 → 연결 표시(A) 안 흔들림.
     setTime: (time, origin) => set((s) => transitionFocus(s, { ...s.focus, time }, origin)),
     setFocus: ({ date, code, time }, origin) =>

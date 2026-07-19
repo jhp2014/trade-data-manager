@@ -73,6 +73,7 @@ export function MinuteChart({
     savedPoints = [],
     showPointInfo = false,
     zoom = null,
+    lockTimeScale = false,
     onMovePoint,
     onRightClick,
     onRemoveLine,
@@ -88,6 +89,7 @@ export function MinuteChart({
     savedPoints?: SavedPointInput[]; // 저장된 복기 타점(unix초 + 연결 가설). 흐린 세로선 + hover 카드.
     showPointInfo?: boolean; // 현재 타점 정보 박스 토글
     zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 세션 기본(07:50/08:50~15:30).
+    lockTimeScale?: boolean; // 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지(리프레임 안 함)
     onMovePoint: (time: string) => void; // 좌클릭 = 그 봉으로 타점 이동(tradeTime HH:MM:SS)
     onRightClick: (anchor: { date: string; time: string }) => void;
     onRemoveLine: (line: RenderLine) => void;
@@ -116,7 +118,7 @@ export function MinuteChart({
     const series = useMinuteSeries(chartRef);
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
     const { currentSnapped, savedSnapped } = useMarkerVertLines(series, points, markerTime, savedPoints);
-    useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay);
+    useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base);
 

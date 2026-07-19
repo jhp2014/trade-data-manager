@@ -256,22 +256,44 @@ export function useMarkerVertLines(
 /** 표시 범위 — f 줌: anchor 중심 ±bars/2 봉 / 축소: 세션(프리마켓 있으면 07:50, 없으면 08:50 ~ 15:30).
  *  둘 다 논리 인덱스로 프레임(음수 from = 실제 좌측 빈칸, densify 로 분당 연속이라 논리 1칸 = 1분).
  *  데이터셋(frameKey=code:date)·줌이 바뀔 때만 프레이밍 — 같은 데이터셋의 라이브 틱(폴 갱신)은 사용자
- *  줌/이동을 보존한다(setData 는 범위 유지, 새 분봉은 shiftVisibleRangeOnNewBar 가 우측에서만 추종). */
+ *  줌/이동을 보존한다(setData 는 범위 유지, 새 분봉은 shiftVisibleRangeOnNewBar 가 우측에서만 추종).
+ *  lockTimeScale(스케일 고정) — 종목/날짜 전환(frameKey 변경)에도 리프레임 대신 직전에 보던 시각 창을
+ *  유지한다(첫 봉 시각 차만 보정해 clock 창 그대로). f 줌 토글은 명시 액션이라 고정 중에도 반영. */
 export function useMinuteVisibleRange(
     chartRef: RefObject<IChartApi | null>,
     points: MinutePoint[],
     zoom: { bars: number; anchorTime: number | null } | null,
     frameKey: string,
     bumpOverlay: () => void,
+    lockTimeScale = false,
 ): void {
     const framedSigRef = useRef<string | null>(null);
+    const prevFirstMinRef = useRef<number | null>(null); // 직전 데이터셋 첫 봉 분(分) — 고정 시 clock 창 환산용
+    const lockRef = useRef(lockTimeScale); // 토글 자체는 리프레임 트리거가 아님(켜는 순간 뷰 안 움직임) → ref 로만 읽는다
+    lockRef.current = lockTimeScale;
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
         const sig = `${frameKey}|${zoom ? `${zoom.bars}:${zoom.anchorTime}` : "session"}`;
-        if (framedSigRef.current === sig) return; // 같은 데이터셋+줌 → 라이브 틱, 뷰 보존
+        const prevSig = framedSigRef.current;
+        if (prevSig === sig) return; // 같은 데이터셋+줌 → 라이브 틱, 뷰 보존
         framedSigRef.current = sig;
         const ts = chart.timeScale();
+        const firstMin = hmsToMin(points[0].tradeTime);
+        const prevFirstMin = prevFirstMinRef.current;
+        prevFirstMinRef.current = firstMin;
+        // 스케일 고정 — 데이터셋 전환(frameKey 변경) 시 직전 창 유지. setData 는 논리 범위를 건드리지 않으므로
+        // 지금 논리 범위 = 직전 데이터셋에서 보던 창. 첫 봉 시각 차(프리마켓 유무 60칸 등)만 밀어 clock 창을 보존한다.
+        const frameChanged = prevSig !== null && prevSig.split("|")[0] !== frameKey;
+        if (frameChanged && lockRef.current && prevFirstMin != null) {
+            const cur = ts.getVisibleLogicalRange();
+            if (cur != null) {
+                const shift = prevFirstMin - firstMin; // 논리 1칸=1분 → 분-of-day 창 그대로
+                ts.setVisibleLogicalRange({ from: cur.from + shift, to: cur.to + shift });
+                bumpOverlay();
+                return;
+            }
+        }
         if (zoom) {
             let idx = points.length - 1;
             if (zoom.anchorTime != null) {
@@ -280,12 +302,10 @@ export function useMinuteVisibleRange(
             const half = zoom.bars / 2;
             ts.setVisibleLogicalRange({ from: idx - half - LEFT_MARGIN_BARS, to: idx + half });
         } else {
-            // 세션 기본 뷰 — 개장 -10분 좌단 ~ 15:30 우단. 프리마켓(NXT) 봉이 있으면(첫 봉 < 09:00) UN 종목
-            // → 개장 08:00 → 좌단 07:50, 없으면 KRX 전용 → 개장 09:00 → 좌단 08:50. 좌측 여백은 첫 봉(idx 0)
-            // 기준 음수 논리 인덱스(clock 시각에 맞춰 정확히), 우단은 15:30 이하 마지막 봉(시간외는 뷰 밖·데이터 보존).
-            const firstMin = hmsToMin(points[0].tradeTime);
+            // 세션 기본 뷰 — 개장 -10분 좌단 ~ 15:30 우단(시간외 ~20:00 는 뷰 밖·데이터 보존).
+            // 프리마켓(첫 봉<09:00) 있으면 좌단 07:50(개장 08:00 -10분), 없으면 KRX 전용 → 08:50.
             const openMin = firstMin < REGULAR_OPEN_MIN ? PREMARKET_OPEN_MIN : REGULAR_OPEN_MIN;
-            const from = Math.min(0, openMin - LEFT_MARGIN_BARS - firstMin); // 첫 봉 좌측 여백(빈 논리 인덱스)
+            const from = Math.min(0, openMin - LEFT_MARGIN_BARS - firstMin); // clock 좌단 → 첫 봉 기준 논리 인덱스
             let to = points.length - 1;
             for (let i = 0; i < points.length; i++) { if (points[i].tradeTime <= SESSION_CLOSE) to = i; else break; }
             ts.setVisibleLogicalRange({ from, to: to + RIGHT_MARGIN_BARS });

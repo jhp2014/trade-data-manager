@@ -37,6 +37,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [showPointInfo, setShowPointInfo] = useState(true); // 현재 타점(시간선) readout — 기본 표시
     const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
     const [pinMinute, setPinMinute] = useState(false); // 분봉 기준일 고정(일봉 클릭 무시)
+    const [lockScale, setLockScale] = useState(false); // 분봉 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지
     const [showGuide, setShowGuide] = useState(true); // +30% 가이드선(검색일 전일종가 ×1.3)
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
@@ -86,6 +87,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     {/* 동작 — 마커가 아닌 on/off. */}
                     <ControlGroup>
                         <TextToggle active={pinMinute} activeColor="var(--accent-primary)" onClick={() => setPinMinute((v) => !v)} title={pinMinute ? "분봉 고정 해제(일봉 클릭 추종)" : "분봉을 기준일에 고정(일봉 클릭 무시)"}>고정</TextToggle>
+                        <TextToggle active={lockScale} activeColor="var(--accent-primary)" onClick={() => setLockScale((v) => !v)} title={lockScale ? "스케일 고정 해제(전환 시 세션 뷰로 리프레임)" : "분봉 시간축 스케일 고정(종목/날짜 전환에도 보던 창 유지)"}>스케일</TextToggle>
                         <TextToggle active={showPointInfo} activeColor="var(--accent-primary)" onClick={() => setShowPointInfo((v) => !v)} title={showPointInfo ? "현재 타점 정보 끄기" : "현재 타점 정보 켜기"}>타점정보</TextToggle>
                     </ControlGroup>
                     <Sep />
@@ -133,6 +135,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                         savedPoints={savedPoints}
                                         showPointInfo={showPointInfo}
                                         zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
+                                        lockTimeScale={lockScale}
                                         onMovePoint={(t) => setTime(t)}
                                         onRightClick={(a) => toggleLine(a.date, a.time)}
                                         onRemoveLine={removeLine}
