@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView, deriveDailyView, prevCloseAsOf, kstToUnix } from "../lib/derive.js";
@@ -44,11 +44,16 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이. search=null 이면 viewDate=anchor 로 동작 무변경.
     const viewDate = pinMinute ? anchor : search?.date ?? anchor;
     const drifted = viewDate !== anchor;
-    const dailyQ = useQuery(chartQuery(code, anchor));
-    const minuteQ = useQuery(chartQuery(code, viewDate)); // viewDate=anchor 면 같은 쿼리(RQ dedup)
+    // keepPreviousData: 전환 중 직전 번들 유지 — 차트가 로딩으로 언마운트되지 않아 뷰 상태(스케일 고정)가 보존.
+    const dailyQ = useQuery({ ...chartQuery(code, anchor), placeholderData: keepPreviousData });
+    const minuteQ = useQuery({ ...chartQuery(code, viewDate), placeholderData: keepPreviousData }); // viewDate=anchor 면 같은 쿼리(RQ dedup)
 
     const dailyView = useMemo(() => (dailyQ.data ? deriveDailyView(dailyQ.data, mode) : null), [dailyQ.data, mode]);
     const minuteView = useMemo(() => (minuteQ.data ? deriveMinuteView(minuteQ.data, mode) : null), [minuteQ.data, mode]);
+    // frameKey 는 focus 가 아니라 **도착한 데이터**에서 파생 — placeholder 기간(옛 데이터 표시 중)엔 안 바뀌어
+    // 리프레임이 없고, 새 번들이 실제로 도착하는 순간 바뀌어 그때 한 번 리프레임(스케일 고정 ON 이면 창 유지)된다.
+    const dailyFrameKey = dailyQ.data ? `${dailyQ.data.stockCode}:${dailyQ.data.daily[dailyQ.data.daily.length - 1]?.date ?? ""}` : "";
+    const minuteFrameKey = minuteQ.data ? `${minuteQ.data.stockCode}:${minuteQ.data.minutes[0]?.date ?? ""}` : "";
     // 검색일 전일종가(수정주가, mode 시장) — 크로스헤어 위치 %·+30% 가이드선의 base(검색일 고정).
     const pctBase = useMemo(() => (dailyView ? prevCloseAsOf(dailyView, viewDate) : null), [dailyView, viewDate]);
 
@@ -113,11 +118,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 {!code && <Center text="종목을 선택하세요" />}
                 {code && (dailyQ.isLoading || minuteQ.isLoading) && !dailyView && <Center text={`${code} 로딩중…`} />}
                 {(dailyQ.isError || minuteQ.isError) && <Center text="오류 — 재시도 중…" />}
-                {minuteView && dailyView && (
+                {!!code && minuteView && dailyView && (
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
                             <div style={{ flex: 1, minHeight: 0, position: "relative" }} title="봉 ctrl+클릭 / 더블클릭: 그 날짜로 검색 · 봉 우클릭: 고점 선(D)">
-                                {dailyView.length > 0 ? <DailyChart points={dailyView} frameKey={`${code}:${anchor}`} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={pinMinute ? undefined : (d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={showLine && drifted ? viewDate : undefined} pctBase={pctBase} showGuide={showGuide} /> : <Center text="일봉 없음" />}
+                                {dailyView.length > 0 ? <DailyChart points={dailyView} frameKey={dailyFrameKey} lines={dLines} zoom={chartZoom != null} zoomBars={cs.dailyZoomBars} zoomOutBars={cs.dailyZoomOutBars} onRightClick={(anchorDate) => toggleLine(anchorDate, undefined)} onRemoveLine={removeLine} onCandleClick={pinMinute ? undefined : (d) => code && setSearch(d === anchor ? null : { code, date: d })} searchDate={showLine && drifted ? viewDate : undefined} pctBase={pctBase} showGuide={showGuide} /> : <Center text="일봉 없음" />}
                             </div>
                         )}
                         {expanded === null && <div style={{ height: 1, background: "var(--border-default)", flexShrink: 0 }} />}
@@ -127,7 +132,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                 {minuteView.points.length > 0 ? (
                                     <MinuteChart
                                         points={minuteView.points}
-                                        frameKey={`${code}:${viewDate}`}
+                                        frameKey={minuteFrameKey}
                                         showAmountMarkers={showMarkers}
                                         lines={resolvedLines}
                                         base={minuteView.base}

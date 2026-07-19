@@ -2,7 +2,7 @@
 //  · live   = REST (apps/live /live/chart, DB 없음) — 과거 탐색도 REST.
 //  · replay = DB (apps/api /chart) + 분봉만 없을 때 그 날짜 REST 폴백(일봉은 DB 유지, 분봉·rawBase 만 병합).
 // [[two-plane-focus-data-routing]]
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { ChartBundle } from "@trade-data-manager/wire";
 import { fetchLiveChart } from "../api/liveChart.js";
 import { fetchChart } from "../api/chart.js";
@@ -37,5 +37,8 @@ export function useChartBundle(
         enabled: !!code && !!date,
         refetchInterval: opts?.refetchInterval ?? false,
         refetchOnWindowFocus: false,
+        // 종목/날짜 전환 중 직전 번들 유지 — 차트가 로딩 화면으로 언마운트되지 않아 뷰 상태(스케일 고정 등)가
+        // 보존된다. frameKey 를 데이터에서 파생하는 소비자와 한 쌍(placeholder 기간엔 리프레임 없음).
+        placeholderData: keepPreviousData,
     });
 }

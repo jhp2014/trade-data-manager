@@ -267,7 +267,9 @@ export function useMinuteVisibleRange(
     bumpOverlay: () => void,
     lockTimeScale = false,
 ): void {
-    const framedSigRef = useRef<string | null>(null);
+    // 가드는 chart 인스턴스에 묶는다 — ref 는 StrictMode 이중마운트/재마운트에도 살아남는데 chart 는
+    // 파괴·재생성되므로, sig 만 기억하면 "새 차트인데 프레이밍 스킵"이 나서 기본 뷰(마지막 봉)로 열린다.
+    const framedRef = useRef<{ chart: IChartApi; sig: string } | null>(null);
     const prevFirstMinRef = useRef<number | null>(null); // 직전 데이터셋 첫 봉 분(分) — 고정 시 clock 창 환산용
     const lockRef = useRef(lockTimeScale); // 토글 자체는 리프레임 트리거가 아님(켜는 순간 뷰 안 움직임) → ref 로만 읽는다
     lockRef.current = lockTimeScale;
@@ -275,9 +277,9 @@ export function useMinuteVisibleRange(
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
         const sig = `${frameKey}|${zoom ? `${zoom.bars}:${zoom.anchorTime}` : "session"}`;
-        const prevSig = framedSigRef.current;
-        if (prevSig === sig) return; // 같은 데이터셋+줌 → 라이브 틱, 뷰 보존
-        framedSigRef.current = sig;
+        const prevSig = framedRef.current?.chart === chart ? framedRef.current.sig : null; // 다른 chart 기록은 무효
+        if (prevSig === sig) return; // 같은 차트+데이터셋+줌 → 라이브 틱, 뷰 보존
+        framedRef.current = { chart, sig };
         const ts = chart.timeScale();
         const firstMin = hmsToMin(points[0].tradeTime);
         const prevFirstMin = prevFirstMinRef.current;

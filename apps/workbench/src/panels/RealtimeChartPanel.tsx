@@ -54,6 +54,10 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
 
     const dailyView = useMemo(() => (dailyQ.data ? deriveDailyView(dailyQ.data, mode) : null), [dailyQ.data, mode]);
     const minuteView = useMemo(() => (minuteQ.data ? deriveMinuteView(minuteQ.data, mode) : null), [minuteQ.data, mode]);
+    // frameKey 는 도착한 데이터에서 파생(ChartPanel 과 동일) — keepPreviousData 기간엔 안 바뀌어 리프레임 없음,
+    // 새 번들 도착 순간 리프레임(스케일 고정 ON 이면 창 유지). 라이브 폴은 값이 같아 게이트 통과 못함(뷰 보존).
+    const dailyFrameKey = dailyQ.data ? `${dailyQ.data.stockCode}:${dailyQ.data.daily[dailyQ.data.daily.length - 1]?.date ?? ""}` : "";
+    const minuteFrameKey = minuteQ.data ? `${minuteQ.data.stockCode}:${minuteQ.data.minutes[0]?.date ?? ""}` : "";
     // 검색일 전일종가(수정주가, mode 시장) — 크로스헤어 위치 %·+30% 가이드선의 base(검색일 고정).
     const pctBase = useMemo(() => (dailyView ? prevCloseAsOf(dailyView, viewDate) : null), [dailyView, viewDate]);
     const expanded: "daily" | "minute" | null = view === "both" ? null : view;
@@ -148,14 +152,14 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                 {!code && <Center text="종목을 선택하세요" />}
                 {code && (dailyQ.isLoading || minuteQ.isLoading) && !dailyView && <Center text={`${code} 로딩중…`} />}
                 {(dailyQ.isError || minuteQ.isError) && <Center text="오류 — 재시도 중…" />}
-                {dailyView && minuteView && (
+                {!!code && dailyView && minuteView && (
                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                         {expanded !== "minute" && (
                             <div style={{ flex: 1, minHeight: 0, position: "relative" }} title="봉 ctrl+클릭 / 더블클릭: 그날 분봉 · 봉 우클릭: 선">
                                 {dailyView.length > 0 ? (
                                     <DailyChart
                                         points={dailyView}
-                                        frameKey={`${code}:${anchorDate}`}
+                                        frameKey={dailyFrameKey}
                                         lines={dailyLines}
                                         zoom={chartZoom != null}
                                         zoomBars={cs.dailyZoomBars}
@@ -179,7 +183,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                             <div style={{ flex: 1, minHeight: 0, position: "relative" }} title="봉 우클릭: 선">
                                 <PaneLabel text={fmtDateKo(viewDate)} />
                                 {minuteView.points.length > 0 ? (
-                                    <MinuteChart points={minuteView.points} frameKey={`${code}:${viewDate}`} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} lockTimeScale={lockScale} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
+                                    <MinuteChart points={minuteView.points} frameKey={minuteFrameKey} showAmountMarkers={showMarkers} lines={minuteLines} base={minuteView.base} lockTimeScale={lockScale} onMovePoint={noop} onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })} onRemoveLine={(l) => removeLine(code, l.id)} onPickPrice={deliverAlertPrice} capturePriceArmed={captureArmed} />
                                 ) : (
                                     <Center text="분봉 없음 (장 마감?)" />
                                 )}
