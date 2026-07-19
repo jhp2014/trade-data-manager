@@ -57,10 +57,36 @@ export function StockRow({
         >
             {/* col1: 등수 + 이름(ellipsis) + 테마 칩(먼저 clip) */}
             <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                {rank != null && (
-                    <span className="tabular" style={{ flexShrink: 0, width: 16, textAlign: "center", color: rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 11, fontWeight: 700 }}>
+                {rank != null ? (
+                    // 순위 배지 — 주석(복기 타점/가격선) 있으면 청록 링으로 감싼다(top3 색보다 우선).
+                    <span
+                        className="tabular"
+                        title={s.annotated ? "복기 타점/가격선 있음" : undefined}
+                        style={{
+                            flexShrink: 0,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 18,
+                            height: 18,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: s.annotated ? "var(--accent-hover)" : rank <= 3 ? "var(--accent-primary)" : "var(--text-tertiary)",
+                            ...(s.annotated ? { border: "1.5px solid var(--accent-primary)", borderRadius: "50%" } : null),
+                        }}
+                    >
                         {rank}
                     </span>
+                ) : (
+                    // 순위 미표시(개별/미분류) 카드 — 주석 있으면 링 안 점으로 표시(숫자 없음), 없으면 아무것도 안 그림.
+                    s.annotated && (
+                        <span
+                            title="복기 타점/가격선 있음"
+                            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, border: "1.5px solid var(--accent-primary)", borderRadius: "50%" }}
+                        >
+                            <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--accent-primary)" }} />
+                        </span>
+                    )
                 )}
                 <span
                     onContextMenu={(e) => {
@@ -78,8 +104,7 @@ export function StockRow({
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        // 주석(타점/가격선) 있는 종목 = 이름 배경 하이라이트(형광펜). 음수 margin 으로 텍스트 위치는 안 밀림.
-                        ...(s.annotated ? { background: "var(--accent-soft)", borderRadius: 3, padding: "0 4px", margin: "0 -4px" } : null),
+                        // 주석(타점/가격선) 표시는 순위 링으로 이동 — 이름 배경 하이라이트 폐지.
                     }}
                 >
                     {s.name}
