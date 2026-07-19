@@ -5,7 +5,6 @@ import {
     CrosshairMode,
     LineStyle,
     createSeriesMarkers,
-    type IChartApi,
     type IPriceLine,
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
@@ -154,23 +153,20 @@ export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 6
     }, [points]);
 
     // 표시 범위 — f 줌인=최근 zoomBars 봉 / 축소=최근 zoomOutBars 봉(~1년, 데이터 적으면 전체).
-    // 데이터셋(frameKey=code:date)·줌이 바뀔 때만 프레이밍. 같은 데이터셋의 라이브 틱(폴 갱신)은 강제
-    // 리프레임을 건너뛰어 사용자가 잡아둔 줌/이동을 보존한다(lightweight-charts setData 는 범위를 유지).
-    // 가드는 chart 인스턴스에 묶는다 — StrictMode 이중마운트가 chart 를 재생성해도 ref 는 살아남아,
-    // sig 만 기억하면 새 차트가 프레이밍 없이(기본 뷰) 열린다.
-    const framedRef = useRef<{ chart: IChartApi; sig: string } | null>(null);
+    // 데이터셋(frameKey)·줌이 바뀔 때만 프레이밍 — effect 의존성 비교가 곧 가드. points 는 의도적으로
+    // 의존성 제외(라이브 틱마다 참조만 바뀜): frameKey 가 데이터에서 파생되므로 데이터셋이 실제로 바뀌면
+    // frameKey 도 같은 렌더에서 함께 바뀐다. 라이브 틱(폴 갱신)은 리프레임 없이 사용자 줌/이동 보존
+    // (lightweight-charts setData 는 범위를 유지).
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
-        const sig = `${frameKey}|${zoom}|${zoomBars}|${zoomOutBars}`;
-        if (framedRef.current?.chart === chart && framedRef.current.sig === sig) return; // 같은 차트+데이터셋+줌 → 라이브 틱, 뷰 보존
-        framedRef.current = { chart, sig };
         const n = points.length;
         // 좌측에 여백(빈 논리 인덱스, 음수 from 도 허용) + 우측에 여백(오늘 봉이 축에 바짝 붙으면
         // 가격선 라벨(D/M, priceLine title)이 오늘 봉을 가림 → 우측도 넉넉히 띄운다.
         const from = Math.max(0, n - (zoom ? zoomBars : zoomOutBars)) - LEFT_MARGIN_BARS;
         chart.timeScale().setVisibleLogicalRange({ from, to: n + RIGHT_MARGIN_BARS });
-    }, [points, frameKey, zoom, zoomBars, zoomOutBars]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [frameKey, zoom, zoomBars, zoomOutBars]);
 
     // 우클릭 대상 = crosshair 로 hover 중인 봉. contextmenu 시 그 봉 고점으로 토글.
     useEffect(() => {

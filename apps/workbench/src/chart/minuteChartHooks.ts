@@ -267,27 +267,26 @@ export function useMinuteVisibleRange(
     bumpOverlay: () => void,
     lockTimeScale = false,
 ): void {
-    // 가드는 chart 인스턴스에 묶는다 — ref 는 StrictMode 이중마운트/재마운트에도 살아남는데 chart 는
-    // 파괴·재생성되므로, sig 만 기억하면 "새 차트인데 프레이밍 스킵"이 나서 기본 뷰(마지막 봉)로 열린다.
-    const framedRef = useRef<{ chart: IChartApi; sig: string } | null>(null);
+    const prevFrameKeyRef = useRef<string | null>(null); // 직전 데이터셋 — 스케일 고정의 "전환 감지"용
     const prevFirstMinRef = useRef<number | null>(null); // 직전 데이터셋 첫 봉 분(分) — 고정 시 clock 창 환산용
     const lockRef = useRef(lockTimeScale); // 토글 자체는 리프레임 트리거가 아님(켜는 순간 뷰 안 움직임) → ref 로만 읽는다
     lockRef.current = lockTimeScale;
+    // 리프레임 트리거는 effect 의존성 비교가 곧 가드 — frameKey(데이터 파생)·줌이 바뀔 때만 돈다.
+    // points 는 의도적으로 의존성 제외(라이브 틱마다 참조만 바뀜): frameKey 가 데이터에서 파생되므로
+    // 데이터셋이 실제로 바뀌면 frameKey 도 같은 렌더에서 함께 바뀐다 — 여기선 최신 points 를 읽기만 한다.
+    const zoomSig = zoom ? `${zoom.bars}:${zoom.anchorTime}` : "session";
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
-        const sig = `${frameKey}|${zoom ? `${zoom.bars}:${zoom.anchorTime}` : "session"}`;
-        const prevSig = framedRef.current?.chart === chart ? framedRef.current.sig : null; // 다른 chart 기록은 무효
-        if (prevSig === sig) return; // 같은 차트+데이터셋+줌 → 라이브 틱, 뷰 보존
-        framedRef.current = { chart, sig };
         const ts = chart.timeScale();
         const firstMin = hmsToMin(points[0].tradeTime);
+        const prevFrameKey = prevFrameKeyRef.current;
         const prevFirstMin = prevFirstMinRef.current;
+        prevFrameKeyRef.current = frameKey;
         prevFirstMinRef.current = firstMin;
         // 스케일 고정 — 데이터셋 전환(frameKey 변경) 시 직전 창 유지. setData 는 논리 범위를 건드리지 않으므로
         // 지금 논리 범위 = 직전 데이터셋에서 보던 창. 첫 봉 시각 차(프리마켓 유무 60칸 등)만 밀어 clock 창을 보존한다.
-        const frameChanged = prevSig !== null && prevSig.split("|")[0] !== frameKey;
-        if (frameChanged && lockRef.current && prevFirstMin != null) {
+        if (prevFrameKey !== null && prevFrameKey !== frameKey && lockRef.current && prevFirstMin != null) {
             const cur = ts.getVisibleLogicalRange();
             if (cur != null) {
                 const shift = prevFirstMin - firstMin; // 논리 1칸=1분 → 분-of-day 창 그대로
@@ -314,7 +313,7 @@ export function useMinuteVisibleRange(
         }
         bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, zoom, frameKey]);
+    }, [frameKey, zoomSig]);
 }
 
 /** 마우스 상호작용 — 좌클릭=그 봉으로 타점 이동, 우클릭=선 근처면 삭제/아니면 hover 봉에 M 선 추가. */
