@@ -108,8 +108,24 @@ export class DerivedCache {
             };
         });
         const file: DaySnapshotFile = { v: SNAPSHOT_SCHEMA_VERSION, date, stocks: built.filter((s): s is DaySnapshot => s !== null) };
+        this.reportBaseAdjustments(file);
         // 과거 날짜만 파일로 굳힌다. 오늘은 수집 진행 중일 수 있어 부분 상태를 영구화하지 않고 반환만.
         if (cacheable) await this.store.write(file);
         return file;
+    }
+
+    // 기준가 보정 트립와이어 — factor ≠ 1 종목 집계. 평상시 0~수 종목(실제 감자·액분 이벤트)이 정상.
+    // 수십 종목 이상이면 이벤트일 수 없다 → 일봉 파이프라인 사고(원주가·수정주가 불일치, 예: 장중 백필로 비최종 종가
+    // 동결) 신호. 2026-07-03 전시장 원주가 오염이 이 침묵 속에서 복기 %를 틀었다 — 재발 시 여기서 즉시 드러난다.
+    private reportBaseAdjustments(file: DaySnapshotFile): void {
+        const flagged = file.stocks.filter((s) => s.minutes.baseFactor.krx !== 1 || s.minutes.baseFactor.un !== 1);
+        if (flagged.length === 0) return;
+        const sample = flagged
+            .slice(0, 5)
+            .map((s) => `${s.code}(un×${s.minutes.baseFactor.un.toFixed(4)})`)
+            .join(" ");
+        const msg = `[day-snapshot] ${file.date} 기준가 보정 ${flagged.length}종목: ${sample}`;
+        if (flagged.length > 50) console.error(`${msg} — 🚨 전시장급, 일봉 수집사고 의심(원주가·수정주가 불일치)`);
+        else console.warn(msg);
     }
 }

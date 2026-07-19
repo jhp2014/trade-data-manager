@@ -7,7 +7,7 @@ import {
     chartDailyRange,
     subtractMonths,
     densifyMinutes,
-    previousCloseFromDaily,
+    basePricesOf,
     RAW_DAILY_LOOKBACK_MONTHS,
     kstToday,
 } from "@trade-data-manager/market";
@@ -25,7 +25,7 @@ export class LiveChartService {
     }
 
     /**
-     * 선택 종목의 ChartBundle — 일봉 2년(수정주가) + 당일/지정일 dense 분봉(원주가) + 원주가 전일종가.
+     * 선택 종목의 ChartBundle — 일봉 2년(수정주가) + 당일/지정일 dense 분봉(원주가) + 기준가(이벤트 보정).
      * date 미지정=오늘(일봉 최신봉에서 세션일 도출, 주말→직전영업일). date 지정=그 날짜(실시간 과거 탐색, REST).
      */
     async chartByCode(stockCode: string, date?: string): Promise<ChartBundle> {
@@ -38,6 +38,7 @@ export class LiveChartService {
             this.minute.getMinuteCandles(stockCode, sessionDate),
             this.rawDaily.getRawDailyCandles(stockCode, rawRange),
         ]);
-        return { stockCode, daily, minutes: densifyMinutes(rawMinutes), rawBase: previousCloseFromDaily(rawDaily, sessionDate) };
+        const { base } = basePricesOf(rawDaily, daily, sessionDate);
+        return { stockCode, daily, minutes: densifyMinutes(rawMinutes), basePrice: base.krx === null && base.un === null ? null : base };
     }
 }

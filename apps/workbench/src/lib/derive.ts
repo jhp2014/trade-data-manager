@@ -100,10 +100,10 @@ export function deriveMinuteView(bundle: ChartBundle, mode: ChartPriceMode): Min
     );
     const cumAmounts = computeAccumulatedAmounts(unAmounts);
 
-    // % 기준가 — 직전 거래일 **원주가** 종가(서버가 rawBase 스칼라로 실어줌). 분봉이 원주가라 base 도 원주가여야
-    // 스케일이 맞다(수정주가 일봉에서 뽑으면 권리락/액분 종목 % 가 틀어짐). 없으면 당일 첫 시가로 폴백(상장일).
-    const prev = bundle.rawBase;
-    let base: string | null = prev ? (mode === "un" ? prev.unClose : prev.krxClose) : null;
+    // % 기준가 — 서버가 basePrice 스칼라로 실어줌(원주가 직전 종가 + 감자·액분 조정계수 보정, 당일 원주가 스케일).
+    // 분봉이 원주가라 base 도 같은 스케일이어야 맞다(이벤트 낀 날 보정 없인 % 폭주). 없으면 당일 첫 시가로 폴백(상장일).
+    const sel = bundle.basePrice ? bundle.basePrice[mode === "un" ? "un" : "krx"] : null;
+    let base: string | null = sel !== null ? String(sel) : null;
     let baseFallback = false;
     if (base === null) {
         base = minutes[0].un.open; // UN 은 늘 존재 → 당일 첫 UN 시가로 폴백

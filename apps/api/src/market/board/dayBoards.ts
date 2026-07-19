@@ -65,7 +65,7 @@ export class DayBoards {
                     minuteOpen: md.minuteOpen, // 복기 hover 버킷 정책(꼬리없는 음봉 제외) 판정용
                     minuteHigh: md.minuteHigh,
                     trailingHighs: md.trailingHighs, // 복기 필터 "매물대 내부" 술어용(수정주가 KRX/UN 두벌)
-                    rawPrevClose: md.rawPrevClose, // 기준가 토글(KRX 재기저 일차변환)용 원주가 전일종가
+                    basePrice: md.basePrice, // 기준가 토글(KRX 재기저 일차변환)용 — 원주가 스케일, 이벤트 보정(baseFactor 는 미노출)
                     name: b?.name ?? null,
                     market: b?.market ?? null,
                     marketCap: s.marketCap,

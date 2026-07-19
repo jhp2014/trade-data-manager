@@ -1,6 +1,6 @@
 // ChartBundleSource 추상 — plane 별 소스 라우팅. 차트 패널은 이 훅만 쓰고 소스(REST/DB)를 모른다.
 //  · live   = REST (apps/live /live/chart, DB 없음) — 과거 탐색도 REST.
-//  · replay = DB (apps/api /chart) + 분봉만 없을 때 그 날짜 REST 폴백(일봉은 DB 유지, 분봉·rawBase 만 병합).
+//  · replay = DB (apps/api /chart) + 분봉만 없을 때 그 날짜 REST 폴백(일봉은 DB 유지, 분봉·basePrice 만 병합).
 // [[two-plane-focus-data-routing]]
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { ChartBundle } from "@trade-data-manager/wire";
@@ -10,7 +10,7 @@ import { fetchChart } from "../api/chart.js";
 export type ChartPlane = "live" | "replay";
 
 // 복기 분봉 REST 폴백 — DB 에 그 날짜 분봉이 없으면(수집 전 최근일 등) /live/chart 에서 분봉만 빌린다.
-// 일봉(수정주가 2년)은 DB 가 진실이라 유지. rawBase(분봉 % 기준)는 DB 것 우선, 없으면 라이브 것.
+// 일봉(수정주가 2년)은 DB 가 진실이라 유지. basePrice(분봉 % 기준가)는 DB 것 우선, 없으면 라이브 것.
 // live 서버 다운/무데이터면 DB 번들 그대로(분봉 빈 채로 렌더 — 기존 동작).
 async function fetchReplayChart(code: string, date: string, signal?: AbortSignal): Promise<ChartBundle> {
     const bundle = await fetchChart(code, date, signal);
@@ -18,7 +18,7 @@ async function fetchReplayChart(code: string, date: string, signal?: AbortSignal
     try {
         const live = await fetchLiveChart(code, date, signal);
         if (live.minutes.length === 0) return bundle;
-        return { ...bundle, minutes: live.minutes, rawBase: bundle.rawBase ?? live.rawBase };
+        return { ...bundle, minutes: live.minutes, basePrice: bundle.basePrice ?? live.basePrice };
     } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") throw e; // 취소는 그대로 전파(react-query 취소 의미 보존)
         return bundle;

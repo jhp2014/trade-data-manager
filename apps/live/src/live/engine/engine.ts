@@ -162,7 +162,7 @@ export class LiveEngine extends EventEmitter {
         this.alerts?.tick(
             quotes,
             (c) => this.membership.themesOf(c),
-            (c, m) => this.dailyCtx.contextOf(c)?.rawPrevClose[m] ?? undefined,
+            (c, m) => this.dailyCtx.contextOf(c)?.basePrice[m] ?? undefined,
             Date.now(),
             {
                 historyOf: (c) => this.store.historyOf(c),

@@ -60,7 +60,7 @@ describe("rebasePct — UN% → KRX% 일차변환", () => {
     });
 });
 
-describe("deriveMinutes — 이중 trailing + rawPrevClose 스칼라", () => {
+describe("deriveMinutes — 이중 trailing + basePrice 스칼라", () => {
     const mBar = (o: number, h: number, l: number, c: number, v = 10) => ({ open: String(o), high: String(h), low: String(l), close: String(c), volume: String(v) });
     const minutes: MinuteCandle[] = [
         { stockCode: "000001", date: "2026-07-10", time: "09:00:00", krx: mBar(100, 105, 99, 104), un: mBar(100, 105, 99, 104) },
@@ -75,10 +75,12 @@ describe("deriveMinutes — 이중 trailing + rawPrevClose 스칼라", () => {
         candle("2026-07-10", bar(50, 55, 49.5, 54), bar(50, 55, 49.5, 54)),
     ];
 
-    it("분봉 %는 원주가 UN base 한 벌, rawPrevClose 는 두 스칼라", () => {
+    it("분봉 %는 기준가 UN base 한 벌, basePrice 는 두 스칼라 — 나중 이벤트 재작성은 상쇄(factor 1)", () => {
         const d = deriveMinutes("000001", minutes, rawDaily, adjDaily, "2026-07-10");
         expect(d).not.toBeNull();
-        expect(d!.rawPrevClose).toEqual({ krx: 98, un: 100 });
+        // adjDaily 는 나중 액분(2:1)으로 전일·당일 둘 다 재작성 → 비율 상쇄 → 원주가 전일종가와 항등
+        expect(d!.basePrice).toEqual({ krx: 98, un: 100 });
+        expect(d!.baseFactor).toEqual({ krx: 1, un: 1 });
         expect(d!.rate[0]).toBe(4); // (104-100)/100 — UN base
         // KRX 재기저는 클라 일차변환: rebasePct(4, 100, 98) = (104-98)/98×100 = 6.12
         expect(rebasePct(d!.rate[0], 100, 98)).toBe(6.12);
@@ -89,5 +91,24 @@ describe("deriveMinutes — 이중 trailing + rawPrevClose 스칼라", () => {
         // KRX base=49: [55, 51] → [12.24, 4.08] / UN base=50: [55, 51.5] → [10, 3]
         expect(d!.trailingHighs.krx).toEqual([12.24, 4.08]);
         expect(d!.trailingHighs.un).toEqual([10, 3]);
+    });
+
+    it("이벤트 첫 거래일(감자 5:1 류) — 기준가 = 원주가 전일종가 × 조정계수, % 폭주 방지", () => {
+        // 한울반도체 2026-05-08 실사례 축소판: 정지 중 감자 → 원주 전일 1533, 수정 전일 7670(=기준가), 당일 raw=adj.
+        const raw = [
+            candle("2026-05-07", bar(1533, 1533, 1533, 1533), bar(1533, 1533, 1533, 1533)),
+            candle("2026-05-08", bar(8200, 9970, 8200, 9970), bar(8200, 9970, 8200, 9970)),
+        ];
+        const adj = [
+            candle("2026-05-07", bar(7670, 7670, 7670, 7670), bar(7670, 7670, 7670, 7670)),
+            candle("2026-05-08", bar(8200, 9970, 8200, 9970), bar(8200, 9970, 8200, 9970)),
+        ];
+        const mins: MinuteCandle[] = [
+            { stockCode: "320000", date: "2026-05-08", time: "09:00:00", krx: mBar(8200, 9970, 8200, 9970), un: mBar(8200, 9970, 8200, 9970) },
+        ];
+        const d = deriveMinutes("320000", mins, raw, adj, "2026-05-08");
+        expect(d!.basePrice.un).toBeCloseTo(7670, 6); // 1533 × (7670/1533) = 기준가
+        expect(d!.baseFactor.un).toBeCloseTo(7670 / 1533, 6);
+        expect(d!.rate[0]).toBe(29.99); // (9970-7670)/7670 — +550% 폭주가 아니라 상한가권
     });
 });

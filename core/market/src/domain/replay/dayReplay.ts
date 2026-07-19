@@ -1,12 +1,12 @@
 // 당일 복기 파생값(day-replay) — 그날 raw(분봉+원주가일봉)+수정주가 일봉 → 종목별 순수 파생. domain(I/O 0).
 //  · deriveMinutes → per-minute % 시계열 + 분봉 open%/high%(테마 음봉·꼬리) + trailingHighs(수정, KRX/UN 두벌). 복기 파일 원자재.
 //  · themeStatsOf  → 그 파생값에서 테마보드 EOD(bucketCounts·trailingHighs) 재계산(분봉 재조회 0).
-// 분봉 % 시계열은 원주가 UN 직전 종가(base) 대비 한 벌 — KRX 기준 %는 클라가 rawPrevClose 두 스칼라로
-// 일차변환(krx% = (unBase/krxBase)×(100+un%)−100, 같은 UN 바 가격이라 수학적 동치. 파일 이중화 불필요).
+// 분봉 % 시계열은 기준가 UN(basePricesOf — 원주가 직전 종가에 감자·액분 조정계수 보정) 대비 한 벌 —
+// KRX 기준 %는 클라가 basePrice 두 스칼라로 일차변환(krx% = (unBase/krxBase)×(100+un%)−100, 동치. 파일 이중화 불필요).
 // trailingHighs 는 **수정주가**(액분·권리락 시 옛 매물대를 현재 스케일로 정확 매핑) — 시장별 자기 전일종가 대비, 교차 없음.
 import type { MinuteCandle, DailyCandle, DailyBar, PreviousClose, ByMarket } from "../candle/model.js";
 import { densifyMinutes } from "../candle/minuteBackfill.js";
-import { computeMinuteTradingAmount } from "../candle/price.js";
+import { basePricesOf, computeMinuteTradingAmount } from "../candle/price.js";
 import { countAmountBuckets, DEFAULT_COUNTING_POLICY, type CountingPolicy, type DerivedMinute } from "../board/amount.js";
 import { kstToUnix } from "../kst.js";
 
@@ -58,7 +58,8 @@ export interface MinuteDerived {
     minuteOpen: number[]; // 분봉 시가 % / 분 — 테마 음봉/꼬리 판정
     minuteHigh: number[]; // 분봉 고가 % / 분 — 테마 음봉/꼬리 판정
     trailingHighs: ByMarket<number[]>; // 매 거래일 high%(수정주가, 시장별 자기 전일종가 대비, index=daysAgo, 0=당일, 최대 TRAILING_DAYS)
-    rawPrevClose: ByMarket<number | null>; // 원주가 전일종가 — 분봉 % 시계열의 KRX 재기저(일차변환)·기준가 토글용
+    basePrice: ByMarket<number | null>; // 등락률 기준가(당일 원주가 스케일, 이벤트 보정) — 분봉 % KRX 재기저(일차변환)·기준가 토글용
+    baseFactor: ByMarket<number>; // 기준가 조정계수(평상 1) — ≠1: 이벤트(감자·액분) 보정 또는 데이터 이상. 트립와이어 로그용(와이어 미노출)
 }
 
 /** 테마보드용 EOD 파생값(파일에서 재계산). */
@@ -126,7 +127,8 @@ export function trailingHighsOf(adjDaily: DailyCandle[], date: string): ByMarket
 }
 
 /**
- * 복기 파생 계산. 분봉 없으면 null(스킵). 분봉 % 시계열 = UN(통합) 한 벌(원주가 UN base 대비).
+ * 복기 파생 계산. 분봉 없으면 null(스킵). 분봉 % 시계열 = UN(통합) 한 벌 — base 는 기준가(basePricesOf:
+ * 원주가 직전 종가 + 감자·액분 조정계수 보정. 평상일엔 원주가 전일종가와 항등).
  * base 폴백(상장일): 당일 첫 분봉 시가. trailingHighs 는 수정주가 일봉(adjDaily)에서 KRX/UN 두 벌.
  */
 export function deriveMinutes(
@@ -140,8 +142,8 @@ export function deriveMinutes(
     if (minutes.length === 0) return null;
 
     const trailingHighs = trailingHighsOf(adjDaily, date);
-    const rawPrevClose = prevClosesOf(rawDaily, date);
-    const base = rawPrevClose.un ?? Number(minutes[0].un.open);
+    const bp = basePricesOf(rawDaily, adjDaily, date);
+    const base = bp.base.un ?? Number(minutes[0].un.open);
     const pct = (won: number): number => (base === 0 ? 0 : r2(((won - base) / base) * 100));
 
     const n = minutes.length;
@@ -176,7 +178,7 @@ export function deriveMinutes(
         minuteHigh[i] = pct(h);
     }
 
-    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount, minuteOpen, minuteHigh, trailingHighs, rawPrevClose };
+    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount, minuteOpen, minuteHigh, trailingHighs, basePrice: bp.base, baseFactor: bp.factor };
 }
 
 /**
@@ -184,8 +186,12 @@ export function deriveMinutes(
  *  · amountWon — 누적 거래대금(cumAmount)의 인접 차분으로 분봉 거래대금 복원.
  *  · minuteOfDay — times(unix UTC)를 KST 자정기준 분으로 되돌려 시간창 판정.
  * uptoIndex 지정 시 [0..uptoIndex] 만(복기 보드의 시점 t 누적). 서버(themeStatsOf)·클라(복기 hover/필터) 공유 — 같은 자.
+ * 파라미터는 쓰는 필드만 Pick — 클라는 와이어 부분집합(ReplayStock, baseFactor 미노출)으로도 호출 가능.
  */
-export function derivedMinutesOf(md: MinuteDerived, uptoIndex: number = md.times.length - 1): DerivedMinute[] {
+export function derivedMinutesOf(
+    md: Pick<MinuteDerived, "times" | "rate" | "cumAmount" | "minuteOpen" | "minuteHigh">,
+    uptoIndex: number = md.times.length - 1,
+): DerivedMinute[] {
     const n = Math.min(uptoIndex + 1, md.times.length);
     const mins: DerivedMinute[] = new Array(Math.max(0, n));
     for (let i = 0; i < n; i++) {

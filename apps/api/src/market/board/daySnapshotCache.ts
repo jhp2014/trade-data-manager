@@ -18,8 +18,8 @@ const gunzipAsync = promisify(gunzip);
 
 const CACHE_ROOT = process.env.DAY_SNAPSHOT_CACHE_DIR ?? path.resolve(process.cwd(), ".cache/day-snapshot");
 
-/** 파일 스키마 버전 — v2: 이중-시장(stats·trailingHighs KRX/UN 두벌 + rawPrevClose). v 없는 구파일=v1 취급(miss). */
-export const SNAPSHOT_SCHEMA_VERSION = 2;
+/** 파일 스키마 버전 — v3: rawPrevClose → basePrice(감자·액분 이벤트 보정 기준가)+baseFactor. v2 이하 구파일=miss(재빌드). */
+export const SNAPSHOT_SCHEMA_VERSION = 3;
 
 /** 한 종목의 그날 불변 파생. universe = 분봉 있는 종목이라 minutes 는 항상 present. */
 export interface DaySnapshot {

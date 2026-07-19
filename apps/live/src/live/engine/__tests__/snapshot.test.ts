@@ -28,7 +28,7 @@ const membership = (map: Record<string, string[]>): MembershipSource => ({
     reload: async () => {},
 });
 const dailyCtx = (codes: string[]): DailyContextSource => ({
-    contextOf: (c) => (codes.includes(c) ? { trailingHighs: { krx: [], un: [] }, rawPrevClose: { krx: 100, un: 100 } } : undefined),
+    contextOf: (c) => (codes.includes(c) ? { trailingHighs: { krx: [], un: [] }, basePrice: { krx: 100, un: 100 } } : undefined),
     ensure: async () => {},
 });
 
@@ -51,7 +51,7 @@ describe("buildSnapshot 원재료(deltas·ranks)", () => {
         expect(buildSnapshot(fresh, membership({}), dailyCtx([]), "live", 0).stocks[0].deltas).toBeUndefined();
     });
 
-    it("테마 순위 — 알람과 같은 잣대(rawPrevClose 기반, 유니버스 내 등락률 내림차순)", () => {
+    it("테마 순위 — 알람과 같은 잣대(basePrice 기반, 유니버스 내 등락률 내림차순)", () => {
         const store = new EngineStore();
         store.setHot([{ code: "A00001", name: "a" }, { code: "A00002", name: "b" }], 0);
         store.updateQuotes([quote("A00001", 120, 0), quote("A00002", 110, 0)]); // 등락률 20% > 10%

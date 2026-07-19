@@ -48,7 +48,7 @@ export interface LeafEvidence {
 
 /**
  * 테마 미니 보드의 한 멤버 — 발화 시점 스냅샷. 순위 잣대는 UN(rateKrx 는 괄호 표시용).
- * 등락률은 시장별 rawPrevClose 기준(발화 종목 features.changeRate 와 달리 보드와 같은 잣대).
+ * 등락률은 시장별 basePrice(기준가) 기준(발화 종목 features.changeRate 와 달리 보드와 같은 잣대).
  */
 export interface AlertThemeMember {
     code: string;

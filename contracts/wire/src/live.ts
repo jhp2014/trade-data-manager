@@ -6,8 +6,8 @@ export type LiveConnectionStatus = "closed" | "connecting" | "reconnecting" | "l
 
 /**
  * 라이브 hot 종목 1개 — ka10095 시세 기반. 가격은 **원주가 값**(당일 실체결)으로 내려주고
- * %는 클라가 기준 시장(KRX/UN) 전일종가(rawPrevClose)로 계산한다(복기와 같은 "값+base" 철학).
- * base_pric 의미론 비의존 — 자체 일봉에서 배급한 rawPrevClose 가 정본, base 는 준비 전 폴백.
+ * %는 클라가 기준 시장(KRX/UN) 기준가(basePrice)로 계산한다(복기와 같은 "값+base" 철학).
+ * base_pric 의미론 비의존 — 자체 일봉에서 배급한 basePrice 가 정본, base 는 준비 전 폴백.
  */
 export interface LiveStock {
     code: string;
@@ -23,8 +23,8 @@ export interface LiveStock {
     newlyHot: boolean;
     /** 속한 테마들(시트 멤버십). 빈 배열=미분류. 칩/그룹핑용. */
     themes: string[];
-    /** 원주가 전일종가(시장별) — 일봉 컨텍스트 캐시. 준비 전엔 없음(클라는 base 폴백). */
-    rawPrevClose?: { krx: number | null; un: number | null };
+    /** 등락률 기준가(시장별, 당일 원주가 스케일 — 감자·액분 이벤트 보정) — 일봉 컨텍스트 캐시. 준비 전엔 없음(클라는 base 폴백). */
+    basePrice?: { krx: number | null; un: number | null };
     /** 과거 완결 거래일 고가%(수정주가, 시장별 자기 전일종가 대비, 최신→과거, 최대 120). 클라가 index 0 에 당일 고가% prepend. 미계산이면 없음. */
     trailingHighs?: { krx: number[]; un: number[] };
     /** 활성 1분 델타 신호(돈유입). 미발화면 없음. core DeltaHit 과 구조 동일(wire 는 core 미의존이라 재선언). tvDelta 단위=원. */

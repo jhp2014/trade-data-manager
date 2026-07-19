@@ -4,7 +4,7 @@
 // 그 정규화는 벤더 특화라 어댑터(infra/broker)의 매핑 책임이며 도메인은 깨끗한 값만 받는다.
 // 가격은 음수가 아니고, 등락값만 음수가 될 수 있다. 정밀도 유지를 위해 BigInt 사용.
 
-import type { DailyCandle } from "./model.js";
+import type { DailyCandle, ByMarket } from "./model.js";
 
 /**
  * 전일 대비 변동값 (현재가 - 전일종가). 전일종가가 없으면 null.
@@ -88,6 +88,62 @@ export function countByAmountThreshold(
         }
     }
     return counts;
+}
+
+/** 기준가 조정계수의 반올림 노이즈 클램프 폭. 소급 재작성된 수정주가는 정수(원) 반올림이라 과거 재계산 시
+ *  factor 에 ~1틱/가격 잔차가 남는다(최대 ~0.2%). 실제 이벤트(최소 ~2%)와 겹치지 않는 폭에서 1로 흡수. */
+const BASE_FACTOR_EPSILON = 0.002;
+
+/** 등락률 기준가(시장별) + 적용된 조정계수. basePricesOf 반환. */
+export interface BasePrices {
+    /** 기준가(당일 원주가 스케일). 원주가 직전 종가가 없으면(상장 첫날 등) null — 소비자는 당일 첫 시가 폴백. */
+    base: ByMarket<number | null>;
+    /** 적용 조정계수(평상 1). ≠1 = 이벤트(감자·액분·무증) 보정 또는 데이터 이상(당일 raw≠adj) — 트립와이어 로그용. */
+    factor: ByMarket<number>;
+}
+
+/**
+ * 등락률(%) 기준가 — 원주가 직전 종가에 조정계수를 보정해 **당일 원주가 스케일**로 되돌린 값.
+ * 직전 거래일과 당일 사이에 가격 조정 이벤트(감자·액면분할·무상증자)가 끼면 원주가 전일종가는 옛 스케일이라
+ * %가 배율만큼 폭주한다(감자 5:1 재개일 +550% 류). 보정 계수는 원주가·수정주가 두 일봉의 비율에서 자가 도출:
+ *
+ *   factor = (수정전일/원주전일) ÷ (수정당일/원주당일),  base = 원주전일 × factor
+ *
+ *  · 평상일: 수집 직후엔 수정=원주가 완전 동일 → 두 비율 다 1 → factor 1 (원주가 전일종가와 항등).
+ *  · 이벤트 첫 거래일: 전일만 소급 재작성 → factor = 기준가 배율(감자 5:1 이면 ×5) → base = KRX 기준가.
+ *  · 과거일 재계산(나중 이벤트로 전일·당일 둘 다 재작성): 같은 계수가 분자·분모에 → 상쇄 — 언제 계산해도 안정.
+ * 반올림 잔차(<BASE_FACTOR_EPSILON)는 1로 클램프. 전일 수정주가가 없으면 보정 불가 → factor 1(원주가 그대로).
+ */
+export function basePricesOf(rawDaily: DailyCandle[], adjDaily: DailyCandle[], date: string): BasePrices {
+    const prevRaw = rawDaily.reduce<DailyCandle | null>((p, c) => (c.date < date && (p === null || c.date > p.date) ? c : p), null);
+    // 전일 비율은 반드시 **같은 날짜**의 원주·수정 쌍으로(다른 날짜 혼합 금지 — 갭이 있으면 보정 포기가 안전).
+    const prevDate = prevRaw?.date;
+    const adjPrev = prevDate !== undefined ? adjDaily.find((c) => c.date === prevDate) : undefined;
+    const rawDay = rawDaily.find((c) => c.date === date);
+    const adjDay = adjDaily.find((c) => c.date === date);
+
+    const pos = (v: string | undefined): number | null => {
+        const n = Number(v);
+        return v !== undefined && Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const per = (m: "krx" | "un"): { base: number | null; factor: number } => {
+        const rawPrev = pos(prevRaw?.[m].close);
+        if (rawPrev === null) return { base: null, factor: 1 };
+        const aPrev = pos(adjPrev?.[m].close);
+        let factor = 1;
+        if (aPrev !== null) {
+            const rDay = pos(rawDay?.[m].close);
+            const aDay = pos(adjDay?.[m].close);
+            const dayRatio = rDay !== null && aDay !== null ? aDay / rDay : 1;
+            factor = aPrev / rawPrev / dayRatio;
+            if (Math.abs(factor - 1) < BASE_FACTOR_EPSILON) factor = 1;
+        }
+        // 1e-6 반올림 — 부동소수 꼬리(1533×(7670/1533)=7669.999…)만 걷어낸다(보정 정밀도 무손실).
+        return { base: Math.round(rawPrev * factor * 1e6) / 1e6, factor };
+    };
+    const krx = per("krx");
+    const un = per("un");
+    return { base: { krx: krx.base, un: un.base }, factor: { krx: krx.factor, un: un.factor } };
 }
 
 /**

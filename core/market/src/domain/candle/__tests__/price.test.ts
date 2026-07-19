@@ -6,6 +6,7 @@ import {
     computeAccumulatedAmounts,
     countByAmountThreshold,
     previousCloseFromDaily,
+    basePricesOf,
 } from "../price.js";
 import type { DailyCandle } from "../model.js";
 
@@ -113,5 +114,68 @@ describe("previousCloseFromDaily", () => {
     it("정렬 안 돼 있어도 최대 date<요청일을 고름", () => {
         const daily = [candle("2026-06-25", "200", "202"), candle("2026-06-24", "100", "101")];
         expect(previousCloseFromDaily(daily, "2026-06-26")).toEqual({ krxClose: "200", unClose: "202" });
+    });
+});
+
+describe("basePricesOf", () => {
+    const bar = (close: string) => ({ open: close, high: close, low: close, close, volume: "1", amount: "1" });
+    const candle = (date: string, krxClose: string, unClose: string): DailyCandle => ({
+        stockCode: "000001",
+        date,
+        krx: bar(krxClose),
+        un: bar(unClose),
+    });
+
+    it("평상일(수정=원주 동일) — 원주가 전일종가와 항등, factor 1", () => {
+        const raw = [candle("2026-07-09", "98", "100"), candle("2026-07-10", "104", "105")];
+        const { base, factor } = basePricesOf(raw, raw, "2026-07-10");
+        expect(base).toEqual({ krx: 98, un: 100 });
+        expect(factor).toEqual({ krx: 1, un: 1 });
+    });
+
+    it("이벤트 첫 거래일(감자) — 전일만 소급 재작성 → factor = 기준가 배율", () => {
+        const raw = [candle("2026-05-07", "1533", "1533"), candle("2026-05-08", "9970", "9970")];
+        const adj = [candle("2026-05-07", "7670", "7670"), candle("2026-05-08", "9970", "9970")];
+        const { base, factor } = basePricesOf(raw, adj, "2026-05-08");
+        expect(base.un).toBeCloseTo(7670, 6);
+        expect(factor.un).toBeCloseTo(7670 / 1533, 6);
+    });
+
+    it("과거일 재계산(나중 이벤트로 전일·당일 둘 다 재작성) — 상쇄되어 factor 1", () => {
+        const raw = [candle("2026-07-09", "100", "100"), candle("2026-07-10", "108", "108")];
+        const adj = [candle("2026-07-09", "50", "50"), candle("2026-07-10", "54", "54")]; // 이후 2:1 액분 재작성
+        const { base, factor } = basePricesOf(raw, adj, "2026-07-10");
+        expect(base).toEqual({ krx: 100, un: 100 });
+        expect(factor).toEqual({ krx: 1, un: 1 });
+    });
+
+    it("재작성 반올림 잔차(<0.2%)는 1로 클램프 — 노이즈가 base 를 흔들지 않음", () => {
+        // 진짜 계수 g=1/3 재작성: adj = round(raw/3) → 비율에 미세 잔차
+        const raw = [candle("2026-07-09", "1000", "1000"), candle("2026-07-10", "1004", "1004")];
+        const adj = [candle("2026-07-09", "333", "333"), candle("2026-07-10", "335", "335")];
+        const { base, factor } = basePricesOf(raw, adj, "2026-07-10");
+        expect(factor.un).toBe(1);
+        expect(base.un).toBe(1000);
+    });
+
+    it("당일 raw≠adj(수집사고류 불일치) — factor ≠ 1 로 드러남(트립와이어 신호)", () => {
+        const raw = [candle("2026-07-02", "34700", "34700"), candle("2026-07-03", "34050", "34050")]; // 당일 비최종 동결
+        const adj = [candle("2026-07-02", "34700", "34700"), candle("2026-07-03", "34550", "34550")];
+        const { factor } = basePricesOf(raw, adj, "2026-07-03");
+        expect(factor.un).not.toBe(1); // 1/(34550/34050) ≈ 0.9855
+        expect(factor.un).toBeCloseTo(34050 / 34550, 4);
+    });
+
+    it("전일 수정주가 결손(같은 날짜 쌍 없음) — 보정 포기, 원주가 그대로", () => {
+        const raw = [candle("2026-07-09", "100", "100"), candle("2026-07-10", "108", "108")];
+        const adj = [candle("2026-07-10", "54", "54")]; // 전일 없음
+        const { base, factor } = basePricesOf(raw, adj, "2026-07-10");
+        expect(base).toEqual({ krx: 100, un: 100 });
+        expect(factor).toEqual({ krx: 1, un: 1 });
+    });
+
+    it("원주가 직전 종가 없으면(상장일) base null", () => {
+        const raw = [candle("2026-07-10", "108", "108")];
+        expect(basePricesOf(raw, raw, "2026-07-10").base).toEqual({ krx: null, un: null });
     });
 });

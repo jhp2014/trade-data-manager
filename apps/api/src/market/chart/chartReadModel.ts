@@ -2,13 +2,13 @@
 // core 는 얇은 조회 3개(수정주가 일봉·원주가 일봉·분봉)만 노출하고, 화면용 복합은 여기서 만든다:
 //  · daily   : 수정주가 일봉 [date−2년, date] (일봉 pane 연속성)
 //  · minutes : 당일 분봉 → densifyMinutes(VI/무거래 flat-fill, 도메인 단일 채움정책)
-//  · rawBase : 분봉 % 기준가 = 직전 거래일 **원주가** 종가. 원주가 range 를 조회해 previousCloseFromDaily 로 추출
-//              (원주가는 불변이라 base 도 불변 → 여기서 캐싱 여지). 분봉이 원주가라 base 도 원주가여야 스케일이 맞는다.
+//  · basePrice : 분봉 % 기준가(basePricesOf) = 직전 거래일 원주가 종가 + 감자·액분 조정계수 보정(당일 원주가 스케일).
+//               분봉이 원주가라 base 도 원주가 스케일이어야 맞고, 이벤트가 낀 날은 보정 없인 %가 배율만큼 폭주한다.
 import {
     chartDailyRange,
     subtractMonths,
     densifyMinutes,
-    previousCloseFromDaily,
+    basePricesOf,
     RAW_DAILY_LOOKBACK_MONTHS,
     type AdjustedDailyReader,
     type MinuteReader,
@@ -37,11 +37,12 @@ export class ChartReadModel {
             minuteCandle.getMinuteCandles(stockCode, date),
             rawDailyCandle.getRawDailyCandles(stockCode, rawRange),
         ]);
+        const { base } = basePricesOf(rawDaily, daily, date);
         return {
             stockCode,
             daily,
             minutes: densifyMinutes(rawMinutes),
-            rawBase: previousCloseFromDaily(rawDaily, date),
+            basePrice: base.krx === null && base.un === null ? null : base,
         };
     }
 }

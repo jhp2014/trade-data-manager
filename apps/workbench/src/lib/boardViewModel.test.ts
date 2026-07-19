@@ -126,7 +126,7 @@ const rstock = (code: string, over: Partial<ReplayStock>): ReplayStock => ({
     minuteOpen: [0, 1],
     minuteHigh: [1, 6],
     trailingHighs: { krx: [], un: [] },
-    rawPrevClose: { krx: null, un: null },
+    basePrice: { krx: null, un: null },
     name: code,
     market: "KOSPI",
     marketCap: null,
@@ -169,10 +169,10 @@ describe("buildReplayBoardViewModel", () => {
         expect(allStocks(at200).find((s) => s.code === "A")?.buckets).toEqual([0, 0, 1, 0, 0, 0, 0]);
     });
 
-    it("KRX 기준가 토글 — UN% 를 rawPrevClose 로 일차변환(유니버스·신호는 UN 잣대 유지)", () => {
+    it("KRX 기준가 토글 — UN% 를 basePrice 로 일차변환(유니버스·신호는 UN 잣대 유지)", () => {
         // unBase=100, krxBase=98 → un% 5 → krx% = 100×105/98−100 = 7.14
         const index = new Map<string, ReplayStock>([
-            ["A", rstock("A", { rate: [1, 5], high: [1, 6], cumAmount: [10, 100], rawPrevClose: { krx: 98, un: 100 } })],
+            ["A", rstock("A", { rate: [1, 5], high: [1, 6], cumAmount: [10, 100], basePrice: { krx: 98, un: 100 } })],
         ]);
         const vm = buildReplayBoardViewModel(index, 200, { amountN: 5, rateN: 5 }, new Set(), empty, "krx");
         const a = allStocks(vm).find((s) => s.code === "A");
@@ -182,7 +182,7 @@ describe("buildReplayBoardViewModel", () => {
 
     it("KRX 기준가 토글 — base 결손(상장일)이면 UN% 그대로 폴백", () => {
         const index = new Map<string, ReplayStock>([
-            ["A", rstock("A", { rate: [1, 5], cumAmount: [10, 100], rawPrevClose: { krx: null, un: 100 } })],
+            ["A", rstock("A", { rate: [1, 5], cumAmount: [10, 100], basePrice: { krx: null, un: 100 } })],
         ]);
         const vm = buildReplayBoardViewModel(index, 200, { amountN: 5, rateN: 5 }, new Set(), empty, "krx");
         expect(allStocks(vm).find((s) => s.code === "A")?.changeRate).toBe(5);
@@ -221,7 +221,7 @@ const liveStock = (over: Partial<LiveStock> = {}): LiveStock => ({
     base: 100,
     newlyHot: false,
     themes: ["반도체"],
-    rawPrevClose: { krx: 100, un: 100 },
+    basePrice: { krx: 100, un: 100 },
     ...over,
 });
 

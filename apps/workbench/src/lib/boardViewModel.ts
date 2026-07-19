@@ -72,7 +72,7 @@ export function buildThemeBoardViewModel(summary: DaySummary, annotatedCodes: Se
  * day-replay 인덱스 + 시점(tUnix) + 복기 설정 → 복기보드 렌더 구조. top-N 유니버스·1분 델타 신호 적용.
  * buckets — 시점 t 까지 누적 분봉 거래대금 구간 카운트(hover). 서버 EOD 와 같은 정책(countAmountBuckets), 창만 [0..t].
  * replayFilter — 시점 t 스냅샷 지표에 evalBoardFilter 재평가(이슈보드와 같은 술어, 상태만 별개). 시간 밀면 동적 재평가.
- * market — 기준 시장 토글. 서버 % 시계열은 UN base 한 벌 → KRX 는 rawPrevClose 두 스칼라로 일차변환(rebasePct).
+ * market — 기준 시장 토글. 서버 % 시계열은 UN base 한 벌 → KRX 는 basePrice 두 스칼라로 일차변환(rebasePct).
  *   유니버스 선정·1분 델타 신호는 UN 고정(잣대 고정 — 서버 EOD·라이브와 패리티), 표시 %·필터 지표만 재기저.
  */
 export function buildReplayBoardViewModel(
@@ -100,8 +100,8 @@ export function buildReplayBoardViewModel(
         const signal = prev ? evaluateSignal(snap.changeRate - prev.rate, snap.amount - prev.cumAmount) : null; // UN 잣대 고정
         const marketCapEok = s.marketCap ? Number(s.marketCap) / 1e8 : null;
         // KRX 모드: UN base % → KRX base % 일차변환. base 결손(상장일 등)이면 UN 그대로(폴백).
-        const un = s.rawPrevClose.un;
-        const krx = s.rawPrevClose.krx;
+        const un = s.basePrice.un;
+        const krx = s.basePrice.krx;
         const view = (p: number): number => (market === "krx" && un !== null && krx !== null ? rebasePct(p, un, krx) : p);
         // 시점 t 까지 누적 버킷 — hover 히스토그램. 그리고 복기 필터 재평가(t 스냅샷 지표 기준).
         const buckets = countAmountBuckets(derivedMinutesOf(s, lastIndexAtOrBefore(s.times, tUnix)));
@@ -135,10 +135,10 @@ export function buildReplayBoardViewModel(
 }
 
 // ── 라이브(실시간) 보드 ─────────────────────────────────────────
-// 서버는 원주가 값(price/open/high/low)+rawPrevClose{krx,un} 를 내려주고 % 는 여기서 계산(복기와 같은 잣대).
-// rawPrevClose 미도착(핫 편입 직후 몇 초)이면 ka10095 base(전일 기준가) 폴백.
+// 서버는 원주가 값(price/open/high/low)+basePrice{krx,un}(기준가, 이벤트 보정) 를 내려주고 % 는 여기서 계산(복기와 같은 잣대).
+// basePrice 미도착(핫 편입 직후 몇 초)이면 ka10095 base(전일 기준가) 폴백.
 function liveBaseOf(s: LiveStock, market: BoardMarket): number | null {
-    return s.rawPrevClose?.[market] ?? (s.base > 0 ? s.base : null);
+    return s.basePrice?.[market] ?? (s.base > 0 ? s.base : null);
 }
 function livePct(v: number, base: number | null): number {
     return base !== null && base > 0 ? Math.round(((v - base) / base) * 10_000) / 100 : 0;
