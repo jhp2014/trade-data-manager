@@ -257,8 +257,9 @@ export function useMarkerVertLines(
  *  둘 다 논리 인덱스로 프레임(음수 from = 실제 좌측 빈칸, densify 로 분당 연속이라 논리 1칸 = 1분).
  *  데이터셋(frameKey=code:date)·줌이 바뀔 때만 프레이밍 — 같은 데이터셋의 라이브 틱(폴 갱신)은 사용자
  *  줌/이동을 보존한다(setData 는 범위 유지, 새 분봉은 shiftVisibleRangeOnNewBar 가 우측에서만 추종).
- *  lockTimeScale(스케일 고정) — 종목/날짜 전환(frameKey 변경)에도 리프레임 대신 직전에 보던 시각 창을
- *  유지한다(첫 봉 시각 차만 보정해 clock 창 그대로). f 줌 토글은 명시 액션이라 고정 중에도 반영. */
+ *  lockTimeScale(스케일 고정) — 종목/날짜 전환(frameKey 변경) 시 리프레임을 건너뛰어 지금 보던 논리
+ *  범위(스케일+위치)를 그대로 둔다(setData 가 범위를 유지하므로 아무것도 안 하면 됨. NXT 유무·타점 무관).
+ *  단 새 차트 첫 마운트는 반드시 프레이밍(prevFrameKey null). f 줌 토글은 frameKey 동일이라 아래로 흘러 반영. */
 export function useMinuteVisibleRange(
     chartRef: RefObject<IChartApi | null>,
     points: MinutePoint[],
@@ -267,8 +268,7 @@ export function useMinuteVisibleRange(
     bumpOverlay: () => void,
     lockTimeScale = false,
 ): void {
-    const prevFrameKeyRef = useRef<string | null>(null); // 직전 데이터셋 — 스케일 고정의 "전환 감지"용
-    const prevFirstMinRef = useRef<number | null>(null); // 직전 데이터셋 첫 봉 분(分) — 고정 시 clock 창 환산용
+    const prevFrameKeyRef = useRef<string | null>(null); // 직전 데이터셋 — 고정 시 "전환 vs 첫 마운트" 구분용
     const lockRef = useRef(lockTimeScale); // 토글 자체는 리프레임 트리거가 아님(켜는 순간 뷰 안 움직임) → ref 로만 읽는다
     lockRef.current = lockTimeScale;
     // 리프레임 트리거는 effect 의존성 비교가 곧 가드 — frameKey(데이터 파생)·줌이 바뀔 때만 돈다.
@@ -278,23 +278,13 @@ export function useMinuteVisibleRange(
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart || points.length === 0) return;
+        const prevFrameKey = prevFrameKeyRef.current;
+        prevFrameKeyRef.current = frameKey;
+        // 스케일 고정 — 데이터셋 전환이면 리프레임 스킵(setData 가 논리 범위 유지 → 스케일·위치 그대로).
+        // 첫 마운트(prevFrameKey null)는 스킵 안 함(빈 차트가 기본 뷰로 열리지 않게).
+        if (prevFrameKey !== null && prevFrameKey !== frameKey && lockRef.current) return;
         const ts = chart.timeScale();
         const firstMin = hmsToMin(points[0].tradeTime);
-        const prevFrameKey = prevFrameKeyRef.current;
-        const prevFirstMin = prevFirstMinRef.current;
-        prevFrameKeyRef.current = frameKey;
-        prevFirstMinRef.current = firstMin;
-        // 스케일 고정 — 데이터셋 전환(frameKey 변경) 시 직전 창 유지. setData 는 논리 범위를 건드리지 않으므로
-        // 지금 논리 범위 = 직전 데이터셋에서 보던 창. 첫 봉 시각 차(프리마켓 유무 60칸 등)만 밀어 clock 창을 보존한다.
-        if (prevFrameKey !== null && prevFrameKey !== frameKey && lockRef.current && prevFirstMin != null) {
-            const cur = ts.getVisibleLogicalRange();
-            if (cur != null) {
-                const shift = prevFirstMin - firstMin; // 논리 1칸=1분 → 분-of-day 창 그대로
-                ts.setVisibleLogicalRange({ from: cur.from + shift, to: cur.to + shift });
-                bumpOverlay();
-                return;
-            }
-        }
         if (zoom) {
             let idx = points.length - 1;
             if (zoom.anchorTime != null) {
