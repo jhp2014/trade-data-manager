@@ -7,8 +7,8 @@ import { NumberField } from "../ui/controls.js";
 export type FormulaTok = string | { p: string } | { o: string };
 
 export const FORMULAS: Record<string, FormulaTok[]> = {
-    // 매물대 — side(내부/돌파)가 방향을 정한다(내부=창최고에서 tol 이상 이탈, 돌파=창최고 근접).
-    newHighFar: [{ p: "window" }, "일 매물대 ", { o: "side" }, " · 갭 ", { p: "tol" }, "%", { o: "market" }],
+    // 매물대 — 부등식 `N일 고가% − tol% [op] 당일 고가%`. side 가 연산자(>=내부·이탈 / ≤=돌파·근접).
+    newHighFar: [{ p: "window" }, "일 고가% − ", { p: "tol" }, "% ", { o: "side" }, " 당일 고가%", { o: "market" }],
     minAmtFew: ["분봉 ", { p: "eok" }, "억+ 대금 ≤ ", { p: "maxCount" }, "회"],
     smallAmount: ["일봉 대금 < ", { p: "ltEok" }, "억"],
     weakHigh: ["당일 고가% < ", { p: "ltPct" }, "%"],

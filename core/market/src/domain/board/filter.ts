@@ -116,8 +116,10 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
             { key: "market", label: "시장", def: 1, options: [...MARKET_OPTIONS] },
             { key: "window", label: "거래일", def: 20, min: 1 },
             { key: "tol", label: "허용 갭%", def: 2, min: 0, step: 0.5 },
-            // 방향 파라미터 — 내부(창최고 아래=매물대 안)/돌파(창최고 근접). 미지정=내부(기존 보드 동작).
-            { key: "side", label: "위치", def: 0, options: ["내부", "돌파"] },
+            // 방향 파라미터 = 부등호 연산자. `N일 고가% − tol [op] 당일 고가%`:
+            //   내부(>) = 당일이 창최고보다 tol 넘게 아래(매물대 안) / 돌파(≤) = 당일이 창최고 tol 이내(근접).
+            // 경계값은 돌파(코드: max−today ≤ tol). 값=인덱스(0/1)라 라벨만 바꿔도 저장 필터 무손상. 미지정=내부.
+            { key: "side", label: "위치", def: 0, options: [">", "≤"] },
         ],
         // 한 그룹에 KRX·UN 두 인스턴스를 AND 로 넣으면 "둘 다"(예: 둘 다 매물대 내부여야 흐리게).
         test: (m, p) => {
@@ -126,7 +128,7 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
             const near = isNearWindowHigh(highs, p.window, p.tol); // near = 창최고 근접 = 돌파
             return (p.side ?? 0) === 1 ? near : !near;
         },
-        label: (p) => `매물대 ${(p.side ?? 0) === 1 ? "돌파" : "내부"}(${MARKET_OPTIONS[p.market === 0 ? 0 : 1]})`,
+        label: (p) => `${p.window ?? 20}일 고가% − ${p.tol ?? 2}% ${(p.side ?? 0) === 1 ? "≤" : ">"} 당일 고가%(${MARKET_OPTIONS[p.market === 0 ? 0 : 1]})`,
     },
     {
         kind: "minAmtFew",
