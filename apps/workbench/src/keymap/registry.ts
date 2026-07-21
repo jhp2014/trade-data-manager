@@ -5,6 +5,20 @@ import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useKeymapDynamic } from "./dynamic.js";
 
+// 화면(프리셋)별 Tab 순환 링 — 링 출처 화면의 링에서 지금 배치에 살아있는 멤버만 골라 setActive 로 순환.
+// 링/멤버가 부족하면 false 반환(호출부가 활성그룹 탭 순환으로 폴백). setActive 는 같은그룹 탭전환·타그룹 포커스이동 둘 다 커버.
+function cycleTabRing(dir: 1 | -1): boolean {
+    const { api, ringSource, rings } = useDock.getState();
+    if (!api || ringSource == null) return false;
+    const live = (rings[ringSource - 1] ?? []).filter((id) => api.getPanel(id));
+    if (live.length < 2) return false;
+    const active = api.activePanel?.id;
+    const at = active ? live.indexOf(active) : -1;
+    const nextIdx = at === -1 ? (dir === 1 ? 0 : live.length - 1) : (at + dir + live.length) % live.length;
+    api.getPanel(live[nextIdx])?.api.setActive();
+    return true;
+}
+
 // 활성 그룹의 탭 순환 — dock api 의 activeGroup.panels 를 dir 로 걷고 setActive. 탭 1개 이하면 무동작.
 function cycleActiveGroupTab(dir: 1 | -1): void {
     const group = useDock.getState().api?.activeGroup;
@@ -14,6 +28,11 @@ function cycleActiveGroupTab(dir: 1 | -1): void {
     const cur = group.activePanel;
     const idx = cur ? panels.indexOf(cur) : 0;
     panels[(idx + dir + panels.length) % panels.length].api.setActive();
+}
+
+// Tab 순환 진입점 — 화면 링이 있으면 그걸로, 없으면(미설정·멤버부족) 활성 그룹 탭 순환으로 폴백.
+function cycleWindow(dir: 1 | -1): void {
+    if (!cycleTabRing(dir)) cycleActiveGroupTab(dir);
 }
 
 // 정적 단축키(전역, 데이터 비결합). 새 전역 단축키는 여기 한 줄 추가하면 디스패치·도움말에 동시 반영.
@@ -30,10 +49,11 @@ const presetCommands: Command[] = Array.from({ length: PRESET_COUNT }, (_, i) =>
     keys: `ctrl+${i + 1}`,
     run: () => useDock.getState().loadPreset(i + 1),
 }));
-// 창 순환 — 활성 dockview 그룹의 탭을 Tab/Shift+Tab 으로 순환. 입력창 포커스 중엔 디스패처가 양보(수식키 없음).
+// 창 순환 — Tab/Shift+Tab. 화면별 순환 링(설정 → 레이아웃)이 있으면 그 창들만, 없으면 활성 그룹 탭.
+// 입력창 포커스 중엔 디스패처가 양보(수식키 없음).
 const dockCommands: Command[] = [
-    { id: "dock.tab.next", title: "다음 탭(활성 그룹)", category: "레이아웃", keys: "tab", run: () => cycleActiveGroupTab(1) },
-    { id: "dock.tab.prev", title: "이전 탭(활성 그룹)", category: "레이아웃", keys: "shift+tab", run: () => cycleActiveGroupTab(-1) },
+    { id: "dock.tab.next", title: "다음 창(순환 링)", category: "레이아웃", keys: "tab", run: () => cycleWindow(1) },
+    { id: "dock.tab.prev", title: "이전 창(순환 링)", category: "레이아웃", keys: "shift+tab", run: () => cycleWindow(-1) },
 ];
 // 최근 탐색 순환 — back/forward 커서 모델(stepHistory). 워크셋 w/s 와 대칭이되 Alt(예약 아님)로.
 const historyCommands: Command[] = [

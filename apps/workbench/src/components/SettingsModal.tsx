@@ -4,7 +4,8 @@ import { Dialog } from "../ui/Dialog.js";
 import { Checkbox, NumberField, Row, SectionLabel, TextInput, Kbd } from "../ui/controls.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi, type SettingsScreen } from "../store/ui.js";
-import { useDock } from "../store/dock.js";
+import { useDock, panelIdsInPreset } from "../store/dock.js";
+import { PANEL_CATALOG } from "../shell/panelCatalog.js";
 import { staticCommands, commandsByCategory } from "../keymap/registry.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { formatChord } from "../keymap/keys.js";
@@ -240,6 +241,51 @@ function ShortcutSettings(): JSX.Element {
     );
 }
 
+const panelTitleOf = (id: string): string => PANEL_CATALOG.find((p) => p.id === id)?.title ?? id;
+
+// 화면별 Tab 순환 링 편집 — 이 화면 배치에 있는 패널 중 순환에 넣을 것을 체크·순서조절.
+// 체크한 것(링)은 순번·↑/↓·이 순서대로 Tab 이 순환. 미체크는 아래에 후보로.
+function RingEditor({ n }: { n: number }): JSX.Element | null {
+    const preset = useDock((s) => s.presets[n - 1]);
+    const rings = useDock((s) => s.rings);
+    const setRing = useDock((s) => s.setRing);
+    if (!preset) return null;
+    const available = panelIdsInPreset(preset);
+    const ring = (rings[n - 1] ?? []).filter((id) => available.includes(id)); // 죽은 id 는 표시에서 제외
+    const rest = available.filter((id) => !ring.includes(id));
+    const toggle = (id: string): void => setRing(n, ring.includes(id) ? ring.filter((x) => x !== id) : [...ring, id]);
+    const move = (idx: number, dir: -1 | 1): void => {
+        const j = idx + dir;
+        if (j < 0 || j >= ring.length) return;
+        const next = ring.slice();
+        [next[idx], next[j]] = [next[j], next[idx]];
+        setRing(n, next);
+    };
+    const arrow: React.CSSProperties = { border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", lineHeight: 1, padding: "0 2px" };
+    const item: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-primary)" };
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 12, borderLeft: "2px solid var(--border-default)", marginLeft: 2 }}>
+            <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>Tab 순환 창 (체크·순서대로 Tab 이 순환. 2개 미만이면 활성 그룹 탭 순환)</span>
+            {ring.map((id, i) => (
+                <div key={id} style={item}>
+                    <Checkbox checked onChange={() => toggle(id)} />
+                    <span style={{ color: "var(--text-tertiary)", width: 14 }}>{i + 1}.</span>
+                    <span style={{ marginRight: "auto" }}>{panelTitleOf(id)}</span>
+                    <button style={{ ...arrow, opacity: i === 0 ? 0.3 : 1 }} disabled={i === 0} onClick={() => move(i, -1)} title="위로">↑</button>
+                    <button style={{ ...arrow, opacity: i === ring.length - 1 ? 0.3 : 1 }} disabled={i === ring.length - 1} onClick={() => move(i, 1)} title="아래로">↓</button>
+                </div>
+            ))}
+            {rest.map((id) => (
+                <div key={id} style={{ ...item, opacity: 0.7 }}>
+                    <Checkbox checked={false} onChange={() => toggle(id)} />
+                    <span style={{ width: 14 }} />
+                    <span>{panelTitleOf(id)}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // 레이아웃 프리셋 — 현재 창 배치를 슬롯에 저장/불러오기. 전환은 Ctrl+숫자 또는 하단 작업표시줄 클릭.
 function LayoutSettings(): JSX.Element {
     const presets = useDock((s) => s.presets);
@@ -276,13 +322,16 @@ function LayoutSettings(): JSX.Element {
                 const filled = !!p;
                 const saved = justSaved === n;
                 return (
-                    <div key={n} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontWeight: 700, color: activePreset === n ? "var(--accent-hover)" : "var(--text-primary)" }}>화면 {n}</span>
-                        <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{activePreset === n ? "(현재)" : filled ? "저장됨" : "비어 있음"}</span>
-                        <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                            <button style={saved ? savedBtn : saveBtn} onClick={() => save(n)}>{saved ? "저장됨 ✓" : "현재 배치 저장"}</button>
-                            <button style={{ ...btn, opacity: filled ? 1 : 0.4, cursor: filled ? "pointer" : "default" }} disabled={!filled} onClick={() => loadPreset(n)}>불러오기</button>
-                        </span>
+                    <div key={n} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontWeight: 700, color: activePreset === n ? "var(--accent-hover)" : "var(--text-primary)" }}>화면 {n}</span>
+                            <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{activePreset === n ? "(현재)" : filled ? "저장됨" : "비어 있음"}</span>
+                            <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                                <button style={saved ? savedBtn : saveBtn} onClick={() => save(n)}>{saved ? "저장됨 ✓" : "현재 배치 저장"}</button>
+                                <button style={{ ...btn, opacity: filled ? 1 : 0.4, cursor: filled ? "pointer" : "default" }} disabled={!filled} onClick={() => loadPreset(n)}>불러오기</button>
+                            </span>
+                        </div>
+                        <RingEditor n={n} />
                     </div>
                 );
             })}
