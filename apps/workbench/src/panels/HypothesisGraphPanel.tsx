@@ -28,7 +28,7 @@ import { parseSearchTokens, buildTokenRe, highlightTokens, matchesTokens } from 
 // 가설 관계 그래프 — reactflow + dagre. 노드=가설, 엣지=관계(종류별 색/점선/화살표).
 // 노드 4면(상·하·좌·우) 어디서든 드래그 연결(ConnectionMode.Loose) → 관계 종류 선택 → 저장. 엣지 클릭=삭제.
 // 엣지는 두 노드의 상대 위치로 붙는 면을 매 렌더 계산(floating 유사) → 상하·좌우 자연스럽게.
-// 빈 공간 좌드래그=박스 선택(여러 노드 한번에 이동), 팬은 우/휠 클릭 드래그. 선택은 store로 리스트와 동기.
+// 빈 공간 좌드래그=팬(이동), Shift+좌드래그=박스(마퀴) 선택(여러 노드 한번에 이동), Ctrl/Meta+클릭=선택 가감.
 // 현재 Focus 타점에 연결된 가설은 좌측 accent 바로 강조. 노드 위치는 localStorage 영속.
 interface HypNodeData {
     id: string;
@@ -39,13 +39,14 @@ interface HypNodeData {
     filterState: "none" | "pos" | "neg"; // (B) 필터 포함/제외
 }
 
-function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
+function HypNode({ data, selected }: NodeProps<HypNodeData>): JSX.Element {
     // 검색(리스트와 공유) — 매치 강조 + 비매치 흐리게(0.6). 노드마다 store 구독(노드 수 적음).
     const search = useWorkbench((s) => s.hypothesisSearch);
     const tokens = useMemo(() => parseSearchTokens(search), [search]);
     const re = useMemo(() => buildTokenRe(tokens), [tokens]);
     const matched = matchesTokens(data.text, re);
     // ID 안 보임. 3상태 인코딩(겹쳐도 공존): (A)연결=아래 그림자로 띄움 / (B)필터=외곽 링(제외=빨강) / (C)선택=채움.
+    // (D) reactflow 다중선택(Shift 마퀴로 잡힌 이동 대상) = 점선 외곽선. store 단일선택(C)과 다른 축이라 공존.
     const ring = data.filterState === "pos" ? "var(--accent-primary)" : data.filterState === "neg" ? "var(--rise)" : null;
     // box-shadow 합성: (B) 외곽 링 + (A) 아래 그림자. 둘 다 box-shadow라 콤마로 공존(다른 레이어라 안 뭉갬).
     const shadows: string[] = [];
@@ -61,6 +62,9 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
                 background: data.selected ? "var(--accent-soft)" : "var(--bg-primary)",
                 border: "1.5px solid var(--border-default)",
                 boxShadow: shadows.length ? shadows.join(", ") : undefined,
+                // (D) 마퀴 다중선택 표시 — 점선 외곽선(오프셋으로 링·테두리와 안 겹침).
+                outline: selected ? "1.5px dashed var(--accent-primary)" : undefined,
+                outlineOffset: 2,
                 fontSize: 12,
                 color: "var(--text-primary)",
                 opacity: matched ? 1 : 0.6,
@@ -291,9 +295,10 @@ export function HypothesisGraphPanel(): JSX.Element {
                 nodeTypes={nodeTypes}
                 connectionMode={ConnectionMode.Loose}
                 connectionRadius={30}
-                // 좌드래그=팬(이동), 박스선택 폐기. 다중선택은 Ctrl/Meta+클릭. 우클릭=필터추가(onNodeContextMenu) 유지.
+                // 좌드래그=팬(이동). Shift+좌드래그=박스(마퀴) 선택 → 무리 이동. 다중선택 가감은 Ctrl/Meta+클릭.
+                // 우클릭=필터추가(onNodeContextMenu) 유지. Shift 게이팅이라 팬과 안 부딪힘.
                 panOnDrag={[0, 1, 2]}
-                selectionKeyCode={null}
+                selectionKeyCode="Shift"
                 multiSelectionKeyCode={["Control", "Meta"]}
                 fitView
                 fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}
