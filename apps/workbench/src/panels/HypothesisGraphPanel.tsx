@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactFlow, {
     Background,
@@ -21,6 +21,9 @@ import { hypothesisRelationsQuery } from "../api/queries.js";
 import { buildGraphLayout } from "../lib/graphLayout.js";
 import { RELATION_TYPES, relationDef } from "../lib/relationTypes.js";
 import { useHypothesisData } from "../lib/useHypothesisData.js";
+import { useKeymapDynamic } from "../keymap/dynamic.js";
+import { SearchInput } from "../components/SearchInput.js";
+import { parseSearchTokens, buildTokenRe, highlightTokens, matchesTokens } from "../lib/highlight.js";
 
 // 가설 관계 그래프 — reactflow + dagre. 노드=가설, 엣지=관계(종류별 색/점선/화살표).
 // 노드 4면(상·하·좌·우) 어디서든 드래그 연결(ConnectionMode.Loose) → 관계 종류 선택 → 저장. 엣지 클릭=삭제.
@@ -37,6 +40,11 @@ interface HypNodeData {
 }
 
 function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
+    // 검색(리스트와 공유) — 매치 강조 + 비매치 흐리게(0.6). 노드마다 store 구독(노드 수 적음).
+    const search = useWorkbench((s) => s.hypothesisSearch);
+    const tokens = useMemo(() => parseSearchTokens(search), [search]);
+    const re = useMemo(() => buildTokenRe(tokens), [tokens]);
+    const matched = matchesTokens(data.text, re);
     // ID 안 보임. 3상태 인코딩(겹쳐도 공존): (A)연결=아래 그림자로 띄움 / (B)필터=외곽 링(제외=빨강) / (C)선택=채움.
     const ring = data.filterState === "pos" ? "var(--accent-primary)" : data.filterState === "neg" ? "var(--rise)" : null;
     // box-shadow 합성: (B) 외곽 링 + (A) 아래 그림자. 둘 다 box-shadow라 콤마로 공존(다른 레이어라 안 뭉갬).
@@ -55,6 +63,8 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
                 boxShadow: shadows.length ? shadows.join(", ") : undefined,
                 fontSize: 12,
                 color: "var(--text-primary)",
+                opacity: matched ? 1 : 0.6,
+                transition: "opacity 0.12s ease",
             }}
         >
             {/* 4면 핸들 — 모두 source 로 두고 ConnectionMode.Loose 로 어느 면↔어느 면이든 연결 허용.
@@ -74,7 +84,7 @@ function HypNode({ data }: NodeProps<HypNodeData>): JSX.Element {
                     ...(data.linkedToPoint ? { background: "var(--accent-soft)", color: "var(--accent-primary)", fontWeight: 600, borderRadius: 3, padding: "1px 4px", margin: "0 -2px" } : null),
                 }}
             >
-                {data.text}
+                {highlightTokens(data.text, tokens, re)}
             </div>
         </div>
     );
@@ -125,6 +135,20 @@ function savePositions(p: Record<string, { x: number; y: number }>): void {
 export function HypothesisGraphPanel(): JSX.Element {
     const selectedId = useWorkbench((s) => s.selectedHypothesisId);
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
+    const search = useWorkbench((s) => s.hypothesisSearch);
+    const setSearch = useWorkbench((s) => s.setHypothesisSearch);
+    const [searchOpen, setSearchOpen] = useState(false);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const openSearch = useCallback(() => {
+        setSearchOpen(true);
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+    }, []);
+    // Ctrl+F — 그래프 검색 열기(마운트 동안 전역 등록, 디스패처가 preventDefault 로 브라우저 찾기 차단). 평소 접힘.
+    useEffect(() => {
+        const { register, unregister } = useKeymapDynamic.getState();
+        register({ id: "hyp-graph.find", title: "가설 검색 열기(그래프)", category: "가설", keys: "ctrl+f", run: openSearch });
+        return () => unregister("hyp-graph.find");
+    }, [openSearch]);
     const filterDraft = useWorkbench((s) => s.filterDraft);
     const addFilterLeaf = useWorkbench((s) => s.addFilterLeaf);
     const membership = useMemo(() => filterMembership(filterDraft), [filterDraft]);
@@ -292,6 +316,35 @@ export function HypothesisGraphPanel(): JSX.Element {
                 <Background gap={18} size={1} />
                 <Controls showInteractive={false} />
             </ReactFlow>
+
+            {/* 접이식 검색 — 평소 돋보기(값 있으면 accent 로 활성 표시), Ctrl+F/클릭으로 펼침. Esc=접기(검색어 유지). */}
+            <div style={{ position: "absolute", top: 8, right: 8, zIndex: 6, display: "flex", alignItems: "center" }}>
+                {searchOpen ? (
+                    <div style={{ display: "flex", alignItems: "stretch", gap: 4, width: 248, boxShadow: "0 2px 10px rgba(0,0,0,0.18)", borderRadius: 2 }}>
+                        <SearchInput ref={searchInputRef} value={search} onChange={setSearch} onEscape={() => setSearchOpen(false)} placeholder="가설 검색 · | 로 여러 키워드" />
+                        <button
+                            onClick={() => setSearchOpen(false)}
+                            title="검색창 접기 (Esc)"
+                            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, border: "1px solid var(--border-default)", borderRadius: 2, background: "var(--bg-primary)", color: "var(--text-secondary)", cursor: "pointer" }}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="m13 17 5-5-5-5M6 17l5-5-5-5" />
+                            </svg>
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        onClick={openSearch}
+                        title="가설 검색 (Ctrl+F)"
+                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, border: "1px solid var(--border-default)", borderRadius: 2, background: "var(--bg-primary)", color: search ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m21 21-4.3-4.3" />
+                        </svg>
+                    </button>
+                )}
+            </div>
 
             {/* 연결 시 관계 종류 선택 팝오버 */}
             {pending && (

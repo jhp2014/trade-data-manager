@@ -6,6 +6,8 @@ import type { Hypothesis } from "../api/hypotheses.js";
 import { createHypothesis, updateHypothesis, linkHypothesis, unlinkHypothesis, deleteHypothesis } from "../api/hypotheses.js";
 import { hypothesesQuery, hypothesisLinksQuery, allPointsQuery } from "../api/queries.js";
 import { useHypothesisData } from "../lib/useHypothesisData.js";
+import { SearchInput } from "../components/SearchInput.js";
+import { parseSearchTokens, buildTokenRe, highlightTokens, matchesTokens } from "../lib/highlight.js";
 
 // 가설 패널 — 얇은 목록. ID 는 안 보인다(필터를 UI 로 만들므로 타이핑 불필요). 3상태 인코딩(그래프와 공통):
 //   (A) 현재 타점 연결 = 좌측 직각 바 + 상단 정렬  ·  (B) 필터 포함 = 우측 칩(제외=빨강)  ·  (C) 선택 = 행 배경.
@@ -16,6 +18,10 @@ export function HypothesisPanel(): JSX.Element {
     const setSelectedHypothesis = useWorkbench((s) => s.setSelectedHypothesis);
     const filterDraft = useWorkbench((s) => s.filterDraft);
     const addFilterLeaf = useWorkbench((s) => s.addFilterLeaf);
+    const search = useWorkbench((s) => s.hypothesisSearch);
+    const setSearch = useWorkbench((s) => s.setHypothesisSearch);
+    const searchTokens = useMemo(() => parseSearchTokens(search), [search]);
+    const searchRe = useMemo(() => buildTokenRe(searchTokens), [searchTokens]);
     const membership = useMemo(() => filterMembership(filterDraft), [filterDraft]);
     const qc = useQueryClient();
 
@@ -108,6 +114,10 @@ export function HypothesisPanel(): JSX.Element {
                         <PlusIcon />
                     </button>
                 </div>
+                {/* 검색 — 그래프와 공유 store. 매치 강조 + 비매치 흐리게. */}
+                <div style={{ display: "flex", marginTop: 6 }}>
+                    <SearchInput value={search} onChange={setSearch} onEscape={() => setSearch("")} placeholder="가설 검색 · | 로 여러 키워드(색 구분)" />
+                </div>
             </div>
 
             {/* 목록 */}
@@ -122,6 +132,7 @@ export function HypothesisPanel(): JSX.Element {
                     const mem = membership.get(h.id);
                     const negOnly = mem ? mem.neg && !mem.pos : false;
                     const editing = editingId === h.id;
+                    const matched = matchesTokens(h.text, searchRe); // 비매치는 흐리게(0.6)
                     return (
                         <div
                             key={h.id}
@@ -129,6 +140,7 @@ export function HypothesisPanel(): JSX.Element {
                                 if (el) rowRefs.current.set(h.id, el);
                                 else rowRefs.current.delete(h.id);
                             }}
+                            style={{ opacity: matched ? 1 : 0.6, transition: "opacity 0.12s ease" }}
                         >
                             <div
                                 onClick={() => { if (!editing) setSelectedHypothesis(selected ? null : h.id); }}
@@ -174,7 +186,7 @@ export function HypothesisPanel(): JSX.Element {
                                                 ...(linked ? { background: "var(--accent-soft)", borderRadius: 3, padding: "1px 4px", margin: "0 -2px", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" } : null),
                                             }}
                                         >
-                                            {h.text}
+                                            {highlightTokens(h.text, searchTokens, searchRe)}
                                         </span>
                                     </span>
                                 )}
