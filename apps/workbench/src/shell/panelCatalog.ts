@@ -28,6 +28,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "chart-1", component: "chart", title: "차트", plane: "eod" },
     { id: "chart-2", component: "chart", title: "차트", plane: "eod" },
     { id: "workset-1", component: "workset", title: "작업 대상", plane: "eod" },
+    { id: "history-1", component: "recentHistory", title: "최근 탐색", plane: "eod" },
     { id: "hypothesis-1", component: "hypothesis", title: "가설", plane: "eod" },
     { id: "hypothesis-graph-1", component: "hypothesisGraph", title: "가설 그래프", plane: "eod" },
     { id: "hypothesis-filter-1", component: "hypothesisFilter", title: "가설 필터", plane: "eod" },

@@ -50,7 +50,6 @@ export function WorksetPanel(): JSX.Element {
     const focusDate = useWorkbench((s) => s.focus.date);
     const focusTime = useWorkbench((s) => s.focus.time);
     const activePoint = useWorkbench((s) => s.activePoint);
-    const lastFocusOrigin = useWorkbench((s) => s.lastFocusOrigin);
     const setFocus = useWorkbench((s) => s.setFocus);
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const filterDraft = useWorkbench((s) => s.filterDraft);
@@ -177,11 +176,29 @@ export function WorksetPanel(): JSX.Element {
         register({ id: "workset.nav.nextPoint", title: "다음 타점(작업셋)", category: "작업셋", keys: "s", run: () => navRef.current.run(1) });
         return () => { unregister("workset.nav.prevPoint"); unregister("workset.nav.nextPoint"); };
     }, []);
-    // w/s 이동(자기 origin)일 때만 그 타점의 종목으로 스크롤(이미 보이면 안 움직임).
+
+    // ── focus 추종 — 어디서 종목/시간이 바뀌든(외부·자기 w/s 공통) 그 종목으로 스크롤. 다른 달이면 그 달로 전환 후 스크롤(2단계).
+    //    pendingScroll 로 달 전환 리렌더가 anchor 를 만든 다음 스크롤(한 번). block:"nearest" 라 이미 보이면 안 움직임.
+    const pendingScroll = useRef<string | null>(null);
     useEffect(() => {
-        if (!activePoint || lastFocusOrigin !== "workset") return;
-        anchorRefs.current.get(`${activePoint.date}|${activePoint.code}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }, [activePoint, lastFocusOrigin]);
+        if (!focusCode) return;
+        pendingScroll.current = `${focusDate}|${focusCode}`;
+        if (!filterOn && months.includes(monthOf(focusDate))) setSelMonth(monthOf(focusDate)); // 월별 모드만(필터 모드는 달 개념 없음)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusCode, focusDate, focusTime]);
+    useEffect(() => {
+        const key = pendingScroll.current;
+        if (!key) return;
+        const code = key.slice(key.indexOf("|") + 1);
+        const el = anchorRefs.current.get(key) ?? [...anchorRefs.current.entries()].find(([k]) => k.endsWith(`|${code}`))?.[1];
+        if (el) {
+            el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            pendingScroll.current = null;
+        } else if (filterOn || monthOf(focusDate) === month) {
+            pendingScroll.current = null; // 대상 달이 정착했는데 목록에 없음 → 포기(선 없는 종목 등)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [groups, focusCode, focusDate]);
 
     if (stocksQ.isLoading || pointsQ.isLoading) return <BoardCenter text="작업셋 로딩중…" />;
     if (stocksQ.isError) return <BoardCenter text={`작업셋 오류: ${(stocksQ.error as Error).message}`} />;

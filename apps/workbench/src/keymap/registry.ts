@@ -2,7 +2,19 @@ import type { Command, Scope } from "./types.js";
 import { canonicalChord } from "./keys.js";
 import { useUi } from "../store/ui.js";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
+import { useWorkbench } from "../store/workbench.js";
 import { useKeymapDynamic } from "./dynamic.js";
+
+// 활성 그룹의 탭 순환 — dock api 의 activeGroup.panels 를 dir 로 걷고 setActive. 탭 1개 이하면 무동작.
+function cycleActiveGroupTab(dir: 1 | -1): void {
+    const group = useDock.getState().api?.activeGroup;
+    if (!group) return;
+    const panels = group.panels;
+    if (panels.length < 2) return;
+    const cur = group.activePanel;
+    const idx = cur ? panels.indexOf(cur) : 0;
+    panels[(idx + dir + panels.length) % panels.length].api.setActive();
+}
 
 // 정적 단축키(전역, 데이터 비결합). 새 전역 단축키는 여기 한 줄 추가하면 디스패치·도움말에 동시 반영.
 // 데이터 결합형(차트 타점 등)은 소유 훅이 useKeymapDynamic 로 동적 등록한다.
@@ -18,7 +30,17 @@ const presetCommands: Command[] = Array.from({ length: PRESET_COUNT }, (_, i) =>
     keys: `ctrl+${i + 1}`,
     run: () => useDock.getState().loadPreset(i + 1),
 }));
-const staticRaw: Command[] = [...appCommands, ...presetCommands];
+// 창 순환 — 활성 dockview 그룹의 탭을 Tab/Shift+Tab 으로 순환. 입력창 포커스 중엔 디스패처가 양보(수식키 없음).
+const dockCommands: Command[] = [
+    { id: "dock.tab.next", title: "다음 탭(활성 그룹)", category: "레이아웃", keys: "tab", run: () => cycleActiveGroupTab(1) },
+    { id: "dock.tab.prev", title: "이전 탭(활성 그룹)", category: "레이아웃", keys: "shift+tab", run: () => cycleActiveGroupTab(-1) },
+];
+// 최근 탐색 순환 — back/forward 커서 모델(stepHistory). 워크셋 w/s 와 대칭이되 Alt(예약 아님)로.
+const historyCommands: Command[] = [
+    { id: "history.nav.newer", title: "위로·더 최근(최근 탐색)", category: "탐색", keys: "alt+w", run: () => useWorkbench.getState().stepHistory(-1) },
+    { id: "history.nav.older", title: "아래로·더 과거(최근 탐색)", category: "탐색", keys: "alt+s", run: () => useWorkbench.getState().stepHistory(1) },
+];
+const staticRaw: Command[] = [...appCommands, ...presetCommands, ...dockCommands, ...historyCommands];
 
 export const staticCommands: Command[] = staticRaw.map((c) => ({ ...c, keys: canonicalChord(c.keys) }));
 

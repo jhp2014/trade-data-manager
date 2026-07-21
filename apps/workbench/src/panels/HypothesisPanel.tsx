@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { filterMembership } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
@@ -39,6 +39,13 @@ export function HypothesisPanel(): JSX.Element {
 
     const [text, setText] = useState("");
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+    // 선택 축(selectedHypothesisId)은 그래프와 공유 → 그래프에서 선택 시 이 목록이 해당 가설로 스크롤(연결 종목이 펼쳐지므로).
+    // block:"nearest" 라 이미 보이면 안 움직임 → 목록 내부 클릭엔 부작용 없음(별도 origin 태그 불필요).
+    const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    useEffect(() => {
+        if (selectedId) rowRefs.current.get(selectedId)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, [selectedId]);
     const selectedPoints = useMemo(
         () => (selectedId ? links.filter((l) => l.hypothesisId === selectedId) : []),
         [links, selectedId],
@@ -116,7 +123,13 @@ export function HypothesisPanel(): JSX.Element {
                     const negOnly = mem ? mem.neg && !mem.pos : false;
                     const editing = editingId === h.id;
                     return (
-                        <div key={h.id}>
+                        <div
+                            key={h.id}
+                            ref={(el) => {
+                                if (el) rowRefs.current.set(h.id, el);
+                                else rowRefs.current.delete(h.id);
+                            }}
+                        >
                             <div
                                 onClick={() => { if (!editing) setSelectedHypothesis(selected ? null : h.id); }}
                                 onContextMenu={(e) => { e.preventDefault(); addFilterLeaf(h.id); }}

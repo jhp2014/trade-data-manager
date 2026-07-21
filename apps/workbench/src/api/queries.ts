@@ -58,6 +58,13 @@ export const hypothesisFiltersQuery = () =>
 export const stockMetaQuery = (code: string) =>
     queryOptions({ queryKey: ["stock-meta", code], queryFn: ({ signal }) => fetchStocksMeta([code], signal), enabled: code.length > 0, staleTime: META_STALE });
 
+// 여러 종목명 배치 조회(/stocks/meta 는 codes 다중 지원) — 최근 탐색처럼 코드 목록의 이름을 한 번에 얻을 때.
+// 키를 **정렬된 코드 집합**으로 잡아 재정렬(방문 시 맨 위로)엔 안 굴고, 새 코드가 들어올 때만 재조회.
+export const stocksMetaQuery = (codes: string[]) => {
+    const uniq = [...new Set(codes)].sort();
+    return queryOptions({ queryKey: ["stocks-meta", uniq.join(",")], queryFn: ({ signal }) => fetchStocksMeta(uniq, signal), enabled: uniq.length > 0, staleTime: META_STALE });
+};
+
 // 종목의 시트 테마+편입이슈(날짜무관·code 키). 배정 mutation 이 ["theme-context"] invalidate 로 갱신하므로 staleTime ∞.
 export const themeContextQuery = (code: string) =>
     queryOptions({ queryKey: ["theme-context", code], queryFn: ({ signal }) => fetchThemeContext(code, signal), enabled: code.length > 0, staleTime: IMMUTABLE });

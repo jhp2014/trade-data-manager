@@ -51,7 +51,7 @@ export interface FocusSlice {
     setSearch: (search: Search | null) => void;
 }
 
-export const createFocusSlice: StateCreator<WorkbenchState, [], [], FocusSlice> = (set) => ({
+export const createFocusSlice: StateCreator<WorkbenchState, [], [], FocusSlice> = (set, get) => ({
     focus: { date: kstToday(), code: "", time: null },
     scope: { theme: null },
     search: null,
@@ -61,17 +61,28 @@ export const createFocusSlice: StateCreator<WorkbenchState, [], [], FocusSlice> 
     // 모든 Focus 액션은 무효화규칙을 transitionFocus 단일 진실에 위임한다(각 액션이 규칙을 재현하지 않게).
     // chartZoom 만 액션 의도로 남긴다: 점프·종목전환(setDate/setCode/setFocus/goToPoint)=해제(전환은 항상 세션 기본 뷰,
     // 뷰 유지는 차트 패널의 "스케일 고정" 토글이 담당), 시간 드리프트(setTime)=유지.
-    setDate: (date, origin) =>
-        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, time: null }, origin), chartZoom: null })),
+    // 종목/날짜 전환(setTime 제외한 focus 액션) = 탐색 history 기록. setTime(시간 드리프트)은 기록 안 함 → 재방문 폭주 방지는 dedup 이 흡수.
+    // origin "history" (Alt+W/S 순환)는 기록 skip — 재정렬되면 순차 탐색이 깨지므로 커서만 stepHistory 가 관리.
+    setDate: (date, origin) => {
+        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, time: null }, origin), chartZoom: null }));
+        if (origin !== "history") get().recordVisit({ date, code: get().focus.code, time: null });
+    },
     // code 변경 시 time 유지(같은시각 횡적비교). zoom 은 해제 — 안 그러면 anchor 없는 확대가 마지막 봉(시간외)에 붙는다.
-    setCode: (code, origin) => set((s) => ({ ...transitionFocus(s, { ...s.focus, code }, origin), chartZoom: null })),
-    // 시간만 이동(리플레이/차트 드리프트) = 파생축 전부 유지 → 연결 표시(A) 안 흔들림.
+    setCode: (code, origin) => {
+        set((s) => ({ ...transitionFocus(s, { ...s.focus, code }, origin), chartZoom: null }));
+        if (origin !== "history") get().recordVisit({ date: get().focus.date, code, time: get().focus.time });
+    },
+    // 시간만 이동(리플레이/차트 드리프트) = 파생축 전부 유지 → 연결 표시(A) 안 흔들림. history 기록 안 함.
     setTime: (time, origin) => set((s) => transitionFocus(s, { ...s.focus, time }, origin)),
-    setFocus: ({ date, code, time }, origin) =>
-        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), chartZoom: null })),
+    setFocus: ({ date, code, time }, origin) => {
+        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), chartZoom: null }));
+        if (origin !== "history") get().recordVisit({ date, code, time });
+    },
     // 타점 이동 = focus 전이 + activePoint 명시 override(다른 타점 선택 시에만 A 바뀜).
-    goToPoint: ({ date, code, time }, origin) =>
-        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), activePoint: { code, date, time }, chartZoom: null })),
+    goToPoint: ({ date, code, time }, origin) => {
+        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), activePoint: { code, date, time }, chartZoom: null }));
+        if (origin !== "history") get().recordVisit({ date, code, time });
+    },
 
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { theme: null } })),
