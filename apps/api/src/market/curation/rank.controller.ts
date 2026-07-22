@@ -4,7 +4,12 @@ import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
 import { RANK_REPO } from "../tokens.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
-interface AxisBody {
+interface CreateAxisBody {
+    name: string;
+    scope?: string; // "point"(기본) | "day"
+}
+
+interface RenameAxisBody {
     name: string;
 }
 
@@ -27,10 +32,12 @@ export class RankController {
     }
 
     @Post()
-    async create(@Body() body: AxisBody): Promise<RankAxis> {
+    async create(@Body() body: CreateAxisBody): Promise<RankAxis> {
         const name = body?.name?.trim();
         if (!name) throw new BadRequestException("name 필수");
-        return this.repo.createAxis(name);
+        const scope = body?.scope ?? "point";
+        if (scope !== "point" && scope !== "day") throw new BadRequestException('scope 는 "point" | "day"');
+        return this.repo.createAxis(name, scope);
     }
 
     // ── 배치(:id/placements) 경로를 bare :id 앞에 선언 — Express 가 그것을 :id 로 삼지 않게 순서 보장.
@@ -60,7 +67,7 @@ export class RankController {
     }
 
     @Patch(":id")
-    async rename(@Param("id") id: string, @Body() body: AxisBody): Promise<{ ok: true }> {
+    async rename(@Param("id") id: string, @Body() body: RenameAxisBody): Promise<{ ok: true }> {
         if (!id) throw new BadRequestException("id 필수");
         const name = body?.name?.trim();
         if (!name) throw new BadRequestException("name 필수");

@@ -127,4 +127,51 @@ describe("DrizzleRankRepository (pglite)", () => {
         const a = await repo.createAxis("FK 검증 축");
         await expect(repo.place(a.id, { stockCode: "999999", date: "2026-06-30", time: "09:00:00" }, { kind: "between" })).rejects.toBeTruthy();
     });
+
+    it("createAxis scope — 기본 point, day 저장/조회", async () => {
+        const p = await repo.createAxis("scope 기본");
+        expect(p.scope).toBe("point");
+        const d = await repo.createAxis("scope day", "day");
+        expect(d.scope).toBe("day");
+        expect((await repo.listAxes()).find((x) => x.id === d.id)?.scope).toBe("day");
+    });
+
+    it("day 축 place — 그날 전 타점에 fanout(같은 slot, 미배치 타점도 끌어옴)", async () => {
+        const a = await repo.createAxis("일봉(day)", "day");
+        const r = await repo.place(a.id, P1, { kind: "between" }); // P1 하나로 호출 → 005930·06-30 전 타점(P1,P2)
+        const line = await repo.listAxisLine(a.id);
+        expect(line).toHaveLength(2); // P1·P2 둘 다 보임(point 축과 동일한 줄)
+        expect(new Set(line.map((p) => p.slotId))).toEqual(new Set([r.slotId])); // 한 slot 에 타이
+        expect(line.map((p) => p.time).sort()).toEqual(["09:11:00", "10:00:00"]);
+        expect(await slotCount(a.id)).toBe(1); // 다른 종목(P3)은 무관
+    });
+
+    it("day 축 이동 — 그날 타점 통째 이동 + 옛 slot GC(어느 타점으로 호출하든)", async () => {
+        const a = await repo.createAxis("끼(day)", "day");
+        const other = await repo.place(a.id, P3, { kind: "between" }); // 000660 day(P3) → slotA
+        await repo.place(a.id, P1, { kind: "between", prevSlotId: other.slotId }); // 005930 day(P1·P2) → slotB
+        expect(await slotCount(a.id)).toBe(2);
+
+        // 005930 day 를 slotA 로 이동 — P2 로 호출해도 그날 전체(P1·P2) 이동, slotB 비어 GC.
+        const moved = await repo.place(a.id, P2, { kind: "slot", slotId: other.slotId });
+        expect(moved.slotId).toBe(other.slotId);
+        expect(await slotCount(a.id)).toBe(1);
+        const line = await repo.listAxisLine(a.id);
+        expect(line).toHaveLength(3); // P3·P1·P2 한 slot
+        expect(new Set(line.map((p) => p.slotId))).toEqual(new Set([other.slotId]));
+    });
+
+    it("day 축 unplace — 그날 전 타점 제거 + slot GC(어느 타점으로 호출하든)", async () => {
+        const a = await repo.createAxis("테마(day)", "day");
+        await repo.place(a.id, P1, { kind: "between" }); // P1·P2 배치
+        expect(await repo.listAxisLine(a.id)).toHaveLength(2);
+        await repo.unplace(a.id, P2); // P2 로 호출 → 그날 전체 제거
+        expect(await repo.listAxisLine(a.id)).toHaveLength(0);
+        expect(await slotCount(a.id)).toBe(0);
+    });
+
+    it("day 축 place — 그날 타점 0개면 거부", async () => {
+        const a = await repo.createAxis("거래대금(day)", "day");
+        await expect(repo.place(a.id, { stockCode: "005930", date: "2020-01-01", time: "09:00:00" }, { kind: "between" })).rejects.toBeTruthy();
+    });
 });

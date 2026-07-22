@@ -160,6 +160,9 @@ export const rankAxes = curation.table(
     {
         id: bigserial("id", { mode: "bigint" }).primaryKey(),
         name: text("name").notNull(),
+        // 배치 단위(grain). point=(종목·날짜·시각) 타점별 / day=(종목·날짜) 하루 일관(place 시 그날 전 타점에 fanout).
+        // 저장은 언제나 실재 타점(placement 무변경) — day 는 "쓰기 확장" 편의일 뿐, 읽기(줄)는 point 와 동일.
+        scope: varchar("scope", { length: 10 }).notNull().default("point"),
     },
     (t) => [unique("uq_rank_axis_name").on(t.name)],
 );

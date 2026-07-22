@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
-import type { RankAxis, PlacedPoint, RankPoint, RankTarget, RankReader, RankStore } from "@trade-data-manager/market";
+import type { RankAxis, RankAxisScope, PlacedPoint, RankPoint, RankTarget, RankReader, RankStore } from "@trade-data-manager/market";
 import type { Database, DbClient } from "../db.js";
-import { rankAxes, rankSlots, rankPlacements } from "../schema/curation.js";
+import { rankAxes, rankSlots, rankPlacements, reviewPoints } from "../schema/curation.js";
 import { rowToRankAxis } from "../mappers/rank.js";
 
 /** Drizzle 구현 — 축(bigserial id) + slot(order_key) + 배치(자연키 정션). 배치/이동/제거는 트랜잭션. */
@@ -35,8 +35,8 @@ export class DrizzleRankRepository implements RankReader, RankStore {
         }));
     }
 
-    async createAxis(name: string): Promise<RankAxis> {
-        const [row] = await this.db.insert(rankAxes).values({ name }).returning();
+    async createAxis(name: string, scope: RankAxisScope = "point"): Promise<RankAxis> {
+        const [row] = await this.db.insert(rankAxes).values({ name, scope }).returning();
         return rowToRankAxis(row);
     }
 
@@ -53,6 +53,10 @@ export class DrizzleRankRepository implements RankReader, RankStore {
     async place(axisId: string, point: RankPoint, target: RankTarget): Promise<{ slotId: string; orderKey: number }> {
         const axis = BigInt(axisId);
         return this.db.transaction(async (tx) => {
+            // day 축은 그날 전 타점(미배치 포함)을 대상, point 축은 그 타점 하나. 그날 타점 0개면 붙일 데 없음.
+            const targets = await fanoutTargets(tx, axis, point);
+            if (targets.length === 0) throw new Error("그날 타점이 없어 배치할 수 없음");
+
             // 1. 대상 slot 결정 — 기존 합류(타이) 또는 두 이웃 사이 새 slot(중간키).
             let slotId: bigint;
             let orderKey: number;
@@ -70,20 +74,22 @@ export class DrizzleRankRepository implements RankReader, RankStore {
                 slotId = created.id;
             }
 
-            // 2. 옛 slot 파악(이동 시 GC 대상).
-            const oldSlotId = await currentSlotOf(tx, axis, point);
+            // 2. 대상 타점 전원 upsert — PK(code,date,time,axis) 충돌 = 이동 → slotId 만 교체. 비워진 옛 slot 수집.
+            const vacated = new Set<bigint>();
+            for (const p of targets) {
+                const old = await currentSlotOf(tx, axis, p);
+                if (old != null) vacated.add(old);
+                await tx
+                    .insert(rankPlacements)
+                    .values({ stockCode: p.stockCode, tradeDate: p.date, tradeTime: p.time, axisId: axis, slotId })
+                    .onConflictDoUpdate({
+                        target: [rankPlacements.stockCode, rankPlacements.tradeDate, rankPlacements.tradeTime, rankPlacements.axisId],
+                        set: { slotId },
+                    });
+            }
 
-            // 3. 배치 upsert — PK(code,date,time,axis) 충돌 = 이동 → slotId 만 교체.
-            await tx
-                .insert(rankPlacements)
-                .values({ stockCode: point.stockCode, tradeDate: point.date, tradeTime: point.time, axisId: axis, slotId })
-                .onConflictDoUpdate({
-                    target: [rankPlacements.stockCode, rankPlacements.tradeDate, rankPlacements.tradeTime, rankPlacements.axisId],
-                    set: { slotId },
-                });
-
-            // 4. 이동으로 비워진 옛 slot GC.
-            if (oldSlotId != null && oldSlotId !== slotId) await gcSlotIfEmpty(tx, oldSlotId);
+            // 3. 이동으로 비워진 옛 slot GC(새 slot 제외).
+            for (const old of vacated) if (old !== slotId) await gcSlotIfEmpty(tx, old);
 
             return { slotId: String(slotId), orderKey };
         });
@@ -92,20 +98,40 @@ export class DrizzleRankRepository implements RankReader, RankStore {
     async unplace(axisId: string, point: RankPoint): Promise<void> {
         const axis = BigInt(axisId);
         await this.db.transaction(async (tx) => {
-            const oldSlotId = await currentSlotOf(tx, axis, point);
-            await tx
-                .delete(rankPlacements)
-                .where(
-                    and(
-                        eq(rankPlacements.stockCode, point.stockCode),
-                        eq(rankPlacements.tradeDate, point.date),
-                        eq(rankPlacements.tradeTime, point.time),
-                        eq(rankPlacements.axisId, axis),
-                    ),
-                );
-            if (oldSlotId != null) await gcSlotIfEmpty(tx, oldSlotId);
+            const targets = await fanoutTargets(tx, axis, point); // day 축 = 그날 전 타점
+            const vacated = new Set<bigint>();
+            for (const p of targets) {
+                const old = await currentSlotOf(tx, axis, p);
+                if (old != null) vacated.add(old);
+                await tx
+                    .delete(rankPlacements)
+                    .where(
+                        and(
+                            eq(rankPlacements.stockCode, p.stockCode),
+                            eq(rankPlacements.tradeDate, p.date),
+                            eq(rankPlacements.tradeTime, p.time),
+                            eq(rankPlacements.axisId, axis),
+                        ),
+                    );
+            }
+            for (const old of vacated) await gcSlotIfEmpty(tx, old);
         });
     }
+}
+
+/**
+ * 배치가 실제로 적용될 타점 집합. point 축 = 넘어온 타점 하나 그대로.
+ * day 축 = 그 (종목·날짜)의 review_points 전부(아직 이 축에 안 꽂힌 타점도 끌어와 함께 정렬 = fanout).
+ */
+async function fanoutTargets(tx: DbClient, axis: bigint, point: RankPoint): Promise<RankPoint[]> {
+    const [a] = await tx.select({ scope: rankAxes.scope }).from(rankAxes).where(eq(rankAxes.id, axis));
+    if (!a) throw new Error("축 없음");
+    if (a.scope !== "day") return [point];
+    const rows = await tx
+        .select({ time: reviewPoints.tradeTime })
+        .from(reviewPoints)
+        .where(and(eq(reviewPoints.stockCode, point.stockCode), eq(reviewPoints.tradeDate, point.date)));
+    return rows.map((r) => ({ stockCode: point.stockCode, date: point.date, time: r.time }));
 }
 
 /** 타점이 이 축에서 현재 꽂힌 slot(없으면 null). */

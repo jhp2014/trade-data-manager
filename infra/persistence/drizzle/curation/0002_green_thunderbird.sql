@@ -1,0 +1,1 @@
+ALTER TABLE "curation"."rank_axes" ADD COLUMN "scope" varchar(10) DEFAULT 'point' NOT NULL;

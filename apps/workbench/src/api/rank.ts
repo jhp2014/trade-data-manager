@@ -22,7 +22,7 @@ export const fetchRankAxes = (signal?: AbortSignal): Promise<RankAxis[]> => apiG
 export const fetchAxisLine = (axisId: string, signal?: AbortSignal): Promise<PlacedPoint[]> =>
     apiGet<PlacedPoint[]>(`rank-axes/${axisId}/placements`, undefined, signal);
 
-export const createRankAxis = (name: string): Promise<RankAxis> => apiPost<RankAxis>("rank-axes", { name });
+export const createRankAxis = (name: string, scope: "point" | "day" = "point"): Promise<RankAxis> => apiPost<RankAxis>("rank-axes", { name, scope });
 
 export const renameRankAxis = (id: string, name: string): Promise<void> => apiPatch(`rank-axes/${id}`, { name });
 
