@@ -102,6 +102,27 @@ describe("DrizzleRankRepository (pglite)", () => {
         expect(await repo.listAxisLine(a.id)).toHaveLength(0); // placement cascade
     });
 
+    it("place between — 간격 소진 시 자동 reindex(같은 틈 반복 삽입에도 순서 보존)", async () => {
+        const a = await repo.createAxis("reindex 축");
+        const N = 60;
+        // 비-0 앵커(top=1) 쪽으로 압착하면 ~52회쯤 double 간격 소진 → 자동 reindex 발동.
+        const pts = Array.from({ length: N }, (_, i) => ({ stockCode: "100000", date: "2026-06-30", time: `09:${String(i).padStart(2, "0")}:00` }));
+        await new DrizzleReviewPointRepository(t.db).upsert(pts);
+
+        const bottom = await repo.place(a.id, pts[0], { kind: "between" }); // key 0(최하단)
+        const top = await repo.place(a.id, pts[1], { kind: "between", prevSlotId: bottom.slotId }); // key 1(최상단, 고정 앵커)
+        let inner = bottom;
+        for (let i = 2; i < N; i++) {
+            inner = await repo.place(a.id, pts[i], { kind: "between", prevSlotId: inner.slotId, nextSlotId: top.slotId });
+        }
+
+        const line = await repo.listAxisLine(a.id);
+        expect(line).toHaveLength(N); // 전원 배치 성공(throw·소진 없음)
+        for (let i = 1; i < line.length; i++) expect(line[i].orderKey).toBeGreaterThan(line[i - 1].orderKey); // 키 순증가(중복·역전 없음)
+        expect(line[0].time).toBe("09:00:00"); // 최하단 유지
+        expect(line[line.length - 1].time).toBe("09:01:00"); // 최상단(top) 유지
+    });
+
     it("place 는 존재하는 타점만 — 없는 타점(FK) 위반은 거부", async () => {
         const a = await repo.createAxis("FK 검증 축");
         await expect(repo.place(a.id, { stockCode: "999999", date: "2026-06-30", time: "09:00:00" }, { kind: "between" })).rejects.toBeTruthy();

@@ -65,7 +65,7 @@ export class DrizzleRankRepository implements RankReader, RankStore {
                 slotId = BigInt(target.slotId);
                 orderKey = s.orderKey;
             } else {
-                orderKey = await midpointKey(tx, axis, target.prevSlotId, target.nextSlotId);
+                orderKey = await resolveBetweenKey(tx, axis, target.prevSlotId, target.nextSlotId);
                 const [created] = await tx.insert(rankSlots).values({ axisId: axis, orderKey }).returning({ id: rankSlots.id });
                 slotId = created.id;
             }
@@ -124,14 +124,48 @@ async function currentSlotOf(tx: DbClient, axis: bigint, point: RankPoint): Prom
     return row?.slotId ?? null;
 }
 
-/** 두 이웃 slot 사이 새 order_key. 끝단(prev/next null)은 ±1, 빈 축은 0. */
-async function midpointKey(tx: DbClient, axis: bigint, prevSlotId?: string, nextSlotId?: string): Promise<number> {
+/**
+ * between 배치용 order_key. 양쪽 이웃 사이 double 간격이 소진돼 사이 값을 못 만들면
+ * 축을 정수 간격으로 reindex 한 뒤 재계산(반드시 성공). 소진은 같은 틈에 ~50회 이상 반복 삽입 시에만.
+ */
+async function resolveBetweenKey(tx: DbClient, axis: bigint, prevSlotId?: string, nextSlotId?: string): Promise<number> {
+    const first = await midpointKey(tx, axis, prevSlotId, nextSlotId);
+    if (first != null) return first;
+    await reindexAxis(tx, axis);
+    const retry = await midpointKey(tx, axis, prevSlotId, nextSlotId);
+    if (retry == null) throw new Error("reindex 후에도 중간키 실패 — 인접하지 않은 경계 slot 의심");
+    return retry;
+}
+
+/**
+ * 두 이웃 slot 사이 새 order_key. 끝단(prev/next null)은 ±1, 빈 축은 0.
+ * 양쪽 이웃이 있는데 부동소수 간격이 소진돼 엄격히 사이인 값이 없으면 null(→ 호출부가 reindex).
+ */
+async function midpointKey(tx: DbClient, axis: bigint, prevSlotId?: string, nextSlotId?: string): Promise<number | null> {
     const prev = prevSlotId != null ? await keyOf(tx, axis, prevSlotId) : null;
     const next = nextSlotId != null ? await keyOf(tx, axis, nextSlotId) : null;
-    if (prev != null && next != null) return (prev + next) / 2;
+    if (prev != null && next != null) {
+        const m = (prev + next) / 2;
+        return m > prev && m < next ? m : null; // 간격 소진이면 null
+    }
     if (prev != null) return prev + 1;
     if (next != null) return next - 1;
     return 0;
+}
+
+/**
+ * 한 축의 slot 을 현재 순서대로 0,1,2,…N-1 로 재부여. 정수 간격이라 사이 세분 여지가 복원된다.
+ * order_key 에 유일 제약이 없어 갱신 중 일시적 중복도 안전. slot·placement 는 그대로(키만 바뀜) → 순서 보존.
+ */
+async function reindexAxis(tx: DbClient, axis: bigint): Promise<void> {
+    const slots = await tx
+        .select({ id: rankSlots.id })
+        .from(rankSlots)
+        .where(eq(rankSlots.axisId, axis))
+        .orderBy(asc(rankSlots.orderKey), asc(rankSlots.id));
+    for (let i = 0; i < slots.length; i++) {
+        await tx.update(rankSlots).set({ orderKey: i }).where(eq(rankSlots.id, slots[i].id));
+    }
 }
 
 /** slot 의 order_key(축 소속 검증). */
