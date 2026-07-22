@@ -14,12 +14,13 @@ import {
     DrizzleReviewPointRepository,
     DrizzleHypothesisRepository,
     DrizzleHypothesisFilterRepository,
+    DrizzleRankRepository,
     DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, HYPOTHESIS_FILTER_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, HYPOTHESIS_FILTER_REPO, RANK_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
@@ -31,6 +32,7 @@ import { ReviewPointController } from "./curation/reviewPoint.controller.js";
 import { CommentController } from "./curation/comment.controller.js";
 import { HypothesisController } from "./curation/hypothesis.controller.js";
 import { HypothesisFilterController } from "./curation/hypothesisFilter.controller.js";
+import { RankController } from "./curation/rank.controller.js";
 import { NewsController } from "./news/news.controller.js";
 import { TelegramNewsController } from "./news/telegramNews.controller.js";
 import { StocksController } from "./stocks/stocks.controller.js";
@@ -145,6 +147,12 @@ const curationProviders: Provider[] = [
         useFactory: (pool: Pool) => new DrizzleHypothesisFilterRepository(createDb(pool)),
         inject: [CURATION_POOL],
     },
+    {
+        // 순위 배치 — repo 를 그대로 노출(축 CRUD·줄 피드·배치/이동/제거). 조립(줄 렌더)은 클라 인메모리(옵션 A).
+        provide: RANK_REPO,
+        useFactory: (pool: Pool) => new DrizzleRankRepository(createDb(pool)),
+        inject: [CURATION_POOL],
+    },
 ];
 
 const newsProviders: Provider[] = [
@@ -174,6 +182,7 @@ const newsProviders: Provider[] = [
         CommentController,
         HypothesisController,
         HypothesisFilterController,
+        RankController,
         NewsController,
         TelegramNewsController,
         StocksController,

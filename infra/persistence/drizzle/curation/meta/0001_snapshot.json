@@ -1,0 +1,723 @@
+{
+  "id": "81fd8e70-b8eb-4dce-b0a9-391d59b5e534",
+  "prevId": "ded71362-d826-4475-b0ee-868ff770957f",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "curation.daily_comments": {
+      "name": "daily_comments",
+      "schema": "curation",
+      "columns": {
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author": {
+          "name": "author",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_daily_comments_stock": {
+          "name": "idx_daily_comments_stock",
+          "columns": [
+            {
+              "expression": "stock_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "daily_comments_trade_date_stock_code_pk": {
+          "name": "daily_comments_trade_date_stock_code_pk",
+          "columns": [
+            "trade_date",
+            "stock_code"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.hypotheses": {
+      "name": "hypotheses",
+      "schema": "curation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.hypothesis_filters": {
+      "name": "hypothesis_filters",
+      "schema": "curation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expr": {
+          "name": "expr",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_hyp_filter_name": {
+          "name": "uq_hyp_filter_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.hypothesis_points": {
+      "name": "hypothesis_points",
+      "schema": "curation",
+      "columns": {
+        "hypothesis_id": {
+          "name": "hypothesis_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_time": {
+          "name": "trade_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_hyp_points_point": {
+          "name": "idx_hyp_points_point",
+          "columns": [
+            {
+              "expression": "stock_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "trade_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "trade_time",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hypothesis_points_hypothesis_id_hypotheses_id_fk": {
+          "name": "hypothesis_points_hypothesis_id_hypotheses_id_fk",
+          "tableFrom": "hypothesis_points",
+          "tableTo": "hypotheses",
+          "schemaTo": "curation",
+          "columnsFrom": [
+            "hypothesis_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fk_hyp_points_review_point": {
+          "name": "fk_hyp_points_review_point",
+          "tableFrom": "hypothesis_points",
+          "tableTo": "review_points",
+          "schemaTo": "curation",
+          "columnsFrom": [
+            "stock_code",
+            "trade_date",
+            "trade_time"
+          ],
+          "columnsTo": [
+            "stock_code",
+            "trade_date",
+            "trade_time"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "hypothesis_points_hypothesis_id_stock_code_trade_date_trade_time_pk": {
+          "name": "hypothesis_points_hypothesis_id_stock_code_trade_date_trade_time_pk",
+          "columns": [
+            "hypothesis_id",
+            "stock_code",
+            "trade_date",
+            "trade_time"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.hypothesis_relations": {
+      "name": "hypothesis_relations",
+      "schema": "curation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "from_id": {
+          "name": "from_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_id": {
+          "name": "to_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relation_type": {
+          "name": "relation_type",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_hyp_rel_to": {
+          "name": "idx_hyp_rel_to",
+          "columns": [
+            {
+              "expression": "to_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hypothesis_relations_from_id_hypotheses_id_fk": {
+          "name": "hypothesis_relations_from_id_hypotheses_id_fk",
+          "tableFrom": "hypothesis_relations",
+          "tableTo": "hypotheses",
+          "schemaTo": "curation",
+          "columnsFrom": [
+            "from_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "hypothesis_relations_to_id_hypotheses_id_fk": {
+          "name": "hypothesis_relations_to_id_hypotheses_id_fk",
+          "tableFrom": "hypothesis_relations",
+          "tableTo": "hypotheses",
+          "schemaTo": "curation",
+          "columnsFrom": [
+            "to_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_hyp_rel": {
+          "name": "uq_hyp_rel",
+          "nullsNotDistinct": false,
+          "columns": [
+            "from_id",
+            "relation_type",
+            "to_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.price_lines": {
+      "name": "price_lines",
+      "schema": "curation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_date": {
+          "name": "anchor_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_time": {
+          "name": "anchor_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "field": {
+          "name": "field",
+          "type": "varchar(5)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'high'"
+        },
+        "memo": {
+          "name": "memo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_price_lines_chart": {
+          "name": "idx_price_lines_chart",
+          "columns": [
+            {
+              "expression": "stock_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "trade_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.rank_axes": {
+      "name": "rank_axes",
+      "schema": "curation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_rank_axis_name": {
+          "name": "uq_rank_axis_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.rank_placements": {
+      "name": "rank_placements",
+      "schema": "curation",
+      "columns": {
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_time": {
+          "name": "trade_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "axis_id": {
+          "name": "axis_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slot_id": {
+          "name": "slot_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_rank_placements_slot": {
+          "name": "idx_rank_placements_slot",
+          "columns": [
+            {
+              "expression": "slot_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fk_rank_placement_review_point": {
+          "name": "fk_rank_placement_review_point",
+          "tableFrom": "rank_placements",
+          "tableTo": "review_points",
+          "schemaTo": "curation",
+          "columnsFrom": [
+            "stock_code",
+            "trade_date",
+            "trade_time"
+          ],
+          "columnsTo": [
+            "stock_code",
+            "trade_date",
+            "trade_time"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fk_rank_placement_slot": {
+          "name": "fk_rank_placement_slot",
+          "tableFrom": "rank_placements",
+          "tableTo": "rank_slots",
+          "schemaTo": "curation",
+          "columnsFrom": [
+            "axis_id",
+            "slot_id"
+          ],
+          "columnsTo": [
+            "axis_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "rank_placements_stock_code_trade_date_trade_time_axis_id_pk": {
+          "name": "rank_placements_stock_code_trade_date_trade_time_axis_id_pk",
+          "columns": [
+            "stock_code",
+            "trade_date",
+            "trade_time",
+            "axis_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.rank_slots": {
+      "name": "rank_slots",
+      "schema": "curation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "axis_id": {
+          "name": "axis_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_key": {
+          "name": "order_key",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_rank_slots_axis_order": {
+          "name": "idx_rank_slots_axis_order",
+          "columns": [
+            {
+              "expression": "axis_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "order_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "rank_slots_axis_id_rank_axes_id_fk": {
+          "name": "rank_slots_axis_id_rank_axes_id_fk",
+          "tableFrom": "rank_slots",
+          "tableTo": "rank_axes",
+          "schemaTo": "curation",
+          "columnsFrom": [
+            "axis_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_rank_slot_axis_id": {
+          "name": "uq_rank_slot_axis_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "axis_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "curation.review_points": {
+      "name": "review_points",
+      "schema": "curation",
+      "columns": {
+        "stock_code": {
+          "name": "stock_code",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_date": {
+          "name": "trade_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_time": {
+          "name": "trade_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "memo": {
+          "name": "memo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "review_points_stock_code_trade_date_trade_time_pk": {
+          "name": "review_points_stock_code_trade_date_trade_time_pk",
+          "columns": [
+            "stock_code",
+            "trade_date",
+            "trade_time"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "curation": "curation"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

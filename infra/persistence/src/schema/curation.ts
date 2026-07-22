@@ -6,7 +6,7 @@
 //   · review_points  : 복기 타점((종목,날짜,시각) 자연키 = caseId. hypothesis 가 하류에서 읽어 의미 부여)
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
-import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, jsonb, primaryKey, foreignKey, unique, index } from "drizzle-orm/pg-core";
+import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, jsonb, doublePrecision, primaryKey, foreignKey, unique, index } from "drizzle-orm/pg-core";
 
 export const curation = pgSchema("curation");
 
@@ -146,3 +146,76 @@ export const hypothesisFilters = curation.table(
 
 export type HypothesisFilterRow = typeof hypothesisFilters.$inferSelect;
 export type HypothesisFilterInsert = typeof hypothesisFilters.$inferInsert;
+
+// ── 순위 배치(ordinal placement) ────────────────────────────────────────────
+// 점수를 매기지 않고, 각 비교 차원(축)마다 기존 타점들이 늘어선 '줄' 위에서 상대 위치만 정한다.
+// 위치(백분위)는 저장 순간의 절대점수가 아니라 데이터에 대한 상대 순서 → 기준 드리프트에 강함.
+// 검색은 "A 타점보다 위·B 타점보다 아래"처럼 참조 타점으로 경계를 잡아 축마다 AND. outcome 은 reviewPoint 가 이미 보유.
+
+// 8. 순위 축(rank axis) — 순서를 매길 수 있는 하나의 비교 차원(일봉-형태, 테마, 거래대금, 끼 …). 앱에서 CRUD.
+//    원칙: 한 축 = "일관되게 상하 순서를 매길 수 있는 하나". 순서를 못 매기겠으면 두 축이 엉킨 신호 → 분리.
+//    순서 자체가 없는 '종류'(테마 분류 등 명목형)는 축이 아니라 태그로 다룬다(여기 안 넣음).
+export const rankAxes = curation.table(
+    "rank_axes",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        name: text("name").notNull(),
+    },
+    (t) => [unique("uq_rank_axis_name").on(t.name)],
+);
+
+// 9. 슬롯(slot) — 한 축의 줄 위 한 '위치'. order_key 로 정렬. 사이 삽입 = 두 이웃 order_key 의 중간값
+//    (같은 틈에 반복 삽입해 double 정밀도가 바닥나면 그 축만 order_key 재부여=reindex).
+//    타이(같은 순위) = 여러 placement 가 한 slot 을 공유 → slot 이 유일한 키를 든다(재정렬해도 타이 안 깨짐).
+//    unique(axis_id, id) = placement 의 (axis_id, slot_id) 복합 FK 대상. slot 이 선언된 축과 다른 축에 꽂히는
+//    모순을 DB 가 차단(앱 검증 불필요).
+export const rankSlots = curation.table(
+    "rank_slots",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        axisId: bigint("axis_id", { mode: "bigint" })
+            .notNull()
+            .references(() => rankAxes.id, { onDelete: "cascade" }),
+        orderKey: doublePrecision("order_key").notNull(),
+    },
+    (t) => [
+        unique("uq_rank_slot_axis_id").on(t.axisId, t.id),
+        index("idx_rank_slots_axis_order").on(t.axisId, t.orderKey),
+    ],
+);
+
+// 10. 배치(placement) — 한 복기 타점(reviewPoint)을 한 축의 한 slot 에 꽂음. situation = reviewPoint 재사용.
+//     PK (stock,date,time,axis) = "한 타점은 한 축에 최대 한 번"(=한 slot). reviewPoint 삼중키로 FK(cascade).
+//     (axis_id, slot_id) 복합 FK → rank_slots(axis_id, id): slot 의 축 == placement 의 축을 DB 가 보장.
+//     축 삭제 → slot cascade → placement cascade / 타점 삭제 → placement cascade.
+export const rankPlacements = curation.table(
+    "rank_placements",
+    {
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(),
+        tradeTime: time("trade_time").notNull(),
+        axisId: bigint("axis_id", { mode: "bigint" }).notNull(),
+        slotId: bigint("slot_id", { mode: "bigint" }).notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime, t.axisId] }),
+        foreignKey({
+            columns: [t.stockCode, t.tradeDate, t.tradeTime],
+            foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
+            name: "fk_rank_placement_review_point",
+        }).onDelete("cascade"),
+        foreignKey({
+            columns: [t.axisId, t.slotId],
+            foreignColumns: [rankSlots.axisId, rankSlots.id],
+            name: "fk_rank_placement_slot",
+        }).onDelete("cascade"),
+        index("idx_rank_placements_slot").on(t.slotId),
+    ],
+);
+
+export type RankAxisRow = typeof rankAxes.$inferSelect;
+export type RankAxisInsert = typeof rankAxes.$inferInsert;
+export type RankSlotRow = typeof rankSlots.$inferSelect;
+export type RankSlotInsert = typeof rankSlots.$inferInsert;
+export type RankPlacementRow = typeof rankPlacements.$inferSelect;
+export type RankPlacementInsert = typeof rankPlacements.$inferInsert;

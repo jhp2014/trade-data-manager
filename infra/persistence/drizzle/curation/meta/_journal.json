@@ -8,6 +8,13 @@
       "when": 1783610495608,
       "tag": "0000_gifted_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784626281771,
+      "tag": "0001_sweet_random",
+      "breakpoints": true
     }
   ]
 }
