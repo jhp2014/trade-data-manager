@@ -80,7 +80,10 @@ export function RankResultPanel(): JSX.Element {
                                 onMouseEnter={(ev) => (ev.currentTarget.style.background = "var(--bg-secondary)")}
                                 onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}>
                                 <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</td>
-                                <td style={{ ...td, color: "var(--text-tertiary)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{row.date.slice(5)} {row.time.slice(0, 5)}</td>
+                                <td style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>
+                                    <div style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{row.date.slice(2).replace(/-/g, ".")}</div>
+                                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent-primary)" }}>{row.time.slice(0, 5)}</div>
+                                </td>
                                 <td style={{ ...tdNum, color: "#1baf7a" }}>+{row.e.mfe.toFixed(1)}</td>
                                 <td style={{ ...tdNum, color: "#eb6834" }}>{row.e.maePre.toFixed(1)}</td>
                                 <td style={{ ...tdNum, color: "#eb6834" }}>{row.e.maePost.toFixed(1)}</td>
