@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { CandlestickSeries, CrosshairMode, LineSeries, LineStyle, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
+import { CandlestickSeries, CrosshairMode, LineSeries, LineStyle, createSeriesMarkers, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp } from "lightweight-charts";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "../chart/chartShell.js";
-import { RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
+import { RISE_COLOR, FALL_COLOR, AMOUNT_BUCKET_COLORS } from "../chart/chartUtils.js";
+import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { RankHeatmap, asHeatPrimitive, type HeatModel } from "./rank/rankHeatmapPrimitive.js";
 import type { RankPointPath } from "../api/rankPaths.js";
 
@@ -53,10 +54,10 @@ function buildModel(paths: RankPointPath[], dataMinT: number, dataMaxT: number, 
 const fmtElapsed = (t: number): string => { const m = Math.round((t - BASE) / 60); return m === 0 ? "진입" : `${m}분`; };
 const fmtClock = (min: number): string => { const m = ((Math.round(min) % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 
-export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, setHorizon, target, stop, setTarget, setStop, overlay }: {
+export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, setHorizon, target, stop, setTarget, setStop, overlay, heatOn, showAmtMarkers }: {
     paths: RankPointPath[]; horizon: number; dataMinT: number; dataMaxT: number; bucket: number; setHorizon: (m: number) => void;
     target: number; stop: number; setTarget: (v: number) => void; setStop: (v: number) => void;
-    overlay: HeatOverlay | null;
+    overlay: HeatOverlay | null; heatOn: boolean; showAmtMarkers: boolean;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -75,6 +76,7 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
     const overlayRef = useRef<ISeriesApi<"Candlestick"> | null>(null); // 선택 종목 캔들(좌측, 실 %)
     const amountMapRef = useRef(new Map<number, { amount: number; cumAmount: number }>()); // time → 분봉/누적 거래대금(툴팁)
     const primRef = useRef<RankHeatmap | null>(null);
+    const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null); // 선택 종목 봉 위 거래대금 마커
     const yRangeRef = useRef({ lo: -1, hi: 1 });
     const overlayRangeRef = useRef({ lo: -1, hi: 1 });
     const tRef = useRef<HTMLDivElement>(null);
@@ -105,6 +107,7 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
             autoscaleInfoProvider: () => ({ priceRange: { minValue: overlayRangeRef.current.lo, maxValue: overlayRangeRef.current.hi } }),
         });
         overlayRef.current = ov;
+        markersRef.current = createSeriesMarkers(ov);
         const prim = new RankHeatmap();
         prim.setSeries(anchor);
         prim.onLayout = (c) => {
@@ -121,7 +124,7 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
         };
         anchor.attachPrimitive(asHeatPrimitive(prim));
         primRef.current = prim;
-        return () => { seriesRef.current = null; overlayRef.current = null; primRef.current = null; };
+        return () => { seriesRef.current = null; overlayRef.current = null; primRef.current = null; markersRef.current = null; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -137,6 +140,33 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
     }, [dataSig]);
 
     useEffect(() => { primRef.current?.setModel(model); }, [model]);
+    useEffect(() => { primRef.current?.setCellsVisible(heatOn); }, [heatOn]);
+
+    // 선택 종목 봉 위 분봉 거래대금 마커(구간 하한 억) — OFF 또는 오버레이 없으면 비움.
+    useEffect(() => {
+        const mk = markersRef.current;
+        if (!mk) return;
+        const markers: SeriesMarker<Time>[] = [];
+        if (overlay && showAmtMarkers) {
+            for (const p of overlay.pts) {
+                const b = amountBucketIndex(p.amount);
+                if (b >= 0) markers.push({ time: (BASE + p.t * 60) as UTCTimestamp, position: "aboveBar", color: AMOUNT_BUCKET_COLORS[b], shape: "circle", size: 0, text: `${AMOUNT_BUCKETS_EOK[b]}` });
+            }
+        }
+        mk.setMarkers(markers);
+    }, [overlay, showAmtMarkers]);
+
+    // 종목 변경 시 기본 보기 = 진입 −20분 ~ horizon(h) +20분(데이터 범위 내 클램프). horizon 은 변경 당시 값 사용.
+    const ovSig = overlay ? `${overlay.name}|${overlay.entryMin}` : null;
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart || !ovSig) return;
+        const tMin = Math.min(0, dataMinT), tMax = Math.max(1, dataMaxT);
+        const from = (BASE + Math.max(-20, tMin) * 60) as UTCTimestamp;
+        const to = (BASE + Math.min(horizon + 20, tMax) * 60) as UTCTimestamp;
+        chart.timeScale().setVisibleRange({ from, to });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ovSig]);
 
     // 선택 종목 오버레이 — 좌측축 실%(어파인 범위 = 정규화 [yLo,yHi] 의 실% 상). 없으면 좌측축 숨김.
     useEffect(() => {

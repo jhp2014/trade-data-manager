@@ -57,6 +57,8 @@ export function RankFilterPanel(): JSX.Element {
     const [target, setTarget] = useState(5);
     const [stop, setStop] = useState(-3);
     const [baseMode, setBaseMode] = useState<ChartPriceMode>("un"); // 좌측축 실% 분모 시장(KRX/UN 전일종가) — 이 패널 로컬.
+    const [heatOn, setHeatOn] = useState(true); // 밀도 히트맵 구름 표시 — 끄면 오버레이 캔들·기준선만.
+    const [amtMarkersOn, setAmtMarkersOn] = useState(false); // 선택 종목 봉 위 분봉 거래대금 마커.
     const sim = useMemo(() => simulateTargetStop(r.paths, r.effHorizon, target, stop), [r.paths, r.effHorizon, target, stop]);
     const overlay = useSelectedOverlay(r.nameOf, baseMode);
 
@@ -85,6 +87,13 @@ export function RankFilterPanel(): JSX.Element {
                             style={{ border: `1px solid ${baseMode === m ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4, background: baseMode === m ? "var(--accent-soft)" : "transparent", color: baseMode === m ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", fontSize: 11, padding: "2px 6px", textTransform: "uppercase" }}>{m}</button>
                     ))}
                 </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--text-secondary)" }}>
+                    표시
+                    <button onClick={() => setHeatOn((v) => !v)} title="밀도 히트맵 구름 — 끄면 오버레이 캔들·기준선만(차트만 보기)"
+                        style={{ border: `1px solid ${heatOn ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4, background: heatOn ? "var(--accent-soft)" : "transparent", color: heatOn ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", fontSize: 11, padding: "2px 6px" }}>히트맵</button>
+                    <button onClick={() => setAmtMarkersOn((v) => !v)} title="선택 종목 봉 위 분봉 거래대금 마커(구간 억)"
+                        style={{ border: `1px solid ${amtMarkersOn ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4, background: amtMarkersOn ? "var(--accent-soft)" : "transparent", color: amtMarkersOn ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", fontSize: 11, padding: "2px 6px" }}>거래대금</button>
+                </div>
                 <div style={{ display: "flex", gap: 14, marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
                     <Metric label="N" value={String(n)} />
                     <Metric label="coverage" value={`${n}/${r.coverage}`} />
@@ -112,7 +121,7 @@ export function RankFilterPanel(): JSX.Element {
                                 {n < 8 && <div style={{ fontSize: 11.5, color: RED, marginBottom: 6 }}>⚠ 표본 {n}건 — 분포가 노이즈일 수 있습니다.</div>}
                                 <SectionLabel>밀도 히트맵 — 진입 대비 경과분 × 진입가 대비 %. 진할수록 그 시각·가격대를 지난 상황이 많음. 축 여백 라벨을 끌어 목표/손절/horizon 조정. 보라선=선택 종목(좌측축=실%). 휠/드래그 줌·팬·교차선.</SectionLabel>
                                 <RankHeatmapChart paths={r.paths} horizon={rankHorizon} dataMinT={r.dataMinT} dataMaxT={r.dataMaxT || 1} bucket={rankBucket} setHorizon={setRankHorizon}
-                                    target={target} stop={stop} setTarget={setTarget} setStop={setStop} overlay={overlay} />
+                                    target={target} stop={stop} setTarget={setTarget} setStop={setStop} overlay={overlay} heatOn={heatOn} showAmtMarkers={amtMarkersOn} />
                                 <SimReadout win={sim.win} loss={sim.loss} none={sim.none} total={sim.total} expR={sim.expR} target={target} stop={stop} />
                                 <div style={{ height: 14 }} />
                                 <SectionLabel>분할 MAE — 최대상승(MFE) ↔ 고점 전 최저(진입 손절) / 고점 후 최저(트레일링). 점=상황(클릭=이동).</SectionLabel>

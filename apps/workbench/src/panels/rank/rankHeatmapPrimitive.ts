@@ -119,7 +119,7 @@ class HeatPaneView {
         for (let r = 0; r <= m.rows; r++) rowY.push(series.priceToCoordinate(m.yLo + r * step) as number | null);
 
         const cells: ResolvedCell[] = [];
-        for (let c = 0; c < m.colTimes.length; c++) {
+        for (let c = 0; this._src.showCells && c < m.colTimes.length; c++) {
             const x = colX[c];
             if (x == null) continue;
             const xNext = colX[c + 1] ?? (colX[c - 1] != null ? x + (x - (colX[c - 1] as number)) : x + 3);
@@ -161,6 +161,7 @@ export class RankHeatmap {
     chart: IChartApi | null = null;
     series: ISeriesApi<"Line"> | null = null;
     model: HeatModel | null = null;
+    showCells = true; // 밀도 셀 표시 여부 — off 시 기준선·오버레이만(차트만 보기)
     onLayout?: (c: { targetY: number | null; stopY: number | null; horizonX: number | null }) => void;
     private readonly _views: HeatPaneView[];
     private _requestUpdate?: () => void;
@@ -173,6 +174,10 @@ export class RankHeatmap {
     }
     setModel(m: HeatModel): void {
         this.model = m;
+        this._requestUpdate?.();
+    }
+    setCellsVisible(v: boolean): void {
+        this.showCells = v;
         this._requestUpdate?.();
     }
     attached(param: { chart: IChartApi; requestUpdate: () => void }): void {
