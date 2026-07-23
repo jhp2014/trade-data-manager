@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { simulateTargetStop, type Excursion } from "./rank/pathStats.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
+import { RankHeatmapChart, type HeatOverlay } from "./RankHeatmapChart.js";
+import { chartQuery } from "../api/queries.js";
+import { deriveMinuteView } from "../lib/derive.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { RankPoint } from "../api/rank.js";
-import type { RankPointPath } from "../api/rankPaths.js";
 
 // 분석 결과 대시보드 — 배치 보드에서 우클릭으로 건 밴드(store)를 소비만 한다(밴드 UI 없음).
 //  · 밴드 AND 교집합(useRankFilterResult) → 밀도 히트맵(시간×정규화%, 진입 전 궤적 포함) + 목표/손절 첫터치 시뮬 + 분할 MAE 산점.
@@ -14,10 +17,29 @@ const UP = "#1baf7a";
 const DOWN = "#eb6834";
 const GREEN = "#1baf7a";
 const RED = "#e24b4a";
-const BLUE = "#2a78d6";
 
 const parsePk = (s: string): RankPoint => { const [stockCode, date, time] = s.split("|"); return { stockCode, date, time }; };
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+const hmsToMin = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
+
+// 선택 종목(activePoint) 오버레이 — 포커스 종목 차트에서 실%(전일종가 대비) 경로 파생. 진입 기준 정규화·실% 어파인.
+function useSelectedOverlay(nameOf: (c: string) => string): HeatOverlay | null {
+    const activePoint = useWorkbench((s) => s.activePoint);
+    const q = useQuery(chartQuery(activePoint?.code ?? "", activePoint?.date ?? ""));
+    return useMemo(() => {
+        if (!activePoint || !q.data) return null;
+        const mv = deriveMinuteView(q.data, "un");
+        if (mv.points.length === 0) return null;
+        const entryMin = hmsToMin(activePoint.time);
+        const entry = mv.points.find((p) => hmsToMin(p.tradeTime) >= entryMin);
+        if (!entry) return null;
+        const k = 1 + entry.close / 100; // entry.close = 진입 실%(전일종가 대비) → 어파인 기울기
+        return {
+            name: nameOf(activePoint.code), k, entryMin,
+            pts: mv.points.map((p) => ({ t: hmsToMin(p.tradeTime) - entryMin, open: p.open, high: p.high, low: p.low, close: p.close, amount: p.amount, cumAmount: p.cumAmount })),
+        };
+    }, [activePoint, q.data, nameOf]);
+}
 
 export function RankFilterPanel(): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
@@ -33,6 +55,7 @@ export function RankFilterPanel(): JSX.Element {
     const [target, setTarget] = useState(5);
     const [stop, setStop] = useState(-3);
     const sim = useMemo(() => simulateTargetStop(r.paths, r.effHorizon, target, stop), [r.paths, r.effHorizon, target, stop]);
+    const overlay = useSelectedOverlay(r.nameOf);
 
     const goKey = (key: string): void => { const p = parsePk(key); goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank-filter"); };
 
@@ -77,9 +100,9 @@ export function RankFilterPanel(): JSX.Element {
                         ) : (
                             <div style={{ padding: "4px 12px 16px" }}>
                                 {n < 8 && <div style={{ fontSize: 11.5, color: RED, marginBottom: 6 }}>⚠ 표본 {n}건 — 분포가 노이즈일 수 있습니다.</div>}
-                                <SectionLabel>밀도 히트맵 — 진입 대비 경과분 × 진입가 대비 %. 진할수록 그 시각·가격대를 지난 상황이 많음. 파선=진입(t0), 세로선=horizon, 초록=목표·빨강=손절(드래그).</SectionLabel>
-                                <Heatmap paths={r.paths} horizon={rankHorizon} dataMinT={r.dataMinT} dataMaxT={r.dataMaxT || 1} bucket={rankBucket} setHorizon={setRankHorizon}
-                                    target={target} stop={stop} setTarget={setTarget} setStop={setStop} />
+                                <SectionLabel>밀도 히트맵 — 진입 대비 경과분 × 진입가 대비 %. 진할수록 그 시각·가격대를 지난 상황이 많음. 축 여백 라벨을 끌어 목표/손절/horizon 조정. 보라선=선택 종목(좌측축=실%). 휠/드래그 줌·팬·교차선.</SectionLabel>
+                                <RankHeatmapChart paths={r.paths} horizon={rankHorizon} dataMinT={r.dataMinT} dataMaxT={r.dataMaxT || 1} bucket={rankBucket} setHorizon={setRankHorizon}
+                                    target={target} stop={stop} setTarget={setTarget} setStop={setStop} overlay={overlay} />
                                 <SimReadout win={sim.win} loss={sim.loss} none={sim.none} total={sim.total} expR={sim.expR} target={target} stop={stop} />
                                 <div style={{ height: 14 }} />
                                 <SectionLabel>분할 MAE — 최대상승(MFE) ↔ 고점 전 최저(진입 손절) / 고점 후 최저(트레일링). 점=상황(클릭=이동).</SectionLabel>
@@ -111,111 +134,6 @@ function Metric({ label, value, color }: { label: string; value: string; color?:
 const SectionLabel = ({ children }: { children: React.ReactNode }): JSX.Element => (
     <div style={{ fontSize: 11, color: "var(--text-tertiary)", margin: "0 0 4px" }}>{children}</div>
 );
-
-// ── 밀도 히트맵 + 드래그 horizon/목표/손절선 (진입 전 궤적 포함, 버킷 칸 폭) ──
-const HW = 620, HH = 280, HmL = 42, HmR = 12, HmT = 8, HmB = 22;
-const ROWS = 48;
-
-function Heatmap({ paths, horizon, dataMinT, dataMaxT, bucket, setHorizon, target, stop, setTarget, setStop }: {
-    paths: RankPointPath[]; horizon: number; dataMinT: number; dataMaxT: number; bucket: number; setHorizon: (m: number) => void;
-    target: number; stop: number; setTarget: (v: number) => void; setStop: (v: number) => void;
-}): JSX.Element {
-    const svgRef = useRef<SVGSVGElement | null>(null);
-    const [drag, setDrag] = useState<null | "h" | "t" | "s">(null);
-
-    const tMin = Math.min(0, dataMinT);
-    const tMax = Math.max(1, dataMaxT);
-    const span = tMax - tMin || 1;
-
-    // 열 = 버킷 분 단위. 셀은 경로·버킷에만 의존.
-    const heat = useMemo(() => {
-        const cols = Math.floor(span / bucket) + 1;
-        let yLo = -1, yHi = 1;
-        for (const p of paths) for (const b of p.bars) { if (b.low < yLo) yLo = b.low; if (b.high > yHi) yHi = b.high; }
-        yLo = Math.floor(yLo - 0.5); yHi = Math.ceil(yHi + 0.5);
-        const grid: number[][] = Array.from({ length: cols }, () => new Array(ROWS).fill(0));
-        let max = 0;
-        const rowOf = (v: number): number => clamp(Math.floor((v - yLo) / (yHi - yLo) * ROWS), 0, ROWS - 1);
-        for (const p of paths) for (const b of p.bars) {
-            const c = clamp(Math.floor((b.t - tMin) / bucket), 0, cols - 1);
-            const r0 = rowOf(b.low), r1 = rowOf(b.high);
-            for (let r = r0; r <= r1; r++) { grid[c][r]++; if (grid[c][r] > max) max = grid[c][r]; }
-        }
-        return { grid, max, yLo, yHi, cols };
-    }, [paths, bucket, tMin, span]);
-
-    const plotW = HW - HmL - HmR, plotH = HH - HmT - HmB;
-    const X = (t: number): number => HmL + ((t - tMin) / span) * plotW;
-    const Y = (v: number): number => HmT + (1 - (v - heat.yLo) / (heat.yHi - heat.yLo)) * plotH;
-    const invX = (vx: number): number => tMin + ((vx - HmL) / plotW) * span;
-    const invY = (vy: number): number => heat.yLo + (1 - (vy - HmT) / plotH) * (heat.yHi - heat.yLo);
-
-    useEffect(() => {
-        if (!drag) return;
-        const move = (e: PointerEvent): void => {
-            const svg = svgRef.current;
-            if (!svg) return;
-            const rect = svg.getBoundingClientRect();
-            if (drag === "h") setHorizon(clamp(invX((e.clientX - rect.left) * (HW / rect.width)), 1, dataMaxT));
-            else {
-                const v = invY((e.clientY - rect.top) * (HH / rect.height));
-                if (drag === "t") setTarget(clamp(Math.round(v * 2) / 2, 0.5, heat.yHi));
-                else setStop(clamp(Math.round(v * 2) / 2, heat.yLo, -0.5));
-            }
-        };
-        const up = (): void => setDrag(null);
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", up);
-        return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-    }, [drag, dataMaxT, tMin, span, heat.yLo, heat.yHi, setHorizon, setTarget, setStop]);
-
-    const cells = useMemo(() => {
-        const cw = plotW / heat.cols, ch = plotH / ROWS;
-        const els: JSX.Element[] = [];
-        for (let c = 0; c < heat.cols; c++) for (let r = 0; r < ROWS; r++) {
-            const d = heat.grid[c][r];
-            if (!d) continue;
-            const op = Math.pow(d / heat.max, 0.7) * 0.85;
-            els.push(<rect key={`${c}_${r}`} x={(HmL + c * cw).toFixed(1)} y={(HmT + (ROWS - 1 - r) * ch).toFixed(1)} width={(cw + 0.6).toFixed(1)} height={(ch + 0.6).toFixed(1)} fill={BLUE} fillOpacity={op.toFixed(3)} />);
-        }
-        return els;
-    }, [heat, plotW, plotH]);
-
-    const hX = X(Math.min(horizon, dataMaxT));
-    const eX = X(0); // 진입(t0)
-    const yg = ticks(heat.yLo, heat.yHi);
-    const xg = [tMin, 0, Math.round(tMax / 2), tMax].filter((t, i, a) => a.indexOf(t) === i);
-
-    return (
-        <svg ref={svgRef} viewBox={`0 0 ${HW} ${HH}`} width="100%" role="img" aria-label="경로 밀도 히트맵(진입 전 포함)과 목표·손절·horizon 선" style={{ display: "block", touchAction: "none" }}>
-            {cells}
-            {yg.map((v) => (
-                <g key={v}>
-                    <line x1={HmL} y1={Y(v)} x2={HW - HmR} y2={Y(v)} stroke="var(--border-subtle)" strokeWidth={0.5} strokeOpacity={0.6} />
-                    <text x={HmL - 5} y={Y(v) + 3} textAnchor="end" fontSize={9.5} fill="var(--text-tertiary)">{v > 0 ? "+" : ""}{v}%</text>
-                </g>
-            ))}
-            <line x1={HmL} y1={Y(0)} x2={HW - HmR} y2={Y(0)} stroke="var(--text-tertiary)" strokeWidth={1} />
-            {xg.map((t) => <text key={t} x={clamp(X(t), HmL + 8, HW - HmR - 8)} y={HH - 6} textAnchor="middle" fontSize={9.5} fill="var(--text-tertiary)">{t === 0 ? "진입" : `${t}분`}</text>)}
-
-            {/* 진입(t0) 파선 */}
-            <line x1={eX} y1={HmT} x2={eX} y2={HmT + plotH} stroke="var(--text-tertiary)" strokeWidth={1} strokeDasharray="3 3" />
-
-            {/* horizon 오른쪽 dim + 드래그 세로선 */}
-            <rect x={hX} y={HmT} width={Math.max(0, HW - HmR - hX)} height={plotH} fill="var(--bg-primary)" fillOpacity={0.5} pointerEvents="none" />
-            <line x1={hX} y1={HmT} x2={hX} y2={HmT + plotH} stroke="var(--text-secondary)" strokeWidth={1.5} />
-            <rect x={hX - 5} y={HmT} width={10} height={plotH} fill="transparent" style={{ cursor: "ew-resize" }} onPointerDown={() => setDrag("h")} />
-
-            {/* 목표(초록)·손절(빨강) 드래그 가로선 */}
-            <line x1={HmL} y1={Y(target)} x2={HW - HmR} y2={Y(target)} stroke={GREEN} strokeWidth={1.5} strokeDasharray="6 4" />
-            <text x={HW - HmR} y={Y(target) - 4} textAnchor="end" fontSize={10} fill={GREEN}>목표 +{target.toFixed(1)}%</text>
-            <rect x={HmL} y={Y(target) - 5} width={plotW} height={10} fill="transparent" style={{ cursor: "ns-resize" }} onPointerDown={() => setDrag("t")} />
-            <line x1={HmL} y1={Y(stop)} x2={HW - HmR} y2={Y(stop)} stroke={RED} strokeWidth={1.5} strokeDasharray="6 4" />
-            <text x={HW - HmR} y={Y(stop) + 12} textAnchor="end" fontSize={10} fill={RED}>손절 {stop.toFixed(1)}%</text>
-            <rect x={HmL} y={Y(stop) - 5} width={plotW} height={10} fill="transparent" style={{ cursor: "ns-resize" }} onPointerDown={() => setDrag("s")} />
-        </svg>
-    );
-}
 
 function SimReadout({ win, loss, none, total, expR, target, stop }: { win: number; loss: number; none: number; total: number; expR: number; target: number; stop: number }): JSX.Element {
     const pct = (v: number): string => (total ? Math.round((v / total) * 100) : 0) + "%";

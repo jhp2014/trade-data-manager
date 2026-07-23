@@ -36,6 +36,15 @@ describe("computePathStats", () => {
         expect(s.excursions[0].maePost).toBe(-1);
     });
 
+    it("진입 바(t=0)는 제외 — 그 분봉 저가/고가 무시", () => {
+        // t=0 고가50·저가-50(극단)이어도 t>0 만 봐야 → mfe=4, maePre/maePost=-1(t=30).
+        const p = path("X", [bar(0, 0, 50, -50), bar(30, 3, 4, -1)]);
+        const s = computePathStats([p], Infinity);
+        expect(s.excursions[0].mfe).toBe(4);
+        expect(s.excursions[0].maePre).toBe(-1);
+        expect(s.excursions[0].maePost).toBe(-1);
+    });
+
     it("빈 경로는 표본 제외", () => {
         const s = computePathStats([path("X", []), path("Y", [bar(0, 0), bar(1, 2, 3, -1)])], Infinity);
         expect(s.excursions.map((e) => e.key.split("|")[0])).toEqual(["Y"]);
@@ -56,7 +65,7 @@ describe("simulateTargetStop", () => {
     });
 
     it("같은 바에서 목표·손절 동시 = 손절(보수)", () => {
-        const both = path("B", [bar(0, 0, 6, -3)]); // 고가6(+6 도달)·저가-3(-3 도달) 동시
+        const both = path("B", [bar(1, 0, 6, -3)]); // 진입 이후 바(t=1): 고가6(+6)·저가-3(-3) 동시
         const r = simulateTargetStop([both], Infinity, 6, -3);
         expect(r.loss).toBe(1);
         expect(r.win).toBe(0);

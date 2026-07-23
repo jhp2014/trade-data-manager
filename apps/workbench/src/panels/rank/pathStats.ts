@@ -42,9 +42,10 @@ function quant(arr: number[], q: number): number {
 }
 
 interface Cropped { key: string; bars: RankPointPath["bars"]; }
-// 진입 후(t≥0)만. 경로는 진입 전(음수 t) 궤적도 실어오지만 MFE/MAE·시뮬은 진입 이후만 본다.
+// 진입 **이후**(t>0)만. 진입 바(t=0)의 저가/고가는 그 분봉 안 진입 시점 이전 값이라 MFE/MAE·시뮬을
+// 왜곡 → 제외. 경로는 진입 전(음수 t) 궤적도 실어오지만 통계는 진입 다음 바부터 본다.
 function crop(paths: RankPointPath[], horizon: number): Cropped[] {
-    return paths.map((p) => ({ key: pk(p), bars: p.bars.filter((b) => b.t >= 0 && b.t <= horizon) })).filter((p) => p.bars.length > 0);
+    return paths.map((p) => ({ key: pk(p), bars: p.bars.filter((b) => b.t > 0 && b.t <= horizon) })).filter((p) => p.bars.length > 0);
 }
 
 export function computePathStats(paths: RankPointPath[], horizon: number): PathStats {
