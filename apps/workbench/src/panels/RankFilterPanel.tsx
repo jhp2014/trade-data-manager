@@ -5,7 +5,7 @@ import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { RankHeatmapChart, type HeatOverlay } from "./RankHeatmapChart.js";
 import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView } from "../lib/derive.js";
-import { useWorkbench } from "../store/workbench.js";
+import { useWorkbench, type ChartPriceMode } from "../store/workbench.js";
 import type { RankPoint } from "../api/rank.js";
 
 // 분석 결과 대시보드 — 배치 보드에서 우클릭으로 건 밴드(store)를 소비만 한다(밴드 UI 없음).
@@ -23,12 +23,14 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 const hmsToMin = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 
 // 선택 종목(activePoint) 오버레이 — 포커스 종목 차트에서 실%(전일종가 대비) 경로 파생. 진입 기준 정규화·실% 어파인.
-function useSelectedOverlay(nameOf: (c: string) => string): HeatOverlay | null {
+//  · baseMode = 실%(좌측축) 분모 시장(KRX/UN 전일종가). 봉 형태는 UN 고정, base(%)만 스위칭(deriveMinuteView 계약).
+//  · 우측축 구름은 진입가 앵커 기준이라 baseMode 와 무관 — 좌측 오버레이 라벨만 바뀐다.
+function useSelectedOverlay(nameOf: (c: string) => string, baseMode: ChartPriceMode): HeatOverlay | null {
     const activePoint = useWorkbench((s) => s.activePoint);
     const q = useQuery(chartQuery(activePoint?.code ?? "", activePoint?.date ?? ""));
     return useMemo(() => {
         if (!activePoint || !q.data) return null;
-        const mv = deriveMinuteView(q.data, "un");
+        const mv = deriveMinuteView(q.data, baseMode);
         if (mv.points.length === 0) return null;
         const entryMin = hmsToMin(activePoint.time);
         const entry = mv.points.find((p) => hmsToMin(p.tradeTime) >= entryMin);
@@ -38,7 +40,7 @@ function useSelectedOverlay(nameOf: (c: string) => string): HeatOverlay | null {
             name: nameOf(activePoint.code), k, entryMin,
             pts: mv.points.map((p) => ({ t: hmsToMin(p.tradeTime) - entryMin, open: p.open, high: p.high, low: p.low, close: p.close, amount: p.amount, cumAmount: p.cumAmount })),
         };
-    }, [activePoint, q.data, nameOf]);
+    }, [activePoint, q.data, nameOf, baseMode]);
 }
 
 export function RankFilterPanel(): JSX.Element {
@@ -54,8 +56,9 @@ export function RankFilterPanel(): JSX.Element {
 
     const [target, setTarget] = useState(5);
     const [stop, setStop] = useState(-3);
+    const [baseMode, setBaseMode] = useState<ChartPriceMode>("un"); // 좌측축 실% 분모 시장(KRX/UN 전일종가) — 이 패널 로컬.
     const sim = useMemo(() => simulateTargetStop(r.paths, r.effHorizon, target, stop), [r.paths, r.effHorizon, target, stop]);
-    const overlay = useSelectedOverlay(r.nameOf);
+    const overlay = useSelectedOverlay(r.nameOf, baseMode);
 
     const goKey = (key: string): void => { const p = parsePk(key); goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank-filter"); };
 
@@ -73,6 +76,13 @@ export function RankFilterPanel(): JSX.Element {
                     {[1, 5, 10].map((b) => (
                         <button key={b} onClick={() => setRankBucket(b)}
                             style={{ border: `1px solid ${rankBucket === b ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4, background: rankBucket === b ? "var(--accent-soft)" : "transparent", color: rankBucket === b ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", fontSize: 11, padding: "2px 6px" }}>{b}분</button>
+                    ))}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--text-secondary)" }} title="선택 종목 실%(좌측축) 기준 — 전일종가를 UN/KRX 중 무엇으로 볼지. 구름(진입가 기준)엔 영향 없음.">
+                    실% 기준
+                    {(["un", "krx"] as const).map((m) => (
+                        <button key={m} onClick={() => setBaseMode(m)}
+                            style={{ border: `1px solid ${baseMode === m ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4, background: baseMode === m ? "var(--accent-soft)" : "transparent", color: baseMode === m ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", fontSize: 11, padding: "2px 6px", textTransform: "uppercase" }}>{m}</button>
                     ))}
                 </div>
                 <div style={{ display: "flex", gap: 14, marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>

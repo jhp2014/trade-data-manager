@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable,
@@ -22,10 +23,10 @@ import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
 const ACTIVE = "#0ea5e9";                        // 활성 스팟 — 밝은 스카이블루(푸른 계열), 글로우로 확 대비.
 const ACTIVE_SOFT = "rgba(14,165,233,0.32)";
 const ACTIVE_TINT = "rgba(14,165,233,0.09)";     // 활성이 배치된 레인 배경.
-const FILTER = "#e24b4a";                         // 필터 밴드 경계(우클릭 지정) — 붉은 삼각 헤드 + 옅은 밴드.
-const FILTER_BAND = "rgba(226,75,74,0.10)";
+const FILTER = "#e24b4a";                         // 필터 밴드 경계(우클릭 지정) — 붉은 삼각 헤드 + 라인 채색(밴드 배경 대신).
 const TIE = "#7a869c";
-const PAD = 72;                                   // 레인 좌우 여백(px) — 끝 타점보다 더 바깥에 꽂을 공간(넉넉히).
+const PAD = 52;                                   // 스팟 좌우 여백(px) — 끝 스팟이 라인 끝 가까이(오버런 = PAD−LINE_PAD 만큼만).
+const LINE_PAD = 32;                              // 축 라인 여백(고정, PAD와 독립) — 라인 끝을 패널 가장자리 가까이(오버런 = PAD−LINE_PAD).
 const LABEL_W = 138;
 const ROW_H = 58;
 const ORDER_KEY = "wb.rankAxisOrder";
@@ -338,6 +339,17 @@ function Lane({
         return () => el.removeEventListener("wheel", onWheel);
     }, [view, setView]);
 
+    // 트랙 너비 관측 — 너무 좁으면(여백 2*PAD 이 폭을 잡아먹어 배치가 어설픔) 축 시각화를 숨김.
+    const [trackW, setTrackW] = useState(0);
+    useEffect(() => {
+        const el = trackRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((entries) => setTrackW(entries[0].contentRect.width));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    const tooNarrow = trackW > 0 && trackW < 2 * PAD + 50;
+
     const setRefs = (el: HTMLDivElement | null): void => { trackRef.current = el; setNodeRef(el); registerTrack(el); };
 
     // 필터 밴드 경계 → 현재 뷰(줌) u 위치. 한쪽만이면 반대편은 트랙 끝(0/1)까지 밴드.
@@ -349,8 +361,6 @@ function Lane({
     const loU = uOf(band?.lo);
     const hiU = uOf(band?.hi);
     const hasBand = loU != null || hiU != null;
-    const bandL = loU != null ? loU : 0;
-    const bandR = hiU != null ? hiU : 1;
 
     return (
         <div
@@ -384,15 +394,23 @@ function Lane({
 
             {/* 트랙 */}
             <div ref={setRefs} onDoubleClick={resetView} style={{ position: "relative", flex: 1, height: "100%", background: isOver ? "var(--accent-soft)" : "transparent" }}>
-                <div style={{ position: "absolute", left: PAD - 16, right: PAD - 16, top: "50%", height: 2, background: "var(--border-default)", transform: "translateY(-50%)" }} />
-                <span style={endLbl(true)}>−</span>
-                <span style={endLbl(false)}>+</span>
+                {tooNarrow ? (
+                    <span style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", pointerEvents: "none" }}>패널이 좁아 축 숨김</span>
+                ) : (<>
+                <div style={{ position: "absolute", left: LINE_PAD, right: LINE_PAD, top: "50%", height: 2, background: "var(--border-default)", transform: "translateY(-50%)" }} />
+                <ScaleEnd side="left" />
+                <ScaleEnd side="right" />
 
                 {hasBand && (
                     <>
-                        <div style={{ position: "absolute", top: 4, bottom: 4, left: `calc(${PAD}px + ${bandL} * (100% - ${2 * PAD}px))`, width: `calc(${bandR - bandL} * (100% - ${2 * PAD}px))`, background: FILTER_BAND, pointerEvents: "none", zIndex: 1 }} />
-                        {loU != null && <FilterArrow u={loU} dir="right" />}
-                        {hiU != null && <FilterArrow u={hiU} dir="left" />}
+                        <div style={{
+                            position: "absolute", top: "50%", height: 2, borderRadius: 1, transform: "translateY(-50%)",
+                            left: loU != null ? `calc(${PAD}px + ${loU} * (100% - ${2 * PAD}px))` : `${LINE_PAD}px`,
+                            right: hiU != null ? `calc(100% - (${PAD}px + ${hiU} * (100% - ${2 * PAD}px)))` : `${LINE_PAD}px`,
+                            background: FILTER, boxShadow: "0 0 7px 1px rgba(226,75,74,0.75)", pointerEvents: "none", zIndex: 1,
+                        }} />
+                        {loU != null && <RangeBracket u={loU} side="open" />}
+                        {hiU != null && <RangeBracket u={hiU} side="close" />}
                     </>
                 )}
 
@@ -410,7 +428,7 @@ function Lane({
                             {tie ? (
                                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 17, padding: "0 5px", borderRadius: 8, background: hasActive ? ACTIVE : TIE, color: "#fff", fontSize: 10, fontWeight: 700, boxShadow: hasActive ? `0 0 0 3px ${ACTIVE_SOFT}, 0 0 7px 1px ${ACTIVE}` : "none", fontVariantNumeric: "tabular-nums" }}>{slot.points.length}</span>
                             ) : (
-                                <span style={{ display: "block", width: hasActive ? 14 : 11, height: hasActive ? 14 : 11, borderRadius: "50%", background: hasActive ? ACTIVE : "var(--text-secondary)", boxShadow: hasActive ? `0 0 0 3px ${ACTIVE_SOFT}, 0 0 7px 1px ${ACTIVE}` : "none" }} />
+                                <span style={{ display: "block", width: 8, height: 8, borderRadius: "50%", background: hasActive ? ACTIVE : "var(--text-secondary)", boxShadow: hasActive ? `0 0 0 3px ${ACTIVE_SOFT}, 0 0 7px 1px ${ACTIVE}` : "none" }} />
                             )}
                         </div>
                     );
@@ -422,23 +440,49 @@ function Lane({
                     </div>
                 )}
                 {isZoomed(view) && <button onClick={resetView} title="줌 원위치" style={{ position: "absolute", right: 4, top: 3, ...ctlBtn }}>⟲</button>}
+                </>)}
             </div>
         </div>
     );
 }
 
-const endLbl = (leftSide: boolean): CSSProperties => ({ position: "absolute", [leftSide ? "left" : "right"]: 6, top: "50%", transform: "translateY(-50%)", fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)" });
-
-// 필터 경계 삼각 헤드 — 안쪽을 가리키는 붉은 삼각형(왼쪽 경계=▶ / 오른쪽 경계=◀). 트랙 상단.
-function FilterArrow({ u, dir }: { u: number; dir: "left" | "right" }): JSX.Element {
+// 끝 스케일 마커 — 라인 양 끝의 수직 눈금선(|) + 아래 −/+ 라벨(스케일 숫자처럼).
+function ScaleEnd({ side }: { side: "left" | "right" }): JSX.Element {
+    const isL = side === "left";
+    const anchor: CSSProperties = isL ? { left: LINE_PAD, transform: "translateX(-50%)" } : { right: LINE_PAD, transform: "translateX(50%)" };
     return (
-        <div style={{
-            position: "absolute", top: 3, left: `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`, transform: "translateX(-50%)",
-            width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent",
-            ...(dir === "right" ? { borderLeft: `9px solid ${FILTER}` } : { borderRight: `9px solid ${FILTER}` }),
-            pointerEvents: "none", zIndex: 4,
-        }} />
+        <>
+            <span style={{ position: "absolute", top: "50%", marginTop: -6.5, width: 2, height: 13, background: "var(--text-tertiary)", ...anchor }} />
+            <span style={{ position: "absolute", top: "calc(50% + 8px)", fontSize: 13, fontWeight: 700, lineHeight: 1, color: "var(--text-tertiary)", ...anchor }}>{isL ? "−" : "+"}</span>
+        </>
     );
+}
+
+// 필터 범위 괄호 — 경계 spot 바깥으로 살짝 벗어난 대괄호([ = 이상 경계 / ] = 이하 경계). spot과 겹치지 않게.
+function RangeBracket({ u, side }: { u: number; side: "open" | "close" }): JSX.Element {
+    const pos = `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`;
+    const common: CSSProperties = {
+        position: "absolute", top: "50%", transform: "translateY(-50%)", width: 6, height: 20,
+        border: `2px solid ${FILTER}`, pointerEvents: "none", zIndex: 5,
+    };
+    return side === "open"
+        ? <span style={{ ...common, left: `calc(${pos} - 14px)`, borderRight: "none", borderRadius: "2px 0 0 2px" }} />
+        : <span style={{ ...common, left: `calc(${pos} + 8px)`, borderLeft: "none", borderRadius: "0 2px 2px 0" }} />;
+}
+
+// 커서 앵커 팝오버 위치 — 마운트 후 실제 크기를 재서 뷰포트 안으로 클램프(+ 넘치면 커서 반대편으로 플립).
+//  · dockview 패널이 transform 을 써서 fixed 가 갇히므로 팝오버는 body 로 portal 해 실제 뷰포트 기준을 회복시킨다.
+function useClampedPos(x: number, y: number, ref: RefObject<HTMLElement>): { left: number; top: number } {
+    const [pos, setPos] = useState({ left: x + 12, top: y + 12 });
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const m = 8, w = el.offsetWidth, h = el.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+        let left = x + 12; if (left + w > vw - m) left = x - 12 - w; left = Math.max(m, Math.min(left, vw - m - w));
+        let top = y + 12; if (top + h > vh - m) top = y - 12 - h; top = Math.max(m, Math.min(top, vh - m - h));
+        setPos({ left, top });
+    }, [x, y, ref]);
+    return pos;
 }
 
 // ── 우클릭 필터 경계 메뉴 — 이상(lo)/이하(hi) 경계 지정·해제. 이미 그 경계면 '해제' 표기(토글). ──
@@ -453,16 +497,16 @@ function FilterMenu({ x, y, axisName, band, slotId, onSet, onClear, onClose }: {
         return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
     }, [onClose]);
     const isLo = band?.lo === slotId, isHi = band?.hi === slotId;
-    const px = Math.min(x + 4, window.innerWidth - 180);
-    const py = Math.min(y + 4, window.innerHeight - 120);
+    const pos = useClampedPos(x, y, ref);
     const item: CSSProperties = { display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 12.5, padding: "7px 12px" };
-    return (
-        <div ref={ref} style={{ position: "fixed", left: px, top: py, zIndex: 60, minWidth: 160, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.24)", overflow: "hidden" }}>
+    return createPortal(
+        <div ref={ref} style={{ position: "fixed", left: pos.left, top: pos.top, zIndex: 60, minWidth: 160, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.24)", overflow: "hidden" }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", padding: "8px 12px 4px" }}>{axisName} · 필터 경계</div>
             <button style={item} onClick={() => onSet("lo")}><span style={{ color: FILTER, fontWeight: 700 }}>▶</span> {isLo ? "이상 경계 해제" : "이상 경계(이 지점부터)"}</button>
             <button style={item} onClick={() => onSet("hi")}><span style={{ color: FILTER, fontWeight: 700 }}>◀</span> {isHi ? "이하 경계 해제" : "이하 경계(이 지점까지)"}</button>
             {(band?.lo || band?.hi) && <button style={{ ...item, borderTop: "1px solid var(--border-subtle)", color: "var(--text-tertiary)" }} onClick={onClear}>이 축 필터 초기화</button>}
-        </div>
+        </div>,
+        document.body,
     );
 }
 
@@ -505,11 +549,10 @@ function SlotPopover({
         const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
         return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
     }, [onClose]);
-    const px = Math.min(x + 12, window.innerWidth - 250);
-    const py = Math.max(8, Math.min(y + 12, window.innerHeight - 40 - points.length * 40));
-    return (
-        <div ref={ref} style={{ position: "fixed", left: px, top: py, zIndex: 60, minWidth: 200, maxWidth: 270, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 9, boxShadow: "0 10px 30px rgba(0,0,0,0.24)", overflow: "hidden" }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.05em", color: "var(--text-tertiary)", padding: "8px 12px 4px" }}>{axisName} · 이 자리 {points.length}건{scope === "day" ? " · 하루단위" : ""}</div>
+    const pos = useClampedPos(x, y, ref);
+    return createPortal(
+        <div ref={ref} style={{ position: "fixed", left: pos.left, top: pos.top, zIndex: 60, minWidth: 200, maxWidth: 270, maxHeight: "80vh", overflowY: "auto", background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 9, boxShadow: "0 10px 30px rgba(0,0,0,0.24)" }}>
+            <div style={{ position: "sticky", top: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.05em", color: "var(--text-tertiary)", padding: "8px 12px 4px", background: "var(--bg-primary)" }}>{axisName} · 이 자리 {points.length}건{scope === "day" ? " · 하루단위" : ""}</div>
             {points.map((p, i) => {
                 const act = activeMatches(p), tray = inTray(p);
                 return (
@@ -524,6 +567,7 @@ function SlotPopover({
                     </div>
                 );
             })}
-        </div>
+        </div>,
+        document.body,
     );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CandlestickSeries, CrosshairMode, LineSeries, LineStyle, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "../chart/chartShell.js";
 import { RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
@@ -81,6 +81,8 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
     const sRef = useRef<HTMLDivElement>(null);
     const hRef = useRef<HTMLDivElement>(null);
     const [cursor, setCursor] = useState({ x: 0, y: 0 });
+    const tipRef = useRef<HTMLDivElement>(null);
+    const [tipPos, setTipPos] = useState({ left: 0, top: 0 });
 
     const model = useMemo(() => buildModel(paths, dataMinT, dataMaxT, bucket, horizon, target, stop), [paths, dataMinT, dataMaxT, bucket, horizon, target, stop]);
 
@@ -202,6 +204,16 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
         },
     });
 
+    // 교차선 툴팁 위치 — 실제 크기를 재서 차트 컨테이너 안으로 클램프(우/하단 공간 없으면 커서 반대편으로 플립).
+    useLayoutEffect(() => {
+        const el = tipRef.current, c = containerRef.current;
+        if (!tip.visible || !el || !c) return;
+        const m = 4, w = el.offsetWidth, h = el.offsetHeight, cw = c.clientWidth, ch = c.clientHeight;
+        let left = cursor.x + 12; if (left + w > cw - m) left = cursor.x - 12 - w; left = Math.max(m, Math.min(left, cw - m - w));
+        let top = cursor.y + 14; if (top + h > ch - m) top = cursor.y - 14 - h; top = Math.max(m, Math.min(top, ch - m - h));
+        setTipPos({ left, top });
+    }, [cursor.x, cursor.y, tip.visible, tip.content]);
+
     return (
         <div style={{ position: "relative", width: "100%", height: 300 }}
             onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCursor({ x: e.clientX - r.left, y: e.clientY - r.top }); }}>
@@ -210,7 +222,7 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
             <div ref={sRef} onPointerDown={startDrag("s")} style={{ ...handle, right: 0, background: RED, display: "none" }}>{stop.toFixed(1)}%</div>
             <div ref={hRef} onPointerDown={startDrag("h")} style={{ ...handleX, bottom: 2, background: "rgba(90,90,90,0.9)", display: "none" }}>{Math.round(Math.min(horizon, dataMaxT))}분</div>
             {tip.visible && (
-                <div style={{ position: "absolute", left: Math.min(cursor.x + 12, (containerRef.current?.clientWidth ?? 300) - 210), top: cursor.y + 14, pointerEvents: "none", background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 5, padding: "3px 8px", fontSize: 11, whiteSpace: "nowrap", boxShadow: "0 4px 12px rgba(0,0,0,0.18)", zIndex: 6 }}>
+                <div ref={tipRef} style={{ position: "absolute", left: tipPos.left, top: tipPos.top, pointerEvents: "none", background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 5, padding: "3px 8px", fontSize: 11, whiteSpace: "nowrap", maxWidth: "calc(100% - 8px)", overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.18)", zIndex: 6 }}>
                     {tip.content}
                 </div>
             )}
