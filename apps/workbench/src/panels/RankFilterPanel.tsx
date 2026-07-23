@@ -1,145 +1,103 @@
-import { useMemo, useState, type CSSProperties } from "react";
-import { useQuery, useQueries } from "@tanstack/react-query";
-import { rankAxesQuery, axisLineQuery, allPointsQuery, rankPathsQuery } from "../api/queries.js";
-import { filterPoints, type AxisBand } from "./rank/bandFilter.js";
-import { computePathStats, type PathStats, type Excursion } from "./rank/pathStats.js";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { simulateTargetStop, type Excursion } from "./rank/pathStats.js";
+import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { useWorkbench } from "../store/workbench.js";
-import type { PlacedPoint, RankAxis } from "@trade-data-manager/wire";
 import type { RankPoint } from "../api/rank.js";
+import type { RankPointPath } from "../api/rankPaths.js";
 
-// 순위 필터 + 진입 후 경로분포 — 축별 밴드(슬롯 앵커)를 AND 로 걸어 유사 상황을 좁히고, 그 집합의
-// 인트라데이 경로를 리본(중앙값+25~75%)·MAE↔MFE 산점으로 본다. horizon 은 클라 crop(기본 종가까지).
-//  · 밴드 = 각 축 줄에서 슬롯 2개(또는 1개) 클릭 → orderKey 구간. 배치는 순위 배치 패널에서.
-//  · N/coverage 를 1급으로 노출 — 교집합 희소성이 확률 신뢰도를 정한다.
+// 분석 결과 대시보드 — 배치 보드에서 우클릭으로 건 밴드(store)를 소비만 한다(밴드 UI 없음).
+//  · 밴드 AND 교집합(useRankFilterResult) → 밀도 히트맵(시간×정규화%, 진입 전 궤적 포함) + 목표/손절 첫터치 시뮬 + 분할 MAE 산점.
+//  · horizon = 진입 후 crop 분(숫자입력 or 히트맵 세로선 드래그). 버킷 = 히트맵 칸 폭(1/5/10분). 목표/손절선도 드래그.
+//  · 겹치는 선 대신 밀도(겹칠수록 진함)로 "무리"를 본다. 진입 전(음수 t)은 맥락용(MFE/MAE·시뮬엔 미포함).
 
 const UP = "#1baf7a";
 const DOWN = "#eb6834";
-const TIE = "#7a869c";
-const PAD = 12; // 슬롯 줄 좌우 여백(px)
+const GREEN = "#1baf7a";
+const RED = "#e24b4a";
+const BLUE = "#2a78d6";
 
-interface Slot { slotId: string; orderKey: number; count: number; firstCode: string; }
 const parsePk = (s: string): RankPoint => { const [stockCode, date, time] = s.split("|"); return { stockCode, date, time }; };
-const slotFrac = (i: number, n: number): number => (n <= 1 ? 0.5 : i / (n - 1));
-
-function assembleSlots(placed: PlacedPoint[]): Slot[] {
-    const m = new Map<string, Slot>();
-    for (const p of placed) {
-        const s = m.get(p.slotId);
-        if (s) s.count++;
-        else m.set(p.slotId, { slotId: p.slotId, orderKey: p.orderKey, count: 1, firstCode: p.stockCode });
-    }
-    return [...m.values()].sort((a, b) => a.orderKey - b.orderKey);
-}
-
-const HORIZONS: Array<{ label: string; v: number }> = [
-    { label: "30분", v: 30 },
-    { label: "60분", v: 60 },
-    { label: "90분", v: 90 },
-    { label: "종가", v: Infinity },
-];
+const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export function RankFilterPanel(): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
-    const axesQ = useQuery(rankAxesQuery());
-    const axes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
+    const rankHorizon = useWorkbench((s) => s.rankHorizon);
+    const setRankHorizon = useWorkbench((s) => s.setRankHorizon);
+    const rankBucket = useWorkbench((s) => s.rankBucket);
+    const setRankBucket = useWorkbench((s) => s.setRankBucket);
+    const clearRankFilter = useWorkbench((s) => s.clearRankFilter);
 
-    const lineQs = useQueries({ queries: axes.map((a) => axisLineQuery(a.id)) });
-    const linesByAxis = useMemo(() => {
-        const m = new Map<string, PlacedPoint[]>();
-        axes.forEach((a, i) => m.set(a.id, lineQs[i]?.data ?? []));
-        return m;
-    }, [axes, lineQs]);
-    const slotsByAxis = useMemo(() => {
-        const m = new Map<string, Slot[]>();
-        for (const [id, line] of linesByAxis) m.set(id, assembleSlots(line));
-        return m;
-    }, [linesByAxis]);
+    const r = useRankFilterResult();
+    const n = r.stats.excursions.length;
 
-    const pointsQ = useQuery(allPointsQuery());
-    const nameOf = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const p of pointsQ.data ?? []) if (p.name) m.set(p.stockCode, p.name);
-        return (code: string): string => m.get(code) ?? code;
-    }, [pointsQ.data]);
+    const [target, setTarget] = useState(5);
+    const [stop, setStop] = useState(-3);
+    const sim = useMemo(() => simulateTargetStop(r.paths, r.effHorizon, target, stop), [r.paths, r.effHorizon, target, stop]);
 
-    // 밴드 선택 — 축별 선택 슬롯 0~2개(슬롯 클릭 순환). 1개면 단일 슬롯 밴드.
-    const [selected, setSelected] = useState<Record<string, string[]>>({});
-    const clickSlot = (axisId: string, slotId: string): void =>
-        setSelected((s) => {
-            const cur = s[axisId] ?? [];
-            const next = cur.length === 0 ? [slotId] : cur.length === 1 ? (cur[0] === slotId ? [] : [cur[0], slotId]) : [slotId];
-            return { ...s, [axisId]: next };
-        });
-    const clearAxis = (axisId: string): void => setSelected((s) => { const n = { ...s }; delete n[axisId]; return n; });
-
-    const bands: AxisBand[] = useMemo(
-        () =>
-            axes.flatMap((ax) => {
-                const sel = selected[ax.id] ?? [];
-                if (sel.length === 0) return [];
-                const slots = slotsByAxis.get(ax.id) ?? [];
-                const oks = sel.map((id) => slots.find((s) => s.slotId === id)?.orderKey).filter((x): x is number => x != null);
-                if (oks.length === 0) return [];
-                return [{ axisId: ax.id, from: Math.min(...oks), to: Math.max(...oks) }];
-            }),
-        [axes, selected, slotsByAxis],
-    );
-
-    const { points, coverage } = useMemo(() => filterPoints(linesByAxis, bands), [linesByAxis, bands]);
-    const pathsQ = useQuery(rankPathsQuery(points));
-
-    const [horizon, setHorizon] = useState<number>(Infinity);
-    const stats = useMemo(() => computePathStats(pathsQ.data ?? [], horizon), [pathsQ.data, horizon]);
-    const n = stats.excursions.length;
+    const goKey = (key: string): void => { const p = parsePk(key); goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank-filter"); };
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>
-            {/* 헤더 — horizon + 요약 지표 */}
-            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexWrap: "wrap" }}>
-                <div style={{ display: "flex", gap: 3 }}>
-                    {HORIZONS.map((h) => (
-                        <button key={h.label} onClick={() => setHorizon(h.v)} title="진입 후 구간(클라 crop)"
-                            style={{ border: `1px solid ${horizon === h.v ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4, background: horizon === h.v ? "var(--accent-soft)" : "transparent", color: horizon === h.v ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", fontSize: 11.5, padding: "3px 8px" }}>{h.label}</button>
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 12, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--text-secondary)" }}>
+                    horizon
+                    <input type="number" min={1} value={Math.round(r.effHorizon)} onChange={(e) => setRankHorizon(Number(e.target.value) || 1)}
+                        style={{ width: 54, border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "2px 5px", fontSize: 12, textAlign: "right" }} />
+                    분
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--text-secondary)" }}>
+                    버킷
+                    {[1, 5, 10].map((b) => (
+                        <button key={b} onClick={() => setRankBucket(b)}
+                            style={{ border: `1px solid ${rankBucket === b ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4, background: rankBucket === b ? "var(--accent-soft)" : "transparent", color: rankBucket === b ? "var(--accent-primary)" : "var(--text-secondary)", cursor: "pointer", fontSize: 11, padding: "2px 6px" }}>{b}분</button>
                     ))}
                 </div>
                 <div style={{ display: "flex", gap: 14, marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
                     <Metric label="N" value={String(n)} />
-                    <Metric label="coverage" value={`${n}/${coverage}`} />
-                    <Metric label="중앙 MFE" value={stats.medianMfe == null ? "—" : `+${stats.medianMfe.toFixed(1)}%`} color={UP} />
-                    <Metric label="중앙 MAE" value={stats.medianMae == null ? "—" : `${stats.medianMae.toFixed(1)}%`} color={DOWN} />
+                    <Metric label="coverage" value={`${n}/${r.coverage}`} />
+                    <Metric label="중앙 MFE" value={r.stats.medianMfe == null ? "—" : `+${r.stats.medianMfe.toFixed(1)}%`} color={UP} />
+                    <Metric label="MAE 전" value={r.stats.medianMaePre == null ? "—" : `${r.stats.medianMaePre.toFixed(1)}%`} color={DOWN} />
+                    <Metric label="MAE 후" value={r.stats.medianMaePost == null ? "—" : `${r.stats.medianMaePost.toFixed(1)}%`} color={DOWN} />
                 </div>
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-                {/* 축 밴드 선택 */}
-                <div style={{ padding: "4px 0" }}>
-                    {axesQ.isLoading && <div style={muted}>불러오는 중…</div>}
-                    {!axesQ.isLoading && axes.length === 0 && <div style={muted}>축이 없습니다 — 순위 배치 패널에서 축을 만들고 타점을 배치하세요.</div>}
-                    {axes.map((ax) => (
-                        <AxisBandRow key={ax.id} axis={ax} slots={slotsByAxis.get(ax.id) ?? []} selected={selected[ax.id] ?? []}
-                            nameOf={nameOf} onClickSlot={(sid) => clickSlot(ax.id, sid)} onClear={() => clearAxis(ax.id)} />
-                    ))}
-                </div>
-
-                {/* 결과 */}
-                {bands.length === 0 ? (
-                    <div style={{ ...muted, padding: "20px 12px" }}>축에 밴드를 걸면(슬롯 2개 클릭) 유사 상황이 좁혀지고, 그 집합의 진입 후 경로 분포가 여기 나옵니다.</div>
-                ) : n === 0 ? (
-                    <div style={{ ...muted, padding: "20px 12px" }}>이 조건에 맞는 타점이 없습니다{coverage > 0 ? ` (활성 축 전부에 배치된 타점 ${coverage}건 중 밴드 교집합 0).` : " — 활성 축 전부에 배치된 타점이 없습니다(strict AND)."}</div>
+                {r.isEmpty ? (
+                    <div style={{ ...muted, padding: "24px 14px" }}>배치 보드에서 축의 스팟을 <b>우클릭</b>해 이상/이하 경계를 지정하면, 그 조건에 맞는 상황들의 진입 후 경로 분포가 여기 나옵니다.</div>
                 ) : (
-                    <div style={{ padding: "6px 12px 16px" }}>
-                        {n < 8 && <div style={{ fontSize: 11.5, color: DOWN, marginBottom: 8 }}>⚠ 표본 {n}건 — 분포가 노이즈일 수 있습니다.</div>}
-                        <SectionLabel>진입 후 경과분 → 진입가 대비 % · 굵은 선 = 중앙값, 띠 = 25–75%</SectionLabel>
-                        <RibbonChart stats={stats} />
-                        <div style={{ height: 14 }} />
-                        <SectionLabel>최대낙폭(MAE) ↔ 최대상승(MFE) · 점 = 상황(클릭 = 이동)</SectionLabel>
-                        <ScatterChart excursions={stats.excursions} nameOf={nameOf} onGo={(k) => { const p = parsePk(k); goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank-filter"); }} />
-                    </div>
+                    <>
+                        <div style={{ padding: "6px 12px 2px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            {r.activeAxisNames.map((nm) => <span key={nm} style={chip}>{nm}</span>)}
+                            <button onClick={clearRankFilter} style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 11.5 }}>필터 전체 해제</button>
+                        </div>
+                        {r.isLoading ? (
+                            <div style={muted}>경로 불러오는 중…</div>
+                        ) : n === 0 ? (
+                            <div style={{ ...muted, padding: "20px 14px" }}>이 조건에 맞는 타점이 없습니다{r.coverage > 0 ? ` (활성 축 전부 배치 ${r.coverage}건 중 밴드 교집합 0).` : " — 활성 축 전부에 배치된 타점이 없습니다(strict AND)."}</div>
+                        ) : (
+                            <div style={{ padding: "4px 12px 16px" }}>
+                                {n < 8 && <div style={{ fontSize: 11.5, color: RED, marginBottom: 6 }}>⚠ 표본 {n}건 — 분포가 노이즈일 수 있습니다.</div>}
+                                <SectionLabel>밀도 히트맵 — 진입 대비 경과분 × 진입가 대비 %. 진할수록 그 시각·가격대를 지난 상황이 많음. 파선=진입(t0), 세로선=horizon, 초록=목표·빨강=손절(드래그).</SectionLabel>
+                                <Heatmap paths={r.paths} horizon={rankHorizon} dataMinT={r.dataMinT} dataMaxT={r.dataMaxT || 1} bucket={rankBucket} setHorizon={setRankHorizon}
+                                    target={target} stop={stop} setTarget={setTarget} setStop={setStop} />
+                                <SimReadout win={sim.win} loss={sim.loss} none={sim.none} total={sim.total} expR={sim.expR} target={target} stop={stop} />
+                                <div style={{ height: 14 }} />
+                                <SectionLabel>분할 MAE — 최대상승(MFE) ↔ 고점 전 최저(진입 손절) / 고점 후 최저(트레일링). 점=상황(클릭=이동).</SectionLabel>
+                                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                                    <MaeScatter title="MFE ↔ 고점 전 최저" excursions={r.stats.excursions} xOf={(e) => e.maePre} nameOf={r.nameOf} onGo={goKey} />
+                                    <MaeScatter title="MFE ↔ 고점 후 최저" excursions={r.stats.excursions} xOf={(e) => e.maePost} nameOf={r.nameOf} onGo={goKey} />
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>
     );
 }
+
+const muted: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "10px 12px" };
+const chip: CSSProperties = { fontSize: 11.5, padding: "2px 9px", borderRadius: 12, background: "var(--accent-soft)", color: "var(--accent-primary)" };
 
 function Metric({ label, value, color }: { label: string; value: string; color?: string }): JSX.Element {
     return (
@@ -151,131 +109,178 @@ function Metric({ label, value, color }: { label: string; value: string; color?:
 }
 
 const SectionLabel = ({ children }: { children: React.ReactNode }): JSX.Element => (
-    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{children}</div>
+    <div style={{ fontSize: 11, color: "var(--text-tertiary)", margin: "0 0 4px" }}>{children}</div>
 );
 
-const muted: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "10px 12px" };
+// ── 밀도 히트맵 + 드래그 horizon/목표/손절선 (진입 전 궤적 포함, 버킷 칸 폭) ──
+const HW = 620, HH = 280, HmL = 42, HmR = 12, HmT = 8, HmB = 22;
+const ROWS = 48;
 
-// ── 축 한 줄: 이름 + 슬롯 줄(클릭해 밴드 지정) + 초기화 ──────────────────────
-function AxisBandRow({ axis, slots, selected, nameOf, onClickSlot, onClear }: {
-    axis: RankAxis; slots: Slot[]; selected: string[]; nameOf: (c: string) => string;
-    onClickSlot: (slotId: string) => void; onClear: () => void;
+function Heatmap({ paths, horizon, dataMinT, dataMaxT, bucket, setHorizon, target, stop, setTarget, setStop }: {
+    paths: RankPointPath[]; horizon: number; dataMinT: number; dataMaxT: number; bucket: number; setHorizon: (m: number) => void;
+    target: number; stop: number; setTarget: (v: number) => void; setStop: (v: number) => void;
 }): JSX.Element {
-    const active = selected.length > 0;
-    const selOks = selected.map((id) => slots.find((s) => s.slotId === id)?.orderKey).filter((x): x is number => x != null);
-    const lo = selOks.length ? Math.min(...selOks) : null;
-    const hi = selOks.length ? Math.max(...selOks) : null;
-    const fracOf = (ok: number): number => { const i = slots.findIndex((s) => s.orderKey === ok); return slotFrac(i, slots.length); };
-    const bandStyle = (): CSSProperties | null => {
-        if (lo == null || hi == null || lo === hi) return null;
-        const a = fracOf(lo), b = fracOf(hi);
-        return { position: "absolute", top: "50%", height: 10, transform: "translateY(-50%)", background: "var(--accent-soft)", borderRadius: 5, left: `calc(${PAD}px + ${a} * (100% - ${2 * PAD}px))`, width: `calc(${b - a} * (100% - ${2 * PAD}px))` };
-    };
+    const svgRef = useRef<SVGSVGElement | null>(null);
+    const [drag, setDrag] = useState<null | "h" | "t" | "s">(null);
+
+    const tMin = Math.min(0, dataMinT);
+    const tMax = Math.max(1, dataMaxT);
+    const span = tMax - tMin || 1;
+
+    // 열 = 버킷 분 단위. 셀은 경로·버킷에만 의존.
+    const heat = useMemo(() => {
+        const cols = Math.floor(span / bucket) + 1;
+        let yLo = -1, yHi = 1;
+        for (const p of paths) for (const b of p.bars) { if (b.low < yLo) yLo = b.low; if (b.high > yHi) yHi = b.high; }
+        yLo = Math.floor(yLo - 0.5); yHi = Math.ceil(yHi + 0.5);
+        const grid: number[][] = Array.from({ length: cols }, () => new Array(ROWS).fill(0));
+        let max = 0;
+        const rowOf = (v: number): number => clamp(Math.floor((v - yLo) / (yHi - yLo) * ROWS), 0, ROWS - 1);
+        for (const p of paths) for (const b of p.bars) {
+            const c = clamp(Math.floor((b.t - tMin) / bucket), 0, cols - 1);
+            const r0 = rowOf(b.low), r1 = rowOf(b.high);
+            for (let r = r0; r <= r1; r++) { grid[c][r]++; if (grid[c][r] > max) max = grid[c][r]; }
+        }
+        return { grid, max, yLo, yHi, cols };
+    }, [paths, bucket, tMin, span]);
+
+    const plotW = HW - HmL - HmR, plotH = HH - HmT - HmB;
+    const X = (t: number): number => HmL + ((t - tMin) / span) * plotW;
+    const Y = (v: number): number => HmT + (1 - (v - heat.yLo) / (heat.yHi - heat.yLo)) * plotH;
+    const invX = (vx: number): number => tMin + ((vx - HmL) / plotW) * span;
+    const invY = (vy: number): number => heat.yLo + (1 - (vy - HmT) / plotH) * (heat.yHi - heat.yLo);
+
+    useEffect(() => {
+        if (!drag) return;
+        const move = (e: PointerEvent): void => {
+            const svg = svgRef.current;
+            if (!svg) return;
+            const rect = svg.getBoundingClientRect();
+            if (drag === "h") setHorizon(clamp(invX((e.clientX - rect.left) * (HW / rect.width)), 1, dataMaxT));
+            else {
+                const v = invY((e.clientY - rect.top) * (HH / rect.height));
+                if (drag === "t") setTarget(clamp(Math.round(v * 2) / 2, 0.5, heat.yHi));
+                else setStop(clamp(Math.round(v * 2) / 2, heat.yLo, -0.5));
+            }
+        };
+        const up = (): void => setDrag(null);
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+        return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    }, [drag, dataMaxT, tMin, span, heat.yLo, heat.yHi, setHorizon, setTarget, setStop]);
+
+    const cells = useMemo(() => {
+        const cw = plotW / heat.cols, ch = plotH / ROWS;
+        const els: JSX.Element[] = [];
+        for (let c = 0; c < heat.cols; c++) for (let r = 0; r < ROWS; r++) {
+            const d = heat.grid[c][r];
+            if (!d) continue;
+            const op = Math.pow(d / heat.max, 0.7) * 0.85;
+            els.push(<rect key={`${c}_${r}`} x={(HmL + c * cw).toFixed(1)} y={(HmT + (ROWS - 1 - r) * ch).toFixed(1)} width={(cw + 0.6).toFixed(1)} height={(ch + 0.6).toFixed(1)} fill={BLUE} fillOpacity={op.toFixed(3)} />);
+        }
+        return els;
+    }, [heat, plotW, plotH]);
+
+    const hX = X(Math.min(horizon, dataMaxT));
+    const eX = X(0); // 진입(t0)
+    const yg = ticks(heat.yLo, heat.yHi);
+    const xg = [tMin, 0, Math.round(tMax / 2), tMax].filter((t, i, a) => a.indexOf(t) === i);
+
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 10px", background: active ? "var(--accent-soft)" : "transparent", borderBottom: "1px solid var(--border-subtle)" }}>
-            <div style={{ width: 116, flexShrink: 0, display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-                <span title={axis.name} style={{ fontSize: 12, fontWeight: active ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{axis.name}</span>
-                {active && <button onClick={onClear} title="밴드 초기화" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 12, padding: "0 2px", flexShrink: 0 }}>×</button>}
-            </div>
-            <div style={{ position: "relative", flex: 1, height: 30 }}>
-                <div style={{ position: "absolute", left: PAD - 4, right: PAD - 4, top: "50%", height: 2, background: "var(--border-default)", transform: "translateY(-50%)" }} />
-                {bandStyle() && <div style={bandStyle()!} />}
-                {slots.length === 0 && <span style={{ position: "absolute", left: PAD, top: "50%", transform: "translateY(-50%)", fontSize: 10.5, color: "var(--text-tertiary)" }}>배치 없음</span>}
-                {slots.map((slot, i) => {
-                    const u = slotFrac(i, slots.length);
-                    const sel = selected.includes(slot.slotId);
-                    const inBand = lo != null && hi != null && slot.orderKey >= lo && slot.orderKey <= hi;
-                    const tie = slot.count > 1;
-                    return (
-                        <div key={slot.slotId} onClick={() => onClickSlot(slot.slotId)}
-                            title={tie ? `타이 ${slot.count}건 (${i + 1}번째)` : `${nameOf(slot.firstCode)} (${i + 1}번째)`}
-                            style={{ position: "absolute", left: `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`, top: "50%", transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: 2 }}>
-                            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: tie ? 16 : 10, height: tie ? 14 : 10, padding: tie ? "0 3px" : 0, borderRadius: tie ? 7 : "50%", background: sel ? "var(--accent-primary)" : inBand ? "var(--accent-primary)" : tie ? TIE : "var(--text-secondary)", opacity: sel || inBand ? 1 : 0.55, color: "#fff", fontSize: 8.5, fontWeight: 700, boxShadow: sel ? "0 0 0 2px var(--accent-soft)" : "none", fontVariantNumeric: "tabular-nums" }}>{tie ? slot.count : ""}</span>
-                        </div>
-                    );
-                })}
+        <svg ref={svgRef} viewBox={`0 0 ${HW} ${HH}`} width="100%" role="img" aria-label="경로 밀도 히트맵(진입 전 포함)과 목표·손절·horizon 선" style={{ display: "block", touchAction: "none" }}>
+            {cells}
+            {yg.map((v) => (
+                <g key={v}>
+                    <line x1={HmL} y1={Y(v)} x2={HW - HmR} y2={Y(v)} stroke="var(--border-subtle)" strokeWidth={0.5} strokeOpacity={0.6} />
+                    <text x={HmL - 5} y={Y(v) + 3} textAnchor="end" fontSize={9.5} fill="var(--text-tertiary)">{v > 0 ? "+" : ""}{v}%</text>
+                </g>
+            ))}
+            <line x1={HmL} y1={Y(0)} x2={HW - HmR} y2={Y(0)} stroke="var(--text-tertiary)" strokeWidth={1} />
+            {xg.map((t) => <text key={t} x={clamp(X(t), HmL + 8, HW - HmR - 8)} y={HH - 6} textAnchor="middle" fontSize={9.5} fill="var(--text-tertiary)">{t === 0 ? "진입" : `${t}분`}</text>)}
+
+            {/* 진입(t0) 파선 */}
+            <line x1={eX} y1={HmT} x2={eX} y2={HmT + plotH} stroke="var(--text-tertiary)" strokeWidth={1} strokeDasharray="3 3" />
+
+            {/* horizon 오른쪽 dim + 드래그 세로선 */}
+            <rect x={hX} y={HmT} width={Math.max(0, HW - HmR - hX)} height={plotH} fill="var(--bg-primary)" fillOpacity={0.5} pointerEvents="none" />
+            <line x1={hX} y1={HmT} x2={hX} y2={HmT + plotH} stroke="var(--text-secondary)" strokeWidth={1.5} />
+            <rect x={hX - 5} y={HmT} width={10} height={plotH} fill="transparent" style={{ cursor: "ew-resize" }} onPointerDown={() => setDrag("h")} />
+
+            {/* 목표(초록)·손절(빨강) 드래그 가로선 */}
+            <line x1={HmL} y1={Y(target)} x2={HW - HmR} y2={Y(target)} stroke={GREEN} strokeWidth={1.5} strokeDasharray="6 4" />
+            <text x={HW - HmR} y={Y(target) - 4} textAnchor="end" fontSize={10} fill={GREEN}>목표 +{target.toFixed(1)}%</text>
+            <rect x={HmL} y={Y(target) - 5} width={plotW} height={10} fill="transparent" style={{ cursor: "ns-resize" }} onPointerDown={() => setDrag("t")} />
+            <line x1={HmL} y1={Y(stop)} x2={HW - HmR} y2={Y(stop)} stroke={RED} strokeWidth={1.5} strokeDasharray="6 4" />
+            <text x={HW - HmR} y={Y(stop) + 12} textAnchor="end" fontSize={10} fill={RED}>손절 {stop.toFixed(1)}%</text>
+            <rect x={HmL} y={Y(stop) - 5} width={plotW} height={10} fill="transparent" style={{ cursor: "ns-resize" }} onPointerDown={() => setDrag("s")} />
+        </svg>
+    );
+}
+
+function SimReadout({ win, loss, none, total, expR, target, stop }: { win: number; loss: number; none: number; total: number; expR: number; target: number; stop: number }): JSX.Element {
+    const pct = (v: number): string => (total ? Math.round((v / total) * 100) : 0) + "%";
+    const cell = (c: string, label: string, val: string): JSX.Element => (
+        <div style={{ flex: 1, background: "var(--bg-secondary)", borderRadius: 8, padding: "7px 10px" }}>
+            <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: c, fontVariantNumeric: "tabular-nums" }}>{val}</div>
+        </div>
+    );
+    return (
+        <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 5 }}>첫 터치 시뮬(고가/저가) — 목표 +{target.toFixed(1)}% · 손절 {stop.toFixed(1)}% · 같은 바 동시=손절 보수처리</div>
+            <div style={{ display: "flex", gap: 8 }}>
+                {cell(GREEN, "익절 먼저", pct(win))}
+                {cell(RED, "손절 먼저", pct(loss))}
+                {cell("var(--text-tertiary)", "미도달", pct(none))}
+                {cell("var(--text-primary)", "기대값", (expR >= 0 ? "+" : "") + expR.toFixed(2) + "R")}
             </div>
         </div>
     );
 }
 
-// ── 경로 리본(스파게티 + 중앙값 + 25~75% 띠) ────────────────────────────────
-function RibbonChart({ stats }: { stats: PathStats }): JSX.Element {
-    const W = 600, H = 220, mL = 40, mR = 10, mT = 8, mB = 22;
-    const { ribbon, series } = stats;
-    const allV: number[] = [];
-    for (const s of series) for (const p of s.pts) allV.push(p.v);
-    for (const v of ribbon.p25) allV.push(v);
-    for (const v of ribbon.p75) allV.push(v);
-    const maxT = Math.max(1, stats.maxT);
-    const yMin = Math.min(-1, Math.floor(Math.min(...allV, 0) - 0.5));
-    const yMax = Math.max(1, Math.ceil(Math.max(...allV, 0) + 0.5));
-    const X = (t: number): number => mL + (t / maxT) * (W - mL - mR);
-    const Y = (v: number): number => mT + (1 - (v - yMin) / (yMax - yMin)) * (H - mT - mB);
-    const line = (pts: Array<{ t: number; v: number }>): string => pts.map((p, i) => `${i ? "L" : "M"} ${X(p.t).toFixed(1)} ${Y(p.v).toFixed(1)}`).join(" ");
-    const ribLine = (arr: number[]): string => ribbon.t.map((t, i) => `${i ? "L" : "M"} ${X(t).toFixed(1)} ${Y(arr[i]).toFixed(1)}`).join(" ");
-    const bandPath = ribbon.t.length
-        ? ribbon.t.map((t, i) => `${i ? "L" : "M"} ${X(t).toFixed(1)} ${Y(ribbon.p25[i]).toFixed(1)}`).join(" ") +
-          " " + ribbon.t.map((_, i) => `L ${X(ribbon.t[ribbon.t.length - 1 - i]).toFixed(1)} ${Y(ribbon.p75[ribbon.t.length - 1 - i]).toFixed(1)}`).join(" ") + " Z"
-        : "";
-    const gy = yTicks(yMin, yMax);
+// ── 분할 MAE 산점 (x=최저 %, y=MFE) ─────────────────────────────────────────
+const SW = 300, SH = 190, SmL = 34, SmR = 8, SmT = 8, SmB = 24;
+
+function MaeScatter({ title, excursions, xOf, nameOf, onGo }: {
+    title: string; excursions: Excursion[]; xOf: (e: Excursion) => number; nameOf: (c: string) => string; onGo: (key: string) => void;
+}): JSX.Element {
+    const xs = excursions.map(xOf);
+    const xMin = Math.min(-1, Math.floor(Math.min(...xs, 0) - 0.5));
+    const yMax = Math.max(1, Math.ceil(Math.max(...excursions.map((e) => e.mfe), 0) + 0.5));
+    const plotW = SW - SmL - SmR, plotH = SH - SmT - SmB;
+    const X = (v: number): number => SmL + (v - xMin) / (0 - xMin) * plotW;
+    const Y = (v: number): number => SmT + (1 - v / yMax) * plotH;
     return (
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="진입 후 경로 오버레이와 중앙값 띠" style={{ display: "block" }}>
-            {gy.map((v) => (
-                <g key={v}>
-                    <line x1={mL} y1={Y(v)} x2={W - mR} y2={Y(v)} stroke="var(--border-subtle)" strokeWidth={1} />
-                    <text x={mL - 5} y={Y(v) + 3} textAnchor="end" fontSize={9.5} fill="var(--text-tertiary)">{v > 0 ? "+" : ""}{v}%</text>
-                </g>
-            ))}
-            <line x1={mL} y1={Y(0)} x2={W - mR} y2={Y(0)} stroke="var(--border-default)" strokeWidth={1.5} />
-            {bandPath && <path d={bandPath} fill={UP} fillOpacity={0.13} stroke="none" />}
-            {series.map((s) => <path key={s.key} d={line(s.pts)} fill="none" stroke={s.up ? UP : DOWN} strokeOpacity={0.22} strokeWidth={1} />)}
-            {ribbon.t.length > 0 && <path d={ribLine(ribbon.p50)} fill="none" stroke={UP} strokeWidth={2.5} strokeLinejoin="round" />}
-            {[0, Math.round(maxT / 2), maxT].map((t) => <text key={t} x={X(t)} y={H - 6} textAnchor="middle" fontSize={9.5} fill="var(--text-tertiary)">{t}분</text>)}
-        </svg>
+        <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 2 }}>{title}</div>
+            <svg viewBox={`0 0 ${SW} ${SH}`} width="100%" role="img" aria-label={title} style={{ display: "block" }}>
+                {ticks(xMin, 0).map((v) => (
+                    <g key={`x${v}`}>
+                        <line x1={X(v)} y1={SmT} x2={X(v)} y2={SH - SmB} stroke="var(--border-subtle)" strokeWidth={0.5} strokeOpacity={0.6} />
+                        <text x={X(v)} y={SH - 10} textAnchor="middle" fontSize={9} fill="var(--text-tertiary)">{v}%</text>
+                    </g>
+                ))}
+                {ticks(0, yMax).map((v) => (
+                    <g key={`y${v}`}>
+                        <line x1={SmL} y1={Y(v)} x2={SW - SmR} y2={Y(v)} stroke="var(--border-subtle)" strokeWidth={0.5} strokeOpacity={0.6} />
+                        <text x={SmL - 4} y={Y(v) + 3} textAnchor="end" fontSize={9} fill="var(--text-tertiary)">{v > 0 ? "+" : ""}{v}</text>
+                    </g>
+                ))}
+                {excursions.map((e) => (
+                    <circle key={e.key} cx={X(clamp(xOf(e), xMin, 0))} cy={Y(clamp(e.mfe, 0, yMax))} r={4} fill={e.up ? UP : DOWN} fillOpacity={0.72} style={{ cursor: "pointer" }} onClick={() => onGo(e.key)}>
+                        <title>{nameOf(e.key.split("|")[0])} · 최저 {xOf(e).toFixed(1)}% / MFE +{e.mfe.toFixed(1)}%</title>
+                    </circle>
+                ))}
+            </svg>
+        </div>
     );
 }
 
-// ── MAE ↔ MFE 산점 ──────────────────────────────────────────────────────────
-function ScatterChart({ excursions, nameOf, onGo }: { excursions: Excursion[]; nameOf: (c: string) => string; onGo: (key: string) => void }): JSX.Element {
-    const W = 600, H = 210, mL = 40, mR = 10, mT = 8, mB = 24;
-    const maeMin = Math.min(-1, Math.floor(Math.min(...excursions.map((e) => e.mae), 0) - 0.5));
-    const mfeMax = Math.max(1, Math.ceil(Math.max(...excursions.map((e) => e.mfe), 0) + 0.5));
-    const X = (v: number): number => mL + (v - maeMin) / (0 - maeMin) * (W - mL - mR);
-    const Y = (v: number): number => mT + (1 - v / mfeMax) * (H - mT - mB);
-    const gx = yTicks(maeMin, 0);
-    const gy = yTicks(0, mfeMax);
-    return (
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="최대낙폭 대 최대상승 산점도" style={{ display: "block" }}>
-            {gx.map((v) => (
-                <g key={`x${v}`}>
-                    <line x1={X(v)} y1={mT} x2={X(v)} y2={H - mB} stroke="var(--border-subtle)" strokeWidth={1} />
-                    <text x={X(v)} y={H - 12} textAnchor="middle" fontSize={9.5} fill="var(--text-tertiary)">{v}%</text>
-                </g>
-            ))}
-            {gy.map((v) => (
-                <g key={`y${v}`}>
-                    <line x1={mL} y1={Y(v)} x2={W - mR} y2={Y(v)} stroke="var(--border-subtle)" strokeWidth={1} />
-                    <text x={mL - 5} y={Y(v) + 3} textAnchor="end" fontSize={9.5} fill="var(--text-tertiary)">{v > 0 ? "+" : ""}{v}%</text>
-                </g>
-            ))}
-            {excursions.map((e) => (
-                <circle key={e.key} cx={X(Math.max(e.mae, maeMin))} cy={Y(Math.min(e.mfe, mfeMax))} r={4.5} fill={e.up ? UP : DOWN} fillOpacity={0.72} style={{ cursor: "pointer" }}
-                    onClick={() => onGo(e.key)}>
-                    <title>{nameOf(e.key.split("|")[0])} · MAE {e.mae.toFixed(1)}% / MFE +{e.mfe.toFixed(1)}% / 종가 {e.terminal >= 0 ? "+" : ""}{e.terminal.toFixed(1)}%</title>
-                </circle>
-            ))}
-            <text x={mL} y={H - 1} fontSize={9.5} fill="var(--text-tertiary)">← 최대낙폭 MAE</text>
-        </svg>
-    );
-}
-
-/** 축 눈금 — [lo,hi] 를 5% 안팎 간격으로 균등 분할(정수). */
-function yTicks(lo: number, hi: number): number[] {
-    const span = hi - lo;
+/** 축 눈금(정수). */
+function ticks(lo: number, hi: number): number[] {
+    const span = hi - lo || 1;
     const step = span <= 8 ? 2 : span <= 20 ? 5 : 10;
     const out: number[] = [];
-    const start = Math.ceil(lo / step) * step;
-    for (let v = start; v <= hi + 1e-9; v += step) out.push(v);
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(v);
     return out;
 }

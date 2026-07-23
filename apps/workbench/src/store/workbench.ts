@@ -16,8 +16,9 @@ import { createHypothesisSlice, type HypothesisSlice } from "./hypothesisSlice.j
 import { createBoardFilterSlice, type BoardFilterSlice } from "./boardFilterSlice.js";
 import { createSettingsSlice, type SettingsSlice } from "./settingsSlice.js";
 import { createHistorySlice, type HistorySlice } from "./historySlice.js";
+import { createRankFilterSlice, type RankFilterSlice } from "./rankFilterSlice.js";
 
-export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelSlice & HypothesisSlice & BoardFilterSlice & SettingsSlice & HistorySlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelSlice & HypothesisSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankFilterSlice;
 
 export type { Focus, Scope, Search, ActivePoint, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
@@ -28,6 +29,7 @@ export type { HypothesisSlice } from "./hypothesisSlice.js";
 export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js";
 export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMarket, BoardMarketMap, SettingsSlice } from "./settingsSlice.js";
 export type { HistoryEntry, HistorySlice } from "./historySlice.js";
+export type { RankBand, RankBoundEdge, RankFilterSlice } from "./rankFilterSlice.js";
 
 export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createFocusSlice(...a),
@@ -39,4 +41,5 @@ export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createBoardFilterSlice(...a),
     ...createSettingsSlice(...a),
     ...createHistorySlice(...a),
+    ...createRankFilterSlice(...a),
 }));

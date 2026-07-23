@@ -36,6 +36,13 @@ describe("filterPoints — 밴드 AND", () => {
         expect(r.coverage).toBe(2);
     });
 
+    it("반열림 밴드 — 한쪽만 지정(이상만 = [from,∞) / 이하만 = (∞,to])", () => {
+        // A 이상 2 = orderKey≥2 → Y,Z. (Z 는 여기 단일 축이라 통과)
+        expect(codesOf(filterPoints(lines, [{ axisId: "A", from: 2, to: Infinity }]))).toEqual(["Y", "Z"]);
+        // A 이하 2 = orderKey≤2 → X,Y
+        expect(codesOf(filterPoints(lines, [{ axisId: "A", from: -Infinity, to: 2 }]))).toEqual(["X", "Y"]);
+    });
+
     it("coverage = 활성 축 전부에 배치된 모수(밴드 무시), N ≤ coverage", () => {
         // B 밴드를 슬롯1 로 좁히면 X 만 통과하지만 coverage 는 여전히 2(X,Y 둘 다 A∩B 배치).
         const bands: AxisBand[] = [{ axisId: "A", from: 1, to: 3 }, { axisId: "B", from: 1, to: 1 }];

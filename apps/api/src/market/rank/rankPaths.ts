@@ -1,6 +1,7 @@
-// RankPaths — 순위 필터 타점 집합의 "진입 후 인트라데이 경로"(파생 읽기모델, app 소유 CQRS 읽기측).
-// situation(review point 삼중키)마다 진입가 대비 % 경로를 당일 종가까지 만든다. horizon crop·분위·MFE/MAE 는 클라.
+// RankPaths — 순위 필터 타점 집합의 "인트라데이 경로"(파생 읽기모델, app 소유 CQRS 읽기측).
+// situation(review point 삼중키)마다 진입가 대비 % 경로를 **장 시작~당일 종가**로 만든다. crop·분위·MFE/MAE 는 클라.
 //  · 앵커 = 진입 바(진입 time 이상 첫 분봉)의 UN 종가. UN 은 항상 존재(UN ⊇ KRX)라 통합 스케일로 일관.
+//  · t = 진입 대비 경과분 — **진입 전 바는 음수 t**(과거 궤적 맥락용). MFE/MAE·시뮬은 클라가 t≥0 만 쓴다.
 //  · MFE=고가%·MAE=저가% 를 위해 바별 close/high/low % 를 모두 싣는다(excursion 과소평가 방지).
 //  · (code,date) 로 묶어 분봉을 하루 1회만 조회 — 같은 날 여러 타점(day 축 fanout 등)은 재사용한다.
 import type { MinuteReader, MinuteCandle, RankPoint } from "@trade-data-manager/market";
@@ -34,14 +35,14 @@ export class RankPaths {
     }
 }
 
-/** 한 타점의 진입~당일 종가 경로. 분봉이 없거나 앵커가 0이면 bars=[]. */
+/** 한 타점의 장 시작~당일 종가 경로(진입 전 = 음수 t). 진입 바가 없거나 앵커가 0이면 bars=[]. */
 function pathOf(p: RankPoint, candles: MinuteCandle[]): RankPointPath {
     const t0 = toMin(p.time);
-    const fwd = candles.filter((c) => toMin(c.time) >= t0);
-    const anchor = fwd.length ? Number(fwd[0].un.close) : 0;
+    const entry = candles.find((c) => toMin(c.time) >= t0); // 진입 바(진입 time 이상 첫 분봉) = 앵커
+    const anchor = entry ? Number(entry.un.close) : 0;
     const bars: RankPathBar[] =
         anchor > 0
-            ? fwd.map((c) => {
+            ? candles.map((c) => {
                   const pct = (v: string): number => ((Number(v) - anchor) / anchor) * 100;
                   return { t: toMin(c.time) - t0, close: pct(c.un.close), high: pct(c.un.high), low: pct(c.un.low) };
               })

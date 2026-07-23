@@ -4,7 +4,7 @@ import {
     DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable,
     type DragStartEvent, type DragMoveEvent, type DragEndEvent,
 } from "@dnd-kit/core";
-import { useWorkbench } from "../store/workbench.js";
+import { useWorkbench, type RankBand } from "../store/workbench.js";
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxis, type RankPoint, type RankTarget } from "../api/rank.js";
 import { loadJson, saveJson } from "../store/persist.js";
@@ -22,6 +22,8 @@ import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
 const ACTIVE = "#0ea5e9";                        // 활성 스팟 — 밝은 스카이블루(푸른 계열), 글로우로 확 대비.
 const ACTIVE_SOFT = "rgba(14,165,233,0.32)";
 const ACTIVE_TINT = "rgba(14,165,233,0.09)";     // 활성이 배치된 레인 배경.
+const FILTER = "#e24b4a";                         // 필터 밴드 경계(우클릭 지정) — 붉은 삼각 헤드 + 옅은 밴드.
+const FILTER_BAND = "rgba(226,75,74,0.10)";
 const TIE = "#7a869c";
 const PAD = 72;                                   // 레인 좌우 여백(px) — 끝 타점보다 더 바깥에 꽂을 공간(넉넉히).
 const LABEL_W = 138;
@@ -51,6 +53,11 @@ function assemble(placed: PlacedPoint[]): Slot[] {
 export function RankPanel(): JSX.Element {
     const activePoint = useWorkbench((s) => s.activePoint);
     const goToPoint = useWorkbench((s) => s.goToPoint);
+    // 필터 밴드(분석 대시보드와 공유) — 우클릭으로 이 축 이상/이하 경계 지정.
+    const rankBands = useWorkbench((s) => s.rankBands);
+    const setRankBound = useWorkbench((s) => s.setRankBound);
+    const clearRankBand = useWorkbench((s) => s.clearRankBand);
+    const [filterMenu, setFilterMenu] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
     const qc = useQueryClient();
 
     const axesQ = useQuery(rankAxesQuery());
@@ -188,7 +195,9 @@ export function RankPanel(): JSX.Element {
                                     registerTrack={(el) => { if (el) trackRefs.current.set(ax.id, el); else trackRefs.current.delete(ax.id); }}
                                     activeMatches={activeMatches} activePlaced={activePlaced}
                                     drop={drop && drop.axisId === ax.id ? drop : null} nameOf={nameOf}
+                                    band={rankBands[ax.id]}
                                     onNodeClick={(slotId, x, y) => setPop({ axisId: ax.id, slotId, x, y })}
+                                    onNodeContext={(slotId, x, y) => { setPop(null); setFilterMenu({ axisId: ax.id, slotId, x, y }); }}
                                     onRename={(name) => renameMut.mutate({ id: ax.id, name })}
                                     onDelete={() => { if (confirm(`축 "${ax.name}" 을 삭제할까요? 배치도 함께 제거됩니다.`)) deleteMut.mutate(ax.id); }}
                                     onReorderDrop={(dragged) => reorder(dragged, ax.id)}
@@ -218,6 +227,18 @@ export function RankPanel(): JSX.Element {
                         onGo={(p) => { goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank"); setPop(null); }}
                         onAdd={(p) => { addToTray(p); setPop(null); }}
                         onUnplace={(p) => { unplaceMut.mutate({ axisId: pop.axisId, point: p }); setPop(null); }} />
+                );
+            })()}
+
+            {filterMenu && (() => {
+                const ax = axes.find((a) => a.id === filterMenu.axisId);
+                if (!ax) return null;
+                const band = rankBands[filterMenu.axisId];
+                return (
+                    <FilterMenu x={filterMenu.x} y={filterMenu.y} axisName={ax.name} band={band} slotId={filterMenu.slotId}
+                        onSet={(edge) => { setRankBound(filterMenu.axisId, edge, filterMenu.slotId); setFilterMenu(null); }}
+                        onClear={() => { clearRankBand(filterMenu.axisId); setFilterMenu(null); }}
+                        onClose={() => setFilterMenu(null)} />
                 );
             })()}
         </div>
@@ -274,13 +295,15 @@ function PointItem({ point, name, active, onGo, onRemove }: { point: RankPoint; 
 
 // ── 한 축 레인 ─────────────────────────────────────────────────────────────
 function Lane({
-    axis, slots, view, setView, resetView, registerTrack, activeMatches, activePlaced, drop, nameOf,
-    onNodeClick, onRename, onDelete, onReorderDrop,
+    axis, slots, view, setView, resetView, registerTrack, activeMatches, activePlaced, drop, nameOf, band,
+    onNodeClick, onNodeContext, onRename, onDelete, onReorderDrop,
 }: {
     axis: RankAxis; slots: Slot[]; view: View; setView: (v: View) => void; resetView: () => void;
     registerTrack: (el: HTMLElement | null) => void;
     activeMatches: (p: RankPoint) => boolean; activePlaced: boolean; drop: DropInfo | null; nameOf: (c: string) => string;
-    onNodeClick: (slotId: string, x: number, y: number) => void; onRename: (name: string) => void; onDelete: () => void;
+    band: RankBand | undefined;
+    onNodeClick: (slotId: string, x: number, y: number) => void; onNodeContext: (slotId: string, x: number, y: number) => void;
+    onRename: (name: string) => void; onDelete: () => void;
     onReorderDrop: (draggedAxisId: string) => void;
 }): JSX.Element {
     const { setNodeRef, isOver } = useDroppable({ id: axis.id });
@@ -316,6 +339,18 @@ function Lane({
     }, [view, setView]);
 
     const setRefs = (el: HTMLDivElement | null): void => { trackRef.current = el; setNodeRef(el); registerTrack(el); };
+
+    // 필터 밴드 경계 → 현재 뷰(줌) u 위치. 한쪽만이면 반대편은 트랙 끝(0/1)까지 밴드.
+    const uOf = (slotId?: string): number | null => {
+        if (!slotId) return null;
+        const i = slots.findIndex((s) => s.slotId === slotId);
+        return i < 0 ? null : displayU(slotFrac(i, slots.length), view);
+    };
+    const loU = uOf(band?.lo);
+    const hiU = uOf(band?.hi);
+    const hasBand = loU != null || hiU != null;
+    const bandL = loU != null ? loU : 0;
+    const bandR = hiU != null ? hiU : 1;
 
     return (
         <div
@@ -353,6 +388,14 @@ function Lane({
                 <span style={endLbl(true)}>−</span>
                 <span style={endLbl(false)}>+</span>
 
+                {hasBand && (
+                    <>
+                        <div style={{ position: "absolute", top: 4, bottom: 4, left: `calc(${PAD}px + ${bandL} * (100% - ${2 * PAD}px))`, width: `calc(${bandR - bandL} * (100% - ${2 * PAD}px))`, background: FILTER_BAND, pointerEvents: "none", zIndex: 1 }} />
+                        {loU != null && <FilterArrow u={loU} dir="right" />}
+                        {hiU != null && <FilterArrow u={hiU} dir="left" />}
+                    </>
+                )}
+
                 {slots.map((slot, i) => {
                     const u = displayU(slotFrac(i, slots.length), view);
                     if (u < -0.03 || u > 1.03) return null;
@@ -361,7 +404,8 @@ function Lane({
                     const left = `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`;
                     return (
                         <div key={slot.slotId} onClick={(e) => onNodeClick(slot.slotId, e.clientX, e.clientY)}
-                            title={tie ? `타이 ${slot.points.length}건 — 클릭` : `${nameOf(slot.points[0].stockCode)} — 클릭`}
+                            onContextMenu={(e) => { e.preventDefault(); onNodeContext(slot.slotId, e.clientX, e.clientY); }}
+                            title={tie ? `타이 ${slot.points.length}건 — 클릭 / 우클릭=필터 경계` : `${nameOf(slot.points[0].stockCode)} — 클릭 / 우클릭=필터 경계`}
                             style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: hasActive ? 3 : 2 }}>
                             {tie ? (
                                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 17, padding: "0 5px", borderRadius: 8, background: hasActive ? ACTIVE : TIE, color: "#fff", fontSize: 10, fontWeight: 700, boxShadow: hasActive ? `0 0 0 3px ${ACTIVE_SOFT}, 0 0 7px 1px ${ACTIVE}` : "none", fontVariantNumeric: "tabular-nums" }}>{slot.points.length}</span>
@@ -384,6 +428,43 @@ function Lane({
 }
 
 const endLbl = (leftSide: boolean): CSSProperties => ({ position: "absolute", [leftSide ? "left" : "right"]: 6, top: "50%", transform: "translateY(-50%)", fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)" });
+
+// 필터 경계 삼각 헤드 — 안쪽을 가리키는 붉은 삼각형(왼쪽 경계=▶ / 오른쪽 경계=◀). 트랙 상단.
+function FilterArrow({ u, dir }: { u: number; dir: "left" | "right" }): JSX.Element {
+    return (
+        <div style={{
+            position: "absolute", top: 3, left: `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`, transform: "translateX(-50%)",
+            width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent",
+            ...(dir === "right" ? { borderLeft: `9px solid ${FILTER}` } : { borderRight: `9px solid ${FILTER}` }),
+            pointerEvents: "none", zIndex: 4,
+        }} />
+    );
+}
+
+// ── 우클릭 필터 경계 메뉴 — 이상(lo)/이하(hi) 경계 지정·해제. 이미 그 경계면 '해제' 표기(토글). ──
+function FilterMenu({ x, y, axisName, band, slotId, onSet, onClear, onClose }: {
+    x: number; y: number; axisName: string; band: RankBand | undefined; slotId: string;
+    onSet: (edge: "lo" | "hi") => void; onClear: () => void; onClose: () => void;
+}): JSX.Element {
+    const ref = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        const h = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+        const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
+        return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
+    }, [onClose]);
+    const isLo = band?.lo === slotId, isHi = band?.hi === slotId;
+    const px = Math.min(x + 4, window.innerWidth - 180);
+    const py = Math.min(y + 4, window.innerHeight - 120);
+    const item: CSSProperties = { display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 12.5, padding: "7px 12px" };
+    return (
+        <div ref={ref} style={{ position: "fixed", left: px, top: py, zIndex: 60, minWidth: 160, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.24)", overflow: "hidden" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", padding: "8px 12px 4px" }}>{axisName} · 필터 경계</div>
+            <button style={item} onClick={() => onSet("lo")}><span style={{ color: FILTER, fontWeight: 700 }}>▶</span> {isLo ? "이상 경계 해제" : "이상 경계(이 지점부터)"}</button>
+            <button style={item} onClick={() => onSet("hi")}><span style={{ color: FILTER, fontWeight: 700 }}>◀</span> {isHi ? "이하 경계 해제" : "이하 경계(이 지점까지)"}</button>
+            {(band?.lo || band?.hi) && <button style={{ ...item, borderTop: "1px solid var(--border-subtle)", color: "var(--text-tertiary)" }} onClick={onClear}>이 축 필터 초기화</button>}
+        </div>
+    );
+}
 
 // ── 하단 축 추가 행(필터 추가 방식) ────────────────────────────────────────
 function AddAxisRow({ onCreate }: { onCreate: (name: string, scope: "point" | "day") => void }): JSX.Element {
