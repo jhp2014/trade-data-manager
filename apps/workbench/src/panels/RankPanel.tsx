@@ -262,10 +262,12 @@ function TrayLine({ tray, current, nameOf, activeMatches, canAdd, onAddActive, o
             {empty && <span style={{ fontSize: 11.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>타점 선택·담기 후 레인으로 드래그해 배치</span>}
             {current && (
                 <>
-                    <button onClick={() => onGo(current)} title="현재 타점으로 이동" style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "transparent", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}>
+                    <button onClick={() => onGo(current)} title="현재 타점으로 이동" style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: ACTIVE, flexShrink: 0 }} />
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{nameOf(current.stockCode)}</span>
-                        <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{current.date.slice(5)} {current.time.slice(0, 5)}</span>
+                        <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15, width: 80, minWidth: 0, overflow: "hidden" }}>
+                            <span title={nameOf(current.stockCode)} style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(current.stockCode)}</span>
+                            <span style={{ fontSize: 9.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{current.date.slice(5)} {current.time.slice(0, 5)}</span>
+                        </span>
                     </button>
                     <Sep />
                 </>
@@ -277,16 +279,16 @@ function TrayLine({ tray, current, nameOf, activeMatches, canAdd, onAddActive, o
     );
 }
 
-// 담기 라인 항목 — 드래그 소스(전체가 손잡이), 이름 클릭=이동, × 빼기. 활성이면 핑크.
+// 담기 라인 항목 — 드래그 소스(전체가 손잡이). 앞 그랩 아이콘=드래그 가능 표시, 이름 클릭=이동, × 빼기. 활성이면 테두리 강조.
 function PointItem({ point, name, active, onGo, onRemove }: { point: RankPoint; name: string; active: boolean; onGo: () => void; onRemove?: () => void }): JSX.Element {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `chip:${pk(point)}` });
     const stop = (e: ReactPointerEvent): void => e.stopPropagation();
     return (
         <span ref={setNodeRef} {...listeners} {...attributes} title="드래그해 레인에 배치"
-            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 6px 2px 7px", borderRadius: 4, border: `1px solid ${active ? ACTIVE : "var(--border-default)"}`, background: active ? ACTIVE_SOFT : "var(--bg-tertiary)", cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, whiteSpace: "nowrap" }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: active ? ACTIVE : "var(--text-tertiary)", flexShrink: 0 }} />
-            <button onPointerDown={stop} onClick={onGo} title="이 종목으로 이동" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap" }}>{name}</span>
+            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 6px 2px 6px", borderRadius: 4, border: `1px solid ${active ? ACTIVE : "var(--border-default)"}`, background: "var(--bg-tertiary)", cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, whiteSpace: "nowrap" }}>
+            <span style={{ color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1, flexShrink: 0 }}>⠿</span>
+            <button onPointerDown={stop} onClick={onGo} title="이 종목으로 이동" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15, width: 70, minWidth: 0, overflow: "hidden" }}>
+                <span title={name} style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
                 <span style={{ fontSize: 9.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{point.date.slice(5)} {point.time.slice(0, 5)}</span>
             </button>
             {onRemove && <button onPointerDown={stop} onClick={onRemove} title="담기에서 빼기" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", padding: "0 1px", fontSize: 13, lineHeight: 1 }}>×</button>}
