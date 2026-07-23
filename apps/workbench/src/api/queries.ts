@@ -9,6 +9,9 @@ import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchHypotheses, fetchHypothesisLinks, fetchHypothesisRelations } from "./hypotheses.js";
 import { fetchHypothesisFilters } from "./hypothesisFilters.js";
+import { fetchRankAxes, fetchAxisLine } from "./rank.js";
+import { fetchRankPaths } from "./rankPaths.js";
+import type { RankPoint } from "./rank.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
@@ -53,6 +56,19 @@ export const hypothesisRelationsQuery = () =>
 // 저장된 가설 필터 목록. 저장/삭제 mutation 이 이 키를 invalidate 하므로 staleTime ∞.
 export const hypothesisFiltersQuery = () =>
     queryOptions({ queryKey: ["hypothesis-filters"], queryFn: ({ signal }) => fetchHypothesisFilters(signal), staleTime: IMMUTABLE });
+
+// 순위 배치 — 축 목록·축별 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
+export const rankAxesQuery = () =>
+    queryOptions({ queryKey: ["rank-axes"], queryFn: ({ signal }) => fetchRankAxes(signal), staleTime: IMMUTABLE });
+
+export const axisLineQuery = (axisId: string) =>
+    queryOptions({ queryKey: ["rank-axis-line", axisId], queryFn: ({ signal }) => fetchAxisLine(axisId, signal), enabled: axisId.length > 0, staleTime: IMMUTABLE });
+
+// 순위 필터 타점 집합의 진입 후 경로(파생). 키 = 정렬된 타점 pk 집합(순서 무관·재조회 방지). 역사 타점이라 staleTime ∞.
+export const rankPathsQuery = (points: RankPoint[]) => {
+    const keys = points.map((p) => `${p.stockCode}|${p.date}|${p.time}`).sort();
+    return queryOptions({ queryKey: ["rank-paths", keys.join(",")], queryFn: () => fetchRankPaths(points), enabled: points.length > 0, staleTime: IMMUTABLE });
+};
 
 // 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
 export const stockMetaQuery = (code: string) =>

@@ -32,6 +32,8 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "hypothesis-1", component: "hypothesis", title: "가설", plane: "eod" },
     { id: "hypothesis-graph-1", component: "hypothesisGraph", title: "가설 그래프", plane: "eod" },
     { id: "hypothesis-filter-1", component: "hypothesisFilter", title: "가설 필터", plane: "eod" },
+    { id: "rank-1", component: "rank", title: "순위 배치", plane: "eod" },
+    { id: "rank-filter-1", component: "rankFilter", title: "순위 필터", plane: "eod" },
     { id: "hts-news-1", component: "htsNews", title: "HTS뉴스", plane: "eod" },
 ];
 

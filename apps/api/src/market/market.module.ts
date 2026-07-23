@@ -20,9 +20,11 @@ import {
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, HYPOTHESIS_FILTER_REPO, RANK_REPO, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, HYPOTHESIS_REPO, HYPOTHESIS_FILTER_REPO, RANK_REPO, RANK_PATHS, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
+import { RankPaths } from "./rank/rankPaths.js";
+import { RankPathsController } from "./rank/rankPaths.controller.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
 import { DayReplayController } from "./board/dayReplay.controller.js";
 import { DatesController } from "./board/dates.controller.js";
@@ -64,6 +66,12 @@ const chartProviders: Provider[] = [
                 rawDailyCandle: new DrizzleRawDailyCandleRepository(db),
             });
         },
+        inject: [MARKET_POOL],
+    },
+    {
+        // 순위 필터 경로 읽기모델 — 타점 집합의 진입 후 인트라데이 % 경로. 무캐시(수동 집합이라 작다·클라 react-query 캐시).
+        provide: RANK_PATHS,
+        useFactory: (pool: Pool): RankPaths => new RankPaths({ minuteCandle: new DrizzleMinuteCandleRepository(createDb(pool)) }),
         inject: [MARKET_POOL],
     },
 ];
@@ -174,6 +182,7 @@ const newsProviders: Provider[] = [
 @Module({
     controllers: [
         ChartController,
+        RankPathsController,
         DayReplayController,
         DaySummaryController,
         ThemeController,
