@@ -19,6 +19,7 @@ export interface RankFilterSlice {
     rankBucket: number; // 히트맵 집계 칸 폭(분) — 1/5/10
     setRankBound: (axisId: string, edge: RankBoundEdge, slotId: string) => void; // 같은 경계·같은 슬롯 재지정 = 토글 해제
     setRankBandRange: (axisId: string, lo?: string, hi?: string) => void; // 밴드 직접 설정(토글 아님) — 시트 드래그 선택용. 양끝 없으면 축 밴드 제거.
+    applyRankBands: (bands: Record<string, RankBand>) => void; // 밴드 전체 교체(저장 필터 불러오기) — undo push.
     clearRankBand: (axisId: string) => void;
     clearRankFilter: () => void;
     undoRankBands: () => void; // 직전 밴드 상태로 복원(drill-down 한 칸 뒤로).
@@ -52,6 +53,7 @@ export const createRankFilterSlice: StateCreator<WorkbenchState, [], [], RankFil
             else m[axisId] = { lo, hi };
             return { rankBands: m, rankBandsPast: pushPast(s) };
         }),
+    applyRankBands: (bands) => set((s) => ({ rankBands: { ...bands }, rankBandsPast: pushPast(s) })),
     clearRankBand: (axisId) =>
         set((s) => {
             const m = { ...s.rankBands };

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
@@ -6,8 +7,12 @@ import { buildAxisIndex, buildSheetRows, bandFromSelection, monthOf, pkOf, type 
 import { MonthPicker } from "./WorksetRows.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
+import type { RankBand } from "../store/workbench.js";
 import type { PlacedPoint, ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Excursion } from "./rank/pathStats.js";
+
+interface SavedFilter { id: string; name: string; bands: Record<string, RankBand>; }
+const SAVED_KEY = "wb.rankSavedFilters";
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
@@ -44,6 +49,8 @@ export function RankSheetPanel(): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
     const rankBandsPast = useWorkbench((s) => s.rankBandsPast);
     const setRankBandRange = useWorkbench((s) => s.setRankBandRange);
+    const setRankBound = useWorkbench((s) => s.setRankBound);
+    const applyRankBands = useWorkbench((s) => s.applyRankBands);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
     const clearRankFilter = useWorkbench((s) => s.clearRankFilter);
     const undoRankBands = useWorkbench((s) => s.undoRankBands);
@@ -139,6 +146,17 @@ export function RankSheetPanel(): JSX.Element {
     const [posBar, setPosBar] = useState<boolean>(() => loadJson(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? false);
     useEffect(() => saveJson(POS_MODE_KEY, posBar), [posBar]);
 
+    // ── 저장 필터(localStorage) — 현재 밴드를 이름 붙여 담고, 클릭으로 다시 불러와 비교.
+    const [saved, setSaved] = useState<SavedFilter[]>(() => loadJson(SAVED_KEY, (o) => (Array.isArray(o) ? (o as SavedFilter[]) : null)) ?? []);
+    const persistSaved = (next: SavedFilter[]): void => { setSaved(next); saveJson(SAVED_KEY, next); };
+    const autoLabel = (): string => axes.filter((a) => rankBands[a.id]).map((a) => a.name).join(" · ") || "필터";
+    const saveCurrent = (): void => { if (bandsActive) persistSaved([...saved, { id: `f${Date.now()}`, name: autoLabel(), bands: rankBands }]); };
+    const renameSaved = (id: string, name: string): void => persistSaved(saved.map((f) => (f.id === id ? { ...f, name } : f)));
+    const deleteSaved = (id: string): void => persistSaved(saved.filter((f) => f.id !== id));
+
+    // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계.
+    const [ctx, setCtx] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
+
     // ── 정렬 축에서 드래그 선택 = 밴드(drill-down). start===end = 클릭 = goToPoint.
     const dragRef = useRef<{ axisId: string; start: number } | null>(null);
     const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
@@ -196,6 +214,16 @@ export function RankSheetPanel(): JSX.Element {
                 </div>
             </div>
 
+            {/* 저장 필터 바 — 현재 필터 담기 + 클릭으로 불러와 비교 */}
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-secondary)", flexWrap: "wrap", minHeight: 30 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)" }}>저장 필터</span>
+                {saved.length === 0 && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>필터를 걸고 "현재 저장" → 칩 클릭으로 다시 불러와 비교</span>}
+                {saved.map((f) => (
+                    <SavedChip key={f.id} name={f.name} onApply={() => applyRankBands(f.bands)} onRename={(nm) => renameSaved(f.id, nm)} onDelete={() => deleteSaved(f.id)} />
+                ))}
+                <button onClick={saveCurrent} disabled={!bandsActive} title={bandsActive ? "현재 밴드를 저장 필터로 담기" : "먼저 밴드를 거세요"} style={{ ...miniBtn, marginLeft: 4, opacity: bandsActive ? 1 : 0.45, cursor: bandsActive ? "pointer" : "default", borderStyle: "dashed" }}>+ 현재 저장</button>
+            </div>
+
             {/* 표 */}
             <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, userSelect: sel ? "none" : "auto" }}>
@@ -238,7 +266,8 @@ export function RankSheetPanel(): JSX.Element {
                                                 onPointerDown={isSortAxis ? () => startDrag(a.id, i) : undefined}
                                                 onPointerEnter={isSortAxis ? () => enterDrag(i) : undefined}
                                                 onClick={!isSortAxis ? () => navRow(row) : undefined}
-                                                title={isSortAxis ? "세로 드래그 = 밴드 · 클릭 = 이동" : undefined}
+                                                onContextMenu={cell ? (e) => { e.preventDefault(); setCtx({ axisId: a.id, slotId: cell.slotId, x: e.clientX, y: e.clientY }); } : undefined}
+                                                title={isSortAxis ? "세로 드래그 = 밴드 · 우클릭 = 이상/이하 · 클릭 = 이동" : "우클릭 = 이상/이하 경계"}
                                                 style={{ ...tdCell, cursor: isSortAxis ? "ns-resize" : "pointer", background: selected ? "var(--accent-soft)" : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
                                                 <Cell cell={cell} posBar={posBar} />
                                             </td>
@@ -262,7 +291,51 @@ export function RankSheetPanel(): JSX.Element {
                 {bandsActive && r.isLoading && <div style={muted}>경로 산정 중…</div>}
                 {sorted.length === 0 && <div style={muted}>{bandsActive ? "이 조건에 맞는 타점이 없습니다." : "이 기간에 타점이 없습니다."}</div>}
             </div>
+
+            {ctx && (() => {
+                const ax = axes.find((a) => a.id === ctx.axisId);
+                if (!ax) return null;
+                const band = rankBands[ctx.axisId];
+                return (
+                    <BoundMenu x={ctx.x} y={ctx.y} axisName={ax.name} isLo={band?.lo === ctx.slotId} isHi={band?.hi === ctx.slotId} hasBand={!!(band?.lo || band?.hi)}
+                        onSet={(edge) => { setRankBound(ctx.axisId, edge, ctx.slotId); setCtx(null); }}
+                        onClear={() => { clearRankBand(ctx.axisId); setCtx(null); }}
+                        onClose={() => setCtx(null)} />
+                );
+            })()}
         </Wrap>
+    );
+}
+
+// 저장 필터 칩 — 클릭=불러오기, 더블클릭=이름변경, ×=삭제.
+function SavedChip({ name, onApply, onRename, onDelete }: { name: string; onApply: () => void; onRename: (n: string) => void; onDelete: () => void }): JSX.Element {
+    return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 4px 2px 8px", borderRadius: 12, background: "var(--accent-soft)", border: "1px solid var(--border-default)" }}>
+            <button onClick={onApply} onDoubleClick={() => { const n = prompt("필터 이름", name); if (n && n.trim()) onRename(n.trim()); }} title="클릭=불러오기 · 더블클릭=이름변경" style={{ border: "none", background: "transparent", color: "var(--accent-primary)", cursor: "pointer", fontSize: 11.5, fontWeight: 600, padding: 0 }}>{name}</button>
+            <button onClick={onDelete} title="삭제" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: "0 1px" }}>×</button>
+        </span>
+    );
+}
+
+// 우클릭 경계 메뉴 — 이상(lo)/이하(hi)/해제. 이미 그 경계면 해제 표기(토글).
+function BoundMenu({ x, y, axisName, isLo, isHi, hasBand, onSet, onClear, onClose }: { x: number; y: number; axisName: string; isLo: boolean; isHi: boolean; hasBand: boolean; onSet: (edge: "lo" | "hi") => void; onClear: () => void; onClose: () => void }): JSX.Element {
+    const ref = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        const h = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+        const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
+        return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
+    }, [onClose]);
+    const item: CSSProperties = { display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 12.5, padding: "7px 12px" };
+    const left = Math.min(x + 4, window.innerWidth - 190);
+    const top = Math.min(y + 4, window.innerHeight - 130);
+    return createPortal(
+        <div ref={ref} style={{ position: "fixed", left, top, zIndex: 60, minWidth: 176, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.24)", overflow: "hidden" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", padding: "8px 12px 4px" }}>{axisName} · 필터 경계</div>
+            <button style={item} onClick={() => onSet("lo")}><span style={{ color: "#e24b4a", fontWeight: 700 }}>▶</span> {isLo ? "이상 경계 해제" : "이상 경계(이 지점부터)"}</button>
+            <button style={item} onClick={() => onSet("hi")}><span style={{ color: "#e24b4a", fontWeight: 700 }}>◀</span> {isHi ? "이하 경계 해제" : "이하 경계(이 지점까지)"}</button>
+            {hasBand && <button style={{ ...item, borderTop: "1px solid var(--border-subtle)", color: "var(--text-tertiary)" }} onClick={onClear}>이 축 필터 초기화</button>}
+        </div>,
+        document.body,
     );
 }
 
