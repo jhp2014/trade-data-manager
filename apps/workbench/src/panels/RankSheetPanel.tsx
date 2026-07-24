@@ -24,6 +24,8 @@ const SAVED_KEY = "wb.rankSavedFilters";
 const POS_MODE_KEY = "wb.rankSheetPosMode";
 const SOFT = "#f59e0b"; // 소프트 선택(앰버) — 현재 타점(스카이블루)과 구분.
 const PIN = "#8b5cf6"; // 핀=작업셋(보라) — 소프트(앰버)·현재(블루)와 구분.
+const NAME_W = 132; // 종목 열 폭(열 고정용)
+const TIME_W = 58; // 타점 열 폭(열 고정용)
 const STRONG = "#1baf7a";
 const WEAK = "#eb6834";
 
@@ -284,8 +286,8 @@ export function RankSheetPanel(): JSX.Element {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, userSelect: sel ? "none" : "auto" }}>
                     <thead style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--bg-secondary)" }}>
                         <tr>
-                            <Th label="종목" onClick={() => clickHeader({ kind: "date" })} active={sort.key.kind === "date"} dir={sort.dir} />
-                            <Th label="타점" onClick={() => clickHeader({ kind: "date" })} active={sort.key.kind === "date"} dir={sort.dir} align="right" />
+                            <Th label="종목" onClick={() => clickHeader({ kind: "date" })} active={sort.key.kind === "date"} dir={sort.dir} stickyLeft={0} width={NAME_W} />
+                            <Th label="타점" onClick={() => clickHeader({ kind: "date" })} active={sort.key.kind === "date"} dir={sort.dir} align="right" stickyLeft={NAME_W} width={TIME_W} />
                             {axes.map((a) => (
                                 <Th key={a.id} label={a.name} title={`${a.name} — 클릭: 강도 정렬 · 헤더 드래그: 열 순서(보드와 동기화)`}
                                     onClick={() => clickHeader({ kind: "axis", axisId: a.id })}
@@ -311,13 +313,13 @@ export function RankSheetPanel(): JSX.Element {
                             return (
                                 <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
                                     style={{ borderBottom: "1px solid var(--border-subtle)", background: rowBg, boxShadow: isHover ? "inset 0 0 0 1px var(--border-strong)" : undefined }}>
-                                    <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 150, borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}` }}>
+                                    <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", width: NAME_W, maxWidth: NAME_W, borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, position: "sticky", left: 0, zIndex: 1, background: focus ? "var(--accent-soft)" : "var(--bg-primary)" }}>
                                         <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: "100%" }}>
                                             <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={pinnedSet.has(key) ? "핀 빼기" : "핀 고정(작업셋)"} style={{ border: "none", background: "transparent", cursor: "pointer", color: pinnedSet.has(key) ? PIN : "var(--text-tertiary)", opacity: pinnedSet.has(key) ? 1 : 0.4, fontSize: 11, padding: 0, flexShrink: 0, lineHeight: 1 }}>📌</button>
                                             <span onClick={() => navRow(row)} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>
                                         </span>
                                     </td>
-                                    <td onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", lineHeight: 1.15 }}>
+                                    <td onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", lineHeight: 1.15, width: TIME_W, position: "sticky", left: NAME_W, zIndex: 1, background: focus ? "var(--accent-soft)" : "var(--bg-primary)" }}>
                                         <div style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{row.date.slice(2).replace(/-/g, ".")}</div>
                                         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-primary)" }}>{row.time.slice(0, 5)}</div>
                                     </td>
@@ -417,7 +419,7 @@ function Cell({ cell, posBar }: { cell: RankCell | null; posBar: boolean }): JSX
     );
 }
 
-function Th({ label, title, onClick, active, dir, align = "left", banded, dragId, onReorder }: { label: string; title?: string; onClick: () => void; active: boolean; dir: 1 | -1; align?: "left" | "right" | "center"; banded?: boolean; dragId?: string; onReorder?: (draggedId: string, targetId: string) => void }): JSX.Element {
+function Th({ label, title, onClick, active, dir, align = "left", banded, dragId, onReorder, stickyLeft, width }: { label: string; title?: string; onClick: () => void; active: boolean; dir: 1 | -1; align?: "left" | "right" | "center"; banded?: boolean; dragId?: string; onReorder?: (draggedId: string, targetId: string) => void; stickyLeft?: number; width?: number }): JSX.Element {
     const dnd = dragId && onReorder
         ? {
             draggable: true,
@@ -426,8 +428,9 @@ function Th({ label, title, onClick, active, dir, align = "left", banded, dragId
             onDrop: (e: React.DragEvent) => { const id = e.dataTransfer.getData("application/x-rank-axis"); if (id) onReorder(id, dragId); },
         }
         : {};
+    const sticky: CSSProperties = stickyLeft != null ? { position: "sticky", left: stickyLeft, top: 0, zIndex: 4, background: "var(--bg-secondary)" } : {};
     return (
-        <th {...dnd} onClick={onClick} title={title} style={{ ...thBase, textAlign: align, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? "#e24b4a" : "var(--text-tertiary)", borderBottom: banded ? "2px solid #e24b4a" : thBase.borderBottom }}>
+        <th {...dnd} onClick={onClick} title={title} style={{ ...thBase, textAlign: align, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? "#e24b4a" : "var(--text-tertiary)", borderBottom: banded ? "2px solid #e24b4a" : thBase.borderBottom, width, ...sticky }}>
             {label}{active ? (dir === 1 ? " ▲" : " ▼") : ""}
         </th>
     );
