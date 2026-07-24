@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BadRequestException } from "@nestjs/common";
-import { assertYmd, assertHms, assertStockCode, assertFilterExpr } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
 describe("assertYmd", () => {
     it("유효 날짜는 그대로 반환", () => {
@@ -42,38 +42,5 @@ describe("assertStockCode", () => {
     });
     it("field 이름이 에러 메시지에 반영", () => {
         expect(() => assertStockCode(undefined, "stockCode")).toThrow(/stockCode/);
-    });
-});
-
-describe("assertFilterExpr", () => {
-    it("유효 DNF 는 재조립해 반환", () => {
-        const expr = { groups: [[{ hypothesisId: "1", negated: false }, { hypothesisId: "2", negated: true }], [{ hypothesisId: "3", negated: false }]] };
-        expect(assertFilterExpr(expr)).toEqual(expr);
-    });
-
-    it("빈 groups 는 유효(필터 없음)", () => {
-        expect(assertFilterExpr({ groups: [] })).toEqual({ groups: [] });
-    });
-
-    it("리프의 여분 키는 제거(jsonb 오염 방지)", () => {
-        const dirty = { groups: [[{ hypothesisId: "1", negated: false, junk: "x", extra: 42 }]] };
-        expect(assertFilterExpr(dirty)).toEqual({ groups: [[{ hypothesisId: "1", negated: false }]] });
-    });
-
-    it("hypothesisId 는 trim", () => {
-        expect(assertFilterExpr({ groups: [[{ hypothesisId: "  7 ", negated: false }]] })).toEqual({
-            groups: [[{ hypothesisId: "7", negated: false }]],
-        });
-    });
-
-    it("구조/리프 위반은 400", () => {
-        expect(() => assertFilterExpr(null)).toThrow(BadRequestException);
-        expect(() => assertFilterExpr({})).toThrow(BadRequestException); // groups 없음
-        expect(() => assertFilterExpr({ groups: "x" })).toThrow(BadRequestException); // groups 비배열
-        expect(() => assertFilterExpr({ groups: [{}] })).toThrow(BadRequestException); // 그룹 비배열
-        expect(() => assertFilterExpr({ groups: [[{ negated: false }]] })).toThrow(BadRequestException); // id 없음
-        expect(() => assertFilterExpr({ groups: [[{ hypothesisId: "  ", negated: false }]] })).toThrow(BadRequestException); // 빈 id
-        expect(() => assertFilterExpr({ groups: [[{ hypothesisId: "1", negated: "yes" }]] })).toThrow(BadRequestException); // negated 비boolean
-        expect(() => assertFilterExpr({ groups: [[{ hypothesisId: "1" }]] })).toThrow(BadRequestException); // negated 없음
     });
 });

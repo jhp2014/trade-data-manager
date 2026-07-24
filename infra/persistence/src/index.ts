@@ -12,8 +12,6 @@ export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.
 export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repository.js";
 export { DrizzlePriceLineRepository } from "./repositories/priceLine.repository.js";
 export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
-export { DrizzleHypothesisRepository } from "./repositories/hypothesis.repository.js";
-export { DrizzleHypothesisFilterRepository } from "./repositories/hypothesisFilter.repository.js";
 export { DrizzleRankRepository } from "./repositories/rank.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
@@ -48,9 +46,4 @@ export {
     reviewPointToRow,
     rowToReviewPoint,
 } from "./mappers/reviewPoint.js";
-export {
-    rowToHypothesis,
-    rowToHypothesisLink,
-    rowToHypothesisRelation,
-} from "./mappers/hypothesis.js";
 export { rowToRankAxis } from "./mappers/rank.js";

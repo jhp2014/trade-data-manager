@@ -7,11 +7,10 @@ import type { MinutePoint } from "../lib/derive.js";
 
 /**
  * 타점 정보 카드 — 세로선 우측에 뜨는 밝은 카드. 현재 타점 마커·저장 타점 hover 공용.
- * 헤더 = 담백 readout 한 줄("09:58 | +8.7% | 57억"). hypotheses 있으면 그 아래 연결 가설 텍스트.
+ * 헤더 = 담백 readout 한 줄("09:58 | +8.7% | 57억").
  */
-export function MarkerCard({ point, hypotheses }: { point: MinutePoint; hypotheses?: string[] }): JSX.Element {
+export function MarkerCard({ point }: { point: MinutePoint }): JSX.Element {
     const sep = <span style={{ color: "rgba(0,0,0,0.2)" }}>|</span>;
-    const hasHyp = hypotheses != null && hypotheses.length > 0;
     return (
         <div
             style={{
@@ -34,17 +33,6 @@ export function MarkerCard({ point, hypotheses }: { point: MinutePoint; hypothes
                 {sep}
                 <span style={{ color: "var(--text-secondary)" }}>{fmtEok(point.amount)}</span>
             </div>
-            {/* 연결된 가설 — hover 시에만 뜨므로 길이 제한(maxWidth)만 두고 wrap 허용. */}
-            {hasHyp && (
-                <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "3px 7px 4px", display: "flex", flexDirection: "column", gap: 2 }}>
-                    {hypotheses!.map((h, i) => (
-                        <div key={i} style={{ display: "flex", gap: 4, alignItems: "baseline", color: "var(--text-secondary)", fontWeight: 500, lineHeight: 1.35 }}>
-                            <span style={{ color: "var(--accent-hover, #2563eb)", flexShrink: 0 }}>·</span>
-                            <span>{h}</span>
-                        </div>
-                    ))}
-                </div>
-            )}
         </div>
     );
 }

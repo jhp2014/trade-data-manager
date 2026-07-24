@@ -33,10 +33,9 @@ const SESSION_CLOSE = "15:30:00"; // 기본 뷰 우단 — 종가 단일가까�
 /** "HH:MM:SS" → 자정 기준 분(分). 초는 분봉상 무시. */
 const hmsToMin = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 
-/** 저장 타점 입력(스냅 전) — unix초 + 연결 가설 텍스트. */
+/** 저장 타점 입력(스냅 전) — unix초. */
 export interface SavedPointInput {
     time: number;
-    hypotheses: string[];
 }
 
 export interface MinuteSeries {
@@ -228,7 +227,7 @@ export function useMarkerVertLines(
             const s = snapToBar(sp.time);
             if (s != null && !seen.has(s)) {
                 seen.add(s);
-                out.push({ time: s, hypotheses: sp.hypotheses });
+                out.push({ time: s });
             }
         }
         return out;
@@ -446,8 +445,8 @@ export function usePercentPriceLines(
 }
 
 export interface MarkerOverlay {
-    saved: Array<{ x: number; point: MinutePoint | null; time: number; hypotheses: string[] }>;
-    current: { x: number; point: MinutePoint | null; hypotheses: string[] } | null;
+    saved: Array<{ x: number; point: MinutePoint | null; time: number }>;
+    current: { x: number; point: MinutePoint | null } | null;
 }
 
 /** 오버레이 좌표 — 스냅된 타점들을 timeScale 좌표로 변환(overlayTick 이 pan/zoom/데이터 변경 재계산 트리거). */
@@ -464,15 +463,13 @@ export function useMarkerOverlay(
         if (!ts) return { saved: [], current: null };
         const saved = savedSnapped.map((s) => {
             const c = ts.timeToCoordinate(s.time as UTCTimestamp);
-            return { x: c == null ? -9999 : (c as number), point: pointMapRef.current.get(s.time) ?? null, time: s.time, hypotheses: s.hypotheses };
+            return { x: c == null ? -9999 : (c as number), point: pointMapRef.current.get(s.time) ?? null, time: s.time };
         });
         let current: MarkerOverlay["current"] = null;
         if (currentSnapped != null) {
             const c = ts.timeToCoordinate(currentSnapped as UTCTimestamp);
             if (c != null) {
-                // 현재 타점이 저장 타점과 겹치면 그 타점의 가설을 물려 자동 표시(hover 없이도).
-                const matched = savedSnapped.find((s) => s.time === currentSnapped);
-                current = { x: c as number, point: pointMapRef.current.get(currentSnapped) ?? null, hypotheses: matched?.hypotheses ?? [] };
+                current = { x: c as number, point: pointMapRef.current.get(currentSnapped) ?? null };
             }
         }
         return { saved, current };

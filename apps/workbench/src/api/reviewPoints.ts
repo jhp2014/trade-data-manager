@@ -1,5 +1,5 @@
 // 복기 타점 CRUD 클라이언트. wire 타입(ReviewPoint·ReviewPointListItem·UpsertReviewPointInput)은 contracts/wire 공유.
-// 자연키(code·date·time)라 삭제도 자연키로 지목. 의미(가설·태그)는 하류 hypothesis 가 caseId 로 붙인다.
+// 자연키(code·date·time)라 삭제도 자연키로 지목.
 import type { ReviewPoint, ReviewPointListItem, UpsertReviewPointInput } from "@trade-data-manager/wire";
 import { apiGet, apiPost, apiDelete } from "./http.js";
 

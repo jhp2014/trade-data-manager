@@ -7,8 +7,6 @@ import { fetchChart } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
 import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
-import { fetchHypotheses, fetchHypothesisLinks, fetchHypothesisRelations } from "./hypotheses.js";
-import { fetchHypothesisFilters } from "./hypothesisFilters.js";
 import { fetchRankAxes, fetchAxisLine } from "./rank.js";
 import { fetchRankPaths } from "./rankPaths.js";
 import type { RankPoint } from "./rank.js";
@@ -43,19 +41,6 @@ export const reviewPointsQuery = (code: string, date: string) =>
 
 export const allPointsQuery = () =>
     queryOptions({ queryKey: ["all-points"], queryFn: ({ signal }) => fetchAllPoints(signal), staleTime: IMMUTABLE });
-
-export const hypothesesQuery = () =>
-    queryOptions({ queryKey: ["hypotheses"], queryFn: ({ signal }) => fetchHypotheses(signal), staleTime: IMMUTABLE });
-
-export const hypothesisLinksQuery = () =>
-    queryOptions({ queryKey: ["hypothesis-links"], queryFn: ({ signal }) => fetchHypothesisLinks(signal), staleTime: IMMUTABLE });
-
-export const hypothesisRelationsQuery = () =>
-    queryOptions({ queryKey: ["hypothesis-relations"], queryFn: ({ signal }) => fetchHypothesisRelations(signal), staleTime: IMMUTABLE });
-
-// 저장된 가설 필터 목록. 저장/삭제 mutation 이 이 키를 invalidate 하므로 staleTime ∞.
-export const hypothesisFiltersQuery = () =>
-    queryOptions({ queryKey: ["hypothesis-filters"], queryFn: ({ signal }) => fetchHypothesisFilters(signal), staleTime: IMMUTABLE });
 
 // 순위 배치 — 축 목록·축별 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
 export const rankAxesQuery = () =>

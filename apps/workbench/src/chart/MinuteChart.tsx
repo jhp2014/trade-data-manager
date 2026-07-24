@@ -19,7 +19,7 @@ import type { RenderLine } from "../api/priceLines.js";
 
 /**
  * 세로선(x) 우측에 붙이는 오버레이 박스 — 우측 공간이 모자라면 좌측으로 뒤집는다.
- * 박스 실제 너비(가설 텍스트 길이 가변)를 측정해 판정하므로 폭 추정이 필요 없다.
+ * 박스 실제 너비를 측정해 판정하므로 폭 추정이 필요 없다.
  */
 function AnchoredBox({
     x,
@@ -86,7 +86,7 @@ export function MinuteChart({
     lines: RenderLine[]; // D+M 선(해소된 raw 가격). % 로 변환해 표시.
     base: number | null; // % 기준가(원)
     markerTime?: number | null; // 현재 타점 세로선(unix초). null = 없음.
-    savedPoints?: SavedPointInput[]; // 저장된 복기 타점(unix초 + 연결 가설). 흐린 세로선 + hover 카드.
+    savedPoints?: SavedPointInput[]; // 저장된 복기 타점(unix초). 흐린 세로선 + hover 카드.
     showPointInfo?: boolean; // 현재 타점 정보 박스 토글
     zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 세션 기본(07:50/08:50~15:30).
     lockTimeScale?: boolean; // 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지(리프레임 안 함)
@@ -166,10 +166,9 @@ export function MinuteChart({
             }}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
-            {/* 저장 타점 ▼ 마커 — 가설 있음=accent 채움 / 없음=밝은 채움+회색 윤곽. 드롭섀도로 띄우고 hover 시 확대. */}
+            {/* 저장 타점 ▼ 마커 — 밝은 채움+회색 윤곽. 드롭섀도로 띄우고 hover 시 확대. */}
             {overlay.saved.map((s, i) => {
                 if (s.x < 0) return null;
-                const hasHyp = s.hypotheses.length > 0;
                 // hover 또는 현재 시간과 일치하면 활성(확대+그림자 강조).
                 const isActive = hoveredSaved === i || s.time === currentSnapped;
                 return (
@@ -177,7 +176,7 @@ export function MinuteChart({
                         key={s.time}
                         onMouseEnter={() => setHoveredSaved(i)}
                         onMouseLeave={() => setHoveredSaved((cur) => (cur === i ? null : cur))}
-                        title={hasHyp ? "저장된 타점 · 가설 연결" : "저장된 타점"}
+                        title="저장된 타점"
                         style={{ position: "absolute", left: s.x - 7, top: 1, width: 14, height: 12, display: "flex", justifyContent: "center", cursor: "pointer", zIndex: 8 }}
                     >
                         <svg
@@ -193,26 +192,21 @@ export function MinuteChart({
                                 transition: "transform 0.1s ease, filter 0.1s ease",
                             }}
                         >
-                            <polygon
-                                points="1,1 11,1 6,9"
-                                fill={hasHyp ? "var(--accent-hover, #2563eb)" : "var(--bg-primary, #ffffff)"}
-                                stroke={hasHyp ? "none" : "rgba(90,90,105,0.95)"}
-                                strokeWidth={hasHyp ? 0 : 1.4}
-                            />
+                            <polygon points="1,1 11,1 6,9" fill="var(--bg-primary, #ffffff)" stroke="rgba(90,90,105,0.95)" strokeWidth={1.4} />
                         </svg>
                     </div>
                 );
             })}
-            {/* 저장 타점 hover 카드 — 세로선 우측(공간 없으면 좌측), 연결 가설 포함. */}
+            {/* 저장 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). */}
             {hoveredCard && hoveredCard.point && hoveredCard.x >= 0 && (
                 <AnchoredBox x={hoveredCard.x} top={1} containerWidth={containerWidth} zIndex={10}>
-                    <MarkerCard point={hoveredCard.point} hypotheses={hoveredCard.hypotheses} />
+                    <MarkerCard point={hoveredCard.point} />
                 </AnchoredBox>
             )}
-            {/* 현재 타점(시간선) readout — 토글 ON 시 세로선 우측(공간 없으면 좌측) 한 줄. 저장 타점과 겹치면 가설도 자동 표시. */}
+            {/* 현재 타점(시간선) readout — 토글 ON 시 세로선 우측(공간 없으면 좌측) 한 줄. */}
             {showPointInfo && overlay.current && overlay.current.point && (
                 <AnchoredBox x={overlay.current.x} top={1} containerWidth={containerWidth} zIndex={9}>
-                    <MarkerCard point={overlay.current.point} hypotheses={overlay.current.hypotheses} />
+                    <MarkerCard point={overlay.current.point} />
                 </AnchoredBox>
             )}
             {tip.visible && (

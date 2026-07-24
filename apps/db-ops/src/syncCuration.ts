@@ -42,7 +42,7 @@ export async function syncCuration(log: Logger): Promise<void> {
                         "select count(*) n from curation.review_points " +
                         "union all select count(*) from curation.price_lines " +
                         "union all select count(*) from curation.daily_comments " +
-                        "union all select count(*) from curation.hypotheses) x",
+                        "union all select count(*) from curation.rank_placements) x",
                 )
                 .then((r) => r.rows[0].total as number),
         );
