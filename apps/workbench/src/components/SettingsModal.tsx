@@ -292,6 +292,7 @@ function LayoutSettings(): JSX.Element {
     const activePreset = useDock((s) => s.activePreset);
     const savePreset = useDock((s) => s.savePreset);
     const loadPreset = useDock((s) => s.loadPreset);
+    const clearPreset = useDock((s) => s.clearPreset);
     // 저장 확인 — 클릭한 슬롯을 잠깐 "저장됨 ✓"로 표기(덮어쓰기도 액션이 보이게). 타이머는 재클릭/언마운트 시 정리.
     const [justSaved, setJustSaved] = useState<number | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -314,9 +315,10 @@ function LayoutSettings(): JSX.Element {
     // 라벨이 "현재 배치 저장"↔"저장됨 ✓"로 바뀌어도 폭이 안 흔들리게 minWidth 고정.
     const saveBtn: React.CSSProperties = { ...btn, minWidth: 96, textAlign: "center" };
     const savedBtn: React.CSSProperties = { ...saveBtn, borderColor: "var(--accent-primary)", color: "var(--accent-primary)" };
+    const delBtn: React.CSSProperties = { ...btn, borderColor: "var(--danger, #dc2626)", color: "var(--danger, #dc2626)" };
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>현재 창 배치를 슬롯에 저장. Ctrl+숫자 또는 하단 작업표시줄 클릭으로 전환.</div>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>현재 창 배치를 슬롯에 저장. Ctrl+숫자 또는 하단 작업표시줄 클릭으로 전환. 삭제하면 그 슬롯이 비워집니다.</div>
             {presets.map((p, i) => {
                 const n = i + 1;
                 const filled = !!p;
@@ -329,6 +331,7 @@ function LayoutSettings(): JSX.Element {
                             <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                                 <button style={saved ? savedBtn : saveBtn} onClick={() => save(n)}>{saved ? "저장됨 ✓" : "현재 배치 저장"}</button>
                                 <button style={{ ...btn, opacity: filled ? 1 : 0.4, cursor: filled ? "pointer" : "default" }} disabled={!filled} onClick={() => loadPreset(n)}>불러오기</button>
+                                {filled && <button style={delBtn} onClick={() => clearPreset(n)} title={`화면 ${n} 저장 배치 삭제`}>삭제</button>}
                             </span>
                         </div>
                         <RingEditor n={n} />
