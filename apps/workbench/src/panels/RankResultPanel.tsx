@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
+import { RankHelpButton } from "./rank/RankHelp.js";
 import { useWorkbench } from "../store/workbench.js";
 
 // 결과 목록 — 필터(배치 보드 밴드)에 걸린 상황들을 행으로. 파생 MFE·MAE(전/후) + 사람 판정 outcome/type 태그를 나란히.
@@ -19,6 +20,8 @@ function outcomeColor(v?: string): string {
 
 export function RankResultPanel(): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
+    const activePoint = useWorkbench((s) => s.activePoint);
+    const activeKey = activePoint ? `${activePoint.code}|${activePoint.date}|${activePoint.time}` : null;
     const r = useRankFilterResult();
     const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "mfe", dir: -1 });
 
@@ -58,8 +61,9 @@ export function RankResultPanel(): JSX.Element {
 
     return (
         <Wrap>
-            <div style={{ padding: "5px 10px", fontSize: 11.5, color: "var(--text-secondary)", borderBottom: "1px solid var(--border-subtle)" }}>
-                {rows.length}건 · <span style={{ color: "var(--text-tertiary)" }}>MFE=최대상승 / MAE 전=고점 전 최저(진입손절) / 후=고점 후 최저(트레일링)</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", fontSize: 11.5, color: "var(--text-secondary)", borderBottom: "1px solid var(--border-subtle)" }}>
+                <span>{rows.length}건</span>
+                <RankHelpButton />
             </div>
             <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -74,12 +78,15 @@ export function RankResultPanel(): JSX.Element {
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map((row) => (
+                        {rows.map((row) => {
+                            const focus = activeKey === row.e.key; // 현재 선택(activePoint) 행 강조
+                            const baseBg = focus ? "var(--accent-soft)" : "transparent";
+                            return (
                             <tr key={row.e.key} onClick={() => goToPoint({ date: row.date, code: row.code, time: row.time }, "rank-result")}
-                                style={{ cursor: "pointer", borderBottom: "1px solid var(--border-subtle)" }}
+                                style={{ cursor: "pointer", borderBottom: "1px solid var(--border-subtle)", background: baseBg }}
                                 onMouseEnter={(ev) => (ev.currentTarget.style.background = "var(--bg-secondary)")}
-                                onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}>
-                                <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</td>
+                                onMouseLeave={(ev) => (ev.currentTarget.style.background = baseBg)}>
+                                <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, color: focus ? "var(--accent-primary)" : undefined }}>{row.name}</td>
                                 <td style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>
                                     <div style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{row.date.slice(2).replace(/-/g, ".")}</div>
                                     <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent-primary)" }}>{row.time.slice(0, 5)}</div>
@@ -92,7 +99,8 @@ export function RankResultPanel(): JSX.Element {
                                     {row.type && <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginLeft: 5 }}>{row.type}</span>}
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

@@ -40,7 +40,7 @@ const components: Record<string, FunctionComponent<IDockviewPanelProps>> = {
     workset: () => <WorksetPanel />,
     recentHistory: () => <RecentHistoryPanel />,
     rank: () => <RankPanel />,
-    rankFilter: () => <RankFilterPanel />,
+    rankFilter: (props) => <RankFilterPanel panelId={props.api.id} />,
     rankResult: () => <RankResultPanel />,
     chart: (props) => <ChartPanel panelId={props.api.id} />,
     htsNews: () => <NewsPanel plane="replay" />,

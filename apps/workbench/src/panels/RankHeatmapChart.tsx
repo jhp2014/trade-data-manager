@@ -54,10 +54,10 @@ function buildModel(paths: RankPointPath[], dataMinT: number, dataMaxT: number, 
 const fmtElapsed = (t: number): string => { const m = Math.round((t - BASE) / 60); return m === 0 ? "진입" : `${m}분`; };
 const fmtClock = (min: number): string => { const m = ((Math.round(min) % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 
-export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, setHorizon, target, stop, setTarget, setStop, overlay, heatOn, showAmtMarkers }: {
+export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, setHorizon, target, stop, setTarget, setStop, overlay, heatOn, showAmtMarkers, height = 300 }: {
     paths: RankPointPath[]; horizon: number; dataMinT: number; dataMaxT: number; bucket: number; setHorizon: (m: number) => void;
     target: number; stop: number; setTarget: (v: number) => void; setStop: (v: number) => void;
-    overlay: HeatOverlay | null; heatOn: boolean; showAmtMarkers: boolean;
+    overlay: HeatOverlay | null; heatOn: boolean; showAmtMarkers: boolean; height?: number;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -85,6 +85,8 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
     const [cursor, setCursor] = useState({ x: 0, y: 0 });
     const tipRef = useRef<HTMLDivElement>(null);
     const [tipPos, setTipPos] = useState({ left: 0, top: 0 });
+    const clampDirRef = useRef(0); // horizon 핸들이 보이는 범위 밖으로 클램프된 방향(−1 좌 / 0 안 / 1 우) — 바뀔 때만 setState.
+    const [clampDir, setClampDir] = useState(0);
 
     const model = useMemo(() => buildModel(paths, dataMinT, dataMaxT, bucket, horizon, target, stop), [paths, dataMinT, dataMaxT, bucket, horizon, target, stop]);
 
@@ -120,7 +122,23 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
             };
             put(tRef.current, c.targetY, "top");
             put(sRef.current, c.stopY, "top");
-            put(hRef.current, c.horizonX, "left", leftW);
+            // horizon 핸들 — horizon 이 보이는 범위를 벗어나면 플롯 안쪽(우측 가격축 바로 왼쪽)에 깔끔히 붙도록 클램프.
+            // 컨테이너 폭으로만 막으면 우측 가격축 위로 올라가 반쯤 잘려 지저분 → 좌/우 축 폭을 빼 플롯 영역 [leftW, contW−rightW] 안으로.
+            const hel = hRef.current;
+            if (hel) {
+                if (c.horizonX == null) hel.style.display = "none";
+                else {
+                    hel.style.display = "flex";
+                    const contW = containerRef.current?.clientWidth ?? 0;
+                    const rightW = chart.priceScale("right").width();
+                    const half = hel.offsetWidth / 2;
+                    const lo = leftW + half, hi = contW - rightW - half;
+                    const nx = c.horizonX + leftW;
+                    const dir = hi <= lo ? 0 : nx > hi ? 1 : nx < lo ? -1 : 0; // 플롯 밖으로 밀렸는지(방향) — 라벨 화살표.
+                    hel.style.left = `${clamp(nx, lo, Math.max(lo, hi))}px`;
+                    if (clampDirRef.current !== dir) { clampDirRef.current = dir; setClampDir(dir); }
+                }
+            }
         };
         anchor.attachPrimitive(asHeatPrimitive(prim));
         primRef.current = prim;
@@ -245,12 +263,12 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
     }, [cursor.x, cursor.y, tip.visible, tip.content]);
 
     return (
-        <div style={{ position: "relative", width: "100%", height: 300 }}
+        <div style={{ position: "relative", width: "100%", height, overflow: "hidden" }}
             onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCursor({ x: e.clientX - r.left, y: e.clientY - r.top }); }}>
             <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
             <div ref={tRef} onPointerDown={startDrag("t")} style={{ ...handle, right: 0, background: GREEN, display: "none" }}>+{target.toFixed(1)}%</div>
             <div ref={sRef} onPointerDown={startDrag("s")} style={{ ...handle, right: 0, background: RED, display: "none" }}>{stop.toFixed(1)}%</div>
-            <div ref={hRef} onPointerDown={startDrag("h")} style={{ ...handleX, bottom: 2, background: "rgba(90,90,90,0.9)", display: "none" }}>{Math.round(Math.min(horizon, dataMaxT))}분</div>
+            <div ref={hRef} onPointerDown={startDrag("h")} style={{ ...handleX, bottom: 2, background: "rgba(90,90,90,0.9)", display: "none" }}>{clampDir < 0 ? "← " : ""}{Math.round(Math.min(horizon, dataMaxT))}분{clampDir > 0 ? " →" : ""}</div>
             {tip.visible && (
                 <div ref={tipRef} style={{ position: "absolute", left: tipPos.left, top: tipPos.top, pointerEvents: "none", background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 5, padding: "3px 8px", fontSize: 11, whiteSpace: "nowrap", maxWidth: "calc(100% - 8px)", overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.18)", zIndex: 6 }}>
                     {tip.content}
@@ -262,11 +280,11 @@ export function RankHeatmapChart({ paths, horizon, dataMinT, dataMaxT, bucket, s
 
 const handle: CSSProperties = {
     position: "absolute", transform: "translateY(-50%)", zIndex: 5, alignItems: "center", justifyContent: "center",
-    height: 15, padding: "0 5px", borderRadius: 4, color: "#fff", fontSize: 10, fontWeight: 700, cursor: "ns-resize",
+    height: 15, padding: "0 5px", borderRadius: 4, color: "#fff", fontSize: 10, fontWeight: 700, cursor: "grab",
     userSelect: "none", touchAction: "none", fontVariantNumeric: "tabular-nums", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
 };
 const handleX: CSSProperties = {
     position: "absolute", transform: "translateX(-50%)", zIndex: 5, alignItems: "center", justifyContent: "center",
-    height: 15, padding: "0 5px", borderRadius: 4, color: "#fff", fontSize: 10, fontWeight: 700, cursor: "ew-resize",
+    height: 15, padding: "0 5px", borderRadius: 4, color: "#fff", fontSize: 10, fontWeight: 700, cursor: "grab",
     userSelect: "none", touchAction: "none", fontVariantNumeric: "tabular-nums", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
 };
