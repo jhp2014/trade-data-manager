@@ -23,6 +23,7 @@ const SAVED_KEY = "wb.rankSavedFilters";
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
 const SOFT = "#f59e0b"; // 소프트 선택(앰버) — 현재 타점(스카이블루)과 구분.
+const PIN = "#8b5cf6"; // 핀=작업셋(보라) — 소프트(앰버)·현재(블루)와 구분.
 const STRONG = "#1baf7a";
 const WEAK = "#eb6834";
 
@@ -61,6 +62,11 @@ export function RankSheetPanel(): JSX.Element {
     const clearSoftSelect = useWorkbench((s) => s.clearSoftSelect);
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
+    const pinned = useWorkbench((s) => s.pinned);
+    const togglePin = useWorkbench((s) => s.togglePin);
+    const addPins = useWorkbench((s) => s.addPins);
+    const clearPins = useWorkbench((s) => s.clearPins);
+    const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
     const orderPref = useWorkbench((s) => s.rankAxisOrder);
     const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
     // 소프트 선택은 축별 — 그 축 셀만 강조(행 전체 X). axisId → Set<pk>.
@@ -70,6 +76,7 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [softSelected]);
     const softCount = useMemo(() => Object.values(softSelected).reduce((n, a) => n + a.length, 0), [softSelected]);
+    const softFlat = useMemo(() => [...new Set(Object.values(softSelected).flat())], [softSelected]);
 
     // ── 축 + 라인 → 순위 인덱스(배치 보드와 같은 캐시 공유).
     const axesQ = useQuery(rankAxesQuery());
@@ -250,6 +257,28 @@ export function RankSheetPanel(): JSX.Element {
                 <button onClick={saveCurrent} disabled={!bandsActive} title={bandsActive ? "현재 밴드를 저장 필터로 담기" : "먼저 밴드를 거세요"} style={{ ...miniBtn, marginLeft: 4, opacity: bandsActive ? 1 : 0.45, cursor: bandsActive ? "pointer" : "default", borderStyle: "dashed" }}>+ 현재 저장</button>
             </div>
 
+            {/* 핀(작업셋) 바 — 배치 보드 트레이와 같은 공유 상태. 배치 드래그 소스 + 상단 고정. */}
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-secondary)", flexWrap: "wrap", minHeight: 30 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: PIN }}>📌 핀</span>
+                {pinned.length === 0 && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>행 📌 클릭·소프트선택→핀 으로 작업셋 구성(배치 보드 트레이 공유)</span>}
+                {pinned.map((k) => {
+                    const it = allByKey.get(k);
+                    const [code, date, time] = k.split("|");
+                    return (
+                        <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 4px 2px 8px", borderRadius: 4, background: "var(--bg-tertiary)", border: `1px solid ${PIN}` }}>
+                            <button onClick={() => goToPoint({ date, code, time }, "rank-sheet")} title="이 타점으로 이동" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.1 }}>
+                                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-primary)" }}>{it?.name ?? code}</span>
+                                <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{date.slice(5)} {time.slice(0, 5)}</span>
+                            </button>
+                            <button onClick={() => togglePin(k)} title="핀 빼기" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: "0 1px" }}>×</button>
+                        </span>
+                    );
+                })}
+                {activeKey && !pinnedSet.has(activeKey) && <button onClick={() => togglePin(activeKey)} style={{ ...miniBtn, color: PIN, borderColor: PIN, borderStyle: "dashed" }}>현재 +핀</button>}
+                {softCount > 0 && <button onClick={() => addPins(softFlat)} title="소프트 선택을 핀 작업셋으로" style={{ ...miniBtn, color: PIN, borderColor: PIN }}>선택 {softFlat.length} → 핀</button>}
+                {pinned.length > 0 && <button onClick={clearPins} style={{ ...miniBtn, marginLeft: 2 }}>비우기</button>}
+            </div>
+
             {/* 표 */}
             <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, userSelect: sel ? "none" : "auto" }}>
@@ -282,7 +311,12 @@ export function RankSheetPanel(): JSX.Element {
                             return (
                                 <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
                                     style={{ borderBottom: "1px solid var(--border-subtle)", background: rowBg, boxShadow: isHover ? "inset 0 0 0 1px var(--border-strong)" : undefined }}>
-                                    <td onClick={() => navRow(row)} style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", cursor: "pointer", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</td>
+                                    <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 150, borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}` }}>
+                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: "100%" }}>
+                                            <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={pinnedSet.has(key) ? "핀 빼기" : "핀 고정(작업셋)"} style={{ border: "none", background: "transparent", cursor: "pointer", color: pinnedSet.has(key) ? PIN : "var(--text-tertiary)", opacity: pinnedSet.has(key) ? 1 : 0.4, fontSize: 11, padding: 0, flexShrink: 0, lineHeight: 1 }}>📌</button>
+                                            <span onClick={() => navRow(row)} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>
+                                        </span>
+                                    </td>
                                     <td onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", lineHeight: 1.15 }}>
                                         <div style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{row.date.slice(2).replace(/-/g, ".")}</div>
                                         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-primary)" }}>{row.time.slice(0, 5)}</div>

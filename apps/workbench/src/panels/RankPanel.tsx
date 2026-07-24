@@ -105,11 +105,14 @@ export function RankPanel(): JSX.Element {
     }, [pointsQ.data]);
     const nameOf = (code: string): string => nameByCode.get(code) ?? code;
 
-    // 담기(수동 작업셋). 활성 타점 = focus.activePoint(스팟 강조 + 라인 선두).
-    const [tray, setTray] = useState<RankPoint[]>([]);
-    const inTray = (p: RankPoint): boolean => tray.some((q) => pk(q) === pk(p));
-    const addToTray = (p: RankPoint): void => setTray((t) => (t.some((q) => pk(q) === pk(p)) ? t : [...t, p]));
-    const removeFromTray = (p: RankPoint): void => setTray((t) => t.filter((q) => pk(q) !== pk(p)));
+    // 담기(작업셋) = 공유 pinned(시트 핀과 같은 상태). 활성 타점 = focus.activePoint(스팟 강조 + 라인 선두).
+    const pinned = useWorkbench((s) => s.pinned);
+    const togglePin = useWorkbench((s) => s.togglePin);
+    const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
+    const tray = useMemo(() => pinned.map(parsePk), [pinned]);
+    const inTray = (p: RankPoint): boolean => pinnedSet.has(pk(p));
+    const addToTray = (p: RankPoint): void => { if (!pinnedSet.has(pk(p))) togglePin(pk(p)); };
+    const removeFromTray = (p: RankPoint): void => togglePin(pk(p));
     const activeAsPoint: RankPoint | null = activePoint ? { stockCode: activePoint.code, date: activePoint.date, time: activePoint.time } : null;
 
     const [views, setViews] = useState<Record<string, View>>({});
