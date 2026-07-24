@@ -31,7 +31,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "history-1", component: "recentHistory", title: "최근 탐색", plane: "eod" },
     { id: "rank-1", component: "rank", title: "배치", plane: "eod" },
     { id: "rank-filter-1", component: "rankFilter", title: "분석", plane: "eod" },
-    { id: "rank-result-1", component: "rankResult", title: "결과", plane: "eod" },
+    { id: "rank-sheet-1", component: "rankSheet", title: "시트", plane: "eod" },
     { id: "hts-news-1", component: "htsNews", title: "HTS뉴스", plane: "eod" },
 ];
 
