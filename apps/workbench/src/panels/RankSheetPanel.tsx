@@ -63,7 +63,13 @@ export function RankSheetPanel(): JSX.Element {
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
     const orderPref = useWorkbench((s) => s.rankAxisOrder);
     const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
-    const softSet = useMemo(() => new Set(softSelected), [softSelected]);
+    // 소프트 선택은 축별 — 그 축 셀만 강조(행 전체 X). axisId → Set<pk>.
+    const softSets = useMemo(() => {
+        const m = new Map<string, Set<string>>();
+        for (const [axisId, keys] of Object.entries(softSelected)) m.set(axisId, new Set(keys));
+        return m;
+    }, [softSelected]);
+    const softCount = useMemo(() => Object.values(softSelected).reduce((n, a) => n + a.length, 0), [softSelected]);
 
     // ── 축 + 라인 → 순위 인덱스(배치 보드와 같은 캐시 공유).
     const axesQ = useQuery(rankAxesQuery());
@@ -197,7 +203,7 @@ export function RankSheetPanel(): JSX.Element {
             }
             const [i0, i1] = [Math.min(range.start, range.end), Math.max(range.start, range.end)];
             const keys = sortedRef.current.slice(i0, i1 + 1).map((row) => pkOf(row));
-            addSoftSelect(keys);
+            addSoftSelect(drag.axisId, keys);
         };
         window.addEventListener("pointerup", onUp);
         return () => window.removeEventListener("pointerup", onUp);
@@ -222,8 +228,8 @@ export function RankSheetPanel(): JSX.Element {
                 <PeriodPicker period={period} months={months} onPick={setPeriod} />
                 <button onClick={() => setPosBar((v) => !v)} title="셀 표시: 순위 숫자 ↔ 위치 바" style={toggleBtn(posBar)}>{posBar ? "위치바" : "숫자"}</button>
                 <span style={{ fontSize: 11.5, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>{sorted.length}행{bandsActive ? ` · 밴드 교집합(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 이 축 미배치 ${unplacedOnSort}` : ""}</span>
-                {softSelected.length > 0 && (
-                    <button onClick={clearSoftSelect} title="소프트 선택 해제" style={{ ...miniBtn, color: SOFT, borderColor: SOFT }}>선택 {softSelected.length} ✕</button>
+                {softCount > 0 && (
+                    <button onClick={clearSoftSelect} title="소프트 선택 해제(축별)" style={{ ...miniBtn, color: SOFT, borderColor: SOFT }}>선택 {softCount} ✕</button>
                 )}
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     {activeBandAxes.map((a) => (
@@ -270,14 +276,13 @@ export function RankSheetPanel(): JSX.Element {
                         {sorted.map((row, i) => {
                             const key = pkOf(row);
                             const focus = activeKey === key;
-                            const isSoft = softSet.has(key);
                             const isHover = hoveredPoint === key;
                             const e = bandsActive ? excByKey.get(key) : undefined;
-                            const rowBg = focus ? "var(--accent-soft)" : isSoft ? "rgba(245,158,11,0.13)" : "transparent";
+                            const rowBg = focus ? "var(--accent-soft)" : "transparent";
                             return (
                                 <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
                                     style={{ borderBottom: "1px solid var(--border-subtle)", background: rowBg, boxShadow: isHover ? "inset 0 0 0 1px var(--border-strong)" : undefined }}>
-                                    <td onClick={() => navRow(row)} style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", cursor: "pointer", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : isSoft ? SOFT : "transparent"}`, color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</td>
+                                    <td onClick={() => navRow(row)} style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", cursor: "pointer", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</td>
                                     <td onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", lineHeight: 1.15 }}>
                                         <div style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{row.date.slice(2).replace(/-/g, ".")}</div>
                                         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-primary)" }}>{row.time.slice(0, 5)}</div>
@@ -286,6 +291,8 @@ export function RankSheetPanel(): JSX.Element {
                                         const cell = row.cells[a.id];
                                         const isSortAxis = sortAxisId === a.id;
                                         const selected = isSortAxis && inSel(i);
+                                        const isSoft = softSets.get(a.id)?.has(key) ?? false;
+                                        const cellBg = selected ? "var(--accent-soft)" : isSoft ? "rgba(245,158,11,0.18)" : isSortAxis ? "var(--bg-secondary)" : "transparent";
                                         return (
                                             <td key={a.id}
                                                 onPointerDown={isSortAxis ? () => startDrag(a.id, i) : undefined}
@@ -293,7 +300,7 @@ export function RankSheetPanel(): JSX.Element {
                                                 onClick={!isSortAxis ? () => navRow(row) : undefined}
                                                 onContextMenu={cell ? (e) => { e.preventDefault(); setCtx({ axisId: a.id, slotId: cell.slotId, x: e.clientX, y: e.clientY }); } : undefined}
                                                 title={isSortAxis ? "세로 드래그 = 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드"}
-                                                style={{ ...tdCell, cursor: isSortAxis ? "ns-resize" : "pointer", background: selected ? "var(--accent-soft)" : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
+                                                style={{ ...tdCell, cursor: isSortAxis ? "ns-resize" : "pointer", background: cellBg, boxShadow: isSoft ? `inset 0 0 0 1px ${SOFT}` : undefined }}>
                                                 <Cell cell={cell} posBar={posBar} />
                                             </td>
                                         );
