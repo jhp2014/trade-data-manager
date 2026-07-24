@@ -8,7 +8,6 @@ import {
 import { useWorkbench, type RankBand } from "../store/workbench.js";
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxis, type RankPoint, type RankTarget } from "../api/rank.js";
-import { loadJson, saveJson } from "../store/persist.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { Sep } from "../components/ControlChrome.js";
 import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
@@ -29,7 +28,7 @@ const PAD = 52;                                   // 스팟 좌우 여백(px) �
 const LINE_PAD = 32;                              // 축 라인 여백(고정, PAD와 독립) — 라인 끝을 패널 가장자리 가까이(오버런 = PAD−LINE_PAD).
 const LABEL_W = 138;
 const ROW_H = 58;
-const ORDER_KEY = "wb.rankAxisOrder";
+const SOFT = "#f59e0b"; // 소프트 선택(앰버) — 시트와 공유, 활성(스카이블루)과 구분.
 
 interface Slot { slotId: string; orderKey: number; points: RankPoint[]; }
 type View = { v0: number; v1: number };
@@ -58,14 +57,20 @@ export function RankPanel(): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
     const setRankBound = useWorkbench((s) => s.setRankBound);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
+    // 링크 공유(시트와 양방향) — 소프트 선택·호버·축순서.
+    const softSelected = useWorkbench((s) => s.softSelected);
+    const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
+    const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
+    const orderPref = useWorkbench((s) => s.rankAxisOrder);
+    const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
+    const softSet = useMemo(() => new Set(softSelected), [softSelected]);
     const [filterMenu, setFilterMenu] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
     const qc = useQueryClient();
 
     const axesQ = useQuery(rankAxesQuery());
     const rawAxes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
 
-    // 축 순서 — 로컬 영속(서버는 id 순). pref 에 없는(새) 축은 뒤로.
-    const [orderPref, setOrderPref] = useState<string[]>(() => loadJson(ORDER_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null)) ?? []);
+    // 축 순서 — store 공유(배치↔시트 양방향, localStorage 영속). pref 에 없는(새) 축은 뒤로.
     const axes = useMemo(() => {
         const idx = new Map(orderPref.map((id, i) => [id, i]));
         return [...rawAxes].sort((a, b) => (idx.get(a.id) ?? Infinity) - (idx.get(b.id) ?? Infinity) || (a.id < b.id ? -1 : 1));
@@ -76,7 +81,7 @@ export function RankPanel(): JSX.Element {
         const from = ids.indexOf(draggedId), to = ids.indexOf(targetId);
         if (from < 0 || to < 0) return;
         ids.splice(to, 0, ids.splice(from, 1)[0]);
-        setOrderPref(ids); saveJson(ORDER_KEY, ids);
+        setRankAxisOrder(ids);
     };
 
     const lineQs = useQueries({ queries: axes.map((a) => axisLineQuery(a.id)) });
@@ -195,6 +200,7 @@ export function RankPanel(): JSX.Element {
                                     setView={(v) => setView(ax.id, v)} resetView={() => resetView(ax.id)}
                                     registerTrack={(el) => { if (el) trackRefs.current.set(ax.id, el); else trackRefs.current.delete(ax.id); }}
                                     activeMatches={activeMatches} activePlaced={activePlaced}
+                                    softSet={softSet} hoveredKey={hoveredPoint} onHoverKey={setHoveredPoint}
                                     drop={drop && drop.axisId === ax.id ? drop : null} nameOf={nameOf}
                                     band={rankBands[ax.id]}
                                     onNodeClick={(slotId, x, y) => setPop({ axisId: ax.id, slotId, x, y })}
@@ -298,12 +304,14 @@ function PointItem({ point, name, active, onGo, onRemove }: { point: RankPoint; 
 
 // ── 한 축 레인 ─────────────────────────────────────────────────────────────
 function Lane({
-    axis, slots, view, setView, resetView, registerTrack, activeMatches, activePlaced, drop, nameOf, band,
+    axis, slots, view, setView, resetView, registerTrack, activeMatches, activePlaced, softSet, hoveredKey, onHoverKey, drop, nameOf, band,
     onNodeClick, onNodeContext, onRename, onDelete, onReorderDrop,
 }: {
     axis: RankAxis; slots: Slot[]; view: View; setView: (v: View) => void; resetView: () => void;
     registerTrack: (el: HTMLElement | null) => void;
-    activeMatches: (p: RankPoint) => boolean; activePlaced: boolean; drop: DropInfo | null; nameOf: (c: string) => string;
+    activeMatches: (p: RankPoint) => boolean; activePlaced: boolean;
+    softSet: Set<string>; hoveredKey: string | null; onHoverKey: (k: string | null) => void;
+    drop: DropInfo | null; nameOf: (c: string) => string;
     band: RankBand | undefined;
     onNodeClick: (slotId: string, x: number, y: number) => void; onNodeContext: (slotId: string, x: number, y: number) => void;
     onRename: (name: string) => void; onDelete: () => void;
@@ -420,17 +428,22 @@ function Lane({
                     const u = displayU(slotFrac(i, slots.length), view);
                     if (u < -0.03 || u > 1.03) return null;
                     const hasActive = slot.points.some(activeMatches);
+                    const hasSoft = slot.points.some((p) => softSet.has(pk(p)));
+                    const hasHover = slot.points.some((p) => hoveredKey === pk(p));
                     const tie = slot.points.length > 1;
                     const left = `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`;
+                    const spotBg = hasActive ? ACTIVE : hasSoft ? SOFT : tie ? TIE : "var(--text-secondary)";
+                    const glow = hasActive ? `0 0 0 3px ${ACTIVE_SOFT}, 0 0 7px 1px ${ACTIVE}` : hasSoft ? `0 0 0 3px rgba(245,158,11,0.3)` : hasHover ? "0 0 0 2px var(--border-strong)" : "none";
                     return (
                         <div key={slot.slotId} onClick={(e) => onNodeClick(slot.slotId, e.clientX, e.clientY)}
                             onContextMenu={(e) => { e.preventDefault(); onNodeContext(slot.slotId, e.clientX, e.clientY); }}
+                            onMouseEnter={() => onHoverKey(pk(slot.points[0]))} onMouseLeave={() => onHoverKey(null)}
                             title={tie ? `타이 ${slot.points.length}건 — 클릭 / 우클릭=필터 경계` : `${nameOf(slot.points[0].stockCode)} — 클릭 / 우클릭=필터 경계`}
-                            style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: hasActive ? 3 : 2 }}>
+                            style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: hasActive || hasSoft ? 3 : 2 }}>
                             {tie ? (
-                                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 17, padding: "0 5px", borderRadius: 8, background: hasActive ? ACTIVE : TIE, color: "#fff", fontSize: 10, fontWeight: 700, boxShadow: hasActive ? `0 0 0 3px ${ACTIVE_SOFT}, 0 0 7px 1px ${ACTIVE}` : "none", fontVariantNumeric: "tabular-nums" }}>{slot.points.length}</span>
+                                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 17, padding: "0 5px", borderRadius: 8, background: spotBg, color: "#fff", fontSize: 10, fontWeight: 700, boxShadow: glow, fontVariantNumeric: "tabular-nums" }}>{slot.points.length}</span>
                             ) : (
-                                <span style={{ display: "block", width: 8, height: 8, borderRadius: "50%", background: hasActive ? ACTIVE : "var(--text-secondary)", boxShadow: hasActive ? `0 0 0 3px ${ACTIVE_SOFT}, 0 0 7px 1px ${ACTIVE}` : "none" }} />
+                                <span style={{ display: "block", width: 8, height: 8, borderRadius: "50%", background: spotBg, boxShadow: glow }} />
                             )}
                         </div>
                     );

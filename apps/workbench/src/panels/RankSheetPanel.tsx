@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
-import { buildAxisIndex, buildSheetRows, bandFromSelection, monthOf, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
+import { buildAxisIndex, buildSheetRows, monthOf, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
 import { MonthPicker } from "./WorksetRows.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -18,10 +18,11 @@ const SAVED_KEY = "wb.rankSavedFilters";
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
 //  · 축 헤더 클릭 = 그 축 강도 정렬(강 먼저). 정렬 축에서 행범위 **드래그 선택 = 밴드**(AND drill-down, rankBands 공유).
 //  · 밴드 활성 시 행=교집합, 결과 열(MFE/MAE/결과)이 lazy 로 붙는다(좁혔을 때만 경로 fetch). 미배치는 strict AND 로 탈락.
-//  · 기간(전체/월)은 독립 필터. 열 순서는 배치 보드(wb.rankAxisOrder) 공유(정렬만, 편집은 보드에서).
+//  · 기간(전체/월)은 독립 필터. 열 순서는 배치 보드와 **양방향 동기화**(store rankAxisOrder, 열 헤더 드래그 재정렬).
+//  · 링크: 드래그=소프트 선택(색만, 안 좁힘, 누적) · 우클릭=밴드(좁힘) · 선택/호버는 배치 보드와 공유(색으로 표시).
 
-const AXIS_ORDER_KEY = "wb.rankAxisOrder";
 const POS_MODE_KEY = "wb.rankSheetPosMode";
+const SOFT = "#f59e0b"; // 소프트 선택(앰버) — 현재 타점(스카이블루)과 구분.
 const STRONG = "#1baf7a";
 const WEAK = "#eb6834";
 
@@ -48,22 +49,39 @@ export function RankSheetPanel(): JSX.Element {
 
     const rankBands = useWorkbench((s) => s.rankBands);
     const rankBandsPast = useWorkbench((s) => s.rankBandsPast);
-    const setRankBandRange = useWorkbench((s) => s.setRankBandRange);
     const setRankBound = useWorkbench((s) => s.setRankBound);
     const applyRankBands = useWorkbench((s) => s.applyRankBands);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
     const clearRankFilter = useWorkbench((s) => s.clearRankFilter);
     const undoRankBands = useWorkbench((s) => s.undoRankBands);
 
+    // ── 링크 공유 상태(배치 보드와 양방향) — 소프트 선택·호버·축순서.
+    const softSelected = useWorkbench((s) => s.softSelected);
+    const addSoftSelect = useWorkbench((s) => s.addSoftSelect);
+    const clearSoftSelect = useWorkbench((s) => s.clearSoftSelect);
+    const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
+    const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
+    const orderPref = useWorkbench((s) => s.rankAxisOrder);
+    const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
+    const softSet = useMemo(() => new Set(softSelected), [softSelected]);
+
     // ── 축 + 라인 → 순위 인덱스(배치 보드와 같은 캐시 공유).
     const axesQ = useQuery(rankAxesQuery());
     const rawAxes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
-    const orderPref = useMemo(() => loadJson(AXIS_ORDER_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null)) ?? [], []);
     const axes = useMemo(() => {
         const idx = new Map(orderPref.map((id, i) => [id, i]));
         return [...rawAxes].sort((a, b) => (idx.get(a.id) ?? Infinity) - (idx.get(b.id) ?? Infinity) || (a.id < b.id ? -1 : 1));
     }, [rawAxes, orderPref]);
     const axisIds = useMemo(() => axes.map((a) => a.id), [axes]);
+    // 열 재정렬(양방향 동기화) — 드래그한 축을 대상 축 앞에 삽입, 전체 순서를 store 로.
+    const reorderAxis = (draggedId: string, targetId: string): void => {
+        if (draggedId === targetId) return;
+        const ids = axes.map((a) => a.id);
+        const from = ids.indexOf(draggedId), to = ids.indexOf(targetId);
+        if (from < 0 || to < 0) return;
+        ids.splice(to, 0, ids.splice(from, 1)[0]);
+        setRankAxisOrder(ids);
+    };
 
     const lineQs = useQueries({ queries: axes.map((a) => axisLineQuery(a.id)) });
     const indexByAxis = useMemo(() => {
@@ -157,7 +175,7 @@ export function RankSheetPanel(): JSX.Element {
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계.
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
 
-    // ── 정렬 축에서 드래그 선택 = 밴드(drill-down). start===end = 클릭 = goToPoint.
+    // ── 정렬 축에서 드래그 = 소프트 선택(색만·누적·안 좁힘). start===end = 클릭 = goToPoint. (좁히기=우클릭 밴드)
     const dragRef = useRef<{ axisId: string; start: number } | null>(null);
     const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
     const selRef = useRef<{ start: number; end: number } | null>(null);
@@ -178,9 +196,8 @@ export function RankSheetPanel(): JSX.Element {
                 return;
             }
             const [i0, i1] = [Math.min(range.start, range.end), Math.max(range.start, range.end)];
-            const cells = sortedRef.current.slice(i0, i1 + 1).map((row) => row.cells[drag.axisId] ?? null);
-            const band = bandFromSelection(cells);
-            if (band) setRankBandRange(drag.axisId, band.lo, band.hi);
+            const keys = sortedRef.current.slice(i0, i1 + 1).map((row) => pkOf(row));
+            addSoftSelect(keys);
         };
         window.addEventListener("pointerup", onUp);
         return () => window.removeEventListener("pointerup", onUp);
@@ -205,6 +222,9 @@ export function RankSheetPanel(): JSX.Element {
                 <PeriodPicker period={period} months={months} onPick={setPeriod} />
                 <button onClick={() => setPosBar((v) => !v)} title="셀 표시: 순위 숫자 ↔ 위치 바" style={toggleBtn(posBar)}>{posBar ? "위치바" : "숫자"}</button>
                 <span style={{ fontSize: 11.5, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>{sorted.length}행{bandsActive ? ` · 밴드 교집합(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 이 축 미배치 ${unplacedOnSort}` : ""}</span>
+                {softSelected.length > 0 && (
+                    <button onClick={clearSoftSelect} title="소프트 선택 해제" style={{ ...miniBtn, color: SOFT, borderColor: SOFT }}>선택 {softSelected.length} ✕</button>
+                )}
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     {activeBandAxes.map((a) => (
                         <button key={a.id} onClick={() => clearRankBand(a.id)} title="이 축 밴드 해제" style={bandChip}>{a.name} ✕</button>
@@ -232,9 +252,10 @@ export function RankSheetPanel(): JSX.Element {
                             <Th label="종목" onClick={() => clickHeader({ kind: "date" })} active={sort.key.kind === "date"} dir={sort.dir} />
                             <Th label="타점" onClick={() => clickHeader({ kind: "date" })} active={sort.key.kind === "date"} dir={sort.dir} align="right" />
                             {axes.map((a) => (
-                                <Th key={a.id} label={a.name} title={`${a.name} — 클릭: 강도 정렬 · 정렬 상태에서 세로 드래그: 밴드`}
+                                <Th key={a.id} label={a.name} title={`${a.name} — 클릭: 강도 정렬 · 헤더 드래그: 열 순서(보드와 동기화)`}
                                     onClick={() => clickHeader({ kind: "axis", axisId: a.id })}
-                                    active={sortAxisId === a.id} dir={sort.dir} align="center" banded={!!rankBands[a.id]} />
+                                    active={sortAxisId === a.id} dir={sort.dir} align="center" banded={!!rankBands[a.id]}
+                                    dragId={a.id} onReorder={reorderAxis} />
                             ))}
                             <Th label="배치" title="배치된 축 수 / 전체 축" onClick={() => clickHeader({ kind: "coverage" })} active={sort.key.kind === "coverage"} dir={sort.dir} align="center" />
                             {bandsActive && (<>
@@ -249,10 +270,14 @@ export function RankSheetPanel(): JSX.Element {
                         {sorted.map((row, i) => {
                             const key = pkOf(row);
                             const focus = activeKey === key;
+                            const isSoft = softSet.has(key);
+                            const isHover = hoveredPoint === key;
                             const e = bandsActive ? excByKey.get(key) : undefined;
+                            const rowBg = focus ? "var(--accent-soft)" : isSoft ? "rgba(245,158,11,0.13)" : "transparent";
                             return (
-                                <tr key={key} style={{ borderBottom: "1px solid var(--border-subtle)", background: focus ? "var(--accent-soft)" : "transparent" }}>
-                                    <td onClick={() => navRow(row)} style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", cursor: "pointer", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</td>
+                                <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
+                                    style={{ borderBottom: "1px solid var(--border-subtle)", background: rowBg, boxShadow: isHover ? "inset 0 0 0 1px var(--border-strong)" : undefined }}>
+                                    <td onClick={() => navRow(row)} style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", cursor: "pointer", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : isSoft ? SOFT : "transparent"}`, color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</td>
                                     <td onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", lineHeight: 1.15 }}>
                                         <div style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{row.date.slice(2).replace(/-/g, ".")}</div>
                                         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-primary)" }}>{row.time.slice(0, 5)}</div>
@@ -267,7 +292,7 @@ export function RankSheetPanel(): JSX.Element {
                                                 onPointerEnter={isSortAxis ? () => enterDrag(i) : undefined}
                                                 onClick={!isSortAxis ? () => navRow(row) : undefined}
                                                 onContextMenu={cell ? (e) => { e.preventDefault(); setCtx({ axisId: a.id, slotId: cell.slotId, x: e.clientX, y: e.clientY }); } : undefined}
-                                                title={isSortAxis ? "세로 드래그 = 밴드 · 우클릭 = 이상/이하 · 클릭 = 이동" : "우클릭 = 이상/이하 경계"}
+                                                title={isSortAxis ? "세로 드래그 = 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드"}
                                                 style={{ ...tdCell, cursor: isSortAxis ? "ns-resize" : "pointer", background: selected ? "var(--accent-soft)" : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
                                                 <Cell cell={cell} posBar={posBar} />
                                             </td>
@@ -351,9 +376,17 @@ function Cell({ cell, posBar }: { cell: RankCell | null; posBar: boolean }): JSX
     );
 }
 
-function Th({ label, title, onClick, active, dir, align = "left", banded }: { label: string; title?: string; onClick: () => void; active: boolean; dir: 1 | -1; align?: "left" | "right" | "center"; banded?: boolean }): JSX.Element {
+function Th({ label, title, onClick, active, dir, align = "left", banded, dragId, onReorder }: { label: string; title?: string; onClick: () => void; active: boolean; dir: 1 | -1; align?: "left" | "right" | "center"; banded?: boolean; dragId?: string; onReorder?: (draggedId: string, targetId: string) => void }): JSX.Element {
+    const dnd = dragId && onReorder
+        ? {
+            draggable: true,
+            onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData("application/x-rank-axis", dragId); e.dataTransfer.effectAllowed = "move"; },
+            onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes("application/x-rank-axis")) e.preventDefault(); },
+            onDrop: (e: React.DragEvent) => { const id = e.dataTransfer.getData("application/x-rank-axis"); if (id) onReorder(id, dragId); },
+        }
+        : {};
     return (
-        <th onClick={onClick} title={title} style={{ ...thBase, textAlign: align, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? "#e24b4a" : "var(--text-tertiary)", borderBottom: banded ? "2px solid #e24b4a" : thBase.borderBottom }}>
+        <th {...dnd} onClick={onClick} title={title} style={{ ...thBase, textAlign: align, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? "#e24b4a" : "var(--text-tertiary)", borderBottom: banded ? "2px solid #e24b4a" : thBase.borderBottom }}>
             {label}{active ? (dir === 1 ? " ▲" : " ▼") : ""}
         </th>
     );
