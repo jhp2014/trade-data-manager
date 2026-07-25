@@ -24,10 +24,8 @@ export interface RankFilterSlice {
     setRankBandRange: (axisId: string, lo?: string, hi?: string) => void; // 밴드 직접 설정(토글 아님). 양끝 없으면 축 밴드 제거.
     applyRankBands: (bands: Record<string, RankBand>) => void; // 밴드 전체 교체(저장 필터 불러오기)
     clearRankBand: (axisId: string) => void;
-    addDateRange: (r: DateRange) => void;
-    removeDateRange: (index: number) => void;
-    addTimeRange: (r: TimeRange) => void;
-    removeTimeRange: (index: number) => void;
+    setDateRanges: (ranges: DateRange[]) => void; // 배열 교체(레일 드래그 수정·칩 삭제 공용)
+    setTimeRanges: (ranges: TimeRange[]) => void;
     clearRankFilter: () => void; // 밴드·날짜·시간 전부 해제
     setRankHorizon: (minutes: number) => void;
     setRankBucket: (minutes: number) => void;
@@ -63,10 +61,8 @@ export const createRankFilterSlice: StateCreator<WorkbenchState, [], [], RankFil
             delete m[axisId];
             return { rankBands: m };
         }),
-    addDateRange: (r) => set((s) => ({ dateRanges: [...s.dateRanges, r] })),
-    removeDateRange: (index) => set((s) => ({ dateRanges: s.dateRanges.filter((_, i) => i !== index) })),
-    addTimeRange: (r) => set((s) => ({ timeRanges: [...s.timeRanges, r] })),
-    removeTimeRange: (index) => set((s) => ({ timeRanges: s.timeRanges.filter((_, i) => i !== index) })),
+    setDateRanges: (ranges) => set(() => ({ dateRanges: ranges })),
+    setTimeRanges: (ranges) => set(() => ({ timeRanges: ranges })),
     clearRankFilter: () => set(() => ({ rankBands: {}, dateRanges: [], timeRanges: [] })),
     setRankHorizon: (minutes) => set(() => ({ rankHorizon: Math.max(1, Math.round(minutes)) })),
     setRankBucket: (minutes) => set(() => ({ rankBucket: Math.max(1, Math.round(minutes)) })),

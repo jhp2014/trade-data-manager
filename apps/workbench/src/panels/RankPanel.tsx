@@ -85,8 +85,8 @@ export function RankPanel(): JSX.Element {
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
     const dateRanges = useWorkbench((s) => s.dateRanges);
     const timeRanges = useWorkbench((s) => s.timeRanges);
-    const addDateRange = useWorkbench((s) => s.addDateRange);
-    const addTimeRange = useWorkbench((s) => s.addTimeRange);
+    const setDateRanges = useWorkbench((s) => s.setDateRanges);
+    const setTimeRanges = useWorkbench((s) => s.setTimeRanges);
     // 링크 공유(시트와 양방향) — 호버·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
@@ -229,6 +229,13 @@ export function RankPanel(): JSX.Element {
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
                     {axesQ.isLoading && <div style={muted}>불러오는 중…</div>}
+                    {/* 날짜·시간 필터 레일 — 축 레인 위(시트 열 순서와 통일). 값 스케일·틱+라벨 드래그로 구간 설정/조정. */}
+                    {dateBounds && (
+                        <FilterRail label="날짜" ranges={dateRanges} toFrac={dateFrac} fromFrac={fracDate} fmt={(v) => v.slice(2).replace(/-/g, ".")}
+                            minLabel={dateBounds.min.slice(2).replace(/-/g, ".")} maxLabel={dateBounds.max.slice(2).replace(/-/g, ".")} onChange={setDateRanges} />
+                    )}
+                    <FilterRail label="시간" ranges={timeRanges} toFrac={timeFrac} fromFrac={fracTime} fmt={(v) => v}
+                        minLabel="08:00" maxLabel="20:00" onChange={setTimeRanges} />
                     <div style={{ position: "relative" }}>
                         {axes.map((ax) => {
                             const slots = linesByAxis.get(ax.id) ?? [];
@@ -252,15 +259,6 @@ export function RankPanel(): JSX.Element {
                             );
                         })}
                     </div>
-                    {/* 날짜·시간 레일 — 필터 viz + 드래그로 구간 추가(빨강=포함, 전체=통째 빨강). 시트엔 없음. */}
-                    <FilterRail label="시간" ranges={timeRanges.map((r) => ({ lo: timeFrac(r.from), hi: timeFrac(r.to) }))}
-                        ticks={[{ f: 0, t: "08:00" }, { f: 0.5, t: "14:00" }, { f: 1, t: "20:00" }]}
-                        onAdd={(a, b) => addTimeRange({ from: fracTime(a), to: fracTime(b) })} />
-                    {dateBounds && (
-                        <FilterRail label="날짜" ranges={dateRanges.map((r) => ({ lo: dateFrac(r.from), hi: dateFrac(r.to) }))}
-                            ticks={[{ f: 0, t: dateBounds.min.slice(2).replace(/-/g, ".") }, { f: 1, t: dateBounds.max.slice(2).replace(/-/g, ".") }]}
-                            onAdd={(a, b) => addDateRange({ from: fracDate(a), to: fracDate(b) })} />
-                    )}
                     <AddAxisRow onCreate={(name, scope) => createMut.mutate({ name, scope })} />
                 </div>
 
@@ -601,30 +599,73 @@ function AddAxisRow({ onCreate }: { onCreate: (name: string, scope: "point" | "d
     );
 }
 
-// ── 날짜·시간 필터 레일 — 빨강=포함 구간, 필터 없음=전체 빨강, 드래그로 구간 추가. ──
-function FilterRail({ label, ranges, ticks, onAdd }: { label: string; ranges: { lo: number; hi: number }[]; ticks: { f: number; t: string }[]; onAdd: (lo: number, hi: number) => void }): JSX.Element {
+// ── 날짜·시간 필터 레일 — 축 레인 스타일(값 스케일). 빨강=포함, 필터 없음=전체 빨강.
+//    빈 트랙 드래그=새 구간 · 경계 값 라벨 드래그=조정 · 라벨 × = 그 구간 삭제.
+function FilterRail<T extends { from: string; to: string }>({ label, ranges, toFrac, fromFrac, fmt, minLabel, maxLabel, onChange }: {
+    label: string; ranges: T[]; toFrac: (v: string) => number; fromFrac: (f: number) => string; fmt: (v: string) => string; minLabel: string; maxLabel: string; onChange: (ranges: T[]) => void;
+}): JSX.Element {
     const ref = useRef<HTMLDivElement | null>(null);
-    const startRef = useRef<number | null>(null);
-    const [drag, setDrag] = useState<{ a: number; b: number } | null>(null);
+    const dragRef = useRef<{ kind: "new"; start: number } | { kind: "edit"; i: number; edge: "from" | "to" } | null>(null);
+    const [preview, setPreview] = useState<T[] | null>(null);
+    const shown = preview ?? ranges;
     const fracX = (clientX: number): number => { const el = ref.current; if (!el) return 0; const rect = el.getBoundingClientRect(); return Math.max(0, Math.min(1, (clientX - rect.left - LINE_PAD) / (rect.width - 2 * LINE_PAD))); };
-    const down = (e: ReactPointerEvent): void => { if (e.button !== 0) return; startRef.current = fracX(e.clientX); setDrag({ a: startRef.current, b: startRef.current }); e.currentTarget.setPointerCapture(e.pointerId); };
-    const move = (e: ReactPointerEvent): void => { if (startRef.current == null) return; setDrag({ a: startRef.current, b: fracX(e.clientX) }); };
-    const up = (): void => { const d = drag, s = startRef.current; startRef.current = null; setDrag(null); if (s == null || !d || Math.abs(d.a - d.b) < 0.01) return; onAdd(Math.min(d.a, d.b), Math.max(d.a, d.b)); };
-    const full = ranges.length === 0;
-    const seg = (lo: number, hi: number, key: string, ghost?: boolean): JSX.Element => (
-        <div key={key} style={{ position: "absolute", top: "50%", height: 6, transform: "translateY(-50%)", left: `calc(${LINE_PAD}px + ${lo} * (100% - ${2 * LINE_PAD}px))`, width: `calc(${hi - lo} * (100% - ${2 * LINE_PAD}px))`, background: ghost ? "rgba(226,75,74,0.4)" : FILTER, borderRadius: 3, boxShadow: ghost ? "none" : "0 0 6px rgba(226,75,74,0.5)", pointerEvents: "none" }} />
-    );
+    const norm = (r: T): T => (r.from <= r.to ? r : ({ ...r, from: r.to, to: r.from }));
+    const onDown = (e: ReactPointerEvent): void => {
+        if (e.button !== 0 || e.target !== e.currentTarget) return; // 자식(라벨) 위는 편집, 빈 트랙만 새 구간
+        dragRef.current = { kind: "new", start: fracX(e.clientX) };
+        e.currentTarget.setPointerCapture(e.pointerId);
+    };
+    const onLabelDown = (e: ReactPointerEvent, i: number, edge: "from" | "to"): void => {
+        e.stopPropagation(); if (e.button !== 0) return;
+        dragRef.current = { kind: "edit", i, edge };
+        ref.current?.setPointerCapture(e.pointerId);
+    };
+    const onMove = (e: ReactPointerEvent): void => {
+        const d = dragRef.current; if (!d) return;
+        const f = fracX(e.clientX);
+        if (d.kind === "new") setPreview([...ranges, { from: fromFrac(Math.min(d.start, f)), to: fromFrac(Math.max(d.start, f)) } as T]);
+        else setPreview(ranges.map((r, idx) => (idx === d.i ? { ...r, [d.edge]: fromFrac(f) } : r)));
+    };
+    const onUp = (): void => {
+        const d = dragRef.current, p = preview; dragRef.current = null; setPreview(null);
+        if (!d || !p) return;
+        if (d.kind === "new" && Math.abs(toFrac(p[p.length - 1].from) - toFrac(p[p.length - 1].to)) < 0.01) return; // 클릭 = 무시
+        onChange(p.map(norm));
+    };
+    const full = shown.length === 0;
     return (
-        <div style={{ display: "flex", alignItems: "center", height: 40, borderTop: "1px solid var(--border-subtle)" }}>
-            <div style={{ width: LABEL_W, flexShrink: 0, padding: "0 8px 0 6px", fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>{label}</div>
-            <div ref={ref} onPointerDown={down} onPointerMove={move} onPointerUp={up} title="드래그해 구간 추가 · 삭제는 필터 바 칩" style={{ position: "relative", flex: 1, height: "100%", cursor: "ew-resize" }}>
-                <div style={{ position: "absolute", left: LINE_PAD, right: LINE_PAD, top: "50%", height: 6, transform: "translateY(-50%)", background: "var(--bg-tertiary)", borderRadius: 3, opacity: full ? 0 : 0.6 }} />
-                {full ? seg(0, 1, "full") : ranges.map((r, i) => seg(r.lo, r.hi, `r${i}`))}
-                {drag && Math.abs(drag.a - drag.b) > 0.005 && seg(Math.min(drag.a, drag.b), Math.max(drag.a, drag.b), "drag", true)}
-                {ticks.map((t, i) => <span key={i} style={{ position: "absolute", top: "calc(50% + 8px)", left: `calc(${LINE_PAD}px + ${t.f} * (100% - ${2 * LINE_PAD}px))`, transform: "translateX(-50%)", fontSize: 9.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{t.t}</span>)}
+        <div style={{ display: "flex", alignItems: "center", height: 44, borderBottom: "1px solid var(--border-subtle)" }}>
+            <div style={{ width: LABEL_W, flexShrink: 0, padding: "0 8px 0 6px", fontSize: 12.5, fontWeight: 700, color: "var(--text-secondary)" }}>{label}</div>
+            <div ref={ref} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} style={{ position: "relative", flex: 1, height: "100%", cursor: "crosshair" }}>
+                <div style={{ position: "absolute", left: LINE_PAD, right: LINE_PAD, top: "50%", height: 6, transform: "translateY(-50%)", background: "var(--bg-tertiary)", borderRadius: 3, opacity: full ? 0 : 0.6, pointerEvents: "none" }} />
+                {full && <div style={{ position: "absolute", left: LINE_PAD, right: LINE_PAD, top: "50%", height: 6, transform: "translateY(-50%)", background: FILTER, borderRadius: 3, boxShadow: "0 0 6px rgba(226,75,74,0.5)", pointerEvents: "none" }} />}
+                {/* 스케일 끝 값(축 레인의 −/+ 자리) */}
+                <span style={railEnd(true)}>{minLabel}</span>
+                <span style={railEnd(false)}>{maxLabel}</span>
+                {shown.map((r, i) => {
+                    const a = toFrac(r.from), b = toFrac(r.to);
+                    return (
+                        <div key={i}>
+                            <div style={{ position: "absolute", top: "50%", height: 6, transform: "translateY(-50%)", left: `calc(${LINE_PAD}px + ${a} * (100% - ${2 * LINE_PAD}px))`, width: `calc(${b - a} * (100% - ${2 * LINE_PAD}px))`, background: FILTER, borderRadius: 3, boxShadow: "0 0 6px rgba(226,75,74,0.5)", pointerEvents: "none" }} />
+                            {(["from", "to"] as const).map((edge) => {
+                                const f = edge === "from" ? a : b;
+                                return (
+                                    <div key={edge} style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${LINE_PAD}px + ${f} * (100% - ${2 * LINE_PAD}px))`, transform: "translateX(-50%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                                        <span style={{ width: 3, height: 13, background: FILTER, borderRadius: 1 }} />
+                                        <span onPointerDown={(e) => onLabelDown(e, i, edge)} title="드래그해 값 조정" style={{ fontSize: 9.5, fontWeight: 700, color: FILTER, cursor: "ew-resize", background: "var(--bg-primary)", padding: "0 2px", borderRadius: 2, whiteSpace: "nowrap", touchAction: "none" }}>{fmt(r[edge])}</span>
+                                    </div>
+                                );
+                            })}
+                            <button onClick={() => onChange(ranges.filter((_, idx) => idx !== i))} title="이 구간 삭제" style={{ position: "absolute", top: 1, left: `calc(${LINE_PAD}px + ${(a + b) / 2} * (100% - ${2 * LINE_PAD}px))`, transform: "translateX(-50%)", border: "none", background: "transparent", color: FILTER, cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 0 }}>×</button>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
+}
+function railEnd(left: boolean): CSSProperties {
+    return { position: "absolute", top: "calc(50% + 9px)", [left ? "left" : "right"]: LINE_PAD - 8, fontSize: 9.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" };
 }
 
 // ── 클릭 리스트 팝오버 (종목코드 제외) ─────────────────────────────────────
