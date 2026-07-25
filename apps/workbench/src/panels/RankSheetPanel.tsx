@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { useQuery, useQueries } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+    DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable,
+    type DragStartEvent, type DragMoveEvent, type DragEndEvent,
+} from "@dnd-kit/core";
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
+import { placePoint, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildAxisIndex, buildSheetRows, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
@@ -70,6 +75,16 @@ function outcomeColor(v?: string): string {
     if (/실패|패|손절|loss|bad/i.test(v)) return "#e24b4a";
     return "var(--text-secondary)";
 }
+
+// ── 드래그 배치(고정 행 → 정렬된 축 열) ─────────────────────────────────────
+// 정렬 축 열 = 그 축의 세로 라인(행이 orderKey 순). 핀 행 이름을 드래그해 두 행 사이(between=새 slot)/행 위(tie=같은 slot)에 놓는다.
+const draggedPoint = (id: unknown): RankPoint | null => {
+    if (typeof id !== "string" || !id.startsWith("chip:")) return null;
+    const [stockCode, date, time] = id.slice(5).split("|");
+    return stockCode && date && time ? { stockCode, date, time } : null;
+};
+// 드롭 인디케이터(body portal, fixed) — between=열 위 가로선, tie=행 테두리 링. x0..x1 = 정렬 축 열 범위.
+interface SheetDrop { target: RankTarget; tie: boolean; y: number; rowTop?: number; rowBottom?: number; x0: number; x1: number; }
 
 export function RankSheetPanel(): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
@@ -259,6 +274,73 @@ export function RankSheetPanel(): JSX.Element {
     const sortKeyOf = (c: Col): SortKey =>
         c.key === "name" ? { kind: "name" } : c.key === "date" ? { kind: "date" } : c.key === "time" ? { kind: "time" } : c.key === "axis" ? { kind: "axis", axisId: c.axisId } : c.key === "coverage" ? { kind: "coverage" } : { kind: c.key };
 
+    // ── 드래그 배치 — 핀(고정) 행 이름 → 정렬된 축 열. 정렬이 축일 때만 유효(그때만 열이 세로 라인).
+    //  · droppable/over 에 의존 안 함(취약) — DndContext 는 droppable 없이도 onDragMove/End 발화, 포인터 좌표만으로 판정.
+    const qc = useQueryClient();
+    const placeMut = useMutation({
+        mutationFn: (v: { axisId: string; point: RankPoint; target: RankTarget }) => placePoint(v.axisId, v.point, v.target),
+        onSuccess: (_r, v) => void qc.invalidateQueries({ queryKey: axisLineQuery(v.axisId).queryKey }),
+    });
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+    const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());     // tbody 행 pk → tr(드롭 Y 판정)
+    const sortAxisThRef = useRef<HTMLTableCellElement | null>(null);         // 정렬 축 헤더(열 x 범위)
+    const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const [dragName, setDragName] = useState<string | null>(null);
+    const [drop, setDrop] = useState<SheetDrop | null>(null);
+
+    const computeSheetDrop = (clientX: number, clientY: number): SheetDrop | null => {
+        if (!sortAxisId) return null;                       // 축으로 정렬해야 세로 라인
+        const th = sortAxisThRef.current;
+        if (!th) return null;
+        const cr = th.getBoundingClientRect();
+        if (clientX < cr.left || clientX > cr.right) return null; // 정렬 축 열 위에서만
+        const x0 = cr.left, x1 = cr.right;
+        // 정렬 축에 배치된 행(시각 순서 = mainRows) + 기하.
+        const placed: { slotId: string; orderKey: number; top: number; bottom: number; centerY: number }[] = [];
+        for (const row of mainRows) {
+            const cell = row.cells[sortAxisId];
+            if (!cell) continue;
+            const tr = rowRefs.current.get(pkOf(row));
+            if (!tr) continue;
+            const rr = tr.getBoundingClientRect();
+            placed.push({ slotId: cell.slotId, orderKey: cell.orderKey, top: rr.top, bottom: rr.bottom, centerY: rr.top + rr.height / 2 });
+        }
+        // 타이 — 가장 가까운 행 중심 ±8px.
+        let nearest: (typeof placed)[number] | null = null;
+        for (const p of placed) if (!nearest || Math.abs(p.centerY - clientY) < Math.abs(nearest.centerY - clientY)) nearest = p;
+        if (nearest && Math.abs(nearest.centerY - clientY) <= 8)
+            return { target: { kind: "slot", slotId: nearest.slotId }, tie: true, y: nearest.centerY, rowTop: nearest.top, rowBottom: nearest.bottom, x0, x1 };
+        // between — 포인터 위/아래로 붙는 배치 행. dir 로 orderKey 방향 해석(dir=1: 위=강=큰 orderKey).
+        let above: (typeof placed)[number] | undefined, below: (typeof placed)[number] | undefined;
+        for (const p of placed) {
+            if (p.centerY < clientY && (!above || p.centerY > above.centerY)) above = p;
+            if (p.centerY > clientY && (!below || p.centerY < below.centerY)) below = p;
+        }
+        const prev = sort.dir === 1 ? below : above; // prev = 더 약한(작은 orderKey) 이웃
+        const next = sort.dir === 1 ? above : below; // next = 더 강한(큰 orderKey) 이웃
+        const lineY = above && below ? (above.bottom + below.top) / 2 : above ? above.bottom : below ? below.top : (cr.top + cr.bottom) / 2;
+        return { target: { kind: "between", prevSlotId: prev?.slotId, nextSlotId: next?.slotId }, tie: false, y: lineY, x0, x1 };
+    };
+
+    const onDragStart = (ev: DragStartEvent): void => {
+        const pe = ev.activatorEvent as PointerEvent;
+        dragStart.current = { x: pe.clientX ?? 0, y: pe.clientY ?? 0 };
+        const p = draggedPoint(ev.active.id);
+        setDragName(p ? nameOf(p.stockCode) : null);
+    };
+    const onDragMove = (ev: DragMoveEvent): void => {
+        if (!draggedPoint(ev.active.id)) { setDrop(null); return; }
+        setDrop(computeSheetDrop(dragStart.current.x + ev.delta.x, dragStart.current.y + ev.delta.y));
+    };
+    const onDragEnd = (ev: DragEndEvent): void => {
+        const point = draggedPoint(ev.active.id);
+        if (point && sortAxisId) {
+            const d = computeSheetDrop(dragStart.current.x + ev.delta.x, dragStart.current.y + ev.delta.y);
+            if (d) placeMut.mutate({ axisId: sortAxisId, point, target: d.target });
+        }
+        setDrop(null); setDragName(null);
+    };
+
     // 한 행 렌더. inPinnedBlock = 상단 고정 블록(thead)의 복사본. isLastPinned → 그 블록 하단 구분선.
     //  원래 위치(tbody)의 핀 행은 inPinnedBlock=false → 일반 행처럼 하단 구분선을 가진다(아래 행과 안 이어지게).
     const renderRow = (row: SheetRow, isLastPinned = false, inPinnedBlock = false): JSX.Element => {
@@ -285,9 +367,11 @@ export function RankSheetPanel(): JSX.Element {
             const st = stick(c);
             if (c.key === "name") return (
                 <td key="name" style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, ...st }}>
-                    <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>
+                    {inPinnedBlock
+                        ? <PinnedDragName pkStr={key} name={nameOf(row.stockCode)} focus={focus} onNav={() => navRow(row)} />
+                        : <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>}
                     {(isHover || isPinned) && (
-                        <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
+                        <button onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
                             style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: isPinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: `linear-gradient(90deg, transparent, ${cellBgOpaque} 40%)` }}>{isPinned ? "▼" : "▲"}</button>
                     )}
                 </td>
@@ -320,6 +404,7 @@ export function RankSheetPanel(): JSX.Element {
         };
         return (
             <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
+                ref={inPinnedBlock ? undefined : (el) => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); }}
                 style={{ background: rowBg, opacity: dim ? 0.38 : 1, height: ROW_H }}>
                 {displayCols.map(cellFor)}
             </tr>
@@ -331,6 +416,7 @@ export function RankSheetPanel(): JSX.Element {
 
     return (
         <Wrap>
+          <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={() => { setDrop(null); setDragName(null); }}>
             {/* 헤더 컨트롤 — 표시/필터모드/행수(가로 휠 스크롤). 기간은 날짜 필터로 이관. */}
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0, flex: 1 }}>
@@ -376,6 +462,7 @@ export function RankSheetPanel(): JSX.Element {
                                 } : {};
                                 return (
                                     <th key={colKey(c)} {...dnd} title={colLabel(c)}
+                                        ref={c.key === "axis" && c.axisId === sortAxisId ? sortAxisThRef : undefined}
                                         onClick={() => clickHeader(sk)}
                                         onContextMenu={(e) => { e.preventDefault(); setHdrCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), x: e.clientX, y: e.clientY }); }}
                                         style={{ ...thBase, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? "#e24b4a" : "var(--text-tertiary)", borderBottom: banded ? "2px solid #e24b4a" : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
@@ -409,6 +496,18 @@ export function RankSheetPanel(): JSX.Element {
                 {pinnedRows.length === 0 && mainRows.length === 0 && <div style={muted}>{bandsActive ? "이 조건에 맞는 타점이 없습니다." : "이 기간에 타점이 없습니다."}</div>}
             </div>
 
+            <DragOverlay dropAnimation={null}>
+                {dragName && <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 4, background: "var(--bg-tertiary)", border: "1px solid var(--accent-primary)", boxShadow: "0 6px 18px rgba(0,0,0,0.28)", fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap" }}>{dragName}</span>}
+            </DragOverlay>
+          </DndContext>
+
+          {drop && createPortal(
+            drop.tie && drop.rowTop != null && drop.rowBottom != null
+                ? <div style={{ position: "fixed", left: drop.x0, top: drop.rowTop, width: drop.x1 - drop.x0, height: drop.rowBottom - drop.rowTop, border: "2px solid var(--accent-primary)", borderRadius: 4, pointerEvents: "none", zIndex: 70, boxSizing: "border-box" }} />
+                : <div style={{ position: "fixed", left: drop.x0, top: drop.y - 1, width: drop.x1 - drop.x0, height: 2, background: "var(--accent-primary)", boxShadow: "0 0 0 1px var(--bg-primary)", pointerEvents: "none", zIndex: 70 }} />,
+            document.body,
+          )}
+
             {ctx && (() => {
                 const ax = axes.find((a) => a.id === ctx.axisId);
                 if (!ax) return null;
@@ -428,6 +527,15 @@ export function RankSheetPanel(): JSX.Element {
                     onClose={() => setHdrCtx(null)} />
             )}
         </Wrap>
+    );
+}
+
+// 핀(고정) 행 이름 = 드래그 소스(chip:{pk}). 정렬 축 열에 드롭해 배치. 그냥 클릭=이동(dnd distance 4 로 클릭/드래그 자동 구분).
+function PinnedDragName({ pkStr, name, focus, onNav }: { pkStr: string; name: string; focus: boolean; onNav: () => void }): JSX.Element {
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `chip:${pkStr}` });
+    return (
+        <span ref={setNodeRef} {...listeners} {...attributes} onClick={onNav} title={`${name} — 드래그해 정렬 축에 배치 · 클릭=이동`}
+            style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>
     );
 }
 
