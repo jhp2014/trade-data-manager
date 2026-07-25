@@ -11,6 +11,7 @@ import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxi
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { Sep } from "../components/ControlChrome.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
+import { RankFilterBar } from "./rank/RankFilterBar.js";
 import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
 
 // 현재 타점 위치 마커(2D 물방울 핀) 애니메이션 — 전환 시 드롭 1회 + 미세 부유. 화면에 하나뿐이라 과하지 않음.
@@ -116,6 +117,7 @@ export function RankPanel(): JSX.Element {
         return m;
     }, [pointsQ.data]);
     const nameOf = (code: string): string => nameByCode.get(code) ?? code;
+    const months = useMemo(() => [...new Set((pointsQ.data ?? []).map((p) => p.date.slice(0, 7)))].sort().reverse(), [pointsQ.data]);
 
     // 담기(작업셋) = 공유 pinned(시트 핀과 같은 상태). 활성 타점 = focus.activePoint(스팟 강조 + 라인 선두).
     const pinned = useWorkbench((s) => s.pinned);
@@ -209,6 +211,7 @@ export function RankPanel(): JSX.Element {
                 </div>
 
                 <SavedFilterBar axes={axes} />
+                <RankFilterBar axes={axes} months={months} />
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
                     {axesQ.isLoading && <div style={muted}>불러오는 중…</div>}

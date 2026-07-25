@@ -27,7 +27,7 @@ export type { PanelSlice } from "./panelSlice.js";
 export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js";
 export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMarket, BoardMarketMap, SettingsSlice } from "./settingsSlice.js";
 export type { HistoryEntry, HistorySlice } from "./historySlice.js";
-export type { RankBand, RankBoundEdge, RankFilterSlice } from "./rankFilterSlice.js";
+export type { RankBand, RankBoundEdge, DateRange, TimeRange, RankFilterSlice } from "./rankFilterSlice.js";
 export type { RankViewSlice, SavedFilter } from "./rankViewSlice.js";
 
 export const useWorkbench = create<WorkbenchState>()((...a) => ({

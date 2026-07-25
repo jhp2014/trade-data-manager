@@ -1,8 +1,8 @@
-// 순위 필터 슬라이스 — 배치 보드(경계 지정)와 분석 대시보드(결과)가 공유하는 밴드·horizon.
-//  · 밴드 = 축마다 슬롯 앵커 경계 lo/hi(slotId). 한쪽만 = 반열림([lo,∞) 또는 (∞,hi]), 둘 다 = 구간.
-//    slotId 로 들고(슬롯 앵커) orderKey 는 소비측이 그 축 줄에서 해석 — reindex 무해.
-//  · horizon = 진입 후 crop 분(숫자입력·히트맵 세로선 드래그). maxT 는 소비측이 클램프.
-// 임시 질의 상태라 영속 안 함(세션 한정).
+// 순위 필터 슬라이스 — 배치 보드·시트·분석 대시보드가 공유하는 통합 필터.
+//  · 필터 = 차원들의 AND. 차원 = 축별 밴드 / 날짜 구간(OR) / 시간 구간(OR).
+//    - 밴드 = 축마다 슬롯 앵커 경계 lo/hi(slotId). 한쪽만 = 반열림, 둘 다 = 구간. reindex 무해.
+//    - 날짜/시간 = 구간 배열, 배열 안은 OR(아무 구간에 들면 통과). 빈 배열 = 그 차원 무제한(전체).
+//  · horizon/bucket = 분석(경로) 파라미터. 임시 질의 상태라 영속 안 함(세션 한정).
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
 
@@ -11,29 +11,32 @@ export interface RankBand {
     lo?: string; // 이상 경계(작은 orderKey 쪽) slotId
     hi?: string; // 이하 경계(큰 orderKey 쪽) slotId
 }
+export interface DateRange { from: string; to: string } // YYYY-MM-DD (양끝 포함)
+export interface TimeRange { from: string; to: string } // HH:MM (양끝 포함)
 
 export interface RankFilterSlice {
     rankBands: Record<string, RankBand>; // axisId → 경계
-    rankBandsPast: Record<string, RankBand>[]; // 밴드 변경 undo 스택(시트 drill-down 되돌리기). 밴드 바뀔 때마다 직전 상태 push.
+    dateRanges: DateRange[]; // OR
+    timeRanges: TimeRange[]; // OR
     rankHorizon: number; // 진입 후 crop 분
     rankBucket: number; // 히트맵 집계 칸 폭(분) — 1/5/10
     setRankBound: (axisId: string, edge: RankBoundEdge, slotId: string) => void; // 같은 경계·같은 슬롯 재지정 = 토글 해제
-    setRankBandRange: (axisId: string, lo?: string, hi?: string) => void; // 밴드 직접 설정(토글 아님) — 시트 드래그 선택용. 양끝 없으면 축 밴드 제거.
-    applyRankBands: (bands: Record<string, RankBand>) => void; // 밴드 전체 교체(저장 필터 불러오기) — undo push.
+    setRankBandRange: (axisId: string, lo?: string, hi?: string) => void; // 밴드 직접 설정(토글 아님). 양끝 없으면 축 밴드 제거.
+    applyRankBands: (bands: Record<string, RankBand>) => void; // 밴드 전체 교체(저장 필터 불러오기)
     clearRankBand: (axisId: string) => void;
-    clearRankFilter: () => void;
-    undoRankBands: () => void; // 직전 밴드 상태로 복원(drill-down 한 칸 뒤로).
+    addDateRange: (r: DateRange) => void;
+    removeDateRange: (index: number) => void;
+    addTimeRange: (r: TimeRange) => void;
+    removeTimeRange: (index: number) => void;
+    clearRankFilter: () => void; // 밴드·날짜·시간 전부 해제
     setRankHorizon: (minutes: number) => void;
     setRankBucket: (minutes: number) => void;
 }
 
-const HISTORY_CAP = 50;
-// 현재 밴드를 undo 스택에 얹는다(호출 시점의 rankBands = 변경 직전 상태).
-const pushPast = (s: RankFilterSlice): Record<string, RankBand>[] => [...s.rankBandsPast, s.rankBands].slice(-HISTORY_CAP);
-
 export const createRankFilterSlice: StateCreator<WorkbenchState, [], [], RankFilterSlice> = (set) => ({
     rankBands: {},
-    rankBandsPast: [],
+    dateRanges: [],
+    timeRanges: [],
     rankHorizon: 90,
     rankBucket: 1,
 
@@ -44,30 +47,27 @@ export const createRankFilterSlice: StateCreator<WorkbenchState, [], [], RankFil
             const m = { ...s.rankBands };
             if (!next.lo && !next.hi) delete m[axisId];
             else m[axisId] = next;
-            return { rankBands: m, rankBandsPast: pushPast(s) };
+            return { rankBands: m };
         }),
     setRankBandRange: (axisId, lo, hi) =>
         set((s) => {
             const m = { ...s.rankBands };
             if (!lo && !hi) delete m[axisId];
             else m[axisId] = { lo, hi };
-            return { rankBands: m, rankBandsPast: pushPast(s) };
+            return { rankBands: m };
         }),
-    applyRankBands: (bands) => set((s) => ({ rankBands: { ...bands }, rankBandsPast: pushPast(s) })),
+    applyRankBands: (bands) => set(() => ({ rankBands: { ...bands } })),
     clearRankBand: (axisId) =>
         set((s) => {
             const m = { ...s.rankBands };
             delete m[axisId];
-            return { rankBands: m, rankBandsPast: pushPast(s) };
+            return { rankBands: m };
         }),
-    clearRankFilter: () => set((s) => ({ rankBands: {}, rankBandsPast: pushPast(s) })),
-    undoRankBands: () =>
-        set((s) => {
-            if (s.rankBandsPast.length === 0) return {};
-            const past = s.rankBandsPast.slice();
-            const prev = past.pop() ?? {};
-            return { rankBands: prev, rankBandsPast: past };
-        }),
+    addDateRange: (r) => set((s) => ({ dateRanges: [...s.dateRanges, r] })),
+    removeDateRange: (index) => set((s) => ({ dateRanges: s.dateRanges.filter((_, i) => i !== index) })),
+    addTimeRange: (r) => set((s) => ({ timeRanges: [...s.timeRanges, r] })),
+    removeTimeRange: (index) => set((s) => ({ timeRanges: s.timeRanges.filter((_, i) => i !== index) })),
+    clearRankFilter: () => set(() => ({ rankBands: {}, dateRanges: [], timeRanges: [] })),
     setRankHorizon: (minutes) => set(() => ({ rankHorizon: Math.max(1, Math.round(minutes)) })),
     setRankBucket: (minutes) => set(() => ({ rankBucket: Math.max(1, Math.round(minutes)) })),
 });

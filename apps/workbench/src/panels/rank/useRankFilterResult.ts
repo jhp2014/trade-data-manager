@@ -31,6 +31,8 @@ const key = (p: { stockCode: string; date: string; time: string }): string => `$
 
 export function useRankFilterResult(): RankResult {
     const rankBands = useWorkbench((s) => s.rankBands);
+    const dateRanges = useWorkbench((s) => s.dateRanges);
+    const timeRanges = useWorkbench((s) => s.timeRanges);
     const rankHorizon = useWorkbench((s) => s.rankHorizon);
 
     const axesQ = useQuery(rankAxesQuery());
@@ -76,7 +78,16 @@ export function useRankFilterResult(): RankResult {
     );
     const activeAxisNames = useMemo(() => axes.filter((ax) => bands.some((b) => b.axisId === ax.id)).map((ax) => ax.name), [axes, bands]);
 
-    const { points, coverage } = useMemo(() => filterPoints(linesByAxis, bands), [linesByAxis, bands]);
+    // 필터 = 밴드(AND) → 날짜(OR) → 시간(OR) 전부 AND. 밴드 없으면 기반 = 전체 타점(날짜/시간만으로도 필터).
+    const bandActive = bands.length > 0;
+    const bandResult = useMemo(() => filterPoints(linesByAxis, bands), [linesByAxis, bands]);
+    const coverage = bandActive ? bandResult.coverage : (pointsQ.data?.length ?? 0);
+    const points = useMemo(() => {
+        const base: RankPoint[] = bandActive ? bandResult.points : (pointsQ.data ?? []).map((p) => ({ stockCode: p.stockCode, date: p.date, time: p.time }));
+        const dOk = (d: string): boolean => dateRanges.length === 0 || dateRanges.some((r) => d >= r.from && d <= r.to);
+        const tOk = (t: string): boolean => { const hm = t.slice(0, 5); return timeRanges.length === 0 || timeRanges.some((r) => hm >= r.from && hm <= r.to); };
+        return base.filter((p) => dOk(p.date) && tOk(p.time));
+    }, [bandActive, bandResult, pointsQ.data, dateRanges, timeRanges]);
     const pathsQ = useQuery(rankPathsQuery(points));
     const paths = useMemo(() => pathsQ.data ?? [], [pathsQ.data]);
 
@@ -86,7 +97,7 @@ export function useRankFilterResult(): RankResult {
     const stats = useMemo(() => computePathStats(paths, effHorizon), [paths, effHorizon]);
 
     return {
-        isEmpty: bands.length === 0,
+        isEmpty: bands.length === 0 && dateRanges.length === 0 && timeRanges.length === 0,
         isLoading: pathsQ.isLoading,
         points, coverage, paths, stats, effHorizon, dataMinT, dataMaxT, activeAxisNames, nameOf, metaOf,
     };

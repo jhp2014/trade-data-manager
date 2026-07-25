@@ -5,6 +5,7 @@ import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js"
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildAxisIndex, buildSheetRows, monthOf, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
+import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { loadJson, saveJson } from "../store/persist.js";
@@ -76,11 +77,8 @@ export function RankSheetPanel(): JSX.Element {
     const activeKey = activePoint ? `${activePoint.code}|${activePoint.date}|${activePoint.time}` : null;
 
     const rankBands = useWorkbench((s) => s.rankBands);
-    const rankBandsPast = useWorkbench((s) => s.rankBandsPast);
     const setRankBound = useWorkbench((s) => s.setRankBound);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
-    const clearRankFilter = useWorkbench((s) => s.clearRankFilter);
-    const undoRankBands = useWorkbench((s) => s.undoRankBands);
 
     // ── 링크 공유 상태(배치 보드와 양방향) — 호버·핀·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
@@ -125,13 +123,10 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [allPoints]);
     const months = useMemo(() => [...new Set(allPoints.map((p) => monthOf(p.date)))].sort().reverse(), [allPoints]);
-    const [period, setPeriod] = useState<string[]>([]); // 선택된 월들(빈 = 전체). 띄엄띄엄 다중 선택 가능.
-    const periodSet = useMemo(() => new Set(period), [period]);
-    const inPeriod = (date: string): boolean => period.length === 0 || periodSet.has(monthOf(date));
 
-    // ── 결과(분석) — 밴드 교집합 + 경로 통계(좁혔을 때만 lazy). 배치 셀은 위 인덱스에서 별도 조립.
+    // ── 결과(분석) — 통합 필터(밴드·날짜·시간) 매칭 집합 + 경로 통계(좁혔을 때만 lazy). 기간은 이제 날짜 필터에 흡수.
     const r = useRankFilterResult();
-    const bandsActive = !r.isEmpty;
+    const bandsActive = !r.isEmpty; // 필터(밴드/날짜/시간 중 하나라도) 활성
     const interKeys = useMemo(() => new Set(r.points.map(pkOf)), [r.points]);
     const excByKey = useMemo(() => {
         const m = new Map<string, Excursion>();
@@ -143,19 +138,15 @@ export function RankSheetPanel(): JSX.Element {
     const [filterMode, setFilterMode] = useState<"narrow" | "dim">(() => (loadJson(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null)) ?? "narrow"));
     useEffect(() => saveJson(FILTERMODE_KEY, filterMode), [filterMode]);
 
-    // 행 집합: narrow + 밴드 활성 → 교집합 ∩ 기간. dim 또는 무밴드 → 기간 전체(밴드 밖은 렌더에서 흐리게).
+    // 행 집합: narrow + 필터 활성 → 매칭 집합만. dim 또는 무필터 → 전체(밴드 밖은 렌더에서 흐리게).
     const rowPoints = useMemo<ReviewPointListItem[]>(() => {
         if (bandsActive && filterMode === "narrow") {
             const out: ReviewPointListItem[] = [];
-            for (const k of interKeys) {
-                const it = allByKey.get(k);
-                if (it && inPeriod(it.date)) out.push(it);
-            }
+            for (const k of interKeys) { const it = allByKey.get(k); if (it) out.push(it); }
             return out;
         }
-        return allPoints.filter((p) => inPeriod(p.date));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bandsActive, filterMode, interKeys, allByKey, allPoints, period]);
+        return allPoints;
+    }, [bandsActive, filterMode, interKeys, allByKey, allPoints]);
 
     const rows = useMemo(() => buildSheetRows(rowPoints, axisIds, indexByAxis), [rowPoints, axisIds, indexByAxis]);
 
@@ -330,14 +321,10 @@ export function RankSheetPanel(): JSX.Element {
     if (axesQ.isLoading || pointsQ.isLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
     if (axes.length === 0) return <Wrap><div style={muted}>축이 없습니다. 배치 보드에서 축을 먼저 만들어 주세요.</div></Wrap>;
 
-    const activeBandAxes = axes.filter((a) => rankBands[a.id]);
-
     return (
         <Wrap>
-            {/* 헤더 컨트롤 — 한 줄 nowrap, 폭 부족 시 가로 휠 스크롤(차트 툴바 계열). */}
-            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
-                {/* 기간 = 드롭다운이라 overflow 스크롤 컨테이너 밖(안 잘리게). 나머지 컨트롤만 가로 스크롤. */}
-                <PeriodPicker period={period} months={months} onChange={setPeriod} />
+            {/* 헤더 컨트롤 — 표시/필터모드/행수(가로 휠 스크롤). 기간은 날짜 필터로 이관. */}
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0, flex: 1 }}>
                     <ControlBox label="표시">
                         <TextToggle active={!posBar} onClick={() => setPosBar(false)} title="순위 숫자">숫자</TextToggle>
@@ -346,23 +333,18 @@ export function RankSheetPanel(): JSX.Element {
                     </ControlBox>
                     {bandsActive && (
                         <ControlBox label="필터">
-                            <TextToggle active={filterMode === "narrow"} onClick={() => setFilterMode("narrow")} title="교집합만">좁히기</TextToggle>
+                            <TextToggle active={filterMode === "narrow"} onClick={() => setFilterMode("narrow")} title="매칭만">좁히기</TextToggle>
                             <Dot />
-                            <TextToggle active={filterMode === "dim"} onClick={() => setFilterMode("dim")} title="전체 유지·밴드 밖 흐리게">흐리게</TextToggle>
+                            <TextToggle active={filterMode === "dim"} onClick={() => setFilterMode("dim")} title="전체 유지·밖은 흐리게">흐리게</TextToggle>
                         </ControlBox>
                     )}
-                    <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · ${filterMode === "dim" ? "매칭 " + interKeys.size : "교집합"}(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
-                    {activeBandAxes.length > 0 && <span style={{ width: 1, height: 12, background: "var(--border-default)", flexShrink: 0 }} />}
-                    {activeBandAxes.map((a) => (
-                        <button key={a.id} onClick={() => clearRankBand(a.id)} title="이 축 밴드 해제" style={{ ...bandChip, flexShrink: 0 }}>{a.name} ✕</button>
-                    ))}
-                    {rankBandsPast.length > 0 && <button onClick={undoRankBands} title="밴드 한 칸 되돌리기" style={{ ...miniBtn, flexShrink: 0 }}>↶ 되돌리기</button>}
-                    {bandsActive && <button onClick={clearRankFilter} title="밴드 전체 해제" style={{ ...miniBtn, flexShrink: 0 }}>전체해제</button>}
                 </div>
             </div>
 
             <SavedFilterBar axes={axes} />
+            <RankFilterBar axes={axes} months={months} />
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
             <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
@@ -498,46 +480,6 @@ function Cell({ cell, posBar, prominent, barWidth }: { cell: RankCell | null; po
     );
 }
 
-// 기간 선택 — 데이터 있는 월 다중 선택(띄엄띄엄 OK). 텍스트 트리거 클릭 → 월 체크 리스트.
-function korMonth(m: string): string { const [y, mo] = m.split("-"); return `${y}년 ${parseInt(mo, 10)}월`; }
-function fmtPeriod(period: string[]): string {
-    if (period.length === 0) return "전체";
-    const sorted = [...period].sort();
-    return period.length === 1 ? korMonth(sorted[0]) : `${korMonth(sorted[0])} 외 ${period.length - 1}`;
-}
-function PeriodPicker({ period, months, onChange }: { period: string[]; months: string[]; onChange: (months: string[]) => void }): JSX.Element {
-    const [open, setOpen] = useState(false);
-    const set = new Set(period);
-    const toggle = (m: string): void => { const n = new Set(set); n.has(m) ? n.delete(m) : n.add(m); onChange([...n]); };
-    const row: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", textAlign: "left", border: "none", background: "transparent", cursor: "pointer", fontSize: 12.5, padding: "6px 12px", whiteSpace: "nowrap" };
-    return (
-        <span style={{ position: "relative", flexShrink: 0 }}>
-            <button onClick={() => setOpen((v) => !v)} title="기간 — 데이터 있는 월 다중 선택(띄엄띄엄 가능)" style={{ ...toggleBtn(period.length > 0), display: "inline-flex", alignItems: "center", gap: 3 }}>
-                <span>{fmtPeriod(period)}</span>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-            </button>
-            {open && (<>
-                <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 41, minWidth: 176, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.18)", overflow: "hidden" }}>
-                    <button style={{ ...row, fontWeight: period.length === 0 ? 700 : 400, color: period.length === 0 ? "var(--accent-primary)" : "var(--text-primary)", borderBottom: "1px solid var(--border-subtle)" }} onClick={() => onChange([])}>
-                        <span>전체</span>{period.length === 0 && <span style={{ color: "var(--accent-primary)" }}>✓</span>}
-                    </button>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", padding: "6px 12px 2px" }}>데이터 있는 월</div>
-                    <div className="no-scrollbar" style={{ maxHeight: 220, overflowY: "auto" }}>
-                        {months.map((m) => {
-                            const on = set.has(m);
-                            return (
-                                <button key={m} style={{ ...row, fontWeight: on ? 700 : 400, color: on ? "var(--accent-primary)" : "var(--text-primary)" }} onClick={() => toggle(m)}>
-                                    <span>{korMonth(m)}</span>{on && <span style={{ color: "var(--accent-primary)" }}>✓</span>}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            </>)}
-        </span>
-    );
-}
 
 const Wrap = ({ children }: { children: React.ReactNode }): JSX.Element => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>{children}</div>
@@ -547,8 +489,4 @@ const thBase: CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: "6px 8
 const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
 const tdCell: CSSProperties = { padding: "5px 8px", textAlign: "center" };
 const tdNum: CSSProperties = { padding: "5px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" };
-const bandChip: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 12, background: "rgba(226,75,74,0.12)", color: "#e24b4a", border: "1px solid rgba(226,75,74,0.4)", cursor: "pointer" };
 const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer" };
-function toggleBtn(active: boolean): CSSProperties {
-    return { fontSize: 11.5, padding: "2px 9px", borderRadius: 4, background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent-primary)" : "var(--text-secondary)", border: `1px solid ${active ? "var(--accent-primary)" : "var(--border-default)"}`, cursor: "pointer", fontWeight: 600 };
-}
