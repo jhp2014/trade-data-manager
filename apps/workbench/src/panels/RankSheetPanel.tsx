@@ -4,9 +4,8 @@ import { useQuery, useQueries } from "@tanstack/react-query";
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildAxisIndex, buildSheetRows, monthOf, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
-import { MonthPicker } from "./WorksetRows.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
-import { TextToggle, Sep, Dot, ControlGroup } from "../components/ControlChrome.js";
+import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -126,8 +125,13 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [allPoints]);
     const months = useMemo(() => [...new Set(allPoints.map((p) => monthOf(p.date)))].sort().reverse(), [allPoints]);
-    const [period, setPeriod] = useState<string | null>(null); // null = 전체
-    const inPeriod = (date: string): boolean => period == null || monthOf(date) === period;
+    const dateBounds = useMemo(() => {
+        if (allPoints.length === 0) return null;
+        const ds = allPoints.map((p) => p.date).sort();
+        return { min: ds[0], max: ds[ds.length - 1] };
+    }, [allPoints]);
+    const [period, setPeriod] = useState<{ from: string; to: string } | null>(null); // null = 전체(데이터 있는 날짜 기준)
+    const inPeriod = (date: string): boolean => period == null || (date >= period.from && date <= period.to);
 
     // ── 결과(분석) — 밴드 교집합 + 경로 통계(좁혔을 때만 lazy). 배치 셀은 위 인덱스에서 별도 조립.
     const r = useRankFilterResult();
@@ -337,27 +341,22 @@ export function RankSheetPanel(): JSX.Element {
             {/* 헤더 컨트롤 — 한 줄 nowrap, 폭 부족 시 가로 휠 스크롤(차트 툴바 계열). */}
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0, flex: 1 }}>
-                    <PeriodPicker period={period} months={months} onPick={setPeriod} />
-                    <Sep />
-                    <ControlGroup gap={3}>
-                        <span style={ctlLabel}>표시</span>
+                    <PeriodPicker period={period} months={months} bounds={dateBounds} onPick={setPeriod} />
+                    <ControlBox label="표시">
                         <TextToggle active={!posBar} onClick={() => setPosBar(false)} title="순위 숫자">숫자</TextToggle>
                         <Dot />
                         <TextToggle active={posBar} onClick={() => setPosBar(true)} title="위치 눈금">눈금</TextToggle>
-                    </ControlGroup>
-                    {bandsActive && (<>
-                        <Sep />
-                        <ControlGroup gap={3}>
-                            <span style={ctlLabel}>필터</span>
+                    </ControlBox>
+                    {bandsActive && (
+                        <ControlBox label="필터">
                             <TextToggle active={filterMode === "narrow"} onClick={() => setFilterMode("narrow")} title="교집합만">좁히기</TextToggle>
                             <Dot />
                             <TextToggle active={filterMode === "dim"} onClick={() => setFilterMode("dim")} title="전체 유지·밴드 밖 흐리게">흐리게</TextToggle>
-                        </ControlGroup>
-                    </>)}
-                    <Sep />
+                        </ControlBox>
+                    )}
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · ${filterMode === "dim" ? "매칭 " + interKeys.size : "교집합"}(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
-                    {activeBandAxes.length > 0 && <Sep />}
+                    {activeBandAxes.length > 0 && <span style={{ width: 1, height: 12, background: "var(--border-default)", flexShrink: 0 }} />}
                     {activeBandAxes.map((a) => (
                         <button key={a.id} onClick={() => clearRankBand(a.id)} title="이 축 밴드 해제" style={{ ...bandChip, flexShrink: 0 }}>{a.name} ✕</button>
                     ))}
@@ -502,24 +501,52 @@ function Cell({ cell, posBar, prominent, barWidth }: { cell: RankCell | null; po
     );
 }
 
-// 기간 선택 — 전체 + 월 프리셋(작업셋 MonthPicker 재사용, 전체는 별도 버튼).
-function PeriodPicker({ period, months, onPick }: { period: string | null; months: string[]; onPick: (m: string | null) => void }): JSX.Element {
+// 기간 선택 — 텍스트(전체 / 범위) 클릭 → 팝오버(전체·데이터 있는 월·사용자 범위). 데이터 날짜 bounds 로 입력 제한.
+function fmtDateShort(d: string): string { return d.slice(2).replace(/-/g, "."); }
+function fmtPeriod(p: { from: string; to: string } | null): string {
+    if (!p) return "전체";
+    if (p.from.slice(0, 7) === p.to.slice(0, 7) && p.from.endsWith("-01") && p.to.endsWith("-31")) return p.from.slice(2, 7).replace("-", ".");
+    return `${fmtDateShort(p.from)} ~ ${fmtDateShort(p.to)}`;
+}
+function PeriodPicker({ period, months, bounds, onPick }: { period: { from: string; to: string } | null; months: string[]; bounds: { min: string; max: string } | null; onPick: (p: { from: string; to: string } | null) => void }): JSX.Element {
+    const [open, setOpen] = useState(false);
+    const [from, setFrom] = useState(period?.from ?? bounds?.min ?? "");
+    const [to, setTo] = useState(period?.to ?? bounds?.max ?? "");
+    const btn: CSSProperties = { display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 12, padding: "5px 12px", whiteSpace: "nowrap" };
     return (
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <button onClick={() => onPick(null)} style={toggleBtn(period == null)} title="전체 기간">전체</button>
-            {period != null && <MonthPicker month={period} months={months} onPick={onPick} />}
-            {period == null && months.length > 0 && (
-                <button onClick={() => onPick(months[0])} style={miniBtn} title="월별 보기">월…</button>
-            )}
-        </div>
+        <span style={{ position: "relative", flexShrink: 0 }}>
+            <button onClick={() => setOpen((v) => !v)} title="기간 설정 — 전체·월·사용자 범위" style={{ ...toggleBtn(period != null), display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <span className="tabular">{fmtPeriod(period)}</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            {open && (<>
+                <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 41, minWidth: 190, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.18)", overflow: "hidden" }}>
+                    <button style={{ ...btn, fontWeight: period == null ? 700 : 400 }} onClick={() => { onPick(null); setOpen(false); }}>전체 {period == null ? "✓" : ""}</button>
+                    {months.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", padding: "6px 12px 2px", borderTop: "1px solid var(--border-subtle)" }}>데이터 있는 월</div>}
+                    <div className="no-scrollbar" style={{ maxHeight: 180, overflowY: "auto" }}>
+                        {months.map((m) => (
+                            <button key={m} className="tabular" style={btn} onClick={() => { onPick({ from: `${m}-01`, to: `${m}-31` }); setOpen(false); }}>{m.replace("-", ".")}</button>
+                        ))}
+                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", padding: "6px 12px 2px", borderTop: "1px solid var(--border-subtle)" }}>사용자 범위</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px 8px" }}>
+                        <input type="date" value={from} min={bounds?.min} max={bounds?.max} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
+                        <span style={{ color: "var(--text-tertiary)" }}>~</span>
+                        <input type="date" value={to} min={bounds?.min} max={bounds?.max} onChange={(e) => setTo(e.target.value)} style={dateInput} />
+                        <button onClick={() => { if (from && to) { onPick({ from, to: from <= to ? to : from }); setOpen(false); } }} style={{ ...miniBtn, flexShrink: 0 }}>적용</button>
+                    </div>
+                </div>
+            </>)}
+        </span>
     );
 }
+const dateInput: CSSProperties = { width: 0, flex: 1, minWidth: 0, border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "2px 4px", fontSize: 11, outline: "none" };
 
 const Wrap = ({ children }: { children: React.ReactNode }): JSX.Element => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>{children}</div>
 );
 const muted: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px" };
-const ctlLabel: CSSProperties = { fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 };
 const thBase: CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: "6px 8px", borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" };
 const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
 const tdCell: CSSProperties = { padding: "5px 8px", textAlign: "center" };

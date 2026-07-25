@@ -57,6 +57,17 @@ export function ControlGroup({ gap = 6, children }: { gap?: number; children: Re
     return <span style={{ display: "flex", alignItems: "center", gap, flexShrink: 0 }}>{children}</span>;
 }
 
+// 라벨 붙은 박스 그룹 — 옅은 배경+테두리로 "한 묶음"임을 시각적으로 구분(라벨 텍스트가 토글과 안 헷갈리게).
+// Sep 없이도 그룹 경계가 뚜렷. 라벨 생략 가능.
+export function ControlBox({ label, gap = 4, children }: { label?: string; gap?: number; children: React.ReactNode }): JSX.Element {
+    return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap, flexShrink: 0, padding: "1px 6px", borderRadius: 6, background: "var(--bg-tertiary)", border: "0.5px solid var(--border-default)" }}>
+            {label && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{label}</span>}
+            {children}
+        </span>
+    );
+}
+
 function ChevronIcon({ dir }: { dir: "left" | "right" }): JSX.Element {
     return (
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
