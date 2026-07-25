@@ -24,7 +24,9 @@ const PIN = "#8b5cf6"; // 핀=작업셋(보라) — 소프트(앰버)·현재(�
 const NAME_W = 132; // 종목 열 폭(열 고정용)
 const TIME_W = 58; // 타점 열 폭(열 고정용)
 const STRONG = "#1baf7a";
+const MID = "#f5a623";
 const WEAK = "#eb6834";
+const heatOf = (frac: number): string => (frac >= 0.66 ? STRONG : frac >= 0.33 ? MID : WEAK);
 
 type SortKey =
     | { kind: "date" }
@@ -184,8 +186,8 @@ export function RankSheetPanel(): JSX.Element {
 
     // ── 정렬 축에서 드래그 = 소프트 선택(색만·누적·안 좁힘). start===end = 클릭 = goToPoint. (좁히기=우클릭 밴드)
     const dragRef = useRef<{ axisId: string; start: number } | null>(null);
-    const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
-    const selRef = useRef<{ start: number; end: number } | null>(null);
+    const [sel, setSel] = useState<{ axisId: string; start: number; end: number } | null>(null);
+    const selRef = useRef<{ axisId: string; start: number; end: number } | null>(null);
     selRef.current = sel;
     const sortedRef = useRef<SheetRow[]>(mainRows);
     sortedRef.current = mainRows;
@@ -211,9 +213,9 @@ export function RankSheetPanel(): JSX.Element {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const startDrag = (axisId: string, index: number): void => { dragRef.current = { axisId, start: index }; setSel({ start: index, end: index }); };
-    const enterDrag = (index: number): void => { if (dragRef.current) setSel((s) => (s ? { ...s, end: index } : { start: index, end: index })); };
-    const inSel = (index: number): boolean => !!sel && index >= Math.min(sel.start, sel.end) && index <= Math.max(sel.start, sel.end);
+    const startDrag = (axisId: string, index: number): void => { dragRef.current = { axisId, start: index }; setSel({ axisId, start: index, end: index }); };
+    const enterDrag = (index: number): void => { if (dragRef.current) setSel((s) => (s ? { ...s, end: index } : null)); };
+    const inSel = (axisId: string, index: number): boolean => !!sel && sel.axisId === axisId && index >= Math.min(sel.start, sel.end) && index <= Math.max(sel.start, sel.end);
 
     const navRow = (row: SheetRow): void => goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
     const totalCols = 3 + axes.length + (bandsActive ? 4 : 0);
@@ -225,17 +227,17 @@ export function RankSheetPanel(): JSX.Element {
         const isHover = hoveredPoint === key;
         const isPinned = pinnedSet.has(key);
         const e = bandsActive ? excByKey.get(key) : undefined;
-        const rowBg = focus ? "var(--accent-soft)" : "transparent";
-        const idBg = focus ? "var(--accent-soft)" : "var(--bg-primary)";
+        const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : "transparent";
+        const idBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : "var(--bg-primary)";
         const draggable = index != null;
         return (
             <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
-                style={{ borderBottom: "1px solid var(--border-subtle)", background: rowBg, boxShadow: isHover ? "inset 0 0 0 1px var(--border-strong)" : undefined }}>
+                style={{ borderBottom: "1px solid var(--border-subtle)", background: rowBg }}>
                 <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", width: NAME_W, maxWidth: NAME_W, borderLeft: `3px solid ${focus ? "var(--accent-primary)" : isPinned ? PIN : "transparent"}`, position: "sticky", left: 0, zIndex: 1, background: idBg }}>
-                    <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined, paddingRight: (isHover || isPinned) ? 22 : 0 }}>{nameOf(row.stockCode)}</span>
+                    <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined, paddingRight: (isHover || isPinned) ? 18 : 0 }}>{nameOf(row.stockCode)}</span>
                     {(isHover || isPinned) && (
-                        <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제" : "핀 고정(작업셋)"}
-                            style={{ position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)", border: "none", borderRadius: 4, background: idBg, cursor: "pointer", color: isPinned ? PIN : "var(--text-tertiary)", fontSize: 10.5, padding: "1px 3px", lineHeight: 1, boxShadow: `0 0 0 1px ${isPinned ? PIN : "var(--border-default)"}` }}>📌</button>
+                        <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
+                            style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: isPinned ? PIN : "var(--text-tertiary)", fontSize: 12, lineHeight: 1, padding: 0 }}>{isPinned ? "▼" : "▲"}</button>
                     )}
                 </td>
                 <td onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", lineHeight: 1.15, width: TIME_W, position: "sticky", left: NAME_W, zIndex: 1, background: idBg }}>
@@ -245,18 +247,18 @@ export function RankSheetPanel(): JSX.Element {
                 {axes.map((a) => {
                     const cell = row.cells[a.id];
                     const isSortAxis = sortAxisId === a.id;
-                    const selected = draggable && isSortAxis && index != null && inSel(index);
+                    const selected = draggable && index != null && inSel(a.id, index);
                     const isSoft = softSets.get(a.id)?.has(key) ?? false;
                     const cellBg = selected ? "var(--accent-soft)" : isSoft ? "rgba(245,158,11,0.18)" : isSortAxis ? "var(--bg-secondary)" : "transparent";
                     return (
                         <td key={a.id}
-                            onPointerDown={draggable && isSortAxis && index != null ? () => startDrag(a.id, index) : undefined}
-                            onPointerEnter={draggable && isSortAxis && index != null ? () => enterDrag(index) : undefined}
-                            onClick={!isSortAxis ? () => navRow(row) : undefined}
+                            onPointerDown={draggable && index != null ? () => startDrag(a.id, index) : undefined}
+                            onPointerEnter={draggable && index != null ? () => enterDrag(index) : undefined}
+                            onClick={!draggable ? () => navRow(row) : undefined}
                             onContextMenu={cell ? (ev) => { ev.preventDefault(); setCtx({ axisId: a.id, slotId: cell.slotId, x: ev.clientX, y: ev.clientY }); } : undefined}
-                            title={isSortAxis ? "세로 드래그 = 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드"}
-                            style={{ ...tdCell, cursor: isSortAxis ? "ns-resize" : "pointer", background: cellBg, boxShadow: isSoft ? `inset 0 0 0 1px ${SOFT}` : undefined }}>
-                            <Cell cell={cell} posBar={posBar} />
+                            title="세로 드래그 = 이 축 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동"
+                            style={{ ...tdCell, cursor: draggable ? "ns-resize" : "pointer", background: cellBg, boxShadow: isSoft ? `inset 0 0 0 1px ${SOFT}` : undefined }}>
+                            <Cell cell={cell} posBar={posBar} prominent={focus} />
                         </td>
                     );
                 })}
@@ -371,14 +373,16 @@ function BoundMenu({ x, y, axisName, isLo, isHi, hasBand, onSet, onClear, onClos
     );
 }
 
-// ── 순위 셀(숫자 `rank/total` 또는 위치 바). 미배치 = 흐린 점.
-function Cell({ cell, posBar }: { cell: RankCell | null; posBar: boolean }): JSX.Element {
+// ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.
+function Cell({ cell, posBar, prominent }: { cell: RankCell | null; posBar: boolean; prominent?: boolean }): JSX.Element {
     if (!cell) return <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>;
     if (!posBar) return <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{cell.rank}<span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>/{cell.total}</span></span>;
-    // 위치 바: 왼쪽=약, 오른쪽=강. 트랙을 불투명 중립+테두리로 → 강조된 행 위에서도 또렷(대비 확보).
+    // 눈금 틱: 얇은 선 + 세로 틱(색=위치 히트). 선택 행은 굵은 불릿(테두리 링)으로 선명.
+    const col = heatOf(cell.frac);
     return (
-        <span style={{ position: "relative", display: "inline-block", width: 46, height: 9, verticalAlign: "middle", background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 5, boxSizing: "border-box" }} title={`${cell.rank}/${cell.total}`}>
-            <span style={{ position: "absolute", top: "50%", left: `calc(3px + ${cell.frac} * (100% - 6px))`, width: 6, height: 6, borderRadius: "50%", background: cell.frac >= 0.5 ? STRONG : WEAK, transform: "translate(-50%,-50%)", boxShadow: "0 0 0 1px var(--bg-primary)" }} />
+        <span style={{ position: "relative", display: "inline-block", width: 52, height: 14, verticalAlign: "middle" }} title={`${cell.rank}/${cell.total}`}>
+            <span style={{ position: "absolute", left: 2, right: 2, top: "50%", height: 1, background: "var(--border-strong)", transform: "translateY(-50%)" }} />
+            <span style={{ position: "absolute", top: "50%", left: `calc(4px + ${cell.frac} * (100% - 8px))`, width: prominent ? 4 : 3, height: prominent ? 13 : 11, background: col, transform: "translate(-50%,-50%)", borderRadius: 2, boxShadow: prominent ? "0 0 0 1.5px var(--bg-primary)" : undefined }} />
         </span>
     );
 }
