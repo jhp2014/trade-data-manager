@@ -50,6 +50,11 @@ const PAD = 52;                                   // 스팟 좌우 여백(px) �
 const LINE_PAD = 32;                              // 축 라인 여백(고정, PAD와 독립) — 라인 끝을 패널 가장자리 가까이(오버런 = PAD−LINE_PAD).
 const LABEL_W = 138;
 const ROW_H = 58;
+// 시간 레일 도메인 08:00~20:00.
+const T0 = 8 * 60, T1 = 20 * 60;
+const toMin = (hm: string): number => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+const timeFrac = (hm: string): number => Math.max(0, Math.min(1, (toMin(hm) - T0) / (T1 - T0)));
+const fracTime = (f: number): string => { const m = Math.max(T0, Math.min(T1, Math.round((T0 + f * (T1 - T0)) / 5) * 5)); return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 
 interface Slot { slotId: string; orderKey: number; points: RankPoint[]; }
 type View = { v0: number; v1: number };
@@ -78,6 +83,10 @@ export function RankPanel(): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
     const setRankBound = useWorkbench((s) => s.setRankBound);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
+    const dateRanges = useWorkbench((s) => s.dateRanges);
+    const timeRanges = useWorkbench((s) => s.timeRanges);
+    const addDateRange = useWorkbench((s) => s.addDateRange);
+    const addTimeRange = useWorkbench((s) => s.addTimeRange);
     // 링크 공유(시트와 양방향) — 호버·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
@@ -118,6 +127,11 @@ export function RankPanel(): JSX.Element {
     }, [pointsQ.data]);
     const nameOf = (code: string): string => nameByCode.get(code) ?? code;
     const months = useMemo(() => [...new Set((pointsQ.data ?? []).map((p) => p.date.slice(0, 7)))].sort().reverse(), [pointsQ.data]);
+    // 날짜·시간 레일 도메인 매핑(필터 viz + 드래그 입력).
+    const dateBounds = useMemo(() => { const ds = (pointsQ.data ?? []).map((p) => p.date).sort(); return ds.length ? { min: ds[0], max: ds[ds.length - 1] } : null; }, [pointsQ.data]);
+    const dayNum = (d: string): number => Date.parse(d + "T00:00:00Z") / 86400000;
+    const dateFrac = (d: string): number => { if (!dateBounds) return 0; const a = dayNum(dateBounds.min), b = dayNum(dateBounds.max); return b <= a ? 0 : Math.max(0, Math.min(1, (dayNum(d) - a) / (b - a))); };
+    const fracDate = (f: number): string => { if (!dateBounds) return ""; const a = dayNum(dateBounds.min), b = dayNum(dateBounds.max); return new Date(Math.round(a + f * (b - a)) * 86400000).toISOString().slice(0, 10); };
 
     // 담기(작업셋) = 공유 pinned(시트 핀과 같은 상태). 활성 타점 = focus.activePoint(스팟 강조 + 라인 선두).
     const pinned = useWorkbench((s) => s.pinned);
@@ -238,6 +252,15 @@ export function RankPanel(): JSX.Element {
                             );
                         })}
                     </div>
+                    {/* 날짜·시간 레일 — 필터 viz + 드래그로 구간 추가(빨강=포함, 전체=통째 빨강). 시트엔 없음. */}
+                    <FilterRail label="시간" ranges={timeRanges.map((r) => ({ lo: timeFrac(r.from), hi: timeFrac(r.to) }))}
+                        ticks={[{ f: 0, t: "08:00" }, { f: 0.5, t: "14:00" }, { f: 1, t: "20:00" }]}
+                        onAdd={(a, b) => addTimeRange({ from: fracTime(a), to: fracTime(b) })} />
+                    {dateBounds && (
+                        <FilterRail label="날짜" ranges={dateRanges.map((r) => ({ lo: dateFrac(r.from), hi: dateFrac(r.to) }))}
+                            ticks={[{ f: 0, t: dateBounds.min.slice(2).replace(/-/g, ".") }, { f: 1, t: dateBounds.max.slice(2).replace(/-/g, ".") }]}
+                            onAdd={(a, b) => addDateRange({ from: fracDate(a), to: fracDate(b) })} />
+                    )}
                     <AddAxisRow onCreate={(name, scope) => createMut.mutate({ name, scope })} />
                 </div>
 
@@ -574,6 +597,32 @@ function AddAxisRow({ onCreate }: { onCreate: (name: string, scope: "point" | "d
             </select>
             <button onClick={submit} disabled={!name.trim()} style={{ border: "none", borderRadius: 4, background: "var(--accent-primary)", color: "#fff", cursor: "pointer", fontSize: 12, padding: "4px 10px" }}>추가</button>
             <button onClick={() => setOpen(false)} style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13 }}>×</button>
+        </div>
+    );
+}
+
+// ── 날짜·시간 필터 레일 — 빨강=포함 구간, 필터 없음=전체 빨강, 드래그로 구간 추가. ──
+function FilterRail({ label, ranges, ticks, onAdd }: { label: string; ranges: { lo: number; hi: number }[]; ticks: { f: number; t: string }[]; onAdd: (lo: number, hi: number) => void }): JSX.Element {
+    const ref = useRef<HTMLDivElement | null>(null);
+    const startRef = useRef<number | null>(null);
+    const [drag, setDrag] = useState<{ a: number; b: number } | null>(null);
+    const fracX = (clientX: number): number => { const el = ref.current; if (!el) return 0; const rect = el.getBoundingClientRect(); return Math.max(0, Math.min(1, (clientX - rect.left - LINE_PAD) / (rect.width - 2 * LINE_PAD))); };
+    const down = (e: ReactPointerEvent): void => { if (e.button !== 0) return; startRef.current = fracX(e.clientX); setDrag({ a: startRef.current, b: startRef.current }); e.currentTarget.setPointerCapture(e.pointerId); };
+    const move = (e: ReactPointerEvent): void => { if (startRef.current == null) return; setDrag({ a: startRef.current, b: fracX(e.clientX) }); };
+    const up = (): void => { const d = drag, s = startRef.current; startRef.current = null; setDrag(null); if (s == null || !d || Math.abs(d.a - d.b) < 0.01) return; onAdd(Math.min(d.a, d.b), Math.max(d.a, d.b)); };
+    const full = ranges.length === 0;
+    const seg = (lo: number, hi: number, key: string, ghost?: boolean): JSX.Element => (
+        <div key={key} style={{ position: "absolute", top: "50%", height: 6, transform: "translateY(-50%)", left: `calc(${LINE_PAD}px + ${lo} * (100% - ${2 * LINE_PAD}px))`, width: `calc(${hi - lo} * (100% - ${2 * LINE_PAD}px))`, background: ghost ? "rgba(226,75,74,0.4)" : FILTER, borderRadius: 3, boxShadow: ghost ? "none" : "0 0 6px rgba(226,75,74,0.5)", pointerEvents: "none" }} />
+    );
+    return (
+        <div style={{ display: "flex", alignItems: "center", height: 40, borderTop: "1px solid var(--border-subtle)" }}>
+            <div style={{ width: LABEL_W, flexShrink: 0, padding: "0 8px 0 6px", fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>{label}</div>
+            <div ref={ref} onPointerDown={down} onPointerMove={move} onPointerUp={up} title="드래그해 구간 추가 · 삭제는 필터 바 칩" style={{ position: "relative", flex: 1, height: "100%", cursor: "ew-resize" }}>
+                <div style={{ position: "absolute", left: LINE_PAD, right: LINE_PAD, top: "50%", height: 6, transform: "translateY(-50%)", background: "var(--bg-tertiary)", borderRadius: 3, opacity: full ? 0 : 0.6 }} />
+                {full ? seg(0, 1, "full") : ranges.map((r, i) => seg(r.lo, r.hi, `r${i}`))}
+                {drag && Math.abs(drag.a - drag.b) > 0.005 && seg(Math.min(drag.a, drag.b), Math.max(drag.a, drag.b), "drag", true)}
+                {ticks.map((t, i) => <span key={i} style={{ position: "absolute", top: "calc(50% + 8px)", left: `calc(${LINE_PAD}px + ${t.f} * (100% - ${2 * LINE_PAD}px))`, transform: "translateX(-50%)", fontSize: 9.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{t.t}</span>)}
+            </div>
         </div>
     );
 }
