@@ -24,8 +24,7 @@ const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
 const FILTERMODE_KEY = "wb.rankSheetFilterMode";
-const SOFT = "#f59e0b"; // 소프트 선택(앰버) — 현재 타점(스카이블루)과 구분.
-const PIN = "#8b5cf6"; // 핀=작업셋(보라) — 소프트(앰버)·현재(블루)와 구분.
+const PIN = "#8b5cf6"; // 핀=작업셋(보라) — 현재(블루)와 구분.
 // 고정폭(table-layout:fixed + colgroup) — 열 고정 sticky 오프셋이 실제 폭과 정확히 맞도록.
 const NAME_W = 96;
 const DATE_W = 66;
@@ -84,10 +83,7 @@ export function RankSheetPanel(): JSX.Element {
     const clearRankFilter = useWorkbench((s) => s.clearRankFilter);
     const undoRankBands = useWorkbench((s) => s.undoRankBands);
 
-    // ── 링크 공유 상태(배치 보드와 양방향) — 소프트 선택·호버·축순서.
-    const softSelected = useWorkbench((s) => s.softSelected);
-    const addSoftSelect = useWorkbench((s) => s.addSoftSelect);
-    const clearSoftSelect = useWorkbench((s) => s.clearSoftSelect);
+    // ── 링크 공유 상태(배치 보드와 양방향) — 호버·핀·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
     const pinned = useWorkbench((s) => s.pinned);
@@ -95,13 +91,6 @@ export function RankSheetPanel(): JSX.Element {
     const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
     const orderPref = useWorkbench((s) => s.rankAxisOrder);
     const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
-    // 소프트 선택은 축별 — 그 축 셀만 강조(행 전체 X). axisId → Set<pk>.
-    const softSets = useMemo(() => {
-        const m = new Map<string, Set<string>>();
-        for (const [axisId, keys] of Object.entries(softSelected)) m.set(axisId, new Set(keys));
-        return m;
-    }, [softSelected]);
-    const softCount = useMemo(() => Object.values(softSelected).reduce((n, a) => n + a.length, 0), [softSelected]);
 
     // ── 축 + 라인 → 순위 인덱스(배치 보드와 같은 캐시 공유).
     const axesQ = useQuery(rankAxesQuery());
@@ -267,55 +256,13 @@ export function RankSheetPanel(): JSX.Element {
     // ── 열 이름 우클릭 = 고정/숨김 메뉴.
     const [hdrCtx, setHdrCtx] = useState<{ key: string; label: string; canHide: boolean; frozen: boolean; x: number; y: number } | null>(null);
 
-    // ── 정렬 축에서 드래그 = 소프트 선택(색만·누적·안 좁힘). start===end = 클릭 = goToPoint. (좁히기=우클릭 밴드)
-    const dragRef = useRef<{ axisId: string; start: number } | null>(null);
-    const [sel, setSel] = useState<{ axisId: string; start: number; end: number } | null>(null);
-    const selRef = useRef<{ axisId: string; start: number; end: number } | null>(null);
-    selRef.current = sel;
-    const sortedRef = useRef<SheetRow[]>(mainRows);
-    sortedRef.current = mainRows;
-
-    useEffect(() => {
-        const onUp = (): void => {
-            const drag = dragRef.current;
-            const range = selRef.current;
-            dragRef.current = null;
-            setSel(null);
-            if (!drag) return;
-            if (!range || range.start === range.end) {
-                const row = sortedRef.current[drag.start];
-                if (row) goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
-                return;
-            }
-            const [i0, i1] = [Math.min(range.start, range.end), Math.max(range.start, range.end)];
-            const keys = sortedRef.current.slice(i0, i1 + 1).map((row) => pkOf(row));
-            addSoftSelect(drag.axisId, keys);
-        };
-        window.addEventListener("pointerup", onUp);
-        return () => window.removeEventListener("pointerup", onUp);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const startDrag = (axisId: string, index: number): void => { dragRef.current = { axisId, start: index }; setSel({ axisId, start: index, end: index }); };
-    const enterDrag = (index: number): void => { if (dragRef.current) setSel((s) => (s ? { ...s, end: index } : null)); };
-    const inSel = (axisId: string, index: number): boolean => !!sel && sel.axisId === axisId && index >= Math.min(sel.start, sel.end) && index <= Math.max(sel.start, sel.end);
-
     const navRow = (row: SheetRow): void => goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
     const totalCols = displayCols.length;
     const sortKeyOf = (c: Col): SortKey =>
         c.key === "name" ? { kind: "name" } : c.key === "date" ? { kind: "date" } : c.key === "time" ? { kind: "time" } : c.key === "axis" ? { kind: "axis", axisId: c.axisId } : c.key === "coverage" ? { kind: "coverage" } : { kind: c.key };
 
-    // 소프트/드래그 밴드(A) — 연속 세로 밴드. 이웃 행 선택여부로 위/아래 끝(둥근 모서리) 판정.
-    const bandAt = (axisId: string, index: number | null, key: string): { on: boolean; first: boolean; last: boolean } => {
-        const isB = (i: number | null, k: string): boolean => (i != null && inSel(axisId, i)) || (softSets.get(axisId)?.has(k) ?? false);
-        if (!isB(index, key)) return { on: false, first: false, last: false };
-        if (index == null) return { on: true, first: true, last: true };
-        const prev = mainRows[index - 1], next = mainRows[index + 1];
-        return { on: true, first: !(prev && isB(index - 1, pkOf(prev))), last: !(next && isB(index + 1, pkOf(next))) };
-    };
-
-    // 한 행 렌더. index=null → 핀 행(드래그 없음, thead 안에 넣어 헤더처럼 상단 고정). isLastPinned → 핀 블록 하단 구분선.
-    const renderRow = (row: SheetRow, index: number | null, isLastPinned = false): JSX.Element => {
+    // 한 행 렌더. isPinned 행은 thead 안(헤더처럼 상단 고정). isLastPinned → 핀 블록 하단 구분선.
+    const renderRow = (row: SheetRow, isLastPinned = false): JSX.Element => {
         const key = pkOf(row);
         const focus = activeKey === key;
         const isHover = hoveredPoint === key;
@@ -323,7 +270,6 @@ export function RankSheetPanel(): JSX.Element {
         // 핀 행은 필터가 좁혀도 안 사라짐(작업셋). 밴드 안 맞으면 흐리게로 표시(핀은 모드 무관).
         const dim = bandsActive && !interKeys.has(key) && (isPinned || filterMode === "dim");
         const e = bandsActive ? excByKey.get(key) : undefined;
-        const draggable = index != null;
         // 배경 — 핀 행도 일반 행처럼 배경 없음(불투명 bg-primary로 sticky 비침만 방지). 좌측 바·하단 구분선으로 구분.
         const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "var(--bg-primary)" : "transparent";
         const cellBgOpaque = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : "var(--bg-primary)";
@@ -352,18 +298,14 @@ export function RankSheetPanel(): JSX.Element {
             if (c.key === "axis") {
                 const cell = row.cells[c.axisId];
                 const isSortAxis = sortAxisId === c.axisId;
-                const b = bandAt(c.axisId, index, key);
                 const frozen = leftOf.has(colKey(c));
                 return (
                     <td key={colKey(c)}
-                        onPointerDown={draggable && index != null ? () => startDrag(c.axisId, index) : undefined}
-                        onPointerEnter={draggable && index != null ? () => enterDrag(index) : undefined}
-                        onClick={!draggable ? () => navRow(row) : undefined}
+                        onClick={() => navRow(row)}
                         onContextMenu={cell ? (ev) => { ev.preventDefault(); setCtx({ axisId: c.axisId, slotId: cell.slotId, x: ev.clientX, y: ev.clientY }); } : undefined}
-                        title="세로 드래그 = 이 축 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동"
-                        style={{ ...tdCell, position: "relative", cursor: draggable ? "ns-resize" : "pointer", ...st, background: frozen ? cellBgOpaque : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
-                        {b.on && <span style={{ position: "absolute", left: 5, right: 5, top: b.first ? 3 : 0, bottom: b.last ? 3 : 0, background: "rgba(245,158,11,0.16)", borderLeft: `2px solid ${SOFT}`, borderRight: `2px solid ${SOFT}`, ...(b.first ? { borderTop: `2px solid ${SOFT}`, borderTopLeftRadius: 5, borderTopRightRadius: 5 } : {}), ...(b.last ? { borderBottom: `2px solid ${SOFT}`, borderBottomLeftRadius: 5, borderBottomRightRadius: 5 } : {}), pointerEvents: "none" }} />}
-                        <span style={{ position: "relative" }}><Cell cell={cell} posBar={posBar} prominent={focus} barWidth={axisW - 18} /></span>
+                        title="우클릭 = 이상/이하 밴드 · 클릭 = 이동"
+                        style={{ ...tdCell, cursor: "pointer", ...st, background: frozen ? cellBgOpaque : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
+                        <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={axisW - 18} />
                     </td>
                 );
             }
@@ -414,7 +356,6 @@ export function RankSheetPanel(): JSX.Element {
                     </>)}
                     <Sep />
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · ${filterMode === "dim" ? "매칭 " + interKeys.size : "교집합"}(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
-                    {softCount > 0 && <button onClick={clearSoftSelect} title="소프트 선택 해제(축별)" style={{ ...miniBtn, flexShrink: 0, color: SOFT, borderColor: SOFT }}>선택 {softCount} ✕</button>}
                     {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
                     {activeBandAxes.length > 0 && <Sep />}
                     {activeBandAxes.map((a) => (
@@ -430,7 +371,7 @@ export function RankSheetPanel(): JSX.Element {
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
             <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                 {/* border-collapse: separate — 테두리가 셀에 붙어 sticky(고정 열/헤더/핀)를 따라옴(밑줄·세로선 안 밀림). */}
-                <table style={{ tableLayout: "fixed", width: tableW, borderCollapse: "separate", borderSpacing: 0, fontSize: 12, userSelect: sel ? "none" : "auto" }}>
+                <table style={{ tableLayout: "fixed", width: tableW, borderCollapse: "separate", borderSpacing: 0, fontSize: 12 }}>
                     <colgroup>{displayCols.map((c) => <col key={colKey(c)} style={{ width: widthOf(c) }} />)}</colgroup>
                     {/* 헤더 블록 = 열 헤더 + 핀 행(둘 다 상단 sticky, 틈·비침 없이 하나로) */}
                     <thead style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--bg-secondary)" }}>
@@ -460,7 +401,7 @@ export function RankSheetPanel(): JSX.Element {
                                 );
                             })}
                         </tr>
-                        {pinnedRows.map((row, j) => renderRow(row, null, j === pinnedRows.length - 1))}
+                        {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1))}
                     </thead>
                     <tbody>
                         {mainRows.flatMap((row, i) => {
@@ -473,7 +414,7 @@ export function RankSheetPanel(): JSX.Element {
                                     </td>
                                 </tr>,
                             );
-                            out.push(renderRow(row, i));
+                            out.push(renderRow(row));
                             return out;
                         })}
                     </tbody>

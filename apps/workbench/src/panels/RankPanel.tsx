@@ -49,8 +49,6 @@ const PAD = 52;                                   // 스팟 좌우 여백(px) �
 const LINE_PAD = 32;                              // 축 라인 여백(고정, PAD와 독립) — 라인 끝을 패널 가장자리 가까이(오버런 = PAD−LINE_PAD).
 const LABEL_W = 138;
 const ROW_H = 58;
-const SOFT = "#f59e0b"; // 소프트 선택(앰버) — 시트와 공유, 활성(스카이블루)과 구분.
-const EMPTY_SET: ReadonlySet<string> = new Set();
 
 interface Slot { slotId: string; orderKey: number; points: RankPoint[]; }
 type View = { v0: number; v1: number };
@@ -79,18 +77,11 @@ export function RankPanel(): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
     const setRankBound = useWorkbench((s) => s.setRankBound);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
-    // 링크 공유(시트와 양방향) — 소프트 선택·호버·축순서.
-    const softSelected = useWorkbench((s) => s.softSelected);
-    const addSoftSelect = useWorkbench((s) => s.addSoftSelect);
+    // 링크 공유(시트와 양방향) — 호버·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
     const orderPref = useWorkbench((s) => s.rankAxisOrder);
     const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
-    const softByAxis = useMemo(() => {
-        const m = new Map<string, Set<string>>();
-        for (const [axisId, keys] of Object.entries(softSelected)) m.set(axisId, new Set(keys));
-        return m;
-    }, [softSelected]);
     const [filterMenu, setFilterMenu] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
     const qc = useQueryClient();
 
@@ -232,8 +223,7 @@ export function RankPanel(): JSX.Element {
                                     setView={(v) => setView(ax.id, v)} resetView={() => resetView(ax.id)}
                                     registerTrack={(el) => { if (el) trackRefs.current.set(ax.id, el); else trackRefs.current.delete(ax.id); }}
                                     activeMatches={activeMatches} activePlaced={activePlaced}
-                                    softSet={softByAxis.get(ax.id) ?? EMPTY_SET} hoveredKey={hoveredPoint} onHoverKey={setHoveredPoint}
-                                    onSoftRange={(keys) => addSoftSelect(ax.id, keys)}
+                                    hoveredKey={hoveredPoint} onHoverKey={setHoveredPoint}
                                     drop={drop && drop.axisId === ax.id ? drop : null} nameOf={nameOf}
                                     band={rankBands[ax.id]}
                                     onNodeClick={(slotId, x, y) => setPop({ axisId: ax.id, slotId, x, y })}
@@ -337,14 +327,13 @@ function PointItem({ point, name, active, onGo, onRemove }: { point: RankPoint; 
 
 // ── 한 축 레인 ─────────────────────────────────────────────────────────────
 function Lane({
-    axis, slots, view, setView, resetView, registerTrack, activeMatches, activePlaced, softSet, hoveredKey, onHoverKey, onSoftRange, drop, nameOf, band,
+    axis, slots, view, setView, resetView, registerTrack, activeMatches, activePlaced, hoveredKey, onHoverKey, drop, nameOf, band,
     onNodeClick, onNodeContext, onRename, onDelete, onReorderDrop,
 }: {
     axis: RankAxis; slots: Slot[]; view: View; setView: (v: View) => void; resetView: () => void;
     registerTrack: (el: HTMLElement | null) => void;
     activeMatches: (p: RankPoint) => boolean; activePlaced: boolean;
-    softSet: ReadonlySet<string>; hoveredKey: string | null; onHoverKey: (k: string | null) => void;
-    onSoftRange: (keys: string[]) => void;
+    hoveredKey: string | null; onHoverKey: (k: string | null) => void;
     drop: DropInfo | null; nameOf: (c: string) => string;
     band: RankBand | undefined;
     onNodeClick: (slotId: string, x: number, y: number) => void; onNodeContext: (slotId: string, x: number, y: number) => void;
@@ -355,40 +344,6 @@ function Lane({
     const trackRef = useRef<HTMLDivElement | null>(null);
     const [hover, setHover] = useState(false);
     const [reorderOver, setReorderOver] = useState(false);
-
-    // 빈 트랙 가로 드래그 = 소프트 선택(이 축만). 스팟 위 클릭은 이동 없어 브러시 아님(threshold). Ctrl=줌이라 제외.
-    const brushStart = useRef<number | null>(null);
-    const [brush, setBrush] = useState<{ a: number; b: number } | null>(null);
-    const uFromClient = (clientX: number): number => {
-        const el = trackRef.current;
-        if (!el) return 0;
-        const rect = el.getBoundingClientRect();
-        return (clientX - rect.left - PAD) / (rect.width - 2 * PAD);
-    };
-    const onBrushDown = (e: ReactPointerEvent): void => {
-        if (e.button !== 0 || e.ctrlKey) return;
-        if (e.target !== e.currentTarget) return; // 스팟·브래킷 등 자식 위 클릭은 브러시 아님(팝오버 클릭 보존)
-        brushStart.current = uFromClient(e.clientX);
-        setBrush({ a: brushStart.current, b: brushStart.current });
-        e.currentTarget.setPointerCapture(e.pointerId);
-    };
-    const onBrushMove = (e: ReactPointerEvent): void => {
-        if (brushStart.current == null) return;
-        setBrush({ a: brushStart.current, b: uFromClient(e.clientX) });
-    };
-    const onBrushUp = (): void => {
-        const r = brush, start = brushStart.current;
-        brushStart.current = null;
-        setBrush(null);
-        if (start == null || !r || Math.abs(r.a - r.b) < 0.012) return; // 클릭 = 브러시 아님(스팟 클릭 보존)
-        const lo = Math.min(r.a, r.b), hi = Math.max(r.a, r.b);
-        const keys: string[] = [];
-        slots.forEach((s, i) => {
-            const u = displayU(slotFrac(i, slots.length), view);
-            if (u >= lo && u <= hi) for (const p of s.points) keys.push(pk(p));
-        });
-        if (keys.length) onSoftRange(keys);
-    };
 
     // 인라인 이름 편집(팝업 prompt 대신) — Enter=저장/Esc=취소/blur=저장. Enter·blur 이중발화는 blur 단일화로 회피.
     const [editing, setEditing] = useState(false);
@@ -471,16 +426,12 @@ function Lane({
             </div>
 
             {/* 트랙 */}
-            <div ref={setRefs} onDoubleClick={resetView} onPointerDown={onBrushDown} onPointerMove={onBrushMove} onPointerUp={onBrushUp}
+            <div ref={setRefs} onDoubleClick={resetView}
                 style={{ position: "relative", flex: 1, height: "100%", background: isOver ? "var(--accent-soft)" : "transparent" }}>
                 {tooNarrow ? (
                     <span style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", pointerEvents: "none" }}>패널이 좁아 축 숨김</span>
                 ) : (<>
                 <div style={{ position: "absolute", left: LINE_PAD, right: LINE_PAD, top: "50%", height: 2, background: "var(--border-default)", transform: "translateY(-50%)" }} />
-                {brush && Math.abs(brush.a - brush.b) > 0.001 && (() => {
-                    const lo = Math.min(brush.a, brush.b), hi = Math.max(brush.a, brush.b);
-                    return <div style={{ position: "absolute", top: 8, bottom: 8, left: `calc(${PAD}px + ${lo} * (100% - ${2 * PAD}px))`, width: `calc(${hi - lo} * (100% - ${2 * PAD}px))`, background: "rgba(245,158,11,0.15)", border: `1px solid ${SOFT}`, borderRadius: 4, pointerEvents: "none", zIndex: 1 }} />;
-                })()}
                 <ScaleEnd side="left" />
                 <ScaleEnd side="right" />
 
@@ -501,19 +452,18 @@ function Lane({
                     const u = displayU(slotFrac(i, slots.length), view);
                     if (u < -0.03 || u > 1.03) return null;
                     const hasActive = slot.points.some(activeMatches);
-                    const hasSoft = slot.points.some((p) => softSet.has(pk(p)));
                     const hasHover = slot.points.some((p) => hoveredKey === pk(p));
                     const tie = slot.points.length > 1;
                     const left = `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`;
-                    // 채널 분리: 현재=위치 마커(아이콘), 소프트=평평 앰버(글로우 X), 호버=얇은 링. 핀은 레인에 표시 안 함.
-                    const spotBg = hasSoft ? SOFT : hasActive ? ACTIVE : tie ? TIE : "var(--text-secondary)";
+                    // 채널 분리: 현재=위치 마커(아이콘), 호버=얇은 링. 핀·소프트는 레인에 표시 안 함.
+                    const spotBg = hasActive ? ACTIVE : tie ? TIE : "var(--text-secondary)";
                     const glow = hasHover ? "0 0 0 2px var(--border-strong)" : "none";
                     return (
                         <div key={slot.slotId} onClick={(e) => onNodeClick(slot.slotId, e.clientX, e.clientY)}
                             onContextMenu={(e) => { e.preventDefault(); onNodeContext(slot.slotId, e.clientX, e.clientY); }}
                             onMouseEnter={() => onHoverKey(pk(slot.points[0]))} onMouseLeave={() => onHoverKey(null)}
                             title={tie ? `타이 ${slot.points.length}건 — 클릭 / 우클릭=필터 경계` : `${nameOf(slot.points[0].stockCode)} — 클릭 / 우클릭=필터 경계`}
-                            style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: hasActive ? 5 : hasSoft ? 3 : 2 }}>
+                            style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: hasActive ? 5 : 2 }}>
                             {hasActive && <CurrentMarker color={ACTIVE} />}
                             {tie ? (
                                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 17, padding: "0 5px", borderRadius: 8, background: spotBg, color: "#fff", fontSize: 10, fontWeight: 700, boxShadow: glow, fontVariantNumeric: "tabular-nums" }}>{slot.points.length}</span>
