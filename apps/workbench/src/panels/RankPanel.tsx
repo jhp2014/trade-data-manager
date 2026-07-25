@@ -341,19 +341,19 @@ function TrayLine({ tray, current, nameOf, activeMatches, canAdd, onAddActive, o
     );
 }
 
-// 담기 라인 항목 — 드래그 소스(전체가 손잡이). 앞 그랩 아이콘=드래그 가능 표시, 이름 클릭=이동, × 빼기. 활성이면 테두리 강조.
+// 담기 라인 항목 — 드래그 소스(칩 전체가 손잡이, 그랩 아이콘 없음). 이름 클릭=이동, × 빼기(둘 다 pointerdown 차단해 드래그와 분리).
+//  칩 전체 클릭=이동, 4px 이상 끌면 드래그(dnd distance 4 자동구분). × 만 pointerdown stop(× 에서 드래그 시작 안 되게).
 function PointItem({ point, name, active, onGo, onRemove }: { point: RankPoint; name: string; active: boolean; onGo: () => void; onRemove?: () => void }): JSX.Element {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `chip:${pk(point)}` });
     const stop = (e: ReactPointerEvent): void => e.stopPropagation();
     return (
-        <span ref={setNodeRef} {...listeners} {...attributes} title="드래그해 레인에 배치"
-            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 6px 2px 6px", borderRadius: 4, border: `1px solid ${active ? ACTIVE : "var(--border-default)"}`, background: "var(--bg-tertiary)", cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, whiteSpace: "nowrap" }}>
-            <span style={{ color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1, flexShrink: 0 }}>⠿</span>
-            <button onPointerDown={stop} onClick={onGo} title="이 종목으로 이동" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15, width: 70, minWidth: 0, overflow: "hidden" }}>
+        <span ref={setNodeRef} {...listeners} {...attributes} onClick={onGo} title="드래그해 레인에 배치 · 클릭=이동"
+            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 6px", borderRadius: 4, border: `1px solid ${active ? ACTIVE : "var(--border-default)"}`, background: "var(--bg-tertiary)", cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, whiteSpace: "nowrap" }}>
+            <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15, width: 70, minWidth: 0, overflow: "hidden" }}>
                 <span title={name} style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
                 <span style={{ fontSize: 9.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{point.date.slice(5)} {point.time.slice(0, 5)}</span>
-            </button>
-            {onRemove && <button onPointerDown={stop} onClick={onRemove} title="담기에서 빼기" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", padding: "0 1px", fontSize: 13, lineHeight: 1 }}>×</button>}
+            </span>
+            {onRemove && <button onPointerDown={stop} onClick={(e) => { e.stopPropagation(); onRemove(); }} title="담기에서 빼기" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", padding: "0 1px", fontSize: 13, lineHeight: 1 }}>×</button>}
         </span>
     );
 }
