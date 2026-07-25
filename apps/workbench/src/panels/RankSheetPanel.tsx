@@ -6,6 +6,8 @@ import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildAxisIndex, buildSheetRows, monthOf, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
 import { MonthPicker } from "./WorksetRows.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
+import { TextToggle, Sep, Dot, ControlGroup } from "../components/ControlChrome.js";
+import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { PlacedPoint, ReviewPointListItem } from "@trade-data-manager/wire";
@@ -25,7 +27,7 @@ const FILTERMODE_KEY = "wb.rankSheetFilterMode";
 const SOFT = "#f59e0b"; // 소프트 선택(앰버) — 현재 타점(스카이블루)과 구분.
 const PIN = "#8b5cf6"; // 핀=작업셋(보라) — 소프트(앰버)·현재(블루)와 구분.
 // 고정폭(table-layout:fixed + colgroup) — 열 고정 sticky 오프셋이 실제 폭과 정확히 맞도록.
-const NAME_W = 118;
+const NAME_W = 96;
 const DATE_W = 66;
 const TIME_W = 46;
 const AXIS_W = 58;
@@ -53,6 +55,7 @@ const colLabel = (c: Col): string =>
     c.key === "name" ? "종목" : c.key === "date" ? "날짜" : c.key === "time" ? "시간" : c.key === "axis" ? c.name : c.key === "coverage" ? "배치" : c.key === "mfe" ? "MFE" : c.key === "maePre" ? "MAE전" : c.key === "maePost" ? "MAE후" : "결과";
 
 type SortKey =
+    | { kind: "name" }
     | { kind: "date" }
     | { kind: "time" }
     | { kind: "coverage" }
@@ -174,6 +177,7 @@ export function RankSheetPanel(): JSX.Element {
         const dir = sort.dir;
         const cmp = (a: SheetRow, b: SheetRow): number => {
             const k = sort.key;
+            if (k.kind === "name") return r.nameOf(a.stockCode).localeCompare(r.nameOf(b.stockCode)) * dir;
             if (k.kind === "date") { // 날짜(dir) → 종목 → 시간 (그룹 정렬)
                 if (a.date !== b.date) return a.date < b.date ? -dir : dir;
                 if (a.stockCode !== b.stockCode) return a.stockCode < b.stockCode ? -1 : 1;
@@ -194,7 +198,7 @@ export function RankSheetPanel(): JSX.Element {
             return (va - vb) * dir;
         };
         return [...rows].sort(cmp);
-    }, [rows, sort, excByKey]);
+    }, [rows, sort, excByKey, r.nameOf]);
 
     // 핀은 필터/정렬 무관 상단 고정 행(작업셋), 일반 행에서는 제외(중복 방지).
     const pinnedRows = useMemo(() => {
@@ -208,7 +212,7 @@ export function RankSheetPanel(): JSX.Element {
     const unplacedOnSort = sortAxisId ? mainRows.filter((row) => !row.cells[sortAxisId!]).length : 0;
 
     // ── 위치 표시 모드(숫자 기본 / 위치 바).
-    const [posBar, setPosBar] = useState<boolean>(() => loadJson(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? false);
+    const [posBar, setPosBar] = useState<boolean>(() => loadJson(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? true);
     useEffect(() => saveJson(POS_MODE_KEY, posBar), [posBar]);
 
     // 컨테이너 폭 관측 — 남는 폭을 축 열들이 나눠 넓힘(각자 최소폭 유지). 위치바 모드는 최소폭 ↑.
@@ -221,6 +225,7 @@ export function RankSheetPanel(): JSX.Element {
         ro.observe(el);
         return () => ro.disconnect();
     }, []);
+    const ctrlWheel = useHorizontalWheel<HTMLDivElement>(true); // 헤더 컨트롤 hover 휠 = 가로 스크롤
     const axisMin = posBar ? 76 : 56;
 
     // ── 열 구성 — 고정(좌측 스택 집합)·숨김(집합), 열 이름 우클릭 메뉴로 편집. 영속.
@@ -298,7 +303,7 @@ export function RankSheetPanel(): JSX.Element {
     const navRow = (row: SheetRow): void => goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
     const totalCols = displayCols.length;
     const sortKeyOf = (c: Col): SortKey =>
-        c.key === "name" || c.key === "date" ? { kind: "date" } : c.key === "time" ? { kind: "time" } : c.key === "axis" ? { kind: "axis", axisId: c.axisId } : c.key === "coverage" ? { kind: "coverage" } : { kind: c.key };
+        c.key === "name" ? { kind: "name" } : c.key === "date" ? { kind: "date" } : c.key === "time" ? { kind: "time" } : c.key === "axis" ? { kind: "axis", axisId: c.axisId } : c.key === "coverage" ? { kind: "coverage" } : { kind: c.key };
 
     // 소프트/드래그 밴드(A) — 연속 세로 밴드. 이웃 행 선택여부로 위/아래 끝(둥근 모서리) 판정.
     const bandAt = (axisId: string, index: number | null, key: string): { on: boolean; first: boolean; last: boolean } => {
@@ -335,10 +340,10 @@ export function RankSheetPanel(): JSX.Element {
             const st = stick(c);
             if (c.key === "name") return (
                 <td key="name" style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, ...st }}>
-                    <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined, paddingRight: (isHover || isPinned) ? 16 : 0 }}>{nameOf(row.stockCode)}</span>
+                    <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>
                     {(isHover || isPinned) && (
                         <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
-                            style={{ position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: isPinned ? PIN : "var(--text-tertiary)", fontSize: 12, lineHeight: 1, padding: 0 }}>{isPinned ? "▼" : "▲"}</button>
+                            style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: isPinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: `linear-gradient(90deg, transparent, ${cellBgOpaque} 40%)` }}>{isPinned ? "▼" : "▲"}</button>
                     )}
                 </td>
             );
@@ -387,24 +392,36 @@ export function RankSheetPanel(): JSX.Element {
 
     return (
         <Wrap>
-            {/* 헤더 — 기간 · 위치 토글 · 활성 밴드/undo · 행수 */}
-            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexWrap: "wrap" }}>
-                <PeriodPicker period={period} months={months} onPick={setPeriod} />
-                <button onClick={() => setPosBar((v) => !v)} title="셀 표시: 순위 숫자 ↔ 위치 눈금" style={toggleBtn(posBar)}>{posBar ? "눈금" : "숫자"}</button>
-                {bandsActive && <button onClick={() => setFilterMode((m) => (m === "narrow" ? "dim" : "narrow"))} title="필터 표시: 좁히기 ↔ 흐리게" style={toggleBtn(filterMode === "dim")}>{filterMode === "dim" ? "흐리게" : "좁히기"}</button>}
-                <span style={{ fontSize: 11.5, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>{mainRows.length}행{bandsActive ? ` · ${filterMode === "dim" ? "매칭 " + interKeys.size : "교집합"}(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 이 축 미배치 ${unplacedOnSort}` : ""}</span>
-                {softCount > 0 && (
-                    <button onClick={clearSoftSelect} title="소프트 선택 해제(축별)" style={{ ...miniBtn, color: SOFT, borderColor: SOFT }}>선택 {softCount} ✕</button>
-                )}
-                {hiddenCols.length > 0 && (
-                    <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={miniBtn}>숨긴 열 {hiddenCols.length} ⤺</button>
-                )}
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            {/* 헤더 컨트롤 — 한 줄 nowrap, 폭 부족 시 가로 휠 스크롤(차트 툴바 계열). */}
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
+                <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0, flex: 1 }}>
+                    <PeriodPicker period={period} months={months} onPick={setPeriod} />
+                    <Sep />
+                    <ControlGroup gap={3}>
+                        <span style={ctlLabel}>표시</span>
+                        <TextToggle active={!posBar} onClick={() => setPosBar(false)} title="순위 숫자">숫자</TextToggle>
+                        <Dot />
+                        <TextToggle active={posBar} onClick={() => setPosBar(true)} title="위치 눈금">눈금</TextToggle>
+                    </ControlGroup>
+                    {bandsActive && (<>
+                        <Sep />
+                        <ControlGroup gap={3}>
+                            <span style={ctlLabel}>필터</span>
+                            <TextToggle active={filterMode === "narrow"} onClick={() => setFilterMode("narrow")} title="교집합만">좁히기</TextToggle>
+                            <Dot />
+                            <TextToggle active={filterMode === "dim"} onClick={() => setFilterMode("dim")} title="전체 유지·밴드 밖 흐리게">흐리게</TextToggle>
+                        </ControlGroup>
+                    </>)}
+                    <Sep />
+                    <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · ${filterMode === "dim" ? "매칭 " + interKeys.size : "교집합"}(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
+                    {softCount > 0 && <button onClick={clearSoftSelect} title="소프트 선택 해제(축별)" style={{ ...miniBtn, flexShrink: 0, color: SOFT, borderColor: SOFT }}>선택 {softCount} ✕</button>}
+                    {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
+                    {activeBandAxes.length > 0 && <Sep />}
                     {activeBandAxes.map((a) => (
-                        <button key={a.id} onClick={() => clearRankBand(a.id)} title="이 축 밴드 해제" style={bandChip}>{a.name} ✕</button>
+                        <button key={a.id} onClick={() => clearRankBand(a.id)} title="이 축 밴드 해제" style={{ ...bandChip, flexShrink: 0 }}>{a.name} ✕</button>
                     ))}
-                    {rankBandsPast.length > 0 && <button onClick={undoRankBands} title="밴드 한 칸 되돌리기" style={miniBtn}>↶ 되돌리기</button>}
-                    {bandsActive && <button onClick={clearRankFilter} title="밴드 전체 해제" style={miniBtn}>전체해제</button>}
+                    {rankBandsPast.length > 0 && <button onClick={undoRankBands} title="밴드 한 칸 되돌리기" style={{ ...miniBtn, flexShrink: 0 }}>↶ 되돌리기</button>}
+                    {bandsActive && <button onClick={clearRankFilter} title="밴드 전체 해제" style={{ ...miniBtn, flexShrink: 0 }}>전체해제</button>}
                 </div>
             </div>
 
@@ -561,6 +578,7 @@ const Wrap = ({ children }: { children: React.ReactNode }): JSX.Element => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>{children}</div>
 );
 const muted: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px" };
+const ctlLabel: CSSProperties = { fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 };
 const thBase: CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: "6px 8px", borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" };
 const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
 const tdCell: CSSProperties = { padding: "5px 8px", textAlign: "center" };
