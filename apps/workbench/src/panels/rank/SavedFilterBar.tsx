@@ -24,7 +24,7 @@ export function SavedFilterBar({ axes }: { axes: { id: string; name: string }[] 
                     <SavedChip key={f.id} name={f.name} onApply={() => applyRankBands(f.bands)} onRename={(nm) => renameFilter(f.id, nm)} onDelete={() => deleteFilter(f.id)} />
                 ))}
             </div>
-            <button onClick={() => bandsActive && saveFilter(autoLabel(), rankBands)} disabled={!bandsActive} title={bandsActive ? "현재 밴드를 저장 필터로 담기" : "먼저 밴드를 거세요"}
+            <button onClick={() => { if (!bandsActive) return; const n = prompt("저장 필터 이름", autoLabel()); if (n && n.trim()) saveFilter(n.trim(), rankBands); }} disabled={!bandsActive} title={bandsActive ? "현재 밴드를 이름 붙여 저장" : "먼저 밴드를 거세요"}
                 style={{ ...miniBtn, flexShrink: 0, opacity: bandsActive ? 1 : 0.45, cursor: bandsActive ? "pointer" : "default", borderStyle: "dashed" }}>+ 현재 저장</button>
         </div>
     );
