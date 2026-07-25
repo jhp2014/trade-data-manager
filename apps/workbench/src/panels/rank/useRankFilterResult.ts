@@ -2,9 +2,10 @@
 // 분석 대시보드(히트맵·시뮬)와 결과 목록 패널이 **같은 결과**를 쓰도록 한 곳에서 도출(드리프트 방지).
 import { useMemo } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { rankAxesQuery, axisLineQuery, allPointsQuery, rankPathsQuery } from "../../api/queries.js";
+import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../../api/queries.js";
 import { filterPoints, type AxisBand } from "./bandFilter.js";
 import { computePathStats, type PathStats } from "./pathStats.js";
+import { useRankPaths } from "./useRankPaths.js";
 import { useWorkbench } from "../../store/workbench.js";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import type { RankPoint } from "../../api/rank.js";
@@ -88,8 +89,8 @@ export function useRankFilterResult(): RankResult {
         const tOk = (t: string): boolean => { const hm = t.slice(0, 5); return timeRanges.length === 0 || timeRanges.some((r) => hm >= r.from && hm <= r.to); };
         return base.filter((p) => dOk(p.date) && tOk(p.time));
     }, [bandActive, bandResult, pointsQ.data, dateRanges, timeRanges]);
-    const pathsQ = useQuery(rankPathsQuery(points));
-    const paths = useMemo(() => pathsQ.data ?? [], [pathsQ.data]);
+    // 경로 = raw 분봉(캐시에 없는 날만 배치 조회) → core/market 앵커 정규화. 부분집합 재필터는 서버 왕복 없음.
+    const { paths, isLoading: pathsLoading } = useRankPaths(points);
 
     const dataMaxT = useMemo(() => paths.reduce((m, p) => (p.bars.length ? Math.max(m, p.bars[p.bars.length - 1].t) : m), 0), [paths]);
     const dataMinT = useMemo(() => paths.reduce((m, p) => (p.bars.length ? Math.min(m, p.bars[0].t) : m), 0), [paths]);
@@ -98,7 +99,7 @@ export function useRankFilterResult(): RankResult {
 
     return {
         isEmpty: bands.length === 0 && dateRanges.length === 0 && timeRanges.length === 0,
-        isLoading: pathsQ.isLoading,
+        isLoading: pathsLoading,
         points, coverage, paths, stats, effHorizon, dataMinT, dataMaxT, activeAxisNames, nameOf, metaOf,
     };
 }

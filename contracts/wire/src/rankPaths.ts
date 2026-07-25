@@ -1,6 +1,7 @@
-// /rank-paths 계약 — 순위 필터로 좁힌 타점 집합의 "진입 후 인트라데이 경로"(파생 읽기모델).
-// situation(review point 삼중키)의 진입가 대비 % 경로를 당일 종가까지 반환한다. horizon crop·분위·MFE/MAE 는 클라가 계산.
-// 요청 바디(points)는 컨트롤러/클라 로컬 정의(저장분 아님) — wire 는 응답 봉투만 소유한다.
+// 순위 필터 분석 경로 타입 — 타점의 "진입 후 인트라데이 % 경로"(진입가 앵커).
+// 예전엔 서버가 /rank-paths 로 파생해 줬으나, 이제 클라가 raw 분봉(/rank-minutes)을 받아
+// core/market entryAnchoredBars 로 만든다. 이 파일은 그 경로의 값 모양(계약)만 소유 — 서버·클라 공용.
+// horizon crop·분위·MFE/MAE 는 클라(computePathStats)가 이 위에서 계산.
 
 /** 진입 후 경과 1분 격자의 한 바. % 는 전부 진입가(진입 분봉 UN 종가) 대비. */
 export interface RankPathBar {
