@@ -125,13 +125,9 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [allPoints]);
     const months = useMemo(() => [...new Set(allPoints.map((p) => monthOf(p.date)))].sort().reverse(), [allPoints]);
-    const dateBounds = useMemo(() => {
-        if (allPoints.length === 0) return null;
-        const ds = allPoints.map((p) => p.date).sort();
-        return { min: ds[0], max: ds[ds.length - 1] };
-    }, [allPoints]);
-    const [period, setPeriod] = useState<{ from: string; to: string } | null>(null); // null = 전체(데이터 있는 날짜 기준)
-    const inPeriod = (date: string): boolean => period == null || (date >= period.from && date <= period.to);
+    const [period, setPeriod] = useState<string[]>([]); // 선택된 월들(빈 = 전체). 띄엄띄엄 다중 선택 가능.
+    const periodSet = useMemo(() => new Set(period), [period]);
+    const inPeriod = (date: string): boolean => period.length === 0 || periodSet.has(monthOf(date));
 
     // ── 결과(분석) — 밴드 교집합 + 경로 통계(좁혔을 때만 lazy). 배치 셀은 위 인덱스에서 별도 조립.
     const r = useRankFilterResult();
@@ -341,7 +337,7 @@ export function RankSheetPanel(): JSX.Element {
             {/* 헤더 컨트롤 — 한 줄 nowrap, 폭 부족 시 가로 휠 스크롤(차트 툴바 계열). */}
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
                 {/* 기간 = 드롭다운이라 overflow 스크롤 컨테이너 밖(안 잘리게). 나머지 컨트롤만 가로 스크롤. */}
-                <PeriodPicker period={period} months={months} bounds={dateBounds} onPick={setPeriod} />
+                <PeriodPicker period={period} months={months} onChange={setPeriod} />
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0, flex: 1 }}>
                     <ControlBox label="표시">
                         <TextToggle active={!posBar} onClick={() => setPosBar(false)} title="순위 숫자">숫자</TextToggle>
@@ -502,47 +498,46 @@ function Cell({ cell, posBar, prominent, barWidth }: { cell: RankCell | null; po
     );
 }
 
-// 기간 선택 — 텍스트(전체 / 범위) 클릭 → 팝오버(전체·데이터 있는 월·사용자 범위). 데이터 날짜 bounds 로 입력 제한.
-function fmtDateShort(d: string): string { return d.slice(2).replace(/-/g, "."); }
-function fmtPeriod(p: { from: string; to: string } | null): string {
-    if (!p) return "전체";
-    if (p.from.slice(0, 7) === p.to.slice(0, 7) && p.from.endsWith("-01") && p.to.endsWith("-31")) return p.from.slice(2, 7).replace("-", ".");
-    return `${fmtDateShort(p.from)} ~ ${fmtDateShort(p.to)}`;
+// 기간 선택 — 데이터 있는 월 다중 선택(띄엄띄엄 OK). 텍스트 트리거 클릭 → 월 체크 리스트.
+function korMonth(m: string): string { const [y, mo] = m.split("-"); return `${y}년 ${parseInt(mo, 10)}월`; }
+function fmtPeriod(period: string[]): string {
+    if (period.length === 0) return "전체";
+    const sorted = [...period].sort();
+    return period.length === 1 ? korMonth(sorted[0]) : `${korMonth(sorted[0])} 외 ${period.length - 1}`;
 }
-function PeriodPicker({ period, months, bounds, onPick }: { period: { from: string; to: string } | null; months: string[]; bounds: { min: string; max: string } | null; onPick: (p: { from: string; to: string } | null) => void }): JSX.Element {
+function PeriodPicker({ period, months, onChange }: { period: string[]; months: string[]; onChange: (months: string[]) => void }): JSX.Element {
     const [open, setOpen] = useState(false);
-    const [from, setFrom] = useState(period?.from ?? bounds?.min ?? "");
-    const [to, setTo] = useState(period?.to ?? bounds?.max ?? "");
-    const btn: CSSProperties = { display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 12, padding: "5px 12px", whiteSpace: "nowrap" };
+    const set = new Set(period);
+    const toggle = (m: string): void => { const n = new Set(set); n.has(m) ? n.delete(m) : n.add(m); onChange([...n]); };
+    const row: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", textAlign: "left", border: "none", background: "transparent", cursor: "pointer", fontSize: 12.5, padding: "6px 12px", whiteSpace: "nowrap" };
     return (
         <span style={{ position: "relative", flexShrink: 0 }}>
-            <button onClick={() => setOpen((v) => !v)} title="기간 설정 — 전체·월·사용자 범위" style={{ ...toggleBtn(period != null), display: "inline-flex", alignItems: "center", gap: 3 }}>
-                <span className="tabular">{fmtPeriod(period)}</span>
+            <button onClick={() => setOpen((v) => !v)} title="기간 — 데이터 있는 월 다중 선택(띄엄띄엄 가능)" style={{ ...toggleBtn(period.length > 0), display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <span>{fmtPeriod(period)}</span>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
             {open && (<>
                 <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 41, minWidth: 190, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.18)", overflow: "hidden" }}>
-                    <button style={{ ...btn, fontWeight: period == null ? 700 : 400 }} onClick={() => { onPick(null); setOpen(false); }}>전체 {period == null ? "✓" : ""}</button>
-                    {months.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", padding: "6px 12px 2px", borderTop: "1px solid var(--border-subtle)" }}>데이터 있는 월</div>}
-                    <div className="no-scrollbar" style={{ maxHeight: 180, overflowY: "auto" }}>
-                        {months.map((m) => (
-                            <button key={m} className="tabular" style={btn} onClick={() => { onPick({ from: `${m}-01`, to: `${m}-31` }); setOpen(false); }}>{m.replace("-", ".")}</button>
-                        ))}
-                    </div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", padding: "6px 12px 2px", borderTop: "1px solid var(--border-subtle)" }}>사용자 범위</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px 8px" }}>
-                        <input type="date" value={from} min={bounds?.min} max={bounds?.max} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
-                        <span style={{ color: "var(--text-tertiary)" }}>~</span>
-                        <input type="date" value={to} min={bounds?.min} max={bounds?.max} onChange={(e) => setTo(e.target.value)} style={dateInput} />
-                        <button onClick={() => { if (from && to) { onPick({ from, to: from <= to ? to : from }); setOpen(false); } }} style={{ ...miniBtn, flexShrink: 0 }}>적용</button>
+                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 41, minWidth: 176, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.18)", overflow: "hidden" }}>
+                    <button style={{ ...row, fontWeight: period.length === 0 ? 700 : 400, color: period.length === 0 ? "var(--accent-primary)" : "var(--text-primary)", borderBottom: "1px solid var(--border-subtle)" }} onClick={() => onChange([])}>
+                        <span>전체</span>{period.length === 0 && <span style={{ color: "var(--accent-primary)" }}>✓</span>}
+                    </button>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", padding: "6px 12px 2px" }}>데이터 있는 월</div>
+                    <div className="no-scrollbar" style={{ maxHeight: 220, overflowY: "auto" }}>
+                        {months.map((m) => {
+                            const on = set.has(m);
+                            return (
+                                <button key={m} style={{ ...row, fontWeight: on ? 700 : 400, color: on ? "var(--accent-primary)" : "var(--text-primary)" }} onClick={() => toggle(m)}>
+                                    <span>{korMonth(m)}</span>{on && <span style={{ color: "var(--accent-primary)" }}>✓</span>}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             </>)}
         </span>
     );
 }
-const dateInput: CSSProperties = { width: 0, flex: 1, minWidth: 0, border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "2px 4px", fontSize: 11, outline: "none" };
 
 const Wrap = ({ children }: { children: React.ReactNode }): JSX.Element => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>{children}</div>
