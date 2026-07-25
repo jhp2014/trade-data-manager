@@ -21,7 +21,7 @@ export function RankFilterBar({ axes, months }: { axes: { id: string; name: stri
 
     const bandAxes = axes.filter((a) => rankBands[a.id]);
     const has = bandAxes.length > 0 || dateRanges.length > 0 || timeRanges.length > 0;
-    const dateSummary = dateRanges.every(isMonthRange)
+    const dateSummary = dateRanges.length === 0 ? "" : dateRanges.every(isMonthRange)
         ? (dateRanges.length === 1 ? korMonth(isMonthRange(dateRanges[0])!) : `${korMonth(isMonthRange([...dateRanges].sort((a, b) => a.from < b.from ? -1 : 1)[0])!)} 외 ${dateRanges.length - 1}`)
         : dateRanges.map((r) => `${r.from.slice(2)}~${r.to.slice(2)}`).join(" / ");
     const timeSummary = timeRanges.map((r) => `${r.from}–${r.to}`).join(" / ");
