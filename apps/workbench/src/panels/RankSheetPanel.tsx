@@ -339,9 +339,10 @@ export function RankSheetPanel(): JSX.Element {
     return (
         <Wrap>
             {/* 헤더 컨트롤 — 한 줄 nowrap, 폭 부족 시 가로 휠 스크롤(차트 툴바 계열). */}
-            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
+                {/* 기간 = 드롭다운이라 overflow 스크롤 컨테이너 밖(안 잘리게). 나머지 컨트롤만 가로 스크롤. */}
+                <PeriodPicker period={period} months={months} bounds={dateBounds} onPick={setPeriod} />
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0, flex: 1 }}>
-                    <PeriodPicker period={period} months={months} bounds={dateBounds} onPick={setPeriod} />
                     <ControlBox label="표시">
                         <TextToggle active={!posBar} onClick={() => setPosBar(false)} title="순위 숫자">숫자</TextToggle>
                         <Dot />
