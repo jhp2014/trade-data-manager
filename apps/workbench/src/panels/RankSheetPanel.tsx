@@ -201,7 +201,7 @@ export function RankSheetPanel(): JSX.Element {
         const items = pinned.map((k) => allByKey.get(k)).filter((x): x is ReviewPointListItem => !!x);
         return buildSheetRows(items, axisIds, indexByAxis);
     }, [pinned, allByKey, axisIds, indexByAxis]);
-    const mainRows = useMemo(() => sorted.filter((row) => !pinnedSet.has(pkOf(row))), [sorted, pinnedSet]);
+    const mainRows = sorted; // 핀 행도 기존 위치에 그대로(상단 고정 블록에 중복 표시, 삼각형으로 구분)
 
     const clickHeader = (key: SortKey): void => setSort((s) => ({ key, dir: sameSort(s.key, key) ? (s.dir === 1 ? -1 : 1) : (key.kind === "axis" ? 1 : -1) }));
     const sortAxisId = sort.key.kind === "axis" ? sort.key.axisId : null;
@@ -322,8 +322,8 @@ export function RankSheetPanel(): JSX.Element {
         // 배경 — 핀 행도 일반 행처럼 배경 없음(불투명 bg-primary로 sticky 비침만 방지). 좌측 바·하단 구분선으로 구분.
         const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "var(--bg-primary)" : "transparent";
         const cellBgOpaque = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : "var(--bg-primary)";
-        // 행 구분선(셀에, separate 모드) — 핀은 마지막 행 아래만(열 고정처럼), 일반은 매 행.
-        const rowBorder = isPinned ? (isLastPinned ? `2px solid ${PIN}` : "none") : "1px solid var(--border-subtle)";
+        // 행 구분선(셀에, separate 모드) — 핀은 마지막 행 아래만(열 고정선과 동일), 일반은 매 행.
+        const rowBorder = isPinned ? (isLastPinned ? "2px solid var(--border-strong)" : "none") : "1px solid var(--border-subtle)";
         const stick = (c: Col): CSSProperties => {
             const left = leftOf.get(colKey(c));
             const s: CSSProperties = { borderBottom: rowBorder };
@@ -334,7 +334,7 @@ export function RankSheetPanel(): JSX.Element {
         const cellFor = (c: Col): JSX.Element => {
             const st = stick(c);
             if (c.key === "name") return (
-                <td key="name" style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : isPinned ? PIN : "transparent"}`, ...st }}>
+                <td key="name" style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, ...st }}>
                     <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined, paddingRight: (isHover || isPinned) ? 16 : 0 }}>{nameOf(row.stockCode)}</span>
                     {(isHover || isPinned) && (
                         <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
@@ -358,7 +358,7 @@ export function RankSheetPanel(): JSX.Element {
                         title="세로 드래그 = 이 축 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동"
                         style={{ ...tdCell, position: "relative", cursor: draggable ? "ns-resize" : "pointer", ...st, background: frozen ? cellBgOpaque : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
                         {b.on && <span style={{ position: "absolute", left: 5, right: 5, top: b.first ? 3 : 0, bottom: b.last ? 3 : 0, background: "rgba(245,158,11,0.16)", borderLeft: `2px solid ${SOFT}`, borderRight: `2px solid ${SOFT}`, ...(b.first ? { borderTop: `2px solid ${SOFT}`, borderTopLeftRadius: 5, borderTopRightRadius: 5 } : {}), ...(b.last ? { borderBottom: `2px solid ${SOFT}`, borderBottomLeftRadius: 5, borderBottomRightRadius: 5 } : {}), pointerEvents: "none" }} />}
-                        <span style={{ position: "relative" }}><Cell cell={cell} posBar={posBar} prominent={focus} /></span>
+                        <span style={{ position: "relative" }}><Cell cell={cell} posBar={posBar} prominent={focus} barWidth={axisW - 18} /></span>
                     </td>
                 );
             }
@@ -531,14 +531,13 @@ function BoundMenu({ x, y, axisName, isLo, isHi, hasBand, onSet, onClear, onClos
 }
 
 // ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.
-function Cell({ cell, posBar, prominent }: { cell: RankCell | null; posBar: boolean; prominent?: boolean }): JSX.Element {
+function Cell({ cell, posBar, prominent, barWidth }: { cell: RankCell | null; posBar: boolean; prominent?: boolean; barWidth?: number }): JSX.Element {
     if (!cell) return <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>;
     if (!posBar) return <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{cell.rank}<span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>/{cell.total}</span></span>;
-    // 눈금 틱: 얇은 선 + 세로 틱(색=위치 히트). 선택 행은 굵은 불릿(테두리 링)으로 선명.
+    // 눈금 틱: 얇은 선 + 세로 틱(색=위치 히트). 폭 = 넓어진 축 열 활용. 선택 행은 굵은 불릿으로 선명.
     const col = heatOf(cell.frac);
-    // 틱 폭을 칸(AXIS_W) 안에 맞춤(삐짐 방지). 선택 행은 베이스 선·틱 둘 다 굵고 선명.
     return (
-        <span style={{ position: "relative", display: "inline-block", width: 40, height: 14, verticalAlign: "middle" }} title={`${cell.rank}/${cell.total}`}>
+        <span style={{ position: "relative", display: "inline-block", width: Math.max(36, barWidth ?? 40), height: 14, verticalAlign: "middle" }} title={`${cell.rank}/${cell.total}`}>
             <span style={{ position: "absolute", left: 1, right: 1, top: "50%", height: prominent ? 2 : 1, background: prominent ? "var(--text-tertiary)" : "var(--border-strong)", transform: "translateY(-50%)", borderRadius: 1 }} />
             <span style={{ position: "absolute", top: "50%", left: `calc(3px + ${cell.frac} * (100% - 6px))`, width: prominent ? 5 : 3, height: prominent ? 13 : 10, background: col, transform: "translate(-50%,-50%)", borderRadius: 2, boxShadow: prominent ? "0 0 0 1.5px var(--bg-primary)" : undefined }} />
         </span>
