@@ -5,14 +5,11 @@ import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js"
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildAxisIndex, buildSheetRows, monthOf, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
 import { MonthPicker } from "./WorksetRows.js";
+import { SavedFilterBar } from "./rank/SavedFilterBar.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
-import type { RankBand } from "../store/workbench.js";
 import type { PlacedPoint, ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Excursion } from "./rank/pathStats.js";
-
-interface SavedFilter { id: string; name: string; bands: Record<string, RankBand>; }
-const SAVED_KEY = "wb.rankSavedFilters";
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
@@ -53,7 +50,6 @@ export function RankSheetPanel(): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
     const rankBandsPast = useWorkbench((s) => s.rankBandsPast);
     const setRankBound = useWorkbench((s) => s.setRankBound);
-    const applyRankBands = useWorkbench((s) => s.applyRankBands);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
     const clearRankFilter = useWorkbench((s) => s.clearRankFilter);
     const undoRankBands = useWorkbench((s) => s.undoRankBands);
@@ -66,8 +62,6 @@ export function RankSheetPanel(): JSX.Element {
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
     const pinned = useWorkbench((s) => s.pinned);
     const togglePin = useWorkbench((s) => s.togglePin);
-    const addPins = useWorkbench((s) => s.addPins);
-    const clearPins = useWorkbench((s) => s.clearPins);
     const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
     const orderPref = useWorkbench((s) => s.rankAxisOrder);
     const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
@@ -78,7 +72,6 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [softSelected]);
     const softCount = useMemo(() => Object.values(softSelected).reduce((n, a) => n + a.length, 0), [softSelected]);
-    const softFlat = useMemo(() => [...new Set(Object.values(softSelected).flat())], [softSelected]);
 
     // ── 축 + 라인 → 순위 인덱스(배치 보드와 같은 캐시 공유).
     const axesQ = useQuery(rankAxesQuery());
@@ -171,21 +164,20 @@ export function RankSheetPanel(): JSX.Element {
         });
     }, [rows, sort, excByKey]);
 
+    // 핀은 필터/정렬 무관 상단 고정 행(작업셋), 일반 행에서는 제외(중복 방지).
+    const pinnedRows = useMemo(() => {
+        const items = pinned.map((k) => allByKey.get(k)).filter((x): x is ReviewPointListItem => !!x);
+        return buildSheetRows(items, axisIds, indexByAxis);
+    }, [pinned, allByKey, axisIds, indexByAxis]);
+    const mainRows = useMemo(() => sorted.filter((row) => !pinnedSet.has(pkOf(row))), [sorted, pinnedSet]);
+
     const clickHeader = (key: SortKey): void => setSort((s) => ({ key, dir: sameSort(s.key, key) ? (s.dir === 1 ? -1 : 1) : (key.kind === "axis" ? 1 : -1) }));
     const sortAxisId = sort.key.kind === "axis" ? sort.key.axisId : null;
-    const unplacedOnSort = sortAxisId ? sorted.filter((row) => !row.cells[sortAxisId!]).length : 0;
+    const unplacedOnSort = sortAxisId ? mainRows.filter((row) => !row.cells[sortAxisId!]).length : 0;
 
     // ── 위치 표시 모드(숫자 기본 / 위치 바).
     const [posBar, setPosBar] = useState<boolean>(() => loadJson(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? false);
     useEffect(() => saveJson(POS_MODE_KEY, posBar), [posBar]);
-
-    // ── 저장 필터(localStorage) — 현재 밴드를 이름 붙여 담고, 클릭으로 다시 불러와 비교.
-    const [saved, setSaved] = useState<SavedFilter[]>(() => loadJson(SAVED_KEY, (o) => (Array.isArray(o) ? (o as SavedFilter[]) : null)) ?? []);
-    const persistSaved = (next: SavedFilter[]): void => { setSaved(next); saveJson(SAVED_KEY, next); };
-    const autoLabel = (): string => axes.filter((a) => rankBands[a.id]).map((a) => a.name).join(" · ") || "필터";
-    const saveCurrent = (): void => { if (bandsActive) persistSaved([...saved, { id: `f${Date.now()}`, name: autoLabel(), bands: rankBands }]); };
-    const renameSaved = (id: string, name: string): void => persistSaved(saved.map((f) => (f.id === id ? { ...f, name } : f)));
-    const deleteSaved = (id: string): void => persistSaved(saved.filter((f) => f.id !== id));
 
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계.
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
@@ -195,8 +187,8 @@ export function RankSheetPanel(): JSX.Element {
     const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
     const selRef = useRef<{ start: number; end: number } | null>(null);
     selRef.current = sel;
-    const sortedRef = useRef<SheetRow[]>(sorted);
-    sortedRef.current = sorted;
+    const sortedRef = useRef<SheetRow[]>(mainRows);
+    sortedRef.current = mainRows;
 
     useEffect(() => {
         const onUp = (): void => {
@@ -224,6 +216,63 @@ export function RankSheetPanel(): JSX.Element {
     const inSel = (index: number): boolean => !!sel && index >= Math.min(sel.start, sel.end) && index <= Math.max(sel.start, sel.end);
 
     const navRow = (row: SheetRow): void => goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
+    const totalCols = 3 + axes.length + (bandsActive ? 4 : 0);
+
+    // 한 행 렌더 — 핀 상단행(index=null: 드래그 없음)과 일반행(index: 소프트선택 드래그) 공용.
+    const renderRow = (row: SheetRow, index: number | null): JSX.Element => {
+        const key = pkOf(row);
+        const focus = activeKey === key;
+        const isHover = hoveredPoint === key;
+        const isPinned = pinnedSet.has(key);
+        const e = bandsActive ? excByKey.get(key) : undefined;
+        const rowBg = focus ? "var(--accent-soft)" : "transparent";
+        const idBg = focus ? "var(--accent-soft)" : "var(--bg-primary)";
+        const draggable = index != null;
+        return (
+            <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
+                style={{ borderBottom: "1px solid var(--border-subtle)", background: rowBg, boxShadow: isHover ? "inset 0 0 0 1px var(--border-strong)" : undefined }}>
+                <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", width: NAME_W, maxWidth: NAME_W, borderLeft: `3px solid ${focus ? "var(--accent-primary)" : isPinned ? PIN : "transparent"}`, position: "sticky", left: 0, zIndex: 1, background: idBg }}>
+                    <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined, paddingRight: (isHover || isPinned) ? 22 : 0 }}>{nameOf(row.stockCode)}</span>
+                    {(isHover || isPinned) && (
+                        <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제" : "핀 고정(작업셋)"}
+                            style={{ position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)", border: "none", borderRadius: 4, background: idBg, cursor: "pointer", color: isPinned ? PIN : "var(--text-tertiary)", fontSize: 10.5, padding: "1px 3px", lineHeight: 1, boxShadow: `0 0 0 1px ${isPinned ? PIN : "var(--border-default)"}` }}>📌</button>
+                    )}
+                </td>
+                <td onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", lineHeight: 1.15, width: TIME_W, position: "sticky", left: NAME_W, zIndex: 1, background: idBg }}>
+                    <div style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{row.date.slice(2).replace(/-/g, ".")}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-primary)" }}>{row.time.slice(0, 5)}</div>
+                </td>
+                {axes.map((a) => {
+                    const cell = row.cells[a.id];
+                    const isSortAxis = sortAxisId === a.id;
+                    const selected = draggable && isSortAxis && index != null && inSel(index);
+                    const isSoft = softSets.get(a.id)?.has(key) ?? false;
+                    const cellBg = selected ? "var(--accent-soft)" : isSoft ? "rgba(245,158,11,0.18)" : isSortAxis ? "var(--bg-secondary)" : "transparent";
+                    return (
+                        <td key={a.id}
+                            onPointerDown={draggable && isSortAxis && index != null ? () => startDrag(a.id, index) : undefined}
+                            onPointerEnter={draggable && isSortAxis && index != null ? () => enterDrag(index) : undefined}
+                            onClick={!isSortAxis ? () => navRow(row) : undefined}
+                            onContextMenu={cell ? (ev) => { ev.preventDefault(); setCtx({ axisId: a.id, slotId: cell.slotId, x: ev.clientX, y: ev.clientY }); } : undefined}
+                            title={isSortAxis ? "세로 드래그 = 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드"}
+                            style={{ ...tdCell, cursor: isSortAxis ? "ns-resize" : "pointer", background: cellBg, boxShadow: isSoft ? `inset 0 0 0 1px ${SOFT}` : undefined }}>
+                            <Cell cell={cell} posBar={posBar} />
+                        </td>
+                    );
+                })}
+                <td style={{ ...tdCell, color: row.coverage === axes.length ? STRONG : "var(--text-secondary)" }}>{row.coverage}/{axes.length}</td>
+                {bandsActive && (<>
+                    <td style={{ ...tdNum, color: STRONG }}>{e ? "+" + e.mfe.toFixed(1) : "—"}</td>
+                    <td style={{ ...tdNum, color: WEAK }}>{e ? e.maePre.toFixed(1) : "—"}</td>
+                    <td style={{ ...tdNum, color: WEAK }}>{e ? e.maePost.toFixed(1) : "—"}</td>
+                    <td style={td}>
+                        {row.outcome && <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span>}
+                        {row.type && <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginLeft: 5 }}>{row.type}</span>}
+                    </td>
+                </>)}
+            </tr>
+        );
+    };
 
     if (axesQ.isLoading || pointsQ.isLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
     if (axes.length === 0) return <Wrap><div style={muted}>축이 없습니다. 배치 보드에서 축을 먼저 만들어 주세요.</div></Wrap>;
@@ -249,39 +298,9 @@ export function RankSheetPanel(): JSX.Element {
                 </div>
             </div>
 
-            {/* 저장 필터 바 — 현재 필터 담기 + 클릭으로 불러와 비교 */}
-            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-secondary)", flexWrap: "wrap", minHeight: 30 }}>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)" }}>저장 필터</span>
-                {saved.length === 0 && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>필터를 걸고 "현재 저장" → 칩 클릭으로 다시 불러와 비교</span>}
-                {saved.map((f) => (
-                    <SavedChip key={f.id} name={f.name} onApply={() => applyRankBands(f.bands)} onRename={(nm) => renameSaved(f.id, nm)} onDelete={() => deleteSaved(f.id)} />
-                ))}
-                <button onClick={saveCurrent} disabled={!bandsActive} title={bandsActive ? "현재 밴드를 저장 필터로 담기" : "먼저 밴드를 거세요"} style={{ ...miniBtn, marginLeft: 4, opacity: bandsActive ? 1 : 0.45, cursor: bandsActive ? "pointer" : "default", borderStyle: "dashed" }}>+ 현재 저장</button>
-            </div>
+            <SavedFilterBar axes={axes} />
 
-            {/* 핀(작업셋) 바 — 배치 보드 트레이와 같은 공유 상태. 배치 드래그 소스 + 상단 고정. */}
-            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-secondary)", flexWrap: "wrap", minHeight: 30 }}>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: PIN }}>📌 핀</span>
-                {pinned.length === 0 && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>행 📌 클릭·소프트선택→핀 으로 작업셋 구성(배치 보드 트레이 공유)</span>}
-                {pinned.map((k) => {
-                    const it = allByKey.get(k);
-                    const [code, date, time] = k.split("|");
-                    return (
-                        <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 4px 2px 8px", borderRadius: 4, background: "var(--bg-tertiary)", border: `1px solid ${PIN}` }}>
-                            <button onClick={() => goToPoint({ date, code, time }, "rank-sheet")} title="이 타점으로 이동" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.1 }}>
-                                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-primary)" }}>{it?.name ?? code}</span>
-                                <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{date.slice(5)} {time.slice(0, 5)}</span>
-                            </button>
-                            <button onClick={() => togglePin(k)} title="핀 빼기" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: "0 1px" }}>×</button>
-                        </span>
-                    );
-                })}
-                {activeKey && !pinnedSet.has(activeKey) && <button onClick={() => togglePin(activeKey)} style={{ ...miniBtn, color: PIN, borderColor: PIN, borderStyle: "dashed" }}>현재 +핀</button>}
-                {softCount > 0 && <button onClick={() => addPins(softFlat)} title="소프트 선택을 핀 작업셋으로" style={{ ...miniBtn, color: PIN, borderColor: PIN }}>선택 {softFlat.length} → 핀</button>}
-                {pinned.length > 0 && <button onClick={clearPins} style={{ ...miniBtn, marginLeft: 2 }}>비우기</button>}
-            </div>
-
-            {/* 표 */}
+            {/* 표 — 핀 상단 고정 행 + 일반 행 */}
             <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, userSelect: sel ? "none" : "auto" }}>
                     <thead style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--bg-secondary)" }}>
@@ -304,60 +323,15 @@ export function RankSheetPanel(): JSX.Element {
                         </tr>
                     </thead>
                     <tbody>
-                        {sorted.map((row, i) => {
-                            const key = pkOf(row);
-                            const focus = activeKey === key;
-                            const isHover = hoveredPoint === key;
-                            const e = bandsActive ? excByKey.get(key) : undefined;
-                            const rowBg = focus ? "var(--accent-soft)" : "transparent";
-                            return (
-                                <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
-                                    style={{ borderBottom: "1px solid var(--border-subtle)", background: rowBg, boxShadow: isHover ? "inset 0 0 0 1px var(--border-strong)" : undefined }}>
-                                    <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", width: NAME_W, maxWidth: NAME_W, borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, position: "sticky", left: 0, zIndex: 1, background: focus ? "var(--accent-soft)" : "var(--bg-primary)" }}>
-                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0, maxWidth: "100%" }}>
-                                            <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={pinnedSet.has(key) ? "핀 빼기" : "핀 고정(작업셋)"} style={{ border: "none", background: "transparent", cursor: "pointer", color: pinnedSet.has(key) ? PIN : "var(--text-tertiary)", opacity: pinnedSet.has(key) ? 1 : 0.4, fontSize: 11, padding: 0, flexShrink: 0, lineHeight: 1 }}>📌</button>
-                                            <span onClick={() => navRow(row)} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>
-                                        </span>
-                                    </td>
-                                    <td onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", lineHeight: 1.15, width: TIME_W, position: "sticky", left: NAME_W, zIndex: 1, background: focus ? "var(--accent-soft)" : "var(--bg-primary)" }}>
-                                        <div style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{row.date.slice(2).replace(/-/g, ".")}</div>
-                                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-primary)" }}>{row.time.slice(0, 5)}</div>
-                                    </td>
-                                    {axes.map((a) => {
-                                        const cell = row.cells[a.id];
-                                        const isSortAxis = sortAxisId === a.id;
-                                        const selected = isSortAxis && inSel(i);
-                                        const isSoft = softSets.get(a.id)?.has(key) ?? false;
-                                        const cellBg = selected ? "var(--accent-soft)" : isSoft ? "rgba(245,158,11,0.18)" : isSortAxis ? "var(--bg-secondary)" : "transparent";
-                                        return (
-                                            <td key={a.id}
-                                                onPointerDown={isSortAxis ? () => startDrag(a.id, i) : undefined}
-                                                onPointerEnter={isSortAxis ? () => enterDrag(i) : undefined}
-                                                onClick={!isSortAxis ? () => navRow(row) : undefined}
-                                                onContextMenu={cell ? (e) => { e.preventDefault(); setCtx({ axisId: a.id, slotId: cell.slotId, x: e.clientX, y: e.clientY }); } : undefined}
-                                                title={isSortAxis ? "세로 드래그 = 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드"}
-                                                style={{ ...tdCell, cursor: isSortAxis ? "ns-resize" : "pointer", background: cellBg, boxShadow: isSoft ? `inset 0 0 0 1px ${SOFT}` : undefined }}>
-                                                <Cell cell={cell} posBar={posBar} />
-                                            </td>
-                                        );
-                                    })}
-                                    <td style={{ ...tdCell, color: row.coverage === axes.length ? STRONG : "var(--text-secondary)" }}>{row.coverage}/{axes.length}</td>
-                                    {bandsActive && (<>
-                                        <td style={{ ...tdNum, color: STRONG }}>{e ? "+" + e.mfe.toFixed(1) : "—"}</td>
-                                        <td style={{ ...tdNum, color: WEAK }}>{e ? e.maePre.toFixed(1) : "—"}</td>
-                                        <td style={{ ...tdNum, color: WEAK }}>{e ? e.maePost.toFixed(1) : "—"}</td>
-                                        <td style={td}>
-                                            {row.outcome && <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span>}
-                                            {row.type && <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginLeft: 5 }}>{row.type}</span>}
-                                        </td>
-                                    </>)}
-                                </tr>
-                            );
-                        })}
+                        {pinnedRows.map((row) => renderRow(row, null))}
+                        {pinnedRows.length > 0 && mainRows.length > 0 && (
+                            <tr key="pin-divider"><td colSpan={totalCols} style={{ padding: 0, height: 2, borderBottom: `2px solid ${PIN}`, background: "transparent" }} /></tr>
+                        )}
+                        {mainRows.map((row, i) => renderRow(row, i))}
                     </tbody>
                 </table>
                 {bandsActive && r.isLoading && <div style={muted}>경로 산정 중…</div>}
-                {sorted.length === 0 && <div style={muted}>{bandsActive ? "이 조건에 맞는 타점이 없습니다." : "이 기간에 타점이 없습니다."}</div>}
+                {pinnedRows.length === 0 && mainRows.length === 0 && <div style={muted}>{bandsActive ? "이 조건에 맞는 타점이 없습니다." : "이 기간에 타점이 없습니다."}</div>}
             </div>
 
             {ctx && (() => {
@@ -372,16 +346,6 @@ export function RankSheetPanel(): JSX.Element {
                 );
             })()}
         </Wrap>
-    );
-}
-
-// 저장 필터 칩 — 클릭=불러오기, 더블클릭=이름변경, ×=삭제.
-function SavedChip({ name, onApply, onRename, onDelete }: { name: string; onApply: () => void; onRename: (n: string) => void; onDelete: () => void }): JSX.Element {
-    return (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 4px 2px 8px", borderRadius: 12, background: "var(--accent-soft)", border: "1px solid var(--border-default)" }}>
-            <button onClick={onApply} onDoubleClick={() => { const n = prompt("필터 이름", name); if (n && n.trim()) onRename(n.trim()); }} title="클릭=불러오기 · 더블클릭=이름변경" style={{ border: "none", background: "transparent", color: "var(--accent-primary)", cursor: "pointer", fontSize: 11.5, fontWeight: 600, padding: 0 }}>{name}</button>
-            <button onClick={onDelete} title="삭제" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: "0 1px" }}>×</button>
-        </span>
     );
 }
 
@@ -411,10 +375,10 @@ function BoundMenu({ x, y, axisName, isLo, isHi, hasBand, onSet, onClear, onClos
 function Cell({ cell, posBar }: { cell: RankCell | null; posBar: boolean }): JSX.Element {
     if (!cell) return <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>;
     if (!posBar) return <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{cell.rank}<span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>/{cell.total}</span></span>;
-    // 위치 바: 왼쪽=약, 오른쪽=강. 점을 frac 위치에.
+    // 위치 바: 왼쪽=약, 오른쪽=강. 트랙을 불투명 중립+테두리로 → 강조된 행 위에서도 또렷(대비 확보).
     return (
-        <span style={{ position: "relative", display: "inline-block", width: 46, height: 8, verticalAlign: "middle", background: "var(--bg-tertiary)", borderRadius: 4 }} title={`${cell.rank}/${cell.total}`}>
-            <span style={{ position: "absolute", top: "50%", left: `${cell.frac * 100}%`, width: 7, height: 7, borderRadius: "50%", background: cell.frac >= 0.5 ? STRONG : WEAK, transform: "translate(-50%,-50%)" }} />
+        <span style={{ position: "relative", display: "inline-block", width: 46, height: 9, verticalAlign: "middle", background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 5, boxSizing: "border-box" }} title={`${cell.rank}/${cell.total}`}>
+            <span style={{ position: "absolute", top: "50%", left: `calc(3px + ${cell.frac} * (100% - 6px))`, width: 6, height: 6, borderRadius: "50%", background: cell.frac >= 0.5 ? STRONG : WEAK, transform: "translate(-50%,-50%)", boxShadow: "0 0 0 1px var(--bg-primary)" }} />
         </span>
     );
 }

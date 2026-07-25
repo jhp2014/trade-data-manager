@@ -10,7 +10,28 @@ import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js"
 import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxis, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { Sep } from "../components/ControlChrome.js";
+import { SavedFilterBar } from "./rank/SavedFilterBar.js";
 import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
+
+// 현재 타점 위치 마커(2D 물방울 핀) 애니메이션 — 전환 시 드롭 1회 + 미세 부유. 화면에 하나뿐이라 과하지 않음.
+const PIN_KF_ID = "rank-cur-pin-kf";
+if (typeof document !== "undefined" && !document.getElementById(PIN_KF_ID)) {
+    const st = document.createElement("style");
+    st.id = PIN_KF_ID;
+    st.textContent = "@keyframes rankCurDrop{0%{transform:translate(-50%,-13px);opacity:0}55%{opacity:1}100%{transform:translate(-50%,0)}}@keyframes rankCurBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.6px)}}.rank-cur-pin{animation:rankCurDrop .42s cubic-bezier(.34,1.56,.64,1)}.rank-cur-pin>svg{display:block;animation:rankCurBob 1.9s ease-in-out infinite}";
+    document.head.appendChild(st);
+}
+
+function CurrentMarker({ color }: { color: string }): JSX.Element {
+    return (
+        <span className="rank-cur-pin" aria-hidden style={{ position: "absolute", left: "50%", bottom: "calc(100% + 3px)", width: 16, height: 21, transform: "translateX(-50%)", pointerEvents: "none", zIndex: 6 }}>
+            <svg width="16" height="21" viewBox="0 0 26 34">
+                <path d="M13 3.6 C7.5 3.6 3.6 8 3.6 12.6 C3.6 18.4 13 30.4 13 30.4 C13 30.4 22.4 18.4 22.4 12.6 C22.4 8 18.5 3.6 13 3.6 Z" fill={color} />
+                <circle cx="13" cy="12.4" r="4.4" fill="var(--bg-primary)" />
+            </svg>
+        </span>
+    );
+}
 
 // 순위 배치 보드 — 멀티축 가로 레인. 관례: 오른쪽 = +좋음/강함, 왼쪽 = −나쁨/약함(사용자가 일관 입력).
 //  · slot = 순위선 한 위치(타이 = 여러 타점 한 slot). PlacedPoint[](orderKey asc) → slotId 로 묶어 조립.
@@ -195,6 +216,8 @@ export function RankPanel(): JSX.Element {
                         onGo={(p) => goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank")}
                     />
                 </div>
+
+                <SavedFilterBar axes={axes} />
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
                     {axesQ.isLoading && <div style={muted}>불러오는 중…</div>}
@@ -482,14 +505,16 @@ function Lane({
                     const hasHover = slot.points.some((p) => hoveredKey === pk(p));
                     const tie = slot.points.length > 1;
                     const left = `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`;
-                    const spotBg = hasActive ? ACTIVE : hasSoft ? SOFT : tie ? TIE : "var(--text-secondary)";
-                    const glow = hasActive ? `0 0 0 3px ${ACTIVE_SOFT}, 0 0 7px 1px ${ACTIVE}` : hasSoft ? `0 0 0 3px rgba(245,158,11,0.3)` : hasHover ? "0 0 0 2px var(--border-strong)" : "none";
+                    // 채널 분리: 현재=위치 마커(아이콘), 소프트=평평 앰버(글로우 X), 호버=얇은 링. 핀은 레인에 표시 안 함.
+                    const spotBg = hasSoft ? SOFT : hasActive ? ACTIVE : tie ? TIE : "var(--text-secondary)";
+                    const glow = hasHover ? "0 0 0 2px var(--border-strong)" : "none";
                     return (
                         <div key={slot.slotId} onClick={(e) => onNodeClick(slot.slotId, e.clientX, e.clientY)}
                             onContextMenu={(e) => { e.preventDefault(); onNodeContext(slot.slotId, e.clientX, e.clientY); }}
                             onMouseEnter={() => onHoverKey(pk(slot.points[0]))} onMouseLeave={() => onHoverKey(null)}
                             title={tie ? `타이 ${slot.points.length}건 — 클릭 / 우클릭=필터 경계` : `${nameOf(slot.points[0].stockCode)} — 클릭 / 우클릭=필터 경계`}
-                            style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: hasActive || hasSoft ? 3 : 2 }}>
+                            style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: hasActive ? 5 : hasSoft ? 3 : 2 }}>
+                            {hasActive && <CurrentMarker color={ACTIVE} />}
                             {tie ? (
                                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 17, padding: "0 5px", borderRadius: 8, background: spotBg, color: "#fff", fontSize: 10, fontWeight: 700, boxShadow: glow, fontVariantNumeric: "tabular-nums" }}>{slot.points.length}</span>
                             ) : (
