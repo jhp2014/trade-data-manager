@@ -38,7 +38,22 @@ describe("RankingScanner(일반 재조회 폴링)", () => {
         await s.init();
         const hits = await s.scan();
         const req = sent.find((f) => f.trnm === "CNSRREQ");
-        expect(req).toMatchObject({ seq: "7", search_type: "0" });
+        expect(req).toMatchObject({ seq: "7", search_type: "0", stex_tp: "A" }); // 통합시세
+        expect(hits).toEqual([
+            { code: "005930", name: "삼성전자" },
+            { code: "000660", name: "SK하이닉스" },
+        ]);
+    });
+
+    it("scan: 통합시세가 한 종목을 KRX/NXT 2행으로 줘도 표준코드 기준 dedup", async () => {
+        const { ws } = fakeWs([["7", "거래대금"]], [
+            { "9001": "A005930", "302": "삼성전자" },
+            { "9001": "005930_NX", "302": "삼성전자" }, // 같은 종목, NXT 접미
+            { "9001": "A000660", "302": "SK하이닉스" },
+        ]);
+        const s = new RankingScanner(ws, "거래대금");
+        await s.init();
+        const hits = await s.scan();
         expect(hits).toEqual([
             { code: "005930", name: "삼성전자" },
             { code: "000660", name: "SK하이닉스" },

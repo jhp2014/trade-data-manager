@@ -38,7 +38,7 @@ async function main() {
     // 2) 조건검색 (CNSRREQ search_type=0 / ka10172)
     const seq = seqArg ?? conditions[0].seq;
     console.log(`\n🔎 조건식 seq=${seq} 일반검색 요청...`);
-    const req = { trnm: "CNSRREQ", seq, search_type: "0", stex_tp: "K" };
+    const req = { trnm: "CNSRREQ", seq, search_type: "0", stex_tp: "A" }; // A=통합시세(KRX+NXT)
     const res = await ws.request(req, (f) => f.trnm === "CNSRREQ" && f.seq === seq, 15000);
     saveExploration({ apiId: "ka10172", label: `CNSRREQ-seq${seq}`, request: req, response: res });
 

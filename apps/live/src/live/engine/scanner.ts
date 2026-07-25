@@ -56,10 +56,20 @@ export class RankingScanner {
     /** 1회 재조회 → 현재 충족 종목 멤버십(코드+명). */
     async scan(): Promise<ScanHit[]> {
         if (this.seq == null) throw new Error("RankingScanner.init() 먼저 호출해야 함");
-        const req = { trnm: "CNSRREQ", seq: this.seq, search_type: "0", stex_tp: "K" };
+        // stex_tp: 'A'=통합시세(KRX+NXT). 폴러가 이미 _AL(통합)이라 멤버십도 통합으로 맞춤.
+        const req = { trnm: "CNSRREQ", seq: this.seq, search_type: "0", stex_tp: "A" };
         const res = await this.ws.request(req, (f) => f.trnm === "CNSRREQ" && f.seq === this.seq, 15000);
         assertOk(res, "CNSRREQ"); // 조회 제한 등 에러 응답이 빈 멤버십으로 새지 않게(hot 전멸 위장 방지)
         const rows = (res.data ?? []) as CondRow[];
-        return rows.map((r) => ({ code: toCanonical(r["9001"]), name: (r["302"] ?? "").trim() }));
+        // 통합이 한 종목을 KRX/NXT 2행으로 줄 수 있어 표준코드 기준 dedup(hot 카운트 뻥튀기 방지).
+        const seen = new Set<string>();
+        const hits: ScanHit[] = [];
+        for (const r of rows) {
+            const code = toCanonical(r["9001"]);
+            if (seen.has(code)) continue;
+            seen.add(code);
+            hits.push({ code, name: (r["302"] ?? "").trim() });
+        }
+        return hits;
     }
 }
