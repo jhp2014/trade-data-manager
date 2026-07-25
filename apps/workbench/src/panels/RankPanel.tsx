@@ -195,7 +195,12 @@ export function RankPanel(): JSX.Element {
         return { axisId, leftPct: Math.max(-8, Math.min(108, uPtr * 100)), tie: false, target: { kind: "between", prevSlotId: prev?.slotId, nextSlotId: next?.slotId } };
     };
 
-    const draggedPoint = (id: unknown): RankPoint | null => (typeof id === "string" && id.startsWith("chip:") ? parsePk(id.slice(5)) : null);
+    // 드래그 소스 = 담기 칩(chip:) | 현재 타점(cur:). 현재가 담기에도 있으면 두 요소 공존 → id 네임스페이스로 중복 회피.
+    const draggedPoint = (id: unknown): RankPoint | null => {
+        if (typeof id !== "string") return null;
+        const s = id.startsWith("chip:") ? id.slice(5) : id.startsWith("cur:") ? id.slice(4) : null;
+        return s ? parsePk(s) : null;
+    };
     const [dragName, setDragName] = useState<string | null>(null);
     const onDragStart = (e: DragStartEvent): void => {
         dragStartX.current = (e.activatorEvent as PointerEvent).clientX ?? 0;
@@ -312,8 +317,8 @@ export function RankPanel(): JSX.Element {
 const muted: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "10px 12px" };
 const ctlBtn: CSSProperties = { border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: "1px 3px" };
 
-// ── 담기 라인(작업셋) — [현재 선택 = 텍스트] │ [담은 종목 칩…] [+담기]. 남은 폭에서 가로 스크롤.
-//    현재 선택은 텍스트만(드래그 아님), 담기와 | 로 구분. 현재가 담기에도 있으면 양쪽 중복 표시(의도).
+// ── 담기 라인(작업셋) — [현재 선택 칩] │ [담은 종목 칩…] [+담기]. 남은 폭에서 가로 스크롤.
+//    현재 선택도 드래그 소스(레인에 배치), 담기와 | 로 구분. 현재가 담기에도 있으면 양쪽 중복 표시(의도).
 function TrayLine({ tray, current, nameOf, activeMatches, canAdd, onAddActive, onRemove, onGo }: {
     tray: RankPoint[]; current: RankPoint | null; nameOf: (c: string) => string; activeMatches: (p: RankPoint) => boolean;
     canAdd: boolean; onAddActive: () => void; onRemove: (p: RankPoint) => void; onGo: (p: RankPoint) => void;
@@ -325,13 +330,7 @@ function TrayLine({ tray, current, nameOf, activeMatches, canAdd, onAddActive, o
             {empty && <span style={{ fontSize: 11.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>타점 선택·담기 후 레인으로 드래그해 배치</span>}
             {current && (
                 <>
-                    <button onClick={() => onGo(current)} title="현재 타점으로 이동" style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: ACTIVE, flexShrink: 0 }} />
-                        <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15, width: 80, minWidth: 0, overflow: "hidden" }}>
-                            <span title={nameOf(current.stockCode)} style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(current.stockCode)}</span>
-                            <span style={{ fontSize: 9.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{current.date.slice(5)} {current.time.slice(0, 5)}</span>
-                        </span>
-                    </button>
+                    <CurrentChip point={current} name={nameOf(current.stockCode)} onGo={() => onGo(current)} />
                     <Sep />
                 </>
             )}
@@ -355,6 +354,22 @@ function PointItem({ point, name, active, onGo, onRemove }: { point: RankPoint; 
                 <span style={{ fontSize: 9.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{point.date.slice(5)} {point.time.slice(0, 5)}</span>
             </button>
             {onRemove && <button onPointerDown={stop} onClick={onRemove} title="담기에서 빼기" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", padding: "0 1px", fontSize: 13, lineHeight: 1 }}>×</button>}
+        </span>
+    );
+}
+
+// 현재 타점 칩 — 담기 라인 선두. 담기 칩과 같은 드래그 소스지만 id 는 cur:{pk}(현재∈담기 중복 회피).
+//  전체(점+이름)가 손잡이. 그냥 클릭(이동 없음)=이동 — dnd distance 4 가 클릭/드래그를 자동 구분하므로 onClick·드래그 공존.
+function CurrentChip({ point, name, onGo }: { point: RankPoint; name: string; onGo: () => void }): JSX.Element {
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `cur:${pk(point)}` });
+    return (
+        <span ref={setNodeRef} {...listeners} {...attributes} onClick={onGo} title="현재 타점 — 드래그해 레인에 배치 · 클릭=이동"
+            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, whiteSpace: "nowrap" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: ACTIVE, flexShrink: 0 }} />
+            <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15, width: 80, minWidth: 0, overflow: "hidden" }}>
+                <span title={name} style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                <span style={{ fontSize: 9.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{point.date.slice(5)} {point.time.slice(0, 5)}</span>
+            </span>
         </span>
     );
 }
