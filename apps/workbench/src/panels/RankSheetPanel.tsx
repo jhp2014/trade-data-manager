@@ -316,6 +316,9 @@ export function RankSheetPanel(): JSX.Element {
             if (p.centerY < clientY && (!above || p.centerY > above.centerY)) above = p;
             if (p.centerY > clientY && (!below || p.centerY < below.centerY)) below = p;
         }
+        // 두 이웃이 같은 slot(타이 그룹 내부에 떨어뜨림) → 사이에 새 slot 못 만듦(같은 order_key). 그 타이에 합류.
+        if (above && below && above.slotId === below.slotId)
+            return { target: { kind: "slot", slotId: above.slotId }, tie: true, y: (above.centerY + below.centerY) / 2, rowTop: above.top, rowBottom: below.bottom, x0, x1 };
         const prev = sort.dir === 1 ? below : above; // prev = 더 약한(작은 orderKey) 이웃
         const next = sort.dir === 1 ? above : below; // next = 더 강한(큰 orderKey) 이웃
         const lineY = above && below ? (above.bottom + below.top) / 2 : above ? above.bottom : below ? below.top : (cr.top + cr.bottom) / 2;

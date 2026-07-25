@@ -123,6 +123,19 @@ describe("DrizzleRankRepository (pglite)", () => {
         expect(line[line.length - 1].time).toBe("09:01:00"); // 최상단(top) 유지
     });
 
+    it("place between(같은 slot 두 경계) — 타이 그룹 내부 = 그 slot 합류(중간키 불가 500 대신 정규화)", async () => {
+        const a = await repo.createAxis("타이-사이");
+        const s1 = await repo.place(a.id, P1, { kind: "between" }); // slotA
+        await repo.place(a.id, P2, { kind: "slot", slotId: s1.slotId }); // P1·P2 타이(slotA)
+        expect(await slotCount(a.id)).toBe(1);
+
+        // 타이 두 행 "사이"에 P3 를 놓음 = prev==next==slotA. 예외 없이 slotA 에 합류(3명 타이).
+        const r = await repo.place(a.id, P3, { kind: "between", prevSlotId: s1.slotId, nextSlotId: s1.slotId });
+        expect(r.slotId).toBe(s1.slotId);
+        expect(await slotCount(a.id)).toBe(1); // 새 slot 안 생김
+        expect(await repo.listAxisLine(a.id)).toHaveLength(3); // P1·P2·P3 한 slot
+    });
+
     it("place 는 존재하는 타점만 — 없는 타점(FK) 위반은 거부", async () => {
         const a = await repo.createAxis("FK 검증 축");
         await expect(repo.place(a.id, { stockCode: "999999", date: "2026-06-30", time: "09:00:00" }, { kind: "between" })).rejects.toBeTruthy();

@@ -52,6 +52,12 @@ export class DrizzleRankRepository implements RankReader, RankStore {
 
     async place(axisId: string, point: RankPoint, target: RankTarget): Promise<{ slotId: string; orderKey: number }> {
         const axis = BigInt(axisId);
+        // 방어 — between 인데 두 경계가 같은 slot(타이 그룹 내부에 놓음)이면 사이 중간키가 불가능(order_key 동일).
+        //   의미상 같은 순위 = 그 slot 에 합류(타이). 클라가 이미 걸러도, 어떤 경로든 500 안 나게 여기서 정규화.
+        const eff: RankTarget =
+            target.kind === "between" && target.prevSlotId != null && target.prevSlotId === target.nextSlotId
+                ? { kind: "slot", slotId: target.prevSlotId }
+                : target;
         return this.db.transaction(async (tx) => {
             // day 축은 그날 전 타점(미배치 포함)을 대상, point 축은 그 타점 하나. 그날 타점 0개면 붙일 데 없음.
             const targets = await fanoutTargets(tx, axis, point);
@@ -60,16 +66,16 @@ export class DrizzleRankRepository implements RankReader, RankStore {
             // 1. 대상 slot 결정 — 기존 합류(타이) 또는 두 이웃 사이 새 slot(중간키).
             let slotId: bigint;
             let orderKey: number;
-            if (target.kind === "slot") {
+            if (eff.kind === "slot") {
                 const [s] = await tx
                     .select({ orderKey: rankSlots.orderKey, axisId: rankSlots.axisId })
                     .from(rankSlots)
-                    .where(eq(rankSlots.id, BigInt(target.slotId)));
+                    .where(eq(rankSlots.id, BigInt(eff.slotId)));
                 if (!s || s.axisId !== axis) throw new Error("slot 이 이 축에 속하지 않음");
-                slotId = BigInt(target.slotId);
+                slotId = BigInt(eff.slotId);
                 orderKey = s.orderKey;
             } else {
-                orderKey = await resolveBetweenKey(tx, axis, target.prevSlotId, target.nextSlotId);
+                orderKey = await resolveBetweenKey(tx, axis, eff.prevSlotId, eff.nextSlotId);
                 const [created] = await tx.insert(rankSlots).values({ axisId: axis, orderKey }).returning({ id: rankSlots.id });
                 slotId = created.id;
             }
