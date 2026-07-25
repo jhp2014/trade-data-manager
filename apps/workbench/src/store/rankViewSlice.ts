@@ -22,7 +22,9 @@ export interface RankViewSlice {
     pinned: string[]; // 핀=작업셋 pk[](순서 유지 = 담은 순). 배치 보드 트레이와 같은 상태.
     savedFilters: SavedFilter[]; // 저장 필터(양 패널 공유, 영속)
     rankAxisOrder: string[]; // axisId 순서(빈 배열 = 서버순 폴백). pref 에 없는 새 축은 소비측이 뒤로.
+    rankSort: { target: string; dir: 1 | -1 } | null; // 시트 정렬 기준 → 배치 보드 하이라이트(target = axisId | "date" | "time"). 세션 한정.
     setHoveredPoint: (key: string | null) => void;
+    setRankSort: (v: { target: string; dir: 1 | -1 } | null) => void;
     togglePin: (key: string) => void; // 담기/빼기(+/× 공용)
     addPins: (keys: string[]) => void; // 여러 개 한 번에(끝에 append)
     clearPins: () => void;
@@ -37,8 +39,10 @@ export const createRankViewSlice: StateCreator<WorkbenchState, [], [], RankViewS
     pinned: [],
     savedFilters: loadSaved(),
     rankAxisOrder: loadOrder(),
+    rankSort: null,
 
     setHoveredPoint: (key) => set(() => ({ hoveredPoint: key })),
+    setRankSort: (v) => set(() => ({ rankSort: v })),
     togglePin: (key) => set((s) => (s.pinned.includes(key) ? { pinned: s.pinned.filter((k) => k !== key) } : { pinned: [...s.pinned, key] })),
     addPins: (keys) => set((s) => ({ pinned: [...s.pinned, ...keys.filter((k) => !s.pinned.includes(k))] })),
     clearPins: () => set(() => ({ pinned: [] })),

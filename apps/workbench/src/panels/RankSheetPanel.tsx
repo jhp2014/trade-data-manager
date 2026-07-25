@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
-import { buildAxisIndex, buildSheetRows, monthOf, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
+import { buildAxisIndex, buildSheetRows, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
@@ -122,7 +122,7 @@ export function RankSheetPanel(): JSX.Element {
         for (const p of allPoints) m.set(pkOf(p), p);
         return m;
     }, [allPoints]);
-    const months = useMemo(() => [...new Set(allPoints.map((p) => monthOf(p.date)))].sort().reverse(), [allPoints]);
+    const dateBounds = useMemo(() => { const ds = allPoints.map((p) => p.date).sort(); return ds.length ? { min: ds[0], max: ds[ds.length - 1] } : null; }, [allPoints]);
 
     // ── 결과(분석) — 통합 필터(밴드·날짜·시간) 매칭 집합 + 경로 통계(좁혔을 때만 lazy). 기간은 이제 날짜 필터에 흡수.
     const r = useRankFilterResult();
@@ -152,6 +152,13 @@ export function RankSheetPanel(): JSX.Element {
 
     // ── 정렬. 축 정렬 = 강(rank↑) 먼저, 미배치는 방향 무관 맨 아래로 가라앉힘.
     const [sort, setSort] = useState<Sort>({ key: { kind: "date" }, dir: -1 });
+    // 정렬 기준을 배치 보드와 공유 → 그 레일에 하이라이트/배지. axis·날짜·시간만(그 외는 배치에 대응 레일 없음 → null).
+    const setRankSort = useWorkbench((s) => s.setRankSort);
+    useEffect(() => {
+        const k = sort.key;
+        const target = k.kind === "axis" ? k.axisId : k.kind === "date" || k.kind === "time" ? k.kind : null;
+        setRankSort(target ? { target, dir: sort.dir } : null);
+    }, [sort, setRankSort]);
     const nameOf = (code: string): string => r.nameOf(code);
     const sorted = useMemo(() => {
         const dir = sort.dir;
@@ -344,7 +351,7 @@ export function RankSheetPanel(): JSX.Element {
             </div>
 
             <SavedFilterBar axes={axes} />
-            <RankFilterBar axes={axes} months={months} />
+            <RankFilterBar axes={axes} dateBounds={dateBounds} />
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
             <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>

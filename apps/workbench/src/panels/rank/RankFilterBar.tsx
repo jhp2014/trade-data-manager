@@ -1,16 +1,42 @@
-import { type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useWorkbench } from "../../store/workbench.js";
+import type { DateRange, TimeRange } from "../../store/rankFilterSlice.js";
 
 // 통합 필터 바 — 배치·시트 공용. 차원(축 밴드·날짜·시간) 칩을 한 줄에서 관리.
-//  · 칩끼리 AND, 한 칩 안 구간끼리 OR. 축·날짜·시간 입력은 배치 보드에서(축=레인/셀 우클릭, 날짜/시간=레일 드래그).
-//    여긴 표시 + 삭제(칩 ×) + 기본 구간 추가(+ 날짜/시간, 세부는 레일에서 조정). 우측 정렬(저장 필터 "+현재 저장"과 통일).
+//  · 칩끼리 AND, 한 칩 안 구간끼리 OR. 축 밴드는 배치 보드에서(레인/셀 우클릭), 날짜/시간은 여기 칩 편집 또는 레일 드래그.
+//  · 칩 본문 클릭 = 값 편집(세련된 텍스트 입력, 여러 구간), 칩 ✕ = 그 차원 해제. + 날짜/시간 = 전체 범위 구간 추가.
 const AXIS = "#e24b4a";
 const DATE = "#0ea5e9";
 const TIME = "#8b5cf6";
-const korMonth = (m: string): string => { const [y, mo] = m.split("-"); return `${y}년 ${parseInt(mo, 10)}월`; };
-const isMonthRange = (r: { from: string; to: string }): string | null => (r.from.endsWith("-01") && r.to.endsWith("-31") && r.from.slice(0, 7) === r.to.slice(0, 7) ? r.from.slice(0, 7) : null);
 
-export function RankFilterBar({ axes, months }: { axes: { id: string; name: string }[]; months: string[] }): JSX.Element {
+const FIELD_STYLE_ID = "rank-field-style";
+if (typeof document !== "undefined" && !document.getElementById(FIELD_STYLE_ID)) {
+    const st = document.createElement("style");
+    st.id = FIELD_STYLE_ID;
+    st.textContent = ".rank-field{background:var(--bg-secondary);border:1px solid transparent;border-radius:8px;padding:6px 9px;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--text-primary);letter-spacing:.02em;outline:none;transition:border-color .1s,box-shadow .1s}.rank-field:focus{border-color:var(--accent-primary);background:var(--bg-primary);box-shadow:0 0 0 3px var(--accent-soft)}.rank-field::placeholder{color:var(--text-tertiary)}";
+    document.head.appendChild(st);
+}
+
+// yy.mm.dd ↔ YYYY-MM-DD (표시·입력 모두 2자리 연도).
+const dTo = (iso: string): string => (iso ? iso.slice(2).replace(/-/g, ".") : "");
+const dFrom = (raw: string): string | null => {
+    const m = raw.trim().match(/^(\d{2}|\d{4})\.(\d{1,2})\.(\d{1,2})$/);
+    if (!m) return null;
+    const yy = m[1].length === 4 ? m[1] : `20${m[1]}`;
+    const mo = Number(m[2]), da = Number(m[3]);
+    if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+    return `${yy}-${String(mo).padStart(2, "0")}-${String(da).padStart(2, "0")}`;
+};
+const tTo = (v: string): string => v;
+const tFrom = (raw: string): string | null => {
+    const m = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h = Number(m[1]), mi = Number(m[2]);
+    if (h < 0 || h > 23 || mi < 0 || mi > 59) return null;
+    return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+};
+
+export function RankFilterBar({ axes, dateBounds }: { axes: { id: string; name: string }[]; dateBounds: { min: string; max: string } | null }): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
     const clearRankFilter = useWorkbench((s) => s.clearRankFilter);
@@ -21,29 +47,113 @@ export function RankFilterBar({ axes, months }: { axes: { id: string; name: stri
 
     const bandAxes = axes.filter((a) => rankBands[a.id]);
     const has = bandAxes.length > 0 || dateRanges.length > 0 || timeRanges.length > 0;
-    const dateSummary = dateRanges.length === 0 ? "" : dateRanges.every(isMonthRange)
-        ? (dateRanges.length === 1 ? korMonth(isMonthRange(dateRanges[0])!) : `${korMonth(isMonthRange([...dateRanges].sort((a, b) => a.from < b.from ? -1 : 1)[0])!)} 외 ${dateRanges.length - 1}`)
-        : dateRanges.map((r) => `${r.from.slice(2)}~${r.to.slice(2)}`).join(" / ");
-    const timeSummary = timeRanges.map((r) => `${r.from}–${r.to}`).join(" / ");
-    const addDate = (): void => setDateRanges([...dateRanges, months[0] ? { from: `${months[0]}-01`, to: `${months[0]}-31` } : { from: "", to: "" }]);
-    const addTime = (): void => setTimeRanges([...timeRanges, { from: "09:00", to: "15:30" }]);
+    const dateLabels = dateRanges.map((r) => `${dTo(r.from)}~${dTo(r.to)}`);
+    const timeLabels = timeRanges.map((r) => `${r.from}~${r.to}`);
+    const addDate = (): void => { if (dateBounds) setDateRanges([...dateRanges, { from: dateBounds.min, to: dateBounds.max }]); };
+    const addTime = (): void => setTimeRanges([...timeRanges, { from: "08:00", to: "20:00" }]);
 
     return (
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-secondary)", flexWrap: "wrap", minHeight: 30 }}>
             <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)" }}>필터</span>
-            {!has && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>축=레인/셀 우클릭 · 날짜·시간=레일 드래그(또는 아래 버튼)</span>}
+            {/* 안내 문구 — 폭 좁으면 컨트롤바 2줄 대신 자연스럽게 잘려 사라지도록(flex 축소 + 말줄임). */}
+            {!has && <span style={{ fontSize: 11, color: "var(--text-tertiary)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>축=레인/셀 우클릭 · 날짜·시간=칩 클릭 편집(또는 레일 드래그)</span>}
             {bandAxes.map((a) => (
                 <button key={a.id} onClick={() => clearRankBand(a.id)} title="이 축 밴드 해제" style={chip(AXIS)}>{a.name} <span style={x}>✕</span></button>
             ))}
-            {dateRanges.length > 0 && <button onClick={() => setDateRanges([])} title="날짜 필터 해제(세부는 레일에서)" style={chip(DATE)}>날짜 · {dateSummary} <span style={x}>✕</span></button>}
-            {timeRanges.length > 0 && <button onClick={() => setTimeRanges([])} title="시간 필터 해제(세부는 레일에서)" style={chip(TIME)}>시간 · {timeSummary} <span style={x}>✕</span></button>}
+            {dateRanges.length > 0 && (
+                <FilterChip color={DATE} label="날짜" summary={summarize(dateLabels)} detail={dateLabels.join(" / ")} onClear={() => setDateRanges([])}>
+                    <RangeEditor kind="date" ranges={dateRanges} full={dateBounds ? { from: dateBounds.min, to: dateBounds.max } : null} onChange={setDateRanges} />
+                </FilterChip>
+            )}
+            {timeRanges.length > 0 && (
+                <FilterChip color={TIME} label="시간" summary={summarize(timeLabels)} detail={timeLabels.join(" / ")} onClear={() => setTimeRanges([])}>
+                    <RangeEditor kind="time" ranges={timeRanges} full={{ from: "08:00", to: "20:00" }} onChange={setTimeRanges} />
+                </FilterChip>
+            )}
 
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                <button onClick={addDate} title="날짜 구간 추가(레일에서 조정)" style={dashedBtn}>+ 날짜</button>
-                <button onClick={addTime} title="시간 구간 추가(레일에서 조정)" style={dashedBtn}>+ 시간</button>
+                <button onClick={addDate} disabled={!dateBounds} title="날짜 구간 추가(전체 범위 → 칩 클릭으로 조정)" style={dashedBtn}>+ 날짜</button>
+                <button onClick={addTime} title="시간 구간 추가(전체 범위 → 칩 클릭으로 조정)" style={dashedBtn}>+ 시간</button>
                 {has && <button onClick={clearRankFilter} title="필터 전체 해제" style={dashedBtn}>전체해제</button>}
             </div>
         </div>
+    );
+}
+
+function summarize(labels: string[]): string {
+    if (labels.length === 0) return "";
+    return labels.length === 1 ? labels[0] : `${labels[0]} 외 ${labels.length - 1}`;
+}
+
+// 칩 — 본문 클릭 = 편집 팝오버 토글, ✕ = 해제. 팝오버는 칩 아래에 앵커(바깥 클릭 시 닫힘).
+function FilterChip({ color, label, summary, detail, onClear, children }: { color: string; label: string; summary: string; detail: string; onClear: () => void; children: ReactNode }): JSX.Element {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLSpanElement | null>(null);
+    useEffect(() => {
+        if (!open) return;
+        const h = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+        const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
+        return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
+    }, [open]);
+    return (
+        <span ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 3, padding: "0 3px 0 0", borderRadius: 12, border: `1px solid ${color}`, background: color + "22" }}>
+            <button onClick={() => setOpen((o) => !o)} title={`${detail}${detail ? " · " : ""}클릭해 값 편집`} style={{ display: "inline-block", maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", padding: "2px 4px 2px 8px", border: "none", background: "transparent", color, cursor: "pointer", fontSize: 11.5, whiteSpace: "nowrap", verticalAlign: "middle" }}>{label} · {summary}</button>
+            <button onClick={onClear} title="이 필터 해제" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 15, height: 15, borderRadius: "50%", border: "none", background: "transparent", color, cursor: "pointer", fontSize: 10, lineHeight: 1 }}>✕</button>
+            {open && (
+                <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 50, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 12, boxShadow: "0 12px 34px rgba(0,0,0,0.22)", padding: "11px 13px 12px" }}>
+                    {children}
+                </div>
+            )}
+        </span>
+    );
+}
+
+// 범위 편집 — 구간 여러 개(시작–끝), Enter/포커스 아웃 반영. 잘못된 값은 되돌림. + 구간 = 전체 범위 추가.
+function RangeEditor({ kind, ranges, full, onChange }: { kind: "date" | "time"; ranges: (DateRange | TimeRange)[]; full: { from: string; to: string } | null; onChange: (ranges: any[]) => void }): JSX.Element {
+    const isDate = kind === "date";
+    const disp = isDate ? dTo : tTo;
+    const parse = isDate ? dFrom : tFrom;
+    const ph = isDate ? { from: "25.07.01", to: "25.07.31" } : { from: "08:00", to: "20:00" };
+    const setEdge = (i: number, edge: "from" | "to", raw: string): boolean => {
+        const v = parse(raw);
+        if (v == null) return false;
+        onChange(ranges.map((r, idx) => (idx === i ? { ...r, [edge]: v } : r)));
+        return true;
+    };
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: isDate ? 210 : 168 }}>
+            <div style={{ display: "flex", gap: 8, paddingLeft: 2 }}>
+                <span style={{ flex: 1, fontSize: 10, color: "var(--text-tertiary)" }}>시작</span>
+                <span style={{ width: 10 }} />
+                <span style={{ flex: 1, fontSize: 10, color: "var(--text-tertiary)" }}>끝</span>
+                <span style={{ width: 16 }} />
+            </div>
+            {ranges.map((r, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <RangeField value={disp(r.from)} placeholder={ph.from} onCommit={(raw) => setEdge(i, "from", raw)} />
+                    <span style={{ width: 10, textAlign: "center", color: "var(--text-tertiary)" }}>–</span>
+                    <RangeField value={disp(r.to)} placeholder={ph.to} onCommit={(raw) => setEdge(i, "to", raw)} />
+                    <button onClick={() => onChange(ranges.filter((_, idx) => idx !== i))} title="이 구간 삭제" style={{ width: 16, height: 16, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13, lineHeight: 1 }}>×</button>
+                </div>
+            ))}
+            {full && (
+                <button onClick={() => onChange([...ranges, { ...full }])} title="전체 범위 구간 추가" style={{ alignSelf: "flex-start", marginTop: 1, border: "1px dashed var(--border-default)", borderRadius: 6, background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 11, padding: "3px 9px" }}>+ 구간 추가</button>
+            )}
+        </div>
+    );
+}
+
+// 세련된 인라인 입력 — Enter/blur 반영, Esc·잘못된 값 되돌림.
+function RangeField({ value, placeholder, onCommit }: { value: string; placeholder: string; onCommit: (raw: string) => boolean }): JSX.Element {
+    const [text, setText] = useState(value);
+    const escRef = useRef(false);
+    useEffect(() => { setText(value); }, [value]);
+    const commit = (): void => { if (!onCommit(text)) setText(value); };
+    return (
+        <input className="rank-field" value={text} placeholder={placeholder} style={{ flex: 1, minWidth: 0, width: "100%" }}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } else if (e.key === "Escape") { e.preventDefault(); escRef.current = true; e.currentTarget.blur(); } }}
+            onBlur={() => { if (escRef.current) { escRef.current = false; setText(value); } else commit(); }} />
     );
 }
 
