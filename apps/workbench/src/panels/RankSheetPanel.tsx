@@ -211,6 +211,18 @@ export function RankSheetPanel(): JSX.Element {
     const [posBar, setPosBar] = useState<boolean>(() => loadJson(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? false);
     useEffect(() => saveJson(POS_MODE_KEY, posBar), [posBar]);
 
+    // 컨테이너 폭 관측 — 남는 폭을 축 열들이 나눠 넓힘(각자 최소폭 유지). 위치바 모드는 최소폭 ↑.
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const [containerW, setContainerW] = useState(0);
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((es) => setContainerW(es[0].contentRect.width));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    const axisMin = posBar ? 76 : 56;
+
     // ── 열 구성 — 고정(좌측 스택 집합)·숨김(집합), 열 이름 우클릭 메뉴로 편집. 영속.
     const [frozenCols, setFrozenCols] = useState<string[]>(() => loadJson(FROZEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null)) ?? ["date", "time"]);
     const [hiddenCols, setHiddenCols] = useState<string[]>(() => loadJson(HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null)) ?? []);
@@ -228,16 +240,22 @@ export function RankSheetPanel(): JSX.Element {
         { key: "coverage" },
         ...(bandsActive ? ([{ key: "mfe" }, { key: "maePre" }, { key: "maePost" }, { key: "outcome" }] as Col[]) : []),
     ], [axes, bandsActive]);
-    const { displayCols, leftOf, tableW } = useMemo(() => {
+    const { displayCols, leftOf, tableW, axisW, lastFrozenKey } = useMemo(() => {
         const visible = baseCols.filter((c) => c.key === "name" || !hiddenSet.has(colKey(c)));
         const isFrozen = (c: Col): boolean => c.key === "name" || frozenSet.has(colKey(c));
         const frozen = visible.filter(isFrozen);
         const cols = [...frozen, ...visible.filter((c) => !isFrozen(c))];
+        // 축 열 유연 폭: 남는 폭을 축들이 나눠 넓힘(최소 axisMin). 좁으면 axisMin(가로 스크롤).
+        const nAxis = cols.filter((c) => c.key === "axis").length;
+        const fixed = cols.reduce((s, c) => s + (c.key === "axis" ? 0 : colWidth(c)), 0);
+        const grown = nAxis > 0 && containerW > fixed + nAxis * axisMin ? Math.floor((containerW - fixed) / nAxis) : axisMin;
+        const wOf = (c: Col): number => (c.key === "axis" ? grown : colWidth(c));
         const left = new Map<string, number>();
         let acc = 0;
-        for (const c of frozen) { left.set(colKey(c), acc); acc += colWidth(c); }
-        return { displayCols: cols, leftOf: left, tableW: cols.reduce((s, c) => s + colWidth(c), 0) };
-    }, [baseCols, frozenSet, hiddenSet]);
+        for (const c of frozen) { left.set(colKey(c), acc); acc += wOf(c); }
+        return { displayCols: cols, leftOf: left, tableW: cols.reduce((s, c) => s + wOf(c), 0), axisW: grown, lastFrozenKey: frozen.length ? colKey(frozen[frozen.length - 1]) : null };
+    }, [baseCols, frozenSet, hiddenSet, containerW, axisMin]);
+    const widthOf = (c: Col): number => (c.key === "axis" ? axisW : colWidth(c));
 
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계.
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
@@ -291,8 +309,8 @@ export function RankSheetPanel(): JSX.Element {
         return { on: true, first: !(prev && isB(index - 1, pkOf(prev))), last: !(next && isB(index + 1, pkOf(next))) };
     };
 
-    // 한 행 렌더. index=null → 핀 상단행(드래그 없음). stickyTop!=null → 핀 고정(세로 sticky, 스크롤해도 보임).
-    const renderRow = (row: SheetRow, index: number | null, stickyTop: number | null): JSX.Element => {
+    // 한 행 렌더. index=null → 핀 행(드래그 없음, thead 안에 넣어 헤더처럼 상단 고정·불투명).
+    const renderRow = (row: SheetRow, index: number | null): JSX.Element => {
         const key = pkOf(row);
         const focus = activeKey === key;
         const isHover = hoveredPoint === key;
@@ -300,21 +318,21 @@ export function RankSheetPanel(): JSX.Element {
         const dim = !isPinned && bandsActive && filterMode === "dim" && !interKeys.has(key);
         const e = bandsActive ? excByKey.get(key) : undefined;
         const draggable = index != null;
-        const zBase = stickyTop != null ? 2 : 0; // 핀행 > 일반행
-        const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "rgba(139,92,246,0.07)" : stickyTop != null ? "var(--bg-primary)" : "transparent";
-        const idBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "#efeafb" : "var(--bg-primary)";
-        // 열 고정 sticky — left(고정열) + top(핀행). 고정열은 불투명 배경, 핀행 비고정칸은 rowBg.
+        // 배경 — 핀 행은 불투명(bg-secondary, 헤더 연장선). 고정열은 이 배경으로 채워 비침 방지.
+        const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "var(--bg-secondary)" : "transparent";
+        const cellBgOpaque = focus ? "var(--accent-soft)" : isHover || isPinned ? "var(--bg-secondary)" : "var(--bg-primary)";
+        // 고정열 sticky(가로) — 불투명 배경 + 마지막 고정열 우측 경계선.
         const stick = (c: Col): CSSProperties => {
             const left = leftOf.get(colKey(c));
             const s: CSSProperties = {};
-            if (left != null) { s.position = "sticky"; s.left = left; s.zIndex = zBase + 1; s.background = idBg; }
-            if (stickyTop != null) { s.position = "sticky"; s.top = stickyTop; if (left == null) { s.zIndex = zBase; s.background = rowBg; } }
+            if (left != null) { s.position = "sticky"; s.left = left; s.zIndex = 2; s.background = cellBgOpaque; }
+            if (colKey(c) === lastFrozenKey) s.borderRight = "2px solid var(--border-strong)";
             return s;
         };
         const cellFor = (c: Col): JSX.Element => {
             const st = stick(c);
             if (c.key === "name") return (
-                <td key="name" style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : isPinned ? PIN : "transparent"}`, ...st }}>
+                <td key="name" style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : isPinned ? PIN : "transparent"}`, ...st }}>
                     <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined, paddingRight: (isHover || isPinned) ? 16 : 0 }}>{nameOf(row.stockCode)}</span>
                     {(isHover || isPinned) && (
                         <button onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
@@ -322,8 +340,8 @@ export function RankSheetPanel(): JSX.Element {
                     )}
                 </td>
             );
-            if (c.key === "date") return <td key="date" onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", ...st }}>{row.date.slice(2).replace(/-/g, ".")}</td>;
-            if (c.key === "time") return <td key="time" onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right", cursor: "pointer", fontWeight: 600, color: "var(--accent-primary)", ...st }}>{row.time.slice(0, 5)}</td>;
+            if (c.key === "date") return <td key="date" onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", ...st }}>{row.date.slice(2).replace(/-/g, ".")}</td>;
+            if (c.key === "time") return <td key="time" onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontWeight: 600, color: "var(--accent-primary)", ...st }}>{row.time.slice(0, 5)}</td>;
             if (c.key === "axis") {
                 const cell = row.cells[c.axisId];
                 const isSortAxis = sortAxisId === c.axisId;
@@ -336,7 +354,7 @@ export function RankSheetPanel(): JSX.Element {
                         onClick={!draggable ? () => navRow(row) : undefined}
                         onContextMenu={cell ? (ev) => { ev.preventDefault(); setCtx({ axisId: c.axisId, slotId: cell.slotId, x: ev.clientX, y: ev.clientY }); } : undefined}
                         title="세로 드래그 = 이 축 소프트 선택 · 우클릭 = 이상/이하 밴드 · 클릭 = 이동"
-                        style={{ ...tdCell, position: "relative", cursor: draggable ? "ns-resize" : "pointer", ...st, background: frozen ? idBg : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
+                        style={{ ...tdCell, position: "relative", cursor: draggable ? "ns-resize" : "pointer", ...st, background: frozen ? cellBgOpaque : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
                         {b.on && <span style={{ position: "absolute", left: 5, right: 5, top: b.first ? 3 : 0, bottom: b.last ? 3 : 0, background: "rgba(245,158,11,0.16)", borderLeft: `2px solid ${SOFT}`, borderRight: `2px solid ${SOFT}`, ...(b.first ? { borderTop: `2px solid ${SOFT}`, borderTopLeftRadius: 5, borderTopRightRadius: 5 } : {}), ...(b.last ? { borderBottom: `2px solid ${SOFT}`, borderBottomLeftRadius: 5, borderBottomRightRadius: 5 } : {}), pointerEvents: "none" }} />}
                         <span style={{ position: "relative" }}><Cell cell={cell} posBar={posBar} prominent={focus} /></span>
                     </td>
@@ -354,7 +372,7 @@ export function RankSheetPanel(): JSX.Element {
         };
         return (
             <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
-                style={{ background: rowBg, opacity: dim ? 0.38 : 1, height: ROW_H, borderBottom: "1px solid var(--border-subtle)" }}>
+                style={{ background: rowBg, opacity: dim ? 0.38 : 1, height: ROW_H, borderBottom: isPinned ? "1px solid rgba(139,92,246,0.5)" : "1px solid var(--border-subtle)" }}>
                 {displayCols.map(cellFor)}
             </tr>
         );
@@ -390,10 +408,11 @@ export function RankSheetPanel(): JSX.Element {
 
             <SavedFilterBar axes={axes} />
 
-            {/* 표 — 고정폭(table-layout:fixed)·열 고정(좌측 스택)·핀 상단 sticky·날짜 그룹 */}
-            <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
+            <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                 <table style={{ tableLayout: "fixed", width: tableW, borderCollapse: "collapse", fontSize: 12, userSelect: sel ? "none" : "auto" }}>
-                    <colgroup>{displayCols.map((c) => <col key={colKey(c)} style={{ width: colWidth(c) }} />)}</colgroup>
+                    <colgroup>{displayCols.map((c) => <col key={colKey(c)} style={{ width: widthOf(c) }} />)}</colgroup>
+                    {/* 헤더 블록 = 열 헤더 + 핀 행(둘 다 상단 sticky, 틈·비침 없이 하나로) */}
                     <thead style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--bg-secondary)" }}>
                         <tr style={{ height: ROW_H }}>
                             {displayCols.map((c) => {
@@ -401,7 +420,7 @@ export function RankSheetPanel(): JSX.Element {
                                 const active = sameSort(sort.key, sk);
                                 const left = leftOf.get(colKey(c));
                                 const banded = c.key === "axis" && !!rankBands[c.axisId];
-                                const align = c.key === "name" || c.key === "outcome" ? "left" : c.key === "axis" || c.key === "coverage" ? "center" : "right";
+                                const justify = c.key === "name" || c.key === "outcome" ? "flex-start" : c.key === "axis" || c.key === "coverage" || c.key === "date" || c.key === "time" ? "center" : "flex-end";
                                 const dnd = c.key === "axis" ? {
                                     draggable: true,
                                     onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData("application/x-rank-axis", (c as { axisId: string }).axisId); e.dataTransfer.effectAllowed = "move"; },
@@ -412,18 +431,18 @@ export function RankSheetPanel(): JSX.Element {
                                     <th key={colKey(c)} {...dnd} title={colLabel(c)}
                                         onClick={() => clickHeader(sk)}
                                         onContextMenu={(e) => { e.preventDefault(); setHdrCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), x: e.clientX, y: e.clientY }); }}
-                                        style={{ ...thBase, textAlign: align, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: active ? "var(--accent-primary)" : banded ? "#e24b4a" : "var(--text-tertiary)", borderBottom: banded ? "2px solid #e24b4a" : thBase.borderBottom, ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
-                                        {colLabel(c)}{active ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
+                                        style={{ ...thBase, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? "#e24b4a" : "var(--text-tertiary)", borderBottom: banded ? "2px solid #e24b4a" : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
+                                        <span style={{ display: "flex", alignItems: "center", justifyContent: justify, gap: 2, minWidth: 0 }}>
+                                            {active && <span style={{ flexShrink: 0 }}>{sort.dir === 1 ? "▲" : "▼"}</span>}
+                                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>
+                                        </span>
                                     </th>
                                 );
                             })}
                         </tr>
+                        {pinnedRows.map((row) => renderRow(row, null))}
                     </thead>
                     <tbody>
-                        {pinnedRows.map((row, j) => renderRow(row, null, ROW_H * (j + 1)))}
-                        {pinnedRows.length > 0 && mainRows.length > 0 && (
-                            <tr key="pin-divider"><td colSpan={totalCols} style={{ padding: 0, height: 1, borderBottom: `1px solid rgba(139,92,246,0.5)`, background: "transparent" }} /></tr>
-                        )}
                         {mainRows.flatMap((row, i) => {
                             const showGroup = sort.key.kind === "date" && (i === 0 || mainRows[i - 1].date !== row.date);
                             const out: JSX.Element[] = [];
@@ -434,7 +453,7 @@ export function RankSheetPanel(): JSX.Element {
                                     </td>
                                 </tr>,
                             );
-                            out.push(renderRow(row, i, null));
+                            out.push(renderRow(row, i));
                             return out;
                         })}
                     </tbody>
