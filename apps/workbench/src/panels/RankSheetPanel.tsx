@@ -309,20 +309,21 @@ export function RankSheetPanel(): JSX.Element {
         return { on: true, first: !(prev && isB(index - 1, pkOf(prev))), last: !(next && isB(index + 1, pkOf(next))) };
     };
 
-    // 한 행 렌더. index=null → 핀 행(드래그 없음, thead 안에 넣어 헤더처럼 상단 고정·불투명).
-    const renderRow = (row: SheetRow, index: number | null): JSX.Element => {
+    // 한 행 렌더. index=null → 핀 행(드래그 없음, thead 안에 넣어 헤더처럼 상단 고정). isLastPinned → 핀 블록 하단 구분선.
+    const renderRow = (row: SheetRow, index: number | null, isLastPinned = false): JSX.Element => {
         const key = pkOf(row);
         const focus = activeKey === key;
         const isHover = hoveredPoint === key;
         const isPinned = pinnedSet.has(key);
-        const dim = !isPinned && bandsActive && filterMode === "dim" && !interKeys.has(key);
+        // 핀 행은 필터가 좁혀도 안 사라짐(작업셋). 밴드 안 맞으면 흐리게로 표시(핀은 모드 무관).
+        const dim = bandsActive && !interKeys.has(key) && (isPinned || filterMode === "dim");
         const e = bandsActive ? excByKey.get(key) : undefined;
         const draggable = index != null;
-        // 배경 — 핀 행은 불투명(bg-secondary, 헤더 연장선). 고정열은 이 배경으로 채워 비침 방지.
-        const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "var(--bg-secondary)" : "transparent";
-        const cellBgOpaque = focus ? "var(--accent-soft)" : isHover || isPinned ? "var(--bg-secondary)" : "var(--bg-primary)";
-        const rowBorder = isPinned ? "1px solid rgba(139,92,246,0.5)" : "1px solid var(--border-subtle)";
-        // 고정열 sticky(가로) — 불투명 배경 + 마지막 고정열 우측 경계선. 행 구분선은 셀에(separate 모드는 tr 테두리 X).
+        // 배경 — 핀 행도 일반 행처럼 배경 없음(불투명 bg-primary로 sticky 비침만 방지). 좌측 바·하단 구분선으로 구분.
+        const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "var(--bg-primary)" : "transparent";
+        const cellBgOpaque = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : "var(--bg-primary)";
+        // 행 구분선(셀에, separate 모드) — 핀은 마지막 행 아래만(열 고정처럼), 일반은 매 행.
+        const rowBorder = isPinned ? (isLastPinned ? `2px solid ${PIN}` : "none") : "1px solid var(--border-subtle)";
         const stick = (c: Col): CSSProperties => {
             const left = leftOf.get(colKey(c));
             const s: CSSProperties = { borderBottom: rowBorder };
@@ -442,7 +443,7 @@ export function RankSheetPanel(): JSX.Element {
                                 );
                             })}
                         </tr>
-                        {pinnedRows.map((row) => renderRow(row, null))}
+                        {pinnedRows.map((row, j) => renderRow(row, null, j === pinnedRows.length - 1))}
                     </thead>
                     <tbody>
                         {mainRows.flatMap((row, i) => {
