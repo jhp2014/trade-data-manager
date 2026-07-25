@@ -259,8 +259,9 @@ export function RankSheetPanel(): JSX.Element {
     const sortKeyOf = (c: Col): SortKey =>
         c.key === "name" ? { kind: "name" } : c.key === "date" ? { kind: "date" } : c.key === "time" ? { kind: "time" } : c.key === "axis" ? { kind: "axis", axisId: c.axisId } : c.key === "coverage" ? { kind: "coverage" } : { kind: c.key };
 
-    // 한 행 렌더. isPinned 행은 thead 안(헤더처럼 상단 고정). isLastPinned → 핀 블록 하단 구분선.
-    const renderRow = (row: SheetRow, isLastPinned = false): JSX.Element => {
+    // 한 행 렌더. inPinnedBlock = 상단 고정 블록(thead)의 복사본. isLastPinned → 그 블록 하단 구분선.
+    //  원래 위치(tbody)의 핀 행은 inPinnedBlock=false → 일반 행처럼 하단 구분선을 가진다(아래 행과 안 이어지게).
+    const renderRow = (row: SheetRow, isLastPinned = false, inPinnedBlock = false): JSX.Element => {
         const key = pkOf(row);
         const focus = activeKey === key;
         const isHover = hoveredPoint === key;
@@ -271,8 +272,8 @@ export function RankSheetPanel(): JSX.Element {
         // 배경 — 핀 행도 일반 행처럼 배경 없음(불투명 bg-primary로 sticky 비침만 방지). 좌측 바·하단 구분선으로 구분.
         const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "var(--bg-primary)" : "transparent";
         const cellBgOpaque = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : "var(--bg-primary)";
-        // 행 구분선(셀에, separate 모드) — 핀은 마지막 행 아래만(열 고정선과 동일), 일반은 매 행.
-        const rowBorder = isPinned ? (isLastPinned ? "2px solid var(--border-strong)" : "none") : "1px solid var(--border-subtle)";
+        // 행 구분선(셀에, separate 모드) — 고정 블록 안에서만 마지막만(블록 통합), 그 외(tbody 핀 포함)는 매 행.
+        const rowBorder = inPinnedBlock ? (isLastPinned ? "2px solid var(--border-strong)" : "none") : "1px solid var(--border-subtle)";
         const stick = (c: Col): CSSProperties => {
             const left = leftOf.get(colKey(c));
             const s: CSSProperties = { borderBottom: rowBorder };
@@ -386,7 +387,7 @@ export function RankSheetPanel(): JSX.Element {
                                 );
                             })}
                         </tr>
-                        {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1))}
+                        {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1, true))}
                     </thead>
                     <tbody>
                         {mainRows.flatMap((row, i) => {
