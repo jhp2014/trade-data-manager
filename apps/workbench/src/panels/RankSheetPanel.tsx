@@ -321,10 +321,11 @@ export function RankSheetPanel(): JSX.Element {
         // 배경 — 핀 행은 불투명(bg-secondary, 헤더 연장선). 고정열은 이 배경으로 채워 비침 방지.
         const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "var(--bg-secondary)" : "transparent";
         const cellBgOpaque = focus ? "var(--accent-soft)" : isHover || isPinned ? "var(--bg-secondary)" : "var(--bg-primary)";
-        // 고정열 sticky(가로) — 불투명 배경 + 마지막 고정열 우측 경계선.
+        const rowBorder = isPinned ? "1px solid rgba(139,92,246,0.5)" : "1px solid var(--border-subtle)";
+        // 고정열 sticky(가로) — 불투명 배경 + 마지막 고정열 우측 경계선. 행 구분선은 셀에(separate 모드는 tr 테두리 X).
         const stick = (c: Col): CSSProperties => {
             const left = leftOf.get(colKey(c));
-            const s: CSSProperties = {};
+            const s: CSSProperties = { borderBottom: rowBorder };
             if (left != null) { s.position = "sticky"; s.left = left; s.zIndex = 2; s.background = cellBgOpaque; }
             if (colKey(c) === lastFrozenKey) s.borderRight = "2px solid var(--border-strong)";
             return s;
@@ -372,7 +373,7 @@ export function RankSheetPanel(): JSX.Element {
         };
         return (
             <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
-                style={{ background: rowBg, opacity: dim ? 0.38 : 1, height: ROW_H, borderBottom: isPinned ? "1px solid rgba(139,92,246,0.5)" : "1px solid var(--border-subtle)" }}>
+                style={{ background: rowBg, opacity: dim ? 0.38 : 1, height: ROW_H }}>
                 {displayCols.map(cellFor)}
             </tr>
         );
@@ -410,7 +411,8 @@ export function RankSheetPanel(): JSX.Element {
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
             <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-                <table style={{ tableLayout: "fixed", width: tableW, borderCollapse: "collapse", fontSize: 12, userSelect: sel ? "none" : "auto" }}>
+                {/* border-collapse: separate — 테두리가 셀에 붙어 sticky(고정 열/헤더/핀)를 따라옴(밑줄·세로선 안 밀림). */}
+                <table style={{ tableLayout: "fixed", width: tableW, borderCollapse: "separate", borderSpacing: 0, fontSize: 12, userSelect: sel ? "none" : "auto" }}>
                     <colgroup>{displayCols.map((c) => <col key={colKey(c)} style={{ width: widthOf(c) }} />)}</colgroup>
                     {/* 헤더 블록 = 열 헤더 + 핀 행(둘 다 상단 sticky, 틈·비침 없이 하나로) */}
                     <thead style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--bg-secondary)" }}>
