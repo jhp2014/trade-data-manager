@@ -93,7 +93,7 @@ describe("buildThemeBoardViewModel", () => {
         );
         expect(allStocks(vm).map((s) => s.code)).toEqual(["A"]);
         // hide 로 빠진 종목은 로스터엔 없지만 excludedByFilter 에 사유와 함께 남는다(포커스 배지 "필터 제외"용).
-        expect(vm.excludedByFilter.get("B")).toEqual(["고가 등락률"]);
+        expect(vm.excludedByFilter.get("B")).toEqual(["고가 등락률 < 10%"]);
         expect(vm.excludedByFilter.has("A")).toBe(false);
     });
 
@@ -111,7 +111,7 @@ describe("buildThemeBoardViewModel", () => {
         const byCode = new Map(allStocks(vm).map((s) => [s.code, s]));
         expect(byCode.get("A")?.dim).toBe(false);
         expect(byCode.get("B")?.dim).toBe(true);
-        expect(byCode.get("B")?.excludedBy).toEqual(["고가 등락률"]);
+        expect(byCode.get("B")?.excludedBy).toEqual(["고가 등락률 < 10%"]);
     });
 });
 
@@ -200,7 +200,7 @@ describe("buildReplayBoardViewModel", () => {
         const codes = allStocks(vm).map((s) => s.code);
         expect(codes).toContain("A"); // highPct 6 ≥ 5 → 유지
         expect(codes).not.toContain("B"); // highPct 2 < 5 → hide
-        expect(vm.excludedByFilter.get("B")).toEqual(["고가 등락률"]); // 랭킹 밖이 아니라 "필터 제외"로 구분
+        expect(vm.excludedByFilter.get("B")).toEqual(["고가 등락률 < 5%"]); // 랭킹 밖이 아니라 "필터 제외"로 구분
     });
 });
 

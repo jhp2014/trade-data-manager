@@ -154,9 +154,13 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
         kind: "weakHigh",
         title: "고가 등락률",
         requires: ["highPct"],
-        params: [{ key: "ltPct", label: "% 미만", def: 10, min: 0, step: 0.5 }],
-        test: (m, p) => m.highPct < p.ltPct,
-        label: () => "고가 등락률",
+        // op = 부등호 방향. 값=인덱스라 미지정(옛 저장 필터)=0=`<`(기존 배제필터 동작 무손상). 알람은 보통 `≥`(급등).
+        params: [
+            { key: "op", label: "방향", def: 0, options: ["<", "≥"] },
+            { key: "ltPct", label: "%", def: 10, min: 0, step: 0.5 },
+        ],
+        test: (m, p) => ((p.op ?? 0) === 1 ? m.highPct >= p.ltPct : m.highPct < p.ltPct),
+        label: (p) => `고가 등락률 ${(p.op ?? 0) === 1 ? "≥" : "<"} ${p.ltPct ?? 10}%`,
     },
     // ── 실시간 전용 술어(deltas·themeRanks·marketCap 요구) — 알람·실시간 보드에서 소스가 배선한 만큼 열림 ──
     {
@@ -183,10 +187,14 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
         kind: "marketCap",
         title: "시가총액",
         requires: ["marketCap"],
-        params: [{ key: "lteEok", label: "억 이하", def: 5_000, min: 0, step: 100 }],
-        test: (m, p) => m.marketCap != null && m.marketCap <= p.lteEok,
-        label: (p) => `시총 ${p.lteEok.toLocaleString("ko-KR")}억 이하`,
-        evidence: (m, p) => `시총 ${(m.marketCap ?? 0).toLocaleString("ko-KR")}억 (≤ ${p.lteEok.toLocaleString("ko-KR")}억)`,
+        // op = 부등호 방향. 미지정(옛 저장 필터)=0=`≤`(기존 배제필터 동작 무손상). key(lteEok)는 저장 호환 위해 유지.
+        params: [
+            { key: "op", label: "방향", def: 0, options: ["≤", "≥"] },
+            { key: "lteEok", label: "억", def: 5_000, min: 0, step: 100 },
+        ],
+        test: (m, p) => m.marketCap != null && ((p.op ?? 0) === 1 ? m.marketCap >= p.lteEok : m.marketCap <= p.lteEok),
+        label: (p) => `시총 ${(p.op ?? 0) === 1 ? "≥" : "≤"} ${p.lteEok.toLocaleString("ko-KR")}억`,
+        evidence: (m, p) => `시총 ${(m.marketCap ?? 0).toLocaleString("ko-KR")}억 (${(p.op ?? 0) === 1 ? "≥" : "≤"} ${p.lteEok.toLocaleString("ko-KR")}억)`,
     },
     {
         kind: "rank",

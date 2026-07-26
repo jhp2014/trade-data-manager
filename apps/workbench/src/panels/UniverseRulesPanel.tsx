@@ -186,6 +186,7 @@ function RuleCard({ r, editing, onEdit, onDone, onRemove, onChange }: {
                     kinds={KINDS}
                     onKind={(next) => onChange((x) => { x.predicates[pi] = { kind: next, params: defaultParams(next) }; })}
                     onParam={(k, v) => onChange((x) => { x.predicates[pi] = { ...x.predicates[pi], params: { ...x.predicates[pi].params, [k]: v } }; })}
+                    onText={(k, v) => onChange((x) => { x.predicates[pi] = { ...x.predicates[pi], textParams: { ...x.predicates[pi].textParams, [k]: v } }; })}
                     onRemove={r.predicates.length > 1 ? () => onChange((x) => { x.predicates.splice(pi, 1); }) : undefined}
                 />
             ))}

@@ -97,7 +97,7 @@ describe("board filter (순수)", () => {
 
     it("사유(reasons) — 매칭 술어 라벨", () => {
         const expr: BoardFilterExpr = { groups: [grp("weakHigh", { ltPct: 10 })] };
-        expect(evalBoardFilter(expr, metrics({ highPct: 8 })).reasons).toEqual(["고가 등락률"]);
+        expect(evalBoardFilter(expr, metrics({ highPct: 8 })).reasons).toEqual(["고가 등락률 < 10%"]);
     });
 
     it("isBoardFilterActive", () => {
@@ -188,7 +188,7 @@ describe("predicateEvidence — 술어가 자기 근거를 설명(label+실측�
     });
 
     it("evidence 미구현 술어는 label 폴백", () => {
-        expect(predicateEvidence(boardPredicateDef("weakHigh")!, m({ highPct: 3 }), { kind: "weakHigh", params: { ltPct: 10 } })).toBe("고가 등락률");
+        expect(predicateEvidence(boardPredicateDef("weakHigh")!, m({ highPct: 3 }), { kind: "weakHigh", params: { ltPct: 10 } })).toBe("고가 등락률 < 10%");
     });
 });
 
@@ -198,7 +198,7 @@ describe("mark(강조) 모드 — 배제와 직교하는 🔥 축", () => {
         const v = evalBoardFilter(expr, metrics({ highPct: 8 }));
         expect(v.effect).toBe("show"); // 강조는 제외가 아니다
         expect(v.marked).toBe(true);
-        expect(v.markReasons).toEqual(["고가 등락률"]);
+        expect(v.markReasons).toEqual(["고가 등락률 < 10%"]);
         expect(v.reasons).toEqual([]); // 배제 사유와 분리
         expect(evalBoardFilter(expr, metrics({ highPct: 12 })).marked).toBe(false);
     });
