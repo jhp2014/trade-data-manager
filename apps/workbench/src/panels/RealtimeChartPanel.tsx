@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
+import { usePanelUi } from "../store/usePanelUi.js";
 import { fetchWatchlist } from "../api/alerts.js";
 import { useChartBundle } from "../lib/useChartBundle.js";
 import { deriveMinuteView, deriveDailyView, prevCloseAsOf } from "../lib/derive.js";
@@ -37,13 +38,14 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     const captureArmed = captureCode != null && captureCode === code; // 이 차트(포커스 종목)가 무장 대상일 때만
     const collapsed = useWorkbench((s) => s.panelControlsCollapsed[panelId]) ?? false; // 컨트롤 바 접힘(패널별·영속)
     const toggleControls = useWorkbench((s) => s.togglePanelControls);
-    const [view, setView] = useState<ChartView>("both");
-    const [showMarkers, setShowMarkers] = useState(true);
-    const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
-    const [pinMinute, setPinMinute] = useState(false); // 분봉 기준일 고정(일봉 클릭 무시)
-    const [lockScale, setLockScale] = useState(false); // 분봉 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지
-    const [showGuide, setShowGuide] = useState(true); // +30% 가이드선(검색일 전일종가 ×1.3)
-    const [showAlarmLines, setShowAlarmLines] = useState(true); // 알람 가격조건 선 표시
+    // 헤더 토글 — 패널별 store 영속(usePanelUi). 프리셋 전환(재마운트)·새로고침에 유지.
+    const [view, setView] = usePanelUi<ChartView>(panelId, "view", "both");
+    const [showMarkers, setShowMarkers] = usePanelUi(panelId, "showMarkers", true);
+    const [showLine, setShowLine] = usePanelUi(panelId, "showLine", true); // 검색 세로선 표시
+    const [pinMinute, setPinMinute] = usePanelUi(panelId, "pinMinute", false); // 분봉 기준일 고정(일봉 클릭 무시)
+    const [lockScale, setLockScale] = usePanelUi(panelId, "lockScale", false); // 분봉 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지
+    const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
+    const [showAlarmLines, setShowAlarmLines] = usePanelUi(panelId, "showAlarmLines", true); // 알람 가격조건 선 표시
 
     const viewDate = pinMinute ? anchorDate : search?.date ?? anchorDate; // 고정 시 기준일 붙박이
     const drifted = viewDate !== anchorDate;

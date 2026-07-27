@@ -10,6 +10,7 @@ import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView } from "../lib/derive.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench, type ChartPriceMode } from "../store/workbench.js";
+import { usePanelUi } from "../store/usePanelUi.js";
 import type { RankPoint } from "../api/rank.js";
 
 const BUCKETS = [1, 5, 10];
@@ -65,11 +66,12 @@ export function RankFilterPanel({ panelId }: { panelId: string }): JSX.Element {
     const r = useRankFilterResult();
     const n = r.stats.excursions.length;
 
-    const [target, setTarget] = useState(5);
-    const [stop, setStop] = useState(-3);
-    const [baseMode, setBaseMode] = useState<ChartPriceMode>("un"); // 좌측축 실% 분모 시장(KRX/UN 전일종가) — 이 패널 로컬.
-    const [heatOn, setHeatOn] = useState(true); // 밀도 히트맵 구름 표시 — 끄면 오버레이 캔들·기준선만.
-    const [amtMarkersOn, setAmtMarkersOn] = useState(false); // 선택 종목 봉 위 분봉 거래대금 마커.
+    // 뷰 설정 — 패널별 store 영속(usePanelUi). 프리셋 전환(재마운트)·새로고침에 유지.
+    const [target, setTarget] = usePanelUi(panelId, "target", 5);
+    const [stop, setStop] = usePanelUi(panelId, "stop", -3);
+    const [baseMode, setBaseMode] = usePanelUi<ChartPriceMode>(panelId, "baseMode", "un"); // 좌측축 실% 분모 시장(KRX/UN 전일종가).
+    const [heatOn, setHeatOn] = usePanelUi(panelId, "heatOn", true); // 밀도 히트맵 구름 표시 — 끄면 오버레이 캔들·기준선만.
+    const [amtMarkersOn, setAmtMarkersOn] = usePanelUi(panelId, "amtMarkersOn", false); // 선택 종목 봉 위 분봉 거래대금 마커.
     const [heatH, setHeatH] = useState(() => loadJson(HEAT_H_KEY, numV) ?? 300); // 히트맵 높이(영속)
     const [scatterH, setScatterH] = useState(() => loadJson(SCATTER_H_KEY, numV) ?? 150); // 산점 줄당 높이(영속)
     useEffect(() => saveJson(HEAT_H_KEY, heatH), [heatH]);

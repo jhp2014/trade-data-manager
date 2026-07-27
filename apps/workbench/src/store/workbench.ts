@@ -11,19 +11,21 @@ import { createLiveFocusSlice, type LiveFocusSlice } from "./liveFocusSlice.js";
 import { createLiveChartSlice, type LiveChartSlice } from "./liveChartSlice.js";
 import { createChartSlice, type ChartSlice } from "./chartSlice.js";
 import { createPanelSlice, type PanelSlice } from "./panelSlice.js";
+import { createPanelUiSlice, type PanelUiSlice } from "./panelUiSlice.js";
 import { createBoardFilterSlice, type BoardFilterSlice } from "./boardFilterSlice.js";
 import { createSettingsSlice, type SettingsSlice } from "./settingsSlice.js";
 import { createHistorySlice, type HistorySlice } from "./historySlice.js";
 import { createRankFilterSlice, type RankFilterSlice } from "./rankFilterSlice.js";
 import { createRankViewSlice, type RankViewSlice } from "./rankViewSlice.js";
 
-export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankFilterSlice & RankViewSlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelSlice & PanelUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankFilterSlice & RankViewSlice;
 
 export type { Focus, Scope, Search, ActivePoint, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
 export type { LiveLineAnchor, LiveChartSlice } from "./liveChartSlice.js";
 export type { ChartPriceMode, ChartView, ChartSettings, ChartSlice } from "./chartSlice.js";
 export type { PanelSlice } from "./panelSlice.js";
+export type { PanelUiSlice } from "./panelUiSlice.js";
 export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js";
 export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMarket, BoardMarketMap, SettingsSlice } from "./settingsSlice.js";
 export type { HistoryEntry, HistorySlice } from "./historySlice.js";
@@ -36,6 +38,7 @@ export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createLiveChartSlice(...a),
     ...createChartSlice(...a),
     ...createPanelSlice(...a),
+    ...createPanelUiSlice(...a),
     ...createBoardFilterSlice(...a),
     ...createSettingsSlice(...a),
     ...createHistorySlice(...a),

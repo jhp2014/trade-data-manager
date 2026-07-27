@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
+import { usePanelUi } from "../store/usePanelUi.js";
 import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView, deriveDailyView, prevCloseAsOf, kstToUnix } from "../lib/derive.js";
 import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
@@ -33,12 +34,13 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const collapsed = useWorkbench((s) => s.panelControlsCollapsed[panelId]) ?? false; // 컨트롤 바 접힘(패널별·영속)
     const toggleControls = useWorkbench((s) => s.togglePanelControls);
     const expanded: "daily" | "minute" | null = view === "both" ? null : view; // 기존 렌더 로직 재사용
-    const [showMarkers, setShowMarkers] = useState(true); // 분봉 거래대금 마커 ON/OFF
-    const [showPointInfo, setShowPointInfo] = useState(true); // 현재 타점(시간선) readout — 기본 표시
-    const [showLine, setShowLine] = useState(true); // 검색 세로선 표시
-    const [pinMinute, setPinMinute] = useState(false); // 분봉 기준일 고정(일봉 클릭 무시)
-    const [lockScale, setLockScale] = useState(false); // 분봉 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지
-    const [showGuide, setShowGuide] = useState(true); // +30% 가이드선(검색일 전일종가 ×1.3)
+    // 헤더 토글 — 패널별 store 영속(usePanelUi). 프리셋 전환(재마운트)·새로고침에 유지.
+    const [showMarkers, setShowMarkers] = usePanelUi(panelId, "showMarkers", true); // 분봉 거래대금 마커 ON/OFF
+    const [showPointInfo, setShowPointInfo] = usePanelUi(panelId, "showPointInfo", true); // 현재 타점(시간선) readout — 기본 표시
+    const [showLine, setShowLine] = usePanelUi(panelId, "showLine", true); // 검색 세로선 표시
+    const [pinMinute, setPinMinute] = usePanelUi(panelId, "pinMinute", false); // 분봉 기준일 고정(일봉 클릭 무시)
+    const [lockScale, setLockScale] = usePanelUi(panelId, "lockScale", false); // 분봉 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지
+    const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이. search=null 이면 viewDate=anchor 로 동작 무변경.

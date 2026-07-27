@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import { useLiveSnapshot, refreshLiveThemes } from "../api/live.js";
 import { useWorkbench } from "../store/workbench.js";
+import { usePanelUi } from "../store/usePanelUi.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
 import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
@@ -18,7 +19,7 @@ export function LiveBoardPanel({ panelId }: { panelId: string }): JSX.Element {
     const market = useWorkbench((s) => s.boardMarket.live);
     const setBoardMarket = useWorkbench((s) => s.setBoardMarket);
     const originId = useId();
-    const [mode, setMode] = useState<BoardMode>("amount"); // 거래대금순/등락률순 리스트 · 테마(그룹)
+    const [mode, setMode] = usePanelUi<BoardMode>(panelId, "mode", "amount"); // 거래대금순/등락률순 리스트 · 테마(그룹). 패널별 영속.
     const [refreshing, setRefreshing] = useState(false);
 
     const vm = useMemo(() => (snapshot ? buildLiveBoardViewModel(snapshot.stocks, liveFilter, market) : null), [snapshot, liveFilter, market]);

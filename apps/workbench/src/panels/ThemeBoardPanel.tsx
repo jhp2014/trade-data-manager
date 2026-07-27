@@ -1,6 +1,7 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
+import { usePanelUi } from "../store/usePanelUi.js";
 import { daySummaryQuery } from "../api/queries.js";
 import { buildThemeBoardViewModel } from "../lib/boardViewModel.js";
 import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
@@ -21,7 +22,7 @@ export function ThemeBoardPanel({ panelId }: { panelId: string }): JSX.Element {
     const market = useWorkbench((s) => s.boardMarket.theme);
     const setBoardMarket = useWorkbench((s) => s.setBoardMarket);
     const originId = useId(); // 이 보드의 선택 출처 태그(self/external 구분)
-    const [mode, setMode] = useState<BoardMode>("group"); // 거래대금순/등락률순 리스트 · 테마(그룹)
+    const [mode, setMode] = usePanelUi<BoardMode>(panelId, "mode", "group"); // 거래대금순/등락률순 리스트 · 테마(그룹). 패널별 영속.
 
     const summaryQ = useQuery(daySummaryQuery(date));
     const annotated = useAnnotatedCodes(date);

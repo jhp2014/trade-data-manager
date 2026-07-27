@@ -29,6 +29,9 @@ const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
 const FILTERMODE_KEY = "wb.rankSheetFilterMode";
+const SORT_KEY = "wb.rankSheetSort"; // 정렬 기준 영속(다른 시트 설정과 동일 패턴) — 프리셋 전환·새로고침에 유지.
+// 스크롤 위치는 세션 한정(모듈 메모) — 프리셋 전환(재마운트)엔 이어지고 새로고침엔 초기화(목록 중간 튐 방지).
+let sheetScroll = { top: 0, left: 0 };
 const PIN = "#8b5cf6"; // 핀=작업셋(보라) — 현재(블루)와 구분.
 // 고정폭(table-layout:fixed + colgroup) — 열 고정 sticky 오프셋이 실제 폭과 정확히 맞도록.
 const NAME_W = 96;
@@ -68,6 +71,17 @@ type SortKey =
 type Sort = { key: SortKey; dir: 1 | -1 };
 
 const sameSort = (a: SortKey, b: SortKey): boolean => (a.kind === "axis" && b.kind === "axis" ? a.axisId === b.axisId : a.kind === b.kind);
+const SORT_KINDS = ["name", "date", "time", "coverage", "mfe", "maePre", "maePost", "outcome", "axis"];
+// 영속된 정렬 복원 검증 — 형태 안 맞으면 null(기본값 폴백). axis 는 axisId 문자열 필수(없어진 축이어도 무해: 전부 미배치 취급).
+function parseSort(o: unknown): Sort | null {
+    if (!o || typeof o !== "object") return null;
+    const s = o as { key?: { kind?: unknown; axisId?: unknown }; dir?: unknown };
+    if (s.dir !== 1 && s.dir !== -1) return null;
+    const k = s.key;
+    if (!k || typeof k.kind !== "string" || !SORT_KINDS.includes(k.kind)) return null;
+    if (k.kind === "axis" && typeof k.axisId !== "string") return null;
+    return s as Sort;
+}
 
 function outcomeColor(v?: string): string {
     if (!v) return "var(--text-tertiary)";
@@ -165,8 +179,9 @@ export function RankSheetPanel(): JSX.Element {
 
     const rows = useMemo(() => buildSheetRows(rowPoints, axisIds, indexByAxis), [rowPoints, axisIds, indexByAxis]);
 
-    // ── 정렬. 축 정렬 = 강(rank↑) 먼저, 미배치는 방향 무관 맨 아래로 가라앉힘.
-    const [sort, setSort] = useState<Sort>({ key: { kind: "date" }, dir: -1 });
+    // ── 정렬. 축 정렬 = 강(rank↑) 먼저, 미배치는 방향 무관 맨 아래로 가라앉힘. localStorage 영속(프리셋 전환·새로고침 유지).
+    const [sort, setSort] = useState<Sort>(() => parseSort(loadJson(SORT_KEY, (o) => o)) ?? { key: { kind: "date" }, dir: -1 });
+    useEffect(() => saveJson(SORT_KEY, sort), [sort]);
     // 정렬 기준을 배치 보드와 공유 → 그 레일에 하이라이트/배지. axis·날짜·시간만(그 외는 배치에 대응 레일 없음 → null).
     const setRankSort = useWorkbench((s) => s.setRankSort);
     useEffect(() => {
@@ -227,6 +242,17 @@ export function RankSheetPanel(): JSX.Element {
         ro.observe(el);
         return () => ro.disconnect();
     }, []);
+    // 스크롤 위치 세션 복원 — 데이터가 그려진(표 렌더된) 뒤 1회. onScroll 로 sheetScroll 에 저장한다.
+    const restoredRef = useRef(false);
+    const dataReady = !axesQ.isLoading && !pointsQ.isLoading && axes.length > 0;
+    useEffect(() => {
+        if (!dataReady || restoredRef.current) return;
+        const el = scrollRef.current;
+        if (!el) return;
+        el.scrollTop = sheetScroll.top;
+        el.scrollLeft = sheetScroll.left;
+        restoredRef.current = true;
+    }, [dataReady]);
     const ctrlWheel = useHorizontalWheel<HTMLDivElement>(true); // 헤더 컨트롤 hover 휠 = 가로 스크롤
     const axisMin = posBar ? 76 : 56;
 
@@ -444,7 +470,7 @@ export function RankSheetPanel(): JSX.Element {
             <RankFilterBar axes={axes} dateBounds={dateBounds} />
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
-            <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <div ref={scrollRef} onScroll={(e) => { sheetScroll = { top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft }; }} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                 {/* border-collapse: separate — 테두리가 셀에 붙어 sticky(고정 열/헤더/핀)를 따라옴(밑줄·세로선 안 밀림). */}
                 <table style={{ tableLayout: "fixed", width: tableW, borderCollapse: "separate", borderSpacing: 0, fontSize: 12 }}>
                     <colgroup>{displayCols.map((c) => <col key={colKey(c)} style={{ width: widthOf(c) }} />)}</colgroup>
