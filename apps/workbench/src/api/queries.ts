@@ -3,7 +3,7 @@
 // 역사·주석 데이터는 사실상 불변 → staleTime ∞. 편집은 mutation 이 invalidate 로 갱신하므로 자동 refetch 불필요.
 // queryFn 은 react-query 의 signal 을 fetch 로 넘겨 키 변경/언마운트 시 요청을 취소한다.
 import { queryOptions } from "@tanstack/react-query";
-import { fetchChart } from "./chart.js";
+import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
 import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
@@ -22,8 +22,11 @@ const TODAY_STALE = 60_000; // 오늘 시세 — 수집(20:30 스윕) 중 빈/�
 // (주석/가설류는 날짜 무관하게 편집형이지만 mutation 이 invalidate 하므로 ∞ 유지.)
 export const histStale = (date: string): number => (date < kstToday() ? IMMUTABLE : TODAY_STALE);
 
+// 차트 번들 — 소스(DB/브로커)는 fetchChartBundle 이 날짜로 고른다. 키가 하나라 차트 패널 2개·차트 단축키·
+// 분석 오버레이가 **같은 캐시 한 벌**을 본다(중복 페치 0, 단축키가 화면과 같은 분봉 위에서 동작).
+// 소비자마다 queryFn 을 달리 주면 RQ 는 먼저 마운트된 쪽을 쓰므로, 라우팅은 반드시 여기 한 곳에.
 export const chartQuery = (code: string, date: string) =>
-    queryOptions({ queryKey: ["chart", code, date], queryFn: ({ signal }) => fetchChart(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: histStale(date) });
+    queryOptions({ queryKey: ["chart", code, date], queryFn: ({ signal }) => fetchChartBundle(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: histStale(date) });
 
 export const daySummaryQuery = (date: string) =>
     queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: histStale(date) });
