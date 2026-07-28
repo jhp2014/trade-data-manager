@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useQueryClient, type UseInfiniteQueryResult, type QueryKey } from "@tanstack/react-query";
 import { useWorkbench, type NewsSearchEngine } from "../store/workbench.js";
+import { usePlaneBus, type Plane } from "../store/usePlaneBus.js";
 import { fetchHtsNews, type HtsNewsItem, type HeadlineCursor } from "../api/news.js";
 import { fetchLiveNews, type LiveNewsAnchor } from "../api/liveNews.js";
 import { useStockName } from "../lib/useStockName.js";
 import { dateLabel, kstToday } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
 import { ChevronDownIcon, BackIcon } from "../components/icons.js";
+import {
+    DateDivider,
+    ModeSegment,
+    NewsCenter,
+    PlaneDot,
+    dedupPages,
+    highlightMatches,
+    useTopVisible,
+    type NewsMode,
+} from "../components/news/newsShared.js";
 
 // 뉴스 패널(양 플레인 공통) — HTS(시황) 헤드라인을 최신순으로. plane 이 버스·소스를 고른다:
 //  · replay = 복기 버스(focus/search) + DB(/api/news/hts, 커서 (date,srno) 엄격미만)
@@ -17,29 +28,14 @@ import { ChevronDownIcon, BackIcon } from "../components/icons.js";
 const PAGE = 30;
 const INTRADAY_FILL = "rgba(22,121,111,0.14)"; // 현재시간 이전(장중 참고가능) 시각 셀 채움 — --accent-primary 틴트
 
-export type NewsPlane = "live" | "replay";
-export type NewsMode = "stock" | "all";
-
 interface Feed {
     q: UseInfiniteQueryResult<unknown>;
     items: HtsNewsItem[];
     key: QueryKey;
 }
 
-/** 페이지 배열 → srno dedup 평탄화(최신순 유지). live 앵커(≤ 포함) 경계 중복 흡수, replay 는 무해. */
-function dedupPages(pages: HtsNewsItem[][] | undefined): HtsNewsItem[] {
-    const seen = new Set<string>();
-    const out: HtsNewsItem[] = [];
-    for (const p of pages ?? []) {
-        for (const it of p) {
-            if (!seen.has(it.srno)) {
-                seen.add(it.srno);
-                out.push(it);
-            }
-        }
-    }
-    return out;
-}
+/** srno dedup 평탄화(최신순 유지). live 앵커(≤ 포함) 경계 중복 흡수, replay 는 무해. */
+const flatten = (pages: HtsNewsItem[][] | undefined): HtsNewsItem[] => dedupPages(pages, (it) => it.srno);
 
 /** 복기 피드 — DB 커서 페이징. 종목+무키워드 초기 페이지만 "그 날 전체"(길이 무관 계속), 그 외는 limit 페이지. */
 function useReplayFeed(args: { code: string; date: string; keyword: string; mode: NewsMode; enabled: boolean }): Feed {
@@ -66,7 +62,7 @@ function useReplayFeed(args: { code: string; date: string; keyword: string; mode
         enabled,
         staleTime: Infinity,
     });
-    const items = useMemo(() => dedupPages(q.data?.pages), [q.data]);
+    const items = useMemo(() => flatten(q.data?.pages), [q.data]);
     return { q, items, key };
 }
 
@@ -103,28 +99,18 @@ function useLiveFeed(args: { code: string; date: string; keyword: string; mode: 
         enabled,
         staleTime: Infinity,
     });
-    const items = useMemo(() => dedupPages(q.data?.pages), [q.data]);
+    const items = useMemo(() => flatten(q.data?.pages), [q.data]);
     return { q, items, key };
 }
 
-export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
-    const live = plane === "live";
-    // 플레인별 버스 — 셀렉터가 plane 상수로 갈라져 다른 플레인 상태엔 구독하지 않는다.
-    const focusCode = useWorkbench((s) => (live ? s.liveFocus.code : s.focus.code));
-    const focusTime = useWorkbench((s) => (live ? s.liveFocus.time : s.focus.time));
-    const inSearch = useWorkbench((s) => (live ? s.liveSearch != null : s.search != null));
-    const code = useWorkbench((s) => (live ? s.liveFocus.code : (s.search?.code ?? s.focus.code)));
-    const date = useWorkbench((s) => (live ? (s.liveSearch?.date ?? s.liveFocus.date) : (s.search?.date ?? s.focus.date)));
-    const setTime = useWorkbench((s) => (live ? s.setLiveTime : s.setTime));
-    const clearSearch = useWorkbench((s) => (live ? s.setLiveSearch : s.setSearch)) as (v: null) => void;
+export function NewsPanel({ plane }: { plane: Plane }): JSX.Element {
+    const { live, code, viewDate: date, time: focusTime, inSearch, setTime, clearSearch } = usePlaneBus(plane);
     const engine = useWorkbench((s) => s.newsSearchEngine);
     const setEngine = useWorkbench((s) => s.setNewsSearchEngine);
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
     const selfSet = useRef(false);
     const scrolledForRef = useRef<string | null>(null); // 이 (date,focus.time) 로 이미 스크롤했나 — 페이징 재실행 시 재스크롤 방지
-    const rafRef = useRef(0);
-    const [visibleDate, setVisibleDate] = useState(date);
     const [mode, setMode] = useState<NewsMode>("stock");
     const [input, setInput] = useState(""); // 키워드 입력(미확정)
     const [keyword, setKeyword] = useState(""); // 확정 키워드(Enter) — 쿼리키 반영
@@ -136,26 +122,13 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
     const liveFeed = useLiveFeed({ code, date, keyword, mode, enabled: live && ready });
     const { q, items, key } = live ? liveFeed : replayFeed;
 
+    // 헤더 2줄의 "지금 보는 날짜" — 스크롤 최상단 구분선. 날짜가 바뀌면 초기화해 새 날짜를 보여준다.
+    const topDate = useTopVisible(listRef, "date");
+    const visibleDate = topDate.current ?? date;
+    const { reset: resetTopDate } = topDate;
+    useEffect(() => resetTopDate(), [date, resetTopDate]);
+
     const visibleCount = useMemo(() => items.filter((it) => it.date === visibleDate).length, [items, visibleDate]);
-
-    useEffect(() => setVisibleDate(date), [date]);
-
-    const onScroll = (): void => {
-        if (rafRef.current) return;
-        rafRef.current = requestAnimationFrame(() => {
-            rafRef.current = 0;
-            const c = listRef.current;
-            if (!c) return;
-            const cTop = c.getBoundingClientRect().top;
-            let cur = "";
-            for (const d of c.querySelectorAll<HTMLElement>("[data-date-divider]")) {
-                if (d.getBoundingClientRect().top - cTop <= 8) cur = d.dataset.date ?? cur;
-                else break;
-            }
-            if (cur) setVisibleDate(cur);
-        });
-    };
-    useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
     // focus.time 외부 변경 → 그 시각 위치로 스크롤. 뉴스가 나중에 도착해도 스크롤되게 deps 에 items 포함하되,
     // (date,focus.time) 단위 "이미 스크롤함" 가드로 페이징(items 증가) 때 재스크롤은 막는다. 검색 모드에선 스킵.
@@ -188,7 +161,7 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
     const commitKeyword = (): void => setKeyword(input.trim());
 
     const stockMode = mode === "stock";
-    const noStock = stockMode && !focusCode; // 종목 미선택 — 헤더(모드 전환)는 살리고 본문만 안내
+    const noStock = stockMode && !code; // 종목 미선택 — 헤더(모드 전환)는 살리고 본문만 안내
     const canLoadMore = q.hasNextPage && !q.isFetchingNextPage;
     // 하이라이트 — 종목 모드는 종목명, 키워드가 있으면 키워드도(전체 모드는 키워드만).
     const hlTokens = [stockMode ? name : null, keyword || null].filter((t): t is string => !!t);
@@ -198,7 +171,7 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
             {/* 헤더 2줄 — 1: 모드·종목명·키워드·아이콘 / 2: 현재 날짜·건수 */}
             <div style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
                 <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 6, padding: "5px 10px", overflow: "hidden" }}>
-                    <span style={{ width: 7, height: 7, borderRadius: 999, background: `var(--plane-${live ? "live" : "eod"})`, flexShrink: 0 }} title={live ? "실시간 플레인" : "복기 플레인"} />
+                    <PlaneDot plane={plane} />
                     <ModeSegment mode={mode} setMode={setMode} />
                     <span style={{ fontWeight: 700, fontSize: 14, color: noStock ? "var(--text-tertiary)" : "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>
                         {stockMode ? (name ?? (code || "종목 미선택")) : "시황 전체"}
@@ -227,7 +200,7 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
                     />
                     <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                         {inSearch && (
-                            <IconButton onClick={() => clearSearch(null)} title={live ? "기준일로 복귀" : "검색 모드 해제 — Focus 로 돌아가기"}>
+                            <IconButton onClick={clearSearch} title={live ? "기준일로 복귀" : "검색 모드 해제 — Focus 로 돌아가기"}>
                                 <BackIcon />
                             </IconButton>
                         )}
@@ -247,43 +220,19 @@ export function NewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
             </div>
 
             {/* 본문 */}
-            <div ref={listRef} onScroll={onScroll} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            <div ref={listRef} onScroll={topDate.onScroll} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 {noStock ? (
-                    <Center text="종목을 선택하세요 — 또는 '전체'로 시황 전체 보기" />
+                    <NewsCenter>종목을 선택하세요 — 또는 '전체'로 시황 전체 보기</NewsCenter>
                 ) : (
                     <>
-                        {q.isLoading && <Center text="로딩중…" />}
-                        {q.isError && <Center text={`오류: ${(q.error as Error).message}`} />}
-                        {!q.isLoading && !q.isError && items.length === 0 && <Center text={stockMode && !keyword ? "당일 뉴스 없음" : "결과 없음"} />}
+                        {q.isLoading && <NewsCenter>로딩중…</NewsCenter>}
+                        {q.isError && <NewsCenter>오류: {(q.error as Error).message}</NewsCenter>}
+                        {!q.isLoading && !q.isError && items.length === 0 && <NewsCenter>{stockMode && !keyword ? "당일 뉴스 없음" : "결과 없음"}</NewsCenter>}
                         <NewsList items={items} focusDate={date} focusTime={focusTime} timeInteractive={!inSearch} hlTokens={hlTokens} engine={engine} onPick={pick} />
                     </>
                 )}
             </div>
         </div>
-    );
-}
-
-// 모드 세그먼트 — 보드 컨트롤과 같은 가벼운 텍스트 스타일(테두리·채움 없음). 텔레그램 패널과 공용.
-function segBtn(active: boolean): React.CSSProperties {
-    return {
-        border: "none",
-        background: "none",
-        padding: "0 3px",
-        cursor: "pointer",
-        font: "inherit",
-        fontSize: 11,
-        fontWeight: active ? 700 : 400,
-        color: active ? "var(--text-primary)" : "var(--text-tertiary)",
-    };
-}
-
-export function ModeSegment({ mode, setMode, allTitle }: { mode: NewsMode; setMode: (m: NewsMode) => void; allTitle?: string }): JSX.Element {
-    return (
-        <span style={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
-            <button style={segBtn(mode === "stock")} onClick={() => setMode("stock")} title="포커스 종목 뉴스">종목</button>
-            <span style={{ color: "var(--border-default)" }}>·</span>
-            <button style={segBtn(mode === "all")} onClick={() => setMode("all")} title={allTitle ?? "전체 시황 뉴스(종목 무시)"}>전체</button>
-        </span>
     );
 }
 
@@ -320,11 +269,7 @@ function NewsList({
                 const isIntradayPast = timeClickable && focusTime != null && it.time <= focusTime;
                 return (
                     <div key={it.srno}>
-                        {showDate && (
-                            <div data-date-divider data-date={it.date} className="tabular" style={{ padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", background: "var(--bg-secondary)" }}>
-                                {dateLabel(it.date)}
-                            </div>
-                        )}
+                        {showDate && <DateDivider date={it.date} label={dateLabel(it.date)} />}
                         <div data-srno={it.srno} style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--border-subtle)", fontSize: 13, lineHeight: 1.4 }}>
                             <span
                                 className={timeClickable ? "tabular news-time" : "tabular"}
@@ -349,7 +294,7 @@ function NewsList({
                                     onClick={() => window.open(isGoogle ? googleUrl(it.title, it.date) : naverNewsUrl(it.title, it.date), "_blank", "noopener,noreferrer")}
                                     style={{ flex: 1, minWidth: 0, color: "var(--text-primary)" }}
                                 >
-                                    {highlight(it.title, hlRe)}
+                                    {highlightMatches(it.title, hlRe)}
                                 </span>
                                 {it.sourceName && (
                                     <span style={{ flexShrink: 0, fontSize: 11, color: "var(--text-tertiary)", alignSelf: "flex-start", marginTop: 1 }}>{it.sourceName}</span>
@@ -361,25 +306,6 @@ function NewsList({
             })}
         </div>
     );
-}
-
-// 제목에서 종목명/키워드를 solid teal 칩(.tg-hl)으로 강조. 좌우탐색 없음(단순 시각 강조). re 없으면 원문.
-function highlight(title: string, re: RegExp | null): ReactNode[] {
-    if (!re) return [title];
-    const nodes: ReactNode[] = [];
-    let last = 0;
-    for (const m of title.matchAll(re)) {
-        const idx = m.index ?? 0;
-        if (idx > last) nodes.push(title.slice(last, idx));
-        nodes.push(
-            <span className="tg-hl" key={idx}>
-                {m[0]}
-            </span>,
-        );
-        last = idx + m[0].length;
-    }
-    if (last < title.length) nodes.push(title.slice(last));
-    return nodes;
 }
 
 function IconButton({ children, onClick, disabled, title }: { children: ReactNode; onClick: () => void; disabled?: boolean; title?: string }): JSX.Element {
@@ -430,13 +356,5 @@ function EngineToggle({ engine, onToggle }: { engine: NewsSearchEngine; onToggle
         >
             {isNaver ? "N" : "G"}
         </button>
-    );
-}
-
-function Center({ text }: { text: string }): JSX.Element {
-    return (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-tertiary)", fontSize: 13 }}>
-            {text}
-        </div>
     );
 }

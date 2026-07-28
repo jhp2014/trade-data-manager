@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { useWorkbench } from "../store/workbench.js";
 import { fetchTelegramNews, type TelegramNewsItem } from "../api/telegramNews.js";
 import { useStockName } from "../lib/useStockName.js";
 import { dateLabel } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
 import { ChevronDownIcon, BackIcon } from "../components/icons.js";
-import { ModeSegment, type NewsMode, type NewsPlane } from "./NewsPanel.js";
+import { usePlaneBus, type Plane } from "../store/usePlaneBus.js";
+import {
+    DateDivider,
+    ModeSegment,
+    NewsCenter,
+    PlaneDot,
+    countMatches,
+    dedupPages,
+    highlightMatches,
+    useTopVisible,
+    type NewsMode,
+} from "../components/news/newsShared.js";
 
 // 텔레그램 뉴스 패널(양 플레인 공통) — 등록 방 전체 키워드 검색(검색날짜 KST 하루 스코프), 최신순.
 // plane 이 버스를 고른다(백엔드는 동일 — GramJS 라이브 검색이라 오늘/과거 모두 /api/news/telegram):
@@ -18,18 +28,11 @@ import { ModeSegment, type NewsMode, type NewsPlane } from "./NewsPanel.js";
 // 현재시간 이전(focus.time 이하, 당일)은 시간값 배경으로 구분. focus.time 이동 시 그 이하 최근으로 스크롤.
 const INTRADAY_BG = "rgba(22,121,111,0.14)"; // 현재시간 이전 시간값 배경 — --accent-primary 틴트
 
-export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element {
-    const live = plane === "live";
-    // 플레인별 버스 — 셀렉터가 plane 상수로 갈라져 다른 플레인 상태엔 구독하지 않는다.
-    const focusDate = useWorkbench((s) => (live ? s.liveFocus.date : s.focus.date));
-    const focusTime = useWorkbench((s) => (live ? s.liveFocus.time : s.focus.time));
-    const inSearch = useWorkbench((s) => (live ? s.liveSearch != null : s.search != null));
-    const code = useWorkbench((s) => (live ? s.liveFocus.code : (s.search?.code ?? s.focus.code)));
-    const targetDate = useWorkbench((s) => (live ? (s.liveSearch?.date ?? s.liveFocus.date) : (s.search?.date ?? s.focus.date))); // 검색하려는 날짜(미확정)
-    const clearSearch = useWorkbench((s) => (live ? s.setLiveSearch : s.setSearch)) as (v: null) => void;
+export function TelegramNewsPanel({ plane }: { plane: Plane }): JSX.Element {
+    // targetDate = 검색하려는 날짜(미확정) — 확정본(searchDate)과 다르면 pending.
+    const { live, code, anchorDate: focusDate, viewDate: targetDate, time: focusTime, inSearch, clearSearch } = usePlaneBus(plane);
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
-    const rafRef = useRef(0);
     const scrolledForCursorRef = useRef<number | null | undefined>(undefined); // 이 cursorMs 로 이미 처리했나 — 페이징 재실행 시 재스크롤 방지
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
@@ -39,7 +42,6 @@ export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element 
     const [query, setQuery] = useState(""); // 확정 검색어(수동 트리거로만 갱신). 전체 모드에선 "" 도 유효(최근 피드)
     const [searchDate, setSearchDate] = useState(""); // 확정 검색 날짜. "" = 아직 검색 안 함. targetDate 와 다르면 pending
     const [editing, setEditing] = useState(false); // 사용자가 명시적으로 편집 진입(중앙 입력 autofocus)
-    const [visibleAt, setVisibleAt] = useState<string | null>(null); // 스크롤 최상단 항목 시각(헤더 2줄)
     const [activeMatch, setActiveMatch] = useState(-1); // Ctrl+F 현재 매치. -1 = 활성 없음(주황 해제)
 
     const stockMode = mode === "stock";
@@ -71,19 +73,11 @@ export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element 
         staleTime: Infinity,
     });
 
-    const items = useMemo(() => {
-        const seen = new Set<string>();
-        const out: TelegramNewsItem[] = [];
-        for (const p of q.data?.pages ?? []) {
-            for (const it of p.items) {
-                if (!seen.has(it.ref)) {
-                    seen.add(it.ref);
-                    out.push(it);
-                }
-            }
-        }
-        return out;
-    }, [q.data]);
+    const items = useMemo(() => dedupPages(q.data?.pages?.map((p) => p.items), (it) => it.ref), [q.data]);
+
+    // 헤더 2줄의 "지금 보는 시각" — 스크롤 최상단 항목. 검색이 바뀌면 초기화.
+    const topAt = useTopVisible(listRef, "at");
+    const { reset: resetTopAt } = topAt;
 
     const hlRe = useMemo(() => {
         const tokens = query.trim().split(/\s+/).filter(Boolean).map(escapeRegExp);
@@ -112,9 +106,9 @@ export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element 
     };
 
     useEffect(() => {
-        setVisibleAt(null);
+        resetTopAt();
         setActiveMatch(-1);
-    }, [searchDate, query]);
+    }, [searchDate, query, resetTopAt]);
 
     // Ctrl+F 매치 이동 → 해당 하이라이트로 스크롤.
     useEffect(() => {
@@ -142,30 +136,12 @@ export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element 
         scrolledForCursorRef.current = cursorMs;
     }, [cursorMs, items, showEdit]);
 
-    // 스크롤 최상단 항목 시각 → 헤더 2줄.
-    const onScroll = (): void => {
-        if (rafRef.current) return;
-        rafRef.current = requestAnimationFrame(() => {
-            rafRef.current = 0;
-            const c = listRef.current;
-            if (!c) return;
-            const cTop = c.getBoundingClientRect().top;
-            let cur = "";
-            for (const el of c.querySelectorAll<HTMLElement>("[data-at]")) {
-                if (el.getBoundingClientRect().top - cTop <= 8) cur = el.dataset.at ?? cur;
-                else break;
-            }
-            if (cur) setVisibleAt(cur);
-        });
-    };
-    useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
-
     const gotoMatch = (delta: number): void => {
         if (totalMatches === 0) return;
         setActiveMatch((a) => (a < 0 ? (delta > 0 ? 0 : totalMatches - 1) : (a + delta + totalMatches) % totalMatches));
     };
 
-    const posAt = visibleAt ?? items[0]?.at ?? null;
+    const posAt = topAt.current ?? items[0]?.at ?? null;
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -173,7 +149,7 @@ export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element 
             <div style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
                 {/* 1줄 — 플레인·모드·키워드·🔍 … ◂▸·더보기 */}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", overflow: "hidden" }}>
-                    <span style={{ width: 7, height: 7, borderRadius: 999, background: `var(--plane-${live ? "live" : "eod"})`, flexShrink: 0 }} title={live ? "실시간 플레인" : "복기 플레인"} />
+                    <PlaneDot plane={plane} />
                     <ModeSegment mode={mode} setMode={switchMode} allTitle="전체 모드 — 종목 자동채움 없음, 빈 검색 = 방들 최근 피드" />
                     <button onClick={() => setEditing(true)} title="검색어 편집" style={{ flexShrink: 1, minWidth: 0, textAlign: "left", fontWeight: 700, fontSize: 14, color: input.trim() ? "var(--text-primary)" : "var(--text-tertiary)", background: "transparent", border: "none", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {input.trim() || (stockMode ? "검색" : "전체 최근")}
@@ -183,7 +159,7 @@ export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element 
                     </button>
                     <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
                         {inSearch && (
-                            <button className="icon-btn" onClick={() => clearSearch(null)} title={live ? "기준일로 복귀" : "검색 모드 해제 — Focus 로 돌아가기"} style={{ marginRight: 2 }}>
+                            <button className="icon-btn" onClick={clearSearch} title={live ? "기준일로 복귀" : "검색 모드 해제 — Focus 로 돌아가기"} style={{ marginRight: 2 }}>
                                 <BackIcon />
                             </button>
                         )}
@@ -208,9 +184,9 @@ export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element 
             </div>
 
             {/* 본문 */}
-            <div ref={listRef} onScroll={onScroll} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            <div ref={listRef} onScroll={topAt.onScroll} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 {showEdit ? (
-                    <Center>
+                    <NewsCenter>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 280, maxWidth: "84%" }}>
                             {/* 검색 기준 날짜 — 어느 날 기준으로 검색하는지 명시(focus.date, 봉클릭 검색이면 그 날짜). */}
                             <div className="tabular" style={{ fontSize: 12, color: "var(--text-tertiary)", textAlign: "center" }}>기준 날짜 · {dateLabel(targetDate)}</div>
@@ -234,12 +210,12 @@ export function TelegramNewsPanel({ plane }: { plane: NewsPlane }): JSX.Element 
                                 <span>{!stockMode && !input.trim() ? "최근 보기" : "검색"}</span>
                             </button>
                         </div>
-                    </Center>
+                    </NewsCenter>
                 ) : (
                     <>
-                        {q.isLoading && <Center><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>검색 중… (텔레그램)</span></Center>}
-                        {q.isError && <Center><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>오류: {(q.error as Error).message}</span></Center>}
-                        {!q.isLoading && !q.isError && items.length === 0 && <Center><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>결과 없음</span></Center>}
+                        {q.isLoading && <NewsCenter><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>검색 중… (텔레그램)</span></NewsCenter>}
+                        {q.isError && <NewsCenter><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>오류: {(q.error as Error).message}</span></NewsCenter>}
+                        {!q.isLoading && !q.isError && items.length === 0 && <NewsCenter><span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>결과 없음</span></NewsCenter>}
                         <NewsList items={items} hlRe={hlRe} activeMatch={activeMatch} focusDate={focusDate} cursorMs={cursorMs} />
                     </>
                 )}
@@ -261,15 +237,11 @@ function NewsList({ items, hlRe, activeMatch, focusDate, cursorMs }: { items: Te
                 const intradayPast = cursorMs != null && d === focusDate && new Date(it.at).getTime() <= cursorMs;
                 // 이 카드의 매치 인덱스 구간 [startIdx, counter.n) 에 activeMatch 가 있으면 = 현재 주황 매치 보유 카드.
                 const startIdx = counter.n;
-                const textNodes = highlightNodes(it.text, hlRe, counter, activeMatch);
+                const textNodes = highlightMatches(it.text, hlRe, { counter, activeMatch });
                 const isActiveCard = hlRe != null && activeMatch >= startIdx && activeMatch < counter.n;
                 return (
                     <div key={it.ref}>
-                        {showDate && (
-                            <div data-date-divider data-date={d} className="tabular" style={{ padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", background: "var(--bg-secondary)" }}>
-                                {dateLabel(d)}
-                            </div>
-                        )}
+                        {showDate && <DateDivider date={d} label={dateLabel(d)} />}
                         <div
                             data-item-ref={it.ref}
                             data-at={it.at}
@@ -311,32 +283,6 @@ function NewsList({ items, hlRe, activeMatch, focusDate, cursorMs }: { items: Te
     );
 }
 
-function highlightNodes(text: string, re: RegExp | null, counter: { n: number }, activeMatch: number): ReactNode[] {
-    if (!re) return [text];
-    const nodes: ReactNode[] = [];
-    let last = 0;
-    for (const m of text.matchAll(re)) {
-        const idx = m.index ?? 0;
-        if (idx > last) nodes.push(text.slice(last, idx));
-        const gi = counter.n++;
-        nodes.push(
-            <span className={gi === activeMatch ? "tg-hl tg-hl-active" : "tg-hl"} data-hl-index={gi} key={`${idx}-${gi}`}>
-                {m[0]}
-            </span>,
-        );
-        last = idx + m[0].length;
-    }
-    if (last < text.length) nodes.push(text.slice(last));
-    return nodes;
-}
-
-function countMatches(text: string, re: RegExp | null): number {
-    if (!re) return 0;
-    let n = 0;
-    for (const _m of text.matchAll(re)) n++;
-    return n;
-}
-
 function kstDate(iso: string): string {
     return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 }
@@ -359,13 +305,5 @@ function SearchIcon(): JSX.Element {
             <circle cx="11" cy="11" r="7" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-    );
-}
-
-function Center({ children }: { children: ReactNode }): JSX.Element {
-    return (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", padding: "0 20px", textAlign: "center" }}>
-            {children}
-        </div>
     );
 }
