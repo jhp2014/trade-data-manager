@@ -2,7 +2,6 @@
 // 두 패널은 피드 의미가 정말 다르지만(DB 커서 · KIS 앵커 되감기 · 텔레그램 날짜 페이징)
 // **목록을 훑는 방식**은 같다: 페이지 평탄화+dedup, 스크롤 최상단 추적, 키워드 하이라이트.
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import type { Plane } from "../../store/usePlaneBus.js";
 
 /** 페이지 배열 → 평탄화 + 키 dedup(순서 유지). 페이징 경계가 겹쳐 오는 소스(앵커 ≤ 포함)를 흡수한다. */
 export function dedupPages<T>(pages: T[][] | undefined, keyOf: (item: T) => string): T[] {
@@ -122,17 +121,6 @@ export function ModeSegment({ mode, setMode, allTitle }: { mode: NewsMode; setMo
             <span style={{ color: "var(--border-default)" }}>·</span>
             <button style={segBtn(mode === "all")} onClick={() => setMode("all")} title={allTitle ?? "전체 시황 뉴스(종목 무시)"}>전체</button>
         </span>
-    );
-}
-
-/** 플레인 표시 점 — 실시간=앰버 / 복기=teal. 탭 색과 같은 토큰. */
-export function PlaneDot({ plane }: { plane: Plane }): JSX.Element {
-    const key = plane === "live" ? "live" : "eod";
-    return (
-        <span
-            style={{ width: 7, height: 7, borderRadius: 999, background: `var(--plane-${key})`, flexShrink: 0 }}
-            title={plane === "live" ? "실시간 플레인" : "복기 플레인"}
-        />
     );
 }
 

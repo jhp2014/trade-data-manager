@@ -6,6 +6,7 @@ import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLine
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery, chartQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView, type DailyPoint, type MinuteView } from "./derive.js";
+import { resolveAnchorLines } from "./chartFrame.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { Command } from "../keymap/types.js";
@@ -30,23 +31,8 @@ export function usePriceLinesForChart(
     const linesQ = useQuery(priceLinesQuery(code, date));
     const lines = useMemo(() => linesQ.data ?? [], [linesQ.data]);
 
-    // anchorTime 유무로 일봉(D)/분봉(M) 구분. field=고/저/시/종(현재 UI 는 high).
-    const resolvedLines = useMemo<RenderLine[]>(() => {
-        if (!dailyView || !minuteView) return [];
-        const dailyByDate = new Map(dailyView.map((p) => [p.time, p] as const));
-        const minuteByKey = new Map(minuteView.points.map((p) => [`${p.date}T${p.tradeTime}`, p] as const));
-        const out: RenderLine[] = [];
-        for (const l of lines) {
-            if (l.anchorTime) {
-                const mp = minuteByKey.get(`${l.anchorDate}T${l.anchorTime}`);
-                if (mp) out.push({ id: l.id, price: mp.highPrice, kind: "M" });
-            } else {
-                const dp = dailyByDate.get(l.anchorDate);
-                if (dp) out.push({ id: l.id, price: dp[l.field], kind: "D" });
-            }
-        }
-        return out;
-    }, [lines, dailyView, minuteView]);
+    // anchorTime 유무로 일봉(D)/분봉(M) 구분. field=고/저/시/종(현재 UI 는 high). 해소 규칙은 실시간 메모리 선과 공용.
+    const resolvedLines = useMemo(() => resolveAnchorLines(lines, dailyView, minuteView), [lines, dailyView, minuteView]);
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
 
     const invalidate = (): void => {

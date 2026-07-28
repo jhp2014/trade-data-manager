@@ -5,12 +5,12 @@ import { useStockName } from "../lib/useStockName.js";
 import { dateLabel } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
 import { ChevronDownIcon, BackIcon } from "../components/icons.js";
+import { PlaneDot } from "../components/PlaneDot.js";
 import { usePlaneBus, type Plane } from "../store/usePlaneBus.js";
 import {
     DateDivider,
     ModeSegment,
     NewsCenter,
-    PlaneDot,
     countMatches,
     dedupPages,
     highlightMatches,
