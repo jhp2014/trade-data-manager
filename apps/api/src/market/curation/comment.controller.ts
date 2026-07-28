@@ -1,38 +1,26 @@
 import { Controller, Get, Post, Inject, Query, Body } from "@nestjs/common";
-import type { DailyComment, DailyCommentReader, DailyCommentStore } from "@trade-data-manager/market";
 import type { DailyCommentDto, UpsertDailyCommentInput } from "@trade-data-manager/wire";
-import { DAILY_COMMENT_REPO } from "../tokens.js";
+import { DAILY_COMMENTS } from "../tokens.js";
+import type { DailyComments } from "./dailyComments.js";
 import { assertYmd, assertStockCode } from "../validation.js";
 
 // /comment — 당일 종목 코멘트(DB curation.daily_comments) 읽기·편집. (date, code) 자연키 = 종목당 당일 1개.
 //   GET  /comment?date=&code=  종목 우클릭 팝업 프리필 — 그 (날짜,종목)의 코멘트(없으면 null)
-//   POST /comment              upsert — comment 가 비면 삭제. author 는 서버(env)가 정한다(단일 사용자).
-// 정적 테마(시트)와 달리 자유 주석이라 DB. author 는 클라가 못 정하게 서버 고정(위변조·오타 방지).
-const AUTHOR = process.env.CURATION_AUTHOR ?? "jonghun";
-
+//   POST /comment              저장 — 빈 코멘트는 삭제로 해석하고 author 는 서버가 정한다(DailyComments 규약)
+// 여긴 HTTP 경계만 본다: 파라미터 검증 → 위임 → wire 모양으로 변환. 규칙은 DailyComments 가 소유.
 @Controller("comment")
 export class CommentController {
-    constructor(@Inject(DAILY_COMMENT_REPO) private readonly repo: DailyCommentReader & DailyCommentStore) {}
+    constructor(@Inject(DAILY_COMMENTS) private readonly comments: DailyComments) {}
 
     @Get()
     async get(@Query("date") date?: string, @Query("code") code?: string): Promise<DailyCommentDto | null> {
-        const canon = assertStockCode(code);
-        const rows = await this.repo.getByDate(assertYmd(date));
-        const hit = rows.find((r) => r.stockCode === canon);
+        const hit = await this.comments.getOne(assertYmd(date), assertStockCode(code));
         return hit ? { comment: hit.comment, author: hit.author } : null;
     }
 
     @Post()
     async upsert(@Body() body: UpsertDailyCommentInput): Promise<{ ok: true }> {
-        const date = assertYmd(body?.date);
-        const code = assertStockCode(body?.code);
-        const comment = (body.comment ?? "").trim();
-        if (comment === "") {
-            await this.repo.remove(date, code); // 빈 코멘트 = 삭제(도메인 규약)
-        } else {
-            const entry: DailyComment = { date, stockCode: code, comment, author: AUTHOR };
-            await this.repo.upsert(entry);
-        }
+        await this.comments.save(assertYmd(body?.date), assertStockCode(body?.code), body.comment ?? "");
         return { ok: true };
     }
 }

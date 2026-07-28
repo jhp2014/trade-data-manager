@@ -25,6 +25,16 @@ export class DrizzleDailyCommentRepository implements DailyCommentReader, DailyC
             .where(and(eq(dailyComments.tradeDate, date), eq(dailyComments.stockCode, stockCode)));
     }
 
+    async getOne(date: string, stockCode: string): Promise<DailyComment | null> {
+        // 자연키 (date, stockCode) 라 최대 1행 — limit(1) 로 인덱스 조회에서 끝낸다.
+        const rows = await this.db
+            .select()
+            .from(dailyComments)
+            .where(and(eq(dailyComments.tradeDate, date), eq(dailyComments.stockCode, stockCode)))
+            .limit(1);
+        return rows.length > 0 ? rowToDailyComment(rows[0]) : null;
+    }
+
     async getByDate(date: string): Promise<DailyComment[]> {
         const rows = await this.db
             .select()

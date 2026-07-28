@@ -18,7 +18,7 @@ import {
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENT_REPO, RANK_REPO, RANK_MINUTES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, RANK_MINUTES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
@@ -40,6 +40,8 @@ import { MasterCache } from "./board/masterCache.js";
 import { DayBoards } from "./board/dayBoards.js";
 import { CachedMembership } from "./board/cachedMembership.js";
 import { DataDatesCache } from "./board/dataDatesCache.js";
+import { ThemeAssignment } from "./board/themeAssignment.js";
+import { DailyComments } from "./curation/dailyComments.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
@@ -111,6 +113,13 @@ const boardProviders: Provider[] = [
         inject: [MARKET_POOL, CURATION_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
     },
     {
+        // 테마 배정 유스케이스 — 시트 쓰기 + 중복 skip + 캐시 무효화 순서를 소유(컨트롤러는 검증만).
+        provide: THEME_ASSIGNMENT,
+        useFactory: (membership: CachedMembership, master: MasterCache, store: SheetThemeMembershipAdapter): ThemeAssignment =>
+            new ThemeAssignment(membership, master, store),
+        inject: [MEMBERSHIP_CACHE, MASTER_CACHE, THEME_MEMBERSHIP_STORE],
+    },
+    {
         // 데이터(분봉) 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커.
         // 파일 캐시: cold 전체 distinct 1회 → warm 파일 read-through, 하루 1회 꼬리 증분(파티션 프루닝).
         // 소스가 일봉(~2년 딥 백필)이면 장중데이터 없는 과거일까지 노출되므로 분봉 실보유일로 소스 교체.
@@ -134,9 +143,10 @@ const curationProviders: Provider[] = [
         inject: [CURATION_POOL],
     },
     {
-        // 당일 코멘트 읽기·쓰기(사람 편집) — repo 를 그대로 노출(getByDate/upsert/remove). 보드도 같은 테이블을 읽지만 그건 DayBoards 가 자체 인스턴스로.
-        provide: DAILY_COMMENT_REPO,
-        useFactory: (pool: Pool) => new DrizzleDailyCommentRepository(createDb(pool)),
+        // 당일 코멘트 유스케이스 — 빈값=삭제 규약과 author 소유(env). 보드도 같은 테이블을 읽지만 그건 DayBoards 가 자체 인스턴스로.
+        provide: DAILY_COMMENTS,
+        useFactory: (pool: Pool): DailyComments =>
+            new DailyComments(new DrizzleDailyCommentRepository(createDb(pool)), process.env.CURATION_AUTHOR ?? "jonghun"),
         inject: [CURATION_POOL],
     },
     {
