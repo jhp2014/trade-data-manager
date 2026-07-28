@@ -1,14 +1,14 @@
 // 순위 필터 결과 훅 — 배치 보드가 store 에 건 밴드(rankBands)를 받아 타점 집합·경로·통계를 뽑는다.
 // 분석 대시보드(히트맵·시뮬)와 결과 목록 패널이 **같은 결과**를 쓰도록 한 곳에서 도출(드리프트 방지).
 import { useMemo } from "react";
-import { useQuery, useQueries } from "@tanstack/react-query";
-import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../../api/queries.js";
+import { useQuery } from "@tanstack/react-query";
+import { allPointsQuery } from "../../api/queries.js";
+import { useRankAxes } from "./useRankAxes.js";
 import { filterPoints, type AxisBand } from "./bandFilter.js";
 import { computePathStats, type PathStats } from "./pathStats.js";
 import { useRankPaths } from "./useRankPaths.js";
 import { pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
-import type { PlacedPoint } from "@trade-data-manager/wire";
 import type { RankPoint } from "../../api/rank.js";
 import type { RankPointPath } from "../../api/rankPaths.js";
 
@@ -35,14 +35,7 @@ export function useRankFilterResult(): RankResult {
     const timeRanges = useWorkbench((s) => s.timeRanges);
     const rankHorizon = useWorkbench((s) => s.rankHorizon);
 
-    const axesQ = useQuery(rankAxesQuery());
-    const axes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
-    const lineQs = useQueries({ queries: axes.map((a) => axisLineQuery(a.id)) });
-    const linesByAxis = useMemo(() => {
-        const m = new Map<string, PlacedPoint[]>();
-        axes.forEach((a, i) => m.set(a.id, lineQs[i]?.data ?? []));
-        return m;
-    }, [axes, lineQs]);
+    const { axes, linesByAxis } = useRankAxes();
 
     const pointsQ = useQuery(allPointsQuery());
     const nameOf = useMemo(() => {

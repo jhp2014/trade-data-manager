@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable,
     type DragStartEvent, type DragMoveEvent, type DragEndEvent,
 } from "@dnd-kit/core";
-import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
+import { axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { placePoint, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildAxisIndex, buildSheetRows, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
+import { useRankAxes } from "./rank/useRankAxes.js";
+import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
@@ -18,7 +20,7 @@ import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
-import type { PlacedPoint, ReviewPointListItem } from "@trade-data-manager/wire";
+import type { ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Excursion } from "./rank/pathStats.js";
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
@@ -115,33 +117,14 @@ export function RankSheetPanel(): JSX.Element {
     const pinned = useWorkbench((s) => s.pinned);
     const togglePin = useWorkbench((s) => s.togglePin);
     const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
-    const orderPref = useWorkbench((s) => s.rankAxisOrder);
-    const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
 
-    // ── 축 + 라인 → 순위 인덱스(배치 보드와 같은 캐시 공유).
-    const axesQ = useQuery(rankAxesQuery());
-    const rawAxes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
-    const axes = useMemo(() => {
-        const idx = new Map(orderPref.map((id, i) => [id, i]));
-        return [...rawAxes].sort((a, b) => (idx.get(a.id) ?? Infinity) - (idx.get(b.id) ?? Infinity) || (a.id < b.id ? -1 : 1));
-    }, [rawAxes, orderPref]);
-    const axisIds = useMemo(() => axes.map((a) => a.id), [axes]);
-    // 열 재정렬(양방향 동기화) — 드래그한 축을 대상 축 앞에 삽입, 전체 순서를 store 로.
-    const reorderAxis = (draggedId: string, targetId: string): void => {
-        if (draggedId === targetId) return;
-        const ids = axes.map((a) => a.id);
-        const from = ids.indexOf(draggedId), to = ids.indexOf(targetId);
-        if (from < 0 || to < 0) return;
-        ids.splice(to, 0, ids.splice(from, 1)[0]);
-        setRankAxisOrder(ids);
-    };
-
-    const lineQs = useQueries({ queries: axes.map((a) => axisLineQuery(a.id)) });
+    // ── 축 + 라인(배치 보드와 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
+    const { axes, axisIds, linesByAxis, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes();
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
-        axes.forEach((a, i) => m.set(a.id, buildAxisIndex((lineQs[i]?.data ?? []) as PlacedPoint[])));
+        for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));
         return m;
-    }, [axes, lineQs]);
+    }, [linesByAxis]);
 
     // ── 전체 타점(행 원천) + 기간.
     const pointsQ = useQuery(allPointsQuery());
@@ -244,7 +227,7 @@ export function RankSheetPanel(): JSX.Element {
     }, []);
     // 스크롤 위치 세션 복원 — 데이터가 그려진(표 렌더된) 뒤 1회. onScroll 로 sheetScroll 에 저장한다.
     const restoredRef = useRef(false);
-    const dataReady = !axesQ.isLoading && !pointsQ.isLoading && axes.length > 0;
+    const dataReady = !axesLoading && !pointsQ.isLoading && axes.length > 0;
     useEffect(() => {
         if (!dataReady || restoredRef.current) return;
         const el = scrollRef.current;
@@ -320,9 +303,8 @@ export function RankSheetPanel(): JSX.Element {
         if (!th) return null;
         const cr = th.getBoundingClientRect();
         if (clientX < cr.left || clientX > cr.right) return null; // 정렬 축 열 위에서만
-        const x0 = cr.left, x1 = cr.right;
-        // 정렬 축에 배치된 행(시각 순서 = mainRows) + 기하.
-        const placed: { slotId: string; orderKey: number; top: number; bottom: number; centerY: number }[] = [];
+        // DOM 측정만 여기서 — 판정 규칙(타이 ±px·타이그룹 합류·prev/next 방향)은 rankGeometry(순수, 테스트됨).
+        const placed: RowGeom[] = [];
         for (const row of mainRows) {
             const cell = row.cells[sortAxisId];
             if (!cell) continue;
@@ -331,24 +313,7 @@ export function RankSheetPanel(): JSX.Element {
             const rr = tr.getBoundingClientRect();
             placed.push({ slotId: cell.slotId, orderKey: cell.orderKey, top: rr.top, bottom: rr.bottom, centerY: rr.top + rr.height / 2 });
         }
-        // 타이 — 가장 가까운 행 중심 ±8px.
-        let nearest: (typeof placed)[number] | null = null;
-        for (const p of placed) if (!nearest || Math.abs(p.centerY - clientY) < Math.abs(nearest.centerY - clientY)) nearest = p;
-        if (nearest && Math.abs(nearest.centerY - clientY) <= 8)
-            return { target: { kind: "slot", slotId: nearest.slotId }, tie: true, y: nearest.centerY, rowTop: nearest.top, rowBottom: nearest.bottom, x0, x1 };
-        // between — 포인터 위/아래로 붙는 배치 행. dir 로 orderKey 방향 해석(dir=1: 위=강=큰 orderKey).
-        let above: (typeof placed)[number] | undefined, below: (typeof placed)[number] | undefined;
-        for (const p of placed) {
-            if (p.centerY < clientY && (!above || p.centerY > above.centerY)) above = p;
-            if (p.centerY > clientY && (!below || p.centerY < below.centerY)) below = p;
-        }
-        // 두 이웃이 같은 slot(타이 그룹 내부에 떨어뜨림) → 사이에 새 slot 못 만듦(같은 order_key). 그 타이에 합류.
-        if (above && below && above.slotId === below.slotId)
-            return { target: { kind: "slot", slotId: above.slotId }, tie: true, y: (above.centerY + below.centerY) / 2, rowTop: above.top, rowBottom: below.bottom, x0, x1 };
-        const prev = sort.dir === 1 ? below : above; // prev = 더 약한(작은 orderKey) 이웃
-        const next = sort.dir === 1 ? above : below; // next = 더 강한(큰 orderKey) 이웃
-        const lineY = above && below ? (above.bottom + below.top) / 2 : above ? above.bottom : below ? below.top : (cr.top + cr.bottom) / 2;
-        return { target: { kind: "between", prevSlotId: prev?.slotId, nextSlotId: next?.slotId }, tie: false, y: lineY, x0, x1 };
+        return { ...computeRowDrop(placed, clientY, sort.dir, (cr.top + cr.bottom) / 2), x0: cr.left, x1: cr.right };
     };
 
     const onDragStart = (ev: DragStartEvent): void => {
@@ -440,7 +405,7 @@ export function RankSheetPanel(): JSX.Element {
         );
     };
 
-    if (axesQ.isLoading || pointsQ.isLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
+    if (axesLoading || pointsQ.isLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
     if (axes.length === 0) return <Wrap><div style={muted}>축이 없습니다. 배치 보드에서 축을 먼저 만들어 주세요.</div></Wrap>;
 
     return (

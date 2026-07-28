@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable,
     type DragStartEvent, type DragMoveEvent, type DragEndEvent,
 } from "@dnd-kit/core";
-import { useWorkbench, type RankBand } from "../store/workbench.js";
-import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
+import { useWorkbench, type RankBand, type DateRange, type TimeRange } from "../store/workbench.js";
+import { axisLineQuery, allPointsQuery, rankAxesQuery } from "../api/queries.js";
 import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxis, type RankPoint, type RankTarget } from "../api/rank.js";
+import { useRankAxes } from "./rank/useRankAxes.js";
+import { PAD, LINE_PAD, assemble, computeLaneDrop, displayU, isZoomed, slotFrac, zoomAt, type Slot, type View } from "./rank/rankGeometry.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { Sep } from "../components/ControlChrome.js";
 import { AnchoredPopover } from "../ui/Dialog.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
-import { AxisBoundMenu, FILTER_COLOR } from "./rank/AxisBoundMenu.js";
-import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
+import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
+import { FilterRail } from "./rank/FilterRail.js";
+import { ACTIVE, ACTIVE_SOFT, CurrentMarker, FILTER, HOVER, HOVER_SOFT, LABEL_W, RangeBracket, ScaleEnd, SortBadge } from "./rank/rankRailChrome.js";
+import type { RankAxis } from "@trade-data-manager/wire";
 
 // 현재 타점 위치 마커(2D 물방울 핀) 애니메이션 — 전환 시 드롭 1회 + 미세 부유. 화면에 하나뿐이라 과하지 않음.
 const PIN_KF_ID = "rank-cur-pin-kf";
@@ -25,17 +29,6 @@ if (typeof document !== "undefined" && !document.getElementById(PIN_KF_ID)) {
     document.head.appendChild(st);
 }
 
-function CurrentMarker({ color }: { color: string }): JSX.Element {
-    return (
-        <span className="rank-cur-pin" aria-hidden style={{ position: "absolute", left: "50%", bottom: "calc(100% + 3px)", width: 16, height: 21, transform: "translateX(-50%)", pointerEvents: "none", zIndex: 6 }}>
-            <svg width="16" height="21" viewBox="0 0 26 34">
-                <path d="M13 3.6 C7.5 3.6 3.6 8 3.6 12.6 C3.6 18.4 13 30.4 13 30.4 C13 30.4 22.4 18.4 22.4 12.6 C22.4 8 18.5 3.6 13 3.6 Z" fill={color} />
-                <circle cx="13" cy="12.4" r="4.4" fill="var(--bg-primary)" />
-            </svg>
-        </span>
-    );
-}
-
 // 순위 배치 보드 — 멀티축 가로 레인. 관례: 오른쪽 = +좋음/강함, 왼쪽 = −나쁨/약함(사용자가 일관 입력).
 //  · slot = 순위선 한 위치(타이 = 여러 타점 한 slot). PlacedPoint[](orderKey asc) → slotId 로 묶어 조립.
 //  · 활성 타점(현재 종목, focus.activePoint) = 스팟에 핑크 강조, 활성이 배치된 축은 레인 배경 틴트로 구분.
@@ -43,23 +36,7 @@ function CurrentMarker({ color }: { color: string }): JSX.Element {
 //  · 점 클릭 → 그 자리 타점 리스트 팝오버(행 클릭=goToPoint · +담기 · × 이 축 배치해제).
 //  · Ctrl+휠 = 커서 지점 확대(레인별) · 더블클릭/⟲ = 원위치 · 그냥 휠 = 세로 스크롤 · 연결 = 활성 프로파일 오버레이.
 
-const ACTIVE = "#0ea5e9";                        // 활성 스팟 — 밝은 스카이블루(푸른 계열), 글로우로 확 대비.
-const ACTIVE_SOFT = "rgba(14,165,233,0.32)";
-const HOVER = "#f59e0b";                          // 시트↔레일 링크 호버 — 앰버(활성 sky·필터 red 와 확 구분). 얇은 틱이라 색+글로우.
-const HOVER_SOFT = "rgba(245,158,11,0.28)";
-const FILTER = FILTER_COLOR;                      // 필터 밴드 경계(우클릭 지정) — 붉은 삼각 헤드 + 라인 채색(밴드 배경 대신). 메뉴와 같은 빨강.
 
-// 정렬 배지 — 시트에서 이 레일이 정렬 기준일 때 라벨 옆에 세련되게. 방향(강↑/약↓) 화살표.
-function SortBadge({ dir }: { dir: 1 | -1 }): JSX.Element {
-    return (
-        <span title="시트 정렬 기준" style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 2, height: 15, padding: "0 5px", borderRadius: 7, background: "var(--accent-soft)", color: "var(--accent-primary)", fontSize: 9, fontWeight: 700, letterSpacing: "0.02em", lineHeight: 1 }}>
-            정렬 <span style={{ fontSize: 8 }}>{dir === 1 ? "▲" : "▼"}</span>
-        </span>
-    );
-}
-const PAD = 52;                                // 스팟 좌우 여백(px) — 끝 스팟이 라인 끝 가까이(오버런 = PAD−LINE_PAD 만큼만).
-const LINE_PAD = 32;                              // 축 라인 여백(고정, PAD와 독립) — 라인 끝을 패널 가장자리 가까이(오버런 = PAD−LINE_PAD).
-const LABEL_W = 138;
 const ROW_H = 58;
 // 시간 레일 도메인 08:00~20:00.
 const T0 = 8 * 60, T1 = 20 * 60;
@@ -67,23 +44,7 @@ const toMin = (hm: string): number => Number(hm.slice(0, 2)) * 60 + Number(hm.sl
 const timeFrac = (hm: string): number => Math.max(0, Math.min(1, (toMin(hm) - T0) / (T1 - T0)));
 const fracTime = (f: number): string => { const m = Math.max(T0, Math.min(T1, Math.round((T0 + f * (T1 - T0)) / 5) * 5)); return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 
-interface Slot { slotId: string; orderKey: number; points: RankPoint[]; }
-type View = { v0: number; v1: number };
 interface DropInfo { axisId: string; leftPct: number; tie: boolean; target: RankTarget; }
-
-const slotFrac = (i: number, s: number): number => (s <= 1 ? 0.5 : i / (s - 1));
-const displayU = (frac: number, v: View): number => (frac - v.v0) / (v.v1 - v.v0);
-const isZoomed = (v: View): boolean => v.v0 > 0.001 || v.v1 < 0.999;
-
-function assemble(placed: PlacedPoint[]): Slot[] {
-    const m = new Map<string, Slot>();
-    for (const p of placed) {
-        let s = m.get(p.slotId);
-        if (!s) { s = { slotId: p.slotId, orderKey: p.orderKey, points: [] }; m.set(p.slotId, s); }
-        s.points.push({ stockCode: p.stockCode, date: p.date, time: p.time });
-    }
-    return [...m.values()].sort((a, b) => a.orderKey - b.orderKey);
-}
 
 export function RankPanel(): JSX.Element {
     const activePoint = useWorkbench((s) => s.activePoint);
@@ -99,35 +60,17 @@ export function RankPanel(): JSX.Element {
     // 링크 공유(시트와 양방향) — 호버·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
-    const orderPref = useWorkbench((s) => s.rankAxisOrder);
-    const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
     const rankSort = useWorkbench((s) => s.rankSort); // 시트 정렬 기준 → 해당 레일 하이라이트 + 배지.
     const [filterMenu, setFilterMenu] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
     const qc = useQueryClient();
 
-    const axesQ = useQuery(rankAxesQuery());
-    const rawAxes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
-
-    // 축 순서 — store 공유(배치↔시트 양방향, localStorage 영속). pref 에 없는(새) 축은 뒤로.
-    const axes = useMemo(() => {
-        const idx = new Map(orderPref.map((id, i) => [id, i]));
-        return [...rawAxes].sort((a, b) => (idx.get(a.id) ?? Infinity) - (idx.get(b.id) ?? Infinity) || (a.id < b.id ? -1 : 1));
-    }, [rawAxes, orderPref]);
-    const reorder = (draggedId: string, targetId: string): void => {
-        if (draggedId === targetId) return;
-        const ids = axes.map((a) => a.id);
-        const from = ids.indexOf(draggedId), to = ids.indexOf(targetId);
-        if (from < 0 || to < 0) return;
-        ids.splice(to, 0, ids.splice(from, 1)[0]);
-        setRankAxisOrder(ids);
-    };
-
-    const lineQs = useQueries({ queries: axes.map((a) => axisLineQuery(a.id)) });
+    // 축 목록·배치줄·순서는 시트와 공유(useRankAxes). 여기선 레인이 쓸 slot 묶음으로만 빚는다.
+    const { axes, linesByAxis: rawLines, isLoading: axesLoading, reorder } = useRankAxes();
     const linesByAxis = useMemo(() => {
         const m = new Map<string, Slot[]>();
-        axes.forEach((a, i) => m.set(a.id, assemble(lineQs[i]?.data ?? [])));
+        for (const [axisId, placed] of rawLines) m.set(axisId, assemble(placed));
         return m;
-    }, [axes, lineQs]);
+    }, [rawLines]);
 
     const pointsQ = useQuery(allPointsQuery());
     const nameByCode = useMemo(() => {
@@ -176,24 +119,13 @@ export function RankPanel(): JSX.Element {
     const trackRefs = useRef<Map<string, HTMLElement>>(new Map());
     const [drop, setDrop] = useState<DropInfo | null>(null);
 
+    // DOM 측정만 여기서 — 판정 규칙(타이 ±px·between 이웃)은 rankGeometry(순수, 테스트됨).
     const computeDrop = (axisId: string, clientX: number): DropInfo | null => {
         const el = trackRefs.current.get(axisId);
         if (!el) return null;
         const rect = el.getBoundingClientRect();
-        const v = viewOf(axisId);
-        const slots = linesByAxis.get(axisId) ?? [];
-        const trackW = rect.width - 2 * PAD;
-        const uPtr = (clientX - rect.left - PAD) / trackW;
-        const nodes = slots.map((s, i) => ({ s, u: displayU(slotFrac(i, slots.length), v) }));
-        let near: { s: Slot; u: number; d: number } | null = null;
-        for (const n of nodes) {
-            const d = Math.abs(rect.left + PAD + n.u * trackW - clientX);
-            if (near == null || d < near.d) near = { s: n.s, u: n.u, d };
-        }
-        if (near && near.d <= 14) return { axisId, leftPct: near.u * 100, tie: true, target: { kind: "slot", slotId: near.s.slotId } };
-        let prev: Slot | undefined, next: Slot | undefined;
-        for (const n of nodes) { if (n.u <= uPtr) prev = n.s; else { next = n.s; break; } }
-        return { axisId, leftPct: Math.max(-8, Math.min(108, uPtr * 100)), tie: false, target: { kind: "between", prevSlotId: prev?.slotId, nextSlotId: next?.slotId } };
+        const drop = computeLaneDrop(linesByAxis.get(axisId) ?? [], viewOf(axisId), clientX - rect.left, rect.width);
+        return { axisId, ...drop };
     };
 
     // 드래그 소스 = 담기 칩(chip:) | 현재 타점(cur:). 현재가 담기에도 있으면 두 요소 공존 → id 네임스페이스로 중복 회피.
@@ -243,14 +175,14 @@ export function RankPanel(): JSX.Element {
                 <RankFilterBar axes={axes} dateBounds={dateBounds} />
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
-                    {axesQ.isLoading && <div style={muted}>불러오는 중…</div>}
+                    {axesLoading && <div style={muted}>불러오는 중…</div>}
                     {/* 날짜·시간 필터 레일 — 축 레인 위(시트 열 순서와 통일). 값 스케일·틱+라벨 드래그로 구간 설정/조정. */}
                     {dateBounds && (
-                        <FilterRail label="날짜" ranges={dateRanges} toFrac={dateFrac} fromFrac={fracDate} fmt={(v) => v.slice(2).replace(/-/g, ".")}
+                        <FilterRail<DateRange> label="날짜" ranges={dateRanges} toFrac={dateFrac} fromFrac={fracDate} fmt={(v) => v.slice(2).replace(/-/g, ".")}
                             minLabel={dateBounds.min.slice(2).replace(/-/g, ".")} maxLabel={dateBounds.max.slice(2).replace(/-/g, ".")} marker={activePoint?.date ?? null}
                             sortDir={rankSort?.target === "date" ? rankSort.dir : null} onChange={setDateRanges} />
                     )}
-                    <FilterRail label="시간" ranges={timeRanges} toFrac={timeFrac} fromFrac={fracTime} fmt={(v) => v}
+                    <FilterRail<TimeRange> label="시간" ranges={timeRanges} toFrac={timeFrac} fromFrac={fracTime} fmt={(v) => v}
                         minLabel="08:00" maxLabel="20:00" marker={activePoint ? activePoint.time.slice(0, 5) : null}
                         sortDir={rankSort?.target === "time" ? rankSort.dir : null} onChange={setTimeRanges} />
                     <div style={{ position: "relative" }}>
@@ -409,13 +341,7 @@ function Lane({
             e.preventDefault();
             const rect = el.getBoundingClientRect();
             const t = Math.max(0, Math.min(1, (e.clientX - rect.left - PAD) / (rect.width - 2 * PAD)));
-            const width = view.v1 - view.v0;
-            const anchor = view.v0 + t * width;
-            const nw = Math.max(0.1, Math.min(1, width * (e.deltaY < 0 ? 0.82 : 1.22)));
-            let v0 = anchor - t * nw, v1 = v0 + nw;
-            if (v0 < 0) { v0 = 0; v1 = nw; }
-            if (v1 > 1) { v1 = 1; v0 = 1 - nw; }
-            setView({ v0, v1 });
+            setView(zoomAt(view, t, e.deltaY));
         };
         el.addEventListener("wheel", onWheel, { passive: false });
         return () => el.removeEventListener("wheel", onWheel);
@@ -532,30 +458,6 @@ function Lane({
     );
 }
 
-// 끝 스케일 마커 — 라인 양 끝의 수직 눈금선(|) + 아래 −/+ 라벨(스케일 숫자처럼).
-function ScaleEnd({ side }: { side: "left" | "right" }): JSX.Element {
-    const isL = side === "left";
-    const anchor: CSSProperties = isL ? { left: LINE_PAD, transform: "translateX(-50%)" } : { right: LINE_PAD, transform: "translateX(50%)" };
-    return (
-        <>
-            <span style={{ position: "absolute", top: "50%", marginTop: -6.5, width: 2, height: 13, background: "var(--text-tertiary)", ...anchor }} />
-            <span style={{ position: "absolute", top: "calc(50% + 8px)", fontSize: 13, fontWeight: 700, lineHeight: 1, color: "var(--text-tertiary)", ...anchor }}>{isL ? "−" : "+"}</span>
-        </>
-    );
-}
-
-// 필터 범위 괄호 — 경계 spot 바깥으로 살짝 벗어난 대괄호([ = 이상 경계 / ] = 이하 경계). spot과 겹치지 않게.
-function RangeBracket({ u, side, pad = PAD }: { u: number; side: "open" | "close"; pad?: number }): JSX.Element {
-    const pos = `calc(${pad}px + ${u} * (100% - ${2 * pad}px))`;
-    const common: CSSProperties = {
-        position: "absolute", top: "50%", transform: "translateY(-50%)", width: 6, height: 20,
-        border: `2px solid ${FILTER}`, pointerEvents: "none", zIndex: 5,
-    };
-    return side === "open"
-        ? <span style={{ ...common, left: `calc(${pos} - 14px)`, borderRight: "none", borderRadius: "2px 0 0 2px" }} />
-        : <span style={{ ...common, left: `calc(${pos} + 8px)`, borderLeft: "none", borderRadius: "0 2px 2px 0" }} />;
-}
-
 // ── 하단 축 추가 행(필터 추가 방식) ────────────────────────────────────────
 function AddAxisRow({ onCreate }: { onCreate: (name: string, scope: "point" | "day") => void }): JSX.Element {
     const [open, setOpen] = useState(false);
@@ -579,112 +481,6 @@ function AddAxisRow({ onCreate }: { onCreate: (name: string, scope: "point" | "d
             <button onClick={() => setOpen(false)} style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13 }}>×</button>
         </div>
     );
-}
-
-// ── 날짜·시간 필터 레일 — 축 레인과 동일 시각언어(얇은 2px 선·−/+ 끝·틱·대괄호). 빨강=포함, 필터 없음=전체 빨강.
-//    구조: 상단=도메인 끝값(min/max) · 하단=필터 경계값(빨강)+현재종목 마커값(파랑). 끝값이 위, 선택값이 아래라 구분이 쉽다.
-//    빈 트랙 드래그=새 구간 · 경계 값 라벨 드래그=조정 · 라벨 × = 그 구간 삭제(구간 추가·삭제는 칩 편집에서도).
-const NEAR = 0.03; // 필터 경계가 끝/마커와 겹치면 필터 우선.
-function FilterRail<T extends { from: string; to: string }>({ label, ranges, toFrac, fromFrac, fmt, minLabel, maxLabel, marker, sortDir, onChange }: {
-    label: string; ranges: T[]; toFrac: (v: string) => number; fromFrac: (f: number) => string; fmt: (v: string) => string; minLabel: string; maxLabel: string; marker: string | null; sortDir: 1 | -1 | null; onChange: (ranges: T[]) => void;
-}): JSX.Element {
-    const ref = useRef<HTMLDivElement | null>(null);
-    const dragRef = useRef<{ kind: "new"; start: number } | { kind: "edit"; i: number; edge: "from" | "to" } | null>(null);
-    const [preview, setPreview] = useState<T[] | null>(null);
-    const shown = preview ?? ranges;
-    const fracX = (clientX: number): number => { const el = ref.current; if (!el) return 0; const rect = el.getBoundingClientRect(); return Math.max(0, Math.min(1, (clientX - rect.left - LINE_PAD) / (rect.width - 2 * LINE_PAD))); };
-    const norm = (r: T): T => (r.from <= r.to ? r : ({ ...r, from: r.to, to: r.from }));
-    const onDown = (e: ReactPointerEvent): void => {
-        if (e.button !== 0 || e.target !== e.currentTarget) return; // 자식(라벨) 위는 편집, 빈 트랙만 새 구간
-        dragRef.current = { kind: "new", start: fracX(e.clientX) };
-        e.currentTarget.setPointerCapture(e.pointerId);
-    };
-    const onLabelDown = (e: ReactPointerEvent, i: number, edge: "from" | "to"): void => {
-        e.stopPropagation(); if (e.button !== 0) return;
-        dragRef.current = { kind: "edit", i, edge };
-        ref.current?.setPointerCapture(e.pointerId);
-    };
-    const onMove = (e: ReactPointerEvent): void => {
-        const d = dragRef.current; if (!d) return;
-        const f = fracX(e.clientX);
-        if (d.kind === "new") setPreview([...ranges, { from: fromFrac(Math.min(d.start, f)), to: fromFrac(Math.max(d.start, f)) } as T]);
-        else setPreview(ranges.map((r, idx) => (idx === d.i ? { ...r, [d.edge]: fromFrac(f) } : r)));
-    };
-    const onUp = (): void => {
-        const d = dragRef.current, p = preview; dragRef.current = null; setPreview(null);
-        if (!d || !p) return;
-        if (d.kind === "new" && Math.abs(toFrac(p[p.length - 1].from) - toFrac(p[p.length - 1].to)) < 0.01) return; // 클릭 = 무시
-        onChange(p.map(norm));
-    };
-    const at = (f: number): string => `calc(${LINE_PAD}px + ${f} * (100% - ${2 * LINE_PAD}px))`;
-    const atPx = (f: number, off: number): string => `calc(${LINE_PAD}px + ${f} * (100% - ${2 * LINE_PAD}px) + ${off}px)`;
-    const edges = shown.flatMap((r) => [toFrac(r.from), toFrac(r.to)]);
-    const nearLeft = edges.some((f) => f < NEAR);         // 끝(−/+) 겹침 → 필터 우선(끝 숨김)
-    const nearRight = edges.some((f) => f > 1 - NEAR);
-    const mFrac = marker != null ? toFrac(marker) : null; // 현재 종목 위치
-    const mNearLeft = mFrac != null && mFrac < 0.1;   // 마커 라벨이 상단 끝값과 겹침 → 마커 우선(끝값 숨김)
-    const mNearRight = mFrac != null && mFrac > 0.9;
-    const full = shown.length === 0;
-    return (
-        <div style={{ display: "flex", alignItems: "center", height: 50, borderBottom: "1px solid var(--border-subtle)", background: sortDir != null ? "var(--bg-secondary)" : "transparent" }}>
-            <div style={{ width: LABEL_W, flexShrink: 0, padding: "0 8px 0 6px", display: "flex", alignItems: "center", gap: 4 }}>
-                {/* 비활성 그랩(정렬 불가, 축 레인과 시각 통일용) */}
-                <span aria-hidden style={{ fontSize: 12, lineHeight: 1, flexShrink: 0, color: "var(--text-tertiary)", opacity: 0.3 }}>⠿</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{label}</span>
-                {sortDir != null && <SortBadge dir={sortDir} />}
-            </div>
-            <div ref={ref} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} style={{ position: "relative", flex: 1, height: "100%", cursor: "default", userSelect: "none", WebkitUserSelect: "none" }}>
-                {/* 기준선 — 얇은 2px(축 레인과 동일). 필터 없음 = 전체 빨강(모두 포함). */}
-                <div style={{ position: "absolute", left: LINE_PAD, right: LINE_PAD, top: "50%", height: 2, transform: "translateY(-50%)", background: full ? FILTER : "var(--border-default)", boxShadow: full ? "0 0 7px 1px rgba(226,75,74,0.5)" : "none", pointerEvents: "none" }} />
-                {/* 상단 = 도메인 끝값(마커 라벨과 겹치면 마커 우선으로 숨김) */}
-                {!mNearLeft && <span style={topEnd(true)}>{minLabel}</span>}
-                {!mNearRight && <span style={topEnd(false)}>{maxLabel}</span>}
-                {/* 하단 = −/+ 끝(경계가 끝에 붙으면 필터 우선으로 숨김) */}
-                {!nearLeft && <ScaleEnd side="left" />}
-                {!nearRight && <ScaleEnd side="right" />}
-
-                {shown.map((r, i) => {
-                    const a = toFrac(r.from), b = toFrac(r.to);
-                    const lo = Math.min(a, b), hi = Math.max(a, b);
-                    return (
-                        <div key={i}>
-                            {/* 채색 선 */}
-                            <div style={{ position: "absolute", top: "50%", height: 2, transform: "translateY(-50%)", left: at(lo), width: `calc(${hi - lo} * (100% - ${2 * LINE_PAD}px))`, background: FILTER, boxShadow: "0 0 7px 1px rgba(226,75,74,0.7)", pointerEvents: "none", zIndex: 1 }} />
-                            {/* 경계 = 붉은 수직 틱 + 값 라벨(틱 아래 중앙 · 드래그로 조정) */}
-                            {(["from", "to"] as const).map((edge) => {
-                                const f = edge === "from" ? a : b;
-                                return (
-                                    <div key={edge}>
-                                        <span style={{ position: "absolute", top: "50%", left: at(f), transform: "translate(-50%,-50%)", width: 3, height: 14, borderRadius: 1.5, background: FILTER, pointerEvents: "none", zIndex: 3 }} />
-                                        <span onPointerDown={(e) => onLabelDown(e, i, edge)} title="드래그해 값 조정"
-                                            style={{ position: "absolute", top: "calc(50% + 8px)", left: at(f), transform: "translateX(-50%)", fontSize: 9.5, fontWeight: 700, color: FILTER, cursor: "ew-resize", whiteSpace: "nowrap", touchAction: "none", userSelect: "none", zIndex: 5 }}>{fmt(r[edge])}</span>
-                                    </div>
-                                );
-                            })}
-                            {/* 삭제 × = 구간 상단 중앙 */}
-                            <button onClick={() => onChange(ranges.filter((_, idx) => idx !== i))} title="이 구간 삭제"
-                                style={{ position: "absolute", top: "calc(50% - 19px)", left: at((a + b) / 2), transform: "translateX(-50%)", border: "none", background: "transparent", color: FILTER, cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 0, zIndex: 5 }}>×</button>
-                        </div>
-                    );
-                })}
-
-                {/* 현재 종목 마커(축의 현재 아이콘과 동일) — 핀은 프랙 위치, 값 라벨은 상단 행(도메인 끝값과 같은 레벨)에 핀 옆으로(중앙 넘으면 왼쪽, 아니면 오른쪽) → 하단 필터값과 줄이 갈려 안 겹침. */}
-                {mFrac != null && (
-                    <>
-                        <div style={{ position: "absolute", left: at(mFrac), top: "50%", width: 0, height: 0, zIndex: 6, pointerEvents: "none" }}>
-                            <CurrentMarker color={ACTIVE} />
-                        </div>
-                        {marker != null && (
-                            <span style={{ position: "absolute", top: "calc(50% - 20px)", left: mFrac > 0.5 ? atPx(mFrac, -8) : atPx(mFrac, 8), transform: mFrac > 0.5 ? "translateX(-100%)" : "none", fontSize: 9.5, fontWeight: 700, color: ACTIVE, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 4 }}>{fmt(marker)}</span>
-                        )}
-                    </>
-                )}
-            </div>
-        </div>
-    );
-}
-function topEnd(left: boolean): CSSProperties {
-    return { position: "absolute", top: "calc(50% - 20px)", [left ? "left" : "right"]: LINE_PAD - 8, fontSize: 9.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" };
 }
 
 // ── 클릭 리스트 팝오버 (종목코드 제외) ─────────────────────────────────────
