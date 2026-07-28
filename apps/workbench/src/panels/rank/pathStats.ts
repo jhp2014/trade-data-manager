@@ -3,6 +3,7 @@
 //  · 분할 MAE(tPeak=MFE 시각 기준): maePre=[0,tPeak] 저가 최저(진입 손절) / maePost=[tPeak,h] 저가 최저(트레일링).
 //  · 시뮬 = 각 경로를 분봉 고가/저가로 걸어 목표(+%)·손절(−%) 중 첫 터치. 같은 바 동시=손절(보수).
 // 히트맵(시간×% 밀도)은 뷰 관심사라 패널에서 bars 로 직접 빈닝한다(여긴 스칼라 통계·시뮬만).
+import { pointKey } from "../../lib/pointKey.js";
 import type { RankPointPath } from "../../api/rankPaths.js";
 
 export interface Excursion {
@@ -31,8 +32,6 @@ export interface SimResult {
     expR: number; // 기대값(R = target/|stop|)
 }
 
-const pk = (p: { stockCode: string; date: string; time: string }): string => `${p.stockCode}|${p.date}|${p.time}`;
-
 function quant(arr: number[], q: number): number {
     const a = arr.slice().sort((x, y) => x - y);
     const idx = (a.length - 1) * q;
@@ -45,7 +44,7 @@ interface Cropped { key: string; bars: RankPointPath["bars"]; }
 // 진입 **이후**(t>0)만. 진입 바(t=0)의 저가/고가는 그 분봉 안 진입 시점 이전 값이라 MFE/MAE·시뮬을
 // 왜곡 → 제외. 경로는 진입 전(음수 t) 궤적도 실어오지만 통계는 진입 다음 바부터 본다.
 function crop(paths: RankPointPath[], horizon: number): Cropped[] {
-    return paths.map((p) => ({ key: pk(p), bars: p.bars.filter((b) => b.t > 0 && b.t <= horizon) })).filter((p) => p.bars.length > 0);
+    return paths.map((p) => ({ key: pointKey(p), bars: p.bars.filter((b) => b.t > 0 && b.t <= horizon) })).filter((p) => p.bars.length > 0);
 }
 
 export function computePathStats(paths: RankPointPath[], horizon: number): PathStats {

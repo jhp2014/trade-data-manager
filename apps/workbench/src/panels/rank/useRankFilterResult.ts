@@ -6,6 +6,7 @@ import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../../api/queries.
 import { filterPoints, type AxisBand } from "./bandFilter.js";
 import { computePathStats, type PathStats } from "./pathStats.js";
 import { useRankPaths } from "./useRankPaths.js";
+import { pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import type { RankPoint } from "../../api/rank.js";
@@ -27,8 +28,6 @@ export interface RankResult {
     nameOf: (code: string) => string;
     metaOf: (key: string) => PointMeta;
 }
-
-const key = (p: { stockCode: string; date: string; time: string }): string => `${p.stockCode}|${p.date}|${p.time}`;
 
 export function useRankFilterResult(): RankResult {
     const rankBands = useWorkbench((s) => s.rankBands);
@@ -53,7 +52,7 @@ export function useRankFilterResult(): RankResult {
     }, [pointsQ.data]);
     const metaOf = useMemo(() => {
         const m = new Map<string, PointMeta>();
-        for (const p of pointsQ.data ?? []) m.set(key(p), { outcome: p.outcome, type: p.type });
+        for (const p of pointsQ.data ?? []) m.set(pointKey(p), { outcome: p.outcome, type: p.type });
         return (k: string): PointMeta => m.get(k) ?? {};
     }, [pointsQ.data]);
 

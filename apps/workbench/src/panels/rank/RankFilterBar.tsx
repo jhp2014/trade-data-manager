@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useDismiss } from "../../ui/useDismiss.js";
 import { useWorkbench } from "../../store/workbench.js";
 import type { DateRange, TimeRange } from "../../store/rankFilterSlice.js";
 
@@ -88,13 +89,10 @@ function summarize(labels: string[]): string {
 // 칩 — 본문 클릭 = 편집 팝오버 토글, ✕ = 해제. 팝오버는 칩 아래에 앵커(바깥 클릭 시 닫힘).
 function FilterChip({ color, label, summary, detail, onClear, children }: { color: string; label: string; summary: string; detail: string; onClear: () => void; children: ReactNode }): JSX.Element {
     const [open, setOpen] = useState(false);
+    // 칩(트리거)까지 감싸는 ref — 칩 자체 클릭은 토글이지 '바깥'이 아니다. 그래서 커서 앵커(AnchoredPopover)가
+    // 아니라 칩에 붙는 위치(absolute)를 유지하고, 해제 규칙만 공용 훅으로.
     const ref = useRef<HTMLSpanElement | null>(null);
-    useEffect(() => {
-        if (!open) return;
-        const h = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-        const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
-        return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
-    }, [open]);
+    useDismiss(ref, () => setOpen(false), open); // 콜백은 훅이 ref 로 잡으므로 memo 불필요
     return (
         <span ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 3, padding: "0 3px 0 0", borderRadius: 12, border: `1px solid ${color}`, background: color + "22" }}>
             <button onClick={() => setOpen((o) => !o)} title={`${detail}${detail ? " · " : ""}클릭해 값 편집`} style={{ display: "inline-block", maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", padding: "2px 4px 2px 8px", border: "none", background: "transparent", color, cursor: "pointer", fontSize: 11.5, whiteSpace: "nowrap", verticalAlign: "middle" }}>{label} · {summary}</button>

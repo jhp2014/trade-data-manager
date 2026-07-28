@@ -4,6 +4,7 @@
 //    미배치("그 축에서 어디 서는지 모름")는 매치 아님 → 탈락.
 //  · coverage = 활성 축 전부에 배치된 타점 모수(밴드 무시). N≤coverage. 교집합 희소성 신뢰도 판단용.
 import type { PlacedPoint } from "@trade-data-manager/wire";
+import { pointKey } from "../../lib/pointKey.js";
 import type { RankPoint } from "../../api/rank.js";
 
 /** 한 축의 활성 밴드 — orderKey 구간(from≤to, 단일 슬롯이면 from===to). */
@@ -18,8 +19,6 @@ export interface FilterResult {
     coverage: number;
 }
 
-const pk = (p: { stockCode: string; date: string; time: string }): string => `${p.stockCode}|${p.date}|${p.time}`;
-
 export function filterPoints(linesByAxis: Map<string, PlacedPoint[]>, bands: AxisBand[]): FilterResult {
     if (bands.length === 0) return { points: [], coverage: 0 };
     const sets = bands.map((b) => {
@@ -27,7 +26,7 @@ export function filterPoints(linesByAxis: Map<string, PlacedPoint[]>, bands: Axi
         const inBand = new Set<string>();
         const meta = new Map<string, RankPoint>();
         for (const pp of linesByAxis.get(b.axisId) ?? []) {
-            const k = pk(pp);
+            const k = pointKey(pp);
             placed.add(k);
             if (!meta.has(k)) meta.set(k, { stockCode: pp.stockCode, date: pp.date, time: pp.time });
             if (pp.orderKey >= b.from && pp.orderKey <= b.to) inBand.add(k);

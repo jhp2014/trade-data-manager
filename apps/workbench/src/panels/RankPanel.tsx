@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable,
@@ -9,9 +8,12 @@ import { useWorkbench, type RankBand } from "../store/workbench.js";
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxis, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
+import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { Sep } from "../components/ControlChrome.js";
+import { AnchoredPopover } from "../ui/Dialog.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
+import { AxisBoundMenu, FILTER_COLOR } from "./rank/AxisBoundMenu.js";
 import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
 
 // 현재 타점 위치 마커(2D 물방울 핀) 애니메이션 — 전환 시 드롭 1회 + 미세 부유. 화면에 하나뿐이라 과하지 않음.
@@ -45,7 +47,7 @@ const ACTIVE = "#0ea5e9";                        // 활성 스팟 — 밝은 스
 const ACTIVE_SOFT = "rgba(14,165,233,0.32)";
 const HOVER = "#f59e0b";                          // 시트↔레일 링크 호버 — 앰버(활성 sky·필터 red 와 확 구분). 얇은 틱이라 색+글로우.
 const HOVER_SOFT = "rgba(245,158,11,0.28)";
-const FILTER = "#e24b4a";                         // 필터 밴드 경계(우클릭 지정) — 붉은 삼각 헤드 + 라인 채색(밴드 배경 대신).
+const FILTER = FILTER_COLOR;                      // 필터 밴드 경계(우클릭 지정) — 붉은 삼각 헤드 + 라인 채색(밴드 배경 대신). 메뉴와 같은 빨강.
 
 // 정렬 배지 — 시트에서 이 레일이 정렬 기준일 때 라벨 옆에 세련되게. 방향(강↑/약↓) 화살표.
 function SortBadge({ dir }: { dir: 1 | -1 }): JSX.Element {
@@ -69,8 +71,6 @@ interface Slot { slotId: string; orderKey: number; points: RankPoint[]; }
 type View = { v0: number; v1: number };
 interface DropInfo { axisId: string; leftPct: number; tie: boolean; target: RankTarget; }
 
-const pk = (p: RankPoint): string => `${p.stockCode}|${p.date}|${p.time}`;
-const parsePk = (s: string): RankPoint => { const [stockCode, date, time] = s.split("|"); return { stockCode, date, time }; };
 const slotFrac = (i: number, s: number): number => (s <= 1 ? 0.5 : i / (s - 1));
 const displayU = (frac: number, v: View): number => (frac - v.v0) / (v.v1 - v.v0);
 const isZoomed = (v: View): boolean => v.v0 > 0.001 || v.v1 < 0.999;
@@ -146,10 +146,10 @@ export function RankPanel(): JSX.Element {
     const pinned = useWorkbench((s) => s.pinned);
     const togglePin = useWorkbench((s) => s.togglePin);
     const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
-    const tray = useMemo(() => pinned.map(parsePk), [pinned]);
-    const inTray = (p: RankPoint): boolean => pinnedSet.has(pk(p));
-    const addToTray = (p: RankPoint): void => { if (!pinnedSet.has(pk(p))) togglePin(pk(p)); };
-    const removeFromTray = (p: RankPoint): void => togglePin(pk(p));
+    const tray = useMemo(() => pinned.map(parsePointKey).filter((p): p is RankPoint => p !== null), [pinned]);
+    const inTray = (p: RankPoint): boolean => pinnedSet.has(pointKey(p));
+    const addToTray = (p: RankPoint): void => { if (!pinnedSet.has(pointKey(p))) togglePin(pointKey(p)); };
+    const removeFromTray = (p: RankPoint): void => togglePin(pointKey(p));
     const activeAsPoint: RankPoint | null = activePoint ? { stockCode: activePoint.code, date: activePoint.date, time: activePoint.time } : null;
 
     const [views, setViews] = useState<Record<string, View>>({});
@@ -158,8 +158,9 @@ export function RankPanel(): JSX.Element {
     const resetView = (id: string): void => setViews((s) => { const n = { ...s }; delete n[id]; return n; });
     const [pop, setPop] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
 
-    const activeMatches = (p: RankPoint): boolean =>
-        !!activePoint && activePoint.code === p.stockCode && activePoint.date === p.date && activePoint.time === p.time;
+    // 활성 타점 키 — ActivePoint 는 필드명이 code 라 pointKeyOf 로 맞춘다(시트의 activeKey 와 같은 문자열).
+    const activeKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
+    const activeMatches = (p: RankPoint): boolean => activeKey !== null && pointKey(p) === activeKey;
 
     const invAxis = (axisId: string): void => void qc.invalidateQueries({ queryKey: axisLineQuery(axisId).queryKey });
     const invAxes = (): void => void qc.invalidateQueries({ queryKey: rankAxesQuery().queryKey });
@@ -199,7 +200,7 @@ export function RankPanel(): JSX.Element {
     const draggedPoint = (id: unknown): RankPoint | null => {
         if (typeof id !== "string") return null;
         const s = id.startsWith("chip:") ? id.slice(5) : id.startsWith("cur:") ? id.slice(4) : null;
-        return s ? parsePk(s) : null;
+        return s ? parsePointKey(s) : null;
     };
     const [dragName, setDragName] = useState<string | null>(null);
     const onDragStart = (e: DragStartEvent): void => {
@@ -302,9 +303,8 @@ export function RankPanel(): JSX.Element {
             {filterMenu && (() => {
                 const ax = axes.find((a) => a.id === filterMenu.axisId);
                 if (!ax) return null;
-                const band = rankBands[filterMenu.axisId];
                 return (
-                    <FilterMenu x={filterMenu.x} y={filterMenu.y} axisName={ax.name} band={band} slotId={filterMenu.slotId}
+                    <AxisBoundMenu anchor={filterMenu} axisName={ax.name} band={rankBands[filterMenu.axisId]} slotId={filterMenu.slotId}
                         onSet={(edge) => { setRankBound(filterMenu.axisId, edge, filterMenu.slotId); setFilterMenu(null); }}
                         onClear={() => { clearRankBand(filterMenu.axisId); setFilterMenu(null); }}
                         onClose={() => setFilterMenu(null)} />
@@ -334,7 +334,7 @@ function TrayLine({ tray, current, nameOf, activeMatches, canAdd, onAddActive, o
                     <Sep />
                 </>
             )}
-            {tray.map((p) => <PointItem key={pk(p)} point={p} name={nameOf(p.stockCode)} active={activeMatches(p)} onGo={() => onGo(p)} onRemove={() => onRemove(p)} />)}
+            {tray.map((p) => <PointItem key={pointKey(p)} point={p} name={nameOf(p.stockCode)} active={activeMatches(p)} onGo={() => onGo(p)} onRemove={() => onRemove(p)} />)}
             <button onClick={onAddActive} disabled={!canAdd} title={canAdd ? "현재 타점을 담기" : "담을 새 타점을 선택하세요"}
                 style={{ flexShrink: 0, border: `1px dashed ${canAdd ? ACTIVE : "var(--border-default)"}`, borderRadius: 4, background: "transparent", color: canAdd ? ACTIVE : "var(--text-tertiary)", cursor: canAdd ? "pointer" : "default", opacity: canAdd ? 1 : 0.5, fontSize: 11.5, fontWeight: 600, padding: "3px 8px", whiteSpace: "nowrap" }}>+ 담기</button>
         </div>
@@ -344,7 +344,7 @@ function TrayLine({ tray, current, nameOf, activeMatches, canAdd, onAddActive, o
 // 담기 라인 항목 — 드래그 소스(칩 전체가 손잡이, 그랩 아이콘 없음). 이름 클릭=이동, × 빼기(둘 다 pointerdown 차단해 드래그와 분리).
 //  칩 전체 클릭=이동, 4px 이상 끌면 드래그(dnd distance 4 자동구분). × 만 pointerdown stop(× 에서 드래그 시작 안 되게).
 function PointItem({ point, name, active, onGo, onRemove }: { point: RankPoint; name: string; active: boolean; onGo: () => void; onRemove?: () => void }): JSX.Element {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `chip:${pk(point)}` });
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `chip:${pointKey(point)}` });
     const stop = (e: ReactPointerEvent): void => e.stopPropagation();
     return (
         <span ref={setNodeRef} {...listeners} {...attributes} onClick={onGo} title="드래그해 레인에 배치 · 클릭=이동"
@@ -361,7 +361,7 @@ function PointItem({ point, name, active, onGo, onRemove }: { point: RankPoint; 
 // 현재 타점 칩 — 담기 라인 선두. 담기 칩과 같은 드래그 소스지만 id 는 cur:{pk}(현재∈담기 중복 회피).
 //  전체(점+이름)가 손잡이. 그냥 클릭(이동 없음)=이동 — dnd distance 4 가 클릭/드래그를 자동 구분하므로 onClick·드래그 공존.
 function CurrentChip({ point, name, onGo }: { point: RankPoint; name: string; onGo: () => void }): JSX.Element {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `cur:${pk(point)}` });
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `cur:${pointKey(point)}` });
     return (
         <span ref={setNodeRef} {...listeners} {...attributes} onClick={onGo} title="현재 타점 — 드래그해 레인에 배치 · 클릭=이동"
             style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, whiteSpace: "nowrap" }}>
@@ -502,7 +502,7 @@ function Lane({
                     const u = displayU(slotFrac(i, slots.length), view);
                     if (u < -0.03 || u > 1.03) return null;
                     const hasActive = slot.points.some(activeMatches);
-                    const hasHover = slot.points.some((p) => hoveredKey === pk(p));
+                    const hasHover = slot.points.some((p) => hoveredKey === pointKey(p));
                     const tie = slot.points.length > 1;
                     const left = `calc(${PAD}px + ${u} * (100% - ${2 * PAD}px))`;
                     // 스팟 = 수직 틱(날짜/시간 레일과 통일). 현재=위치 마커(아이콘)+파랑 틱, 호버(시트 링크)=앰버 틱+글로우+굵게. 타이는 별도 표기 없음(클릭=목록 팝오버).
@@ -511,7 +511,7 @@ function Lane({
                     return (
                         <div key={slot.slotId} className="rank-tick" onClick={(e) => onNodeClick(slot.slotId, e.clientX, e.clientY)}
                             onContextMenu={(e) => { e.preventDefault(); onNodeContext(slot.slotId, e.clientX, e.clientY); }}
-                            onMouseEnter={() => onHoverKey(pk(slot.points[0]))} onMouseLeave={() => onHoverKey(null)}
+                            onMouseEnter={() => onHoverKey(pointKey(slot.points[0]))} onMouseLeave={() => onHoverKey(null)}
                             title={tie ? `타이 ${slot.points.length}건 — 클릭 / 우클릭=필터 경계` : `${nameOf(slot.points[0].stockCode)} — 클릭 / 우클릭=필터 경계`}
                             style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", width: 18, height: 24, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: hasActive ? 5 : 2 }}>
                             {hasActive && <CurrentMarker color={ACTIVE} />}
@@ -554,46 +554,6 @@ function RangeBracket({ u, side, pad = PAD }: { u: number; side: "open" | "close
     return side === "open"
         ? <span style={{ ...common, left: `calc(${pos} - 14px)`, borderRight: "none", borderRadius: "2px 0 0 2px" }} />
         : <span style={{ ...common, left: `calc(${pos} + 8px)`, borderLeft: "none", borderRadius: "0 2px 2px 0" }} />;
-}
-
-// 커서 앵커 팝오버 위치 — 마운트 후 실제 크기를 재서 뷰포트 안으로 클램프(+ 넘치면 커서 반대편으로 플립).
-//  · dockview 패널이 transform 을 써서 fixed 가 갇히므로 팝오버는 body 로 portal 해 실제 뷰포트 기준을 회복시킨다.
-function useClampedPos(x: number, y: number, ref: RefObject<HTMLElement>): { left: number; top: number } {
-    const [pos, setPos] = useState({ left: x + 12, top: y + 12 });
-    useLayoutEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-        const m = 8, w = el.offsetWidth, h = el.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
-        let left = x + 12; if (left + w > vw - m) left = x - 12 - w; left = Math.max(m, Math.min(left, vw - m - w));
-        let top = y + 12; if (top + h > vh - m) top = y - 12 - h; top = Math.max(m, Math.min(top, vh - m - h));
-        setPos({ left, top });
-    }, [x, y, ref]);
-    return pos;
-}
-
-// ── 우클릭 필터 경계 메뉴 — 이상(lo)/이하(hi) 경계 지정·해제. 이미 그 경계면 '해제' 표기(토글). ──
-function FilterMenu({ x, y, axisName, band, slotId, onSet, onClear, onClose }: {
-    x: number; y: number; axisName: string; band: RankBand | undefined; slotId: string;
-    onSet: (edge: "lo" | "hi") => void; onClear: () => void; onClose: () => void;
-}): JSX.Element {
-    const ref = useRef<HTMLDivElement | null>(null);
-    useEffect(() => {
-        const h = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-        const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
-        return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
-    }, [onClose]);
-    const isLo = band?.lo === slotId, isHi = band?.hi === slotId;
-    const pos = useClampedPos(x, y, ref);
-    const item: CSSProperties = { display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 12.5, padding: "7px 12px" };
-    return createPortal(
-        <div ref={ref} style={{ position: "fixed", left: pos.left, top: pos.top, zIndex: 60, minWidth: 160, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.24)", overflow: "hidden" }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", padding: "8px 12px 4px" }}>{axisName} · 필터 경계</div>
-            <button style={item} onClick={() => onSet("lo")}><span style={{ color: FILTER, fontWeight: 700 }}>▶</span> {isLo ? "이상 경계 해제" : "이상 경계(이 지점부터)"}</button>
-            <button style={item} onClick={() => onSet("hi")}><span style={{ color: FILTER, fontWeight: 700 }}>◀</span> {isHi ? "이하 경계 해제" : "이하 경계(이 지점까지)"}</button>
-            {(band?.lo || band?.hi) && <button style={{ ...item, borderTop: "1px solid var(--border-subtle)", color: "var(--text-tertiary)" }} onClick={onClear}>이 축 필터 초기화</button>}
-        </div>,
-        document.body,
-    );
 }
 
 // ── 하단 축 추가 행(필터 추가 방식) ────────────────────────────────────────
@@ -735,15 +695,8 @@ function SlotPopover({
     activeMatches: (p: RankPoint) => boolean; inTray: (p: RankPoint) => boolean;
     onClose: () => void; onGo: (p: RankPoint) => void; onAdd: (p: RankPoint) => void; onUnplace: (p: RankPoint) => void;
 }): JSX.Element {
-    const ref = useRef<HTMLDivElement | null>(null);
-    useEffect(() => {
-        const h = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-        const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
-        return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
-    }, [onClose]);
-    const pos = useClampedPos(x, y, ref);
-    return createPortal(
-        <div ref={ref} style={{ position: "fixed", left: pos.left, top: pos.top, zIndex: 60, minWidth: 200, maxWidth: 270, maxHeight: "80vh", overflowY: "auto", background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 9, boxShadow: "0 10px 30px rgba(0,0,0,0.24)" }}>
+    return (
+        <AnchoredPopover anchor={{ x, y }} onClose={onClose} minWidth={200} maxWidth={270} maxHeight="80vh" padding={0} placement="beside">
             <div style={{ position: "sticky", top: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.05em", color: "var(--text-tertiary)", padding: "8px 12px 4px", background: "var(--bg-primary)" }}>{axisName} · 이 자리 {points.length}건{scope === "day" ? " · 하루단위" : ""}</div>
             {points.map((p, i) => {
                 const act = activeMatches(p), tray = inTray(p);
@@ -759,7 +712,6 @@ function SlotPopover({
                     </div>
                 );
             })}
-        </div>,
-        document.body,
+        </AnchoredPopover>
     );
 }

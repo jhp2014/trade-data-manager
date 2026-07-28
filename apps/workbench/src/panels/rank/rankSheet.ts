@@ -4,6 +4,7 @@
 //  · day 축은 place 시 그날 전 타점에 fanout 되어 라인에 per-point 로 존재 → point 축과 동일 조립(특례 없음).
 //  · 순위 숫자·위치 바 모두 이미 당긴 축 라인에서 파생(추가 fetch/연산 없음, 사실상 0 비용).
 import type { PlacedPoint } from "@trade-data-manager/wire";
+import { pointKey } from "../../lib/pointKey.js";
 import type { ReviewPointListItem } from "../../api/reviewPoints.js";
 
 /** 한 축에서 한 타점의 위치. */
@@ -17,8 +18,6 @@ export interface RankCell {
 
 /** pk("code|date|time") → 셀. 그 축에 배치된 타점만 키를 가짐. */
 export type AxisIndex = Map<string, RankCell>;
-
-export const pkOf = (p: { stockCode: string; date: string; time: string }): string => `${p.stockCode}|${p.date}|${p.time}`;
 
 /** 한 축 라인(PlacedPoint[]) → pk별 순위 셀. */
 export function buildAxisIndex(line: PlacedPoint[]): AxisIndex {
@@ -44,7 +43,7 @@ export function buildAxisIndex(line: PlacedPoint[]): AxisIndex {
     slotsAsc.forEach((ok, i) => fracByOK.set(ok, slotCount <= 1 ? 0.5 : i / (slotCount - 1)));
 
     for (const p of line) {
-        idx.set(pkOf(p), {
+        idx.set(pointKey(p), {
             rank: rankByOK.get(p.orderKey) ?? 1,
             total,
             frac: fracByOK.get(p.orderKey) ?? 0.5,
@@ -71,7 +70,7 @@ export interface SheetRow {
 /** 타점들 × 축들 → 시트 행. axisIds 순서는 표시용(열 순서)과 무관하게 커버리지 계산엔 전부 포함. */
 export function buildSheetRows(points: ReviewPointListItem[], axisIds: string[], indexByAxis: Map<string, AxisIndex>): SheetRow[] {
     return points.map((p) => {
-        const key = pkOf(p);
+        const key = pointKey(p);
         const cells: Record<string, RankCell | null> = {};
         let coverage = 0;
         for (const axisId of axisIds) {

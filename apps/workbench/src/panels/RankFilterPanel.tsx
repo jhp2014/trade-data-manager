@@ -8,10 +8,10 @@ import { ExcursionScatter, ResizeGrip } from "./rank/ExcursionScatter.js";
 import { ControlBar, ControlGroup, Sep, TextToggle } from "../components/ControlChrome.js";
 import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView } from "../lib/derive.js";
+import { parsePointKey } from "../lib/pointKey.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench, type ChartPriceMode } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
-import type { RankPoint } from "../api/rank.js";
 
 const BUCKETS = [1, 5, 10];
 const HEAT_H_KEY = "wb.rankHeatH";
@@ -28,7 +28,6 @@ const DOWN = "#eb6834";
 const GREEN = "#1baf7a";
 const RED = "#e24b4a";
 
-const parsePk = (s: string): RankPoint => { const [stockCode, date, time] = s.split("|"); return { stockCode, date, time }; };
 const hmsToMin = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 
 // 선택 종목(activePoint) 오버레이 — 포커스 종목 차트에서 실%(전일종가 대비) 경로 파생. 진입 기준 정규화·실% 어파인.
@@ -79,7 +78,7 @@ export function RankFilterPanel({ panelId }: { panelId: string }): JSX.Element {
     const sim = useMemo(() => simulateTargetStop(r.paths, r.effHorizon, target, stop), [r.paths, r.effHorizon, target, stop]);
     const overlay = useSelectedOverlay(r.nameOf, baseMode);
 
-    const goKey = (key: string): void => { const p = parsePk(key); goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank-filter"); };
+    const goKey = (key: string): void => { const p = parsePointKey(key); if (p) goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank-filter"); };
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>

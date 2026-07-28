@@ -8,11 +8,14 @@ import {
 import { rankAxesQuery, axisLineQuery, allPointsQuery } from "../api/queries.js";
 import { placePoint, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
-import { buildAxisIndex, buildSheetRows, pkOf, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
+import { buildAxisIndex, buildSheetRows, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
+import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
+import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
+import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { PlacedPoint, ReviewPointListItem } from "@trade-data-manager/wire";
@@ -92,18 +95,15 @@ function outcomeColor(v?: string): string {
 
 // ── 드래그 배치(고정 행 → 정렬된 축 열) ─────────────────────────────────────
 // 정렬 축 열 = 그 축의 세로 라인(행이 orderKey 순). 핀 행 이름을 드래그해 두 행 사이(between=새 slot)/행 위(tie=같은 slot)에 놓는다.
-const draggedPoint = (id: unknown): RankPoint | null => {
-    if (typeof id !== "string" || !id.startsWith("chip:")) return null;
-    const [stockCode, date, time] = id.slice(5).split("|");
-    return stockCode && date && time ? { stockCode, date, time } : null;
-};
+const draggedPoint = (id: unknown): RankPoint | null =>
+    typeof id === "string" && id.startsWith("chip:") ? parsePointKey(id.slice(5)) : null;
 // 드롭 인디케이터(body portal, fixed) — between=열 위 가로선, tie=행 테두리 링. x0..x1 = 정렬 축 열 범위.
 interface SheetDrop { target: RankTarget; tie: boolean; y: number; rowTop?: number; rowBottom?: number; x0: number; x1: number; }
 
 export function RankSheetPanel(): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const activePoint = useWorkbench((s) => s.activePoint);
-    const activeKey = activePoint ? `${activePoint.code}|${activePoint.date}|${activePoint.time}` : null;
+    const activeKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
 
     const rankBands = useWorkbench((s) => s.rankBands);
     const setRankBound = useWorkbench((s) => s.setRankBound);
@@ -148,7 +148,7 @@ export function RankSheetPanel(): JSX.Element {
     const allPoints = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);
     const allByKey = useMemo(() => {
         const m = new Map<string, ReviewPointListItem>();
-        for (const p of allPoints) m.set(pkOf(p), p);
+        for (const p of allPoints) m.set(pointKey(p), p);
         return m;
     }, [allPoints]);
     const dateBounds = useMemo(() => { const ds = allPoints.map((p) => p.date).sort(); return ds.length ? { min: ds[0], max: ds[ds.length - 1] } : null; }, [allPoints]);
@@ -156,7 +156,7 @@ export function RankSheetPanel(): JSX.Element {
     // ── 결과(분석) — 통합 필터(밴드·날짜·시간) 매칭 집합 + 경로 통계(좁혔을 때만 lazy). 기간은 이제 날짜 필터에 흡수.
     const r = useRankFilterResult();
     const bandsActive = !r.isEmpty; // 필터(밴드/날짜/시간 중 하나라도) 활성
-    const interKeys = useMemo(() => new Set(r.points.map(pkOf)), [r.points]);
+    const interKeys = useMemo(() => new Set(r.points.map(pointKey)), [r.points]);
     const excByKey = useMemo(() => {
         const m = new Map<string, Excursion>();
         for (const e of r.stats.excursions) m.set(e.key, e);
@@ -207,7 +207,7 @@ export function RankSheetPanel(): JSX.Element {
             if (k.kind === "outcome") return (a.outcome ?? "").localeCompare(b.outcome ?? "") * dir;
             const ek = k.kind as "mfe" | "maePre" | "maePost"; // 위에서 date/time/coverage/axis/outcome 처리됨
             const num = (row: SheetRow): number | null =>
-                k.kind === "coverage" ? row.coverage : k.kind === "axis" ? (row.cells[k.axisId]?.rank ?? null) : (excByKey.get(pkOf(row))?.[ek] ?? null);
+                k.kind === "coverage" ? row.coverage : k.kind === "axis" ? (row.cells[k.axisId]?.rank ?? null) : (excByKey.get(pointKey(row))?.[ek] ?? null);
             const va = num(a), vb = num(b);
             if (va == null && vb == null) return 0;
             if (va == null) return 1; // 미배치/미산정 = 바닥
@@ -326,7 +326,7 @@ export function RankSheetPanel(): JSX.Element {
         for (const row of mainRows) {
             const cell = row.cells[sortAxisId];
             if (!cell) continue;
-            const tr = rowRefs.current.get(pkOf(row));
+            const tr = rowRefs.current.get(pointKey(row));
             if (!tr) continue;
             const rr = tr.getBoundingClientRect();
             placed.push({ slotId: cell.slotId, orderKey: cell.orderKey, top: rr.top, bottom: rr.bottom, centerY: rr.top + rr.height / 2 });
@@ -373,7 +373,7 @@ export function RankSheetPanel(): JSX.Element {
     // 한 행 렌더. inPinnedBlock = 상단 고정 블록(thead)의 복사본. isLastPinned → 그 블록 하단 구분선.
     //  원래 위치(tbody)의 핀 행은 inPinnedBlock=false → 일반 행처럼 하단 구분선을 가진다(아래 행과 안 이어지게).
     const renderRow = (row: SheetRow, isLastPinned = false, inPinnedBlock = false): JSX.Element => {
-        const key = pkOf(row);
+        const key = pointKey(row);
         const focus = activeKey === key;
         const isHover = hoveredPoint === key;
         const isPinned = pinnedSet.has(key);
@@ -540,9 +540,8 @@ export function RankSheetPanel(): JSX.Element {
             {ctx && (() => {
                 const ax = axes.find((a) => a.id === ctx.axisId);
                 if (!ax) return null;
-                const band = rankBands[ctx.axisId];
                 return (
-                    <BoundMenu x={ctx.x} y={ctx.y} axisName={ax.name} isLo={band?.lo === ctx.slotId} isHi={band?.hi === ctx.slotId} hasBand={!!(band?.lo || band?.hi)}
+                    <AxisBoundMenu anchor={ctx} axisName={ax.name} band={rankBands[ctx.axisId]} slotId={ctx.slotId}
                         onSet={(edge) => { setRankBound(ctx.axisId, edge, ctx.slotId); setCtx(null); }}
                         onClear={() => { clearRankBand(ctx.axisId); setCtx(null); }}
                         onClose={() => setCtx(null)} />
@@ -550,7 +549,7 @@ export function RankSheetPanel(): JSX.Element {
             })()}
 
             {hdrCtx && (
-                <HeaderMenu x={hdrCtx.x} y={hdrCtx.y} label={hdrCtx.label} frozen={hdrCtx.frozen} canHide={hdrCtx.canHide} canFreeze={hdrCtx.key !== "name"}
+                <HeaderMenu anchor={hdrCtx} label={hdrCtx.label} frozen={hdrCtx.frozen} canHide={hdrCtx.canHide} canFreeze={hdrCtx.key !== "name"}
                     onToggleFreeze={() => { toggleFrozen(hdrCtx.key); setHdrCtx(null); }}
                     onHide={() => { toggleHidden(hdrCtx.key); setHdrCtx(null); }}
                     onClose={() => setHdrCtx(null)} />
@@ -568,46 +567,21 @@ function PinnedDragName({ pkStr, name, focus, onNav }: { pkStr: string; name: st
     );
 }
 
-// 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기.
-function HeaderMenu({ x, y, label, frozen, canHide, canFreeze, onToggleFreeze, onHide, onClose }: { x: number; y: number; label: string; frozen: boolean; canHide: boolean; canFreeze: boolean; onToggleFreeze: () => void; onHide: () => void; onClose: () => void }): JSX.Element {
-    const ref = useRef<HTMLDivElement | null>(null);
-    useEffect(() => {
-        const h = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-        const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
-        return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
-    }, [onClose]);
-    const item: CSSProperties = { display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 12.5, padding: "7px 12px" };
-    const left = Math.min(x + 4, window.innerWidth - 190);
-    const top = Math.min(y + 4, window.innerHeight - 120);
-    return createPortal(
-        <div ref={ref} style={{ position: "fixed", left, top, zIndex: 60, minWidth: 168, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.24)", overflow: "hidden" }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", padding: "8px 12px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
-            {canFreeze && <button style={item} onClick={onToggleFreeze}>{frozen ? "🔓 고정 해제" : "🔒 왼쪽 고정"}</button>}
-            {canHide && <button style={{ ...item, borderTop: canFreeze ? "1px solid var(--border-subtle)" : undefined, color: "var(--text-secondary)" }} onClick={onHide}>이 열 숨기기</button>}
-        </div>,
-        document.body,
-    );
-}
-
-// 우클릭 경계 메뉴 — 이상(lo)/이하(hi)/해제. 이미 그 경계면 해제 표기(토글).
-function BoundMenu({ x, y, axisName, isLo, isHi, hasBand, onSet, onClear, onClose }: { x: number; y: number; axisName: string; isLo: boolean; isHi: boolean; hasBand: boolean; onSet: (edge: "lo" | "hi") => void; onClear: () => void; onClose: () => void }): JSX.Element {
-    const ref = useRef<HTMLDivElement | null>(null);
-    useEffect(() => {
-        const h = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-        const id = setTimeout(() => document.addEventListener("mousedown", h), 0);
-        return () => { clearTimeout(id); document.removeEventListener("mousedown", h); };
-    }, [onClose]);
-    const item: CSSProperties = { display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 12.5, padding: "7px 12px" };
-    const left = Math.min(x + 4, window.innerWidth - 190);
-    const top = Math.min(y + 4, window.innerHeight - 130);
-    return createPortal(
-        <div ref={ref} style={{ position: "fixed", left, top, zIndex: 60, minWidth: 176, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.24)", overflow: "hidden" }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", padding: "8px 12px 4px" }}>{axisName} · 필터 경계</div>
-            <button style={item} onClick={() => onSet("lo")}><span style={{ color: "#e24b4a", fontWeight: 700 }}>▶</span> {isLo ? "이상 경계 해제" : "이상 경계(이 지점부터)"}</button>
-            <button style={item} onClick={() => onSet("hi")}><span style={{ color: "#e24b4a", fontWeight: 700 }}>◀</span> {isHi ? "이하 경계 해제" : "이하 경계(이 지점까지)"}</button>
-            {hasBand && <button style={{ ...item, borderTop: "1px solid var(--border-subtle)", color: "var(--text-tertiary)" }} onClick={onClear}>이 축 필터 초기화</button>}
-        </div>,
-        document.body,
+// 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기. (경계 메뉴는 배치 보드와 공용 AxisBoundMenu.)
+function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, onToggleFreeze, onHide, onClose }: {
+    anchor: { x: number; y: number }; label: string; frozen: boolean; canHide: boolean; canFreeze: boolean;
+    onToggleFreeze: () => void; onHide: () => void; onClose: () => void;
+}): JSX.Element {
+    return (
+        <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={168} padding={0} placement="beside" offset={6}>
+            <MenuLabel>{label}</MenuLabel>
+            {canFreeze && <MenuItem onClick={onToggleFreeze}>{frozen ? "🔓 고정 해제" : "🔒 왼쪽 고정"}</MenuItem>}
+            {canHide && (
+                <MenuItem onClick={onHide} style={{ borderTop: canFreeze ? "1px solid var(--border-subtle)" : undefined, color: "var(--text-secondary)" }}>
+                    이 열 숨기기
+                </MenuItem>
+            )}
+        </AnchoredPopover>
     );
 }
 
