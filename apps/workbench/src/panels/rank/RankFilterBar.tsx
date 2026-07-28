@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useDismiss } from "../../ui/useDismiss.js";
 import { useWorkbench } from "../../store/workbench.js";
+import { FILTER } from "../../styles/palette.js";
 import type { DateRange, TimeRange } from "../../store/rankFilterSlice.js";
 
 // 통합 필터 바 — 배치·시트 공용. 차원(축 밴드·날짜·시간) 칩을 한 줄에서 관리.
 //  · 칩끼리 AND, 한 칩 안 구간끼리 OR. 축 밴드는 배치 보드에서(레인/셀 우클릭), 날짜/시간은 여기 칩 편집 또는 레일 드래그.
 //  · 칩 본문 클릭 = 값 편집(세련된 텍스트 입력, 여러 구간), 칩 ✕ = 그 차원 해제. + 날짜/시간 = 전체 범위 구간 추가.
-const AXIS = "#e24b4a";
+const AXIS = FILTER;
 const DATE = "#0ea5e9";
 const TIME = "#8b5cf6";
 

@@ -9,8 +9,8 @@ import { PlaneDot } from "../components/PlaneDot.js";
 import { fmtDateKo } from "../lib/date.js";
 import type { ChartView, ChartPriceMode } from "../store/workbench.js";
 import type { Plane } from "../store/usePlaneBus.js";
+import { DRIFT } from "../styles/palette.js";
 
-const DRIFT = "#e07b1a"; // 검색날짜 드리프트 — 앰버(기준일과 다른 날을 보고 있다는 신호)
 const ACCENT = "var(--accent-primary)";
 
 // 마커 묶음 — 마커 토글들을 연한 배경 한 덩어리로. "마커" 라벨은 그룹에 1회(칩마다 접두 반복 대신).

@@ -3,6 +3,7 @@
 //  · update() 에서 timeScale.timeToCoordinate·series.priceToCoordinate 로 media px 해소 → renderer 는 픽셀만 그림.
 //  · 셀 y 는 행 경계 pct 를 행마다 1회만 좌표변환(열마다 재변환 안 함)해 비용을 줄인다.
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, Time } from "lightweight-charts";
+import { FAIL, STRONG } from "../../styles/palette.js";
 
 interface BitmapScope {
     context: CanvasRenderingContext2D;
@@ -29,8 +30,8 @@ export interface HeatModel {
 }
 
 const BLUE = "#2a78d6";
-const GREEN = "#1baf7a";
-const RED = "#e24b4a";
+const GREEN = STRONG;
+const RED = FAIL;
 
 interface ResolvedCell { x: number; y: number; w: number; h: number; a: number }
 interface Resolved {

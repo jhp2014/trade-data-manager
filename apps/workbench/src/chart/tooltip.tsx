@@ -1,6 +1,7 @@
 // 차트 공용 툴팁 — 다크 박스 스타일 + 커서 추종 플로팅 툴팁 + 등락률 색.
 // MinuteChart / DailyChart 가 공유(둘의 near-duplicate 툴팁을 하나로 통합).
 import { RISE_COLOR, FALL_COLOR } from "./chartUtils.js";
+import { CHART_LABEL } from "../styles/palette.js";
 
 /** 차트 다크 툴팁 박스 스타일(위치 제외 — 배경/테두리/패딩/그림자). */
 export const TOOLTIP_BOX: React.CSSProperties = {
@@ -17,7 +18,7 @@ export const TOOLTIP_BOX: React.CSSProperties = {
 export function rateColor(v: number): string {
     if (v > 0) return RISE_COLOR;
     if (v < 0) return FALL_COLOR;
-    return "#a0a0a0";
+    return CHART_LABEL;
 }
 
 /** 커서 추종 플로팅 툴팁 — 커서 우하단에 두되 가장자리면 뒤집는다(가로/세로). 컨테이너 기준 절대 위치.

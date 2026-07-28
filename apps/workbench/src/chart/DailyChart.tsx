@@ -19,6 +19,7 @@ import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 import { fmtDateKo } from "../lib/date.js";
+import { ALARM, CHART_LABEL, CHART_VALUE, DRIFT, PRICE_LINE } from "../styles/palette.js";
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 const LEFT_MARGIN_BARS = 3; // 좌측 여백(빈 논리 인덱스)
@@ -240,13 +241,13 @@ export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 6
             }
         }
         priceLinesRef.current = lines.map((line) =>
-            candle.createPriceLine({ price: line.price, color: line.kind === "A" ? "#dc2626" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
+            candle.createPriceLine({ price: line.price, color: line.kind === "A" ? ALARM : PRICE_LINE, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
         );
     }, [lines]);
 
     // 검색날짜 세로선(실시간 차트 탐색) — 지정일에 앰버 파선. 기준일=검색날짜면 없음.
     useEffect(() => {
-        vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: "#e07b1a", width: 1, dashed: true }] : []);
+        vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: DRIFT, width: 1, dashed: true }] : []);
     }, [searchDate]);
 
     // +30% 가이드 가로선 — 검색일 전일종가 ×1.3(= 그 세션 상한가 위치). 색은 고가마커 30%+ 와 동일(보라).
@@ -299,17 +300,17 @@ export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 6
             const cursorPct = cursorPrice != null && pctBase != null && pctBase > 0 ? ((cursorPrice - pctBase) / pctBase) * 100 : null;
             return (
                 <div>
-                    <div style={{ fontSize: 11, color: "#a0a0a0", marginBottom: 6 }}>{p.time}</div>
+                    <div style={{ fontSize: 11, color: CHART_LABEL, marginBottom: 6 }}>{p.time}</div>
                     <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "3px 14px", fontSize: 11, fontWeight: 600 }}>
-                        <div style={{ color: "#a0a0a0" }}>종가</div>
+                        <div style={{ color: CHART_LABEL }}>종가</div>
                         <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.close.toLocaleString()}{rate != null && <span style={{ color: rate >= 0 ? RISE_COLOR : FALL_COLOR, marginLeft: 6 }}>{fmtRate(rate)}</span>}</div>
-                        <div style={{ color: "#a0a0a0" }}>고가</div>
-                        <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.high.toLocaleString()}{highPct != null && <span style={{ color: "#d4d4d8", marginLeft: 6 }}>{fmtRate(highPct)}</span>}</div>
-                        <div style={{ color: "#a0a0a0" }}>거래대금</div>
-                        <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(p.amount)}</div>
+                        <div style={{ color: CHART_LABEL }}>고가</div>
+                        <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{p.high.toLocaleString()}{highPct != null && <span style={{ color: CHART_VALUE, marginLeft: 6 }}>{fmtRate(highPct)}</span>}</div>
+                        <div style={{ color: CHART_LABEL }}>거래대금</div>
+                        <div style={{ textAlign: "right", color: CHART_VALUE, fontVariantNumeric: "tabular-nums" }}>{fmtEok(p.amount)}</div>
                         {cursorPct != null && cursorPrice != null && (
                             <>
-                                <div style={{ color: "#a0a0a0" }}>위치</div>
+                                <div style={{ color: CHART_LABEL }}>위치</div>
                                 <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Math.round(cursorPrice).toLocaleString()}<span style={{ color: cursorPct >= 0 ? RISE_COLOR : FALL_COLOR, marginLeft: 6 }}>{fmtRate(cursorPct)}</span></div>
                             </>
                         )}
@@ -346,7 +347,7 @@ export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 6
                         fontSize: 11,
                         fontWeight: 600,
                         whiteSpace: "nowrap",
-                        color: "#e07b1a",
+                        color: DRIFT,
                     }}
                 >
                     {fmtDateKo(searchDate)}

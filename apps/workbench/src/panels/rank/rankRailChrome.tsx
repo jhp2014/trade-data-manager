@@ -3,14 +3,11 @@
 // 두 레일이 이걸 공유하지 않으면 "같은 축인데 다르게 생긴" 화면이 된다.
 import type { CSSProperties } from "react";
 import { LINE_PAD, PAD } from "./rankGeometry.js";
-import { FILTER_COLOR } from "./AxisBoundMenu.js";
+import { FILTER } from "../../styles/palette.js";
 
-export const ACTIVE = "#0ea5e9"; // 활성 스팟 — 밝은 스카이블루(푸른 계열), 글로우로 확 대비.
-export const ACTIVE_SOFT = "rgba(14,165,233,0.32)";
-export const HOVER = "#f59e0b"; // 시트↔레일 링크 호버 — 앰버(활성 sky·필터 red 와 확 구분).
-export const HOVER_SOFT = "rgba(245,158,11,0.28)";
-export const LABEL_W = 138;   // 레일 좌측 라벨 열 폭 — 축 레인과 필터 레일이 같은 열에 정렬되게.
-export const FILTER = FILTER_COLOR; // 필터 밴드 경계(우클릭 지정) — 경계 메뉴와 같은 빨강.
+// 색은 styles/palette 단일 출처 — 레인·필터레일·시트·경계메뉴가 같은 값을 보게 재노출만 한다.
+export { ACTIVE, ACTIVE_SOFT, HOVER, HOVER_SOFT, FILTER } from "../../styles/palette.js";
+export const LABEL_W = 138; // 레일 좌측 라벨 열 폭 — 축 레인과 필터 레일이 같은 열에 정렬되게.
 
 export function CurrentMarker({ color }: { color: string }): JSX.Element {
     return (

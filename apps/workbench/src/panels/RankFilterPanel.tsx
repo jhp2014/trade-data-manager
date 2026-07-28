@@ -12,6 +12,7 @@ import { parsePointKey } from "../lib/pointKey.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench, type ChartPriceMode } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
+import { FAIL, STRONG, WEAK } from "../styles/palette.js";
 
 const BUCKETS = [1, 5, 10];
 const HEAT_H_KEY = "wb.rankHeatH";
@@ -23,10 +24,10 @@ const numV = (o: unknown): number | null => (typeof o === "number" && o > 0 ? o 
 //  · horizon = 진입 후 crop 분(숫자입력 or 히트맵 세로선 드래그). 버킷 = 히트맵 칸 폭(1/5/10분). 목표/손절선도 드래그.
 //  · 겹치는 선 대신 밀도(겹칠수록 진함)로 "무리"를 본다. 진입 전(음수 t)은 맥락용(MFE/MAE·시뮬엔 미포함).
 
-const UP = "#1baf7a";
-const DOWN = "#eb6834";
-const GREEN = "#1baf7a";
-const RED = "#e24b4a";
+const UP = STRONG;
+const DOWN = WEAK;
+const GREEN = STRONG;
+const RED = FAIL;
 
 const hmsToMin = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 

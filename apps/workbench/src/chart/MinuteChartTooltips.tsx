@@ -4,6 +4,7 @@ import { kstHHmm } from "./chartUtils.js";
 import { rateColor } from "./tooltip.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 import type { MinutePoint } from "../lib/derive.js";
+import { CHART_LABEL, CHART_VALUE } from "../styles/palette.js";
 
 /**
  * 타점 정보 카드 — 세로선 우측에 뜨는 밝은 카드. 현재 타점 마커·저장 타점 hover 공용.
@@ -57,7 +58,7 @@ export function OhlcTooltip({
     const swing = close >= open ? high - low : -(high - low);
     const cell = (label: string, value: number) => (
         <>
-            <div style={{ color: "#a0a0a0" }}>{label}</div>
+            <div style={{ color: CHART_LABEL }}>{label}</div>
             <div style={{ textAlign: "right", color: rateColor(value), fontVariantNumeric: "tabular-nums" }}>
                 {fmtRate(value)}
             </div>
@@ -65,16 +66,16 @@ export function OhlcTooltip({
     );
     return (
         <>
-            <div style={{ fontSize: 11, color: "#a0a0a0", marginBottom: 6 }}>{kstHHmm(time)}</div>
+            <div style={{ fontSize: 11, color: CHART_LABEL, marginBottom: 6 }}>{kstHHmm(time)}</div>
             <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "3px 14px", fontSize: 11, fontWeight: 600 }}>
                 {cell("현재", close)}
                 {cell("고가", high)}
                 {cell("저가", low)}
                 {cell("변동폭", swing)}
-                <div style={{ color: "#a0a0a0" }}>거래대금</div>
-                <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(amount)}</div>
-                <div style={{ color: "#a0a0a0" }}>누적</div>
-                <div style={{ textAlign: "right", color: "#d4d4d8", fontVariantNumeric: "tabular-nums" }}>{fmtEok(cumAmount)}</div>
+                <div style={{ color: CHART_LABEL }}>거래대금</div>
+                <div style={{ textAlign: "right", color: CHART_VALUE, fontVariantNumeric: "tabular-nums" }}>{fmtEok(amount)}</div>
+                <div style={{ color: CHART_LABEL }}>누적</div>
+                <div style={{ textAlign: "right", color: CHART_VALUE, fontVariantNumeric: "tabular-nums" }}>{fmtEok(cumAmount)}</div>
             </div>
         </>
     );

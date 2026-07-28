@@ -26,6 +26,7 @@ import {
 } from "./ChartPanelChrome.js";
 import { TextToggle, Sep, ControlGroup } from "../components/ControlChrome.js";
 import type { RenderLine } from "../api/priceLines.js";
+import { ALARM } from "../styles/palette.js";
 
 // 실시간 차트(실시간 플레인) — apps/live 에서 REST 로 ChartBundle 을 받아 렌더. 껍데기는 ChartPanelChrome 공용.
 // 일봉=기준일(오늘) 앵커, 분봉=검색날짜(일봉 봉 ctrl+클릭·더블클릭이 드리프트, ↺ 복귀).
@@ -124,7 +125,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                     <AmountMarkerToggle on={showMarkers} toggle={() => setShowMarkers((v) => !v)} />
                     <SearchLineToggle on={showLine} toggle={() => setShowLine((v) => !v)} />
                     <GuideToggle on={showGuide} toggle={() => setShowGuide((v) => !v)} />
-                    <TextToggle active={showAlarmLines} activeColor="#dc2626" onClick={() => setShowAlarmLines((v) => !v)} title={showAlarmLines ? "알람 가격선 숨기기" : "알람 가격선 표시"}>알람선</TextToggle>
+                    <TextToggle active={showAlarmLines} activeColor={ALARM} onClick={() => setShowAlarmLines((v) => !v)} title={showAlarmLines ? "알람 가격선 숨기기" : "알람 가격선 표시"}>알람선</TextToggle>
                 </MarkerGroup>
                 <Sep />
                 <ControlGroup>

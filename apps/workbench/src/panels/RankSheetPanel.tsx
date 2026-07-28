@@ -22,6 +22,7 @@ import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Excursion } from "./rank/pathStats.js";
+import { FAIL, FILTER, MID, PIN as PIN_COLOR, STRONG, WEAK } from "../styles/palette.js";
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
@@ -37,7 +38,7 @@ const FILTERMODE_KEY = "wb.rankSheetFilterMode";
 const SORT_KEY = "wb.rankSheetSort"; // 정렬 기준 영속(다른 시트 설정과 동일 패턴) — 프리셋 전환·새로고침에 유지.
 // 스크롤 위치는 세션 한정(모듈 메모) — 프리셋 전환(재마운트)엔 이어지고 새로고침엔 초기화(목록 중간 튐 방지).
 let sheetScroll = { top: 0, left: 0 };
-const PIN = "#8b5cf6"; // 핀=작업셋(보라) — 현재(블루)와 구분.
+const PIN = PIN_COLOR;
 // 고정폭(table-layout:fixed + colgroup) — 열 고정 sticky 오프셋이 실제 폭과 정확히 맞도록.
 const NAME_W = 96;
 const DATE_W = 66;
@@ -47,9 +48,6 @@ const COV_W = 44;
 const NUM_W = 50;
 const OUT_W = 88;
 const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
-const STRONG = "#1baf7a";
-const MID = "#f5a623";
-const WEAK = "#eb6834";
 const heatOf = (frac: number): string => (frac >= 0.66 ? STRONG : frac >= 0.33 ? MID : WEAK);
 
 // 열 기술자 — 표는 이 목록을 순회해 헤더/셀을 그린다. 고정(집합)/숨김(집합)/순서를 한 곳에서 계산.
@@ -91,7 +89,7 @@ function parseSort(o: unknown): Sort | null {
 function outcomeColor(v?: string): string {
     if (!v) return "var(--text-tertiary)";
     if (/성공|승|익절|win|good/i.test(v)) return STRONG;
-    if (/실패|패|손절|loss|bad/i.test(v)) return "#e24b4a";
+    if (/실패|패|손절|loss|bad/i.test(v)) return FAIL;
     return "var(--text-secondary)";
 }
 
@@ -459,7 +457,7 @@ export function RankSheetPanel(): JSX.Element {
                                         ref={c.key === "axis" && c.axisId === sortAxisId ? sortAxisThRef : undefined}
                                         onClick={() => clickHeader(sk)}
                                         onContextMenu={(e) => { e.preventDefault(); setHdrCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), x: e.clientX, y: e.clientY }); }}
-                                        style={{ ...thBase, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? "#e24b4a" : "var(--text-tertiary)", borderBottom: banded ? "2px solid #e24b4a" : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
+                                        style={{ ...thBase, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? FILTER : "var(--text-tertiary)", borderBottom: banded ? `2px solid ${FILTER}` : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
                                         <span style={{ display: "flex", alignItems: "center", justifyContent: justify, gap: 2, minWidth: 0 }}>
                                             {active && <span style={{ flexShrink: 0 }}>{sort.dir === 1 ? "▲" : "▼"}</span>}
                                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>

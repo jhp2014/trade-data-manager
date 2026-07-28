@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as RPE, type MouseEvent as RME } from "react";
 import { useWorkbench } from "../../store/workbench.js";
 import type { Excursion } from "./pathStats.js";
+import { ACTIVE, FAIL, STRONG, WEAK } from "../../styles/palette.js";
 
 // 진입 후 편차(익절 MFE × 손절 MAE) 산점 — 두 줄 스택(진입손절/트레일링)이 뷰(줌·팬·손절 가시범위)를 공유.
 //  · 정사각 격자: %당 픽셀(pxu) 고정 → "+2%p 거리"가 두 축·두 줄에서 물리적으로 동일. 가로=익절(→오른쪽), 세로=손절(↓아래로 깊어짐).
@@ -8,11 +9,11 @@ import type { Excursion } from "./pathStats.js";
 //  · 높이 드래그 = 손절 가시범위 / 패널 폭 = 익절 가시범위. 벗어난 타점은 축약(▼/▶) + 팬(빈 곳 드래그). Ctrl+휠 줌, ⟲ 원위치.
 //  · focus 종목 = 글로우 + 상시 직교선. 점 hover = 직교선 + %값. 점 클릭 = 이동.
 
-const UP = "#1baf7a";
-const DOWN = "#eb6834";
-const FOCUS = "#0ea5e9";
-const WINC = "#1baf7a";
-const STOPC = "#e24b4a";
+const UP = STRONG;
+const DOWN = WEAK;
+const FOCUS = ACTIVE;
+const WINC = STRONG;
+const STOPC = FAIL;
 const GL = 42, GR = 14, TOP = 18, AXB = 26;
 const DEF_PXU = 20, MIN_PXU = 7, MAX_PXU = 64;
 const clampN = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));

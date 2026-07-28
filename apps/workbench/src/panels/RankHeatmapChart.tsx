@@ -5,6 +5,7 @@ import { RISE_COLOR, FALL_COLOR, AMOUNT_BUCKET_COLORS } from "../chart/chartUtil
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { RankHeatmap, asHeatPrimitive, type HeatModel } from "./rank/rankHeatmapPrimitive.js";
 import type { RankPointPath } from "../api/rankPaths.js";
+import { FAIL, STRONG } from "../styles/palette.js";
 
 // 분석 히트맵(lightweight-charts) — 밀도 구름 primitive + 네이티브 줌/팬/교차선.
 //  · 시간축 = 진입 대비 경과분(합성 unix초 BASE+t*60), 라벨 "N분/진입". 우측 %축 = 진입 정규화(투명 앵커+autoscale 고정).
@@ -14,8 +15,8 @@ import type { RankPointPath } from "../api/rankPaths.js";
 const BASE = 1_000_000_000;
 const ROWS = 48;
 const OVERLAY = "#8b5cf6"; // 선택 종목 이름 강조 — 보라
-const GREEN = "#1baf7a";
-const RED = "#e24b4a";
+const GREEN = STRONG;
+const RED = FAIL;
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 const eok = (won: number): string => `${(won / 1e8).toFixed(won >= 1e10 ? 0 : 1)}억`;
 

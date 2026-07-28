@@ -21,6 +21,7 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { type MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
+import { ALARM, PRICE_LINE } from "../styles/palette.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
 const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
@@ -437,7 +438,7 @@ export function usePercentPriceLines(
         for (const line of lines) {
             const pct = ((line.price - base) / base) * 100;
             priceLinesRef.current.push(
-                candle.createPriceLine({ price: pct, color: line.kind === "A" ? "#dc2626" : line.kind === "M" ? "#be7a00" : "#16796f", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
+                candle.createPriceLine({ price: pct, color: line.kind === "A" ? ALARM : line.kind === "M" ? "#be7a00" : PRICE_LINE, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
             );
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps

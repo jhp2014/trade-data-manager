@@ -3,9 +3,9 @@
 // 예전엔 두 패널이 각자 FilterMenu·BoundMenu 로 들고 있어 문구는 같은데 색·클램프가 따로 놀았다.
 import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 import type { RankBand, RankBoundEdge } from "../../store/rankFilterSlice.js";
+import { FILTER } from "../../styles/palette.js";
 
-/** 필터 밴드 경계색 — 레인 밴드·레일·이 메뉴가 같은 빨강을 쓴다. */
-export const FILTER_COLOR = "#e24b4a";
+
 
 export function AxisBoundMenu({ anchor, axisName, band, slotId, onSet, onClear, onClose }: {
     anchor: { x: number; y: number };
@@ -20,7 +20,7 @@ export function AxisBoundMenu({ anchor, axisName, band, slotId, onSet, onClear, 
     const isLo = band?.lo === slotId;
     const isHi = band?.hi === slotId;
     const hasBand = !!(band?.lo || band?.hi);
-    const arrow = { color: FILTER_COLOR, fontWeight: 700 };
+    const arrow = { color: FILTER, fontWeight: 700 };
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={176} padding={0} placement="beside" offset={6}>
             <MenuLabel>{axisName} · 필터 경계</MenuLabel>
