@@ -3,10 +3,22 @@
 // ParamSpec.options 라벨 사용 — market·side·window 등) / {t:key}=문자열 파라미터(테마명 등, 편집=텍스트 입력,
 // TextParamSpec.label 로 플레이스홀더). 수식 미정의 술어는 제목+파라미터 폴백(편집 불가) — 팔레트에 노출되는
 // 술어는 여기 항목이 있어야 편집된다(price·themeRank 누락 시 죽은 글자로 보이던 버그).
+import { useId } from "react";
 import { boardPredicateDef, type BoardPredicateDef, type BoardPredicateInstance } from "@trade-data-manager/market/domain";
 import { NumberField } from "../ui/controls.js";
 
 export type FormulaTok = string | { p: string } | { o: string } | { t: string };
+
+/**
+ * 수식 편집 부가기능(선택) — 술어 종류를 UI 가 알 필요 없게, **파라미터의 성질**에 붙는다.
+ *  · capture — core 가 unit:"krw" 로 표시한 숫자 파라미터에 "차트로 입력" 토글을 단다.
+ *              어느 술어인지는 안 본다: 가격 파라미터를 가진 술어면 무엇이든 캡처가 따라온다.
+ *  · suggest — 텍스트 파라미터의 자동완성 후보(예: theme → 그 종목의 테마들).
+ */
+export interface FormulaExtras {
+    capture?: { activeKey: string | null; onToggle: (paramKey: string) => void };
+    suggest?: Record<string, string[]>;
+}
 
 export const FORMULAS: Record<string, FormulaTok[]> = {
     // 매물대 — 부등식 `N일 고가% − tol% [op] 당일 고가%`. side 가 연산자(>=내부·이탈 / ≤=돌파·근접).
@@ -22,14 +34,15 @@ export const FORMULAS: Record<string, FormulaTok[]> = {
 };
 
 /** 술어 한 개의 수식 렌더 — edit=숫자 입력·옵션 순환·텍스트 입력, 아니면 순수 텍스트. */
-export function PredicateFormula({ p, def, edit, onParam, onText }: {
+export function PredicateFormula({ p, def, edit, onParam, onText, capture, suggest }: {
     p: BoardPredicateInstance;
     def?: BoardPredicateDef;
     edit: boolean;
     onParam: (key: string, v: number) => void;
     /** 문자열 파라미터({t} 토큰) 편집 — 없으면 텍스트 토큰은 읽기 전용(보드 필터 등 미지원 소비자). */
     onText?: (key: string, value: string) => void;
-}): JSX.Element {
+} & FormulaExtras): JSX.Element {
+    const listId = useId();
     const toks = FORMULAS[p.kind];
     if (!toks || !def) {
         // 폴백 — 수식 미정의 술어는 제목 + "라벨 값" 나열(새 술어 추가 시에도 안 깨짐).
@@ -44,9 +57,18 @@ export function PredicateFormula({ p, def, edit, onParam, onText }: {
                     const tspec = def.textParams?.find((s) => s.key === t.t);
                     const cur = p.textParams?.[t.t] ?? "";
                     const ph = tspec?.label ?? t.t;
+                    // 후보가 있으면 datalist 로 자동완성(테마명 오타 방지) — 자유 입력은 그대로 허용.
+                    const options = suggest?.[t.t];
                     return edit && onText ? (
-                        <input key={i} type="text" value={cur} placeholder={ph} onChange={(e) => onText(t.t, e.target.value)} title={ph}
-                            style={{ width: Math.max(56, cur.length * 8 + 26), border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, padding: "0 5px", font: "inherit", fontSize: 11.5, outline: "none", flexShrink: 0 }} />
+                        <span key={i} style={{ display: "inline-flex", flexShrink: 0 }}>
+                            <input type="text" value={cur} placeholder={ph} onChange={(e) => onText(t.t, e.target.value)} title={ph} list={options?.length ? `${listId}-${t.t}` : undefined}
+                                style={{ width: Math.max(56, cur.length * 8 + 26), border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, padding: "0 5px", font: "inherit", fontSize: 11.5, outline: "none" }} />
+                            {options?.length ? (
+                                <datalist id={`${listId}-${t.t}`}>
+                                    {options.map((o) => <option key={o} value={o} />)}
+                                </datalist>
+                            ) : null}
+                        </span>
                     ) : (
                         <span key={i} style={{ color: cur ? "var(--accent-primary)" : "var(--text-tertiary)", fontWeight: 600, flexShrink: 0 }}>{cur || ph}</span>
                     );
@@ -65,10 +87,24 @@ export function PredicateFormula({ p, def, edit, onParam, onText }: {
                 const val = p.params[t.p] ?? spec?.def ?? 0;
                 // 폭 = 자릿수 따라(스피너 여유 포함) — 고정폭이면 tvMin(수만 억) 같은 값이 짤린다.
                 const width = Math.max(44, String(val).length * 8.5 + 22);
+                // core 가 원화로 표시한 파라미터: 읽기는 천단위, 편집은 "차트로 입력"(캡처 제공 시).
+                const isPrice = spec?.unit === "krw";
+                const armed = capture?.activeKey === t.p;
                 return edit ? (
-                    <NumberField key={i} value={val} min={spec?.min} max={spec?.max} step={spec?.step} onChange={(e) => onParam(t.p, Number(e.target.value))} style={{ width, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, textAlign: "center", padding: "0 3px" }} />
+                    <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                        <NumberField value={val} min={spec?.min} max={spec?.max} step={spec?.step} onChange={(e) => onParam(t.p, Number(e.target.value))} style={{ width, border: "none", background: "var(--bg-tertiary)", borderRadius: 4, color: "var(--accent-primary)", fontWeight: 600, textAlign: "center", padding: "0 3px" }} />
+                        {isPrice && capture && (
+                            <button
+                                onClick={() => capture.onToggle(t.p)}
+                                title="차트 좌클릭으로 가격 입력 (재클릭 시 해제)"
+                                style={{ border: "none", background: armed ? "var(--accent-primary)" : "none", color: armed ? "#fff" : "var(--accent-primary)", borderRadius: 4, padding: "1px 8px", cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}
+                            >
+                                {armed ? "완료" : "차트로 입력"}
+                            </button>
+                        )}
+                    </span>
                 ) : (
-                    <span key={i} style={{ color: "var(--accent-primary)", fontWeight: 600 }}>{val}</span>
+                    <span key={i} style={{ color: "var(--accent-primary)", fontWeight: 600 }}>{isPrice ? val.toLocaleString("ko-KR") : val}</span>
                 );
             })}
         </span>
@@ -79,7 +115,7 @@ export function PredicateFormula({ p, def, edit, onParam, onText }: {
  * 술어 한 줄 — `· [종류▾] 수식 …그리고 [✕]`. 필터 보드·유니버스 규칙 빌더 공용(사용자 피드백 반영):
  * 앞에 점(리스트), "그리고"는 **윗줄 끝**(AND 연결이 자연스럽게 읽히게), 폭 부족 시 줄바꿈 대신 짤림.
  */
-export function PredicateRow({ p, edit, last, kinds, onKind, onParam, onText, onRemove }: {
+export function PredicateRow({ p, edit, last, kinds, onKind, onParam, onText, onRemove, capture, suggest }: {
     p: BoardPredicateInstance;
     edit: boolean;
     last: boolean; // 마지막 줄이면 뒤 "그리고" 생략
@@ -88,7 +124,7 @@ export function PredicateRow({ p, edit, last, kinds, onKind, onParam, onText, on
     onParam: (key: string, v: number) => void;
     onText?: (key: string, value: string) => void; // 문자열 파라미터(테마명 등) 편집 — 미지원 소비자는 생략
     onRemove?: () => void; // undefined = 제거 불가(마지막 하나)
-}): JSX.Element {
+} & FormulaExtras): JSX.Element {
     const def = boardPredicateDef(p.kind);
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden" }}>
@@ -103,7 +139,7 @@ export function PredicateRow({ p, edit, last, kinds, onKind, onParam, onText, on
                 </button>
             )}
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-                <PredicateFormula p={p} def={def} edit={edit} onParam={onParam} onText={onText} />
+                <PredicateFormula p={p} def={def} edit={edit} onParam={onParam} onText={onText} capture={capture} suggest={suggest} />
             </span>
             {!last && <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-tertiary)" }}>그리고</span>}
             {edit && onRemove && <button onClick={onRemove} title="이 조건 제거" style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13, padding: 0, flexShrink: 0, font: "inherit", marginLeft: "auto" }}>✕</button>}

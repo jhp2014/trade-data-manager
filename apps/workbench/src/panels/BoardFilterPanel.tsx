@@ -63,6 +63,7 @@ function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemo
                         kinds={kinds}
                         onKind={(next) => actions.setPredicateKind(gi, pi, next)}
                         onParam={(k, v) => actions.setPredicateParam(gi, pi, k, v)}
+                        onText={(k, v) => actions.setPredicateText(gi, pi, k, v)}
                         onRemove={g.predicates.length > 1 ? () => actions.removePredicate(gi, pi) : undefined}
                     />
                 ))}

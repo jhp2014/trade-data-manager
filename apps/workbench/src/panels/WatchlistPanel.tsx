@@ -4,6 +4,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { LiveStock } from "@trade-data-manager/wire";
+import { availablePredicates, defaultParams, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
 import { useLiveSnapshot } from "../api/live.js";
 import {
     fetchWatchlist,
@@ -13,20 +14,22 @@ import {
     deleteAlertRule,
     type AlarmPredicateInstance,
     type AlarmRuleView,
-    type AlertMarket,
     type CreateRulePayload,
 } from "../api/alerts.js";
 import { kstTime } from "../lib/date.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
+import { optionLabel, predicateText, validatePredicates } from "../lib/predicateUi.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useStockName } from "../lib/useStockName.js";
+import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
 import { StockRow } from "../components/board/StockRow.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { liveToBoardStock } from "../lib/boardViewModel.js";
 
 // 실시간 모니터링(watchlist) 패널 — 실시간 플레인. 승격한 선택 종목을 항상 폴링·표시하고(2층 구조),
-// 종목별 알람 조건(leaf AND 리스트, leaf 2종: 가격 절대임계·테마 등락률순위)을 편집한다. 여러 조건 = OR.
-// 발화는 텔레그램+서버. 종목마다 현재 테마 순위(순환)도 표시. 조건·발화·순위 = /live/watchlist 5초 폴링.
+// 종목별 알람 조건(술어 AND 리스트)을 편집한다. 여러 조건 = OR. 조건 편집기는 유니버스 알람과 공용
+// (PredicateRow, core 레지스트리 구동) — 스코프(code 유무)만 다르고 나머지는 같은 AlarmRule 이다.
+// 발화는 서버(apps/live). 종목마다 현재 테마 순위(순환)도 표시. 조건·발화·순위 = /live/watchlist 5초 폴링.
 const WATCHLIST_KEY = ["live-watchlist"];
 
 // 모니터링 종목 표시 순서 — 로컬(기기별)만 저장. 서버 watchlist 는 코드 집합만, 순서는 이 오버레이가 결정.
@@ -283,21 +286,9 @@ function miniBtn(color: string): React.CSSProperties {
     return { border: "none", background: "none", padding: 0, cursor: "pointer", font: "inherit", fontSize: 11, color };
 }
 
-const mkLabel = (m: AlertMarket): string => (m === "krx" ? "KRX" : "UN");
-
-/** 술어 한 개 → 짧은 텍스트(price·themeRank — watchlist 빌더가 만드는 두 종류). */
-function predText(p: AlarmPredicateInstance): string {
-    if (p.kind === "price") return `${p.params.op === 1 ? "≤" : "≥"} ${p.params.value.toLocaleString("ko-KR")}`;
-    if (p.kind === "themeRank") {
-        const mk = p.params.market === 0 ? "KRX" : "UN";
-        return `${p.textParams?.theme ?? "테마"}(${mk}) ${p.params.mode === 1 ? `↑${p.params.threshold}계단` : `${p.params.threshold}위 이내`}`;
-    }
-    return p.kind; // 다른 술어(유니버스 빌더산) — 여기선 요약만
-}
-
 /** 조건 한 줄 요약(leaf AND) + 상태 점 + 삭제. */
 function RuleLine({ rule, onDelete }: { rule: AlarmRuleView; onDelete: () => void }): JSX.Element {
-    const parts = [rule.predicates.map(predText).join(" · ")];
+    const parts = [rule.predicates.map(predicateText).join(" · ")];
     if (rule.name) parts.push(rule.name);
     // 상태 점 — 조건 안(주황 solid)=재무장 대기 / 무장(회색 테두리)=다음 진입에 발화 / 미평가(옅음).
     const dot = rule.inZone == null ? { border: "1px solid var(--border-default)" } : rule.inZone ? { background: "#e07b1a" } : { border: "1px solid var(--text-tertiary)" };
@@ -312,36 +303,17 @@ function RuleLine({ rule, onDelete }: { rule: AlarmRuleView; onDelete: () => voi
     );
 }
 
-// ── 조건 빌더 (leaf AND 리스트) ─────────────────────────────────
-type DraftLeaf =
-    | { kind: "price"; op: "gte" | "lte"; value: string }
-    | { kind: "rank"; theme: string; market: AlertMarket; mode: "reach" | "delta"; threshold: string };
+// ── 조건 빌더 — core 술어 레지스트리 구동 ─────────────────────────────
+// 종목 알람도 유니버스 알람과 **같은 편집기**(PredicateRow)를 쓴다. 서버는 진작 AlarmRule 하나·
+// AlarmEngine 한 벌로 통합돼 있었고(스코프 차이는 code 유무뿐) 프론트만 두 벌이었다.
+// 그래서 여기엔 술어 종류별 분기가 없다 — 팔레트는 소스 capability(LIVE_ALARM_FIELDS)가 정하고
+// 입력·검증·표시는 ParamSpec/TextParamSpec 에서 파생된다. core 에 술어를 더하면 여기도 함께 열린다.
+const ALARM_PREDICATES = availablePredicates(LIVE_ALARM_FIELDS);
+const ALARM_KINDS = ALARM_PREDICATES.map((d) => d.kind);
 
-const DEFAULT_MARKET: AlertMarket = "un"; // 순위 기본 잣대(UN)
-const newPriceLeaf = (value = ""): DraftLeaf => ({ kind: "price", op: "gte", value });
-function newLeafOfKind(kind: DraftLeaf["kind"], themes: string[]): DraftLeaf {
-    if (kind === "price") return newPriceLeaf();
-    return { kind: "rank", theme: themes[0] ?? "", market: DEFAULT_MARKET, mode: "reach", threshold: "" };
-}
+const newPredicate = (kind: string): AlarmPredicateInstance => ({ kind, params: defaultParams(kind) });
 
-/** draft → 검증된 술어 인스턴스(core price/themeRank) 또는 오류 메시지(문자열). */
-function toPredicate(d: DraftLeaf): AlarmPredicateInstance | string {
-    if (d.kind === "price") {
-        const v = Number(d.value);
-        if (d.value.trim() === "" || !Number.isFinite(v) || v <= 0) return "가격은 0 초과 숫자로";
-        return { kind: "price", params: { op: d.op === "lte" ? 1 : 0, value: v } };
-    }
-    if (!d.theme) return "순위 조건은 테마를 골라야 함";
-    const t = Number(d.threshold);
-    if (!Number.isInteger(t) || t < 1) return "순위 임계는 1 이상 정수";
-    return {
-        kind: "themeRank",
-        params: { market: d.market === "krx" ? 0 : 1, mode: d.mode === "delta" ? 1 : 0, threshold: t },
-        textParams: { theme: d.theme },
-    };
-}
-
-/** 조건 추가 폼 — leaf(AND) 리스트 빌더. 저장/취소는 폼 상단 헤더 우측. */
+/** 조건 추가 폼 — 술어(AND) 리스트 빌더. 저장/취소는 폼 상단 헤더 우측. */
 function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     code: string;
     themes: string[];
@@ -349,11 +321,16 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     onClose: () => void;
     onSaved: () => void;
 }): JSX.Element {
-    const [leaves, setLeaves] = useState<DraftLeaf[]>(() => [newPriceLeaf(currentPrice != null ? String(currentPrice) : "")]);
+    // 첫 조건은 가격 — 가장 흔한 용도. 현재가를 미리 채워 손을 덜어준다.
+    const [predicates, setPredicates] = useState<AlarmPredicateInstance[]>(() => {
+        const first = newPredicate("price");
+        return [currentPrice != null ? { ...first, params: { ...first.params, value: Math.round(currentPrice) } } : first];
+    });
     const [cooldownMin, setCooldownMin] = useState("3");
     const [note, setNote] = useState("");
     const [err, setErr] = useState<string | null>(null);
-    const [activePrice, setActivePrice] = useState<number | null>(null); // 캡처 대상 가격 leaf 인덱스
+    // 차트 캡처 무장 대상 = (몇 번째 조건, 어느 파라미터). 파라미터 단위라 가격을 가진 술어면 무엇이든 된다.
+    const [armedAt, setArmedAt] = useState<{ index: number; key: string } | null>(null);
     const [showOpts, setShowOpts] = useState(false); // 쿨다운·메모 접기(기본 접힘 — 폼 정돈)
 
     const arm = useWorkbench((s) => s.armAlertCapture);
@@ -365,65 +342,64 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
     const seenSeqRef = useRef<number>(-1);
 
     useEffect(() => () => disarm(), [disarm]); // 폼 닫힘(닫기·저장) → 캡처 해제
-    // 배달된 캡처 가격을 활성 가격 leaf 에 주입 — seq 증가 감지, 마운트 시점 값은 기준선으로 무시.
+
+    const patchParam = (index: number, key: string, value: number): void =>
+        setPredicates((ps) => ps.map((x, j) => (j !== index ? x : { ...x, params: { ...x.params, [key]: value } })));
+
+    // 배달된 캡처 가격을 무장된 파라미터에 주입 — seq 증가 감지, 마운트 시점 값은 기준선으로 무시.
     useEffect(() => {
         const seq = captured?.seq ?? 0;
         if (seenSeqRef.current < 0) {
             seenSeqRef.current = seq;
             return;
         }
-        if (!captured || activePrice == null || seq === seenSeqRef.current) return;
+        if (!captured || armedAt == null || seq === seenSeqRef.current) return;
         seenSeqRef.current = seq;
-        setLeaves((ls) => ls.map((x, j) => (j !== activePrice || x.kind !== "price" ? x : { ...x, value: String(Math.round(captured.price)) })));
-    }, [captured, activePrice]);
+        patchParam(armedAt.index, armedAt.key, Math.round(captured.price));
+    }, [captured, armedAt]);
 
-    // 편집 중인 가격 leaf 를 실시간 차트에 미리보기 선으로 발행(클릭하면 바로 선이 보이게). 폼 닫히면 제거.
+    // 편집 중 가격 조건을 실시간 차트에 미리보기 선으로. 방향(↑/↓)은 레지스트리 옵션에서 읽는다(0/1 하드코딩 금지).
     useEffect(() => {
-        const lines = leaves.flatMap((l) => {
-            if (l.kind !== "price") return [];
-            const p = Number(l.value);
-            return Number.isFinite(p) && p > 0 ? [{ price: p, up: l.op === "gte" }] : [];
+        const lines = predicates.flatMap((p) => {
+            const v = Number(p.params.value);
+            if (p.kind !== "price" || !Number.isFinite(v) || v <= 0) return [];
+            return [{ price: v, up: optionLabel("price", "op", p.params) === "\u2265" }];
         });
         setAlertDraftLines({ code, lines });
-    }, [leaves, code, setAlertDraftLines]);
+    }, [predicates, code, setAlertDraftLines]);
     useEffect(() => () => setAlertDraftLines(null), [setAlertDraftLines]);
 
-    const armPrice = (i: number): void => {
-        setActivePrice(i);
+    const toggleCapture = (index: number, key: string): void => {
+        if (armedAt?.index === index && armedAt.key === key) {
+            setArmedAt(null);
+            disarm();
+            return;
+        }
+        setArmedAt({ index, key });
         arm(code);
         setLiveCode(code, originId); // 차트가 이 종목을 보도록(캡처 정합)
     };
-    const disarmPrice = (): void => {
-        setActivePrice(null);
-        disarm();
-    };
 
-    const patchLeaf = (i: number, leaf: DraftLeaf): void => setLeaves((ls) => ls.map((x, j) => (j !== i ? x : leaf)));
-    const setKind = (i: number, kind: DraftLeaf["kind"]): void => setLeaves((ls) => ls.map((x, j) => (j !== i ? x : newLeafOfKind(kind, themes))));
-    const addLeaf = (): void => setLeaves((ls) => [...ls, newPriceLeaf()]);
-    const removeLeaf = (i: number): void => setLeaves((ls) => (ls.length > 1 ? ls.filter((_, j) => j !== i) : ls));
+    const setKind = (index: number, kind: string): void =>
+        setPredicates((ps) => ps.map((x, j) => (j !== index ? x : newPredicate(kind))));
+    const patchText = (index: number, key: string, value: string): void =>
+        setPredicates((ps) => ps.map((x, j) => (j !== index ? x : { ...x, textParams: { ...x.textParams, [key]: value } })));
+    const addPredicate = (): void => setPredicates((ps) => [...ps, newPredicate("price")]);
+    const removePredicate = (index: number): void => setPredicates((ps) => (ps.length > 1 ? ps.filter((_, j) => j !== index) : ps));
 
     const saveM = useMutation({ mutationFn: createAlertRule, onSuccess: onSaved, onError: (e: Error) => setErr(e.message) });
 
     const submit = (): void => {
         if (saveM.isPending) return;
-        setErr(null);
-        const out: AlarmPredicateInstance[] = [];
-        for (const d of leaves) {
-            const r = toPredicate(d);
-            if (typeof r === "string") {
-                setErr(r);
-                return;
-            }
-            out.push(r);
-        }
-        const payload: CreateRulePayload = {
+        const problem = validatePredicates(predicates);
+        setErr(problem);
+        if (problem) return;
+        saveM.mutate({
             code,
-            predicates: out,
+            predicates,
             cooldownMs: cooldownMin === "" ? undefined : Math.round(Number(cooldownMin) * 60_000),
             name: note.trim() || undefined,
-        };
-        saveM.mutate(payload);
+        } satisfies CreateRulePayload);
     };
 
     return (
@@ -432,7 +408,7 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
             <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <button onClick={() => setShowOpts((v) => !v)} style={{ border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", fontSize: 11, padding: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        <span style={{ fontSize: 9 }}>{showOpts ? "▾" : "▸"}</span> 쿨다운 {cooldownMin || "0"}분{note ? " · 메모 ✓" : ""}
+                        <span style={{ fontSize: 9 }}>{showOpts ? "\u25BE" : "\u25B8"}</span> 쿨다운 {cooldownMin || "0"}분{note ? " · 메모 \u2713" : ""}
                     </button>
                     <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                         <button onClick={submit} disabled={saveM.isPending} style={{ border: "none", background: "var(--accent-primary)", color: "#fff", borderRadius: 5, padding: "3px 12px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, opacity: saveM.isPending ? 0.6 : 1 }}>{saveM.isPending ? "저장중…" : "저장"}</button>
@@ -454,84 +430,26 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
                     </div>
                 )}
             </div>
-            <div style={{ border: "0.5px solid var(--border-default)", borderRadius: 6, overflow: "hidden" }}>
-                {leaves.map((leaf, i) => (
-                    <LeafRow
+            {/* 조건들(AND) — 유니버스 알람과 같은 수식 줄 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, border: "0.5px solid var(--border-default)", borderRadius: 6, padding: "7px 10px" }}>
+                {predicates.map((p, i) => (
+                    <PredicateRow
                         key={i}
-                        leaf={leaf}
-                        themes={themes}
+                        p={p}
+                        edit
+                        last={i === predicates.length - 1}
+                        kinds={ALARM_KINDS}
                         onKind={(k) => setKind(i, k)}
-                        onPatch={(l) => patchLeaf(i, l)}
-                        onRemove={() => removeLeaf(i)}
-                        canRemove={leaves.length > 1}
-                        active={activePrice === i && leaf.kind === "price"}
-                        onToggleCapture={() => (activePrice === i ? disarmPrice() : armPrice(i))}
-                        divider={i > 0}
+                        onParam={(k, v) => patchParam(i, k, v)}
+                        onText={(k, v) => patchText(i, k, v)}
+                        onRemove={predicates.length > 1 ? () => removePredicate(i) : undefined}
+                        capture={{ activeKey: armedAt?.index === i ? armedAt.key : null, onToggle: (key) => toggleCapture(i, key) }}
+                        suggest={{ theme: themes }}
                     />
                 ))}
             </div>
-            <button
-                onClick={addLeaf}
-                style={{ width: "100%", padding: 6, borderRadius: 5, border: "1px dashed var(--border-default)", background: "none", color: "var(--accent-primary)", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600 }}
-            >
-                ＋ 조건 추가
-            </button>
+            <AddPredicateBox onAdd={addPredicate} />
             {err && <div style={{ color: "var(--rise)" }}>{err}</div>}
-        </div>
-    );
-}
-
-/** leaf 편집기(컴팩트 한 줄) — 종류 · 부등호 · 값 정렬. 부등호(≥/≤/↑)는 클릭 토글, 값은 인라인 입력.
- *  가격은 수정(차트 캡처) 토글, 순위는 테마·시장. active=수정 중. divider=위 구분선. */
-function LeafRow({ leaf, themes, onKind, onPatch, onRemove, canRemove, active = false, onToggleCapture, divider = false }: {
-    leaf: DraftLeaf;
-    themes: string[];
-    onKind: (kind: DraftLeaf["kind"]) => void;
-    onPatch: (leaf: DraftLeaf) => void;
-    onRemove: () => void;
-    canRemove: boolean;
-    active?: boolean;
-    onToggleCapture: () => void;
-    divider?: boolean;
-}): JSX.Element {
-    const sym: React.CSSProperties = { border: "none", background: "none", color: "var(--accent-primary)", fontWeight: 600, cursor: "pointer", font: "inherit", fontSize: 14, padding: "0 2px", flexShrink: 0 };
-    const kindBtn: React.CSSProperties = { border: "none", background: "none", color: "var(--text-secondary)", cursor: "pointer", font: "inherit", fontSize: 12, minWidth: 26, textAlign: "left", padding: 0, flexShrink: 0 };
-    const mut: React.CSSProperties = { color: "var(--text-tertiary)", flexShrink: 0 };
-    // 값 입력 = 밑줄 없이 텍스트처럼(앰버 굵게 — 편집 가능 티는 색으로).
-    const valTok: React.CSSProperties = { border: "none", background: "transparent", color: "var(--accent-primary)", padding: "0 2px", font: "inherit", fontWeight: 600, outline: "none", textAlign: "right", flexShrink: 0 };
-    return (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", fontSize: 12, minWidth: 0, borderTop: divider ? "0.5px solid var(--border-subtle)" : undefined, background: active ? "var(--accent-soft)" : "transparent" }}>
-            <button style={kindBtn} onClick={() => onKind(leaf.kind === "price" ? "rank" : "price")} title="종류 전환(가격/순위)">{leaf.kind === "price" ? "가격" : "순위"}</button>
-            {leaf.kind === "price" && (
-                <>
-                    <button style={sym} onClick={() => onPatch({ ...leaf, op: leaf.op === "gte" ? "lte" : "gte" })} title="이상(≥)/이하(≤)">{leaf.op === "gte" ? "≥" : "≤"}</button>
-                    <input style={{ ...valTok, width: 74 }} className="tabular" value={leaf.value} onChange={(e) => onPatch({ ...leaf, value: e.target.value })} placeholder="가격" />
-                    <span style={mut}>원</span>
-                    <button
-                        onClick={onToggleCapture}
-                        title="차트 좌클릭으로 가격 입력 (재클릭 시 해제)"
-                        style={{ marginLeft: "auto", flexShrink: 0, border: "none", background: active ? "var(--accent-primary)" : "none", color: active ? "#fff" : "var(--accent-primary)", borderRadius: 4, padding: "1px 9px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600 }}
-                    >
-                        {active ? "완료" : "차트로 입력"}
-                    </button>
-                </>
-            )}
-            {leaf.kind === "rank" && (
-                <>
-                    <button
-                        onClick={() => { if (!themes.length) return; const i = themes.indexOf(leaf.theme); onPatch({ ...leaf, theme: themes[(i + 1) % themes.length] }); }}
-                        title={themes.length ? "클릭: 다음 테마" : "테마 미배정 — 보드 우클릭으로 배정"}
-                        style={{ border: "none", background: "none", color: themes.length ? "var(--text-primary)" : "var(--text-tertiary)", cursor: themes.length ? "pointer" : "default", font: "inherit", fontSize: 12, fontWeight: 500, padding: "0 2px", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 2 }}
-                    >
-                        {leaf.theme || "테마"}<span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>▾</span>
-                    </button>
-                    <button style={{ border: "none", background: "none", color: "var(--text-secondary)", fontWeight: 600, padding: "0 2px", fontSize: 11, cursor: "pointer", font: "inherit", flexShrink: 0 }} onClick={() => onPatch({ ...leaf, market: leaf.market === "un" ? "krx" : "un" })} title="기준 시장 순환(UN↔KRX)">{mkLabel(leaf.market)}</button>
-                    <button style={sym} onClick={() => onPatch({ ...leaf, mode: leaf.mode === "reach" ? "delta" : "reach" })} title="도달(≤K위)/상승(↑D단계)">{leaf.mode === "reach" ? "≤" : "↑"}</button>
-                    <input style={{ ...valTok, width: 38, textAlign: "center" }} className="tabular" value={leaf.threshold} onChange={(e) => onPatch({ ...leaf, threshold: e.target.value })} placeholder={leaf.mode === "reach" ? "K" : "D"} />
-                    <span style={mut}>{leaf.mode === "reach" ? "위" : "단계"}</span>
-                </>
-            )}
-            {canRemove && <button style={{ ...miniBtn("var(--text-tertiary)"), marginLeft: leaf.kind === "rank" ? "auto" : 0, flexShrink: 0, fontSize: 13 }} onClick={onRemove} title="이 조건 삭제">✕</button>}
         </div>
     );
 }

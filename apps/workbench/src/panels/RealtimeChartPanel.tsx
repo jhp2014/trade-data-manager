@@ -7,6 +7,7 @@ import { fetchWatchlist } from "../api/alerts.js";
 import { chartQuery } from "../api/queries.js";
 import { useChartViews, resolveAnchorLines } from "../lib/chartFrame.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
+import { optionLabel } from "../lib/predicateUi.js";
 import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
@@ -78,8 +79,9 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
         for (const r of wl.data?.rules ?? []) {
             if (r.code !== code) continue;
             r.predicates.forEach((p, i) => {
-                // price 술어 params: op(0=≥/1=≤)·value(원) — core 레지스트리 정의와 동기.
-                if (p.kind === "price" && p.params.value > 0) out.push({ id: `${r.id}-${i}`, price: p.params.value, kind: "A", label: p.params.op === 1 ? "↓" : "↑" });
+                // 방향(↑/↓)은 레지스트리 옵션에서 읽는다 — op 의 0/1 이 무슨 뜻인지는 core 만 안다.
+                if (p.kind === "price" && p.params.value > 0)
+                    out.push({ id: `${r.id}-${i}`, price: p.params.value, kind: "A", label: optionLabel("price", "op", p.params) === "≥" ? "↑" : "↓" });
             });
         }
         return out;

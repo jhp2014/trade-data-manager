@@ -40,6 +40,13 @@ export interface BoardMetrics {
     themeRankMap?: Record<string, Partial<ByMarket<ThemeRankEntry>>>;
 }
 
+/**
+ * 파라미터 값의 **의미 단위**. 도메인 사실("이 값은 원화 가격이다")만 선언하고,
+ * 거기에 어떤 표시·입력 수단을 붙일지는 UI 가 정한다(UI 개념은 core 에 두지 않는다).
+ * 예: 워크벤치는 krw 파라미터를 천단위로 찍고 차트에서 값을 집어오는 버튼을 붙인다.
+ */
+export type ParamUnit = "krw";
+
 /** 파라미터 정의 — UI 입력 렌더용(도메인이 소유 → 술어 추가 시 한 곳만). */
 export interface ParamSpec {
     key: string;
@@ -50,6 +57,7 @@ export interface ParamSpec {
     step?: number;
     /** 있으면 select — 값은 옵션 인덱스(number). 없으면 숫자 입력. */
     options?: string[];
+    unit?: ParamUnit;
 }
 
 /** newHighFar market 파라미터 값 ↔ 시장. 값=옵션 인덱스(0=KRX, 1=UN). 미지정(옛 저장 필터)=UN(기존 동작). */
@@ -223,7 +231,7 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
         requires: ["price"],
         params: [
             { key: "op", label: "방향", def: 0, options: ["≥", "≤"] },
-            { key: "value", label: "원", def: 0, min: 1 },
+            { key: "value", label: "원", def: 0, min: 1, unit: "krw" },
         ],
         // 시세 결손은 requires 존재 검사(evalPredicate)가 미결로 — 옛 "quote 없으면 스킵" 의미 보존.
         test: (m, p) => (m.price != null ? (p.op === 1 ? m.price <= p.value : m.price >= p.value) : false),

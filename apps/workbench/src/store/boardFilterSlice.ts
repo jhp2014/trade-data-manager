@@ -11,6 +11,8 @@ export interface BoardFilterActions {
     addPredicate: (groupIndex: number, kind: string) => void;
     setPredicateKind: (groupIndex: number, predIndex: number, kind: string) => void;
     setPredicateParam: (groupIndex: number, predIndex: number, key: string, value: number) => void;
+    /** 문자열 파라미터(테마명 등). 숫자와 별도 가방이라 액션도 별도 — PredicateRow 의 onText 가 부른다. */
+    setPredicateText: (groupIndex: number, predIndex: number, key: string, value: string) => void;
     removePredicate: (groupIndex: number, predIndex: number) => void;
     setGroupMode: (groupIndex: number, mode: BoardFilterMode) => void;
     removeGroup: (groupIndex: number) => void;
@@ -36,8 +38,14 @@ type SliceSet = (fn: (s: WorkbenchState) => Partial<WorkbenchState>) => void;
 const loadFilter = (key: string): BoardFilterExpr =>
     loadJson(key, (o) => (o && typeof o === "object" && Array.isArray((o as BoardFilterExpr).groups) ? (o as BoardFilterExpr) : null)) ?? { groups: [] };
 
+// textParams(테마명 등)까지 복사한다 — 예전엔 kind/params 만 옮겨서, 텍스트 파라미터를 가진 술어를
+// 보드 필터에 쓰는 순간 **편집할 때마다 그 값이 조용히 날아갔다**. 레지스트리는 "필드 열면 술어 자동 개방"
+// 설계라(availablePredicates), EOD/LIVE_FIELDS 가 넓어지면 바로 터질 자리였다.
 const cloneBoardGroups = (expr: BoardFilterExpr): BoardFilterGroup[] =>
-    expr.groups.map((g) => ({ mode: g.mode, predicates: g.predicates.map((p) => ({ kind: p.kind, params: { ...p.params } })) }));
+    expr.groups.map((g) => ({
+        mode: g.mode,
+        predicates: g.predicates.map((p) => ({ kind: p.kind, params: { ...p.params }, ...(p.textParams ? { textParams: { ...p.textParams } } : {}) })),
+    }));
 
 // 필터 편집 액션 묶음 생성 — field(어느 상태를 조작할지)·persistKey 만 다르고 로직은 동일. 노트 2권, 펜 1자루.
 function makeFilterActions(set: SliceSet, field: FilterField, persistKey: string): BoardFilterActions {
@@ -53,6 +61,7 @@ function makeFilterActions(set: SliceSet, field: FilterField, persistKey: string
         addPredicate: (gi, kind) => set((s) => update(s[field], (g) => { g[gi]?.predicates.push({ kind, params: defaultParams(kind) }); })),
         setPredicateKind: (gi, pi, kind) => set((s) => update(s[field], (g) => { const p = g[gi]?.predicates[pi]; if (p) { p.kind = kind; p.params = defaultParams(kind); } })),
         setPredicateParam: (gi, pi, key, value) => set((s) => update(s[field], (g) => { const p = g[gi]?.predicates[pi]; if (p) p.params[key] = value; })),
+        setPredicateText: (gi, pi, key, value) => set((s) => update(s[field], (g) => { const p = g[gi]?.predicates[pi]; if (p) p.textParams = { ...p.textParams, [key]: value }; })),
         removePredicate: (gi, pi) => set((s) => update(s[field], (g) => { if (!g[gi]) return; g[gi].predicates.splice(pi, 1); if (g[gi].predicates.length === 0) g.splice(gi, 1); })),
         setGroupMode: (gi, mode) => set((s) => update(s[field], (g) => { if (g[gi]) g[gi].mode = mode; })),
         removeGroup: (gi) => set((s) => update(s[field], (g) => { g.splice(gi, 1); })),
