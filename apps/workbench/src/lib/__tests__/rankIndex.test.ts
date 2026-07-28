@@ -15,14 +15,15 @@ describe("buildAxisIndex", () => {
         expect(idx.get(pointKey(ref("A")))).toMatchObject({ rank: 3, total: 3, frac: 0 });
     });
 
-    it("동점(같은 slot) = 같은 rank, 다음 rank 는 건너뛴다(경쟁순위).", () => {
-        // B·C 동점(같은 slot, 같은 orderKey=20). D 가 가장 강(30).
+    it("타이는 한 칸 — 같은 slot 은 같은 번호, 다음 번호를 건너뛰지 않고 분모도 안 늘어난다.", () => {
+        // B·C 동점(같은 slot, 같은 orderKey=20). D 가 가장 강(30). 타점은 4개지만 줄 위의 점은 3개.
         const idx = buildAxisIndex([pp("A", 10, "s1"), pp("B", 20, "s2"), pp("C", 20, "s2", "10:05:00"), pp("D", 30, "s3")]);
-        const at = (code: string, time = "10:00:00"): number => idx.get(pointKey(ref(code, time)))!.rank;
-        expect(at("D")).toBe(1);
-        expect(at("B")).toBe(2);
-        expect(at("C", "10:05:00")).toBe(2); // 동점
-        expect(at("A")).toBe(4); // 더 강한 타점 수(D,B,C=3) + 1
+        const cell = (code: string, time = "10:00:00") => idx.get(pointKey(ref(code, time)))!;
+        expect(cell("D").rank).toBe(1);
+        expect(cell("B").rank).toBe(2);
+        expect(cell("C", "10:05:00").rank).toBe(2); // 같은 자리 = 같은 번호
+        expect(cell("A").rank).toBe(3); // 건너뛰지 않는다(경쟁순위였다면 4)
+        expect(cell("A").total).toBe(3); // 분모 = slot 수(타점 4개가 아니라)
     });
 
     it("빈 라인 → 빈 인덱스.", () => {

@@ -1,14 +1,19 @@
 // 축 배치줄 → 타점별 순위 셀. 시트·작업셋·차트가 공유하는 순수 파생(추가 fetch 0).
-//  · 셀 = 그 축에서 이 타점의 위치. rank(경쟁순위, 강=1)·total·frac(0약..1강). 미배치 = null.
+//  · 셀 = 그 축에서 이 타점의 위치. rank(자리 번호, 강=1)·total(slot 수)·frac(0약..1강). 미배치 = null.
 //  · 관례: 큰 orderKey = 오른쪽 = 강/좋음(RankPanel 과 동일). rank 1 = 가장 강.
 //  · day 축은 place 시 그날 전 타점에 fanout 되어 라인에 per-point 로 존재 → point 축과 동일 조립(특례 없음).
 import type { PlacedPoint, RankAxis } from "@trade-data-manager/wire";
 import { pointKey, type PointKey, type PointRef } from "./pointKey.js";
 
-/** 한 축에서 한 타점의 위치. */
+/**
+ * 한 축에서 한 타점의 위치.
+ * **세는 단위는 타점이 아니라 slot(줄 위의 자리)**: 같은 자리에 여러 타점이 있어도 한 칸으로 본다
+ * (레인에 점이 5개면 언제나 n/5). 타점 수로 세면 타이가 낄 때마다 분모가 뛰고 순위가 건너뛰어
+ * 눈으로 보는 줄과 숫자가 어긋난다.
+ */
 export interface RankCell {
-    rank: number; // 경쟁순위(강=1). 나보다 강한(큰 orderKey) 타점 수 + 1. 동점(같은 slot) 공유.
-    total: number; // 그 축 총 배치 타점 수(= 분모)
+    rank: number; // 강한 쪽부터 센 자리 번호(강=1). 같은 slot 이면 같은 번호, 건너뜀 없음.
+    total: number; // 그 축의 slot 수(= 분모, 줄 위의 점 개수)
     frac: number; // 0(약/왼쪽)..1(강/오른쪽) — 위치 바용(slot 간 균등)
     slotId: string;
     orderKey: number;
@@ -17,28 +22,21 @@ export interface RankCell {
 /** pk("code|date|time") → 셀. 그 축에 배치된 타점만 키를 가짐. */
 export type AxisIndex = Map<PointKey, RankCell>;
 
-/** 한 축 라인(PlacedPoint[]) → pk별 순위 셀. */
+/** 한 축 라인(PlacedPoint[]) → pk별 순위 셀. 세는 단위는 slot(위 RankCell 주석). */
 export function buildAxisIndex(line: PlacedPoint[]): AxisIndex {
     const idx: AxisIndex = new Map();
-    const total = line.length;
-    if (total === 0) return idx;
+    if (line.length === 0) return idx;
 
-    // slot = orderKey 별 묶음(동점). frac 은 slot 간 균등 위치, rank 는 강한 slot 부터 경쟁순위.
-    const countByOK = new Map<number, number>();
-    for (const p of line) countByOK.set(p.orderKey, (countByOK.get(p.orderKey) ?? 0) + 1);
-    const slotsAsc = [...countByOK.keys()].sort((a, b) => a - b);
-    const slotCount = slotsAsc.length;
+    // slot = orderKey 별 묶음(타이). 약→강 순으로 늘어놓고, 번호는 강한 끝에서부터 1.
+    const slotsAsc = [...new Set(line.map((p) => p.orderKey))].sort((a, b) => a - b);
+    const total = slotsAsc.length;
 
-    // rankByOK: 강(큰 orderKey)부터 경쟁순위. 나보다 강한 타점 수 + 1.
     const rankByOK = new Map<number, number>();
-    let strongerPts = 0;
-    for (let i = slotsAsc.length - 1; i >= 0; i--) {
-        const ok = slotsAsc[i];
-        rankByOK.set(ok, strongerPts + 1);
-        strongerPts += countByOK.get(ok) ?? 0;
-    }
     const fracByOK = new Map<number, number>();
-    slotsAsc.forEach((ok, i) => fracByOK.set(ok, slotCount <= 1 ? 0.5 : i / (slotCount - 1)));
+    slotsAsc.forEach((ok, i) => {
+        rankByOK.set(ok, total - i); // 마지막(가장 강)이 1
+        fracByOK.set(ok, total <= 1 ? 0.5 : i / (total - 1));
+    });
 
     for (const p of line) {
         idx.set(pointKey(p), {
