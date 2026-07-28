@@ -1,29 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { CrosshairMode, LineStyle, type Time } from "lightweight-charts";
+import { RISE_COLOR, FALL_COLOR } from "./chartUtils.js";
+import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
 import {
-    CandlestickSeries,
-    HistogramSeries,
-    CrosshairMode,
-    LineStyle,
-    createSeriesMarkers,
-    type IPriceLine,
-    type ISeriesApi,
-    type ISeriesMarkersPluginApi,
-    type Time,
-    type UTCTimestamp,
-} from "lightweight-charts";
-import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
-import { baseChartOptions, useChartShell, useCrosshairTooltip, isModifiedClick, type ChartClickParam } from "./chartShell.js";
-import { VertLines, asPrimitive } from "./vertLine.js";
+    useDailyInteraction,
+    useDailyPriceLines,
+    useDailySeries,
+    useDailySeriesData,
+    useDailyVisibleRange,
+    useGuideLine,
+    useSearchDateLine,
+} from "./dailyChartHooks.js";
 import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 import { fmtDateKo } from "../lib/date.js";
-import { ALARM, CHART_LABEL, CHART_VALUE, DRIFT, PRICE_LINE } from "../styles/palette.js";
+import { CHART_LABEL, CHART_VALUE, DRIFT } from "../styles/palette.js";
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
-const LEFT_MARGIN_BARS = 3; // 좌측 여백(빈 논리 인덱스)
-const RIGHT_MARGIN_BARS = 10; // 우측 여백 — 가격선 라벨(D/M)이 오늘 봉을 가리지 않게
 
 // 크로스헤어 세로선 날짜 라벨 — "26년 12월 26일 (금)". time 은 일봉 business-day 문자열이지만
 // BusinessDay 객체·UTCTimestamp 도 방어적으로 처리.
@@ -41,35 +36,46 @@ function fmtDailyCrosshair(time: Time): string {
     return `${String(y).slice(-2)}년 ${mo}월 ${d}일 (${WEEKDAYS_KO[wd]})`;
 }
 
+export interface DailyChartProps {
+    points: DailyPoint[];
+    /** 리프레임 게이트 — 도착한 데이터에서 파생(값이 바뀔 때만 표시범위를 다시 잡는다). */
+    frameKey: string;
+    lines: RenderLine[];
+    zoom?: boolean;
+    zoomBars?: number;
+    zoomOutBars?: number;
+    onRightClick: (anchorDate: string) => void;
+    onRemoveLine: (line: RenderLine) => void;
+    onCandleClick?: (date: string) => void;
+    onPickPrice?: (price: number) => void;
+    /** 가격 조건 편집 중 — 좌클릭이 날짜검색 대신 가격 캡처가 된다. */
+    capturePriceArmed?: boolean;
+    searchDate?: string;
+    /** 검색일 전일종가 — 크로스헤어 위치 %·+30% 가이드선의 분모. */
+    pctBase?: number | null;
+    showGuide?: boolean;
+}
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
-// 봉 ctrl+클릭 또는 더블클릭 = 그 날짜로 검색(맨 좌클릭은 팬 몫).
-// 봉 우클릭 = 그 봉 고점에 가격선(D) 토글(자동 저장). chart-review RealDailyChart 참고.
-// pctBase(검색일 전일종가)가 있으면 크로스헤어 y-위치를 % 로 툴팁에 표시 + showGuide 시 +30%(상한가) 가이드선.
-export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 60, zoomOutBars = 250, onRightClick, onRemoveLine, onCandleClick, onPickPrice, capturePriceArmed = false, searchDate, pctBase, showGuide = false }: { points: DailyPoint[]; frameKey: string; lines: RenderLine[]; zoom?: boolean; zoomBars?: number; zoomOutBars?: number; onRightClick: (anchorDate: string) => void; onRemoveLine: (line: RenderLine) => void; onCandleClick?: (date: string) => void; onPickPrice?: (price: number) => void; capturePriceArmed?: boolean; searchDate?: string; pctBase?: number | null; showGuide?: boolean }): JSX.Element {
+// 봉 ctrl+클릭 또는 더블클릭 = 그 날짜로 검색(맨 좌클릭은 팬 몫). 봉 우클릭 = 그 봉 고점에 가격선(D) 토글.
+// 명령형 차트 배선은 dailyChartHooks 로 분리 — 여긴 훅 조합 + 툴팁·날짜배지 렌더만.
+export function DailyChart({
+    points,
+    frameKey,
+    lines,
+    zoom = false,
+    zoomBars = 60,
+    zoomOutBars = 250,
+    onRightClick,
+    onRemoveLine,
+    onCandleClick,
+    onPickPrice,
+    capturePriceArmed = false,
+    searchDate,
+    pctBase,
+    showGuide = false,
+}: DailyChartProps): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
-    const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-    const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-    const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-    const mapRef = useRef<Map<string, DailyPoint>>(new Map());
-    const hoveredTimeRef = useRef<string | null>(null);
-    const priceLinesRef = useRef<IPriceLine[]>([]);
-    const vertRef = useRef<VertLines | null>(null); // 검색날짜 세로선
-    const linesRef = useRef<RenderLine[]>(lines); // 우클릭 라벨-삭제 매칭용
-    linesRef.current = lines;
-    const onRightClickRef = useRef(onRightClick);
-    const onRemoveLineRef = useRef(onRemoveLine);
-    const onCandleClickRef = useRef(onCandleClick);
-    const onPickPriceRef = useRef(onPickPrice);
-    const armedRef = useRef(capturePriceArmed);
-    useEffect(() => {
-        onRightClickRef.current = onRightClick;
-        onRemoveLineRef.current = onRemoveLine;
-        onCandleClickRef.current = onCandleClick;
-        onPickPriceRef.current = onPickPrice;
-        armedRef.current = capturePriceArmed;
-    });
-
     const chartRef = useChartShell(containerRef, () => ({
         ...baseChartOptions(),
         crosshair: {
@@ -83,208 +89,15 @@ export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 6
         localization: { locale: "ko-KR", timeFormatter: fmtDailyCrosshair },
     }));
 
-    useEffect(() => {
-        const chart = chartRef.current;
-        if (!chart) return;
-        const candle = chart.addSeries(CandlestickSeries, {
-            upColor: RISE_COLOR,
-            downColor: FALL_COLOR,
-            borderUpColor: RISE_COLOR,
-            borderDownColor: FALL_COLOR,
-            wickUpColor: RISE_COLOR,
-            wickDownColor: FALL_COLOR,
-            priceScaleId: "right",
-            priceLineVisible: false,
-            lastValueVisible: false,
-            priceFormat: { type: "price", precision: 0, minMove: 1 },
-        });
-        const amount = chart.addSeries(
-            HistogramSeries,
-            {
-                priceScaleId: "right",
-                priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(0)}억`, minMove: 1 },
-                priceLineVisible: false,
-                lastValueVisible: false,
-                color: AMOUNT_BAR_COLOR,
-            },
-            1,
-        );
-        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
-        const panes = chart.panes();
-        panes[0]?.setStretchFactor(3);
-        panes[1]?.setStretchFactor(1);
-        candleRef.current = candle;
-        amountRef.current = amount;
-        markersRef.current = createSeriesMarkers(candle);
-        const vert = new VertLines([]);
-        candle.attachPrimitive(asPrimitive(vert));
-        vertRef.current = vert;
-        return () => {
-            candleRef.current = null;
-            amountRef.current = null;
-            markersRef.current = null;
-            vertRef.current = null;
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    useEffect(() => {
-        const candle = candleRef.current;
-        const amount = amountRef.current;
-        if (!candle || !amount) return;
-        const map = new Map<string, DailyPoint>();
-        candle.setData(
-            points.map((p) => {
-                map.set(p.time, p);
-                return { time: p.time as Time, open: p.open, high: p.high, low: p.low, close: p.close };
-            }),
-        );
-        mapRef.current = map;
-        amount.setData(points.map((p) => ({ time: p.time as Time, value: p.amount / 1e8, color: p.close >= p.open ? RISE_FILL : FALL_FILL })));
-        // 고가 등락률(전일비) 마커 — 임계 이상만.
-        const markers = [];
-        for (const p of points) {
-            if (!p.prevClose || p.prevClose <= 0) continue;
-            const pct = ((p.high - p.prevClose) / p.prevClose) * 100;
-            const color = highMarkerColor(pct);
-            if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: `${pct.toFixed(1)}` });
-        }
-        markersRef.current?.setMarkers(markers);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points]);
-
-    // 표시 범위 — f 줌인=최근 zoomBars 봉 / 축소=최근 zoomOutBars 봉(~1년, 데이터 적으면 전체).
-    // 데이터셋(frameKey)·줌이 바뀔 때만 프레이밍 — effect 의존성 비교가 곧 가드. points 는 의도적으로
-    // 의존성 제외(라이브 틱마다 참조만 바뀜): frameKey 가 데이터에서 파생되므로 데이터셋이 실제로 바뀌면
-    // frameKey 도 같은 렌더에서 함께 바뀐다. 라이브 틱(폴 갱신)은 리프레임 없이 사용자 줌/이동 보존
-    // (lightweight-charts setData 는 범위를 유지).
-    useEffect(() => {
-        const chart = chartRef.current;
-        if (!chart || points.length === 0) return;
-        const n = points.length;
-        // 좌측에 여백(빈 논리 인덱스, 음수 from 도 허용) + 우측에 여백(오늘 봉이 축에 바짝 붙으면
-        // 가격선 라벨(D/M, priceLine title)이 오늘 봉을 가림 → 우측도 넉넉히 띄운다.
-        const from = Math.max(0, n - (zoom ? zoomBars : zoomOutBars)) - LEFT_MARGIN_BARS;
-        chart.timeScale().setVisibleLogicalRange({ from, to: n + RIGHT_MARGIN_BARS });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [frameKey, zoom, zoomBars, zoomOutBars]);
-
-    // 우클릭 대상 = crosshair 로 hover 중인 봉. contextmenu 시 그 봉 고점으로 토글.
-    useEffect(() => {
-        const chart = chartRef.current;
-        const el = containerRef.current;
-        if (!chart || !el) return;
-        const onMove = (param: { time?: unknown }): void => {
-            hoveredTimeRef.current = typeof param.time === "string" ? param.time : null;
-        };
-        chart.subscribeCrosshairMove(onMove);
-        // 봉 → 그 날짜로 검색 모드. param.time = 일봉 날짜 문자열(빈 영역이면 undefined).
-        const searchAt = (param: ChartClickParam): void => {
-            if (typeof param.time === "string") onCandleClickRef.current?.(param.time);
-        };
-        // 무장(가격 leaf 편집 중) 시 좌클릭 = 그 y좌표 가격을 캡처(캔들 pane0만) — 날짜검색 억제.
-        // 아니면 ctrl+클릭만 날짜검색(맨 좌클릭은 팬 몫).
-        const onClick = (param: ChartClickParam): void => {
-            if (armedRef.current) {
-                if (onPickPriceRef.current && param.point && (param.paneIndex ?? 0) === 0) {
-                    const price = candleRef.current?.coordinateToPrice(param.point.y);
-                    if (price != null) onPickPriceRef.current(price as number);
-                }
-                return; // 무장 중엔 클릭이 캡처 전용
-            }
-            if (isModifiedClick(param)) searchAt(param);
-        };
-        // 더블클릭 = ctrl+클릭과 동등. 무장 중엔 캡처가 클릭을 독점하므로 날짜검색으로 새지 않게 막는다.
-        const onDblClick = (param: ChartClickParam): void => {
-            if (!armedRef.current) searchAt(param);
-        };
-        chart.subscribeClick(onClick);
-        chart.subscribeDblClick(onDblClick);
-        const onCtx = (e: MouseEvent): void => {
-            e.preventDefault();
-            const candle = candleRef.current;
-            const y = e.clientY - el.getBoundingClientRect().top;
-            // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제.
-            if (candle) {
-                for (const line of linesRef.current) {
-                    const ly = candle.priceToCoordinate(line.price);
-                    if (ly != null && Math.abs((ly as number) - y) <= 6) {
-                        onRemoveLineRef.current(line);
-                        return;
-                    }
-                }
-            }
-            // 2) 아니면 hover 봉에 D 선 추가 — 그 봉의 날짜(앵커). 값은 표시 시점 고가에서 읽음.
-            const t = hoveredTimeRef.current;
-            const p = t ? mapRef.current.get(t) : null;
-            if (p) onRightClickRef.current(p.time);
-        };
-        el.addEventListener("contextmenu", onCtx);
-        return () => {
-            chart.unsubscribeCrosshairMove(onMove);
-            chart.unsubscribeClick(onClick);
-            chart.unsubscribeDblClick(onDblClick);
-            el.removeEventListener("contextmenu", onCtx);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // 가격선(D) 렌더 — raw 가격에 수평선.
-    useEffect(() => {
-        const candle = candleRef.current;
-        if (!candle) return;
-        for (const h of priceLinesRef.current) {
-            try {
-                candle.removePriceLine(h);
-            } catch {
-                /* noop */
-            }
-        }
-        priceLinesRef.current = lines.map((line) =>
-            candle.createPriceLine({ price: line.price, color: line.kind === "A" ? ALARM : PRICE_LINE, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
-        );
-    }, [lines]);
-
-    // 검색날짜 세로선(실시간 차트 탐색) — 지정일에 앰버 파선. 기준일=검색날짜면 없음.
-    useEffect(() => {
-        vertRef.current?.setLines(searchDate ? [{ time: searchDate as unknown as UTCTimestamp, color: DRIFT, width: 1, dashed: true }] : []);
-    }, [searchDate]);
-
-    // +30% 가이드 가로선 — 검색일 전일종가 ×1.3(= 그 세션 상한가 위치). 색은 고가마커 30%+ 와 동일(보라).
-    const guideLineRef = useRef<IPriceLine | null>(null);
-    useEffect(() => {
-        const candle = candleRef.current;
-        if (!candle) return;
-        if (guideLineRef.current) {
-            try {
-                candle.removePriceLine(guideLineRef.current);
-            } catch {
-                /* noop */
-            }
-            guideLineRef.current = null;
-        }
-        if (showGuide && pctBase != null && pctBase > 0) {
-            guideLineRef.current = candle.createPriceLine({ price: pctBase * 1.3, color: "#7c3aed", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: "+30%" });
-        }
-    }, [pctBase, showGuide]);
-
-    // 검색날짜 세로선 x 좌표 추적(pan/zoom·searchDate 변경) → HTML 날짜 배지 위치(분봉 마커 카드 스타일).
-    useEffect(() => {
-        const chart = chartRef.current;
-        if (!chart) return;
-        const ts = chart.timeScale();
-        const update = (): void => {
-            const c = searchDate ? ts.timeToCoordinate(searchDate as unknown as Time) : null;
-            setLineX(c == null ? null : (c as number));
-        };
-        update();
-        ts.subscribeVisibleLogicalRangeChange(update);
-        return () => ts.unsubscribeVisibleLogicalRangeChange(update);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchDate]);
+    const series = useDailySeries(chartRef);
+    const mapRef = useDailySeriesData(series, points);
+    useDailyVisibleRange(chartRef, points, frameKey, zoom, zoomBars, zoomOutBars);
+    useDailyInteraction({ chartRef, containerRef, series, mapRef, lines, onRightClick, onRemoveLine, onCandleClick, onPickPrice, captureArmed: capturePriceArmed });
+    useDailyPriceLines(series, lines);
+    useGuideLine(series, pctBase, showGuide);
+    const lineX = useSearchDateLine(chartRef, series, searchDate);
 
     const [cursor, setCursor] = useState({ x: 0, y: 0 });
-    const [lineX, setLineX] = useState<number | null>(null); // 검색날짜 세로선 x(HTML 배지 위치)
     const { state: tip } = useCrosshairTooltip({
         chartRef,
         containerRef,
@@ -296,7 +109,7 @@ export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 6
             const rate = p.prevClose && p.prevClose > 0 ? ((p.close - p.prevClose) / p.prevClose) * 100 : null;
             const highPct = p.prevClose && p.prevClose > 0 ? ((p.high - p.prevClose) / p.prevClose) * 100 : null;
             // 크로스헤어 y-위치(가로선) → 검색일 전일종가(pctBase) 대비 %. 캔들 pane(0)에서만 — 거래대금 pane 제외.
-            const cursorPrice = (param.paneIndex ?? 0) === 0 && param.point ? candleRef.current?.coordinateToPrice(param.point.y) : null;
+            const cursorPrice = (param.paneIndex ?? 0) === 0 && param.point ? series.candleRef.current?.coordinateToPrice(param.point.y) : null;
             const cursorPct = cursorPrice != null && pctBase != null && pctBase > 0 ? ((cursorPrice - pctBase) / pctBase) * 100 : null;
             return (
                 <div>
@@ -338,6 +151,7 @@ export function DailyChart({ points, frameKey, lines, zoom = false, zoomBars = 6
                         left: lineX,
                         zIndex: 6,
                         pointerEvents: "none",
+                        // 오른쪽 끝에 가까우면 배지를 선 왼쪽으로 뒤집어 잘리지 않게.
                         transform: containerRef.current && lineX > containerRef.current.clientWidth * 0.72 ? "translateX(calc(-100% - 6px))" : "translateX(6px)",
                         background: "rgba(255,255,255,0.95)",
                         border: "1px solid var(--border-subtle)",
