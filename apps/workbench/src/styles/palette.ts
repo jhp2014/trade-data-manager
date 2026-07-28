@@ -15,6 +15,9 @@ export const MID = "#f5a623"; // 중간
 export const WEAK = "#eb6834"; // 약함
 export const FAIL = "#e24b4a"; // 실패 · 손절
 
+/** 축 위 상대위치(frac 0약..1강) → 강약색. 시트 셀·타점 카드가 같은 3단계를 쓴다. */
+export const heatOf = (frac: number): string => (frac >= 0.66 ? STRONG : frac >= 0.33 ? MID : WEAK);
+
 // ── 순위 보드/시트 강조
 export const FILTER = "#e24b4a"; // 필터 밴드 경계(우클릭 지정) · 필터 걸린 열 헤더
 export const ACTIVE = "#0ea5e9"; // 활성 타점 — 밝은 스카이블루(글로우로 대비)
@@ -25,6 +28,7 @@ export const PIN = "#8b5cf6"; // 핀 = 작업셋(보라) — 활성(블루)과 �
 
 // ── 차트
 export const DRIFT = "#e07b1a"; // 검색날짜 드리프트(기준일과 다른 날을 보는 중)
+export const MARKER_NOW = "#111827"; // 분봉 시간선 ▼ — "지금 여기" 표식. 저장 타점 ▼(흰/회색)와 색으로 갈린다
 export const ALARM = "#dc2626"; // 알람 가격 조건선
 export const PRICE_LINE = "#16796f"; // 사용자가 그은 가격선(D/M)
 export const GUIDE = "#7c3aed"; // +30% 가이드선(그 세션 상한가 위치) — 고가마커 30%+ 와 같은 보라

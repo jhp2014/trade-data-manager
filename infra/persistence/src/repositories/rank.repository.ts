@@ -1,5 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
-import type { RankAxis, RankAxisScope, PlacedPoint, RankPoint, RankTarget, RankReader, RankStore } from "@trade-data-manager/market";
+import type { RankAxis, RankAxisScope, AxisLine, PlacedPoint, RankPoint, RankTarget, RankReader, RankStore } from "@trade-data-manager/market";
 import type { Database, DbClient } from "../db.js";
 import { rankAxes, rankSlots, rankPlacements, reviewPoints } from "../schema/curation.js";
 import { rowToRankAxis } from "../mappers/rank.js";
@@ -13,9 +13,12 @@ export class DrizzleRankRepository implements RankReader, RankStore {
         return rows.map(rowToRankAxis);
     }
 
-    async listAxisLine(axisId: string): Promise<PlacedPoint[]> {
+    // 전 축을 한 번에 — 축별 왕복(N+1) 대신 한 쿼리로 긁어 axisId 로 접는다. 배치가 있는 축만 키를 갖는다
+    // (빈 축은 행이 없음 → 소비자는 축 목록 기준으로 없으면 빈 줄로 취급).
+    async listAllLines(): Promise<AxisLine[]> {
         const rows = await this.db
             .select({
+                axisId: rankPlacements.axisId,
                 slotId: rankSlots.id,
                 orderKey: rankSlots.orderKey,
                 stockCode: rankPlacements.stockCode,
@@ -24,15 +27,16 @@ export class DrizzleRankRepository implements RankReader, RankStore {
             })
             .from(rankPlacements)
             .innerJoin(rankSlots, eq(rankPlacements.slotId, rankSlots.id))
-            .where(eq(rankPlacements.axisId, BigInt(axisId)))
-            .orderBy(asc(rankSlots.orderKey));
-        return rows.map((r) => ({
-            slotId: String(r.slotId),
-            orderKey: r.orderKey,
-            stockCode: r.stockCode,
-            date: r.date,
-            time: r.time,
-        }));
+            .orderBy(asc(rankPlacements.axisId), asc(rankSlots.orderKey));
+
+        const byAxis = new Map<string, PlacedPoint[]>();
+        for (const r of rows) {
+            const axisId = String(r.axisId);
+            let line = byAxis.get(axisId);
+            if (!line) byAxis.set(axisId, (line = []));
+            line.push({ slotId: String(r.slotId), orderKey: r.orderKey, stockCode: r.stockCode, date: r.date, time: r.time });
+        }
+        return [...byAxis].map(([axisId, placements]) => ({ axisId, placements }));
     }
 
     async createAxis(name: string, scope: RankAxisScope = "point"): Promise<RankAxis> {

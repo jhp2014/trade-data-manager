@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ReviewPointListItem } from "../api/reviewPoints.js";
 import { weekdayOf } from "../lib/date.js";
+import { PlacementBadge } from "../components/Placement.js";
 
 function fmtDateHeader(date: string): string {
     return `${date.replace(/-/g, ".")} (${weekdayOf(date)})`;
@@ -92,7 +93,21 @@ export function Name({ name, code, color, strong }: { name: string | null; code:
     );
 }
 
-export function PointRow({ p, related, current, onClick }: { p: ReviewPointListItem; related?: boolean; current?: boolean; onClick: () => void }): JSX.Element {
+export function PointRow({
+    p,
+    related,
+    current,
+    placed,
+    axisTotal,
+    onClick,
+}: {
+    p: ReviewPointListItem;
+    related?: boolean;
+    current?: boolean;
+    placed: number; // 배치된 축 수
+    axisTotal: number; // 축 총수(0 = 배치 기능 미사용 → 배지 숨김)
+    onClick: () => void;
+}): JSX.Element {
     return (
         <button
             onClick={onClick}
@@ -119,6 +134,7 @@ export function PointRow({ p, related, current, onClick }: { p: ReviewPointListI
                     {p.memo}
                 </span>
             )}
+            {axisTotal > 0 && <PlacementBadge placed={placed} total={axisTotal} style={{ marginLeft: "auto" }} />}
         </button>
     );
 }

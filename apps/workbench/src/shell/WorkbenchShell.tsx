@@ -18,7 +18,7 @@ const components = panelComponents();
 // 처음엔 안 열리고 작업표시줄에서 꺼낸다.
 const TAB_PANELS = [
     "live-board-1", "live-watchlist-1", "live-alert-log-1", "live-universe-rules-1", "live-news-1", "live-telegram-1",
-    "replay-board-1", "workset-1", "history-1", "rank-1", "rank-filter-1", "rank-sheet-1", "hts-news-1", "telegram-news-1",
+    "replay-board-1", "workset-1", "history-1", "rank-1", "rank-filter-1", "rank-sheet-1", "rank-point-1", "hts-news-1", "telegram-news-1",
 ];
 
 function onReady(event: DockviewReadyEvent): void {

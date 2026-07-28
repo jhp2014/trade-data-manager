@@ -4,13 +4,23 @@ import { kstHHmm } from "./chartUtils.js";
 import { rateColor } from "./tooltip.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 import type { MinutePoint } from "../lib/derive.js";
+import { PlacementBadge } from "../components/Placement.js";
 import { CHART_LABEL, CHART_VALUE } from "../styles/palette.js";
 
 /**
  * 타점 정보 카드 — 세로선 우측에 뜨는 밝은 카드. 현재 타점 마커·저장 타점 hover 공용.
- * 헤더 = 담백 readout 한 줄("09:58 | +8.7% | 57억").
+ * 담백 readout 한 줄("09:58 | +8.7% | 57억") + 배치 배지(n/m).
+ * 축별 상세는 여기 안 넣는다 — 차트 위 오버레이는 가리고, 넓게 보려면 "타점 정보" 도킹 패널이 그 자리다.
  */
-export function MarkerCard({ point }: { point: MinutePoint }): JSX.Element {
+export function MarkerCard({
+    point,
+    axisTotal = 0,
+    placed = 0,
+}: {
+    point: MinutePoint;
+    axisTotal?: number; // 축 총수(0 = 배치 기능 미사용 → 배지 없음)
+    placed?: number;
+}): JSX.Element {
     const sep = <span style={{ color: "rgba(0,0,0,0.2)" }}>|</span>;
     return (
         <div
@@ -33,6 +43,7 @@ export function MarkerCard({ point }: { point: MinutePoint }): JSX.Element {
                 <span style={{ color: rateColor(point.close) }}>{fmtRate(point.close)}</span>
                 {sep}
                 <span style={{ color: "var(--text-secondary)" }}>{fmtEok(point.amount)}</span>
+                {axisTotal > 0 && <PlacementBadge placed={placed} total={axisTotal} style={{ marginLeft: 2 }} />}
             </div>
         </div>
     );

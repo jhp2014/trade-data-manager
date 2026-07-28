@@ -16,6 +16,7 @@ import {
 } from "./minuteChartHooks.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
+import { MARKER_NOW } from "../styles/palette.js";
 
 /**
  * 세로선(x) 우측에 붙이는 오버레이 박스 — 우측 공간이 모자라면 좌측으로 뒤집는다.
@@ -79,6 +80,7 @@ export function MinuteChart({
     onRemoveLine,
     onPickPrice,
     capturePriceArmed = false,
+    axisTotal = 0,
 }: {
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
@@ -95,6 +97,7 @@ export function MinuteChart({
     onRemoveLine: (line: RenderLine) => void;
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표 → 가격(base×(1+%/100)) 캡처
     capturePriceArmed?: boolean;
+    axisTotal?: number; // 순위 축 총수(배지 분모). 0 = 배치 기능 미사용 → 배지/상세 없음
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -156,6 +159,9 @@ export function MinuteChart({
     // 오버레이 박스 우/좌 판정용 컨테이너 폭 + 현재 hover 중인 저장 타점.
     const containerWidth = containerRef.current?.clientWidth ?? 0;
     const hoveredCard = hoveredSaved != null ? overlay.saved[hoveredSaved] : null;
+    // 현재 시각이 저장 타점과 겹치는가 — 겹치면 그 타점 ▼ 를 검게 칠하고 시간선 ▼ 는 그리지 않는다
+    // (같은 자리에 두 마커를 겹쳐 그리면 "검정=현재" 와 "채움=배치" 두 규칙이 한 도형에서 충돌한다).
+    const currentSaved = currentSnapped != null ? overlay.saved.find((s) => s.time === currentSnapped) : undefined;
 
     return (
         <div
@@ -166,18 +172,21 @@ export function MinuteChart({
             }}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
-            {/* 저장 타점 ▼ 마커 — 밝은 채움+회색 윤곽. 드롭섀도로 띄우고 hover 시 확대. */}
+            {/* 저장 타점 ▼ 마커 — 클릭하면 시간선이 그 타점으로. 두 규칙이 겹치지 않게:
+                **색** = 지금 시간선이 여기인가(검정) · **채움** = 이 타점이 어디든 배치됐나. */}
             {overlay.saved.map((s, i) => {
                 if (s.x < 0) return null;
-                // hover 또는 현재 시간과 일치하면 활성(확대+그림자 강조).
-                const isActive = hoveredSaved === i || s.time === currentSnapped;
+                const isNow = s.time === currentSnapped;
+                const isActive = hoveredSaved === i || isNow;
+                const unplaced = axisTotal > 0 && s.placed === 0;
                 return (
                     <div
                         key={s.time}
                         onMouseEnter={() => setHoveredSaved(i)}
                         onMouseLeave={() => setHoveredSaved((cur) => (cur === i ? null : cur))}
-                        title="저장된 타점"
-                        style={{ position: "absolute", left: s.x - 7, top: 1, width: 14, height: 12, display: "flex", justifyContent: "center", cursor: "pointer", zIndex: 8 }}
+                        onClick={() => s.point && onMovePoint(s.point.tradeTime)}
+                        title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로)` : "저장된 타점 (클릭: 이 타점으로)"}
+                        style={{ position: "absolute", left: s.x - 9, top: 0, width: 18, height: 14, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 1, cursor: "pointer", zIndex: 8 }}
                     >
                         <svg
                             width={12}
@@ -192,21 +201,34 @@ export function MinuteChart({
                                 transition: "transform 0.1s ease, filter 0.1s ease",
                             }}
                         >
-                            <polygon points="1,1 11,1 6,9" fill="var(--bg-primary, #ffffff)" stroke="rgba(90,90,105,0.95)" strokeWidth={1.4} />
+                            <polygon
+                                points="1,1 11,1 6,9"
+                                fill={isNow ? (unplaced ? "var(--bg-primary, #ffffff)" : MARKER_NOW) : unplaced ? "rgba(255,255,255,0.25)" : "var(--bg-primary, #ffffff)"}
+                                stroke={isNow ? MARKER_NOW : "rgba(90,90,105,0.95)"}
+                                strokeWidth={1.4}
+                            />
                         </svg>
                     </div>
                 );
             })}
-            {/* 저장 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). */}
+            {/* 시간선 ▼ — 타점이 아닌 자리에 있을 때만(타점과 겹치면 위에서 그 ▼ 가 검게 칠해진다). */}
+            {overlay.current && !currentSaved && overlay.current.x >= 0 && (
+                <div title="현재 시간선" style={{ position: "absolute", left: overlay.current.x - 5, top: 2, width: 10, height: 9, pointerEvents: "none", zIndex: 7 }}>
+                    <svg width={10} height={8} viewBox="0 0 12 10" style={{ overflow: "visible", filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,0.35))" }}>
+                        <polygon points="1,1 11,1 6,9" fill={MARKER_NOW} stroke={MARKER_NOW} strokeWidth={1.4} />
+                    </svg>
+                </div>
+            )}
+            {/* 저장 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). 축별 상세는 "타점 정보" 패널. */}
             {hoveredCard && hoveredCard.point && hoveredCard.x >= 0 && (
                 <AnchoredBox x={hoveredCard.x} top={1} containerWidth={containerWidth} zIndex={10}>
-                    <MarkerCard point={hoveredCard.point} />
+                    <MarkerCard point={hoveredCard.point} axisTotal={axisTotal} placed={hoveredCard.placed} />
                 </AnchoredBox>
             )}
-            {/* 현재 타점(시간선) readout — 토글 ON 시 세로선 우측(공간 없으면 좌측) 한 줄. */}
+            {/* 현재 타점(시간선) readout — 토글 ON 시 세로선 우측 한 줄. 그 시각이 저장 타점이면 배지(n/m)까지. */}
             {showPointInfo && overlay.current && overlay.current.point && (
                 <AnchoredBox x={overlay.current.x} top={1} containerWidth={containerWidth} zIndex={9}>
-                    <MarkerCard point={overlay.current.point} />
+                    <MarkerCard point={overlay.current.point} axisTotal={currentSaved ? axisTotal : 0} placed={currentSaved?.placed ?? 0} />
                 </AnchoredBox>
             )}
             {tip.visible && (

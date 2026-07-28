@@ -13,6 +13,9 @@ describe("DrizzleRankRepository (pglite)", () => {
     let t: TestDb;
     let repo: DrizzleRankRepository;
 
+    // 줄 읽기는 전축 피드에서 그 축만 뽑아 본다(단건 조회 포트가 없음 — 소비자가 늘 전축을 본다).
+    const line = async (axisId: string) => (await repo.listAllLines()).find((l) => l.axisId === axisId)?.placements ?? [];
+
     const slotCount = (axisId: string) =>
         t.db.select({ id: rankSlots.id }).from(rankSlots).where(eq(rankSlots.axisId, BigInt(axisId))).then((r) => r.length);
 
@@ -42,9 +45,9 @@ describe("DrizzleRankRepository (pglite)", () => {
         const s3 = await repo.place(a.id, P3, { kind: "between", nextSlotId: s1.slotId }); // next=0, prev 없음 → -1
         expect(s3.orderKey).toBe(-1);
 
-        const line = await repo.listAxisLine(a.id);
-        expect(line.map((p) => p.stockCode)).toEqual(["000660", "005930", "005930"]); // order_key -1,0,1 오름차순
-        expect(line.map((p) => p.time)).toEqual(["09:30:00", "09:11:00", "10:00:00"]);
+        const l = await line(a.id);
+        expect(l.map((p) => p.stockCode)).toEqual(["000660", "005930", "005930"]); // order_key -1,0,1 오름차순
+        expect(l.map((p) => p.time)).toEqual(["09:30:00", "09:11:00", "10:00:00"]);
     });
 
     it("place slot → 타이(같은 slot·같은 key 공유)", async () => {
@@ -55,9 +58,9 @@ describe("DrizzleRankRepository (pglite)", () => {
         expect(s2.orderKey).toBe(s1.orderKey);
         expect(await slotCount(a.id)).toBe(1); // 타이 1칸
 
-        const line = await repo.listAxisLine(a.id);
-        expect(line).toHaveLength(2);
-        expect(new Set(line.map((p) => p.slotId))).toEqual(new Set([s1.slotId]));
+        const l = await line(a.id);
+        expect(l).toHaveLength(2);
+        expect(new Set(l.map((p) => p.slotId))).toEqual(new Set([s1.slotId]));
     });
 
     it("place 재호출 = 이동(멱등 upsert) + 비워진 옛 slot GC", async () => {
@@ -70,7 +73,7 @@ describe("DrizzleRankRepository (pglite)", () => {
         const moved = await repo.place(a.id, P2, { kind: "slot", slotId: s1.slotId });
         expect(moved.slotId).toBe(s1.slotId);
         expect(await slotCount(a.id)).toBe(1); // slotB GC
-        expect((await repo.listAxisLine(a.id)).map((p) => p.slotId)).toEqual([s1.slotId, s1.slotId]);
+        expect((await line(a.id)).map((p) => p.slotId)).toEqual([s1.slotId, s1.slotId]);
         expect(s2.slotId).not.toBe(s1.slotId); // (이전 slotB 는 사라짐)
     });
 
@@ -81,11 +84,11 @@ describe("DrizzleRankRepository (pglite)", () => {
 
         await repo.unplace(a.id, P1); // 아직 P2 남음 → slot 유지
         expect(await slotCount(a.id)).toBe(1);
-        expect(await repo.listAxisLine(a.id)).toHaveLength(1);
+        expect(await line(a.id)).toHaveLength(1);
 
         await repo.unplace(a.id, P2); // 마지막 → slot GC
         expect(await slotCount(a.id)).toBe(0);
-        expect(await repo.listAxisLine(a.id)).toHaveLength(0);
+        expect(await line(a.id)).toHaveLength(0);
 
         await expect(repo.unplace(a.id, P3)).resolves.toBeUndefined(); // 없는 배치 no-op
     });
@@ -99,7 +102,7 @@ describe("DrizzleRankRepository (pglite)", () => {
         await repo.removeAxis(a.id);
         expect((await repo.listAxes()).some((x) => x.id === a.id)).toBe(false);
         expect(await slotCount(a.id)).toBe(0); // slot cascade
-        expect(await repo.listAxisLine(a.id)).toHaveLength(0); // placement cascade
+        expect(await line(a.id)).toHaveLength(0); // placement cascade
     });
 
     it("place between — 간격 소진 시 자동 reindex(같은 틈 반복 삽입에도 순서 보존)", async () => {
@@ -116,11 +119,11 @@ describe("DrizzleRankRepository (pglite)", () => {
             inner = await repo.place(a.id, pts[i], { kind: "between", prevSlotId: inner.slotId, nextSlotId: top.slotId });
         }
 
-        const line = await repo.listAxisLine(a.id);
-        expect(line).toHaveLength(N); // 전원 배치 성공(throw·소진 없음)
-        for (let i = 1; i < line.length; i++) expect(line[i].orderKey).toBeGreaterThan(line[i - 1].orderKey); // 키 순증가(중복·역전 없음)
-        expect(line[0].time).toBe("09:00:00"); // 최하단 유지
-        expect(line[line.length - 1].time).toBe("09:01:00"); // 최상단(top) 유지
+        const l = await line(a.id);
+        expect(l).toHaveLength(N); // 전원 배치 성공(throw·소진 없음)
+        for (let i = 1; i < l.length; i++) expect(l[i].orderKey).toBeGreaterThan(l[i - 1].orderKey); // 키 순증가(중복·역전 없음)
+        expect(l[0].time).toBe("09:00:00"); // 최하단 유지
+        expect(l[l.length - 1].time).toBe("09:01:00"); // 최상단(top) 유지
     });
 
     it("place between(같은 slot 두 경계) — 타이 그룹 내부 = 그 slot 합류(중간키 불가 500 대신 정규화)", async () => {
@@ -133,7 +136,7 @@ describe("DrizzleRankRepository (pglite)", () => {
         const r = await repo.place(a.id, P3, { kind: "between", prevSlotId: s1.slotId, nextSlotId: s1.slotId });
         expect(r.slotId).toBe(s1.slotId);
         expect(await slotCount(a.id)).toBe(1); // 새 slot 안 생김
-        expect(await repo.listAxisLine(a.id)).toHaveLength(3); // P1·P2·P3 한 slot
+        expect(await line(a.id)).toHaveLength(3); // P1·P2·P3 한 slot
     });
 
     it("place 는 존재하는 타점만 — 없는 타점(FK) 위반은 거부", async () => {
@@ -152,10 +155,10 @@ describe("DrizzleRankRepository (pglite)", () => {
     it("day 축 place — 그날 전 타점에 fanout(같은 slot, 미배치 타점도 끌어옴)", async () => {
         const a = await repo.createAxis("일봉(day)", "day");
         const r = await repo.place(a.id, P1, { kind: "between" }); // P1 하나로 호출 → 005930·06-30 전 타점(P1,P2)
-        const line = await repo.listAxisLine(a.id);
-        expect(line).toHaveLength(2); // P1·P2 둘 다 보임(point 축과 동일한 줄)
-        expect(new Set(line.map((p) => p.slotId))).toEqual(new Set([r.slotId])); // 한 slot 에 타이
-        expect(line.map((p) => p.time).sort()).toEqual(["09:11:00", "10:00:00"]);
+        const l = await line(a.id);
+        expect(l).toHaveLength(2); // P1·P2 둘 다 보임(point 축과 동일한 줄)
+        expect(new Set(l.map((p) => p.slotId))).toEqual(new Set([r.slotId])); // 한 slot 에 타이
+        expect(l.map((p) => p.time).sort()).toEqual(["09:11:00", "10:00:00"]);
         expect(await slotCount(a.id)).toBe(1); // 다른 종목(P3)은 무관
     });
 
@@ -169,18 +172,33 @@ describe("DrizzleRankRepository (pglite)", () => {
         const moved = await repo.place(a.id, P2, { kind: "slot", slotId: other.slotId });
         expect(moved.slotId).toBe(other.slotId);
         expect(await slotCount(a.id)).toBe(1);
-        const line = await repo.listAxisLine(a.id);
-        expect(line).toHaveLength(3); // P3·P1·P2 한 slot
-        expect(new Set(line.map((p) => p.slotId))).toEqual(new Set([other.slotId]));
+        const l = await line(a.id);
+        expect(l).toHaveLength(3); // P3·P1·P2 한 slot
+        expect(new Set(l.map((p) => p.slotId))).toEqual(new Set([other.slotId]));
     });
 
     it("day 축 unplace — 그날 전 타점 제거 + slot GC(어느 타점으로 호출하든)", async () => {
         const a = await repo.createAxis("테마(day)", "day");
         await repo.place(a.id, P1, { kind: "between" }); // P1·P2 배치
-        expect(await repo.listAxisLine(a.id)).toHaveLength(2);
+        expect(await line(a.id)).toHaveLength(2);
         await repo.unplace(a.id, P2); // P2 로 호출 → 그날 전체 제거
-        expect(await repo.listAxisLine(a.id)).toHaveLength(0);
+        expect(await line(a.id)).toHaveLength(0);
         expect(await slotCount(a.id)).toBe(0);
+    });
+
+    it("listAllLines — 축별로 접어서 한 번에(배치 없는 축은 아예 안 나옴)", async () => {
+        const a1 = await repo.createAxis("전축-A");
+        const a2 = await repo.createAxis("전축-B");
+        await repo.createAxis("전축-빈축"); // 배치 0 → 피드에 없음
+        const s = await repo.place(a1.id, P1, { kind: "between" });
+        await repo.place(a1.id, P2, { kind: "between", prevSlotId: s.slotId });
+        await repo.place(a2.id, P3, { kind: "between" });
+
+        const all = await repo.listAllLines();
+        const of = (id: string) => all.find((l) => l.axisId === id);
+        expect(of(a1.id)?.placements.map((p) => p.time)).toEqual(["09:11:00", "10:00:00"]); // orderKey 오름차순
+        expect(of(a2.id)?.placements).toHaveLength(1);
+        expect(all.some((l) => l.placements.length === 0)).toBe(false);
     });
 
     it("day 축 place — 그날 타점 0개면 거부", async () => {

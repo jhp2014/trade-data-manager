@@ -34,9 +34,10 @@ const SESSION_CLOSE = "15:30:00"; // 기본 뷰 우단 — 종가 단일가까�
 /** "HH:MM:SS" → 자정 기준 분(分). 초는 분봉상 무시. */
 const hmsToMin = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 
-/** 저장 타점 입력(스냅 전) — unix초. */
+/** 저장 타점 입력(스냅 전) — unix초 + 배치된 축 수(▼ 채움·배지). 축별 상세는 "타점 정보" 패널 몫. */
 export interface SavedPointInput {
     time: number;
+    placed: number; // 배치된 축 수(0 = 미배치)
 }
 
 export interface MinuteSeries {
@@ -228,7 +229,7 @@ export function useMarkerVertLines(
             const s = snapToBar(sp.time);
             if (s != null && !seen.has(s)) {
                 seen.add(s);
-                out.push({ time: s });
+                out.push({ ...sp, time: s }); // 스냅해도 배치 현황은 그 타점의 것을 그대로 들고 간다
             }
         }
         return out;
@@ -446,7 +447,7 @@ export function usePercentPriceLines(
 }
 
 export interface MarkerOverlay {
-    saved: Array<{ x: number; point: MinutePoint | null; time: number }>;
+    saved: Array<{ x: number; point: MinutePoint | null; time: number; placed: number }>;
     current: { x: number; point: MinutePoint | null } | null;
 }
 
@@ -464,7 +465,7 @@ export function useMarkerOverlay(
         if (!ts) return { saved: [], current: null };
         const saved = savedSnapped.map((s) => {
             const c = ts.timeToCoordinate(s.time as UTCTimestamp);
-            return { x: c == null ? -9999 : (c as number), point: pointMapRef.current.get(s.time) ?? null, time: s.time };
+            return { ...s, x: c == null ? -9999 : (c as number), point: pointMapRef.current.get(s.time) ?? null };
         });
         let current: MarkerOverlay["current"] = null;
         if (currentSnapped != null) {

@@ -5,9 +5,9 @@ import {
     type DragStartEvent, type DragMoveEvent, type DragEndEvent,
 } from "@dnd-kit/core";
 import { useWorkbench, type RankBand, type DateRange, type TimeRange } from "../store/workbench.js";
-import { axisLineQuery, allPointsQuery, rankAxesQuery } from "../api/queries.js";
+import { axisLinesQuery, allPointsQuery, rankAxesQuery } from "../api/queries.js";
 import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxis, type RankPoint, type RankTarget } from "../api/rank.js";
-import { useRankAxes } from "./rank/useRankAxes.js";
+import { useRankAxes } from "../lib/useRankAxes.js";
 import { PAD, LINE_PAD, assemble, computeLaneDrop, displayU, isZoomed, slotFrac, zoomAt, type Slot, type View } from "./rank/rankGeometry.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
@@ -105,19 +105,27 @@ export function RankPanel(): JSX.Element {
     const activeKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
     const activeMatches = (p: RankPoint): boolean => activeKey !== null && pointKey(p) === activeKey;
 
-    const invAxis = (axisId: string): void => void qc.invalidateQueries({ queryKey: axisLineQuery(axisId).queryKey });
+    // 줄 캐시는 전축 한 키 — 어느 축을 만졌든 같은 키를 무효화한다.
+    const invLines = (): void => void qc.invalidateQueries({ queryKey: axisLinesQuery().queryKey });
     const invAxes = (): void => void qc.invalidateQueries({ queryKey: rankAxesQuery().queryKey });
-    const placeMut = useMutation({ mutationFn: (v: { axisId: string; point: RankPoint; target: RankTarget }) => placePoint(v.axisId, v.point, v.target), onSuccess: (_r, v) => invAxis(v.axisId) });
-    const unplaceMut = useMutation({ mutationFn: (v: { axisId: string; point: RankPoint }) => unplacePoint(v.axisId, v.point), onSuccess: (_r, v) => invAxis(v.axisId) });
+    const placeMut = useMutation({ mutationFn: (v: { axisId: string; point: RankPoint; target: RankTarget }) => placePoint(v.axisId, v.point, v.target), onSuccess: () => invLines() });
+    const unplaceMut = useMutation({ mutationFn: (v: { axisId: string; point: RankPoint }) => unplacePoint(v.axisId, v.point), onSuccess: () => invLines() });
     const createMut = useMutation({ mutationFn: (v: { name: string; scope: "point" | "day" }) => createRankAxis(v.name, v.scope), onSuccess: invAxes });
     const renameMut = useMutation({ mutationFn: (v: { id: string; name: string }) => renameRankAxis(v.id, v.name), onSuccess: invAxes });
-    const deleteMut = useMutation({ mutationFn: (id: string) => deleteRankAxis(id), onSuccess: invAxes });
+    const deleteMut = useMutation({ mutationFn: (id: string) => deleteRankAxis(id), onSuccess: () => { invAxes(); invLines(); } }); // 축이 사라지면 그 줄도 함께 사라진다
 
     // ── 드래그(dnd-kit) — 담기 칩 → 레인. 포인터 x 로 목표(타이/between) + 라이브 인디케이터. ──
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
     const dragStartX = useRef(0);
     const trackRefs = useRef<Map<string, HTMLElement>>(new Map());
     const [drop, setDrop] = useState<DropInfo | null>(null);
+
+    // "저 축 보여줘"(타점 정보 패널의 축 클릭) — 이미 있는 트랙 ref 로 그 레인까지 스크롤. at 이 바뀔 때만 1회.
+    const revealAxis = useWorkbench((s) => s.revealAxis);
+    useEffect(() => {
+        if (!revealAxis) return;
+        trackRefs.current.get(revealAxis.axisId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, [revealAxis]);
 
     // DOM 측정만 여기서 — 판정 규칙(타이 ±px·between 이웃)은 rankGeometry(순수, 테스트됨).
     const computeDrop = (axisId: string, clientX: number): DropInfo | null => {

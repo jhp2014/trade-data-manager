@@ -1,9 +1,9 @@
-// 순위 배치 큐레이션 CRUD 클라이언트. wire 타입(RankAxis·PlacedPoint)은 contracts/wire 공유.
-// 한 축 피드(PlacedPoint[])를 받아 패널이 slotId 로 묶어 타이 셀, orderKey 로 정렬(옵션 A). 대상 타점 = review point 삼중키.
-import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
+// 순위 배치 큐레이션 CRUD 클라이언트. wire 타입(RankAxis·AxisLine·PlacedPoint)은 contracts/wire 공유.
+// 전 축 피드(AxisLine[])를 받아 패널이 slotId 로 묶어 타이 셀, orderKey 로 정렬(옵션 A). 대상 타점 = review point 삼중키.
+import type { RankAxis, AxisLine } from "@trade-data-manager/wire";
 import { apiGet, apiPost, apiPatch, apiDelete } from "./http.js";
 
-export type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
+export type { RankAxis, AxisLine, PlacedPoint } from "@trade-data-manager/wire";
 
 /** 배치 대상 타점 자연키. */
 export interface RankPoint {
@@ -19,8 +19,8 @@ export type RankTarget =
 
 export const fetchRankAxes = (signal?: AbortSignal): Promise<RankAxis[]> => apiGet<RankAxis[]>("rank-axes", undefined, signal);
 
-export const fetchAxisLine = (axisId: string, signal?: AbortSignal): Promise<PlacedPoint[]> =>
-    apiGet<PlacedPoint[]>(`rank-axes/${axisId}/placements`, undefined, signal);
+/** 전 축의 줄 한 방(축 단건 조회 없음 — 소비자가 모두 전축을 본다). 배치 0인 축은 응답에 없음 = 빈 줄. */
+export const fetchAxisLines = (signal?: AbortSignal): Promise<AxisLine[]> => apiGet<AxisLine[]>("rank-axes/placements", undefined, signal);
 
 export const createRankAxis = (name: string, scope: "point" | "day" = "point"): Promise<RankAxis> => apiPost<RankAxis>("rank-axes", { name, scope });
 

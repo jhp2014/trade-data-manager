@@ -7,7 +7,7 @@ import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
 import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
-import { fetchRankAxes, fetchAxisLine } from "./rank.js";
+import { fetchRankAxes, fetchAxisLines } from "./rank.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
@@ -43,12 +43,14 @@ export const reviewPointsQuery = (code: string, date: string) =>
 export const allPointsQuery = () =>
     queryOptions({ queryKey: ["all-points"], queryFn: ({ signal }) => fetchAllPoints(signal), staleTime: IMMUTABLE });
 
-// 순위 배치 — 축 목록·축별 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
+// 순위 배치 — 축 목록 + 전 축 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
+// 줄은 **키 하나**(축별로 쪼개지 않음): 모든 소비자가 전축을 보므로 축 수만큼의 왕복이 사라지고,
+// 패널 간 줄이 어긋날 여지도 없다. 대신 한 번 꽂을 때마다 전축을 다시 받는다(로컬 API, 수백 KB 수준).
 export const rankAxesQuery = () =>
     queryOptions({ queryKey: ["rank-axes"], queryFn: ({ signal }) => fetchRankAxes(signal), staleTime: IMMUTABLE });
 
-export const axisLineQuery = (axisId: string) =>
-    queryOptions({ queryKey: ["rank-axis-line", axisId], queryFn: ({ signal }) => fetchAxisLine(axisId, signal), enabled: axisId.length > 0, staleTime: IMMUTABLE });
+export const axisLinesQuery = () =>
+    queryOptions({ queryKey: ["rank-axis-lines"], queryFn: ({ signal }) => fetchAxisLines(signal), staleTime: IMMUTABLE });
 
 // 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
 export const stockMetaQuery = (code: string) =>

@@ -24,6 +24,12 @@ export interface PlacedPoint {
     time: string; // HH:MM:SS (분봉 시각)
 }
 
+/** 한 축의 줄 전체(전축 조회 피드 항목). 축 하나를 지목하는 조회가 없으므로 axisId 는 여기 한 번만 붙는다. */
+export interface AxisLine {
+    axisId: string;
+    placements: PlacedPoint[];
+}
+
 /** 배치 대상 타점 자연키 = review point 삼중키. */
 export interface RankPoint {
     stockCode: string;

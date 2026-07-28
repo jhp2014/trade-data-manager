@@ -60,7 +60,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 
     // 가격선 주석(조회·해소·토글/삭제/clear) + 복기 타점(조회·savedPoints) — 훅으로 분리.
     const { resolvedLines, dLines, hasLines, toggleLine, removeLine, clear } = usePriceLinesForChart(code, viewDate, dailyView, minuteView);
-    const { savedPoints, focusedPoint } = useReviewPointData(code, viewDate, time);
+    const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
@@ -144,6 +144,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     base={minuteView.base}
                                     markerTime={markerTime}
                                     savedPoints={savedPoints}
+                                    axisTotal={axisTotal}
                                     showPointInfo={showPointInfo}
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}

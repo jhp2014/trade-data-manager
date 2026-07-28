@@ -5,11 +5,12 @@ import {
     DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable,
     type DragStartEvent, type DragMoveEvent, type DragEndEvent,
 } from "@dnd-kit/core";
-import { axisLineQuery, allPointsQuery } from "../api/queries.js";
+import { axisLinesQuery, allPointsQuery } from "../api/queries.js";
 import { placePoint, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
-import { buildAxisIndex, buildSheetRows, type AxisIndex, type RankCell, type SheetRow } from "./rank/rankSheet.js";
-import { useRankAxes } from "./rank/useRankAxes.js";
+import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
+import { buildAxisIndex, type AxisIndex, type RankCell } from "../lib/rankIndex.js";
+import { useRankAxes } from "../lib/useRankAxes.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { SavedFilterBar } from "./rank/SavedFilterBar.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
@@ -22,7 +23,7 @@ import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Excursion } from "./rank/pathStats.js";
-import { FAIL, FILTER, MID, PIN as PIN_COLOR, STRONG, WEAK } from "../styles/palette.js";
+import { FAIL, FILTER, PIN as PIN_COLOR, STRONG, WEAK, heatOf } from "../styles/palette.js";
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
@@ -48,7 +49,6 @@ const COV_W = 44;
 const NUM_W = 50;
 const OUT_W = 88;
 const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
-const heatOf = (frac: number): string => (frac >= 0.66 ? STRONG : frac >= 0.33 ? MID : WEAK);
 
 // 열 기술자 — 표는 이 목록을 순회해 헤더/셀을 그린다. 고정(집합)/숨김(집합)/순서를 한 곳에서 계산.
 type Col =
@@ -311,7 +311,7 @@ export function RankSheetPanel(): JSX.Element {
     const qc = useQueryClient();
     const placeMut = useMutation({
         mutationFn: (v: { axisId: string; point: RankPoint; target: RankTarget }) => placePoint(v.axisId, v.point, v.target),
-        onSuccess: (_r, v) => void qc.invalidateQueries({ queryKey: axisLineQuery(v.axisId).queryKey }),
+        onSuccess: () => void qc.invalidateQueries({ queryKey: axisLinesQuery().queryKey }),
     });
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
     const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());     // tbody 행 pk → tr(드롭 Y 판정)

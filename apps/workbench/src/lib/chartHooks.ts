@@ -7,6 +7,7 @@ import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/r
 import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery, chartQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView, type DailyPoint, type MinuteView } from "./derive.js";
 import { resolveAnchorLines } from "./chartFrame.js";
+import { usePlacements } from "./usePlacements.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { Command } from "../keymap/types.js";
@@ -64,27 +65,34 @@ export function usePriceLinesForChart(
 
 export interface SavedPoint {
     time: number; // 저장 타점 시각(unix초) — 분봉 세로선/아이콘
+    placed: number; // 이 타점이 배치된 축 수(▼ 채움·배지). 축별 상세는 "타점 정보" 패널.
 }
 
 export interface ChartReviewPoints {
     savedPoints: SavedPoint[];
     focusedPoint: ReviewPoint | undefined; // 현재 Focus.time 에 저장된 타점(헤더 배지)
+    axisTotal: number; // 순위 축 총수(배지 분모)
 }
 
 /**
  * 복기 타점 조회 데이터(차트 렌더용) — 저장타점 세로선·hover 카드·현재타점 배지. 단축키 등록은 전역 useChartHotkeys 로 이관.
+ * 배치 개수는 여기서 함께 붙인다 — 차트는 스냅된 봉 시각만 들고 다녀서(원래 HH:MM:SS 를 잃는다) 나중에 못 붙인다.
  */
 export function useReviewPointData(code: string, date: string, time: string | null): ChartReviewPoints {
     const reviewQ = useQuery(reviewPointsQuery(code, date));
     const reviewPoints = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
+    const placements = usePlacements();
 
     const savedPoints = useMemo<SavedPoint[]>(() => {
         if (!date) return [];
-        return reviewPoints.map((rp) => ({ time: kstToUnix(date, rp.time) }));
-    }, [reviewPoints, date]);
+        return reviewPoints.map((rp) => {
+            const ref = { stockCode: code, date, time: rp.time };
+            return { time: kstToUnix(date, rp.time), placed: placements.countOf(ref) };
+        });
+    }, [reviewPoints, code, date, placements]);
 
     const focusedPoint = useMemo(() => reviewPoints.find((rp) => rp.time === time), [reviewPoints, time]);
-    return { savedPoints, focusedPoint };
+    return { savedPoints, focusedPoint, axisTotal: placements.axisTotal };
 }
 
 /**

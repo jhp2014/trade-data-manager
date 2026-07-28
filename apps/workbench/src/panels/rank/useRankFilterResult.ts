@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { allPointsQuery } from "../../api/queries.js";
-import { useRankAxes } from "./useRankAxes.js";
+import { useRankAxes } from "../../lib/useRankAxes.js";
 import { filterPoints, type AxisBand } from "./bandFilter.js";
 import { computePathStats, type PathStats } from "./pathStats.js";
 import { useRankPaths } from "./useRankPaths.js";

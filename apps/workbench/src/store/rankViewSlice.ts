@@ -3,6 +3,7 @@
 //  · pinned: 핀=작업셋=배치 보드 트레이(공유 하나). 배치 드래그 소스 + 시트 상단 고정.
 //  · rankAxisOrder: 축 열/레인 순서 — 양방향 동기화(양쪽에서 재정렬), localStorage 영속.
 //  · savedFilters: 이름 붙인 밴드 조합(양 패널 공유, 영속).
+//  · revealAxis: "저 축을 보여줘" 요청(타점 정보 → 배치 보드 레인 스크롤). at 타임스탬프로 같은 축 재요청도 발화.
 // (소프트 선택은 폐기 — 필터 좁히기/흐리게로 충분, 드래그도 제거.)
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
@@ -23,7 +24,9 @@ export interface RankViewSlice {
     savedFilters: SavedFilter[]; // 저장 필터(양 패널 공유, 영속)
     rankAxisOrder: string[]; // axisId 순서(빈 배열 = 서버순 폴백). pref 에 없는 새 축은 소비측이 뒤로.
     rankSort: { target: string; dir: 1 | -1 } | null; // 시트 정렬 기준 → 배치 보드 하이라이트(target = axisId | "date" | "time"). 세션 한정.
+    revealAxis: { axisId: string; at: number } | null; // 축 노출 요청(세션 한정, 소비 후에도 남음 — at 비교로 1회 처리)
     setHoveredPoint: (key: string | null) => void;
+    revealRankAxis: (axisId: string) => void;
     setRankSort: (v: { target: string; dir: 1 | -1 } | null) => void;
     togglePin: (key: string) => void; // 담기/빼기(+/× 공용)
     addPins: (keys: string[]) => void; // 여러 개 한 번에(끝에 append)
@@ -40,8 +43,10 @@ export const createRankViewSlice: StateCreator<WorkbenchState, [], [], RankViewS
     savedFilters: loadSaved(),
     rankAxisOrder: loadOrder(),
     rankSort: null,
+    revealAxis: null,
 
     setHoveredPoint: (key) => set(() => ({ hoveredPoint: key })),
+    revealRankAxis: (axisId) => set(() => ({ revealAxis: { axisId, at: Date.now() } })),
     setRankSort: (v) => set(() => ({ rankSort: v })),
     togglePin: (key) => set((s) => (s.pinned.includes(key) ? { pinned: s.pinned.filter((k) => k !== key) } : { pinned: [...s.pinned, key] })),
     addPins: (keys) => set((s) => ({ pinned: [...s.pinned, ...keys.filter((k) => !s.pinned.includes(k))] })),

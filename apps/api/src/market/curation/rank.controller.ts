@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import type { RankReader, RankStore, RankTarget } from "@trade-data-manager/market";
-import type { RankAxis, PlacedPoint } from "@trade-data-manager/wire";
+import type { RankAxis, AxisLine } from "@trade-data-manager/wire";
 import { RANK_REPO } from "../tokens.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
@@ -40,11 +40,11 @@ export class RankController {
         return this.repo.createAxis(name, scope);
     }
 
-    // ── 배치(:id/placements) 경로를 bare :id 앞에 선언 — Express 가 그것을 :id 로 삼지 않게 순서 보장.
-    @Get(":id/placements")
-    line(@Param("id") id: string): Promise<PlacedPoint[]> {
-        if (!id) throw new BadRequestException("id 필수");
-        return this.repo.listAxisLine(id);
+    // ── 배치 경로를 bare :id 앞에 선언 — Express 가 "placements" 를 :id 로 삼지 않게 순서 보장.
+    /** 전 축의 줄 한 번에 — 소비자(배치·시트·분석·작업셋·차트)가 모두 전축을 보므로 축 단건 조회는 두지 않는다. */
+    @Get("placements")
+    lines(): Promise<AxisLine[]> {
+        return this.repo.listAllLines();
     }
 
     @Post(":id/placements")

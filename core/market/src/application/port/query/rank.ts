@@ -1,15 +1,19 @@
-import type { RankAxis, RankAxisScope, PlacedPoint, RankPoint, RankTarget } from "#domain";
+import type { RankAxis, RankAxisScope, AxisLine, RankPoint, RankTarget } from "#domain";
 
 // 순위 배치 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
-// 조립(줄 렌더)은 클라가 인메모리로: 한 축 피드를 받아 slotId 로 묶어 타이 셀, orderKey 로 정렬.
+// 조립(줄 렌더)은 클라가 인메모리로: 축 피드를 받아 slotId 로 묶어 타이 셀, orderKey 로 정렬.
 // 검색·확률은 후속. 자세한 설계는 domain/rank.
 
-/** 순위 배치 조회(읽기). 축 목록 + 한 축의 줄 피드. */
+/** 순위 배치 조회(읽기). 축 목록 + 전 축의 줄 피드. */
 export interface RankReader {
     /** 전체 축(id 오름차순). */
     listAxes(): Promise<RankAxis[]>;
-    /** 한 축의 모든 배치(orderKey 오름차순). 클라가 slotId 로 묶어 타이 셀 구성. */
-    listAxisLine(axisId: string): Promise<PlacedPoint[]>;
+    /**
+     * 전 축의 배치(축별로 orderKey 오름차순). 클라가 slotId 로 묶어 타이 셀 구성.
+     * 축 단건 조회를 두지 않는 이유: 소비자(배치·시트·분석·작업셋·차트)가 모두 **전 축**을 한꺼번에 본다 —
+     * 축 수만큼 왕복하던 N+1 을 없애고, 캐시 키가 하나라 패널 간 줄이 어긋날 여지도 없앤다.
+     */
+    listAllLines(): Promise<AxisLine[]>;
 }
 
 /** 순위 배치 편집(쓰기). 축 CRUD + 타점 배치/이동/제거. */

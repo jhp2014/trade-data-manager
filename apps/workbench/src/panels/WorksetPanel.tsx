@@ -6,6 +6,7 @@ import { type ReviewPointListItem } from "../api/reviewPoints.js";
 import { priceLinedStocksQuery, allPointsQuery } from "../api/queries.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { MonthPicker, LocateIcon, DateHeader, Name, PointRow } from "./WorksetRows.js";
+import { usePlacements } from "../lib/usePlacements.js";
 
 // 작업셋 패널 — 선 있는 (종목,날짜) ∪ 타점을 월별로 브라우징(연대순 진입). 타점 클릭 → date·code·time focus.
 
@@ -42,6 +43,9 @@ export function WorksetPanel(): JSX.Element {
     const activePoint = useWorkbench((s) => s.activePoint);
     const setFocus = useWorkbench((s) => s.setFocus);
     const goToPoint = useWorkbench((s) => s.goToPoint);
+
+    // 배치 현황(n/m) — 배치 여부를 알려면 어차피 전 축 줄이 필요하고, 그건 배치/시트 패널과 같은 캐시다(추가 페치 0).
+    const placements = usePlacements();
 
     const stocksQ = useQuery(priceLinedStocksQuery());
     const pointsQ = useQuery(allPointsQuery());
@@ -206,6 +210,8 @@ export function WorksetPanel(): JSX.Element {
                                             p={p}
                                             related={selected}
                                             current={selected && p.time === focusTime}
+                                            placed={placements.countOf(p)}
+                                            axisTotal={placements.axisTotal}
                                             onClick={() => goToPoint({ date: p.date, code: p.stockCode, time: p.time })}
                                         />
                                     ))}
