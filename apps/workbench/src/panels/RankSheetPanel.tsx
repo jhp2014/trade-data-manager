@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -58,11 +58,38 @@ type Col =
     | { key: "axis"; axisId: string; name: string }
     | { key: "coverage" }
     | { key: "mfe" | "maePre" | "maePost" | "outcome" };
+type ColKind = Col["key"];
+
+// td 기본 스타일 3종 — COL_META 가 참조하므로 테이블보다 먼저 선언한다.
+const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
+const tdCell: CSSProperties = { padding: "5px 8px", textAlign: "center" };
+const tdNum: CSSProperties = { padding: "5px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" };
+
+// 열 종류별 고정 속성 한 테이블 — 폭·헤더 라벨·정렬(가로)·td 기본 스타일.
+// 예전엔 이 넷이 각각 삼항 체인이라 열을 하나 붙일 때마다 네 군데를 같이 고쳐야 했다(하나 빠뜨리면
+// 폭만 안 맞거나 라벨이 빈칸). 셀 렌더는 아래 CELLS(패널 상태를 닫아야 해서 컴포넌트 안)와 한 쌍.
+interface ColMeta {
+    width: number;
+    label: string; // axis 는 축 이름이라 런타임 override(colLabel)
+    justify: "flex-start" | "center" | "flex-end";
+    td: CSSProperties;
+}
+const COL_META: Record<ColKind, ColMeta> = {
+    name: { width: NAME_W, label: "종목", justify: "flex-start", td: td },
+    date: { width: DATE_W, label: "날짜", justify: "center", td: td },
+    time: { width: TIME_W, label: "시간", justify: "center", td: td },
+    axis: { width: AXIS_W, label: "", justify: "center", td: tdCell },
+    coverage: { width: COV_W, label: "배치", justify: "center", td: tdCell },
+    mfe: { width: NUM_W, label: "MFE", justify: "flex-end", td: tdNum },
+    maePre: { width: NUM_W, label: "MAE전", justify: "flex-end", td: tdNum },
+    maePost: { width: NUM_W, label: "MAE후", justify: "flex-end", td: tdNum },
+    outcome: { width: OUT_W, label: "결과", justify: "flex-start", td: td },
+};
 const colKey = (c: Col): string => (c.key === "axis" ? `ax:${c.axisId}` : c.key);
-const colWidth = (c: Col): number =>
-    c.key === "name" ? NAME_W : c.key === "date" ? DATE_W : c.key === "time" ? TIME_W : c.key === "axis" ? AXIS_W : c.key === "coverage" ? COV_W : c.key === "outcome" ? OUT_W : NUM_W;
-const colLabel = (c: Col): string =>
-    c.key === "name" ? "종목" : c.key === "date" ? "날짜" : c.key === "time" ? "시간" : c.key === "axis" ? c.name : c.key === "coverage" ? "배치" : c.key === "mfe" ? "MFE" : c.key === "maePre" ? "MAE전" : c.key === "maePost" ? "MAE후" : "결과";
+const colWidth = (c: Col): number => COL_META[c.key].width;
+const colLabel = (c: Col): string => (c.key === "axis" ? c.name : COL_META[c.key].label);
+/** 열 → 그 열로 정렬할 때의 키. axis 만 축 id 를 실어야 해서 분기 하나. */
+const sortKeyOf = (c: Col): SortKey => (c.key === "axis" ? { kind: "axis", axisId: c.axisId } : { kind: c.key });
 
 type SortKey =
     | { kind: "name" }
@@ -278,8 +305,6 @@ export function RankSheetPanel(): JSX.Element {
 
     const navRow = (row: SheetRow): void => goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
     const totalCols = displayCols.length;
-    const sortKeyOf = (c: Col): SortKey =>
-        c.key === "name" ? { kind: "name" } : c.key === "date" ? { kind: "date" } : c.key === "time" ? { kind: "time" } : c.key === "axis" ? { kind: "axis", axisId: c.axisId } : c.key === "coverage" ? { kind: "coverage" } : { kind: c.key };
 
     // ── 드래그 배치 — 핀(고정) 행 이름 → 정렬된 축 열. 정렬이 축일 때만 유효(그때만 열이 세로 라인).
     //  · droppable/over 에 의존 안 함(취약) — DndContext 는 droppable 없이도 onDragMove/End 발화, 포인터 좌표만으로 판정.
@@ -355,45 +380,76 @@ export function RankSheetPanel(): JSX.Element {
             if (colKey(c) === lastFrozenKey) s.borderRight = "2px solid var(--border-strong)";
             return s;
         };
+        // 셀 렌더 — 열 종류를 키로 찾는다(if 체인 대신). td 껍데기(공통 스타일·sticky)는 여기서 한 번 씌우고,
+        // 종류별 함수는 **안쪽 내용과 그 열만의 style/이벤트**만 돌려준다. 열을 붙이면 여기 항목 하나 + COL_META 한 줄.
         const cellFor = (c: Col): JSX.Element => {
-            const st = stick(c);
-            if (c.key === "name") return (
-                <td key="name" style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}`, ...st }}>
-                    {inPinnedBlock
-                        ? <PinnedDragName pkStr={key} name={nameOf(row.stockCode)} focus={focus} onNav={() => navRow(row)} />
-                        : <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>}
-                    {(isHover || isPinned) && (
-                        <button onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
-                            style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: isPinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: `linear-gradient(90deg, transparent, ${cellBgOpaque} 40%)` }}>{isPinned ? "▼" : "▲"}</button>
-                    )}
+            const r = CELLS[c.key](c);
+            return (
+                <td key={colKey(c)} onClick={r.onClick} onContextMenu={r.onContextMenu} title={r.title}
+                    style={{ ...COL_META[c.key].td, ...r.style, ...stick(c) }}>
+                    {r.body}
                 </td>
             );
-            if (c.key === "date") return <td key="date" onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", ...st }}>{row.date.slice(2).replace(/-/g, ".")}</td>;
-            if (c.key === "time") return <td key="time" onClick={() => navRow(row)} style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontWeight: 600, color: "var(--accent-primary)", ...st }}>{row.time.slice(0, 5)}</td>;
-            if (c.key === "axis") {
-                const cell = row.cells[c.axisId];
-                const isSortAxis = sortAxisId === c.axisId;
-                const frozen = leftOf.has(colKey(c));
-                return (
-                    <td key={colKey(c)}
-                        onClick={() => navRow(row)}
-                        onContextMenu={cell ? (ev) => { ev.preventDefault(); setCtx({ axisId: c.axisId, slotId: cell.slotId, x: ev.clientX, y: ev.clientY }); } : undefined}
-                        title="우클릭 = 이상/이하 밴드 · 클릭 = 이동"
-                        style={{ ...tdCell, cursor: "pointer", ...st, background: frozen ? cellBgOpaque : isSortAxis ? "var(--bg-secondary)" : "transparent" }}>
-                        <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={axisW - 18} />
-                    </td>
-                );
-            }
-            if (c.key === "coverage") return <td key="coverage" style={{ ...tdCell, color: row.coverage === axes.length ? STRONG : "var(--text-secondary)", ...st }}>{row.coverage}/{axes.length}</td>;
-            if (c.key === "outcome") return (
-                <td key="outcome" style={{ ...td, ...st }}>
-                    {row.outcome && <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span>}
-                    {row.type && <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginLeft: 5 }}>{row.type}</span>}
-                </td>
-            );
-            const v = e ? e[c.key] : null;
-            return <td key={c.key} style={{ ...tdNum, color: c.key === "mfe" ? STRONG : WEAK, ...st }}>{v == null ? "—" : (c.key === "mfe" ? "+" : "") + v.toFixed(1)}</td>;
         };
+        type CellRender = { body: ReactNode; style?: CSSProperties; onClick?: () => void; onContextMenu?: (e: React.MouseEvent) => void; title?: string };
+        const CELLS: Record<ColKind, (c: Col) => CellRender> = {
+            name: () => ({
+                style: { fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}` },
+                body: (
+                    <>
+                        {inPinnedBlock
+                            ? <PinnedDragName pkStr={key} name={nameOf(row.stockCode)} focus={focus} onNav={() => navRow(row)} />
+                            : <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>}
+                        {(isHover || isPinned) && (
+                            <button onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
+                                style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: isPinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: `linear-gradient(90deg, transparent, ${cellBgOpaque} 40%)` }}>{isPinned ? "▼" : "▲"}</button>
+                        )}
+                    </>
+                ),
+            }),
+            date: () => ({
+                onClick: () => navRow(row),
+                style: { whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)" },
+                body: row.date.slice(2).replace(/-/g, "."),
+            }),
+            time: () => ({
+                onClick: () => navRow(row),
+                style: { whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontWeight: 600, color: "var(--accent-primary)" },
+                body: row.time.slice(0, 5),
+            }),
+            axis: (c) => {
+                const axisId = (c as { axisId: string }).axisId;
+                const cell = row.cells[axisId];
+                const frozen = leftOf.has(colKey(c));
+                return {
+                    onClick: () => navRow(row),
+                    onContextMenu: cell ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, x: ev.clientX, y: ev.clientY }); } : undefined,
+                    title: "우클릭 = 이상/이하 밴드 · 클릭 = 이동",
+                    style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
+                    body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={axisW - 18} />,
+                };
+            },
+            coverage: () => ({
+                style: { color: row.coverage === axes.length ? STRONG : "var(--text-secondary)" },
+                body: `${row.coverage}/${axes.length}`,
+            }),
+            outcome: () => ({
+                body: (
+                    <>
+                        {row.outcome && <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span>}
+                        {row.type && <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginLeft: 5 }}>{row.type}</span>}
+                    </>
+                ),
+            }),
+            mfe: () => excursionCell("mfe"),
+            maePre: () => excursionCell("maePre"),
+            maePost: () => excursionCell("maePost"),
+        };
+        // MFE/MAE 3열은 부호·색만 다른 같은 셀 — 경로 통계(excByKey)가 없으면 "—".
+        function excursionCell(field: "mfe" | "maePre" | "maePost"): CellRender {
+            const v = e ? e[field] : null;
+            return { style: { color: field === "mfe" ? STRONG : WEAK }, body: v == null ? "—" : (field === "mfe" ? "+" : "") + v.toFixed(1) };
+        }
         return (
             <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
                 ref={inPinnedBlock ? undefined : (el) => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); }}
@@ -445,7 +501,7 @@ export function RankSheetPanel(): JSX.Element {
                                 const active = sameSort(sort.key, sk);
                                 const left = leftOf.get(colKey(c));
                                 const banded = c.key === "axis" && !!rankBands[c.axisId];
-                                const justify = c.key === "name" || c.key === "outcome" ? "flex-start" : c.key === "axis" || c.key === "coverage" || c.key === "date" || c.key === "time" ? "center" : "flex-end";
+                                const justify = COL_META[c.key].justify;
                                 const dnd = c.key === "axis" ? {
                                     draggable: true,
                                     onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData("application/x-rank-axis", (c as { axisId: string }).axisId); e.dataTransfer.effectAllowed = "move"; },
@@ -568,7 +624,4 @@ const Wrap = ({ children }: { children: React.ReactNode }): JSX.Element => (
 );
 const muted: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px" };
 const thBase: CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: "6px 8px", borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" };
-const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
-const tdCell: CSSProperties = { padding: "5px 8px", textAlign: "center" };
-const tdNum: CSSProperties = { padding: "5px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" };
 const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer" };
