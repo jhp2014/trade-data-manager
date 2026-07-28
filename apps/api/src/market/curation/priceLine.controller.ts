@@ -15,15 +15,11 @@ export class PriceLineController {
         @Inject(MASTER_CACHE) private readonly master: MasterCache,
     ) {}
 
-    // 작업셋 — 선이 있는 (종목,날짜) 전부(월 그룹은 클라). 선은 curation, 종목명은 market.stock_master(MasterCache)라
-    // 물리 분리 시 SQL 조인 불가 → 여기(앱레이어)서 합친다. 정적 경로라 @Get() 인덱스와 구분됨.
+    // 작업셋 — 선이 있는 (종목,날짜) 전부(월 그룹은 클라). 종목명 조인은 MasterCache.attachNames(앱레이어 조인).
+    // 정적 경로라 @Get() 인덱스와 구분됨.
     @Get("stocks")
     async listStocks(): Promise<PriceLinedStock[]> {
-        const stocks = await this.repo.listPriceLinedStocks();
-        const codes = [...new Set(stocks.map((s) => s.stockCode))];
-        const masters = await this.master.getByStockCodes(codes);
-        const nameByCode = new Map(masters.map((m) => [m.stockCode, m.name] as const));
-        return stocks.map((s) => ({ ...s, name: nameByCode.get(s.stockCode) ?? null }));
+        return this.master.attachNames(await this.repo.listPriceLinedStocks());
     }
 
     @Get()

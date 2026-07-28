@@ -14,15 +14,11 @@ export class ReviewPointController {
         @Inject(MASTER_CACHE) private readonly master: MasterCache,
     ) {}
 
-    // 작업셋 — 전체 타점 + 종목명(월 그룹은 클라). 타점은 curation, 종목명은 market.stock_master(MasterCache)라
-    // 물리 분리 시 SQL 조인이 불가 → 여기(앱레이어)서 두 소스를 합친다. 정적 경로라 @Get() 인덱스와 구분됨.
+    // 작업셋 — 전체 타점 + 종목명(월 그룹은 클라). 종목명 조인은 MasterCache.attachNames(앱레이어 조인).
+    // 정적 경로라 @Get() 인덱스와 구분됨.
     @Get("all")
     async listAll(): Promise<ReviewPointListItem[]> {
-        const points = await this.repo.listAllPoints();
-        const codes = [...new Set(points.map((p) => p.stockCode))];
-        const masters = await this.master.getByStockCodes(codes);
-        const nameByCode = new Map(masters.map((m) => [m.stockCode, m.name] as const));
-        return points.map((p) => ({ ...p, name: nameByCode.get(p.stockCode) ?? null }));
+        return this.master.attachNames(await this.repo.listAllPoints());
     }
 
     @Get()

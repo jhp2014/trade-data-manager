@@ -20,6 +20,17 @@ export class MasterCache {
         return codes.map((c) => this.cache.get(c) ?? null).filter((m): m is StockMaster => m !== null);
     }
 
+    /**
+     * 행들에 종목명을 붙인다 — 큐레이션 산출물(가격선·타점)은 curation DB, 종목명은 market.stock_master 라
+     * **물리 분리 시 SQL 조인이 불가**하다. 그 조인을 앱레이어에서 하는 자리가 여기 한 곳.
+     * 미수집·폐지 코드는 name=null(행은 살린다 — 이름 없다고 작업셋에서 사라지면 안 된다).
+     */
+    async attachNames<T extends { stockCode: string }>(rows: T[]): Promise<(T & { name: string | null })[]> {
+        const masters = await this.getByStockCodes([...new Set(rows.map((r) => r.stockCode))]);
+        const nameByCode = new Map(masters.map((m) => [m.stockCode, m.name] as const));
+        return rows.map((r) => ({ ...r, name: nameByCode.get(r.stockCode) ?? null }));
+    }
+
     /** 신규상장 등 마스터 갱신 시 캐시 비움(음성 캐시 포함 → 새로 조회). */
     refresh(): void {
         this.cache.clear();
