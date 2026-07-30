@@ -22,9 +22,10 @@ export * from "./news/newsSearch.js";
 export * from "./classification/themeMember.js";
 export * from "./classification/dailyComment.js";
 
-// review — 차트 주석(사람 편집): 수평 가격선 + 복기 타점
+// review — 차트 주석(사람 편집): 수평 가격선 + 복기 타점 + 타점 태그(명목형 분류)
 export * from "./review/priceLine.js";
 export * from "./review/reviewPoint.js";
+export * from "./review/tag.js";
 
 // rank — 순위 배치(사람 편집): 축별 상대순위 줄에 복기 타점 배치. review point 를 자연키로 참조.
 export * from "./rank/index.js";

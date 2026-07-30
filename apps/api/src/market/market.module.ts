@@ -13,12 +13,13 @@ import {
     DrizzlePriceLineRepository,
     DrizzleReviewPointRepository,
     DrizzleRankRepository,
+    DrizzleTagRepository,
     DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, RANK_MINUTES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
@@ -31,6 +32,7 @@ import { PriceLineController } from "./curation/priceLine.controller.js";
 import { ReviewPointController } from "./curation/reviewPoint.controller.js";
 import { CommentController } from "./curation/comment.controller.js";
 import { RankController } from "./curation/rank.controller.js";
+import { TagController } from "./curation/tag.controller.js";
 import { NewsController } from "./news/news.controller.js";
 import { TelegramNewsController } from "./news/telegramNews.controller.js";
 import { StocksController } from "./stocks/stocks.controller.js";
@@ -155,6 +157,12 @@ const curationProviders: Provider[] = [
         useFactory: (pool: Pool) => new DrizzleRankRepository(createDb(pool)),
         inject: [CURATION_POOL],
     },
+    {
+        // 타점 태그 — repo 를 그대로 노출(사전 CRUD·전 타점 부착 피드·부착/해제). 축과 달리 순서가 없는 분류.
+        provide: TAG_REPO,
+        useFactory: (pool: Pool) => new DrizzleTagRepository(createDb(pool)),
+        inject: [CURATION_POOL],
+    },
 ];
 
 const newsProviders: Provider[] = [
@@ -184,6 +192,7 @@ const newsProviders: Provider[] = [
         ReviewPointController,
         CommentController,
         RankController,
+        TagController,
         NewsController,
         TelegramNewsController,
         StocksController,

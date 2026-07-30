@@ -13,6 +13,7 @@ export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repos
 export { DrizzlePriceLineRepository } from "./repositories/priceLine.repository.js";
 export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
 export { DrizzleRankRepository } from "./repositories/rank.repository.js";
+export { DrizzleTagRepository } from "./repositories/tag.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
     dailyCandleToRow,
@@ -47,3 +48,4 @@ export {
     rowToReviewPoint,
 } from "./mappers/reviewPoint.js";
 export { rowToRankAxis } from "./mappers/rank.js";
+export { rowToTag } from "./mappers/tag.js";

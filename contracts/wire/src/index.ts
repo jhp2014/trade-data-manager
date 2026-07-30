@@ -11,6 +11,7 @@ export type * from "./theme.js";
 export type * from "./comment.js";
 export type * from "./priceLine.js";
 export type * from "./reviewPoint.js";
+export type * from "./tag.js";
 export type * from "./rank.js";
 export type * from "./rankPaths.js";
 export type * from "./rankMinutes.js";

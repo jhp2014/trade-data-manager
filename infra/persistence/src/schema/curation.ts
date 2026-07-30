@@ -142,6 +142,54 @@ export const rankPlacements = curation.table(
     ],
 );
 
+// ── 태그(nominal tag) ───────────────────────────────────────────────────────
+// 축(rank_axes)이 "순서를 매길 수 있는 차원"이라면, 태그는 **순서 없는 종류**다(위 4번 주석의 예고 이행).
+// 셋업 유형처럼 상하가 없는 분류를 축의 배치 유무로 대신 표현하던 우회를 걷어내고 제자리에 둔다.
+// review_points.type(단일 varchar)이 하던 일을 흡수한다 — 태그는 한 타점에 여러 개 붙는다(그게 원래 성질).
+
+// 7. 태그 사전 — 이름이 곧 정체(unique). surrogate id 로 부착하므로 이름 변경이 부착을 안 깬다.
+//    이름의 `그룹:값` 은 관례일 뿐 스키마가 강제하지 않는다(표시 색 그룹핑용). 배타 그룹은 아직 없음.
+export const tags = curation.table(
+    "tags",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        name: text("name").notNull(),
+    },
+    (t) => [unique("uq_tag_name").on(t.name)],
+);
+
+// 8. 태그 부착 — 타점 ↔ 태그 N:M 정션. PK (stock,date,time,tag_id) = "한 타점에 같은 태그는 한 번"(멱등 부착).
+//    review_points 삼중키 FK(cascade) = 타점을 지우면 부착도 사라짐 / tags FK(cascade) = 태그를 지우면 전부 떨어짐.
+//    index(tag_id) = "이 태그 몇 건인가"(삭제 확인·팔레트 빈도)를 정션 스캔 없이.
+export const reviewPointTags = curation.table(
+    "review_point_tags",
+    {
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(),
+        tradeTime: time("trade_time").notNull(),
+        tagId: bigint("tag_id", { mode: "bigint" }).notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime, t.tagId] }),
+        foreignKey({
+            columns: [t.stockCode, t.tradeDate, t.tradeTime],
+            foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
+            name: "fk_review_point_tag_point",
+        }).onDelete("cascade"),
+        foreignKey({
+            columns: [t.tagId],
+            foreignColumns: [tags.id],
+            name: "fk_review_point_tag_tag",
+        }).onDelete("cascade"),
+        index("idx_review_point_tags_tag").on(t.tagId),
+    ],
+);
+
+export type TagRow = typeof tags.$inferSelect;
+export type TagInsert = typeof tags.$inferInsert;
+export type ReviewPointTagRow = typeof reviewPointTags.$inferSelect;
+export type ReviewPointTagInsert = typeof reviewPointTags.$inferInsert;
+
 export type RankAxisRow = typeof rankAxes.$inferSelect;
 export type RankAxisInsert = typeof rankAxes.$inferInsert;
 export type RankSlotRow = typeof rankSlots.$inferSelect;

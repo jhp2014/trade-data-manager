@@ -4,6 +4,7 @@
 //   · slot  : 줄 위 한 '위치'(order_key 로 정렬). 타이(같은 순위) = 여러 타점이 한 slot 공유.
 //   · place : 타점 ↔ slot 배치. 타점은 review_points 자연키(stockCode,date,time)로 참조(situation 재사용).
 // 검색("A위·B아래" + 확률)은 outcome 평가가 선행이라 후속 슬라이스. 여긴 줄 세우기(배치)까지만.
+import type { ReviewPointKey } from "../review/reviewPoint.js";
 
 /** 배치 단위(grain). point=타점별(종목·날짜·시각) / day=하루 일관(종목·날짜, place 시 그날 전 타점에 fanout). */
 export type RankAxisScope = "point" | "day";
@@ -30,12 +31,8 @@ export interface AxisLine {
     placements: PlacedPoint[];
 }
 
-/** 배치 대상 타점 자연키 = review point 삼중키. */
-export interface RankPoint {
-    stockCode: string;
-    date: string;
-    time: string;
-}
+/** 배치 대상 타점 자연키 = review point 삼중키(태그 부착과 같은 식별자 — 정의는 domain/review 한 곳). */
+export type RankPoint = ReviewPointKey;
 
 /** 드롭 목표 — 기존 slot 합류(타이) | 두 slot 사이 새 slot(양끝 null 허용). */
 export type RankTarget =

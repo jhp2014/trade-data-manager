@@ -11,6 +11,7 @@ export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
 export const DAILY_COMMENTS = Symbol("DailyComments");          // 코멘트 유스케이스(빈값=삭제·author 소유)
 export const THEME_ASSIGNMENT = Symbol("ThemeAssignment");      // 테마 배정 유스케이스(중복 skip·캐시 무효화)
 export const RANK_REPO = Symbol("RankRepository");
+export const TAG_REPO = Symbol("TagRepository");
 export const RANK_MINUTES = Symbol("RankMinutes");
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");
