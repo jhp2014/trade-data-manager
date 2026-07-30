@@ -35,7 +35,6 @@ export class ReviewPointController {
             stockCode,
             date: body.date,
             time: body.time,
-            type: body.type,
             outcome: body.outcome,
             memo: body.memo,
         };

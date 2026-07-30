@@ -1,0 +1,1 @@
+ALTER TABLE "curation"."review_points" DROP COLUMN "type";

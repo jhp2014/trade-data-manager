@@ -51,7 +51,8 @@ export const priceLines = curation.table(
 );
 
 // 3. 복기 타점 — 차트에서 찍은 타점. 자연키 (stockCode, tradeDate, tradeTime) 삼중키(시각 필수).
-//    **옛 case 를 흡수** = 이 타점이 곧 case. type(셋업 유형)·outcome(트레이드 결과)·memo 는 타점 자체 속성.
+//    **옛 case 를 흡수** = 이 타점이 곧 case. outcome(트레이드 결과)·memo 는 타점 자체 속성.
+//    셋업 유형(옛 `type` varchar)은 태그(아래 7·8번)로 이관 — 명목형은 한 타점에 여럿이라 단일 칸이 자리가 아니었다.
 //    순위 배치(rank_placements)가 이 자연키를 하류에서 참조. PK 가 (stock,date) prefix 커버 → listByChart 별도 인덱스 불필요.
 export const reviewPoints = curation.table(
     "review_points",
@@ -59,7 +60,6 @@ export const reviewPoints = curation.table(
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
         tradeDate: date("trade_date").notNull(),
         tradeTime: time("trade_time").notNull(),
-        type: varchar("type", { length: 40 }), // 셋업 유형 라벨(선택). 값·트리는 클라 config.
         outcome: varchar("outcome", { length: 20 }), // 트레이드 결과(선택). 허용값은 클라.
         memo: text("memo"),
     },
@@ -145,7 +145,7 @@ export const rankPlacements = curation.table(
 // ── 태그(nominal tag) ───────────────────────────────────────────────────────
 // 축(rank_axes)이 "순서를 매길 수 있는 차원"이라면, 태그는 **순서 없는 종류**다(위 4번 주석의 예고 이행).
 // 셋업 유형처럼 상하가 없는 분류를 축의 배치 유무로 대신 표현하던 우회를 걷어내고 제자리에 둔다.
-// review_points.type(단일 varchar)이 하던 일을 흡수한다 — 태그는 한 타점에 여러 개 붙는다(그게 원래 성질).
+// review_points.type(단일 varchar)이 하던 일을 흡수 — 태그는 한 타점에 여러 개 붙는다(그게 원래 성질).
 
 // 7. 태그 사전 — 이름이 곧 정체(unique). surrogate id 로 부착하므로 이름 변경이 부착을 안 깬다.
 //    이름의 `그룹:값` 은 관례일 뿐 스키마가 강제하지 않는다(표시 색 그룹핑용). 배타 그룹은 아직 없음.

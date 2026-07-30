@@ -28,12 +28,12 @@ export interface SettingsSlice {
     themeBoardSettings: ThemeBoardSettings;
     replaySettings: ReplayBoardSettings;
     boardMarket: BoardMarketMap; // 보드별 기준 시장(영속)
-    reviewTypePresets: string[]; // 타점 셋업 유형 프리셋(숫자키 1~9). 클라 config.
+    tagPresets: string[]; // 태그 프리셋 슬롯(숫자키 1~4) — tagId 를 담는다(이름 아님). 클라 config.
     setNewsSearchEngine: (engine: NewsSearchEngine) => void;
     setThemeBoardSettings: (patch: Partial<ThemeBoardSettings>) => void;
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
     setBoardMarket: (board: keyof BoardMarketMap, market: BoardMarket) => void;
-    setReviewTypePreset: (index: number, value: string) => void;
+    setTagPreset: (index: number, tagId: string) => void; // 빈 문자열 = 슬롯 비움
 }
 
 // 보드 기준 시장 — localStorage 영속. 기본 UN(통합, 기존 동작).
@@ -48,12 +48,14 @@ function loadBoardMarket(): BoardMarketMap {
     };
 }
 
-// 타점 셋업 유형 프리셋 — 숫자키 1~9. 값·의미는 사용자 config → localStorage 영속(outcome 선례).
-const PRESETS_KEY = "wb.reviewTypePresets";
-function loadReviewTypePresets(): string[] {
-    const out = Array<string>(9).fill("");
+// 태그 프리셋 — 숫자키 1~4 슬롯. **tagId 를 담는다**: 이름을 담으면 태그 이름을 바꾼 순간 슬롯이 죽는다.
+// 개인 키보드 습관이라 서버가 아니라 localStorage(기기별로 달라도 되는 값).
+export const TAG_PRESET_SLOTS = 4;
+const PRESETS_KEY = "wb.tagPresets";
+function loadTagPresets(): string[] {
+    const out = Array<string>(TAG_PRESET_SLOTS).fill("");
     const arr = loadJson(PRESETS_KEY, (o) => (Array.isArray(o) ? o : null));
-    if (arr) for (let i = 0; i < 9; i++) if (typeof arr[i] === "string") out[i] = arr[i] as string;
+    if (arr) for (let i = 0; i < TAG_PRESET_SLOTS; i++) if (typeof arr[i] === "string") out[i] = arr[i] as string;
     return out;
 }
 
@@ -62,7 +64,7 @@ export const createSettingsSlice: StateCreator<WorkbenchState, [], [], SettingsS
     themeBoardSettings: { showIndividuals: true, showUnclassified: true },
     replaySettings: { amountN: 80, rateN: 40 },
     boardMarket: loadBoardMarket(),
-    reviewTypePresets: loadReviewTypePresets(),
+    tagPresets: loadTagPresets(),
 
     setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
     setThemeBoardSettings: (patch) => set((s) => ({ themeBoardSettings: { ...s.themeBoardSettings, ...patch } })),
@@ -73,11 +75,12 @@ export const createSettingsSlice: StateCreator<WorkbenchState, [], [], SettingsS
             saveJson(BOARD_MARKET_KEY, next);
             return { boardMarket: next };
         }),
-    setReviewTypePreset: (index, value) =>
+    setTagPreset: (index, tagId) =>
         set((s) => {
-            const next = s.reviewTypePresets.slice();
-            next[index] = value;
+            // 같은 태그가 두 슬롯에 걸리면 어느 키가 먹는지 헷갈린다 → 다른 슬롯에서 뺀다(슬롯당 하나, 태그당 하나).
+            const next = s.tagPresets.map((v) => (v === tagId ? "" : v));
+            next[index] = tagId;
             saveJson(PRESETS_KEY, next);
-            return { reviewTypePresets: next };
+            return { tagPresets: next };
         }),
 });

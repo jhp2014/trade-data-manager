@@ -26,6 +26,21 @@ export const HOVER = "#f59e0b"; // 시트↔레일 링크 호버 — 앰버(활�
 export const HOVER_SOFT = "rgba(245,158,11,0.28)";
 export const PIN = "#8b5cf6"; // 핀 = 작업셋(보라) — 활성(블루)과 구분
 
+// ── 태그(명목형 분류) — 이름의 `그룹:값` prefix 로 **자동 색**. 색을 손으로 관리하지 않으면서
+//    같은 그룹끼리 눈에 묶인다(팔레트가 20~30개로 늘면 텍스트만으론 못 따라감). prefix 없으면 무채색.
+//    고른 색들은 의미색과 겹치지 않게 — 순수 빨강(FILTER)·스카이(ACTIVE)는 뺐다.
+const TAG_GROUP_COLORS = ["#7c9c3f", "#b8792e", "#3f8f8a", "#8b5cf6", "#c0567e", "#4a7fc1", "#a5883a", "#5f9e6b"];
+export const TAG_PLAIN = "#8b93a7"; // 그룹 없는 태그
+
+export function tagColor(name: string): string {
+    const i = name.indexOf(":");
+    if (i <= 0) return TAG_PLAIN;
+    const group = name.slice(0, i);
+    let h = 0;
+    for (let k = 0; k < group.length; k++) h = (h * 31 + group.charCodeAt(k)) >>> 0;
+    return TAG_GROUP_COLORS[h % TAG_GROUP_COLORS.length];
+}
+
 // ── 차트
 export const DRIFT = "#e07b1a"; // 검색날짜 드리프트(기준일과 다른 날을 보는 중)
 export const MARKER_NOW = "#111827"; // 분봉 시간선 ▼ — "지금 여기" 표식. 저장 타점 ▼(흰/회색)와 색으로 갈린다

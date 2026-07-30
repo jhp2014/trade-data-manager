@@ -8,6 +8,7 @@ import { fetchDaySummary } from "./daySummary.js";
 import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines } from "./rank.js";
+import { fetchTags, fetchTagAttachments } from "./tags.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
@@ -51,6 +52,14 @@ export const rankAxesQuery = () =>
 
 export const axisLinesQuery = () =>
     queryOptions({ queryKey: ["rank-axis-lines"], queryFn: ({ signal }) => fetchAxisLines(signal), staleTime: IMMUTABLE });
+
+// 타점 태그 — 사전 + 전 타점 부착. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).
+// 타점 캐시(review-points·all-points)와 분리 = 태그 토글이 타점 목록 refetch 를 유발하지 않는다.
+export const tagsQuery = () =>
+    queryOptions({ queryKey: ["tags"], queryFn: ({ signal }) => fetchTags(signal), staleTime: IMMUTABLE });
+
+export const tagAttachmentsQuery = () =>
+    queryOptions({ queryKey: ["tag-attachments"], queryFn: ({ signal }) => fetchTagAttachments(signal), staleTime: IMMUTABLE });
 
 // 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
 export const stockMetaQuery = (code: string) =>

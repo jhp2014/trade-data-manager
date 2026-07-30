@@ -12,10 +12,12 @@ import {
     useMinuteSeriesData,
     useMinuteVisibleRange,
     usePercentPriceLines,
+    TAG_MARKER_ATTR,
     type SavedPointInput,
 } from "./minuteChartHooks.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
+import type { Tag } from "../api/tags.js";
 import { MARKER_NOW } from "../styles/palette.js";
 
 /**
@@ -122,8 +124,10 @@ export function MinuteChart({
     onRightClick,
     onRemoveLine,
     onPickPrice,
+    onTagPoint,
     capturePriceArmed = false,
     axisTotal = 0,
+    tagsOfTime,
 }: {
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
@@ -139,8 +143,10 @@ export function MinuteChart({
     onRightClick: (anchor: { date: string; time: string }) => void;
     onRemoveLine: (line: RenderLine) => void;
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표 → 가격(base×(1+%/100)) 캡처
+    onTagPoint?: (time: string, x: number, y: number) => void; // 타점 ▼ 우클릭 = 태그 입력창(가격선과 분리)
     capturePriceArmed?: boolean;
     axisTotal?: number; // 순위 축 총수(배지 분모). 0 = 배치 기능 미사용 → 배지/상세 없음
+    tagsOfTime?: (tradeTime: string) => Tag[]; // 그 시각 타점에 붙은 태그(카드 아랫줄). 없으면 태그 줄 없음.
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -225,10 +231,12 @@ export function MinuteChart({
                 return (
                     <div
                         key={s.time}
+                        {...{ [TAG_MARKER_ATTR]: "" }}
                         onMouseEnter={() => setHoveredSaved(i)}
                         onMouseLeave={() => setHoveredSaved((cur) => (cur === i ? null : cur))}
                         onClick={() => s.point && onMovePoint(s.point.tradeTime)}
-                        title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로)` : "저장된 타점 (클릭: 이 타점으로)"}
+                        onContextMenu={(e) => { e.preventDefault(); if (s.point) onTagPoint?.(s.point.tradeTime, e.clientX, e.clientY); }}
+                        title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로 · 우클릭: 태그)` : "저장된 타점 (클릭: 이 타점으로 · 우클릭: 태그)"}
                         style={{ ...markerBoxStyle(s.x, 8), cursor: "pointer" }}
                     >
                         <MarkerTriangle
@@ -248,13 +256,13 @@ export function MinuteChart({
             {/* 저장 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). 축별 상세는 "타점 정보" 패널. */}
             {hoveredCard && hoveredCard.point && hoveredCard.x >= 0 && (
                 <AnchoredBox x={hoveredCard.x} top={1} containerWidth={containerWidth} zIndex={10}>
-                    <MarkerCard point={hoveredCard.point} axisTotal={axisTotal} placed={hoveredCard.placed} />
+                    <MarkerCard point={hoveredCard.point} axisTotal={axisTotal} placed={hoveredCard.placed} tags={tagsOfTime?.(hoveredCard.point.tradeTime) ?? []} />
                 </AnchoredBox>
             )}
             {/* 현재 타점(시간선) readout — 토글 ON 시 세로선 우측 한 줄. 그 시각이 저장 타점이면 배지(n/m)까지. */}
             {showPointInfo && overlay.current && overlay.current.point && (
                 <AnchoredBox x={overlay.current.x} top={1} containerWidth={containerWidth} zIndex={9}>
-                    <MarkerCard point={overlay.current.point} axisTotal={currentSaved ? axisTotal : 0} placed={currentSaved?.placed ?? 0} />
+                    <MarkerCard point={overlay.current.point} axisTotal={currentSaved ? axisTotal : 0} placed={currentSaved?.placed ?? 0} tags={tagsOfTime?.(overlay.current.point.tradeTime) ?? []} />
                 </AnchoredBox>
             )}
             {tip.visible && (

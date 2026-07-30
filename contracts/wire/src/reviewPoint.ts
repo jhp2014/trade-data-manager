@@ -8,7 +8,6 @@ export interface UpsertReviewPointInput {
     stockCode: string;
     date: string; // YYYY-MM-DD 거래일
     time: string; // HH:MM:SS 분봉 시각
-    type?: string; // 셋업 유형 라벨(선택)
     outcome?: string; // 트레이드 결과(선택)
     memo?: string;
 }

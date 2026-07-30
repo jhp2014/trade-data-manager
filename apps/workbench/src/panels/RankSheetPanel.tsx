@@ -434,12 +434,7 @@ export function RankSheetPanel(): JSX.Element {
                 body: `${row.coverage}/${axes.length}`,
             }),
             outcome: () => ({
-                body: (
-                    <>
-                        {row.outcome && <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span>}
-                        {row.type && <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginLeft: 5 }}>{row.type}</span>}
-                    </>
-                ),
+                body: row.outcome ? <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span> : null,
             }),
             mfe: () => excursionCell("mfe"),
             maePre: () => excursionCell("maePre"),

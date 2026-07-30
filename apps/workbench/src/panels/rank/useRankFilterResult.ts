@@ -12,7 +12,7 @@ import { useWorkbench } from "../../store/workbench.js";
 import type { RankPoint } from "../../api/rank.js";
 import type { RankPointPath } from "../../api/rankPaths.js";
 
-export interface PointMeta { outcome?: string; type?: string }
+export interface PointMeta { outcome?: string }
 
 export interface RankResult {
     isEmpty: boolean; // 활성 밴드 없음
@@ -45,7 +45,7 @@ export function useRankFilterResult(): RankResult {
     }, [pointsQ.data]);
     const metaOf = useMemo(() => {
         const m = new Map<string, PointMeta>();
-        for (const p of pointsQ.data ?? []) m.set(pointKey(p), { outcome: p.outcome, type: p.type });
+        for (const p of pointsQ.data ?? []) m.set(pointKey(p), { outcome: p.outcome });
         return (k: string): PointMeta => m.get(k) ?? {};
     }, [pointsQ.data]);
 

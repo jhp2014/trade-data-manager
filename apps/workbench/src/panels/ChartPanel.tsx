@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
@@ -8,7 +8,10 @@ import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
 import { useStockName } from "../lib/useStockName.js";
+import { useTags } from "../lib/useTags.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
+import { TagMenu } from "../chart/TagMenu.js";
+import { TagChips } from "../components/TagChips.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import {
     AmountMarkerToggle,
@@ -28,7 +31,8 @@ import { TextToggle, Sep, ControlGroup } from "../components/ControlChrome.js";
 // 차트 패널(복기 플레인) — 일봉(상) + 분봉(하) 듀얼. 껍데기(헤더·2단·토글)는 ChartPanelChrome 공용.
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
 // 가격선/타점 편집 유스케이스는 usePriceLinesForChart·useReviewPointData 훅으로 분리 — 여긴 뷰 파생+렌더.
-// 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~9=유형 프리셋(전역 useChartHotkeys).
+// 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~4=태그 프리셋(전역 useChartHotkeys).
+// 태그 입력은 타점 ▼ **우클릭**(TagMenu) — 타점 저장과 분리된 동작이라 키·클릭도 갈라 둔다.
 export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, anchorDate, viewDate: searchDate, time, setTime, setSearchDate } = usePlaneBus("replay");
     const mode = useWorkbench((s) => s.chartPriceMode);
@@ -50,6 +54,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
+    const { tagsOf } = useTags();
+    const [tagMenu, setTagMenu] = useState<{ time: string; x: number; y: number } | null>(null);
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이.
     const viewDate = pinMinute ? anchorDate : searchDate;
     const drifted = viewDate !== anchorDate;
@@ -79,10 +85,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 collapsed={collapsed}
                 onToggleControls={() => toggleControls(panelId)}
                 badges={
-                    focusedPoint?.type ? (
-                        <span style={{ padding: "1px 6px", borderRadius: 4, background: "var(--accent-soft)", color: "var(--accent-hover)", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }} title="현재 타점 셋업 유형">
-                            {focusedPoint.type}
-                        </span>
+                    focusedPoint ? (
+                        // 현재 타점의 태그(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
+                        <TagChips tags={tagsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} style={{ maxWidth: 180, flexShrink: 1 }} />
                     ) : null
                 }
             >
@@ -151,12 +156,23 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onMovePoint={(t) => setTime(t)}
                                     onRightClick={(a) => toggleLine(a.date, a.time)}
                                     onRemoveLine={removeLine}
+                                    onTagPoint={(t, x, y) => setTagMenu({ time: t, x, y })}
+                                    tagsOfTime={(t) => tagsOf({ stockCode: code, date: viewDate, time: t })}
                                 />
                             ) : null
                         }
                     />
                 )}
             </div>
+
+            {tagMenu && (
+                <TagMenu
+                    anchor={{ x: tagMenu.x, y: tagMenu.y }}
+                    point={{ stockCode: code, date: viewDate, time: tagMenu.time }}
+                    label={`${name ?? code} · ${tagMenu.time.slice(0, 5)}`}
+                    onClose={() => setTagMenu(null)}
+                />
+            )}
         </div>
     );
 }

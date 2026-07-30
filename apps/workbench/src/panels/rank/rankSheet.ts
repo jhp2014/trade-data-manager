@@ -11,7 +11,6 @@ export interface SheetRow {
     time: string;
     name: string | null;
     outcome?: string;
-    type?: string;
     memo?: string;
     cells: Record<string, RankCell | null>; // axisId → 셀(미배치 null)
     coverage: number; // 배치된 축 수
@@ -28,7 +27,7 @@ export function buildSheetRows(points: ReviewPointListItem[], axisIds: string[],
             cells[axisId] = cell;
             if (cell) coverage++;
         }
-        return { stockCode: p.stockCode, date: p.date, time: p.time, name: p.name, outcome: p.outcome, type: p.type, memo: p.memo, cells, coverage };
+        return { stockCode: p.stockCode, date: p.date, time: p.time, name: p.name, outcome: p.outcome, memo: p.memo, cells, coverage };
     });
 }
 

@@ -49,18 +49,15 @@ describe("DrizzleReviewPointRepository (pglite)", () => {
         expect(rows.map((r) => r.time)).toEqual(["09:11:00", "10:05:00", "13:20:00"]);
     });
 
-    it("type·outcome 왕복 + upsert 전체 덮어쓰기(부분갱신 아님)", async () => {
-        await repo.upsert([rp({ time: "14:00:00", type: "돌파", outcome: "성공", memo: "메모" })]);
+    it("outcome 왕복 + upsert 전체 덮어쓰기(부분갱신 아님)", async () => {
+        await repo.upsert([rp({ time: "14:00:00", outcome: "성공", memo: "메모" })]);
         let rows = await repo.listByChart("005930", "2026-06-30");
-        const p = rows.find((r) => r.time === "14:00:00");
-        expect(p?.type).toBe("돌파");
-        expect(p?.outcome).toBe("성공");
-        // 같은 키 재입력에 type 만 주면 outcome/memo 는 null 로 덮인다(전체 덮어쓰기 계약).
-        await repo.upsert([rp({ time: "14:00:00", type: "재돌파" })]);
+        expect(rows.find((r) => r.time === "14:00:00")?.outcome).toBe("성공");
+        // 같은 키를 outcome 만 주고 재입력하면 memo 는 null 로 덮인다(전체 덮어쓰기 계약).
+        await repo.upsert([rp({ time: "14:00:00", outcome: "실패" })]);
         rows = await repo.listByChart("005930", "2026-06-30");
         const q = rows.find((r) => r.time === "14:00:00");
-        expect(q?.type).toBe("재돌파");
-        expect(q?.outcome).toBeUndefined();
+        expect(q?.outcome).toBe("실패");
         expect(q?.memo).toBeUndefined();
     });
 

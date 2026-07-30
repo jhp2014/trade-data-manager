@@ -10,7 +10,7 @@ export class DrizzleReviewPointRepository implements ReviewPointReader, ReviewPo
 
     async upsert(points: ReviewPoint[]): Promise<void> {
         if (points.length === 0) return;
-        // (stock,date,time) 충돌 시 가변 속성(type·outcome·memo) 갱신 — 자연키만 불변.
+        // (stock,date,time) 충돌 시 가변 속성(outcome·memo) 갱신 — 자연키만 불변.
         // 전체 덮어쓰기 계약: 클라가 현재 상태를 합쳐 full point 를 보낸다(부분갱신 아님).
         await this.db
             .insert(reviewPoints)
@@ -18,7 +18,6 @@ export class DrizzleReviewPointRepository implements ReviewPointReader, ReviewPo
             .onConflictDoUpdate({
                 target: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
                 set: {
-                    type: sql`EXCLUDED.type`,
                     outcome: sql`EXCLUDED.outcome`,
                     memo: sql`EXCLUDED.memo`,
                 },

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog } from "../ui/Dialog.js";
-import { Checkbox, NumberField, Row, SectionLabel, TextInput, Kbd } from "../ui/controls.js";
+import { Checkbox, NumberField, Row, SectionLabel, Kbd } from "../ui/controls.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi, type SettingsScreen } from "../store/ui.js";
 import { useDock, panelIdsInPreset } from "../store/dock.js";
@@ -17,7 +17,6 @@ type Screen = SettingsScreen;
 const SCREENS: { id: Screen; label: string }[] = [
     { id: "theme", label: "테마" },
     { id: "replay", label: "복기" },
-    { id: "point", label: "타점" },
     { id: "chart", label: "차트" },
     { id: "condition", label: "조건검색" },
     { id: "layout", label: "레이아웃" },
@@ -55,7 +54,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                 </div>
                 {/* 내용 — 프레임 고정, 여기만 스크롤 */}
                 <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: 16 }}>
-                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "point" ? <PointSettings /> : screen === "chart" ? <ChartSettingsView /> : screen === "condition" ? <ConditionSettings /> : screen === "layout" ? <LayoutSettings /> : <ShortcutSettings />}
+                    {screen === "theme" ? <ThemeSettings /> : screen === "replay" ? <ReplaySettings /> : screen === "chart" ? <ChartSettingsView /> : screen === "condition" ? <ConditionSettings /> : screen === "layout" ? <LayoutSettings /> : <ShortcutSettings />}
                 </div>
             </div>
         </Dialog>
@@ -127,23 +126,6 @@ function ChartSettingsView(): JSX.Element {
                 일봉
                 <NumberField value={st.dailyZoomOutBars} min={20} onChange={(e) => set({ dailyZoomOutBars: Number(e.target.value) })} /> 봉(~1년)
             </Row>
-        </div>
-    );
-}
-
-// 타점 셋업 유형 프리셋 — 숫자키 1~9 슬롯. 분봉 차트에서 그 키로 현재 타점에 유형 입력.
-function PointSettings(): JSX.Element {
-    const presets = useWorkbench((s) => s.reviewTypePresets);
-    const set = useWorkbench((s) => s.setReviewTypePreset);
-    return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>분봉 차트에서 숫자키(1~9)로 현재 타점에 셋업 유형 입력. 빈 슬롯은 무시.</div>
-            {presets.map((v, i) => (
-                <Row key={i}>
-                    <span style={{ width: 18, textAlign: "center", fontWeight: 700, color: "var(--accent-hover)" }}>{i + 1}</span>
-                    <TextInput value={v} onChange={(e) => set(i, e.target.value)} placeholder="(미설정)" style={{ flex: 1 }} />
-                </Row>
-            ))}
         </div>
     );
 }
