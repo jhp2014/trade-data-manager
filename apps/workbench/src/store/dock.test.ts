@@ -5,6 +5,9 @@ import { sanitizeLayout } from "./dock.js";
 // panels 맵·grid 트리·activeGroup 이 함께 정리돼 fromJSON 이 안 깨지는지 검증(순수 함수라 dockview 불필요).
 // 유효/무효 판정은 실제 PANEL_CATALOG(chart=유효, hypothesis=제거됨=무효)를 그대로 쓴다.
 
+// 레이아웃 JSON 을 느슨하게 다루는 캐스트 — 입력 구성(최소본)과 결과 검증 양쪽에 쓴다.
+// dockview 타입에서 grid 노드의 data 는 leaf(GroupPanelViewState) | branch(배열) 유니온이라
+// 내로잉 없이는 views/activeView 를 못 읽는다. 검증은 형태를 알고 하는 것이라 여기선 캐스트가 맞다.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const asLayout = (o: unknown): any => o;
 
@@ -30,10 +33,11 @@ describe("sanitizeLayout", () => {
             activeGroup: "g1",
         });
         const { json, removed } = sanitizeLayout(layout);
+        const root = asLayout(json).grid.root;
         expect(removed).toEqual(["hypothesis-1"]);
         expect(Object.keys(json.panels)).toEqual(["chart-1"]);
-        expect(json.grid.root.data.views).toEqual(["chart-1"]);
-        expect(json.grid.root.data.activeView).toBe("chart-1"); // 제거된 activeView → 남은 첫 뷰
+        expect(root.data.views).toEqual(["chart-1"]);
+        expect(root.data.activeView).toBe("chart-1"); // 제거된 activeView → 남은 첫 뷰
         expect(json.activeGroup).toBe("g1"); // 그룹은 비지 않았으므로 유지
         // 원본 불변(깊은 복제)
         expect(layout.panels["hypothesis-1"]).toBeDefined();
@@ -60,9 +64,10 @@ describe("sanitizeLayout", () => {
             activeGroup: "g2",
         });
         const { json, removed } = sanitizeLayout(layout);
+        const root = asLayout(json).grid.root;
         expect(removed).toEqual(["hypothesis-1"]);
-        expect(json.grid.root.data).toHaveLength(1); // 빈 그룹(g2) 폐기
-        expect(json.grid.root.data[0].data.id).toBe("g1");
+        expect(root.data).toHaveLength(1); // 빈 그룹(g2) 폐기
+        expect(root.data[0].data.id).toBe("g1");
         expect(json.activeGroup).toBeUndefined(); // 폐기된 g2 참조 해제
     });
 

@@ -109,6 +109,27 @@ describe("LiveEngine 기동", () => {
         await engine.stop();
     });
 
+    it("stop 후 재기동: 'started' 재발화 + 폴링 루프 부활 + onConnected 중복 실행 없음", async () => {
+        vi.useFakeTimers();
+        const { engine, ws, started, reconnected } = makeEngine(["ok"]);
+        await engine.start();
+        await flush();
+        await engine.stop();
+
+        await engine.start(); // 같은 인스턴스 재기동(설정 변경 재시작 등)
+        await flush();
+        expect(started).toHaveBeenCalledTimes(2); // 새 기동이므로 'started'
+        expect(reconnected).not.toHaveBeenCalled(); // ws 리스너가 누적됐다면 onConnected 2회 → 여기서 1이 된다
+
+        const ticks: unknown[] = [];
+        engine.on("tick", (t) => ticks.push(t));
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(ticks.length).toBe(1); // stop 이 timer 를 원복하지 않으면 scheduleNext 가 막혀 0(루프 사망)
+
+        await engine.stop();
+        expect(ws.close).toHaveBeenCalledTimes(2);
+    });
+
     it("stop() 이후의 'connected' 는 무시한다(종료 후 되살아나지 않게)", async () => {
         vi.useFakeTimers();
         const { engine, ws, started } = makeEngine(["fail"]);

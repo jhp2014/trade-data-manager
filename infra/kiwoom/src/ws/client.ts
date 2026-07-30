@@ -190,8 +190,12 @@ export class KiwoomWs extends EventEmitter {
 
         // 의도적 종료면 재연결 안 함. 최초 시도 실패는 기본적으로 호출자에게 위임하되(CLI 즉시 실패),
         // autoRetryFirstConnect 면 여기서도 백오프 재시도한다(상주 데몬 — 아래 재연결 기계를 그대로 재사용).
+        // 여기 도달 = 재연결을 예약하지 않는다 = 진행 중인 시도가 더는 없다 → "closed".
+        // (옛 코드는 shouldRun 이면 "connecting" 으로 뒀다. 그러면 첫 연결에 실패한 non-autoRetry 인스턴스가
+        //  아무 시도도 안 하면서 영구히 "연결중" 이라고 답한다 — getStatus 는 이 클래스가 소유한 연결 수명의
+        //  공개 진실이라, 멈춘 상태를 진행 중으로 보고하면 소비자가 오진한다.)
         if (!this.shouldRun || (!this.started && !this.autoRetryFirstConnect)) {
-            this.setStatus(this.shouldRun ? "connecting" : "closed");
+            this.setStatus("closed");
             return;
         }
         if (this.reconnectTimer) return; // 이미 예약됨

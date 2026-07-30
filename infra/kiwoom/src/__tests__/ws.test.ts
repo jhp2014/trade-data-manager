@@ -87,6 +87,8 @@ describe("KiwoomWs 최초 연결 실패 정책", () => {
 
         await vi.advanceTimersByTimeAsync(60_000);
         expect(instances.length).toBe(1); // 매달리지 않는다
+        // 포기했으면 상태도 그렇게 말해야 한다 — 재시도가 없는데 "connecting" 이면 소비자가 진행 중으로 오진한다.
+        expect(ws.getStatus()).toBe("closed");
 
         ws.close();
     });

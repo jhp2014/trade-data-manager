@@ -57,6 +57,15 @@ export class LiveEngine extends EventEmitter {
         super();
         this.conditionName = opts.conditionName;
         this.pollMs = opts.pollMs ?? 3_000; // 조건검색/알람 판정·링버퍼 적재 주기. LIVE_POLL_MS 로 오버라이드.
+        // WS 이벤트 배선은 **생성자에서 한 번만**. start() 안에 두면 stop→start 마다 리스너가 누적돼
+        // 다음 LOGIN 때 onConnected 가 N 번 병렬 실행된다(스캐너 init·멤버십 reload·틱 중복 → 링버퍼 오염).
+        // ws.connect() 는 start() 에서만 부르므로 미리 달아도 시작 전엔 이벤트가 오지 않고,
+        // onConnected 는 running 가드로 정지 중 이벤트를 무시한다.
+        this.ws.on("status", (s: ConnectionStatus) => {
+            if (s !== "live") this.ready = false; // 끊기면 틱 보류(직전 데이터 유지)
+            this.emit("status", s);
+        });
+        this.ws.on("connected", () => void this.onConnected()); // 최초·재연결 공통 진입점
     }
 
     /** WS 연결 → (조건 있으면) 스캐너 init(CNSRLST) → 즉시 1틱 → pollMs 루프. 끊기면 WS 가 백오프 재연결.
@@ -67,11 +76,6 @@ export class LiveEngine extends EventEmitter {
      *  첫 연결 실패는 throw 한다(호출자가 "시작 실패" 로그). 단 ws 를 autoRetryFirstConnect 로 만들었으므로
      *  백그라운드 재시도가 계속되고, 지연 성공은 'connected' 로 들어와 엔진이 자력 복구한다. */
     async start(): Promise<void> {
-        this.ws.on("status", (s: ConnectionStatus) => {
-            if (s !== "live") this.ready = false; // 끊기면 틱 보류(직전 데이터 유지)
-            this.emit("status", s);
-        });
-        this.ws.on("connected", () => void this.onConnected()); // 최초·재연결 공통 진입점
         this.running = true; // 첫 연결 전에도 산다 — 지연 성공한 'connected' 를 받으려면 필요
         await this.ws.connect(); // 첫 실패는 throw(호출자 로그) — 복구는 ws 백오프가 담당
     }
@@ -184,9 +188,19 @@ export class LiveEngine extends EventEmitter {
         }, this.pollMs);
     }
 
+    /**
+     * 정지 — 다음 start() 가 깨끗한 상태에서 출발하도록 런타임 상태를 **전부 원복**한다.
+     * 특히 timer=null 이 필수다: onConnected 의 `if (!this.timer)` 가드는 "타이머 없음 = 루프 없음"을
+     * 전제로 재연결 시 루프 중복을 막는데, clearTimeout 만 하면 그 등가가 깨져 재기동 시 폴링 루프가
+     * 조용히 안 살아난다(연결됨 상태로 틱만 멈춤). WS 리스너는 생성자 소유라 떼지 않는다(재사용).
+     */
     async stop(): Promise<void> {
         this.running = false;
         if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        this.ready = false;
+        this.scanner = null; // 옛 세션의 seq 를 새 연결에서 쓰지 않게 — 재기동 시 onConnected 가 다시 init
+        this.startedEmitted = false; // 재기동은 새 기동 — 'reconnected' 가 아니라 'started' 로 알린다
         this.ws.close(); // ws 가 예약해둔 재연결 타이머도 여기서 취소된다
         this.emit("stopped");
     }
