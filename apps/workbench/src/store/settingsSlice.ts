@@ -28,12 +28,12 @@ export interface SettingsSlice {
     themeBoardSettings: ThemeBoardSettings;
     replaySettings: ReplayBoardSettings;
     boardMarket: BoardMarketMap; // 보드별 기준 시장(영속)
-    tagPresets: string[]; // 태그 프리셋 슬롯(숫자키 1~4) — tagId 를 담는다(이름 아님). 클라 config.
+    tagPresets: string[][]; // 태그 프리셋 슬롯(숫자키 1~4) — 슬롯마다 tagId **집합**(이름 아님). 클라 config.
     setNewsSearchEngine: (engine: NewsSearchEngine) => void;
     setThemeBoardSettings: (patch: Partial<ThemeBoardSettings>) => void;
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
     setBoardMarket: (board: keyof BoardMarketMap, market: BoardMarket) => void;
-    setTagPreset: (index: number, tagId: string) => void; // 빈 문자열 = 슬롯 비움
+    toggleTagPreset: (index: number, tagId: string) => void; // 그 슬롯의 소속 토글(빼면 슬롯에서 사라짐)
 }
 
 // 보드 기준 시장 — localStorage 영속. 기본 UN(통합, 기존 동작).
@@ -48,14 +48,23 @@ function loadBoardMarket(): BoardMarketMap {
     };
 }
 
-// 태그 프리셋 — 숫자키 1~4 슬롯. **tagId 를 담는다**: 이름을 담으면 태그 이름을 바꾼 순간 슬롯이 죽는다.
+// 태그 프리셋 — 숫자키 1~4 슬롯. **슬롯마다 tagId 집합**이라 키 하나로 조합을 한 번에 붙이고 뗀다.
+// tagId 를 담는 이유: 이름을 담으면 태그 이름을 바꾼 순간 슬롯이 죽는다.
 // 개인 키보드 습관이라 서버가 아니라 localStorage(기기별로 달라도 되는 값).
+// 한 태그가 여러 슬롯에 들어가는 건 **허용**한다 — 조합이 다르면 다른 프리셋이고, 겹치는 태그가 있는 게 정상이다
+// (슬롯1={돌파,강} · 슬롯2={돌파,약}). 단일 태그 시절의 "태그당 슬롯 하나" 제약은 여기서 의미를 잃었다.
 export const TAG_PRESET_SLOTS = 4;
 const PRESETS_KEY = "wb.tagPresets";
-function loadTagPresets(): string[] {
-    const out = Array<string>(TAG_PRESET_SLOTS).fill("");
+function loadTagPresets(): string[][] {
+    const out = Array.from({ length: TAG_PRESET_SLOTS }, (): string[] => []);
     const arr = loadJson(PRESETS_KEY, (o) => (Array.isArray(o) ? o : null));
-    if (arr) for (let i = 0; i < TAG_PRESET_SLOTS; i++) if (typeof arr[i] === "string") out[i] = arr[i] as string;
+    if (!arr) return out;
+    for (let i = 0; i < TAG_PRESET_SLOTS; i++) {
+        const v = arr[i];
+        // 옛 형태(슬롯당 tagId 문자열 하나)를 그대로 읽어 감싼다 — 쓰던 프리셋이 안 날아가게.
+        if (typeof v === "string") out[i] = v ? [v] : [];
+        else if (Array.isArray(v)) out[i] = v.filter((x): x is string => typeof x === "string" && x.length > 0);
+    }
     return out;
 }
 
@@ -75,11 +84,11 @@ export const createSettingsSlice: StateCreator<WorkbenchState, [], [], SettingsS
             saveJson(BOARD_MARKET_KEY, next);
             return { boardMarket: next };
         }),
-    setTagPreset: (index, tagId) =>
+    toggleTagPreset: (index, tagId) =>
         set((s) => {
-            // 같은 태그가 두 슬롯에 걸리면 어느 키가 먹는지 헷갈린다 → 다른 슬롯에서 뺀다(슬롯당 하나, 태그당 하나).
-            const next = s.tagPresets.map((v) => (v === tagId ? "" : v));
-            next[index] = tagId;
+            const next = s.tagPresets.map((slot, i) =>
+                i !== index ? slot : slot.includes(tagId) ? slot.filter((id) => id !== tagId) : [...slot, tagId],
+            );
             saveJson(PRESETS_KEY, next);
             return { tagPresets: next };
         }),

@@ -1,7 +1,9 @@
 // 타점 태그 입력창 — 분봉 차트의 타점 ▼ 우클릭으로 연다. **태그 입력의 유일한 자리**.
 // 타점 자체(space=저장/삭제)와 분리돼 있다: 여긴 이미 있는 타점에 붙이고 떼는 일만 한다.
 //  · 붙은 태그 = 위쪽 칩(클릭 = 떼기) · 목록에서 클릭 = 토글 · 검색어가 사전에 없으면 "새 태그 만들기"
-//  · 각 행의 1~4 = 숫자키 슬롯 지정(같은 창에서 — 설정 모달까지 가지 않는다). 지정된 슬롯은 채워진 배지.
+//  · 각 행의 1~4 = 숫자키 슬롯 **소속 토글**(같은 창에서 — 설정 모달까지 가지 않는다). 채워진 배지 = 그 슬롯 소속.
+//    슬롯은 태그 **집합**이라 한 키가 조합을 한 번에 붙이고 뗀다. 한 태그가 여러 슬롯에 들어가도 된다.
+//    행 배지만으론 "슬롯 2에 뭐가 들었지"를 보려면 목록을 훑어야 해서, 하단에 슬롯 요약 줄을 둔다.
 //  · 행 hover 의 ✎/🗑 = 사전 정리(이름 변경 / 삭제). 삭제는 붙어 있는 건수를 확인시킨다(cascade 라 되돌릴 수 없음).
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,9 +25,9 @@ export function TagMenu({ anchor, point, label, onClose }: {
     onClose: () => void;
 }): JSX.Element {
     const qc = useQueryClient();
-    const { tags, tagsOf, has, countOf, toggle } = useTags();
+    const { tags, tagById, tagsOf, has, countOf, toggle } = useTags();
     const presets = useWorkbench((s) => s.tagPresets);
-    const setPreset = useWorkbench((s) => s.setTagPreset);
+    const togglePreset = useWorkbench((s) => s.toggleTagPreset);
     const [q, setQ] = useState("");
     const [editing, setEditing] = useState<string | null>(null); // 이름 변경 중인 tagId
 
@@ -87,10 +89,10 @@ export function TagMenu({ anchor, point, label, onClose }: {
                 {shown.map((t) => (
                     <TagRow
                         key={t.id} tag={t} on={has(point, t.id)} count={countOf(t.id)}
-                        presetIndex={presets.indexOf(t.id)}
+                        slots={presets.map((slot, i) => (slot.includes(t.id) ? i : -1)).filter((i) => i >= 0)}
                         editing={editing === t.id}
                         onToggle={() => toggle(point, t.id)}
-                        onPreset={(i) => setPreset(i, t.id)}
+                        onPreset={(i) => togglePreset(i, t.id)}
                         onStartEdit={() => setEditing(t.id)}
                         onCommitEdit={(name) => { setEditing(null); if (name && name !== t.name) renameMut.mutate({ id: t.id, name }); }}
                         onCancelEdit={() => setEditing(null)}
@@ -103,15 +105,29 @@ export function TagMenu({ anchor, point, label, onClose }: {
                 ))}
             </div>
 
-            <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "6px 10px", fontSize: 10.5, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                행의 <b>1~4</b> = 숫자키 슬롯 지정 · 차트에서 그 키로 현재 타점에 탈부착
+            {/* 슬롯 요약 — 지금 각 키에 무슨 조합이 걸려 있나(행 배지는 넣고 빼는 곳, 여긴 읽는 곳). */}
+            <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "6px 10px", fontSize: 10.5, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", marginBottom: 3 }}>
+                    {presets.map((slot, i) => {
+                        const names = slot.map((id) => tagById.get(id)?.name).filter((n): n is string => !!n);
+                        return (
+                            <span key={i} style={{ whiteSpace: "nowrap" }}>
+                                <b style={{ color: names.length > 0 ? "var(--accent-primary)" : "var(--text-tertiary)" }}>{i + 1}</b>{" "}
+                                {names.length > 0
+                                    ? names.map((n, k) => <span key={k} style={{ color: tagColor(n), fontWeight: 600 }}>{k > 0 ? " + " : ""}{n}</span>)
+                                    : <span style={{ opacity: 0.6 }}>—</span>}
+                            </span>
+                        );
+                    })}
+                </div>
+                행의 <b>1~4</b> = 그 슬롯에 넣기/빼기 · 차트에서 그 키 = 조합 전체 탈부착
             </div>
         </AnchoredPopover>
     );
 }
 
-function TagRow({ tag, on, count, presetIndex, editing, onToggle, onPreset, onStartEdit, onCommitEdit, onCancelEdit, onDelete }: {
-    tag: Tag; on: boolean; count: number; presetIndex: number;
+function TagRow({ tag, on, count, slots, editing, onToggle, onPreset, onStartEdit, onCommitEdit, onCancelEdit, onDelete }: {
+    tag: Tag; on: boolean; count: number; slots: number[]; // 이 태그가 속한 슬롯들(다중 가능)
     editing: boolean;
     onToggle: () => void; onPreset: (index: number) => void;
     onStartEdit: () => void; onCommitEdit: (name: string) => void; onCancelEdit: () => void; onDelete: () => void;
@@ -140,18 +156,21 @@ function TagRow({ tag, on, count, presetIndex, editing, onToggle, onPreset, onSt
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12.5, color: on ? c : "var(--text-primary)", fontWeight: on ? 700 : 400 }}>{tag.name}</span>
                 <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{count}</span>
             </button>
-            {/* 슬롯 배지 1~4 — 지정된 슬롯만 채워짐. hover 아니어도 보인다(지금 배치를 늘 알 수 있게). */}
+            {/* 슬롯 배지 1~4 — 소속 슬롯만 채워짐(여러 개 가능). hover 아니어도 보인다(지금 배치를 늘 알 수 있게). */}
             <span style={{ display: "inline-flex", gap: 2, flexShrink: 0 }}>
-                {Array.from({ length: TAG_PRESET_SLOTS }, (_, i) => (
-                    <button key={i} onClick={() => onPreset(i)} title={`숫자키 ${i + 1} 슬롯에 지정`}
-                        style={{
-                            width: 15, height: 15, borderRadius: 3, cursor: "pointer", fontSize: 9, lineHeight: 1, padding: 0,
-                            border: `1px solid ${presetIndex === i ? "var(--accent-primary)" : "var(--border-default)"}`,
-                            background: presetIndex === i ? "var(--accent-primary)" : "transparent",
-                            color: presetIndex === i ? "#fff" : "var(--text-tertiary)",
-                            opacity: presetIndex === i || hover ? 1 : 0.35,
-                        }}>{i + 1}</button>
-                ))}
+                {Array.from({ length: TAG_PRESET_SLOTS }, (_, i) => {
+                    const inSlot = slots.includes(i);
+                    return (
+                        <button key={i} onClick={() => onPreset(i)} title={inSlot ? `숫자키 ${i + 1} 슬롯에서 빼기` : `숫자키 ${i + 1} 슬롯에 넣기`}
+                            style={{
+                                width: 15, height: 15, borderRadius: 3, cursor: "pointer", fontSize: 9, lineHeight: 1, padding: 0,
+                                border: `1px solid ${inSlot ? "var(--accent-primary)" : "var(--border-default)"}`,
+                                background: inSlot ? "var(--accent-primary)" : "transparent",
+                                color: inSlot ? "#fff" : "var(--text-tertiary)",
+                                opacity: inSlot || hover ? 1 : 0.35,
+                            }}>{i + 1}</button>
+                    );
+                })}
             </span>
             <span style={{ display: "inline-flex", gap: 1, flexShrink: 0, visibility: hover ? "visible" : "hidden" }}>
                 <button onClick={onStartEdit} title="이름 변경" style={iconBtn}>✎</button>

@@ -22,6 +22,21 @@ export function countByTag(attachments: TagAttachment[]): Map<string, number> {
 }
 
 /**
+ * 프리셋(태그 **집합**) 토글 판정 — 숫자키 하나가 조합을 한 번에 다룬다.
+ * 판정은 하나뿐이다: **프리셋 태그가 전부 붙어 있나.**
+ *   전부 붙음 → 전부 뗀다(프리셋 밖 태그는 안 건드린다)
+ *   아니면    → **빠진 것만** 채운다(이미 붙은 건 그대로 — 껐다 켜는 깜빡임이 없다)
+ * 단일 태그 프리셋은 이것의 n=1 경우라 규칙이 하나로 유지된다.
+ * 부분 상태에서 두 번 눌러야 비워지는 건 의도다("일단 이 조합을 다 달아라"가 주 용도).
+ */
+export function presetToggle(attached: readonly string[], preset: readonly string[]): { on: boolean; tagIds: string[] } {
+    const has = new Set(attached);
+    const missing = preset.filter((id) => !has.has(id));
+    if (missing.length > 0) return { on: true, tagIds: missing };
+    return { on: false, tagIds: preset.filter((id) => has.has(id)) };
+}
+
+/**
  * 낙관적 토글 — 부착 피드에 한 태그를 붙이거나 뗀 결과(불변 갱신).
  * nameOf 는 정렬 기준(서버와 같은 이름순 유지). 태그가 0개가 된 타점은 항목째 제거(서버 표현과 동일).
  */

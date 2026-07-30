@@ -28,6 +28,8 @@ export interface TagsView {
     countOf: (tagId: string) => number;
     /** 부착 토글(낙관적). on 생략 = 현재 상태의 반대. */
     toggle: (point: PointRef, tagId: string, on?: boolean) => void;
+    /** 여러 태그를 한 방향으로(프리셋 조합). 각 건이 낙관적이라 화면은 즉시 다 바뀐다. */
+    applyTags: (point: PointRef, tagIds: string[], on: boolean) => void;
     isLoading: boolean;
 }
 
@@ -67,6 +69,7 @@ export function useTags(): TagsView {
             has: (p, tagId) => idsOf(p).includes(tagId),
             countOf: (tagId) => counts.get(tagId) ?? 0,
             toggle: (p, tagId, on) => toggleMut.mutate({ point: p, tagId, on: on ?? !idsOf(p).includes(tagId) }),
+            applyTags: (p, tagIds, on) => { for (const id of tagIds) toggleMut.mutate({ point: p, tagId: id, on }); },
             isLoading: tagsQ.isLoading || attQ.isLoading,
         };
         // toggleMut 은 매 렌더 새 객체(useMutation) — 의존성에 넣으면 매번 재생성되므로 제외(mutate 는 안정).

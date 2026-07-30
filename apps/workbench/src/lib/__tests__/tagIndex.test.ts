@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { TagAttachment } from "@trade-data-manager/wire";
-import { applyTagToggle, buildTagIndex, countByTag } from "../tagIndex.js";
+import { applyTagToggle, buildTagIndex, countByTag, presetToggle } from "../tagIndex.js";
 
 const P = { stockCode: "005930", date: "2026-06-30", time: "09:11:00" };
 const Q = { stockCode: "000660", date: "2026-06-30", time: "10:00:00" };
@@ -58,5 +58,40 @@ describe("applyTagToggle — 낙관적 갱신", () => {
         const cur = att();
         applyTagToggle(cur, P, "t1", true, nameOf);
         expect(cur[0].tagIds).toEqual(["t2", "t3"]);
+    });
+});
+
+describe("presetToggle — 숫자키 하나로 조합 탈부착", () => {
+    const PRESET = ["t1", "t2"];
+
+    it("하나도 안 붙었으면 전부 붙인다", () => {
+        expect(presetToggle([], PRESET)).toEqual({ on: true, tagIds: ["t1", "t2"] });
+    });
+
+    it("일부만 붙었으면 **빠진 것만** 채운다(이미 붙은 건 안 건드림 — 깜빡임 없음)", () => {
+        expect(presetToggle(["t1"], PRESET)).toEqual({ on: true, tagIds: ["t2"] });
+    });
+
+    it("전부 붙었으면 전부 뗀다", () => {
+        expect(presetToggle(["t1", "t2"], PRESET)).toEqual({ on: false, tagIds: ["t1", "t2"] });
+    });
+
+    it("프리셋 밖 태그는 뗄 때도 건드리지 않는다", () => {
+        expect(presetToggle(["t1", "t2", "other"], PRESET)).toEqual({ on: false, tagIds: ["t1", "t2"] });
+    });
+
+    it("부분 상태 → 채움 → 비움(두 번 눌러야 비워지는 게 의도)", () => {
+        const first = presetToggle(["t1"], PRESET);
+        expect(first).toEqual({ on: true, tagIds: ["t2"] });
+        expect(presetToggle(["t1", "t2"], PRESET)).toEqual({ on: false, tagIds: ["t1", "t2"] });
+    });
+
+    it("단일 태그 프리셋은 그냥 토글(n=1 이 같은 규칙)", () => {
+        expect(presetToggle([], ["t1"])).toEqual({ on: true, tagIds: ["t1"] });
+        expect(presetToggle(["t1"], ["t1"])).toEqual({ on: false, tagIds: ["t1"] });
+    });
+
+    it("빈 슬롯은 아무 일도 안 한다", () => {
+        expect(presetToggle(["t1"], [])).toEqual({ on: false, tagIds: [] });
     });
 });

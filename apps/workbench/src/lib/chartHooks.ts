@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { useTags } from "./useTags.js";
+import { presetToggle } from "./tagIndex.js";
 import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery, chartQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView, type DailyPoint, type MinuteView } from "./derive.js";
 import { resolveAnchorLines } from "./chartFrame.js";
@@ -99,10 +100,11 @@ export function useReviewPointData(code: string, date: string, time: string | nu
 /**
  * 차트 단축키 — **전역 1회 등록**(App). 패널별 등록이 아니라 focus 를 따라간다 → 차트 여러 개여도 커맨드 충돌 없고,
  * 패널 마운트/포커스 상태에 안 흔들린다(옛 패널별 등록의 "가끔 안 먹음" 버그 해결). 입력창 포커스 중 mod-less 는 디스패처가 가드.
- *   space=타점 저장/삭제 · 1~4=태그 프리셋 탈부착 · a/d=±1분봉 · shift+a/d=±jumpBars(setTime, activePoint 유지)
+ *   space=타점 저장/삭제 · 1~4=태그 프리셋(조합) 탈부착 · a/d=±1분봉 · shift+a/d=±jumpBars(setTime, activePoint 유지)
  *   ctrl+a/d=타점 순회 wrap(goToPoint) · f=일봉+분봉 확대/축소(store chartZoom, 두 차트 동시).
  * **타점 입력(space)과 태그 입력(1~4)은 분리** — 숫자키는 이미 있는 타점에만 작동한다(없으면 무시).
- * 태그는 붙였다 떼는 토글이라 같은 키를 다시 누르면 떨어진다(옛 유형 프리셋의 덮어쓰기와 다르다).
+ * 태그는 붙였다 떼는 토글이고 슬롯이 **집합**이라, 프리셋 태그가 전부 붙어 있을 때만 전부 떨어진다
+ * (일부만 붙어 있으면 나머지를 채운다 — 판정 규칙은 순수 presetToggle).
  * 핸들러는 매 렌더 최신 클로저로 h.current 갱신(안정 ref), 등록 effect 는 프리셋 변화에만 재실행.
  */
 export function useChartHotkeys(): void {
@@ -112,7 +114,7 @@ export function useChartHotkeys(): void {
     const mode = useWorkbench((s) => s.chartPriceMode);
     const jumpBars = useWorkbench((s) => s.chartSettings.jumpBars);
     const tagPresets = useWorkbench((s) => s.tagPresets);
-    const { tagById, toggle: toggleTag } = useTags();
+    const { tagById, tagIdsOf, applyTags } = useTags();
     const qc = useQueryClient();
 
     const chartQ = useQuery(chartQuery(code, date)); // ChartPanel 과 같은 키 → RQ 캐시 공유(중복 페치 0)
@@ -137,11 +139,13 @@ export function useChartHotkeys(): void {
         else upsertMut.mutate({ stockCode: code, date, time });
     };
     h.current.applyTag = (i) => {
-        const tagId = tagPresets[i];
-        if (!tagId || !code || !date || !time) return;
+        const preset = tagPresets[i];
+        if (!preset?.length || !code || !date || !time) return;
         // 태그는 **타점에 붙는 것** — 그 시각이 저장 타점이 아니면 아무 일도 안 한다(타점 생성은 space 의 몫).
         if (!reviewPoints.some((rp) => rp.time === time)) return;
-        toggleTag({ stockCode: code, date, time }, tagId);
+        const point = { stockCode: code, date, time };
+        const { on, tagIds } = presetToggle(tagIdsOf(point), preset);
+        if (tagIds.length > 0) applyTags(point, tagIds, on);
     };
     h.current.moveBar = (delta) => {
         if (minutePoints.length === 0) return;
@@ -171,11 +175,11 @@ export function useChartHotkeys(): void {
         const ids: string[] = [];
         const put = (cmd: Command): void => { register(cmd); ids.push(cmd.id); };
         put({ id: "chart.review.toggle", title: "타점 저장/삭제(현재 시각)", category: "차트", keys: "space", run: () => h.current.toggle() });
-        tagPresets.forEach((tagId, i) => {
-            if (!tagId) return;
-            const name = tagById.get(tagId)?.name;
-            if (!name) return; // 지워진 태그가 슬롯에 남아 있으면 키를 만들지 않는다(빈 커맨드 방지)
-            put({ id: `chart.review.tag.${i + 1}`, title: `태그 탈부착: ${name}`, category: "차트", keys: String(i + 1), run: () => h.current.applyTag(i) });
+        tagPresets.forEach((slot, i) => {
+            // 지워진 태그는 이름이 없다 → 표기에서 빼고, 슬롯이 통째로 비면 키를 만들지 않는다(빈 커맨드 방지).
+            const names = slot.map((id) => tagById.get(id)?.name).filter((n): n is string => !!n);
+            if (names.length === 0) return;
+            put({ id: `chart.review.tag.${i + 1}`, title: `태그 탈부착: ${names.join(" + ")}`, category: "차트", keys: String(i + 1), run: () => h.current.applyTag(i) });
         });
         put({ id: "chart.nav.prevBar", title: "1봉 이전", category: "차트", keys: "a", run: () => h.current.moveBar(-1) });
         put({ id: "chart.nav.nextBar", title: "1봉 다음", category: "차트", keys: "d", run: () => h.current.moveBar(1) });
