@@ -9,6 +9,7 @@ import { axisLinesQuery, allPointsQuery } from "../api/queries.js";
 import { placePoint, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
+import { COL_META, MIN_COL_W, colKey, colLabel, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col, type ColKind } from "./rank/sheetColumns.js";
 import { buildAxisIndex, type AxisIndex, type RankCell } from "../lib/rankIndex.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
@@ -18,6 +19,8 @@ import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
+import { useTags } from "../lib/useTags.js";
+import { TagChips } from "../components/TagChips.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -29,65 +32,26 @@ import { FAIL, FILTER, PIN as PIN_COLOR, STRONG, WEAK, heatOf } from "../styles/
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
 //  · 축 헤더 클릭 = 그 축 강도 정렬(강 먼저). 정렬 축에서 행범위 **드래그 선택 = 밴드**(AND drill-down, rankBands 공유).
 //  · 밴드 활성 시 행=교집합, 결과 열(MFE/MAE/결과)이 lazy 로 붙는다(좁혔을 때만 경로 fetch). 미배치는 strict AND 로 탈락.
-//  · 기간(전체/월)은 독립 필터. 열 순서는 배치 보드와 **양방향 동기화**(store rankAxisOrder, 열 헤더 드래그 재정렬).
+//  · 기간(전체/월)은 독립 필터. **비고정** 축 열의 드래그 재정렬은 배치 보드와 양방향 동기화(store rankAxisOrder).
+//    고정한 열은 시트 전용 자리 — 고정 그룹 안에서만 순서를 바꾸고 배치 보드는 안 건드린다(순서 소스가 둘이라 규칙을 갈랐다).
+//  · 열 폭은 손으로 조절 가능(헤더 오른쪽 가장자리 드래그). **수동 폭을 준 열만 고정폭**이 되고, 안 준 축 열들은
+//    지금처럼 남는 폭을 나눠 갖는다 → "폭 원위치"(수동 폭 삭제)면 기본 동작으로 정확히 복귀한다.
 //  · 링크: 드래그=소프트 선택(색만, 안 좁힘, 누적) · 우클릭=밴드(좁힘) · 선택/호버는 배치 보드와 공유(색으로 표시).
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
+const WIDTHS_KEY = "wb.rankSheetColWidths";
 const FILTERMODE_KEY = "wb.rankSheetFilterMode";
 const SORT_KEY = "wb.rankSheetSort"; // 정렬 기준 영속(다른 시트 설정과 동일 패턴) — 프리셋 전환·새로고침에 유지.
 // 스크롤 위치는 세션 한정(모듈 메모) — 프리셋 전환(재마운트)엔 이어지고 새로고침엔 초기화(목록 중간 튐 방지).
 let sheetScroll = { top: 0, left: 0 };
 const PIN = PIN_COLOR;
-// 고정폭(table-layout:fixed + colgroup) — 열 고정 sticky 오프셋이 실제 폭과 정확히 맞도록.
-const NAME_W = 96;
-const DATE_W = 66;
-const TIME_W = 46;
-const AXIS_W = 58;
-const COV_W = 44;
-const NUM_W = 50;
-const OUT_W = 88;
+// 열 헤더 드래그의 두 종류 — 미디어타입으로 갈라 서로의 드롭을 안 받는다(고정 그룹 재정렬 vs 축 서열 변경).
+const AXIS_DND = "application/x-rank-axis";
+const COL_DND = "application/x-rank-col";
 const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
 
-// 열 기술자 — 표는 이 목록을 순회해 헤더/셀을 그린다. 고정(집합)/숨김(집합)/순서를 한 곳에서 계산.
-type Col =
-    | { key: "name" }
-    | { key: "date" }
-    | { key: "time" }
-    | { key: "axis"; axisId: string; name: string }
-    | { key: "coverage" }
-    | { key: "mfe" | "maePre" | "maePost" | "outcome" };
-type ColKind = Col["key"];
-
-// td 기본 스타일 3종 — COL_META 가 참조하므로 테이블보다 먼저 선언한다.
-const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
-const tdCell: CSSProperties = { padding: "5px 8px", textAlign: "center" };
-const tdNum: CSSProperties = { padding: "5px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" };
-
-// 열 종류별 고정 속성 한 테이블 — 폭·헤더 라벨·정렬(가로)·td 기본 스타일.
-// 예전엔 이 넷이 각각 삼항 체인이라 열을 하나 붙일 때마다 네 군데를 같이 고쳐야 했다(하나 빠뜨리면
-// 폭만 안 맞거나 라벨이 빈칸). 셀 렌더는 아래 CELLS(패널 상태를 닫아야 해서 컴포넌트 안)와 한 쌍.
-interface ColMeta {
-    width: number;
-    label: string; // axis 는 축 이름이라 런타임 override(colLabel)
-    justify: "flex-start" | "center" | "flex-end";
-    td: CSSProperties;
-}
-const COL_META: Record<ColKind, ColMeta> = {
-    name: { width: NAME_W, label: "종목", justify: "flex-start", td: td },
-    date: { width: DATE_W, label: "날짜", justify: "center", td: td },
-    time: { width: TIME_W, label: "시간", justify: "center", td: td },
-    axis: { width: AXIS_W, label: "", justify: "center", td: tdCell },
-    coverage: { width: COV_W, label: "배치", justify: "center", td: tdCell },
-    mfe: { width: NUM_W, label: "MFE", justify: "flex-end", td: tdNum },
-    maePre: { width: NUM_W, label: "MAE전", justify: "flex-end", td: tdNum },
-    maePost: { width: NUM_W, label: "MAE후", justify: "flex-end", td: tdNum },
-    outcome: { width: OUT_W, label: "결과", justify: "flex-start", td: td },
-};
-const colKey = (c: Col): string => (c.key === "axis" ? `ax:${c.axisId}` : c.key);
-const colWidth = (c: Col): number => COL_META[c.key].width;
-const colLabel = (c: Col): string => (c.key === "axis" ? c.name : COL_META[c.key].label);
 /** 열 → 그 열로 정렬할 때의 키. axis 만 축 id 를 실어야 해서 분기 하나. */
 const sortKeyOf = (c: Col): SortKey => (c.key === "axis" ? { kind: "axis", axisId: c.axisId } : { kind: c.key });
 
@@ -96,12 +60,13 @@ type SortKey =
     | { kind: "date" }
     | { kind: "time" }
     | { kind: "coverage" }
+    | { kind: "tags" }
     | { kind: "axis"; axisId: string }
     | { kind: "mfe" | "maePre" | "maePost" | "outcome" };
 type Sort = { key: SortKey; dir: 1 | -1 };
 
 const sameSort = (a: SortKey, b: SortKey): boolean => (a.kind === "axis" && b.kind === "axis" ? a.axisId === b.axisId : a.kind === b.kind);
-const SORT_KINDS = ["name", "date", "time", "coverage", "mfe", "maePre", "maePost", "outcome", "axis"];
+const SORT_KINDS = ["name", "date", "time", "tags", "coverage", "mfe", "maePre", "maePost", "outcome", "axis"];
 // 영속된 정렬 복원 검증 — 형태 안 맞으면 null(기본값 폴백). axis 는 axisId 문자열 필수(없어진 축이어도 무해: 전부 미배치 취급).
 function parseSort(o: unknown): Sort | null {
     if (!o || typeof o !== "object") return null;
@@ -150,6 +115,10 @@ export function RankSheetPanel(): JSX.Element {
         for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));
         return m;
     }, [linesByAxis]);
+
+    // ── 태그(부착 피드 한 벌 — 차트·타점 정보 패널과 같은 캐시). 시트는 조회만 하고 편집은 차트 ▼ 우클릭에서.
+    const { tagsOf } = useTags();
+    const tagLabel = (row: { stockCode: string; date: string; time: string }): string => tagsOf(row).map((t) => t.name).join(", ");
 
     // ── 전체 타점(행 원천) + 기간.
     const pointsQ = useQuery(allPointsQuery());
@@ -213,6 +182,13 @@ export function RankSheetPanel(): JSX.Element {
                 return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; // 같은 시각 = 최근 날짜 먼저
             }
             if (k.kind === "outcome") return (a.outcome ?? "").localeCompare(b.outcome ?? "") * dir;
+            if (k.kind === "tags") { // 붙은 태그 이름을 이어 붙여 사전순. 태그 없는 행은 방향 무관 바닥(미배치 관례와 동일).
+                const ta = tagLabel(a), tb = tagLabel(b);
+                if (!ta && !tb) return 0;
+                if (!ta) return 1;
+                if (!tb) return -1;
+                return ta.localeCompare(tb) * dir;
+            }
             const ek = k.kind as "mfe" | "maePre" | "maePost"; // 위에서 date/time/coverage/axis/outcome 처리됨
             const num = (row: SheetRow): number | null =>
                 k.kind === "coverage" ? row.coverage : k.kind === "axis" ? (row.cells[k.axisId]?.rank ?? null) : (excByKey.get(pointKey(row))?.[ek] ?? null);
@@ -270,33 +246,33 @@ export function RankSheetPanel(): JSX.Element {
     useEffect(() => saveJson(FROZEN_KEY, frozenCols), [frozenCols]);
     useEffect(() => saveJson(HIDDEN_KEY, hiddenCols), [hiddenCols]);
     const frozenSet = useMemo(() => new Set(frozenCols), [frozenCols]);
-    const hiddenSet = useMemo(() => new Set(hiddenCols), [hiddenCols]);
+    // 수동 열 폭(colKey → px). 지정한 열만 고정폭이 되고, 나머지 축 열은 잔여 폭 분배를 유지한다.
+    const [colWidths, setColWidths] = useState<Record<string, number>>(() => loadJson(WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null)) ?? {});
+    useEffect(() => saveJson(WIDTHS_KEY, colWidths), [colWidths]);
+    // 축을 지우면 그 축 키가 고정/숨김/폭 목록에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소.
+    useEffect(() => {
+        if (axes.length === 0) return;
+        const ids = axes.map((a) => a.id);
+        setFrozenCols((f) => pruneAxisKeys(f, ids));
+        setHiddenCols((h) => pruneAxisKeys(h, ids));
+        setColWidths((w) => pruneAxisKeys(w, ids));
+    }, [axes]);
     const toggleFrozen = (k: string): void => setFrozenCols((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
+    // 고정 그룹 안 재정렬 — 배열이 곧 좌측 스택 순서다. 축 열이 섞여 있어도 여기선 배열만 만진다(축 서열 불변).
+    const reorderFrozen = (dragged: string, target: string): void => setFrozenCols((f) => reorderFrozenCols(f, dragged, target));
     const toggleHidden = (k: string): void => setHiddenCols((h) => (h.includes(k) ? h.filter((x) => x !== k) : [...h, k]));
 
     // 기본 순서 → 숨김 제외 → 고정 먼저(기본순 유지, 좌측 스택) → 비고정. 종목은 항상 표시·고정.
     const baseCols = useMemo<Col[]>(() => [
-        { key: "name" }, { key: "date" }, { key: "time" },
+        { key: "name" }, { key: "date" }, { key: "time" }, { key: "tags" },
         ...axes.map((a): Col => ({ key: "axis", axisId: a.id, name: a.name })),
         { key: "coverage" },
         ...(bandsActive ? ([{ key: "mfe" }, { key: "maePre" }, { key: "maePost" }, { key: "outcome" }] as Col[]) : []),
     ], [axes, bandsActive]);
-    const { displayCols, leftOf, tableW, axisW, lastFrozenKey } = useMemo(() => {
-        const visible = baseCols.filter((c) => c.key === "name" || !hiddenSet.has(colKey(c)));
-        const isFrozen = (c: Col): boolean => c.key === "name" || frozenSet.has(colKey(c));
-        const frozen = visible.filter(isFrozen);
-        const cols = [...frozen, ...visible.filter((c) => !isFrozen(c))];
-        // 축 열 유연 폭: 남는 폭을 축들이 나눠 넓힘(최소 axisMin). 좁으면 axisMin(가로 스크롤).
-        const nAxis = cols.filter((c) => c.key === "axis").length;
-        const fixed = cols.reduce((s, c) => s + (c.key === "axis" ? 0 : colWidth(c)), 0);
-        const grown = nAxis > 0 && containerW > fixed + nAxis * axisMin ? Math.floor((containerW - fixed) / nAxis) : axisMin;
-        const wOf = (c: Col): number => (c.key === "axis" ? grown : colWidth(c));
-        const left = new Map<string, number>();
-        let acc = 0;
-        for (const c of frozen) { left.set(colKey(c), acc); acc += wOf(c); }
-        return { displayCols: cols, leftOf: left, tableW: cols.reduce((s, c) => s + wOf(c), 0), axisW: grown, lastFrozenKey: frozen.length ? colKey(frozen[frozen.length - 1]) : null };
-    }, [baseCols, frozenSet, hiddenSet, containerW, axisMin]);
-    const widthOf = (c: Col): number => (c.key === "axis" ? axisW : colWidth(c));
+    const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = useMemo(
+        () => layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths, containerW, axisMin }),
+        [baseCols, frozenCols, hiddenCols, colWidths, containerW, axisMin],
+    );
 
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계.
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
@@ -426,9 +402,16 @@ export function RankSheetPanel(): JSX.Element {
                     onContextMenu: cell ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, x: ev.clientX, y: ev.clientY }); } : undefined,
                     title: "우클릭 = 이상/이하 밴드 · 클릭 = 이동",
                     style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
-                    body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={axisW - 18} />,
+                    body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
                 };
             },
+            // 태그 — 폭이 모자라면 **그냥 잘린다**(wrap·스크롤 없음). 더 보고 싶으면 열 폭을 늘리는 게 이 표의 규칙.
+            tags: () => ({
+                onClick: () => navRow(row),
+                style: { cursor: "pointer", overflow: "hidden" },
+                title: tagLabel(row) || undefined,
+                body: <TagChips tags={tagsOf(row)} />,
+            }),
             coverage: () => ({
                 style: { color: row.coverage === axes.length ? STRONG : "var(--text-secondary)" },
                 body: `${row.coverage}/${axes.length}`,
@@ -477,6 +460,7 @@ export function RankSheetPanel(): JSX.Element {
                     )}
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
+                    {Object.keys(colWidths).length > 0 && <button onClick={() => setColWidths({})} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
                 </div>
             </div>
 
@@ -497,22 +481,33 @@ export function RankSheetPanel(): JSX.Element {
                                 const left = leftOf.get(colKey(c));
                                 const banded = c.key === "axis" && !!rankBands[c.axisId];
                                 const justify = COL_META[c.key].justify;
-                                const dnd = c.key === "axis" ? {
+                                // 드래그 재정렬 두 종류 — **고정 여부로 갈린다**(순서 소스가 둘이기 때문).
+                                //   고정 열  = 시트 전용 자리 → frozenCols 배열만 재배치(배치 보드 무관)
+                                //   비고정 축 = 축 서열 그 자체 → reorderAxis(배치 보드 레인 순서도 따라온다)
+                                // 종목 열은 언제나 맨 앞 붙박이라 어느 쪽도 아니다.
+                                const frozenHere = c.key !== "name" && frozenSet.has(colKey(c));
+                                const dnd = frozenHere ? {
                                     draggable: true,
-                                    onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData("application/x-rank-axis", (c as { axisId: string }).axisId); e.dataTransfer.effectAllowed = "move"; },
-                                    onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes("application/x-rank-axis")) e.preventDefault(); },
-                                    onDrop: (e: React.DragEvent) => { const id = e.dataTransfer.getData("application/x-rank-axis"); if (id) reorderAxis(id, (c as { axisId: string }).axisId); },
+                                    onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData(COL_DND, colKey(c)); e.dataTransfer.effectAllowed = "move"; },
+                                    onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes(COL_DND)) e.preventDefault(); },
+                                    onDrop: (e: React.DragEvent) => { const k = e.dataTransfer.getData(COL_DND); if (k) reorderFrozen(k, colKey(c)); },
+                                } : c.key === "axis" ? {
+                                    draggable: true,
+                                    onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData(AXIS_DND, (c as { axisId: string }).axisId); e.dataTransfer.effectAllowed = "move"; },
+                                    onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes(AXIS_DND)) e.preventDefault(); },
+                                    onDrop: (e: React.DragEvent) => { const id = e.dataTransfer.getData(AXIS_DND); if (id) reorderAxis(id, (c as { axisId: string }).axisId); },
                                 } : {};
                                 return (
                                     <th key={colKey(c)} {...dnd} title={colLabel(c)}
                                         ref={c.key === "axis" && c.axisId === sortAxisId ? sortAxisThRef : undefined}
                                         onClick={() => clickHeader(sk)}
                                         onContextMenu={(e) => { e.preventDefault(); setHdrCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), x: e.clientX, y: e.clientY }); }}
-                                        style={{ ...thBase, cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? FILTER : "var(--text-tertiary)", borderBottom: banded ? `2px solid ${FILTER}` : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
+                                        style={{ ...thBase, position: "relative", cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? FILTER : "var(--text-tertiary)", borderBottom: banded ? `2px solid ${FILTER}` : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
                                         <span style={{ display: "flex", alignItems: "center", justifyContent: justify, gap: 2, minWidth: 0 }}>
                                             {active && <span style={{ flexShrink: 0 }}>{sort.dir === 1 ? "▲" : "▼"}</span>}
                                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>
                                         </span>
+                                        <ResizeHandle width={widthOf(c)} onResize={(w) => setColWidths((m) => ({ ...m, [colKey(c)]: w }))} />
                                     </th>
                                 );
                             })}
@@ -596,6 +591,25 @@ function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, onToggleFreeze,
                 </MenuItem>
             )}
         </AnchoredPopover>
+    );
+}
+
+// 열 폭 손잡이 — 헤더 오른쪽 가장자리 5px. 여기서 드래그 이벤트를 끊는 게 핵심이다:
+// th 는 이미 draggable(열 재정렬)이라 가장자리를 잡아도 열이 옮겨져 버린다(폭 조절이 아예 안 먹는다).
+// 포인터 캡처로 창 밖까지 따라오고, 클릭이 헤더 정렬 토글로 새지 않게 클릭/업에서도 전파를 막는다.
+function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number) => void }): JSX.Element {
+    const start = useRef<{ x: number; w: number } | null>(null);
+    return (
+        <span
+            draggable={false}
+            onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); start.current = { x: e.clientX, w: width }; e.currentTarget.setPointerCapture(e.pointerId); }}
+            onPointerMove={(e) => { const s = start.current; if (s) onResize(Math.max(MIN_COL_W, Math.round(s.w + (e.clientX - s.x)))); }}
+            onPointerUp={(e) => { start.current = null; e.currentTarget.releasePointerCapture(e.pointerId); e.stopPropagation(); }}
+            title="드래그 = 열 폭 조절"
+            style={{ position: "absolute", top: 0, right: 0, width: 5, height: "100%", cursor: "col-resize", touchAction: "none", zIndex: 1 }}
+        />
     );
 }
 
