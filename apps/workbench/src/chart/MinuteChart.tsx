@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { CrosshairMode, LineStyle } from "lightweight-charts";
 import { kstHHmm } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
@@ -58,6 +58,49 @@ function AnchoredBox({
         >
             {children}
         </div>
+    );
+}
+
+/**
+ * ▼ 마커 기하 — 저장 타점과 시간선이 **같은 크기·같은 높이**에 서도록 한 곳에서만 정한다.
+ * (따로 적었을 땐 시간선 쪽이 축소 뷰박스 + 인라인 svg 베이스라인만큼 작고 낮게 그려졌다.)
+ * 호출부가 정하는 건 색(채움/테두리)과 강조 여부뿐.
+ */
+const MARKER_BOX = { w: 18, h: 14 } as const;
+
+function markerBoxStyle(x: number, zIndex: number): CSSProperties {
+    return {
+        position: "absolute",
+        left: x - MARKER_BOX.w / 2,
+        top: 0,
+        width: MARKER_BOX.w,
+        height: MARKER_BOX.h,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "flex-start",
+        paddingTop: 1,
+        zIndex,
+    };
+}
+
+function MarkerTriangle({ fill, stroke, active = false }: { fill: string; stroke: string; active?: boolean }): JSX.Element {
+    return (
+        <svg
+            width={12}
+            height={10}
+            viewBox="0 0 12 10"
+            style={{
+                display: "block", // 인라인 baseline 만큼 내려앉지 않게
+                overflow: "visible",
+                pointerEvents: "none",
+                filter: active ? "drop-shadow(0 2px 2.5px rgba(0,0,0,0.5))" : "drop-shadow(0 1px 1.5px rgba(0,0,0,0.35))",
+                transform: active ? "scale(1.35)" : "none",
+                transformOrigin: "50% 50%",
+                transition: "transform 0.1s ease, filter 0.1s ease",
+            }}
+        >
+            <polygon points="1,1 11,1 6,9" fill={fill} stroke={stroke} strokeWidth={1.4} />
+        </svg>
     );
 }
 
@@ -186,37 +229,20 @@ export function MinuteChart({
                         onMouseLeave={() => setHoveredSaved((cur) => (cur === i ? null : cur))}
                         onClick={() => s.point && onMovePoint(s.point.tradeTime)}
                         title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로)` : "저장된 타점 (클릭: 이 타점으로)"}
-                        style={{ position: "absolute", left: s.x - 9, top: 0, width: 18, height: 14, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 1, cursor: "pointer", zIndex: 8 }}
+                        style={{ ...markerBoxStyle(s.x, 8), cursor: "pointer" }}
                     >
-                        <svg
-                            width={12}
-                            height={10}
-                            viewBox="0 0 12 10"
-                            style={{
-                                overflow: "visible",
-                                pointerEvents: "none",
-                                filter: isActive ? "drop-shadow(0 2px 2.5px rgba(0,0,0,0.5))" : "drop-shadow(0 1px 1.5px rgba(0,0,0,0.35))",
-                                transform: isActive ? "scale(1.35)" : "none",
-                                transformOrigin: "50% 50%",
-                                transition: "transform 0.1s ease, filter 0.1s ease",
-                            }}
-                        >
-                            <polygon
-                                points="1,1 11,1 6,9"
-                                fill={isNow ? (unplaced ? "var(--bg-primary, #ffffff)" : MARKER_NOW) : unplaced ? "rgba(255,255,255,0.25)" : "var(--bg-primary, #ffffff)"}
-                                stroke={isNow ? MARKER_NOW : "rgba(90,90,105,0.95)"}
-                                strokeWidth={1.4}
-                            />
-                        </svg>
+                        <MarkerTriangle
+                            active={isActive}
+                            fill={isNow ? (unplaced ? "var(--bg-primary, #ffffff)" : MARKER_NOW) : unplaced ? "rgba(255,255,255,0.25)" : "var(--bg-primary, #ffffff)"}
+                            stroke={isNow ? MARKER_NOW : "rgba(90,90,105,0.95)"}
+                        />
                     </div>
                 );
             })}
             {/* 시간선 ▼ — 타점이 아닌 자리에 있을 때만(타점과 겹치면 위에서 그 ▼ 가 검게 칠해진다). */}
             {overlay.current && !currentSaved && overlay.current.x >= 0 && (
-                <div title="현재 시간선" style={{ position: "absolute", left: overlay.current.x - 5, top: 2, width: 10, height: 9, pointerEvents: "none", zIndex: 7 }}>
-                    <svg width={10} height={8} viewBox="0 0 12 10" style={{ overflow: "visible", filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,0.35))" }}>
-                        <polygon points="1,1 11,1 6,9" fill={MARKER_NOW} stroke={MARKER_NOW} strokeWidth={1.4} />
-                    </svg>
+                <div title="현재 시간선" style={{ ...markerBoxStyle(overlay.current.x, 7), pointerEvents: "none" }}>
+                    <MarkerTriangle fill={MARKER_NOW} stroke={MARKER_NOW} />
                 </div>
             )}
             {/* 저장 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). 축별 상세는 "타점 정보" 패널. */}
