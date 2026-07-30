@@ -407,11 +407,12 @@ export function RankSheetPanel(): JSX.Element {
                 };
             },
             // 태그 — 폭이 모자라면 **그냥 잘린다**(wrap·스크롤 없음). 더 보고 싶으면 열 폭을 늘리는 게 이 표의 규칙.
+            //   좁은 열이라 그룹 prefix 는 뗀다(색이 이미 그룹을 말한다). 전체 이름은 셀 툴팁에.
             tags: () => ({
                 onClick: () => navRow(row),
                 style: { cursor: "pointer", overflow: "hidden" },
                 title: tagLabel(row) || undefined,
-                body: <TagChips tags={tagsOf(row)} />,
+                body: <TagChips tags={tagsOf(row)} short style={{ justifyContent: "center" }} />,
             }),
             coverage: () => ({
                 style: { color: row.coverage === axes.length ? STRONG : "var(--text-secondary)" },

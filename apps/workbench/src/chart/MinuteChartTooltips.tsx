@@ -51,8 +51,9 @@ export function MarkerCard({
                 {axisTotal > 0 && <PlacementBadge placed={placed} total={axisTotal} style={{ marginLeft: 2 }} />}
             </div>
             {tags.length > 0 && (
-                <div style={{ padding: "0 7px 2px" }}>
-                    <TagChips tags={tags} />
+                // 위 readout 과 줄이 갈리게 구분선 — 붙여 두면 시각·%·태그가 한 덩어리로 읽힌다.
+                <div style={{ padding: "2px 7px", borderTop: "1px solid var(--border-subtle)" }}>
+                    <TagChips tags={tags} short />
                 </div>
             )}
         </div>

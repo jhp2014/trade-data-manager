@@ -13,7 +13,7 @@ const AXIS_W = 58;
 const COV_W = 44;
 const NUM_W = 50;
 const OUT_W = 88;
-const TAG_W = 120;
+const TAG_W = 80; // 기본은 2~3개만 보이는 폭 — 더 볼 일이 있으면 손으로 넓힌다(수동 폭)
 /** 수동 리사이즈 하한 — 더 좁아지면 헤더 손잡이조차 못 잡는다. */
 export const MIN_COL_W = 32;
 
@@ -46,7 +46,7 @@ export const COL_META: Record<ColKind, ColMeta> = {
     date: { width: DATE_W, label: "날짜", justify: "center", td: td },
     time: { width: TIME_W, label: "시간", justify: "center", td: td },
     axis: { width: AXIS_W, label: "", justify: "center", td: tdCell },
-    tags: { width: TAG_W, label: "태그", justify: "flex-start", td: td },
+    tags: { width: TAG_W, label: "태그", justify: "center", td: tdCell },
     coverage: { width: COV_W, label: "배치", justify: "center", td: tdCell },
     mfe: { width: NUM_W, label: "MFE", justify: "flex-end", td: tdNum },
     maePre: { width: NUM_W, label: "MAE전", justify: "flex-end", td: tdNum },

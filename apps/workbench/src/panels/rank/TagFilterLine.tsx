@@ -1,7 +1,7 @@
 // 태그 필터 라인 — 배치 보드·시트 **공용**(같은 store 상태를 같은 UI 로 만진다).
-// 식은 DNF: 그룹 상자끼리 ∨, 상자 안 칩끼리 ∧. 규칙·연산은 순수 tagFilter, 여긴 손동작만 얹는다.
+// 식은 DNF: 그룹 상자끼리 |, 상자 안 칩끼리 &. 규칙·연산은 순수 tagFilter, 여긴 손동작만 얹는다.
 //   · `+ 태그` = 팔레트 팝오버. 고르면 **단독 그룹**으로 붙는다(OR). 상시 한 줄을 차지하지 않게 팝오버로 뒀다.
-//   · 칩 클릭 = ! 토글 · 칩 ✕ = 제거 · 칩을 **다른 칩 위로** 끌면 그 그룹에 합류(∧), **∨ 자리**로 끌면 떨어져 나옴.
+//   · 칩 클릭 = ! 토글 · 칩 ✕ = 제거 · 칩을 **다른 칩 위로** 끌면 그 그룹에 합류(&), **| 자리**로 끌면 떨어져 나옴.
 //   · 식이 비면 이 줄은 렌더되지 않는다(안 쓸 땐 세로를 안 먹는다) — 호출부가 `+ 태그` 버튼만 둔다.
 import { useMemo, useState, type CSSProperties } from "react";
 import { useWorkbench } from "../../store/workbench.js";
@@ -9,6 +9,7 @@ import { useTags } from "../../lib/useTags.js";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
 import { TAG_PLAIN, tagColor } from "../../styles/palette.js";
+import { TagToken, TagTokenButton, TagTokenLabel } from "../../components/TagChips.js";
 import {
     NO_TAGS, addTagLiteral, isTagExprEmpty, moveTagLiteral, removeTagLiteral, toggleTagNeg, type TagLiteral,
 } from "./tagFilter.js";
@@ -69,7 +70,7 @@ function TagExprRow(): JSX.Element {
                             onDragOver={(e) => accept(e, `g:${gi}`)}
                             onDragLeave={() => setOver(null)}
                             onDrop={(e) => dropOn(e, gi)}
-                            title="칩을 여기로 끌면 ∧(그리고)로 묶입니다"
+                            title="칩을 여기로 끌면 &(그리고)로 묶입니다"
                             style={{
                                 flexShrink: 0, display: "flex", alignItems: "center", gap: 3, padding: "2px 5px", borderRadius: 8,
                                 border: `1px ${g.literals.length > 1 ? "solid" : "dashed"} ${over === `g:${gi}` ? "var(--accent-primary)" : "var(--border-default)"}`,
@@ -78,7 +79,7 @@ function TagExprRow(): JSX.Element {
                         >
                             {g.literals.map((l, li) => (
                                 <div key={li} style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-                                    {li > 0 && <span style={opStyle}>∧</span>}
+                                    {li > 0 && <span style={opStyle}>&</span>}
                                     <LiteralChip
                                         lit={l} name={nameOf(l.tagId)}
                                         dragging={drag?.gi === gi && drag?.li === li}
@@ -92,7 +93,7 @@ function TagExprRow(): JSX.Element {
                         </div>
                     </div>
                 ))}
-                {/* 끝자락 ∨ 자리 — 마지막 그룹 뒤로 끌어도 떨어져 나오게(뭉친 걸 푸는 유일한 손동작이라 목표가 넉넉해야 한다) */}
+                {/* 끝자락 | 자리 — 마지막 그룹 뒤로 끌어도 떨어져 나오게(뭉친 걸 푸는 유일한 손동작이라 목표가 넉넉해야 한다) */}
                 <OrSlot active={over === "or:end"} onOver={(e) => accept(e, "or:end")} onLeave={() => setOver(null)} onDrop={(e) => dropOn(e, "new")} tail />
             </div>
             <AddTagFilterButton style={{ flexShrink: 0 }} />
@@ -101,7 +102,7 @@ function TagExprRow(): JSX.Element {
     );
 }
 
-/** 그룹 사이 ∨ — 드롭 목표를 겸한다(여기 놓으면 단독 그룹으로 분리). */
+/** 그룹 사이 | — 드롭 목표를 겸한다(여기 놓으면 단독 그룹으로 분리). */
 function OrSlot({ active, tail, onOver, onLeave, onDrop }: {
     active: boolean; tail?: boolean;
     onOver: (e: React.DragEvent) => void; onLeave: () => void; onDrop: (e: React.DragEvent) => void;
@@ -109,7 +110,7 @@ function OrSlot({ active, tail, onOver, onLeave, onDrop }: {
     return (
         <span
             onDragOver={onOver} onDragLeave={onLeave} onDrop={onDrop}
-            title="여기로 끌면 ∨(또는)로 떨어집니다"
+            title="여기로 끌면 |(또는)로 떨어집니다"
             style={{
                 flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center",
                 minWidth: tail ? 22 : 16, height: 20, borderRadius: 5,
@@ -117,7 +118,7 @@ function OrSlot({ active, tail, onOver, onLeave, onDrop }: {
                 background: active ? "var(--accent-soft)" : "transparent",
                 border: active ? "1px dashed var(--accent-primary)" : "1px dashed transparent",
             }}
-        >{tail ? "" : "∨"}</span>
+        >{tail ? "" : "|"}</span>
     );
 }
 
@@ -127,20 +128,12 @@ function LiteralChip({ lit, name, dragging, onDragStart, onDragEnd, onToggle, on
 }): JSX.Element {
     const c = lit.tagId === NO_TAGS ? TAG_PLAIN : tagColor(name);
     return (
-        <span
-            draggable onDragStart={onDragStart} onDragEnd={onDragEnd}
-            style={{
-                display: "inline-flex", alignItems: "center", gap: 2, padding: "1px 3px 1px 6px", borderRadius: 9,
-                border: `1px solid ${c}`, background: lit.neg ? "transparent" : `${c}22`, opacity: dragging ? 0.4 : 1,
-                cursor: "grab", whiteSpace: "nowrap", flexShrink: 0,
-            }}
-        >
-            <button onClick={onToggle} title={lit.neg ? "부정 해제(클릭)" : "부정으로(클릭) — 이 태그가 아닌 것"}
-                style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, font: "inherit", fontSize: 10.5, fontWeight: 700, color: c, textDecoration: lit.neg ? "line-through" : "none" }}>
-                {lit.neg && <span style={{ textDecoration: "none", marginRight: 1 }}>!</span>}{name}
-            </button>
-            <button onClick={onRemove} title="이 조건 제거" style={{ border: "none", background: "transparent", cursor: "pointer", color: c, fontSize: 9.5, lineHeight: 1, padding: "0 1px" }}>✕</button>
-        </span>
+        // 부정(!)은 **속 빈 토큰 + 취소선** — 색만 바꾸면 "무슨 색이 부정이더라"를 외워야 한다.
+        <TagToken color={c} hollow={lit.neg} dragging={dragging} draggable onDragStart={onDragStart} onDragEnd={onDragEnd} style={{ cursor: "grab", paddingRight: 3 }}>
+            {lit.neg && <span style={{ color: c, fontWeight: 700, fontSize: 10.5 }}>!</span>}
+            <TagTokenLabel color={c} strike={lit.neg} onClick={onToggle} title={lit.neg ? "부정 해제(클릭)" : "부정으로(클릭) — 이 태그가 아닌 것"}>{name}</TagTokenLabel>
+            <TagTokenButton color={c} onClick={onRemove} title="이 조건 제거">✕</TagTokenButton>
+        </TagToken>
     );
 }
 
@@ -166,7 +159,7 @@ function TagPalette({ anchor, onClose }: { anchor: { x: number; y: number }; onC
 
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={230} maxWidth={280} maxHeight="min(56vh, 380px)" padding={0} placement="beside" offset={6}>
-            <MenuLabel>태그 조건 추가 · 고르면 ∨(또는)로 붙습니다</MenuLabel>
+            <MenuLabel>태그 조건 추가 · 고르면 |(또는)로 붙습니다</MenuLabel>
             <div style={{ padding: "0 10px 7px" }}>
                 <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } }}
@@ -177,8 +170,9 @@ function TagPalette({ anchor, onClose }: { anchor: { x: number; y: number }; onC
                 <div style={{ padding: "0 10px 6px", display: "flex", flexWrap: "wrap", gap: 4, borderBottom: "1px solid var(--border-subtle)", paddingBottom: 8 }}>
                     <span style={{ width: "100%", fontSize: 10, color: "var(--text-tertiary)" }}>현재 타점</span>
                     {current.map((t) => (
-                        <button key={t.id} onClick={() => add(t.id)} title="이 태그로 조건 추가"
-                            style={{ padding: "1px 7px", borderRadius: 9, border: `1px solid ${tagColor(t.name)}`, background: `${tagColor(t.name)}22`, color: tagColor(t.name), cursor: "pointer", fontSize: 10.5, fontWeight: 600 }}>{t.name}</button>
+                        <TagToken key={t.id} color={tagColor(t.name)}>
+                            <TagTokenLabel color={tagColor(t.name)} onClick={() => add(t.id)} title="이 태그로 조건 추가">{t.name}</TagTokenLabel>
+                        </TagToken>
                     ))}
                 </div>
             )}

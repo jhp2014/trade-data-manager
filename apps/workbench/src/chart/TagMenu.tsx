@@ -11,7 +11,7 @@ import { useTags } from "../lib/useTags.js";
 import { useWorkbench } from "../store/workbench.js";
 import { TAG_PRESET_SLOTS } from "../store/settingsSlice.js";
 import { AnchoredPopover, MenuLabel } from "../ui/Dialog.js";
-import { TagChips } from "../components/TagChips.js";
+import { TagToken, TagTokenLabel } from "../components/TagChips.js";
 import { tagColor } from "../styles/palette.js";
 import type { PointRef } from "../lib/pointKey.js";
 
@@ -58,8 +58,13 @@ export function TagMenu({ anchor, point, label, onClose }: {
             <MenuLabel>{label} · 태그</MenuLabel>
 
             {/* 붙은 태그 — 클릭 = 떼기. 지금 상태가 맨 위에 있어야 토글이 뭘 하는지 보인다. */}
-            <div style={{ padding: "0 10px 6px" }}>
-                <TagChips tags={attached} scroll empty="아직 없음 — 아래에서 고르거나 새로 만드세요" onPick={(t) => toggle(point, t.id, false)} />
+            <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 10px 6px", overflowX: "auto" }}>
+                {attached.length === 0 && <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>아직 없음 — 아래에서 고르거나 새로 만드세요</span>}
+                {attached.map((t) => (
+                    <TagToken key={t.id} color={tagColor(t.name)}>
+                        <TagTokenLabel color={tagColor(t.name)} onClick={() => toggle(point, t.id, false)} title="이 타점에서 떼기">{t.name}</TagTokenLabel>
+                    </TagToken>
+                ))}
             </div>
 
             <div style={{ padding: "0 10px 7px" }}>
