@@ -13,7 +13,8 @@ import { COL_META, MIN_COL_W, colKey, colLabel, layoutColumns, pruneAxisKeys, re
 import { buildAxisIndex, type AxisIndex, type RankCell } from "../lib/rankIndex.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
-import { SavedFilterBar } from "./rank/SavedFilterBar.js";
+import { SavedFilterControls } from "./rank/SavedFilterControls.js";
+import { TagFilterLine, AddTagFilterButton } from "./rank/TagFilterLine.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
@@ -462,10 +463,13 @@ export function RankSheetPanel(): JSX.Element {
                     {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
                     {Object.keys(colWidths).length > 0 && <button onClick={() => setColWidths({})} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
                 </div>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, flexShrink: 0 }}>
+                    <SavedFilterControls axes={axes} />
+                </span>
             </div>
 
-            <SavedFilterBar axes={axes} />
-            <RankFilterBar axes={axes} dateBounds={dateBounds} />
+            <RankFilterBar axes={axes} dateBounds={dateBounds} extra={<AddTagFilterButton />} />
+            <TagFilterLine />
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
             <div ref={scrollRef} onScroll={(e) => { sheetScroll = { top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft }; }} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>

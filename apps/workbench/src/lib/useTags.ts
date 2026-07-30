@@ -21,6 +21,8 @@ export interface TagsView {
     tagById: Map<string, Tag>;
     /** 이 타점에 붙은 태그(이름순). */
     tagsOf: (point: PointRef) => Tag[];
+    /** 붙은 태그 id만(필터 평가용 — Tag 객체를 만들지 않는다). 없으면 빈 배열. */
+    tagIdsOf: (point: PointRef) => string[];
     has: (point: PointRef, tagId: string) => boolean;
     /** 이 태그가 붙은 타점 수(삭제 확인·팔레트 빈도). */
     countOf: (tagId: string) => number;
@@ -61,6 +63,7 @@ export function useTags(): TagsView {
             tags,
             tagById,
             tagsOf: (p) => idsOf(p).map((id) => tagById.get(id)).filter((t): t is Tag => t != null),
+            tagIdsOf: idsOf,
             has: (p, tagId) => idsOf(p).includes(tagId),
             countOf: (tagId) => counts.get(tagId) ?? 0,
             toggle: (p, tagId, on) => toggleMut.mutate({ point: p, tagId, on: on ?? !idsOf(p).includes(tagId) }),

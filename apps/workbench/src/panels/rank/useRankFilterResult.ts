@@ -9,6 +9,8 @@ import { computePathStats, type PathStats } from "./pathStats.js";
 import { useRankPaths } from "./useRankPaths.js";
 import { pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
+import { useTags } from "../../lib/useTags.js";
+import { evalTagExpr, isTagExprEmpty } from "./tagFilter.js";
 import type { RankPoint } from "../../api/rank.js";
 import type { RankPointPath } from "../../api/rankPaths.js";
 
@@ -33,9 +35,11 @@ export function useRankFilterResult(): RankResult {
     const rankBands = useWorkbench((s) => s.rankBands);
     const dateRanges = useWorkbench((s) => s.dateRanges);
     const timeRanges = useWorkbench((s) => s.timeRanges);
+    const tagExpr = useWorkbench((s) => s.tagExpr);
     const rankHorizon = useWorkbench((s) => s.rankHorizon);
 
     const { axes, linesByAxis } = useRankAxes();
+    const { tagIdsOf } = useTags();
 
     const pointsQ = useQuery(allPointsQuery());
     const nameOf = useMemo(() => {
@@ -71,7 +75,7 @@ export function useRankFilterResult(): RankResult {
     );
     const activeAxisNames = useMemo(() => axes.filter((ax) => bands.some((b) => b.axisId === ax.id)).map((ax) => ax.name), [axes, bands]);
 
-    // 필터 = 밴드(AND) → 날짜(OR) → 시간(OR) 전부 AND. 밴드 없으면 기반 = 전체 타점(날짜/시간만으로도 필터).
+    // 필터 = 밴드(AND) → 날짜(OR) → 시간(OR) → 태그(DNF) 전부 AND. 밴드 없으면 기반 = 전체 타점(나머지 차원만으로도 필터).
     const bandActive = bands.length > 0;
     const bandResult = useMemo(() => filterPoints(linesByAxis, bands), [linesByAxis, bands]);
     const coverage = bandActive ? bandResult.coverage : (pointsQ.data?.length ?? 0);
@@ -79,8 +83,8 @@ export function useRankFilterResult(): RankResult {
         const base: RankPoint[] = bandActive ? bandResult.points : (pointsQ.data ?? []).map((p) => ({ stockCode: p.stockCode, date: p.date, time: p.time }));
         const dOk = (d: string): boolean => dateRanges.length === 0 || dateRanges.some((r) => d >= r.from && d <= r.to);
         const tOk = (t: string): boolean => { const hm = t.slice(0, 5); return timeRanges.length === 0 || timeRanges.some((r) => hm >= r.from && hm <= r.to); };
-        return base.filter((p) => dOk(p.date) && tOk(p.time));
-    }, [bandActive, bandResult, pointsQ.data, dateRanges, timeRanges]);
+        return base.filter((p) => dOk(p.date) && tOk(p.time) && evalTagExpr(tagIdsOf(p), tagExpr));
+    }, [bandActive, bandResult, pointsQ.data, dateRanges, timeRanges, tagExpr, tagIdsOf]);
     // 경로 = raw 분봉(캐시에 없는 날만 배치 조회) → core/market 앵커 정규화. 부분집합 재필터는 서버 왕복 없음.
     const { paths, isLoading: pathsLoading } = useRankPaths(points);
 
@@ -90,7 +94,7 @@ export function useRankFilterResult(): RankResult {
     const stats = useMemo(() => computePathStats(paths, effHorizon), [paths, effHorizon]);
 
     return {
-        isEmpty: bands.length === 0 && dateRanges.length === 0 && timeRanges.length === 0,
+        isEmpty: bands.length === 0 && dateRanges.length === 0 && timeRanges.length === 0 && isTagExprEmpty(tagExpr),
         isLoading: pathsLoading,
         points, coverage, paths, stats, effHorizon, dataMinT, dataMaxT, activeAxisNames, nameOf, metaOf,
     };

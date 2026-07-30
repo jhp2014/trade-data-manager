@@ -13,7 +13,8 @@ import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { Sep } from "../components/ControlChrome.js";
 import { AnchoredPopover } from "../ui/Dialog.js";
-import { SavedFilterBar } from "./rank/SavedFilterBar.js";
+import { SavedFilterControls } from "./rank/SavedFilterControls.js";
+import { TagFilterLine, AddTagFilterButton } from "./rank/TagFilterLine.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { FilterRail } from "./rank/FilterRail.js";
@@ -177,10 +178,14 @@ export function RankPanel(): JSX.Element {
                         onRemove={removeFromTray}
                         onGo={(p) => goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank")}
                     />
+                    {/* 저장/불러오기 — 담기 라인 오른쪽 끝에 얹어 새 줄을 안 만든다(상단 세로가 빠듯하다). */}
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, flexShrink: 0 }}>
+                        <SavedFilterControls axes={axes} />
+                    </span>
                 </div>
 
-                <SavedFilterBar axes={axes} />
-                <RankFilterBar axes={axes} dateBounds={dateBounds} />
+                <RankFilterBar axes={axes} dateBounds={dateBounds} extra={<AddTagFilterButton />} />
+                <TagFilterLine />
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
                     {axesLoading && <div style={muted}>불러오는 중…</div>}
