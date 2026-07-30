@@ -147,6 +147,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     showAmountMarkers={showMarkers}
                                     lines={resolvedLines}
                                     base={minuteView.base}
+                                    pctBase={pctBase}
                                     markerTime={markerTime}
                                     savedPoints={savedPoints}
                                     axisTotal={axisTotal}

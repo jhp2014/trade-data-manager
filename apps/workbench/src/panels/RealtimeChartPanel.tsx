@@ -172,6 +172,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                                     showAmountMarkers={showMarkers}
                                     lines={minuteLines}
                                     base={minuteView.base}
+                                    pctBase={pctBase}
                                     lockTimeScale={lockScale}
                                     onMovePoint={noop}
                                     onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })}

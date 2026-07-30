@@ -333,19 +333,22 @@ export function useMinuteInteraction(args: {
     candleRef: MutableRefObject<ISeriesApi<"Candlestick"> | null>;
     pointMapRef: MutableRefObject<Map<number, MinutePoint>>;
     lines: RenderLine[]; // 우클릭 라벨-삭제 매칭용(현재 선 데이터)
-    base: number | null; // % 기준가(원)
+    base: number | null; // % 기준가(당일 원주가) — M/A 선·가격 캡처 분모
+    pctBase: number | null; // % 기준가(수정주가 전일종가) — D 선 분모
     onMovePoint: (time: string) => void;
     onRightClick: (anchor: { date: string; time: string }) => void;
     onRemoveLine: (line: RenderLine) => void;
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표(%) → 가격(base×(1+%/100)) 캡처
     captureArmed?: boolean;
 }): void {
-    const { chartRef, containerRef, candleRef, pointMapRef, lines, base, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed } = args;
+    const { chartRef, containerRef, candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed } = args;
     const hoveredTimeRef = useRef<number | null>(null);
     const linesRef = useRef<RenderLine[]>(lines);
     const baseRef = useRef<number | null>(base);
+    const pctBaseRef = useRef<number | null>(pctBase);
     linesRef.current = lines;
     baseRef.current = base;
+    pctBaseRef.current = pctBase;
     const onMovePointRef = useRef(onMovePoint);
     const onRightClickRef = useRef(onRightClick);
     const onRemoveLineRef = useRef(onRemoveLine);
@@ -398,12 +401,12 @@ export function useMinuteInteraction(args: {
             //  루트 위임이라 이 리스너보다 늦게 돌아 못 막는다 → 목표를 보고 판단하는 이 방식이 유일하게 확실하다.)
             if ((e.target as Element | null)?.closest?.(`[${TAG_MARKER_ATTR}]`)) return;
             const candle = candleRef.current;
-            const b = baseRef.current;
             const y = e.clientY - el.getBoundingClientRect().top;
-            // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음).
-            if (candle && b && b > 0) {
+            // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음). %는 렌더와 같은 linePct.
+            if (candle) {
                 for (const line of linesRef.current) {
-                    const pct = ((line.price - b) / b) * 100;
+                    const pct = linePct(line, baseRef.current, pctBaseRef.current);
+                    if (pct === null) continue;
                     const ly = candle.priceToCoordinate(pct);
                     if (ly != null && Math.abs((ly as number) - y) <= 6) {
                         onRemoveLineRef.current(line);
@@ -427,11 +430,24 @@ export function useMinuteInteraction(args: {
     }, []);
 }
 
-/** 가격선(D+M) 렌더 — raw 가격을 base 대비 %로 변환해 표시(분봉은 % 축). */
+/**
+ * 선 하나의 % 좌표 — 분자·분모 스케일 일치가 규칙.
+ * D(일봉 앵커)는 수정주가로 해소되므로 분모도 수정주가 전일종가(pctBase),
+ * M(분봉 고가)·A(알람 라이브 가격)는 당일 원주가이므로 분모도 원주가 base.
+ * 분모 없으면 null — 그 선은 그리지/맞히지 않는다.
+ */
+function linePct(line: RenderLine, base: number | null, pctBase: number | null): number | null {
+    const denom = line.kind === "D" ? pctBase : base;
+    if (!denom || denom <= 0) return null;
+    return ((line.price - denom) / denom) * 100;
+}
+
+/** 가격선(D+M+A) 렌더 — 가격을 %로 변환해 표시(분봉은 % 축). 분모는 linePct 규칙. */
 export function usePercentPriceLines(
     candleRef: MutableRefObject<ISeriesApi<"Candlestick"> | null>,
     lines: RenderLine[],
     base: number | null,
+    pctBase: number | null,
 ): void {
     const priceLinesRef = useRef<IPriceLine[]>([]);
     useEffect(() => {
@@ -445,15 +461,15 @@ export function usePercentPriceLines(
             }
         }
         priceLinesRef.current = [];
-        if (!base || base <= 0) return;
         for (const line of lines) {
-            const pct = ((line.price - base) / base) * 100;
+            const pct = linePct(line, base, pctBase);
+            if (pct === null) continue;
             priceLinesRef.current.push(
                 candle.createPriceLine({ price: pct, color: line.kind === "A" ? ALARM : line.kind === "M" ? "#be7a00" : PRICE_LINE, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
             );
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [lines, base]);
+    }, [lines, base, pctBase]);
 }
 
 export interface MarkerOverlay {

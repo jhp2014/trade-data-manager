@@ -115,6 +115,7 @@ export function MinuteChart({
     showAmountMarkers = true,
     lines,
     base,
+    pctBase,
     markerTime = null,
     savedPoints = [],
     showPointInfo = false,
@@ -132,8 +133,9 @@ export function MinuteChart({
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
     showAmountMarkers?: boolean;
-    lines: RenderLine[]; // D+M 선(해소된 raw 가격). % 로 변환해 표시.
-    base: number | null; // % 기준가(원)
+    lines: RenderLine[]; // D+M+A 선. % 변환 분모는 종류별(linePct): D=pctBase, M/A=base.
+    base: number | null; // % 기준가(당일 원주가) — 캔들·M/A 선·가격 캡처 분모
+    pctBase: number | null; // % 기준가(수정주가 전일종가) — D 선 분모
     markerTime?: number | null; // 현재 타점 세로선(unix초). null = 없음.
     savedPoints?: SavedPointInput[]; // 저장된 복기 타점(unix초). 흐린 세로선 + hover 카드.
     showPointInfo?: boolean; // 현재 타점 정보 박스 토글
@@ -171,8 +173,8 @@ export function MinuteChart({
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
     const { currentSnapped, savedSnapped } = useMarkerVertLines(series, points, markerTime, savedPoints);
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
-    useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed: capturePriceArmed });
-    usePercentPriceLines(series.candleRef, lines, base);
+    useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed: capturePriceArmed });
+    usePercentPriceLines(series.candleRef, lines, base, pctBase);
 
     const { state: tip } = useCrosshairTooltip({
         chartRef,
