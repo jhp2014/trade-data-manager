@@ -22,6 +22,7 @@ import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { useTags } from "../lib/useTags.js";
 import { TagChips } from "../components/TagChips.js";
+import { TagMenu } from "../chart/TagMenu.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { loadJson, saveJson } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -38,6 +39,7 @@ import { FAIL, FILTER, PIN as PIN_COLOR, STRONG, WEAK, heatOf } from "../styles/
 //  · 열 폭은 손으로 조절 가능(헤더 오른쪽 가장자리 드래그). **수동 폭을 준 열만 고정폭**이 되고, 안 준 축 열들은
 //    지금처럼 남는 폭을 나눠 갖는다 → "폭 원위치"(수동 폭 삭제)면 기본 동작으로 정확히 복귀한다.
 //  · 링크: 드래그=소프트 선택(색만, 안 좁힘, 누적) · 우클릭=밴드(좁힘)+그 축 배치 해제 · 선택/호버는 배치 보드와 공유(색으로 표시).
+//  · 태그 셀 우클릭 = 차트와 같은 TagMenu(붙이기·떼기·새 태그·슬롯) — 시트에서 결과를 보다 바로 태그를 고칠 수 있게.
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
@@ -277,6 +279,8 @@ export function RankSheetPanel(): JSX.Element {
 
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계. 배치 해제도 같은 메뉴에서(셀 = 타점×축 하나).
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; point: RankPoint; rank: number; total: number; x: number; y: number } | null>(null);
+    // ── 태그 셀 우클릭 = 태그 입력(차트 타점 ▼ 우클릭과 같은 TagMenu — 사전·슬롯·부착이 한 벌).
+    const [tagCtx, setTagCtx] = useState<{ point: RankPoint; label: string; x: number; y: number } | null>(null);
     // ── 열 이름 우클릭 = 고정/숨김 메뉴.
     const [hdrCtx, setHdrCtx] = useState<{ key: string; label: string; canHide: boolean; frozen: boolean; x: number; y: number } | null>(null);
 
@@ -415,8 +419,12 @@ export function RankSheetPanel(): JSX.Element {
             //   좁은 열이라 그룹 prefix 는 뗀다(색이 이미 그룹을 말한다). 전체 이름은 셀 툴팁에.
             tags: () => ({
                 onClick: () => navRow(row),
+                onContextMenu: (ev) => {
+                    ev.preventDefault();
+                    setTagCtx({ point: { stockCode: row.stockCode, date: row.date, time: row.time }, label: `${nameOf(row.stockCode)} · ${row.date.slice(5)} ${row.time.slice(0, 5)}`, x: ev.clientX, y: ev.clientY });
+                },
                 style: { cursor: "pointer", overflow: "hidden" },
-                title: tagLabel(row) || undefined,
+                title: `${tagLabel(row) || "태그 없음"} — 우클릭 = 태그 입력`,
                 body: <TagChips tags={tagsOf(row)} short style={{ justifyContent: "center" }} />,
             }),
             coverage: () => ({
@@ -568,6 +576,8 @@ export function RankSheetPanel(): JSX.Element {
                         onClose={() => setCtx(null)} />
                 );
             })()}
+
+            {tagCtx && <TagMenu anchor={tagCtx} point={tagCtx.point} label={tagCtx.label} onClose={() => setTagCtx(null)} />}
 
             {hdrCtx && (
                 <HeaderMenu anchor={hdrCtx} label={hdrCtx.label} frozen={hdrCtx.frozen} canHide={hdrCtx.canHide} canFreeze={hdrCtx.key !== "name"}
