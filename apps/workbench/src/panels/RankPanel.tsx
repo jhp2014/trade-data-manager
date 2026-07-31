@@ -504,8 +504,9 @@ function SlotPopover({
     activeMatches: (p: RankPoint) => boolean; inTray: (p: RankPoint) => boolean;
     onClose: () => void; onGo: (p: RankPoint) => void; onAdd: (p: RankPoint) => void; onUnplace: (p: RankPoint) => void;
 }): JSX.Element {
+    // 높이 상한 50vh — 타이가 쌓여도 팝오버가 화면을 덮지 않고 안에서 스크롤(헤더는 sticky 라 계속 보인다).
     return (
-        <AnchoredPopover anchor={{ x, y }} onClose={onClose} minWidth={200} maxWidth={270} maxHeight="80vh" padding={0} placement="beside">
+        <AnchoredPopover anchor={{ x, y }} onClose={onClose} minWidth={200} maxWidth={270} maxHeight="50vh" padding={0} placement="beside">
             <div style={{ position: "sticky", top: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.05em", color: "var(--text-tertiary)", padding: "8px 12px 4px", background: "var(--bg-primary)" }}>{axisName} · 이 자리 {points.length}건{scope === "day" ? " · 하루단위" : ""}</div>
             {points.map((p, i) => {
                 const act = activeMatches(p), tray = inTray(p);

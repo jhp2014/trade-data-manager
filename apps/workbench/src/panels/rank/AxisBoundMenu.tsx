@@ -7,14 +7,21 @@ import { FILTER } from "../../styles/palette.js";
 
 
 
-export function AxisBoundMenu({ anchor, axisName, band, slotId, onSet, onClear, onClose }: {
+export function AxisBoundMenu({ anchor, axisName, band, slotId, rank, onSet, onClear, onUnplace, onClose }: {
     anchor: { x: number; y: number };
     axisName: string;
     band: RankBand | undefined;
     /** 우클릭한 그 자리(슬롯) — 이미 그 경계면 메뉴가 '해제'로 바뀐다(토글). */
     slotId: string;
+    /** 그 자리의 순위(제목에 표시) — 지우는 대상이 눈에 보이게. 시트 셀처럼 타점이 하나로 특정될 때만. */
+    rank?: { rank: number; total: number };
     onSet: (edge: RankBoundEdge) => void;
     onClear: () => void;
+    /**
+     * 이 축에서 배치 해제. **타점이 하나로 특정될 때만** 넘긴다(시트 셀 = 타점×축 하나).
+     * 배치 보드 스팟은 slot 이라 타이면 여러 타점 → 무엇을 지울지 모호하므로 안 넘기고, 스팟 클릭 팝오버의 × 가 담당한다.
+     */
+    onUnplace?: () => void;
     onClose: () => void;
 }): JSX.Element {
     const isLo = band?.lo === slotId;
@@ -23,7 +30,7 @@ export function AxisBoundMenu({ anchor, axisName, band, slotId, onSet, onClear, 
     const arrow = { color: FILTER, fontWeight: 700 };
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={176} padding={0} placement="beside" offset={6}>
-            <MenuLabel>{axisName} · 필터 경계</MenuLabel>
+            <MenuLabel>{axisName} · {rank ? `${rank.rank}/${rank.total}` : "필터 경계"}</MenuLabel>
             <MenuItem onClick={() => onSet("lo")}>
                 <span style={arrow}>▶</span> {isLo ? "이상 경계 해제" : "이상 경계(이 지점부터)"}
             </MenuItem>
@@ -33,6 +40,12 @@ export function AxisBoundMenu({ anchor, axisName, band, slotId, onSet, onClear, 
             {hasBand && (
                 <MenuItem onClick={onClear} style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-tertiary)" }}>
                     이 축 필터 초기화
+                </MenuItem>
+            )}
+            {onUnplace && (
+                // 확인 없이 즉시 — 배치 보드 스팟 팝오버의 × 와 같은 동작(복구 = 다시 드래그해 꽂기). 구분선·위험색으로 필터 항목과 갈라 둔다.
+                <MenuItem onClick={onUnplace} style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--rise)" }}>
+                    이 축에서 배치 해제
                 </MenuItem>
             )}
         </AnchoredPopover>

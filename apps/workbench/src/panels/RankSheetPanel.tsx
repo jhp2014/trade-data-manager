@@ -6,7 +6,7 @@ import {
     type DragStartEvent, type DragMoveEvent, type DragEndEvent,
 } from "@dnd-kit/core";
 import { axisLinesQuery, allPointsQuery } from "../api/queries.js";
-import { placePoint, type RankPoint, type RankTarget } from "../api/rank.js";
+import { placePoint, unplacePoint, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
 import { COL_META, MIN_COL_W, colKey, colLabel, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col, type ColKind } from "./rank/sheetColumns.js";
@@ -37,7 +37,7 @@ import { FAIL, FILTER, PIN as PIN_COLOR, STRONG, WEAK, heatOf } from "../styles/
 //    고정한 열은 시트 전용 자리 — 고정 그룹 안에서만 순서를 바꾸고 배치 보드는 안 건드린다(순서 소스가 둘이라 규칙을 갈랐다).
 //  · 열 폭은 손으로 조절 가능(헤더 오른쪽 가장자리 드래그). **수동 폭을 준 열만 고정폭**이 되고, 안 준 축 열들은
 //    지금처럼 남는 폭을 나눠 갖는다 → "폭 원위치"(수동 폭 삭제)면 기본 동작으로 정확히 복귀한다.
-//  · 링크: 드래그=소프트 선택(색만, 안 좁힘, 누적) · 우클릭=밴드(좁힘) · 선택/호버는 배치 보드와 공유(색으로 표시).
+//  · 링크: 드래그=소프트 선택(색만, 안 좁힘, 누적) · 우클릭=밴드(좁힘)+그 축 배치 해제 · 선택/호버는 배치 보드와 공유(색으로 표시).
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
@@ -275,8 +275,8 @@ export function RankSheetPanel(): JSX.Element {
         [baseCols, frozenCols, hiddenCols, colWidths, containerW, axisMin],
     );
 
-    // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계.
-    const [ctx, setCtx] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
+    // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계. 배치 해제도 같은 메뉴에서(셀 = 타점×축 하나).
+    const [ctx, setCtx] = useState<{ axisId: string; slotId: string; point: RankPoint; rank: number; total: number; x: number; y: number } | null>(null);
     // ── 열 이름 우클릭 = 고정/숨김 메뉴.
     const [hdrCtx, setHdrCtx] = useState<{ key: string; label: string; canHide: boolean; frozen: boolean; x: number; y: number } | null>(null);
 
@@ -288,6 +288,11 @@ export function RankSheetPanel(): JSX.Element {
     const qc = useQueryClient();
     const placeMut = useMutation({
         mutationFn: (v: { axisId: string; point: RankPoint; target: RankTarget }) => placePoint(v.axisId, v.point, v.target),
+        onSuccess: () => void qc.invalidateQueries({ queryKey: axisLinesQuery().queryKey }),
+    });
+    // 배치 해제(셀 우클릭 메뉴) — 배치 보드와 같은 뮤테이션·같은 캐시 키.
+    const unplaceMut = useMutation({
+        mutationFn: (v: { axisId: string; point: RankPoint }) => unplacePoint(v.axisId, v.point),
         onSuccess: () => void qc.invalidateQueries({ queryKey: axisLinesQuery().queryKey }),
     });
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -400,8 +405,8 @@ export function RankSheetPanel(): JSX.Element {
                 const frozen = leftOf.has(colKey(c));
                 return {
                     onClick: () => navRow(row),
-                    onContextMenu: cell ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, x: ev.clientX, y: ev.clientY }); } : undefined,
-                    title: "우클릭 = 이상/이하 밴드 · 클릭 = 이동",
+                    onContextMenu: cell ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, point: { stockCode: row.stockCode, date: row.date, time: row.time }, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
+                    title: "우클릭 = 이상/이하 밴드 · 배치 해제 · 클릭 = 이동",
                     style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
                     body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
                 };
@@ -556,8 +561,10 @@ export function RankSheetPanel(): JSX.Element {
                 if (!ax) return null;
                 return (
                     <AxisBoundMenu anchor={ctx} axisName={ax.name} band={rankBands[ctx.axisId]} slotId={ctx.slotId}
+                        rank={{ rank: ctx.rank, total: ctx.total }}
                         onSet={(edge) => { setRankBound(ctx.axisId, edge, ctx.slotId); setCtx(null); }}
                         onClear={() => { clearRankBand(ctx.axisId); setCtx(null); }}
+                        onUnplace={() => { unplaceMut.mutate({ axisId: ctx.axisId, point: ctx.point }); setCtx(null); }}
                         onClose={() => setCtx(null)} />
                 );
             })()}
