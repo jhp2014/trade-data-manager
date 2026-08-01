@@ -127,8 +127,8 @@ export function reorderFrozenCols(cols: string[], dragged: string, target: strin
     return next;
 }
 
-/** 사라진 축의 유령 키 제거(고정·숨김·폭 목록 공용). 바뀔 게 없으면 **같은 배열/객체**를 돌려준다. */
-export function pruneAxisKeys<T extends string[] | Record<string, number>>(cur: T, liveAxisIds: string[]): T {
+/** 사라진 축의 유령 키 제거(고정·숨김·폭·컷 목록 공용). 바뀔 게 없으면 **같은 배열/객체**를 돌려준다. */
+export function pruneAxisKeys<T extends string[] | Record<string, unknown>>(cur: T, liveAxisIds: string[]): T {
     const live = new Set(liveAxisIds.map((id) => `ax:${id}`));
     const dead = (k: string): boolean => k.startsWith("ax:") && !live.has(k);
     if (Array.isArray(cur)) return (cur.some(dead) ? cur.filter((k) => !dead(k)) : cur) as T;

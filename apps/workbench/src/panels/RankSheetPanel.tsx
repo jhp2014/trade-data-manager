@@ -10,7 +10,11 @@ import { placePoint, unplacePoint, type RankPoint, type RankTarget } from "../ap
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
 import { COL_META, MIN_COL_W, colKey, colLabel, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col, type ColKind } from "./rank/sheetColumns.js";
-import { buildAxisIndex, type AxisIndex, type RankCell } from "../lib/rankIndex.js";
+import {
+    DEFAULT_CHAIN, buildSheetGroups, cutsActive, dropSort, parseSortChain, pushSort, resetSort, resolveCutKeys,
+    sortKeyOf, sortSheetRows, sortStepNo, type SortChain, type SortCtx, type SortKey,
+} from "./rank/sheetSort.js";
+import { buildAxisIndex, slotOrderKeys, type AxisIndex, type RankCell } from "../lib/rankIndex.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { SavedFilterControls } from "./rank/SavedFilterControls.js";
@@ -32,7 +36,13 @@ import { FAIL, FILTER, PIN as PIN_COLOR, STRONG, WEAK, heatOf } from "../styles/
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
-//  · 축 헤더 클릭 = 그 축 강도 정렬(강 먼저). 정렬 축에서 행범위 **드래그 선택 = 밴드**(AND drill-down, rankBands 공유).
+//  · 헤더 클릭 = 그 열로 정렬(축은 강 먼저) · **Shift+클릭 = 정렬 단 추가**(n차). 정렬 축에서 행범위
+//    **드래그 선택 = 밴드**(AND drill-down, rankBands 공유). 체인·그룹 규칙은 sheetSort(순수·테스트)에.
+//  · **그룹**: 1차 키에서만 접는다. 날짜·결과·태그·배치수처럼 값이 몇 가지뿐인 열은 저절로, 축처럼 값이 거의
+//    유일한 열은 셀 우클릭 **그룹 나누기(컷)** 를 그었을 때만. 컷은 "한 구간만 남기는" 밴드와 달리 아무것도
+//    안 버리고 N개로 나눈다 → 구간끼리 한 화면에서 비교된다(밴드는 분석 모수까지 좁힌다는 게 다른 점).
+//  · 드래그 배치는 축 열이 **순위 순서 그대로일 때만** 유효 — 깨지는 건 컷과 2차 정렬이 둘 다 있을 때뿐이다
+//    (2차는 원래 1차 동률 안에서만 도니까 열은 단조로 남는다). 그때만 끄고 헤더에 사유를 띄운다.
 //  · 밴드 활성 시 행=교집합, 결과 열(MFE/MAE/결과)이 lazy 로 붙는다(좁혔을 때만 경로 fetch). 미배치는 strict AND 로 탈락.
 //  · 기간(전체/월)은 독립 필터. **비고정** 축 열의 드래그 재정렬은 배치 보드와 양방향 동기화(store rankAxisOrder).
 //    고정한 열은 시트 전용 자리 — 고정 그룹 안에서만 순서를 바꾸고 배치 보드는 안 건드린다(순서 소스가 둘이라 규칙을 갈랐다).
@@ -46,7 +56,8 @@ const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
 const WIDTHS_KEY = "wb.rankSheetColWidths";
 const FILTERMODE_KEY = "wb.rankSheetFilterMode";
-const SORT_KEY = "wb.rankSheetSort"; // 정렬 기준 영속(다른 시트 설정과 동일 패턴) — 프리셋 전환·새로고침에 유지.
+const SORT_KEY = "wb.rankSheetSort"; // 정렬 체인 영속(다른 시트 설정과 동일 패턴) — 프리셋 전환·새로고침에 유지. 옛 단일 정렬도 읽는다.
+const CUTS_KEY = "wb.rankSheetCuts";  // 축 열 그룹 컷 — colKey(`ax:<id>`) → slotId[]. 시트 전용(축의 속성 아님)이라 로컬.
 // 스크롤 위치는 세션 한정(모듈 메모) — 프리셋 전환(재마운트)엔 이어지고 새로고침엔 초기화(목록 중간 튐 방지).
 let sheetScroll = { top: 0, left: 0 };
 const PIN = PIN_COLOR;
@@ -54,32 +65,6 @@ const PIN = PIN_COLOR;
 const AXIS_DND = "application/x-rank-axis";
 const COL_DND = "application/x-rank-col";
 const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
-
-/** 열 → 그 열로 정렬할 때의 키. axis 만 축 id 를 실어야 해서 분기 하나. */
-const sortKeyOf = (c: Col): SortKey => (c.key === "axis" ? { kind: "axis", axisId: c.axisId } : { kind: c.key });
-
-type SortKey =
-    | { kind: "name" }
-    | { kind: "date" }
-    | { kind: "time" }
-    | { kind: "coverage" }
-    | { kind: "tags" }
-    | { kind: "axis"; axisId: string }
-    | { kind: "mfe" | "maePre" | "maePost" | "outcome" };
-type Sort = { key: SortKey; dir: 1 | -1 };
-
-const sameSort = (a: SortKey, b: SortKey): boolean => (a.kind === "axis" && b.kind === "axis" ? a.axisId === b.axisId : a.kind === b.kind);
-const SORT_KINDS = ["name", "date", "time", "tags", "coverage", "mfe", "maePre", "maePost", "outcome", "axis"];
-// 영속된 정렬 복원 검증 — 형태 안 맞으면 null(기본값 폴백). axis 는 axisId 문자열 필수(없어진 축이어도 무해: 전부 미배치 취급).
-function parseSort(o: unknown): Sort | null {
-    if (!o || typeof o !== "object") return null;
-    const s = o as { key?: { kind?: unknown; axisId?: unknown }; dir?: unknown };
-    if (s.dir !== 1 && s.dir !== -1) return null;
-    const k = s.key;
-    if (!k || typeof k.kind !== "string" || !SORT_KINDS.includes(k.kind)) return null;
-    if (k.kind === "axis" && typeof k.axisId !== "string") return null;
-    return s as Sort;
-}
 
 function outcomeColor(v?: string): string {
     if (!v) return "var(--text-tertiary)";
@@ -159,50 +144,43 @@ export function RankSheetPanel(): JSX.Element {
 
     const rows = useMemo(() => buildSheetRows(rowPoints, axisIds, indexByAxis), [rowPoints, axisIds, indexByAxis]);
 
-    // ── 정렬. 축 정렬 = 강(rank↑) 먼저, 미배치는 방향 무관 맨 아래로 가라앉힘. localStorage 영속(프리셋 전환·새로고침 유지).
-    const [sort, setSort] = useState<Sort>(() => parseSort(loadJson(SORT_KEY, (o) => o)) ?? { key: { kind: "date" }, dir: -1 });
+    // ── 정렬 체인(n차). 평클릭=리셋 · Shift+클릭=단 추가. 규칙 전부는 sheetSort(순수·테스트) 에.
+    //    축 정렬 = 강(rank↑) 먼저, 값 없음(미배치·미산정)은 방향 무관 바닥. localStorage 영속(옛 단일 정렬도 읽는다).
+    const [sort, setSort] = useState<SortChain>(() => parseSortChain(loadJson(SORT_KEY, (o) => o)) ?? DEFAULT_CHAIN);
     useEffect(() => saveJson(SORT_KEY, sort), [sort]);
-    // 정렬 기준을 배치 보드와 공유 → 그 레일에 하이라이트/배지. axis·날짜·시간만(그 외는 배치에 대응 레일 없음 → null).
+    const primary = sort[0];
+    // 정렬 기준을 배치 보드와 공유 → 그 레일에 하이라이트/배지. **1차만**(2차 이하는 대응 레일이 없다).
     const setRankSort = useWorkbench((s) => s.setRankSort);
     useEffect(() => {
-        const k = sort.key;
+        const k = primary.key;
         const target = k.kind === "axis" ? k.axisId : k.kind === "date" || k.kind === "time" ? k.kind : null;
-        setRankSort(target ? { target, dir: sort.dir } : null);
-    }, [sort, setRankSort]);
+        setRankSort(target ? { target, dir: primary.dir } : null);
+    }, [primary, setRankSort]);
     const nameOf = (code: string): string => r.nameOf(code);
-    const sorted = useMemo(() => {
-        const dir = sort.dir;
-        const cmp = (a: SheetRow, b: SheetRow): number => {
-            const k = sort.key;
-            if (k.kind === "name") return r.nameOf(a.stockCode).localeCompare(r.nameOf(b.stockCode)) * dir;
-            if (k.kind === "date") { // 날짜(dir) → 종목 → 시간 (그룹 정렬)
-                if (a.date !== b.date) return a.date < b.date ? -dir : dir;
-                if (a.stockCode !== b.stockCode) return a.stockCode < b.stockCode ? -1 : 1;
-                return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
-            }
-            if (k.kind === "time") {
-                if (a.time !== b.time) return a.time < b.time ? -dir : dir;
-                return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; // 같은 시각 = 최근 날짜 먼저
-            }
-            if (k.kind === "outcome") return (a.outcome ?? "").localeCompare(b.outcome ?? "") * dir;
-            if (k.kind === "tags") { // 붙은 태그 이름을 이어 붙여 사전순. 태그 없는 행은 방향 무관 바닥(미배치 관례와 동일).
-                const ta = tagLabel(a), tb = tagLabel(b);
-                if (!ta && !tb) return 0;
-                if (!ta) return 1;
-                if (!tb) return -1;
-                return ta.localeCompare(tb) * dir;
-            }
-            const ek = k.kind as "mfe" | "maePre" | "maePost"; // 위에서 date/time/coverage/axis/outcome 처리됨
-            const num = (row: SheetRow): number | null =>
-                k.kind === "coverage" ? row.coverage : k.kind === "axis" ? (row.cells[k.axisId]?.rank ?? null) : (excByKey.get(pointKey(row))?.[ek] ?? null);
-            const va = num(a), vb = num(b);
-            if (va == null && vb == null) return 0;
-            if (va == null) return 1; // 미배치/미산정 = 바닥
-            if (vb == null) return -1;
-            return (va - vb) * dir;
-        };
-        return [...rows].sort(cmp);
-    }, [rows, sort, excByKey, r.nameOf]);
+
+    // ── 그룹 컷(축 열 전용) — 1차 축에서 우클릭으로 그은 경계. slotId 로 저장하고 축 라인으로 orderKey 를 되찾는다.
+    const [cuts, setCuts] = useState<Record<string, string[]>>(() => loadJson(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null)) ?? {});
+    useEffect(() => saveJson(CUTS_KEY, cuts), [cuts]);
+    const sortAxisId = primary.key.kind === "axis" ? primary.key.axisId : null;
+    const slotOrderOfSort = useMemo(() => (sortAxisId ? slotOrderKeys(linesByAxis.get(sortAxisId) ?? []) : undefined), [sortAxisId, linesByAxis]);
+    const cutKeys = useMemo(
+        () => (sortAxisId ? resolveCutKeys(cuts[`ax:${sortAxisId}`] ?? [], slotOrderOfSort) : []),
+        [sortAxisId, cuts, slotOrderOfSort],
+    );
+    const toggleCut = (axisId: string, slotId: string): void => setCuts((m) => {
+        const k = `ax:${axisId}`;
+        const cur = m[k] ?? [];
+        const next = cur.includes(slotId) ? cur.filter((s) => s !== slotId) : [...cur, slotId];
+        return next.length ? { ...m, [k]: next } : Object.fromEntries(Object.entries(m).filter(([x]) => x !== k));
+    });
+
+    const sortCtx = useMemo<SortCtx>(() => ({
+        nameOf: (code) => r.nameOf(code),
+        tagLabel,
+        excursionOf: (row) => excByKey.get(pointKey(row)),
+    }), [r.nameOf, tagsOf, excByKey]); // eslint-disable-line react-hooks/exhaustive-deps -- tagLabel 은 tagsOf 파생
+    const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
+    const groups = useMemo(() => buildSheetGroups(sorted, sort, sortCtx, cutKeys), [sorted, sort, sortCtx, cutKeys]);
 
     // 핀은 필터/정렬 무관 상단 고정 행(작업셋), 일반 행에서는 제외(중복 방지).
     const pinnedRows = useMemo(() => {
@@ -211,9 +189,12 @@ export function RankSheetPanel(): JSX.Element {
     }, [pinned, allByKey, axisIds, indexByAxis]);
     const mainRows = sorted; // 핀 행도 기존 위치에 그대로(상단 고정 블록에 중복 표시, 삼각형으로 구분)
 
-    const clickHeader = (key: SortKey): void => setSort((s) => ({ key, dir: sameSort(s.key, key) ? (s.dir === 1 ? -1 : 1) : (key.kind === "axis" ? 1 : -1) }));
-    const sortAxisId = sort.key.kind === "axis" ? sort.key.axisId : null;
-    const unplacedOnSort = sortAxisId ? mainRows.filter((row) => !row.cells[sortAxisId!]).length : 0;
+    const clickHeader = (key: SortKey, shift: boolean): void => setSort((s) => (shift ? pushSort(s, key) : resetSort(s, key)));
+    const unplacedOnSort = sortAxisId ? mainRows.filter((row) => !row.cells[sortAxisId]).length : 0;
+    // 드래그 배치는 **축 열이 순위 순서 그대로일 때만** 유효하다(행 사이 = 순위 구간이어야 하므로).
+    // 순서가 깨지는 건 컷과 2차 정렬이 **둘 다** 있을 때뿐 — 컷만 있거나 2차만 있으면 열은 여전히 단조다.
+    const dragBroken = cutsActive(sort, cutKeys) && sort.length > 1;
+    const dragAxisId = dragBroken ? null : sortAxisId;
 
     // ── 위치 표시 모드(숫자 기본 / 위치 바).
     const [posBar, setPosBar] = useState<boolean>(() => loadJson(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? true);
@@ -259,6 +240,7 @@ export function RankSheetPanel(): JSX.Element {
         setFrozenCols((f) => pruneAxisKeys(f, ids));
         setHiddenCols((h) => pruneAxisKeys(h, ids));
         setColWidths((w) => pruneAxisKeys(w, ids));
+        setCuts((c) => pruneAxisKeys(c, ids));
     }, [axes]);
     const toggleFrozen = (k: string): void => setFrozenCols((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
     // 고정 그룹 안 재정렬 — 배열이 곧 좌측 스택 순서다. 축 열이 섞여 있어도 여기선 배열만 만진다(축 서열 불변).
@@ -281,8 +263,8 @@ export function RankSheetPanel(): JSX.Element {
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; point: RankPoint; rank: number; total: number; x: number; y: number } | null>(null);
     // ── 태그 셀 우클릭 = 태그 입력(차트 타점 ▼ 우클릭과 같은 TagMenu — 사전·슬롯·부착이 한 벌).
     const [tagCtx, setTagCtx] = useState<{ point: RankPoint; label: string; x: number; y: number } | null>(null);
-    // ── 열 이름 우클릭 = 고정/숨김 메뉴.
-    const [hdrCtx, setHdrCtx] = useState<{ key: string; label: string; canHide: boolean; frozen: boolean; x: number; y: number } | null>(null);
+    // ── 열 이름 우클릭 = 고정/숨김 + 정렬 체인에서 빼기 메뉴.
+    const [hdrCtx, setHdrCtx] = useState<{ key: string; label: string; canHide: boolean; frozen: boolean; sortKey: SortKey; step: number; x: number; y: number } | null>(null);
 
     const navRow = (row: SheetRow): void => goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
     const totalCols = displayCols.length;
@@ -307,7 +289,7 @@ export function RankSheetPanel(): JSX.Element {
     const [drop, setDrop] = useState<SheetDrop | null>(null);
 
     const computeSheetDrop = (clientX: number, clientY: number): SheetDrop | null => {
-        if (!sortAxisId) return null;                       // 축으로 정렬해야 세로 라인
+        if (!dragAxisId) return null;                       // 축으로 정렬 + 열이 순위 순서일 때만 세로 라인
         const th = sortAxisThRef.current;
         if (!th) return null;
         const cr = th.getBoundingClientRect();
@@ -315,14 +297,14 @@ export function RankSheetPanel(): JSX.Element {
         // DOM 측정만 여기서 — 판정 규칙(타이 ±px·타이그룹 합류·prev/next 방향)은 rankGeometry(순수, 테스트됨).
         const placed: RowGeom[] = [];
         for (const row of mainRows) {
-            const cell = row.cells[sortAxisId];
+            const cell = row.cells[dragAxisId];
             if (!cell) continue;
             const tr = rowRefs.current.get(pointKey(row));
             if (!tr) continue;
             const rr = tr.getBoundingClientRect();
             placed.push({ slotId: cell.slotId, orderKey: cell.orderKey, top: rr.top, bottom: rr.bottom, centerY: rr.top + rr.height / 2 });
         }
-        return { ...computeRowDrop(placed, clientY, sort.dir, (cr.top + cr.bottom) / 2), x0: cr.left, x1: cr.right };
+        return { ...computeRowDrop(placed, clientY, primary.dir, (cr.top + cr.bottom) / 2), x0: cr.left, x1: cr.right };
     };
 
     const onDragStart = (ev: DragStartEvent): void => {
@@ -337,9 +319,9 @@ export function RankSheetPanel(): JSX.Element {
     };
     const onDragEnd = (ev: DragEndEvent): void => {
         const point = draggedPoint(ev.active.id);
-        if (point && sortAxisId) {
+        if (point && dragAxisId) {
             const d = computeSheetDrop(dragStart.current.x + ev.delta.x, dragStart.current.y + ev.delta.y);
-            if (d) placeMut.mutate({ axisId: sortAxisId, point, target: d.target });
+            if (d) placeMut.mutate({ axisId: dragAxisId, point, target: d.target });
         }
         setDrop(null); setDragName(null);
     };
@@ -410,7 +392,7 @@ export function RankSheetPanel(): JSX.Element {
                 return {
                     onClick: () => navRow(row),
                     onContextMenu: cell ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, point: { stockCode: row.stockCode, date: row.date, time: row.time }, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
-                    title: "우클릭 = 이상/이하 밴드 · 배치 해제 · 클릭 = 이동",
+                    title: "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
                     style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
                     body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
                 };
@@ -474,6 +456,10 @@ export function RankSheetPanel(): JSX.Element {
                         </ControlBox>
                     )}
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}(모수 ${r.coverage})` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
+                    {/* 컷과 2차 정렬이 둘 다 걸리면 축 열이 순위 순서가 아니라 행 사이 드롭이 뜻을 잃는다 — 왜 안 되는지 보이게. */}
+                    {dragBroken && <span style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 }}>· 그룹 안 정렬 중 — 배치 드래그 꺼짐</span>}
+                    {sort.length > 1 && <button onClick={() => setSort((s) => [s[0]])} title="2차 이하 정렬 해제(1차만 남김)" style={{ ...miniBtn, flexShrink: 0 }}>정렬 {sort.length}단 ⤺</button>}
+                    {cutKeys.length > 0 && <button onClick={() => setCuts((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== `ax:${sortAxisId}`)))} title="이 축의 그룹 컷 모두 해제" style={{ ...miniBtn, flexShrink: 0 }}>그룹 {cutKeys.length + 1} ⤺</button>}
                     {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
                     {Object.keys(colWidths).length > 0 && <button onClick={() => setColWidths({})} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
                 </div>
@@ -495,7 +481,8 @@ export function RankSheetPanel(): JSX.Element {
                         <tr style={{ height: ROW_H }}>
                             {displayCols.map((c) => {
                                 const sk = sortKeyOf(c);
-                                const active = sameSort(sort.key, sk);
+                                const step = sortStepNo(sort, sk); // 0=미정렬, 1=1차, 2…=2차 이하
+                                const active = step > 0;
                                 const left = leftOf.get(colKey(c));
                                 const banded = c.key === "axis" && !!rankBands[c.axisId];
                                 const justify = COL_META[c.key].justify;
@@ -516,13 +503,15 @@ export function RankSheetPanel(): JSX.Element {
                                     onDrop: (e: React.DragEvent) => { const id = e.dataTransfer.getData(AXIS_DND); if (id) reorderAxis(id, (c as { axisId: string }).axisId); },
                                 } : {};
                                 return (
-                                    <th key={colKey(c)} {...dnd} title={colLabel(c)}
+                                    <th key={colKey(c)} {...dnd} title={`${colLabel(c)} — 클릭=이 열로 정렬 · Shift+클릭=정렬 단 추가`}
                                         ref={c.key === "axis" && c.axisId === sortAxisId ? sortAxisThRef : undefined}
-                                        onClick={() => clickHeader(sk)}
-                                        onContextMenu={(e) => { e.preventDefault(); setHdrCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), x: e.clientX, y: e.clientY }); }}
-                                        style={{ ...thBase, position: "relative", cursor: "pointer", color: active ? "var(--accent-primary)" : banded ? FILTER : "var(--text-tertiary)", borderBottom: banded ? `2px solid ${FILTER}` : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
+                                        onClick={(e) => clickHeader(sk, e.shiftKey)}
+                                        onContextMenu={(e) => { e.preventDefault(); setHdrCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), sortKey: sk, step, x: e.clientX, y: e.clientY }); }}
+                                        style={{ ...thBase, position: "relative", cursor: "pointer", color: step === 1 ? "var(--accent-primary)" : active ? "var(--text-secondary)" : banded ? FILTER : "var(--text-tertiary)", borderBottom: banded ? `2px solid ${FILTER}` : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
                                         <span style={{ display: "flex", alignItems: "center", justifyContent: justify, gap: 2, minWidth: 0 }}>
-                                            {active && <span style={{ flexShrink: 0 }}>{sort.dir === 1 ? "▲" : "▼"}</span>}
+                                            {active && <span style={{ flexShrink: 0 }}>{sort[step - 1].dir === 1 ? "▲" : "▼"}</span>}
+                                            {/* 단 번호는 체인이 2단 이상일 때만 — 기본 화면(1단)은 지금과 똑같이 보인다. */}
+                                            {active && sort.length > 1 && <span style={{ flexShrink: 0, fontSize: 8.5, opacity: 0.8, marginRight: 1 }}>{step}</span>}
                                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>
                                         </span>
                                         <ResizeHandle width={widthOf(c)} onResize={(w) => setColWidths((m) => ({ ...m, [colKey(c)]: w }))} />
@@ -533,17 +522,19 @@ export function RankSheetPanel(): JSX.Element {
                         {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1, true))}
                     </thead>
                     <tbody>
-                        {mainRows.flatMap((row, i) => {
-                            const showGroup = sort.key.kind === "date" && (i === 0 || mainRows[i - 1].date !== row.date);
+                        {/* 그룹 = 1차 키에서만 접는다(이산 열은 저절로, 축은 사람이 그은 컷). label=null 이면 통짜 → 헤더 없음. */}
+                        {groups.flatMap((g) => {
                             const out: JSX.Element[] = [];
-                            if (showGroup) out.push(
-                                <tr key={`g-${row.date}`} style={{ height: 22 }}>
+                            if (g.label != null) out.push(
+                                <tr key={`g-${g.id}`} style={{ height: 22 }}>
                                     <td colSpan={totalCols} style={{ padding: 0, fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", background: "var(--bg-secondary)", borderTop: "1px solid var(--border-strong)", borderBottom: "1px solid var(--border-default)" }}>
-                                        <span style={{ position: "sticky", left: 0, display: "inline-block", padding: "3px 10px" }}>{row.date.replace(/-/g, ".")}</span>
+                                        <span style={{ position: "sticky", left: 0, display: "inline-block", padding: "3px 10px" }}>
+                                            {g.label}<span style={{ fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 6 }}>· {g.rows.length}행</span>
+                                        </span>
                                     </td>
                                 </tr>,
                             );
-                            out.push(renderRow(row));
+                            for (const row of g.rows) out.push(renderRow(row));
                             return out;
                         })}
                     </tbody>
@@ -573,6 +564,11 @@ export function RankSheetPanel(): JSX.Element {
                         onSet={(edge) => { setRankBound(ctx.axisId, edge, ctx.slotId); setCtx(null); }}
                         onClear={() => { clearRankBand(ctx.axisId); setCtx(null); }}
                         onUnplace={() => { unplaceMut.mutate({ axisId: ctx.axisId, point: ctx.point }); setCtx(null); }}
+                        cut={{
+                            on: (cuts[`ax:${ctx.axisId}`] ?? []).includes(ctx.slotId),
+                            enabled: sortAxisId === ctx.axisId, // 1차 정렬 축에서만 — 안 보이는 줄엔 선을 못 긋는다
+                            onToggle: () => { toggleCut(ctx.axisId, ctx.slotId); setCtx(null); },
+                        }}
                         onClose={() => setCtx(null)} />
                 );
             })()}
@@ -581,8 +577,10 @@ export function RankSheetPanel(): JSX.Element {
 
             {hdrCtx && (
                 <HeaderMenu anchor={hdrCtx} label={hdrCtx.label} frozen={hdrCtx.frozen} canHide={hdrCtx.canHide} canFreeze={hdrCtx.key !== "name"}
+                    sortStep={sort.length > 1 ? hdrCtx.step : 0}
                     onToggleFreeze={() => { toggleFrozen(hdrCtx.key); setHdrCtx(null); }}
                     onHide={() => { toggleHidden(hdrCtx.key); setHdrCtx(null); }}
+                    onDropSort={() => { setSort((s) => dropSort(s, hdrCtx.sortKey)); setHdrCtx(null); }}
                     onClose={() => setHdrCtx(null)} />
             )}
         </Wrap>
@@ -598,15 +596,19 @@ function PinnedDragName({ pkStr, name, focus, onNav }: { pkStr: string; name: st
     );
 }
 
-// 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기. (경계 메뉴는 배치 보드와 공용 AxisBoundMenu.)
-function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, onToggleFreeze, onHide, onClose }: {
+// 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기 · 정렬 체인에서 빼기. (경계 메뉴는 배치 보드와 공용 AxisBoundMenu.)
+//  정렬 빼기가 여기 있는 이유: Shift+클릭은 방향 토글이라 뺄 손짓이 없다. 체인이 2단 이상일 때만 뜬다.
+function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep, onToggleFreeze, onHide, onDropSort, onClose }: {
     anchor: { x: number; y: number }; label: string; frozen: boolean; canHide: boolean; canFreeze: boolean;
-    onToggleFreeze: () => void; onHide: () => void; onClose: () => void;
+    /** 이 열의 정렬 단(1부터). 0 = 체인에 없거나 1단짜리 정렬 → 항목 숨김. */
+    sortStep: number;
+    onToggleFreeze: () => void; onHide: () => void; onDropSort: () => void; onClose: () => void;
 }): JSX.Element {
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={168} padding={0} placement="beside" offset={6}>
             <MenuLabel>{label}</MenuLabel>
-            {canFreeze && <MenuItem onClick={onToggleFreeze}>{frozen ? "🔓 고정 해제" : "🔒 왼쪽 고정"}</MenuItem>}
+            {sortStep > 0 && <MenuItem onClick={onDropSort}>{sortStep}차 정렬에서 빼기</MenuItem>}
+            {canFreeze && <MenuItem onClick={onToggleFreeze} style={sortStep > 0 ? { borderTop: "1px solid var(--border-subtle)" } : undefined}>{frozen ? "🔓 고정 해제" : "🔒 왼쪽 고정"}</MenuItem>}
             {canHide && (
                 <MenuItem onClick={onHide} style={{ borderTop: canFreeze ? "1px solid var(--border-subtle)" : undefined, color: "var(--text-secondary)" }}>
                     이 열 숨기기
@@ -654,5 +656,6 @@ const Wrap = ({ children }: { children: React.ReactNode }): JSX.Element => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>{children}</div>
 );
 const muted: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px" };
-const thBase: CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: "6px 8px", borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" };
+// userSelect none — Shift+클릭(정렬 단 추가)이 헤더 글자를 범위 선택해 파랗게 물들이는 걸 막는다.
+const thBase: CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: "6px 8px", borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap", userSelect: "none" };
 const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer" };

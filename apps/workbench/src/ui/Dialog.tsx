@@ -146,11 +146,13 @@ export function AnchoredPopover({
 }
 
 /** 메뉴 항목 버튼 — 가장자리까지 차는 좌측정렬 행(padding 0 팝오버와 한 쌍). */
-export function MenuItem({ onClick, children, style }: { onClick: () => void; children: ReactNode; style?: CSSProperties }): JSX.Element {
+export function MenuItem({ onClick, children, style, disabled, title }: { onClick: () => void; children: ReactNode; style?: CSSProperties; disabled?: boolean; title?: string }): JSX.Element {
     return (
         <button
-            onClick={onClick}
-            style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 12.5, padding: "7px 12px", ...style }}
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            title={title}
+            style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 12.5, padding: "7px 12px", ...style, ...(disabled ? { color: "var(--text-tertiary)", opacity: 0.55, cursor: "default" } : {}) }}
         >
             {children}
         </button>

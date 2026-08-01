@@ -7,7 +7,7 @@ import { FILTER } from "../../styles/palette.js";
 
 
 
-export function AxisBoundMenu({ anchor, axisName, band, slotId, rank, onSet, onClear, onUnplace, onClose }: {
+export function AxisBoundMenu({ anchor, axisName, band, slotId, rank, onSet, onClear, onUnplace, cut, onClose }: {
     anchor: { x: number; y: number };
     axisName: string;
     band: RankBand | undefined;
@@ -22,6 +22,12 @@ export function AxisBoundMenu({ anchor, axisName, band, slotId, rank, onSet, onC
      * 배치 보드 스팟은 slot 이라 타이면 여러 타점 → 무엇을 지울지 모호하므로 안 넘기고, 스팟 클릭 팝오버의 × 가 담당한다.
      */
     onUnplace?: () => void;
+    /**
+     * 그룹 컷 토글(시트 전용) — 이 자리 **바로 아래**에서 줄을 끊어 그룹을 만든다. 밴드가 한 구간만 남기고
+     * 나머지를 버리는 것과 달리 아무것도 안 버리고 N개로 나눈다(같은 slot 좌표계, 버리냐 나누냐만 다르다).
+     * 지금 **1차 정렬 중인 축**에서만 의미가 있어(안 보이는 줄엔 선을 못 긋는다) 그 외엔 비활성으로 뜬다.
+     */
+    cut?: { on: boolean; enabled: boolean; onToggle: () => void };
     onClose: () => void;
 }): JSX.Element {
     const isLo = band?.lo === slotId;
@@ -40,6 +46,13 @@ export function AxisBoundMenu({ anchor, axisName, band, slotId, rank, onSet, onC
             {hasBand && (
                 <MenuItem onClick={onClear} style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-tertiary)" }}>
                     이 축 필터 초기화
+                </MenuItem>
+            )}
+            {cut && (
+                <MenuItem onClick={cut.onToggle} disabled={!cut.enabled}
+                    title={cut.enabled ? "그룹 안에서 2차 정렬을 걸 수 있다(열 Shift+클릭)" : "이 축으로 먼저 정렬해야 선을 그을 수 있습니다"}
+                    style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                    <span style={{ color: FILTER, fontWeight: 700 }}>┈</span> {cut.on ? "그룹 나누기 해제" : "여기서 그룹 나누기"}
                 </MenuItem>
             )}
             {onUnplace && (

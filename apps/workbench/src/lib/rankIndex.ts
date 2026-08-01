@@ -50,6 +50,13 @@ export function buildAxisIndex(line: PlacedPoint[]): AxisIndex {
     return idx;
 }
 
+/** 한 축 라인의 slotId → orderKey. 시트 그룹 컷이 "그 자리"를 행 없이도 되찾는 데 쓴다. */
+export function slotOrderKeys(line: PlacedPoint[]): Map<string, number> {
+    const m = new Map<string, number>();
+    for (const p of line) m.set(p.slotId, p.orderKey);
+    return m;
+}
+
 /** 한 타점이 한 축에서 차지한 자리(hover 상세 한 줄). */
 export interface AxisPlacement {
     axisId: string;
