@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { allPointsQuery } from "../../api/queries.js";
 import { useRankAxes } from "../../lib/useRankAxes.js";
 import { filterPoints, type AxisBand } from "./bandFilter.js";
+import { activeValueAxisIds, makeAxisValuePredicate } from "./axisValueFilter.js";
 import { computePathStats, type PathStats } from "./pathStats.js";
 import { useRankPaths } from "./useRankPaths.js";
 import { pointKey } from "../../lib/pointKey.js";
@@ -33,12 +34,15 @@ export interface RankResult {
 
 export function useRankFilterResult(): RankResult {
     const rankBands = useWorkbench((s) => s.rankBands);
+    const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
     const dateRanges = useWorkbench((s) => s.dateRanges);
     const timeRanges = useWorkbench((s) => s.timeRanges);
     const tagExpr = useWorkbench((s) => s.tagExpr);
     const rankHorizon = useWorkbench((s) => s.rankHorizon);
 
-    const { axes, linesByAxis } = useRankAxes();
+    // 계산 축까지 — 값 구간 필터가 판단 축 밴드와 같은 파이프라인에 들어간다.
+    // (밴드는 계산 축에 안 걸린다: 계산 축 경계는 slot 앵커가 아니라 값/타점 앵커라 axisValueRanges 쪽이다.)
+    const { axes, linesByAxis, computedValues } = useRankAxes({ includeComputed: true });
     const { tagIdsOf } = useTags();
 
     const pointsQ = useQuery(allPointsQuery());
@@ -73,9 +77,15 @@ export function useRankFilterResult(): RankResult {
             }),
         [axes, rankBands, linesByAxis],
     );
-    const activeAxisNames = useMemo(() => axes.filter((ax) => bands.some((b) => b.axisId === ax.id)).map((ax) => ax.name), [axes, bands]);
+    const valueAxisIds = useMemo(() => new Set(activeValueAxisIds(axisValueRanges, computedValues)), [axisValueRanges, computedValues]);
+    const valueOk = useMemo(() => makeAxisValuePredicate(axisValueRanges, computedValues), [axisValueRanges, computedValues]);
+    const activeAxisNames = useMemo(
+        () => axes.filter((ax) => bands.some((b) => b.axisId === ax.id) || valueAxisIds.has(ax.id)).map((ax) => ax.name),
+        [axes, bands, valueAxisIds],
+    );
 
-    // 필터 = 밴드(AND) → 날짜(OR) → 시간(OR) → 태그(DNF) 전부 AND. 밴드 없으면 기반 = 전체 타점(나머지 차원만으로도 필터).
+    // 필터 = 밴드(AND) → 계산 축 값구간(축AND·구간OR) → 날짜(OR) → 시간(OR) → 태그(DNF) 전부 AND.
+    // 밴드 없으면 기반 = 전체 타점(나머지 차원만으로도 필터).
     const bandActive = bands.length > 0;
     const bandResult = useMemo(() => filterPoints(linesByAxis, bands), [linesByAxis, bands]);
     const coverage = bandActive ? bandResult.coverage : (pointsQ.data?.length ?? 0);
@@ -83,8 +93,8 @@ export function useRankFilterResult(): RankResult {
         const base: RankPoint[] = bandActive ? bandResult.points : (pointsQ.data ?? []).map((p) => ({ stockCode: p.stockCode, date: p.date, time: p.time }));
         const dOk = (d: string): boolean => dateRanges.length === 0 || dateRanges.some((r) => d >= r.from && d <= r.to);
         const tOk = (t: string): boolean => { const hm = t.slice(0, 5); return timeRanges.length === 0 || timeRanges.some((r) => hm >= r.from && hm <= r.to); };
-        return base.filter((p) => dOk(p.date) && tOk(p.time) && evalTagExpr(tagIdsOf(p), tagExpr));
-    }, [bandActive, bandResult, pointsQ.data, dateRanges, timeRanges, tagExpr, tagIdsOf]);
+        return base.filter((p) => valueOk(pointKey(p)) && dOk(p.date) && tOk(p.time) && evalTagExpr(tagIdsOf(p), tagExpr));
+    }, [bandActive, bandResult, pointsQ.data, valueOk, dateRanges, timeRanges, tagExpr, tagIdsOf]);
     // 경로 = raw 분봉(캐시에 없는 날만 배치 조회) → core/market 앵커 정규화. 부분집합 재필터는 서버 왕복 없음.
     const { paths, isLoading: pathsLoading } = useRankPaths(points);
 
@@ -94,7 +104,7 @@ export function useRankFilterResult(): RankResult {
     const stats = useMemo(() => computePathStats(paths, effHorizon), [paths, effHorizon]);
 
     return {
-        isEmpty: bands.length === 0 && dateRanges.length === 0 && timeRanges.length === 0 && isTagExprEmpty(tagExpr),
+        isEmpty: bands.length === 0 && valueAxisIds.size === 0 && dateRanges.length === 0 && timeRanges.length === 0 && isTagExprEmpty(tagExpr),
         isLoading: pathsLoading,
         points, coverage, paths, stats, effHorizon, dataMinT, dataMaxT, activeAxisNames, nameOf, metaOf,
     };

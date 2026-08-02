@@ -21,18 +21,54 @@ export const isComputedAxis = (axisId: string): boolean => axisId.startsWith(COM
 export interface ComputedAxisView {
     axis: RankAxis;
     line: PlacedPoint[];
+    /** 타점키 → **원시 수치**. 필터·라벨은 orderKey(부호 섞임)가 아니라 이 값을 쓴다("5%~20%"가 그대로 읽히게). */
+    values: Map<string, number>;
+    strongerWhen: "higher" | "lower";
 }
 
-/** 서버 피드 1개 → (축 메타, 합성 줄). 판단 축 줄과 같은 타입이라 하류 소비자가 그대로 쓴다. */
+/** 서버 피드 1개 → (축 메타, 합성 줄, 원시 수치). 판단 축 줄과 같은 타입이라 하류 소비자가 그대로 쓴다. */
 export function computedAxisView(feed: ComputedAxisFeed): ComputedAxisView {
     const axisId = computedAxisId(feed.key);
     const sign = feed.strongerWhen === "higher" ? 1 : -1;
-    const line: PlacedPoint[] = feed.values.map((v) => ({
-        slotId: `${axisId}#${v.value}`,
-        orderKey: sign * v.value,
-        stockCode: v.stockCode,
-        date: v.date,
-        time: v.time,
-    }));
-    return { axis: { id: axisId, name: feed.name, scope: "point" }, line };
+    const line: PlacedPoint[] = [];
+    const values = new Map<string, number>();
+    for (const v of feed.values) {
+        line.push({ slotId: `${axisId}#${v.value}`, orderKey: sign * v.value, stockCode: v.stockCode, date: v.date, time: v.time });
+        values.set(`${v.stockCode}|${v.date}|${v.time}`, v.value);
+    }
+    return { axis: { id: axisId, name: feed.name, scope: "point" }, line, values, strongerWhen: feed.strongerWhen };
+}
+
+/** 값 도메인(최소·최대). 레일 좌표 매핑용. 값이 없으면 null. */
+export function valueDomain(values: Map<string, number>): { min: number; max: number } | null {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const v of values.values()) { if (v < min) min = v; if (v > max) max = v; }
+    return min <= max ? { min, max } : null;
+}
+
+/**
+ * 수치 → 레일 프랙션(0=약/왼쪽, 1=강/오른쪽). 강한 쪽이 작은 값인 축이면 뒤집는다 —
+ * 레인·시트의 "오른쪽이 강함" 관례를 레일도 따라야 눈이 헷갈리지 않는다.
+ */
+export function valueToFrac(v: number, domain: { min: number; max: number }, strongerWhen: "higher" | "lower"): number {
+    const span = domain.max - domain.min;
+    const f = span <= 0 ? 0.5 : (v - domain.min) / span;
+    return Math.max(0, Math.min(1, strongerWhen === "higher" ? f : 1 - f));
+}
+
+/** 프랙션 → **가장 가까운 실제 타점**. 경계를 늘 실재하는 자리에 놓기 위한 스냅(상대비교의 핵심). */
+export function nearestPointAt(
+    frac: number,
+    values: Map<string, number>,
+    domain: { min: number; max: number },
+    strongerWhen: "higher" | "lower",
+): string | null {
+    let best: string | null = null;
+    let bestGap = Infinity;
+    for (const [key, v] of values) {
+        const gap = Math.abs(valueToFrac(v, domain, strongerWhen) - frac);
+        if (gap < bestGap) { bestGap = gap; best = key; }
+    }
+    return best;
 }

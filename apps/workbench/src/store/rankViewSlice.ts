@@ -7,7 +7,7 @@
 // (소프트 선택은 폐기 — 필터 좁히기/흐리게로 충분, 드래그도 제거.)
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
-import type { DateRange, RankBand, TimeRange } from "./rankFilterSlice.js";
+import type { AxisValueRange, DateRange, RankBand, TimeRange } from "./rankFilterSlice.js";
 import { parseTagExpr, type TagExpr } from "../panels/rank/tagFilter.js";
 import { loadJson, saveJson } from "./persist.js";
 
@@ -25,15 +25,18 @@ export interface SavedFilter {
     id: string;
     name: string;
     bands: Record<string, RankBand>;
+    /** 계산 축 값 구간(브릭 2에서 추가) — 없는 옛 저장본은 무제한으로 적용된다. */
+    axisValueRanges?: Record<string, AxisValueRange[]>;
     dateRanges?: DateRange[];
     timeRanges?: TimeRange[];
     tagExpr?: TagExpr;
 }
 
 /** 불러올 때 적용할 값 — 없는 차원은 빈 값(무제한)으로 채운다. tagExpr 은 형태 검증까지. */
-export function savedFilterSnapshot(f: SavedFilter): { bands: Record<string, RankBand>; dateRanges: DateRange[]; timeRanges: TimeRange[]; tagExpr: TagExpr } {
+export function savedFilterSnapshot(f: SavedFilter): { bands: Record<string, RankBand>; axisValueRanges: Record<string, AxisValueRange[]>; dateRanges: DateRange[]; timeRanges: TimeRange[]; tagExpr: TagExpr } {
     return {
         bands: f.bands ?? {},
+        axisValueRanges: f.axisValueRanges ?? {},
         dateRanges: Array.isArray(f.dateRanges) ? f.dateRanges : [],
         timeRanges: Array.isArray(f.timeRanges) ? f.timeRanges : [],
         tagExpr: parseTagExpr(f.tagExpr) ?? { groups: [] },

@@ -16,6 +16,10 @@ export interface RankAxesView {
     axisIds: string[];
     /** axisId → 그 축의 배치줄(orderKey 오름차). 모든 축이 키를 가짐(미배치 축 = 빈 배열). */
     linesByAxis: Map<string, PlacedPoint[]>;
+    /** 계산 축만: axisId → (타점키 → 원시 수치). 값 구간 필터·레일 라벨이 쓴다. 판단 축은 키가 없다. */
+    computedValues: Map<string, Map<string, number>>;
+    /** 계산 축만: axisId → 강한 방향. 레일 좌표 매핑에 필요. */
+    computedMeta: Map<string, { strongerWhen: "higher" | "lower" }>;
     isLoading: boolean;
     /** dragged 축을 target 축 자리로 옮긴다(양 패널 공유 — 한쪽에서 바꾸면 다른 쪽도 따라온다). */
     reorder: (draggedId: string, targetId: string) => void;
@@ -67,5 +71,12 @@ export function useRankAxes({ includeComputed = false }: UseRankAxesOptions = {}
         setRankAxisOrder(ids);
     };
 
-    return { axes, axisIds, linesByAxis, isLoading: axesQ.isLoading || linesQ.isLoading || (includeComputed && computedQ.isLoading), reorder };
+    const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.id, c.values])), [computed]);
+    const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.id, { strongerWhen: c.strongerWhen }])), [computed]);
+
+    return {
+        axes, axisIds, linesByAxis, computedValues, computedMeta,
+        isLoading: axesQ.isLoading || linesQ.isLoading || (includeComputed && computedQ.isLoading),
+        reorder,
+    };
 }

@@ -11,6 +11,7 @@ import { isTagExprEmpty } from "./tagFilter.js";
 
 export function SavedFilterControls({ axes }: { axes: { id: string; name: string }[] }): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
+    const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
     const dateRanges = useWorkbench((s) => s.dateRanges);
     const timeRanges = useWorkbench((s) => s.timeRanges);
     const tagExpr = useWorkbench((s) => s.tagExpr);
@@ -18,10 +19,10 @@ export function SavedFilterControls({ axes }: { axes: { id: string; name: string
     const saveFilter = useWorkbench((s) => s.saveFilter);
     const [open, setOpen] = useState<{ x: number; y: number } | null>(null);
 
-    const active = Object.keys(rankBands).length > 0 || dateRanges.length > 0 || timeRanges.length > 0 || !isTagExprEmpty(tagExpr);
+    const active = Object.keys(rankBands).length > 0 || Object.keys(axisValueRanges).length > 0 || dateRanges.length > 0 || timeRanges.length > 0 || !isTagExprEmpty(tagExpr);
     // 자동 이름 — 걸린 차원을 그대로 읽어준다(축 이름 우선, 없으면 어떤 차원이 걸렸는지).
     const autoLabel = (): string => {
-        const parts = axes.filter((a) => rankBands[a.id]).map((a) => a.name);
+        const parts = axes.filter((a) => rankBands[a.id] || axisValueRanges[a.id]).map((a) => a.name);
         if (dateRanges.length > 0) parts.push("날짜");
         if (timeRanges.length > 0) parts.push("시간");
         if (!isTagExprEmpty(tagExpr)) parts.push("태그");
@@ -31,9 +32,9 @@ export function SavedFilterControls({ axes }: { axes: { id: string; name: string
     return (
         <>
             <button
-                onClick={() => { if (!active) return; const n = prompt("저장 필터 이름", autoLabel()); if (n && n.trim()) saveFilter(n.trim(), { bands: rankBands, dateRanges, timeRanges, tagExpr }); }}
+                onClick={() => { if (!active) return; const n = prompt("저장 필터 이름", autoLabel()); if (n && n.trim()) saveFilter(n.trim(), { bands: rankBands, axisValueRanges, dateRanges, timeRanges, tagExpr }); }}
                 disabled={!active}
-                title={active ? "지금 필터(밴드·날짜·시간·태그)를 이름 붙여 저장" : "먼저 필터를 거세요"}
+                title={active ? "지금 필터(밴드·값구간·날짜·시간·태그)를 이름 붙여 저장" : "먼저 필터를 거세요"}
                 style={{ ...miniBtn, opacity: active ? 1 : 0.45, cursor: active ? "pointer" : "default", borderStyle: "dashed" }}
             >필터 저장</button>
             <button onClick={(e) => setOpen({ x: e.clientX, y: e.clientY })} disabled={saved.length === 0}

@@ -24,6 +24,7 @@ import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
+import { ComputedBoundMenu } from "./rank/ComputedBoundMenu.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { useTags } from "../lib/useTags.js";
 import { TagChips } from "../components/TagChips.js";
@@ -89,6 +90,9 @@ export function RankSheetPanel(): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
     const setRankBound = useWorkbench((s) => s.setRankBound);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
+    const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
+    const setAxisValueBound = useWorkbench((s) => s.setAxisValueBound);
+    const setAxisValueRanges = useWorkbench((s) => s.setAxisValueRanges);
 
     // ── 링크 공유 상태(배치 보드와 양방향) — 호버·핀·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
@@ -100,7 +104,7 @@ export function RankSheetPanel(): JSX.Element {
     // ── 축 + 라인(배치 보드와 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
     // 계산 축을 함께 본다 — 판단 축과 같은 줄 모양으로 합쳐져 열·정렬·순위 셀이 구분 없이 동작한다.
     // 다만 **읽기 전용**: 배치/해제·밴드·컷은 계산 축 열에서 열리지 않는다(아래 isComputedAxis 가드).
-    const { axes, axisIds, linesByAxis, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes({ includeComputed: true });
+    const { axes, axisIds, linesByAxis, computedValues, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes({ includeComputed: true });
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
         for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));
@@ -397,10 +401,10 @@ export function RankSheetPanel(): JSX.Element {
                 const frozen = leftOf.has(colKey(c));
                 return {
                     onClick: () => navRow(row),
-                    // 계산 축은 메뉴를 안 연다: 배치 해제할 배치가 없고, 밴드·컷은 slotId 를 영속 키로 쓰는데
-                    // 계산 축의 slotId 는 값에서 파생돼 재계산 때 바뀐다(끊긴 참조가 조용히 남는다).
-                    onContextMenu: cell && !isComputedAxis(axisId) ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, point: { stockCode: row.stockCode, date: row.date, time: row.time }, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
-                    title: isComputedAxis(axisId) ? "계산 축(수식) — 읽기 전용 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
+                    // 우클릭 메뉴는 축 종류에 따라 갈린다(아래 ctx 렌더): 판단 축=slot 밴드+컷+배치해제,
+                    // 계산 축=값 경계(타점 앵커). 계산 축에 배치·컷이 없는 건 slot 이 없어서지 읽기 전용이라서가 아니다.
+                    onContextMenu: cell ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, point: { stockCode: row.stockCode, date: row.date, time: row.time }, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
+                    title: isComputedAxis(axisId) ? "계산 축(수식) — 우클릭 = 이 값 이상/이하 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
                     style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
                     body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
                 };
@@ -476,7 +480,7 @@ export function RankSheetPanel(): JSX.Element {
                 </span>
             </div>
 
-            <RankFilterBar axes={axes} dateBounds={dateBounds} extra={<AddTagFilterButton />} />
+            <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} extra={<AddTagFilterButton />} />
             <TagFilterLine />
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
@@ -492,7 +496,8 @@ export function RankSheetPanel(): JSX.Element {
                                 const step = sortStepNo(sort, sk); // 0=미정렬, 1=1차, 2…=2차 이하
                                 const active = step > 0;
                                 const left = leftOf.get(colKey(c));
-                                const banded = c.key === "axis" && !!rankBands[c.axisId];
+                                // 필터 걸린 축 표시 — 판단 축은 밴드, 계산 축은 값 구간(저장 자리만 다르고 뜻은 같다).
+                                const banded = c.key === "axis" && (!!rankBands[c.axisId] || !!axisValueRanges[c.axisId]);
                                 const justify = COL_META[c.key].justify;
                                 // 드래그 재정렬 두 종류 — **고정 여부로 갈린다**(순서 소스가 둘이기 때문).
                                 //   고정 열  = 시트 전용 자리 → frozenCols 배열만 재배치(배치 보드 무관)
@@ -566,6 +571,20 @@ export function RankSheetPanel(): JSX.Element {
             {ctx && (() => {
                 const ax = axes.find((a) => a.id === ctx.axisId);
                 if (!ax) return null;
+                if (isComputedAxis(ctx.axisId)) {
+                    // 계산 축 = 값 경계(타점 앵커). 판단 축의 slot 밴드와 저장 자리가 달라 메뉴도 따로.
+                    const pk = pointKey(ctx.point);
+                    const v = computedValues.get(ctx.axisId)?.get(pk);
+                    return (
+                        <ComputedBoundMenu anchor={ctx} axisName={ax.name} pointKey={pk}
+                            valueText={v === undefined ? "?" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`}
+                            rank={{ rank: ctx.rank, total: ctx.total }}
+                            ranges={axisValueRanges[ctx.axisId] ?? []}
+                            onSet={(edge) => { setAxisValueBound(ctx.axisId, edge, { kind: "point", point: pk }); setCtx(null); }}
+                            onClear={() => { setAxisValueRanges(ctx.axisId, []); setCtx(null); }}
+                            onClose={() => setCtx(null)} />
+                    );
+                }
                 return (
                     <AxisBoundMenu anchor={ctx} axisName={ax.name} band={rankBands[ctx.axisId]} slotId={ctx.slotId}
                         rank={{ rank: ctx.rank, total: ctx.total }}

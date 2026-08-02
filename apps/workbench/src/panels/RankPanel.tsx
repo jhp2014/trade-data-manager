@@ -18,6 +18,8 @@ import { TagFilterLine, AddTagFilterButton } from "./rank/TagFilterLine.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { FilterRail } from "./rank/FilterRail.js";
+import { ComputedAxisRail } from "./rank/ComputedAxisRail.js";
+import { isComputedAxis } from "../lib/computedAxis.js";
 import { ACTIVE, ACTIVE_SOFT, CurrentMarker, FILTER, HOVER, HOVER_SOFT, LABEL_W, RangeBracket, ScaleEnd, SortBadge } from "./rank/rankRailChrome.js";
 import type { RankAxis } from "@trade-data-manager/wire";
 
@@ -58,6 +60,8 @@ export function RankPanel(): JSX.Element {
     const timeRanges = useWorkbench((s) => s.timeRanges);
     const setDateRanges = useWorkbench((s) => s.setDateRanges);
     const setTimeRanges = useWorkbench((s) => s.setTimeRanges);
+    const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
+    const setAxisValueRanges = useWorkbench((s) => s.setAxisValueRanges);
     // 링크 공유(시트와 양방향) — 호버·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
@@ -66,7 +70,10 @@ export function RankPanel(): JSX.Element {
     const qc = useQueryClient();
 
     // 축 목록·배치줄·순서는 시트와 공유(useRankAxes). 여기선 레인이 쓸 slot 묶음으로만 빚는다.
-    const { axes, linesByAxis: rawLines, isLoading: axesLoading, reorder } = useRankAxes();
+    // 계산 축도 함께 받되 레인이 아니라 **필터 레일**로 그린다 — 배치가 없으니 드롭할 자리도 없다.
+    const { axes, linesByAxis: rawLines, computedValues, computedMeta, isLoading: axesLoading, reorder } = useRankAxes({ includeComputed: true });
+    const laneAxes = useMemo(() => axes.filter((a) => !isComputedAxis(a.id)), [axes]);
+    const railAxes = useMemo(() => axes.filter((a) => isComputedAxis(a.id)), [axes]);
     const linesByAxis = useMemo(() => {
         const m = new Map<string, Slot[]>();
         for (const [axisId, placed] of rawLines) m.set(axisId, assemble(placed));
@@ -184,22 +191,32 @@ export function RankPanel(): JSX.Element {
                     </span>
                 </div>
 
-                <RankFilterBar axes={axes} dateBounds={dateBounds} extra={<AddTagFilterButton />} />
+                <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} extra={<AddTagFilterButton />} />
                 <TagFilterLine />
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
                     {axesLoading && <div style={muted}>불러오는 중…</div>}
                     {/* 날짜·시간 필터 레일 — 축 레인 위(시트 열 순서와 통일). 값 스케일·틱+라벨 드래그로 구간 설정/조정. */}
                     {dateBounds && (
-                        <FilterRail<DateRange> label="날짜" ranges={dateRanges} toFrac={dateFrac} fromFrac={fracDate} fmt={(v) => v.slice(2).replace(/-/g, ".")}
+                        <FilterRail<string, DateRange> label="날짜" ranges={dateRanges} toFrac={dateFrac} fromFrac={fracDate} fmt={(v) => v.slice(2).replace(/-/g, ".")}
                             minLabel={dateBounds.min.slice(2).replace(/-/g, ".")} maxLabel={dateBounds.max.slice(2).replace(/-/g, ".")} marker={activePoint?.date ?? null}
                             sortDir={rankSort?.target === "date" ? rankSort.dir : null} onChange={setDateRanges} />
                     )}
-                    <FilterRail<TimeRange> label="시간" ranges={timeRanges} toFrac={timeFrac} fromFrac={fracTime} fmt={(v) => v}
+                    <FilterRail<string, TimeRange> label="시간" ranges={timeRanges} toFrac={timeFrac} fromFrac={fracTime} fmt={(v) => v}
                         minLabel="08:00" maxLabel="20:00" marker={activePoint ? activePoint.time.slice(0, 5) : null}
                         sortDir={rankSort?.target === "time" ? rankSort.dir : null} onChange={setTimeRanges} />
+                    {/* 계산 축 레일 — 날짜·시간과 같은 조작(빈 트랙 드래그=구간, 라벨 드래그=조정). 틱 = 실제 타점 자리. */}
+                    {railAxes.map((ax) => (
+                        <ComputedAxisRail key={ax.id} name={ax.name}
+                            values={computedValues.get(ax.id) ?? new Map()}
+                            strongerWhen={computedMeta.get(ax.id)?.strongerWhen ?? "higher"}
+                            ranges={axisValueRanges[ax.id] ?? []}
+                            markerKey={activeKey}
+                            sortDir={rankSort?.target === ax.id ? rankSort.dir : null}
+                            onChange={(r) => setAxisValueRanges(ax.id, r)} />
+                    ))}
                     <div style={{ position: "relative" }}>
-                        {axes.map((ax) => {
+                        {laneAxes.map((ax) => {
                             const slots = linesByAxis.get(ax.id) ?? [];
                             return (
                                 <Lane

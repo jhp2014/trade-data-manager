@@ -1,7 +1,11 @@
-// 날짜·시간 필터 레일 — 축 레인과 같은 시각언어를 쓰되 대상이 "값의 구간"이다.
+// 값 구간 필터 레일 — 축 레인과 같은 시각언어를 쓰되 대상이 "값의 구간"이다.
 // 축 밴드(레인 우클릭)와 달리 여기선 구간을 직접 그린다: 빈 트랙 드래그=새 구간 · 경계 라벨 드래그=조정 ·
 // 라벨 × = 그 구간 삭제. 구간끼리는 OR, 다른 차원(날짜/시간/축)과는 AND.
-// 도메인(날짜 범위·08:00~20:00)은 호출자가 toFrac/fromFrac 로 주입 — 이 컴포넌트는 0..1 만 안다.
+// 도메인(날짜 범위·08:00~20:00·계산 축 수치)은 호출자가 toFrac/fromFrac 로 주입 — 이 컴포넌트는 0..1 만 안다.
+//
+// 경계값 타입 V 는 문자열일 필요가 없다(계산 축은 타점 앵커 객체를 쓴다). 그래서 대소 판정도 값이 아니라
+// **프랙션**으로 한다 — 어차피 화면 위 위치가 곧 사용자가 의도한 순서다.
+// ticks = 실제 데이터 지점(0..1). 계산 축 레일이 "이 자리"를 눈으로 보고 자를 수 있게 하는 표식.
 import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { LINE_PAD } from "./rankGeometry.js";
 import { ACTIVE, CurrentMarker, FILTER, LABEL_W, ScaleEnd, SortBadge } from "./rankRailChrome.js";
@@ -10,15 +14,15 @@ import { ACTIVE, CurrentMarker, FILTER, LABEL_W, ScaleEnd, SortBadge } from "./r
 //    구조: 상단=도메인 끝값(min/max) · 하단=필터 경계값(빨강)+현재종목 마커값(파랑). 끝값이 위, 선택값이 아래라 구분이 쉽다.
 //    빈 트랙 드래그=새 구간 · 경계 값 라벨 드래그=조정 · 라벨 × = 그 구간 삭제(구간 추가·삭제는 칩 편집에서도).
 const NEAR = 0.03; // 필터 경계가 끝/마커와 겹치면 필터 우선.
-export function FilterRail<T extends { from: string; to: string }>({ label, ranges, toFrac, fromFrac, fmt, minLabel, maxLabel, marker, sortDir, onChange }: {
-    label: string; ranges: T[]; toFrac: (v: string) => number; fromFrac: (f: number) => string; fmt: (v: string) => string; minLabel: string; maxLabel: string; marker: string | null; sortDir: 1 | -1 | null; onChange: (ranges: T[]) => void;
+export function FilterRail<V, T extends { from: V; to: V }>({ label, ranges, toFrac, fromFrac, fmt, minLabel, maxLabel, marker, ticks, sortDir, onChange }: {
+    label: string; ranges: T[]; toFrac: (v: V) => number; fromFrac: (f: number) => V; fmt: (v: V) => string; minLabel: string; maxLabel: string; marker: V | null; ticks?: number[]; sortDir: 1 | -1 | null; onChange: (ranges: T[]) => void;
 }): JSX.Element {
     const ref = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<{ kind: "new"; start: number } | { kind: "edit"; i: number; edge: "from" | "to" } | null>(null);
     const [preview, setPreview] = useState<T[] | null>(null);
     const shown = preview ?? ranges;
     const fracX = (clientX: number): number => { const el = ref.current; if (!el) return 0; const rect = el.getBoundingClientRect(); return Math.max(0, Math.min(1, (clientX - rect.left - LINE_PAD) / (rect.width - 2 * LINE_PAD))); };
-    const norm = (r: T): T => (r.from <= r.to ? r : ({ ...r, from: r.to, to: r.from }));
+    const norm = (r: T): T => (toFrac(r.from) <= toFrac(r.to) ? r : ({ ...r, from: r.to, to: r.from }));
     const onDown = (e: ReactPointerEvent): void => {
         if (e.button !== 0 || e.target !== e.currentTarget) return; // 자식(라벨) 위는 편집, 빈 트랙만 새 구간
         dragRef.current = { kind: "new", start: fracX(e.clientX) };
@@ -67,6 +71,10 @@ export function FilterRail<T extends { from: string; to: string }>({ label, rang
                 {/* 하단 = −/+ 끝(경계가 끝에 붙으면 필터 우선으로 숨김) */}
                 {!nearLeft && <ScaleEnd side="left" />}
                 {!nearRight && <ScaleEnd side="right" />}
+                {/* 데이터 지점 표식 — 계산 축 레일에서 "이 자리"를 보고 자르기 위한 것(날짜/시간은 안 준다). */}
+                {ticks?.map((f, i) => (
+                    <span key={i} style={{ position: "absolute", left: at(f), top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 9, background: "var(--text-tertiary)", opacity: 0.4, pointerEvents: "none" }} />
+                ))}
 
                 {shown.map((r, i) => {
                     const a = toFrac(r.from), b = toFrac(r.to);
