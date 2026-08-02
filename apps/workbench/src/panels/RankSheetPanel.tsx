@@ -16,6 +16,7 @@ import {
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, slotOrderKeys, type AxisIndex, type RankCell } from "../lib/rankIndex.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
+import { isComputedAxis } from "../lib/computedAxis.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { SavedFilterControls } from "./rank/SavedFilterControls.js";
 import { TagFilterLine, AddTagFilterButton } from "./rank/TagFilterLine.js";
@@ -97,7 +98,9 @@ export function RankSheetPanel(): JSX.Element {
     const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
 
     // ── 축 + 라인(배치 보드와 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
-    const { axes, axisIds, linesByAxis, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes();
+    // 계산 축을 함께 본다 — 판단 축과 같은 줄 모양으로 합쳐져 열·정렬·순위 셀이 구분 없이 동작한다.
+    // 다만 **읽기 전용**: 배치/해제·밴드·컷은 계산 축 열에서 열리지 않는다(아래 isComputedAxis 가드).
+    const { axes, axisIds, linesByAxis, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes({ includeComputed: true });
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
         for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));
@@ -194,7 +197,8 @@ export function RankSheetPanel(): JSX.Element {
     // 드래그 배치는 **축 열이 순위 순서 그대로일 때만** 유효하다(행 사이 = 순위 구간이어야 하므로).
     // 순서가 깨지는 건 컷과 2차 정렬이 **둘 다** 있을 때뿐 — 컷만 있거나 2차만 있으면 열은 여전히 단조다.
     const dragBroken = cutsActive(sort, cutKeys) && sort.length > 1;
-    const dragAxisId = dragBroken ? null : sortAxisId;
+    // 계산 축은 드롭 대상이 아니다 — 자리를 값이 정하므로 꽂을 곳이 없다(보정은 후속 브릭).
+    const dragAxisId = dragBroken || (sortAxisId && isComputedAxis(sortAxisId)) ? null : sortAxisId;
 
     // ── 위치 표시 모드(숫자 기본 / 위치 바).
     const [posBar, setPosBar] = useState<boolean>(() => loadJson(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? true);
@@ -234,14 +238,16 @@ export function RankSheetPanel(): JSX.Element {
     const [colWidths, setColWidths] = useState<Record<string, number>>(() => loadJson(WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null)) ?? {});
     useEffect(() => saveJson(WIDTHS_KEY, colWidths), [colWidths]);
     // 축을 지우면 그 축 키가 고정/숨김/폭 목록에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소.
+    // ⚠ **로딩 중엔 절대 청소하지 않는다**: 판단 축과 계산 축은 별도 요청이라, 판단 축만 도착한 순간에 돌면
+    //   아직 안 온 계산 축 열의 고정·숨김·폭을 유령으로 오인해 지운다.
     useEffect(() => {
-        if (axes.length === 0) return;
+        if (axesLoading || axes.length === 0) return;
         const ids = axes.map((a) => a.id);
         setFrozenCols((f) => pruneAxisKeys(f, ids));
         setHiddenCols((h) => pruneAxisKeys(h, ids));
         setColWidths((w) => pruneAxisKeys(w, ids));
         setCuts((c) => pruneAxisKeys(c, ids));
-    }, [axes]);
+    }, [axes, axesLoading]);
     const toggleFrozen = (k: string): void => setFrozenCols((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
     // 고정 그룹 안 재정렬 — 배열이 곧 좌측 스택 순서다. 축 열이 섞여 있어도 여기선 배열만 만진다(축 서열 불변).
     const reorderFrozen = (dragged: string, target: string): void => setFrozenCols((f) => reorderFrozenCols(f, dragged, target));
@@ -391,8 +397,10 @@ export function RankSheetPanel(): JSX.Element {
                 const frozen = leftOf.has(colKey(c));
                 return {
                     onClick: () => navRow(row),
-                    onContextMenu: cell ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, point: { stockCode: row.stockCode, date: row.date, time: row.time }, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
-                    title: "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
+                    // 계산 축은 메뉴를 안 연다: 배치 해제할 배치가 없고, 밴드·컷은 slotId 를 영속 키로 쓰는데
+                    // 계산 축의 slotId 는 값에서 파생돼 재계산 때 바뀐다(끊긴 참조가 조용히 남는다).
+                    onContextMenu: cell && !isComputedAxis(axisId) ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, point: { stockCode: row.stockCode, date: row.date, time: row.time }, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
+                    title: isComputedAxis(axisId) ? "계산 축(수식) — 읽기 전용 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
                     style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
                     body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
                 };

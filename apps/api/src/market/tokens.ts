@@ -13,6 +13,7 @@ export const THEME_ASSIGNMENT = Symbol("ThemeAssignment");      // 테마 배정
 export const RANK_REPO = Symbol("RankRepository");
 export const TAG_REPO = Symbol("TagRepository");
 export const RANK_MINUTES = Symbol("RankMinutes");
+export const COMPUTED_AXES = Symbol("ComputedAxes");      // 계산 축 값(타점→수치) 읽기모델 + 파일 캐시
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");
 export const MARKET_POOL = Symbol("MarketPool");

@@ -6,7 +6,8 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PlacedPoint, RankAxis } from "@trade-data-manager/wire";
-import { axisLinesQuery, rankAxesQuery } from "../api/queries.js";
+import { axisLinesQuery, computedAxesQuery, rankAxesQuery } from "../api/queries.js";
+import { computedAxisView } from "./computedAxis.js";
 import { useWorkbench } from "../store/workbench.js";
 
 export interface RankAxesView {
@@ -20,23 +21,41 @@ export interface RankAxesView {
     reorder: (draggedId: string, targetId: string) => void;
 }
 
-export function useRankAxes(): RankAxesView {
+export interface UseRankAxesOptions {
+    /**
+     * 계산 축(수식으로 나오는 축)을 함께 볼지. **기본 false.**
+     * 계산 축은 드래그로 꽂는 대상이 아니고(값이 자리를 정한다), 밴드·컷은 slotId 를 영속 키로 쓰는데 그 id 가
+     * 값에서 파생돼 재계산 시 바뀐다. 그래서 배치 보드·필터는 판단 축만 보고, 시트만 켠다(읽기 표시).
+     */
+    includeComputed?: boolean;
+}
+
+export function useRankAxes({ includeComputed = false }: UseRankAxesOptions = {}): RankAxesView {
     const orderPref = useWorkbench((s) => s.rankAxisOrder);
     const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
 
     const axesQ = useQuery(rankAxesQuery());
+    // 계산 축 — 안 켠 화면에서는 요청조차 안 나간다(enabled). 훅 순서는 유지.
+    const computedQ = useQuery({ ...computedAxesQuery(), enabled: includeComputed });
+    const computed = useMemo(
+        () => (includeComputed ? (computedQ.data ?? []).map(computedAxisView) : []),
+        [includeComputed, computedQ.data],
+    );
+
     const rawAxes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
     const axes = useMemo(() => {
         const idx = new Map(orderPref.map((id, i) => [id, i]));
-        return [...rawAxes].sort((a, b) => (idx.get(a.id) ?? Infinity) - (idx.get(b.id) ?? Infinity) || (a.id < b.id ? -1 : 1));
-    }, [rawAxes, orderPref]);
+        const all = [...rawAxes, ...computed.map((c) => c.axis)];
+        return all.sort((a, b) => (idx.get(a.id) ?? Infinity) - (idx.get(b.id) ?? Infinity) || (a.id < b.id ? -1 : 1));
+    }, [rawAxes, computed, orderPref]);
     const axisIds = useMemo(() => axes.map((a) => a.id), [axes]);
 
     const linesQ = useQuery(axisLinesQuery());
     const linesByAxis = useMemo(() => {
         const feed = new Map((linesQ.data ?? []).map((l) => [l.axisId, l.placements]));
+        for (const c of computed) feed.set(c.axis.id, c.line);
         return new Map(axes.map((a) => [a.id, feed.get(a.id) ?? []]));
-    }, [axes, linesQ.data]);
+    }, [axes, linesQ.data, computed]);
 
     const reorder = (draggedId: string, targetId: string): void => {
         if (draggedId === targetId) return;
@@ -48,5 +67,5 @@ export function useRankAxes(): RankAxesView {
         setRankAxisOrder(ids);
     };
 
-    return { axes, axisIds, linesByAxis, isLoading: axesQ.isLoading || linesQ.isLoading, reorder };
+    return { axes, axisIds, linesByAxis, isLoading: axesQ.isLoading || linesQ.isLoading || (includeComputed && computedQ.isLoading), reorder };
 }

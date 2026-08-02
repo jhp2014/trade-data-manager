@@ -6,7 +6,7 @@ import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLine
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { useTags } from "./useTags.js";
 import { presetToggle } from "./tagIndex.js";
-import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery, chartQuery } from "../api/queries.js";
+import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery, chartQuery, computedAxesQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView, type DailyPoint, type MinuteView } from "./derive.js";
 import { resolveAnchorLines } from "./chartFrame.js";
 import { usePlacements } from "./usePlacements.js";
@@ -126,6 +126,8 @@ export function useChartHotkeys(): void {
     const invalidate = (): void => {
         void qc.invalidateQueries({ queryKey: reviewPointsQuery(code, date).queryKey });
         void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey });
+        // 계산 축은 타점 집합에서 나온다 — 타점이 늘거나 줄면 다시 굽는다(서버가 증분이라 새 타점만 계산).
+        void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
     };
     const upsertMut = useMutation({ mutationFn: upsertReviewPoint, onSuccess: invalidate });
     const removeMut = useMutation({ mutationFn: (v: { code: string; date: string; time: string }) => removeReviewPoint(v.code, v.date, v.time), onSuccess: invalidate });

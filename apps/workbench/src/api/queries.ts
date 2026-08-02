@@ -7,7 +7,7 @@ import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
 import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
-import { fetchRankAxes, fetchAxisLines } from "./rank.js";
+import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchTags, fetchTagAttachments } from "./tags.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
@@ -52,6 +52,11 @@ export const rankAxesQuery = () =>
 
 export const axisLinesQuery = () =>
     queryOptions({ queryKey: ["rank-axis-lines"], queryFn: ({ signal }) => fetchAxisLines(signal), staleTime: IMMUTABLE });
+
+// 계산 축(수식 축)의 타점별 수치. 판단 축 줄과 **별도 키** — 배치(place/unplace)가 이걸 무효화할 이유가 없고,
+// 반대로 타점이 늘면(타점 mutation) 이쪽만 새로 구우면 된다. 서버가 축당 파일 캐시로 증분 계산한다.
+export const computedAxesQuery = () =>
+    queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE });
 
 // 타점 태그 — 사전 + 전 타점 부착. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).
 // 타점 캐시(review-points·all-points)와 분리 = 태그 토글이 타점 목록 refetch 를 유발하지 않는다.

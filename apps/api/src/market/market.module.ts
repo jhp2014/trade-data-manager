@@ -19,10 +19,11 @@ import {
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
+import { ComputedAxes } from "./rank/computedAxes.js";
 import { RankMinutesController } from "./rank/rankMinutes.controller.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
 import { DayReplayController } from "./board/dayReplay.controller.js";
@@ -156,6 +157,24 @@ const curationProviders: Provider[] = [
         provide: RANK_REPO,
         useFactory: (pool: Pool) => new DrizzleRankRepository(createDb(pool)),
         inject: [CURATION_POOL],
+    },
+    {
+        // 계산 축 — 수식으로 나오는 축의 타점별 수치 + 축당 파일 캐시(증분). 배치를 만들지 않으므로 rank repo 와 무관하다.
+        // 두 DB를 함께 쓴다: 모집단(복기 타점)은 curation, 재료(분봉·일봉)는 market.
+        provide: COMPUTED_AXES,
+        useFactory: (marketPool: Pool, curationPool: Pool): ComputedAxes => {
+            const db = createDb(marketPool);
+            const dailyRepo = new DrizzleDailyCandleRepository(db); // 수정주가 창(AdjustedDailyReader)
+            return new ComputedAxes({
+                points: new DrizzleReviewPointRepository(createDb(curationPool)),
+                axisDeps: {
+                    minute: new DrizzleMinuteCandleRepository(db),
+                    rawDaily: new DrizzleRawDailyCandleRepository(db),
+                    adjDaily: dailyRepo,
+                },
+            });
+        },
+        inject: [MARKET_POOL, CURATION_POOL],
     },
     {
         // 타점 태그 — repo 를 그대로 노출(사전 CRUD·전 타점 부착 피드·부착/해제). 축과 달리 순서가 없는 분류.

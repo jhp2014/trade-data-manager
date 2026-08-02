@@ -1,7 +1,8 @@
 import { Controller, Get, Post, Patch, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import type { RankReader, RankStore, RankTarget } from "@trade-data-manager/market";
-import type { RankAxis, AxisLine } from "@trade-data-manager/wire";
-import { RANK_REPO } from "../tokens.js";
+import type { RankAxis, AxisLine, ComputedAxisFeed } from "@trade-data-manager/wire";
+import type { ComputedAxes } from "../rank/computedAxes.js";
+import { RANK_REPO, COMPUTED_AXES } from "../tokens.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
 interface CreateAxisBody {
@@ -24,7 +25,10 @@ interface PlaceBody {
 // 배치 대상 타점은 자연키(code·date·time) = review point 삼중키. 검색·확률은 후속 슬라이스.
 @Controller("rank-axes")
 export class RankController {
-    constructor(@Inject(RANK_REPO) private readonly repo: RankReader & RankStore) {}
+    constructor(
+        @Inject(RANK_REPO) private readonly repo: RankReader & RankStore,
+        @Inject(COMPUTED_AXES) private readonly computed: ComputedAxes,
+    ) {}
 
     @Get()
     list(): Promise<RankAxis[]> {
@@ -45,6 +49,15 @@ export class RankController {
     @Get("placements")
     lines(): Promise<AxisLine[]> {
         return this.repo.listAllLines();
+    }
+
+    /**
+     * 계산 축 피드 — 수식으로 나오는 축의 `타점 → 수치`. 배치(slot·orderKey)는 만들지 않는다:
+     * 값이 있으면 순서는 정렬로 나오고, 순위·백분위는 모집단(필터 결과)에 따라 달라져 클라가 질의 시점에 낸다.
+     */
+    @Get("computed")
+    computedAxes(): Promise<ComputedAxisFeed[]> {
+        return this.computed.feeds();
     }
 
     @Post(":id/placements")

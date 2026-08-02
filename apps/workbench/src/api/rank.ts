@@ -1,9 +1,9 @@
 // 순위 배치 큐레이션 CRUD 클라이언트. wire 타입(RankAxis·AxisLine·PlacedPoint)은 contracts/wire 공유.
 // 전 축 피드(AxisLine[])를 받아 패널이 slotId 로 묶어 타이 셀, orderKey 로 정렬(옵션 A). 대상 타점 = review point 삼중키.
-import type { RankAxis, AxisLine } from "@trade-data-manager/wire";
+import type { RankAxis, AxisLine, ComputedAxisFeed } from "@trade-data-manager/wire";
 import { apiGet, apiPost, apiPatch, apiDelete } from "./http.js";
 
-export type { RankAxis, AxisLine, PlacedPoint } from "@trade-data-manager/wire";
+export type { RankAxis, AxisLine, PlacedPoint, ComputedAxisFeed } from "@trade-data-manager/wire";
 
 /** 배치 대상 타점 자연키. */
 export interface RankPoint {
@@ -21,6 +21,10 @@ export const fetchRankAxes = (signal?: AbortSignal): Promise<RankAxis[]> => apiG
 
 /** 전 축의 줄 한 방(축 단건 조회 없음 — 소비자가 모두 전축을 본다). 배치 0인 축은 응답에 없음 = 빈 줄. */
 export const fetchAxisLines = (signal?: AbortSignal): Promise<AxisLine[]> => apiGet<AxisLine[]>("rank-axes/placements", undefined, signal);
+
+/** 계산 축 피드 — 값만(배치 없음). 줄 세우기·순위는 클라가 한다(lib/computedAxis). 쓰기 엔드포인트 없음. */
+export const fetchComputedAxes = (signal?: AbortSignal): Promise<ComputedAxisFeed[]> =>
+    apiGet<ComputedAxisFeed[]>("rank-axes/computed", undefined, signal);
 
 export const createRankAxis = (name: string, scope: "point" | "day" = "point"): Promise<RankAxis> => apiPost<RankAxis>("rank-axes", { name, scope });
 
