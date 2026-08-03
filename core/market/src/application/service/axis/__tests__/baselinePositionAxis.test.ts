@@ -47,14 +47,15 @@ describe("baselinePositionAxis", () => {
         expect(out).toEqual([{ ...P, value: 10 }]); // (11000-10000)/10000
     });
 
-    it("분자도 앵커의 시장을 쓴다 — KRX 앵커면 분자·분모 둘 다 KRX", async () => {
+    it("분자는 언제나 UN — KRX 앵커라도 현재가는 UN 에서 읽는다", async () => {
+        // 앵커 시장(KRX)을 분자까지 따라갔다면 (10500-10000)/10000 = 5% 가 나온다. UN 분자면 10%.
         const d = deps({
-            minutesByDay: { [DATE]: [minute("09:30:00", "11000", { krx: "10890" })] },
-            dailies: [daily("2026-07-01", "10000", "9900")],
+            minutesByDay: { [DATE]: [minute("09:30:00", "11000", { krx: "10500" })] },
+            dailies: [daily("2026-07-01", "10500", "10000")],
             anchors: [anchorOf(P, { field: "high", market: "krx" })],
         });
         const out = await axis.compute([P], d);
-        expect(out[0].value).toBe(10); // (10890-9900)/9900 — UN 값(11000/10000)이 섞이면 10 이 아니다
+        expect(out[0].value).toBe(10); // (11000 UN종가 − 10000 KRX기준선)/10000
     });
 
     it("분봉 앵커 — 그 분봉의 저장된 값이 분모(다른 날짜의 분봉도 읽는다)", async () => {
@@ -77,17 +78,26 @@ describe("baselinePositionAxis", () => {
         expect(reads).toBe(0); // 앵커 필터가 읽기보다 먼저
     });
 
-    it("앵커 캔들 미수집·프리마켓 KRX 부재는 결손", async () => {
-        // 일봉 앵커인데 그 날짜 수정주가 없음
-        const noDaily = deps({ minutesByDay: { [DATE]: [minute("09:30:00", "11000")] }, dailies: [], anchors: [anchorOf(P, { field: "high", market: "un" })] });
-        expect(await axis.compute([P], noDaily)).toEqual([]);
-        // KRX 앵커인데 타점 시각까지 KRX 바가 없음(NXT 프리마켓 타점)
+    it("NXT 단독 시간대(KRX 바 없음) 타점도 값이 나온다 — 분자가 UN 이라 세션 결손이 없다", async () => {
         const pre = point("08:30:00");
-        const noKrx = deps({
+        const d = deps({
             minutesByDay: { [DATE]: [minute("08:30:00", "11000", { krx: null })] },
-            dailies: [daily("2026-07-01", "10000", "9900")],
+            dailies: [daily("2026-07-01", "10500", "10000")],
             anchors: [anchorOf(pre, { field: "high", market: "krx" })],
         });
-        expect(await axis.compute([pre], noKrx)).toEqual([]);
+        const out = await axis.compute([pre], d);
+        expect(out[0].value).toBe(10);
+    });
+
+    it("앵커 캔들 미수집·기준값 0 은 결손", async () => {
+        const noDaily = deps({ minutesByDay: { [DATE]: [minute("09:30:00", "11000")] }, dailies: [], anchors: [anchorOf(P, { field: "high", market: "un" })] });
+        expect(await axis.compute([P], noDaily)).toEqual([]);
+
+        const zeroBase = deps({
+            minutesByDay: { [DATE]: [minute("09:30:00", "11000")] },
+            dailies: [daily("2026-07-01", "0", "0")],
+            anchors: [anchorOf(P, { field: "high", market: "un" })],
+        });
+        expect(await axis.compute([P], zeroBase)).toEqual([]);
     });
 });

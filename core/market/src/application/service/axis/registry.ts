@@ -7,10 +7,15 @@ import type { ComputedAxisDef } from "./axis.js";
 import { dailyChangeAxis } from "./dailyChangeAxis.js";
 import { baselinePositionAxis } from "./baselinePositionAxis.js";
 
+// KRX 판(dailyChangeAxis("krx"))은 **일부러 안 만든다.** 그 축 자체는 자기완결적이고(분자·분모 둘 다 KRX =
+// HTS 공식 등락률) 틀린 축이 아니다. 안 만드는 이유는 둘:
+//   · 프리마켓·시간외 타점이 통째로 결손(그 시간대엔 KRX 세션이 없다)
+//   · UN 판과 상관이 매우 높아 시트 열만 늘고 정보는 안 는다
+// 분모(전일 종가)만 KRX 로 보고 싶어지면 그때 dailyChangeAxis 를 {price:"un", base} 로 쪼갠다 —
+// 지금은 UN/KRX 기준가 차이가 작아 역시 상관 높은 축이 될 뿐이라 미룬다.
 export const COMPUTED_AXES: readonly ComputedAxisDef[] = [
     dailyChangeAxis("un"),
-    // dailyChangeAxis("krx"),  // KRX 도 볼 때 주석 해제 — 시장별 별개 축(축 안 토글 금지).
-    baselinePositionAxis(), // baseline 앵커 소비 — 시장은 앵커가 정한다(축 시장 파라미터 없음)
+    baselinePositionAxis(), // baseline 앵커 소비 — 분모는 앵커 가격이라 전일종가·시장 개념이 없다
 ];
 
 /** key → 정의. 캐시·컨트롤러가 이름으로 지목할 때. */

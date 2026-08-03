@@ -1,15 +1,24 @@
 // 계산 축 — "기준선 대비 %": 타점 **그 시각**의 가격이 baseline 앵커 값 대비 몇 %인가.
 //
-// 파라미터 앵커 인프라의 첫 소비자. 분모(기준선 값)는 앵커가 지목한 캔들에서 **저장된 시장·값**으로 읽는다 —
-// 차트에 그려지는 앵커 선(resolvePointAnchorLines)과 같은 규칙이라, 화면의 선과 축 값이 눈으로 대조된다.
-// 분자(타점 시각 가격)도 **앵커의 시장**을 쓴다: 분모가 KRX 인데 분자가 UN 이면 비율이 아니라 잡음이다.
-// 그래서 이 축은 시장 파라미터가 없다 — 시장은 앵커를 찍은 사람이 이미 정했다.
+//   값 = (타점 UN종가 − 기준선가격) / 기준선가격
 //
-// 결손(축에서 빠짐): baseline 앵커 없음 · 앵커 캔들 미로드/미수집 · 그 시각 앵커 시장 세션 부재(KRX 프리마켓) ·
-// 기준값 0. 전부 지어내지 않고 뺀다(axis.ts 규칙 3).
+// **전일 종가가 안 들어간다.** 그래서 "기준선에서 샀다면 지금 몇 %"와 같은 뜻이고, 여기엔 시장 선택이 개입할
+// 자리가 없다 — 당일 % 축(분모가 전일 종가)과 갈리는 지점이다. KRX/UN 별개 축을 만들 이유도 없다.
+//
+// **시장은 값을 꺼내는 경로일 뿐 값의 속성이 아니다.** 앵커의 market·field 는 기준선 값을 그 캔들의 어디서
+// 꺼낼지만 말한다(오염된 UN 고가 회피 등). 꺼내고 나면 그냥 가격 하나이고, 그 뒤로 시장 개념은 사라진다.
+// 그래서 분자는 **언제나 UN 종가**다 — 분봉은 늘 UN 전체를 본다는 화면 규칙과 같고, 예전처럼 분자를 앵커
+// 시장에 묶었더니 KRX 앵커를 쓴 NXT 단독 시간대(프리마켓·시간외) 타점이 통째로 결손이 됐다.
+//
+// 결손(축에서 빠짐): baseline 앵커 없음 · 앵커 캔들 미로드/미수집 · 기준값 0 · 타점이 첫 분봉보다 이름.
+// 전부 지어내지 않고 뺀다(axis.ts 규칙 3).
 //
 // 일봉 앵커는 **수정주가**에서 읽는다 — 차트 일봉 pane·가격선이 보는 그 값(최근 구간은 원주가와 같은 스케일이라
 // 분봉 분자와 정합). 분봉 앵커는 raw 분봉 그대로.
+//
+// ⚠ 눈 대조 방법이 다른 축과 다르다. 브릭1 선례 2("분모는 차트와 같은 걸")에서 의도적으로 벗어난 첫 축이다 —
+//   차트 % 눈금은 전일종가 기준이라 화면의 %p 간격과 이 축 값은 분모가 다르다. 대조는 **가격 두 개**로:
+//   차트의 하늘색 앵커 선 가격과 타점 시각 가격을 읽어 직접 나눈다.
 import { computeChangeRate, type DailyCandle, type MinuteCandle, type PointAnchor, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
@@ -23,7 +32,7 @@ export function baselinePositionAxis(): ComputedAxisDef {
     return {
         key: "baseline-position",
         name: "기준선 대비 %",
-        version: 1,
+        version: 2, // v2: 분자를 앵커 시장 → 언제나 UN(프리마켓 결손 해소). 지문과 무관하게 축 전량 재계산.
         strongerWhen: "higher",
         inputs: ["minute", "adjDaily"],
         params: [PARAM],
@@ -77,13 +86,12 @@ async function computeBaselinePosition(points: readonly ReviewPointKey[], deps: 
         }
         if (baseline === undefined || Number(baseline) <= 0) continue; // 앵커 캔들 미수집·0 — 결손
 
-        // 분자 — 타점 시각 이하 마지막 분봉 종가(forward fill), **앵커의 시장**. 세션 부재면 결손.
+        // 분자 — 타점 시각 이하 마지막 분봉 종가(forward fill), **언제나 UN**(UN 바는 항상 존재 → 세션 결손 없음).
         const bars = minutesByDay.get(`${p.stockCode}|${p.date}`) ?? [];
         let close: string | undefined;
         for (const b of bars) {
             if (b.time > p.time) break;
-            const bar = a.market === "krx" ? b.krx : b.un;
-            if (bar) close = bar.close;
+            close = b.un.close;
         }
         if (close === undefined) continue;
 
