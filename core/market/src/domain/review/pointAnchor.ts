@@ -8,13 +8,18 @@
 //   · 둘 다 있음 = 가격 앵커 — 사람이 "이 시장의 이 값"까지 지목(KRX/UN 고가가 다르거나 NXT 오염 캔들 회피).
 //   · 둘 다 없음 = 시각 앵커 — 좌표만 뜻이 있고 값은 축이 정한다(급등 시작 분봉 같은 것).
 // 홀로 있는 field/market 은 불법 — 검증은 isValidAnchorShape.
+//
+// 자연키는 **좌표까지**다: (타점, param, anchorDate, anchorTime). 파라미터에 따라 앵커가 여럿 붙을 수 있고
+// (무시 캔들처럼 "이 캔들도, 저 캔들도"), 그럴 때 정체성은 "어느 캔들이냐" 자체이기 때문이다. 대리키를 안 쓰는
+// 이유가 여기 있다 — 같은 좌표 둘은 의미가 없고 그냥 중복 오류라 자연키가 이미 완전하다(가격선은 반대라
+// surrogate 를 쓴다: 같은 캔들에 뜻이 다른 선을 여러 개 그을 수 있다).
 import type { ReviewPointKey } from "./reviewPoint.js";
 import type { PriceLineField } from "./priceLine.js";
 
 /** 가격 앵커의 시장. 앵커는 "어느 캔들"이 아니라 "어느 시장의 값"까지 지목할 수 있다(오염 캔들 회피). */
 export type AnchorMarket = "krx" | "un";
 
-/** 타점 파라미터 앵커 1건. 자연키 (타점, param) — 한 타점은 한 param 의 앵커 하나(upsert 로 교체). */
+/** 타점 파라미터 앵커 1건. 자연키 (타점, param, anchorDate, anchorTime). */
 export interface PointAnchor extends ReviewPointKey {
     param: string; // 파라미터 이름 — ANCHOR_PARAMS 레지스트리 키
     anchorDate: string; // YYYY-MM-DD — 가리키는 캔들의 거래일
@@ -22,6 +27,9 @@ export interface PointAnchor extends ReviewPointKey {
     field?: PriceLineField; // market 과 한 쌍(가격 앵커일 때만)
     market?: AnchorMarket;
 }
+
+/** 앵커가 가리키는 캔들 좌표 = 자연키의 꼬리. 다중 param 의 앵커를 하나만 지목해 지울 때의 단위. */
+export type AnchorCoord = Pick<PointAnchor, "anchorDate" | "anchorTime">;
 
 /** field·market 쌍 규칙 — 둘 다 있거나(가격 앵커) 둘 다 없거나(시각 앵커). */
 export function isValidAnchorShape(a: Pick<PointAnchor, "field" | "market">): boolean {
@@ -38,6 +46,14 @@ export interface AnchorParamDef {
     name: string;
     /** 가격 앵커인가 — true 면 field+market 필수, false 면 금지. */
     needsPrice: boolean;
+    /**
+     * 한 타점에 여러 개 매달 수 있는가. false = 그 param 의 앵커는 하나(재지정 = 교체 — 기준선처럼 분모가
+     * 둘일 수 없는 것), true = 좌표마다 하나씩 쌓인다(같은 캔들 재지정은 멱등 no-op).
+     *
+     * ⚠ 자연키가 좌표까지 넓어진 뒤로 **DB 는 다중을 막지 않는다** — 단일 보장은 이 플래그를 읽는 저장 경로의
+     * 몫이다. 플래그가 없으면 기준선이 둘인 타점이 저장 가능해지고, 축은 그중 "아무거나 하나"를 집는다(조용한 오류).
+     */
+    multiple: boolean;
 }
 
 /**
@@ -46,7 +62,7 @@ export interface AnchorParamDef {
  *     선 없이 캔들만 찍어도 된다(좌표 복사 — price_lines 와 연결 없음).
  */
 export const ANCHOR_PARAMS: readonly AnchorParamDef[] = [
-    { key: "baseline", name: "기준선", needsPrice: true },
+    { key: "baseline", name: "기준선", needsPrice: true, multiple: false },
 ];
 
 /** key → 정의. 검증·표시가 이름으로 지목할 때. */

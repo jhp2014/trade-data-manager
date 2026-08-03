@@ -1,0 +1,2 @@
+ALTER TABLE "curation"."point_anchors" DROP CONSTRAINT "point_anchors_stock_code_trade_date_trade_time_param_pk";--> statement-breakpoint
+ALTER TABLE "curation"."point_anchors" ADD CONSTRAINT "uq_point_anchor_natural" UNIQUE NULLS NOT DISTINCT("stock_code","trade_date","trade_time","param","anchor_date","anchor_time");

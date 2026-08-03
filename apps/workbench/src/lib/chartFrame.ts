@@ -4,7 +4,7 @@
 // 실시간은 useChartBundle("live")(REST 폴링). 키를 합치면 캐시 공유가 깨지므로 패널이 각자 고르고,
 // **도착한 번들을 뷰로 만드는 부분**만 여기서 같이 쓴다.
 import { useMemo } from "react";
-import { anchorParamByKey, type PointAnchor } from "@trade-data-manager/market/domain";
+import { anchorParamByKey, type AnchorCoord, type PointAnchor } from "@trade-data-manager/market/domain";
 import { deriveDailyView, deriveMinuteView, prevCloseAsOf, type DailyPoint, type MinuteView } from "./derive.js";
 import type { ChartBundle } from "../api/chart.js";
 import type { RenderLine } from "../api/priceLines.js";
@@ -86,6 +86,22 @@ export function resolveAnchorLines(
 export const ANCHOR_LINE_COLOR = "#0ea5e9";
 
 /**
+ * 앵커 선 id — 가격선 id 와 네임스페이스("anchor:")로 구분하고, **좌표까지** 담는다.
+ * param 만 담으면 한 param 에 앵커가 여럿일 때(다중 파라미터) 선 둘이 같은 id 를 갖고 삭제가 엉뚱한 걸 지운다.
+ * 구분자 "|" 는 param 키(레지스트리 kebab)·날짜·시각 어디에도 안 나온다.
+ */
+export const anchorLineId = (a: Pick<PointAnchor, "param" | "anchorDate" | "anchorTime">): string =>
+    `anchor:${a.param}|${a.anchorDate}|${a.anchorTime ?? ""}`;
+
+/** 앵커 선 id 되읽기 — 앵커 선이 아니거나 모양이 깨졌으면 null(호출자가 가격선으로 넘긴다). */
+export function parseAnchorLineId(id: string): { param: string; coord: AnchorCoord } | null {
+    if (!id.startsWith("anchor:")) return null;
+    const [param, anchorDate, anchorTime] = id.slice("anchor:".length).split("|");
+    if (!param || !anchorDate) return null;
+    return { param, coord: { anchorDate, anchorTime: anchorTime || undefined } };
+}
+
+/**
  * 타점 파라미터 앵커 → 렌더선. 가격선과 달리 **저장된 시장(market)의 값**을 raw 번들에서 읽는다 —
  * 모드 뷰(dailyView)로 읽으면 차트 토글에 따라 값이 바뀌어 "사람이 지목한 그 값"이 아니게 된다
  * (KRX/UN 고가가 다르거나 NXT 오염 캔들을 피해 지목한 판단이 앵커의 존재 이유).
@@ -104,11 +120,11 @@ export function resolvePointAnchorLines(
         if (a.anchorTime) {
             const m = minuteBundle?.minutes.find((c) => c.date === a.anchorDate && c.time === a.anchorTime);
             const bar = a.market === "krx" ? m?.krx : m?.un;
-            if (bar) out.push({ id: `anchor:${a.param}`, price: Number(bar[a.field]), kind: "M", label, color: ANCHOR_LINE_COLOR });
+            if (bar) out.push({ id: anchorLineId(a), price: Number(bar[a.field]), kind: "M", label, color: ANCHOR_LINE_COLOR });
         } else {
             const d = dailyBundle?.daily.find((c) => c.date === a.anchorDate);
             const bar = a.market === "krx" ? d?.krx : d?.un;
-            if (bar) out.push({ id: `anchor:${a.param}`, price: Number(bar[a.field]), kind: "D", label, color: ANCHOR_LINE_COLOR });
+            if (bar) out.push({ id: anchorLineId(a), price: Number(bar[a.field]), kind: "D", label, color: ANCHOR_LINE_COLOR });
         }
     }
     return out;

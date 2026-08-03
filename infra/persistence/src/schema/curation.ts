@@ -191,7 +191,10 @@ export const reviewPointTags = curation.table(
 //    같은 캔들을 가리켜도 **복사본이지 연결이 아니다** — 가격선에서 따와도 좌표를 복사해 넣으므로
 //    선을 지워도 앵커가 안 깨지고, 앵커를 지워도 선은 남는다.
 //    param 은 코드 레지스트리 키(core domain/review/anchorParam.ts) — 자유 문자열이면 오타가 조용한 결손이 된다.
-//    PK (타점, param) = "한 타점은 한 param 의 앵커 하나"(rank_placements 의 (타점,축) 패턴).
+//    자연키 (타점, param, 좌표) — param 에 따라 앵커가 여럿 붙는다(무시 캔들처럼 "이것도 저것도").
+//    **UNIQUE 이지 PK 가 아닌 이유**: anchor_time 이 NULL 가능(일봉 앵커)이라 PK 로 못 쓴다. 대신
+//    NULLS NOT DISTINCT 유니크 — 이게 없으면 같은 일봉을 두 번 지정한 중복 행이 조용히 쌓인다(NULL≠NULL).
+//    "기준선은 하나" 같은 단일 보장은 DB 가 아니라 AnchorParamDef.multiple 을 읽는 저장 경로가 한다.
 //    field·market 은 **한 쌍**: 둘 다 있으면 가격 앵커(사람이 시장·값까지 지목 — KRX/UN 고가가 다르거나
 //    NXT 오염 캔들을 피하는 판단), 둘 다 없으면 시각 앵커(급등 시작 같은 것 — 값은 축이 정한다).
 export const pointAnchors = curation.table(
@@ -207,7 +210,9 @@ export const pointAnchors = curation.table(
         market: varchar("market", { length: 3 }), // krx|un
     },
     (t) => [
-        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime, t.param] }),
+        unique("uq_point_anchor_natural")
+            .on(t.stockCode, t.tradeDate, t.tradeTime, t.param, t.anchorDate, t.anchorTime)
+            .nullsNotDistinct(),
         foreignKey({
             columns: [t.stockCode, t.tradeDate, t.tradeTime],
             foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],

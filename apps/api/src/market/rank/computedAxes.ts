@@ -33,6 +33,9 @@ const MISSING_WARN_RATIO = 0.2;
 
 const pointKey = (p: ReviewPointKey): string => `${p.stockCode}|${p.date}|${p.time}`;
 
+/** 지문에 넣을 파라미터 = 필수 ∪ 선택. 선택 파라미터도 바뀌면 값이 바뀌므로 무효화 대상은 같다. */
+const fingerprintParams = (def: ComputedAxisDef): readonly string[] => [...(def.params ?? []), ...(def.optionalParams ?? [])];
+
 /** 캐시 항목 — 수치 + 구운 시점의 입력 지문(앵커 무관 축은 ""). */
 export interface AxisValueEntry {
     v: number;
@@ -101,8 +104,8 @@ export class ComputedAxes {
         if (this.defs.length === 0) return [];
         const points = await this.deps.points.listAllPoints();
         // 앵커는 지문용으로 한 번만 읽는다(축이 compute 안에서 또 읽는 건 축 자신의 몫 — 축끼리 재료 비공유 원칙).
-        // params 선언 축이 하나도 없으면 조회 자체를 건너뛴다.
-        const anchors = this.defs.some((d) => (d.params?.length ?? 0) > 0) ? await this.deps.axisDeps.pointAnchor.listAll() : [];
+        // 파라미터 선언 축이 하나도 없으면 조회 자체를 건너뛴다.
+        const anchors = this.defs.some((d) => fingerprintParams(d).length > 0) ? await this.deps.axisDeps.pointAnchor.listAll() : [];
         return Promise.all(this.defs.map((def) => this.feed(def, points, anchors)));
     }
 
@@ -115,16 +118,19 @@ export class ComputedAxes {
     }
 
     /**
-     * 이 축에서 타점의 입력 지문 — 선언된 params 의 앵커 좌표 직렬화. 앵커가 바뀌면 문자열이 바뀐다.
-     * params 없는 축은 항상 ""(= 지문 대조가 무의미, 캐시 히트는 존재 여부만으로).
+     * 이 축에서 타점의 입력 지문 — 선언된 파라미터(필수+선택) 앵커 좌표의 직렬화. 앵커가 바뀌면 문자열이 바뀐다.
+     * 파라미터 없는 축은 항상 ""(= 지문 대조가 무의미, 캐시 히트는 존재 여부만으로).
+     *
+     * ⚠ 정렬은 **직렬화한 문자열 전체**로 한다. param 만으로 정렬하면 한 param 에 앵커가 여럿일 때(무시 캔들)
+     *   순서가 DB 행 순서에 좌우돼, 아무것도 안 바꿨는데 지문이 달라지고 전량 재계산이 된다.
      */
     private fingerprint(def: ComputedAxisDef, anchorsOfPoint: PointAnchor[]): string {
-        const params = def.params ?? [];
+        const params = fingerprintParams(def);
         if (params.length === 0) return "";
         return anchorsOfPoint
             .filter((a) => params.includes(a.param))
-            .sort((x, y) => (x.param < y.param ? -1 : 1))
             .map((a) => `${a.param}@${a.anchorDate}T${a.anchorTime ?? ""}|${a.field ?? ""}|${a.market ?? ""}`)
+            .sort()
             .join(";");
     }
 
@@ -166,9 +172,15 @@ export class ComputedAxes {
             if (v !== undefined) { values[k] = { v, f: fpOf(k) }; changed = true; }
         }
         if (changed) await this.store.write({ v: FILE_SCHEMA_VERSION, key: def.key, version: def.version, values });
-        // 결손 분모: params 축은 **앵커 있는 타점**만 — 앵커를 아직 안 찍은 타점은 결손이 아니라 "입력 전"이다
-        // (그걸 분모에 넣으면 정상 상태가 상시 경고가 된다).
-        const eligible = (def.params?.length ?? 0) > 0 ? points.filter((p) => fpOf(pointKey(p)) !== "").length : points.length;
+        // 결손 분모: **필수 파라미터가 다 찍힌 타점**만 — 아직 안 찍은 타점은 결손이 아니라 "입력 전"이다
+        // (그걸 분모에 넣으면 정상 상태가 상시 경고가 된다). 지문 유무로 대신 세면 안 된다: 선택 파라미터만
+        // 찍힌 타점(무시 캔들만 지정)도 지문이 생겨 입력 완료로 집계된다.
+        const required = def.params ?? [];
+        const hasRequired = (p: ReviewPointKey): boolean => {
+            const owned = anchorsByPoint.get(pointKey(p)) ?? [];
+            return required.every((r) => owned.some((a) => a.param === r));
+        };
+        const eligible = required.length > 0 ? points.filter(hasRequired).length : points.length;
         this.reportMissing(def, eligible, Object.keys(values).length);
 
         return {

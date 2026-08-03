@@ -4,10 +4,10 @@ import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
 import { chartQuery, pointAnchorsQuery, computedAxesQuery } from "../api/queries.js";
-import { upsertPointAnchor, removePointAnchor } from "../api/pointAnchors.js";
+import { putPointAnchor, removePointAnchor } from "../api/pointAnchors.js";
 import { kstToUnix } from "../lib/derive.js";
-import { useChartViews, resolvePointAnchorLines, ANCHOR_LINE_COLOR } from "../lib/chartFrame.js";
-import { anchorParamByKey, type PointAnchor } from "@trade-data-manager/market/domain";
+import { useChartViews, resolvePointAnchorLines, parseAnchorLineId, ANCHOR_LINE_COLOR } from "../lib/chartFrame.js";
+import { anchorParamByKey, type AnchorCoord, type PointAnchor } from "@trade-data-manager/market/domain";
 import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../api/priceLines.js";
@@ -91,9 +91,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         // 그 타점만 다시 굽는다). 사용자가 새로고침을 의식하게 하지 않는 게 규칙.
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
     };
-    const setAnchorMut = useMutation({ mutationFn: upsertPointAnchor, onSuccess: invAnchors });
+    const setAnchorMut = useMutation({ mutationFn: putPointAnchor, onSuccess: invAnchors });
     const clearAnchorMut = useMutation({
-        mutationFn: (v: { param: string }) => removePointAnchor({ stockCode: code, date: viewDate, time: anchorTime ?? "" }, v.param),
+        // coord 없이 부르면 그 param 전부 해제 — 단일 파라미터(기준선)는 그게 곧 그 하나다.
+        mutationFn: (v: { param: string; coord?: AnchorCoord }) =>
+            removePointAnchor({ stockCode: code, date: viewDate, time: anchorTime ?? "" }, v.param, v.coord),
         onSuccess: invAnchors,
     });
     // 앵커 선 — **저장된 시장의 값**을 raw 번들에서 읽는다(차트 모드와 무관 — 사람이 지목한 그 값).
@@ -118,9 +120,10 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         const d = dailyQ.data?.daily.find((x) => x.date === c.date);
         return { un: num(d?.un), krx: num(d?.krx) };
     }, [candleMenu, dailyQ.data, minuteQ.data]);
-    // 메뉴의 선/앵커 삭제 라우팅 — 앵커 선 id 는 "anchor:{param}"(가격선 id 와 네임스페이스로 구분).
+    // 메뉴의 선/앵커 삭제 라우팅 — 앵커 선 id 는 param+좌표(가격선 id 와 네임스페이스로 구분).
     const removeLineOrAnchor = (id: string): void => {
-        if (id.startsWith("anchor:")) clearAnchorMut.mutate({ param: id.slice("anchor:".length) });
+        const anchor = parseAnchorLineId(id);
+        if (anchor) clearAnchorMut.mutate(anchor);
         else removeLineById(id);
     };
 

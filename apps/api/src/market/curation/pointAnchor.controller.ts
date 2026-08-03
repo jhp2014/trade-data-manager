@@ -1,6 +1,6 @@
 import { Controller, Get, Put, Delete, Inject, Query, Body, BadRequestException } from "@nestjs/common";
 import { anchorParamByKey, type PointAnchor, type PointAnchorReader, type PointAnchorStore, type AnchorMarket, type PriceLineField } from "@trade-data-manager/market";
-import type { UpsertPointAnchorInput } from "@trade-data-manager/wire";
+import type { PutPointAnchorInput } from "@trade-data-manager/wire";
 import { POINT_ANCHOR_REPO } from "../tokens.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
@@ -19,7 +19,7 @@ export class PointAnchorController {
     }
 
     @Put()
-    async upsert(@Body() body: UpsertPointAnchorInput): Promise<{ ok: true }> {
+    async put(@Body() body: PutPointAnchorInput): Promise<{ ok: true }> {
         const def = anchorParamByKey.get(body?.param ?? "");
         if (!def) throw new BadRequestException(`param 은 레지스트리 키만: ${[...anchorParamByKey.keys()].join("|")}`);
         // 가격 파라미터 = field+market 필수 / 시각 파라미터 = 둘 다 금지. 반쪽(field 만·market 만)은 항상 불법.
@@ -31,16 +31,20 @@ export class PointAnchorController {
             throw new BadRequestException(`${def.key} 는 시각 앵커 — field·market 금지`);
         }
         try {
-            await this.repo.upsert({
-                stockCode: assertStockCode(body.stockCode, "stockCode"),
-                date: assertYmd(body.date),
-                time: assertHms(body.time),
-                param: def.key,
-                anchorDate: assertYmd(body.anchorDate, "anchorDate"),
-                anchorTime: body.anchorTime != null ? assertHms(body.anchorTime, "anchorTime") : undefined,
-                field: def.needsPrice ? body.field : undefined,
-                market: def.needsPrice ? body.market : undefined,
-            });
+            // 다중성은 파라미터의 성질 — 저장소는 레지스트리를 모르고, 여기서 replace 로 번역한다.
+            await this.repo.put(
+                {
+                    stockCode: assertStockCode(body.stockCode, "stockCode"),
+                    date: assertYmd(body.date),
+                    time: assertHms(body.time),
+                    param: def.key,
+                    anchorDate: assertYmd(body.anchorDate, "anchorDate"),
+                    anchorTime: body.anchorTime != null ? assertHms(body.anchorTime, "anchorTime") : undefined,
+                    field: def.needsPrice ? body.field : undefined,
+                    market: def.needsPrice ? body.market : undefined,
+                },
+                { replace: !def.multiple },
+            );
         } catch (err) {
             // 앵커는 타점 소유 — 저장 타점이 아닌 시각이면 FK(23503)로 막힌다. 500 으로 새면 클라가 "서버 오류"로
             // 보고 원인을 못 짚는다(실제로는 사용자가 타점을 안 찍은 것) → 사유가 드러나는 400 으로.
@@ -52,15 +56,23 @@ export class PointAnchorController {
         return { ok: true };
     }
 
+    // anchorDate 를 주면 그 좌표 하나만, 생략하면 그 param 전부. 다중 param 은 좌표를 줘야 하나만 지워진다 —
+    // 좌표 없는 해제를 막지는 않는다("이 param 전부 해제"는 그것대로 쓸모 있는 동작).
     @Delete()
     async remove(
         @Query("code") code?: string,
         @Query("date") date?: string,
         @Query("time") time?: string,
         @Query("param") param?: string,
+        @Query("anchorDate") anchorDate?: string,
+        @Query("anchorTime") anchorTime?: string,
     ): Promise<{ ok: true }> {
         if (!param || !anchorParamByKey.has(param)) throw new BadRequestException("param 필수(레지스트리 키)");
-        await this.repo.remove({ stockCode: assertStockCode(code), date: assertYmd(date), time: assertHms(time) }, param);
+        const coord =
+            anchorDate != null
+                ? { anchorDate: assertYmd(anchorDate, "anchorDate"), anchorTime: anchorTime != null ? assertHms(anchorTime, "anchorTime") : undefined }
+                : undefined;
+        await this.repo.remove({ stockCode: assertStockCode(code), date: assertYmd(date), time: assertHms(time) }, param, coord);
         return { ok: true };
     }
 }

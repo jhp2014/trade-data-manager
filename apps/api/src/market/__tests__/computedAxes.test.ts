@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { AxisDeps, ComputedAxisDef, PointAnchor, ReviewPoint, ReviewPointKey } from "@trade-data-manager/market";
 import { ComputedAxes, type AxisValueFile, type AxisValueStore } from "../rank/computedAxes.js";
 
@@ -176,6 +176,40 @@ describe("ComputedAxes 앵커 지문", () => {
         const after = await makeAxes(points, paramAxis(), store, []).feeds();
         expect(after[0].values).toEqual([]); // 피드에서 사라짐
         expect(store.files.get("param-fake")!.values).toEqual({}); // 옛 값이 굳어 있지 않다
+    });
+
+    /** 필수 baseline + 선택 ignore-candle 축 — 값은 baseline 만 쓰고, 무시 캔들은 있을 수도 없을 수도 있다. */
+    function mixedAxis(): ComputedAxisDef {
+        const base = paramAxis();
+        return { ...base, key: "mixed-fake", optionalParams: ["ignore-candle"] };
+    }
+    const ignore = (p: ReviewPointKey, anchorDate: string): PointAnchor => ({ ...p, param: "ignore-candle", anchorDate });
+
+    it("한 param 에 앵커가 여럿일 때 행 순서가 바뀌어도 재계산하지 않는다(지문 정렬)", async () => {
+        const points = [pt("001")];
+        const base = anchor(points[0], "2026-06-10");
+        const ig1 = ignore(points[0], "2026-06-01");
+        const ig2 = ignore(points[0], "2026-06-02");
+
+        await makeAxes(points, mixedAxis(), store, [base, ig1, ig2]).feeds();
+        await makeAxes(points, mixedAxis(), store, [ig2, base, ig1]).feeds(); // 같은 집합, DB 행 순서만 다름
+        expect(seen).toHaveLength(1);
+
+        await makeAxes(points, mixedAxis(), store, [base, ig1]).feeds(); // 무시 캔들 하나 해제 = 진짜 변경
+        expect(seen).toHaveLength(2);
+    });
+
+    it("선택 파라미터만 찍힌 타점은 '입력 전'이라 결손 경고 분모에서 빠진다", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const points = [pt("001"), pt("002"), pt("003"), pt("004"), pt("005")];
+        // 001 만 기준선까지 찍혔고(값 나옴), 나머지 넷은 무시 캔들만 찍힌 상태 = 아직 입력 전.
+        const anchors = [anchor(points[0], "2026-06-10"), ...points.slice(1).map((p) => ignore(p, "2026-06-01"))];
+
+        await makeAxes(points, mixedAxis(), store, anchors).feeds();
+
+        // 지문 유무로 분모를 세면 5건 중 4건 결손(80%)이 되어 정상 상태가 상시 경고가 된다.
+        expect(warn).not.toHaveBeenCalled();
+        warn.mockRestore();
     });
 
     it("params 없는 축은 앵커가 바뀌어도 재계산하지 않는다", async () => {
