@@ -25,7 +25,11 @@ export interface CandleMenuProps {
     nearLine?: RenderLine;
     /** 이 캔들 앵커에 이미 그어진 가격선 id — 있으면 "이 선 삭제"가 함께 뜬다(토글 감각 보존). */
     lineIdAtCandle?: string;
-    /** 활성 타점 시각(같은 차트) — 파라미터 앵커의 소유자. 없으면 파라미터 항목 비활성. */
+    /**
+     * **저장 타점**의 시각(포커스 시각이 아니다). 앵커는 타점 소유라 저장 타점에만 붙는다 —
+     * 포커스 시각으로 가드하면 아무 봉에서나 버튼이 활성으로 보이고, 눌러도 서버가 FK 로 거부해
+     * 조용히 실패한다(성공한 것처럼 보이는 게 최악). 저장 타점이 아니면 null 을 넘겨 비활성.
+     */
     activeTime: string | null;
     /** 활성 타점의 앵커들 — 이미 지정된 파라미터는 해제 항목이 뜬다. */
     activeAnchors: readonly PointAnchor[];
@@ -82,7 +86,7 @@ export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, act
                         return (
                             <div key={p.key} style={{ borderTop: "1px solid var(--border-subtle)" }}>
                                 <MenuLabel>
-                                    {p.name} 지정{activeTime ? ` → 타점 ${activeTime.slice(0, 5)}` : " — 타점을 먼저 선택"}
+                                    {p.name} 지정{activeTime ? ` → 타점 ${activeTime.slice(0, 5)}` : " — 저장 타점 아님(스페이스바)"}
                                 </MenuLabel>
                                 {p.needsPrice ? (
                                     (["un", "krx"] as const).map((market) => {
@@ -94,7 +98,7 @@ export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, act
                                                 {FIELD_LABELS.map(({ field, label }) => (
                                                     <button key={field} disabled={disabled}
                                                         onClick={() => { onSetAnchor(p.key, { field, market }); onClose(); }}
-                                                        title={disabled ? "타점을 먼저 선택하세요" : `${market.toUpperCase()} ${label} ${fmt(bar[field])} 를 ${p.name}으로`}
+                                                        title={disabled ? "이 시각은 저장 타점이 아닙니다 — 스페이스바로 타점을 저장한 뒤에" : `${market.toUpperCase()} ${label} ${fmt(bar[field])} 를 ${p.name}으로`}
                                                         style={{ flex: 1, minWidth: 0, border: "1px solid var(--border-default)", borderRadius: 4, background: "transparent", color: disabled ? "var(--text-tertiary)" : "var(--text-primary)", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontSize: 10.5, padding: "3px 2px", lineHeight: 1.3 }}>
                                                         <div style={{ color: "var(--text-tertiary)" }}>{label}</div>
                                                         <div style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{fmt(bar[field])}</div>

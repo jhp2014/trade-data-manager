@@ -6,7 +6,8 @@ import { usePlaneBus } from "../store/usePlaneBus.js";
 import { chartQuery, pointAnchorsQuery } from "../api/queries.js";
 import { upsertPointAnchor, removePointAnchor } from "../api/pointAnchors.js";
 import { kstToUnix } from "../lib/derive.js";
-import { useChartViews, resolvePointAnchorLines } from "../lib/chartFrame.js";
+import { useChartViews, resolvePointAnchorLines, ANCHOR_LINE_COLOR } from "../lib/chartFrame.js";
+import { anchorParamByKey, type PointAnchor } from "@trade-data-manager/market/domain";
 import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../api/priceLines.js";
@@ -74,17 +75,20 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
 
-    // ── 타점 파라미터 앵커 — 활성 타점의 계산 입력 좌표. 지정/해제는 봉 우클릭 메뉴(CandleMenu).
+    // ── 타점 파라미터 앵커 — 현재 **저장 타점**의 계산 입력 좌표. 지정/해제는 봉 우클릭 메뉴(CandleMenu).
+    // 소유자는 포커스 시각이 아니라 focusedPoint 다: 포커스는 a/d 로 봉을 옮길 때마다 바뀌는 아무 분봉 시각이라
+    // 그걸로 가드하면 저장 타점이 아닌 곳에서도 버튼이 활성으로 보이고, 눌러도 FK 로 거부돼 조용히 실패한다.
+    const anchorTime = focusedPoint?.time ?? null;
     const qc = useQueryClient();
     const anchorsQ = useQuery(pointAnchorsQuery(code, viewDate));
     const activeAnchors = useMemo(
-        () => (time ? (anchorsQ.data ?? []).filter((a) => a.time === time) : []),
-        [anchorsQ.data, time],
+        () => (anchorTime ? (anchorsQ.data ?? []).filter((a) => a.time === anchorTime) : []),
+        [anchorsQ.data, anchorTime],
     );
     const invAnchors = (): void => void qc.invalidateQueries({ queryKey: pointAnchorsQuery(code, viewDate).queryKey });
     const setAnchorMut = useMutation({ mutationFn: upsertPointAnchor, onSuccess: invAnchors });
     const clearAnchorMut = useMutation({
-        mutationFn: (v: { param: string }) => removePointAnchor({ stockCode: code, date: viewDate, time: time ?? "" }, v.param),
+        mutationFn: (v: { param: string }) => removePointAnchor({ stockCode: code, date: viewDate, time: anchorTime ?? "" }, v.param),
         onSuccess: invAnchors,
     });
     // 앵커 선 — **저장된 시장의 값**을 raw 번들에서 읽는다(차트 모드와 무관 — 사람이 지목한 그 값).
@@ -130,8 +134,13 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 onToggleControls={() => toggleControls(panelId)}
                 badges={
                     focusedPoint ? (
-                        // 현재 타점의 태그(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
-                        <TagChips tags={tagsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} style={{ maxWidth: 180, flexShrink: 1 }} />
+                        // 현재 타점의 태그(옛 단일 type 배지 자리) + 파라미터 앵커 칩 — 헤더 한 줄이라 wrap 없이 잘린다.
+                        // 앵커 선은 그 타점에 서 있을 때만 그려지므로(소유가 타점), "이 타점이 기준선을 가졌나"를
+                        // 선 말고도 알려주는 단서가 필요하다 — 봉을 옮겨 선이 사라져도 돌아오면 여기서 확인된다.
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                            <TagChips tags={tagsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} style={{ maxWidth: 180, flexShrink: 1 }} />
+                            <AnchorChips anchors={activeAnchors} />
+                        </span>
                     ) : null
                 }
             >
@@ -228,15 +237,15 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     bars={menuBars}
                     nearLine={candleMenu.nearLine}
                     lineIdAtCandle={candleMenu.candle ? lineIdAt(candleMenu.candle.date, candleMenu.candle.time) : undefined}
-                    activeTime={time}
+                    activeTime={anchorTime}
                     activeAnchors={activeAnchors}
                     onAddLine={(field) => candleMenu.candle && addLine(candleMenu.candle.date, candleMenu.candle.time, field)}
                     onRemoveLine={removeLineOrAnchor}
                     onSetAnchor={(param, price) => {
                         const c = candleMenu.candle;
-                        if (!c || !time) return;
+                        if (!c || !anchorTime) return;
                         setAnchorMut.mutate({
-                            stockCode: code, date: viewDate, time, param,
+                            stockCode: code, date: viewDate, time: anchorTime, param,
                             anchorDate: c.date, anchorTime: c.time,
                             field: price?.field, market: price?.market,
                         });
@@ -246,6 +255,27 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 />
             )}
         </div>
+    );
+}
+
+/**
+ * 현재 타점의 파라미터 앵커 칩 — 헤더 배지 줄. 지정된 param 만 뜬다(없으면 아무것도 안 그림).
+ * 색은 앵커 선과 같은 것(ANCHOR_LINE_COLOR) — 차트의 그 하늘색 선과 같은 것임을 색으로 잇는다.
+ */
+function AnchorChips({ anchors }: { anchors: readonly PointAnchor[] }): JSX.Element | null {
+    if (anchors.length === 0) return null;
+    return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            {anchors.map((a) => {
+                const where = `${a.anchorDate.slice(5)}${a.anchorTime ? ` ${a.anchorTime.slice(0, 5)}` : ""}${a.market ? ` ${a.market.toUpperCase()}·${a.field}` : ""}`;
+                return (
+                    <span key={a.param} title={`${anchorParamByKey.get(a.param)?.name ?? a.param} — ${where}`}
+                        style={{ fontSize: 10.5, fontWeight: 700, color: ANCHOR_LINE_COLOR, border: `1px solid ${ANCHOR_LINE_COLOR}`, borderRadius: 3, padding: "1px 4px", whiteSpace: "nowrap" }}>
+                        {anchorParamByKey.get(a.param)?.name ?? a.param}
+                    </span>
+                );
+            })}
+        </span>
     );
 }
 

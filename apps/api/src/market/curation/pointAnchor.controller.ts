@@ -30,16 +30,25 @@ export class PointAnchorController {
         } else if (body.field != null || body.market != null) {
             throw new BadRequestException(`${def.key} 는 시각 앵커 — field·market 금지`);
         }
-        await this.repo.upsert({
-            stockCode: assertStockCode(body.stockCode, "stockCode"),
-            date: assertYmd(body.date),
-            time: assertHms(body.time),
-            param: def.key,
-            anchorDate: assertYmd(body.anchorDate, "anchorDate"),
-            anchorTime: body.anchorTime != null ? assertHms(body.anchorTime, "anchorTime") : undefined,
-            field: def.needsPrice ? body.field : undefined,
-            market: def.needsPrice ? body.market : undefined,
-        });
+        try {
+            await this.repo.upsert({
+                stockCode: assertStockCode(body.stockCode, "stockCode"),
+                date: assertYmd(body.date),
+                time: assertHms(body.time),
+                param: def.key,
+                anchorDate: assertYmd(body.anchorDate, "anchorDate"),
+                anchorTime: body.anchorTime != null ? assertHms(body.anchorTime, "anchorTime") : undefined,
+                field: def.needsPrice ? body.field : undefined,
+                market: def.needsPrice ? body.market : undefined,
+            });
+        } catch (err) {
+            // 앵커는 타점 소유 — 저장 타점이 아닌 시각이면 FK(23503)로 막힌다. 500 으로 새면 클라가 "서버 오류"로
+            // 보고 원인을 못 짚는다(실제로는 사용자가 타점을 안 찍은 것) → 사유가 드러나는 400 으로.
+            if ((err as { code?: string })?.code === "23503") {
+                throw new BadRequestException("저장된 타점이 아닙니다 — 그 시각에 타점을 먼저 저장하세요");
+            }
+            throw err;
+        }
         return { ok: true };
     }
 
