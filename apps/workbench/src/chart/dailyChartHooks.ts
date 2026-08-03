@@ -18,7 +18,7 @@ import {
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
 import { VertLines, asPrimitive } from "./vertLine.js";
-import { ALARM, DRIFT, GUIDE, PRICE_LINE } from "../styles/palette.js";
+import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/priceLines.js";
 
@@ -91,8 +91,11 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
     return { candleRef, amountRef, markersRef, vertRef };
 }
 
-/** 데이터 푸시(캔들·거래대금·고가 등락률 마커) + 날짜→봉 조회 맵(툴팁·우클릭이 쓴다). */
-export function useDailySeriesData(series: DailySeries, points: DailyPoint[]): DailyPointMap {
+/**
+ * 데이터 푸시(캔들·거래대금) + 날짜→봉 조회 맵(툴팁·우클릭이 쓴다).
+ * 마커는 별도 effect — 무시 캔들은 우클릭 한 번에 바뀌는데 그때마다 setData 까지 다시 태울 이유가 없다.
+ */
+export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ignoredDates: readonly string[] = []): DailyPointMap {
     const mapRef = useRef<Map<string, DailyPoint>>(new Map());
     useEffect(() => {
         const candle = series.candleRef.current;
@@ -107,17 +110,28 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[]): D
         );
         mapRef.current = map;
         amount.setData(points.map((p) => ({ time: p.time as Time, value: p.amount / 1e8, color: p.close >= p.open ? RISE_FILL : FALL_FILL })));
-        // 고가 등락률(전일비) 마커 — 임계 이상만.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [points]);
+
+    // 마커 — 위: 고가 등락률(임계 이상만), 아래: 무시 캔들(계산 축이 없는 셈 치는 봉).
+    // 무시 표시가 아래인 이유는 등락률 마커와 자리를 다투지 않기 위해서다(무시 대상은 대개 고가가 튄 봉이라 겹친다).
+    const ignoredKey = [...ignoredDates].sort().join(",");
+    useEffect(() => {
+        const ignored = new Set(ignoredKey ? ignoredKey.split(",") : []);
         const markers = [];
         for (const p of points) {
-            if (!p.prevClose || p.prevClose <= 0) continue;
-            const pct = ((p.high - p.prevClose) / p.prevClose) * 100;
-            const color = highMarkerColor(pct);
-            if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: `${pct.toFixed(1)}` });
+            if (p.prevClose && p.prevClose > 0) {
+                const pct = ((p.high - p.prevClose) / p.prevClose) * 100;
+                const color = highMarkerColor(pct);
+                if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: `${pct.toFixed(1)}` });
+            }
+            if (ignored.has(p.time)) {
+                markers.push({ time: p.time as Time, position: "belowBar" as const, color: IGNORED_CANDLE, shape: "square" as const, size: 1, text: "무시" });
+            }
         }
         series.markersRef.current?.setMarkers(markers);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points]);
+    }, [points, ignoredKey]);
     return mapRef;
 }
 

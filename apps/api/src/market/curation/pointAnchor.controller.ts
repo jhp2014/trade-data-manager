@@ -30,6 +30,10 @@ export class PointAnchorController {
         } else if (body.field != null || body.market != null) {
             throw new BadRequestException(`${def.key} 는 시각 앵커 — field·market 금지`);
         }
+        // 캔들 종류 제한 — 소비 축이 안 읽는 좌표를 저장하면 성공한 것처럼 보이는 no-op 이 된다.
+        const isMinute = body.anchorTime != null;
+        if (def.candles === "daily" && isMinute) throw new BadRequestException(`${def.name} 은 일봉 캔들에만 지정합니다`);
+        if (def.candles === "minute" && !isMinute) throw new BadRequestException(`${def.name} 은 분봉 캔들에만 지정합니다`);
         try {
             // 다중성은 파라미터의 성질 — 저장소는 레지스트리를 모르고, 여기서 replace 로 번역한다.
             await this.repo.put(

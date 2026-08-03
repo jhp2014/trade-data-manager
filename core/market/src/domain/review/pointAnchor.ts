@@ -54,15 +54,30 @@ export interface AnchorParamDef {
      * 몫이다. 플래그가 없으면 기준선이 둘인 타점이 저장 가능해지고, 축은 그중 "아무거나 하나"를 집는다(조용한 오류).
      */
     multiple: boolean;
+    /**
+     * 지정 가능한 캔들 종류 제한. 생략 = 일봉·분봉 둘 다(기준선).
+     * "daily" 로 묶는 건 소비 축이 일봉만 훑기 때문 — 분봉에 찍으면 아무 축도 안 읽는 조용한 no-op 이 된다.
+     * 메뉴가 이걸 보고 항목을 감추고, 서버도 같은 기준으로 거부한다(UI 만 막으면 계약이 아니라 습관이다).
+     */
+    candles?: "daily" | "minute";
 }
 
 /**
  * 파라미터 레지스트리 — 새 파라미터 = 여기 한 줄. 목록에 없는 param 은 존재하지 않는다.
  *   · baseline: 기준선 — "이 캔들의 이 값 대비 현재 위치"류 축의 분모. 가격선에서 따오는 게 보통이지만
  *     선 없이 캔들만 찍어도 된다(좌표 복사 — price_lines 와 연결 없음).
+ *   · ignore-candle: 무시 캔들 — 왼쪽 스캔류 축이 **없는 셈 치고 넘어갈** 일봉. NXT 가짜 체결로 UN 고가가
+ *     튄 캔들이 주 대상이다(고가 max 스캔은 이상치 하나에 통째로 뒤집힌다). 뜻을 특정 축에 매달지 않는다 —
+ *     "이 타점의 과거 스캔에서 제외할 캔들"이라 왼쪽을 훑는 축이 늘어도 목록을 두 벌 만들지 않는다.
+ *     ⚠ 사실("가짜 체결이었다")만 담는다. 판단("이 매물은 안 쳐준다")까지 받으면 축 값이 손으로 조정
+ *     가능해지고, 그 순간 계산 축이 아니라 손배치가 된다(결과 분포가 순환논증이 된다).
  */
+/** 무시 캔들 키 — 레지스트리·소비 축·차트 표시가 같은 문자열을 봐야 해서 이름을 준다(리터럴이면 오타가 조용한 결손). */
+export const IGNORE_CANDLE_PARAM = "ignore-candle";
+
 export const ANCHOR_PARAMS: readonly AnchorParamDef[] = [
     { key: "baseline", name: "기준선", needsPrice: true, multiple: false },
+    { key: IGNORE_CANDLE_PARAM, name: "무시 캔들", needsPrice: false, multiple: true, candles: "daily" },
 ];
 
 /** key → 정의. 검증·표시가 이름으로 지목할 때. */

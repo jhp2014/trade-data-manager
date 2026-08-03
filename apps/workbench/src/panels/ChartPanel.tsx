@@ -7,7 +7,7 @@ import { chartQuery, pointAnchorsQuery, computedAxesQuery } from "../api/queries
 import { putPointAnchor, removePointAnchor } from "../api/pointAnchors.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews, resolvePointAnchorLines, parseAnchorLineId, ANCHOR_LINE_COLOR } from "../lib/chartFrame.js";
-import { anchorParamByKey, type AnchorCoord, type PointAnchor } from "@trade-data-manager/market/domain";
+import { anchorParamByKey, IGNORE_CANDLE_PARAM, type AnchorCoord, type PointAnchor } from "@trade-data-manager/market/domain";
 import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../api/priceLines.js";
@@ -102,6 +102,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const anchorLines = useMemo(
         () => (activeAnchors.length > 0 ? resolvePointAnchorLines(activeAnchors, dailyQ.data, minuteQ.data) : []),
         [activeAnchors, dailyQ.data, minuteQ.data],
+    );
+    // 무시 캔들 — 선이 아니라 캔들 자체를 표시한다(값이 아니라 "이 봉을 안 본다"는 뜻이라 수평선이 될 수 없다).
+    const ignoredDates = useMemo(
+        () => activeAnchors.filter((a) => a.param === IGNORE_CANDLE_PARAM).map((a) => a.anchorDate),
+        [activeAnchors],
     );
     const dailyLines = useMemo(() => [...dLines, ...anchorLines.filter((l) => l.kind === "D")], [dLines, anchorLines]);
     const minuteLines = useMemo(() => [...resolvedLines, ...anchorLines], [resolvedLines, anchorLines]);
@@ -198,6 +203,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     searchDate={showLine && drifted ? viewDate : undefined}
                                     pctBase={pctBase}
                                     showGuide={showGuide}
+                                    ignoredDates={ignoredDates}
                                 />
                             ) : null
                         }
@@ -258,7 +264,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                             field: price?.field, market: price?.market,
                         });
                     }}
-                    onClearAnchor={(param) => clearAnchorMut.mutate({ param })}
+                    onClearAnchor={(param, coord) => clearAnchorMut.mutate({ param, coord })}
                     onClose={() => setCandleMenu(null)}
                 />
             )}
@@ -269,17 +275,23 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 /**
  * 현재 타점의 파라미터 앵커 칩 — 헤더 배지 줄. 지정된 param 만 뜬다(없으면 아무것도 안 그림).
  * 색은 앵커 선과 같은 것(ANCHOR_LINE_COLOR) — 차트의 그 하늘색 선과 같은 것임을 색으로 잇는다.
+ * **param 당 칩 하나**(앵커당 하나가 아니다): 다중 파라미터는 개수만 붙인다 — 좌표 나열은 헤더 한 줄을 넘긴다.
  */
 function AnchorChips({ anchors }: { anchors: readonly PointAnchor[] }): JSX.Element | null {
     if (anchors.length === 0) return null;
+    const byParam = new Map<string, PointAnchor[]>();
+    for (const a of anchors) byParam.set(a.param, [...(byParam.get(a.param) ?? []), a]);
     return (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-            {anchors.map((a) => {
-                const where = `${a.anchorDate.slice(5)}${a.anchorTime ? ` ${a.anchorTime.slice(0, 5)}` : ""}${a.market ? ` ${a.market.toUpperCase()}·${a.field}` : ""}`;
+            {[...byParam].map(([param, list]) => {
+                const name = anchorParamByKey.get(param)?.name ?? param;
+                const where = list
+                    .map((a) => `${a.anchorDate.slice(5)}${a.anchorTime ? ` ${a.anchorTime.slice(0, 5)}` : ""}${a.market ? ` ${a.market.toUpperCase()}·${a.field}` : ""}`)
+                    .join(", ");
                 return (
-                    <span key={a.param} title={`${anchorParamByKey.get(a.param)?.name ?? a.param} — ${where}`}
+                    <span key={param} title={`${name} — ${where}`}
                         style={{ fontSize: 10.5, fontWeight: 700, color: ANCHOR_LINE_COLOR, border: `1px solid ${ANCHOR_LINE_COLOR}`, borderRadius: 3, padding: "1px 4px", whiteSpace: "nowrap" }}>
-                        {anchorParamByKey.get(a.param)?.name ?? a.param}
+                        {name}{list.length > 1 ? ` ${list.length}` : ""}
                     </span>
                 );
             })}

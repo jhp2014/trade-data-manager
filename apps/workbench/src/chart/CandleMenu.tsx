@@ -3,8 +3,10 @@
 //    라벨("고가")만으론 NXT 오염 캔들(장시작 무거래 체결 튐)을 못 알아본다. 나란히 보이면 이상한 값이 바로 티가 난다.
 //  · 파라미터 앵커: 활성 타점에 이름 붙은 캔들 좌표(계산 축 입력)를 매단다. needsPrice 파라미터는 시장×값
 //    목록이 펼쳐지고(사람이 시장·값까지 지목), 시각 파라미터는 클릭 한 번. 레지스트리(ANCHOR_PARAMS)가 결정.
+//    **다중 파라미터(무시 캔들)는 "지정/해제"가 아니라 그 캔들의 토글**이다 — 여러 개가 공존하므로 "현재 무엇"을
+//    보여줄 자리가 없고, 사용자가 묻는 건 언제나 "지금 우클릭한 이 캔들이 그 목록에 있나"다.
 //  · 선 근처 우클릭이면 그 선 삭제만 — 즉시 삭제 대신 메뉴를 거쳐 오발을 막는다.
-import { ANCHOR_PARAMS, type AnchorMarket, type PointAnchor, type PriceLineField } from "@trade-data-manager/market/domain";
+import { ANCHOR_PARAMS, type AnchorCoord, type AnchorMarket, type PointAnchor, type PriceLineField } from "@trade-data-manager/market/domain";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import type { RenderLine } from "../api/priceLines.js";
 
@@ -36,7 +38,8 @@ export interface CandleMenuProps {
     onAddLine: (field: PriceLineField) => void;
     onRemoveLine: (id: string) => void;
     onSetAnchor: (param: string, price: { field: PriceLineField; market: AnchorMarket } | null) => void;
-    onClearAnchor: (param: string) => void;
+    /** coord 를 주면 그 앵커 하나만, 생략하면 그 param 전부(단일 파라미터는 그게 곧 그 하나). */
+    onClearAnchor: (param: string, coord?: AnchorCoord) => void;
     onClose: () => void;
 }
 
@@ -81,8 +84,35 @@ export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, act
                     )}
 
                     {ANCHOR_PARAMS.map((p) => {
-                        const existing = activeAnchors.find((a) => a.param === p.key);
+                        // 이 파라미터가 이 캔들 종류를 안 받으면 항목 자체를 감춘다(서버도 같은 기준으로 거부).
+                        if (p.candles === "daily" && candle.time) return null;
+                        if (p.candles === "minute" && !candle.time) return null;
+                        const owned = activeAnchors.filter((a) => a.param === p.key);
                         const disabled = activeTime === null;
+
+                        // 다중 파라미터 — 이 캔들의 토글. "현재 무엇"을 쓸 자리가 없다(여럿이 공존).
+                        if (p.multiple) {
+                            const here = owned.find((a) => a.anchorDate === candle.date && (a.anchorTime ?? undefined) === candle.time);
+                            return (
+                                <div key={p.key} style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                                    <MenuLabel>
+                                        {p.name}
+                                        {activeTime ? ` → 타점 ${activeTime.slice(0, 5)}${owned.length > 0 ? ` (현재 ${owned.length}개)` : ""}` : " — 저장 타점 아님(스페이스바)"}
+                                    </MenuLabel>
+                                    {here ? (
+                                        <MenuItem onClick={() => { onClearAnchor(p.key, here); onClose(); }} style={{ color: "var(--text-tertiary)" }}>
+                                            이 캔들 해제
+                                        </MenuItem>
+                                    ) : (
+                                        <MenuItem disabled={disabled} onClick={() => { onSetAnchor(p.key, null); onClose(); }}>
+                                            이 캔들 지정
+                                        </MenuItem>
+                                    )}
+                                </div>
+                            );
+                        }
+
+                        const existing = owned[0];
                         return (
                             <div key={p.key} style={{ borderTop: "1px solid var(--border-subtle)" }}>
                                 <MenuLabel>

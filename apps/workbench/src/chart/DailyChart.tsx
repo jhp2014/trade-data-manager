@@ -56,6 +56,8 @@ export interface DailyChartProps {
     /** 검색일 전일종가 — 크로스헤어 위치 %·+30% 가이드선의 분모. */
     pctBase?: number | null;
     showGuide?: boolean;
+    /** 현재 타점이 무시 캔들로 지목한 거래일 — 봉 아래 표식. 값이 아니라 "안 본다"는 뜻이라 선이 아니다. */
+    ignoredDates?: readonly string[];
 }
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
@@ -77,6 +79,7 @@ export function DailyChart({
     searchDate,
     pctBase,
     showGuide = false,
+    ignoredDates,
 }: DailyChartProps): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -93,7 +96,7 @@ export function DailyChart({
     }));
 
     const series = useDailySeries(chartRef);
-    const mapRef = useDailySeriesData(series, points);
+    const mapRef = useDailySeriesData(series, points, ignoredDates);
     useDailyVisibleRange(chartRef, points, frameKey, zoom, zoomBars, zoomOutBars);
     useDailyInteraction({ chartRef, containerRef, series, mapRef, lines, onRightClick, onRemoveLine, onLineContext, onCandleClick, onPickPrice, captureArmed: capturePriceArmed });
     useDailyPriceLines(series, lines);
