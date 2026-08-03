@@ -5,6 +5,8 @@ import { FILTER } from "../../styles/palette.js";
 import type { DateRange, TimeRange } from "../../store/rankFilterSlice.js";
 import { isTagExprEmpty } from "./tagFilter.js";
 import { activeValueAxisIds, resolveBound, type AxisValues } from "./axisValueFilter.js";
+import { formatAxisValue } from "../../lib/computedAxis.js";
+import type { ComputedAxisMeta } from "../../lib/useRankAxes.js";
 
 // 통합 필터 바 — 배치·시트 공용. 차원(축 밴드·날짜·시간) 칩을 한 줄에서 관리.
 //  · 칩끼리 AND, 한 칩 안 구간끼리 OR. 축 밴드는 배치 보드에서(레인/셀 우클릭), 날짜/시간은 여기 칩 편집 또는 레일 드래그.
@@ -42,7 +44,14 @@ const tFrom = (raw: string): string | null => {
     return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
 };
 
-export function RankFilterBar({ axes, dateBounds, computedValues, extra }: { axes: { id: string; name: string }[]; dateBounds: { min: string; max: string } | null; computedValues?: AxisValues; extra?: ReactNode }): JSX.Element {
+export function RankFilterBar({ axes, dateBounds, computedValues, computedMeta, extra }: {
+    axes: { id: string; name: string }[];
+    dateBounds: { min: string; max: string } | null;
+    computedValues?: AxisValues;
+    /** 계산 축 메타 — 여기선 값 라벨 규격만 쓴다(단위가 축마다 다르다: %·일…). 없으면 등락률 모양. */
+    computedMeta?: Map<string, ComputedAxisMeta>;
+    extra?: ReactNode;
+}): JSX.Element {
     const rankBands = useWorkbench((s) => s.rankBands);
     const clearRankBand = useWorkbench((s) => s.clearRankBand);
     const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
@@ -60,12 +69,13 @@ export function RankFilterBar({ axes, dateBounds, computedValues, extra }: { axe
     const valueAxes = axes.filter((a) => valueSet.has(a.id));
     const valueLabel = (axisId: string): string => {
         const vals = computedValues?.get(axisId) ?? new Map<string, number>();
-        const pct = (b: { kind: "point"; point: string } | { kind: "value"; value: number } | undefined, fallback: string): string => {
+        const fmt = computedMeta?.get(axisId)?.fmt ?? formatAxisValue;
+        const label = (b: { kind: "point"; point: string } | { kind: "value"; value: number } | undefined, fallback: string): string => {
             if (!b) return fallback;
             const v = resolveBound(b, vals);
-            return v === null ? "?" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+            return v === null ? "?" : fmt(v);
         };
-        const parts = (axisValueRanges[axisId] ?? []).map((r) => `${pct(r.from, "…")}~${pct(r.to, "…")}`);
+        const parts = (axisValueRanges[axisId] ?? []).map((r) => `${label(r.from, "…")}~${label(r.to, "…")}`);
         return summarize(parts);
     };
     // 태그만 걸려 있어도 "전체해제"가 보여야 한다(clearRankFilter 가 태그까지 지운다).

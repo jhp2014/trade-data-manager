@@ -10,6 +10,13 @@ import { axisLinesQuery, computedAxesQuery, rankAxesQuery } from "../api/queries
 import { computedAxisView } from "./computedAxis.js";
 import { useWorkbench } from "../store/workbench.js";
 
+/** 계산 축의 화면용 메타 — 값 자체가 아니라 값을 어떻게 놓고 어떻게 읽는지. */
+export interface ComputedAxisMeta {
+    strongerWhen: "higher" | "lower";
+    /** 값 → 라벨. 단위가 축마다 다르다(%·일…) — 축 정의가 규격을 주고 여기선 함수로만 다닌다. */
+    fmt: (v: number) => string;
+}
+
 export interface RankAxesView {
     /** 사용자 순서(store rankAxisOrder) 적용. pref 에 없는 새 축은 뒤로, 동률은 id 안정 정렬. */
     axes: RankAxis[];
@@ -18,8 +25,8 @@ export interface RankAxesView {
     linesByAxis: Map<string, PlacedPoint[]>;
     /** 계산 축만: axisId → (타점키 → 원시 수치). 값 구간 필터·레일 라벨이 쓴다. 판단 축은 키가 없다. */
     computedValues: Map<string, Map<string, number>>;
-    /** 계산 축만: axisId → 강한 방향. 레일 좌표 매핑에 필요. */
-    computedMeta: Map<string, { strongerWhen: "higher" | "lower" }>;
+    /** 계산 축만: axisId → 강한 방향(레일 좌표 매핑) + 값 표시 함수(단위가 축마다 다르다 — %·일…). */
+    computedMeta: Map<string, ComputedAxisMeta>;
     isLoading: boolean;
     /** dragged 축을 target 축 자리로 옮긴다(양 패널 공유 — 한쪽에서 바꾸면 다른 쪽도 따라온다). */
     reorder: (draggedId: string, targetId: string) => void;
@@ -72,7 +79,7 @@ export function useRankAxes({ includeComputed = false }: UseRankAxesOptions = {}
     };
 
     const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.id, c.values])), [computed]);
-    const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.id, { strongerWhen: c.strongerWhen }])), [computed]);
+    const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.id, { strongerWhen: c.strongerWhen, fmt: c.fmt }])), [computed]);
 
     return {
         axes, axisIds, linesByAxis, computedValues, computedMeta,

@@ -31,6 +31,20 @@ export interface AxisDeps {
     pointAnchor: PointAnchorReader;
 }
 
+/**
+ * 값 표시 규격 — 시트 셀·필터 라벨·레일 눈금이 이걸 보고 찍는다. 생략 = 등락률 모양(`+12.3%`).
+ * 클라에 단위 분기(`if (key === ...)`)를 두지 않으려고 **데이터로** 내려보낸다 — 그래야 축 추가 비용이
+ * "파일 하나 + 레지스트리 한 줄"로 유지된다. 단위가 축의 속성이지 화면의 속성이 아니기도 하다.
+ */
+export interface AxisDisplay {
+    /** 값 뒤 단위. 기본 "%". */
+    suffix?: string;
+    /** 소수 자릿수. 기본 1. */
+    decimals?: number;
+    /** 양수에 + 를 붙일지. 기본 true — 개수·기간처럼 부호가 뜻이 없는 축은 false. */
+    signed?: boolean;
+}
+
 /** 한 타점의 계산값. 결손인 타점은 아예 배열에 없다(null 을 싣지 않는다). */
 export interface ComputedAxisValue extends ReviewPointKey {
     value: number;
@@ -52,6 +66,8 @@ export interface ComputedAxisDef {
     version: number;
     /** 강한 쪽(줄의 오른쪽/rank 1)이 큰 값인가 작은 값인가. 클라가 orderKey 부호를 정하는 근거. */
     strongerWhen: "higher" | "lower";
+    /** 값 표시 규격. 생략 = 등락률 모양. */
+    display?: AxisDisplay;
     /** 읽는 재료 선언. */
     inputs: readonly AxisInput[];
     /**

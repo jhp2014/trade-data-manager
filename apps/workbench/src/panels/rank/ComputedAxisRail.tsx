@@ -13,15 +13,16 @@ import type { AxisBound, AxisValueRange } from "../../store/rankFilterSlice.js";
 
 interface RailRange { from: AxisBound; to: AxisBound }
 
-const fmtPct = (v: number): string => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 const sameBound = (a: AxisBound | undefined, b: AxisBound | undefined): boolean =>
     a != null && b != null && a.kind === b.kind && (a.kind === "point" ? a.point === (b as { point: string }).point : a.value === (b as { value: number }).value);
 
-export function ComputedAxisRail({ name, values, strongerWhen, ranges, markerKey, sortDir, onChange }: {
+export function ComputedAxisRail({ name, values, strongerWhen, fmtValue, ranges, markerKey, sortDir, onChange }: {
     name: string;
     /** 타점키 → 수치. */
     values: Map<string, number>;
     strongerWhen: "higher" | "lower";
+    /** 값 → 라벨. 단위가 축마다 다르므로(%·일…) 축 정의에서 내려온 것을 받는다. */
+    fmtValue: (v: number) => string;
     ranges: AxisValueRange[];
     /** 현재 타점 키(마커) — 그 축에 값이 없으면 마커 없음. */
     markerKey: string | null;
@@ -45,7 +46,7 @@ export function ComputedAxisRail({ name, values, strongerWhen, ranges, markerKey
     };
     const fmt = (b: AxisBound): string => {
         const v = resolveBound(b, values);
-        return v === null ? "?" : fmtPct(v);
+        return v === null ? "?" : fmtValue(v);
     };
 
     // 안 건드린 반열림 끝은 다시 비운다 — 한 구간을 드래그했다고 다른 구간이 조용히 닫히면 안 된다.
@@ -65,8 +66,8 @@ export function ComputedAxisRail({ name, values, strongerWhen, ranges, markerKey
             toFrac={toFrac}
             fromFrac={fromFrac}
             fmt={fmt}
-            minLabel={fmtPct(strongerWhen === "higher" ? domain.min : domain.max)}
-            maxLabel={fmtPct(strongerWhen === "higher" ? domain.max : domain.min)}
+            minLabel={fmtValue(strongerWhen === "higher" ? domain.min : domain.max)}
+            maxLabel={fmtValue(strongerWhen === "higher" ? domain.max : domain.min)}
             marker={markerKey != null && values.has(markerKey) ? { kind: "point", point: markerKey } : null}
             ticks={[...values.values()].map((v) => valueToFrac(v, domain, strongerWhen))}
             sortDir={sortDir}

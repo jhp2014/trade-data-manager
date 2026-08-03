@@ -16,7 +16,7 @@ import {
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, slotOrderKeys, type AxisIndex, type RankCell } from "../lib/rankIndex.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
-import { isComputedAxis } from "../lib/computedAxis.js";
+import { isComputedAxis, formatAxisValue } from "../lib/computedAxis.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { SavedFilterControls } from "./rank/SavedFilterControls.js";
 import { TagFilterLine, AddTagFilterButton } from "./rank/TagFilterLine.js";
@@ -104,7 +104,7 @@ export function RankSheetPanel(): JSX.Element {
     // ── 축 + 라인(배치 보드와 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
     // 계산 축을 함께 본다 — 판단 축과 같은 줄 모양으로 합쳐져 열·정렬·순위 셀이 구분 없이 동작한다.
     // 다만 **읽기 전용**: 배치/해제·밴드·컷은 계산 축 열에서 열리지 않는다(아래 isComputedAxis 가드).
-    const { axes, axisIds, linesByAxis, computedValues, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes({ includeComputed: true });
+    const { axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes({ includeComputed: true });
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
         for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));
@@ -480,7 +480,7 @@ export function RankSheetPanel(): JSX.Element {
                 </span>
             </div>
 
-            <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} extra={<AddTagFilterButton />} />
+            <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} computedMeta={computedMeta} extra={<AddTagFilterButton />} />
             <TagFilterLine />
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
@@ -577,7 +577,7 @@ export function RankSheetPanel(): JSX.Element {
                     const v = computedValues.get(ctx.axisId)?.get(pk);
                     return (
                         <ComputedBoundMenu anchor={ctx} axisName={ax.name} pointKey={pk}
-                            valueText={v === undefined ? "?" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`}
+                            valueText={v === undefined ? "?" : (computedMeta.get(ctx.axisId)?.fmt ?? formatAxisValue)(v)}
                             rank={{ rank: ctx.rank, total: ctx.total }}
                             ranges={axisValueRanges[ctx.axisId] ?? []}
                             onSet={(edge) => { setAxisValueBound(ctx.axisId, edge, { kind: "point", point: pk }); setCtx(null); }}

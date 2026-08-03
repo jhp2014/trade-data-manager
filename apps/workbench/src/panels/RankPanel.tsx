@@ -19,7 +19,7 @@ import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { FilterRail } from "./rank/FilterRail.js";
 import { ComputedAxisRail } from "./rank/ComputedAxisRail.js";
-import { isComputedAxis } from "../lib/computedAxis.js";
+import { isComputedAxis, formatAxisValue } from "../lib/computedAxis.js";
 import { ACTIVE, ACTIVE_SOFT, CurrentMarker, FILTER, HOVER, HOVER_SOFT, LABEL_W, RangeBracket, ScaleEnd, SortBadge } from "./rank/rankRailChrome.js";
 import type { RankAxis } from "@trade-data-manager/wire";
 
@@ -191,7 +191,7 @@ export function RankPanel(): JSX.Element {
                     </span>
                 </div>
 
-                <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} extra={<AddTagFilterButton />} />
+                <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} computedMeta={computedMeta} extra={<AddTagFilterButton />} />
                 <TagFilterLine />
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
@@ -210,6 +210,7 @@ export function RankPanel(): JSX.Element {
                         <ComputedAxisRail key={ax.id} name={ax.name}
                             values={computedValues.get(ax.id) ?? new Map()}
                             strongerWhen={computedMeta.get(ax.id)?.strongerWhen ?? "higher"}
+                            fmtValue={computedMeta.get(ax.id)?.fmt ?? formatAxisValue}
                             ranges={axisValueRanges[ax.id] ?? []}
                             markerKey={activeKey}
                             sortDir={rankSort?.target === ax.id ? rankSort.dir : null}
