@@ -1,7 +1,7 @@
 // 계산 축 — "매물 공백(일)": 기준선 가격 위가 비어 있던 구간이 앵커 캔들 왼쪽으로 몇 거래일인가.
 //
 //   값 = 앵커 캔들 **바로 왼쪽**부터 과거로 훑어 `그날 UN 고가 ≥ 기준선` 인 첫 캔들까지의 거래일 수.
-//        바로 전 거래일이 이미 기준선 위였으면 0(공백 없음). 창 끝까지 접촉이 없으면 SATURATED(줄의 오른쪽 끝).
+//        바로 전 거래일이 이미 기준선 위였으면 0(공백 없음). 창 끝까지 접촉이 없으면 saturated(줄의 오른쪽 끝).
 //
 // 뜻: "오늘 이 선을 돌파하면 위에 매물이 있나". 선 위에서 거래된 마지막 날이 멀수록(=값이 클수록) 돌파 후
 // 부딪힐 매물이 없다. 값이 포화면 그 창 안에서는 역사적 신고가다.
@@ -19,9 +19,10 @@
 // 화면 밖에 생겨 육안 검증이 불가능해진다 — 창 길이는 자유 노브가 아니라 차트 깊이에 묶인 값이다.
 // 조회 상한이 타점 날짜라 규칙 2(타점 이후 정보 금지)도 질의 자체로 지켜진다.
 //
-// **포화는 하나의 값(SATURATED)이다.** 훑은 거래일 수를 그대로 쓰면 "창 전체가 비었다"는 같은 판단이 종목의
-// 데이터 길이에 따라 다른 값이 되고, 왼쪽에 캔들이 아예 없는 타점(앵커가 창의 첫 봉)은 0 이 되어 "매물이 바로
-// 옆에 있다"는 정반대 뜻으로 줄의 왼쪽 끝에 선다. 그래서 접촉이 없으면 길이와 무관하게 한 값 — 포화끼리는 동률.
+// **접촉을 못 찾은 건 "아주 긴 공백"이 아니라 다른 종류다**(우측 절단). 값은 훑은 거래일 수 = 하한이고
+// `saturated` 로 표시만 한다 — 줄에서의 자리(실측 최대 다음 칸)와 표기(∞)는 모집단을 아는 클라의 몫이다.
+// 큰 상수로 대신하면 척도가 찌그러지고, 왼쪽에 캔들이 아예 없는 타점(앵커가 창의 첫 봉, 값 0)이 "매물이 바로
+// 옆에 있다"는 정반대 뜻으로 줄 왼쪽 끝에 선다 — 그 타점도 saturated 라 오른쪽 끝에 서는 게 이 표시의 요점이다.
 // ⚠ 대가: 왼쪽 정보가 없는 타점(신규 상장·앵커가 창 왼쪽 끝)도 "가장 비었다"로 선다. 없다는 것과 모른다는 것을
 //   같게 취급하는 선택이고, 화면에서 그 타점의 차트를 보면 바로 구분되므로 감수한다.
 //
@@ -33,11 +34,6 @@ import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
 
 /** 기준선(분모가 아니라 여기선 문턱) 파라미터. */
 const PARAM = "baseline";
-/**
- * 접촉 없음 = 포화. 창(2년 ≈ 490 거래일)이 낼 수 있는 어떤 실제 공백보다 크게 잡아 **언제나 줄의 오른쪽 끝**에
- * 서게 한다. 레일 스케일이 뭉개지지 않도록 자릿수는 창 길이 언저리로 — 9999 같은 값이면 실제 값들이 왼쪽에 눌린다.
- */
-export const SUPPLY_GAP_SATURATED = 500;
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
 
@@ -48,7 +44,7 @@ export function supplyGapAxis(): ComputedAxisDef {
     return {
         key: "supply-gap",
         name: "매물 공백(일)",
-        version: 2, // v2: 무시 캔들을 공백 일수로 세고(접촉만 아님), 포화를 한 값(SUPPLY_GAP_SATURATED)으로 통일
+        version: 3, // v3: 포화를 큰 상수 대신 saturated 플래그로(값 = 훑은 거래일 = 하한)
         strongerWhen: "higher",
         display: { suffix: "일", decimals: 0, signed: false }, // 거래일 수 — 정수이고 부호가 뜻이 없다
         inputs: ["minute", "adjDaily"],
@@ -107,17 +103,21 @@ async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDep
         const ignored = ignoredOf.get(pk(p));
         const left = daily.filter((c) => c.date < base.anchorDate).sort((a, b) => (a.date < b.date ? 1 : -1));
 
-        let gap = SUPPLY_GAP_SATURATED; // 접촉 없음(왼쪽이 아예 없는 경우 포함) = 포화
+        // 접촉을 못 찾으면 값은 훑은 거래일 수 = **하한**("적어도 이만큼 비었다")이고 saturated 로 표시한다.
+        // 그 자리는 줄의 실측 최대 다음 칸 — 창 길이가 종목마다 달라도 포화끼리는 같은 칸에 선다.
+        let gap = left.length;
+        let saturated = true;
         for (let i = 0; i < left.length; i++) {
             const c = left[i];
             if (ignored?.has(c.date)) continue;
             const high = Number(c.un?.high);
             if (Number.isFinite(high) && high >= threshold) {
                 gap = i;
+                saturated = false;
                 break;
             }
         }
-        out.push({ stockCode: p.stockCode, date: p.date, time: p.time, value: gap });
+        out.push({ stockCode: p.stockCode, date: p.date, time: p.time, value: gap, ...(saturated ? { saturated: true } : {}) });
     }
     return out;
 }

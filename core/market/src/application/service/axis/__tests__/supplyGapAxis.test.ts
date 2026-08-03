@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { IGNORE_CANDLE_PARAM, type DailyCandle, type MinuteCandle, type PointAnchor, type ReviewPointKey } from "#domain";
-import { supplyGapAxis, SUPPLY_GAP_SATURATED } from "../supplyGapAxis.js";
+import { supplyGapAxis } from "../supplyGapAxis.js";
 import type { AxisDeps } from "../axis.js";
 
 const CODE = "005930";
@@ -70,15 +70,20 @@ describe("supplyGapAxis", () => {
         expect(out[0].value).toBe(0);
     });
 
-    it("창 안에 접촉이 없으면 포화 — 훑은 길이와 무관한 한 값(역사적 신고가)", async () => {
+    it("창 안에 접촉이 없으면 saturated — 값은 훑은 거래일 수 = 하한(역사적 신고가)", async () => {
         const dailies = HISTORY.map((d) => (d.date === "2026-06-25" ? daily("2026-06-25", 70) : d));
         const out = await axis.compute([P], deps({ dailies, anchors: [baseline(P)] }));
-        expect(out[0].value).toBe(SUPPLY_GAP_SATURATED);
+        expect(out[0]).toEqual({ ...P, value: 7, saturated: true }); // 앵커 왼쪽 일곱 봉을 훑고 못 찾음
     });
 
-    it("왼쪽에 캔들이 하나도 없어도 포화 — 0(=매물이 바로 옆)으로 뒤집히지 않는다", async () => {
+    it("왼쪽에 캔들이 하나도 없어도 saturated — 값 0 이 '매물이 바로 옆'으로 읽히지 않게", async () => {
         const onlyAnchor = deps({ dailies: [daily(ANCHOR_DATE, 100)], anchors: [baseline(P)] });
-        expect((await axis.compute([P], onlyAnchor))[0].value).toBe(SUPPLY_GAP_SATURATED);
+        expect((await axis.compute([P], onlyAnchor))[0]).toEqual({ ...P, value: 0, saturated: true });
+    });
+
+    it("접촉을 찾은 값에는 saturated 가 안 붙는다 — 실측과 절단을 섞지 않는다", async () => {
+        const out = await axis.compute([P], deps({ dailies: HISTORY, anchors: [baseline(P)] }));
+        expect(out[0].saturated).toBeUndefined();
     });
 
     it("무시 캔들은 접촉이 아닐 뿐 공백 일수로는 센다", async () => {
@@ -87,8 +92,8 @@ describe("supplyGapAxis", () => {
 
         const out = await axis.compute([P], d([baseline(P), ignore(P, "2026-06-25")]));
         // 다음 접촉은 6/19 — 그 사이 6/30·6/29·6/26·[6/25]·6/24·6/23·6/22 일곱 거래일.
-        // 무시한 날을 달력에서 지웠다면 6 이 나온다.
-        expect(out[0].value).toBe(7);
+        // 무시한 날을 달력에서 지웠다면 6 이 나온다. 접촉을 찾았으니 절단도 아니다.
+        expect(out[0]).toEqual({ ...P, value: 7 });
     });
 
     it("무시 캔들은 타점 소유 — 다른 타점의 무시는 이 타점 값에 안 섞인다", async () => {

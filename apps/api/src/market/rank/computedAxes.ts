@@ -36,10 +36,11 @@ const pointKey = (p: ReviewPointKey): string => `${p.stockCode}|${p.date}|${p.ti
 /** 지문에 넣을 파라미터 = 필수 ∪ 선택. 선택 파라미터도 바뀌면 값이 바뀌므로 무효화 대상은 같다. */
 const fingerprintParams = (def: ComputedAxisDef): readonly string[] => [...(def.params ?? []), ...(def.optionalParams ?? [])];
 
-/** 캐시 항목 — 수치 + 구운 시점의 입력 지문(앵커 무관 축은 ""). */
+/** 캐시 항목 — 수치 + 구운 시점의 입력 지문(앵커 무관 축은 "") + 우측 절단 여부(s, 아니면 생략). */
 export interface AxisValueEntry {
     v: number;
     f: string;
+    s?: boolean;
 }
 
 /** 축 하나의 값 파일. values 는 pointKey → 항목(결손은 키 자체가 없다). */
@@ -155,7 +156,7 @@ export class ComputedAxes {
             return entry === undefined || entry.f !== fpOf(pointKey(p));
         });
         const computed = stale.length > 0 ? await def.compute(stale, this.deps.axisDeps) : [];
-        const computedByKey = new Map(computed.map((c) => [pointKey(c), c.value]));
+        const computedByKey = new Map(computed.map((c) => [pointKey(c), c]));
 
         // 조립 — 살아있는 타점만(삭제 청소) + 다시 구운 타점은 새 값·새 지문으로 교체.
         // 다시 구웠는데 값이 안 나온 타점(앵커 해제·재료 소실)은 **지운다** — 옛 값이 남는 게 최악의 실패.
@@ -168,8 +169,8 @@ export class ComputedAxes {
         }
         for (const p of stale) {
             const k = pointKey(p);
-            const v = computedByKey.get(k);
-            if (v !== undefined) { values[k] = { v, f: fpOf(k) }; changed = true; }
+            const c = computedByKey.get(k);
+            if (c !== undefined) { values[k] = { v: c.value, f: fpOf(k), ...(c.saturated ? { s: true } : {}) }; changed = true; }
         }
         if (changed) await this.store.write({ v: FILE_SCHEMA_VERSION, key: def.key, version: def.version, values });
         // 결손 분모: **필수 파라미터가 다 찍힌 타점**만 — 아직 안 찍은 타점은 결손이 아니라 "입력 전"이다
@@ -191,7 +192,10 @@ export class ComputedAxes {
             // 타점 순서 그대로 — 정렬은 클라가 질의 시점 모집단 위에서 한다.
             values: points
                 .filter((p) => values[pointKey(p)] !== undefined)
-                .map((p) => ({ stockCode: p.stockCode, date: p.date, time: p.time, value: values[pointKey(p)].v })),
+                .map((p) => {
+                    const e = values[pointKey(p)];
+                    return { stockCode: p.stockCode, date: p.date, time: p.time, value: e.v, ...(e.s ? { saturated: true } : {}) };
+                }),
         };
     }
 

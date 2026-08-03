@@ -13,6 +13,11 @@ import type { AxisDisplay, ComputedAxisFeed, PlacedPoint, RankAxis } from "@trad
 /** 계산 축 id 접두 — 판단 축 id(DB bigserial 문자열)와 절대 겹치지 않는다. */
 const COMPUTED_PREFIX = "c:";
 
+/** 포화가 실측 최대에서 떨어져 서는 거리 = 축 단위 한 눈금(공백 축이면 1 거래일). 척도를 딱 한 칸만 늘린다. */
+const SATURATED_STEP = 1;
+/** 포화 표기 — 숫자가 아니라 "상한을 못 잡았다"는 뜻이라 수치로 적지 않는다. */
+const SATURATED_LABEL = "∞";
+
 export const computedAxisId = (key: string): string => `${COMPUTED_PREFIX}${key}`;
 
 /** 이 축이 계산 축인가 — 쓰기(배치/해제/이름변경)가 닿으면 안 되는 축인지 판정. */
@@ -30,29 +35,53 @@ export function formatAxisValue(v: number, display?: AxisDisplay): string {
 export interface ComputedAxisView {
     axis: RankAxis;
     line: PlacedPoint[];
-    /** 타점키 → **원시 수치**. 필터·라벨은 orderKey(부호 섞임)가 아니라 이 값을 쓴다("5%~20%"가 그대로 읽히게). */
+    /**
+     * 타점키 → **원시 수치**. 필터·라벨은 orderKey(부호 섞임)가 아니라 이 값을 쓴다("5%~20%"가 그대로 읽히게).
+     * 포화 타점만 예외로 서버 값(하한) 대신 **자리잡은 수**가 들어간다 — 아래 자리잡기 설명 참조.
+     */
     values: Map<string, number>;
     strongerWhen: "higher" | "lower";
-    /** 이 축의 값 표시 함수(단위·자릿수 포함). */
+    /** 이 축의 값 표시 함수(단위·자릿수 포함, 포화는 ∞). */
     fmt: (v: number) => string;
 }
 
-/** 서버 피드 1개 → (축 메타, 합성 줄, 원시 수치). 판단 축 줄과 같은 타입이라 하류 소비자가 그대로 쓴다. */
+/**
+ * 서버 피드 1개 → (축 메타, 합성 줄, 원시 수치). 판단 축 줄과 같은 타입이라 하류 소비자가 그대로 쓴다.
+ *
+ * **포화(우측 절단) 자리잡기가 여기서 일어난다.** 서버는 "상한을 못 잡았다"만 말하고(값은 하한), 어디에 세울지는
+ * 모집단을 봐야 알 수 있어 클라 몫이다. 실측 최댓값 **다음 한 칸**에 전부 몰아 세운다 —
+ *  · 척도가 한 칸만 늘어 실제 값들이 안 눌린다(큰 상수를 쓰면 여기가 무너진다).
+ *  · 같은 수를 공유하니 slotId 가 같아져 포화끼리 **자동으로 동률**이다.
+ *  · 그 수는 실측 어디에도 없으므로 라벨에서 ∞ 로 되짚을 수 있다(별도 배선 없이 fmt 하나로).
+ * ⚠ 이 수는 모집단이 바뀌면 움직인다. 값으로 굳힌 필터 경계(`{kind:"value"}`)는 그때 뜻이 살짝 달라진다 —
+ *   레일이 경계를 타점 앵커로 스냅해 저장하는 게 기본이라 실사용에서는 드물다.
+ */
 export function computedAxisView(feed: ComputedAxisFeed): ComputedAxisView {
     const axisId = computedAxisId(feed.key);
     const sign = feed.strongerWhen === "higher" ? 1 : -1;
+
+    let maxReal = -Infinity;
+    let anySaturated = false;
+    for (const v of feed.values) {
+        if (v.saturated) anySaturated = true;
+        else if (v.value > maxReal) maxReal = v.value;
+    }
+    // 실측이 하나도 없으면(전부 포화) 세울 기준이 없다 → 0 에 다 같이 선다(줄이 한 칸이라 순서에 뜻이 없다).
+    const saturatedValue = maxReal === -Infinity ? 0 : maxReal + SATURATED_STEP;
+
     const line: PlacedPoint[] = [];
     const values = new Map<string, number>();
     for (const v of feed.values) {
-        line.push({ slotId: `${axisId}#${v.value}`, orderKey: sign * v.value, stockCode: v.stockCode, date: v.date, time: v.time });
-        values.set(`${v.stockCode}|${v.date}|${v.time}`, v.value);
+        const value = v.saturated ? saturatedValue : v.value;
+        line.push({ slotId: `${axisId}#${value}`, orderKey: sign * value, stockCode: v.stockCode, date: v.date, time: v.time });
+        values.set(`${v.stockCode}|${v.date}|${v.time}`, value);
     }
     return {
         axis: { id: axisId, name: feed.name, scope: "point" },
         line,
         values,
         strongerWhen: feed.strongerWhen,
-        fmt: (v) => formatAxisValue(v, feed.display),
+        fmt: (v) => (anySaturated && v === saturatedValue ? SATURATED_LABEL : formatAxisValue(v, feed.display)),
     };
 }
 

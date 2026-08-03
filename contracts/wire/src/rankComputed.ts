@@ -11,6 +11,11 @@ export interface ComputedAxisPoint {
     date: string; // YYYY-MM-DD
     time: string; // HH:MM:SS
     value: number;
+    /**
+     * 상한이 안 잡힌 값(우측 절단) — `value` 는 참값이 아니라 하한이다. 자리(실측 최대 다음 칸)와 표기(∞)는
+     * 모집단을 아는 **클라가** 정한다: 서버가 큰 상수로 굳히면 척도가 찌그러지고 모르는 걸 아는 척하게 된다.
+     */
+    saturated?: boolean;
 }
 
 export interface ComputedAxisFeed {
