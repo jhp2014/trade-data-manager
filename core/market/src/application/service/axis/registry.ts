@@ -7,6 +7,7 @@ import type { ComputedAxisDef } from "./axis.js";
 import { dailyChangeAxis } from "./dailyChangeAxis.js";
 import { baselinePositionAxis } from "./baselinePositionAxis.js";
 import { supplyGapAxis } from "./supplyGapAxis.js";
+import { baselineDistanceAxis } from "./baselineDistanceAxis.js";
 
 // KRX 판(dailyChangeAxis("krx"))은 **일부러 안 만든다.** 그 축 자체는 자기완결적이고(분자·분모 둘 다 KRX =
 // HTS 공식 등락률) 틀린 축이 아니다. 안 만드는 이유는 둘:
@@ -18,6 +19,7 @@ export const COMPUTED_AXES: readonly ComputedAxisDef[] = [
     dailyChangeAxis("un"),
     baselinePositionAxis(), // baseline 앵커 소비 — 분모는 앵커 가격이라 전일종가·시장 개념이 없다
     supplyGapAxis(), // baseline 을 문턱으로 왼쪽 스캔 — 같은 앵커를 다른 뜻으로 읽는 두 번째 축
+    baselineDistanceAxis(), // 같은 앵커의 **좌표만** — 공백(왼쪽)과 앵커를 사이에 두고 반대쪽(오른쪽)을 잰다
 ];
 
 /** key → 정의. 캐시·컨트롤러가 이름으로 지목할 때. */
