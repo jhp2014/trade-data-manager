@@ -103,7 +103,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         () => (activeAnchors.length > 0 ? resolvePointAnchorLines(activeAnchors, dailyQ.data, minuteQ.data) : []),
         [activeAnchors, dailyQ.data, minuteQ.data],
     );
-    // 무시 캔들 — 선이 아니라 캔들 자체를 표시한다(값이 아니라 "이 봉을 안 본다"는 뜻이라 수평선이 될 수 없다).
+    // 무시 캔들 — 선이 아니라 그 봉의 마커에 적는다(값이 아니라 "이 봉을 안 본다"는 뜻이라 수평선이 될 수 없다).
     const ignoredDates = useMemo(
         () => activeAnchors.filter((a) => a.param === IGNORE_CANDLE_PARAM).map((a) => a.anchorDate),
         [activeAnchors],

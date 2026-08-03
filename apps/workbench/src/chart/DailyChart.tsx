@@ -56,7 +56,7 @@ export interface DailyChartProps {
     /** 검색일 전일종가 — 크로스헤어 위치 %·+30% 가이드선의 분모. */
     pctBase?: number | null;
     showGuide?: boolean;
-    /** 현재 타점이 무시 캔들로 지목한 거래일 — 봉 아래 표식. 값이 아니라 "안 본다"는 뜻이라 선이 아니다. */
+    /** 현재 타점이 무시 캔들로 지목한 거래일 — 봉 위 마커에 함께 적힌다. 값이 아니라 "안 본다"는 뜻이라 선이 아니다. */
     ignoredDates?: readonly string[];
 }
 

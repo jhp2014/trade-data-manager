@@ -113,21 +113,27 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points]);
 
-    // 마커 — 위: 고가 등락률(임계 이상만), 아래: 무시 캔들(계산 축이 없는 셈 치는 봉).
-    // 무시 표시가 아래인 이유는 등락률 마커와 자리를 다투지 않기 위해서다(무시 대상은 대개 고가가 튄 봉이라 겹친다).
+    // 봉 위 마커 한 벌 — 고가 등락률(임계 이상만) + 무시 표시(계산 축이 없는 셈 치는 봉)를 **한 자리에** 적는다.
+    // 무시 대상은 대개 고가가 튄 봉이라 둘이 늘 같은 봉에 걸린다 → 따로 그리면 눈이 두 번 움직이고 자리도 다툰다.
+    //
+    // 무시 캔들은 tier 색을 회색으로 덮는다. 그 등락률 숫자 자체가 **못 믿겠다고 선언한 고가**에서 나온 값이라,
+    // tier 색으로 칠하면 "이 봉 강했다"고 강조하는 셈이 된다(무시는 그 반대 주장이다). 숫자를 남기는 건 읽으라고가
+    // 아니라 식별하라고 — 나중에 차트를 다시 열었을 때 "내가 죽인 게 저 봉"을 확인하는 게 무시 표시의 절반이다.
     const ignoredKey = [...ignoredDates].sort().join(",");
     useEffect(() => {
         const ignored = new Set(ignoredKey ? ignoredKey.split(",") : []);
         const markers = [];
         for (const p of points) {
-            if (p.prevClose && p.prevClose > 0) {
-                const pct = ((p.high - p.prevClose) / p.prevClose) * 100;
-                const color = highMarkerColor(pct);
-                if (color) markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: `${pct.toFixed(1)}` });
-            }
-            if (ignored.has(p.time)) {
-                markers.push({ time: p.time as Time, position: "belowBar" as const, color: IGNORED_CANDLE, shape: "square" as const, size: 1, text: "무시" });
-            }
+            const isIgnored = ignored.has(p.time);
+            // 등락률은 원래 규칙 그대로(전일종가 없거나 임계 미만이면 없음) — 무시라고 없던 숫자를 만들지 않는다.
+            const pct = p.prevClose && p.prevClose > 0 ? ((p.high - p.prevClose) / p.prevClose) * 100 : null;
+            const tier = pct === null ? null : highMarkerColor(pct);
+            const color = isIgnored ? IGNORED_CANDLE : tier;
+            if (color === null) continue; // 등락률도 임계 미만이고 무시도 아님 = 적을 게 없다
+            const parts: string[] = [];
+            if (tier !== null && pct !== null) parts.push(pct.toFixed(1));
+            if (isIgnored) parts.push("무시");
+            markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: parts.join(" · ") });
         }
         series.markersRef.current?.setMarkers(markers);
         // eslint-disable-next-line react-hooks/exhaustive-deps
