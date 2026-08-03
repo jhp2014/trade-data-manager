@@ -1,7 +1,7 @@
 // 계산 축 — "매물 공백(일)": 기준선 가격 위가 비어 있던 구간이 앵커 캔들 왼쪽으로 몇 거래일인가.
 //
 //   값 = 앵커 캔들 **바로 왼쪽**부터 과거로 훑어 `그날 UN 고가 ≥ 기준선` 인 첫 캔들까지의 거래일 수.
-//        바로 전 거래일이 이미 기준선 위였으면 0(공백 없음). 창 끝까지 접촉이 없으면 훑은 거래일 수 전부(포화).
+//        바로 전 거래일이 이미 기준선 위였으면 0(공백 없음). 창 끝까지 접촉이 없으면 SATURATED(줄의 오른쪽 끝).
 //
 // 뜻: "오늘 이 선을 돌파하면 위에 매물이 있나". 선 위에서 거래된 마지막 날이 멀수록(=값이 클수록) 돌파 후
 // 부딪힐 매물이 없다. 값이 포화면 그 창 안에서는 역사적 신고가다.
@@ -19,8 +19,13 @@
 // 화면 밖에 생겨 육안 검증이 불가능해진다 — 창 길이는 자유 노브가 아니라 차트 깊이에 묶인 값이다.
 // 조회 상한이 타점 날짜라 규칙 2(타점 이후 정보 금지)도 질의 자체로 지켜진다.
 //
-// 결손(축에서 빠짐): 기준선 앵커 없음 · 앵커 캔들이 창 밖이거나 미수집 · 기준값 0 · 왼쪽에 캔들이 하나도 없음.
-// 마지막 것을 0 으로 내보내면 "매물이 바로 옆에 있다"는 거짓말이 된다(재료 없음 ≠ 공백 없음).
+// **포화는 하나의 값(SATURATED)이다.** 훑은 거래일 수를 그대로 쓰면 "창 전체가 비었다"는 같은 판단이 종목의
+// 데이터 길이에 따라 다른 값이 되고, 왼쪽에 캔들이 아예 없는 타점(앵커가 창의 첫 봉)은 0 이 되어 "매물이 바로
+// 옆에 있다"는 정반대 뜻으로 줄의 왼쪽 끝에 선다. 그래서 접촉이 없으면 길이와 무관하게 한 값 — 포화끼리는 동률.
+// ⚠ 대가: 왼쪽 정보가 없는 타점(신규 상장·앵커가 창 왼쪽 끝)도 "가장 비었다"로 선다. 없다는 것과 모른다는 것을
+//   같게 취급하는 선택이고, 화면에서 그 타점의 차트를 보면 바로 구분되므로 감수한다.
+//
+// 결손(축에서 빠짐): 기준선 앵커 없음 · 앵커 캔들이 창 밖이거나 미수집 · 기준값 0.
 import { IGNORE_CANDLE_PARAM, type DailyCandle, type MinuteCandle, type PointAnchor, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
@@ -28,6 +33,11 @@ import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
 
 /** 기준선(분모가 아니라 여기선 문턱) 파라미터. */
 const PARAM = "baseline";
+/**
+ * 접촉 없음 = 포화. 창(2년 ≈ 490 거래일)이 낼 수 있는 어떤 실제 공백보다 크게 잡아 **언제나 줄의 오른쪽 끝**에
+ * 서게 한다. 레일 스케일이 뭉개지지 않도록 자릿수는 창 길이 언저리로 — 9999 같은 값이면 실제 값들이 왼쪽에 눌린다.
+ */
+export const SUPPLY_GAP_SATURATED = 500;
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
 
@@ -38,7 +48,7 @@ export function supplyGapAxis(): ComputedAxisDef {
     return {
         key: "supply-gap",
         name: "매물 공백(일)",
-        version: 1,
+        version: 2, // v2: 무시 캔들을 공백 일수로 세고(접촉만 아님), 포화를 한 값(SUPPLY_GAP_SATURATED)으로 통일
         strongerWhen: "higher",
         display: { suffix: "일", decimals: 0, signed: false }, // 거래일 수 — 정수이고 부호가 뜻이 없다
         inputs: ["minute", "adjDaily"],
@@ -92,17 +102,17 @@ async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDep
         const threshold = baselinePrice(base, daily, minutesByDay);
         if (threshold === null) continue;
 
-        // 왼쪽 = 앵커보다 과거, 무시 캔들 제외, 최신순. UN 고가를 못 읽는 날도 뺀다 — 판단할 재료가 없는 날을
-        // "비어 있었다"로 세면 공백을 지어내는 것이다(실제로는 UN 일봉이 항상 있어 안 일어난다).
+        // 왼쪽 = 앵커보다 과거, 최신순. 무시 캔들과 UN 고가를 못 읽는 날은 **접촉이 아닐 뿐 날수로는 센다** —
+        // 달력에서 지우는 게 아니라 "그날 거래는 없던 걸로 본다"는 뜻이라 공백의 길이는 그대로 흘러야 한다.
         const ignored = ignoredOf.get(pk(p));
-        const left = daily
-            .filter((c) => c.date < base.anchorDate && !ignored?.has(c.date) && Number.isFinite(Number(c.un?.high)))
-            .sort((a, b) => (a.date < b.date ? 1 : -1));
-        if (left.length === 0) continue; // 재료 없음 — 0(=공백 없음)으로 지어내지 않는다
+        const left = daily.filter((c) => c.date < base.anchorDate).sort((a, b) => (a.date < b.date ? 1 : -1));
 
-        let gap = left.length; // 접촉 없음 = 포화(훑은 거래일 전부가 공백)
+        let gap = SUPPLY_GAP_SATURATED; // 접촉 없음(왼쪽이 아예 없는 경우 포함) = 포화
         for (let i = 0; i < left.length; i++) {
-            if (Number(left[i].un?.high) >= threshold) {
+            const c = left[i];
+            if (ignored?.has(c.date)) continue;
+            const high = Number(c.un?.high);
+            if (Number.isFinite(high) && high >= threshold) {
                 gap = i;
                 break;
             }

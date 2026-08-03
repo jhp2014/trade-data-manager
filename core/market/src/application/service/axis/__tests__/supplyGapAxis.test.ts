@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { IGNORE_CANDLE_PARAM, type DailyCandle, type MinuteCandle, type PointAnchor, type ReviewPointKey } from "#domain";
-import { supplyGapAxis } from "../supplyGapAxis.js";
+import { supplyGapAxis, SUPPLY_GAP_SATURATED } from "../supplyGapAxis.js";
 import type { AxisDeps } from "../axis.js";
 
 const CODE = "005930";
@@ -52,6 +52,9 @@ const HISTORY: DailyCandle[] = [
     daily(ANCHOR_DATE, 100),
 ];
 
+/** 6/25 를 무시했을 때 다음 접촉이 있도록 더 왼쪽에 하나 더(6/19). 무시 일수를 세는지 아닌지가 여기서 갈린다. */
+const WITH_OLDER_CONTACT: DailyCandle[] = [daily("2026-06-19", 110), ...HISTORY];
+
 describe("supplyGapAxis", () => {
     const axis = supplyGapAxis();
     const P = point();
@@ -67,25 +70,33 @@ describe("supplyGapAxis", () => {
         expect(out[0].value).toBe(0);
     });
 
-    it("창 안에 접촉이 없으면 훑은 거래일 수 전부 = 포화(역사적 신고가)", async () => {
+    it("창 안에 접촉이 없으면 포화 — 훑은 길이와 무관한 한 값(역사적 신고가)", async () => {
         const dailies = HISTORY.map((d) => (d.date === "2026-06-25" ? daily("2026-06-25", 70) : d));
         const out = await axis.compute([P], deps({ dailies, anchors: [baseline(P)] }));
-        expect(out[0].value).toBe(7); // 앵커 왼쪽 일곱 봉 전부 공백
+        expect(out[0].value).toBe(SUPPLY_GAP_SATURATED);
     });
 
-    it("무시 캔들은 없는 셈 친다 — 접촉도 아니고 공백 일수로도 안 센다", async () => {
-        const anchors = [baseline(P), ignore(P, "2026-06-25")];
-        const out = await axis.compute([P], deps({ dailies: HISTORY, anchors }));
-        // 6/25 를 빼면 다음 접촉은 6/24(95)…도 기준선 아래 → 창 끝까지 접촉 없음. 남은 여섯 봉이 전부 공백.
-        expect(out[0].value).toBe(6);
+    it("왼쪽에 캔들이 하나도 없어도 포화 — 0(=매물이 바로 옆)으로 뒤집히지 않는다", async () => {
+        const onlyAnchor = deps({ dailies: [daily(ANCHOR_DATE, 100)], anchors: [baseline(P)] });
+        expect((await axis.compute([P], onlyAnchor))[0].value).toBe(SUPPLY_GAP_SATURATED);
+    });
+
+    it("무시 캔들은 접촉이 아닐 뿐 공백 일수로는 센다", async () => {
+        const d = (anchors: PointAnchor[]) => deps({ dailies: WITH_OLDER_CONTACT, anchors });
+        expect((await axis.compute([P], d([baseline(P)])))[0].value).toBe(3); // 6/25 가 접촉
+
+        const out = await axis.compute([P], d([baseline(P), ignore(P, "2026-06-25")]));
+        // 다음 접촉은 6/19 — 그 사이 6/30·6/29·6/26·[6/25]·6/24·6/23·6/22 일곱 거래일.
+        // 무시한 날을 달력에서 지웠다면 6 이 나온다.
+        expect(out[0].value).toBe(7);
     });
 
     it("무시 캔들은 타점 소유 — 다른 타점의 무시는 이 타점 값에 안 섞인다", async () => {
         const other = point("10:00:00");
         const anchors = [baseline(P), baseline(other), ignore(other, "2026-06-25")];
-        const out = await axis.compute([P, other], deps({ dailies: HISTORY, anchors }));
+        const out = await axis.compute([P, other], deps({ dailies: WITH_OLDER_CONTACT, anchors }));
         expect(out.find((v) => v.time === P.time)?.value).toBe(3); // 무시 없음
-        expect(out.find((v) => v.time === other.time)?.value).toBe(6); // 무시 반영
+        expect(out.find((v) => v.time === other.time)?.value).toBe(7); // 무시 반영
     });
 
     it("스캔은 언제나 UN — KRX 기준선 앵커라도 왼쪽은 UN 고가로 훑는다", async () => {
@@ -102,15 +113,11 @@ describe("supplyGapAxis", () => {
         expect((await axis.compute([P], d))[0].value).toBe(3);
     });
 
-    it("기준선 없음 · 앵커 캔들 미수집 · 왼쪽 캔들 없음은 결손", async () => {
+    it("기준선 없음 · 앵커 캔들 미수집은 결손 — 문턱을 모르면 잴 것이 없다", async () => {
         expect(await axis.compute([P], deps({ dailies: HISTORY, anchors: [] }))).toEqual([]);
 
         const noAnchorCandle = deps({ dailies: HISTORY.filter((d) => d.date !== ANCHOR_DATE), anchors: [baseline(P)] });
         expect(await axis.compute([P], noAnchorCandle)).toEqual([]);
-
-        // 앵커가 창의 첫 봉 — 왼쪽에 아무것도 없다. 0(=공백 없음)으로 지어내면 안 된다.
-        const onlyAnchor = deps({ dailies: [daily(ANCHOR_DATE, 100)], anchors: [baseline(P)] });
-        expect(await axis.compute([P], onlyAnchor)).toEqual([]);
     });
 
     it("기준선 없는 타점은 캔들 읽기 없이 빠진다", async () => {
