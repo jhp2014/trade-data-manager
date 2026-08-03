@@ -99,9 +99,9 @@ export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, act
                                                     <button key={field} disabled={disabled}
                                                         onClick={() => { onSetAnchor(p.key, { field, market }); onClose(); }}
                                                         title={disabled ? "이 시각은 저장 타점이 아닙니다 — 스페이스바로 타점을 저장한 뒤에" : `${market.toUpperCase()} ${label} ${fmt(bar[field])} 를 ${p.name}으로`}
-                                                        style={{ flex: 1, minWidth: 0, border: "1px solid var(--border-default)", borderRadius: 4, background: "transparent", color: disabled ? "var(--text-tertiary)" : "var(--text-primary)", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontSize: 10.5, padding: "3px 2px", lineHeight: 1.3 }}>
-                                                        <div style={{ color: "var(--text-tertiary)" }}>{label}</div>
-                                                        <div style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{fmt(bar[field])}</div>
+                                                        style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: "1px solid var(--border-default)", borderRadius: 4, background: "transparent", color: disabled ? "var(--text-tertiary)" : "var(--text-primary)", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                                                        <span style={{ color: "var(--text-tertiary)" }}>{label}</span>
+                                                        <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{fmt(bar[field])}</span>
                                                     </button>
                                                 ))}
                                             </div>

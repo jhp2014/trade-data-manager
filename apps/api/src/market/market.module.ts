@@ -167,18 +167,20 @@ const curationProviders: Provider[] = [
         inject: [CURATION_POOL],
     },
     {
-        // 계산 축 — 수식으로 나오는 축의 타점별 수치 + 축당 파일 캐시(증분). 배치를 만들지 않으므로 rank repo 와 무관하다.
-        // 두 DB를 함께 쓴다: 모집단(복기 타점)은 curation, 재료(분봉·일봉)는 market.
+        // 계산 축 — 수식으로 나오는 축의 타점별 수치 + 축당 파일 캐시(증분·앵커 지문 자동 무효화).
+        // 배치를 만들지 않으므로 rank repo 와 무관하다. 두 DB를 함께 쓴다: 모집단(타점)·앵커는 curation, 시세는 market.
         provide: COMPUTED_AXES,
         useFactory: (marketPool: Pool, curationPool: Pool): ComputedAxes => {
             const db = createDb(marketPool);
+            const curationDb = createDb(curationPool);
             const dailyRepo = new DrizzleDailyCandleRepository(db); // 수정주가 창(AdjustedDailyReader)
             return new ComputedAxes({
-                points: new DrizzleReviewPointRepository(createDb(curationPool)),
+                points: new DrizzleReviewPointRepository(curationDb),
                 axisDeps: {
                     minute: new DrizzleMinuteCandleRepository(db),
                     rawDaily: new DrizzleRawDailyCandleRepository(db),
                     adjDaily: dailyRepo,
+                    pointAnchor: new DrizzlePointAnchorRepository(curationDb),
                 },
             });
         },

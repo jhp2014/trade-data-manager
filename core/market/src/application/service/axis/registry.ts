@@ -5,10 +5,12 @@
 //   축이 늘면 시트 열이 늘고 배치 노동이 아니라 화면이 먼저 무너진다.
 import type { ComputedAxisDef } from "./axis.js";
 import { dailyChangeAxis } from "./dailyChangeAxis.js";
+import { baselinePositionAxis } from "./baselinePositionAxis.js";
 
 export const COMPUTED_AXES: readonly ComputedAxisDef[] = [
     dailyChangeAxis("un"),
     // dailyChangeAxis("krx"),  // KRX 도 볼 때 주석 해제 — 시장별 별개 축(축 안 토글 금지).
+    baselinePositionAxis(), // baseline 앵커 소비 — 시장은 앵커가 정한다(축 시장 파라미터 없음)
 ];
 
 /** key → 정의. 캐시·컨트롤러가 이름으로 지목할 때. */

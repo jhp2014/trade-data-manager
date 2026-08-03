@@ -14,7 +14,7 @@
 //  3. **결손은 결손으로**: 재료가 없으면(분봉 부재·기준가 부재·해당 시장 세션 없음) 값을 지어내지 않고
 //     결과에서 뺀다 = 그 축에 미배치. 소비자(3치 술어)가 이미 결손을 다룬다.
 import type { ReviewPointKey } from "#domain";
-import type { AdjustedDailyReader, MinuteReader, RawDailyReader } from "#port/query";
+import type { AdjustedDailyReader, MinuteReader, PointAnchorReader, RawDailyReader } from "#port/query";
 
 /** 시장 구분 — 축은 하나의 시장을 고른다(둘 다 보고 싶으면 축을 둘로. 축 안 토글 금지). */
 export type AxisMarket = "krx" | "un";
@@ -27,6 +27,8 @@ export interface AxisDeps {
     minute: MinuteReader;
     rawDaily: RawDailyReader;
     adjDaily: AdjustedDailyReader;
+    /** 타점 파라미터 앵커(사람 입력) — params 를 선언한 축만 읽는다. */
+    pointAnchor: PointAnchorReader;
 }
 
 /** 한 타점의 계산값. 결손인 타점은 아예 배열에 없다(null 을 싣지 않는다). */
@@ -52,6 +54,12 @@ export interface ComputedAxisDef {
     strongerWhen: "higher" | "lower";
     /** 읽는 재료 선언. */
     inputs: readonly AxisInput[];
+    /**
+     * 의존하는 타점 파라미터(ANCHOR_PARAMS 키). 선언하면 캐시 계층이 **타점별 앵커 지문**을 캐시 키에 넣는다 —
+     * 앵커를 지정/이동/해제하면 그 타점만 자동 재계산된다(사용자가 캐시를 의식할 일 없음).
+     * 앵커 없는 타점은 이 축에서 결손. 생략 = 앵커 무관(당일 % 류).
+     */
+    params?: readonly string[];
     /**
      * 배치 계산 — 타점 집합을 받아 값 있는 것만 돌려준다.
      * 배치인 이유는 읽기를 모으기 위해서다(타점당 쿼리면 N+1). 값 자체는 규칙 1대로 타점별 독립이어야 한다.

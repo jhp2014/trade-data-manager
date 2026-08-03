@@ -7,11 +7,16 @@
 // 증분이 가능한 이유는 축이 **타점별 독립**이기 때문(core axis.ts 규칙 1): 타점이 하나 늘면 그것만 계산해
 // 덧붙인다. 축이 모집단(백분위 등)에 의존했다면 타점 하나에 전량 재계산이었을 것이다.
 //
+// **앵커 지문(무효화의 심장)**: params 를 선언한 축은 값이 사람 입력(타점 파라미터 앵커)에 의존한다.
+// 캐시 항목마다 그 타점의 앵커 지문(f)을 함께 저장하고, 매 요청 현재 앵커와 대조해 **다른 것만** 다시 굽는다 —
+// 앵커를 지정/이동/해제하면 그 타점만 자동 재계산되고, 사용자는 캐시를 의식할 일이 없다.
+// (시장 데이터 변경(백필·수정주가 재작성)은 지문 밖 — 드물어서 운영 처방 = def.version 상향/캐시 삭제.)
+//
 // 결손(값 없음)은 캐시하지 않는다 — 분봉 미수집 타점이 나중에 채워질 수 있어 "없음"을 굳히면 영구 오염이다
 // (DerivedCache 가 오늘 날짜를 안 굳히는 것과 같은 이유). 대신 결손 비율이 높으면 트립와이어로 알린다.
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { ComputedAxisDef, AxisDeps, ReviewPointKey, ReviewPointReader } from "@trade-data-manager/market";
+import type { ComputedAxisDef, AxisDeps, PointAnchor, ReviewPointKey, ReviewPointReader } from "@trade-data-manager/market";
 import { COMPUTED_AXES } from "@trade-data-manager/market";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
 
@@ -19,21 +24,28 @@ export type { ComputedAxisFeed };
 
 const CACHE_ROOT = process.env.RANK_AXIS_CACHE_DIR ?? path.resolve(process.cwd(), ".cache/rank-axis");
 
-/** 파일 스키마 버전. 파일 모양(축 정의가 아니라)이 바뀌면 올린다 — 축 계산식 변경은 def.version 쪽. */
-const FILE_SCHEMA_VERSION = 1;
+/** 파일 스키마 버전. 파일 모양(축 정의가 아니라)이 바뀌면 올린다 — 축 계산식 변경은 def.version 쪽.
+ *  v2: 값에 입력 지문(f) 동봉 — 앵커 의존 축의 자동 무효화. v1 구파일 = miss(전량 재빌드). */
+const FILE_SCHEMA_VERSION = 2;
 
 /** 결손 경고 임계 — 이 비율을 넘으면 재료 파이프라인 의심(분봉 미수집·시각 이상). */
 const MISSING_WARN_RATIO = 0.2;
 
 const pointKey = (p: ReviewPointKey): string => `${p.stockCode}|${p.date}|${p.time}`;
 
-/** 축 하나의 값 파일. values 는 pointKey → 수치(결손은 키 자체가 없다). */
+/** 캐시 항목 — 수치 + 구운 시점의 입력 지문(앵커 무관 축은 ""). */
+export interface AxisValueEntry {
+    v: number;
+    f: string;
+}
+
+/** 축 하나의 값 파일. values 는 pointKey → 항목(결손은 키 자체가 없다). */
 export interface AxisValueFile {
     v: number;
     key: string;
     /** 구운 시점의 축 계산식 버전. def.version 과 다르면 통째 무효. */
     version: number;
-    values: Record<string, number>;
+    values: Record<string, AxisValueEntry>;
 }
 
 /** 값 저장소 — 파일 I/O 를 분리해 테스트가 in-memory fake 를 주입한다. */
@@ -88,37 +100,76 @@ export class ComputedAxes {
     async feeds(): Promise<ComputedAxisFeed[]> {
         if (this.defs.length === 0) return [];
         const points = await this.deps.points.listAllPoints();
-        return Promise.all(this.defs.map((def) => this.feed(def, points)));
+        // 앵커는 지문용으로 한 번만 읽는다(축이 compute 안에서 또 읽는 건 축 자신의 몫 — 축끼리 재료 비공유 원칙).
+        // params 선언 축이 하나도 없으면 조회 자체를 건너뛴다.
+        const anchors = this.defs.some((d) => (d.params?.length ?? 0) > 0) ? await this.deps.axisDeps.pointAnchor.listAll() : [];
+        return Promise.all(this.defs.map((def) => this.feed(def, points, anchors)));
     }
 
-    private feed(def: ComputedAxisDef, points: ReviewPointKey[]): Promise<ComputedAxisFeed> {
+    private feed(def: ComputedAxisDef, points: ReviewPointKey[], anchors: PointAnchor[]): Promise<ComputedAxisFeed> {
         const existing = this.inFlight.get(def.key);
         if (existing) return existing;
-        const p = this.build(def, points).finally(() => this.inFlight.delete(def.key));
+        const p = this.build(def, points, anchors).finally(() => this.inFlight.delete(def.key));
         this.inFlight.set(def.key, p);
         return p;
     }
 
-    private async build(def: ComputedAxisDef, points: ReviewPointKey[]): Promise<ComputedAxisFeed> {
+    /**
+     * 이 축에서 타점의 입력 지문 — 선언된 params 의 앵커 좌표 직렬화. 앵커가 바뀌면 문자열이 바뀐다.
+     * params 없는 축은 항상 ""(= 지문 대조가 무의미, 캐시 히트는 존재 여부만으로).
+     */
+    private fingerprint(def: ComputedAxisDef, anchorsOfPoint: PointAnchor[]): string {
+        const params = def.params ?? [];
+        if (params.length === 0) return "";
+        return anchorsOfPoint
+            .filter((a) => params.includes(a.param))
+            .sort((x, y) => (x.param < y.param ? -1 : 1))
+            .map((a) => `${a.param}@${a.anchorDate}T${a.anchorTime ?? ""}|${a.field ?? ""}|${a.market ?? ""}`)
+            .join(";");
+    }
+
+    private async build(def: ComputedAxisDef, points: ReviewPointKey[], anchors: PointAnchor[]): Promise<ComputedAxisFeed> {
         const cached = await this.store.read(def.key);
         // 계산식이 바뀌었으면(version 상향) 옛 값은 다른 식의 산물이라 통째로 버린다.
         const known = cached && cached.version === def.version ? cached.values : {};
 
-        const live = new Set(points.map(pointKey));
-        const missing = points.filter((p) => known[pointKey(p)] === undefined);
-        const computed = missing.length > 0 ? await def.compute(missing, this.deps.axisDeps) : [];
-
-        // 살아있는 타점만 남긴다(삭제된 타점의 값은 캐시에서 청소).
-        const values: Record<string, number> = {};
-        for (const [k, v] of Object.entries(known)) if (live.has(k)) values[k] = v;
-        for (const c of computed) values[pointKey(c)] = c.value;
-
-        const grew = computed.length > 0;
-        const shrank = Object.keys(known).some((k) => !live.has(k));
-        if (grew || shrank || !cached || cached.version !== def.version) {
-            await this.store.write({ v: FILE_SCHEMA_VERSION, key: def.key, version: def.version, values });
+        const anchorsByPoint = new Map<string, PointAnchor[]>();
+        for (const a of anchors) {
+            const k = pointKey(a);
+            const list = anchorsByPoint.get(k);
+            if (list) list.push(a);
+            else anchorsByPoint.set(k, [a]);
         }
-        this.reportMissing(def, points.length, Object.keys(values).length);
+        const fpOf = (k: string): string => this.fingerprint(def, anchorsByPoint.get(k) ?? []);
+
+        // 다시 구울 타점 = 캐시에 없음 ∪ 지문 불일치(앵커 지정/이동/해제). 나머지는 캐시 히트.
+        const live = new Set(points.map(pointKey));
+        const stale = points.filter((p) => {
+            const entry = known[pointKey(p)];
+            return entry === undefined || entry.f !== fpOf(pointKey(p));
+        });
+        const computed = stale.length > 0 ? await def.compute(stale, this.deps.axisDeps) : [];
+        const computedByKey = new Map(computed.map((c) => [pointKey(c), c.value]));
+
+        // 조립 — 살아있는 타점만(삭제 청소) + 다시 구운 타점은 새 값·새 지문으로 교체.
+        // 다시 구웠는데 값이 안 나온 타점(앵커 해제·재료 소실)은 **지운다** — 옛 값이 남는 게 최악의 실패.
+        const values: Record<string, AxisValueEntry> = {};
+        let changed = !cached || cached.version !== def.version;
+        for (const [k, entry] of Object.entries(known)) {
+            if (!live.has(k)) { changed = true; continue; } // 타점 삭제
+            if (entry.f !== fpOf(k)) { changed = true; continue; } // stale — 아래 computed 가 있으면 새로 채움
+            values[k] = entry;
+        }
+        for (const p of stale) {
+            const k = pointKey(p);
+            const v = computedByKey.get(k);
+            if (v !== undefined) { values[k] = { v, f: fpOf(k) }; changed = true; }
+        }
+        if (changed) await this.store.write({ v: FILE_SCHEMA_VERSION, key: def.key, version: def.version, values });
+        // 결손 분모: params 축은 **앵커 있는 타점**만 — 앵커를 아직 안 찍은 타점은 결손이 아니라 "입력 전"이다
+        // (그걸 분모에 넣으면 정상 상태가 상시 경고가 된다).
+        const eligible = (def.params?.length ?? 0) > 0 ? points.filter((p) => fpOf(pointKey(p)) !== "").length : points.length;
+        this.reportMissing(def, eligible, Object.keys(values).length);
 
         return {
             key: def.key,
@@ -127,7 +178,7 @@ export class ComputedAxes {
             // 타점 순서 그대로 — 정렬은 클라가 질의 시점 모집단 위에서 한다.
             values: points
                 .filter((p) => values[pointKey(p)] !== undefined)
-                .map((p) => ({ stockCode: p.stockCode, date: p.date, time: p.time, value: values[pointKey(p)] })),
+                .map((p) => ({ stockCode: p.stockCode, date: p.date, time: p.time, value: values[pointKey(p)].v })),
         };
     }
 

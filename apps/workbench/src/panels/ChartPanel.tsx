@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
-import { chartQuery, pointAnchorsQuery } from "../api/queries.js";
+import { chartQuery, pointAnchorsQuery, computedAxesQuery } from "../api/queries.js";
 import { upsertPointAnchor, removePointAnchor } from "../api/pointAnchors.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews, resolvePointAnchorLines, ANCHOR_LINE_COLOR } from "../lib/chartFrame.js";
@@ -85,7 +85,12 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         () => (anchorTime ? (anchorsQ.data ?? []).filter((a) => a.time === anchorTime) : []),
         [anchorsQ.data, anchorTime],
     );
-    const invAnchors = (): void => void qc.invalidateQueries({ queryKey: pointAnchorsQuery(code, viewDate).queryKey });
+    const invAnchors = (): void => {
+        void qc.invalidateQueries({ queryKey: pointAnchorsQuery(code, viewDate).queryKey });
+        // 앵커는 계산 축(params 선언)의 입력 — 지정/이동/해제 즉시 축 값이 따라와야 한다(서버는 지문으로
+        // 그 타점만 다시 굽는다). 사용자가 새로고침을 의식하게 하지 않는 게 규칙.
+        void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
+    };
     const setAnchorMut = useMutation({ mutationFn: upsertPointAnchor, onSuccess: invAnchors });
     const clearAnchorMut = useMutation({
         mutationFn: (v: { param: string }) => removePointAnchor({ stockCode: code, date: viewDate, time: anchorTime ?? "" }, v.param),
