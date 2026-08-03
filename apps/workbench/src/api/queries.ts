@@ -6,6 +6,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
 import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
+import { fetchPointAnchors } from "./pointAnchors.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchTags, fetchTagAttachments } from "./tags.js";
@@ -34,6 +35,10 @@ export const daySummaryQuery = (date: string) =>
 
 export const priceLinesQuery = (code: string, date: string) =>
     queryOptions({ queryKey: ["price-lines", code, date], queryFn: ({ signal }) => fetchPriceLines(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
+
+// 타점 파라미터 앵커 — 이 차트 타점들의 계산 입력 좌표. 편집형(지정/해제 mutation 이 invalidate) → ∞.
+export const pointAnchorsQuery = (code: string, date: string) =>
+    queryOptions({ queryKey: ["point-anchors", code, date], queryFn: ({ signal }) => fetchPointAnchors(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
 
 export const priceLinedStocksQuery = () =>
     queryOptions({ queryKey: ["price-lined-stocks"], queryFn: ({ signal }) => fetchPriceLinedStocks(signal), staleTime: IMMUTABLE });

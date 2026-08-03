@@ -44,8 +44,10 @@ export interface DailyChartProps {
     zoom?: boolean;
     zoomBars?: number;
     zoomOutBars?: number;
-    onRightClick: (anchorDate: string) => void;
+    onRightClick: (anchorDate: string, at: { x: number; y: number }) => void;
     onRemoveLine: (line: RenderLine) => void;
+    /** 있으면 선 근처 우클릭 = 메뉴(복기), 없으면 즉시 삭제(실시간). */
+    onLineContext?: (line: RenderLine, at: { x: number; y: number }) => void;
     onCandleClick?: (date: string) => void;
     onPickPrice?: (price: number) => void;
     /** 가격 조건 편집 중 — 좌클릭이 날짜검색 대신 가격 캡처가 된다. */
@@ -68,6 +70,7 @@ export function DailyChart({
     zoomOutBars = 250,
     onRightClick,
     onRemoveLine,
+    onLineContext,
     onCandleClick,
     onPickPrice,
     capturePriceArmed = false,
@@ -92,7 +95,7 @@ export function DailyChart({
     const series = useDailySeries(chartRef);
     const mapRef = useDailySeriesData(series, points);
     useDailyVisibleRange(chartRef, points, frameKey, zoom, zoomBars, zoomOutBars);
-    useDailyInteraction({ chartRef, containerRef, series, mapRef, lines, onRightClick, onRemoveLine, onCandleClick, onPickPrice, captureArmed: capturePriceArmed });
+    useDailyInteraction({ chartRef, containerRef, series, mapRef, lines, onRightClick, onRemoveLine, onLineContext, onCandleClick, onPickPrice, captureArmed: capturePriceArmed });
     useDailyPriceLines(series, lines);
     useGuideLine(series, pctBase, showGuide);
     const lineX = useSearchDateLine(chartRef, series, searchDate);

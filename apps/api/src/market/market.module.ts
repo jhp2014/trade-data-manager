@@ -11,6 +11,7 @@ import {
     DrizzleDailyMarketCapRepository,
     DrizzleDailyCommentRepository,
     DrizzlePriceLineRepository,
+    DrizzlePointAnchorRepository,
     DrizzleReviewPointRepository,
     DrizzleRankRepository,
     DrizzleTagRepository,
@@ -19,7 +20,7 @@ import {
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, PRICE_LINE_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, PRICE_LINE_REPO, POINT_ANCHOR_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
@@ -30,6 +31,7 @@ import { DayReplayController } from "./board/dayReplay.controller.js";
 import { DatesController } from "./board/dates.controller.js";
 import { ThemeController } from "./board/theme.controller.js";
 import { PriceLineController } from "./curation/priceLine.controller.js";
+import { PointAnchorController } from "./curation/pointAnchor.controller.js";
 import { ReviewPointController } from "./curation/reviewPoint.controller.js";
 import { CommentController } from "./curation/comment.controller.js";
 import { RankController } from "./curation/rank.controller.js";
@@ -140,6 +142,12 @@ const curationProviders: Provider[] = [
         inject: [CURATION_POOL],
     },
     {
+        // 타점 파라미터 앵커(사람 편집) — repo 를 그대로 노출(upsert/list/remove). 계산 축 입력 좌표.
+        provide: POINT_ANCHOR_REPO,
+        useFactory: (pool: Pool) => new DrizzlePointAnchorRepository(createDb(pool)),
+        inject: [CURATION_POOL],
+    },
+    {
         // 복기 타점 쓰기(사람 편집) — repo 를 그대로 노출(upsert/list/remove).
         provide: REVIEW_POINT_REPO,
         useFactory: (pool: Pool) => new DrizzleReviewPointRepository(createDb(pool)),
@@ -208,6 +216,7 @@ const newsProviders: Provider[] = [
         DaySummaryController,
         ThemeController,
         PriceLineController,
+        PointAnchorController,
         ReviewPointController,
         CommentController,
         RankController,

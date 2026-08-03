@@ -4,6 +4,7 @@
 // 실시간은 useChartBundle("live")(REST 폴링). 키를 합치면 캐시 공유가 깨지므로 패널이 각자 고르고,
 // **도착한 번들을 뷰로 만드는 부분**만 여기서 같이 쓴다.
 import { useMemo } from "react";
+import { anchorParamByKey, type PointAnchor } from "@trade-data-manager/market/domain";
 import { deriveDailyView, deriveMinuteView, prevCloseAsOf, type DailyPoint, type MinuteView } from "./derive.js";
 import type { ChartBundle } from "../api/chart.js";
 import type { RenderLine } from "../api/priceLines.js";
@@ -76,6 +77,38 @@ export function resolveAnchorLines(
         } else {
             const dp = dailyByDate.get(a.anchorDate);
             if (dp) out.push({ id: a.id, price: dp[a.field ?? "high"], kind: "D" });
+        }
+    }
+    return out;
+}
+
+/** 타점 파라미터 앵커 선 색 — 가격선(D/M)·알람(A)과 갈라 보이게. */
+export const ANCHOR_LINE_COLOR = "#0ea5e9";
+
+/**
+ * 타점 파라미터 앵커 → 렌더선. 가격선과 달리 **저장된 시장(market)의 값**을 raw 번들에서 읽는다 —
+ * 모드 뷰(dailyView)로 읽으면 차트 토글에 따라 값이 바뀌어 "사람이 지목한 그 값"이 아니게 된다
+ * (KRX/UN 고가가 다르거나 NXT 오염 캔들을 피해 지목한 판단이 앵커의 존재 이유).
+ * 가격 앵커(field+market)만 선이 된다 — 시각 앵커는 수평선으로 그릴 값이 없다(후속: 세로 마커).
+ * 앵커 캔들이 로드 창 밖이면 그 선은 생략(가격선과 같은 규칙).
+ */
+export function resolvePointAnchorLines(
+    anchors: readonly PointAnchor[],
+    dailyBundle: ChartBundle | undefined,
+    minuteBundle: ChartBundle | undefined,
+): RenderLine[] {
+    const out: RenderLine[] = [];
+    for (const a of anchors) {
+        if (!a.field || !a.market) continue; // 시각 앵커 — 선 아님
+        const label = anchorParamByKey.get(a.param)?.name ?? a.param;
+        if (a.anchorTime) {
+            const m = minuteBundle?.minutes.find((c) => c.date === a.anchorDate && c.time === a.anchorTime);
+            const bar = a.market === "krx" ? m?.krx : m?.un;
+            if (bar) out.push({ id: `anchor:${a.param}`, price: Number(bar[a.field]), kind: "M", label, color: ANCHOR_LINE_COLOR });
+        } else {
+            const d = dailyBundle?.daily.find((c) => c.date === a.anchorDate);
+            const bar = a.market === "krx" ? d?.krx : d?.un;
+            if (bar) out.push({ id: `anchor:${a.param}`, price: Number(bar[a.field]), kind: "D", label, color: ANCHOR_LINE_COLOR });
         }
     }
     return out;

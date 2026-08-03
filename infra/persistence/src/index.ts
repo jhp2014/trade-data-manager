@@ -11,6 +11,7 @@ export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.r
 export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.js";
 export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repository.js";
 export { DrizzlePriceLineRepository } from "./repositories/priceLine.repository.js";
+export { DrizzlePointAnchorRepository } from "./repositories/pointAnchor.repository.js";
 export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
 export { DrizzleRankRepository } from "./repositories/rank.repository.js";
 export { DrizzleTagRepository } from "./repositories/tag.repository.js";

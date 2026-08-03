@@ -7,6 +7,7 @@ export const MASTER_CACHE = Symbol("MasterCache");
 export const MEMBERSHIP_CACHE = Symbol("MembershipCache");
 export const THEME_MEMBERSHIP_STORE = Symbol("ThemeMembershipStore");
 export const PRICE_LINE_REPO = Symbol("PriceLineRepository");
+export const POINT_ANCHOR_REPO = Symbol("PointAnchorRepository"); // 타점 파라미터 앵커(계산 축 입력 좌표)
 export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
 export const DAILY_COMMENTS = Symbol("DailyComments");          // 코멘트 유스케이스(빈값=삭제·author 소유)
 export const THEME_ASSIGNMENT = Symbol("ThemeAssignment");      // 테마 배정 유스케이스(중복 skip·캐시 무효화)

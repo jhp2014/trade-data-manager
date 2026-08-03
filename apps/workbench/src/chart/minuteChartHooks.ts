@@ -336,12 +336,14 @@ export function useMinuteInteraction(args: {
     base: number | null; // % 기준가(당일 원주가) — M/A 선·가격 캡처 분모
     pctBase: number | null; // % 기준가(수정주가 전일종가) — D 선 분모
     onMovePoint: (time: string) => void;
-    onRightClick: (anchor: { date: string; time: string }) => void;
+    onRightClick: (anchor: { date: string; time: string }, at: { x: number; y: number }) => void;
     onRemoveLine: (line: RenderLine) => void;
+    /** 있으면 선 근처 우클릭이 즉시 삭제 대신 이 콜백(메뉴 열기)으로 간다 — 복기 패널이 쓰고 실시간은 즉시 삭제 유지. */
+    onLineContext?: (line: RenderLine, at: { x: number; y: number }) => void;
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표(%) → 가격(base×(1+%/100)) 캡처
     captureArmed?: boolean;
 }): void {
-    const { chartRef, containerRef, candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed } = args;
+    const { chartRef, containerRef, candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed } = args;
     const hoveredTimeRef = useRef<number | null>(null);
     const linesRef = useRef<RenderLine[]>(lines);
     const baseRef = useRef<number | null>(base);
@@ -352,12 +354,14 @@ export function useMinuteInteraction(args: {
     const onMovePointRef = useRef(onMovePoint);
     const onRightClickRef = useRef(onRightClick);
     const onRemoveLineRef = useRef(onRemoveLine);
+    const onLineContextRef = useRef(onLineContext);
     const onPickPriceRef = useRef(onPickPrice);
     const armedRef = useRef(captureArmed ?? false);
     useEffect(() => {
         onMovePointRef.current = onMovePoint;
         onRightClickRef.current = onRightClick;
         onRemoveLineRef.current = onRemoveLine;
+        onLineContextRef.current = onLineContext;
         onPickPriceRef.current = onPickPrice;
         armedRef.current = captureArmed ?? false;
     });
@@ -409,15 +413,16 @@ export function useMinuteInteraction(args: {
                     if (pct === null) continue;
                     const ly = candle.priceToCoordinate(pct);
                     if (ly != null && Math.abs((ly as number) - y) <= 6) {
-                        onRemoveLineRef.current(line);
+                        if (onLineContextRef.current) onLineContextRef.current(line, { x: e.clientX, y: e.clientY });
+                        else onRemoveLineRef.current(line);
                         return;
                     }
                 }
             }
-            // 2) 아니면 hover 중인 분봉에 M 선 추가 — 그 분의 (날짜,시각) 앵커. 값은 표시 시점 고가에서 읽음.
+            // 2) 아니면 hover 중인 분봉 컨텍스트 — 복기는 메뉴(가격선·파라미터 지정), 실시간은 고가 선 토글.
             const t = hoveredTimeRef.current;
             const p = t != null ? pointMapRef.current.get(t) : null;
-            if (p) onRightClickRef.current({ date: p.date, time: p.tradeTime });
+            if (p) onRightClickRef.current({ date: p.date, time: p.tradeTime }, { x: e.clientX, y: e.clientY });
         };
         el.addEventListener("contextmenu", onCtx);
         return () => {
@@ -465,7 +470,7 @@ export function usePercentPriceLines(
             const pct = linePct(line, base, pctBase);
             if (pct === null) continue;
             priceLinesRef.current.push(
-                candle.createPriceLine({ price: pct, color: line.kind === "A" ? ALARM : line.kind === "M" ? "#be7a00" : PRICE_LINE, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
+                candle.createPriceLine({ price: pct, color: line.color ?? (line.kind === "A" ? ALARM : line.kind === "M" ? "#be7a00" : PRICE_LINE), lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
             );
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps

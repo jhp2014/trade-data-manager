@@ -73,6 +73,7 @@ async function request<T>(base: Base, method: string, path: string, opts: { quer
 export const apiGet = <T>(path: string, query?: Query, signal?: AbortSignal): Promise<T> => request<T>("api", "GET", path, { query, signal });
 export const apiPost = <T>(path: string, body?: unknown): Promise<T> => request<T>("api", "POST", path, { body });
 export const apiPatch = <T>(path: string, body?: unknown): Promise<T> => request<T>("api", "PATCH", path, { body });
+export const apiPut = <T>(path: string, body?: unknown): Promise<T> => request<T>("api", "PUT", path, { body });
 export const apiDelete = (path: string, query?: Query): Promise<void> => request<void>("api", "DELETE", path, { query });
 
 // ── apps/live (/live) ────────────────────────────────────────────────────

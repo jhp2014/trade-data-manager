@@ -124,6 +124,7 @@ export function MinuteChart({
     onMovePoint,
     onRightClick,
     onRemoveLine,
+    onLineContext,
     onPickPrice,
     onTagPoint,
     capturePriceArmed = false,
@@ -142,8 +143,10 @@ export function MinuteChart({
     zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 세션 기본(07:50/08:50~15:30).
     lockTimeScale?: boolean; // 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지(리프레임 안 함)
     onMovePoint: (time: string) => void; // 좌클릭 = 그 봉으로 타점 이동(tradeTime HH:MM:SS)
-    onRightClick: (anchor: { date: string; time: string }) => void;
+    onRightClick: (anchor: { date: string; time: string }, at: { x: number; y: number }) => void;
     onRemoveLine: (line: RenderLine) => void;
+    /** 있으면 선 근처 우클릭 = 메뉴(복기), 없으면 즉시 삭제(실시간). */
+    onLineContext?: (line: RenderLine, at: { x: number; y: number }) => void;
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표 → 가격(base×(1+%/100)) 캡처
     onTagPoint?: (time: string, x: number, y: number) => void; // 타점 ▼ 우클릭 = 태그 입력창(가격선과 분리)
     capturePriceArmed?: boolean;
@@ -173,7 +176,7 @@ export function MinuteChart({
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
     const { currentSnapped, savedSnapped } = useMarkerVertLines(series, points, markerTime, savedPoints);
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
-    useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onPickPrice, captureArmed: capturePriceArmed });
+    useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);
 
     const { state: tip } = useCrosshairTooltip({

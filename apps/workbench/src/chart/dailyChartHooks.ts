@@ -158,8 +158,10 @@ export function useDailyInteraction(args: {
     series: DailySeries;
     mapRef: DailyPointMap;
     lines: RenderLine[];
-    onRightClick: (anchorDate: string) => void;
+    onRightClick: (anchorDate: string, at: { x: number; y: number }) => void;
     onRemoveLine: (line: RenderLine) => void;
+    /** 있으면 선 근처 우클릭이 즉시 삭제 대신 이 콜백(메뉴 열기)으로 간다 — 복기 패널이 쓰고 실시간은 즉시 삭제 유지. */
+    onLineContext?: (line: RenderLine, at: { x: number; y: number }) => void;
     onCandleClick?: (date: string) => void;
     onPickPrice?: (price: number) => void;
     captureArmed: boolean;
@@ -210,15 +212,16 @@ export function useDailyInteraction(args: {
                 for (const line of linesRef.current) {
                     const ly = candle.priceToCoordinate(line.price);
                     if (ly != null && Math.abs((ly as number) - y) <= LINE_HIT_PX) {
-                        cb.current.onRemoveLine(line);
+                        if (cb.current.onLineContext) cb.current.onLineContext(line, { x: e.clientX, y: e.clientY });
+                        else cb.current.onRemoveLine(line);
                         return;
                     }
                 }
             }
-            // 2) 아니면 hover 봉에 D 선 추가 — 그 봉의 날짜(앵커). 값은 표시 시점 고가에서 읽는다.
+            // 2) 아니면 hover 봉 컨텍스트 — 복기는 메뉴(가격선 값 선택·파라미터 지정), 실시간은 고가 선 토글.
             const t = hoveredTimeRef.current;
             const p = t ? mapRef.current.get(t) : null;
-            if (p) cb.current.onRightClick(p.time);
+            if (p) cb.current.onRightClick(p.time, { x: e.clientX, y: e.clientY });
         };
         el.addEventListener("contextmenu", onCtx);
         return () => {
@@ -245,7 +248,7 @@ export function useDailyPriceLines(series: DailySeries, lines: RenderLine[]): vo
             }
         }
         handlesRef.current = lines.map((line) =>
-            candle.createPriceLine({ price: line.price, color: line.kind === "A" ? ALARM : PRICE_LINE, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
+            candle.createPriceLine({ price: line.price, color: line.color ?? (line.kind === "A" ? ALARM : PRICE_LINE), lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lines]);

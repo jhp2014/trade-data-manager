@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
-import { chartQuery } from "../api/queries.js";
+import { chartQuery, pointAnchorsQuery } from "../api/queries.js";
+import { upsertPointAnchor, removePointAnchor } from "../api/pointAnchors.js";
 import { kstToUnix } from "../lib/derive.js";
-import { useChartViews } from "../lib/chartFrame.js";
+import { useChartViews, resolvePointAnchorLines } from "../lib/chartFrame.js";
 import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
+import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
+import type { RenderLine } from "../api/priceLines.js";
 import { useStockName } from "../lib/useStockName.js";
 import { useTags } from "../lib/useTags.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
@@ -64,12 +67,53 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const minuteQ = useQuery({ ...chartQuery(code, viewDate), placeholderData: keepPreviousData }); // viewDate=anchor 면 같은 쿼리(RQ dedup)
     const { dailyView, minuteView, dailyFrameKey, minuteFrameKey, pctBase } = useChartViews(dailyQ.data, minuteQ.data, mode, viewDate);
 
-    // 가격선 주석(조회·해소·토글/삭제/clear) + 복기 타점(조회·savedPoints) — 훅으로 분리.
-    const { resolvedLines, dLines, hasLines, toggleLine, removeLine, clear } = usePriceLinesForChart(code, viewDate, dailyView, minuteView);
+    // 가격선 주석(조회·해소·추가/삭제/clear) + 복기 타점(조회·savedPoints) — 훅으로 분리.
+    const { resolvedLines, dLines, hasLines, addLine, lineIdAt, removeLineById, clear } = usePriceLinesForChart(code, viewDate, dailyView, minuteView);
     const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
+
+    // ── 타점 파라미터 앵커 — 활성 타점의 계산 입력 좌표. 지정/해제는 봉 우클릭 메뉴(CandleMenu).
+    const qc = useQueryClient();
+    const anchorsQ = useQuery(pointAnchorsQuery(code, viewDate));
+    const activeAnchors = useMemo(
+        () => (time ? (anchorsQ.data ?? []).filter((a) => a.time === time) : []),
+        [anchorsQ.data, time],
+    );
+    const invAnchors = (): void => void qc.invalidateQueries({ queryKey: pointAnchorsQuery(code, viewDate).queryKey });
+    const setAnchorMut = useMutation({ mutationFn: upsertPointAnchor, onSuccess: invAnchors });
+    const clearAnchorMut = useMutation({
+        mutationFn: (v: { param: string }) => removePointAnchor({ stockCode: code, date: viewDate, time: time ?? "" }, v.param),
+        onSuccess: invAnchors,
+    });
+    // 앵커 선 — **저장된 시장의 값**을 raw 번들에서 읽는다(차트 모드와 무관 — 사람이 지목한 그 값).
+    const anchorLines = useMemo(
+        () => (activeAnchors.length > 0 ? resolvePointAnchorLines(activeAnchors, dailyQ.data, minuteQ.data) : []),
+        [activeAnchors, dailyQ.data, minuteQ.data],
+    );
+    const dailyLines = useMemo(() => [...dLines, ...anchorLines.filter((l) => l.kind === "D")], [dLines, anchorLines]);
+    const minuteLines = useMemo(() => [...resolvedLines, ...anchorLines], [resolvedLines, anchorLines]);
+
+    // ── 봉 우클릭 메뉴 — 가격선(field 선택)과 파라미터 앵커 지정이 한자리에. 선 근처 우클릭은 삭제 항목만.
+    const [candleMenu, setCandleMenu] = useState<{ x: number; y: number; candle?: { date: string; time?: string }; nearLine?: RenderLine } | null>(null);
+    const menuBars = useMemo((): { un: MenuBar | null; krx: MenuBar | null } | undefined => {
+        const c = candleMenu?.candle;
+        if (!c) return undefined;
+        const num = (bar: { open: string; high: string; low: string; close: string } | null | undefined): MenuBar | null =>
+            bar ? { open: Number(bar.open), high: Number(bar.high), low: Number(bar.low), close: Number(bar.close) } : null;
+        if (c.time) {
+            const m = minuteQ.data?.minutes.find((x) => x.date === c.date && x.time === c.time);
+            return { un: num(m?.un), krx: num(m?.krx) };
+        }
+        const d = dailyQ.data?.daily.find((x) => x.date === c.date);
+        return { un: num(d?.un), krx: num(d?.krx) };
+    }, [candleMenu, dailyQ.data, minuteQ.data]);
+    // 메뉴의 선/앵커 삭제 라우팅 — 앵커 선 id 는 "anchor:{param}"(가격선 id 와 네임스페이스로 구분).
+    const removeLineOrAnchor = (id: string): void => {
+        if (id.startsWith("anchor:")) clearAnchorMut.mutate({ param: id.slice("anchor:".length) });
+        else removeLineById(id);
+    };
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -119,19 +163,20 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <ChartPanes
                         expanded={expanded}
                         viewDate={viewDate}
-                        dailyTitle="봉 ctrl+클릭 / 더블클릭: 그 날짜로 검색 · 봉 우클릭: 고점 선(D)"
-                        minuteTitle="ctrl+클릭 / 더블클릭: 타점 이동 · 스페이스바: 타점 저장 · 봉 우클릭: 선(M)"
+                        dailyTitle="봉 ctrl+클릭 / 더블클릭: 그 날짜로 검색 · 봉 우클릭: 메뉴(가격선·기준선)"
+                        minuteTitle="ctrl+클릭 / 더블클릭: 타점 이동 · 스페이스바: 타점 저장 · 봉 우클릭: 메뉴(가격선·기준선)"
                         daily={
                             dailyView.length > 0 ? (
                                 <DailyChart
                                     points={dailyView}
                                     frameKey={dailyFrameKey}
-                                    lines={dLines}
+                                    lines={dailyLines}
                                     zoom={chartZoom != null}
                                     zoomBars={cs.dailyZoomBars}
                                     zoomOutBars={cs.dailyZoomOutBars}
-                                    onRightClick={(d) => toggleLine(d, undefined)}
-                                    onRemoveLine={removeLine}
+                                    onRightClick={(d, at) => setCandleMenu({ ...at, candle: { date: d } })}
+                                    onRemoveLine={(l) => removeLineOrAnchor(l.id)}
+                                    onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
                                     onCandleClick={pinMinute ? undefined : (d) => setSearchDate(d === anchorDate ? null : d)}
                                     searchDate={showLine && drifted ? viewDate : undefined}
                                     pctBase={pctBase}
@@ -145,7 +190,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     points={minuteView.points}
                                     frameKey={minuteFrameKey}
                                     showAmountMarkers={showMarkers}
-                                    lines={resolvedLines}
+                                    lines={minuteLines}
                                     base={minuteView.base}
                                     pctBase={pctBase}
                                     markerTime={markerTime}
@@ -155,8 +200,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}
                                     onMovePoint={(t) => setTime(t)}
-                                    onRightClick={(a) => toggleLine(a.date, a.time)}
-                                    onRemoveLine={removeLine}
+                                    onRightClick={(a, at) => setCandleMenu({ ...at, candle: { date: a.date, time: a.time } })}
+                                    onRemoveLine={(l) => removeLineOrAnchor(l.id)}
+                                    onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
                                     onTagPoint={(t, x, y) => setTagMenu({ time: t, x, y })}
                                     tagsOfTime={(t) => tagsOf({ stockCode: code, date: viewDate, time: t })}
                                 />
@@ -172,6 +218,31 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     point={{ stockCode: code, date: viewDate, time: tagMenu.time }}
                     label={`${name ?? code} · ${tagMenu.time.slice(0, 5)}`}
                     onClose={() => setTagMenu(null)}
+                />
+            )}
+
+            {candleMenu && (
+                <CandleMenu
+                    anchor={{ x: candleMenu.x, y: candleMenu.y }}
+                    candle={candleMenu.candle}
+                    bars={menuBars}
+                    nearLine={candleMenu.nearLine}
+                    lineIdAtCandle={candleMenu.candle ? lineIdAt(candleMenu.candle.date, candleMenu.candle.time) : undefined}
+                    activeTime={time}
+                    activeAnchors={activeAnchors}
+                    onAddLine={(field) => candleMenu.candle && addLine(candleMenu.candle.date, candleMenu.candle.time, field)}
+                    onRemoveLine={removeLineOrAnchor}
+                    onSetAnchor={(param, price) => {
+                        const c = candleMenu.candle;
+                        if (!c || !time) return;
+                        setAnchorMut.mutate({
+                            stockCode: code, date: viewDate, time, param,
+                            anchorDate: c.date, anchorTime: c.time,
+                            field: price?.field, market: price?.market,
+                        });
+                    }}
+                    onClearAnchor={(param) => clearAnchorMut.mutate({ param })}
+                    onClose={() => setCandleMenu(null)}
                 />
             )}
         </div>

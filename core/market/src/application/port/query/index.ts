@@ -16,6 +16,7 @@ export * from "./themeMembershipProvider.js";
 export * from "./newsChannelSearch.js";
 export * from "./dailyComment.js";
 export * from "./priceLine.js";
+export * from "./pointAnchor.js";
 export * from "./reviewPoint.js";
 export * from "./tag.js";
 export * from "./rank.js";

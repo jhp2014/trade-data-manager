@@ -2,7 +2,7 @@
 // 패널은 뷰 파생(deriveMinute/DailyView)+렌더만 남긴다.
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addPriceLine, removePriceLine, type RenderLine } from "../api/priceLines.js";
+import { addPriceLine, removePriceLine, type PriceLineField, type RenderLine } from "../api/priceLines.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { useTags } from "./useTags.js";
 import { presetToggle } from "./tagIndex.js";
@@ -18,12 +18,15 @@ export interface ChartPriceLines {
     resolvedLines: RenderLine[]; // D+M 해소된 선(분봉용)
     dLines: RenderLine[]; // 일봉용(D만)
     hasLines: boolean;
-    toggleLine: (anchorDate: string, anchorTime: string | undefined) => void;
-    removeLine: (line: RenderLine) => void;
+    /** 이 앵커에 선 추가 — field 는 메뉴가 고른다(옛 우클릭 토글의 high 고정을 걷어냄). */
+    addLine: (anchorDate: string, anchorTime: string | undefined, field: PriceLineField) => void;
+    /** 이 앵커에 이미 그어진 선의 id(메뉴의 "이 봉의 선 삭제"). 없으면 undefined. */
+    lineIdAt: (anchorDate: string, anchorTime: string | undefined) => string | undefined;
+    removeLineById: (id: string) => void;
     clear: () => void;
 }
 
-/** 가격선 주석 — 조회 + 앵커 해소(로드된 캔들 기준 RenderLine) + 우클릭 토글/삭제/clear. 앵커 캔들 없으면 그 선 생략. */
+/** 가격선 주석 — 조회 + 앵커 해소(로드된 캔들 기준 RenderLine) + 메뉴용 추가/삭제/clear. 앵커 캔들 없으면 그 선 생략. */
 export function usePriceLinesForChart(
     code: string,
     date: string,
@@ -52,17 +55,18 @@ export function usePriceLinesForChart(
         onSuccess: invalidate,
     });
 
-    // 봉 우클릭 = 그 봉 앵커에 선 토글. 같은 앵커(anchorDate+anchorTime)가 이미 있으면 삭제, 없으면 추가.
-    const toggleLine = (anchorDate: string, anchorTime: string | undefined): void => {
+    // 옛 우클릭 토글(있으면 삭제/없으면 high 추가)은 메뉴(CandleMenu)로 대체 — field 를 고를 수 있어야 하고
+    // (저가·종가 선), 같은 자리에 파라미터 앵커 지정도 함께 살기 때문. 추가와 삭제를 분리해 메뉴가 조합한다.
+    const addLine = (anchorDate: string, anchorTime: string | undefined, field: PriceLineField): void => {
         if (!code || !date) return;
-        const existing = lines.find((l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime);
-        if (existing) removeMut.mutate(existing.id);
-        else addMut.mutate({ stockCode: code, date, anchorDate, anchorTime, field: "high" });
+        addMut.mutate({ stockCode: code, date, anchorDate, anchorTime, field });
     };
-    const removeLine = (line: RenderLine): void => removeMut.mutate(line.id);
+    const lineIdAt = (anchorDate: string, anchorTime: string | undefined): string | undefined =>
+        lines.find((l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime)?.id;
+    const removeLineById = (id: string): void => removeMut.mutate(id);
     const clear = (): void => clearMut.mutate();
 
-    return { resolvedLines, dLines, hasLines: lines.length > 0, toggleLine, removeLine, clear };
+    return { resolvedLines, dLines, hasLines: lines.length > 0, addLine, lineIdAt, removeLineById, clear };
 }
 
 export interface SavedPoint {
