@@ -31,21 +31,7 @@ export const dailyComments = curation.table(
     ],
 );
 
-// 2. [드롭 대기] 가격선 — chart_anchors(9번)로 흡수됨(param='baseline', market='un', memo 는 실데이터 전무라 버림).
-//    데이터는 이관 완료, 이 테이블은 이관 diff 확인 후 별도 마이그레이션에서 드롭한다. 코드는 더 이상 안 읽는다.
-export const priceLines = curation.table(
-    "price_lines",
-    {
-        id: bigserial("id", { mode: "bigint" }).primaryKey(),
-        stockCode: varchar("stock_code", { length: 10 }).notNull(),
-        tradeDate: date("trade_date").notNull(), // 이 선이 속한 차트(로드 단위)
-        anchorDate: date("anchor_date").notNull(), // 값을 읽어올 앵커 캔들의 거래일
-        anchorTime: time("anchor_time"), // nullable → 일봉 앵커 / 값 있으면 분봉 앵커
-        field: varchar("field", { length: 5 }).notNull().default("high"), // high|low|open|close
-        memo: text("memo"),
-    },
-    (t) => [index("idx_price_lines_chart").on(t.stockCode, t.tradeDate)],
-);
+// 2. (옛 price_lines 는 chart_anchors 로 흡수 후 드롭 — 마이그 0008 이관·0009 드롭.)
 
 // 3. 복기 타점 — 차트에서 찍은 타점. 자연키 (stockCode, tradeDate, tradeTime) 삼중키(시각 필수).
 //    **옛 case 를 흡수** = 이 타점이 곧 case. outcome(트레이드 결과)·memo 는 타점 자체 속성.
@@ -65,8 +51,6 @@ export const reviewPoints = curation.table(
 
 export type DailyCommentRow = typeof dailyComments.$inferSelect;
 export type DailyCommentInsert = typeof dailyComments.$inferInsert;
-export type PriceLineRow = typeof priceLines.$inferSelect;
-export type PriceLineInsert = typeof priceLines.$inferInsert;
 export type ReviewPointRow = typeof reviewPoints.$inferSelect;
 export type ReviewPointInsert = typeof reviewPoints.$inferInsert;
 
@@ -222,34 +206,7 @@ export const chartAnchors = curation.table(
 export type ChartAnchorRow = typeof chartAnchors.$inferSelect;
 export type ChartAnchorInsert = typeof chartAnchors.$inferInsert;
 
-// 9b. [드롭 대기] 타점 파라미터 앵커 — chart_anchors(9번)로 흡수됨(타점 소유 → 차트 소유로 접음, DISTINCT).
-//     데이터는 이관 완료, 이관 diff 확인 후 별도 마이그레이션에서 드롭한다. 코드는 더 이상 안 읽는다.
-export const pointAnchors = curation.table(
-    "point_anchors",
-    {
-        stockCode: varchar("stock_code", { length: 10 }).notNull(),
-        tradeDate: date("trade_date").notNull(),
-        tradeTime: time("trade_time").notNull(),
-        param: varchar("param", { length: 40 }).notNull(),
-        anchorDate: date("anchor_date").notNull(), // 가리키는 캔들의 거래일
-        anchorTime: time("anchor_time"), // NULL=일봉 앵커 / 값 있음=분봉 앵커
-        field: varchar("field", { length: 5 }), // high|low|open|close — market 과 한 쌍(둘 다 or 둘 다 없음)
-        market: varchar("market", { length: 3 }), // krx|un
-    },
-    (t) => [
-        unique("uq_point_anchor_natural")
-            .on(t.stockCode, t.tradeDate, t.tradeTime, t.param, t.anchorDate, t.anchorTime)
-            .nullsNotDistinct(),
-        foreignKey({
-            columns: [t.stockCode, t.tradeDate, t.tradeTime],
-            foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
-            name: "fk_point_anchor_review_point",
-        }).onDelete("cascade"),
-    ],
-);
-
-export type PointAnchorRow = typeof pointAnchors.$inferSelect;
-export type PointAnchorInsert = typeof pointAnchors.$inferInsert;
+// (옛 point_anchors 는 chart_anchors 로 흡수 후 드롭 — 마이그 0008 이관·0009 드롭.)
 
 export type TagRow = typeof tags.$inferSelect;
 export type TagInsert = typeof tags.$inferInsert;
