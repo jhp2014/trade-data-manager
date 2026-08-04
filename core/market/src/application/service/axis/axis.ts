@@ -14,7 +14,7 @@
 //  3. **결손은 결손으로**: 재료가 없으면(분봉 부재·기준가 부재·해당 시장 세션 없음) 값을 지어내지 않고
 //     결과에서 뺀다 = 그 축에 미배치. 소비자(3치 술어)가 이미 결손을 다룬다.
 import type { ReviewPointKey } from "#domain";
-import type { AdjustedDailyReader, MinuteReader, PointAnchorReader, RawDailyReader } from "#port/query";
+import type { AdjustedDailyReader, ChartAnchorReader, MinuteReader, RawDailyReader } from "#port/query";
 
 /** 시장 구분 — 축은 하나의 시장을 고른다(둘 다 보고 싶으면 축을 둘로. 축 안 토글 금지). */
 export type AxisMarket = "krx" | "un";
@@ -27,8 +27,8 @@ export interface AxisDeps {
     minute: MinuteReader;
     rawDaily: RawDailyReader;
     adjDaily: AdjustedDailyReader;
-    /** 타점 파라미터 앵커(사람 입력) — params 를 선언한 축만 읽는다. */
-    pointAnchor: PointAnchorReader;
+    /** 차트 앵커(사람 입력 — 선·무시 캔들) — params 를 선언한 축만 읽는다. */
+    chartAnchor: ChartAnchorReader;
 }
 
 /**

@@ -16,8 +16,8 @@
 // (DerivedCache 가 오늘 날짜를 안 굳히는 것과 같은 이유). 대신 결손 비율이 높으면 트립와이어로 알린다.
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { ComputedAxisDef, AxisDeps, PointAnchor, ReviewPointKey, ReviewPointReader } from "@trade-data-manager/market";
-import { COMPUTED_AXES } from "@trade-data-manager/market";
+import type { ComputedAxisDef, AxisDeps, ChartAnchor, ReviewPointKey, ReviewPointReader } from "@trade-data-manager/market";
+import { COMPUTED_AXES, anchorAppliesTo } from "@trade-data-manager/market";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
 
 export type { ComputedAxisFeed };
@@ -106,11 +106,11 @@ export class ComputedAxes {
         const points = await this.deps.points.listAllPoints();
         // 앵커는 지문용으로 한 번만 읽는다(축이 compute 안에서 또 읽는 건 축 자신의 몫 — 축끼리 재료 비공유 원칙).
         // 파라미터 선언 축이 하나도 없으면 조회 자체를 건너뛴다.
-        const anchors = this.defs.some((d) => fingerprintParams(d).length > 0) ? await this.deps.axisDeps.pointAnchor.listAll() : [];
+        const anchors = this.defs.some((d) => fingerprintParams(d).length > 0) ? await this.deps.axisDeps.chartAnchor.listAll() : [];
         return Promise.all(this.defs.map((def) => this.feed(def, points, anchors)));
     }
 
-    private feed(def: ComputedAxisDef, points: ReviewPointKey[], anchors: PointAnchor[]): Promise<ComputedAxisFeed> {
+    private feed(def: ComputedAxisDef, points: ReviewPointKey[], anchors: ChartAnchor[]): Promise<ComputedAxisFeed> {
         const existing = this.inFlight.get(def.key);
         if (existing) return existing;
         const p = this.build(def, points, anchors).finally(() => this.inFlight.delete(def.key));
@@ -122,38 +122,55 @@ export class ComputedAxes {
      * 이 축에서 타점의 입력 지문 — 선언된 파라미터(필수+선택) 앵커 좌표의 직렬화. 앵커가 바뀌면 문자열이 바뀐다.
      * 파라미터 없는 축은 항상 ""(= 지문 대조가 무의미, 캐시 히트는 존재 여부만으로).
      *
-     * ⚠ 정렬은 **직렬화한 문자열 전체**로 한다. param 만으로 정렬하면 한 param 에 앵커가 여럿일 때(무시 캔들)
-     *   순서가 DB 행 순서에 좌우돼, 아무것도 안 바꿨는데 지문이 달라지고 전량 재계산이 된다.
+     * 앵커가 차트 소유가 된 뒤로 지문은 **그 차트에서 타점에 적용되는 앵커들**(anchorAppliesTo)로 만든다 —
+     * 차트에 선 하나를 긋거나 지우면 그 차트의 모든 타점 지문이 바뀌어 같이 다시 구워진다(리졸버의 "가격
+     * 최저"가 어느 선이든 바뀔 수 있으니 정확히 원하는 무효화다).
+     *
+     * ⚠ 정렬은 **직렬화한 문자열 전체**로 한다. param 만으로 정렬하면 한 param 에 앵커가 여럿일 때(무시 캔들·
+     *   다중 기준선) 순서가 DB 행 순서에 좌우돼, 아무것도 안 바꿨는데 지문이 달라지고 전량 재계산이 된다.
      */
-    private fingerprint(def: ComputedAxisDef, anchorsOfPoint: PointAnchor[]): string {
+    private fingerprint(def: ComputedAxisDef, applicable: ChartAnchor[]): string {
         const params = fingerprintParams(def);
         if (params.length === 0) return "";
-        return anchorsOfPoint
+        return applicable
             .filter((a) => params.includes(a.param))
             .map((a) => `${a.param}@${a.anchorDate}T${a.anchorTime ?? ""}|${a.field ?? ""}|${a.market ?? ""}`)
             .sort()
             .join(";");
     }
 
-    private async build(def: ComputedAxisDef, points: ReviewPointKey[], anchors: PointAnchor[]): Promise<ComputedAxisFeed> {
+    private async build(def: ComputedAxisDef, points: ReviewPointKey[], anchors: ChartAnchor[]): Promise<ComputedAxisFeed> {
         const cached = await this.store.read(def.key);
         // 계산식이 바뀌었으면(version 상향) 옛 값은 다른 식의 산물이라 통째로 버린다.
         const known = cached && cached.version === def.version ? cached.values : {};
 
-        const anchorsByPoint = new Map<string, PointAnchor[]>();
+        // 차트(종목,날짜) 단위로 모아두고 타점마다 anchorAppliesTo 로 좁힌다(차트 소유 = 전 타점, 타점 소유 = 그 시각).
+        const anchorsByChart = new Map<string, ChartAnchor[]>();
         for (const a of anchors) {
-            const k = pointKey(a);
-            const list = anchorsByPoint.get(k);
+            const k = `${a.stockCode}|${a.date}`;
+            const list = anchorsByChart.get(k);
             if (list) list.push(a);
-            else anchorsByPoint.set(k, [a]);
+            else anchorsByChart.set(k, [a]);
         }
-        const fpOf = (k: string): string => this.fingerprint(def, anchorsByPoint.get(k) ?? []);
+        const applicableTo = (p: ReviewPointKey): ChartAnchor[] =>
+            (anchorsByChart.get(`${p.stockCode}|${p.date}`) ?? []).filter((a) => anchorAppliesTo(a, p));
+        const fpCache = new Map<string, string>();
+        const fpOf = (p: ReviewPointKey): string => {
+            const k = pointKey(p);
+            let fp = fpCache.get(k);
+            if (fp === undefined) {
+                fp = this.fingerprint(def, applicableTo(p));
+                fpCache.set(k, fp);
+            }
+            return fp;
+        };
 
         // 다시 구울 타점 = 캐시에 없음 ∪ 지문 불일치(앵커 지정/이동/해제). 나머지는 캐시 히트.
         const live = new Set(points.map(pointKey));
+        const pointByKey = new Map(points.map((p) => [pointKey(p), p]));
         const stale = points.filter((p) => {
             const entry = known[pointKey(p)];
-            return entry === undefined || entry.f !== fpOf(pointKey(p));
+            return entry === undefined || entry.f !== fpOf(p);
         });
         const computed = stale.length > 0 ? await def.compute(stale, this.deps.axisDeps) : [];
         const computedByKey = new Map(computed.map((c) => [pointKey(c), c]));
@@ -163,14 +180,15 @@ export class ComputedAxes {
         const values: Record<string, AxisValueEntry> = {};
         let changed = !cached || cached.version !== def.version;
         for (const [k, entry] of Object.entries(known)) {
-            if (!live.has(k)) { changed = true; continue; } // 타점 삭제
-            if (entry.f !== fpOf(k)) { changed = true; continue; } // stale — 아래 computed 가 있으면 새로 채움
+            const p = pointByKey.get(k);
+            if (!live.has(k) || p === undefined) { changed = true; continue; } // 타점 삭제
+            if (entry.f !== fpOf(p)) { changed = true; continue; } // stale — 아래 computed 가 있으면 새로 채움
             values[k] = entry;
         }
         for (const p of stale) {
             const k = pointKey(p);
             const c = computedByKey.get(k);
-            if (c !== undefined) { values[k] = { v: c.value, f: fpOf(k), ...(c.saturated ? { s: true } : {}) }; changed = true; }
+            if (c !== undefined) { values[k] = { v: c.value, f: fpOf(p), ...(c.saturated ? { s: true } : {}) }; changed = true; }
         }
         if (changed) await this.store.write({ v: FILE_SCHEMA_VERSION, key: def.key, version: def.version, values });
         // 결손 분모: **필수 파라미터가 다 찍힌 타점**만 — 아직 안 찍은 타점은 결손이 아니라 "입력 전"이다
@@ -178,7 +196,7 @@ export class ComputedAxes {
         // 찍힌 타점(무시 캔들만 지정)도 지문이 생겨 입력 완료로 집계된다.
         const required = def.params ?? [];
         const hasRequired = (p: ReviewPointKey): boolean => {
-            const owned = anchorsByPoint.get(pointKey(p)) ?? [];
+            const owned = applicableTo(p);
             return required.every((r) => owned.some((a) => a.param === r));
         };
         const eligible = required.length > 0 ? points.filter(hasRequired).length : points.length;

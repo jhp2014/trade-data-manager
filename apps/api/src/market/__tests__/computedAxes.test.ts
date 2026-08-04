@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { AxisDeps, ComputedAxisDef, PointAnchor, ReviewPoint, ReviewPointKey } from "@trade-data-manager/market";
+import type { AxisDeps, ChartAnchor, ComputedAxisDef, ReviewPoint, ReviewPointKey } from "@trade-data-manager/market";
 import { ComputedAxes, type AxisValueFile, type AxisValueStore } from "../rank/computedAxes.js";
 
 // 인메모리 저장소 — 파일 I/O 없이 증분·무효화 규칙만 본다.
@@ -35,14 +35,14 @@ function fakeAxis(version: number, seen: ReviewPointKey[][], missing = new Set<s
 }
 
 // 축이 포트를 안 쓰므로(fakeAxis) 재료 리더는 호출되지 않는다 — 앵커만 지문 계층이 읽는다.
-const makeAxisDeps = (anchors: PointAnchor[] = []): AxisDeps => ({
+const makeAxisDeps = (anchors: ChartAnchor[] = []): AxisDeps => ({
     minute: { getMinuteCandles: () => Promise.resolve([]) },
     rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
     adjDaily: { getDailyCandles: () => Promise.resolve([]) },
-    pointAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(anchors) },
+    chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(anchors), listAnchoredCharts: () => Promise.resolve([]) },
 });
 
-function makeAxes(points: ReviewPoint[], def: ComputedAxisDef, store: AxisValueStore, anchors: PointAnchor[] = []): ComputedAxes {
+function makeAxes(points: ReviewPoint[], def: ComputedAxisDef, store: AxisValueStore, anchors: ChartAnchor[] = []): ComputedAxes {
     return new ComputedAxes({
         points: { listAllPoints: () => Promise.resolve(points), listByChart: () => Promise.resolve([]) },
         axisDeps: makeAxisDeps(anchors),
@@ -131,8 +131,9 @@ describe("ComputedAxes 앵커 지문", () => {
         seen = [];
     });
 
-    const anchor = (p: ReviewPointKey, anchorDate: string): PointAnchor =>
-        ({ ...p, param: "baseline", anchorDate, field: "high", market: "un" });
+    // 차트 소유 앵커 — 타점 시각이 없다(그 차트의 모든 타점에 적용). id 는 지문이 안 읽으므로 아무 값.
+    const anchor = (p: ReviewPointKey, anchorDate: string): ChartAnchor =>
+        ({ id: "0", stockCode: p.stockCode, date: p.date, param: "baseline", anchorDate, field: "high", market: "un" });
 
     /** params 축 — 값 = 앵커가 가리키는 날짜의 일(day). 앵커가 바뀌면 값이 바뀌어야 정상. */
     function paramAxis(): ComputedAxisDef {
@@ -145,10 +146,10 @@ describe("ComputedAxes 앵커 지문", () => {
             params: ["baseline"],
             async compute(points, deps) {
                 seen.push([...points]);
-                const anchors = await deps.pointAnchor.listAll();
-                const byPk = new Map(anchors.map((a) => [`${a.stockCode}|${a.date}|${a.time}`, a]));
+                const anchors = await deps.chartAnchor.listAll();
+                const byChart = new Map(anchors.filter((a) => a.param === "baseline").map((a) => [`${a.stockCode}|${a.date}`, a]));
                 return points.flatMap((p) => {
-                    const a = byPk.get(`${p.stockCode}|${p.date}|${p.time}`);
+                    const a = byChart.get(`${p.stockCode}|${p.date}`);
                     return a ? [{ ...p, value: Number(a.anchorDate.slice(8)) }] : [];
                 });
             },
@@ -168,6 +169,20 @@ describe("ComputedAxes 앵커 지문", () => {
         expect(seen[1].map((p) => p.stockCode)).toEqual(["001"]); // 002 는 재계산 안 됨
     });
 
+
+    it("차트 소유 — 선 하나를 바꾸면 그 차트의 **모든 타점**이 다시 구워진다", async () => {
+        const points = [pt("001", "09:00:00"), pt("001", "10:00:00"), pt("002")];
+        const a1 = [anchor(points[0], "2026-06-10"), anchor(points[2], "2026-06-20")];
+        const first = await makeAxes(points, paramAxis(), store, a1).feeds();
+        expect(first[0].values.map((v) => v.value)).toEqual([10, 10, 20]); // 001 두 타점이 같은 선을 본다
+
+        // 001 차트의 선만 이동 — 001 의 두 타점이 함께 stale, 002 는 캐시 히트.
+        const a2 = [anchor(points[0], "2026-06-15"), anchor(points[2], "2026-06-20")];
+        const second = await makeAxes(points, paramAxis(), store, a2).feeds();
+        expect(second[0].values.map((v) => v.value)).toEqual([15, 15, 20]);
+        expect(seen[1].map((p) => `${p.stockCode} ${p.time}`)).toEqual(["001 09:00:00", "001 10:00:00"]);
+    });
+
     it("앵커를 해제하면 옛 값이 캐시에 남지 않는다(결손으로 빠진다)", async () => {
         const points = [pt("001")];
         await makeAxes(points, paramAxis(), store, [anchor(points[0], "2026-06-10")]).feeds();
@@ -183,7 +198,8 @@ describe("ComputedAxes 앵커 지문", () => {
         const base = paramAxis();
         return { ...base, key: "mixed-fake", optionalParams: ["ignore-candle"] };
     }
-    const ignore = (p: ReviewPointKey, anchorDate: string): PointAnchor => ({ ...p, param: "ignore-candle", anchorDate });
+    const ignore = (p: ReviewPointKey, anchorDate: string): ChartAnchor =>
+        ({ id: "0", stockCode: p.stockCode, date: p.date, param: "ignore-candle", anchorDate });
 
     it("한 param 에 앵커가 여럿일 때 행 순서가 바뀌어도 재계산하지 않는다(지문 정렬)", async () => {
         const points = [pt("001")];

@@ -10,8 +10,7 @@ export { DrizzleStockMasterRepository } from "./repositories/stockMaster.reposit
 export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.repository.js";
 export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.js";
 export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repository.js";
-export { DrizzlePriceLineRepository } from "./repositories/priceLine.repository.js";
-export { DrizzlePointAnchorRepository } from "./repositories/pointAnchor.repository.js";
+export { DrizzleChartAnchorRepository } from "./repositories/chartAnchor.repository.js";
 export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
 export { DrizzleRankRepository } from "./repositories/rank.repository.js";
 export { DrizzleTagRepository } from "./repositories/tag.repository.js";
@@ -41,9 +40,9 @@ export {
     rowToDailyComment,
 } from "./mappers/dailyComment.js";
 export {
-    priceLineToRow,
-    rowToPriceLine,
-} from "./mappers/priceLine.js";
+    chartAnchorToRow,
+    rowToChartAnchor,
+} from "./mappers/chartAnchor.js";
 export {
     reviewPointToRow,
     rowToReviewPoint,

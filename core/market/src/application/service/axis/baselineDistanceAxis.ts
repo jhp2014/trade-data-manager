@@ -5,10 +5,10 @@
 // 뜻: 그 선이 얼마나 묵은 것인가. 매물 공백 축과 **앵커를 사이에 두고 반대쪽**을 잰다 —
 // 공백은 앵커에서 왼쪽(과거)이 얼마나 비었나, 이 축은 앵커에서 오른쪽(타점까지)이 얼마나 흘렀나.
 // 둘이 원리적으로 독립이라 같이 보면 "그 선이 언제 생겨서 그동안 아무도 안 건드렸나"가 통째로 읽힌다.
-// (상관이 높아 안 만든 축 `dailyChangeAxis("krx")` 의 정반대 케이스 — 축을 늘릴 값어치가 여기 있다.)
 //
-// **앵커에서 좌표만 쓴다.** 같은 baseline 앵커를 소비하지만 기준선 대비 %·매물 공백이 *가격*을 꺼내는 것과
-// 달리 여긴 날짜만 본다 — field·market 을 안 읽으므로 앵커 캔들 값이 미수집이어도 셀 수만 있으면 값이 나온다.
+// **기준선은 리졸버가 고른다**(선=앵커 통합 후 다중): shared/baselineResolver — 후보 1개면 가격을 안 읽으므로
+// 이 축의 견고성(앵커 캔들 값이 미수집이어도 셀 수만 있으면 값이 나온다)은 흔한 경우에 그대로 보존되고,
+// 후보가 여럿일 때만 가격(최저 선택)이 개입한다. 세 축이 같은 리졸버를 봐서 서로 다른 선을 재는 일이 없다.
 //
 // 거래일로 센다(달력일 아님). 데이터에 있는 단위이고, 매물 공백 축과 단위가 같아 나란히 읽힌다.
 //
@@ -16,15 +16,14 @@
 // (매물 공백이 무시 캔들을 공백 일수로 세는 것과 같은 논리). 그래서 optionalParams 도 없다.
 //
 // 우측 절단(saturated): 앵커가 창(2년)보다 이르면 그 사이 거래일을 셀 수 없다 → 값은 창 안 거래일 수 = 하한.
-// 결손: 기준선 앵커 없음 · 타점 날 일봉 미수집(셀 자가 없다) · **앵커가 타점보다 미래**(검색날짜 드리프트로
+// 결손: 기준선 없음/확정불가 · 타점 날 일봉 미수집(셀 자가 없다) · **앵커가 타점보다 미래**(검색날짜 드리프트로
 //   잘못 찍은 입력. 음수를 조용히 내면 정렬이 이상해지고 원인을 못 짚는다 — 규칙 2를 어기는 입력이기도 하다).
-import type { DailyCandle, PointAnchor, ReviewPointKey } from "#domain";
+import { BASELINE_PARAM, type DailyCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
+import { chartKeyOf, resolveBaselines } from "../shared/baselineResolver.js";
 import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
 
-/** 좌표만 빌려 쓰는 파라미터 — 가격은 안 읽는다. */
-const PARAM = "baseline";
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
 
@@ -32,24 +31,21 @@ export function baselineDistanceAxis(): ComputedAxisDef {
     return {
         key: "baseline-distance",
         name: "기준선 거리(일)",
-        version: 1,
+        version: 2, // v2: 앵커 소유가 타점 → 차트(종목,날짜)로, 다중 기준선은 리졸버(가격 최저)가 확정
         strongerWhen: "higher", // 멀수록 = 오래 묵은 저항을 깨는 자리
         display: { suffix: "일", decimals: 0, signed: false },
         inputs: ["adjDaily"],
-        params: [PARAM],
+        params: [BASELINE_PARAM],
         compute: computeBaselineDistance,
     };
 }
 
-const pk = (p: ReviewPointKey): string => `${p.stockCode}|${p.date}|${p.time}`;
-
 async function computeBaselineDistance(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]> {
-    const anchors = await deps.pointAnchor.listAll();
-    const baselineOf = new Map<string, PointAnchor>();
-    for (const a of anchors) if (a.param === PARAM) baselineOf.set(pk(a), a);
+    const anchors = await deps.chartAnchor.listAll();
+    const baselineOf = await resolveBaselines(points, anchors, deps);
     const jobs = points.flatMap((p) => {
-        const base = baselineOf.get(pk(p));
-        return base ? [{ p, base }] : []; // 기준선 없는 타점은 재료를 읽기 전에 빠진다
+        const base = baselineOf.get(chartKeyOf(p));
+        return base ? [{ p, base }] : []; // 기준선 없음(입력 전)·확정 불가(결손)는 재료를 읽기 전에 빠진다
     });
     if (jobs.length === 0) return [];
 

@@ -10,8 +10,7 @@ import {
     DrizzleStockMasterRepository,
     DrizzleDailyMarketCapRepository,
     DrizzleDailyCommentRepository,
-    DrizzlePriceLineRepository,
-    DrizzlePointAnchorRepository,
+    DrizzleChartAnchorRepository,
     DrizzleReviewPointRepository,
     DrizzleRankRepository,
     DrizzleTagRepository,
@@ -20,7 +19,7 @@ import {
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, PRICE_LINE_REPO, POINT_ANCHOR_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
@@ -30,8 +29,7 @@ import { DaySummaryController } from "./board/daySummary.controller.js";
 import { DayReplayController } from "./board/dayReplay.controller.js";
 import { DatesController } from "./board/dates.controller.js";
 import { ThemeController } from "./board/theme.controller.js";
-import { PriceLineController } from "./curation/priceLine.controller.js";
-import { PointAnchorController } from "./curation/pointAnchor.controller.js";
+import { ChartAnchorController } from "./curation/chartAnchor.controller.js";
 import { ReviewPointController } from "./curation/reviewPoint.controller.js";
 import { CommentController } from "./curation/comment.controller.js";
 import { RankController } from "./curation/rank.controller.js";
@@ -136,15 +134,9 @@ const boardProviders: Provider[] = [
 
 const curationProviders: Provider[] = [
     {
-        // 가격선 주석 쓰기(사람 편집) — repo 를 그대로 노출(add/list/remove).
-        provide: PRICE_LINE_REPO,
-        useFactory: (pool: Pool) => new DrizzlePriceLineRepository(createDb(pool)),
-        inject: [CURATION_POOL],
-    },
-    {
-        // 타점 파라미터 앵커(사람 편집) — repo 를 그대로 노출(upsert/list/remove). 계산 축 입력 좌표.
-        provide: POINT_ANCHOR_REPO,
-        useFactory: (pool: Pool) => new DrizzlePointAnchorRepository(createDb(pool)),
+        // 차트 앵커(사람 편집) — 선(baseline)+파라미터 앵커 단일 자원. repo 를 그대로 노출(add/list/remove).
+        provide: CHART_ANCHOR_REPO,
+        useFactory: (pool: Pool) => new DrizzleChartAnchorRepository(createDb(pool)),
         inject: [CURATION_POOL],
     },
     {
@@ -180,7 +172,7 @@ const curationProviders: Provider[] = [
                     minute: new DrizzleMinuteCandleRepository(db),
                     rawDaily: new DrizzleRawDailyCandleRepository(db),
                     adjDaily: dailyRepo,
-                    pointAnchor: new DrizzlePointAnchorRepository(curationDb),
+                    chartAnchor: new DrizzleChartAnchorRepository(curationDb),
                 },
             });
         },
@@ -217,8 +209,7 @@ const newsProviders: Provider[] = [
         DayReplayController,
         DaySummaryController,
         ThemeController,
-        PriceLineController,
-        PointAnchorController,
+        ChartAnchorController,
         ReviewPointController,
         CommentController,
         RankController,

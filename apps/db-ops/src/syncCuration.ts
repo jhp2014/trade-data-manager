@@ -40,7 +40,7 @@ export async function syncCuration(log: Logger): Promise<void> {
                 .query(
                     "select coalesce(sum(n),0)::int total from (" +
                         "select count(*) n from curation.review_points " +
-                        "union all select count(*) from curation.price_lines " +
+                        "union all select count(*) from curation.chart_anchors " +
                         "union all select count(*) from curation.daily_comments " +
                         "union all select count(*) from curation.rank_placements) x",
                 )

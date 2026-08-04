@@ -24,7 +24,7 @@ function deps(minutes: MinuteCandle[], dailies: DailyCandle[]): AxisDeps {
         minute: { getMinuteCandles: () => Promise.resolve(minutes) },
         rawDaily: { getRawDailyCandles: () => Promise.resolve(dailies) },
         adjDaily: { getDailyCandles: () => Promise.resolve(dailies) },
-        pointAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]) },
+        chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]), listAnchoredCharts: () => Promise.resolve([]) },
     };
 }
 
@@ -78,7 +78,7 @@ describe("dailyChangeAxis", () => {
             minute: { getMinuteCandles: () => { reads++; return Promise.resolve(minutes); } },
             rawDaily: { getRawDailyCandles: () => Promise.resolve([PREV, TODAY]) },
             adjDaily: { getDailyCandles: () => Promise.resolve([PREV, TODAY]) },
-            pointAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]) },
+            chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]), listAnchoredCharts: () => Promise.resolve([]) },
         };
         const out = await axis.compute([point("09:00:00"), point("09:01:00")], d);
         expect(out.map((o) => o.value)).toEqual([5, 10]);

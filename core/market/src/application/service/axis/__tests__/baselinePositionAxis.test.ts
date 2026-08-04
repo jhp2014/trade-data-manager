@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { DailyCandle, MinuteCandle, PointAnchor, ReviewPointKey } from "#domain";
+import type { ChartAnchor, DailyCandle, MinuteCandle, ReviewPointKey } from "#domain";
 import { baselinePositionAxis } from "../baselinePositionAxis.js";
 import type { AxisDeps } from "../axis.js";
 
@@ -22,14 +22,17 @@ const minute = (time: string, close: string, opts: { krx?: string | null; date?:
 });
 
 const point = (time: string): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
-const anchorOf = (p: ReviewPointKey, a: Partial<PointAnchor>): PointAnchor => ({ ...p, param: "baseline", anchorDate: "2026-07-01", ...a });
+let seq = 0;
+/** 차트 소유 기준선(선=앵커) — 타점 시각이 없다. */
+const anchorOf = (a: Partial<ChartAnchor>): ChartAnchor =>
+    ({ id: String(++seq), stockCode: CODE, date: DATE, param: "baseline", anchorDate: "2026-07-01", field: "high", market: "un", ...a });
 
-function deps(v: { minutesByDay?: Record<string, MinuteCandle[]>; dailies?: DailyCandle[]; anchors?: PointAnchor[] }): AxisDeps {
+function deps(v: { minutesByDay?: Record<string, MinuteCandle[]>; dailies?: DailyCandle[]; anchors?: ChartAnchor[] }): AxisDeps {
     return {
         minute: { getMinuteCandles: (_c, date) => Promise.resolve(v.minutesByDay?.[date] ?? []) },
         rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
         adjDaily: { getDailyCandles: (_c, range) => Promise.resolve((v.dailies ?? []).filter((d) => d.date >= range.from && d.date <= range.to)) },
-        pointAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(v.anchors ?? []) },
+        chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(v.anchors ?? []), listAnchoredCharts: () => Promise.resolve([]) },
     };
 }
 
@@ -41,7 +44,7 @@ describe("baselinePositionAxis", () => {
         const d = deps({
             minutesByDay: { [DATE]: [minute("09:30:00", "11000")] },
             dailies: [daily("2026-07-01", "10000", "9900")],
-            anchors: [anchorOf(P, { field: "high", market: "un" })],
+            anchors: [anchorOf({ field: "high", market: "un" })],
         });
         const out = await axis.compute([P], d);
         expect(out).toEqual([{ ...P, value: 10 }]); // (11000-10000)/10000
@@ -52,7 +55,7 @@ describe("baselinePositionAxis", () => {
         const d = deps({
             minutesByDay: { [DATE]: [minute("09:30:00", "11000", { krx: "10500" })] },
             dailies: [daily("2026-07-01", "10500", "10000")],
-            anchors: [anchorOf(P, { field: "high", market: "krx" })],
+            anchors: [anchorOf({ field: "high", market: "krx" })],
         });
         const out = await axis.compute([P], d);
         expect(out[0].value).toBe(10); // (11000 UN종가 − 10000 KRX기준선)/10000
@@ -64,7 +67,7 @@ describe("baselinePositionAxis", () => {
                 [DATE]: [minute("09:30:00", "10500")],
                 "2026-07-01": [minute("13:00:00", "10000", { date: "2026-07-01" })],
             },
-            anchors: [anchorOf(P, { anchorTime: "13:00:00", field: "close", market: "un" })],
+            anchors: [anchorOf({ anchorTime: "13:00:00", field: "close", market: "un" })],
         });
         const out = await axis.compute([P], d);
         expect(out[0].value).toBe(5);
@@ -83,21 +86,31 @@ describe("baselinePositionAxis", () => {
         const d = deps({
             minutesByDay: { [DATE]: [minute("08:30:00", "11000", { krx: null })] },
             dailies: [daily("2026-07-01", "10500", "10000")],
-            anchors: [anchorOf(pre, { field: "high", market: "krx" })],
+            anchors: [anchorOf({ field: "high", market: "krx" })],
         });
         const out = await axis.compute([pre], d);
         expect(out[0].value).toBe(10);
     });
 
     it("앵커 캔들 미수집·기준값 0 은 결손", async () => {
-        const noDaily = deps({ minutesByDay: { [DATE]: [minute("09:30:00", "11000")] }, dailies: [], anchors: [anchorOf(P, { field: "high", market: "un" })] });
+        const noDaily = deps({ minutesByDay: { [DATE]: [minute("09:30:00", "11000")] }, dailies: [], anchors: [anchorOf({})] });
         expect(await axis.compute([P], noDaily)).toEqual([]);
 
         const zeroBase = deps({
             minutesByDay: { [DATE]: [minute("09:30:00", "11000")] },
             dailies: [daily("2026-07-01", "0", "0")],
-            anchors: [anchorOf(P, { field: "high", market: "un" })],
+            anchors: [anchorOf({})],
         });
         expect(await axis.compute([P], zeroBase)).toEqual([]);
+    });
+
+    it("선이 여럿이면 가격 최저가 분모 — 리졸버 규칙이 이 축에도 적용", async () => {
+        const d = deps({
+            minutesByDay: { [DATE]: [minute("09:30:00", "11000")] },
+            dailies: [daily("2026-07-01", "10000", "9900"), daily("2026-06-30", "8800", "8800")],
+            anchors: [anchorOf({}), anchorOf({ anchorDate: "2026-06-30" })],
+        });
+        const out = await axis.compute([P], d);
+        expect(out[0].value).toBe(25); // (11000-8800)/8800 — 낮은 선(8800)이 분모
     });
 });

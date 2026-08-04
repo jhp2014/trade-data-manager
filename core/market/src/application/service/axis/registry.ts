@@ -19,7 +19,8 @@ export const COMPUTED_AXES: readonly ComputedAxisDef[] = [
     dailyChangeAxis("un"),
     baselinePositionAxis(), // baseline 앵커 소비 — 분모는 앵커 가격이라 전일종가·시장 개념이 없다
     supplyGapAxis(), // baseline 을 문턱으로 왼쪽 스캔 — 같은 앵커를 다른 뜻으로 읽는 두 번째 축
-    baselineDistanceAxis(), // 같은 앵커의 **좌표만** — 공백(왼쪽)과 앵커를 사이에 두고 반대쪽(오른쪽)을 잰다
+    baselineDistanceAxis(), // 같은 앵커의 **좌표만**(후보 다중일 때만 가격 개입) — 공백과 반대쪽(오른쪽)을 잰다
+    // 셋 다 같은 기준선을 본다 — 선택 규칙은 shared/baselineResolver 한 곳(후보 다중이면 가격 최저).
 ];
 
 /** key → 정의. 캐시·컨트롤러가 이름으로 지목할 때. */
