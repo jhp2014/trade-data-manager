@@ -57,6 +57,13 @@
       "when": 1785764616654,
       "tag": "0007_public_selene",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785864556865,
+      "tag": "0008_sharp_scrambler",
+      "breakpoints": true
     }
   ]
 }

@@ -1,8 +1,8 @@
 // infra/db/schema — `curation` Postgres 스키마: 사람이 편집/큐레이션하는 시장 주석.
 // 수집/기계생성(candles·market_cap·news·stock_master = `market`)과 물리 격리. FK 없음(무결성은 앱이 관리).
-// 여기 3테이블은 성격이 같다: 사람이 손으로 넣고 지우는 편집 데이터.
+// 편집 데이터의 기둥 셋:
 //   · daily_comments : 당일 종목 코멘트((종목,날짜) 자연키 PK — 종목당 당일 1개)
-//   · price_lines    : 차트 수평 가격선((종목,날짜) 당 N개, price 가변 → surrogate id)
+//   · chart_anchors  : 차트 앵커 — 캔들 좌표 참조의 단일 테이블(가격선+파라미터 앵커 통합, 아래 9번)
 //   · review_points  : 복기 타점((종목,날짜,시각) 자연키 = caseId. 순위 배치가 하류에서 참조)
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
@@ -31,11 +31,8 @@ export const dailyComments = curation.table(
     ],
 );
 
-// 2. 가격선 — 한 종목·거래일 차트에 그은 수평 가격선. (종목,날짜) 당 N개.
-//    **가격 대신 앵커(캔들 좌표)를 저장**한다: 값은 표시 시점에 그 캔들에서 읽으므로, 수정계수가 바뀌어도
-//    선이 자동으로 따라간다(가격 재수정 불필요). anchorTime NULL=일봉 앵커 / 값 있음=분봉 앵커.
-//    여러 선이 같은 앵커를 가질 수 있어(field/memo 만 다르게) 여전히 자연키 없음 → surrogate bigserial id PK.
-//    index(stock,date) = "이 차트의 선들" 로드용. 선끼리도 FK 없음.
+// 2. [드롭 대기] 가격선 — chart_anchors(9번)로 흡수됨(param='baseline', market='un', memo 는 실데이터 전무라 버림).
+//    데이터는 이관 완료, 이 테이블은 이관 diff 확인 후 별도 마이그레이션에서 드롭한다. 코드는 더 이상 안 읽는다.
 export const priceLines = curation.table(
     "price_lines",
     {
@@ -185,18 +182,48 @@ export const reviewPointTags = curation.table(
     ],
 );
 
-// ── 타점 파라미터 앵커 ──────────────────────────────────────────────────────
-// 9. 타점 파라미터 앵커 — 계산 축의 **입력**이 되는 캔들 좌표를 타점에 이름(param) 붙여 매단다.
-//    가격선(price_lines)과 다르다: 가격선은 차트 소유(보려고 그은 산출물), 앵커는 타점 소유(계산 재료).
-//    같은 캔들을 가리켜도 **복사본이지 연결이 아니다** — 가격선에서 따와도 좌표를 복사해 넣으므로
-//    선을 지워도 앵커가 안 깨지고, 앵커를 지워도 선은 남는다.
-//    param 은 코드 레지스트리 키(core domain/review/anchorParam.ts) — 자유 문자열이면 오타가 조용한 결손이 된다.
-//    자연키 (타점, param, 좌표) — param 에 따라 앵커가 여럿 붙는다(무시 캔들처럼 "이것도 저것도").
-//    **UNIQUE 이지 PK 가 아닌 이유**: anchor_time 이 NULL 가능(일봉 앵커)이라 PK 로 못 쓴다. 대신
-//    NULLS NOT DISTINCT 유니크 — 이게 없으면 같은 일봉을 두 번 지정한 중복 행이 조용히 쌓인다(NULL≠NULL).
-//    "기준선은 하나" 같은 단일 보장은 DB 가 아니라 AnchorParamDef.multiple 을 읽는 저장 경로가 한다.
-//    field·market 은 **한 쌍**: 둘 다 있으면 가격 앵커(사람이 시장·값까지 지목 — KRX/UN 고가가 다르거나
-//    NXT 오염 캔들을 피하는 판단), 둘 다 없으면 시각 앵커(급등 시작 같은 것 — 값은 축이 정한다).
+// ── 차트 앵커 ───────────────────────────────────────────────────────────────
+// 9. 차트 앵커 — 캔들 좌표 참조의 **단일 테이블**. 옛 price_lines(가격선)와 point_anchors(타점 파라미터 앵커)를
+//    흡수했다: 가격선 = param 'baseline' 인 앵커(선 = 곧 기준선 후보), 무시 캔들 등 다른 param 도 같은 모양.
+//
+//    **소유 grain 은 trade_time 유무가 말한다**: NULL = 차트(종목,날짜) 소유 / 값 = 타점 소유(예약 —
+//    현재 레지스트리의 param 은 전부 chart 소유라 시각이 들어오면 저장 경로가 거부한다. AnchorParamDef.owner).
+//    anchor_time 도 같은 관용구: NULL = 일봉 앵커 / 값 = 분봉 앵커(이때 market 은 'un' 고정 — 분봉 KRX 는
+//    세션 부재(NXT 단독 시간대)가 있어 앵커로 쓸 수 없다. 저장 경로 규칙).
+//
+//    **가격이 아니라 좌표를 저장**한다(옛 두 테이블과 동일): 값은 읽기 시점에 그 캔들에서 읽으므로 수정계수가
+//    바뀌어도 자동으로 따라간다. field·market 은 **한 쌍**: 둘 다 있으면 가격 앵커(사람이 시장·값까지 지목 —
+//    KRX/UN 고가가 다르거나 NXT 오염 캔들을 피하는 판단), 둘 다 없으면 시각 앵커(값은 축이 정한다).
+//
+//    **surrogate id 인 이유**: 같은 캔들에 뜻이 다른 행이 여럿 정당하다(가격선 성질을 흡수). 같은 좌표 중복은
+//    DB 가 아니라 저장 경로가 막는다(옛 자연키 유니크의 방어 이관). FK 없음 — 기준선은 타점보다 오래 산다
+//    (타점을 지워도 차트의 선은 남는 게 올바른 생명주기). param 은 코드 레지스트리 키(domain/review/chartAnchor.ts).
+//
+//    index(stock,date) = "이 차트의 앵커들" 로드용 / index(param,date) = 작업셋 목록·보드 원 표시(param 필터 집계).
+export const chartAnchors = curation.table(
+    "chart_anchors",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(), // 소유 차트의 거래일
+        tradeTime: time("trade_time"), // NULL=차트 소유 / 값=타점 소유(예약 — AnchorParamDef.owner 가 게이트)
+        param: varchar("param", { length: 40 }).notNull(),
+        anchorDate: date("anchor_date").notNull(), // 가리키는 캔들의 거래일
+        anchorTime: time("anchor_time"), // NULL=일봉 앵커 / 값=분봉 앵커(market='un' 고정)
+        field: varchar("field", { length: 5 }), // high|low|open|close — market 과 한 쌍
+        market: varchar("market", { length: 3 }), // krx|un
+    },
+    (t) => [
+        index("idx_chart_anchors_chart").on(t.stockCode, t.tradeDate),
+        index("idx_chart_anchors_param").on(t.param, t.tradeDate),
+    ],
+);
+
+export type ChartAnchorRow = typeof chartAnchors.$inferSelect;
+export type ChartAnchorInsert = typeof chartAnchors.$inferInsert;
+
+// 9b. [드롭 대기] 타점 파라미터 앵커 — chart_anchors(9번)로 흡수됨(타점 소유 → 차트 소유로 접음, DISTINCT).
+//     데이터는 이관 완료, 이관 diff 확인 후 별도 마이그레이션에서 드롭한다. 코드는 더 이상 안 읽는다.
 export const pointAnchors = curation.table(
     "point_anchors",
     {
