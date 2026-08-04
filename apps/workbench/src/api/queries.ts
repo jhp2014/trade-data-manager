@@ -5,8 +5,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
-import { fetchPriceLines, fetchPriceLinedStocks } from "./priceLines.js";
-import { fetchPointAnchors } from "./pointAnchors.js";
+import { fetchChartAnchors, fetchAnchoredCharts } from "./chartAnchors.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchTags, fetchTagAttachments } from "./tags.js";
@@ -33,15 +32,12 @@ export const chartQuery = (code: string, date: string) =>
 export const daySummaryQuery = (date: string) =>
     queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: histStale(date) });
 
-export const priceLinesQuery = (code: string, date: string) =>
-    queryOptions({ queryKey: ["price-lines", code, date], queryFn: ({ signal }) => fetchPriceLines(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
+// 차트 앵커 — 선(baseline)+무시 캔들 등, 이 차트의 좌표 참조 전부. 편집형(추가/삭제 mutation 이 invalidate) → ∞.
+export const chartAnchorsQuery = (code: string, date: string) =>
+    queryOptions({ queryKey: ["chart-anchors", code, date], queryFn: ({ signal }) => fetchChartAnchors(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
 
-// 타점 파라미터 앵커 — 이 차트 타점들의 계산 입력 좌표. 편집형(지정/해제 mutation 이 invalidate) → ∞.
-export const pointAnchorsQuery = (code: string, date: string) =>
-    queryOptions({ queryKey: ["point-anchors", code, date], queryFn: ({ signal }) => fetchPointAnchors(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
-
-export const priceLinedStocksQuery = () =>
-    queryOptions({ queryKey: ["price-lined-stocks"], queryFn: ({ signal }) => fetchPriceLinedStocks(signal), staleTime: IMMUTABLE });
+export const anchoredChartsQuery = () =>
+    queryOptions({ queryKey: ["anchored-charts"], queryFn: ({ signal }) => fetchAnchoredCharts(signal), staleTime: IMMUTABLE });
 
 export const reviewPointsQuery = (code: string, date: string) =>
     queryOptions({ queryKey: ["review-points", code, date], queryFn: ({ signal }) => fetchReviewPoints(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });

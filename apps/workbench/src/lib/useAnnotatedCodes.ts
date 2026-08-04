@@ -1,11 +1,11 @@
-// 주어진 날짜에 복기 타점 또는 가격선 주석이 있는 종목코드 집합 — 이슈/복기 보드에서 "주석 있는 종목" 좌측 바 표시용.
-// 작업셋이 이미 쓰는 두 쿼리(priceLinedStocks·allPoints, 캐시됨)를 재사용 → 백엔드 0. 그 보드 날짜의 주석만.
+// 주어진 날짜에 복기 타점 또는 선(기준선 앵커) 주석이 있는 종목코드 집합 — 이슈/복기 보드에서 "주석 있는 종목" 좌측 바 표시용.
+// 작업셋이 이미 쓰는 두 쿼리(anchoredCharts·allPoints, 캐시됨)를 재사용 → 백엔드 0. 그 보드 날짜의 주석만.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { priceLinedStocksQuery, allPointsQuery } from "../api/queries.js";
+import { anchoredChartsQuery, allPointsQuery } from "../api/queries.js";
 
 export function useAnnotatedCodes(date: string): Set<string> {
-    const linesQ = useQuery(priceLinedStocksQuery());
+    const linesQ = useQuery(anchoredChartsQuery());
     const pointsQ = useQuery(allPointsQuery());
     return useMemo(() => {
         const set = new Set<string>();

@@ -1,14 +1,13 @@
 // 봉 우클릭 메뉴 — "이 캔들로 무엇을 할까"가 한자리에 모인다(복기 차트 전용, 실시간은 기존 토글 유지).
-//  · 가격선: 옛 우클릭 토글은 field="high" 고정이었다 — 저가·종가 선을 메뉴로 연다. 값을 숫자로 보여주는 게 핵심:
-//    라벨("고가")만으론 NXT 오염 캔들(장시작 무거래 체결 튐)을 못 알아본다. 나란히 보이면 이상한 값이 바로 티가 난다.
-//  · 파라미터 앵커: 활성 타점에 이름 붙은 캔들 좌표(계산 축 입력)를 매단다. needsPrice 파라미터는 시장×값
-//    목록이 펼쳐지고(사람이 시장·값까지 지목), 시각 파라미터는 클릭 한 번. 레지스트리(ANCHOR_PARAMS)가 결정.
-//    **다중 파라미터(무시 캔들)는 "지정/해제"가 아니라 그 캔들의 토글**이다 — 여러 개가 공존하므로 "현재 무엇"을
-//    보여줄 자리가 없고, 사용자가 묻는 건 언제나 "지금 우클릭한 이 캔들이 그 목록에 있나"다.
+//  · 선 긋기 = 기준선 후보 추가(선=앵커 통합): 시장(UN/KRX)×값(시고저종)을 지목한다. 값을 숫자로 보여주는 게
+//    핵심 — 라벨("고가")만으론 NXT 오염 캔들(장시작 무거래 체결 튐)을 못 알아본다. 나란히 보이면 바로 티가 난다.
+//    분봉 캔들은 UN 만(분봉 KRX 는 세션 부재가 있어 앵커 불가 — 서버 규칙과 동일 기준).
+//    어느 선이 계산 축의 기준선이 되는지는 리졸버(가격 최저)가 정한다 — 차트의 하늘색 선이 그것.
+//  · 무시 캔들 = 차트 소유 토글(일봉만). 타점 선택이 필요 없다 — 앵커가 차트(종목,날짜) 소유가 됐기 때문.
 //  · 선 근처 우클릭이면 그 선 삭제만 — 즉시 삭제 대신 메뉴를 거쳐 오발을 막는다.
-import { ANCHOR_PARAMS, type AnchorCoord, type AnchorMarket, type PointAnchor, type PriceLineField } from "@trade-data-manager/market/domain";
+import { anchorParamByKey, IGNORE_CANDLE_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
-import type { RenderLine } from "../api/priceLines.js";
+import type { RenderLine } from "../api/chartAnchors.js";
 
 /** 캔들 한 시장의 OHLC(원). 로드된 번들 raw 에서 뽑는다 — KRX 는 세션 부재(NXT 단독 시간대)면 null. */
 export interface MenuBar {
@@ -25,25 +24,17 @@ export interface CandleMenuProps {
     bars?: { un: MenuBar | null; krx: MenuBar | null };
     /** 근처 우클릭된 선 — 삭제 항목만 노출. */
     nearLine?: RenderLine;
-    /** 이 캔들 앵커에 이미 그어진 가격선 id — 있으면 "이 선 삭제"가 함께 뜬다(토글 감각 보존). */
+    /** 이 캔들에 이미 그어진 선의 id — 있으면 "이 봉의 선 삭제"가 함께 뜬다(토글 감각 보존). */
     lineIdAtCandle?: string;
-    /**
-     * **저장 타점**의 시각(포커스 시각이 아니다). 앵커는 타점 소유라 저장 타점에만 붙는다 —
-     * 포커스 시각으로 가드하면 아무 봉에서나 버튼이 활성으로 보이고, 눌러도 서버가 FK 로 거부해
-     * 조용히 실패한다(성공한 것처럼 보이는 게 최악). 저장 타점이 아니면 null 을 넘겨 비활성.
-     */
-    activeTime: string | null;
-    /** 활성 타점의 앵커들 — 이미 지정된 파라미터는 해제 항목이 뜬다. */
-    activeAnchors: readonly PointAnchor[];
-    onAddLine: (field: PriceLineField) => void;
+    /** 이 일봉이 무시 캔들로 지정돼 있는가(차트 소유 — 타점 무관). */
+    ignoredAtCandle: boolean;
+    onAddLine: (field: AnchorField, market: AnchorMarket) => void;
     onRemoveLine: (id: string) => void;
-    onSetAnchor: (param: string, price: { field: PriceLineField; market: AnchorMarket } | null) => void;
-    /** coord 를 주면 그 앵커 하나만, 생략하면 그 param 전부(단일 파라미터는 그게 곧 그 하나). */
-    onClearAnchor: (param: string, coord?: AnchorCoord) => void;
+    onToggleIgnore: () => void;
     onClose: () => void;
 }
 
-const FIELD_LABELS: { field: PriceLineField; label: string }[] = [
+const FIELD_LABELS: { field: AnchorField; label: string }[] = [
     { field: "high", label: "고" },
     { field: "low", label: "저" },
     { field: "open", label: "시" },
@@ -52,12 +43,10 @@ const FIELD_LABELS: { field: PriceLineField; label: string }[] = [
 
 const fmt = (v: number): string => v.toLocaleString();
 
-export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, activeTime, activeAnchors, onAddLine, onRemoveLine, onSetAnchor, onClearAnchor, onClose }: CandleMenuProps): JSX.Element {
+export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, ignoredAtCandle, onAddLine, onRemoveLine, onToggleIgnore, onClose }: CandleMenuProps): JSX.Element {
     const title = candle ? `${candle.date}${candle.time ? ` ${candle.time.slice(0, 5)}` : " 일봉"}` : "가격선";
-    // 분봉 M 선은 렌더가 항상 고가를 읽는다(resolveAnchorLines) — 분봉 캔들엔 고가 항목만.
-    const lineFields = candle?.time ? FIELD_LABELS.slice(0, 1) : FIELD_LABELS;
-    // 가격선 표시값은 UN(항상 존재) — 가격선 자체는 market 을 저장하지 않아(렌더가 차트 모드를 따름) 안내용 숫자다.
-    const lineBar = bars?.un ?? bars?.krx ?? null;
+    // 분봉 앵커는 UN 고정(서버 규칙) — KRX 행을 아예 안 그린다. 일봉은 두 시장 다.
+    const markets: readonly AnchorMarket[] = candle?.time ? ["un"] : ["un", "krx"];
 
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={210} padding={0} placement="beside" offset={6}>
@@ -71,86 +60,41 @@ export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, act
 
             {candle && (
                 <>
-                    {lineFields.map(({ field, label }) => (
-                        <MenuItem key={field} onClick={() => { onAddLine(field); onClose(); }}>
-                            <span style={{ color: "var(--text-tertiary)" }}>선 긋기</span> {label}{" "}
-                            <span style={{ fontVariantNumeric: "tabular-nums" }}>{lineBar ? fmt(lineBar[field]) : "—"}</span>
-                        </MenuItem>
-                    ))}
+                    <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                        <MenuLabel>선 긋기 — 시장·값 지목</MenuLabel>
+                    </div>
+                    {markets.map((market) => {
+                        const bar = bars?.[market];
+                        if (!bar) return null; // KRX 세션 부재(NXT 단독 시간대) — 그 시장 행 생략
+                        return (
+                            <div key={market} style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 8px 4px" }}>
+                                <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)" }}>{market.toUpperCase()}</span>
+                                {FIELD_LABELS.map(({ field, label }) => (
+                                    <button key={field}
+                                        onClick={() => { onAddLine(field, market); onClose(); }}
+                                        title={`${market.toUpperCase()} ${label} ${fmt(bar[field])} 에 선 긋기`}
+                                        style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: "1px solid var(--border-default)", borderRadius: 4, background: "transparent", color: "var(--text-primary)", cursor: "pointer", fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                                        <span style={{ color: "var(--text-tertiary)" }}>{label}</span>
+                                        <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{fmt(bar[field])}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        );
+                    })}
                     {lineIdAtCandle && (
                         <MenuItem onClick={() => { onRemoveLine(lineIdAtCandle); onClose(); }} style={{ color: "var(--rise)" }}>
                             이 봉의 선 삭제
                         </MenuItem>
                     )}
 
-                    {ANCHOR_PARAMS.map((p) => {
-                        // 이 파라미터가 이 캔들 종류를 안 받으면 항목 자체를 감춘다(서버도 같은 기준으로 거부).
-                        if (p.candles === "daily" && candle.time) return null;
-                        if (p.candles === "minute" && !candle.time) return null;
-                        const owned = activeAnchors.filter((a) => a.param === p.key);
-                        const disabled = activeTime === null;
-
-                        // 다중 파라미터 — 이 캔들의 토글. "현재 무엇"을 쓸 자리가 없다(여럿이 공존).
-                        if (p.multiple) {
-                            const here = owned.find((a) => a.anchorDate === candle.date && (a.anchorTime ?? undefined) === candle.time);
-                            return (
-                                <div key={p.key} style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                                    <MenuLabel>
-                                        {p.name}
-                                        {activeTime ? ` → 타점 ${activeTime.slice(0, 5)}${owned.length > 0 ? ` (현재 ${owned.length}개)` : ""}` : " — 저장 타점 아님(스페이스바)"}
-                                    </MenuLabel>
-                                    {here ? (
-                                        <MenuItem onClick={() => { onClearAnchor(p.key, here); onClose(); }} style={{ color: "var(--text-tertiary)" }}>
-                                            이 캔들 해제
-                                        </MenuItem>
-                                    ) : (
-                                        <MenuItem disabled={disabled} onClick={() => { onSetAnchor(p.key, null); onClose(); }}>
-                                            이 캔들 지정
-                                        </MenuItem>
-                                    )}
-                                </div>
-                            );
-                        }
-
-                        const existing = owned[0];
-                        return (
-                            <div key={p.key} style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                                <MenuLabel>
-                                    {p.name} 지정{activeTime ? ` → 타점 ${activeTime.slice(0, 5)}` : " — 저장 타점 아님(스페이스바)"}
-                                </MenuLabel>
-                                {p.needsPrice ? (
-                                    (["un", "krx"] as const).map((market) => {
-                                        const bar = bars?.[market];
-                                        if (!bar) return null; // KRX 세션 부재(NXT 단독 시간대) — 그 시장 행 생략
-                                        return (
-                                            <div key={market} style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 8px 4px" }}>
-                                                <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)" }}>{market.toUpperCase()}</span>
-                                                {FIELD_LABELS.map(({ field, label }) => (
-                                                    <button key={field} disabled={disabled}
-                                                        onClick={() => { onSetAnchor(p.key, { field, market }); onClose(); }}
-                                                        title={disabled ? "이 시각은 저장 타점이 아닙니다 — 스페이스바로 타점을 저장한 뒤에" : `${market.toUpperCase()} ${label} ${fmt(bar[field])} 를 ${p.name}으로`}
-                                                        style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: "1px solid var(--border-default)", borderRadius: 4, background: "transparent", color: disabled ? "var(--text-tertiary)" : "var(--text-primary)", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
-                                                        <span style={{ color: "var(--text-tertiary)" }}>{label}</span>
-                                                        <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{fmt(bar[field])}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        );
-                                    })
-                                ) : (
-                                    <MenuItem disabled={disabled} onClick={() => { onSetAnchor(p.key, null); onClose(); }}>
-                                        이 캔들로 지정
-                                    </MenuItem>
-                                )}
-                                {existing && (
-                                    <MenuItem onClick={() => { onClearAnchor(p.key); onClose(); }} style={{ color: "var(--text-tertiary)" }}>
-                                        {p.name} 해제 (현재 {existing.anchorDate.slice(5)}{existing.anchorTime ? ` ${existing.anchorTime.slice(0, 5)}` : ""}
-                                        {existing.market ? ` ${existing.market.toUpperCase()}·${existing.field}` : ""})
-                                    </MenuItem>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {!candle.time && (
+                        <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                            <MenuLabel>{anchorParamByKey.get(IGNORE_CANDLE_PARAM)?.name ?? "무시 캔들"} — 이 차트의 과거 스캔에서 제외</MenuLabel>
+                            <MenuItem onClick={() => { onToggleIgnore(); onClose(); }} style={ignoredAtCandle ? { color: "var(--text-tertiary)" } : undefined}>
+                                {ignoredAtCandle ? "이 캔들 해제" : "이 캔들 지정"}
+                            </MenuItem>
+                        </div>
+                    )}
                 </>
             )}
         </AnchoredPopover>

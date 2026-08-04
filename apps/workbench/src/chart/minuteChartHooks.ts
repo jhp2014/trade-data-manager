@@ -26,7 +26,7 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
 export const TAG_MARKER_ATTR = "data-tag-marker";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { type MinutePoint } from "../lib/derive.js";
-import type { RenderLine } from "../api/priceLines.js";
+import type { RenderLine } from "../api/chartAnchors.js";
 import { ALARM, PRICE_LINE } from "../styles/palette.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑

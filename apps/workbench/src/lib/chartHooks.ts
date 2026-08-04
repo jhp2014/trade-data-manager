@@ -1,72 +1,91 @@
-// ChartPanel 편집 유스케이스 훅 — 가격선/타점의 조회·앵커해소·mutation·단축키를 컴포넌트에서 분리.
+// ChartPanel 편집 유스케이스 훅 — 차트 앵커(선·무시 캔들)/타점의 조회·해소·mutation·단축키를 컴포넌트에서 분리.
 // 패널은 뷰 파생(deriveMinute/DailyView)+렌더만 남긴다.
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addPriceLine, removePriceLine, type PriceLineField, type RenderLine } from "../api/priceLines.js";
+import { BASELINE_PARAM, IGNORE_CANDLE_PARAM } from "@trade-data-manager/market/domain";
+import { addChartAnchor, removeChartAnchor, type AnchorField, type AnchorMarket, type RenderLine } from "../api/chartAnchors.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { useTags } from "./useTags.js";
 import { presetToggle } from "./tagIndex.js";
-import { priceLinesQuery, priceLinedStocksQuery, reviewPointsQuery, allPointsQuery, chartQuery, computedAxesQuery } from "../api/queries.js";
-import { kstToUnix, deriveMinuteView, type DailyPoint, type MinuteView } from "./derive.js";
-import { resolveAnchorLines } from "./chartFrame.js";
+import { chartAnchorsQuery, anchoredChartsQuery, reviewPointsQuery, allPointsQuery, chartQuery, computedAxesQuery } from "../api/queries.js";
+import { kstToUnix, deriveMinuteView } from "./derive.js";
+import { resolveChartAnchorLines } from "./chartFrame.js";
 import { usePlacements } from "./usePlacements.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
+import type { ChartBundle } from "../api/chart.js";
 import type { Command } from "../keymap/types.js";
 
-export interface ChartPriceLines {
-    resolvedLines: RenderLine[]; // D+M 해소된 선(분봉용)
+export interface ChartAnchorsForChart {
+    resolvedLines: RenderLine[]; // D+M 해소된 선(분봉용). 확정 기준선(가격 최저)은 하늘색.
     dLines: RenderLine[]; // 일봉용(D만)
     hasLines: boolean;
-    /** 이 앵커에 선 추가 — field 는 메뉴가 고른다(옛 우클릭 토글의 high 고정을 걷어냄). */
-    addLine: (anchorDate: string, anchorTime: string | undefined, field: PriceLineField) => void;
-    /** 이 앵커에 이미 그어진 선의 id(메뉴의 "이 봉의 선 삭제"). 없으면 undefined. */
+    /** 이 캔들에 선(=기준선 후보) 추가 — field·market 은 메뉴가 고른다. 분봉은 market 'un' 고정(서버 규칙). */
+    addLine: (anchorDate: string, anchorTime: string | undefined, field: AnchorField, market: AnchorMarket) => void;
+    /** 이 캔들에 이미 그어진 선의 id(메뉴의 "이 봉의 선 삭제"). 없으면 undefined. */
     lineIdAt: (anchorDate: string, anchorTime: string | undefined) => string | undefined;
     removeLineById: (id: string) => void;
     clear: () => void;
+    /** 무시 캔들 날짜들(차트 소유 — 타점 무관 상시 표시). */
+    ignoredDates: string[];
+    /** 이 일봉의 무시 캔들 토글 — 있으면 해제, 없으면 지정. */
+    toggleIgnore: (anchorDate: string) => void;
 }
 
-/** 가격선 주석 — 조회 + 앵커 해소(로드된 캔들 기준 RenderLine) + 메뉴용 추가/삭제/clear. 앵커 캔들 없으면 그 선 생략. */
-export function usePriceLinesForChart(
+/**
+ * 차트 앵커 — 조회 + 해소(raw 번들에서 저장된 시장·값) + 메뉴용 추가/삭제/clear/무시 토글.
+ * 선 = param 'baseline' 앵커(옛 가격선 흡수), 소유는 차트(종목,날짜)라 타점 선택이 필요 없다.
+ * ⚠ 선이 곧 계산 축의 기준선 후보라서 모든 mutation 이 computedAxes 를 invalidate 한다(서버는 지문으로
+ * 그 차트 타점들만 다시 굽는다).
+ */
+export function useChartAnchorsForChart(
     code: string,
     date: string,
-    dailyView: DailyPoint[] | null,
-    minuteView: MinuteView | null,
-): ChartPriceLines {
+    dailyBundle: ChartBundle | undefined,
+    minuteBundle: ChartBundle | undefined,
+): ChartAnchorsForChart {
     const qc = useQueryClient();
-    const linesQ = useQuery(priceLinesQuery(code, date));
-    const lines = useMemo(() => linesQ.data ?? [], [linesQ.data]);
+    const anchorsQ = useQuery(chartAnchorsQuery(code, date));
+    const anchors = useMemo(() => anchorsQ.data ?? [], [anchorsQ.data]);
+    const lines = useMemo(() => anchors.filter((a) => a.param === BASELINE_PARAM), [anchors]);
+    const ignores = useMemo(() => anchors.filter((a) => a.param === IGNORE_CANDLE_PARAM), [anchors]);
 
-    // anchorTime 유무로 일봉(D)/분봉(M) 구분. field=고/저/시/종(현재 UI 는 high). 해소 규칙은 실시간 메모리 선과 공용.
-    const resolvedLines = useMemo(() => resolveAnchorLines(lines, dailyView, minuteView), [lines, dailyView, minuteView]);
+    // 저장된 시장·값을 raw 번들에서 해소(모드 토글 무관 — 사람이 지목한 그 값). 확정 기준선은 하늘색 표시.
+    const resolvedLines = useMemo(() => resolveChartAnchorLines(lines, dailyBundle, minuteBundle), [lines, dailyBundle, minuteBundle]);
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
+    const ignoredDates = useMemo(() => ignores.map((a) => a.anchorDate), [ignores]);
 
     const invalidate = (): void => {
-        void qc.invalidateQueries({ queryKey: priceLinesQuery(code, date).queryKey });
-        void qc.invalidateQueries({ queryKey: priceLinedStocksQuery().queryKey }); // 작업셋 패널 즉시 반영
+        void qc.invalidateQueries({ queryKey: chartAnchorsQuery(code, date).queryKey });
+        void qc.invalidateQueries({ queryKey: anchoredChartsQuery().queryKey }); // 작업셋 패널 즉시 반영
+        // 선·무시 캔들은 계산 축의 입력 — 긋고 지우는 즉시 축 값이 따라와야 한다(지문이 그 차트만 재굽기).
+        void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
     };
-    const addMut = useMutation({ mutationFn: addPriceLine, onSuccess: invalidate });
-    const removeMut = useMutation({ mutationFn: removePriceLine, onSuccess: invalidate });
-    // clear — 이 차트의 가격선 전체 삭제(우클릭이 잘 안 잡히는 경우 대비). 저장 타점은 건드리지 않음.
+    const addMut = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
+    const removeMut = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });
+    // clear — 이 차트의 선 전체 삭제(우클릭이 잘 안 잡히는 경우 대비). 무시 캔들·저장 타점은 건드리지 않음.
     const clearMut = useMutation({
         mutationFn: async () => {
-            await Promise.all(lines.map((l) => removePriceLine(l.id)));
+            await Promise.all(lines.map((l) => removeChartAnchor(l.id)));
         },
         onSuccess: invalidate,
     });
 
-    // 옛 우클릭 토글(있으면 삭제/없으면 high 추가)은 메뉴(CandleMenu)로 대체 — field 를 고를 수 있어야 하고
-    // (저가·종가 선), 같은 자리에 파라미터 앵커 지정도 함께 살기 때문. 추가와 삭제를 분리해 메뉴가 조합한다.
-    const addLine = (anchorDate: string, anchorTime: string | undefined, field: PriceLineField): void => {
+    const addLine = (anchorDate: string, anchorTime: string | undefined, field: AnchorField, market: AnchorMarket): void => {
         if (!code || !date) return;
-        addMut.mutate({ stockCode: code, date, anchorDate, anchorTime, field });
+        addMut.mutate({ stockCode: code, date, param: BASELINE_PARAM, anchorDate, anchorTime, field, market });
     };
     const lineIdAt = (anchorDate: string, anchorTime: string | undefined): string | undefined =>
         lines.find((l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime)?.id;
     const removeLineById = (id: string): void => removeMut.mutate(id);
     const clear = (): void => clearMut.mutate();
+    const toggleIgnore = (anchorDate: string): void => {
+        const existing = ignores.find((a) => a.anchorDate === anchorDate);
+        if (existing) removeMut.mutate(existing.id);
+        else addMut.mutate({ stockCode: code, date, param: IGNORE_CANDLE_PARAM, anchorDate });
+    };
 
-    return { resolvedLines, dLines, hasLines: lines.length > 0, addLine, lineIdAt, removeLineById, clear };
+    return { resolvedLines, dLines, hasLines: lines.length > 0, addLine, lineIdAt, removeLineById, clear, ignoredDates, toggleIgnore };
 }
 
 export interface SavedPoint {

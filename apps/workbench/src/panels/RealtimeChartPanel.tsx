@@ -25,7 +25,7 @@ import {
     ViewToggles,
 } from "./ChartPanelChrome.js";
 import { TextToggle, Sep, ControlGroup } from "../components/ControlChrome.js";
-import type { RenderLine } from "../api/priceLines.js";
+import type { RenderLine } from "../api/chartAnchors.js";
 import { ALARM } from "../styles/palette.js";
 
 // 실시간 차트(실시간 플레인) — apps/live 에서 REST 로 ChartBundle 을 받아 렌더. 껍데기는 ChartPanelChrome 공용.

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { type ReviewPointListItem } from "../api/reviewPoints.js";
-import { priceLinedStocksQuery, allPointsQuery } from "../api/queries.js";
+import { anchoredChartsQuery, allPointsQuery } from "../api/queries.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { MonthPicker, LocateIcon, DateHeader, Name, PointRow } from "./WorksetRows.js";
 import { usePlacements } from "../lib/usePlacements.js";
@@ -47,7 +47,7 @@ export function WorksetPanel(): JSX.Element {
     // 배치 현황(n/m) — 배치 여부를 알려면 어차피 전 축 줄이 필요하고, 그건 배치/시트 패널과 같은 캐시다(추가 페치 0).
     const placements = usePlacements();
 
-    const stocksQ = useQuery(priceLinedStocksQuery());
+    const stocksQ = useQuery(anchoredChartsQuery());
     const pointsQ = useQuery(allPointsQuery());
     const stocks = useMemo(() => stocksQ.data ?? [], [stocksQ.data]);
     const points = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);

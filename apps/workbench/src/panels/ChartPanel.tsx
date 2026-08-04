@@ -1,16 +1,14 @@
 import { useMemo, useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
-import { chartQuery, pointAnchorsQuery, computedAxesQuery } from "../api/queries.js";
-import { putPointAnchor, removePointAnchor } from "../api/pointAnchors.js";
+import { chartQuery } from "../api/queries.js";
 import { kstToUnix } from "../lib/derive.js";
-import { useChartViews, resolvePointAnchorLines, parseAnchorLineId, ANCHOR_LINE_COLOR } from "../lib/chartFrame.js";
-import { anchorParamByKey, IGNORE_CANDLE_PARAM, type AnchorCoord, type PointAnchor } from "@trade-data-manager/market/domain";
-import { usePriceLinesForChart, useReviewPointData } from "../lib/chartHooks.js";
+import { useChartViews } from "../lib/chartFrame.js";
+import { useChartAnchorsForChart, useReviewPointData } from "../lib/chartHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
-import type { RenderLine } from "../api/priceLines.js";
+import type { RenderLine } from "../api/chartAnchors.js";
 import { useStockName } from "../lib/useStockName.js";
 import { useTags } from "../lib/useTags.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
@@ -34,7 +32,8 @@ import { TextToggle, Sep, ControlGroup } from "../components/ControlChrome.js";
 
 // 차트 패널(복기 플레인) — 일봉(상) + 분봉(하) 듀얼. 껍데기(헤더·2단·토글)는 ChartPanelChrome 공용.
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
-// 가격선/타점 편집 유스케이스는 usePriceLinesForChart·useReviewPointData 훅으로 분리 — 여긴 뷰 파생+렌더.
+// 차트 앵커(선·무시 캔들)/타점 편집 유스케이스는 useChartAnchorsForChart·useReviewPointData 훅 — 여긴 뷰 파생+렌더.
+// 선 = 기준선 후보(차트 소유) — 타점 선택 없이 긋고 지운다. 확정 기준선(가격 최저)은 하늘색으로 표시.
 // 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~4=태그 프리셋(전역 useChartHotkeys).
 // 태그 입력은 타점 ▼ **우클릭**(TagMenu) — 타점 저장과 분리된 동작이라 키·클릭도 갈라 둔다.
 export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
@@ -68,50 +67,19 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const minuteQ = useQuery({ ...chartQuery(code, viewDate), placeholderData: keepPreviousData }); // viewDate=anchor 면 같은 쿼리(RQ dedup)
     const { dailyView, minuteView, dailyFrameKey, minuteFrameKey, pctBase } = useChartViews(dailyQ.data, minuteQ.data, mode, viewDate);
 
-    // 가격선 주석(조회·해소·추가/삭제/clear) + 복기 타점(조회·savedPoints) — 훅으로 분리.
-    const { resolvedLines, dLines, hasLines, addLine, lineIdAt, removeLineById, clear } = usePriceLinesForChart(code, viewDate, dailyView, minuteView);
+    // 차트 앵커(선·무시 캔들 — 조회·해소·추가/삭제/clear/토글) + 복기 타점(조회·savedPoints) — 훅으로 분리.
+    // 선 해소는 raw 번들(저장된 시장·값) — 무시 캔들은 차트 소유라 타점 무관 상시 표시.
+    const { resolvedLines, dLines, hasLines, addLine, lineIdAt, removeLineById, clear, ignoredDates, toggleIgnore } =
+        useChartAnchorsForChart(code, viewDate, dailyQ.data, minuteQ.data);
     const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
 
-    // ── 타점 파라미터 앵커 — 현재 **저장 타점**의 계산 입력 좌표. 지정/해제는 봉 우클릭 메뉴(CandleMenu).
-    // 소유자는 포커스 시각이 아니라 focusedPoint 다: 포커스는 a/d 로 봉을 옮길 때마다 바뀌는 아무 분봉 시각이라
-    // 그걸로 가드하면 저장 타점이 아닌 곳에서도 버튼이 활성으로 보이고, 눌러도 FK 로 거부돼 조용히 실패한다.
-    const anchorTime = focusedPoint?.time ?? null;
-    const qc = useQueryClient();
-    const anchorsQ = useQuery(pointAnchorsQuery(code, viewDate));
-    const activeAnchors = useMemo(
-        () => (anchorTime ? (anchorsQ.data ?? []).filter((a) => a.time === anchorTime) : []),
-        [anchorsQ.data, anchorTime],
-    );
-    const invAnchors = (): void => {
-        void qc.invalidateQueries({ queryKey: pointAnchorsQuery(code, viewDate).queryKey });
-        // 앵커는 계산 축(params 선언)의 입력 — 지정/이동/해제 즉시 축 값이 따라와야 한다(서버는 지문으로
-        // 그 타점만 다시 굽는다). 사용자가 새로고침을 의식하게 하지 않는 게 규칙.
-        void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
-    };
-    const setAnchorMut = useMutation({ mutationFn: putPointAnchor, onSuccess: invAnchors });
-    const clearAnchorMut = useMutation({
-        // coord 없이 부르면 그 param 전부 해제 — 단일 파라미터(기준선)는 그게 곧 그 하나다.
-        mutationFn: (v: { param: string; coord?: AnchorCoord }) =>
-            removePointAnchor({ stockCode: code, date: viewDate, time: anchorTime ?? "" }, v.param, v.coord),
-        onSuccess: invAnchors,
-    });
-    // 앵커 선 — **저장된 시장의 값**을 raw 번들에서 읽는다(차트 모드와 무관 — 사람이 지목한 그 값).
-    const anchorLines = useMemo(
-        () => (activeAnchors.length > 0 ? resolvePointAnchorLines(activeAnchors, dailyQ.data, minuteQ.data) : []),
-        [activeAnchors, dailyQ.data, minuteQ.data],
-    );
-    // 무시 캔들 — 선이 아니라 그 봉의 마커에 적는다(값이 아니라 "이 봉을 안 본다"는 뜻이라 수평선이 될 수 없다).
-    const ignoredDates = useMemo(
-        () => activeAnchors.filter((a) => a.param === IGNORE_CANDLE_PARAM).map((a) => a.anchorDate),
-        [activeAnchors],
-    );
-    const dailyLines = useMemo(() => [...dLines, ...anchorLines.filter((l) => l.kind === "D")], [dLines, anchorLines]);
-    const minuteLines = useMemo(() => [...resolvedLines, ...anchorLines], [resolvedLines, anchorLines]);
+    const dailyLines = dLines;
+    const minuteLines = resolvedLines;
 
-    // ── 봉 우클릭 메뉴 — 가격선(field 선택)과 파라미터 앵커 지정이 한자리에. 선 근처 우클릭은 삭제 항목만.
+    // ── 봉 우클릭 메뉴 — 선 긋기(시장×값)와 무시 캔들 토글이 한자리에. 선 근처 우클릭은 삭제 항목만.
     const [candleMenu, setCandleMenu] = useState<{ x: number; y: number; candle?: { date: string; time?: string }; nearLine?: RenderLine } | null>(null);
     const menuBars = useMemo((): { un: MenuBar | null; krx: MenuBar | null } | undefined => {
         const c = candleMenu?.candle;
@@ -125,12 +93,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         const d = dailyQ.data?.daily.find((x) => x.date === c.date);
         return { un: num(d?.un), krx: num(d?.krx) };
     }, [candleMenu, dailyQ.data, minuteQ.data]);
-    // 메뉴의 선/앵커 삭제 라우팅 — 앵커 선 id 는 param+좌표(가격선 id 와 네임스페이스로 구분).
-    const removeLineOrAnchor = (id: string): void => {
-        const anchor = parseAnchorLineId(id);
-        if (anchor) clearAnchorMut.mutate(anchor);
-        else removeLineById(id);
-    };
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -147,13 +109,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 onToggleControls={() => toggleControls(panelId)}
                 badges={
                     focusedPoint ? (
-                        // 현재 타점의 태그(옛 단일 type 배지 자리) + 파라미터 앵커 칩 — 헤더 한 줄이라 wrap 없이 잘린다.
-                        // 앵커 선은 그 타점에 서 있을 때만 그려지므로(소유가 타점), "이 타점이 기준선을 가졌나"를
-                        // 선 말고도 알려주는 단서가 필요하다 — 봉을 옮겨 선이 사라져도 돌아오면 여기서 확인된다.
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                            <TagChips tags={tagsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} style={{ maxWidth: 180, flexShrink: 1 }} />
-                            <AnchorChips anchors={activeAnchors} />
-                        </span>
+                        // 현재 타점의 태그(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
+                        // 옛 앵커 칩은 제거 — 앵커가 차트 소유가 되면서 선이 상시 그려지므로 별도 단서가 필요 없다.
+                        <TagChips tags={tagsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} style={{ maxWidth: 180, flexShrink: 1 }} />
                     ) : null
                 }
             >
@@ -185,8 +143,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <ChartPanes
                         expanded={expanded}
                         viewDate={viewDate}
-                        dailyTitle="봉 ctrl+클릭 / 더블클릭: 그 날짜로 검색 · 봉 우클릭: 메뉴(가격선·기준선)"
-                        minuteTitle="ctrl+클릭 / 더블클릭: 타점 이동 · 스페이스바: 타점 저장 · 봉 우클릭: 메뉴(가격선·기준선)"
+                        dailyTitle="봉 ctrl+클릭 / 더블클릭: 그 날짜로 검색 · 봉 우클릭: 메뉴(선 긋기·무시 캔들)"
+                        minuteTitle="ctrl+클릭 / 더블클릭: 타점 이동 · 스페이스바: 타점 저장 · 봉 우클릭: 메뉴(선 긋기)"
                         daily={
                             dailyView.length > 0 ? (
                                 <DailyChart
@@ -197,7 +155,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     zoomBars={cs.dailyZoomBars}
                                     zoomOutBars={cs.dailyZoomOutBars}
                                     onRightClick={(d, at) => setCandleMenu({ ...at, candle: { date: d } })}
-                                    onRemoveLine={(l) => removeLineOrAnchor(l.id)}
+                                    onRemoveLine={(l) => removeLineById(l.id)}
                                     onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
                                     onCandleClick={pinMinute ? undefined : (d) => setSearchDate(d === anchorDate ? null : d)}
                                     searchDate={showLine && drifted ? viewDate : undefined}
@@ -224,7 +182,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     lockTimeScale={lockScale}
                                     onMovePoint={(t) => setTime(t)}
                                     onRightClick={(a, at) => setCandleMenu({ ...at, candle: { date: a.date, time: a.time } })}
-                                    onRemoveLine={(l) => removeLineOrAnchor(l.id)}
+                                    onRemoveLine={(l) => removeLineById(l.id)}
                                     onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
                                     onTagPoint={(t, x, y) => setTagMenu({ time: t, x, y })}
                                     tagsOfTime={(t) => tagsOf({ stockCode: code, date: viewDate, time: t })}
@@ -251,51 +209,14 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     bars={menuBars}
                     nearLine={candleMenu.nearLine}
                     lineIdAtCandle={candleMenu.candle ? lineIdAt(candleMenu.candle.date, candleMenu.candle.time) : undefined}
-                    activeTime={anchorTime}
-                    activeAnchors={activeAnchors}
-                    onAddLine={(field) => candleMenu.candle && addLine(candleMenu.candle.date, candleMenu.candle.time, field)}
-                    onRemoveLine={removeLineOrAnchor}
-                    onSetAnchor={(param, price) => {
-                        const c = candleMenu.candle;
-                        if (!c || !anchorTime) return;
-                        setAnchorMut.mutate({
-                            stockCode: code, date: viewDate, time: anchorTime, param,
-                            anchorDate: c.date, anchorTime: c.time,
-                            field: price?.field, market: price?.market,
-                        });
-                    }}
-                    onClearAnchor={(param, coord) => clearAnchorMut.mutate({ param, coord })}
+                    ignoredAtCandle={candleMenu.candle ? ignoredDates.includes(candleMenu.candle.date) : false}
+                    onAddLine={(field, market) => candleMenu.candle && addLine(candleMenu.candle.date, candleMenu.candle.time, field, market)}
+                    onRemoveLine={removeLineById}
+                    onToggleIgnore={() => candleMenu.candle && toggleIgnore(candleMenu.candle.date)}
                     onClose={() => setCandleMenu(null)}
                 />
             )}
         </div>
-    );
-}
-
-/**
- * 현재 타점의 파라미터 앵커 칩 — 헤더 배지 줄. 지정된 param 만 뜬다(없으면 아무것도 안 그림).
- * 색은 앵커 선과 같은 것(ANCHOR_LINE_COLOR) — 차트의 그 하늘색 선과 같은 것임을 색으로 잇는다.
- * **param 당 칩 하나**(앵커당 하나가 아니다): 다중 파라미터는 개수만 붙인다 — 좌표 나열은 헤더 한 줄을 넘긴다.
- */
-function AnchorChips({ anchors }: { anchors: readonly PointAnchor[] }): JSX.Element | null {
-    if (anchors.length === 0) return null;
-    const byParam = new Map<string, PointAnchor[]>();
-    for (const a of anchors) byParam.set(a.param, [...(byParam.get(a.param) ?? []), a]);
-    return (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-            {[...byParam].map(([param, list]) => {
-                const name = anchorParamByKey.get(param)?.name ?? param;
-                const where = list
-                    .map((a) => `${a.anchorDate.slice(5)}${a.anchorTime ? ` ${a.anchorTime.slice(0, 5)}` : ""}${a.market ? ` ${a.market.toUpperCase()}·${a.field}` : ""}`)
-                    .join(", ");
-                return (
-                    <span key={param} title={`${name} — ${where}`}
-                        style={{ fontSize: 10.5, fontWeight: 700, color: ANCHOR_LINE_COLOR, border: `1px solid ${ANCHOR_LINE_COLOR}`, borderRadius: 3, padding: "1px 4px", whiteSpace: "nowrap" }}>
-                        {name}{list.length > 1 ? ` ${list.length}` : ""}
-                    </span>
-                );
-            })}
-        </span>
     );
 }
 
