@@ -22,8 +22,9 @@ export * from "./news/newsSearch.js";
 export * from "./classification/themeMember.js";
 export * from "./classification/dailyComment.js";
 
-// review — 차트 주석(사람 편집): 차트 앵커(선+파라미터 앵커 통합) + 복기 타점 + 타점 태그(명목형 분류)
+// review — 차트 주석(사람 편집): 차트 앵커(선+파라미터 앵커 통합) + 골격(피벗 시퀀스) + 복기 타점 + 타점 태그
 export * from "./review/chartAnchor.js";
+export * from "./review/skeleton.js";
 export * from "./review/reviewPoint.js";
 export * from "./review/tag.js";
 

@@ -124,14 +124,30 @@ export const BASELINE_PARAM = "baseline";
 export const IGNORE_CANDLE_PARAM = "ignore-candle";
 
 /**
+ * 골격 키 — 타점까지의 경로를 손으로 찍은 **피벗 시퀀스**(상승→하락→상승횡보→…). 형태 분류의 입력.
+ *
+ * **다른 param 과 다른 성질**: 행 하나가 아니라 **여러 행이 모여 하나의 의미**다. 그래서 정체성이 좌표가
+ * 아니라 **순서**인데, seq 컬럼을 두지 않는다 — 한 캔들 안에서 시·고·종의 시간 순서는 정리(定理)로 확정되고
+ * (open=첫 틱, close=마지막 틱, high 는 그 사이), 캔들 간에는 날짜가 순서를 준다. 유일한 구멍인 "같은 캔들의
+ * 高와 低"만 저장 경로가 막으면(skeletonSetError) 순서가 완전히 파생된다.
+ * 나중에 분봉 골격에서 한 봉의 고·저가 다 필요해지면 그때 seq 를 추가하고 **기계적으로 백필**하면 된다
+ * (지금 순서가 계산 가능하다는 게 곧 백필이 정확하다는 뜻).
+ *
+ * **차트 소유**: 일봉 골격의 모양은 장중에 안 변하므로 같은 날 타점들이 한 벌을 공유한다(기준선과 같은 논리).
+ */
+export const SKELETON_PARAM = "skeleton";
+
+/**
  * 파라미터 레지스트리 — 새 파라미터 = 여기 한 줄. 목록에 없는 param 은 존재하지 않는다.
  *   · baseline: 기준선(=차트에 그은 선). **다중** — 선을 긋는 행위가 곧 후보 추가이고, 축이 쓸 하나는
  *     리졸버가 "가격 최저"로 고른다. 일봉·분봉 어디든 그을 수 있다.
  *   · ignore-candle: 무시 캔들 — 위 상수 주석 참조.
+ *   · skeleton: 피벗 골격 — 위 상수 주석 참조. 집합 규칙은 skeletonSetError 가 따로 본다(행 단위로는 못 보는 것).
  */
 export const ANCHOR_PARAMS: readonly AnchorParamDef[] = [
     { key: BASELINE_PARAM, name: "기준선", needsPrice: true, owner: "chart", multiple: true },
     { key: IGNORE_CANDLE_PARAM, name: "무시 캔들", needsPrice: false, owner: "chart", multiple: true, candles: "daily" },
+    { key: SKELETON_PARAM, name: "골격", needsPrice: true, owner: "chart", multiple: true },
 ];
 
 /** key → 정의. 검증·표시가 이름으로 지목할 때. */
