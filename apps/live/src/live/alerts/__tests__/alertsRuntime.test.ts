@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { AlertsRuntime, type AlertConfigView, type AlertTickDeps } from "../alertsRuntime.js";
+import { AlertsRuntime, type AlertConfigView } from "../alertsRuntime.js";
+import type { AlertsTickDeps } from "../../engine/engine.js";
 import type { GateVerdict } from "../notifyGate.js";
 import type { AlarmRule } from "../types.js";
 import type { Quote } from "../../engine/types.js";
@@ -161,7 +162,7 @@ describe("AlertsRuntime — code 스코프(집중 감시) 규칙", () => {
 });
 
 /** 링버퍼 스텁 — 델타 창 기준점 제공. */
-const depsFor = (history: Record<string, Quote[]>): AlertTickDeps => ({
+const depsFor = (history: Record<string, Quote[]>): AlertsTickDeps => ({
     historyOf: (c) => history[c] ?? [],
     trailingHighsOf: () => undefined,
 });

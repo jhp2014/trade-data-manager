@@ -27,7 +27,7 @@ export const TAG_MARKER_ATTR = "data-tag-marker";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
 import { type MinutePoint } from "../lib/derive.js";
-import type { RenderLine } from "../api/chartAnchors.js";
+import type { RenderLine } from "../lib/chartFrame.js";
 import { ALARM, PRICE_LINE, SKELETON } from "../styles/palette.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑

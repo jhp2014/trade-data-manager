@@ -19,7 +19,17 @@ export interface LiveEngineOptions {
     pollMs?: number;
 }
 
-/** 알람 런타임 결합점 — 유니버스 합집합(watchCodes)과 틱 평가(tick) 두 지점만. 구현=alerts/AlertsRuntime. */
+/** 틱 평가에 엔진이 주입하는 원재료 — 링버퍼(델타)·일봉 컨텍스트(매물대). AlertsRuntime 이 같은 타입을 본다. */
+export interface AlertsTickDeps {
+    historyOf(code: string): readonly Quote[];
+    trailingHighsOf(code: string): { krx: number[]; un: number[] } | undefined;
+}
+
+/**
+ * 알람 런타임 결합점 — 유니버스 합집합(watchCodes)과 틱 평가(tick) 두 지점만.
+ * 구현 = alerts/AlertsRuntime — **implements 로 선언**돼 있어 시그니처가 어긋나면 컴파일이 잡는다
+ * (전엔 구조 타이핑으로만 묶여 조립 지점에서, 그것도 운 좋아야 드러났다 — mock 하네스 폐기 교훈과 같은 결).
+ */
 export interface AlertsHook {
     watchCodes(): string[];
     tick(
@@ -27,11 +37,7 @@ export interface AlertsHook {
         themesOf: (code: string) => string[],
         prevCloseOf: (code: string, market: "krx" | "un") => number | undefined,
         now: number,
-        /** 유니버스 조건검색 metrics 원재료 — 링버퍼(델타)·일봉 컨텍스트(매물대). */
-        deps?: {
-            historyOf(code: string): readonly Quote[];
-            trailingHighsOf(code: string): { krx: number[]; un: number[] } | undefined;
-        },
+        deps?: AlertsTickDeps,
     ): void;
 }
 

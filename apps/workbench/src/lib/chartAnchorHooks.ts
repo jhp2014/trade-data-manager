@@ -10,10 +10,10 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { BASELINE_PARAM, candlePrice, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
-import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RenderLine } from "../api/chartAnchors.js";
+import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor } from "../api/chartAnchors.js";
 import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery } from "../api/queries.js";
 import { kstToUnix } from "./derive.js";
-import { resolveChartAnchorLines } from "./chartFrame.js";
+import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
 import type { ChartBundle } from "../api/chart.js";
 
 /** 이 캔들에 찍힌 골격 점 — 값 + 저장된 시장(메뉴 배지). 일봉·분봉 골격이 같은 모양(B12 명명 통일). */

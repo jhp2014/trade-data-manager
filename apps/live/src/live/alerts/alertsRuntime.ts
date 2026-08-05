@@ -9,7 +9,8 @@
 //  · 쿨다운은 소비자(텔레그램) 정책 — 키: code 스코프=룰별(=종목×룰), 유니버스=규칙 설정
 //    (code=종목 넓게 / codeRule=종목×규칙). 로직은 NotifyGate 공유.
 import type { Quote } from "../engine/types.js";
-import type { BoardMetrics, ByMarket, SignalDeltas } from "@trade-data-manager/market/domain";
+import type { AlertsHook, AlertsTickDeps } from "../engine/engine.js";
+import type { BoardMetrics, SignalDeltas } from "@trade-data-manager/market/domain";
 import { AlarmEngine } from "./alarmEngine.js";
 import { buildUniverseMetrics } from "./universeMetrics.js";
 import { computeDeltas } from "../engine/signals.js";
@@ -37,16 +38,10 @@ export interface AlertConfigView {
     activeBlacklist(now: number): readonly BlacklistEntry[];
 }
 
-/** 알람 metrics 조립에 필요한 엔진 데이터(링버퍼·일봉 컨텍스트) — 엔진이 tick 에 주입. */
-export interface AlertTickDeps {
-    historyOf(code: string): readonly Quote[];
-    trailingHighsOf(code: string): ByMarket<number[]> | undefined;
-}
-
 /** 한 틱의 텔레그램 배달 결과 — passed=배달분 / suppressed=쿨다운 억제분(로그엔 남는다). */
 export type FiringSink = (verdict: GateVerdict) => void;
 
-export class AlertsRuntime {
+export class AlertsRuntime implements AlertsHook {
     private readonly engine = new AlarmEngine();
     private readonly tracker = new RankTracker();
     private readonly gate = new NotifyGate();
@@ -68,7 +63,7 @@ export class AlertsRuntime {
      * 한 틱 평가 — 엔진이 시세 적재 직후 호출. quotes 는 이번 틱 유니버스(hot∪watchlist)의 신선한 시세만.
      * prevCloseOf = market 전일종가(등락률·순위 잣대), deps = 링버퍼·일봉 컨텍스트(metrics 용).
      */
-    tick(quotes: readonly Quote[], themesOf: (code: string) => string[], prevCloseOf: PrevCloseLookup, now: number, deps?: AlertTickDeps): void {
+    tick(quotes: readonly Quote[], themesOf: (code: string) => string[], prevCloseOf: PrevCloseLookup, now: number, deps?: AlertsTickDeps): void {
         const ranks = computeThemeRanks(quotes, themesOf, prevCloseOf);
         this.lastRanks = ranks;
         this.tracker.push(ranks, now);

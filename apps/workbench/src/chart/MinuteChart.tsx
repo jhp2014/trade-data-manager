@@ -17,7 +17,7 @@ import {
     type SavedPointInput,
 } from "./minuteChartHooks.js";
 import type { MinutePoint } from "../lib/derive.js";
-import type { RenderLine } from "../api/chartAnchors.js";
+import type { RenderLine } from "../lib/chartFrame.js";
 import type { Tag } from "../api/tags.js";
 import { MARKER_NOW } from "../styles/palette.js";
 

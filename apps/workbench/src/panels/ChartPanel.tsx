@@ -9,7 +9,7 @@ import { useChartViews } from "../lib/chartFrame.js";
 import { useReviewPointData } from "../lib/chartHooks.js";
 import { useBaselineLines, useDailySkeleton, useIgnoreCandles, useMinuteSkeleton } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
-import type { RenderLine } from "../api/chartAnchors.js";
+import type { RenderLine } from "../lib/chartFrame.js";
 import { useStockName } from "../lib/useStockName.js";
 import { useTags } from "../lib/useTags.js";
 import { MinuteChart } from "../chart/MinuteChart.js";

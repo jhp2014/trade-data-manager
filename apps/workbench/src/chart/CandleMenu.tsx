@@ -17,7 +17,7 @@
 import { ANCHOR_FIELDS, anchorParamByKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { SKELETON } from "../styles/palette.js";
-import type { RenderLine } from "../api/chartAnchors.js";
+import type { RenderLine } from "../lib/chartFrame.js";
 
 /** 캔들 한 시장의 OHLC(원). 로드된 번들 raw 에서 뽑는다 — KRX 는 세션 부재(NXT 단독 시간대)면 null. */
 export interface MenuBar {

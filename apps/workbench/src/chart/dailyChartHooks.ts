@@ -21,7 +21,7 @@ import { VertLines, asPrimitive } from "./vertLine.js";
 import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
 import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE, SKELETON } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
-import type { RenderLine } from "../api/chartAnchors.js";
+import type { RenderLine } from "../lib/chartFrame.js";
 
 const LEFT_MARGIN_BARS = 3; // 좌측 여백(빈 논리 인덱스)
 const RIGHT_MARGIN_BARS = 10; // 우측 여백 — 가격선 라벨(D/M)이 오늘 봉을 가리지 않게

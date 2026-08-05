@@ -7,8 +7,17 @@ import { useMemo } from "react";
 import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, type ChartAnchor } from "@trade-data-manager/market/domain";
 import { deriveDailyView, deriveMinuteView, prevCloseAsOf, type DailyPoint, type MinuteView } from "./derive.js";
 import type { ChartBundle } from "../api/chart.js";
-import type { RenderLine } from "../api/chartAnchors.js";
 import type { ChartPriceMode } from "../store/workbench.js";
+
+/** 차트 렌더용 — 앵커를 로드된 캔들에서 해소한 결과. 차트 컴포넌트는 이것만 안다(와이어 아님, 클라 뷰모델 —
+ * 그래서 api/ 가 아니라 여기 산다. api/ 는 와이어 계약 자리다). */
+export interface RenderLine {
+    id: string;
+    price: number; // 해소된 raw 가격(원)
+    kind: "D" | "M" | "A"; // 일봉/분봉 앵커(주석) 또는 A=알람 가격조건 — 색·%분모(D=전일종가, M=당일 기준가)
+    label?: string; // 축 라벨 override(없으면 kind). 알람선은 방향 화살표(≥ ↑ / ≤ ↓).
+    color?: string; // 색 override(없으면 kind 색). 리졸버가 고른 기준선을 갈라 보이는 데 쓴다.
+}
 
 export interface ChartViews {
     dailyView: DailyPoint[] | null;

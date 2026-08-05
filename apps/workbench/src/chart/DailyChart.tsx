@@ -14,7 +14,7 @@ import {
 } from "./dailyChartHooks.js";
 import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "../lib/derive.js";
-import type { RenderLine } from "../api/chartAnchors.js";
+import type { RenderLine } from "../lib/chartFrame.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 import { fmtDateKo } from "../lib/date.js";
 import { CHART_LABEL, CHART_VALUE, DRIFT } from "../styles/palette.js";
