@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import {
     CandlestickSeries,
     HistogramSeries,
+    LineSeries,
     LineStyle,
     createSeriesMarkers,
     type IChartApi,
@@ -18,7 +19,7 @@ import {
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
 import { VertLines, asPrimitive } from "./vertLine.js";
-import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
+import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE, SKELETON } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/chartAnchors.js";
 
@@ -323,4 +324,49 @@ export function useSearchDateLine(chartRef: RefObject<IChartApi | null>, series:
     }, [searchDate]);
 
     return lineX;
+}
+
+/**
+ * 골격 오버레이 — 손으로 찍은 피벗들을 이어 그린다(형태 분류의 입력을 눈으로 확인하는 용도).
+ *
+ * 가격선(수평)과 달리 **꺾인 선**이라 price line 이 아니라 별도 LineSeries 다. 캔들과 같은 price scale·pane
+ * 이라 스케일이 따로 놀지 않는다. 점마다 마커를 켜서 "여기가 내가 찍은 점"이 보이게 한다 —
+ * 골격은 선의 모양보다 **어느 봉의 어느 값을 찍었나**가 정보다.
+ *
+ * 토글 OFF 면 시리즈를 지운다(빈 데이터가 아니라 제거) — 남겨두면 price scale 자동 맞춤에 계속 참여한다.
+ */
+export function useSkeletonOverlay(chartRef: RefObject<IChartApi | null>, pivots: readonly { date: string; price: number }[], visible: boolean): void {
+    const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        const show = visible && pivots.length >= 2;
+        if (!show) {
+            if (seriesRef.current) {
+                chart.removeSeries(seriesRef.current);
+                seriesRef.current = null;
+            }
+            return;
+        }
+        if (!seriesRef.current) {
+            seriesRef.current = chart.addSeries(LineSeries, {
+                color: SKELETON,
+                lineWidth: 2,
+                priceScaleId: "right",
+                priceLineVisible: false,
+                lastValueVisible: false,
+                pointMarkersVisible: true,
+                pointMarkersRadius: 3,
+                crosshairMarkerVisible: false,
+            });
+        }
+        // 같은 날짜에 점이 둘 이상일 수 있다(한 캔들의 시→고→종). LineSeries 는 time 중복을 못 받으므로
+        // 그 경우 **마지막 값만** 그린다 — 오버레이는 확인용이고, 정확한 시퀀스는 서버 형태 계산이 본다.
+        const byTime = new Map<string, number>();
+        for (const p of pivots) byTime.set(p.date, p.price);
+        seriesRef.current.setData([...byTime.entries()].map(([time, value]) => ({ time: time as Time, value })));
+    }, [chartRef, pivots, visible]);
+
+    // 언마운트 정리 — chart 가 먼저 죽으면 removeSeries 가 던지므로 ref 만 비운다.
+    useEffect(() => () => { seriesRef.current = null; }, []);
 }

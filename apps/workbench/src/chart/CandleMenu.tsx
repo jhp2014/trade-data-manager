@@ -4,9 +4,12 @@
 //    분봉 캔들은 UN 만(분봉 KRX 는 세션 부재가 있어 앵커 불가 — 서버 규칙과 동일 기준).
 //    어느 선이 계산 축의 기준선이 되는지는 리졸버(가격 최저)가 정한다 — 차트의 하늘색 선이 그것.
 //  · 무시 캔들 = 차트 소유 토글(일봉만). 타점 선택이 필요 없다 — 앵커가 차트(종목,날짜) 소유가 됐기 때문.
+//  · 골격 점 = 형태 분류의 입력(일봉만). 값별 토글이고, **찍는 순서가 아니라 캔들·값이 순서를 정한다**
+//    (시→고→종은 정리) — 그래서 아무 순서로 찍어도 되고 메뉴에 순번이 없다.
 //  · 선 근처 우클릭이면 그 선 삭제만 — 즉시 삭제 대신 메뉴를 거쳐 오발을 막는다.
-import { anchorParamByKey, IGNORE_CANDLE_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
+import { anchorParamByKey, IGNORE_CANDLE_PARAM, SKELETON_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
+import { SKELETON } from "../styles/palette.js";
 import type { RenderLine } from "../api/chartAnchors.js";
 
 /** 캔들 한 시장의 OHLC(원). 로드된 번들 raw 에서 뽑는다 — KRX 는 세션 부재(NXT 단독 시간대)면 null. */
@@ -28,9 +31,12 @@ export interface CandleMenuProps {
     lineIdAtCandle?: string;
     /** 이 일봉이 무시 캔들로 지정돼 있는가(차트 소유 — 타점 무관). */
     ignoredAtCandle: boolean;
+    /** 이 일봉에 이미 찍힌 골격 점의 값들 — 토글 상태 표시. */
+    skeletonFieldsAtCandle: readonly AnchorField[];
     onAddLine: (field: AnchorField, market: AnchorMarket) => void;
     onRemoveLine: (id: string) => void;
     onToggleIgnore: () => void;
+    onToggleSkeletonPivot: (field: AnchorField, market: AnchorMarket) => void;
     onClose: () => void;
 }
 
@@ -43,7 +49,7 @@ const FIELD_LABELS: { field: AnchorField; label: string }[] = [
 
 const fmt = (v: number): string => v.toLocaleString();
 
-export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, ignoredAtCandle, onAddLine, onRemoveLine, onToggleIgnore, onClose }: CandleMenuProps): JSX.Element {
+export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, ignoredAtCandle, skeletonFieldsAtCandle, onAddLine, onRemoveLine, onToggleIgnore, onToggleSkeletonPivot, onClose }: CandleMenuProps): JSX.Element {
     const title = candle ? `${candle.date}${candle.time ? ` ${candle.time.slice(0, 5)}` : " 일봉"}` : "가격선";
     // 분봉 앵커는 UN 고정(서버 규칙) — KRX 행을 아예 안 그린다. 일봉은 두 시장 다.
     const markets: readonly AnchorMarket[] = candle?.time ? ["un"] : ["un", "krx"];
@@ -88,12 +94,34 @@ export function CandleMenu({ anchor, candle, bars, nearLine, lineIdAtCandle, ign
                     )}
 
                     {!candle.time && (
-                        <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                            <MenuLabel>{anchorParamByKey.get(IGNORE_CANDLE_PARAM)?.name ?? "무시 캔들"} — 이 차트의 과거 스캔에서 제외</MenuLabel>
-                            <MenuItem onClick={() => { onToggleIgnore(); onClose(); }} style={ignoredAtCandle ? { color: "var(--text-tertiary)" } : undefined}>
-                                {ignoredAtCandle ? "이 캔들 해제" : "이 캔들 지정"}
-                            </MenuItem>
-                        </div>
+                        <>
+                            <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                                <MenuLabel>{anchorParamByKey.get(SKELETON_PARAM)?.name ?? "골격"} 점 — 찍은 값이 순서를 정한다(시→고→종)</MenuLabel>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 8px 4px" }}>
+                                <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: SKELETON }}>골격</span>
+                                {FIELD_LABELS.map(({ field, label }) => {
+                                    const on = skeletonFieldsAtCandle.includes(field);
+                                    const bar = bars?.un ?? bars?.krx;
+                                    return (
+                                        <button key={field}
+                                            onClick={() => { onToggleSkeletonPivot(field, "un"); onClose(); }}
+                                            title={on ? `${label} 점 해제` : `${label}${bar ? ` ${fmt(bar[field])}` : ""} 를 골격 점으로`}
+                                            style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: `1px solid ${on ? SKELETON : "var(--border-default)"}`, borderRadius: 4, background: on ? `${SKELETON}22` : "transparent", color: on ? SKELETON : "var(--text-primary)", cursor: "pointer", fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                                            <span style={{ color: on ? SKELETON : "var(--text-tertiary)" }}>{label}</span>
+                                            <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{bar ? fmt(bar[field]) : "—"}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                                <MenuLabel>{anchorParamByKey.get(IGNORE_CANDLE_PARAM)?.name ?? "무시 캔들"} — 이 차트의 과거 스캔에서 제외</MenuLabel>
+                                <MenuItem onClick={() => { onToggleIgnore(); onClose(); }} style={ignoredAtCandle ? { color: "var(--text-tertiary)" } : undefined}>
+                                    {ignoredAtCandle ? "이 캔들 해제" : "이 캔들 지정"}
+                                </MenuItem>
+                            </div>
+                        </>
                     )}
                 </>
             )}

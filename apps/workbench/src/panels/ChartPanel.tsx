@@ -29,6 +29,7 @@ import {
     ViewToggles,
 } from "./ChartPanelChrome.js";
 import { TextToggle, Sep, ControlGroup } from "../components/ControlChrome.js";
+import { SKELETON } from "../styles/palette.js";
 
 // 차트 패널(복기 플레인) — 일봉(상) + 분봉(하) 듀얼. 껍데기(헤더·2단·토글)는 ChartPanelChrome 공용.
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
@@ -55,6 +56,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [pinMinute, setPinMinute] = usePanelUi(panelId, "pinMinute", false); // 분봉 기준일 고정(일봉 클릭 무시)
     const [lockScale, setLockScale] = usePanelUi(panelId, "lockScale", false); // 분봉 스케일 고정
     const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
+    const [showSkeleton, setShowSkeleton] = usePanelUi(panelId, "showSkeleton", true); // 골격 오버레이(거래대금 마커식 on/off)
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
     const { tagsOf } = useTags();
@@ -69,7 +71,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 
     // 차트 앵커(선·무시 캔들 — 조회·해소·추가/삭제/clear/토글) + 복기 타점(조회·savedPoints) — 훅으로 분리.
     // 선 해소는 raw 번들(저장된 시장·값) — 무시 캔들은 차트 소유라 타점 무관 상시 표시.
-    const { resolvedLines, dLines, hasLines, addLine, lineIdAt, removeLineById, clear, ignoredDates, toggleIgnore } =
+    const { resolvedLines, dLines, hasLines, addLine, lineIdAt, removeLineById, clear, ignoredDates, toggleIgnore,
+        skeletonPoints, toggleSkeletonPivot, skeletonFieldsAt, clearSkeleton } =
         useChartAnchorsForChart(code, viewDate, dailyQ.data, minuteQ.data);
     const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
 
@@ -127,10 +130,12 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <AmountMarkerToggle on={showMarkers} toggle={() => setShowMarkers((v) => !v)} />
                     <SearchLineToggle on={showLine} toggle={() => setShowLine((v) => !v)} />
                     <GuideToggle on={showGuide} toggle={() => setShowGuide((v) => !v)} />
+                    <TextToggle active={showSkeleton} activeColor={SKELETON} onClick={() => setShowSkeleton((v) => !v)} title={showSkeleton ? "골격 선 숨기기" : "골격 선 보이기"}>골격</TextToggle>
                 </MarkerGroup>
                 <Sep />
                 <ControlGroup>
                     <TextToggle active={false} disabled={!hasLines} onClick={() => hasLines && clear()} title="가격선 전체 지우기">선 지우기</TextToggle>
+                    <TextToggle active={false} disabled={skeletonPoints.length === 0} onClick={() => skeletonPoints.length > 0 && clearSkeleton()} title="골격 점 전체 지우기(다시 찍기)">골격 지우기</TextToggle>
                     <MarketToggle mode={mode} setMode={setMode} />
                 </ControlGroup>
             </ChartHeader>
@@ -162,6 +167,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     pctBase={pctBase}
                                     showGuide={showGuide}
                                     ignoredDates={ignoredDates}
+                                    skeleton={skeletonPoints}
+                                    showSkeleton={showSkeleton}
                                 />
                             ) : null
                         }
@@ -210,9 +217,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     nearLine={candleMenu.nearLine}
                     lineIdAtCandle={candleMenu.candle ? lineIdAt(candleMenu.candle.date, candleMenu.candle.time) : undefined}
                     ignoredAtCandle={candleMenu.candle ? ignoredDates.includes(candleMenu.candle.date) : false}
+                    skeletonFieldsAtCandle={candleMenu.candle ? skeletonFieldsAt(candleMenu.candle.date) : []}
                     onAddLine={(field, market) => candleMenu.candle && addLine(candleMenu.candle.date, candleMenu.candle.time, field, market)}
                     onRemoveLine={removeLineById}
                     onToggleIgnore={() => candleMenu.candle && toggleIgnore(candleMenu.candle.date)}
+                    onToggleSkeletonPivot={(field, market) => candleMenu.candle && toggleSkeletonPivot(candleMenu.candle.date, field, market)}
                     onClose={() => setCandleMenu(null)}
                 />
             )}

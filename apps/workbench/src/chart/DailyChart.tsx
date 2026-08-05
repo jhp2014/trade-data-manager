@@ -10,6 +10,7 @@ import {
     useDailyVisibleRange,
     useGuideLine,
     useSearchDateLine,
+    useSkeletonOverlay,
 } from "./dailyChartHooks.js";
 import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "../lib/derive.js";
@@ -19,6 +20,8 @@ import { fmtDateKo } from "../lib/date.js";
 import { CHART_LABEL, CHART_VALUE, DRIFT } from "../styles/palette.js";
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
+/** 골격 없음의 안정 참조 — 매 렌더 새 배열이면 오버레이 effect 가 계속 다시 돈다. */
+const EMPTY_SKELETON: readonly { date: string; price: number }[] = [];
 
 // 크로스헤어 세로선 날짜 라벨 — "26년 12월 26일 (금)". time 은 일봉 business-day 문자열이지만
 // BusinessDay 객체·UTCTimestamp 도 방어적으로 처리.
@@ -56,8 +59,11 @@ export interface DailyChartProps {
     /** 검색일 전일종가 — 크로스헤어 위치 %·+30% 가이드선의 분모. */
     pctBase?: number | null;
     showGuide?: boolean;
-    /** 현재 타점이 무시 캔들로 지목한 거래일 — 봉 위 마커에 함께 적힌다. 값이 아니라 "안 본다"는 뜻이라 선이 아니다. */
+    /** 이 차트가 무시 캔들로 지목한 거래일 — 봉 위 마커에 함께 적힌다. 값이 아니라 "안 본다"는 뜻이라 선이 아니다. */
     ignoredDates?: readonly string[];
+    /** 골격 피벗(날짜·가격) — 이어서 꺾인 선으로 그린다. 형태 분류의 입력을 눈으로 확인하는 용도. */
+    skeleton?: readonly { date: string; price: number }[];
+    showSkeleton?: boolean;
 }
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
@@ -80,6 +86,8 @@ export function DailyChart({
     pctBase,
     showGuide = false,
     ignoredDates,
+    skeleton,
+    showSkeleton = true,
 }: DailyChartProps): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -100,6 +108,7 @@ export function DailyChart({
     useDailyVisibleRange(chartRef, points, frameKey, zoom, zoomBars, zoomOutBars);
     useDailyInteraction({ chartRef, containerRef, series, mapRef, lines, onRightClick, onRemoveLine, onLineContext, onCandleClick, onPickPrice, captureArmed: capturePriceArmed });
     useDailyPriceLines(series, lines);
+    useSkeletonOverlay(chartRef, skeleton ?? EMPTY_SKELETON, showSkeleton);
     useGuideLine(series, pctBase, showGuide);
     const lineX = useSearchDateLine(chartRef, series, searchDate);
 

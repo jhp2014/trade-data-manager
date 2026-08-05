@@ -2,7 +2,7 @@
 // 패널은 뷰 파생(deriveMinute/DailyView)+렌더만 남긴다.
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASELINE_PARAM, IGNORE_CANDLE_PARAM } from "@trade-data-manager/market/domain";
+import { BASELINE_PARAM, IGNORE_CANDLE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AnchorField, type AnchorMarket, type RenderLine } from "../api/chartAnchors.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { useTags } from "./useTags.js";
@@ -30,6 +30,14 @@ export interface ChartAnchorsForChart {
     ignoredDates: string[];
     /** 이 일봉의 무시 캔들 토글 — 있으면 해제, 없으면 지정. */
     toggleIgnore: (anchorDate: string) => void;
+    /** 골격 피벗 — 시간순 정렬(도메인 규칙)에 로드된 캔들 가격을 붙인 것. 오버레이가 이대로 잇는다. */
+    skeletonPoints: { date: string; price: number }[];
+    /** 이 캔들의 골격 점 토글 — 같은 (캔들, 값)이 있으면 해제, 없으면 추가. 집합 규칙 위반은 서버가 400. */
+    toggleSkeletonPivot: (anchorDate: string, field: AnchorField, market: AnchorMarket) => void;
+    /** 이 캔들에 찍힌 골격 점의 값들(메뉴가 어떤 값이 이미 찍혔는지 보여준다). */
+    skeletonFieldsAt: (anchorDate: string) => AnchorField[];
+    /** 이 차트의 골격 전체 삭제(다시 찍기). */
+    clearSkeleton: () => void;
 }
 
 /**
@@ -49,11 +57,28 @@ export function useChartAnchorsForChart(
     const anchors = useMemo(() => anchorsQ.data ?? [], [anchorsQ.data]);
     const lines = useMemo(() => anchors.filter((a) => a.param === BASELINE_PARAM), [anchors]);
     const ignores = useMemo(() => anchors.filter((a) => a.param === IGNORE_CANDLE_PARAM), [anchors]);
+    const skeleton = useMemo(() => anchors.filter((a) => a.param === SKELETON_PARAM && a.field != null && a.market != null), [anchors]);
 
     // 저장된 시장·값을 raw 번들에서 해소(모드 토글 무관 — 사람이 지목한 그 값). 확정 기준선은 하늘색 표시.
     const resolvedLines = useMemo(() => resolveChartAnchorLines(lines, dailyBundle, minuteBundle), [lines, dailyBundle, minuteBundle]);
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
     const ignoredDates = useMemo(() => ignores.map((a) => a.anchorDate), [ignores]);
+
+    // 골격 — **정렬은 도메인 함수 하나**(sortPivots)를 서버와 공유한다. 클라가 따로 정렬 규칙을 적으면
+    // 화면의 선 모양과 서버가 계산한 형태가 조용히 갈린다(순서가 곧 의미인 데이터라 치명적).
+    // 가격은 로드된 일봉에서 저장된 시장·값으로 해소 — 창 밖 피벗은 그냥 빠진다(선이 조금 짧아질 뿐).
+    const skeletonPoints = useMemo(() => {
+        const sorted = sortPivots(skeleton.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! })));
+        const out: { date: string; price: number }[] = [];
+        for (const p of sorted) {
+            if (p.anchorTime) continue; // 일봉 차트 오버레이 — 분봉 골격은 분봉 pane 몫(후속)
+            const raw = dailyBundle?.daily.find((c) => c.date === p.anchorDate)?.[p.market]?.[p.field];
+            if (raw === undefined) continue;
+            const price = Number(raw);
+            if (Number.isFinite(price) && price > 0) out.push({ date: p.anchorDate, price });
+        }
+        return out;
+    }, [skeleton, dailyBundle]);
 
     const invalidate = (): void => {
         void qc.invalidateQueries({ queryKey: chartAnchorsQuery(code, date).queryKey });
@@ -84,8 +109,27 @@ export function useChartAnchorsForChart(
         if (existing) removeMut.mutate(existing.id);
         else addMut.mutate({ stockCode: code, date, param: IGNORE_CANDLE_PARAM, anchorDate });
     };
+    const toggleSkeletonPivot = (anchorDate: string, field: AnchorField, market: AnchorMarket): void => {
+        if (!code || !date) return;
+        const existing = skeleton.find((a) => a.anchorDate === anchorDate && (a.anchorTime ?? undefined) === undefined && a.field === field);
+        if (existing) removeMut.mutate(existing.id);
+        else addMut.mutate({ stockCode: code, date, param: SKELETON_PARAM, anchorDate, field, market });
+    };
+    const skeletonFieldsAt = (anchorDate: string): AnchorField[] =>
+        skeleton.filter((a) => a.anchorDate === anchorDate && a.anchorTime == null).map((a) => a.field!);
+    const clearSkeletonMut = useMutation({
+        mutationFn: async () => {
+            await Promise.all(skeleton.map((a) => removeChartAnchor(a.id)));
+        },
+        onSuccess: invalidate,
+    });
+    const clearSkeleton = (): void => clearSkeletonMut.mutate();
 
-    return { resolvedLines, dLines, hasLines: lines.length > 0, addLine, lineIdAt, removeLineById, clear, ignoredDates, toggleIgnore };
+    return {
+        resolvedLines, dLines, hasLines: lines.length > 0, addLine, lineIdAt, removeLineById, clear,
+        ignoredDates, toggleIgnore,
+        skeletonPoints, toggleSkeletonPivot, skeletonFieldsAt, clearSkeleton,
+    };
 }
 
 export interface SavedPoint {

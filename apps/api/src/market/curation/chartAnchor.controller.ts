@@ -2,12 +2,15 @@ import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestEx
 import {
     anchorInputError,
     anchorParamByKey,
+    skeletonSetError,
+    SKELETON_PARAM,
     type AnchoredChart,
     type AnchorField,
     type AnchorMarket,
     type ChartAnchor,
     type ChartAnchorReader,
     type ChartAnchorStore,
+    type SkeletonPivot,
 } from "@trade-data-manager/market";
 import type { AddChartAnchorInput } from "@trade-data-manager/wire";
 import { CHART_ANCHOR_REPO, MASTER_CACHE } from "../tokens.js";
@@ -57,6 +60,15 @@ export class ChartAnchorController {
         if (anchor.market != null && !MARKETS.has(anchor.market)) throw new BadRequestException("market 은 krx|un");
         const ruleError = anchorInputError(def, anchor);
         if (ruleError) throw new BadRequestException(ruleError);
+        // 골격은 **여러 행이 모여 하나**라 행 단위 검증으로 못 보는 규칙이 있다(순서 파생을 지키는 제약들).
+        // 기존 피벗을 읽어 집합 규칙을 본다 — 사람이 클릭할 때마다 한 번이라 추가 조회가 부담되지 않는다.
+        if (def.key === SKELETON_PARAM) {
+            const existing = (await this.repo.listByChart(anchor.stockCode, anchor.date))
+                .filter((a) => a.param === SKELETON_PARAM && a.field != null && a.market != null)
+                .map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! }));
+            const setError = skeletonSetError(anchor.date, existing, anchor as SkeletonPivot);
+            if (setError) throw new BadRequestException(setError);
+        }
         // 단일 param(multiple:false)은 교체 — 지금 레지스트리엔 없지만, 생기면 저장이 조용히 둘을 만들지 않게 여기서 지운다.
         if (!def.multiple) await this.repo.removeByParam(anchor.stockCode, anchor.date, def.key);
         const [created] = await this.repo.add([anchor]);

@@ -63,5 +63,6 @@ export const ALARM = "#dc2626"; // 알람 가격 조건선
 export const PRICE_LINE = "#16796f"; // 사용자가 그은 가격선(D/M)
 export const GUIDE = "#7c3aed"; // +30% 가이드선(그 세션 상한가 위치) — 고가마커 30%+ 와 같은 보라
 export const IGNORED_CANDLE = "#6b7280"; // 무시 캔들 마커 — 회색이 고가 등락률 tier 색을 덮는다(그 숫자가 오염된 고가의 산물이라)
+export const SKELETON = "#d946ef"; // 골격 피벗 선(형태 분류 입력) — 가격선(청록)·기준선(하늘)·알람(빨강) 어디와도 안 겹치는 마젠타
 export const CHART_LABEL = "#a0a0a0"; // 차트 툴팁의 라벨 회색(툴팁 배경 위 — 본문 --text-tertiary 와 다름)
 export const CHART_VALUE = "#d4d4d8"; // 차트 툴팁의 값 회색(라벨보다 밝게)
