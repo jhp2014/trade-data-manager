@@ -18,10 +18,10 @@
 // 우측 절단(saturated): 앵커가 창(2년)보다 이르면 그 사이 거래일을 셀 수 없다 → 값은 창 안 거래일 수 = 하한.
 // 결손: 기준선 없음/확정불가 · 타점 날 일봉 미수집(셀 자가 없다) · **앵커가 타점보다 미래**(검색날짜 드리프트로
 //   잘못 찍은 입력. 음수를 조용히 내면 정렬이 이상해지고 원인을 못 짚는다 — 규칙 2를 어기는 입력이기도 하다).
-import { BASELINE_PARAM, type DailyCandle, type ReviewPointKey } from "#domain";
+import { BASELINE_PARAM, chartKeyOf, type DailyCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
-import { chartKeyOf, resolveBaselines } from "../shared/baselineResolver.js";
+import { resolveBaselines } from "../shared/baselineResolver.js";
 import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
 
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */

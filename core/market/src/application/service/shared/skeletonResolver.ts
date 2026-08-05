@@ -10,17 +10,13 @@
 //
 // **하나라도 못 읽으면 그 골격은 통째로 결손**이다. 못 읽은 피벗만 빼고 계산하면 형태가 조용히 달라진다
 // (되돌림의 골이 사라지는 식) — 없는 걸 뺀 모양은 사람이 찍은 그 모양이 아니다.
-import { SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, type ChartAnchor, type DailyCandle, type MinuteCandle, type PricedPivot, type ReviewPointKey } from "#domain";
+import { candlePrice, chartKeyOf, pointKeyOf, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, type ChartAnchor, type DailyCandle, type MinuteCandle, type PricedPivot, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "./dailyRange.js";
-import { chartKeyOf } from "./baselineResolver.js";
 import type { AxisDeps } from "../axis/axis.js";
 
 /** (종목,날) 동시 읽기 상한 — 축들과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
-
-/** 타점 키 — 분봉 골격(타점 소유) 결과 맵의 키. 축이 같은 문자열을 만들도록 여기서 제공. */
-export const pointKeyOf = (p: ReviewPointKey): string => `${p.stockCode}|${p.date}|${p.time}`;
 
 /** 벽시계 분 — "HH:MM:SS" → 분. 형태 계산은 차이만 쓰므로 원점(자정)은 무관하다. */
 const minutesOf = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
@@ -81,8 +77,8 @@ export async function resolveDailySkeletons(
             const raw = p.anchorTime
                 ? minutesByDay.get(`${stockCode}|${p.anchorDate}`)?.find((c) => c.time === p.anchorTime)?.[p.market]?.[p.field]
                 : dailyByDate.get(p.anchorDate)?.[p.market]?.[p.field];
-            const price = raw === undefined ? NaN : Number(raw);
-            if (dayIndex === undefined || !Number.isFinite(price) || price <= 0) { broken = true; break; } // 창 밖·미수집
+            const price = candlePrice(raw);
+            if (dayIndex === undefined || price === null) { broken = true; break; } // 창 밖·미수집
             priced.push({ ...p, price, tIndex: dayIndex });
         }
         out.set(key, broken || priced.length < 2 ? null : priced);
@@ -134,9 +130,8 @@ export async function resolveMinuteSkeletons(
         const priced: PricedPivot[] = [];
         let broken = false;
         for (const p of pivots) {
-            const raw = barByTime.get(p.anchorTime!)?.un?.[p.field];
-            const price = raw === undefined ? NaN : Number(raw);
-            if (!Number.isFinite(price) || price <= 0) { broken = true; break; } // 그 분봉 미수집
+            const price = candlePrice(barByTime.get(p.anchorTime!)?.un?.[p.field]);
+            if (price === null) { broken = true; break; } // 그 분봉 미수집
             priced.push({ ...p, price, tIndex: minutesOf(p.anchorTime!) });
         }
         out.set(key, broken || priced.length < 2 ? null : priced);

@@ -15,6 +15,16 @@ export interface ReviewPointKey {
     time: string; // HH:MM:SS (분봉 시각)
 }
 
+/**
+ * 타점 키 직렬화 — `stockCode|date|time`. 캐시 키·맵 키·DOM data-* 가 전부 이 형식을 쓴다.
+ * 구분자 `|` 는 종목코드(영숫자)·날짜·시각 어디에도 안 나온다. **여기가 유일한 정의다** — 리졸버·캐시·클라가
+ * 각자 문자열을 조립하면 구분자 계약이 흩어져 한 곳만 바뀌는 사고가 난다(4곳 중복을 걷어낸 자리).
+ */
+export const pointKeyOf = (p: ReviewPointKey): string => `${p.stockCode}|${p.date}|${p.time}`;
+
+/** 차트 키 직렬화 — `stockCode|date`. 차트(종목,날짜) grain 의 맵 키. pointKeyOf 와 같은 계약. */
+export const chartKeyOf = (c: { stockCode: string; date: string }): string => `${c.stockCode}|${c.date}`;
+
 /** 한 종목·거래일·시각의 복기 타점 1건. */
 export interface ReviewPoint extends ReviewPointKey {
     outcome?: string; // 트레이드 결과(선택). 허용값은 클라.

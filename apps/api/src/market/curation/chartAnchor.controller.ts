@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import {
+    ANCHOR_FIELDS,
+    ANCHOR_MARKETS,
     anchorInputError,
     anchorParamByKey,
     skeletonSetError,
@@ -18,8 +20,9 @@ import { CHART_ANCHOR_REPO, MASTER_CACHE } from "../tokens.js";
 import { MasterCache } from "../board/masterCache.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
-const FIELDS = new Set<AnchorField>(["high", "low", "open", "close"]);
-const MARKETS = new Set<AnchorMarket>(["krx", "un"]);
+// 허용값은 도메인 런타임 목록에서 파생 — 값이 늘 때 여기를 빠뜨리는 사고가 없다(단일 출처).
+const FIELDS = new Set<AnchorField>(ANCHOR_FIELDS);
+const MARKETS = new Set<AnchorMarket>(ANCHOR_MARKETS);
 
 // 차트 앵커 CRUD — 선(param 'baseline')과 파라미터 앵커(무시 캔들 등)가 한 자원. 소유는 차트(종목,날짜).
 // param 은 코드 레지스트리 키만 허용(오타 = 조용한 결손 방지). 저장 규칙 종합은 도메인(anchorInputError) —

@@ -2,7 +2,7 @@
 // 패널은 뷰 파생(deriveMinute/DailyView)+렌더만 남긴다.
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASELINE_PARAM, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
+import { BASELINE_PARAM, candlePrice, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AnchorField, type AnchorMarket, type RenderLine } from "../api/chartAnchors.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { useTags } from "./useTags.js";
@@ -72,10 +72,8 @@ export function useChartAnchorsForChart(
         const out: { date: string; price: number }[] = [];
         for (const p of sorted) {
             if (p.anchorTime) continue; // 일봉 차트 오버레이 — 분봉 골격은 분봉 pane 몫(후속)
-            const raw = dailyBundle?.daily.find((c) => c.date === p.anchorDate)?.[p.market]?.[p.field];
-            if (raw === undefined) continue;
-            const price = Number(raw);
-            if (Number.isFinite(price) && price > 0) out.push({ date: p.anchorDate, price });
+            const price = candlePrice(dailyBundle?.daily.find((c) => c.date === p.anchorDate)?.[p.market]?.[p.field]);
+            if (price !== null) out.push({ date: p.anchorDate, price }); // 값 해석(미수집/0/비수치=결손)은 도메인 규칙
         }
         return out;
     }, [skeleton, dailyBundle]);
@@ -297,10 +295,8 @@ export function useMinuteSkeletonForPoint(
         const sorted = sortPivots(mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime!, field: a.field!, market: a.market! })));
         const out: { time: number; price: number }[] = [];
         for (const p of sorted) {
-            const raw = minuteBundle?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field];
-            if (raw === undefined) continue;
-            const price = Number(raw);
-            if (Number.isFinite(price) && price > 0) out.push({ time: kstToUnix(p.anchorDate, p.anchorTime!), price });
+            const price = candlePrice(minuteBundle?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field]);
+            if (price !== null) out.push({ time: kstToUnix(p.anchorDate, p.anchorTime!), price });
         }
         return out;
     }, [mine, minuteBundle]);

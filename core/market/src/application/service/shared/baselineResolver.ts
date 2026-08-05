@@ -14,15 +14,12 @@
 //
 // 타점 소유(time 있는) 앵커는 후보에서 뺀다 — 현재 레지스트리는 전부 chart 소유라 실데이터가 없고,
 // 두 grain 의 병합 규칙은 첫 "both" param 이 실사용례를 들고 올 때 정한다(상상으로 미리 정하지 않는다).
-import { BASELINE_PARAM, type AnchorField, type AnchorMarket, type ChartAnchor, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
+import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, chartKeyOf, type AnchorField, type AnchorMarket, type ChartAnchor, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import type { AxisDeps } from "../axis/axis.js";
 
 /** 가격 앵커로 좁힌 기준선 후보 — field·market 쌍이 있어야 값을 꺼낼 수 있다. */
 export type BaselineAnchor = ChartAnchor & { field: AnchorField; market: AnchorMarket };
-
-/** 차트 키 — 리졸버 결과 맵의 키. 축들이 같은 문자열을 만들도록 여기서 제공. */
-export const chartKeyOf = (c: { stockCode: string; date: string }): string => `${c.stockCode}|${c.date}`;
 
 /** (종목,날) 동시 읽기 상한 — 축들과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
@@ -78,34 +75,24 @@ export async function resolveBaselines(
     });
 
     for (const { key, cands } of multi) {
-        let best: BaselineAnchor | null = null;
-        let bestPrice = Infinity;
+        // 선택 규칙(가격 최저·타이=좌표 최신)은 도메인 beatsAsBaseline 하나 — 차트의 하늘색 표시와 같은 함수다.
+        let best: { a: BaselineAnchor; price: number; coord: string } | null = null;
+        let broken = false;
         for (const a of cands) {
             const price = anchorPrice(a, dailyByKey, minutesByKey);
-            if (price === null) { best = null; break; } // 못 읽은 후보가 더 낮을 수 있다 — 확정 불가(결손)
-            if (price < bestPrice || (price === bestPrice && best !== null && laterCoord(a, best))) {
-                best = a;
-                bestPrice = price;
-            }
+            if (price === null) { broken = true; break; } // 못 읽은 후보가 더 낮을 수 있다 — 확정 불가(결손)
+            const cand = { a, price, coord: anchorCoordKey(a) };
+            if (!best || beatsAsBaseline(cand, best)) best = cand;
         }
-        out.set(key, best);
+        out.set(key, broken ? null : (best?.a ?? null));
     }
     return out;
 }
 
-/** 후보 하나의 가격 — 앵커가 지목한 캔들의 그 시장·그 값. 미수집/0/비수치는 null. */
+/** 후보 하나의 가격 — 앵커가 지목한 캔들의 그 시장·그 값. 값 해석(미수집/0/비수치=null)은 도메인 candlePrice. */
 function anchorPrice(a: BaselineAnchor, dailyByKey: Map<string, DailyCandle | undefined>, minutesByKey: Map<string, MinuteCandle[]>): number | null {
     const raw = a.anchorTime
         ? (minutesByKey.get(`${a.stockCode}|${a.anchorDate}`)?.find((c) => c.time === a.anchorTime)?.[a.market] ?? undefined)?.[a.field]
         : dailyByKey.get(`${a.stockCode}|${a.anchorDate}`)?.[a.market]?.[a.field];
-    if (raw === undefined) return null;
-    const v = Number(raw);
-    return Number.isFinite(v) && v > 0 ? v : null;
-}
-
-/** 좌표 최신 비교 — (anchorDate, anchorTime) 사전순. 타이브레이크 전용. */
-function laterCoord(a: BaselineAnchor, b: BaselineAnchor): boolean {
-    const ka = `${a.anchorDate}T${a.anchorTime ?? ""}`;
-    const kb = `${b.anchorDate}T${b.anchorTime ?? ""}`;
-    return ka > kb;
+    return candlePrice(raw);
 }

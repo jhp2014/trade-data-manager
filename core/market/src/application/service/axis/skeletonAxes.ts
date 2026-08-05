@@ -15,9 +15,8 @@
 // 잦은 실험 중에 반드시 하나를 빠뜨리고, 그 축만 옛 식의 값을 계속 보여준다(가장 찾기 어려운 종류의 오류).
 // 그래서 축 version 을 `SHAPE_VERSION * 100 + 자기 version` 으로 만든다 — 형태층을 고치면 상수 하나로 전부
 // 무효화되고, 특정 축의 고르는 방식만 바뀌면 그 축의 자기 version 만 올린다.
-import { SKELETON_MINUTE_PARAM, SKELETON_PARAM, skeletonShape, type ReviewPointKey, type SkeletonShape } from "#domain";
-import { chartKeyOf } from "../shared/baselineResolver.js";
-import { pointKeyOf, resolveDailySkeletons, resolveMinuteSkeletons } from "../shared/skeletonResolver.js";
+import { chartKeyOf, pointKeyOf, SKELETON_MINUTE_PARAM, SKELETON_PARAM, skeletonShape, type ReviewPointKey, type SkeletonShape } from "#domain";
+import { resolveDailySkeletons, resolveMinuteSkeletons } from "../shared/skeletonResolver.js";
 import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
 
 /**

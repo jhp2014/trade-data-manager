@@ -21,9 +21,9 @@
 //
 // ⚠ 눈 대조 방법이 다른 축과 다르다. 차트 % 눈금은 전일종가 기준이라 화면의 %p 간격과 이 축 값은 분모가 다르다.
 //   대조는 **가격 두 개**로: 차트의 기준선 가격과 타점 시각 가격을 읽어 직접 나눈다.
-import { BASELINE_PARAM, computeChangeRate, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
+import { BASELINE_PARAM, candlePrice, chartKeyOf, computeChangeRate, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
-import { chartKeyOf, resolveBaselines } from "../shared/baselineResolver.js";
+import { resolveBaselines } from "../shared/baselineResolver.js";
 import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
 
 /** (종목,날) 동시 읽기 상한 — dailyChangeAxis 와 같은 이유(커넥션 풀 포화 방지). */
@@ -81,7 +81,7 @@ async function computeBaselinePosition(points: readonly ReviewPointKey[], deps: 
         } else {
             baseline = dailyByKey.get(`${a.stockCode}|${a.anchorDate}`)?.[a.market]?.[a.field];
         }
-        if (baseline === undefined || Number(baseline) <= 0) continue; // 앵커 캔들 미수집·0 — 결손
+        if (baseline === undefined || candlePrice(baseline) === null) continue; // 앵커 캔들 미수집·0 — 결손(도메인 규칙 한 곳)
 
         // 분자 — 타점 시각 이하 마지막 분봉 종가(forward fill), **언제나 UN**(UN 바는 항상 존재 → 세션 결손 없음).
         const bars = minutesByDay.get(`${p.stockCode}|${p.date}`) ?? [];

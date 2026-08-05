@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { ChartAnchor, DailyCandle, MinuteCandle, ReviewPointKey } from "#domain";
-import { chartKeyOf, resolveBaselines } from "../baselineResolver.js";
+import { chartKeyOf } from "#domain";
+import { resolveBaselines } from "../baselineResolver.js";
 
 const CODE = "005930";
 const DATE = "2026-07-02";

@@ -29,6 +29,14 @@ export type AnchorMarket = "krx" | "un";
 /** 앵커 캔들에서 읽을 값. (옛 PriceLineField — 선이 앵커로 흡수되며 이름을 앵커 쪽으로 옮겼다.) */
 export type AnchorField = "high" | "low" | "open" | "close";
 
+/**
+ * 필드/시장의 **런타임 목록** — 서버 검증(Set)과 메뉴(버튼 순서)가 여기서 파생한다.
+ * 타입만 있으면 각 소비자가 네 값을 다시 나열하게 되고("레지스트리에 없는 건 존재하지 않는다" 위반),
+ * 값이 늘 때 한 곳을 빠뜨린다. ANCHOR_FIELDS 의 순서 = UI 표시 순서(고·저·시·종).
+ */
+export const ANCHOR_FIELDS: readonly AnchorField[] = ["high", "low", "open", "close"];
+export const ANCHOR_MARKETS: readonly AnchorMarket[] = ["un", "krx"];
+
 /** 신규(미저장) 앵커 — add 입력. id 는 DB(bigserial)가 부여하므로 여기 없음. */
 export interface NewChartAnchor {
     stockCode: string;
@@ -176,4 +184,28 @@ export const anchorParamByKey = new Map(ANCHOR_PARAMS.map((p) => [p.key, p]));
  */
 export function anchorAppliesTo(a: ChartAnchor, p: ReviewPointKey): boolean {
     return a.stockCode === p.stockCode && a.date === p.date && (a.time == null || a.time === p.time);
+}
+
+/** 앵커 좌표의 정렬 키 — `anchorDate T anchorTime`. 좌표 최신 비교(기준선 타이브레이크)가 이 문자열 사전순. */
+export const anchorCoordKey = (a: Pick<NewChartAnchor, "anchorDate" | "anchorTime">): string => `${a.anchorDate}T${a.anchorTime ?? ""}`;
+
+/**
+ * 기준선 선택 규칙 — a 가 b 를 이기는가. **여기가 유일한 정의다**: 가격 최저(아래 선이 기준을 가져간다 —
+ * 사용자 확정 규칙), 같으면 좌표 최신(그 가격대를 마지막으로 건드린 선이 살아있는 저항 + 결정성).
+ * 서버 리졸버(계산 축이 실제로 쓰는 선)와 차트 표시(하늘색 "기준선" 라벨)가 **같은 함수**를 봐야 한다 —
+ * 각자 비교식을 적으면 화면의 하늘색 선 ≠ 축이 재는 선이 조용히 생기고, 그 선이 육안 검증의 근거라 치명적이다.
+ */
+export function beatsAsBaseline(a: { price: number; coord: string }, b: { price: number; coord: string }): boolean {
+    return a.price < b.price || (a.price === b.price && a.coord > b.coord);
+}
+
+/**
+ * 앵커가 지목한 캔들 값의 해석 — 미수집(undefined)·0·비수치는 전부 **null(결손)**.
+ * "0 은 무효"가 앵커 읽기의 규칙인데(0 가격 캔들은 데이터 오류), 소비자마다 Number+finite+양수 검사를
+ * 손으로 반복하면 이 규칙이 한 곳만 바뀌는 사고가 난다(서버 리졸버 3곳·클라 3곳이 반복하던 것).
+ */
+export function candlePrice(raw: string | number | undefined): number | null {
+    if (raw === undefined) return null;
+    const v = Number(raw);
+    return Number.isFinite(v) && v > 0 ? v : null;
 }

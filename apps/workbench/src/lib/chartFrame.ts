@@ -4,7 +4,7 @@
 // 실시간은 useChartBundle("live")(REST 폴링). 키를 합치면 캐시 공유가 깨지므로 패널이 각자 고르고,
 // **도착한 번들을 뷰로 만드는 부분**만 여기서 같이 쓴다.
 import { useMemo } from "react";
-import { BASELINE_PARAM, type ChartAnchor } from "@trade-data-manager/market/domain";
+import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, type ChartAnchor } from "@trade-data-manager/market/domain";
 import { deriveDailyView, deriveMinuteView, prevCloseAsOf, type DailyPoint, type MinuteView } from "./derive.js";
 import type { ChartBundle } from "../api/chart.js";
 import type { RenderLine } from "../api/chartAnchors.js";
@@ -101,8 +101,7 @@ export function resolveChartAnchorLines(
 ): RenderLine[] {
     const out: RenderLine[] = [];
     let bestIdx = -1;
-    let bestPrice = Infinity;
-    let bestCoord = "";
+    let best: { price: number; coord: string } | null = null;
     for (const a of anchors) {
         if (a.param !== BASELINE_PARAM || !a.field || !a.market) continue;
         let raw: string | undefined;
@@ -116,15 +115,15 @@ export function resolveChartAnchorLines(
             raw = (a.market === "krx" ? d?.krx : d?.un)?.[a.field];
             kind = "D";
         }
-        if (raw === undefined) continue;
-        const price = Number(raw);
-        if (!Number.isFinite(price) || price <= 0) continue;
-        const coord = `${a.anchorDate}T${a.anchorTime ?? ""}`;
+        const price = candlePrice(raw);
+        if (price === null) continue;
+        const cand = { price, coord: anchorCoordKey(a) };
         out.push({ id: a.id, price, kind });
-        if (price < bestPrice || (price === bestPrice && coord > bestCoord)) {
+        // 확정 표시는 서버 리졸버와 **같은 도메인 함수**(beatsAsBaseline)로 고른다 — 비교식을 여기 다시 적으면
+        // 규칙이 한쪽만 바뀌었을 때 하늘색 선 ≠ 축이 재는 선이 되고, 그 선이 육안 검증의 근거라 치명적이다.
+        if (!best || beatsAsBaseline(cand, best)) {
             bestIdx = out.length - 1;
-            bestPrice = price;
-            bestCoord = coord;
+            best = cand;
         }
     }
     if (bestIdx >= 0) {

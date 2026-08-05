@@ -28,10 +28,10 @@
 //   같게 취급하는 선택이고, 화면에서 그 타점의 차트를 보면 바로 구분되므로 감수한다.
 //
 // 결손(축에서 빠짐): 기준선 없음/확정불가 · 앵커 캔들이 창 밖이거나 미수집 · 기준값 0.
-import { BASELINE_PARAM, IGNORE_CANDLE_PARAM, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
+import { BASELINE_PARAM, candlePrice, chartKeyOf, IGNORE_CANDLE_PARAM, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
-import { chartKeyOf, resolveBaselines, type BaselineAnchor } from "../shared/baselineResolver.js";
+import { resolveBaselines, type BaselineAnchor } from "../shared/baselineResolver.js";
 import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
 
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */
@@ -122,9 +122,7 @@ async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDep
  */
 function baselinePrice(a: BaselineAnchor, daily: DailyCandle[], minutesByDay: Map<string, MinuteCandle[]>): number | null {
     const raw = a.anchorTime ? pickMinute(a, minutesByDay) : daily.find((c) => c.date === a.anchorDate)?.[a.market]?.[a.field];
-    if (raw === undefined) return null;
-    const v = Number(raw);
-    return Number.isFinite(v) && v > 0 ? v : null;
+    return candlePrice(raw); // 값 해석(미수집/0/비수치=null)은 도메인 규칙 한 곳
 }
 
 function pickMinute(a: BaselineAnchor, minutesByDay: Map<string, MinuteCandle[]>): string | undefined {

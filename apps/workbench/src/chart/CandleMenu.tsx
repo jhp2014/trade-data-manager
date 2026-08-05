@@ -11,7 +11,7 @@
 //    (시→고→종은 정리) — 그래서 아무 순서로 찍어도 되고 메뉴에 순번이 없다.
 //  · 무시 캔들 = 차트 소유 토글(일봉만). 타점 선택이 필요 없다 — 앵커가 차트(종목,날짜) 소유가 됐기 때문.
 //  · 선 근처 우클릭이면 그 선 삭제만 — 즉시 삭제 대신 메뉴를 거쳐 오발을 막는다.
-import { anchorParamByKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
+import { ANCHOR_FIELDS, anchorParamByKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { SKELETON } from "../styles/palette.js";
 import type { RenderLine } from "../api/chartAnchors.js";
@@ -61,12 +61,9 @@ export interface CandleMenuProps {
     onClose: () => void;
 }
 
-const FIELD_LABELS: { field: AnchorField; label: string }[] = [
-    { field: "high", label: "고" },
-    { field: "low", label: "저" },
-    { field: "open", label: "시" },
-    { field: "close", label: "종" },
-];
+// 라벨은 UI 소유, 값 집합·순서는 도메인(ANCHOR_FIELDS) 소유 — Record 가 완전성을 강제해 필드가 늘면 컴파일이 잡는다.
+const FIELD_LABEL: Record<AnchorField, string> = { high: "고", low: "저", open: "시", close: "종" };
+const FIELD_LABELS = ANCHOR_FIELDS.map((field) => ({ field, label: FIELD_LABEL[field] }));
 
 const fmt = (v: number): string => v.toLocaleString();
 
