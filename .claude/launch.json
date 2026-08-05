@@ -1,4 +1,11 @@
 {
   "version": "0.0.1",
-  "configurations": []
+  "configurations": [
+    {
+      "name": "workbench",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@trade-data-manager/workbench", "dev"],
+      "port": 3100
+    }
+  ]
 }

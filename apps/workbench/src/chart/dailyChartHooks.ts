@@ -6,7 +6,6 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import {
     CandlestickSeries,
     HistogramSeries,
-    LineSeries,
     LineStyle,
     createSeriesMarkers,
     type IChartApi,
@@ -19,6 +18,7 @@ import {
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
 import { VertLines, asPrimitive } from "./vertLine.js";
+import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
 import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE, SKELETON } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/chartAnchors.js";
@@ -35,6 +35,7 @@ export interface DailySeries {
     amountRef: RefObject<ISeriesApi<"Histogram"> | null>;
     markersRef: RefObject<ISeriesMarkersPluginApi<Time> | null>;
     vertRef: RefObject<VertLines | null>;
+    skeletonRef: RefObject<SkeletonPath | null>;
 }
 
 /** 시리즈 생성(캔들 + 거래대금 pane + 마커 플러그인 + 세로선 프리미티브). 마운트 1회. */
@@ -43,6 +44,7 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const vertRef = useRef<VertLines | null>(null);
+    const skeletonRef = useRef<SkeletonPath | null>(null);
 
     useEffect(() => {
         const chart = chartRef.current;
@@ -80,16 +82,22 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
         const vert = new VertLines([]);
         candle.attachPrimitive(asPrimitive(vert));
         vertRef.current = vert;
+        // 골격 꺾은선 — 캔들 series 에 붙여야 priceToCoordinate 로 y 를 얻는다(LineSeries 로는 한 캔들의
+        // 여러 점을 못 그린다 — skeletonPath.ts 주석 참조).
+        const skeleton = new SkeletonPath(SKELETON);
+        candle.attachPrimitive(asSkeletonPrimitive(skeleton));
+        skeletonRef.current = skeleton;
         return () => {
             candleRef.current = null;
             amountRef.current = null;
             markersRef.current = null;
             vertRef.current = null;
+            skeletonRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, vertRef };
+    return { candleRef, amountRef, markersRef, vertRef, skeletonRef };
 }
 
 /**
@@ -327,46 +335,14 @@ export function useSearchDateLine(chartRef: RefObject<IChartApi | null>, series:
 }
 
 /**
- * 골격 오버레이 — 손으로 찍은 피벗들을 이어 그린다(형태 분류의 입력을 눈으로 확인하는 용도).
- *
- * 가격선(수평)과 달리 **꺾인 선**이라 price line 이 아니라 별도 LineSeries 다. 캔들과 같은 price scale·pane
- * 이라 스케일이 따로 놀지 않는다. 점마다 마커를 켜서 "여기가 내가 찍은 점"이 보이게 한다 —
- * 골격은 선의 모양보다 **어느 봉의 어느 값을 찍었나**가 정보다.
- *
- * 토글 OFF 면 시리즈를 지운다(빈 데이터가 아니라 제거) — 남겨두면 price scale 자동 맞춤에 계속 참여한다.
+ * 골격 오버레이 — 피벗들을 이어 그린다(형태 분류의 입력을 눈으로 확인하는 용도).
+ * 그리기는 SkeletonPath primitive 가 한다 — **한 캔들에 점이 여럿**일 수 있어서(시→고→종 = 윗꼬리 슈팅)
+ * 시각당 한 점만 받는 LineSeries 로는 그 점들이 화면에서 사라진다(skeletonPath.ts 주석 참조).
+ * 점 하나만 찍어도 원이 보이고, 파생된 순번이 함께 적힌다(순서는 입력이 아니라 계산이라 확인이 필요하다).
  */
-export function useSkeletonOverlay(chartRef: RefObject<IChartApi | null>, pivots: readonly { date: string; price: number }[], visible: boolean): void {
-    const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+export function useSkeletonOverlay(series: DailySeries, pivots: readonly { date: string; price: number }[], visible: boolean): void {
     useEffect(() => {
-        const chart = chartRef.current;
-        if (!chart) return;
-        const show = visible && pivots.length >= 2;
-        if (!show) {
-            if (seriesRef.current) {
-                chart.removeSeries(seriesRef.current);
-                seriesRef.current = null;
-            }
-            return;
-        }
-        if (!seriesRef.current) {
-            seriesRef.current = chart.addSeries(LineSeries, {
-                color: SKELETON,
-                lineWidth: 2,
-                priceScaleId: "right",
-                priceLineVisible: false,
-                lastValueVisible: false,
-                pointMarkersVisible: true,
-                pointMarkersRadius: 3,
-                crosshairMarkerVisible: false,
-            });
-        }
-        // 같은 날짜에 점이 둘 이상일 수 있다(한 캔들의 시→고→종). LineSeries 는 time 중복을 못 받으므로
-        // 그 경우 **마지막 값만** 그린다 — 오버레이는 확인용이고, 정확한 시퀀스는 서버 형태 계산이 본다.
-        const byTime = new Map<string, number>();
-        for (const p of pivots) byTime.set(p.date, p.price);
-        seriesRef.current.setData([...byTime.entries()].map(([time, value]) => ({ time: time as Time, value })));
-    }, [chartRef, pivots, visible]);
-
-    // 언마운트 정리 — chart 가 먼저 죽으면 removeSeries 가 던지므로 ref 만 비운다.
-    useEffect(() => () => { seriesRef.current = null; }, []);
+        series.skeletonRef.current?.setPoints(visible ? pivots.map((p) => ({ time: p.date, price: p.price })) : []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pivots, visible]);
 }

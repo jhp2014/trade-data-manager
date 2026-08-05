@@ -108,7 +108,7 @@ export function DailyChart({
     useDailyVisibleRange(chartRef, points, frameKey, zoom, zoomBars, zoomOutBars);
     useDailyInteraction({ chartRef, containerRef, series, mapRef, lines, onRightClick, onRemoveLine, onLineContext, onCandleClick, onPickPrice, captureArmed: capturePriceArmed });
     useDailyPriceLines(series, lines);
-    useSkeletonOverlay(chartRef, skeleton ?? EMPTY_SKELETON, showSkeleton);
+    useSkeletonOverlay(series, skeleton ?? EMPTY_SKELETON, showSkeleton);
     useGuideLine(series, pctBase, showGuide);
     const lineX = useSearchDateLine(chartRef, series, searchDate);
 
