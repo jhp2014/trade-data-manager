@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { BadRequestException } from "@nestjs/common";
-import type { ChartAnchor, ChartAnchorReader, ChartAnchorStore, NewChartAnchor } from "@trade-data-manager/market";
-import { ChartAnchorController } from "../curation/chartAnchor.controller.js";
-import type { MasterCache } from "../board/masterCache.js";
+import type { ChartAnchor, ChartAnchorReader, ChartAnchorStore, NewChartAnchor, ReviewPointStore } from "@trade-data-manager/market";
+import { ChartAnchors } from "../curation/chartAnchors.js";
 
 const CHART = { stockCode: "005930", date: "2026-07-02" };
 
@@ -32,17 +31,20 @@ function memoryRepo(): ChartAnchorReader & ChartAnchorStore & { rows: ChartAncho
     };
 }
 
-const master = { attachNames: (r: unknown[]) => Promise.resolve(r as never) } as unknown as MasterCache;
+const pointStore = (removed: string[]): ReviewPointStore => ({
+    upsert: () => Promise.resolve(),
+    remove: (c, d, t) => { removed.push(`${c}|${d}|${t}`); return Promise.resolve(); },
+});
 
-describe("ChartAnchorController — 골격 집합 규칙", () => {
+describe("ChartAnchors 유스케이스 — 골격 집합 규칙", () => {
     let repo: ReturnType<typeof memoryRepo>;
-    let c: ChartAnchorController;
+    let c: ChartAnchors;
     const pivot = (anchorDate: string, over: Partial<NewChartAnchor> = {}): NewChartAnchor =>
         ({ ...CHART, param: "skeleton", anchorDate, field: "high", market: "un", ...over });
 
     beforeEach(() => {
         repo = memoryRepo();
-        c = new ChartAnchorController(repo, master);
+        c = new ChartAnchors(repo, pointStore([]));
     });
 
     it("피벗을 쌓는다 — 골격은 다중 param(교체가 아니라 누적)", async () => {
@@ -85,16 +87,16 @@ describe("ChartAnchorController — 골격 집합 규칙", () => {
     });
 });
 
-describe("ChartAnchorController — 분봉 골격(타점 소유)", () => {
+describe("ChartAnchors 유스케이스 — 분봉 골격(타점 소유)", () => {
     let repo: ReturnType<typeof memoryRepo>;
-    let c: ChartAnchorController;
+    let c: ChartAnchors;
     const OWNER = "10:00:00";
     const mp = (anchorTime: string, over: Partial<NewChartAnchor> = {}): NewChartAnchor =>
         ({ ...CHART, time: OWNER, param: "skeleton-minute", anchorDate: CHART.date, anchorTime, field: "high", market: "un", ...over });
 
     beforeEach(() => {
         repo = memoryRepo();
-        c = new ChartAnchorController(repo, master);
+        c = new ChartAnchors(repo, pointStore([]));
     });
 
     it("타점 시각까지의 당일 분봉을 쌓는다", async () => {
@@ -128,5 +130,27 @@ describe("ChartAnchorController — 분봉 골격(타점 소유)", () => {
         await c.add({ ...CHART, param: "skeleton", anchorDate: "2026-06-24", field: "high", market: "un" });
         await c.add(mp("09:40:00"));
         expect(repo.rows.map((r) => r.param).sort()).toEqual(["skeleton", "skeleton-minute"]);
+    });
+});
+
+// 규칙 ⑤ — 타점 삭제 cascade 의 소유가 유스케이스로 온 이유: 컨트롤러에 살면 repo 직접 호출 경로가 우회한다.
+describe("ChartAnchors 유스케이스 — 타점 삭제 cascade", () => {
+    it("소유 앵커를 **먼저** 지운다 — 사이에서 죽어도 고아(주인 없는 앵커)가 안 남는 순서", async () => {
+        const repo = memoryRepo();
+        const calls: string[] = [];
+        const origRemoveByPoint = repo.removeByPoint.bind(repo);
+        repo.removeByPoint = (c, d, t) => { calls.push("anchors"); return origRemoveByPoint(c, d, t); };
+        const removed: string[] = [];
+        const points = pointStore(removed);
+        const orig = points.remove.bind(points);
+        points.remove = (c, d, t) => { calls.push("point"); return orig(c, d, t); };
+
+        const uc = new ChartAnchors(repo, points);
+        await uc.add({ ...CHART, time: "10:00:00", param: "skeleton-minute", anchorDate: CHART.date, anchorTime: "09:40:00", field: "high", market: "un" });
+        await uc.removePoint(CHART.stockCode, CHART.date, "10:00:00");
+
+        expect(calls).toEqual(["anchors", "point"]); // 앵커 먼저 — 최악의 잔재가 "골격 없는 타점"이 되게
+        expect(repo.rows.filter((r) => r.time === "10:00:00")).toHaveLength(0);
+        expect(removed).toEqual([`${CHART.stockCode}|${CHART.date}|10:00:00`]);
     });
 });

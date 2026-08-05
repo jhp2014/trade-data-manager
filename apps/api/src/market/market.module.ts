@@ -19,7 +19,7 @@ import {
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
@@ -45,6 +45,7 @@ import { CachedMembership } from "./board/cachedMembership.js";
 import { DataDatesCache } from "./board/dataDatesCache.js";
 import { ThemeAssignment } from "./board/themeAssignment.js";
 import { DailyComments } from "./curation/dailyComments.js";
+import { ChartAnchors } from "./curation/chartAnchors.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
@@ -134,9 +135,18 @@ const boardProviders: Provider[] = [
 
 const curationProviders: Provider[] = [
     {
-        // 차트 앵커(사람 편집) — 선(baseline)+파라미터 앵커 단일 자원. repo 를 그대로 노출(add/list/remove).
+        // 차트 앵커 저장소 — 읽기(컨트롤러 조회·계산 축)용. 쓰기는 유스케이스(CHART_ANCHORS)를 거친다.
         provide: CHART_ANCHOR_REPO,
         useFactory: (pool: Pool) => new DrizzleChartAnchorRepository(createDb(pool)),
+        inject: [CURATION_POOL],
+    },
+    {
+        // 앵커 쓰기 유스케이스 — 불변식(레지스트리·owner grain·골격 집합·multiple 교체·타점 cascade) 소유.
+        provide: CHART_ANCHORS,
+        useFactory: (pool: Pool): ChartAnchors => {
+            const db = createDb(pool);
+            return new ChartAnchors(new DrizzleChartAnchorRepository(db), new DrizzleReviewPointRepository(db));
+        },
         inject: [CURATION_POOL],
     },
     {

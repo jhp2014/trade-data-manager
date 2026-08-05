@@ -1,36 +1,19 @@
 import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
-import {
-    ANCHOR_FIELDS,
-    ANCHOR_MARKETS,
-    anchorInputError,
-    anchorParamByKey,
-    skeletonSetError,
-    SKELETON_MINUTE_PARAM,
-    SKELETON_PARAM,
-    type AnchoredChart,
-    type AnchorField,
-    type AnchorMarket,
-    type ChartAnchor,
-    type ChartAnchorReader,
-    type ChartAnchorStore,
-    type SkeletonPivot,
-} from "@trade-data-manager/market";
+import type { AnchoredChart, ChartAnchor, ChartAnchorReader } from "@trade-data-manager/market";
 import type { AddChartAnchorInput } from "@trade-data-manager/wire";
-import { CHART_ANCHOR_REPO, MASTER_CACHE } from "../tokens.js";
+import { CHART_ANCHOR_REPO, CHART_ANCHORS, MASTER_CACHE } from "../tokens.js";
+import { ChartAnchors } from "./chartAnchors.js";
 import { MasterCache } from "../board/masterCache.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
-// 허용값은 도메인 런타임 목록에서 파생 — 값이 늘 때 여기를 빠뜨리는 사고가 없다(단일 출처).
-const FIELDS = new Set<AnchorField>(ANCHOR_FIELDS);
-const MARKETS = new Set<AnchorMarket>(ANCHOR_MARKETS);
-
-// 차트 앵커 CRUD — 선(param 'baseline')과 파라미터 앵커(무시 캔들 등)가 한 자원. 소유는 차트(종목,날짜).
-// param 은 코드 레지스트리 키만 허용(오타 = 조용한 결손 방지). 저장 규칙 종합은 도메인(anchorInputError) —
-// owner grain·field·market 쌍·캔들 종류·분봉 market='un' 을 한 곳에서 검증한다.
+// 차트 앵커 HTTP 어댑터 — 읽기는 repo 그대로, **쓰기는 유스케이스(ChartAnchors)** 를 거친다.
+// 쓰기 불변식(레지스트리·owner grain·골격 집합 규칙·multiple 교체·타점 cascade)은 전부 유스케이스 소유 —
+// 여기는 HTTP 경계 검증(형식)만 한다. 규칙이 컨트롤러에 살면 repo 를 직접 부르는 다른 경로가 전부 우회한다.
 @Controller("chart-anchors")
 export class ChartAnchorController {
     constructor(
-        @Inject(CHART_ANCHOR_REPO) private readonly repo: ChartAnchorReader & ChartAnchorStore,
+        @Inject(CHART_ANCHOR_REPO) private readonly repo: ChartAnchorReader,
+        @Inject(CHART_ANCHORS) private readonly anchors: ChartAnchors,
         @Inject(MASTER_CACHE) private readonly master: MasterCache,
     ) {}
 
@@ -47,43 +30,23 @@ export class ChartAnchorController {
     }
 
     @Post()
-    async add(@Body() body: AddChartAnchorInput): Promise<ChartAnchor> {
-        const def = anchorParamByKey.get(body?.param ?? "");
-        if (!def) throw new BadRequestException(`param 은 레지스트리 키만: ${[...anchorParamByKey.keys()].join("|")}`);
-        const anchor = {
-            stockCode: assertStockCode(body.stockCode, "stockCode"),
-            date: assertYmd(body.date),
-            time: body.time != null ? assertHms(body.time) : undefined,
-            param: def.key,
-            anchorDate: assertYmd(body.anchorDate, "anchorDate"),
-            anchorTime: body.anchorTime != null ? assertHms(body.anchorTime, "anchorTime") : undefined,
-            field: body.field,
-            market: body.market,
-        };
-        if (anchor.field != null && !FIELDS.has(anchor.field)) throw new BadRequestException("field 는 high|low|open|close");
-        if (anchor.market != null && !MARKETS.has(anchor.market)) throw new BadRequestException("market 은 krx|un");
-        const ruleError = anchorInputError(def, anchor);
-        if (ruleError) throw new BadRequestException(ruleError);
-        // 골격은 **여러 행이 모여 하나**라 행 단위 검증으로 못 보는 규칙이 있다(순서 파생·상한을 지키는 제약들).
-        // 기존 피벗을 읽어 집합 규칙을 본다 — 사람이 클릭할 때마다 한 번이라 추가 조회가 부담되지 않는다.
-        // 같은 골격의 범위는 **소유까지** 봐야 한다: 분봉 골격은 타점 소유라 같은 차트의 다른 타점 골격과 섞이면 안 된다.
-        if (def.key === SKELETON_PARAM || def.key === SKELETON_MINUTE_PARAM) {
-            const existing = (await this.repo.listByChart(anchor.stockCode, anchor.date))
-                .filter((a) => a.param === def.key && a.field != null && a.market != null && (a.time ?? undefined) === anchor.time)
-                .map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! }));
-            const setError = skeletonSetError({ date: anchor.date, time: anchor.time }, existing, anchor as SkeletonPivot);
-            if (setError) throw new BadRequestException(setError);
-        }
-        // 단일 param(multiple:false)은 교체 — 지금 레지스트리엔 없지만, 생기면 저장이 조용히 둘을 만들지 않게 여기서 지운다.
-        if (!def.multiple) await this.repo.removeByParam(anchor.stockCode, anchor.date, def.key);
-        const [created] = await this.repo.add([anchor]);
-        return created;
+    add(@Body() body: AddChartAnchorInput): Promise<ChartAnchor> {
+        return this.anchors.add({
+            stockCode: assertStockCode(body?.stockCode, "stockCode"),
+            date: assertYmd(body?.date),
+            time: body?.time != null ? assertHms(body.time) : undefined,
+            param: body?.param ?? "",
+            anchorDate: assertYmd(body?.anchorDate, "anchorDate"),
+            anchorTime: body?.anchorTime != null ? assertHms(body.anchorTime, "anchorTime") : undefined,
+            field: body?.field,
+            market: body?.market,
+        });
     }
 
     @Delete(":id")
     async remove(@Param("id") id: string): Promise<{ ok: true }> {
         if (!/^\d+$/.test(id)) throw new BadRequestException("id 는 숫자");
-        await this.repo.removeById(id);
+        await this.anchors.removeById(id);
         return { ok: true };
     }
 }
