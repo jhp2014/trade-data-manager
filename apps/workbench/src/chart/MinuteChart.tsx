@@ -11,6 +11,7 @@ import {
     useMinuteSeries,
     useMinuteSeriesData,
     useMinuteVisibleRange,
+    useMinuteSkeletonOverlay,
     usePercentPriceLines,
     TAG_MARKER_ATTR,
     type SavedPointInput,
@@ -109,6 +110,9 @@ function MarkerTriangle({ fill, stroke, active = false }: { fill: string; stroke
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
 // 데이터는 이미 파생된 MinutePoint[](%/원). 명령형(lightweight-charts) 배선은 minuteChartHooks 의
 // 훅들이 담당하고, 여기는 훅 조합 + 오버레이(타점 ▼·정보 카드)·툴팁 렌더만.
+/** 골격 없음의 안정 참조 — 매 렌더 새 배열이면 오버레이 effect 가 계속 다시 돈다. */
+const EMPTY_SKELETON: readonly { time: number; price: number }[] = [];
+
 export function MinuteChart({
     points,
     frameKey,
@@ -130,6 +134,8 @@ export function MinuteChart({
     capturePriceArmed = false,
     axisTotal = 0,
     tagsOfTime,
+    skeleton,
+    showSkeleton = true,
 }: {
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
@@ -152,6 +158,9 @@ export function MinuteChart({
     capturePriceArmed?: boolean;
     axisTotal?: number; // 순위 축 총수(배지 분모). 0 = 배치 기능 미사용 → 배지/상세 없음
     tagsOfTime?: (tradeTime: string) => Tag[]; // 그 시각 타점에 붙은 태그(카드 아랫줄). 없으면 태그 줄 없음.
+    /** 현재 타점의 분봉 골격 피벗(unix초·raw 가격) — % 변환은 오버레이가 base 로 한다. */
+    skeleton?: readonly { time: number; price: number }[];
+    showSkeleton?: boolean;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -178,6 +187,7 @@ export function MinuteChart({
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);
+    useMinuteSkeletonOverlay(chartRef, skeleton ?? EMPTY_SKELETON, base, showSkeleton);
 
     const { state: tip } = useCrosshairTooltip({
         chartRef,

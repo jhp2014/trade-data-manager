@@ -2,7 +2,7 @@
 // 패널은 뷰 파생(deriveMinute/DailyView)+렌더만 남긴다.
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASELINE_PARAM, IGNORE_CANDLE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
+import { BASELINE_PARAM, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AnchorField, type AnchorMarket, type RenderLine } from "../api/chartAnchors.js";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { useTags } from "./useTags.js";
@@ -261,4 +261,70 @@ export function useChartHotkeys(): void {
         put({ id: "chart.zoom.toggle", title: "확대/축소", category: "차트", keys: "f", run: () => useWorkbench.getState().toggleChartZoom() });
         return () => ids.forEach(unregister);
     }, [tagPresets, tagById]);
+}
+
+export interface MinuteSkeletonForPoint {
+    /** 이 타점 골격의 피벗(unix초·raw 가격) — 시간순, 로드된 분봉에서 해소. */
+    points: { time: number; price: number }[];
+    /** 이 분봉에 찍힌 값들(메뉴 토글 상태). */
+    fieldsAt: (anchorTime: string) => AnchorField[];
+    /** 이 분봉의 골격 점 토글. 상한(타점 시각)·같은 봉 高低 금지는 서버가 400 으로 막는다. */
+    toggle: (anchorTime: string, field: AnchorField) => void;
+    clear: () => void;
+    hasAny: boolean;
+}
+
+/**
+ * 분봉 골격 — **타점 소유**라 일봉 골격(차트 소유)과 훅을 갈랐다. activeTime 이 곧 소유자이고,
+ * 저장 타점이 아니면(null) 아무것도 못 한다(서버 owner 게이트와 같은 기준 — UI 가 먼저 막는다).
+ * 쿼리는 일봉 훅과 같은 키(chartAnchorsQuery)를 써 RQ 가 dedup 한다 — 추가 왕복 없음.
+ * 시장은 언제나 UN(분봉 앵커 규칙)이라 토글에 시장 선택이 없다.
+ */
+export function useMinuteSkeletonForPoint(
+    code: string,
+    date: string,
+    activeTime: string | null,
+    minuteBundle: ChartBundle | undefined,
+): MinuteSkeletonForPoint {
+    const qc = useQueryClient();
+    const anchorsQ = useQuery(chartAnchorsQuery(code, date));
+    const mine = useMemo(
+        () => (anchorsQ.data ?? []).filter((a) => a.param === SKELETON_MINUTE_PARAM && a.time === activeTime && a.field != null && a.anchorTime != null),
+        [anchorsQ.data, activeTime],
+    );
+
+    const points = useMemo(() => {
+        const sorted = sortPivots(mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime!, field: a.field!, market: a.market! })));
+        const out: { time: number; price: number }[] = [];
+        for (const p of sorted) {
+            const raw = minuteBundle?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field];
+            if (raw === undefined) continue;
+            const price = Number(raw);
+            if (Number.isFinite(price) && price > 0) out.push({ time: kstToUnix(p.anchorDate, p.anchorTime!), price });
+        }
+        return out;
+    }, [mine, minuteBundle]);
+
+    const invalidate = (): void => {
+        void qc.invalidateQueries({ queryKey: chartAnchorsQuery(code, date).queryKey });
+        void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
+    };
+    const addMut = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
+    const removeMut = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });
+    const clearMut = useMutation({
+        mutationFn: async () => {
+            await Promise.all(mine.map((a) => removeChartAnchor(a.id)));
+        },
+        onSuccess: invalidate,
+    });
+
+    const fieldsAt = (anchorTime: string): AnchorField[] => mine.filter((a) => a.anchorTime === anchorTime).map((a) => a.field!);
+    const toggle = (anchorTime: string, field: AnchorField): void => {
+        if (!code || !date || !activeTime) return;
+        const existing = mine.find((a) => a.anchorTime === anchorTime && a.field === field);
+        if (existing) removeMut.mutate(existing.id);
+        else addMut.mutate({ stockCode: code, date, time: activeTime, param: SKELETON_MINUTE_PARAM, anchorDate: date, anchorTime, field, market: "un" });
+    };
+
+    return { points, fieldsAt, toggle, clear: () => clearMut.mutate(), hasAny: mine.length > 0 };
 }

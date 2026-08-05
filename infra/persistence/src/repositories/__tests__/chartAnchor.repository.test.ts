@@ -66,6 +66,21 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
         expect((await repo.listByChart(CHART.stockCode, CHART.date)).filter((a) => a.param === "baseline")).toHaveLength(lines.length - 1);
     });
 
+    it("removeByPoint — 그 타점 소유 행만(차트 소유 행은 NULL 이라 안 걸린다)", async () => {
+        await repo.add([
+            { ...CHART, time: "09:30:00", param: "skeleton-minute", anchorDate: CHART.date, anchorTime: "09:10:00", field: "high", market: "un" },
+            { ...CHART, time: "10:00:00", param: "skeleton-minute", anchorDate: CHART.date, anchorTime: "09:50:00", field: "high", market: "un" },
+        ]);
+        const before = (await repo.listByChart(CHART.stockCode, CHART.date)).length;
+        await repo.removeByPoint(CHART.stockCode, CHART.date, "09:30:00");
+        const left = await repo.listByChart(CHART.stockCode, CHART.date);
+        expect(left).toHaveLength(before - 1);
+        expect(left.filter((a) => a.time === "09:30:00")).toHaveLength(0);
+        expect(left.filter((a) => a.time === "10:00:00")).toHaveLength(1); // 다른 타점 보존
+        expect(left.filter((a) => a.time === undefined).length).toBeGreaterThan(0); // 차트 소유 보존
+        await repo.removeByPoint(CHART.stockCode, CHART.date, "10:00:00");
+    });
+
     it("removeByParam — 그 차트의 그 param 전부(다른 차트·다른 param 은 보존)", async () => {
         await repo.removeByParam(CHART.stockCode, CHART.date, "baseline");
         const mine = await repo.listByChart(CHART.stockCode, CHART.date);

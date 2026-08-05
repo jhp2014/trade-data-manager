@@ -6,7 +6,7 @@ import { usePlaneBus } from "../store/usePlaneBus.js";
 import { chartQuery } from "../api/queries.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
-import { useChartAnchorsForChart, useReviewPointData } from "../lib/chartHooks.js";
+import { useChartAnchorsForChart, useMinuteSkeletonForPoint, useReviewPointData } from "../lib/chartHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../api/chartAnchors.js";
 import { useStockName } from "../lib/useStockName.js";
@@ -78,6 +78,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         skeletonPoints, toggleSkeletonPivot, skeletonAt, clearSkeleton } =
         useChartAnchorsForChart(code, viewDate, dailyQ.data, minuteQ.data);
     const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
+    // 분봉 골격은 **타점 소유** — 소유자는 포커스 시각이 아니라 저장 타점이다(아니면 서버 owner 게이트에 걸린다).
+    const activeTime = focusedPoint?.time ?? null;
+    const minuteSkeleton = useMinuteSkeletonForPoint(code, viewDate, activeTime, minuteQ.data);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
@@ -138,7 +141,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 <Sep />
                 <ControlGroup>
                     <TextToggle active={false} disabled={!hasLines} onClick={() => hasLines && clear()} title="가격선 전체 지우기">선 지우기</TextToggle>
-                    <TextToggle active={false} disabled={skeletonPoints.length === 0} onClick={() => skeletonPoints.length > 0 && clearSkeleton()} title="골격 점 전체 지우기(다시 찍기)">골격 지우기</TextToggle>
+                    <TextToggle active={false} disabled={skeletonPoints.length === 0} onClick={() => skeletonPoints.length > 0 && clearSkeleton()} title="일봉 골격 점 전체 지우기(다시 찍기)">골격 지우기</TextToggle>
+                    <TextToggle active={false} disabled={!minuteSkeleton.hasAny} onClick={() => minuteSkeleton.hasAny && minuteSkeleton.clear()} title="이 타점의 분봉 골격 점 전체 지우기">분봉골격 지우기</TextToggle>
                     <MarketToggle mode={mode} setMode={setMode} />
                 </ControlGroup>
             </ChartHeader>
@@ -196,6 +200,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
                                     onTagPoint={(t, x, y) => setTagMenu({ time: t, x, y })}
                                     tagsOfTime={(t) => tagsOf({ stockCode: code, date: viewDate, time: t })}
+                                    skeleton={minuteSkeleton.points}
+                                    showSkeleton={showSkeleton}
                                 />
                             ) : null
                         }
@@ -227,6 +233,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     onRemoveLine={removeLineById}
                     onToggleIgnore={() => candleMenu.candle && toggleIgnore(candleMenu.candle.date)}
                     onToggleSkeletonPivot={(field, market) => candleMenu.candle && toggleSkeletonPivot(candleMenu.candle.date, field, market)}
+                    activeTime={activeTime}
+                    minuteSkeletonAtCandle={candleMenu.candle?.time ? minuteSkeleton.fieldsAt(candleMenu.candle.time) : []}
+                    onToggleMinuteSkeletonPivot={(field) => candleMenu.candle?.time && minuteSkeleton.toggle(candleMenu.candle.time, field)}
                     onClose={() => setCandleMenu(null)}
                 />
             )}

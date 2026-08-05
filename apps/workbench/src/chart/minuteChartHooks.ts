@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject, type RefOb
 import {
     CandlestickSeries,
     HistogramSeries,
+    LineSeries,
     LineStyle,
     createSeriesMarkers,
     type AutoscaleInfo,
@@ -27,7 +28,7 @@ export const TAG_MARKER_ATTR = "data-tag-marker";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { type MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/chartAnchors.js";
-import { ALARM, PRICE_LINE } from "../styles/palette.js";
+import { ALARM, PRICE_LINE, SKELETON } from "../styles/palette.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
 const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
@@ -508,4 +509,54 @@ export function useMarkerOverlay(
         return { saved, current };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [series.overlayTick, savedSnapped, currentSnapped]);
+}
+
+/**
+ * 분봉 골격 오버레이 — 그 **타점**이 찍은 장중 피벗들을 이어 그린다(일봉 오버레이의 짝).
+ *
+ * 일봉판과 갈리는 건 둘뿐이다:
+ *   · 시간이 날짜 문자열이 아니라 **unix 초**(분봉 차트의 시간축)
+ *   · 분봉 pane 이 **% 축**이라 raw 가격을 `base`(당일 원주가)로 나눠 %로 바꿔 그린다 — 가격선(linePct)과 같은 규칙
+ * 골격은 언제나 당일 분봉이라 분모는 언제나 `base`(D 선처럼 pctBase 를 쓰는 경우가 없다).
+ *
+ * 토글 OFF 면 시리즈를 지운다(빈 데이터가 아니라 제거) — 남겨두면 price scale 자동 맞춤에 계속 참여한다.
+ */
+export function useMinuteSkeletonOverlay(
+    chartRef: RefObject<IChartApi | null>,
+    pivots: readonly { time: number; price: number }[],
+    base: number | null,
+    visible: boolean,
+): void {
+    const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        const show = visible && pivots.length >= 2 && base !== null && base > 0;
+        if (!show) {
+            if (seriesRef.current) {
+                chart.removeSeries(seriesRef.current);
+                seriesRef.current = null;
+            }
+            return;
+        }
+        if (!seriesRef.current) {
+            seriesRef.current = chart.addSeries(LineSeries, {
+                color: SKELETON,
+                lineWidth: 2,
+                priceScaleId: "right",
+                priceLineVisible: false,
+                lastValueVisible: false,
+                pointMarkersVisible: true,
+                pointMarkersRadius: 3,
+                crosshairMarkerVisible: false,
+            });
+        }
+        // 같은 분봉에 점이 둘 이상일 수 있다(한 봉의 시→고→종). LineSeries 는 time 중복을 못 받으므로
+        // 그 경우 마지막 값만 그린다 — 오버레이는 확인용이고, 정확한 시퀀스는 서버 형태 계산이 본다.
+        const byTime = new Map<number, number>();
+        for (const p of pivots) byTime.set(p.time, ((p.price - base!) / base!) * 100);
+        seriesRef.current.setData([...byTime.entries()].sort((a, b) => a[0] - b[0]).map(([t, value]) => ({ time: t as UTCTimestamp, value })));
+    }, [chartRef, pivots, base, visible]);
+
+    useEffect(() => () => { seriesRef.current = null; }, []);
 }

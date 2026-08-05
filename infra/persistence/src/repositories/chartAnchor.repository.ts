@@ -71,6 +71,13 @@ export class DrizzleChartAnchorRepository implements ChartAnchorReader, ChartAnc
             .where(and(eq(chartAnchors.stockCode, stockCode), eq(chartAnchors.tradeDate, date), eq(chartAnchors.param, param)));
     }
 
+    async removeByPoint(stockCode: string, date: string, time: string): Promise<void> {
+        // trade_time 이 그 시각인 행만 — NULL(차트 소유)은 eq 가 걸러내므로 선·무시 캔들은 안전하다.
+        await this.db
+            .delete(chartAnchors)
+            .where(and(eq(chartAnchors.stockCode, stockCode), eq(chartAnchors.tradeDate, date), eq(chartAnchors.tradeTime, time)));
+    }
+
     /** 멱등 판정 술어 — NULL 컬럼(time·anchorTime·field·market)은 eq(null)이 항상 거짓이라 isNull 로 갈라 댄다. */
     private identityConds(a: NewChartAnchor): SQL[] {
         return [

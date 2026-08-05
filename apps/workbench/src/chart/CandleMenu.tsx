@@ -11,7 +11,7 @@
 //    (시→고→종은 정리) — 그래서 아무 순서로 찍어도 되고 메뉴에 순번이 없다.
 //  · 무시 캔들 = 차트 소유 토글(일봉만). 타점 선택이 필요 없다 — 앵커가 차트(종목,날짜) 소유가 됐기 때문.
 //  · 선 근처 우클릭이면 그 선 삭제만 — 즉시 삭제 대신 메뉴를 거쳐 오발을 막는다.
-import { anchorParamByKey, IGNORE_CANDLE_PARAM, SKELETON_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
+import { anchorParamByKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { SKELETON } from "../styles/palette.js";
 import type { RenderLine } from "../api/chartAnchors.js";
@@ -50,6 +50,14 @@ export interface CandleMenuProps {
     onRemoveLine: (id: string) => void;
     onToggleIgnore: () => void;
     onToggleSkeletonPivot: (field: AnchorField, market: AnchorMarket) => void;
+    /**
+     * 분봉 골격의 소유 타점 시각(**저장 타점**만 — 포커스 시각이 아니다). null 이면 찍을 곳이 없어 비활성.
+     * 옛 타점 소유 앵커 시절의 가드가 이 param 에만 돌아왔다: 소유가 타점이라 저장 타점이 아니면 매달 데가 없다.
+     */
+    activeTime: string | null;
+    /** 이 분봉에 이 타점이 찍은 골격 값들. */
+    minuteSkeletonAtCandle: readonly AnchorField[];
+    onToggleMinuteSkeletonPivot: (field: AnchorField) => void;
     onClose: () => void;
 }
 
@@ -64,7 +72,8 @@ const fmt = (v: number): string => v.toLocaleString();
 
 export function CandleMenu({
     anchor, candle, bars, nearLine, lineIdAtCandle, ignoredAtCandle, skeletonAtCandle,
-    market, onMarketChange, onAddLine, onRemoveLine, onToggleIgnore, onToggleSkeletonPivot, onClose,
+    market, onMarketChange, onAddLine, onRemoveLine, onToggleIgnore, onToggleSkeletonPivot,
+    activeTime, minuteSkeletonAtCandle, onToggleMinuteSkeletonPivot, onClose,
 }: CandleMenuProps): JSX.Element {
     const title = candle ? `${candle.date}${candle.time ? ` ${candle.time.slice(0, 5)}` : " 일봉"}` : "가격선";
     // 분봉 앵커는 UN 고정(서버 규칙), KRX 바가 없는 일봉도 UN 으로 되돌린다 — 없는 시장을 지목할 수는 없다.
@@ -72,6 +81,10 @@ export function CandleMenu({
     const bar = bars?.[eff] ?? null;
     const canToggle = !candle?.time && bars?.krx != null && bars?.un != null;
     const other: AnchorMarket = eff === "un" ? "krx" : "un";
+    // 분봉 골격 노출 규칙 — **타점 시각 이후 봉은 항목 자체를 숨긴다**(서버도 400 으로 막지만, 눌러보고
+    // 알게 하지 않는다). 저장 타점이 없으면 숨기지 않고 **비활성**으로 남긴다 — 왜 못 찍는지를 알려야 한다.
+    const minuteSkelVisible = candle?.time != null && (activeTime === null || candle.time <= activeTime);
+    const minuteSkelEnabled = minuteSkelVisible && activeTime !== null && !!bar;
 
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={210} padding={0} placement="beside" offset={6}>
@@ -117,6 +130,33 @@ export function CandleMenu({
                         <MenuItem onClick={() => { onRemoveLine(lineIdAtCandle); onClose(); }} style={{ color: "var(--rise)" }}>
                             이 봉의 선 삭제
                         </MenuItem>
+                    )}
+
+                    {minuteSkelVisible && (
+                        <>
+                            <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                                <MenuLabel>
+                                    {anchorParamByKey.get(SKELETON_MINUTE_PARAM)?.name ?? "분봉 골격"}
+                                    {activeTime ? ` → 타점 ${activeTime.slice(0, 5)}` : " — 저장 타점 아님(스페이스바)"}
+                                </MenuLabel>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "0 8px 4px" }}>
+                                <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: minuteSkelEnabled ? SKELETON : "var(--text-tertiary)" }}>골격</span>
+                                {FIELD_LABELS.map(({ field, label }) => {
+                                    const on = minuteSkeletonAtCandle.includes(field);
+                                    return (
+                                        <button key={field}
+                                            disabled={!minuteSkelEnabled}
+                                            onClick={() => { onToggleMinuteSkeletonPivot(field); onClose(); }}
+                                            title={activeTime === null ? "이 시각은 저장 타점이 아닙니다 — 스페이스바로 타점을 저장한 뒤에" : on ? `${label} 점 해제` : bar ? `UN ${label} ${fmt(bar[field])} 를 골격 점으로` : "값 없음"}
+                                            style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: `1px solid ${on ? SKELETON : "var(--border-default)"}`, borderRadius: 4, background: on ? `${SKELETON}22` : "transparent", color: on ? SKELETON : minuteSkelEnabled ? "var(--text-primary)" : "var(--text-tertiary)", cursor: minuteSkelEnabled ? "pointer" : "default", opacity: minuteSkelEnabled ? 1 : 0.5, fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                                            <span style={{ color: on ? SKELETON : "var(--text-tertiary)" }}>{label}</span>
+                                            <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{bar ? fmt(bar[field]) : "—"}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </>
                     )}
 
                     {!candle.time && (
