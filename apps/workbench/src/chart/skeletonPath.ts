@@ -35,7 +35,8 @@ interface ResolvedPoint {
     y: number;
 }
 
-const DOT_RADIUS = 3.5;
+/** X 마커 반지름(px). 고가·무시 마커(원)와 **모양으로** 갈리는 게 요점 — 색만으로는 작은 크기에서 섞인다. */
+const MARK_RADIUS = 4;
 
 class SkeletonPathRenderer {
     constructor(
@@ -64,23 +65,29 @@ class SkeletonPathRenderer {
                 ctx.stroke();
             }
 
-            // 점 — 하나만 찍어도 보이는 신호. 흰 테두리로 캔들 위에서도 떠 보이게.
-            const r = DOT_RADIUS * Math.min(hr, vr);
-            ctx.lineWidth = Math.max(1, Math.floor(1.5 * hr));
-            for (const p of pts) {
+            // X 마커 — 하나만 찍어도 보이는 신호. 흰 굵은 획을 먼저 깔아 캔들·격자 위에서도 떠 보이게.
+            const r = MARK_RADIUS * Math.min(hr, vr);
+            const strokeX = (p: ResolvedPoint): void => {
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = "#ffffff";
+                ctx.moveTo(p.x - r, p.y - r);
+                ctx.lineTo(p.x + r, p.y + r);
+                ctx.moveTo(p.x + r, p.y - r);
+                ctx.lineTo(p.x - r, p.y + r);
                 ctx.stroke();
-                ctx.strokeStyle = this._color;
-            }
+            };
+            ctx.setLineDash([]);
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = Math.max(2, Math.floor(3.5 * hr));
+            for (const p of pts) strokeX(p);
+            ctx.strokeStyle = this._color;
+            ctx.lineWidth = Math.max(1, Math.floor(1.8 * hr));
+            for (const p of pts) strokeX(p);
 
             // 파생된 순번 — 사용자가 입력하지 않은 값이라 화면에서 확인할 수 있어야 한다.
             ctx.font = `${Math.round(10 * Math.min(hr, vr))}px -apple-system, system-ui, sans-serif`;
             ctx.textBaseline = "middle";
             ctx.textAlign = "left";
-            const pad = 5 * hr;
+            const pad = (MARK_RADIUS + 3) * hr; // X 획을 비켜 앉게
             for (let i = 0; i < pts.length; i++) {
                 const label = String(i + 1);
                 // 우측으로 넘치면 점 왼쪽에(화면 밖 방지 — 세로선 라벨과 같은 규칙).

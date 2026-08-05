@@ -53,15 +53,55 @@ function draw(points: SkeletonPointSpec[]): Call[] {
     return calls;
 }
 
-const dots = (calls: Call[]): { x: number; y: number }[] => calls.filter((c) => c.op === "arc").map((c) => ({ x: c.args[0], y: c.args[1] }));
-const segs = (calls: Call[]): { x: number; y: number }[] => calls.filter((c) => c.op === "moveTo" || c.op === "lineTo").map((c) => ({ x: c.args[0], y: c.args[1] }));
+/**
+ * X 마커의 중심들 — 마커는 대각 획 두 개(|dx|==|dy|, dx≠0)로 그려지므로 그 패턴만 골라 중심을 되낸다.
+ * 흰 외곽선 + 색 두 번 그리므로 중심은 중복 제거한다. 아래 테스트 좌표는 꺾은선 구간이 우연히
+ * 대각(|dx|==|dy|)이 되지 않도록 골랐다 — 그래야 이 추출이 마커만 잡는다.
+ */
+function marks(calls: Call[]): { x: number; y: number }[] {
+    const seen = new Set<string>();
+    const out: { x: number; y: number }[] = [];
+    for (let i = 0; i + 1 < calls.length; i++) {
+        if (calls[i].op !== "moveTo" || calls[i + 1].op !== "lineTo") continue;
+        const [x0, y0] = calls[i].args;
+        const [x1, y1] = calls[i + 1].args;
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        if (dx === 0 || Math.abs(dx) !== Math.abs(dy)) continue;
+        const c = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+        const k = `${c.x}|${c.y}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(c);
+    }
+    return out;
+}
+/** 꺾은선 좌표 — 마커의 대각 획은 제외하고 실제 선분만. */
+const segs = (calls: Call[]): { x: number; y: number }[] => {
+    const markCalls = new Set<number>();
+    for (let i = 0; i + 1 < calls.length; i++) {
+        if (calls[i].op !== "moveTo" || calls[i + 1].op !== "lineTo") continue;
+        const dx = calls[i + 1].args[0] - calls[i].args[0];
+        const dy = calls[i + 1].args[1] - calls[i].args[1];
+        if (dx !== 0 && Math.abs(dx) === Math.abs(dy)) { markCalls.add(i); markCalls.add(i + 1); }
+    }
+    return calls
+        .map((c, i) => ({ c, i }))
+        .filter(({ c, i }) => (c.op === "moveTo" || c.op === "lineTo") && !markCalls.has(i))
+        .map(({ c }) => ({ x: c.args[0], y: c.args[1] }));
+};
 
-describe("SkeletonPath — 찍으면 반드시 화면에 나타난다", () => {
-    it("점 하나만 찍어도 원이 그려진다 — 선이 없어도 입력됐다는 신호가 있어야 한다", () => {
+describe("SkeletonPath — 찍으면 반드시 화면에 나타난다(X 마커)", () => {
+    it("점 하나만 찍어도 X 가 그려진다 — 선이 없어도 입력됐다는 신호가 있어야 한다", () => {
         const calls = draw([{ time: "2026-06-10", price: 9000 }]);
-        expect(dots(calls)).toEqual([{ x: 0, y: 100 }]);
+        expect(marks(calls)).toEqual([{ x: 0, y: 100 }]);
         expect(segs(calls)).toEqual([]); // 이을 상대가 없으니 선분은 없다
         expect(calls.some((c) => c.op === "text:1")).toBe(true); // 순번도 함께
+    });
+
+    it("마커는 원이 아니라 X — 고가·무시 마커(원)와 모양으로 갈린다", () => {
+        const calls = draw([{ time: "2026-06-10", price: 9000 }]);
+        expect(calls.some((c) => c.op === "arc")).toBe(false);
     });
 
     it("같은 캔들의 두 점(고→종)은 세로 선분으로 그려진다 — 시각으로 뭉개면 사라지던 자리", () => {
@@ -69,7 +109,7 @@ describe("SkeletonPath — 찍으면 반드시 화면에 나타난다", () => {
             { time: "2026-06-10", price: 9500 }, // 고
             { time: "2026-06-10", price: 9000 }, // 종
         ]);
-        const d = dots(calls);
+        const d = marks(calls);
         expect(d).toHaveLength(2); // 둘 다 남는다(옛 구현은 하나로 뭉갰다)
         expect(d[0].x).toBe(d[1].x); // 같은 캔들 = 같은 x
         expect(d[0].y).not.toBe(d[1].y); // 값이 달라 y 가 갈린다 → 수직 선분
@@ -82,9 +122,9 @@ describe("SkeletonPath — 찍으면 반드시 화면에 나타난다", () => {
             { time: "2026-06-10", price: 9600 },
             { time: "2026-06-10", price: 9100 },
         ]);
-        expect(dots(calls)).toHaveLength(3);
-        expect(new Set(dots(calls).map((p) => p.x)).size).toBe(1); // x 는 하나
-        expect(new Set(dots(calls).map((p) => p.y)).size).toBe(3); // y 는 셋
+        expect(marks(calls)).toHaveLength(3);
+        expect(new Set(marks(calls).map((p) => p.x)).size).toBe(1); // x 는 하나
+        expect(new Set(marks(calls).map((p) => p.y)).size).toBe(3); // y 는 셋
     });
 
     it("여러 캔들은 꺾은선으로 이어지고 점마다 순번이 붙는다", () => {
@@ -112,6 +152,6 @@ describe("SkeletonPath — 찍으면 반드시 화면에 나타난다", () => {
         path.updateAllViews();
         const { target, calls } = mockTarget();
         path.paneViews()[0].renderer().draw(target as never);
-        expect(dots(calls)).toHaveLength(1);
+        expect(marks(calls)).toHaveLength(1);
     });
 });

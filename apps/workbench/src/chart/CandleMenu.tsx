@@ -75,7 +75,22 @@ export function CandleMenu({
 
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={210} padding={0} placement="beside" offset={6}>
-            <MenuLabel>{title}</MenuLabel>
+            {/* 제목 줄 — 시장 토글이 우측 빈자리를 쓴다(아래 선·골격 두 줄이 이 시장을 따른다).
+                별도 줄로 두면 "기준 시장" 같은 설명 라벨이 필요해지는데, 버튼이 값(UN/KRX)을 이미 말한다. */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 8px 4px" }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+                {candle && (
+                    <button
+                        disabled={!canToggle}
+                        onClick={() => canToggle && onMarketChange(other)}
+                        title={canToggle ? `${other.toUpperCase()} 값으로 전환` : candle.time ? "분봉은 UN 만(KRX 는 세션 부재가 있다)" : "이 봉엔 KRX 세션이 없습니다"}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, border: "1px solid var(--border-default)", borderRadius: 4, background: "transparent", color: canToggle ? "var(--text-primary)" : "var(--text-tertiary)", cursor: canToggle ? "pointer" : "default", fontSize: 10.5, fontWeight: 700, padding: "2px 6px", lineHeight: 1.4 }}
+                    >
+                        {eff.toUpperCase()}
+                        {canToggle && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>⇄ {other.toUpperCase()}</span>}
+                    </button>
+                )}
+            </div>
 
             {nearLine && (
                 <MenuItem onClick={() => { onRemoveLine(nearLine.id); onClose(); }} style={{ color: "var(--rise)" }}>
@@ -85,21 +100,7 @@ export function CandleMenu({
 
             {candle && (
                 <>
-                    {/* 시장 토글 — 아래 두 줄(선·골격)이 함께 따른다. 값이 같은 자리에서 갈아끼워져 비교가 쉽다. */}
-                    <div style={{ borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 6, padding: "6px 8px 2px" }}>
-                        <button
-                            disabled={!canToggle}
-                            onClick={() => canToggle && onMarketChange(other)}
-                            title={canToggle ? `${other.toUpperCase()} 값으로 전환` : candle.time ? "분봉은 UN 만(KRX 는 세션 부재가 있다)" : "이 봉엔 KRX 세션이 없습니다"}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 4, border: "1px solid var(--border-default)", borderRadius: 4, background: "transparent", color: canToggle ? "var(--text-primary)" : "var(--text-tertiary)", cursor: canToggle ? "pointer" : "default", fontSize: 10.5, fontWeight: 700, padding: "2px 6px", lineHeight: 1.4 }}
-                        >
-                            {eff.toUpperCase()}
-                            {canToggle && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>⇄ {other.toUpperCase()}</span>}
-                        </button>
-                        <span style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>기준 시장</span>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 8px 4px" }}>
+                    <div style={{ borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 2, padding: "6px 8px 4px" }}>
                         <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)" }}>선</span>
                         {FIELD_LABELS.map(({ field, label }) => (
                             <button key={field}
