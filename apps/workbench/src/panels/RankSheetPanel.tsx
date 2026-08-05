@@ -30,7 +30,7 @@ import { useTags } from "../lib/useTags.js";
 import { TagChips } from "../components/TagChips.js";
 import { TagMenu } from "../chart/TagMenu.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
-import { loadJson, saveJson } from "../store/persist.js";
+import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Excursion } from "./rank/pathStats.js";
@@ -136,8 +136,7 @@ export function RankSheetPanel(): JSX.Element {
     }, [r.stats.excursions]);
 
     // 필터 표시 모드 — narrow(교집합만) / dim(전체 유지, 밴드 밖 흐리게). 영속.
-    const [filterMode, setFilterMode] = useState<"narrow" | "dim">(() => (loadJson(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null)) ?? "narrow"));
-    useEffect(() => saveJson(FILTERMODE_KEY, filterMode), [filterMode]);
+    const [filterMode, setFilterMode] = usePersistedState<"narrow" | "dim">(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null), "narrow");
 
     // 행 집합: narrow + 필터 활성 → 매칭 집합만. dim 또는 무필터 → 전체(밴드 밖은 렌더에서 흐리게).
     const rowPoints = useMemo<ReviewPointListItem[]>(() => {
@@ -153,8 +152,7 @@ export function RankSheetPanel(): JSX.Element {
 
     // ── 정렬 체인(n차). 평클릭=리셋 · Shift+클릭=단 추가. 규칙 전부는 sheetSort(순수·테스트) 에.
     //    축 정렬 = 강(rank↑) 먼저, 값 없음(미배치·미산정)은 방향 무관 바닥. localStorage 영속(옛 단일 정렬도 읽는다).
-    const [sort, setSort] = useState<SortChain>(() => parseSortChain(loadJson(SORT_KEY, (o) => o)) ?? DEFAULT_CHAIN);
-    useEffect(() => saveJson(SORT_KEY, sort), [sort]);
+    const [sort, setSort] = usePersistedState<SortChain>(SORT_KEY, parseSortChain, DEFAULT_CHAIN);
     const primary = sort[0];
     // 정렬 기준을 배치 보드와 공유 → 그 레일에 하이라이트/배지. **1차만**(2차 이하는 대응 레일이 없다).
     const setRankSort = useWorkbench((s) => s.setRankSort);
@@ -166,8 +164,7 @@ export function RankSheetPanel(): JSX.Element {
     const nameOf = (code: string): string => r.nameOf(code);
 
     // ── 그룹 컷(축 열 전용) — 1차 축에서 우클릭으로 그은 경계. slotId 로 저장하고 축 라인으로 orderKey 를 되찾는다.
-    const [cuts, setCuts] = useState<Record<string, string[]>>(() => loadJson(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null)) ?? {});
-    useEffect(() => saveJson(CUTS_KEY, cuts), [cuts]);
+    const [cuts, setCuts] = usePersistedState<Record<string, string[]>>(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null), {});
     const sortAxisId = primary.key.kind === "axis" ? primary.key.axisId : null;
     const slotOrderOfSort = useMemo(() => (sortAxisId ? slotOrderKeys(linesByAxis.get(sortAxisId) ?? []) : undefined), [sortAxisId, linesByAxis]);
     const cutKeys = useMemo(
@@ -205,8 +202,7 @@ export function RankSheetPanel(): JSX.Element {
     const dragAxisId = dragBroken || (sortAxisId && isComputedAxis(sortAxisId)) ? null : sortAxisId;
 
     // ── 위치 표시 모드(숫자 기본 / 위치 바).
-    const [posBar, setPosBar] = useState<boolean>(() => loadJson(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? true);
-    useEffect(() => saveJson(POS_MODE_KEY, posBar), [posBar]);
+    const [posBar, setPosBar] = usePersistedState<boolean>(POS_MODE_KEY, (o) => (typeof o === "boolean" ? o : null), true);
 
     // 컨테이너 폭 관측 — 남는 폭을 축 열들이 나눠 넓힘(각자 최소폭 유지). 위치바 모드는 최소폭 ↑.
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -233,14 +229,11 @@ export function RankSheetPanel(): JSX.Element {
     const axisMin = posBar ? 76 : 56;
 
     // ── 열 구성 — 고정(좌측 스택 집합)·숨김(집합), 열 이름 우클릭 메뉴로 편집. 영속.
-    const [frozenCols, setFrozenCols] = useState<string[]>(() => loadJson(FROZEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null)) ?? ["date", "time"]);
-    const [hiddenCols, setHiddenCols] = useState<string[]>(() => loadJson(HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null)) ?? []);
-    useEffect(() => saveJson(FROZEN_KEY, frozenCols), [frozenCols]);
-    useEffect(() => saveJson(HIDDEN_KEY, hiddenCols), [hiddenCols]);
+    const [frozenCols, setFrozenCols] = usePersistedState<string[]>(FROZEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), ["date", "time"]);
+    const [hiddenCols, setHiddenCols] = usePersistedState<string[]>(HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), []);
     const frozenSet = useMemo(() => new Set(frozenCols), [frozenCols]);
     // 수동 열 폭(colKey → px). 지정한 열만 고정폭이 되고, 나머지 축 열은 잔여 폭 분배를 유지한다.
-    const [colWidths, setColWidths] = useState<Record<string, number>>(() => loadJson(WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null)) ?? {});
-    useEffect(() => saveJson(WIDTHS_KEY, colWidths), [colWidths]);
+    const [colWidths, setColWidths] = usePersistedState<Record<string, number>>(WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null), {});
     // 축을 지우면 그 축 키가 고정/숨김/폭 목록에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소.
     // ⚠ **로딩 중엔 절대 청소하지 않는다**: 판단 축과 계산 축은 별도 요청이라, 판단 축만 도착한 순간에 돌면
     //   아직 안 온 계산 축 열의 고정·숨김·폭을 유령으로 오인해 지운다.

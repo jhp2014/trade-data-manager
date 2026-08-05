@@ -20,6 +20,7 @@ import { kstTime } from "../lib/date.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { optionLabel, predicateText, validatePredicates } from "../lib/predicateUi.js";
 import { useWorkbench } from "../store/workbench.js";
+import { usePersistedState } from "../store/persist.js";
 import { useStockName } from "../lib/useStockName.js";
 import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
 import { StockRow } from "../components/board/StockRow.js";
@@ -34,21 +35,7 @@ const WATCHLIST_KEY = ["live-watchlist"];
 
 // 모니터링 종목 표시 순서 — 로컬(기기별)만 저장. 서버 watchlist 는 코드 집합만, 순서는 이 오버레이가 결정.
 const ORDER_KEY = "wb.watchlistOrder";
-function loadOrder(): string[] {
-    try {
-        const v: unknown = JSON.parse(localStorage.getItem(ORDER_KEY) ?? "[]");
-        return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-    } catch {
-        return [];
-    }
-}
-function saveOrder(o: string[]): void {
-    try {
-        localStorage.setItem(ORDER_KEY, JSON.stringify(o));
-    } catch {
-        /* noop */
-    }
-}
+const parseOrder = (v: unknown): string[] | null => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : null);
 
 export function WatchlistPanel(): JSX.Element {
     const { snapshot, error } = useLiveSnapshot();
@@ -60,7 +47,7 @@ export function WatchlistPanel(): JSX.Element {
     const qc = useQueryClient();
     const [ruleFormCode, setRuleFormCode] = useState<string | null>(null); // 조건 추가 폼이 열린 종목
     const [rankThemeByCode, setRankThemeByCode] = useState<Record<string, string>>({}); // 종목별 순위 표시 테마(칩 클릭 선택)
-    const [order, setOrder] = useState<string[]>(() => loadOrder());
+    const [order, setOrder] = usePersistedState<string[]>(ORDER_KEY, parseOrder, []);
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } })); // 5px 이동해야 드래그 시작(클릭은 선택 유지)
 
     const view = useQuery({ queryKey: WATCHLIST_KEY, queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: LIVE_CADENCE_MS });
@@ -87,8 +74,7 @@ export function WatchlistPanel(): JSX.Element {
         const to = orderedCodes.indexOf(String(over.id));
         if (from < 0 || to < 0) return;
         const next = arrayMove(orderedCodes, from, to);
-        setOrder(next);
-        saveOrder(next);
+        setOrder(next); // 영속은 usePersistedState 의 effect 가
     };
     const rulesByCode = useMemo(() => {
         const m = new Map<string, AlarmRuleView[]>();

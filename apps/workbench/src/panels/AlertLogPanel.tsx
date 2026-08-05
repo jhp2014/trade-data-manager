@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertThemeMember, type LeafEvidence } from "../api/alerts.js";
-import { kstTime } from "../lib/date.js";
+import { kstHm, kstMidnight, kstToday, kstTime } from "../lib/date.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { useWorkbench } from "../store/workbench.js";
 
@@ -32,19 +32,10 @@ type Delivery = "all" | "sent" | "held";
 const sign = (n: number): string => (n >= 0 ? "+" : "");
 
 // 오늘(KST) 자정의 epoch ms — 로그의 하드 바닥. 어제 것은 여기서 아래로 잘려 화면·클라 메모리에서 빠진다.
-function kstMidnight(): number {
-    const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); // YYYY-MM-DD
-    return new Date(`${day}T00:00:00+09:00`).getTime();
-}
-// ms → 오늘 KST "HH:mm" (시간 입력값). 자정이면 "00:00".
-function kstHHmm(ms: number): string {
-    return new Date(ms).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
-}
-// "HH:mm" → 오늘 KST 해당 시각의 epoch ms(빈 값이면 자정=전체).
+// "HH:mm" → 오늘 KST 해당 시각의 epoch ms(빈 값이면 자정=전체). tz 변환·형식은 lib/date 한 곳.
 function floorFromHHmm(hhmm: string): number {
     if (!hhmm) return kstMidnight();
-    const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
-    const t = new Date(`${day}T${hhmm}:00+09:00`).getTime();
+    const t = new Date(`${kstToday()}T${hhmm}:00+09:00`).getTime();
     return Number.isNaN(t) ? kstMidnight() : t;
 }
 
@@ -309,12 +300,12 @@ function FloorControl({ effFloor, midnight, onSet }: { effFloor: number; midnigh
     const [draft, setDraft] = useState("");
     const [pos, setPos] = useState({ left: 0, top: 0 });
     const anchorRef = useRef<HTMLSpanElement>(null);
-    const label = effFloor <= midnight ? "전체" : kstHHmm(effFloor);
+    const label = effFloor <= midnight ? "전체" : kstHm(effFloor);
 
     const openPop = (): void => {
         const r = anchorRef.current?.getBoundingClientRect();
         if (r) setPos({ left: r.left, top: r.bottom + 4 });
-        setDraft(effFloor <= midnight ? "" : kstHHmm(effFloor));
+        setDraft(effFloor <= midnight ? "" : kstHm(effFloor));
         setOpen(true);
     };
     const apply = (ms: number): void => {

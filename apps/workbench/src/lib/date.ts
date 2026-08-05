@@ -1,9 +1,24 @@
 // 날짜 표시 공용 — 여러 패널이 쓰는 요일/날짜 라벨. (KST 거래일 문자열 YYYY-MM-DD 기준)
 export const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
+/** epoch ms → KST YYYY-MM-DD. (en-CA 로케일이 ISO 날짜 형식을 낸다 — timeZone 지정으로 KST 고정.) */
+export function kstDateOf(ms: number): string {
+    return new Date(ms).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
 /** 오늘(KST) YYYY-MM-DD. UTC 기반 toISOString 은 KST 새벽(00:00~08:59)에 전날로 잡히므로 timeZone 지정. */
 export function kstToday(): string {
-    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    return kstDateOf(Date.now());
+}
+
+/** epoch ms → KST HH:MM(초 없음, 24h). 뉴스 시각·시간 입력값 표시 공용. */
+export function kstHm(ms: number): string {
+    return new Date(ms).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+/** 오늘(KST) 자정의 epoch ms — 당일 필터의 기본 floor. */
+export function kstMidnight(): number {
+    return new Date(`${kstToday()}T00:00:00+09:00`).getTime();
 }
 
 /** epoch ms → KST HH:MM:SS. 발화 시각 표시(모니터링·알람 로그 공용). */

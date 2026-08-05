@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchTelegramNews, type TelegramNewsItem } from "../api/telegramNews.js";
 import { useStockName } from "../lib/useStockName.js";
-import { dateLabel } from "../lib/date.js";
+import { kstDateOf, kstHm, dateLabel } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
 import { ChevronDownIcon, BackIcon } from "../components/icons.js";
 import { PlaneDot } from "../components/PlaneDot.js";
@@ -178,7 +178,7 @@ export function TelegramNewsPanel({ plane }: { plane: Plane }): JSX.Element {
                 {/* 2줄 — 현재 보는 날짜·시간 */}
                 {!showEdit && posAt && (
                     <div className="tabular" style={{ padding: "0 10px 5px", fontSize: 11, color: "var(--text-tertiary)" }}>
-                        {dateLabel(kstDate(posAt))} {kstHm(posAt)}
+                        {dateLabel(kstDate(posAt))} {kstHmOf(posAt)}
                     </div>
                 )}
             </div>
@@ -265,7 +265,7 @@ function NewsList({ items, hlRe, activeMatch, focusDate, cursorMs }: { items: Te
                                         padding: intradayPast ? "1px 5px" : undefined,
                                     }}
                                 >
-                                    {kstHm(it.at)}
+                                    {kstHmOf(it.at)}
                                 </span>
                                 <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)", padding: "1px 6px", background: "var(--bg-secondary)", borderRadius: 999, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "60%" }}>{it.channel}</span>
                             </div>
@@ -283,13 +283,9 @@ function NewsList({ items, hlRe, activeMatch, focusDate, cursorMs }: { items: Te
     );
 }
 
-function kstDate(iso: string): string {
-    return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
-}
-
-function kstHm(iso: string): string {
-    return new Date(iso).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
-}
+// tz 변환·형식은 lib/date 한 곳 — 여기는 ISO 문자열 입력을 ms 로 바꾸는 어댑터만.
+const kstDate = (iso: string): string => kstDateOf(Date.parse(iso));
+const kstHmOf = (iso: string): string => kstHm(Date.parse(iso));
 
 function hostOf(url: string): string {
     try {

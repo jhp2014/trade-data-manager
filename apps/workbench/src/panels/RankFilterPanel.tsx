@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { simulateTargetStop } from "./rank/pathStats.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
@@ -9,7 +9,7 @@ import { ControlBar, ControlGroup, Sep, TextToggle } from "../components/Control
 import { chartQuery } from "../api/queries.js";
 import { deriveMinuteView } from "../lib/derive.js";
 import { parsePointKey } from "../lib/pointKey.js";
-import { loadJson, saveJson } from "../store/persist.js";
+import { usePersistedState } from "../store/persist.js";
 import { useWorkbench, type ChartPriceMode } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { FAIL, STRONG, WEAK } from "../styles/palette.js";
@@ -72,10 +72,8 @@ export function RankFilterPanel({ panelId }: { panelId: string }): JSX.Element {
     const [baseMode, setBaseMode] = usePanelUi<ChartPriceMode>(panelId, "baseMode", "un"); // 좌측축 실% 분모 시장(KRX/UN 전일종가).
     const [heatOn, setHeatOn] = usePanelUi(panelId, "heatOn", true); // 밀도 히트맵 구름 표시 — 끄면 오버레이 캔들·기준선만.
     const [amtMarkersOn, setAmtMarkersOn] = usePanelUi(panelId, "amtMarkersOn", false); // 선택 종목 봉 위 분봉 거래대금 마커.
-    const [heatH, setHeatH] = useState(() => loadJson(HEAT_H_KEY, numV) ?? 300); // 히트맵 높이(영속)
-    const [scatterH, setScatterH] = useState(() => loadJson(SCATTER_H_KEY, numV) ?? 150); // 산점 줄당 높이(영속)
-    useEffect(() => saveJson(HEAT_H_KEY, heatH), [heatH]);
-    useEffect(() => saveJson(SCATTER_H_KEY, scatterH), [scatterH]);
+    const [heatH, setHeatH] = usePersistedState(HEAT_H_KEY, numV, 300); // 히트맵 높이(영속)
+    const [scatterH, setScatterH] = usePersistedState(SCATTER_H_KEY, numV, 150); // 산점 줄당 높이(영속)
     const sim = useMemo(() => simulateTargetStop(r.paths, r.effHorizon, target, stop), [r.paths, r.effHorizon, target, stop]);
     const overlay = useSelectedOverlay(r.nameOf, baseMode);
 
