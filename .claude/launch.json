@@ -4,7 +4,16 @@
     {
       "name": "workbench",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@trade-data-manager/workbench", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@trade-data-manager/workbench",
+        "dev"
+      ],
+      "port": 3100
+    },
+    {
+      "name": "workbench-attach",
+      "url": "http://localhost:3100",
       "port": 3100
     }
   ]

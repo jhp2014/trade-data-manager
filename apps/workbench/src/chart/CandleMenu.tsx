@@ -5,11 +5,14 @@
 // (자리가 안 움직이니 숫자만 갈아끼워진다 — NXT 오염 캔들은 그 차이로 알아본다).
 // 선택은 패널에 남는다(sticky) — 오염을 피해 KRX 로 보는 중이면 봉마다 다시 누를 이유가 없다.
 //
+// **props 는 관심사 그룹**(lines·ignore·dailySkeleton·minuteSkeleton)이다 — 평평한 17개였을 때 param 이
+// 하나 늘 때마다 이 시그니처와 패널 배선이 같이 자랐다. 그룹이면 새 param = 그룹 하나 추가로 끝난다.
+// 시고저종 버튼 줄은 세 섹션이 똑같이 쓰므로 FieldButtonRow 하나로(세 벌 복붙이던 마크업).
+//
 //  · 선 긋기 = 기준선 후보 추가(선=앵커 통합). 어느 선이 계산 축의 기준선이 되는지는 리졸버(가격 최저)가
 //    정한다 — 차트의 하늘색 선이 그것.
-//  · 골격 점 = 형태 분류의 입력(일봉만). 값별 토글이고, **찍는 순서가 아니라 캔들·값이 순서를 정한다**
-//    (시→고→종은 정리) — 그래서 아무 순서로 찍어도 되고 메뉴에 순번이 없다.
-//  · 무시 캔들 = 차트 소유 토글(일봉만). 타점 선택이 필요 없다 — 앵커가 차트(종목,날짜) 소유가 됐기 때문.
+//  · 골격 점 = 형태 분류의 입력. 값별 토글이고, **찍는 순서가 아니라 캔들·값이 순서를 정한다**(시→고→종은 정리).
+//  · 무시 캔들 = 차트 소유 토글(일봉만). 타점 선택이 필요 없다.
 //  · 선 근처 우클릭이면 그 선 삭제만 — 즉시 삭제 대신 메뉴를 거쳐 오발을 막는다.
 import { ANCHOR_FIELDS, anchorParamByKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
@@ -37,55 +40,105 @@ export interface CandleMenuProps {
     bars?: { un: MenuBar | null; krx: MenuBar | null };
     /** 근처 우클릭된 선 — 삭제 항목만 노출. */
     nearLine?: RenderLine;
-    /** 이 캔들에 이미 그어진 선의 id — 있으면 "이 봉의 선 삭제"가 함께 뜬다(토글 감각 보존). */
-    lineIdAtCandle?: string;
-    /** 이 일봉이 무시 캔들로 지정돼 있는가(차트 소유 — 타점 무관). */
-    ignoredAtCandle: boolean;
-    /** 이 일봉에 이미 찍힌 골격 점들 — 토글 상태 + 저장된 시장 표시. */
-    skeletonAtCandle: readonly SkeletonPivotAtCandle[];
     /** 시장 토글(패널 영속). 분봉 캔들에선 무시되고 언제나 UN 이다(서버 규칙). */
     market: AnchorMarket;
     onMarketChange: (m: AnchorMarket) => void;
-    onAddLine: (field: AnchorField, market: AnchorMarket) => void;
-    onRemoveLine: (id: string) => void;
-    onToggleIgnore: () => void;
-    onToggleSkeletonPivot: (field: AnchorField, market: AnchorMarket) => void;
+    /** 선(기준선 후보) — idAtCandle 이 있으면 "이 봉의 선 삭제"가 함께 뜬다(토글 감각 보존). */
+    lines: {
+        idAtCandle?: string;
+        onAdd: (field: AnchorField, market: AnchorMarket) => void;
+        onRemove: (id: string) => void;
+    };
+    /** 무시 캔들(차트 소유·일봉만) — on = 이 봉이 지정돼 있음. */
+    ignore: {
+        on: boolean;
+        onToggle: () => void;
+    };
+    /** 일봉 골격(차트 소유) — pivots = 이 봉에 찍힌 값들(저장된 시장 배지 표시용). */
+    dailySkeleton: {
+        pivots: readonly SkeletonPivotAtCandle[];
+        onToggle: (field: AnchorField, market: AnchorMarket) => void;
+    };
     /**
-     * 분봉 골격의 소유 타점 시각(**저장 타점**만 — 포커스 시각이 아니다). null 이면 찍을 곳이 없어 비활성.
-     * 옛 타점 소유 앵커 시절의 가드가 이 param 에만 돌아왔다: 소유가 타점이라 저장 타점이 아니면 매달 데가 없다.
+     * 분봉 골격(타점 소유) — activeTime = 소유 **저장 타점** 시각(포커스 시각이 아니다). null 이면 매달 데가
+     * 없어 비활성으로 보여준다(왜 못 찍는지 알리기). 타점 시각 이후 봉에선 섹션 자체를 숨긴다(눌러보고 알지 않게).
      */
-    activeTime: string | null;
-    /** 이 분봉에 이 타점이 찍은 골격 값들. */
-    minuteSkeletonAtCandle: readonly AnchorField[];
-    onToggleMinuteSkeletonPivot: (field: AnchorField) => void;
+    minuteSkeleton: {
+        activeTime: string | null;
+        pivots: readonly SkeletonPivotAtCandle[];
+        onToggle: (field: AnchorField) => void;
+    };
     onClose: () => void;
 }
 
 // 라벨은 UI 소유, 값 집합·순서는 도메인(ANCHOR_FIELDS) 소유 — Record 가 완전성을 강제해 필드가 늘면 컴파일이 잡는다.
 const FIELD_LABEL: Record<AnchorField, string> = { high: "고", low: "저", open: "시", close: "종" };
-const FIELD_LABELS = ANCHOR_FIELDS.map((field) => ({ field, label: FIELD_LABEL[field] }));
 
 const fmt = (v: number): string => v.toLocaleString();
 
-export function CandleMenu({
-    anchor, candle, bars, nearLine, lineIdAtCandle, ignoredAtCandle, skeletonAtCandle,
-    market, onMarketChange, onAddLine, onRemoveLine, onToggleIgnore, onToggleSkeletonPivot,
-    activeTime, minuteSkeletonAtCandle, onToggleMinuteSkeletonPivot, onClose,
-}: CandleMenuProps): JSX.Element {
+/** 필드 버튼 한 칸의 표시 — 세 섹션(선·일봉 골격·분봉 골격)이 같은 줄 모양을 쓰기 위한 계약. */
+interface FieldCell {
+    /** 켜짐(찍혀 있음) — 테두리·글자가 SKELETON 색. */
+    on?: boolean;
+    disabled?: boolean;
+    title: string;
+    /** 값 자리 표시 override(저장된 시장 배지 등). 기본 = 현재 시장의 캔들 값. */
+    text?: string;
+}
+
+/**
+ * 시고저종 버튼 한 줄 — 라벨 + 필드 4버튼. 섹션마다 달랐던 건 상태(on/disabled)·타이틀뿐이라 cellOf 로 주입.
+ * 스타일 문자열 세 벌 복붙이던 것 — param 이 늘면 네 벌째가 될 자리를 여기 하나로 고정한다.
+ */
+function FieldButtonRow({ rowLabel, rowColor, bar, cellOf, onPick }: {
+    rowLabel: string;
+    rowColor: string;
+    bar: MenuBar | null;
+    cellOf: (field: AnchorField) => FieldCell;
+    onPick: (field: AnchorField) => void;
+}): JSX.Element {
+    return (
+        <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 8px 4px" }}>
+            <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: rowColor }}>{rowLabel}</span>
+            {ANCHOR_FIELDS.map((field) => {
+                const c = cellOf(field);
+                const disabled = c.disabled ?? !bar;
+                const fg = c.on ? SKELETON : disabled ? "var(--text-tertiary)" : "var(--text-primary)";
+                return (
+                    <button key={field} disabled={disabled} onClick={() => onPick(field)} title={c.title}
+                        style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: `1px solid ${c.on ? SKELETON : "var(--border-default)"}`, borderRadius: 4, background: c.on ? `${SKELETON}22` : "transparent", color: fg, cursor: disabled ? "default" : "pointer", opacity: disabled && !c.on ? 0.6 : 1, fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
+                        <span style={{ color: c.on ? SKELETON : "var(--text-tertiary)" }}>{FIELD_LABEL[field]}</span>
+                        <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{c.text ?? (bar ? fmt(bar[field]) : "—")}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+/** 섹션 구분선 위 라벨. */
+function SectionLabel({ children }: { children: React.ReactNode }): JSX.Element {
+    return (
+        <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
+            <MenuLabel>{children}</MenuLabel>
+        </div>
+    );
+}
+
+export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketChange, lines, ignore, dailySkeleton, minuteSkeleton, onClose }: CandleMenuProps): JSX.Element {
     const title = candle ? `${candle.date}${candle.time ? ` ${candle.time.slice(0, 5)}` : " 일봉"}` : "가격선";
     // 분봉 앵커는 UN 고정(서버 규칙), KRX 바가 없는 일봉도 UN 으로 되돌린다 — 없는 시장을 지목할 수는 없다.
     const eff: AnchorMarket = candle?.time || !bars?.krx ? "un" : market;
     const bar = bars?.[eff] ?? null;
     const canToggle = !candle?.time && bars?.krx != null && bars?.un != null;
     const other: AnchorMarket = eff === "un" ? "krx" : "un";
-    // 분봉 골격 노출 규칙 — **타점 시각 이후 봉은 항목 자체를 숨긴다**(서버도 400 으로 막지만, 눌러보고
-    // 알게 하지 않는다). 저장 타점이 없으면 숨기지 않고 **비활성**으로 남긴다 — 왜 못 찍는지를 알려야 한다.
-    const minuteSkelVisible = candle?.time != null && (activeTime === null || candle.time <= activeTime);
-    const minuteSkelEnabled = minuteSkelVisible && activeTime !== null && !!bar;
+    // 분봉 골격 노출 규칙 — 타점 시각 이후 봉은 섹션 숨김 / 저장 타점 없음은 비활성(사유 표시).
+    const minuteSkelVisible = candle?.time != null && (minuteSkeleton.activeTime === null || candle.time <= minuteSkeleton.activeTime);
+    const minuteSkelEnabled = minuteSkelVisible && minuteSkeleton.activeTime !== null && !!bar;
 
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={210} padding={0} placement="beside" offset={6}>
-            {/* 제목 줄 — 시장 토글이 우측 빈자리를 쓴다(아래 선·골격 두 줄이 이 시장을 따른다).
+            {/* 제목 줄 — 시장 토글이 우측 빈자리를 쓴다(아래 선·골격 줄이 이 시장을 따른다).
                 별도 줄로 두면 "기준 시장" 같은 설명 라벨이 필요해지는데, 버튼이 값(UN/KRX)을 이미 말한다. */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 8px 4px" }}>
                 <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
@@ -103,89 +156,64 @@ export function CandleMenu({
             </div>
 
             {nearLine && (
-                <MenuItem onClick={() => { onRemoveLine(nearLine.id); onClose(); }} style={{ color: "var(--rise)" }}>
+                <MenuItem onClick={() => { lines.onRemove(nearLine.id); onClose(); }} style={{ color: "var(--rise)" }}>
                     이 선 삭제{nearLine.label ? ` (${nearLine.label})` : ""}
                 </MenuItem>
             )}
 
             {candle && (
                 <>
-                    <div style={{ borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 2, padding: "6px 8px 4px" }}>
-                        <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)" }}>선</span>
-                        {FIELD_LABELS.map(({ field, label }) => (
-                            <button key={field}
-                                disabled={!bar}
-                                onClick={() => { onAddLine(field, eff); onClose(); }}
-                                title={bar ? `${eff.toUpperCase()} ${label} ${fmt(bar[field])} 에 선 긋기` : "값 없음"}
-                                style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: "1px solid var(--border-default)", borderRadius: 4, background: "transparent", color: bar ? "var(--text-primary)" : "var(--text-tertiary)", cursor: bar ? "pointer" : "default", fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
-                                <span style={{ color: "var(--text-tertiary)" }}>{label}</span>
-                                <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{bar ? fmt(bar[field]) : "—"}</span>
-                            </button>
-                        ))}
+                    <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 4 }}>
+                        <FieldButtonRow rowLabel="선" rowColor="var(--text-tertiary)" bar={bar}
+                            cellOf={(field) => ({ title: bar ? `${eff.toUpperCase()} ${FIELD_LABEL[field]} ${fmt(bar[field])} 에 선 긋기` : "값 없음" })}
+                            onPick={(field) => { lines.onAdd(field, eff); onClose(); }} />
                     </div>
-                    {lineIdAtCandle && (
-                        <MenuItem onClick={() => { onRemoveLine(lineIdAtCandle); onClose(); }} style={{ color: "var(--rise)" }}>
+                    {lines.idAtCandle && (
+                        <MenuItem onClick={() => { lines.onRemove(lines.idAtCandle!); onClose(); }} style={{ color: "var(--rise)" }}>
                             이 봉의 선 삭제
                         </MenuItem>
                     )}
 
                     {minuteSkelVisible && (
                         <>
-                            <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                                <MenuLabel>
-                                    {anchorParamByKey.get(SKELETON_MINUTE_PARAM)?.name ?? "분봉 골격"}
-                                    {activeTime ? ` → 타점 ${activeTime.slice(0, 5)}` : " — 저장 타점 아님(스페이스바)"}
-                                </MenuLabel>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "0 8px 4px" }}>
-                                <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: minuteSkelEnabled ? SKELETON : "var(--text-tertiary)" }}>골격</span>
-                                {FIELD_LABELS.map(({ field, label }) => {
-                                    const on = minuteSkeletonAtCandle.includes(field);
-                                    return (
-                                        <button key={field}
-                                            disabled={!minuteSkelEnabled}
-                                            onClick={() => { onToggleMinuteSkeletonPivot(field); onClose(); }}
-                                            title={activeTime === null ? "이 시각은 저장 타점이 아닙니다 — 스페이스바로 타점을 저장한 뒤에" : on ? `${label} 점 해제` : bar ? `UN ${label} ${fmt(bar[field])} 를 골격 점으로` : "값 없음"}
-                                            style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: `1px solid ${on ? SKELETON : "var(--border-default)"}`, borderRadius: 4, background: on ? `${SKELETON}22` : "transparent", color: on ? SKELETON : minuteSkelEnabled ? "var(--text-primary)" : "var(--text-tertiary)", cursor: minuteSkelEnabled ? "pointer" : "default", opacity: minuteSkelEnabled ? 1 : 0.5, fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
-                                            <span style={{ color: on ? SKELETON : "var(--text-tertiary)" }}>{label}</span>
-                                            <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{bar ? fmt(bar[field]) : "—"}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            <SectionLabel>
+                                {anchorParamByKey.get(SKELETON_MINUTE_PARAM)?.name ?? "분봉 골격"}
+                                {minuteSkeleton.activeTime ? ` → 타점 ${minuteSkeleton.activeTime.slice(0, 5)}` : " — 저장 타점 아님(스페이스바)"}
+                            </SectionLabel>
+                            <FieldButtonRow rowLabel="골격" rowColor={minuteSkelEnabled ? SKELETON : "var(--text-tertiary)"} bar={bar}
+                                cellOf={(field) => {
+                                    const on = minuteSkeleton.pivots.some((p) => p.field === field);
+                                    return {
+                                        on,
+                                        disabled: !minuteSkelEnabled,
+                                        title: minuteSkeleton.activeTime === null
+                                            ? "이 시각은 저장 타점이 아닙니다 — 스페이스바로 타점을 저장한 뒤에"
+                                            : on ? `${FIELD_LABEL[field]} 점 해제` : bar ? `UN ${FIELD_LABEL[field]} ${fmt(bar[field])} 를 골격 점으로` : "값 없음",
+                                    };
+                                }}
+                                onPick={(field) => { minuteSkeleton.onToggle(field); onClose(); }} />
                         </>
                     )}
 
                     {!candle.time && (
                         <>
-                            <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                                <MenuLabel>{anchorParamByKey.get(SKELETON_PARAM)?.name ?? "골격"} 점 — 찍은 값이 순서를 정한다(시→고→종)</MenuLabel>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "0 8px 4px" }}>
-                                <span style={{ width: 30, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: SKELETON }}>골격</span>
-                                {FIELD_LABELS.map(({ field, label }) => {
-                                    const saved = skeletonAtCandle.find((p) => p.field === field);
-                                    // 저장된 시장이 지금 보는 시장과 다를 수 있다 — 그럴 땐 저장된 쪽을 적는다(사람이 지목한 그것).
-                                    const badge = saved && saved.market !== eff ? saved.market.toUpperCase() : null;
-                                    return (
-                                        <button key={field}
-                                            disabled={!bar}
-                                            onClick={() => { onToggleSkeletonPivot(field, eff); onClose(); }}
-                                            title={saved ? `${label} 점 해제 (저장: ${saved.market.toUpperCase()})` : bar ? `${eff.toUpperCase()} ${label} ${fmt(bar[field])} 를 골격 점으로` : "값 없음"}
-                                            style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, border: `1px solid ${saved ? SKELETON : "var(--border-default)"}`, borderRadius: 4, background: saved ? `${SKELETON}22` : "transparent", color: saved ? SKELETON : bar ? "var(--text-primary)" : "var(--text-tertiary)", cursor: bar ? "pointer" : "default", fontSize: 10.5, padding: "3px 3px", lineHeight: 1.4, whiteSpace: "nowrap" }}>
-                                            <span style={{ color: saved ? SKELETON : "var(--text-tertiary)" }}>{label}</span>
-                                            <span style={{ fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis" }}>{badge ?? (bar ? fmt(bar[field]) : "—")}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            <SectionLabel>{anchorParamByKey.get(SKELETON_PARAM)?.name ?? "골격"} 점 — 찍은 값이 순서를 정한다(시→고→종)</SectionLabel>
+                            <FieldButtonRow rowLabel="골격" rowColor={SKELETON} bar={bar}
+                                cellOf={(field) => {
+                                    const saved = dailySkeleton.pivots.find((p) => p.field === field);
+                                    return {
+                                        on: !!saved,
+                                        // 저장된 시장이 지금 보는 시장과 다를 수 있다 — 그럴 땐 저장된 쪽을 적는다(사람이 지목한 그것).
+                                        text: saved && saved.market !== eff ? saved.market.toUpperCase() : undefined,
+                                        title: saved ? `${FIELD_LABEL[field]} 점 해제 (저장: ${saved.market.toUpperCase()})` : bar ? `${eff.toUpperCase()} ${FIELD_LABEL[field]} ${fmt(bar[field])} 를 골격 점으로` : "값 없음",
+                                    };
+                                }}
+                                onPick={(field) => { dailySkeleton.onToggle(field, eff); onClose(); }} />
 
-                            <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                                <MenuLabel>{anchorParamByKey.get(IGNORE_CANDLE_PARAM)?.name ?? "무시 캔들"} — 이 차트의 과거 스캔에서 제외</MenuLabel>
-                                <MenuItem onClick={() => { onToggleIgnore(); onClose(); }} style={ignoredAtCandle ? { color: "var(--text-tertiary)" } : undefined}>
-                                    {ignoredAtCandle ? "이 캔들 해제" : "이 캔들 지정"}
-                                </MenuItem>
-                            </div>
+                            <SectionLabel>{anchorParamByKey.get(IGNORE_CANDLE_PARAM)?.name ?? "무시 캔들"} — 이 차트의 과거 스캔에서 제외</SectionLabel>
+                            <MenuItem onClick={() => { ignore.onToggle(); onClose(); }} style={ignore.on ? { color: "var(--text-tertiary)" } : undefined}>
+                                {ignore.on ? "이 캔들 해제" : "이 캔들 지정"}
+                            </MenuItem>
                         </>
                     )}
                 </>

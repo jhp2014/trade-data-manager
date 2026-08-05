@@ -6,7 +6,8 @@ import { usePlaneBus } from "../store/usePlaneBus.js";
 import { chartQuery } from "../api/queries.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
-import { useChartAnchorsForChart, useMinuteSkeletonForPoint, useReviewPointData } from "../lib/chartHooks.js";
+import { useReviewPointData } from "../lib/chartHooks.js";
+import { useBaselineLines, useDailySkeleton, useIgnoreCandles, useMinuteSkeleton } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../api/chartAnchors.js";
 import { useStockName } from "../lib/useStockName.js";
@@ -33,7 +34,7 @@ import { SKELETON } from "../styles/palette.js";
 
 // 차트 패널(복기 플레인) — 일봉(상) + 분봉(하) 듀얼. 껍데기(헤더·2단·토글)는 ChartPanelChrome 공용.
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
-// 차트 앵커(선·무시 캔들)/타점 편집 유스케이스는 useChartAnchorsForChart·useReviewPointData 훅 — 여긴 뷰 파생+렌더.
+// 차트 앵커 편집은 chartAnchorHooks(param 하나 = 훅 하나), 타점 조회는 useReviewPointData — 여긴 뷰 파생+렌더.
 // 선 = 기준선 후보(차트 소유) — 타점 선택 없이 긋고 지운다. 확정 기준선(가격 최저)은 하늘색으로 표시.
 // 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~4=태그 프리셋(전역 useChartHotkeys).
 // 태그 입력은 타점 ▼ **우클릭**(TagMenu) — 타점 저장과 분리된 동작이라 키·클릭도 갈라 둔다.
@@ -72,21 +73,20 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const minuteQ = useQuery({ ...chartQuery(code, viewDate), placeholderData: keepPreviousData }); // viewDate=anchor 면 같은 쿼리(RQ dedup)
     const { dailyView, minuteView, dailyFrameKey, minuteFrameKey, pctBase } = useChartViews(dailyQ.data, minuteQ.data, mode, viewDate);
 
-    // 차트 앵커(선·무시 캔들 — 조회·해소·추가/삭제/clear/토글) + 복기 타점(조회·savedPoints) — 훅으로 분리.
-    // 선 해소는 raw 번들(저장된 시장·값) — 무시 캔들은 차트 소유라 타점 무관 상시 표시.
-    const { resolvedLines, dLines, hasLines, addLine, lineIdAt, removeLineById, clear, ignoredDates, toggleIgnore,
-        skeletonPoints, toggleSkeletonPivot, skeletonAt, clearSkeleton } =
-        useChartAnchorsForChart(code, viewDate, dailyQ.data, minuteQ.data);
+    // 차트 앵커 편집 — param 하나 = 훅 하나(chartAnchorHooks). 같은 쿼리 키라 왕복은 하나(RQ dedup).
+    const lines = useBaselineLines(code, viewDate, dailyQ.data, minuteQ.data);
+    const ignore = useIgnoreCandles(code, viewDate);
+    const dailySkeleton = useDailySkeleton(code, viewDate, dailyQ.data);
     const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
     // 분봉 골격은 **타점 소유** — 소유자는 포커스 시각이 아니라 저장 타점이다(아니면 서버 owner 게이트에 걸린다).
     const activeTime = focusedPoint?.time ?? null;
-    const minuteSkeleton = useMinuteSkeletonForPoint(code, viewDate, activeTime, minuteQ.data);
+    const minuteSkeleton = useMinuteSkeleton(code, viewDate, activeTime, minuteQ.data);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
 
-    const dailyLines = dLines;
-    const minuteLines = resolvedLines;
+    const dailyLines = lines.dLines;
+    const minuteLines = lines.resolvedLines;
 
     // ── 봉 우클릭 메뉴 — 선 긋기(시장×값)와 무시 캔들 토글이 한자리에. 선 근처 우클릭은 삭제 항목만.
     const [candleMenu, setCandleMenu] = useState<{ x: number; y: number; candle?: { date: string; time?: string }; nearLine?: RenderLine } | null>(null);
@@ -140,8 +140,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 </MarkerGroup>
                 <Sep />
                 <ControlGroup>
-                    <TextToggle active={false} disabled={!hasLines} onClick={() => hasLines && clear()} title="가격선 전체 지우기">선 지우기</TextToggle>
-                    <TextToggle active={false} disabled={skeletonPoints.length === 0} onClick={() => skeletonPoints.length > 0 && clearSkeleton()} title="일봉 골격 점 전체 지우기(다시 찍기)">골격 지우기</TextToggle>
+                    <TextToggle active={false} disabled={!lines.hasLines} onClick={() => lines.hasLines && lines.clear()} title="가격선 전체 지우기">선 지우기</TextToggle>
+                    <TextToggle active={false} disabled={!dailySkeleton.hasAny} onClick={() => dailySkeleton.hasAny && dailySkeleton.clear()} title="일봉 골격 점 전체 지우기(다시 찍기)">골격 지우기</TextToggle>
                     <TextToggle active={false} disabled={!minuteSkeleton.hasAny} onClick={() => minuteSkeleton.hasAny && minuteSkeleton.clear()} title="이 타점의 분봉 골격 점 전체 지우기">분봉골격 지우기</TextToggle>
                     <MarketToggle mode={mode} setMode={setMode} />
                 </ControlGroup>
@@ -167,14 +167,14 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     zoomBars={cs.dailyZoomBars}
                                     zoomOutBars={cs.dailyZoomOutBars}
                                     onRightClick={(d, at) => setCandleMenu({ ...at, candle: { date: d } })}
-                                    onRemoveLine={(l) => removeLineById(l.id)}
+                                    onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
                                     onCandleClick={pinMinute ? undefined : (d) => setSearchDate(d === anchorDate ? null : d)}
                                     searchDate={showLine && drifted ? viewDate : undefined}
                                     pctBase={pctBase}
                                     showGuide={showGuide}
-                                    ignoredDates={ignoredDates}
-                                    skeleton={skeletonPoints}
+                                    ignoredDates={ignore.ignoredDates}
+                                    skeleton={dailySkeleton.points}
                                     showSkeleton={showSkeleton}
                                 />
                             ) : null
@@ -196,7 +196,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     lockTimeScale={lockScale}
                                     onMovePoint={(t) => setTime(t)}
                                     onRightClick={(a, at) => setCandleMenu({ ...at, candle: { date: a.date, time: a.time } })}
-                                    onRemoveLine={(l) => removeLineById(l.id)}
+                                    onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
                                     onTagPoint={(t, x, y) => setTagMenu({ time: t, x, y })}
                                     tagsOfTime={(t) => tagsOf({ stockCode: code, date: viewDate, time: t })}
@@ -224,18 +224,26 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     candle={candleMenu.candle}
                     bars={menuBars}
                     nearLine={candleMenu.nearLine}
-                    lineIdAtCandle={candleMenu.candle ? lineIdAt(candleMenu.candle.date, candleMenu.candle.time) : undefined}
-                    ignoredAtCandle={candleMenu.candle ? ignoredDates.includes(candleMenu.candle.date) : false}
-                    skeletonAtCandle={candleMenu.candle ? skeletonAt(candleMenu.candle.date) : []}
                     market={menuMarket}
                     onMarketChange={setMenuMarket}
-                    onAddLine={(field, market) => candleMenu.candle && addLine(candleMenu.candle.date, candleMenu.candle.time, field, market)}
-                    onRemoveLine={removeLineById}
-                    onToggleIgnore={() => candleMenu.candle && toggleIgnore(candleMenu.candle.date)}
-                    onToggleSkeletonPivot={(field, market) => candleMenu.candle && toggleSkeletonPivot(candleMenu.candle.date, field, market)}
-                    activeTime={activeTime}
-                    minuteSkeletonAtCandle={candleMenu.candle?.time ? minuteSkeleton.fieldsAt(candleMenu.candle.time) : []}
-                    onToggleMinuteSkeletonPivot={(field) => candleMenu.candle?.time && minuteSkeleton.toggle(candleMenu.candle.time, field)}
+                    lines={{
+                        idAtCandle: candleMenu.candle ? lines.lineIdAt(candleMenu.candle.date, candleMenu.candle.time) : undefined,
+                        onAdd: (field, market) => candleMenu.candle && lines.addLine(candleMenu.candle.date, candleMenu.candle.time, field, market),
+                        onRemove: lines.removeLineById,
+                    }}
+                    ignore={{
+                        on: candleMenu.candle ? ignore.ignoredDates.includes(candleMenu.candle.date) : false,
+                        onToggle: () => candleMenu.candle && ignore.toggleIgnore(candleMenu.candle.date),
+                    }}
+                    dailySkeleton={{
+                        pivots: candleMenu.candle && !candleMenu.candle.time ? dailySkeleton.pivotsAt(candleMenu.candle.date) : [],
+                        onToggle: (field, market) => candleMenu.candle && dailySkeleton.toggle(candleMenu.candle.date, field, market),
+                    }}
+                    minuteSkeleton={{
+                        activeTime,
+                        pivots: candleMenu.candle?.time ? minuteSkeleton.pivotsAt(candleMenu.candle.time) : [],
+                        onToggle: (field) => candleMenu.candle?.time && minuteSkeleton.toggle(candleMenu.candle.time, field, "un"),
+                    }}
                     onClose={() => setCandleMenu(null)}
                 />
             )}
