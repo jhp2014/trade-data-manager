@@ -34,8 +34,8 @@ export interface ChartAnchorsForChart {
     skeletonPoints: { date: string; price: number }[];
     /** 이 캔들의 골격 점 토글 — 같은 (캔들, 값)이 있으면 해제, 없으면 추가. 집합 규칙 위반은 서버가 400. */
     toggleSkeletonPivot: (anchorDate: string, field: AnchorField, market: AnchorMarket) => void;
-    /** 이 캔들에 찍힌 골격 점의 값들(메뉴가 어떤 값이 이미 찍혔는지 보여준다). */
-    skeletonFieldsAt: (anchorDate: string) => AnchorField[];
+    /** 이 캔들에 찍힌 골격 점들 — 값 + **저장된 시장**(메뉴가 지금 보는 시장과 다르면 그쪽을 적는다). */
+    skeletonAt: (anchorDate: string) => { field: AnchorField; market: AnchorMarket }[];
     /** 이 차트의 골격 전체 삭제(다시 찍기). */
     clearSkeleton: () => void;
 }
@@ -109,14 +109,16 @@ export function useChartAnchorsForChart(
         if (existing) removeMut.mutate(existing.id);
         else addMut.mutate({ stockCode: code, date, param: IGNORE_CANDLE_PARAM, anchorDate });
     };
+    // 같은 캔들·같은 값은 시장이 달라도 **한 점**이다(정렬 위치가 같아 순서가 모호해지므로 서버도 막는다).
+    // 그래서 해제 판정에 market 을 안 본다 — KRX 로 보는 중에 UN 점을 눌러도 그 점이 꺼진다(눈에 보이는 대로).
     const toggleSkeletonPivot = (anchorDate: string, field: AnchorField, market: AnchorMarket): void => {
         if (!code || !date) return;
-        const existing = skeleton.find((a) => a.anchorDate === anchorDate && (a.anchorTime ?? undefined) === undefined && a.field === field);
+        const existing = skeleton.find((a) => a.anchorDate === anchorDate && a.anchorTime == null && a.field === field);
         if (existing) removeMut.mutate(existing.id);
         else addMut.mutate({ stockCode: code, date, param: SKELETON_PARAM, anchorDate, field, market });
     };
-    const skeletonFieldsAt = (anchorDate: string): AnchorField[] =>
-        skeleton.filter((a) => a.anchorDate === anchorDate && a.anchorTime == null).map((a) => a.field!);
+    const skeletonAt = (anchorDate: string): { field: AnchorField; market: AnchorMarket }[] =>
+        skeleton.filter((a) => a.anchorDate === anchorDate && a.anchorTime == null).map((a) => ({ field: a.field!, market: a.market! }));
     const clearSkeletonMut = useMutation({
         mutationFn: async () => {
             await Promise.all(skeleton.map((a) => removeChartAnchor(a.id)));
@@ -128,7 +130,7 @@ export function useChartAnchorsForChart(
     return {
         resolvedLines, dLines, hasLines: lines.length > 0, addLine, lineIdAt, removeLineById, clear,
         ignoredDates, toggleIgnore,
-        skeletonPoints, toggleSkeletonPivot, skeletonFieldsAt, clearSkeleton,
+        skeletonPoints, toggleSkeletonPivot, skeletonAt, clearSkeleton,
     };
 }
 

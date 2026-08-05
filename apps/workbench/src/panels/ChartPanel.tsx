@@ -57,6 +57,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [lockScale, setLockScale] = usePanelUi(panelId, "lockScale", false); // 분봉 스케일 고정
     const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
     const [showSkeleton, setShowSkeleton] = usePanelUi(panelId, "showSkeleton", true); // 골격 오버레이(거래대금 마커식 on/off)
+    // 우클릭 메뉴의 기준 시장 — 선·골격이 함께 따른다. 패널에 남겨(sticky) 오염 회피로 KRX 를 보는 중에
+    // 봉마다 다시 누르지 않게 한다. 분봉·KRX 부재 봉에서는 메뉴가 UN 으로 되돌린다(없는 시장은 못 지목).
+    const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
     const { tagsOf } = useTags();
@@ -72,7 +75,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 차트 앵커(선·무시 캔들 — 조회·해소·추가/삭제/clear/토글) + 복기 타점(조회·savedPoints) — 훅으로 분리.
     // 선 해소는 raw 번들(저장된 시장·값) — 무시 캔들은 차트 소유라 타점 무관 상시 표시.
     const { resolvedLines, dLines, hasLines, addLine, lineIdAt, removeLineById, clear, ignoredDates, toggleIgnore,
-        skeletonPoints, toggleSkeletonPivot, skeletonFieldsAt, clearSkeleton } =
+        skeletonPoints, toggleSkeletonPivot, skeletonAt, clearSkeleton } =
         useChartAnchorsForChart(code, viewDate, dailyQ.data, minuteQ.data);
     const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
 
@@ -217,7 +220,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     nearLine={candleMenu.nearLine}
                     lineIdAtCandle={candleMenu.candle ? lineIdAt(candleMenu.candle.date, candleMenu.candle.time) : undefined}
                     ignoredAtCandle={candleMenu.candle ? ignoredDates.includes(candleMenu.candle.date) : false}
-                    skeletonFieldsAtCandle={candleMenu.candle ? skeletonFieldsAt(candleMenu.candle.date) : []}
+                    skeletonAtCandle={candleMenu.candle ? skeletonAt(candleMenu.candle.date) : []}
+                    market={menuMarket}
+                    onMarketChange={setMenuMarket}
                     onAddLine={(field, market) => candleMenu.candle && addLine(candleMenu.candle.date, candleMenu.candle.time, field, market)}
                     onRemoveLine={removeLineById}
                     onToggleIgnore={() => candleMenu.candle && toggleIgnore(candleMenu.candle.date)}
