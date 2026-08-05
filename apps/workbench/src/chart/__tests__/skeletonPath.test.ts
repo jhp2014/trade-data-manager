@@ -37,12 +37,12 @@ function mockTarget(): { target: { useBitmapCoordinateSpace(f: (s: never) => voi
     };
 }
 
-/** 날짜→x 는 사전순 인덱스×10, 가격→y 는 (10000-price)/10 로 흉내(값이 클수록 위=작은 y). */
+/** 시각→x 는 정렬 인덱스×10, 가격→y 는 (10000-price)/10 로 흉내(값이 클수록 위=작은 y). */
 function draw(points: SkeletonPointSpec[]): Call[] {
     const dates = [...new Set(points.map((p) => p.time))].sort();
     const path = new SkeletonPath("#d946ef");
     path.attached({
-        chart: { timeScale: () => ({ timeToCoordinate: (t: string) => dates.indexOf(t) * 10 }) } as never,
+        chart: { timeScale: () => ({ timeToCoordinate: (t: string | number) => dates.indexOf(t) * 10 }) } as never,
         series: { priceToCoordinate: (p: number) => (10000 - p) / 10 } as never,
         requestUpdate: () => undefined,
     });
@@ -152,6 +152,37 @@ describe("SkeletonPath — 찍으면 반드시 화면에 나타난다(X 마커)"
         path.updateAllViews();
         const { target, calls } = mockTarget();
         path.paneViews()[0].renderer().draw(target as never);
+        expect(marks(calls)).toHaveLength(1);
+    });
+});
+
+// 분봉 차트 공유 — 같은 프리미티브를 unix 초 시각으로도 쓴다(일봉=문자열). 시간 표현이 갈려도
+// 마커·순번 규칙이 하나여야 같은 입력이 두 차트에서 같게 읽힌다.
+describe("SkeletonPath — 분봉(unix 초) 시각", () => {
+    it("unix 초 시각도 좌표로 해소해 마커를 그린다", () => {
+        const t0 = 1_754_000_000;
+        const calls = draw([
+            { time: t0, price: 5820 },
+            { time: t0 + 780, price: 5900 },
+        ]);
+        expect(marks(calls)).toHaveLength(2);
+    });
+
+    it("같은 봉의 두 점(시→고)은 세로 선분 — 분봉에서 더 흔한 입력이다", () => {
+        const t0 = 1_754_000_000;
+        const calls = draw([
+            { time: t0, price: 5820 },
+            { time: t0, price: 5900 },
+        ]);
+        expect(marks(calls)).toHaveLength(2);
+        // 두 마커의 x 가 같다 = 세로 선분(시간이 안 흐른 수직 이동).
+        const [a, b] = marks(calls);
+        expect(a.x).toBe(b.x);
+        expect(a.y).not.toBe(b.y);
+    });
+
+    it("점 하나여도 마커가 남는다 — 찍었는데 반응 없음 방지", () => {
+        const calls = draw([{ time: 1_754_000_000, price: 5820 }]);
         expect(marks(calls)).toHaveLength(1);
     });
 });

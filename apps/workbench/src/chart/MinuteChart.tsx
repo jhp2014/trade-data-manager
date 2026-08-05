@@ -187,7 +187,7 @@ export function MinuteChart({
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);
-    useMinuteSkeletonOverlay(chartRef, skeleton ?? EMPTY_SKELETON, base, showSkeleton);
+    useMinuteSkeletonOverlay(series, skeleton ?? EMPTY_SKELETON, base, showSkeleton);
 
     const { state: tip } = useCrosshairTooltip({
         chartRef,

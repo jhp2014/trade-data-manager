@@ -23,9 +23,14 @@ interface DrawTarget {
     useBitmapCoordinateSpace(f: (scope: BitmapScope) => void): void;
 }
 
-/** 그릴 피벗 1개 — 시각(일봉 business-day 문자열)과 가격. 정렬은 호출자가 이미 끝냈다(도메인 규칙). */
+/**
+ * 그릴 피벗 1개. 정렬은 호출자가 이미 끝냈다(도메인 규칙).
+ *   · time  — 일봉은 business-day 문자열("2026-06-24"), 분봉은 unix 초. 차트의 시간축 표현을 그대로 넘긴다.
+ *   · price — **그 차트 price scale 의 값**이다. 일봉은 원(raw), 분봉 pane 은 %축이라 %를 넘긴다
+ *             (변환은 호출자 몫 — 이 프리미티브는 좌표 해소만 하고 무슨 단위인지 모른다).
+ */
 export interface SkeletonPointSpec {
-    time: string;
+    time: string | number;
     price: number;
 }
 

@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject, type RefOb
 import {
     CandlestickSeries,
     HistogramSeries,
-    LineSeries,
     LineStyle,
     createSeriesMarkers,
     type AutoscaleInfo,
@@ -26,6 +25,7 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
  */
 export const TAG_MARKER_ATTR = "data-tag-marker";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
+import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
 import { type MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../api/chartAnchors.js";
 import { ALARM, PRICE_LINE, SKELETON } from "../styles/palette.js";
@@ -53,6 +53,7 @@ export interface MinuteSeries {
     markersRef: MutableRefObject<ISeriesMarkersPluginApi<Time> | null>;
     candleVertsRef: MutableRefObject<VertLines | null>;
     amountVertsRef: MutableRefObject<VertLines | null>;
+    skeletonRef: MutableRefObject<SkeletonPath | null>;
     /** 오버레이(타점 아이콘·정보 박스) 위치 재계산 트리거 — pan/zoom·리사이즈·데이터 변경 시 bump. */
     overlayTick: number;
     bumpOverlay: () => void;
@@ -65,6 +66,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const candleVertsRef = useRef<VertLines | null>(null);
     const amountVertsRef = useRef<VertLines | null>(null);
+    const skeletonRef = useRef<SkeletonPath | null>(null);
     const [overlayTick, setOverlayTick] = useState(0);
     const bumpOverlay = (): void => setOverlayTick((v) => v + 1);
 
@@ -132,6 +134,10 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
         amount.attachPrimitive(asPrimitive(amountVerts));
         candleVertsRef.current = candleVerts;
         amountVertsRef.current = amountVerts;
+        // 골격 꺾은선 primitive — 일봉과 같은 것(마커 모양·순번 규칙이 갈리면 같은 입력이 다르게 읽힌다).
+        const skeleton = new SkeletonPath(SKELETON);
+        candle.attachPrimitive(asSkeletonPrimitive(skeleton));
+        skeletonRef.current = skeleton;
         // pan/zoom 시 오버레이 아이콘 위치 갱신.
         const ts = chart.timeScale();
         ts.subscribeVisibleLogicalRangeChange(bumpOverlay);
@@ -140,6 +146,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
                 ts.unsubscribeVisibleLogicalRangeChange(bumpOverlay);
                 candle.detachPrimitive(asPrimitive(candleVerts));
                 amount.detachPrimitive(asPrimitive(amountVerts));
+                candle.detachPrimitive(asSkeletonPrimitive(skeleton));
             } catch {
                 /* noop */
             }
@@ -148,11 +155,12 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
             markersRef.current = null;
             candleVertsRef.current = null;
             amountVertsRef.current = null;
+            skeletonRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, overlayTick, bumpOverlay };
+    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, skeletonRef, overlayTick, bumpOverlay };
 }
 
 export interface MinuteLookups {
@@ -512,51 +520,26 @@ export function useMarkerOverlay(
 }
 
 /**
- * 분봉 골격 오버레이 — 그 **타점**이 찍은 장중 피벗들을 이어 그린다(일봉 오버레이의 짝).
+ * 분봉 골격 오버레이 — 그 **타점**이 찍은 장중 피벗들. 그리기는 일봉과 **같은 SkeletonPath 프리미티브**다.
  *
- * 일봉판과 갈리는 건 둘뿐이다:
- *   · 시간이 날짜 문자열이 아니라 **unix 초**(분봉 차트의 시간축)
- *   · 분봉 pane 이 **% 축**이라 raw 가격을 `base`(당일 원주가)로 나눠 %로 바꿔 그린다 — 가격선(linePct)과 같은 규칙
- * 골격은 언제나 당일 분봉이라 분모는 언제나 `base`(D 선처럼 pctBase 를 쓰는 경우가 없다).
+ * LineSeries 를 안 쓰는 이유가 분봉에서 더 크다: 시각당 점 하나만 받으므로 **한 봉의 시→고→종**이 뭉개지고
+ * (분봉에서 훨씬 흔한 입력이다), 점 하나만 찍었을 땐 아무것도 안 그려져 "찍었는데 반응이 없다"가 된다.
+ * 프리미티브는 x·y 를 각각 해소해 같은 봉의 두 점을 세로 선분으로 그리고, 점 하나여도 X 마커를 남긴다.
  *
- * 토글 OFF 면 시리즈를 지운다(빈 데이터가 아니라 제거) — 남겨두면 price scale 자동 맞춤에 계속 참여한다.
+ * **% 변환은 여기서 한다** — 분봉 pane 이 %축이라 raw 가격을 그대로 넘기면 화면 밖으로 날아간다.
+ * 분모는 언제나 `base`(당일 원주가): 골격 피벗은 언제나 당일 분봉이라 D 선처럼 pctBase 를 쓸 경우가 없다.
  */
 export function useMinuteSkeletonOverlay(
-    chartRef: RefObject<IChartApi | null>,
+    series: MinuteSeries,
     pivots: readonly { time: number; price: number }[],
     base: number | null,
     visible: boolean,
 ): void {
-    const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
     useEffect(() => {
-        const chart = chartRef.current;
-        if (!chart) return;
-        const show = visible && pivots.length >= 2 && base !== null && base > 0;
-        if (!show) {
-            if (seriesRef.current) {
-                chart.removeSeries(seriesRef.current);
-                seriesRef.current = null;
-            }
-            return;
-        }
-        if (!seriesRef.current) {
-            seriesRef.current = chart.addSeries(LineSeries, {
-                color: SKELETON,
-                lineWidth: 2,
-                priceScaleId: "right",
-                priceLineVisible: false,
-                lastValueVisible: false,
-                pointMarkersVisible: true,
-                pointMarkersRadius: 3,
-                crosshairMarkerVisible: false,
-            });
-        }
-        // 같은 분봉에 점이 둘 이상일 수 있다(한 봉의 시→고→종). LineSeries 는 time 중복을 못 받으므로
-        // 그 경우 마지막 값만 그린다 — 오버레이는 확인용이고, 정확한 시퀀스는 서버 형태 계산이 본다.
-        const byTime = new Map<number, number>();
-        for (const p of pivots) byTime.set(p.time, ((p.price - base!) / base!) * 100);
-        seriesRef.current.setData([...byTime.entries()].sort((a, b) => a[0] - b[0]).map(([t, value]) => ({ time: t as UTCTimestamp, value })));
-    }, [chartRef, pivots, base, visible]);
-
-    useEffect(() => () => { seriesRef.current = null; }, []);
+        const show = visible && base !== null && base > 0;
+        series.skeletonRef.current?.setPoints(
+            show ? pivots.map((p) => ({ time: p.time, price: ((p.price - base!) / base!) * 100 })) : [],
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pivots, base, visible]);
 }
