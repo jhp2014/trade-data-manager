@@ -1,20 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-    DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable,
+    DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
     type DragStartEvent, type DragMoveEvent, type DragEndEvent,
 } from "@dnd-kit/core";
 import { axisLinesQuery, allPointsQuery } from "../api/queries.js";
 import { placePoint, unplacePoint, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
-import { COL_META, MIN_COL_W, colKey, colLabel, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col, type ColKind } from "./rank/sheetColumns.js";
+import { COL_META, MIN_COL_W, colKey, colLabel, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "./rank/sheetColumns.js";
 import {
     DEFAULT_CHAIN, buildSheetGroups, cutsActive, dropSort, parseSortChain, pushSort, resetSort, resolveCutKeys,
     sortKeyOf, sortSheetRows, sortStepNo, type SortChain, type SortCtx, type SortKey,
 } from "./rank/sheetSort.js";
-import { buildAxisIndex, slotOrderKeys, type AxisIndex, type RankCell } from "../lib/rankIndex.js";
+import { buildAxisIndex, slotOrderKeys, type AxisIndex } from "../lib/rankIndex.js";
+import { SheetRowView, ROW_H, type CellCtxPayload, type TagCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
 import { isComputedAxis, formatAxisValue } from "../lib/computedAxis.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
@@ -27,14 +28,13 @@ import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { ComputedBoundMenu } from "./rank/ComputedBoundMenu.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { useTags } from "../lib/useTags.js";
-import { TagChips } from "../components/TagChips.js";
 import { TagMenu } from "../chart/TagMenu.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Excursion } from "./rank/pathStats.js";
-import { FAIL, FILTER, PIN as PIN_COLOR, STRONG, WEAK, heatOf } from "../styles/palette.js";
+import { FILTER } from "../styles/palette.js";
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
@@ -62,18 +62,9 @@ const SORT_KEY = "wb.rankSheetSort"; // 정렬 체인 영속(다른 시트 설�
 const CUTS_KEY = "wb.rankSheetCuts";  // 축 열 그룹 컷 — colKey(`ax:<id>`) → slotId[]. 시트 전용(축의 속성 아님)이라 로컬.
 // 스크롤 위치는 세션 한정(모듈 메모) — 프리셋 전환(재마운트)엔 이어지고 새로고침엔 초기화(목록 중간 튐 방지).
 let sheetScroll = { top: 0, left: 0 };
-const PIN = PIN_COLOR;
 // 열 헤더 드래그의 두 종류 — 미디어타입으로 갈라 서로의 드롭을 안 받는다(고정 그룹 재정렬 vs 축 서열 변경).
 const AXIS_DND = "application/x-rank-axis";
 const COL_DND = "application/x-rank-col";
-const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
-
-function outcomeColor(v?: string): string {
-    if (!v) return "var(--text-tertiary)";
-    if (/성공|승|익절|win|good/i.test(v)) return STRONG;
-    if (/실패|패|손절|loss|bad/i.test(v)) return FAIL;
-    return "var(--text-secondary)";
-}
 
 // ── 드래그 배치(고정 행 → 정렬된 축 열) ─────────────────────────────────────
 // 정렬 축 열 = 그 축의 세로 라인(행이 orderKey 순). 핀 행 이름을 드래그해 두 행 사이(between=새 slot)/행 위(tie=같은 slot)에 놓는다.
@@ -329,113 +320,30 @@ export function RankSheetPanel(): JSX.Element {
         setDrop(null); setDragName(null);
     };
 
-    // 한 행 렌더. inPinnedBlock = 상단 고정 블록(thead)의 복사본. isLastPinned → 그 블록 하단 구분선.
-    //  원래 위치(tbody)의 핀 행은 inPinnedBlock=false → 일반 행처럼 하단 구분선을 가진다(아래 행과 안 이어지게).
+    // 행 핸들러 묶음 — SheetRowView(memo)가 얕은 비교로 재사용하도록 **참조를 고정**한다(useRef 경유,
+    // 내용물은 매 렌더 최신 클로저로 갱신 — useChartHotkeys 의 h.current 패턴과 같은 이유).
+    const rowHandlersRef = useRef<SheetRowHandlers>({} as SheetRowHandlers);
+    rowHandlersRef.current.onNav = navRow;
+    rowHandlersRef.current.onHover = setHoveredPoint;
+    rowHandlersRef.current.onTogglePin = togglePin;
+    rowHandlersRef.current.onCellCtx = (v: CellCtxPayload) => setCtx(v);
+    rowHandlersRef.current.onTagCtx = (v: TagCtxPayload) => setTagCtx(v);
+    rowHandlersRef.current.registerRef = (key, el) => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); };
+    const rowH = rowHandlersRef.current;
+
+    // 한 행 렌더 — 상태 파생(포커스·호버·핀·흐림·경로통계)만 여기서 계산하고 렌더는 SheetRowView(memo).
     const renderRow = (row: SheetRow, isLastPinned = false, inPinnedBlock = false): JSX.Element => {
         const key = pointKey(row);
-        const focus = activeKey === key;
-        const isHover = hoveredPoint === key;
         const isPinned = pinnedSet.has(key);
-        // 핀 행은 필터가 좁혀도 안 사라짐(작업셋). 밴드 안 맞으면 흐리게로 표시(핀은 모드 무관).
-        const dim = bandsActive && !interKeys.has(key) && (isPinned || filterMode === "dim");
-        const e = bandsActive ? excByKey.get(key) : undefined;
-        // 배경 — 핀 행도 일반 행처럼 배경 없음(불투명 bg-primary로 sticky 비침만 방지). 좌측 바·하단 구분선으로 구분.
-        const rowBg = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : isPinned ? "var(--bg-primary)" : "transparent";
-        const cellBgOpaque = focus ? "var(--accent-soft)" : isHover ? "var(--bg-secondary)" : "var(--bg-primary)";
-        // 행 구분선(셀에, separate 모드) — 고정 블록 안에서만 마지막만(블록 통합), 그 외(tbody 핀 포함)는 매 행.
-        const rowBorder = inPinnedBlock ? (isLastPinned ? "2px solid var(--border-strong)" : "none") : "1px solid var(--border-subtle)";
-        const stick = (c: Col): CSSProperties => {
-            const left = leftOf.get(colKey(c));
-            const s: CSSProperties = { borderBottom: rowBorder };
-            if (left != null) { s.position = "sticky"; s.left = left; s.zIndex = 2; s.background = cellBgOpaque; }
-            if (colKey(c) === lastFrozenKey) s.borderRight = "2px solid var(--border-strong)";
-            return s;
-        };
-        // 셀 렌더 — 열 종류를 키로 찾는다(if 체인 대신). td 껍데기(공통 스타일·sticky)는 여기서 한 번 씌우고,
-        // 종류별 함수는 **안쪽 내용과 그 열만의 style/이벤트**만 돌려준다. 열을 붙이면 여기 항목 하나 + COL_META 한 줄.
-        const cellFor = (c: Col): JSX.Element => {
-            const r = CELLS[c.key](c);
-            return (
-                <td key={colKey(c)} onClick={r.onClick} onContextMenu={r.onContextMenu} title={r.title}
-                    style={{ ...COL_META[c.key].td, ...r.style, ...stick(c) }}>
-                    {r.body}
-                </td>
-            );
-        };
-        type CellRender = { body: ReactNode; style?: CSSProperties; onClick?: () => void; onContextMenu?: (e: React.MouseEvent) => void; title?: string };
-        const CELLS: Record<ColKind, (c: Col) => CellRender> = {
-            name: () => ({
-                style: { fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}` },
-                body: (
-                    <>
-                        {inPinnedBlock
-                            ? <PinnedDragName pkStr={key} name={nameOf(row.stockCode)} focus={focus} onNav={() => navRow(row)} />
-                            : <span onClick={() => navRow(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{nameOf(row.stockCode)}</span>}
-                        {(isHover || isPinned) && (
-                            <button onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); togglePin(key); }} title={isPinned ? "핀 해제(▼)" : "핀 고정(▲)"}
-                                style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: isPinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: `linear-gradient(90deg, transparent, ${cellBgOpaque} 40%)` }}>{isPinned ? "▼" : "▲"}</button>
-                        )}
-                    </>
-                ),
-            }),
-            date: () => ({
-                onClick: () => navRow(row),
-                style: { whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)" },
-                body: row.date.slice(2).replace(/-/g, "."),
-            }),
-            time: () => ({
-                onClick: () => navRow(row),
-                style: { whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontWeight: 600, color: "var(--accent-primary)" },
-                body: row.time.slice(0, 5),
-            }),
-            axis: (c) => {
-                const axisId = (c as { axisId: string }).axisId;
-                const cell = row.cells[axisId];
-                const frozen = leftOf.has(colKey(c));
-                return {
-                    onClick: () => navRow(row),
-                    // 우클릭 메뉴는 축 종류에 따라 갈린다(아래 ctx 렌더): 판단 축=slot 밴드+컷+배치해제,
-                    // 계산 축=값 경계(타점 앵커). 계산 축에 배치·컷이 없는 건 slot 이 없어서지 읽기 전용이라서가 아니다.
-                    onContextMenu: cell ? (ev) => { ev.preventDefault(); setCtx({ axisId, slotId: cell.slotId, point: { stockCode: row.stockCode, date: row.date, time: row.time }, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
-                    title: isComputedAxis(axisId) ? "계산 축(수식) — 우클릭 = 이 값 이상/이하 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
-                    style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
-                    body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
-                };
-            },
-            // 태그 — 폭이 모자라면 **그냥 잘린다**(wrap·스크롤 없음). 더 보고 싶으면 열 폭을 늘리는 게 이 표의 규칙.
-            //   좁은 열이라 그룹 prefix 는 뗀다(색이 이미 그룹을 말한다). 전체 이름은 셀 툴팁에.
-            tags: () => ({
-                onClick: () => navRow(row),
-                onContextMenu: (ev) => {
-                    ev.preventDefault();
-                    setTagCtx({ point: { stockCode: row.stockCode, date: row.date, time: row.time }, label: `${nameOf(row.stockCode)} · ${row.date.slice(5)} ${row.time.slice(0, 5)}`, x: ev.clientX, y: ev.clientY });
-                },
-                style: { cursor: "pointer", overflow: "hidden" },
-                title: `${tagLabel(row) || "태그 없음"} — 우클릭 = 태그 입력`,
-                body: <TagChips tags={tagsOf(row)} short style={{ justifyContent: "center" }} />,
-            }),
-            coverage: () => ({
-                style: { color: row.coverage === axes.length ? STRONG : "var(--text-secondary)" },
-                body: `${row.coverage}/${axes.length}`,
-            }),
-            outcome: () => ({
-                body: row.outcome ? <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span> : null,
-            }),
-            mfe: () => excursionCell("mfe"),
-            maePre: () => excursionCell("maePre"),
-            maePost: () => excursionCell("maePost"),
-        };
-        // MFE/MAE 3열은 부호·색만 다른 같은 셀 — 경로 통계(excByKey)가 없으면 "—".
-        function excursionCell(field: "mfe" | "maePre" | "maePost"): CellRender {
-            const v = e ? e[field] : null;
-            return { style: { color: field === "mfe" ? STRONG : WEAK }, body: v == null ? "—" : (field === "mfe" ? "+" : "") + v.toFixed(1) };
-        }
         return (
-            <tr key={key} onMouseEnter={() => setHoveredPoint(key)} onMouseLeave={() => setHoveredPoint(null)}
-                ref={inPinnedBlock ? undefined : (el) => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); }}
-                style={{ background: rowBg, opacity: dim ? 0.38 : 1, height: ROW_H }}>
-                {displayCols.map(cellFor)}
-            </tr>
+            <SheetRowView key={key} row={row} cols={displayCols}
+                leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
+                name={nameOf(row.stockCode)} tags={tagsOf(row)} tagLabel={tagLabel(row)}
+                axisCount={axes.length} posBar={posBar} sortAxisId={sortAxisId}
+                focus={activeKey === key} hover={hoveredPoint === key} pinned={isPinned}
+                dim={bandsActive && !interKeys.has(key) && (isPinned || filterMode === "dim")}
+                exc={bandsActive ? excByKey.get(key) : undefined}
+                inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} h={rowH} />
         );
     };
 
@@ -607,15 +515,6 @@ export function RankSheetPanel(): JSX.Element {
     );
 }
 
-// 핀(고정) 행 이름 = 드래그 소스(chip:{pk}). 정렬 축 열에 드롭해 배치. 그냥 클릭=이동(dnd distance 4 로 클릭/드래그 자동 구분).
-function PinnedDragName({ pkStr, name, focus, onNav }: { pkStr: string; name: string; focus: boolean; onNav: () => void }): JSX.Element {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `chip:${pkStr}` });
-    return (
-        <span ref={setNodeRef} {...listeners} {...attributes} onClick={onNav} title={`${name} — 드래그해 정렬 축에 배치 · 클릭=이동`}
-            style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>
-    );
-}
-
 // 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기 · 정렬 체인에서 빼기. (경계 메뉴는 배치 보드와 공용 AxisBoundMenu.)
 //  정렬 빼기가 여기 있는 이유: Shift+클릭은 방향 토글이라 뺄 손짓이 없다. 체인이 2단 이상일 때만 뜬다.
 function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep, onToggleFreeze, onHide, onDropSort, onClose }: {
@@ -656,21 +555,6 @@ function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number
         />
     );
 }
-
-// ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.
-function Cell({ cell, posBar, prominent, barWidth }: { cell: RankCell | null; posBar: boolean; prominent?: boolean; barWidth?: number }): JSX.Element {
-    if (!cell) return <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>;
-    if (!posBar) return <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{cell.rank}<span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>/{cell.total}</span></span>;
-    // 눈금 틱: 얇은 선 + 세로 틱(색=위치 히트). 폭 = 넓어진 축 열 활용. 선택 행은 굵은 불릿으로 선명.
-    const col = heatOf(cell.frac);
-    return (
-        <span style={{ position: "relative", display: "inline-block", width: Math.max(36, barWidth ?? 40), height: 14, verticalAlign: "middle" }} title={`${cell.rank}/${cell.total}`}>
-            <span style={{ position: "absolute", left: 1, right: 1, top: "50%", height: prominent ? 2 : 1, background: prominent ? "var(--text-tertiary)" : "var(--border-strong)", transform: "translateY(-50%)", borderRadius: 1 }} />
-            <span style={{ position: "absolute", top: "50%", left: `calc(3px + ${cell.frac} * (100% - 6px))`, width: prominent ? 5 : 3, height: prominent ? 13 : 10, background: col, transform: "translate(-50%,-50%)", borderRadius: 2, boxShadow: prominent ? "0 0 0 1.5px var(--bg-primary)" : undefined }} />
-        </span>
-    );
-}
-
 
 const Wrap = ({ children }: { children: React.ReactNode }): JSX.Element => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>{children}</div>
