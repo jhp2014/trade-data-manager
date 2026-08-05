@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import { skeletonSetError, skeletonShape, sortPivots, type PricedPivot, type SkeletonPivot } from "../skeleton.js";
 
 const CHART_DATE = "2026-07-02";
+const CHART = { date: CHART_DATE };                       // 차트 소유(일봉 골격)
+const POINT = { date: CHART_DATE, time: "10:00:00" };     // 타점 소유(분봉 골격)
 const pv = (anchorDate: string, field: SkeletonPivot["field"], anchorTime?: string): SkeletonPivot => ({ anchorDate, field, anchorTime, market: "un" });
-/** 가격 피벗 — dayIndex 는 창 안 거래일 인덱스(형태 계산은 이 차이만 쓴다). */
-const pp = (dayIndex: number, price: number, field: SkeletonPivot["field"] = "high", anchorDate = `2026-06-${String(dayIndex + 1).padStart(2, "0")}`): PricedPivot =>
-    ({ anchorDate, field, market: "un", price, dayIndex });
+/** 가격 피벗 — tIndex 는 해상도별 시간좌표(형태 계산은 이 차이만 쓴다). */
+const pp = (tIndex: number, price: number, field: SkeletonPivot["field"] = "high", anchorDate = `2026-06-${String(tIndex + 1).padStart(2, "0")}`): PricedPivot =>
+    ({ anchorDate, field, market: "un", price, tIndex });
 
 describe("sortPivots — 순서는 저장하지 않고 파생한다", () => {
     it("날짜 → 캔들 내 순위(시0·고저1·종2)로 정렬한다", () => {
@@ -25,28 +27,42 @@ describe("sortPivots — 순서는 저장하지 않고 파생한다", () => {
 });
 
 describe("skeletonSetError — 행 단위로는 못 보는 집합 규칙", () => {
-    it("차트 날짜 이전 캔들만 — 당일 봉은 타점 이후 정보를 담는다", () => {
-        expect(skeletonSetError(CHART_DATE, [], pv(CHART_DATE, "high"))).toMatch(/차트 날짜 이전/);
-        expect(skeletonSetError(CHART_DATE, [], pv("2026-07-03", "high"))).toMatch(/차트 날짜 이전/);
-        expect(skeletonSetError(CHART_DATE, [], pv("2026-07-01", "high"))).toBeNull();
+    it("차트 소유(일봉 골격)는 상한이 차트 날짜 — 당일 봉은 타점 이후 정보를 담는다", () => {
+        expect(skeletonSetError(CHART, [], pv(CHART_DATE, "high"))).toMatch(/차트 날짜 이전/);
+        expect(skeletonSetError(CHART, [], pv("2026-07-03", "high"))).toMatch(/차트 날짜 이전/);
+        expect(skeletonSetError(CHART, [], pv("2026-07-01", "high"))).toBeNull();
     });
 
     it("같은 캔들에 高·低 동시 금지 — seq 를 안 두는 대가로 지키는 유일한 규칙", () => {
-        expect(skeletonSetError(CHART_DATE, [pv("2026-06-10", "high")], pv("2026-06-10", "low"))).toMatch(/선후를 알 수 없/);
+        expect(skeletonSetError(CHART, [pv("2026-06-10", "high")], pv("2026-06-10", "low"))).toMatch(/선후를 알 수 없/);
         // 시·종은 순서가 정리로 정해지므로 같은 캔들에 공존한다.
-        expect(skeletonSetError(CHART_DATE, [pv("2026-06-10", "high")], pv("2026-06-10", "close"))).toBeNull();
-        expect(skeletonSetError(CHART_DATE, [pv("2026-06-10", "high")], pv("2026-06-10", "open"))).toBeNull();
+        expect(skeletonSetError(CHART, [pv("2026-06-10", "high")], pv("2026-06-10", "close"))).toBeNull();
+        expect(skeletonSetError(CHART, [pv("2026-06-10", "high")], pv("2026-06-10", "open"))).toBeNull();
         // 다른 캔들의 저가는 무관.
-        expect(skeletonSetError(CHART_DATE, [pv("2026-06-10", "high")], pv("2026-06-11", "low"))).toBeNull();
+        expect(skeletonSetError(CHART, [pv("2026-06-10", "high")], pv("2026-06-11", "low"))).toBeNull();
     });
 
-    it("한 골격 안 해상도 통일 — 일봉·분봉 혼합 금지", () => {
-        expect(skeletonSetError(CHART_DATE, [pv("2026-06-10", "high")], pv("2026-06-11", "high", "09:30:00"))).toMatch(/섞을 수 없/);
-        expect(skeletonSetError(CHART_DATE, [pv("2026-06-10", "high", "09:30:00")], pv("2026-06-11", "high"))).toMatch(/섞을 수 없/);
+    it("타점 소유(분봉 골격)는 상한이 **타점 시각** — 그 뒤 봉은 그 자리에서 알 수 없던 값", () => {
+        expect(skeletonSetError(POINT, [], pv(CHART_DATE, "high", "09:30:00"))).toBeNull();
+        expect(skeletonSetError(POINT, [], pv(CHART_DATE, "high", "10:00:00"))).toBeNull(); // 타점 시각 자신은 허용
+        expect(skeletonSetError(POINT, [], pv(CHART_DATE, "high", "10:01:00"))).toMatch(/타점 시각까지만/);
+    });
+
+    it("분봉 골격은 타점 당일만 — 전날 장중은 담지 않는다", () => {
+        expect(skeletonSetError(POINT, [], pv("2026-07-01", "high", "14:00:00"))).toMatch(/타점 당일/);
+    });
+
+    it("분봉 골격에 일봉 좌표(시각 없음)는 거부 — param 이 해상도라 섞일 표현이 없다", () => {
+        expect(skeletonSetError(POINT, [], pv(CHART_DATE, "high"))).toMatch(/타점 시각까지만/);
+    });
+
+    it("소유가 달라도 캔들 내 규칙은 같다 — 분봉 한 봉의 高+低도 금지", () => {
+        expect(skeletonSetError(POINT, [pv(CHART_DATE, "high", "09:30:00")], pv(CHART_DATE, "low", "09:30:00"))).toMatch(/선후를 알 수 없/);
+        expect(skeletonSetError(POINT, [pv(CHART_DATE, "high", "09:30:00")], pv(CHART_DATE, "low", "09:31:00"))).toBeNull();
     });
 
     it("같은 점 재지정은 사유를 알려준다", () => {
-        expect(skeletonSetError(CHART_DATE, [pv("2026-06-10", "high")], pv("2026-06-10", "high"))).toMatch(/이미 찍은/);
+        expect(skeletonSetError(CHART, [pv("2026-06-10", "high")], pv("2026-06-10", "high"))).toMatch(/이미 찍은/);
     });
 });
 
@@ -59,7 +75,7 @@ describe("skeletonShape — 1턴차 사례가 실제로 갈리는가", () => {
     it("2연상 후 돌파 — 짧고 가파른 상승, 되돌림 0", () => {
         const s = skeletonShape([pp(0, 10000, "close"), pp(2, 16900)])!;
         expect(s.baseRisePct).toBeCloseTo(69, 0);
-        expect(s.baseRiseDays).toBe(2);
+        expect(s.baseRiseSpan).toBe(2);
         expect(s.baseRiseSlope).toBeCloseTo(34.5, 0);
         expect(s.pullbackRatio).toBe(0); // 되돌림 없음의 **단언**(골격 없음과 다르다)
     });
@@ -72,7 +88,7 @@ describe("skeletonShape — 1턴차 사례가 실제로 갈리는가", () => {
 
     it("윗꼬리 슈팅 — 한 캔들 안 상승이라 거래일 0, 기울기는 결손", () => {
         const s = skeletonShape([pp(10, 10000, "open", "2026-06-11"), pp(10, 14000, "high", "2026-06-11"), pp(12, 9000, "close")])!;
-        expect(s.baseRiseDays).toBe(0);
+        expect(s.baseRiseSpan).toBe(0);
         expect(s.baseRiseSlope).toBeNull(); // 0으로 나누지 않는다 — 식별은 거래일 축이 한다
         expect(s.pullbackRatio).toBeCloseTo(125, 0); // (14000-9000)/(14000-10000) — 본상승을 다 반납하고 더 빠짐
     });

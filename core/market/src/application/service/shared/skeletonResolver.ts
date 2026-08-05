@@ -1,17 +1,16 @@
-// 골격 해소 — 차트 앵커(param 'skeleton') 행들을 **가격까지 붙은 정렬된 피벗**으로 만든다.
+// 골격 해소 — 골격 앵커 행들을 **가격까지 붙은 정렬된 피벗**으로 만든다. 일봉·분봉 두 벌.
 //
 // 3층 중 가운데. 아래(저장 모델)가 바뀌면 여기만 고치고, 위(형태·축)는 안 흔들린다:
 //   앵커 행 → [이 파일] → PricedPivot[] → skeletonShape(순수) → 축이 값 하나를 고름
 //
-// **읽기 단위는 차트 하나의 창**(chartDailyRange, 2년) 1회다. 피벗마다 하루씩 조회하면 N 쿼리가 되고,
-// 창 밖 피벗은 어차피 화면에서 육안 검증이 안 되므로 결손이 맞다(매물 공백 축과 같은 판단).
+// **두 해상도가 여기서만 갈린다.** 형태층·축 팩토리는 무슨 해상도인지 모른다 — 그래서 분봉 골격을 얹는 데
+// 형태 계산은 한 줄도 안 바뀌었다(단위만 tIndex 주석이 말한다).
+//   · 일봉(차트 소유): 차트 창(chartDailyRange 2년) 1회 읽기 · tIndex = 창 안 **거래일 인덱스**
+//   · 분봉(타점 소유): 그 날 분봉 1회 읽기 · tIndex = **벽시계 분**(장중은 연속이라 갭 없음)
 //
 // **하나라도 못 읽으면 그 골격은 통째로 결손**이다. 못 읽은 피벗만 빼고 계산하면 형태가 조용히 달라진다
 // (되돌림의 골이 사라지는 식) — 없는 걸 뺀 모양은 사람이 찍은 그 모양이 아니다.
-//
-// dayIndex 는 **창 안 거래일 인덱스**다. 달력일이 아니라 거래일로 세그먼트 기간을 재려는 것이고, 창이 같으면
-// 피벗 간 차이는 창의 시작점과 무관하다(형태 계산은 차이만 쓴다).
-import { SKELETON_PARAM, sortPivots, type ChartAnchor, type DailyCandle, type MinuteCandle, type PricedPivot, type ReviewPointKey } from "#domain";
+import { SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, type ChartAnchor, type DailyCandle, type MinuteCandle, type PricedPivot, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "./dailyRange.js";
 import { chartKeyOf } from "./baselineResolver.js";
@@ -20,12 +19,18 @@ import type { AxisDeps } from "../axis/axis.js";
 /** (종목,날) 동시 읽기 상한 — 축들과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
 
+/** 타점 키 — 분봉 골격(타점 소유) 결과 맵의 키. 축이 같은 문자열을 만들도록 여기서 제공. */
+export const pointKeyOf = (p: ReviewPointKey): string => `${p.stockCode}|${p.date}|${p.time}`;
+
+/** 벽시계 분 — "HH:MM:SS" → 분. 형태 계산은 차이만 쓰므로 원점(자정)은 무관하다. */
+const minutesOf = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
+
 /**
- * 타점들이 속한 차트의 골격을 일괄 해소한다.
+ * 타점들이 속한 차트의 **일봉** 골격을 일괄 해소한다.
  * 반환 맵: 차트키 → 정렬된 가격 피벗. **키 없음 = 골격 미입력** / **null = 재료 부족(결손)**.
  * 소비 축은 non-null 만 잡으면 두 경우가 자연히 빠진다(입력 전 ≠ 결손, 결손 분모는 ComputedAxes 가 가른다).
  */
-export async function resolveSkeletons(
+export async function resolveDailySkeletons(
     points: readonly ReviewPointKey[],
     anchors: readonly ChartAnchor[],
     deps: Pick<AxisDeps, "adjDaily" | "minute">,
@@ -78,7 +83,61 @@ export async function resolveSkeletons(
                 : dailyByDate.get(p.anchorDate)?.[p.market]?.[p.field];
             const price = raw === undefined ? NaN : Number(raw);
             if (dayIndex === undefined || !Number.isFinite(price) || price <= 0) { broken = true; break; } // 창 밖·미수집
-            priced.push({ ...p, price, dayIndex });
+            priced.push({ ...p, price, tIndex: dayIndex });
+        }
+        out.set(key, broken || priced.length < 2 ? null : priced);
+    }
+    return out;
+}
+
+/**
+ * 타점들의 **분봉** 골격을 일괄 해소한다(타점 소유·당일).
+ * 반환 맵: 타점키 → 정렬된 가격 피벗. **키 없음 = 미입력** / **null = 재료 부족(결손)**.
+ *
+ * 일봉판과 갈리는 지점 셋:
+ *   · 그룹 키가 차트가 아니라 **타점**(같은 차트의 두 타점이 서로 다른 골격을 갖는 게 존재 이유)
+ *   · 읽기가 (종목, 그 날) 분봉 1회 — 당일 고정이라 창 개념이 없다
+ *   · tIndex 가 벽시계 분(장중은 연속이라 봉 개수가 아니라 시간이 맞다 — 유동성 낮은 종목 왜곡 방지)
+ * 시장은 언제나 UN — 분봉 앵커의 market 은 'un' 고정이다(KRX 분봉은 세션 부재가 있어 앵커로 못 쓴다).
+ */
+export async function resolveMinuteSkeletons(
+    points: readonly ReviewPointKey[],
+    anchors: readonly ChartAnchor[],
+    deps: Pick<AxisDeps, "minute">,
+): Promise<Map<string, PricedPivot[] | null>> {
+    const live = new Set(points.map(pointKeyOf));
+    const byPoint = new Map<string, ChartAnchor[]>();
+    for (const a of anchors) {
+        if (a.param !== SKELETON_MINUTE_PARAM || a.time == null) continue; // 타점 소유만
+        if (a.field == null || a.anchorTime == null) continue; // 가격·분봉 피벗만(서버 검증, 방어적으로)
+        const key = `${a.stockCode}|${a.date}|${a.time}`;
+        if (!live.has(key)) continue;
+        const list = byPoint.get(key);
+        if (list) list.push(a);
+        else byPoint.set(key, [a]);
+    }
+    if (byPoint.size === 0) return new Map();
+
+    // 분봉 — (종목, 날) 당 1회. 같은 날 여러 타점이 골격을 가져도 읽기는 한 번.
+    const dayKeys = new Map<string, { stockCode: string; date: string }>();
+    for (const list of byPoint.values()) dayKeys.set(`${list[0].stockCode}|${list[0].date}`, { stockCode: list[0].stockCode, date: list[0].date });
+    const minutesByDay = new Map<string, MinuteCandle[]>();
+    await mapWithConcurrency([...dayKeys.values()], DAY_CONCURRENCY, async (d) => {
+        minutesByDay.set(`${d.stockCode}|${d.date}`, await deps.minute.getMinuteCandles(d.stockCode, d.date));
+    });
+
+    const out = new Map<string, PricedPivot[] | null>();
+    for (const [key, list] of byPoint) {
+        const bars = minutesByDay.get(`${list[0].stockCode}|${list[0].date}`) ?? [];
+        const barByTime = new Map(bars.map((b) => [b.time, b] as const));
+        const pivots = sortPivots(list.map((x) => ({ anchorDate: x.anchorDate, anchorTime: x.anchorTime!, field: x.field!, market: x.market! })));
+        const priced: PricedPivot[] = [];
+        let broken = false;
+        for (const p of pivots) {
+            const raw = barByTime.get(p.anchorTime!)?.un?.[p.field];
+            const price = raw === undefined ? NaN : Number(raw);
+            if (!Number.isFinite(price) || price <= 0) { broken = true; break; } // 그 분봉 미수집
+            priced.push({ ...p, price, tIndex: minutesOf(p.anchorTime!) });
         }
         out.set(key, broken || priced.length < 2 ? null : priced);
     }

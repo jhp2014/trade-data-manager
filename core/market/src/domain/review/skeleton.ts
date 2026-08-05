@@ -41,20 +41,38 @@ export function sortPivots<T extends SkeletonPivot>(pivots: readonly T[]): T[] {
 }
 
 /**
+ * 골격의 소유 — 무엇에 매달린 골격인가. **상한(축 규칙 2)이 여기서 나온다.**
+ *   · time 없음 = 차트(종목,날짜) 소유 = 일봉 골격 → 피벗은 그 날짜 **이전** 캔들
+ *   · time 있음 = 타점 소유 = 분봉 골격 → 피벗은 **그 날 그 시각까지**의 분봉
+ * 두 골격이 한 param 을 공유하지 않으므로(레지스트리가 갈라놨다) 소유 grain 은 param 이 이미 결정한다 —
+ * 이 타입은 "그래서 상한이 어디냐"만 옮긴다.
+ */
+export interface SkeletonOwner {
+    date: string; // YYYY-MM-DD
+    time?: string; // HH:MM:SS — 있으면 타점 소유(분봉 골격)
+}
+
+/**
  * 집합 규칙 검증 — 이 골격에 피벗 하나를 **더할 때** 위반이면 사유, 통과면 null.
  * 행 단위(anchorInputError)로는 볼 수 없는 것만 여기 있다:
- *  ① 차트 날짜 **이전** 캔들만 — 당일 캔들을 찍으면 09:15 타점이 15:30 고가를 보게 된다(축 규칙 2 위반).
- *     타점 당일의 슈팅은 골격의 일부가 아니다(골격 = 그 슈팅에 이르기까지의 이력).
+ *  ① **상한**(축 규칙 2: 타점 이후 정보 금지) — 소유에 따라 다르다(SkeletonOwner 주석).
+ *     일봉 골격이 당일 봉을 담으면 09:15 타점이 15:30 고가를 보게 되고, 분봉 골격이 타점 이후 봉을 담으면
+ *     그 자리에서 알 수 없던 값을 쓰게 된다. 둘 다 "그 순간까지의 이력"이라는 골격의 뜻을 깬다.
  *  ② 같은 캔들에 高·低 동시 금지 — 순서 파생의 유일한 구멍(seq 를 안 두는 대가로 지키는 규칙).
- *  ③ 한 골격 안 해상도 통일 — 일봉 피벗과 분봉 피벗이 같은 날짜에 섞이면 순서가 다시 모호해진다.
- *  ④ 같은 캔들·같은 값 중복 금지 — 같은 점을 두 번 찍은 것(저장소 멱등이 잡지만 사유를 알려주는 게 낫다).
+ *  ③ 같은 캔들·같은 값 중복 금지 — 같은 점을 두 번 찍은 것(저장소 멱등이 잡지만 사유를 알려주는 게 낫다).
+ *
+ * 옛 규칙 "한 골격 안 해상도 통일"은 사라졌다 — param 자체가 해상도라(skeleton=일봉 / skeleton-minute=분봉)
+ * 섞일 경로가 없어졌다. 검증을 없앤 게 아니라 **표현으로 불가능하게** 만든 것.
  */
-export function skeletonSetError(chartDate: string, existing: readonly SkeletonPivot[], added: SkeletonPivot): string | null {
-    if (added.anchorDate >= chartDate) return "골격 피벗은 차트 날짜 이전 캔들만 — 당일 봉은 타점 이후 정보를 담는다";
+export function skeletonSetError(owner: SkeletonOwner, existing: readonly SkeletonPivot[], added: SkeletonPivot): string | null {
+    if (owner.time == null) {
+        if (added.anchorDate >= owner.date) return "골격 피벗은 차트 날짜 이전 캔들만 — 당일 봉은 타점 이후 정보를 담는다";
+    } else {
+        if (added.anchorDate !== owner.date) return "분봉 골격은 타점 당일 봉만 지정합니다";
+        if (added.anchorTime == null || added.anchorTime > owner.time) return "분봉 골격 피벗은 타점 시각까지만 — 그 뒤 봉은 그 자리에서 알 수 없던 값이다";
+    }
 
-    const isMinute = added.anchorTime != null;
     for (const p of existing) {
-        if ((p.anchorTime != null) !== isMinute) return "한 골격 안에서 일봉·분봉 피벗을 섞을 수 없습니다";
         if (p.anchorDate !== added.anchorDate || (p.anchorTime ?? "") !== (added.anchorTime ?? "")) continue;
         if (p.field === added.field) return "이미 찍은 점입니다";
         if (FIELD_RANK[p.field] === FIELD_RANK[added.field]) return "같은 캔들에 고가와 저가를 함께 찍을 수 없습니다 — 둘의 선후를 알 수 없습니다";
@@ -70,8 +88,13 @@ export function skeletonSetError(chartDate: string, existing: readonly SkeletonP
 /** 가격까지 해소된 피벗 — 형태 계산의 입력. 가격 해소는 application 층(resolveSkeletons)의 몫. */
 export interface PricedPivot extends SkeletonPivot {
     price: number;
-    /** 이 피벗까지 흐른 거래일 — 창의 첫 봉을 0으로 한 인덱스. 세그먼트 기간을 달력이 아니라 거래일로 재려고. */
-    dayIndex: number;
+    /**
+     * 시간축 좌표 — **단위는 해상도가 정한다**(형태 계산은 차이만 쓰므로 원점도 무관).
+     *   · 일봉 골격: 창 안 **거래일 인덱스**(달력일이면 주말이 낀다)
+     *   · 분봉 골격: **벽시계 분**(장중은 연속이라 갭이 없고, 봉 개수로 세면 유동성 낮은 종목이 왜곡된다)
+     * 이름이 중립인 이유가 이것 — 형태층은 무슨 단위인지 몰라도 되고, 축이 표시 단위만 붙인다.
+     */
+    tIndex: number;
 }
 
 /** 골격 하나에서 나오는 측정값 전부. 축은 여기서 하나를 고른다. */
@@ -80,9 +103,9 @@ export interface SkeletonShape {
     pivotCount: number;
     /** 본상승 = P1→P2(첫 세그먼트). 사용자 확정 정의 — P2 가 대개 기준선 앵커라 기존 기준선 축들과 반대쪽을 잰다. */
     baseRisePct: number;
-    /** 본상승 거래일. 같은 캔들 안의 상승(윗꼬리 슈팅)이면 0 — 그 자체가 식별 신호다. */
-    baseRiseDays: number;
-    /** 본상승 기울기(%/거래일). 거래일 0이면 **결손**(0으로 나누지 않고 지어내지도 않는다 — 축 규칙 3). */
+/** 본상승 길이(tIndex 차 — 일봉이면 거래일, 분봉이면 분). 한 캔들 안 상승(윗꼬리 슈팅)이면 0 = 식별 신호. */
+    baseRiseSpan: number;
+    /** 본상승 기울기(%/단위). 길이 0이면 **결손**(0으로 나누지 않고 지어내지도 않는다 — 축 규칙 3). */
     baseRiseSlope: number | null;
     /**
      * 되돌림률 = (P2 − P2 이후 최저 피벗) / (P2 − P1).
@@ -105,8 +128,8 @@ export function skeletonShape(sorted: readonly PricedPivot[]): SkeletonShape | n
     const p2 = sorted[1];
 
     const baseRisePct = ((p2.price - p1.price) / p1.price) * 100;
-    const baseRiseDays = p2.dayIndex - p1.dayIndex;
-    const baseRiseSlope = baseRiseDays > 0 ? baseRisePct / baseRiseDays : null;
+    const baseRiseSpan = p2.tIndex - p1.tIndex;
+    const baseRiseSlope = baseRiseSpan > 0 ? baseRisePct / baseRiseSpan : null;
 
     const rise = p2.price - p1.price;
     const after = sorted.slice(2);
@@ -119,7 +142,7 @@ export function skeletonShape(sorted: readonly PricedPivot[]): SkeletonShape | n
     return {
         pivotCount: sorted.length,
         baseRisePct,
-        baseRiseDays,
+        baseRiseSpan,
         baseRiseSlope,
         pullbackRatio,
         peakIsFirstHigh: p2.price === maxPrice,

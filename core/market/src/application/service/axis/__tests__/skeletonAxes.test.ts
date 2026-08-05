@@ -14,10 +14,20 @@ const daily = (date: string, price: number): DailyCandle => ({
 });
 
 const point = (time = "09:30:00"): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
+const minute = (time: string, price: number): MinuteCandle => ({
+    stockCode: CODE,
+    date: DATE,
+    time,
+    krx: null,
+    un: { open: String(price), high: String(price), low: String(price), close: String(price), volume: "10" },
+});
 let seq = 0;
-/** 차트 소유 골격 피벗 — 타점 시각 없음. */
+/** 차트 소유 일봉 골격 피벗 — 타점 시각 없음. */
 const pivot = (anchorDate: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
     ({ id: String(++seq), stockCode: CODE, date: DATE, param: "skeleton", anchorDate, field: "high", market: "un", ...over });
+/** 타점 소유 분봉 골격 피벗 — time=소유 타점, anchorTime=그 분봉. */
+const mpivot = (ownerTime: string, anchorTime: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
+    ({ id: String(++seq), stockCode: CODE, date: DATE, time: ownerTime, param: "skeleton-minute", anchorDate: DATE, anchorTime, field: "high", market: "un", ...over });
 
 function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, MinuteCandle[]>; anchors?: ChartAnchor[] }): AxisDeps {
     return {
@@ -95,7 +105,57 @@ describe("골격 파생 축", () => {
         for (const a of SKELETON_AXES) expect(Math.floor(a.version / 100)).toBe(SKELETON_SHAPE_VERSION);
     });
 
-    it("모든 골격 축은 skeleton 파라미터를 필수로 선언한다(결손 분모가 골격 있는 차트로 좁혀진다)", () => {
-        for (const a of SKELETON_AXES) expect(a.params).toEqual(["skeleton"]);
+    it("각 축은 자기 해상도의 param 만 필수 선언한다(결손 분모가 그 골격 있는 것으로 좁혀진다)", () => {
+        for (const a of SKELETON_AXES) {
+            expect(a.params).toEqual([a.key.startsWith("skeleton-min-") ? "skeleton-minute" : "skeleton"]);
+        }
+    });
+});
+
+// ── 분봉 골격 축(타점 소유) — 일봉과 갈리는 지점만 본다(형태 계산은 공용이라 재검증 불필요).
+describe("분봉 골격 축", () => {
+    /** 09:00 4000 → 09:10 4400(+10%) → 09:25 4160 : 상승 10%/10분, 되돌림 60%. */
+    const BARS = [minute("09:00:00", 4000), minute("09:10:00", 4400), minute("09:25:00", 4160)];
+    const skel = (ownerTime: string): ChartAnchor[] => [
+        mpivot(ownerTime, "09:00:00", { field: "open" }),
+        mpivot(ownerTime, "09:10:00"),
+        mpivot(ownerTime, "09:25:00", { field: "close" }),
+    ];
+
+    it("기울기 단위가 **분**이다 — 10% / 10분 = 1.0%/분", async () => {
+        const P = point("09:30:00");
+        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel("09:30:00") });
+        expect((await axisOf("skeleton-min-slope").compute([P], d))[0].value).toBeCloseTo(1.0, 2);
+        expect((await axisOf("skeleton-min-pullback").compute([P], d))[0].value).toBeCloseTo(60, 0);
+    });
+
+    it("**타점 소유** — 같은 차트라도 골격을 찍은 타점만 값을 받는다(일봉과 정반대)", async () => {
+        const mine = point("09:30:00");
+        const other = point("14:00:00");
+        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel("09:30:00") });
+        const out = await axisOf("skeleton-min-slope").compute([mine, other], d);
+        expect(out.map((v) => v.time)).toEqual(["09:30:00"]); // other 는 자기 골격이 없다
+    });
+
+    it("일봉 골격은 분봉 축에 안 섞인다(그 반대도) — param 이 해상도라 경로가 갈린다", async () => {
+        const P = point();
+        const dailyOnly = deps({ dailies: HISTORY, minutesByDay: { [DATE]: BARS }, anchors: [pivot("2026-06-22", { field: "open" }), pivot("2026-06-24")] });
+        expect(await axisOf("skeleton-min-slope").compute([P], dailyOnly)).toEqual([]);
+
+        const minuteOnly = deps({ dailies: HISTORY, minutesByDay: { [DATE]: BARS }, anchors: skel("09:30:00") });
+        expect(await axisOf("skeleton-base-rise").compute([P], minuteOnly)).toEqual([]);
+    });
+
+    it("분봉 미수집이면 그 골격 통째 결손", async () => {
+        const d = deps({ minutesByDay: { [DATE]: BARS.slice(0, 2) }, anchors: skel("09:30:00") }); // 09:25 봉 없음
+        expect(await axisOf("skeleton-min-slope").compute([point("09:30:00")], d)).toEqual([]);
+    });
+
+    it("골격 없는 타점은 분봉 읽기도 없다", async () => {
+        let reads = 0;
+        const d = deps({ anchors: [] });
+        d.minute = { getMinuteCandles: () => { reads++; return Promise.resolve([]); } };
+        expect(await axisOf("skeleton-min-pullback").compute([point()], d)).toEqual([]);
+        expect(reads).toBe(0);
     });
 });
