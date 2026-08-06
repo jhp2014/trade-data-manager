@@ -15,6 +15,7 @@ export const RANK_REPO = Symbol("RankRepository");
 export const TAG_REPO = Symbol("TagRepository");
 export const RANK_MINUTES = Symbol("RankMinutes");
 export const COMPUTED_AXES = Symbol("ComputedAxes");      // 계산 축 값(타점→수치) 읽기모델 + 파일 캐시
+export const SKELETON_SHAPES = Symbol("SkeletonShapes");  // 골격 피벗 좌표(그림용) 읽기모델 — 축과 재료는 같고 결과가 다르다
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");
 export const MARKET_POOL = Symbol("MarketPool");

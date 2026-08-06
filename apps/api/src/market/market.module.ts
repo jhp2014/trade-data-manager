@@ -16,15 +16,17 @@ import {
     DrizzleTagRepository,
     DrizzleStockNewsRepository,
 } from "@trade-data-manager/persistence";
-import type { DataDateReader } from "@trade-data-manager/market";
+import type { AxisDeps, DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, RANK_MINUTES, COMPUTED_AXES, SKELETON_SHAPES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
 import { ComputedAxes } from "./rank/computedAxes.js";
+import { SkeletonShapes } from "./rank/skeletonShapes.js";
 import { RankMinutesController } from "./rank/rankMinutes.controller.js";
+import { SkeletonController } from "./rank/skeleton.controller.js";
 import { DaySummaryController } from "./board/daySummary.controller.js";
 import { DayReplayController } from "./board/dayReplay.controller.js";
 import { DatesController } from "./board/dates.controller.js";
@@ -54,6 +56,18 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
 // 두 풀: market(수집·읽기전용) / curation(사람 편집). curation 은 CURATION_DATABASE_URL 로 분리 가능(없으면 market 과 같은 DB로 폴백).
 const poolProvider: Provider = { provide: MARKET_POOL, useFactory: (): Pool => createPoolFromEnv() };
 const curationPoolProvider: Provider = { provide: CURATION_POOL, useFactory: (): Pool => createCurationPoolFromEnv() };
+
+// 계산 축이 읽는 포트 묶음 — 두 소비자(계산 축·골격 좌표)가 **같은 한 벌**을 쓴다.
+// 손으로 두 번 적으면 한쪽만 어댑터를 바꿔도 컴파일이 통과해, 같은 골격이 두 소비자에서 다른 가격으로 풀린다.
+const axisDepsOf = (marketPool: Pool, curationPool: Pool): AxisDeps => {
+    const db = createDb(marketPool);
+    return {
+        minute: new DrizzleMinuteCandleRepository(db),
+        rawDaily: new DrizzleRawDailyCandleRepository(db),
+        adjDaily: new DrizzleDailyCandleRepository(db), // 수정주가 창(AdjustedDailyReader)
+        chartAnchor: new DrizzleChartAnchorRepository(createDb(curationPool)),
+    };
+};
 
 // ── 화면별 팩토리 묶음 — 폴더(chart/board/curation/news)와 1:1. 변경/테스트 단위가 도메인별로 작아진다.
 const chartProviders: Provider[] = [
@@ -172,20 +186,22 @@ const curationProviders: Provider[] = [
         // 계산 축 — 수식으로 나오는 축의 타점별 수치 + 축당 파일 캐시(증분·앵커 지문 자동 무효화).
         // 배치를 만들지 않으므로 rank repo 와 무관하다. 두 DB를 함께 쓴다: 모집단(타점)·앵커는 curation, 시세는 market.
         provide: COMPUTED_AXES,
-        useFactory: (marketPool: Pool, curationPool: Pool): ComputedAxes => {
-            const db = createDb(marketPool);
-            const curationDb = createDb(curationPool);
-            const dailyRepo = new DrizzleDailyCandleRepository(db); // 수정주가 창(AdjustedDailyReader)
-            return new ComputedAxes({
-                points: new DrizzleReviewPointRepository(curationDb),
-                axisDeps: {
-                    minute: new DrizzleMinuteCandleRepository(db),
-                    rawDaily: new DrizzleRawDailyCandleRepository(db),
-                    adjDaily: dailyRepo,
-                    chartAnchor: new DrizzleChartAnchorRepository(curationDb),
-                },
-            });
-        },
+        useFactory: (marketPool: Pool, curationPool: Pool): ComputedAxes =>
+            new ComputedAxes({
+                points: new DrizzleReviewPointRepository(createDb(curationPool)),
+                axisDeps: axisDepsOf(marketPool, curationPool),
+            }),
+        inject: [MARKET_POOL, CURATION_POOL],
+    },
+    {
+        // 골격 좌표 — 계산 축과 **같은 재료·다른 결과**(수치 하나가 아니라 피벗 좌표 그대로). 겹쳐 그리기용.
+        // 캐시 없음(SkeletonShapes 주석) — 축이 파일 캐시를 갖는 것과 갈리는 지점이다.
+        provide: SKELETON_SHAPES,
+        useFactory: (marketPool: Pool, curationPool: Pool): SkeletonShapes =>
+            new SkeletonShapes({
+                points: new DrizzleReviewPointRepository(createDb(curationPool)),
+                axisDeps: axisDepsOf(marketPool, curationPool),
+            }),
         inject: [MARKET_POOL, CURATION_POOL],
     },
     {
@@ -223,6 +239,7 @@ const newsProviders: Provider[] = [
         ReviewPointController,
         CommentController,
         RankController,
+        SkeletonController,
         TagController,
         NewsController,
         TelegramNewsController,

@@ -19,16 +19,9 @@ import type { RankCell } from "../../lib/rankIndex.js";
 import type { RankPoint } from "../../api/rank.js";
 import type { Excursion } from "./pathStats.js";
 import type { Tag } from "../../api/tags.js";
-import { FAIL, PIN, STRONG, WEAK, heatOf } from "../../styles/palette.js";
+import { PIN, STRONG, WEAK, heatOf, outcomeColor } from "../../styles/palette.js";
 
 export const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
-
-function outcomeColor(v?: string): string {
-    if (!v) return "var(--text-tertiary)";
-    if (/성공|승|익절|win|good/i.test(v)) return STRONG;
-    if (/실패|패|손절|loss|bad/i.test(v)) return FAIL;
-    return "var(--text-secondary)";
-}
 
 /** 셀 우클릭 페이로드 — 판단 축=slot 밴드·컷·배치해제 / 계산 축=값 경계 메뉴(패널이 axisId 로 가른다). */
 export interface CellCtxPayload {

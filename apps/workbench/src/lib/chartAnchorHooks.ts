@@ -11,7 +11,7 @@ import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { BASELINE_PARAM, candlePrice, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor } from "../api/chartAnchors.js";
-import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery } from "../api/queries.js";
+import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
 import { kstToUnix } from "./derive.js";
 import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
 import type { ChartBundle } from "../api/chart.js";
@@ -38,6 +38,7 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
         void qc.invalidateQueries({ queryKey: chartAnchorsQuery(code, date).queryKey });
         void qc.invalidateQueries({ queryKey: anchoredChartsQuery().queryKey }); // 작업셋 패널 즉시 반영
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey }); // 앵커는 축 입력 — 즉시 재굽기
+        void qc.invalidateQueries({ queryKey: skeletonsQuery().queryKey }); // 골격 좌표(겹쳐 그리기)도 같은 입력
     };
     const add = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
     const remove = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });

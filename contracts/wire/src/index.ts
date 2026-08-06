@@ -14,6 +14,7 @@ export type * from "./reviewPoint.js";
 export type * from "./tag.js";
 export type * from "./rank.js";
 export type * from "./rankComputed.js";
+export type * from "./skeleton.js";
 export type * from "./rankPaths.js";
 export type * from "./rankMinutes.js";
 export type * from "./news.js";

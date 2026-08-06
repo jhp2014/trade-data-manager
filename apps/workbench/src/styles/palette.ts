@@ -18,6 +18,18 @@ export const FAIL = "#e24b4a"; // 실패 · 손절
 /** 축 위 상대위치(frac 0약..1강) → 강약색. 시트 셀·타점 카드가 같은 3단계를 쓴다. */
 export const heatOf = (frac: number): string => (frac >= 0.66 ? STRONG : frac >= 0.33 ? MID : WEAK);
 
+/**
+ * 트레이드 결과(자유 문자열) → 강약색. outcome 은 정해진 코드가 아니라 사람이 적는 말이라
+ * **표기 흔들림을 여기 한 곳에서 흡수한다**(시트 셀·골격 겹쳐 그리기가 같은 규칙을 봐야 색이 안 갈린다).
+ * 못 알아본 값은 중립 — 새 표기를 실패로 오인해 색칠하는 것보다 색이 없는 편이 정직하다.
+ */
+export function outcomeColor(v?: string): string {
+    if (!v) return "var(--text-tertiary)";
+    if (/성공|승|익절|win|good/i.test(v)) return STRONG;
+    if (/실패|패|손절|loss|bad/i.test(v)) return FAIL;
+    return "var(--text-secondary)";
+}
+
 // ── 순위 보드/시트 강조
 export const FILTER = "#e24b4a"; // 필터 밴드 경계(우클릭 지정) · 필터 걸린 열 헤더
 export const ACTIVE = "#0ea5e9"; // 활성 타점 — 밝은 스카이블루(글로우로 대비)
