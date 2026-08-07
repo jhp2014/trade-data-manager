@@ -148,11 +148,14 @@ export const lineOpacity = (n: number): number => (n <= 0 ? 0 : Math.min(0.45, M
 export const dimOpacity = (n: number): number => Math.max(0.015, lineOpacity(n) * 0.25);
 
 /**
- * 사각 선택 판정 — 화면 사각형에 **어느 피벗이든** 든 골격의 키(Ctrl+드래그).
- * 라벨 지점만 보면 사각형을 선 무리 위에 그었는데 아무것도 안 잡히는 일이 생긴다 — 손이 노리는 건 선이다.
+ * 사각 선택 판정 — **라벨 지점**이 사각에 든 골격의 키(Ctrl+드래그).
+ * 처음엔 피벗 기준(선 위를 긋는 손짓)이었는데, 선이 얽힌 곳에선 원하는 것만 담기가 안 돼서 사용자 확정으로
+ * 라벨 기준으로 바꿨다 — 라벨은 서로 벌어져 있어(클러스터 격자) 정밀하게 골라 담을 수 있고,
+ * "손잡이는 라벨"이라는 패널 원칙과도 맞는다.
  */
 export function keysInRect(
     items: readonly NormalizedSkeleton[],
+    anchor: SkeletonAnchor,
     sx: (x: number) => number,
     sy: (y: number) => number,
     rect: { x0: number; y0: number; x1: number; y1: number },
@@ -161,11 +164,10 @@ export function keysInRect(
     const [top, bottom] = rect.y0 <= rect.y1 ? [rect.y0, rect.y1] : [rect.y1, rect.y0];
     const out: string[] = [];
     for (const s of items) {
-        for (const p of s.points) {
-            const x = sx(p.x);
-            const y = sy(p.y);
-            if (x >= left && x <= right && y >= top && y <= bottom) { out.push(s.key); break; }
-        }
+        const p = labelPointOf(s, anchor);
+        const x = sx(p.x);
+        const y = sy(p.y);
+        if (x >= left && x <= right && y >= top && y <= bottom) out.push(s.key);
     }
     return out;
 }

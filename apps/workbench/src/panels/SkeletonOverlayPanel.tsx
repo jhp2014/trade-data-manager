@@ -280,14 +280,14 @@ export function SkeletonOverlayPanel(): JSX.Element {
             marqueeRef.current = null;
             setMarquee(null);
             if (!rect || (Math.abs(rect.x1 - rect.x0) < 4 && Math.abs(rect.y1 - rect.y0) < 4)) return; // 클릭 오인 방지
-            const hit = keysInRect(shapes, scales.x, scales.y, rect);
+            const hit = keysInRect(shapes, isAbs ? "first" : anchor, scales.x, scales.y, rect);
             if (hit.length === 0) return;
             setSelectedKeys((prev) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
         };
         window.addEventListener("mousemove", move);
         window.addEventListener("mouseup", up);
         e.preventDefault();
-    }, [scales, shapes, effSelected]);
+    }, [scales, shapes, effSelected, isAbs, anchor]);
 
     // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
     // 선택·호버는 묶음에서 빼고 따로 그린다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
@@ -449,26 +449,41 @@ export function SkeletonOverlayPanel(): JSX.Element {
                                                     </g>
                                                 );
                                             })}
-                                            {/* 얹는 선(기준선·D선) — 같은 pct 환산. 조사 중인 하나에만. 기준선(리졸버 확정)은
-                                                실선+라벨, 나머지 선은 점선 — 어느 선이 그 기준선인지 그림에서 구분된다. */}
-                                            {inspecting && showLevels && (levelsByChart.get(s.key) ?? []).map((lv, i) => {
+                                        </g>
+                                    );
+                                })}
+
+                                {/* 얹는 선(기준선·D선) — 같은 pct 환산. **주인이 스타일을 정한다**(사용자 확정):
+                                    단일 선택 = 하늘색 실선·라벨 오른쪽 / 호버 = 앰버 점선·라벨 왼쪽. 둘이 동시에 떠도
+                                    색·선모양·라벨 위치 셋으로 갈린다. 다중 선택이면 호버 것만(수십 벌이 겹치므로).
+                                    기준선 여부는 선 모양이 아니라 라벨의 "기준" 접두어 — 어차피 최저가 규칙이라 아래가 기준선. */}
+                                {showLevels && scales && (() => {
+                                    const single = effSelected.size === 1 ? [...effSelected][0] : null;
+                                    const owners: { s: NormalizedSkeleton; color: string; dash: boolean; right: boolean }[] = [];
+                                    const sel = single ? byKey.get(single) : null;
+                                    if (sel) owners.push({ s: sel, color: ACTIVE, dash: false, right: true });
+                                    const hov = hovered && hovered !== single ? byKey.get(hovered) : null;
+                                    if (hov) owners.push({ s: hov, color: HOVER, dash: true, right: false });
+                                    return owners.map(({ s, color, dash, right }) => (
+                                        <g key={`lvl-${s.key}`} style={{ pointerEvents: "none" }}>
+                                            {(levelsByChart.get(s.key) ?? []).map((lv, i) => {
                                                 const yPct = pct(lv.price, s.basePrice);
                                                 const y = scales.y(yPct);
                                                 return (
-                                                    <g key={`lv${i}`}>
+                                                    <g key={i}>
                                                         <line x1={box.left} x2={box.left + box.width} y1={y} y2={y}
-                                                            stroke={PRICE_LINE} strokeWidth={lv.baseline ? 1.5 : 1} strokeDasharray={lv.baseline ? undefined : "4 3"} opacity={lv.baseline ? 0.95 : 0.6} />
-                                                        <text x={box.left + box.width - 4} y={y - 4} textAnchor="end"
+                                                            stroke={color} strokeWidth={lv.baseline ? 1.4 : 1} strokeDasharray={dash ? "5 4" : undefined} opacity={0.85} />
+                                                        <text x={right ? box.left + box.width - 4 : box.left + 4} y={y - 4} textAnchor={right ? "end" : "start"}
                                                             stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
-                                                            style={{ fontSize: 9, fill: PRICE_LINE, fontVariantNumeric: "tabular-nums" }}>
+                                                            style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
                                                             {lv.baseline ? "기준 " : ""}{fmtPct(yPct)}
                                                         </text>
                                                     </g>
                                                 );
                                             })}
                                         </g>
-                                    );
-                                })}
+                                    ));
+                                })()}
                             </g>
                         </>
                     )}
@@ -539,8 +554,8 @@ export function SkeletonOverlayPanel(): JSX.Element {
                 )}
 
                 {/* 크로스헤어 — 자기 상태(마우스 좌표)만 다시 그린다. 부모 렌더에 mousemove 를 태우면
-                    이동마다 선 수백 개가 재조정된다(분리한 이유). */}
-                {scales && <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} xUnit={xUnit} />}
+                    이동마다 선 수백 개가 재조정된다(분리한 이유). 팬 중엔 숨긴다(사용자 확정). */}
+                {scales && !dragging && <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} xUnit={xUnit} />}
             </div>
 
             {/* 뭉친 라벨의 멤버 목록 — 행 점이 그림의 그 선과 같은 색(목록↔그림을 잇는 유일한 것). */}
@@ -615,22 +630,26 @@ function CrosshairLayer({ wrapRef, scales, box, xUnit }: {
     if (!pos || pos.x < box.left || pos.x > box.left + box.width || pos.y < box.top || pos.y > box.top + box.height) return null;
     const xv = scales.x.invert(pos.x);
     const yv = scales.y.invert(pos.y);
-    // 읽기값은 커서 오른쪽 위 — 오른쪽 가장자리에선 왼쪽으로 뒤집는다(잘리지 않게).
-    const flip = pos.x > box.left + box.width - 90;
+    // 읽기값은 커서 옆이 아니라 **축 가장자리 뱃지**(사용자 확정) — 차트 보던 습관 그대로 축에서 읽는다.
     return (
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: pos.x, top: box.top, width: 1, height: box.height, background: "var(--border-strong)", opacity: 0.7 }} />
-            <div style={{ position: "absolute", left: box.left, top: pos.y, height: 1, width: box.width, background: "var(--border-strong)", opacity: 0.7 }} />
-            <div style={{
-                position: "absolute", top: pos.y - 18, ...(flip ? { right: (box.left + box.width) - pos.x + 6 } : { left: pos.x + 6 }),
-                fontSize: 10, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: "var(--text-secondary)",
-                background: "var(--bg-secondary)", border: "1px solid var(--border-subtle)", borderRadius: 3, padding: "1px 5px",
-            }}>
-                {fmtX(xv, xUnit)} · {fmtPct(yv)}
-            </div>
+            {/* 점선 헤어라인 — 배경 없는 0폭 div 에 dashed border(1px div 배경으로는 점선이 안 된다). */}
+            <div style={{ position: "absolute", left: pos.x, top: box.top, width: 0, height: box.height, borderLeft: "1px dashed var(--border-strong)", opacity: 0.8 }} />
+            <div style={{ position: "absolute", left: box.left, top: pos.y, height: 0, width: box.width, borderTop: "1px dashed var(--border-strong)", opacity: 0.8 }} />
+            {/* y 뱃지 — 왼쪽 % 축 위(눈금 숫자가 서는 자리, 오른끝을 축에 맞춘다). */}
+            <div style={{ ...axisBadge, left: box.left - 2, top: pos.y - 7, transform: "translateX(-100%)" }}>{fmtPct(yv)}</div>
+            {/* x 뱃지 — 아래 시간축 위. */}
+            <div style={{ ...axisBadge, left: pos.x, bottom: 2, transform: "translateX(-50%)" }}>{fmtX(xv, xUnit)}</div>
         </div>
     );
 }
+
+/** 크로스헤어 축 뱃지 — 축 눈금 위에 얹히므로 불투명 배경으로 아래 숫자를 덮는다(겹쳐 보이면 둘 다 못 읽는다). */
+const axisBadge: CSSProperties = {
+    position: "absolute", fontSize: 9.5, lineHeight: "13px", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
+    color: "var(--text-primary)", background: "var(--bg-tertiary)", border: "1px solid var(--border-default)",
+    borderRadius: 3, padding: "0 4px",
+};
 
 const wrap: CSSProperties = { display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" };
 const header: CSSProperties = { flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexWrap: "wrap" };

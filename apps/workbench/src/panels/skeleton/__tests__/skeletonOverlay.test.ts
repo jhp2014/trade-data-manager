@@ -173,26 +173,24 @@ describe("lineVisual", () => {
     });
 });
 
-describe("keysInRect — Ctrl+드래그 사각 선택", () => {
+describe("keysInRect — Ctrl+드래그 사각 선택(라벨 지점 기준)", () => {
     // 화면 좌표 항등 스케일로 판정만 본다.
     const id = (v: number): number => v;
     const shape = (key: string, pts: [number, number][]) =>
         ({ key, stockCode: "005930", date: "2026-07-02", basePrice: 100, baseT: 0, points: pts.map(([x, y]) => ({ x, y })) });
 
-    it("어느 피벗이든 사각 안에 들면 잡힌다 — 손이 노리는 건 선이다", () => {
-        const a = shape("a", [[10, 10], [50, 40]]);
-        const b = shape("b", [[200, 200], [240, 220]]);
-        expect(keysInRect([a, b], id, id, { x0: 0, y0: 0, x1: 60, y1: 60 })).toEqual(["a"]);
+    it("**라벨 지점**(앵커 반대 끝)이 든 것만 잡힌다 — 선이 지나가는 것으론 안 잡힌다(정밀 선택)", () => {
+        // 기준 last → 라벨은 첫 점. a 라벨(10,10)은 사각 안, b 는 선이 사각을 지나가도 라벨(200,200)이 밖.
+        const a = shape("a", [[10, 10], [300, 300]]);
+        const b = shape("b", [[200, 200], [30, 30]]);
+        expect(keysInRect([a, b], "last", id, id, { x0: 0, y0: 0, x1: 60, y1: 60 })).toEqual(["a"]);
+        // 기준 first → 라벨이 마지막 점으로 바뀐다: 이제 b(30,30)가 잡히고 a(300,300)는 밖.
+        expect(keysInRect([a, b], "first", id, id, { x0: 0, y0: 0, x1: 60, y1: 60 })).toEqual(["b"]);
     });
 
     it("뒤집힌 드래그(오른쪽→왼쪽)도 같은 사각이다", () => {
         const a = shape("a", [[10, 10], [50, 40]]);
-        expect(keysInRect([a], id, id, { x0: 60, y0: 60, x1: 0, y1: 0 })).toEqual(["a"]);
-    });
-
-    it("모든 피벗이 밖이면 안 잡힌다(선분이 사각을 스치는 경우는 잡지 않는다 — 피벗 기준)", () => {
-        const a = shape("a", [[0, 0], [100, 100]]);
-        expect(keysInRect([a], id, id, { x0: 40, y0: 0, x1: 60, y1: 10 })).toEqual([]);
+        expect(keysInRect([a], "last", id, id, { x0: 60, y0: 60, x1: 0, y1: 0 })).toEqual(["a"]);
     });
 });
 
