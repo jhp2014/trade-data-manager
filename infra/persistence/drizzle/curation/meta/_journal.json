@@ -78,6 +78,13 @@
       "when": 1786079730103,
       "tag": "0010_minute_skeleton_chart_owned",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786080499752,
+      "tag": "0011_loving_zarda",
+      "breakpoints": true
     }
   ]
 }

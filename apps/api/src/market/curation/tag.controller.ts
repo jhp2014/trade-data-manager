@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
 import type { TagReader, TagStore } from "@trade-data-manager/market";
-import type { Tag, TagAttachment, CreateTagInput, RenameTagInput, AttachTagInput } from "@trade-data-manager/wire";
+import type { Tag, TagAttachment, ChartTagAttachment, CreateTagInput, RenameTagInput, AttachTagInput, AttachChartTagInput } from "@trade-data-manager/wire";
 import { TAG_REPO } from "../tokens.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
@@ -25,6 +25,27 @@ export class TagController {
     @Get("attachments")
     attachments(): Promise<TagAttachment[]> {
         return this.repo.listAllAttachments();
+    }
+
+    // ── 차트 부착 — 골격 분류용(타점 없는 차트도 대상). 사전은 타점 부착과 공유.
+    @Get("chart-attachments")
+    chartAttachments(): Promise<ChartTagAttachment[]> {
+        return this.repo.listAllChartAttachments();
+    }
+
+    @Post(":id/chart-attachments")
+    async attachChart(@Param("id") id: string, @Body() body: AttachChartTagInput): Promise<{ ok: true }> {
+        await this.repo.attachToChart(assertId(id), {
+            stockCode: assertStockCode(body?.stockCode, "stockCode"),
+            date: assertYmd(body?.date),
+        });
+        return { ok: true };
+    }
+
+    @Delete(":id/chart-attachments")
+    async detachChart(@Param("id") id: string, @Query("code") code?: string, @Query("date") date?: string): Promise<{ ok: true }> {
+        await this.repo.detachFromChart(assertId(id), { stockCode: assertStockCode(code), date: assertYmd(date) });
+        return { ok: true };
     }
 
     @Post(":id/attachments")

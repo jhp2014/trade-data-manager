@@ -2,7 +2,7 @@
 //  · 축(rankIndex)이 "줄 위 어디냐"를 다룬다면 여긴 "붙었냐/안 붙었냐"만 — 순서 없는 명목형이라 위치가 없다.
 //  · tagIds 순서 = 서버가 준 순서(태그 이름순). 낙관적 삽입도 같은 기준으로 끼워 넣어야
 //    부착 직후와 서버 응답 후의 칩 순서가 안 흔들린다(부착 순으로 붙이면 refetch 때 자리가 튄다).
-import type { TagAttachment } from "@trade-data-manager/wire";
+import type { TagAttachment, ChartTagAttachment } from "@trade-data-manager/wire";
 import { pointKey, type PointKey, type PointRef } from "./pointKey.js";
 
 /** pk("code|date|time") → 붙은 태그 id들(이름순). 태그 0개인 타점은 키가 없음. */
@@ -14,10 +14,18 @@ export function buildTagIndex(attachments: TagAttachment[]): TagIndex {
     return idx;
 }
 
-/** 태그별 사용 건수(삭제 확인 "N개 타점에 붙어 있음" · 팔레트 빈도). */
-export function countByTag(attachments: TagAttachment[]): Map<string, number> {
+/** 차트키("code|date") → 차트 소유 태그 id들. 타점판과 같은 접기(부착 피드만 다르다). */
+export function buildChartTagIndex(attachments: ChartTagAttachment[]): Map<string, string[]> {
+    const idx = new Map<string, string[]>();
+    for (const a of attachments) idx.set(`${a.stockCode}|${a.date}`, a.tagIds);
+    return idx;
+}
+
+/** 태그별 사용 건수(삭제 확인 "N건에 붙어 있음" · 팔레트 빈도). 타점·차트 부착을 **합산**한다. */
+export function countByTag(attachments: TagAttachment[], chartAttachments: ChartTagAttachment[] = []): Map<string, number> {
     const m = new Map<string, number>();
     for (const a of attachments) for (const id of a.tagIds) m.set(id, (m.get(id) ?? 0) + 1);
+    for (const a of chartAttachments) for (const id of a.tagIds) m.set(id, (m.get(id) ?? 0) + 1);
     return m;
 }
 
@@ -34,6 +42,30 @@ export function presetToggle(attached: readonly string[], preset: readonly strin
     const missing = preset.filter((id) => !has.has(id));
     if (missing.length > 0) return { on: true, tagIds: missing };
     return { on: false, tagIds: preset.filter((id) => has.has(id)) };
+}
+
+/**
+ * 낙관적 토글(차트판) — 타점판(applyTagToggle)과 같은 규칙: 같은 배열이면 그대로 반환, 빈 항목 안 남김,
+ * 삽입은 이름순(서버 정렬과 동일 — refetch 때 칩 자리가 안 튄다).
+ */
+export function applyChartTagToggle(
+    attachments: ChartTagAttachment[],
+    chart: { stockCode: string; date: string },
+    tagId: string,
+    on: boolean,
+    nameOf: (tagId: string) => string,
+): ChartTagAttachment[] {
+    const idx = attachments.findIndex((a) => a.stockCode === chart.stockCode && a.date === chart.date);
+    if (!on) {
+        if (idx < 0 || !attachments[idx].tagIds.includes(tagId)) return attachments;
+        const tagIds = attachments[idx].tagIds.filter((id) => id !== tagId);
+        if (tagIds.length === 0) return attachments.filter((_, i) => i !== idx);
+        return attachments.map((a, i) => (i === idx ? { ...a, tagIds } : a));
+    }
+    if (idx < 0) return [...attachments, { stockCode: chart.stockCode, date: chart.date, tagIds: [tagId] }];
+    if (attachments[idx].tagIds.includes(tagId)) return attachments;
+    const tagIds = [...attachments[idx].tagIds, tagId].sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+    return attachments.map((a, i) => (i === idx ? { ...a, tagIds } : a));
 }
 
 /**

@@ -96,4 +96,32 @@ describe("DrizzleTagRepository (pglite)", () => {
         expect(await tagIdsOf(P2)).toEqual([]);
         expect((await repo.listTags()).map((x) => x.id)).toContain(tag.id); // 사전은 남는다
     });
+
+    // ── 차트 부착 — 타점 부착과 사전을 공유하되 저장이 갈린다(review_points FK 없음: 차트는 행이 아니다).
+    it("attachToChart — 타점이 없는 차트에도 붙는다(골격만 있는 차트가 분류 대상)", async () => {
+        const C = { stockCode: "999999", date: "2026-07-01" }; // review_points 에 없는 (종목,날짜)
+        const tag = await repo.createTag("차트분류");
+        await repo.attachToChart(tag.id, C);
+        await repo.attachToChart(tag.id, C); // 멱등
+
+        const atts = await repo.listAllChartAttachments();
+        expect(atts.find((a) => a.stockCode === C.stockCode && a.date === C.date)?.tagIds).toEqual([tag.id]);
+    });
+
+    it("detachFromChart — 해당 부착만 제거, 두 번 떼도 안전. removeTag 는 차트 부착도 cascade", async () => {
+        const C = { stockCode: "888888", date: "2026-07-01" };
+        const a = await repo.createTag("ㄱ차트");
+        const b = await repo.createTag("ㅎ차트");
+        await repo.attachToChart(b.id, C);
+        await repo.attachToChart(a.id, C);
+        const of = async () => (await repo.listAllChartAttachments()).find((x) => x.stockCode === C.stockCode)?.tagIds ?? [];
+        expect(await of()).toEqual([a.id, b.id]); // 태그 이름순(부착 순서 아님)
+
+        await repo.detachFromChart(a.id, C);
+        expect(await of()).toEqual([b.id]);
+        await expect(repo.detachFromChart(a.id, C)).resolves.toBeUndefined();
+
+        await repo.removeTag(b.id);
+        expect(await of()).toEqual([]); // cascade — 항목째 사라진다
+    });
 });

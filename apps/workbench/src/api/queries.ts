@@ -9,7 +9,7 @@ import { fetchChartAnchors, fetchAnchoredCharts } from "./chartAnchors.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchSkeletons } from "./skeletons.js";
-import { fetchTags, fetchTagAttachments } from "./tags.js";
+import { fetchTags, fetchTagAttachments, fetchChartTagAttachments } from "./tags.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
@@ -72,6 +72,10 @@ export const tagsQuery = () =>
 
 export const tagAttachmentsQuery = () =>
     queryOptions({ queryKey: ["tag-attachments"], queryFn: ({ signal }) => fetchTagAttachments(signal), staleTime: IMMUTABLE });
+
+// 차트 태그 부착(골격 분류) — 타점 부착과 **별도 키**: 차트 태그 토글이 타점 부착 피드를 흔들지 않는다.
+export const chartTagAttachmentsQuery = () =>
+    queryOptions({ queryKey: ["tag-chart-attachments"], queryFn: ({ signal }) => fetchChartTagAttachments(signal), staleTime: IMMUTABLE });
 
 // 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
 export const stockMetaQuery = (code: string) =>

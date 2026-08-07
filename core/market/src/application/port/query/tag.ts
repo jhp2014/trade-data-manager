@@ -1,4 +1,4 @@
-import type { Tag, TagAttachment, ReviewPointKey } from "#domain";
+import type { Tag, TagAttachment, ChartTagAttachment, ChartRef, ReviewPointKey } from "#domain";
 
 // 타점 태그 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
 // 사전(tags)과 부착(review_point_tags)이 한 슬라이스인 이유: 둘은 늘 같이 읽힌다(팔레트 = 사전 + 빈도).
@@ -14,6 +14,8 @@ export interface TagReader {
      * 모두 전체를 보므로, 왕복 1회·캐시 1개로 두면 패널 간 태그가 어긋날 여지가 없다.
      */
     listAllAttachments(): Promise<TagAttachment[]>;
+    /** 전 차트의 소유 부착 — 타점 부착과 같은 이유로 전체 한 번(빈 차트는 항목 없음). */
+    listAllChartAttachments(): Promise<ChartTagAttachment[]>;
 }
 
 /** 태그 편집(쓰기). 사전 CRUD + 부착/해제. */
@@ -28,4 +30,8 @@ export interface TagStore {
     attach(tagId: string, point: ReviewPointKey): Promise<void>;
     /** 부착 해제. 안 붙어 있으면 조용한 no-op. */
     detach(tagId: string, point: ReviewPointKey): Promise<void>;
+    /** 차트에 태그 부착(멱등). 타점 부착과 달리 대상 FK 가 없다 — 차트는 행이 아니고 타점보다 오래 산다(chart_anchors 선례). */
+    attachToChart(tagId: string, chart: ChartRef): Promise<void>;
+    /** 차트 부착 해제. 안 붙어 있으면 조용한 no-op. */
+    detachFromChart(tagId: string, chart: ChartRef): Promise<void>;
 }

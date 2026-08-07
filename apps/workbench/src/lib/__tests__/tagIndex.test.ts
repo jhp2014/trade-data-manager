@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { TagAttachment } from "@trade-data-manager/wire";
-import { applyTagToggle, buildTagIndex, countByTag, presetToggle } from "../tagIndex.js";
+import type { TagAttachment, ChartTagAttachment } from "@trade-data-manager/wire";
+import { applyTagToggle, applyChartTagToggle, buildTagIndex, buildChartTagIndex, countByTag, presetToggle } from "../tagIndex.js";
 
 const P = { stockCode: "005930", date: "2026-06-30", time: "09:11:00" };
 const Q = { stockCode: "000660", date: "2026-06-30", time: "10:00:00" };
@@ -20,6 +20,30 @@ describe("buildTagIndex / countByTag", () => {
         expect(c.get("t1")).toBe(1);
         expect(c.get("t2")).toBe(1);
         expect(c.get("t3")).toBe(1);
+    });
+});
+
+describe("차트 부착(buildChartTagIndex / applyChartTagToggle / countByTag 합산)", () => {
+    const C = { stockCode: "005930", date: "2026-06-30" };
+    const chartAtt = (): ChartTagAttachment[] => [{ ...C, tagIds: ["t2"] }];
+
+    it("차트키로 접는다", () => {
+        expect(buildChartTagIndex(chartAtt()).get("005930|2026-06-30")).toEqual(["t2"]);
+    });
+
+    it("건수는 타점+차트 합산 — 삭제 확인이 두 부착을 다 세야 한다", () => {
+        const c = countByTag(att(), chartAtt());
+        expect(c.get("t2")).toBe(2); // 타점 1 + 차트 1
+    });
+
+    it("낙관적 토글 — 이름순 삽입·빈 항목 제거·같은 배열 재사용(타점판과 같은 규칙)", () => {
+        const added = applyChartTagToggle(chartAtt(), C, "t3", true, nameOf); // "나" → "가" 뒤
+        expect(added[0].tagIds).toEqual(["t2", "t3"]);
+        // 바뀔 게 없으면 같은 배열 그대로(useMemo 헛돌지 않게).
+        const same = chartAtt();
+        expect(applyChartTagToggle(same, C, "t2", true, nameOf)).toBe(same);
+        // 마지막 태그를 떼면 항목째 사라진다.
+        expect(applyChartTagToggle(chartAtt(), C, "t2", false, nameOf)).toEqual([]);
     });
 });
 

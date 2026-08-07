@@ -1,10 +1,10 @@
 // 타점 태그 CRUD 클라이언트. wire 타입(Tag·TagAttachment)은 contracts/wire 공유.
 // 부착은 타점 목록(review-points)과 분리된 계약이다 — 태그를 토글해도 타점 캐시가 안 흔들리고,
 // 차트(listByChart)·시트·배치·필터가 **부착 피드 하나**를 같이 본다(전 축 줄 피드와 같은 꼴).
-import type { Tag, TagAttachment } from "@trade-data-manager/wire";
+import type { Tag, TagAttachment, ChartTagAttachment } from "@trade-data-manager/wire";
 import { apiGet, apiPost, apiPatch, apiDelete } from "./http.js";
 
-export type { Tag, TagAttachment } from "@trade-data-manager/wire";
+export type { Tag, TagAttachment, ChartTagAttachment } from "@trade-data-manager/wire";
 
 export const fetchTags = (signal?: AbortSignal): Promise<Tag[]> => apiGet<Tag[]>("tags", undefined, signal);
 
@@ -25,3 +25,13 @@ export const attachTag = (tagId: string, point: { stockCode: string; date: strin
 
 export const detachTag = (tagId: string, point: { stockCode: string; date: string; time: string }): Promise<void> =>
     apiDelete(`tags/${tagId}/attachments`, { code: point.stockCode, date: point.date, time: point.time });
+
+// ── 차트 부착 — 골격 분류용(타점 없는 차트도 대상). 사전은 위와 공유.
+export const fetchChartTagAttachments = (signal?: AbortSignal): Promise<ChartTagAttachment[]> =>
+    apiGet<ChartTagAttachment[]>("tags/chart-attachments", undefined, signal);
+
+export const attachChartTag = (tagId: string, chart: { stockCode: string; date: string }): Promise<void> =>
+    apiPost(`tags/${tagId}/chart-attachments`, chart);
+
+export const detachChartTag = (tagId: string, chart: { stockCode: string; date: string }): Promise<void> =>
+    apiDelete(`tags/${tagId}/chart-attachments`, { code: chart.stockCode, date: chart.date });

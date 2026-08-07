@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import type { Tag, TagAttachment, ReviewPointKey, TagReader, TagStore } from "@trade-data-manager/market";
+import type { Tag, TagAttachment, ChartTagAttachment, ChartRef, ReviewPointKey, TagReader, TagStore } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
-import { tags, reviewPointTags } from "../schema/curation.js";
+import { tags, reviewPointTags, chartTags } from "../schema/curation.js";
 import { rowToTag } from "../mappers/tag.js";
 
 /** Drizzle 구현 — 사전(bigserial id, 이름 unique) + 부착 정션(타점 삼중키 × tag_id). */
@@ -40,6 +40,24 @@ export class DrizzleTagRepository implements TagReader, TagStore {
             att.tagIds.push(String(r.tagId));
         }
         return [...byPoint.values()];
+    }
+
+    // 전 차트의 소유 부착 — 타점판과 같은 접기(차트키), 같은 정렬 기준(tag 이름순).
+    async listAllChartAttachments(): Promise<ChartTagAttachment[]> {
+        const rows = await this.db
+            .select({ stockCode: chartTags.stockCode, date: chartTags.tradeDate, tagId: chartTags.tagId })
+            .from(chartTags)
+            .innerJoin(tags, eq(chartTags.tagId, tags.id))
+            .orderBy(asc(chartTags.stockCode), asc(chartTags.tradeDate), asc(tags.name));
+
+        const byChart = new Map<string, ChartTagAttachment>();
+        for (const r of rows) {
+            const key = `${r.stockCode}|${r.date}`;
+            let att = byChart.get(key);
+            if (!att) byChart.set(key, (att = { stockCode: r.stockCode, date: r.date, tagIds: [] }));
+            att.tagIds.push(String(r.tagId));
+        }
+        return [...byChart.values()];
     }
 
     async createTag(name: string): Promise<Tag> {
@@ -81,5 +99,18 @@ export class DrizzleTagRepository implements TagReader, TagStore {
                     eq(reviewPointTags.tagId, BigInt(tagId)),
                 ),
             );
+    }
+
+    async attachToChart(tagId: string, chart: ChartRef): Promise<void> {
+        await this.db
+            .insert(chartTags)
+            .values({ stockCode: chart.stockCode, tradeDate: chart.date, tagId: BigInt(tagId) })
+            .onConflictDoNothing(); // PK 충돌 = 이미 붙음(멱등)
+    }
+
+    async detachFromChart(tagId: string, chart: ChartRef): Promise<void> {
+        await this.db
+            .delete(chartTags)
+            .where(and(eq(chartTags.stockCode, chart.stockCode), eq(chartTags.tradeDate, chart.date), eq(chartTags.tagId, BigInt(tagId))));
     }
 }

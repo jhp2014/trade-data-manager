@@ -166,6 +166,31 @@ export const reviewPointTags = curation.table(
     ],
 );
 
+// 8b. 차트 태그 부착 — **차트(종목,날짜) ↔ 태그** 정션. 골격으로 상황을 분류할 때(타점 없는 차트도 대상).
+//     사전(tags)은 타점 부착과 공유 — 분류가 타점용/차트용으로 갈라질 이유가 없다.
+//     review_points FK 가 **없다**(chart_anchors 선례): 차트는 행이 아니고, 태그는 타점보다 오래 산다.
+//     PK (stock,date,tag_id) = 멱등 부착. tags FK cascade = 태그 삭제 시 부착도 제거.
+export const chartTags = curation.table(
+    "chart_tags",
+    {
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(),
+        tagId: bigint("tag_id", { mode: "bigint" }).notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tagId] }),
+        foreignKey({
+            columns: [t.tagId],
+            foreignColumns: [tags.id],
+            name: "fk_chart_tag_tag",
+        }).onDelete("cascade"),
+        index("idx_chart_tags_tag").on(t.tagId),
+    ],
+);
+
+export type ChartTagRow = typeof chartTags.$inferSelect;
+export type ChartTagInsert = typeof chartTags.$inferInsert;
+
 // ── 차트 앵커 ───────────────────────────────────────────────────────────────
 // 9. 차트 앵커 — 캔들 좌표 참조의 **단일 테이블**. 옛 price_lines(가격선)와 point_anchors(타점 파라미터 앵커)를
 //    흡수했다: 가격선 = param 'baseline' 인 앵커(선 = 곧 기준선 후보), 무시 캔들 등 다른 param 도 같은 모양.

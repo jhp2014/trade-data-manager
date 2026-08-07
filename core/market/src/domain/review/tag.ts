@@ -18,3 +18,19 @@ export interface TagAttachment {
     time: string; // HH:MM:SS (분봉 시각)
     tagIds: string[];
 }
+
+/** 차트 참조 — (종목, 날짜). 차트 소유 부착의 키. */
+export interface ChartRef {
+    stockCode: string;
+    date: string; // YYYY-MM-DD
+}
+
+/**
+ * 한 차트(종목,날짜)에 붙은 태그들 — **차트 소유 부착**. 골격으로 상황을 분류할 때 쓴다(타점이 없는
+ * 차트도 분류 대상이다 — 일봉 골격이 차트 소유인 것과 같은 이유). 사전(Tag)은 타점 부착과 **공유**한다:
+ * "돌파" 라는 분류가 타점의 것과 차트의 것으로 갈라질 이유가 없고, 사전이 갈리면 오타 난립이 두 배가 된다.
+ * 적용 규칙은 앵커와 같다(anchorAppliesTo): 차트 태그는 그 차트의 **모든 타점에 상속**된다.
+ */
+export interface ChartTagAttachment extends ChartRef {
+    tagIds: string[];
+}

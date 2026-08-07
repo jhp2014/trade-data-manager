@@ -11,9 +11,12 @@ import {
 import { useOverlayZoom } from "./skeleton/useOverlayZoom.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
+import { useTags } from "../lib/useTags.js";
+import { evalTagExpr, isTagExprEmpty } from "./rank/tagFilter.js";
+import { ChartTagMenu } from "./skeleton/ChartTagMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
-import { ACTIVE, HOVER, PRICE_LINE, seriesColor } from "../styles/palette.js";
+import { ACTIVE, HOVER, PRICE_LINE, seriesColor, tagColor } from "../styles/palette.js";
 import type { SkeletonWireLevel } from "../api/skeletons.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 
@@ -100,21 +103,56 @@ export function SkeletonOverlayPanel(): JSX.Element {
         return m;
     }, [pointsQ.data]);
 
-    // 선택 → 골격. 두 모드 다 차트 단위: 필터 없으면 골격 있는 전 차트, 있으면 매칭 타점을 가진 차트만.
+    // ── 차트 단위 필터 — 골격의 모집단은 차트라, 타점 조건과 차트 조건을 갈라서 판정한다.
+    //  · 밴드·계산축 값구간·시간대 = **타점 전용 조건**(차트엔 그 값이 없다) → 활성이면 매칭 타점을 가진
+    //    차트만(타점 없는 차트는 판정 자체가 안 되므로 빠진다 — 헤더의 두 숫자가 그 사실을 보이게 한다).
+    //  · 날짜·태그 = 차트에서도 판정 가능 → 차트 자체로 평가한다. 태그는 **차트 직접 부착 ∪ 그 타점들의
+    //    태그**(상속 포함)라 어느 쪽에 붙었든 잡힌다. 이 경로가 타점 경로의 상위집합이라 합집합이 필요 없다.
+    const tagsView = useTags();
+    const rankBands = useWorkbench((s) => s.rankBands);
+    const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
+    const timeRanges = useWorkbench((s) => s.timeRanges);
+    const dateRanges = useWorkbench((s) => s.dateRanges);
+    const tagExpr = useWorkbench((s) => s.tagExpr);
+    const pointOnlyActive =
+        Object.values(rankBands).some((b) => b && (b.lo || b.hi)) ||
+        Object.values(axisValueRanges).some((v) => v && v.length > 0) ||
+        timeRanges.length > 0;
+
+    const chartAllowed = useMemo<ReadonlySet<string> | null>(() => {
+        if (pointOnlyActive) return new Set(r.points.map((p) => `${p.stockCode}|${p.date}`));
+        const dateActive = dateRanges.length > 0;
+        const tagActive = !isTagExprEmpty(tagExpr);
+        if (!dateActive && !tagActive) return null; // 무필터 = 전 차트
+        const feed = feedQ.data;
+        if (!feed) return new Set();
+        const out = new Set<string>();
+        for (const e of isDaily ? feed.daily : feed.minute) {
+            const key = `${e.stockCode}|${e.date}`;
+            if (dateActive && !dateRanges.some((rg) => e.date >= rg.from && e.date <= rg.to)) continue;
+            if (tagActive) {
+                const ids = new Set(tagsView.chartTagIdsOf(e));
+                for (const p of pointsByChart.get(key) ?? []) for (const id of tagsView.tagIdsOf(p)) ids.add(id);
+                if (!evalTagExpr([...ids], tagExpr)) continue;
+            }
+            out.add(key);
+        }
+        return out;
+    }, [pointOnlyActive, r.points, dateRanges, tagExpr, feedQ.data, isDaily, tagsView, pointsByChart]);
+
     const shapes = useMemo<NormalizedSkeleton[]>(() => {
         const feed = feedQ.data;
         if (!feed) return [];
-        const allowed = r.isEmpty ? null : new Set(r.points.map((p) => `${p.stockCode}|${p.date}`));
         const out: NormalizedSkeleton[] = [];
         for (const e of isDaily ? feed.daily : feed.minute) {
             const key = `${e.stockCode}|${e.date}`;
-            if (allowed && !allowed.has(key)) continue;
+            if (chartAllowed && !chartAllowed.has(key)) continue;
             const owner = { key, stockCode: e.stockCode, date: e.date };
             const n = isAbs ? absoluteSkeleton(e.pivots, e.prevClose, owner) : normalizeSkeleton(e.pivots, anchor, owner);
             if (n) out.push(n);
         }
         return out;
-    }, [feedQ.data, r.points, r.isEmpty, isDaily, isAbs, anchor]);
+    }, [feedQ.data, chartAllowed, isDaily, isAbs, anchor]);
 
     // 선은 언제나 차트 소유 — 두 모드가 같은 목록을 본다.
     const levelsByChart = useMemo(() => {
@@ -262,6 +300,21 @@ export function SkeletonOverlayPanel(): JSX.Element {
         return clusterLabels(anchors, LABEL_CELL.w, LABEL_CELL.h);
     }, [showLabels, scales, shapes, anchor, isAbs, pinnedKeys]);
 
+    // ── 차트 태그 메뉴 — 라벨 우클릭(단일) / 헤더 태그 버튼(선택 일괄). 그룹핑의 입력 지점.
+    const [tagMenu, setTagMenu] = useState<{ x: number; y: number; charts: { stockCode: string; date: string }[]; label: string } | null>(null);
+    const openTagMenuFor = useCallback((s: NormalizedSkeleton, ev: { clientX: number; clientY: number; preventDefault: () => void }): void => {
+        ev.preventDefault();
+        setTagMenu({ x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${fmtDate(s.date)}` });
+    }, [nameOf]);
+    const openTagMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
+        const charts = [...effSelected]
+            .map((k) => byKey.get(k))
+            .filter((s): s is NormalizedSkeleton => !!s)
+            .map((s) => ({ stockCode: s.stockCode, date: s.date }));
+        if (charts.length === 0) return;
+        setTagMenu({ x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${fmtDate(charts[0].date)}` : `선택 ${charts.length}개` });
+    }, [effSelected, byKey, nameOf]);
+
     // 목록 순서 = 라벨 지점의 % 내림차순 — 그림에서 위에 있는 선이 목록에서도 위라 눈이 안 헤맨다.
     const badgeRows = useMemo(() => {
         if (!badge) return [];
@@ -316,8 +369,13 @@ export function SkeletonOverlayPanel(): JSX.Element {
                     {shapes.length}개
                     {population > shapes.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
                 </span>
+                {effSelected.size > 0 && (
+                    <button onClick={(e) => openTagMenuForSelection(e)} title="선택된 차트들에 태그 붙이기/떼기 — 그룹은 태그다" style={miniBtn}>
+                        선택 {effSelected.size} 태그
+                    </button>
+                )}
                 {selectedKeys.size > 0 && (
-                    <button onClick={() => setSelectedKeys(new Set())} title="다중 선택 해제" style={miniBtn}>선택 {selectedKeys.size} ✕</button>
+                    <button onClick={() => setSelectedKeys(new Set())} title="다중 선택 해제" style={miniBtn}>✕</button>
                 )}
                 {zoomed && <button onClick={reset} title="원위치(더블클릭도 같음)" style={miniBtn}>원위치 ⤺</button>}
             </div>
@@ -435,9 +493,9 @@ export function SkeletonOverlayPanel(): JSX.Element {
                             const s = byKey.get(c.members[0]);
                             if (!s) return null;
                             return (
-                                <button key={`c${c.x}|${c.y}`} onClick={(e) => onLabelClick(s, e)}
+                                <button key={`c${c.x}|${c.y}`} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
-                                    title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=다중선택`}
+                                    title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=태그`}
                                     style={{ ...chip, ...labelSideOf(left), top }}>
                                     {labelOf(s, labelAtStart)}
                                 </button>
@@ -451,9 +509,9 @@ export function SkeletonOverlayPanel(): JSX.Element {
                             const p = labelPointOf(s, isAbs ? "first" : anchor);
                             const { v, color } = visualOf(key);
                             return (
-                                <button key={key} onClick={(e) => onLabelClick(s, e)}
+                                <button key={key} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
-                                    title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=선택 해제`}
+                                    title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=선택 해제 · 우클릭=태그`}
                                     style={{
                                         ...chip, ...labelSideOf(scales.x(p.x) - box.left), top: scales.y(p.y) - box.top,
                                         color, fontWeight: 700,
@@ -502,8 +560,25 @@ export function SkeletonOverlayPanel(): JSX.Element {
                 </AnchoredPopover>
             )}
 
+            {tagMenu && <ChartTagMenu anchor={tagMenu} charts={tagMenu.charts} label={tagMenu.label} onClose={() => setTagMenu(null)} />}
+
             <div style={footer}>
-                {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·정규화"} · 세로 = % · 휠 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 더블클릭 원위치
+                {/* 조사 중인 차트의 태그 — 그룹 소속이 발끝에서 바로 읽힌다(따로 열어보지 않게). */}
+                {(() => {
+                    const s = inspectKey ? byKey.get(inspectKey) : null;
+                    const ids = s ? tagsView.chartTagIdsOf(s) : [];
+                    if (!s || ids.length === 0) return null;
+                    return (
+                        <span style={{ marginRight: 8 }}>
+                            {ids.map((id) => {
+                                const name = tagsView.tagById.get(id)?.name;
+                                return name ? <span key={id} style={{ color: tagColor(name), fontWeight: 600, marginRight: 5 }}>{name}</span> : null;
+                            })}
+                            ·
+                        </span>
+                    );
+                })()}
+                {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·정규화"} · 세로 = % · 휠 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 더블클릭 원위치
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
             </div>
         </div>
