@@ -8,7 +8,7 @@ import {
     labelPointOf, clusterLabels, lineVisual, keysInRect,
     type LineVisual, type NormalizedSkeleton, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
-import { useOverlayZoom } from "./skeleton/useOverlayZoom.js";
+import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useTags } from "../lib/useTags.js";
@@ -187,19 +187,25 @@ export function SkeletonOverlayPanel(): JSX.Element {
     //    팝오버의 바깥클릭 감지가 그래프 위에서 안 뜨기 때문(제스처 콜백이 그 자리를 대신한다).
     const [badge, setBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     const closeBadge = useCallback(() => setBadge(null), []);
-    const { transform, reset, zoomed, dragging } = useOverlayZoom(svgRef, drawable, closeBadge);
+    // 제스처 영역 — 아래 스트립=시간축, 왼쪽 스트립=% 축(모서리는 시간축 우선). 스트립에선 그 축만 확대된다.
+    const regionOf = useCallback(
+        (x: number, y: number): ZoomRegion => (y > box.top + box.height ? "x" : x < box.left ? "y" : "body"),
+        [box.top, box.height, box.left],
+    );
+    const { tx, ty, reset, zoomed, dragging } = useOverlayZoom(svgRef, drawable, regionOf, closeBadge);
 
     // 척도가 바뀌면(필터 변경 등) 뷰포트를 원위치 — 옛 변환이 남아 빈 공간을 보지 않게.
     const boundsKey = bounds ? `${bounds.minX}|${bounds.maxX}|${bounds.minY}|${bounds.maxY}` : "";
     useEffect(() => { reset(); }, [boundsKey, reset]);
 
     // 변환은 그림이 아니라 **스케일**에 건다 — 선 굵기가 안 늘어나고 눈금이 확대에 맞춰 다시 찍힌다.
+    // 축별 변환 두 벌(tx·ty)이라 가로만 당기고 세로만 당기는 손짓이 성립한다.
     const scales = useMemo<Scales | null>(() => {
         if (!bounds) return null;
         const x = scaleLinear().domain([bounds.minX, bounds.maxX]).range([box.left, box.left + box.width]);
         const y = scaleLinear().domain([bounds.minY, bounds.maxY]).range([box.top + box.height, box.top]);
-        return { x: transform.rescaleX(x), y: transform.rescaleY(y) };
-    }, [bounds, box.left, box.top, box.width, box.height, transform]);
+        return { x: tx.rescaleX(x), y: ty.rescaleY(y) };
+    }, [bounds, box.left, box.top, box.width, box.height, tx, ty]);
 
     // ── 선택(집합)·호버 — 화면 한정. 키가 두 모드 공통 차트키라 해상도를 오가도 선택이 유지된다.
     const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -734,7 +740,7 @@ export function SkeletonOverlayPanel(): JSX.Element {
                         </span>
                     );
                 })()}
-                {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·정규화"} · 세로 = % · 휠 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 더블클릭 원위치
+                {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·정규화"} · 세로 = % · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 더블클릭 원위치
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
             </div>
         </div>

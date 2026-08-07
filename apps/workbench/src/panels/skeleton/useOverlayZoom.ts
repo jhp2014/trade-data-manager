@@ -1,61 +1,172 @@
-// 이동·확대 제스처 — d3-zoom 을 React 상태로 잇는 얇은 훅.
+// 이동·확대 제스처 — d3-zoom 을 **축별 변환 두 벌**(tx·ty)로 잇는 훅.
 //
 // **왜 손으로 안 짜는가**: 필요한 건 "휠=확대, 드래그=이동"이 아니라 그 주변의 자잘한 것들이다 —
 // 브라우저·OS별 휠 delta 단위 정규화, 트랙패드 핀치(ctrlKey 붙은 휠), 터치 두 손가락, 배율 클램핑.
 // 손으로 짜면 이 목록의 절반은 나중에 버그로 만난다.
 //
-// **왜 차트 라이브러리는 아닌가**: 여기 필요한 건 제스처 층뿐이다. 렌더는 React SVG 가 하고(호버·클릭
-// 판정이 공짜), 스토어 연동(hoveredPoint·goToPoint)과 팔레트도 이미 이 앱의 것이다. 차트 라이브러리는
-// 렌더 루프와 상호작용을 자기가 소유하므로 그 배선 하나하나가 싸움이 된다.
+// **왜 축별 두 벌인가**(사용자 확정 — 차트식): 골격은 시간(x)과 %(y)의 관심 배율이 다르다 —
+// 기간을 넓게 보며 되돌림 폭만 당겨 보는 일이 잦다. 단일 변환은 이 손짓이 불가능하다. 손짓은 LWC
+// 차트의 것을 그대로 옮긴다: **본문 휠 = 가로만**(커서 중심) · 본문 드래그 = 이동 · **y축 스트립 =
+// 세로만 · x축 스트립 = 가로만**(휠이든 드래그든 그 축 확대) · 더블클릭 = 전체 원위치.
+//
+// d3-zoom 은 **제스처 정규화만** 맡는다: 내부 단일 변환은 쓰지 않고, 이벤트 간 **델타**(배율비·이동량)를
+// 뽑아 시작 지점의 영역(본문/x축/y축)에 따라 두 축 변환에 나눠 싣는다(applyGesture — 순수, 테스트 대상).
+// 제스처가 끝날 때마다 내부 변환을 identity 로 되돌려(silent) 내부 배율 클램프가 우리 손짓을 막지 않게 한다.
 //
 // **변환을 그림에 거는 게 아니라 스케일에 건다**(transform 속성 대신 rescaleX/rescaleY).
 // SVG transform 으로 확대하면 선이 같이 굵어지고 축 눈금이 확대에 따라 다시 안 찍힌다 — 여기선 축이 곧
-// 정보(기준 대비 %)라 그건 그림이 거짓말을 하는 것이다. 소비자는 transform 을 받아 스케일을 다시 만든다.
+// 정보(기준 대비 %)라 그건 그림이 거짓말을 하는 것이다. 소비자는 tx·ty 를 받아 스케일을 다시 만든다.
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { select } from "d3-selection";
+import { select, pointer } from "d3-selection";
 import { zoom as d3zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
 
+/** 한 축의 변환 — 배율 k 와 화면 px 이동 t. ZoomTransform 의 축 하나 분량이다. */
+export interface AxisTransform {
+    k: number;
+    t: number;
+}
+
+export const AXIS_IDENTITY: AxisTransform = { k: 1, t: 0 };
+
+/** 제스처가 시작된 영역 — 본문 / 아래 시간축 스트립 / 왼쪽 % 축 스트립. */
+export type ZoomRegion = "body" | "x" | "y";
+
+/** 스트립 **드래그**를 배율로 바꾸는 감도 — exp(px × 이 값). 200px 드래그 ≈ e¹ ≈ 2.7배. */
+export const DRAG_ZOOM_RATE = 0.005;
+
+/** 축 하나를 포인터 p(화면 px) 기준으로 dk 배 확대(그 지점이 제자리에 남는다). k 는 extent 로 클램프. */
+export function zoomAxisAt(a: AxisTransform, dk: number, p: number, extent: readonly [number, number]): AxisTransform {
+    const k = Math.max(extent[0], Math.min(extent[1], a.k * dk));
+    const eff = k / a.k;
+    return { k, t: p - (p - a.t) * eff };
+}
+
+/** 축 하나를 화면 px 만큼 이동. */
+export const panAxis = (a: AxisTransform, d: number): AxisTransform => ({ k: a.k, t: a.t + d });
+
+/** d3 이벤트 하나에서 뽑은 델타 — 배율비(dk)·이동량(dx,dy)·현재 포인터(px,py). */
+export interface GestureDelta {
+    dk: number;
+    dx: number;
+    dy: number;
+    px: number;
+    py: number;
+}
+
+/**
+ * 델타 하나를 영역 규칙에 따라 두 축 변환에 싣는다 — **손짓 규칙의 전부가 이 함수다**(순수).
+ *   · body: 휠/핀치(dk≠1) = **가로만**(커서 중심) / 드래그 = 양축 이동
+ *   · x 스트립: 휠 = 가로 확대(커서 중심) / 드래그 = 가로 확대(**제스처 시작점** 중심 — 오른쪽으로 당기면 확대)
+ *   · y 스트립: 휠 = 세로 확대 / 드래그 = 세로 확대(위로 당기면 확대 — LWC 가격축 손짓)
+ * 드래그 확대의 중심이 시작점인 이유: 드래그 중 커서는 계속 움직이므로 커서 중심이면 기준이 흘러다닌다.
+ */
+export function applyGesture(
+    axes: { x: AxisTransform; y: AxisTransform },
+    region: ZoomRegion,
+    g: GestureDelta,
+    start: { x: number; y: number },
+    extent: readonly [number, number],
+): { x: AxisTransform; y: AxisTransform } {
+    const zooming = g.dk !== 1;
+    if (region === "body") {
+        return zooming
+            ? { x: zoomAxisAt(axes.x, g.dk, g.px, extent), y: axes.y }
+            : { x: panAxis(axes.x, g.dx), y: panAxis(axes.y, g.dy) };
+    }
+    if (region === "x") {
+        return zooming
+            ? { x: zoomAxisAt(axes.x, g.dk, g.px, extent), y: axes.y }
+            : { x: zoomAxisAt(axes.x, Math.exp(g.dx * DRAG_ZOOM_RATE), start.x, extent), y: axes.y };
+    }
+    return zooming
+        ? { x: axes.x, y: zoomAxisAt(axes.y, g.dk, g.py, extent) }
+        : { x: axes.x, y: zoomAxisAt(axes.y, Math.exp(-g.dy * DRAG_ZOOM_RATE), start.y, extent) };
+}
+
 export interface OverlayZoom {
-    transform: ZoomTransform;
+    /** 가로축 변환 — scaleLinear 에 rescaleX 로 적용한다. */
+    tx: ZoomTransform;
+    /** 세로축 변환 — rescaleY 로 적용한다. */
+    ty: ZoomTransform;
     /** 원위치(더블클릭·버튼). d3 내부 상태까지 되돌린다 — setState 만 하면 다음 제스처가 옛 값에서 이어진다. */
     reset: () => void;
-    /** 확대 중인가 — 원위치 버튼을 조건부로 띄울 때. */
+    /** 확대·이동 중인가 — 원위치 버튼을 조건부로 띄울 때. */
     zoomed: boolean;
     /** 제스처 진행 중 — 커서를 grab↔grabbing 으로 바꾸는 데 쓴다. */
     dragging: boolean;
 }
 
 /**
- * 대상 SVG 에 이동·확대를 붙이고 현재 변환을 낸다.
+ * 대상 SVG 에 축별 이동·확대를 붙이고 현재 변환 두 벌을 낸다.
  * `enabled` 가 false 면 붙이지 않는다(그릴 게 없을 때 빈 화면이 끌려다니지 않게).
  */
 export function useOverlayZoom(
     ref: RefObject<SVGSVGElement | null>,
     enabled: boolean,
+    /** 화면 좌표 → 제스처 영역. 그림 상자(box)가 리사이즈로 변해도 재부착 없이 따라가도록 ref 경유로 읽는다. */
+    regionOf: (x: number, y: number) => ZoomRegion,
     /**
      * 제스처가 시작될 때(마우스다운·휠) 한 번. **d3 가 SVG 의 mousedown 을 stopImmediatePropagation 으로
      * 삼키기 때문에** 그래프 위에서는 React onMouseDown 도 document 리스너도 안 뜬다 — 열려 있는 팝오버를
      * 닫는 것 같은 일은 여기서 해야 한다.
      */
     onGestureStart?: () => void,
-    scaleExtent: [number, number] = [0.5, 60],
+    scaleExtent: readonly [number, number] = [0.5, 60],
 ): OverlayZoom {
-    const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity);
+    const [axes, setAxes] = useState<{ x: AxisTransform; y: AxisTransform }>({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
     const [dragging, setDragging] = useState(false);
     const behavior = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     const [min, max] = scaleExtent;
     // 콜백은 ref 경유 — 인라인 함수를 의존성에 넣으면 렌더마다 zoom 이 재부착된다(제스처가 끊긴다).
     const startRef = useRef(onGestureStart);
     startRef.current = onGestureStart;
+    const regionRef = useRef(regionOf);
+    regionRef.current = regionOf;
 
     useEffect(() => {
         const el = ref.current;
         if (!el || !enabled) return;
+        // 제스처 하나 동안의 상태 — 직전 내부 변환(델타의 기준), 시작 지점·영역, silent(재영점 중 이벤트 무시).
+        let prev: ZoomTransform = zoomIdentity;
+        let region: ZoomRegion = "body";
+        let startPos = { x: 0, y: 0 };
+        let silent = false;
+        const extent: readonly [number, number] = [min, max];
+
         const b = d3zoom<SVGSVGElement, unknown>()
-            .scaleExtent([min, max])
-            .on("start", () => { setDragging(true); startRef.current?.(); })
-            .on("zoom", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => setTransform(ev.transform))
-            .on("end", () => setDragging(false));
+            // 내부 배율은 안 쓴다 — 클램프는 축별로 우리가 한다. 좁게 잡으면 내부 k 가 벽에 닿아 손짓을 먹는다.
+            .scaleExtent([1e-9, 1e9])
+            .on("start", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => {
+                prev = ev.transform;
+                if (silent) return;
+                if (ev.sourceEvent) {
+                    const [x, y] = pointer(ev.sourceEvent as Event, el);
+                    startPos = { x, y };
+                    region = regionRef.current(x, y);
+                }
+                setDragging(true);
+                startRef.current?.();
+            })
+            .on("zoom", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => {
+                const t = ev.transform;
+                const dk = t.k / prev.k;
+                const dx = t.x - prev.x;
+                const dy = t.y - prev.y;
+                prev = t;
+                if (silent || !ev.sourceEvent) return;
+                const [px, py] = pointer(ev.sourceEvent as Event, el);
+                setAxes((a) => applyGesture(a, region, { dk, dx, dy, px, py }, startPos, extent));
+            })
+            .on("end", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => {
+                prev = ev.transform;
+                if (silent) return;
+                setDragging(false);
+                // 제스처마다 내부 변환을 재영점 — 내부 상태는 델타의 재료일 뿐, 누적되게 두면 언젠가 극값에 닿는다.
+                silent = true;
+                select(el).call(b.transform, zoomIdentity);
+                silent = false;
+                prev = zoomIdentity;
+            });
         behavior.current = b;
         const sel = select(el);
         sel.call(b);
@@ -67,11 +178,18 @@ export function useOverlayZoom(
     }, [ref, enabled, min, max]);
 
     const reset = useCallback(() => {
+        setAxes({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
         const el = ref.current;
         const b = behavior.current;
-        if (!el || !b) { setTransform(zoomIdentity); return; }
-        select(el).call(b.transform, zoomIdentity);
+        // 내부도 identity 로 — 진행 중이던 제스처가 옛 내부 값에서 델타를 이어가지 않게.
+        if (el && b) select(el).call(b.transform, zoomIdentity);
     }, [ref]);
 
-    return { transform, reset, dragging, zoomed: transform.k !== 1 || transform.x !== 0 || transform.y !== 0 };
+    return {
+        tx: zoomIdentity.translate(axes.x.t, 0).scale(axes.x.k),
+        ty: zoomIdentity.translate(0, axes.y.t).scale(axes.y.k),
+        reset,
+        dragging,
+        zoomed: axes.x.k !== 1 || axes.x.t !== 0 || axes.y.k !== 1 || axes.y.t !== 0,
+    };
 }
