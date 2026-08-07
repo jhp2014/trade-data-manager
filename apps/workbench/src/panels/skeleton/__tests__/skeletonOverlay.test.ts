@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, overlayBounds, trimmedBounds, polylinePoints, pct, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, splitAtX, polylinePoints, pct, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -104,6 +104,34 @@ describe("trimmedBounds", () => {
 
     it("q 가 0이면 전체 범위 그대로", () => {
         expect(trimmedBounds([...many, outlier], 0)).toEqual(overlayBounds([...many, outlier]));
+    });
+});
+
+describe("absoluteFrame — 절대 뷰 고정 프레임", () => {
+    it("x 는 데이터 범위 ±15분, y 는 데이터와 무관하게 −5~+30% — 같은 %가 항상 같은 높이에 선다", () => {
+        const a = absoluteSkeleton([{ t: 555, price: 110 }, { t: 600, price: 180 }], 100, owner)!; // +80% 이상치 포함
+        const f = absoluteFrame([a])!;
+        expect(f).toEqual({ minX: 555 - ABS_FRAME.padMinutes, maxX: 600 + ABS_FRAME.padMinutes, minY: -5, maxY: 30 });
+    });
+
+    it("빈 목록은 프레임이 없다", () => {
+        expect(absoluteFrame([])).toBeNull();
+    });
+});
+
+describe("splitAtX — 타점 이후 구간 가르기", () => {
+    const pts = [{ x: 0, y: 0 }, { x: 10, y: 5 }, { x: 20, y: 12 }, { x: 30, y: 8 }];
+
+    it("경계점은 양쪽에 포함된다 — 실선과 점선이 그 점에서 이어져 보인다", () => {
+        const { past, future } = splitAtX(pts, 10);
+        expect(past.map((p) => p.x)).toEqual([0, 10]);
+        expect(future.map((p) => p.x)).toEqual([10, 20, 30]);
+    });
+
+    it("첫 점에서 가르면 과거는 그 한 점뿐(선이 안 되는 건 호출측이 길이로 거른다)", () => {
+        const { past, future } = splitAtX(pts, 0);
+        expect(past).toHaveLength(1);
+        expect(future).toHaveLength(4);
     });
 });
 

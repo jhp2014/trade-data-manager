@@ -4,7 +4,7 @@ import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../api/queries.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import {
-    normalizeSkeleton, absoluteSkeleton, trimmedBounds, polylinePoints, pct, lineOpacity, dimOpacity,
+    normalizeSkeleton, absoluteSkeleton, trimmedBounds, absoluteFrame, splitAtX, polylinePoints, pct, lineOpacity, dimOpacity,
     labelPointOf, clusterLabels, lineVisual, keysInRect,
     type LineVisual, type NormalizedSkeleton, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
@@ -169,8 +169,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const population = (isDaily ? feedQ.data?.daily.length : feedQ.data?.minute.length) ?? 0;
 
     // ── 척도: 자동(현재 선택에서 매번) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
+    // 절대 뷰는 고정 프레임(±15분 · −5~+30%) — 분위수 창은 정규화 배치의 것이다.
     const [locked, setLocked] = useState<OverlayBounds | null>(null);
-    const autoBounds = useMemo(() => trimmedBounds(shapes, 0.01), [shapes]);
+    const autoBounds = useMemo(() => (isAbs ? absoluteFrame(shapes) : trimmedBounds(shapes, 0.01)), [isAbs, shapes]);
     const bounds = locked ?? autoBounds;
 
     const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -290,6 +291,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     }, [isDaily, shapes, pointsByChart]);
     const markerByPk = useMemo(() => new Map(markers.map((m) => [m.pk, m])), [markers]);
 
+    // 타점 선택 → 그 차트의 **이후 구간 점선**(사용자 확정: "여기까지 보고 들어갔다" 이후는 결과다).
+    // 한 차트에 선택 타점이 여럿이면 가장 이른 시각 기준(이후 = 그 타점 뒤 전부).
+    const splitXByChart = useMemo(() => {
+        const m = new Map<string, number>();
+        for (const pk of selectedPks) {
+            const mk = markerByPk.get(pk);
+            if (!mk) continue;
+            const cur = m.get(mk.s.key);
+            if (cur == null || mk.x < cur) m.set(mk.s.key, mk.x);
+        }
+        return m;
+    }, [selectedPks, markerByPk]);
+
     // ── Ctrl+드래그 사각 선택 — d3-zoom 의 기본 filter 가 ctrl+mousedown 을 무시하므로 이 이벤트는 우리 것.
     const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
     const marqueeRef = useRef<typeof marquee>(null);
@@ -392,7 +406,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const anchors = markers
             .filter((m) => !selectedPks.has(m.pk))
             .map((m) => ({ key: m.pk, x: scales.x(m.x), y: scales.y(m.y) }));
-        return clusterLabels(anchors, 46, 13);
+        return clusterLabels(anchors, 72, 13); // 칩에 종목명이 붙어 차트 라벨과 같은 폭 예산
     }, [showLabels, scales, markers, selectedPks]);
 
     const labelOf = (s: NormalizedSkeleton, dotFirst: boolean): JSX.Element => {
@@ -418,9 +432,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             <button key={m.pk} onClick={(e) => onMarkerClick(m, e)}
                 onContextMenu={(e) => openPointTagMenu([m.ref], `${nameOf(m.ref.stockCode)} ${m.ref.time.slice(0, 5)}`, e)}
                 onMouseEnter={() => setHovered(m.s.key)} onMouseLeave={() => setHovered(null)}
-                title={`타점 ${m.ref.time.slice(0, 5)} — 클릭=이동·선택 · Ctrl+클릭=다중선택 · 우클릭=타점 태그`}
+                title={`${nameOf(m.ref.stockCode)} 타점 ${m.ref.time.slice(0, 5)} — 클릭=이동·선택 · Ctrl+클릭=다중선택 · 우클릭=타점 태그`}
                 style={{ ...chip, ...markerChipPos(left, top), color, fontWeight: isSel || isActive ? 700 : 400, ...(isSel ? selectedChip(ACTIVE) : {}) }}>
-                ▾{m.ref.time.slice(0, 5)}
+                {/* 종목명 포함(사용자 확정) — 절대 배치는 여러 종목이 같은 벽시계에 겹쳐 시각만으론 누군지 모른다. */}
+                ▾{m.ref.time.slice(0, 5)} {nameOf(m.ref.stockCode)}
             </button>
         );
     };
@@ -517,7 +532,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <g key={s.key} opacity={v.dim ? dimmed : lit ? 1 : baseOpacity} style={{ pointerEvents: "none" }}>
                                             {/* 선택에만 넓은 반투명 밑선 — 색만으로는 "붙잡혔다"가 잘 안 읽힌다. */}
                                             {v.role === "selected" && <polyline points={pts} fill="none" stroke={color} strokeWidth={7} strokeLinejoin="round" opacity={0.18} />}
-                                            <polyline points={pts} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />
+                                            {/* 타점이 선택된 차트는 그 시각 이후를 점선으로 — 타점까지가 판단, 이후는 결과. */}
+                                            {(() => {
+                                                const splitX = splitXByChart.get(s.key);
+                                                if (splitX == null) return <polyline points={pts} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />;
+                                                const { past, future } = splitAtX(s.points, splitX);
+                                                return (
+                                                    <>
+                                                        {past.length >= 2 && <polyline points={polylinePoints({ ...s, points: past }, scales.x, scales.y)} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />}
+                                                        {future.length >= 2 && <polyline points={polylinePoints({ ...s, points: future }, scales.x, scales.y)} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" strokeDasharray="4 4" />}
+                                                    </>
+                                                );
+                                            })()}
                                             {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. */}
                                             {(lit || dotsForAll) && s.points.map((p, i) => (
                                                 p.synthetic
@@ -533,7 +559,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     {p.synthetic ? fmtPct(p.y) : `${fmtPct(p.y)} · ${fmtX(p.x, xUnit)}`}
                                                 </text>
                                             )))}
-                                            {/* 타점 세로선(분봉) — 시간 라벨은 마커 칩의 몫(선은 위치만 긋는다). */}
+                                            {/* 타점 세로선(분봉) — "선택·조사 중인 것에만". 시간 라벨은 마커 칩의 몫(선은 위치만 긋는다). */}
                                             {inspecting && !isDaily && (pointsByChart.get(s.key) ?? []).map((p) => {
                                                 const x = scales.x(minutesOf(p.time) - s.baseT);
                                                 const isActive = activePoint && activePoint.code === p.stockCode && activePoint.date === p.date && activePoint.time === p.time;
@@ -544,6 +570,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             })}
                                         </g>
                                     );
+                                })}
+
+                                {/* 선택된 타점의 세로선 — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
+                                {!isDaily && [...selectedPks].map((pk) => {
+                                    const m = markerByPk.get(pk);
+                                    if (!m) return null;
+                                    const x = scales.x(m.x);
+                                    return <line key={`sv${pk}`} x1={x} x2={x} y1={box.top} y2={box.top + box.height} stroke={ACTIVE} strokeWidth={1} strokeDasharray="2 3" opacity={0.8} />;
                                 })}
 
                                 {/* 얹는 선(기준선·D선) — 같은 pct 환산. **주인이 스타일을 정한다**(사용자 확정):

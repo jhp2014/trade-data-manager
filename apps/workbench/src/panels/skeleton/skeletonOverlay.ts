@@ -125,6 +125,33 @@ export function trimmedBounds(items: readonly NormalizedSkeleton[], q: number): 
     return { minX: Math.min(lo(xs), 0), maxX: Math.max(hi(xs), 0), minY: Math.min(lo(ys), 0), maxY: Math.max(hi(ys), 0) };
 }
 
+/**
+ * 절대 뷰의 초기 프레임(사용자 확정 — LWC 차트식 고정 창): x = 데이터 범위 ±15분 패딩, y = **−5%~+30%**.
+ *
+ * 분위수 트리밍이 아니라 상수 창인 이유: 절대 뷰는 "몇 시에 몇 %였나"를 분봉 차트 보듯 읽는 화면이라,
+ * 프레임이 데이터를 따라 출렁이면 같은 +10%가 매번 다른 높이에 선다. y 를 상승 쪽으로 치우친 건 관심
+ * 대상이 상승 경로이기 때문. 창 밖 이상치는 확대·이동으로 닿고, 원위치(리셋)가 이 기본으로 돌아온다.
+ */
+export const ABS_FRAME = { padMinutes: 15, minY: -5, maxY: 30 } as const;
+
+export function absoluteFrame(items: readonly NormalizedSkeleton[]): OverlayBounds | null {
+    if (items.length === 0) return null;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (const s of items) for (const p of s.points) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; }
+    if (!Number.isFinite(minX)) return null;
+    return { minX: minX - ABS_FRAME.padMinutes, maxX: maxX + ABS_FRAME.padMinutes, minY: ABS_FRAME.minY, maxY: ABS_FRAME.maxY };
+}
+
+/**
+ * 폴리라인을 x0 에서 과거(x ≤ x0)/미래(x ≥ x0)로 가른다 — 경계점은 **양쪽에 포함**(선이 끊겨 보이지 않게).
+ * 타점 시각엔 합성 규칙 덕에 정확히 그 x 의 피벗이 있어 보간이 필요 없다(그게 이 함수의 호출측 계약이다 —
+ * x0 에 점이 없으면 그 구간이 빈 채 갈라진다).
+ */
+export function splitAtX<P extends { x: number }>(points: readonly P[], x0: number): { past: P[]; future: P[] } {
+    return { past: points.filter((p) => p.x <= x0), future: points.filter((p) => p.x >= x0) };
+}
+
 /** 폴리라인 points 속성 문자열. 소수 2자리로 끊어 DOM 문자열이 불필요하게 길어지지 않게. */
 export function polylinePoints(s: NormalizedSkeleton, sx: (x: number) => number, sy: (y: number) => number): string {
     return s.points.map((p) => `${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" ");
