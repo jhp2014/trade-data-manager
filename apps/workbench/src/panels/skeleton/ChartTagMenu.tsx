@@ -1,6 +1,7 @@
-// 차트 태그 입력창 — 골격 패널의 라벨 우클릭(단일)·헤더 태그 버튼(다중 선택 일괄)으로 연다.
-// 타점 입력창(TagMenu)과 갈라 둔 이유: 저긴 타점 하나 + 숫자키 슬롯이 본체고, 여긴 **여러 차트 일괄**이
-// 본체다(사전 편집·슬롯은 저쪽에 이미 있으니 중복하지 않는다). 사전과 색 규칙은 같은 useTags/tagColor.
+// 일괄 태그 입력창 — 골격 패널의 라벨/마커 우클릭(단일)·헤더 태그 버튼(다중 선택 일괄)으로 연다.
+// **대상 무관(generic)**: 차트든 타점이든 "붙었나(hasTag)·토글(toggle)"만 주입받는다 — 어느 정션에 쓰는지는
+// 호출부의 규약이고(차트 라벨→chart_tags / 타점 마커→review_point_tags), 사전과 색 규칙은 같은 useTags/tagColor.
+// 타점 입력창(TagMenu)과 갈라 둔 이유: 저긴 타점 하나 + 숫자키 슬롯이 본체고, 여긴 **여러 대상 일괄**이 본체다.
 //
 // 일괄 토글 규칙은 프리셋(presetToggle)과 같은 판정이다: **전원이 갖고 있으면 전부 떼고, 아니면 빠진 것만
 // 채운다** — 부분 상태에서 한 번 누르면 "일단 다 붙는다"(그게 무리를 만들던 손의 의도다).
@@ -8,35 +9,38 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createTag } from "../../api/tags.js";
 import { tagsQuery } from "../../api/queries.js";
-import { useTags, type ChartTagRef } from "../../lib/useTags.js";
+import { useTags } from "../../lib/useTags.js";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { tagColor } from "../../styles/palette.js";
 
-export function ChartTagMenu({ anchor, charts, label, onClose }: {
+export function BulkTagMenu<T>({ anchor, targets, hasTag, toggle, label, onClose }: {
     anchor: { x: number; y: number };
-    /** 대상 차트들(1개 = 단일 편집, 여럿 = 다중 선택 일괄). */
-    charts: readonly ChartTagRef[];
-    /** 헤더 표시용(종목명 · 날짜 또는 "선택 N개"). */
+    /** 대상들(1개 = 단일 편집, 여럿 = 다중 선택 일괄). */
+    targets: readonly T[];
+    /** 이 대상에 이 태그가 **직접** 붙어 있나(상속 제외 — 편집 판정). */
+    hasTag: (target: T, tagId: string) => boolean;
+    toggle: (target: T, tagId: string, on: boolean) => void;
+    /** 헤더 표시용(종목명 · 날짜 / "선택 N개"). */
     label: string;
     onClose: () => void;
 }): JSX.Element {
     const qc = useQueryClient();
-    const { tags, chartTagIdsOf, toggleChart, countOf } = useTags();
+    const { tags, countOf } = useTags();
     const [q, setQ] = useState("");
 
     // 태그별 보유 현황 — all(전원)·some(일부)·none. 다중일 때 행 표시와 토글 방향이 이걸 따른다.
     const stateOf = (tagId: string): "all" | "some" | "none" => {
         let n = 0;
-        for (const c of charts) if (chartTagIdsOf(c).includes(tagId)) n++;
-        return n === charts.length ? "all" : n > 0 ? "some" : "none";
+        for (const t of targets) if (hasTag(t, tagId)) n++;
+        return n === targets.length ? "all" : n > 0 ? "some" : "none";
     };
     const toggleAll = (tagId: string): void => {
         const st = stateOf(tagId);
         // 전원 보유 → 전부 떼기 / 아니면 빠진 것만 채우기(프리셋 규칙).
-        for (const c of charts) {
-            const has = chartTagIdsOf(c).includes(tagId);
-            if (st === "all") { if (has) toggleChart(c, tagId, false); }
-            else if (!has) toggleChart(c, tagId, true);
+        for (const t of targets) {
+            const has = hasTag(t, tagId);
+            if (st === "all") { if (has) toggle(t, tagId, false); }
+            else if (!has) toggle(t, tagId, true);
         }
     };
 
@@ -44,7 +48,7 @@ export function ChartTagMenu({ anchor, charts, label, onClose }: {
         mutationFn: (name: string) => createTag(name),
         // 새 태그는 만들자마자 대상 전부에 붙인다 — "만들기"를 누른 의도가 곧 부착이다.
         onSuccess: (tag) => {
-            for (const c of charts) toggleChart(c, tag.id, true);
+            for (const t of targets) toggle(t, tag.id, true);
             setQ("");
             void qc.invalidateQueries({ queryKey: tagsQuery().queryKey });
         },
@@ -61,7 +65,7 @@ export function ChartTagMenu({ anchor, charts, label, onClose }: {
 
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={230} maxWidth={290} maxHeight="min(55vh, 380px)" padding={0} placement="beside" offset={8}>
-            <MenuLabel>{label} · 차트 태그</MenuLabel>
+            <MenuLabel>{label} · 태그</MenuLabel>
             <div style={{ padding: "0 10px 7px" }}>
                 <input
                     autoFocus value={q} onChange={(e) => setQ(e.target.value)}
@@ -82,7 +86,7 @@ export function ChartTagMenu({ anchor, charts, label, onClose }: {
                     const c = tagColor(t.name);
                     return (
                         <button key={t.id} onClick={() => toggleAll(t.id)}
-                            title={st === "all" ? "전부에서 떼기" : charts.length > 1 ? "빠진 차트에 채우기" : "이 차트에 붙이기"}
+                            title={st === "all" ? "전부에서 떼기" : targets.length > 1 ? "빠진 대상에 채우기" : "붙이기"}
                             style={{ ...rowStyle, display: "flex", alignItems: "center", gap: 6 }}>
                             {/* ●=전원 ◐=일부 ○=없음 — 다중 일괄의 3상태가 행에서 바로 읽힌다. */}
                             <span style={{ width: 12, flexShrink: 0, color: c, fontSize: 11 }}>{st === "all" ? "●" : st === "some" ? "◐" : "○"}</span>

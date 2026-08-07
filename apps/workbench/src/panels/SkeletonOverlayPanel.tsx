@@ -12,8 +12,9 @@ import { useOverlayZoom } from "./skeleton/useOverlayZoom.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useTags } from "../lib/useTags.js";
+import { pointKey, parsePointKey, type PointRef } from "../lib/pointKey.js";
 import { evalTagExpr, isTagExprEmpty } from "./rank/tagFilter.js";
-import { ChartTagMenu } from "./skeleton/ChartTagMenu.js";
+import { BulkTagMenu } from "./skeleton/ChartTagMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { ACTIVE, HOVER, PRICE_LINE, seriesColor, tagColor } from "../styles/palette.js";
@@ -202,6 +203,8 @@ export function SkeletonOverlayPanel(): JSX.Element {
 
     // ── 선택(집합)·호버 — 화면 한정. 키가 두 모드 공통 차트키라 해상도를 오가도 선택이 유지된다.
     const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(() => new Set());
+    // 타점 선택(분봉 마커) — 차트 선택과 **별개 집합**. 그룹핑 대상이 다르다(차트 태그 vs 타점 태그).
+    const [selectedPks, setSelectedPks] = useState<ReadonlySet<string>>(() => new Set());
     const [hovered, setHovered] = useState<string | null>(null);
     const byKey = useMemo(() => new Map(shapes.map((s) => [s.key, s])), [shapes]);
     const activeKey = activePoint ? `${activePoint.code}|${activePoint.date}` : null;
@@ -257,6 +260,24 @@ export function SkeletonOverlayPanel(): JSX.Element {
         else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
     }, [effSelected, pointsByChart, goToPoint, setFocus]);
 
+    // ── 타점 마커(분봉 두 뷰) — 타점이 경로 어디에 서 있나 + 타점 단위 손잡이(이동·선택·태그).
+    // y 는 그 시각의 경로 피벗에서 찾는다: 유효한 분봉 골격은 모든 타점 시각에 피벗을 갖는다
+    // (합성 규칙 — 손 피벗이 있으면 그것, 없으면 합성 종가). 별도 가격 조회가 필요 없는 이유.
+    type Marker = { pk: string; ref: PointRef; s: NormalizedSkeleton; x: number; y: number };
+    const markers = useMemo<Marker[]>(() => {
+        if (isDaily) return [];
+        const out: Marker[] = [];
+        for (const s of shapes) {
+            for (const rp of pointsByChart.get(s.key) ?? []) {
+                const px = minutesOf(rp.time) - s.baseT;
+                const at = s.points.find((q) => q.x === px);
+                if (at) out.push({ pk: pointKey(rp), ref: rp, s, x: px, y: at.y });
+            }
+        }
+        return out;
+    }, [isDaily, shapes, pointsByChart]);
+    const markerByPk = useMemo(() => new Map(markers.map((m) => [m.pk, m])), [markers]);
+
     // ── Ctrl+드래그 사각 선택 — d3-zoom 의 기본 filter 가 ctrl+mousedown 을 무시하므로 이 이벤트는 우리 것.
     const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
     const marqueeRef = useRef<typeof marquee>(null);
@@ -281,13 +302,17 @@ export function SkeletonOverlayPanel(): JSX.Element {
             setMarquee(null);
             if (!rect || (Math.abs(rect.x1 - rect.x0) < 4 && Math.abs(rect.y1 - rect.y0) < 4)) return; // 클릭 오인 방지
             const hit = keysInRect(shapes, isAbs ? "first" : anchor, scales.x, scales.y, rect);
-            if (hit.length === 0) return;
-            setSelectedKeys((prev) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
+            if (hit.length > 0) setSelectedKeys((prev) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
+            // 타점 마커도 같은 드래그로 담는다 — 잡힌 종류가 곧 뜻이다(라벨=차트 선택, 마커=타점 선택).
+            const [l, rr] = rect.x0 <= rect.x1 ? [rect.x0, rect.x1] : [rect.x1, rect.x0];
+            const [t, b] = rect.y0 <= rect.y1 ? [rect.y0, rect.y1] : [rect.y1, rect.y0];
+            const mhit = markers.filter((m) => { const mx = scales.x(m.x); const my = scales.y(m.y); return mx >= l && mx <= rr && my >= t && my <= b; }).map((m) => m.pk);
+            if (mhit.length > 0) setSelectedPks((prev) => new Set([...prev, ...mhit]));
         };
         window.addEventListener("mousemove", move);
         window.addEventListener("mouseup", up);
         e.preventDefault();
-    }, [scales, shapes, effSelected, isAbs, anchor]);
+    }, [scales, shapes, effSelected, isAbs, anchor, markers]);
 
     // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
     // 선택·호버는 묶음에서 빼고 따로 그린다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
@@ -300,11 +325,15 @@ export function SkeletonOverlayPanel(): JSX.Element {
         return clusterLabels(anchors, LABEL_CELL.w, LABEL_CELL.h);
     }, [showLabels, scales, shapes, anchor, isAbs, pinnedKeys]);
 
-    // ── 차트 태그 메뉴 — 라벨 우클릭(단일) / 헤더 태그 버튼(선택 일괄). 그룹핑의 입력 지점.
-    const [tagMenu, setTagMenu] = useState<{ x: number; y: number; charts: { stockCode: string; date: string }[]; label: string } | null>(null);
+    // ── 태그 메뉴 — 라벨/마커 우클릭(단일) / 헤더 태그 버튼(선택 일괄). 그룹핑의 입력 지점.
+    // 어느 정션에 쓰느냐는 여기 규약이다: 차트 라벨 → 차트 태그 / 타점 마커 → 타점 태그. DB 사전은 하나.
+    type TagMenuState =
+        | { kind: "chart"; x: number; y: number; charts: { stockCode: string; date: string }[]; label: string }
+        | { kind: "point"; x: number; y: number; points: PointRef[]; label: string };
+    const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null);
     const openTagMenuFor = useCallback((s: NormalizedSkeleton, ev: { clientX: number; clientY: number; preventDefault: () => void }): void => {
         ev.preventDefault();
-        setTagMenu({ x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${fmtDate(s.date)}` });
+        setTagMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${fmtDate(s.date)}` });
     }, [nameOf]);
     const openTagMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
         const charts = [...effSelected]
@@ -312,8 +341,27 @@ export function SkeletonOverlayPanel(): JSX.Element {
             .filter((s): s is NormalizedSkeleton => !!s)
             .map((s) => ({ stockCode: s.stockCode, date: s.date }));
         if (charts.length === 0) return;
-        setTagMenu({ x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${fmtDate(charts[0].date)}` : `선택 ${charts.length}개` });
+        setTagMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${fmtDate(charts[0].date)}` : `선택 ${charts.length}개` });
     }, [effSelected, byKey, nameOf]);
+    const openPointTagMenu = useCallback((points: PointRef[], label: string, ev: { clientX: number; clientY: number; preventDefault?: () => void }): void => {
+        ev.preventDefault?.();
+        if (points.length > 0) setTagMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points, label });
+    }, []);
+
+    /** 마커 평클릭 = 그 타점으로 이동 + 단일 선택. Ctrl = 타점 선택 토글(차트 라벨과 같은 손짓). */
+    const onMarkerClick = useCallback((m: Marker, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
+        if (ev.ctrlKey || ev.metaKey) {
+            setSelectedPks((prev) => {
+                const next = new Set(prev);
+                if (next.has(m.pk)) next.delete(m.pk);
+                else next.add(m.pk);
+                return next;
+            });
+            return;
+        }
+        setSelectedPks(new Set([m.pk]));
+        goToPoint({ code: m.ref.stockCode, date: m.ref.date, time: m.ref.time }, "skeleton-overlay");
+    }, [goToPoint]);
 
     // 목록 순서 = 라벨 지점의 % 내림차순 — 그림에서 위에 있는 선이 목록에서도 위라 눈이 안 헤맨다.
     const badgeRows = useMemo(() => {
@@ -323,7 +371,17 @@ export function SkeletonOverlayPanel(): JSX.Element {
             .filter((s): s is NormalizedSkeleton => !!s)
             .sort((a, b) => labelPointOf(b, anchor).y - labelPointOf(a, anchor).y);
     }, [badge, byKey, anchor]);
-    useEffect(() => { setBadge(null); setBadgeHover(null); }, [boundsKey, anchor, grain, minuteView]);
+    useEffect(() => { setBadge(null); setBadgeHover(null); setPointBadge(null); }, [boundsKey, anchor, grain, minuteView]);
+
+    // 마커 라벨 축약 — 차트 라벨과 **별개 격자**(마커는 경로 위에 몰려 있어 더 촘촘한 칸을 쓴다).
+    const [pointBadge, setPointBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
+    const markerClusters = useMemo(() => {
+        if (!showLabels || !scales || markers.length === 0) return [];
+        const anchors = markers
+            .filter((m) => !selectedPks.has(m.pk))
+            .map((m) => ({ key: m.pk, x: scales.x(m.x), y: scales.y(m.y) }));
+        return clusterLabels(anchors, 46, 13);
+    }, [showLabels, scales, markers, selectedPks]);
 
     const labelOf = (s: NormalizedSkeleton, dotFirst: boolean): JSX.Element => {
         const dot = <span style={labelDot(visualOf(s.key).color)} />;
@@ -337,6 +395,23 @@ export function SkeletonOverlayPanel(): JSX.Element {
 
     const labelSideOf = (leftPx: number): CSSProperties =>
         labelAtStart ? { left: leftPx - 2, transform: "translateY(-50%)" } : { left: leftPx + 2, transform: "translate(-100%, -50%)" };
+
+    /** 마커 칩 — ▾시각. 컴포넌트가 아니라 함수인 이유: 패널 상태를 잔뜩 닫아 갖는데 매 렌더 새 컴포넌트면
+     *  리액트가 매번 언마운트/마운트를 반복한다(호버가 튄다). */
+    const markerChip = (m: Marker, left: number, top: number): JSX.Element => {
+        const isSel = selectedPks.has(m.pk);
+        const isActive = !!activePoint && activePoint.code === m.ref.stockCode && activePoint.date === m.ref.date && activePoint.time === m.ref.time;
+        const color = isSel || isActive ? ACTIVE : "var(--text-secondary)";
+        return (
+            <button key={m.pk} onClick={(e) => onMarkerClick(m, e)}
+                onContextMenu={(e) => openPointTagMenu([m.ref], `${nameOf(m.ref.stockCode)} ${m.ref.time.slice(0, 5)}`, e)}
+                onMouseEnter={() => setHovered(m.s.key)} onMouseLeave={() => setHovered(null)}
+                title={`타점 ${m.ref.time.slice(0, 5)} — 클릭=이동·선택 · Ctrl+클릭=다중선택 · 우클릭=타점 태그`}
+                style={{ ...chip, ...markerChipPos(left, top), color, fontWeight: isSel || isActive ? 700 : 400, ...(isSel ? selectedChip(ACTIVE) : {}) }}>
+                ▾{m.ref.time.slice(0, 5)}
+            </button>
+        );
+    };
 
     return (
         <div style={wrap}>
@@ -371,11 +446,22 @@ export function SkeletonOverlayPanel(): JSX.Element {
                 </span>
                 {effSelected.size > 0 && (
                     <button onClick={(e) => openTagMenuForSelection(e)} title="선택된 차트들에 태그 붙이기/떼기 — 그룹은 태그다" style={miniBtn}>
-                        선택 {effSelected.size} 태그
+                        차트 {effSelected.size} 태그
                     </button>
                 )}
                 {selectedKeys.size > 0 && (
-                    <button onClick={() => setSelectedKeys(new Set())} title="다중 선택 해제" style={miniBtn}>✕</button>
+                    <button onClick={() => setSelectedKeys(new Set())} title="차트 선택 해제" style={miniBtn}>✕</button>
+                )}
+                {selectedPks.size > 0 && (
+                    <button onClick={(e) => openPointTagMenu(
+                        [...selectedPks].map((pk) => markerByPk.get(pk)?.ref ?? parsePointKey(pk)).filter((p): p is PointRef => p !== null),
+                        `타점 ${selectedPks.size}개`, e)}
+                        title="선택된 타점들에 태그 붙이기/떼기(타점 태그)" style={miniBtn}>
+                        타점 {selectedPks.size} 태그
+                    </button>
+                )}
+                {selectedPks.size > 0 && (
+                    <button onClick={() => setSelectedPks(new Set())} title="타점 선택 해제" style={miniBtn}>✕</button>
                 )}
                 {zoomed && <button onClick={reset} title="원위치(더블클릭도 같음)" style={miniBtn}>원위치 ⤺</button>}
             </div>
@@ -425,28 +511,22 @@ export function SkeletonOverlayPanel(): JSX.Element {
                                                     ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
                                                     : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill={color} />
                                             ))}
-                                            {/* 피벗 값 — 기준 대비 %와 시간. 조사 중인 하나에만(다중이면 수십 벌이 겹친다). */}
+                                            {/* 피벗 값 — 기준 대비 %와 시간. 조사 중인 하나에만(다중이면 수십 벌이 겹친다).
+                                                합성점(=타점)은 %만 — 시간은 그 자리의 마커 칩이 이미 말한다(중복 표기 방지). */}
                                             {inspecting && s.points.map((p, i) => (p.x === 0 && p.y === 0 ? null : (
-                                                <text key={`pv${i}`} x={scales.x(p.x)} y={scales.y(p.y) - 7} textAnchor="middle"
+                                                <text key={`pv${i}`} x={scales.x(p.x)} y={scales.y(p.y) + (p.synthetic ? 13 : -7)} textAnchor="middle"
                                                     stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
                                                     style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
-                                                    {fmtPct(p.y)} · {fmtX(p.x, xUnit)}
+                                                    {p.synthetic ? fmtPct(p.y) : `${fmtPct(p.y)} · ${fmtX(p.x, xUnit)}`}
                                                 </text>
                                             )))}
-                                            {/* 타점 세로선(분봉) — 이 차트의 타점들이 경로 어디에 서 있나. */}
+                                            {/* 타점 세로선(분봉) — 시간 라벨은 마커 칩의 몫(선은 위치만 긋는다). */}
                                             {inspecting && !isDaily && (pointsByChart.get(s.key) ?? []).map((p) => {
                                                 const x = scales.x(minutesOf(p.time) - s.baseT);
                                                 const isActive = activePoint && activePoint.code === p.stockCode && activePoint.date === p.date && activePoint.time === p.time;
                                                 return (
-                                                    <g key={p.time}>
-                                                        <line x1={x} x2={x} y1={box.top} y2={box.top + box.height}
-                                                            stroke={isActive ? ACTIVE : "var(--text-tertiary)"} strokeWidth={1} strokeDasharray="2 3" opacity={0.8} />
-                                                        <text x={x} y={box.top + 9} textAnchor="middle"
-                                                            stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
-                                                            style={{ fontSize: 8.5, fill: isActive ? ACTIVE : "var(--text-tertiary)" }}>
-                                                            {p.time.slice(0, 5)}
-                                                        </text>
-                                                    </g>
+                                                    <line key={p.time} x1={x} x2={x} y1={box.top} y2={box.top + box.height}
+                                                        stroke={isActive ? ACTIVE : "var(--text-tertiary)"} strokeWidth={1} strokeDasharray="2 3" opacity={0.8} />
                                                 );
                                             })}
                                         </g>
@@ -519,6 +599,30 @@ export function SkeletonOverlayPanel(): JSX.Element {
                                 </button>
                             );
                         })}
+                        {/* 타점 마커 칩(분봉) — ▾시각. 차트 라벨과 같은 문법: 클릭=이동·선택, Ctrl=다중, 우클릭=**타점** 태그,
+                            뭉치면 ▾N 뱃지 → 목록. 마커 호버는 그 차트 선도 켠다(어느 경로의 타점인지 보이게). */}
+                        {markerClusters.map((c) => {
+                            const left = c.x - box.left;
+                            const top = c.y - box.top;
+                            if (c.members.length > 1) {
+                                return (
+                                    <button key={`m${c.x}|${c.y}`} onClick={(e) => setPointBadge({ x: e.clientX, y: e.clientY, members: c.members })}
+                                        title={`타점 ${c.members.length}개 뭉침 — 눌러서 목록`}
+                                        style={{ ...chip, ...markerChipPos(left, top), ...badgeChip }}>
+                                        ▾{c.members.length}
+                                    </button>
+                                );
+                            }
+                            const m = markerByPk.get(c.members[0]);
+                            if (!m) return null;
+                            return markerChip(m, left, top);
+                        })}
+                        {/* 선택된 마커는 묶음 밖 — 언제나 그린다(차트 라벨과 같은 이유). */}
+                        {[...selectedPks].map((pk) => {
+                            const m = markerByPk.get(pk);
+                            if (!m) return null;
+                            return markerChip(m, scales.x(m.x) - box.left, scales.y(m.y) - box.top);
+                        })}
                         {/* 선택·호버 라벨은 묶음 밖 — 언제나 그린다. ⚠ 호버 핸들러 필수: 라벨이 이 블록으로 옮겨
                             그려질 때 원래 엘리먼트가 언마운트라 mouseleave 를 안 쏜다(없으면 호버가 영영 안 풀린다). */}
                         {[...pinnedKeys].map((key) => {
@@ -578,7 +682,41 @@ export function SkeletonOverlayPanel(): JSX.Element {
                 </AnchoredPopover>
             )}
 
-            {tagMenu && <ChartTagMenu anchor={tagMenu} charts={tagMenu.charts} label={tagMenu.label} onClose={() => setTagMenu(null)} />}
+            {/* 뭉친 마커의 타점 목록 — 행 호버 = 그 차트 선이 켜진다. */}
+            {pointBadge && (
+                <AnchoredPopover anchor={pointBadge} onClose={() => setPointBadge(null)} minWidth={190} padding={0} placement="beside" offset={6}>
+                    <MenuLabel>{pointBadge.members.length}개 타점</MenuLabel>
+                    <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                        {pointBadge.members.map((pk) => {
+                            const m = markerByPk.get(pk);
+                            if (!m) return null;
+                            return (
+                                <div key={pk} onMouseEnter={() => setHovered(m.s.key)} onMouseLeave={() => setHovered(null)}>
+                                    <MenuItem onClick={() => { onMarkerClick(m, { ctrlKey: false, metaKey: false }); setPointBadge(null); }}>
+                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{m.ref.time.slice(0, 5)}</span>
+                                            <span>{nameOf(m.ref.stockCode)}</span>
+                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtDate(m.ref.date)}</span>
+                                        </span>
+                                    </MenuItem>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </AnchoredPopover>
+            )}
+
+            {/* 태그 메뉴 — 같은 창, 다른 정션: 차트 라벨은 chart_tags, 타점 마커는 review_point_tags. */}
+            {tagMenu?.kind === "chart" && (
+                <BulkTagMenu anchor={tagMenu} targets={tagMenu.charts} label={tagMenu.label} onClose={() => setTagMenu(null)}
+                    hasTag={(c, id) => tagsView.chartTagIdsOf(c).includes(id)}
+                    toggle={(c, id, on) => tagsView.toggleChart(c, id, on)} />
+            )}
+            {tagMenu?.kind === "point" && (
+                <BulkTagMenu anchor={tagMenu} targets={tagMenu.points} label={tagMenu.label} onClose={() => setTagMenu(null)}
+                    hasTag={(p, id) => tagsView.has(p, id)}
+                    toggle={(p, id, on) => tagsView.toggle(p, id, on)} />
+            )}
 
             <div style={footer}>
                 {/* 조사 중인 차트의 태그 — 그룹 소속이 발끝에서 바로 읽힌다(따로 열어보지 않게). */}
@@ -672,6 +810,8 @@ const badgeChip: CSSProperties = {
     border: "1px solid var(--border-subtle)", color: "var(--text-secondary)", textShadow: "none",
 };
 const labelDot = (color: string): CSSProperties => ({ width: 4, height: 4, borderRadius: 2, background: color, flexShrink: 0 });
+/** 마커 칩 자리 — 점 위 가운데(경로에 그려진 합성점 바로 위에 얹힌다). */
+const markerChipPos = (left: number, top: number): CSSProperties => ({ left, top: top - 4, transform: "translate(-50%, -100%)" });
 /** 선택된 라벨만 상자를 되받는다 — 클릭이 실제로 먹었다는 신호가 색만으로는 약하다. */
 const selectedChip = (color: string): CSSProperties => ({
     background: "var(--bg-secondary)", border: `1px solid ${color}`, borderRadius: 3,
