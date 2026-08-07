@@ -78,9 +78,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const ignore = useIgnoreCandles(code, viewDate);
     const dailySkeleton = useDailySkeleton(code, viewDate, dailyQ.data);
     const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
-    // 분봉 골격은 **타점 소유** — 소유자는 포커스 시각이 아니라 저장 타점이다(아니면 서버 owner 게이트에 걸린다).
-    const activeTime = focusedPoint?.time ?? null;
-    const minuteSkeleton = useMinuteSkeleton(code, viewDate, activeTime, minuteQ.data);
+    // 분봉 골격도 차트 소유 — 타점 없이도 그 날의 장중 경로를 찍는다(타점별 상한은 읽기 절단의 몫).
+    const minuteSkeleton = useMinuteSkeleton(code, viewDate, minuteQ.data);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
@@ -142,7 +141,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 <ControlGroup>
                     <TextToggle active={false} disabled={!lines.hasLines} onClick={() => lines.hasLines && lines.clear()} title="가격선 전체 지우기">선 지우기</TextToggle>
                     <TextToggle active={false} disabled={!dailySkeleton.hasAny} onClick={() => dailySkeleton.hasAny && dailySkeleton.clear()} title="일봉 골격 점 전체 지우기(다시 찍기)">골격 지우기</TextToggle>
-                    <TextToggle active={false} disabled={!minuteSkeleton.hasAny} onClick={() => minuteSkeleton.hasAny && minuteSkeleton.clear()} title="이 타점의 분봉 골격 점 전체 지우기">분봉골격 지우기</TextToggle>
+                    <TextToggle active={false} disabled={!minuteSkeleton.hasAny} onClick={() => minuteSkeleton.hasAny && minuteSkeleton.clear()} title="이 차트의 분봉 골격 점 전체 지우기">분봉골격 지우기</TextToggle>
                     <MarketToggle mode={mode} setMode={setMode} />
                 </ControlGroup>
             </ChartHeader>
@@ -240,7 +239,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                         onToggle: (field, market) => candleMenu.candle && dailySkeleton.toggle(candleMenu.candle.date, field, market),
                     }}
                     minuteSkeleton={{
-                        activeTime,
                         pivots: candleMenu.candle?.time ? minuteSkeleton.pivotsAt(candleMenu.candle.time) : [],
                         onToggle: (field) => candleMenu.candle?.time && minuteSkeleton.toggle(candleMenu.candle.time, field, "un"),
                     }}

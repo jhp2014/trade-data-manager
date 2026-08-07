@@ -11,22 +11,25 @@
 // 3주에 걸친 것이 같은 모양이 된다. 기간이 관심사인데 그걸 지우면 그림이 거짓말을 한다. 그래서 시간축은
 // 공통 척도(모든 골격의 t 범위 합집합)를 쓴다.
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
-import type { PointRef } from "../../lib/pointKey.js";
 
 /** 정규화 기준 피벗. */
 export type SkeletonAnchor = "first" | "last";
 
 /**
- * 정규화된 골격 하나 — 화면 좌표 이전의 값 공간(x=앵커 대비 시간, y=앵커 대비 %).
- *
- * 식별은 **타점**이지 골격이 아니다. 일봉 골격은 차트 소유라 한 폴리라인을 같은 차트의 여러 타점이 공유하는데,
- * 색(결과)도 클릭 이동도 타점의 것이다 — 골격 쪽 식별을 그대로 쓰면 일봉에서 time 이 없어 둘 다 깨진다.
+ * 정규화된 골격 하나 — 화면 좌표 이전의 값 공간(x=기준 대비 시간, y=기준 대비 %).
+ * 일봉·분봉 둘 다 **차트 소유**라 선 하나 = (종목, 날짜)이고 key = 차트키다.
+ * 타점에서 출발시키면 (종목,날짜)에 타점이 여섯일 때 같은 골격을 여섯 번 겹쳐 그려 진해 보인다.
  */
-export interface NormalizedSkeleton extends PointRef {
+export interface NormalizedSkeleton {
+    /** 차트키(`종목|날짜`). */
     key: string;
+    stockCode: string;
+    date: string;
     points: { x: number; y: number }[];
-    /** 앵커 피벗의 원 가격 — **같은 % 공간으로 다른 가격을 끌어오는 환산 계수**(기준선·D선을 얹을 때). */
+    /** 기준 가격 — **같은 % 공간으로 다른 가격을 끌어오는 환산 계수**(기준선·D선을 얹을 때). */
     basePrice: number;
+    /** 기준 피벗의 원 t — 벽시계 값(타점 시각 등)을 이 골격의 x 로 옮길 때 뺀다. 절대 배치면 0. */
+    baseT: number;
 }
 
 /** 값 공간의 경계. 비어 있으면 null(빈 화면 — 0으로 나누지 않는다). */
@@ -41,14 +44,38 @@ export interface OverlayBounds {
  * 골격 하나를 앵커 기준으로 정규화한다. 피벗 2개 미만이거나 앵커 가격이 0 이하면 null
  * (그릴 수 없는 것을 0으로 지어내지 않는다 — 축 규칙 3과 같은 태도).
  */
-export function normalizeSkeleton(pivots: readonly SkeletonWirePivot[], anchor: SkeletonAnchor, owner: PointRef & { key: string }): NormalizedSkeleton | null {
+export function normalizeSkeleton(
+    pivots: readonly SkeletonWirePivot[],
+    anchor: SkeletonAnchor,
+    owner: { key: string; stockCode: string; date: string },
+): NormalizedSkeleton | null {
     if (pivots.length < 2) return null;
     const base = anchor === "first" ? pivots[0] : pivots[pivots.length - 1];
     if (base.price <= 0) return null;
     return {
         ...owner,
         basePrice: base.price,
+        baseT: base.t,
         points: pivots.map((p) => ({ x: p.t - base.t, y: pct(p.price, base.price) })),
+    };
+}
+
+/**
+ * 절대 배치 — 정규화 없이 **벽시계 x·전일 종가 대비 % y**. 분봉 골격 전용(장중 경로를 분봉 차트 보듯).
+ * 앵커 정규화와 달리 골격끼리 시간이 정렬되지 않는 대신, "몇 시에 몇 %였나"가 그대로 남는다.
+ * prevClose 없으면(전일 미수집) null — 분모를 지어내지 않는다.
+ */
+export function absoluteSkeleton(
+    pivots: readonly SkeletonWirePivot[],
+    prevClose: number | undefined,
+    owner: { key: string; stockCode: string; date: string },
+): NormalizedSkeleton | null {
+    if (pivots.length < 2 || prevClose == null || prevClose <= 0) return null;
+    return {
+        ...owner,
+        basePrice: prevClose,
+        baseT: 0,
+        points: pivots.map((p) => ({ x: p.t, y: pct(p.price, prevClose) })),
     };
 }
 
@@ -103,21 +130,84 @@ export function polylinePoints(s: NormalizedSkeleton, sx: (x: number) => number,
 }
 
 /**
- * 겹쳐 그리기의 선 불투명도 — **개수에 반비례**한다.
+ * 겹쳐 그리기의 선 불투명도 — **개수에 반비례하되 바닥이 있다**.
  *
- * 고정값을 쓰면 골격 20개일 때는 흐리고 1000개일 때는 화면이 까맣게 찬다. 개수를 따라 낮추면 겹친 그림이
- * **밀도 지도**가 된다 — 많이 겹치는 경로는 진해지고 드문 경로는 흐려져서, 스파게티가 히스토그램으로 읽힌다.
- * 1/√n 은 겹침 그림에서 널리 쓰는 어림이다(정확한 포화점은 겹침 정도에 달렸는데 그건 미리 알 수 없다).
- * 위 클램프는 소수일 때 너무 진해지지 않게, 아래 클램프는 수천 개여도 완전히 사라지지 않게.
+ * 고정값을 쓰면 골격 20개일 때는 흐리고 500개일 때는 화면이 까맣게 찬다. 개수를 따라 낮추면 겹친 그림이
+ * **밀도 지도**가 된다 — 많이 겹치는 경로는 진해지고 드문 경로는 흐려진다. 1/√n 은 겹침 그림의 흔한 어림이다
+ * (정확한 포화점은 겹침 정도에 달렸는데 그건 미리 알 수 없다).
+ *
+ * 바닥(0.06)이 있는 이유: 아무리 많아도 **한 화면에서 읽히는 정도**는 보장돼야 한다. 예전엔 "보이는 개수"로
+ * 모수를 좁혀 확대 시 진해지게 했는데, 골격은 전부 앵커점 (0,0)을 지나므로 원점이 화면에 있는 한 보이는
+ * 개수가 전체와 같아 그 장치가 값을 못 했다. 계수(1.2)와 상한(0.45)을 낮게 잡은 건 사용자 확정 —
+ * 기본은 흐리고, 겹친 자리가 알파 누적으로 진해지는 것(밀도)이 주인공이다.
  */
-export const lineOpacity = (n: number): number => (n <= 0 ? 0 : Math.min(0.55, Math.max(0.03, 1.8 / Math.sqrt(n))));
+export const lineOpacity = (n: number): number => (n <= 0 ? 0 : Math.min(0.45, Math.max(0.06, 1.2 / Math.sqrt(n))));
 
 /** 강조 중일 때 나머지의 불투명도 — 기본값에 **비례**한다. 고정값이면 개수가 많을 때 흐림이 기본보다 진해진다. */
 export const dimOpacity = (n: number): number => Math.max(0.015, lineOpacity(n) * 0.25);
 
+/**
+ * 사각 선택 판정 — 화면 사각형에 **어느 피벗이든** 든 골격의 키(Ctrl+드래그).
+ * 라벨 지점만 보면 사각형을 선 무리 위에 그었는데 아무것도 안 잡히는 일이 생긴다 — 손이 노리는 건 선이다.
+ */
+export function keysInRect(
+    items: readonly NormalizedSkeleton[],
+    sx: (x: number) => number,
+    sy: (y: number) => number,
+    rect: { x0: number; y0: number; x1: number; y1: number },
+): string[] {
+    const [left, right] = rect.x0 <= rect.x1 ? [rect.x0, rect.x1] : [rect.x1, rect.x0];
+    const [top, bottom] = rect.y0 <= rect.y1 ? [rect.y0, rect.y1] : [rect.y1, rect.y0];
+    const out: string[] = [];
+    for (const s of items) {
+        for (const p of s.points) {
+            const x = sx(p.x);
+            const y = sy(p.y);
+            if (x >= left && x <= right && y >= top && y <= bottom) { out.push(s.key); break; }
+        }
+    }
+    return out;
+}
+
 /** 라벨이 붙는 점 — **앵커 반대쪽 끝**. 앵커 쪽은 모든 골격이 한 점에 모여 라벨을 붙일 자리가 없다. */
 export const labelPointOf = (s: NormalizedSkeleton, anchor: SkeletonAnchor): { x: number; y: number } =>
     anchor === "last" ? s.points[0] : s.points[s.points.length - 1];
+
+/**
+ * 선 하나가 지금 어떤 역할인가 — **색을 정하는 값**.
+ *   · selected : 클릭·Ctrl 다중선택으로 붙잡은 것(호버가 지나가도 남는다)
+ *   · group    : 뭉친 라벨 뱃지에 손이 올라가 그 무리가 켜진 것. 멤버마다 다른 색을 받아 목록과 짝지어진다
+ *   · hovered  : 지금 손이 가리키는 것
+ *   · base     : 나머지
+ */
+export type LineRole = "selected" | "group" | "hovered" | "base";
+
+/** 선 하나의 표시 규격. 색은 역할이 정하고(팔레트는 화면의 몫), 굵기·흐림은 여기서 정한다. */
+export interface LineVisual {
+    role: LineRole;
+    width: number;
+    /** 강조된 게 하나라도 있는데 이건 아닌가 — 흐리게 그릴지. */
+    dim: boolean;
+}
+
+/**
+ * 강조 상태 → 표시 규격. **규칙이 셋 겹쳐서** 화면 안에 삼항 연산으로 두면 다음 규칙이 붙을 때 반드시 어긋난다.
+ *
+ * 우선순위는 selected → group → hovered 다. group 이 hovered 보다 위인 게 핵심인데, 그러지 않으면
+ * **목록 행에 손을 올린 순간 그 선만 색이 바뀌어** 정작 색으로 짝을 찾던 그 순간에 대응이 끊긴다.
+ * 대신 굵기로 답한다(그룹·선택 안에서 호버된 것은 더 굵게).
+ */
+export function lineVisual(key: string, ctx: {
+    selected: ReadonlySet<string>;
+    hovered: string | null;
+    group: ReadonlySet<string> | null;
+}): LineVisual {
+    const anyLit = ctx.selected.size > 0 || ctx.hovered !== null || (ctx.group?.size ?? 0) > 0;
+    if (ctx.selected.has(key)) return { role: "selected", width: key === ctx.hovered ? 2.5 : 2, dim: false };
+    if (ctx.group?.has(key)) return { role: "group", width: key === ctx.hovered ? 2.5 : 1.75, dim: false };
+    if (key === ctx.hovered) return { role: "hovered", width: 2, dim: false };
+    return { role: "base", width: 1.25, dim: anyLit };
+}
 
 /** 라벨 자리 하나(화면 좌표). */
 export interface LabelAnchor {

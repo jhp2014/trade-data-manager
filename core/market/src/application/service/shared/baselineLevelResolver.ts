@@ -31,8 +31,16 @@ export async function resolveBaselineLevels(
     anchors: readonly ChartAnchor[],
     deps: Pick<AxisDeps, "adjDaily" | "minute">,
 ): Promise<Map<string, BaselineLevel[]>> {
+    return resolveBaselineLevelsForCharts(new Set(points.map(chartKeyOf)), anchors, deps);
+}
+
+/** 위와 같되 범위를 차트 집합으로 직접 받는다(타점 없는 차트도 선을 갖는다 — 선 역시 차트 소유다). */
+export async function resolveBaselineLevelsForCharts(
+    charts: ReadonlySet<string>,
+    anchors: readonly ChartAnchor[],
+    deps: Pick<AxisDeps, "adjDaily" | "minute">,
+): Promise<Map<string, BaselineLevel[]>> {
     type Candidate = ChartAnchor & { field: AnchorField; market: AnchorMarket };
-    const charts = new Set(points.map(chartKeyOf));
     const byChart = new Map<string, Candidate[]>();
     for (const a of anchors) {
         if (a.param !== BASELINE_PARAM || a.time != null) continue; // 차트 소유만(baselineResolver 와 같은 범위)

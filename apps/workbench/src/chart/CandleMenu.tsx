@@ -59,12 +59,8 @@ export interface CandleMenuProps {
         pivots: readonly SkeletonPivotAtCandle[];
         onToggle: (field: AnchorField, market: AnchorMarket) => void;
     };
-    /**
-     * 분봉 골격(타점 소유) — activeTime = 소유 **저장 타점** 시각(포커스 시각이 아니다). null 이면 매달 데가
-     * 없어 비활성으로 보여준다(왜 못 찍는지 알리기). 타점 시각 이후 봉에선 섹션 자체를 숨긴다(눌러보고 알지 않게).
-     */
+    /** 분봉 골격(차트 소유 — 일봉 골격과 동일) — 그 날 장중 어느 봉이든 찍는다. 타점 상한은 읽기 절단의 몫. */
     minuteSkeleton: {
-        activeTime: string | null;
         pivots: readonly SkeletonPivotAtCandle[];
         onToggle: (field: AnchorField) => void;
     };
@@ -132,9 +128,9 @@ export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketCha
     const bar = bars?.[eff] ?? null;
     const canToggle = !candle?.time && bars?.krx != null && bars?.un != null;
     const other: AnchorMarket = eff === "un" ? "krx" : "un";
-    // 분봉 골격 노출 규칙 — 타점 시각 이후 봉은 섹션 숨김 / 저장 타점 없음은 비활성(사유 표시).
-    const minuteSkelVisible = candle?.time != null && (minuteSkeleton.activeTime === null || candle.time <= minuteSkeleton.activeTime);
-    const minuteSkelEnabled = minuteSkelVisible && minuteSkeleton.activeTime !== null && !!bar;
+    // 분봉 골격 — 분봉 캔들이면 어디든(차트 소유·당일 장중 경로). 값이 없는 봉만 비활성.
+    const minuteSkelVisible = candle?.time != null;
+    const minuteSkelEnabled = minuteSkelVisible && !!bar;
 
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={210} padding={0} placement="beside" offset={6}>
@@ -176,19 +172,14 @@ export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketCha
 
                     {minuteSkelVisible && (
                         <>
-                            <SectionLabel>
-                                {anchorParamByKey.get(SKELETON_MINUTE_PARAM)?.name ?? "분봉 골격"}
-                                {minuteSkeleton.activeTime ? ` → 타점 ${minuteSkeleton.activeTime.slice(0, 5)}` : " — 저장 타점 아님(스페이스바)"}
-                            </SectionLabel>
+                            <SectionLabel>{anchorParamByKey.get(SKELETON_MINUTE_PARAM)?.name ?? "분봉 골격"}</SectionLabel>
                             <FieldButtonRow rowLabel="골격" rowColor={minuteSkelEnabled ? SKELETON : "var(--text-tertiary)"} bar={bar}
                                 cellOf={(field) => {
                                     const on = minuteSkeleton.pivots.some((p) => p.field === field);
                                     return {
                                         on,
                                         disabled: !minuteSkelEnabled,
-                                        title: minuteSkeleton.activeTime === null
-                                            ? "이 시각은 저장 타점이 아닙니다 — 스페이스바로 타점을 저장한 뒤에"
-                                            : on ? `${FIELD_LABEL[field]} 점 해제` : bar ? `UN ${FIELD_LABEL[field]} ${fmt(bar[field])} 를 골격 점으로` : "값 없음",
+                                        title: on ? `${FIELD_LABEL[field]} 점 해제` : bar ? `UN ${FIELD_LABEL[field]} ${fmt(bar[field])} 를 골격 점으로` : "값 없음",
                                     };
                                 }}
                                 onPick={(field) => { minuteSkeleton.onToggle(field); onClose(); }} />

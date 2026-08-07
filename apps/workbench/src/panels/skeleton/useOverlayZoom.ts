@@ -19,27 +19,43 @@ export interface OverlayZoom {
     transform: ZoomTransform;
     /** 원위치(더블클릭·버튼). d3 내부 상태까지 되돌린다 — setState 만 하면 다음 제스처가 옛 값에서 이어진다. */
     reset: () => void;
-    /** 그 화면 좌표를 중심으로 배율만 곱한다 — 뭉친 라벨 뱃지를 눌러 푸는 손짓. */
-    scaleAt: (cx: number, cy: number, factor: number) => void;
     /** 확대 중인가 — 원위치 버튼을 조건부로 띄울 때. */
     zoomed: boolean;
+    /** 제스처 진행 중 — 커서를 grab↔grabbing 으로 바꾸는 데 쓴다. */
+    dragging: boolean;
 }
 
 /**
  * 대상 SVG 에 이동·확대를 붙이고 현재 변환을 낸다.
  * `enabled` 가 false 면 붙이지 않는다(그릴 게 없을 때 빈 화면이 끌려다니지 않게).
  */
-export function useOverlayZoom(ref: RefObject<SVGSVGElement | null>, enabled: boolean, scaleExtent: [number, number] = [0.5, 60]): OverlayZoom {
+export function useOverlayZoom(
+    ref: RefObject<SVGSVGElement | null>,
+    enabled: boolean,
+    /**
+     * 제스처가 시작될 때(마우스다운·휠) 한 번. **d3 가 SVG 의 mousedown 을 stopImmediatePropagation 으로
+     * 삼키기 때문에** 그래프 위에서는 React onMouseDown 도 document 리스너도 안 뜬다 — 열려 있는 팝오버를
+     * 닫는 것 같은 일은 여기서 해야 한다.
+     */
+    onGestureStart?: () => void,
+    scaleExtent: [number, number] = [0.5, 60],
+): OverlayZoom {
     const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity);
+    const [dragging, setDragging] = useState(false);
     const behavior = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     const [min, max] = scaleExtent;
+    // 콜백은 ref 경유 — 인라인 함수를 의존성에 넣으면 렌더마다 zoom 이 재부착된다(제스처가 끊긴다).
+    const startRef = useRef(onGestureStart);
+    startRef.current = onGestureStart;
 
     useEffect(() => {
         const el = ref.current;
         if (!el || !enabled) return;
         const b = d3zoom<SVGSVGElement, unknown>()
             .scaleExtent([min, max])
-            .on("zoom", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => setTransform(ev.transform));
+            .on("start", () => { setDragging(true); startRef.current?.(); })
+            .on("zoom", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => setTransform(ev.transform))
+            .on("end", () => setDragging(false));
         behavior.current = b;
         const sel = select(el);
         sel.call(b);
@@ -57,13 +73,5 @@ export function useOverlayZoom(ref: RefObject<SVGSVGElement | null>, enabled: bo
         select(el).call(b.transform, zoomIdentity);
     }, [ref]);
 
-    // d3 의 scaleBy 를 그대로 쓴다 — 중심 고정 배율은 변환 합성이라 손으로 짜면 부호 하나로 어긋난다.
-    const scaleAt = useCallback((cx: number, cy: number, factor: number) => {
-        const el = ref.current;
-        const b = behavior.current;
-        if (!el || !b) return;
-        select(el).call(b.scaleBy, factor, [cx, cy]);
-    }, [ref]);
-
-    return { transform, reset, scaleAt, zoomed: transform.k !== 1 || transform.x !== 0 || transform.y !== 0 };
+    return { transform, reset, dragging, zoomed: transform.k !== 1 || transform.x !== 0 || transform.y !== 0 };
 }

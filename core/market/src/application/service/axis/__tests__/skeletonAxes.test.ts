@@ -25,9 +25,9 @@ let seq = 0;
 /** 차트 소유 일봉 골격 피벗 — 타점 시각 없음. */
 const pivot = (anchorDate: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
     ({ id: String(++seq), stockCode: CODE, date: DATE, param: "skeleton", anchorDate, field: "high", market: "un", ...over });
-/** 타점 소유 분봉 골격 피벗 — time=소유 타점, anchorTime=그 분봉. */
-const mpivot = (ownerTime: string, anchorTime: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
-    ({ id: String(++seq), stockCode: CODE, date: DATE, time: ownerTime, param: "skeleton-minute", anchorDate: DATE, anchorTime, field: "high", market: "un", ...over });
+/** 차트 소유 분봉 골격 피벗 — 일봉 pivot 과 같은 소유, anchorTime 만 분봉. */
+const mpivot = (anchorTime: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
+    ({ id: String(++seq), stockCode: CODE, date: DATE, param: "skeleton-minute", anchorDate: DATE, anchorTime, field: "high", market: "un", ...over });
 
 function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, MinuteCandle[]>; anchors?: ChartAnchor[] }): AxisDeps {
     return {
@@ -112,29 +112,34 @@ describe("골격 파생 축", () => {
     });
 });
 
-// ── 분봉 골격 축(타점 소유) — 일봉과 갈리는 지점만 본다(형태 계산은 공용이라 재검증 불필요).
+// ── 분봉 골격 축(차트 소유·타점별 읽기 절단) — 일봉과 갈리는 지점만 본다(형태 계산은 공용이라 재검증 불필요).
 describe("분봉 골격 축", () => {
     /** 09:00 4000 → 09:10 4400(+10%) → 09:25 4160 : 상승 10%/10분, 되돌림 60%. */
     const BARS = [minute("09:00:00", 4000), minute("09:10:00", 4400), minute("09:25:00", 4160)];
-    const skel = (ownerTime: string): ChartAnchor[] => [
-        mpivot(ownerTime, "09:00:00", { field: "open" }),
-        mpivot(ownerTime, "09:10:00"),
-        mpivot(ownerTime, "09:25:00", { field: "close" }),
+    const skel: ChartAnchor[] = [
+        mpivot("09:00:00", { field: "open" }),
+        mpivot("09:10:00"),
+        mpivot("09:25:00", { field: "close" }),
     ];
 
     it("기울기 단위가 **분**이다 — 10% / 10분 = 1.0%/분", async () => {
         const P = point("09:30:00");
-        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel("09:30:00") });
+        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel });
         expect((await axisOf("skeleton-min-slope").compute([P], d))[0].value).toBeCloseTo(1.0, 2);
         expect((await axisOf("skeleton-min-pullback").compute([P], d))[0].value).toBeCloseTo(60, 0);
     });
 
-    it("**타점 소유** — 같은 차트라도 골격을 찍은 타점만 값을 받는다(일봉과 정반대)", async () => {
-        const mine = point("09:30:00");
-        const other = point("14:00:00");
-        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel("09:30:00") });
-        const out = await axisOf("skeleton-min-slope").compute([mine, other], d);
-        expect(out.map((v) => v.time)).toEqual(["09:30:00"]); // other 는 자기 골격이 없다
+    it("**차트 소유 + 읽기 절단** — 이른 타점은 자기 시각까지의 경로만 본다(축 규칙 2)", async () => {
+        // 09:15 타점: 09:25 되돌림 골은 미래 — 되돌림 0(2점 단언)이어야 한다. 60 이 나오면 미래가 샌 것.
+        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel });
+        expect((await axisOf("skeleton-min-pullback").compute([point("09:15:00")], d))[0].value).toBe(0);
+        // 14:00 타점: 하루 경로 전체가 자기 이력 — 같은 차트 골격 한 벌을 그대로 받는다(다시 찍을 필요 없음).
+        expect((await axisOf("skeleton-min-pullback").compute([point("14:00:00")], d))[0].value).toBeCloseTo(60, 0);
+    });
+
+    it("자기 시각까지 피벗이 2개 미만이면 미입력 취급 — 그 시각엔 골격이 아직 없다", async () => {
+        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel });
+        expect(await axisOf("skeleton-min-slope").compute([point("09:05:00")], d)).toEqual([]);
     });
 
     it("일봉 골격은 분봉 축에 안 섞인다(그 반대도) — param 이 해상도라 경로가 갈린다", async () => {
@@ -142,12 +147,18 @@ describe("분봉 골격 축", () => {
         const dailyOnly = deps({ dailies: HISTORY, minutesByDay: { [DATE]: BARS }, anchors: [pivot("2026-06-22", { field: "open" }), pivot("2026-06-24")] });
         expect(await axisOf("skeleton-min-slope").compute([P], dailyOnly)).toEqual([]);
 
-        const minuteOnly = deps({ dailies: HISTORY, minutesByDay: { [DATE]: BARS }, anchors: skel("09:30:00") });
+        const minuteOnly = deps({ dailies: HISTORY, minutesByDay: { [DATE]: BARS }, anchors: skel });
         expect(await axisOf("skeleton-base-rise").compute([P], minuteOnly)).toEqual([]);
     });
 
     it("분봉 미수집이면 그 골격 통째 결손", async () => {
-        const d = deps({ minutesByDay: { [DATE]: BARS.slice(0, 2) }, anchors: skel("09:30:00") }); // 09:25 봉 없음
+        const d = deps({ minutesByDay: { [DATE]: BARS.slice(0, 2) }, anchors: skel }); // 09:25 봉 없음
+        expect(await axisOf("skeleton-min-slope").compute([point("09:30:00")], d)).toEqual([]);
+    });
+
+    it("옛 타점 소유 행(time 있음)은 잔재 — 무시된다", async () => {
+        const legacy = skel.map((a) => ({ ...a, time: "09:30:00" }));
+        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: legacy });
         expect(await axisOf("skeleton-min-slope").compute([point("09:30:00")], d)).toEqual([]);
     });
 

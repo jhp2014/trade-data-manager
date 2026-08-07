@@ -13,14 +13,18 @@ export interface SkeletonWirePivot {
     price: number;
 }
 
-/** 골격 하나 = 폴리라인 하나. */
+/** 골격 하나 = 폴리라인 하나. 일봉·분봉 둘 다 **차트(종목,날짜) 소유**다. */
 export interface SkeletonWireEntry {
     stockCode: string;
     date: string; // YYYY-MM-DD
-    /** 분봉 골격(타점 소유)만 채워진다. 없으면 일봉 골격 = **차트 소유**라 그 차트의 모든 타점이 공유한다. */
-    time?: string; // HH:MM:SS
     /** 시간순 정렬된 피벗 2개 이상(그 미만은 골격이 아니라 응답에 없다). */
     pivots: SkeletonWirePivot[];
+    /**
+     * 전일 종가(UN, 수정주가) — **분봉 골격에만**. 절대 배치 뷰(정규화 없이 벽시계 x·등락률 y)의 분모다.
+     * 종목이 달라도 등락률로 비교하려면 공통 기준이 필요한데, 그게 장중 경로에선 전일 종가다.
+     * 없으면(전일 미수집) 절대 뷰에서 그 골격만 빠진다 — 지어내지 않는다.
+     */
+    prevClose?: number;
 }
 
 /** 차트에 그은 선 하나(가격 좌표) — 골격과 같은 % 공간에 얹힌다. */

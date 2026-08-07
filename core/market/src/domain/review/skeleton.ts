@@ -41,23 +41,21 @@ export function sortPivots<T extends SkeletonPivot>(pivots: readonly T[]): T[] {
 }
 
 /**
- * 골격의 소유 — 무엇에 매달린 골격인가. **상한(축 규칙 2)이 여기서 나온다.**
- *   · time 없음 = 차트(종목,날짜) 소유 = 일봉 골격 → 피벗은 그 날짜 **이전** 캔들
- *   · time 있음 = 타점 소유 = 분봉 골격 → 피벗은 **그 날 그 시각까지**의 분봉
- * 두 골격이 한 param 을 공유하지 않으므로(레지스트리가 갈라놨다) 소유 grain 은 param 이 이미 결정한다 —
- * 이 타입은 "그래서 상한이 어디냐"만 옮긴다.
+ * 골격의 소유 차트 — 두 골격 다 **차트(종목,날짜) 소유**다(분봉 골격도 2026-08 에 타점 소유에서 옮겨왔다).
+ * 상한(축 규칙 2)의 절반이 여기서 나온다: 일봉 피벗은 이 날짜 이전, 분봉 피벗은 이 날짜 당일.
+ * 나머지 절반(타점 시각 이후 금지)은 쓰기가 아니라 **읽기 시점 절단**(resolveMinuteSkeletons)의 몫이 됐다.
  */
 export interface SkeletonOwner {
     date: string; // YYYY-MM-DD
-    time?: string; // HH:MM:SS — 있으면 타점 소유(분봉 골격)
 }
 
 /**
  * 집합 규칙 검증 — 이 골격에 피벗 하나를 **더할 때** 위반이면 사유, 통과면 null.
  * 행 단위(anchorInputError)로는 볼 수 없는 것만 여기 있다:
- *  ① **상한**(축 규칙 2: 타점 이후 정보 금지) — 소유에 따라 다르다(SkeletonOwner 주석).
- *     일봉 골격이 당일 봉을 담으면 09:15 타점이 15:30 고가를 보게 되고, 분봉 골격이 타점 이후 봉을 담으면
- *     그 자리에서 알 수 없던 값을 쓰게 된다. 둘 다 "그 순간까지의 이력"이라는 골격의 뜻을 깬다.
+ *  ① **상한** — 피벗의 해상도가 가른다(param 이 candles 를 강제하므로 owner 플래그가 더 필요 없다):
+ *     · 일봉 피벗(anchorTime 없음): 차트 날짜 **이전**만 — 당일 봉은 타점 이후 정보(15:30 고가)를 담는다.
+ *     · 분봉 피벗(anchorTime 있음): 차트 **당일**만 — 다른 날 장중은 이 차트의 경로가 아니다.
+ *       타점 시각 상한은 여기 없다(차트 소유라 쓰기 시점엔 타점이 없다) — 읽기 절단이 지킨다.
  *  ② 같은 캔들에 高·低 동시 금지 — 순서 파생의 유일한 구멍(seq 를 안 두는 대가로 지키는 규칙).
  *  ③ 같은 캔들·같은 값 중복 금지 — 같은 점을 두 번 찍은 것(저장소 멱등이 잡지만 사유를 알려주는 게 낫다).
  *
@@ -65,11 +63,10 @@ export interface SkeletonOwner {
  * 섞일 경로가 없어졌다. 검증을 없앤 게 아니라 **표현으로 불가능하게** 만든 것.
  */
 export function skeletonSetError(owner: SkeletonOwner, existing: readonly SkeletonPivot[], added: SkeletonPivot): string | null {
-    if (owner.time == null) {
+    if (added.anchorTime == null) {
         if (added.anchorDate >= owner.date) return "골격 피벗은 차트 날짜 이전 캔들만 — 당일 봉은 타점 이후 정보를 담는다";
     } else {
-        if (added.anchorDate !== owner.date) return "분봉 골격은 타점 당일 봉만 지정합니다";
-        if (added.anchorTime == null || added.anchorTime > owner.time) return "분봉 골격 피벗은 타점 시각까지만 — 그 뒤 봉은 그 자리에서 알 수 없던 값이다";
+        if (added.anchorDate !== owner.date) return "분봉 골격은 차트 당일의 장중 경로만 지정합니다";
     }
 
     for (const p of existing) {

@@ -68,6 +68,18 @@ export function tagColor(name: string): string {
     return TAG_GROUP_COLORS[h % TAG_GROUP_COLORS.length];
 }
 
+/**
+ * 계열 색 — **한 무리 안에서 서로 구분만 되면 되는** 색들(뜻은 없다). 뭉친 골격 라벨을 펼칠 때
+ * 멤버마다 하나씩 돌려써서, 그림의 선과 목록의 행이 색으로 짝지어진다.
+ * 태그 색(TAG_GROUP_COLORS)과 값이 겹쳐도 **따로 둔다** — 저긴 이름에서 색이 결정론적으로 나와야 하고
+ * 여긴 그저 순번이라, 한쪽을 손볼 때 다른 쪽이 딸려 바뀌면 안 된다.
+ * 의미색(ACTIVE 하늘·HOVER 앰버)은 뺐다 — 선택·호버와 섞이면 그 둘이 뜻을 잃는다.
+ */
+const SERIES_COLORS = ["#7c9c3f", "#b8792e", "#3f8f8a", "#8b5cf6", "#c0567e", "#4a7fc1", "#a5883a", "#5f9e6b", "#c2593f", "#7a6fd0"];
+
+/** 순번 → 계열 색. 무리가 팔레트보다 크면 돌려쓴다(좁은 자리에 모인 것들이라 혼동이 적다). */
+export const seriesColor = (i: number): string => SERIES_COLORS[((i % SERIES_COLORS.length) + SERIES_COLORS.length) % SERIES_COLORS.length];
+
 // ── 차트
 export const DRIFT = "#e07b1a"; // 검색날짜 드리프트(기준일과 다른 날을 보는 중)
 export const MARKER_NOW = "#111827"; // 분봉 시간선 ▼ — "지금 여기" 표식. 저장 타점 ▼(흰/회색)와 색으로 갈린다

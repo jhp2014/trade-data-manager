@@ -50,11 +50,12 @@ export class ChartAnchors {
         if (ruleError) throw new BadRequestException(ruleError);
 
         // 골격 집합 규칙 — 기존 피벗을 읽어서 본다(사람 클릭당 1회라 추가 조회 부담 없음).
+        // 두 골격 다 차트 소유(owner 게이트가 time 을 이미 거부) — time 있는 행은 옛 타점 소유의 잔재라 무시.
         if (def.key === SKELETON_PARAM || def.key === SKELETON_MINUTE_PARAM) {
             const existing = (await this.repo.listByChart(input.stockCode, input.date))
-                .filter((a) => a.param === def.key && a.field != null && a.market != null && (a.time ?? undefined) === input.time)
+                .filter((a) => a.param === def.key && a.field != null && a.market != null && a.time == null)
                 .map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! }));
-            const setError = skeletonSetError({ date: input.date, time: input.time }, existing, input as SkeletonPivot);
+            const setError = skeletonSetError({ date: input.date }, existing, input as SkeletonPivot);
             if (setError) throw new BadRequestException(setError);
         }
         // 단일 param(multiple:false)은 교체 — 지금 레지스트리엔 없지만, 생기면 저장이 조용히 둘을 만들지 않게 여기서 지운다.

@@ -151,14 +151,15 @@ export function useDailySkeleton(code: string, date: string, dailyBundle: ChartB
 }
 
 /**
- * 분봉 골격(타점 소유·당일) — coord = anchorTime, 소유자는 activeTime(**저장 타점**만 — 아니면 서버
- * owner 게이트에 걸린다). 시장은 언제나 UN(분봉 앵커 규칙)이라 toggle 의 market 인자는 무시된다.
+ * 분봉 골격(차트 소유·당일 장중 경로) — coord = anchorTime. 일봉 골격과 같은 소유라 activeTime 이 없어도
+ * 편집된다(타점별 상한은 읽기 절단 — resolveMinuteSkeletons — 의 몫이지 쓰기의 몫이 아니다).
+ * 시장은 언제나 UN(분봉 앵커 규칙)이라 toggle 의 market 인자는 무시된다.
  */
-export function useMinuteSkeleton(code: string, date: string, activeTime: string | null, minuteBundle: ChartBundle | undefined): SkeletonEditor<{ time: number; price: number }> {
+export function useMinuteSkeleton(code: string, date: string, minuteBundle: ChartBundle | undefined): SkeletonEditor<{ time: number; price: number }> {
     const { anchors, mut } = useChartAnchors(code, date);
     const mine = useMemo(
-        () => anchors.filter((a) => a.param === SKELETON_MINUTE_PARAM && a.time === activeTime && a.field != null && a.anchorTime != null),
-        [anchors, activeTime],
+        () => anchors.filter((a) => a.param === SKELETON_MINUTE_PARAM && a.time == null && a.field != null && a.anchorTime != null),
+        [anchors],
     );
     const points = useMemo(() => {
         const sorted = sortPivots(mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime!, field: a.field!, market: a.market! })));
@@ -173,10 +174,10 @@ export function useMinuteSkeleton(code: string, date: string, activeTime: string
         points,
         pivotsAt: (anchorTime) => mine.filter((a) => a.anchorTime === anchorTime).map((a) => ({ field: a.field!, market: a.market! })),
         toggle: (anchorTime, field) => {
-            if (!code || !date || !activeTime) return;
+            if (!code || !date) return;
             const existing = mine.find((a) => a.anchorTime === anchorTime && a.field === field);
             if (existing) mut.remove.mutate(existing.id);
-            else mut.add.mutate({ stockCode: code, date, time: activeTime, param: SKELETON_MINUTE_PARAM, anchorDate: date, anchorTime, field, market: "un" });
+            else mut.add.mutate({ stockCode: code, date, param: SKELETON_MINUTE_PARAM, anchorDate: date, anchorTime, field, market: "un" });
         },
         clear: () => mut.removeMany(mine.map((a) => a.id)),
         hasAny: mine.length > 0,

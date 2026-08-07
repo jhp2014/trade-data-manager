@@ -146,16 +146,17 @@ export const IGNORE_CANDLE_PARAM = "ignore-candle";
 export const SKELETON_PARAM = "skeleton";
 
 /**
- * 분봉 골격 키 — 타점까지의 **장중 경로**를 찍은 피벗 시퀀스. 일봉 골격의 짝이지만 **별개 param 이다.**
+ * 분봉 골격 키 — 그 날의 **장중 경로**를 찍은 피벗 시퀀스. 일봉 골격의 짝이지만 **별개 param 이다**
+ * (param 이 곧 해상도라 "한 골격 안 해상도 통일" 검증이 필요 없다 — 섞일 표현이 없다).
  *
- * **왜 같은 param 의 다른 해상도가 아니라 별개인가**: 소유 grain 이 다르다(일봉=차트 / 분봉=타점).
- * 타점 소유인 이유는 같은 차트의 09:15 타점과 14:00 타점이 **실제로 다른 장중 경로**를 갖기 때문이고,
- * 그게 분봉 골격이 담으려는 정보 전부다(일봉 모양이 장중에 안 변해서 차트 소유인 것과 정확히 반대).
- * 그리고 타점이 일봉 골격을 따로 가질 일은 없으므로 **어느 param 도 두 grain 을 동시에 쓰지 않는다** —
- * owner 플래그가 이진으로 남고 두 grain 의 병합 규칙이라는 문제가 생기지 않는다.
+ * **차트 소유다**(처음엔 타점 소유였다가 옮겼다). 장중 경로는 그 날에 하나고, 타점은 그 경로를 자기
+ * 시각에서 **끊어 보는 것**뿐이다 — 09:15 타점과 14:00 타점이 다른 건 경로가 아니라 절단점이다.
+ * 타점 소유로 두면 같은 경로를 타점마다 다시 찍어야 하고, 화면은 같은 선을 여러 벌 겹쳐 그린다.
  *
- * 부수 효과: param 이 곧 해상도라 "한 골격 안 해상도 통일" 검증이 필요 없어졌다(섞일 표현이 없다).
- * 상한도 갈린다 — 일봉은 차트 날짜 이전, 분봉은 **그 날 그 시각까지**(skeletonSetError).
+ * ⚠ 그 대가로 축 규칙 2(타점 이후 정보 금지)의 보장이 **쓰기 시점 → 읽기 시점 절단**으로 옮겨갔다.
+ * 절단은 resolveMinuteSkeletons(타점판) 안에서만 한다 — 분봉 골격을 타점 문맥으로 읽는 다른 경로를
+ * 만들지 말 것(절단을 빠뜨린 경로는 미래 정보를 조용히 흘리고, 그건 눈으로 못 잡는다).
+ * 상한: 일봉은 차트 날짜 이전, 분봉은 **차트 당일**(그 날 장중 — skeletonSetError).
  */
 export const SKELETON_MINUTE_PARAM = "skeleton-minute";
 
@@ -172,7 +173,7 @@ export const ANCHOR_PARAMS: readonly AnchorParamDef[] = [
     { key: BASELINE_PARAM, name: "기준선", needsPrice: true, owner: "chart", multiple: true },
     { key: IGNORE_CANDLE_PARAM, name: "무시 캔들", needsPrice: false, owner: "chart", multiple: true, candles: "daily" },
     { key: SKELETON_PARAM, name: "골격", needsPrice: true, owner: "chart", multiple: true, candles: "daily" },
-    { key: SKELETON_MINUTE_PARAM, name: "분봉 골격", needsPrice: true, owner: "point", multiple: true, candles: "minute" },
+    { key: SKELETON_MINUTE_PARAM, name: "분봉 골격", needsPrice: true, owner: "chart", multiple: true, candles: "minute" },
 ];
 
 /** key → 정의. 검증·표시가 이름으로 지목할 때. */

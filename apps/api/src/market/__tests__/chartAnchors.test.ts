@@ -87,42 +87,34 @@ describe("ChartAnchors 유스케이스 — 골격 집합 규칙", () => {
     });
 });
 
-describe("ChartAnchors 유스케이스 — 분봉 골격(타점 소유)", () => {
+describe("ChartAnchors 유스케이스 — 분봉 골격(차트 소유)", () => {
     let repo: ReturnType<typeof memoryRepo>;
     let c: ChartAnchors;
-    const OWNER = "10:00:00";
     const mp = (anchorTime: string, over: Partial<NewChartAnchor> = {}): NewChartAnchor =>
-        ({ ...CHART, time: OWNER, param: "skeleton-minute", anchorDate: CHART.date, anchorTime, field: "high", market: "un", ...over });
+        ({ ...CHART, param: "skeleton-minute", anchorDate: CHART.date, anchorTime, field: "high", market: "un", ...over });
 
     beforeEach(() => {
         repo = memoryRepo();
         c = new ChartAnchors(repo, pointStore([]));
     });
 
-    it("타점 시각까지의 당일 분봉을 쌓는다", async () => {
+    it("그 날 장중 경로를 쌓는다 — 늦은 시각도 저장 허용(타점 상한은 읽기 절단의 몫)", async () => {
         await c.add(mp("09:05:00", { field: "open" }));
         await c.add(mp("09:40:00"));
-        await c.add(mp("10:00:00", { field: "close" })); // 타점 시각 자신은 허용
+        await c.add(mp("15:20:00", { field: "close" }));
         expect(repo.rows).toHaveLength(3);
     });
 
-    it("타점 시각 이후 봉은 거부 — 그 자리에서 알 수 없던 값", async () => {
-        await expect(c.add(mp("10:01:00"))).rejects.toThrow(/타점 시각까지만/);
+    it("차트 당일이 아니면 거부 — 다른 날 장중은 이 차트의 경로가 아니다", async () => {
+        await expect(c.add(mp("14:00:00", { anchorDate: "2026-07-01" }))).rejects.toThrow(/차트 당일/);
     });
 
-    it("타점 당일이 아니면 거부", async () => {
-        await expect(c.add(mp("14:00:00", { anchorDate: "2026-07-01" }))).rejects.toThrow(/타점 당일/);
+    it("차트 소유 — 타점 시각을 실으면 거부(owner 게이트, 일봉 골격과 동일)", async () => {
+        await expect(c.add(mp("09:40:00", { time: "10:00:00" }))).rejects.toThrow(/차트 소유/);
     });
 
-    it("타점 소유 param 인데 시각이 없으면 거부(owner 게이트)", async () => {
-        await expect(c.add(mp("09:40:00", { time: undefined }))).rejects.toThrow(/타점 소유/);
-    });
-
-    it("같은 차트의 **다른 타점** 골격과 섞이지 않는다 — 같은 분봉을 각자 찍을 수 있다", async () => {
+    it("한 차트에 한 벌 — 같은 점 재지정은 거부", async () => {
         await c.add(mp("09:40:00"));
-        await c.add(mp("09:40:00", { time: "11:00:00" })); // 다른 타점의 골격
-        expect(repo.rows).toHaveLength(2);
-        // 같은 타점에 같은 점 재지정은 여전히 거부.
         await expect(c.add(mp("09:40:00"))).rejects.toThrow(/이미 찍은/);
     });
 
@@ -146,7 +138,9 @@ describe("ChartAnchors 유스케이스 — 타점 삭제 cascade", () => {
         points.remove = (c, d, t) => { calls.push("point"); return orig(c, d, t); };
 
         const uc = new ChartAnchors(repo, points);
-        await uc.add({ ...CHART, time: "10:00:00", param: "skeleton-minute", anchorDate: CHART.date, anchorTime: "09:40:00", field: "high", market: "un" });
+        // 타점 소유 앵커는 현재 레지스트리에 없다(분봉 골격도 차트 소유로 이전) — cascade 기계 자체는 남아
+        // 있어야 하므로(미래의 point 소유 param·마이그레이션 전 잔재) repo 에 직접 심어 검증한다.
+        await repo.add([{ ...CHART, time: "10:00:00", param: "skeleton-minute", anchorDate: CHART.date, anchorTime: "09:40:00", field: "high", market: "un" }]);
         await uc.removePoint(CHART.stockCode, CHART.date, "10:00:00");
 
         expect(calls).toEqual(["anchors", "point"]); // 앵커 먼저 — 최악의 잔재가 "골격 없는 타점"이 되게

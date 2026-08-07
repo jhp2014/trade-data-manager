@@ -2,8 +2,7 @@ import { describe, it, expect } from "vitest";
 import { skeletonSetError, skeletonShape, sortPivots, type PricedPivot, type SkeletonPivot } from "../skeleton.js";
 
 const CHART_DATE = "2026-07-02";
-const CHART = { date: CHART_DATE };                       // 차트 소유(일봉 골격)
-const POINT = { date: CHART_DATE, time: "10:00:00" };     // 타점 소유(분봉 골격)
+const CHART = { date: CHART_DATE }; // 두 골격 다 차트 소유 — 상한은 피벗 해상도가 가른다
 const pv = (anchorDate: string, field: SkeletonPivot["field"], anchorTime?: string): SkeletonPivot => ({ anchorDate, field, anchorTime, market: "un" });
 /** 가격 피벗 — tIndex 는 해상도별 시간좌표(형태 계산은 이 차이만 쓴다). */
 const pp = (tIndex: number, price: number, field: SkeletonPivot["field"] = "high", anchorDate = `2026-06-${String(tIndex + 1).padStart(2, "0")}`): PricedPivot =>
@@ -42,23 +41,17 @@ describe("skeletonSetError — 행 단위로는 못 보는 집합 규칙", () =>
         expect(skeletonSetError(CHART, [pv("2026-06-10", "high")], pv("2026-06-11", "low"))).toBeNull();
     });
 
-    it("타점 소유(분봉 골격)는 상한이 **타점 시각** — 그 뒤 봉은 그 자리에서 알 수 없던 값", () => {
-        expect(skeletonSetError(POINT, [], pv(CHART_DATE, "high", "09:30:00"))).toBeNull();
-        expect(skeletonSetError(POINT, [], pv(CHART_DATE, "high", "10:00:00"))).toBeNull(); // 타점 시각 자신은 허용
-        expect(skeletonSetError(POINT, [], pv(CHART_DATE, "high", "10:01:00"))).toMatch(/타점 시각까지만/);
+    it("분봉 피벗은 차트 당일만 — 타점 시각 상한은 쓰기가 아니라 읽기 절단의 몫", () => {
+        expect(skeletonSetError(CHART, [], pv(CHART_DATE, "high", "09:30:00"))).toBeNull();
+        // 늦은 시각도 저장은 허용 — 타점별 상한은 resolveMinuteSkeletons 가 자른다(차트 소유라 쓰기 시점엔 타점이 없다).
+        expect(skeletonSetError(CHART, [], pv(CHART_DATE, "high", "15:30:00"))).toBeNull();
+        expect(skeletonSetError(CHART, [], pv("2026-07-01", "high", "14:00:00"))).toMatch(/차트 당일/);
+        expect(skeletonSetError(CHART, [], pv("2026-07-03", "high", "09:30:00"))).toMatch(/차트 당일/);
     });
 
-    it("분봉 골격은 타점 당일만 — 전날 장중은 담지 않는다", () => {
-        expect(skeletonSetError(POINT, [], pv("2026-07-01", "high", "14:00:00"))).toMatch(/타점 당일/);
-    });
-
-    it("분봉 골격에 일봉 좌표(시각 없음)는 거부 — param 이 해상도라 섞일 표현이 없다", () => {
-        expect(skeletonSetError(POINT, [], pv(CHART_DATE, "high"))).toMatch(/타점 시각까지만/);
-    });
-
-    it("소유가 달라도 캔들 내 규칙은 같다 — 분봉 한 봉의 高+低도 금지", () => {
-        expect(skeletonSetError(POINT, [pv(CHART_DATE, "high", "09:30:00")], pv(CHART_DATE, "low", "09:30:00"))).toMatch(/선후를 알 수 없/);
-        expect(skeletonSetError(POINT, [pv(CHART_DATE, "high", "09:30:00")], pv(CHART_DATE, "low", "09:31:00"))).toBeNull();
+    it("해상도가 달라도 캔들 내 규칙은 같다 — 분봉 한 봉의 高+低도 금지", () => {
+        expect(skeletonSetError(CHART, [pv(CHART_DATE, "high", "09:30:00")], pv(CHART_DATE, "low", "09:30:00"))).toMatch(/선후를 알 수 없/);
+        expect(skeletonSetError(CHART, [pv(CHART_DATE, "high", "09:30:00")], pv(CHART_DATE, "low", "09:31:00"))).toBeNull();
     });
 
     it("같은 점 재지정은 사유를 알려준다", () => {
