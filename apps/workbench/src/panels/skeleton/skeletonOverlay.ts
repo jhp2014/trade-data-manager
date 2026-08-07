@@ -25,7 +25,8 @@ export interface NormalizedSkeleton {
     key: string;
     stockCode: string;
     date: string;
-    points: { x: number; y: number }[];
+    /** synthetic = 타점 종가 합성점(분봉) — 손 피벗과 구분해 그린다(속 빈 원). */
+    points: { x: number; y: number; synthetic?: boolean }[];
     /** 기준 가격 — **같은 % 공간으로 다른 가격을 끌어오는 환산 계수**(기준선·D선을 얹을 때). */
     basePrice: number;
     /** 기준 피벗의 원 t — 벽시계 값(타점 시각 등)을 이 골격의 x 로 옮길 때 뺀다. 절대 배치면 0. */
@@ -56,7 +57,7 @@ export function normalizeSkeleton(
         ...owner,
         basePrice: base.price,
         baseT: base.t,
-        points: pivots.map((p) => ({ x: p.t - base.t, y: pct(p.price, base.price) })),
+        points: pivots.map((p) => ({ x: p.t - base.t, y: pct(p.price, base.price), ...(p.synthetic ? { synthetic: true } : {}) })),
     };
 }
 
@@ -75,7 +76,7 @@ export function absoluteSkeleton(
         ...owner,
         basePrice: prevClose,
         baseT: 0,
-        points: pivots.map((p) => ({ x: p.t, y: pct(p.price, prevClose) })),
+        points: pivots.map((p) => ({ x: p.t, y: pct(p.price, prevClose), ...(p.synthetic ? { synthetic: true } : {}) })),
     };
 }
 

@@ -86,6 +86,12 @@ export function skeletonSetError(owner: SkeletonOwner, existing: readonly Skelet
 export interface PricedPivot extends SkeletonPivot {
     price: number;
     /**
+     * 타점 종가 합성 피벗인가 — **"타점 종가 = 골격의 한 점"**(사용자 확정 규칙, 분봉 전용).
+     * 손으로 안 찍은 파생 점이라 저장엔 없고 읽기(resolveMinuteSkeletonsForCharts)가 만든다.
+     * 화면이 손 피벗과 구분해 그리라고 표시만 남긴다 — 형태 계산은 구분하지 않는다(같은 경로 점이다).
+     */
+    synthetic?: boolean;
+    /**
      * 시간축 좌표 — **단위는 해상도가 정한다**(형태 계산은 차이만 쓰므로 원점도 무관).
      *   · 일봉 골격: 창 안 **거래일 인덱스**(달력일이면 주말이 낀다)
      *   · 분봉 골격: **벽시계 분**(장중은 연속이라 갭이 없고, 봉 개수로 세면 유동성 낮은 종목이 왜곡된다)

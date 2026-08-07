@@ -61,11 +61,13 @@ const curationPoolProvider: Provider = { provide: CURATION_POOL, useFactory: ():
 // 손으로 두 번 적으면 한쪽만 어댑터를 바꿔도 컴파일이 통과해, 같은 골격이 두 소비자에서 다른 가격으로 풀린다.
 const axisDepsOf = (marketPool: Pool, curationPool: Pool): AxisDeps => {
     const db = createDb(marketPool);
+    const curationDb = createDb(curationPool);
     return {
         minute: new DrizzleMinuteCandleRepository(db),
         rawDaily: new DrizzleRawDailyCandleRepository(db),
         adjDaily: new DrizzleDailyCandleRepository(db), // 수정주가 창(AdjustedDailyReader)
-        chartAnchor: new DrizzleChartAnchorRepository(createDb(curationPool)),
+        chartAnchor: new DrizzleChartAnchorRepository(curationDb),
+        reviewPoints: new DrizzleReviewPointRepository(curationDb), // 분봉 골격의 타점 종가 합성(형제 결합)
     };
 };
 

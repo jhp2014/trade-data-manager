@@ -14,6 +14,7 @@
 import type { AxisDeps, ReviewPointReader, PricedPivot, BaselineLevel } from "@trade-data-manager/market";
 import {
     candlePrice,
+    chartKeyOf,
     mapWithConcurrency,
     minuteSkeletonChartKeys,
     resolveBaselineLevelsForCharts,
@@ -48,7 +49,7 @@ function toEntries(resolved: Map<string, PricedPivot[] | null>, prevCloseOf?: Ma
         out.push({
             stockCode,
             date,
-            pivots: pivots.map((p) => ({ t: p.tIndex, price: p.price })),
+            pivots: pivots.map((p) => ({ t: p.tIndex, price: p.price, ...(p.synthetic ? { synthetic: true } : {}) })),
             ...(prevClose != null ? { prevClose } : {}),
         });
     }
@@ -93,9 +94,18 @@ export class SkeletonShapes {
         // 넷 다 재료가 갈린다(일봉 창 / 당일 분봉 / 전일 종가 / 앵커 캔들 하루치) — 서로 기다릴 이유가 없어 나란히.
         // 선(levels)의 범위는 **세 모집단의 합집합** — 어느 골격만 있는 차트도, 타점만 있는 차트도 선을 갖는다.
         const levelCharts = new Set([...dailyCharts, ...minuteCharts, ...points.map((p) => `${p.stockCode}|${p.date}`)]);
+        // 타점 종가 합성용 — 분봉 경로에 그 차트 전 타점의 종가가 들어간다("타점 종가 = 골격의 한 점").
+        const pointTimesByChart = new Map<string, string[]>();
+        for (const p of points) {
+            const k = chartKeyOf(p);
+            if (!minuteCharts.has(k)) continue;
+            const list = pointTimesByChart.get(k);
+            if (list) list.push(p.time);
+            else pointTimesByChart.set(k, [p.time]);
+        }
         const [daily, minute, prevCloses, levels] = await Promise.all([
             resolveDailySkeletonsForCharts(dailyCharts, anchors, this.deps.axisDeps),
-            resolveMinuteSkeletonsForCharts(minuteCharts, anchors, this.deps.axisDeps),
+            resolveMinuteSkeletonsForCharts(minuteCharts, anchors, this.deps.axisDeps, pointTimesByChart),
             this.prevCloses(minuteCharts),
             resolveBaselineLevelsForCharts(levelCharts, anchors, this.deps.axisDeps),
         ]);

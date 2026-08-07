@@ -11,7 +11,7 @@ import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { BASELINE_PARAM, candlePrice, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor } from "../api/chartAnchors.js";
-import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
+import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery, skeletonsQuery, reviewPointsQuery } from "../api/queries.js";
 import { kstToUnix } from "./derive.js";
 import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
 import type { ChartBundle } from "../api/chart.js";
@@ -154,22 +154,33 @@ export function useDailySkeleton(code: string, date: string, dailyBundle: ChartB
  * 분봉 골격(차트 소유·당일 장중 경로) — coord = anchorTime. 일봉 골격과 같은 소유라 activeTime 이 없어도
  * 편집된다(타점별 상한은 읽기 절단 — resolveMinuteSkeletons — 의 몫이지 쓰기의 몫이 아니다).
  * 시장은 언제나 UN(분봉 앵커 규칙)이라 toggle 의 market 인자는 무시된다.
+ *
+ * **표시 경로에는 타점 종가를 합성한다**("타점 종가 = 골격의 한 점" — 서버 리졸버와 같은 규칙):
+ * 손 피벗이 하나라도 있을 때, 손 피벗 없는 캔들의 저장 타점 종가를 경로에 병합한다. 편집(mine·토글)은
+ * 손 피벗만 — 합성점은 지울 대상이 아니다(타점을 지우면 사라진다).
  */
 export function useMinuteSkeleton(code: string, date: string, minuteBundle: ChartBundle | undefined): SkeletonEditor<{ time: number; price: number }> {
     const { anchors, mut } = useChartAnchors(code, date);
+    const reviewQ = useQuery(reviewPointsQuery(code, date)); // useReviewPointData 와 같은 키 — RQ dedup
     const mine = useMemo(
         () => anchors.filter((a) => a.param === SKELETON_MINUTE_PARAM && a.time == null && a.field != null && a.anchorTime != null),
         [anchors],
     );
     const points = useMemo(() => {
-        const sorted = sortPivots(mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime!, field: a.field!, market: a.market! })));
+        const manualTimes = new Set(mine.map((a) => a.anchorTime!));
+        const pivots = mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! as AnchorMarket }));
+        if (mine.length > 0) {
+            for (const rp of reviewQ.data ?? []) {
+                if (!manualTimes.has(rp.time)) pivots.push({ anchorDate: date, anchorTime: rp.time, field: "close", market: "un" });
+            }
+        }
         const out: { time: number; price: number }[] = [];
-        for (const p of sorted) {
+        for (const p of sortPivots(pivots)) {
             const price = candlePrice(minuteBundle?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field]);
             if (price !== null) out.push({ time: kstToUnix(p.anchorDate, p.anchorTime!), price });
         }
         return out;
-    }, [mine, minuteBundle]);
+    }, [mine, reviewQ.data, date, minuteBundle]);
     return {
         points,
         pivotsAt: (anchorTime) => mine.filter((a) => a.anchorTime === anchorTime).map((a) => ({ field: a.field!, market: a.market! })),

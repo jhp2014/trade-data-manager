@@ -419,8 +419,11 @@ export function SkeletonOverlayPanel(): JSX.Element {
                                             {/* 선택에만 넓은 반투명 밑선 — 색만으로는 "붙잡혔다"가 잘 안 읽힌다. */}
                                             {v.role === "selected" && <polyline points={pts} fill="none" stroke={color} strokeWidth={7} strokeLinejoin="round" opacity={0.18} />}
                                             <polyline points={pts} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />
+                                            {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. */}
                                             {(lit || dotsForAll) && s.points.map((p, i) => (
-                                                <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill={color} />
+                                                p.synthetic
+                                                    ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
+                                                    : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill={color} />
                                             ))}
                                             {/* 피벗 값 — 기준 대비 %와 시간. 조사 중인 하나에만(다중이면 수십 벌이 겹친다). */}
                                             {inspecting && s.points.map((p, i) => (p.x === 0 && p.y === 0 ? null : (

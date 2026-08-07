@@ -29,12 +29,14 @@ const pivot = (anchorDate: string, over: Partial<ChartAnchor> = {}): ChartAnchor
 const mpivot = (anchorTime: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
     ({ id: String(++seq), stockCode: CODE, date: DATE, param: "skeleton-minute", anchorDate: DATE, anchorTime, field: "high", market: "un", ...over });
 
-function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, MinuteCandle[]>; anchors?: ChartAnchor[] }): AxisDeps {
+function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, MinuteCandle[]>; anchors?: ChartAnchor[]; reviewPoints?: ReviewPointKey[] }): AxisDeps {
     return {
         minute: { getMinuteCandles: (_c, date) => Promise.resolve(v.minutesByDay?.[date] ?? []) },
         rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
         adjDaily: { getDailyCandles: (_c, range) => Promise.resolve((v.dailies ?? []).filter((d) => d.date >= range.from && d.date <= range.to)) },
         chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(v.anchors ?? []), listAnchoredCharts: () => Promise.resolve([]) },
+        // 타점 종가 합성의 형제 목록 — 실제로는 계산 대상 타점이 언제나 여기 포함된다(listAllPoints).
+        reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve(v.reviewPoints ?? []) },
     };
 }
 
@@ -124,22 +126,27 @@ describe("분봉 골격 축", () => {
 
     it("기울기 단위가 **분**이다 — 10% / 10분 = 1.0%/분", async () => {
         const P = point("09:30:00");
-        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel });
+        // 09:30 분봉이 있어야 자기 종가 합성이 가능하다(없으면 결손 규칙에 걸린다).
+        const d = deps({ minutesByDay: { [DATE]: [...BARS, minute("09:30:00", 4160)] }, anchors: skel, reviewPoints: [P] });
         expect((await axisOf("skeleton-min-slope").compute([P], d))[0].value).toBeCloseTo(1.0, 2);
         expect((await axisOf("skeleton-min-pullback").compute([P], d))[0].value).toBeCloseTo(60, 0);
     });
 
-    it("**차트 소유 + 읽기 절단** — 이른 타점은 자기 시각까지의 경로만 본다(축 규칙 2)", async () => {
-        // 09:15 타점: 09:25 되돌림 골은 미래 — 되돌림 0(2점 단언)이어야 한다. 60 이 나오면 미래가 샌 것.
-        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel });
-        expect((await axisOf("skeleton-min-pullback").compute([point("09:15:00")], d))[0].value).toBe(0);
-        // 14:00 타점: 하루 경로 전체가 자기 이력 — 같은 차트 골격 한 벌을 그대로 받는다(다시 찍을 필요 없음).
-        expect((await axisOf("skeleton-min-pullback").compute([point("14:00:00")], d))[0].value).toBeCloseTo(60, 0);
+    it("**읽기 절단 + 자기 종가 합성** — 이른 타점은 자기 시각까지 + 그 순간의 위치를 본다", async () => {
+        const p0915 = point("09:15:00");
+        const p1400 = point("14:00:00");
+        const bars = [...BARS, minute("09:15:00", 4300), minute("14:00:00", 4200)];
+        const d = deps({ minutesByDay: { [DATE]: bars }, anchors: skel, reviewPoints: [p0915, p1400] });
+        // 09:15: 09:25 골은 미래 — 대신 자기 종가(4300)가 경로의 끝 = 되돌림 (4400-4300)/400 = 25.
+        expect((await axisOf("skeleton-min-pullback").compute([p0915], d))[0].value).toBeCloseTo(25, 0);
+        // 14:00: 하루 경로 전체 + 형제(09:15)·자기 종가 — 골은 여전히 4160 → 60.
+        expect((await axisOf("skeleton-min-pullback").compute([p1400], d))[0].value).toBeCloseTo(60, 0);
     });
 
-    it("자기 시각까지 피벗이 2개 미만이면 미입력 취급 — 그 시각엔 골격이 아직 없다", async () => {
-        const d = deps({ minutesByDay: { [DATE]: BARS }, anchors: skel });
-        expect(await axisOf("skeleton-min-slope").compute([point("09:05:00")], d)).toEqual([]);
+    it("자기 시각까지 피벗이 2개 미만이면 미입력 취급 — 자기 종가 하나로는 골격이 아니다", async () => {
+        const early = point("08:55:00");
+        const d = deps({ minutesByDay: { [DATE]: [minute("08:55:00", 3990), ...BARS] }, anchors: skel, reviewPoints: [early] });
+        expect(await axisOf("skeleton-min-slope").compute([early], d)).toEqual([]);
     });
 
     it("일봉 골격은 분봉 축에 안 섞인다(그 반대도) — param 이 해상도라 경로가 갈린다", async () => {

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { useTags } from "./useTags.js";
 import { presetToggle } from "./tagIndex.js";
-import { reviewPointsQuery, allPointsQuery, chartQuery, computedAxesQuery } from "../api/queries.js";
+import { reviewPointsQuery, allPointsQuery, chartQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView } from "./derive.js";
 import { usePlacements } from "./usePlacements.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
@@ -75,6 +75,8 @@ export function useChartHotkeys(): void {
         void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey });
         // 계산 축은 타점 집합에서 나온다 — 타점이 늘거나 줄면 다시 굽는다(서버가 증분이라 새 타점만 계산).
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
+        // 골격 좌표도 — 타점 종가가 분봉 경로에 합성되므로 타점 추가/삭제가 경로를 바꾼다.
+        void qc.invalidateQueries({ queryKey: skeletonsQuery().queryKey });
     };
     const upsertMut = useMutation({ mutationFn: upsertReviewPoint, onSuccess: invalidate });
     const removeMut = useMutation({ mutationFn: (v: { code: string; date: string; time: string }) => removeReviewPoint(v.code, v.date, v.time), onSuccess: invalidate });

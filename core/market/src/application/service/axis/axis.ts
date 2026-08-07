@@ -14,7 +14,7 @@
 //  3. **결손은 결손으로**: 재료가 없으면(분봉 부재·기준가 부재·해당 시장 세션 없음) 값을 지어내지 않고
 //     결과에서 뺀다 = 그 축에 미배치. 소비자(3치 술어)가 이미 결손을 다룬다.
 import type { ReviewPointKey } from "#domain";
-import type { AdjustedDailyReader, ChartAnchorReader, MinuteReader, RawDailyReader } from "#port/query";
+import type { AdjustedDailyReader, ChartAnchorReader, MinuteReader, RawDailyReader, ReviewPointReader } from "#port/query";
 
 /** 시장 구분 — 축은 하나의 시장을 고른다(둘 다 보고 싶으면 축을 둘로. 축 안 토글 금지). */
 export type AxisMarket = "krx" | "un";
@@ -29,6 +29,12 @@ export interface AxisDeps {
     adjDaily: AdjustedDailyReader;
     /** 차트 앵커(사람 입력 — 선·무시 캔들) — params 를 선언한 축만 읽는다. */
     chartAnchor: ChartAnchorReader;
+    /**
+     * 복기 타점 — **분봉 골격의 타점 종가 합성**("타점 종가 = 골격의 한 점")이 형제 타점을 알아야 해서 들어왔다.
+     * 규칙 1(타점별 독립)의 유일한 예외 지점: 그 값은 같은 차트의 다른 타점 존재에 의존한다. 캐시 정합은
+     * ComputedAxisDef.pointCoupled 지문이 지킨다(모집단 의존과는 다르다 — 결합이 차트 안으로 갇혀 있다).
+     */
+    reviewPoints: ReviewPointReader;
 }
 
 /**
@@ -91,6 +97,13 @@ export interface ComputedAxisDef {
      * 타점이 입력 완료로 집계돼 정상 상태가 상시 결손 경고가 된다.
      */
     optionalParams?: readonly string[];
+    /**
+     * 값이 **같은 차트의 형제 타점 집합**에 의존하는가(분봉 골격의 타점 종가 합성 — 규칙 1의 예외).
+     * true 면 캐시 계층이 그 차트의 타점 시각 목록을 지문에 넣는다 — 타점을 추가/삭제하면 그 차트의
+     * 타점들이 자동 재계산된다. 이게 없으면 10:00 타점을 새로 찍었을 때 14:30 타점의 캐시가
+     * (참값은 바뀌었는데 앵커 지문은 그대로라) **조용히 스테일로 남는다** — 가장 찾기 어려운 종류의 오류.
+     */
+    pointCoupled?: boolean;
     /**
      * 배치 계산 — 타점 집합을 받아 값 있는 것만 돌려준다.
      * 배치인 이유는 읽기를 모으기 위해서다(타점당 쿼리면 N+1). 값 자체는 규칙 1대로 타점별 독립이어야 한다.

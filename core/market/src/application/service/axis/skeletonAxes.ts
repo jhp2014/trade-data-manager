@@ -55,6 +55,8 @@ function skeletonAxis(spec: {
         display: spec.display,
         inputs: isMinute ? ["minute"] : ["adjDaily", "minute"],
         params: [isMinute ? SKELETON_MINUTE_PARAM : SKELETON_PARAM],
+        // 분봉 골격은 타점 종가 합성으로 형제 타점 집합에 의존한다 — 지문 결합(axis.ts pointCoupled 주석).
+        ...(isMinute ? { pointCoupled: true } : {}),
         async compute(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]> {
             const anchors = await deps.chartAnchor.listAll();
             const resolved = isMinute ? await resolveMinuteSkeletons(points, anchors, deps) : await resolveDailySkeletons(points, anchors, deps);
@@ -130,13 +132,13 @@ export const SKELETON_AXES: readonly ComputedAxisDef[] = [
     // ── 분봉 골격(타점 소유) — **둘로 시작한다.** 무엇을 재야 하는지는 찍어보면서 정하기로 했고,
     //    축이 늘면 시트 열이 먼저 무너지므로 확신 없는 것을 미리 올리지 않는다(팩토리라 추가는 한 줄).
     //    "분봉 본상승 크기(%)"를 뺀 건 일봉만큼 의미 있을지 확신이 없어서 — 필요해지면 그때.
-    // own 2: 분봉 골격이 차트 소유가 되면서 재료 해석이 바뀌었다(타점별 골격 → 차트 경로의 읽기 절단).
-    // 같은 데이터면 값도 같지만, 캐시에 옛 소유 모델의 산물이 남지 않도록 전량 재계산을 강제한다.
+    // own 3: 타점 종가 합성("타점 종가 = 골격의 한 점")으로 경로 자체가 바뀌었다 — 전량 재계산.
+    // pointCoupled: 경로가 형제 타점 집합에 의존한다(합성) — 캐시 지문에 타점 시각 목록이 들어간다.
     skeletonAxis({
         key: "skeleton-min-pullback",
         name: "분봉 되돌림률(%)",
         mode: "minute",
-        own: 2,
+        own: 3,
         strongerWhen: "higher",
         display: { suffix: "%", decimals: 0, signed: false },
         pick: (s) => s.pullbackRatio,
@@ -145,7 +147,7 @@ export const SKELETON_AXES: readonly ComputedAxisDef[] = [
         key: "skeleton-min-slope",
         name: "분봉 기울기(%/분)",
         mode: "minute",
-        own: 2,
+        own: 3,
         strongerWhen: "higher",
         display: { suffix: "%/분", decimals: 2 },
         pick: (s) => s.baseRiseSlope, // 한 봉 안 상승(span 0)이면 결손

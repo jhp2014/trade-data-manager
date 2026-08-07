@@ -11,7 +11,7 @@
 //
 // **하나라도 못 읽으면 그 골격은 통째로 결손**이다. 못 읽은 피벗만 빼고 계산하면 형태가 조용히 달라진다
 // (되돌림의 골이 사라지는 식) — 없는 걸 뺀 모양은 사람이 찍은 그 모양이 아니다.
-import { candlePrice, chartKeyOf, pointKeyOf, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, type ChartAnchor, type DailyCandle, type MinuteCandle, type PricedPivot, type ReviewPointKey } from "#domain";
+import { candlePrice, chartKeyOf, pointKeyOf, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, type ChartAnchor, type DailyCandle, type MinuteCandle, type PricedPivot, type ReviewPointKey, type SkeletonPivot } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "./dailyRange.js";
 import type { AxisDeps } from "../axis/axis.js";
@@ -122,6 +122,12 @@ export function minuteSkeletonChartKeys(anchors: readonly ChartAnchor[]): Set<st
  * 차트들의 **분봉** 골격(그 날 장중 경로 전체)을 일괄 해소한다.
  * 반환 맵: 차트키 → 정렬된 가격 피벗. **키 없음 = 미입력** / **null = 재료 부족(결손)**.
  *
+ * **타점 종가 합성**(사용자 확정: "타점 종가 = 골격의 한 점"): pointTimesByChart 로 받은 각 타점 시각의
+ * 분봉 **종가**를 합성 피벗으로 병합한다. 규칙:
+ *   · 그 캔들에 손 피벗이 하나라도 있으면 합성하지 않는다(직접 찍은 게 이긴다)
+ *   · 손 피벗이 0개인 차트는 애초에 골격이 아니다(타점 종가는 골격을 보강하지 창조하지 않는다 — byChart 조건)
+ *   · 타점 시각 분봉이 미수집이면 골격 통째 결손(손 피벗과 같은 규칙 — 빼지도 지어내지도 않는다)
+ *
  * 일봉판과 갈리는 지점 둘:
  *   · 읽기가 (종목, 그 날) 분봉 1회 — 당일 고정이라 창 개념이 없다
  *   · tIndex 가 벽시계 분(장중은 연속이라 봉 개수가 아니라 시간이 맞다 — 유동성 낮은 종목 왜곡 방지)
@@ -132,6 +138,8 @@ export async function resolveMinuteSkeletonsForCharts(
     charts: ReadonlySet<string>,
     anchors: readonly ChartAnchor[],
     deps: Pick<AxisDeps, "minute">,
+    /** 차트키 → 그 차트 타점 시각들(HH:MM:SS). **전 타점이어야 한다** — 부분집합이면 경로가 조회마다 달라진다. */
+    pointTimesByChart?: ReadonlyMap<string, readonly string[]>,
 ): Promise<Map<string, PricedPivot[] | null>> {
     const byChart = new Map<string, ChartAnchor[]>();
     for (const a of anchors) {
@@ -153,15 +161,22 @@ export async function resolveMinuteSkeletonsForCharts(
 
     const out = new Map<string, PricedPivot[] | null>();
     for (const [key, list] of byChart) {
+        const date = list[0].date;
         const bars = minutesByDay.get(key) ?? [];
         const barByTime = new Map(bars.map((b) => [b.time, b] as const));
-        const pivots = sortPivots(list.map((x) => ({ anchorDate: x.anchorDate, anchorTime: x.anchorTime!, field: x.field!, market: x.market! })));
+        const manualTimes = new Set(list.map((a) => a.anchorTime!));
+        const pivots: SkeletonPivot[] = list.map((x) => ({ anchorDate: x.anchorDate, anchorTime: x.anchorTime!, field: x.field!, market: x.market! }));
+        // 합성 피벗 후보 — 손 피벗이 있는 캔들은 건너뛴다(어떤 값을 찍었든 그 캔들의 뜻은 사람이 정했다).
+        const synthTimes = new Set<string>();
+        for (const t of pointTimesByChart?.get(key) ?? []) if (!manualTimes.has(t)) synthTimes.add(t);
+        for (const t of synthTimes) pivots.push({ anchorDate: date, anchorTime: t, field: "close", market: "un" });
+
         const priced: PricedPivot[] = [];
         let broken = false;
-        for (const p of pivots) {
+        for (const p of sortPivots(pivots)) {
             const price = candlePrice(barByTime.get(p.anchorTime!)?.un?.[p.field]);
-            if (price === null) { broken = true; break; } // 그 분봉 미수집
-            priced.push({ ...p, price, tIndex: minutesOf(p.anchorTime!) });
+            if (price === null) { broken = true; break; } // 그 분봉 미수집(합성 대상 포함)
+            priced.push({ ...p, price, tIndex: minutesOf(p.anchorTime!), ...(synthTimes.has(p.anchorTime!) ? { synthetic: true } : {}) });
         }
         out.set(key, broken || priced.length < 2 ? null : priced);
     }
@@ -169,9 +184,13 @@ export async function resolveMinuteSkeletonsForCharts(
 }
 
 /**
- * 타점들의 분봉 골격 — 차트 경로를 **그 타점 시각에서 끊은 것**. 축(계산 축)이 보는 판.
+ * 타점들의 분봉 골격 — 차트 경로(합성 포함)를 **그 타점 시각에서 끊은 것**. 축(계산 축)이 보는 판.
  * 반환 맵: 타점키 → 정렬된 가격 피벗. **키 없음 = 미입력**(그 시각까지 피벗이 2개 미만인 것 포함 —
  * "아직 골격이 없던 시각"은 결손이 아니다) / **null = 재료 부족(결손)**.
+ *
+ * 합성의 형제 결합: 경로에는 **차트의 전 타점** 종가가 들어가므로(요청된 부분집합이 아니라 — 아니면
+ * 증분 계산과 전량 계산이 다른 값을 낸다) deps.reviewPoints 에서 전 타점을 직접 읽는다.
+ * 자기 종가는 자기 시각 ≤ 시각이라 절단 후에도 남는다 — "직전 추세의 끝 = 결정 순간의 위치".
  *
  * ⚠ **읽기 절단은 여기가 유일하다.** 분봉 골격이 차트 소유가 되면서 축 규칙 2(타점 이후 정보 금지)의
  * 보장이 쓰기에서 여기로 옮겨왔다 — 타점 문맥에서 ForCharts 판을 직접 쓰면 미래 피벗이 조용히 샌다.
@@ -179,10 +198,19 @@ export async function resolveMinuteSkeletonsForCharts(
 export async function resolveMinuteSkeletons(
     points: readonly ReviewPointKey[],
     anchors: readonly ChartAnchor[],
-    deps: Pick<AxisDeps, "minute">,
+    deps: Pick<AxisDeps, "minute" | "reviewPoints">,
 ): Promise<Map<string, PricedPivot[] | null>> {
     const charts = new Set(points.map(chartKeyOf));
-    const byChart = await resolveMinuteSkeletonsForCharts(charts, anchors, deps);
+    const all = await deps.reviewPoints.listAllPoints();
+    const timesByChart = new Map<string, string[]>();
+    for (const p of all) {
+        const key = chartKeyOf(p);
+        if (!charts.has(key)) continue;
+        const list = timesByChart.get(key);
+        if (list) list.push(p.time);
+        else timesByChart.set(key, [p.time]);
+    }
+    const byChart = await resolveMinuteSkeletonsForCharts(charts, anchors, deps, timesByChart);
     const out = new Map<string, PricedPivot[] | null>();
     for (const p of points) {
         const full = byChart.get(chartKeyOf(p));

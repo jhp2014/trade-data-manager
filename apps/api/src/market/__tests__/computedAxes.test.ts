@@ -40,6 +40,7 @@ const makeAxisDeps = (anchors: ChartAnchor[] = []): AxisDeps => ({
     rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
     adjDaily: { getDailyCandles: () => Promise.resolve([]) },
     chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(anchors), listAnchoredCharts: () => Promise.resolve([]) },
+    reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve([]) },
 });
 
 function makeAxes(points: ReviewPoint[], def: ComputedAxisDef, store: AxisValueStore, anchors: ChartAnchor[] = []): ComputedAxes {
@@ -155,6 +156,26 @@ describe("ComputedAxes 앵커 지문", () => {
             },
         };
     }
+
+    it("pointCoupled — 같은 차트에 타점이 늘면 **형제도** 다시 굽는다(합성 경로가 바뀌므로)", async () => {
+        // 분봉 골격 축의 성질: 값이 형제 타점 집합에 의존한다(타점 종가 합성). 지문에 시각 목록이 안 들어가면
+        // 새 타점이 형제의 참값을 바꿨는데 캐시가 그대로인 조용한 스테일이 남는다 — 그걸 여기서 고정한다.
+        const coupled = { ...paramAxis(), key: "coupled-fake", pointCoupled: true };
+        const p1 = pt("001", "14:00:00");
+        const a = [anchor(p1, "2026-06-10")];
+        await makeAxes([p1], coupled, store, a).feeds();
+        expect(seen[0].map((p) => p.time)).toEqual(["14:00:00"]);
+
+        // 같은 차트에 10:00 타점 추가 → 14:00 의 지문이 바뀌어 둘 다 다시 굽는다.
+        const p2 = pt("001", "10:00:00");
+        await makeAxes([p1, p2], { ...coupled }, store, a).feeds();
+        expect(seen[1].map((p) => p.time).sort()).toEqual(["10:00:00", "14:00:00"]);
+
+        // 다른 차트 타점 추가는 형제가 아니다 — 그 타점만 계산.
+        const other = pt("002", "11:00:00");
+        await makeAxes([p1, p2, other], { ...coupled }, store, [...a, anchor(other, "2026-06-20")]).feeds();
+        expect(seen[2].map((p) => p.stockCode)).toEqual(["002"]);
+    });
 
     it("앵커를 옮기면 **그 타점만** 새 값으로 다시 굽는다(나머지는 캐시 히트)", async () => {
         const points = [pt("001"), pt("002")];
