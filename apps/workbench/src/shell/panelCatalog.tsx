@@ -62,7 +62,8 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "rank-1", component: "rank", title: "배치", plane: "eod", render: () => <RankPanel /> },
     { id: "rank-filter-1", component: "rankFilter", title: "분석", plane: "eod", render: (id) => <RankFilterPanel panelId={id} /> },
     { id: "rank-sheet-1", component: "rankSheet", title: "시트", plane: "eod", render: () => <RankSheetPanel /> },
-    { id: "rank-skeleton-1", component: "rankSkeleton", title: "골격", plane: "eod", render: () => <SkeletonOverlayPanel /> },
+    { id: "rank-skeleton-1", component: "rankSkeleton", title: "골격 [일봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="daily" /> },
+    { id: "rank-skeleton-minute-1", component: "rankSkeletonMinute", title: "골격 [분봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="minute" /> },
     { id: "rank-point-1", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
     { id: "hts-news-1", component: "htsNews", title: "HTS뉴스", plane: "eod", render: () => <NewsPanel plane="replay" /> },
 ];

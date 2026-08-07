@@ -43,9 +43,6 @@ import type { ReviewPointListItem } from "@trade-data-manager/wire";
 // 피벗 값 라벨·기준선(D선)은 호버(우선) 또는 단일 선택에만 붙는다. 다중 선택은 무리를 만드는 손짓이라
 // 상세를 다 띄우면 수십 벌이 겹친다 — 색·굵기로만 답하고, 상세는 하나를 짚었을 때 준다.
 const ANCHOR_KEY = "wb.skeletonOverlayAnchor";
-const GRAIN_KEY = "wb.skeletonOverlayGrain";
-const LEVELS_KEY = "wb.skeletonOverlayLevels";
-const LABELS_KEY = "wb.skeletonOverlayLabels";
 const MINVIEW_KEY = "wb.skeletonOverlayMinuteView";
 
 const PAD = { left: 46, right: 14, top: 12, bottom: 24 };
@@ -64,12 +61,13 @@ type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> }
 type XUnit = "day" | "min" | "clock";
 const fmtX = (x: number, unit: XUnit): string => (unit === "clock" ? hmOf(x) : `${Math.round(x)}${unit === "day" ? "일" : "분"}`);
 
-export function SkeletonOverlayPanel(): JSX.Element {
+/** 일봉/분봉이 **별도 패널**(카탈로그 2항목)이다 — 시나리오가 "일봉에서 무리 → 분봉으로 확인"의 동시 사용이라
+ *  토글 하나로는 두 그림을 오가며 볼 수 없다. grain 은 패널 정체성이라 마운트 후 안 바뀐다. */
+export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.Element {
     const [anchor, setAnchor] = usePersistedState<SkeletonAnchor>(ANCHOR_KEY, (o) => (o === "first" || o === "last" ? o : null), "last");
-    const [grain, setGrain] = usePersistedState<"daily" | "minute">(GRAIN_KEY, (o) => (o === "daily" || o === "minute" ? o : null), "daily");
     const [minuteView, setMinuteView] = usePersistedState<"norm" | "abs">(MINVIEW_KEY, (o) => (o === "norm" || o === "abs" ? o : null), "norm");
-    const [showLevels, setShowLevels] = usePersistedState<boolean>(LEVELS_KEY, (o) => (typeof o === "boolean" ? o : null), true);
-    const [showLabels, setShowLabels] = usePersistedState<boolean>(LABELS_KEY, (o) => (typeof o === "boolean" ? o : null), true);
+    const [showLevels, setShowLevels] = usePersistedState<boolean>(`wb.skeletonOverlayLevels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
+    const [showLabels, setShowLabels] = usePersistedState<boolean>(`wb.skeletonOverlayLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
 
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const setFocus = useWorkbench((s) => s.setFocus);
@@ -141,6 +139,11 @@ export function SkeletonOverlayPanel(): JSX.Element {
         return out;
     }, [pointOnlyActive, r.points, dateRanges, tagExpr, feedQ.data, isDaily, tagsView, pointsByChart]);
 
+    // "선택만 보기"(분봉 전용) — 일봉 패널에서 만든 선택 무리만 남긴다. 선택이 비면 제한 없음(빈 화면 함정 방지).
+    const [onlySelected, setOnlySelected] = useState(false);
+    const skeletonSelection = useWorkbench((s) => s.skeletonSelection);
+    const onlyCharts = !isDaily && onlySelected && skeletonSelection.size > 0 ? skeletonSelection : null;
+
     const shapes = useMemo<NormalizedSkeleton[]>(() => {
         const feed = feedQ.data;
         if (!feed) return [];
@@ -148,12 +151,13 @@ export function SkeletonOverlayPanel(): JSX.Element {
         for (const e of isDaily ? feed.daily : feed.minute) {
             const key = `${e.stockCode}|${e.date}`;
             if (chartAllowed && !chartAllowed.has(key)) continue;
+            if (onlyCharts && !onlyCharts.has(key)) continue;
             const owner = { key, stockCode: e.stockCode, date: e.date };
             const n = isAbs ? absoluteSkeleton(e.pivots, e.prevClose, owner) : normalizeSkeleton(e.pivots, anchor, owner);
             if (n) out.push(n);
         }
         return out;
-    }, [feedQ.data, chartAllowed, isDaily, isAbs, anchor]);
+    }, [feedQ.data, chartAllowed, onlyCharts, isDaily, isAbs, anchor]);
 
     // 선은 언제나 차트 소유 — 두 모드가 같은 목록을 본다.
     const levelsByChart = useMemo(() => {
@@ -207,8 +211,10 @@ export function SkeletonOverlayPanel(): JSX.Element {
         return { x: tx.rescaleX(x), y: ty.rescaleY(y) };
     }, [bounds, box.left, box.top, box.width, box.height, tx, ty]);
 
-    // ── 선택(집합)·호버 — 화면 한정. 키가 두 모드 공통 차트키라 해상도를 오가도 선택이 유지된다.
-    const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(() => new Set());
+    // ── 선택(집합)·호버 — 차트 선택은 **store 공유**(skeletonSlice): 일봉 패널에서 만든 무리를
+    //    분봉 패널이 "선택만 보기"로 받는다. 키가 차트키라 두 패널이 같은 집합을 그대로 쓴다.
+    const selectedKeys = skeletonSelection;
+    const setSelectedKeys = useWorkbench((s) => s.setSkeletonSelection);
     // 타점 선택(분봉 마커) — 차트 선택과 **별개 집합**. 그룹핑 대상이 다르다(차트 태그 vs 타점 태그).
     const [selectedPks, setSelectedPks] = useState<ReadonlySet<string>>(() => new Set());
     const [hovered, setHovered] = useState<string | null>(null);
@@ -422,11 +428,6 @@ export function SkeletonOverlayPanel(): JSX.Element {
     return (
         <div style={wrap}>
             <div style={header}>
-                <ControlBox label="골격">
-                    <TextToggle active={isDaily} onClick={() => setGrain("daily")} title="일봉 골격 — 차트 단위(타점이 없어도 나온다)">일봉</TextToggle>
-                    <Dot />
-                    <TextToggle active={!isDaily} onClick={() => setGrain("minute")} title="분봉 골격 — 그 날 장중 경로(타점 이후까지 보인다)">분봉</TextToggle>
-                </ControlBox>
                 {!isDaily && (
                     <ControlBox label="배치">
                         <TextToggle active={!isAbs} onClick={() => setMinuteView("norm")} title="기준점 정규화 — 골격끼리 시간이 정렬된다">정규화</TextToggle>
@@ -442,6 +443,12 @@ export function SkeletonOverlayPanel(): JSX.Element {
                     </ControlBox>
                 )}
                 <ControlBox>
+                    {!isDaily && (
+                        <TextToggle active={onlySelected} onClick={() => setOnlySelected(!onlySelected)}
+                            title="골격 패널의 차트 선택만 남긴다 — 일봉에서 무리를 만들고 여기서 분봉 경로를 확인. 선택이 비면 전체">
+                            선택만
+                        </TextToggle>
+                    )}
                     <TextToggle active={showLevels} onClick={() => setShowLevels(!showLevels)} title="조사 중인 골격의 기준선·D선을 같은 % 공간에 얹는다" activeColor={PRICE_LINE}>선</TextToggle>
                     <TextToggle active={showLabels} onClick={() => setShowLabels(!showLabels)} title="앵커 반대쪽 끝에 종목·날짜 — 뭉치면 개수 뱃지, 눌러서 목록">라벨</TextToggle>
                     <TextToggle active={locked !== null} onClick={() => setLocked(locked ? null : autoBounds)} title="지금 척도를 붙든다 — 필터를 좁혀도 척도가 안 움직여 전후가 비교된다">척도 고정</TextToggle>
