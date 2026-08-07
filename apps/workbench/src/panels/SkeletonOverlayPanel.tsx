@@ -4,15 +4,15 @@ import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../api/queries.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import {
-    normalizeSkeleton, absoluteSkeleton, trimmedBounds, absoluteFrame, splitAtX, polylinePoints, pct, lineOpacity, dimOpacity,
-    labelPointOf, clusterLabels, lineVisual, keysInRect,
+    normalizeSkeleton, absoluteSkeleton, pointSkeletons, trimmedBounds, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
+    lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
     type LineVisual, type NormalizedSkeleton, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useTags } from "../lib/useTags.js";
-import { pointKey, parsePointKey, type PointRef } from "../lib/pointKey.js";
+import { pointKey, pointKeyOf, parsePointKey, type PointRef } from "../lib/pointKey.js";
 import { evalTagExpr, isTagExprEmpty } from "./rank/tagFilter.js";
 import { BulkTagMenu } from "./skeleton/ChartTagMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
@@ -54,8 +54,10 @@ const LABEL_CELL = { w: 72, h: 14 };
 /** `2026-07-08` → `26.07.08`. 연도를 남기는 건 여러 해가 섞이기 때문(월·일만이면 같은 날로 보인다). */
 const fmtDate = (d: string): string => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
 const fmtPct = (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
-const minutesOf = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 const hmOf = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m) % 60).padStart(2, "0")}`;
+
+/** 화면의 선 하나 — 차트 단위(NormalizedSkeleton) 또는 타점 단위(time·splitIdx 가 있는 PointSkeleton). */
+type Line = NormalizedSkeleton & { time?: string; splitIdx?: number };
 
 type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
 type XUnit = "day" | "min" | "clock";
@@ -78,7 +80,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const r = useRankFilterResult();
     const isDaily = grain === "daily";
     const isAbs = !isDaily && minuteView === "abs";
+    /** 분봉 정규화 = **타점 단위**(사용자 확정): 선 하나 = 타점 하나(자기 시각 피벗이 원점). */
+    const isPointUnit = !isDaily && !isAbs;
     const xUnit: XUnit = isDaily ? "day" : isAbs ? "clock" : "min";
+
+    // 분봉 필터 확정 규칙(사용자 확정 — 후자): 필터는 **타점 알갱이**로 작동한다. 정규화(타점 단위) 뷰는
+    // 매칭 타점만, 절대 뷰는 매칭 타점이 하나도 없는 차트를 선째 제외하고 남는 차트도 걸러진 마커는 뺀다.
+    // "매칭 타점을 가진 차트" 식의 차트 단위 우회는 일봉 패널 전용으로 남는다.
+    const filterActive = !r.isEmpty;
+    const matchedPks = useMemo<ReadonlySet<string> | null>(
+        () => (!isDaily && filterActive ? new Set(r.points.map((p) => pointKey(p))) : null),
+        [isDaily, filterActive, r.points],
+    );
 
     // 종목명 — r.nameOf 는 타점 목록에서 모으므로 타점 없는 차트는 코드만 남는다. 앵커 걸린 차트 피드가
     // 이름을 달고 오니(서버 MasterCache.attachNames) 그걸 먼저 보고, 없으면 기존 경로.
@@ -102,11 +115,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return m;
     }, [pointsQ.data]);
 
-    // ── 차트 단위 필터 — 골격의 모집단은 차트라, 타점 조건과 차트 조건을 갈라서 판정한다.
+    // ── 차트 단위 필터 — **일봉 패널 전용**: 골격의 모집단이 차트라, 타점 조건과 차트 조건을 갈라서 판정한다.
     //  · 밴드·계산축 값구간·시간대 = **타점 전용 조건**(차트엔 그 값이 없다) → 활성이면 매칭 타점을 가진
     //    차트만(타점 없는 차트는 판정 자체가 안 되므로 빠진다 — 헤더의 두 숫자가 그 사실을 보이게 한다).
     //  · 날짜·태그 = 차트에서도 판정 가능 → 차트 자체로 평가한다. 태그는 **차트 직접 부착 ∪ 그 타점들의
     //    태그**(상속 포함)라 어느 쪽에 붙었든 잡힌다. 이 경로가 타점 경로의 상위집합이라 합집합이 필요 없다.
+    // 분봉 패널은 이 우회를 안 탄다(사용자 확정) — 절대 뷰는 매칭 타점의 차트만, 정규화 뷰는 선=타점이라
+    // matchedPks 가 직접 거른다(아래 pointLines).
     const tagsView = useTags();
     const rankBands = useWorkbench((s) => s.rankBands);
     const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
@@ -119,6 +134,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         timeRanges.length > 0;
 
     const chartAllowed = useMemo<ReadonlySet<string> | null>(() => {
+        if (!isDaily) {
+            if (!filterActive) return null;
+            return new Set(r.points.map((p) => `${p.stockCode}|${p.date}`)); // 매칭 타점 없는 차트는 선째 제외
+        }
         if (pointOnlyActive) return new Set(r.points.map((p) => `${p.stockCode}|${p.date}`));
         const dateActive = dateRanges.length > 0;
         const tagActive = !isTagExprEmpty(tagExpr);
@@ -126,7 +145,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const feed = feedQ.data;
         if (!feed) return new Set();
         const out = new Set<string>();
-        for (const e of isDaily ? feed.daily : feed.minute) {
+        for (const e of feed.daily) {
             const key = `${e.stockCode}|${e.date}`;
             if (dateActive && !dateRanges.some((rg) => e.date >= rg.from && e.date <= rg.to)) continue;
             if (tagActive) {
@@ -137,16 +156,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             out.add(key);
         }
         return out;
-    }, [pointOnlyActive, r.points, dateRanges, tagExpr, feedQ.data, isDaily, tagsView, pointsByChart]);
+    }, [isDaily, filterActive, pointOnlyActive, r.points, dateRanges, tagExpr, feedQ.data, tagsView, pointsByChart]);
 
     // "선택만 보기"(분봉 전용) — 일봉 패널에서 만든 선택 무리만 남긴다. 선택이 비면 제한 없음(빈 화면 함정 방지).
     const [onlySelected, setOnlySelected] = useState(false);
     const skeletonSelection = useWorkbench((s) => s.skeletonSelection);
     const onlyCharts = !isDaily && onlySelected && skeletonSelection.size > 0 ? skeletonSelection : null;
 
+    // 차트 단위 선(일봉·분봉 절대) — 타점 단위 뷰에선 비어 있다(선의 모집단이 다르다).
     const shapes = useMemo<NormalizedSkeleton[]>(() => {
         const feed = feedQ.data;
-        if (!feed) return [];
+        if (!feed || isPointUnit) return [];
         const out: NormalizedSkeleton[] = [];
         for (const e of isDaily ? feed.daily : feed.minute) {
             const key = `${e.stockCode}|${e.date}`;
@@ -157,21 +177,46 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             if (n) out.push(n);
         }
         return out;
-    }, [feedQ.data, chartAllowed, onlyCharts, isDaily, isAbs, anchor]);
+    }, [feedQ.data, chartAllowed, onlyCharts, isDaily, isAbs, isPointUnit, anchor]);
 
-    // 선은 언제나 차트 소유 — 두 모드가 같은 목록을 본다.
+    // 타점 단위 선(분봉 정규화) — 골격 하나를 타점마다 재정규화. 필터는 타점 알갱이(matchedPks)로 직접.
+    const pointLines = useMemo<Line[]>(() => {
+        const feed = feedQ.data;
+        if (!feed || !isPointUnit) return [];
+        const out: Line[] = [];
+        for (const e of feed.minute) {
+            const key = `${e.stockCode}|${e.date}`;
+            if (onlyCharts && !onlyCharts.has(key)) continue;
+            const pts = (pointsByChart.get(key) ?? [])
+                .map((rp) => ({ pk: pointKey(rp), time: rp.time }))
+                .filter((p) => !matchedPks || matchedPks.has(p.pk));
+            if (pts.length > 0) out.push(...pointSkeletons(e.pivots, pts, { key, stockCode: e.stockCode, date: e.date }));
+        }
+        return out;
+    }, [feedQ.data, isPointUnit, onlyCharts, pointsByChart, matchedPks]);
+
+    const lines: Line[] = isPointUnit ? pointLines : shapes;
+
+    // 선은 언제나 차트 소유 — 모든 뷰가 같은 목록을 본다(타점 단위 선은 chartKey 로 찾는다).
     const levelsByChart = useMemo(() => {
         const m = new Map<string, SkeletonWireLevel[]>();
         for (const l of feedQ.data?.levels ?? []) m.set(`${l.stockCode}|${l.date}`, l.levels);
         return m;
     }, [feedQ.data]);
 
-    const population = (isDaily ? feedQ.data?.daily.length : feedQ.data?.minute.length) ?? 0;
+    // 모집단 — 차트 단위 뷰는 차트 수, 타점 단위 뷰는 분봉 골격 차트 위의 타점 수(필터 전).
+    const population = useMemo(() => {
+        const feed = feedQ.data;
+        if (!feed) return 0;
+        if (isDaily) return feed.daily.length;
+        if (!isPointUnit) return feed.minute.length;
+        return feed.minute.reduce((n, e) => n + (pointsByChart.get(`${e.stockCode}|${e.date}`)?.length ?? 0), 0);
+    }, [feedQ.data, isDaily, isPointUnit, pointsByChart]);
 
     // ── 척도: 자동(현재 선택에서 매번) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
     // 절대 뷰는 고정 프레임(±15분 · −5~+30%) — 분위수 창은 정규화 배치의 것이다.
     const [locked, setLocked] = useState<OverlayBounds | null>(null);
-    const autoBounds = useMemo(() => (isAbs ? absoluteFrame(shapes) : trimmedBounds(shapes, 0.01)), [isAbs, shapes]);
+    const autoBounds = useMemo(() => (isAbs ? absoluteFrame(lines) : trimmedBounds(lines, 0.01)), [isAbs, lines]);
     const bounds = locked ?? autoBounds;
 
     const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -216,15 +261,23 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     //    분봉 패널이 "선택만 보기"로 받는다. 키가 차트키라 두 패널이 같은 집합을 그대로 쓴다.
     const selectedKeys = skeletonSelection;
     const setSelectedKeys = useWorkbench((s) => s.setSkeletonSelection);
-    // 타점 선택(분봉 마커) — 차트 선택과 **별개 집합**. 그룹핑 대상이 다르다(차트 태그 vs 타점 태그).
+    // 타점 선택 — 차트 선택과 **별개 집합**(그룹핑 대상이 다르다: 차트 태그 vs 타점 태그).
+    // 절대 뷰에선 마커의, 타점 단위 뷰에선 선 자체의 선택 집합이다.
     const [selectedPks, setSelectedPks] = useState<ReadonlySet<string>>(() => new Set());
     const [hovered, setHovered] = useState<string | null>(null);
-    const byKey = useMemo(() => new Map(shapes.map((s) => [s.key, s])), [shapes]);
-    const activeKey = activePoint ? `${activePoint.code}|${activePoint.date}` : null;
-    // 로컬 선택이 없으면 활성 타점의 차트를 단일 선택으로 — 다른 패널과의 링크가 이걸로 이어진다.
+    const byKey = useMemo(() => new Map(lines.map((s) => [s.key, s])), [lines]);
+    // 이 뷰의 선이 쓰는 선택 채널 — 타점 단위면 pk 집합, 차트 단위면 차트키 집합. 문법은 하나다.
+    const activeSelection = isPointUnit ? selectedPks : selectedKeys;
+    const setActiveSelection = isPointUnit ? setSelectedPks : setSelectedKeys;
+    const activeKey = activePoint
+        ? isPointUnit
+            ? activePoint.time && pointKeyOf(activePoint.code, activePoint.date, activePoint.time)
+            : `${activePoint.code}|${activePoint.date}`
+        : null;
+    // 로컬 선택이 없으면 활성 타점(의 차트)을 단일 선택으로 — 다른 패널과의 링크가 이걸로 이어진다.
     const effSelected = useMemo<ReadonlySet<string>>(
-        () => (selectedKeys.size > 0 ? selectedKeys : activeKey && byKey.has(activeKey) ? new Set([activeKey]) : new Set()),
-        [selectedKeys, activeKey, byKey],
+        () => (activeSelection.size > 0 ? activeSelection : activeKey && byKey.has(activeKey) ? new Set([activeKey]) : new Set()),
+        [activeSelection, activeKey, byKey],
     );
 
     // 그룹 = 뭉친 라벨 무리. 목록이 열려 있으면 계속 켜둔다(마우스를 목록으로 옮겨도 짝이 유지되게).
@@ -238,10 +291,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     }, [groupList]);
 
     const clipId = "skeleton-overlay-clip";
-    const dotsForAll = useMemo(() => shapes.reduce((n, s) => n + s.points.length, 0) <= DOT_BUDGET, [shapes]);
-    const baseOpacity = lineOpacity(shapes.length);
-    const dimmed = dimOpacity(shapes.length);
-    const labelAtStart = !isAbs && anchor === "last"; // 절대 배치는 경로 끝(오른쪽)에 라벨
+    const dotsForAll = useMemo(() => lines.reduce((n, s) => n + s.points.length, 0) <= DOT_BUDGET, [lines]);
+    const baseOpacity = lineOpacity(lines.length);
+    const dimmed = dimOpacity(lines.length);
+    // 라벨이 붙는 끝 — 타점 단위는 **과거 쪽 끝(왼쪽)**(미래 점선 쪽은 결과라 손잡이를 안 둔다),
+    // 절대 배치는 경로 끝(오른쪽), 정규화는 앵커 반대쪽.
+    const labelAnchorMode: SkeletonAnchor = isPointUnit ? "last" : isAbs ? "first" : anchor;
+    const labelAtStart = isPointUnit || (!isAbs && anchor === "last");
 
     // 상세(피벗 값·기준선·타점 세로선)를 받을 "지금 조사 중인 하나" — 호버 우선, 없으면 단일 선택.
     const inspectKey = hovered ?? (effSelected.size === 1 ? [...effSelected][0] : null);
@@ -256,10 +312,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return { v, color };
     }, [effSelected, hovered, groupSet, groupColorOf]);
 
-    /** 평클릭 = 이동 + 단일 선택(교체). Ctrl+클릭 = 선택 토글만(이동 없음 — 무리를 만드는 중이다). */
-    const onLabelClick = useCallback((s: NormalizedSkeleton, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
+    /** 평클릭 = 이동 + 단일 선택(교체). Ctrl+클릭 = 선택 토글만(이동 없음 — 무리를 만드는 중이다).
+     *  타점 단위 선(time 있음)은 자기 타점으로 바로 이동하고 선택은 pk 채널을 쓴다 — 문법은 같다. */
+    const onLabelClick = useCallback((s: Line, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
         if (ev.ctrlKey || ev.metaKey) {
-            setSelectedKeys((prev) => {
+            setActiveSelection((prev: ReadonlySet<string>) => {
                 const next = new Set(prev.size > 0 ? prev : effSelected); // 활성 타점 폴백 선택도 무리의 시작점이 된다
                 if (next.has(s.key)) next.delete(s.key);
                 else next.add(s.key);
@@ -267,28 +324,35 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             });
             return;
         }
-        setSelectedKeys(new Set([s.key]));
-        const pts = pointsByChart.get(s.key);
+        setActiveSelection(new Set([s.key]));
+        if (s.time) {
+            goToPoint({ code: s.stockCode, date: s.date, time: s.time }, "skeleton-overlay");
+            return;
+        }
+        const pts = pointsByChart.get(s.chartKey);
         if (pts?.length) goToPoint({ code: s.stockCode, date: s.date, time: pts[0].time }, "skeleton-overlay");
         else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
-    }, [effSelected, pointsByChart, goToPoint, setFocus]);
+    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus]);
 
-    // ── 타점 마커(분봉 두 뷰) — 타점이 경로 어디에 서 있나 + 타점 단위 손잡이(이동·선택·태그).
-    // y 는 그 시각의 경로 피벗에서 찾는다: 유효한 분봉 골격은 모든 타점 시각에 피벗을 갖는다
-    // (합성 규칙 — 손 피벗이 있으면 그것, 없으면 합성 종가). 별도 가격 조회가 필요 없는 이유.
+    // ── 타점 마커(분봉 **절대 뷰** 전용 — 정규화 뷰는 선 자체가 타점이라 마커가 없다).
+    // 타점이 경로 어디에 서 있나 + 타점 단위 손잡이(이동·선택·태그). y 는 그 시각의 경로 피벗에서 찾는다:
+    // 유효한 분봉 골격은 모든 타점 시각에 피벗을 갖는다(합성 규칙 — 손 피벗이 있으면 그것, 없으면 합성 종가).
+    // 필터가 활성이면 걸러진 타점의 마커는 뺀다(확정 규칙 — 남은 차트라도 매칭 타점만 손잡이를 받는다).
     type Marker = { pk: string; ref: PointRef; s: NormalizedSkeleton; x: number; y: number };
     const markers = useMemo<Marker[]>(() => {
-        if (isDaily) return [];
+        if (!isAbs) return [];
         const out: Marker[] = [];
         for (const s of shapes) {
-            for (const rp of pointsByChart.get(s.key) ?? []) {
+            for (const rp of pointsByChart.get(s.chartKey) ?? []) {
+                const pk = pointKey(rp);
+                if (matchedPks && !matchedPks.has(pk)) continue;
                 const px = minutesOf(rp.time) - s.baseT;
                 const at = s.points.find((q) => q.x === px);
-                if (at) out.push({ pk: pointKey(rp), ref: rp, s, x: px, y: at.y });
+                if (at) out.push({ pk, ref: rp, s, x: px, y: at.y });
             }
         }
         return out;
-    }, [isDaily, shapes, pointsByChart]);
+    }, [isAbs, shapes, pointsByChart, matchedPks]);
     const markerByPk = useMemo(() => new Map(markers.map((m) => [m.pk, m])), [markers]);
 
     // 타점 선택 → 그 차트의 **이후 구간 점선**(사용자 확정: "여기까지 보고 들어갔다" 이후는 결과다).
@@ -327,9 +391,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             marqueeRef.current = null;
             setMarquee(null);
             if (!rect || (Math.abs(rect.x1 - rect.x0) < 4 && Math.abs(rect.y1 - rect.y0) < 4)) return; // 클릭 오인 방지
-            const hit = keysInRect(shapes, isAbs ? "first" : anchor, scales.x, scales.y, rect);
-            if (hit.length > 0) setSelectedKeys((prev) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
-            // 타점 마커도 같은 드래그로 담는다 — 잡힌 종류가 곧 뜻이다(라벨=차트 선택, 마커=타점 선택).
+            // 라벨 지점 판정 — 이 뷰의 선택 채널로 담는다(차트 단위=차트키, 타점 단위=pk. 문법은 하나).
+            const hit = keysInRect(lines, labelAnchorMode, scales.x, scales.y, rect);
+            if (hit.length > 0) setActiveSelection((prev: ReadonlySet<string>) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
+            // 타점 마커도 같은 드래그로 담는다(절대 뷰) — 잡힌 종류가 곧 뜻이다(라벨=차트 선택, 마커=타점 선택).
             const [l, rr] = rect.x0 <= rect.x1 ? [rect.x0, rect.x1] : [rect.x1, rect.x0];
             const [t, b] = rect.y0 <= rect.y1 ? [rect.y0, rect.y1] : [rect.y1, rect.y0];
             const mhit = markers.filter((m) => { const mx = scales.x(m.x); const my = scales.y(m.y); return mx >= l && mx <= rr && my >= t && my <= b; }).map((m) => m.pk);
@@ -338,18 +403,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         window.addEventListener("mousemove", move);
         window.addEventListener("mouseup", up);
         e.preventDefault();
-    }, [scales, shapes, effSelected, isAbs, anchor, markers]);
+    }, [scales, lines, effSelected, labelAnchorMode, markers, setActiveSelection]);
 
     // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
     // 선택·호버는 묶음에서 빼고 따로 그린다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
     const pinnedKeys = useMemo(() => new Set([...effSelected, ...(hovered ? [hovered] : [])]), [effSelected, hovered]);
     const clusters = useMemo(() => {
         if (!showLabels || !scales) return [];
-        const anchors = shapes
+        const anchors = lines
             .filter((s) => !pinnedKeys.has(s.key))
-            .map((s) => { const p = labelPointOf(s, isAbs ? "first" : anchor); return { key: s.key, x: scales.x(p.x), y: scales.y(p.y) }; });
+            .map((s) => { const p = labelPointOf(s, labelAnchorMode); return { key: s.key, x: scales.x(p.x), y: scales.y(p.y) }; });
         return clusterLabels(anchors, LABEL_CELL.w, LABEL_CELL.h);
-    }, [showLabels, scales, shapes, anchor, isAbs, pinnedKeys]);
+    }, [showLabels, scales, lines, labelAnchorMode, pinnedKeys]);
 
     // ── 태그 메뉴 — 라벨/마커 우클릭(단일) / 헤더 태그 버튼(선택 일괄). 그룹핑의 입력 지점.
     // 어느 정션에 쓰느냐는 여기 규약이다: 차트 라벨 → 차트 태그 / 타점 마커 → 타점 태그. DB 사전은 하나.
@@ -357,14 +422,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         | { kind: "chart"; x: number; y: number; charts: { stockCode: string; date: string }[]; label: string }
         | { kind: "point"; x: number; y: number; points: PointRef[]; label: string };
     const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null);
-    const openTagMenuFor = useCallback((s: NormalizedSkeleton, ev: { clientX: number; clientY: number; preventDefault: () => void }): void => {
+    /** 선 라벨 우클릭 — 이 선의 정션으로 간다: 타점 단위 선은 타점 태그, 차트 단위 선은 차트 태그. */
+    const openTagMenuFor = useCallback((s: Line, ev: { clientX: number; clientY: number; preventDefault: () => void }): void => {
         ev.preventDefault();
+        if (s.time) {
+            setTagMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points: [{ stockCode: s.stockCode, date: s.date, time: s.time }], label: `${nameOf(s.stockCode)} ${s.time.slice(0, 5)}` });
+            return;
+        }
         setTagMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${fmtDate(s.date)}` });
     }, [nameOf]);
     const openTagMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
         const charts = [...effSelected]
             .map((k) => byKey.get(k))
-            .filter((s): s is NormalizedSkeleton => !!s)
+            .filter((s): s is Line => !!s)
             .map((s) => ({ stockCode: s.stockCode, date: s.date }));
         if (charts.length === 0) return;
         setTagMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${fmtDate(charts[0].date)}` : `선택 ${charts.length}개` });
@@ -394,9 +464,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (!badge) return [];
         return badge.members
             .map((k) => byKey.get(k))
-            .filter((s): s is NormalizedSkeleton => !!s)
-            .sort((a, b) => labelPointOf(b, anchor).y - labelPointOf(a, anchor).y);
-    }, [badge, byKey, anchor]);
+            .filter((s): s is Line => !!s)
+            .sort((a, b) => labelPointOf(b, labelAnchorMode).y - labelPointOf(a, labelAnchorMode).y);
+    }, [badge, byKey, labelAnchorMode]);
     useEffect(() => { setBadge(null); setBadgeHover(null); setPointBadge(null); }, [boundsKey, anchor, grain, minuteView]);
 
     // 마커 라벨 축약 — 차트 라벨과 **별개 격자**(마커는 경로 위에 몰려 있어 더 촘촘한 칸을 쓴다).
@@ -409,11 +479,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return clusterLabels(anchors, 72, 13); // 칩에 종목명이 붙어 차트 라벨과 같은 폭 예산
     }, [showLabels, scales, markers, selectedPks]);
 
-    const labelOf = (s: NormalizedSkeleton, dotFirst: boolean): JSX.Element => {
+    // 타점 단위 선은 시각까지 — `26.07.08 삼성전자 09:30`(같은 차트의 타점 여러 개가 선 여러 개로 선다).
+    const labelOf = (s: Line, dotFirst: boolean): JSX.Element => {
         const dot = <span style={labelDot(visualOf(s.key).color)} />;
         const text = (
             <span>
                 <span style={{ color: "var(--text-tertiary)" }}>{fmtDate(s.date)}</span> {nameOf(s.stockCode)}
+                {s.time && <span style={{ color: "var(--text-tertiary)" }}> {s.time.slice(0, 5)}</span>}
             </span>
         );
         return dotFirst ? <>{dot}{text}</> : <>{text}{dot}</>;
@@ -450,7 +522,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         <TextToggle active={isAbs} onClick={() => setMinuteView("abs")} title="벽시계 배치 — 전일 종가 대비 %, 분봉 차트 보듯">절대</TextToggle>
                     </ControlBox>
                 )}
-                {!isAbs && (
+                {/* 기준 토글은 일봉 전용 — 분봉 정규화는 타점 단위(원점=자기 시각 피벗)라 앵커 선택이 소멸했다. */}
+                {isDaily && (
                     <ControlBox label="기준">
                         <TextToggle active={anchor === "last"} onClick={() => setAnchor("last")} title="마지막 피벗을 원점으로 — 끝이 한 점으로 정렬(뒤로 퍼짐)">마지막 점</TextToggle>
                         <Dot />
@@ -469,15 +542,16 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     <TextToggle active={locked !== null} onClick={() => setLocked(locked ? null : autoBounds)} title="지금 척도를 붙든다 — 필터를 좁혀도 척도가 안 움직여 전후가 비교된다">척도 고정</TextToggle>
                 </ControlBox>
                 <span style={count}>
-                    {shapes.length}개
-                    {population > shapes.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
+                    {lines.length}개
+                    {population > lines.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
                 </span>
-                {effSelected.size > 0 && (
+                {/* 차트 선택 손잡이는 차트 단위 뷰에서만 — 타점 단위 뷰의 문법은 아래 타점 버튼이다. */}
+                {!isPointUnit && effSelected.size > 0 && (
                     <button onClick={(e) => openTagMenuForSelection(e)} title="선택된 차트들에 태그 붙이기/떼기 — 그룹은 태그다" style={miniBtn}>
                         차트 {effSelected.size} 태그
                     </button>
                 )}
-                {selectedKeys.size > 0 && (
+                {!isPointUnit && selectedKeys.size > 0 && (
                     <button onClick={() => setSelectedKeys(new Set())} title="차트 선택 해제" style={miniBtn}>✕</button>
                 )}
                 {selectedPks.size > 0 && (
@@ -496,8 +570,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
             <div ref={wrapRef} onMouseDown={onWrapMouseDown} style={{ flex: 1, minHeight: 0, position: "relative" }}>
                 {feedQ.isLoading && <div style={muted}>불러오는 중…</div>}
-                {!feedQ.isLoading && shapes.length === 0 && (
-                    <div style={muted}>{isDaily ? "일봉 골격이 그려진 차트가 없습니다." : "분봉 골격이 그려진 차트가 없습니다."}</div>
+                {!feedQ.isLoading && lines.length === 0 && (
+                    <div style={muted}>
+                        {isDaily ? "일봉 골격이 그려진 차트가 없습니다."
+                            : isPointUnit ? "분봉 골격 위 타점이 없습니다(필터·선택만 보기에 걸렸을 수도)."
+                                : "분봉 골격이 그려진 차트가 없습니다."}
+                    </div>
                 )}
                 <svg ref={svgRef} width={size.w} height={size.h} onDoubleClick={reset}
                     style={{ display: "block", cursor: dragging ? "grabbing" : "default", touchAction: "none" }}>
@@ -522,7 +600,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <line x1={box.left} x2={box.left + box.width} y1={scales.y(0)} y2={scales.y(0)} stroke="var(--border-strong)" strokeWidth={1} strokeDasharray="3 3" />
                                 {!isAbs && <line x1={scales.x(0)} x2={scales.x(0)} y1={box.top} y2={box.top + box.height} stroke="var(--border-strong)" strokeWidth={1} strokeDasharray="3 3" />}
 
-                                {shapes.map((s) => {
+                                {lines.map((s) => {
                                     const { v, color } = visualOf(s.key);
                                     const pts = polylinePoints(s, scales.x, scales.y);
                                     const lit = v.role !== "base";
@@ -532,9 +610,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <g key={s.key} opacity={v.dim ? dimmed : lit ? 1 : baseOpacity} style={{ pointerEvents: "none" }}>
                                             {/* 선택에만 넓은 반투명 밑선 — 색만으로는 "붙잡혔다"가 잘 안 읽힌다. */}
                                             {v.role === "selected" && <polyline points={pts} fill="none" stroke={color} strokeWidth={7} strokeLinejoin="round" opacity={0.18} />}
-                                            {/* 타점이 선택된 차트는 그 시각 이후를 점선으로 — 타점까지가 판단, 이후는 결과. */}
+                                            {/* 미래는 점선 — 타점 단위 선은 원점(자기 시각) 이후 전부, 절대 뷰는 선택 타점 이후.
+                                                타점까지가 판단, 이후는 결과라는 같은 문장이다. */}
                                             {(() => {
-                                                const splitX = splitXByChart.get(s.key);
+                                                const splitX = isPointUnit ? 0 : splitXByChart.get(s.key);
                                                 if (splitX == null) return <polyline points={pts} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />;
                                                 const { past, future } = splitAtX(s.points, splitX);
                                                 return (
@@ -559,8 +638,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     {p.synthetic ? fmtPct(p.y) : `${fmtPct(p.y)} · ${fmtX(p.x, xUnit)}`}
                                                 </text>
                                             )))}
-                                            {/* 타점 세로선(분봉) — "선택·조사 중인 것에만". 시간 라벨은 마커 칩의 몫(선은 위치만 긋는다). */}
-                                            {inspecting && !isDaily && (pointsByChart.get(s.key) ?? []).map((p) => {
+                                            {/* 타점 세로선(절대 뷰) — "선택·조사 중인 것에만". 시간 라벨은 마커 칩의 몫(선은 위치만).
+                                                타점 단위 뷰엔 없다 — 원점 세로선(t=0)이 곧 그 타점이다. */}
+                                            {inspecting && isAbs && (pointsByChart.get(s.chartKey) ?? []).map((p) => {
                                                 const x = scales.x(minutesOf(p.time) - s.baseT);
                                                 const isActive = activePoint && activePoint.code === p.stockCode && activePoint.date === p.date && activePoint.time === p.time;
                                                 return (
@@ -572,8 +652,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     );
                                 })}
 
-                                {/* 선택된 타점의 세로선 — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
-                                {!isDaily && [...selectedPks].map((pk) => {
+                                {/* 선택된 타점의 세로선(절대 뷰) — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
+                                {isAbs && [...selectedPks].map((pk) => {
                                     const m = markerByPk.get(pk);
                                     if (!m) return null;
                                     const x = scales.x(m.x);
@@ -593,7 +673,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     if (hov) owners.push({ s: hov, color: HOVER, dash: true, right: false });
                                     return owners.map(({ s, color, dash, right }) => (
                                         <g key={`lvl-${s.key}`} style={{ pointerEvents: "none" }}>
-                                            {(levelsByChart.get(s.key) ?? []).map((lv, i) => {
+                                            {(levelsByChart.get(s.chartKey) ?? []).map((lv, i) => {
                                                 const yPct = pct(lv.price, s.basePrice);
                                                 const y = scales.y(yPct);
                                                 return (
@@ -675,7 +755,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         {[...pinnedKeys].map((key) => {
                             const s = byKey.get(key);
                             if (!s) return null;
-                            const p = labelPointOf(s, isAbs ? "first" : anchor);
+                            const p = labelPointOf(s, labelAnchorMode);
                             const { v, color } = visualOf(key);
                             return (
                                 <button key={key} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
@@ -721,6 +801,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <span style={{ width: 6, height: 6, borderRadius: 3, background: groupColorOf(s.key), flexShrink: 0 }} />
                                         <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtDate(s.date)}</span>
                                         <span>{nameOf(s.stockCode)}</span>
+                                        {s.time && <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{s.time.slice(0, 5)}</span>}
                                     </span>
                                 </MenuItem>
                             </div>
@@ -766,10 +847,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             )}
 
             <div style={footer}>
-                {/* 조사 중인 차트의 태그 — 그룹 소속이 발끝에서 바로 읽힌다(따로 열어보지 않게). */}
+                {/* 조사 중인 선의 태그 — 그룹 소속이 발끝에서 바로 읽힌다(따로 열어보지 않게).
+                    타점 단위 선은 타점 태그(차트 태그 상속 포함), 차트 단위 선은 차트 태그. */}
                 {(() => {
                     const s = inspectKey ? byKey.get(inspectKey) : null;
-                    const ids = s ? tagsView.chartTagIdsOf(s) : [];
+                    const ids = s ? (s.time ? tagsView.tagIdsOf({ stockCode: s.stockCode, date: s.date, time: s.time }) : tagsView.chartTagIdsOf(s)) : [];
                     if (!s || ids.length === 0) return null;
                     return (
                         <span style={{ marginRight: 8 }}>
@@ -781,7 +863,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         </span>
                     );
                 })()}
-                {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·정규화"} · 세로 = % · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 더블클릭 원위치
+                {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·타점 정규화(선 1 = 타점 1, 원점 이후 점선=미래)"} · 세로 = % · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 더블클릭 원위치
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
             </div>
         </div>

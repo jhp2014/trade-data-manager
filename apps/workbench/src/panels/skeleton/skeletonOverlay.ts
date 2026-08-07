@@ -21,8 +21,10 @@ export type SkeletonAnchor = "first" | "last";
  * 타점에서 출발시키면 (종목,날짜)에 타점이 여섯일 때 같은 골격을 여섯 번 겹쳐 그려 진해 보인다.
  */
 export interface NormalizedSkeleton {
-    /** 차트키(`종목|날짜`). */
+    /** 선의 식별키 — 차트 단위면 차트키(`종목|날짜`), 타점 단위(PointSkeleton)면 타점키. */
     key: string;
+    /** 이 선이 속한 차트(`종목|날짜`) — 차트 소유물(기준선·태그)을 찾는 키. 차트 단위에선 key 와 같다. */
+    chartKey: string;
     stockCode: string;
     date: string;
     /** synthetic = 타점 종가 합성점(분봉) — 손 피벗과 구분해 그린다(속 빈 원). */
@@ -31,6 +33,53 @@ export interface NormalizedSkeleton {
     basePrice: number;
     /** 기준 피벗의 원 t — 벽시계 값(타점 시각 등)을 이 골격의 x 로 옮길 때 뺀다. 절대 배치면 0. */
     baseT: number;
+}
+
+/**
+ * 타점 단위 골격 — 분봉 정규화 뷰의 선 하나 = **타점 하나**(사용자 확정: 골격 1 + 타점 3 → 선 3개).
+ * 자기 시각의 경로 피벗이 원점(0,0)이다: 과거는 왼쪽 실선, **미래(그 시각 이후)는 오른쪽 점선** —
+ * "그 타점에 선 눈"으로 여러 상황을 겹친다. key 는 타점키(pk)라 선택·태그가 타점 문법을 그대로 탄다.
+ */
+export interface PointSkeleton extends NormalizedSkeleton {
+    /** 타점 시각(HH:MM:SS) — 라벨(`날짜 종목 시각`)과 이동(goToPoint)의 재료. */
+    time: string;
+    /** 원점(자기 시각 피벗)의 인덱스 — 이 뒤가 미래(점선). */
+    splitIdx: number;
+}
+
+/** `HH:MM(:SS)` → 자정 기준 분. 분봉 골격의 t(벽시계 분)와 타점 시각을 잇는 유일한 환산. */
+export const minutesOf = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
+
+/**
+ * 차트 하나의 분봉 골격을 **타점마다** 재정규화한다. 타점 시각의 피벗은 합성 규칙("타점 종가 = 골격의 한 점")
+ * 덕에 반드시 있다 — 없으면(방어) 그 타점은 지어내지 않고 건너뛴다. 피벗 2개 미만이면 골격이 아니다.
+ */
+export function pointSkeletons(
+    pivots: readonly SkeletonWirePivot[],
+    pts: readonly { pk: string; time: string }[],
+    chart: { key: string; stockCode: string; date: string },
+): PointSkeleton[] {
+    if (pivots.length < 2) return [];
+    const out: PointSkeleton[] = [];
+    for (const p of pts) {
+        const t0 = minutesOf(p.time);
+        const idx = pivots.findIndex((v) => v.t === t0);
+        if (idx < 0) continue;
+        const base = pivots[idx];
+        if (base.price <= 0) continue;
+        out.push({
+            key: p.pk,
+            chartKey: chart.key,
+            stockCode: chart.stockCode,
+            date: chart.date,
+            time: p.time,
+            basePrice: base.price,
+            baseT: base.t,
+            splitIdx: idx,
+            points: pivots.map((v) => ({ x: v.t - base.t, y: pct(v.price, base.price), ...(v.synthetic ? { synthetic: true } : {}) })),
+        });
+    }
+    return out;
 }
 
 /** 값 공간의 경계. 비어 있으면 null(빈 화면 — 0으로 나누지 않는다). */
@@ -55,6 +104,7 @@ export function normalizeSkeleton(
     if (base.price <= 0) return null;
     return {
         ...owner,
+        chartKey: owner.key,
         basePrice: base.price,
         baseT: base.t,
         points: pivots.map((p) => ({ x: p.t - base.t, y: pct(p.price, base.price), ...(p.synthetic ? { synthetic: true } : {}) })),
@@ -74,6 +124,7 @@ export function absoluteSkeleton(
     if (pivots.length < 2 || prevClose == null || prevClose <= 0) return null;
     return {
         ...owner,
+        chartKey: owner.key,
         basePrice: prevClose,
         baseT: 0,
         points: pivots.map((p) => ({ x: p.t, y: pct(p.price, prevClose), ...(p.synthetic ? { synthetic: true } : {}) })),

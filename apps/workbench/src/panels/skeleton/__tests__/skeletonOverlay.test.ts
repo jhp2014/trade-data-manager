@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, splitAtX, polylinePoints, pct, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -30,9 +30,9 @@ describe("normalizeSkeleton", () => {
         expect(n.points[2].y).toBe(0);
     });
 
-    it("식별은 차트키 — 일봉·분봉 골격 둘 다 차트 소유다", () => {
+    it("식별은 차트키 — 일봉·분봉 골격 둘 다 차트 소유다(chartKey 도 같은 값)", () => {
         const n = normalizeSkeleton(pivots, "last", owner)!;
-        expect(n).toMatchObject({ key: owner.key, stockCode: "005930", date: "2026-08-05" });
+        expect(n).toMatchObject({ key: owner.key, chartKey: owner.key, stockCode: "005930", date: "2026-08-05" });
     });
 
     it("앵커 원가격·원 t 를 남긴다 — 선(가격)과 타점 시각(벽시계)을 같은 공간으로 끌어오는 계수", () => {
@@ -62,6 +62,56 @@ describe("absoluteSkeleton — 분봉 절대 배치(전일 종가 대비)", () =
 
     it("전일 종가가 없으면 null — 분모를 지어내지 않는다", () => {
         expect(absoluteSkeleton([{ t: 555, price: 110 }, { t: 570, price: 121 }], undefined, owner)).toBeNull();
+    });
+});
+
+describe("pointSkeletons — 분봉 정규화 = 타점 단위 재구성", () => {
+    const chart = { key: "005930|2026-08-05", stockCode: "005930", date: "2026-08-05" };
+    // 09:15 손 피벗 100 → 09:30 합성(타점 종가) 120 → 09:45 손 피벗 110.
+    const mins: SkeletonWirePivot[] = [
+        { t: 555, price: 100 },
+        { t: 570, price: 120, synthetic: true },
+        { t: 585, price: 110 },
+    ];
+    const pk = "005930|2026-08-05|09:30:00";
+
+    it("선 하나 = 타점 하나 — 자기 시각 피벗이 원점(0,0), 과거는 왼쪽·미래는 오른쪽(splitIdx 뒤)", () => {
+        const [l] = pointSkeletons(mins, [{ pk, time: "09:30:00" }], chart);
+        expect(l).toMatchObject({ key: pk, chartKey: chart.key, time: "09:30:00", basePrice: 120, baseT: 570, splitIdx: 1 });
+        expect(l.points.map((p) => p.x)).toEqual([-15, 0, 15]);
+        expect(l.points[0].y).toBeCloseTo(pct(100, 120));
+        expect(l.points[1].y).toBe(0);
+        expect(l.points[2].y).toBeCloseTo(pct(110, 120));
+    });
+
+    it("타점 3개면 선 3개 — 같은 골격이 타점마다 자기 좌표계로 다시 선다", () => {
+        const out = pointSkeletons(mins, [
+            { pk: "a", time: "09:15:00" },
+            { pk: "b", time: "09:30:00" },
+            { pk: "c", time: "09:45:00" },
+        ], chart);
+        expect(out.map((l) => l.splitIdx)).toEqual([0, 1, 2]);
+        expect(out.map((l) => l.points[l.splitIdx])).toEqual([
+            { x: 0, y: 0 }, { x: 0, y: 0, synthetic: true }, { x: 0, y: 0 },
+        ]);
+    });
+
+    it("synthetic 표시는 그대로 흐른다 — 속 빈 원 렌더가 이 값을 본다", () => {
+        const [l] = pointSkeletons(mins, [{ pk, time: "09:30:00" }], chart);
+        expect(l.points.map((p) => !!p.synthetic)).toEqual([false, true, false]);
+    });
+
+    it("자기 시각의 피벗이 없으면 그 타점은 건너뛴다 — 지어내지 않는다(합성 규칙상 원래 없을 수 없다)", () => {
+        expect(pointSkeletons(mins, [{ pk: "x", time: "10:00:00" }], chart)).toEqual([]);
+    });
+
+    it("피벗 2개 미만이면 골격이 아니다", () => {
+        expect(pointSkeletons([{ t: 570, price: 120 }], [{ pk, time: "09:30:00" }], chart)).toEqual([]);
+    });
+
+    it("minutesOf — 벽시계 분 환산(초는 버린다: 분봉 피벗의 t 해상도가 분이다)", () => {
+        expect(minutesOf("09:30:00")).toBe(570);
+        expect(minutesOf("15:19:59")).toBe(919);
     });
 });
 
@@ -205,7 +255,7 @@ describe("keysInRect — Ctrl+드래그 사각 선택(라벨 지점 기준)", ()
     // 화면 좌표 항등 스케일로 판정만 본다.
     const id = (v: number): number => v;
     const shape = (key: string, pts: [number, number][]) =>
-        ({ key, stockCode: "005930", date: "2026-07-02", basePrice: 100, baseT: 0, points: pts.map(([x, y]) => ({ x, y })) });
+        ({ key, chartKey: key, stockCode: "005930", date: "2026-07-02", basePrice: 100, baseT: 0, points: pts.map(([x, y]) => ({ x, y })) });
 
     it("**라벨 지점**(앵커 반대 끝)이 든 것만 잡힌다 — 선이 지나가는 것으론 안 잡힌다(정밀 선택)", () => {
         // 기준 last → 라벨은 첫 점. a 라벨(10,10)은 사각 안, b 는 선이 사각을 지나가도 라벨(200,200)이 밖.
