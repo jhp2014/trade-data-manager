@@ -133,15 +133,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 분봉 패널은 이 우회를 안 탄다(사용자 확정) — 절대 뷰는 매칭 타점의 차트만, 정규화 뷰는 선=타점이라
     // matchedPks 가 직접 거른다(아래 pointLines).
     const tagsView = useTags();
-    const rankBands = useWorkbench((s) => s.rankBands);
-    const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
-    const timeRanges = useWorkbench((s) => s.timeRanges);
     const dateRanges = useWorkbench((s) => s.dateRanges);
     const tagExpr = useWorkbench((s) => s.tagExpr);
-    const pointOnlyActive =
-        Object.values(rankBands).some((b) => b && (b.lo || b.hi)) ||
-        Object.values(axisValueRanges).some((v) => v && v.length > 0) ||
-        timeRanges.length > 0;
+    // 타점 전용 차원 활성 여부는 필터의 지식 — 어느 차원이 타점 전용인지 여기서 다시 세지 않는다.
+    const pointOnlyActive = r.pointOnlyActive;
 
     const chartAllowed = useMemo<ReadonlySet<string> | null>(() => {
         if (!isDaily) {

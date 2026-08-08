@@ -19,6 +19,13 @@ export interface PointMeta { outcome?: string }
 
 export interface RankResult {
     isEmpty: boolean; // 활성 밴드 없음
+    /**
+     * **타점에서만** 판정 가능한 차원(밴드·계산축 값구간·시간대)이 활성인가 — 차트 단위 소비자(골격 일봉
+     * 패널)가 "매칭 타점을 가진 차트" 우회를 탈지 가르는 기준. 날짜·태그는 차트에서도 판정 가능해 안 든다.
+     * 어느 차원이 어느 부류인지는 필터의 지식이라 여기서 낸다 — 소비자가 store 를 직접 열람하면
+     * 차원이 늘 때 한쪽만 고쳐지고, 슬롯이 안 풀리는 스테일 밴드를 활성으로 오판한다(여긴 해소 후 판정).
+     */
+    pointOnlyActive: boolean;
     isLoading: boolean;
     points: RankPoint[];
     coverage: number;
@@ -105,6 +112,7 @@ export function useRankFilterResult(): RankResult {
 
     return {
         isEmpty: bands.length === 0 && valueAxisIds.size === 0 && dateRanges.length === 0 && timeRanges.length === 0 && isTagExprEmpty(tagExpr),
+        pointOnlyActive: bands.length > 0 || valueAxisIds.size > 0 || timeRanges.length > 0,
         isLoading: pathsLoading,
         points, coverage, paths, stats, effHorizon, dataMinT, dataMaxT, activeAxisNames, nameOf, metaOf,
     };
