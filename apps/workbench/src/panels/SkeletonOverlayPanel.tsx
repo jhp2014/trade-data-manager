@@ -599,17 +599,20 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 })}
 
                                 {/* 얹는 선(기준선·D선) — 같은 pct 환산. **주인이 스타일을 정한다**(사용자 확정):
-                                    단일 선택 = 하늘색·라벨 오른쪽 / 호버 = 앰버·라벨 왼쪽. **둘 다 실선**이다 —
-                                    색과 라벨 위치만으로 이미 갈리고, 점선은 가격 수준선을 읽기 어렵게만 했다(사용자 확정).
+                                    색은 **그 골격선과 똑같이**(visualOf) — 그룹 목록을 훑을 때 골격선은 무리 색인데
+                                    가로선만 앰버로 뜨면 "이게 어느 골격의 선이냐"를 다시 찾아야 했다(사용자 지적).
+                                    선이 이미 색으로 정해져 있으니 가로선은 그 색을 따라가면 그만이다.
+                                    둘이 동시에 떠도(단일 선택 + 호버) 라벨 위치로 갈린다: 선택 = 오른쪽, 호버 = 왼쪽.
+                                    **둘 다 실선** — 점선은 가격 수준선을 읽기 어렵게만 했다(사용자 확정).
                                     다중 선택이면 호버 것만(수십 벌이 겹치므로).
                                     기준선 여부는 선 모양이 아니라 라벨의 "기준" 접두어 — 어차피 최저가 규칙이라 아래가 기준선. */}
                                 {showLevels && scales && (() => {
                                     const single = effSelected.size === 1 ? [...effSelected][0] : null;
                                     const owners: { s: NormalizedSkeleton; color: string; right: boolean }[] = [];
                                     const sel = single ? byKey.get(single) : null;
-                                    if (sel) owners.push({ s: sel, color: ACTIVE, right: true });
+                                    if (sel) owners.push({ s: sel, color: visualOf(sel.key).color, right: true });
                                     const hov = hovered && hovered !== single ? byKey.get(hovered) : null;
-                                    if (hov) owners.push({ s: hov, color: HOVER, right: false });
+                                    if (hov) owners.push({ s: hov, color: visualOf(hov.key).color, right: false });
                                     return owners.map(({ s, color, right }) => (
                                         <g key={`lvl-${s.key}`} style={{ pointerEvents: "none" }}>
                                             {(levelsByChart.get(s.chartKey) ?? []).map((lv, i) => {
