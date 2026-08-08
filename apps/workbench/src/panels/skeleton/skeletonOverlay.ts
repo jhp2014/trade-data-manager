@@ -19,6 +19,7 @@ export type SkeletonAnchor = "first" | "last";
  * 정규화된 골격 하나 — 화면 좌표 이전의 값 공간(x=기준 대비 시간, y=기준 대비 %).
  * 일봉·분봉 둘 다 **차트 소유**라 선 하나 = (종목, 날짜)이고 key = 차트키다.
  * 타점에서 출발시키면 (종목,날짜)에 타점이 여섯일 때 같은 골격을 여섯 번 겹쳐 그려 진해 보인다.
+ * **기하만** 있는 공통 몸통이다 — 화면의 선 한 벌은 판별 유니온(OverlayLine)으로 받는다.
  */
 export interface NormalizedSkeleton {
     /** 선의 식별키 — 차트 단위면 차트키(`종목|날짜`), 타점 단위(PointSkeleton)면 타점키. */
@@ -35,17 +36,29 @@ export interface NormalizedSkeleton {
     baseT: number;
 }
 
+/** 차트 단위 선(일봉 정규화·분봉 절대) — key = 차트키. */
+export interface ChartSkeleton extends NormalizedSkeleton {
+    kind: "chart";
+}
+
 /**
  * 타점 단위 골격 — 분봉 정규화 뷰의 선 하나 = **타점 하나**(사용자 확정: 골격 1 + 타점 3 → 선 3개).
  * 자기 시각의 경로 피벗이 원점(0,0)이다: 과거는 왼쪽 실선, **미래(그 시각 이후)는 오른쪽 점선** —
  * "그 타점에 선 눈"으로 여러 상황을 겹친다. key 는 타점키(pk)라 선택·태그가 타점 문법을 그대로 탄다.
  */
 export interface PointSkeleton extends NormalizedSkeleton {
+    kind: "point";
     /** 타점 시각(HH:MM:SS) — 라벨(`날짜 종목 시각`)과 이동(goToPoint)의 재료. */
     time: string;
     /** 원점(자기 시각 피벗)의 인덱스 — 이 뒤가 미래(점선). */
     splitIdx: number;
 }
+
+/**
+ * 화면의 선 하나 — kind 로 갈린다. 예전엔 `time?: string` 의 truthiness 로 갈랐는데, 분기가 네 곳
+ * (태그 정션·라벨·이동·발끝 태그)이라 새 분기가 하나라도 빠지면 컴파일러가 못 잡았다. 판별 유니온이면 잡는다.
+ */
+export type OverlayLine = ChartSkeleton | PointSkeleton;
 
 /** `HH:MM(:SS)` → 자정 기준 분. 분봉 골격의 t(벽시계 분)와 타점 시각을 잇는 유일한 환산. */
 export const minutesOf = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
@@ -68,6 +81,7 @@ export function pointSkeletons(
         const base = pivots[idx];
         if (base.price <= 0) continue;
         out.push({
+            kind: "point",
             key: p.pk,
             chartKey: chart.key,
             stockCode: chart.stockCode,
@@ -98,12 +112,13 @@ export function normalizeSkeleton(
     pivots: readonly SkeletonWirePivot[],
     anchor: SkeletonAnchor,
     owner: { key: string; stockCode: string; date: string },
-): NormalizedSkeleton | null {
+): ChartSkeleton | null {
     if (pivots.length < 2) return null;
     const base = anchor === "first" ? pivots[0] : pivots[pivots.length - 1];
     if (base.price <= 0) return null;
     return {
         ...owner,
+        kind: "chart",
         chartKey: owner.key,
         basePrice: base.price,
         baseT: base.t,
@@ -120,10 +135,11 @@ export function absoluteSkeleton(
     pivots: readonly SkeletonWirePivot[],
     prevClose: number | undefined,
     owner: { key: string; stockCode: string; date: string },
-): NormalizedSkeleton | null {
+): ChartSkeleton | null {
     if (pivots.length < 2 || prevClose == null || prevClose <= 0) return null;
     return {
         ...owner,
+        kind: "chart",
         chartKey: owner.key,
         basePrice: prevClose,
         baseT: 0,

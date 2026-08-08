@@ -6,7 +6,7 @@ import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import {
     normalizeSkeleton, absoluteSkeleton, pointSkeletons, dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
-    type LineVisual, type NormalizedSkeleton, type OverlayBounds, type SkeletonAnchor,
+    type LineVisual, type NormalizedSkeleton, type ChartSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { usePersistedState } from "../store/persist.js";
@@ -63,8 +63,8 @@ const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > 
 /** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
 const AXIS_LINE = "var(--text-secondary)";
 
-/** 화면의 선 하나 — 차트 단위(NormalizedSkeleton) 또는 타점 단위(time·splitIdx 가 있는 PointSkeleton). */
-type Line = NormalizedSkeleton & { time?: string; splitIdx?: number };
+/** 화면의 선 하나 — kind 판별 유니온(차트 단위 ChartSkeleton / 타점 단위 PointSkeleton). */
+type Line = OverlayLine;
 
 type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
 type XUnit = "day" | "min" | "clock";
@@ -169,10 +169,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const onlyCharts = !isDaily && onlySelected && skeletonSelection.size > 0 ? skeletonSelection : null;
 
     // 차트 단위 선(일봉·분봉 절대) — 타점 단위 뷰에선 비어 있다(선의 모집단이 다르다).
-    const shapes = useMemo<NormalizedSkeleton[]>(() => {
+    const shapes = useMemo<ChartSkeleton[]>(() => {
         const feed = feedQ.data;
         if (!feed || isPointUnit) return [];
-        const out: NormalizedSkeleton[] = [];
+        const out: ChartSkeleton[] = [];
         for (const e of isDaily ? feed.daily : feed.minute) {
             const key = chartKey(e);
             if (chartAllowed && !chartAllowed.has(key)) continue;
@@ -340,7 +340,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             return;
         }
         setActiveSelection(new Set([s.key]));
-        if (s.time) {
+        if (s.kind === "point") {
             goToPoint({ code: s.stockCode, date: s.date, time: s.time }, "skeleton-overlay");
             return;
         }
@@ -353,7 +353,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 타점이 경로 어디에 서 있나 + 타점 단위 손잡이(이동·선택·태그). y 는 그 시각의 경로 피벗에서 찾는다:
     // 유효한 분봉 골격은 모든 타점 시각에 피벗을 갖는다(합성 규칙 — 손 피벗이 있으면 그것, 없으면 합성 종가).
     // 필터가 활성이면 걸러진 타점의 마커는 뺀다(확정 규칙 — 남은 차트라도 매칭 타점만 손잡이를 받는다).
-    type Marker = { pk: string; ref: PointRef; s: NormalizedSkeleton; x: number; y: number };
+    type Marker = { pk: string; ref: PointRef; s: ChartSkeleton; x: number; y: number };
     const markers = useMemo<Marker[]>(() => {
         if (!isAbs) return [];
         const out: Marker[] = [];
@@ -440,7 +440,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     /** 선 라벨 우클릭 — 이 선의 정션으로 간다: 타점 단위 선은 타점 태그, 차트 단위 선은 차트 태그. */
     const openTagMenuFor = useCallback((s: Line, ev: { clientX: number; clientY: number; preventDefault: () => void }): void => {
         ev.preventDefault();
-        if (s.time) {
+        if (s.kind === "point") {
             setTagMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points: [{ stockCode: s.stockCode, date: s.date, time: s.time }], label: `${nameOf(s.stockCode)} ${s.time.slice(0, 5)}` });
             return;
         }
@@ -500,7 +500,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const text = (
             <span>
                 <span style={{ color: "var(--text-tertiary)" }}>{fmtDate(s.date)}</span> {nameOf(s.stockCode)}
-                {s.time && <span style={{ color: "var(--text-tertiary)" }}> {s.time.slice(0, 5)}</span>}
+                {s.kind === "point" && <span style={{ color: "var(--text-tertiary)" }}> {s.time.slice(0, 5)}</span>}
             </span>
         );
         return dotFirst ? <>{dot}{text}</> : <>{text}{dot}</>;
@@ -870,7 +870,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <span style={{ width: 6, height: 6, borderRadius: 3, background: groupColorOf(s.key), flexShrink: 0 }} />
                                         <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtDate(s.date)}</span>
                                         <span>{nameOf(s.stockCode)}</span>
-                                        {s.time && <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{s.time.slice(0, 5)}</span>}
+                                        {s.kind === "point" && <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{s.time.slice(0, 5)}</span>}
                                     </span>
                                 </MenuItem>
                             </div>
@@ -920,7 +920,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     타점 단위 선은 타점 태그(차트 태그 상속 포함), 차트 단위 선은 차트 태그. */}
                 {(() => {
                     const s = inspectKey ? byKey.get(inspectKey) : null;
-                    const ids = s ? (s.time ? tagsView.tagIdsOf({ stockCode: s.stockCode, date: s.date, time: s.time }) : tagsView.chartTagIdsOf(s)) : [];
+                    const ids = s ? (s.kind === "point" ? tagsView.tagIdsOf({ stockCode: s.stockCode, date: s.date, time: s.time }) : tagsView.chartTagIdsOf(s)) : [];
                     if (!s || ids.length === 0) return null;
                     return (
                         <span style={{ marginRight: 8 }}>
