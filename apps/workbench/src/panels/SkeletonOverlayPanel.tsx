@@ -9,6 +9,7 @@ import {
     type LineVisual, type NormalizedSkeleton, type ChartSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
+import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useTags } from "../lib/useTags.js";
@@ -383,42 +384,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return m;
     }, [selectedPks, markerByPk]);
 
-    // ── Ctrl+드래그 사각 선택 — d3-zoom 의 기본 filter 가 ctrl+mousedown 을 무시하므로 이 이벤트는 우리 것.
-    const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
-    const marqueeRef = useRef<typeof marquee>(null);
-    const onWrapMouseDown = useCallback((e: React.MouseEvent): void => {
-        if (!(e.ctrlKey || e.metaKey) || !wrapRef.current || !scales) return;
-        const wr = wrapRef.current.getBoundingClientRect();
-        const start = { x0: e.clientX - wr.left, y0: e.clientY - wr.top, x1: e.clientX - wr.left, y1: e.clientY - wr.top };
-        setMarquee(start);
-        marqueeRef.current = start;
-        const move = (me: MouseEvent): void => {
-            const cur = marqueeRef.current;
-            if (!cur) return;
-            const next = { ...cur, x1: me.clientX - wr.left, y1: me.clientY - wr.top };
-            marqueeRef.current = next;
-            setMarquee(next);
-        };
-        const up = (): void => {
-            window.removeEventListener("mousemove", move);
-            window.removeEventListener("mouseup", up);
-            const rect = marqueeRef.current;
-            marqueeRef.current = null;
-            setMarquee(null);
-            if (!rect || (Math.abs(rect.x1 - rect.x0) < 4 && Math.abs(rect.y1 - rect.y0) < 4)) return; // 클릭 오인 방지
-            // 라벨 지점 판정 — 이 뷰의 선택 채널로 담는다(차트 단위=차트키, 타점 단위=pk. 문법은 하나).
-            const hit = keysInRect(lines, labelAnchorMode, scales.x, scales.y, rect);
-            if (hit.length > 0) setActiveSelection((prev: ReadonlySet<string>) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
-            // 타점 마커도 같은 드래그로 담는다(절대 뷰) — 잡힌 종류가 곧 뜻이다(라벨=차트 선택, 마커=타점 선택).
-            const [l, rr] = rect.x0 <= rect.x1 ? [rect.x0, rect.x1] : [rect.x1, rect.x0];
-            const [t, b] = rect.y0 <= rect.y1 ? [rect.y0, rect.y1] : [rect.y1, rect.y0];
-            const mhit = markers.filter((m) => { const mx = scales.x(m.x); const my = scales.y(m.y); return mx >= l && mx <= rr && my >= t && my <= b; }).map((m) => m.pk);
-            if (mhit.length > 0) setSelectedPks((prev) => new Set([...prev, ...mhit]));
-        };
-        window.addEventListener("mousemove", move);
-        window.addEventListener("mouseup", up);
-        e.preventDefault();
+    // ── Ctrl+드래그 사각 선택 — 사각형 역학은 useMarquee 가, **무엇을 담을지**는 여기가 정한다.
+    const onMarqueeSelect = useCallback((rect: MarqueeRect): void => {
+        if (!scales) return;
+        // 라벨 지점 판정 — 이 뷰의 선택 채널로 담는다(차트 단위=차트키, 타점 단위=pk. 문법은 하나).
+        const hit = keysInRect(lines, labelAnchorMode, scales.x, scales.y, rect);
+        if (hit.length > 0) setActiveSelection((prev: ReadonlySet<string>) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
+        // 타점 마커도 같은 드래그로 담는다(절대 뷰) — 잡힌 종류가 곧 뜻이다(라벨=차트 선택, 마커=타점 선택).
+        const [l, rr] = rect.x0 <= rect.x1 ? [rect.x0, rect.x1] : [rect.x1, rect.x0];
+        const [t, b] = rect.y0 <= rect.y1 ? [rect.y0, rect.y1] : [rect.y1, rect.y0];
+        const mhit = markers.filter((m) => { const mx = scales.x(m.x); const my = scales.y(m.y); return mx >= l && mx <= rr && my >= t && my <= b; }).map((m) => m.pk);
+        if (mhit.length > 0) setSelectedPks((prev) => new Set([...prev, ...mhit]));
     }, [scales, lines, effSelected, labelAnchorMode, markers, setActiveSelection]);
+    const { marquee, onMouseDown: onWrapMouseDown } = useMarquee(wrapRef, !!scales, onMarqueeSelect);
 
     // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
     // 선택·호버는 묶음에서 빼고 따로 그린다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
