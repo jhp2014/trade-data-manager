@@ -312,6 +312,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     // 상세(피벗 값·기준선·타점 세로선)를 받을 "지금 조사 중인 하나" — 호버 우선, 없으면 단일 선택.
     const inspectKey = hovered ?? (effSelected.size === 1 ? [...effSelected][0] : null);
+    // 조사 중인 골격의 **피벗 하나**에 손이 올라간 상태 — 그 점의 축 값(기간·%)만 굵게 키우고 나머지는 물러난다.
+    // 값이 여럿일 때 "어느 숫자가 이 점 것이냐"를 눈으로 잇는 유일한 장치라 선 호버(key)와 별개 상태다.
+    const [hoveredPivot, setHoveredPivot] = useState<{ key: string; i: number } | null>(null);
+    const pivotHoverOf = (key: string, i: number): "on" | "off" | null =>
+        !hoveredPivot || hoveredPivot.key !== key ? null : hoveredPivot.i === i ? "on" : "off";
 
     // 역할 판정은 순수 함수(lineVisual)가, 색 배정은 여기가 한다 — 팔레트는 화면의 몫이라 규칙 층에 안 들인다.
     const visualOf = useCallback((key: string): { v: LineVisual; color: string } => {
@@ -649,12 +654,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     </>
                                                 );
                                             })()}
-                                            {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. */}
-                                            {(lit || dotsForAll) && s.points.map((p, i) => (
-                                                p.synthetic
-                                                    ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
-                                                    : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill={color} />
-                                            ))}
+                                            {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. 손이 올라간 점은 커진다. */}
+                                            {(lit || dotsForAll) && s.points.map((p, i) => {
+                                                const r = pivotHoverOf(s.key, i) === "on" ? 5 : lit ? 3 : 2;
+                                                return p.synthetic
+                                                    ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={r} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
+                                                    : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={r} fill={color} />;
+                                            })}
                                             {/* 피벗 좌표 — 조사 중인 하나에만(다중이면 수십 벌이 겹친다). **원점 좌표축에 내려 읽는다**
                                                 (사용자 확정): 점 → 가로축으로 수직 점선, 점 → 세로축으로 수평 점선, 값은 각 축의
                                                 발치에(기간은 x축 아래, %는 y축 옆). 점 옆에 두 값을 붙이면 라벨끼리 겹치고
@@ -668,18 +674,20 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 const ay = clamp(scales.y(0), box.top, box.top + box.height); // 가로축(기간을 읽는 자리)
                                                 const below = ay + 12 <= box.top + box.height; // x축 아래에 자리가 없으면 위로
                                                 const leftSide = ax - box.left > 44; // y축 왼쪽에 자리가 없으면 오른쪽으로
+                                                // 점 호버 = 그 점의 축 값만 굵게, 나머지 값은 물러난다(짝을 눈으로 잇는 장치).
+                                                const ph = pivotHoverOf(s.key, i);
+                                                const val: CSSProperties = { fontSize: ph === "on" ? 11 : 9, fontWeight: ph === "on" ? 700 : 400, fill: color, fontVariantNumeric: "tabular-nums" };
+                                                const fade = ph === "off" ? 0.35 : 1;
                                                 return (
-                                                    <g key={`pv${i}`}>
-                                                        <line x1={px} x2={px} y1={py} y2={ay} stroke={color} strokeWidth={0.8} strokeDasharray="2 3" opacity={0.55} />
-                                                        <line x1={px} x2={ax} y1={py} y2={py} stroke={color} strokeWidth={0.8} strokeDasharray="2 3" opacity={0.55} />
-                                                        <text x={px} y={ay + (below ? 10 : -5)} textAnchor="middle"
-                                                            stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
-                                                            style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
+                                                    <g key={`pv${i}`} opacity={fade}>
+                                                        <line x1={px} x2={px} y1={py} y2={ay} stroke={color} strokeWidth={ph === "on" ? 1.2 : 0.8} strokeDasharray="2 3" opacity={ph === "on" ? 0.9 : 0.55} />
+                                                        <line x1={px} x2={ax} y1={py} y2={py} stroke={color} strokeWidth={ph === "on" ? 1.2 : 0.8} strokeDasharray="2 3" opacity={ph === "on" ? 0.9 : 0.55} />
+                                                        <text x={px} y={ay + (below ? (ph === "on" ? 12 : 10) : -5)} textAnchor="middle"
+                                                            stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
                                                             {fmtX(p.x, xUnit)}
                                                         </text>
                                                         <text x={ax + (leftSide ? -4 : 4)} y={py - 3} textAnchor={leftSide ? "end" : "start"}
-                                                            stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
-                                                            style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
+                                                            stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
                                                             {fmtPct(p.y)}
                                                         </text>
                                                     </g>
@@ -698,6 +706,20 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         </g>
                                     );
                                 })}
+
+                                {/* 피벗 손잡이 — **조사 중인 골격 하나의 점들만** 포인터를 받는다(선은 여전히 순수 그림).
+                                    한 벌뿐이라 뭉쳐서 못 겨냥하는 문제가 없고, 이게 축의 숫자와 점을 잇는 손짓이다.
+                                    들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다. */}
+                                {(() => {
+                                    const s = inspectKey ? byKey.get(inspectKey) : null;
+                                    if (!s) return null;
+                                    return s.points.map((p, i) => (p.x === 0 && p.y === 0 ? null : (
+                                        <circle key={`hit${i}`} cx={scales.x(p.x)} cy={scales.y(p.y)} r={7} fill="transparent"
+                                            style={{ pointerEvents: "auto", cursor: "crosshair" }}
+                                            onMouseEnter={() => { setHovered(s.key); setHoveredPivot({ key: s.key, i }); }}
+                                            onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }} />
+                                    )));
+                                })()}
 
                                 {/* 선택된 타점의 세로선(절대 뷰) — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
                                 {isAbs && [...selectedPks].map((pk) => {

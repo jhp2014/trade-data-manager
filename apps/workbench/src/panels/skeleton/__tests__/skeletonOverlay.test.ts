@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME_MARGIN, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -186,37 +186,23 @@ describe("pointUnitFrame — 분봉 타점 정규화 기본 창", () => {
         points: [{ x: -90, y: -30 }, { x: 0, y: 0 }, { x: 120, y: 50 }],
     }];
 
-    it("양의 쪽은 마진만(+10분·+5%) — 미래·상승은 창 밖으로 나가도 확대로 본다", () => {
-        const f = pointUnitFrame(wide, 0)!;
-        expect(f.maxX).toBe(POINT_FRAME_MARGIN.x);
-        expect(f.maxY).toBe(POINT_FRAME_MARGIN.y);
+    it("상수 창 — 타점 이전 60분·이후 10분·±20%. 데이터가 넘쳐도 창은 안 흔들린다(비교 기준)", () => {
+        expect(pointUnitFrame(wide, 0)).toEqual({ minX: -POINT_FRAME.back, maxX: POINT_FRAME.forward, minY: -20, maxY: 20 });
     });
 
-    it("음의 쪽은 데이터만큼 — 관심사가 타점 이전이라 과거·하락이 화면을 차지한다", () => {
-        const f = pointUnitFrame(wide, 0)!;
-        expect(f.minX).toBe(-90);
-        expect(f.minY).toBe(-30);
-    });
-
-    it("미래 포함이면 양의 쪽도 데이터까지 — 타점 뒤로 어디까지 갔나를 한 창에서", () => {
+    it("미래 포함이면 **양의 쪽만** 데이터까지 — 과거 쪽 창은 그대로", () => {
         const f = pointUnitFrame(wide, 0, true)!;
         expect(f.maxX).toBe(120);
         expect(f.maxY).toBe(50);
-        expect(f.minX).toBe(-90); // 음의 쪽은 그대로
+        expect(f.minX).toBe(-POINT_FRAME.back);
+        expect(f.minY).toBe(POINT_FRAME.minY);
     });
 
-    it("미래 포함이어도 마진 아래로는 안 좁아진다 — 데이터가 원점에서 안 벗어난 경우", () => {
+    it("미래 포함이어도 기본 창 아래로는 안 좁아진다 — 데이터가 원점에서 안 벗어난 경우", () => {
         const flat = [{ ...wide[0], points: [{ x: 0, y: 0 }, { x: 2, y: 1 }] }];
         const f = pointUnitFrame(flat, 0, true)!;
-        expect(f.maxX).toBe(POINT_FRAME_MARGIN.x);
-        expect(f.maxY).toBe(POINT_FRAME_MARGIN.y);
-    });
-
-    it("데이터가 원점 근처뿐이어도 최소 마진은 남는다 — 창이 0폭으로 접히지 않게", () => {
-        const flat = [{ ...wide[0], points: [{ x: -1, y: -0.5 }, { x: 0, y: 0 }] }];
-        const f = pointUnitFrame(flat, 0)!;
-        expect(f.minX).toBe(-POINT_FRAME_MARGIN.x);
-        expect(f.minY).toBe(-POINT_FRAME_MARGIN.y);
+        expect(f.maxX).toBe(POINT_FRAME.forward);
+        expect(f.maxY).toBe(POINT_FRAME.maxY);
     });
 
     it("빈 목록은 창이 없다", () => {

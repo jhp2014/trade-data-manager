@@ -198,25 +198,22 @@ export const dailyFrame = (anchor: SkeletonAnchor): OverlayBounds =>
         : { minX: -DAILY_FRAME.forward, maxX: DAILY_FRAME.back, minY: DAILY_FRAME.minY, maxY: DAILY_FRAME.maxY };
 
 /**
- * 분봉 타점 정규화 뷰의 기본 창(사용자 확정): 원점(타점) 너머 **양의 쪽은 마진만**(+10분 · +5%),
- * **음의 쪽은 데이터만큼**(분위수 트리밍). 이 뷰의 관심사가 "타점 이전에 무슨 일이 있었나"라
- * 과거(왼쪽)·하락(아래) 영역이 화면의 대부분을 차지해야 한다. 미래·상승은 마진 너머로 확대해서 본다.
+ * 분봉 타점 정규화 뷰의 기본 창(사용자 확정 — 일봉과 같은 상수 창): **타점 이전 60분 · 이후 10분 · ±20%**.
+ * 이 뷰의 관심사가 "타점 이전에 무슨 일이 있었나"라 과거(왼쪽)가 창의 대부분을 차지한다.
+ * 데이터에서 뽑지 않는 이유는 일봉·절대 뷰와 같다 — 필터를 바꿔도 같은 움직임이 같은 크기로 서야 비교가 된다.
  */
-export const POINT_FRAME_MARGIN = { x: 10, y: 5 } as const;
+export const POINT_FRAME = { back: 60, forward: 10, minY: -20, maxY: 20 } as const;
 
 /**
- * `includeFuture` 면 양의 쪽도 데이터까지 넓힌다 — "타점 뒤로 어디까지 갔나"를 볼 때. 축소로도 닿지만
+ * `includeFuture` 면 **양의 쪽만** 데이터까지 넓힌다 — "타점 뒤로 어디까지 갔나"를 볼 때. 축소로도 닿지만
  * 기본 창에서 한 번에 보고 싶다는 요구(사용자)에 대한 답이고, 원위치(리셋)도 이 창으로 돌아온다.
  */
 export function pointUnitFrame(items: readonly NormalizedSkeleton[], q: number, includeFuture = false): OverlayBounds | null {
+    if (items.length === 0) return null;
+    const base: OverlayBounds = { minX: -POINT_FRAME.back, maxX: POINT_FRAME.forward, minY: POINT_FRAME.minY, maxY: POINT_FRAME.maxY };
+    if (!includeFuture) return base;
     const t = trimmedBounds(items, q);
-    if (!t) return null;
-    return {
-        minX: Math.min(t.minX, -POINT_FRAME_MARGIN.x),
-        maxX: includeFuture ? Math.max(t.maxX, POINT_FRAME_MARGIN.x) : POINT_FRAME_MARGIN.x,
-        minY: Math.min(t.minY, -POINT_FRAME_MARGIN.y),
-        maxY: includeFuture ? Math.max(t.maxY, POINT_FRAME_MARGIN.y) : POINT_FRAME_MARGIN.y,
-    };
+    return t ? { ...base, maxX: Math.max(base.maxX, t.maxX), maxY: Math.max(base.maxY, t.maxY) } : base;
 }
 
 export function absoluteFrame(items: readonly NormalizedSkeleton[]): OverlayBounds | null {
