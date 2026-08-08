@@ -8,8 +8,9 @@ import { entryAnchoredBars } from "@trade-data-manager/market/domain";
 import { fetchRankMinutes, type RankMinuteBar } from "../../api/rankMinutes.js";
 import type { RankPoint } from "../../api/rank.js";
 import type { RankPointPath } from "../../api/rankPaths.js";
+import { chartKeyOf } from "../../lib/pointKey.js";
 
-const dayKey = (code: string, date: string): string => `${code}|${date}`;
+const dayKey = chartKeyOf; // (종목,날) = 차트 키 — 손조립 대신 공용 계약
 const dayCache = new Map<string, RankMinuteBar[]>(); // (종목,날) → 시간오름차 UN 분봉. 데이터 없는 날 = 빈 배열(재조회 방지).
 
 export interface RankPathsResult {

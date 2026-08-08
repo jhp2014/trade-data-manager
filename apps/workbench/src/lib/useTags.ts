@@ -16,7 +16,7 @@ import type { Tag, TagAttachment, ChartTagAttachment } from "../api/tags.js";
 import { attachTag, detachTag, attachChartTag, detachChartTag } from "../api/tags.js";
 import { tagsQuery, tagAttachmentsQuery, chartTagAttachmentsQuery } from "../api/queries.js";
 import { applyTagToggle, applyChartTagToggle, buildTagIndex, buildChartTagIndex, countByTag } from "./tagIndex.js";
-import { pointKey, type PointRef } from "./pointKey.js";
+import { pointKey, chartKey, type PointRef } from "./pointKey.js";
 
 const TOGGLE_KEY = ["tag-toggle"];
 const CHART_TOGGLE_KEY = ["chart-tag-toggle"];
@@ -99,7 +99,7 @@ export function useTags(): TagsView {
 
     return useMemo(() => {
         const directOf = (p: PointRef): string[] => index.get(pointKey(p)) ?? [];
-        const chartOf = (c: ChartTagRef): string[] => chartIndex.get(`${c.stockCode}|${c.date}`) ?? [];
+        const chartOf = (c: ChartTagRef): string[] => chartIndex.get(chartKey(c)) ?? [];
         // 상속 합치기 — 직접이 앞(편집 대상이 먼저 보이게), 차트 상속이 뒤. 중복은 Set 으로 거른다.
         const idsOf = (p: PointRef): string[] => {
             const direct = directOf(p);

@@ -12,7 +12,7 @@ import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useTags } from "../lib/useTags.js";
-import { pointKey, pointKeyOf, parsePointKey, type PointRef } from "../lib/pointKey.js";
+import { pointKey, pointKeyOf, parsePointKey, chartKey, chartKeyOf, type PointRef } from "../lib/pointKey.js";
 import { evalTagExpr, isTagExprEmpty } from "./rank/tagFilter.js";
 import { BulkTagMenu } from "./skeleton/ChartTagMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
@@ -116,7 +116,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const pointsByChart = useMemo(() => {
         const m = new Map<string, ReviewPointListItem[]>();
         for (const p of pointsQ.data ?? []) {
-            const k = `${p.stockCode}|${p.date}`;
+            const k = chartKey(p);
             const list = m.get(k);
             if (list) list.push(p);
             else m.set(k, [p]);
@@ -146,9 +146,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const chartAllowed = useMemo<ReadonlySet<string> | null>(() => {
         if (!isDaily) {
             if (!filterActive) return null;
-            return new Set(r.points.map((p) => `${p.stockCode}|${p.date}`)); // 매칭 타점 없는 차트는 선째 제외
+            return new Set(r.points.map((p) => chartKey(p))); // 매칭 타점 없는 차트는 선째 제외
         }
-        if (pointOnlyActive) return new Set(r.points.map((p) => `${p.stockCode}|${p.date}`));
+        if (pointOnlyActive) return new Set(r.points.map((p) => chartKey(p)));
         const dateActive = dateRanges.length > 0;
         const tagActive = !isTagExprEmpty(tagExpr);
         if (!dateActive && !tagActive) return null; // 무필터 = 전 차트
@@ -156,7 +156,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (!feed) return new Set();
         const out = new Set<string>();
         for (const e of feed.daily) {
-            const key = `${e.stockCode}|${e.date}`;
+            const key = chartKey(e);
             if (dateActive && !dateRanges.some((rg) => e.date >= rg.from && e.date <= rg.to)) continue;
             if (tagActive) {
                 const ids = new Set(tagsView.chartTagIdsOf(e));
@@ -179,7 +179,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (!feed || isPointUnit) return [];
         const out: NormalizedSkeleton[] = [];
         for (const e of isDaily ? feed.daily : feed.minute) {
-            const key = `${e.stockCode}|${e.date}`;
+            const key = chartKey(e);
             if (chartAllowed && !chartAllowed.has(key)) continue;
             if (onlyCharts && !onlyCharts.has(key)) continue;
             const owner = { key, stockCode: e.stockCode, date: e.date };
@@ -195,7 +195,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (!feed || !isPointUnit) return [];
         const out: Line[] = [];
         for (const e of feed.minute) {
-            const key = `${e.stockCode}|${e.date}`;
+            const key = chartKey(e);
             if (onlyCharts && !onlyCharts.has(key)) continue;
             const pts = (pointsByChart.get(key) ?? [])
                 .map((rp) => ({ pk: pointKey(rp), time: rp.time }))
@@ -210,7 +210,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 선은 언제나 차트 소유 — 모든 뷰가 같은 목록을 본다(타점 단위 선은 chartKey 로 찾는다).
     const levelsByChart = useMemo(() => {
         const m = new Map<string, SkeletonWireLevel[]>();
-        for (const l of feedQ.data?.levels ?? []) m.set(`${l.stockCode}|${l.date}`, l.levels);
+        for (const l of feedQ.data?.levels ?? []) m.set(chartKey(l), l.levels);
         return m;
     }, [feedQ.data]);
 
@@ -220,7 +220,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (!feed) return 0;
         if (isDaily) return feed.daily.length;
         if (!isPointUnit) return feed.minute.length;
-        return feed.minute.reduce((n, e) => n + (pointsByChart.get(`${e.stockCode}|${e.date}`)?.length ?? 0), 0);
+        return feed.minute.reduce((n, e) => n + (pointsByChart.get(chartKey(e))?.length ?? 0), 0);
     }, [feedQ.data, isDaily, isPointUnit, pointsByChart]);
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
@@ -287,7 +287,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const activeKey = activePoint
         ? isPointUnit
             ? activePoint.time && pointKeyOf(activePoint.code, activePoint.date, activePoint.time)
-            : `${activePoint.code}|${activePoint.date}`
+            : chartKeyOf(activePoint.code, activePoint.date)
         : null;
     // 로컬 선택이 없으면 활성 타점(의 차트)을 단일 선택으로 — 다른 패널과의 링크가 이걸로 이어진다.
     const effSelected = useMemo<ReadonlySet<string>>(

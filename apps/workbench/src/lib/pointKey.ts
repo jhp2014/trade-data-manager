@@ -5,7 +5,7 @@
 //   · 조인 키 — 시트 행 ↔ 축 배치 셀(AxisIndex) ↔ 경로 통계(Excursion.key)
 // **형식의 정의는 도메인**(pointKeyOf — 서버 캐시 지문·리졸버와 같은 문자열)이고, 이 파일은 그 위의
 // 클라 편의(필드명 다른 값·파싱·비교)만 소유한다. 구분자 "|" 계약이 두 곳에 있으면 한쪽만 바뀌는 사고가 난다.
-import { pointKeyOf as domainPointKey } from "@trade-data-manager/market/domain";
+import { pointKeyOf as domainPointKey, chartKeyOf as domainChartKey } from "@trade-data-manager/market/domain";
 
 /** 타점을 가리키는 값(자연키의 구조화 형태). api/rank 의 RankPoint 와 구조 동일 — 구조적 타이핑으로 상호 통용. */
 export interface PointRef {
@@ -38,3 +38,18 @@ export function parsePointKey(key: PointKey): PointRef | null {
 
 /** 두 타점이 같은가(키 비교). 필드 3개를 손으로 &&로 잇는 자리를 대체. */
 export const samePoint = (a: PointRef, b: PointRef): boolean => pointKey(a) === pointKey(b);
+
+// ── 차트 키(`stockCode|date`) — 골격·차트 태그·기준선의 소유 단위. 타점 키와 같은 사정:
+// 형식의 정의는 도메인(chartKeyOf)이고, 손조립이 흩어지면 구분자 계약이 여러 곳이 된다.
+
+/** 차트(종목,날짜)를 가리키는 값. 골격 피드 항목·차트 태그 부착과 구조 통용. */
+export interface ChartRef {
+    stockCode: string;
+    date: string; // YYYY-MM-DD
+}
+
+/** ChartRef(또는 구조가 같은 값) → 차트 키. */
+export const chartKey = (c: ChartRef): string => domainChartKey(c);
+
+/** 필드 2개로 직접 — Focus/ActivePoint({code,date}) 처럼 필드명이 다른 값에서 만들 때. */
+export const chartKeyOf = (stockCode: string, date: string): string => domainChartKey({ stockCode, date });

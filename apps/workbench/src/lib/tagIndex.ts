@@ -3,7 +3,7 @@
 //  · tagIds 순서 = 서버가 준 순서(태그 이름순). 낙관적 삽입도 같은 기준으로 끼워 넣어야
 //    부착 직후와 서버 응답 후의 칩 순서가 안 흔들린다(부착 순으로 붙이면 refetch 때 자리가 튄다).
 import type { TagAttachment, ChartTagAttachment } from "@trade-data-manager/wire";
-import { pointKey, type PointKey, type PointRef } from "./pointKey.js";
+import { pointKey, chartKey, type PointKey, type PointRef } from "./pointKey.js";
 
 /** pk("code|date|time") → 붙은 태그 id들(이름순). 태그 0개인 타점은 키가 없음. */
 export type TagIndex = Map<PointKey, string[]>;
@@ -17,7 +17,7 @@ export function buildTagIndex(attachments: TagAttachment[]): TagIndex {
 /** 차트키("code|date") → 차트 소유 태그 id들. 타점판과 같은 접기(부착 피드만 다르다). */
 export function buildChartTagIndex(attachments: ChartTagAttachment[]): Map<string, string[]> {
     const idx = new Map<string, string[]>();
-    for (const a of attachments) idx.set(`${a.stockCode}|${a.date}`, a.tagIds);
+    for (const a of attachments) idx.set(chartKey(a), a.tagIds);
     return idx;
 }
 

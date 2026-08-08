@@ -9,6 +9,7 @@
 //   (밴드 경계·그룹 컷 = rankBands/cuts)은 계산 축에 아직 열지 않는다 — 조용히 끊긴 참조가 되기 때문.
 //   보정(사람이 계산 줄에 개입)이 들어올 때 앵커 방식으로 함께 푼다.
 import type { AxisDisplay, ComputedAxisFeed, PlacedPoint, RankAxis } from "@trade-data-manager/wire";
+import { pointKey } from "./pointKey.js";
 
 /** 계산 축 id 접두 — 판단 축 id(DB bigserial 문자열)와 절대 겹치지 않는다. */
 const COMPUTED_PREFIX = "c:";
@@ -74,7 +75,7 @@ export function computedAxisView(feed: ComputedAxisFeed): ComputedAxisView {
     for (const v of feed.values) {
         const value = v.saturated ? saturatedValue : v.value;
         line.push({ slotId: `${axisId}#${value}`, orderKey: sign * value, stockCode: v.stockCode, date: v.date, time: v.time });
-        values.set(`${v.stockCode}|${v.date}|${v.time}`, value);
+        values.set(pointKey(v), value);
     }
     return {
         axis: { id: axisId, name: feed.name, scope: "point" },
