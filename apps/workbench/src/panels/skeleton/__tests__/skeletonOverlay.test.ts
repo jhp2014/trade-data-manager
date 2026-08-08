@@ -247,7 +247,7 @@ describe("lineVisual", () => {
     const none = { selected: sel(), hovered: null, group: null };
 
     it("아무것도 강조 안 됐으면 전부 base — 흐리지 않다", () => {
-        expect(lineVisual("a", none)).toEqual({ role: "base", width: 1.25, dim: false });
+        expect(lineVisual("a", none)).toEqual({ role: "base", width: 1.25, dim: false, recede: false });
     });
 
     it("선택과 호버는 **동시에** 산다 — 호버가 선택을 밀어내지 않는다", () => {
@@ -285,6 +285,32 @@ describe("lineVisual", () => {
         const ctx = { selected: sel(), hovered: null, group: new Set(["a"]) };
         expect(lineVisual("z", ctx).dim).toBe(true);
         expect(lineVisual("a", ctx).dim).toBe(false);
+    });
+
+    it("무리 안에서 하나를 짚으면 나머지 무리는 물러난다 — 목록 훑기에서 짚은 것만 앞에 선다", () => {
+        const ctx = { selected: sel(), hovered: "b", group: new Set(["a", "b", "c"]) };
+        expect(lineVisual("b", ctx).recede).toBe(false); // 짚은 것
+        expect(lineVisual("a", ctx).recede).toBe(true);
+        expect(lineVisual("c", ctx).recede).toBe(true);
+        // 물러남은 역할·색을 안 바꾼다 — 목록↔그림을 잇는 끈은 색이다.
+        expect(lineVisual("a", ctx).role).toBe("group");
+    });
+
+    it("다중 선택에서도 같은 규칙 — 붙잡은 무리 중 짚은 하나만 앞", () => {
+        const ctx = { selected: sel("a", "b"), hovered: "a", group: null };
+        expect(lineVisual("a", ctx).recede).toBe(false);
+        expect(lineVisual("b", ctx).recede).toBe(true);
+    });
+
+    it("아무것도 안 짚었으면 무리 전원이 앞 — 그룹을 켜기만 했을 때 다 같이 보인다", () => {
+        const ctx = { selected: sel(), hovered: null, group: new Set(["a", "b"]) };
+        expect(lineVisual("a", ctx).recede).toBe(false);
+        expect(lineVisual("b", ctx).recede).toBe(false);
+    });
+
+    it("무리 밖은 물러남이 아니라 흐림이다 — 두 상태를 겹쳐 쓰지 않는다", () => {
+        const ctx = { selected: sel("a"), hovered: "a", group: null };
+        expect(lineVisual("z", ctx)).toMatchObject({ role: "base", dim: true, recede: false });
     });
 
     it("빈 그룹은 강조가 아니다 — 목록을 닫은 직후 전부 흐려지는 걸 막는다", () => {

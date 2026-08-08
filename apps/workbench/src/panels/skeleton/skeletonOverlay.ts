@@ -316,14 +316,20 @@ export interface LineVisual {
     width: number;
     /** 강조된 게 하나라도 있는데 이건 아닌가 — 흐리게 그릴지. */
     dim: boolean;
+    /**
+     * 강조 무리(선택·그룹)에 **속하지만** 지금 짚고 있는 건 아닌가 — 한 걸음 물러나 그릴지.
+     * 굵기 차이(1.75 → 2.5)만으로는 목록에서 행을 훑을 때 어느 선인지 잘 안 잡혔다(사용자 지적).
+     * 색은 그대로 두고 진하기만 낮춘다 — 색이 바뀌면 목록↔그림을 잇는 유일한 끈이 끊긴다.
+     */
+    recede: boolean;
 }
 
 /**
- * 강조 상태 → 표시 규격. **규칙이 셋 겹쳐서** 화면 안에 삼항 연산으로 두면 다음 규칙이 붙을 때 반드시 어긋난다.
+ * 강조 상태 → 표시 규격. **규칙이 넷 겹쳐서** 화면 안에 삼항 연산으로 두면 다음 규칙이 붙을 때 반드시 어긋난다.
  *
  * 우선순위는 selected → group → hovered 다. group 이 hovered 보다 위인 게 핵심인데, 그러지 않으면
  * **목록 행에 손을 올린 순간 그 선만 색이 바뀌어** 정작 색으로 짝을 찾던 그 순간에 대응이 끊긴다.
- * 대신 굵기로 답한다(그룹·선택 안에서 호버된 것은 더 굵게).
+ * 대신 굵기로 답하고(짚은 것은 더 굵게), **나머지 무리는 recede 로 물러난다**(짚은 것만 남는 효과).
  */
 export function lineVisual(key: string, ctx: {
     selected: ReadonlySet<string>;
@@ -331,10 +337,12 @@ export function lineVisual(key: string, ctx: {
     group: ReadonlySet<string> | null;
 }): LineVisual {
     const anyLit = ctx.selected.size > 0 || ctx.hovered !== null || (ctx.group?.size ?? 0) > 0;
-    if (ctx.selected.has(key)) return { role: "selected", width: key === ctx.hovered ? 2.5 : 2, dim: false };
-    if (ctx.group?.has(key)) return { role: "group", width: key === ctx.hovered ? 2.5 : 1.75, dim: false };
-    if (key === ctx.hovered) return { role: "hovered", width: 2, dim: false };
-    return { role: "base", width: 1.25, dim: anyLit };
+    // 무리 안에서 하나를 짚고 있는가 — 그렇다면 그 하나만 앞에 서고 나머지 무리는 물러난다.
+    const recede = ctx.hovered !== null && key !== ctx.hovered;
+    if (ctx.selected.has(key)) return { role: "selected", width: key === ctx.hovered ? 2.5 : 2, dim: false, recede };
+    if (ctx.group?.has(key)) return { role: "group", width: key === ctx.hovered ? 2.5 : 1.75, dim: false, recede };
+    if (key === ctx.hovered) return { role: "hovered", width: 2, dim: false, recede: false };
+    return { role: "base", width: 1.25, dim: anyLit, recede: false };
 }
 
 /** 라벨 자리 하나(화면 좌표). */

@@ -48,6 +48,12 @@ const DOT_BUDGET = 1200;
 const LABEL_CELL = { w: 72, h: 14 };
 /** 라벨 칩과 끝점 사이 간격 — 피벗 손잡이(r=7) 밖에 서야 점 호버를 안 가로챈다. */
 const LABEL_GAP = 9;
+/**
+ * 무리(선택·그룹) 안에서 안 짚은 선의 진하기. 색은 그대로 두고 이만큼만 물러난다 —
+ * 목록 행을 훑을 때 짚은 하나가 무리 안에서도 또렷이 서게(굵기 차이만으론 약했다, 사용자 지적).
+ * 무리 밖(dim)보다는 진하다: 무리에 속한다는 사실 자체는 계속 보여야 한다.
+ */
+const RECEDE_OPACITY = 0.3;
 
 /** `2026-07-08` → `26.07.08`. 연도를 남기는 건 여러 해가 섞이기 때문(월·일만이면 같은 날로 보인다). */
 const fmtDate = (d: string): string => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
@@ -500,7 +506,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     const inspecting = s.key === inspectKey;
                                     return (
                                         // 선은 순수 그림 — 포인터를 안 받는다(손잡이는 라벨). 캔버스로 옮겨도 조작이 안 바뀐다.
-                                        <g key={s.key} opacity={v.dim ? dimmed : lit ? 1 : baseOpacity} style={{ pointerEvents: "none" }}>
+                                        // 진하기 = 역할이 정한다: 흐림(무리 밖) < 물러남(무리 안이지만 안 짚은 것) < 앞(짚은 것).
+                                        <g key={s.key} opacity={v.dim ? dimmed : v.recede ? RECEDE_OPACITY : lit ? 1 : baseOpacity} style={{ pointerEvents: "none" }}>
                                             {/* 선택에만 넓은 반투명 밑선 — 색만으로는 "붙잡혔다"가 잘 안 읽힌다. */}
                                             {v.role === "selected" && <polyline points={pts} fill="none" stroke={color} strokeWidth={7} strokeLinejoin="round" opacity={0.18} />}
                                             {/* 미래는 점선 — 타점 단위 선은 원점(자기 시각) 이후 전부, 절대 뷰는 선택 타점 이후.
