@@ -64,6 +64,8 @@ export class DayBoards {
                     cumAmount: md.cumAmount,
                     minuteOpen: md.minuteOpen, // 복기 hover 버킷 정책(꼬리없는 음봉 제외) 판정용
                     minuteHigh: md.minuteHigh,
+                    minuteLow: md.minuteLow, // 골격 테마 선 세분점(저점 후보)·캔들 오버레이용 — 위 셋과 합쳐 분당 OHLC
+
                     trailingHighs: md.trailingHighs, // 복기 필터 "매물대 내부" 술어용(수정주가 KRX/UN 두벌)
                     basePrice: md.basePrice, // 기준가 토글(KRX 재기저 일차변환)용 — 원주가 스케일, 이벤트 보정(baseFactor 는 미노출)
                     name: b?.name ?? null,

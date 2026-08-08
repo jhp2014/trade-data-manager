@@ -1,6 +1,7 @@
 // /day-replay 계약 — 복기보드용 per-minute 파생 시계열 + 메타(self-contained).
 // per-minute 시계열은 core/market MinuteDerived 중 클라가 쓰는 부분집합.
 //  · minuteOpen/minuteHigh — 복기 hover 버킷 카운팅 정책(꼬리없는 음봉 제외) 판정에 필요.
+//  · minuteLow — 위 셋과 합쳐 분당 OHLC(% 공간). 골격 겹쳐 그리기의 테마 선 세분점(저점 후보)·캔들 오버레이.
 //  · trailingHighs — 복기 필터 "매물대 내부" 술어에 필요.
 // 클라가 서버와 동일한 countAmountBuckets/evalBoardFilter 를 시점 t 까지 돌리려면 이 원자재가 있어야 한다.
 import type { MinuteDerived as CoreMinuteDerived } from "@trade-data-manager/market";
@@ -12,7 +13,7 @@ import type { MinuteDerived as CoreMinuteDerived } from "@trade-data-manager/mar
  */
 export type MinuteDerived = Pick<
     CoreMinuteDerived,
-    "code" | "times" | "rate" | "high" | "low" | "open" | "cumAmount" | "minuteOpen" | "minuteHigh" | "trailingHighs" | "basePrice"
+    "code" | "times" | "rate" | "high" | "low" | "open" | "cumAmount" | "minuteOpen" | "minuteHigh" | "minuteLow" | "trailingHighs" | "basePrice"
 >;
 
 /** 복기보드 종목 — per-minute + 메타(서버 stitch). 이 하나로 랭킹+카드 다 만든다. */

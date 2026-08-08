@@ -125,6 +125,7 @@ const rstock = (code: string, over: Partial<ReplayStock>): ReplayStock => ({
     cumAmount: [10, 20],
     minuteOpen: [0, 1],
     minuteHigh: [1, 6],
+    minuteLow: [0, 0],
     trailingHighs: { krx: [], un: [] },
     basePrice: { krx: null, un: null },
     name: code,

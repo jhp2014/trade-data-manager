@@ -86,6 +86,17 @@ describe("deriveMinutes — 이중 trailing + basePrice 스칼라", () => {
         expect(rebasePct(d!.rate[0], 100, 98)).toBe(6.12);
     });
 
+    it("분당 OHLC 네 벌이 같은 base 로 나온다 — 골격 세분점·캔들 오버레이가 이 넷을 함께 쓴다", () => {
+        const d = deriveMinutes("000001", minutes, rawDaily, adjDaily, "2026-07-10")!;
+        // base=100. 분봉0 = (100,105,99,104) → (0, 5, -1, 4)
+        expect([d.minuteOpen[0], d.minuteHigh[0], d.minuteLow[0], d.rate[0]]).toEqual([0, 5, -1, 4]);
+        // 분봉1 = (104,110,103,108) → (4, 10, 3, 8)
+        expect([d.minuteOpen[1], d.minuteHigh[1], d.minuteLow[1], d.rate[1]]).toEqual([4, 10, 3, 8]);
+        // running 고저와 다르다: high/low 는 누적(단조), minuteHigh/minuteLow 는 그 분만.
+        expect(d.low).toEqual([-1, -1]); // 누적 최저는 유지
+        expect(d.minuteLow).toEqual([-1, 3]); // 그 분의 저가는 올라간다
+    });
+
     it("trailingHighs 는 수정주가 두 벌(자기 시장 base)", () => {
         const d = deriveMinutes("000001", minutes, rawDaily, adjDaily, "2026-07-10");
         // KRX base=49: [55, 51] → [12.24, 4.08] / UN base=50: [55, 51.5] → [10, 3]

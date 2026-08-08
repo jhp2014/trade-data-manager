@@ -57,6 +57,10 @@ export interface MinuteDerived {
     cumAmount: number[]; // 누적 거래대금(원) / 분
     minuteOpen: number[]; // 분봉 시가 % / 분 — 테마 음봉/꼬리 판정
     minuteHigh: number[]; // 분봉 고가 % / 분 — 테마 음봉/꼬리 판정
+    // 분봉 저가 % / 분. 앞의 셋과 합쳐 **분당 완전한 OHLC**(% 공간)가 된다 — 원래는 음봉/꼬리 판정에
+    // 저가가 안 쓰여 빠져 있었다. 골격 겹쳐 그리기가 이걸 둘로 쓴다: 구간 세분점의 **저점 후보**(고가만
+    // 있으면 그림이 위로만 부풀어 보인다)와 캔들 오버레이.
+    minuteLow: number[];
     trailingHighs: ByMarket<number[]>; // 매 거래일 high%(수정주가, 시장별 자기 전일종가 대비, index=daysAgo, 0=당일, 최대 TRAILING_DAYS)
     basePrice: ByMarket<number | null>; // 등락률 기준가(당일 원주가 스케일, 이벤트 보정) — 분봉 % KRX 재기저(일차변환)·기준가 토글용
     baseFactor: ByMarket<number>; // 기준가 조정계수(평상 1) — ≠1: 이벤트(감자·액분) 보정 또는 데이터 이상. 트립와이어 로그용(와이어 미노출)
@@ -154,6 +158,7 @@ export function deriveMinutes(
     const cumAmount = new Array<number>(n);
     const minuteOpen = new Array<number>(n);
     const minuteHigh = new Array<number>(n);
+    const minuteLow = new Array<number>(n);
 
     let hi = -Infinity;
     let lo = Infinity;
@@ -176,9 +181,10 @@ export function deriveMinutes(
         cumAmount[i] = cum;
         minuteOpen[i] = pct(o);
         minuteHigh[i] = pct(h);
+        minuteLow[i] = pct(l);
     }
 
-    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount, minuteOpen, minuteHigh, trailingHighs, basePrice: bp.base, baseFactor: bp.factor };
+    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount, minuteOpen, minuteHigh, minuteLow, trailingHighs, basePrice: bp.base, baseFactor: bp.factor };
 }
 
 /**
