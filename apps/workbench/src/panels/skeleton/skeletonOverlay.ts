@@ -204,14 +204,18 @@ export const dailyFrame = (anchor: SkeletonAnchor): OverlayBounds =>
  */
 export const POINT_FRAME_MARGIN = { x: 10, y: 5 } as const;
 
-export function pointUnitFrame(items: readonly NormalizedSkeleton[], q: number): OverlayBounds | null {
+/**
+ * `includeFuture` 면 양의 쪽도 데이터까지 넓힌다 — "타점 뒤로 어디까지 갔나"를 볼 때. 축소로도 닿지만
+ * 기본 창에서 한 번에 보고 싶다는 요구(사용자)에 대한 답이고, 원위치(리셋)도 이 창으로 돌아온다.
+ */
+export function pointUnitFrame(items: readonly NormalizedSkeleton[], q: number, includeFuture = false): OverlayBounds | null {
     const t = trimmedBounds(items, q);
     if (!t) return null;
     return {
         minX: Math.min(t.minX, -POINT_FRAME_MARGIN.x),
-        maxX: POINT_FRAME_MARGIN.x,
+        maxX: includeFuture ? Math.max(t.maxX, POINT_FRAME_MARGIN.x) : POINT_FRAME_MARGIN.x,
         minY: Math.min(t.minY, -POINT_FRAME_MARGIN.y),
-        maxY: POINT_FRAME_MARGIN.y,
+        maxY: includeFuture ? Math.max(t.maxY, POINT_FRAME_MARGIN.y) : POINT_FRAME_MARGIN.y,
     };
 }
 

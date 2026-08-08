@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { AXIS_IDENTITY, DRAG_ZOOM_RATE, applyGesture, panAxis, zoomAxisAt, type AxisTransform } from "../useOverlayZoom.js";
 
 // 축별 확대의 **손짓 규칙**(applyGesture)과 축 변환 산술 — DOM 없이 여기서 굳힌다.
+// (0.5 는 이 파일의 클램프 검증용 값 — 실제 기본 하한은 0.05 다. 기본 창 밖을 축소로 볼 수 있어야 한다.)
 const EXTENT = [0.5, 60] as const;
 const ident = { x: AXIS_IDENTITY, y: AXIS_IDENTITY };
 const delta = (over: Partial<{ dk: number; dx: number; dy: number; px: number; py: number }>) =>

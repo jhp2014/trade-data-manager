@@ -71,6 +71,9 @@ const fmtX = (x: number, unit: XUnit): string => (unit === "clock" ? hmOf(x) : `
 export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.Element {
     const [anchor, setAnchor] = usePersistedState<SkeletonAnchor>(ANCHOR_KEY, (o) => (o === "first" || o === "last" ? o : null), "last");
     const [minuteView, setMinuteView] = usePersistedState<"norm" | "abs">(MINVIEW_KEY, (o) => (o === "norm" || o === "abs" ? o : null), "norm");
+    // 미래 포함(분봉 타점 정규화 전용) — 기본 창은 타점 이전이 주인공이라 미래를 마진만 남기고 자른다.
+    // "타점 뒤로 어디까지 갔나"를 볼 땐 이 토글이 창을 데이터까지 넓힌다(축소로도 닿지만 한 번에 보게).
+    const [showFuture, setShowFuture] = usePersistedState<boolean>("wb.skeletonOverlayFuture", (o) => (typeof o === "boolean" ? o : null), false);
     const [showLevels, setShowLevels] = usePersistedState<boolean>(`wb.skeletonOverlayLevels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     const [showLabels, setShowLabels] = usePersistedState<boolean>(`wb.skeletonOverlayLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
 
@@ -222,8 +225,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     //  · 분봉 절대 = 고정 프레임(±15분 · −5~+30%).
     const [locked, setLocked] = useState<OverlayBounds | null>(null);
     const autoBounds = useMemo(
-        () => (lines.length === 0 ? null : isDaily ? dailyFrame(anchor) : isAbs ? absoluteFrame(lines) : pointUnitFrame(lines, 0.01)),
-        [isDaily, isAbs, anchor, lines],
+        () => (lines.length === 0 ? null : isDaily ? dailyFrame(anchor) : isAbs ? absoluteFrame(lines) : pointUnitFrame(lines, 0.01, showFuture)),
+        [isDaily, isAbs, anchor, showFuture, lines],
     );
     const bounds = locked ?? autoBounds;
 
@@ -543,6 +546,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         <TextToggle active={onlySelected} onClick={() => setOnlySelected(!onlySelected)}
                             title="골격 패널의 차트 선택만 남긴다 — 일봉에서 무리를 만들고 여기서 분봉 경로를 확인. 선택이 비면 전체">
                             선택만
+                        </TextToggle>
+                    )}
+                    {isPointUnit && (
+                        <TextToggle active={showFuture} onClick={() => setShowFuture(!showFuture)}
+                            title="타점 이후(점선 구간)까지 기본 창에 담는다 — 끄면 타점 이전이 화면을 차지한다">
+                            미래
                         </TextToggle>
                     )}
                     <TextToggle active={showLevels} onClick={() => setShowLevels(!showLevels)} title="조사 중인 골격의 기준선·D선을 같은 % 공간에 얹는다" activeColor={PRICE_LINE}>선</TextToggle>

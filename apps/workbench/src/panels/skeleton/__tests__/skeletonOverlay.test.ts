@@ -198,6 +198,20 @@ describe("pointUnitFrame — 분봉 타점 정규화 기본 창", () => {
         expect(f.minY).toBe(-30);
     });
 
+    it("미래 포함이면 양의 쪽도 데이터까지 — 타점 뒤로 어디까지 갔나를 한 창에서", () => {
+        const f = pointUnitFrame(wide, 0, true)!;
+        expect(f.maxX).toBe(120);
+        expect(f.maxY).toBe(50);
+        expect(f.minX).toBe(-90); // 음의 쪽은 그대로
+    });
+
+    it("미래 포함이어도 마진 아래로는 안 좁아진다 — 데이터가 원점에서 안 벗어난 경우", () => {
+        const flat = [{ ...wide[0], points: [{ x: 0, y: 0 }, { x: 2, y: 1 }] }];
+        const f = pointUnitFrame(flat, 0, true)!;
+        expect(f.maxX).toBe(POINT_FRAME_MARGIN.x);
+        expect(f.maxY).toBe(POINT_FRAME_MARGIN.y);
+    });
+
     it("데이터가 원점 근처뿐이어도 최소 마진은 남는다 — 창이 0폭으로 접히지 않게", () => {
         const flat = [{ ...wide[0], points: [{ x: -1, y: -0.5 }, { x: 0, y: 0 }] }];
         const f = pointUnitFrame(flat, 0)!;

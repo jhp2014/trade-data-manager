@@ -111,7 +111,12 @@ export function useOverlayZoom(
      * 닫는 것 같은 일은 여기서 해야 한다.
      */
     onGestureStart?: () => void,
-    scaleExtent: readonly [number, number] = [0.5, 60],
+    /**
+     * 배율 한계. 하한이 넉넉한 이유(0.05): 기본 창이 관심 구간만 담으므로 **창 밖을 보려면 축소가 유일한 길**이다.
+     * 0.5 였을 때는 두 배까지만 넓어져 타점 뒤 몇 시간이 창 밖에 남았고, 그걸 이동으로 찾아다녀야 했다(사용자 지적).
+     * 축이 독립이라 x 만 크게 빼도 %는 안 눌린다.
+     */
+    scaleExtent: readonly [number, number] = [0.05, 60],
 ): OverlayZoom {
     const [axes, setAxes] = useState<{ x: AxisTransform; y: AxisTransform }>({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
     const [dragging, setDragging] = useState(false);
