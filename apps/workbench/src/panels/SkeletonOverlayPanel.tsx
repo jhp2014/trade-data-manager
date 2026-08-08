@@ -47,7 +47,12 @@ import { fmtEok } from "../lib/format.js";
 const ANCHOR_KEY = "wb.skeletonOverlayAnchor";
 const MINVIEW_KEY = "wb.skeletonOverlayMinuteView";
 
-const PAD = { left: 46, right: 14, top: 12, bottom: 24 };
+/**
+ * 그림 상자 바깥 여백. **테마를 켜면 왼쪽이 거터(100px)로 넓어진다**(사용자 확정) — 테마 이름 라벨을
+ * 그 안에서 세로로 벌려 전부 읽히게 하려고. 평소엔 y축 눈금만 들어가면 되니 46px 이면 족하다.
+ */
+const PAD = { right: 14, top: 12, bottom: 24 };
+const PAD_LEFT = { plain: 46, gutter: 100 };
 /** 피벗 점 예산 — **원 개수**로 센다(골격당 피벗 수가 3~6으로 제각각이라 골격 수로 세면 임계가 두 배 흔들린다). */
 const DOT_BUDGET = 1200;
 /** 라벨 격자 한 칸(화면 px) — 라벨 하나가 차지하는 자리. 이보다 촘촘하면 뭉쳐서 개수 뱃지가 된다. */
@@ -56,6 +61,10 @@ const LABEL_CELL = { w: 72, h: 14 };
 const LABEL_GAP = 9;
 /** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. */
 const THEME_READING_CELL = { w: 78, h: 12 };
+/** 거터에 이름을 둘 테마 선의 최대 수(사용자 확정) — 넘치면 나머지는 개수 뱃지 하나로 묶인다. */
+const THEME_LABEL_CAP = 8;
+/** 거터 라벨의 세로 최소 간격(화면 px). */
+const THEME_LABEL_GAP = 14;
 /**
  * 금액 라벨의 자리 규칙(화면 px). `w` = 가로 격자 한 칸이자 **겹침 판정 밴드 폭**(라벨 폭과 같게 잡아
  * 한 밴드 안은 반드시 겹치고 밴드끼리는 안 겹치게), `gap` = 세로로 벌릴 때의 최소 간격.
@@ -77,6 +86,8 @@ const hmOf = (m: number): string => {
     return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 };
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+/** 가운뎃값 — 뱃지를 그 무리의 한복판에 두려고(평균이면 이상치 하나가 뱃지를 무리 밖으로 끌고 간다). */
+const median = (v: readonly number[]): number => (v.length === 0 ? 0 : [...v].sort((a, b) => a - b)[v.length >> 1]);
 
 /** 거래대금 구간 인덱스 → 굵기 단계. 구간 아래(-1)는 0단계. */
 const amountLevelOf = (won: number): number => {
@@ -114,6 +125,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const [showFuture, setShowFuture] = usePersistedState<boolean>("wb.skeletonOverlayFuture", (o) => (typeof o === "boolean" ? o : null), false);
     const [showLevels, setShowLevels] = usePersistedState<boolean>(`wb.skeletonOverlayLevels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     const [showLabels, setShowLabels] = usePersistedState<boolean>(`wb.skeletonOverlayLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
+    // 거래대금·테마 토글은 **여기 위에** 산다 — 테마를 켜면 왼쪽 여백(거터)이 넓어지고, 그 여백이
+    // 그림 상자(box) → 스케일 → 나머지 전부의 재료라서 상자보다 먼저 정해져야 한다.
+    const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
+    const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
+    const [showTheme, setShowTheme] = usePersistedState<boolean>("wb.skeletonOverlayTheme", (o) => (typeof o === "boolean" ? o : null), false);
 
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const setFocus = useWorkbench((s) => s.setFocus);
@@ -158,7 +174,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return () => ro.disconnect();
     }, []);
 
-    const box = { left: PAD.left, top: PAD.top, width: Math.max(0, size.w - PAD.left - PAD.right), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
+    // 거터 판정은 **토글**로 한다(themeOverlay 가 아니라) — 상자가 테마 데이터보다 먼저 정해져야 하고,
+    // 데이터 도착 여부로 여백이 출렁이면 화면이 툭 튄다.
+    const gutter = isAbs && showTheme;
+    const padLeft = gutter ? PAD_LEFT.gutter : PAD_LEFT.plain;
+    const box = { left: padLeft, top: PAD.top, width: Math.max(0, size.w - padLeft - PAD.right), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
     const drawable = bounds !== null && box.width > 0 && box.height > 0;
 
     // ── 뭉친 라벨의 멤버 목록. 그래프를 만지면(팬·확대) 닫는다 — d3 가 SVG mousedown 을 삼켜
@@ -241,11 +261,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 날짜가 바뀔 때마다 왕복이 생긴다. 호버는 라벨 위를 훑기만 해도 날짜가 계속 갈리는 손짓이라 그걸 방아쇠로
     // 삼으면 스치는 것마다 15MB 를 당긴다. 선택은 **누른** 것이라 왕복이 클릭 수만큼으로 묶인다.
     // (피벗 값·기준선 같은 공짜 상세는 지금처럼 호버가 이긴다 — 비용이 다르면 규칙도 갈려야 한다.)
-    const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
-    const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
-    // 테마 펼치기(절대 뷰 전용) — 짚은 골격이 그린 구간의 테마 종목 경로를 분당 종가로 같이 세운다.
-    const [showTheme, setShowTheme] = usePersistedState<boolean>("wb.skeletonOverlayTheme", (o) => (typeof o === "boolean" ? o : null), false);
-
     /** 거래대금·테마가 같이 보는 "지금 조사 중인 선 하나" — 단일 선택일 때만(위 이유). */
     const singleTarget = useMemo(
         () => (isDaily || effSelected.size !== 1 ? null : byKey.get([...effSelected][0]) ?? null),
@@ -288,6 +303,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     }, [isAbs, showTheme, singleTarget, snapQ.data, replaySettings.amountN, replaySettings.rateN]);
     /** 손이 올라간 테마 선(들) — 뭉친 라벨이면 그 무리 전부. 이것만 선명해지고 나머지는 무채색으로 남는다. */
     const [hoveredTheme, setHoveredTheme] = useState<readonly string[] | null>(null);
+    /** 이름을 못 단 테마 종목 목록(뱃지 클릭) — 거터 상한을 넘은 것들이 여기로 온다. */
+    const [themeBadge, setThemeBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     const hoveredThemeSet = useMemo(() => (hoveredTheme ? new Set(hoveredTheme) : null), [hoveredTheme]);
     useEffect(() => { setHoveredTheme(null); }, [themeOverlay?.key]);
 
@@ -364,7 +381,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      * 붙잡은 핀의 세로선 호버. 값을 보려고 굳이 먼저 클릭해야 할 이유가 없다.
      */
     const [hoveredPinLine, setHoveredPinLine] = useState<number | null>(null);
-    useEffect(() => { setHoveredPinLine(null); }, [themeOverlay?.key]);
+    useEffect(() => { setHoveredPinLine(null); setThemeBadge(null); }, [themeOverlay?.key]);
     const openReadingMinute = useMemo(() => {
         if (hoveredPinLine !== null) return hoveredPinLine;
         if (!singleTarget || !hoveredPivot || hoveredPivot.key !== singleTarget.key) return null;
@@ -405,12 +422,24 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return spreadByY(pickAmountLabels(cands, AMOUNT_LABEL_CELL.w), AMOUNT_LABEL_CELL.w, AMOUNT_LABEL_CELL.gap);
     }, [scales, showAmountLabels, amounts, amountTarget, themeRuns, anchorPivotMinutes]);
 
-    /** 테마 라벨 자리 — 경로 **왼쪽 끝**(사용자 확정). 골격 이름 라벨과 같은 쪽이지만 x 가 갈린다:
-     *  테마 선은 앵커의 첫 피벗에서 시작하고, 골격 선은 자기 첫 피벗에서 시작한다. */
-    const themeClusters = useMemo(() => {
-        if (!themeOverlay || !scales) return [];
-        const anchors = themeOverlay.lines.map((l) => ({ key: l.code, x: scales.x(l.points[0].x), y: scales.y(l.points[0].y) }));
-        return clusterLabels(anchors, 56, 12);
+    /**
+     * 테마 이름 라벨 — **왼쪽 거터에 세로로 벌려** 놓는다(사용자 확정 B안). 선 시작점에 그대로 붙이면
+     * 등락률이 비슷한 종목끼리 글자가 겹쳐 뭉개지고, 관찰 종목 라벨이 그 위를 덮었다.
+     *
+     * 다만 거터도 무한하지 않다 — 30종목을 다 벌리면 화면 높이를 넘는다. 그래서 **상한 8개**(사용자 확정,
+     * D안 결합): 위(등락률 큰 쪽)에서 여덟만 이름을 두고 나머지는 **개수 뱃지 하나**로 묶어 누르면 목록이
+     * 열린다. 위쪽이 살아남는 건 아래쪽이 0% 언저리에 뭉쳐 있어 어차피 이름을 못 읽기 때문이다.
+     */
+    const themeLabels = useMemo(() => {
+        if (!themeOverlay || !scales) return { named: [], hidden: [] as { code: string; name: string; y: number }[] };
+        const items = themeOverlay.lines
+            .map((l) => ({ code: l.code, name: l.name, at: l.points[0] }))
+            .sort((a, b) => b.at.y - a.at.y);
+        const head = items.slice(0, THEME_LABEL_CAP);
+        const hidden = items.slice(THEME_LABEL_CAP).map((i) => ({ code: i.code, name: i.name, y: scales.y(i.at.y) }));
+        // 전부 한 밴드에서 겨루게 한다(거터는 열이 하나뿐이라 x 로 나눌 게 없다).
+        const named = spreadByY(head.map((i) => ({ ...i, x: 0, y: scales.y(i.at.y) })), Number.MAX_SAFE_INTEGER, THEME_LABEL_GAP);
+        return { named, hidden };
     }, [themeOverlay, scales]);
 
     // 역할 판정은 순수 함수(lineVisual)가, 색 배정은 여기가 한다 — 팔레트는 화면의 몫이라 규칙 층에 안 들인다.
@@ -734,6 +763,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <text key={`x${v}`} x={scales.x(v)} y={size.h - 8} textAnchor="middle" style={axisText}>{fmtX(v, xUnit)}</text>
                             ))}
 
+                            {/* 거터 라벨의 지시선 — **클립 밖**에 그린다(거터는 그림 상자 바깥이라 클립하면 사라진다).
+                                라벨이 제자리를 벗어난 만큼 이 선이 원래 선 시작점을 가리킨다. */}
+                            {themeLabels.named.map((l) => (
+                                <line key={`tld-${l.code}`} x1={box.left - 4} y1={l.labelY} x2={scales.x(l.at.x)} y2={scales.y(l.at.y)}
+                                    stroke={themeColorOf(l.code)} strokeWidth={0.8} strokeDasharray="2 2"
+                                    opacity={hoveredThemeSet?.has(l.code) ? 0.9 : 0.35} style={{ pointerEvents: "none" }} />
+                            ))}
+
                             <g clipPath={`url(#${clipId})`}>
                                 {/* 원점 좌표축 — **실선 + 끝 화살표**(사용자 확정, xy 좌표계 그대로). 흐린 점선은 그림에
                                     묻혀 안 읽혔다. 이 두 선이 피벗 좌표를 읽는 자(尺)다: 값은 여기로 내린 수직·수평
@@ -1005,32 +1042,43 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     </div>
                 )}
 
-                {/* 테마 라벨 층 — 손잡이는 여기다(선은 여전히 순수 그림). 경로 **왼쪽 끝**에 붙이고
-                    라벨은 그 왼쪽으로 뻗는다. 뭉치면 개수 뱃지 — 올리면 그 무리가 다 켜진다. */}
+                {/* 테마 이름 층 — **왼쪽 거터**(그림 상자 바깥)라 컨테이너가 0..box.left 를 덮는다.
+                    라벨은 오른쪽 정렬로 거터 끝에 붙고, 점이 선에 닿는 쪽(오른쪽 끝)에 온다.
+                    상한을 넘은 나머지는 뱃지 하나 — 누르면 목록(이 패널의 뭉친 라벨 문법 그대로).
+                    ⚠ 컨테이너는 포인터를 통과시킨다 — 거터는 **y축 스트립**이기도 해서(세로 확대 손짓의 자리)
+                    여기가 이벤트를 먹으면 그 손짓이 죽는다. 칩만 pointerEvents:auto 로 받는다. */}
                 {scales && themeOverlay && (
-                    <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
-                        {themeClusters.map((c) => {
-                            const left = c.x - box.left - 4;
-                            const top = c.y - box.top;
-                            const lit = c.members.some((m) => hoveredThemeSet?.has(m));
-                            const multi = c.members.length > 1;
-                            const label = themeOverlay.lines.find((l) => l.code === c.members[0])?.name ?? c.members[0];
+                    <div style={{ position: "absolute", left: 0, top: box.top, width: box.left, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
+                        {themeLabels.named.map((l) => {
+                            const lit = hoveredThemeSet?.has(l.code) ?? false;
                             return (
-                                <button key={`tl${c.x}|${c.y}`}
-                                    onMouseEnter={() => setHoveredTheme(c.members)} onMouseLeave={() => setHoveredTheme(null)}
-                                    title={multi ? `${c.members.length}개 뭉침 — ${label} 외` : `${label} — 올리면 그 선만 또렷해진다`}
+                                <button key={`tl-${l.code}`}
+                                    onMouseEnter={() => setHoveredTheme([l.code])} onMouseLeave={() => setHoveredTheme(null)}
+                                    title={`${l.name} ${fmtPct(l.at.y)} — 올리면 그 선만 또렷해진다`}
                                     style={{
-                                        ...chip, left, top, transform: "translate(-100%, -50%)",
+                                        ...chip, left: box.left - 4, top: l.labelY - box.top, transform: "translate(-100%, -50%)",
+                                        maxWidth: box.left - 8, overflow: "hidden",
                                         color: lit ? "var(--text-primary)" : "var(--text-tertiary)",
                                         fontWeight: lit ? 700 : 400,
                                     }}>
-                                    {multi ? `${c.members.length}` : label}
-                                    {/* 색 점 = 금액 라벨의 점과 같은 색 — 저 숫자가 이 종목 것이라는 유일한 표식.
-                                        라벨이 왼쪽으로 뻗으므로 점은 **선에 닿는 쪽**(오른쪽 끝)에 둔다. */}
-                                    <span style={labelDot(themeColorOf(c.members[0]))} />
+                                    {l.name}
+                                    <span style={labelDot(themeColorOf(l.code))} />
                                 </button>
                             );
                         })}
+                        {themeLabels.hidden.length > 0 && (
+                            <button
+                                onClick={(e) => setThemeBadge({ x: e.clientX, y: e.clientY, members: themeLabels.hidden.map((h) => h.code) })}
+                                onMouseEnter={() => setHoveredTheme(themeLabels.hidden.map((h) => h.code))} onMouseLeave={() => setHoveredTheme(null)}
+                                title={`이름을 못 단 ${themeLabels.hidden.length}종목 — 올리면 그 선들이 켜지고, 누르면 목록`}
+                                style={{
+                                    ...chip, ...badgeChip,
+                                    left: box.left - 4, top: median(themeLabels.hidden.map((h) => h.y)) - box.top,
+                                    transform: "translate(-100%, -50%)",
+                                }}>
+                                +{themeLabels.hidden.length}
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -1163,6 +1211,30 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{m.ref.time.slice(0, 5)}</span>
                                             <span>{nameOf(m.ref.stockCode)}</span>
                                             <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtDate(m.ref.date)}</span>
+                                        </span>
+                                    </MenuItem>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </AnchoredPopover>
+            )}
+
+            {/* 거터에 이름을 못 단 테마 종목들 — 등락률 순 목록. 행에 손을 올리면 그 선이 켜진다. */}
+            {themeBadge && themeOverlay && (
+                <AnchoredPopover anchor={themeBadge} onClose={() => setThemeBadge(null)} minWidth={190} padding={0} placement="beside" offset={6}>
+                    <MenuLabel>이름 생략 {themeBadge.members.length}종목</MenuLabel>
+                    <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                        {themeBadge.members.map((code) => {
+                            const l = themeOverlay.lines.find((x) => x.code === code);
+                            if (!l) return null;
+                            return (
+                                <div key={code} onMouseEnter={() => setHoveredTheme([code])} onMouseLeave={() => setHoveredTheme(null)}>
+                                    <MenuItem onClick={() => setThemeBadge(null)}>
+                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                            <span style={{ width: 6, height: 6, borderRadius: 3, background: themeColorOf(code), flexShrink: 0 }} />
+                                            <span>{l.name}</span>
+                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.points[0].y)}</span>
                                         </span>
                                     </MenuItem>
                                 </div>
