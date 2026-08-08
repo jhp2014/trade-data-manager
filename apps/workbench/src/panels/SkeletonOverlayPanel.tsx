@@ -54,7 +54,11 @@ const LABEL_CELL = { w: 72, h: 14 };
 /** `2026-07-08` → `26.07.08`. 연도를 남기는 건 여러 해가 섞이기 때문(월·일만이면 같은 날로 보인다). */
 const fmtDate = (d: string): string => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
 const fmtPct = (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
-const hmOf = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m) % 60).padStart(2, "0")}`;
+/** 자정 기준 분 → HH:MM. 먼저 반올림하고 시·분을 한 값에서 뽑는다 — 따로 뽑으면 599.7분이 "09:00"이 된다. */
+const hmOf = (m: number): string => {
+    const t = Math.round(m);
+    return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+};
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 /** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
 const AXIS_LINE = "var(--text-secondary)";
