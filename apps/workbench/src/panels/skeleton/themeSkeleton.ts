@@ -51,6 +51,68 @@ export interface ThemeLine {
     points: PathPoint[];
 }
 
+/** 한 시각(핀)에서 읽은 테마 값 한 줄. */
+export interface ThemeReading {
+    code: string;
+    name: string;
+    /** 전일 종가 대비 % — 앵커 골격과 같은 공간이라 y 좌표로 그대로 쓴다. */
+    y: number;
+}
+
+/** 그 시각의 모든 테마 선 값 — 없는 종목은 뺀다(핀 시각에 거래가 없었던 경우). 큰 값이 위로. */
+export function readingsAt(lines: readonly ThemeLine[], minute: number): ThemeReading[] {
+    const out: ThemeReading[] = [];
+    for (const l of lines) {
+        const p = l.points.find((q) => q.x === minute);
+        if (p) out.push({ code: l.code, name: l.name, y: p.y });
+    }
+    return out.sort((a, b) => b.y - a.y);
+}
+
+/** 축 옆 라벨 한 칸의 자리 — `col` 이 커질수록 y축에서 멀어진다. */
+export interface AxisLabelSlot<T> {
+    item: T;
+    /** 열 번호(0 = y축에 제일 가까움). */
+    col: number;
+    /** 세로 자리(입력 y 그대로 — 화면 좌표는 호출측이 만든다). */
+    y: number;
+}
+
+/**
+ * y축 옆 라벨 배치 — **핀마다 한 덩어리**, 덩어리끼리는 열을 나눠 쌓는다(사용자 확정).
+ *
+ * 겹치면 개수 뱃지로 묶는 방법도 있었는데 버렸다: 핀을 눌러 값을 보려던 건데 뱃지를 **또 한 번**
+ * 눌러야 하면 헛수고가 된다. 여기선 전부 보이는 게 목적이라 자리를 옆으로 내주는 쪽이 맞다.
+ *
+ * 한 덩어리 안에서도 y가 가까우면 열이 갈리고, 다음 덩어리는 앞 덩어리가 쓴 열 **다음**에서 시작한다
+ * — 그래야 x₁의 값과 x₂의 값이 섞이지 않는다(어느 시각 것인지가 열로 읽힌다).
+ * `cellH` 는 라벨 하나가 세로로 차지하는 자리(화면 px 기준으로 호출측이 환산해 넘긴다).
+ */
+export function layoutAxisColumns<T>(
+    groups: readonly (readonly { item: T; y: number }[])[],
+    cellH: number,
+): AxisLabelSlot<T>[] {
+    const out: AxisLabelSlot<T>[] = [];
+    const taken = new Map<number, Set<number>>(); // col → 점유된 세로 칸
+    let startCol = 0;
+    for (const g of groups) {
+        if (g.length === 0) continue; // 값이 하나도 없는 핀은 열을 안 먹는다(빈 열이 벌어져 보인다)
+        let maxCol = startCol;
+        for (const { item, y } of g) {
+            const cell = Math.round(y / cellH);
+            let col = startCol;
+            while (taken.get(col)?.has(cell)) col++;
+            const set = taken.get(col) ?? new Set<number>();
+            set.add(cell);
+            taken.set(col, set);
+            out.push({ item, col, y });
+            if (col > maxCol) maxCol = col;
+        }
+        startCol = maxCol + 1; // 다음 핀은 새 열부터 — 시각이 섞이지 않게
+    }
+    return out;
+}
+
 /** 스냅샷 종목에서 이 모듈이 쓰는 것만 — 와이어 전체를 끌고 오지 않는다(테스트도 이 모양이면 된다). */
 export interface ThemeSourceStock {
     code: string;

@@ -10,7 +10,7 @@ import {
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData, type OverlayMarker } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
-import { themeLines, hotCodesInRange } from "./skeleton/themeSkeleton.js";
+import { themeLines, hotCodesInRange, readingsAt, layoutAxisColumns, type ThemeReading } from "./skeleton/themeSkeleton.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
@@ -54,6 +54,8 @@ const DOT_BUDGET = 1200;
 const LABEL_CELL = { w: 72, h: 14 };
 /** 라벨 칩과 끝점 사이 간격 — 피벗 손잡이(r=7) 밖에 서야 점 호버를 안 가로챈다. */
 const LABEL_GAP = 9;
+/** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. */
+const THEME_READING_CELL = { w: 78, h: 12 };
 /**
  * 무리(선택·그룹) 안에서 안 짚은 선의 진하기. 색은 그대로 두고 이만큼만 물러난다 —
  * 목록 행을 훑을 때 짚은 하나가 무리 안에서도 또렷이 서게(굵기 차이만으론 약했다, 사용자 지적).
@@ -285,15 +287,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return m;
     }, [themeOverlay, amountLookup]);
 
-    /** 테마 라벨 자리 — 경로 오른쪽 끝(앵커 골격 라벨과 반대쪽이라 서로 안 겹친다). */
-    const themeClusters = useMemo(() => {
-        if (!themeOverlay || !scales) return [];
-        const anchors = themeOverlay.lines.map((l) => {
-            const p = l.points[l.points.length - 1];
-            return { key: l.code, x: scales.x(p.x), y: scales.y(p.y) };
-        });
-        return clusterLabels(anchors, 56, 12);
-    }, [themeOverlay, scales]);
     // ── 피벗 좌표는 **짚은 점에만** 붙는다(사용자 확정).
     // 예전엔 조사 중인 골격의 점 **전부**에 값이 떴는데, 분봉 골격은 꺾인 점이 많아 화면이 숫자로 뒤덮였다.
     // 이제 두 단계다: 손을 올리면 그 하나를 **미리 보고**, 누르면 **붙잡는다**(다시 누르면 뗀다).
@@ -319,6 +312,38 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         for (const id of pinnedPivots) s.add(id.slice(0, id.lastIndexOf("|")));
         return s;
     }, [pinnedPivots]);
+
+    /**
+     * 붙잡은 피벗 시각의 테마 값 — 그 x 에서 모든 테마 선의 y 를 읽어 **y축 옆에 열로 쌓는다**(사용자 확정).
+     * 핀마다 한 열 묶음이라 x₁·x₂ 의 값이 섞이지 않고, 열이 곧 "어느 시각 것이냐"를 말한다.
+     * 핀은 앵커 골격의 것만 본다 — 테마 선엔 피벗이 없다(분당 경로라 모든 분이 점이다).
+     */
+    const themeReadingSlots = useMemo(() => {
+        if (!themeOverlay || !singleTarget || !scales || pinnedPivots.size === 0) return [];
+        // 핀한 인덱스를 시각 순으로 — 열 순서가 시간 순서를 따라가야 눈이 안 헤맨다.
+        const minutes = [...pinnedPivots]
+            .filter((id) => id.slice(0, id.lastIndexOf("|")) === singleTarget.key)
+            .map((id) => Number(id.slice(id.lastIndexOf("|") + 1)))
+            .filter((i) => Number.isInteger(i) && i >= 0 && i < singleTarget.points.length)
+            .map((i) => singleTarget.points[i].x + singleTarget.baseT)
+            .sort((a, b) => a - b);
+        if (minutes.length === 0) return [];
+        // 겹침 판정은 **화면 좌표**로 한다 — 값 공간으로 하면 확대해도 열이 안 풀린다(라벨 축약과 같은 성질).
+        const groups = minutes.map((m) =>
+            readingsAt(themeOverlay.lines, m).map((r) => ({ item: { ...r, minute: m }, y: scales.y(r.y) })),
+        );
+        return layoutAxisColumns<ThemeReading & { minute: number }>(groups, THEME_READING_CELL.h);
+    }, [themeOverlay, singleTarget, pinnedPivots, scales]);
+
+    /** 테마 라벨 자리 — 경로 오른쪽 끝(앵커 골격 라벨과 반대쪽이라 서로 안 겹친다). */
+    const themeClusters = useMemo(() => {
+        if (!themeOverlay || !scales) return [];
+        const anchors = themeOverlay.lines.map((l) => {
+            const p = l.points[l.points.length - 1];
+            return { key: l.code, x: scales.x(p.x), y: scales.y(p.y) };
+        });
+        return clusterLabels(anchors, 56, 12);
+    }, [themeOverlay, scales]);
 
     // 역할 판정은 순수 함수(lineVisual)가, 색 배정은 여기가 한다 — 팔레트는 화면의 몫이라 규칙 층에 안 들인다.
     const visualOf = useCallback((key: string): { v: LineVisual; color: string } => {
@@ -803,6 +828,20 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     )));
                                 })}
 
+                                {/* 핀 시각의 테마 값 — 그 시각 각 테마 선의 점에서 **y축까지 수평 점선**을 내린다.
+                                    골격 피벗 값이 축에 내려 읽는 그 문법 그대로다(값은 축 옆 열에, 아래 라벨 층). */}
+                                {themeReadingSlots.map((s) => {
+                                    const px = scales.x(s.item.minute);
+                                    const py = scales.y(s.item.y);
+                                    const ax = clamp(box.left, box.left, box.left + box.width);
+                                    return (
+                                        <g key={`tr-${s.item.minute}-${s.item.code}`} style={{ pointerEvents: "none" }} opacity={hoveredThemeSet && !hoveredThemeSet.has(s.item.code) ? 0.25 : 0.7}>
+                                            <line x1={px} x2={ax} y1={py} y2={py} stroke="var(--text-tertiary)" strokeWidth={0.6} strokeDasharray="2 3" />
+                                            <circle cx={px} cy={py} r={2} fill="var(--text-secondary)" />
+                                        </g>
+                                    );
+                                })}
+
                                 {/* 선택된 타점의 세로선(절대 뷰) — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
                                 {isAbs && [...selectedPks].map((pk) => {
                                     const m = markerByPk.get(pk);
@@ -850,6 +889,31 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         </>
                     )}
                 </svg>
+
+                {/* 핀 시각의 테마 값 — y축 옆에 **핀마다 한 열**로 쌓는다(사용자 확정). 열이 곧 어느 시각 것이냐다.
+                    개수 뱃지로 묶지 않은 이유: 핀을 눌러 값을 보려던 건데 뱃지를 또 눌러야 하면 헛수고가 된다.
+                    y축 위를 덮어도 괜찮다 — 어차피 차트를 움직이며 보는 자리다(사용자 확정). */}
+                {scales && themeReadingSlots.length > 0 && (
+                    <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
+                        {themeReadingSlots.map((s) => {
+                            const lit = hoveredThemeSet?.has(s.item.code) ?? false;
+                            return (
+                                <button key={`trl-${s.item.minute}-${s.item.code}`}
+                                    onMouseEnter={() => setHoveredTheme([s.item.code])} onMouseLeave={() => setHoveredTheme(null)}
+                                    title={`${s.item.name} · ${hmOf(s.item.minute)} · ${fmtPct(s.item.y)}`}
+                                    style={{
+                                        ...chip, left: 2 + s.col * THEME_READING_CELL.w, top: s.y - box.top, transform: "translateY(-50%)",
+                                        color: lit ? "var(--text-primary)" : "var(--text-secondary)",
+                                        fontWeight: lit ? 700 : 400,
+                                        ...(lit ? selectedChip("var(--text-secondary)") : {}),
+                                    }}>
+                                    <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(s.item.y)}</span>
+                                    {s.item.name}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
 
                 {/* 테마 라벨 층 — 손잡이는 여기다(선은 여전히 순수 그림). 경로 **오른쪽 끝**이라
                     앵커 골격 라벨(왼쪽 끝)과 자리가 안 겹친다. 뭉치면 개수 뱃지 — 올리면 그 무리가 다 켜진다. */}
