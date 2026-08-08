@@ -55,6 +55,9 @@ const LABEL_CELL = { w: 72, h: 14 };
 const fmtDate = (d: string): string => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
 const fmtPct = (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
 const hmOf = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m) % 60).padStart(2, "0")}`;
+const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+/** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
+const AXIS_LINE = "var(--text-secondary)";
 
 /** 화면의 선 하나 — 차트 단위(NormalizedSkeleton) 또는 타점 단위(time·splitIdx 가 있는 PointSkeleton). */
 type Line = NormalizedSkeleton & { time?: string; splitIdx?: number };
@@ -600,27 +603,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <text key={`x${v}`} x={scales.x(v)} y={size.h - 8} textAnchor="middle" style={axisText}>{fmtX(v, xUnit)}</text>
                             ))}
 
-                            {/* 원점(0%·t=0) — **축 위 화살표**(사용자 확정). 화면을 가로지르는 흐린 점선은 그림에 묻혀
-                                안 읽히고, 진하게 하면 골격을 가린다. xy 좌표축처럼 축에서 0을 가리키게 하면 둘 다 없다.
-                                x=0 은 정규화 배치에서만 뜻이 있다(절대는 벽시계라 0시가 무의미). 클립 밖 = 축 여백에 그린다. */}
-                            {(() => {
-                                const zy = scales.y(0);
-                                const zx = scales.x(0);
-                                const bottom = box.top + box.height;
-                                return (
-                                    <>
-                                        {/* 눈금 숫자가 축에서 5px 앞에 끝나므로 화살표는 6px 안쪽까지만(겹침 방지). */}
-                                        {zy >= box.top && zy <= bottom && (
-                                            <polygon points={`${box.left - 1},${zy} ${box.left - 6},${zy - 4} ${box.left - 6},${zy + 4}`} fill="var(--text-secondary)" />
-                                        )}
-                                        {!isAbs && zx >= box.left && zx <= box.left + box.width && (
-                                            <polygon points={`${zx},${bottom + 1} ${zx - 4.5},${bottom + 8} ${zx + 4.5},${bottom + 8}`} fill="var(--text-secondary)" />
-                                        )}
-                                    </>
-                                );
-                            })()}
-
                             <g clipPath={`url(#${clipId})`}>
+                                {/* 원점 좌표축 — **실선 + 끝 화살표**(사용자 확정, xy 좌표계 그대로). 흐린 점선은 그림에
+                                    묻혀 안 읽혔다. 이 두 선이 피벗 좌표를 읽는 자(尺)다: 값은 여기로 내린 수직·수평
+                                    점선의 발치에서 읽는다. 가로축 = 0%(정규화면 앵커 높이, 절대면 전일 종가),
+                                    세로축 = t=0 — 세로축은 정규화 배치에서만 뜻이 있다(절대는 벽시계라 0시가 무의미). */}
+                                <line x1={box.left} x2={box.left + box.width} y1={scales.y(0)} y2={scales.y(0)} stroke={AXIS_LINE} strokeWidth={1} />
+                                <polygon points={`${box.left + box.width},${scales.y(0)} ${box.left + box.width - 7},${scales.y(0) - 3.5} ${box.left + box.width - 7},${scales.y(0) + 3.5}`} fill={AXIS_LINE} />
+                                {!isAbs && (
+                                    <>
+                                        <line x1={scales.x(0)} x2={scales.x(0)} y1={box.top} y2={box.top + box.height} stroke={AXIS_LINE} strokeWidth={1} />
+                                        <polygon points={`${scales.x(0)},${box.top} ${scales.x(0) - 3.5},${box.top + 7} ${scales.x(0) + 3.5},${box.top + 7}`} fill={AXIS_LINE} />
+                                    </>
+                                )}
 
                                 {lines.map((s) => {
                                     const { v, color } = visualOf(s.key);
@@ -651,22 +646,29 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
                                                     : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill={color} />
                                             ))}
-                                            {/* 피벗 값 — 조사 중인 하나에만(다중이면 수십 벌이 겹친다). **두 좌표를 갈라 놓는다**(사용자 확정):
-                                                %는 점 옆, 시간은 점에서 시간축까지 **점선 수직선**을 내려 그 발치에서 읽는다.
-                                                점 옆에 둘을 붙이면 라벨이 서로 겹치고, 무엇보다 "이 점이 축의 어디냐"가 눈으로 안 잡힌다. */}
+                                            {/* 피벗 좌표 — 조사 중인 하나에만(다중이면 수십 벌이 겹친다). **원점 좌표축에 내려 읽는다**
+                                                (사용자 확정): 점 → 가로축으로 수직 점선, 점 → 세로축으로 수평 점선, 값은 각 축의
+                                                발치에(기간은 x축 아래, %는 y축 옆). 점 옆에 두 값을 붙이면 라벨끼리 겹치고
+                                                "이 점이 축의 어디냐"가 눈으로 안 잡힌다.
+                                                축이 화면 밖으로 밀려나면(팬) 발치를 화면 가장자리로 잡는다 — 값을 못 읽는 것보단 낫다. */}
                                             {inspecting && s.points.map((p, i) => {
                                                 if (p.x === 0 && p.y === 0) return null;
                                                 const px = scales.x(p.x);
                                                 const py = scales.y(p.y);
+                                                const ax = clamp(isAbs ? box.left : scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
+                                                const ay = clamp(scales.y(0), box.top, box.top + box.height); // 가로축(기간을 읽는 자리)
+                                                const below = ay + 12 <= box.top + box.height; // x축 아래에 자리가 없으면 위로
+                                                const leftSide = ax - box.left > 44; // y축 왼쪽에 자리가 없으면 오른쪽으로
                                                 return (
                                                     <g key={`pv${i}`}>
-                                                        <line x1={px} x2={px} y1={py} y2={box.top + box.height} stroke={color} strokeWidth={0.8} strokeDasharray="2 3" opacity={0.55} />
-                                                        <text x={px} y={box.top + box.height - 4} textAnchor="middle"
+                                                        <line x1={px} x2={px} y1={py} y2={ay} stroke={color} strokeWidth={0.8} strokeDasharray="2 3" opacity={0.55} />
+                                                        <line x1={px} x2={ax} y1={py} y2={py} stroke={color} strokeWidth={0.8} strokeDasharray="2 3" opacity={0.55} />
+                                                        <text x={px} y={ay + (below ? 10 : -5)} textAnchor="middle"
                                                             stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
                                                             style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
                                                             {fmtX(p.x, xUnit)}
                                                         </text>
-                                                        <text x={px} y={py + (p.synthetic ? 13 : -7)} textAnchor="middle"
+                                                        <text x={ax + (leftSide ? -4 : 4)} y={py - 3} textAnchor={leftSide ? "end" : "start"}
                                                             stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
                                                             style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
                                                             {fmtPct(p.y)}
