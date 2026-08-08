@@ -1,26 +1,21 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
-import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../api/queries.js";
-import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import {
-    normalizeSkeleton, absoluteSkeleton, pointSkeletons, dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
+    dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
-    type LineVisual, type NormalizedSkeleton, type ChartSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
+    type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
+import { useOverlayData, type OverlayMarker } from "./skeleton/useOverlayData.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useTags } from "../lib/useTags.js";
-import { pointKey, pointKeyOf, parsePointKey, chartKey, chartKeyOf, type PointRef } from "../lib/pointKey.js";
-import { evalTagExpr, isTagExprEmpty } from "./rank/tagFilter.js";
+import { pointKeyOf, parsePointKey, chartKeyOf, type PointRef } from "../lib/pointKey.js";
 import { BulkTagMenu } from "./skeleton/ChartTagMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { ACTIVE, HOVER, PRICE_LINE, seriesColor, tagColor } from "../styles/palette.js";
-import type { SkeletonWireLevel } from "../api/skeletons.js";
-import type { ReviewPointListItem } from "@trade-data-manager/wire";
 
 // 골격 겹쳐 그리기 — 차트를 골격으로 축약해 **한 화면에서 서로 비교**하는 주 작업면.
 //
@@ -86,138 +81,22 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const setFocus = useWorkbench((s) => s.setFocus);
     const activePoint = useWorkbench((s) => s.activePoint);
 
-    const feedQ = useQuery(skeletonsQuery());
-    const pointsQ = useQuery(allPointsQuery());
-    const r = useRankFilterResult();
     const isDaily = grain === "daily";
     const isAbs = !isDaily && minuteView === "abs";
     /** 분봉 정규화 = **타점 단위**(사용자 확정): 선 하나 = 타점 하나(자기 시각 피벗이 원점). */
     const isPointUnit = !isDaily && !isAbs;
     const xUnit: XUnit = isDaily ? "day" : isAbs ? "clock" : "min";
 
-    // 분봉 필터 확정 규칙(사용자 확정 — 후자): 필터는 **타점 알갱이**로 작동한다. 정규화(타점 단위) 뷰는
-    // 매칭 타점만, 절대 뷰는 매칭 타점이 하나도 없는 차트를 선째 제외하고 남는 차트도 걸러진 마커는 뺀다.
-    // "매칭 타점을 가진 차트" 식의 차트 단위 우회는 일봉 패널 전용으로 남는다.
-    const filterActive = !r.isEmpty;
-    const matchedPks = useMemo<ReadonlySet<string> | null>(
-        () => (!isDaily && filterActive ? new Set(r.points.map((p) => pointKey(p))) : null),
-        [isDaily, filterActive, r.points],
-    );
-
-    // 종목명 — r.nameOf 는 타점 목록에서 모으므로 타점 없는 차트는 코드만 남는다. 앵커 걸린 차트 피드가
-    // 이름을 달고 오니(서버 MasterCache.attachNames) 그걸 먼저 보고, 없으면 기존 경로.
-    const chartsQ = useQuery(anchoredChartsQuery());
-    const nameOf = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const c of chartsQ.data ?? []) if (c.name) m.set(c.stockCode, c.name);
-        return (code: string): string => m.get(code) ?? r.nameOf(code);
-    }, [chartsQ.data, r.nameOf]);
-
-    // 차트의 타점들 — 분봉 모드의 타점 세로선 + 클릭 이동 대상. 필터와 무관한 전체(선은 사실을 그린다).
-    const pointsByChart = useMemo(() => {
-        const m = new Map<string, ReviewPointListItem[]>();
-        for (const p of pointsQ.data ?? []) {
-            const k = chartKey(p);
-            const list = m.get(k);
-            if (list) list.push(p);
-            else m.set(k, [p]);
-        }
-        for (const list of m.values()) list.sort((a, b) => (a.time < b.time ? -1 : 1));
-        return m;
-    }, [pointsQ.data]);
-
-    // ── 차트 단위 필터 — **일봉 패널 전용**: 골격의 모집단이 차트라, 타점 조건과 차트 조건을 갈라서 판정한다.
-    //  · 밴드·계산축 값구간·시간대 = **타점 전용 조건**(차트엔 그 값이 없다) → 활성이면 매칭 타점을 가진
-    //    차트만(타점 없는 차트는 판정 자체가 안 되므로 빠진다 — 헤더의 두 숫자가 그 사실을 보이게 한다).
-    //  · 날짜·태그 = 차트에서도 판정 가능 → 차트 자체로 평가한다. 태그는 **차트 직접 부착 ∪ 그 타점들의
-    //    태그**(상속 포함)라 어느 쪽에 붙었든 잡힌다. 이 경로가 타점 경로의 상위집합이라 합집합이 필요 없다.
-    // 분봉 패널은 이 우회를 안 탄다(사용자 확정) — 절대 뷰는 매칭 타점의 차트만, 정규화 뷰는 선=타점이라
-    // matchedPks 가 직접 거른다(아래 pointLines).
-    const tagsView = useTags();
-    const dateRanges = useWorkbench((s) => s.dateRanges);
-    const tagExpr = useWorkbench((s) => s.tagExpr);
-    // 타점 전용 차원 활성 여부는 필터의 지식 — 어느 차원이 타점 전용인지 여기서 다시 세지 않는다.
-    const pointOnlyActive = r.pointOnlyActive;
-
-    const chartAllowed = useMemo<ReadonlySet<string> | null>(() => {
-        if (!isDaily) {
-            if (!filterActive) return null;
-            return new Set(r.points.map((p) => chartKey(p))); // 매칭 타점 없는 차트는 선째 제외
-        }
-        if (pointOnlyActive) return new Set(r.points.map((p) => chartKey(p)));
-        const dateActive = dateRanges.length > 0;
-        const tagActive = !isTagExprEmpty(tagExpr);
-        if (!dateActive && !tagActive) return null; // 무필터 = 전 차트
-        const feed = feedQ.data;
-        if (!feed) return new Set();
-        const out = new Set<string>();
-        for (const e of feed.daily) {
-            const key = chartKey(e);
-            if (dateActive && !dateRanges.some((rg) => e.date >= rg.from && e.date <= rg.to)) continue;
-            if (tagActive) {
-                const ids = new Set(tagsView.chartTagIdsOf(e));
-                for (const p of pointsByChart.get(key) ?? []) for (const id of tagsView.tagIdsOf(p)) ids.add(id);
-                if (!evalTagExpr([...ids], tagExpr)) continue;
-            }
-            out.add(key);
-        }
-        return out;
-    }, [isDaily, filterActive, pointOnlyActive, r.points, dateRanges, tagExpr, feedQ.data, tagsView, pointsByChart]);
-
     // "선택만 보기"(분봉 전용) — 일봉 패널에서 만든 선택 무리만 남긴다. 선택이 비면 제한 없음(빈 화면 함정 방지).
     const [onlySelected, setOnlySelected] = useState(false);
     const skeletonSelection = useWorkbench((s) => s.skeletonSelection);
     const onlyCharts = !isDaily && onlySelected && skeletonSelection.size > 0 ? skeletonSelection : null;
 
-    // 차트 단위 선(일봉·분봉 절대) — 타점 단위 뷰에선 비어 있다(선의 모집단이 다르다).
-    const shapes = useMemo<ChartSkeleton[]>(() => {
-        const feed = feedQ.data;
-        if (!feed || isPointUnit) return [];
-        const out: ChartSkeleton[] = [];
-        for (const e of isDaily ? feed.daily : feed.minute) {
-            const key = chartKey(e);
-            if (chartAllowed && !chartAllowed.has(key)) continue;
-            if (onlyCharts && !onlyCharts.has(key)) continue;
-            const owner = { key, stockCode: e.stockCode, date: e.date };
-            const n = isAbs ? absoluteSkeleton(e.pivots, e.prevClose, owner) : normalizeSkeleton(e.pivots, anchor, owner);
-            if (n) out.push(n);
-        }
-        return out;
-    }, [feedQ.data, chartAllowed, onlyCharts, isDaily, isAbs, isPointUnit, anchor]);
-
-    // 타점 단위 선(분봉 정규화) — 골격 하나를 타점마다 재정규화. 필터는 타점 알갱이(matchedPks)로 직접.
-    const pointLines = useMemo<Line[]>(() => {
-        const feed = feedQ.data;
-        if (!feed || !isPointUnit) return [];
-        const out: Line[] = [];
-        for (const e of feed.minute) {
-            const key = chartKey(e);
-            if (onlyCharts && !onlyCharts.has(key)) continue;
-            const pts = (pointsByChart.get(key) ?? [])
-                .map((rp) => ({ pk: pointKey(rp), time: rp.time }))
-                .filter((p) => !matchedPks || matchedPks.has(p.pk));
-            if (pts.length > 0) out.push(...pointSkeletons(e.pivots, pts, { key, stockCode: e.stockCode, date: e.date }));
-        }
-        return out;
-    }, [feedQ.data, isPointUnit, onlyCharts, pointsByChart, matchedPks]);
-
-    const lines: Line[] = isPointUnit ? pointLines : shapes;
-
-    // 선은 언제나 차트 소유 — 모든 뷰가 같은 목록을 본다(타점 단위 선은 chartKey 로 찾는다).
-    const levelsByChart = useMemo(() => {
-        const m = new Map<string, SkeletonWireLevel[]>();
-        for (const l of feedQ.data?.levels ?? []) m.set(chartKey(l), l.levels);
-        return m;
-    }, [feedQ.data]);
-
-    // 모집단 — 차트 단위 뷰는 차트 수, 타점 단위 뷰는 분봉 골격 차트 위의 타점 수(필터 전).
-    const population = useMemo(() => {
-        const feed = feedQ.data;
-        if (!feed) return 0;
-        if (isDaily) return feed.daily.length;
-        if (!isPointUnit) return feed.minute.length;
-        return feed.minute.reduce((n, e) => n + (pointsByChart.get(chartKey(e))?.length ?? 0), 0);
-    }, [feedQ.data, isDaily, isPointUnit, pointsByChart]);
+    // 태그 한 벌 — 태그 메뉴·발끝 표기(여기) + 차트 태그 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
+    const tagsView = useTags();
+    // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
+    const { feedLoading, lines, markers, markerByPk, population, levelsByChart, pointsByChart, nameOf } =
+        useOverlayData({ isDaily, isAbs, isPointUnit }, anchor, onlyCharts, tagsView);
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
     //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.
@@ -350,27 +229,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
     }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus]);
 
-    // ── 타점 마커(분봉 **절대 뷰** 전용 — 정규화 뷰는 선 자체가 타점이라 마커가 없다).
-    // 타점이 경로 어디에 서 있나 + 타점 단위 손잡이(이동·선택·태그). y 는 그 시각의 경로 피벗에서 찾는다:
-    // 유효한 분봉 골격은 모든 타점 시각에 피벗을 갖는다(합성 규칙 — 손 피벗이 있으면 그것, 없으면 합성 종가).
-    // 필터가 활성이면 걸러진 타점의 마커는 뺀다(확정 규칙 — 남은 차트라도 매칭 타점만 손잡이를 받는다).
-    type Marker = { pk: string; ref: PointRef; s: ChartSkeleton; x: number; y: number };
-    const markers = useMemo<Marker[]>(() => {
-        if (!isAbs) return [];
-        const out: Marker[] = [];
-        for (const s of shapes) {
-            for (const rp of pointsByChart.get(s.chartKey) ?? []) {
-                const pk = pointKey(rp);
-                if (matchedPks && !matchedPks.has(pk)) continue;
-                const px = minutesOf(rp.time) - s.baseT;
-                const at = s.points.find((q) => q.x === px);
-                if (at) out.push({ pk, ref: rp, s, x: px, y: at.y });
-            }
-        }
-        return out;
-    }, [isAbs, shapes, pointsByChart, matchedPks]);
-    const markerByPk = useMemo(() => new Map(markers.map((m) => [m.pk, m])), [markers]);
-
     // 타점 선택 → 그 차트의 **이후 구간 점선**(사용자 확정: "여기까지 보고 들어갔다" 이후는 결과다).
     // 한 차트에 선택 타점이 여럿이면 가장 이른 시각 기준(이후 = 그 타점 뒤 전부).
     const splitXByChart = useMemo(() => {
@@ -438,7 +296,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     }, []);
 
     /** 마커 평클릭 = 그 타점으로 이동 + 단일 선택. Ctrl = 타점 선택 토글(차트 라벨과 같은 손짓). */
-    const onMarkerClick = useCallback((m: Marker, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
+    const onMarkerClick = useCallback((m: OverlayMarker, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
         if (ev.ctrlKey || ev.metaKey) {
             setSelectedPks((prev) => {
                 const next = new Set(prev);
@@ -489,7 +347,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     /** 마커 칩 — ▾시각. 컴포넌트가 아니라 함수인 이유: 패널 상태를 잔뜩 닫아 갖는데 매 렌더 새 컴포넌트면
      *  리액트가 매번 언마운트/마운트를 반복한다(호버가 튄다). */
-    const markerChip = (m: Marker, left: number, top: number): JSX.Element => {
+    const markerChip = (m: OverlayMarker, left: number, top: number): JSX.Element => {
         const isSel = selectedPks.has(m.pk);
         const isActive = !!activePoint && activePoint.code === m.ref.stockCode && activePoint.date === m.ref.date && activePoint.time === m.ref.time;
         const color = isSel || isActive ? ACTIVE : "var(--text-secondary)";
@@ -568,8 +426,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             </div>
 
             <div ref={wrapRef} onMouseDown={onWrapMouseDown} style={{ flex: 1, minHeight: 0, position: "relative" }}>
-                {feedQ.isLoading && <div style={muted}>불러오는 중…</div>}
-                {!feedQ.isLoading && lines.length === 0 && (
+                {feedLoading && <div style={muted}>불러오는 중…</div>}
+                {!feedLoading && lines.length === 0 && (
                     <div style={muted}>
                         {isDaily ? "일봉 골격이 그려진 차트가 없습니다."
                             : isPointUnit ? "분봉 골격 위 타점이 없습니다(필터·선택만 보기에 걸렸을 수도)."
