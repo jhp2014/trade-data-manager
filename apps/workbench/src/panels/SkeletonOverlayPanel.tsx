@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { minuteOfDayOf, selectHotUniverse, amountBucketIndex } from "@trade-data-manager/market/domain";
-import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH } from "../chart/chartUtils.js";
+import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
-    amountRuns, minuteIndexOf, minuteAmountOf, declutterByValue, LEVEL_MISSING, type AmountRun,
+    amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, segmentIndexOf, LEVEL_MISSING, type AmountRun,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData, type OverlayMarker } from "./skeleton/useOverlayData.js";
@@ -56,10 +56,8 @@ const LABEL_CELL = { w: 72, h: 14 };
 const LABEL_GAP = 9;
 /** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. */
 const THEME_READING_CELL = { w: 78, h: 12 };
-/** 금액 라벨 한 칸(화면 px). 숫자만 담으므로 이름 라벨보다 좁다 — 좁을수록 한 화면에 더 많이 남는다. */
-const AMOUNT_LABEL_CELL = { w: 46, h: 15 };
-/** 테마 점 핀 키의 머리 — 골격 피벗 핀과 한 집합에 살면서 구분되게. */
-const THEME_PIN_PREFIX = "theme:";
+/** 금액 라벨 한 칸(화면 px, **가로만**). 세로로는 안 다툰다 — 급등 구간에 숫자 기둥이 서던 원인. */
+const AMOUNT_LABEL_CELL = { w: 52 };
 /**
  * 무리(선택·그룹) 안에서 안 짚은 선의 진하기. 색은 그대로 두고 이만큼만 물러난다 —
  * 목록 행을 훑을 때 짚은 하나가 무리 안에서도 또렷이 서게(굵기 차이만으론 약했다, 사용자 지적).
@@ -89,6 +87,10 @@ const amountLevelOf = (won: number): number => {
  */
 const runWidth = (level: number, scale: number): number =>
     (level === LEVEL_MISSING ? AMOUNT_LEVEL_WIDTH[0] * 0.6 : AMOUNT_LEVEL_WIDTH[level] ?? AMOUNT_LEVEL_WIDTH[0]) * scale;
+
+/** 런의 화면 좌표 폴리라인 — 런은 꼭짓점을 다 들고 있으므로 그대로 이어 그린다(모서리가 안 잘린다). */
+const runPoints = (r: AmountRun, scales: Scales): string =>
+    r.points.map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
 /** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
 const AXIS_LINE = "var(--text-secondary)";
 
@@ -313,9 +315,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const [hoveredPivot, setHoveredPivot] = useState<{ key: string; i: number } | null>(null);
     const [pinnedPivots, setPinnedPivots] = useState<ReadonlySet<string>>(() => new Set());
     const pivotId = (key: string, i: number): string => `${key}|${i}`;
-    /** 테마 점의 핀 키 — 골격 피벗과 **같은 집합**에 담는다(값 붙잡기 문법이 하나라 해제 버튼도 하나다).
-     *  선 키 자리에 `theme:종목@분` 을 넣어 골격 차트키(`종목|날짜`)와 안 겹치게 한다. */
-    const themePointKey = (code: string, minute: number): string => `${THEME_PIN_PREFIX}${code}@${minute}`;
     const togglePivot = useCallback((key: string, i: number): void => {
         setPinnedPivots((prev) => {
             const next = new Set(prev);
@@ -328,14 +327,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     /** 이 점의 값을 지금 그리나 — 붙잡았거나(핀) 손이 올라가 있거나. */
     const pivotShown = (key: string, i: number): boolean =>
         pinnedPivots.has(pivotId(key, i)) || (hoveredPivot?.key === key && hoveredPivot.i === i);
-    /** 값을 그리는 점이 하나라도 있는 **골격 선** — 그 선은 손잡이(히트 원)를 계속 내줘야 핀을 뗄 수 있다.
-     *  테마 점 핀은 뺀다 — 그쪽 손잡이는 테마 선이 그리는 동안 늘 있어서 따로 챙길 필요가 없다. */
+    /** 값을 그리는 점이 하나라도 있는 선 — 그 선은 손잡이(히트 원)를 계속 내줘야 핀을 뗄 수 있다. */
     const linesWithPins = useMemo(() => {
         const s = new Set<string>();
-        for (const id of pinnedPivots) {
-            if (id.startsWith(THEME_PIN_PREFIX)) continue;
-            s.add(id.slice(0, id.lastIndexOf("|")));
-        }
+        for (const id of pinnedPivots) s.add(id.slice(0, id.lastIndexOf("|")));
         return s;
     }, [pinnedPivots]);
 
@@ -360,9 +355,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             .map((i) => singleTarget.points[i].x + singleTarget.baseT)
             .sort((a, b) => a - b);
     }, [singleTarget, pinnedPivots]);
-    /** 지금 값을 펼쳐 보는 핀(호버 중인 세로선) — 상시가 아니라 **손을 올렸을 때만**(사용자 확정). */
-    const [openReadingMinute, setOpenReadingMinute] = useState<number | null>(null);
-    useEffect(() => { setOpenReadingMinute(null); }, [themeOverlay?.key]);
+    /**
+     * 지금 테마 값을 펼쳐 보는 시각 — 상시가 아니라 **손을 올렸을 때만**(사용자 확정).
+     * 두 손짓이 같은 자리로 들어온다: 앵커 골격의 **어느 피벗에든 호버**(붙잡은 것이 아니어도)와,
+     * 붙잡은 핀의 세로선 호버. 값을 보려고 굳이 먼저 클릭해야 할 이유가 없다.
+     */
+    const [hoveredPinLine, setHoveredPinLine] = useState<number | null>(null);
+    useEffect(() => { setHoveredPinLine(null); }, [themeOverlay?.key]);
+    const openReadingMinute = useMemo(() => {
+        if (hoveredPinLine !== null) return hoveredPinLine;
+        if (!singleTarget || !hoveredPivot || hoveredPivot.key !== singleTarget.key) return null;
+        const p = singleTarget.points[hoveredPivot.i];
+        return p ? p.x + singleTarget.baseT : null;
+    }, [hoveredPinLine, singleTarget, hoveredPivot]);
 
     const themeReadingSlots = useMemo(() => {
         if (!themeOverlay || !scales || openReadingMinute === null) return [];
@@ -379,26 +384,28 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      */
     const amountLabels = useMemo(() => {
         if (!scales || !showAmountLabels) return [];
-        type Cand = { x: number; y: number; value: number; code: string; own: boolean };
+        type Cand = { group: string; seg: number; x: number; y: number; value: number; code: string; own: boolean };
         const cands: Cand[] = [];
-        const collect = (runs: readonly AmountRun[], code: string, own: boolean): void => {
+        const collect = (runs: readonly AmountRun[], code: string, own: boolean, baseT: number): void => {
             for (const r of runs) {
                 if (r.level <= 0) continue;
-                cands.push({ x: scales.x((r.x0 + r.x1) / 2), y: scales.y((r.y0 + r.y1) / 2), value: r.maxAmount, code, own });
+                // 라벨은 **터진 그 분**에 붙인다(런 중점이 아니라) — 중점은 사건이 난 자리가 아니다.
+                cands.push({
+                    group: code, seg: segmentIndexOf(anchorPivotMinutes, r.maxAt.x + baseT),
+                    x: scales.x(r.maxAt.x), y: scales.y(r.maxAt.y), value: r.maxAmount, code, own,
+                });
             }
         };
-        if (amounts && amountTarget) collect(amounts.runs, amountTarget.stockCode, true);
-        if (themeRuns) for (const [code, runs] of themeRuns) collect(runs, code, false);
-        return declutterByValue(cands, AMOUNT_LABEL_CELL.w, AMOUNT_LABEL_CELL.h);
-    }, [scales, showAmountLabels, amounts, amountTarget, themeRuns]);
+        if (amounts && amountTarget) collect(amounts.runs, amountTarget.stockCode, true, amountTarget.baseT);
+        if (themeRuns) for (const [code, runs] of themeRuns) collect(runs, code, false, 0);
+        return pickAmountLabels(cands, AMOUNT_LABEL_CELL.w);
+    }, [scales, showAmountLabels, amounts, amountTarget, themeRuns, anchorPivotMinutes]);
 
-    /** 테마 라벨 자리 — 경로 오른쪽 끝(앵커 골격 라벨과 반대쪽이라 서로 안 겹친다). */
+    /** 테마 라벨 자리 — 경로 **왼쪽 끝**(사용자 확정). 골격 이름 라벨과 같은 쪽이지만 x 가 갈린다:
+     *  테마 선은 앵커의 첫 피벗에서 시작하고, 골격 선은 자기 첫 피벗에서 시작한다. */
     const themeClusters = useMemo(() => {
         if (!themeOverlay || !scales) return [];
-        const anchors = themeOverlay.lines.map((l) => {
-            const p = l.points[l.points.length - 1];
-            return { key: l.code, x: scales.x(p.x), y: scales.y(p.y) };
-        });
+        const anchors = themeOverlay.lines.map((l) => ({ key: l.code, x: scales.x(l.points[0].x), y: scales.y(l.points[0].y) }));
         return clusterLabels(anchors, 56, 12);
     }, [themeOverlay, scales]);
 
@@ -757,8 +764,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <g key={`th-${l.code}`} style={{ pointerEvents: "none" }}
                                             opacity={lit ? 1 : hoveredThemeSet ? 0.25 : 0.55}>
                                             {runs.map((r, i) => (
-                                                <line key={i} x1={scales.x(r.x0)} y1={scales.y(r.y0)} x2={scales.x(r.x1)} y2={scales.y(r.y1)}
-                                                    stroke="var(--text-tertiary)" strokeWidth={runWidth(r.level, lit ? 1 : 0.75)} strokeLinecap="round" />
+                                                <polyline key={i} points={runPoints(r, scales)} fill="none"
+                                                    stroke="var(--text-tertiary)" strokeWidth={runWidth(r.level, lit ? 0.9 : 0.7)}
+                                                    strokeLinecap="round" strokeLinejoin="round" />
                                             ))}
                                         </g>
                                     );
@@ -774,7 +782,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         // 진하기 = 역할이 정한다: 흐림(무리 밖) < 물러남(무리 안이지만 안 짚은 것) < 앞(짚은 것).
                                         <g key={s.key} opacity={v.dim ? dimmed : v.recede ? RECEDE_OPACITY : lit ? 1 : baseOpacity} style={{ pointerEvents: "none" }}>
                                             {/* 선택에만 넓은 반투명 밑선 — 색만으로는 "붙잡혔다"가 잘 안 읽힌다. */}
-                                            {v.role === "selected" && <polyline points={pts} fill="none" stroke={color} strokeWidth={7} strokeLinejoin="round" opacity={0.18} />}
+                                            {/* 굵기가 붙으면 선이 최대 6px 까지 굵어지므로 글로우도 그만큼 넓어야 한다
+                                                (안 그러면 굵은 구간에서 글로우가 선 안에 묻혀 "붙잡혔다"가 안 보인다). */}
+                                            {v.role === "selected" && (
+                                                <polyline points={pts} fill="none" stroke={color}
+                                                    strokeWidth={amounts && amounts.key === s.key ? 11 : 7} strokeLinejoin="round" opacity={0.18} />
+                                            )}
                                             {/* 미래는 점선 — 타점 단위 선은 원점(자기 시각) 이후 전부, 절대 뷰는 선택 타점 이후.
                                                 타점까지가 판단, 이후는 결과라는 같은 문장이다. */}
                                             {(() => {
@@ -786,9 +799,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     // 색은 선 본연의 역할색(선택 파랑) 그대로 — 굵기만 거래대금이 정한다.
                                                     // 미래 구간은 점선 대신 **옅게**(조각이 분 단위라 점선이 굵기와 싸워 둘 다 못 읽힌다).
                                                     return amounts.runs.map((r, i) => (
-                                                        <line key={`rn${i}`} x1={scales.x(r.x0)} y1={scales.y(r.y0)} x2={scales.x(r.x1)} y2={scales.y(r.y1)}
-                                                            stroke={color} strokeWidth={runWidth(r.level, 1.2)} strokeLinecap="round"
-                                                            opacity={splitX != null && r.x0 >= splitX ? 0.4 : 1} />
+                                                        <polyline key={`rn${i}`} points={runPoints(r, scales)} fill="none"
+                                                            stroke={color} strokeWidth={runWidth(r.level, 1)} strokeLinecap="round" strokeLinejoin="round"
+                                                            opacity={splitX != null && r.points[0].x >= splitX ? 0.4 : 1} />
                                                     ));
                                                 }
                                                 if (splitX == null) return <polyline points={pts} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />;
@@ -885,66 +898,21 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 opacity={open ? 0.9 : 0.5} style={{ pointerEvents: "none" }} />
                                             <line x1={x} x2={x} y1={box.top} y2={box.top + box.height} stroke="transparent" strokeWidth={10}
                                                 style={{ pointerEvents: "auto", cursor: "ew-resize" }}
-                                                onMouseEnter={() => setOpenReadingMinute(m)} onMouseLeave={() => setOpenReadingMinute(null)}>
+                                                onMouseEnter={() => setHoveredPinLine(m)} onMouseLeave={() => setHoveredPinLine(null)}>
                                                 <title>{`${hmOf(m)} — 올리면 이 시각의 테마 값`}</title>
                                             </line>
                                         </g>
                                     );
                                 })}
 
-                                {/* 테마 선의 점 — **앵커 골격이 피벗을 가진 시각에만**(사용자 확정). 테마 선은 분당
-                                    경로라 모든 분이 점이어서, 한정이 없으면 종목당 400개의 손잡이가 생긴다.
-                                    누르면 그 점의 값이 붙잡힌다 — 골격 피벗과 같은 문법이다. */}
-                                {themeOverlay && anchorPivotMinutes.map((m) =>
-                                    themeOverlay.lines.map((l) => {
-                                        const p = l.points.find((q) => q.x === m);
-                                        if (!p) return null;
-                                        const key = themePointKey(l.code, m);
-                                        const on = pivotShown(key, 0);
-                                        const litLine = hoveredThemeSet?.has(l.code) ?? false;
-                                        return (
-                                            <circle key={`tp-${l.code}-${m}`} cx={scales.x(m)} cy={scales.y(p.y)} r={on ? 4 : 3}
-                                                fill={on ? themeColorOf(l.code) : "var(--bg-primary)"} stroke={themeColorOf(l.code)} strokeWidth={1.2}
-                                                opacity={litLine || on ? 1 : hoveredThemeSet ? 0.3 : 0.65}
-                                                style={{ pointerEvents: "auto", cursor: "pointer" }}
-                                                onClick={() => togglePivot(key, 0)}
-                                                onMouseEnter={() => setHoveredTheme([l.code])} onMouseLeave={() => setHoveredTheme(null)}>
-                                                <title>{`${l.name} ${hmOf(m)} · ${fmtPct(p.y)} — 클릭해 값 ${on ? "떼기" : "붙잡기"}`}</title>
-                                            </circle>
-                                        );
-                                    }),
-                                )}
-
-                                {/* 붙잡은 테마 점의 값 — 골격 피벗과 같은 그림(축에 내려 읽는다). */}
-                                {themeOverlay && anchorPivotMinutes.map((m) =>
-                                    themeOverlay.lines.map((l) => {
-                                        const p = l.points.find((q) => q.x === m);
-                                        if (!p || !pivotShown(themePointKey(l.code, m), 0)) return null;
-                                        const px = scales.x(m);
-                                        const py = scales.y(p.y);
-                                        const ay = clamp(scales.y(0), box.top, box.top + box.height);
-                                        const c = themeColorOf(l.code);
-                                        return (
-                                            <g key={`tpv-${l.code}-${m}`} style={{ pointerEvents: "none" }}>
-                                                <line x1={px} x2={box.left} y1={py} y2={py} stroke={c} strokeWidth={0.9} strokeDasharray="2 3" opacity={0.8} />
-                                                <text x={px + 6} y={py - 4} textAnchor="start"
-                                                    stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke"
-                                                    style={{ fontSize: 10, fontWeight: 700, fill: c, fontVariantNumeric: "tabular-nums" }}>
-                                                    {l.name} {fmtPct(p.y)}
-                                                </text>
-                                                <line x1={px} x2={px} y1={py} y2={ay} stroke={c} strokeWidth={0.9} strokeDasharray="2 3" opacity={0.5} />
-                                            </g>
-                                        );
-                                    }),
-                                )}
-
-                                {/* 거래대금 숫자 — **전 선 공통 격자**에서 한 칸에 제일 큰 하나만 살아남은 것들.
-                                    앞의 색 점이 어느 선 것인지 말한다(좌측 이름 라벨의 점과 같은 색). */}
+                                {/* 거래대금 숫자 — **선×세그먼트당 하나 → 화면 x 격자**로 솎아 살아남은 것들.
+                                    점은 **터진 그 분의 자리**에 정확히 얹히고(표식), 숫자는 그 오른쪽에 선다.
+                                    점 색이 어느 선 것인지 말한다(좌측 이름 라벨의 점과 같은 색). */}
                                 {amountLabels.map((a) => (
                                     <g key={`al-${a.code}-${a.x}-${a.y}`} style={{ pointerEvents: "none" }}
                                         opacity={hoveredThemeSet && !a.own && !hoveredThemeSet.has(a.code) ? 0.25 : 1}>
-                                        <circle cx={a.x - 13} cy={a.y - 3} r={2} fill={a.own ? ACTIVE : themeColorOf(a.code)} />
-                                        <text x={a.x - 8} y={a.y} textAnchor="start"
+                                        <circle cx={a.x} cy={a.y} r={2.2} fill={a.own ? ACTIVE : themeColorOf(a.code)} />
+                                        <text x={a.x + 5} y={a.y - 4} textAnchor="start"
                                             stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke"
                                             style={{ fontSize: 9.5, fill: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
                                             {fmtEok(a.value)}
@@ -1026,12 +994,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     </div>
                 )}
 
-                {/* 테마 라벨 층 — 손잡이는 여기다(선은 여전히 순수 그림). 경로 **오른쪽 끝**이라
-                    앵커 골격 라벨(왼쪽 끝)과 자리가 안 겹친다. 뭉치면 개수 뱃지 — 올리면 그 무리가 다 켜진다. */}
+                {/* 테마 라벨 층 — 손잡이는 여기다(선은 여전히 순수 그림). 경로 **왼쪽 끝**에 붙이고
+                    라벨은 그 왼쪽으로 뻗는다. 뭉치면 개수 뱃지 — 올리면 그 무리가 다 켜진다. */}
                 {scales && themeOverlay && (
                     <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
                         {themeClusters.map((c) => {
-                            const left = c.x - box.left + 4;
+                            const left = c.x - box.left - 4;
                             const top = c.y - box.top;
                             const lit = c.members.some((m) => hoveredThemeSet?.has(m));
                             const multi = c.members.length > 1;
@@ -1041,13 +1009,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     onMouseEnter={() => setHoveredTheme(c.members)} onMouseLeave={() => setHoveredTheme(null)}
                                     title={multi ? `${c.members.length}개 뭉침 — ${label} 외` : `${label} — 올리면 그 선만 또렷해진다`}
                                     style={{
-                                        ...chip, left, top, transform: "translateY(-50%)",
+                                        ...chip, left, top, transform: "translate(-100%, -50%)",
                                         color: lit ? "var(--text-primary)" : "var(--text-tertiary)",
                                         fontWeight: lit ? 700 : 400,
                                     }}>
-                                    {/* 색 점 = 금액 라벨의 점과 같은 색 — 저 숫자가 이 종목 것이라는 유일한 표식. */}
-                                    <span style={labelDot(themeColorOf(c.members[0]))} />
                                     {multi ? `${c.members.length}` : label}
+                                    {/* 색 점 = 금액 라벨의 점과 같은 색 — 저 숫자가 이 종목 것이라는 유일한 표식.
+                                        라벨이 왼쪽으로 뻗으므로 점은 **선에 닿는 쪽**(오른쪽 끝)에 둔다. */}
+                                    <span style={labelDot(themeColorOf(c.members[0]))} />
                                 </button>
                             );
                         })}
@@ -1229,12 +1198,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {/* 굵기 범례 — 굵기는 "굵다=크다"가 자명해서 색처럼 대응표가 꼭 필요하진 않지만,
                     **단계 경계가 얼마인지**는 알아야 읽힌다(20 / 40 / 70 / 150억). 정확한 값은 숫자 라벨이 답한다. */}
                 {!isDaily && showAmount && (
-                    <span style={{ display: "inline-flex", alignItems: "flex-end", gap: 3, marginLeft: 8, height: 10, verticalAlign: "middle" }}
-                        title="분당 거래대금 굵기 단계 — 경계는 보드 히스토그램·차트 마커와 같은 자(20/40/70/150억)">
+                    <span style={{ display: "inline-flex", alignItems: "flex-end", gap: 3, marginLeft: 8, height: 12, verticalAlign: "middle" }}
+                        title={`분당 거래대금 굵기 단계 — 경계 ${AMOUNT_LEVEL_EDGES_EOK.join("/")}억`}>
                         {AMOUNT_LEVEL_WIDTH.map((w, i) => (
                             <span key={i} style={{ width: 8, height: w, background: "var(--text-secondary)", borderRadius: w / 2 }} />
                         ))}
-                        <span style={{ marginLeft: 3, color: "var(--text-tertiary)" }}>~20~40~70~150억+/분</span>
+                        <span style={{ marginLeft: 3, color: "var(--text-tertiary)" }}>~{AMOUNT_LEVEL_EDGES_EOK.join("~")}억+/분</span>
                     </span>
                 )}
             </div>

@@ -255,19 +255,23 @@ export function absoluteFrame(items: readonly NormalizedSkeleton[]): OverlayBoun
  * ① 30선이 얽혀도 굵은 자리가 살아남고 ② "굵다=크다"에 범례가 필요 없고 ③ 축소해도 안 사라진다.
  * 정확한 값은 희소한 채널(숫자 라벨)이 따로 답한다 — 같은 값을 두 밀도로 말해 서로를 보강한다.
  *
- * ## 왜 런으로 합치는가
- * 하루면 분 조각이 400개, 테마 30선이면 12,000개다. **같은 단계가 이어지면 하나로 합치면** 조용한
- * 구간이 통째로 한 조각이 되어 실제 개수가 수십 개로 떨어진다. 단계가 이산이라 합쳐도 그림이 안 바뀐다.
+ * ## 왜 런으로 합치는가 — 그리고 왜 **꼭짓점을 버리면 안 되는가**
+ * 하루면 분 조각이 400개, 테마 30선이면 12,000개다. 같은 단계가 이어지면 하나로 합쳐야 실제 개수가
+ * 수십 개로 떨어진다. 그런데 **런을 양 끝점만 든 직선으로 합치면 그 사이의 꺾임이 통째로 사라진다** —
+ * 조용한 구간이 대부분이라 병합이 거의 모든 피벗을 가로질러, 골격이 현(弦)으로 뭉개졌다(실제로 겪은 버그:
+ * 점은 제자리인데 선만 가로질러 가고, 글로우(진짜 경로)와 굵기 선이 갈라져 보였다).
+ * 그래서 런은 **점 목록**을 든다: 합칠 때 끝점을 옮기는 게 아니라 점을 **덧붙인다**. 병합 이득은 그대로면서
+ * 꼭짓점이 하나도 안 없어진다.
  */
 export interface AmountRun {
-    x0: number;
-    y0: number;
-    x1: number;
-    y1: number;
+    /** 이 런이 덮는 경로(선 좌표, 2점 이상) — 꺾임을 그대로 담는다. */
+    points: { x: number; y: number }[];
     /** 굵기 단계(호출측이 정한 값). **0 = 구간 아래**(조용함) · **−1 = 재료 없음**(분봉 결손). */
     level: number;
     /** 이 런 안 분당 거래대금의 최대(원) — 값 라벨이 쓴다. 재료가 없으면 0. */
     maxAmount: number;
+    /** 그 최대가 난 자리(선 좌표) — 라벨을 **터진 그 분**에 붙이려고. 런 중점은 사건 위치가 아니다. */
+    maxAt: { x: number; y: number };
 }
 
 /** 구간 아래 / 재료 없음 — 그리는 쪽이 둘을 구분해야 한다(조용한 것과 모르는 것은 다르다). */
@@ -278,8 +282,8 @@ export const LEVEL_MISSING = -1;
 const MAX_RUN_MINUTES = 2000;
 
 /**
- * 선 하나 → 분 단위 색 런. `baseT` 는 x 를 벽시계 분으로 되돌린다(절대 배치는 0이라 항등).
- * `amountAt(m)` = m 분의 거래대금(원), 없으면 null. `bucketOf` = 도메인 구간 판정.
+ * 선 하나 → 분 단위 런. `baseT` 는 x 를 벽시계 분으로 되돌린다(절대 배치는 0이라 항등).
+ * `amountAt(m)` = m 분의 거래대금(원), 없으면 null. `levelOf` = 굵기 단계 판정.
  */
 export function amountRuns(
     points: readonly { x: number; y: number }[],
@@ -291,14 +295,17 @@ export function amountRuns(
     let budget = MAX_RUN_MINUTES;
     const push = (x0: number, y0: number, x1: number, y1: number, level: number, amount: number): void => {
         const last = out[out.length - 1];
-        // 같은 단계가 이어지면 늘린다 — 단계가 이산이라 합쳐도 그림이 안 바뀐다.
-        if (last && last.level === level && last.x1 === x0 && last.y1 === y0) {
-            last.x1 = x1;
-            last.y1 = y1;
-            if (amount > last.maxAmount) last.maxAmount = amount;
+        const tail = last?.points[last.points.length - 1];
+        // 같은 단계가 이어지면 **점을 덧붙여** 늘린다 — 끝점을 옮기면 그 사이 꺾임이 사라진다.
+        if (last && tail && last.level === level && tail.x === x0 && tail.y === y0) {
+            last.points.push({ x: x1, y: y1 });
+            if (amount > last.maxAmount) {
+                last.maxAmount = amount;
+                last.maxAt = { x: x1, y: y1 };
+            }
             return;
         }
-        out.push({ x0, y0, x1, y1, level, maxAmount: amount });
+        out.push({ points: [{ x: x0, y: y0 }, { x: x1, y: y1 }], level, maxAmount: amount, maxAt: { x: x1, y: y1 } });
     };
     for (let i = 0; i + 1 < points.length; i++) {
         const p = points[i];
@@ -312,7 +319,7 @@ export function amountRuns(
             if (budget-- <= 0) return out;
             const a = Math.max(m, m0);
             const b = Math.min(m + 1, m1);
-            // 이 조각([a,b])의 색은 **끝나는 분**의 거래대금이다 — cumAmount 차분이 그 분의 몫이라
+            // 이 조각([a,b])의 값은 **끝나는 분**의 거래대금이다 — cumAmount 차분이 그 분의 몫이라
             // 시작 분의 봉은 직전 조각에 든다(조각끼리 겹치지 않게 하는 유일한 배분).
             const won = amountAt(Math.ceil(b));
             push(a - baseT, yAt(a), b - baseT, yAt(b), won === null ? LEVEL_MISSING : levelOf(won), won ?? 0);
@@ -322,30 +329,51 @@ export function amountRuns(
 }
 
 /**
- * 화면 격자로 라벨을 솎는다 — **한 칸에 값이 제일 큰 하나만** 남기고 나머지는 사라진다.
+ * 금액 라벨 솎기 — **두 단계**(사용자 확정).
  *
- * 이름 라벨의 축약(`clusterLabels`)과 격자는 같은데 **요약이 다르다**: 이름은 "여기 몇 개가 있다"(개수
- * 뱃지)가 옳은 답이지만, 금액은 **"여기서 제일 크게 터진 게 얼마다"**가 옳은 답이다. 개수는 뜻이 없고
- * 평균은 스파이크를 지운다(색으로 겪은 그 실패). 그래서 뱃지가 아니라 **경쟁**이다.
+ * ① **선 × 세그먼트당 최대 하나**: 각 선이 각 세그먼트(앵커 골격의 피벗이 나누는 구간)에서 자기 최대
+ *    하나만 후보로 낸다. 한 선의 긴 급등 구간이 라벨을 독차지하지 못한다.
+ * ② **화면 x 격자로 최종 솎기**: 세그먼트가 좁아져 후보들이 붙으면 큰 것만 남는다("세그먼트가 너무
+ *    짧으면 둘 중 하나만" — 사용자).
  *
- * 확대하면 칸이 쪼개지며 가려졌던 작은 것들이 하나씩 드러나고, 축소하면 큰 것만 남다가 결국 사라진다
- * — 그게 이 화면이 원하는 LOD 다. 그래서 값 좌표가 아니라 **화면 좌표**를 받는다.
+ * ## 왜 x 한 방향인가
+ * 예전엔 (x, y) 2차원 격자였는데, 급등 구간은 x가 거의 안 변하면서 y를 여러 칸 지나가 **칸마다 라벨이
+ * 하나씩 남아 숫자 기둥이 섰다**(사용자 지적). 자리를 x로만 다투게 하면 그 기둥이 원천적으로 안 생긴다.
  *
- * 전 선이 **하나의 격자**에서 겨룬다(사용자 확정) — 선마다 따로 솎으면 30선이 각자 라벨을 내밀어
- * 화면이 다시 숫자로 찬다. 같이 겨뤄야 "테마에서 제일 큰 사건들"이 남는다.
+ * 이름 라벨의 축약(`clusterLabels`)과 요약 규칙이 다른 것도 짚어둔다: 이름은 "여기 몇 개가 있다"(개수
+ * 뱃지)가 옳은 답이지만 금액은 **"여기서 제일 크게 터진 게 얼마다"**가 옳은 답이라, 뱃지가 아니라 경쟁이다.
+ *
+ * 확대하면 칸이 쪼개지며 가려졌던 것들이 드러나고 축소하면 결국 사라진다 — 그래서 값 좌표가 아니라
+ * **화면 좌표**(x)를 받는다.
  */
-export function declutterByValue<T extends { x: number; y: number; value: number }>(
+export function pickAmountLabels<T extends { group: string; seg: number; x: number; value: number }>(
     items: readonly T[],
     cellW: number,
-    cellH: number,
 ): T[] {
-    const best = new Map<string, T>();
+    const perSeg = new Map<string, T>();
     for (const it of items) {
-        const cell = `${Math.floor(it.x / cellW)}|${Math.floor(it.y / cellH)}`;
-        const cur = best.get(cell);
-        if (!cur || it.value > cur.value) best.set(cell, it);
+        const k = `${it.group}|${it.seg}`;
+        const cur = perSeg.get(k);
+        if (!cur || it.value > cur.value) perSeg.set(k, it);
     }
-    return [...best.values()];
+    const perCell = new Map<number, T>();
+    for (const it of perSeg.values()) {
+        const cell = Math.floor(it.x / cellW);
+        const cur = perCell.get(cell);
+        if (!cur || it.value > cur.value) perCell.set(cell, it);
+    }
+    return [...perCell.values()];
+}
+
+/**
+ * 벽시계 분 → 세그먼트 번호. 경계(앵커 피벗 시각)는 **오름차순**이어야 한다.
+ * 첫 경계 앞은 −1, 마지막 경계 뒤는 마지막 세그먼트에 든다(끝점이 자기 구간을 잃지 않게).
+ */
+export function segmentIndexOf(boundaries: readonly number[], minute: number): number {
+    if (boundaries.length < 2) return 0;
+    if (minute < boundaries[0]) return -1;
+    for (let i = 0; i + 1 < boundaries.length; i++) if (minute <= boundaries[i + 1]) return i;
+    return boundaries.length - 2;
 }
 
 /** `times[]`(unix 초) → 벽시계 분 → 인덱스. 조각마다 훑지 않도록 종목당 한 번 만든다. */

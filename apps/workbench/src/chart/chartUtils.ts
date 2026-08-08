@@ -57,13 +57,18 @@ export function highMarkerColor(pct: number): string | null {
 export const AMOUNT_BUCKET_COLORS = ["#fde047", "#fcd34d", "#fbbf24", "#fb923c", "#f97316", "#ef4444", "#dc2626", "#be185d"] as const;
 
 /**
- * 거래대금 8구간 → **굵기 단계 4개**(+ 구간 아래 = 0). 골격 겹쳐 그리기가 세 번째 차원을 굵기로 실을 때.
+ * 거래대금 8구간 → **굵기 단계 5개**(+ 구간 아래 = 0, 합쳐서 6단계). 골격 겹쳐 그리기가 세 번째 차원을
+ * 굵기로 실을 때. 경계는 **20 / 30 / 50 / 70 / 100억**(사용자 확정).
  *
- * 8단계를 굵기로 다 쪼개지 않는 이유: 획에서 눈이 가르는 굵기 차이는 네댓 단계가 한계다. 색이 실패한
+ * 8구간을 굵기로 다 쪼개지 않는 이유: 획에서 눈이 가르는 굵기 차이는 대여섯이 한계다. 색이 실패한
  * 것과 같은 이유(채널 대역폭)이니 여기서 같은 실수를 반복하지 않는다. 정확한 값은 숫자 라벨이 답한다.
- * 인덱스 = AMOUNT_BUCKETS_EOK 인덱스(20·30 / 40·50 / 70·100 / 150·200 을 한 단계씩 묶었다).
+ * 인덱스 = AMOUNT_BUCKETS_EOK([20,30,40,50,70,100,150,200]) 인덱스.
+ * ⚠ 150·200억이 100억과 **같은 굵기**로 묶인다(사용자 확정) — 위쪽이 뭉개지면 단계를 하나 더 나눈다.
  */
-export const AMOUNT_LEVEL_OF_BUCKET = [1, 1, 2, 2, 3, 3, 4, 4] as const;
+export const AMOUNT_LEVEL_OF_BUCKET = [1, 2, 2, 3, 4, 5, 5, 5] as const;
 
 /** 단계 → 획 굵기(배수 1 기준). 0 = 구간 아래(가장 가늘다 — 조용함은 물러난다). */
-export const AMOUNT_LEVEL_WIDTH = [0.9, 1.5, 2.2, 3.1, 4.2] as const;
+export const AMOUNT_LEVEL_WIDTH = [0.9, 1.5, 2.3, 3.2, 4.4, 6.0] as const;
+
+/** 굵기 범례에 적을 경계(억) — AMOUNT_LEVEL_OF_BUCKET 이 단계를 바꾸는 지점. */
+export const AMOUNT_LEVEL_EDGES_EOK = [20, 30, 50, 70, 100] as const;

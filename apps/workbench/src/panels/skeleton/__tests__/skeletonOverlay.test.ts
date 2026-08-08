@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, declutterByValue, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -251,22 +251,34 @@ describe("amountRuns — 골격 선을 분 단위로 잘라 굵기 단계 런으
         const runs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, levelOf);
         // 조용한 구간 → 스파이크(543분) → 다시 조용 = 런 3개(같은 단계는 합쳐진다)
         expect(runs.map((r) => r.level)).toEqual([LEVEL_QUIET, 2, LEVEL_QUIET]);
-        expect(runs[0]).toMatchObject({ x0: 540, y0: 0, x1: 542, y1: 2 }); // 기울기 1 그대로
-        expect(runs[1]).toMatchObject({ x0: 542, y0: 2, x1: 543, y1: 3 }); // 543분 봉 = 그 조각
-        expect(runs[2]).toMatchObject({ x0: 543, y0: 3, x1: 546, y1: 6 });
+        expect(runs[0].points).toEqual([{ x: 540, y: 0 }, { x: 541, y: 1 }, { x: 542, y: 2 }]); // 기울기 1 그대로
+        expect(runs[1].points).toEqual([{ x: 542, y: 2 }, { x: 543, y: 3 }]); // 543분 봉 = 그 조각
+        expect(runs[2].points[runs[2].points.length - 1]).toEqual({ x: 546, y: 6 });
+    });
+
+    it("**꼭짓점을 안 버린다** — 병합이 끝점만 옮기면 그 사이 꺾임이 사라져 골격이 현으로 뭉개진다", () => {
+        // 540→543 상승, 543→546 하락. 전부 조용해서 한 런으로 합쳐지지만 꺾임(543)은 남아야 한다.
+        const quiet = (): number => 1;
+        const runs = amountRuns([{ x: 540, y: 0 }, { x: 543, y: 9 }, { x: 546, y: 0 }], 0, quiet, levelOf);
+        expect(runs).toHaveLength(1);
+        expect(runs[0].points).toContainEqual({ x: 543, y: 9 }); // 이게 빠지면 (540,0)→(546,0) 직선이 된다
+        expect(runs[0].points[0]).toEqual({ x: 540, y: 0 });
+        expect(runs[0].points[runs[0].points.length - 1]).toEqual({ x: 546, y: 0 });
     });
 
     it("**스파이크가 평균에 안 묻힌다** — 이게 선분 평균을 버린 이유", () => {
         const runs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, levelOf);
         expect(runs.some((r) => r.level === 2)).toBe(true); // 6분 평균이면 (5×1+20)/6 ≈ 4.2 → 구간 아래가 됐을 값
-        expect(runs.find((r) => r.level === 2)!.maxAmount).toBe(20); // 라벨이 쓰는 최대
+        const hot = runs.find((r) => r.level === 2)!;
+        expect(hot.maxAmount).toBe(20); // 라벨이 쓰는 최대
+        expect(hot.maxAt).toEqual({ x: 543, y: 3 }); // 라벨이 붙는 자리 = **터진 그 분**(런 중점이 아니라)
     });
 
     it("타점 정규화 좌표(x 는 상대분)도 baseT 로 벽시계를 찾고, x 는 상대 그대로 낸다", () => {
         const abs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, levelOf);
         const rel = amountRuns([{ x: -3, y: 0 }, { x: 3, y: 6 }], 543, at, levelOf);
         expect(rel.map((r) => r.level)).toEqual(abs.map((r) => r.level));
-        expect(rel[0].x0).toBe(-3); // 좌표계는 그 선의 것을 유지한다
+        expect(rel[0].points[0].x).toBe(-3); // 좌표계는 그 선의 것을 유지한다
     });
 
     it("분봉이 없는 구간은 **재료 없음**으로 — 조용한 것과 구분된다(굵기도 갈린다)", () => {
@@ -283,28 +295,63 @@ describe("amountRuns — 골격 선을 분 단위로 잘라 굵기 단계 런으
     });
 });
 
-describe("declutterByValue — 한 칸에 제일 큰 하나만", () => {
-    const it0 = (x: number, y: number, value: number, tag = "") => ({ x, y, value, tag });
+describe("segmentIndexOf — 앵커 피벗이 나누는 구간", () => {
+    const b = [540, 600, 660]; // 두 구간: [540,600] · [600,660]
 
-    it("같은 칸이면 값이 큰 것만 남는다 — 개수 뱃지가 아니라 **경쟁**이다", () => {
-        const got = declutterByValue([it0(0, 0, 10, "a"), it0(5, 5, 99, "b"), it0(9, 9, 3, "c")], 40, 15);
+    it("경계 안의 분은 그 구간에", () => {
+        expect(segmentIndexOf(b, 540)).toBe(0);
+        expect(segmentIndexOf(b, 599)).toBe(0);
+        expect(segmentIndexOf(b, 601)).toBe(1);
+    });
+
+    it("경계 자체는 **앞 구간**에 든다 — 두 구간이 한 분을 겹쳐 갖지 않게", () => {
+        expect(segmentIndexOf(b, 600)).toBe(0);
+    });
+
+    it("마지막 경계는 마지막 구간에 — 끝점이 자기 자리를 잃지 않게", () => {
+        expect(segmentIndexOf(b, 660)).toBe(1);
+        expect(segmentIndexOf(b, 999)).toBe(1);
+    });
+
+    it("첫 경계 앞은 −1(구간 밖)", () => {
+        expect(segmentIndexOf(b, 500)).toBe(-1);
+    });
+});
+
+describe("pickAmountLabels — 선×세그먼트당 하나 → 화면 x 격자", () => {
+    const c = (group: string, seg: number, x: number, value: number, tag: string) => ({ group, seg, x, value, tag });
+
+    it("한 선이 한 세그먼트에서 여러 개를 못 낸다 — 급등 구간이 라벨을 독차지하던 문제", () => {
+        // 같은 선(A)·같은 세그먼트(0)에서 셋 → 최대 하나만 후보가 된다.
+        const got = pickAmountLabels([c("A", 0, 0, 10, "a1"), c("A", 0, 500, 99, "a2"), c("A", 0, 1000, 5, "a3")], 52);
+        expect(got.map((g) => g.tag)).toEqual(["a2"]);
+    });
+
+    it("세그먼트가 다르면 같은 선도 각각 하나씩", () => {
+        const got = pickAmountLabels([c("A", 0, 0, 10, "a0"), c("A", 1, 500, 5, "a1")], 52);
+        expect(got.map((g) => g.tag).sort()).toEqual(["a0", "a1"]);
+    });
+
+    it("다른 선끼리는 x 격자에서 겨룬다 — 붙어 있으면 큰 것만", () => {
+        const got = pickAmountLabels([c("A", 0, 10, 10, "a"), c("B", 0, 20, 99, "b")], 52);
         expect(got.map((g) => g.tag)).toEqual(["b"]);
     });
 
-    it("칸이 다르면 둘 다 남는다", () => {
-        const got = declutterByValue([it0(0, 0, 10, "a"), it0(100, 0, 3, "b")], 40, 15);
-        expect(got.map((g) => g.tag).sort()).toEqual(["a", "b"]);
+    it("**세로로는 안 다툰다** — y 가 아무리 벌어져도 x 가 같으면 하나(숫자 기둥 방지)", () => {
+        // y 를 아예 안 받는다는 게 규칙이다: 같은 x 대의 후보는 무조건 하나로 줄어든다.
+        const steep = [c("A", 0, 10, 10, "a"), c("B", 1, 12, 20, "b"), c("C", 2, 14, 30, "c")];
+        expect(pickAmountLabels(steep, 52)).toHaveLength(1);
     });
 
-    it("확대하면(좌표가 벌어지면) 가려졌던 게 드러난다 — LOD 의 실체", () => {
-        const near = [it0(0, 0, 10, "a"), it0(20, 0, 3, "b")];
+    it("확대하면(x 가 벌어지면) 가려졌던 게 드러난다 — LOD 의 실체", () => {
+        const near = [c("A", 0, 0, 10, "a"), c("B", 0, 30, 3, "b")];
         const far = near.map((n) => ({ ...n, x: n.x * 5 }));
-        expect(declutterByValue(near, 40, 15)).toHaveLength(1);
-        expect(declutterByValue(far, 40, 15)).toHaveLength(2);
+        expect(pickAmountLabels(near, 52)).toHaveLength(1);
+        expect(pickAmountLabels(far, 52)).toHaveLength(2);
     });
 
     it("빈 입력은 빈 출력", () => {
-        expect(declutterByValue([], 40, 15)).toEqual([]);
+        expect(pickAmountLabels([], 52)).toEqual([]);
     });
 });
 
