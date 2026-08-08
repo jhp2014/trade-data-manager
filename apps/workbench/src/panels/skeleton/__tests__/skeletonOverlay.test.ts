@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, BUCKET_QUIET, BUCKET_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, declutterByValue, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -241,45 +241,70 @@ describe("minuteAmountOf — 누적의 인접 차분이 곧 그 분의 거래대
     });
 });
 
-describe("amountRuns — 골격 선을 분 단위로 잘라 구간 색 런으로", () => {
-    // 테스트용 구간 판정: 10 이상이면 1, 5 이상이면 0, 그 아래는 -1(구간 없음).
-    const bucketOf = (won: number): number => (won >= 10 ? 1 : won >= 5 ? 0 : -1);
+describe("amountRuns — 골격 선을 분 단위로 잘라 굵기 단계 런으로", () => {
+    // 테스트용 단계 판정: 10 이상이면 2단계, 5 이상이면 1단계, 그 아래는 0(구간 아래).
+    const levelOf = (won: number): number => (won >= 10 ? 2 : won >= 5 ? 1 : LEVEL_QUIET);
     /** 분 → 거래대금. 543분에만 20 이 터지고 나머지는 1. */
     const at = (m: number): number | null => (m < 540 || m > 546 ? null : m === 543 ? 20 : 1);
 
-    it("피벗 사이 직선을 분마다 자르고 y 는 선형 보간 — 형태는 안 바뀌고 색 해상도만 오른다", () => {
-        const runs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, bucketOf);
-        // 조용한 구간 → 스파이크(543분) → 다시 조용 = 런 3개(같은 구간은 합쳐진다)
-        expect(runs.map((r) => r.bucket)).toEqual([BUCKET_QUIET, 1, BUCKET_QUIET]);
+    it("피벗 사이 직선을 분마다 자르고 y 는 선형 보간 — 형태는 안 바뀌고 굵기 해상도만 오른다", () => {
+        const runs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, levelOf);
+        // 조용한 구간 → 스파이크(543분) → 다시 조용 = 런 3개(같은 단계는 합쳐진다)
+        expect(runs.map((r) => r.level)).toEqual([LEVEL_QUIET, 2, LEVEL_QUIET]);
         expect(runs[0]).toMatchObject({ x0: 540, y0: 0, x1: 542, y1: 2 }); // 기울기 1 그대로
         expect(runs[1]).toMatchObject({ x0: 542, y0: 2, x1: 543, y1: 3 }); // 543분 봉 = 그 조각
         expect(runs[2]).toMatchObject({ x0: 543, y0: 3, x1: 546, y1: 6 });
     });
 
     it("**스파이크가 평균에 안 묻힌다** — 이게 선분 평균을 버린 이유", () => {
-        const runs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, bucketOf);
-        expect(runs.some((r) => r.bucket === 1)).toBe(true); // 6분 평균이면 (5×1+20)/6 ≈ 4.2 → 구간 없음이 됐을 값
-        expect(runs.find((r) => r.bucket === 1)!.maxAmount).toBe(20); // 라벨이 쓰는 최대
+        const runs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, levelOf);
+        expect(runs.some((r) => r.level === 2)).toBe(true); // 6분 평균이면 (5×1+20)/6 ≈ 4.2 → 구간 아래가 됐을 값
+        expect(runs.find((r) => r.level === 2)!.maxAmount).toBe(20); // 라벨이 쓰는 최대
     });
 
     it("타점 정규화 좌표(x 는 상대분)도 baseT 로 벽시계를 찾고, x 는 상대 그대로 낸다", () => {
-        const abs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, bucketOf);
-        const rel = amountRuns([{ x: -3, y: 0 }, { x: 3, y: 6 }], 543, at, bucketOf);
-        expect(rel.map((r) => r.bucket)).toEqual(abs.map((r) => r.bucket));
+        const abs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, levelOf);
+        const rel = amountRuns([{ x: -3, y: 0 }, { x: 3, y: 6 }], 543, at, levelOf);
+        expect(rel.map((r) => r.level)).toEqual(abs.map((r) => r.level));
         expect(rel[0].x0).toBe(-3); // 좌표계는 그 선의 것을 유지한다
     });
 
-    it("분봉이 없는 구간은 **재료 없음**으로 — 조용한 것과 구분된다(색도 갈린다)", () => {
-        const runs = amountRuns([{ x: 600, y: 0 }, { x: 603, y: 3 }], 0, at, bucketOf);
-        expect(runs.map((r) => r.bucket)).toEqual([BUCKET_MISSING]);
+    it("분봉이 없는 구간은 **재료 없음**으로 — 조용한 것과 구분된다(굵기도 갈린다)", () => {
+        const runs = amountRuns([{ x: 600, y: 0 }, { x: 603, y: 3 }], 0, at, levelOf);
+        expect(runs.map((r) => r.level)).toEqual([LEVEL_MISSING]);
     });
 
     it("길이 0·역방향 구간은 건너뛴다(0으로 나누지 않는다)", () => {
-        expect(amountRuns([{ x: 540, y: 0 }, { x: 540, y: 5 }], 0, at, bucketOf)).toEqual([]);
+        expect(amountRuns([{ x: 540, y: 0 }, { x: 540, y: 5 }], 0, at, levelOf)).toEqual([]);
     });
 
     it("점이 하나면 선이 아니다", () => {
-        expect(amountRuns([{ x: 540, y: 0 }], 0, at, bucketOf)).toEqual([]);
+        expect(amountRuns([{ x: 540, y: 0 }], 0, at, levelOf)).toEqual([]);
+    });
+});
+
+describe("declutterByValue — 한 칸에 제일 큰 하나만", () => {
+    const it0 = (x: number, y: number, value: number, tag = "") => ({ x, y, value, tag });
+
+    it("같은 칸이면 값이 큰 것만 남는다 — 개수 뱃지가 아니라 **경쟁**이다", () => {
+        const got = declutterByValue([it0(0, 0, 10, "a"), it0(5, 5, 99, "b"), it0(9, 9, 3, "c")], 40, 15);
+        expect(got.map((g) => g.tag)).toEqual(["b"]);
+    });
+
+    it("칸이 다르면 둘 다 남는다", () => {
+        const got = declutterByValue([it0(0, 0, 10, "a"), it0(100, 0, 3, "b")], 40, 15);
+        expect(got.map((g) => g.tag).sort()).toEqual(["a", "b"]);
+    });
+
+    it("확대하면(좌표가 벌어지면) 가려졌던 게 드러난다 — LOD 의 실체", () => {
+        const near = [it0(0, 0, 10, "a"), it0(20, 0, 3, "b")];
+        const far = near.map((n) => ({ ...n, x: n.x * 5 }));
+        expect(declutterByValue(near, 40, 15)).toHaveLength(1);
+        expect(declutterByValue(far, 40, 15)).toHaveLength(2);
+    });
+
+    it("빈 입력은 빈 출력", () => {
+        expect(declutterByValue([], 40, 15)).toEqual([]);
     });
 });
 

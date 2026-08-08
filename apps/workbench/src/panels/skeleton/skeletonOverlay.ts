@@ -242,37 +242,37 @@ export function absoluteFrame(items: readonly NormalizedSkeleton[]): OverlayBoun
 }
 
 /**
- * 골격 선을 **분 단위로 자른 색 조각**(런) — "이 시점에 분봉 대금이 얼마였나"를 색으로 읽게 하는 것.
+ * 골격 선을 **분 단위로 자른 조각**(런) — 거래대금을 **굵기**로 싣기 위한 재료.
  *
  * ## 왜 선분(피벗~피벗)이 아니라 분인가
- * 예전엔 선분 하나에 색 하나였고 그 값이 구간 **평균**이었다. 60분 구간에서 09:32 에 200억이 터지고
- * 나머지가 조용하면 평균은 3억이라 **스파이크가 색에서 통째로 지워진다**. 형태(직선)는 그대로 두고
- * 색만 분 해상도로 올리면 2D 평면에 세 번째 차원이 실제로 얹힌다.
+ * 선분 하나에 값 하나면 그 값은 구간 **평균**이 된다. 60분 구간에서 09:32 에 200억이 터지고 나머지가
+ * 조용하면 평균은 3억이라 **스파이크가 통째로 지워진다**. 형태(직선)는 그대로 두고 세 번째 차원만
+ * 분 해상도로 올린다.
  *
- * ## 왜 자기 정규화가 아니라 절대 구간인가
- * "색만 보고 얼마인지"는 자기 안 정규화로는 **원리적으로 불가능**하다 — 같은 색이 차트마다 다른 값이 된다.
- * 그래서 도메인의 `AMOUNT_BUCKETS_EOK`(보드 히스토그램·차트 마커·필터가 쓰는 그 구간)를 그대로 쓴다.
- * 화면끼리 같은 자를 보게 되는 건 덤이다.
+ * ## 왜 색이 아니라 굵기인가(사용자 확정)
+ * 처음엔 절대 구간 색을 획에 실었는데 **2px 획은 색을 담을 면적이 없었다** — 8단계가 구분이 안 되고,
+ * 조용한 구간까지 다시 칠하느라 선 본연의 색(선택 파랑)까지 잃었다. 굵기는 크기 채널이라
+ * ① 30선이 얽혀도 굵은 자리가 살아남고 ② "굵다=크다"에 범례가 필요 없고 ③ 축소해도 안 사라진다.
+ * 정확한 값은 희소한 채널(숫자 라벨)이 따로 답한다 — 같은 값을 두 밀도로 말해 서로를 보강한다.
  *
  * ## 왜 런으로 합치는가
- * 하루면 분 조각이 400개, 테마 30선이면 12,000개다. 같은 구간이 이어지면 하나로 합치면 대부분의
- * 조용한 구간이 통째로 한 조각이 되어 실제 개수가 한 자릿수~수십 개로 떨어진다. 색이 이산(구간)이라
- * 합쳐도 **그림이 하나도 안 바뀐다** — 연속 램프였으면 못 했을 최적화다.
+ * 하루면 분 조각이 400개, 테마 30선이면 12,000개다. **같은 단계가 이어지면 하나로 합치면** 조용한
+ * 구간이 통째로 한 조각이 되어 실제 개수가 수십 개로 떨어진다. 단계가 이산이라 합쳐도 그림이 안 바뀐다.
  */
 export interface AmountRun {
     x0: number;
     y0: number;
     x1: number;
     y1: number;
-    /** AMOUNT_BUCKETS_EOK 인덱스. **−1 = 구간 아래**(조용함) · **−2 = 재료 없음**(분봉 결손). */
-    bucket: number;
+    /** 굵기 단계(호출측이 정한 값). **0 = 구간 아래**(조용함) · **−1 = 재료 없음**(분봉 결손). */
+    level: number;
     /** 이 런 안 분당 거래대금의 최대(원) — 값 라벨이 쓴다. 재료가 없으면 0. */
     maxAmount: number;
 }
 
-/** 구간 아래 / 재료 없음 — 색을 정하는 쪽이 둘을 구분해야 한다(조용한 것과 모르는 것은 다르다). */
-export const BUCKET_QUIET = -1;
-export const BUCKET_MISSING = -2;
+/** 구간 아래 / 재료 없음 — 그리는 쪽이 둘을 구분해야 한다(조용한 것과 모르는 것은 다르다). */
+export const LEVEL_QUIET = 0;
+export const LEVEL_MISSING = -1;
 
 /** 병적인 입력(일봉 좌표를 잘못 넘기는 등)에서 조각이 폭주하지 않게 하는 상한. */
 const MAX_RUN_MINUTES = 2000;
@@ -285,20 +285,20 @@ export function amountRuns(
     points: readonly { x: number; y: number }[],
     baseT: number,
     amountAt: (minute: number) => number | null,
-    bucketOf: (won: number) => number,
+    levelOf: (won: number) => number,
 ): AmountRun[] {
     const out: AmountRun[] = [];
     let budget = MAX_RUN_MINUTES;
-    const push = (x0: number, y0: number, x1: number, y1: number, bucket: number, amount: number): void => {
+    const push = (x0: number, y0: number, x1: number, y1: number, level: number, amount: number): void => {
         const last = out[out.length - 1];
-        // 같은 구간이 이어지면 늘린다 — 색이 이산이라 합쳐도 그림이 안 바뀐다.
-        if (last && last.bucket === bucket && last.x1 === x0 && last.y1 === y0) {
+        // 같은 단계가 이어지면 늘린다 — 단계가 이산이라 합쳐도 그림이 안 바뀐다.
+        if (last && last.level === level && last.x1 === x0 && last.y1 === y0) {
             last.x1 = x1;
             last.y1 = y1;
             if (amount > last.maxAmount) last.maxAmount = amount;
             return;
         }
-        out.push({ x0, y0, x1, y1, bucket, maxAmount: amount });
+        out.push({ x0, y0, x1, y1, level, maxAmount: amount });
     };
     for (let i = 0; i + 1 < points.length; i++) {
         const p = points[i];
@@ -315,10 +315,37 @@ export function amountRuns(
             // 이 조각([a,b])의 색은 **끝나는 분**의 거래대금이다 — cumAmount 차분이 그 분의 몫이라
             // 시작 분의 봉은 직전 조각에 든다(조각끼리 겹치지 않게 하는 유일한 배분).
             const won = amountAt(Math.ceil(b));
-            push(a - baseT, yAt(a), b - baseT, yAt(b), won === null ? BUCKET_MISSING : bucketOf(won), won ?? 0);
+            push(a - baseT, yAt(a), b - baseT, yAt(b), won === null ? LEVEL_MISSING : levelOf(won), won ?? 0);
         }
     }
     return out;
+}
+
+/**
+ * 화면 격자로 라벨을 솎는다 — **한 칸에 값이 제일 큰 하나만** 남기고 나머지는 사라진다.
+ *
+ * 이름 라벨의 축약(`clusterLabels`)과 격자는 같은데 **요약이 다르다**: 이름은 "여기 몇 개가 있다"(개수
+ * 뱃지)가 옳은 답이지만, 금액은 **"여기서 제일 크게 터진 게 얼마다"**가 옳은 답이다. 개수는 뜻이 없고
+ * 평균은 스파이크를 지운다(색으로 겪은 그 실패). 그래서 뱃지가 아니라 **경쟁**이다.
+ *
+ * 확대하면 칸이 쪼개지며 가려졌던 작은 것들이 하나씩 드러나고, 축소하면 큰 것만 남다가 결국 사라진다
+ * — 그게 이 화면이 원하는 LOD 다. 그래서 값 좌표가 아니라 **화면 좌표**를 받는다.
+ *
+ * 전 선이 **하나의 격자**에서 겨룬다(사용자 확정) — 선마다 따로 솎으면 30선이 각자 라벨을 내밀어
+ * 화면이 다시 숫자로 찬다. 같이 겨뤄야 "테마에서 제일 큰 사건들"이 남는다.
+ */
+export function declutterByValue<T extends { x: number; y: number; value: number }>(
+    items: readonly T[],
+    cellW: number,
+    cellH: number,
+): T[] {
+    const best = new Map<string, T>();
+    for (const it of items) {
+        const cell = `${Math.floor(it.x / cellW)}|${Math.floor(it.y / cellH)}`;
+        const cur = best.get(cell);
+        if (!cur || it.value > cur.value) best.set(cell, it);
+    }
+    return [...best.values()];
 }
 
 /** `times[]`(unix 초) → 벽시계 분 → 인덱스. 조각마다 훑지 않도록 종목당 한 번 만든다. */

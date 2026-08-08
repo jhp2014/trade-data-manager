@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
-import { minuteOfDayOf, selectHotUniverse, amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
-import { AMOUNT_BUCKET_COLORS, AMOUNT_QUIET_COLOR } from "../chart/chartUtils.js";
+import { minuteOfDayOf, selectHotUniverse, amountBucketIndex } from "@trade-data-manager/market/domain";
+import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
-    amountRuns, minuteIndexOf, minuteAmountOf, BUCKET_QUIET, type AmountRun,
+    amountRuns, minuteIndexOf, minuteAmountOf, declutterByValue, LEVEL_MISSING, type AmountRun,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData, type OverlayMarker } from "./skeleton/useOverlayData.js";
@@ -56,6 +56,8 @@ const LABEL_CELL = { w: 72, h: 14 };
 const LABEL_GAP = 9;
 /** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. */
 const THEME_READING_CELL = { w: 78, h: 12 };
+/** 금액 라벨 한 칸(화면 px). 숫자만 담으므로 이름 라벨보다 좁다 — 좁을수록 한 화면에 더 많이 남는다. */
+const AMOUNT_LABEL_CELL = { w: 46, h: 15 };
 /**
  * 무리(선택·그룹) 안에서 안 짚은 선의 진하기. 색은 그대로 두고 이만큼만 물러난다 —
  * 목록 행을 훑을 때 짚은 하나가 무리 안에서도 또렷이 서게(굵기 차이만으론 약했다, 사용자 지적).
@@ -73,12 +75,18 @@ const hmOf = (m: number): string => {
 };
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
+/** 거래대금 구간 인덱스 → 굵기 단계. 구간 아래(-1)는 0단계. */
+const amountLevelOf = (won: number): number => {
+    const b = amountBucketIndex(won);
+    return b < 0 ? 0 : AMOUNT_LEVEL_OF_BUCKET[b];
+};
+
 /**
- * 거래대금 런의 색 — 구간이면 도메인 램프, **구간 아래면 무채색**(조용함은 색이 아니라 물러남이다),
- * **재료 없음이면 더 옅은 무채색**. 조용한 것과 모르는 것을 같은 색으로 칠하면 그림이 거짓말을 한다.
+ * 런의 획 굵기 — 단계 × 선의 배수. 재료 없음(분봉 결손)은 **가장 가늘게**: 조용한 것과 같은 굵기로
+ * 그리면 "거래가 없었다"와 "모른다"가 한 모양이 된다.
  */
-const runColor = (bucket: number): string =>
-    bucket >= 0 ? AMOUNT_BUCKET_COLORS[bucket] : bucket === BUCKET_QUIET ? AMOUNT_QUIET_COLOR : "var(--border-subtle)";
+const runWidth = (level: number, scale: number): number =>
+    (level === LEVEL_MISSING ? AMOUNT_LEVEL_WIDTH[0] * 0.6 : AMOUNT_LEVEL_WIDTH[level] ?? AMOUNT_LEVEL_WIDTH[0]) * scale;
 /** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
 const AXIS_LINE = "var(--text-secondary)";
 
@@ -210,10 +218,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const dotsForAll = useMemo(() => lines.reduce((n, s) => n + s.points.length, 0) <= DOT_BUDGET, [lines]);
     const baseOpacity = lineOpacity(lines.length);
     const dimmed = dimOpacity(lines.length);
-    // 라벨이 붙는 끝 — 타점 단위는 **과거 쪽 끝(왼쪽)**(미래 점선 쪽은 결과라 손잡이를 안 둔다),
-    // 절대 배치는 경로 끝(오른쪽), 정규화는 앵커 반대쪽.
-    const labelAnchorMode: SkeletonAnchor = isPointUnit ? "last" : isAbs ? "first" : anchor;
-    const labelAtStart = isPointUnit || (!isAbs && anchor === "last");
+    // 라벨이 붙는 끝 — 골격 종목 이름은 **언제나 경로의 왼쪽 끝**(사용자 확정).
+    // 절대 배치에선 예전에 오른쪽 끝이었는데, 테마 라벨도 오른쪽 끝이라 **둘이 겹쳤다**.
+    // 골격=왼쪽 / 테마=오른쪽으로 갈라 두면 자리 싸움이 없다.
+    // (타점 단위는 원래도 왼쪽 — 미래 점선 쪽은 결과라 손잡이를 안 둔다.)
+    const labelAnchorMode: SkeletonAnchor = isPointUnit || isAbs ? "last" : anchor;
+    const labelAtStart = isPointUnit || isAbs || anchor === "last";
 
     // 상세(피벗 값·기준선·타점 세로선)를 받을 "지금 조사 중인 하나" — 호버 우선, 없으면 단일 선택.
     const inspectKey = hovered ?? (effSelected.size === 1 ? [...effSelected][0] : null);
@@ -254,7 +264,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (!amountTarget) return null;
         const at = amountLookup(amountTarget.stockCode);
         if (!at) return null;
-        return { key: amountTarget.key, runs: amountRuns(amountTarget.points, amountTarget.baseT, at, amountBucketIndex) };
+        return { key: amountTarget.key, runs: amountRuns(amountTarget.points, amountTarget.baseT, at, amountLevelOf) };
     }, [amountTarget, amountLookup]);
 
     // ── 테마 선 — 절대 뷰에서만(좌표계가 같아야 환산 없이 얹힌다). 짚은 선이 하나일 때만 펼친다:
@@ -282,10 +292,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const m = new Map<string, AmountRun[]>();
         for (const l of themeOverlay.lines) {
             const at = amountLookup(l.code);
-            if (at) m.set(l.code, amountRuns(l.points, 0, at, amountBucketIndex));
+            if (at) m.set(l.code, amountRuns(l.points, 0, at, amountLevelOf));
         }
         return m;
     }, [themeOverlay, amountLookup]);
+    /** 테마 선마다 고정 색 — **선이 아니라 라벨의 점에만** 쓴다(선을 칠하면 30선이 무지개가 된다).
+     *  좌측 이름 라벨과 금액 라벨이 같은 색 점을 달아 "이 숫자가 저 종목 것"이 눈으로 이어진다. */
+    const themeColorOf = useMemo(() => {
+        const m = new Map<string, string>();
+        themeOverlay?.lines.forEach((l, i) => m.set(l.code, seriesColor(i)));
+        return (code: string): string => m.get(code) ?? "var(--text-secondary)";
+    }, [themeOverlay]);
 
     // ── 피벗 좌표는 **짚은 점에만** 붙는다(사용자 확정).
     // 예전엔 조사 중인 골격의 점 **전부**에 값이 떴는데, 분봉 골격은 꺾인 점이 많아 화면이 숫자로 뒤덮였다.
@@ -334,6 +351,27 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         );
         return layoutAxisColumns<ThemeReading & { minute: number }>(groups, THEME_READING_CELL.h);
     }, [themeOverlay, singleTarget, pinnedPivots, scales]);
+
+    /**
+     * 금액 라벨 — **전 선(앵커 + 테마)이 하나의 격자에서 겨룬다**(사용자 확정). 한 칸에 제일 큰 하나만
+     * 남으므로 화면엔 "지금 보이는 범위에서 제일 크게 터진 사건들"이 남고, 확대하면 작은 것들이
+     * 하나씩 드러난다. 축소하면 결국 0이 된다 — 그 상태의 "어디가 터졌나"는 굵기가 답한다.
+     * 후보는 구간에 든 런만(≥ 최하 경계) — 조용한 분까지 넣으면 격자가 뜻 없는 숫자로 찬다.
+     */
+    const amountLabels = useMemo(() => {
+        if (!scales || !showAmountLabels) return [];
+        type Cand = { x: number; y: number; value: number; code: string; own: boolean };
+        const cands: Cand[] = [];
+        const collect = (runs: readonly AmountRun[], code: string, own: boolean): void => {
+            for (const r of runs) {
+                if (r.level <= 0) continue;
+                cands.push({ x: scales.x((r.x0 + r.x1) / 2), y: scales.y((r.y0 + r.y1) / 2), value: r.maxAmount, code, own });
+            }
+        };
+        if (amounts && amountTarget) collect(amounts.runs, amountTarget.stockCode, true);
+        if (themeRuns) for (const [code, runs] of themeRuns) collect(runs, code, false);
+        return declutterByValue(cands, AMOUNT_LABEL_CELL.w, AMOUNT_LABEL_CELL.h);
+    }, [scales, showAmountLabels, amounts, amountTarget, themeRuns]);
 
     /** 테마 라벨 자리 — 경로 오른쪽 끝(앵커 골격 라벨과 반대쪽이라 서로 안 겹친다). */
     const themeClusters = useMemo(() => {
@@ -571,13 +609,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {!isDaily && (
                     <ControlBox label="거래대금">
                         <TextToggle active={showAmount} onClick={() => setShowAmount(!showAmount)}
-                            title="선택한 골격을 **분 단위**로 잘라 그 분의 거래대금 구간 색으로 칠한다 — 색만 보고 그 시점 대금을 읽는다"
-                            activeColor={AMOUNT_BUCKET_COLORS[AMOUNT_BUCKET_COLORS.length - 1]}>
-                            색
+                            title="선을 분 단위로 잘라 그 분의 거래대금을 **굵기**로 싣는다 — 굵은 자리가 터진 자리(전 종목·전 시각 상시)">
+                            굵기
                         </TextToggle>
                         <TextToggle active={showAmountLabels} onClick={() => setShowAmountLabels(!showAmountLabels)}
-                            title="구간에 든 자리마다 그 덩어리의 최대 분당 거래대금 수치(조용한 구간엔 안 붙는다)"
-                            activeColor={AMOUNT_BUCKET_COLORS[AMOUNT_BUCKET_COLORS.length - 1]}>
+                            title="터진 자리에 분당 거래대금 수치. 전 선이 한 격자에서 겨뤄 한 칸에 제일 큰 하나만 남는다 — 확대하면 작은 것들이 드러나고 축소하면 사라진다">
                             값
                         </TextToggle>
                     </ControlBox>
@@ -696,13 +732,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 strokeWidth={lit ? 2 : 1} strokeLinejoin="round" opacity={lit ? 0.9 : hoveredThemeSet ? 0.2 : 0.45} style={{ pointerEvents: "none" }} />
                                         );
                                     }
-                                    // 짚은 것만 굵고 또렷하게. 나머지도 색은 그대로 — 절대 구간이라 흐려도 단계가 산다.
+                                    // 선은 무채색, **굵기가 거래대금**이다. 짚은 것만 또렷해지고 굵기 배수도 커진다.
+                                    // 테마 배수를 앵커보다 낮게 잡아(0.75) 30선이 굵어져도 주인공이 안 묻힌다.
                                     return (
                                         <g key={`th-${l.code}`} style={{ pointerEvents: "none" }}
                                             opacity={lit ? 1 : hoveredThemeSet ? 0.25 : 0.55}>
                                             {runs.map((r, i) => (
                                                 <line key={i} x1={scales.x(r.x0)} y1={scales.y(r.y0)} x2={scales.x(r.x1)} y2={scales.y(r.y1)}
-                                                    stroke={runColor(r.bucket)} strokeWidth={lit ? 2.25 : 1.25} strokeLinecap="round" />
+                                                    stroke="var(--text-tertiary)" strokeWidth={runWidth(r.level, lit ? 1 : 0.75)} strokeLinecap="round" />
                                             ))}
                                         </g>
                                     );
@@ -727,10 +764,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 // 역할색(선택 하늘)을 잃지 않는 건 글로우(위의 넓은 밑선)가 이미 "붙잡혔다"를
                                                 // 말하기 때문 — 그래서 선 색을 통째로 값에 내줄 수 있다(사용자 확정).
                                                 if (amounts && amounts.key === s.key) {
-                                                    // 미래 구간은 점선 대신 **옅게** — 조각이 분 단위라 점선이 색과 싸워 둘 다 못 읽힌다.
+                                                    // 색은 선 본연의 역할색(선택 파랑) 그대로 — 굵기만 거래대금이 정한다.
+                                                    // 미래 구간은 점선 대신 **옅게**(조각이 분 단위라 점선이 굵기와 싸워 둘 다 못 읽힌다).
                                                     return amounts.runs.map((r, i) => (
                                                         <line key={`rn${i}`} x1={scales.x(r.x0)} y1={scales.y(r.y0)} x2={scales.x(r.x1)} y2={scales.y(r.y1)}
-                                                            stroke={runColor(r.bucket)} strokeWidth={v.width + 1.5} strokeLinecap="round"
+                                                            stroke={color} strokeWidth={runWidth(r.level, 1.2)} strokeLinecap="round"
                                                             opacity={splitX != null && r.x0 >= splitX ? 0.4 : 1} />
                                                     ));
                                                 }
@@ -743,19 +781,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     </>
                                                 );
                                             })()}
-                                            {/* 거래대금 값 — **구간에 든 런에만**(조용한 구간엔 안 붙는다). 색이 이산이라
-                                                런 하나 = 색이 같은 한 덩어리이고, 그 덩어리의 **최대 분당 거래대금**을 적는다.
-                                                기본 꺼짐: 켜면 터진 자리마다 숫자가 붙어 "얼마나"까지 읽힌다. */}
-                                            {showAmountLabels && amounts && amounts.key === s.key && amounts.runs.map((r, i) => {
-                                                if (r.bucket < 0) return null;
-                                                return (
-                                                    <text key={`ra${i}`} x={(scales.x(r.x0) + scales.x(r.x1)) / 2} y={(scales.y(r.y0) + scales.y(r.y1)) / 2 - 5} textAnchor="middle"
-                                                        stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke"
-                                                        style={{ fontSize: 9, fill: runColor(r.bucket), fontVariantNumeric: "tabular-nums" }}>
-                                                        {fmtEok(r.maxAmount)}
-                                                    </text>
-                                                );
-                                            })}
                                             {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. 손이 올라간 점은 커진다. */}
                                             {(lit || dotsForAll) && s.points.map((p, i) => {
                                                 const r = pivotShown(s.key, i) ? 5 : lit ? 3 : 2;
@@ -828,19 +853,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     )));
                                 })}
 
-                                {/* 핀 시각의 테마 값 — 그 시각 각 테마 선의 점에서 **y축까지 수평 점선**을 내린다.
-                                    골격 피벗 값이 축에 내려 읽는 그 문법 그대로다(값은 축 옆 열에, 아래 라벨 층). */}
-                                {themeReadingSlots.map((s) => {
-                                    const px = scales.x(s.item.minute);
-                                    const py = scales.y(s.item.y);
-                                    const ax = clamp(box.left, box.left, box.left + box.width);
-                                    return (
-                                        <g key={`tr-${s.item.minute}-${s.item.code}`} style={{ pointerEvents: "none" }} opacity={hoveredThemeSet && !hoveredThemeSet.has(s.item.code) ? 0.25 : 0.7}>
-                                            <line x1={px} x2={ax} y1={py} y2={py} stroke="var(--text-tertiary)" strokeWidth={0.6} strokeDasharray="2 3" />
-                                            <circle cx={px} cy={py} r={2} fill="var(--text-secondary)" />
-                                        </g>
-                                    );
-                                })}
+                                {/* 거래대금 숫자 — **전 선 공통 격자**에서 한 칸에 제일 큰 하나만 살아남은 것들.
+                                    앞의 색 점이 어느 선 것인지 말한다(좌측 이름 라벨의 점과 같은 색). */}
+                                {amountLabels.map((a) => (
+                                    <g key={`al-${a.code}-${a.x}-${a.y}`} style={{ pointerEvents: "none" }}
+                                        opacity={hoveredThemeSet && !a.own && !hoveredThemeSet.has(a.code) ? 0.25 : 1}>
+                                        <circle cx={a.x - 13} cy={a.y - 3} r={2} fill={a.own ? ACTIVE : themeColorOf(a.code)} />
+                                        <text x={a.x - 8} y={a.y} textAnchor="start"
+                                            stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke"
+                                            style={{ fontSize: 9.5, fill: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
+                                            {fmtEok(a.value)}
+                                        </text>
+                                    </g>
+                                ))}
 
                                 {/* 선택된 타점의 세로선(절대 뷰) — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
                                 {isAbs && [...selectedPks].map((pk) => {
@@ -934,6 +959,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         color: lit ? "var(--text-primary)" : "var(--text-tertiary)",
                                         fontWeight: lit ? 700 : 400,
                                     }}>
+                                    {/* 색 점 = 금액 라벨의 점과 같은 색 — 저 숫자가 이 종목 것이라는 유일한 표식. */}
+                                    <span style={labelDot(themeColorOf(c.members[0]))} />
                                     {multi ? `${c.members.length}` : label}
                                 </button>
                             );
@@ -1113,18 +1140,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {themeOverlay && themeOverlay.lines.length > 0 && (
                     <span style={{ color: "var(--text-secondary)" }}> · 테마 {themeOverlay.lines.length}선(분당 종가)</span>
                 )}
-                {/* 거래대금 범례 — 색이 **절대 구간**이라야 "얼마인지"가 읽히고, 그러려면 대응표가 화면에 있어야 한다.
-                    보드 히스토그램·차트 마커와 같은 구간이라 여기서 익힌 색이 저기서도 그대로 통한다. */}
+                {/* 굵기 범례 — 굵기는 "굵다=크다"가 자명해서 색처럼 대응표가 꼭 필요하진 않지만,
+                    **단계 경계가 얼마인지**는 알아야 읽힌다(20 / 40 / 70 / 150억). 정확한 값은 숫자 라벨이 답한다. */}
                 {!isDaily && showAmount && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 0, marginLeft: 8, verticalAlign: "middle" }}
-                        title="분당 거래대금 구간 — 보드 히스토그램·차트 마커와 같은 자">
-                        <span style={{ ...legendSwatch, background: AMOUNT_QUIET_COLOR }} />
-                        {AMOUNT_BUCKET_COLORS.map((c, i) => (
-                            <span key={i} style={{ ...legendSwatch, background: c }} title={`${AMOUNT_BUCKETS_EOK[i]}억~`} />
+                    <span style={{ display: "inline-flex", alignItems: "flex-end", gap: 3, marginLeft: 8, height: 10, verticalAlign: "middle" }}
+                        title="분당 거래대금 굵기 단계 — 경계는 보드 히스토그램·차트 마커와 같은 자(20/40/70/150억)">
+                        {AMOUNT_LEVEL_WIDTH.map((w, i) => (
+                            <span key={i} style={{ width: 8, height: w, background: "var(--text-secondary)", borderRadius: w / 2 }} />
                         ))}
-                        <span style={{ marginLeft: 4, color: "var(--text-tertiary)" }}>
-                            {AMOUNT_BUCKETS_EOK[0]}~{AMOUNT_BUCKETS_EOK[AMOUNT_BUCKETS_EOK.length - 1]}억+/분
-                        </span>
+                        <span style={{ marginLeft: 3, color: "var(--text-tertiary)" }}>~20~40~70~150억+/분</span>
                     </span>
                 )}
             </div>
@@ -1186,8 +1210,6 @@ const footer: CSSProperties = { flexShrink: 0, padding: "3px 10px", borderTop: "
 const count: CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 const muted: CSSProperties = { position: "absolute", inset: 0, color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px", pointerEvents: "none" };
 const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
-/** 범례 색 한 칸 — 붙여 놓아 그라데이션 막대처럼 읽히게(칸 사이 여백 0). */
-const legendSwatch: CSSProperties = { width: 9, height: 8, display: "inline-block" };
 const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer", whiteSpace: "nowrap" };
 // 라벨 — 상자 없이 후광 글자 + 그 선 색의 점(F안). **색 점은 언제나 끝점을 마주 보는 쪽**에 서서
 // 이 글자가 어느 선의 것인지 가리킨다(칩이 점 바깥에 서므로 칩의 안쪽 끝이 곧 점 쪽이다).
