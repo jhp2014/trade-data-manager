@@ -11,7 +11,7 @@
 //
 // **하나라도 못 읽으면 그 골격은 통째로 결손**이다. 못 읽은 피벗만 빼고 계산하면 형태가 조용히 달라진다
 // (되돌림의 골이 사라지는 식) — 없는 걸 뺀 모양은 사람이 찍은 그 모양이 아니다.
-import { candlePrice, chartKeyOf, pointKeyOf, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, type ChartAnchor, type DailyCandle, type MinuteCandle, type PricedPivot, type ReviewPointKey, type SkeletonPivot } from "#domain";
+import { candlePrice, chartKeyOf, pointKeyOf, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type ChartAnchor, type DailyCandle, type MinuteCandle, type PricedPivot, type ReviewPointKey, type SkeletonPivot } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "./dailyRange.js";
 import type { AxisDeps } from "../axis/axis.js";
@@ -166,10 +166,10 @@ export async function resolveMinuteSkeletonsForCharts(
         const barByTime = new Map(bars.map((b) => [b.time, b] as const));
         const manualTimes = new Set(list.map((a) => a.anchorTime!));
         const pivots: SkeletonPivot[] = list.map((x) => ({ anchorDate: x.anchorDate, anchorTime: x.anchorTime!, field: x.field!, market: x.market! }));
-        // 합성 피벗 후보 — 손 피벗이 있는 캔들은 건너뛴다(어떤 값을 찍었든 그 캔들의 뜻은 사람이 정했다).
-        const synthTimes = new Set<string>();
-        for (const t of pointTimesByChart?.get(key) ?? []) if (!manualTimes.has(t)) synthTimes.add(t);
-        for (const t of synthTimes) pivots.push({ anchorDate: date, anchorTime: t, field: "close", market: "un" });
+        // 합성 피벗 — 규칙은 도메인 단일 출처(syntheticClosePivots — 클라 차트 오버레이와 같은 함수).
+        const synth = syntheticClosePivots(date, manualTimes, pointTimesByChart?.get(key) ?? []);
+        const synthTimes = new Set(synth.map((p) => p.anchorTime!));
+        pivots.push(...synth);
 
         const priced: PricedPivot[] = [];
         let broken = false;

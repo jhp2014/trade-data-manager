@@ -9,7 +9,7 @@
 // 지문으로 그 차트/타점만 다시 굽는다).
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
-import { BASELINE_PARAM, candlePrice, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots } from "@trade-data-manager/market/domain";
+import { BASELINE_PARAM, candlePrice, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type SkeletonPivot } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor } from "../api/chartAnchors.js";
 import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery, skeletonsQuery, reviewPointsQuery } from "../api/queries.js";
 import { kstToUnix } from "./derive.js";
@@ -171,13 +171,9 @@ export function useMinuteSkeleton(code: string, date: string, minuteBundle: Char
         [anchors],
     );
     const points = useMemo(() => {
-        const manualTimes = new Set(mine.map((a) => a.anchorTime!));
-        const pivots = mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! as AnchorMarket }));
-        if (mine.length > 0) {
-            for (const rp of reviewQ.data ?? []) {
-                if (!manualTimes.has(rp.time)) pivots.push({ anchorDate: date, anchorTime: rp.time, field: "close", market: "un" });
-            }
-        }
+        const pivots: SkeletonPivot[] = mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime!, field: a.field!, market: a.market! as AnchorMarket }));
+        // 합성 규칙은 도메인 단일 출처(서버 리졸버와 같은 함수) — 편집 중 오버레이와 겹쳐 그리기가 같은 경로를 그린다.
+        pivots.push(...syntheticClosePivots(date, new Set(mine.map((a) => a.anchorTime!)), (reviewQ.data ?? []).map((rp) => rp.time)));
         const out: { time: number; price: number }[] = [];
         for (const p of sortPivots(pivots)) {
             const price = candlePrice(minuteBundle?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field]);

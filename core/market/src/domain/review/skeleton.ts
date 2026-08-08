@@ -77,6 +77,30 @@ export function skeletonSetError(owner: SkeletonOwner, existing: readonly Skelet
     return null;
 }
 
+/**
+ * 타점 종가 합성 피벗 — **"타점 종가 = 골격의 한 점"**(사용자 확정, 분봉 전용) 규칙의 단일 출처.
+ *  · 손 피벗이 있는 캔들은 건너뛴다(어떤 값을 찍었든 그 캔들의 뜻은 사람이 정했다)
+ *  · 손 피벗이 0개면 빈 배열 — 타점 종가는 골격을 보강하지 창조하지 않는다
+ *  · 값은 언제나 close·un(분봉 앵커 규칙)
+ * 서버 리졸버(경로 해소)와 클라 차트 오버레이(편집 중 표시)가 **같은 함수**를 봐야 두 그림이 같은 경로다 —
+ * 규칙이 두 벌이면 한쪽만 고쳐지고, 그 어긋남은 눈으로 못 잡는 종류다.
+ */
+export function syntheticClosePivots(
+    date: string,
+    manualTimes: ReadonlySet<string>,
+    pointTimes: readonly string[],
+): SkeletonPivot[] {
+    if (manualTimes.size === 0) return [];
+    const out: SkeletonPivot[] = [];
+    const seen = new Set<string>();
+    for (const t of pointTimes) {
+        if (manualTimes.has(t) || seen.has(t)) continue;
+        seen.add(t);
+        out.push({ anchorDate: date, anchorTime: t, field: "close", market: "un" });
+    }
+    return out;
+}
+
 // ── 형태 계산 ───────────────────────────────────────────────────────────────
 // 축이 고를 **측정값 전부**를 한 번에 낸다. 새 측정 = 여기 필드 하나 + 계산 한 줄이고, 새 축은 그걸 고르기만
 // 한다(축이 자주 바뀌어도 이 층은 안 흔들린다). ⚠ 이 층의 계산을 고치면 SKELETON_SHAPE_VERSION 을 올린다 —
