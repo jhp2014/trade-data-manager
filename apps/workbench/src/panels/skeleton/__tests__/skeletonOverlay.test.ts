@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -318,11 +318,10 @@ describe("segmentIndexOf — 앵커 피벗이 나누는 구간", () => {
     });
 });
 
-describe("pickAmountLabels — 선×세그먼트당 하나 → 화면 x 격자", () => {
+describe("pickAmountLabels — 선×세그먼트당 하나 → 선×x 격자(경쟁은 종목 안에서만)", () => {
     const c = (group: string, seg: number, x: number, value: number, tag: string) => ({ group, seg, x, value, tag });
 
-    it("한 선이 한 세그먼트에서 여러 개를 못 낸다 — 급등 구간이 라벨을 독차지하던 문제", () => {
-        // 같은 선(A)·같은 세그먼트(0)에서 셋 → 최대 하나만 후보가 된다.
+    it("한 선이 한 세그먼트에서 여러 개를 못 낸다 — 급등 구간이 그 선의 라벨을 독차지하던 문제", () => {
         const got = pickAmountLabels([c("A", 0, 0, 10, "a1"), c("A", 0, 500, 99, "a2"), c("A", 0, 1000, 5, "a3")], 52);
         expect(got.map((g) => g.tag)).toEqual(["a2"]);
     });
@@ -332,26 +331,57 @@ describe("pickAmountLabels — 선×세그먼트당 하나 → 화면 x 격자",
         expect(got.map((g) => g.tag).sort()).toEqual(["a0", "a1"]);
     });
 
-    it("다른 선끼리는 x 격자에서 겨룬다 — 붙어 있으면 큰 것만", () => {
-        const got = pickAmountLabels([c("A", 0, 10, 10, "a"), c("B", 0, 20, 99, "b")], 52);
-        expect(got.map((g) => g.tag)).toEqual(["b"]);
+    it("**다른 종목끼리는 안 겨룬다** — 7종목이면 한 세그먼트에 7개가 다 남아야 한다(사용자 확정)", () => {
+        // 같은 x 칸에 일곱 종목이 몰려도 전부 살아남는다. 탈락시키면 그 종목의 대금이 화면에서 사라진다.
+        const seven = ["A", "B", "C", "D", "E", "F", "G"].map((g, i) => c(g, 0, 10 + i, (i + 1) * 10, g));
+        expect(pickAmountLabels(seven, 52)).toHaveLength(7);
     });
 
-    it("**세로로는 안 다툰다** — y 가 아무리 벌어져도 x 가 같으면 하나(숫자 기둥 방지)", () => {
-        // y 를 아예 안 받는다는 게 규칙이다: 같은 x 대의 후보는 무조건 하나로 줄어든다.
-        const steep = [c("A", 0, 10, 10, "a"), c("B", 1, 12, 20, "b"), c("C", 2, 14, 30, "c")];
-        expect(pickAmountLabels(steep, 52)).toHaveLength(1);
-    });
-
-    it("확대하면(x 가 벌어지면) 가려졌던 게 드러난다 — LOD 의 실체", () => {
-        const near = [c("A", 0, 0, 10, "a"), c("B", 0, 30, 3, "b")];
+    it("축소로 세그먼트가 붙으면 **그 선의** 이웃 세그먼트끼리 합쳐진다", () => {
+        const near = [c("A", 0, 0, 10, "a0"), c("A", 1, 30, 3, "a1")];
         const far = near.map((n) => ({ ...n, x: n.x * 5 }));
-        expect(pickAmountLabels(near, 52)).toHaveLength(1);
-        expect(pickAmountLabels(far, 52)).toHaveLength(2);
+        expect(pickAmountLabels(near, 52).map((g) => g.tag)).toEqual(["a0"]); // 큰 쪽이 대표
+        expect(pickAmountLabels(far, 52)).toHaveLength(2); // 확대하면 둘 다
     });
 
     it("빈 입력은 빈 출력", () => {
         expect(pickAmountLabels([], 52)).toEqual([]);
+    });
+});
+
+describe("spreadByY — 겹치는 라벨은 탈락이 아니라 이동", () => {
+    const p = (x: number, y: number, tag: string) => ({ x, y, tag });
+
+    it("멀리 떨어져 있으면 제자리 그대로", () => {
+        const got = spreadByY([p(0, 0, "a"), p(0, 100, "b")], 52, 12);
+        expect(got.map((g) => g.labelY)).toEqual([0, 100]);
+    });
+
+    it("붙어 있으면 최소 간격까지 벌린다 — 개수는 안 줄어든다", () => {
+        const got = spreadByY([p(0, 50, "a"), p(0, 52, "b"), p(0, 54, "c")], 52, 12);
+        expect(got).toHaveLength(3);
+        const ys = got.map((g) => g.labelY).sort((m, n) => m - n);
+        expect(ys[1] - ys[0]).toBeCloseTo(12);
+        expect(ys[2] - ys[1]).toBeCloseTo(12);
+    });
+
+    it("무리 전체가 원래 중심에 남는다 — 아래로만 밀리면 원 자리에서 통째로 떨어진다", () => {
+        const items = [p(0, 50, "a"), p(0, 52, "b"), p(0, 54, "c")];
+        const got = spreadByY(items, 52, 12);
+        const mean = (v: number[]): number => v.reduce((s, n) => s + n, 0) / v.length;
+        expect(mean(got.map((g) => g.labelY))).toBeCloseTo(mean(items.map((i) => i.y)));
+    });
+
+    it("가로로 먼 것끼리는 안 다툰다 — 겹칠 수 없는 것을 벌리면 자리만 낭비한다", () => {
+        const got = spreadByY([p(0, 50, "a"), p(500, 50, "b")], 52, 12);
+        expect(got.map((g) => g.labelY)).toEqual([50, 50]);
+    });
+
+    it("순서를 안 뒤집는다 — 위에 있던 게 아래로 가면 지시선이 엇갈린다", () => {
+        const got = spreadByY([p(0, 54, "c"), p(0, 50, "a"), p(0, 52, "b")], 52, 12);
+        const byTag = new Map(got.map((g) => [g.tag, g.labelY]));
+        expect(byTag.get("a")!).toBeLessThan(byTag.get("b")!);
+        expect(byTag.get("b")!).toBeLessThan(byTag.get("c")!);
     });
 });
 

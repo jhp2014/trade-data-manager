@@ -5,7 +5,7 @@ import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK } fr
 import {
     dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
-    amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, segmentIndexOf, LEVEL_MISSING, type AmountRun,
+    amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_MISSING, type AmountRun,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData, type OverlayMarker } from "./skeleton/useOverlayData.js";
@@ -56,8 +56,11 @@ const LABEL_CELL = { w: 72, h: 14 };
 const LABEL_GAP = 9;
 /** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. */
 const THEME_READING_CELL = { w: 78, h: 12 };
-/** 금액 라벨 한 칸(화면 px, **가로만**). 세로로는 안 다툰다 — 급등 구간에 숫자 기둥이 서던 원인. */
-const AMOUNT_LABEL_CELL = { w: 52 };
+/**
+ * 금액 라벨의 자리 규칙(화면 px). `w` = 가로 격자 한 칸이자 **겹침 판정 밴드 폭**(라벨 폭과 같게 잡아
+ * 한 밴드 안은 반드시 겹치고 밴드끼리는 안 겹치게), `gap` = 세로로 벌릴 때의 최소 간격.
+ */
+const AMOUNT_LABEL_CELL = { w: 52, gap: 12 };
 /**
  * 무리(선택·그룹) 안에서 안 짚은 선의 진하기. 색은 그대로 두고 이만큼만 물러난다 —
  * 목록 행을 훑을 때 짚은 하나가 무리 안에서도 또렷이 서게(굵기 차이만으론 약했다, 사용자 지적).
@@ -398,7 +401,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         };
         if (amounts && amountTarget) collect(amounts.runs, amountTarget.stockCode, true, amountTarget.baseT);
         if (themeRuns) for (const [code, runs] of themeRuns) collect(runs, code, false, 0);
-        return pickAmountLabels(cands, AMOUNT_LABEL_CELL.w);
+        // 솎기는 종목 안에서만 → 남은 것들이 세로로 겹치면 **탈락이 아니라 이동**(지시선이 원 자리를 가리킨다).
+        return spreadByY(pickAmountLabels(cands, AMOUNT_LABEL_CELL.w), AMOUNT_LABEL_CELL.w, AMOUNT_LABEL_CELL.gap);
     }, [scales, showAmountLabels, amounts, amountTarget, themeRuns, anchorPivotMinutes]);
 
     /** 테마 라벨 자리 — 경로 **왼쪽 끝**(사용자 확정). 골격 이름 라벨과 같은 쪽이지만 x 가 갈린다:
@@ -782,12 +786,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         // 진하기 = 역할이 정한다: 흐림(무리 밖) < 물러남(무리 안이지만 안 짚은 것) < 앞(짚은 것).
                                         <g key={s.key} opacity={v.dim ? dimmed : v.recede ? RECEDE_OPACITY : lit ? 1 : baseOpacity} style={{ pointerEvents: "none" }}>
                                             {/* 선택에만 넓은 반투명 밑선 — 색만으로는 "붙잡혔다"가 잘 안 읽힌다. */}
-                                            {/* 굵기가 붙으면 선이 최대 6px 까지 굵어지므로 글로우도 그만큼 넓어야 한다
-                                                (안 그러면 굵은 구간에서 글로우가 선 안에 묻혀 "붙잡혔다"가 안 보인다). */}
-                                            {v.role === "selected" && (
-                                                <polyline points={pts} fill="none" stroke={color}
-                                                    strokeWidth={amounts && amounts.key === s.key ? 11 : 7} strokeLinejoin="round" opacity={0.18} />
-                                            )}
+                                            {/* 선택 글로우(넓은 반투명 밑선)는 **폐기**(사용자 확정) — 굵기가 세 번째 차원을
+                                                지는 지금은 글로우가 그 굵기를 가려버린다. 역할은 색이 진다: 선택 = 하늘(ACTIVE),
+                                                호버 = 앰버, 테마 = 무채색. 색이 다른 일(거래대금)을 안 하게 됐으니 그걸로 충분하다. */}
                                             {/* 미래는 점선 — 타점 단위 선은 원점(자기 시각) 이후 전부, 절대 뷰는 선택 타점 이후.
                                                 타점까지가 판단, 이후는 결과라는 같은 문장이다. */}
                                             {(() => {
@@ -908,17 +909,24 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* 거래대금 숫자 — **선×세그먼트당 하나 → 화면 x 격자**로 솎아 살아남은 것들.
                                     점은 **터진 그 분의 자리**에 정확히 얹히고(표식), 숫자는 그 오른쪽에 선다.
                                     점 색이 어느 선 것인지 말한다(좌측 이름 라벨의 점과 같은 색). */}
-                                {amountLabels.map((a) => (
-                                    <g key={`al-${a.code}-${a.x}-${a.y}`} style={{ pointerEvents: "none" }}
-                                        opacity={hoveredThemeSet && !a.own && !hoveredThemeSet.has(a.code) ? 0.25 : 1}>
-                                        <circle cx={a.x} cy={a.y} r={2.2} fill={a.own ? ACTIVE : themeColorOf(a.code)} />
-                                        <text x={a.x + 5} y={a.y - 4} textAnchor="start"
-                                            stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke"
-                                            style={{ fontSize: 9.5, fill: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-                                            {fmtEok(a.value)}
-                                        </text>
-                                    </g>
-                                ))}
+                                {amountLabels.map((a) => {
+                                    const c = a.own ? ACTIVE : themeColorOf(a.code);
+                                    const moved = Math.abs(a.labelY - a.y) > 1.5;
+                                    return (
+                                        <g key={`al-${a.code}-${a.x}-${a.y}`} style={{ pointerEvents: "none" }}
+                                            opacity={hoveredThemeSet && !a.own && !hoveredThemeSet.has(a.code) ? 0.25 : 1}>
+                                            {/* 자리를 옮긴 라벨은 **지시선**이 원래 자리를 가리킨다 — 안 그으면 그 숫자가
+                                                어느 선 것인지 알 수 없다(점 색만으론 비슷한 색끼리 헷갈린다). */}
+                                            {moved && <line x1={a.x} y1={a.y} x2={a.x + 4} y2={a.labelY} stroke={c} strokeWidth={0.8} strokeDasharray="2 2" opacity={0.7} />}
+                                            <circle cx={a.x} cy={a.y} r={2.2} fill={c} />
+                                            <text x={a.x + 6} y={a.labelY + 3} textAnchor="start"
+                                                stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke"
+                                                style={{ fontSize: 9.5, fill: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
+                                                {fmtEok(a.value)}
+                                            </text>
+                                        </g>
+                                    );
+                                })}
 
                                 {/* 선택된 타점의 세로선(절대 뷰) — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
                                 {isAbs && [...selectedPks].map((pk) => {

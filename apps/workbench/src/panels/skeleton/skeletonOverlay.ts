@@ -329,22 +329,23 @@ export function amountRuns(
 }
 
 /**
- * 금액 라벨 솎기 — **두 단계**(사용자 확정).
+ * 금액 라벨 솎기 — **두 단계, 둘 다 같은 종목 안에서만**(사용자 확정).
  *
  * ① **선 × 세그먼트당 최대 하나**: 각 선이 각 세그먼트(앵커 골격의 피벗이 나누는 구간)에서 자기 최대
- *    하나만 후보로 낸다. 한 선의 긴 급등 구간이 라벨을 독차지하지 못한다.
- * ② **화면 x 격자로 최종 솎기**: 세그먼트가 좁아져 후보들이 붙으면 큰 것만 남는다("세그먼트가 너무
- *    짧으면 둘 중 하나만" — 사용자).
+ *    하나만 낸다. 한 선의 긴 급등 구간이 그 선의 라벨을 독차지하지 못한다.
+ * ② **선 × 화면 x 격자**: 축소로 세그먼트가 좁아지면 **그 선의** 이웃 세그먼트끼리 합쳐진다.
+ *
+ * ## 경쟁은 종목을 가로지르지 않는다
+ * 처음엔 전 선이 한 격자에서 겨루게 했는데, 그러면 대형주 하나가 화면의 라벨을 다 가져가고 나머지
+ * 종목은 숫자가 아예 안 남는다. **7종목이면 한 세그먼트에 7개가 있어야 한다**(사용자) — 이 화면의
+ * 목적이 "테마 전 종목의 대금을 한눈에"라서, 종목을 탈락시키는 순간 그 목적이 깨진다.
+ * 그래서 종목끼리는 안 겨루고, 겹치면 **자리를 옮겨서**(spreadByY + 지시선) 전부 보여준다.
  *
  * ## 왜 x 한 방향인가
  * 예전엔 (x, y) 2차원 격자였는데, 급등 구간은 x가 거의 안 변하면서 y를 여러 칸 지나가 **칸마다 라벨이
- * 하나씩 남아 숫자 기둥이 섰다**(사용자 지적). 자리를 x로만 다투게 하면 그 기둥이 원천적으로 안 생긴다.
+ * 하나씩 남아 숫자 기둥이 섰다**(사용자 지적). 자리를 x로만 다투게 하면 그 기둥이 안 생긴다.
  *
- * 이름 라벨의 축약(`clusterLabels`)과 요약 규칙이 다른 것도 짚어둔다: 이름은 "여기 몇 개가 있다"(개수
- * 뱃지)가 옳은 답이지만 금액은 **"여기서 제일 크게 터진 게 얼마다"**가 옳은 답이라, 뱃지가 아니라 경쟁이다.
- *
- * 확대하면 칸이 쪼개지며 가려졌던 것들이 드러나고 축소하면 결국 사라진다 — 그래서 값 좌표가 아니라
- * **화면 좌표**(x)를 받는다.
+ * 확대하면 칸이 쪼개지며 가려졌던 것들이 드러난다 — 그래서 값 좌표가 아니라 **화면 좌표**(x)를 받는다.
  */
 export function pickAmountLabels<T extends { group: string; seg: number; x: number; value: number }>(
     items: readonly T[],
@@ -356,13 +357,46 @@ export function pickAmountLabels<T extends { group: string; seg: number; x: numb
         const cur = perSeg.get(k);
         if (!cur || it.value > cur.value) perSeg.set(k, it);
     }
-    const perCell = new Map<number, T>();
+    const perCell = new Map<string, T>();
     for (const it of perSeg.values()) {
-        const cell = Math.floor(it.x / cellW);
-        const cur = perCell.get(cell);
-        if (!cur || it.value > cur.value) perCell.set(cell, it);
+        // 격자 키에 **종목이 들어간다** — 다른 종목끼리는 같은 칸에 있어도 서로를 밀어내지 않는다.
+        const k = `${it.group}|${Math.floor(it.x / cellW)}`;
+        const cur = perCell.get(k);
+        if (!cur || it.value > cur.value) perCell.set(k, it);
     }
     return [...perCell.values()];
+}
+
+/**
+ * 겹치는 라벨을 **세로로 벌린다** — 탈락시키지 않고 자리를 옮겨 전부 보이게(지시선이 원래 자리를 가리킨다).
+ *
+ * 가로로 겹칠 수 있는 것끼리만 다툰다(x 를 `bandW` 로 묶는다 — 밴드 폭 = 라벨 폭이면 한 밴드 안은 반드시
+ * 겹치고 밴드끼리는 안 겹친다). 밴드 안에서 y 순으로 최소 간격을 채운 뒤, **무리 전체를 원래 중심으로
+ * 되돌린다** — 그러지 않으면 아래로만 밀려 원래 자리에서 통째로 떨어진다(간격은 평행이동에 안 변한다).
+ */
+export function spreadByY<T extends { x: number; y: number }>(
+    items: readonly T[],
+    bandW: number,
+    minGap: number,
+): (T & { labelY: number })[] {
+    const bands = new Map<number, T[]>();
+    for (const it of items) {
+        const b = Math.floor(it.x / bandW);
+        const list = bands.get(b);
+        if (list) list.push(it);
+        else bands.set(b, [it]);
+    }
+    const out: (T & { labelY: number })[] = [];
+    for (const list of bands.values()) {
+        const sorted = [...list].sort((a, b) => a.y - b.y);
+        const ys: number[] = [];
+        for (let i = 0; i < sorted.length; i++) {
+            ys.push(i === 0 ? sorted[i].y : Math.max(sorted[i].y, ys[i - 1] + minGap));
+        }
+        const shift = (ys.reduce((s, v) => s + v, 0) - sorted.reduce((s, v) => s + v.y, 0)) / sorted.length;
+        for (let i = 0; i < sorted.length; i++) out.push({ ...sorted[i], labelY: ys[i] - shift });
+    }
+    return out;
 }
 
 /**
