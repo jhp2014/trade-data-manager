@@ -43,10 +43,14 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
     const add = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
     const remove = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });
     const removeManyMut = useMutation({
+        // allSettled + onSettled — 부분 실패면 일부는 이미 서버에서 지워졌다. 전 요청이 끝난 뒤(앞질러 재조회하면
+        // 비행 중인 삭제가 stale 을 만든다) 성패 무관하게 invalidate 해야 화면이 서버 진실로 수렴한다.
         mutationFn: async (ids: readonly string[]) => {
-            await Promise.all(ids.map((id) => removeChartAnchor(id)));
+            const results = await Promise.allSettled(ids.map((id) => removeChartAnchor(id)));
+            const failed = results.filter((r) => r.status === "rejected").length;
+            if (failed > 0) throw new Error(`앵커 ${failed}/${ids.length}건 삭제 실패`);
         },
-        onSuccess: invalidate,
+        onSettled: invalidate,
     });
     return { anchors, mut: { add, remove, removeMany: (ids) => removeManyMut.mutate(ids) } };
 }
