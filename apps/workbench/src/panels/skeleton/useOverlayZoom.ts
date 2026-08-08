@@ -121,6 +121,10 @@ export function useOverlayZoom(
     const [axes, setAxes] = useState<{ x: AxisTransform; y: AxisTransform }>({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
     const [dragging, setDragging] = useState(false);
     const behavior = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+    /** 재영점 중 이벤트 무시 — ref 인 이유: 제스처 end(효과 내부)와 reset(효과 밖) 둘 다 재영점을 한다.
+     *  reset 이 이 플래그 없이 transform 을 부르면 start/end 가 그대로 발화해 onGestureStart(팝오버 닫기)와
+     *  dragging 토글이 매 bounds 변경(효과의 reset 호출)마다 스퓨리어스하게 돈다. */
+    const silentRef = useRef(false);
     const [min, max] = scaleExtent;
     // 콜백은 ref 경유 — 인라인 함수를 의존성에 넣으면 렌더마다 zoom 이 재부착된다(제스처가 끊긴다).
     const startRef = useRef(onGestureStart);
@@ -131,11 +135,10 @@ export function useOverlayZoom(
     useEffect(() => {
         const el = ref.current;
         if (!el || !enabled) return;
-        // 제스처 하나 동안의 상태 — 직전 내부 변환(델타의 기준), 시작 지점·영역, silent(재영점 중 이벤트 무시).
+        // 제스처 하나 동안의 상태 — 직전 내부 변환(델타의 기준), 시작 지점·영역.
         let prev: ZoomTransform = zoomIdentity;
         let region: ZoomRegion = "body";
         let startPos = { x: 0, y: 0 };
-        let silent = false;
         const extent: readonly [number, number] = [min, max];
 
         const b = d3zoom<SVGSVGElement, unknown>()
@@ -143,7 +146,7 @@ export function useOverlayZoom(
             .scaleExtent([1e-9, 1e9])
             .on("start", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => {
                 prev = ev.transform;
-                if (silent) return;
+                if (silentRef.current) return;
                 if (ev.sourceEvent) {
                     const [x, y] = pointer(ev.sourceEvent as Event, el);
                     startPos = { x, y };
@@ -158,18 +161,18 @@ export function useOverlayZoom(
                 const dx = t.x - prev.x;
                 const dy = t.y - prev.y;
                 prev = t;
-                if (silent || !ev.sourceEvent) return;
+                if (silentRef.current || !ev.sourceEvent) return;
                 const [px, py] = pointer(ev.sourceEvent as Event, el);
                 setAxes((a) => applyGesture(a, region, { dk, dx, dy, px, py }, startPos, extent));
             })
             .on("end", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => {
                 prev = ev.transform;
-                if (silent) return;
+                if (silentRef.current) return;
                 setDragging(false);
                 // 제스처마다 내부 변환을 재영점 — 내부 상태는 델타의 재료일 뿐, 누적되게 두면 언젠가 극값에 닿는다.
-                silent = true;
+                silentRef.current = true;
                 select(el).call(b.transform, zoomIdentity);
-                silent = false;
+                silentRef.current = false;
                 prev = zoomIdentity;
             });
         behavior.current = b;
@@ -186,8 +189,13 @@ export function useOverlayZoom(
         setAxes({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
         const el = ref.current;
         const b = behavior.current;
-        // 내부도 identity 로 — 진행 중이던 제스처가 옛 내부 값에서 델타를 이어가지 않게.
-        if (el && b) select(el).call(b.transform, zoomIdentity);
+        // 내부도 identity 로 — 진행 중이던 제스처가 옛 내부 값에서 델타를 이어가지 않게. silent 로 감싼다:
+        // 이 transform 호출도 start/zoom/end 를 동기 발화하는데, 그건 사용자 손짓이 아니다.
+        if (el && b) {
+            silentRef.current = true;
+            select(el).call(b.transform, zoomIdentity);
+            silentRef.current = false;
+        }
     }, [ref]);
 
     return {
