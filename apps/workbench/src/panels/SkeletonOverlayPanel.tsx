@@ -4,7 +4,7 @@ import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../api/queries.js";
 import { useRankFilterResult } from "./rank/useRankFilterResult.js";
 import {
-    normalizeSkeleton, absoluteSkeleton, pointSkeletons, trimmedBounds, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
+    normalizeSkeleton, absoluteSkeleton, pointSkeletons, dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
     type LineVisual, type NormalizedSkeleton, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
@@ -213,10 +213,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return feed.minute.reduce((n, e) => n + (pointsByChart.get(`${e.stockCode}|${e.date}`)?.length ?? 0), 0);
     }, [feedQ.data, isDaily, isPointUnit, pointsByChart]);
 
-    // ── 척도: 자동(현재 선택에서 매번) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
-    // 절대 뷰는 고정 프레임(±15분 · −5~+30%) — 분위수 창은 정규화 배치의 것이다.
+    // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
+    //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.
+    //  · 분봉 타점 정규화 = 양의 쪽 마진만(+10분·+5%), 음의 쪽은 데이터만큼(관심사가 타점 이전이다).
+    //  · 분봉 절대 = 고정 프레임(±15분 · −5~+30%).
     const [locked, setLocked] = useState<OverlayBounds | null>(null);
-    const autoBounds = useMemo(() => (isAbs ? absoluteFrame(lines) : trimmedBounds(lines, 0.01)), [isAbs, lines]);
+    const autoBounds = useMemo(
+        () => (lines.length === 0 ? null : isDaily ? dailyFrame(anchor) : isAbs ? absoluteFrame(lines) : pointUnitFrame(lines, 0.01)),
+        [isDaily, isAbs, anchor, lines],
+    );
     const bounds = locked ?? autoBounds;
 
     const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -595,10 +600,27 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <text key={`x${v}`} x={scales.x(v)} y={size.h - 8} textAnchor="middle" style={axisText}>{fmtX(v, xUnit)}</text>
                             ))}
 
+                            {/* 원점(0%·t=0) — **축 위 화살표**(사용자 확정). 화면을 가로지르는 흐린 점선은 그림에 묻혀
+                                안 읽히고, 진하게 하면 골격을 가린다. xy 좌표축처럼 축에서 0을 가리키게 하면 둘 다 없다.
+                                x=0 은 정규화 배치에서만 뜻이 있다(절대는 벽시계라 0시가 무의미). 클립 밖 = 축 여백에 그린다. */}
+                            {(() => {
+                                const zy = scales.y(0);
+                                const zx = scales.x(0);
+                                const bottom = box.top + box.height;
+                                return (
+                                    <>
+                                        {/* 눈금 숫자가 축에서 5px 앞에 끝나므로 화살표는 6px 안쪽까지만(겹침 방지). */}
+                                        {zy >= box.top && zy <= bottom && (
+                                            <polygon points={`${box.left - 1},${zy} ${box.left - 6},${zy - 4} ${box.left - 6},${zy + 4}`} fill="var(--text-secondary)" />
+                                        )}
+                                        {!isAbs && zx >= box.left && zx <= box.left + box.width && (
+                                            <polygon points={`${zx},${bottom + 1} ${zx - 4.5},${bottom + 8} ${zx + 4.5},${bottom + 8}`} fill="var(--text-secondary)" />
+                                        )}
+                                    </>
+                                );
+                            })()}
+
                             <g clipPath={`url(#${clipId})`}>
-                                {/* 기준선(0%) — 정규화면 앵커 높이, 절대면 전일 종가. 세로선(t=0)은 정규화에서만 뜻이 있다. */}
-                                <line x1={box.left} x2={box.left + box.width} y1={scales.y(0)} y2={scales.y(0)} stroke="var(--border-strong)" strokeWidth={1} strokeDasharray="3 3" />
-                                {!isAbs && <line x1={scales.x(0)} x2={scales.x(0)} y1={box.top} y2={box.top + box.height} stroke="var(--border-strong)" strokeWidth={1} strokeDasharray="3 3" />}
 
                                 {lines.map((s) => {
                                     const { v, color } = visualOf(s.key);
@@ -629,15 +651,29 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
                                                     : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={lit ? 3 : 2} fill={color} />
                                             ))}
-                                            {/* 피벗 값 — 기준 대비 %와 시간. 조사 중인 하나에만(다중이면 수십 벌이 겹친다).
-                                                합성점(=타점)은 %만 — 시간은 그 자리의 마커 칩이 이미 말한다(중복 표기 방지). */}
-                                            {inspecting && s.points.map((p, i) => (p.x === 0 && p.y === 0 ? null : (
-                                                <text key={`pv${i}`} x={scales.x(p.x)} y={scales.y(p.y) + (p.synthetic ? 13 : -7)} textAnchor="middle"
-                                                    stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
-                                                    style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
-                                                    {p.synthetic ? fmtPct(p.y) : `${fmtPct(p.y)} · ${fmtX(p.x, xUnit)}`}
-                                                </text>
-                                            )))}
+                                            {/* 피벗 값 — 조사 중인 하나에만(다중이면 수십 벌이 겹친다). **두 좌표를 갈라 놓는다**(사용자 확정):
+                                                %는 점 옆, 시간은 점에서 시간축까지 **점선 수직선**을 내려 그 발치에서 읽는다.
+                                                점 옆에 둘을 붙이면 라벨이 서로 겹치고, 무엇보다 "이 점이 축의 어디냐"가 눈으로 안 잡힌다. */}
+                                            {inspecting && s.points.map((p, i) => {
+                                                if (p.x === 0 && p.y === 0) return null;
+                                                const px = scales.x(p.x);
+                                                const py = scales.y(p.y);
+                                                return (
+                                                    <g key={`pv${i}`}>
+                                                        <line x1={px} x2={px} y1={py} y2={box.top + box.height} stroke={color} strokeWidth={0.8} strokeDasharray="2 3" opacity={0.55} />
+                                                        <text x={px} y={box.top + box.height - 4} textAnchor="middle"
+                                                            stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
+                                                            style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
+                                                            {fmtX(p.x, xUnit)}
+                                                        </text>
+                                                        <text x={px} y={py + (p.synthetic ? 13 : -7)} textAnchor="middle"
+                                                            stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
+                                                            style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
+                                                            {fmtPct(p.y)}
+                                                        </text>
+                                                    </g>
+                                                );
+                                            })}
                                             {/* 타점 세로선(절대 뷰) — "선택·조사 중인 것에만". 시간 라벨은 마커 칩의 몫(선은 위치만).
                                                 타점 단위 뷰엔 없다 — 원점 세로선(t=0)이 곧 그 타점이다. */}
                                             {inspecting && isAbs && (pointsByChart.get(s.chartKey) ?? []).map((p) => {
@@ -661,17 +697,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 })}
 
                                 {/* 얹는 선(기준선·D선) — 같은 pct 환산. **주인이 스타일을 정한다**(사용자 확정):
-                                    단일 선택 = 하늘색 실선·라벨 오른쪽 / 호버 = 앰버 점선·라벨 왼쪽. 둘이 동시에 떠도
-                                    색·선모양·라벨 위치 셋으로 갈린다. 다중 선택이면 호버 것만(수십 벌이 겹치므로).
+                                    단일 선택 = 하늘색·라벨 오른쪽 / 호버 = 앰버·라벨 왼쪽. **둘 다 실선**이다 —
+                                    색과 라벨 위치만으로 이미 갈리고, 점선은 가격 수준선을 읽기 어렵게만 했다(사용자 확정).
+                                    다중 선택이면 호버 것만(수십 벌이 겹치므로).
                                     기준선 여부는 선 모양이 아니라 라벨의 "기준" 접두어 — 어차피 최저가 규칙이라 아래가 기준선. */}
                                 {showLevels && scales && (() => {
                                     const single = effSelected.size === 1 ? [...effSelected][0] : null;
-                                    const owners: { s: NormalizedSkeleton; color: string; dash: boolean; right: boolean }[] = [];
+                                    const owners: { s: NormalizedSkeleton; color: string; right: boolean }[] = [];
                                     const sel = single ? byKey.get(single) : null;
-                                    if (sel) owners.push({ s: sel, color: ACTIVE, dash: false, right: true });
+                                    if (sel) owners.push({ s: sel, color: ACTIVE, right: true });
                                     const hov = hovered && hovered !== single ? byKey.get(hovered) : null;
-                                    if (hov) owners.push({ s: hov, color: HOVER, dash: true, right: false });
-                                    return owners.map(({ s, color, dash, right }) => (
+                                    if (hov) owners.push({ s: hov, color: HOVER, right: false });
+                                    return owners.map(({ s, color, right }) => (
                                         <g key={`lvl-${s.key}`} style={{ pointerEvents: "none" }}>
                                             {(levelsByChart.get(s.chartKey) ?? []).map((lv, i) => {
                                                 const yPct = pct(lv.price, s.basePrice);
@@ -679,7 +716,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 return (
                                                     <g key={i}>
                                                         <line x1={box.left} x2={box.left + box.width} y1={y} y2={y}
-                                                            stroke={color} strokeWidth={lv.baseline ? 1.4 : 1} strokeDasharray={dash ? "5 4" : undefined} opacity={0.85} />
+                                                            stroke={color} strokeWidth={lv.baseline ? 1.4 : 1} opacity={0.85} />
                                                         <text x={right ? box.left + box.width - 4 : box.left + 4} y={y - 4} textAnchor={right ? "end" : "start"}
                                                             stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
                                                             style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>

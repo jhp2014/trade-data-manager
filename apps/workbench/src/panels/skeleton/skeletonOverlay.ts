@@ -185,6 +185,36 @@ export function trimmedBounds(items: readonly NormalizedSkeleton[], q: number): 
  */
 export const ABS_FRAME = { padMinutes: 15, minY: -5, maxY: 30 } as const;
 
+/**
+ * 일봉 정규화 뷰의 기본 창(사용자 확정 — 상수): **뒤로 60일 · 앞으로 10일 · −60%~+40%**.
+ * 데이터에서 뽑지 않는 이유는 절대 뷰와 같다 — 필터를 바꿔도 같은 되돌림이 같은 크기로 서야 비교가 된다.
+ * 앵커를 첫 점으로 뒤집으면 시간이 앞으로 퍼지므로 x 창도 뒤집는다(관심 쪽이 넓은 쪽).
+ */
+export const DAILY_FRAME = { back: 60, forward: 10, minY: -60, maxY: 40 } as const;
+
+export const dailyFrame = (anchor: SkeletonAnchor): OverlayBounds =>
+    anchor === "last"
+        ? { minX: -DAILY_FRAME.back, maxX: DAILY_FRAME.forward, minY: DAILY_FRAME.minY, maxY: DAILY_FRAME.maxY }
+        : { minX: -DAILY_FRAME.forward, maxX: DAILY_FRAME.back, minY: DAILY_FRAME.minY, maxY: DAILY_FRAME.maxY };
+
+/**
+ * 분봉 타점 정규화 뷰의 기본 창(사용자 확정): 원점(타점) 너머 **양의 쪽은 마진만**(+10분 · +5%),
+ * **음의 쪽은 데이터만큼**(분위수 트리밍). 이 뷰의 관심사가 "타점 이전에 무슨 일이 있었나"라
+ * 과거(왼쪽)·하락(아래) 영역이 화면의 대부분을 차지해야 한다. 미래·상승은 마진 너머로 확대해서 본다.
+ */
+export const POINT_FRAME_MARGIN = { x: 10, y: 5 } as const;
+
+export function pointUnitFrame(items: readonly NormalizedSkeleton[], q: number): OverlayBounds | null {
+    const t = trimmedBounds(items, q);
+    if (!t) return null;
+    return {
+        minX: Math.min(t.minX, -POINT_FRAME_MARGIN.x),
+        maxX: POINT_FRAME_MARGIN.x,
+        minY: Math.min(t.minY, -POINT_FRAME_MARGIN.y),
+        maxY: POINT_FRAME_MARGIN.y,
+    };
+}
+
 export function absoluteFrame(items: readonly NormalizedSkeleton[]): OverlayBounds | null {
     if (items.length === 0) return null;
     let minX = Infinity;

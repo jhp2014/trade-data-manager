@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME_MARGIN, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -166,6 +166,47 @@ describe("absoluteFrame — 절대 뷰 고정 프레임", () => {
 
     it("빈 목록은 프레임이 없다", () => {
         expect(absoluteFrame([])).toBeNull();
+    });
+});
+
+describe("dailyFrame — 일봉 정규화 기본 창(상수)", () => {
+    it("마지막 점 기준이면 뒤로 60일·앞으로 10일, 세로는 −60~+40%", () => {
+        expect(dailyFrame("last")).toEqual({ minX: -DAILY_FRAME.back, maxX: DAILY_FRAME.forward, minY: -60, maxY: 40 });
+    });
+
+    it("첫 점 기준이면 x 창이 뒤집힌다 — 시간이 앞으로 퍼지므로 넓은 쪽도 앞", () => {
+        expect(dailyFrame("first")).toEqual({ minX: -DAILY_FRAME.forward, maxX: DAILY_FRAME.back, minY: -60, maxY: 40 });
+    });
+});
+
+describe("pointUnitFrame — 분봉 타점 정규화 기본 창", () => {
+    // 타점(원점) 이전 90분 · −30% 까지 내려갔다가 이후 +50% 간 골격.
+    const wide = [{
+        key: "k", chartKey: "c", stockCode: "005930", date: "2026-08-05", basePrice: 100, baseT: 0,
+        points: [{ x: -90, y: -30 }, { x: 0, y: 0 }, { x: 120, y: 50 }],
+    }];
+
+    it("양의 쪽은 마진만(+10분·+5%) — 미래·상승은 창 밖으로 나가도 확대로 본다", () => {
+        const f = pointUnitFrame(wide, 0)!;
+        expect(f.maxX).toBe(POINT_FRAME_MARGIN.x);
+        expect(f.maxY).toBe(POINT_FRAME_MARGIN.y);
+    });
+
+    it("음의 쪽은 데이터만큼 — 관심사가 타점 이전이라 과거·하락이 화면을 차지한다", () => {
+        const f = pointUnitFrame(wide, 0)!;
+        expect(f.minX).toBe(-90);
+        expect(f.minY).toBe(-30);
+    });
+
+    it("데이터가 원점 근처뿐이어도 최소 마진은 남는다 — 창이 0폭으로 접히지 않게", () => {
+        const flat = [{ ...wide[0], points: [{ x: -1, y: -0.5 }, { x: 0, y: 0 }] }];
+        const f = pointUnitFrame(flat, 0)!;
+        expect(f.minX).toBe(-POINT_FRAME_MARGIN.x);
+        expect(f.minY).toBe(-POINT_FRAME_MARGIN.y);
+    });
+
+    it("빈 목록은 창이 없다", () => {
+        expect(pointUnitFrame([], 0.01)).toBeNull();
     });
 });
 
