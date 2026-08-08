@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
-import { minuteOfDayOf } from "@trade-data-manager/market/domain";
+import { minuteOfDayOf, selectHotUniverse } from "@trade-data-manager/market/domain";
 import {
     dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
@@ -9,6 +9,7 @@ import {
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData, type OverlayMarker } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
+import { themeLines, hotCodesInRange } from "./skeleton/themeSkeleton.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
@@ -215,11 +216,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // (피벗 값·기준선 같은 공짜 상세는 지금처럼 호버가 이긴다 — 비용이 다르면 규칙도 갈려야 한다.)
     const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
-    const amountTarget = useMemo(() => {
-        if (isDaily || !showAmount || effSelected.size !== 1) return null;
-        return byKey.get([...effSelected][0]) ?? null;
-    }, [isDaily, showAmount, effSelected, byKey]);
-    const snapQ = useDaySnapshot(amountTarget?.date ?? null);
+    // 테마 펼치기(절대 뷰 전용) — 짚은 골격의 피벗 시각에 테마 종목을 같이 세운다.
+    const [showTheme, setShowTheme] = usePersistedState<boolean>("wb.skeletonOverlayTheme", (o) => (typeof o === "boolean" ? o : null), false);
+    /** 세분 허용 오차(%p) — 이 값이 세분의 유일한 손잡이다. 낮출수록 테마 선의 굴곡이 촘촘해진다. */
+    const THEME_TOLERANCE = 1.5;
+
+    /** 거래대금·테마가 같이 보는 "지금 조사 중인 선 하나" — 단일 선택일 때만(위 이유). */
+    const singleTarget = useMemo(
+        () => (isDaily || effSelected.size !== 1 ? null : byKey.get([...effSelected][0]) ?? null),
+        [isDaily, effSelected, byKey],
+    );
+    const amountTarget = showAmount ? singleTarget : null;
+    // 한 벌만 받는다 — 거래대금과 테마가 같은 날짜의 같은 응답을 쓴다(LRU 도 한 자리만 쓴다).
+    const snapQ = useDaySnapshot(showAmount || showTheme ? singleTarget?.date ?? null : null);
     const amounts = useMemo(() => {
         if (!amountTarget || !snapQ.data) return null;
         const st = snapQ.data.stocks.find((x) => x.code === amountTarget.stockCode);
@@ -228,6 +237,46 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const scale = amountScaleOf(segs);
         return scale === null ? null : { key: amountTarget.key, segs, scale };
     }, [amountTarget, snapQ.data]);
+
+    // ── 테마 선 — 절대 뷰에서만(좌표계가 같아야 환산 없이 얹힌다). 짚은 선이 하나일 때만 펼친다:
+    // 여러 날의 테마를 한 벽시계에 겹치면 "이 종목이 혼자 튄 건가"라는 그 질문 자체가 흐려진다.
+    const replaySettings = useWorkbench((s) => s.replaySettings);
+    const themeOverlay = useMemo(() => {
+        if (!isAbs || !showTheme || !singleTarget || !snapQ.data) return null;
+        const src = snapQ.data.stocks;
+        const mins = singleTarget.points.map((p) => p.x + singleTarget.baseT);
+        const from = Math.min(...mins);
+        const to = Math.max(...mins);
+        const hot = hotCodesInRange(src, from, to, minuteOfDayOf, (snaps) => selectHotUniverse(snaps, replaySettings.amountN, replaySettings.rateN));
+        return { key: singleTarget.key, lines: themeLines(singleTarget, src, hot, minuteOfDayOf, { tolerance: THEME_TOLERANCE }) };
+    }, [isAbs, showTheme, singleTarget, snapQ.data, replaySettings.amountN, replaySettings.rateN]);
+    /** 손이 올라간 테마 선(들) — 뭉친 라벨이면 그 무리 전부. 이것만 선명해지고 나머지는 무채색으로 남는다. */
+    const [hoveredTheme, setHoveredTheme] = useState<readonly string[] | null>(null);
+    const hoveredThemeSet = useMemo(() => (hoveredTheme ? new Set(hoveredTheme) : null), [hoveredTheme]);
+    useEffect(() => { setHoveredTheme(null); }, [themeOverlay?.key]);
+
+    /** 짚은 테마 선의 선분별 거래대금 — 앵커와 같은 자(segmentAmounts)를 쓰되 정규화는 그 선 안에서. */
+    const themeAmounts = useMemo(() => {
+        if (!themeOverlay || !hoveredTheme || hoveredTheme.length !== 1 || !snapQ.data) return null;
+        const code = hoveredTheme[0];
+        const line = themeOverlay.lines.find((l) => l.code === code);
+        const st = snapQ.data.stocks.find((x) => x.code === code);
+        if (!line || !st) return null;
+        // 테마 선의 x 는 이미 벽시계 분이라 baseT = 0(앵커 정규화를 안 거친다).
+        const segs = segmentAmounts({ points: line.points, baseT: 0 }, minuteIndexOf(st.times, minuteOfDayOf), st.cumAmount);
+        const scale = amountScaleOf(segs);
+        return scale === null ? null : { code, segs, scale };
+    }, [themeOverlay, hoveredTheme, snapQ.data]);
+
+    /** 테마 라벨 자리 — 경로 오른쪽 끝(앵커 골격 라벨과 반대쪽이라 서로 안 겹친다). */
+    const themeClusters = useMemo(() => {
+        if (!themeOverlay || !scales) return [];
+        const anchors = themeOverlay.lines.map((l) => {
+            const p = l.points[l.points.length - 1];
+            return { key: l.code, x: scales.x(p.x), y: scales.y(p.y) };
+        });
+        return clusterLabels(anchors, 56, 12);
+    }, [themeOverlay, scales]);
     // 조사 중인 골격의 **피벗 하나**에 손이 올라간 상태 — 그 점의 축 값(기간·%)만 굵게 키우고 나머지는 물러난다.
     // 값이 여럿일 때 "어느 숫자가 이 점 것이냐"를 눈으로 잇는 유일한 장치라 선 호버(key)와 별개 상태다.
     const [hoveredPivot, setHoveredPivot] = useState<{ key: string; i: number } | null>(null);
@@ -468,6 +517,29 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         </TextToggle>
                     </ControlBox>
                 )}
+                {isAbs && (
+                    <ControlBox>
+                        <TextToggle active={showTheme} onClick={() => setShowTheme(!showTheme)}
+                            title="선택한 골격의 피벗 시각에 같은 테마 종목들을 같이 세운다(그 구간에 보드에 떴던 것만) — 라벨에 올리면 그 선이 살아난다">
+                            테마
+                        </TextToggle>
+                        {showTheme && themeOverlay && (
+                            <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", marginLeft: 2 }}>
+                                {themeOverlay.lines.length}
+                            </span>
+                        )}
+                        {showTheme && !singleTarget && (
+                            <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginLeft: 2 }} title="테마는 짚은 하나에만 펼친다 — 여러 날을 겹치면 '이 종목이 혼자 튄 건가'가 흐려진다">
+                                선 하나 선택
+                            </span>
+                        )}
+                        {showTheme && singleTarget && themeOverlay?.lines.length === 0 && (
+                            <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginLeft: 2 }} title="그 구간에 보드에 뜬 같은 테마 종목이 없거나, 이 종목이 그날 유니버스 밖입니다">
+                                없음
+                            </span>
+                        )}
+                    </ControlBox>
+                )}
                 <span style={count}>
                     {lines.length}개
                     {population > lines.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
@@ -539,6 +611,40 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <polygon points={`${scales.x(0)},${box.top} ${scales.x(0) - 3.5},${box.top + 7} ${scales.x(0) + 3.5},${box.top + 7}`} fill={AXIS_LINE} />
                                     </>
                                 )}
+
+                                {/* ── 테마 선 — 짚은 골격의 **피벗 시각에 세운 동시각 표본**(그 사이는 오차 기반 세분).
+                                    골격보다 **먼저** 그린다: 이건 배경이고 주인공은 내 골격이다.
+                                    기본은 무채색 흐림 — 흐린 채색은 색이 아니다(알파가 낮으면 hue 차이가 안 읽힌다).
+                                    짚은 하나만 거래대금 램프로 살아난다(상세 밀도 규칙 그대로). */}
+                                {themeOverlay?.lines.map((l) => {
+                                    const lit = hoveredThemeSet?.has(l.code) ?? false;
+                                    const pts = l.points.map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
+                                    if (!lit) {
+                                        return (
+                                            <polyline key={`th-${l.code}`} points={pts} fill="none" stroke="var(--text-tertiary)"
+                                                strokeWidth={1} strokeLinejoin="round" opacity={hoveredThemeSet ? 0.12 : 0.3} style={{ pointerEvents: "none" }} />
+                                        );
+                                    }
+                                    const am = themeAmounts?.code === l.code ? themeAmounts : null;
+                                    if (!am) {
+                                        return (
+                                            <polyline key={`th-${l.code}`} points={pts} fill="none" stroke="var(--text-primary)"
+                                                strokeWidth={1.75} strokeLinejoin="round" opacity={0.9} style={{ pointerEvents: "none" }} />
+                                        );
+                                    }
+                                    return (
+                                        <g key={`th-${l.code}`} style={{ pointerEvents: "none" }}>
+                                            {l.points.slice(0, -1).map((p, i) => {
+                                                const q = l.points[i + 1];
+                                                const seg = am.segs[i];
+                                                return (
+                                                    <line key={i} x1={scales.x(p.x)} y1={scales.y(p.y)} x2={scales.x(q.x)} y2={scales.y(q.y)}
+                                                        stroke={seg ? amountColor(seg.perMinute / am.scale) : "var(--text-primary)"} strokeWidth={2} strokeLinecap="round" />
+                                                );
+                                            })}
+                                        </g>
+                                    );
+                                })}
 
                                 {lines.map((s) => {
                                     const { v, color } = visualOf(s.key);
@@ -707,6 +813,32 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         </>
                     )}
                 </svg>
+
+                {/* 테마 라벨 층 — 손잡이는 여기다(선은 여전히 순수 그림). 경로 **오른쪽 끝**이라
+                    앵커 골격 라벨(왼쪽 끝)과 자리가 안 겹친다. 뭉치면 개수 뱃지 — 올리면 그 무리가 다 켜진다. */}
+                {scales && themeOverlay && (
+                    <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
+                        {themeClusters.map((c) => {
+                            const left = c.x - box.left + 4;
+                            const top = c.y - box.top;
+                            const lit = c.members.some((m) => hoveredThemeSet?.has(m));
+                            const multi = c.members.length > 1;
+                            const label = themeOverlay.lines.find((l) => l.code === c.members[0])?.name ?? c.members[0];
+                            return (
+                                <button key={`tl${c.x}|${c.y}`}
+                                    onMouseEnter={() => setHoveredTheme(c.members)} onMouseLeave={() => setHoveredTheme(null)}
+                                    title={multi ? `${c.members.length}개 뭉침 — ${label} 외` : `${label} — 올리면 거래대금 색으로 살아난다`}
+                                    style={{
+                                        ...chip, left, top, transform: "translateY(-50%)",
+                                        color: lit ? "var(--text-primary)" : "var(--text-tertiary)",
+                                        fontWeight: lit ? 700 : 400,
+                                    }}>
+                                    {multi ? `${c.members.length}` : label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
 
                 {/* 라벨 층 — HTML(칩 폭 계산 공짜 + d3 가 SVG mousedown 을 삼키는 문제 회피). 컨테이너는 포인터 통과. */}
                 {scales && showLabels && (
@@ -877,6 +1009,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 })()}
                 {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·타점 정규화(선 1 = 타점 1, 원점 이후 점선=미래)"} · 세로 = % · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 더블클릭 원위치
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
+                {themeOverlay && themeOverlay.lines.length > 0 && (
+                    <span style={{ color: "var(--text-secondary)" }}> · 테마 {themeOverlay.lines.length}선(동시각 표본 + 오차 {THEME_TOLERANCE}%p 세분)</span>
+                )}
             </div>
         </div>
     );

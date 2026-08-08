@@ -262,7 +262,7 @@ export interface SegmentAmount {
  * `absMinuteOf` 는 이 선의 x 를 벽시계 분으로 되돌린다(정규화 뷰는 x + baseT, 절대 뷰는 baseT=0 이라 항등).
  */
 export function segmentAmounts(
-    s: NormalizedSkeleton,
+    s: { points: readonly { x: number }[]; baseT: number },
     minuteIndex: ReadonlyMap<number, number>,
     cumAmount: readonly number[],
 ): (SegmentAmount | null)[] {
