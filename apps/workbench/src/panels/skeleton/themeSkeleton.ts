@@ -10,8 +10,8 @@
 // (한때 오차 기반 재귀 세분을 뒀다가 걷어냈다 — 파라미터 하나가 늘고 그림은 원본보다 나을 수 없었다.
 //  분 안의 꼬리는 나중에 캔들 오버레이가 답한다.)
 //
-// 그리는 구간은 **앵커 피벗의 처음~끝**이다. 하루 전체로 넓히면 척도 프레임이 앵커 골격을 따라가지
-// 못하고, "내 골격이 그린 그 시간 동안 테마는 어디 있었나"라는 질문에서도 벗어난다.
+// 그리는 구간은 **호출측(화면 프레임)이 정한다** — 예전엔 앵커 피벗의 처음~끝이었는데, 미래(타점 이후)까지
+// 같이 보기로 하며(사용자 확정) 창 기준으로 바뀌었다: 기본은 타점 앞뒤 프레임, 미래 토글이면 장 끝까지.
 import type { NormalizedSkeleton } from "./skeletonOverlay.js";
 
 /** 한 종목의 분당 시계열(% 공간) — 벽시계 분으로 찾는다. */
@@ -44,7 +44,7 @@ export function memberPath(from: number, to: number, series: MinuteSeries): Path
     return out.length >= 2 ? out : null;
 }
 
-/** 테마 선 하나 — 절대 배치(x=벽시계 분, y=전일 종가 대비 %)라 앵커 골격과 같은 공간에 그대로 선다. */
+/** 테마 선 하나 — 절대 공간(x=벽시계 분, y=전일 종가 대비 %). 화면(%p 뷰)은 앵커의 (t₀, r_앵커(t₀))만큼 평행이동해 얹는다. */
 export interface ThemeLine {
     code: string;
     name: string;
@@ -161,8 +161,10 @@ const minuteIndex = (times: readonly number[], toMinute: (unixSec: number) => nu
 
 /**
  * 짚은 골격 하나 → 테마 선들. 멤버 = **앵커와 테마가 겹치고** 그 구간에 한 번이라도 떴던 종목(앵커 제외).
+ * 구간 `[from, to]`(벽시계 분)는 호출측이 준다 — hot 판정과 같은 창을 써야 "그린 구간에 떴던 것"이 성립한다.
  *
- * y 는 스냅샷의 `rate`(등락률 %)를 그대로 쓴다 — 절대 배치의 y 와 같은 정의라 환산이 없다.
+ * y 는 스냅샷의 `rate`(등락률 %)를 그대로 낸다(절대 공간) — %p 뷰로의 평행이동은 화면의 몫이다
+ * (상수 하나를 빼는 것뿐이라 여기서 섞으면 순수 절대값을 쓰는 쪽이 도로 되돌려야 한다).
  * ⚠ 앵커 선의 분모는 골격 피드의 전일 종가(수정주가)이고 멤버의 분모는 복기 파생의 기준가(원주가+이벤트
  * 보정)다. 평상일엔 같은 값이지만, 그 사이 액분·감자가 있었던 종목은 두 % 가 미세하게 갈릴 수 있다
  * (보정 계수가 1이 아닌 종목은 서버가 트립와이어로 로그한다).
@@ -172,13 +174,12 @@ export function themeLines(
     stocks: readonly ThemeSourceStock[],
     hotCodes: ReadonlySet<string>,
     toMinuteOfDay: (unixSec: number) => number,
+    range: { from: number; to: number },
 ): ThemeLine[] {
     const self = stocks.find((s) => s.code === anchor.stockCode);
     const themes = new Set(self?.themes ?? []);
     if (themes.size === 0) return [];
-    const mins = anchor.points.map((p) => p.x + anchor.baseT);
-    const from = Math.min(...mins);
-    const to = Math.max(...mins);
+    const { from, to } = range;
     const out: ThemeLine[] = [];
     for (const s of stocks) {
         if (s.code === anchor.stockCode || !hotCodes.has(s.code)) continue;

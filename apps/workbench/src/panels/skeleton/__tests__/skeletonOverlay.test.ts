@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -52,40 +52,32 @@ describe("normalizeSkeleton", () => {
     });
 });
 
-describe("absoluteSkeleton — 분봉 절대 배치(전일 종가 대비)", () => {
-    it("x 는 벽시계 그대로, y 는 전일 종가 대비 % — 몇 시에 몇 %였나가 남는다", () => {
-        const n = absoluteSkeleton([{ t: 555, price: 110 }, { t: 570, price: 121 }], 100, owner)!;
-        expect(n.points).toEqual([{ x: 555, y: 10.000000000000009 }, { x: 570, y: 20.999999999999996 }]);
-        expect(n.baseT).toBe(0); // 타점 시각(벽시계 분)을 그대로 x 로 쓴다
-        expect(n.basePrice).toBe(100); // 선(가격)도 전일 종가 대비 %로 얹힌다
-    });
-
-    it("전일 종가가 없으면 null — 분모를 지어내지 않는다", () => {
-        expect(absoluteSkeleton([{ t: 555, price: 110 }, { t: 570, price: 121 }], undefined, owner)).toBeNull();
-    });
-});
-
-describe("pointSkeletons — 분봉 정규화 = 타점 단위 재구성", () => {
+describe("pointSkeletons — 분봉 = 타점 단위 재구성(전일 종가 대비 %p 공간)", () => {
     const chart = { key: "005930|2026-08-05", stockCode: "005930", date: "2026-08-05" };
-    // 09:15 손 피벗 100 → 09:30 합성(타점 종가) 120 → 09:45 손 피벗 110.
+    // 09:15 손 피벗 100 → 09:30 합성(타점 종가) 120 → 09:45 손 피벗 110. 전일 종가 100.
     const mins: SkeletonWirePivot[] = [
         { t: 555, price: 100 },
         { t: 570, price: 120, synthetic: true },
         { t: 585, price: 110 },
     ];
+    const prevClose = 100;
     const pk = "005930|2026-08-05|09:30:00";
 
-    it("선 하나 = 타점 하나 — 자기 시각 피벗이 원점(0,0), 과거는 왼쪽·미래는 오른쪽(splitIdx 뒤)", () => {
-        const [l] = pointSkeletons(mins, [{ pk, time: "09:30:00" }], chart);
-        expect(l).toMatchObject({ key: pk, chartKey: chart.key, time: "09:30:00", basePrice: 120, baseT: 570, splitIdx: 1 });
+    it("선 하나 = 타점 하나 — 자기 시각 피벗이 원점(0,0), y 는 **전일 종가 대비 %p 차이**(절대 배치의 평행이동)", () => {
+        const [l] = pointSkeletons(mins, prevClose, [{ pk, time: "09:30:00" }], chart);
+        // basePrice = 전일 종가(%p 분모), baseRate = 타점 시각의 절대 등락률(+20%) — 절대값 복원 상수.
+        expect(l).toMatchObject({ key: pk, chartKey: chart.key, time: "09:30:00", basePrice: 100, baseT: 570, splitIdx: 1 });
+        expect(l.baseRate).toBeCloseTo(20);
         expect(l.points.map((p) => p.x)).toEqual([-15, 0, 15]);
-        expect(l.points[0].y).toBeCloseTo(pct(100, 120));
+        expect(l.points[0].y).toBeCloseTo(-20); // 절대 0% − 타점 20% = −20%p (자기 가격 대비면 −16.7%였을 값)
         expect(l.points[1].y).toBe(0);
-        expect(l.points[2].y).toBeCloseTo(pct(110, 120));
+        expect(l.points[2].y).toBeCloseTo(-10);
+        // 절대값 복원: y + baseRate = 전일 종가 대비 %.
+        expect(l.points[2].y + l.baseRate).toBeCloseTo(pct(110, prevClose));
     });
 
-    it("타점 3개면 선 3개 — 같은 골격이 타점마다 자기 좌표계로 다시 선다", () => {
-        const out = pointSkeletons(mins, [
+    it("타점 3개면 선 3개 — 같은 골격이 타점마다 자기 좌표계로 다시 서고, baseRate 는 각자의 절대 등락률", () => {
+        const out = pointSkeletons(mins, prevClose, [
             { pk: "a", time: "09:15:00" },
             { pk: "b", time: "09:30:00" },
             { pk: "c", time: "09:45:00" },
@@ -94,19 +86,27 @@ describe("pointSkeletons — 분봉 정규화 = 타점 단위 재구성", () => 
         expect(out.map((l) => l.points[l.splitIdx])).toEqual([
             { x: 0, y: 0 }, { x: 0, y: 0, synthetic: true }, { x: 0, y: 0 },
         ]);
+        expect(out[0].baseRate).toBe(0);
+        expect(out[1].baseRate).toBeCloseTo(20);
+        expect(out[2].baseRate).toBeCloseTo(10);
     });
 
     it("synthetic 표시는 그대로 흐른다 — 속 빈 원 렌더가 이 값을 본다", () => {
-        const [l] = pointSkeletons(mins, [{ pk, time: "09:30:00" }], chart);
+        const [l] = pointSkeletons(mins, prevClose, [{ pk, time: "09:30:00" }], chart);
         expect(l.points.map((p) => !!p.synthetic)).toEqual([false, true, false]);
     });
 
     it("자기 시각의 피벗이 없으면 그 타점은 건너뛴다 — 지어내지 않는다(합성 규칙상 원래 없을 수 없다)", () => {
-        expect(pointSkeletons(mins, [{ pk: "x", time: "10:00:00" }], chart)).toEqual([]);
+        expect(pointSkeletons(mins, prevClose, [{ pk: "x", time: "10:00:00" }], chart)).toEqual([]);
     });
 
     it("피벗 2개 미만이면 골격이 아니다", () => {
-        expect(pointSkeletons([{ t: 570, price: 120 }], [{ pk, time: "09:30:00" }], chart)).toEqual([]);
+        expect(pointSkeletons([{ t: 570, price: 120 }], prevClose, [{ pk, time: "09:30:00" }], chart)).toEqual([]);
+    });
+
+    it("전일 종가가 없으면 빈 배열 — %p 분모를 지어내지 않는다(호출측이 결손으로 센다)", () => {
+        expect(pointSkeletons(mins, undefined, [{ pk, time: "09:30:00" }], chart)).toEqual([]);
+        expect(pointSkeletons(mins, 0, [{ pk, time: "09:30:00" }], chart)).toEqual([]);
     });
 
     it("minutesOf — 벽시계 분 환산(초는 버린다: 분봉 피벗의 t 해상도가 분이다)", () => {
@@ -157,18 +157,6 @@ describe("trimmedBounds", () => {
     });
 });
 
-describe("absoluteFrame — 절대 뷰 고정 프레임", () => {
-    it("x 는 데이터 범위 ±15분, y 는 데이터와 무관하게 −5~+30% — 같은 %가 항상 같은 높이에 선다", () => {
-        const a = absoluteSkeleton([{ t: 555, price: 110 }, { t: 600, price: 180 }], 100, owner)!; // +80% 이상치 포함
-        const f = absoluteFrame([a])!;
-        expect(f).toEqual({ minX: 555 - ABS_FRAME.padMinutes, maxX: 600 + ABS_FRAME.padMinutes, minY: -5, maxY: 30 });
-    });
-
-    it("빈 목록은 프레임이 없다", () => {
-        expect(absoluteFrame([])).toBeNull();
-    });
-});
-
 describe("dailyFrame — 일봉 정규화 기본 창(상수)", () => {
     it("마지막 점 기준이면 뒤로 60일·앞으로 10일, 세로는 −60~+40%", () => {
         expect(dailyFrame("last")).toEqual({ minX: -DAILY_FRAME.back, maxX: DAILY_FRAME.forward, minY: -60, maxY: 40 });
@@ -182,7 +170,7 @@ describe("dailyFrame — 일봉 정규화 기본 창(상수)", () => {
 describe("pointUnitFrame — 분봉 타점 정규화 기본 창", () => {
     // 타점(원점) 이전 90분 · −30% 까지 내려갔다가 이후 +50% 간 골격.
     const wide = [{
-        key: "k", chartKey: "c", stockCode: "005930", date: "2026-08-05", basePrice: 100, baseT: 0,
+        key: "k", chartKey: "c", stockCode: "005930", date: "2026-08-05", basePrice: 100, baseRate: 0, baseT: 0,
         points: [{ x: -90, y: -30 }, { x: 0, y: 0 }, { x: 120, y: 50 }],
     }];
 
@@ -481,7 +469,7 @@ describe("keysInRect — Ctrl+드래그 사각 선택(라벨 지점 기준)", ()
     // 화면 좌표 항등 스케일로 판정만 본다.
     const id = (v: number): number => v;
     const shape = (key: string, pts: [number, number][]) =>
-        ({ key, chartKey: key, stockCode: "005930", date: "2026-07-02", basePrice: 100, baseT: 0, points: pts.map(([x, y]) => ({ x, y })) });
+        ({ key, chartKey: key, stockCode: "005930", date: "2026-07-02", basePrice: 100, baseRate: 0, baseT: 0, points: pts.map(([x, y]) => ({ x, y })) });
 
     it("**라벨 지점**(앵커 반대 끝)이 든 것만 잡힌다 — 선이 지나가는 것으론 안 잡힌다(정밀 선택)", () => {
         // 기준 last → 라벨은 첫 점. a 라벨(10,10)은 사각 안, b 는 선이 사각을 지나가도 라벨(200,200)이 밖.

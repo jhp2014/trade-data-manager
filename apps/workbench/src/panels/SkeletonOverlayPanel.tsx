@@ -3,12 +3,12 @@ import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { minuteOfDayOf, selectHotUniverse, amountBucketIndex } from "@trade-data-manager/market/domain";
 import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK } from "../chart/chartUtils.js";
 import {
-    dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
+    dailyFrame, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
     amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_MISSING, type AmountRun,
-    type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
+    type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
 } from "./skeleton/skeletonOverlay.js";
-import { useOverlayData, type OverlayMarker } from "./skeleton/useOverlayData.js";
+import { useOverlayData } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
 import { themeLines, hotCodesInRange, readingsAt, layoutAxisColumns, type ThemeReading } from "./skeleton/themeSkeleton.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
@@ -45,7 +45,6 @@ import { fmtEok } from "../lib/format.js";
 // 피벗 값 라벨·기준선(D선)은 호버(우선) 또는 단일 선택에만 붙는다. 다중 선택은 무리를 만드는 손짓이라
 // 상세를 다 띄우면 수십 벌이 겹친다 — 색·굵기로만 답하고, 상세는 하나를 짚었을 때 준다.
 const ANCHOR_KEY = "wb.skeletonOverlayAnchor";
-const MINVIEW_KEY = "wb.skeletonOverlayMinuteView";
 
 /**
  * 그림 상자 바깥 여백. **테마를 켜면 왼쪽이 거터(100px)로 넓어진다**(사용자 확정) — 테마 이름 라벨을
@@ -59,8 +58,8 @@ const DOT_BUDGET = 1200;
 const LABEL_CELL = { w: 72, h: 14 };
 /** 라벨 칩과 끝점 사이 간격 — 피벗 손잡이(r=7) 밖에 서야 점 호버를 안 가로챈다. */
 const LABEL_GAP = 9;
-/** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. */
-const THEME_READING_CELL = { w: 78, h: 12 };
+/** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. 괄호 절대값 병기만큼 넓다. */
+const THEME_READING_CELL = { w: 112, h: 12 };
 /** 거터에 이름을 둘 테마 선의 최대 수(사용자 확정) — 넘치면 나머지는 개수 뱃지 하나로 묶인다. */
 const THEME_LABEL_CAP = 8;
 /** 거터 라벨의 세로 최소 간격(화면 px). */
@@ -112,15 +111,14 @@ const AXIS_LINE = "var(--text-secondary)";
 type Line = OverlayLine;
 
 type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
-type XUnit = "day" | "min" | "clock";
-const fmtX = (x: number, unit: XUnit): string => (unit === "clock" ? hmOf(x) : `${Math.round(x)}${unit === "day" ? "일" : "분"}`);
+type XUnit = "day" | "min";
+const fmtX = (x: number, unit: XUnit): string => `${Math.round(x)}${unit === "day" ? "일" : "분"}`;
 
 /** 일봉/분봉이 **별도 패널**(카탈로그 2항목)이다 — 시나리오가 "일봉에서 무리 → 분봉으로 확인"의 동시 사용이라
  *  토글 하나로는 두 그림을 오가며 볼 수 없다. grain 은 패널 정체성이라 마운트 후 안 바뀐다. */
 export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.Element {
     const [anchor, setAnchor] = usePersistedState<SkeletonAnchor>(ANCHOR_KEY, (o) => (o === "first" || o === "last" ? o : null), "last");
-    const [minuteView, setMinuteView] = usePersistedState<"norm" | "abs">(MINVIEW_KEY, (o) => (o === "norm" || o === "abs" ? o : null), "norm");
-    // 미래 포함(분봉 타점 정규화 전용) — 기본 창은 타점 이전이 주인공이라 미래를 마진만 남기고 자른다.
+    // 미래 포함(분봉 전용) — 기본 창은 타점 이전이 주인공이라 미래를 마진만 남기고 자른다.
     // "타점 뒤로 어디까지 갔나"를 볼 땐 이 토글이 창을 데이터까지 넓힌다(축소로도 닿지만 한 번에 보게).
     const [showFuture, setShowFuture] = usePersistedState<boolean>("wb.skeletonOverlayFuture", (o) => (typeof o === "boolean" ? o : null), false);
     const [showLevels, setShowLevels] = usePersistedState<boolean>(`wb.skeletonOverlayLevels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
@@ -136,10 +134,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const activePoint = useWorkbench((s) => s.activePoint);
 
     const isDaily = grain === "daily";
-    const isAbs = !isDaily && minuteView === "abs";
-    /** 분봉 정규화 = **타점 단위**(사용자 확정): 선 하나 = 타점 하나(자기 시각 피벗이 원점). */
-    const isPointUnit = !isDaily && !isAbs;
-    const xUnit: XUnit = isDaily ? "day" : isAbs ? "clock" : "min";
+    /** 분봉 = **타점 단위**(사용자 확정): 선 하나 = 타점 하나(자기 시각 피벗이 원점). 절대 뷰는 폐기 —
+     *  %p 공간(전일 종가 대비 %p 차이)이 절대값을 상수 하나로 품게 되면서 배치 토글이 소멸했다. */
+    const isPointUnit = !isDaily;
+    const xUnit: XUnit = isDaily ? "day" : "min";
 
     // "선택만 보기"(분봉 전용) — 일봉 패널에서 만든 선택 무리만 남긴다. 선택이 비면 제한 없음(빈 화면 함정 방지).
     const [onlySelected, setOnlySelected] = useState(false);
@@ -149,17 +147,16 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 태그 한 벌 — 태그 메뉴·발끝 표기(여기) + 차트 태그 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
     const tagsView = useTags();
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
-    const { feedLoading, lines, markers, markerByPk, population, missingPrevClose, levelsByChart, pointsByChart, nameOf } =
-        useOverlayData({ isDaily, isAbs, isPointUnit }, anchor, onlyCharts, tagsView);
+    const { feedLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf } =
+        useOverlayData(isDaily, anchor, onlyCharts, tagsView);
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
     //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.
-    //  · 분봉 타점 정규화 = 양의 쪽 마진만(+10분·+5%), 음의 쪽은 데이터만큼(관심사가 타점 이전이다).
-    //  · 분봉 절대 = 고정 프레임(±15분 · −5~+30%).
+    //  · 분봉 타점 %p = 상수 창(−60~+10분 · ±20%p), 미래 토글이면 양의 쪽만 데이터까지.
     const [locked, setLocked] = useState<OverlayBounds | null>(null);
     const autoBounds = useMemo(
-        () => (lines.length === 0 ? null : isDaily ? dailyFrame(anchor) : isAbs ? absoluteFrame(lines) : pointUnitFrame(lines, 0.01, showFuture)),
-        [isDaily, isAbs, anchor, showFuture, lines],
+        () => (lines.length === 0 ? null : isDaily ? dailyFrame(anchor) : pointUnitFrame(lines, 0.01, showFuture)),
+        [isDaily, anchor, showFuture, lines],
     );
     const bounds = locked ?? autoBounds;
 
@@ -176,7 +173,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     // 거터 판정은 **토글**로 한다(themeOverlay 가 아니라) — 상자가 테마 데이터보다 먼저 정해져야 하고,
     // 데이터 도착 여부로 여백이 출렁이면 화면이 툭 튄다.
-    const gutter = isAbs && showTheme;
+    const gutter = !isDaily && showTheme;
     const padLeft = gutter ? PAD_LEFT.gutter : PAD_LEFT.plain;
     const box = { left: padLeft, top: PAD.top, width: Math.max(0, size.w - padLeft - PAD.right), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
     const drawable = bounds !== null && box.width > 0 && box.height > 0;
@@ -185,9 +182,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     //    팝오버의 바깥클릭 감지가 그래프 위에서 안 뜨기 때문(제스처 콜백이 그 자리를 대신한다).
     const [badge, setBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     const closeBadge = useCallback(() => setBadge(null), []);
-    // 마커 뱃지 목록 — 차트 라벨 뱃지와 별개 상태(마커는 경로 위에 몰려 별개 격자를 쓴다). 선언을 badge 옆에
-    // 두는 이유: 아래 "뷰 전환 시 닫기" effect 가 셋을 한꺼번에 닫는다(상태와 소비가 떨어져 있으면 하나가 빠진다).
-    const [pointBadge, setPointBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     // 제스처 영역 — 아래 스트립=시간축, 왼쪽 스트립=% 축(모서리는 시간축 우선). 스트립에선 그 축만 확대된다.
     const regionOf = useCallback(
         (x: number, y: number): ZoomRegion => (y > box.top + box.height ? "x" : x < box.left ? "y" : "body"),
@@ -213,7 +207,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const selectedKeys = skeletonSelection;
     const setSelectedKeys = useWorkbench((s) => s.setSkeletonSelection);
     // 타점 선택 — 차트 선택과 **별개 집합**(그룹핑 대상이 다르다: 차트 태그 vs 타점 태그).
-    // 절대 뷰에선 마커의, 타점 단위 뷰에선 선 자체의 선택 집합이다.
+    // 분봉 뷰는 선=타점이라 선 자체의 선택 집합이다.
     const [selectedPks, setSelectedPks] = useState<ReadonlySet<string>>(() => new Set());
     const [hovered, setHovered] = useState<string | null>(null);
     const byKey = useMemo(() => new Map(lines.map((s) => [s.key, s])), [lines]);
@@ -246,11 +240,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const baseOpacity = lineOpacity(lines.length);
     const dimmed = dimOpacity(lines.length);
     // 라벨이 붙는 끝 — 골격 종목 이름은 **언제나 경로의 왼쪽 끝**(사용자 확정).
-    // 절대 배치에선 예전에 오른쪽 끝이었는데, 테마 라벨도 오른쪽 끝이라 **둘이 겹쳤다**.
-    // 골격=왼쪽 / 테마=오른쪽으로 갈라 두면 자리 싸움이 없다.
-    // (타점 단위는 원래도 왼쪽 — 미래 점선 쪽은 결과라 손잡이를 안 둔다.)
-    const labelAnchorMode: SkeletonAnchor = isPointUnit || isAbs ? "last" : anchor;
-    const labelAtStart = isPointUnit || isAbs || anchor === "last";
+    // 테마 라벨은 왼쪽 거터에 살아 자리 싸움이 없고, 미래 점선 쪽(오른쪽)은 결과라 손잡이를 안 둔다.
+    const labelAnchorMode: SkeletonAnchor = isPointUnit ? "last" : anchor;
+    const labelAtStart = isPointUnit || anchor === "last";
 
     // 상세(피벗 값·기준선·타점 세로선)를 받을 "지금 조사 중인 하나" — 호버 우선, 없으면 단일 선택.
     const inspectKey = hovered ?? (effSelected.size === 1 ? [...effSelected][0] : null);
@@ -289,18 +281,30 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return { key: amountTarget.key, runs: amountRuns(amountTarget.points, amountTarget.baseT, at, amountLevelOf) };
     }, [amountTarget, amountLookup]);
 
-    // ── 테마 선 — 절대 뷰에서만(좌표계가 같아야 환산 없이 얹힌다). 짚은 선이 하나일 때만 펼친다:
-    // 여러 날의 테마를 한 벽시계에 겹치면 "이 종목이 혼자 튄 건가"라는 그 질문 자체가 흐려진다.
+    // ── 테마 선(분봉 %p 뷰) — 짚은 선이 하나일 때만 펼친다: 여러 날의 테마를 한 화면에 겹치면
+    // "이 종목이 혼자 튄 건가"라는 그 질문 자체가 흐려진다.
+    //
+    // ## 좌표 이사 — 절대 공간을 **통째로 평행이동**한다(사용자 확정)
+    // themeLines 는 절대 공간(x=벽시계 분, y=전일 종가 대비 %)을 내고, 여기서 앵커 타점의 (t₀, r_앵커(t₀))를
+    // 빼서 뷰 공간에 놓는다. 멤버를 각자 자기 값으로 재기저하지 **않는다** — 타점 시각의 앵커 대비 %p 간격이
+    // 그대로 보존돼야 "내 종목 기준 테마가 어디에 있나"가 읽힌다. 절대값 복원도 상수 하나(+t₀ / +baseRate)다.
+    //
+    // ## 구간 = 화면 프레임(사용자 확정 — 예전 앵커 피벗 처음~끝에서 변경)
+    // 기본은 타점 앞뒤 기본 창, 미래 토글이면 장 끝까지 — 타점 이후의 테마 동조(미래)도 같이 본다.
     const replaySettings = useWorkbench((s) => s.replaySettings);
+    const pointTarget: PointSkeleton | null = singleTarget?.kind === "point" ? singleTarget : null;
     const themeOverlay = useMemo(() => {
-        if (!isAbs || !showTheme || !singleTarget || !snapQ.data) return null;
+        if (isDaily || !showTheme || !pointTarget || !snapQ.data) return null;
         const src = snapQ.data.stocks;
-        const mins = singleTarget.points.map((p) => p.x + singleTarget.baseT);
-        const from = Math.min(...mins);
-        const to = Math.max(...mins);
+        const t0 = pointTarget.baseT;
+        const baseRate = pointTarget.baseRate;
+        const from = Math.max(0, t0 - POINT_FRAME.back);
+        const to = showFuture ? 1439 : t0 + POINT_FRAME.forward;
         const hot = hotCodesInRange(src, from, to, minuteOfDayOf, (snaps) => selectHotUniverse(snaps, replaySettings.amountN, replaySettings.rateN));
-        return { key: singleTarget.key, lines: themeLines(singleTarget, src, hot, minuteOfDayOf) };
-    }, [isAbs, showTheme, singleTarget, snapQ.data, replaySettings.amountN, replaySettings.rateN]);
+        const lines = themeLines(pointTarget, src, hot, minuteOfDayOf, { from, to })
+            .map((l) => ({ ...l, points: l.points.map((p) => ({ x: p.x - t0, y: p.y - baseRate })) }));
+        return { key: pointTarget.key, t0, baseRate, lines };
+    }, [isDaily, showTheme, showFuture, pointTarget, snapQ.data, replaySettings.amountN, replaySettings.rateN]);
     /** 손이 올라간 테마 선(들) — 뭉친 라벨이면 그 무리 전부. 이것만 선명해지고 나머지는 무채색으로 남는다. */
     const [hoveredTheme, setHoveredTheme] = useState<readonly string[] | null>(null);
     /** 이름을 못 단 테마 종목 목록(뱃지 클릭) — 거터 상한을 넘은 것들이 여기로 온다. */
@@ -310,13 +314,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     /** 테마 선들의 분당 색 런 — **전부** 미리 굽는다(호버 하나만이 아니라, 사용자 확정).
      *  절대 구간 색이라 흐리게 깔아도 단계가 살아남는다 → 테마 전체의 자금 유입 타이밍이 한 화면에 깔린다.
-     *  테마 선의 x 는 이미 벽시계 분이라 baseT = 0(앵커 정규화를 안 거친다). */
+     *  테마 선의 x 는 뷰 공간(벽시계 − t₀)이라 baseT = t₀ 가 벽시계를 되찾는다. */
     const themeRuns = useMemo(() => {
         if (!themeOverlay) return null;
         const m = new Map<string, AmountRun[]>();
         for (const l of themeOverlay.lines) {
             const at = amountLookup(l.code);
-            if (at) m.set(l.code, amountRuns(l.points, 0, at, amountLevelOf));
+            if (at) m.set(l.code, amountRuns(l.points, themeOverlay.t0, at, amountLevelOf));
         }
         return m;
     }, [themeOverlay, amountLookup]);
@@ -365,14 +369,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         [singleTarget],
     );
 
-    /** 앵커 골격에서 붙잡은 피벗의 벽시계 분(시각 순) — 테마 값을 펼치는 세로선이 서는 자리. */
-    const pinnedMinutes = useMemo(() => {
+    /** 앵커 골격에서 붙잡은 피벗의 x(뷰 공간 — 타점 대비 분, 시각 순) — 테마 값을 펼치는 세로선이 서는 자리.
+     *  테마 선도 뷰 공간이라 이 x 로 바로 값을 찾는다(벽시계는 표시할 때만 + t₀). */
+    const pinnedXs = useMemo(() => {
         if (!singleTarget) return [];
         return [...pinnedPivots]
             .filter((id) => id.slice(0, id.lastIndexOf("|")) === singleTarget.key)
             .map((id) => Number(id.slice(id.lastIndexOf("|") + 1)))
             .filter((i) => Number.isInteger(i) && i >= 0 && i < singleTarget.points.length)
-            .map((i) => singleTarget.points[i].x + singleTarget.baseT)
+            .map((i) => singleTarget.points[i].x)
             .sort((a, b) => a - b);
     }, [singleTarget, pinnedPivots]);
     /**
@@ -382,19 +387,20 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      */
     const [hoveredPinLine, setHoveredPinLine] = useState<number | null>(null);
     useEffect(() => { setHoveredPinLine(null); setThemeBadge(null); }, [themeOverlay?.key]);
-    const openReadingMinute = useMemo(() => {
+    /** 지금 테마 값을 펼쳐 보는 x(뷰 공간) — 핀 세로선과 같은 통화라 그대로 값 조회에 쓴다. */
+    const openReadingX = useMemo(() => {
         if (hoveredPinLine !== null) return hoveredPinLine;
         if (!singleTarget || !hoveredPivot || hoveredPivot.key !== singleTarget.key) return null;
         const p = singleTarget.points[hoveredPivot.i];
-        return p ? p.x + singleTarget.baseT : null;
+        return p ? p.x : null;
     }, [hoveredPinLine, singleTarget, hoveredPivot]);
 
     const themeReadingSlots = useMemo(() => {
-        if (!themeOverlay || !scales || openReadingMinute === null) return [];
+        if (!themeOverlay || !scales || openReadingX === null) return [];
         // 겹침 판정은 **화면 좌표**로 한다 — 값 공간으로 하면 확대해도 열이 안 풀린다(라벨 축약과 같은 성질).
-        const g = readingsAt(themeOverlay.lines, openReadingMinute).map((r) => ({ item: { ...r, minute: openReadingMinute }, y: scales.y(r.y) }));
-        return layoutAxisColumns<ThemeReading & { minute: number }>([g], THEME_READING_CELL.h);
-    }, [themeOverlay, openReadingMinute, scales]);
+        const g = readingsAt(themeOverlay.lines, openReadingX).map((r) => ({ item: { ...r, x: openReadingX }, y: scales.y(r.y) }));
+        return layoutAxisColumns<ThemeReading & { x: number }>([g], THEME_READING_CELL.h);
+    }, [themeOverlay, openReadingX, scales]);
 
     /**
      * 금액 라벨 — **전 선(앵커 + 테마)이 하나의 격자에서 겨룬다**(사용자 확정). 한 칸에 제일 큰 하나만
@@ -417,10 +423,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             }
         };
         if (amounts && amountTarget) collect(amounts.runs, amountTarget.stockCode, true, amountTarget.baseT);
-        if (themeRuns) for (const [code, runs] of themeRuns) collect(runs, code, false, 0);
+        if (themeRuns && themeOverlay) for (const [code, runs] of themeRuns) collect(runs, code, false, themeOverlay.t0);
         // 솎기는 종목 안에서만 → 남은 것들이 세로로 겹치면 **탈락이 아니라 이동**(지시선이 원 자리를 가리킨다).
         return spreadByY(pickAmountLabels(cands, AMOUNT_LABEL_CELL.w), AMOUNT_LABEL_CELL.w, AMOUNT_LABEL_CELL.gap);
-    }, [scales, showAmountLabels, amounts, amountTarget, themeRuns, anchorPivotMinutes]);
+    }, [scales, showAmountLabels, amounts, amountTarget, themeRuns, themeOverlay, anchorPivotMinutes]);
 
     /**
      * 테마 이름 라벨 — **왼쪽 거터에 세로로 벌려** 놓는다(사용자 확정 B안). 선 시작점에 그대로 붙이면
@@ -474,31 +480,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
     }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus]);
 
-    // 타점 선택 → 그 차트의 **이후 구간 점선**(사용자 확정: "여기까지 보고 들어갔다" 이후는 결과다).
-    // 한 차트에 선택 타점이 여럿이면 가장 이른 시각 기준(이후 = 그 타점 뒤 전부).
-    const splitXByChart = useMemo(() => {
-        const m = new Map<string, number>();
-        for (const pk of selectedPks) {
-            const mk = markerByPk.get(pk);
-            if (!mk) continue;
-            const cur = m.get(mk.s.key);
-            if (cur == null || mk.x < cur) m.set(mk.s.key, mk.x);
-        }
-        return m;
-    }, [selectedPks, markerByPk]);
-
     // ── Ctrl+드래그 사각 선택 — 사각형 역학은 useMarquee 가, **무엇을 담을지**는 여기가 정한다.
     const onMarqueeSelect = useCallback((rect: MarqueeRect): void => {
         if (!scales) return;
         // 라벨 지점 판정 — 이 뷰의 선택 채널로 담는다(차트 단위=차트키, 타점 단위=pk. 문법은 하나).
         const hit = keysInRect(lines, labelAnchorMode, scales.x, scales.y, rect);
         if (hit.length > 0) setActiveSelection((prev: ReadonlySet<string>) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
-        // 타점 마커도 같은 드래그로 담는다(절대 뷰) — 잡힌 종류가 곧 뜻이다(라벨=차트 선택, 마커=타점 선택).
-        const [l, rr] = rect.x0 <= rect.x1 ? [rect.x0, rect.x1] : [rect.x1, rect.x0];
-        const [t, b] = rect.y0 <= rect.y1 ? [rect.y0, rect.y1] : [rect.y1, rect.y0];
-        const mhit = markers.filter((m) => { const mx = scales.x(m.x); const my = scales.y(m.y); return mx >= l && mx <= rr && my >= t && my <= b; }).map((m) => m.pk);
-        if (mhit.length > 0) setSelectedPks((prev) => new Set([...prev, ...mhit]));
-    }, [scales, lines, effSelected, labelAnchorMode, markers, setActiveSelection]);
+    }, [scales, lines, effSelected, labelAnchorMode, setActiveSelection]);
     const { marquee, onMouseDown: onWrapMouseDown } = useMarquee(wrapRef, !!scales, onMarqueeSelect);
 
     // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
@@ -543,21 +531,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (points.length > 0) setTagMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points, label });
     }, []);
 
-    /** 마커 평클릭 = 그 타점으로 이동 + 단일 선택. Ctrl = 타점 선택 토글(차트 라벨과 같은 손짓). */
-    const onMarkerClick = useCallback((m: OverlayMarker, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
-        if (ev.ctrlKey || ev.metaKey) {
-            setSelectedPks((prev) => {
-                const next = new Set(prev);
-                if (next.has(m.pk)) next.delete(m.pk);
-                else next.add(m.pk);
-                return next;
-            });
-            return;
-        }
-        setSelectedPks(new Set([m.pk]));
-        goToPoint({ code: m.ref.stockCode, date: m.ref.date, time: m.ref.time }, "skeleton-overlay");
-    }, [goToPoint]);
-
     // 목록 순서 = 라벨 지점의 % 내림차순 — 그림에서 위에 있는 선이 목록에서도 위라 눈이 안 헤맨다.
     const badgeRows = useMemo(() => {
         if (!badge) return [];
@@ -566,19 +539,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             .filter((s): s is Line => !!s)
             .sort((a, b) => labelPointOf(b, labelAnchorMode).y - labelPointOf(a, labelAnchorMode).y);
     }, [badge, byKey, labelAnchorMode]);
-    useEffect(() => { setBadge(null); setBadgeHover(null); setPointBadge(null); }, [boundsKey, anchor, grain, minuteView]);
-    // 붙잡아 둔 피벗 값은 **뷰가 바뀌면** 버린다 — 좌표계가 갈리면(정규화↔절대) 같은 인덱스가 다른 뜻이 된다.
+    useEffect(() => { setBadge(null); setBadgeHover(null); }, [boundsKey, anchor, grain]);
+    // 붙잡아 둔 피벗 값은 **기준(앵커)이 바뀌면** 버린다 — 좌표계가 갈리면 같은 인덱스가 다른 뜻이 된다.
     // 척도 변경(boundsKey)엔 안 건드린다: 확대·필터는 같은 그림을 다르게 볼 뿐이라 값이 남아야 한다.
-    useEffect(() => { setPinnedPivots(new Set()); }, [anchor, minuteView]);
-
-    // 마커 라벨 축약 — 차트 라벨과 **별개 격자**(마커는 경로 위에 몰려 있어 더 촘촘한 칸을 쓴다).
-    const markerClusters = useMemo(() => {
-        if (!showLabels || !scales || markers.length === 0) return [];
-        const anchors = markers
-            .filter((m) => !selectedPks.has(m.pk))
-            .map((m) => ({ key: m.pk, x: scales.x(m.x), y: scales.y(m.y) }));
-        return clusterLabels(anchors, 72, 13); // 칩에 종목명이 붙어 차트 라벨과 같은 폭 예산
-    }, [showLabels, scales, markers, selectedPks]);
+    useEffect(() => { setPinnedPivots(new Set()); }, [anchor]);
 
     // 타점 단위 선은 시각까지 — `26.07.08 삼성전자 09:30`(같은 차트의 타점 여러 개가 선 여러 개로 선다).
     const labelOf = (s: Line, dotFirst: boolean): JSX.Element => {
@@ -611,35 +575,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             : { style: { left: leftPx + LABEL_GAP, transform: "translateY(-50%)" }, dotFirst: true };
     };
 
-    /** 마커 칩 — ▾시각. 컴포넌트가 아니라 함수인 이유: 패널 상태를 잔뜩 닫아 갖는데 매 렌더 새 컴포넌트면
-     *  리액트가 매번 언마운트/마운트를 반복한다(호버가 튄다). */
-    const markerChip = (m: OverlayMarker, left: number, top: number): JSX.Element => {
-        const isSel = selectedPks.has(m.pk);
-        const isActive = !!activePoint && activePoint.code === m.ref.stockCode && activePoint.date === m.ref.date && activePoint.time === m.ref.time;
-        const color = isSel || isActive ? ACTIVE : "var(--text-secondary)";
-        return (
-            <button key={m.pk} onClick={(e) => onMarkerClick(m, e)}
-                onContextMenu={(e) => openPointTagMenu([m.ref], `${nameOf(m.ref.stockCode)} ${m.ref.time.slice(0, 5)}`, e)}
-                onMouseEnter={() => setHovered(m.s.key)} onMouseLeave={() => setHovered(null)}
-                title={`${nameOf(m.ref.stockCode)} 타점 ${m.ref.time.slice(0, 5)} — 클릭=이동·선택 · Ctrl+클릭=다중선택 · 우클릭=타점 태그`}
-                style={{ ...chip, ...markerChipPos(left, top), color, fontWeight: isSel || isActive ? 700 : 400, ...(isSel ? selectedChip(ACTIVE) : {}) }}>
-                {/* 종목명 포함(사용자 확정) — 절대 배치는 여러 종목이 같은 벽시계에 겹쳐 시각만으론 누군지 모른다. */}
-                ▾{m.ref.time.slice(0, 5)} {nameOf(m.ref.stockCode)}
-            </button>
-        );
-    };
-
     return (
         <div style={wrap}>
             <div style={header}>
-                {!isDaily && (
-                    <ControlBox label="배치">
-                        <TextToggle active={!isAbs} onClick={() => setMinuteView("norm")} title="기준점 정규화 — 골격끼리 시간이 정렬된다">정규화</TextToggle>
-                        <Dot />
-                        <TextToggle active={isAbs} onClick={() => setMinuteView("abs")} title="벽시계 배치 — 전일 종가 대비 %, 분봉 차트 보듯">절대</TextToggle>
-                    </ControlBox>
-                )}
-                {/* 기준 토글은 일봉 전용 — 분봉 정규화는 타점 단위(원점=자기 시각 피벗)라 앵커 선택이 소멸했다. */}
+                {/* 기준 토글은 일봉 전용 — 분봉은 타점 단위(원점=자기 시각 피벗)라 앵커 선택이 소멸했다. */}
                 {isDaily && (
                     <ControlBox label="기준">
                         <TextToggle active={anchor === "last"} onClick={() => setAnchor("last")} title="마지막 피벗을 원점으로 — 끝이 한 점으로 정렬(뒤로 퍼짐)">마지막 점</TextToggle>
@@ -677,10 +616,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         </TextToggle>
                     </ControlBox>
                 )}
-                {isAbs && (
+                {!isDaily && (
                     <ControlBox>
                         <TextToggle active={showTheme} onClick={() => setShowTheme(!showTheme)}
-                            title="선택한 골격이 그린 구간 동안 같은 테마 종목들의 분당 종가 경로를 같이 세운다(그 구간에 보드에 떴던 것만) — 굵기가 각 종목의 분당 거래대금이다">
+                            title="선택한 타점의 앞뒤 창 동안 같은 테마 종목들의 분당 종가 경로를 같이 세운다(그 구간에 보드에 떴던 것만, 세로 간격 = 등락률 %p 차이 그대로) — 굵기가 각 종목의 분당 거래대금이다">
                             테마
                         </TextToggle>
                         {showTheme && themeOverlay && (
@@ -705,7 +644,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     {population > lines.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
                     {/* 결손은 필터와 별도 표기 — "N/M 차이 = 필터"라는 읽기가 거짓이 되지 않게. */}
                     {missingPrevClose > 0 && (
-                        <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — 절대 배치로 그릴 수 없는 차트(필터로 빠진 게 아님)"> · 결손 {missingPrevClose}</span>
+                        <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — %p 공간의 분모가 없어 그릴 수 없는 차트(필터로 빠진 게 아님)"> · 결손 {missingPrevClose}</span>
                     )}
                 </span>
                 {/* 차트 선택 손잡이는 차트 단위 뷰에서만 — 타점 단위 뷰의 문법은 아래 타점 버튼이다. */}
@@ -719,7 +658,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 )}
                 {selectedPks.size > 0 && (
                     <button onClick={(e) => openPointTagMenu(
-                        [...selectedPks].map((pk) => markerByPk.get(pk)?.ref ?? parsePointKey(pk)).filter((p): p is PointRef => p !== null),
+                        [...selectedPks].map((pk) => parsePointKey(pk)).filter((p): p is PointRef => p !== null),
                         `타점 ${selectedPks.size}개`, e)}
                         title="선택된 타점들에 태그 붙이기/떼기(타점 태그)" style={miniBtn}>
                         타점 {selectedPks.size} 태그
@@ -740,9 +679,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {feedLoading && <div style={muted}>불러오는 중…</div>}
                 {!feedLoading && lines.length === 0 && (
                     <div style={muted}>
-                        {isDaily ? "일봉 골격이 그려진 차트가 없습니다."
-                            : isPointUnit ? "분봉 골격 위 타점이 없습니다(필터·선택만 보기에 걸렸을 수도)."
-                                : "분봉 골격이 그려진 차트가 없습니다."}
+                        {isDaily ? "일봉 골격이 그려진 차트가 없습니다." : "분봉 골격 위 타점이 없습니다(필터·선택만 보기·전일 종가 결손에 걸렸을 수도)."}
                     </div>
                 )}
                 <svg ref={svgRef} width={size.w} height={size.h} onDoubleClick={reset}
@@ -774,29 +711,29 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             <g clipPath={`url(#${clipId})`}>
                                 {/* 원점 좌표축 — **실선 + 끝 화살표**(사용자 확정, xy 좌표계 그대로). 흐린 점선은 그림에
                                     묻혀 안 읽혔다. 이 두 선이 피벗 좌표를 읽는 자(尺)다: 값은 여기로 내린 수직·수평
-                                    점선의 발치에서 읽는다. 가로축 = 0%(정규화면 앵커 높이, 절대면 전일 종가),
-                                    세로축 = t=0 — 세로축은 정규화 배치에서만 뜻이 있다(절대는 벽시계라 0시가 무의미). */}
+                                    점선의 발치에서 읽는다. 가로축 = 0(일봉이면 앵커 높이, 분봉이면 타점의 등락률 높이),
+                                    세로축 = t=0(분봉이면 타점 시각). */}
                                 <line x1={box.left} x2={box.left + box.width} y1={scales.y(0)} y2={scales.y(0)} stroke={AXIS_LINE} strokeWidth={1} />
                                 <polygon points={`${box.left + box.width},${scales.y(0)} ${box.left + box.width - 7},${scales.y(0) - 3.5} ${box.left + box.width - 7},${scales.y(0) + 3.5}`} fill={AXIS_LINE} />
-                                {!isAbs && (
-                                    <>
-                                        <line x1={scales.x(0)} x2={scales.x(0)} y1={box.top} y2={box.top + box.height} stroke={AXIS_LINE} strokeWidth={1} />
-                                        <polygon points={`${scales.x(0)},${box.top} ${scales.x(0) - 3.5},${box.top + 7} ${scales.x(0) + 3.5},${box.top + 7}`} fill={AXIS_LINE} />
-                                    </>
-                                )}
+                                <line x1={scales.x(0)} x2={scales.x(0)} y1={box.top} y2={box.top + box.height} stroke={AXIS_LINE} strokeWidth={1} />
+                                <polygon points={`${scales.x(0)},${box.top} ${scales.x(0) - 3.5},${box.top + 7} ${scales.x(0) + 3.5},${box.top + 7}`} fill={AXIS_LINE} />
 
-                                {/* ── 테마 선 — 짚은 골격의 **피벗 시각에 세운 동시각 표본**(그 사이는 오차 기반 세분).
+                                {/* ── 테마 선 — 짚은 타점의 앞뒤 창에 세운 **분당 종가 경로**(%p 평행이동, 세로 간격 보존).
                                     골격보다 **먼저** 그린다: 이건 배경이고 주인공은 내 골격이다.
                                     기본은 무채색 흐림 — 흐린 채색은 색이 아니다(알파가 낮으면 hue 차이가 안 읽힌다).
-                                    짚은 하나만 거래대금 램프로 살아난다(상세 밀도 규칙 그대로). */}
+                                    짚은 하나만 거래대금 램프로 살아난다(상세 밀도 규칙 그대로).
+                                    **타점 이후(x ≥ 0)는 앵커 선과 같은 문장** — 폴리라인은 점선, 런은 옅게(굵기와 안 싸우게). */}
                                 {themeOverlay?.lines.map((l) => {
                                     const lit = hoveredThemeSet?.has(l.code) ?? false;
                                     const runs = themeRuns?.get(l.code);
                                     if (!runs) {
-                                        const pts = l.points.map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
+                                        const { past, future } = splitAtX(l.points, 0);
+                                        const toPts = (ps: { x: number; y: number }[]): string => ps.map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
                                         return (
-                                            <polyline key={`th-${l.code}`} points={pts} fill="none" stroke="var(--text-tertiary)"
-                                                strokeWidth={lit ? 2 : 1} strokeLinejoin="round" opacity={lit ? 0.9 : hoveredThemeSet ? 0.2 : 0.45} style={{ pointerEvents: "none" }} />
+                                            <g key={`th-${l.code}`} style={{ pointerEvents: "none" }} opacity={lit ? 0.9 : hoveredThemeSet ? 0.2 : 0.45}>
+                                                {past.length >= 2 && <polyline points={toPts(past)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" />}
+                                                {future.length >= 2 && <polyline points={toPts(future)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" strokeDasharray="4 4" />}
+                                            </g>
                                         );
                                     }
                                     // 선은 무채색, **굵기가 거래대금**이다. 짚은 것만 또렷해지고 굵기 배수도 커진다.
@@ -807,7 +744,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             {runs.map((r, i) => (
                                                 <polyline key={i} points={runPoints(r, scales)} fill="none"
                                                     stroke="var(--text-tertiary)" strokeWidth={runWidth(r.level, lit ? 0.9 : 0.7)}
-                                                    strokeLinecap="round" strokeLinejoin="round" />
+                                                    strokeLinecap="round" strokeLinejoin="round"
+                                                    opacity={r.points[0].x >= 0 ? 0.4 : 1} />
                                             ))}
                                         </g>
                                     );
@@ -817,7 +755,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     const { v, color } = visualOf(s.key);
                                     const pts = polylinePoints(s, scales.x, scales.y);
                                     const lit = v.role !== "base";
-                                    const inspecting = s.key === inspectKey;
                                     return (
                                         // 선은 순수 그림 — 포인터를 안 받는다(손잡이는 라벨). 캔버스로 옮겨도 조작이 안 바뀐다.
                                         // 진하기 = 역할이 정한다: 흐림(무리 밖) < 물러남(무리 안이지만 안 짚은 것) < 앞(짚은 것).
@@ -826,10 +763,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             {/* 선택 글로우(넓은 반투명 밑선)는 **폐기**(사용자 확정) — 굵기가 세 번째 차원을
                                                 지는 지금은 글로우가 그 굵기를 가려버린다. 역할은 색이 진다: 선택 = 하늘(ACTIVE),
                                                 호버 = 앰버, 테마 = 무채색. 색이 다른 일(거래대금)을 안 하게 됐으니 그걸로 충분하다. */}
-                                            {/* 미래는 점선 — 타점 단위 선은 원점(자기 시각) 이후 전부, 절대 뷰는 선택 타점 이후.
-                                                타점까지가 판단, 이후는 결과라는 같은 문장이다. */}
+                                            {/* 미래는 점선 — 타점 단위 선은 원점(자기 시각) 이후 전부.
+                                                타점까지가 판단, 이후는 결과라는 문장이다. */}
                                             {(() => {
-                                                const splitX = isPointUnit ? 0 : splitXByChart.get(s.key);
+                                                const splitX = isPointUnit ? 0 : undefined;
                                                 // 거래대금이 붙은 선은 **선분마다 색이 달라** 한 폴리라인으로 못 그린다.
                                                 // 역할색(선택 하늘)을 잃지 않는 건 글로우(위의 넓은 밑선)가 이미 "붙잡혔다"를
                                                 // 말하기 때문 — 그래서 선 색을 통째로 값에 내줄 수 있다(사용자 확정).
@@ -864,11 +801,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 수평 점선, 값은 각 축의 발치에(기간은 x축 아래, %는 y축 옆). 점 옆에 두 값을 붙이면
                                                 라벨끼리 겹치고 "이 점이 축의 어디냐"가 눈으로 안 잡힌다.
                                                 축이 화면 밖으로 밀려나면(팬) 발치를 화면 가장자리로 잡는다 — 값을 못 읽는 것보단 낫다. */}
+                                            {/* 값은 뷰 공간 + **괄호에 절대값**(사용자 확정 — 분봉만): 평행이동량이 상수라
+                                                벽시계 = x + t₀, 전일 종가 대비 % = y + baseRate 로 복원된다. 일봉엔 괄호가 없다
+                                                (baseT 가 거래일 인덱스라 벽시계가 아니고, 앵커 대비 %가 그 자체로 값이다). */}
                                             {s.points.map((p, i) => {
                                                 if (!pivotShown(s.key, i) || (p.x === 0 && p.y === 0)) return null;
                                                 const px = scales.x(p.x);
                                                 const py = scales.y(p.y);
-                                                const ax = clamp(isAbs ? box.left : scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
+                                                const ax = clamp(scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
                                                 const ay = clamp(scales.y(0), box.top, box.top + box.height); // 가로축(기간을 읽는 자리)
                                                 const below = ay + 12 <= box.top + box.height; // x축 아래에 자리가 없으면 위로
                                                 const leftSide = ax - box.left > 44; // y축 왼쪽에 자리가 없으면 오른쪽으로
@@ -881,23 +821,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                         <line x1={px} x2={ax} y1={py} y2={py} stroke={color} strokeWidth={pin ? 1.2 : 0.8} strokeDasharray="2 3" opacity={pin ? 0.9 : 0.55} />
                                                         <text x={px} y={ay + (below ? 12 : -5)} textAnchor="middle"
                                                             stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
-                                                            {fmtX(p.x, xUnit)}
+                                                            {fmtX(p.x, xUnit)}{s.kind === "point" ? ` (${hmOf(p.x + s.baseT)})` : ""}
                                                         </text>
                                                         <text x={ax + (leftSide ? -4 : 4)} y={py - 3} textAnchor={leftSide ? "end" : "start"}
                                                             stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
-                                                            {fmtPct(p.y)}
+                                                            {fmtPct(p.y)}{s.kind === "point" ? ` (${fmtPct(p.y + s.baseRate)})` : ""}
                                                         </text>
                                                     </g>
-                                                );
-                                            })}
-                                            {/* 타점 세로선(절대 뷰) — "선택·조사 중인 것에만". 시간 라벨은 마커 칩의 몫(선은 위치만).
-                                                타점 단위 뷰엔 없다 — 원점 세로선(t=0)이 곧 그 타점이다. */}
-                                            {inspecting && isAbs && (pointsByChart.get(s.chartKey) ?? []).map((p) => {
-                                                const x = scales.x(minutesOf(p.time) - s.baseT);
-                                                const isActive = activePoint && activePoint.code === p.stockCode && activePoint.date === p.date && activePoint.time === p.time;
-                                                return (
-                                                    <line key={p.time} x1={x} x2={x} y1={box.top} y2={box.top + box.height}
-                                                        stroke={isActive ? ACTIVE : "var(--text-tertiary)"} strokeWidth={1} strokeDasharray="2 3" opacity={0.8} />
                                                 );
                                             })}
                                         </g>
@@ -909,9 +839,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     보이는 선은 얇지만 히트 영역은 넓은 투명 선이 따로 받는다(1px 을 겨냥할 수는 없다).
                                     ⚠ **피벗 손잡이보다 먼저** 그린다: SVG 는 나중에 그린 게 위라, 이 10px 투명 선이 뒤에
                                     오면 자기 x 에 있는 피벗 점의 클릭을 통째로 삼킨다(핀을 찍고 나면 못 떼던 버그). */}
-                                {themeOverlay && pinnedMinutes.map((m) => {
+                                {themeOverlay && pinnedXs.map((m) => {
                                     const x = scales.x(m);
-                                    const open = openReadingMinute === m;
+                                    const open = openReadingX === m;
                                     return (
                                         <g key={`pinv-${m}`}>
                                             <line x1={x} x2={x} y1={box.top} y2={box.top + box.height}
@@ -920,7 +850,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             <line x1={x} x2={x} y1={box.top} y2={box.top + box.height} stroke="transparent" strokeWidth={10}
                                                 style={{ pointerEvents: "auto", cursor: "ew-resize" }}
                                                 onMouseEnter={() => setHoveredPinLine(m)} onMouseLeave={() => setHoveredPinLine(null)}>
-                                                <title>{`${hmOf(m)} — 올리면 이 시각의 테마 값`}</title>
+                                                <title>{`${hmOf(m + themeOverlay.t0)} — 올리면 이 시각의 테마 값`}</title>
                                             </line>
                                         </g>
                                     );
@@ -941,7 +871,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             onClick={() => togglePivot(s.key, i)}
                                             onMouseEnter={() => { setHovered(s.key); setHoveredPivot({ key: s.key, i }); }}
                                             onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }}>
-                                            <title>{`${fmtX(p.x, xUnit)} · ${fmtPct(p.y)} — 클릭해 값 ${pinnedPivots.has(pivotId(s.key, i)) ? "떼기" : "붙잡기"}`}</title>
+                                            <title>{`${fmtX(p.x, xUnit)} · ${fmtPct(p.y)}${s.kind === "point" ? ` (${hmOf(p.x + s.baseT)} · 전일比 ${fmtPct(p.y + s.baseRate)})` : ""} — 클릭해 값 ${pinnedPivots.has(pivotId(s.key, i)) ? "떼기" : "붙잡기"}`}</title>
                                         </circle>
                                     )));
                                 })}
@@ -968,14 +898,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     );
                                 })}
 
-                                {/* 선택된 타점의 세로선(절대 뷰) — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
-                                {isAbs && [...selectedPks].map((pk) => {
-                                    const m = markerByPk.get(pk);
-                                    if (!m) return null;
-                                    const x = scales.x(m.x);
-                                    return <line key={`sv${pk}`} x1={x} x2={x} y1={box.top} y2={box.top + box.height} stroke={ACTIVE} strokeWidth={1} strokeDasharray="2 3" opacity={0.8} />;
-                                })}
-
                                 {/* 얹는 선(기준선·D선) — 같은 pct 환산. **주인이 스타일을 정한다**(사용자 확정):
                                     색은 **그 골격선과 똑같이**(visualOf) — 그룹 목록을 훑을 때 골격선은 무리 색인데
                                     가로선만 앰버로 뜨면 "이게 어느 골격의 선이냐"를 다시 찾아야 했다(사용자 지적).
@@ -994,7 +916,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     return owners.map(({ s, color, right }) => (
                                         <g key={`lvl-${s.key}`} style={{ pointerEvents: "none" }}>
                                             {(levelsByChart.get(s.chartKey) ?? []).map((lv, i) => {
-                                                const yPct = pct(lv.price, s.basePrice);
+                                                // 가격 → y 는 언제나 pct(price, basePrice) − baseRate — 골격 피벗과 같은 환산이어야 한 공간이다.
+                                                const yPct = pct(lv.price, s.basePrice) - s.baseRate;
                                                 const y = scales.y(yPct);
                                                 return (
                                                     <g key={i}>
@@ -1003,7 +926,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                         <text x={right ? box.left + box.width - 4 : box.left + 4} y={y - 4} textAnchor={right ? "end" : "start"}
                                                             stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
                                                             style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
-                                                            {lv.baseline ? "기준 " : ""}{fmtPct(yPct)}
+                                                            {lv.baseline ? "기준 " : ""}{fmtPct(yPct)}{s.baseRate !== 0 ? ` (${fmtPct(yPct + s.baseRate)})` : ""}
                                                         </text>
                                                     </g>
                                                 );
@@ -1019,22 +942,23 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {/* 핀 시각의 테마 값 — **그 세로선 바로 오른쪽**에 편다(사용자 확정). 예전엔 y축까지 수평선을
                     값 개수만큼 그었는데 화면을 가로지르는 선이 30개라 난잡했다. 값을 데이터가 있는 자리에 둔다.
                     세로로 겹치면 옆 열로 밀되(layoutAxisColumns), 호버 중에만 뜨니 잠깐 벌어지는 건 괜찮다. */}
-                {scales && themeReadingSlots.length > 0 && openReadingMinute !== null && (
+                {scales && themeOverlay && themeReadingSlots.length > 0 && openReadingX !== null && (
                     <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
                         {themeReadingSlots.map((s) => {
                             const lit = hoveredThemeSet?.has(s.item.code) ?? false;
                             return (
-                                <div key={`trl-${s.item.minute}-${s.item.code}`}
-                                    title={`${s.item.name} · ${hmOf(s.item.minute)} · ${fmtPct(s.item.y)}`}
+                                <div key={`trl-${s.item.x}-${s.item.code}`}
+                                    title={`${s.item.name} · ${hmOf(s.item.x + themeOverlay.t0)} · 타점 대비 ${fmtPct(s.item.y)} · 전일比 ${fmtPct(s.item.y + themeOverlay.baseRate)}`}
                                     style={{
                                         ...chip, cursor: "default",
-                                        left: scales.x(openReadingMinute) - box.left + 5 + s.col * THEME_READING_CELL.w,
+                                        left: scales.x(openReadingX) - box.left + 5 + s.col * THEME_READING_CELL.w,
                                         top: s.y - box.top, transform: "translateY(-50%)",
                                         color: lit ? "var(--text-primary)" : "var(--text-secondary)",
                                         fontWeight: lit ? 700 : 400,
                                     }}>
                                     <span style={labelDot(themeColorOf(s.item.code))} />
-                                    <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(s.item.y)}</span>
+                                    {/* 앞 = 뷰 값(타점 대비 %p), 괄호 = 전일 종가 대비 절대 %(사용자 확정 병기). */}
+                                    <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(s.item.y)}({fmtPct(s.item.y + themeOverlay.baseRate)})</span>
                                     {s.item.name}
                                 </div>
                             );
@@ -1054,7 +978,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             return (
                                 <button key={`tl-${l.code}`}
                                     onMouseEnter={() => setHoveredTheme([l.code])} onMouseLeave={() => setHoveredTheme(null)}
-                                    title={`${l.name} ${fmtPct(l.at.y)} — 올리면 그 선만 또렷해진다`}
+                                    title={`${l.name} 타점 대비 ${fmtPct(l.at.y)}${themeOverlay ? ` (전일比 ${fmtPct(l.at.y + themeOverlay.baseRate)})` : ""} — 올리면 그 선만 또렷해진다`}
                                     style={{
                                         ...chip, left: box.left - 4, top: l.labelY - box.top, transform: "translate(-100%, -50%)",
                                         maxWidth: box.left - 8, overflow: "hidden",
@@ -1110,30 +1034,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     {labelOf(s, pl.dotFirst)}
                                 </button>
                             );
-                        })}
-                        {/* 타점 마커 칩(분봉) — ▾시각. 차트 라벨과 같은 문법: 클릭=이동·선택, Ctrl=다중, 우클릭=**타점** 태그,
-                            뭉치면 ▾N 뱃지 → 목록. 마커 호버는 그 차트 선도 켠다(어느 경로의 타점인지 보이게). */}
-                        {markerClusters.map((c) => {
-                            const left = c.x - box.left;
-                            const top = c.y - box.top;
-                            if (c.members.length > 1) {
-                                return (
-                                    <button key={`m${c.x}|${c.y}`} onClick={(e) => setPointBadge({ x: e.clientX, y: e.clientY, members: c.members })}
-                                        title={`타점 ${c.members.length}개 뭉침 — 눌러서 목록`}
-                                        style={{ ...chip, ...markerChipPos(left, top), ...badgeChip }}>
-                                        ▾{c.members.length}
-                                    </button>
-                                );
-                            }
-                            const m = markerByPk.get(c.members[0]);
-                            if (!m) return null;
-                            return markerChip(m, left, top);
-                        })}
-                        {/* 선택된 마커는 묶음 밖 — 언제나 그린다(차트 라벨과 같은 이유). */}
-                        {[...selectedPks].map((pk) => {
-                            const m = markerByPk.get(pk);
-                            if (!m) return null;
-                            return markerChip(m, scales.x(m.x) - box.left, scales.y(m.y) - box.top);
                         })}
                         {/* 선택·호버 라벨은 묶음 밖 — 언제나 그린다. ⚠ 호버 핸들러 필수: 라벨이 이 블록으로 옮겨
                             그려질 때 원래 엘리먼트가 언마운트라 mouseleave 를 안 쏜다(없으면 호버가 영영 안 풀린다). */}
@@ -1196,30 +1096,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 </AnchoredPopover>
             )}
 
-            {/* 뭉친 마커의 타점 목록 — 행 호버 = 그 차트 선이 켜진다. */}
-            {pointBadge && (
-                <AnchoredPopover anchor={pointBadge} onClose={() => setPointBadge(null)} minWidth={190} padding={0} placement="beside" offset={6}>
-                    <MenuLabel>{pointBadge.members.length}개 타점</MenuLabel>
-                    <div style={{ maxHeight: 260, overflowY: "auto" }}>
-                        {pointBadge.members.map((pk) => {
-                            const m = markerByPk.get(pk);
-                            if (!m) return null;
-                            return (
-                                <div key={pk} onMouseEnter={() => setHovered(m.s.key)} onMouseLeave={() => setHovered(null)}>
-                                    <MenuItem onClick={() => { onMarkerClick(m, { ctrlKey: false, metaKey: false }); setPointBadge(null); }}>
-                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{m.ref.time.slice(0, 5)}</span>
-                                            <span>{nameOf(m.ref.stockCode)}</span>
-                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtDate(m.ref.date)}</span>
-                                        </span>
-                                    </MenuItem>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </AnchoredPopover>
-            )}
-
             {/* 거터에 이름을 못 단 테마 종목들 — 등락률 순 목록. 행에 손을 올리면 그 선이 켜진다. */}
             {themeBadge && themeOverlay && (
                 <AnchoredPopover anchor={themeBadge} onClose={() => setThemeBadge(null)} minWidth={190} padding={0} placement="beside" offset={6}>
@@ -1234,7 +1110,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                                             <span style={{ width: 6, height: 6, borderRadius: 3, background: themeColorOf(code), flexShrink: 0 }} />
                                             <span>{l.name}</span>
-                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.points[0].y)}</span>
+                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.points[0].y)}({fmtPct(l.points[0].y + themeOverlay.baseRate)})</span>
                                         </span>
                                     </MenuItem>
                                 </div>
@@ -1273,7 +1149,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         </span>
                     );
                 })()}
-                {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·타점 정규화(선 1 = 타점 1, 원점 이후 점선=미래)"} · 세로 = % · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 점 클릭 = 값 붙잡기 · 더블클릭 원위치
+                {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 점 클릭 = 값 붙잡기 · 더블클릭 원위치
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
                 {themeOverlay && themeOverlay.lines.length > 0 && (
                     <span style={{ color: "var(--text-secondary)" }}> · 테마 {themeOverlay.lines.length}선(분당 종가)</span>
@@ -1364,8 +1240,6 @@ const badgeChip: CSSProperties = {
     border: "1px solid var(--border-subtle)", color: "var(--text-secondary)", textShadow: "none",
 };
 const labelDot = (color: string): CSSProperties => ({ width: 4, height: 4, borderRadius: 2, background: color, flexShrink: 0 });
-/** 마커 칩 자리 — 점 **위**(경로의 그 점을 안 가리게 손잡이 반경 밖으로 띄운다). */
-const markerChipPos = (left: number, top: number): CSSProperties => ({ left, top: top - LABEL_GAP, transform: "translate(-50%, -100%)" });
 /** 선택된 라벨만 상자를 되받는다 — 클릭이 실제로 먹었다는 신호가 색만으로는 약하다. */
 const selectedChip = (color: string): CSSProperties => ({
     background: "var(--bg-secondary)", border: `1px solid ${color}`, borderRadius: 3,

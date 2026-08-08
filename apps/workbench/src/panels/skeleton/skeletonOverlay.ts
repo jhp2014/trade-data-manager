@@ -32,19 +32,26 @@ export interface NormalizedSkeleton {
     points: { x: number; y: number; synthetic?: boolean }[];
     /** 기준 가격 — **같은 % 공간으로 다른 가격을 끌어오는 환산 계수**(기준선·D선을 얹을 때). */
     basePrice: number;
-    /** 기준 피벗의 원 t — 벽시계 값(타점 시각 등)을 이 골격의 x 로 옮길 때 뺀다. 절대 배치면 0. */
+    /**
+     * y 공간의 평행이동량(%) — 가격 → y 환산은 언제나 `pct(price, basePrice) − baseRate` 다.
+     * 차트 단위(일봉)는 앵커 피벗 자신이 원점이라 0. 타점 단위는 **전일 종가 대비 %p 공간**(사용자 확정)
+     * 이라 r_앵커(t₀). 절대값 복원이 이 상수 하나다: **전일 종가 대비 % = y + baseRate**.
+     */
+    baseRate: number;
+    /** 기준 피벗의 원 t — 벽시계 값(타점 시각 등)을 이 골격의 x 로 옮길 때 뺀다. */
     baseT: number;
 }
 
-/** 차트 단위 선(일봉 정규화·분봉 절대) — key = 차트키. */
+/** 차트 단위 선(일봉 정규화) — key = 차트키. */
 export interface ChartSkeleton extends NormalizedSkeleton {
     kind: "chart";
 }
 
 /**
- * 타점 단위 골격 — 분봉 정규화 뷰의 선 하나 = **타점 하나**(사용자 확정: 골격 1 + 타점 3 → 선 3개).
+ * 타점 단위 골격 — 분봉 뷰의 선 하나 = **타점 하나**(사용자 확정: 골격 1 + 타점 3 → 선 3개).
  * 자기 시각의 경로 피벗이 원점(0,0)이다: 과거는 왼쪽 실선, **미래(그 시각 이후)는 오른쪽 점선** —
  * "그 타점에 선 눈"으로 여러 상황을 겹친다. key 는 타점키(pk)라 선택·태그가 타점 문법을 그대로 탄다.
+ * y 공간은 전일 종가 대비 %p 차이(pointSkeletons 주석) — 절대값은 baseRate·baseT 로 복원한다.
  */
 export interface PointSkeleton extends NormalizedSkeleton {
     kind: "point";
@@ -66,13 +73,20 @@ export const minutesOf = (hms: string): number => Number(hms.slice(0, 2)) * 60 +
 /**
  * 차트 하나의 분봉 골격을 **타점마다** 재정규화한다. 타점 시각의 피벗은 합성 규칙("타점 종가 = 골격의 한 점")
  * 덕에 반드시 있다 — 없으면(방어) 그 타점은 지어내지 않고 건너뛴다. 피벗 2개 미만이면 골격이 아니다.
+ *
+ * ## y 는 자기 가격 대비 %가 아니라 **전일 종가 대비 %p 차이**다(사용자 확정)
+ * 절대 배치(전일 종가 대비 %)를 통째로 평행이동해 타점을 원점에 놓는 것 — 그래서 테마 선(등락률 공간)과
+ * **세로 간격이 그대로 보존**된다("내 종목 기준 테마가 어디에 있나"가 이 뷰의 질문이다). 자기 가격 대비 %로
+ * 재기저하면 그 간격이 무너지고, 절대값 복원도 선마다 다른 곱셈이 된다 — 지금은 상수 하나(y + baseRate)다.
+ * prevClose 없으면(전일 미수집) 분모가 없다 — 빈 배열(호출측이 결손으로 센다. 지어내지 않는다).
  */
 export function pointSkeletons(
     pivots: readonly SkeletonWirePivot[],
+    prevClose: number | undefined,
     pts: readonly { pk: string; time: string }[],
     chart: { key: string; stockCode: string; date: string },
 ): PointSkeleton[] {
-    if (pivots.length < 2) return [];
+    if (pivots.length < 2 || prevClose == null || prevClose <= 0) return [];
     const out: PointSkeleton[] = [];
     for (const p of pts) {
         const t0 = minutesOf(p.time);
@@ -80,6 +94,7 @@ export function pointSkeletons(
         if (idx < 0) continue;
         const base = pivots[idx];
         if (base.price <= 0) continue;
+        const baseRate = pct(base.price, prevClose);
         out.push({
             kind: "point",
             key: p.pk,
@@ -87,10 +102,11 @@ export function pointSkeletons(
             stockCode: chart.stockCode,
             date: chart.date,
             time: p.time,
-            basePrice: base.price,
+            basePrice: prevClose,
+            baseRate,
             baseT: base.t,
             splitIdx: idx,
-            points: pivots.map((v) => ({ x: v.t - base.t, y: pct(v.price, base.price), ...(v.synthetic ? { synthetic: true } : {}) })),
+            points: pivots.map((v) => ({ x: v.t - base.t, y: pct(v.price, prevClose) - baseRate, ...(v.synthetic ? { synthetic: true } : {}) })),
         });
     }
     return out;
@@ -121,29 +137,9 @@ export function normalizeSkeleton(
         kind: "chart",
         chartKey: owner.key,
         basePrice: base.price,
+        baseRate: 0,
         baseT: base.t,
         points: pivots.map((p) => ({ x: p.t - base.t, y: pct(p.price, base.price), ...(p.synthetic ? { synthetic: true } : {}) })),
-    };
-}
-
-/**
- * 절대 배치 — 정규화 없이 **벽시계 x·전일 종가 대비 % y**. 분봉 골격 전용(장중 경로를 분봉 차트 보듯).
- * 앵커 정규화와 달리 골격끼리 시간이 정렬되지 않는 대신, "몇 시에 몇 %였나"가 그대로 남는다.
- * prevClose 없으면(전일 미수집) null — 분모를 지어내지 않는다.
- */
-export function absoluteSkeleton(
-    pivots: readonly SkeletonWirePivot[],
-    prevClose: number | undefined,
-    owner: { key: string; stockCode: string; date: string },
-): ChartSkeleton | null {
-    if (pivots.length < 2 || prevClose == null || prevClose <= 0) return null;
-    return {
-        ...owner,
-        kind: "chart",
-        chartKey: owner.key,
-        basePrice: prevClose,
-        baseT: 0,
-        points: pivots.map((p) => ({ x: p.t, y: pct(p.price, prevClose), ...(p.synthetic ? { synthetic: true } : {}) })),
     };
 }
 
@@ -193,15 +189,6 @@ export function trimmedBounds(items: readonly NormalizedSkeleton[], q: number): 
 }
 
 /**
- * 절대 뷰의 초기 프레임(사용자 확정 — LWC 차트식 고정 창): x = 데이터 범위 ±15분 패딩, y = **−5%~+30%**.
- *
- * 분위수 트리밍이 아니라 상수 창인 이유: 절대 뷰는 "몇 시에 몇 %였나"를 분봉 차트 보듯 읽는 화면이라,
- * 프레임이 데이터를 따라 출렁이면 같은 +10%가 매번 다른 높이에 선다. y 를 상승 쪽으로 치우친 건 관심
- * 대상이 상승 경로이기 때문. 창 밖 이상치는 확대·이동으로 닿고, 원위치(리셋)가 이 기본으로 돌아온다.
- */
-export const ABS_FRAME = { padMinutes: 15, minY: -5, maxY: 30 } as const;
-
-/**
  * 일봉 정규화 뷰의 기본 창(사용자 확정 — 상수): **뒤로 60일 · 앞으로 10일 · −60%~+40%**.
  * 데이터에서 뽑지 않는 이유는 절대 뷰와 같다 — 필터를 바꿔도 같은 되돌림이 같은 크기로 서야 비교가 된다.
  * 앵커를 첫 점으로 뒤집으면 시간이 앞으로 퍼지므로 x 창도 뒤집는다(관심 쪽이 넓은 쪽).
@@ -214,9 +201,10 @@ export const dailyFrame = (anchor: SkeletonAnchor): OverlayBounds =>
         : { minX: -DAILY_FRAME.forward, maxX: DAILY_FRAME.back, minY: DAILY_FRAME.minY, maxY: DAILY_FRAME.maxY };
 
 /**
- * 분봉 타점 정규화 뷰의 기본 창(사용자 확정 — 일봉과 같은 상수 창): **타점 이전 60분 · 이후 10분 · ±20%**.
- * 이 뷰의 관심사가 "타점 이전에 무슨 일이 있었나"라 과거(왼쪽)가 창의 대부분을 차지한다.
- * 데이터에서 뽑지 않는 이유는 일봉·절대 뷰와 같다 — 필터를 바꿔도 같은 움직임이 같은 크기로 서야 비교가 된다.
+ * 분봉 타점 정규화 뷰의 기본 창(사용자 확정 — 일봉과 같은 상수 창): **타점 이전 60분 · 이후 10분 · ±20%p**
+ * (y 는 전일 종가 대비 %p 차이 공간). 이 뷰의 관심사가 "타점 이전에 무슨 일이 있었나"라 과거(왼쪽)가
+ * 창의 대부분을 차지한다. 데이터에서 뽑지 않는 이유는 일봉 뷰와 같다 — 필터를 바꿔도 같은 움직임이
+ * 같은 크기로 서야 비교가 된다.
  */
 export const POINT_FRAME = { back: 60, forward: 10, minY: -20, maxY: 20 } as const;
 
@@ -230,15 +218,6 @@ export function pointUnitFrame(items: readonly NormalizedSkeleton[], q: number, 
     if (!includeFuture) return base;
     const t = trimmedBounds(items, q);
     return t ? { ...base, maxX: Math.max(base.maxX, t.maxX), maxY: Math.max(base.maxY, t.maxY) } : base;
-}
-
-export function absoluteFrame(items: readonly NormalizedSkeleton[]): OverlayBounds | null {
-    if (items.length === 0) return null;
-    let minX = Infinity;
-    let maxX = -Infinity;
-    for (const s of items) for (const p of s.points) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; }
-    if (!Number.isFinite(minX)) return null;
-    return { minX: minX - ABS_FRAME.padMinutes, maxX: maxX + ABS_FRAME.padMinutes, minY: ABS_FRAME.minY, maxY: ABS_FRAME.maxY };
 }
 
 /**
