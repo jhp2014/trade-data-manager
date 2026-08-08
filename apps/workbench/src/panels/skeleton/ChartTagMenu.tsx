@@ -7,7 +7,7 @@
 // 채운다** — 부분 상태에서 한 번 누르면 "일단 다 붙는다"(그게 무리를 만들던 손의 의도다).
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createTag } from "../../api/tags.js";
+import { createTag, type Tag } from "../../api/tags.js";
 import { tagsQuery } from "../../api/queries.js";
 import { useTags } from "../../lib/useTags.js";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
@@ -48,6 +48,10 @@ export function BulkTagMenu<T>({ anchor, targets, hasTag, toggle, label, onClose
         mutationFn: (name: string) => createTag(name),
         // 새 태그는 만들자마자 대상 전부에 붙인다 — "만들기"를 누른 의도가 곧 부착이다.
         onSuccess: (tag) => {
+            // 사전 캐시에 먼저 심는다(이름순 = 서버 정렬) — 심기 전에 토글하면 낙관적 부착 정렬이
+            // 이름을 못 찾아 id 기준으로 끼워지고, refetch 때 칩 자리가 한 번 튄다(useTags.nameOf 폴백의 짝).
+            qc.setQueryData<Tag[]>(tagsQuery().queryKey, (cur) =>
+                cur && !cur.some((t) => t.id === tag.id) ? [...cur, tag].sort((a, b) => a.name.localeCompare(b.name)) : cur);
             for (const t of targets) toggle(t, tag.id, true);
             setQ("");
             void qc.invalidateQueries({ queryKey: tagsQuery().queryKey });

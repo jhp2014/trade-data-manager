@@ -65,13 +65,17 @@ export function useTags(): TagsView {
     const chartIndex = useMemo(() => buildChartTagIndex(chartAttachments), [chartAttachments]);
     const counts = useMemo(() => countByTag(attachments, chartAttachments), [attachments, chartAttachments]);
 
+    // 낙관적 삽입의 정렬 기준. 렌더 스냅숏(tagById)이 우선이되, **막 만든 태그**는 아직 거기 없다 —
+    // 생성 흐름(BulkTagMenu)이 사전 캐시에 먼저 심으므로 라이브 캐시를 폴백으로 봐야 id 정렬로 안 빠진다.
+    const nameOf = (id: string): string =>
+        tagById.get(id)?.name ?? qc.getQueryData<Tag[]>(tagsQuery().queryKey)?.find((t) => t.id === id)?.name ?? id;
+
     const attKey = tagAttachmentsQuery().queryKey;
     const toggleMut = useMutation({
         mutationKey: TOGGLE_KEY,
         mutationFn: ({ point, tagId, on }: { point: PointRef; tagId: string; on: boolean }) =>
             on ? attachTag(tagId, point) : detachTag(tagId, point),
         onMutate: ({ point, tagId, on }) => {
-            const nameOf = (id: string): string => tagById.get(id)?.name ?? id;
             qc.setQueryData<TagAttachment[]>(attKey, (cur) => applyTagToggle(cur ?? [], point, tagId, on, nameOf));
         },
         // 실패·성공 모두 마지막 한 건에서만 서버와 동기(연타 중엔 낙관적 상태 유지).
@@ -86,7 +90,6 @@ export function useTags(): TagsView {
         mutationFn: ({ chart, tagId, on }: { chart: ChartTagRef; tagId: string; on: boolean }) =>
             on ? attachChartTag(tagId, chart) : detachChartTag(tagId, chart),
         onMutate: ({ chart, tagId, on }) => {
-            const nameOf = (id: string): string => tagById.get(id)?.name ?? id;
             qc.setQueryData<ChartTagAttachment[]>(chartAttKey, (cur) => applyChartTagToggle(cur ?? [], chart, tagId, on, nameOf));
         },
         onSettled: () => {
