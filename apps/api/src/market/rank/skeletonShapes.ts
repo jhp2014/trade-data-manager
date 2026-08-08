@@ -11,7 +11,7 @@
 // 가 있기 때문인데, 여기 소비자는 화면 하나뿐이고 클라가 react-query 로 들고 있는다. 캐시를 붙이면 골격을
 // 하나 찍을 때마다 무효화 규칙을 또 하나 유지해야 하고, 그 규칙이 틀리면 **화면이 옛 그림을 보여준다** —
 // 굽는 비용(차트당 일봉 창 1회)보다 그 위험이 크다. 느려지면 그때 축과 같은 지문 방식으로 붙인다.
-import type { AxisDeps, ReviewPointReader, PricedPivot, BaselineLevel } from "@trade-data-manager/market";
+import type { AxisDeps, DailyCandleSnapshotReader, ReviewPointReader, PricedPivot, BaselineLevel } from "@trade-data-manager/market";
 import {
     candlePrice,
     chartKeyOf,
@@ -26,15 +26,6 @@ import type { SkeletonFeed, SkeletonWireEntry, SkeletonWireLevels } from "@trade
 
 /** (종목,날) 동시 읽기 상한 — 리졸버들과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
-
-/** 전일 종가 조회 창 — 직전 거래일이 명절 연휴 너머에 있어도 잡히는 여유(달력일). */
-const PREV_CLOSE_WINDOW_DAYS = 14;
-
-const isoMinusDays = (date: string, days: number): string => {
-    const d = new Date(`${date}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - days);
-    return d.toISOString().slice(0, 10);
-};
 
 /**
  * 해소 결과 맵 → 와이어 항목. 키는 리졸버가 만든 차트키(`종목|날짜`)를 되판다.
@@ -70,6 +61,8 @@ export interface SkeletonShapesDeps {
     /** 전 복기 타점 — 골격 모집단이 아니라 **선(levels) 범위의 절반**(타점만 있는 차트도 선을 갖는다). */
     points: ReviewPointReader;
     axisDeps: AxisDeps;
+    /** 전일 종가 전용 조회 — 종목별 "date 미만 최신 캔들"이라 거래정지가 몇 달이어도 잡힌다(창 없음). */
+    prevClose: Pick<DailyCandleSnapshotReader, "getPreviousCloses">;
 }
 
 export class SkeletonShapes {
@@ -112,18 +105,22 @@ export class SkeletonShapes {
         return { daily: toEntries(daily), minute: toEntries(minute, prevCloses), levels: toLevels(levels) };
     }
 
-    /** 분봉 골격 차트의 전일 종가(UN 수정주가) — 절대 배치 뷰의 분모. 없는 차트는 키가 없다(지어내지 않는다). */
+    /** 분봉 골격 차트의 전일 종가(UN 수정주가) — 절대 배치 뷰의 분모. 없는 차트는 키가 없다(지어내지 않는다).
+     *  날짜별 배치(getPreviousCloses = 코드별 date 미만 최신 1행) — 달력 창을 두면 장기 거래정지 종목이
+     *  조용히 빠진다(재개일 차트가 정확히 복기 대상이 되는 부류인데). */
     private async prevCloses(charts: ReadonlySet<string>): Promise<Map<string, number>> {
-        const out = new Map<string, number>();
-        await mapWithConcurrency([...charts], DAY_CONCURRENCY, async (key) => {
+        const codesByDate = new Map<string, string[]>();
+        for (const key of charts) {
             const [stockCode, date] = key.split("|");
-            const rows = await this.deps.axisDeps.adjDaily.getDailyCandles(stockCode, { from: isoMinusDays(date, PREV_CLOSE_WINDOW_DAYS), to: date });
-            // 창의 마지막 행이 당일일 수 있으므로 "date 미만의 마지막"을 찾는다.
-            for (let i = rows.length - 1; i >= 0; i--) {
-                if (rows[i].date >= date) continue;
-                const price = candlePrice(rows[i].un?.close);
-                if (price !== null) out.set(key, price);
-                break;
+            const list = codesByDate.get(date);
+            if (list) list.push(stockCode);
+            else codesByDate.set(date, [stockCode]);
+        }
+        const out = new Map<string, number>();
+        await mapWithConcurrency([...codesByDate], DAY_CONCURRENCY, async ([date, codes]) => {
+            for (const p of await this.deps.prevClose.getPreviousCloses(date, codes)) {
+                const price = candlePrice(p.unClose);
+                if (price !== null) out.set(`${p.stockCode}|${date}`, price);
             }
         });
         return out;

@@ -199,11 +199,14 @@ const curationProviders: Provider[] = [
         // 골격 좌표 — 계산 축과 **같은 재료·다른 결과**(수치 하나가 아니라 피벗 좌표 그대로). 겹쳐 그리기용.
         // 캐시 없음(SkeletonShapes 주석) — 축이 파일 캐시를 갖는 것과 갈리는 지점이다.
         provide: SKELETON_SHAPES,
-        useFactory: (marketPool: Pool, curationPool: Pool): SkeletonShapes =>
-            new SkeletonShapes({
+        useFactory: (marketPool: Pool, curationPool: Pool): SkeletonShapes => {
+            const db = createDb(marketPool);
+            return new SkeletonShapes({
                 points: new DrizzleReviewPointRepository(createDb(curationPool)),
                 axisDeps: axisDepsOf(marketPool, curationPool),
-            }),
+                prevClose: new DrizzleDailyCandleRepository(db), // 절대 뷰 분모 — 종목별 직전 캔들 전용 조회
+            });
+        },
         inject: [MARKET_POOL, CURATION_POOL],
     },
     {
