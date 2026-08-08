@@ -242,6 +242,65 @@ export function absoluteFrame(items: readonly NormalizedSkeleton[]): OverlayBoun
 }
 
 /**
+ * 골격 선분 하나의 거래대금 — **분당 평균**(구간 합 ÷ 구간 분).
+ *
+ * 왜 구간 합이 아닌가: 60분 구간은 3분 구간보다 무조건 합이 크다. 합을 색에 실으면 그림이 "어디서
+ * 터졌나"가 아니라 "어디가 길었나"를 말하게 된다. 강도라야 사건이 보인다(합은 라벨이 말한다 —
+ * 정확히는 이 값의 수치를 라벨이 쓰고, 색은 같은 값의 상대 위치를 쓴다).
+ *
+ * 재료는 복기 파생의 `cumAmount`(누적, 원) — 인접 차분이 곧 분봉 거래대금이라 구간 합은 양 끝 차분 하나다.
+ * `cumAmount[i]` 가 i분 **포함** 누적이므로 [m0, m1] 구간의 합은 m0+1..m1 분의 몫이다(시작 분의 자기 봉은
+ * 직전 구간에 든다 — 구간끼리 겹치지 않게 하는 유일한 배분이다).
+ */
+export interface SegmentAmount {
+    /** 분당 평균 거래대금(원). 재료가 없으면 항목 자체가 null 이다(0으로 지어내지 않는다). */
+    perMinute: number;
+}
+
+/**
+ * 선 하나의 선분별 거래대금. 반환 길이 = points.length − 1, 못 구한 선분은 null.
+ * `absMinuteOf` 는 이 선의 x 를 벽시계 분으로 되돌린다(정규화 뷰는 x + baseT, 절대 뷰는 baseT=0 이라 항등).
+ */
+export function segmentAmounts(
+    s: NormalizedSkeleton,
+    minuteIndex: ReadonlyMap<number, number>,
+    cumAmount: readonly number[],
+): (SegmentAmount | null)[] {
+    const out: (SegmentAmount | null)[] = [];
+    for (let i = 0; i + 1 < s.points.length; i++) {
+        const m0 = s.points[i].x + s.baseT;
+        const m1 = s.points[i + 1].x + s.baseT;
+        const i0 = minuteIndex.get(m0);
+        const i1 = minuteIndex.get(m1);
+        const span = m1 - m0;
+        if (i0 == null || i1 == null || span <= 0) { out.push(null); continue; }
+        const sum = cumAmount[i1] - cumAmount[i0];
+        out.push(Number.isFinite(sum) ? { perMinute: sum / span } : null);
+    }
+    return out;
+}
+
+/** `times[]`(unix 초) → 벽시계 분 → 인덱스. 선분마다 훑지 않도록 종목당 한 번 만든다. */
+export function minuteIndexOf(times: readonly number[], toMinute: (unixSec: number) => number): Map<number, number> {
+    const m = new Map<number, number>();
+    for (let i = 0; i < times.length; i++) m.set(toMinute(times[i]), i);
+    return m;
+}
+
+/**
+ * 선분 값들의 색 정규화 기준 — **그 선 안에서의 최대**.
+ *
+ * 종목 간 절대 비교는 시총·유통주식이 달라 성립하지 않고, 이 색은 어차피 **짚은 하나에만** 붙으므로
+ * 화면에 동시에 두 종목이 서지 않는다. 그래서 "이 경로 안에서 어디가 제일 뜨거웠나"가 정직한 질문이고,
+ * 절대 수치는 라벨이 답한다. 전부 0이거나 값이 없으면 null — 분모를 지어내지 않는다.
+ */
+export function amountScaleOf(segs: readonly (SegmentAmount | null)[]): number | null {
+    let max = 0;
+    for (const s of segs) if (s && s.perMinute > max) max = s.perMinute;
+    return max > 0 ? max : null;
+}
+
+/**
  * 폴리라인을 x0 에서 과거(x ≤ x0)/미래(x ≥ x0)로 가른다 — 경계점은 **양쪽에 포함**(선이 끊겨 보이지 않게).
  * 타점 시각엔 합성 규칙 덕에 정확히 그 x 의 피벗이 있어 보간이 필요 없다(그게 이 함수의 호출측 계약이다 —
  * x0 에 점이 없으면 그 구간이 빈 채 갈라진다).

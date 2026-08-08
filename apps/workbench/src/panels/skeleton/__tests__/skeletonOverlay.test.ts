@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, segmentAmounts, minuteIndexOf, amountScaleOf } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -223,6 +223,47 @@ describe("splitAtX — 타점 이후 구간 가르기", () => {
         const { past, future } = splitAtX(pts, 0);
         expect(past).toHaveLength(1);
         expect(future).toHaveLength(4);
+    });
+});
+
+describe("segmentAmounts — 선분별 분당 평균 거래대금", () => {
+    // 09:15·09:30·10:30 세 피벗. 누적 거래대금이 분당 1억씩 오르다 09:30 이후 분당 10억으로 뛴다.
+    const times = Array.from({ length: 121 }, (_, i) => 555 + i); // 벽시계 분(테스트는 항등 변환)
+    const cumAmount = times.map((m) => (m <= 570 ? (m - 555) * 1e8 : 15 * 1e8 + (m - 570) * 10e8));
+    const index = minuteIndexOf(times, (v) => v);
+    const line = { key: "k", chartKey: "k", kind: "chart" as const, stockCode: "005930", date: "2026-08-05", basePrice: 100, baseT: 0, points: [{ x: 555, y: 0 }, { x: 570, y: 5 }, { x: 630, y: 20 }] };
+
+    it("구간 합 ÷ 구간 분 — 길이가 다른 두 구간이 강도로 비교된다(합이면 긴 쪽이 무조건 크다)", () => {
+        const segs = segmentAmounts(line, index, cumAmount);
+        expect(segs[0]).toEqual({ perMinute: 1e8 }); // 15분에 15억 → 1억/분
+        expect(segs[1]).toEqual({ perMinute: 10e8 }); // 60분에 600억 → 10억/분
+        // 뒤 구간이 4배 길지만 강도는 10배 — "어디가 길었나"가 아니라 "어디가 터졌나"가 나온다.
+    });
+
+    it("타점 정규화 좌표(x 는 상대분)도 baseT 를 더해 벽시계로 되돌린다", () => {
+        const rel = { ...line, baseT: 570, points: [{ x: -15, y: -5 }, { x: 0, y: 0 }, { x: 60, y: 15 }] };
+        expect(segmentAmounts(rel, index, cumAmount)).toEqual(segmentAmounts(line, index, cumAmount));
+    });
+
+    it("분봉에 그 시각이 없으면 그 선분만 null — 0으로 지어내지 않는다", () => {
+        const gap = { ...line, points: [{ x: 555, y: 0 }, { x: 9999, y: 5 }] };
+        expect(segmentAmounts(gap, index, cumAmount)).toEqual([null]);
+    });
+
+    it("길이 0 구간(같은 시각)은 null — 0으로 나누지 않는다", () => {
+        const same = { ...line, points: [{ x: 570, y: 0 }, { x: 570, y: 0 }] };
+        expect(segmentAmounts(same, index, cumAmount)).toEqual([null]);
+    });
+});
+
+describe("amountScaleOf — 색 정규화 기준(그 선 안의 최대)", () => {
+    it("최대값을 낸다 — 종목 간 비교가 아니라 '이 경로 안에서 어디가 제일 뜨거웠나'", () => {
+        expect(amountScaleOf([{ perMinute: 3 }, null, { perMinute: 9 }])).toBe(9);
+    });
+
+    it("값이 없거나 전부 0이면 null — 분모를 지어내지 않는다(색을 안 칠한다)", () => {
+        expect(amountScaleOf([])).toBeNull();
+        expect(amountScaleOf([null, { perMinute: 0 }])).toBeNull();
     });
 });
 

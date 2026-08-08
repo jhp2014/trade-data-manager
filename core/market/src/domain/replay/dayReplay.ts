@@ -19,6 +19,13 @@ export const RAW_DAILY_LOOKBACK_MONTHS = 9;
 const KST_OFFSET_SEC = 9 * 3600;
 
 /**
+ * 저장된 unix(UTC) 초 → KST 자정 기준 분. `times[]` 를 시각(분)으로 되돌리는 **유일한 자**다 —
+ * 골격 겹쳐 그리기가 피벗 시각(벽시계 분)으로 분봉 인덱스를 찾을 때도 이 함수를 탄다.
+ * 손으로 다시 쓰면 오프셋이 두 곳에 생기고, 한쪽만 고치는 날 그림이 조용히 한 시간 밀린다.
+ */
+export const minuteOfDayOf = (unixSec: number): number => Math.floor(((unixSec + KST_OFFSET_SEC) % 86400) / 60);
+
+/**
  * 당일 EOD 일봉 파생(불변) — 수정주가 일봉 바를 같은 시장 직전 종가 대비 %로. **조정 불변**이라 파일에 굽는다
  * (자가치유가 close·prevClose 를 같은 계수로 곱해도 비율 보존). amount(거래대금)는 원.
  */
@@ -202,7 +209,7 @@ export function derivedMinutesOf(
     const mins: DerivedMinute[] = new Array(Math.max(0, n));
     for (let i = 0; i < n; i++) {
         mins[i] = {
-            minuteOfDay: Math.floor(((md.times[i] + KST_OFFSET_SEC) % 86400) / 60),
+            minuteOfDay: minuteOfDayOf(md.times[i]),
             openPct: md.minuteOpen[i],
             highPct: md.minuteHigh[i],
             closePct: md.rate[i],

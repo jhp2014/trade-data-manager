@@ -1,11 +1,14 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
+import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import {
     dailyFrame, pointUnitFrame, absoluteFrame, splitAtX, polylinePoints, pct, minutesOf,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect,
+    segmentAmounts, minuteIndexOf, amountScaleOf,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData, type OverlayMarker } from "./skeleton/useOverlayData.js";
+import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
@@ -15,7 +18,8 @@ import { pointKeyOf, parsePointKey, chartKeyOf, type PointRef } from "../lib/poi
 import { BulkTagMenu } from "./skeleton/ChartTagMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
-import { ACTIVE, HOVER, PRICE_LINE, seriesColor, tagColor } from "../styles/palette.js";
+import { ACTIVE, HOVER, PRICE_LINE, amountColor, seriesColor, tagColor } from "../styles/palette.js";
+import { fmtEok } from "../lib/format.js";
 
 // 골격 겹쳐 그리기 — 차트를 골격으로 축약해 **한 화면에서 서로 비교**하는 주 작업면.
 //
@@ -202,6 +206,28 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     // 상세(피벗 값·기준선·타점 세로선)를 받을 "지금 조사 중인 하나" — 호버 우선, 없으면 단일 선택.
     const inspectKey = hovered ?? (effSelected.size === 1 ? [...effSelected][0] : null);
+
+    // ── 구간 거래대금(분봉 전용) — 선분마다 분당 평균을 색에 싣는다.
+    //
+    // **대상이 inspectKey 가 아니라 단일 선택인 이유**: 이 값의 재료는 그날 복기 파생 한 벌(압축 해제 ~15MB)이라
+    // 날짜가 바뀔 때마다 왕복이 생긴다. 호버는 라벨 위를 훑기만 해도 날짜가 계속 갈리는 손짓이라 그걸 방아쇠로
+    // 삼으면 스치는 것마다 15MB 를 당긴다. 선택은 **누른** 것이라 왕복이 클릭 수만큼으로 묶인다.
+    // (피벗 값·기준선 같은 공짜 상세는 지금처럼 호버가 이긴다 — 비용이 다르면 규칙도 갈려야 한다.)
+    const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
+    const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
+    const amountTarget = useMemo(() => {
+        if (isDaily || !showAmount || effSelected.size !== 1) return null;
+        return byKey.get([...effSelected][0]) ?? null;
+    }, [isDaily, showAmount, effSelected, byKey]);
+    const snapQ = useDaySnapshot(amountTarget?.date ?? null);
+    const amounts = useMemo(() => {
+        if (!amountTarget || !snapQ.data) return null;
+        const st = snapQ.data.stocks.find((x) => x.code === amountTarget.stockCode);
+        if (!st) return null; // 그날 유니버스 밖(거래대금·등락률 조건 미달) — 없는 값을 0으로 지어내지 않는다
+        const segs = segmentAmounts(amountTarget, minuteIndexOf(st.times, minuteOfDayOf), st.cumAmount);
+        const scale = amountScaleOf(segs);
+        return scale === null ? null : { key: amountTarget.key, segs, scale };
+    }, [amountTarget, snapQ.data]);
     // 조사 중인 골격의 **피벗 하나**에 손이 올라간 상태 — 그 점의 축 값(기간·%)만 굵게 키우고 나머지는 물러난다.
     // 값이 여럿일 때 "어느 숫자가 이 점 것이냐"를 눈으로 잇는 유일한 장치라 선 호버(key)와 별개 상태다.
     const [hoveredPivot, setHoveredPivot] = useState<{ key: string; i: number } | null>(null);
@@ -427,6 +453,21 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     <TextToggle active={showLabels} onClick={() => setShowLabels(!showLabels)} title="앵커 반대쪽 끝에 종목·날짜 — 뭉치면 개수 뱃지, 눌러서 목록">라벨</TextToggle>
                     <TextToggle active={locked !== null} onClick={() => setLocked(locked ? null : autoBounds)} title="지금 척도를 붙든다 — 필터를 좁혀도 척도가 안 움직여 전후가 비교된다">척도 고정</TextToggle>
                 </ControlBox>
+                {/* 거래대금은 **하나를 선택했을 때만** — 재료가 그날치 한 벌이라 호버로 끌면 스칠 때마다 왕복이다. */}
+                {!isDaily && (
+                    <ControlBox label="거래대금">
+                        <TextToggle active={showAmount} onClick={() => setShowAmount(!showAmount)}
+                            title="선택한 골격 하나의 선분을 구간 분당 평균 거래대금으로 칠한다 — 진할수록 그 구간이 뜨거웠다"
+                            activeColor={amountColor(1)}>
+                            색
+                        </TextToggle>
+                        <TextToggle active={showAmountLabels} onClick={() => setShowAmountLabels(!showAmountLabels)}
+                            title="선분마다 분당 평균 거래대금 수치 — 색은 상대(어디가), 이 숫자는 절대(얼마나)"
+                            activeColor={amountColor(1)}>
+                            값
+                        </TextToggle>
+                    </ControlBox>
+                )}
                 <span style={count}>
                     {lines.length}개
                     {population > lines.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
@@ -514,6 +555,21 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 타점까지가 판단, 이후는 결과라는 같은 문장이다. */}
                                             {(() => {
                                                 const splitX = isPointUnit ? 0 : splitXByChart.get(s.key);
+                                                // 거래대금이 붙은 선은 **선분마다 색이 달라** 한 폴리라인으로 못 그린다.
+                                                // 역할색(선택 하늘)을 잃지 않는 건 글로우(위의 넓은 밑선)가 이미 "붙잡혔다"를
+                                                // 말하기 때문 — 그래서 선 색을 통째로 값에 내줄 수 있다(사용자 확정).
+                                                if (amounts && amounts.key === s.key) {
+                                                    return s.points.slice(0, -1).map((p, i) => {
+                                                        const q = s.points[i + 1];
+                                                        const seg = amounts.segs[i];
+                                                        return (
+                                                            <line key={`sg${i}`} x1={scales.x(p.x)} y1={scales.y(p.y)} x2={scales.x(q.x)} y2={scales.y(q.y)}
+                                                                stroke={seg ? amountColor(seg.perMinute / amounts.scale) : color}
+                                                                strokeWidth={v.width + 1} strokeLinecap="round"
+                                                                strokeDasharray={splitX != null && p.x >= splitX ? "4 4" : undefined} />
+                                                        );
+                                                    });
+                                                }
                                                 if (splitX == null) return <polyline points={pts} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />;
                                                 const { past, future } = splitAtX(s.points, splitX);
                                                 return (
@@ -523,6 +579,20 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     </>
                                                 );
                                             })()}
+                                            {/* 구간 거래대금 값 — 선분 가운데. 색은 상대(어디가 터졌나), 이 숫자는 절대(얼마나)다.
+                                                기본 꺼짐: 선분마다 붙어서 피벗 좌표 라벨과 겹치면 금세 지저분해진다(사용자 지적). */}
+                                            {showAmountLabels && amounts && amounts.key === s.key && s.points.slice(0, -1).map((p, i) => {
+                                                const seg = amounts.segs[i];
+                                                if (!seg) return null;
+                                                const q = s.points[i + 1];
+                                                return (
+                                                    <text key={`sa${i}`} x={(scales.x(p.x) + scales.x(q.x)) / 2} y={(scales.y(p.y) + scales.y(q.y)) / 2 - 4} textAnchor="middle"
+                                                        stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke"
+                                                        style={{ fontSize: 9, fill: amountColor(seg.perMinute / amounts.scale), fontVariantNumeric: "tabular-nums" }}>
+                                                        {fmtEok(seg.perMinute)}/분
+                                                    </text>
+                                                );
+                                            })}
                                             {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. 손이 올라간 점은 커진다. */}
                                             {(lit || dotsForAll) && s.points.map((p, i) => {
                                                 const r = pivotHoverOf(s.key, i) === "on" ? 5 : lit ? 3 : 2;

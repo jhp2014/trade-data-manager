@@ -95,3 +95,33 @@ export const IGNORED_CANDLE = "#6b7280"; // 무시 캔들 마커 — 회색이 �
 export const SKELETON = "#65a30d";
 export const CHART_LABEL = "#a0a0a0"; // 차트 툴팁의 라벨 회색(툴팁 배경 위 — 본문 --text-tertiary 와 다름)
 export const CHART_VALUE = "#d4d4d8"; // 차트 툴팁의 값 회색(라벨보다 밝게)
+
+// ── 거래대금 강도(골격 선분) — **순차 램프**: 흐린 회자주 → 선명한 자홍.
+//
+// 무지개(hue 순환)를 안 쓴 이유: 빨강이 큰지 파랑이 큰지 정하는 관습이 없어 **순서가 안 읽히고**,
+// 값이 비슷한 두 선분에 전혀 다른 색을 줘서 **없는 경계를 만든다**. 여기서 답해야 하는 질문은
+// "어디가 더 터졌나"라 순서가 보이는 스케일이라야 한다.
+//
+// 한 색상(자홍) 안에서 **채도만** 올리는 램프인 것도 의도다. 명도를 끝까지 밀면 한쪽 끝이 어느 한
+// 테마에서 배경에 묻는다(밝은 노랑은 흰 배경에서, 짙은 남색은 검은 배경에서). 세 정점의 명도를
+// 중간대에 묶어 라이트·다크 둘 다에서 읽힌다.
+//
+// 자홍인 이유: 이 화면에 이미 찬 자리를 피한다 — ACTIVE 하늘 · HOVER 앰버 · PIN/GUIDE 보라 ·
+// FAIL/ALARM 빨강 · PRICE_LINE 청록 · SKELETON 황록. 역할(선택·호버)은 글로우와 굵기가 지므로
+// 이 색은 온전히 값의 몫이다.
+const AMOUNT_RAMP: [number, number, number][] = [
+    [133, 123, 129], // 0.0 — 거의 무채색(조용한 구간)
+    [181, 72, 127], // 0.5
+    [225, 29, 116], // 1.0 — 터진 구간
+];
+
+/** 강도 0..1 → 램프 색. 범위 밖은 끝점으로 클램프(정규화 실패를 색으로 지어내지 않게). */
+export function amountColor(frac: number): string {
+    const t = Math.max(0, Math.min(1, frac));
+    const seg = t < 0.5 ? 0 : 1;
+    const u = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+    const a = AMOUNT_RAMP[seg];
+    const b = AMOUNT_RAMP[seg + 1];
+    const mix = (i: number): number => Math.round(a[i] + (b[i] - a[i]) * u);
+    return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`;
+}
