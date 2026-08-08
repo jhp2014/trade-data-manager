@@ -42,6 +42,8 @@ export interface OverlayData {
     markerByPk: Map<string, OverlayMarker>;
     /** 필터 전 모집단 수 — 헤더의 "N개 / M" 분모. */
     population: number;
+    /** 절대 뷰에서 전일 종가 미수집으로 **못 그린** 차트 수 — 필터로 빠진 것과 구분해 보여야 한다. */
+    missingPrevClose: number;
     levelsByChart: Map<string, SkeletonWireLevel[]>;
     /** 차트키 → 그 차트의 저장 타점들(시간 오름차순). 필터와 무관한 전체(선은 사실을 그린다). */
     pointsByChart: Map<string, ReviewPointListItem[]>;
@@ -128,10 +130,13 @@ export function useOverlayData(
     }, [isDaily, filterActive, pointOnlyActive, r.points, dateRanges, tagExpr, feedQ.data, tagsView, pointsByChart]);
 
     // 차트 단위 선(일봉·분봉 절대) — 타점 단위 뷰에선 비어 있다(선의 모집단이 다르다).
-    const shapes = useMemo<ChartSkeleton[]>(() => {
+    // 절대 뷰의 결손(전일 종가 미수집 → 분모 없음)은 **세어서 따로 낸다** — 조용히 빼면 "N개 / M"의
+    // 차이가 전부 필터 탓으로 보인다(결손은 수집으로 고칠 일이지 필터를 의심할 일이 아니다).
+    const [shapes, missingPrevClose] = useMemo<[ChartSkeleton[], number]>(() => {
         const feed = feedQ.data;
-        if (!feed || isPointUnit) return [];
+        if (!feed || isPointUnit) return [[], 0];
         const out: ChartSkeleton[] = [];
+        let missing = 0;
         for (const e of isDaily ? feed.daily : feed.minute) {
             const key = chartKey(e);
             if (chartAllowed && !chartAllowed.has(key)) continue;
@@ -139,8 +144,9 @@ export function useOverlayData(
             const owner = { key, stockCode: e.stockCode, date: e.date };
             const n = isAbs ? absoluteSkeleton(e.pivots, e.prevClose, owner) : normalizeSkeleton(e.pivots, anchor, owner);
             if (n) out.push(n);
+            else if (isAbs) missing++; // 피드에 있는 골격이 절대 배치만 불가 = prevClose 결손
         }
-        return out;
+        return [out, missing];
     }, [feedQ.data, chartAllowed, onlyCharts, isDaily, isAbs, isPointUnit, anchor]);
 
     // 타점 단위 선(분봉 정규화) — 골격 하나를 타점마다 재정규화. 필터는 타점 알갱이(matchedPks)로 직접.
@@ -197,5 +203,5 @@ export function useOverlayData(
     }, [isAbs, shapes, pointsByChart, matchedPks]);
     const markerByPk = useMemo(() => new Map(markers.map((m) => [m.pk, m])), [markers]);
 
-    return { feedLoading: feedQ.isLoading, lines, markers, markerByPk, population, levelsByChart, pointsByChart, nameOf };
+    return { feedLoading: feedQ.isLoading, lines, markers, markerByPk, population, missingPrevClose, levelsByChart, pointsByChart, nameOf };
 }

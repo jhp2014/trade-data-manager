@@ -95,7 +95,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 태그 한 벌 — 태그 메뉴·발끝 표기(여기) + 차트 태그 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
     const tagsView = useTags();
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
-    const { feedLoading, lines, markers, markerByPk, population, levelsByChart, pointsByChart, nameOf } =
+    const { feedLoading, lines, markers, markerByPk, population, missingPrevClose, levelsByChart, pointsByChart, nameOf } =
         useOverlayData({ isDaily, isAbs, isPointUnit }, anchor, onlyCharts, tagsView);
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
@@ -127,6 +127,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     //    팝오버의 바깥클릭 감지가 그래프 위에서 안 뜨기 때문(제스처 콜백이 그 자리를 대신한다).
     const [badge, setBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     const closeBadge = useCallback(() => setBadge(null), []);
+    // 마커 뱃지 목록 — 차트 라벨 뱃지와 별개 상태(마커는 경로 위에 몰려 별개 격자를 쓴다). 선언을 badge 옆에
+    // 두는 이유: 아래 "뷰 전환 시 닫기" effect 가 셋을 한꺼번에 닫는다(상태와 소비가 떨어져 있으면 하나가 빠진다).
+    const [pointBadge, setPointBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     // 제스처 영역 — 아래 스트립=시간축, 왼쪽 스트립=% 축(모서리는 시간축 우선). 스트립에선 그 축만 확대된다.
     const regionOf = useCallback(
         (x: number, y: number): ZoomRegion => (y > box.top + box.height ? "x" : x < box.left ? "y" : "body"),
@@ -282,14 +285,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         }
         setTagMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${fmtDate(s.date)}` });
     }, [nameOf]);
+    // 선택 중 **이 패널에 실제로 있는** 차트 — 다른 골격 패널(일봉↔분봉)에서 만든 선택엔 여기 없는
+    // 차트가 섞일 수 있다. 헤더 버튼 숫자와 메뉴 대상이 같은 목록을 봐야 "차트 3 태그"가 2개만 여는 일이 없다.
+    const selectedCharts = useMemo(
+        () => (isPointUnit ? [] : [...effSelected].map((k) => byKey.get(k)).filter((s): s is Line => !!s)),
+        [isPointUnit, effSelected, byKey],
+    );
     const openTagMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
-        const charts = [...effSelected]
-            .map((k) => byKey.get(k))
-            .filter((s): s is Line => !!s)
-            .map((s) => ({ stockCode: s.stockCode, date: s.date }));
+        const charts = selectedCharts.map((s) => ({ stockCode: s.stockCode, date: s.date }));
         if (charts.length === 0) return;
         setTagMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${fmtDate(charts[0].date)}` : `선택 ${charts.length}개` });
-    }, [effSelected, byKey, nameOf]);
+    }, [selectedCharts, nameOf]);
     const openPointTagMenu = useCallback((points: PointRef[], label: string, ev: { clientX: number; clientY: number; preventDefault?: () => void }): void => {
         ev.preventDefault?.();
         if (points.length > 0) setTagMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points, label });
@@ -321,7 +327,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     useEffect(() => { setBadge(null); setBadgeHover(null); setPointBadge(null); }, [boundsKey, anchor, grain, minuteView]);
 
     // 마커 라벨 축약 — 차트 라벨과 **별개 격자**(마커는 경로 위에 몰려 있어 더 촘촘한 칸을 쓴다).
-    const [pointBadge, setPointBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     const markerClusters = useMemo(() => {
         if (!showLabels || !scales || markers.length === 0) return [];
         const anchors = markers
@@ -401,11 +406,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 <span style={count}>
                     {lines.length}개
                     {population > lines.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
+                    {/* 결손은 필터와 별도 표기 — "N/M 차이 = 필터"라는 읽기가 거짓이 되지 않게. */}
+                    {missingPrevClose > 0 && (
+                        <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — 절대 배치로 그릴 수 없는 차트(필터로 빠진 게 아님)"> · 결손 {missingPrevClose}</span>
+                    )}
                 </span>
                 {/* 차트 선택 손잡이는 차트 단위 뷰에서만 — 타점 단위 뷰의 문법은 아래 타점 버튼이다. */}
-                {!isPointUnit && effSelected.size > 0 && (
+                {selectedCharts.length > 0 && (
                     <button onClick={(e) => openTagMenuForSelection(e)} title="선택된 차트들에 태그 붙이기/떼기 — 그룹은 태그다" style={miniBtn}>
-                        차트 {effSelected.size} 태그
+                        차트 {selectedCharts.length} 태그
                     </button>
                 )}
                 {!isPointUnit && selectedKeys.size > 0 && (
