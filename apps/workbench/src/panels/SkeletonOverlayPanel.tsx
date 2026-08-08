@@ -867,28 +867,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     );
                                 })}
 
-                                {/* 피벗 손잡이 — 포인터를 받는 건 **조사 중인 골격 + 값을 붙잡아 둔 골격**의 점들뿐이다
-                                    (선은 여전히 순수 그림). 한두 벌뿐이라 뭉쳐서 못 겨냥하는 문제가 없다.
-                                    핀이 걸린 선까지 넣는 이유: 그 선을 떠난 뒤에도 값이 남는데 손잡이가 사라지면 **뗄 수가 없다**.
-                                    들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
-                                    클릭 = 그 점의 값 붙잡기/떼기(사용자 확정) — 여럿을 나란히 놓고 볼 수 있다. */}
-                                {[...new Set([...(inspectKey ? [inspectKey] : []), ...linesWithPins])].map((key) => {
-                                    const s = byKey.get(key);
-                                    if (!s) return null;
-                                    return s.points.map((p, i) => (p.x === 0 && p.y === 0 ? null : (
-                                        <circle key={`hit-${key}-${i}`} cx={scales.x(p.x)} cy={scales.y(p.y)} r={7} fill="transparent"
-                                            style={{ pointerEvents: "auto", cursor: "pointer" }}
-                                            onClick={() => togglePivot(s.key, i)}
-                                            onMouseEnter={() => { setHovered(s.key); setHoveredPivot({ key: s.key, i }); }}
-                                            onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }}>
-                                            <title>{`${fmtX(p.x, xUnit)} · ${fmtPct(p.y)} — 클릭해 값 ${pinnedPivots.has(pivotId(s.key, i)) ? "떼기" : "붙잡기"}`}</title>
-                                        </circle>
-                                    )));
-                                })}
-
                                 {/* 붙잡은 피벗의 세로선 — 테마 값을 펼치는 **손잡이**다. 올리면 그 시각의 테마 값이
                                     선 오른쪽에 펴진다(상시가 아니라 호버 중에만 — 30줄이 늘 떠 있으면 화면이 찬다).
-                                    보이는 선은 얇지만 히트 영역은 넓은 투명 선이 따로 받는다(1px 을 겨냥할 수는 없다). */}
+                                    보이는 선은 얇지만 히트 영역은 넓은 투명 선이 따로 받는다(1px 을 겨냥할 수는 없다).
+                                    ⚠ **피벗 손잡이보다 먼저** 그린다: SVG 는 나중에 그린 게 위라, 이 10px 투명 선이 뒤에
+                                    오면 자기 x 에 있는 피벗 점의 클릭을 통째로 삼킨다(핀을 찍고 나면 못 떼던 버그). */}
                                 {themeOverlay && pinnedMinutes.map((m) => {
                                     const x = scales.x(m);
                                     const open = openReadingMinute === m;
@@ -904,6 +887,26 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             </line>
                                         </g>
                                     );
+                                })}
+
+                                {/* 피벗 손잡이 — 포인터를 받는 건 **조사 중인 골격 + 값을 붙잡아 둔 골격**의 점들뿐이다
+                                    (선은 여전히 순수 그림). 한두 벌뿐이라 뭉쳐서 못 겨냥하는 문제가 없다.
+                                    핀이 걸린 선까지 넣는 이유: 그 선을 떠난 뒤에도 값이 남는데 손잡이가 사라지면 **뗄 수가 없다**.
+                                    들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
+                                    클릭 = 그 점의 값 붙잡기/떼기(사용자 확정) — 여럿을 나란히 놓고 볼 수 있다.
+                                    **맨 위에 그린다** — 위 세로선·아래 선들 어느 것도 이 손잡이를 가리면 안 된다. */}
+                                {[...new Set([...(inspectKey ? [inspectKey] : []), ...linesWithPins])].map((key) => {
+                                    const s = byKey.get(key);
+                                    if (!s) return null;
+                                    return s.points.map((p, i) => (p.x === 0 && p.y === 0 ? null : (
+                                        <circle key={`hit-${key}-${i}`} cx={scales.x(p.x)} cy={scales.y(p.y)} r={7} fill="transparent"
+                                            style={{ pointerEvents: "auto", cursor: "pointer" }}
+                                            onClick={() => togglePivot(s.key, i)}
+                                            onMouseEnter={() => { setHovered(s.key); setHoveredPivot({ key: s.key, i }); }}
+                                            onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }}>
+                                            <title>{`${fmtX(p.x, xUnit)} · ${fmtPct(p.y)} — 클릭해 값 ${pinnedPivots.has(pivotId(s.key, i)) ? "떼기" : "붙잡기"}`}</title>
+                                        </circle>
+                                    )));
                                 })}
 
                                 {/* 거래대금 숫자 — **선×세그먼트당 하나 → 화면 x 격자**로 솎아 살아남은 것들.
