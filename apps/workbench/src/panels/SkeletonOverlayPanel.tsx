@@ -56,10 +56,10 @@ const PAD_LEFT = { plain: 46, gutter: 100 };
 const DOT_BUDGET = 1200;
 /** 라벨 격자 한 칸(화면 px) — 라벨 하나가 차지하는 자리. 이보다 촘촘하면 뭉쳐서 개수 뱃지가 된다. */
 const LABEL_CELL = { w: 72, h: 14 };
-/** 라벨 칩과 끝점 사이 간격 — 피벗 손잡이(r=7) 밖에 서야 점 호버를 안 가로챈다. */
-const LABEL_GAP = 9;
-/** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. 괄호 절대값 병기만큼 넓다. */
-const THEME_READING_CELL = { w: 112, h: 12 };
+/** 라벨 칩과 끝점 사이 간격 — 배경 패딩(3px)을 더해도 피벗 손잡이(r=7) 밖에 서야 점 호버를 안 가로챈다. */
+const LABEL_GAP = 12;
+/** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. */
+const THEME_READING_CELL = { w: 84, h: 13 };
 /** 거터에 이름을 둘 테마 선의 최대 수(사용자 확정) — 넘치면 나머지는 개수 뱃지 하나로 묶인다. */
 const THEME_LABEL_CAP = 8;
 /** 거터 라벨의 세로 최소 간격(화면 px). */
@@ -545,12 +545,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     useEffect(() => { setPinnedPivots(new Set()); }, [anchor]);
 
     // 타점 단위 선은 시각까지 — `26.07.08 삼성전자 09:30`(같은 차트의 타점 여러 개가 선 여러 개로 선다).
+    // 시각이 tertiary 면 같은 종목의 타점끼리 구분이 안 잡혔다(사용자 지적) — 타점의 정체가 시각이라 굵게 세운다.
     const labelOf = (s: Line, dotFirst: boolean): JSX.Element => {
         const dot = <span style={labelDot(visualOf(s.key).color)} />;
         const text = (
             <span>
                 <span style={{ color: "var(--text-tertiary)" }}>{fmtDate(s.date)}</span> {nameOf(s.stockCode)}
-                {s.kind === "point" && <span style={{ color: "var(--text-tertiary)" }}> {s.time.slice(0, 5)}</span>}
+                {s.kind === "point" && <span style={{ color: "var(--text-secondary)", fontWeight: 700 }}> {s.time.slice(0, 5)}</span>}
             </span>
         );
         return dotFirst ? <>{dot}{text}</> : <>{text}{dot}</>;
@@ -948,17 +949,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             const lit = hoveredThemeSet?.has(s.item.code) ?? false;
                             return (
                                 <div key={`trl-${s.item.x}-${s.item.code}`}
-                                    title={`${s.item.name} · ${hmOf(s.item.x + themeOverlay.t0)} · 타점 대비 ${fmtPct(s.item.y)} · 전일比 ${fmtPct(s.item.y + themeOverlay.baseRate)}`}
+                                    title={`${s.item.name} · ${hmOf(s.item.x + themeOverlay.t0)} · 전일比 ${fmtPct(s.item.y + themeOverlay.baseRate)}`}
                                     style={{
-                                        ...chip, cursor: "default",
+                                        ...chip, ...labelBg, cursor: "default",
                                         left: scales.x(openReadingX) - box.left + 5 + s.col * THEME_READING_CELL.w,
                                         top: s.y - box.top, transform: "translateY(-50%)",
                                         color: lit ? "var(--text-primary)" : "var(--text-secondary)",
                                         fontWeight: lit ? 700 : 400,
                                     }}>
                                     <span style={labelDot(themeColorOf(s.item.code))} />
-                                    {/* 앞 = 뷰 값(타점 대비 %p), 괄호 = 전일 종가 대비 절대 %(사용자 확정 병기). */}
-                                    <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(s.item.y)}({fmtPct(s.item.y + themeOverlay.baseRate)})</span>
+                                    {/* 값은 **전일 종가 대비 %만**(사용자 확정) — 뷰 y(타점 대비 %p)는 교차선이 이미 답한다. */}
+                                    <span style={{ color: lit ? "var(--text-secondary)" : "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(s.item.y + themeOverlay.baseRate)}</span>
                                     {s.item.name}
                                 </div>
                             );
@@ -978,7 +979,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             return (
                                 <button key={`tl-${l.code}`}
                                     onMouseEnter={() => setHoveredTheme([l.code])} onMouseLeave={() => setHoveredTheme(null)}
-                                    title={`${l.name} 타점 대비 ${fmtPct(l.at.y)}${themeOverlay ? ` (전일比 ${fmtPct(l.at.y + themeOverlay.baseRate)})` : ""} — 올리면 그 선만 또렷해진다`}
+                                    title={`${l.name} 전일比 ${fmtPct(l.at.y + (themeOverlay?.baseRate ?? 0))} — 올리면 그 선만 또렷해진다`}
                                     style={{
                                         ...chip, left: box.left - 4, top: l.labelY - box.top, transform: "translate(-100%, -50%)",
                                         maxWidth: box.left - 8, overflow: "hidden",
@@ -1030,7 +1031,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <button key={`c${c.x}|${c.y}`} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
                                     title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=태그`}
-                                    style={{ ...chip, ...pl.style, top }}>
+                                    style={{ ...chip, ...labelBg, ...pl.style, top }}>
                                     {labelOf(s, pl.dotFirst)}
                                 </button>
                             );
@@ -1048,7 +1049,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
                                     title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=선택 해제 · 우클릭=태그`}
                                     style={{
-                                        ...chip, ...pl.style, top: scales.y(p.y) - box.top,
+                                        ...chip, ...labelBg, ...pl.style, top: scales.y(p.y) - box.top,
                                         color, fontWeight: 700,
                                         // 선택된 것에만 상자 — 상태를 가진 컨트롤이라 그렇게 보여야 한다(눈으로 찾기도 쉽다).
                                         ...(v.role === "selected" ? selectedChip(color) : {}),
@@ -1110,7 +1111,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                                             <span style={{ width: 6, height: 6, borderRadius: 3, background: themeColorOf(code), flexShrink: 0 }} />
                                             <span>{l.name}</span>
-                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.points[0].y)}({fmtPct(l.points[0].y + themeOverlay.baseRate)})</span>
+                                            <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.points[0].y + themeOverlay.baseRate)}</span>
                                         </span>
                                     </MenuItem>
                                 </div>
@@ -1233,6 +1234,15 @@ const chip: CSSProperties = {
     fontFamily: "var(--font-sans)", fontSize: 9, lineHeight: "11px", fontVariantNumeric: "tabular-nums",
     padding: 0, border: "none", background: "none", color: "var(--text-primary)",
     textShadow: "0 0 3px var(--bg-primary), 0 0 3px var(--bg-primary), 0 0 2px var(--bg-primary)",
+};
+/**
+ * 얽힌 선 **위에 얹히는** 라벨의 판독 배경 — 후광 글자(F안)만으로는 선이 밀집한 자리에서 글자가 묻힌다
+ * (사용자 지적: 테마 값·타점 라벨이 골격 선에 가려 안 읽힘). 반투명 배경이 뒤 선을 죽이지 않으면서
+ * 글자 자리만 비워 준다. 거터처럼 빈 자리에 서는 라벨은 후광만으로 충분해 이걸 안 얹는다.
+ */
+const labelBg: CSSProperties = {
+    background: "color-mix(in srgb, var(--bg-primary) 85%, transparent)",
+    borderRadius: 3, padding: "0 3px", textShadow: "none",
 };
 // 뱃지는 상자 유지 — 누르면 목록이 열리는 컨트롤이라 그렇게 보여야 한다.
 const badgeChip: CSSProperties = {

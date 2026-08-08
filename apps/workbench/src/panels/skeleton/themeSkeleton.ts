@@ -84,8 +84,11 @@ export interface AxisLabelSlot<T> {
  * 겹치면 개수 뱃지로 묶는 방법도 있었는데 버렸다: 핀을 눌러 값을 보려던 건데 뱃지를 **또 한 번**
  * 눌러야 하면 헛수고가 된다. 여기선 전부 보이는 게 목적이라 자리를 옆으로 내주는 쪽이 맞다.
  *
- * 한 덩어리 안에서도 y가 가까우면 열이 갈리고, 다음 덩어리는 앞 덩어리가 쓴 열 **다음**에서 시작한다
- * — 그래야 x₁의 값과 x₂의 값이 섞이지 않는다(어느 시각 것인지가 열로 읽힌다).
+ * 한 덩어리 안은 **실거리 판정**이다: y 순으로 놓으면서, 그 열의 마지막 라벨과 `cellH` 미만으로
+ * 가까우면 오른쪽 열로 민다(등락률이 비슷한 무리는 우측으로 연달아 선다 — 사용자 확정).
+ * 예전엔 y 를 칸으로 **반올림**해 점유를 봤는데, 칸 경계를 사이에 둔 두 라벨(예: 5px 와 13px)이
+ * 다른 칸으로 떨어져 같은 열에서 8px 간격으로 겹쳤다 — 격자가 아니라 간격이 규칙이어야 한다.
+ * 다음 덩어리는 앞 덩어리가 쓴 열 **다음**에서 시작한다 — x₁·x₂의 값이 섞이지 않는다(시각이 열로 읽힌다).
  * `cellH` 는 라벨 하나가 세로로 차지하는 자리(화면 px 기준으로 호출측이 환산해 넘긴다).
  */
 export function layoutAxisColumns<T>(
@@ -93,18 +96,15 @@ export function layoutAxisColumns<T>(
     cellH: number,
 ): AxisLabelSlot<T>[] {
     const out: AxisLabelSlot<T>[] = [];
-    const taken = new Map<number, Set<number>>(); // col → 점유된 세로 칸
+    const lastY = new Map<number, number>(); // col → 그 열에 마지막으로 놓인 y(정렬 덕에 열 안의 최대)
     let startCol = 0;
     for (const g of groups) {
         if (g.length === 0) continue; // 값이 하나도 없는 핀은 열을 안 먹는다(빈 열이 벌어져 보인다)
         let maxCol = startCol;
-        for (const { item, y } of g) {
-            const cell = Math.round(y / cellH);
+        for (const { item, y } of [...g].sort((a, b) => a.y - b.y)) {
             let col = startCol;
-            while (taken.get(col)?.has(cell)) col++;
-            const set = taken.get(col) ?? new Set<number>();
-            set.add(cell);
-            taken.set(col, set);
+            for (let prev = lastY.get(col); prev !== undefined && y - prev < cellH; prev = lastY.get(col)) col++;
+            lastY.set(col, y);
             out.push({ item, col, y });
             if (col > maxCol) maxCol = col;
         }

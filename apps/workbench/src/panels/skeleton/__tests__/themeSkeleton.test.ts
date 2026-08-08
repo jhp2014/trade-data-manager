@@ -78,6 +78,16 @@ describe("layoutAxisColumns — 핀별 열 쌓기", () => {
         expect(layoutAxisColumns([g(0, 1, 2)], 10).map((s) => s.col)).toEqual([0, 1, 2]);
     });
 
+    it("판정은 격자가 아니라 **실거리** — 칸 경계를 사이에 둔 두 라벨(5·13, cellH 12)도 겹침으로 본다", () => {
+        // 옛 반올림 방식은 5→칸0, 13→칸1 로 갈라 같은 열에서 8px 간격으로 겹쳤다(사용자가 본 겹침).
+        expect(layoutAxisColumns([g(5, 13)], 12).map((s) => s.col)).toEqual([0, 1]);
+        expect(layoutAxisColumns([g(5, 17)], 12).map((s) => s.col)).toEqual([0, 0]); // 12 이상 벌어지면 같은 열
+    });
+
+    it("옆 열로 밀린 뒤 더 아래 라벨은 첫 열로 돌아온다 — 열은 자리가 나는 대로 다시 쓴다", () => {
+        expect(layoutAxisColumns([g(0, 5, 30)], 12).map((s) => s.col)).toEqual([0, 1, 0]);
+    });
+
     it("다음 핀은 앞 핀이 쓴 열 **다음**에서 시작한다 — 시각이 열로 갈린다", () => {
         const out = layoutAxisColumns([g(0, 1), g(0, 1)], 10);
         expect(out.map((s) => s.col)).toEqual([0, 1, 2, 3]);
