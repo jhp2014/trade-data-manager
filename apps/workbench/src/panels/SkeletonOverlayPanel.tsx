@@ -806,7 +806,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 벽시계 = x + t₀, 전일 종가 대비 % = y + baseRate 로 복원된다. 일봉엔 괄호가 없다
                                                 (baseT 가 거래일 인덱스라 벽시계가 아니고, 앵커 대비 %가 그 자체로 값이다). */}
                                             {s.points.map((p, i) => {
-                                                if (!pivotShown(s.key, i) || (p.x === 0 && p.y === 0)) return null;
+                                                // 원점 제외는 **일봉만** — 앵커 대비 (0,0)은 무의미하지만, 분봉의 원점은
+                                                // 괄호(타점 시각·절대 등락률)가 실값이고 테마 값을 펴는 호버 자리다(사용자 확정).
+                                                if (!pivotShown(s.key, i) || (s.kind !== "point" && p.x === 0 && p.y === 0)) return null;
                                                 const px = scales.x(p.x);
                                                 const py = scales.y(p.y);
                                                 const ax = clamp(scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
@@ -866,7 +868,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {[...new Set([...(inspectKey ? [inspectKey] : []), ...linesWithPins])].map((key) => {
                                     const s = byKey.get(key);
                                     if (!s) return null;
-                                    return s.points.map((p, i) => (p.x === 0 && p.y === 0 ? null : (
+                                    // 원점도 분봉에선 손잡이를 받는다(사용자 확정) — 호버 = t₀의 테마 값, 클릭 = 핀 세로선.
+                                    return s.points.map((p, i) => (s.kind !== "point" && p.x === 0 && p.y === 0 ? null : (
                                         <circle key={`hit-${key}-${i}`} cx={scales.x(p.x)} cy={scales.y(p.y)} r={7} fill="transparent"
                                             style={{ pointerEvents: "auto", cursor: "pointer" }}
                                             onClick={() => togglePivot(s.key, i)}
