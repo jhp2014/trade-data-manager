@@ -216,10 +216,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // (피벗 값·기준선 같은 공짜 상세는 지금처럼 호버가 이긴다 — 비용이 다르면 규칙도 갈려야 한다.)
     const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
-    // 테마 펼치기(절대 뷰 전용) — 짚은 골격의 피벗 시각에 테마 종목을 같이 세운다.
+    // 테마 펼치기(절대 뷰 전용) — 짚은 골격이 그린 구간의 테마 종목 경로를 분당 종가로 같이 세운다.
     const [showTheme, setShowTheme] = usePersistedState<boolean>("wb.skeletonOverlayTheme", (o) => (typeof o === "boolean" ? o : null), false);
-    /** 세분 허용 오차(%p) — 이 값이 세분의 유일한 손잡이다. 낮출수록 테마 선의 굴곡이 촘촘해진다. */
-    const THEME_TOLERANCE = 1.5;
 
     /** 거래대금·테마가 같이 보는 "지금 조사 중인 선 하나" — 단일 선택일 때만(위 이유). */
     const singleTarget = useMemo(
@@ -248,7 +246,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const from = Math.min(...mins);
         const to = Math.max(...mins);
         const hot = hotCodesInRange(src, from, to, minuteOfDayOf, (snaps) => selectHotUniverse(snaps, replaySettings.amountN, replaySettings.rateN));
-        return { key: singleTarget.key, lines: themeLines(singleTarget, src, hot, minuteOfDayOf, { tolerance: THEME_TOLERANCE }) };
+        return { key: singleTarget.key, lines: themeLines(singleTarget, src, hot, minuteOfDayOf) };
     }, [isAbs, showTheme, singleTarget, snapQ.data, replaySettings.amountN, replaySettings.rateN]);
     /** 손이 올라간 테마 선(들) — 뭉친 라벨이면 그 무리 전부. 이것만 선명해지고 나머지는 무채색으로 남는다. */
     const [hoveredTheme, setHoveredTheme] = useState<readonly string[] | null>(null);
@@ -277,11 +275,31 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         });
         return clusterLabels(anchors, 56, 12);
     }, [themeOverlay, scales]);
-    // 조사 중인 골격의 **피벗 하나**에 손이 올라간 상태 — 그 점의 축 값(기간·%)만 굵게 키우고 나머지는 물러난다.
-    // 값이 여럿일 때 "어느 숫자가 이 점 것이냐"를 눈으로 잇는 유일한 장치라 선 호버(key)와 별개 상태다.
+    // ── 피벗 좌표는 **짚은 점에만** 붙는다(사용자 확정).
+    // 예전엔 조사 중인 골격의 점 **전부**에 값이 떴는데, 분봉 골격은 꺾인 점이 많아 화면이 숫자로 뒤덮였다.
+    // 이제 두 단계다: 손을 올리면 그 하나를 **미리 보고**, 누르면 **붙잡는다**(다시 누르면 뗀다).
+    // 붙잡은 건 선을 떠나도 남아서 여러 점의 값을 나란히 놓고 볼 수 있다 — 이 패널의 선택/호버 문법 그대로.
     const [hoveredPivot, setHoveredPivot] = useState<{ key: string; i: number } | null>(null);
-    const pivotHoverOf = (key: string, i: number): "on" | "off" | null =>
-        !hoveredPivot || hoveredPivot.key !== key ? null : hoveredPivot.i === i ? "on" : "off";
+    const [pinnedPivots, setPinnedPivots] = useState<ReadonlySet<string>>(() => new Set());
+    const pivotId = (key: string, i: number): string => `${key}|${i}`;
+    const togglePivot = useCallback((key: string, i: number): void => {
+        setPinnedPivots((prev) => {
+            const next = new Set(prev);
+            const id = `${key}|${i}`;
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }, []);
+    /** 이 점의 값을 지금 그리나 — 붙잡았거나(핀) 손이 올라가 있거나. */
+    const pivotShown = (key: string, i: number): boolean =>
+        pinnedPivots.has(pivotId(key, i)) || (hoveredPivot?.key === key && hoveredPivot.i === i);
+    /** 값을 그리는 점이 하나라도 있는 선 — 그 선은 손잡이(히트 원)를 계속 내줘야 핀을 뗄 수 있다. */
+    const linesWithPins = useMemo(() => {
+        const s = new Set<string>();
+        for (const id of pinnedPivots) s.add(id.slice(0, id.lastIndexOf("|")));
+        return s;
+    }, [pinnedPivots]);
 
     // 역할 판정은 순수 함수(lineVisual)가, 색 배정은 여기가 한다 — 팔레트는 화면의 몫이라 규칙 층에 안 들인다.
     const visualOf = useCallback((key: string): { v: LineVisual; color: string } => {
@@ -408,6 +426,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             .sort((a, b) => labelPointOf(b, labelAnchorMode).y - labelPointOf(a, labelAnchorMode).y);
     }, [badge, byKey, labelAnchorMode]);
     useEffect(() => { setBadge(null); setBadgeHover(null); setPointBadge(null); }, [boundsKey, anchor, grain, minuteView]);
+    // 붙잡아 둔 피벗 값은 **뷰가 바뀌면** 버린다 — 좌표계가 갈리면(정규화↔절대) 같은 인덱스가 다른 뜻이 된다.
+    // 척도 변경(boundsKey)엔 안 건드린다: 확대·필터는 같은 그림을 다르게 볼 뿐이라 값이 남아야 한다.
+    useEffect(() => { setPinnedPivots(new Set()); }, [anchor, minuteView]);
 
     // 마커 라벨 축약 — 차트 라벨과 **별개 격자**(마커는 경로 위에 몰려 있어 더 촘촘한 칸을 쓴다).
     const markerClusters = useMemo(() => {
@@ -520,7 +541,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {isAbs && (
                     <ControlBox>
                         <TextToggle active={showTheme} onClick={() => setShowTheme(!showTheme)}
-                            title="선택한 골격의 피벗 시각에 같은 테마 종목들을 같이 세운다(그 구간에 보드에 떴던 것만) — 라벨에 올리면 그 선이 살아난다">
+                            title="선택한 골격이 그린 구간 동안 같은 테마 종목들의 분당 종가 경로를 같이 세운다(그 구간에 보드에 떴던 것만) — 라벨에 올리면 그 선이 거래대금 색으로 살아난다">
                             테마
                         </TextToggle>
                         {showTheme && themeOverlay && (
@@ -567,6 +588,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 )}
                 {selectedPks.size > 0 && (
                     <button onClick={() => setSelectedPks(new Set())} title="타점 선택 해제" style={miniBtn}>✕</button>
+                )}
+                {pinnedPivots.size > 0 && (
+                    <button onClick={() => setPinnedPivots(new Set())} title="붙잡아 둔 피벗 값 전부 떼기" style={miniBtn}>
+                        값 {pinnedPivots.size} ✕
+                    </button>
                 )}
                 {zoomed && <button onClick={reset} title="원위치(더블클릭도 같음)" style={miniBtn}>원위치 ⤺</button>}
             </div>
@@ -701,33 +727,33 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             })}
                                             {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. 손이 올라간 점은 커진다. */}
                                             {(lit || dotsForAll) && s.points.map((p, i) => {
-                                                const r = pivotHoverOf(s.key, i) === "on" ? 5 : lit ? 3 : 2;
+                                                const r = pivotShown(s.key, i) ? 5 : lit ? 3 : 2;
                                                 return p.synthetic
                                                     ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={r} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
                                                     : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={r} fill={color} />;
                                             })}
-                                            {/* 피벗 좌표 — 조사 중인 하나에만(다중이면 수십 벌이 겹친다). **원점 좌표축에 내려 읽는다**
-                                                (사용자 확정): 점 → 가로축으로 수직 점선, 점 → 세로축으로 수평 점선, 값은 각 축의
-                                                발치에(기간은 x축 아래, %는 y축 옆). 점 옆에 두 값을 붙이면 라벨끼리 겹치고
-                                                "이 점이 축의 어디냐"가 눈으로 안 잡힌다.
+                                            {/* 피벗 좌표 — **짚은 점에만**(호버 미리보기 또는 클릭으로 붙잡은 것). 예전엔 조사 중인
+                                                골격의 점 전부에 떴는데 분봉은 꺾인 점이 많아 화면이 숫자로 뒤덮였다(사용자 지적).
+                                                **원점 좌표축에 내려 읽는다**(사용자 확정): 점 → 가로축으로 수직 점선, 점 → 세로축으로
+                                                수평 점선, 값은 각 축의 발치에(기간은 x축 아래, %는 y축 옆). 점 옆에 두 값을 붙이면
+                                                라벨끼리 겹치고 "이 점이 축의 어디냐"가 눈으로 안 잡힌다.
                                                 축이 화면 밖으로 밀려나면(팬) 발치를 화면 가장자리로 잡는다 — 값을 못 읽는 것보단 낫다. */}
-                                            {inspecting && s.points.map((p, i) => {
-                                                if (p.x === 0 && p.y === 0) return null;
+                                            {s.points.map((p, i) => {
+                                                if (!pivotShown(s.key, i) || (p.x === 0 && p.y === 0)) return null;
                                                 const px = scales.x(p.x);
                                                 const py = scales.y(p.y);
                                                 const ax = clamp(isAbs ? box.left : scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
                                                 const ay = clamp(scales.y(0), box.top, box.top + box.height); // 가로축(기간을 읽는 자리)
                                                 const below = ay + 12 <= box.top + box.height; // x축 아래에 자리가 없으면 위로
                                                 const leftSide = ax - box.left > 44; // y축 왼쪽에 자리가 없으면 오른쪽으로
-                                                // 점 호버 = 그 점의 축 값만 굵게, 나머지 값은 물러난다(짝을 눈으로 잇는 장치).
-                                                const ph = pivotHoverOf(s.key, i);
-                                                const val: CSSProperties = { fontSize: ph === "on" ? 11 : 9, fontWeight: ph === "on" ? 700 : 400, fill: color, fontVariantNumeric: "tabular-nums" };
-                                                const fade = ph === "off" ? 0.35 : 1;
+                                                // 붙잡은 값은 계속 또렷하게, 스치는 미리보기는 한 단계 물러난다(붙잡았다는 게 보이게).
+                                                const pin = pinnedPivots.has(pivotId(s.key, i));
+                                                const val: CSSProperties = { fontSize: pin ? 11 : 10, fontWeight: pin ? 700 : 400, fill: color, fontVariantNumeric: "tabular-nums" };
                                                 return (
-                                                    <g key={`pv${i}`} opacity={fade}>
-                                                        <line x1={px} x2={px} y1={py} y2={ay} stroke={color} strokeWidth={ph === "on" ? 1.2 : 0.8} strokeDasharray="2 3" opacity={ph === "on" ? 0.9 : 0.55} />
-                                                        <line x1={px} x2={ax} y1={py} y2={py} stroke={color} strokeWidth={ph === "on" ? 1.2 : 0.8} strokeDasharray="2 3" opacity={ph === "on" ? 0.9 : 0.55} />
-                                                        <text x={px} y={ay + (below ? (ph === "on" ? 12 : 10) : -5)} textAnchor="middle"
+                                                    <g key={`pv${i}`} opacity={pin ? 1 : 0.75}>
+                                                        <line x1={px} x2={px} y1={py} y2={ay} stroke={color} strokeWidth={pin ? 1.2 : 0.8} strokeDasharray="2 3" opacity={pin ? 0.9 : 0.55} />
+                                                        <line x1={px} x2={ax} y1={py} y2={py} stroke={color} strokeWidth={pin ? 1.2 : 0.8} strokeDasharray="2 3" opacity={pin ? 0.9 : 0.55} />
+                                                        <text x={px} y={ay + (below ? 12 : -5)} textAnchor="middle"
                                                             stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
                                                             {fmtX(p.x, xUnit)}
                                                         </text>
@@ -752,19 +778,24 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     );
                                 })}
 
-                                {/* 피벗 손잡이 — **조사 중인 골격 하나의 점들만** 포인터를 받는다(선은 여전히 순수 그림).
-                                    한 벌뿐이라 뭉쳐서 못 겨냥하는 문제가 없고, 이게 축의 숫자와 점을 잇는 손짓이다.
-                                    들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다. */}
-                                {(() => {
-                                    const s = inspectKey ? byKey.get(inspectKey) : null;
+                                {/* 피벗 손잡이 — 포인터를 받는 건 **조사 중인 골격 + 값을 붙잡아 둔 골격**의 점들뿐이다
+                                    (선은 여전히 순수 그림). 한두 벌뿐이라 뭉쳐서 못 겨냥하는 문제가 없다.
+                                    핀이 걸린 선까지 넣는 이유: 그 선을 떠난 뒤에도 값이 남는데 손잡이가 사라지면 **뗄 수가 없다**.
+                                    들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
+                                    클릭 = 그 점의 값 붙잡기/떼기(사용자 확정) — 여럿을 나란히 놓고 볼 수 있다. */}
+                                {[...new Set([...(inspectKey ? [inspectKey] : []), ...linesWithPins])].map((key) => {
+                                    const s = byKey.get(key);
                                     if (!s) return null;
                                     return s.points.map((p, i) => (p.x === 0 && p.y === 0 ? null : (
-                                        <circle key={`hit${i}`} cx={scales.x(p.x)} cy={scales.y(p.y)} r={7} fill="transparent"
-                                            style={{ pointerEvents: "auto", cursor: "crosshair" }}
+                                        <circle key={`hit-${key}-${i}`} cx={scales.x(p.x)} cy={scales.y(p.y)} r={7} fill="transparent"
+                                            style={{ pointerEvents: "auto", cursor: "pointer" }}
+                                            onClick={() => togglePivot(s.key, i)}
                                             onMouseEnter={() => { setHovered(s.key); setHoveredPivot({ key: s.key, i }); }}
-                                            onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }} />
+                                            onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }}>
+                                            <title>{`${fmtX(p.x, xUnit)} · ${fmtPct(p.y)} — 클릭해 값 ${pinnedPivots.has(pivotId(s.key, i)) ? "떼기" : "붙잡기"}`}</title>
+                                        </circle>
                                     )));
-                                })()}
+                                })}
 
                                 {/* 선택된 타점의 세로선(절대 뷰) — 조사 중이 아니어도 붙잡은 타점의 시각은 계속 보인다. */}
                                 {isAbs && [...selectedPks].map((pk) => {
@@ -1010,7 +1041,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {isDaily ? "일봉" : isAbs ? "분봉·절대(전일 종가 대비)" : "분봉·타점 정규화(선 1 = 타점 1, 원점 이후 점선=미래)"} · 세로 = % · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 더블클릭 원위치
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
                 {themeOverlay && themeOverlay.lines.length > 0 && (
-                    <span style={{ color: "var(--text-secondary)" }}> · 테마 {themeOverlay.lines.length}선(동시각 표본 + 오차 {THEME_TOLERANCE}%p 세분)</span>
+                    <span style={{ color: "var(--text-secondary)" }}> · 테마 {themeOverlay.lines.length}선(분당 종가)</span>
                 )}
             </div>
         </div>

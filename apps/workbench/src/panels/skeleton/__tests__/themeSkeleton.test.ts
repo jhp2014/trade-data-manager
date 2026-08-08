@@ -1,92 +1,41 @@
 import { describe, it, expect } from "vitest";
-import { refineBetween, memberPath, themeLines, hotCodesInRange, type MinuteSeries, type ThemeSourceStock } from "../themeSkeleton.js";
+import { memberPath, themeLines, hotCodesInRange, type MinuteSeries, type ThemeSourceStock } from "../themeSkeleton.js";
 
-// 벽시계 분 = 인덱스인 단순 시계열 만들기(테스트는 환산을 안 본다 — 그건 minuteOfDayOf 의 몫).
-const seriesOf = (from: number, close: number[], high?: number[], low?: number[]): MinuteSeries => ({
+/** 벽시계 분 = from + i 인 단순 시계열(환산은 minuteOfDayOf 의 몫이라 여기선 안 본다). */
+const seriesOf = (from: number, close: number[]): MinuteSeries => ({
     index: new Map(close.map((_, i) => [from + i, i])),
     close,
-    high: high ?? close,
-    low: low ?? close,
 });
 
-describe("refineBetween — 오차 기반 재귀 세분", () => {
-    it("직선으로 흘렀으면 점이 하나도 안 생긴다 — 균등 격자와 갈리는 지점", () => {
-        const s = seriesOf(0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-        expect(refineBetween(0, 0, 10, 10, s, { tolerance: 0.5 })).toEqual([]);
+describe("memberPath — 구간의 분당 종가 전부", () => {
+    it("축약하지 않는다 — 손으로 고른 변곡점이 없는 멤버에겐 근사할 이유가 없다", () => {
+        const s = seriesOf(540, [0, 1, 2, 4, 6]);
+        expect(memberPath(540, 544, s)).toEqual([
+            { x: 540, y: 0 }, { x: 541, y: 1 }, { x: 542, y: 2 }, { x: 543, y: 4 }, { x: 544, y: 6 },
+        ]);
     });
 
-    it("가장 많이 벗어난 지점이 반드시 들어간다 — 그게 곧 그 구간의 극단", () => {
-        // 5분에 +8 로 튀었다 되돌아온 경로. 출력은 **시간순**이라 극단이 배열 첫 항목은 아니다
-        // (첫 점을 찍은 뒤 갈린 두 구간을 다시 세분하므로 앞쪽 점들이 먼저 온다).
-        const s = seriesOf(0, [0, 1, 2, 4, 6, 8, 6, 4, 2, 1, 0]);
-        expect(refineBetween(0, 0, 10, 0, s, { tolerance: 1 })).toContainEqual({ x: 5, y: 8 });
+    it("구간 밖은 안 그린다 — 앵커 골격이 그린 시간만이 비교 대상", () => {
+        const s = seriesOf(540, [0, 1, 2, 4, 6]);
+        expect(memberPath(541, 543, s)!.map((p) => p.x)).toEqual([541, 542, 543]);
     });
 
-    it("허용 오차를 낮추면 점이 늘어난다 — 손잡이는 이 하나뿐", () => {
-        const s = seriesOf(0, [0, 1, 2, 4, 6, 8, 6, 4, 2, 1, 0]);
-        const coarse = refineBetween(0, 0, 10, 0, s, { tolerance: 5 });
-        const fine = refineBetween(0, 0, 10, 0, s, { tolerance: 0.5 });
-        expect(fine.length).toBeGreaterThan(coarse.length);
+    it("거래가 없어 빠진 분은 건너뛴다 — 직전 값을 끌어오면 없던 평평한 구간이 사실처럼 보인다", () => {
+        const s: MinuteSeries = { index: new Map([[540, 0], [543, 1]]), close: [0, 9] };
+        expect(memberPath(540, 543, s)).toEqual([{ x: 540, y: 0 }, { x: 543, y: 9 }]);
     });
 
-    it("분 안의 꼬리도 후보 — 종가만 보면 못 잡는 움직임을 고가/저가가 잡는다", () => {
-        // 종가는 내내 0인데 5분에 고가만 +9 를 찍었다. 뾰족한 스파이크라 점 셋(올라가기 전·꼭대기·내려온 뒤)이
-        // 생기는 게 맞다 — 꼭대기 하나만 넣으면 선이 양옆으로 비스듬히 늘어져 없던 완만한 상승을 그린다.
-        const s = seriesOf(0, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0]);
-        const got = refineBetween(0, 0, 10, 0, s, { tolerance: 1 });
-        expect(got).toContainEqual({ x: 5, y: 9 });
-        expect(got.filter((p) => p.y === 0).length).toBeGreaterThanOrEqual(2); // 스파이크 양옆의 바닥
-    });
-
-    it("저가 쪽 이탈도 같은 무게로 잡힌다 — 고가만 보면 그림이 위로 기운다", () => {
-        const s = seriesOf(0, new Array(11).fill(0), undefined, [0, 0, 0, 0, 0, -9, 0, 0, 0, 0, 0]);
-        expect(refineBetween(0, 0, 10, 0, s, { tolerance: 1 })).toContainEqual({ x: 5, y: -9 });
-    });
-
-    it("점은 시간순이고 끝점은 안 넣는다(호출측이 넣는다)", () => {
-        const s = seriesOf(0, [0, 5, 2, 9, 1, 8, 3, 7, 0, 6, 0]);
-        const got = refineBetween(0, 0, 10, 0, s, { tolerance: 0.5 });
-        expect(got.map((p) => p.x)).toEqual([...got.map((p) => p.x)].sort((a, b) => a - b));
-        expect(got.some((p) => p.x === 0 || p.x === 10)).toBe(false);
-    });
-
-    it("상한이 재귀를 막는다 — 톱니 경로가 구간당 점을 무한히 낳지 않게", () => {
-        const saw = Array.from({ length: 61 }, (_, i) => (i % 2 === 0 ? 0 : 10));
-        const s = seriesOf(0, saw);
-        expect(refineBetween(0, 0, 60, 0, s, { tolerance: 0.1, maxPerSegment: 4 }).length).toBeLessThanOrEqual(4);
-    });
-
-    it("붙어 있는 두 분 사이엔 넣을 자리가 없다", () => {
-        expect(refineBetween(0, 0, 1, 5, seriesOf(0, [0, 5]), { tolerance: 0.01 })).toEqual([]);
-    });
-});
-
-describe("memberPath — 앵커 피벗에 세우고 사이를 채운다", () => {
-    const s = seriesOf(0, [0, 1, 2, 4, 6, 8, 6, 4, 2, 1, 0]);
-
-    it("피벗 시각이 그대로 들어가고 사이가 채워진다", () => {
-        const p = memberPath([0, 10], s, { tolerance: 1 })!;
-        expect(p[0]).toEqual({ x: 0, y: 0 });
-        expect(p[p.length - 1]).toEqual({ x: 10, y: 0 });
-        expect(p.length).toBeGreaterThan(2);
-    });
-
-    it("분봉에 없는 피벗 시각은 건너뛴다 — 지어내지 않는다", () => {
-        const p = memberPath([0, 999, 10], s, { tolerance: 99 })!;
-        expect(p.map((q) => q.x)).toEqual([0, 10]);
-    });
-
-    it("남는 점이 2개 미만이면 선이 아니다", () => {
-        expect(memberPath([999, 1000], s, { tolerance: 1 })).toBeNull();
-        expect(memberPath([5], s, { tolerance: 1 })).toBeNull();
+    it("점이 2개 미만이면 선이 아니다", () => {
+        expect(memberPath(900, 910, seriesOf(540, [0, 1, 2]))).toBeNull();
+        expect(memberPath(540, 540, seriesOf(540, [0, 1, 2]))).toBeNull();
     });
 });
 
 describe("hotCodesInRange — 그 구간에 한 번이라도 떴던 종목", () => {
     const stock = (code: string, rate: number[], amount: number[], themes: string[] = ["T"]): ThemeSourceStock => ({
         code, themes, name: code,
-        times: rate.map((_, i) => i * 60), // 분 = i (아래 toMinuteOfDay 가 그렇게 환산)
-        rate, minuteHigh: rate, minuteLow: rate, cumAmount: amount,
+        times: rate.map((_, i) => i * 60), // 아래 toMin 이 분 = i 로 되돌린다
+        rate, cumAmount: amount,
     });
     const toMin = (unix: number): number => unix / 60;
     // 거래대금 1위만 뽑는 가짜 판정 — 실제 selectHotUniverse 규칙은 core 테스트가 지킨다.
@@ -108,7 +57,7 @@ describe("themeLines", () => {
     const mk = (code: string, themes: string[], rate: number[]): ThemeSourceStock => ({
         code, themes, name: `${code}이름`,
         times: rate.map((_, i) => i * 60),
-        rate, minuteHigh: rate, minuteLow: rate, cumAmount: rate.map(() => 0),
+        rate, cumAmount: rate.map(() => 0),
     });
     const toMin = (unix: number): number => unix / 60;
     const anchor = {
@@ -123,24 +72,29 @@ describe("themeLines", () => {
             mk("C", ["바이오"], [0, 1, 2, 3, 4]), // 테마 다름
             mk("D", ["반도체"], [0, 1, 2, 3, 4]), // 테마 겹치나 hot 아님
         ];
-        const lines = themeLines(anchor, stocks, new Set(["A", "B", "C"]), toMin, { tolerance: 99 });
+        const lines = themeLines(anchor, stocks, new Set(["A", "B", "C"]), toMin);
         expect(lines.map((l) => l.code)).toEqual(["B"]);
         expect(lines[0].name).toBe("B이름");
     });
 
-    it("y 는 등락률 그대로 — 절대 배치와 같은 공간이라 환산이 없다", () => {
+    it("구간은 앵커 피벗의 처음~끝, y 는 등락률 그대로 — 절대 배치와 같은 공간이라 환산이 없다", () => {
         const stocks = [mk("A", ["T"], [0, 1, 2, 3, 4]), mk("B", ["T"], [0, 5, 5, 5, 20])];
-        const [line] = themeLines(anchor, stocks, new Set(["B"]), toMin, { tolerance: 99 });
-        // 앵커 피벗 시각(0분·4분)에 세운 두 끝점 — 허용 오차가 커서 사이는 안 채워진다.
-        expect(line.points).toEqual([{ x: 0, y: 0 }, { x: 4, y: 20 }]);
+        const [line] = themeLines(anchor, stocks, new Set(["B"]), toMin);
+        expect(line.points).toEqual([{ x: 0, y: 0 }, { x: 1, y: 5 }, { x: 2, y: 5 }, { x: 3, y: 5 }, { x: 4, y: 20 }]);
+    });
+
+    it("앵커 피벗이 하루의 일부만 덮으면 테마 선도 그만큼만", () => {
+        const short = { ...anchor, points: [{ x: 1, y: 0 }, { x: 3, y: 5 }] };
+        const stocks = [mk("A", ["T"], [0, 1, 2, 3, 4]), mk("B", ["T"], [0, 5, 6, 7, 20])];
+        expect(themeLines(short, stocks, new Set(["B"]), toMin)[0].points.map((p) => p.x)).toEqual([1, 2, 3]);
     });
 
     it("앵커가 테마를 하나도 안 가지면 아무것도 안 그린다", () => {
         const stocks = [mk("A", [], [0, 1, 2, 3, 4]), mk("B", ["T"], [0, 1, 2, 3, 4])];
-        expect(themeLines(anchor, stocks, new Set(["B"]), toMin, { tolerance: 1 })).toEqual([]);
+        expect(themeLines(anchor, stocks, new Set(["B"]), toMin)).toEqual([]);
     });
 
     it("앵커가 그날 유니버스 밖이면(스냅샷에 없음) 테마를 알 수 없다 — 빈 목록", () => {
-        expect(themeLines(anchor, [mk("B", ["T"], [0, 1])], new Set(["B"]), toMin, { tolerance: 1 })).toEqual([]);
+        expect(themeLines(anchor, [mk("B", ["T"], [0, 1])], new Set(["B"]), toMin)).toEqual([]);
     });
 });

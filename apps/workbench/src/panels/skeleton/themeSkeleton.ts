@@ -4,114 +4,51 @@
 // 멤버 자신의 변곡점은 딴 데 있다. 여기서 답하는 질문은 "내 종목이 꺾인 그 순간들에 테마는 어디 있었나"
 // — 형태 요약이 아니라 동조 측정이다. 그래서 손으로 찍은 골격과 달리 좌표를 **빌려** 쓴다.
 //
-// ## 그 좌표만으로는 그림이 거짓말을 한다 — 그래서 세분한다
-// 내 피벗이 09:15·10:15 두 개면 멤버는 직선 하나가 된다. 그 사이 멤버가 급등 후 되밀렸어도 평평해 보인다.
-// 채우는 법이 둘인데:
-//   · 균등 격자(5분마다) — 조용했어도 12개, 요동쳤어도 12개. 조용한 구간엔 쓸모없는 점이 박히고
-//     정작 요동친 구간은 5분 해상도로 뭉갠다.
-//   · **오차 기반 재귀**(여기) — 직선에서 가장 멀리 벗어난 지점에만 점을 하나 찍고, 갈린 두 구간에
-//     같은 걸 반복한다. 벗어남이 허용 오차 안이면 멈춘다.
-// 두 번째면 조용한 구간엔 점이 0개, 요동친 구간엔 필요한 만큼 생긴다. 손잡이도 "허용 오차 %" 하나뿐이다.
-// (Douglas–Peucker 는 원래 점 많은 선을 **줄이는** 알고리즘인데 판정이 같아서 거꾸로 쓰면 늘리는 게 된다.
-//  "구간이 벌어졌을 때만"이라는 조건도 저절로 흡수된다 — 짧은 구간은 벗어날 여지가 없어 점이 안 생긴다.)
+// ## 멤버 경로는 **분당 종가 전부**다 — 축약하지 않는다
+// 골격의 축약이 값어치 있는 건 **손으로 고른 변곡점**이기 때문이다. 멤버에는 그 손이 없으니, 축약은
+// 근사일 뿐인데 정작 원본(분당 종가)이 이미 클라에 다 와 있다(복기 파생 한 벌). 근사할 이유가 없다.
+// (한때 오차 기반 재귀 세분을 뒀다가 걷어냈다 — 파라미터 하나가 늘고 그림은 원본보다 나을 수 없었다.
+//  분 안의 꼬리는 나중에 캔들 오버레이가 답한다.)
 //
-// ## 후보는 종가뿐 아니라 고가·저가도 본다
-// 분 종가만 보면 분 안에서 찍고 돌아온 꼬리를 놓친다. 셋 중 직선에서 가장 먼 값을 쓰되 **고가·저가를
-// 함께** 봐야 그림이 한쪽으로 안 기운다(고가만 보면 상승 종목의 변동폭이 위로만 부푼다).
+// 그리는 구간은 **앵커 피벗의 처음~끝**이다. 하루 전체로 넓히면 척도 프레임이 앵커 골격을 따라가지
+// 못하고, "내 골격이 그린 그 시간 동안 테마는 어디 있었나"라는 질문에서도 벗어난다.
 import type { NormalizedSkeleton } from "./skeletonOverlay.js";
 
 /** 한 종목의 분당 시계열(% 공간) — 벽시계 분으로 찾는다. */
 export interface MinuteSeries {
     /** 벽시계 분 → 배열 인덱스. */
     index: ReadonlyMap<number, number>;
-    /** 분 종가 % (경로의 기본값). */
+    /** 분 종가 %. 경로는 이것 하나로 그린다(분 안의 고저는 캔들 오버레이의 몫). */
     close: readonly number[];
-    high: readonly number[];
-    low: readonly number[];
 }
 
-/** 세분 파라미터. */
-export interface RefineOptions {
-    /** 허용 오차(%p) — 직선이 실제 경로에서 이보다 더 벗어나면 점을 하나 넣는다. */
-    tolerance: number;
-    /** 구간 하나가 낳을 수 있는 점의 상한 — 재귀가 병적으로 깊어지는 걸 막는 안전판. */
-    maxPerSegment?: number;
-}
-
-const DEFAULT_MAX_PER_SEGMENT = 16;
-
-/** 세분으로 생긴 점. `extremum` = 분 고가·저가에서 온 점(종가 경로 밖) — 그릴 때 구분하고 싶을 때. */
-export interface RefinedPoint {
+/** 경로 위의 한 점(x = 벽시계 분, y = 전일 종가 대비 %). */
+export interface PathPoint {
     x: number;
     y: number;
 }
 
 /**
- * 두 끝점 사이를 오차가 허용치 안에 들 때까지 재귀 세분한다. 반환은 **끝점을 뺀 안쪽 점들**(시간순).
- * m0·m1 은 벽시계 분, y0·y1 은 그 시각의 값(호출측이 정한다 — 대개 series 의 종가).
+ * 멤버 하나의 경로 — `[from, to]` 구간의 **분당 종가 전부**. 거래가 없어 빠진 분은 건너뛴다
+ * (직전 값을 끌어오지 않는다 — 없는 걸 그리면 평평한 구간이 사실처럼 보인다).
+ * 점이 2개 미만이면 선이 아니다(null).
  */
-export function refineBetween(
-    m0: number,
-    y0: number,
-    m1: number,
-    y1: number,
-    series: MinuteSeries,
-    opts: RefineOptions,
-): RefinedPoint[] {
-    const cap = opts.maxPerSegment ?? DEFAULT_MAX_PER_SEGMENT;
-    const out: RefinedPoint[] = [];
-    const rec = (a: number, ya: number, b: number, yb: number): void => {
-        if (out.length >= cap || b - a <= 1) return;
-        const slope = (yb - ya) / (b - a);
-        let bestM = -1;
-        let bestY = 0;
-        let bestDev = opts.tolerance;
-        for (let m = a + 1; m < b; m++) {
-            const i = series.index.get(m);
-            if (i == null) continue;
-            const onLine = ya + slope * (m - a);
-            // 종가·고가·저가 셋 중 직선에서 가장 먼 값. 고가만 보면 그림이 위로만 부푼다.
-            for (const v of [series.close[i], series.high[i], series.low[i]]) {
-                if (!Number.isFinite(v)) continue;
-                const dev = Math.abs(v - onLine);
-                if (dev > bestDev) { bestDev = dev; bestM = m; bestY = v; }
-            }
-        }
-        if (bestM < 0) return; // 허용 오차 안 — 이 구간은 직선으로 충분하다
-        rec(a, ya, bestM, bestY);
-        out.push({ x: bestM, y: bestY });
-        rec(bestM, bestY, b, yb);
-    };
-    rec(m0, y0, m1, y1);
-    return out.sort((p, q) => p.x - q.x);
-}
-
-/**
- * 멤버 하나의 선 — 앵커 피벗 시각들에 세우고, 그 사이를 세분해 채운다.
- * 피벗 시각에 분봉이 없으면 그 점은 **건너뛴다**(지어내지 않는다). 남은 점이 2개 미만이면 선이 아니다(null).
- */
-export function memberPath(pivotMinutes: readonly number[], series: MinuteSeries, opts: RefineOptions): RefinedPoint[] | null {
-    const anchors: RefinedPoint[] = [];
-    for (const m of pivotMinutes) {
+export function memberPath(from: number, to: number, series: MinuteSeries): PathPoint[] | null {
+    const out: PathPoint[] = [];
+    for (let m = from; m <= to; m++) {
         const i = series.index.get(m);
-        if (i != null && Number.isFinite(series.close[i])) anchors.push({ x: m, y: series.close[i] });
+        if (i == null) continue;
+        const y = series.close[i];
+        if (Number.isFinite(y)) out.push({ x: m, y });
     }
-    if (anchors.length < 2) return null;
-    const out: RefinedPoint[] = [anchors[0]];
-    for (let k = 0; k + 1 < anchors.length; k++) {
-        const a = anchors[k];
-        const b = anchors[k + 1];
-        out.push(...refineBetween(a.x, a.y, b.x, b.y, series, opts));
-        out.push(b);
-    }
-    return out;
+    return out.length >= 2 ? out : null;
 }
 
 /** 테마 선 하나 — 절대 배치(x=벽시계 분, y=전일 종가 대비 %)라 앵커 골격과 같은 공간에 그대로 선다. */
 export interface ThemeLine {
     code: string;
     name: string;
-    points: RefinedPoint[];
+    points: PathPoint[];
 }
 
 /** 스냅샷 종목에서 이 모듈이 쓰는 것만 — 와이어 전체를 끌고 오지 않는다(테스트도 이 모양이면 된다). */
@@ -121,8 +58,6 @@ export interface ThemeSourceStock {
     themes: string[];
     times: number[];
     rate: number[];
-    minuteHigh: number[];
-    minuteLow: number[];
     cumAmount: number[];
 }
 
@@ -175,18 +110,18 @@ export function themeLines(
     stocks: readonly ThemeSourceStock[],
     hotCodes: ReadonlySet<string>,
     toMinuteOfDay: (unixSec: number) => number,
-    opts: RefineOptions,
 ): ThemeLine[] {
     const self = stocks.find((s) => s.code === anchor.stockCode);
     const themes = new Set(self?.themes ?? []);
     if (themes.size === 0) return [];
-    const pivotMinutes = anchor.points.map((p) => p.x + anchor.baseT);
+    const mins = anchor.points.map((p) => p.x + anchor.baseT);
+    const from = Math.min(...mins);
+    const to = Math.max(...mins);
     const out: ThemeLine[] = [];
     for (const s of stocks) {
         if (s.code === anchor.stockCode || !hotCodes.has(s.code)) continue;
         if (!s.themes.some((t) => themes.has(t))) continue;
-        const series: MinuteSeries = { index: minuteIndex(s.times, toMinuteOfDay), close: s.rate, high: s.minuteHigh, low: s.minuteLow };
-        const points = memberPath(pivotMinutes, series, opts);
+        const points = memberPath(from, to, { index: minuteIndex(s.times, toMinuteOfDay), close: s.rate });
         if (points) out.push({ code: s.code, name: s.name ?? s.code, points });
     }
     return out;
