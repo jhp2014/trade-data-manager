@@ -3,7 +3,7 @@ import { buildThemeBoardViewModel, buildReplayBoardViewModel, type BoardViewMode
 import type { DaySummary, DailySnapshot } from "../api/daySummary.js";
 import type { ReplayStock } from "../api/dayReplay.js";
 import type { ReplayBoardSettings } from "../store/workbench.js";
-import type { BoardFilterExpr } from "@trade-data-manager/market/domain";
+import { AMOUNT_BUCKETS_EOK, type BoardFilterExpr } from "@trade-data-manager/market/domain";
 import type { BoardStock } from "../components/board/BoardCard.js";
 
 const EOK = 1e8;
@@ -157,17 +157,20 @@ describe("buildReplayBoardViewModel", () => {
     });
 
     it("buckets — 시점 t 까지 분봉 거래대금 구간 누적(서버 EOD 와 같은 정책, 창만 [0..t])", () => {
-        // 분봉1: 거래대금 50억(구간 idx2), 비음봉(close 5 ≥ open 1) → 카운트. minuteOfDay 09:0x → 시간창 안.
+        // 분봉1: 거래대금 50억, 비음봉(close 5 ≥ open 1) → 카운트. minuteOfDay 09:0x → 시간창 안.
+        // 구간 인덱스는 AMOUNT_BUCKETS_EOK 에서 뽑는다 — 경계가 늘거나 줄어도 이 테스트가 안 깨지게.
+        const idx50 = AMOUNT_BUCKETS_EOK.indexOf(50);
+        const zeros = new Array<number>(AMOUNT_BUCKETS_EOK.length).fill(0);
         const index = new Map<string, ReplayStock>([
             ["A", rstock("A", { times: [100, 160], rate: [1, 5], minuteOpen: [0, 1], minuteHigh: [1, 6], cumAmount: [0, 50 * EOK] })],
         ]);
         const rs: ReplayBoardSettings = { amountN: 5, rateN: 5 };
         // t=100 → 분봉0 까지(거래대금 0, 구간 없음) → 전부 0
         const at100 = buildReplayBoardViewModel(index, 100, rs, new Set(), empty, "un");
-        expect(allStocks(at100).find((s) => s.code === "A")?.buckets).toEqual([0, 0, 0, 0, 0, 0, 0]);
-        // t=200 → 분봉1 포함(50억) → idx2 에 +1
+        expect(allStocks(at100).find((s) => s.code === "A")?.buckets).toEqual(zeros);
+        // t=200 → 분봉1 포함(50억) → 50억 구간에 +1
         const at200 = buildReplayBoardViewModel(index, 200, rs, new Set(), empty, "un");
-        expect(allStocks(at200).find((s) => s.code === "A")?.buckets).toEqual([0, 0, 1, 0, 0, 0, 0]);
+        expect(allStocks(at200).find((s) => s.code === "A")?.buckets).toEqual(zeros.map((_, i) => (i === idx50 ? 1 : 0)));
     });
 
     it("KRX 기준가 토글 — UN% 를 basePrice 로 일차변환(유니버스·신호는 UN 잣대 유지)", () => {

@@ -45,5 +45,16 @@ export function highMarkerColor(pct: number): string | null {
     return "#7c3aed"; // deep purple
 }
 
-/** 거래대금 7구간(domain AMOUNT_BUCKETS_EOK) 색 — 낮은 구간=밝음 → 높은 구간=어두움. */
-export const AMOUNT_BUCKET_COLORS = ["#fcd34d", "#fbbf24", "#fb923c", "#f97316", "#ef4444", "#b91c1c", "#7f1d1d"] as const;
+/**
+ * 거래대금 8구간(domain AMOUNT_BUCKETS_EOK) 색 — 낮은 구간=밝은 노랑 → 높은 구간=진한 적자.
+ *
+ * 이 램프는 **흰 배경**(차트 마커·골격 선)과 **거의 검은 배경**(보드 버킷 히스토그램 툴팁 rgba(20,20,24))
+ * 양쪽에 얹힌다. 그래서 명도를 끝까지 밀지 않는다 — 예전 최상위 두 색(#b91c1c·#7f1d1d)은 흰 배경에선
+ * 또렷했지만 그 툴팁 위에서 대비 1.8:1 로 배경에 묻혔다. **정작 제일 중요한 구간**이 안 보인 셈이다.
+ * 지금은 위쪽 둘을 명도 대신 **색상**(빨강 → 적자)으로 갈라 양쪽 배경에서 다 읽힌다.
+ * 30~100억 다섯 색은 그대로 뒀다 — 눈이 익은 대응을 이유 없이 깨지 않는다.
+ */
+export const AMOUNT_BUCKET_COLORS = ["#fde047", "#fcd34d", "#fbbf24", "#fb923c", "#f97316", "#ef4444", "#dc2626", "#be185d"] as const;
+
+/** 구간 아래(최하 경계 미만) 분 — 조용한 구간. 색이 아니라 **물러남**이라 무채색이다. */
+export const AMOUNT_QUIET_COLOR = "#c9ced6";

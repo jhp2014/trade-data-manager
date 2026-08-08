@@ -1,14 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { countAmountBuckets, DEFAULT_COUNTING_POLICY, type DerivedMinute } from "../amount.js";
+import { countAmountBuckets, amountBucketIndex, AMOUNT_BUCKETS_EOK, DEFAULT_COUNTING_POLICY, type DerivedMinute } from "../amount.js";
 import { topHighsInWindow, isNearWindowHigh } from "../trailing.js";
 
 describe("countAmountBuckets", () => {
-    // 10:00, 양봉(종가%>시가%), 35억 → 구간0. minuteOfDay 600.
+    // 10:00, 양봉(종가%>시가%), 35억. minuteOfDay 600.
     const bull: DerivedMinute = { minuteOfDay: 600, openPct: 5, highPct: 10, closePct: 8, amountWon: 3.5e9 };
     const sum = (c: number[]) => c.reduce((a, b) => a + b, 0);
+    /** 그 억 값이 드는 구간에만 1 — 경계 배열이 바뀌어도 안 깨진다. */
+    const onlyAt = (eok: number): number[] =>
+        AMOUNT_BUCKETS_EOK.map((_, i) => (i === amountBucketIndex(eok * 1e8) ? 1 : 0));
 
-    it("양봉 35억 → 구간0 카운트", () => {
-        expect(countAmountBuckets([bull])).toEqual([1, 0, 0, 0, 0, 0, 0]);
+    it("양봉 35억 → 그 구간에 카운트", () => {
+        expect(countAmountBuckets([bull])).toEqual(onlyAt(35));
     });
     it("시간 창 밖(15:30·07:59)은 제외", () => {
         expect(sum(countAmountBuckets([{ ...bull, minuteOfDay: 930 }]))).toBe(0); // 15:30
@@ -18,8 +21,8 @@ describe("countAmountBuckets", () => {
         expect(sum(countAmountBuckets([{ ...bull, minuteOfDay: 480 }]))).toBe(1);
         expect(sum(countAmountBuckets([{ ...bull, minuteOfDay: 920 }]))).toBe(1);
     });
-    it("30억 미만은 구간 없음(제외)", () => {
-        expect(sum(countAmountBuckets([{ ...bull, amountWon: 2.5e9 }]))).toBe(0);
+    it("최하 경계 미만은 구간 없음(제외)", () => {
+        expect(sum(countAmountBuckets([{ ...bull, amountWon: (AMOUNT_BUCKETS_EOK[0] - 1) * 1e8 }]))).toBe(0);
     });
     it("꼬리 없는 음봉(고가%−시가% ≤1)은 제외", () => {
         // 종가%<시가%, 고가%−시가% = 0.5 ≤ 1 → 제외

@@ -242,62 +242,103 @@ export function absoluteFrame(items: readonly NormalizedSkeleton[]): OverlayBoun
 }
 
 /**
- * 골격 선분 하나의 거래대금 — **분당 평균**(구간 합 ÷ 구간 분).
+ * 골격 선을 **분 단위로 자른 색 조각**(런) — "이 시점에 분봉 대금이 얼마였나"를 색으로 읽게 하는 것.
  *
- * 왜 구간 합이 아닌가: 60분 구간은 3분 구간보다 무조건 합이 크다. 합을 색에 실으면 그림이 "어디서
- * 터졌나"가 아니라 "어디가 길었나"를 말하게 된다. 강도라야 사건이 보인다(합은 라벨이 말한다 —
- * 정확히는 이 값의 수치를 라벨이 쓰고, 색은 같은 값의 상대 위치를 쓴다).
+ * ## 왜 선분(피벗~피벗)이 아니라 분인가
+ * 예전엔 선분 하나에 색 하나였고 그 값이 구간 **평균**이었다. 60분 구간에서 09:32 에 200억이 터지고
+ * 나머지가 조용하면 평균은 3억이라 **스파이크가 색에서 통째로 지워진다**. 형태(직선)는 그대로 두고
+ * 색만 분 해상도로 올리면 2D 평면에 세 번째 차원이 실제로 얹힌다.
  *
- * 재료는 복기 파생의 `cumAmount`(누적, 원) — 인접 차분이 곧 분봉 거래대금이라 구간 합은 양 끝 차분 하나다.
- * `cumAmount[i]` 가 i분 **포함** 누적이므로 [m0, m1] 구간의 합은 m0+1..m1 분의 몫이다(시작 분의 자기 봉은
- * 직전 구간에 든다 — 구간끼리 겹치지 않게 하는 유일한 배분이다).
+ * ## 왜 자기 정규화가 아니라 절대 구간인가
+ * "색만 보고 얼마인지"는 자기 안 정규화로는 **원리적으로 불가능**하다 — 같은 색이 차트마다 다른 값이 된다.
+ * 그래서 도메인의 `AMOUNT_BUCKETS_EOK`(보드 히스토그램·차트 마커·필터가 쓰는 그 구간)를 그대로 쓴다.
+ * 화면끼리 같은 자를 보게 되는 건 덤이다.
+ *
+ * ## 왜 런으로 합치는가
+ * 하루면 분 조각이 400개, 테마 30선이면 12,000개다. 같은 구간이 이어지면 하나로 합치면 대부분의
+ * 조용한 구간이 통째로 한 조각이 되어 실제 개수가 한 자릿수~수십 개로 떨어진다. 색이 이산(구간)이라
+ * 합쳐도 **그림이 하나도 안 바뀐다** — 연속 램프였으면 못 했을 최적화다.
  */
-export interface SegmentAmount {
-    /** 분당 평균 거래대금(원). 재료가 없으면 항목 자체가 null 이다(0으로 지어내지 않는다). */
-    perMinute: number;
+export interface AmountRun {
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+    /** AMOUNT_BUCKETS_EOK 인덱스. **−1 = 구간 아래**(조용함) · **−2 = 재료 없음**(분봉 결손). */
+    bucket: number;
+    /** 이 런 안 분당 거래대금의 최대(원) — 값 라벨이 쓴다. 재료가 없으면 0. */
+    maxAmount: number;
 }
 
+/** 구간 아래 / 재료 없음 — 색을 정하는 쪽이 둘을 구분해야 한다(조용한 것과 모르는 것은 다르다). */
+export const BUCKET_QUIET = -1;
+export const BUCKET_MISSING = -2;
+
+/** 병적인 입력(일봉 좌표를 잘못 넘기는 등)에서 조각이 폭주하지 않게 하는 상한. */
+const MAX_RUN_MINUTES = 2000;
+
 /**
- * 선 하나의 선분별 거래대금. 반환 길이 = points.length − 1, 못 구한 선분은 null.
- * `absMinuteOf` 는 이 선의 x 를 벽시계 분으로 되돌린다(정규화 뷰는 x + baseT, 절대 뷰는 baseT=0 이라 항등).
+ * 선 하나 → 분 단위 색 런. `baseT` 는 x 를 벽시계 분으로 되돌린다(절대 배치는 0이라 항등).
+ * `amountAt(m)` = m 분의 거래대금(원), 없으면 null. `bucketOf` = 도메인 구간 판정.
  */
-export function segmentAmounts(
-    s: { points: readonly { x: number }[]; baseT: number },
-    minuteIndex: ReadonlyMap<number, number>,
-    cumAmount: readonly number[],
-): (SegmentAmount | null)[] {
-    const out: (SegmentAmount | null)[] = [];
-    for (let i = 0; i + 1 < s.points.length; i++) {
-        const m0 = s.points[i].x + s.baseT;
-        const m1 = s.points[i + 1].x + s.baseT;
-        const i0 = minuteIndex.get(m0);
-        const i1 = minuteIndex.get(m1);
+export function amountRuns(
+    points: readonly { x: number; y: number }[],
+    baseT: number,
+    amountAt: (minute: number) => number | null,
+    bucketOf: (won: number) => number,
+): AmountRun[] {
+    const out: AmountRun[] = [];
+    let budget = MAX_RUN_MINUTES;
+    const push = (x0: number, y0: number, x1: number, y1: number, bucket: number, amount: number): void => {
+        const last = out[out.length - 1];
+        // 같은 구간이 이어지면 늘린다 — 색이 이산이라 합쳐도 그림이 안 바뀐다.
+        if (last && last.bucket === bucket && last.x1 === x0 && last.y1 === y0) {
+            last.x1 = x1;
+            last.y1 = y1;
+            if (amount > last.maxAmount) last.maxAmount = amount;
+            return;
+        }
+        out.push({ x0, y0, x1, y1, bucket, maxAmount: amount });
+    };
+    for (let i = 0; i + 1 < points.length; i++) {
+        const p = points[i];
+        const q = points[i + 1];
+        const m0 = p.x + baseT;
+        const m1 = q.x + baseT;
         const span = m1 - m0;
-        if (i0 == null || i1 == null || span <= 0) { out.push(null); continue; }
-        const sum = cumAmount[i1] - cumAmount[i0];
-        out.push(Number.isFinite(sum) ? { perMinute: sum / span } : null);
+        if (span <= 0) continue;
+        const yAt = (m: number): number => p.y + ((q.y - p.y) * (m - m0)) / span;
+        for (let m = Math.floor(m0); m < m1; m++) {
+            if (budget-- <= 0) return out;
+            const a = Math.max(m, m0);
+            const b = Math.min(m + 1, m1);
+            // 이 조각([a,b])의 색은 **끝나는 분**의 거래대금이다 — cumAmount 차분이 그 분의 몫이라
+            // 시작 분의 봉은 직전 조각에 든다(조각끼리 겹치지 않게 하는 유일한 배분).
+            const won = amountAt(Math.ceil(b));
+            push(a - baseT, yAt(a), b - baseT, yAt(b), won === null ? BUCKET_MISSING : bucketOf(won), won ?? 0);
+        }
     }
     return out;
 }
 
-/** `times[]`(unix 초) → 벽시계 분 → 인덱스. 선분마다 훑지 않도록 종목당 한 번 만든다. */
+/** `times[]`(unix 초) → 벽시계 분 → 인덱스. 조각마다 훑지 않도록 종목당 한 번 만든다. */
 export function minuteIndexOf(times: readonly number[], toMinute: (unixSec: number) => number): Map<number, number> {
     const m = new Map<number, number>();
     for (let i = 0; i < times.length; i++) m.set(toMinute(times[i]), i);
     return m;
 }
 
-/**
- * 선분 값들의 색 정규화 기준 — **그 선 안에서의 최대**.
- *
- * 종목 간 절대 비교는 시총·유통주식이 달라 성립하지 않고, 이 색은 어차피 **짚은 하나에만** 붙으므로
- * 화면에 동시에 두 종목이 서지 않는다. 그래서 "이 경로 안에서 어디가 제일 뜨거웠나"가 정직한 질문이고,
- * 절대 수치는 라벨이 답한다. 전부 0이거나 값이 없으면 null — 분모를 지어내지 않는다.
- */
-export function amountScaleOf(segs: readonly (SegmentAmount | null)[]): number | null {
-    let max = 0;
-    for (const s of segs) if (s && s.perMinute > max) max = s.perMinute;
-    return max > 0 ? max : null;
+/** 누적 거래대금 + 분 인덱스 → "그 분의 거래대금" 조회기. 인접 차분이 곧 분봉 거래대금이다. */
+export function minuteAmountOf(
+    minuteIndex: ReadonlyMap<number, number>,
+    cumAmount: readonly number[],
+): (minute: number) => number | null {
+    return (m) => {
+        const i = minuteIndex.get(m);
+        if (i == null) return null;
+        const v = cumAmount[i] - (i > 0 ? cumAmount[i - 1] : 0);
+        return Number.isFinite(v) ? v : null;
+    };
 }
 
 /**

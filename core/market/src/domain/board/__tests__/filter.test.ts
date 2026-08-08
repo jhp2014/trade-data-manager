@@ -15,8 +15,9 @@ import {
     type BoardMetrics,
     type MetricField,
 } from "../filter.js";
+import { AMOUNT_BUCKETS_EOK } from "../amount.js";
 
-const metrics = (over: Partial<BoardMetrics>): BoardMetrics => ({ highPct: 20, amount: 300e8, buckets: [1, 1, 3, 0, 0, 0, 0], trailingHighs: { krx: [20, 5, 3], un: [20, 5, 3] }, ...over });
+const metrics = (over: Partial<BoardMetrics>): BoardMetrics => ({ highPct: 20, amount: 300e8, buckets: AMOUNT_BUCKETS_EOK.map(() => 1), trailingHighs: { krx: [20, 5, 3], un: [20, 5, 3] }, ...over });
 const grp = (kind: string, params: Record<string, number>, mode: "dim" | "hide" = "dim") => ({ predicates: [{ kind, params }], mode });
 
 describe("board filter (순수)", () => {
@@ -40,10 +41,11 @@ describe("board filter (순수)", () => {
 
     it("minAmtFew — ≥50억 분봉 횟수 ≤ 0 이면 제외", () => {
         const expr: BoardFilterExpr = { groups: [grp("minAmtFew", { eok: 50, maxCount: 0 })] };
-        // buckets 인덱스 2(50억)~ 합 = 3 → 0회 아님 → show
-        expect(evalBoardFilter(expr, metrics({ buckets: [1, 1, 3, 0, 0, 0, 0] })).effect).toBe("show");
-        // ≥50억 구간 전부 0 → 0회 → 제외
-        expect(evalBoardFilter(expr, metrics({ buckets: [5, 5, 0, 0, 0, 0, 0] })).effect).toBe("dim");
+        // buckets 를 **억 값으로** 짓는다 — 경계 배열이 늘거나 줄어도 이 테스트의 뜻이 안 변한다.
+        // (필터는 인덱스가 아니라 하한 억 값으로 합산하므로 구간이 끼어들어도 저장식은 그대로 통한다.)
+        const at = (...eoks: number[]): number[] => AMOUNT_BUCKETS_EOK.map((lo) => (eoks.includes(lo) ? 1 : 0));
+        expect(evalBoardFilter(expr, metrics({ buckets: at(50) })).effect).toBe("show"); // ≥50억 1회 → 0회 아님
+        expect(evalBoardFilter(expr, metrics({ buckets: at(20, 30, 40) })).effect).toBe("dim"); // ≥50억 0회 → 제외
     });
 
     it("newHighFar — 20일 최고가 밖이면 제외 (market 파라미터로 시장 선택, 미지정=UN)", () => {

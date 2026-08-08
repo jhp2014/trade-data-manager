@@ -3,7 +3,7 @@ import { stocksByTheme, themeParents, relatedThemes } from "../roster.js";
 import { selectHotUniverse } from "../ranking.js";
 import { isMover, evaluateSignal } from "../signals.js";
 import { groupStocks } from "../grouping.js";
-import { amountBucketIndex } from "../amount.js";
+import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "../amount.js";
 
 describe("stocksByTheme", () => {
     it("테마별로 묶고 등락률 desc 정렬", () => {
@@ -100,15 +100,23 @@ describe("evaluateSignal (1분 델타)", () => {
 
 describe("amountBucketIndex (거래대금 구간)", () => {
     const eok = (n: number) => n * 1e8;
-    it("7구간 경계 매핑, 30억 미만 -1", () => {
-        expect(amountBucketIndex(eok(29))).toBe(-1);
-        expect(amountBucketIndex(eok(30))).toBe(0); // [30,40)
-        expect(amountBucketIndex(eok(45))).toBe(1); // [40,50)
-        expect(amountBucketIndex(eok(60))).toBe(2); // [50,70)
-        expect(amountBucketIndex(eok(90))).toBe(3); // [70,100)
-        expect(amountBucketIndex(eok(120))).toBe(4); // [100,150)
-        expect(amountBucketIndex(eok(180))).toBe(5); // [150,200)
-        expect(amountBucketIndex(eok(500))).toBe(6); // [200,∞)
+    it("구간 경계 매핑 — 최하 경계 미만은 -1", () => {
+        expect(amountBucketIndex(eok(19))).toBe(-1);
+        expect(amountBucketIndex(eok(20))).toBe(0); // [20,30)
+        expect(amountBucketIndex(eok(35))).toBe(1); // [30,40)
+        expect(amountBucketIndex(eok(45))).toBe(2); // [40,50)
+        expect(amountBucketIndex(eok(60))).toBe(3); // [50,70)
+        expect(amountBucketIndex(eok(90))).toBe(4); // [70,100)
+        expect(amountBucketIndex(eok(120))).toBe(5); // [100,150)
+        expect(amountBucketIndex(eok(180))).toBe(6); // [150,200)
+        expect(amountBucketIndex(eok(500))).toBe(7); // [200,∞)
+    });
+
+    it("경계는 배열에서 온다 — 구간을 늘려도 매핑 규칙(하한 이상 = 그 구간)이 유지된다", () => {
+        AMOUNT_BUCKETS_EOK.forEach((lo, i) => {
+            expect(amountBucketIndex(eok(lo))).toBe(i); // 하한 정확히
+            expect(amountBucketIndex(eok(lo) - 1)).toBe(i - 1); // 하한 바로 아래는 직전 구간(0번은 -1)
+        });
     });
 });
 

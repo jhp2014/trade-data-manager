@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, segmentAmounts, minuteIndexOf, amountScaleOf } from "../skeletonOverlay.js";
+import { normalizeSkeleton, absoluteSkeleton, pointSkeletons, overlayBounds, trimmedBounds, absoluteFrame, ABS_FRAME, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, BUCKET_QUIET, BUCKET_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -226,44 +226,60 @@ describe("splitAtX — 타점 이후 구간 가르기", () => {
     });
 });
 
-describe("segmentAmounts — 선분별 분당 평균 거래대금", () => {
-    // 09:15·09:30·10:30 세 피벗. 누적 거래대금이 분당 1억씩 오르다 09:30 이후 분당 10억으로 뛴다.
-    const times = Array.from({ length: 121 }, (_, i) => 555 + i); // 벽시계 분(테스트는 항등 변환)
-    const cumAmount = times.map((m) => (m <= 570 ? (m - 555) * 1e8 : 15 * 1e8 + (m - 570) * 10e8));
-    const index = minuteIndexOf(times, (v) => v);
-    const line = { key: "k", chartKey: "k", kind: "chart" as const, stockCode: "005930", date: "2026-08-05", basePrice: 100, baseT: 0, points: [{ x: 555, y: 0 }, { x: 570, y: 5 }, { x: 630, y: 20 }] };
+describe("minuteAmountOf — 누적의 인접 차분이 곧 그 분의 거래대금", () => {
+    const index = minuteIndexOf([540, 541, 542], (v) => v);
+    const at = minuteAmountOf(index, [10, 30, 35]);
 
-    it("구간 합 ÷ 구간 분 — 길이가 다른 두 구간이 강도로 비교된다(합이면 긴 쪽이 무조건 크다)", () => {
-        const segs = segmentAmounts(line, index, cumAmount);
-        expect(segs[0]).toEqual({ perMinute: 1e8 }); // 15분에 15억 → 1억/분
-        expect(segs[1]).toEqual({ perMinute: 10e8 }); // 60분에 600억 → 10억/분
-        // 뒤 구간이 4배 길지만 강도는 10배 — "어디가 길었나"가 아니라 "어디가 터졌나"가 나온다.
+    it("차분을 낸다(첫 분은 누적 그대로)", () => {
+        expect(at(540)).toBe(10);
+        expect(at(541)).toBe(20);
+        expect(at(542)).toBe(5);
     });
 
-    it("타점 정규화 좌표(x 는 상대분)도 baseT 를 더해 벽시계로 되돌린다", () => {
-        const rel = { ...line, baseT: 570, points: [{ x: -15, y: -5 }, { x: 0, y: 0 }, { x: 60, y: 15 }] };
-        expect(segmentAmounts(rel, index, cumAmount)).toEqual(segmentAmounts(line, index, cumAmount));
-    });
-
-    it("분봉에 그 시각이 없으면 그 선분만 null — 0으로 지어내지 않는다", () => {
-        const gap = { ...line, points: [{ x: 555, y: 0 }, { x: 9999, y: 5 }] };
-        expect(segmentAmounts(gap, index, cumAmount)).toEqual([null]);
-    });
-
-    it("길이 0 구간(같은 시각)은 null — 0으로 나누지 않는다", () => {
-        const same = { ...line, points: [{ x: 570, y: 0 }, { x: 570, y: 0 }] };
-        expect(segmentAmounts(same, index, cumAmount)).toEqual([null]);
+    it("없는 분은 null — 0(거래 없음)과 구분된다", () => {
+        expect(at(999)).toBeNull();
     });
 });
 
-describe("amountScaleOf — 색 정규화 기준(그 선 안의 최대)", () => {
-    it("최대값을 낸다 — 종목 간 비교가 아니라 '이 경로 안에서 어디가 제일 뜨거웠나'", () => {
-        expect(amountScaleOf([{ perMinute: 3 }, null, { perMinute: 9 }])).toBe(9);
+describe("amountRuns — 골격 선을 분 단위로 잘라 구간 색 런으로", () => {
+    // 테스트용 구간 판정: 10 이상이면 1, 5 이상이면 0, 그 아래는 -1(구간 없음).
+    const bucketOf = (won: number): number => (won >= 10 ? 1 : won >= 5 ? 0 : -1);
+    /** 분 → 거래대금. 543분에만 20 이 터지고 나머지는 1. */
+    const at = (m: number): number | null => (m < 540 || m > 546 ? null : m === 543 ? 20 : 1);
+
+    it("피벗 사이 직선을 분마다 자르고 y 는 선형 보간 — 형태는 안 바뀌고 색 해상도만 오른다", () => {
+        const runs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, bucketOf);
+        // 조용한 구간 → 스파이크(543분) → 다시 조용 = 런 3개(같은 구간은 합쳐진다)
+        expect(runs.map((r) => r.bucket)).toEqual([BUCKET_QUIET, 1, BUCKET_QUIET]);
+        expect(runs[0]).toMatchObject({ x0: 540, y0: 0, x1: 542, y1: 2 }); // 기울기 1 그대로
+        expect(runs[1]).toMatchObject({ x0: 542, y0: 2, x1: 543, y1: 3 }); // 543분 봉 = 그 조각
+        expect(runs[2]).toMatchObject({ x0: 543, y0: 3, x1: 546, y1: 6 });
     });
 
-    it("값이 없거나 전부 0이면 null — 분모를 지어내지 않는다(색을 안 칠한다)", () => {
-        expect(amountScaleOf([])).toBeNull();
-        expect(amountScaleOf([null, { perMinute: 0 }])).toBeNull();
+    it("**스파이크가 평균에 안 묻힌다** — 이게 선분 평균을 버린 이유", () => {
+        const runs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, bucketOf);
+        expect(runs.some((r) => r.bucket === 1)).toBe(true); // 6분 평균이면 (5×1+20)/6 ≈ 4.2 → 구간 없음이 됐을 값
+        expect(runs.find((r) => r.bucket === 1)!.maxAmount).toBe(20); // 라벨이 쓰는 최대
+    });
+
+    it("타점 정규화 좌표(x 는 상대분)도 baseT 로 벽시계를 찾고, x 는 상대 그대로 낸다", () => {
+        const abs = amountRuns([{ x: 540, y: 0 }, { x: 546, y: 6 }], 0, at, bucketOf);
+        const rel = amountRuns([{ x: -3, y: 0 }, { x: 3, y: 6 }], 543, at, bucketOf);
+        expect(rel.map((r) => r.bucket)).toEqual(abs.map((r) => r.bucket));
+        expect(rel[0].x0).toBe(-3); // 좌표계는 그 선의 것을 유지한다
+    });
+
+    it("분봉이 없는 구간은 **재료 없음**으로 — 조용한 것과 구분된다(색도 갈린다)", () => {
+        const runs = amountRuns([{ x: 600, y: 0 }, { x: 603, y: 3 }], 0, at, bucketOf);
+        expect(runs.map((r) => r.bucket)).toEqual([BUCKET_MISSING]);
+    });
+
+    it("길이 0·역방향 구간은 건너뛴다(0으로 나누지 않는다)", () => {
+        expect(amountRuns([{ x: 540, y: 0 }, { x: 540, y: 5 }], 0, at, bucketOf)).toEqual([]);
+    });
+
+    it("점이 하나면 선이 아니다", () => {
+        expect(amountRuns([{ x: 540, y: 0 }], 0, at, bucketOf)).toEqual([]);
     });
 });
 

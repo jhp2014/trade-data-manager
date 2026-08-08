@@ -1,11 +1,13 @@
-// 분봉 거래대금 구간(억) — 서버 스냅샷 카운트·차트 마커·필터가 공유하는 단일 진실원본.
-// 7구간: [30,40) [40,50) [50,70) [70,100) [100,150) [150,200) [200,∞). 외부 import 0.
+// 분봉 거래대금 구간(억) — 서버 스냅샷 카운트·차트 마커·필터·골격 선 색이 공유하는 단일 진실원본.
+// 8구간: [20,30) [30,40) [40,50) [50,70) [70,100) [100,150) [150,200) [200,∞). 외부 import 0.
 // ⚠ bucketCounts 는 복기 파일 파생값(MinuteDerived)에서 **요청 때 재계산**된다(apps/api DayBoards.themeBoard(themeStatsOf)).
 //    그래서 이 정책(시간창·음봉/꼬리·임계)을 바꾸면 파일 재빌드 없이 **다음 요청에 자동 반영**된다(캐시 없음).
-export const AMOUNT_BUCKETS_EOK = [30, 40, 50, 70, 100, 150, 200] as const;
+// ⚠ 구간을 끼워 넣으면 **인덱스가 밀린다**. 저장된 필터는 안전한데(억 값으로 합산 — countAtLeastEok),
+//    인덱스를 영속하는 소비자가 새로 생기면 그때부터 이 배열은 못 건드리게 된다.
+export const AMOUNT_BUCKETS_EOK = [20, 30, 40, 50, 70, 100, 150, 200] as const;
 export const AMOUNT_BUCKET_COUNT = AMOUNT_BUCKETS_EOK.length;
 
-/** 거래대금(원) → 구간 인덱스(0..6). 30억 미만이면 -1(구간 없음). */
+/** 거래대금(원) → 구간 인덱스(0..7). 최하 경계(20억) 미만이면 -1(구간 없음). */
 export function amountBucketIndex(amountKrw: number): number {
     const eok = amountKrw / 1e8;
     if (eok < AMOUNT_BUCKETS_EOK[0]) return -1;
