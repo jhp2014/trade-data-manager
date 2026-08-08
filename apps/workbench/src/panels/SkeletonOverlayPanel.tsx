@@ -46,6 +46,8 @@ const PAD = { left: 46, right: 14, top: 12, bottom: 24 };
 const DOT_BUDGET = 1200;
 /** 라벨 격자 한 칸(화면 px) — 라벨 하나가 차지하는 자리. 이보다 촘촘하면 뭉쳐서 개수 뱃지가 된다. */
 const LABEL_CELL = { w: 72, h: 14 };
+/** 라벨 칩과 끝점 사이 간격 — 피벗 손잡이(r=7) 밖에 서야 점 호버를 안 가로챈다. */
+const LABEL_GAP = 9;
 
 /** `2026-07-08` → `26.07.08`. 연도를 남기는 건 여러 해가 섞이기 때문(월·일만이면 같은 날로 보인다). */
 const fmtDate = (d: string): string => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
@@ -347,8 +349,24 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return dotFirst ? <>{dot}{text}</> : <>{text}{dot}</>;
     };
 
-    const labelSideOf = (leftPx: number): CSSProperties =>
-        labelAtStart ? { left: leftPx - 2, transform: "translateY(-50%)" } : { left: leftPx + 2, transform: "translate(-100%, -50%)" };
+    /**
+     * 라벨 칩 자리 — **점의 바깥쪽**(선이 뻗어 나가는 반대 방향)에 띄운다.
+     * 예전엔 칩이 끝점에서 안쪽으로 깔려 **끝점 자체를 덮었다**: 선 위를 가려 그림을 읽기 나쁘고,
+     * 무엇보다 그 점의 피벗 손잡이를 칩이 가로채 가장 바깥 점만 호버가 안 됐다(사용자 지적).
+     * 간격 9px = 피벗 손잡이 반경(7) 밖 — 점과 칩이 서로의 히트 영역을 침범하지 않는 최소치.
+     *
+     * 바깥에 칩 폭만큼 자리가 없으면(창 가장자리에 붙은 끝점) **안쪽으로 넘긴다** — 잘려서 못 읽는 것보단
+     * 선 위에 얹히는 게 낫다. 넘겨도 간격은 그대로라 점 호버는 살아 있다.
+     * 색 점은 언제나 칩에서 **점을 마주 보는 끝**에 둔다(dotFirst) — 어느 선의 이름인지 가리키는 게 그 점의 일이다.
+     */
+    const labelPlacement = (leftPx: number): { style: CSSProperties; dotFirst: boolean } => {
+        const outwardLeft = labelAtStart;
+        const room = outwardLeft ? leftPx - LABEL_GAP : box.width - leftPx - LABEL_GAP;
+        const atLeft = room < LABEL_CELL.w ? !outwardLeft : outwardLeft;
+        return atLeft
+            ? { style: { left: leftPx - LABEL_GAP, transform: "translate(-100%, -50%)" }, dotFirst: false }
+            : { style: { left: leftPx + LABEL_GAP, transform: "translateY(-50%)" }, dotFirst: true };
+    };
 
     /** 마커 칩 — ▾시각. 컴포넌트가 아니라 함수인 이유: 패널 상태를 잔뜩 닫아 갖는데 매 렌더 새 컴포넌트면
      *  리액트가 매번 언마운트/마운트를 반복한다(호버가 튄다). */
@@ -617,26 +635,25 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             const left = c.x - box.left;
                             const top = c.y - box.top;
                             if (c.members.length > 1) {
-                                const off: CSSProperties = labelAtStart
-                                    ? { left: left + 6, transform: "translateY(-50%)" }
-                                    : { left: left - 6, transform: "translate(-100%, -50%)" };
+                                // 뱃지도 라벨과 같은 쪽(점의 바깥) — 손잡이의 자리 규칙은 하나여야 한다.
                                 return (
                                     <button key={`c${c.x}|${c.y}`} onClick={(e) => setBadge({ x: e.clientX, y: e.clientY, members: c.members })}
                                         onMouseEnter={() => setBadgeHover(c.members)} onMouseLeave={() => setBadgeHover(null)}
                                         title={`${c.members.length}개 뭉침 — 올리면 무리가 켜지고, 누르면 목록`}
-                                        style={{ ...chip, ...off, top, ...badgeChip }}>
+                                        style={{ ...chip, ...labelPlacement(left).style, top, ...badgeChip }}>
                                         {c.members.length}
                                     </button>
                                 );
                             }
                             const s = byKey.get(c.members[0]);
                             if (!s) return null;
+                            const pl = labelPlacement(left);
                             return (
                                 <button key={`c${c.x}|${c.y}`} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
                                     title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=태그`}
-                                    style={{ ...chip, ...labelSideOf(left), top }}>
-                                    {labelOf(s, labelAtStart)}
+                                    style={{ ...chip, ...pl.style, top }}>
+                                    {labelOf(s, pl.dotFirst)}
                                 </button>
                             );
                         })}
@@ -671,17 +688,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             if (!s) return null;
                             const p = labelPointOf(s, labelAnchorMode);
                             const { v, color } = visualOf(key);
+                            const pl = labelPlacement(scales.x(p.x) - box.left);
                             return (
                                 <button key={key} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
                                     title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=선택 해제 · 우클릭=태그`}
                                     style={{
-                                        ...chip, ...labelSideOf(scales.x(p.x) - box.left), top: scales.y(p.y) - box.top,
+                                        ...chip, ...pl.style, top: scales.y(p.y) - box.top,
                                         color, fontWeight: 700,
                                         // 선택된 것에만 상자 — 상태를 가진 컨트롤이라 그렇게 보여야 한다(눈으로 찾기도 쉽다).
                                         ...(v.role === "selected" ? selectedChip(color) : {}),
                                     }}>
-                                    {labelOf(s, labelAtStart)}
+                                    {labelOf(s, pl.dotFirst)}
                                 </button>
                             );
                         })}
@@ -839,7 +857,8 @@ const count: CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fon
 const muted: CSSProperties = { position: "absolute", inset: 0, color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px", pointerEvents: "none" };
 const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
 const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer", whiteSpace: "nowrap" };
-// 라벨 — 상자 없이 후광 글자 + 그 선 색의 점(F안). 점이 끝점 좌표에 정확히 얹혀 어느 선인지 말한다.
+// 라벨 — 상자 없이 후광 글자 + 그 선 색의 점(F안). **색 점은 언제나 끝점을 마주 보는 쪽**에 서서
+// 이 글자가 어느 선의 것인지 가리킨다(칩이 점 바깥에 서므로 칩의 안쪽 끝이 곧 점 쪽이다).
 const chip: CSSProperties = {
     position: "absolute", pointerEvents: "auto", cursor: "pointer", whiteSpace: "nowrap",
     display: "inline-flex", alignItems: "center", gap: 3,
@@ -853,8 +872,8 @@ const badgeChip: CSSProperties = {
     border: "1px solid var(--border-subtle)", color: "var(--text-secondary)", textShadow: "none",
 };
 const labelDot = (color: string): CSSProperties => ({ width: 4, height: 4, borderRadius: 2, background: color, flexShrink: 0 });
-/** 마커 칩 자리 — 점 위 가운데(경로에 그려진 합성점 바로 위에 얹힌다). */
-const markerChipPos = (left: number, top: number): CSSProperties => ({ left, top: top - 4, transform: "translate(-50%, -100%)" });
+/** 마커 칩 자리 — 점 **위**(경로의 그 점을 안 가리게 손잡이 반경 밖으로 띄운다). */
+const markerChipPos = (left: number, top: number): CSSProperties => ({ left, top: top - LABEL_GAP, transform: "translate(-50%, -100%)" });
 /** 선택된 라벨만 상자를 되받는다 — 클릭이 실제로 먹었다는 신호가 색만으로는 약하다. */
 const selectedChip = (color: string): CSSProperties => ({
     background: "var(--bg-secondary)", border: `1px solid ${color}`, borderRadius: 3,
