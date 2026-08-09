@@ -133,12 +133,9 @@ export function memberCandles(
 /**
  * 캔들 몸통의 화면 폭(px). 1분이 화면에서 차지하는 폭의 70%(봉 사이를 벌려 개별 봉이 읽히게).
  * 상한 9px — 크게 확대했을 때 몸통이 통나무가 되면 골격 선이 그 뒤로 숨는다.
+ * **하한 0.6px — 축소해도 사라지지 않는다**(사용자 확정): 예전엔 몸통이 1.5px 아래면 캔들을 통째로
+ * 접었는데, 폭 하나 때문에 보던 그림이 사라지는 게 더 불편했다. 좁아지면 잉크가 뭉치는 건 맞지만
+ * 그건 "여기 봉이 빽빽하다"는 참인 그림이고, 확대하면 즉시 풀린다.
  */
-export const candleWidth = (pxPerMinute: number): number => Math.min(9, Math.max(0, pxPerMinute * 0.7));
-
-/**
- * 이 배율에서 캔들을 그릴 수 있나 — 몸통이 **1.5px 미만이면 선으로 떨어뜨린다**(사용자 확정 방향).
- * 그 아래에선 700봉이 서로 붙어 잉크 덩어리가 될 뿐이고, 그 상태의 "어디가 컸나"는 골격 선이 답한다.
- */
-export const CANDLE_MIN_WIDTH = 1.5;
-export const candlesVisible = (pxPerMinute: number): boolean => candleWidth(pxPerMinute) >= CANDLE_MIN_WIDTH;
+export const CANDLE_MIN_WIDTH = 0.6;
+export const candleWidth = (pxPerMinute: number): number => Math.min(9, Math.max(CANDLE_MIN_WIDTH, pxPerMinute * 0.7));

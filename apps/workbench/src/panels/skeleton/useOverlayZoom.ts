@@ -88,8 +88,14 @@ export interface OverlayZoom {
     tx: ZoomTransform;
     /** 세로축 변환 — rescaleY 로 적용한다. */
     ty: ZoomTransform;
-    /** 원위치(더블클릭·버튼). d3 내부 상태까지 되돌린다 — setState 만 하면 다음 제스처가 옛 값에서 이어진다. */
+    /** 전체 원위치(헤더 버튼). d3 내부 상태까지 되돌린다 — setState 만 하면 다음 제스처가 옛 값에서 이어진다. */
     reset: () => void;
+    /**
+     * **한 축만** 원위치 — 축 스트립 더블클릭(사용자 확정). 본문 더블클릭 전체 리셋은 폐기했다:
+     * 그림을 짚다 보면 더블클릭이 섞여 들어가 애써 맞춘 배율이 통째로 날아갔다.
+     * 축을 겨냥해 눌렀을 때만, 그 축만 되돌리는 게 손짓의 뜻과 맞는다.
+     */
+    resetAxis: (axis: "x" | "y") => void;
     /** 확대·이동 중인가 — 원위치 버튼을 조건부로 띄울 때. */
     zoomed: boolean;
     /** 제스처 진행 중 — 커서를 grab↔grabbing 으로 바꾸는 데 쓴다. */
@@ -185,23 +191,32 @@ export function useOverlayZoom(
         };
     }, [ref, enabled, min, max]);
 
-    const reset = useCallback(() => {
-        setAxes({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
+    /** d3 내부 변환을 identity 로 — 진행 중이던 제스처가 옛 내부 값에서 델타를 이어가지 않게.
+     *  silent 로 감싼다: 이 transform 호출도 start/zoom/end 를 동기 발화하는데 그건 사용자 손짓이 아니다. */
+    const rezero = useCallback(() => {
         const el = ref.current;
         const b = behavior.current;
-        // 내부도 identity 로 — 진행 중이던 제스처가 옛 내부 값에서 델타를 이어가지 않게. silent 로 감싼다:
-        // 이 transform 호출도 start/zoom/end 를 동기 발화하는데, 그건 사용자 손짓이 아니다.
-        if (el && b) {
-            silentRef.current = true;
-            select(el).call(b.transform, zoomIdentity);
-            silentRef.current = false;
-        }
+        if (!el || !b) return;
+        silentRef.current = true;
+        select(el).call(b.transform, zoomIdentity);
+        silentRef.current = false;
     }, [ref]);
+
+    const reset = useCallback(() => {
+        setAxes({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
+        rezero();
+    }, [rezero]);
+
+    const resetAxis = useCallback((axis: "x" | "y") => {
+        setAxes((a) => ({ ...a, [axis]: AXIS_IDENTITY }));
+        rezero();
+    }, [rezero]);
 
     return {
         tx: zoomIdentity.translate(axes.x.t, 0).scale(axes.x.k),
         ty: zoomIdentity.translate(0, axes.y.t).scale(axes.y.k),
         reset,
+        resetAxis,
         dragging,
         zoomed: axes.x.k !== 1 || axes.x.t !== 0 || axes.y.k !== 1 || axes.y.t !== 0,
     };

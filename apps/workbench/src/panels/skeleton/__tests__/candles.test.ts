@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { anchorCandles, memberCandles, candleWidth, candlesVisible, type RawMinute, type MinuteOhlcSeries } from "../candles.js";
+import { anchorCandles, memberCandles, candleWidth, CANDLE_MIN_WIDTH, type RawMinute, type MinuteOhlcSeries } from "../candles.js";
 
 const bar = (time: string, o: number, h: number, l: number, c: number, volume = 100): RawMinute =>
     ({ time, un: { open: String(o), high: String(h), low: String(l), close: String(c), volume: String(volume) } });
@@ -82,14 +82,14 @@ describe("memberCandles — 스냅샷 %(이미 % 공간) → 평행이동 + 평�
     });
 });
 
-describe("candleWidth / candlesVisible — 축소하면 선으로 떨어진다", () => {
+describe("candleWidth — 축소해도 사라지지 않는다", () => {
     it("1분 폭의 70%, 상한 9px", () => {
         expect(candleWidth(4)).toBeCloseTo(2.8);
         expect(candleWidth(40)).toBe(9);
     });
 
-    it("몸통이 1.5px 미만이면 캔들을 접는다 — 붙어서 잉크 덩어리가 될 뿐", () => {
-        expect(candlesVisible(3)).toBe(true);
-        expect(candlesVisible(2)).toBe(false); // 1.4px
+    it("아무리 좁아도 하한을 지킨다(사용자 확정 — 폭 때문에 그림이 사라지지 않게)", () => {
+        expect(candleWidth(0.1)).toBe(CANDLE_MIN_WIDTH);
+        expect(candleWidth(0)).toBe(CANDLE_MIN_WIDTH);
     });
 });
