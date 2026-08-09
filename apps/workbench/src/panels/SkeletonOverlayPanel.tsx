@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { chartQuery } from "../api/queries.js";
 import { minuteOfDayOf, selectHotUniverse, amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
-import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, AMOUNT_BUCKET_COLORS, RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
+import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, AMOUNT_BUCKET_COLORS, highMarkerColor, RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
@@ -1081,11 +1081,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 const color = k.c >= k.o ? CANDLE_UP : CANDLE_DOWN;
                                                 const yTop = scales.y(Math.max(k.o, k.c));
                                                 const yBot = scales.y(Math.min(k.o, k.c));
-                                                // 거래대금 구간 마커 — **차트 패널과 같은 규칙**(8구간 색 + 구간 하한 숫자,
-                                                // minuteChartHooks 의 aboveBar 마커). 임계(20억) 아래면 아무것도 안 붙는다.
-                                                // 일봉엔 안 붙인다: 이 구간은 **분봉 거래대금** 정책이라 일봉 값(수백~수천억)을
-                                                // 넣으면 전 캔들이 최상위 구간으로 찍혀 아무것도 구분되지 않는다.
-                                                const b = candles.daily ? -1 : amountBucketIndex(k.amount);
+                                                // 봉 위 마커 — **해상도마다 관심사가 다르다**(둘 다 차트 패널의 그 규칙 그대로):
+                                                //  · 분봉 = 거래대금 구간(8구간 색 + 구간 하한). 그 화면의 관심사가 분당 대금이다.
+                                                //  · 일봉 = **고가 등락률**(전일 종가 대비 %, 임계 10% 이상만 · highMarkerColor).
+                                                //    일봉에 거래대금 구간을 쓰면 그건 분봉 정책이라 전 캔들이 최상위로 찍혀 안 갈린다.
+                                                const mk = candles.daily
+                                                    ? (() => {
+                                                        const c2 = k.highPct === undefined ? null : highMarkerColor(k.highPct);
+                                                        return c2 === null ? null : { color: c2, text: k.highPct!.toFixed(1) };
+                                                    })()
+                                                    : (() => {
+                                                        const b = amountBucketIndex(k.amount);
+                                                        return b < 0 ? null : { color: AMOUNT_BUCKET_COLORS[b], text: String(AMOUNT_BUCKETS_EOK[b]) };
+                                                    })();
                                                 return (
                                                     <g key={`${keyPrefix}${k.x}`}>
                                                         <g opacity={opacity}>
@@ -1094,13 +1102,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                             {/* 몸통 — 시가~종가. 도지(0폭)는 최소 1px 로 세워 사라지지 않게. */}
                                                             <rect x={cx - w / 2} y={yTop} width={w} height={Math.max(1, yBot - yTop)} fill={color} />
                                                         </g>
-                                                        {/* 마커는 캔들보다 진하다 — 캔들은 배경이지만 이건 사건이다. */}
-                                                        {b >= 0 && (
-                                                            <text x={cx} y={scales.y(k.h) - 4} textAnchor="middle"
-                                                                stroke="var(--bg-primary)" strokeWidth={2.5} paintOrder="stroke"
-                                                                style={{ fontSize: 8.5, fill: AMOUNT_BUCKET_COLORS[b], fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                                                                {AMOUNT_BUCKETS_EOK[b]}
-                                                            </text>
+                                                        {/* 마커는 캔들보다 진하다 — 캔들은 배경이지만 이건 사건이다.
+                                                            점 + 숫자 = 차트 패널의 aboveBar 마커와 같은 모양(색도 같은 함수). */}
+                                                        {mk && (
+                                                            <g>
+                                                                <circle cx={cx} cy={scales.y(k.h) - 5} r={2.6} fill={mk.color} />
+                                                                <text x={cx} y={scales.y(k.h) - 11} textAnchor="middle"
+                                                                    stroke="var(--bg-primary)" strokeWidth={2.5} paintOrder="stroke"
+                                                                    style={{ fontSize: 8.5, fill: mk.color, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                                                                    {mk.text}
+                                                                </text>
+                                                            </g>
                                                         )}
                                                     </g>
                                                 );
@@ -1602,13 +1614,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 })()}
                 {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 점 클릭 = 값 붙잡기
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
-                {!isDaily && <span style={{ color: "var(--text-tertiary)" }}> · 선 클릭 = 캔들 · T = 테마 · 축 더블클릭 = 그 축 원위치</span>}
+                <span style={{ color: "var(--text-tertiary)" }}>
+                    {isDaily ? " · 선택된 라벨 재클릭 = 캔들 · 축 더블클릭 = 그 축 원위치" : " · 선 클릭 = 캔들 · T = 테마 · 축 더블클릭 = 그 축 원위치"}
+                </span>
                 {themeMode && <span style={{ color: "var(--text-secondary)" }}> · 테마 모드(흐린 라벨 호버 = 그 골격선)</span>}
                 {/* 캔들 상태 — 헤더가 아니라 여기(높이가 안 변하는 줄). 이름을 다 적어 어느 종목을 보고 있는지 남긴다. */}
                 {candleCodes.size > 0 && (
                     <span style={{ color: "var(--text-secondary)" }}>
                         {" · 캔들 "}
-                        {[anchorCandleOn ? nameOf(pointTarget!.stockCode) : null, ...(candles?.members.map((m) => m.name) ?? [])].filter(Boolean).join("·")}
+                        {/* ⚠ 앵커는 `candleAnchor` 다 — 예전엔 `pointTarget!` 이었는데, 일봉 패널엔 그게 null 이라
+                            일봉 캔들을 켜는 순간 여기서 터져 **패널이 흰 화면**이 됐다. 단언은 그 자리에서 깨진다. */}
+                        {[anchorCandleOn && candleAnchor ? nameOf(candleAnchor.stockCode) : null, ...(candles?.members.map((m) => m.name) ?? [])].filter(Boolean).join("·")}
                         {anchorCandleOn && anchorMinQ.isLoading ? " …" : ""}
                         <button onClick={() => setCandleCodes(new Set())} title="켜 둔 캔들 전부 끄기" style={footerBtn}>✕</button>
                     </span>

@@ -32,6 +32,12 @@ export interface ViewCandle {
     l: number;
     c: number;
     amount: number;
+    /**
+     * **고가 등락률**(직전 거래일 종가 대비 %) — 일봉 전용. 일봉 차트 패널의 봉 위 마커와 같은 값이라
+     * 같은 색·같은 숫자가 두 화면에서 나온다. 직전 봉이 없거나(창 첫날) 그 종가가 가격이 아니면 없다.
+     * 분봉엔 안 붙는다 — 거기 마커는 거래대금 구간이 진다(분당 대금이 그 화면의 관심사다).
+     */
+    highPct?: number;
 }
 
 /** 원주가 분봉 하나 — `/chart` 번들의 MinuteCandle 중 이 모듈이 쓰는 부분(UN 한 벌). */
@@ -125,7 +131,15 @@ export function dailyOverlayCandles(
         if (!Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
         // 일봉은 거래대금이 **실측**이라(소스 그대로) 분봉처럼 OHLC×량으로 지어내지 않는다.
         const amount = Number(b.amount);
-        out.push({ x: i - origin.baseT, o: y(o), h: y(h), l: y(l), c: y(c), amount: Number.isFinite(amount) ? amount : 0 });
+        // 고가 등락률 — **배열의 직전 봉** 종가 대비(거래일이 곧 이웃이라 달력 공백은 문제가 안 된다).
+        // 창 첫날은 끌어올 직전 봉이 없어 없음 — 지어내면 그 하루만 엉뚱한 마커가 선다.
+        const prev = i > 0 ? priceOf(bars[i - 1][market].close) : NaN;
+        const highPct = Number.isFinite(prev) ? ((h - prev) / prev) * 100 : undefined;
+        out.push({
+            x: i - origin.baseT, o: y(o), h: y(h), l: y(l), c: y(c),
+            amount: Number.isFinite(amount) ? amount : 0,
+            ...(highPct === undefined ? {} : { highPct }),
+        });
     }
     return out;
 }

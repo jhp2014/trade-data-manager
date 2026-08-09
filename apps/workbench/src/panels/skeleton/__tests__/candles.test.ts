@@ -150,3 +150,34 @@ describe("dailyOverlayCandles — 일봉 → 뷰 공간(x = 창 안 거래일 �
         expect(dailyOverlayCandles([], { basePrice: 100, baseT: 0 })).toEqual([]);
     });
 });
+
+describe("dailyOverlayCandles — 고가 등락률(봉 위 마커의 재료)", () => {
+    const d2 = (o: number, h: number, l: number, c: number): RawDaily => {
+        const b = { open: String(o), high: String(h), low: String(l), close: String(c), amount: "0" };
+        return { krx: b, un: b };
+    };
+
+    it("직전 봉 종가 대비 고가 % — 차트 패널 마커와 같은 값이라 두 화면의 숫자가 안 갈린다", () => {
+        // 100 종가 → 다음 날 고가 130 = +30%
+        const out = dailyOverlayCandles([d2(95, 101, 94, 100), d2(102, 130, 100, 128)], { basePrice: 100, baseT: 0 });
+        expect(out[1].highPct).toBeCloseTo(30);
+    });
+
+    it("창 첫날은 없다 — 끌어올 직전 봉이 없는데 지어내면 그 하루만 엉뚱한 마커가 선다", () => {
+        const out = dailyOverlayCandles([d2(95, 101, 94, 100), d2(102, 130, 100, 128)], { basePrice: 100, baseT: 0 });
+        expect(out[0].highPct).toBeUndefined();
+    });
+
+    it("직전 종가가 가격이 아니면 없다(0으로 나누지 않는다)", () => {
+        const bad: RawDaily[] = [
+            { krx: { open: "1", high: "1", low: "1", close: "0", amount: "0" }, un: { open: "1", high: "1", low: "1", close: "0", amount: "0" } },
+            d2(1, 2, 1, 2),
+        ];
+        expect(dailyOverlayCandles(bad, { basePrice: 2, baseT: 1 })[0].highPct).toBeUndefined();
+    });
+
+    it("하락한 날은 음수 — 임계 판정은 색 함수(highMarkerColor)의 몫이라 여기선 값만 낸다", () => {
+        const out = dailyOverlayCandles([d2(95, 101, 94, 100), d2(90, 95, 88, 89)], { basePrice: 100, baseT: 0 });
+        expect(out[1].highPct).toBeCloseTo(-5);
+    });
+});
