@@ -258,6 +258,16 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         () => (isDaily || effSelected.size !== 1 ? null : byKey.get([...effSelected][0]) ?? null),
         [isDaily, effSelected, byKey],
     );
+    /**
+     * 축이 절대값을 같이 읽는 기준 — **타점 하나를 선택했을 때만**(사용자 확정).
+     * 뷰 좌표는 그 타점 기준 상대값이라, 축 눈금·크로스헤어에 (벽시계 · 전일比 %)를 나란히 세우면
+     * 화면을 옮겨 다니며 값을 환산할 필요가 없어진다. 호버가 아니라 선택을 방아쇠로 삼는 이유:
+     * 라벨 위를 스치기만 해도 축 전체가 다시 쓰이면 눈이 붙잡을 기준이 사라진다.
+     */
+    const axisAbs = useMemo(
+        () => (singleTarget?.kind === "point" ? { baseT: singleTarget.baseT, baseRate: singleTarget.baseRate } : null),
+        [singleTarget],
+    );
     const amountTarget = showAmount ? singleTarget : null;
     // 한 벌만 받는다 — 거래대금과 테마가 같은 날짜의 같은 응답을 쓴다(LRU 도 한 자리만 쓴다).
     const snapQ = useDaySnapshot(showAmount || showTheme ? singleTarget?.date ?? null : null);
@@ -690,15 +700,23 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     </defs>
                     {scales && bounds && (
                         <>
-                            {/* 눈금 — 확대하면 d3 가 새 구간에 맞춰 다시 뽑는다(축이 곧 정보라 라벨이 따라와야 한다). */}
+                            {/* 눈금 — 확대하면 d3 가 새 구간에 맞춰 다시 뽑는다(축이 곧 정보라 라벨이 따라와야 한다).
+                                타점을 하나 선택했으면 **절대값을 아랫줄에** 같이 세운다(사용자 확정): 세로축은 전일比 %,
+                                가로축은 벽시계. 한 줄에 붙이면 좁은 왼쪽 여백(46px)을 넘어 잘린다 — 그래서 두 줄이다. */}
                             {scales.y.ticks(5).map((v) => (
                                 <g key={`y${v}`}>
                                     <line x1={box.left} x2={box.left + box.width} y1={scales.y(v)} y2={scales.y(v)} stroke="var(--border-subtle)" strokeWidth={0.5} />
-                                    <text x={box.left - 5} y={scales.y(v) + 3} textAnchor="end" style={axisText}>{v.toFixed(0)}%</text>
+                                    <text x={box.left - 5} y={scales.y(v) + (axisAbs ? -1 : 3)} textAnchor="end" style={axisText}>{v.toFixed(0)}%</text>
+                                    {axisAbs && (
+                                        <text x={box.left - 5} y={scales.y(v) + 9} textAnchor="end" style={axisAbsText}>{fmtPct(v + axisAbs.baseRate)}</text>
+                                    )}
                                 </g>
                             ))}
                             {scales.x.ticks(6).map((v) => (
-                                <text key={`x${v}`} x={scales.x(v)} y={size.h - 8} textAnchor="middle" style={axisText}>{fmtX(v, xUnit)}</text>
+                                <g key={`x${v}`}>
+                                    <text x={scales.x(v)} y={size.h - (axisAbs ? 14 : 8)} textAnchor="middle" style={axisText}>{fmtX(v, xUnit)}</text>
+                                    {axisAbs && <text x={scales.x(v)} y={size.h - 4} textAnchor="middle" style={axisAbsText}>{hmOf(v + axisAbs.baseT)}</text>}
+                                </g>
                             ))}
 
                             {/* 거터 라벨의 지시선 — **클립 밖**에 그린다(거터는 그림 상자 바깥이라 클립하면 사라진다).
@@ -1076,7 +1094,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
                 {/* 크로스헤어 — 자기 상태(마우스 좌표)만 다시 그린다. 부모 렌더에 mousemove 를 태우면
                     이동마다 선 수백 개가 재조정된다(분리한 이유). 팬 중엔 숨긴다(사용자 확정). */}
-                {scales && !dragging && <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} xUnit={xUnit} />}
+                {scales && !dragging && <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} xUnit={xUnit} abs={axisAbs} />}
             </div>
 
             {/* 뭉친 라벨의 멤버 목록 — 행 점이 그림의 그 선과 같은 색(목록↔그림을 잇는 유일한 것). */}
@@ -1175,11 +1193,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 }
 
 /** 크로스헤어 — 마우스 위치의 (시간, %) 읽기. 상태를 여기 가둬 부모(선 수백 개)가 이동마다 안 그려지게. */
-function CrosshairLayer({ wrapRef, scales, box, xUnit }: {
+function CrosshairLayer({ wrapRef, scales, box, xUnit, abs }: {
     wrapRef: RefObject<HTMLDivElement | null>;
     scales: Scales;
     box: { left: number; top: number; width: number; height: number };
     xUnit: XUnit;
+    /** 선택된 타점의 원점 — 있으면 뱃지가 절대값(벽시계·전일比 %)을 괄호로 같이 읽는다. */
+    abs: { baseT: number; baseRate: number } | null;
 }): JSX.Element | null {
     const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
     useEffect(() => {
@@ -1208,9 +1228,13 @@ function CrosshairLayer({ wrapRef, scales, box, xUnit }: {
             <div style={{ position: "absolute", left: pos.x, top: box.top, width: 0, height: box.height, borderLeft: "1px dashed var(--border-strong)", opacity: 0.8 }} />
             <div style={{ position: "absolute", left: box.left, top: pos.y, height: 0, width: box.width, borderTop: "1px dashed var(--border-strong)", opacity: 0.8 }} />
             {/* y 뱃지 — 왼쪽 % 축 위(눈금 숫자가 서는 자리, 오른끝을 축에 맞춘다). */}
-            <div style={{ ...axisBadge, left: box.left - 2, top: pos.y - 7, transform: "translateX(-100%)" }}>{fmtPct(yv)}</div>
+            <div style={{ ...axisBadge, left: box.left - 2, top: pos.y - 7, transform: "translateX(-100%)" }}>
+                {fmtPct(yv)}{abs && <span style={axisBadgeAbs}> {fmtPct(yv + abs.baseRate)}</span>}
+            </div>
             {/* x 뱃지 — 아래 시간축 위. */}
-            <div style={{ ...axisBadge, left: pos.x, bottom: 2, transform: "translateX(-50%)" }}>{fmtX(xv, xUnit)}</div>
+            <div style={{ ...axisBadge, left: pos.x, bottom: 2, transform: "translateX(-50%)" }}>
+                {fmtX(xv, xUnit)}{abs && <span style={axisBadgeAbs}> {hmOf(xv + abs.baseT)}</span>}
+            </div>
         </div>
     );
 }
@@ -1228,6 +1252,10 @@ const footer: CSSProperties = { flexShrink: 0, padding: "3px 10px", borderTop: "
 const count: CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 const muted: CSSProperties = { position: "absolute", inset: 0, color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px", pointerEvents: "none" };
 const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
+/** 눈금 아랫줄의 절대값 — 상대값(주)보다 한 단계 작고 흐리다. 둘이 같은 무게면 어느 쪽이 축인지 안 잡힌다. */
+const axisAbsText: CSSProperties = { fontSize: 8.5, fill: "var(--text-quaternary, var(--text-tertiary))", opacity: 0.75, fontVariantNumeric: "tabular-nums" };
+/** 크로스헤어 뱃지 안의 절대값 — 같은 뱃지에 이어 붙되 색으로 갈린다(뱃지를 둘로 나누면 축이 복잡해진다). */
+const axisBadgeAbs: CSSProperties = { color: "var(--text-tertiary)" };
 const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer", whiteSpace: "nowrap" };
 // 라벨 — 상자 없이 후광 글자 + 그 선 색의 점(F안). **색 점은 언제나 끝점을 마주 보는 쪽**에 서서
 // 이 글자가 어느 선의 것인지 가리킨다(칩이 점 바깥에 서므로 칩의 안쪽 끝이 곧 점 쪽이다).
