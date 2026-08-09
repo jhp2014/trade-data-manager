@@ -127,11 +127,6 @@ type CandleAlpha = "low" | "mid" | "high";
 const CANDLE_ALPHA: Record<CandleAlpha, number> = { low: 0.18, mid: 0.35, high: 0.7 };
 /** 테마 멤버 캔들은 앵커보다 한 겹 뒤 — 주인공이 누구인지 진하기로도 남는다. */
 const CANDLE_MEMBER_RATIO = 0.8;
-/**
- * 다른 것을 짚는 동안 캔들이 물러나는 정도(사용자 요구). 끄지 않고 **크게 흐리게**만 한다 —
- * 지우면 "아까 거기 뭐가 있었지"가 사라지고, 손을 뗐을 때 그림이 튄다.
- */
-const CANDLE_DIM_RATIO = 0.22;
 
 /** 세로선 판독의 재료 한 벌 — 선 하나를 x 로 조회하는 함수 묶음(값은 크로스헤어 층이 읽는다). */
 interface ReadoutSource {
@@ -510,13 +505,20 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const s = byKey.get(hovered);
         return new Set(s ? [s.stockCode] : []);
     }, [hoveredThemeSet, hovered, byKey]);
-    /** 그 종목의 캔들 진하기 — 짚은 게 따로 있으면 크게 물러난다(끄지는 않는다). */
+    /**
+     * 그 종목의 캔들을 지금 그리나 — **다른 라벨을 짚는 동안엔 감춘다**(사용자 확정).
+     * 그 순간의 질문은 "이 선 vs 저 선"이라 봉이 깔려 있으면 선끼리의 비교를 방해한다.
+     * 흐리게만 두는 안도 써봤는데(잔상을 남기려고), 실제로는 흐린 봉도 선을 가려 걸리적거렸다.
+     * 짚은 게 **자기 라벨**이면 그대로 둔다 — 그때는 그 종목을 보는 중이라 봉이 주인공에 가깝다.
+     */
+    const candleShown = useCallback(
+        (code: string): boolean => candleFocusCodes === null || candleFocusCodes.has(code),
+        [candleFocusCodes],
+    );
+    /** 캔들 진하기 — 헤더 단계 × (멤버면 한 겹 뒤). 물러남은 여기 안 든다(감추기는 위가 판정한다). */
     const candleOpacityOf = useCallback(
-        (code: string, member: boolean): number =>
-            CANDLE_ALPHA[candleAlpha] *
-            (member ? CANDLE_MEMBER_RATIO : 1) *
-            (candleFocusCodes !== null && !candleFocusCodes.has(code) ? CANDLE_DIM_RATIO : 1),
-        [candleAlpha, candleFocusCodes],
+        (member: boolean): number => CANDLE_ALPHA[candleAlpha] * (member ? CANDLE_MEMBER_RATIO : 1),
+        [candleAlpha],
     );
 
     /** 테마 선들의 분당 색 런 — **전부** 미리 굽는다(호버 하나만이 아니라, 사용자 확정).
@@ -962,23 +964,22 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     <TextToggle active={showLabels} onClick={() => setShowLabels(!showLabels)} title="앵커 반대쪽 끝에 종목·날짜 — 뭉치면 개수 뱃지, 눌러서 목록">라벨</TextToggle>
                     <TextToggle active={locked !== null} onClick={() => setLocked(locked ? null : autoBounds)} title="지금 척도를 붙든다 — 필터를 좁혀도 척도가 안 움직여 전후가 비교된다">척도 고정</TextToggle>
                 </ControlBox>
-                {/* 캔들 선명도 — 켜져 있을 때만 뜬다(꺼져 있으면 조절할 게 없다).
-                    다른 것을 짚는 동안엔 어느 단계든 크게 물러난다 — 그건 규칙이라 손잡이를 안 준다. */}
-                {candleCodes.size > 0 && (
-                    <ControlBox label="캔들">
-                        {(["low", "mid", "high"] as const).map((a, i) => (
-                            <span key={a} style={{ display: "inline-flex", alignItems: "center" }}>
-                                {i > 0 && <Dot />}
-                                <TextToggle active={candleAlpha === a} onClick={() => setCandleAlpha(a)}
-                                    title={a === "low" ? "배경으로만 — 형태 비교가 주인공일 때"
-                                        : a === "mid" ? "기본"
-                                            : "골격선과 같이 읽을 만큼 진하게 — 봉 하나하나를 짚어 볼 때"}>
-                                    {a === "low" ? "흐리게" : a === "mid" ? "보통" : "진하게"}
-                                </TextToggle>
-                            </span>
-                        ))}
-                    </ControlBox>
-                )}
+                {/* 캔들 선명도 — **늘 떠 있다**(사용자 확정). 켜져 있을 때만 띄웠더니 캔들을 켜고 끌 때마다
+                    헤더 폭이 튀었다. 조절할 게 없는 순간이 있어도 자리가 안 움직이는 편이 낫다.
+                    다른 라벨을 짚는 동안 캔들이 사라지는 건 규칙이라 손잡이를 안 준다. */}
+                <ControlBox label="캔들">
+                    {(["low", "mid", "high"] as const).map((a, i) => (
+                        <span key={a} style={{ display: "inline-flex", alignItems: "center" }}>
+                            {i > 0 && <Dot />}
+                            <TextToggle active={candleAlpha === a} onClick={() => setCandleAlpha(a)}
+                                title={a === "low" ? "배경으로만 — 형태 비교가 주인공일 때"
+                                    : a === "mid" ? "기본"
+                                        : "골격선과 같이 읽을 만큼 진하게 — 봉 하나하나를 짚어 볼 때"}>
+                                {a === "low" ? "흐리게" : a === "mid" ? "보통" : "진하게"}
+                            </TextToggle>
+                        </span>
+                    ))}
+                </ControlBox>
                 {/* 거래대금은 **하나를 선택했을 때만** — 재료가 그날치 한 벌이라 호버로 끌면 스칠 때마다 왕복이다. */}
                 {!isDaily && (
                     <ControlBox label="거래대금">
@@ -1124,8 +1125,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* ── 캔들 오버레이 — **맨 아래**(테마 선보다도 아래). 골격이 그 위를 지나야
                                     "축약이 원본의 어디를 밟았나"가 읽힌다. 참고용이라 흐리다(사용자 확정).
                                     봉이 좁아지면(축소) 통째로 접힌다 — 400봉이 붙으면 잉크 덩어리일 뿐이다. */}
-                                {/* 다른 것(골격선·테마 선·다른 캔들)을 짚는 동안엔 **크게 흐려진다**(사용자 요구).
-                                    예전엔 통째로 접었는데, 지우면 "아까 거기 뭐가 있었지"가 사라지고 손을 뗄 때 그림이 튄다.
+                                {/* 다른 라벨(골격선·테마 선)을 짚는 동안엔 그 캔들이 **잠시 사라진다**(사용자 확정) —
+                                    그 순간의 질문은 "이 선 vs 저 선"이라 봉이 깔려 있으면 선끼리의 비교를 방해한다.
                                     진하기 자체는 헤더의 선명도 단계가 정한다 — 배경으로 깔지, 같이 읽을지가 상황마다 다르다. */}
                                 {candles && (() => {
                                     // 폭이 좁아져도 접지 않는다(사용자 확정) — candleWidth 가 하한을 지킨다.
@@ -1181,10 +1182,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     );
                                     return (
                                         <>
-                                            {candleAnchor && draw(candles.anchor, candleOpacityOf(candleAnchor.stockCode, false), "ca")}
-                                            {/* 켜 둔 테마 멤버들 — 앵커보다 한 겹 뒤(배경의 배경). 짚은 게 자기면 안 물러난다. */}
-                                            {candles.members.map((m) => (
-                                                <g key={`cm-${m.code}`}>{draw(m.candles, candleOpacityOf(m.code, true), `cm${m.code}-`)}</g>
+                                            {candleAnchor && candleShown(candleAnchor.stockCode) && draw(candles.anchor, candleOpacityOf(false), "ca")}
+                                            {/* 켜 둔 테마 멤버들 — 앵커보다 한 겹 뒤(배경의 배경). 짚은 게 자기면 남는다. */}
+                                            {candles.members.filter((m) => candleShown(m.code)).map((m) => (
+                                                <g key={`cm-${m.code}`}>{draw(m.candles, candleOpacityOf(true), `cm${m.code}-`)}</g>
                                             ))}
                                         </>
                                     );
