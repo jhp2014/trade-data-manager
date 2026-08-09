@@ -6,7 +6,7 @@ import { minuteOfDayOf, selectHotUniverse, amountBucketIndex, AMOUNT_BUCKETS_EOK
 import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, AMOUNT_BUCKET_COLORS } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct,
-    lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX,
+    lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep,
     amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_MISSING, type AmountRun,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
 } from "./skeleton/skeletonOverlay.js";
@@ -104,9 +104,12 @@ const amountLevelOf = (won: number): number => {
 const runWidth = (level: number, scale: number): number =>
     (level === LEVEL_MISSING ? AMOUNT_LEVEL_WIDTH[0] * 0.6 : AMOUNT_LEVEL_WIDTH[level] ?? AMOUNT_LEVEL_WIDTH[0]) * scale;
 
+/** 화면 좌표 폴리라인 문자열 — 배율에 맞춰 점을 솎는다(step=1이면 원본 그대로). */
+const pathOf = (points: readonly { x: number; y: number }[], scales: Scales, step = 1): string =>
+    decimate(points, step).map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
+
 /** 런의 화면 좌표 폴리라인 — 런은 꼭짓점을 다 들고 있으므로 그대로 이어 그린다(모서리가 안 잘린다). */
-const runPoints = (r: AmountRun, scales: Scales): string =>
-    r.points.map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
+const runPoints = (r: AmountRun, scales: Scales, step = 1): string => pathOf(r.points, scales, step);
 /** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
 const AXIS_LINE = "var(--text-secondary)";
 /** 캔들 색 — 국내 관례(상승 적/하락 청). 낮은 알파로 깔리므로 진한 원색을 쓴다(흐려도 방향이 남게). */
@@ -284,6 +287,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         groupList?.forEach((k, i) => m.set(k, seriesColor(i)));
         return (key: string): string => m.get(key) ?? "var(--text-secondary)";
     }, [groupList]);
+
+    /**
+     * 배율 기반 점 솎기 — 이동이 뻑뻑해진 원인이 **테마 선을 하루 전체로 넓힌 것**이라(선당 ~720점,
+     * 30선 + 히트라인 한 벌 더 = 4만여 점의 좌표 문자열을 이동마다 다시 만든다) 배율에 맞춰 줄인다.
+     * 보이는 선은 1px 간격, 히트라인은 굵기가 8px 라 4px 간격이면 판정에 지장이 없다.
+     */
+    const pxPerMinute = scales ? Math.abs(scales.x(1) - scales.x(0)) : 0;
+    const lineStep = decimateStep(pxPerMinute, 1);
+    const hitStep = decimateStep(pxPerMinute, 4);
 
     const clipId = "skeleton-overlay-clip";
     const dotsForAll = useMemo(() => lines.reduce((n, s) => n + s.points.length, 0) <= DOT_BUDGET, [lines]);
@@ -611,8 +623,16 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     }, [effSelected, hovered, groupSet, groupColorOf]);
 
     /** 평클릭 = 이동 + 단일 선택(교체). Ctrl+클릭 = 선택 토글만(이동 없음 — 무리를 만드는 중이다).
-     *  타점 단위 선(time 있음)은 자기 타점으로 바로 이동하고 선택은 pk 채널을 쓴다 — 문법은 같다. */
+     *  타점 단위 선(time 있음)은 자기 타점으로 바로 이동하고 선택은 pk 채널을 쓴다 — 문법은 같다.
+     *
+     *  **이미 선택된 선의 라벨을 다시 클릭하면 캔들 토글**(사용자 확정) — 테마 라벨과 같은 손짓을
+     *  관찰 종목에도 주되, 첫 클릭의 일(선택·이동)은 안 뺏는다. 이미 선택된 걸 또 누르는 건 원래
+     *  아무 일도 안 했으므로(같은 곳으로 다시 이동할 뿐) 빈자리에 얹은 셈이다. */
     const onLabelClick = useCallback((s: Line, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
+        if (!ev.ctrlKey && !ev.metaKey && s.kind === "point" && effSelected.size === 1 && effSelected.has(s.key)) {
+            toggleCandle(s.stockCode);
+            return;
+        }
         if (ev.ctrlKey || ev.metaKey) {
             setActiveSelection((prev: ReadonlySet<string>) => {
                 const next = new Set(prev.size > 0 ? prev : effSelected); // 활성 타점 폴백 선택도 무리의 시작점이 된다
@@ -630,7 +650,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const pts = pointsByChart.get(s.chartKey);
         if (pts?.length) goToPoint({ code: s.stockCode, date: s.date, time: pts[0].time }, "skeleton-overlay");
         else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
-    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus]);
+    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus, toggleCandle]);
 
     // ── Ctrl+드래그 사각 선택 — 사각형 역학은 useMarquee 가, **무엇을 담을지**는 여기가 정한다.
     const onMarqueeSelect = useCallback((rect: MarqueeRect): void => {
@@ -771,12 +791,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 )}
                 {!isDaily && (
                     <ControlBox>
-                        {/* 캔들은 토글이 없다 — **선(또는 라벨)을 클릭**해 켠다. 켜 둔 개수만 여기 보여준다. */}
-                        {candleCodes.size > 0 && (
-                            <button onClick={() => setCandleCodes(new Set())} title="켜 둔 캔들 전부 끄기" style={miniBtn}>
-                                캔들 {candleCodes.size}{anchorCandleOn && anchorMinQ.isLoading ? " …" : ""} ✕
-                            </button>
-                        )}
+                        {/* 캔들은 토글도 표시도 여기 없다 — **선/라벨 클릭**으로 켜고, 상태는 푸터가 말한다.
+                            헤더에 두면 켤 때마다 칩이 늘었다 줄었다 하며 flexWrap 이 줄을 바꿔 **그림 상자 높이가
+                            변하고 화면이 튀었다**(사용자 지적). 푸터는 nowrap+ellipsis 라 높이가 안 변한다. */}
                         <TextToggle active={showTheme} onClick={() => setShowTheme(!showTheme)}
                             title="선택한 타점의 앞뒤 창 동안 같은 테마 종목들의 분당 종가 경로를 같이 세운다(그 구간에 보드에 떴던 것만, 세로 간격 = 등락률 %p 차이 그대로) — 굵기가 각 종목의 분당 거래대금이다 · 단축키 T">
                             테마
@@ -947,11 +964,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     const runs = amountWidthOn ? themeRuns?.get(l.code) : null;
                                     if (!runs) {
                                         const { past, future } = splitAtX(l.points, 0);
-                                        const toPts = (ps: { x: number; y: number }[]): string => ps.map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
                                         return (
                                             <g key={`th-${l.code}`} style={{ pointerEvents: "none" }} opacity={lit ? 0.9 : hoveredThemeSet ? 0.2 : 0.45}>
-                                                {past.length >= 2 && <polyline points={toPts(past)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" />}
-                                                {future.length >= 2 && <polyline points={toPts(future)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" strokeDasharray="4 4" />}
+                                                {past.length >= 2 && <polyline points={pathOf(past, scales, lineStep)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" />}
+                                                {future.length >= 2 && <polyline points={pathOf(future, scales, lineStep)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" strokeDasharray="4 4" />}
                                             </g>
                                         );
                                     }
@@ -961,7 +977,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         <g key={`th-${l.code}`} style={{ pointerEvents: "none" }}
                                             opacity={lit ? 1 : hoveredThemeSet ? 0.25 : 0.55}>
                                             {runs.map((r, i) => (
-                                                <polyline key={i} points={runPoints(r, scales)} fill="none"
+                                                <polyline key={i} points={runPoints(r, scales, lineStep)} fill="none"
                                                     stroke="var(--text-tertiary)" strokeWidth={runWidth(r.level, lit ? 0.9 : 0.7)}
                                                     strokeLinecap="round" strokeLinejoin="round"
                                                     opacity={r.points[0].x >= 0 ? 0.4 : 1} />
@@ -975,9 +991,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     때문이었다. 여기 대상은 30선이라 8px 히트 폭이면 충분히 겨냥된다(겹치는 8px 안에선
                                     어차피 눈으로도 구분이 안 된다). 캔버스로 내려도 이 부류만 SVG 로 남기면 조작이 그대로다.
                                     enter/leave 는 **선이 바뀔 때만** 발생하므로 부모 재렌더도 그때뿐이다(mousemove 아님). */}
-                                {themeOverlay?.lines.map((l) => (
+                                {/* ⚠ **드래그 중엔 아예 안 그린다** — 이동하는 동안 호버는 성립하지 않는데
+                                    같은 점을 한 벌 더 그리느라 이동 비용이 두 배였다(뻑뻑함의 절반이 여기). */}
+                                {!dragging && themeOverlay?.lines.map((l) => (
                                     <polyline key={`thh-${l.code}`}
-                                        points={l.points.map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ")}
+                                        points={pathOf(l.points, scales, hitStep)}
                                         fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
                                         style={{ pointerEvents: "stroke", cursor: "pointer" }}
                                         onClick={() => toggleCandle(l.code)}
@@ -1097,8 +1115,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* 짚은 골격선의 히트라인 — 테마 선과 같은 손짓(선 위에서 값을 읽는다).
                                     **선택된 것 하나만** 포인터를 받는다: 전체 골격선을 열면 많아질수록 손이 걸리고,
                                     그때는 라벨만 손잡이로 남긴다는 게 이 패널의 규약이다(사용자 확정). */}
-                                {singleTarget && (
-                                    <polyline points={polylinePoints(singleTarget, scales.x, scales.y)}
+                                {!dragging && singleTarget && (
+                                    <polyline points={pathOf(singleTarget.points, scales, hitStep)}
                                         fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
                                         style={{ pointerEvents: "stroke", cursor: "pointer" }}
                                         onClick={() => toggleCandle(singleTarget.stockCode)}
@@ -1415,8 +1433,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 점 클릭 = 값 붙잡기
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
                 {!isDaily && <span style={{ color: "var(--text-tertiary)" }}> · 선 클릭 = 캔들 · T = 테마 · 축 더블클릭 = 그 축 원위치</span>}
-                {candles && candles.members.length > 0 && (
-                    <span style={{ color: "var(--text-secondary)" }}> · 캔들 {candles.members.map((m) => m.name).join("·")}</span>
+                {/* 캔들 상태 — 헤더가 아니라 여기(높이가 안 변하는 줄). 이름을 다 적어 어느 종목을 보고 있는지 남긴다. */}
+                {candleCodes.size > 0 && (
+                    <span style={{ color: "var(--text-secondary)" }}>
+                        {" · 캔들 "}
+                        {[anchorCandleOn ? nameOf(pointTarget!.stockCode) : null, ...(candles?.members.map((m) => m.name) ?? [])].filter(Boolean).join("·")}
+                        {anchorCandleOn && anchorMinQ.isLoading ? " …" : ""}
+                        <button onClick={() => setCandleCodes(new Set())} title="켜 둔 캔들 전부 끄기" style={footerBtn}>✕</button>
+                    </span>
                 )}
                 {themeOverlay && themeOverlay.lines.length > 0 && (
                     <span style={{ color: "var(--text-secondary)" }}> · 테마 {themeOverlay.lines.length}선(분당 종가)</span>
@@ -1531,6 +1555,8 @@ const axisAbsText: CSSProperties = { fontSize: 8.5, fill: "var(--text-quaternary
 /** 크로스헤어 뱃지 안의 절대값 — 같은 뱃지에 이어 붙되 색으로 갈린다(뱃지를 둘로 나누면 축이 복잡해진다). */
 const axisBadgeAbs: CSSProperties = { color: "var(--text-tertiary)" };
 const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer", whiteSpace: "nowrap" };
+/** 푸터 안 인라인 버튼 — 상자·여백 없이 글자만(푸터 높이가 절대 안 변해야 그림이 안 튄다). */
+const footerBtn: CSSProperties = { marginLeft: 4, padding: 0, border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", lineHeight: "inherit" };
 // 라벨 — 상자 없이 후광 글자 + 그 선 색의 점(F안). **색 점은 언제나 끝점을 마주 보는 쪽**에 서서
 // 이 글자가 어느 선의 것인지 가리킨다(칩이 점 바깥에 서므로 칩의 안쪽 끝이 곧 점 쪽이다).
 const chip: CSSProperties = {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -211,6 +211,27 @@ describe("splitAtX — 타점 이후 구간 가르기", () => {
         const { past, future } = splitAtX(pts, 0);
         expect(past).toHaveLength(1);
         expect(future).toHaveLength(4);
+    });
+});
+
+describe("decimate / decimateStep — 배율에 맞춘 점 솎기", () => {
+    const pts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((x) => ({ x }));
+
+    it("step 개마다 하나 — **끝점은 언제나 남는다**(잘리면 선이 짧아 보인다)", () => {
+        expect(decimate(pts, 3).map((p) => p.x)).toEqual([0, 3, 6, 9]);
+        expect(decimate(pts, 4).map((p) => p.x)).toEqual([0, 4, 8, 9]);
+    });
+
+    it("step ≤ 1 이거나 점이 2개 이하면 그대로 — 확대하면 저절로 원본으로 돌아온다", () => {
+        expect(decimate(pts, 1)).toBe(pts);
+        expect(decimate([{ x: 0 }, { x: 1 }], 5)).toHaveLength(2);
+    });
+
+    it("간격은 배율이 정한다 — 촘촘할수록 1에 수렴, 축소하면 커지되 상한이 있다", () => {
+        expect(decimateStep(2, 1)).toBe(1); // 1분이 2px = 이미 충분히 벌어짐
+        expect(decimateStep(0.25, 1)).toBe(4); // 1분이 0.25px → 넷 중 하나
+        expect(decimateStep(0.0001, 1)).toBe(60); // 상한
+        expect(decimateStep(0, 1)).toBe(1); // 퇴화 스케일 — 솎지 않는다
     });
 });
 

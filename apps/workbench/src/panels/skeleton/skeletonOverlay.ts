@@ -435,6 +435,30 @@ export function yAtX(points: readonly { x: number; y: number }[], x: number): nu
     return points[points.length - 1].y; // x === 마지막 점
 }
 
+/**
+ * 점 솎기 — `step` 개마다 하나, **첫 점과 끝점은 언제나 남긴다**(끝이 잘리면 선이 짧아 보인다).
+ *
+ * 왜 필요한가: 테마 선을 하루 전체로 넓히면서 선당 점이 ~70 → ~720 이 됐고, 30선이면 이동할 때마다
+ * 2만 점의 좌표 문자열을 다시 만들어 DOM 에 쓴다(드래그가 눈에 띄게 뻑뻑해진 원인).
+ * 1분이 화면에서 0.5px 이면 이웃 점은 **서브픽셀**이라 넷 중 하나만 그려도 눈으로 완전히 같다.
+ * 확대하면 step 이 1로 돌아와 저절로 촘촘해진다 — 정보를 버리는 게 아니라 **배율에 맞추는** 것이다.
+ */
+export function decimate<T>(points: readonly T[], step: number): readonly T[] {
+    if (step <= 1 || points.length <= 2) return points;
+    const out: T[] = [];
+    for (let i = 0; i < points.length; i += step) out.push(points[i]);
+    const last = points[points.length - 1];
+    if (out[out.length - 1] !== last) out.push(last);
+    return out;
+}
+
+/**
+ * 이 배율에서 점 간격이 `targetPx` 가 되는 솎기 간격. 축소할수록 커진다(상한 60 — 그 이상은
+ * 형태가 뭉개지기 시작한다). `pxPerUnit` 이 0 이하(퇴화 스케일)면 솎지 않는다.
+ */
+export const decimateStep = (pxPerUnit: number, targetPx: number): number =>
+    pxPerUnit <= 0 ? 1 : Math.max(1, Math.min(60, Math.round(targetPx / pxPerUnit)));
+
 /** 폴리라인 points 속성 문자열. 소수 2자리로 끊어 DOM 문자열이 불필요하게 길어지지 않게. */
 export function polylinePoints(s: NormalizedSkeleton, sx: (x: number) => number, sy: (y: number) => number): string {
     return s.points.map((p) => `${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" ");
