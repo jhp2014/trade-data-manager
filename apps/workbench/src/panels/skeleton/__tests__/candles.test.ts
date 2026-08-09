@@ -76,6 +76,10 @@ describe("memberCandles — 스냅샷 %(이미 % 공간) → 평행이동 + 평�
         expect(memberCandles(566, 570, series, { baseRate: 0, baseT: 570 }).map((k) => k.x)).toEqual([-1, 0]);
     });
 
+    it("**마지막 봉 이후(후미 갭)도 안 채운다** — 장 끝난 뒤 20시 이후까지 평탄봉이 서던 문제", () => {
+        expect(memberCandles(569, 600, series, { baseRate: 0, baseT: 570 }).map((k) => k.x)).toEqual([-1, 0, 1, 2]);
+    });
+
     it("거래대금은 누적의 인접 차분 — 첫 봉은 누적 그대로", () => {
         const out = memberCandles(569, 572, series, { baseRate: 0, baseT: 570 });
         expect(out.map((k) => k.amount)).toEqual([1000, 2000, 0, 500]);

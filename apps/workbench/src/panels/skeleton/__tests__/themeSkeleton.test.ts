@@ -32,6 +32,11 @@ describe("memberPath — 구간의 분당 종가 전부", () => {
         expect(memberPath(540, 543, s)!.map((p) => p.x)).toEqual([542, 543]);
     });
 
+    it("**후미 갭(마지막 봉 이후)도 안 채운다** — 장이 끝난 뒤까지 평탄선이 뻗으면 없는 시간을 그린다", () => {
+        const s: MinuteSeries = { index: new Map([[540, 0], [541, 1]]), close: [0, 5] };
+        expect(memberPath(540, 600, s)!.map((p) => p.x)).toEqual([540, 541]);
+    });
+
     it("점이 2개 미만이면 선이 아니다", () => {
         expect(memberPath(900, 910, seriesOf(540, [0, 1, 2]))).toBeNull();
         expect(memberPath(540, 540, seriesOf(540, [0, 1, 2]))).toBeNull();

@@ -96,8 +96,9 @@ export interface MinuteOhlcSeries {
 
 /**
  * 테마 멤버 캔들 — 스냅샷 %를 뷰 공간으로(평행이동만). 구간은 **벽시계** `[from, to]`.
- * 빠진 분은 **직전 종가 평탄봉**(O=H=L=C=직전 종가, 거래대금 0)으로 채운다(사용자 확정) —
- * 첫 값 이전은 못 채운다(끌어올 값이 없다).
+ * 빠진 분은 **직전 종가 평탄봉**(O=H=L=C=직전 종가, 거래대금 0)으로 채운다(사용자 확정).
+ * 다만 채우는 건 **내부 갭만** — 선두 갭은 끌어올 값이 없어서, **후미 갭(마지막 봉 이후)은 장이 끝난 뒤라서**
+ * 안 채운다(안 그러면 20시 이후까지 평탄봉이 줄줄이 선다 — memberPath 와 같은 경계).
  */
 export function memberCandles(
     from: number,
@@ -106,13 +107,15 @@ export function memberCandles(
     origin: { baseRate: number; baseT: number },
 ): ViewCandle[] {
     const out: ViewCandle[] = [];
+    // 채움은 **다음 실제 봉이 나올 때만** 확정된다 — 마지막 봉 뒤의 채움은 버려진다.
+    const pending: ViewCandle[] = [];
     let prevClose: number | null = null;
     for (let m = from; m <= to; m++) {
         const i = series.index.get(m);
         const x = m - origin.baseT;
         if (i == null) {
             if (prevClose === null) continue; // 선두 갭 — 지어낼 직전 값이 없다
-            out.push({ x, o: prevClose, h: prevClose, l: prevClose, c: prevClose, amount: 0 });
+            pending.push({ x, o: prevClose, h: prevClose, l: prevClose, c: prevClose, amount: 0 });
             continue;
         }
         const o = series.open[i];
@@ -120,6 +123,7 @@ export function memberCandles(
         const l = series.low[i];
         const c = series.close[i];
         if (!Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
+        if (pending.length > 0) { out.push(...pending); pending.length = 0; }
         const amount = series.cumAmount[i] - (i > 0 ? series.cumAmount[i - 1] : 0);
         prevClose = c - origin.baseRate;
         out.push({
