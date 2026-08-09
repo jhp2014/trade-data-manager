@@ -140,6 +140,11 @@ interface ReadoutSource {
 const READOUT_TOP = 5;
 /** 판독 칩의 세로 최소 간격(화면 px). */
 const READOUT_GAP = 15;
+/**
+ * 세로선과 칩 사이 거리(화면 px). 바짝 붙이면 칩이 세로선 근처의 그림을 덮고, 지시선이 짧아
+ * 어느 점의 값인지도 덜 읽힌다(사용자 요구로 10 → 30). 떨어질수록 지시선이 대응을 더 잘 진다.
+ */
+const READOUT_OFFSET = 30;
 
 type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
 type XUnit = "day" | "min";
@@ -1138,9 +1143,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         style={{ pointerEvents: "stroke", cursor: "pointer" }}
                                         onClick={() => toggleCandle(l.code)}
                                         onMouseEnter={() => setHoveredTheme([l.code])}
-                                        onMouseLeave={() => setHoveredTheme(null)}>
-                                        <title>{`${l.name} — 클릭해 캔들 ${candleCodes.has(l.code) ? "끄기" : "켜기"}`}</title>
-                                    </polyline>
+                                        onMouseLeave={() => setHoveredTheme(null)} />
                                 ))}
 
                                 {lines.map((s) => {
@@ -1245,9 +1248,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 opacity={open ? 0.9 : 0.5} style={{ pointerEvents: "none" }} />
                                             <line x1={x} x2={x} y1={box.top} y2={box.top + box.height} stroke="transparent" strokeWidth={10}
                                                 style={{ pointerEvents: "auto", cursor: "ew-resize" }}
-                                                onMouseEnter={() => setHoveredPinLine(m)} onMouseLeave={() => setHoveredPinLine(null)}>
-                                                <title>{`${hmOf(m + themeOverlay.t0)} — 올리면 이 시각의 테마 값`}</title>
-                                            </line>
+                                                onMouseEnter={() => setHoveredPinLine(m)} onMouseLeave={() => setHoveredPinLine(null)} />
                                         </g>
                                     );
                                 })}
@@ -1261,12 +1262,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         style={{ pointerEvents: "stroke", cursor: "pointer" }}
                                         onClick={() => toggleCandle(singleTarget.stockCode)}
                                         onMouseEnter={() => setHovered(singleTarget.key)}
-                                        onMouseLeave={() => setHovered(null)}>
-                                        <title>{`${nameOf(singleTarget.stockCode)} — 클릭해 캔들 ${anchorCandleOn ? "끄기" : "켜기"}`}</title>
-                                    </polyline>
+                                        onMouseLeave={() => setHovered(null)} />
                                 )}
 
-                                {/* 피벗 손잡이 — 포인터를 받는 건 **조사 중인 골격 + 값을 붙잡아 둔 골격**의 점들뿐이다
+                                {/* ⚠ 그림 위에서 포인터를 받는 것들(히트라인·피벗 손잡이·핀 세로선)엔 **`<title>` 을 두지 않는다**
+                                    (사용자 요구): 값을 읽으려고 손을 올린 그 자리에 브라우저 툴팁이 떠서 판독을 가린다.
+                                    조작 안내는 푸터가 한 줄로 답하고, 값은 판독 칩이 답한다.
+
+                                    피벗 손잡이 — 포인터를 받는 건 **조사 중인 골격 + 값을 붙잡아 둔 골격**의 점들뿐이다
                                     (선은 여전히 순수 그림). 한두 벌뿐이라 뭉쳐서 못 겨냥하는 문제가 없다.
                                     핀이 걸린 선까지 넣는 이유: 그 선을 떠난 뒤에도 값이 남는데 손잡이가 사라지면 **뗄 수가 없다**.
                                     들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
@@ -1281,9 +1284,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             style={{ pointerEvents: "auto", cursor: "pointer" }}
                                             onClick={() => togglePivot(s.key, i)}
                                             onMouseEnter={() => { setHovered(s.key); setHoveredPivot({ key: s.key, i }); }}
-                                            onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }}>
-                                            <title>{`${fmtX(p.x, xUnit)} · ${fmtPct(p.y)}${s.kind === "point" ? ` (${hmOf(p.x + s.baseT)} · 전일比 ${fmtPct(p.y + s.baseRate)})` : ""} — 클릭해 값 ${pinnedPivots.has(pivotId(s.key, i)) ? "떼기" : "붙잡기"}`}</title>
-                                        </circle>
+                                            onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }} />
                                     )));
                                 })}
 
@@ -1359,7 +1360,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
                         {themeReadingSlots.map((s) => (
                             <div key={`trl-${s.item.code}`} style={{
-                                ...readoutBox, left: scales.x(openReadingX) + 10, top: s.labelY,
+                                ...readoutBox, left: scales.x(openReadingX) + READOUT_OFFSET, top: s.labelY,
                                 transform: "translateY(-50%)",
                                 borderColor: s.item.own ? ACTIVE : "var(--border-default)",
                                 fontWeight: s.item.own ? 500 : 400,
@@ -1645,8 +1646,8 @@ function CrosshairLayer({ wrapRef, scales, box, xUnit, abs, readoutAt, colorOf }
         READOUT_GAP,
     ) : [];
     // 오른쪽 끝에 닿으면 왼쪽으로 넘긴다 — 잘려서 못 읽는 것보단 잠깐 궤적을 가리는 게 낫다.
-    const flip = pos.x > box.left + box.width - 150;
-    const chipX = pos.x + (flip ? -10 : 10);
+    const flip = pos.x > box.left + box.width - (READOUT_OFFSET + 140);
+    const chipX = pos.x + (flip ? -READOUT_OFFSET : READOUT_OFFSET);
     // 읽기값은 커서 옆이 아니라 **축 가장자리 뱃지**(사용자 확정) — 차트 보던 습관 그대로 축에서 읽는다.
     return (
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
