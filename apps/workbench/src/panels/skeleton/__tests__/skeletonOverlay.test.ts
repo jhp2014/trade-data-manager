@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -232,6 +232,28 @@ describe("decimate / decimateStep — 배율에 맞춘 점 솎기", () => {
         expect(decimateStep(0.25, 1)).toBe(4); // 1분이 0.25px → 넷 중 하나
         expect(decimateStep(0.0001, 1)).toBe(60); // 상한
         expect(decimateStep(0, 1)).toBe(1); // 퇴화 스케일 — 솎지 않는다
+    });
+});
+
+describe("clipToX — 보이는 구간만(솎기의 나머지 절반)", () => {
+    const pts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((x) => ({ x }));
+
+    it("**양 끝을 한 점씩 더 물고** 자른다 — 경계에서 선이 짧게 끝나 보이지 않게", () => {
+        expect(clipToX(pts, 3, 6).map((p) => p.x)).toEqual([2, 3, 4, 5, 6, 7]);
+    });
+
+    it("통째로 안에 있으면 원본 그대로(복사 안 함)", () => {
+        expect(clipToX(pts, -5, 20)).toBe(pts);
+    });
+
+    it("구간이 한쪽으로 치우쳐도 끝을 잃지 않는다", () => {
+        expect(clipToX(pts, -5, 2).map((p) => p.x)).toEqual([0, 1, 2, 3]);
+        expect(clipToX(pts, 7, 20).map((p) => p.x)).toEqual([6, 7, 8, 9]);
+    });
+
+    it("구간 밖이면 가장 가까운 한 점(빈 배열이 아니다 — 선이 통째로 사라지면 안 된다)", () => {
+        expect(clipToX(pts, 100, 200).map((p) => p.x)).toEqual([9]);
+        expect(clipToX([], 0, 1)).toEqual([]);
     });
 });
 

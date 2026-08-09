@@ -459,6 +459,23 @@ export function decimate<T>(points: readonly T[], step: number): readonly T[] {
 export const decimateStep = (pxPerUnit: number, targetPx: number): number =>
     pxPerUnit <= 0 ? 1 : Math.max(1, Math.min(60, Math.round(targetPx / pxPerUnit)));
 
+/**
+ * 보이는 x 구간만 남긴다 — **양 끝은 한 점씩 더 물고 자른다**(경계에서 선이 짧게 끝나 보이지 않게).
+ *
+ * 솎기와 짝을 이루는 나머지 절반이다: 확대하면 step 이 1로 돌아와 점이 다시 720개가 되는데,
+ * 그중 화면에 있는 건 수십 개뿐이다. 이걸 안 자르면 확대할수록 무거워진다(솎기는 축소 쪽만 답한다).
+ * x 오름차순 가정 — 골격·테마 경로가 전부 그렇다.
+ */
+export function clipToX<T extends { x: number }>(points: readonly T[], from: number, to: number): readonly T[] {
+    if (points.length === 0) return points;
+    if (points[0].x >= from && points[points.length - 1].x <= to) return points; // 통째로 안에 있으면 그대로
+    let lo = 0;
+    while (lo + 1 < points.length && points[lo + 1].x < from) lo++;
+    let hi = points.length - 1;
+    while (hi > lo && points[hi - 1].x > to) hi--;
+    return points.slice(lo, hi + 1);
+}
+
 /** 폴리라인 points 속성 문자열. 소수 2자리로 끊어 DOM 문자열이 불필요하게 길어지지 않게. */
 export function polylinePoints(s: NormalizedSkeleton, sx: (x: number) => number, sy: (y: number) => number): string {
     return s.points.map((p) => `${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" ");

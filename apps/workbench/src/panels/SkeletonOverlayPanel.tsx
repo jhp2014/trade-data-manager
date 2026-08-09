@@ -6,7 +6,7 @@ import { minuteOfDayOf, selectHotUniverse, amountBucketIndex, AMOUNT_BUCKETS_EOK
 import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, AMOUNT_BUCKET_COLORS } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct,
-    lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep,
+    lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
     amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_MISSING, type AmountRun,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
 } from "./skeleton/skeletonOverlay.js";
@@ -108,8 +108,6 @@ const runWidth = (level: number, scale: number): number =>
 const pathOf = (points: readonly { x: number; y: number }[], scales: Scales, step = 1): string =>
     decimate(points, step).map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
 
-/** 런의 화면 좌표 폴리라인 — 런은 꼭짓점을 다 들고 있으므로 그대로 이어 그린다(모서리가 안 잘린다). */
-const runPoints = (r: AmountRun, scales: Scales, step = 1): string => pathOf(r.points, scales, step);
 /** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
 const AXIS_LINE = "var(--text-secondary)";
 /** 캔들 색 — 국내 관례(상승 적/하락 청). 낮은 알파로 깔리므로 진한 원색을 쓴다(흐려도 방향이 남게). */
@@ -296,6 +294,20 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const pxPerMinute = scales ? Math.abs(scales.x(1) - scales.x(0)) : 0;
     const lineStep = decimateStep(pxPerMinute, 1);
     const hitStep = decimateStep(pxPerMinute, 4);
+    /**
+     * 보이는 x 구간 — 솎기의 **나머지 절반**. 솎기는 축소 쪽만 답한다(확대하면 step 이 1로 돌아와
+     * 점이 다시 720개가 되는데 그중 화면에 있는 건 수십 개뿐이다). 잘라내면 확대할수록 오히려 가벼워진다.
+     */
+    const viewX = useMemo(
+        () => (scales ? { from: scales.x.invert(box.left), to: scales.x.invert(box.left + box.width) } : null),
+        [scales, box.left, box.width],
+    );
+    /** 테마 선 한 벌을 화면 구간으로 자르고 배율에 맞춰 솎는다(보이는 선·히트라인이 같은 재료를 쓴다). */
+    const themePath = useCallback(
+        (points: readonly { x: number; y: number }[], step: number): readonly { x: number; y: number }[] =>
+            decimate(viewX ? clipToX(points, viewX.from, viewX.to) : points, step),
+        [viewX],
+    );
 
     const clipId = "skeleton-overlay-clip";
     const dotsForAll = useMemo(() => lines.reduce((n, s) => n + s.points.length, 0) <= DOT_BUDGET, [lines]);
@@ -928,7 +940,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* ── 캔들 오버레이 — **맨 아래**(테마 선보다도 아래). 골격이 그 위를 지나야
                                     "축약이 원본의 어디를 밟았나"가 읽힌다. 참고용이라 흐리다(사용자 확정).
                                     봉이 좁아지면(축소) 통째로 접힌다 — 400봉이 붙으면 잉크 덩어리일 뿐이다. */}
-                                {candles && (() => {
+                                {/* 다른 골격선을 짚는 동안엔 캔들도 같이 접는다(사용자 확정) — 그 순간의 질문은
+                                    "이 타점 vs 저 타점"이라, 한쪽 종목의 봉이 깔려 있으면 형태 비교를 방해한다. */}
+                                {candles && !themeSwapped && (() => {
                                     // 폭이 좁아져도 접지 않는다(사용자 확정) — candleWidth 가 하한을 지킨다.
                                     const w = candleWidth(Math.abs(scales.x(1) - scales.x(0)));
                                     const inView = (k: ViewCandle): boolean => {
@@ -985,11 +999,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     const lit = hoveredThemeSet?.has(l.code) ?? false;
                                     const runs = amountWidthOn ? themeRuns?.get(l.code) : null;
                                     if (!runs) {
-                                        const { past, future } = splitAtX(l.points, 0);
+                                        const { past, future } = splitAtX(themePath(l.points, lineStep), 0);
                                         return (
                                             <g key={`th-${l.code}`} style={{ pointerEvents: "none" }} opacity={lit ? 0.9 : hoveredThemeSet ? 0.2 : 0.45}>
-                                                {past.length >= 2 && <polyline points={pathOf(past, scales, lineStep)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" />}
-                                                {future.length >= 2 && <polyline points={pathOf(future, scales, lineStep)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" strokeDasharray="4 4" />}
+                                                {past.length >= 2 && <polyline points={pathOf(past, scales)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" />}
+                                                {future.length >= 2 && <polyline points={pathOf(future, scales)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" strokeDasharray="4 4" />}
                                             </g>
                                         );
                                     }
@@ -998,8 +1012,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     return (
                                         <g key={`th-${l.code}`} style={{ pointerEvents: "none" }}
                                             opacity={lit ? 1 : hoveredThemeSet ? 0.25 : 0.55}>
-                                            {runs.map((r, i) => (
-                                                <polyline key={i} points={runPoints(r, scales, lineStep)} fill="none"
+                                            {/* 화면 밖 런은 아예 안 그린다 — 하루치 런은 대부분 창 밖이다. */}
+                                            {runs.filter((r) => !viewX || (r.points[r.points.length - 1].x >= viewX.from && r.points[0].x <= viewX.to)).map((r, i) => (
+                                                <polyline key={i} points={pathOf(themePath(r.points, lineStep), scales)} fill="none"
                                                     stroke="var(--text-tertiary)" strokeWidth={runWidth(r.level, lit ? 0.9 : 0.7)}
                                                     strokeLinecap="round" strokeLinejoin="round"
                                                     opacity={r.points[0].x >= 0 ? 0.4 : 1} />
@@ -1013,11 +1028,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     때문이었다. 여기 대상은 30선이라 8px 히트 폭이면 충분히 겨냥된다(겹치는 8px 안에선
                                     어차피 눈으로도 구분이 안 된다). 캔버스로 내려도 이 부류만 SVG 로 남기면 조작이 그대로다.
                                     enter/leave 는 **선이 바뀔 때만** 발생하므로 부모 재렌더도 그때뿐이다(mousemove 아님). */}
-                                {/* ⚠ **드래그 중엔 아예 안 그린다** — 이동하는 동안 호버는 성립하지 않는데
-                                    같은 점을 한 벌 더 그리느라 이동 비용이 두 배였다(뻑뻑함의 절반이 여기). */}
-                                {!dragging && !themeSwapped && themeOverlay?.lines.map((l) => (
+                                {/* ⚠ **드래그 중이라고 언마운트하면 안 된다**(겪은 버그): d3-zoom 은 움직임이 없어도
+                                    **mousedown 에서** 제스처를 시작해 dragging=true 가 된다 → 히트라인이 사라지고 →
+                                    mouseup 이 다른 요소에서 나 **click 이 아예 안 뜬다**(선 클릭 캔들 토글이 죽었다).
+                                    이동 비용은 언마운트가 아니라 **화면 구간 자르기 + 솎기**로 줄인다(themePath). */}
+                                {!themeSwapped && themeOverlay?.lines.map((l) => (
                                     <polyline key={`thh-${l.code}`}
-                                        points={pathOf(l.points, scales, hitStep)}
+                                        points={pathOf(themePath(l.points, hitStep), scales)}
                                         fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
                                         style={{ pointerEvents: "stroke", cursor: "pointer" }}
                                         onClick={() => toggleCandle(l.code)}
@@ -1052,7 +1069,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                     // 색은 선 본연의 역할색(선택 파랑) 그대로 — 굵기만 거래대금이 정한다.
                                                     // 미래 구간은 점선 대신 **옅게**(조각이 분 단위라 점선이 굵기와 싸워 둘 다 못 읽힌다).
                                                     return amounts.runs.map((r, i) => (
-                                                        <polyline key={`rn${i}`} points={runPoints(r, scales)} fill="none"
+                                                        <polyline key={`rn${i}`} points={pathOf(themePath(r.points, lineStep), scales)} fill="none"
                                                             stroke={color} strokeWidth={runWidth(r.level, 1)} strokeLinecap="round" strokeLinejoin="round"
                                                             opacity={splitX != null && r.points[0].x >= splitX ? 0.4 : 1} />
                                                     ));
@@ -1139,8 +1156,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* 짚은 골격선의 히트라인 — 테마 선과 같은 손짓(선 위에서 값을 읽는다).
                                     **선택된 것 하나만** 포인터를 받는다: 전체 골격선을 열면 많아질수록 손이 걸리고,
                                     그때는 라벨만 손잡이로 남긴다는 게 이 패널의 규약이다(사용자 확정). */}
-                                {!dragging && singleTarget && (
-                                    <polyline points={pathOf(singleTarget.points, scales, hitStep)}
+                                {singleTarget && (
+                                    <polyline points={pathOf(singleTarget.points, scales)}
                                         fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
                                         style={{ pointerEvents: "stroke", cursor: "pointer" }}
                                         onClick={() => toggleCandle(singleTarget.stockCode)}
