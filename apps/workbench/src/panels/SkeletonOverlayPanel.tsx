@@ -494,26 +494,26 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     useEffect(() => { setHoveredTheme(null); }, [themeOverlay?.key]);
 
     /**
-     * 지금 손이 가리키는 **종목들** — 캔들이 물러날지 판정하는 유일한 기준(사용자 요구).
-     * 골격선 호버면 그 선의 종목, 테마 라벨·뱃지 호버면 그 무리. 아무것도 안 짚으면 null(= 전부 제자리).
-     * 종목 코드로 재는 이유: 캔들의 주인은 선이 아니라 종목이라(같은 종목의 선이 여럿일 수 있다) 키로 재면
-     * 자기 캔들이 자기 호버에 물러나는 일이 생긴다.
+     * 지금 짚고 있는 대상 — 캔들을 그릴지 정하는 유일한 기준. null 이면 아무것도 안 짚은 상태(전부 그린다).
+     * 골격선 호버는 **선 하나**(키), 테마 라벨·뱃지 호버는 종목 무리.
      */
-    const candleFocusCodes = useMemo<ReadonlySet<string> | null>(() => {
-        if (hoveredThemeSet) return hoveredThemeSet;
-        if (!hovered) return null;
-        const s = byKey.get(hovered);
-        return new Set(s ? [s.stockCode] : []);
-    }, [hoveredThemeSet, hovered, byKey]);
+    const candleFocus = useMemo<{ kind: "line"; key: string } | { kind: "theme"; codes: ReadonlySet<string> } | null>(() => {
+        if (hoveredThemeSet) return { kind: "theme", codes: hoveredThemeSet };
+        if (hovered) return { kind: "line", key: hovered };
+        return null;
+    }, [hoveredThemeSet, hovered]);
     /**
-     * 그 종목의 캔들을 지금 그리나 — **다른 라벨을 짚는 동안엔 감춘다**(사용자 확정).
-     * 그 순간의 질문은 "이 선 vs 저 선"이라 봉이 깔려 있으면 선끼리의 비교를 방해한다.
-     * 흐리게만 두는 안도 써봤는데(잔상을 남기려고), 실제로는 흐린 봉도 선을 가려 걸리적거렸다.
-     * 짚은 게 **자기 라벨**이면 그대로 둔다 — 그때는 그 종목을 보는 중이라 봉이 주인공에 가깝다.
+     * 캔들을 지금 그리나 — **다른 라벨을 짚는 동안엔 감춘다**(사용자 확정). 그 순간의 질문은
+     * "이 선 vs 저 선"이라 봉이 깔려 있으면 선끼리의 비교를 방해한다(흐리게도 써봤지만 흐린 봉도 가렸다).
+     *
+     * 판정 단위가 종목이 아니라 **선**인 이유(사용자 확정): 같은 종목의 형제 선(한 차트의 타점 여럿)을
+     * 짚을 때도 그건 비교하는 중이다. 종목으로 재면 그 순간 자기 봉이 남아 형제 선끼리의 비교를 방해한다.
+     * 테마 멤버 캔들만 종목으로 재는데, 그쪽 손잡이(테마 라벨)가 애초에 종목 단위라서다.
      */
-    const candleShown = useCallback(
-        (code: string): boolean => candleFocusCodes === null || candleFocusCodes.has(code),
-        [candleFocusCodes],
+    const anchorCandleShown = !candleFocus || (candleFocus.kind === "line" && candleFocus.key === candleAnchor?.key);
+    const memberCandleShown = useCallback(
+        (code: string): boolean => !candleFocus || (candleFocus.kind === "theme" && candleFocus.codes.has(code)),
+        [candleFocus],
     );
     /** 캔들 진하기 — 헤더 단계 × (멤버면 한 겹 뒤). 물러남은 여기 안 든다(감추기는 위가 판정한다). */
     const candleOpacityOf = useCallback(
@@ -1125,8 +1125,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* ── 캔들 오버레이 — **맨 아래**(테마 선보다도 아래). 골격이 그 위를 지나야
                                     "축약이 원본의 어디를 밟았나"가 읽힌다. 참고용이라 흐리다(사용자 확정).
                                     봉이 좁아지면(축소) 통째로 접힌다 — 400봉이 붙으면 잉크 덩어리일 뿐이다. */}
-                                {/* 다른 라벨(골격선·테마 선)을 짚는 동안엔 그 캔들이 **잠시 사라진다**(사용자 확정) —
-                                    그 순간의 질문은 "이 선 vs 저 선"이라 봉이 깔려 있으면 선끼리의 비교를 방해한다.
+                                {/* 다른 라벨을 짚는 동안엔 캔들이 **잠시 사라진다**(사용자 확정) — 같은 종목의 형제 선을
+                                    짚을 때도 마찬가지다. 그 순간의 질문은 "이 선 vs 저 선"이라 봉이 비교를 방해한다.
                                     진하기 자체는 헤더의 선명도 단계가 정한다 — 배경으로 깔지, 같이 읽을지가 상황마다 다르다. */}
                                 {candles && (() => {
                                     // 폭이 좁아져도 접지 않는다(사용자 확정) — candleWidth 가 하한을 지킨다.
@@ -1182,9 +1182,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     );
                                     return (
                                         <>
-                                            {candleAnchor && candleShown(candleAnchor.stockCode) && draw(candles.anchor, candleOpacityOf(false), "ca")}
+                                            {anchorCandleShown && draw(candles.anchor, candleOpacityOf(false), "ca")}
                                             {/* 켜 둔 테마 멤버들 — 앵커보다 한 겹 뒤(배경의 배경). 짚은 게 자기면 남는다. */}
-                                            {candles.members.filter((m) => candleShown(m.code)).map((m) => (
+                                            {candles.members.filter((m) => memberCandleShown(m.code)).map((m) => (
                                                 <g key={`cm-${m.code}`}>{draw(m.candles, candleOpacityOf(true), `cm${m.code}-`)}</g>
                                             ))}
                                         </>
