@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { memberPath, themeLines, hotCodesInRange, readingsAt, layoutAxisColumns, type MinuteSeries, type ThemeSourceStock } from "../themeSkeleton.js";
+import { memberPath, themeLines, hotCodesInRange, type MinuteSeries, type ThemeSourceStock } from "../themeSkeleton.js";
 
 /** 벽시계 분 = from + i 인 단순 시계열(환산은 minuteOfDayOf 의 몫이라 여기선 안 본다). */
 const seriesOf = (from: number, close: number[]): MinuteSeries => ({
@@ -62,55 +62,6 @@ describe("hotCodesInRange — 그 구간에 한 번이라도 떴던 종목", () 
     it("구간을 좁히면 그 순간의 것만 남는다", () => {
         const stocks = [stock("A", [1, 1, 1], [10, 10, 10]), stock("B", [1, 1, 1], [0, 99, 0])];
         expect(hotCodesInRange(stocks, 0, 0, toMin, topAmount)).toEqual(new Set(["A"]));
-    });
-});
-
-describe("readingsAt — 핀한 시각의 테마 값", () => {
-    const line = (code: string, pts: [number, number][]) => ({ code, name: `${code}이름`, points: pts.map(([x, y]) => ({ x, y })) });
-
-    it("그 시각의 값을 큰 것부터 — y축을 위에서 아래로 읽는 순서와 같다", () => {
-        const lines = [line("A", [[540, 1], [541, 3]]), line("B", [[540, 9], [541, 2]])];
-        expect(readingsAt(lines, 540).map((r) => [r.code, r.y])).toEqual([["B", 9], ["A", 1]]);
-    });
-
-    it("그 시각에 값이 없는 종목은 뺀다 — 없는 걸 0으로 지어내지 않는다", () => {
-        const lines = [line("A", [[540, 1]]), line("B", [[541, 9]])];
-        expect(readingsAt(lines, 540).map((r) => r.code)).toEqual(["A"]);
-    });
-});
-
-describe("layoutAxisColumns — 핀별 열 쌓기", () => {
-    const g = (...ys: number[]) => ys.map((y, i) => ({ item: `i${y}_${i}`, y }));
-
-    it("한 덩어리 안에서 y 가 멀면 같은 열(0)에 선다", () => {
-        expect(layoutAxisColumns([g(0, 100, 200)], 10).map((s) => s.col)).toEqual([0, 0, 0]);
-    });
-
-    it("같은 세로 칸이면 옆 열로 밀린다 — 뱃지로 묶지 않는다(또 누르게 만들지 않으려고)", () => {
-        expect(layoutAxisColumns([g(0, 1, 2)], 10).map((s) => s.col)).toEqual([0, 1, 2]);
-    });
-
-    it("판정은 격자가 아니라 **실거리** — 칸 경계를 사이에 둔 두 라벨(5·13, cellH 12)도 겹침으로 본다", () => {
-        // 옛 반올림 방식은 5→칸0, 13→칸1 로 갈라 같은 열에서 8px 간격으로 겹쳤다(사용자가 본 겹침).
-        expect(layoutAxisColumns([g(5, 13)], 12).map((s) => s.col)).toEqual([0, 1]);
-        expect(layoutAxisColumns([g(5, 17)], 12).map((s) => s.col)).toEqual([0, 0]); // 12 이상 벌어지면 같은 열
-    });
-
-    it("옆 열로 밀린 뒤 더 아래 라벨은 첫 열로 돌아온다 — 열은 자리가 나는 대로 다시 쓴다", () => {
-        expect(layoutAxisColumns([g(0, 5, 30)], 12).map((s) => s.col)).toEqual([0, 1, 0]);
-    });
-
-    it("다음 핀은 앞 핀이 쓴 열 **다음**에서 시작한다 — 시각이 열로 갈린다", () => {
-        const out = layoutAxisColumns([g(0, 1), g(0, 1)], 10);
-        expect(out.map((s) => s.col)).toEqual([0, 1, 2, 3]);
-    });
-
-    it("앞 핀이 한 열만 썼으면 다음 핀은 바로 옆 열", () => {
-        expect(layoutAxisColumns([g(0), g(0), g(0)], 10).map((s) => s.col)).toEqual([0, 1, 2]);
-    });
-
-    it("빈 덩어리는 열을 안 먹는다", () => {
-        expect(layoutAxisColumns([[], g(0)], 10).map((s) => s.col)).toEqual([0]);
     });
 });
 

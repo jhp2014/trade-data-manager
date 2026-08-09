@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { chartQuery } from "../api/queries.js";
 import { minuteOfDayOf, selectHotUniverse, amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
-import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, AMOUNT_BUCKET_COLORS } from "../chart/chartUtils.js";
+import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, AMOUNT_BUCKET_COLORS, RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
@@ -13,7 +13,8 @@ import {
 import { useOverlayData } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
 import { anchorCandles, memberCandles, candleWidth, type ViewCandle } from "./skeleton/candles.js";
-import { themeLines, hotCodesInRange, readingsAt, layoutAxisColumns, type ThemeReading } from "./skeleton/themeSkeleton.js";
+import { themeLines, hotCodesInRange } from "./skeleton/themeSkeleton.js";
+import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
@@ -67,8 +68,6 @@ const DOT_BUDGET = 1200;
 const LABEL_CELL = { w: 72, h: 14 };
 /** 라벨 칩과 끝점 사이 간격 — 배경 패딩(3px)을 더해도 피벗 손잡이(r=7) 밖에 서야 점 호버를 안 가로챈다. */
 const LABEL_GAP = 12;
-/** 핀 시각의 테마 값 한 칸(화면 px) — 세로로 이만큼 안에 들면 옆 열로 민다. */
-const THEME_READING_CELL = { w: 84, h: 13 };
 /** 거터에 이름을 둘 테마 선의 최대 수(사용자 확정) — 넘치면 나머지는 개수 뱃지 하나로 묶인다. */
 const THEME_LABEL_CAP = 8;
 /** 거터 라벨의 세로 최소 간격(화면 px). */
@@ -123,17 +122,24 @@ const CANDLE_DOWN = "#1976d2";
 /** 화면의 선 하나 — kind 판별 유니온(차트 단위 ChartSkeleton / 타점 단위 PointSkeleton). */
 type Line = OverlayLine;
 
-/** 호버 판독 한 줄 — 커서 x 지점에서 읽은 그 선의 값. `own` = 내 골격선(테마 배경이 아니라). */
-interface LineReadout {
+/** 세로선 판독의 재료 한 벌 — 선 하나를 x 로 조회하는 함수 묶음(값은 크로스헤어 층이 읽는다). */
+interface ReadoutSource {
+    code: string;
     name: string;
-    /** 벽시계 분(자정 기준). */
-    minute: number;
-    /** 전일 종가 대비 % — 뷰 y 가 아니라 절대값(뷰 y 는 교차선이 이미 답한다). */
-    abs: number;
-    /** 그 분 거래대금(원). 그날 유니버스 밖이면 null(0으로 지어내지 않는다). */
-    amount: number | null;
+    /** 이 뷰의 원점 시각(벽시계 분) — x → 분 환산. */
+    t0: number;
+    /** 뷰 y → 전일比 % 로 되돌리는 상수. */
+    baseRate: number;
     own?: boolean;
+    yAt: (x: number) => number | null;
+    amountAt: ((minute: number) => number | null) | null;
+    cumAt: ((minute: number) => number | null) | null;
 }
+
+/** 판독 칩 상한 — 등락률 상위 N ∪ 누적 거래대금 상위 N(사용자 확정). 합집합이라 최대 2N, 보통 그보다 적다. */
+const READOUT_TOP = 5;
+/** 판독 칩의 세로 최소 간격(화면 px). */
+const READOUT_GAP = 15;
 
 type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
 type XUnit = "day" | "min";
@@ -373,6 +379,22 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             return fn;
         };
     }, [snapQ.data]);
+    /** 종목코드 → **누적** 거래대금 조회기. 판독 칩을 뽑는 기준(그 시각까지 돈이 얼마나 몰렸나). */
+    const cumLookup = useMemo(() => {
+        const cache = new Map<string, ((m: number) => number | null) | null>();
+        return (code: string): ((m: number) => number | null) | null => {
+            const hit = cache.get(code);
+            if (hit !== undefined) return hit;
+            const st = snapQ.data?.stocks.find((x) => x.code === code);
+            const idx = st ? minuteIndexOf(st.times, minuteOfDayOf) : null;
+            const fn = st && idx ? (m: number): number | null => {
+                const i = idx.get(m);
+                return i == null ? null : st.cumAmount[i];
+            } : null;
+            cache.set(code, fn);
+            return fn;
+        };
+    }, [snapQ.data]);
     const amounts = useMemo(() => {
         if (!amountTarget) return null;
         const at = amountLookup(amountTarget.stockCode);
@@ -481,38 +503,59 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     }, [pointTarget, candleCodes, anchorCandleOn, anchorMinQ.data, snapQ.data, nameOf]);
 
     /**
-     * 호버 판독 — 손이 올라간 선의 **커서 x 지점** 값을 읽는 함수(종목 · 시각 · 전일比 % · 그 분 거래대금).
-     * 대상은 **테마 선 하나** 또는 **짚은 골격선**(전체 골격선은 제외 — 많아지면 라벨만 손잡이로 남긴다).
+     * ── 세로선 판독 — **선 하나에 손이 올라가면** 교차선의 세로선이 그 시각의 판독 자가 된다(사용자 확정).
+     * 그 x 에서 보이는 선들의 값을 읽어 세로선 **오른쪽**에 칩으로 세운다(왼쪽 = 지나온 궤적이라 안 가린다).
      *
-     * 값이 커서를 따라 매 픽셀 바뀌므로 **함수만** 넘기고 실제 판독·그리기는 크로스헤어 층이 한다
-     * (부모가 mousemove 를 타면 선 수백 개가 이동마다 재조정된다 — 그래서 이 패널은 처음부터 그 층을 갈라뒀다).
+     * 여기서는 **재료(조회기)만** 만든다 — 값은 커서를 따라 매 픽셀 바뀌므로 실제 판독·배치·그리기는
+     * 크로스헤어 층이 자기 안에서 한다(부모가 mousemove 를 타면 선 수백 개가 이동마다 재조정된다).
+     * 조회는 O(1) 이어야 한다: 테마 멤버는 1분에 점 하나라 **x → y 색인**을 선당 한 번 만들어 둔다
+     * (yAtX 로 매번 훑으면 30선 × 720점을 마우스 이동마다 반복한다).
      */
-    const probe = useMemo<((x: number) => LineReadout | null) | null>(() => {
-        const code = hoveredTheme?.length === 1 ? hoveredTheme[0] : null;
-        if (code && themeOverlay) {
-            const line = themeOverlay.lines.find((l) => l.code === code);
-            if (line) {
-                const at = amountLookup(code);
-                const { t0, baseRate } = themeOverlay;
-                return (x) => {
-                    const y = yAtX(line.points, x);
-                    if (y === null) return null;
-                    const minute = Math.round(x) + t0;
-                    return { name: line.name, minute, abs: y + baseRate, amount: at?.(minute) ?? null };
-                };
-            }
+    const readoutSources = useMemo<ReadoutSource[] | null>(() => {
+        if (isDaily || !pointTarget) return null;
+        const t0 = pointTarget.baseT;
+        const out: ReadoutSource[] = [];
+        const anchorAt = amountLookup(pointTarget.stockCode);
+        const anchorCum = cumLookup(pointTarget.stockCode);
+        out.push({
+            code: pointTarget.stockCode, name: nameOf(pointTarget.stockCode), own: true, t0,
+            baseRate: pointTarget.baseRate,
+            // 골격선은 피벗 몇 개뿐이라 보간이 싸다 — 그리고 피벗 사이 임의 지점도 읽혀야 한다.
+            yAt: (x) => yAtX(pointTarget.points, x),
+            amountAt: anchorAt, cumAt: anchorCum,
+        });
+        for (const l of themeOverlay?.lines ?? []) {
+            const byX = new Map(l.points.map((p) => [p.x, p.y] as const));
+            out.push({
+                code: l.code, name: l.name, t0, baseRate: themeOverlay!.baseRate,
+                yAt: (x) => byX.get(Math.round(x)) ?? null,
+                amountAt: amountLookup(l.code), cumAt: cumLookup(l.code),
+            });
         }
-        // 짚은 골격선 — 피벗 사이 임의 지점도 읽힌다(피벗 손잡이는 꼭짓점만 답한다).
-        const s = hovered && singleTarget && hovered === singleTarget.key ? singleTarget : null;
-        if (s?.kind !== "point") return null;
-        const at = amountLookup(s.stockCode);
+        return out;
+    }, [isDaily, pointTarget, themeOverlay, amountLookup, cumLookup, nameOf]);
+
+    /** 판독을 지금 펼치나 — **테마 선이든 골격선이든 하나에 손이 올라갔을 때만**(사용자 확정). */
+    const readoutOn = !!readoutSources && ((hoveredTheme?.length === 1) || (hovered !== null && hovered === singleTarget?.key));
+    const readoutAt = useMemo<((x: number) => ReadoutCandidate[]) | null>(() => {
+        if (!readoutOn || !readoutSources) return null;
+        const lit = hoveredTheme?.length === 1 ? hoveredTheme[0] : singleTarget?.stockCode ?? null;
         return (x) => {
-            const y = yAtX(s.points, x);
-            if (y === null) return null;
-            const minute = Math.round(x) + s.baseT;
-            return { name: nameOf(s.stockCode), minute, abs: y + s.baseRate, amount: at?.(minute) ?? null, own: true };
+            const minute = Math.round(x) + (readoutSources[0]?.t0 ?? 0);
+            const cands: ReadoutCandidate[] = [];
+            for (const s of readoutSources) {
+                const y = s.yAt(x);
+                if (y === null) continue;
+                cands.push({
+                    code: s.code, name: s.name, y, pct: y + s.baseRate,
+                    amount: s.amountAt?.(minute) ?? null,
+                    cumAmount: s.cumAt?.(minute) ?? 0,
+                    ...(s.own || s.code === lit ? { own: true } : {}),
+                });
+            }
+            return pickReadouts(cands, READOUT_TOP, READOUT_TOP);
         };
-    }, [hoveredTheme, themeOverlay, amountLookup, hovered, singleTarget, nameOf]);
+    }, [readoutOn, readoutSources, hoveredTheme, singleTarget]);
 
     // ── 피벗 좌표는 **짚은 점에만** 붙는다(사용자 확정).
     // 예전엔 조사 중인 골격의 점 **전부**에 값이 떴는데, 분봉 골격은 꺾인 점이 많아 화면이 숫자로 뒤덮였다.
@@ -577,12 +620,31 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return p ? p.x : null;
     }, [hoveredPinLine, singleTarget, hoveredPivot]);
 
+    /**
+     * 붙잡은 핀 시각의 판독 — **크로스헤어 판독과 같은 규칙**으로 통일했다(사용자 확정):
+     * 옛 열 쌓기(layoutAxisColumns)는 겹칠수록 오른쪽으로 번져 화면을 넘었고, "어느 시각 것이냐"를
+     * 열로 읽는 규칙을 따로 배워야 했다. 지시선이 이미 대응을 지므로 **한 열에서 위아래로** 벌리면 그만이다.
+     * 뽑기도 같은 기준(등락률·누적 대금 상위) — 두 판독이 다른 무리를 보여주면 그게 더 헷갈린다.
+     */
     const themeReadingSlots = useMemo(() => {
-        if (!themeOverlay || !scales || openReadingX === null) return [];
-        // 겹침 판정은 **화면 좌표**로 한다 — 값 공간으로 하면 확대해도 열이 안 풀린다(라벨 축약과 같은 성질).
-        const g = readingsAt(themeOverlay.lines, openReadingX).map((r) => ({ item: { ...r, x: openReadingX }, y: scales.y(r.y) }));
-        return layoutAxisColumns<ThemeReading & { x: number }>([g], THEME_READING_CELL.h);
-    }, [themeOverlay, openReadingX, scales]);
+        if (!scales || !readoutSources || openReadingX === null) return [];
+        const minute = Math.round(openReadingX) + (readoutSources[0]?.t0 ?? 0);
+        const cands: ReadoutCandidate[] = [];
+        for (const s of readoutSources) {
+            const y = s.yAt(openReadingX);
+            if (y === null) continue;
+            cands.push({
+                code: s.code, name: s.name, y, pct: y + s.baseRate,
+                amount: s.amountAt?.(minute) ?? null, cumAmount: s.cumAt?.(minute) ?? 0,
+                ...(s.own ? { own: true } : {}),
+            });
+        }
+        return layoutReadoutRows(
+            pickReadouts(cands, READOUT_TOP, READOUT_TOP).map((r) => ({ item: r, y: scales.y(r.y) })),
+            { min: box.top + 8, max: box.top + box.height - 8 },
+            READOUT_GAP,
+        );
+    }, [scales, readoutSources, openReadingX, box.top, box.height]);
 
     /**
      * 금액 라벨 — **전 선(앵커 + 테마)이 하나의 격자에서 겨룬다**(사용자 확정). 한 칸에 제일 큰 하나만
@@ -635,12 +697,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             .sort((a, b) => b.at.y - a.at.y);
         const head = items.slice(0, THEME_LABEL_CAP);
         const hidden = items.slice(THEME_LABEL_CAP).map((i) => ({ code: i.code, name: i.name, y: scales.y(i.at.y) }));
-        // 전부 한 밴드에서 겨루게 한다(거터는 열이 하나뿐이라 x 로 나눌 게 없다).
         // 라벨은 **제 높이를 고집하지 않는다**(사용자 확정) — 값이 붙은 종목끼리도 편히 벌어져 서고,
         // 어느 선의 이름인지는 지시선이 답한다. 그래서 최소 간격만 지키면 자리는 자유다.
-        const named = spreadByY(head.map((i) => ({ ...i, x: 0, y: scales.y(i.at.y) })), Number.MAX_SAFE_INTEGER, THEME_LABEL_GAP);
+        // 상자 밖(확대로 y 범위를 벗어난 선)은 가장자리로 당기고 ▲▼ 로 남긴다 — 예전엔 overflow 에
+        // 잘려 **그 종목이 목록에서 조용히 사라졌다**(판독 칩과 같은 규칙, layoutReadoutRows).
+        const named = layoutReadoutRows(
+            head.map((i) => ({ item: i, y: scales.y(i.at.y) })),
+            { min: box.top + 6, max: box.top + box.height - 6 },
+            THEME_LABEL_GAP,
+        ).map((r) => ({ ...r.item, labelY: r.labelY, anchorY: r.anchorY, off: r.off }));
         return { named, hidden };
-    }, [themeOverlay, scales, viewX]);
+    }, [themeOverlay, scales, viewX, box.top, box.height]);
 
     /**
      * ── 테마 모드: **한 화면에 두 질문을 겹치지 않는다**(사용자 확정).
@@ -925,7 +992,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 끝점 x 는 상자 안으로 클램프 — 폴백(좌단 밖 끝점)일 때 지시선이 화면 밖으로 뻗지 않게. */}
                             {!themeSwapped && themeLabels.named.map((l) => {
                                 const tx = clamp(scales.x(l.at.x), box.left, box.left + box.width);
-                                const ty = scales.y(l.at.y);
+                                const ty = l.anchorY; // 상자 밖 값은 가장자리로 당겨진 자리(칩의 ▲▼ 가 밖이라고 말한다)
                                 const lit = hoveredThemeSet?.has(l.code) ?? false;
                                 return (
                                     <g key={`tld-${l.code}`} style={{ pointerEvents: "none" }} opacity={lit ? 0.9 : 0.4}>
@@ -1287,30 +1354,23 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     )}
                 </svg>
 
-                {/* 핀 시각의 테마 값 — **그 세로선 바로 오른쪽**에 편다(사용자 확정). 예전엔 y축까지 수평선을
-                    값 개수만큼 그었는데 화면을 가로지르는 선이 30개라 난잡했다. 값을 데이터가 있는 자리에 둔다.
-                    세로로 겹치면 옆 열로 밀되(layoutAxisColumns), 호버 중에만 뜨니 잠깐 벌어지는 건 괜찮다. */}
-                {scales && themeOverlay && themeReadingSlots.length > 0 && openReadingX !== null && (
-                    <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
-                        {themeReadingSlots.map((s) => {
-                            const lit = hoveredThemeSet?.has(s.item.code) ?? false;
-                            return (
-                                <div key={`trl-${s.item.x}-${s.item.code}`}
-                                    title={`${s.item.name} · ${hmOf(s.item.x + themeOverlay.t0)} · 전일比 ${fmtPct(s.item.y + themeOverlay.baseRate)}`}
-                                    style={{
-                                        ...chip, ...labelBg, cursor: "default",
-                                        left: scales.x(openReadingX) - box.left + 5 + s.col * THEME_READING_CELL.w,
-                                        top: s.y - box.top, transform: "translateY(-50%)",
-                                        color: lit ? "var(--text-primary)" : "var(--text-secondary)",
-                                        fontWeight: lit ? 700 : 400,
-                                    }}>
-                                    <span style={labelDot(themeColorOf(s.item.code))} />
-                                    {/* 값은 **전일 종가 대비 %만**(사용자 확정) — 뷰 y(타점 대비 %p)는 교차선이 이미 답한다. */}
-                                    <span style={{ color: lit ? "var(--text-secondary)" : "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(s.item.y + themeOverlay.baseRate)}</span>
-                                    {s.item.name}
-                                </div>
-                            );
-                        })}
+                {/* 핀 시각의 판독 — 그 세로선 오른쪽에 크로스헤어 판독과 **같은 모양**으로. */}
+                {scales && themeReadingSlots.length > 0 && openReadingX !== null && (
+                    <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+                        {themeReadingSlots.map((s) => (
+                            <div key={`trl-${s.item.code}`} style={{
+                                ...readoutBox, left: scales.x(openReadingX) + 10, top: s.labelY,
+                                transform: "translateY(-50%)",
+                                borderColor: s.item.own ? ACTIVE : "var(--border-default)",
+                                fontWeight: s.item.own ? 500 : 400,
+                            }}>
+                                <span style={labelDot(themeColorOf(s.item.code))} />
+                                <span>{s.item.name}</span>
+                                {s.off && <span style={{ color: "var(--text-tertiary)" }}>{s.off === "up" ? "▲" : "▼"}</span>}
+                                <span style={{ color: s.item.pct >= 0 ? RISE_COLOR : FALL_COLOR }}>{fmtPct(s.item.pct)}</span>
+                                {s.item.amount !== null && <span style={{ color: "var(--text-secondary)" }}>{fmtEok(s.item.amount)}</span>}
+                            </div>
+                        ))}
                     </div>
                 )}
 
@@ -1340,6 +1400,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         // 캔들이 켜진 종목은 밑줄 — 어느 선의 캔들을 보고 있는지가 목록에서 읽힌다.
                                         ...(candleCodes.has(l.code) ? { textDecoration: "underline" } : {}),
                                     }}>
+                                    {l.off && <span style={{ color: "var(--text-tertiary)" }}>{l.off === "up" ? "▲" : "▼"}</span>}
                                     {l.name}
                                     <span style={labelDot(themeColorOf(l.code))} />
                                 </button>
@@ -1430,7 +1491,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
                 {/* 크로스헤어 — 자기 상태(마우스 좌표)만 다시 그린다. 부모 렌더에 mousemove 를 태우면
                     이동마다 선 수백 개가 재조정된다(분리한 이유). 팬 중엔 숨긴다(사용자 확정). */}
-                {scales && !dragging && <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} xUnit={xUnit} abs={axisAbs} probe={probe} />}
+                {scales && !dragging && (
+                    <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} xUnit={xUnit} abs={axisAbs}
+                        readoutAt={readoutAt} colorOf={themeColorOf} />
+                )}
             </div>
 
             {/* 뭉친 라벨의 멤버 목록 — 행 점이 그림의 그 선과 같은 색(목록↔그림을 잇는 유일한 것). */}
@@ -1543,15 +1607,16 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 }
 
 /** 크로스헤어 — 마우스 위치의 (시간, %) 읽기. 상태를 여기 가둬 부모(선 수백 개)가 이동마다 안 그려지게. */
-function CrosshairLayer({ wrapRef, scales, box, xUnit, abs, probe }: {
+function CrosshairLayer({ wrapRef, scales, box, xUnit, abs, readoutAt, colorOf }: {
     wrapRef: RefObject<HTMLDivElement | null>;
     scales: Scales;
     box: { left: number; top: number; width: number; height: number };
     xUnit: XUnit;
     /** 선택된 타점의 원점 — 있으면 뱃지가 절대값(벽시계·전일比 %)을 괄호로 같이 읽는다. */
     abs: { baseT: number; baseRate: number } | null;
-    /** 손이 올라간 선의 판독기(부모가 만든다) — 커서 x 를 넣으면 그 지점 값. */
-    probe: ((x: number) => LineReadout | null) | null;
+    /** 세로선 판독기(부모가 만든다) — 커서 x 를 넣으면 그 시각에 보여줄 선들의 값. null 이면 안 펼친다. */
+    readoutAt: ((x: number) => ReadoutCandidate[]) | null;
+    colorOf: (code: string) => string;
 }): JSX.Element | null {
     const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
     useEffect(() => {
@@ -1573,9 +1638,15 @@ function CrosshairLayer({ wrapRef, scales, box, xUnit, abs, probe }: {
     if (!pos || pos.x < box.left || pos.x > box.left + box.width || pos.y < box.top || pos.y > box.top + box.height) return null;
     const xv = scales.x.invert(pos.x);
     const yv = scales.y.invert(pos.y);
-    // 판독은 **선 위의 값**이라 커서 y 와 무관하다 — 손이 선에 올라가 있으면(부모가 probe 를 준 상태)
-    // 그 선의 커서 시각 값을 읽는다. 커서를 따라가는 작은 상자에 담아 눈이 값을 찾아 헤매지 않게.
-    const readout = probe?.(xv) ?? null;
+    // 판독은 **선 위의 값**이라 커서 y 와 무관하다 — 세로선이 곧 자(尺)다.
+    const rows = readoutAt ? layoutReadoutRows(
+        readoutAt(xv).map((r) => ({ item: r, y: scales.y(r.y) })),
+        { min: box.top + 8, max: box.top + box.height - 8 },
+        READOUT_GAP,
+    ) : [];
+    // 오른쪽 끝에 닿으면 왼쪽으로 넘긴다 — 잘려서 못 읽는 것보단 잠깐 궤적을 가리는 게 낫다.
+    const flip = pos.x > box.left + box.width - 150;
+    const chipX = pos.x + (flip ? -10 : 10);
     // 읽기값은 커서 옆이 아니라 **축 가장자리 뱃지**(사용자 확정) — 차트 보던 습관 그대로 축에서 읽는다.
     return (
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
@@ -1590,22 +1661,35 @@ function CrosshairLayer({ wrapRef, scales, box, xUnit, abs, probe }: {
             <div style={{ ...axisBadge, left: pos.x, bottom: 2, transform: "translateX(-50%)" }}>
                 {fmtX(xv, xUnit)}{abs && <span style={axisBadgeAbs}> {hmOf(xv + abs.baseT)}</span>}
             </div>
-            {/* 선 판독 — 커서 오른쪽 위. 화면 오른쪽 끝에 닿으면 왼쪽으로 넘긴다(잘려서 못 읽는 것보단). */}
-            {readout && (
-                <div style={{
-                    ...readoutBox,
-                    left: pos.x + (pos.x > box.left + box.width - 150 ? -10 : 12),
-                    top: pos.y - 10,
-                    transform: pos.x > box.left + box.width - 150 ? "translate(-100%, -100%)" : "translateY(-100%)",
-                    borderColor: readout.own ? ACTIVE : "var(--border-default)",
-                }}>
-                    <span style={{ fontWeight: 700 }}>{readout.name}</span>
-                    <span style={{ color: "var(--text-tertiary)" }}>{hmOf(readout.minute)}</span>
-                    <span style={{ color: readout.abs >= 0 ? "var(--rise, #ef4444)" : "var(--fall, #3b82f6)", fontWeight: 700 }}>{fmtPct(readout.abs)}</span>
-                    {/* 거래대금은 없을 수 있다(그날 유니버스 밖) — 0으로 지어내지 않고 자리를 비운다. */}
-                    {readout.amount !== null && <span style={{ color: "var(--text-secondary)" }}>{fmtEok(readout.amount)}</span>}
-                </div>
+            {/* 세로선 판독 — 지시선(SVG)이 먼저, 칩(HTML)이 그 위에. 칩은 **포인터를 안 받는다**:
+                커서 밑에 칩이 깔리면 그게 선의 호버를 가로채 판독이 깜빡인다(떴다 사라졌다 반복). */}
+            {rows.length > 0 && (
+                <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                    {rows.map((r) => (
+                        <g key={r.item.code} opacity={r.item.own ? 0.95 : 0.5}>
+                            <line x1={pos.x} y1={r.anchorY} x2={chipX} y2={r.labelY}
+                                stroke={colorOf(r.item.code)} strokeWidth={0.8} strokeDasharray="2 2" />
+                            <circle cx={pos.x} cy={r.anchorY} r={2.2} fill={colorOf(r.item.code)} />
+                        </g>
+                    ))}
+                </svg>
             )}
+            {rows.map((r) => (
+                <div key={r.item.code} style={{
+                    ...readoutBox, left: chipX, top: r.labelY,
+                    transform: flip ? "translate(-100%, -50%)" : "translateY(-50%)",
+                    borderColor: r.item.own ? ACTIVE : "var(--border-default)",
+                    fontWeight: r.item.own ? 500 : 400,
+                }}>
+                    <span style={labelDot(colorOf(r.item.code))} />
+                    <span>{r.item.name}</span>
+                    {/* 진짜 값이 화면 밖이라 가장자리로 당겨진 칩 — 어느 쪽에 있는지 남긴다. */}
+                    {r.off && <span style={{ color: "var(--text-tertiary)" }}>{r.off === "up" ? "▲" : "▼"}</span>}
+                    <span style={{ color: r.item.pct >= 0 ? RISE_COLOR : FALL_COLOR }}>{fmtPct(r.item.pct)}</span>
+                    {/* 거래대금은 없을 수 있다(그날 유니버스 밖) — 0으로 지어내지 않고 자리를 비운다. */}
+                    {r.item.amount !== null && <span style={{ color: "var(--text-secondary)" }}>{fmtEok(r.item.amount)}</span>}
+                </div>
+            ))}
         </div>
     );
 }
