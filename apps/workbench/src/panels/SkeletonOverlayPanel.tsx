@@ -122,6 +122,17 @@ const CANDLE_DOWN = "#1976d2";
 /** 화면의 선 하나 — kind 판별 유니온(차트 단위 ChartSkeleton / 타점 단위 PointSkeleton). */
 type Line = OverlayLine;
 
+/** 캔들 선명도 단계 — 배경(low) / 기본(mid) / 같이 읽기(high). */
+type CandleAlpha = "low" | "mid" | "high";
+const CANDLE_ALPHA: Record<CandleAlpha, number> = { low: 0.18, mid: 0.35, high: 0.7 };
+/** 테마 멤버 캔들은 앵커보다 한 겹 뒤 — 주인공이 누구인지 진하기로도 남는다. */
+const CANDLE_MEMBER_RATIO = 0.8;
+/**
+ * 다른 것을 짚는 동안 캔들이 물러나는 정도(사용자 요구). 끄지 않고 **크게 흐리게**만 한다 —
+ * 지우면 "아까 거기 뭐가 있었지"가 사라지고, 손을 뗐을 때 그림이 튄다.
+ */
+const CANDLE_DIM_RATIO = 0.22;
+
 /** 세로선 판독의 재료 한 벌 — 선 하나를 x 로 조회하는 함수 묶음(값은 크로스헤어 층이 읽는다). */
 interface ReadoutSource {
     code: string;
@@ -164,6 +175,16 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
     const [showTheme, setShowTheme] = usePersistedState<boolean>("wb.skeletonOverlayTheme", (o) => (typeof o === "boolean" ? o : null), false);
+    /**
+     * 캔들 선명도 — 배경으로 깔 것인가, 같이 읽을 것인가(사용자 요구). 캔들의 쓸모가 상황마다 달라서다:
+     * 형태만 볼 땐 흐린 배경이 맞고, 봉 하나하나를 짚어 읽을 땐 골격선보다 진해도 된다.
+     * 단계로 두는 이유는 이 패널의 다른 손잡이와 같은 문법(칩)이라서 — 슬라이더 하나를 위해 어휘를 늘리지 않는다.
+     */
+    const [candleAlpha, setCandleAlpha] = usePersistedState<CandleAlpha>(
+        `wb.skeletonOverlayCandleAlpha.${grain}`,
+        (o) => (o === "low" || o === "mid" || o === "high" ? o : null),
+        "mid",
+    );
 
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const setFocus = useWorkbench((s) => s.setFocus);
@@ -476,6 +497,27 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const [themeBadge, setThemeBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     const hoveredThemeSet = useMemo(() => (hoveredTheme ? new Set(hoveredTheme) : null), [hoveredTheme]);
     useEffect(() => { setHoveredTheme(null); }, [themeOverlay?.key]);
+
+    /**
+     * 지금 손이 가리키는 **종목들** — 캔들이 물러날지 판정하는 유일한 기준(사용자 요구).
+     * 골격선 호버면 그 선의 종목, 테마 라벨·뱃지 호버면 그 무리. 아무것도 안 짚으면 null(= 전부 제자리).
+     * 종목 코드로 재는 이유: 캔들의 주인은 선이 아니라 종목이라(같은 종목의 선이 여럿일 수 있다) 키로 재면
+     * 자기 캔들이 자기 호버에 물러나는 일이 생긴다.
+     */
+    const candleFocusCodes = useMemo<ReadonlySet<string> | null>(() => {
+        if (hoveredThemeSet) return hoveredThemeSet;
+        if (!hovered) return null;
+        const s = byKey.get(hovered);
+        return new Set(s ? [s.stockCode] : []);
+    }, [hoveredThemeSet, hovered, byKey]);
+    /** 그 종목의 캔들 진하기 — 짚은 게 따로 있으면 크게 물러난다(끄지는 않는다). */
+    const candleOpacityOf = useCallback(
+        (code: string, member: boolean): number =>
+            CANDLE_ALPHA[candleAlpha] *
+            (member ? CANDLE_MEMBER_RATIO : 1) *
+            (candleFocusCodes !== null && !candleFocusCodes.has(code) ? CANDLE_DIM_RATIO : 1),
+        [candleAlpha, candleFocusCodes],
+    );
 
     /** 테마 선들의 분당 색 런 — **전부** 미리 굽는다(호버 하나만이 아니라, 사용자 확정).
      *  절대 구간 색이라 흐리게 깔아도 단계가 살아남는다 → 테마 전체의 자금 유입 타이밍이 한 화면에 깔린다.
@@ -920,6 +962,23 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     <TextToggle active={showLabels} onClick={() => setShowLabels(!showLabels)} title="앵커 반대쪽 끝에 종목·날짜 — 뭉치면 개수 뱃지, 눌러서 목록">라벨</TextToggle>
                     <TextToggle active={locked !== null} onClick={() => setLocked(locked ? null : autoBounds)} title="지금 척도를 붙든다 — 필터를 좁혀도 척도가 안 움직여 전후가 비교된다">척도 고정</TextToggle>
                 </ControlBox>
+                {/* 캔들 선명도 — 켜져 있을 때만 뜬다(꺼져 있으면 조절할 게 없다).
+                    다른 것을 짚는 동안엔 어느 단계든 크게 물러난다 — 그건 규칙이라 손잡이를 안 준다. */}
+                {candleCodes.size > 0 && (
+                    <ControlBox label="캔들">
+                        {(["low", "mid", "high"] as const).map((a, i) => (
+                            <span key={a} style={{ display: "inline-flex", alignItems: "center" }}>
+                                {i > 0 && <Dot />}
+                                <TextToggle active={candleAlpha === a} onClick={() => setCandleAlpha(a)}
+                                    title={a === "low" ? "배경으로만 — 형태 비교가 주인공일 때"
+                                        : a === "mid" ? "기본"
+                                            : "골격선과 같이 읽을 만큼 진하게 — 봉 하나하나를 짚어 볼 때"}>
+                                    {a === "low" ? "흐리게" : a === "mid" ? "보통" : "진하게"}
+                                </TextToggle>
+                            </span>
+                        ))}
+                    </ControlBox>
+                )}
                 {/* 거래대금은 **하나를 선택했을 때만** — 재료가 그날치 한 벌이라 호버로 끌면 스칠 때마다 왕복이다. */}
                 {!isDaily && (
                     <ControlBox label="거래대금">
@@ -1065,9 +1124,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* ── 캔들 오버레이 — **맨 아래**(테마 선보다도 아래). 골격이 그 위를 지나야
                                     "축약이 원본의 어디를 밟았나"가 읽힌다. 참고용이라 흐리다(사용자 확정).
                                     봉이 좁아지면(축소) 통째로 접힌다 — 400봉이 붙으면 잉크 덩어리일 뿐이다. */}
-                                {/* 다른 골격선을 짚는 동안엔 캔들도 같이 접는다(사용자 확정) — 그 순간의 질문은
-                                    "이 타점 vs 저 타점"이라, 한쪽 종목의 봉이 깔려 있으면 형태 비교를 방해한다. */}
-                                {candles && !themeSwapped && (() => {
+                                {/* 다른 것(골격선·테마 선·다른 캔들)을 짚는 동안엔 **크게 흐려진다**(사용자 요구).
+                                    예전엔 통째로 접었는데, 지우면 "아까 거기 뭐가 있었지"가 사라지고 손을 뗄 때 그림이 튄다.
+                                    진하기 자체는 헤더의 선명도 단계가 정한다 — 배경으로 깔지, 같이 읽을지가 상황마다 다르다. */}
+                                {candles && (() => {
                                     // 폭이 좁아져도 접지 않는다(사용자 확정) — candleWidth 가 하한을 지킨다.
                                     const w = candleWidth(Math.abs(scales.x(1) - scales.x(0)));
                                     const inView = (k: ViewCandle): boolean => {
@@ -1121,9 +1181,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     );
                                     return (
                                         <>
-                                            {draw(candles.anchor, 0.35, "ca")}
-                                            {/* 켜 둔 테마 멤버들 — 앵커보다 더 흐리게(배경의 배경). */}
-                                            {candles.members.map((m) => <g key={`cm-${m.code}`}>{draw(m.candles, 0.28, `cm${m.code}-`)}</g>)}
+                                            {candleAnchor && draw(candles.anchor, candleOpacityOf(candleAnchor.stockCode, false), "ca")}
+                                            {/* 켜 둔 테마 멤버들 — 앵커보다 한 겹 뒤(배경의 배경). 짚은 게 자기면 안 물러난다. */}
+                                            {candles.members.map((m) => (
+                                                <g key={`cm-${m.code}`}>{draw(m.candles, candleOpacityOf(m.code, true), `cm${m.code}-`)}</g>
+                                            ))}
                                         </>
                                     );
                                 })()}
