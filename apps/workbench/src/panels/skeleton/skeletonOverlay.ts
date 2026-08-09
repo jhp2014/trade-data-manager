@@ -418,6 +418,23 @@ export function splitAtX<P extends { x: number }>(points: readonly P[], x0: numb
     return { past: points.filter((p) => p.x <= x0), future: points.filter((p) => p.x >= x0) };
 }
 
+/**
+ * 폴리라인 위 x 지점의 y — 구간 선형 보간. 호버 판독("이 선의 이 시각 값")이 쓴다.
+ * 범위 밖이면 null(끝점을 연장해 지어내지 않는다). x 오름차순 가정 — 골격·테마 경로가 전부 그렇다.
+ */
+export function yAtX(points: readonly { x: number; y: number }[], x: number): number | null {
+    if (points.length === 0) return null;
+    if (x < points[0].x || x > points[points.length - 1].x) return null;
+    for (let i = 0; i + 1 < points.length; i++) {
+        const a = points[i];
+        const b = points[i + 1];
+        if (x < a.x || x > b.x) continue;
+        const span = b.x - a.x;
+        return span === 0 ? a.y : a.y + ((b.y - a.y) * (x - a.x)) / span;
+    }
+    return points[points.length - 1].y; // x === 마지막 점
+}
+
 /** 폴리라인 points 속성 문자열. 소수 2자리로 끊어 DOM 문자열이 불필요하게 길어지지 않게. */
 export function polylinePoints(s: NormalizedSkeleton, sx: (x: number) => number, sy: (y: number) => number): string {
     return s.points.map((p) => `${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" ");

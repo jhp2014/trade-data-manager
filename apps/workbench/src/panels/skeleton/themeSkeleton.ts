@@ -29,17 +29,29 @@ export interface PathPoint {
 }
 
 /**
- * 멤버 하나의 경로 — `[from, to]` 구간의 **분당 종가 전부**. 거래가 없어 빠진 분은 건너뛴다
- * (직전 값을 끌어오지 않는다 — 없는 걸 그리면 평평한 구간이 사실처럼 보인다).
+ * 멤버 하나의 경로 — `[from, to]` 구간의 **분당 종가 전부**. 거래가 없어 빠진 분은 **직전 종가로 채운다**
+ * (사용자 확정 — 골격·테마·캔들 전부 "모든 시간에 값이 있다"로 통일). 선두 갭(첫 값 이전)만은 못 채운다:
+ * 끌어올 직전 값이 없다(도메인 densifyMinutes 의 규칙과 같다).
+ *
+ * 한때 빠진 분을 **건너뛰었다** — "없는 걸 그리면 없던 평평한 구간이 사실처럼 보인다"는 이유였는데,
+ * 건너뛰면 그 구간이 **직선으로 이어져** 어차피 없던 경로가 그려지고(그것도 기울어진 채) 캔들·골격과
+ * x가 어긋난다. 평탄하게 채우면 적어도 "그동안 값이 안 움직였다"는 참인 그림이 되고, 거래대금 채널
+ * (굵기·마커)이 0이라 조용했다는 게 같이 읽힌다.
  * 점이 2개 미만이면 선이 아니다(null).
  */
 export function memberPath(from: number, to: number, series: MinuteSeries): PathPoint[] | null {
     const out: PathPoint[] = [];
+    let prev: number | null = null;
     for (let m = from; m <= to; m++) {
         const i = series.index.get(m);
-        if (i == null) continue;
+        if (i == null) {
+            if (prev !== null) out.push({ x: m, y: prev });
+            continue;
+        }
         const y = series.close[i];
-        if (Number.isFinite(y)) out.push({ x: m, y });
+        if (!Number.isFinite(y)) continue;
+        prev = y;
+        out.push({ x: m, y });
     }
     return out.length >= 2 ? out : null;
 }

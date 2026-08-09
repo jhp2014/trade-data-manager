@@ -20,9 +20,16 @@ describe("memberPath — 구간의 분당 종가 전부", () => {
         expect(memberPath(541, 543, s)!.map((p) => p.x)).toEqual([541, 542, 543]);
     });
 
-    it("거래가 없어 빠진 분은 건너뛴다 — 직전 값을 끌어오면 없던 평평한 구간이 사실처럼 보인다", () => {
+    it("거래가 없어 빠진 분은 **직전 종가로 채운다**(사용자 확정) — 건너뛰면 그 구간이 기울어진 직선이 된다", () => {
         const s: MinuteSeries = { index: new Map([[540, 0], [543, 1]]), close: [0, 9] };
-        expect(memberPath(540, 543, s)).toEqual([{ x: 540, y: 0 }, { x: 543, y: 9 }]);
+        expect(memberPath(540, 543, s)).toEqual([
+            { x: 540, y: 0 }, { x: 541, y: 0 }, { x: 542, y: 0 }, { x: 543, y: 9 },
+        ]);
+    });
+
+    it("선두 갭(첫 값 이전)은 못 채운다 — 끌어올 직전 값이 없다", () => {
+        const s: MinuteSeries = { index: new Map([[542, 0], [543, 1]]), close: [5, 9] };
+        expect(memberPath(540, 543, s)!.map((p) => p.x)).toEqual([542, 543]);
     });
 
     it("점이 2개 미만이면 선이 아니다", () => {

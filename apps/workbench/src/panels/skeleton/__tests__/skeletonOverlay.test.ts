@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -211,6 +211,24 @@ describe("splitAtX — 타점 이후 구간 가르기", () => {
         const { past, future } = splitAtX(pts, 0);
         expect(past).toHaveLength(1);
         expect(future).toHaveLength(4);
+    });
+});
+
+describe("yAtX — 호버 판독의 구간 선형 보간", () => {
+    const pts = [{ x: -10, y: 0 }, { x: 0, y: 10 }, { x: 10, y: 0 }];
+
+    it("꼭짓점과 그 사이를 모두 준다", () => {
+        expect(yAtX(pts, -10)).toBe(0);
+        expect(yAtX(pts, -5)).toBeCloseTo(5);
+        expect(yAtX(pts, 0)).toBe(10);
+        expect(yAtX(pts, 5)).toBeCloseTo(5);
+        expect(yAtX(pts, 10)).toBe(0);
+    });
+
+    it("범위 밖은 null — 끝점을 연장해 지어내지 않는다", () => {
+        expect(yAtX(pts, -11)).toBeNull();
+        expect(yAtX(pts, 11)).toBeNull();
+        expect(yAtX([], 0)).toBeNull();
     });
 });
 

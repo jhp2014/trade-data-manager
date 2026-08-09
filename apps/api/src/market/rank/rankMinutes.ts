@@ -42,7 +42,7 @@ export class RankMinutes {
             return {
                 stockCode: d.stockCode,
                 date: d.date,
-                bars: candles.map((c) => ({ time: c.time, open: c.un.open, high: c.un.high, low: c.un.low, close: c.un.close })),
+                bars: candles.map((c) => ({ time: c.time, high: c.un.high, low: c.un.low, close: c.un.close })),
             };
         });
     }
