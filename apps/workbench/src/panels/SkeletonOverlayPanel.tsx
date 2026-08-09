@@ -54,7 +54,13 @@ const ANCHOR_KEY = "wb.skeletonOverlayAnchor";
  * 그 안에서 세로로 벌려 전부 읽히게 하려고. 평소엔 y축 눈금만 들어가면 되니 46px 이면 족하다.
  */
 const PAD = { right: 14, top: 12, bottom: 24 };
-const PAD_LEFT = { plain: 46, gutter: 100 };
+const PAD_LEFT = { plain: 46, gutter: 122 };
+/**
+ * 거터 안 두 칸의 경계 — 축에서 이만큼은 **눈금 숫자**의 자리이고, 테마 이름은 그 **왼쪽**에 선다
+ * (사용자 확정). 예전엔 둘 다 축에 붙어 오른쪽 정렬이라 `0%` 와 종목명이 같은 자리에서 겹쳤다.
+ * 46 = 눈금 없는 평소 여백(`−20%` 폭 ~33px + 여유)이라 숫자 칸의 폭과 정확히 같다.
+ */
+const THEME_LABEL_INSET = PAD_LEFT.plain;
 /** 피벗 점 예산 — **원 개수**로 센다(골격당 피벗 수가 3~6으로 제각각이라 골격 수로 세면 임계가 두 배 흔들린다). */
 const DOT_BUDGET = 1200;
 /** 라벨 격자 한 칸(화면 px) — 라벨 하나가 차지하는 자리. 이보다 촘촘하면 뭉쳐서 개수 뱃지가 된다. */
@@ -613,16 +619,28 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      * 열린다. 위쪽이 살아남는 건 아래쪽이 0% 언저리에 뭉쳐 있어 어차피 이름을 못 읽기 때문이다.
      */
     const themeLabels = useMemo(() => {
-        if (!themeOverlay || !scales) return { named: [], hidden: [] as { code: string; name: string; y: number }[] };
+        if (!themeOverlay || !scales || !viewX) return { named: [], hidden: [] as { code: string; name: string; y: number }[] };
+        // 앵커 = **화면 좌단에서 선이 잘리는 값**(사용자 확정). 하루 전체를 그리게 되면서 "첫 점"은 대개
+        // 08:00 = 화면 밖이 됐고, 그러면 라벨이 죄다 그 시각의 값(≈0%)에 뭉쳐 지금 보는 그림과 무관해진다.
+        // 좌단 기준이면 팬·줌 할 때마다 다시 계산돼 라벨이 선을 따라다닌다.
+        // 좌단에 선이 아직/이미 없으면 가까운 끝점으로 물러난다 — 목록에서 종목이 사라지지 않게.
         const items = themeOverlay.lines
-            .map((l) => ({ code: l.code, name: l.name, at: l.points[0] }))
+            .map((l) => {
+                const edge = yAtX(l.points, viewX.from);
+                const at = edge !== null ? { x: viewX.from, y: edge }
+                    : l.points[0].x > viewX.from ? l.points[0]
+                        : l.points[l.points.length - 1];
+                return { code: l.code, name: l.name, at };
+            })
             .sort((a, b) => b.at.y - a.at.y);
         const head = items.slice(0, THEME_LABEL_CAP);
         const hidden = items.slice(THEME_LABEL_CAP).map((i) => ({ code: i.code, name: i.name, y: scales.y(i.at.y) }));
         // 전부 한 밴드에서 겨루게 한다(거터는 열이 하나뿐이라 x 로 나눌 게 없다).
+        // 라벨은 **제 높이를 고집하지 않는다**(사용자 확정) — 값이 붙은 종목끼리도 편히 벌어져 서고,
+        // 어느 선의 이름인지는 지시선이 답한다. 그래서 최소 간격만 지키면 자리는 자유다.
         const named = spreadByY(head.map((i) => ({ ...i, x: 0, y: scales.y(i.at.y) })), Number.MAX_SAFE_INTEGER, THEME_LABEL_GAP);
         return { named, hidden };
-    }, [themeOverlay, scales]);
+    }, [themeOverlay, scales, viewX]);
 
     /**
      * ── 테마 모드: **한 화면에 두 질문을 겹치지 않는다**(사용자 확정).
@@ -900,6 +918,25 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     </defs>
                     {scales && bounds && (
                         <>
+                            {/* 테마 라벨의 지시선 — **클립 밖**(거터는 그림 상자 바깥이라 클립하면 사라진다).
+                                라벨(눈금 숫자 왼쪽)에서 출발해 **선이 좌단에서 잘리는 그 점**까지 긋는다.
+                                라벨이 제 높이를 안 지키므로 이 선이 유일한 대응 표시다.
+                                ⚠ 눈금 숫자 칸을 가로지르므로 **눈금보다 먼저** 그린다(숫자가 위에 얹히게).
+                                끝점 x 는 상자 안으로 클램프 — 폴백(좌단 밖 끝점)일 때 지시선이 화면 밖으로 뻗지 않게. */}
+                            {!themeSwapped && themeLabels.named.map((l) => {
+                                const tx = clamp(scales.x(l.at.x), box.left, box.left + box.width);
+                                const ty = scales.y(l.at.y);
+                                const lit = hoveredThemeSet?.has(l.code) ?? false;
+                                return (
+                                    <g key={`tld-${l.code}`} style={{ pointerEvents: "none" }} opacity={lit ? 0.9 : 0.4}>
+                                        <line x1={box.left - THEME_LABEL_INSET + 2} y1={l.labelY} x2={tx} y2={ty}
+                                            stroke={themeColorOf(l.code)} strokeWidth={0.8} strokeDasharray="2 2" />
+                                        {/* 잘리는 지점 표식 — 점선이 가리키는 곳이 눈에 딱 집히게. */}
+                                        <circle cx={tx} cy={ty} r={2.2} fill={themeColorOf(l.code)} />
+                                    </g>
+                                );
+                            })}
+
                             {/* 눈금 — 확대하면 d3 가 새 구간에 맞춰 다시 뽑는다(축이 곧 정보라 라벨이 따라와야 한다).
                                 타점을 하나 선택했으면 **절대값을 아랫줄에** 같이 세운다(사용자 확정): 세로축은 전일比 %,
                                 가로축은 벽시계. 한 줄에 붙이면 좁은 왼쪽 여백(46px)을 넘어 잘린다 — 그래서 두 줄이다. */}
@@ -921,11 +958,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
                             {/* 거터 라벨의 지시선 — **클립 밖**에 그린다(거터는 그림 상자 바깥이라 클립하면 사라진다).
                                 라벨이 제자리를 벗어난 만큼 이 선이 원래 선 시작점을 가리킨다. */}
-                            {!themeSwapped && themeLabels.named.map((l) => (
-                                <line key={`tld-${l.code}`} x1={box.left - 4} y1={l.labelY} x2={scales.x(l.at.x)} y2={scales.y(l.at.y)}
-                                    stroke={themeColorOf(l.code)} strokeWidth={0.8} strokeDasharray="2 2"
-                                    opacity={hoveredThemeSet?.has(l.code) ? 0.9 : 0.35} style={{ pointerEvents: "none" }} />
-                            ))}
 
                             <g clipPath={`url(#${clipId})`}>
                                 {/* 원점 좌표축 — **실선 + 끝 화살표**(사용자 확정, xy 좌표계 그대로). 흐린 점선은 그림에
@@ -1300,8 +1332,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     onMouseLeave={() => setHoveredTheme(null)}
                                     title={`${l.name} 전일比 ${fmtPct(l.at.y + (themeOverlay?.baseRate ?? 0))} — 올리면 그 선만 또렷해진다 · 클릭해 캔들 ${candleCodes.has(l.code) ? "끄기" : "켜기"}`}
                                     style={{
-                                        ...chip, left: box.left - 4, top: l.labelY - box.top, transform: "translate(-100%, -50%)",
-                                        maxWidth: box.left - 8, overflow: "hidden",
+                                        // 눈금 숫자 칸(THEME_LABEL_INSET) **왼쪽**에 오른쪽 정렬로 선다.
+                                        ...chip, left: box.left - THEME_LABEL_INSET, top: l.labelY - box.top, transform: "translate(-100%, -50%)",
+                                        maxWidth: box.left - THEME_LABEL_INSET - 4, overflow: "hidden",
                                         color: lit || candleCodes.has(l.code) ? "var(--text-primary)" : "var(--text-tertiary)",
                                         fontWeight: lit || candleCodes.has(l.code) ? 700 : 400,
                                         // 캔들이 켜진 종목은 밑줄 — 어느 선의 캔들을 보고 있는지가 목록에서 읽힌다.
@@ -1319,7 +1352,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 title={`이름을 못 단 ${themeLabels.hidden.length}종목 — 올리면 그 선들이 켜지고, 누르면 목록`}
                                 style={{
                                     ...chip, ...badgeChip,
-                                    left: box.left - 4, top: median(themeLabels.hidden.map((h) => h.y)) - box.top,
+                                    left: box.left - THEME_LABEL_INSET, top: median(themeLabels.hidden.map((h) => h.y)) - box.top,
                                     transform: "translate(-100%, -50%)",
                                 }}>
                                 +{themeLabels.hidden.length}
