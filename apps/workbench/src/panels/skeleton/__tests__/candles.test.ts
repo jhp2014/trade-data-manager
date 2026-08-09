@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { anchorCandles, memberCandles, candleWidth, CANDLE_MIN_WIDTH, type RawMinute, type MinuteOhlcSeries } from "../candles.js";
+import { anchorCandles, memberCandles, dailyOverlayCandles, candleWidth, CANDLE_MIN_WIDTH, type RawMinute, type MinuteOhlcSeries, type RawDaily } from "../candles.js";
 
 const bar = (time: string, o: number, h: number, l: number, c: number, volume = 100): RawMinute =>
     ({ time, un: { open: String(o), high: String(h), low: String(l), close: String(c), volume: String(volume) } });
@@ -95,5 +95,58 @@ describe("candleWidth — 축소해도 사라지지 않는다", () => {
     it("아무리 좁아도 하한을 지킨다(사용자 확정 — 폭 때문에 그림이 사라지지 않게)", () => {
         expect(candleWidth(0.1)).toBe(CANDLE_MIN_WIDTH);
         expect(candleWidth(0)).toBe(CANDLE_MIN_WIDTH);
+    });
+});
+
+describe("dailyOverlayCandles — 일봉 → 뷰 공간(x = 창 안 거래일 순번)", () => {
+    /** 시장 두 벌이 같은 값인 평범한 날. */
+    const d = (o: number, h: number, l: number, c: number, amount = "0"): RawDaily => {
+        const b = { open: String(o), high: String(h), low: String(l), close: String(c), amount };
+        return { krx: b, un: b };
+    };
+    // 창 안 4일. 앵커 피벗은 인덱스 2(가격 120).
+    const bars = [d(90, 95, 88, 92), d(92, 110, 91, 108), d(108, 125, 105, 120), d(120, 130, 115, 118)];
+
+    it("배열 인덱스가 곧 t — x 는 앵커 순번 기준 상대 거래일", () => {
+        const out = dailyOverlayCandles(bars, { basePrice: 120, baseT: 2 });
+        expect(out.map((k) => k.x)).toEqual([-2, -1, 0, 1]);
+    });
+
+    it("y 는 앵커 가격 대비 % — 앵커 봉의 종가가 0% 에 앉는다", () => {
+        const out = dailyOverlayCandles(bars, { basePrice: 120, baseT: 2 });
+        expect(out[2].c).toBeCloseTo(0); // 종가 120 = 기준
+        expect(out[0].c).toBeCloseTo(((92 - 120) / 120) * 100);
+    });
+
+    it("거래대금은 **실측 그대로** — 일봉은 OHLC×량으로 지어내지 않는다", () => {
+        const withAmt = [d(90, 95, 88, 92, "12300000000")];
+        expect(dailyOverlayCandles(withAmt, { basePrice: 92, baseT: 0 })[0].amount).toBe(12_300_000_000);
+    });
+
+    it("시장은 **앵커 피벗이 앉는 쪽** — 기준가가 UN 봉 밖이고 KRX 봉 안이면 KRX 를 쓴다", () => {
+        // UN 은 200~210, KRX 는 90~130. 기준가 120 은 KRX 봉에만 든다.
+        const split: RawDaily[] = [{
+            krx: { open: "100", high: "130", low: "90", close: "120", amount: "0" },
+            un: { open: "205", high: "210", low: "200", close: "208", amount: "0" },
+        }];
+        expect(dailyOverlayCandles(split, { basePrice: 120, baseT: 0 })[0].c).toBeCloseTo(0);
+    });
+
+    it("둘 다 담으면 UN(통합)을 쓴다 — 규칙이 흔들리지 않게", () => {
+        const both: RawDaily[] = [{
+            krx: { open: "100", high: "130", low: "90", close: "110", amount: "0" },
+            un: { open: "100", high: "130", low: "90", close: "126", amount: "0" },
+        }];
+        expect(dailyOverlayCandles(both, { basePrice: 120, baseT: 0 })[0].c).toBeCloseTo(5);
+    });
+
+    it("값이 하나라도 가격이 아니면 그 봉은 건너뛴다 — 반쪽 캔들은 지어낸 그림이다", () => {
+        const broken: RawDaily[] = [d(90, 95, 88, 92), { krx: d(0, 0, 0, 0).krx, un: { open: "", high: "9", low: "8", close: "9", amount: "0" } }];
+        expect(dailyOverlayCandles(broken, { basePrice: 92, baseT: 0 })).toHaveLength(1);
+    });
+
+    it("기준가가 없거나 봉이 없으면 빈 목록", () => {
+        expect(dailyOverlayCandles(bars, { basePrice: 0, baseT: 0 })).toEqual([]);
+        expect(dailyOverlayCandles([], { basePrice: 100, baseT: 0 })).toEqual([]);
     });
 });

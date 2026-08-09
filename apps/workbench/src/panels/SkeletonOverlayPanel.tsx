@@ -12,7 +12,7 @@ import {
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
-import { anchorCandles, memberCandles, candleWidth, type ViewCandle } from "./skeleton/candles.js";
+import { anchorCandles, memberCandles, dailyOverlayCandles, candleWidth, type ViewCandle } from "./skeleton/candles.js";
 import { themeLines, hotCodesInRange } from "./skeleton/themeSkeleton.js";
 import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
@@ -422,6 +422,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     //    (초기 창으로 자르면 확대·이동해도 그 밖은 영영 빈 선이다 — 캔들과 같은 이유.)
     const replaySettings = useWorkbench((s) => s.replaySettings);
     const pointTarget: PointSkeleton | null = singleTarget?.kind === "point" ? singleTarget : null;
+    /**
+     * 일봉 패널에서 짚은 차트 하나 — **캔들 오버레이 전용**(사용자 확정). `singleTarget` 은 분봉 전용이라
+     * (거래대금·테마의 재료가 그날 복기 스냅샷이다) 여기서 따로 뽑는다. 일봉 캔들은 그 재료를 안 쓴다 —
+     * `/chart` 번들의 일봉을 그대로 깔면 되고, 그건 이미 차트 패널들과 캐시를 공유한다.
+     */
+    const dailyTarget = useMemo(
+        () => (!isDaily || effSelected.size !== 1 ? null : byKey.get([...effSelected][0]) ?? null),
+        [isDaily, effSelected, byKey],
+    );
+    /** 캔들의 주인공 — 분봉이면 짚은 타점 선, 일봉이면 짚은 차트 선. 재료(차트 번들)는 한 벌이다. */
+    const candleAnchor: Line | null = pointTarget ?? dailyTarget;
     const themeOverlay = useMemo(() => {
         if (isDaily || !showTheme || !pointTarget || !snapQ.data) return null;
         const src = snapQ.data.stocks;
@@ -446,7 +457,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 필터 패널과 **같아서** 그 날짜가 이미 떠 있으면 왕복이 0이다.
     const [candleCodes, setCandleCodes] = useState<ReadonlySet<string>>(() => new Set());
     // 짚은 선이 바뀌면 켠 것들을 접는다 — 다른 날·다른 종목의 무리라 그대로 두면 뜻이 안 맞는다.
-    useEffect(() => { setCandleCodes(new Set()); }, [singleTarget?.key]);
+    useEffect(() => { setCandleCodes(new Set()); }, [candleAnchor?.key]);
     const toggleCandle = useCallback((code: string): void => {
         setCandleCodes((prev) => {
             const next = new Set(prev);
@@ -455,8 +466,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             return next;
         });
     }, []);
-    const anchorCandleOn = !!pointTarget && candleCodes.has(pointTarget.stockCode);
-    const anchorMinQ = useQuery(chartQuery(anchorCandleOn ? pointTarget.stockCode : "", anchorCandleOn ? pointTarget.date : ""));
+    const anchorCandleOn = !!candleAnchor && candleCodes.has(candleAnchor.stockCode);
+    // 번들 하나가 둘 다 준다 — 분봉 캔들은 `minutes`, 일봉 캔들은 `daily`. 왕복이 늘지 않는다.
+    const anchorMinQ = useQuery(chartQuery(anchorCandleOn ? candleAnchor.stockCode : "", anchorCandleOn ? candleAnchor.date : ""));
 
     /** 손이 올라간 테마 선(들) — 뭉친 라벨이면 그 무리 전부. 이것만 선명해지고 나머지는 무채색으로 남는다. */
     const [hoveredTheme, setHoveredTheme] = useState<readonly string[] | null>(null);
@@ -492,6 +504,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      * 멤버는 스냅샷(% 공간)이라 평행이동만, 앵커는 원주가라 골격 피벗과 같은 식으로 환산된다.
      */
     const candles = useMemo(() => {
+        // 일봉 — 앵커 하나뿐이다(테마는 분봉 화면의 개념). x 는 창 안 거래일 순번이라 배열 인덱스가 곧 t.
+        if (dailyTarget) {
+            if (!anchorCandleOn) return null;
+            const anchor = dailyOverlayCandles(anchorMinQ.data?.daily ?? [], { basePrice: dailyTarget.basePrice, baseT: dailyTarget.baseT });
+            return { anchor, members: [] as { code: string; name: string; candles: ViewCandle[] }[], daily: true };
+        }
         if (!pointTarget || candleCodes.size === 0) return null;
         const origin = { basePrice: pointTarget.basePrice, baseRate: pointTarget.baseRate, baseT: pointTarget.baseT };
         const anchor = anchorCandleOn ? anchorCandles(anchorMinQ.data?.minutes ?? [], origin) : [];
@@ -504,8 +522,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             // 멤버 시계열은 벽시계 색인 — 하루 전체를 훑는다(그린 뒤 화면 밖은 렌더가 거른다).
             members.push({ code, name: nameOf(code), candles: memberCandles(0, 1439, series, origin) });
         }
-        return { anchor, members };
-    }, [pointTarget, candleCodes, anchorCandleOn, anchorMinQ.data, snapQ.data, nameOf]);
+        return { anchor, members, daily: false };
+    }, [dailyTarget, pointTarget, candleCodes, anchorCandleOn, anchorMinQ.data, snapQ.data, nameOf]);
 
     /**
      * ── 세로선 판독 — **선 하나에 손이 올라가면** 교차선의 세로선이 그 시각의 판독 자가 된다(사용자 확정).
@@ -752,7 +770,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      *  관찰 종목에도 주되, 첫 클릭의 일(선택·이동)은 안 뺏는다. 이미 선택된 걸 또 누르는 건 원래
      *  아무 일도 안 했으므로(같은 곳으로 다시 이동할 뿐) 빈자리에 얹은 셈이다. */
     const onLabelClick = useCallback((s: Line, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
-        if (!ev.ctrlKey && !ev.metaKey && s.kind === "point" && effSelected.size === 1 && effSelected.has(s.key)) {
+        // 캔들을 켜는 건 **타점 단위 선(분봉)** 과 **일봉 차트 선** 둘 다(사용자 확정).
+        // 분봉 절대 뷰는 빠진다 — 거기 선은 하루 경로 전체라 캔들의 주인공이 정해지지 않는다.
+        const candleable = s.kind === "point" || isDaily;
+        if (!ev.ctrlKey && !ev.metaKey && candleable && effSelected.size === 1 && effSelected.has(s.key)) {
             toggleCandle(s.stockCode);
             return;
         }
@@ -773,7 +794,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const pts = pointsByChart.get(s.chartKey);
         if (pts?.length) goToPoint({ code: s.stockCode, date: s.date, time: pts[0].time }, "skeleton-overlay");
         else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
-    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus, toggleCandle]);
+    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus, toggleCandle, isDaily]);
 
     // ── Ctrl+드래그 사각 선택 — 사각형 역학은 useMarquee 가, **무엇을 담을지**는 여기가 정한다.
     const onMarqueeSelect = useCallback((rect: MarqueeRect): void => {
@@ -1062,7 +1083,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 const yBot = scales.y(Math.min(k.o, k.c));
                                                 // 거래대금 구간 마커 — **차트 패널과 같은 규칙**(8구간 색 + 구간 하한 숫자,
                                                 // minuteChartHooks 의 aboveBar 마커). 임계(20억) 아래면 아무것도 안 붙는다.
-                                                const b = amountBucketIndex(k.amount);
+                                                // 일봉엔 안 붙인다: 이 구간은 **분봉 거래대금** 정책이라 일봉 값(수백~수천억)을
+                                                // 넣으면 전 캔들이 최상위 구간으로 찍혀 아무것도 구분되지 않는다.
+                                                const b = candles.daily ? -1 : amountBucketIndex(k.amount);
                                                 return (
                                                     <g key={`${keyPrefix}${k.x}`}>
                                                         <g opacity={opacity}>
@@ -1466,7 +1489,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             return (
                                 <button key={key} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
-                                    title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=선택 해제 · 우클릭=태그`}
+                                    title={`${nameOf(s.stockCode)} ${s.date} — ${(s.kind === "point" || isDaily) && effSelected.has(s.key) && effSelected.size === 1
+                                        ? `다시 클릭=${candleCodes.has(s.stockCode) ? "캔들 끄기" : "캔들 켜기"} · `
+                                        : "클릭=선택·이동 · "}Ctrl+클릭=선택 해제 · 우클릭=태그`}
                                     style={{
                                         ...chip, ...labelBg, ...pl.style, top: scales.y(p.y) - box.top,
                                         color, fontWeight: 700,

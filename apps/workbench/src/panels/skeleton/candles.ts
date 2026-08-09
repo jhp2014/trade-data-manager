@@ -83,6 +83,53 @@ export function anchorCandles(
     return out;
 }
 
+/** 일봉 하나 — `/chart` 번들의 DailyCandle 중 이 모듈이 쓰는 부분(시장 두 벌). */
+export interface RawDaily {
+    krx: { open: string; high: string; low: string; close: string; amount: string };
+    un: { open: string; high: string; low: string; close: string; amount: string };
+}
+
+/**
+ * 일봉 캔들 — 일봉 골격 뒤에 깔 배경. 분봉과 **x 규칙만 다르다**: 일봉 피벗의 t 는 벽시계가 아니라
+ * **창 안 거래일 순번**(서버 resolveDailySkeletons 의 dayIndex)이라, 배열 인덱스가 곧 t 다.
+ *
+ * 그 인덱스가 클라에서도 맞는 이유: `/chart` 번들의 일봉과 골격 리졸버가 **같은 창**(`chartDailyRange`
+ * = 차트 날짜 기준 2년)을 같은 수정주가 테이블에서 읽는다. 창이 같으니 순번도 같다 — 두 곳이 갈리면
+ * 캔들이 통째로 옆으로 밀리므로, 이 전제가 이 함수의 유일한 위험이다.
+ *
+ * 시장은 **앵커 피벗이 앉는 쪽**으로 고른다: 골격 피벗은 사람이 지목한 시장에서 읽힌 값이라(KRX/UN),
+ * 다른 쪽 캔들을 깔면 피벗 점이 자기 봉 밖에 뜬다. 기준 가격이 그 날 봉의 고저 안에 드는 쪽을 쓰되
+ * 둘 다 되면 UN(통합)을 쓴다.
+ */
+export function dailyOverlayCandles(
+    bars: readonly RawDaily[],
+    origin: { basePrice: number; baseT: number },
+): ViewCandle[] {
+    if (origin.basePrice <= 0 || bars.length === 0) return [];
+    const at = bars[origin.baseT];
+    const holds = (b: { high: string; low: string } | undefined): boolean => {
+        if (!b) return false;
+        const h = priceOf(b.high);
+        const l = priceOf(b.low);
+        return Number.isFinite(h) && Number.isFinite(l) && origin.basePrice >= l && origin.basePrice <= h;
+    };
+    const market: "krx" | "un" = holds(at?.un) || !holds(at?.krx) ? "un" : "krx";
+    const y = (price: number): number => pct(price, origin.basePrice);
+    const out: ViewCandle[] = [];
+    for (let i = 0; i < bars.length; i++) {
+        const b = bars[i][market];
+        const o = priceOf(b.open);
+        const h = priceOf(b.high);
+        const l = priceOf(b.low);
+        const c = priceOf(b.close);
+        if (!Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
+        // 일봉은 거래대금이 **실측**이라(소스 그대로) 분봉처럼 OHLC×량으로 지어내지 않는다.
+        const amount = Number(b.amount);
+        out.push({ x: i - origin.baseT, o: y(o), h: y(h), l: y(l), c: y(c), amount: Number.isFinite(amount) ? amount : 0 });
+    }
+    return out;
+}
+
 /** 스냅샷 한 종목의 분당 OHLC(%) — 벽시계 분으로 찾는다(테마 선의 MinuteSeries 와 같은 색인). */
 export interface MinuteOhlcSeries {
     index: ReadonlyMap<number, number>;
