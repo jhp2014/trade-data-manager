@@ -612,6 +612,27 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return { named, hidden };
     }, [themeOverlay, scales]);
 
+    /**
+     * ── 테마 모드: **한 화면에 두 질문을 겹치지 않는다**(사용자 확정).
+     *
+     * 테마 선(무채색 얇은 선 30개)과 다른 타점의 골격선(역시 무채색 얇은 선 수십~수백)이 같이 깔리면
+     * 어느 게 어느 쪽인지 눈으로 안 갈린다 — 색을 더 벌려도 겹치는 순간 같은 문제라 **구조로 푼다**.
+     *   · 평소(테마 켜짐) : 선택선 + 테마 무리만 그린다. 나머지 골격선은 **라벨만** 흐리게 남는다
+     *     → "이 타점에서 테마가 어땠나"
+     *   · 흐린 라벨 호버  : **테마가 접히고** 그 골격선이 나온다(짚은 것 + 선택한 것, 둘만)
+     *     → "이 타점 vs 저 타점"
+     * 손을 떼면 즉시 되돌아온다. 테마 토글을 끄면 원래의 전체 비교 화면.
+     * 덤: 안 그리는 선이 수백이라 이동도 그만큼 가벼워진다.
+     */
+    const themeMode = themeOverlay !== null;
+    /** 지금 "다른 골격선"을 보고 있나 — 그러면 테마를 접는다(뱃지 무리를 켠 것도 같은 뜻). */
+    const themeSwapped = themeMode && ((hovered !== null && hovered !== singleTarget?.key) || (groupSet?.size ?? 0) > 0);
+    /** 테마 모드에서 이 선을 그리나 — 선택선·짚은 것·뱃지 무리만. */
+    const lineShown = useCallback(
+        (key: string): boolean => !themeMode || key === singleTarget?.key || key === hovered || (groupSet?.has(key) ?? false),
+        [themeMode, singleTarget?.key, hovered, groupSet],
+    );
+
     // 역할 판정은 순수 함수(lineVisual)가, 색 배정은 여기가 한다 — 팔레트는 화면의 몫이라 규칙 층에 안 들인다.
     const visualOf = useCallback((key: string): { v: LineVisual; color: string } => {
         const v = lineVisual(key, { selected: effSelected, hovered, group: groupSet });
@@ -888,7 +909,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
                             {/* 거터 라벨의 지시선 — **클립 밖**에 그린다(거터는 그림 상자 바깥이라 클립하면 사라진다).
                                 라벨이 제자리를 벗어난 만큼 이 선이 원래 선 시작점을 가리킨다. */}
-                            {themeLabels.named.map((l) => (
+                            {!themeSwapped && themeLabels.named.map((l) => (
                                 <line key={`tld-${l.code}`} x1={box.left - 4} y1={l.labelY} x2={scales.x(l.at.x)} y2={scales.y(l.at.y)}
                                     stroke={themeColorOf(l.code)} strokeWidth={0.8} strokeDasharray="2 2"
                                     opacity={hoveredThemeSet?.has(l.code) ? 0.9 : 0.35} style={{ pointerEvents: "none" }} />
@@ -959,7 +980,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     기본은 무채색 흐림 — 흐린 채색은 색이 아니다(알파가 낮으면 hue 차이가 안 읽힌다).
                                     짚은 하나만 거래대금 램프로 살아난다(상세 밀도 규칙 그대로).
                                     **타점 이후(x ≥ 0)는 앵커 선과 같은 문장** — 폴리라인은 점선, 런은 옅게(굵기와 안 싸우게). */}
-                                {themeOverlay?.lines.map((l) => {
+                                {/* 다른 골격선을 보는 동안엔 테마를 접는다(themeSwapped) — 두 무리가 겹치면 안 갈린다. */}
+                                {!themeSwapped && themeOverlay?.lines.map((l) => {
                                     const lit = hoveredThemeSet?.has(l.code) ?? false;
                                     const runs = amountWidthOn ? themeRuns?.get(l.code) : null;
                                     if (!runs) {
@@ -993,7 +1015,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     enter/leave 는 **선이 바뀔 때만** 발생하므로 부모 재렌더도 그때뿐이다(mousemove 아님). */}
                                 {/* ⚠ **드래그 중엔 아예 안 그린다** — 이동하는 동안 호버는 성립하지 않는데
                                     같은 점을 한 벌 더 그리느라 이동 비용이 두 배였다(뻑뻑함의 절반이 여기). */}
-                                {!dragging && themeOverlay?.lines.map((l) => (
+                                {!dragging && !themeSwapped && themeOverlay?.lines.map((l) => (
                                     <polyline key={`thh-${l.code}`}
                                         points={pathOf(l.points, scales, hitStep)}
                                         fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
@@ -1006,6 +1028,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 ))}
 
                                 {lines.map((s) => {
+                                    // 테마 모드에선 선택선·짚은 것·뱃지 무리만 그린다(나머지는 라벨만 남는다).
+                                    if (!lineShown(s.key)) return null;
                                     const { v, color } = visualOf(s.key);
                                     const pts = polylinePoints(s, scales.x, scales.y);
                                     const lit = v.role !== "base";
@@ -1245,7 +1269,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     ⚠ 컨테이너는 포인터를 통과시킨다 — 거터는 **y축 스트립**이기도 해서(세로 확대 손짓의 자리)
                     여기가 이벤트를 먹으면 그 손짓이 죽는다. 칩만 pointerEvents:auto 로 받는다. */}
                 {scales && themeOverlay && (
-                    <div style={{ position: "absolute", left: 0, top: box.top, width: box.left, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
+                    // 다른 골격선을 보는 동안엔 이름도 물러난다 — 선이 없는데 이름만 진하면 뭘 가리키는지 모른다.
+                    <div style={{ position: "absolute", left: 0, top: box.top, width: box.left, height: box.height, overflow: "hidden", pointerEvents: "none", opacity: themeSwapped ? 0.25 : 1 }}>
                         {themeLabels.named.map((l) => {
                             const lit = hoveredThemeSet?.has(l.code) ?? false;
                             return (
@@ -1287,16 +1312,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {/* 라벨 층 — HTML(칩 폭 계산 공짜 + d3 가 SVG mousedown 을 삼키는 문제 회피). 컨테이너는 포인터 통과. */}
                 {scales && showLabels && (
                     <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
+                        {/* 테마 모드에선 선이 숨은 라벨들 — **흐리게 남겨 손잡이 노릇만** 한다(사용자 확정).
+                            지우면 그 타점들이 화면에서 영영 사라져 이동·선택·사각선택이 다 죽는다. */}
                         {clusters.map((c) => {
                             const left = c.x - box.left;
                             const top = c.y - box.top;
+                            const faded = themeMode ? { opacity: 0.45 } : null;
                             if (c.members.length > 1) {
                                 // 뱃지도 라벨과 같은 쪽(점의 바깥) — 손잡이의 자리 규칙은 하나여야 한다.
                                 return (
                                     <button key={`c${c.x}|${c.y}`} onClick={(e) => setBadge({ x: e.clientX, y: e.clientY, members: c.members })}
                                         onMouseEnter={() => setBadgeHover(c.members)} onMouseLeave={() => setBadgeHover(null)}
-                                        title={`${c.members.length}개 뭉침 — 올리면 무리가 켜지고, 누르면 목록`}
-                                        style={{ ...chip, ...labelPlacement(left).style, top, ...badgeChip }}>
+                                        title={`${c.members.length}개 뭉침 — 올리면 무리가 ${themeMode ? "나타나고(테마는 잠시 접힌다)" : "켜지고"}, 누르면 목록`}
+                                        style={{ ...chip, ...labelPlacement(left).style, top, ...badgeChip, ...faded }}>
                                         {c.members.length}
                                     </button>
                                 );
@@ -1307,8 +1335,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             return (
                                 <button key={`c${c.x}|${c.y}`} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
-                                    title={`${nameOf(s.stockCode)} ${s.date} — 클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=태그`}
-                                    style={{ ...chip, ...labelBg, ...pl.style, top }}>
+                                    title={`${nameOf(s.stockCode)} ${s.date} — ${themeMode ? "올리면 이 골격선(테마는 잠시 접힌다) · " : ""}클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=태그`}
+                                    style={{ ...chip, ...labelBg, ...pl.style, top, ...faded }}>
                                     {labelOf(s, pl.dotFirst)}
                                 </button>
                             );
@@ -1433,6 +1461,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 점 클릭 = 값 붙잡기
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
                 {!isDaily && <span style={{ color: "var(--text-tertiary)" }}> · 선 클릭 = 캔들 · T = 테마 · 축 더블클릭 = 그 축 원위치</span>}
+                {themeMode && <span style={{ color: "var(--text-secondary)" }}> · 테마 모드(흐린 라벨 호버 = 그 골격선)</span>}
                 {/* 캔들 상태 — 헤더가 아니라 여기(높이가 안 변하는 줄). 이름을 다 적어 어느 종목을 보고 있는지 남긴다. */}
                 {candleCodes.size > 0 && (
                     <span style={{ color: "var(--text-secondary)" }}>
