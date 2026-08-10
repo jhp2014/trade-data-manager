@@ -13,6 +13,8 @@ export const DAILY_COMMENTS = Symbol("DailyComments");          // 코멘트 유
 export const THEME_ASSIGNMENT = Symbol("ThemeAssignment");      // 테마 배정 유스케이스(중복 skip·캐시 무효화)
 export const RANK_REPO = Symbol("RankRepository");
 export const TAG_REPO = Symbol("TagRepository");
+export const MAP_REPO = Symbol("MapRepository");                // 유사도 맵(축 없는 평면) — 맵·무리·자리
+export const CANDIDATE_DAY_REPO = Symbol("CandidateDayRepository"); // 후보 하루 = 분석의 모수(큐레이션 편집물의 합집합)
 export const RANK_MINUTES = Symbol("RankMinutes");
 export const COMPUTED_AXES = Symbol("ComputedAxes");      // 계산 축 값(타점→수치) 읽기모델 + 파일 캐시
 export const SKELETON_SHAPES = Symbol("SkeletonShapes");  // 골격 피벗 좌표(그림용) 읽기모델 — 축과 재료는 같고 결과가 다르다

@@ -74,7 +74,9 @@ export const apiGet = <T>(path: string, query?: Query, signal?: AbortSignal): Pr
 export const apiPost = <T>(path: string, body?: unknown): Promise<T> => request<T>("api", "POST", path, { body });
 export const apiPatch = <T>(path: string, body?: unknown): Promise<T> => request<T>("api", "PATCH", path, { body });
 export const apiPut = <T>(path: string, body?: unknown): Promise<T> => request<T>("api", "PUT", path, { body });
-export const apiDelete = (path: string, query?: Query): Promise<void> => request<void>("api", "DELETE", path, { query });
+// body 를 받는 이유: 목록 삭제(맵 자리 여럿)는 id 가 길어 쿼리스트링에 안 담긴다. HTTP 상 DELETE 본문은
+// 합법이고 Nest/Express 가 파싱한다 — 여럿을 낱개 요청으로 쪼개면 부분 실패가 생기므로 한 요청이어야 한다.
+export const apiDelete = (path: string, query?: Query, body?: unknown): Promise<void> => request<void>("api", "DELETE", path, { query, body });
 
 // ── apps/live (/live) ────────────────────────────────────────────────────
 export const liveGet = <T>(path: string, query?: Query, signal?: AbortSignal): Promise<T> => request<T>("live", "GET", path, { query, signal });

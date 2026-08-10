@@ -10,6 +10,7 @@ import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchSkeletons } from "./skeletons.js";
 import { fetchTags, fetchTagAttachments, fetchChartTagAttachments } from "./tags.js";
+import { fetchMapCorpus, fetchCandidateDays } from "./map.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
@@ -76,6 +77,16 @@ export const tagAttachmentsQuery = () =>
 // 차트 태그 부착(골격 분류) — 타점 부착과 **별도 키**: 차트 태그 토글이 타점 부착 피드를 흔들지 않는다.
 export const chartTagAttachmentsQuery = () =>
     queryOptions({ queryKey: ["tag-chart-attachments"], queryFn: ({ signal }) => fetchChartTagAttachments(signal), staleTime: IMMUTABLE });
+
+// 유사도 맵 — 맵·무리·자리 한 벌. 줄 피드와 같은 이유로 **키 하나**(형제 자리 찾기가 맵을 가로지른다).
+// ⚠ 좌표 이동은 이 키를 invalidate 하지 않는다(낙관 갱신만) — 드래그를 놓을 때마다 다시 받으면 화면이 튄다.
+// 구조 변경(맵·자리 생성/삭제)만 무효화한다.
+export const mapCorpusQuery = () =>
+    queryOptions({ queryKey: ["map-corpus"], queryFn: ({ signal }) => fetchMapCorpus(signal), staleTime: IMMUTABLE });
+
+// 후보 하루(분석의 모수) — 맵과 **별도 키**: 앵커·태그·타점 어느 쪽이 늘어도 후보는 변하지만 맵은 그대로다.
+export const candidateDaysQuery = () =>
+    queryOptions({ queryKey: ["candidate-days"], queryFn: ({ signal }) => fetchCandidateDays(signal), staleTime: IMMUTABLE });
 
 // 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
 export const stockMetaQuery = (code: string) =>

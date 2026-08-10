@@ -13,6 +13,8 @@ export type * from "./chartAnchor.js";
 export type * from "./reviewPoint.js";
 export type * from "./tag.js";
 export type * from "./rank.js";
+export type * from "./map.js";
+export type * from "./candidateDay.js";
 export type * from "./rankComputed.js";
 export type * from "./skeleton.js";
 export type * from "./rankPaths.js";
