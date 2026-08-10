@@ -17,6 +17,7 @@ import { RankFilterPanel } from "../panels/RankFilterPanel.js";
 import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { SkeletonOverlayPanel } from "../panels/SkeletonOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
+import { MapPanel } from "../panels/MapPanel.js";
 import { BoardFilterPanel, ReplayFilterPanel, LiveFilterPanel } from "../panels/BoardFilterPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
@@ -65,6 +66,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "rank-skeleton-1", component: "rankSkeleton", title: "골격 [일봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="daily" /> },
     { id: "rank-skeleton-minute-1", component: "rankSkeletonMinute", title: "골격 [분봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="minute" /> },
     { id: "rank-point-1", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
+    { id: "map-1", component: "map", title: "맵", plane: "eod", render: () => <MapPanel /> },
     { id: "hts-news-1", component: "htsNews", title: "HTS뉴스", plane: "eod", render: () => <NewsPanel plane="replay" /> },
 ];
 
