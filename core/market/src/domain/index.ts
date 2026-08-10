@@ -23,10 +23,12 @@ export * from "./classification/themeMember.js";
 export * from "./classification/dailyComment.js";
 
 // review — 차트 주석(사람 편집): 차트 앵커(선+파라미터 앵커 통합) + 골격(피벗 시퀀스) + 복기 타점 + 타점 태그
+//   + 후보 하루(그 주석들이 정의하는 **분석의 모수**)
 export * from "./review/chartAnchor.js";
 export * from "./review/skeleton.js";
 export * from "./review/reviewPoint.js";
 export * from "./review/tag.js";
+export * from "./review/candidateDay.js";
 
 // rank — 순위 배치(사람 편집): 축별 상대순위 줄에 복기 타점 배치. review point 를 자연키로 참조.
 export * from "./rank/index.js";

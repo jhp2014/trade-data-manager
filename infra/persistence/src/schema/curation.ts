@@ -4,6 +4,8 @@
 //   · daily_comments : 당일 종목 코멘트((종목,날짜) 자연키 PK — 종목당 당일 1개)
 //   · chart_anchors  : 차트 앵커 — 캔들 좌표 참조의 단일 테이블(가격선+파라미터 앵커 통합, 아래 9번)
 //   · review_points  : 복기 타점((종목,날짜,시각) 자연키 = caseId. 순위 배치가 하류에서 참조)
+// 분류의 세 갈래(각자 못 하는 걸 서로 맡는다): rank_axes = 순서 있는 하나 / tags = 순서 없는 종류 /
+//   maps = 연속적 닮음(축도 이름도 못 담는 것 — 아래 10~12번)
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
 import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, doublePrecision, primaryKey, foreignKey, unique, index } from "drizzle-orm/pg-core";
@@ -244,3 +246,100 @@ export type RankSlotRow = typeof rankSlots.$inferSelect;
 export type RankSlotInsert = typeof rankSlots.$inferInsert;
 export type RankPlacementRow = typeof rankPlacements.$inferSelect;
 export type RankPlacementInsert = typeof rankPlacements.$inferInsert;
+
+// ── 유사도 맵 ───────────────────────────────────────────────────────────────
+// 축이 없는 2차원 평면. **좌표에는 뜻이 없고 인접성에만 뜻이 있다** — 닮은 것끼리 손으로 모아 둔다.
+// 축(rank_axes)이 "순서를 매길 수 있는 하나"를, 태그가 "순서 없는 종류"를 맡는다면 맵은 **어느 쪽으로도
+// 안 떨어지는 연속적 닮음**을 맡는다: 한 그림이 두 무리와 동시에 닮을 수 있고(징검다리), 무리 안에서 또
+// 무리가 갈리며, 그 갈래가 이름 하나로 안 잡힌다.
+// 배치는 손이 한다(자동 임베딩 아님) — 재계산마다 지형이 흔들리면 공간 기억이 무너지고, 배치라는 행위
+// 자체가 직관을 쌓는 과정이기 때문. 그래서 위치는 측정이 아니라 **기억**이다(지하철 노선도).
+
+// 10. 맵 — 한 장의 평면. **scope 가 점의 정체를 정한다**: point=(종목·날짜·시각) 타점 / day=(종목·날짜) 하루.
+//     골격이 그 층위에서 정의되기 때문이지 자의적 구분이 아니다(일봉 골격=차트 소유, 분봉 골격=타점 단위).
+//     ⚠ rank_axes.scope 와 값은 같지만 **기계가 다르다**: 순위축의 day 는 "쓰기 팬아웃"(저장은 언제나 타점)이고,
+//     맵의 day 는 **행 자체가 하루**다. 맵에서 팬아웃하면 타점 5개짜리 하루가 같은 좌표에 겹친 점 5개가 된다.
+//     기본값 없음 — 맵은 scope 를 정해서 만드는 것이라 틀린 기본값이 미지정보다 나쁘다.
+export const maps = curation.table(
+    "maps",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        name: text("name").notNull(),
+        scope: varchar("scope", { length: 10 }).notNull(), // point | day
+    },
+    (t) => [unique("uq_map_name").on(t.name)],
+);
+
+// 11. 그룹 — 라쏘 선택의 저장. parent_id 로 중첩(무리 안 무리, 깊이 제한 없음).
+//     **기하는 트리 · 의미는 DAG**: 한 자리는 최내곽 그룹 하나에만 들어(map_placements.group_id) 겹치지 않는
+//     중첩이 되므로 언제나 그릴 수 있고, 한 **항목**은 자리를 여럿 가져 여러 그룹에 동시에 속한다.
+//     집합이 셋을 넘으면 임의의 교집합 패턴을 평면에 못 그리는(벤/오일러) 한계를 이 분리가 우회한다.
+//     멤버 명단이 본체이고 화면의 헐(테두리)은 시각화일 뿐 — 그래서 위치가 소속을 구속하지 않는다.
+//     **그룹 삭제 = 멤버를 부모로 올린다**(해체는 부모에 합쳐지는 것). 앱이 재지정하고, DB 는 SET NULL 폴백
+//     (최상위 그룹을 지우면 멤버는 자유 배치가 된다).
+export const mapGroups = curation.table(
+    "map_groups",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        mapId: bigint("map_id", { mode: "bigint" })
+            .notNull()
+            .references(() => maps.id, { onDelete: "cascade" }),
+        parentId: bigint("parent_id", { mode: "bigint" }),
+        name: text("name").notNull(),
+    },
+    (t) => [
+        foreignKey({
+            columns: [t.parentId],
+            foreignColumns: [t.id],
+            name: "fk_map_group_parent",
+        }).onDelete("set null"),
+        index("idx_map_groups_map").on(t.mapId),
+    ],
+);
+
+// 12. 자리(placement) — **한 항목이 여러 자리를 가진다**(징검다리 = A 무리·B 무리·징검다리 무리에 동시에).
+//     그래서 자연키가 유니크가 아니고 **surrogate id** 다(chart_anchors 와 같은 이유: 같은 대상에 뜻이 다른
+//     행이 여럿 정당하다). 같은 그룹에 같은 항목을 두 번 꽂는 무의미한 중복은 DB 가 아니라 저장 경로가 막는다.
+//
+//     **소유 grain 은 trade_time 유무가 말한다**(chart_anchors 관용구): NULL=하루 / 값=타점. 맵의 scope 와
+//     일치해야 하며 그 검증은 저장 경로가 한다(맵마다 grain 이 하나라 행에 섞이지 않는다).
+//
+//     ⚠ **review_points 복합 FK 는 MATCH SIMPLE(Postgres 기본)** — 참조 컬럼 중 하나라도 NULL 이면 검사를
+//     건너뛴다. 그래서 한 테이블에서 조건부로 걸린다: **day 자리(time NULL)는 타점이 없어도 통과**하고
+//     (차트 형태는 진입점보다 오래 산다 — 골격만 그려둔 하루도 배치 대상), **point 자리는 타점이 죽으면
+//     같이 죽는다**(분봉 골격은 타점 단위라 타점 없이는 뜻이 없다). 이 비대칭은 컬럼만 봐서는 안 보이므로
+//     지우지 말 것 — day 행도 검사되는 줄 읽기 쉽다.
+//
+//     group_id NULL = 어느 무리에도 안 든 자유 배치(정상 상태 — 모든 점이 묶여야 하는 건 아니다).
+export const mapPlacements = curation.table(
+    "map_placements",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        mapId: bigint("map_id", { mode: "bigint" })
+            .notNull()
+            .references(() => maps.id, { onDelete: "cascade" }),
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(),
+        tradeTime: time("trade_time"), // NULL=하루 소유(scope day) / 값=타점 소유(scope point)
+        x: doublePrecision("x").notNull(),
+        y: doublePrecision("y").notNull(),
+        groupId: bigint("group_id", { mode: "bigint" }).references(() => mapGroups.id, { onDelete: "set null" }),
+    },
+    (t) => [
+        foreignKey({
+            columns: [t.stockCode, t.tradeDate, t.tradeTime],
+            foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
+            name: "fk_map_placement_review_point",
+        }).onDelete("cascade"),
+        index("idx_map_placements_map").on(t.mapId), // "이 맵 통째로" — 주 조회
+        index("idx_map_placements_item").on(t.stockCode, t.tradeDate), // 형제 자리 찾기·되짚기
+        index("idx_map_placements_group").on(t.groupId), // 그룹 멤버·해체 시 재지정
+    ],
+);
+
+export type MapRow = typeof maps.$inferSelect;
+export type MapInsert = typeof maps.$inferInsert;
+export type MapGroupRow = typeof mapGroups.$inferSelect;
+export type MapGroupInsert = typeof mapGroups.$inferInsert;
+export type MapPlacementRow = typeof mapPlacements.$inferSelect;
+export type MapPlacementInsert = typeof mapPlacements.$inferInsert;

@@ -14,6 +14,7 @@ export { DrizzleChartAnchorRepository } from "./repositories/chartAnchor.reposit
 export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
 export { DrizzleRankRepository } from "./repositories/rank.repository.js";
 export { DrizzleTagRepository } from "./repositories/tag.repository.js";
+export { DrizzleCandidateDayRepository } from "./repositories/candidateDay.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
     dailyCandleToRow,
