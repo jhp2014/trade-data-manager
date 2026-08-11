@@ -2,14 +2,14 @@ import { sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import type { CandidateDay, CandidateDayReader, CandidateTrace } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
-import { chartAnchors, chartTags, mapPlacements, reviewPoints } from "../schema/curation.js";
+import { chartAnchors, groupMembers, reviewPoints } from "../schema/curation.js";
 
 /**
  * Drizzle 구현 — 후보 하루 = 큐레이션 편집물들의 (종목, 날짜) **합집합**.
  * 저장하지 않고 매번 파생한다(별도 테이블을 두면 흔적이 늘고 줄 때마다 동기화 사고가 난다 — 규칙은
  * domain/review/candidateDay.ts).
  *
- * 갈래마다 DISTINCT 한 뒤 UNION ALL 로 **한 번에** 받는다(갈래별 왕복 4회가 아니라 1회 — Supabase 왕복이
+ * 갈래마다 DISTINCT 한 뒤 UNION ALL 로 **한 번에** 받는다(갈래별 왕복 3회가 아니라 1회 — Supabase 왕복이
  * 아깝고, 갈래가 늘어도 왕복은 그대로다). 접기는 앱에서: 갈래별 DISTINCT 라 (종목·날짜·근거)가 유일하므로
  * 키당 traces 는 중복 없이 쌓인다.
  *
@@ -25,14 +25,11 @@ export class DrizzleCandidateDayRepository implements CandidateDayReader {
                 .selectDistinct({ stockCode: chartAnchors.stockCode, date: chartAnchors.tradeDate, trace: sql<string>`'anchor'` })
                 .from(chartAnchors),
             this.db
-                .selectDistinct({ stockCode: chartTags.stockCode, date: chartTags.tradeDate, trace: sql<string>`'chartGroup'` })
-                .from(chartTags),
+                .selectDistinct({ stockCode: groupMembers.stockCode, date: groupMembers.tradeDate, trace: sql<string>`'group'` })
+                .from(groupMembers),
             this.db
                 .selectDistinct({ stockCode: reviewPoints.stockCode, date: reviewPoints.tradeDate, trace: sql<string>`'reviewPoint'` })
                 .from(reviewPoints),
-            this.db
-                .selectDistinct({ stockCode: mapPlacements.stockCode, date: mapPlacements.tradeDate, trace: sql<string>`'mapPlacement'` })
-                .from(mapPlacements),
         );
 
         const byKey = new Map<string, CandidateDay>();

@@ -4,11 +4,12 @@
 //   · daily_comments : 당일 종목 코멘트((종목,날짜) 자연키 PK — 종목당 당일 1개)
 //   · chart_anchors  : 차트 앵커 — 캔들 좌표 참조의 단일 테이블(가격선+파라미터 앵커 통합, 아래 9번)
 //   · review_points  : 복기 타점((종목,날짜,시각) 자연키 = caseId. 순위 배치가 하류에서 참조)
-// 분류의 세 갈래(각자 못 하는 걸 서로 맡는다): rank_axes = 순서 있는 하나 / tags = 순서 없는 종류 /
-//   maps = 연속적 닮음(축도 이름도 못 담는 것 — 아래 10~12번)
+// 분류의 두 갈래: rank_axes = 순서 있는 하나(아래 4~6번) / groups = 이름 붙인 집합 + 관계·위치(7~8번).
+//   maps(9번)는 그룹들을 얹어 **그룹 사이의 구조**를 보는 평면이다.
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
-import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, doublePrecision, primaryKey, foreignKey, unique, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, doublePrecision, primaryKey, foreignKey, unique, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const curation = pgSchema("curation");
 
@@ -125,73 +126,87 @@ export const rankPlacements = curation.table(
     ],
 );
 
-// ── 그룹(nominal tag) ───────────────────────────────────────────────────────
-// 축(rank_axes)이 "순서를 매길 수 있는 차원"이라면, 그룹는 **순서 없는 종류**다(위 4번 주석의 예고 이행).
-// 셋업 유형처럼 상하가 없는 분류를 축의 배치 유무로 대신 표현하던 우회를 걷어내고 제자리에 둔다.
-// review_points.type(단일 varchar)이 하던 일을 흡수 — 그룹는 한 타점에 여러 개 붙는다(그게 원래 성질).
+// ── 그룹(named set) ─────────────────────────────────────────────────────────
+// 축(rank_axes)이 "순서를 매길 수 있는 차원"이라면, 그룹은 **이름 붙인 집합**이다. 한 항목에 여럿 붙는다.
+//
+// 옛 태그가 이것이고, 여기에 **관계와 위치**가 붙어 그룹이 됐다. 태그로는 그룹 안 그룹도, 두 그룹이
+// 얼마나 겹치는지(징검다리)도 볼 수가 없었다 — 관계를 담을 자리가 없었기 때문이다.
+//   · parent_id  : 그룹 안 그룹(임의로 깊어진다 — 연속성을 좌표 대신 **계층의 깊이**로 표현한다)
+//   · map_id·x·y : 어느 평면에 어디쯤 — **시각화용이지 데이터가 아니다**. 붙여 놓은 둘은 "닮았다"는
+//                  주장이지만, 멀리 있는 둘은 "안 닮았다"가 아니라 **아직 아무 말도 안 한 것**이다.
+//   · 징검다리   : 저장하지 않는다. 두 그룹의 **멤버 겹침으로 계산**된다(A·B 를 둘 다 가진 항목).
 
-// 7. 그룹 사전 — 이름이 곧 정체(unique). surrogate id 로 부착하므로 이름 변경이 부착을 안 깬다.
-//    이름의 `그룹:값` 은 관례일 뿐 스키마가 강제하지 않는다(표시 색 그룹핑용). 배타 그룹은 아직 없음.
+// 7. 그룹 — 이름이 곧 정체(unique). surrogate id 로 부착하므로 이름 변경이 부착을 안 깬다.
+//    이름은 손잡이지 주장이 아니다("미정1" 로 지어도 된다) — 이름을 짓는 비용이 낮아야 잘게 쪼갤 수 있다.
+//
+//    ⚠ **scope 는 맵이 아니라 그룹이 든다**: 그룹은 한 층위에 대한 판단이지 맵에 올려야 비로소 그렇게
+//    되는 게 아니다. 맵에서 내려받게 하면 map_id 가 NULL 인 그룹(= 만들었지만 아직 안 올린 정상 상태)의
+//    grain 이 없어, 첫 부착이 암묵적으로 grain 을 정하게 된다. 맵에 올릴 때 maps.scope 와 일치하는지는
+//    저장 경로가 한 줄로 검사한다.
 export const groups = curation.table(
-    "tags",
+    "groups",
     {
         id: bigserial("id", { mode: "bigint" }).primaryKey(),
         name: text("name").notNull(),
-    },
-    (t) => [unique("uq_tag_name").on(t.name)],
-);
-
-// 8. 그룹 부착 — 타점 ↔ 그룹 N:M 정션. PK (stock,date,time,tag_id) = "한 타점에 같은 그룹은 한 번"(멱등 부착).
-//    review_points 삼중키 FK(cascade) = 타점을 지우면 부착도 사라짐 / tags FK(cascade) = 그룹를 지우면 전부 떨어짐.
-//    index(tag_id) = "이 그룹 몇 건인가"(삭제 확인·팔레트 빈도)를 정션 스캔 없이.
-export const reviewPointTags = curation.table(
-    "review_point_tags",
-    {
-        stockCode: varchar("stock_code", { length: 10 }).notNull(),
-        tradeDate: date("trade_date").notNull(),
-        tradeTime: time("trade_time").notNull(),
-        groupId: bigint("tag_id", { mode: "bigint" }).notNull(),
+        scope: varchar("scope", { length: 10 }).notNull(), // point | day — 멤버가 타점이냐 하루냐
+        parentId: bigint("parent_id", { mode: "bigint" }), // NULL = 최상위
+        mapId: bigint("map_id", { mode: "bigint" }), // NULL = 아직 어느 평면에도 안 올림
+        x: doublePrecision("x"),
+        y: doublePrecision("y"),
     },
     (t) => [
-        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime, t.groupId] }),
+        unique("uq_group_name").on(t.name),
+        // 부모는 **같은 맵 안**이어야 하고 순환하면 안 된다 — 둘 다 DB 로는 못 막아 저장 경로가 본다.
+        foreignKey({ columns: [t.parentId], foreignColumns: [t.id], name: "fk_group_parent" }).onDelete("set null"),
+        index("idx_groups_map").on(t.mapId),
+    ],
+);
+
+// 8. 그룹 멤버 — 옛 review_point_tags(타점)와 chart_tags(차트)를 **한 테이블로** 합쳤다.
+//    갈라 둘 이유가 없었다: 같은 "이 그룹에 이게 들었다"이고, 다른 건 가리키는 층위뿐이다.
+//
+//    **소유 grain 은 trade_time 유무가 말한다**(chart_anchors·map 자리와 같은 관용구): NULL = 하루 소속 /
+//    값 = 타점 소속. groups.scope 와 일치해야 하며 그 검사는 저장 경로가 한다.
+//
+//    ⚠ **review_points 복합 FK 는 MATCH SIMPLE(Postgres 기본)** — 참조 컬럼 중 하나라도 NULL 이면 검사를
+//    건너뛴다. 그래서 한 테이블에서 조건부로 걸린다: **하루 멤버십(time NULL)은 타점이 없어도 통과**하고
+//    (골격만 그려둔 하루도 분류 대상), **타점 멤버십은 타점이 죽으면 같이 죽는다**. 이 비대칭은 컬럼만
+//    봐서는 안 보이므로 지우지 말 것.
+//
+//    ⚠ **PK 에는 NULL 을 못 넣는다** → 대리키 + **grain 별 부분 유니크 인덱스 둘**로 멱등 부착을 지킨다.
+//    (PG15+ 의 UNIQUE NULLS NOT DISTINCT 로도 되지만, 부분 인덱스가 두 grain 을 스키마에서 눈으로 읽히게 한다.)
+export const groupMembers = curation.table(
+    "group_members",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        groupId: bigint("group_id", { mode: "bigint" })
+            .notNull()
+            .references(() => groups.id, { onDelete: "cascade" }),
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(),
+        tradeTime: time("trade_time"), // NULL = 하루 소속(scope day) / 값 = 타점 소속(scope point)
+    },
+    (t) => [
         foreignKey({
             columns: [t.stockCode, t.tradeDate, t.tradeTime],
             foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
-            name: "fk_review_point_tag_point",
+            name: "fk_group_member_review_point",
         }).onDelete("cascade"),
-        foreignKey({
-            columns: [t.groupId],
-            foreignColumns: [groups.id],
-            name: "fk_review_point_tag_tag",
-        }).onDelete("cascade"),
-        index("idx_review_point_tags_tag").on(t.groupId),
+        // 멱등 부착 — grain 별로 나눠 건다(PK 를 못 쓰는 대신). NULL 을 유니크 키에 넣을 수 없으니
+        // "시각 없는 행끼리"와 "시각 있는 행끼리"를 따로 잠근다.
+        uniqueIndex("uq_group_member_day")
+            .on(t.groupId, t.stockCode, t.tradeDate)
+            .where(sql`${t.tradeTime} IS NULL`),
+        uniqueIndex("uq_group_member_point")
+            .on(t.groupId, t.stockCode, t.tradeDate, t.tradeTime)
+            .where(sql`${t.tradeTime} IS NOT NULL`),
+        index("idx_group_members_group").on(t.groupId), // "이 그룹 몇 건인가"(팔레트 빈도·삭제 확인)
+        index("idx_group_members_item").on(t.stockCode, t.tradeDate), // "이 항목이 든 그룹들"(차트·시트)
     ],
 );
 
-// 8b. 차트 그룹 부착 — **차트(종목,날짜) ↔ 그룹** 정션. 골격으로 상황을 분류할 때(타점 없는 차트도 대상).
-//     사전(tags)은 타점 부착과 공유 — 분류가 타점용/차트용으로 갈라질 이유가 없다.
-//     review_points FK 가 **없다**(chart_anchors 선례): 차트는 행이 아니고, 그룹는 타점보다 오래 산다.
-//     PK (stock,date,tag_id) = 멱등 부착. tags FK cascade = 그룹 삭제 시 부착도 제거.
-export const chartTags = curation.table(
-    "chart_tags",
-    {
-        stockCode: varchar("stock_code", { length: 10 }).notNull(),
-        tradeDate: date("trade_date").notNull(),
-        groupId: bigint("tag_id", { mode: "bigint" }).notNull(),
-    },
-    (t) => [
-        primaryKey({ columns: [t.stockCode, t.tradeDate, t.groupId] }),
-        foreignKey({
-            columns: [t.groupId],
-            foreignColumns: [groups.id],
-            name: "fk_chart_tag_tag",
-        }).onDelete("cascade"),
-        index("idx_chart_tags_tag").on(t.groupId),
-    ],
-);
-
-export type ChartTagRow = typeof chartTags.$inferSelect;
-export type ChartTagInsert = typeof chartTags.$inferInsert;
+export type GroupMemberRow = typeof groupMembers.$inferSelect;
+export type GroupMemberInsert = typeof groupMembers.$inferInsert;
 
 // ── 차트 앵커 ───────────────────────────────────────────────────────────────
 // 9. 차트 앵커 — 캔들 좌표 참조의 **단일 테이블**. 옛 price_lines(가격선)와 point_anchors(타점 파라미터 앵커)를
@@ -237,8 +252,6 @@ export type ChartAnchorInsert = typeof chartAnchors.$inferInsert;
 
 export type GroupRow = typeof groups.$inferSelect;
 export type GroupInsert = typeof groups.$inferInsert;
-export type ReviewPointTagRow = typeof reviewPointTags.$inferSelect;
-export type ReviewPointTagInsert = typeof reviewPointTags.$inferInsert;
 
 export type RankAxisRow = typeof rankAxes.$inferSelect;
 export type RankAxisInsert = typeof rankAxes.$inferInsert;
@@ -248,18 +261,13 @@ export type RankPlacementRow = typeof rankPlacements.$inferSelect;
 export type RankPlacementInsert = typeof rankPlacements.$inferInsert;
 
 // ── 유사도 맵 ───────────────────────────────────────────────────────────────
-// 축이 없는 2차원 평면. **좌표에는 뜻이 없고 인접성에만 뜻이 있다** — 닮은 것끼리 손으로 모아 둔다.
-// 축(rank_axes)이 "순서를 매길 수 있는 하나"를, 그룹이 "순서 없는 종류"를 맡는다면 맵은 **어느 쪽으로도
-// 안 떨어지는 연속적 닮음**을 맡는다: 한 그림이 두 무리와 동시에 닮을 수 있고(징검다리), 무리 안에서 또
-// 무리가 갈리며, 그 갈래가 이름 하나로 안 잡힌다.
-// 배치는 손이 한다(자동 임베딩 아님) — 재계산마다 지형이 흔들리면 공간 기억이 무너지고, 배치라는 행위
-// 자체가 직관을 쌓는 과정이기 때문. 그래서 위치는 측정이 아니라 **기억**이다(지하철 노선도).
+// 축이 없는 2차원 평면. **점은 항목이 아니라 그룹이다**(위 7번) — 종목 수천 개를 흩뿌리면 모든 쌍 사이에
+// 거리가 생기는데, 실제로 주장하려던 건 일부 이웃 관계뿐이라 나머지는 나중에 의미로 오독되는 부산물이다.
+// 묶고 쪼개는 판단은 골격 패널에서 하고, 이 평면은 **그룹 사이의 구조를 보는 곳**이다:
+// 그룹 안 그룹(groups.parent_id) · 겹침으로 계산되는 징검다리 · 손으로 잡아 둔 대략의 자리.
 
-// 10. 맵 — 한 장의 평면. **scope 가 점의 정체를 정한다**: point=(종목·날짜·시각) 타점 / day=(종목·날짜) 하루.
-//     골격이 그 층위에서 정의되기 때문이지 자의적 구분이 아니다(일봉 골격=차트 소유, 분봉 골격=타점 단위).
-//     ⚠ rank_axes.scope 와 값은 같지만 **기계가 다르다**: 순위축의 day 는 "쓰기 팬아웃"(저장은 언제나 타점)이고,
-//     맵의 day 는 **행 자체가 하루**다. 맵에서 팬아웃하면 타점 5개짜리 하루가 같은 좌표에 겹친 점 5개가 된다.
-//     기본값 없음 — 맵은 scope 를 정해서 만드는 것이라 틀린 기본값이 미지정보다 나쁘다.
+// 9. 맵 — 한 장의 평면. scope 는 이 평면에 올릴 수 있는 그룹의 층위(그룹도 같은 값을 들고, 저장 경로가 대조).
+//    좌표·부모는 그룹이 들고 있으므로(groups.map_id·x·y) 여긴 평면의 정체만 남는다.
 export const maps = curation.table(
     "maps",
     {
@@ -270,76 +278,9 @@ export const maps = curation.table(
     (t) => [unique("uq_map_name").on(t.name)],
 );
 
-// 11. 그룹 — 라쏘 선택의 저장. parent_id 로 중첩(무리 안 무리, 깊이 제한 없음).
-//     **기하는 트리 · 의미는 DAG**: 한 자리는 최내곽 그룹 하나에만 들어(map_placements.group_id) 겹치지 않는
-//     중첩이 되므로 언제나 그릴 수 있고, 한 **항목**은 자리를 여럿 가져 여러 그룹에 동시에 속한다.
-//     집합이 셋을 넘으면 임의의 교집합 패턴을 평면에 못 그리는(벤/오일러) 한계를 이 분리가 우회한다.
-//     멤버 명단이 본체이고 화면의 헐(테두리)은 시각화일 뿐 — 그래서 위치가 소속을 구속하지 않는다.
-//     **그룹 삭제 = 멤버를 부모로 올린다**(해체는 부모에 합쳐지는 것). 앱이 재지정하고, DB 는 SET NULL 폴백
-//     (최상위 그룹을 지우면 멤버는 자유 배치가 된다).
-export const mapGroups = curation.table(
-    "map_groups",
-    {
-        id: bigserial("id", { mode: "bigint" }).primaryKey(),
-        mapId: bigint("map_id", { mode: "bigint" })
-            .notNull()
-            .references(() => maps.id, { onDelete: "cascade" }),
-        parentId: bigint("parent_id", { mode: "bigint" }),
-        name: text("name").notNull(),
-    },
-    (t) => [
-        foreignKey({
-            columns: [t.parentId],
-            foreignColumns: [t.id],
-            name: "fk_map_group_parent",
-        }).onDelete("set null"),
-        index("idx_map_groups_map").on(t.mapId),
-    ],
-);
-
-// 12. 자리(placement) — **한 항목이 여러 자리를 가진다**(징검다리 = A 무리·B 무리·징검다리 무리에 동시에).
-//     그래서 자연키가 유니크가 아니고 **surrogate id** 다(chart_anchors 와 같은 이유: 같은 대상에 뜻이 다른
-//     행이 여럿 정당하다). 같은 그룹에 같은 항목을 두 번 꽂는 무의미한 중복은 DB 가 아니라 저장 경로가 막는다.
-//
-//     **소유 grain 은 trade_time 유무가 말한다**(chart_anchors 관용구): NULL=하루 / 값=타점. 맵의 scope 와
-//     일치해야 하며 그 검증은 저장 경로가 한다(맵마다 grain 이 하나라 행에 섞이지 않는다).
-//
-//     ⚠ **review_points 복합 FK 는 MATCH SIMPLE(Postgres 기본)** — 참조 컬럼 중 하나라도 NULL 이면 검사를
-//     건너뛴다. 그래서 한 테이블에서 조건부로 걸린다: **day 자리(time NULL)는 타점이 없어도 통과**하고
-//     (차트 형태는 진입점보다 오래 산다 — 골격만 그려둔 하루도 배치 대상), **point 자리는 타점이 죽으면
-//     같이 죽는다**(분봉 골격은 타점 단위라 타점 없이는 뜻이 없다). 이 비대칭은 컬럼만 봐서는 안 보이므로
-//     지우지 말 것 — day 행도 검사되는 줄 읽기 쉽다.
-//
-//     group_id NULL = 어느 무리에도 안 든 자유 배치(정상 상태 — 모든 점이 묶여야 하는 건 아니다).
-export const mapPlacements = curation.table(
-    "map_placements",
-    {
-        id: bigserial("id", { mode: "bigint" }).primaryKey(),
-        mapId: bigint("map_id", { mode: "bigint" })
-            .notNull()
-            .references(() => maps.id, { onDelete: "cascade" }),
-        stockCode: varchar("stock_code", { length: 10 }).notNull(),
-        tradeDate: date("trade_date").notNull(),
-        tradeTime: time("trade_time"), // NULL=하루 소유(scope day) / 값=타점 소유(scope point)
-        x: doublePrecision("x").notNull(),
-        y: doublePrecision("y").notNull(),
-        groupId: bigint("group_id", { mode: "bigint" }).references(() => mapGroups.id, { onDelete: "set null" }),
-    },
-    (t) => [
-        foreignKey({
-            columns: [t.stockCode, t.tradeDate, t.tradeTime],
-            foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
-            name: "fk_map_placement_review_point",
-        }).onDelete("cascade"),
-        index("idx_map_placements_map").on(t.mapId), // "이 맵 통째로" — 주 조회
-        index("idx_map_placements_item").on(t.stockCode, t.tradeDate), // 형제 자리 찾기·되짚기
-        index("idx_map_placements_group").on(t.groupId), // 그룹 멤버·해체 시 재지정
-    ],
-);
-
 export type MapRow = typeof maps.$inferSelect;
 export type MapInsert = typeof maps.$inferInsert;
-export type MapGroupRow = typeof mapGroups.$inferSelect;
-export type MapGroupInsert = typeof mapGroups.$inferInsert;
-export type MapPlacementRow = typeof mapPlacements.$inferSelect;
-export type MapPlacementInsert = typeof mapPlacements.$inferInsert;
+
+// (옛 map_placements·map_groups·tags·review_point_tags·chart_tags 는 마이그 0014 에서 드롭.
+//  항목 단위 자리는 "점 = 그룹" 으로 바뀌며 쓸 데가 없어졌고, map_groups 는 그룹이 map_id 를 직접
+//  들면서 아무도 안 쓰는 조인 자유도가 됐다.)

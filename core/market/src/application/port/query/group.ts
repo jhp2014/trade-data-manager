@@ -1,37 +1,39 @@
-import type { Group, GroupAttachment, ChartGroupAttachment, ChartRef, ReviewPointKey } from "#domain";
+import type { Group, GroupItemRef, GroupMembership, GroupMove, GroupPlacement, GroupScope } from "#domain";
 
-// 타점 그룹 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
-// 사전(groups)과 부착(review_point_tags)이 한 슬라이스인 이유: 둘은 늘 같이 읽힌다(팔레트 = 사전 + 빈도).
-// 자세한 설계는 domain/review/group.ts.
+// 그룹 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
+// 사전과 멤버십이 한 슬라이스인 이유: 둘은 늘 같이 읽힌다(팔레트 = 사전 + 빈도, 맵 = 사전 + 겹침).
+// 설계는 domain/review/group.ts.
 
-/** 그룹 조회(읽기). 사전 + 전 타점 부착 피드. */
+/** 그룹 조회. */
 export interface GroupReader {
-    /** 그룹 사전 전체(이름 오름차순 — 팔레트 순서를 서버가 고정해 클라마다 흔들리지 않게). */
+    /** 그룹 전체(이름 오름차순 — 팔레트 순서를 서버가 고정해 화면마다 안 흔들리게). 좌표·부모·맵 포함. */
     listGroups(): Promise<Group[]>;
     /**
-     * 전 타점의 부착을 한 번에(그룹이 하나라도 붙은 타점만 항목을 가짐 — 없으면 클라가 빈 배열로 취급).
-     * 타점 단건 조회를 두지 않는 이유는 rank 의 listAllLines 와 같다: 소비자(차트·시트·배치·필터)가
-     * 모두 전체를 보므로, 왕복 1회·캐시 1개로 두면 패널 간 그룹이 어긋날 여지가 없다.
+     * 전 항목의 멤버십을 한 번에(그룹이 하나라도 붙은 항목만 항목을 가짐).
+     * 하루 소속과 타점 소속이 **한 피드**에 온다 — 시각 유무로 갈린다. 소비자(차트·시트·골격·맵)가
+     * 모두 전체를 보므로 왕복 1회·캐시 1개면 화면 간 어긋날 여지가 없다(rank 의 listAllLines 와 같은 판단).
      */
-    listAllAttachments(): Promise<GroupAttachment[]>;
-    /** 전 차트의 소유 부착 — 타점 부착과 같은 이유로 전체 한 번(빈 차트는 항목 없음). */
-    listAllChartAttachments(): Promise<ChartGroupAttachment[]>;
+    listAllMemberships(): Promise<GroupMembership[]>;
 }
 
-/** 그룹 편집(쓰기). 사전 CRUD + 부착/해제. */
+/** 그룹 편집. */
 export interface GroupStore {
-    /** 그룹 생성 → DB 가 부여한 id 를 채워 반환. 같은 이름이 이미 있으면 **그 그룹를 반환**(멱등 — 중복 생성 사고 방지). */
-    createGroup(name: string): Promise<Group>;
-    /** 그룹 이름 변경(부착은 id 참조라 무관). 없는 id 는 조용한 no-op. */
+    /** 생성 → DB 가 부여한 id 를 채워 반환. 같은 이름이면 **그 그룹을 반환**(멱등 — 중복 생성 사고 방지). */
+    createGroup(name: string, scope: GroupScope): Promise<Group>;
+    /** 이름 변경(멤버십은 id 참조라 무관). 없는 id 는 조용한 no-op. */
     renameGroup(id: string, name: string): Promise<void>;
-    /** 그룹 삭제 — 부착도 FK cascade 로 함께 제거(되돌릴 수 없음: 호출부가 사용 건수를 확인시킬 것). */
+    /** 삭제 — 멤버십도 FK cascade 로 함께. 자식 그룹은 부모만 풀린다(SET NULL). 되돌릴 수 없다. */
     removeGroup(id: string): Promise<void>;
-    /** 타점에 그룹 부착(멱등 — 이미 붙어 있으면 no-op). 없는 타점/그룹면 FK 위반으로 거부. */
-    attach(groupId: string, point: ReviewPointKey): Promise<void>;
-    /** 부착 해제. 안 붙어 있으면 조용한 no-op. */
-    detach(groupId: string, point: ReviewPointKey): Promise<void>;
-    /** 차트에 그룹 부착(멱등). 타점 부착과 달리 대상 FK 가 없다 — 차트는 행이 아니고 타점보다 오래 산다(chart_anchors 선례). */
-    attachToChart(groupId: string, chart: ChartRef): Promise<void>;
-    /** 차트 부착 해제. 안 붙어 있으면 조용한 no-op. */
-    detachFromChart(groupId: string, chart: ChartRef): Promise<void>;
+
+    /** 항목을 그룹에 넣는다(멱등). ⚠ 항목 키의 시각 유무가 그룹 scope 와 맞는지 여기서 막는다. */
+    attach(groupId: string, item: GroupItemRef): Promise<void>;
+    /** 뺀다. 안 들어 있으면 조용한 no-op. */
+    detach(groupId: string, item: GroupItemRef): Promise<void>;
+
+    /** 평면에 올리기(좌표 포함) / 내리기(null). 올릴 때 맵 scope 와 그룹 scope 가 같은지 검사한다. */
+    setPlacement(id: string, placement: GroupPlacement): Promise<void>;
+    /** 좌표 이동 — **배열**. 여럿을 한 번에 끄는 게 정상 조작이라 낱개로 쪼개면 부분 실패가 생긴다. */
+    moveGroups(moves: GroupMove[]): Promise<void>;
+    /** 그룹 안 그룹. null = 최상위로. 같은 맵인지·순환이 아닌지 여기서 막는다(DB 로는 못 막는 제약). */
+    setParent(id: string, parentId: string | null): Promise<void>;
 }

@@ -4,7 +4,7 @@ import { createTestDb, type TestDb } from "../../test-support/testDb.js";
 import { DrizzleCandidateDayRepository } from "../candidateDay.repository.js";
 import { DrizzleReviewPointRepository } from "../reviewPoint.repository.js";
 import { DrizzleGroupRepository } from "../group.repository.js";
-import { chartAnchors, maps, mapPlacements } from "../../schema/curation.js";
+import { chartAnchors } from "../../schema/curation.js";
 
 /**
  * 후보 하루 = 큐레이션 편집물들의 합집합. 여기서 잠그는 건 **분모의 정의**다 —
@@ -30,7 +30,7 @@ describe("DrizzleCandidateDayRepository (pglite)", () => {
         expect(await repo.listCandidateDays()).toEqual([]);
     });
 
-    it("네 갈래가 각각 단독으로 후보를 만든다 — 타점 없이도", async () => {
+    it("세 갈래가 각각 단독으로 후보를 만든다 — 타점 없이도", async () => {
         // ① 앵커만(기준선·골격이 여기 다 들어온다)
         await t.db.insert(chartAnchors).values({
             stockCode: "005930",
@@ -38,27 +38,20 @@ describe("DrizzleCandidateDayRepository (pglite)", () => {
             param: "skeleton",
             anchorDate: "2026-06-20",
         });
-        // ② 차트 그룹만
+        // ② 그룹 멤버십만(하루 소속 — 타점 없이도 후보가 된다)
         const groups = new DrizzleGroupRepository(t.db);
-        const group = await groups.createGroup("형태:돌파");
-        await groups.attachToChart(group.id, { stockCode: "000660", date: "2026-07-02" });
+        const group = await groups.createGroup("형태:돌파", "day");
+        await groups.attach(group.id, { stockCode: "000660", date: "2026-07-02" });
         // ③ 타점만
         await new DrizzleReviewPointRepository(t.db).upsert([{ stockCode: "035420", date: "2026-07-03", time: "09:30:00" }]);
-        // ④ 맵 배치만
-        const [m] = await t.db.insert(maps).values({ name: "일봉", scope: "day" }).returning();
-        await t.db
-            .insert(mapPlacements)
-            .values({ mapId: m!.id, stockCode: "051910", tradeDate: "2026-07-04", tradeTime: null, x: 1, y: 1 });
-
         expect(await keys()).toEqual([
             // 날짜 내림차순 → 종목 (서버가 정렬을 고정한다)
-            "051910|2026-07-04",
             "035420|2026-07-03",
             "000660|2026-07-02",
             "005930|2026-07-01",
         ]);
         expect(await tracesOf("005930", "2026-07-01")).toEqual(["anchor"]);
-        expect(await tracesOf("051910", "2026-07-04")).toEqual(["mapPlacement"]);
+        expect(await tracesOf("000660", "2026-07-02")).toEqual(["group"]);
     });
 
     it("같은 하루의 여러 흔적은 한 건으로 접히고 근거가 모인다", async () => {

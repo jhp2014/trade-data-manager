@@ -8,8 +8,8 @@ import type { CandidateDay } from "#domain";
 export interface CandidateDayReader {
     /**
      * 후보 하루 **전체**를 한 번에(근거 traces 포함).
-     * 날짜 범위 인자를 두지 않는 이유는 group 의 listAllAttachments·rank 의 listAllLines 와 같다: 소비자
-     * (맵 미배치 트레이·깔때기 분모·시트 커버리지)가 모두 전체를 보므로, 왕복 1회·캐시 1개로 두면 화면마다
+     * 날짜 범위 인자를 두지 않는 이유는 group 의 listAllMemberships·rank 의 listAllLines 와 같다: 소비자
+     * (깔때기 분모·시트 커버리지·골격 필터)가 모두 전체를 보므로, 왕복 1회·캐시 1개로 두면 화면마다
      * 분모가 어긋날 여지가 없다. 손이 만든 데이터라 규모도 그 전제를 지킨다.
      */
     listCandidateDays(): Promise<CandidateDay[]>;

@@ -1,127 +1,181 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDb, type TestDb } from "../../test-support/testDb.js";
 import { DrizzleGroupRepository } from "../group.repository.js";
+import { DrizzleMapRepository } from "../map.repository.js";
 import { DrizzleReviewPointRepository } from "../reviewPoint.repository.js";
 
 const P1 = { stockCode: "005930", date: "2026-06-30", time: "09:11:00" };
 const P2 = { stockCode: "005930", date: "2026-06-30", time: "10:00:00" };
 const P3 = { stockCode: "000660", date: "2026-06-30", time: "09:30:00" };
+const DAY1 = { stockCode: "005930", date: "2026-06-30" };
+const DAY2 = { stockCode: "000660", date: "2026-06-30" };
 
 describe("DrizzleGroupRepository (pglite)", () => {
     let t: TestDb;
     let repo: DrizzleGroupRepository;
-    let points: DrizzleReviewPointRepository;
+    let maps: DrizzleMapRepository;
 
-    const groupIdsOf = async (p: typeof P1): Promise<string[]> =>
-        (await repo.listAllAttachments()).find((a) => a.stockCode === p.stockCode && a.date === p.date && a.time === p.time)?.groupIds ?? [];
+    const groupIdsOf = async (item: { stockCode: string; date: string; time?: string }): Promise<string[]> =>
+        (await repo.listAllMemberships())
+            .find((m) => m.stockCode === item.stockCode && m.date === item.date && m.time === item.time)
+            ?.groupIds.sort() ?? [];
 
-    beforeAll(async () => {
+    beforeEach(async () => {
         t = await createTestDb();
         repo = new DrizzleGroupRepository(t.db);
-        // 부착 대상 타점 선행 생성(review_point_tags → review_points FK).
-        points = new DrizzleReviewPointRepository(t.db);
-        await points.upsert([P1, P2, P3]);
+        maps = new DrizzleMapRepository(t.db);
+        await new DrizzleReviewPointRepository(t.db).upsert([P1, P2, P3]);
     });
-    afterAll(async () => {
+    afterEach(async () => {
         await t.close();
     });
 
-    it("createGroup — id 부여 + 이름순 listGroups, 같은 이름은 기존 그룹 반환(멱등)", async () => {
-        const b = await repo.createGroup("형태:돌파");
-        const a = await repo.createGroup("가:눌림");
-        expect(b.id).toBeTruthy();
-        expect((await repo.listGroups()).map((x) => x.name)).toEqual(["가:눌림", "형태:돌파"]); // 이름 오름차순
+    it("createGroup — 이름순 목록, 같은 이름은 기존 그룹 반환(멱등)", async () => {
+        const b = await repo.createGroup("형태:돌파", "point");
+        const a = await repo.createGroup("가:눌림", "point");
+        expect((await repo.listGroups()).map((g) => g.name)).toEqual(["가:눌림", "형태:돌파"]);
 
-        const again = await repo.createGroup("형태:돌파");
-        expect(again.id).toBe(b.id); // 중복 생성이 아니라 그 그룹 선택
+        const again = await repo.createGroup("형태:돌파", "point");
+        expect(again.id).toBe(b.id);
         expect(await repo.listGroups()).toHaveLength(2);
         expect(a.id).not.toBe(b.id);
     });
 
-    it("attach — 멱등(같은 부착 2회 = 1건), 한 타점에 여러 그룹", async () => {
-        const x = await repo.createGroup("장초");
-        const y = await repo.createGroup("갭상승");
+    it("새 그룹은 어느 평면에도 안 올라가 있다 — 만들기와 올리기는 별개다", async () => {
+        const g = await repo.createGroup("미정1", "point");
+        expect(g).toMatchObject({ mapId: null, x: null, y: null, parentId: null, scope: "point" });
+    });
+
+    it("attach/detach — 멱등이고, 한 항목에 여러 그룹", async () => {
+        const x = await repo.createGroup("장초", "point");
+        const y = await repo.createGroup("갭상승", "point");
         await repo.attach(x.id, P1);
         await repo.attach(x.id, P1); // 멱등
         await repo.attach(y.id, P1);
 
-        expect((await groupIdsOf(P1)).sort()).toEqual([x.id, y.id].sort());
+        expect(await groupIdsOf(P1)).toEqual([x.id, y.id].sort());
+
+        await repo.detach(x.id, P1);
+        expect(await groupIdsOf(P1)).toEqual([y.id]);
+        await repo.detach(x.id, P1); // 안 붙어 있어도 조용히
     });
 
-    it("listAllAttachments — 붙은 타점만 항목, groupIds 는 그룹 이름순", async () => {
-        const first = await repo.createGroup("ㄱ이름");
-        const last = await repo.createGroup("ㅎ이름");
-        await repo.attach(last.id, P2);
-        await repo.attach(first.id, P2);
+    it("하루 소속과 타점 소속이 한 피드에 온다 — 시각 유무로 갈린다", async () => {
+        const day = await repo.createGroup("하루", "day");
+        const point = await repo.createGroup("타점", "point");
+        await repo.attach(day.id, DAY1);
+        await repo.attach(point.id, P1);
 
-        expect(await groupIdsOf(P2)).toEqual([first.id, last.id]); // 이름순(부착 순서 아님)
-        expect(await groupIdsOf(P3)).toEqual([]); // 안 붙은 타점은 항목 자체가 없음
+        const feed = await repo.listAllMemberships();
+        expect(feed).toHaveLength(2);
+        expect(feed.find((m) => m.time === undefined)?.groupIds).toEqual([day.id]);
+        expect(feed.find((m) => m.time === P1.time)?.groupIds).toEqual([point.id]);
     });
 
-    it("detach — 해당 부착만 제거, 없는 부착은 조용한 no-op", async () => {
-        const z = await repo.createGroup("떼기");
-        await repo.attach(z.id, P3);
-        expect(await groupIdsOf(P3)).toEqual([z.id]);
-
-        await repo.detach(z.id, P3);
-        expect(await groupIdsOf(P3)).toEqual([]);
-        await expect(repo.detach(z.id, P3)).resolves.toBeUndefined(); // 두 번 떼도 안전
+    it("scope 정합 — 하루 그룹에 시각을 넣거나 타점 그룹에서 빼면 거부", async () => {
+        const day = await repo.createGroup("하루", "day");
+        const point = await repo.createGroup("타점", "point");
+        await expect(repo.attach(day.id, P1)).rejects.toThrow();
+        await expect(repo.attach(point.id, DAY1)).rejects.toThrow();
+        // 맞는 조합만 남는다
+        await repo.attach(day.id, DAY2);
+        await repo.attach(point.id, P2);
+        expect(await repo.listAllMemberships()).toHaveLength(2);
     });
 
-    it("renameGroup — 부착은 id 참조라 안 깨짐 / 없는 id 는 no-op", async () => {
-        const group = await repo.createGroup("옛이름");
-        await repo.attach(group.id, P3);
-        await repo.renameGroup(group.id, "새이름");
-
-        expect((await repo.listGroups()).find((x) => x.id === group.id)?.name).toBe("새이름");
-        expect(await groupIdsOf(P3)).toEqual([group.id]); // 부착 유지
-        await expect(repo.renameGroup("999999", "없음")).resolves.toBeUndefined();
+    it("그룹을 지우면 멤버십도 사라진다", async () => {
+        const g = await repo.createGroup("임시", "point");
+        await repo.attach(g.id, P1);
+        await repo.removeGroup(g.id);
+        expect(await repo.listAllMemberships()).toEqual([]);
     });
 
-    it("removeGroup — 부착도 cascade 로 함께 사라진다", async () => {
-        const doomed = await repo.createGroup("지울그룹");
-        await repo.attach(doomed.id, P3);
-        expect(await groupIdsOf(P3)).toContain(doomed.id);
+    describe("평면에 올리기", () => {
+        it("올리면 좌표가 붙고, 내리면 좌표·부모가 풀린다(그룹은 남는다)", async () => {
+            const m = await maps.createMap("타점 맵", "point");
+            const g = await repo.createGroup("A", "point");
+            await repo.setPlacement(g.id, { mapId: m.id, x: 10, y: 20 });
+            expect((await repo.listGroups())[0]).toMatchObject({ mapId: m.id, x: 10, y: 20 });
 
-        await repo.removeGroup(doomed.id);
-        expect((await repo.listGroups()).map((x) => x.id)).not.toContain(doomed.id);
-        expect(await groupIdsOf(P3)).not.toContain(doomed.id);
+            await repo.setPlacement(g.id, null);
+            expect((await repo.listGroups())[0]).toMatchObject({ mapId: null, x: null, y: null });
+        });
+
+        it("⚠ 평면과 그룹의 층위가 다르면 거부 — 한 평면에서 두 층위의 겹침을 같은 선으로 그리게 된다", async () => {
+            const dayMap = await maps.createMap("하루 맵", "day");
+            const pointGroup = await repo.createGroup("타점 그룹", "point");
+            await expect(repo.setPlacement(pointGroup.id, { mapId: dayMap.id, x: 0, y: 0 })).rejects.toThrow();
+        });
+
+        it("평면을 지우면 그 위 그룹은 내려올 뿐 사라지지 않는다", async () => {
+            const m = await maps.createMap("맵", "point");
+            const g = await repo.createGroup("A", "point");
+            await repo.setPlacement(g.id, { mapId: m.id, x: 1, y: 1 });
+
+            await maps.removeMap(m.id);
+
+            const left = await repo.listGroups();
+            expect(left).toHaveLength(1);
+            expect(left[0]).toMatchObject({ mapId: null, x: null, y: null });
+        });
+
+        it("moveGroups — 여럿 한 번에", async () => {
+            const m = await maps.createMap("맵", "point");
+            const a = await repo.createGroup("A", "point");
+            const b = await repo.createGroup("B", "point");
+            await repo.setPlacement(a.id, { mapId: m.id, x: 0, y: 0 });
+            await repo.setPlacement(b.id, { mapId: m.id, x: 0, y: 0 });
+
+            await repo.moveGroups([{ id: a.id, x: 11, y: 22 }, { id: b.id, x: 33, y: 44 }]);
+
+            const byId = new Map((await repo.listGroups()).map((g) => [g.id, g]));
+            expect(byId.get(a.id)).toMatchObject({ x: 11, y: 22 });
+            expect(byId.get(b.id)).toMatchObject({ x: 33, y: 44 });
+        });
     });
 
-    it("타점 삭제 → 그 타점 부착도 cascade", async () => {
-        const group = await repo.createGroup("타점따라감");
-        await repo.attach(group.id, P2);
-        await points.remove(P2.stockCode, P2.date, P2.time);
+    describe("그룹 안 그룹", () => {
+        it("같은 평면이면 부모가 걸린다", async () => {
+            const m = await maps.createMap("맵", "point");
+            const parent = await repo.createGroup("눌림 계열", "point");
+            const child = await repo.createGroup("얕은 눌림", "point");
+            await repo.setPlacement(parent.id, { mapId: m.id, x: 0, y: 0 });
+            await repo.setPlacement(child.id, { mapId: m.id, x: 1, y: 1 });
 
-        expect(await groupIdsOf(P2)).toEqual([]);
-        expect((await repo.listGroups()).map((x) => x.id)).toContain(group.id); // 사전은 남는다
-    });
+            await repo.setParent(child.id, parent.id);
+            expect((await repo.listGroups()).find((g) => g.id === child.id)?.parentId).toBe(parent.id);
+        });
 
-    // ── 차트 부착 — 타점 부착과 사전을 공유하되 저장이 갈린다(review_points FK 없음: 차트는 행이 아니다).
-    it("attachToChart — 타점이 없는 차트에도 붙는다(골격만 있는 차트가 분류 대상)", async () => {
-        const C = { stockCode: "999999", date: "2026-07-01" }; // review_points 에 없는 (종목,날짜)
-        const group = await repo.createGroup("차트분류");
-        await repo.attachToChart(group.id, C);
-        await repo.attachToChart(group.id, C); // 멱등
+        it("⚠ 다른 평면(또는 안 올린 그룹)은 부모가 될 수 없다", async () => {
+            const m = await maps.createMap("맵", "point");
+            const onMap = await repo.createGroup("올린 것", "point");
+            const off = await repo.createGroup("안 올린 것", "point");
+            await repo.setPlacement(onMap.id, { mapId: m.id, x: 0, y: 0 });
+            await expect(repo.setParent(onMap.id, off.id)).rejects.toThrow();
+        });
 
-        const atts = await repo.listAllChartAttachments();
-        expect(atts.find((a) => a.stockCode === C.stockCode && a.date === C.date)?.groupIds).toEqual([group.id]);
-    });
+        it("⚠ 순환은 거부된다 — 그리기가 무한히 내려간다", async () => {
+            const m = await maps.createMap("맵", "point");
+            const a = await repo.createGroup("A", "point");
+            const b = await repo.createGroup("B", "point");
+            for (const g of [a, b]) await repo.setPlacement(g.id, { mapId: m.id, x: 0, y: 0 });
+            await repo.setParent(b.id, a.id);
 
-    it("detachFromChart — 해당 부착만 제거, 두 번 떼도 안전. removeGroup 는 차트 부착도 cascade", async () => {
-        const C = { stockCode: "888888", date: "2026-07-01" };
-        const a = await repo.createGroup("ㄱ차트");
-        const b = await repo.createGroup("ㅎ차트");
-        await repo.attachToChart(b.id, C);
-        await repo.attachToChart(a.id, C);
-        const of = async () => (await repo.listAllChartAttachments()).find((x) => x.stockCode === C.stockCode)?.groupIds ?? [];
-        expect(await of()).toEqual([a.id, b.id]); // 그룹 이름순(부착 순서 아님)
+            await expect(repo.setParent(a.id, b.id)).rejects.toThrow(); // 자기 자손을 부모로
+            await expect(repo.setParent(a.id, a.id)).rejects.toThrow(); // 자기 자신을 부모로
+        });
 
-        await repo.detachFromChart(a.id, C);
-        expect(await of()).toEqual([b.id]);
-        await expect(repo.detachFromChart(a.id, C)).resolves.toBeUndefined();
+        it("평면에서 내리면 자식들도 함께 내려온다 — 부모 없는 자식이 떠 있지 않게", async () => {
+            const m = await maps.createMap("맵", "point");
+            const parent = await repo.createGroup("부모", "point");
+            const child = await repo.createGroup("자식", "point");
+            await repo.setPlacement(parent.id, { mapId: m.id, x: 0, y: 0 });
+            await repo.setPlacement(child.id, { mapId: m.id, x: 1, y: 1 });
+            await repo.setParent(child.id, parent.id);
 
-        await repo.removeGroup(b.id);
-        expect(await of()).toEqual([]); // cascade — 항목째 사라진다
+            await repo.setPlacement(parent.id, null);
+
+            expect((await repo.listGroups()).find((g) => g.id === child.id)?.parentId).toBeNull();
+        });
     });
 });

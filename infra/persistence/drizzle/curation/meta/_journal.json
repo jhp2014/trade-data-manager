@@ -92,6 +92,20 @@
       "when": 1786364596852,
       "tag": "0012_panoramic_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786443755107,
+      "tag": "0013_giant_squadron_supreme",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786443796704,
+      "tag": "0014_public_mach_iv",
+      "breakpoints": true
     }
   ]
 }
