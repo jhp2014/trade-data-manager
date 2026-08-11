@@ -1,4 +1,5 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
+import { GroupInvariantError } from "@trade-data-manager/market";
 import type {
     Group,
     GroupItemRef,
@@ -113,8 +114,8 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
         }
         const scope = await this.scopeOf(id);
         const mapRows = await this.db.select({ scope: maps.scope }).from(maps).where(eq(maps.id, BigInt(placement.mapId))).limit(1);
-        if (mapRows.length === 0) throw new Error(`없는 맵: ${placement.mapId}`);
-        if (mapRows[0]!.scope !== scope) throw new Error(`평면(${mapRows[0]!.scope})과 그룹(${scope})의 층위가 다르다`);
+        if (mapRows.length === 0) throw new GroupInvariantError(`없는 맵: ${placement.mapId}`);
+        if (mapRows[0]!.scope !== scope) throw new GroupInvariantError(`평면(${mapRows[0]!.scope})과 그룹(${scope})의 층위가 다르다`);
         await this.db
             .update(groups)
             .set({ mapId: BigInt(placement.mapId), x: placement.x, y: placement.y })
@@ -136,21 +137,21 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
             await this.db.update(groups).set({ parentId: null }).where(eq(groups.id, BigInt(id)));
             return;
         }
-        if (id === parentId) throw new Error("자기 자신을 부모로 둘 수 없다");
+        if (id === parentId) throw new GroupInvariantError("자기 자신을 부모로 둘 수 없다");
         const rows = await this.db.select({ id: groups.id, mapId: groups.mapId, parentId: groups.parentId }).from(groups);
         const byId = new Map(rows.map((r) => [String(r.id), r]));
         const self = byId.get(id);
         const parent = byId.get(parentId);
-        if (!self || !parent) throw new Error("없는 그룹");
+        if (!self || !parent) throw new GroupInvariantError("없는 그룹");
         if (self.mapId === null || parent.mapId === null || String(self.mapId) !== String(parent.mapId)) {
-            throw new Error("부모는 같은 평면의 그룹이어야 한다");
+            throw new GroupInvariantError("부모는 같은 평면의 그룹이어야 한다");
         }
         // 순환 방지 — 부모를 타고 올라가다 자신을 만나면 거절(그리기가 무한히 내려간다).
         for (let cur = parent, hops = 0; cur.parentId !== null; hops++) {
-            if (hops > rows.length) throw new Error("그룹 계층이 이미 순환한다");
+            if (hops > rows.length) throw new GroupInvariantError("그룹 계층이 이미 순환한다");
             const next = byId.get(String(cur.parentId));
             if (!next) break;
-            if (String(next.id) === id) throw new Error("자기 자손을 부모로 둘 수 없다(순환)");
+            if (String(next.id) === id) throw new GroupInvariantError("자기 자손을 부모로 둘 수 없다(순환)");
             cur = next;
         }
         await this.db.update(groups).set({ parentId: BigInt(parentId) }).where(eq(groups.id, BigInt(id)));
@@ -158,13 +159,13 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
 
     private async scopeOf(id: string): Promise<GroupScope> {
         const rows = await this.db.select({ scope: groups.scope }).from(groups).where(eq(groups.id, BigInt(id))).limit(1);
-        if (rows.length === 0) throw new Error(`없는 그룹: ${id}`);
+        if (rows.length === 0) throw new GroupInvariantError(`없는 그룹: ${id}`);
         return rows[0]!.scope as GroupScope;
     }
 
     private async assertItemMatchesScope(groupId: string, item: GroupItemRef): Promise<void> {
         const scope = await this.scopeOf(groupId);
-        if (scope === "day" && item.time !== undefined) throw new Error("하루 그룹에는 시각을 넣지 않는다(하루가 곧 멤버)");
-        if (scope === "point" && item.time === undefined) throw new Error("타점 그룹에는 시각이 필요하다(타점이 곧 멤버)");
+        if (scope === "day" && item.time !== undefined) throw new GroupInvariantError("하루 그룹에는 시각을 넣지 않는다(하루가 곧 멤버)");
+        if (scope === "point" && item.time === undefined) throw new GroupInvariantError("타점 그룹에는 시각이 필요하다(타점이 곧 멤버)");
     }
 }

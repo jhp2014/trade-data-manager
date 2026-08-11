@@ -11,6 +11,18 @@
 // 이름은 손잡이지 주장이 아니다 — "미정1" 로 지어도 된다. 이름 짓는 비용이 낮아야 잘게 쪼갤 수 있고,
 // 그래야 "하나의 이름으로 디테일을 계속 구분할 수 없다"는 원래 문제를 피한다.
 
+/**
+ * 그룹 불변식 위반 — **호출자의 잘못**이지 서버 고장이 아니다(층위 불일치·순환·다른 평면의 부모).
+ * DB 로는 못 막아 저장 경로가 던지는데, 그냥 Error 로 던지면 가장자리에서 500 이 되어 화면에
+ * "Internal server error" 만 뜬다 — 이유를 보여주려면 종류가 구분돼야 한다.
+ */
+export class GroupInvariantError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "GroupInvariantError";
+    }
+}
+
 /** 차트 참조 — (종목, 날짜). 하루 단위 소유물(골격·차트 앵커·하루 그룹)의 키. */
 export interface ChartRef {
     stockCode: string;

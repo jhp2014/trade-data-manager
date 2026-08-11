@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Put, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
+import { GroupInvariantError } from "@trade-data-manager/market";
 import type { GroupReader, GroupStore } from "@trade-data-manager/market";
 import type {
     Group,
@@ -51,7 +52,7 @@ export class GroupController {
 
     @Post(":id/members")
     async attach(@Param("id") id: string, @Body() body: AttachGroupInput): Promise<{ ok: true }> {
-        await this.repo.attach(assertId(id), assertItem(body));
+        await guard(() => this.repo.attach(assertId(id), assertItem(body)));
         return { ok: true };
     }
 
@@ -69,11 +70,13 @@ export class GroupController {
     /** 평면에 올리기(좌표 포함). 맵 scope 와 그룹 scope 가 다르면 저장 경로가 거절한다. */
     @Put(":id/placement")
     async place(@Param("id") id: string, @Body() body: PlaceGroupInput): Promise<{ ok: true }> {
-        await this.repo.setPlacement(assertId(id), {
-            mapId: assertId(body?.mapId, "mapId"),
-            x: assertCoord(body?.x, "x"),
-            y: assertCoord(body?.y, "y"),
-        });
+        await guard(() =>
+            this.repo.setPlacement(assertId(id), {
+                mapId: assertId(body?.mapId, "mapId"),
+                x: assertCoord(body?.x, "x"),
+                y: assertCoord(body?.y, "y"),
+            }),
+        );
         return { ok: true };
     }
 
@@ -88,7 +91,7 @@ export class GroupController {
     @Put(":id/parent")
     async setParent(@Param("id") id: string, @Body() body: SetGroupParentInput): Promise<{ ok: true }> {
         const parentId = body?.parentId;
-        await this.repo.setParent(assertId(id), parentId === null || parentId === undefined ? null : assertId(parentId, "parentId"));
+        await guard(() => this.repo.setParent(assertId(id), parentId === null || parentId === undefined ? null : assertId(parentId, "parentId")));
         return { ok: true };
     }
 
@@ -103,6 +106,20 @@ export class GroupController {
     async remove(@Param("id") id: string): Promise<{ ok: true }> {
         await this.repo.removeGroup(assertId(id));
         return { ok: true };
+    }
+}
+
+/**
+ * 불변식 위반만 400 으로 바꾼다 — 층위 불일치·순환·다른 평면의 부모는 **호출자의 잘못**이고,
+ * 화면이 이유를 보여줘야 한다(그냥 두면 500 "Internal server error" 만 뜬다).
+ * 다른 예외는 그대로 500 으로 흘려보낸다 — DB 고장을 400 으로 감추면 안 된다.
+ */
+async function guard<T>(run: () => Promise<T>): Promise<T> {
+    try {
+        return await run();
+    } catch (e) {
+        if (e instanceof GroupInvariantError) throw new BadRequestException(e.message);
+        throw e;
     }
 }
 
