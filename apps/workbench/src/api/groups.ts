@@ -1,37 +1,41 @@
-// 타점 그룹 CRUD 클라이언트. wire 타입(Group·GroupAttachment)은 contracts/wire 공유.
-// 부착은 타점 목록(review-points)과 분리된 계약이다 — 그룹를 토글해도 타점 캐시가 안 흔들리고,
-// 차트(listByChart)·시트·배치·필터가 **부착 피드 하나**를 같이 본다(전 축 줄 피드와 같은 꼴).
-import type { Group, GroupAttachment, ChartGroupAttachment } from "@trade-data-manager/wire";
-import { apiGet, apiPost, apiPatch, apiDelete } from "./http.js";
+// 그룹 큐레이션 CRUD 클라이언트. wire 타입(Group·GroupMembership…)은 contracts/wire 공유.
+//
+// 옛 태그 클라를 흡수했다. **부착 피드가 하나**다(옛날엔 타점/차트 둘) — 멤버십은 시각 유무로 층위가
+// 갈릴 뿐 같은 "이게 들었다"라서 나눌 이유가 없었다.
+// 좌표 이동은 **여럿 한 번에**(부분 실패 방지), 겹침(징검다리)은 받지 않고 멤버십에서 계산한다.
+import type { Group, GroupItemRef, GroupMembership, GroupMove, GroupScope } from "@trade-data-manager/wire";
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from "./http.js";
 
-export type { Group, GroupAttachment, ChartGroupAttachment } from "@trade-data-manager/wire";
+export type { Group, GroupScope, GroupItemRef, GroupMembership, GroupMove, GroupOverlap } from "@trade-data-manager/wire";
 
 export const fetchGroups = (signal?: AbortSignal): Promise<Group[]> => apiGet<Group[]>("groups", undefined, signal);
 
-/** 전 타점의 부착 한 방(타점 단건 조회 없음). 그룹 0개인 타점은 응답에 없음 = 빈 배열. */
-export const fetchGroupAttachments = (signal?: AbortSignal): Promise<GroupAttachment[]> =>
-    apiGet<GroupAttachment[]>("groups/attachments", undefined, signal);
+/** 전 항목의 멤버십 한 벌 — 하루 소속과 타점 소속이 한 피드에 온다(시각 유무로 갈린다). */
+export const fetchGroupMemberships = (signal?: AbortSignal): Promise<GroupMembership[]> =>
+    apiGet<GroupMembership[]>("groups/members", undefined, signal);
 
-/** 그룹 생성 — 같은 이름이 이미 있으면 서버가 그 그룹를 돌려준다(멱등). */
-export const createGroup = (name: string): Promise<Group> => apiPost<Group>("groups", { name });
+export const createGroup = (name: string, scope: GroupScope): Promise<Group> => apiPost<Group>("groups", { name, scope });
 
 export const renameGroup = (id: string, name: string): Promise<void> => apiPatch(`groups/${id}`, { name });
 
-/** 그룹 삭제 — 부착도 함께 사라진다(cascade). 호출부가 사용 건수를 확인시킬 것. */
+/** 삭제 — 멤버십도 함께 사라지고 자식 그룹은 부모만 풀린다. 확인은 호출부가 띄운다. */
 export const deleteGroup = (id: string): Promise<void> => apiDelete(`groups/${id}`);
 
-export const attachGroup = (groupId: string, point: { stockCode: string; date: string; time: string }): Promise<void> =>
-    apiPost(`groups/${groupId}/attachments`, point);
+/** 항목 넣기(멱등). 시각 유무가 그룹 scope 와 맞지 않으면 서버가 거절한다. */
+export const attachGroup = (groupId: string, item: GroupItemRef): Promise<void> => apiPost(`groups/${groupId}/members`, item);
 
-export const detachGroup = (groupId: string, point: { stockCode: string; date: string; time: string }): Promise<void> =>
-    apiDelete(`groups/${groupId}/attachments`, { code: point.stockCode, date: point.date, time: point.time });
+export const detachGroup = (groupId: string, item: GroupItemRef): Promise<void> =>
+    apiDelete(`groups/${groupId}/members`, { code: item.stockCode, date: item.date, ...(item.time ? { time: item.time } : {}) });
 
-// ── 차트 부착 — 골격 분류용(타점 없는 차트도 대상). 사전은 위와 공유.
-export const fetchChartGroupAttachments = (signal?: AbortSignal): Promise<ChartGroupAttachment[]> =>
-    apiGet<ChartGroupAttachment[]>("groups/chart-attachments", undefined, signal);
+/** 평면에 올리기(좌표 포함). 맵 scope 와 그룹 scope 가 다르면 서버가 거절한다. */
+export const placeGroup = (id: string, mapId: string, x: number, y: number): Promise<void> =>
+    apiPut(`groups/${id}/placement`, { mapId, x, y });
 
-export const attachChartGroup = (groupId: string, chart: { stockCode: string; date: string }): Promise<void> =>
-    apiPost(`groups/${groupId}/chart-attachments`, chart);
+/** 평면에서 내리기 — 그룹은 남고 좌표·부모만 풀린다(자식들도 함께 내려온다). */
+export const unplaceGroup = (id: string): Promise<void> => apiDelete(`groups/${id}/placement`);
 
-export const detachChartGroup = (groupId: string, chart: { stockCode: string; date: string }): Promise<void> =>
-    apiDelete(`groups/${groupId}/chart-attachments`, { code: chart.stockCode, date: chart.date });
+/** 좌표 이동(여럿 한 번). 응답 없음 — 좌표는 클라가 저자라 낙관 갱신만 하고 invalidate 하지 않는다. */
+export const moveGroups = (moves: GroupMove[]): Promise<void> => apiPatch("groups/placements", { moves });
+
+/** 그룹 안 그룹. null 이면 최상위로. 같은 평면이 아니거나 순환이면 서버가 거절한다. */
+export const setGroupParent = (id: string, parentId: string | null): Promise<void> => apiPut(`groups/${id}/parent`, { parentId });

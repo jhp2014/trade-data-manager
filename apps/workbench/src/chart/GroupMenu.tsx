@@ -9,7 +9,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createGroup, deleteGroup, renameGroup, type Group } from "../api/groups.js";
-import { groupsQuery, groupAttachmentsQuery } from "../api/queries.js";
+import { groupsQuery, groupMembershipsQuery } from "../api/queries.js";
 import { useGroups } from "../lib/useGroups.js";
 import { useWorkbench } from "../store/workbench.js";
 import { TAG_PRESET_SLOTS } from "../store/settingsSlice.js";
@@ -34,11 +34,11 @@ export function GroupMenu({ anchor, point, label, onClose }: {
 
     const invalidate = (): void => {
         void qc.invalidateQueries({ queryKey: groupsQuery().queryKey });
-        void qc.invalidateQueries({ queryKey: groupAttachmentsQuery().queryKey }); // 삭제 = 부착도 cascade
+        void qc.invalidateQueries({ queryKey: groupMembershipsQuery().queryKey }); // 삭제 = 멤버십도 cascade
     };
     // 새 그룹는 만들자마자 이 타점에 붙인다 — "만들기"를 누른 의도가 곧 부착이다(두 번 클릭시키지 않는다).
     const createMut = useMutation({
-        mutationFn: (name: string) => createGroup(name),
+        mutationFn: (name: string) => createGroup(name, "point"), // 타점 메뉴에서 만드는 건 타점 그룹
         onSuccess: (group) => { toggle(point, group.id, true); setQ(""); invalidate(); },
     });
     const renameMut = useMutation({ mutationFn: (v: { id: string; name: string }) => renameGroup(v.id, v.name), onSuccess: invalidate });

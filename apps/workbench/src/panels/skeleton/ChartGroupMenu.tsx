@@ -45,7 +45,7 @@ export function BulkGroupMenu<T>({ anchor, targets, hasGroup, toggle, label, onC
     };
 
     const createMut = useMutation({
-        mutationFn: (name: string) => createGroup(name),
+        mutationFn: (name: string) => createGroup(name, "day"), // 차트 라벨에서 만드는 건 하루 그룹
         // 새 그룹는 만들자마자 대상 전부에 붙인다 — "만들기"를 누른 의도가 곧 부착이다.
         onSuccess: (group) => {
             // 사전 캐시에 먼저 심는다(이름순 = 서버 정렬) — 심기 전에 토글하면 낙관적 부착 정렬이
