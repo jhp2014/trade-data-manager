@@ -13,7 +13,7 @@ export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repos
 export { DrizzleChartAnchorRepository } from "./repositories/chartAnchor.repository.js";
 export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
 export { DrizzleRankRepository } from "./repositories/rank.repository.js";
-export { DrizzleTagRepository } from "./repositories/tag.repository.js";
+export { DrizzleGroupRepository } from "./repositories/group.repository.js";
 export { DrizzleCandidateDayRepository } from "./repositories/candidateDay.repository.js";
 export { DrizzleMapRepository } from "./repositories/map.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
@@ -50,4 +50,4 @@ export {
     rowToReviewPoint,
 } from "./mappers/reviewPoint.js";
 export { rowToRankAxis } from "./mappers/rank.js";
-export { rowToTag } from "./mappers/tag.js";
+export { rowToGroup } from "./mappers/group.js";

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createTestDb, type TestDb } from "../../test-support/testDb.js";
 import { DrizzleCandidateDayRepository } from "../candidateDay.repository.js";
 import { DrizzleReviewPointRepository } from "../reviewPoint.repository.js";
-import { DrizzleTagRepository } from "../tag.repository.js";
+import { DrizzleGroupRepository } from "../group.repository.js";
 import { chartAnchors, maps, mapPlacements } from "../../schema/curation.js";
 
 /**
@@ -38,10 +38,10 @@ describe("DrizzleCandidateDayRepository (pglite)", () => {
             param: "skeleton",
             anchorDate: "2026-06-20",
         });
-        // ② 차트 태그만
-        const tags = new DrizzleTagRepository(t.db);
-        const tag = await tags.createTag("형태:돌파");
-        await tags.attachToChart(tag.id, { stockCode: "000660", date: "2026-07-02" });
+        // ② 차트 그룹만
+        const groups = new DrizzleGroupRepository(t.db);
+        const group = await groups.createGroup("형태:돌파");
+        await groups.attachToChart(group.id, { stockCode: "000660", date: "2026-07-02" });
         // ③ 타점만
         await new DrizzleReviewPointRepository(t.db).upsert([{ stockCode: "035420", date: "2026-07-03", time: "09:30:00" }]);
         // ④ 맵 배치만

@@ -12,7 +12,7 @@ export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
 export const DAILY_COMMENTS = Symbol("DailyComments");          // 코멘트 유스케이스(빈값=삭제·author 소유)
 export const THEME_ASSIGNMENT = Symbol("ThemeAssignment");      // 테마 배정 유스케이스(중복 skip·캐시 무효화)
 export const RANK_REPO = Symbol("RankRepository");
-export const TAG_REPO = Symbol("TagRepository");
+export const GROUP_REPO = Symbol("GroupRepository");
 export const MAP_REPO = Symbol("MapRepository");                // 유사도 맵(축 없는 평면) — 맵·무리·자리
 export const CANDIDATE_DAY_REPO = Symbol("CandidateDayRepository"); // 후보 하루 = 분석의 모수(큐레이션 편집물의 합집합)
 export const RANK_MINUTES = Symbol("RankMinutes");

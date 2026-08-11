@@ -15,20 +15,20 @@ import {
     sortKeyOf, sortSheetRows, sortStepNo, type SortChain, type SortCtx, type SortKey,
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, slotOrderKeys, type AxisIndex } from "../lib/rankIndex.js";
-import { SheetRowView, ROW_H, type CellCtxPayload, type TagCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
+import { SheetRowView, ROW_H, type CellCtxPayload, type GroupCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
 import { isComputedAxis, formatAxisValue } from "../lib/computedAxis.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { SavedFilterControls } from "./rank/SavedFilterControls.js";
-import { TagFilterLine, AddTagFilterButton } from "./rank/TagFilterLine.js";
+import { GroupFilterLine, AddGroupFilterButton } from "./rank/GroupFilterLine.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { ComputedBoundMenu } from "./rank/ComputedBoundMenu.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
-import { useTags } from "../lib/useTags.js";
-import { TagMenu } from "../chart/TagMenu.js";
+import { useGroups } from "../lib/useGroups.js";
+import { GroupMenu } from "../chart/GroupMenu.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -40,7 +40,7 @@ import { FILTER } from "../styles/palette.js";
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
 //  · 헤더 클릭 = 그 열로 정렬(축은 강 먼저) · **Shift+클릭 = 정렬 단 추가**(n차). 정렬 축에서 행범위
 //    **드래그 선택 = 밴드**(AND drill-down, rankBands 공유). 체인·그룹 규칙은 sheetSort(순수·테스트)에.
-//  · **그룹**: 1차 키에서만 접는다. 날짜·결과·태그·배치수처럼 값이 몇 가지뿐인 열은 저절로, 축처럼 값이 거의
+//  · **그룹**: 1차 키에서만 접는다. 날짜·결과·그룹·배치수처럼 값이 몇 가지뿐인 열은 저절로, 축처럼 값이 거의
 //    유일한 열은 셀 우클릭 **그룹 나누기(컷)** 를 그었을 때만. 컷은 "한 구간만 남기는" 밴드와 달리 아무것도
 //    안 버리고 N개로 나눈다 → 구간끼리 한 화면에서 비교된다(밴드는 분석 모수까지 좁힌다는 게 다른 점).
 //  · 드래그 배치는 축 열이 **순위 순서 그대로일 때만** 유효 — 깨지는 건 컷과 2차 정렬이 둘 다 있을 때뿐이다
@@ -51,7 +51,7 @@ import { FILTER } from "../styles/palette.js";
 //  · 열 폭은 손으로 조절 가능(헤더 오른쪽 가장자리 드래그). **수동 폭을 준 열만 고정폭**이 되고, 안 준 축 열들은
 //    지금처럼 남는 폭을 나눠 갖는다 → "폭 원위치"(수동 폭 삭제)면 기본 동작으로 정확히 복귀한다.
 //  · 링크: 드래그=소프트 선택(색만, 안 좁힘, 누적) · 우클릭=밴드(좁힘)+그 축 배치 해제 · 선택/호버는 배치 보드와 공유(색으로 표시).
-//  · 태그 셀 우클릭 = 차트와 같은 TagMenu(붙이기·떼기·새 태그·슬롯) — 시트에서 결과를 보다 바로 태그를 고칠 수 있게.
+//  · 그룹 셀 우클릭 = 차트와 같은 GroupMenu(붙이기·떼기·새 그룹·슬롯) — 시트에서 결과를 보다 바로 그룹를 고칠 수 있게.
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
@@ -102,9 +102,9 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [linesByAxis]);
 
-    // ── 태그(부착 피드 한 벌 — 차트·타점 정보 패널과 같은 캐시). 시트는 조회만 하고 편집은 차트 ▼ 우클릭에서.
-    const { tagsOf } = useTags();
-    const tagLabel = (row: { stockCode: string; date: string; time: string }): string => tagsOf(row).map((t) => t.name).join(", ");
+    // ── 그룹(부착 피드 한 벌 — 차트·타점 정보 패널과 같은 캐시). 시트는 조회만 하고 편집은 차트 ▼ 우클릭에서.
+    const { groupsOf } = useGroups();
+    const groupLabel = (row: { stockCode: string; date: string; time: string }): string => groupsOf(row).map((t) => t.name).join(", ");
 
     // ── 전체 타점(행 원천) + 기간.
     const pointsQ = useQuery(allPointsQuery());
@@ -171,9 +171,9 @@ export function RankSheetPanel(): JSX.Element {
 
     const sortCtx = useMemo<SortCtx>(() => ({
         nameOf: (code) => r.nameOf(code),
-        tagLabel,
+        groupLabel,
         excursionOf: (row) => excByKey.get(pointKey(row)),
-    }), [r.nameOf, tagsOf, excByKey]); // eslint-disable-line react-hooks/exhaustive-deps -- tagLabel 은 tagsOf 파생
+    }), [r.nameOf, groupsOf, excByKey]); // eslint-disable-line react-hooks/exhaustive-deps -- groupLabel 은 groupsOf 파생
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
     const groups = useMemo(() => buildSheetGroups(sorted, sort, sortCtx, cutKeys), [sorted, sort, sortCtx, cutKeys]);
 
@@ -243,7 +243,7 @@ export function RankSheetPanel(): JSX.Element {
 
     // 기본 순서 → 숨김 제외 → 고정 먼저(기본순 유지, 좌측 스택) → 비고정. 종목은 항상 표시·고정.
     const baseCols = useMemo<Col[]>(() => [
-        { key: "name" }, { key: "date" }, { key: "time" }, { key: "tags" },
+        { key: "name" }, { key: "date" }, { key: "time" }, { key: "groups" },
         ...axes.map((a): Col => ({ key: "axis", axisId: a.id, name: a.name })),
         { key: "coverage" },
         ...(bandsActive ? ([{ key: "mfe" }, { key: "maePre" }, { key: "maePost" }, { key: "outcome" }] as Col[]) : []),
@@ -255,8 +255,8 @@ export function RankSheetPanel(): JSX.Element {
 
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계. 배치 해제도 같은 메뉴에서(셀 = 타점×축 하나).
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; point: RankPoint; rank: number; total: number; x: number; y: number } | null>(null);
-    // ── 태그 셀 우클릭 = 태그 입력(차트 타점 ▼ 우클릭과 같은 TagMenu — 사전·슬롯·부착이 한 벌).
-    const [tagCtx, setTagCtx] = useState<{ point: RankPoint; label: string; x: number; y: number } | null>(null);
+    // ── 그룹 셀 우클릭 = 그룹 입력(차트 타점 ▼ 우클릭과 같은 GroupMenu — 사전·슬롯·부착이 한 벌).
+    const [groupCtx, setGroupCtx] = useState<{ point: RankPoint; label: string; x: number; y: number } | null>(null);
     // ── 열 이름 우클릭 = 고정/숨김 + 정렬 체인에서 빼기 메뉴.
     const [hdrCtx, setHdrCtx] = useState<{ key: string; label: string; canHide: boolean; frozen: boolean; sortKey: SortKey; step: number; x: number; y: number } | null>(null);
 
@@ -327,7 +327,7 @@ export function RankSheetPanel(): JSX.Element {
     rowHandlersRef.current.onHover = setHoveredPoint;
     rowHandlersRef.current.onTogglePin = togglePin;
     rowHandlersRef.current.onCellCtx = (v: CellCtxPayload) => setCtx(v);
-    rowHandlersRef.current.onTagCtx = (v: TagCtxPayload) => setTagCtx(v);
+    rowHandlersRef.current.onGroupCtx = (v: GroupCtxPayload) => setGroupCtx(v);
     rowHandlersRef.current.registerRef = (key, el) => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); };
     const rowH = rowHandlersRef.current;
 
@@ -338,7 +338,7 @@ export function RankSheetPanel(): JSX.Element {
         return (
             <SheetRowView key={key} row={row} cols={displayCols}
                 leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
-                name={nameOf(row.stockCode)} tags={tagsOf(row)} tagLabel={tagLabel(row)}
+                name={nameOf(row.stockCode)} groups={groupsOf(row)} groupLabel={groupLabel(row)}
                 axisCount={axes.length} posBar={posBar} sortAxisId={sortAxisId}
                 focus={activeKey === key} hover={hoveredPoint === key} pinned={isPinned}
                 dim={bandsActive && !interKeys.has(key) && (isPinned || filterMode === "dim")}
@@ -381,8 +381,8 @@ export function RankSheetPanel(): JSX.Element {
                 </span>
             </div>
 
-            <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} computedMeta={computedMeta} extra={<AddTagFilterButton />} />
-            <TagFilterLine />
+            <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} computedMeta={computedMeta} extra={<AddGroupFilterButton />} />
+            <GroupFilterLine />
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
             <div ref={scrollRef} onScroll={(e) => { sheetScroll = { top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft }; }} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
@@ -501,7 +501,7 @@ export function RankSheetPanel(): JSX.Element {
                 );
             })()}
 
-            {tagCtx && <TagMenu anchor={tagCtx} point={tagCtx.point} label={tagCtx.label} onClose={() => setTagCtx(null)} />}
+            {groupCtx && <GroupMenu anchor={groupCtx} point={groupCtx.point} label={groupCtx.label} onClose={() => setGroupCtx(null)} />}
 
             {hdrCtx && (
                 <HeaderMenu anchor={hdrCtx} label={hdrCtx.label} frozen={hdrCtx.frozen} canHide={hdrCtx.canHide} canFreeze={hdrCtx.key !== "name"}

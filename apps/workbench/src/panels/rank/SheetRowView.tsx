@@ -5,7 +5,7 @@
 //    무엇보다 셀 렌더 규칙이 688줄 패널 본문 한가운데 묻혀 있었다.
 //  · React.memo 를 걸 단위가 없어 호버 한 번에 전 행이 리렌더됐다(2026-07-30 점검의 미해결 항목).
 // 여기로 오면서 memo 단위가 생겼다 — 핸들러는 **행을 인자로 받는 안정 콜백**(패널이 useCallback 으로 고정),
-// 배열 props(tags)는 라벨 문자열로 대신 비교한다(areEqual).
+// 배열 props(groups)는 라벨 문자열로 대신 비교한다(areEqual).
 //
 // 열을 붙이는 법은 그대로: CELLS 항목 하나 + sheetColumns 의 COL_META 한 줄.
 import { memo, type CSSProperties, type ReactNode } from "react";
@@ -13,12 +13,12 @@ import { useDraggable } from "@dnd-kit/core";
 import { COL_META, colKey, type Col, type ColKind } from "./sheetColumns.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
 import { pointKey } from "../../lib/pointKey.js";
-import { TagChips } from "../../components/TagChips.js";
+import { GroupChips } from "../../components/GroupChips.js";
 import type { SheetRow } from "./rankSheet.js";
 import type { RankCell } from "../../lib/rankIndex.js";
 import type { RankPoint } from "../../api/rank.js";
 import type { Excursion } from "./pathStats.js";
-import type { Tag } from "../../api/tags.js";
+import type { Group } from "../../api/groups.js";
 import { PIN, STRONG, WEAK, heatOf, outcomeColor } from "../../styles/palette.js";
 
 export const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
@@ -33,7 +33,7 @@ export interface CellCtxPayload {
     x: number;
     y: number;
 }
-export interface TagCtxPayload {
+export interface GroupCtxPayload {
     point: RankPoint;
     label: string;
     x: number;
@@ -45,7 +45,7 @@ export interface SheetRowHandlers {
     onHover: (key: string | null) => void;
     onTogglePin: (key: string) => void;
     onCellCtx: (p: CellCtxPayload) => void;
-    onTagCtx: (p: TagCtxPayload) => void;
+    onGroupCtx: (p: GroupCtxPayload) => void;
     /** tbody 행만 등록(핀 블록 복사본 제외) — 드래그 배치의 드롭 Y 판정용. */
     registerRef: (key: string, el: HTMLTableRowElement | null) => void;
 }
@@ -58,8 +58,8 @@ export interface SheetRowViewProps {
     lastFrozenKey: string | null;
     widthOf: (c: Col) => number;
     name: string;
-    tags: readonly Tag[];
-    tagLabel: string;
+    groups: readonly Group[];
+    groupLabel: string;
     axisCount: number;
     posBar: boolean;
     sortAxisId: string | null;
@@ -75,7 +75,7 @@ export interface SheetRowViewProps {
 }
 
 function SheetRowViewImpl({
-    row, cols, leftOf, lastFrozenKey, widthOf, name, tags, tagLabel, axisCount, posBar, sortAxisId,
+    row, cols, leftOf, lastFrozenKey, widthOf, name, groups, groupLabel, axisCount, posBar, sortAxisId,
     focus, hover, pinned, dim, exc, inPinnedBlock = false, isLastPinned = false, h,
 }: SheetRowViewProps): JSX.Element {
     const key = pointKey(row);
@@ -139,17 +139,17 @@ function SheetRowViewImpl({
                 body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
             };
         },
-        // 태그 — 폭이 모자라면 **그냥 잘린다**(wrap·스크롤 없음). 더 보고 싶으면 열 폭을 늘리는 게 이 표의 규칙.
+        // 그룹 — 폭이 모자라면 **그냥 잘린다**(wrap·스크롤 없음). 더 보고 싶으면 열 폭을 늘리는 게 이 표의 규칙.
         //   좁은 열이라 그룹 prefix 는 뗀다(색이 이미 그룹을 말한다). 전체 이름은 셀 툴팁에.
-        tags: () => ({
+        groups: () => ({
             onClick: () => h.onNav(row),
             onContextMenu: (ev) => {
                 ev.preventDefault();
-                h.onTagCtx({ point, label: `${name} · ${row.date.slice(5)} ${row.time.slice(0, 5)}`, x: ev.clientX, y: ev.clientY });
+                h.onGroupCtx({ point, label: `${name} · ${row.date.slice(5)} ${row.time.slice(0, 5)}`, x: ev.clientX, y: ev.clientY });
             },
             style: { cursor: "pointer", overflow: "hidden" },
-            title: `${tagLabel || "태그 없음"} — 우클릭 = 태그 입력`,
-            body: <TagChips tags={[...tags]} short style={{ justifyContent: "center" }} />,
+            title: `${groupLabel || "그룹 없음"} — 우클릭 = 그룹 입력`,
+            body: <GroupChips groups={[...groups]} short style={{ justifyContent: "center" }} />,
         }),
         coverage: () => ({
             style: { color: row.coverage === axisCount ? STRONG : "var(--text-secondary)" },
@@ -182,11 +182,11 @@ function SheetRowViewImpl({
 
 /**
  * memo — 호버·포커스가 바뀌면 그 행(들)만 리렌더되게. 배열/함수 props 는 얕은 비교가 안 되므로:
- * 핸들러 묶음(h)·레이아웃(leftOf·widthOf)·cols 는 패널이 참조를 고정하고, tags 는 tagLabel 문자열로 대신 비교.
+ * 핸들러 묶음(h)·레이아웃(leftOf·widthOf)·cols 는 패널이 참조를 고정하고, groups 는 groupLabel 문자열로 대신 비교.
  */
 export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.row === b.row && a.cols === b.cols && a.leftOf === b.leftOf && a.lastFrozenKey === b.lastFrozenKey &&
-    a.widthOf === b.widthOf && a.name === b.name && a.tagLabel === b.tagLabel && a.axisCount === b.axisCount &&
+    a.widthOf === b.widthOf && a.name === b.name && a.groupLabel === b.groupLabel && a.axisCount === b.axisCount &&
     a.posBar === b.posBar && a.sortAxisId === b.sortAxisId && a.focus === b.focus && a.hover === b.hover &&
     a.pinned === b.pinned && a.dim === b.dim && a.exc === b.exc &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,

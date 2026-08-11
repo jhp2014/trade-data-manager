@@ -368,16 +368,16 @@ describe("segmentIndexOf — 앵커 피벗이 나누는 구간", () => {
 });
 
 describe("pickAmountLabels — 선×세그먼트당 하나 → 선×x 격자(경쟁은 종목 안에서만)", () => {
-    const c = (group: string, seg: number, x: number, value: number, tag: string) => ({ group, seg, x, value, tag });
+    const c = (group: string, seg: number, x: number, value: number, mark: string) => ({ group, seg, x, value, mark });
 
     it("한 선이 한 세그먼트에서 여러 개를 못 낸다 — 급등 구간이 그 선의 라벨을 독차지하던 문제", () => {
         const got = pickAmountLabels([c("A", 0, 0, 10, "a1"), c("A", 0, 500, 99, "a2"), c("A", 0, 1000, 5, "a3")], 52);
-        expect(got.map((g) => g.tag)).toEqual(["a2"]);
+        expect(got.map((g) => g.mark)).toEqual(["a2"]);
     });
 
     it("세그먼트가 다르면 같은 선도 각각 하나씩", () => {
         const got = pickAmountLabels([c("A", 0, 0, 10, "a0"), c("A", 1, 500, 5, "a1")], 52);
-        expect(got.map((g) => g.tag).sort()).toEqual(["a0", "a1"]);
+        expect(got.map((g) => g.mark).sort()).toEqual(["a0", "a1"]);
     });
 
     it("**다른 종목끼리는 안 겨룬다** — 7종목이면 한 세그먼트에 7개가 다 남아야 한다(사용자 확정)", () => {
@@ -389,7 +389,7 @@ describe("pickAmountLabels — 선×세그먼트당 하나 → 선×x 격자(경
     it("축소로 세그먼트가 붙으면 **그 선의** 이웃 세그먼트끼리 합쳐진다", () => {
         const near = [c("A", 0, 0, 10, "a0"), c("A", 1, 30, 3, "a1")];
         const far = near.map((n) => ({ ...n, x: n.x * 5 }));
-        expect(pickAmountLabels(near, 52).map((g) => g.tag)).toEqual(["a0"]); // 큰 쪽이 대표
+        expect(pickAmountLabels(near, 52).map((g) => g.mark)).toEqual(["a0"]); // 큰 쪽이 대표
         expect(pickAmountLabels(far, 52)).toHaveLength(2); // 확대하면 둘 다
     });
 
@@ -399,7 +399,7 @@ describe("pickAmountLabels — 선×세그먼트당 하나 → 선×x 격자(경
 });
 
 describe("spreadByY — 겹치는 라벨은 탈락이 아니라 이동", () => {
-    const p = (x: number, y: number, tag: string) => ({ x, y, tag });
+    const p = (x: number, y: number, group: string) => ({ x, y, group });
 
     it("멀리 떨어져 있으면 제자리 그대로", () => {
         const got = spreadByY([p(0, 0, "a"), p(0, 100, "b")], 52, 12);
@@ -428,9 +428,9 @@ describe("spreadByY — 겹치는 라벨은 탈락이 아니라 이동", () => {
 
     it("순서를 안 뒤집는다 — 위에 있던 게 아래로 가면 지시선이 엇갈린다", () => {
         const got = spreadByY([p(0, 54, "c"), p(0, 50, "a"), p(0, 52, "b")], 52, 12);
-        const byTag = new Map(got.map((g) => [g.tag, g.labelY]));
-        expect(byTag.get("a")!).toBeLessThan(byTag.get("b")!);
-        expect(byTag.get("b")!).toBeLessThan(byTag.get("c")!);
+        const byGroup = new Map(got.map((g) => [g.group, g.labelY]));
+        expect(byGroup.get("a")!).toBeLessThan(byGroup.get("b")!);
+        expect(byGroup.get("b")!).toBeLessThan(byGroup.get("c")!);
     });
 });
 

@@ -14,7 +14,7 @@ import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { Sep } from "../components/ControlChrome.js";
 import { AnchoredPopover } from "../ui/Dialog.js";
 import { SavedFilterControls } from "./rank/SavedFilterControls.js";
-import { TagFilterLine, AddTagFilterButton } from "./rank/TagFilterLine.js";
+import { GroupFilterLine, AddGroupFilterButton } from "./rank/GroupFilterLine.js";
 import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { FilterRail } from "./rank/FilterRail.js";
@@ -191,8 +191,8 @@ export function RankPanel(): JSX.Element {
                     </span>
                 </div>
 
-                <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} computedMeta={computedMeta} extra={<AddTagFilterButton />} />
-                <TagFilterLine />
+                <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} computedMeta={computedMeta} extra={<AddGroupFilterButton />} />
+                <GroupFilterLine />
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
                     {axesLoading && <div style={muted}>불러오는 중…</div>}

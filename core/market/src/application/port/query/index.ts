@@ -1,6 +1,6 @@
 // 조회(앱 대면) 포트 — in/out 구분 없음(읽기 1:1 passthrough). apps/api(HTTP)가 가장자리.
 //   driven read (persistence 구현): candle·minute·rawDaily·marketCap·master·news reader + universe·theme provider
-//   큐레이션 (앱 대면, Reader/Store 분리): dailyComment · chartAnchor · reviewPoint · tag · rank
+//   큐레이션 (앱 대면, Reader/Store 분리): dailyComment · chartAnchor · reviewPoint · group · rank
 //   큐레이션 (계속): map(유사도 맵 — 축 없는 평면, Reader/Store 분리)
 //   큐레이션 파생 (읽기만): candidateDay(후보 하루 = 분석의 모수 — 위 큐레이션 편집물들의 합집합)
 //   조립 유스케이스 (core 서비스가 구현): newsSearcher(멀티채널 fan-out)
@@ -19,7 +19,7 @@ export * from "./newsChannelSearch.js";
 export * from "./dailyComment.js";
 export * from "./chartAnchor.js";
 export * from "./reviewPoint.js";
-export * from "./tag.js";
+export * from "./group.js";
 export * from "./rank.js";
 export * from "./candidateDay.js";
 export * from "./map.js";

@@ -8,7 +8,7 @@
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
 import type { AxisValueRange, DateRange, RankBand, TimeRange } from "./rankFilterSlice.js";
-import { parseTagExpr, type TagExpr } from "../panels/rank/tagFilter.js";
+import { parseGroupExpr, type GroupExpr } from "../panels/rank/groupFilter.js";
 import { loadJson, saveJson } from "./persist.js";
 
 const AXIS_ORDER_KEY = "wb.rankAxisOrder";
@@ -29,17 +29,17 @@ export interface SavedFilter {
     axisValueRanges?: Record<string, AxisValueRange[]>;
     dateRanges?: DateRange[];
     timeRanges?: TimeRange[];
-    tagExpr?: TagExpr;
+    groupExpr?: GroupExpr;
 }
 
-/** 불러올 때 적용할 값 — 없는 차원은 빈 값(무제한)으로 채운다. tagExpr 은 형태 검증까지. */
-export function savedFilterSnapshot(f: SavedFilter): { bands: Record<string, RankBand>; axisValueRanges: Record<string, AxisValueRange[]>; dateRanges: DateRange[]; timeRanges: TimeRange[]; tagExpr: TagExpr } {
+/** 불러올 때 적용할 값 — 없는 차원은 빈 값(무제한)으로 채운다. groupExpr 은 형태 검증까지. */
+export function savedFilterSnapshot(f: SavedFilter): { bands: Record<string, RankBand>; axisValueRanges: Record<string, AxisValueRange[]>; dateRanges: DateRange[]; timeRanges: TimeRange[]; groupExpr: GroupExpr } {
     return {
         bands: f.bands ?? {},
         axisValueRanges: f.axisValueRanges ?? {},
         dateRanges: Array.isArray(f.dateRanges) ? f.dateRanges : [],
         timeRanges: Array.isArray(f.timeRanges) ? f.timeRanges : [],
-        tagExpr: parseTagExpr(f.tagExpr) ?? { groups: [] },
+        groupExpr: parseGroupExpr(f.groupExpr) ?? { groups: [] },
     };
 }
 

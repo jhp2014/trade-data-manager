@@ -11,10 +11,10 @@ import { useBaselineLines, useDailySkeleton, useIgnoreCandles, useMinuteSkeleton
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { useStockName } from "../lib/useStockName.js";
-import { useTags } from "../lib/useTags.js";
+import { useGroups } from "../lib/useGroups.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
-import { TagMenu } from "../chart/TagMenu.js";
-import { TagChips } from "../components/TagChips.js";
+import { GroupMenu } from "../chart/GroupMenu.js";
+import { GroupChips } from "../components/GroupChips.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import {
     AmountMarkerToggle,
@@ -36,8 +36,8 @@ import { SKELETON } from "../styles/palette.js";
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
 // 차트 앵커 편집은 chartAnchorHooks(param 하나 = 훅 하나), 타점 조회는 useReviewPointData — 여긴 뷰 파생+렌더.
 // 선 = 기준선 후보(차트 소유) — 타점 선택 없이 긋고 지운다. 확정 기준선(가격 최저)은 하늘색으로 표시.
-// 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~4=태그 프리셋(전역 useChartHotkeys).
-// 태그 입력은 타점 ▼ **우클릭**(TagMenu) — 타점 저장과 분리된 동작이라 키·클릭도 갈라 둔다.
+// 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~4=그룹 프리셋(전역 useChartHotkeys).
+// 그룹 입력은 타점 ▼ **우클릭**(GroupMenu) — 타점 저장과 분리된 동작이라 키·클릭도 갈라 둔다.
 export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, anchorDate, viewDate: searchDate, time, setTime, setSearchDate } = usePlaneBus("replay");
     const mode = useWorkbench((s) => s.chartPriceMode);
@@ -63,8 +63,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
-    const { tagsOf } = useTags();
-    const [tagMenu, setTagMenu] = useState<{ time: string; x: number; y: number } | null>(null);
+    const { groupsOf } = useGroups();
+    const [groupMenu, setGroupMenu] = useState<{ time: string; x: number; y: number } | null>(null);
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이.
     const viewDate = pinMinute ? anchorDate : searchDate;
     const drifted = viewDate !== anchorDate;
@@ -117,9 +117,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 onToggleControls={() => toggleControls(panelId)}
                 badges={
                     focusedPoint ? (
-                        // 현재 타점의 태그(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
+                        // 현재 타점의 그룹(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
                         // 옛 앵커 칩은 제거 — 앵커가 차트 소유가 되면서 선이 상시 그려지므로 별도 단서가 필요 없다.
-                        <TagChips tags={tagsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} style={{ maxWidth: 180, flexShrink: 1 }} />
+                        <GroupChips groups={groupsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} style={{ maxWidth: 180, flexShrink: 1 }} />
                     ) : null
                 }
             >
@@ -197,8 +197,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onRightClick={(a, at) => setCandleMenu({ ...at, candle: { date: a.date, time: a.time } })}
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
-                                    onTagPoint={(t, x, y) => setTagMenu({ time: t, x, y })}
-                                    tagsOfTime={(t) => tagsOf({ stockCode: code, date: viewDate, time: t })}
+                                    onGroupPoint={(t, x, y) => setGroupMenu({ time: t, x, y })}
+                                    groupsOfTime={(t) => groupsOf({ stockCode: code, date: viewDate, time: t })}
                                     skeleton={minuteSkeleton.points}
                                     showSkeleton={showSkeleton}
                                 />
@@ -208,12 +208,12 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 )}
             </div>
 
-            {tagMenu && (
-                <TagMenu
-                    anchor={{ x: tagMenu.x, y: tagMenu.y }}
-                    point={{ stockCode: code, date: viewDate, time: tagMenu.time }}
-                    label={`${name ?? code} · ${tagMenu.time.slice(0, 5)}`}
-                    onClose={() => setTagMenu(null)}
+            {groupMenu && (
+                <GroupMenu
+                    anchor={{ x: groupMenu.x, y: groupMenu.y }}
+                    point={{ stockCode: code, date: viewDate, time: groupMenu.time }}
+                    label={`${name ?? code} · ${groupMenu.time.slice(0, 5)}`}
+                    onClose={() => setGroupMenu(null)}
                 />
             )}
 

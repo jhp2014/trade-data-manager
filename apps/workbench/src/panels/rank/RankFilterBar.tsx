@@ -3,7 +3,7 @@ import { useDismiss } from "../../ui/useDismiss.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { FILTER } from "../../styles/palette.js";
 import type { DateRange, TimeRange } from "../../store/rankFilterSlice.js";
-import { isTagExprEmpty } from "./tagFilter.js";
+import { isGroupExprEmpty } from "./groupFilter.js";
 import { activeValueAxisIds, resolveBound, type AxisValues } from "./axisValueFilter.js";
 import { formatAxisValue } from "../../lib/computedAxis.js";
 import type { ComputedAxisMeta } from "../../lib/useRankAxes.js";
@@ -11,7 +11,7 @@ import type { ComputedAxisMeta } from "../../lib/useRankAxes.js";
 // 통합 필터 바 — 배치·시트 공용. 차원(축 밴드·날짜·시간) 칩을 한 줄에서 관리.
 //  · 칩끼리 AND, 한 칩 안 구간끼리 OR. 축 밴드는 배치 보드에서(레인/셀 우클릭), 날짜/시간은 여기 칩 편집 또는 레일 드래그.
 //  · 칩 본문 클릭 = 값 편집(세련된 텍스트 입력, 여러 구간), 칩 ✕ = 그 차원 해제. + 날짜/시간 = 전체 범위 구간 추가.
-//  · 태그 차원은 내부가 DNF 라 칩 하나로 접으면 편집이 안 된다 → 진입 버튼(extra)만 여기 두고 식은 아래 전용 줄에서.
+//  · 그룹 차원은 내부가 DNF 라 칩 하나로 접으면 편집이 안 된다 → 진입 버튼(extra)만 여기 두고 식은 아래 전용 줄에서.
 const AXIS = FILTER;
 const VALUE = "#14b8a6"; // 계산 축 값 구간 — 판단 축 밴드(빨강)와 한눈에 갈리게
 const DATE = "#0ea5e9";
@@ -61,7 +61,7 @@ export function RankFilterBar({ axes, dateBounds, computedValues, computedMeta, 
     const setDateRanges = useWorkbench((s) => s.setDateRanges);
     const timeRanges = useWorkbench((s) => s.timeRanges);
     const setTimeRanges = useWorkbench((s) => s.setTimeRanges);
-    const tagExpr = useWorkbench((s) => s.tagExpr);
+    const groupExpr = useWorkbench((s) => s.groupExpr);
 
     const bandAxes = axes.filter((a) => rankBands[a.id]);
     // 계산 축 값 구간 — 편집은 레일에서 하므로 칩은 "무엇이 걸렸나 + 해제"만 한다(밴드 칩과 같은 역할).
@@ -78,8 +78,8 @@ export function RankFilterBar({ axes, dateBounds, computedValues, computedMeta, 
         const parts = (axisValueRanges[axisId] ?? []).map((r) => `${label(r.from, "…")}~${label(r.to, "…")}`);
         return summarize(parts);
     };
-    // 태그만 걸려 있어도 "전체해제"가 보여야 한다(clearRankFilter 가 태그까지 지운다).
-    const has = bandAxes.length > 0 || valueAxes.length > 0 || dateRanges.length > 0 || timeRanges.length > 0 || !isTagExprEmpty(tagExpr);
+    // 그룹만 걸려 있어도 "전체해제"가 보여야 한다(clearRankFilter 가 그룹까지 지운다).
+    const has = bandAxes.length > 0 || valueAxes.length > 0 || dateRanges.length > 0 || timeRanges.length > 0 || !isGroupExprEmpty(groupExpr);
     const dateLabels = dateRanges.map((r) => `${dTo(r.from)}~${dTo(r.to)}`);
     const timeLabels = timeRanges.map((r) => `${r.from}~${r.to}`);
     const addDate = (): void => { if (dateBounds) setDateRanges([...dateRanges, { from: dateBounds.min, to: dateBounds.max }]); };

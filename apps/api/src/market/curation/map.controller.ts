@@ -72,7 +72,7 @@ function assertId(id: string | undefined, field = "id"): string {
     return id;
 }
 
-/** 맵 이름 — 앞뒤 공백은 유니크 제약을 우회하는 사고("일봉 "≠"일봉")라 여기서 깎는다(태그 선례). */
+/** 맵 이름 — 앞뒤 공백은 유니크 제약을 우회하는 사고("일봉 "≠"일봉")라 여기서 깎는다(그룹 선례). */
 function assertName(name: string | undefined): string {
     const n = name?.trim();
     if (!n) throw new BadRequestException("name 필수");

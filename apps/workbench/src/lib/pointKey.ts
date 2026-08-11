@@ -39,10 +39,10 @@ export function parsePointKey(key: PointKey): PointRef | null {
 /** 두 타점이 같은가(키 비교). 필드 3개를 손으로 &&로 잇는 자리를 대체. */
 export const samePoint = (a: PointRef, b: PointRef): boolean => pointKey(a) === pointKey(b);
 
-// ── 차트 키(`stockCode|date`) — 골격·차트 태그·기준선의 소유 단위. 타점 키와 같은 사정:
+// ── 차트 키(`stockCode|date`) — 골격·차트 그룹·기준선의 소유 단위. 타점 키와 같은 사정:
 // 형식의 정의는 도메인(chartKeyOf)이고, 손조립이 흩어지면 구분자 계약이 여러 곳이 된다.
 
-/** 차트(종목,날짜)를 가리키는 값. 골격 피드 항목·차트 태그 부착과 구조 통용. */
+/** 차트(종목,날짜)를 가리키는 값. 골격 피드 항목·차트 그룹 부착과 구조 통용. */
 export interface ChartRef {
     stockCode: string;
     date: string; // YYYY-MM-DD

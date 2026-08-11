@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { COL_META, colKey, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "../sheetColumns.js";
 
 const ax = (id: string): Col => ({ key: "axis", axisId: id, name: `축${id}` });
-const BASE: Col[] = [{ key: "name" }, { key: "date" }, { key: "time" }, { key: "tags" }, ax("1"), ax("2"), { key: "coverage" }];
+const BASE: Col[] = [{ key: "name" }, { key: "date" }, { key: "time" }, { key: "groups" }, ax("1"), ax("2"), { key: "coverage" }];
 const AXIS_MIN = 56;
 
 const layout = (over: Partial<Parameters<typeof layoutColumns>[0]> = {}) =>
@@ -11,12 +11,12 @@ const layout = (over: Partial<Parameters<typeof layoutColumns>[0]> = {}) =>
 describe("layoutColumns — 순서", () => {
     it("숨긴 열은 빠지고, 종목은 숨겨도 남는다(붙박이)", () => {
         const l = layout({ hiddenCols: ["date", "name", "ax:2"] });
-        expect(l.displayCols.map(colKey)).toEqual(["name", "time", "tags", "ax:1", "coverage"]);
+        expect(l.displayCols.map(colKey)).toEqual(["name", "time", "groups", "ax:1", "coverage"]);
     });
 
     it("고정 스택 순서 = frozenCols **배열 순서**(기본 열 순서가 아니라)", () => {
         const l = layout({ frozenCols: ["ax:1", "time"] });
-        expect(l.displayCols.map(colKey)).toEqual(["name", "ax:1", "time", "date", "tags", "ax:2", "coverage"]);
+        expect(l.displayCols.map(colKey)).toEqual(["name", "ax:1", "time", "date", "groups", "ax:2", "coverage"]);
         expect(l.lastFrozenKey).toBe("time");
     });
 
@@ -29,7 +29,7 @@ describe("layoutColumns — 순서", () => {
 
     it("frozenCols 의 유령 키(숨겨졌거나 사라진 열)는 조용히 무시", () => {
         const l = layout({ frozenCols: ["ax:9", "time"] });
-        expect(l.displayCols.map(colKey)).toEqual(["name", "time", "date", "tags", "ax:1", "ax:2", "coverage"]);
+        expect(l.displayCols.map(colKey)).toEqual(["name", "time", "date", "groups", "ax:1", "ax:2", "coverage"]);
     });
 });
 
@@ -38,7 +38,7 @@ describe("layoutColumns — 폭", () => {
         expect(layout({ containerW: 0 }).widthOf(ax("1"))).toBe(AXIS_MIN);
 
         const wide = layout({ containerW: 1000 });
-        const others = COL_META.name.width + COL_META.date.width + COL_META.time.width + COL_META.tags.width + COL_META.coverage.width;
+        const others = COL_META.name.width + COL_META.date.width + COL_META.time.width + COL_META.groups.width + COL_META.coverage.width;
         expect(wide.widthOf(ax("1"))).toBe(Math.floor((1000 - others) / 2));
         expect(wide.widthOf(ax("1"))).toBe(wide.widthOf(ax("2")));
     });
@@ -46,7 +46,7 @@ describe("layoutColumns — 폭", () => {
     it("수동 폭을 준 열은 그 값 그대로 — 그 열은 분배에서 빠지고 나머지 축이 잔여를 갖는다", () => {
         const l = layout({ containerW: 1000, colWidths: { "ax:1": 200 } });
         expect(l.widthOf(ax("1"))).toBe(200);
-        const others = COL_META.name.width + COL_META.date.width + COL_META.time.width + COL_META.tags.width + COL_META.coverage.width;
+        const others = COL_META.name.width + COL_META.date.width + COL_META.time.width + COL_META.groups.width + COL_META.coverage.width;
         expect(l.widthOf(ax("2"))).toBe(1000 - others - 200); // 남은 하나가 잔여 전부
     });
 

@@ -19,12 +19,12 @@ import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
-import { useTags } from "../lib/useTags.js";
+import { useGroups } from "../lib/useGroups.js";
 import { pointKeyOf, parsePointKey, chartKeyOf, type PointRef } from "../lib/pointKey.js";
-import { BulkTagMenu } from "./skeleton/ChartTagMenu.js";
+import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
-import { ACTIVE, HOVER, PRICE_LINE, seriesColor, tagColor } from "../styles/palette.js";
+import { ACTIVE, HOVER, PRICE_LINE, seriesColor, groupColor } from "../styles/palette.js";
 import { fmtEok } from "../lib/format.js";
 
 // 골격 겹쳐 그리기 — 차트를 골격으로 축약해 **한 화면에서 서로 비교**하는 주 작업면.
@@ -218,11 +218,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const skeletonSelection = useWorkbench((s) => s.skeletonSelection);
     const onlyCharts = !isDaily && onlySelected && skeletonSelection.size > 0 ? skeletonSelection : null;
 
-    // 태그 한 벌 — 태그 메뉴·발끝 표기(여기) + 차트 태그 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
-    const tagsView = useTags();
+    // 그룹 한 벌 — 그룹 메뉴·발끝 표기(여기) + 차트 그룹 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
+    const groupsView = useGroups();
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
     const { feedLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf } =
-        useOverlayData(isDaily, anchor, onlyCharts, tagsView);
+        useOverlayData(isDaily, anchor, onlyCharts, groupsView);
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
     //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.
@@ -290,7 +290,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     //    분봉 패널이 "선택만 보기"로 받는다. 키가 차트키라 두 패널이 같은 집합을 그대로 쓴다.
     const selectedKeys = skeletonSelection;
     const setSelectedKeys = useWorkbench((s) => s.setSkeletonSelection);
-    // 타점 선택 — 차트 선택과 **별개 집합**(그룹핑 대상이 다르다: 차트 태그 vs 타점 태그).
+    // 타점 선택 — 차트 선택과 **별개 집합**(그룹핑 대상이 다르다: 차트 그룹 vs 타점 그룹).
     // 분봉 뷰는 선=타점이라 선 자체의 선택 집합이다.
     const [selectedPks, setSelectedPks] = useState<ReadonlySet<string>>(() => new Set());
     const [hovered, setHovered] = useState<string | null>(null);
@@ -860,35 +860,35 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return clusterLabels(anchors, LABEL_CELL.w, LABEL_CELL.h);
     }, [showLabels, scales, lines, labelAnchorMode, pinnedKeys]);
 
-    // ── 태그 메뉴 — 라벨/마커 우클릭(단일) / 헤더 태그 버튼(선택 일괄). 그룹핑의 입력 지점.
-    // 어느 정션에 쓰느냐는 여기 규약이다: 차트 라벨 → 차트 태그 / 타점 마커 → 타점 태그. DB 사전은 하나.
-    type TagMenuState =
+    // ── 그룹 메뉴 — 라벨/마커 우클릭(단일) / 헤더 그룹 버튼(선택 일괄). 그룹핑의 입력 지점.
+    // 어느 정션에 쓰느냐는 여기 규약이다: 차트 라벨 → 차트 그룹 / 타점 마커 → 타점 그룹. DB 사전은 하나.
+    type GroupMenuState =
         | { kind: "chart"; x: number; y: number; charts: { stockCode: string; date: string }[]; label: string }
         | { kind: "point"; x: number; y: number; points: PointRef[]; label: string };
-    const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null);
-    /** 선 라벨 우클릭 — 이 선의 정션으로 간다: 타점 단위 선은 타점 태그, 차트 단위 선은 차트 태그. */
-    const openTagMenuFor = useCallback((s: Line, ev: { clientX: number; clientY: number; preventDefault: () => void }): void => {
+    const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
+    /** 선 라벨 우클릭 — 이 선의 정션으로 간다: 타점 단위 선은 타점 그룹, 차트 단위 선은 차트 그룹. */
+    const openGroupMenuFor = useCallback((s: Line, ev: { clientX: number; clientY: number; preventDefault: () => void }): void => {
         ev.preventDefault();
         if (s.kind === "point") {
-            setTagMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points: [{ stockCode: s.stockCode, date: s.date, time: s.time }], label: `${nameOf(s.stockCode)} ${s.time.slice(0, 5)}` });
+            setGroupMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points: [{ stockCode: s.stockCode, date: s.date, time: s.time }], label: `${nameOf(s.stockCode)} ${s.time.slice(0, 5)}` });
             return;
         }
-        setTagMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${fmtDate(s.date)}` });
+        setGroupMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${fmtDate(s.date)}` });
     }, [nameOf]);
     // 선택 중 **이 패널에 실제로 있는** 차트 — 다른 골격 패널(일봉↔분봉)에서 만든 선택엔 여기 없는
-    // 차트가 섞일 수 있다. 헤더 버튼 숫자와 메뉴 대상이 같은 목록을 봐야 "차트 3 태그"가 2개만 여는 일이 없다.
+    // 차트가 섞일 수 있다. 헤더 버튼 숫자와 메뉴 대상이 같은 목록을 봐야 "차트 3 그룹"가 2개만 여는 일이 없다.
     const selectedCharts = useMemo(
         () => (isPointUnit ? [] : [...effSelected].map((k) => byKey.get(k)).filter((s): s is Line => !!s)),
         [isPointUnit, effSelected, byKey],
     );
-    const openTagMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
+    const openGroupMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
         const charts = selectedCharts.map((s) => ({ stockCode: s.stockCode, date: s.date }));
         if (charts.length === 0) return;
-        setTagMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${fmtDate(charts[0].date)}` : `선택 ${charts.length}개` });
+        setGroupMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${fmtDate(charts[0].date)}` : `선택 ${charts.length}개` });
     }, [selectedCharts, nameOf]);
-    const openPointTagMenu = useCallback((points: PointRef[], label: string, ev: { clientX: number; clientY: number; preventDefault?: () => void }): void => {
+    const openPointGroupMenu = useCallback((points: PointRef[], label: string, ev: { clientX: number; clientY: number; preventDefault?: () => void }): void => {
         ev.preventDefault?.();
-        if (points.length > 0) setTagMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points, label });
+        if (points.length > 0) setGroupMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points, label });
     }, []);
 
     // 목록 순서 = 라벨 지점의 % 내림차순 — 그림에서 위에 있는 선이 목록에서도 위라 눈이 안 헤맨다.
@@ -1029,19 +1029,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 </span>
                 {/* 차트 선택 손잡이는 차트 단위 뷰에서만 — 타점 단위 뷰의 문법은 아래 타점 버튼이다. */}
                 {selectedCharts.length > 0 && (
-                    <button onClick={(e) => openTagMenuForSelection(e)} title="선택된 차트들에 태그 붙이기/떼기 — 그룹은 태그다" style={miniBtn}>
-                        차트 {selectedCharts.length} 태그
+                    <button onClick={(e) => openGroupMenuForSelection(e)} title="선택된 차트들에 그룹 붙이기/떼기 — 그룹은 그룹다" style={miniBtn}>
+                        차트 {selectedCharts.length} 그룹
                     </button>
                 )}
                 {!isPointUnit && selectedKeys.size > 0 && (
                     <button onClick={() => setSelectedKeys(new Set())} title="차트 선택 해제" style={miniBtn}>✕</button>
                 )}
                 {selectedPks.size > 0 && (
-                    <button onClick={(e) => openPointTagMenu(
+                    <button onClick={(e) => openPointGroupMenu(
                         [...selectedPks].map((pk) => parsePointKey(pk)).filter((p): p is PointRef => p !== null),
                         `타점 ${selectedPks.size}개`, e)}
-                        title="선택된 타점들에 태그 붙이기/떼기(타점 태그)" style={miniBtn}>
-                        타점 {selectedPks.size} 태그
+                        title="선택된 타점들에 그룹 붙이기/떼기(타점 그룹)" style={miniBtn}>
+                        타점 {selectedPks.size} 그룹
                     </button>
                 )}
                 {selectedPks.size > 0 && (
@@ -1545,9 +1545,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             if (!s) return null;
                             const pl = labelPlacement(left);
                             return (
-                                <button key={`c${c.x}|${c.y}`} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
+                                <button key={`c${c.x}|${c.y}`} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openGroupMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
-                                    title={`${nameOf(s.stockCode)} ${s.date} — ${themeMode ? "올리면 이 골격선(테마는 잠시 접힌다) · " : ""}클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=태그`}
+                                    title={`${nameOf(s.stockCode)} ${s.date} — ${themeMode ? "올리면 이 골격선(테마는 잠시 접힌다) · " : ""}클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=그룹`}
                                     style={{ ...chip, ...labelBg, ...pl.style, top, ...faded }}>
                                     {labelOf(s, pl.dotFirst)}
                                 </button>
@@ -1562,11 +1562,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             const { v, color } = visualOf(key);
                             const pl = labelPlacement(scales.x(p.x) - box.left);
                             return (
-                                <button key={key} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openTagMenuFor(s, e)}
+                                <button key={key} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openGroupMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
                                     title={`${nameOf(s.stockCode)} ${s.date} — ${(s.kind === "point" || isDaily) && effSelected.has(s.key) && effSelected.size === 1
                                         ? `다시 클릭=${candleCodes.has(s.stockCode) ? "캔들 끄기" : "캔들 켜기"} · `
-                                        : "클릭=선택·이동 · "}Ctrl+클릭=선택 해제 · 우클릭=태그`}
+                                        : "클릭=선택·이동 · "}Ctrl+클릭=선택 해제 · 우클릭=그룹`}
                                     style={{
                                         ...chip, ...labelBg, ...pl.style, top: scales.y(p.y) - box.top,
                                         color, fontWeight: 700,
@@ -1646,36 +1646,36 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 </AnchoredPopover>
             )}
 
-            {/* 태그 메뉴 — 같은 창, 다른 정션: 차트 라벨은 chart_tags, 타점 마커는 review_point_tags. */}
-            {tagMenu?.kind === "chart" && (
-                <BulkTagMenu anchor={tagMenu} targets={tagMenu.charts} label={tagMenu.label} onClose={() => setTagMenu(null)}
-                    hasTag={(c, id) => tagsView.chartTagIdsOf(c).includes(id)}
-                    toggle={(c, id, on) => tagsView.toggleChart(c, id, on)} />
+            {/* 그룹 메뉴 — 같은 창, 다른 정션: 차트 라벨은 chart_tags, 타점 마커는 review_point_tags. */}
+            {groupMenu?.kind === "chart" && (
+                <BulkGroupMenu anchor={groupMenu} targets={groupMenu.charts} label={groupMenu.label} onClose={() => setGroupMenu(null)}
+                    hasGroup={(c, id) => groupsView.chartGroupIdsOf(c).includes(id)}
+                    toggle={(c, id, on) => groupsView.toggleChart(c, id, on)} />
             )}
-            {tagMenu?.kind === "point" && (
-                <BulkTagMenu anchor={tagMenu} targets={tagMenu.points} label={tagMenu.label} onClose={() => setTagMenu(null)}
-                    hasTag={(p, id) => tagsView.has(p, id)}
-                    toggle={(p, id, on) => tagsView.toggle(p, id, on)} />
+            {groupMenu?.kind === "point" && (
+                <BulkGroupMenu anchor={groupMenu} targets={groupMenu.points} label={groupMenu.label} onClose={() => setGroupMenu(null)}
+                    hasGroup={(p, id) => groupsView.has(p, id)}
+                    toggle={(p, id, on) => groupsView.toggle(p, id, on)} />
             )}
 
             <div style={footer}>
-                {/* 조사 중인 선의 태그 — 그룹 소속이 발끝에서 바로 읽힌다(따로 열어보지 않게).
-                    타점 단위 선은 타점 태그(차트 태그 상속 포함), 차트 단위 선은 차트 태그. */}
+                {/* 조사 중인 선의 그룹 — 그룹 소속이 발끝에서 바로 읽힌다(따로 열어보지 않게).
+                    타점 단위 선은 타점 그룹(차트 그룹 상속 포함), 차트 단위 선은 차트 그룹. */}
                 {(() => {
                     const s = inspectKey ? byKey.get(inspectKey) : null;
-                    const ids = s ? (s.kind === "point" ? tagsView.tagIdsOf({ stockCode: s.stockCode, date: s.date, time: s.time }) : tagsView.chartTagIdsOf(s)) : [];
+                    const ids = s ? (s.kind === "point" ? groupsView.groupIdsOf({ stockCode: s.stockCode, date: s.date, time: s.time }) : groupsView.chartGroupIdsOf(s)) : [];
                     if (!s || ids.length === 0) return null;
                     return (
                         <span style={{ marginRight: 8 }}>
                             {ids.map((id) => {
-                                const name = tagsView.tagById.get(id)?.name;
-                                return name ? <span key={id} style={{ color: tagColor(name), fontWeight: 600, marginRight: 5 }}>{name}</span> : null;
+                                const name = groupsView.groupById.get(id)?.name;
+                                return name ? <span key={id} style={{ color: groupColor(name), fontWeight: 600, marginRight: 5 }}>{name}</span> : null;
                             })}
                             ·
                         </span>
                     );
                 })()}
-                {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 태그 · 점 클릭 = 값 붙잡기
+                {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 그룹 · 점 클릭 = 값 붙잡기
                 {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
                 <span style={{ color: "var(--text-tertiary)" }}>
                     {isDaily ? " · 선택된 라벨 재클릭 = 캔들 · 축 더블클릭 = 그 축 원위치" : " · 선 클릭 = 캔들 · T = 테마 · 축 더블클릭 = 그 축 원위치"}

@@ -25,7 +25,7 @@ export class DrizzleCandidateDayRepository implements CandidateDayReader {
                 .selectDistinct({ stockCode: chartAnchors.stockCode, date: chartAnchors.tradeDate, trace: sql<string>`'anchor'` })
                 .from(chartAnchors),
             this.db
-                .selectDistinct({ stockCode: chartTags.stockCode, date: chartTags.tradeDate, trace: sql<string>`'chartTag'` })
+                .selectDistinct({ stockCode: chartTags.stockCode, date: chartTags.tradeDate, trace: sql<string>`'chartGroup'` })
                 .from(chartTags),
             this.db
                 .selectDistinct({ stockCode: reviewPoints.stockCode, date: reviewPoints.tradeDate, trace: sql<string>`'reviewPoint'` })

@@ -19,11 +19,11 @@ const row = (code: string, over: Partial<SheetRow> & { ax?: RankCell | null } = 
     };
 };
 
-const tags: Record<string, string> = {};
+const groups: Record<string, string> = {};
 const excs: Record<string, Partial<Excursion>> = {};
 const ctx: SortCtx = {
     nameOf: (c) => `${c}명`,
-    tagLabel: (r) => tags[r.stockCode] ?? "",
+    groupLabel: (r) => groups[r.stockCode] ?? "",
     excursionOf: (r) => excs[r.stockCode] as Excursion | undefined,
 };
 const codes = (rows: SheetRow[]): string[] => rows.map((r) => r.stockCode);
@@ -160,7 +160,7 @@ describe("그룹 접기", () => {
         expect(byAxis[0].label).toBeNull(); // 헤더 없음
     });
 
-    it("이산 열의 값 없음도 한 그룹(바닥) — 결과/태그.", () => {
+    it("이산 열의 값 없음도 한 그룹(바닥) — 결과/그룹.", () => {
         const rows = [row("A", { outcome: "성공" }), row("B"), row("C", { outcome: "성공" })];
         const chain: SortChain = [{ key: { kind: "outcome" }, dir: 1 }];
         const gs = buildSheetGroups(sortSheetRows(rows, chain, ctx), chain, ctx);

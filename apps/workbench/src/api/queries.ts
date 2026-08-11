@@ -9,7 +9,7 @@ import { fetchChartAnchors, fetchAnchoredCharts } from "./chartAnchors.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchSkeletons } from "./skeletons.js";
-import { fetchTags, fetchTagAttachments, fetchChartTagAttachments } from "./tags.js";
+import { fetchGroups, fetchGroupAttachments, fetchChartGroupAttachments } from "./groups.js";
 import { fetchMapCorpus, fetchCandidateDays } from "./map.js";
 import { fetchStocksMeta } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
@@ -66,17 +66,17 @@ export const computedAxesQuery = () =>
 export const skeletonsQuery = () =>
     queryOptions({ queryKey: ["skeletons"], queryFn: ({ signal }) => fetchSkeletons(signal), staleTime: IMMUTABLE });
 
-// 타점 태그 — 사전 + 전 타점 부착. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).
-// 타점 캐시(review-points·all-points)와 분리 = 태그 토글이 타점 목록 refetch 를 유발하지 않는다.
-export const tagsQuery = () =>
-    queryOptions({ queryKey: ["tags"], queryFn: ({ signal }) => fetchTags(signal), staleTime: IMMUTABLE });
+// 타점 그룹 — 사전 + 전 타점 부착. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).
+// 타점 캐시(review-points·all-points)와 분리 = 그룹 토글이 타점 목록 refetch 를 유발하지 않는다.
+export const groupsQuery = () =>
+    queryOptions({ queryKey: ["groups"], queryFn: ({ signal }) => fetchGroups(signal), staleTime: IMMUTABLE });
 
-export const tagAttachmentsQuery = () =>
-    queryOptions({ queryKey: ["tag-attachments"], queryFn: ({ signal }) => fetchTagAttachments(signal), staleTime: IMMUTABLE });
+export const groupAttachmentsQuery = () =>
+    queryOptions({ queryKey: ["group-attachments"], queryFn: ({ signal }) => fetchGroupAttachments(signal), staleTime: IMMUTABLE });
 
-// 차트 태그 부착(골격 분류) — 타점 부착과 **별도 키**: 차트 태그 토글이 타점 부착 피드를 흔들지 않는다.
-export const chartTagAttachmentsQuery = () =>
-    queryOptions({ queryKey: ["tag-chart-attachments"], queryFn: ({ signal }) => fetchChartTagAttachments(signal), staleTime: IMMUTABLE });
+// 차트 그룹 부착(골격 분류) — 타점 부착과 **별도 키**: 차트 그룹 토글이 타점 부착 피드를 흔들지 않는다.
+export const chartGroupAttachmentsQuery = () =>
+    queryOptions({ queryKey: ["group-chart-attachments"], queryFn: ({ signal }) => fetchChartGroupAttachments(signal), staleTime: IMMUTABLE });
 
 // 유사도 맵 — 맵·무리·자리 한 벌. 줄 피드와 같은 이유로 **키 하나**(형제 자리 찾기가 맵을 가로지른다).
 // ⚠ 좌표 이동은 이 키를 invalidate 하지 않는다(낙관 갱신만) — 드래그를 놓을 때마다 다시 받으면 화면이 튄다.
@@ -84,7 +84,7 @@ export const chartTagAttachmentsQuery = () =>
 export const mapCorpusQuery = () =>
     queryOptions({ queryKey: ["map-corpus"], queryFn: ({ signal }) => fetchMapCorpus(signal), staleTime: IMMUTABLE });
 
-// 후보 하루(분석의 모수) — 맵과 **별도 키**: 앵커·태그·타점 어느 쪽이 늘어도 후보는 변하지만 맵은 그대로다.
+// 후보 하루(분석의 모수) — 맵과 **별도 키**: 앵커·그룹·타점 어느 쪽이 늘어도 후보는 변하지만 맵은 그대로다.
 export const candidateDaysQuery = () =>
     queryOptions({ queryKey: ["candidate-days"], queryFn: ({ signal }) => fetchCandidateDays(signal), staleTime: IMMUTABLE });
 

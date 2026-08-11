@@ -31,7 +31,7 @@ export interface AxisLine {
     placements: PlacedPoint[];
 }
 
-/** 배치 대상 타점 자연키 = review point 삼중키(태그 부착과 같은 식별자 — 정의는 domain/review 한 곳). */
+/** 배치 대상 타점 자연키 = review point 삼중키(그룹 부착과 같은 식별자 — 정의는 domain/review 한 곳). */
 export type RankPoint = ReviewPointKey;
 
 /** 드롭 목표 — 기존 slot 합류(타이) | 두 slot 사이 새 slot(양끝 null 허용). */

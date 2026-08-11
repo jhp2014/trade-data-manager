@@ -22,7 +22,7 @@ export type Col =
     | { key: "date" }
     | { key: "time" }
     | { key: "axis"; axisId: string; name: string }
-    | { key: "tags" }
+    | { key: "groups" }
     | { key: "coverage" }
     | { key: "mfe" | "maePre" | "maePost" | "outcome" };
 export type ColKind = Col["key"];
@@ -46,7 +46,7 @@ export const COL_META: Record<ColKind, ColMeta> = {
     date: { width: DATE_W, label: "날짜", justify: "center", td: td },
     time: { width: TIME_W, label: "시간", justify: "center", td: td },
     axis: { width: AXIS_W, label: "", justify: "center", td: tdCell },
-    tags: { width: TAG_W, label: "태그", justify: "center", td: tdCell },
+    groups: { width: TAG_W, label: "그룹", justify: "center", td: tdCell },
     coverage: { width: COV_W, label: "배치", justify: "center", td: tdCell },
     mfe: { width: NUM_W, label: "MFE", justify: "flex-end", td: tdNum },
     maePre: { width: NUM_W, label: "MAE전", justify: "flex-end", td: tdNum },

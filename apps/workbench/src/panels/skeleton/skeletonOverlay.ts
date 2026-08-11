@@ -24,7 +24,7 @@ export type SkeletonAnchor = "first" | "last";
 export interface NormalizedSkeleton {
     /** 선의 식별키 — 차트 단위면 차트키(`종목|날짜`), 타점 단위(PointSkeleton)면 타점키. */
     key: string;
-    /** 이 선이 속한 차트(`종목|날짜`) — 차트 소유물(기준선·태그)을 찾는 키. 차트 단위에선 key 와 같다. */
+    /** 이 선이 속한 차트(`종목|날짜`) — 차트 소유물(기준선·그룹)을 찾는 키. 차트 단위에선 key 와 같다. */
     chartKey: string;
     stockCode: string;
     date: string;
@@ -50,7 +50,7 @@ export interface ChartSkeleton extends NormalizedSkeleton {
 /**
  * 타점 단위 골격 — 분봉 뷰의 선 하나 = **타점 하나**(사용자 확정: 골격 1 + 타점 3 → 선 3개).
  * 자기 시각의 경로 피벗이 원점(0,0)이다: 과거는 왼쪽 실선, **미래(그 시각 이후)는 오른쪽 점선** —
- * "그 타점에 선 눈"으로 여러 상황을 겹친다. key 는 타점키(pk)라 선택·태그가 타점 문법을 그대로 탄다.
+ * "그 타점에 선 눈"으로 여러 상황을 겹친다. key 는 타점키(pk)라 선택·그룹이 타점 문법을 그대로 탄다.
  * y 공간은 전일 종가 대비 %p 차이(pointSkeletons 주석) — 절대값은 baseRate·baseT 로 복원한다.
  */
 export interface PointSkeleton extends NormalizedSkeleton {
@@ -63,7 +63,7 @@ export interface PointSkeleton extends NormalizedSkeleton {
 
 /**
  * 화면의 선 하나 — kind 로 갈린다. 예전엔 `time?: string` 의 truthiness 로 갈랐는데, 분기가 네 곳
- * (태그 정션·라벨·이동·발끝 태그)이라 새 분기가 하나라도 빠지면 컴파일러가 못 잡았다. 판별 유니온이면 잡는다.
+ * (그룹 정션·라벨·이동·발끝 그룹)이라 새 분기가 하나라도 빠지면 컴파일러가 못 잡았다. 판별 유니온이면 잡는다.
  */
 export type OverlayLine = ChartSkeleton | PointSkeleton;
 

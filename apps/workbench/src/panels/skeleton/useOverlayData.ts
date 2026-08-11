@@ -6,14 +6,14 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../../api/queries.js";
 import { useRankFilterResult } from "../rank/useRankFilterResult.js";
-import { evalTagExpr, isTagExprEmpty } from "../rank/tagFilter.js";
+import { evalGroupExpr, isGroupExprEmpty } from "../rank/groupFilter.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { pointKey, chartKey } from "../../lib/pointKey.js";
 import {
     normalizeSkeleton, pointSkeletons,
     type ChartSkeleton, type OverlayLine, type SkeletonAnchor,
 } from "./skeletonOverlay.js";
-import type { TagsView } from "../../lib/useTags.js";
+import type { GroupsView } from "../../lib/useGroups.js";
 import type { SkeletonWireLevel } from "../../api/skeletons.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 
@@ -36,8 +36,8 @@ export function useOverlayData(
     anchor: SkeletonAnchor,
     /** "선택만 보기" — null 이면 제한 없음. 렌더 쪽 선택 상태에서 내려온다. */
     onlyCharts: ReadonlySet<string> | null,
-    /** 태그 뷰 — 패널과 같은 인스턴스를 받는다(두 번 만들면 인덱스 memo 가 두 벌 돈다). */
-    tagsView: TagsView,
+    /** 그룹 뷰 — 패널과 같은 인스턴스를 받는다(두 번 만들면 인덱스 memo 가 두 벌 돈다). */
+    groupsView: GroupsView,
 ): OverlayData {
     const feedQ = useQuery(skeletonsQuery());
     const pointsQ = useQuery(allPointsQuery());
@@ -75,34 +75,34 @@ export function useOverlayData(
     // ── 차트 단위 필터 — **일봉 패널 전용**: 골격의 모집단이 차트라, 타점 조건과 차트 조건을 갈라서 판정한다.
     //  · 밴드·계산축 값구간·시간대 = **타점 전용 조건**(차트엔 그 값이 없다 — 판정은 필터 훅 r.pointOnlyActive)
     //    → 활성이면 매칭 타점을 가진 차트만(타점 없는 차트는 판정 자체가 안 되므로 빠진다).
-    //  · 날짜·태그 = 차트에서도 판정 가능 → 차트 자체로 평가한다. 태그는 **차트 직접 부착 ∪ 그 타점들의
-    //    태그**(상속 포함)라 어느 쪽에 붙었든 잡힌다. 이 경로가 타점 경로의 상위집합이라 합집합이 필요 없다.
+    //  · 날짜·그룹 = 차트에서도 판정 가능 → 차트 자체로 평가한다. 그룹는 **차트 직접 부착 ∪ 그 타점들의
+    //    그룹**(상속 포함)라 어느 쪽에 붙었든 잡힌다. 이 경로가 타점 경로의 상위집합이라 합집합이 필요 없다.
     // 분봉 패널은 이 우회를 안 탄다(사용자 확정) — 선=타점이라 matchedPks 가 직접 거른다(아래 pointLines).
     const dateRanges = useWorkbench((s) => s.dateRanges);
-    const tagExpr = useWorkbench((s) => s.tagExpr);
+    const groupExpr = useWorkbench((s) => s.groupExpr);
     const pointOnlyActive = r.pointOnlyActive;
 
     const chartAllowed = useMemo<ReadonlySet<string> | null>(() => {
         if (!isDaily) return null;
         if (pointOnlyActive) return new Set(r.points.map((p) => chartKey(p)));
         const dateActive = dateRanges.length > 0;
-        const tagActive = !isTagExprEmpty(tagExpr);
-        if (!dateActive && !tagActive) return null; // 무필터 = 전 차트
+        const groupActive = !isGroupExprEmpty(groupExpr);
+        if (!dateActive && !groupActive) return null; // 무필터 = 전 차트
         const feed = feedQ.data;
         if (!feed) return new Set();
         const out = new Set<string>();
         for (const e of feed.daily) {
             const key = chartKey(e);
             if (dateActive && !dateRanges.some((rg) => e.date >= rg.from && e.date <= rg.to)) continue;
-            if (tagActive) {
-                const ids = new Set(tagsView.chartTagIdsOf(e));
-                for (const p of pointsByChart.get(key) ?? []) for (const id of tagsView.tagIdsOf(p)) ids.add(id);
-                if (!evalTagExpr([...ids], tagExpr)) continue;
+            if (groupActive) {
+                const ids = new Set(groupsView.chartGroupIdsOf(e));
+                for (const p of pointsByChart.get(key) ?? []) for (const id of groupsView.groupIdsOf(p)) ids.add(id);
+                if (!evalGroupExpr([...ids], groupExpr)) continue;
             }
             out.add(key);
         }
         return out;
-    }, [isDaily, pointOnlyActive, r.points, dateRanges, tagExpr, feedQ.data, tagsView, pointsByChart]);
+    }, [isDaily, pointOnlyActive, r.points, dateRanges, groupExpr, feedQ.data, groupsView, pointsByChart]);
 
     // 차트 단위 선(일봉) — 분봉 뷰에선 비어 있다(선의 모집단이 다르다).
     const shapes = useMemo<ChartSkeleton[]>(() => {

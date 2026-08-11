@@ -28,12 +28,12 @@ export interface SettingsSlice {
     themeBoardSettings: ThemeBoardSettings;
     replaySettings: ReplayBoardSettings;
     boardMarket: BoardMarketMap; // 보드별 기준 시장(영속)
-    tagPresets: string[][]; // 태그 프리셋 슬롯(숫자키 1~4) — 슬롯마다 tagId **집합**(이름 아님). 클라 config.
+    groupPresets: string[][]; // 그룹 프리셋 슬롯(숫자키 1~4) — 슬롯마다 groupId **집합**(이름 아님). 클라 config.
     setNewsSearchEngine: (engine: NewsSearchEngine) => void;
     setThemeBoardSettings: (patch: Partial<ThemeBoardSettings>) => void;
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
     setBoardMarket: (board: keyof BoardMarketMap, market: BoardMarket) => void;
-    toggleTagPreset: (index: number, tagId: string) => void; // 그 슬롯의 소속 토글(빼면 슬롯에서 사라짐)
+    toggleGroupPreset: (index: number, groupId: string) => void; // 그 슬롯의 소속 토글(빼면 슬롯에서 사라짐)
 }
 
 // 보드 기준 시장 — localStorage 영속. 기본 UN(통합, 기존 동작).
@@ -48,20 +48,20 @@ function loadBoardMarket(): BoardMarketMap {
     };
 }
 
-// 태그 프리셋 — 숫자키 1~4 슬롯. **슬롯마다 tagId 집합**이라 키 하나로 조합을 한 번에 붙이고 뗀다.
-// tagId 를 담는 이유: 이름을 담으면 태그 이름을 바꾼 순간 슬롯이 죽는다.
+// 그룹 프리셋 — 숫자키 1~4 슬롯. **슬롯마다 groupId 집합**이라 키 하나로 조합을 한 번에 붙이고 뗀다.
+// groupId 를 담는 이유: 이름을 담으면 그룹 이름을 바꾼 순간 슬롯이 죽는다.
 // 개인 키보드 습관이라 서버가 아니라 localStorage(기기별로 달라도 되는 값).
-// 한 태그가 여러 슬롯에 들어가는 건 **허용**한다 — 조합이 다르면 다른 프리셋이고, 겹치는 태그가 있는 게 정상이다
-// (슬롯1={돌파,강} · 슬롯2={돌파,약}). 단일 태그 시절의 "태그당 슬롯 하나" 제약은 여기서 의미를 잃었다.
+// 한 그룹이 여러 슬롯에 들어가는 건 **허용**한다 — 조합이 다르면 다른 프리셋이고, 겹치는 그룹이 있는 게 정상이다
+// (슬롯1={돌파,강} · 슬롯2={돌파,약}). 단일 그룹 시절의 "그룹당 슬롯 하나" 제약은 여기서 의미를 잃었다.
 export const TAG_PRESET_SLOTS = 4;
-const PRESETS_KEY = "wb.tagPresets";
-function loadTagPresets(): string[][] {
+const PRESETS_KEY = "wb.groupPresets";
+function loadGroupPresets(): string[][] {
     const out = Array.from({ length: TAG_PRESET_SLOTS }, (): string[] => []);
     const arr = loadJson(PRESETS_KEY, (o) => (Array.isArray(o) ? o : null));
     if (!arr) return out;
     for (let i = 0; i < TAG_PRESET_SLOTS; i++) {
         const v = arr[i];
-        // 옛 형태(슬롯당 tagId 문자열 하나)를 그대로 읽어 감싼다 — 쓰던 프리셋이 안 날아가게.
+        // 옛 형태(슬롯당 groupId 문자열 하나)를 그대로 읽어 감싼다 — 쓰던 프리셋이 안 날아가게.
         if (typeof v === "string") out[i] = v ? [v] : [];
         else if (Array.isArray(v)) out[i] = v.filter((x): x is string => typeof x === "string" && x.length > 0);
     }
@@ -73,7 +73,7 @@ export const createSettingsSlice: StateCreator<WorkbenchState, [], [], SettingsS
     themeBoardSettings: { showIndividuals: true, showUnclassified: true },
     replaySettings: { amountN: 80, rateN: 40 },
     boardMarket: loadBoardMarket(),
-    tagPresets: loadTagPresets(),
+    groupPresets: loadGroupPresets(),
 
     setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
     setThemeBoardSettings: (patch) => set((s) => ({ themeBoardSettings: { ...s.themeBoardSettings, ...patch } })),
@@ -84,12 +84,12 @@ export const createSettingsSlice: StateCreator<WorkbenchState, [], [], SettingsS
             saveJson(BOARD_MARKET_KEY, next);
             return { boardMarket: next };
         }),
-    toggleTagPreset: (index, tagId) =>
+    toggleGroupPreset: (index, groupId) =>
         set((s) => {
-            const next = s.tagPresets.map((slot, i) =>
-                i !== index ? slot : slot.includes(tagId) ? slot.filter((id) => id !== tagId) : [...slot, tagId],
+            const next = s.groupPresets.map((slot, i) =>
+                i !== index ? slot : slot.includes(groupId) ? slot.filter((id) => id !== groupId) : [...slot, groupId],
             );
             saveJson(PRESETS_KEY, next);
-            return { tagPresets: next };
+            return { groupPresets: next };
         }),
 });

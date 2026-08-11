@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
-import { useTags } from "./useTags.js";
-import { presetToggle } from "./tagIndex.js";
+import { useGroups } from "./useGroups.js";
+import { presetToggle } from "./groupIndex.js";
 import { reviewPointsQuery, allPointsQuery, chartQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView } from "./derive.js";
 import { usePlacements } from "./usePlacements.js";
@@ -47,10 +47,10 @@ export function useReviewPointData(code: string, date: string, time: string | nu
 /**
  * 차트 단축키 — **전역 1회 등록**(App). 패널별 등록이 아니라 focus 를 따라간다 → 차트 여러 개여도 커맨드 충돌 없고,
  * 패널 마운트/포커스 상태에 안 흔들린다(옛 패널별 등록의 "가끔 안 먹음" 버그 해결). 입력창 포커스 중 mod-less 는 디스패처가 가드.
- *   space=타점 저장/삭제 · 1~4=태그 프리셋(조합) 탈부착 · a/d=±1분봉 · shift+a/d=±jumpBars(setTime, activePoint 유지)
+ *   space=타점 저장/삭제 · 1~4=그룹 프리셋(조합) 탈부착 · a/d=±1분봉 · shift+a/d=±jumpBars(setTime, activePoint 유지)
  *   ctrl+a/d=타점 순회 wrap(goToPoint) · f=일봉+분봉 확대/축소(store chartZoom, 두 차트 동시).
- * **타점 입력(space)과 태그 입력(1~4)은 분리** — 숫자키는 이미 있는 타점에만 작동한다(없으면 무시).
- * 태그는 붙였다 떼는 토글이고 슬롯이 **집합**이라, 프리셋 태그가 전부 붙어 있을 때만 전부 떨어진다
+ * **타점 입력(space)과 그룹 입력(1~4)은 분리** — 숫자키는 이미 있는 타점에만 작동한다(없으면 무시).
+ * 그룹는 붙였다 떼는 토글이고 슬롯이 **집합**이라, 프리셋 그룹이 전부 붙어 있을 때만 전부 떨어진다
  * (일부만 붙어 있으면 나머지를 채운다 — 판정 규칙은 순수 presetToggle).
  * 핸들러는 매 렌더 최신 클로저로 h.current 갱신(안정 ref), 등록 effect 는 프리셋 변화에만 재실행.
  */
@@ -60,8 +60,8 @@ export function useChartHotkeys(): void {
     const time = useWorkbench((s) => s.focus.time);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const jumpBars = useWorkbench((s) => s.chartSettings.jumpBars);
-    const tagPresets = useWorkbench((s) => s.tagPresets);
-    const { tagById, tagIdsOf, applyTags } = useTags();
+    const groupPresets = useWorkbench((s) => s.groupPresets);
+    const { groupById, groupIdsOf, applyGroups } = useGroups();
     const qc = useQueryClient();
 
     const chartQ = useQuery(chartQuery(code, date)); // ChartPanel 과 같은 키 → RQ 캐시 공유(중복 페치 0)
@@ -82,21 +82,21 @@ export function useChartHotkeys(): void {
     const removeMut = useMutation({ mutationFn: (v: { code: string; date: string; time: string }) => removeReviewPoint(v.code, v.date, v.time), onSuccess: invalidate });
 
     // 매 렌더 최신 클로저로 핸들러 갱신(안정 ref 유지) → 등록된 run 은 항상 최신 상태를 본다.
-    const h = useRef({ toggle: () => {}, applyTag: (_: number) => {}, moveBar: (_: number) => {}, jump: (_: number) => {}, navPoint: (_: number) => {} });
+    const h = useRef({ toggle: () => {}, applyGroup: (_: number) => {}, moveBar: (_: number) => {}, jump: (_: number) => {}, navPoint: (_: number) => {} });
     h.current.toggle = () => {
         if (!code || !date || !time) return;
         const existing = reviewPoints.find((rp) => rp.time === time);
         if (existing) removeMut.mutate({ code, date, time });
         else upsertMut.mutate({ stockCode: code, date, time });
     };
-    h.current.applyTag = (i) => {
-        const preset = tagPresets[i];
+    h.current.applyGroup = (i) => {
+        const preset = groupPresets[i];
         if (!preset?.length || !code || !date || !time) return;
-        // 태그는 **타점에 붙는 것** — 그 시각이 저장 타점이 아니면 아무 일도 안 한다(타점 생성은 space 의 몫).
+        // 그룹는 **타점에 붙는 것** — 그 시각이 저장 타점이 아니면 아무 일도 안 한다(타점 생성은 space 의 몫).
         if (!reviewPoints.some((rp) => rp.time === time)) return;
         const point = { stockCode: code, date, time };
-        const { on, tagIds } = presetToggle(tagIdsOf(point), preset);
-        if (tagIds.length > 0) applyTags(point, tagIds, on);
+        const { on, groupIds } = presetToggle(groupIdsOf(point), preset);
+        if (groupIds.length > 0) applyGroups(point, groupIds, on);
     };
     h.current.moveBar = (delta) => {
         if (minutePoints.length === 0) return;
@@ -126,11 +126,11 @@ export function useChartHotkeys(): void {
         const ids: string[] = [];
         const put = (cmd: Command): void => { register(cmd); ids.push(cmd.id); };
         put({ id: "chart.review.toggle", title: "타점 저장/삭제(현재 시각)", category: "차트", keys: "space", run: () => h.current.toggle() });
-        tagPresets.forEach((slot, i) => {
-            // 지워진 태그는 이름이 없다 → 표기에서 빼고, 슬롯이 통째로 비면 키를 만들지 않는다(빈 커맨드 방지).
-            const names = slot.map((id) => tagById.get(id)?.name).filter((n): n is string => !!n);
+        groupPresets.forEach((slot, i) => {
+            // 지워진 그룹는 이름이 없다 → 표기에서 빼고, 슬롯이 통째로 비면 키를 만들지 않는다(빈 커맨드 방지).
+            const names = slot.map((id) => groupById.get(id)?.name).filter((n): n is string => !!n);
             if (names.length === 0) return;
-            put({ id: `chart.review.tag.${i + 1}`, title: `태그 탈부착: ${names.join(" + ")}`, category: "차트", keys: String(i + 1), run: () => h.current.applyTag(i) });
+            put({ id: `chart.review.group.${i + 1}`, title: `그룹 탈부착: ${names.join(" + ")}`, category: "차트", keys: String(i + 1), run: () => h.current.applyGroup(i) });
         });
         put({ id: "chart.nav.prevBar", title: "1봉 이전", category: "차트", keys: "a", run: () => h.current.moveBar(-1) });
         put({ id: "chart.nav.nextBar", title: "1봉 다음", category: "차트", keys: "d", run: () => h.current.moveBar(1) });
@@ -140,5 +140,5 @@ export function useChartHotkeys(): void {
         put({ id: "chart.nav.nextPoint", title: "다음 타점", category: "차트", keys: "ctrl+d", blockedInInput: true, run: () => h.current.navPoint(1) });
         put({ id: "chart.zoom.toggle", title: "확대/축소", category: "차트", keys: "f", run: () => useWorkbench.getState().toggleChartZoom() });
         return () => ids.forEach(unregister);
-    }, [tagPresets, tagById]);
+    }, [groupPresets, groupById]);
 }

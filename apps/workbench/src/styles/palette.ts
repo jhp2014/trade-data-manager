@@ -38,15 +38,15 @@ export const HOVER = "#f59e0b"; // 시트↔레일 링크 호버 — 앰버(활�
 export const HOVER_SOFT = "rgba(245,158,11,0.28)";
 export const PIN = "#8b5cf6"; // 핀 = 작업셋(보라) — 활성(블루)과 구분
 
-// ── 태그(명목형 분류) — 이름의 `그룹:값` prefix 로 **자동 색**. 색을 손으로 관리하지 않으면서
+// ── 그룹(명목형 분류) — 이름의 `그룹:값` prefix 로 **자동 색**. 색을 손으로 관리하지 않으면서
 //    같은 그룹끼리 눈에 묶인다(팔레트가 20~30개로 늘면 텍스트만으론 못 따라감). prefix 없으면 무채색.
 //    고른 색들은 의미색과 겹치지 않게 — 순수 빨강(FILTER)·스카이(ACTIVE)는 뺐다.
 //    그룹은 첫 `:` 앞을 **공백 다듬어** 자른다 — 안 그러면 "형태:돌파" 와 "형태 :돌파" 가 다른 색이 된다.
 const TAG_GROUP_COLORS = ["#7c9c3f", "#b8792e", "#3f8f8a", "#8b5cf6", "#c0567e", "#4a7fc1", "#a5883a", "#5f9e6b"];
-export const TAG_PLAIN = "#8b93a7"; // 그룹 없는 태그
+export const GROUP_PLAIN = "#8b93a7"; // 그룹 없는 그룹
 
 /** 이름의 그룹 부분(첫 `:` 앞, 공백 다듬음). 그룹이 없으면 null. */
-export function tagGroupOf(name: string): string | null {
+export function groupPrefixOf(name: string): string | null {
     const i = name.indexOf(":");
     if (i < 0) return null;
     const g = name.slice(0, i).trim();
@@ -54,15 +54,15 @@ export function tagGroupOf(name: string): string | null {
 }
 
 /** 이름의 값 부분(첫 `:` 뒤, 공백 다듬음). 그룹이 없으면 이름 그대로 — 좁은 자리 표기용. */
-export function tagValueOf(name: string): string {
+export function groupValueOf(name: string): string {
     const i = name.indexOf(":");
     if (i < 0) return name;
     return name.slice(i + 1).trim() || name;
 }
 
-export function tagColor(name: string): string {
-    const group = tagGroupOf(name);
-    if (group === null) return TAG_PLAIN;
+export function groupColor(name: string): string {
+    const group = groupPrefixOf(name);
+    if (group === null) return GROUP_PLAIN;
     let h = 0;
     for (let k = 0; k < group.length; k++) h = (h * 31 + group.charCodeAt(k)) >>> 0;
     return TAG_GROUP_COLORS[h % TAG_GROUP_COLORS.length];
@@ -71,7 +71,7 @@ export function tagColor(name: string): string {
 /**
  * 계열 색 — **한 무리 안에서 서로 구분만 되면 되는** 색들(뜻은 없다). 뭉친 골격 라벨을 펼칠 때
  * 멤버마다 하나씩 돌려써서, 그림의 선과 목록의 행이 색으로 짝지어진다.
- * 태그 색(TAG_GROUP_COLORS)과 값이 겹쳐도 **따로 둔다** — 저긴 이름에서 색이 결정론적으로 나와야 하고
+ * 그룹 색(TAG_GROUP_COLORS)과 값이 겹쳐도 **따로 둔다** — 저긴 이름에서 색이 결정론적으로 나와야 하고
  * 여긴 그저 순번이라, 한쪽을 손볼 때 다른 쪽이 딸려 바뀌면 안 된다.
  * 의미색(ACTIVE 하늘·HOVER 앰버)은 뺐다 — 선택·호버와 섞이면 그 둘이 뜻을 잃는다.
  */

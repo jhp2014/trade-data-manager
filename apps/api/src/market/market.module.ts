@@ -13,7 +13,7 @@ import {
     DrizzleChartAnchorRepository,
     DrizzleReviewPointRepository,
     DrizzleRankRepository,
-    DrizzleTagRepository,
+    DrizzleGroupRepository,
     DrizzleMapRepository,
     DrizzleCandidateDayRepository,
     DrizzleStockNewsRepository,
@@ -21,7 +21,7 @@ import {
 import type { AxisDeps, DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, TAG_REPO, MAP_REPO, CANDIDATE_DAY_REPO, RANK_MINUTES, COMPUTED_AXES, SKELETON_SHAPES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, GROUP_REPO, MAP_REPO, CANDIDATE_DAY_REPO, RANK_MINUTES, COMPUTED_AXES, SKELETON_SHAPES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
@@ -37,7 +37,7 @@ import { ChartAnchorController } from "./curation/chartAnchor.controller.js";
 import { ReviewPointController } from "./curation/reviewPoint.controller.js";
 import { CommentController } from "./curation/comment.controller.js";
 import { RankController } from "./curation/rank.controller.js";
-import { TagController } from "./curation/tag.controller.js";
+import { GroupController } from "./curation/group.controller.js";
 import { MapController } from "./curation/map.controller.js";
 import { CandidateDayController } from "./curation/candidateDay.controller.js";
 import { NewsController } from "./news/news.controller.js";
@@ -214,13 +214,13 @@ const curationProviders: Provider[] = [
         inject: [MARKET_POOL, CURATION_POOL],
     },
     {
-        // 타점 태그 — repo 를 그대로 노출(사전 CRUD·전 타점 부착 피드·부착/해제). 축과 달리 순서가 없는 분류.
-        provide: TAG_REPO,
-        useFactory: (pool: Pool) => new DrizzleTagRepository(createDb(pool)),
+        // 타점 그룹 — repo 를 그대로 노출(사전 CRUD·전 타점 부착 피드·부착/해제). 축과 달리 순서가 없는 분류.
+        provide: GROUP_REPO,
+        useFactory: (pool: Pool) => new DrizzleGroupRepository(createDb(pool)),
         inject: [CURATION_POOL],
     },
     {
-        // 유사도 맵 — repo 를 그대로 노출(말뭉치 읽기 + 맵/자리 쓰기). 축·태그가 못 담는 연속적 닮음.
+        // 유사도 맵 — repo 를 그대로 노출(말뭉치 읽기 + 맵/자리 쓰기). 축·그룹이 못 담는 연속적 닮음.
         provide: MAP_REPO,
         useFactory: (pool: Pool) => new DrizzleMapRepository(createDb(pool)),
         inject: [CURATION_POOL],
@@ -261,7 +261,7 @@ const newsProviders: Provider[] = [
         CommentController,
         RankController,
         SkeletonController,
-        TagController,
+        GroupController,
         MapController,
         CandidateDayController,
         NewsController,

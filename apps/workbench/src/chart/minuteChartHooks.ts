@@ -20,10 +20,10 @@ import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 
 /**
- * 타점 ▼ 마커 표식 — 마커 DOM 에 붙이고, 차트 우클릭 핸들러가 이걸 보고 비켜준다(가격선 대신 태그 입력창).
+ * 타점 ▼ 마커 표식 — 마커 DOM 에 붙이고, 차트 우클릭 핸들러가 이걸 보고 비켜준다(가격선 대신 그룹 입력창).
  * 마커 렌더(MinuteChart)와 판정(여기)이 서로 다른 파일이라 문자열을 양쪽에 적지 않게 상수로 둔다.
  */
-export const TAG_MARKER_ATTR = "data-tag-marker";
+export const GROUP_MARKER_ATTR = "data-group-marker";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
 import { type MinutePoint } from "../lib/derive.js";
@@ -409,10 +409,10 @@ export function useMinuteInteraction(args: {
         chart.subscribeDblClick(onDblClick);
         const onCtx = (e: MouseEvent): void => {
             e.preventDefault();
-            // 타점 ▼ 마커 위 우클릭은 태그 입력창의 몫 — 여기서 비켜준다.
+            // 타점 ▼ 마커 위 우클릭은 그룹 입력창의 몫 — 여기서 비켜준다.
             // (마커는 이 컨테이너의 자식이라 네이티브 버블이 여기를 **먼저** 지난다. React 쪽 stopPropagation 은
             //  루트 위임이라 이 리스너보다 늦게 돌아 못 막는다 → 목표를 보고 판단하는 이 방식이 유일하게 확실하다.)
-            if ((e.target as Element | null)?.closest?.(`[${TAG_MARKER_ATTR}]`)) return;
+            if ((e.target as Element | null)?.closest?.(`[${GROUP_MARKER_ATTR}]`)) return;
             const candle = candleRef.current;
             const y = e.clientY - el.getBoundingClientRect().top;
             // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음). %는 렌더와 같은 linePct.

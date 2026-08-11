@@ -13,12 +13,12 @@ import {
     useMinuteVisibleRange,
     useMinuteSkeletonOverlay,
     usePercentPriceLines,
-    TAG_MARKER_ATTR,
+    GROUP_MARKER_ATTR,
     type SavedPointInput,
 } from "./minuteChartHooks.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
-import type { Tag } from "../api/tags.js";
+import type { Group } from "../api/groups.js";
 import { MARKER_NOW } from "../styles/palette.js";
 
 /**
@@ -130,10 +130,10 @@ export function MinuteChart({
     onRemoveLine,
     onLineContext,
     onPickPrice,
-    onTagPoint,
+    onGroupPoint,
     capturePriceArmed = false,
     axisTotal = 0,
-    tagsOfTime,
+    groupsOfTime,
     skeleton,
     showSkeleton = true,
 }: {
@@ -154,10 +154,10 @@ export function MinuteChart({
     /** 있으면 선 근처 우클릭 = 메뉴(복기), 없으면 즉시 삭제(실시간). */
     onLineContext?: (line: RenderLine, at: { x: number; y: number }) => void;
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표 → 가격(base×(1+%/100)) 캡처
-    onTagPoint?: (time: string, x: number, y: number) => void; // 타점 ▼ 우클릭 = 태그 입력창(가격선과 분리)
+    onGroupPoint?: (time: string, x: number, y: number) => void; // 타점 ▼ 우클릭 = 그룹 입력창(가격선과 분리)
     capturePriceArmed?: boolean;
     axisTotal?: number; // 순위 축 총수(배지 분모). 0 = 배치 기능 미사용 → 배지/상세 없음
-    tagsOfTime?: (tradeTime: string) => Tag[]; // 그 시각 타점에 붙은 태그(카드 아랫줄). 없으면 태그 줄 없음.
+    groupsOfTime?: (tradeTime: string) => Group[]; // 그 시각 타점에 붙은 그룹(카드 아랫줄). 없으면 그룹 줄 없음.
     /** 현재 타점의 분봉 골격 피벗(unix초·raw 가격) — % 변환은 오버레이가 base 로 한다. */
     skeleton?: readonly { time: number; price: number }[];
     showSkeleton?: boolean;
@@ -246,12 +246,12 @@ export function MinuteChart({
                 return (
                     <div
                         key={s.time}
-                        {...{ [TAG_MARKER_ATTR]: "" }}
+                        {...{ [GROUP_MARKER_ATTR]: "" }}
                         onMouseEnter={() => setHoveredSaved(i)}
                         onMouseLeave={() => setHoveredSaved((cur) => (cur === i ? null : cur))}
                         onClick={() => s.point && onMovePoint(s.point.tradeTime)}
-                        onContextMenu={(e) => { e.preventDefault(); if (s.point) onTagPoint?.(s.point.tradeTime, e.clientX, e.clientY); }}
-                        title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로 · 우클릭: 태그)` : "저장된 타점 (클릭: 이 타점으로 · 우클릭: 태그)"}
+                        onContextMenu={(e) => { e.preventDefault(); if (s.point) onGroupPoint?.(s.point.tradeTime, e.clientX, e.clientY); }}
+                        title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로 · 우클릭: 그룹)` : "저장된 타점 (클릭: 이 타점으로 · 우클릭: 그룹)"}
                         style={{ ...markerBoxStyle(s.x, 8), cursor: "pointer" }}
                     >
                         <MarkerTriangle
@@ -271,13 +271,13 @@ export function MinuteChart({
             {/* 저장 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). 축별 상세는 "타점 정보" 패널. */}
             {hoveredCard && hoveredCard.point && hoveredCard.x >= 0 && (
                 <AnchoredBox x={hoveredCard.x} top={1} containerWidth={containerWidth} zIndex={10}>
-                    <MarkerCard point={hoveredCard.point} axisTotal={axisTotal} placed={hoveredCard.placed} tags={tagsOfTime?.(hoveredCard.point.tradeTime) ?? []} />
+                    <MarkerCard point={hoveredCard.point} axisTotal={axisTotal} placed={hoveredCard.placed} groups={groupsOfTime?.(hoveredCard.point.tradeTime) ?? []} />
                 </AnchoredBox>
             )}
             {/* 현재 타점(시간선) readout — 토글 ON 시 세로선 우측 한 줄. 그 시각이 저장 타점이면 배지(n/m)까지. */}
             {showPointInfo && overlay.current && overlay.current.point && (
                 <AnchoredBox x={overlay.current.x} top={1} containerWidth={containerWidth} zIndex={9}>
-                    <MarkerCard point={overlay.current.point} axisTotal={currentSaved ? axisTotal : 0} placed={currentSaved?.placed ?? 0} tags={tagsOfTime?.(overlay.current.point.tradeTime) ?? []} />
+                    <MarkerCard point={overlay.current.point} axisTotal={currentSaved ? axisTotal : 0} placed={currentSaved?.placed ?? 0} groups={groupsOfTime?.(overlay.current.point.tradeTime) ?? []} />
                 </AnchoredBox>
             )}
             {tip.visible && (

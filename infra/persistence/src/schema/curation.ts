@@ -37,7 +37,7 @@ export const dailyComments = curation.table(
 
 // 3. 복기 타점 — 차트에서 찍은 타점. 자연키 (stockCode, tradeDate, tradeTime) 삼중키(시각 필수).
 //    **옛 case 를 흡수** = 이 타점이 곧 case. outcome(트레이드 결과)·memo 는 타점 자체 속성.
-//    셋업 유형(옛 `type` varchar)은 태그(아래 7·8번)로 이관 — 명목형은 한 타점에 여럿이라 단일 칸이 자리가 아니었다.
+//    셋업 유형(옛 `type` varchar)은 그룹(아래 7·8번)로 이관 — 명목형은 한 타점에 여럿이라 단일 칸이 자리가 아니었다.
 //    순위 배치(rank_placements)가 이 자연키를 하류에서 참조. PK 가 (stock,date) prefix 커버 → listByChart 별도 인덱스 불필요.
 export const reviewPoints = curation.table(
     "review_points",
@@ -63,7 +63,7 @@ export type ReviewPointInsert = typeof reviewPoints.$inferInsert;
 
 // 4. 순위 축(rank axis) — 순서를 매길 수 있는 하나의 비교 차원(일봉-형태, 테마, 거래대금, 끼 …). 앱에서 CRUD.
 //    원칙: 한 축 = "일관되게 상하 순서를 매길 수 있는 하나". 순서를 못 매기겠으면 두 축이 엉킨 신호 → 분리.
-//    순서 자체가 없는 '종류'(테마 분류 등 명목형)는 축이 아니라 태그로 다룬다(여기 안 넣음).
+//    순서 자체가 없는 '종류'(테마 분류 등 명목형)는 축이 아니라 그룹으로 다룬다(여기 안 넣음).
 export const rankAxes = curation.table(
     "rank_axes",
     {
@@ -125,14 +125,14 @@ export const rankPlacements = curation.table(
     ],
 );
 
-// ── 태그(nominal tag) ───────────────────────────────────────────────────────
-// 축(rank_axes)이 "순서를 매길 수 있는 차원"이라면, 태그는 **순서 없는 종류**다(위 4번 주석의 예고 이행).
+// ── 그룹(nominal tag) ───────────────────────────────────────────────────────
+// 축(rank_axes)이 "순서를 매길 수 있는 차원"이라면, 그룹는 **순서 없는 종류**다(위 4번 주석의 예고 이행).
 // 셋업 유형처럼 상하가 없는 분류를 축의 배치 유무로 대신 표현하던 우회를 걷어내고 제자리에 둔다.
-// review_points.type(단일 varchar)이 하던 일을 흡수 — 태그는 한 타점에 여러 개 붙는다(그게 원래 성질).
+// review_points.type(단일 varchar)이 하던 일을 흡수 — 그룹는 한 타점에 여러 개 붙는다(그게 원래 성질).
 
-// 7. 태그 사전 — 이름이 곧 정체(unique). surrogate id 로 부착하므로 이름 변경이 부착을 안 깬다.
+// 7. 그룹 사전 — 이름이 곧 정체(unique). surrogate id 로 부착하므로 이름 변경이 부착을 안 깬다.
 //    이름의 `그룹:값` 은 관례일 뿐 스키마가 강제하지 않는다(표시 색 그룹핑용). 배타 그룹은 아직 없음.
-export const tags = curation.table(
+export const groups = curation.table(
     "tags",
     {
         id: bigserial("id", { mode: "bigint" }).primaryKey(),
@@ -141,52 +141,52 @@ export const tags = curation.table(
     (t) => [unique("uq_tag_name").on(t.name)],
 );
 
-// 8. 태그 부착 — 타점 ↔ 태그 N:M 정션. PK (stock,date,time,tag_id) = "한 타점에 같은 태그는 한 번"(멱등 부착).
-//    review_points 삼중키 FK(cascade) = 타점을 지우면 부착도 사라짐 / tags FK(cascade) = 태그를 지우면 전부 떨어짐.
-//    index(tag_id) = "이 태그 몇 건인가"(삭제 확인·팔레트 빈도)를 정션 스캔 없이.
+// 8. 그룹 부착 — 타점 ↔ 그룹 N:M 정션. PK (stock,date,time,tag_id) = "한 타점에 같은 그룹은 한 번"(멱등 부착).
+//    review_points 삼중키 FK(cascade) = 타점을 지우면 부착도 사라짐 / tags FK(cascade) = 그룹를 지우면 전부 떨어짐.
+//    index(tag_id) = "이 그룹 몇 건인가"(삭제 확인·팔레트 빈도)를 정션 스캔 없이.
 export const reviewPointTags = curation.table(
     "review_point_tags",
     {
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
         tradeDate: date("trade_date").notNull(),
         tradeTime: time("trade_time").notNull(),
-        tagId: bigint("tag_id", { mode: "bigint" }).notNull(),
+        groupId: bigint("tag_id", { mode: "bigint" }).notNull(),
     },
     (t) => [
-        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime, t.tagId] }),
+        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime, t.groupId] }),
         foreignKey({
             columns: [t.stockCode, t.tradeDate, t.tradeTime],
             foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
             name: "fk_review_point_tag_point",
         }).onDelete("cascade"),
         foreignKey({
-            columns: [t.tagId],
-            foreignColumns: [tags.id],
+            columns: [t.groupId],
+            foreignColumns: [groups.id],
             name: "fk_review_point_tag_tag",
         }).onDelete("cascade"),
-        index("idx_review_point_tags_tag").on(t.tagId),
+        index("idx_review_point_tags_tag").on(t.groupId),
     ],
 );
 
-// 8b. 차트 태그 부착 — **차트(종목,날짜) ↔ 태그** 정션. 골격으로 상황을 분류할 때(타점 없는 차트도 대상).
+// 8b. 차트 그룹 부착 — **차트(종목,날짜) ↔ 그룹** 정션. 골격으로 상황을 분류할 때(타점 없는 차트도 대상).
 //     사전(tags)은 타점 부착과 공유 — 분류가 타점용/차트용으로 갈라질 이유가 없다.
-//     review_points FK 가 **없다**(chart_anchors 선례): 차트는 행이 아니고, 태그는 타점보다 오래 산다.
-//     PK (stock,date,tag_id) = 멱등 부착. tags FK cascade = 태그 삭제 시 부착도 제거.
+//     review_points FK 가 **없다**(chart_anchors 선례): 차트는 행이 아니고, 그룹는 타점보다 오래 산다.
+//     PK (stock,date,tag_id) = 멱등 부착. tags FK cascade = 그룹 삭제 시 부착도 제거.
 export const chartTags = curation.table(
     "chart_tags",
     {
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
         tradeDate: date("trade_date").notNull(),
-        tagId: bigint("tag_id", { mode: "bigint" }).notNull(),
+        groupId: bigint("tag_id", { mode: "bigint" }).notNull(),
     },
     (t) => [
-        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tagId] }),
+        primaryKey({ columns: [t.stockCode, t.tradeDate, t.groupId] }),
         foreignKey({
-            columns: [t.tagId],
-            foreignColumns: [tags.id],
+            columns: [t.groupId],
+            foreignColumns: [groups.id],
             name: "fk_chart_tag_tag",
         }).onDelete("cascade"),
-        index("idx_chart_tags_tag").on(t.tagId),
+        index("idx_chart_tags_tag").on(t.groupId),
     ],
 );
 
@@ -235,8 +235,8 @@ export type ChartAnchorInsert = typeof chartAnchors.$inferInsert;
 
 // (옛 point_anchors 는 chart_anchors 로 흡수 후 드롭 — 마이그 0008 이관·0009 드롭.)
 
-export type TagRow = typeof tags.$inferSelect;
-export type TagInsert = typeof tags.$inferInsert;
+export type GroupRow = typeof groups.$inferSelect;
+export type GroupInsert = typeof groups.$inferInsert;
 export type ReviewPointTagRow = typeof reviewPointTags.$inferSelect;
 export type ReviewPointTagInsert = typeof reviewPointTags.$inferInsert;
 
@@ -249,7 +249,7 @@ export type RankPlacementInsert = typeof rankPlacements.$inferInsert;
 
 // ── 유사도 맵 ───────────────────────────────────────────────────────────────
 // 축이 없는 2차원 평면. **좌표에는 뜻이 없고 인접성에만 뜻이 있다** — 닮은 것끼리 손으로 모아 둔다.
-// 축(rank_axes)이 "순서를 매길 수 있는 하나"를, 태그가 "순서 없는 종류"를 맡는다면 맵은 **어느 쪽으로도
+// 축(rank_axes)이 "순서를 매길 수 있는 하나"를, 그룹이 "순서 없는 종류"를 맡는다면 맵은 **어느 쪽으로도
 // 안 떨어지는 연속적 닮음**을 맡는다: 한 그림이 두 무리와 동시에 닮을 수 있고(징검다리), 무리 안에서 또
 // 무리가 갈리며, 그 갈래가 이름 하나로 안 잡힌다.
 // 배치는 손이 한다(자동 임베딩 아님) — 재계산마다 지형이 흔들리면 공간 기억이 무너지고, 배치라는 행위

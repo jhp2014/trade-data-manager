@@ -6,7 +6,7 @@
 // 배치가 타점을 요구해서 생긴 우연이지 설계가 아니었다.
 //
 // **후보 = 손이 닿은 흔적이 하나라도 있는 (종목, 날짜).** 아무것도 없으면 애초에 세어질 대상이 아니다.
-// 흔적은 "이 차트를 들여다봤다"의 증거면 무엇이든 된다 — 기준선을 그었든, 골격을 찍었든, 태그를 붙였든,
+// 흔적은 "이 차트를 들여다봤다"의 증거면 무엇이든 된다 — 기준선을 그었든, 골격을 찍었든, 그룹를 붙였든,
 // 타점을 찍었든, 맵에 올렸든. 타점이 없어도 후보인 게 핵심이다: 차트의 형태는 진입점보다 먼저 존재하고,
 // 골격만 그려둔 하루도 "일봉이 이렇게 생긴 날"로 분석에 참여해야 한다.
 //
@@ -22,14 +22,14 @@
 // ⚠ **선택 편향의 성격이 바뀐다**: 모수가 "타점 찍은 하루" → "들여다본 하루"로 **넓어진다**. 타점은 이미
 // 판단이 들어간 표본이라 승률이 낙관 쪽으로 휘는데 그보다 덜 걸러진 모수가 된다(방향은 개선). 다만 같은
 // "승률"이라는 말의 뜻이 달라지므로 **넓히기 전 숫자와 나란히 비교하지 말 것.**
-import type { ChartRef } from "./tag.js";
+import type { ChartRef } from "./group.js";
 
 /**
  * 후보로 잡힌 근거 한 가지. 종류마다 뜻이 다르지만(앵커=봤다 / 골격=분석했다 / 타점=들어갔다) 후보 자격
  * 자체는 OR 이다 — 구분은 해석할 때 쓰고 소속 판정에는 안 쓴다.
  * anchor 는 chart_anchors 전체를 뜻한다(param 이 baseline·skeleton·skeleton-minute 을 모두 담는 단일 테이블).
  */
-export type CandidateTrace = "anchor" | "chartTag" | "reviewPoint" | "mapPlacement";
+export type CandidateTrace = "anchor" | "chartGroup" | "reviewPoint" | "mapPlacement";
 
 /** 후보 하루 1건 — (종목, 날짜) + 그렇게 잡힌 근거들(중복 없음, 최소 1개). */
 export interface CandidateDay extends ChartRef {
