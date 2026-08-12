@@ -15,6 +15,7 @@ import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { RankPanel } from "../panels/RankPanel.js";
 import { RankFilterPanel } from "../panels/RankFilterPanel.js";
 import { RankSheetPanel } from "../panels/RankSheetPanel.js";
+import { FilterFunnelPanel } from "../panels/FilterFunnelPanel.js";
 import { SkeletonOverlayPanel } from "../panels/SkeletonOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
 import { MapPanel } from "../panels/MapPanel.js";
@@ -63,6 +64,8 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "rank-1", component: "rank", title: "배치", plane: "eod", render: () => <RankPanel /> },
     { id: "rank-filter-1", component: "rankFilter", title: "분석", plane: "eod", render: (id) => <RankFilterPanel panelId={id} /> },
     { id: "rank-sheet-1", component: "rankSheet", title: "시트", plane: "eod", render: () => <RankSheetPanel /> },
+    // 필터 깔때기 — 조건의 목록과 집계. 옛 rankFilter("분석")는 결과 대시보드라 다른 패널이다.
+    { id: "filter-funnel-1", component: "filterFunnel", title: "필터", plane: "eod", render: () => <FilterFunnelPanel /> },
     { id: "rank-skeleton-1", component: "rankSkeleton", title: "골격 [일봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="daily" /> },
     { id: "rank-skeleton-minute-1", component: "rankSkeletonMinute", title: "골격 [분봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="minute" /> },
     { id: "rank-point-1", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },

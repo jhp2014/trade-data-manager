@@ -10,7 +10,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-    expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
+    blockedBy, expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
 } from "@trade-data-manager/market/domain";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
 import { useGroups } from "../../lib/useGroups.js";
@@ -19,6 +19,7 @@ import { chartKey, pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndexes } from "./axisLookup.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
+import { stageLabel, type LabelLookup } from "./label.js";
 import {
     activeStages, canExpand, displayGrain, isPredicateDead, resolveAutoGrain,
     type FilterStage, type Grain, type GrainLookup,
@@ -39,6 +40,10 @@ export interface FunnelView {
     result: FunnelResult | null;
     /** 죽은 참조(지워진 그룹·축)를 든 단계 id — 화면이 표시하고, 정리는 사용자가 결정한다. */
     deadStageIds: string[];
+    /** 이름 조회 — 패널이 useGroups·useRankAxes 를 다시 부르면 같은 인덱스 memo 가 두 벌 돈다. */
+    labelLook: LabelLookup;
+    /** 이 항목을 앞선 어느 단계가 막았나(근접 탈락 목록의 "막힌 단계"). 단계 이름으로 돌려준다. */
+    blockedLabels: (item: FunnelItem, stageIndex: number) => string[];
 }
 
 export function useFilterFunnel(): FunnelView {
@@ -130,6 +135,24 @@ export function useFilterFunnel(): FunnelView {
         [isLoading, stages, grainLook],
     );
 
+    const labelLook = useMemo<LabelLookup>(
+        () => ({
+            groupName: (id) => gv.groupById.get(id)?.name,
+            axisName: (id) => ax.axes.find((a) => a.id === id)?.name,
+        }),
+        [gv.groupById, ax.axes],
+    );
+
+    // 막힌 단계는 **앞선 단계만** 본다(상류의 정의). 판정을 다시 부르지만 한 항목뿐이라 값싸다.
+    const blockedLabels = useMemo(
+        () => (item: FunnelItem, stageIndex: number): string[] =>
+            blockedBy(toFunnelStages(active, evalLook), stageIndex, item)
+                .map((id) => active.find((s) => s.id === id))
+                .filter((s): s is FilterStage => s != null)
+                .map((s) => stageLabel(s, labelLook)),
+        [active, evalLook, labelLook],
+    );
+
     return {
         isLoading,
         grain,
@@ -138,5 +161,7 @@ export function useFilterFunnel(): FunnelView {
         active,
         result,
         deadStageIds,
+        labelLook,
+        blockedLabels,
     };
 }
