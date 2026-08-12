@@ -33,19 +33,11 @@ export interface CellCtxPayload {
     x: number;
     y: number;
 }
-export interface GroupCtxPayload {
-    point: RankPoint;
-    label: string;
-    x: number;
-    y: number;
-}
-
 export interface SheetRowHandlers {
     onNav: (row: SheetRow) => void;
     onHover: (key: string | null) => void;
     onTogglePin: (key: string) => void;
     onCellCtx: (p: CellCtxPayload) => void;
-    onGroupCtx: (p: GroupCtxPayload) => void;
     /** tbody 행만 등록(핀 블록 복사본 제외) — 드래그 배치의 드롭 Y 판정용. */
     registerRef: (key: string, el: HTMLTableRowElement | null) => void;
 }
@@ -139,16 +131,12 @@ function SheetRowViewImpl({
                 body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
             };
         },
-        // 그룹 — 폭이 모자라면 **그냥 잘린다**(wrap·스크롤 없음). 더 보고 싶으면 열 폭을 늘리는 게 이 표의 규칙.
+        // 그룹 — **읽기 전용**(편집은 골격 패널에서만). 폭이 모자라면 그냥 잘린다(wrap·스크롤 없음).
         //   좁은 열이라 그룹 prefix 는 뗀다(색이 이미 그룹을 말한다). 전체 이름은 셀 툴팁에.
         groups: () => ({
             onClick: () => h.onNav(row),
-            onContextMenu: (ev) => {
-                ev.preventDefault();
-                h.onGroupCtx({ point, label: `${name} · ${row.date.slice(5)} ${row.time.slice(0, 5)}`, x: ev.clientX, y: ev.clientY });
-            },
             style: { cursor: "pointer", overflow: "hidden" },
-            title: `${groupLabel || "그룹 없음"} — 우클릭 = 그룹 입력`,
+            title: groupLabel || "그룹 없음",
             body: <GroupChips groups={[...groups]} short style={{ justifyContent: "center" }} />,
         }),
         coverage: () => ({

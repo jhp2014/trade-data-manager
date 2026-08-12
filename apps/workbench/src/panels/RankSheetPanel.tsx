@@ -15,7 +15,7 @@ import {
     sortKeyOf, sortSheetRows, sortStepNo, type SortChain, type SortCtx, type SortKey,
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, slotOrderKeys, type AxisIndex } from "../lib/rankIndex.js";
-import { SheetRowView, ROW_H, type CellCtxPayload, type GroupCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
+import { SheetRowView, ROW_H, type CellCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
 import { isComputedAxis, formatAxisValue } from "../lib/computedAxis.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
@@ -28,7 +28,6 @@ import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
 import { ComputedBoundMenu } from "./rank/ComputedBoundMenu.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { useGroups } from "../lib/useGroups.js";
-import { GroupMenu } from "../chart/GroupMenu.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -51,7 +50,7 @@ import { FILTER } from "../styles/palette.js";
 //  · 열 폭은 손으로 조절 가능(헤더 오른쪽 가장자리 드래그). **수동 폭을 준 열만 고정폭**이 되고, 안 준 축 열들은
 //    지금처럼 남는 폭을 나눠 갖는다 → "폭 원위치"(수동 폭 삭제)면 기본 동작으로 정확히 복귀한다.
 //  · 링크: 드래그=소프트 선택(색만, 안 좁힘, 누적) · 우클릭=밴드(좁힘)+그 축 배치 해제 · 선택/호버는 배치 보드와 공유(색으로 표시).
-//  · 그룹 셀 우클릭 = 차트와 같은 GroupMenu(붙이기·떼기·새 그룹·슬롯) — 시트에서 결과를 보다 바로 그룹를 고칠 수 있게.
+//  · 그룹 셀 = **읽기 전용**(GroupChips). 편집은 골격 패널에서만 — 입구가 여럿이면 하나가 죽은 기능이 된다.
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
@@ -102,7 +101,7 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [linesByAxis]);
 
-    // ── 그룹(부착 피드 한 벌 — 차트·타점 정보 패널과 같은 캐시). 시트는 조회만 하고 편집은 차트 ▼ 우클릭에서.
+    // ── 그룹(부착 피드 한 벌 — 차트·타점 정보 패널과 같은 캐시). 시트는 조회만 하고 편집은 골격 패널에서.
     const { groupsOf } = useGroups();
     const groupLabel = (row: { stockCode: string; date: string; time: string }): string => groupsOf(row).map((t) => t.name).join(", ");
 
@@ -255,8 +254,6 @@ export function RankSheetPanel(): JSX.Element {
 
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계. 배치 해제도 같은 메뉴에서(셀 = 타점×축 하나).
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; point: RankPoint; rank: number; total: number; x: number; y: number } | null>(null);
-    // ── 그룹 셀 우클릭 = 그룹 입력(차트 타점 ▼ 우클릭과 같은 GroupMenu — 사전·슬롯·부착이 한 벌).
-    const [groupCtx, setGroupCtx] = useState<{ point: RankPoint; label: string; x: number; y: number } | null>(null);
     // ── 열 이름 우클릭 = 고정/숨김 + 정렬 체인에서 빼기 메뉴.
     const [hdrCtx, setHdrCtx] = useState<{ key: string; label: string; canHide: boolean; frozen: boolean; sortKey: SortKey; step: number; x: number; y: number } | null>(null);
 
@@ -327,7 +324,6 @@ export function RankSheetPanel(): JSX.Element {
     rowHandlersRef.current.onHover = setHoveredPoint;
     rowHandlersRef.current.onTogglePin = togglePin;
     rowHandlersRef.current.onCellCtx = (v: CellCtxPayload) => setCtx(v);
-    rowHandlersRef.current.onGroupCtx = (v: GroupCtxPayload) => setGroupCtx(v);
     rowHandlersRef.current.registerRef = (key, el) => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); };
     const rowH = rowHandlersRef.current;
 
@@ -500,8 +496,6 @@ export function RankSheetPanel(): JSX.Element {
                         onClose={() => setCtx(null)} />
                 );
             })()}
-
-            {groupCtx && <GroupMenu anchor={groupCtx} point={groupCtx.point} label={groupCtx.label} onClose={() => setGroupCtx(null)} />}
 
             {hdrCtx && (
                 <HeaderMenu anchor={hdrCtx} label={hdrCtx.label} frozen={hdrCtx.frozen} canHide={hdrCtx.canHide} canFreeze={hdrCtx.key !== "name"}

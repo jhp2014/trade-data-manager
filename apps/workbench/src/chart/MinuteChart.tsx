@@ -130,7 +130,6 @@ export function MinuteChart({
     onRemoveLine,
     onLineContext,
     onPickPrice,
-    onGroupPoint,
     capturePriceArmed = false,
     axisTotal = 0,
     groupsOfTime,
@@ -154,7 +153,6 @@ export function MinuteChart({
     /** 있으면 선 근처 우클릭 = 메뉴(복기), 없으면 즉시 삭제(실시간). */
     onLineContext?: (line: RenderLine, at: { x: number; y: number }) => void;
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표 → 가격(base×(1+%/100)) 캡처
-    onGroupPoint?: (time: string, x: number, y: number) => void; // 타점 ▼ 우클릭 = 그룹 입력창(가격선과 분리)
     capturePriceArmed?: boolean;
     axisTotal?: number; // 순위 축 총수(배지 분모). 0 = 배치 기능 미사용 → 배지/상세 없음
     groupsOfTime?: (tradeTime: string) => Group[]; // 그 시각 타점에 붙은 그룹(카드 아랫줄). 없으면 그룹 줄 없음.
@@ -250,8 +248,8 @@ export function MinuteChart({
                         onMouseEnter={() => setHoveredSaved(i)}
                         onMouseLeave={() => setHoveredSaved((cur) => (cur === i ? null : cur))}
                         onClick={() => s.point && onMovePoint(s.point.tradeTime)}
-                        onContextMenu={(e) => { e.preventDefault(); if (s.point) onGroupPoint?.(s.point.tradeTime, e.clientX, e.clientY); }}
-                        title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로 · 우클릭: 그룹)` : "저장된 타점 (클릭: 이 타점으로 · 우클릭: 그룹)"}
+                        onContextMenu={(e) => e.preventDefault()}
+                        title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로)` : "저장된 타점 (클릭: 이 타점으로)"}
                         style={{ ...markerBoxStyle(s.x, 8), cursor: "pointer" }}
                     >
                         <MarkerTriangle

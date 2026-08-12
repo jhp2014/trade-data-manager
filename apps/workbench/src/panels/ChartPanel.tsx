@@ -13,7 +13,6 @@ import type { RenderLine } from "../lib/chartFrame.js";
 import { useStockName } from "../lib/useStockName.js";
 import { useGroups } from "../lib/useGroups.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
-import { GroupMenu } from "../chart/GroupMenu.js";
 import { GroupChips } from "../components/GroupChips.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import {
@@ -37,7 +36,7 @@ import { SKELETON } from "../styles/palette.js";
 // 차트 앵커 편집은 chartAnchorHooks(param 하나 = 훅 하나), 타점 조회는 useReviewPointData — 여긴 뷰 파생+렌더.
 // 선 = 기준선 후보(차트 소유) — 타점 선택 없이 긋고 지운다. 확정 기준선(가격 최저)은 하늘색으로 표시.
 // 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~4=그룹 프리셋(전역 useChartHotkeys).
-// 그룹 입력은 타점 ▼ **우클릭**(GroupMenu) — 타점 저장과 분리된 동작이라 키·클릭도 갈라 둔다.
+// 그룹 편집 입구는 골격 패널/분석 시트뿐(BulkGroupMenu) — 차트는 결과 칩(GroupChips)만 보여준다.
 export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, anchorDate, viewDate: searchDate, time, setTime, setSearchDate } = usePlaneBus("replay");
     const mode = useWorkbench((s) => s.chartPriceMode);
@@ -64,7 +63,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
     const { groupsOf } = useGroups();
-    const [groupMenu, setGroupMenu] = useState<{ time: string; x: number; y: number } | null>(null);
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이.
     const viewDate = pinMinute ? anchorDate : searchDate;
     const drifted = viewDate !== anchorDate;
@@ -197,7 +195,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onRightClick={(a, at) => setCandleMenu({ ...at, candle: { date: a.date, time: a.time } })}
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
-                                    onGroupPoint={(t, x, y) => setGroupMenu({ time: t, x, y })}
                                     groupsOfTime={(t) => groupsOf({ stockCode: code, date: viewDate, time: t })}
                                     skeleton={minuteSkeleton.points}
                                     showSkeleton={showSkeleton}
@@ -207,15 +204,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     />
                 )}
             </div>
-
-            {groupMenu && (
-                <GroupMenu
-                    anchor={{ x: groupMenu.x, y: groupMenu.y }}
-                    point={{ stockCode: code, date: viewDate, time: groupMenu.time }}
-                    label={`${name ?? code} · ${groupMenu.time.slice(0, 5)}`}
-                    onClose={() => setGroupMenu(null)}
-                />
-            )}
 
             {candleMenu && (
                 <CandleMenu
