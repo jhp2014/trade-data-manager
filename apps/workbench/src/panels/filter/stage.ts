@@ -7,9 +7,15 @@
 // 아닌 한 곳에 모여 순서 변경·on/off·저장이 된다. 옛 모양(rankFilterSlice)은 차원별로 자리가 정해진
 // **평평한 가방**이라 순서라는 개념 자체가 없었다 — 깔때기가 요구하는 건 순서 있는 단계 리스트다.
 //
-// ⚠ 알갱이(grain)는 **저장하지 않고 파생한다.** 그룹의 scope 는 사전에, 축의 scope 는 축 목록에 있고
-// 그것들은 나중에 바뀔 수 있다. 저장해 두면 조용히 스테일이 되고, 스테일 알갱이는 결과 해상도를 틀리게
-// 만드는데 화면에서는 그게 안 보인다.
+// ⚠ 알갱이(grain)는 **저장하지 않고 파생한다.** 저장하면 진실이 둘이 된다 — 저장된 알갱이와 실제 사전.
+// 어긋나는 순간 어느 쪽이 맞는지 판단할 근거가 없다(그룹·축의 scope 는 만들 때 정해지고 바뀌지 않지만,
+// **지워지기는 한다** — 단계는 로컬이고 축은 DB라 죽은 참조가 남는다. 계산 축에 day 알갱이가 들어오면
+// 저장본은 옛 값을 든 채 남는다). 파생하면 사전 하나뿐이라 어긋날 수가 없다.
+//
+// ⚠ 알갱이는 **3치**다: day · point · undefined(모름). "모른다"를 "하루다"로 뭉개면 사전이 로딩 중일 때도
+// 확답을 주게 되어, 사전이 도착하는 순간 해상도가 튀고 결과 목록이 통째로 다시 그려진다. 이 앱이 이미
+// 쓰는 규칙과 같다(evalPredicate·and3) — "아니다"와 "모른다"는 섞지 않는다. 모름을 어떻게 다룰지는
+// **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { NO_TAGS, isGroupExprEmpty } from "../rank/groupFilter.js";
 import type { AxisValueRange, DateRange, RankBand, TimeRange } from "../../store/rankFilterSlice.js";
@@ -63,49 +69,68 @@ export interface GrainLookup {
 }
 
 /**
- * 이 술어를 판정하려면 어느 알갱이까지 내려가야 하나.
- *   · 날짜 = 하루 · 시간 = 타점(시각 없이는 판정 자체가 불가)
- *   · 그룹 = 참조 그룹 중 하나라도 타점 scope 면 타점. "그룹 없음"(NO_TAGS)은 알갱이를 안 정한다 —
- *     그것만 있으면 하루로 남고, 옆의 다른 리터럴이 알갱이를 말하게 둔다.
- *   · 축 = 그 축의 scope. **모르는 축은 하루**로 본다 — 지워진 축 참조 하나가 화면 전체를 타점으로
- *     끌어내리면, 죽은 조건 때문에 멀쩡한 결과가 가짜 정밀도로 펼쳐진다.
+ * 여러 알갱이를 하나로 — **가장 가는 것**. point 를 만나면 즉시 확정된다(모름이 더 가늘게 만들 수는 없다).
+ * point 가 없는데 모름이 섞였으면 모름 — 그 모름이 실은 point 였을 수 있어 day 라고 말할 수 없다.
  */
-export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain {
+function finest(grains: Iterable<Grain | undefined>): Grain | undefined {
+    let unknown = false;
+    for (const g of grains) {
+        if (g === "point") return "point";
+        if (g === undefined) unknown = true;
+    }
+    return unknown ? undefined : "day";
+}
+
+/**
+ * 이 술어를 판정하려면 어느 알갱이까지 내려가야 하나. **모르면 모른다고 한다**(undefined).
+ *   · 날짜 = 하루 · 시간 = 타점(시각 없이는 판정 자체가 불가)
+ *   · 축 = 그 축의 scope. 사전에 없으면 모름 — 로딩 중인지 지워진 건지는 여기서 알 수 없다.
+ *   · 그룹 = 참조 그룹 중 가장 가는 것. "그룹 없음"(NO_TAGS)은 실제 그룹이 아니라 알갱이를 안 정한다 —
+ *     그것만 있으면 하루로 남고, 옆의 다른 리터럴이 알갱이를 말하게 둔다.
+ */
+export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | undefined {
     switch (p.kind) {
         case "date": return "day";
         case "time": return "point";
         case "axisBand":
-        case "axisValue": return look.axisScope(p.axisId) ?? "day";
-        case "group": {
-            for (const g of p.expr.groups) {
-                for (const l of g.literals) {
-                    if (l.groupId === NO_TAGS) continue;
-                    if (look.groupScope(l.groupId) === "point") return "point";
-                }
-            }
-            return "day";
-        }
+        case "axisValue": return look.axisScope(p.axisId);
+        case "group": return finest(realGroupIds(p.expr).map(look.groupScope));
     }
 }
 
-/** 단계의 알갱이 = 그 술어들 중 가장 가는 것. */
-export function stageGrain(s: FilterStage, look: GrainLookup): Grain {
-    for (const p of s.predicates) {
-        if (isPredicateEmpty(p)) continue;
-        if (predicateGrain(p, look) === "point") return "point";
-    }
-    return "day";
+/** 식 안의 **실제** 그룹 id — NO_TAGS 는 그룹이 아니라 "0개"라는 조건이라 층위를 안 정한다. */
+const realGroupIds = (expr: GroupExpr): string[] =>
+    expr.groups.flatMap((g) => g.literals.map((l) => l.groupId)).filter((id) => id !== NO_TAGS);
+
+/** 사전이 로드된 뒤에도 알갱이를 모르는 술어 = **죽은 참조**(지워진 그룹·축). 화면이 이걸 표시해야 한다. */
+export function isPredicateDead(p: FilterPredicate, look: GrainLookup): boolean {
+    return !isPredicateEmpty(p) && predicateGrain(p, look) === undefined;
+}
+
+/** 단계의 알갱이 = 그 술어들 중 가장 가는 것. 빈 술어는 알갱이를 안 정한다. */
+export function stageGrain(s: FilterStage, look: GrainLookup): Grain | undefined {
+    return finest(s.predicates.filter((p) => !isPredicateEmpty(p)).map((p) => predicateGrain(p, look)));
 }
 
 /**
  * 결과 해상도(자동) — 걸린 단계 중 가장 가는 알갱이. 아무것도 안 걸렸으면 하루.
  * 아무 조건도 구분하지 못하는 타점 5개를 5행으로 펼치면 조건 열이 전부 같은 행 다섯이 되어
  * **없는 구조를 눈이 만든다**(가짜 정밀도). 그래서 자동이고 토글이 아니다.
+ *
+ * ⚠ `undefined` = 아직 못 정함. 소비자가 갈라야 한다 — 사전 로딩 중이면 **보류**(직전 해상도 유지),
+ * 로드가 끝났는데도 모르면 그 술어는 죽은 참조이니 알갱이 계산에서 빼고 하루로 간다(`resolveAutoGrain`).
  */
-export function autoGrain(stages: readonly FilterStage[], look: GrainLookup): Grain {
-    for (const s of activeStages(stages)) if (stageGrain(s, look) === "point") return "point";
-    return "day";
+export function autoGrain(stages: readonly FilterStage[], look: GrainLookup): Grain | undefined {
+    return finest(activeStages(stages).map((s) => stageGrain(s, look)));
 }
+
+/**
+ * 사전이 **로드된 뒤**의 자동 해상도 — 남은 모름은 전부 죽은 참조라 하루로 접는다.
+ * 죽은 조건 하나가 화면 전체를 타점으로 끌어내리면 아무것도 구분 못 하는 행들이 펼쳐진다(가짜 정밀도).
+ * 로딩 중에는 이걸 부르면 안 된다 — 그때의 모름은 "곧 올 것"이지 "없는 것"이 아니다.
+ */
+export const resolveAutoGrain = (stages: readonly FilterStage[], look: GrainLookup): Grain =>
+    autoGrain(stages, look) ?? "day";
 
 /**
  * 표시 해상도 — 자동 위치에서 **아래로만** 내려갈 수 있다(하루 → 타점).
@@ -121,6 +146,58 @@ export function displayGrain(auto: Grain, expandToPoints: boolean): Grain {
 
 /** 내리기 손잡이를 줄 수 있나 — 이미 타점이면 더 내려갈 데가 없다. */
 export const canExpand = (auto: Grain): boolean => auto === "day";
+
+// ── 단계 구성 제약 — 한 단계는 **한 종류·한 층위** ──────────────────────────
+//
+// 정확성 요건이 아니다. `돌파(하루) AND 재돌파(타점)` 를 한 단계에 섞어도 판정 자체는 된다(타점으로
+// 내려가 하루 조건은 그 타점의 날짜에 적용). 그런데도 막는 이유:
+//   · **쪼개도 결과가 같다** — 단계 사이가 AND 라 섞인 단계를 둘로 나눠도 생존 집합이 동일하다. 대가가 0.
+//   · **쪼개면 진단이 더 나온다** — 섞인 단계는 "새로 죽인 8건"이 하루 조건 탓인지 타점 조건 탓인지
+//     안 보인다. 나누면 한계 기여도가 따로 나와 어느 쪽이 장식인지 드러난다.
+//   · **"하루 단계가 타점 단계보다 앞" 규칙이 비로소 성립한다** — 단계마다 층위가 하나여야 순서를 매긴다.
+// ⚠ 모름(죽은 참조·로딩 중)은 **막지 않는다**. 알 수 없는 것을 근거로 손을 막으면 사전이 늦게 왔을 때
+// 멀쩡한 편집이 거부된다.
+
+/** 이 단계가 이미 정한 종류(빈 단계 = 아직 없음). 빈 술어도 종류는 말한다 — 편집 중인 자리라서. */
+export function stageKind(s: FilterStage): PredicateKind | undefined {
+    return s.predicates[0]?.kind;
+}
+
+/**
+ * 이 술어를 이 단계에 넣어도 되나 — 같은 종류이고, 알갱이가 충돌하지 않아야 한다.
+ * 축은 종류가 둘(밴드·값구간)이지만 같은 축 도구라 서로 섞일 수 있다.
+ *
+ * ⚠ **"아직 층위를 안 정함"과 "하루로 정함"은 다르다.** 비어 있는 집합의 알갱이는 표시 기본값으로는
+ * 하루지만(autoGrain), 제약 검사에서는 아직 아무 층위도 없는 것이다 — 그걸 하루로 읽으면 빈 단계가
+ * 타점 조건을 거부한다. 그래서 알갱이를 묻기 전에 **층위를 정하는 게 하나라도 있는지** 먼저 본다.
+ */
+export function canAddPredicate(s: FilterStage, p: FilterPredicate, look: GrainLookup): boolean {
+    const kind = stageKind(s);
+    if (kind !== undefined && !sameFamily(kind, p.kind)) return false;
+    if (s.predicates.every(isPredicateEmpty)) return true; // 아직 층위 없음
+    const mine = stageGrain(s, look);
+    const theirs = predicateGrain(p, look);
+    return mine === undefined || theirs === undefined || mine === theirs;
+}
+
+/** 축 밴드와 축 값구간은 같은 도구의 두 손잡이다 — 한 단계에 같이 놓는 게 자연스럽다. */
+const sameFamily = (a: PredicateKind, b: PredicateKind): boolean =>
+    a === b || (isAxisKind(a) && isAxisKind(b));
+
+const isAxisKind = (k: PredicateKind): boolean => k === "axisBand" || k === "axisValue";
+
+/**
+ * 이 그룹을 그룹 술어에 더해도 되나 — 식 안 그룹들과 **같은 scope** 여야 한다.
+ * "그룹 없음"(NO_TAGS)은 층위를 안 정하므로 언제나 허용된다.
+ */
+export function canAddGroupLiteral(expr: GroupExpr, groupId: string, look: GrainLookup): boolean {
+    if (groupId === NO_TAGS) return true;
+    const theirs = look.groupScope(groupId);
+    if (theirs === undefined) return true; // 모름은 막지 않는다
+    if (realGroupIds(expr).length === 0) return true; // 아직 층위 없음(빈 식·NO_TAGS 뿐)
+    const mine = predicateGrain({ kind: "group", expr }, look);
+    return mine === undefined || mine === theirs;
+}
 
 // ── 편집 연산(전부 불변) ────────────────────────────────────────────────────
 

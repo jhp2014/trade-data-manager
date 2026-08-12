@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-    activeStages, addStage, autoGrain, canExpand, displayGrain, isPredicateEmpty, moveStage,
-    parseStages, predicateGrain, removeStage, renameStage, setStagePredicates, stageGrain, toggleStage,
+    activeStages, addStage, autoGrain, canAddGroupLiteral, canAddPredicate, canExpand, displayGrain,
+    isPredicateDead, isPredicateEmpty, moveStage, parseStages, predicateGrain, removeStage, renameStage,
+    resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
 } from "../stage.js";
 import { NO_TAGS, type GroupExpr } from "../../rank/groupFilter.js";
@@ -49,8 +50,8 @@ describe("predicateGrain — 알갱이는 저장하지 않고 파생한다", () 
         expect(predicateGrain({ kind: "axisValue", axisId: "a2", ranges: [] }, look)).toBe("point");
     });
 
-    it("모르는 축(지워짐)은 하루 — 죽은 참조 하나가 화면을 타점으로 끌어내리면 가짜 정밀도가 된다", () => {
-        expect(predicateGrain({ kind: "axisBand", axisId: "없는축", band: {} }, look)).toBe("day");
+    it("모르는 축은 모른다고 한다 — '아니다'와 '모른다'를 섞지 않는다", () => {
+        expect(predicateGrain({ kind: "axisBand", axisId: "없는축", band: {} }, look)).toBeUndefined();
     });
 
     it("그룹은 타점 scope 가 하나라도 섞이면 타점", () => {
@@ -58,9 +59,31 @@ describe("predicateGrain — 알갱이는 저장하지 않고 파생한다", () 
         expect(predicateGrain({ kind: "group", expr: expr("g1", "g2") }, look)).toBe("point");
     });
 
+    it("타점을 이미 찾았으면 모르는 그룹이 섞여도 타점 — 모름이 더 가늘게 만들 수는 없다", () => {
+        expect(predicateGrain({ kind: "group", expr: expr("g2", "없는그룹") }, look)).toBe("point");
+    });
+
+    it("하루만 아는데 모름이 섞이면 모름 — 그 모름이 실은 타점이었을 수 있다", () => {
+        expect(predicateGrain({ kind: "group", expr: expr("g1", "없는그룹") }, look)).toBeUndefined();
+    });
+
     it("'그룹 없음'만으로는 알갱이를 안 정한다 — 옆 리터럴이 말하게 둔다", () => {
         expect(predicateGrain({ kind: "group", expr: expr(NO_TAGS) }, look)).toBe("day");
         expect(predicateGrain({ kind: "group", expr: expr(NO_TAGS, "g2") }, look)).toBe("point");
+    });
+});
+
+describe("isPredicateDead — 사전이 온 뒤에도 모르면 죽은 참조", () => {
+    it("지워진 축·그룹을 가리키면 죽었다", () => {
+        expect(isPredicateDead({ kind: "axisBand", axisId: "없는축", band: { lo: "s1" } }, look)).toBe(true);
+    });
+
+    it("빈 술어는 죽은 게 아니라 아직 안 쓴 것", () => {
+        expect(isPredicateDead({ kind: "axisBand", axisId: "없는축", band: {} }, look)).toBe(false);
+    });
+
+    it("살아있는 참조는 죽지 않았다", () => {
+        expect(isPredicateDead({ kind: "axisBand", axisId: "a1", band: { lo: "s1" } }, look)).toBe(false);
     });
 });
 
@@ -93,6 +116,66 @@ describe("stageGrain / autoGrain — 가장 가는 것으로", () => {
 
     it("아무것도 안 걸렸으면 하루", () => {
         expect(autoGrain([], look)).toBe("day");
+    });
+
+    it("모르는 참조가 섞이면 해상도를 못 정한다 — 로딩 중일 수 있으므로 보류", () => {
+        const stages = [stage("a", [{ kind: "axisBand", axisId: "없는축", band: { lo: "s1" } }])];
+        expect(autoGrain(stages, look)).toBeUndefined();
+    });
+
+    it("사전이 온 뒤엔 남은 모름을 하루로 접는다 — 죽은 조건이 화면을 끌어내리지 않게", () => {
+        const stages = [stage("a", [{ kind: "axisBand", axisId: "없는축", band: { lo: "s1" } }])];
+        expect(resolveAutoGrain(stages, look)).toBe("day");
+    });
+});
+
+describe("단계 구성 — 한 종류·한 층위", () => {
+    const dayGroup: FilterPredicate = { kind: "group", expr: expr("g1") };
+    const pointGroup: FilterPredicate = { kind: "group", expr: expr("g2") };
+
+    it("빈 단계는 무엇이든 받는다", () => {
+        expect(stageKind(stage("a", []))).toBeUndefined();
+        expect(canAddPredicate(stage("a", []), pointGroup, look)).toBe(true);
+    });
+
+    it("다른 종류는 못 섞는다 — 그룹은 그룹끼리, 축은 축끼리", () => {
+        expect(canAddPredicate(stage("a", [dayGroup]), { kind: "axisBand", axisId: "a1", band: { lo: "s1" } }, look)).toBe(false);
+    });
+
+    it("축 밴드와 값구간은 같은 도구라 섞인다", () => {
+        const s = stage("a", [{ kind: "axisBand", axisId: "a1", band: { lo: "s1" } }]);
+        expect(canAddPredicate(s, { kind: "axisValue", axisId: "a1", ranges: [] }, look)).toBe(true);
+    });
+
+    it("같은 종류라도 층위가 다르면 못 넣는다 — 쪼개도 결과가 같고 진단은 더 나온다", () => {
+        expect(canAddPredicate(stage("a", [dayGroup]), pointGroup, look)).toBe(false);
+        expect(canAddPredicate(stage("a", [dayGroup]), { kind: "group", expr: expr("g1") }, look)).toBe(true);
+    });
+
+    it("모름은 막지 않는다 — 알 수 없는 것으로 손을 막으면 사전이 늦을 때 멀쩡한 편집이 거부된다", () => {
+        const unknown: FilterPredicate = { kind: "group", expr: expr("없는그룹") };
+        expect(canAddPredicate(stage("a", [dayGroup]), unknown, look)).toBe(true);
+        expect(canAddPredicate(stage("a", [unknown]), pointGroup, look)).toBe(true);
+    });
+});
+
+describe("canAddGroupLiteral — 한 식 안에서도 같은 scope", () => {
+    it("같은 scope 는 받고 다른 scope 는 막는다", () => {
+        expect(canAddGroupLiteral(expr("g1"), "g1", look)).toBe(true);
+        expect(canAddGroupLiteral(expr("g1"), "g2", look)).toBe(false);
+    });
+
+    it("빈 식은 무엇이든 받는다 — 첫 리터럴이 층위를 정한다", () => {
+        expect(canAddGroupLiteral({ groups: [] }, "g2", look)).toBe(true);
+    });
+
+    it("'그룹 없음'은 층위를 안 정하니 언제나 허용", () => {
+        expect(canAddGroupLiteral(expr("g2"), NO_TAGS, look)).toBe(true);
+        expect(canAddGroupLiteral(expr(NO_TAGS), "g2", look)).toBe(true);
+    });
+
+    it("모르는 그룹은 막지 않는다", () => {
+        expect(canAddGroupLiteral(expr("g1"), "없는그룹", look)).toBe(true);
     });
 });
 
