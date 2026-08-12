@@ -32,6 +32,16 @@ const CELLS: { cell: FunnelCell; label: string; color: string; hint: string }[] 
 
 const MAX_ROWS = 200; // 목록은 훑어보는 용도 — 전부 그리면 스크롤만 길어진다
 
+/**
+ * 0 이 아닌 칸의 최소 폭(px). 5119건 중 3건은 0.06% 라 정직하게 그리면 **누를 수가 없다**.
+ *
+ * ⚠ 대가: 막대가 더는 엄밀한 비례가 아니다. 작은 칸이 실제보다 넓게 보인다. 그래도 이쪽이 맞다 —
+ * 이 막대의 일은 "몇 %인가"를 재게 하는 게 아니라 **어느 칸이 있고 그걸 눌러 볼 수 있게** 하는 것이고,
+ * 정확한 수는 칸 안 숫자·툴팁·아래 목록에 있다. 못 누르는 칸은 없는 칸과 같다.
+ * 칸은 최대 다섯이라 왜곡의 상한도 5×MIN_SEG 로 묶여 있다.
+ */
+const MIN_SEG = 16;
+
 export function FilterFunnelPanel(): JSX.Element {
     const v = useFilterFunnel();
     const stages = useWorkbench((s) => s.filterStages);
@@ -163,7 +173,7 @@ function StageRow({ index, stage, tally, universe, label, dead, picked, onPick, 
                     </span>
                 ) : CELLS.map(({ cell, label: cl, color, hint }) => {
                     const n = tally.counts[cell];
-                    if (n === 0) return null;
+                    if (n === 0) return null; // 0 은 자리를 안 먹는다 — 최소 폭은 "있는 것"에만 준다
                     const pct = universe === 0 ? 0 : (n / universe) * 100;
                     const on = picked === cell;
                     return (
@@ -172,7 +182,8 @@ function StageRow({ index, stage, tally, universe, label, dead, picked, onPick, 
                             onClick={() => onPick(cell)}
                             title={`${cl} ${n.toLocaleString("ko-KR")} — ${hint}`}
                             style={{
-                                width: `${pct}%`, minWidth: 0, border: "none", padding: 0, cursor: "pointer",
+                                // 최소 폭(basis) + 남는 폭을 건수 비례로(grow). 좁으면 다 같이 줄어든다(shrink).
+                                flex: `${n} 1 ${MIN_SEG}px`, minWidth: 0, border: "none", padding: 0, cursor: "pointer",
                                 background: color, color: "#fff", fontSize: 10, lineHeight: 1,
                                 fontVariantNumeric: "tabular-nums", overflow: "hidden", whiteSpace: "nowrap",
                                 outline: on ? "2px solid var(--text-primary)" : "none", outlineOffset: -2,
