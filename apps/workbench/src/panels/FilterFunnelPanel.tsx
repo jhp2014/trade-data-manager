@@ -16,8 +16,10 @@ import { stocksMetaQuery } from "../api/queries.js";
 import { useWorkbench } from "../store/workbench.js";
 import { TextToggle } from "../components/ControlChrome.js";
 import { useFilterFunnel, type FunnelView } from "./filter/useFilterFunnel.js";
+import { GroupStageEditor } from "./filter/StageEditor.js";
 import { kindLabel, stageLabel } from "./filter/label.js";
-import { stageKind, type FilterStage } from "./filter/stage.js";
+import { isPredicateEmpty, stageKind, type FilterStage } from "./filter/stage.js";
+import type { GroupExpr } from "./rank/groupFilter.js";
 import { FAIL, GROUP_PLAIN, HOVER, IGNORED_CANDLE, STRONG } from "../styles/palette.js";
 
 const CELLS: { cell: FunnelCell; label: string; color: string; hint: string }[] = [
@@ -32,14 +34,25 @@ const MAX_ROWS = 200; // 목록은 훑어보는 용도 — 전부 그리면 스�
 
 export function FilterFunnelPanel(): JSX.Element {
     const v = useFilterFunnel();
+    const stages = useWorkbench((s) => s.filterStages);
     const expandToPoints = useWorkbench((s) => s.filterExpandToPoints);
     const setExpand = useWorkbench((s) => s.setFilterExpandToPoints);
+    const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
+    const toggleStage = useWorkbench((s) => s.toggleFilterStage);
+    const removeStage = useWorkbench((s) => s.removeFilterStage);
     const [picked, setPicked] = useState<{ stageIndex: number; cell: FunnelCell } | null>(null);
+    const [editing, setEditing] = useState<{ stageId: string; x: number; y: number } | null>(null);
 
     const pickedItems = useMemo<FunnelItem[]>(() => {
         if (!picked || !v.result) return [];
         return v.result.stages[picked.stageIndex]?.cells[picked.cell] ?? [];
     }, [picked, v.result]);
+
+    // 막대는 **평가에 들어간 단계**의 것이고 행은 **전 단계**를 보여준다 — 조건이 비었거나 꺼진 단계도
+    // 만질 수 있어야 하므로, 행 → 정산 자리는 active 안에서의 위치로 찾는다.
+    const activeIndexOf = (id: string): number => v.active.findIndex((a) => a.id === id);
+    const editingStage = editing ? stages.find((s) => s.id === editing.stageId) : undefined;
+    const editingExpr = editingStage?.predicates.find((p) => p.kind === "group");
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
@@ -47,23 +60,39 @@ export function FilterFunnelPanel(): JSX.Element {
 
             <div style={{ flex: "0 0 auto", maxHeight: "55%", overflowY: "auto", padding: "6px 10px" }}>
                 {v.isLoading && <Note>불러오는 중…</Note>}
-                {!v.isLoading && v.active.length === 0 && (
-                    <Note>단계가 없습니다. 조건을 걸면 단계마다 유니버스 {v.universe}건이 다섯 칸으로 갈립니다.</Note>
+                {!v.isLoading && stages.length === 0 && (
+                    <Note>단계가 없습니다. 아래 <b>+ 단계</b>로 조건을 걸면, 단계마다 후보 {v.universe.toLocaleString("ko-KR")}건이 다섯 칸으로 갈립니다.</Note>
                 )}
-                {!v.isLoading && v.result && v.active.map((s, i) => (
-                    <StageRow
-                        key={s.id}
-                        index={i}
-                        stage={s}
-                        tally={v.result!.stages[i]!}
-                        universe={v.universe}
-                        label={stageLabel(s, v.labelLook)}
-                        dead={v.deadStageIds.includes(s.id)}
-                        picked={picked?.stageIndex === i ? picked.cell : null}
-                        onPick={(cell) => setPicked((p) => (p?.stageIndex === i && p.cell === cell ? null : { stageIndex: i, cell }))}
-                    />
-                ))}
+                {!v.isLoading && stages.map((s, i) => {
+                    const ai = activeIndexOf(s.id);
+                    return (
+                        <StageRow
+                            key={s.id}
+                            index={i}
+                            stage={s}
+                            tally={ai >= 0 ? (v.result?.stages[ai] ?? null) : null}
+                            universe={v.universe}
+                            label={stageLabel(s, v.labelLook)}
+                            dead={v.deadStageIds.includes(s.id)}
+                            picked={picked?.stageIndex === ai ? picked.cell : null}
+                            onPick={(cell) => ai >= 0 && setPicked((p) => (p?.stageIndex === ai && p.cell === cell ? null : { stageIndex: ai, cell }))}
+                            onEdit={(x, y) => setEditing({ stageId: s.id, x, y })}
+                            onToggle={() => toggleStage(s.id)}
+                            onRemove={() => { removeStage(s.id); setPicked(null); }}
+                        />
+                    );
+                })}
+                {!v.isLoading && <AddStageButton />}
             </div>
+
+            {editing && editingStage && editingExpr?.kind === "group" && (
+                <GroupStageEditor
+                    anchor={editing}
+                    expr={editingExpr.expr}
+                    onChange={(next) => setPredicates(editing.stageId, [{ kind: "group", expr: next }])}
+                    onClose={() => setEditing(null)}
+                />
+            )}
 
             <Legend />
 
@@ -98,31 +127,41 @@ function Header({ v, expandToPoints, setExpand }: { v: FunnelView; expandToPoint
     );
 }
 
-function StageRow({ index, stage, tally, universe, label, dead, picked, onPick }: {
+function StageRow({ index, stage, tally, universe, label, dead, picked, onPick, onEdit, onToggle, onRemove }: {
     index: number;
     stage: FilterStage;
-    tally: StageTally;
+    /** 평가에 안 들어간 단계(조건이 비었거나 꺼짐)는 null — 행은 남고 막대만 없다. */
+    tally: StageTally | null;
     universe: number;
     label: string;
     dead: boolean;
     picked: FunnelCell | null;
     onPick: (cell: FunnelCell) => void;
+    onEdit: (x: number, y: number) => void;
+    onToggle: () => void;
+    onRemove: () => void;
 }): JSX.Element {
     // 장식 판정 — 새로 죽인 게 없으면 이 단계는 겉보기 탈락이 아무리 커도 아무 일도 안 한 것이다.
-    const decorative = tally.newlyKilled === 0;
+    const decorative = tally !== null && tally.newlyKilled === 0;
+    const empty = stage.predicates.every(isPredicateEmpty);
     return (
-        <div style={{ display: "grid", gridTemplateColumns: "120px minmax(0,1fr) 62px", alignItems: "center", gap: 10, padding: "4px 0", opacity: decorative ? 0.5 : 1 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "118px minmax(0,1fr) 58px 40px", alignItems: "center", gap: 8, padding: "4px 0", opacity: !stage.enabled ? 0.4 : decorative ? 0.55 : 1 }}>
             <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={label}>
+                <button onClick={(e) => onEdit(e.clientX, e.clientY)} title="조건 편집"
+                    style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", padding: 0, font: "inherit", cursor: "pointer", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: dead ? FAIL : "var(--text-primary)" }}>
                     <span style={{ color: "var(--text-tertiary)", marginRight: 4 }}>{index + 1}</span>
-                    <span style={{ color: dead ? FAIL : undefined }}>{label}</span>
-                </div>
+                    {label}
+                </button>
                 <div style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>{kindLabel(stageKind(stage))}</div>
             </div>
 
             {/* ⚠ 막대 길이는 언제나 유니버스 전체 — 단계가 늘어도 짧아지지 않는다. */}
             <div style={{ display: "flex", height: 20, borderRadius: 3, overflow: "hidden", background: "var(--bg-secondary)" }}>
-                {CELLS.map(({ cell, label: cl, color, hint }) => {
+                {tally === null ? (
+                    <span style={{ display: "flex", alignItems: "center", padding: "0 7px", fontSize: 10.5, color: "var(--text-tertiary)" }}>
+                        {empty ? "조건을 고르세요" : "꺼짐"}
+                    </span>
+                ) : CELLS.map(({ cell, label: cl, color, hint }) => {
                     const n = tally.counts[cell];
                     if (n === 0) return null;
                     const pct = universe === 0 ? 0 : (n / universe) * 100;
@@ -144,15 +183,48 @@ function StageRow({ index, stage, tally, universe, label, dead, picked, onPick }
             </div>
 
             <div style={{ textAlign: "right", fontSize: 10.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}
-                title="이 단계가 **새로** 죽인 수(상류 전부 통과였는데 이번에 탈락). 0 이면 장식이다 — 겉보기 탈락과 다를 수 있다.">
+                title="이 단계가 새로 죽인 수(상류 전부 통과였는데 이번에 탈락). 0 이면 장식이다 — 겉보기 탈락과 다를 수 있다.">
                 새로 죽임<br />
                 <span style={{ fontSize: 12, color: decorative ? "var(--text-tertiary)" : "var(--text-primary)" }}>
-                    {tally.newlyKilled.toLocaleString("ko-KR")}
+                    {tally === null ? "—" : tally.newlyKilled.toLocaleString("ko-KR")}
                 </span>
+            </div>
+
+            <div style={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
+                {/* 끄기는 지우기와 다르다 — 잠깐 빼보는 게 한계 기여도를 눈으로 확인하는 손짓이다. */}
+                <button onClick={onToggle} title={stage.enabled ? "이 단계 끄기(빼고 보기)" : "다시 켜기"} style={iconBtn}>{stage.enabled ? "◉" : "○"}</button>
+                <button onClick={onRemove} title="이 단계 지우기" style={{ ...iconBtn, color: FAIL }}>✕</button>
             </div>
         </div>
     );
 }
+
+/** 새 단계 — 첫 그룹을 고르는 순간 만들어진다(빈 단계를 먼저 만들면 목록에 껍데기가 쌓인다). */
+function AddStageButton(): JSX.Element {
+    const addStage = useWorkbench((s) => s.addFilterStage);
+    const [open, setOpen] = useState<{ x: number; y: number } | null>(null);
+    const [draft, setDraft] = useState<GroupExpr>({ groups: [] });
+    const close = (): void => {
+        if (draft.groups.length > 0) addStage([{ kind: "group", expr: draft }]);
+        setDraft({ groups: [] });
+        setOpen(null);
+    };
+    return (
+        <>
+            <button onClick={(e) => { setDraft({ groups: [] }); setOpen({ x: e.clientX, y: e.clientY }); }}
+                title="그룹 조건으로 단계 추가(날짜·시간·축은 레일이 이사 온 뒤)"
+                style={{ marginTop: 4, fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer" }}>
+                + 단계
+            </button>
+            {open && <GroupStageEditor anchor={open} expr={draft} onChange={setDraft} onClose={close} />}
+        </>
+    );
+}
+
+const iconBtn: React.CSSProperties = {
+    border: "none", background: "transparent", color: "var(--text-tertiary)",
+    cursor: "pointer", fontSize: 11, lineHeight: 1, padding: "1px 2px",
+};
 
 function Legend(): JSX.Element {
     return (
