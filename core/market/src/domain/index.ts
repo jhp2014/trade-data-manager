@@ -29,6 +29,8 @@ export * from "./review/skeleton.js";
 export * from "./review/reviewPoint.js";
 export * from "./review/group.js";
 export * from "./review/candidateDay.js";
+// 후보 하루를 모수로 삼는 필터 깔때기의 정산(단계 독립 평가 · 3치 AND · 5칸 · 한계 기여도).
+export * from "./review/funnel.js";
 
 // rank — 순위 배치(사람 편집): 축별 상대순위 줄에 복기 타점 배치. review point 를 자연키로 참조.
 export * from "./rank/index.js";
