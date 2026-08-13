@@ -22,6 +22,7 @@
 // (거래량 0 채움봉도 캔들로 그린다), 멤버는 여기서 직전 값을 끌어 채운다. 선두 갭(첫 값 이전)만은
 // 못 채운다 — 끌어올 직전 값이 없다(densifyMinutes 의 규칙과 같다).
 import { computeMinuteTradingAmount } from "@trade-data-manager/market/domain";
+import { minutesOfDay } from "../../lib/date.js";
 import { pct } from "./skeletonOverlay.js";
 
 /** 뷰 공간의 캔들 하나 — x = 타점 대비 분, y 넷은 % 공간. `amount` 는 그 분 거래대금(원, 없으면 0). */
@@ -46,8 +47,6 @@ export interface RawMinute {
     un: { open: string; high: string; low: string; close: string; volume: string };
 }
 
-/** `HH:MM(:SS)` → 자정 기준 분. skeletonOverlay.minutesOf 와 같은 규칙(초는 버린다). */
-const minuteOf = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 
 /**
  * 무손실 string → 가격. **빈 문자열을 0으로 받지 않는다** — `Number("")` 는 0이고 그건 유한하므로,
@@ -81,7 +80,7 @@ export function anchorCandles(
         // 거래대금은 **도메인 공식**으로 — 스냅샷 cumAmount 를 굽는 그 함수라 두 경로의 숫자가 같다.
         const amount = Number(computeMinuteTradingAmount(b.un));
         out.push({
-            x: minuteOf(b.time) - origin.baseT,
+            x: minutesOfDay(b.time) - origin.baseT,
             o: y(o), h: y(h), l: y(l), c: y(c),
             amount: Number.isFinite(amount) ? amount : 0,
         });

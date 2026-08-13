@@ -25,7 +25,7 @@ import { useWorkbench } from "../../store/workbench.js";
 import { ACTIVE, ACTIVE_SOFT, FAIL, STRONG } from "../../styles/palette.js";
 import type { FunnelSelection } from "../../store/filterFunnelSlice.js";
 import { cellMeta } from "./cells.js";
-import { shortDate } from "./datetime.js";
+import { shortDate } from "../../lib/date.js";
 import { groupByChart, monthBuckets, monthLabel, monthOf, sortItems } from "./resultRows.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 

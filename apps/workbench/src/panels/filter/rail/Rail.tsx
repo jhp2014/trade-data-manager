@@ -10,6 +10,7 @@
 // ⚠ 커밋은 **손을 뗄 때 한 번**이다. 드래그 중에 store 를 갱신하면 유니버스×필터 정산이 프레임마다
 // 돌아 손이 끌리는데, 정작 보고 싶은 숫자(막대)는 뗀 뒤에 봐도 늦지 않다.
 import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { clamp01 } from "../../../lib/num.js";
 import { ACTIVE, FILTER } from "../../../styles/palette.js";
 import { applyDrag, fracOfX, isTapRange, orderRanges, removeAt, type RailDrag, type RailRange } from "./railModel.js";
 
@@ -190,8 +191,6 @@ export function Rail<V>({
         </div>
     );
 }
-
-const clamp01 = (f: number): number => (Number.isFinite(f) ? Math.max(0, Math.min(1, f)) : 0.5);
 
 /** 현재 타점 자리 표식 — 선 위에 서는 물방울 핀. 레일이 유일한 소비자라 여기 산다. */
 function CurrentMarker({ color }: { color: string }): JSX.Element {

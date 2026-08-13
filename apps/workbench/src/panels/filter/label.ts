@@ -4,7 +4,7 @@
 // 그래서 이름을 못 찾은 자리는 `(지워짐)` 으로 **눈에 띄게** 남긴다 — 판정에서 그게 미배치를 만들고 있으니
 // 숫자와 화면이 같은 이야기를 해야 한다.
 import { NO_TAGS, type GroupExpr } from "../rank/groupFilter.js";
-import { shortDate } from "./datetime.js";
+import { shortDate } from "../../lib/date.js";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 
 export interface LabelLookup {

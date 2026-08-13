@@ -11,6 +11,7 @@
 // 3주에 걸친 것이 같은 모양이 된다. 기간이 관심사인데 그걸 지우면 그림이 거짓말을 한다. 그래서 시간축은
 // 공통 척도(모든 골격의 t 범위 합집합)를 쓴다.
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
+import { minutesOfDay } from "../../lib/date.js";
 
 /** 정규화 기준 피벗. */
 export type SkeletonAnchor = "first" | "last";
@@ -67,8 +68,8 @@ export interface PointSkeleton extends NormalizedSkeleton {
  */
 export type OverlayLine = ChartSkeleton | PointSkeleton;
 
-/** `HH:MM(:SS)` → 자정 기준 분. 분봉 골격의 t(벽시계 분)와 타점 시각을 잇는 유일한 환산. */
-export const minutesOf = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
+// `HH:MM(:SS)` → 자정 기준 분(분봉 골격의 t 와 타점 시각을 잇는 환산)은 lib/date 의 minutesOfDay 다.
+// 여기 있던 minutesOf 를 포함해 같은 두 줄이 네 벌 돌아다녔다.
 
 /**
  * 차트 하나의 분봉 골격을 **타점마다** 재정규화한다. 타점 시각의 피벗은 합성 규칙("타점 종가 = 골격의 한 점")
@@ -89,7 +90,7 @@ export function pointSkeletons(
     if (pivots.length < 2 || prevClose == null || prevClose <= 0) return [];
     const out: PointSkeleton[] = [];
     for (const p of pts) {
-        const t0 = minutesOf(p.time);
+        const t0 = minutesOfDay(p.time);
         const idx = pivots.findIndex((v) => v.t === t0);
         if (idx < 0) continue;
         const base = pivots[idx];

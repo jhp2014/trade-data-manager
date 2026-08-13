@@ -1,5 +1,6 @@
 // 보드 카드 공용 타입·상수·포맷 — BoardCard / StockLayout / 패널이 공유.
 import type { DeltaHit, RelationKind } from "@trade-data-manager/market/domain";
+import { fmtPct } from "../../lib/format.js";
 
 export const AXIS_LO = -5; // 눕힌 캔들 축 하한
 export const AXIS_HI = 30; // 캔들/분포 축 상한
@@ -43,6 +44,5 @@ export interface BoardStock {
 }
 
 // 보드 등락률 — 소수 1자리(부호 포함). 차트는 2자리(fmtRate) 유지, 보드만 간결하게.
-export function fmtRate1(v: number): string {
-    return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
-}
+// 이름은 보드 쪽 부르는 자리들이 그대로 쓰게 남겨 두고, 규칙 자체는 format 한 곳에 있다.
+export const fmtRate1 = (v: number): string => fmtPct(v, 1);

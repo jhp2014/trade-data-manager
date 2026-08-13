@@ -25,7 +25,9 @@ import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { ACTIVE, HOVER, PRICE_LINE, seriesColor, groupColor } from "../styles/palette.js";
-import { fmtEok } from "../lib/format.js";
+import { fmtEok, fmtPct } from "../lib/format.js";
+import { shortDate, timeOfMinutes } from "../lib/date.js";
+import { clamp, median } from "../lib/num.js";
 
 // 골격 겹쳐 그리기 — 차트를 골격으로 축약해 **한 화면에서 서로 비교**하는 주 작업면.
 //
@@ -84,17 +86,8 @@ const AMOUNT_LABEL_CELL = { w: 52, gap: 12 };
  */
 const RECEDE_OPACITY = 0.3;
 
-/** `2026-07-08` → `26.07.08`. 연도를 남기는 건 여러 해가 섞이기 때문(월·일만이면 같은 날로 보인다). */
-const fmtDate = (d: string): string => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
-const fmtPct = (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
-/** 자정 기준 분 → HH:MM. 먼저 반올림하고 시·분을 한 값에서 뽑는다 — 따로 뽑으면 599.7분이 "09:00"이 된다. */
-const hmOf = (m: number): string => {
-    const t = Math.round(m);
-    return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-};
-const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
-/** 가운뎃값 — 뱃지를 그 무리의 한복판에 두려고(평균이면 이상치 하나가 뱃지를 무리 밖으로 끌고 간다). */
-const median = (v: readonly number[]): number => (v.length === 0 ? 0 : [...v].sort((a, b) => a - b)[v.length >> 1]);
+// 표기·수 헬퍼는 전부 lib 의 것을 쓴다(`shortDate`=26.07.08 · `timeOfMinutes`=HH:MM · `fmtPct` · clamp·median).
+// 여기 있던 다섯 벌은 lib 의 것과 글자까지 같은 규칙이었다 — 연도 두 자리도, 반올림 순서도.
 
 /** 거래대금 구간 인덱스 → 굵기 단계. 구간 아래(-1)는 0단계. */
 const amountLevelOf = (won: number): number => {
@@ -873,7 +866,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             setGroupMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points: [{ stockCode: s.stockCode, date: s.date, time: s.time }], label: `${nameOf(s.stockCode)} ${s.time.slice(0, 5)}` });
             return;
         }
-        setGroupMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${fmtDate(s.date)}` });
+        setGroupMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${shortDate(s.date)}` });
     }, [nameOf]);
     // 선택 중 **이 패널에 실제로 있는** 차트 — 다른 골격 패널(일봉↔분봉)에서 만든 선택엔 여기 없는
     // 차트가 섞일 수 있다. 헤더 버튼 숫자와 메뉴 대상이 같은 목록을 봐야 "차트 3 그룹"가 2개만 여는 일이 없다.
@@ -884,7 +877,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const openGroupMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
         const charts = selectedCharts.map((s) => ({ stockCode: s.stockCode, date: s.date }));
         if (charts.length === 0) return;
-        setGroupMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${fmtDate(charts[0].date)}` : `선택 ${charts.length}개` });
+        setGroupMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${shortDate(charts[0].date)}` : `선택 ${charts.length}개` });
     }, [selectedCharts, nameOf]);
     const openPointGroupMenu = useCallback((points: PointRef[], label: string, ev: { clientX: number; clientY: number; preventDefault?: () => void }): void => {
         ev.preventDefault?.();
@@ -910,7 +903,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const dot = <span style={labelDot(visualOf(s.key).color)} />;
         const text = (
             <span>
-                <span style={{ color: "var(--text-tertiary)" }}>{fmtDate(s.date)}</span> {nameOf(s.stockCode)}
+                <span style={{ color: "var(--text-tertiary)" }}>{shortDate(s.date)}</span> {nameOf(s.stockCode)}
                 {s.kind === "point" && <span style={{ color: "var(--text-secondary)", fontWeight: 700 }}> {s.time.slice(0, 5)}</span>}
             </span>
         );
@@ -1105,7 +1098,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             {scales.x.ticks(6).map((v) => (
                                 <g key={`x${v}`}>
                                     <text x={scales.x(v)} y={size.h - (axisAbs ? 14 : 8)} textAnchor="middle" style={axisText}>{fmtX(v, xUnit)}</text>
-                                    {axisAbs && <text x={scales.x(v)} y={size.h - 4} textAnchor="middle" style={axisAbsText}>{hmOf(v + axisAbs.baseT)}</text>}
+                                    {axisAbs && <text x={scales.x(v)} y={size.h - 4} textAnchor="middle" style={axisAbsText}>{timeOfMinutes(v + axisAbs.baseT)}</text>}
                                 </g>
                             ))}
 
@@ -1318,7 +1311,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                         <line x1={px} x2={ax} y1={py} y2={py} stroke={color} strokeWidth={pin ? 1.2 : 0.8} strokeDasharray="2 3" opacity={pin ? 0.9 : 0.55} />
                                                         <text x={px} y={ay + (below ? 12 : -5)} textAnchor="middle"
                                                             stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
-                                                            {fmtX(p.x, xUnit)}{s.kind === "point" ? ` (${hmOf(p.x + s.baseT)})` : ""}
+                                                            {fmtX(p.x, xUnit)}{s.kind === "point" ? ` (${timeOfMinutes(p.x + s.baseT)})` : ""}
                                                         </text>
                                                         <text x={ax + (leftSide ? -4 : 4)} y={py - 3} textAnchor={leftSide ? "end" : "start"}
                                                             stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
@@ -1608,7 +1601,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <MenuItem onClick={() => { onLabelClick(s, { ctrlKey: false, metaKey: false }); closeBadge(); }}>
                                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                                         <span style={{ width: 6, height: 6, borderRadius: 3, background: groupColorOf(s.key), flexShrink: 0 }} />
-                                        <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtDate(s.date)}</span>
+                                        <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{shortDate(s.date)}</span>
                                         <span>{nameOf(s.stockCode)}</span>
                                         {s.kind === "point" && <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{s.time.slice(0, 5)}</span>}
                                     </span>
@@ -1764,7 +1757,7 @@ function CrosshairLayer({ wrapRef, scales, box, xUnit, abs, readoutAt, colorOf }
             </div>
             {/* x 뱃지 — 아래 시간축 위. */}
             <div style={{ ...axisBadge, left: pos.x, bottom: 2, transform: "translateX(-50%)" }}>
-                {fmtX(xv, xUnit)}{abs && <span style={axisBadgeAbs}> {hmOf(xv + abs.baseT)}</span>}
+                {fmtX(xv, xUnit)}{abs && <span style={axisBadgeAbs}> {timeOfMinutes(xv + abs.baseT)}</span>}
             </div>
             {/* 세로선 판독 — 지시선(SVG)이 먼저, 칩(HTML)이 그 위에. 칩은 **포인터를 안 받는다**:
                 커서 밑에 칩이 깔리면 그게 선의 호버를 가로채 판독이 깜빡인다(떴다 사라졌다 반복). */}

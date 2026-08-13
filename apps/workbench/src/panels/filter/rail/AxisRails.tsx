@@ -10,6 +10,7 @@ import { useMemo } from "react";
 import type { PlacedPoint, RankAxis } from "@trade-data-manager/wire";
 import { assemble } from "../../rank/rankGeometry.js";
 import { nearestPointAt, valueDomain, valueToFrac } from "../../../lib/computedAxis.js";
+import { clampIndex } from "../../../lib/num.js";
 import { pointKey } from "../../../lib/pointKey.js";
 import { resolveBound } from "../evaluate.js";
 import type { AxisBound, AxisValueRange, RankBand } from "../stage.js";
@@ -18,7 +19,6 @@ import { toRailBand, toRailRanges, toRankBand, toValueRanges } from "./railBound
 import type { RailRange } from "./railModel.js";
 
 const GONE_LABEL = "?"; // 앵커가 사라진 경계 — 숫자를 지어내지 않는다
-const clampIndex = (i: number, len: number): number => Math.max(0, Math.min(len - 1, i));
 
 interface CommonProps {
     axis: RankAxis;

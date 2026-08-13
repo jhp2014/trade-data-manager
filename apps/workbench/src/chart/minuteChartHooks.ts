@@ -26,6 +26,7 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
 export const GROUP_MARKER_ATTR = "data-group-marker";
 import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
 import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
+import { minutesOfDay } from "../lib/date.js";
 import { type MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { ALARM, PRICE_LINE, SKELETON } from "../styles/palette.js";
@@ -38,8 +39,6 @@ const PREMARKET_OPEN_MIN = 8 * 60; // NXT 프리마켓 개장(08:00) — 프리�
 const REGULAR_OPEN_MIN = 9 * 60; // 정규장 개장(09:00) — KRX 전용(프리마켓 없는) 종목 세션 시작
 const SESSION_CLOSE = "15:30:00"; // 기본 뷰 우단 — 종가 단일가까지. 시간외(~20:00)는 줌아웃/스크롤로 접근
 
-/** "HH:MM:SS" → 자정 기준 분(分). 초는 분봉상 무시. */
-const hmsToMin = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
 
 /** 저장 타점 입력(스냅 전) — unix초 + 배치된 축 수(▼ 채움·배지). 축별 상세는 "타점 정보" 패널 몫. */
 export interface SavedPointInput {
@@ -300,7 +299,7 @@ export function useMinuteVisibleRange(
         const ts = chart.timeScale();
         const prevFrameKey = prevFrameKeyRef.current;
         prevFrameKeyRef.current = frameKey;
-        const firstMin = hmsToMin(points[0].tradeTime); // 이 데이터셋 첫 봉 분(分) — clock↔논리인덱스 변환 기준
+        const firstMin = minutesOfDay(points[0].tradeTime); // 이 데이터셋 첫 봉 분(分) — clock↔논리인덱스 변환 기준
         // 스케일 고정 — 전환이면 직전 clock 창 복원. 첫 봉 시각 차만큼 논리 인덱스 시프트(논리 1칸=1분)해
         // clock 기준 동일하게 유지(NXT↔KRX전용도 60분 안 밀림). 첫 마운트(prevFrameKey null)는 프레이밍.
         if (prevFrameKey !== null && prevFrameKey !== frameKey && lockRef.current && lockedRef.current) {

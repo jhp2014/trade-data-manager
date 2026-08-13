@@ -27,7 +27,7 @@ import { RangeTextEditor } from "./RangeTextEditor.js";
 import { ComputedAxisRail, SlotAxisRail } from "./rail/AxisRails.js";
 import { RAIL_LABEL_W, RAIL_ROW_H } from "./rail/Rail.js";
 import { DateRail, TimeRail } from "./rail/RangeRails.js";
-import { parseDate, parseTime, shortDate } from "./datetime.js";
+import { parseDate, parseTime, shortDate } from "../../lib/date.js";
 import { GRAIN_TITLE, GrainSection } from "./grain.js";
 import { predicateOfKind, stagesFor, type RailKey } from "./stageBinding.js";
 import type { AxisValueRange, DateRange, FilterPredicate, FilterStage, Grain, RankBand, TimeRange } from "./stage.js";

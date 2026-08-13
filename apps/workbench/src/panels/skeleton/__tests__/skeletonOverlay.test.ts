@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, pct, minutesOf, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, pct, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -109,10 +109,6 @@ describe("pointSkeletons — 분봉 = 타점 단위 재구성(전일 종가 대�
         expect(pointSkeletons(mins, 0, [{ pk, time: "09:30:00" }], chart)).toEqual([]);
     });
 
-    it("minutesOf — 벽시계 분 환산(초는 버린다: 분봉 피벗의 t 해상도가 분이다)", () => {
-        expect(minutesOf("09:30:00")).toBe(570);
-        expect(minutesOf("15:19:59")).toBe(919);
-    });
 });
 
 describe("overlayBounds", () => {

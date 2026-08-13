@@ -7,7 +7,8 @@
 //     시각 조건은 "9시 반 이전"처럼 **절대 기준**으로 말하는 것이지 특정 타점 기준이 아니다.
 //     대신 실제 타점 분포를 틱으로 깔아 어디가 두꺼운지 보이게 한다.
 import { useMemo } from "react";
-import { minutesOfDay, shortDate, timeOfMinutes } from "../datetime.js";
+import { minutesOfDay, shortDate, timeOfMinutes } from "../../../lib/date.js";
+import { clamp01 } from "../../../lib/num.js";
 import type { DateRange, TimeRange } from "../stage.js";
 import { Rail } from "./Rail.js";
 
@@ -88,8 +89,6 @@ export function TimeRail({ ranges, tickTimes, marker, highlight, onType, onChang
         />
     );
 }
-
-const clamp01 = (f: number): number => Math.max(0, Math.min(1, f));
 
 /** HH:MM[:SS] → 시간 레일의 0..1. 도메인 밖(야간 등)은 끝에 붙는다. */
 const timeFrac = (hm: string): number => clamp01((minutesOfDay(hm) - TIME_MIN) / (TIME_MAX - TIME_MIN));
