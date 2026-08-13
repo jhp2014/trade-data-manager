@@ -11,9 +11,11 @@
 // ② **같은 (날짜·종목)은 한 덩어리로 보인다.** 타점 해상도에서는 한 차트가 여러 행이 되는데, 날짜와
 //    이름이 매 행 반복되면 몇 개의 차트를 보고 있는지가 안 읽힌다. 첫 행에만 쓰고 세로선으로 묶는다.
 //
-// ③ **선택은 조건이 아니라 시선이다.** 지금 보고 있는 타점은 목록에서 강조되고, 그 타점이 있는 달로
-//    자동으로 옮겨 간다 — 시트의 핀이 필터와 무관하게 상단에 남는 것과 같은 성질이다.
-import { useEffect, useMemo, useState } from "react";
+// ③ **선택은 조건이 아니라 시선이다.** 지금 보고 있는 타점은 목록 위 **고정 줄**에 늘 떠 있고(조건 밖이라
+//    목록에 없어도), 그 줄을 누르면 그 타점이 있는 달로 옮겨 가 행까지 스크롤한다.
+//    ⚠ **따라가기는 누를 때만** 한다. 예전엔 타점이 바뀌면 달이 저절로 따라갔는데, 그러면 5월을 훑는
+//    중에 다른 달 타점을 하나 누르는 순간 보던 달을 잃는다 — 고른 달은 사용자의 것이다.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { FunnelCell } from "@trade-data-manager/market/domain";
 import { stocksMetaQuery } from "../../api/queries.js";
@@ -46,11 +48,16 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
     // 고른 달이 조건 편집으로 사라졌으면 가장 최근 달로 — 빈 화면을 보여주지 않는다.
     const month = picked !== null && months.includes(picked) ? picked : (months[0] ?? null);
 
-    // 보고 있는 타점을 따라간다. ⚠ deps 는 활성 달 하나뿐 — months 까지 넣으면 조건을 만질 때마다
-    // 사용자가 고른 달이 활성 달로 되돌려진다(고르기를 못 하게 된다).
+    // 찾아가기 — 달을 바꾸고 **그 다음 렌더에서** 스크롤한다(행은 달이 바뀌어야 존재한다).
+    // 그래서 rAF 가 아니라 커밋 뒤에 도는 effect 를 쓴다.
+    const [jumpAt, setJumpAt] = useState(0);
+    const activeRowRef = useRef<HTMLTableRowElement | null>(null);
+    const activeChipRef = useRef<HTMLButtonElement | null>(null);
     useEffect(() => {
-        if (activeMonth) setPicked(activeMonth);
-    }, [activeMonth]);
+        if (jumpAt === 0) return;
+        activeChipRef.current?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+        activeRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, [jumpAt]);
 
     const monthItems = useMemo(() => (month === null ? [] : sorted.filter((i) => monthOf(i.date) === month)), [sorted, month]);
     const shown = monthItems.slice(0, MAX_ROWS);
@@ -58,6 +65,12 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
 
     const names = useQuery(stocksMetaQuery(shown.map((i) => i.stockCode)));
     const nameOf = (code: string): string => names.data?.find((m) => m.stockCode === code)?.name ?? code;
+
+    // 활성 타점이 지금 보는 집합 안에 있나 — 없으면 찾아갈 자리가 없다(달을 바꿔도 행이 없다).
+    const activeInResult = useMemo(
+        () => activeKey !== null && sorted.some((i) => i.time && pointKeyOf(i.stockCode, i.date, i.time) === activeKey),
+        [sorted, activeKey],
+    );
 
     const stageIndex = selection ? v.active.findIndex((s) => s.id === selection.stageId) : -1;
     const filterNo = selection ? v.stagesOrdered.findIndex((e) => e.stage.id === selection.stageId) + 1 : 0;
@@ -103,13 +116,39 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                 </span>
             </div>
 
+            {/* 지금 보고 있는 타점 — 조건 밖이라 목록에 없어도 여기엔 남는다(시선은 조건이 아니다). */}
+            {activePoint && (
+                <button
+                    onClick={() => { if (activeInResult && activeMonth) { setPicked(activeMonth); setJumpAt(Date.now()); } }}
+                    disabled={!activeInResult}
+                    title={activeInResult ? "이 타점으로 — 그 달로 옮기고 목록에서 찾아갑니다" : "지금 조건에는 안 걸린 타점입니다(선택은 조건이 아니라 시선이라 여기 남습니다)"}
+                    style={{
+                        flexShrink: 0, display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
+                        margin: "0 0 5px", padding: "3px 10px", border: "none", borderLeft: `3px solid ${activeInResult ? ACTIVE : "var(--border-default)"}`,
+                        background: activeInResult ? ACTIVE_SOFT : "var(--bg-secondary)",
+                        cursor: activeInResult ? "pointer" : "default", font: "inherit",
+                    }}>
+                    <span style={{ flexShrink: 0, fontSize: 9.5, color: "var(--text-tertiary)" }}>선택</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 700, color: activeInResult ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                        {nameOf(activePoint.code)}
+                    </span>
+                    <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                        {shortDate(activePoint.date)} {activePoint.time.slice(0, 5)}
+                    </span>
+                    <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 9.5, color: activeInResult ? ACTIVE : "var(--text-tertiary)" }}>
+                        {activeInResult ? "찾아가기 →" : "결과 밖"}
+                    </span>
+                </button>
+            )}
+
             {/* 달 = 페이지. 하나뿐이면 고를 게 없다. */}
             {months.length > 1 && (
                 <div ref={monthWheel} className="no-scrollbar" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, padding: "0 10px 5px", overflowX: "auto" }}>
                     {months.map((ym) => {
                         const on = ym === month;
                         return (
-                            <button key={ym} onClick={() => setPicked(ym)} title={`${monthLabel(ym)} — ${countByMonth.get(ym)?.toLocaleString("ko-KR")}건`}
+                            <button key={ym} ref={ym === activeMonth ? activeChipRef : undefined}
+                                onClick={() => setPicked(ym)} title={`${monthLabel(ym)} — ${countByMonth.get(ym)?.toLocaleString("ko-KR")}건`}
                                 style={{
                                     flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer",
                                     border: `1px solid ${on ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4,
@@ -143,7 +182,7 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                                 const active = key !== null && key === activeKey;
                                 const tied = g.items.length > 1; // 한 차트에 타점 여럿 — 세로선으로 묶는다
                                 return (
-                                    <tr key={`${g.key}|${it.time ?? ""}`}
+                                    <tr key={`${g.key}|${it.time ?? ""}`} ref={active ? activeRowRef : undefined}
                                         onClick={() => it.time && goToPoint({ date: it.date, code: it.stockCode, time: it.time }, "filter-funnel")}
                                         style={{
                                             // 덩어리 안쪽 행은 위 선을 없애 한 블록으로 보이게 한다.
