@@ -17,15 +17,10 @@ import {
 import { buildAxisIndex, slotOrderKeys, type AxisIndex } from "../lib/rankIndex.js";
 import { SheetRowView, ROW_H, type CellCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
-import { isComputedAxis, formatAxisValue } from "../lib/computedAxis.js";
+import { isComputedAxis } from "../lib/computedAxis.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
-import { SavedFilterControls } from "./rank/SavedFilterControls.js";
-import { GroupFilterLine, AddGroupFilterButton } from "./rank/GroupFilterLine.js";
-import { RankFilterBar } from "./rank/RankFilterBar.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
-import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
-import { ComputedBoundMenu } from "./rank/ComputedBoundMenu.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { useGroups } from "../lib/useGroups.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
@@ -33,12 +28,11 @@ import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Excursion } from "./rank/pathStats.js";
-import { FILTER } from "../styles/palette.js";
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
 //  · 셀 = 그 축 순위 `rank/total`(기본) 또는 위치 바(토글). 미배치 = 빈칸.
 //  · 헤더 클릭 = 그 열로 정렬(축은 강 먼저) · **Shift+클릭 = 정렬 단 추가**(n차). 정렬 축에서 행범위
-//    **드래그 선택 = 밴드**(AND drill-down, rankBands 공유). 체인·그룹 규칙은 sheetSort(순수·테스트)에.
+//    체인·그룹 규칙은 sheetSort(순수·테스트)에. 필터(밴드·값구간)는 필터 패널로 이사 — 시트는 결과를 구독만.
 //  · **그룹**: 1차 키에서만 접는다. 날짜·결과·그룹·배치수처럼 값이 몇 가지뿐인 열은 저절로, 축처럼 값이 거의
 //    유일한 열은 셀 우클릭 **그룹 나누기(컷)** 를 그었을 때만. 컷은 "한 구간만 남기는" 밴드와 달리 아무것도
 //    안 버리고 N개로 나눈다 → 구간끼리 한 화면에서 비교된다(밴드는 분석 모수까지 좁힌다는 게 다른 점).
@@ -77,13 +71,6 @@ export function RankSheetPanel(): JSX.Element {
     const activePoint = useWorkbench((s) => s.activePoint);
     const activeKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
 
-    const rankBands = useWorkbench((s) => s.rankBands);
-    const setRankBound = useWorkbench((s) => s.setRankBound);
-    const clearRankBand = useWorkbench((s) => s.clearRankBand);
-    const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
-    const setAxisValueBound = useWorkbench((s) => s.setAxisValueBound);
-    const setAxisValueRanges = useWorkbench((s) => s.setAxisValueRanges);
-
     // ── 링크 공유 상태(배치 보드와 양방향) — 호버·핀·축순서.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
@@ -94,7 +81,7 @@ export function RankSheetPanel(): JSX.Element {
     // ── 축 + 라인(배치 보드와 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
     // 계산 축을 함께 본다 — 판단 축과 같은 줄 모양으로 합쳐져 열·정렬·순위 셀이 구분 없이 동작한다.
     // 다만 **읽기 전용**: 배치/해제·밴드·컷은 계산 축 열에서 열리지 않는다(아래 isComputedAxis 가드).
-    const { axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes({ includeComputed: true });
+    const { axes, axisIds, linesByAxis, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes({ includeComputed: true });
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
         for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));
@@ -113,7 +100,6 @@ export function RankSheetPanel(): JSX.Element {
         for (const p of allPoints) m.set(pointKey(p), p);
         return m;
     }, [allPoints]);
-    const dateBounds = useMemo(() => { const ds = allPoints.map((p) => p.date).sort(); return ds.length ? { min: ds[0], max: ds[ds.length - 1] } : null; }, [allPoints]);
 
     // ── 결과(분석) — 통합 필터(밴드·날짜·시간) 매칭 집합 + 경로 통계(좁혔을 때만 lazy). 기간은 이제 날짜 필터에 흡수.
     const r = useRankFilterResult();
@@ -372,13 +358,7 @@ export function RankSheetPanel(): JSX.Element {
                     {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
                     {Object.keys(colWidths).length > 0 && <button onClick={() => setColWidths({})} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
                 </div>
-                <span style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, flexShrink: 0 }}>
-                    <SavedFilterControls axes={axes} />
-                </span>
             </div>
-
-            <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} computedMeta={computedMeta} extra={<AddGroupFilterButton />} />
-            <GroupFilterLine />
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
             <div ref={scrollRef} onScroll={(e) => { sheetScroll = { top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft }; }} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
@@ -393,8 +373,6 @@ export function RankSheetPanel(): JSX.Element {
                                 const step = sortStepNo(sort, sk); // 0=미정렬, 1=1차, 2…=2차 이하
                                 const active = step > 0;
                                 const left = leftOf.get(colKey(c));
-                                // 필터 걸린 축 표시 — 판단 축은 밴드, 계산 축은 값 구간(저장 자리만 다르고 뜻은 같다).
-                                const banded = c.key === "axis" && (!!rankBands[c.axisId] || !!axisValueRanges[c.axisId]);
                                 const justify = COL_META[c.key].justify;
                                 // 드래그 재정렬 두 종류 — **고정 여부로 갈린다**(순서 소스가 둘이기 때문).
                                 //   고정 열  = 시트 전용 자리 → frozenCols 배열만 재배치(배치 보드 무관)
@@ -417,7 +395,7 @@ export function RankSheetPanel(): JSX.Element {
                                         ref={c.key === "axis" && c.axisId === sortAxisId ? sortAxisThRef : undefined}
                                         onClick={(e) => clickHeader(sk, e.shiftKey)}
                                         onContextMenu={(e) => { e.preventDefault(); setHdrCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), sortKey: sk, step, x: e.clientX, y: e.clientY }); }}
-                                        style={{ ...thBase, position: "relative", cursor: "pointer", color: step === 1 ? "var(--accent-primary)" : active ? "var(--text-secondary)" : banded ? FILTER : "var(--text-tertiary)", borderBottom: banded ? `2px solid ${FILTER}` : thBase.borderBottom, ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
+                                        style={{ ...thBase, position: "relative", cursor: "pointer", color: step === 1 ? "var(--accent-primary)" : active ? "var(--text-secondary)" : "var(--text-tertiary)", ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}) }}>
                                         <span style={{ display: "flex", alignItems: "center", justifyContent: justify, gap: 2, minWidth: 0 }}>
                                             {active && <span style={{ flexShrink: 0 }}>{sort[step - 1].dir === 1 ? "▲" : "▼"}</span>}
                                             {/* 단 번호는 체인이 2단 이상일 때만 — 기본 화면(1단)은 지금과 똑같이 보인다. */}
@@ -465,35 +443,24 @@ export function RankSheetPanel(): JSX.Element {
             document.body,
           )}
 
-            {ctx && (() => {
+            {/* 셀 우클릭 — 배치 편집만 남았다(밴드·값경계는 필터 패널로 이사). 계산 축은 배치가 없어 메뉴도 없다. */}
+            {ctx && !isComputedAxis(ctx.axisId) && (() => {
                 const ax = axes.find((a) => a.id === ctx.axisId);
                 if (!ax) return null;
-                if (isComputedAxis(ctx.axisId)) {
-                    // 계산 축 = 값 경계(타점 앵커). 판단 축의 slot 밴드와 저장 자리가 달라 메뉴도 따로.
-                    const pk = pointKey(ctx.point);
-                    const v = computedValues.get(ctx.axisId)?.get(pk);
-                    return (
-                        <ComputedBoundMenu anchor={ctx} axisName={ax.name} pointKey={pk}
-                            valueText={v === undefined ? "?" : (computedMeta.get(ctx.axisId)?.fmt ?? formatAxisValue)(v)}
-                            rank={{ rank: ctx.rank, total: ctx.total }}
-                            ranges={axisValueRanges[ctx.axisId] ?? []}
-                            onSet={(edge) => { setAxisValueBound(ctx.axisId, edge, { kind: "point", point: pk }); setCtx(null); }}
-                            onClear={() => { setAxisValueRanges(ctx.axisId, []); setCtx(null); }}
-                            onClose={() => setCtx(null)} />
-                    );
-                }
+                const cutOn = (cuts[`ax:${ctx.axisId}`] ?? []).includes(ctx.slotId);
+                const cutEnabled = sortAxisId === ctx.axisId; // 1차 정렬 축에서만 — 안 보이는 줄엔 선을 못 긋는다
                 return (
-                    <AxisBoundMenu anchor={ctx} axisName={ax.name} band={rankBands[ctx.axisId]} slotId={ctx.slotId}
-                        rank={{ rank: ctx.rank, total: ctx.total }}
-                        onSet={(edge) => { setRankBound(ctx.axisId, edge, ctx.slotId); setCtx(null); }}
-                        onClear={() => { clearRankBand(ctx.axisId); setCtx(null); }}
-                        onUnplace={() => { unplaceMut.mutate({ axisId: ctx.axisId, point: ctx.point }); setCtx(null); }}
-                        cut={{
-                            on: (cuts[`ax:${ctx.axisId}`] ?? []).includes(ctx.slotId),
-                            enabled: sortAxisId === ctx.axisId, // 1차 정렬 축에서만 — 안 보이는 줄엔 선을 못 긋는다
-                            onToggle: () => { toggleCut(ctx.axisId, ctx.slotId); setCtx(null); },
-                        }}
-                        onClose={() => setCtx(null)} />
+                    <AnchoredPopover anchor={ctx} onClose={() => setCtx(null)} minWidth={180} padding={0} placement="beside" offset={6}>
+                        <MenuLabel>{ax.name} · {ctx.rank}/{ctx.total}위</MenuLabel>
+                        {cutEnabled && (
+                            <MenuItem onClick={() => { toggleCut(ctx.axisId, ctx.slotId); setCtx(null); }}>
+                                {cutOn ? "그룹 나누기 해제" : "여기서 그룹 나누기"}
+                            </MenuItem>
+                        )}
+                        <MenuItem onClick={() => { unplaceMut.mutate({ axisId: ctx.axisId, point: ctx.point }); setCtx(null); }}>
+                            이 축에서 배치 해제
+                        </MenuItem>
+                    </AnchoredPopover>
                 );
             })()}
 
@@ -509,7 +476,7 @@ export function RankSheetPanel(): JSX.Element {
     );
 }
 
-// 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기 · 정렬 체인에서 빼기. (경계 메뉴는 배치 보드와 공용 AxisBoundMenu.)
+// 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기 · 정렬 체인에서 빼기.
 //  정렬 빼기가 여기 있는 이유: Shift+클릭은 방향 토글이라 뺄 손짓이 없다. 체인이 2단 이상일 때만 뜬다.
 function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep, onToggleFreeze, onHide, onDropSort, onClose }: {
     anchor: { x: number; y: number }; label: string; frozen: boolean; canHide: boolean; canFreeze: boolean;

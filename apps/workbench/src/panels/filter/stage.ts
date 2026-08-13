@@ -18,10 +18,26 @@
 // **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { NO_TAGS, isGroupExprEmpty } from "../rank/groupFilter.js";
-import type { AxisValueRange, DateRange, RankBand, TimeRange } from "../../store/rankFilterSlice.js";
 
 /** 판정 알갱이 — 그룹 scope·축 scope 와 같은 어휘("day" | "point"). core/funnel 의 Grain 과 같은 값. */
 export type Grain = "day" | "point";
+
+// ── 필터 차원의 모양 — 옛 rankFilterSlice 에서 이사 왔다(전역 필터 store 는 철거, 조건은 단계 안에만 산다).
+export interface RankBand {
+    lo?: string; // 이상 경계(작은 orderKey 쪽) slotId
+    hi?: string; // 이하 경계(큰 orderKey 쪽) slotId
+}
+export interface DateRange { from: string; to: string } // YYYY-MM-DD (양끝 포함)
+export interface TimeRange { from: string; to: string } // HH:MM (양끝 포함)
+
+/**
+ * 계산 축 경계 — **타점 앵커가 기본**이고 값 직접 지정이 보조다.
+ * 왜 앵커인가: 계산 축의 자리는 수식이 정한다. 수식을 고치면 모든 값이 움직이는데, 경계만 숫자로 굳어
+ * 있으면 "이 타점보다 위"라는 원래 판단이 조용히 다른 뜻이 된다. 앵커로 두면 경계가 타점을 따라 움직인다.
+ */
+export type AxisBound = { kind: "point"; point: string } | { kind: "value"; value: number };
+/** 한 구간. 한쪽이 없으면 반열림(그 방향 무제한) — "이 값 이상"이 자연스러운 조작이라. */
+export interface AxisValueRange { from?: AxisBound; to?: AxisBound }
 
 /**
  * 술어 하나. payload 는 기존 차원 타입을 **그대로 재사용**한다(밴드·값구간·날짜·시간·DNF) — 조건의

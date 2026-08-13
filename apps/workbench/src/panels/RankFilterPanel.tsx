@@ -58,7 +58,8 @@ export function RankFilterPanel({ panelId }: { panelId: string }): JSX.Element {
     const setRankHorizon = useWorkbench((s) => s.setRankHorizon);
     const rankBucket = useWorkbench((s) => s.rankBucket);
     const setRankBucket = useWorkbench((s) => s.setRankBucket);
-    const clearRankFilter = useWorkbench((s) => s.clearRankFilter);
+    const clearFilterStages = useWorkbench((s) => s.clearFilterStages);
+    const setFunnelSelection = useWorkbench((s) => s.setFunnelSelection);
     const collapsed = useWorkbench((s) => s.panelControlsCollapsed[panelId]) ?? false;
     const toggleControls = useWorkbench((s) => s.togglePanelControls);
     const cycleBucket = (): void => { const i = BUCKETS.indexOf(rankBucket); setRankBucket(BUCKETS[(i + 1) % BUCKETS.length] ?? 1); };
@@ -116,17 +117,17 @@ export function RankFilterPanel({ panelId }: { panelId: string }): JSX.Element {
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 {r.isEmpty ? (
-                    <div style={{ ...muted, padding: "24px 14px" }}>배치 보드에서 축의 스팟을 <b>우클릭</b>해 이상/이하 경계를 지정하면, 그 조건에 맞는 상황들의 진입 후 경로 분포가 여기 나옵니다.</div>
+                    <div style={{ ...muted, padding: "24px 14px" }}>필터 패널에서 단계를 걸면(또는 깔때기 칸을 짚으면), 그 집합의 진입 후 경로 분포가 여기 나옵니다.</div>
                 ) : (
                     <>
                         <div style={{ padding: "6px 12px 2px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                            {r.activeAxisNames.map((nm) => <span key={nm} style={chip}>{nm}</span>)}
-                            <button onClick={clearRankFilter} style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 11.5 }}>필터 전체 해제</button>
+                            {r.stageLabels.map((nm) => <span key={nm} style={chip}>{nm}</span>)}
+                            <button onClick={() => { clearFilterStages(); setFunnelSelection(null); }} style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 11.5 }}>깔때기 전체 해제</button>
                         </div>
                         {r.isLoading ? (
                             <div style={muted}>경로 불러오는 중…</div>
                         ) : n === 0 ? (
-                            <div style={{ ...muted, padding: "20px 14px" }}>이 조건에 맞는 타점이 없습니다{r.coverage > 0 ? ` (활성 축 전부 배치 ${r.coverage}건 중 밴드 교집합 0).` : " — 활성 축 전부에 배치된 타점이 없습니다(strict AND)."}</div>
+                            <div style={{ ...muted, padding: "20px 14px" }}>이 집합에 타점이 없습니다 (후보 {r.coverage.toLocaleString("ko-KR")}건).</div>
                         ) : (
                             <div style={{ padding: "8px 12px 16px" }}>
                                 <RankHeatmapChart paths={r.paths} horizon={rankHorizon} dataMinT={r.dataMinT} dataMaxT={r.dataMaxT || 1} bucket={rankBucket} setHorizon={setRankHorizon}

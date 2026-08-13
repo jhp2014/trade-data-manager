@@ -1,19 +1,19 @@
-// 골격 겹쳐 그리기의 **데이터 조립 + 필터 판정** — 패널의 읽기 절반.
-// 렌더(SVG·라벨·손잡이)와 갈라둔 이유: 여기의 판정 규칙(분봉 필터 확정 규칙·일봉 차트 단위 우회)은
-// 사용자 확정 규약이라 바뀔 때마다 정확히 읽혀야 하는데, 900줄 렌더 컴포넌트 안에서는 그게 안 됐다.
-// 렌더 상태(선택·호버·확대)는 여기 없다 — 입력은 뷰 모드와 "선택만 보기" 집합뿐이다.
+// 골격 겹쳐 그리기의 **데이터 조립** — 패널의 읽기 절반. 렌더(SVG·라벨·손잡이)와 갈라둔 이유:
+// 조립 규칙은 사용자 확정 규약이라 바뀔 때마다 정확히 읽혀야 하는데, 900줄 렌더 컴포넌트 안에서는 안 됐다.
+//
+// 필터는 **깔때기의 보는 집합을 구독만 한다** — 조건 평가는 깔때기가 끝냈고, 여기는 그 결과 집합에
+// 드는 차트/타점만 남긴다. 알갱이 규칙이 두 뷰를 정리한다:
+//   · 일봉(차트 단위) = 보는 집합의 차트 열쇠(타점 항목은 제 차트로 접힌다 — 위로 접기는 집합 소속이라 안전)
+//   · 분봉(타점 단위) = 보는 집합을 타점으로 펼친 것(하루 항목은 그날 전 타점 — 정직한 반복)
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../../api/queries.js";
-import { useRankFilterResult } from "../rank/useRankFilterResult.js";
-import { evalGroupExpr, isGroupExprEmpty } from "../rank/groupFilter.js";
-import { useWorkbench } from "../../store/workbench.js";
+import { useFilterFunnel } from "../filter/useFilterFunnel.js";
 import { pointKey, chartKey } from "../../lib/pointKey.js";
 import {
     normalizeSkeleton, pointSkeletons,
     type ChartSkeleton, type OverlayLine, type SkeletonAnchor,
 } from "./skeletonOverlay.js";
-import type { GroupsView } from "../../lib/useGroups.js";
 import type { SkeletonWireLevel } from "../../api/skeletons.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 
@@ -34,31 +34,34 @@ export interface OverlayData {
 export function useOverlayData(
     isDaily: boolean,
     anchor: SkeletonAnchor,
-    /** "선택만 보기" — null 이면 제한 없음. 렌더 쪽 선택 상태에서 내려온다. */
+    /** "선택만 보기" — null 이면 제한 없음. 렌더 쪽 선택 상태에서 내려온다(패널 로컬 시야 — 필터와 별개). */
     onlyCharts: ReadonlySet<string> | null,
-    /** 그룹 뷰 — 패널과 같은 인스턴스를 받는다(두 번 만들면 인덱스 memo 가 두 벌 돈다). */
-    groupsView: GroupsView,
 ): OverlayData {
     const feedQ = useQuery(skeletonsQuery());
     const pointsQ = useQuery(allPointsQuery());
-    const r = useRankFilterResult();
+    const funnel = useFilterFunnel();
 
-    // 분봉 필터 확정 규칙(사용자 확정 — 후자): 필터는 **타점 알갱이**로 작동한다. 분봉 뷰는 선=타점이라
-    // 매칭 타점만 남는다. "매칭 타점을 가진 차트" 식의 차트 단위 우회는 일봉 패널 전용으로 남는다.
-    const filterActive = !r.isEmpty;
+    // 깔때기 구독 — 안 걸려 있으면 null(제한 없음). 로딩 중에도 null: 판정이 안 끝난 집합으로 거르면
+    // 빈 화면이 "조건에 다 걸렸다"로 읽힌다.
+    const filterOn = !funnel.isLoading && funnel.isFiltering;
+    const chartAllowed = useMemo<ReadonlySet<string> | null>(
+        () => (isDaily && filterOn ? funnel.viewedChartKeys : null),
+        [isDaily, filterOn, funnel.viewedChartKeys],
+    );
     const matchedPks = useMemo<ReadonlySet<string> | null>(
-        () => (!isDaily && filterActive ? new Set(r.points.map((p) => pointKey(p))) : null),
-        [isDaily, filterActive, r.points],
+        () => (!isDaily && filterOn ? new Set(funnel.viewedPointRefs.map((p) => pointKey(p))) : null),
+        [isDaily, filterOn, funnel.viewedPointRefs],
     );
 
-    // 종목명 — r.nameOf 는 타점 목록에서 모으므로 타점 없는 차트는 코드만 남는다. 앵커 걸린 차트 피드가
-    // 이름을 달고 오니(서버 MasterCache.attachNames) 그걸 먼저 보고, 없으면 기존 경로.
+    // 종목명 — 타점 없는 차트는 타점 피드에서 이름이 안 나온다. 앵커 걸린 차트 피드가 이름을 달고
+    // 오니(서버 MasterCache.attachNames) 그걸 먼저 보고, 없으면 타점 피드.
     const chartsQ = useQuery(anchoredChartsQuery());
     const nameOf = useMemo(() => {
         const m = new Map<string, string>();
+        for (const p of pointsQ.data ?? []) if (p.name) m.set(p.stockCode, p.name);
         for (const c of chartsQ.data ?? []) if (c.name) m.set(c.stockCode, c.name);
-        return (code: string): string => m.get(code) ?? r.nameOf(code);
-    }, [chartsQ.data, r.nameOf]);
+        return (code: string): string => m.get(code) ?? code;
+    }, [chartsQ.data, pointsQ.data]);
 
     const pointsByChart = useMemo(() => {
         const m = new Map<string, ReviewPointListItem[]>();
@@ -71,38 +74,6 @@ export function useOverlayData(
         for (const list of m.values()) list.sort((a, b) => (a.time < b.time ? -1 : 1));
         return m;
     }, [pointsQ.data]);
-
-    // ── 차트 단위 필터 — **일봉 패널 전용**: 골격의 모집단이 차트라, 타점 조건과 차트 조건을 갈라서 판정한다.
-    //  · 밴드·계산축 값구간·시간대 = **타점 전용 조건**(차트엔 그 값이 없다 — 판정은 필터 훅 r.pointOnlyActive)
-    //    → 활성이면 매칭 타점을 가진 차트만(타점 없는 차트는 판정 자체가 안 되므로 빠진다).
-    //  · 날짜·그룹 = 차트에서도 판정 가능 → 차트 자체로 평가한다. 그룹는 **차트 직접 부착 ∪ 그 타점들의
-    //    그룹**(상속 포함)라 어느 쪽에 붙었든 잡힌다. 이 경로가 타점 경로의 상위집합이라 합집합이 필요 없다.
-    // 분봉 패널은 이 우회를 안 탄다(사용자 확정) — 선=타점이라 matchedPks 가 직접 거른다(아래 pointLines).
-    const dateRanges = useWorkbench((s) => s.dateRanges);
-    const groupExpr = useWorkbench((s) => s.groupExpr);
-    const pointOnlyActive = r.pointOnlyActive;
-
-    const chartAllowed = useMemo<ReadonlySet<string> | null>(() => {
-        if (!isDaily) return null;
-        if (pointOnlyActive) return new Set(r.points.map((p) => chartKey(p)));
-        const dateActive = dateRanges.length > 0;
-        const groupActive = !isGroupExprEmpty(groupExpr);
-        if (!dateActive && !groupActive) return null; // 무필터 = 전 차트
-        const feed = feedQ.data;
-        if (!feed) return new Set();
-        const out = new Set<string>();
-        for (const e of feed.daily) {
-            const key = chartKey(e);
-            if (dateActive && !dateRanges.some((rg) => e.date >= rg.from && e.date <= rg.to)) continue;
-            if (groupActive) {
-                const ids = new Set(groupsView.chartGroupIdsOf(e));
-                for (const p of pointsByChart.get(key) ?? []) for (const id of groupsView.groupIdsOf(p)) ids.add(id);
-                if (!evalGroupExpr([...ids], groupExpr)) continue;
-            }
-            out.add(key);
-        }
-        return out;
-    }, [isDaily, pointOnlyActive, r.points, dateRanges, groupExpr, feedQ.data, groupsView, pointsByChart]);
 
     // 차트 단위 선(일봉) — 분봉 뷰에선 비어 있다(선의 모집단이 다르다).
     const shapes = useMemo<ChartSkeleton[]>(() => {

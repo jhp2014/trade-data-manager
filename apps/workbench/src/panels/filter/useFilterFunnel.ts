@@ -43,6 +43,15 @@ export interface FunnelView {
      * 조건을 나눠 주면 패널마다 판정을 재구현해 서로 다른 답을 낸다(필터 UI 가 두 곳이던 문제와 같은 종류).
      */
     viewedItems: FunnelItem[];
+    /** 단계나 시선이 하나라도 걸려 있나 — false 면 구독자는 거르지 않는다(전체 = 제한 없음). */
+    isFiltering: boolean;
+    /** 보는 집합의 차트 열쇠(종목|날짜) — 차트 단위 구독자(골격 일봉)용. 타점 항목은 제 차트로 접힌다. */
+    viewedChartKeys: Set<string>;
+    /**
+     * 보는 집합을 **타점으로 펼친 것** — 타점 단위 구독자(시트·분석·골격 분봉)용.
+     * 하루 항목은 그날 타점 전부로(하루 조건은 전 타점에 같은 값 — 정직한 반복), 타점 없는 하루는 0개로.
+     */
+    viewedPointRefs: { stockCode: string; date: string; time: string }[];
     /** 정산 결과. 로딩 중이면 null. */
     result: FunnelResult | null;
     /** 죽은 참조(지워진 그룹·축)를 든 단계 id — 화면이 표시하고, 정리는 사용자가 결정한다. */
@@ -150,6 +159,17 @@ export function useFilterFunnel(): FunnelView {
         return result.survivors;
     }, [result, selection, active]);
 
+    const isFiltering = active.length > 0 || selection !== null;
+    const viewedChartKeys = useMemo(() => new Set(viewedItems.map((i) => chartKey(i))), [viewedItems]);
+    const viewedPointRefs = useMemo(() => {
+        const out: { stockCode: string; date: string; time: string }[] = [];
+        for (const it of viewedItems) {
+            if (it.time !== undefined) out.push({ stockCode: it.stockCode, date: it.date, time: it.time });
+            else for (const t of timesByChart.get(chartKey(it)) ?? []) out.push({ stockCode: it.stockCode, date: it.date, time: t });
+        }
+        return out;
+    }, [viewedItems, timesByChart]);
+
     const deadStageIds = useMemo(
         () => (isLoading ? [] : stages.filter((s) => s.predicates.some((p) => isPredicateDead(p, grainLook))).map((s) => s.id)),
         [isLoading, stages, grainLook],
@@ -181,6 +201,9 @@ export function useFilterFunnel(): FunnelView {
         stagesOrdered,
         active,
         viewedItems,
+        isFiltering,
+        viewedChartKeys,
+        viewedPointRefs,
         result,
         deadStageIds,
         labelLook,

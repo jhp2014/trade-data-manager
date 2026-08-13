@@ -15,12 +15,11 @@ import { createPanelUiSlice, type PanelUiSlice } from "./panelUiSlice.js";
 import { createBoardFilterSlice, type BoardFilterSlice } from "./boardFilterSlice.js";
 import { createSettingsSlice, type SettingsSlice } from "./settingsSlice.js";
 import { createHistorySlice, type HistorySlice } from "./historySlice.js";
-import { createRankFilterSlice, type RankFilterSlice } from "./rankFilterSlice.js";
 import { createRankViewSlice, type RankViewSlice } from "./rankViewSlice.js";
 import { createSkeletonSlice, type SkeletonSlice } from "./skeletonSlice.js";
 import { createFilterFunnelSlice, type FilterFunnelSlice } from "./filterFunnelSlice.js";
 
-export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelSlice & PanelUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankFilterSlice & RankViewSlice & SkeletonSlice & FilterFunnelSlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelSlice & PanelUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & SkeletonSlice & FilterFunnelSlice;
 
 export type { Focus, Scope, Search, ActivePoint, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
@@ -31,8 +30,7 @@ export type { PanelUiSlice } from "./panelUiSlice.js";
 export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js";
 export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMarket, BoardMarketMap, SettingsSlice } from "./settingsSlice.js";
 export type { HistoryEntry, HistorySlice } from "./historySlice.js";
-export type { RankBand, RankBoundEdge, DateRange, TimeRange, RankFilterSlice } from "./rankFilterSlice.js";
-export type { RankViewSlice, SavedFilter } from "./rankViewSlice.js";
+export type { RankViewSlice } from "./rankViewSlice.js";
 export type { SkeletonSlice } from "./skeletonSlice.js";
 export type { FilterFunnelSlice } from "./filterFunnelSlice.js";
 
@@ -46,7 +44,6 @@ export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createBoardFilterSlice(...a),
     ...createSettingsSlice(...a),
     ...createHistorySlice(...a),
-    ...createRankFilterSlice(...a),
     ...createRankViewSlice(...a),
     ...createSkeletonSlice(...a),
     ...createFilterFunnelSlice(...a),

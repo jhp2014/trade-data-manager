@@ -222,7 +222,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const groupsView = useGroups();
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
     const { feedLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf } =
-        useOverlayData(isDaily, anchor, onlyCharts, groupsView);
+        useOverlayData(isDaily, anchor, onlyCharts);
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
     //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.

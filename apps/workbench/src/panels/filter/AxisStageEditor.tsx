@@ -10,9 +10,8 @@ import { useMemo, useState } from "react";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { useRankAxes } from "../../lib/useRankAxes.js";
 import { isComputedAxis, valueDomain } from "../../lib/computedAxis.js";
-import type { AxisValueRange, RankBand } from "../../store/rankFilterSlice.js";
 import { FILTER } from "../../styles/palette.js";
-import type { FilterPredicate, Grain } from "./stage.js";
+import type { AxisValueRange, FilterPredicate, Grain, RankBand } from "./stage.js";
 
 type AxisPredicate = Extract<FilterPredicate, { kind: "axisBand" } | { kind: "axisValue" }>;
 

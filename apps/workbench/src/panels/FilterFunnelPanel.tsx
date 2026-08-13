@@ -216,6 +216,12 @@ export function FilterFunnelPanel(): JSX.Element {
 }
 
 function Header({ v, expandToPoints, setExpand }: { v: FunnelView; expandToPoints: boolean; setExpand: (on: boolean) => void }): JSX.Element {
+    const stages = useWorkbench((s) => s.filterStages);
+    const saved = useWorkbench((s) => s.savedFunnels);
+    const saveSet = useWorkbench((s) => s.saveFunnelSet);
+    const applySet = useWorkbench((s) => s.applyFunnelSet);
+    const deleteSet = useWorkbench((s) => s.deleteFunnelSet);
+    const [setsOpen, setSetsOpen] = useState<{ x: number; y: number } | null>(null);
     return (
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", whiteSpace: "nowrap" }}>
             <span style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>후보</span>
@@ -232,14 +238,42 @@ function Header({ v, expandToPoints, setExpand }: { v: FunnelView; expandToPoint
                     타점으로
                 </TextToggle>
             )}
-            {v.deadStageIds.length > 0 && (
-                <span style={{ marginLeft: "auto", fontSize: 10.5, color: FAIL }} title="지워진 그룹·축을 가리키는 조건이 있습니다. 그 단계는 판단 불가(미배치)로 잡힙니다.">
-                    죽은 참조 {v.deadStageIds.length}
-                </span>
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+                {v.deadStageIds.length > 0 && (
+                    <span style={{ fontSize: 10.5, color: FAIL }} title="지워진 그룹·축을 가리키는 조건이 있습니다. 그 단계는 판단 불가(미배치)로 잡힙니다.">
+                        죽은 참조 {v.deadStageIds.length}
+                    </span>
+                )}
+                <button disabled={stages.length === 0}
+                    onClick={() => { const n = prompt("깔때기 이름", `단계 ${stages.length}개`); if (n?.trim()) saveSet(n.trim()); }}
+                    title={stages.length > 0 ? "지금 단계들을 이름 붙여 저장" : "먼저 단계를 만드세요"}
+                    style={{ ...headerBtn, opacity: stages.length > 0 ? 1 : 0.45 }}>저장</button>
+                <button disabled={saved.length === 0} onClick={(e) => setSetsOpen({ x: e.clientX, y: e.clientY })}
+                    title={saved.length > 0 ? "저장한 깔때기 불러오기(현재 단계를 통째로 교체)" : "저장한 깔때기가 없습니다"}
+                    style={{ ...headerBtn, opacity: saved.length > 0 ? 1 : 0.45 }}>불러오기{saved.length > 0 ? ` ${saved.length}` : ""}</button>
+            </span>
+            {setsOpen && (
+                <AnchoredPopover anchor={setsOpen} onClose={() => setSetsOpen(null)} minWidth={200} maxWidth={280} maxHeight="min(56vh, 380px)" padding={0} placement="beside" offset={6}>
+                    <MenuLabel>저장한 깔때기 · 클릭 = 통째로 교체</MenuLabel>
+                    {saved.map((f) => (
+                        <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 6px 0 0", borderTop: "1px solid var(--border-subtle)" }}>
+                            <button onClick={() => { applySet(f.id); setSetsOpen(null); }}
+                                style={{ flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 12.5, padding: "6px 10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {f.name} <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>{f.stages.length}단계</span>
+                            </button>
+                            <button onClick={() => deleteSet(f.id)} title="이 저장본 삭제" style={{ border: "none", background: "transparent", color: FAIL, cursor: "pointer", fontSize: 10, padding: "2px 4px" }}>✕</button>
+                        </div>
+                    ))}
+                </AnchoredPopover>
             )}
         </div>
     );
 }
+
+const headerBtn: React.CSSProperties = {
+    fontSize: 10.5, padding: "1px 8px", borderRadius: 4, border: "1px dashed var(--border-default)",
+    background: "transparent", color: "var(--text-tertiary)", cursor: "pointer",
+};
 
 function StageRow({ no, stage, tally, universe, label, dead, pickedCells, dragging, onPick, onPickPass, onEdit, onToggle, onRemove, onDragStart, onDragEnd, onDropOn }: {
     no: number;

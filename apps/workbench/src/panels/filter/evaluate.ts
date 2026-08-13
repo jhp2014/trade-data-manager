@@ -11,9 +11,8 @@
 // 재료는 전부 **함수로 주입**받는다. 저장 방식(멤버십 피드 모양·배치줄 인덱스·값 캐시 키)이 바뀌어도
 // 판정 규칙은 안 바뀌어야 하고, 그래야 규칙만 테스트로 못박을 수 있다.
 import { and3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
-import type { AxisBound } from "../../store/rankFilterSlice.js";
 import { NO_TAGS, type GroupExpr } from "../rank/groupFilter.js";
-import { isPredicateEmpty, type FilterPredicate, type FilterStage } from "./stage.js";
+import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
 
 /** 판정에 필요한 바깥 재료. 없는 것은 전부 `undefined` = 판단 불가(탈락 아님). */
 export interface EvalLookup {

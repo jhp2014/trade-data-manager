@@ -4,7 +4,7 @@ import {
     DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable,
     type DragStartEvent, type DragMoveEvent, type DragEndEvent,
 } from "@dnd-kit/core";
-import { useWorkbench, type RankBand, type DateRange, type TimeRange } from "../store/workbench.js";
+import { useWorkbench } from "../store/workbench.js";
 import { axisLinesQuery, allPointsQuery, rankAxesQuery } from "../api/queries.js";
 import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxis, type RankPoint, type RankTarget } from "../api/rank.js";
 import { useRankAxes } from "../lib/useRankAxes.js";
@@ -13,14 +13,7 @@ import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
 import { Sep } from "../components/ControlChrome.js";
 import { AnchoredPopover } from "../ui/Dialog.js";
-import { SavedFilterControls } from "./rank/SavedFilterControls.js";
-import { GroupFilterLine, AddGroupFilterButton } from "./rank/GroupFilterLine.js";
-import { RankFilterBar } from "./rank/RankFilterBar.js";
-import { AxisBoundMenu } from "./rank/AxisBoundMenu.js";
-import { FilterRail } from "./rank/FilterRail.js";
-import { ComputedAxisRail } from "./rank/ComputedAxisRail.js";
-import { isComputedAxis, formatAxisValue } from "../lib/computedAxis.js";
-import { ACTIVE, ACTIVE_SOFT, CurrentMarker, FILTER, HOVER, HOVER_SOFT, LABEL_W, RangeBracket, ScaleEnd, SortBadge } from "./rank/rankRailChrome.js";
+import { ACTIVE, ACTIVE_SOFT, CurrentMarker, HOVER, HOVER_SOFT, LABEL_W, ScaleEnd, SortBadge } from "./rank/rankRailChrome.js";
 import type { RankAxis } from "@trade-data-manager/wire";
 
 // 현재 타점 위치 마커(2D 물방울 핀) 애니메이션 — 전환 시 드롭 1회 + 미세 부유. 화면에 하나뿐이라 과하지 않음.
@@ -41,39 +34,21 @@ if (typeof document !== "undefined" && !document.getElementById(PIN_KF_ID)) {
 
 
 const ROW_H = 58;
-// 시간 레일 도메인 08:00~20:00.
-const T0 = 8 * 60, T1 = 20 * 60;
-const toMin = (hm: string): number => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
-const timeFrac = (hm: string): number => Math.max(0, Math.min(1, (toMin(hm) - T0) / (T1 - T0)));
-const fracTime = (f: number): string => { const m = Math.max(T0, Math.min(T1, Math.round((T0 + f * (T1 - T0)) / 5) * 5)); return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 
 interface DropInfo { axisId: string; leftPct: number; tie: boolean; target: RankTarget; }
 
 export function RankPanel(): JSX.Element {
     const activePoint = useWorkbench((s) => s.activePoint);
     const goToPoint = useWorkbench((s) => s.goToPoint);
-    // 필터 밴드(분석 대시보드와 공유) — 우클릭으로 이 축 이상/이하 경계 지정.
-    const rankBands = useWorkbench((s) => s.rankBands);
-    const setRankBound = useWorkbench((s) => s.setRankBound);
-    const clearRankBand = useWorkbench((s) => s.clearRankBand);
-    const dateRanges = useWorkbench((s) => s.dateRanges);
-    const timeRanges = useWorkbench((s) => s.timeRanges);
-    const setDateRanges = useWorkbench((s) => s.setDateRanges);
-    const setTimeRanges = useWorkbench((s) => s.setTimeRanges);
-    const axisValueRanges = useWorkbench((s) => s.axisValueRanges);
-    const setAxisValueRanges = useWorkbench((s) => s.setAxisValueRanges);
-    // 링크 공유(시트와 양방향) — 호버·축순서.
+    // 링크 공유(시트와 양방향) — 호버·축순서. 필터(밴드·레일)는 필터 패널로 이사 — 보드는 배치 전용.
     const hoveredPoint = useWorkbench((s) => s.hoveredPoint);
     const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
     const rankSort = useWorkbench((s) => s.rankSort); // 시트 정렬 기준 → 해당 레일 하이라이트 + 배지.
-    const [filterMenu, setFilterMenu] = useState<{ axisId: string; slotId: string; x: number; y: number } | null>(null);
     const qc = useQueryClient();
 
     // 축 목록·배치줄·순서는 시트와 공유(useRankAxes). 여기선 레인이 쓸 slot 묶음으로만 빚는다.
-    // 계산 축도 함께 받되 레인이 아니라 **필터 레일**로 그린다 — 배치가 없으니 드롭할 자리도 없다.
-    const { axes, linesByAxis: rawLines, computedValues, computedMeta, isLoading: axesLoading, reorder } = useRankAxes({ includeComputed: true });
-    const laneAxes = useMemo(() => axes.filter((a) => !isComputedAxis(a.id)), [axes]);
-    const railAxes = useMemo(() => axes.filter((a) => isComputedAxis(a.id)), [axes]);
+    // 계산 축은 안 본다 — 배치가 없어 레인이 못 되고, 값 구간은 필터 패널의 일이다.
+    const { axes, linesByAxis: rawLines, isLoading: axesLoading, reorder } = useRankAxes();
     const linesByAxis = useMemo(() => {
         const m = new Map<string, Slot[]>();
         for (const [axisId, placed] of rawLines) m.set(axisId, assemble(placed));
@@ -87,11 +62,6 @@ export function RankPanel(): JSX.Element {
         return m;
     }, [pointsQ.data]);
     const nameOf = (code: string): string => nameByCode.get(code) ?? code;
-    // 날짜·시간 레일 도메인 매핑(필터 viz + 드래그 입력).
-    const dateBounds = useMemo(() => { const ds = (pointsQ.data ?? []).map((p) => p.date).sort(); return ds.length ? { min: ds[0], max: ds[ds.length - 1] } : null; }, [pointsQ.data]);
-    const dayNum = (d: string): number => Date.parse(d + "T00:00:00Z") / 86400000;
-    const dateFrac = (d: string): number => { if (!dateBounds) return 0; const a = dayNum(dateBounds.min), b = dayNum(dateBounds.max); return b <= a ? 0 : Math.max(0, Math.min(1, (dayNum(d) - a) / (b - a))); };
-    const fracDate = (f: number): string => { if (!dateBounds) return ""; const a = dayNum(dateBounds.min), b = dayNum(dateBounds.max); return new Date(Math.round(a + f * (b - a)) * 86400000).toISOString().slice(0, 10); };
 
     // 담기(작업셋) = 공유 pinned(시트 핀과 같은 상태). 활성 타점 = focus.activePoint(스팟 강조 + 라인 선두).
     const pinned = useWorkbench((s) => s.pinned);
@@ -185,39 +155,12 @@ export function RankPanel(): JSX.Element {
                         onRemove={removeFromTray}
                         onGo={(p) => goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank")}
                     />
-                    {/* 저장/불러오기 — 담기 라인 오른쪽 끝에 얹어 새 줄을 안 만든다(상단 세로가 빠듯하다). */}
-                    <span style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, flexShrink: 0 }}>
-                        <SavedFilterControls axes={axes} />
-                    </span>
                 </div>
-
-                <RankFilterBar axes={axes} dateBounds={dateBounds} computedValues={computedValues} computedMeta={computedMeta} extra={<AddGroupFilterButton />} />
-                <GroupFilterLine />
 
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
                     {axesLoading && <div style={muted}>불러오는 중…</div>}
-                    {/* 날짜·시간 필터 레일 — 축 레인 위(시트 열 순서와 통일). 값 스케일·틱+라벨 드래그로 구간 설정/조정. */}
-                    {dateBounds && (
-                        <FilterRail<string, DateRange> label="날짜" ranges={dateRanges} toFrac={dateFrac} fromFrac={fracDate} fmt={(v) => v.slice(2).replace(/-/g, ".")}
-                            minLabel={dateBounds.min.slice(2).replace(/-/g, ".")} maxLabel={dateBounds.max.slice(2).replace(/-/g, ".")} marker={activePoint?.date ?? null}
-                            sortDir={rankSort?.target === "date" ? rankSort.dir : null} onChange={setDateRanges} />
-                    )}
-                    <FilterRail<string, TimeRange> label="시간" ranges={timeRanges} toFrac={timeFrac} fromFrac={fracTime} fmt={(v) => v}
-                        minLabel="08:00" maxLabel="20:00" marker={activePoint ? activePoint.time.slice(0, 5) : null}
-                        sortDir={rankSort?.target === "time" ? rankSort.dir : null} onChange={setTimeRanges} />
-                    {/* 계산 축 레일 — 날짜·시간과 같은 조작(빈 트랙 드래그=구간, 라벨 드래그=조정). 틱 = 실제 타점 자리. */}
-                    {railAxes.map((ax) => (
-                        <ComputedAxisRail key={ax.id} name={ax.name}
-                            values={computedValues.get(ax.id) ?? new Map()}
-                            strongerWhen={computedMeta.get(ax.id)?.strongerWhen ?? "higher"}
-                            fmtValue={computedMeta.get(ax.id)?.fmt ?? formatAxisValue}
-                            ranges={axisValueRanges[ax.id] ?? []}
-                            markerKey={activeKey}
-                            sortDir={rankSort?.target === ax.id ? rankSort.dir : null}
-                            onChange={(r) => setAxisValueRanges(ax.id, r)} />
-                    ))}
                     <div style={{ position: "relative" }}>
-                        {laneAxes.map((ax) => {
+                        {axes.map((ax) => {
                             const slots = linesByAxis.get(ax.id) ?? [];
                             return (
                                 <Lane
@@ -228,9 +171,7 @@ export function RankPanel(): JSX.Element {
                                     activeMatches={activeMatches} sortDir={rankSort?.target === ax.id ? rankSort.dir : null}
                                     hoveredKey={hoveredPoint} onHoverKey={setHoveredPoint}
                                     drop={drop && drop.axisId === ax.id ? drop : null} nameOf={nameOf}
-                                    band={rankBands[ax.id]}
                                     onNodeClick={(slotId, x, y) => setPop({ axisId: ax.id, slotId, x, y })}
-                                    onNodeContext={(slotId, x, y) => { setPop(null); setFilterMenu({ axisId: ax.id, slotId, x, y }); }}
                                     onRename={(name) => renameMut.mutate({ id: ax.id, name })}
                                     onDelete={() => { if (confirm(`축 "${ax.name}" 을 삭제할까요? 배치도 함께 제거됩니다.`)) deleteMut.mutate(ax.id); }}
                                     onReorderDrop={(dragged) => reorder(dragged, ax.id)}
@@ -260,17 +201,6 @@ export function RankPanel(): JSX.Element {
                         onGo={(p) => { goToPoint({ date: p.date, code: p.stockCode, time: p.time }, "rank"); setPop(null); }}
                         onAdd={(p) => { addToTray(p); setPop(null); }}
                         onUnplace={(p) => { unplaceMut.mutate({ axisId: pop.axisId, point: p }); setPop(null); }} />
-                );
-            })()}
-
-            {filterMenu && (() => {
-                const ax = axes.find((a) => a.id === filterMenu.axisId);
-                if (!ax) return null;
-                return (
-                    <AxisBoundMenu anchor={filterMenu} axisName={ax.name} band={rankBands[filterMenu.axisId]} slotId={filterMenu.slotId}
-                        onSet={(edge) => { setRankBound(filterMenu.axisId, edge, filterMenu.slotId); setFilterMenu(null); }}
-                        onClear={() => { clearRankBand(filterMenu.axisId); setFilterMenu(null); }}
-                        onClose={() => setFilterMenu(null)} />
                 );
             })()}
         </div>
@@ -339,16 +269,15 @@ function CurrentChip({ point, name, onGo }: { point: RankPoint; name: string; on
 
 // ── 한 축 레인 ─────────────────────────────────────────────────────────────
 function Lane({
-    axis, slots, view, setView, resetView, registerTrack, activeMatches, sortDir, hoveredKey, onHoverKey, drop, nameOf, band,
-    onNodeClick, onNodeContext, onRename, onDelete, onReorderDrop,
+    axis, slots, view, setView, resetView, registerTrack, activeMatches, sortDir, hoveredKey, onHoverKey, drop, nameOf,
+    onNodeClick, onRename, onDelete, onReorderDrop,
 }: {
     axis: RankAxis; slots: Slot[]; view: View; setView: (v: View) => void; resetView: () => void;
     registerTrack: (el: HTMLElement | null) => void;
     activeMatches: (p: RankPoint) => boolean; sortDir: 1 | -1 | null;
     hoveredKey: string | null; onHoverKey: (k: string | null) => void;
     drop: DropInfo | null; nameOf: (c: string) => string;
-    band: RankBand | undefined;
-    onNodeClick: (slotId: string, x: number, y: number) => void; onNodeContext: (slotId: string, x: number, y: number) => void;
+    onNodeClick: (slotId: string, x: number, y: number) => void;
     onRename: (name: string) => void; onDelete: () => void;
     onReorderDrop: (draggedAxisId: string) => void;
 }): JSX.Element {
@@ -391,16 +320,6 @@ function Lane({
 
     const setRefs = (el: HTMLDivElement | null): void => { trackRef.current = el; setNodeRef(el); registerTrack(el); };
 
-    // 필터 밴드 경계 → 현재 뷰(줌) u 위치. 한쪽만이면 반대편은 트랙 끝(0/1)까지 밴드.
-    const uOf = (slotId?: string): number | null => {
-        if (!slotId) return null;
-        const i = slots.findIndex((s) => s.slotId === slotId);
-        return i < 0 ? null : displayU(slotFrac(i, slots.length), view);
-    };
-    const loU = uOf(band?.lo);
-    const hiU = uOf(band?.hi);
-    const hasBand = loU != null || hiU != null;
-
     return (
         <div
             style={{ position: "relative", height: ROW_H, borderTop: reorderOver ? "2px solid var(--accent-primary)" : "2px solid transparent", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", background: sortDir != null ? "var(--bg-secondary)" : "transparent" }}
@@ -442,19 +361,6 @@ function Lane({
                 <ScaleEnd side="left" />
                 <ScaleEnd side="right" />
 
-                {hasBand && (
-                    <>
-                        <div style={{
-                            position: "absolute", top: "50%", height: 2, borderRadius: 1, transform: "translateY(-50%)",
-                            left: loU != null ? `calc(${PAD}px + ${loU} * (100% - ${2 * PAD}px))` : `${LINE_PAD}px`,
-                            right: hiU != null ? `calc(100% - (${PAD}px + ${hiU} * (100% - ${2 * PAD}px)))` : `${LINE_PAD}px`,
-                            background: FILTER, boxShadow: "0 0 7px 1px rgba(226,75,74,0.75)", pointerEvents: "none", zIndex: 1,
-                        }} />
-                        {loU != null && <RangeBracket u={loU} side="open" />}
-                        {hiU != null && <RangeBracket u={hiU} side="close" />}
-                    </>
-                )}
-
                 {slots.map((slot, i) => {
                     const u = displayU(slotFrac(i, slots.length), view);
                     if (u < -0.03 || u > 1.03) return null;
@@ -467,9 +373,8 @@ function Lane({
                     const glow = hasHover ? `0 0 0 4px ${HOVER_SOFT}` : "none";
                     return (
                         <div key={slot.slotId} className="rank-tick" onClick={(e) => onNodeClick(slot.slotId, e.clientX, e.clientY)}
-                            onContextMenu={(e) => { e.preventDefault(); onNodeContext(slot.slotId, e.clientX, e.clientY); }}
                             onMouseEnter={() => onHoverKey(pointKey(slot.points[0]))} onMouseLeave={() => onHoverKey(null)}
-                            title={tie ? `타이 ${slot.points.length}건 — 클릭 / 우클릭=필터 경계` : `${nameOf(slot.points[0].stockCode)} — 클릭 / 우클릭=필터 경계`}
+                            title={tie ? `타이 ${slot.points.length}건 — 클릭=목록` : `${nameOf(slot.points[0].stockCode)} — 클릭=목록`}
                             style={{ position: "absolute", left, top: "50%", transform: "translate(-50%,-50%)", width: 18, height: 24, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: hasActive ? 5 : 2 }}>
                             {hasActive && <CurrentMarker color={ACTIVE} />}
                             <span className="rank-tick-bar" style={{ width: 3, height: hasHover ? 18 : 14, borderRadius: 1.5, background: barBg, boxShadow: glow }} />

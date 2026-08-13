@@ -21,9 +21,31 @@ import { loadJson, saveJson } from "./persist.js";
 
 const STAGES_KEY = "wb.filterStages";
 const EXPAND_KEY = "wb.filterExpandToPoints";
+const SETS_KEY = "wb.filterFunnelSets";
 
 const loadStages = (): FilterStage[] => loadJson(STAGES_KEY, parseStages) ?? [];
 const loadExpand = (): boolean => loadJson(EXPAND_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? false;
+
+/**
+ * 저장한 깔때기(단계 리스트 전체 스냅샷) — 이름 붙여 두고 통째로 불러온다. 옛 "저장 필터"의 후계.
+ * 죽은 참조(그 사이 지워진 그룹·축)는 각오한 저장이다 — 불러오면 (지워짐) 표시와 3치가 받아낸다.
+ */
+export interface SavedFunnel {
+    id: string;
+    name: string;
+    stages: FilterStage[];
+}
+const loadSets = (): SavedFunnel[] => {
+    const arr = loadJson(SETS_KEY, (o) => (Array.isArray(o) ? o : null)) ?? [];
+    const out: SavedFunnel[] = [];
+    for (const raw of arr) {
+        const f = raw as { id?: unknown; name?: unknown; stages?: unknown };
+        if (typeof f?.id !== "string" || typeof f?.name !== "string") continue;
+        const stages = parseStages(f.stages);
+        if (stages) out.push({ id: f.id, name: f.name, stages });
+    }
+    return out;
+};
 
 /**
  * 깔때기에서 지금 짚은 칸들 — 한 단계 안에서 여러 칸(생존+근접 탈락…)을 겹쳐 볼 수 있다.
@@ -53,6 +75,11 @@ export interface FilterFunnelSlice {
     clearFilterStages: () => void;
     setFilterExpandToPoints: (on: boolean) => void;
     setFunnelSelection: (sel: FunnelSelection | null) => void;
+    /** 저장한 깔때기들(영속). 불러오기 = 단계 리스트 통째 교체(시선은 푼다 — 다른 깔때기의 칸이라서). */
+    savedFunnels: SavedFunnel[];
+    saveFunnelSet: (name: string) => void;
+    applyFunnelSet: (id: string) => void;
+    deleteFunnelSet: (id: string) => void;
 }
 
 /** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다. */
@@ -82,4 +109,21 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
         set(() => ({ filterExpandToPoints: on }));
     },
     setFunnelSelection: (sel) => set(() => ({ funnelSelection: sel })),
+
+    savedFunnels: loadSets(),
+    saveFunnelSet: (name) => set((s) => {
+        const next = [...s.savedFunnels, { id: `fs${Date.now().toString(36)}`, name, stages: s.filterStages }];
+        saveJson(SETS_KEY, next);
+        return { savedFunnels: next };
+    }),
+    applyFunnelSet: (id) => set((s) => {
+        const f = s.savedFunnels.find((x) => x.id === id);
+        if (!f) return {};
+        return { ...put(f.stages), funnelSelection: null };
+    }),
+    deleteFunnelSet: (id) => set((s) => {
+        const next = s.savedFunnels.filter((x) => x.id !== id);
+        saveJson(SETS_KEY, next);
+        return { savedFunnels: next };
+    }),
 });
