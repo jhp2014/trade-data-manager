@@ -111,7 +111,7 @@ export function WatchlistPanel(): JSX.Element {
                 {error && <span style={{ color: "var(--rise)" }}>연결 오류</span>}
                 <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3 }} title="기준 시장(등락률·순위) — 실시간 보드와 공유">
                     <span>시장</span>
-                    <button onClick={() => setBoardMarket("live", market === "un" ? "krx" : "un")} style={{ ...miniBtn("var(--accent-primary)"), fontWeight: 600 }}>{market.toUpperCase()}</button>
+                    <button onClick={() => setBoardMarket("live", market === "un" ? "krx" : "un")} style={{ ...plainBtn("var(--accent-primary)"), fontWeight: 600 }}>{market.toUpperCase()}</button>
                 </span>
             </div>
 
@@ -268,7 +268,11 @@ function RowAction({ label, onClick, accent = false, wide = false }: { label: st
     );
 }
 
-function miniBtn(color: string): React.CSSProperties {
+/**
+ * 상자 없는 인라인 글자 버튼 — 줄 안에 얹히는 손잡이(✕·시장 토글). 공용 `miniBtn`(테두리 있는 헤더 버튼)과
+ * **다른 물건**인데 이름이 같아서, 한쪽을 고치려다 다른 쪽을 집기 쉬웠다. 이름으로 갈라 둔다.
+ */
+function plainBtn(color: string): React.CSSProperties {
     return { border: "none", background: "none", padding: 0, cursor: "pointer", font: "inherit", fontSize: 11, color };
 }
 
@@ -284,7 +288,7 @@ function RuleLine({ rule, onDelete }: { rule: AlarmRuleView; onDelete: () => voi
             <span title={title} style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0, ...dot }} />
             <span className="tabular" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parts.join(" · ")}</span>
             {rule.lastFiredAt != null && <span className="tabular" style={{ flexShrink: 0, color: "var(--text-tertiary)" }}>발화 {kstTime(rule.lastFiredAt)}</span>}
-            <button style={{ ...miniBtn("var(--text-tertiary)"), marginLeft: "auto", flexShrink: 0 }} onClick={onDelete} title="조건 삭제">✕</button>
+            <button style={{ ...plainBtn("var(--text-tertiary)"), marginLeft: "auto", flexShrink: 0 }} onClick={onDelete} title="조건 삭제">✕</button>
         </div>
     );
 }

@@ -22,7 +22,7 @@ import { useWorkbench } from "../store/workbench.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { pointKeyOf, parsePointKey, chartKeyOf, type PointRef } from "../lib/pointKey.js";
 import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
-import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
+import { TextToggle, Dot, ControlBox, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { ACTIVE, HOVER, PRICE_LINE, seriesColor, groupColor } from "../styles/palette.js";
 import { fmtEok, fmtPct } from "../lib/format.js";
@@ -1817,13 +1817,13 @@ const wrap: CSSProperties = { display: "flex", flexDirection: "column", height: 
 const header: CSSProperties = { flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexWrap: "wrap" };
 const footer: CSSProperties = { flexShrink: 0, padding: "3px 10px", borderTop: "1px solid var(--border-default)", fontSize: 10.5, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
 const count: CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
-const muted: CSSProperties = { position: "absolute", inset: 0, color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px", pointerEvents: "none" };
+/** 안내 문구 — 공용 문구 위에 **덮개**만 얹는다(그림 위에 떠서 포인터를 안 먹게). */
+const muted: CSSProperties = { ...mutedNote, position: "absolute", inset: 0, pointerEvents: "none" };
 const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
 /** 눈금 아랫줄의 절대값 — 상대값(주)보다 한 단계 작고 흐리다. 둘이 같은 무게면 어느 쪽이 축인지 안 잡힌다. */
 const axisAbsText: CSSProperties = { fontSize: 8.5, fill: "var(--text-quaternary, var(--text-tertiary))", opacity: 0.75, fontVariantNumeric: "tabular-nums" };
 /** 크로스헤어 뱃지 안의 절대값 — 같은 뱃지에 이어 붙되 색으로 갈린다(뱃지를 둘로 나누면 축이 복잡해진다). */
 const axisBadgeAbs: CSSProperties = { color: "var(--text-tertiary)" };
-const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer", whiteSpace: "nowrap" };
 /** 푸터 안 인라인 버튼 — 상자·여백 없이 글자만(푸터 높이가 절대 안 변해야 그림이 안 튄다). */
 const footerBtn: CSSProperties = { marginLeft: 4, padding: 0, border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", lineHeight: "inherit" };
 // 라벨 — 상자 없이 후광 글자 + 그 선 색의 점(F안). **색 점은 언제나 끝점을 마주 보는 쪽**에 서서

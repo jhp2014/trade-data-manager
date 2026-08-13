@@ -21,7 +21,7 @@ import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js
 import { useFunnel } from "./filter/FunnelContext.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
-import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";
+import { TextToggle, Dot, ControlBox, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
@@ -680,7 +680,6 @@ function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number
 const Wrap = ({ children }: { children: React.ReactNode }): JSX.Element => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" }}>{children}</div>
 );
-const muted: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px" };
+const muted = mutedNote;
 // userSelect none — Shift+클릭(정렬 단 추가)이 헤더 글자를 범위 선택해 파랗게 물들이는 걸 막는다.
 const thBase: CSSProperties = { fontSize: 10.5, fontWeight: 700, padding: "6px 8px", borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap", userSelect: "none" };
-const miniBtn: CSSProperties = { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "transparent", color: "var(--text-tertiary)", border: "1px solid var(--border-default)", cursor: "pointer" };

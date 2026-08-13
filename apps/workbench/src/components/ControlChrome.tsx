@@ -1,6 +1,23 @@
 // 패널 헤더 컨트롤 공용 조각 — 차트 툴바·보드 헤더가 같은 계열(테두리·채움 없는 경량 텍스트)을 쓴다.
 // 구성: 상호배타 그룹은 Dot(·)으로, 그룹 사이는 Sep(│)으로 나누고, 전체를 ControlBar 가 감싼다.
+import type { CSSProperties } from "react";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
+
+/**
+ * 테두리 있는 작은 버튼 — 헤더의 "해제 ⤺" 류(상태를 되돌리는 손잡이). 토글(TextToggle)과 달리
+ * 눌러서 **일을 시키는** 것이라 테두리를 받는다.
+ *
+ * `nowrap` 이 붙어 있다: 두 패널이 각자 들고 있던 동안 한쪽에만 붙어 있었는데, 없는 쪽이 옳았던 게
+ * 아니라 그 패널의 라벨이 짧아 티가 안 났을 뿐이다(헤더가 가로 스크롤되는 자리라 줄바꿈은 언제나 사고다).
+ */
+export const miniBtn: CSSProperties = {
+    fontSize: 11, padding: "2px 8px", borderRadius: 4,
+    background: "transparent", color: "var(--text-tertiary)",
+    border: "1px solid var(--border-default)", cursor: "pointer", whiteSpace: "nowrap",
+};
+
+/** 비어 있음·불러오는 중 안내 문구 — 패널 본문 자리에 조용히 앉는다. */
+export const mutedNote: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px" };
 
 // 경량 텍스트 토글 — 활성 = 볼드 + 색.
 // 상호배타 선택은 기본색(text-primary), on/off 토글은 activeColor 로 accent 를 넘긴다.
