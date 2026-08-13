@@ -17,10 +17,10 @@ import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useGroups } from "../../lib/GroupsContext.js";
+import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { useWorkbench } from "../../store/workbench.js";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { useFunnel } from "./FunnelContext.js";
-import type { FunnelView } from "./useFilterFunnel.js";
 import { GroupExprChips, namingOf } from "./GroupExprChips.js";
 import { GroupFilterEditor } from "./GroupFilterEditor.js";
 import { RangeTextEditor } from "./RangeTextEditor.js";
@@ -62,6 +62,7 @@ export function FilterBoard({ reveal, onlyActive }: {
     const removeStage = useWorkbench((s) => s.removeFilterStage);
     const activePoint = useWorkbench((s) => s.activePoint);
     const gv = useGroups();
+    const ax = useRankAxes(); // 축 재료는 Provider 에서 직접 — 깔때기가 실어 나르지 않는다
 
     const [editor, setEditor] = useState<BoardEditor | null>(null);
     const [draft, setDraft] = useState<GroupExpr>({ groups: [] }); // 그룹 생성 흐름의 임시 식
@@ -133,7 +134,7 @@ export function FilterBoard({ reveal, onlyActive }: {
                 {v.isLoading && <Note>불러오는 중…</Note>}
                 {!v.isLoading && GRAINS.map((grain) => {
                     const groupStages = stages.filter((s) => stageKind(s) === "group" && (grainOf.get(s.id) ?? "day") === grain);
-                    const axes = v.axes.axes.filter((a) => a.scope === grain);
+                    const axes = ax.axes.filter((a) => a.scope === grain);
                     const timeKey: RailKey = grain === "day" ? { kind: "date" } : { kind: "time" };
                 
                     return (
@@ -199,10 +200,10 @@ export function FilterBoard({ reveal, onlyActive }: {
                                     return (
                                         <div key={axis.id} ref={registerRow(rowId)} style={rowWrap(stage, flash === rowId)}>
                                             {isComputedAxis(axis.id)
-                                                ? <ComputedAxisRailRow axis={axis} v={v} stages={stages} markerKey={markerKey}
+                                                ? <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey}
                                                     onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.id, x, y })}
                                                     onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.id, ranges } : null)} />
-                                                : <SlotAxisRail axis={axis} line={v.axes.linesByAxis.get(axis.id) ?? []}
+                                                : <SlotAxisRail axis={axis} line={ax.linesByAxis.get(axis.id) ?? []}
                                                     band={predicateOfKind(stages, key, "axisBand")?.band ?? {}}
                                                     markerKey={markerKey}
                                                     onChange={(band: RankBand | null) => write(key, band ? { kind: "axisBand", axisId: axis.id, band } : null)} />}
@@ -255,7 +256,7 @@ export function FilterBoard({ reveal, onlyActive }: {
             {editor?.kind === "axisValue" && (
                 <ValueRangeEditor anchor={editor}
                     ranges={predicateOfKind(stages, { kind: "axis", axisId: editor.axisId }, "axisValue")?.ranges ?? []}
-                    values={v.axes.computedValues.get(editor.axisId)}
+                    values={ax.computedValues.get(editor.axisId)}
                     onCommit={(ranges) => write({ kind: "axis", axisId: editor.axisId }, ranges ? { kind: "axisValue", axisId: editor.axisId, ranges } : null)}
                     onClose={() => setEditor(null)} />
             )}
@@ -266,20 +267,21 @@ export function FilterBoard({ reveal, onlyActive }: {
 // ── 조각들 ────────────────────────────────────────────────────────────────
 
 /** 계산 축 레일 — 재료(값·표시 규격)를 꺼내 꽂는 자리. 값이 없는 축은 어댑터가 이유를 적는다. */
-function ComputedAxisRailRow({ axis, v, stages, markerKey, onType, onChange }: {
+function ComputedAxisRailRow({ axis, stages, markerKey, onType, onChange }: {
     axis: RankAxis;
-    v: FunnelView;
     stages: readonly FilterStage[];
     markerKey: string | null;
     onType: (x: number, y: number) => void;
     onChange: (ranges: AxisValueRange[] | null) => void;
 }): JSX.Element {
-    const meta = v.axes.computedMeta.get(axis.id);
+    // 축은 Provider 에서 직접 — 부모가 넘겨주지 않는다(어차피 같은 한 벌이라 넘길 이유가 없다).
+    const ax = useRankAxes();
+    const meta = ax.computedMeta.get(axis.id);
     const key: RailKey = { kind: "axis", axisId: axis.id };
     return (
         <ComputedAxisRail
             axis={axis}
-            values={v.axes.computedValues.get(axis.id) ?? EMPTY_VALUES}
+            values={ax.computedValues.get(axis.id) ?? EMPTY_VALUES}
             strongerWhen={meta?.strongerWhen ?? "higher"}
             fmtValue={meta?.fmt ?? ((n) => n.toFixed(1))}
             ranges={predicateOfKind(stages, key, "axisValue")?.ranges ?? []}

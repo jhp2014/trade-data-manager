@@ -14,7 +14,7 @@ import {
 } from "@trade-data-manager/market/domain";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
 import { useGroups } from "../../lib/GroupsContext.js";
-import { useRankAxes, type RankAxesView } from "../../lib/RankAxesContext.js";
+import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { chartKey, pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndexes, dayAxisValueOf } from "./axisLookup.js";
@@ -58,12 +58,10 @@ export interface FunnelView {
     deadStageIds: string[];
     /** 이름 조회 — 깔때기가 이미 사전을 들고 있으니 라벨을 만드는 자리마다 다시 조립하지 않게. */
     labelLook: LabelLookup;
-    /**
-     * 축 재료 한 벌(목록·배치줄·계산 값). 필터 보드의 레일이 이걸로 그린다.
-     * (계산 축 값 맵이 여러 벌 만들어지던 문제는 이제 RankAxesProvider 가 막는다 — 여기 실어 나르는 건
-     *  그 방어가 아니라 편의다: 깔때기를 구독하는 화면은 축도 같이 필요하다.)
-     */
-    axes: RankAxesView;
+    // 축 재료(axes)는 **여기서 실어 나르지 않는다.** 한때 필드로 있었던 건 소비자가 useRankAxes 를
+    // 다시 부르면 계산 축 값 맵이 여러 벌 만들어졌기 때문인데, 이제 RankAxesProvider 가 한 벌을
+    // 보장하므로 그 이유가 사라졌다. 축이 필요한 화면은 useRankAxes() 를 직접 부른다 —
+    // 깔때기 계약에 남겨 두면 "축을 어디서 얻나"의 답이 둘이 된다.
     /** 이 항목을 앞선 어느 단계가 막았나(근접 탈락 목록의 "막힌 단계"). 단계 이름으로 돌려준다. */
     blockedLabels: (item: FunnelItem, stageIndex: number) => string[];
 }
@@ -214,7 +212,6 @@ export function useFilterFunnel(): FunnelView {
         result,
         deadStageIds,
         labelLook,
-        axes: ax,
         blockedLabels,
     };
 }
