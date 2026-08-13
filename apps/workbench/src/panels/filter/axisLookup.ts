@@ -37,3 +37,22 @@ export function buildAxisOrderIndex(line: readonly PlacedPoint[]): AxisOrderInde
 /** 전 축 한 번에 — 축마다 줄이 하나씩 온다(useRankAxes.linesByAxis). */
 export const buildAxisOrderIndexes = (linesByAxis: ReadonlyMap<string, PlacedPoint[]>): Map<string, AxisOrderIndex> =>
     new Map([...linesByAxis].map(([axisId, line]) => [axisId, buildAxisOrderIndex(line)]));
+
+/**
+ * day 알갱이 계산 축의 **하루 항목** 값 조회 — 값 캐시는 타점 키로 온다(fanout). day 축은 그날 전 타점이
+ * 같은 값이라 **값이 있는 첫 타점**을 집으면 된다(어느 걸 집든 같다 — buildAxisOrderIndex.byChart 와 같은 논리).
+ * 그냥 첫 타점이 아니라 "값이 있는" 첫 타점인 이유: 개별 타점이 결손일 수 있는데(재계산 중·부분 캐시)
+ * 하루의 값 자체는 형제에게 남아 있을 수 있다. 전부 없으면 undefined = 미배치(타점 0인 후보 하루 포함).
+ */
+export function dayAxisValueOf(
+    values: ReadonlyMap<string, number> | undefined,
+    chart: { stockCode: string; date: string },
+    times: readonly string[],
+): number | undefined {
+    if (!values) return undefined;
+    for (const t of times) {
+        const v = values.get(pointKey({ stockCode: chart.stockCode, date: chart.date, time: t }));
+        if (v !== undefined) return v;
+    }
+    return undefined;
+}

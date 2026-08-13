@@ -219,6 +219,7 @@ export class ComputedAxes {
             key: def.key,
             name: def.name,
             strongerWhen: def.strongerWhen,
+            grain: def.grain ?? "point",
             display: def.display,
             // 타점 순서 그대로 — 정렬은 클라가 질의 시점 모집단 위에서 한다.
             values: points

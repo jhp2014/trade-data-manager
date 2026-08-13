@@ -107,6 +107,34 @@ describe("골격 파생 축", () => {
         for (const a of SKELETON_AXES) expect(Math.floor(a.version / 100)).toBe(SKELETON_SHAPE_VERSION);
     });
 
+    it("알갱이 선언 — 일봉 골격은 day(그날 전 타점 같은 값), 분봉 골격은 point", () => {
+        for (const a of SKELETON_AXES) expect(a.grain).toBe(a.key.startsWith("skeleton-min") ? "point" : "day");
+    });
+
+    it("⚠ 당일 피벗은 재료가 아니다 — 걸러도 형태가 나오면 남은 피벗으로 값을 낸다", async () => {
+        // 완전한 3점 골격 + 당일(DATE) 피벗 하나. 당일 캔들이 HISTORY 에 없어도(오늘 복기) 값이 살아야 한다 —
+        // 리졸버 앞에서 거르니까("피벗 하나라도 미수집이면 통째 결손"에 당일 피벗이 안 걸린다).
+        const anchors = [pivot("2026-06-22", { field: "open" }), pivot("2026-06-24"), pivot("2026-06-26", { field: "close" }), pivot(DATE)];
+        const d = deps({ dailies: HISTORY, anchors });
+        expect((await axisOf("skeleton-base-rise").compute([point()], d))[0].value).toBeCloseTo(20, 0);
+    });
+
+    it("당일 피벗을 거르고 남는 게 모자라면 결손 — 하루에 값 하나를 주는 이상 당일 정보는 미래다", async () => {
+        // 전일 피벗 하나 + 당일 피벗 하나 → 거르면 1점 = 골격이 아니다 → 결손(미배치).
+        const anchors = [pivot("2026-06-24"), pivot(DATE)];
+        const d = deps({ dailies: [...HISTORY, daily(DATE, 12500)], anchors });
+        expect(await axisOf("skeleton-base-rise").compute([point()], d)).toEqual([]);
+    });
+
+    it("분봉 골격은 당일 가드가 없다 — 피벗이 본디 당일 장중 경로다", async () => {
+        // mpivot 은 anchorDate = DATE(당일). 가드가 분봉에 적용되면 전부 걸러져 아무 값도 안 나온다.
+        const anchors = [mpivot("09:10:00"), mpivot("09:40:00", { field: "low" })];
+        const minutes = [minute("09:10:00", 10000), minute("09:40:00", 10800)];
+        const d = deps({ minutesByDay: { [DATE]: minutes }, anchors, reviewPoints: [point("09:40:00")] });
+        const out = await axisOf("skeleton-min-pullback").compute([point("09:40:00")], d);
+        expect(out.length).toBe(1);
+    });
+
     it("각 축은 자기 해상도의 param 만 필수 선언한다(결손 분모가 그 골격 있는 것으로 좁혀진다)", () => {
         for (const a of SKELETON_AXES) {
             expect(a.params).toEqual([a.key.startsWith("skeleton-min-") ? "skeleton-minute" : "skeleton"]);

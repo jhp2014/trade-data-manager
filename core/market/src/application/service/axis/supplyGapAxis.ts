@@ -43,6 +43,10 @@ export function supplyGapAxis(): ComputedAxisDef {
         name: "매물 공백(일)",
         version: 4, // v4: 앵커 소유가 타점 → 차트로(무시 캔들 포함), 다중 기준선은 리졸버(가격 최저)가 확정
         strongerWhen: "higher",
+        // 값 = 앵커 왼쪽(과거 일봉)만 — 타점 시각이 값에 안 들어가 그날 전 타점이 같은 값이다.
+        // ⚠ 남은 구멍: **당일 캔들에 그은 기준선**은 당일 가격이 문턱이 된다(이른 타점엔 미래). 사용자
+        //   실천상 없지만 가드는 아직 코드에 없다 — 리졸버 절단선(후속)에서 골격 가드와 같이 처리할 것.
+        grain: "day",
         display: { suffix: "일", decimals: 0, signed: false }, // 거래일 수 — 정수이고 부호가 뜻이 없다
         inputs: ["minute", "adjDaily"],
         params: [BASELINE_PARAM],

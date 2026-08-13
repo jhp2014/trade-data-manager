@@ -24,6 +24,12 @@ export interface ComputedAxisFeed {
     name: string;
     /** 강한 쪽(rank 1)이 큰 값인지 작은 값인지 — 클라가 orderKey 부호를 정한다. */
     strongerWhen: "higher" | "lower";
+    /**
+     * 값의 알갱이 — "day" = 그날 전 타점이 같은 값(재료가 앵커·과거 일봉뿐). 생략 = "point"(옛 서버 호환).
+     * values 는 알갱이와 무관하게 타점별 행(fanout)이다 — 이 필드는 전송 모양이 아니라 **뜻의 선언**이고,
+     * 클라 축 scope(깔때기 해상도·필터 층위 칸)가 이걸 그대로 입는다.
+     */
+    grain?: "day" | "point";
     /** 값 표시 규격(단위·자릿수·부호). 생략 = 등락률 모양 — 클라에 축별 단위 분기를 두지 않으려고 내려온다. */
     display?: AxisDisplay;
     /** 값이 있는 타점만. 결손 타점은 여기 없다 = 그 축에 미배치. */

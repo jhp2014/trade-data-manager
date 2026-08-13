@@ -52,6 +52,9 @@ function skeletonAxis(spec: {
         name: spec.name,
         version: versionOf(spec.own),
         strongerWhen: spec.strongerWhen,
+        // 일봉 골격 = 차트 소유 + 재료가 전일까지의 피벗뿐(아래 당일 가드) → 그날 전 타점이 같은 값 = day.
+        // 분봉 골격 = 타점 종가 합성이 시각마다 다르다 → point(기본값이지만 대비를 위해 명시).
+        grain: isMinute ? "point" : "day",
         display: spec.display,
         inputs: isMinute ? ["minute"] : ["adjDaily", "minute"],
         params: [isMinute ? SKELETON_MINUTE_PARAM : SKELETON_PARAM],
@@ -59,7 +62,15 @@ function skeletonAxis(spec: {
         ...(isMinute ? { pointCoupled: true } : {}),
         async compute(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]> {
             const anchors = await deps.chartAnchor.listAll();
-            const resolved = isMinute ? await resolveMinuteSkeletons(points, anchors, deps) : await resolveDailySkeletons(points, anchors, deps);
+            // ⚠ day 알갱이 가드 — **당일 피벗은 재료가 아니다**(절단선 = 그 하루가 시작하기 전, axis.ts grain 주석).
+            // 골격은 당일 캔들 위에도 피벗을 찍을 수 있는데, 그걸 값에 넣으면 하루에 값 하나를 주기로 한 이상
+            // 그날의 이른 타점에 대해 반드시 미래를 본 게 된다. 사용자 실천은 당일에 안 찍는 것이지만 실천은
+            // 규칙을 보장하지 않는다 — 코드가 거른다. **리졸버 앞에서** 거르는 이유: 리졸버는 "피벗 하나라도
+            // 미수집이면 통째 결손"이라, 뒤에서 거르면 당일 캔들이 아직 없는 차트(오늘 복기)가 당일 피벗
+            // 하나에 골격 전체를 잃는다. 거른 결과 피벗이 모자라면 형태가 안 나와 결손(미배치 칸에 뜬다).
+            // 분봉 골격은 반대다: 피벗이 본디 당일 장중 경로라 이 가드가 적용되지 않는다(point 알갱이).
+            const usable = isMinute ? anchors : anchors.filter((a) => a.param !== SKELETON_PARAM || a.anchorDate < a.date);
+            const resolved = isMinute ? await resolveMinuteSkeletons(points, usable, deps) : await resolveDailySkeletons(points, usable, deps);
             const keyOf = isMinute ? pointKeyOf : chartKeyOf;
             const shapeCache = new Map<string, SkeletonShape | null>();
             const out: ComputedAxisValue[] = [];
@@ -72,7 +83,7 @@ function skeletonAxis(spec: {
                     shape = pivots ? skeletonShape(pivots) : null;
                     shapeCache.set(key, shape);
                 }
-                if (!shape) continue; // 재료 부족(창 밖·미수집) — 결손
+                if (!shape) continue; // 재료 부족(창 밖·미수집·당일 피벗을 거른 뒤 모자람) — 결손
                 const value = spec.pick(shape);
                 if (value === null || !Number.isFinite(value)) continue; // 그 축에서만의 결손(기울기 span 0 등)
                 out.push({ stockCode: p.stockCode, date: p.date, time: p.time, value });
@@ -97,7 +108,7 @@ export const SKELETON_AXES: readonly ComputedAxisDef[] = [
         key: "skeleton-base-rise",
         name: "본상승 크기(%)",
         mode: "daily",
-        own: 1,
+        own: 2, // v2: 당일 피벗 가드(day 알갱이 절단선 — 전일까지)
         strongerWhen: "higher",
         pick: (s) => s.baseRisePct,
     }),
@@ -105,7 +116,7 @@ export const SKELETON_AXES: readonly ComputedAxisDef[] = [
         key: "skeleton-base-days",
         name: "본상승 기간(일)",
         mode: "daily",
-        own: 1,
+        own: 2, // v2: 당일 피벗 가드(day 알갱이 절단선 — 전일까지)
         strongerWhen: "higher",
         display: { suffix: "일", decimals: 0, signed: false },
         pick: (s) => s.baseRiseSpan,
@@ -114,7 +125,7 @@ export const SKELETON_AXES: readonly ComputedAxisDef[] = [
         key: "skeleton-base-slope",
         name: "본상승 기울기(%/일)",
         mode: "daily",
-        own: 1,
+        own: 2, // v2: 당일 피벗 가드(day 알갱이 절단선 — 전일까지)
         strongerWhen: "higher",
         display: { suffix: "%/일", decimals: 1 },
         pick: (s) => s.baseRiseSlope, // 한 캔들 안 상승(거래일 0)이면 결손 — 지어내지 않는다
@@ -123,7 +134,7 @@ export const SKELETON_AXES: readonly ComputedAxisDef[] = [
         key: "skeleton-pullback",
         name: "되돌림률(%)",
         mode: "daily",
-        own: 1,
+        own: 2, // v2: 당일 피벗 가드(day 알갱이 절단선 — 전일까지)
         strongerWhen: "higher",
         display: { suffix: "%", decimals: 0, signed: false },
         pick: (s) => s.pullbackRatio, // 2점 골격 = 0(되돌림 없음의 단언), 100 초과 가능

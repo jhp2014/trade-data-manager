@@ -17,7 +17,7 @@ import { useGroups } from "../../lib/useGroups.js";
 import { useRankAxes } from "../../lib/useRankAxes.js";
 import { chartKey, pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { buildAxisOrderIndexes } from "./axisLookup.js";
+import { buildAxisOrderIndexes, dayAxisValueOf } from "./axisLookup.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { stageLabel, type LabelLookup } from "./label.js";
 import {
@@ -116,18 +116,21 @@ export function useFilterFunnel(): FunnelView {
                     : idx.byPoint.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }));
             },
             slotOrderKey: (axisId, slotId) => placements.get(axisId)?.slots.get(slotId),
-            // 계산 축 값은 타점 키로 저장된다 — 하루 항목은 아직 값이 없다(계산 축 day 알갱이 미구현).
-            // 그건 결손이고, 결손은 탈락이 아니라 미배치라 조용히 사라지지 않는다.
-            axisValueOf: (axisId, i) =>
-                i.time === undefined
-                    ? undefined
-                    : ax.computedValues.get(axisId)?.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time })),
+            // 계산 축 값은 타점 키로 온다(fanout). 타점 항목은 제 키로 직접, **하루 항목은 day 알갱이 축에서만**
+            // 그날 아무 타점의 값으로(전부 같다 — dayAxisValueOf). point 축은 하루 항목을 판정할 수 없고(시각이
+            // 값에 들어간다), 그 경우는 애초에 오지 않는다: point 축 단계가 있으면 해상도가 타점이라 하루 항목이 없다.
+            axisValueOf: (axisId, i) => {
+                const values = ax.computedValues.get(axisId);
+                if (i.time !== undefined) return values?.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }));
+                if (axisScopes.get(axisId) !== "day") return undefined;
+                return dayAxisValueOf(values, i, timesByChart.get(chartKey(i)) ?? []);
+            },
             boundValue: (axisId, b) =>
                 b.kind === "value"
                     ? (Number.isFinite(b.value) ? b.value : undefined)
                     : ax.computedValues.get(axisId)?.get(b.point),
         }),
-        [gv, placements, ax.computedValues],
+        [gv, placements, ax.computedValues, axisScopes, timesByChart],
     );
 
     // ── 정산 ── 표시와 정산이 **같은 순서**를 봐야 한다(하루 먼저) — 어긋나면 "상류"가 화면과 다른 걸 가리킨다.

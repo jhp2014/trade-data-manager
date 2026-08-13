@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildAxisOrderIndex, buildAxisOrderIndexes } from "../axisLookup.js";
+import { buildAxisOrderIndex, buildAxisOrderIndexes, dayAxisValueOf } from "../axisLookup.js";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 
 const pl = (stockCode: string, date: string, time: string, slotId: string, orderKey: number): PlacedPoint =>
@@ -53,6 +53,26 @@ describe("buildAxisOrderIndex", () => {
         expect(idx.byPoint.size).toBe(0);
         expect(idx.byChart.size).toBe(0);
         expect(idx.slots.size).toBe(0);
+    });
+});
+
+describe("dayAxisValueOf — day 계산 축의 하루 항목 값", () => {
+    const chart = { stockCode: "A", date: "2025-07-01" };
+
+    it("값이 있는 첫 타점의 값 — day 축은 전부 같아 어느 걸 집든 같다", () => {
+        const values = new Map([["A|2025-07-01|09:21:00", 7], ["A|2025-07-01|13:05:00", 7]]);
+        expect(dayAxisValueOf(values, chart, ["09:21:00", "13:05:00"])).toBe(7);
+    });
+
+    it("첫 타점이 결손이어도 형제에게 값이 남아 있으면 그걸 쓴다(부분 캐시)", () => {
+        const values = new Map([["A|2025-07-01|13:05:00", 7]]);
+        expect(dayAxisValueOf(values, chart, ["09:21:00", "13:05:00"])).toBe(7);
+    });
+
+    it("타점 0인 후보 하루·전부 결손·값 캐시 없음 = undefined(미배치)", () => {
+        expect(dayAxisValueOf(new Map(), chart, [])).toBeUndefined();
+        expect(dayAxisValueOf(new Map(), chart, ["09:21:00"])).toBeUndefined();
+        expect(dayAxisValueOf(undefined, chart, ["09:21:00"])).toBeUndefined();
     });
 });
 

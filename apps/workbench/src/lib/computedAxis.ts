@@ -78,7 +78,9 @@ export function computedAxisView(feed: ComputedAxisFeed): ComputedAxisView {
         values.set(pointKey(v), value);
     }
     return {
-        axis: { id: axisId, name: feed.name, scope: "point" },
+        // scope = 서버 축 정의의 grain — 옛날엔 "point" 하드코딩이라 day 성질의 계산 축(매물 공백·기준선
+        // 거리·일봉 골격)이 깔때기 해상도를 통째로 타점으로 끌어내렸다. 옛 서버(grain 없음)는 point 폴백.
+        axis: { id: axisId, name: feed.name, scope: feed.grain ?? "point" },
         line,
         values,
         strongerWhen: feed.strongerWhen,

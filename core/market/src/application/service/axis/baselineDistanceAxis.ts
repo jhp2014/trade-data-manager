@@ -33,6 +33,9 @@ export function baselineDistanceAxis(): ComputedAxisDef {
         name: "기준선 거리(일)",
         version: 2, // v2: 앵커 소유가 타점 → 차트(종목,날짜)로, 다중 기준선은 리졸버(가격 최저)가 확정
         strongerWhen: "higher", // 멀수록 = 오래 묵은 저항을 깨는 자리
+        // 값 = 앵커→타점 **날짜** 거래일 수 — 시각이 값에 안 들어가 그날 전 타점이 같은 값이다.
+        // (당일 앵커 = 0 이고 가격을 안 읽는 경로가 대부분 — supply-gap 의 당일 가드 후속과 함께 재검토.)
+        grain: "day",
         display: { suffix: "일", decimals: 0, signed: false },
         inputs: ["adjDaily"],
         params: [BASELINE_PARAM],
