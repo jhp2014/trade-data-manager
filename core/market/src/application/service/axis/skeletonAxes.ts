@@ -17,7 +17,7 @@
 // 무효화되고, 특정 축의 고르는 방식만 바뀌면 그 축의 자기 version 만 올린다.
 import { chartKeyOf, pointKeyOf, SKELETON_MINUTE_PARAM, SKELETON_PARAM, skeletonShape, type ReviewPointKey, type SkeletonShape } from "#domain";
 import { resolveDailySkeletons, resolveMinuteSkeletons } from "../shared/skeletonResolver.js";
-import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
+import { dropSameDayAnchors, type AxisDeps, type ComputedAxisDef, type ComputedAxisValue } from "./axis.js";
 
 /**
  * 형태층 계산 버전. **skeletonShape 의 식을 고치면 여기를 올린다** — 파생 축이 다 같이 무효화된다.
@@ -62,14 +62,10 @@ function skeletonAxis(spec: {
         ...(isMinute ? { pointCoupled: true } : {}),
         async compute(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]> {
             const anchors = await deps.chartAnchor.listAll();
-            // ⚠ day 알갱이 가드 — **당일 피벗은 재료가 아니다**(절단선 = 그 하루가 시작하기 전, axis.ts grain 주석).
-            // 골격은 당일 캔들 위에도 피벗을 찍을 수 있는데, 그걸 값에 넣으면 하루에 값 하나를 주기로 한 이상
-            // 그날의 이른 타점에 대해 반드시 미래를 본 게 된다. 사용자 실천은 당일에 안 찍는 것이지만 실천은
-            // 규칙을 보장하지 않는다 — 코드가 거른다. **리졸버 앞에서** 거르는 이유: 리졸버는 "피벗 하나라도
-            // 미수집이면 통째 결손"이라, 뒤에서 거르면 당일 캔들이 아직 없는 차트(오늘 복기)가 당일 피벗
-            // 하나에 골격 전체를 잃는다. 거른 결과 피벗이 모자라면 형태가 안 나와 결손(미배치 칸에 뜬다).
-            // 분봉 골격은 반대다: 피벗이 본디 당일 장중 경로라 이 가드가 적용되지 않는다(point 알갱이).
-            const usable = isMinute ? anchors : anchors.filter((a) => a.param !== SKELETON_PARAM || a.anchorDate < a.date);
+            // day 알갱이 가드(dropSameDayAnchors 주석 참조) — 골격은 당일 캔들에도 피벗을 찍을 수 있는데,
+            // 하루에 값 하나를 주는 이상 당일 정보는 그날의 이른 타점에 반드시 미래다. 거른 뒤 피벗이
+            // 모자라면 형태가 안 나와 결손(미배치 칸). 분봉 골격은 가드 없음 — 피벗이 본디 당일 장중 경로다.
+            const usable = isMinute ? anchors : dropSameDayAnchors(anchors, SKELETON_PARAM);
             const resolved = isMinute ? await resolveMinuteSkeletons(points, usable, deps) : await resolveDailySkeletons(points, usable, deps);
             const keyOf = isMinute ? pointKeyOf : chartKeyOf;
             const shapeCache = new Map<string, SkeletonShape | null>();

@@ -4,10 +4,11 @@
 //   · slot  : 줄 위 한 '위치'(order_key 로 정렬). 타이(같은 순위) = 여러 타점이 한 slot 공유.
 //   · place : 타점 ↔ slot 배치. 타점은 review_points 자연키(stockCode,date,time)로 참조(situation 재사용).
 // 검색("A위·B아래" + 확률)은 outcome 평가가 선행이라 후속 슬라이스. 여긴 줄 세우기(배치)까지만.
+import type { Grain } from "../grain.js";
 import type { ReviewPointKey } from "../review/reviewPoint.js";
 
 /** 배치 단위(grain). point=타점별(종목·날짜·시각) / day=하루 일관(종목·날짜, place 시 그날 전 타점에 fanout). */
-export type RankAxisScope = "point" | "day";
+export type RankAxisScope = Grain;
 
 /** 비교 차원 1개(저장됨 → id 필수). */
 export interface RankAxis {

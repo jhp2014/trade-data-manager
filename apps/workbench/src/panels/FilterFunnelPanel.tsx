@@ -21,7 +21,8 @@ import { useWorkbench } from "../store/workbench.js";
 import type { FunnelSelection } from "../store/filterFunnelSlice.js";
 import { TextToggle } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
-import { useFilterFunnel, type FunnelView } from "./filter/useFilterFunnel.js";
+import type { FunnelView } from "./filter/useFilterFunnel.js";
+import { useFunnel } from "./filter/FunnelContext.js";
 import { GroupStageEditor } from "./filter/StageEditor.js";
 import { AxisStageEditor } from "./filter/AxisStageEditor.js";
 import { RangeStageEditor } from "./filter/RangeStageEditor.js";
@@ -58,7 +59,7 @@ type EditorState =
     | { kind: "date" | "time"; stageId?: string; x: number; y: number };
 
 export function FilterFunnelPanel(): JSX.Element {
-    const v = useFilterFunnel();
+    const v = useFunnel();
     const stages = useWorkbench((s) => s.filterStages);
     const selection = useWorkbench((s) => s.funnelSelection);
     const setSelection = useWorkbench((s) => s.setFunnelSelection);

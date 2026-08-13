@@ -1,4 +1,5 @@
 import { WorkbenchShell } from "./shell/WorkbenchShell.js";
+import { FunnelProvider } from "./panels/filter/FunnelContext.js";
 import { SettingsModal } from "./components/SettingsModal.js";
 import { AssignThemeModal } from "./components/AssignThemeModal.js";
 import { Taskbar } from "./components/Taskbar.js";
@@ -15,8 +16,11 @@ export function App(): JSX.Element {
     const closeSettings = useUi((s) => s.closeSettings);
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-primary)" }}>
-            <WorkbenchShell />
-            <Taskbar />
+            {/* 깔때기 계산 한 벌(FunnelContext) — 소비 패널 다섯이 같은 정산을 나눠 본다. */}
+            <FunnelProvider>
+                <WorkbenchShell />
+                <Taskbar />
+            </FunnelProvider>
             {settingsOpen && <SettingsModal onClose={closeSettings} />}
             <AssignThemeModal />
         </div>

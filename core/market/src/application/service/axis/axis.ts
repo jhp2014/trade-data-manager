@@ -13,7 +13,7 @@
 //     "이 조건인 상황들의 결과 분포"가 순환논증이 된다.
 //  3. **결손은 결손으로**: 재료가 없으면(분봉 부재·기준가 부재·해당 시장 세션 없음) 값을 지어내지 않고
 //     결과에서 뺀다 = 그 축에 미배치. 소비자(3치 술어)가 이미 결손을 다룬다.
-import type { ReviewPointKey } from "#domain";
+import type { ChartAnchor, Grain, ReviewPointKey } from "#domain";
 import type { AdjustedDailyReader, ChartAnchorReader, MinuteReader, RawDailyReader, ReviewPointReader } from "#port/query";
 
 /** 시장 구분 — 축은 하나의 시장을 고른다(둘 다 보고 싶으면 축을 둘로. 축 안 토글 금지). */
@@ -93,7 +93,7 @@ export interface ComputedAxisDef {
      * 시작하기 전**(전일까지, 사용자 확정). 당일 데이터가 값에 들어가는 축은 day 로 선언하면 안 된다.
      * 값 전달은 그대로 타점별 행(fanout)이다 — 저장·전송 모양이 아니라 **뜻의 선언**이다.
      */
-    grain?: "day" | "point";
+    grain?: Grain;
     /** 값 표시 규격. 생략 = 등락률 모양. */
     display?: AxisDisplay;
     /** 읽는 재료 선언. */
@@ -123,6 +123,15 @@ export interface ComputedAxisDef {
      */
     compute(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]>;
 }
+
+/**
+ * day 알갱이 축의 절단선 — **당일 앵커는 재료가 아니다**(전일까지, ComputedAxisDef.grain 주석).
+ * 지목한 param 의 앵커만 거른다(무시 캔들 등 다른 param 은 축이 제 규칙으로 다룬다).
+ * ⚠ 리졸버·해소기에 넣기 **전에** 걸러야 한다 — 해소기는 "하나라도 미수집이면 통째 결손"이라,
+ * 뒤에서 거르면 당일 캔들이 아직 없는 차트(오늘 복기)가 당일 앵커 하나에 전체를 잃는다.
+ */
+export const dropSameDayAnchors = (anchors: readonly ChartAnchor[], param: string): ChartAnchor[] =>
+    anchors.filter((a) => a.param !== param || a.anchorDate < a.date);
 
 /** (종목, 거래일) 묶음 — 재료 읽기의 단위. 같은 날 여러 타점은 분봉·일봉을 한 번만 읽는다. */
 export interface AxisDay {

@@ -62,6 +62,7 @@ export interface FunnelView {
     blockedLabels: (item: FunnelItem, stageIndex: number) => string[];
 }
 
+/** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
 export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench((s) => s.filterStages);
     const expandToPoints = useWorkbench((s) => s.filterExpandToPoints);

@@ -16,11 +16,13 @@
 // 확답을 주게 되어, 사전이 도착하는 순간 해상도가 튀고 결과 목록이 통째로 다시 그려진다. 이 앱이 이미
 // 쓰는 규칙과 같다(evalPredicate·and3) — "아니다"와 "모른다"는 섞지 않는다. 모름을 어떻게 다룰지는
 // **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
+import type { Grain } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { NO_TAGS, isGroupExprEmpty } from "../rank/groupFilter.js";
 
-/** 판정 알갱이 — 그룹 scope·축 scope 와 같은 어휘("day" | "point"). core/funnel 의 Grain 과 같은 값. */
-export type Grain = "day" | "point";
+// 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
+// 필터 모듈들은 stage 만 본다(도메인 경로가 바뀌어도 한 줄).
+export type { Grain };
 
 // ── 필터 차원의 모양 — 옛 rankFilterSlice 에서 이사 왔다(전역 필터 store 는 철거, 조건은 단계 안에만 산다).
 export interface RankBand {

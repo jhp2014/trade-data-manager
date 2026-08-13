@@ -15,7 +15,7 @@ import { computePathStats, type PathStats } from "./pathStats.js";
 import { useRankPaths } from "./useRankPaths.js";
 import { pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { useFilterFunnel } from "../filter/useFilterFunnel.js";
+import { useFunnel } from "../filter/FunnelContext.js";
 import { stageLabel } from "../filter/label.js";
 import type { RankPoint } from "../../api/rank.js";
 import type { RankPointPath } from "../../api/rankPaths.js";
@@ -42,7 +42,7 @@ export interface RankResult {
 }
 
 export function useRankFilterResult(): RankResult {
-    const funnel = useFilterFunnel();
+    const funnel = useFunnel();
     const rankHorizon = useWorkbench((s) => s.rankHorizon);
 
     const pointsQ = useQuery(allPointsQuery());

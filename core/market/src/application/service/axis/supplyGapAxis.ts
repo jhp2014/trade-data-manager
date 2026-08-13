@@ -32,7 +32,7 @@ import { BASELINE_PARAM, candlePrice, chartKeyOf, IGNORE_CANDLE_PARAM, type Dail
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
 import { resolveBaselines, type BaselineAnchor } from "../shared/baselineResolver.js";
-import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
+import { dropSameDayAnchors, type AxisDeps, type ComputedAxisDef, type ComputedAxisValue } from "./axis.js";
 
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
@@ -41,11 +41,10 @@ export function supplyGapAxis(): ComputedAxisDef {
     return {
         key: "supply-gap",
         name: "매물 공백(일)",
-        version: 4, // v4: 앵커 소유가 타점 → 차트로(무시 캔들 포함), 다중 기준선은 리졸버(가격 최저)가 확정
+        version: 5, // v5: 당일 기준선 가드(day 알갱이 절단선 — 당일 캔들에 그은 선은 재료가 아니다)
         strongerWhen: "higher",
         // 값 = 앵커 왼쪽(과거 일봉)만 — 타점 시각이 값에 안 들어가 그날 전 타점이 같은 값이다.
-        // ⚠ 남은 구멍: **당일 캔들에 그은 기준선**은 당일 가격이 문턱이 된다(이른 타점엔 미래). 사용자
-        //   실천상 없지만 가드는 아직 코드에 없다 — 리졸버 절단선(후속)에서 골격 가드와 같이 처리할 것.
+        // 당일 캔들에 그은 기준선은 compute 가 거른다(dropSameDayAnchors — 당일 가격이 문턱이 되면 미래).
         grain: "day",
         display: { suffix: "일", decimals: 0, signed: false }, // 거래일 수 — 정수이고 부호가 뜻이 없다
         inputs: ["minute", "adjDaily"],
@@ -57,7 +56,9 @@ export function supplyGapAxis(): ComputedAxisDef {
 
 async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]> {
     const anchors = await deps.chartAnchor.listAll();
-    const baselineOf = await resolveBaselines(points, anchors, deps);
+    // day 알갱이 가드 — 당일 캔들에 그은 기준선은 그 값(당일 가격)이 문턱이 되어 이른 타점엔 미래다.
+    // 무시 캔들(optionalParams)은 안 거른다: 그건 "그날 거래는 없던 걸로"라는 판정이지 가격 재료가 아니다.
+    const baselineOf = await resolveBaselines(points, dropSameDayAnchors(anchors, BASELINE_PARAM), deps);
     // 무시 캔들 — 차트 소유(time 없음). 차트키로 모은다(그 차트의 모든 타점이 같은 목록을 본다).
     const ignoredOf = new Map<string, Set<string>>();
     for (const a of anchors) {

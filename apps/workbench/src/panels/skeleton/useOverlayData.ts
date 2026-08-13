@@ -8,7 +8,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../../api/queries.js";
-import { useFilterFunnel } from "../filter/useFilterFunnel.js";
+import { useFunnel } from "../filter/FunnelContext.js";
 import { pointKey, chartKey } from "../../lib/pointKey.js";
 import {
     normalizeSkeleton, pointSkeletons,
@@ -39,7 +39,7 @@ export function useOverlayData(
 ): OverlayData {
     const feedQ = useQuery(skeletonsQuery());
     const pointsQ = useQuery(allPointsQuery());
-    const funnel = useFilterFunnel();
+    const funnel = useFunnel();
 
     // 깔때기 구독 — 안 걸려 있으면 null(제한 없음). 로딩 중에도 null: 판정이 안 끝난 집합으로 거르면
     // 빈 화면이 "조건에 다 걸렸다"로 읽힌다.

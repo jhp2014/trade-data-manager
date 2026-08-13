@@ -20,11 +20,9 @@ import type { ChartRef } from "./group.js";
  */
 export type Verdict = boolean | undefined;
 
-/**
- * 판정 알갱이. 그룹 scope·축 scope 와 같은 어휘다("day" | "point").
- * 결과 해상도는 **걸린 단계 중 가장 가는 것**으로 자동 결정된다(토글 아님) — 아래 finestGrain.
- */
-export type Grain = "day" | "point";
+// 판정 알갱이는 도메인 공용 어휘(grain.ts) — 결과 해상도는 걸린 단계 중 가장 가는 것(finestGrain).
+import type { Grain } from "../grain.js";
+export type { Grain };
 
 /**
  * 깔때기가 세는 항목 하나. day 알갱이면 (종목·날짜), point 알갱이면 거기에 시각까지.

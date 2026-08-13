@@ -142,6 +142,19 @@ describe("supplyGapAxis", () => {
         expect(await axis.compute([P], noAnchorCandle)).toEqual([]);
     });
 
+    it("⚠ 당일 캔들에 그은 기준선은 재료가 아니다 — 문턱이 당일 가격이면 이른 타점엔 미래(결손)", async () => {
+        // 유일한 기준선이 타점 날(DATE) 캔들 위 → 걸러져 후보 0 = 입력 전과 같이 빠진다.
+        const d = deps({ dailies: [...HISTORY, daily(DATE, 100)], anchors: [baseline({ anchorDate: DATE })] });
+        expect(await axis.compute([point()], d)).toEqual([]);
+    });
+
+    it("당일 기준선이 걸러져도 전일 기준선이 남으면 그걸로 잰다 — 리졸버 후보에서 빠질 뿐", async () => {
+        // 당일 선(더 낮아 리졸버가 골랐을 것) + 전일 선 → 당일 선은 후보에서 빠지고 전일 선이 문턱.
+        const d = deps({ dailies: [...HISTORY, daily(DATE, 60)], anchors: [baseline({ anchorDate: DATE, field: "low" }), baseline()] });
+        const out = await axis.compute([point()], d);
+        expect(out.length).toBe(1); // 전일(7/01 고가=100) 기준 — 값 산출 자체가 산다
+    });
+
     it("기준선 없는 타점은 캔들 읽기 없이 빠진다", async () => {
         let reads = 0;
         const d = deps({ anchors: [] });

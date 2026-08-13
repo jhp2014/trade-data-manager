@@ -48,9 +48,9 @@ describe("baselineDistanceAxis", () => {
         expect(out[0].value).toBe(4);
     });
 
-    it("같은 날 앵커(분봉 기준선)는 0", async () => {
+    it("같은 날 앵커(분봉 기준선)는 이제 결손 — day 알갱이 절단선(전일까지)이 0 이던 옛 스펙을 대체", async () => {
         const out = await axis.compute([P], deps({ dailies: HISTORY, anchors: [baseline(DATE, "13:00:00")] }));
-        expect(out[0].value).toBe(0);
+        expect(out).toEqual([]);
     });
 
     it("앵커 날에 봉이 없어도(거래정지) 그 뒤 거래일로 센다", async () => {
@@ -93,6 +93,11 @@ describe("baselineDistanceAxis", () => {
         const priced = HISTORY.map((d) => (d.date === "2026-06-25" ? daily(d.date, 12000) : d.date === "2026-06-29" ? daily(d.date, 10000) : d));
         const out = await axis.compute([P], deps({ dailies: priced, anchors: [baseline("2026-06-25"), baseline("2026-06-29")] }));
         expect(out[0].value).toBe(3); // 낮은 선(6/29) 기준 — 높은 선(6/25)이었다면 5
+    });
+
+    it("당일 앵커는 걸러진다 — 세 축이 같은 후보 집합을 봐야 한다(공백 축과 동일 가드)", async () => {
+        const d = deps({ dailies: HISTORY, anchors: [baseline(DATE)] });
+        expect(await axis.compute([point()], d)).toEqual([]);
     });
 
     it("차트 소유 — 같은 차트의 두 타점이 같은 기준선을 본다", async () => {

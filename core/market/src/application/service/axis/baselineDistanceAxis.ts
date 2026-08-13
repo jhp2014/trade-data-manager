@@ -1,6 +1,6 @@
 // 계산 축 — "기준선 거리(일)": 기준선 앵커 캔들에서 타점 날까지 몇 거래일이 흘렀나.
 //
-//   값 = 앵커 캔들 **다음** 거래일부터 타점 날까지의 거래일 수. 같은 날(분봉 앵커 등)이면 0.
+//   값 = 앵커 캔들 **다음** 거래일부터 타점 날까지의 거래일 수. 당일 앵커는 결손(day 절단선 — 아래 grain 주석).
 //
 // 뜻: 그 선이 얼마나 묵은 것인가. 매물 공백 축과 **앵커를 사이에 두고 반대쪽**을 잰다 —
 // 공백은 앵커에서 왼쪽(과거)이 얼마나 비었나, 이 축은 앵커에서 오른쪽(타점까지)이 얼마나 흘렀나.
@@ -22,7 +22,7 @@ import { BASELINE_PARAM, chartKeyOf, type DailyCandle, type ReviewPointKey } fro
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
 import { resolveBaselines } from "../shared/baselineResolver.js";
-import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
+import { dropSameDayAnchors, type AxisDeps, type ComputedAxisDef, type ComputedAxisValue } from "./axis.js";
 
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
@@ -31,10 +31,11 @@ export function baselineDistanceAxis(): ComputedAxisDef {
     return {
         key: "baseline-distance",
         name: "기준선 거리(일)",
-        version: 2, // v2: 앵커 소유가 타점 → 차트(종목,날짜)로, 다중 기준선은 리졸버(가격 최저)가 확정
+        version: 3, // v3: 당일 기준선 가드(day 알갱이 절단선 — 세 축이 같은 선을 봐야 하므로 공백 축과 함께)
         strongerWhen: "higher", // 멀수록 = 오래 묵은 저항을 깨는 자리
         // 값 = 앵커→타점 **날짜** 거래일 수 — 시각이 값에 안 들어가 그날 전 타점이 같은 값이다.
-        // (당일 앵커 = 0 이고 가격을 안 읽는 경로가 대부분 — supply-gap 의 당일 가드 후속과 함께 재검토.)
+        // 당일 앵커는 compute 가 거른다(dropSameDayAnchors). 이 축 단독으론 당일 앵커=0 이 무해해 보이지만,
+        // 리졸버 후보가 축마다 다르면 세 축이 서로 다른 선을 재는 상태가 조용히 생긴다 — 공백 축과 같이 거른다.
         grain: "day",
         display: { suffix: "일", decimals: 0, signed: false },
         inputs: ["adjDaily"],
@@ -45,7 +46,8 @@ export function baselineDistanceAxis(): ComputedAxisDef {
 
 async function computeBaselineDistance(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]> {
     const anchors = await deps.chartAnchor.listAll();
-    const baselineOf = await resolveBaselines(points, anchors, deps);
+    // day 알갱이 가드 — 공백 축과 같은 후보 집합을 봐야 한다(리졸버 규칙이 한 곳인 이유와 같은 이유).
+    const baselineOf = await resolveBaselines(points, dropSameDayAnchors(anchors, BASELINE_PARAM), deps);
     const jobs = points.flatMap((p) => {
         const base = baselineOf.get(chartKeyOf(p));
         return base ? [{ p, base }] : []; // 기준선 없음(입력 전)·확정 불가(결손)는 재료를 읽기 전에 빠진다
