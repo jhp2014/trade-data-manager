@@ -16,10 +16,9 @@
 //    ⚠ **따라가기는 누를 때만** 한다. 예전엔 타점이 바뀌면 달이 저절로 따라갔는데, 그러면 5월을 훑는
 //    중에 다른 달 타점을 하나 누르는 순간 보던 달을 잃는다 — 고른 달은 사용자의 것이다.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import type { FunnelCell } from "@trade-data-manager/market/domain";
-import { stocksMetaQuery } from "../../api/queries.js";
 import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
+import { useStockNames } from "../../lib/useStockNames.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { ACTIVE, ACTIVE_SOFT, FAIL, STRONG } from "../../styles/palette.js";
@@ -60,11 +59,16 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
     }, [jumpAt]);
 
     const monthItems = useMemo(() => (month === null ? [] : sorted.filter((i) => monthOf(i.date) === month)), [sorted, month]);
-    const shown = monthItems.slice(0, MAX_ROWS);
+    const shown = useMemo(() => monthItems.slice(0, MAX_ROWS), [monthItems]);
     const groups = useMemo(() => groupByChart(shown), [shown]);
 
-    const names = useQuery(stocksMetaQuery(shown.map((i) => i.stockCode)));
-    const nameOf = (code: string): string => names.data?.find((m) => m.stockCode === code)?.name ?? code;
+    // 이름이 필요한 코드 = 그린 행 + **활성 타점**. 활성은 이 달·이 집합 밖일 수 있는데(고정 줄이 있는
+    // 이유가 그거다) 행에서만 모으면 정작 그 줄만 이름 대신 코드가 뜬다.
+    const nameCodes = useMemo(
+        () => (activePoint ? [...shown.map((i) => i.stockCode), activePoint.code] : shown.map((i) => i.stockCode)),
+        [shown, activePoint],
+    );
+    const { nameOf } = useStockNames(nameCodes);
 
     // 활성 타점이 지금 보는 집합 안에 있나 — 없으면 찾아갈 자리가 없다(달을 바꿔도 행이 없다).
     const activeInResult = useMemo(

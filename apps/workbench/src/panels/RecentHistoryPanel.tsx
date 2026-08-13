@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
-import { stocksMetaQuery } from "../api/queries.js";
+import { useStockNames } from "../lib/useStockNames.js";
 import { weekdayOf } from "../lib/date.js";
 import { Name } from "./WorksetRows.js";
 
@@ -27,15 +26,10 @@ export function RecentHistoryPanel(): JSX.Element {
         if (e) rowRefs.current.get(`${e.date}|${e.code}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }, [historyCursor, history]);
 
-    // 종목명 해소 — 이 패널의 코드 목록으로 마스터 메타를 직접 배치 조회(다른 패널 데이터셋에 얹지 않음).
-    // 주석(선/타점) 없는 종목도 이름이 잡히고, 코드 집합 기준 캐시라 재방문·재정렬엔 재요청 없음.
+    // 종목명 해소 — 공용 훅이 이미 받아둔 피드로 먼저 답하고 남은 것만 묻는다. 주석(선/타점) 없는
+    // 종목도 그 배치 조회가 받아내므로, 이 패널이 자기 몫의 이름 조회를 따로 들 이유가 없어졌다.
     const codes = useMemo(() => history.map((e) => e.code), [history]);
-    const metaQ = useQuery(stocksMetaQuery(codes));
-    const nameByCode = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const s of metaQ.data ?? []) if (s.name) m.set(s.stockCode, s.name);
-        return m;
-    }, [metaQ.data]);
+    const { nameOf } = useStockNames(codes);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
@@ -84,7 +78,7 @@ export function RecentHistoryPanel(): JSX.Element {
                                 background: selected ? "var(--accent-soft)" : "transparent",
                             }}
                         >
-                            <Name name={nameByCode.get(e.code) ?? null} code={e.code} strong={selected} />
+                            <Name name={nameOf(e.code)} code={e.code} strong={selected} />
                             <span className="tabular" style={{ flexShrink: 0, marginLeft: "auto", fontSize: 11, color: "var(--text-tertiary)" }}>
                                 {fmtDate(e.date)}{e.time ? ` · ${e.time.slice(0, 5)}` : ""}
                             </span>
