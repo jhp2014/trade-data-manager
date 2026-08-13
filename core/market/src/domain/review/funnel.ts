@@ -58,6 +58,26 @@ export function and3(verdicts: Iterable<Verdict>): Verdict {
 export const andStep = (a: Verdict, b: Verdict): Verdict =>
     a === false || b === false ? false : a === undefined || b === undefined ? undefined : true;
 
+/**
+ * 3치 OR — Kleene. 하나라도 참이면 참(모름이 섞여 있어도), 아니면 모름이 있으면 모름, 아니면 거짓.
+ * 빈 목록은 거짓(공허거짓) — `and3([])` 가 참인 것과 짝을 이룬다.
+ *
+ * AND 만 여기 있고 OR·NOT 은 소비자 쪽에 있었다. 셋은 한 대수(代數)라 반쪽만 도메인에 두면
+ * "모름을 어떻게 다루나"라는 같은 규칙이 두 곳에서 각자 자란다 — 실제로 DNF 판정(절끼리 OR,
+ * 리터럴마다 NOT)이 이 셋을 한 식에서 같이 쓴다.
+ */
+export function or3(verdicts: Iterable<Verdict>): Verdict {
+    let unknown = false;
+    for (const v of verdicts) {
+        if (v === true) return true;
+        if (v === undefined) unknown = true;
+    }
+    return unknown ? undefined : false;
+}
+
+/** 3치 NOT — 모름의 부정은 모름이다("아닌지 아닌 게 아닌지"를 모르는 것). */
+export const not3 = (v: Verdict): Verdict => (v === undefined ? undefined : !v);
+
 /** 결과 해상도 — 하나라도 타점 알갱이가 걸리면 타점, 아니면 하루. 아무 단계도 없으면 하루. */
 export function finestGrain(grains: Iterable<Grain>): Grain {
     for (const g of grains) if (g === "point") return "point";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evalGroupExpr3, evalPredicate3, evalStage, or3, toFunnelStages, type EvalLookup } from "../evaluate.js";
+import { evalGroupExpr3, evalPredicate3, evalStage, toFunnelStages, type EvalLookup } from "../evaluate.js";
 import { NO_TAGS, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
@@ -20,21 +20,7 @@ const look = (over: Partial<EvalLookup> = {}): EvalLookup => ({ ...base, ...over
 
 const lit = (groupId: string, neg = false): GroupExpr => ({ groups: [{ literals: [{ groupId, neg }] }] });
 
-describe("or3 — Kleene OR(and3 의 짝)", () => {
-    it("하나라도 참이면 참 — 모름이 섞여 있어도", () => {
-        expect(or3([false, true])).toBe(true);
-        expect(or3([undefined, true])).toBe(true);
-    });
-
-    it("참이 없고 모름이 있으면 모름", () => {
-        expect(or3([false, undefined])).toBeUndefined();
-    });
-
-    it("전부 거짓이면 거짓, 빈 목록도 거짓", () => {
-        expect(or3([false, false])).toBe(false);
-        expect(or3([])).toBe(false);
-    });
-});
+// or3·not3 자체의 규칙은 도메인(core funnel.test)에서 잰다 — 여기서는 그 대수로 조립한 결과만 본다.
 
 describe("evalGroupExpr3 — DNF 3치", () => {
     it("소속이면 참, 아니면 거짓", () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-    and3, andStep, blockedBy, cellOf, expandUniverse, finestGrain, funnelKey, tallyFunnel,
+    and3, andStep, blockedBy, cellOf, expandUniverse, finestGrain, funnelKey, not3, or3, tallyFunnel,
     type FunnelItem, type FunnelStage, type Verdict,
 } from "../funnel.js";
 
@@ -31,6 +31,37 @@ describe("and3 — 3치 AND(미배치는 통과가 아니다)", () => {
 
     it("빈 목록은 통과(공허참) — 첫 단계엔 상류가 없으니 막힌 적도 없다", () => {
         expect(and3([])).toBe(true);
+    });
+});
+
+describe("or3 — Kleene OR(and3 의 짝)", () => {
+    it("하나라도 참이면 참 — 모름이 섞여 있어도", () => {
+        expect(or3([false, true])).toBe(true);
+        expect(or3([undefined, true])).toBe(true);
+    });
+
+    it("참이 없고 모름이 있으면 모름", () => {
+        expect(or3([false, undefined])).toBeUndefined();
+    });
+
+    it("전부 거짓이면 거짓, 빈 목록도 거짓(공허거짓 — and3([]) 가 참인 것과 짝)", () => {
+        expect(or3([false, false])).toBe(false);
+        expect(or3([])).toBe(false);
+    });
+});
+
+describe("not3 — 모름의 부정은 모름", () => {
+    it("참↔거짓은 뒤집고, 모름은 그대로 둔다", () => {
+        expect(not3(true)).toBe(false);
+        expect(not3(false)).toBe(true);
+        expect(not3(undefined)).toBeUndefined();
+    });
+
+    it("드모르간이 성립한다 — 셋이 한 대수라는 뜻(9가지)", () => {
+        const ALL: Verdict[] = [true, false, undefined];
+        for (const a of ALL) for (const b of ALL) {
+            expect(not3(and3([a, b]))).toBe(or3([not3(a), not3(b)]));
+        }
     });
 });
 

@@ -10,7 +10,9 @@
 //
 // 재료는 전부 **함수로 주입**받는다. 저장 방식(멤버십 피드 모양·배치줄 인덱스·값 캐시 키)이 바뀌어도
 // 판정 규칙은 안 바뀌어야 하고, 그래야 규칙만 테스트로 못박을 수 있다.
-import { and3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
+// 3치 대수(and3·or3·not3)는 **도메인의 것**이다 — 여기서 다시 정의하면 "모름을 어떻게 다루나"라는
+// 같은 규칙이 두 곳에서 각자 자란다. 이 파일은 그 대수로 술어를 조립하는 일만 한다.
+import { and3, not3, or3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
 import { NO_TAGS, type GroupExpr } from "../rank/groupFilter.js";
 import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
 
@@ -29,22 +31,6 @@ export interface EvalLookup {
     /** 값 구간 경계 해석 — 타점 앵커면 그 타점의 값, 리터럴이면 그 수. 앵커가 사라졌으면 undefined. */
     boundValue: (axisId: string, bound: AxisBound) => number | undefined;
 }
-
-/**
- * 3치 OR — Kleene. 하나라도 참이면 참(모름이 섞여 있어도), 아니면 모름이 있으면 모름, 아니면 거짓.
- * `and3` 의 짝이다. DNF 의 절(節)끼리 합칠 때 쓴다.
- */
-export function or3(verdicts: Iterable<Verdict>): Verdict {
-    let unknown = false;
-    for (const v of verdicts) {
-        if (v === true) return true;
-        if (v === undefined) unknown = true;
-    }
-    return unknown ? undefined : false;
-}
-
-/** 3치 NOT — 모름의 부정은 모름이다("아닌지 아닌 게 아닌지"를 모르는 것). */
-const not3 = (v: Verdict): Verdict => (v === undefined ? undefined : !v);
 
 /**
  * 값 구간 경계 → 수치. 타점 앵커면 그 타점의 값, 리터럴이면 그 수. **앵커가 사라졌으면 undefined**.
