@@ -1,9 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
-import { chartQuery } from "../api/queries.js";
-import { minuteOfDayOf, selectHotUniverse, amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
-import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, AMOUNT_BUCKET_COLORS, highMarkerColor, RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
+import { minuteOfDayOf, selectHotUniverse, amountBucketIndex } from "@trade-data-manager/market/domain";
+import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
@@ -12,7 +10,8 @@ import {
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
-import { anchorCandles, memberCandles, dailyOverlayCandles, candleWidth, type ViewCandle } from "./skeleton/candles.js";
+import { useCandles, type CandleFocus } from "./skeleton/useCandles.js";
+import { CandleLayer } from "./skeleton/CandleLayer.js";
 import { themeLines, hotCodesInRange } from "./skeleton/themeSkeleton.js";
 import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
@@ -108,18 +107,10 @@ const pathOf = (points: readonly { x: number; y: number }[], scales: Scales, ste
 
 /** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
 const AXIS_LINE = "var(--text-secondary)";
-/** 캔들 색 — 국내 관례(상승 적/하락 청). 낮은 알파로 깔리므로 진한 원색을 쓴다(흐려도 방향이 남게). */
-const CANDLE_UP = "#d32f2f";
-const CANDLE_DOWN = "#1976d2";
 
 /** 화면의 선 하나 — kind 판별 유니온(차트 단위 ChartSkeleton / 타점 단위 PointSkeleton). */
 type Line = OverlayLine;
 
-/** 캔들 선명도 단계 — 배경(low) / 기본(mid) / 같이 읽기(high). */
-type CandleAlpha = "low" | "mid" | "high";
-const CANDLE_ALPHA: Record<CandleAlpha, number> = { low: 0.18, mid: 0.35, high: 0.7 };
-/** 테마 멤버 캔들은 앵커보다 한 겹 뒤 — 주인공이 누구인지 진하기로도 남는다. */
-const CANDLE_MEMBER_RATIO = 0.8;
 
 /** 세로선 판독의 재료 한 벌 — 선 하나를 x 로 조회하는 함수 묶음(값은 크로스헤어 층이 읽는다). */
 interface ReadoutSource {
@@ -169,16 +160,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
     const [showTheme, setShowTheme] = usePersistedState<boolean>(`wb.skeletonOverlayTheme.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
-    /**
-     * 캔들 선명도 — 배경으로 깔 것인가, 같이 읽을 것인가(사용자 요구). 캔들의 쓸모가 상황마다 달라서다:
-     * 형태만 볼 땐 흐린 배경이 맞고, 봉 하나하나를 짚어 읽을 땐 골격선보다 진해도 된다.
-     * 단계로 두는 이유는 이 패널의 다른 손잡이와 같은 문법(칩)이라서 — 슬라이더 하나를 위해 어휘를 늘리지 않는다.
-     */
-    const [candleAlpha, setCandleAlpha] = usePersistedState<CandleAlpha>(
-        `wb.skeletonOverlayCandleAlpha.${grain}`,
-        (o) => (o === "low" || o === "mid" || o === "high" ? o : null),
-        "mid",
-    );
 
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const setFocus = useWorkbench((s) => s.setFocus);
@@ -460,31 +441,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             .map((l) => ({ ...l, points: l.points.map((p) => ({ x: p.x - t0, y: p.y - baseRate })) }));
         return { key: pointTarget.key, t0, baseRate, lines };
     }, [isDaily, showTheme, pointTarget, snapQ.data, replaySettings.amountN, replaySettings.rateN]);
-    // ── 캔들 오버레이 — **참고용 배경**(흐리게). 주인공은 여전히 골격 선이다.
-    //
-    // **켜는 손짓 = 선(또는 그 라벨) 클릭**(사용자 확정 — 누름 유지에서 변경). 누르고 있어야만 보이면
-    // 값을 읽는 동안 손이 묶여 불편했다. 전역 토글·단축키도 같이 폐기했다: 어차피 "어느 종목의 캔들이냐"를
-    // 골라야 하므로, **고르는 손짓이 곧 켜는 손짓**이면 상태가 하나 줄어든다.
-    // 여럿을 동시에 켤 수 있다(멤버 캔들은 이미 받은 스냅샷이라 공짜).
-    //
-    // 앵커 재료는 **차트 번들 그대로**(`/chart` — 원주가 dense 분봉 + volume): 여기저기서 모아 조합하는
-    // 대신 종목·날짜로 통째로 받는다(딸려오는 2년 일봉은 버린다 — 사용자 확정). RQ 키가 차트 패널·단축키·
-    // 필터 패널과 **같아서** 그 날짜가 이미 떠 있으면 왕복이 0이다.
-    const [candleCodes, setCandleCodes] = useState<ReadonlySet<string>>(() => new Set());
-    // 짚은 선이 바뀌면 켠 것들을 접는다 — 다른 날·다른 종목의 무리라 그대로 두면 뜻이 안 맞는다.
-    useEffect(() => { setCandleCodes(new Set()); }, [candleAnchor?.key]);
-    const toggleCandle = useCallback((code: string): void => {
-        setCandleCodes((prev) => {
-            const next = new Set(prev);
-            if (next.has(code)) next.delete(code);
-            else next.add(code);
-            return next;
-        });
-    }, []);
-    const anchorCandleOn = !!candleAnchor && candleCodes.has(candleAnchor.stockCode);
-    // 번들 하나가 둘 다 준다 — 분봉 캔들은 `minutes`, 일봉 캔들은 `daily`. 왕복이 늘지 않는다.
-    const anchorMinQ = useQuery(chartQuery(anchorCandleOn ? candleAnchor.stockCode : "", anchorCandleOn ? candleAnchor.date : ""));
-
     /** 손이 올라간 테마 선(들) — 뭉친 라벨이면 그 무리 전부. 이것만 선명해지고 나머지는 무채색으로 남는다. */
     const [hoveredTheme, setHoveredTheme] = useState<readonly string[] | null>(null);
     /** 이름을 못 단 테마 종목 목록(뱃지 클릭) — 거터 상한을 넘은 것들이 여기로 온다. */
@@ -496,29 +452,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      * 지금 짚고 있는 대상 — 캔들을 그릴지 정하는 유일한 기준. null 이면 아무것도 안 짚은 상태(전부 그린다).
      * 골격선 호버는 **선 하나**(키), 테마 라벨·뱃지 호버는 종목 무리.
      */
-    const candleFocus = useMemo<{ kind: "line"; key: string } | { kind: "theme"; codes: ReadonlySet<string> } | null>(() => {
+    const candleFocus = useMemo<CandleFocus>(() => {
         if (hoveredThemeSet) return { kind: "theme", codes: hoveredThemeSet };
         if (hovered) return { kind: "line", key: hovered };
         return null;
     }, [hoveredThemeSet, hovered]);
-    /**
-     * 캔들을 지금 그리나 — **다른 라벨을 짚는 동안엔 감춘다**(사용자 확정). 그 순간의 질문은
-     * "이 선 vs 저 선"이라 봉이 깔려 있으면 선끼리의 비교를 방해한다(흐리게도 써봤지만 흐린 봉도 가렸다).
-     *
-     * 판정 단위가 종목이 아니라 **선**인 이유(사용자 확정): 같은 종목의 형제 선(한 차트의 타점 여럿)을
-     * 짚을 때도 그건 비교하는 중이다. 종목으로 재면 그 순간 자기 봉이 남아 형제 선끼리의 비교를 방해한다.
-     * 테마 멤버 캔들만 종목으로 재는데, 그쪽 손잡이(테마 라벨)가 애초에 종목 단위라서다.
-     */
-    const anchorCandleShown = !candleFocus || (candleFocus.kind === "line" && candleFocus.key === candleAnchor?.key);
-    const memberCandleShown = useCallback(
-        (code: string): boolean => !candleFocus || (candleFocus.kind === "theme" && candleFocus.codes.has(code)),
-        [candleFocus],
-    );
-    /** 캔들 진하기 — 헤더 단계 × (멤버면 한 겹 뒤). 물러남은 여기 안 든다(감추기는 위가 판정한다). */
-    const candleOpacityOf = useCallback(
-        (member: boolean): number => CANDLE_ALPHA[candleAlpha] * (member ? CANDLE_MEMBER_RATIO : 1),
-        [candleAlpha],
-    );
+
+    // ── 캔들 오버레이 — **참고용 배경**(흐리게). 주인공은 여전히 골격 선이다.
+    // 상태(켠 종목)·재료(차트 번들·스냅샷)·감추기 규칙은 전부 useCandles 가 안다. 이 패널은 짚고 있는
+    // 대상(candleFocus)과 주인공만 넘기고, 켜고 끄는 손짓(candles.toggle)을 선·라벨·목록에 나눠 준다.
+    const candles = useCandles({
+        anchor: candleAnchor, pointTarget, dailyTarget, snapshot: snapQ.data, focus: candleFocus, nameOf, grain,
+    });
 
     /** 테마 선들의 분당 색 런 — **전부** 미리 굽는다(호버 하나만이 아니라, 사용자 확정).
      *  절대 구간 색이라 흐리게 깔아도 단계가 살아남는다 → 테마 전체의 자금 유입 타이밍이 한 화면에 깔린다.
@@ -540,33 +485,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return (code: string): string => m.get(code) ?? "var(--text-secondary)";
     }, [themeOverlay]);
 
-    /**
-     * 그릴 캔들 — 앵커(주인공) + 붙잡은 테마 멤버 하나. **하루치 전부**(장 마감 20시까지, 사용자 확정):
-     * 초기 창으로 자르면 확대·이동해도 그 밖은 영영 빈 화면이다(확대는 bounds 가 아니라 스케일 변환이라
-     * 이 memo 가 다시 안 돈다). 700봉이면 DOM 이 감당한다.
-     * 멤버는 스냅샷(% 공간)이라 평행이동만, 앵커는 원주가라 골격 피벗과 같은 식으로 환산된다.
-     */
-    const candles = useMemo(() => {
-        // 일봉 — 앵커 하나뿐이다(테마는 분봉 화면의 개념). x 는 창 안 거래일 순번이라 배열 인덱스가 곧 t.
-        if (dailyTarget) {
-            if (!anchorCandleOn) return null;
-            const anchor = dailyOverlayCandles(anchorMinQ.data?.daily ?? [], { basePrice: dailyTarget.basePrice, baseT: dailyTarget.baseT });
-            return { anchor, members: [] as { code: string; name: string; candles: ViewCandle[] }[], daily: true };
-        }
-        if (!pointTarget || candleCodes.size === 0) return null;
-        const origin = { basePrice: pointTarget.basePrice, baseRate: pointTarget.baseRate, baseT: pointTarget.baseT };
-        const anchor = anchorCandleOn ? anchorCandles(anchorMinQ.data?.minutes ?? [], origin) : [];
-        const members: { code: string; name: string; candles: ViewCandle[] }[] = [];
-        for (const code of candleCodes) {
-            if (code === pointTarget.stockCode) continue; // 앵커는 위에서(원주가 소스)
-            const st = snapQ.data?.stocks.find((x) => x.code === code);
-            if (!st) continue;
-            const series = { index: minuteIndexOf(st.times, minuteOfDayOf), open: st.minuteOpen, high: st.minuteHigh, low: st.minuteLow, close: st.rate, cumAmount: st.cumAmount };
-            // 멤버 시계열은 벽시계 색인 — 하루 전체를 훑는다(그린 뒤 화면 밖은 렌더가 거른다).
-            members.push({ code, name: nameOf(code), candles: memberCandles(0, 1439, series, origin) });
-        }
-        return { anchor, members, daily: false };
-    }, [dailyTarget, pointTarget, candleCodes, anchorCandleOn, anchorMinQ.data, snapQ.data, nameOf]);
 
     /**
      * ── 세로선 판독 — **선 하나에 손이 올라가면** 교차선의 세로선이 그 시각의 판독 자가 된다(사용자 확정).
@@ -817,7 +735,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         // 분봉 절대 뷰는 빠진다 — 거기 선은 하루 경로 전체라 캔들의 주인공이 정해지지 않는다.
         const candleable = s.kind === "point" || isDaily;
         if (!ev.ctrlKey && !ev.metaKey && candleable && effSelected.size === 1 && effSelected.has(s.key)) {
-            toggleCandle(s.stockCode);
+            candles.toggle(s.stockCode);
             return;
         }
         if (ev.ctrlKey || ev.metaKey) {
@@ -837,7 +755,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const pts = pointsByChart.get(s.chartKey);
         if (pts?.length) goToPoint({ code: s.stockCode, date: s.date, time: pts[0].time }, "skeleton-overlay");
         else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
-    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus, toggleCandle, isDaily]);
+    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus, candles.toggle, isDaily]);
 
     // ── Ctrl+드래그 사각 선택 — 사각형 역학은 useMarquee 가, **무엇을 담을지**는 여기가 정한다.
     const onMarqueeSelect = useCallback((rect: MarqueeRect): void => {
@@ -970,7 +888,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     {(["low", "mid", "high"] as const).map((a, i) => (
                         <span key={a} style={{ display: "inline-flex", alignItems: "center" }}>
                             {i > 0 && <Dot />}
-                            <TextToggle active={candleAlpha === a} onClick={() => setCandleAlpha(a)}
+                            <TextToggle active={candles.alpha === a} onClick={() => candles.setAlpha(a)}
                                 title={a === "low" ? "배경으로만 — 형태 비교가 주인공일 때"
                                     : a === "mid" ? "기본"
                                         : "골격선과 같이 읽을 만큼 진하게 — 봉 하나하나를 짚어 볼 때"}>
@@ -1127,68 +1045,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* 다른 라벨을 짚는 동안엔 캔들이 **잠시 사라진다**(사용자 확정) — 같은 종목의 형제 선을
                                     짚을 때도 마찬가지다. 그 순간의 질문은 "이 선 vs 저 선"이라 봉이 비교를 방해한다.
                                     진하기 자체는 헤더의 선명도 단계가 정한다 — 배경으로 깔지, 같이 읽을지가 상황마다 다르다. */}
-                                {candles && (() => {
-                                    // 폭이 좁아져도 접지 않는다(사용자 확정) — candleWidth 가 하한을 지킨다.
-                                    const w = candleWidth(Math.abs(scales.x(1) - scales.x(0)));
-                                    const inView = (k: ViewCandle): boolean => {
-                                        const cx = scales.x(k.x);
-                                        return cx >= box.left - w && cx <= box.left + box.width + w;
-                                    };
-                                    const draw = (ks: readonly ViewCandle[], opacity: number, keyPrefix: string): JSX.Element => (
-                                        <g style={{ pointerEvents: "none" }}>
-                                            {ks.filter(inView).map((k) => {
-                                                const cx = scales.x(k.x);
-                                                const color = k.c >= k.o ? CANDLE_UP : CANDLE_DOWN;
-                                                const yTop = scales.y(Math.max(k.o, k.c));
-                                                const yBot = scales.y(Math.min(k.o, k.c));
-                                                // 봉 위 마커 — **해상도마다 관심사가 다르다**(둘 다 차트 패널의 그 규칙 그대로):
-                                                //  · 분봉 = 거래대금 구간(8구간 색 + 구간 하한). 그 화면의 관심사가 분당 대금이다.
-                                                //  · 일봉 = **고가 등락률**(전일 종가 대비 %, 임계 10% 이상만 · highMarkerColor).
-                                                //    일봉에 거래대금 구간을 쓰면 그건 분봉 정책이라 전 캔들이 최상위로 찍혀 안 갈린다.
-                                                const mk = candles.daily
-                                                    ? (() => {
-                                                        const c2 = k.highPct === undefined ? null : highMarkerColor(k.highPct);
-                                                        return c2 === null ? null : { color: c2, text: k.highPct!.toFixed(1) };
-                                                    })()
-                                                    : (() => {
-                                                        const b = amountBucketIndex(k.amount);
-                                                        return b < 0 ? null : { color: AMOUNT_BUCKET_COLORS[b], text: String(AMOUNT_BUCKETS_EOK[b]) };
-                                                    })();
-                                                return (
-                                                    <g key={`${keyPrefix}${k.x}`}>
-                                                        <g opacity={opacity}>
-                                                            {/* 꼬리 — 고가~저가. 이게 골격 피벗(high/low)이 앉는 자리다. */}
-                                                            <line x1={cx} x2={cx} y1={scales.y(k.h)} y2={scales.y(k.l)} stroke={color} strokeWidth={1} />
-                                                            {/* 몸통 — 시가~종가. 도지(0폭)는 최소 1px 로 세워 사라지지 않게. */}
-                                                            <rect x={cx - w / 2} y={yTop} width={w} height={Math.max(1, yBot - yTop)} fill={color} />
-                                                        </g>
-                                                        {/* 마커는 캔들보다 진하다 — 캔들은 배경이지만 이건 사건이다.
-                                                            점 + 숫자 = 차트 패널의 aboveBar 마커와 같은 모양(색도 같은 함수). */}
-                                                        {mk && (
-                                                            <g>
-                                                                <circle cx={cx} cy={scales.y(k.h) - 5} r={2.6} fill={mk.color} />
-                                                                <text x={cx} y={scales.y(k.h) - 11} textAnchor="middle"
-                                                                    stroke="var(--bg-primary)" strokeWidth={2.5} paintOrder="stroke"
-                                                                    style={{ fontSize: 8.5, fill: mk.color, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                                                                    {mk.text}
-                                                                </text>
-                                                            </g>
-                                                        )}
-                                                    </g>
-                                                );
-                                            })}
-                                        </g>
-                                    );
-                                    return (
-                                        <>
-                                            {anchorCandleShown && draw(candles.anchor, candleOpacityOf(false), "ca")}
-                                            {/* 켜 둔 테마 멤버들 — 앵커보다 한 겹 뒤(배경의 배경). 짚은 게 자기면 남는다. */}
-                                            {candles.members.filter((m) => memberCandleShown(m.code)).map((m) => (
-                                                <g key={`cm-${m.code}`}>{draw(m.candles, candleOpacityOf(true), `cm${m.code}-`)}</g>
-                                            ))}
-                                        </>
-                                    );
-                                })()}
+                                {candles.set && (
+                                    <CandleLayer set={candles.set} scales={scales} box={box}
+                                        anchorShown={candles.anchorShown} memberShown={candles.memberShown} opacityOf={candles.opacityOf} />
+                                )}
 
                                 {/* ── 테마 선 — 짚은 타점의 앞뒤 창에 세운 **분당 종가 경로**(%p 평행이동, 세로 간격 보존).
                                     골격보다 **먼저** 그린다: 이건 배경이고 주인공은 내 골격이다.
@@ -1238,7 +1098,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         points={pathOf(themePath(l.points, hitStep), scales)}
                                         fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
                                         style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                                        onClick={() => toggleCandle(l.code)}
+                                        onClick={() => candles.toggle(l.code)}
                                         onMouseEnter={() => setHoveredTheme([l.code])}
                                         onMouseLeave={() => setHoveredTheme(null)} />
                                 ))}
@@ -1357,7 +1217,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     <polyline points={pathOf(singleTarget.points, scales)}
                                         fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
                                         style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                                        onClick={() => toggleCandle(singleTarget.stockCode)}
+                                        onClick={() => candles.toggle(singleTarget.stockCode)}
                                         onMouseEnter={() => setHovered(singleTarget.key)}
                                         onMouseLeave={() => setHovered(null)} />
                                 )}
@@ -1485,18 +1345,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                             return (
                                 // 이름 라벨 클릭 = 그 멤버 캔들 토글(선 클릭과 같은 손짓 — 라벨은 선의 손잡이니까).
                                 <button key={`tl-${l.code}`}
-                                    onClick={() => toggleCandle(l.code)}
+                                    onClick={() => candles.toggle(l.code)}
                                     onMouseEnter={() => setHoveredTheme([l.code])}
                                     onMouseLeave={() => setHoveredTheme(null)}
-                                    title={`${l.name} 전일比 ${fmtPct(l.at.y + (themeOverlay?.baseRate ?? 0))} — 올리면 그 선만 또렷해진다 · 클릭해 캔들 ${candleCodes.has(l.code) ? "끄기" : "켜기"}`}
+                                    title={`${l.name} 전일比 ${fmtPct(l.at.y + (themeOverlay?.baseRate ?? 0))} — 올리면 그 선만 또렷해진다 · 클릭해 캔들 ${candles.codes.has(l.code) ? "끄기" : "켜기"}`}
                                     style={{
                                         // 눈금 숫자 칸(THEME_LABEL_INSET) **왼쪽**에 오른쪽 정렬로 선다.
                                         ...chip, left: box.left - THEME_LABEL_INSET, top: l.labelY - box.top, transform: "translate(-100%, -50%)",
                                         maxWidth: box.left - THEME_LABEL_INSET - 4, overflow: "hidden",
-                                        color: lit || candleCodes.has(l.code) ? "var(--text-primary)" : "var(--text-tertiary)",
-                                        fontWeight: lit || candleCodes.has(l.code) ? 700 : 400,
+                                        color: lit || candles.codes.has(l.code) ? "var(--text-primary)" : "var(--text-tertiary)",
+                                        fontWeight: lit || candles.codes.has(l.code) ? 700 : 400,
                                         // 캔들이 켜진 종목은 밑줄 — 어느 선의 캔들을 보고 있는지가 목록에서 읽힌다.
-                                        ...(candleCodes.has(l.code) ? { textDecoration: "underline" } : {}),
+                                        ...(candles.codes.has(l.code) ? { textDecoration: "underline" } : {}),
                                     }}>
                                     {l.off && <span style={{ color: "var(--text-tertiary)" }}>{l.off === "up" ? "▲" : "▼"}</span>}
                                     {l.name}
@@ -1564,7 +1424,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <button key={key} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openGroupMenuFor(s, e)}
                                     onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
                                     title={`${nameOf(s.stockCode)} ${s.date} — ${(s.kind === "point" || isDaily) && effSelected.has(s.key) && effSelected.size === 1
-                                        ? `다시 클릭=${candleCodes.has(s.stockCode) ? "캔들 끄기" : "캔들 켜기"} · `
+                                        ? `다시 클릭=${candles.codes.has(s.stockCode) ? "캔들 끄기" : "캔들 켜기"} · `
                                         : "클릭=선택·이동 · "}Ctrl+클릭=선택 해제 · 우클릭=그룹`}
                                     style={{
                                         ...chip, ...labelBg, ...pl.style, top: scales.y(p.y) - box.top,
@@ -1631,7 +1491,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <div key={code}
                                     onMouseEnter={() => setHoveredTheme([code])}
                                     onMouseLeave={() => setHoveredTheme(null)}>
-                                    <MenuItem onClick={() => toggleCandle(code)}>
+                                    <MenuItem onClick={() => candles.toggle(code)}>
                                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                                             <span style={{ width: 6, height: 6, borderRadius: 3, background: themeColorOf(code), flexShrink: 0 }} />
                                             <span>{l.name}</span>
@@ -1681,14 +1541,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 </span>
                 {themeMode && <span style={{ color: "var(--text-secondary)" }}> · 테마 모드(흐린 라벨 호버 = 그 골격선)</span>}
                 {/* 캔들 상태 — 헤더가 아니라 여기(높이가 안 변하는 줄). 이름을 다 적어 어느 종목을 보고 있는지 남긴다. */}
-                {candleCodes.size > 0 && (
+                {candles.codes.size > 0 && (
                     <span style={{ color: "var(--text-secondary)" }}>
                         {" · 캔들 "}
                         {/* ⚠ 앵커는 `candleAnchor` 다 — 예전엔 `pointTarget!` 이었는데, 일봉 패널엔 그게 null 이라
                             일봉 캔들을 켜는 순간 여기서 터져 **패널이 흰 화면**이 됐다. 단언은 그 자리에서 깨진다. */}
-                        {[anchorCandleOn && candleAnchor ? nameOf(candleAnchor.stockCode) : null, ...(candles?.members.map((m) => m.name) ?? [])].filter(Boolean).join("·")}
-                        {anchorCandleOn && anchorMinQ.isLoading ? " …" : ""}
-                        <button onClick={() => setCandleCodes(new Set())} title="켜 둔 캔들 전부 끄기" style={footerBtn}>✕</button>
+                        {[candles.anchorOn && candleAnchor ? nameOf(candleAnchor.stockCode) : null, ...(candles.set?.members.map((m) => m.name) ?? [])].filter(Boolean).join("·")}
+                        {candles.anchorOn && candles.anchorLoading ? " …" : ""}
+                        <button onClick={candles.clear} title="켜 둔 캔들 전부 끄기" style={footerBtn}>✕</button>
                     </span>
                 )}
                 {themeOverlay && themeOverlay.lines.length > 0 && (
