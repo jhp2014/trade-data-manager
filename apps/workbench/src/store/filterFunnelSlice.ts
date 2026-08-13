@@ -11,6 +11,7 @@
 // 옛 저장 필터(wb.rankSavedFilters)는 변환하지 않는다 — 한 번 쓰고 버릴 변환 코드에 옛 형식 지식이
 // 박히면 나중에 "이건 왜 있지"가 된다. 새 키로 시작하고 옛 키는 안 읽어서 자연히 죽게 둔다.
 import type { StateCreator } from "zustand";
+import type { FunnelCell } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import {
     addStage, moveStage, parseStages, removeStage, renameStage, setStagePredicates, toggleStage,
@@ -24,6 +25,16 @@ const EXPAND_KEY = "wb.filterExpandToPoints";
 const loadStages = (): FilterStage[] => loadJson(STAGES_KEY, parseStages) ?? [];
 const loadExpand = (): boolean => loadJson(EXPAND_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? false;
 
+/**
+ * 깔때기에서 지금 짚은 칸들 — 한 단계 안에서 여러 칸(생존+근접 탈락…)을 겹쳐 볼 수 있다.
+ * null = 아무것도 안 짚음 → 소비자들은 **최종 생존**을 본다(깔때기가 곧 네비게이션).
+ * 조건이 아니라 **시선**이라 영속하지 않는다 — 새로고침 후 "왜 이것만 보이지"의 원인이 되면 안 된다.
+ */
+export interface FunnelSelection {
+    stageId: string;
+    cells: FunnelCell[];
+}
+
 export interface FilterFunnelSlice {
     filterStages: FilterStage[];
     /**
@@ -31,6 +42,8 @@ export interface FilterFunnelSlice {
      * 위로 올리는 손잡이는 없다: 롤업 규칙이 정의되지 않아서다(stage.displayGrain 주석 참고).
      */
     filterExpandToPoints: boolean;
+    /** 짚은 칸(시선) — 세션 한정. 골격·시트 등 구독자가 보는 집합을 정한다. */
+    funnelSelection: FunnelSelection | null;
     addFilterStage: (predicates?: FilterPredicate[]) => void;
     removeFilterStage: (id: string) => void;
     toggleFilterStage: (id: string) => void;
@@ -39,6 +52,7 @@ export interface FilterFunnelSlice {
     renameFilterStage: (id: string, name: string) => void;
     clearFilterStages: () => void;
     setFilterExpandToPoints: (on: boolean) => void;
+    setFunnelSelection: (sel: FunnelSelection | null) => void;
 }
 
 /** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다. */
@@ -50,9 +64,14 @@ const put = (stages: FilterStage[]): { filterStages: FilterStage[] } => {
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => ({
     filterStages: loadStages(),
     filterExpandToPoints: loadExpand(),
+    funnelSelection: null,
 
     addFilterStage: (predicates) => set((s) => put(addStage(s.filterStages, predicates ?? []))),
-    removeFilterStage: (id) => set((s) => put(removeStage(s.filterStages, id))),
+    // 지운 단계를 계속 짚고 있으면 소비자들이 "사라진 칸"을 본다 — 선택이 그 단계면 같이 푼다.
+    removeFilterStage: (id) => set((s) => ({
+        ...put(removeStage(s.filterStages, id)),
+        ...(s.funnelSelection?.stageId === id ? { funnelSelection: null } : {}),
+    })),
     toggleFilterStage: (id) => set((s) => put(toggleStage(s.filterStages, id))),
     moveFilterStage: (from, to) => set((s) => put(moveStage(s.filterStages, from, to))),
     setFilterStagePredicates: (id, predicates) => set((s) => put(setStagePredicates(s.filterStages, id, predicates))),
@@ -62,4 +81,5 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
         saveJson(EXPAND_KEY, on);
         set(() => ({ filterExpandToPoints: on }));
     },
+    setFunnelSelection: (sel) => set(() => ({ funnelSelection: sel })),
 });

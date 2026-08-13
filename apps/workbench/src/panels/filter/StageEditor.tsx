@@ -13,13 +13,15 @@ import { useGroups } from "../../lib/useGroups.js";
 import {
     NO_TAGS, addGroupLiteral, removeGroupLiteral, toggleGroupNeg, type GroupExpr,
 } from "../rank/groupFilter.js";
-import { canAddGroupLiteral, type GrainLookup } from "./stage.js";
+import { canAddGroupLiteral, type Grain, type GrainLookup } from "./stage.js";
 
 const NONE_LABEL = "그룹 없음";
 
 /** 그룹 술어 하나를 고치는 팝오버. 식이 비면 호출부가 그 술어를 통째로 지운다. */
-export function GroupStageEditor({ anchor, expr, onChange, onClose }: {
+export function GroupStageEditor({ anchor, scope, expr, onChange, onClose }: {
     anchor: { x: number; y: number };
+    /** 이 단계가 사는 칸의 층위 — **칸이 곧 선언**이라 팔레트를 이 층위 그룹으로 좁힌다. */
+    scope: Grain;
     expr: GroupExpr;
     onChange: (next: GroupExpr) => void;
     onClose: () => void;
@@ -33,10 +35,11 @@ export function GroupStageEditor({ anchor, expr, onChange, onClose }: {
     );
 
     const needle = q.trim().toLowerCase();
-    // 층위가 안 맞는 그룹은 목록에서 뺀다 — 못 넣을 걸 보여주면 규칙이 거절로만 드러난다.
+    // 칸의 층위가 팔레트를 좁힌다 — 못 넣을 걸 보여주고 눌렀을 때 거절하면 왜 안 되는지가 화면에 없다.
     const shown = useMemo(
-        () => groups.filter((g) => (!needle || g.name.toLowerCase().includes(needle)) && canAddGroupLiteral(expr, g.id, grainLook)),
-        [groups, needle, expr, grainLook],
+        () => groups.filter((g) =>
+            g.scope === scope && (!needle || g.name.toLowerCase().includes(needle)) && canAddGroupLiteral(expr, g.id, grainLook)),
+        [groups, scope, needle, expr, grainLook],
     );
 
     const nameOf = (id: string): string => (id === NO_TAGS ? NONE_LABEL : (groupById.get(id)?.name ?? "(지워짐)"));
@@ -79,7 +82,7 @@ export function GroupStageEditor({ anchor, expr, onChange, onClose }: {
             </button>
 
             <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                {shown.length === 0 && <div style={{ ...rowStyle, color: "var(--text-tertiary)" }}>고를 그룹 없음{expr.groups.length > 0 && " (층위가 같은 것만 보입니다)"}</div>}
+                {shown.length === 0 && <div style={{ ...rowStyle, color: "var(--text-tertiary)" }}>이 층위({scope === "day" ? "하루" : "타점"})에 고를 그룹 없음</div>}
                 {shown.map((g) => (
                     <button key={g.id} onClick={() => onChange(addGroupLiteral(expr, g.id))} style={{ ...rowStyle, display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ width: 7, height: 7, borderRadius: "50%", background: groupColor(g.name), flexShrink: 0 }} />

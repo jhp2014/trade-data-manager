@@ -21,8 +21,8 @@ import { buildAxisOrderIndexes } from "./axisLookup.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { stageLabel, type LabelLookup } from "./label.js";
 import {
-    activeStages, canExpand, displayGrain, isPredicateDead, resolveAutoGrain,
-    type FilterStage, type Grain, type GrainLookup,
+    activeStages, canExpand, displayGrain, funnelOrder, isPredicateDead, resolveAutoGrain,
+    type FilterStage, type Grain, type GrainLookup, type OrderedStage,
 } from "./stage.js";
 
 export interface FunnelView {
@@ -34,8 +34,15 @@ export interface FunnelView {
     canExpandToPoints: boolean;
     /** 분모. **편집에 따라 조용히 변하므로 화면에 상시 띄운다**(앵커 하나 지우면 그 하루가 빠진다). */
     universe: number;
-    /** 평가에 실제로 들어간 단계 — 막대가 이 순서로 그려진다(순서 = 이야기). */
+    /** 전 단계(빈 것·꺼진 것 포함) — 하루가 먼저, 층위 접힘 포함. 화면의 칸 나누기가 이걸 그대로 쓴다. */
+    stagesOrdered: OrderedStage[];
+    /** 평가에 실제로 들어간 단계 — stagesOrdered 에서 활성만 남긴 것(정산 인덱스와 1:1). */
     active: FilterStage[];
+    /**
+     * 지금 보는 집합 — 짚은 칸들의 합집합, 안 짚었으면 최종 생존. **모든 구독 패널이 이걸 본다** —
+     * 조건을 나눠 주면 패널마다 판정을 재구현해 서로 다른 답을 낸다(필터 UI 가 두 곳이던 문제와 같은 종류).
+     */
+    viewedItems: FunnelItem[];
     /** 정산 결과. 로딩 중이면 null. */
     result: FunnelResult | null;
     /** 죽은 참조(지워진 그룹·축)를 든 단계 id — 화면이 표시하고, 정리는 사용자가 결정한다. */
@@ -49,6 +56,7 @@ export interface FunnelView {
 export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench((s) => s.filterStages);
     const expandToPoints = useWorkbench((s) => s.filterExpandToPoints);
+    const selection = useWorkbench((s) => s.funnelSelection);
 
     const gv = useGroups();
     const ax = useRankAxes({ includeComputed: true });
@@ -113,8 +121,9 @@ export function useFilterFunnel(): FunnelView {
         [gv, placements, ax.computedValues],
     );
 
-    // ── 정산 ──────────────────────────────────────────────────────────────
-    const active = useMemo(() => activeStages(stages), [stages]);
+    // ── 정산 ── 표시와 정산이 **같은 순서**를 봐야 한다(하루 먼저) — 어긋나면 "상류"가 화면과 다른 걸 가리킨다.
+    const stagesOrdered = useMemo(() => funnelOrder(stages, grainLook), [stages, grainLook]);
+    const active = useMemo(() => activeStages(stagesOrdered.map((e) => e.stage)), [stagesOrdered]);
 
     // 사전이 온 뒤에만 해상도를 확정한다 — 로딩 중의 모름은 "없음"이 아니다.
     const auto = isLoading ? "day" : resolveAutoGrain(stages, grainLook);
@@ -129,6 +138,17 @@ export function useFilterFunnel(): FunnelView {
         () => (isLoading ? null : tallyFunnel(items, toFunnelStages(active, evalLook))),
         [isLoading, items, active, evalLook],
     );
+
+    // 지금 보는 집합 — 칸들의 합집합(한 단계 안 칸들은 서로소라 dedupe 불필요). 짚은 게 없으면 최종 생존.
+    const viewedItems = useMemo<FunnelItem[]>(() => {
+        if (!result) return [];
+        if (selection) {
+            const i = active.findIndex((s) => s.id === selection.stageId);
+            const t = i >= 0 ? result.stages[i] : undefined;
+            if (t) return selection.cells.flatMap((c) => t.cells[c]);
+        }
+        return result.survivors;
+    }, [result, selection, active]);
 
     const deadStageIds = useMemo(
         () => (isLoading ? [] : stages.filter((s) => s.predicates.some((p) => isPredicateDead(p, grainLook))).map((s) => s.id)),
@@ -158,7 +178,9 @@ export function useFilterFunnel(): FunnelView {
         grain,
         canExpandToPoints: canExpand(auto),
         universe: items.length,
+        stagesOrdered,
         active,
+        viewedItems,
         result,
         deadStageIds,
         labelLook,

@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
     activeStages, addStage, autoGrain, canAddGroupLiteral, canAddPredicate, canExpand, displayGrain,
-    isPredicateDead, isPredicateEmpty, moveStage, parseStages, predicateGrain, removeStage, renameStage,
-    resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
+    funnelOrder, isPredicateDead, isPredicateEmpty, moveStage, parseStages, predicateGrain, removeStage,
+    renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
 } from "../stage.js";
 import { NO_TAGS, type GroupExpr } from "../../rank/groupFilter.js";
@@ -176,6 +176,25 @@ describe("canAddGroupLiteral — 한 식 안에서도 같은 scope", () => {
 
     it("모르는 그룹은 막지 않는다", () => {
         expect(canAddGroupLiteral(expr("g1"), "없는그룹", look)).toBe(true);
+    });
+});
+
+describe("funnelOrder — 하루 단계가 타점 단계보다 앞", () => {
+    const dayS = stage("d1", [{ kind: "group", expr: expr("g1") }]);
+    const ptS = stage("p1", [{ kind: "group", expr: expr("g2") }]);
+    const ptS2 = stage("p2", [{ kind: "time", ranges: [{ from: "09:00", to: "10:00" }] }]);
+
+    it("층위로 갈라 하루 먼저 — 같은 층위 안에서는 저장 순서(안정)", () => {
+        const out = funnelOrder([ptS, dayS, ptS2], look);
+        expect(out.map((e) => e.stage.id)).toEqual(["d1", "p1", "p2"]);
+        expect(out.map((e) => e.grain)).toEqual(["day", "point", "point"]);
+    });
+
+    it("층위 모름(죽은 참조)은 하루 취급 — resolveAutoGrain 의 접기와 같은 방향", () => {
+        const deadS = stage("x", [{ kind: "axisBand", axisId: "없는축", band: { lo: "s1" } }]);
+        const out = funnelOrder([ptS, deadS], look);
+        expect(out.map((e) => e.stage.id)).toEqual(["x", "p1"]);
+        expect(out[0].grain).toBe("day");
     });
 });
 

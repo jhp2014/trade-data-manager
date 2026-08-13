@@ -132,6 +132,24 @@ export function autoGrain(stages: readonly FilterStage[], look: GrainLookup): Gr
 export const resolveAutoGrain = (stages: readonly FilterStage[], look: GrainLookup): Grain =>
     autoGrain(stages, look) ?? "day";
 
+/** 층위가 접힌 단계 하나 — 표시·정산이 같은 순서를 봐야 해서 접기(모름→하루)도 한 곳에서 한다. */
+export interface OrderedStage {
+    stage: FilterStage;
+    grain: Grain;
+}
+
+/**
+ * 깔때기의 **표시이자 평가 순서** — 하루 단계가 타점 단계보다 앞, 같은 층위 안에서는 저장 순서.
+ *
+ * 순서는 결과(생존 집합)를 안 바꾼다 — 바꾸는 건 "어느 단계가 무엇을 죽였나"라는 서술이고,
+ * 하루→타점으로 흐르게 고정해야 `새로 죽임`이 넓은 조건부터 세어져 이야기가 읽힌다.
+ * 층위 모름(죽은 참조·로딩 중)은 하루 취급 — resolveAutoGrain 의 접기와 같은 방향.
+ */
+export function funnelOrder(stages: readonly FilterStage[], look: GrainLookup): OrderedStage[] {
+    const entries = stages.map((stage) => ({ stage, grain: (stageGrain(stage, look) ?? "day") as Grain }));
+    return [...entries.filter((e) => e.grain === "day"), ...entries.filter((e) => e.grain === "point")];
+}
+
 /**
  * 표시 해상도 — 자동 위치에서 **아래로만** 내려갈 수 있다(하루 → 타점).
  *
