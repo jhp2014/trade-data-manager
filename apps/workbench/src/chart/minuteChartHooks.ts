@@ -9,7 +9,6 @@ import {
     createSeriesMarkers,
     type AutoscaleInfo,
     type IChartApi,
-    type IPriceLine,
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
     type Time,
@@ -17,6 +16,8 @@ import {
 } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, AMOUNT_BUCKET_COLORS } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
+import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
+import { useLatest } from "../lib/useLatest.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 
 /**
@@ -351,28 +352,10 @@ export function useMinuteInteraction(args: {
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표(%) → 가격(base×(1+%/100)) 캡처
     captureArmed?: boolean;
 }): void {
-    const { chartRef, containerRef, candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed } = args;
+    const { chartRef, containerRef, candleRef, pointMapRef } = args;
     const hoveredTimeRef = useRef<number | null>(null);
-    const linesRef = useRef<RenderLine[]>(lines);
-    const baseRef = useRef<number | null>(base);
-    const pctBaseRef = useRef<number | null>(pctBase);
-    linesRef.current = lines;
-    baseRef.current = base;
-    pctBaseRef.current = pctBase;
-    const onMovePointRef = useRef(onMovePoint);
-    const onRightClickRef = useRef(onRightClick);
-    const onRemoveLineRef = useRef(onRemoveLine);
-    const onLineContextRef = useRef(onLineContext);
-    const onPickPriceRef = useRef(onPickPrice);
-    const armedRef = useRef(captureArmed ?? false);
-    useEffect(() => {
-        onMovePointRef.current = onMovePoint;
-        onRightClickRef.current = onRightClick;
-        onRemoveLineRef.current = onRemoveLine;
-        onLineContextRef.current = onLineContext;
-        onPickPriceRef.current = onPickPrice;
-        armedRef.current = captureArmed ?? false;
-    });
+    // 리스너는 마운트에 한 번 붙고 args 는 매 렌더 바뀐다 — ref 하나로 최신을 본다(일봉 훅과 같은 방식).
+    const cb = useLatest(args);
 
     useEffect(() => {
         const chart = chartRef.current;
@@ -386,15 +369,15 @@ export function useMinuteInteraction(args: {
         const moveTo = (param: ChartClickParam): void => {
             const t = typeof param.time === "number" ? param.time : null;
             const p = t != null ? pointMapRef.current.get(t) : null;
-            if (p) onMovePointRef.current(p.tradeTime);
+            if (p) cb.current.onMovePoint(p.tradeTime);
         };
         const onClick = (param: ChartClickParam): void => {
-            if (armedRef.current) {
+            if (cb.current.captureArmed) {
                 // 무장(가격 leaf 편집 중) 시 좌클릭 = y좌표 % → 가격 캡처(캔들 pane0만). 타점 이동 억제.
-                const b = baseRef.current;
-                if (onPickPriceRef.current && param.point && (param.paneIndex ?? 0) === 0 && b && b > 0) {
+                const b = cb.current.base;
+                if (cb.current.onPickPrice && param.point && (param.paneIndex ?? 0) === 0 && b && b > 0) {
                     const pct = candleRef.current?.coordinateToPrice(param.point.y);
-                    if (pct != null) onPickPriceRef.current(b * (1 + (pct as number) / 100));
+                    if (pct != null) cb.current.onPickPrice(b * (1 + (pct as number) / 100));
                 }
                 return;
             }
@@ -402,7 +385,7 @@ export function useMinuteInteraction(args: {
         };
         // 더블클릭 = ctrl+클릭과 동등. 무장 중엔 캡처가 클릭을 독점하므로 타점 이동으로 새지 않게 막는다.
         const onDblClick = (param: ChartClickParam): void => {
-            if (!armedRef.current) moveTo(param);
+            if (!cb.current.captureArmed) moveTo(param);
         };
         chart.subscribeClick(onClick);
         chart.subscribeDblClick(onDblClick);
@@ -416,13 +399,13 @@ export function useMinuteInteraction(args: {
             const y = e.clientY - el.getBoundingClientRect().top;
             // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음). %는 렌더와 같은 linePct.
             if (candle) {
-                for (const line of linesRef.current) {
-                    const pct = linePct(line, baseRef.current, pctBaseRef.current);
+                for (const line of cb.current.lines) {
+                    const pct = linePct(line, cb.current.base, cb.current.pctBase);
                     if (pct === null) continue;
                     const ly = candle.priceToCoordinate(pct);
                     if (ly != null && Math.abs((ly as number) - y) <= 6) {
-                        if (onLineContextRef.current) onLineContextRef.current(line, { x: e.clientX, y: e.clientY });
-                        else onRemoveLineRef.current(line);
+                        if (cb.current.onLineContext) cb.current.onLineContext(line, { x: e.clientX, y: e.clientY });
+                        else cb.current.onRemoveLine(line);
                         return;
                     }
                 }
@@ -430,7 +413,7 @@ export function useMinuteInteraction(args: {
             // 2) 아니면 hover 중인 분봉 컨텍스트 — 복기는 메뉴(가격선·파라미터 지정), 실시간은 고가 선 토글.
             const t = hoveredTimeRef.current;
             const p = t != null ? pointMapRef.current.get(t) : null;
-            if (p) onRightClickRef.current({ date: p.date, time: p.tradeTime }, { x: e.clientX, y: e.clientY });
+            if (p) cb.current.onRightClick({ date: p.date, time: p.tradeTime }, { x: e.clientX, y: e.clientY });
         };
         el.addEventListener("contextmenu", onCtx);
         return () => {
@@ -455,34 +438,28 @@ function linePct(line: RenderLine, base: number | null, pctBase: number | null):
     return ((line.price - denom) / denom) * 100;
 }
 
-/** 가격선(D+M+A) 렌더 — 가격을 %로 변환해 표시(분봉은 % 축). 분모는 linePct 규칙. */
+/** 가격선(D+M+A) 렌더 — 가격을 %로 변환해 표시(분봉은 % 축). 분모는 linePct 규칙, 그리기는 usePriceLineSet. */
 export function usePercentPriceLines(
     candleRef: MutableRefObject<ISeriesApi<"Candlestick"> | null>,
     lines: RenderLine[],
     base: number | null,
     pctBase: number | null,
 ): void {
-    const priceLinesRef = useRef<IPriceLine[]>([]);
-    useEffect(() => {
-        const candle = candleRef.current;
-        if (!candle) return;
-        for (const h of priceLinesRef.current) {
-            try {
-                candle.removePriceLine(h);
-            } catch {
-                /* noop */
-            }
-        }
-        priceLinesRef.current = [];
+    // 분모가 없는 선은 **그리지 않는다**(지어낸 자리에 선을 세우지 않는다 — linePct 의 null 규칙).
+    const specs = useMemo<PriceLineSpec[]>(() => {
+        const out: PriceLineSpec[] = [];
         for (const line of lines) {
             const pct = linePct(line, base, pctBase);
             if (pct === null) continue;
-            priceLinesRef.current.push(
-                candle.createPriceLine({ price: pct, color: line.color ?? (line.kind === "A" ? ALARM : line.kind === "M" ? "#be7a00" : PRICE_LINE), lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
-            );
+            out.push({
+                price: pct,
+                color: line.color ?? (line.kind === "A" ? ALARM : line.kind === "M" ? "#be7a00" : PRICE_LINE),
+                title: line.label ?? line.kind,
+            });
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        return out;
     }, [lines, base, pctBase]);
+    usePriceLineSet(candleRef, specs);
 }
 
 export interface MarkerOverlay {

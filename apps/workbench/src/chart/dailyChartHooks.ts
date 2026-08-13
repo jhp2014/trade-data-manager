@@ -2,14 +2,13 @@
 // 마우스 상호작용·가격선·가이드선·검색날짜 세로선을 컴포넌트에서 분리.
 // DailyChart.tsx 는 훅 조합 + 툴팁/배지 렌더만 남는다(명령형 API 와 선언형 JSX 의 경계).
 // 자매인 MinuteChart 는 진작 minuteChartHooks 로 갈라져 있었는데 일봉만 안 돼 있었다 — 그 비대칭을 없앤다.
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
     CandlestickSeries,
     HistogramSeries,
     LineStyle,
     createSeriesMarkers,
     type IChartApi,
-    type IPriceLine,
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
     type Time,
@@ -17,6 +16,7 @@ import {
 } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
+import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { VertLines, asPrimitive } from "./vertLine.js";
 import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
 import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE, SKELETON } from "../styles/palette.js";
@@ -263,45 +263,28 @@ export function useDailyInteraction(args: {
     }, []);
 }
 
-/** 가격선(D/A) 렌더 — raw 가격에 수평선. 갱신 때 이전 선을 걷고 다시 그린다. */
+/** 가격선(D/A) 렌더 — 일봉은 가격 축이라 raw 가격 그대로. 그리기는 usePriceLineSet. */
 export function useDailyPriceLines(series: DailySeries, lines: RenderLine[]): void {
-    const handlesRef = useRef<IPriceLine[]>([]);
-    useEffect(() => {
-        const candle = series.candleRef.current;
-        if (!candle) return;
-        for (const h of handlesRef.current) {
-            try {
-                candle.removePriceLine(h);
-            } catch {
-                /* 시리즈가 이미 정리된 경우 — 무시 */
-            }
-        }
-        handlesRef.current = lines.map((line) =>
-            candle.createPriceLine({ price: line.price, color: line.color ?? (line.kind === "A" ? ALARM : PRICE_LINE), lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: line.label ?? line.kind }),
-        );
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [lines]);
+    const specs = useMemo<PriceLineSpec[]>(
+        () => lines.map((line) => ({
+            price: line.price,
+            color: line.color ?? (line.kind === "A" ? ALARM : PRICE_LINE),
+            title: line.label ?? line.kind,
+        })),
+        [lines],
+    );
+    usePriceLineSet(series.candleRef, specs);
 }
 
-/** +30% 가이드 가로선 — 검색일 전일종가 ×1.3(= 그 세션 상한가 위치). */
+/** +30% 가이드 가로선 — 검색일 전일종가 ×1.3(= 그 세션 상한가 위치). 성격이 달라 점선. */
 export function useGuideLine(series: DailySeries, pctBase: number | null | undefined, showGuide: boolean): void {
-    const guideRef = useRef<IPriceLine | null>(null);
-    useEffect(() => {
-        const candle = series.candleRef.current;
-        if (!candle) return;
-        if (guideRef.current) {
-            try {
-                candle.removePriceLine(guideRef.current);
-            } catch {
-                /* noop */
-            }
-            guideRef.current = null;
-        }
-        if (showGuide && pctBase != null && pctBase > 0) {
-            guideRef.current = candle.createPriceLine({ price: pctBase * 1.3, color: GUIDE, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: "+30%" });
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pctBase, showGuide]);
+    const specs = useMemo<PriceLineSpec[]>(
+        () => (showGuide && pctBase != null && pctBase > 0
+            ? [{ price: pctBase * 1.3, color: GUIDE, title: "+30%", style: LineStyle.Dotted }]
+            : []),
+        [pctBase, showGuide],
+    );
+    usePriceLineSet(series.candleRef, specs);
 }
 
 /**
