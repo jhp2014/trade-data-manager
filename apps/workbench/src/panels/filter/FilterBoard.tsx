@@ -16,7 +16,7 @@ import type { RankAxis } from "@trade-data-manager/wire";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
-import { useGroups } from "../../lib/useGroups.js";
+import { useGroups } from "../../lib/GroupsContext.js";
 import { useWorkbench } from "../../store/workbench.js";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { useFunnel } from "./FunnelContext.js";

@@ -32,26 +32,22 @@ export interface RankAxesView {
     reorder: (draggedId: string, targetId: string) => void;
 }
 
-export interface UseRankAxesOptions {
-    /**
-     * 계산 축(수식으로 나오는 축)을 함께 볼지. **기본 false.**
-     * 계산 축은 드래그로 꽂는 대상이 아니고(값이 자리를 정한다), 밴드·컷은 slotId 를 영속 키로 쓰는데 그 id 가
-     * 값에서 파생돼 재계산 시 바뀐다. 그래서 배치 보드·필터는 판단 축만 보고, 시트만 켠다(읽기 표시).
-     */
-    includeComputed?: boolean;
-}
-
-export function useRankAxes({ includeComputed = false }: UseRankAxesOptions = {}): RankAxesView {
+/**
+ * ⚠ **직접 부르지 말 것** — RankAxesProvider 가 유일한 호출자다(소비는 RankAxesContext 의 useRankAxes).
+ * 인스턴스마다 계산 축의 `타점키 → 수치` 맵을 축별로 새로 만드는데, 타점이 수천이면 그 비용이
+ * 부르는 화면 수만큼 그대로 는다.
+ *
+ * 옛 `includeComputed` 옵션은 없앴다. 켜는 곳과 끄는 곳이 갈려 있으면 "이 화면의 axes 에 계산 축이
+ * 들어 있나"가 부르는 자리마다 달라지는데, 실제로는 **부르는 세 곳이 전부 켜고 있었다**. 한 벌이 된
+ * 지금은 답이 하나여야 한다(그리고 그 요청은 어차피 앱 수명 동안 한 번이다).
+ */
+export function useRankAxesValue(): RankAxesView {
     const orderPref = useWorkbench((s) => s.rankAxisOrder);
     const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
 
     const axesQ = useQuery(rankAxesQuery());
-    // 계산 축 — 안 켠 화면에서는 요청조차 안 나간다(enabled). 훅 순서는 유지.
-    const computedQ = useQuery({ ...computedAxesQuery(), enabled: includeComputed });
-    const computed = useMemo(
-        () => (includeComputed ? (computedQ.data ?? []).map(computedAxisView) : []),
-        [includeComputed, computedQ.data],
-    );
+    const computedQ = useQuery(computedAxesQuery());
+    const computed = useMemo(() => (computedQ.data ?? []).map(computedAxisView), [computedQ.data]);
 
     const rawAxes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
     const axes = useMemo(() => {
@@ -83,7 +79,7 @@ export function useRankAxes({ includeComputed = false }: UseRankAxesOptions = {}
 
     return {
         axes, axisIds, linesByAxis, computedValues, computedMeta,
-        isLoading: axesQ.isLoading || linesQ.isLoading || (includeComputed && computedQ.isLoading),
+        isLoading: axesQ.isLoading || linesQ.isLoading || computedQ.isLoading,
         reorder,
     };
 }

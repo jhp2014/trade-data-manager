@@ -13,8 +13,8 @@ import {
     blockedBy, expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
 } from "@trade-data-manager/market/domain";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
-import { useGroups } from "../../lib/useGroups.js";
-import { useRankAxes, type RankAxesView } from "../../lib/useRankAxes.js";
+import { useGroups } from "../../lib/GroupsContext.js";
+import { useRankAxes, type RankAxesView } from "../../lib/RankAxesContext.js";
 import { chartKey, pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndexes, dayAxisValueOf } from "./axisLookup.js";
@@ -56,11 +56,12 @@ export interface FunnelView {
     result: FunnelResult | null;
     /** 죽은 참조(지워진 그룹·축)를 든 단계 id — 화면이 표시하고, 정리는 사용자가 결정한다. */
     deadStageIds: string[];
-    /** 이름 조회 — 패널이 useGroups·useRankAxes 를 다시 부르면 같은 인덱스 memo 가 두 벌 돈다. */
+    /** 이름 조회 — 깔때기가 이미 사전을 들고 있으니 라벨을 만드는 자리마다 다시 조립하지 않게. */
     labelLook: LabelLookup;
     /**
-     * 축 재료 한 벌(목록·배치줄·계산 값). 필터 보드의 레일이 이걸로 그린다 — labelLook 과 같은 사정으로
-     * 여기 실어 나른다: 보드가 useRankAxes 를 다시 부르면 계산 축 값 맵(타점 수천 개)이 두 벌 만들어진다.
+     * 축 재료 한 벌(목록·배치줄·계산 값). 필터 보드의 레일이 이걸로 그린다.
+     * (계산 축 값 맵이 여러 벌 만들어지던 문제는 이제 RankAxesProvider 가 막는다 — 여기 실어 나르는 건
+     *  그 방어가 아니라 편의다: 깔때기를 구독하는 화면은 축도 같이 필요하다.)
      */
     axes: RankAxesView;
     /** 이 항목을 앞선 어느 단계가 막았나(근접 탈락 목록의 "막힌 단계"). 단계 이름으로 돌려준다. */
@@ -74,7 +75,7 @@ export function useFilterFunnel(): FunnelView {
     const selection = useWorkbench((s) => s.funnelSelection);
 
     const gv = useGroups();
-    const ax = useRankAxes({ includeComputed: true });
+    const ax = useRankAxes();
     const candQ = useQuery(candidateDaysQuery());
     const pointsQ = useQuery(allPointsQuery());
 

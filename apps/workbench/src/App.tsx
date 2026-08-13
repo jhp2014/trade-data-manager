@@ -16,7 +16,8 @@ export function App(): JSX.Element {
     const closeSettings = useUi((s) => s.closeSettings);
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-primary)" }}>
-            {/* 깔때기 계산 한 벌(FunnelContext) — 소비 패널 다섯이 같은 정산을 나눠 본다. */}
+            {/* 깔때기 계산 한 벌(FunnelContext) — 소비 패널 다섯이 같은 정산을 나눠 본다.
+                재료(그룹 사전·축)는 이보다 바깥(main)에서 이미 한 벌로 서 있다. */}
             <FunnelProvider>
                 <WorkbenchShell />
                 <Taskbar />

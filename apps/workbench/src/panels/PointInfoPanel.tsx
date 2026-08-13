@@ -5,7 +5,7 @@ import { usePanelUi } from "../store/usePanelUi.js";
 import { useWorkbench } from "../store/workbench.js";
 import { reviewPointsQuery } from "../api/queries.js";
 import { usePlacements } from "../lib/usePlacements.js";
-import { useGroups } from "../lib/useGroups.js";
+import { useGroups } from "../lib/GroupsContext.js";
 import { useStockName } from "../lib/useStockName.js";
 import { PlacementBadge, PlacementRows } from "../components/Placement.js";
 import { GroupChips } from "../components/GroupChips.js";

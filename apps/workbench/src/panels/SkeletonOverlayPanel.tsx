@@ -19,7 +19,7 @@ import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
-import { useGroups } from "../lib/useGroups.js";
+import { useGroups } from "../lib/GroupsContext.js";
 import { pointKeyOf, parsePointKey, chartKeyOf, type PointRef } from "../lib/pointKey.js";
 import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
 import { TextToggle, Dot, ControlBox } from "../components/ControlChrome.js";

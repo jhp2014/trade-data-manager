@@ -16,7 +16,7 @@ import {
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, slotOrderKeys, type AxisIndex } from "../lib/rankIndex.js";
 import { SheetRowView, ROW_H, type CellCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
-import { useRankAxes } from "../lib/useRankAxes.js";
+import { useRankAxes } from "../lib/RankAxesContext.js";
 import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
@@ -87,7 +87,7 @@ export function RankSheetPanel(): JSX.Element {
     // ── 축 + 라인(배치 보드와 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
     // 계산 축을 함께 본다 — 판단 축과 같은 줄 모양으로 합쳐져 열·정렬·순위 셀이 구분 없이 동작한다.
     // 다만 **읽기 전용**: 배치/해제·밴드·컷은 계산 축 열에서 열리지 않는다(아래 isComputedAxis 가드).
-    const { axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes({ includeComputed: true });
+    const { axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes();
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
         for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));

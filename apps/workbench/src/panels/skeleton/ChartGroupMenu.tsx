@@ -15,7 +15,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createGroup, deleteGroup, renameGroup, type Group } from "../../api/groups.js";
 import { groupsQuery, groupMembershipsQuery } from "../../api/queries.js";
-import { useGroups } from "../../lib/useGroups.js";
+import { useGroups } from "../../lib/GroupsContext.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { TAG_PRESET_SLOTS } from "../../store/settingsSlice.js";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";

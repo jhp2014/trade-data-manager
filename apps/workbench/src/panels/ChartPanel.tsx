@@ -11,7 +11,7 @@ import { useBaselineLines, useDailySkeleton, useIgnoreCandles, useMinuteSkeleton
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { useStockName } from "../lib/useStockName.js";
-import { useGroups } from "../lib/useGroups.js";
+import { useGroups } from "../lib/GroupsContext.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { GroupChips } from "../components/GroupChips.js";
 import { DailyChart } from "../chart/DailyChart.js";

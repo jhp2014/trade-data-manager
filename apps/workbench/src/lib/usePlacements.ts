@@ -9,7 +9,7 @@
 // 반대로 상세(강점 축 → 약점 축 프로파일)는 계산 축이 들어갈수록 정보가 는다 — frac 정렬이라 그대로 섞인다.
 // 계산 축의 결손도 "안 꽂음"이 아니라 "재료 없음"이라 미배치 목록에서 뺀다.
 import { useMemo } from "react";
-import { useRankAxes } from "./useRankAxes.js";
+import { useRankAxes } from "./RankAxesContext.js";
 import { isComputedAxis } from "./computedAxis.js";
 import { buildAxisIndex, countPlacedByPoint, placementsOf, type AxisIndex, type PointPlacements } from "./rankIndex.js";
 import { pointKey, type PointRef } from "./pointKey.js";
@@ -24,7 +24,7 @@ export interface PlacementsView {
 }
 
 export function usePlacements(): PlacementsView {
-    const { axes, linesByAxis } = useRankAxes({ includeComputed: true });
+    const { axes, linesByAxis } = useRankAxes();
 
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();

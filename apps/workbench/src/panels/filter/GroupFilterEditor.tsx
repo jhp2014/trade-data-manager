@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { GroupPathLabel } from "../../components/GroupPathLabel.js";
 import { GROUP_PLAIN, groupColor } from "../../styles/palette.js";
-import { useGroups } from "../../lib/useGroups.js";
+import { useGroups } from "../../lib/GroupsContext.js";
 import {
     NO_TAGS, addGroupLiteral, removeGroupLiteral, toggleGroupNeg, type GroupExpr,
 } from "../rank/groupFilter.js";

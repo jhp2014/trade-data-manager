@@ -60,7 +60,13 @@ export interface GroupsView {
     isLoading: boolean;
 }
 
-export function useGroups(): GroupsView {
+/**
+ * ⚠ **직접 부르지 말 것** — GroupsProvider 가 유일한 호출자다(소비는 GroupsContext 의 useGroups).
+ * 인스턴스마다 멤버십 피드 전체를 훑어 색인 셋(타점·차트·빈도)을 새로 만들기 때문에, 부르는 화면 수만큼
+ * 같은 계산이 돈다. 낙관적 토글도 인스턴스가 여럿이라 mutationKey 로 서로를 세어 조율하고 있었다 —
+ * 한 벌이면 그 조율이 애초에 필요 없다.
+ */
+export function useGroupsValue(): GroupsView {
     const qc = useQueryClient();
     const groupsQ = useQuery(groupsQuery());
     const memberQ = useQuery(groupMembershipsQuery());

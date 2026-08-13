@@ -28,7 +28,7 @@ import { mapsQuery, groupsQuery } from "../api/queries.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { createMap, type MapScope } from "../api/map.js";
 import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group } from "../api/groups.js";
-import { useGroups } from "../lib/useGroups.js";
+import { useGroups } from "../lib/GroupsContext.js";
 import { usePersistedState } from "../store/persist.js";
 import { ACTIVE } from "../styles/palette.js";
 import { MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
