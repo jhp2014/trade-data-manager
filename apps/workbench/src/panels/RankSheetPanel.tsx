@@ -9,7 +9,10 @@ import { axisLinesQuery, allPointsQuery, rankAxesQuery } from "../api/queries.js
 import { placePoint, unplacePoint, createRankAxis, renameRankAxis, deleteRankAxis, type RankPoint, type RankTarget } from "../api/rank.js";
 import { upsertReviewPoint } from "../api/reviewPoints.js";
 import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
-import { COL_META, MIN_COL_W, colKey, colLabel, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "./rank/sheetColumns.js";
+import { COL_META, colKey, colLabel } from "./rank/sheetColumns.js";
+import { useSheetColumns } from "./rank/useSheetColumns.js";
+import { AddAxisMenu, HeaderMenu, OutcomeMenu, ResizeHandle } from "./rank/SheetMenus.js";
+import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import {
     DEFAULT_CHAIN, buildSheetGroups, cutsActive, dropSort, parseSortChain, pushSort, resetSort, resolveCutKeys,
     sortKeyOf, sortSheetRows, sortStepNo, type SortChain, type SortCtx, type SortKey,
@@ -22,10 +25,8 @@ import { useFunnel } from "./filter/FunnelContext.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { TextToggle, Dot, ControlBox, miniBtn, mutedNote } from "../components/ControlChrome.js";
-import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
-import { outcomeColor } from "../styles/palette.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
@@ -53,12 +54,8 @@ import type { ReviewPointListItem } from "@trade-data-manager/wire";
 //    봐야 한다. 그룹은 조상 경로까지 보여야 뜻이 서므로 폭이 있는 자리(필터 보드·팔레트·타점 정보)의 일이다.
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
-const FROZEN_KEY = "wb.rankSheetFrozenCols";
-const HIDDEN_KEY = "wb.rankSheetHiddenCols";
-const WIDTHS_KEY = "wb.rankSheetColWidths";
 const FILTERMODE_KEY = "wb.rankSheetFilterMode";
 const SORT_KEY = "wb.rankSheetSort"; // 정렬 체인 영속(다른 시트 설정과 동일 패턴) — 프리셋 전환·새로고침에 유지. 옛 단일 정렬도 읽는다.
-const CUTS_KEY = "wb.rankSheetCuts";  // 축 열 그룹 컷 — colKey(`ax:<id>`) → slotId[]. 시트 전용(축의 속성 아님)이라 로컬.
 // 스크롤 위치는 세션 한정(모듈 메모) — 프리셋 전환(재마운트)엔 이어지고 새로고침엔 초기화(목록 중간 튐 방지).
 let sheetScroll = { top: 0, left: 0 };
 // 열 헤더 드래그의 두 종류 — 미디어타입으로 갈라 서로의 드롭을 안 받는다(고정 그룹 재정렬 vs 축 서열 변경).
@@ -93,6 +90,25 @@ export function RankSheetPanel(): JSX.Element {
         for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));
         return m;
     }, [linesByAxis]);
+
+    // ── 셀 표시 모드(숫자 / 순위 눈금 / 값 눈금). 규칙·옛 저장본 이관은 sheetCell(순수·테스트)에.
+    const [cellMode, setCellMode] = usePersistedState<CellMode>(POS_MODE_KEY, parseCellMode, "rank");
+
+    // 컨테이너 폭 관측 — 남는 폭을 축 열들이 나눠 넓힘(각자 최소폭 유지). 위치바 모드는 최소폭 ↑.
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const [containerW, setContainerW] = useState(0);
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((es) => setContainerW(es[0].contentRect.width));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    const axisMin = cellMode === "number" ? 56 : 76; // 눈금 모드는 그릴 폭이 필요하다
+
+    // ── 열 구성(고정·숨김·폭·컷 + 되짚기) — 넷 다 축 키를 들어 청소 규칙이 같으므로 한 훅이 소유한다.
+    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin });
+    const { displayCols, leftOf, tableW, lastFrozenKey, widthOf, frozenSet, cuts, flashCol } = cols;
 
     // ── 전체 타점(행 원천) + 기간.
     const pointsQ = useQuery(allPointsQuery());
@@ -136,20 +152,13 @@ export function RankSheetPanel(): JSX.Element {
     }, [allPoints]);
     const nameOf = (code: string): string => nameByCode.get(code) ?? code;
 
-    // ── 그룹 컷(축 열 전용) — 1차 축에서 우클릭으로 그은 경계. slotId 로 저장하고 축 라인으로 orderKey 를 되찾는다.
-    const [cuts, setCuts] = usePersistedState<Record<string, string[]>>(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null), {});
+    // ── 그룹 컷 — 저장·청소는 열 구성 훅이(축 키를 든 다른 설정들과 같은 사정), 여기서는 **읽어 쓰기만**.
     const sortAxisId = primary.key.kind === "axis" ? primary.key.axisId : null;
     const slotOrderOfSort = useMemo(() => (sortAxisId ? slotOrderKeys(linesByAxis.get(sortAxisId) ?? []) : undefined), [sortAxisId, linesByAxis]);
     const cutKeys = useMemo(
         () => (sortAxisId ? resolveCutKeys(cuts[`ax:${sortAxisId}`] ?? [], slotOrderOfSort) : []),
         [sortAxisId, cuts, slotOrderOfSort],
     );
-    const toggleCut = (axisId: string, slotId: string): void => setCuts((m) => {
-        const k = `ax:${axisId}`;
-        const cur = m[k] ?? [];
-        const next = cur.includes(slotId) ? cur.filter((s) => s !== slotId) : [...cur, slotId];
-        return next.length ? { ...m, [k]: next } : Object.fromEntries(Object.entries(m).filter(([x]) => x !== k));
-    });
 
     const sortCtx = useMemo<SortCtx>(() => ({ nameOf: (code) => nameByCode.get(code) ?? code }), [nameByCode]);
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
@@ -198,8 +207,6 @@ export function RankSheetPanel(): JSX.Element {
     // 계산 축은 드롭 대상이 아니다 — 자리를 값이 정하므로 꽂을 곳이 없다(보정은 후속 브릭).
     const dragAxisId = dragBroken || (sortAxisId && isComputedAxis(sortAxisId)) ? null : sortAxisId;
 
-    // ── 셀 표시 모드(숫자 / 순위 눈금 / 값 눈금). 규칙·옛 저장본 이관은 sheetCell(순수·테스트)에.
-    const [cellMode, setCellMode] = usePersistedState<CellMode>(POS_MODE_KEY, parseCellMode, "rank");
 
     /**
      * 계산 축이 이 타점에 대해 아는 값 — 값의 자리(레일과 같은 좌표)와 표기.
@@ -221,16 +228,6 @@ export function RankSheetPanel(): JSX.Element {
         return view && v !== undefined ? { frac: valueToFrac(v, view.domain, view.strongerWhen), text: view.fmt(v) } : undefined;
     }, [valueViews]);
 
-    // 컨테이너 폭 관측 — 남는 폭을 축 열들이 나눠 넓힘(각자 최소폭 유지). 위치바 모드는 최소폭 ↑.
-    const scrollRef = useRef<HTMLDivElement | null>(null);
-    const [containerW, setContainerW] = useState(0);
-    useEffect(() => {
-        const el = scrollRef.current;
-        if (!el) return;
-        const ro = new ResizeObserver((es) => setContainerW(es[0].contentRect.width));
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, []);
     // 스크롤 위치 세션 복원 — 데이터가 그려진(표 렌더된) 뒤 1회. onScroll 로 sheetScroll 에 저장한다.
     const restoredRef = useRef(false);
     const dataReady = !axesLoading && !pointsQ.isLoading && axes.length > 0;
@@ -244,57 +241,7 @@ export function RankSheetPanel(): JSX.Element {
     }, [dataReady]);
     const ctrlWheel = useHorizontalWheel<HTMLDivElement>(true); // 헤더 컨트롤 hover 휠 = 가로 스크롤
 
-    const axisMin = cellMode === "number" ? 56 : 76; // 눈금 모드는 그릴 폭이 필요하다
 
-    // ── 열 구성 — 고정(좌측 스택 집합)·숨김(집합), 열 이름 우클릭 메뉴로 편집. 영속.
-    const [frozenCols, setFrozenCols] = usePersistedState<string[]>(FROZEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), ["date", "time"]);
-    const [hiddenCols, setHiddenCols] = usePersistedState<string[]>(HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), []);
-    const frozenSet = useMemo(() => new Set(frozenCols), [frozenCols]);
-    // 수동 열 폭(colKey → px). 지정한 열만 고정폭이 되고, 나머지 축 열은 잔여 폭 분배를 유지한다.
-    const [colWidths, setColWidths] = usePersistedState<Record<string, number>>(WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null), {});
-    // 축을 지우면 그 축 키가 고정/숨김/폭 목록에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소.
-    // ⚠ **로딩 중엔 절대 청소하지 않는다**: 판단 축과 계산 축은 별도 요청이라, 판단 축만 도착한 순간에 돌면
-    //   아직 안 온 계산 축 열의 고정·숨김·폭을 유령으로 오인해 지운다.
-    useEffect(() => {
-        if (axesLoading || axes.length === 0) return;
-        const ids = axes.map((a) => a.id);
-        setFrozenCols((f) => pruneAxisKeys(f, ids));
-        setHiddenCols((h) => pruneAxisKeys(h, ids));
-        setColWidths((w) => pruneAxisKeys(w, ids));
-        setCuts((c) => pruneAxisKeys(c, ids));
-    }, [axes, axesLoading]);
-    const toggleFrozen = (k: string): void => setFrozenCols((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
-    // 고정 그룹 안 재정렬 — 배열이 곧 좌측 스택 순서다. 축 열이 섞여 있어도 여기선 배열만 만진다(축 서열 불변).
-    const reorderFrozen = (dragged: string, target: string): void => setFrozenCols((f) => reorderFrozenCols(f, dragged, target));
-    const toggleHidden = (k: string): void => setHiddenCols((h) => (h.includes(k) ? h.filter((x) => x !== k) : [...h, k]));
-
-    // ── "저 축 보여줘"(타점 정보 → 여기) — 그 축 **열**로 가로 스크롤하고 잠깐 강조한다.
-    //    배치 보드 시절엔 레인으로 스크롤했다. 시트에서는 열이 곧 축이고 축이 많으면 가로로 넘치므로,
-    //    찾아 주는 일이 오히려 더 필요하다. 숨긴 열이면 먼저 꺼내 준다 — 안 그러면 눌러도 아무 일이 없다.
-    const revealAxis = useWorkbench((s) => s.revealAxis);
-    const colThRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
-    const [flashCol, setFlashCol] = useState<string | null>(null);
-    useEffect(() => {
-        if (!revealAxis) return;
-        const key = `ax:${revealAxis.axisId}`;
-        setHiddenCols((h) => h.filter((k) => k !== key));
-        setFlashCol(key);
-        // 숨김 해제가 렌더된 뒤에 스크롤해야 대상이 존재한다.
-        const raf = requestAnimationFrame(() => colThRefs.current.get(key)?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }));
-        const t = setTimeout(() => setFlashCol(null), 1400);
-        return () => { cancelAnimationFrame(raf); clearTimeout(t); };
-    }, [revealAxis, setHiddenCols]);
-
-    // 기본 순서 → 숨김 제외 → 고정 먼저(기본순 유지, 좌측 스택) → 비고정. 종목은 항상 표시·고정.
-    const baseCols = useMemo<Col[]>(() => [
-        { key: "name" }, { key: "date" }, { key: "time" },
-        ...axes.map((a): Col => ({ key: "axis", axisId: a.id, name: a.name, computed: isComputedAxis(a.id) })),
-        { key: "outcome" },
-    ], [axes]);
-    const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = useMemo(
-        () => layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths, containerW, axisMin }),
-        [baseCols, frozenCols, hiddenCols, colWidths, containerW, axisMin],
-    );
 
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계. 배치 해제도 같은 메뉴에서(셀 = 타점×축 하나).
     const [ctx, setCtx] = useState<{ axisId: string; slotId: string; point: RankPoint; rank: number; total: number; x: number; y: number } | null>(null);
@@ -416,11 +363,11 @@ export function RankSheetPanel(): JSX.Element {
                     {/* 컷과 2차 정렬이 둘 다 걸리면 축 열이 순위 순서가 아니라 행 사이 드롭이 뜻을 잃는다 — 왜 안 되는지 보이게. */}
                     {dragBroken && <span style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 }}>· 그룹 안 정렬 중 — 배치 드래그 꺼짐</span>}
                     {sort.length > 1 && <button onClick={() => setSort((s) => [s[0]])} title="2차 이하 정렬 해제(1차만 남김)" style={{ ...miniBtn, flexShrink: 0 }}>정렬 {sort.length}단 ⤺</button>}
-                    {cutKeys.length > 0 && <button onClick={() => setCuts((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== `ax:${sortAxisId}`)))} title="이 축의 그룹 컷 모두 해제" style={{ ...miniBtn, flexShrink: 0 }}>그룹 {cutKeys.length + 1} ⤺</button>}
-                    {hiddenCols.length > 0 && <button onClick={() => setHiddenCols([])} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {hiddenCols.length} ⤺</button>}
+                    {cutKeys.length > 0 && <button onClick={() => cols.clearCuts(sortAxisId!)} title="이 축의 그룹 컷 모두 해제" style={{ ...miniBtn, flexShrink: 0 }}>그룹 {cutKeys.length + 1} ⤺</button>}
+                    {cols.hiddenCols.length > 0 && <button onClick={cols.showAllHidden} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {cols.hiddenCols.length} ⤺</button>}
                     {/* 축 만들기 — 계산 축은 코드로 정의되므로 여기서 만드는 건 언제나 판단 축(손으로 꽂는 축)이다. */}
                     <button onClick={(e) => setAddAxis({ x: e.clientX, y: e.clientY })} title="판단 축 새로 만들기(이름 변경·삭제는 열 이름 우클릭)" style={{ ...miniBtn, flexShrink: 0 }}>+ 축</button>
-                    {Object.keys(colWidths).length > 0 && <button onClick={() => setColWidths({})} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
+                    {cols.hasManualWidths && <button onClick={cols.resetWidths} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
                 </div>
             </div>
 
@@ -447,7 +394,7 @@ export function RankSheetPanel(): JSX.Element {
                                     draggable: true,
                                     onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData(COL_DND, colKey(c)); e.dataTransfer.effectAllowed = "move"; },
                                     onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes(COL_DND)) e.preventDefault(); },
-                                    onDrop: (e: React.DragEvent) => { const k = e.dataTransfer.getData(COL_DND); if (k) reorderFrozen(k, colKey(c)); },
+                                    onDrop: (e: React.DragEvent) => { const k = e.dataTransfer.getData(COL_DND); if (k) cols.reorderFrozen(k, colKey(c)); },
                                 } : c.key === "axis" ? {
                                     draggable: true,
                                     onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData(AXIS_DND, (c as { axisId: string }).axisId); e.dataTransfer.effectAllowed = "move"; },
@@ -458,7 +405,7 @@ export function RankSheetPanel(): JSX.Element {
                                     <th key={colKey(c)} {...dnd} title={`${colLabel(c)} — 클릭=이 열로 정렬 · Shift+클릭=정렬 단 추가`}
                                         ref={(el) => {
                                             if (c.key === "axis" && c.axisId === sortAxisId) sortAxisThRef.current = el;
-                                            if (el) colThRefs.current.set(colKey(c), el); else colThRefs.current.delete(colKey(c));
+                                            cols.registerTh(colKey(c), el);
                                         }}
                                         onClick={(e) => clickHeader(sk, e.shiftKey)}
                                         onContextMenu={(e) => { e.preventDefault(); setHdrCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), sortKey: sk, step, axisId: c.key === "axis" && !c.computed ? c.axisId : undefined, x: e.clientX, y: e.clientY }); }}
@@ -469,7 +416,7 @@ export function RankSheetPanel(): JSX.Element {
                                             {active && sort.length > 1 && <span style={{ flexShrink: 0, fontSize: 8.5, opacity: 0.8, marginRight: 1 }}>{step}</span>}
                                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>
                                         </span>
-                                        <ResizeHandle width={widthOf(c)} onResize={(w) => setColWidths((m) => ({ ...m, [colKey(c)]: w }))} />
+                                        <ResizeHandle width={widthOf(c)} onResize={(w) => cols.setWidth(colKey(c), w)} />
                                     </th>
                                 );
                             })}
@@ -520,7 +467,7 @@ export function RankSheetPanel(): JSX.Element {
                     <AnchoredPopover anchor={ctx} onClose={() => setCtx(null)} minWidth={180} padding={0} placement="beside" offset={6}>
                         <MenuLabel>{ax.name} · {ctx.rank}/{ctx.total}위</MenuLabel>
                         {cutEnabled && (
-                            <MenuItem onClick={() => { toggleCut(ctx.axisId, ctx.slotId); setCtx(null); }}>
+                            <MenuItem onClick={() => { cols.toggleCut(ctx.axisId, ctx.slotId); setCtx(null); }}>
                                 {cutOn ? "그룹 나누기 해제" : "여기서 그룹 나누기"}
                             </MenuItem>
                         )}
@@ -544,8 +491,8 @@ export function RankSheetPanel(): JSX.Element {
             {hdrCtx && (
                 <HeaderMenu anchor={hdrCtx} label={hdrCtx.label} frozen={hdrCtx.frozen} canHide={hdrCtx.canHide} canFreeze={hdrCtx.key !== "name"}
                     sortStep={sort.length > 1 ? hdrCtx.step : 0}
-                    onToggleFreeze={() => { toggleFrozen(hdrCtx.key); setHdrCtx(null); }}
-                    onHide={() => { toggleHidden(hdrCtx.key); setHdrCtx(null); }}
+                    onToggleFreeze={() => { cols.toggleFrozen(hdrCtx.key); setHdrCtx(null); }}
+                    onHide={() => { cols.toggleHidden(hdrCtx.key); setHdrCtx(null); }}
                     onDropSort={() => { setSort((s) => dropSort(s, hdrCtx.sortKey)); setHdrCtx(null); }}
                     axis={hdrCtx.axisId === undefined ? undefined : {
                         onRename: () => {
@@ -561,119 +508,6 @@ export function RankSheetPanel(): JSX.Element {
                     onClose={() => setHdrCtx(null)} />
             )}
         </Wrap>
-    );
-}
-
-/** 축 만들기 — 이름 + 층위. 층위는 만들 때 정하고 못 바꾼다(그 축에 무엇이 꽂히는지가 층위로 정해진다). */
-function AddAxisMenu({ anchor, onCreate, onClose }: {
-    anchor: { x: number; y: number };
-    onCreate: (name: string, scope: "point" | "day") => void;
-    onClose: () => void;
-}): JSX.Element {
-    const [name, setName] = useState("");
-    const [scope, setScope] = useState<"point" | "day">("point");
-    const submit = (): void => { const n = name.trim(); if (n) onCreate(n, scope); };
-    return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={220} padding={0} placement="beside" offset={6}>
-            <MenuLabel>판단 축 만들기</MenuLabel>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 10px 9px" }}>
-                <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") submit(); else if (e.key === "Escape") onClose(); }}
-                    placeholder="축 이름(예: 눌림 깊이)"
-                    style={{ flex: 1, minWidth: 0, border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "4px 8px", fontSize: 12.5, outline: "none" }} />
-                <select value={scope} onChange={(e) => setScope(e.target.value as "point" | "day")} title="배치 단위"
-                    style={{ border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "4px 6px", fontSize: 12 }}>
-                    <option value="point">타점</option>
-                    <option value="day">하루</option>
-                </select>
-                <button onClick={submit} disabled={!name.trim()} style={{ border: "none", borderRadius: 4, background: "var(--accent-primary)", color: "#fff", cursor: "pointer", fontSize: 12, padding: "4px 10px", opacity: name.trim() ? 1 : 0.45 }}>추가</button>
-            </div>
-        </AnchoredPopover>
-    );
-}
-
-/**
- * 결과 입력 — **손으로 적는 값**이라 고정 목록이 없다(도메인이 "허용값은 클라"라고만 말한다).
- * 그래서 후보를 **지금까지 쓴 값에서 모아** 보여주고(빈도순), 새 말은 직접 입력한다.
- * 코드에 어휘를 박으면 사용자가 실제로 쓰는 말과 어긋나고, 그때 목록이 방해가 된다.
- */
-function OutcomeMenu({ anchor, current, choices, onPick, onClose }: {
-    anchor: { x: number; y: number };
-    current?: string;
-    choices: readonly string[];
-    onPick: (outcome: string) => void;
-    onClose: () => void;
-}): JSX.Element {
-    const [text, setText] = useState(current ?? "");
-    return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={200} maxHeight="min(50vh, 320px)" padding={0} placement="beside" offset={6}>
-            <MenuLabel>결과 · 손으로 적는 값</MenuLabel>
-            <div style={{ padding: "0 10px 8px" }}>
-                <input autoFocus value={text} onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") onPick(text.trim()); else if (e.key === "Escape") onClose(); }}
-                    placeholder="직접 입력 후 Enter"
-                    style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "4px 8px", fontSize: 12.5, outline: "none" }} />
-            </div>
-            {choices.map((c) => (
-                <MenuItem key={c} onClick={() => onPick(c)} style={{ borderTop: "1px solid var(--border-subtle)", color: outcomeColor(c), fontWeight: c === current ? 700 : 400 }}>
-                    {c}{c === current ? " ✓" : ""}
-                </MenuItem>
-            ))}
-            {current && (
-                <MenuItem onClick={() => onPick("")} style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-tertiary)" }}>
-                    결과 지우기
-                </MenuItem>
-            )}
-        </AnchoredPopover>
-    );
-}
-
-// 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기 · 정렬 체인에서 빼기.
-//  정렬 빼기가 여기 있는 이유: Shift+클릭은 방향 토글이라 뺄 손짓이 없다. 체인이 2단 이상일 때만 뜬다.
-function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep, axis, onToggleFreeze, onHide, onDropSort, onClose }: {
-    anchor: { x: number; y: number }; label: string; frozen: boolean; canHide: boolean; canFreeze: boolean;
-    /** 이 열의 정렬 단(1부터). 0 = 체인에 없거나 1단짜리 정렬 → 항목 숨김. */
-    sortStep: number;
-    /** 판단 축 열일 때만 — 축 자체를 고치는 손잡이(배치 보드가 사라져 여기가 유일한 입구다). 계산 축은 코드가 정의라 없다. */
-    axis?: { onRename: () => void; onDelete: () => void };
-    onToggleFreeze: () => void; onHide: () => void; onDropSort: () => void; onClose: () => void;
-}): JSX.Element {
-    return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={168} padding={0} placement="beside" offset={6}>
-            <MenuLabel>{label}</MenuLabel>
-            {sortStep > 0 && <MenuItem onClick={onDropSort}>{sortStep}차 정렬에서 빼기</MenuItem>}
-            {canFreeze && <MenuItem onClick={onToggleFreeze} style={sortStep > 0 ? { borderTop: "1px solid var(--border-subtle)" } : undefined}>{frozen ? "🔓 고정 해제" : "🔒 왼쪽 고정"}</MenuItem>}
-            {canHide && (
-                <MenuItem onClick={onHide} style={{ borderTop: canFreeze ? "1px solid var(--border-subtle)" : undefined, color: "var(--text-secondary)" }}>
-                    이 열 숨기기
-                </MenuItem>
-            )}
-            {axis && (
-                <>
-                    <MenuItem onClick={axis.onRename} style={{ borderTop: "1px solid var(--border-subtle)" }}>✎ 축 이름 변경</MenuItem>
-                    <MenuItem onClick={axis.onDelete} style={{ color: "var(--rise)" }}>🗑 축 삭제</MenuItem>
-                </>
-            )}
-        </AnchoredPopover>
-    );
-}
-
-// 열 폭 손잡이 — 헤더 오른쪽 가장자리 5px. 여기서 드래그 이벤트를 끊는 게 핵심이다:
-// th 는 이미 draggable(열 재정렬)이라 가장자리를 잡아도 열이 옮겨져 버린다(폭 조절이 아예 안 먹는다).
-// 포인터 캡처로 창 밖까지 따라오고, 클릭이 헤더 정렬 토글로 새지 않게 클릭/업에서도 전파를 막는다.
-function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number) => void }): JSX.Element {
-    const start = useRef<{ x: number; w: number } | null>(null);
-    return (
-        <span
-            draggable={false}
-            onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); start.current = { x: e.clientX, w: width }; e.currentTarget.setPointerCapture(e.pointerId); }}
-            onPointerMove={(e) => { const s = start.current; if (s) onResize(Math.max(MIN_COL_W, Math.round(s.w + (e.clientX - s.x)))); }}
-            onPointerUp={(e) => { start.current = null; e.currentTarget.releasePointerCapture(e.pointerId); e.stopPropagation(); }}
-            title="드래그 = 열 폭 조절"
-            style={{ position: "absolute", top: 0, right: 0, width: 5, height: "100%", cursor: "col-resize", touchAction: "none", zIndex: 1 }}
-        />
     );
 }
 
