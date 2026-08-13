@@ -153,16 +153,22 @@ const fmtX = (x: number, unit: XUnit): string => `${Math.round(x)}${unit === "da
  *  토글 하나로는 두 그림을 오가며 볼 수 없다. grain 은 패널 정체성이라 마운트 후 안 바뀐다. */
 export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.Element {
     const [anchor, setAnchor] = usePersistedState<SkeletonAnchor>(ANCHOR_KEY, (o) => (o === "first" || o === "last" ? o : null), "last");
+    // ⚠ 패널 설정 키에는 **전부 grain 이 붙는다.** 일봉·분봉이 별도 패널이라 둘이 동시에 떠 있고,
+    // 키를 공유하면 한쪽이 쓴 값이 다른 쪽 몫까지 덮는다(같은 저장소를 두 인스턴스가 각자 들고 있어
+    // 서로의 변경을 못 본다). showFuture·showTheme 만 접미사가 빠져 있었다 — 지금은 분봉만 읽어서
+    // 겉으로 조용하지만, 일봉 쪽에 손잡이가 하나 붙는 순간 조용히 서로를 지운다.
+    // (기준 앵커 ANCHOR_KEY 는 일봉 전용 개념이고 주인이 하나라 일부러 공유한다.)
+    //
     // 미래 포함(분봉 전용) — 기본 창은 타점 이전이 주인공이라 미래를 마진만 남기고 자른다.
     // "타점 뒤로 어디까지 갔나"를 볼 땐 이 토글이 창을 데이터까지 넓힌다(축소로도 닿지만 한 번에 보게).
-    const [showFuture, setShowFuture] = usePersistedState<boolean>("wb.skeletonOverlayFuture", (o) => (typeof o === "boolean" ? o : null), false);
+    const [showFuture, setShowFuture] = usePersistedState<boolean>(`wb.skeletonOverlayFuture.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
     const [showLevels, setShowLevels] = usePersistedState<boolean>(`wb.skeletonOverlayLevels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     const [showLabels, setShowLabels] = usePersistedState<boolean>(`wb.skeletonOverlayLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     // 거래대금·테마 토글은 **여기 위에** 산다 — 테마를 켜면 왼쪽 여백(거터)이 넓어지고, 그 여백이
     // 그림 상자(box) → 스케일 → 나머지 전부의 재료라서 상자보다 먼저 정해져야 한다.
     const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
     const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
-    const [showTheme, setShowTheme] = usePersistedState<boolean>("wb.skeletonOverlayTheme", (o) => (typeof o === "boolean" ? o : null), false);
+    const [showTheme, setShowTheme] = usePersistedState<boolean>(`wb.skeletonOverlayTheme.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
     /**
      * 캔들 선명도 — 배경으로 깔 것인가, 같이 읽을 것인가(사용자 요구). 캔들의 쓸모가 상황마다 달라서다:
      * 형태만 볼 땐 흐린 배경이 맞고, 봉 하나하나를 짚어 읽을 땐 골격선보다 진해도 된다.
