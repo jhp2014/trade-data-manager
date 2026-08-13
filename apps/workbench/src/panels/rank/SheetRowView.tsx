@@ -13,13 +13,11 @@ import { useDraggable } from "@dnd-kit/core";
 import { COL_META, colKey, type Col, type ColKind } from "./sheetColumns.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
 import { pointKey } from "../../lib/pointKey.js";
-import { GroupChips } from "../../components/GroupChips.js";
 import type { SheetRow } from "./rankSheet.js";
 import type { RankCell } from "../../lib/rankIndex.js";
 import type { RankPoint } from "../../api/rank.js";
-import type { Excursion } from "./pathStats.js";
-import type { Group } from "../../api/groups.js";
-import { PIN, STRONG, WEAK, heatOf, outcomeColor } from "../../styles/palette.js";
+import { PIN, heatOf, outcomeColor } from "../../styles/palette.js";
+import { cellView, type CellMode, type ValuedCell } from "./sheetCell.js";
 
 export const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
 
@@ -38,6 +36,8 @@ export interface SheetRowHandlers {
     onHover: (key: string | null) => void;
     onTogglePin: (key: string) => void;
     onCellCtx: (p: CellCtxPayload) => void;
+    /** 결과 셀 우클릭 — 손으로 적는 값이라 입력 입구가 표 안에 있어야 한다. */
+    onOutcomeCtx: (p: { row: SheetRow; x: number; y: number }) => void;
     /** tbody 행만 등록(핀 블록 복사본 제외) — 드래그 배치의 드롭 Y 판정용. */
     registerRef: (key: string, el: HTMLTableRowElement | null) => void;
 }
@@ -50,25 +50,27 @@ export interface SheetRowViewProps {
     lastFrozenKey: string | null;
     widthOf: (c: Col) => number;
     name: string;
-    groups: readonly Group[];
-    groupLabel: string;
-    axisCount: number;
-    posBar: boolean;
+    /** 셀 표기 — 숫자 · 순위 눈금 · 값 눈금. */
+    mode: CellMode;
+    /**
+     * 계산 축이 이 타점에 대해 아는 값(축 id → 값 자리·표기). 판단 축은 키가 없다.
+     * 패널이 축별로 한 벌 만들어 **참조를 고정**해 넘긴다(memo 가 얕은 비교로 재사용하도록).
+     */
+    valuedOf: (axisId: string, row: SheetRow) => ValuedCell | undefined;
     sortAxisId: string | null;
     focus: boolean;
     hover: boolean;
     pinned: boolean;
     /** 필터 밖(흐리게 표시) — narrow/dim 판정은 패널이 끝냈다. */
     dim: boolean;
-    exc?: Excursion;
     inPinnedBlock?: boolean;
     isLastPinned?: boolean;
     h: SheetRowHandlers;
 }
 
 function SheetRowViewImpl({
-    row, cols, leftOf, lastFrozenKey, widthOf, name, groups, groupLabel, axisCount, posBar, sortAxisId,
-    focus, hover, pinned, dim, exc, inPinnedBlock = false, isLastPinned = false, h,
+    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, sortAxisId,
+    focus, hover, pinned, dim, inPinnedBlock = false, isLastPinned = false, h,
 }: SheetRowViewProps): JSX.Element {
     const key = pointKey(row);
     // 배경 — 핀 행도 일반 행처럼 배경 없음(불투명 bg-primary로 sticky 비침만 방지). 좌측 바·하단 구분선으로 구분.
@@ -87,11 +89,6 @@ function SheetRowViewImpl({
     };
 
     type CellRender = { body: ReactNode; style?: CSSProperties; onClick?: () => void; onContextMenu?: (e: React.MouseEvent) => void; title?: string };
-    // MFE/MAE 3열은 부호·색만 다른 같은 셀 — 경로 통계(exc)가 없으면 "—".
-    const excursionCell = (field: "mfe" | "maePre" | "maePost"): CellRender => {
-        const v = exc ? exc[field] : null;
-        return { style: { color: field === "mfe" ? STRONG : WEAK }, body: v == null ? "—" : (field === "mfe" ? "+" : "") + v.toFixed(1) };
-    };
     const CELLS: Record<ColKind, (c: Col) => CellRender> = {
         name: () => ({
             style: { fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}` },
@@ -128,27 +125,18 @@ function SheetRowViewImpl({
                 onContextMenu: cell ? (ev) => { ev.preventDefault(); h.onCellCtx({ axisId, slotId: cell.slotId, point, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
                 title: isComputedAxis(axisId) ? "계산 축(수식) — 우클릭 = 이 값 이상/이하 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
                 style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
-                body: <Cell cell={cell} posBar={posBar} prominent={focus} barWidth={widthOf(c) - 18} />,
+                body: <Cell cell={cell} valued={valuedOf(axisId, row)} mode={mode} prominent={focus} barWidth={widthOf(c) - 18} />,
             };
         },
-        // 그룹 — **읽기 전용**(편집은 골격 패널에서만). 폭이 모자라면 그냥 잘린다(wrap·스크롤 없음).
-        //   좁은 열이라 그룹 prefix 는 뗀다(색이 이미 그룹을 말한다). 전체 이름은 셀 툴팁에.
-        groups: () => ({
-            onClick: () => h.onNav(row),
-            style: { cursor: "pointer", overflow: "hidden" },
-            title: groupLabel || "그룹 없음",
-            body: <GroupChips groups={[...groups]} short style={{ justifyContent: "center" }} />,
-        }),
-        coverage: () => ({
-            style: { color: row.coverage === axisCount ? STRONG : "var(--text-secondary)" },
-            body: `${row.coverage}/${axisCount}`,
-        }),
+        // 결과 = 손으로 적는 큐레이션 값(통계 아님). 우클릭으로 고친다 — 셀 하나에 입구가 있어야 표를 보다 바로 적는다.
         outcome: () => ({
-            body: row.outcome ? <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span> : null,
+            onContextMenu: (ev) => { ev.preventDefault(); h.onOutcomeCtx({ row, x: ev.clientX, y: ev.clientY }); },
+            title: "우클릭 = 결과 입력",
+            style: { cursor: "context-menu" },
+            body: row.outcome
+                ? <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span>
+                : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
         }),
-        mfe: () => excursionCell("mfe"),
-        maePre: () => excursionCell("maePre"),
-        maePost: () => excursionCell("maePost"),
     };
 
     return (
@@ -170,13 +158,13 @@ function SheetRowViewImpl({
 
 /**
  * memo — 호버·포커스가 바뀌면 그 행(들)만 리렌더되게. 배열/함수 props 는 얕은 비교가 안 되므로:
- * 핸들러 묶음(h)·레이아웃(leftOf·widthOf)·cols 는 패널이 참조를 고정하고, groups 는 groupLabel 문자열로 대신 비교.
+ * 핸들러 묶음(h)·레이아웃(leftOf·widthOf)·cols 는 패널이 참조를 고정한다.
  */
 export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.row === b.row && a.cols === b.cols && a.leftOf === b.leftOf && a.lastFrozenKey === b.lastFrozenKey &&
-    a.widthOf === b.widthOf && a.name === b.name && a.groupLabel === b.groupLabel && a.axisCount === b.axisCount &&
-    a.posBar === b.posBar && a.sortAxisId === b.sortAxisId && a.focus === b.focus && a.hover === b.hover &&
-    a.pinned === b.pinned && a.dim === b.dim && a.exc === b.exc &&
+    a.widthOf === b.widthOf && a.name === b.name && a.mode === b.mode && a.valuedOf === b.valuedOf &&
+    a.sortAxisId === b.sortAxisId && a.focus === b.focus && a.hover === b.hover &&
+    a.pinned === b.pinned && a.dim === b.dim &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );
 
@@ -190,15 +178,24 @@ function PinnedDragName({ pkStr, name, focus, onNav }: { pkStr: string; name: st
 }
 
 // ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.
-function Cell({ cell, posBar, prominent, barWidth }: { cell: RankCell | null; posBar: boolean; prominent?: boolean; barWidth?: number }): JSX.Element {
+function Cell({ cell, valued, mode, prominent, barWidth }: {
+    cell: RankCell | null; valued?: ValuedCell; mode: CellMode; prominent?: boolean; barWidth?: number;
+}): JSX.Element {
     if (!cell) return <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>;
-    if (!posBar) return <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{cell.rank}<span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>/{cell.total}</span></span>;
+    const v = cellView(cell, mode, valued);
+    if (mode === "number") {
+        return (
+            <span title={v.title} style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600, whiteSpace: "nowrap" }}>
+                {v.text}<span style={{ color: "var(--text-tertiary)", fontWeight: 400, fontSize: 10 }}>{v.sub}</span>
+            </span>
+        );
+    }
     // 눈금 틱: 얇은 선 + 세로 틱(색=위치 히트). 폭 = 넓어진 축 열 활용. 선택 행은 굵은 불릿으로 선명.
-    const col = heatOf(cell.frac);
+    const col = heatOf(v.frac);
     return (
-        <span style={{ position: "relative", display: "inline-block", width: Math.max(36, barWidth ?? 40), height: 14, verticalAlign: "middle" }} title={`${cell.rank}/${cell.total}`}>
+        <span style={{ position: "relative", display: "inline-block", width: Math.max(36, barWidth ?? 40), height: 14, verticalAlign: "middle" }} title={v.title}>
             <span style={{ position: "absolute", left: 1, right: 1, top: "50%", height: prominent ? 2 : 1, background: prominent ? "var(--text-tertiary)" : "var(--border-strong)", transform: "translateY(-50%)", borderRadius: 1 }} />
-            <span style={{ position: "absolute", top: "50%", left: `calc(3px + ${cell.frac} * (100% - 6px))`, width: prominent ? 5 : 3, height: prominent ? 13 : 10, background: col, transform: "translate(-50%,-50%)", borderRadius: 2, boxShadow: prominent ? "0 0 0 1.5px var(--bg-primary)" : undefined }} />
+            <span style={{ position: "absolute", top: "50%", left: `calc(3px + ${v.frac} * (100% - 6px))`, width: prominent ? 5 : 3, height: prominent ? 13 : 10, background: col, transform: "translate(-50%,-50%)", borderRadius: 2, boxShadow: prominent ? "0 0 0 1.5px var(--bg-primary)" : undefined }} />
         </span>
     );
 }

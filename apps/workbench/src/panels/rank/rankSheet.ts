@@ -4,7 +4,7 @@ import { pointKey } from "../../lib/pointKey.js";
 import type { AxisIndex, RankCell } from "../../lib/rankIndex.js";
 import type { ReviewPointListItem } from "../../api/reviewPoints.js";
 
-/** 시트 한 행 = 타점 + 축별 셀 + 커버리지. 분석 열(mfe 등)은 패널이 좁힌 집합에만 붙인다(여긴 배치만). */
+/** 시트 한 행 = 타점 + 축별 셀. */
 export interface SheetRow {
     stockCode: string;
     date: string;
@@ -13,21 +13,15 @@ export interface SheetRow {
     outcome?: string;
     memo?: string;
     cells: Record<string, RankCell | null>; // axisId → 셀(미배치 null)
-    coverage: number; // 배치된 축 수
 }
 
-/** 타점들 × 축들 → 시트 행. axisIds 순서는 표시용(열 순서)과 무관하게 커버리지 계산엔 전부 포함. */
+/** 타점들 × 축들 → 시트 행. axisIds 순서는 표시용(열 순서)과 무관하다 — 셀은 전 축을 채운다. */
 export function buildSheetRows(points: ReviewPointListItem[], axisIds: string[], indexByAxis: Map<string, AxisIndex>): SheetRow[] {
     return points.map((p) => {
         const key = pointKey(p);
         const cells: Record<string, RankCell | null> = {};
-        let coverage = 0;
-        for (const axisId of axisIds) {
-            const cell = indexByAxis.get(axisId)?.get(key) ?? null;
-            cells[axisId] = cell;
-            if (cell) coverage++;
-        }
-        return { stockCode: p.stockCode, date: p.date, time: p.time, name: p.name, outcome: p.outcome, memo: p.memo, cells, coverage };
+        for (const axisId of axisIds) cells[axisId] = indexByAxis.get(axisId)?.get(key) ?? null;
+        return { stockCode: p.stockCode, date: p.date, time: p.time, name: p.name, outcome: p.outcome, memo: p.memo, cells };
     });
 }
 

@@ -7,7 +7,6 @@ import { reviewPointsQuery } from "../api/queries.js";
 import { usePlacements } from "../lib/usePlacements.js";
 import { useGroups } from "../lib/useGroups.js";
 import { useStockName } from "../lib/useStockName.js";
-import { pointKeyOf } from "../lib/pointKey.js";
 import { PlacementBadge, PlacementRows } from "../components/Placement.js";
 import { GroupChips } from "../components/GroupChips.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
@@ -19,7 +18,6 @@ import { BoardCenter } from "../components/board/BoardCard.js";
 export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, viewDate, time } = usePlaneBus("replay");
     const name = useStockName(code);
-    const setHoveredPoint = useWorkbench((s) => s.setHoveredPoint);
     const revealRankAxis = useWorkbench((s) => s.revealRankAxis);
     const [unplacedOpen, setUnplacedOpen] = usePanelUi(panelId, "unplacedOpen", false);
 
@@ -28,7 +26,7 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const point = useMemo(() => (pointsQ.data ?? []).find((rp) => rp.time === time) ?? null, [pointsQ.data, time]);
 
     const placements = usePlacements();
-    const { groupsOf } = useGroups();
+    const { groupsOf, pathLabel } = useGroups();
     const groups = useMemo(() => (point ? groupsOf({ stockCode: code, date: viewDate, time: point.time }) : []), [point, code, viewDate, groupsOf]);
     const detail = useMemo(
         () => (point ? placements.detailOf({ stockCode: code, date: viewDate, time: point.time }) : null),
@@ -41,8 +39,6 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
 
     return (
         <div
-            onMouseEnter={() => setHoveredPoint(pointKeyOf(code, viewDate, point.time))}
-            onMouseLeave={() => setHoveredPoint(null)}
             style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 12 }}
         >
             {/* 헤더 — 종목 · 시각 · 배치 배지. 종목/날짜는 헤더 툴팁(좁은 셀이라 한 줄). */}
@@ -58,7 +54,7 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
             {/* 그룹 줄 — 축 레인 위(명목 분류가 순서 차원보다 먼저 읽힌다). 한 줄 고정: 폭이 좁아도 wrap 하지 않고
                 hover 가로 스크롤로 훑는다(줄 수가 늘면 아래 축 목록이 밀린다). 편집은 차트 ▼ 우클릭에서만. */}
             <div style={{ flexShrink: 0, padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)" }}>
-                <GroupChips groups={groups} scroll empty="그룹 없음" />
+                <GroupChips groups={groups} scroll empty="그룹 없음" pathOf={(id) => pathLabel(id, "(지워짐)")} />
             </div>
 
             {/* 축 목록 — 패널 높이를 그대로 쓰고 넘치면 스크롤(도킹 패널이라 차트 줌과 무관). */}

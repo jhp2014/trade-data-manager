@@ -5,7 +5,6 @@ import {
 } from "../sheetSort.js";
 import type { SheetRow } from "../rankSheet.js";
 import type { RankCell } from "../../../lib/rankIndex.js";
-import type { Excursion } from "../pathStats.js";
 
 // 축 셀 하나 — rank(강=1)와 orderKey(큼=강)는 서로 반대 방향이라 둘 다 명시한다.
 const cell = (rank: number, total: number, orderKey: number, slotId = `s${orderKey}`): RankCell =>
@@ -15,17 +14,11 @@ const row = (code: string, over: Partial<SheetRow> & { ax?: RankCell | null } = 
     const { ax, ...rest } = over;
     return {
         stockCode: code, date: "2026-07-01", time: "10:00:00", name: `${code}명`,
-        cells: { A: ax ?? null }, coverage: ax ? 1 : 0, ...rest,
+        cells: { A: ax ?? null }, ...rest,
     };
 };
 
-const groups: Record<string, string> = {};
-const excs: Record<string, Partial<Excursion>> = {};
-const ctx: SortCtx = {
-    nameOf: (c) => `${c}명`,
-    groupLabel: (r) => groups[r.stockCode] ?? "",
-    excursionOf: (r) => excs[r.stockCode] as Excursion | undefined,
-};
+const ctx: SortCtx = { nameOf: (c) => `${c}명` };
 const codes = (rows: SheetRow[]): string[] => rows.map((r) => r.stockCode);
 const AX: SortChain = [{ key: { kind: "axis", axisId: "A" }, dir: 1 }];
 
@@ -95,7 +88,7 @@ describe("정렬 체인", () => {
             row("A", { date: "2026-07-01", time: "09:00:00" }),
             row("C", { date: "2026-07-08", time: "09:00:00" }),
         ];
-        expect(codes(sortSheetRows(rows, [{ key: { kind: "coverage" }, dir: 1 }], ctx))).toEqual(["C", "A", "B"]);
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "outcome" }, dir: 1 }], ctx))).toEqual(["C", "A", "B"]);
     });
 });
 

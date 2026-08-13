@@ -17,6 +17,7 @@ import {
     addStage, moveStage, parseStages, removeStage, renameStage, setStagePredicates, toggleStage,
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
+import { applyRailPredicate, stagesFor, type RailKey } from "../panels/filter/stageBinding.js";
 import { loadJson, saveJson } from "./persist.js";
 
 const STAGES_KEY = "wb.filterStages";
@@ -67,6 +68,11 @@ export interface FilterFunnelSlice {
     /** 짚은 칸(시선) — 세션 한정. 골격·시트 등 구독자가 보는 집합을 정한다. */
     funnelSelection: FunnelSelection | null;
     addFilterStage: (predicates?: FilterPredicate[]) => void;
+    /**
+     * 보드에서 레일을 그은 결과 — 그 레일의 필터를 만들거나 갈아끼우거나(술어) 지운다(null).
+     * 규칙은 stageBinding(순수)에 있고 여기서는 영속과 시선 정리만 한다.
+     */
+    applyFilterRail: (key: RailKey, predicate: FilterPredicate | null) => void;
     removeFilterStage: (id: string) => void;
     toggleFilterStage: (id: string) => void;
     moveFilterStage: (from: number, to: number) => void;
@@ -94,6 +100,14 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     funnelSelection: null,
 
     addFilterStage: (predicates) => set((s) => put(addStage(s.filterStages, predicates ?? []))),
+    applyFilterRail: (key, predicate) => set((s) => {
+        // 조건이 없어져 필터가 사라지는 경우가 있다 — 그 필터를 짚고 있었으면 시선도 함께 푼다(removeFilterStage 와 같은 이유).
+        const doomed = predicate === null ? stagesFor(s.filterStages, key)[0]?.id : undefined;
+        return {
+            ...put(applyRailPredicate(s.filterStages, key, predicate)),
+            ...(doomed !== undefined && s.funnelSelection?.stageId === doomed ? { funnelSelection: null } : {}),
+        };
+    }),
     // 지운 단계를 계속 짚고 있으면 소비자들이 "사라진 칸"을 본다 — 선택이 그 단계면 같이 푼다.
     removeFilterStage: (id) => set((s) => ({
         ...put(removeStage(s.filterStages, id)),

@@ -14,11 +14,11 @@ import {
 } from "@trade-data-manager/market/domain";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
 import { useGroups } from "../../lib/useGroups.js";
-import { useRankAxes } from "../../lib/useRankAxes.js";
+import { useRankAxes, type RankAxesView } from "../../lib/useRankAxes.js";
 import { chartKey, pointKey } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndexes, dayAxisValueOf } from "./axisLookup.js";
-import { toFunnelStages, type EvalLookup } from "./evaluate.js";
+import { resolveBound, toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { stageLabel, type LabelLookup } from "./label.js";
 import {
     activeStages, canExpand, displayGrain, funnelOrder, isPredicateDead, resolveAutoGrain,
@@ -58,6 +58,11 @@ export interface FunnelView {
     deadStageIds: string[];
     /** 이름 조회 — 패널이 useGroups·useRankAxes 를 다시 부르면 같은 인덱스 memo 가 두 벌 돈다. */
     labelLook: LabelLookup;
+    /**
+     * 축 재료 한 벌(목록·배치줄·계산 값). 필터 보드의 레일이 이걸로 그린다 — labelLook 과 같은 사정으로
+     * 여기 실어 나른다: 보드가 useRankAxes 를 다시 부르면 계산 축 값 맵(타점 수천 개)이 두 벌 만들어진다.
+     */
+    axes: RankAxesView;
     /** 이 항목을 앞선 어느 단계가 막았나(근접 탈락 목록의 "막힌 단계"). 단계 이름으로 돌려준다. */
     blockedLabels: (item: FunnelItem, stageIndex: number) => string[];
 }
@@ -126,10 +131,7 @@ export function useFilterFunnel(): FunnelView {
                 if (axisScopes.get(axisId) !== "day") return undefined;
                 return dayAxisValueOf(values, i, timesByChart.get(chartKey(i)) ?? []);
             },
-            boundValue: (axisId, b) =>
-                b.kind === "value"
-                    ? (Number.isFinite(b.value) ? b.value : undefined)
-                    : ax.computedValues.get(axisId)?.get(b.point),
+            boundValue: (axisId, b) => resolveBound(b, ax.computedValues.get(axisId)),
         }),
         [gv, placements, ax.computedValues, axisScopes, timesByChart],
     );
@@ -211,6 +213,7 @@ export function useFilterFunnel(): FunnelView {
         result,
         deadStageIds,
         labelLook,
+        axes: ax,
         blockedLabels,
     };
 }

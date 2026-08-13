@@ -4,6 +4,7 @@
 // 그래서 이름을 못 찾은 자리는 `(지워짐)` 으로 **눈에 띄게** 남긴다 — 판정에서 그게 미배치를 만들고 있으니
 // 숫자와 화면이 같은 이야기를 해야 한다.
 import { NO_TAGS, type GroupExpr } from "../rank/groupFilter.js";
+import { shortDate } from "./datetime.js";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 
 export interface LabelLookup {
@@ -13,9 +14,6 @@ export interface LabelLookup {
 
 const GONE = "(지워짐)";
 const NONE_LABEL = "그룹 없음";
-
-/** yy.mm.dd — 좁은 자리라 연도 두 자리(필터 바와 같은 표기). */
-const shortDate = (iso: string): string => (iso ? iso.slice(2).replace(/-/g, ".") : "");
 
 /** DNF 를 한 줄로: 절끼리 `|`, 절 안은 `&`, 부정은 `!`. */
 export function groupExprLabel(expr: GroupExpr, look: LabelLookup): string {

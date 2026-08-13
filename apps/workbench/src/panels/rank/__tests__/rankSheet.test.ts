@@ -9,17 +9,15 @@ const pp = (code: string, orderKey: number, slotId: string, time = "10:00:00"): 
 const rpitem = (code: string, time = "10:00:00", extra: Partial<ReviewPointListItem> = {}): ReviewPointListItem => ({ stockCode: code, date: "2026-07-01", time, name: code + "명", ...extra });
 
 describe("buildSheetRows", () => {
-    it("셀·커버리지(배치된 축 수)·미배치 null.", () => {
+    it("축별 셀을 채우고, 그 축에 없는 타점은 null.", () => {
         const idxA = buildAxisIndex([pp("A", 10, "s1"), pp("B", 20, "s2")]);
         const idxB = buildAxisIndex([pp("A", 5, "t1")]); // B축엔 A만
         const indexByAxis = new Map<string, AxisIndex>([["axA", idxA], ["axB", idxB]]);
         const rows = buildSheetRows([rpitem("A"), rpitem("B")], ["axA", "axB"], indexByAxis);
         const rowA = rows.find((r) => r.stockCode === "A")!;
         const rowB = rows.find((r) => r.stockCode === "B")!;
-        expect(rowA.coverage).toBe(2);
         expect(rowA.cells.axA?.rank).toBe(2);
         expect(rowA.cells.axB?.rank).toBe(1);
-        expect(rowB.coverage).toBe(1);
         expect(rowB.cells.axB).toBeNull();
     });
 });

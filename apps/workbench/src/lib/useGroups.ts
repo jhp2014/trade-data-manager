@@ -16,6 +16,7 @@ import type { Group, GroupItemRef, GroupMembership } from "../api/groups.js";
 import { attachGroup, detachGroup } from "../api/groups.js";
 import { groupsQuery, groupMembershipsQuery } from "../api/queries.js";
 import { applyGroupToggle, buildGroupIndex, buildChartGroupIndex, countByGroup } from "./groupIndex.js";
+import { ancestorsOf, groupPathLabel } from "./groupTree.js";
 import { pointKey, chartKey, type PointRef } from "./pointKey.js";
 
 const TOGGLE_KEY = ["group-toggle"];
@@ -31,6 +32,13 @@ export interface GroupsView {
     groups: Group[];
     /** id → 그룹(프리셋 슬롯이 id 를 들고 있어 이름을 되찾을 때). 없는 id = 지워진 그룹. */
     groupById: Map<string, Group>;
+    /**
+     * 이 그룹의 조상들(먼 조상이 앞) — 이름은 부모 밑에서만 뜻이 선다(같은 이름이 두 부모 밑에 있을 수 있다).
+     * 규칙(끊긴 사슬·순환·깊이)은 groupTree(순수·테스트됨)에.
+     */
+    ancestorsOf: (groupId: string) => Group[];
+    /** 조상+자신을 한 줄로 — 좁은 자리의 툴팁은 이걸 쓴다. */
+    pathLabel: (groupId: string, fallback: string) => string;
     /** 이 타점에 적용되는 그룹(이름순) — **직접 ∪ 하루 상속**. */
     groupsOf: (point: PointRef) => Group[];
     /** 적용 그룹 id만(필터 평가용) — **직접 ∪ 하루 상속**. 없으면 빈 배열. */
@@ -96,6 +104,8 @@ export function useGroups(): GroupsView {
         return {
             groups,
             groupById,
+            ancestorsOf: (id) => ancestorsOf(id, groupById),
+            pathLabel: (id, fallback) => groupPathLabel(id, groupById, fallback),
             groupsOf: (p) => idsOf(p).map((id) => groupById.get(id)).filter((g): g is Group => g != null),
             groupIdsOf: idsOf,
             has: (p, groupId) => directOf(p).includes(groupId),

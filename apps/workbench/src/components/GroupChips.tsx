@@ -1,5 +1,5 @@
 // 그룹 표기 — 성격이 다른 두 자리를 **다른 모양**으로 나눈다. 하나로 쓰다가 밀집한 표에서 겉돌았다.
-//   · GroupChips(읽기)  — 시트 셀·차트 카드·타점 정보·차트 헤더. 테두리·배경 없이 **색 텍스트 + · 구분**.
+//   · GroupChips(읽기)  — 차트 카드·타점 정보·차트 헤더. 테두리·배경 없이 **색 텍스트 + · 구분**.
 //     이 앱의 밀집 표기 문법 그대로다(PlacementBadge = 값은 색, 구분자는 tertiary / 시트 Cell = 얇은 선+틱).
 //   · GroupToken(편집)  — 그룹창의 붙은 그룹·필터 식 칩. 잡고 클릭·드래그하니 형태가 필요하다.
 //     단 알약이 아니라 **각진 토큰**(radius 3, 테두리만) — miniBtn 계열과 같은 결.
@@ -14,16 +14,23 @@ import type { Group } from "../api/groups.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { groupColor, groupValueOf } from "../styles/palette.js";
 
-export function GroupChips({ groups, scroll = false, short = false, empty, style }: {
+export function GroupChips({ groups, scroll = false, short = false, empty, pathOf, style }: {
     groups: Group[];
     scroll?: boolean;
     short?: boolean;
     /** 그룹이 없을 때 표시할 문구. 생략하면 빈 줄. */
     empty?: string;
+    /**
+     * 조상 경로(`대형주 › 반도체 › 소부장`) — **툴팁에만** 쓴다. 그룹 이름은 부모 밑에서만 뜻이 서는데
+     * 여기는 경로를 그릴 폭이 없는 자리들이라(밀집 표기), 화면은 이름만 두고 확인은 툴팁으로 준다.
+     * 폭이 있는 자리(필터 보드·팔레트)는 GroupPathLabel 로 경로를 직접 그린다.
+     */
+    pathOf?: (groupId: string) => string;
     style?: CSSProperties;
 }): JSX.Element {
     const ref = useHorizontalWheel<HTMLDivElement>(scroll);
-    const full = groups.map((t) => t.name).join(" · ");
+    const labelOf = (t: Group): string => (pathOf ? pathOf(t.id) : t.name);
+    const full = groups.map(labelOf).join(" · ");
     return (
         <div
             ref={ref}
@@ -35,7 +42,7 @@ export function GroupChips({ groups, scroll = false, short = false, empty, style
             {groups.map((t, i) => (
                 <span key={t.id} style={{ display: "contents" }}>
                     {i > 0 && <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>·</span>}
-                    <span style={{ color: groupColor(t.name), fontWeight: 600, flexShrink: 0 }}>{short ? groupValueOf(t.name) : t.name}</span>
+                    <span title={labelOf(t)} style={{ color: groupColor(t.name), fontWeight: 600, flexShrink: 0 }}>{short ? groupValueOf(t.name) : t.name}</span>
                 </span>
             ))}
         </div>

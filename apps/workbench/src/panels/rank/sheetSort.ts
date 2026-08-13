@@ -12,10 +12,9 @@
 // (2차가 없으면 1차 원값만 남아 컷 없는 정렬과 완전히 같아진다 → 드래그 배치도 그대로 살아 있다).
 import type { SheetRow } from "./rankSheet.js";
 import type { Col } from "./sheetColumns.js";
-import type { Excursion } from "./pathStats.js";
 
 export type SortKey =
-    | { kind: "name" | "date" | "time" | "coverage" | "groups" | "outcome" | "mfe" | "maePre" | "maePost" }
+    | { kind: "name" | "date" | "time" | "outcome" }
     | { kind: "axis"; axisId: string };
 export type SortKind = SortKey["kind"];
 export interface SortStep { key: SortKey; dir: 1 | -1 }
@@ -55,7 +54,7 @@ export function dropSort(chain: SortChain, k: SortKey): SortChain {
 }
 
 // ── 영속 복원 ───────────────────────────────────────────────────────────────
-const SORT_KINDS: readonly string[] = ["name", "date", "time", "groups", "coverage", "mfe", "maePre", "maePost", "outcome", "axis"];
+const SORT_KINDS: readonly string[] = ["name", "date", "time", "outcome", "axis"];
 function parseStep(o: unknown): SortStep | null {
     if (!o || typeof o !== "object") return null;
     const s = o as { key?: { kind?: unknown; axisId?: unknown }; dir?: unknown };
@@ -76,11 +75,9 @@ export function parseSortChain(o: unknown): SortChain | null {
 }
 
 // ── 비교 ────────────────────────────────────────────────────────────────────
-/** 정렬이 행 밖에서 끌어와야 하는 값들(종목명·그룹·경로 통계) — 시트 패널이 채워 넘긴다. */
+/** 정렬이 행 밖에서 끌어와야 하는 값 — 지금은 종목명 하나뿐(이름은 마스터 조회라 행에 없다). */
 export interface SortCtx {
     nameOf: (code: string) => string;
-    groupLabel: (row: SheetRow) => string;
-    excursionOf: (row: SheetRow) => Excursion | undefined;
 }
 
 /** 한 키에서 이 행의 값. **null = 값 없음**(미배치·미산정·미기입) → 방향 무관 바닥. */
@@ -89,11 +86,8 @@ export function sortValueOf(k: SortKey, row: SheetRow, ctx: SortCtx): string | n
         case "name": return ctx.nameOf(row.stockCode);
         case "date": return row.date;
         case "time": return row.time;
-        case "coverage": return row.coverage; // 0 도 값이다(미배치 아님)
         case "outcome": return row.outcome || null;
-        case "groups": return ctx.groupLabel(row) || null;
         case "axis": return row.cells[k.axisId]?.rank ?? null;
-        default: return ctx.excursionOf(row)?.[k.kind] ?? null;
     }
 }
 
@@ -162,16 +156,15 @@ export function sortSheetRows(rows: SheetRow[], chain: SortChain, ctx: SortCtx, 
 
 // ── 그룹 ────────────────────────────────────────────────────────────────────
 /** 값이 몇 가지뿐이라 정렬만 해도 덩어리가 생기는 열 — 여기만 그룹 헤더가 저절로 붙는다. */
-const DISCRETE: ReadonlySet<SortKind> = new Set<SortKind>(["date", "outcome", "groups", "coverage"]);
+const DISCRETE: ReadonlySet<SortKind> = new Set<SortKind>(["date", "outcome"]);
 export const isDiscreteKey = (k: SortKey): boolean => DISCRETE.has(k.kind);
 
 /** 그린 순서 그대로의 한 덩어리. label=null 이면 헤더 없는 통짜(그룹 안 걸린 정렬). */
 export interface SheetGroup { id: string; label: string | null; rows: SheetRow[] }
 
 function discreteLabel(k: SortKey, v: string | number | null): string {
-    if (v == null) return k.kind === "groups" ? "그룹 없음" : k.kind === "outcome" ? "결과 없음" : "값 없음";
+    if (v == null) return k.kind === "outcome" ? "결과 없음" : "값 없음";
     if (k.kind === "date") return String(v).replace(/-/g, ".");
-    if (k.kind === "coverage") return `배치 ${v}`;
     return String(v);
 }
 /** 컷 그룹 라벨 — 그 덩어리가 차지한 순위 범위. 미배치 덩어리는 이름 그대로. */

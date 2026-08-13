@@ -62,7 +62,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
-    const { groupsOf } = useGroups();
+    const { groupsOf, pathLabel } = useGroups();
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이.
     const viewDate = pinMinute ? anchorDate : searchDate;
     const drifted = viewDate !== anchorDate;
@@ -117,7 +117,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     focusedPoint ? (
                         // 현재 타점의 그룹(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
                         // 옛 앵커 칩은 제거 — 앵커가 차트 소유가 되면서 선이 상시 그려지므로 별도 단서가 필요 없다.
-                        <GroupChips groups={groupsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} style={{ maxWidth: 180, flexShrink: 1 }} />
+                        <GroupChips groups={groupsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
                     ) : null
                 }
             >

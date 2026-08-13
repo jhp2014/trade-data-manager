@@ -47,6 +47,16 @@ export function or3(verdicts: Iterable<Verdict>): Verdict {
 const not3 = (v: Verdict): Verdict => (v === undefined ? undefined : !v);
 
 /**
+ * 값 구간 경계 → 수치. 타점 앵커면 그 타점의 값, 리터럴이면 그 수. **앵커가 사라졌으면 undefined**.
+ *
+ * 판정만의 일이 아니라 **레일도 같은 물음을 던진다**("이 경계를 화면 어디에 그리나"). 두 벌이면
+ * 앵커 소실을 한쪽은 모름으로, 다른 쪽은 0 으로 읽는 식으로 갈라진다 — 그래서 여기 한 곳에 둔다.
+ */
+export function resolveBound(b: AxisBound, values: Map<string, number> | undefined): number | undefined {
+    return b.kind === "value" ? (Number.isFinite(b.value) ? b.value : undefined) : values?.get(b.point);
+}
+
+/**
  * 그룹 DNF 를 3치로. 절 안은 AND, 절끼리는 OR, 리터럴마다 부정.
  * 죽은 그룹 참조는 **모름**이다 — 멤버십이 cascade 로 지워져 "소속 아님"이 사실이긴 하지만,
  * 그 조건 자체가 뜻을 잃었으므로 "안 맞았다"로 세면 근접 탈락 집합이 오염된다.

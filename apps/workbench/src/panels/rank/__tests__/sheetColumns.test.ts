@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { COL_META, colKey, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "../sheetColumns.js";
 
-const ax = (id: string): Col => ({ key: "axis", axisId: id, name: `축${id}` });
-const BASE: Col[] = [{ key: "name" }, { key: "date" }, { key: "time" }, { key: "groups" }, ax("1"), ax("2"), { key: "coverage" }];
+const ax = (id: string): Col => ({ key: "axis", axisId: id, name: `축${id}`, computed: false });
+/** 계산 축 — 값이 들어가야 해서 고정폭(분배에서 빠진다). */
+const cax = (id: string): Col => ({ key: "axis", axisId: id, name: `계산${id}`, computed: true });
+const BASE: Col[] = [{ key: "name" }, { key: "date" }, { key: "time" }, ax("1"), ax("2")];
 const AXIS_MIN = 56;
 
 const layout = (over: Partial<Parameters<typeof layoutColumns>[0]> = {}) =>
@@ -11,12 +13,12 @@ const layout = (over: Partial<Parameters<typeof layoutColumns>[0]> = {}) =>
 describe("layoutColumns — 순서", () => {
     it("숨긴 열은 빠지고, 종목은 숨겨도 남는다(붙박이)", () => {
         const l = layout({ hiddenCols: ["date", "name", "ax:2"] });
-        expect(l.displayCols.map(colKey)).toEqual(["name", "time", "groups", "ax:1", "coverage"]);
+        expect(l.displayCols.map(colKey)).toEqual(["name", "time", "ax:1"]);
     });
 
     it("고정 스택 순서 = frozenCols **배열 순서**(기본 열 순서가 아니라)", () => {
         const l = layout({ frozenCols: ["ax:1", "time"] });
-        expect(l.displayCols.map(colKey)).toEqual(["name", "ax:1", "time", "date", "groups", "ax:2", "coverage"]);
+        expect(l.displayCols.map(colKey)).toEqual(["name", "ax:1", "time", "date", "ax:2"]);
         expect(l.lastFrozenKey).toBe("time");
     });
 
@@ -29,7 +31,7 @@ describe("layoutColumns — 순서", () => {
 
     it("frozenCols 의 유령 키(숨겨졌거나 사라진 열)는 조용히 무시", () => {
         const l = layout({ frozenCols: ["ax:9", "time"] });
-        expect(l.displayCols.map(colKey)).toEqual(["name", "time", "date", "groups", "ax:1", "ax:2", "coverage"]);
+        expect(l.displayCols.map(colKey)).toEqual(["name", "time", "date", "ax:1", "ax:2"]);
     });
 });
 
@@ -38,7 +40,7 @@ describe("layoutColumns — 폭", () => {
         expect(layout({ containerW: 0 }).widthOf(ax("1"))).toBe(AXIS_MIN);
 
         const wide = layout({ containerW: 1000 });
-        const others = COL_META.name.width + COL_META.date.width + COL_META.time.width + COL_META.groups.width + COL_META.coverage.width;
+        const others = COL_META.name.width + COL_META.date.width + COL_META.time.width;
         expect(wide.widthOf(ax("1"))).toBe(Math.floor((1000 - others) / 2));
         expect(wide.widthOf(ax("1"))).toBe(wide.widthOf(ax("2")));
     });
@@ -46,7 +48,7 @@ describe("layoutColumns — 폭", () => {
     it("수동 폭을 준 열은 그 값 그대로 — 그 열은 분배에서 빠지고 나머지 축이 잔여를 갖는다", () => {
         const l = layout({ containerW: 1000, colWidths: { "ax:1": 200 } });
         expect(l.widthOf(ax("1"))).toBe(200);
-        const others = COL_META.name.width + COL_META.date.width + COL_META.time.width + COL_META.groups.width + COL_META.coverage.width;
+        const others = COL_META.name.width + COL_META.date.width + COL_META.time.width;
         expect(l.widthOf(ax("2"))).toBe(1000 - others - 200); // 남은 하나가 잔여 전부
     });
 
@@ -92,5 +94,26 @@ describe("pruneAxisKeys — 사라진 축의 유령 키 청소", () => {
         const obj = { "ax:1": 90 };
         expect(pruneAxisKeys(arr, ["1"])).toBe(arr);
         expect(pruneAxisKeys(obj, ["1"])).toBe(obj);
+    });
+});
+
+describe("계산 축 열 — 고정폭", () => {
+    it("분배에서 빠지고, 남는 폭은 판단 축들이 나눠 갖는다", () => {
+        const l = layoutColumns({
+            baseCols: [{ key: "name" }, cax("c"), ax("1"), ax("2")],
+            frozenCols: [], hiddenCols: [], colWidths: {}, containerW: 1000, axisMin: AXIS_MIN,
+        });
+        const computedW = l.widthOf(cax("c"));
+        expect(computedW).toBeGreaterThan(AXIS_MIN); // 값+순위가 들어갈 만큼
+        expect(l.widthOf(ax("1"))).toBe(Math.floor((1000 - COL_META.name.width - computedW) / 2));
+        expect(l.widthOf(ax("1"))).toBe(l.widthOf(ax("2")));
+    });
+
+    it("수동 폭은 계산 축에서도 이긴다", () => {
+        const l = layoutColumns({
+            baseCols: [{ key: "name" }, cax("c")],
+            frozenCols: [], hiddenCols: [], colWidths: { "ax:c": 140 }, containerW: 1000, axisMin: AXIS_MIN,
+        });
+        expect(l.widthOf(cax("c"))).toBe(140);
     });
 });

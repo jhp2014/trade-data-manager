@@ -10,10 +10,12 @@ const NAME_W = 96;
 const DATE_W = 66;
 const TIME_W = 46;
 const AXIS_W = 58;
-const COV_W = 44;
-const NUM_W = 50;
+/**
+ * 계산 축 열 — `+17.8% (14/76)` 이 **한 줄에** 들어가야 한다(값·순위·괄호·셀 패딩까지).
+ * 좁히면 값이 잘리는데, 값이 잘린 계산 축 열은 존재 이유가 없다. 수동 폭은 그대로 우선.
+ */
+const AXIS_VALUE_W = 112;
 const OUT_W = 88;
-const TAG_W = 80; // 기본은 2~3개만 보이는 폭 — 더 볼 일이 있으면 손으로 넓힌다(수동 폭)
 /** 수동 리사이즈 하한 — 더 좁아지면 헤더 손잡이조차 못 잡는다. */
 export const MIN_COL_W = 32;
 
@@ -21,16 +23,14 @@ export type Col =
     | { key: "name" }
     | { key: "date" }
     | { key: "time" }
-    | { key: "axis"; axisId: string; name: string }
-    | { key: "groups" }
-    | { key: "coverage" }
-    | { key: "mfe" | "maePre" | "maePost" | "outcome" };
+    /** computed = 계산 축(값을 아는 축). 폭·표기가 갈리는 유일한 자리라 열 기술자가 들고 있는다. */
+    | { key: "axis"; axisId: string; name: string; computed: boolean }
+    | { key: "outcome" };
 export type ColKind = Col["key"];
 
 // td 기본 스타일 3종 — COL_META 가 참조하므로 먼저 선언한다.
 const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
 const tdCell: CSSProperties = { padding: "5px 8px", textAlign: "center" };
-const tdNum: CSSProperties = { padding: "5px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
 // 열 종류별 고정 속성 한 테이블 — 폭·헤더 라벨·정렬(가로)·td 기본 스타일.
 // 예전엔 이 넷이 각각 삼항 체인이라 열을 하나 붙일 때마다 네 군데를 같이 고쳐야 했다(하나 빠뜨리면
@@ -46,16 +46,11 @@ export const COL_META: Record<ColKind, ColMeta> = {
     date: { width: DATE_W, label: "날짜", justify: "center", td: td },
     time: { width: TIME_W, label: "시간", justify: "center", td: td },
     axis: { width: AXIS_W, label: "", justify: "center", td: tdCell },
-    groups: { width: TAG_W, label: "그룹", justify: "center", td: tdCell },
-    coverage: { width: COV_W, label: "배치", justify: "center", td: tdCell },
-    mfe: { width: NUM_W, label: "MFE", justify: "flex-end", td: tdNum },
-    maePre: { width: NUM_W, label: "MAE전", justify: "flex-end", td: tdNum },
-    maePost: { width: NUM_W, label: "MAE후", justify: "flex-end", td: tdNum },
     outcome: { width: OUT_W, label: "결과", justify: "flex-start", td: td },
 };
 
 export const colKey = (c: Col): string => (c.key === "axis" ? `ax:${c.axisId}` : c.key);
-export const colWidth = (c: Col): number => COL_META[c.key].width;
+export const colWidth = (c: Col): number => (c.key === "axis" && c.computed ? AXIS_VALUE_W : COL_META[c.key].width);
 export const colLabel = (c: Col): string => (c.key === "axis" ? c.name : COL_META[c.key].label);
 
 export interface SheetLayout {
@@ -72,8 +67,10 @@ export interface SheetLayout {
 /**
  * 열 배치 — 숨김 제외 → 고정 스택(순서 = frozenCols 배열) → 비고정(기본 순서) → 폭 확정.
  *
- * 폭 규칙: **수동 폭을 준 열만 고정폭**. 안 준 축 열들이 남는 폭을 나눠 갖는다(최소 axisMin).
+ * 폭 규칙: **수동 폭을 준 열과 계산 축 열이 고정폭**. 나머지 축 열이 남는 폭을 나눠 갖는다(최소 axisMin).
  * 그래서 수동 폭을 전부 지우면(원위치) 기본 동작으로 정확히 복귀하고, 전부 지정하면 전부 고정폭이 된다.
+ * 계산 축이 고정인 이유: 셀에 값과 순위가 같이 들어가(`+12.3% (3/12)`) 분배 폭으로는 잘린다.
+ * 판단 축은 `3/12` 뿐이라 좁아도 읽힌다 — 남는 폭은 그쪽이 나눠 갖는 게 맞다.
  *
  * 종목 열은 언제나 고정 스택 맨 앞 붙박이라 frozenCols 에 없어도 고정으로 친다(사용자가 못 푼다).
  */
@@ -97,12 +94,12 @@ export function layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths, con
     const displayCols = [...frozen, ...visible.filter((c) => !frozenKeys.has(colKey(c)))];
 
     const manual = (c: Col): number | undefined => colWidths[colKey(c)];
-    const flex = displayCols.filter((c) => c.key === "axis" && manual(c) == null);
+    const flex = displayCols.filter((c) => c.key === "axis" && !c.computed && manual(c) == null);
     const flexKeys = new Set(flex.map(colKey));
     const fixed = displayCols.reduce((sum, c) => sum + (flexKeys.has(colKey(c)) ? 0 : (manual(c) ?? colWidth(c))), 0);
     const n = flex.length;
     const grown = n > 0 && containerW > fixed + n * axisMin ? Math.floor((containerW - fixed) / n) : axisMin;
-    const widthOf = (c: Col): number => manual(c) ?? (c.key === "axis" ? grown : colWidth(c));
+    const widthOf = (c: Col): number => manual(c) ?? (c.key === "axis" && !c.computed ? grown : colWidth(c));
 
     const leftOf = new Map<string, number>();
     let acc = 0;
