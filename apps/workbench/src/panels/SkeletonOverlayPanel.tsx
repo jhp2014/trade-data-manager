@@ -1,16 +1,18 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
-import { minuteOfDayOf, selectHotUniverse, amountBucketIndex } from "@trade-data-manager/market/domain";
-import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
+import { minuteOfDayOf, selectHotUniverse } from "@trade-data-manager/market/domain";
+import { AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
-    amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_MISSING, type AmountRun,
+    amountRuns, type AmountRun,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
 import { useCandles, type CandleFocus } from "./skeleton/useCandles.js";
+import { amountLevelOf, amountLookupOf, runWidth } from "./skeleton/amountLayer.js";
+import { AmountLabels, useAmountLabels, type AmountSource } from "./skeleton/AmountLabels.js";
 import { CandleLayer } from "./skeleton/CandleLayer.js";
 import { themeLines, hotCodesInRange } from "./skeleton/themeSkeleton.js";
 import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
@@ -74,11 +76,6 @@ const THEME_LABEL_CAP = 8;
 /** 거터 라벨의 세로 최소 간격(화면 px). */
 const THEME_LABEL_GAP = 14;
 /**
- * 금액 라벨의 자리 규칙(화면 px). `w` = 가로 격자 한 칸이자 **겹침 판정 밴드 폭**(라벨 폭과 같게 잡아
- * 한 밴드 안은 반드시 겹치고 밴드끼리는 안 겹치게), `gap` = 세로로 벌릴 때의 최소 간격.
- */
-const AMOUNT_LABEL_CELL = { w: 52, gap: 12 };
-/**
  * 무리(선택·그룹) 안에서 안 짚은 선의 진하기. 색은 그대로 두고 이만큼만 물러난다 —
  * 목록 행을 훑을 때 짚은 하나가 무리 안에서도 또렷이 서게(굵기 차이만으론 약했다, 사용자 지적).
  * 무리 밖(dim)보다는 진하다: 무리에 속한다는 사실 자체는 계속 보여야 한다.
@@ -88,18 +85,8 @@ const RECEDE_OPACITY = 0.3;
 // 표기·수 헬퍼는 전부 lib 의 것을 쓴다(`shortDate`=26.07.08 · `timeOfMinutes`=HH:MM · `fmtPct` · clamp·median).
 // 여기 있던 다섯 벌은 lib 의 것과 글자까지 같은 규칙이었다 — 연도 두 자리도, 반올림 순서도.
 
-/** 거래대금 구간 인덱스 → 굵기 단계. 구간 아래(-1)는 0단계. */
-const amountLevelOf = (won: number): number => {
-    const b = amountBucketIndex(won);
-    return b < 0 ? 0 : AMOUNT_LEVEL_OF_BUCKET[b];
-};
-
-/**
- * 런의 획 굵기 — 단계 × 선의 배수. 재료 없음(분봉 결손)은 **가장 가늘게**: 조용한 것과 같은 굵기로
- * 그리면 "거래가 없었다"와 "모른다"가 한 모양이 된다.
- */
-const runWidth = (level: number, scale: number): number =>
-    (level === LEVEL_MISSING ? AMOUNT_LEVEL_WIDTH[0] * 0.6 : AMOUNT_LEVEL_WIDTH[level] ?? AMOUNT_LEVEL_WIDTH[0]) * scale;
+// 거래대금 척도(구간→굵기 단계·라벨 격자)와 조회기는 skeleton/amountLayer 로 옮겼다 —
+// 셋(골격선 굵기·테마선 굵기·판독 칩)이 나눠 쓰는 **공용 재료**라 층 하나에 매이지 않는다.
 
 /** 화면 좌표 폴리라인 문자열 — 배율에 맞춰 점을 솎는다(step=1이면 원본 그대로). */
 const pathOf = (points: readonly { x: number; y: number }[], scales: Scales, step = 1): string =>
@@ -367,35 +354,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const amountTarget = amountWidthOn || amountLabelsOn ? singleTarget : null;
     // 한 벌만 받는다 — 거래대금과 테마가 같은 날짜의 같은 응답을 쓴다(LRU 도 한 자리만 쓴다).
     const snapQ = useDaySnapshot(showAmount || showAmountLabels || showTheme ? singleTarget?.date ?? null : null);
-    /** 종목코드 → 분당 거래대금 조회기. 골격 선과 테마 선이 같은 자를 쓴다. */
-    const amountLookup = useMemo(() => {
-        const cache = new Map<string, ((m: number) => number | null) | null>();
-        return (code: string): ((m: number) => number | null) | null => {
-            const hit = cache.get(code);
-            if (hit !== undefined) return hit;
-            const st = snapQ.data?.stocks.find((x) => x.code === code);
-            // 그날 유니버스 밖(거래대금·등락률 조건 미달) — 없는 값을 0으로 지어내지 않는다.
-            const fn = st ? minuteAmountOf(minuteIndexOf(st.times, minuteOfDayOf), st.cumAmount) : null;
-            cache.set(code, fn);
-            return fn;
-        };
-    }, [snapQ.data]);
-    /** 종목코드 → **누적** 거래대금 조회기. 판독 칩을 뽑는 기준(그 시각까지 돈이 얼마나 몰렸나). */
-    const cumLookup = useMemo(() => {
-        const cache = new Map<string, ((m: number) => number | null) | null>();
-        return (code: string): ((m: number) => number | null) | null => {
-            const hit = cache.get(code);
-            if (hit !== undefined) return hit;
-            const st = snapQ.data?.stocks.find((x) => x.code === code);
-            const idx = st ? minuteIndexOf(st.times, minuteOfDayOf) : null;
-            const fn = st && idx ? (m: number): number | null => {
-                const i = idx.get(m);
-                return i == null ? null : st.cumAmount[i];
-            } : null;
-            cache.set(code, fn);
-            return fn;
-        };
-    }, [snapQ.data]);
+    // 두 조회기는 **셋이 나눠 쓴다**(골격선 굵기·테마선 굵기·판독 칩) — 그래서 층이 아니라 공용 재료다.
+    const lookup = useMemo(() => amountLookupOf(snapQ.data), [snapQ.data]);
+    const amountLookup = lookup.amountAt;
+    const cumLookup = lookup.cumAt;
+
     const amounts = useMemo(() => {
         if (!amountTarget) return null;
         const at = amountLookup(amountTarget.stockCode);
@@ -630,31 +593,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         );
     }, [scales, readoutSources, openReadingX, box.top, box.height]);
 
-    /**
-     * 금액 라벨 — **전 선(앵커 + 테마)이 하나의 격자에서 겨룬다**(사용자 확정). 한 칸에 제일 큰 하나만
-     * 남으므로 화면엔 "지금 보이는 범위에서 제일 크게 터진 사건들"이 남고, 확대하면 작은 것들이
-     * 하나씩 드러난다. 축소하면 결국 0이 된다 — 그 상태의 "어디가 터졌나"는 굵기가 답한다.
-     * 후보는 구간에 든 런만(≥ 최하 경계) — 조용한 분까지 넣으면 격자가 뜻 없는 숫자로 찬다.
-     */
-    const amountLabels = useMemo(() => {
-        if (!scales || !amountLabelsOn) return [];
-        type Cand = { group: string; seg: number; x: number; y: number; value: number; code: string; own: boolean };
-        const cands: Cand[] = [];
-        const collect = (runs: readonly AmountRun[], code: string, own: boolean, baseT: number): void => {
-            for (const r of runs) {
-                if (r.level <= 0) continue;
-                // 라벨은 **터진 그 분**에 붙인다(런 중점이 아니라) — 중점은 사건이 난 자리가 아니다.
-                cands.push({
-                    group: code, seg: segmentIndexOf(anchorPivotMinutes, r.maxAt.x + baseT),
-                    x: scales.x(r.maxAt.x), y: scales.y(r.maxAt.y), value: r.maxAmount, code, own,
-                });
-            }
-        };
-        if (amounts && amountTarget) collect(amounts.runs, amountTarget.stockCode, true, amountTarget.baseT);
-        if (themeRuns && themeOverlay) for (const [code, runs] of themeRuns) collect(runs, code, false, themeOverlay.t0);
-        // 솎기는 종목 안에서만 → 남은 것들이 세로로 겹치면 **탈락이 아니라 이동**(지시선이 원 자리를 가리킨다).
-        return spreadByY(pickAmountLabels(cands, AMOUNT_LABEL_CELL.w), AMOUNT_LABEL_CELL.w, AMOUNT_LABEL_CELL.gap);
-    }, [scales, amountLabelsOn, amounts, amountTarget, themeRuns, themeOverlay, anchorPivotMinutes]);
+    /** 라벨 후보를 내는 선들 — 앵커 골격 + 테마 전부. 모양이 같아 한 격자에서 겨룬다(AmountLabels). */
+    const amountSources = useMemo<AmountSource[]>(() => {
+        const out: AmountSource[] = [];
+        if (amounts && amountTarget) out.push({ code: amountTarget.stockCode, runs: amounts.runs, baseT: amountTarget.baseT, own: true });
+        if (themeRuns && themeOverlay) for (const [code, runs] of themeRuns) out.push({ code, runs, baseT: themeOverlay.t0, own: false });
+        return out;
+    }, [amounts, amountTarget, themeRuns, themeOverlay]);
+    const amountLabels = useAmountLabels(amountSources, scales, anchorPivotMinutes, amountLabelsOn);
 
     /**
      * 테마 이름 라벨 — **왼쪽 거터에 세로로 벌려** 놓는다(사용자 확정 B안). 선 시작점에 그대로 붙이면
@@ -1250,24 +1196,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     점 색이 어느 선 것인지 말한다(좌측 이름 라벨의 점과 같은 색). */}
                                 {/* 스왑 중(다른 골격선을 짚는 중)엔 거래대금 숫자도 접는다 — 테마·캔들을 접어 놓고
                                     그 숫자들만 남으면 어느 선의 것인지 가리킬 대상이 없어 화면에 뜬 잡음이 된다. */}
-                                {!themeSwapped && amountLabels.map((a) => {
-                                    const c = a.own ? ACTIVE : themeColorOf(a.code);
-                                    const moved = Math.abs(a.labelY - a.y) > 1.5;
-                                    return (
-                                        <g key={`al-${a.code}-${a.x}-${a.y}`} style={{ pointerEvents: "none" }}
-                                            opacity={hoveredThemeSet && !a.own && !hoveredThemeSet.has(a.code) ? 0.25 : 1}>
-                                            {/* 자리를 옮긴 라벨은 **지시선**이 원래 자리를 가리킨다 — 안 그으면 그 숫자가
-                                                어느 선 것인지 알 수 없다(점 색만으론 비슷한 색끼리 헷갈린다). */}
-                                            {moved && <line x1={a.x} y1={a.y} x2={a.x + 4} y2={a.labelY} stroke={c} strokeWidth={0.8} strokeDasharray="2 2" opacity={0.7} />}
-                                            <circle cx={a.x} cy={a.y} r={2.2} fill={c} />
-                                            <text x={a.x + 6} y={a.labelY + 3} textAnchor="start"
-                                                stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke"
-                                                style={{ fontSize: 9.5, fill: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-                                                {fmtEok(a.value)}
-                                            </text>
-                                        </g>
-                                    );
-                                })}
+                                {/* 거래대금 숫자 — 스왑 중(다른 골격선을 짚는 중)엔 접는다: 테마·캔들을 접어 놓고
+                                    그 숫자들만 남으면 어느 선의 것인지 가리킬 대상이 없어 화면에 뜬 잡음이 된다. */}
+                                {!themeSwapped && (
+                                    <AmountLabels labels={amountLabels} colorOf={themeColorOf} dimmedExcept={hoveredThemeSet} />
+                                )}
 
                                 {/* 얹는 선(기준선·D선) — 같은 pct 환산. **주인이 스타일을 정한다**(사용자 확정):
                                     색은 **그 골격선과 똑같이**(visualOf) — 그룹 목록을 훑을 때 골격선은 무리 색인데
