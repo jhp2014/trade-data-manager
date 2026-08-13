@@ -51,6 +51,13 @@ export function and3(verdicts: Iterable<Verdict>): Verdict {
     return pending ? undefined : true;
 }
 
+/**
+ * 3치 AND 한 걸음 — `and3` 를 **접어 나갈 때**의 단위(둘의 AND). 규칙은 같다: 탈락이 흡수, 미배치가 점착.
+ * `and3` 를 그대로 두는 이유는 탈락에서 즉시 끊는 짧은 회로가 목록 판정엔 그대로 쓸모 있어서다.
+ */
+export const andStep = (a: Verdict, b: Verdict): Verdict =>
+    a === false || b === false ? false : a === undefined || b === undefined ? undefined : true;
+
 /** 결과 해상도 — 하나라도 타점 알갱이가 걸리면 타점, 아니면 하루. 아무 단계도 없으면 하루. */
 export function finestGrain(grains: Iterable<Grain>): Grain {
     for (const g of grains) if (g === "point") return "point";
@@ -124,11 +131,13 @@ const emptyCells = (): Record<FunnelCell, FunnelItem[]> =>
 /**
  * 정산 본체. 단계마다 유니버스 전체를 돌며 칸을 매기고, 마지막에 전 단계 AND 로 생존자를 낸다.
  * 판정은 항목×단계로 한 번씩만 부른다(verdictOf 가 비쌀 수 있다).
+ *
+ * 상류는 **접어 나간다.** 예전엔 단계마다 앞선 판정을 다시 잘라 AND 했는데(`and3(row.slice(0, s))`)
+ * 그게 항목×단계²에 더해 그 잘라낸 배열까지 매번 새로 만드는 일이었다 — 유니버스가 수천이면
+ * 그 자체가 이 함수의 비용이다. 접기는 상류의 정의(앞선 단계들만)를 그대로 유지한다:
+ * 쓰기 전엔 아직 이번 단계를 안 접었으므로 언제나 "앞선 것들"만 들어 있다.
  */
 export function tallyFunnel(items: readonly FunnelItem[], stages: readonly FunnelStage[]): FunnelResult {
-    // 항목별 전 단계 판정을 먼저 한 벌 — 상류 AND 가 앞선 단계들을 매번 다시 묻지 않게.
-    const verdicts: Verdict[][] = items.map((it) => stages.map((s) => s.verdictOf(it)));
-
     const tallies: StageTally[] = stages.map((s) => ({
         stageId: s.id,
         cells: emptyCells(),
@@ -137,19 +146,19 @@ export function tallyFunnel(items: readonly FunnelItem[], stages: readonly Funne
     }));
 
     const survivors: FunnelItem[] = [];
-    for (let i = 0; i < items.length; i++) {
-        const row = verdicts[i]!;
-        const item = items[i]!;
+    for (const item of items) {
+        let upstream: Verdict = true; // 앞이 없으면 막힌 적도 없다(공허참 — and3([]) 와 같은 값)
         for (let s = 0; s < stages.length; s++) {
-            const own = row[s];
-            const upstream = and3(row.slice(0, s)); // 상류 = 앞선 단계들만(순서가 서술을 만든다)
+            const own = stages[s]!.verdictOf(item);
             const cell = cellOf(own, upstream);
             const t = tallies[s]!;
             t.cells[cell].push(item);
             t.counts[cell]++;
             if (own === false && upstream === true) t.newlyKilled++;
+            upstream = andStep(upstream, own); // 이번 단계는 **쓰고 나서** 접는다
         }
-        if (and3(row) === true) survivors.push(item);
+        // 다 접은 upstream = 전 단계 AND — 생존 판정에 한 바퀴 더 돌 필요가 없다(순서와 무관한 값).
+        if (upstream === true) survivors.push(item);
     }
     return { universe: items.length, stages: tallies, survivors };
 }

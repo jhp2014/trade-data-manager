@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-    and3, blockedBy, cellOf, expandUniverse, finestGrain, funnelKey, tallyFunnel,
+    and3, andStep, blockedBy, cellOf, expandUniverse, finestGrain, funnelKey, tallyFunnel,
     type FunnelItem, type FunnelStage, type Verdict,
 } from "../funnel.js";
 
@@ -31,6 +31,21 @@ describe("and3 — 3치 AND(미배치는 통과가 아니다)", () => {
 
     it("빈 목록은 통과(공허참) — 첫 단계엔 상류가 없으니 막힌 적도 없다", () => {
         expect(and3([])).toBe(true);
+    });
+});
+
+describe("andStep — 접기 단위가 and3 와 같은 값을 낸다", () => {
+    const ALL: Verdict[] = [true, false, undefined];
+
+    it("둘의 AND 가 and3 와 일치한다(9가지 전부)", () => {
+        for (const a of ALL) for (const b of ALL) expect(andStep(a, b)).toBe(and3([a, b]));
+    });
+
+    it("빈 값에서 접어 나가도 and3 와 일치한다(3단까지 27가지)", () => {
+        for (const a of ALL) for (const b of ALL) for (const c of ALL) {
+            const folded = [a, b, c].reduce<Verdict>(andStep, true);
+            expect(folded).toBe(and3([a, b, c]));
+        }
     });
 });
 
@@ -132,6 +147,46 @@ describe("tallyFunnel — 단계별 독립 평가", () => {
         const rev = tallyFunnel(items, [s2, s1]);
         // 이제 s1 이 2차 — B 는 s1 통과인데 상류(s2)에서 죽어 근접 탈락이 된다
         expect(rev.stages[1].cells.nearMiss).toEqual([b]);
+    });
+
+    it("판정은 항목×단계로 한 번씩만 부른다 — verdictOf 가 비쌀 수 있다", () => {
+        let calls = 0;
+        const counted = (id: string): FunnelStage => ({ id, verdictOf: () => { calls++; return true; } });
+        tallyFunnel(items, [counted("x"), counted("y"), counted("z")]);
+        expect(calls).toBe(items.length * 3);
+    });
+});
+
+// 2단짜리 표만으로는 상류 접기가 앞선 **전부**를 보는지 알 수 없다(1차가 곧 상류라서).
+// 3단 이상에서 미배치가 끼었을 때 그게 끝까지 점착하는지가 접기의 진짜 계약이다.
+describe("tallyFunnel — 상류는 앞선 단계 전부(3단 이상)", () => {
+    const a = day("A", "2025-07-01");
+    const k = "A|2025-07-01|";
+
+    it("1차 미배치는 3차까지 상류 보류로 남는다 — 2차가 통과여도 지워지지 않는다", () => {
+        const s1 = stageOf("s1", {});                  // 미배치
+        const s2 = stageOf("s2", { [k]: true });
+        const s3 = stageOf("s3", { [k]: true });
+        const r = tallyFunnel([a], [s1, s2, s3]);
+        expect(r.stages[1].cells.upstreamPending).toEqual([a]);
+        expect(r.stages[2].cells.upstreamPending).toEqual([a]);
+        expect(r.survivors).toEqual([]); // 미배치는 생존에 못 든다
+    });
+
+    it("1차 탈락은 뒤에 미배치가 와도 근접 탈락으로 남는다 — 탈락이 흡수한다", () => {
+        const s1 = stageOf("s1", { [k]: false });
+        const s2 = stageOf("s2", {});                  // 미배치
+        const s3 = stageOf("s3", { [k]: true });
+        const r = tallyFunnel([a], [s1, s2, s3]);
+        expect(r.stages[2].cells.nearMiss).toEqual([a]);
+    });
+
+    it("3차의 새로 죽임은 1·2차를 다 통과했을 때만 — 상류가 하나라도 아니면 제 공이 아니다", () => {
+        const pass = stageOf("p", { [k]: true });
+        const kill = stageOf("k", { [k]: false });
+        expect(tallyFunnel([a], [pass, pass, kill]).stages[2].newlyKilled).toBe(1);
+        expect(tallyFunnel([a], [pass, kill, kill]).stages[2].newlyKilled).toBe(0);
+        expect(tallyFunnel([a], [stageOf("u", {}), pass, kill]).stages[2].newlyKilled).toBe(0);
     });
 });
 
