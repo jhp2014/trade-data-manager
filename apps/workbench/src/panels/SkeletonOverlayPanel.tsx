@@ -1024,7 +1024,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     {population > lines.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
                     {/* 결손은 필터와 별도 표기 — "N/M 차이 = 필터"라는 읽기가 거짓이 되지 않게. */}
                     {missingPrevClose > 0 && (
-                        <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — %p 공간의 분모가 없어 그릴 수 없는 차트(필터로 빠진 게 아님)"> · 결손 {missingPrevClose}</span>
+                        <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — %p 공간의 분모가 없어 그릴 수 없는 타점(필터로 빠진 게 아님)"> · 결손 {missingPrevClose}</span>
                     )}
                 </span>
                 {/* 차트 선택 손잡이는 차트 단위 뷰에서만 — 타점 단위 뷰의 문법은 아래 타점 버튼이다. */}

@@ -23,7 +23,11 @@ export interface OverlayData {
     lines: OverlayLine[];
     /** 필터 전 모집단 수 — 헤더의 "N개 / M" 분모. */
     population: number;
-    /** 분봉에서 전일 종가(%p 분모) 미수집으로 **못 그린** 차트 수 — 필터로 빠진 것과 구분해 보여야 한다. */
+    /**
+     * 분봉에서 전일 종가(%p 분모) 미수집으로 **못 그린 타점 수** — 필터로 빠진 것과 구분해 보여야 한다.
+     * ⚠ 단위는 **타점**이다(차트가 아니라). 화면이 이걸 `population`·`lines.length` 와 나란히 세워
+     * "M − N = 필터 + 결손"으로 읽히게 하는데, 셋 중 하나만 차트를 세면 그 산수가 조용히 깨진다.
+     */
     missingPrevClose: number;
     levelsByChart: Map<string, SkeletonWireLevel[]>;
     /** 차트키 → 그 차트의 저장 타점들(시간 오름차순). 필터와 무관한 전체(선은 사실을 그린다). */
@@ -92,6 +96,9 @@ export function useOverlayData(
     // 타점 단위 선(분봉) — 골격 하나를 타점마다 %p 공간으로 재정규화. 필터는 타점 알갱이(matchedPks)로 직접.
     // 결손(전일 종가 미수집 → %p 분모 없음)은 **세어서 따로 낸다** — 조용히 빼면 "N개 / M"의 차이가
     // 전부 필터 탓으로 보인다(결손은 수집으로 고칠 일이지 필터를 의심할 일이 아니다).
+    //
+    // ⚠ 세는 단위는 **타점**이다. 이 뷰의 선도 모집단도 타점이라 차트를 세면 그 표기만 단위가 달라져
+    // "M − N = 필터 + 결손"이 안 맞는다(차트 3개가 빠졌는데 타점은 10개 사라지는 식).
     const [pointLines, missingPrevClose] = useMemo<[OverlayLine[], number]>(() => {
         const feed = feedQ.data;
         if (!feed || isDaily) return [[], 0];
@@ -104,7 +111,7 @@ export function useOverlayData(
                 .map((rp) => ({ pk: pointKey(rp), time: rp.time }))
                 .filter((p) => !matchedPks || matchedPks.has(p.pk));
             if (pts.length === 0) continue;
-            if (e.prevClose == null || e.prevClose <= 0) { missing++; continue; }
+            if (e.prevClose == null || e.prevClose <= 0) { missing += pts.length; continue; }
             out.push(...pointSkeletons(e.pivots, e.prevClose, pts, { key, stockCode: e.stockCode, date: e.date }));
         }
         return [out, missing];
