@@ -4,12 +4,12 @@ import type { Kiwoom } from "@trade-data-manager/kiwoom";
 import { createKiwoomWs, createFileFrameLogger } from "@trade-data-manager/kiwoom/ws";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { LiveEngine, type AlertsHook } from "./engine.js";
+import { LiveEngine, type AlertsHook, type TapeSink } from "./engine.js";
 import { SheetMembership } from "./membership.js";
 import { KiwoomDailyContext } from "./dailyContext.js";
 
 // kiwoom 은 모듈이 만들어 주입(차트 서비스와 공유). ws 는 이 엔진 전용이라 여기서 생성.
-export function createLiveEngine(kiwoom: Kiwoom, conditionName: string, pollMs?: number, alerts?: AlertsHook): LiveEngine {
+export function createLiveEngine(kiwoom: Kiwoom, conditionName: string, pollMs?: number, alerts?: AlertsHook, tape?: TapeSink): LiveEngine {
     // LIVE_WS_FRAME_LOG=<path.jsonl> 이면 전 프레임 기록 — 조건검색 REAL 푸시 포맷 실측/디버깅용(평시 off).
     const frameLog = process.env.LIVE_WS_FRAME_LOG?.trim();
     // autoRetryFirstConnect: 상주 데몬이라 첫 연결 실패(장외·무효 토큰)에서도 자력 복구해야 한다.
@@ -21,5 +21,5 @@ export function createLiveEngine(kiwoom: Kiwoom, conditionName: string, pollMs?:
     const membership = new SheetMembership(new SheetThemeMembershipAdapter(createSheetsClient(), DEFAULT_THEME_SHEET));
     // 일봉 컨텍스트(수정 트레일링 KRX/UN 두벌 + 원주가 전일종가) — kiwoom 일봉 온디맨드(hot 종목만·캐시·self-heal). DB 무의존.
     const dailyCtx = new KiwoomDailyContext(kiwoom);
-    return new LiveEngine(kiwoom.rest, ws, membership, dailyCtx, { conditionName, pollMs }, alerts);
+    return new LiveEngine(kiwoom.rest, ws, membership, dailyCtx, { conditionName, pollMs }, alerts, tape);
 }

@@ -18,3 +18,5 @@ export const ALERT_NOTIFIER = Symbol("ALERT_NOTIFIER");
 export const NOTIFY_QUEUE = Symbol("NOTIFY_QUEUE");
 // 헬스 모니터(틱·WS·전송로 감시 + 하트비트·데드맨 핑 게이트).
 export const HEALTH = Symbol("HEALTH");
+// 장중 테마 테이프(분당 시계열 + 틱 비트맵 + 분봉 백필) — 엔진 틱에 결합, /tape 가 서빙.
+export const LIVE_TAPE = Symbol("LIVE_TAPE");

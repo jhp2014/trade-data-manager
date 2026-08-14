@@ -41,6 +41,14 @@ export interface AlertsHook {
     ): void;
 }
 
+/**
+ * 테이프 결합점 — 틱마다 이번 틱 시세를 접어 넣는 한 지점. 구현 = tape/LiveTape(implements 로 선언,
+ * AlertsHook 과 같은 이유 — 시그니처 어긋남을 컴파일이 잡는다). 내부에서 비트맵 마킹·백필 예약까지 한다.
+ */
+export interface TapeSink {
+    onTick(quotes: readonly Quote[], now: number, today: string): void;
+}
+
 export class LiveEngine extends EventEmitter {
     readonly store = new EngineStore();
     private scanner: RankingScanner | null = null;
@@ -59,6 +67,7 @@ export class LiveEngine extends EventEmitter {
         private readonly dailyCtx: DailyContextSource,
         opts: LiveEngineOptions,
         private readonly alerts?: AlertsHook, // 없으면 watchlist·알람 없이 스캔만(테스트·부분 조립 허용)
+        private readonly tape?: TapeSink, // 없으면 테이프 없이 동작(테스트·부분 조립 허용)
     ) {
         super();
         this.conditionName = opts.conditionName;
@@ -129,6 +138,21 @@ export class LiveEngine extends EventEmitter {
         await this.membership.reload();
     }
 
+    /** 종목→테마 룩업(멤버십은 엔진 소유) — 테이프 컨트롤러의 테마 필터. */
+    themesOf(code: string): string[] {
+        return this.membership.themesOf(code);
+    }
+
+    /** 등락률 기준가(일봉 컨텍스트, 시장별) — 테이프 % 분모. 미도착이면 null(그 종목은 pending). */
+    baseOf(code: string, market: "krx" | "un"): number | null {
+        return this.dailyCtx.contextOf(code)?.basePrice[market] ?? null;
+    }
+
+    /** watchlist(타겟) 집합 — 테이프 watched 라벨(선이 안 끊기는 이유 구분)용. */
+    watchedSet(): ReadonlySet<string> {
+        return new Set(this.alerts?.watchCodes() ?? []);
+    }
+
     /** WS LOGIN 성공(최초·재연결 공통) → 스캐너 init(CNSRREQ 전 CNSRLST 선조회 요구) → 멤버십 → ready → 틱 루프.
      *  조건 미선택이면 스캐너 없이 ready 만. 실패는 error 로 알리고 ready=false 유지 — 다음 재연결 사이클에서 재시도. */
     private async onConnected(): Promise<void> {
@@ -167,6 +191,8 @@ export class LiveEngine extends EventEmitter {
         // 일봉 컨텍스트(수정 트레일링 두벌+원주가 전일종가) 백그라운드 priming(멱등). ka10081 별도 레이트라 폴링 안 막음.
         const today = kstToday();
         for (const q of quotes) void this.dailyCtx.ensure(q.code, today);
+        // 테마 테이프 — 이번 틱 시세를 분당 1점으로 접어 하루치 보존(비트맵·백필 예약 포함, 내부 멱등).
+        this.tape?.onTick(quotes, now, today);
         // 알람 평가 — 이번 틱 신선한 시세만 넘긴다(과거 잔류 quotes 로 순위가 오염되지 않게).
         // 등락률·순위 잣대 = 일봉 컨텍스트의 market 전일종가(미도착이면 그 leaf 미결 → 스킵).
         this.alerts?.tick(

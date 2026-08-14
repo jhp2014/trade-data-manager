@@ -19,7 +19,10 @@ import { NotifyQueue } from "./alerts/notifyQueue.js";
 import { HealthMonitor, parseWindow } from "./health/monitor.js";
 import { ConditionController } from "./condition.controller.js";
 import { EngineConfigStore } from "./engine/engineConfigStore.js";
-import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS, ALERT_NOTIFIER, NOTIFY_QUEUE, HEALTH, ENGINE_CONFIG } from "./tokens.js";
+import { TapeController } from "./tape/tape.controller.js";
+import { LiveTape } from "./tape/tape.js";
+import { KiwoomMinuteAdapter } from "@trade-data-manager/broker";
+import { LIVE_ENGINE, KIWOOM, LIVE_CHART, LIVE_NEWS, ALERT_CONFIG, ALERTS, ALERT_NOTIFIER, NOTIFY_QUEUE, HEALTH, ENGINE_CONFIG, LIVE_TAPE } from "./tokens.js";
 import { createLiveEngine } from "./engine/createLiveEngine.js";
 import type { LiveEngine } from "./engine/engine.js";
 
@@ -111,11 +114,20 @@ const healthProvider: Provider = {
     },
     inject: [LIVE_ENGINE, NOTIFY_QUEUE, ALERT_CONFIG],
 };
+// 장중 테마 테이프 — 엔진 틱이 접어 넣고 /tape 가 서빙. 분봉 백필은 kiwoom 공유 인스턴스(레이트 정합).
+const tapeProvider: Provider = {
+    provide: LIVE_TAPE,
+    useFactory: (kiwoom: Kiwoom): LiveTape => {
+        const log = new Logger("Tape");
+        return new LiveTape(new KiwoomMinuteAdapter(kiwoom.rest), (msg) => log.warn(msg));
+    },
+    inject: [KIWOOM],
+};
 const engineProvider: Provider = {
     provide: LIVE_ENGINE,
-    useFactory: (kiwoom: Kiwoom, alerts: AlertsRuntime, config: EngineConfigStore): LiveEngine =>
-        createLiveEngine(kiwoom, config.conditionName ?? process.env.LIVE_CONDITION_NAME ?? "", Number(process.env.LIVE_POLL_MS) || undefined, alerts),
-    inject: [KIWOOM, ALERTS, ENGINE_CONFIG],
+    useFactory: (kiwoom: Kiwoom, alerts: AlertsRuntime, config: EngineConfigStore, tape: LiveTape): LiveEngine =>
+        createLiveEngine(kiwoom, config.conditionName ?? process.env.LIVE_CONDITION_NAME ?? "", Number(process.env.LIVE_POLL_MS) || undefined, alerts, tape),
+    inject: [KIWOOM, ALERTS, ENGINE_CONFIG, LIVE_TAPE],
 };
 const chartProvider: Provider = {
     provide: LIVE_CHART,
@@ -126,8 +138,8 @@ const chartProvider: Provider = {
 const newsProvider: Provider = { provide: LIVE_NEWS, useFactory: (): LiveNewsService => new LiveNewsService() };
 
 @Module({
-    controllers: [HealthController, SnapshotController, StreamController, ThemeController, ChartController, NewsController, AlertsController, ConditionController],
-    providers: [kiwoomProvider, engineConfigProvider, alertConfigProvider, notifierProvider, notifyQueueProvider, alertsProvider, healthProvider, engineProvider, chartProvider, newsProvider],
+    controllers: [HealthController, SnapshotController, StreamController, ThemeController, ChartController, NewsController, AlertsController, ConditionController, TapeController],
+    providers: [kiwoomProvider, engineConfigProvider, alertConfigProvider, notifierProvider, notifyQueueProvider, alertsProvider, healthProvider, engineProvider, chartProvider, newsProvider, tapeProvider],
 })
 export class LiveModule implements OnModuleInit, OnModuleDestroy {
     private readonly log = new Logger("LiveEngine");
