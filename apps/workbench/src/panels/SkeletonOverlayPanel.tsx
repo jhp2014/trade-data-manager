@@ -991,10 +991,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* 다른 라벨을 짚는 동안엔 캔들이 **잠시 사라진다**(사용자 확정) — 같은 종목의 형제 선을
                                     짚을 때도 마찬가지다. 그 순간의 질문은 "이 선 vs 저 선"이라 봉이 비교를 방해한다.
                                     진하기 자체는 헤더의 선명도 단계가 정한다 — 배경으로 깔지, 같이 읽을지가 상황마다 다르다. */}
-                                {candles.set && (
-                                    <CandleLayer set={candles.set} scales={scales} box={box}
-                                        anchorShown={candles.anchorShown} memberShown={candles.memberShown} opacityOf={candles.opacityOf} />
-                                )}
+                                <g data-layer="candles">
+                                    {candles.set && (
+                                        <CandleLayer set={candles.set} scales={scales} box={box}
+                                            anchorShown={candles.anchorShown} memberShown={candles.memberShown} opacityOf={candles.opacityOf} />
+                                    )}
+                                </g>
 
                                 {/* ── 테마 선 — 짚은 타점의 앞뒤 창에 세운 **분당 종가 경로**(%p 평행이동, 세로 간격 보존).
                                     골격보다 **먼저** 그린다: 이건 배경이고 주인공은 내 골격이다.
@@ -1002,6 +1004,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     짚은 하나만 거래대금 램프로 살아난다(상세 밀도 규칙 그대로).
                                     **타점 이후(x ≥ 0)는 앵커 선과 같은 문장** — 폴리라인은 점선, 런은 옅게(굵기와 안 싸우게). */}
                                 {/* 다른 골격선을 보는 동안엔 테마를 접는다(themeSwapped) — 두 무리가 겹치면 안 갈린다. */}
+                                <g data-layer="theme-lines">
                                 {!themeSwapped && themeOverlay?.lines.map((l) => {
                                     const lit = hoveredThemeSet?.has(l.code) ?? false;
                                     const runs = amountWidthOn ? themeRuns?.get(l.code) : null;
@@ -1029,6 +1032,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         </g>
                                     );
                                 })}
+                                </g>
 
                                 {/* 테마 선의 **투명 히트라인** — 선 위에 손을 올리면 거터 라벨과 똑같이 반응한다(사용자 확정).
                                     "선은 순수 그림, 손잡이는 라벨"은 **수백 선**이 얽힐 때 DOM 히트가 겨냥한 걸 안 주기
@@ -1039,6 +1043,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     **mousedown 에서** 제스처를 시작해 dragging=true 가 된다 → 히트라인이 사라지고 →
                                     mouseup 이 다른 요소에서 나 **click 이 아예 안 뜬다**(선 클릭 캔들 토글이 죽었다).
                                     이동 비용은 언마운트가 아니라 **화면 구간 자르기 + 솎기**로 줄인다(themePath). */}
+                                <g data-layer="theme-hit">
                                 {!themeSwapped && themeOverlay?.lines.map((l) => (
                                     <polyline key={`thh-${l.code}`}
                                         points={pathOf(themePath(l.points, hitStep), scales)}
@@ -1048,7 +1053,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         onMouseEnter={() => setHoveredTheme([l.code])}
                                         onMouseLeave={() => setHoveredTheme(null)} />
                                 ))}
+                                </g>
 
+                                <g data-layer="skeleton-lines">
                                 {lines.map((s) => {
                                     // 테마 모드에선 선택선·짚은 것·뱃지 무리만 그린다(나머지는 라벨만 남는다).
                                     if (!lineShown(s.key)) return null;
@@ -1135,12 +1142,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         </g>
                                     );
                                 })}
+                                </g>
 
                                 {/* 붙잡은 피벗의 세로선 — 테마 값을 펼치는 **손잡이**다. 올리면 그 시각의 테마 값이
                                     선 오른쪽에 펴진다(상시가 아니라 호버 중에만 — 30줄이 늘 떠 있으면 화면이 찬다).
                                     보이는 선은 얇지만 히트 영역은 넓은 투명 선이 따로 받는다(1px 을 겨냥할 수는 없다).
                                     ⚠ **피벗 손잡이보다 먼저** 그린다: SVG 는 나중에 그린 게 위라, 이 10px 투명 선이 뒤에
                                     오면 자기 x 에 있는 피벗 점의 클릭을 통째로 삼킨다(핀을 찍고 나면 못 떼던 버그). */}
+                                <g data-layer="pin-verticals">
                                 {themeOverlay && pinnedXs.map((m) => {
                                     const x = scales.x(m);
                                     const open = openReadingX === m;
@@ -1156,9 +1165,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     );
                                 })}
 
+                                </g>
+
                                 {/* 짚은 골격선의 히트라인 — 테마 선과 같은 손짓(선 위에서 값을 읽는다).
                                     **선택된 것 하나만** 포인터를 받는다: 전체 골격선을 열면 많아질수록 손이 걸리고,
                                     그때는 라벨만 손잡이로 남긴다는 게 이 패널의 규약이다(사용자 확정). */}
+                                <g data-layer="line-hit">
                                 {singleTarget && (
                                     <polyline points={pathOf(singleTarget.points, scales)}
                                         fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
@@ -1167,6 +1179,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         onMouseEnter={() => setHovered(singleTarget.key)}
                                         onMouseLeave={() => setHovered(null)} />
                                 )}
+                                </g>
 
                                 {/* ⚠ 그림 위에서 포인터를 받는 것들(히트라인·피벗 손잡이·핀 세로선)엔 **`<title>` 을 두지 않는다**
                                     (사용자 요구): 값을 읽으려고 손을 올린 그 자리에 브라우저 툴팁이 떠서 판독을 가린다.
@@ -1178,6 +1191,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
                                     클릭 = 그 점의 값 붙잡기/떼기(사용자 확정) — 여럿을 나란히 놓고 볼 수 있다.
                                     **맨 위에 그린다** — 위 세로선·아래 선들 어느 것도 이 손잡이를 가리면 안 된다. */}
+                                <g data-layer="pivot-handles">
                                 {[...new Set([...(inspectKey ? [inspectKey] : []), ...linesWithPins])].map((key) => {
                                     const s = byKey.get(key);
                                     if (!s) return null;
@@ -1190,6 +1204,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }} />
                                     )));
                                 })}
+                                </g>
 
                                 {/* 거래대금 숫자 — **선×세그먼트당 하나 → 화면 x 격자**로 솎아 살아남은 것들.
                                     점은 **터진 그 분의 자리**에 정확히 얹히고(표식), 숫자는 그 오른쪽에 선다.
@@ -1198,9 +1213,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     그 숫자들만 남으면 어느 선의 것인지 가리킬 대상이 없어 화면에 뜬 잡음이 된다. */}
                                 {/* 거래대금 숫자 — 스왑 중(다른 골격선을 짚는 중)엔 접는다: 테마·캔들을 접어 놓고
                                     그 숫자들만 남으면 어느 선의 것인지 가리킬 대상이 없어 화면에 뜬 잡음이 된다. */}
-                                {!themeSwapped && (
-                                    <AmountLabels labels={amountLabels} colorOf={themeColorOf} dimmedExcept={hoveredThemeSet} />
-                                )}
+                                <g data-layer="amount-labels">
+                                    {!themeSwapped && (
+                                        <AmountLabels labels={amountLabels} colorOf={themeColorOf} dimmedExcept={hoveredThemeSet} />
+                                    )}
+                                </g>
 
                                 {/* 얹는 선(기준선·D선) — 같은 pct 환산. **주인이 스타일을 정한다**(사용자 확정):
                                     색은 **그 골격선과 똑같이**(visualOf) — 그룹 목록을 훑을 때 골격선은 무리 색인데
@@ -1210,6 +1227,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     **둘 다 실선** — 점선은 가격 수준선을 읽기 어렵게만 했다(사용자 확정).
                                     다중 선택이면 호버 것만(수십 벌이 겹치므로).
                                     기준선 여부는 선 모양이 아니라 라벨의 "기준" 접두어 — 어차피 최저가 규칙이라 아래가 기준선. */}
+                                <g data-layer="levels">
                                 {showLevels && scales && (() => {
                                     const single = effSelected.size === 1 ? [...effSelected][0] : null;
                                     const owners: { s: NormalizedSkeleton; color: string; right: boolean }[] = [];
@@ -1240,6 +1258,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                         </g>
                                     ));
                                 })()}
+                                </g>
                             </g>
                         </>
                     )}
