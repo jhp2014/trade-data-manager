@@ -21,6 +21,7 @@ import { BoardFilterPanel, ReplayFilterPanel, LiveFilterPanel } from "../panels/
 import { NewsPanel } from "../panels/NewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { WatchlistPanel } from "../panels/WatchlistPanel.js";
+import { LiveTapePanel } from "../panels/liveTape/LiveTapePanel.js";
 import { AlertLogPanel } from "../panels/AlertLogPanel.js";
 import { UniverseRulesPanel } from "../panels/UniverseRulesPanel.js";
 
@@ -48,6 +49,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "live-news-1", component: "liveNews", title: "실시간 뉴스", plane: "live", render: () => <NewsPanel plane="live" /> },
     { id: "live-telegram-1", component: "liveTelegram", title: "실시간 텔레그램", plane: "live", render: () => <TelegramNewsPanel plane="live" /> },
     { id: "live-watchlist-1", component: "liveWatchlist", title: "실시간 모니터링", plane: "live", render: () => <WatchlistPanel /> },
+    { id: "live-tape-1", component: "liveTape", title: "테마 궤적 [실시간]", plane: "live", render: (id) => <LiveTapePanel panelId={id} /> },
     { id: "live-alert-log-1", component: "liveAlertLog", title: "알람 로그", plane: "live", render: () => <AlertLogPanel /> },
     { id: "live-universe-rules-1", component: "liveUniverseRules", title: "유니버스 알람", plane: "live", render: () => <UniverseRulesPanel /> },
     { id: "telegram-news-1", component: "telegramNews", title: "텔레그램", plane: "eod", render: () => <TelegramNewsPanel plane="replay" /> },
