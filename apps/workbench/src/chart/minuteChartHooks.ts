@@ -3,10 +3,7 @@
 // MinuteChart.tsx 는 훅 조합 + 오버레이/툴팁 렌더만 남는다(명령형 API 와 선언형 JSX 의 경계).
 import { useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import {
-    CandlestickSeries,
-    HistogramSeries,
     LineStyle,
-    createSeriesMarkers,
     type AutoscaleInfo,
     type IChartApi,
     type ISeriesApi,
@@ -14,8 +11,9 @@ import {
     type Time,
     type UTCTimestamp,
 } from "lightweight-charts";
-import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, AMOUNT_BUCKET_COLORS } from "./chartUtils.js";
+import { RISE_FILL, FALL_FILL, AMOUNT_BUCKET_COLORS } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
+import { buildCandleAmountSeries, findLineNearY } from "./candleAmountSeries.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { useLatest } from "../lib/useLatest.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
@@ -25,12 +23,12 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
  * 마커 렌더(MinuteChart)와 판정(여기)이 서로 다른 파일이라 문자열을 양쪽에 적지 않게 상수로 둔다.
  */
 export const GROUP_MARKER_ATTR = "data-group-marker";
-import { VertLines, asPrimitive, type VertLineSpec } from "./vertLine.js";
-import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
+import { type VertLines, type VertLineSpec } from "./vertLine.js";
+import { type SkeletonPath } from "./skeletonPath.js";
 import { minutesOfDay } from "../lib/date.js";
 import { type MinutePoint } from "../lib/derive.js";
-import type { RenderLine } from "../lib/chartFrame.js";
-import { ALARM, PRICE_LINE, SKELETON } from "../styles/palette.js";
+import { linePct, snapToBar, type RenderLine } from "../lib/chartFrame.js";
+import { ALARM, PRICE_LINE } from "../styles/palette.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
 const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
@@ -73,33 +71,29 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
-        const candle = chart.addSeries(CandlestickSeries, {
-            upColor: RISE_COLOR,
-            downColor: FALL_COLOR,
-            borderUpColor: RISE_COLOR,
-            borderDownColor: FALL_COLOR,
-            wickUpColor: RISE_COLOR,
-            wickDownColor: FALL_COLOR,
-            priceScaleId: "right",
-            priceLineVisible: false,
-            priceFormat: {
-                type: "custom",
-                formatter: (p: number) => `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`,
-                minMove: 0.01,
+        // 골조(캔들+거래대금 2-pane·마커·프리미티브)는 일봉과 공용 — 분봉의 몫은 % 축 표기와
+        // autoscale 바닥(기본 0~25%, 데이터가 넘으면 확장), 그리고 타점 세로선의 거래대금 pane 연장뿐.
+        const s = buildCandleAmountSeries(chart, {
+            candleOptions: {
+                priceFormat: {
+                    type: "custom",
+                    formatter: (p: number) => `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`,
+                    minMove: 0.01,
+                },
+                autoscaleInfoProvider: (baseImpl: () => AutoscaleInfo | null) => {
+                    const base = baseImpl();
+                    return {
+                        priceRange: {
+                            minValue: Math.min(0, base?.priceRange?.minValue ?? 0),
+                            maxValue: Math.max(25, base?.priceRange?.maxValue ?? 0),
+                        },
+                        margins: base?.margins,
+                    };
+                },
             },
-            // 기본 0~25%, 데이터가 넘으면 확장.
-            autoscaleInfoProvider: (baseImpl: () => AutoscaleInfo | null) => {
-                const base = baseImpl();
-                return {
-                    priceRange: {
-                        minValue: Math.min(0, base?.priceRange?.minValue ?? 0),
-                        maxValue: Math.max(25, base?.priceRange?.maxValue ?? 0),
-                    },
-                    margins: base?.margins,
-                };
-            },
+            amountVerts: true, // 타점 세로선이 아래 pane 까지 이어진다(같은 timeScale x 공유)
         });
-        candle.createPriceLine({
+        s.candle.createPriceLine({
             price: 0,
             color: "rgba(150,150,150,0.5)",
             lineStyle: LineStyle.Dashed,
@@ -107,49 +101,22 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
             axisLabelVisible: false,
             title: "",
         });
-        const amount = chart.addSeries(
-            HistogramSeries,
-            {
-                priceScaleId: "right",
-                priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(0)}억`, minMove: 1 },
-                priceLineVisible: false,
-                lastValueVisible: false,
-                color: AMOUNT_BAR_COLOR,
-            },
-            1,
-        );
-        // 캔들 pane : 거래대금 pane = 3 : 1
-        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
-        const panes = chart.panes();
-        panes[0]?.setStretchFactor(3);
-        panes[1]?.setStretchFactor(1);
-
-        candleRef.current = candle;
-        amountRef.current = amount;
-        markersRef.current = createSeriesMarkers(candle);
-        // 타점 세로선 primitive — 캔들·거래대금 두 pane 에 각각 부착(같은 timeScale x 공유 → 아래까지 이어짐).
-        const candleVerts = new VertLines();
-        const amountVerts = new VertLines();
-        candle.attachPrimitive(asPrimitive(candleVerts));
-        amount.attachPrimitive(asPrimitive(amountVerts));
-        candleVertsRef.current = candleVerts;
-        amountVertsRef.current = amountVerts;
-        // 골격 꺾은선 primitive — 일봉과 같은 것(마커 모양·순번 규칙이 갈리면 같은 입력이 다르게 읽힌다).
-        const skeleton = new SkeletonPath(SKELETON);
-        candle.attachPrimitive(asSkeletonPrimitive(skeleton));
-        skeletonRef.current = skeleton;
+        candleRef.current = s.candle;
+        amountRef.current = s.amount;
+        markersRef.current = s.markers;
+        candleVertsRef.current = s.candleVerts;
+        amountVertsRef.current = s.amountVerts;
+        skeletonRef.current = s.skeleton;
         // pan/zoom 시 오버레이 아이콘 위치 갱신.
         const ts = chart.timeScale();
         ts.subscribeVisibleLogicalRangeChange(bumpOverlay);
         return () => {
             try {
                 ts.unsubscribeVisibleLogicalRangeChange(bumpOverlay);
-                candle.detachPrimitive(asPrimitive(candleVerts));
-                amount.detachPrimitive(asPrimitive(amountVerts));
-                candle.detachPrimitive(asSkeletonPrimitive(skeleton));
             } catch {
                 /* noop */
             }
+            s.dispose();
             candleRef.current = null;
             amountRef.current = null;
             markersRef.current = null;
@@ -227,28 +194,19 @@ export function useMarkerVertLines(
     markerTime: number | null,
     savedPoints: SavedPointInput[],
 ): { currentSnapped: number | null; savedSnapped: SavedPointInput[] } {
-    const snapToBar = (target: number | null): number | null => {
-        if (target == null) return null;
-        let snapped: number | null = null;
-        for (const p of points) {
-            if (p.time <= target) snapped = p.time;
-            else break;
-        }
-        return snapped;
-    };
-    const currentSnapped = useMemo(() => snapToBar(markerTime), [markerTime, points]); // eslint-disable-line react-hooks/exhaustive-deps
+    const currentSnapped = useMemo(() => snapToBar(points, markerTime), [markerTime, points]);
     const savedSnapped = useMemo(() => {
         const seen = new Set<number>();
         const out: SavedPointInput[] = [];
         for (const sp of savedPoints) {
-            const s = snapToBar(sp.time);
+            const s = snapToBar(points, sp.time);
             if (s != null && !seen.has(s)) {
                 seen.add(s);
                 out.push({ ...sp, time: s }); // 스냅해도 배치 현황은 그 타점의 것을 그대로 들고 간다
             }
         }
         return out;
-    }, [savedPoints, points]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [savedPoints, points]);
 
     // 세로선 갱신 — 현재 타점(진한) + 저장 타점(흐린). 두 pane primitive 에 동일 리스트 push.
     useEffect(() => {
@@ -397,17 +355,19 @@ export function useMinuteInteraction(args: {
             if ((e.target as Element | null)?.closest?.(`[${GROUP_MARKER_ATTR}]`)) return;
             const candle = candleRef.current;
             const y = e.clientY - el.getBoundingClientRect().top;
-            // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음). %는 렌더와 같은 linePct.
+            // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음). 판정은 일봉과 같은
+            //    규칙(findLineNearY) — 환산만 렌더와 같은 linePct(% 축). 분모 없는 선은 화면에도 판정에도 없다.
             if (candle) {
-                for (const line of cb.current.lines) {
+                const hit = findLineNearY(cb.current.lines, y, 6, (line) => {
                     const pct = linePct(line, cb.current.base, cb.current.pctBase);
-                    if (pct === null) continue;
+                    if (pct === null) return null;
                     const ly = candle.priceToCoordinate(pct);
-                    if (ly != null && Math.abs((ly as number) - y) <= 6) {
-                        if (cb.current.onLineContext) cb.current.onLineContext(line, { x: e.clientX, y: e.clientY });
-                        else cb.current.onRemoveLine(line);
-                        return;
-                    }
+                    return ly == null ? null : (ly as number);
+                });
+                if (hit) {
+                    if (cb.current.onLineContext) cb.current.onLineContext(hit, { x: e.clientX, y: e.clientY });
+                    else cb.current.onRemoveLine(hit);
+                    return;
                 }
             }
             // 2) 아니면 hover 중인 분봉 컨텍스트 — 복기는 메뉴(가격선·파라미터 지정), 실시간은 고가 선 토글.
@@ -426,17 +386,7 @@ export function useMinuteInteraction(args: {
     }, []);
 }
 
-/**
- * 선 하나의 % 좌표 — 분자·분모 스케일 일치가 규칙.
- * D(일봉 앵커)는 수정주가로 해소되므로 분모도 수정주가 전일종가(pctBase),
- * M(분봉 고가)·A(알람 라이브 가격)는 당일 원주가이므로 분모도 원주가 base.
- * 분모 없으면 null — 그 선은 그리지/맞히지 않는다.
- */
-function linePct(line: RenderLine, base: number | null, pctBase: number | null): number | null {
-    const denom = line.kind === "D" ? pctBase : base;
-    if (!denom || denom <= 0) return null;
-    return ((line.price - denom) / denom) * 100;
-}
+// 선의 % 좌표(linePct)는 lib/chartFrame 으로 — RenderLine 의 집이 거기고, 렌더와 우클릭 판정이 같은 함수를 탄다.
 
 /** 가격선(D+M+A) 렌더 — 가격을 %로 변환해 표시(분봉은 % 축). 분모는 linePct 규칙, 그리기는 usePriceLineSet. */
 export function usePercentPriceLines(

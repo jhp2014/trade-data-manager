@@ -50,6 +50,31 @@ export function useChartViews(
     return { dailyView, minuteView, dailyFrameKey, minuteFrameKey, pctBase };
 }
 
+/**
+ * 선 하나의 % 좌표(분봉 % 축) — **분자·분모 스케일 일치**가 규칙.
+ * D(일봉 앵커)는 수정주가로 해소되므로 분모도 수정주가 전일종가(pctBase),
+ * M(분봉 고가)·A(알람 라이브 가격)는 당일 원주가이므로 분모도 원주가 base.
+ * 분모 없으면 null — 그 선은 그리지도 맞히지도 않는다(지어낸 자리에 선을 세우지 않는다).
+ * RenderLine 의 집이 여기라 규칙도 여기 산다 — 렌더(usePercentPriceLines)와 우클릭 판정이 같은 함수를 탄다.
+ */
+export function linePct(line: RenderLine, base: number | null, pctBase: number | null): number | null {
+    const denom = line.kind === "D" ? pctBase : base;
+    if (!denom || denom <= 0) return null;
+    return ((line.price - denom) / denom) * 100;
+}
+
+/** target 이하(≤) 마지막 봉 시각으로 스냅 — 타점 세로선이 실제 봉 위에 서게. 이전 봉이 없으면 null.
+ *  `bars` 는 시간 오름차순(차트 데이터가 전부 그렇다). */
+export function snapToBar(bars: readonly { time: number }[], target: number | null): number | null {
+    if (target == null) return null;
+    let snapped: number | null = null;
+    for (const b of bars) {
+        if (b.time <= target) snapped = b.time;
+        else break;
+    }
+    return snapped;
+}
+
 /** 일봉 앵커에서 읽을 값. 가격선이 저장하는 field 와 같은 집합. */
 type DailyField = "open" | "high" | "low" | "close";
 

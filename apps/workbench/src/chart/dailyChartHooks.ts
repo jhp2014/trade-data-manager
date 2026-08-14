@@ -4,22 +4,21 @@
 // 자매인 MinuteChart 는 진작 minuteChartHooks 로 갈라져 있었는데 일봉만 안 돼 있었다 — 그 비대칭을 없앤다.
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
-    CandlestickSeries,
-    HistogramSeries,
     LineStyle,
-    createSeriesMarkers,
     type IChartApi,
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
     type Time,
     type UTCTimestamp,
 } from "lightweight-charts";
-import { RISE_COLOR, FALL_COLOR, RISE_FILL, FALL_FILL, AMOUNT_BAR_COLOR, highMarkerColor } from "./chartUtils.js";
+import { RISE_FILL, FALL_FILL, highMarkerColor } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
+import { buildCandleAmountSeries, findLineNearY } from "./candleAmountSeries.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
-import { VertLines, asPrimitive } from "./vertLine.js";
-import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
-import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE, SKELETON } from "../styles/palette.js";
+import { useLatest } from "../lib/useLatest.js";
+import { type VertLines } from "./vertLine.js";
+import { type SkeletonPath } from "./skeletonPath.js";
+import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 
@@ -49,45 +48,17 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
-        const candle = chart.addSeries(CandlestickSeries, {
-            upColor: RISE_COLOR,
-            downColor: FALL_COLOR,
-            borderUpColor: RISE_COLOR,
-            borderDownColor: FALL_COLOR,
-            wickUpColor: RISE_COLOR,
-            wickDownColor: FALL_COLOR,
-            priceScaleId: "right",
-            priceLineVisible: false,
-            lastValueVisible: false,
-            priceFormat: { type: "price", precision: 0, minMove: 1 },
+        // 골조(캔들+거래대금 2-pane·마커·프리미티브)는 분봉과 공용 — 일봉의 몫은 원화 가격 축 표기뿐.
+        const s = buildCandleAmountSeries(chart, {
+            candleOptions: { lastValueVisible: false, priceFormat: { type: "price", precision: 0, minMove: 1 } },
         });
-        const amount = chart.addSeries(
-            HistogramSeries,
-            {
-                priceScaleId: "right",
-                priceFormat: { type: "custom", formatter: (v: number) => `${v.toFixed(0)}억`, minMove: 1 },
-                priceLineVisible: false,
-                lastValueVisible: false,
-                color: AMOUNT_BAR_COLOR,
-            },
-            1,
-        );
-        chart.priceScale("right", 1).applyOptions({ borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.1 } });
-        const panes = chart.panes();
-        panes[0]?.setStretchFactor(3);
-        panes[1]?.setStretchFactor(1);
-        candleRef.current = candle;
-        amountRef.current = amount;
-        markersRef.current = createSeriesMarkers(candle);
-        const vert = new VertLines([]);
-        candle.attachPrimitive(asPrimitive(vert));
-        vertRef.current = vert;
-        // 골격 꺾은선 — 캔들 series 에 붙여야 priceToCoordinate 로 y 를 얻는다(LineSeries 로는 한 캔들의
-        // 여러 점을 못 그린다 — skeletonPath.ts 주석 참조).
-        const skeleton = new SkeletonPath(SKELETON);
-        candle.attachPrimitive(asSkeletonPrimitive(skeleton));
-        skeletonRef.current = skeleton;
+        candleRef.current = s.candle;
+        amountRef.current = s.amount;
+        markersRef.current = s.markers;
+        vertRef.current = s.candleVerts;
+        skeletonRef.current = s.skeleton;
         return () => {
+            s.dispose();
             candleRef.current = null;
             amountRef.current = null;
             markersRef.current = null;
@@ -195,12 +166,10 @@ export function useDailyInteraction(args: {
     onPickPrice?: (price: number) => void;
     captureArmed: boolean;
 }): void {
-    const { chartRef, containerRef, series, mapRef, lines } = args;
+    const { chartRef, containerRef, series, mapRef } = args;
     const hoveredTimeRef = useRef<string | null>(null);
-    const linesRef = useRef<RenderLine[]>(lines); // 우클릭 라벨-삭제 매칭용
-    linesRef.current = lines;
-    const cb = useRef(args);
-    cb.current = args;
+    // 리스너는 마운트에 한 번 붙고 args 는 매 렌더 바뀐다 — ref 하나로 최신을 본다(분봉 훅과 같은 방식).
+    const cb = useLatest(args);
 
     useEffect(() => {
         const chart = chartRef.current;
@@ -236,15 +205,16 @@ export function useDailyInteraction(args: {
             e.preventDefault();
             const candle = series.candleRef.current;
             const y = e.clientY - el.getBoundingClientRect().top;
-            // 1) 기존 선 근처 우클릭 → 그 선 삭제.
+            // 1) 기존 선 근처 우클릭 → 그 선 삭제. 판정은 분봉과 같은 규칙(findLineNearY) — 환산만 raw 가격.
             if (candle) {
-                for (const line of linesRef.current) {
+                const hit = findLineNearY(cb.current.lines, y, LINE_HIT_PX, (line) => {
                     const ly = candle.priceToCoordinate(line.price);
-                    if (ly != null && Math.abs((ly as number) - y) <= LINE_HIT_PX) {
-                        if (cb.current.onLineContext) cb.current.onLineContext(line, { x: e.clientX, y: e.clientY });
-                        else cb.current.onRemoveLine(line);
-                        return;
-                    }
+                    return ly == null ? null : (ly as number);
+                });
+                if (hit) {
+                    if (cb.current.onLineContext) cb.current.onLineContext(hit, { x: e.clientX, y: e.clientY });
+                    else cb.current.onRemoveLine(hit);
+                    return;
                 }
             }
             // 2) 아니면 hover 봉 컨텍스트 — 복기는 메뉴(가격선 값 선택·파라미터 지정), 실시간은 고가 선 토글.
