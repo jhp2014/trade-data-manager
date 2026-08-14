@@ -31,7 +31,15 @@ export interface ReviewPoint extends ReviewPointKey {
     memo?: string; // 타점 메모(선택)
 }
 
-/** 복기 타점 1건 + 종목명 — 월별 타점 목록(작업셋)용 read model. name 은 app 레이어가 stock_master 로 붙인다(미등록 null). */
+/**
+ * 복기 타점 1건 + 종목명 — 월별 타점 목록(작업셋)용 read model. name 은 app 레이어가 stock_master 로
+ * 붙인다(미등록 null).
+ *
+ * ⚠ **워크벤치는 이 name 을 읽지 않는다.** 종목명의 단일 출처는 클라가 부팅에 받는 마스터 사전
+ * (`/stocks/master` → StockNamesContext)이다. 이 필드는 그 이전 방식의 잔재이며, 같은 마스터에서
+ * 나온 **부분집합**이라 더 알려주는 것도 없다. 화면에서 `p.name` 을 쓰면 대개 맞고 가끔 비는데
+ * (그 종목이 이 피드에 없을 때) — 그게 정확히 사전을 도입해 없앤 버그다. 이름은 사전에서만 얻는다.
+ */
 export interface ReviewPointListItem extends ReviewPoint {
     name: string | null;
 }

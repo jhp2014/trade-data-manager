@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi } from "../store/ui.js";
 import { PANEL_CATALOG, type PanelEntry, type PanelPlane } from "../shell/panelCatalog.js";
-import { stockMetaQuery } from "../api/queries.js";
+import { useStockName } from "../lib/useStockName.js";
 import { DatePicker } from "./DatePicker.js";
 import { StockNameCopy } from "./StockNameCopy.js";
 import { fmtStampKo } from "../lib/date.js";
@@ -55,8 +54,8 @@ function textBtn(active = false): React.CSSProperties {
 
 // 종목 — 이름만 표시(코드 숨김), 클릭하면 종목코드 클립보드 복사(HTS 붙여넣기 연동).
 function NameCopyControl({ code }: { code: string }): JSX.Element {
-    const meta = useQuery(stockMetaQuery(code));
-    return <StockNameCopy code={code} name={meta.data?.[0]?.name} style={{ ...textBtn(), cursor: code ? "pointer" : "default" }} />;
+    const name = useStockName(code);
+    return <StockNameCopy code={code} name={name ?? undefined} style={{ ...textBtn(), cursor: code ? "pointer" : "default" }} />;
 }
 
 // 시간 — 텍스트로 보이다 클릭하면 시각 스크러버(08:00~20:00) 팝오버. 버스별 time/setTime 을 prop 으로 받는다.

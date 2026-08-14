@@ -1,7 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import { stockMetaQuery } from "../api/queries.js";
+import { useStockNamesDict } from "./StockNamesContext.js";
 
-// 종목명(마스터 메타, 날짜무관·경량 조회). 차트·뉴스 패널이 큰 보드 응답 대신 이걸로 이름만 얻는다.
+/**
+ * 종목명 하나. 모르면 null — 부르는 쪽이 대개 `name ?? code` 로 자기 표기를 고르기 때문에
+ * 여기서 코드로 대체하지 않는다(사전의 nameOf 와 그 점만 다르다).
+ */
 export function useStockName(code: string): string | null {
-    return useQuery(stockMetaQuery(code)).data?.[0]?.name ?? null;
+    const { nameOf } = useStockNamesDict();
+    if (!code) return null;
+    const name = nameOf(code);
+    return name === code ? null : name;
 }

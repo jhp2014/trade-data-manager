@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, inArray, isNull } from "drizzle-orm";
-import type { StockMaster, StockMasterStore, StockMasterReader } from "@trade-data-manager/market";
+import type { StockMaster, StockMasterMeta, StockMasterStore, StockMasterReader } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockMaster } from "../schema/market.js";
 import { stockMasterToRow, rowToStockMaster } from "../mappers/stockMaster.js";
@@ -35,6 +35,14 @@ export class DrizzleStockMasterRepository implements StockMasterStore, StockMast
             .from(stockMaster)
             .where(inArray(stockMaster.stockCode, codes));
         return rows.map(rowToStockMaster);
+    }
+
+    /** 이름표 전량 — 필요한 세 열만 고른다(행 수가 많고 나머지 열은 이 용도에 쓸모가 없다). */
+    async listAllMeta(): Promise<StockMasterMeta[]> {
+        return this.db
+            .select({ stockCode: stockMaster.stockCode, name: stockMaster.name, market: stockMaster.market })
+            .from(stockMaster)
+            .orderBy(asc(stockMaster.stockCode));
     }
 
     async listNeedingIpoPrice(listedSince: string): Promise<{ stockCode: string; listingDate: string }[]> {

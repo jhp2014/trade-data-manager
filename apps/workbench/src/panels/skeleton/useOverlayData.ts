@@ -7,9 +7,10 @@
 //   · 분봉(타점 단위) = 보는 집합을 타점으로 펼친 것(하루 항목은 그날 전 타점 — 정직한 반복)
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../../api/queries.js";
+import { skeletonsQuery, allPointsQuery } from "../../api/queries.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { pointKey, chartKey } from "../../lib/pointKey.js";
+import { useStockNames } from "../../lib/useStockNames.js";
 import { subjectChartKey, subjectPointKeys, subjectStatus, useSubject, type Subject, type SubjectStatus } from "../../lib/subject.js";
 import {
     normalizeSkeleton, pointSkeletons,
@@ -67,15 +68,10 @@ export function useOverlayData(
         [isDaily, filterOn, funnel.viewedPointRefs],
     );
 
-    // 종목명 — 타점 없는 차트는 타점 피드에서 이름이 안 나온다. 앵커 걸린 차트 피드가 이름을 달고
-    // 오니(서버 MasterCache.attachNames) 그걸 먼저 보고, 없으면 타점 피드.
-    const chartsQ = useQuery(anchoredChartsQuery());
-    const nameOf = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const p of pointsQ.data ?? []) if (p.name) m.set(p.stockCode, p.name);
-        for (const c of chartsQ.data ?? []) if (c.name) m.set(c.stockCode, c.name);
-        return (code: string): string => m.get(code) ?? code;
-    }, [chartsQ.data, pointsQ.data]);
+    // 종목명 — 사전 한 벌(전량)에서. 예전엔 여기서 피드 둘(타점·앵커 차트)로 맵을 지었는데, 그 맵은
+    // "이 화면에 데이터가 있는 종목"만 알아서 **정작 필터 밖·타점 없는 종목에서 이름이 비었다**
+    // (머리글 배지가 코드로 뜨던 그 버그). 사전은 그 조건이 없다.
+    const { nameOf } = useStockNames();
 
     const pointsByChart = useMemo(() => {
         const m = new Map<string, ReviewPointListItem[]>();

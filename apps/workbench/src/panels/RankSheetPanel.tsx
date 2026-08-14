@@ -28,6 +28,7 @@ import { TextToggle, Dot, ControlBox, PanelHeader, miniBtn, mutedNote } from "..
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, parsePointKey } from "../lib/pointKey.js";
 import { subjectStatus, useSubject } from "../lib/subject.js";
+import { useStockNames } from "../lib/useStockNames.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -149,13 +150,9 @@ export function RankSheetPanel(): JSX.Element {
     //    축 정렬 = 강(rank↑) 먼저, 값 없음(미배치·미산정)은 방향 무관 바닥. localStorage 영속(옛 단일 정렬도 읽는다).
     const [sort, setSort] = usePersistedState<SortChain>(SORT_KEY, parseSortChain, DEFAULT_CHAIN);
     const primary = sort[0];
-    // 종목명 — 타점 목록이 이미 이름을 달고 온다(서버가 마스터를 조인). 따로 조회하지 않는다.
-    const nameByCode = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const p of allPoints) if (p.name) m.set(p.stockCode, p.name);
-        return m;
-    }, [allPoints]);
-    const nameOf = (code: string): string => nameByCode.get(code) ?? code;
+    // 종목명 — 사전 한 벌(전량)에서. 타점 피드에 실려 오는 이름은 안 읽는다: 같은 마스터에서 나온
+    // 부분집합이라 더 알려주는 게 없고, 출처가 둘이면 어느 쪽이 맞는지의 문제가 생긴다.
+    const { nameOf } = useStockNames();
 
     // ── 그룹 컷 — 저장·청소는 열 구성 훅이(축 키를 든 다른 설정들과 같은 사정), 여기서는 **읽어 쓰기만**.
     const sortAxisId = primary.key.kind === "axis" ? primary.key.axisId : null;
@@ -165,7 +162,7 @@ export function RankSheetPanel(): JSX.Element {
         [sortAxisId, cuts, slotOrderOfSort],
     );
 
-    const sortCtx = useMemo<SortCtx>(() => ({ nameOf: (code) => nameByCode.get(code) ?? code }), [nameByCode]);
+    const sortCtx = useMemo<SortCtx>(() => ({ nameOf }), [nameOf]);
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
     const groups = useMemo(() => buildSheetGroups(sorted, sort, sortCtx, cutKeys), [sorted, sort, sortCtx, cutKeys]);
 

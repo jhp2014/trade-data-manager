@@ -11,14 +11,14 @@ import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchSkeletons } from "./skeletons.js";
 import { fetchGroups, fetchGroupMemberships } from "./groups.js";
 import { fetchMaps, fetchCandidateDays } from "./map.js";
-import { fetchStocksMeta } from "./stocks.js";
+import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
 import { fetchDataDates } from "./dataDates.js";
 import { kstToday } from "../lib/date.js";
 
 const IMMUTABLE = Infinity;
-const META_STALE = 30 * 60_000; // 마스터 메타 — 미수집 코드가 sticky-null 로 굳지 않게 30분마다 재시도 허용
+const META_STALE = 30 * 60_000; // 마스터 메타 — 새로 수집된 종목·날짜가 세션 내내 안 보이지 않게 30분마다 재조회 허용
 const TODAY_STALE = 60_000; // 오늘 시세 — 수집(20:30 스윕) 중 빈/부분 응답이 세션 내내 굳지 않게 1분 후 재조회 허용
 
 // 시세 역사(chart·day-summary·day-replay)는 **과거 날짜만** 불변 — 오늘은 수집이 채우는 중일 수 있다.
@@ -84,16 +84,14 @@ export const mapsQuery = () =>
 export const candidateDaysQuery = () =>
     queryOptions({ queryKey: ["candidate-days"], queryFn: ({ signal }) => fetchCandidateDays(signal), staleTime: IMMUTABLE });
 
-// 종목명 등 마스터 메타(날짜무관·code 키). 이름 하나 얻으려 큰 보드 응답을 안 당긴다.
-export const stockMetaQuery = (code: string) =>
-    queryOptions({ queryKey: ["stock-meta", code], queryFn: ({ signal }) => fetchStocksMeta([code], signal), enabled: code.length > 0, staleTime: META_STALE });
-
-// 여러 종목명 배치 조회(/stocks/meta 는 codes 다중 지원) — 최근 탐색처럼 코드 목록의 이름을 한 번에 얻을 때.
-// 키를 **정렬된 코드 집합**으로 잡아 재정렬(방문 시 맨 위로)엔 안 굴고, 새 코드가 들어올 때만 재조회.
-export const stocksMetaQuery = (codes: string[]) => {
-    const uniq = [...new Set(codes)].sort();
-    return queryOptions({ queryKey: ["stocks-meta", uniq.join(",")], queryFn: ({ signal }) => fetchStocksMeta(uniq, signal), enabled: uniq.length > 0, staleTime: META_STALE });
-};
+/**
+ * 종목 마스터 전량(코드·이름·시장) — 이름 사전의 **단일 출처**. 키가 상수라 어느 화면에서 불러도 한 벌이다.
+ *
+ * 옛 코드별·코드집합별 키(`stock-meta`·`stocks-meta`)를 대체한다. 그 키들은 집합이 곧 키라서
+ * `[x,y]` 를 받아 둔 캐시가 `[y,z]` 요청에 하나도 못 쓰였다 — 캐시가 합쳐지지 않는 모양이었다.
+ */
+export const stockMasterQuery = () =>
+    queryOptions({ queryKey: ["stock-master"], queryFn: ({ signal }) => fetchStockMaster(signal), staleTime: META_STALE });
 
 // 종목의 시트 테마+편입이슈(날짜무관·code 키). 배정 mutation 이 ["theme-context"] invalidate 로 갱신하므로 staleTime ∞.
 export const themeContextQuery = (code: string) =>

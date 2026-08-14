@@ -1,8 +1,8 @@
-// /stocks/meta 조회 — 종목 메타(이름·시장) 경량. 이름 하나 얻으려 day-summary(수 MB)를 당기지 않으려는 것.
+// /stocks/master 조회 — 종목 마스터 전량(코드·이름·시장). 부팅에 한 번 받아 이름 사전을 만든다.
 import type { StockMeta } from "@trade-data-manager/wire";
 import { apiGet } from "./http.js";
 
 export type { StockMeta } from "@trade-data-manager/wire";
 
-export const fetchStocksMeta = (codes: string[], signal?: AbortSignal): Promise<StockMeta[]> =>
-    apiGet<StockMeta[]>("stocks/meta", { codes: codes.join(",") }, signal);
+export const fetchStockMaster = (signal?: AbortSignal): Promise<StockMeta[]> =>
+    apiGet<StockMeta[]>("stocks/master", undefined, signal);

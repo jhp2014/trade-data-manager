@@ -1,10 +1,14 @@
 // MasterCache — 종목 마스터 메모리 캐시(**날짜무관**). StockMasterReader 위 누적 캐시 데코레이터.
 // 코드 배치 중 캐시에 없는 것만 조회해 누적(과거 마스터는 안 변함). 신규상장 등은 refresh() 로 비운다.
-import type { StockMaster, StockMasterReader } from "@trade-data-manager/market";
+import type { StockMaster, StockMasterMeta, StockMasterReader } from "@trade-data-manager/market";
 
 export class MasterCache {
     // null = 조회했으나 없는 코드(폐지·미수집). 음성 캐시로 매 빌드 재조회를 막는다(refresh 로 함께 비움).
     private readonly cache = new Map<string, StockMaster | null>();
+    // 이름표 전량(`/stocks/master`) — 코드별 캐시와 **별도 슬롯**이다. 위 캐시는 코드로 찾는 것이라
+    // "전부 다 들었나"를 말할 수 없고(음성 캐시가 섞여 개수로도 못 센다), 그 판정을 지어내면 신규상장이
+    // 조용히 빠진다. 무효화는 refresh() 한 곳이 둘 다 비운다 — 갱신 지점이 둘이면 한쪽만 낡는다.
+    private allMeta: StockMasterMeta[] | null = null;
 
     constructor(private readonly inner: StockMasterReader) {}
 
@@ -31,8 +35,15 @@ export class MasterCache {
         return rows.map((r) => ({ ...r, name: nameByCode.get(r.stockCode) ?? null }));
     }
 
-    /** 신규상장 등 마스터 갱신 시 캐시 비움(음성 캐시 포함 → 새로 조회). */
+    /** 이름표 전량 — 한 번 읽어 들고 있는다(마스터는 수집 때만 바뀐다). */
+    async listAllMeta(): Promise<StockMasterMeta[]> {
+        this.allMeta ??= await this.inner.listAllMeta();
+        return this.allMeta;
+    }
+
+    /** 신규상장 등 마스터 갱신 시 캐시 비움(음성 캐시·전량 목록 포함 → 새로 조회). */
     refresh(): void {
         this.cache.clear();
+        this.allMeta = null;
     }
 }

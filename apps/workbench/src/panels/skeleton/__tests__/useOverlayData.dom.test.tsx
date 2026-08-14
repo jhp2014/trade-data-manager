@@ -16,6 +16,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { ReviewPointListItem, SkeletonFeed } from "@trade-data-manager/wire";
 import { seededClient, type Seed } from "../../../test/renderPanel.js";
+import { StockNamesProvider } from "../../../lib/StockNamesContext.js";
 import { useOverlayData } from "../useOverlayData.js";
 
 const DATE = "2026-07-08";
@@ -64,7 +65,9 @@ beforeEach(() => {
 const wrapper = (seed: Seed) => {
     const client = seededClient(seed);
     return ({ children }: { children: ReactNode }): JSX.Element =>
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+        <QueryClientProvider client={client}>
+            <StockNamesProvider>{children}</StockNamesProvider>
+        </QueryClientProvider>;
 };
 const read = (isDaily: boolean, onlyCharts: ReadonlySet<string> | null = null, seed: Seed = { skeletons: feed, points }): ReturnType<typeof useOverlayData> =>
     renderHook(() => useOverlayData(isDaily, "last", onlyCharts), { wrapper: wrapper(seed) }).result.current;
@@ -171,17 +174,20 @@ describe("곁들이 — 선이 참조하는 것들", () => {
         expect(read(false).pointsByChart.get(ck(A))).toHaveLength(2);
     });
 
-    it("이름은 타점 피드에서 — 없으면 코드 그대로(지어내지 않는다)", () => {
+    it("이름은 마스터 사전에서 — 없으면 코드 그대로(지어내지 않는다)", () => {
         const d = read(false);
         expect(d.nameOf(A)).toBe("삼성전자");
         expect(d.nameOf("999999")).toBe("999999");
     });
 
-    it("앵커 걸린 차트 피드의 이름이 **이긴다** — 타점 없는 차트도 이름을 얻는다", () => {
+    // ⚠ 이 화면의 어느 피드에도 없는 종목의 이름을 답할 수 있어야 한다 — **머리글 배지가 사는 자리가
+    //   정확히 거기다**(필터 밖·타점 없음). 예전엔 이름을 피드에서 모아 이 경우에 코드가 떴다.
+    it("이 화면의 피드에 없는 종목도 이름을 안다 — 사전이 전량이라", () => {
         const d = read(true, null, {
             skeletons: feed, points,
-            anchoredCharts: [{ stockCode: A, date: DATE, name: "삼성전자(앵커)", count: 1 }],
+            stockNames: [{ stockCode: "999999", name: "없던종목", market: "거래소" }],
         });
-        expect(d.nameOf(A)).toBe("삼성전자(앵커)");
+        expect(d.lines.some((l) => l.stockCode === "999999")).toBe(false); // 그릴 재료는 없다
+        expect(d.nameOf("999999")).toBe("없던종목");                        // 그래도 이름은 안다
     });
 });
