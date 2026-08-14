@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { minuteOfDayOf, selectHotUniverse } from "@trade-data-manager/market/domain";
-import { AMOUNT_LEVEL_WIDTH, AMOUNT_LEVEL_EDGES_EOK, RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
+import { RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, pct,
     lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
@@ -11,6 +11,9 @@ import {
 import { useOverlayData } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
 import { useCandles, type CandleFocus } from "./skeleton/useCandles.js";
+import { useOverlayToggles } from "./skeleton/useOverlayToggles.js";
+import { OverlayHeader } from "./skeleton/OverlayHeader.js";
+import { OverlayFooter } from "./skeleton/OverlayFooter.js";
 import { amountLevelOf, amountLookupOf, runWidth } from "./skeleton/amountLayer.js";
 import { AmountLabels, useAmountLabels, type AmountSource } from "./skeleton/AmountLabels.js";
 import { CandleLayer } from "./skeleton/CandleLayer.js";
@@ -18,14 +21,13 @@ import { themeLines, hotCodesInRange } from "./skeleton/themeSkeleton.js";
 import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
-import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useGroups } from "../lib/GroupsContext.js";
-import { pointKeyOf, parsePointKey, chartKeyOf, type PointRef } from "../lib/pointKey.js";
+import { pointKeyOf, chartKeyOf, type PointRef } from "../lib/pointKey.js";
 import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
-import { TextToggle, Dot, ControlBox, miniBtn, mutedNote } from "../components/ControlChrome.js";
+import { mutedNote } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
-import { ACTIVE, HOVER, PRICE_LINE, seriesColor, groupColor } from "../styles/palette.js";
+import { ACTIVE, HOVER, seriesColor } from "../styles/palette.js";
 import { fmtEok, fmtPct } from "../lib/format.js";
 import { shortDate, timeOfMinutes } from "../lib/date.js";
 import { clamp, median } from "../lib/num.js";
@@ -51,7 +53,6 @@ import { clamp, median } from "../lib/num.js";
 // ## 상세 정보의 밀도 규칙 — "지금 조사 중인 하나"에만
 // 피벗 값 라벨·기준선(D선)은 호버(우선) 또는 단일 선택에만 붙는다. 다중 선택은 무리를 만드는 손짓이라
 // 상세를 다 띄우면 수십 벌이 겹친다 — 색·굵기로만 답하고, 상세는 하나를 짚었을 때 준다.
-const ANCHOR_KEY = "wb.skeletonOverlayAnchor";
 
 /**
  * 그림 상자 바깥 여백. **테마를 켜면 왼쪽이 거터(100px)로 넓어진다**(사용자 확정) — 테마 이름 라벨을
@@ -130,23 +131,9 @@ const fmtX = (x: number, unit: XUnit): string => `${Math.round(x)}${unit === "da
 /** 일봉/분봉이 **별도 패널**(카탈로그 2항목)이다 — 시나리오가 "일봉에서 무리 → 분봉으로 확인"의 동시 사용이라
  *  토글 하나로는 두 그림을 오가며 볼 수 없다. grain 은 패널 정체성이라 마운트 후 안 바뀐다. */
 export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.Element {
-    const [anchor, setAnchor] = usePersistedState<SkeletonAnchor>(ANCHOR_KEY, (o) => (o === "first" || o === "last" ? o : null), "last");
-    // ⚠ 패널 설정 키에는 **전부 grain 이 붙는다.** 일봉·분봉이 별도 패널이라 둘이 동시에 떠 있고,
-    // 키를 공유하면 한쪽이 쓴 값이 다른 쪽 몫까지 덮는다(같은 저장소를 두 인스턴스가 각자 들고 있어
-    // 서로의 변경을 못 본다). showFuture·showTheme 만 접미사가 빠져 있었다 — 지금은 분봉만 읽어서
-    // 겉으로 조용하지만, 일봉 쪽에 손잡이가 하나 붙는 순간 조용히 서로를 지운다.
-    // (기준 앵커 ANCHOR_KEY 는 일봉 전용 개념이고 주인이 하나라 일부러 공유한다.)
-    //
-    // 미래 포함(분봉 전용) — 기본 창은 타점 이전이 주인공이라 미래를 마진만 남기고 자른다.
-    // "타점 뒤로 어디까지 갔나"를 볼 땐 이 토글이 창을 데이터까지 넓힌다(축소로도 닿지만 한 번에 보게).
-    const [showFuture, setShowFuture] = usePersistedState<boolean>(`wb.skeletonOverlayFuture.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
-    const [showLevels, setShowLevels] = usePersistedState<boolean>(`wb.skeletonOverlayLevels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
-    const [showLabels, setShowLabels] = usePersistedState<boolean>(`wb.skeletonOverlayLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
-    // 거래대금·테마 토글은 **여기 위에** 산다 — 테마를 켜면 왼쪽 여백(거터)이 넓어지고, 그 여백이
-    // 그림 상자(box) → 스케일 → 나머지 전부의 재료라서 상자보다 먼저 정해져야 한다.
-    const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.skeletonOverlayAmount.${grain}`, (o) => (typeof o === "boolean" ? o : null), true);
-    const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
-    const [showTheme, setShowTheme] = usePersistedState<boolean>(`wb.skeletonOverlayTheme.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
+    // 표시 토글 한 벌 — 영속 키 규칙(전부 grain 접미사)까지 useOverlayToggles 가 소유한다.
+    const toggles = useOverlayToggles(grain);
+    const { anchor, showFuture, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme } = toggles;
 
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const setFocus = useWorkbench((s) => s.setFocus);
@@ -767,6 +754,16 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 척도 변경(boundsKey)엔 안 건드린다: 확대·필터는 같은 그림을 다르게 볼 뿐이라 값이 남아야 한다.
     useEffect(() => { setPinnedPivots(new Set()); }, [anchor]);
 
+    /** 지금 조사 중인 선의 그룹 이름들 — 타점 단위 선은 타점 그룹(차트 그룹 상속 포함), 차트 단위 선은 차트 그룹. */
+    const inspectGroupNames = useMemo(() => {
+        const s = inspectKey ? byKey.get(inspectKey) : null;
+        if (!s) return [];
+        const ids = s.kind === "point"
+            ? groupsView.groupIdsOf({ stockCode: s.stockCode, date: s.date, time: s.time })
+            : groupsView.chartGroupIdsOf(s);
+        return ids.map((id) => groupsView.groupById.get(id)?.name).filter((n): n is string => !!n);
+    }, [inspectKey, byKey, groupsView]);
+
     // 타점 단위 선은 시각까지 — `26.07.08 삼성전자 09:30`(같은 차트의 타점 여러 개가 선 여러 개로 선다).
     // 시각이 tertiary 면 같은 종목의 타점끼리 구분이 안 잡혔다(사용자 지적) — 타점의 정체가 시각이라 굵게 세운다.
     const labelOf = (s: Line, dotFirst: boolean): JSX.Element => {
@@ -801,122 +798,31 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     return (
         <div style={wrap}>
-            <div style={header}>
-                {/* 기준 토글은 일봉 전용 — 분봉은 타점 단위(원점=자기 시각 피벗)라 앵커 선택이 소멸했다. */}
-                {isDaily && (
-                    <ControlBox label="기준">
-                        <TextToggle active={anchor === "last"} onClick={() => setAnchor("last")} title="마지막 피벗을 원점으로 — 끝이 한 점으로 정렬(뒤로 퍼짐)">마지막 점</TextToggle>
-                        <Dot />
-                        <TextToggle active={anchor === "first"} onClick={() => setAnchor("first")} title="첫 피벗을 원점으로 — 시작점에서 앞으로 퍼짐">첫 점</TextToggle>
-                    </ControlBox>
-                )}
-                <ControlBox>
-                    {!isDaily && (
-                        <TextToggle active={onlySelected} onClick={() => setOnlySelected(!onlySelected)}
-                            title="골격 패널의 차트 선택만 남긴다 — 일봉에서 무리를 만들고 여기서 분봉 경로를 확인. 선택이 비면 전체">
-                            선택만
-                        </TextToggle>
-                    )}
-                    {isPointUnit && (
-                        <TextToggle active={showFuture} onClick={() => setShowFuture(!showFuture)}
-                            title="타점 이후(점선 구간)까지 기본 창에 담는다 — 끄면 타점 이전이 화면을 차지한다">
-                            미래
-                        </TextToggle>
-                    )}
-                    <TextToggle active={showLevels} onClick={() => setShowLevels(!showLevels)} title="조사 중인 골격의 기준선·D선을 같은 % 공간에 얹는다" activeColor={PRICE_LINE}>선</TextToggle>
-                    <TextToggle active={showLabels} onClick={() => setShowLabels(!showLabels)} title="앵커 반대쪽 끝에 종목·날짜 — 뭉치면 개수 뱃지, 눌러서 목록">라벨</TextToggle>
-                    <TextToggle active={locked !== null} onClick={() => setLocked(locked ? null : autoBounds)} title="지금 척도를 붙든다 — 필터를 좁혀도 척도가 안 움직여 전후가 비교된다">척도 고정</TextToggle>
-                </ControlBox>
-                {/* 캔들 선명도 — **늘 떠 있다**(사용자 확정). 켜져 있을 때만 띄웠더니 캔들을 켜고 끌 때마다
-                    헤더 폭이 튀었다. 조절할 게 없는 순간이 있어도 자리가 안 움직이는 편이 낫다.
-                    다른 라벨을 짚는 동안 캔들이 사라지는 건 규칙이라 손잡이를 안 준다. */}
-                <ControlBox label="캔들">
-                    {(["low", "mid", "high"] as const).map((a, i) => (
-                        <span key={a} style={{ display: "inline-flex", alignItems: "center" }}>
-                            {i > 0 && <Dot />}
-                            <TextToggle active={candles.alpha === a} onClick={() => candles.setAlpha(a)}
-                                title={a === "low" ? "배경으로만 — 형태 비교가 주인공일 때"
-                                    : a === "mid" ? "기본"
-                                        : "골격선과 같이 읽을 만큼 진하게 — 봉 하나하나를 짚어 볼 때"}>
-                                {a === "low" ? "흐리게" : a === "mid" ? "보통" : "진하게"}
-                            </TextToggle>
-                        </span>
-                    ))}
-                </ControlBox>
-                {/* 거래대금은 **하나를 선택했을 때만** — 재료가 그날치 한 벌이라 호버로 끌면 스칠 때마다 왕복이다. */}
-                {!isDaily && (
-                    <ControlBox label="거래대금">
-                        <TextToggle active={amountWidthOn} onClick={() => setShowAmount(!showAmount)}
-                            title="선을 분 단위로 잘라 그 분의 거래대금을 **굵기**로 싣는다 — 굵은 자리가 터진 자리(전 종목·전 시각 상시)">
-                            굵기
-                        </TextToggle>
-                        <TextToggle active={amountLabelsOn} onClick={() => setShowAmountLabels(!showAmountLabels)}
-                            title="터진 자리에 분당 거래대금 수치. 전 선이 한 격자에서 겨뤄 한 칸에 제일 큰 하나만 남는다 — 확대하면 작은 것들이 드러나고 축소하면 사라진다">
-                            값
-                        </TextToggle>
-                    </ControlBox>
-                )}
-                {!isDaily && (
-                    <ControlBox>
-                        {/* 캔들은 토글도 표시도 여기 없다 — **선/라벨 클릭**으로 켜고, 상태는 푸터가 말한다.
-                            헤더에 두면 켤 때마다 칩이 늘었다 줄었다 하며 flexWrap 이 줄을 바꿔 **그림 상자 높이가
-                            변하고 화면이 튀었다**(사용자 지적). 푸터는 nowrap+ellipsis 라 높이가 안 변한다. */}
-                        <TextToggle active={showTheme} onClick={() => setShowTheme(!showTheme)}
-                            title="선택한 타점의 앞뒤 창 동안 같은 테마 종목들의 분당 종가 경로를 같이 세운다(그 구간에 보드에 떴던 것만, 세로 간격 = 등락률 %p 차이 그대로) — 굵기가 각 종목의 분당 거래대금이다 · 단축키 T">
-                            테마
-                        </TextToggle>
-                        {showTheme && themeOverlay && (
-                            <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", marginLeft: 2 }}>
-                                {themeOverlay.lines.length}
-                            </span>
-                        )}
-                        {showTheme && !singleTarget && (
-                            <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginLeft: 2 }} title="테마는 짚은 하나에만 펼친다 — 여러 날을 겹치면 '이 종목이 혼자 튄 건가'가 흐려진다">
-                                선 하나 선택
-                            </span>
-                        )}
-                        {showTheme && singleTarget && themeOverlay?.lines.length === 0 && (
-                            <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginLeft: 2 }} title="그 구간에 보드에 뜬 같은 테마 종목이 없거나, 이 종목이 그날 유니버스 밖입니다">
-                                없음
-                            </span>
-                        )}
-                    </ControlBox>
-                )}
-                <span style={count}>
-                    {lines.length}개
-                    {population > lines.length && <span style={{ color: "var(--text-tertiary)" }}> / {population}</span>}
-                    {/* 결손은 필터와 별도 표기 — "N/M 차이 = 필터"라는 읽기가 거짓이 되지 않게. */}
-                    {missingPrevClose > 0 && (
-                        <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — %p 공간의 분모가 없어 그릴 수 없는 타점(필터로 빠진 게 아님)"> · 결손 {missingPrevClose}</span>
-                    )}
-                </span>
-                {/* 차트 선택 손잡이는 차트 단위 뷰에서만 — 타점 단위 뷰의 문법은 아래 타점 버튼이다. */}
-                {selectedCharts.length > 0 && (
-                    <button onClick={(e) => openGroupMenuForSelection(e)} title="선택된 차트들에 그룹 붙이기/떼기 — 그룹은 그룹다" style={miniBtn}>
-                        차트 {selectedCharts.length} 그룹
-                    </button>
-                )}
-                {!isPointUnit && selectedKeys.size > 0 && (
-                    <button onClick={() => setSelectedKeys(new Set())} title="차트 선택 해제" style={miniBtn}>✕</button>
-                )}
-                {selectedPks.size > 0 && (
-                    <button onClick={(e) => openPointGroupMenu(
-                        [...selectedPks].map((pk) => parsePointKey(pk)).filter((p): p is PointRef => p !== null),
-                        `타점 ${selectedPks.size}개`, e)}
-                        title="선택된 타점들에 그룹 붙이기/떼기(타점 그룹)" style={miniBtn}>
-                        타점 {selectedPks.size} 그룹
-                    </button>
-                )}
-                {selectedPks.size > 0 && (
-                    <button onClick={() => setSelectedPks(new Set())} title="타점 선택 해제" style={miniBtn}>✕</button>
-                )}
-                {pinnedPivots.size > 0 && (
-                    <button onClick={() => setPinnedPivots(new Set())} title="붙잡아 둔 피벗 값 전부 떼기" style={miniBtn}>
-                        값 {pinnedPivots.size} ✕
-                    </button>
-                )}
-                {zoomed && <button onClick={reset} title="원위치(더블클릭도 같음)" style={miniBtn}>원위치 ⤺</button>}
-            </div>
+            <OverlayHeader
+                grain={grain}
+                toggles={toggles}
+                candles={candles}
+                counts={{ shown: lines.length, population, missing: missingPrevClose }}
+                theme={{ lineCount: themeOverlay?.lines.length ?? null, hasTarget: singleTarget !== null }}
+                selection={{
+                    chartCount: selectedCharts.length,
+                    chartChannelShown: !isPointUnit,
+                    rawChartCount: selectedKeys.size,
+                    onGroupCharts: openGroupMenuForSelection,
+                    onClearCharts: () => setSelectedKeys(new Set()),
+                    pointKeys: selectedPks,
+                    onGroupPoints: openPointGroupMenu,
+                    onClearPoints: () => setSelectedPks(new Set()),
+                    pinnedCount: pinnedPivots.size,
+                    onClearPins: () => setPinnedPivots(new Set()),
+                }}
+                onlySelected={onlySelected}
+                setOnlySelected={setOnlySelected}
+                locked={locked !== null}
+                onToggleLock={() => setLocked(locked ? null : autoBounds)}
+                zoomed={zoomed}
+                onResetZoom={reset}
+            />
 
             <div ref={wrapRef} onMouseDown={onWrapMouseDown}
                 onMouseEnter={() => setHoveringPanel(true)} onMouseLeave={() => setHoveringPanel(false)}
@@ -1469,55 +1375,24 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     toggle={(p, id, on) => groupsView.toggle(p, id, on)} />
             )}
 
-            <div style={footer}>
-                {/* 조사 중인 선의 그룹 — 그룹 소속이 발끝에서 바로 읽힌다(따로 열어보지 않게).
-                    타점 단위 선은 타점 그룹(차트 그룹 상속 포함), 차트 단위 선은 차트 그룹. */}
-                {(() => {
-                    const s = inspectKey ? byKey.get(inspectKey) : null;
-                    const ids = s ? (s.kind === "point" ? groupsView.groupIdsOf({ stockCode: s.stockCode, date: s.date, time: s.time }) : groupsView.chartGroupIdsOf(s)) : [];
-                    if (!s || ids.length === 0) return null;
-                    return (
-                        <span style={{ marginRight: 8 }}>
-                            {ids.map((id) => {
-                                const name = groupsView.groupById.get(id)?.name;
-                                return name ? <span key={id} style={{ color: groupColor(name), fontWeight: 600, marginRight: 5 }}>{name}</span> : null;
-                            })}
-                            ·
-                        </span>
-                    );
-                })()}
-                {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 그룹 · 점 클릭 = 값 붙잡기
-                {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
-                <span style={{ color: "var(--text-tertiary)" }}>
-                    {isDaily ? " · 선택된 라벨 재클릭 = 캔들 · 축 더블클릭 = 그 축 원위치" : " · 선 클릭 = 캔들 · T = 테마 · 축 더블클릭 = 그 축 원위치"}
-                </span>
-                {themeMode && <span style={{ color: "var(--text-secondary)" }}> · 테마 모드(흐린 라벨 호버 = 그 골격선)</span>}
-                {/* 캔들 상태 — 헤더가 아니라 여기(높이가 안 변하는 줄). 이름을 다 적어 어느 종목을 보고 있는지 남긴다. */}
-                {candles.codes.size > 0 && (
-                    <span style={{ color: "var(--text-secondary)" }}>
-                        {" · 캔들 "}
-                        {/* ⚠ 앵커는 `candleAnchor` 다 — 예전엔 `pointTarget!` 이었는데, 일봉 패널엔 그게 null 이라
-                            일봉 캔들을 켜는 순간 여기서 터져 **패널이 흰 화면**이 됐다. 단언은 그 자리에서 깨진다. */}
-                        {[candles.anchorOn && candleAnchor ? nameOf(candleAnchor.stockCode) : null, ...(candles.set?.members.map((m) => m.name) ?? [])].filter(Boolean).join("·")}
-                        {candles.anchorOn && candles.anchorLoading ? " …" : ""}
-                        <button onClick={candles.clear} title="켜 둔 캔들 전부 끄기" style={footerBtn}>✕</button>
-                    </span>
-                )}
-                {themeOverlay && themeOverlay.lines.length > 0 && (
-                    <span style={{ color: "var(--text-secondary)" }}> · 테마 {themeOverlay.lines.length}선(분당 종가)</span>
-                )}
-                {/* 굵기 범례 — 굵기는 "굵다=크다"가 자명해서 색처럼 대응표가 꼭 필요하진 않지만,
-                    **단계 경계가 얼마인지**는 알아야 읽힌다(20 / 40 / 70 / 150억). 정확한 값은 숫자 라벨이 답한다. */}
-                {!isDaily && amountWidthOn && (
-                    <span style={{ display: "inline-flex", alignItems: "flex-end", gap: 3, marginLeft: 8, height: 12, verticalAlign: "middle" }}
-                        title={`분당 거래대금 굵기 단계 — 경계 ${AMOUNT_LEVEL_EDGES_EOK.join("/")}억`}>
-                        {AMOUNT_LEVEL_WIDTH.map((w, i) => (
-                            <span key={i} style={{ width: 8, height: w, background: "var(--text-secondary)", borderRadius: w / 2 }} />
-                        ))}
-                        <span style={{ marginLeft: 3, color: "var(--text-tertiary)" }}>~{AMOUNT_LEVEL_EDGES_EOK.join("~")}억+/분</span>
-                    </span>
-                )}
-            </div>
+            <OverlayFooter
+                grain={grain}
+                groupNames={inspectGroupNames}
+                locked={locked !== null}
+                themeMode={themeMode}
+                themeLineCount={themeOverlay?.lines.length ?? 0}
+                candles={{
+                    // ⚠ 앵커는 `candleAnchor` 다 — 예전엔 `pointTarget!` 이었는데 일봉 패널엔 그게 null 이라
+                    //   일봉 캔들을 켜는 순간 여기서 터져 **패널이 흰 화면**이 됐다. 단언은 그 자리에서 깨진다.
+                    names: candles.codes.size === 0 ? [] : [
+                        candles.anchorOn && candleAnchor ? nameOf(candleAnchor.stockCode) : null,
+                        ...(candles.set?.members.map((m) => m.name) ?? []),
+                    ].filter((n): n is string => n !== null),
+                    loading: candles.anchorOn && candles.anchorLoading,
+                    onClear: candles.clear,
+                }}
+                amountWidthOn={amountWidthOn}
+            />
         </div>
     );
 }
@@ -1626,9 +1501,6 @@ const axisBadge: CSSProperties = {
 };
 
 const wrap: CSSProperties = { display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" };
-const header: CSSProperties = { flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexWrap: "wrap" };
-const footer: CSSProperties = { flexShrink: 0, padding: "3px 10px", borderTop: "1px solid var(--border-default)", fontSize: 10.5, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
-const count: CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 /** 안내 문구 — 공용 문구 위에 **덮개**만 얹는다(그림 위에 떠서 포인터를 안 먹게). */
 const muted: CSSProperties = { ...mutedNote, position: "absolute", inset: 0, pointerEvents: "none" };
 const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
@@ -1636,8 +1508,6 @@ const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
 const axisAbsText: CSSProperties = { fontSize: 8.5, fill: "var(--text-quaternary, var(--text-tertiary))", opacity: 0.75, fontVariantNumeric: "tabular-nums" };
 /** 크로스헤어 뱃지 안의 절대값 — 같은 뱃지에 이어 붙되 색으로 갈린다(뱃지를 둘로 나누면 축이 복잡해진다). */
 const axisBadgeAbs: CSSProperties = { color: "var(--text-tertiary)" };
-/** 푸터 안 인라인 버튼 — 상자·여백 없이 글자만(푸터 높이가 절대 안 변해야 그림이 안 튄다). */
-const footerBtn: CSSProperties = { marginLeft: 4, padding: 0, border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", lineHeight: "inherit" };
 // 라벨 — 상자 없이 후광 글자 + 그 선 색의 점(F안). **색 점은 언제나 끝점을 마주 보는 쪽**에 서서
 // 이 글자가 어느 선의 것인지 가리킨다(칩이 점 바깥에 서므로 칩의 안쪽 끝이 곧 점 쪽이다).
 const chip: CSSProperties = {
