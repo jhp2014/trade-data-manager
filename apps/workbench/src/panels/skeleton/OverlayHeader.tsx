@@ -7,7 +7,7 @@
 // 접고(useOverlayToggles) 나머지도 성격끼리 묶어 여덟 개로 줄였다 — 묶음 하나가 곧 "이 바가 말하는
 // 한 가지"다(표시 · 캔들 · 집계 · 척도 · 테마 상태 · 선택).
 import { parsePointKey, type PointRef } from "../../lib/pointKey.js";
-import { TextToggle, Dot, ControlBox, miniBtn } from "../../components/ControlChrome.js";
+import { TextToggle, Dot, ControlBox, PanelHeader, miniBtn } from "../../components/ControlChrome.js";
 import { PRICE_LINE } from "../../styles/palette.js";
 import type { CandlesView } from "./useCandles.js";
 import type { OverlayToggles } from "./useOverlayToggles.js";
@@ -46,13 +46,15 @@ export interface OverlaySelection {
     onClearPins: () => void;
 }
 
-export function OverlayHeader({ grain, toggles, candles, counts, theme, selection, onlySelected, setOnlySelected, locked, onToggleLock, zoomed, onResetZoom }: {
+export function OverlayHeader({ grain, toggles, candles, counts, theme, selection, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock, zoomed, onResetZoom }: {
     grain: "daily" | "minute";
     toggles: OverlayToggles;
     candles: CandlesView;
     counts: OverlayCounts;
     theme: OverlayThemeStatus;
     selection: OverlaySelection;
+    /** 선택이 이 패널에 안 보일 때 이유를 말하는 배지(SubjectBadge) — 보이면 null 이 온다. */
+    subjectBadge?: React.ReactNode;
     /** "선택만 보기"(분봉 전용) — 패널 로컬 시야라 영속 토글에 안 든다. */
     onlySelected: boolean;
     setOnlySelected: (on: boolean) => void;
@@ -67,7 +69,7 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, selectio
     const t = toggles;
 
     return (
-        <div style={header}>
+        <PanelHeader gap={9}>
             {/* 기준 토글은 일봉 전용 — 분봉은 타점 단위(원점=자기 시각 피벗)라 앵커 선택이 소멸했다. */}
             {isDaily && (
                 <ControlBox label="기준">
@@ -125,8 +127,9 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, selectio
             {!isDaily && (
                 <ControlBox>
                     {/* 캔들은 토글도 표시도 여기 없다 — **선/라벨 클릭**으로 켜고, 상태는 푸터가 말한다.
-                        헤더에 두면 켤 때마다 칩이 늘었다 줄었다 하며 flexWrap 이 줄을 바꿔 **그림 상자 높이가
-                        변하고 화면이 튀었다**(사용자 지적). 푸터는 nowrap+ellipsis 라 높이가 안 변한다. */}
+                        헤더에 두면 켤 때마다 칩이 늘었다 줄었다 해 컨트롤 줄을 매번 다시 훑어야 했다
+                        (그때는 줄바꿈까지 나 그림 상자 높이가 튀었다 — 그 절반은 PanelHeader 가 없앴다).
+                        푸터는 nowrap+ellipsis 라 무엇을 켜도 자리가 안 움직인다. */}
                     <TextToggle active={t.showTheme} onClick={() => t.setShowTheme(!t.showTheme)}
                         title="선택한 타점의 앞뒤 창 동안 같은 테마 종목들의 분당 종가 경로를 같이 세운다(그 구간에 보드에 떴던 것만, 세로 간격 = 등락률 %p 차이 그대로) — 굵기가 각 종목의 분당 거래대금이다 · 단축키 T">
                         테마
@@ -148,6 +151,7 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, selectio
                     )}
                 </ControlBox>
             )}
+            {subjectBadge}
             <span style={count}>
                 {counts.shown}개
                 {counts.population > counts.shown && <span style={{ color: "var(--text-tertiary)" }}> / {counts.population}</span>}
@@ -182,9 +186,8 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, selectio
                 </button>
             )}
             {zoomed && <button onClick={onResetZoom} title="원위치(더블클릭도 같음)" style={miniBtn}>원위치 ⤺</button>}
-        </div>
+        </PanelHeader>
     );
 }
 
-const header: React.CSSProperties = { flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexWrap: "wrap" };
-const count: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+const count: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 };

@@ -31,7 +31,8 @@ import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useGroups } from "../lib/GroupsContext.js";
-import { pointKeyOf, chartKeyOf, type PointRef } from "../lib/pointKey.js";
+import { type PointRef } from "../lib/pointKey.js";
+import { SubjectBadge } from "../components/SubjectBadge.js";
 import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
 import { mutedNote } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
@@ -130,7 +131,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const setFocus = useWorkbench((s) => s.setFocus);
-    const activePoint = useWorkbench((s) => s.activePoint);
 
     const isDaily = grain === "daily";
     /** 분봉 = **타점 단위**(사용자 확정): 선 하나 = 타점 하나(자기 시각 피벗이 원점). 절대 뷰는 폐기 —
@@ -168,7 +168,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 그룹 한 벌 — 그룹 메뉴·발끝 표기(여기) + 차트 그룹 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
     const groupsView = useGroups();
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
-    const { feedLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf } =
+    const { feedLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
         useOverlayData(isDaily, anchor, onlyCharts);
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
@@ -245,16 +245,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 이 뷰의 선이 쓰는 선택 채널 — 타점 단위면 pk 집합, 차트 단위면 차트키 집합. 문법은 하나다.
     const activeSelection = isPointUnit ? selectedPks : selectedKeys;
     const setActiveSelection = isPointUnit ? setSelectedPks : setSelectedKeys;
-    const activeKey = activePoint
-        ? isPointUnit
-            ? activePoint.time && pointKeyOf(activePoint.code, activePoint.date, activePoint.time)
-            : chartKeyOf(activePoint.code, activePoint.date)
-        : null;
-    // 로컬 선택이 없으면 활성 타점(의 차트)을 단일 선택으로 — 다른 패널과의 링크가 이걸로 이어진다.
-    const effSelected = useMemo<ReadonlySet<string>>(
-        () => (activeSelection.size > 0 ? activeSelection : activeKey && byKey.has(activeKey) ? new Set([activeKey]) : new Set()),
-        [activeSelection, activeKey, byKey],
-    );
+    // 로컬 선택이 없으면 지금 선택(subject)이 가리키는 선들을 선택으로 — 다른 패널과의 링크가 이걸로
+    // 이어진다. 분봉에서 하루 선택이면 그날 **전 타점**이 무리로 선다(subjectKeys 가 그렇게 온다).
+    const effSelected = useMemo<ReadonlySet<string>>(() => {
+        if (activeSelection.size > 0) return activeSelection;
+        const hit = [...subjectKeys].filter((k) => byKey.has(k));
+        return hit.length > 0 ? new Set(hit) : new Set();
+    }, [activeSelection, subjectKeys, byKey]);
 
     // 라벨이 붙는 끝 — 골격 종목 이름은 **언제나 경로의 왼쪽 끝**(사용자 확정).
     // 테마 라벨은 왼쪽 거터에 살아 자리 싸움이 없고, 미래 점선 쪽(오른쪽)은 결과라 손잡이를 안 둔다.
@@ -667,6 +664,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 candles={candles}
                 counts={{ shown: lines.length, population, missing: missingPrevClose }}
                 theme={{ lineCount: themeOverlay?.lines.length ?? null, hasTarget: singleTarget !== null }}
+                subjectBadge={<SubjectBadge subject={subject} status={subjectState}
+                    name={subject ? nameOf(subject.code) : undefined}
+                    absentLabel={isDaily ? "골격 없음" : "골격·타점 없음"} />}
                 selection={{
                     chartCount: selectedCharts.length,
                     chartChannelShown: !isPointUnit,

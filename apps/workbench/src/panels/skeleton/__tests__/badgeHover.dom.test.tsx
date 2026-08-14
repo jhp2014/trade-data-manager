@@ -49,9 +49,13 @@ const focusFromElsewhere = (code: string): void =>
     act(() => { useWorkbench.getState().goToPoint({ code, date: DATE, time: TIME }, "test"); });
 
 // 스토어는 모듈 싱글톤이라 다음 파일로 샌다 — 활성 타점이 남으면 다른 테스트의 "짚은 게 없는 화면"이
-// 조용히 "짚은 화면"이 된다(effSelected 폴백).
-beforeEach(() => { useWorkbench.setState({ activePoint: null, skeletonSelection: new Set() }); });
-afterEach(() => { useWorkbench.setState({ activePoint: null, skeletonSelection: new Set() }); localStorage.clear(); });
+// 조용히 "짚은 화면"이 된다(effSelected 폴백). **focus 도 리셋한다** — 선택(subject)이 activePoint
+// 없으면 focus 의 (종목,날짜)로 폴백하므로, goToPoint 가 남긴 focus 만으로도 유령 선택이 선다.
+const resetStore = (): void => {
+    useWorkbench.setState({ activePoint: null, skeletonSelection: new Set(), focus: { date: DATE, code: "", time: null } });
+};
+beforeEach(resetStore);
+afterEach(() => { resetStore(); localStorage.clear(); });
 
 describe("뭉친 라벨 — 뱃지가 서 있나", () => {
     // 아래 검사가 전부 뱃지를 상대로 하므로, 뱃지가 없으면 통째로 헛돈다.

@@ -24,9 +24,11 @@ import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js
 import { useFunnel } from "./filter/FunnelContext.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
-import { TextToggle, Dot, ControlBox, miniBtn, mutedNote } from "../components/ControlChrome.js";
+import { TextToggle, Dot, ControlBox, PanelHeader, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
-import { pointKey, pointKeyOf, parsePointKey } from "../lib/pointKey.js";
+import { pointKey, parsePointKey } from "../lib/pointKey.js";
+import { subjectStatus, useSubject } from "../lib/subject.js";
+import { SubjectBadge } from "../components/SubjectBadge.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
@@ -71,8 +73,11 @@ interface SheetDrop { target: RankTarget; tie: boolean; y: number; rowTop?: numb
 
 export function RankSheetPanel(): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
-    const activePoint = useWorkbench((s) => s.activePoint);
-    const activeKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
+    // 지금 선택(subject) — 타점 또는 하루. 행 강조·스크롤 따라가기·머리글 배지가 이걸 본다.
+    const subject = useSubject();
+    const isSubjectRow = (r: { stockCode: string; date: string; time: string }): boolean =>
+        subject !== null && r.stockCode === subject.code && r.date === subject.date &&
+        (subject.time === null || r.time === subject.time);
 
     // 호버는 이 표 안의 일이다 — 예전엔 배치 보드와 링크라 store 였지만 받을 보드가 없어졌다.
     const [hoveredPoint, setHoveredPoint] = useState<string | null>(null);
@@ -164,15 +169,37 @@ export function RankSheetPanel(): JSX.Element {
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
     const groups = useMemo(() => buildSheetGroups(sorted, sort, sortCtx, cutKeys), [sorted, sort, sortCtx, cutKeys]);
 
-    // 상단 고정 블록 = **핀 + 지금 보고 있는 타점**. 둘 다 조건이 아니라 **시선**이라, 필터가 좁혀도
-    // 사라지지 않는다 — 좁히기 모드에서 활성 타점이 조건 밖이면 행 자체가 없어져서, 지금 무엇을 보고
-    // 있는지가 화면에서 지워지던 문제. 활성은 늘 맨 앞(핀에도 있으면 중복 없이 한 번만).
+    // 상단 고정 블록 = **핀만**. 활성 타점의 상시 고정은 폐기했다(사용자 확정) — 목록에 없는 선택을
+    // 억지로 상단에 세우는 대신, 행이 있으면 스크롤로 따라가고 없으면 머리글 배지가 이유를 말한다.
     const pinnedRows = useMemo(() => {
-        const keys = activeKey !== null && !pinned.includes(activeKey) ? [activeKey, ...pinned] : pinned;
-        const items = keys.map((k) => allByKey.get(k)).filter((x): x is ReviewPointListItem => !!x);
+        const items = pinned.map((k) => allByKey.get(k)).filter((x): x is ReviewPointListItem => !!x);
         return buildSheetRows(items, axisIds, indexByAxis);
-    }, [pinned, activeKey, allByKey, axisIds, indexByAxis]);
+    }, [pinned, allByKey, axisIds, indexByAxis]);
     const mainRows = sorted; // 핀 행도 기존 위치에 그대로(상단 고정 블록에 중복 표시, 삼각형으로 구분)
+
+    // 선택의 정의역 판정 — 시트의 재료는 타점이다. 하루 선택이면 그날 타점 아무거나(subject.ts 규칙).
+    const subjectRowKey = useMemo(() => {
+        const r = mainRows.find(isSubjectRow);
+        return r ? pointKey(r) : null;
+    }, [mainRows, subject]);
+    const subjectInData = useMemo(
+        () => subject !== null && allPoints.some(isSubjectRow),
+        [allPoints, subject],
+    );
+    const status = subjectStatus(subjectInData, subjectRowKey !== null);
+
+    const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());     // 행 pk → tr(드롭 Y 판정 + 선택 따라가기)
+    // 선택 따라가기 — 행이 있으면 그 자리로 스크롤(사용자 확정: 고정 대신 스크롤).
+    //  · 내가(rank-sheet) 바꾼 선택엔 안 움직인다 — 행을 눌렀는데 화면이 튀면 클릭이 벌이 된다.
+    //  · 마운트 첫 판정도 건너뛴다 — 세션 스크롤 복원(sheetScroll)과 싸우지 않게.
+    const followedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (followedRef.current === null) { followedRef.current = subjectRowKey ?? ""; return; }
+        if (subjectRowKey === null || subjectRowKey === followedRef.current) { followedRef.current = subjectRowKey ?? ""; return; }
+        followedRef.current = subjectRowKey;
+        if (useWorkbench.getState().lastFocusOrigin === "rank-sheet") return;
+        rowRefs.current.get(subjectRowKey)?.scrollIntoView({ block: "center" });
+    }, [subjectRowKey]);
 
     // ── 축 관리(만들기·이름 변경·삭제) — 배치 보드가 사라져 시트가 유일한 입구다.
     const qc = useQueryClient();
@@ -265,7 +292,6 @@ export function RankSheetPanel(): JSX.Element {
         onSuccess: invLines,
     });
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-    const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());     // tbody 행 pk → tr(드롭 Y 판정)
     const sortAxisThRef = useRef<HTMLTableCellElement | null>(null);         // 정렬 축 헤더(열 x 범위)
     const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
     const [dragName, setDragName] = useState<string | null>(null);
@@ -329,7 +355,7 @@ export function RankSheetPanel(): JSX.Element {
                 leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
                 name={nameOf(row.stockCode)}
                 mode={cellMode} valuedOf={valuedOf} sortAxisId={sortAxisId}
-                focus={activeKey === key} hover={hoveredPoint === key} pinned={isPinned}
+                focus={isSubjectRow(row)} hover={hoveredPoint === key} pinned={isPinned}
                 dim={bandsActive && !interKeys.has(key) && (isPinned || filterMode === "dim")}
                 inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} h={rowH} />
         );
@@ -342,7 +368,7 @@ export function RankSheetPanel(): JSX.Element {
         <Wrap>
           <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={() => { setDrop(null); setDragName(null); }}>
             {/* 헤더 컨트롤 — 표시/필터모드/행수(가로 휠 스크롤). 기간은 날짜 필터로 이관. */}
-            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", minWidth: 0 }}>
+            <PanelHeader gap={0}>
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0, flex: 1 }}>
                     {/* 표시 — 숫자 · 순위 눈금 · 값 눈금. 값 눈금은 계산 축에서만 다르다(판단 축은 순위로 폴백). */}
                     <ControlBox label="표시">
@@ -360,6 +386,8 @@ export function RankSheetPanel(): JSX.Element {
                         </ControlBox>
                     )}
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
+                    {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
+                    <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
                     {/* 컷과 2차 정렬이 둘 다 걸리면 축 열이 순위 순서가 아니라 행 사이 드롭이 뜻을 잃는다 — 왜 안 되는지 보이게. */}
                     {dragBroken && <span style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 }}>· 그룹 안 정렬 중 — 배치 드래그 꺼짐</span>}
                     {sort.length > 1 && <button onClick={() => setSort((s) => [s[0]])} title="2차 이하 정렬 해제(1차만 남김)" style={{ ...miniBtn, flexShrink: 0 }}>정렬 {sort.length}단 ⤺</button>}
@@ -369,7 +397,7 @@ export function RankSheetPanel(): JSX.Element {
                     <button onClick={(e) => setAddAxis({ x: e.clientX, y: e.clientY })} title="판단 축 새로 만들기(이름 변경·삭제는 열 이름 우클릭)" style={{ ...miniBtn, flexShrink: 0 }}>+ 축</button>
                     {cols.hasManualWidths && <button onClick={cols.resetWidths} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
                 </div>
-            </div>
+            </PanelHeader>
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
             <div ref={scrollRef} onScroll={(e) => { sheetScroll = { top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft }; }} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
@@ -441,7 +469,7 @@ export function RankSheetPanel(): JSX.Element {
                         })}
                     </tbody>
                 </table>
-                {/* 고정 블록(핀·선택)은 조건에 맞아서 있는 게 아니다 — 그게 차 있어도 "맞는 게 없다"는 사실은 말해야 한다. */}
+                {/* 고정 블록(핀)은 조건에 맞아서 있는 게 아니다 — 그게 차 있어도 "맞는 게 없다"는 사실은 말해야 한다. */}
                 {mainRows.length === 0 && <div style={muted}>{bandsActive ? "이 조건에 맞는 타점이 없습니다." : "이 기간에 타점이 없습니다."}</div>}
             </div>
 

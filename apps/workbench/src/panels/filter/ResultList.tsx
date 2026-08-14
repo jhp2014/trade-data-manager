@@ -11,15 +11,20 @@
 // ② **같은 (날짜·종목)은 한 덩어리로 보인다.** 타점 해상도에서는 한 차트가 여러 행이 되는데, 날짜와
 //    이름이 매 행 반복되면 몇 개의 차트를 보고 있는지가 안 읽힌다. 첫 행에만 쓰고 세로선으로 묶는다.
 //
-// ③ **선택은 조건이 아니라 시선이다.** 지금 보고 있는 타점은 목록 위 **고정 줄**에 늘 떠 있고(조건 밖이라
-//    목록에 없어도), 그 줄을 누르면 그 타점이 있는 달로 옮겨 가 행까지 스크롤한다.
+// ③ **선택은 조건이 아니라 시선이다.** 지금 보고 있는 선택(subject: 타점 또는 하루)은 목록 위
+//    **고정 줄**에 늘 떠 있고(조건 밖이라 목록에 없어도), 그 줄을 누르면 그 선택이 있는 달로 옮겨 가
+//    행까지 스크롤한다.
 //    ⚠ **따라가기는 누를 때만** 한다. 예전엔 타점이 바뀌면 달이 저절로 따라갔는데, 그러면 5월을 훑는
 //    중에 다른 달 타점을 하나 누르는 순간 보던 달을 잃는다 — 고른 달은 사용자의 것이다.
+//
+// ④ **하루 행도 선택이다.** 타점 해상도가 아니면(또는 타점 없는 하루면) 행에 time 이 없는데, 그걸
+//    못 누르게 두면 "필터로 찾은 하루를 보러 간다"가 이 목록에서 성립하지 않는다. time 없는 행 클릭
+//    = goToDay(하루 선택 — activePoint 는 풀린다).
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FunnelCell } from "@trade-data-manager/market/domain";
 import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
 import { useStockNames } from "../../lib/useStockNames.js";
-import { pointKeyOf } from "../../lib/pointKey.js";
+import { useSubject } from "../../lib/subject.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { ACTIVE, ACTIVE_SOFT, FAIL, STRONG } from "../../styles/palette.js";
 import type { FunnelSelection } from "../../store/filterFunnelSlice.js";
@@ -33,15 +38,19 @@ const MAX_ROWS = 1000;
 
 export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelSelection | null }): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
-    const activePoint = useWorkbench((s) => s.activePoint);
+    const goToDay = useWorkbench((s) => s.goToDay);
     const setSelection = useWorkbench((s) => s.setFunnelSelection);
+    const subject = useSubject();
     const items = v.viewedItems;
 
     const sorted = useMemo(() => sortItems(items), [items]);
     const { months, countByMonth } = useMemo(() => monthBuckets(sorted), [sorted]);
 
-    const activeKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
-    const activeMonth = activePoint ? monthOf(activePoint.date) : null;
+    const activeMonth = subject ? monthOf(subject.date) : null;
+    // 이 행이 지금 선택인가 — 타점 선택이면 그 시각의 행(하루 알갱이면 그 하루 행), 하루 선택이면 그 차트의 행 전부.
+    const isActiveItem = (it: { stockCode: string; date: string; time?: string }): boolean =>
+        subject !== null && it.stockCode === subject.code && it.date === subject.date &&
+        (subject.time === null || it.time === undefined || it.time === subject.time);
 
     const [picked, setPicked] = useState<string | null>(null);
     // 고른 달이 조건 편집으로 사라졌으면 가장 최근 달로 — 빈 화면을 보여주지 않는다.
@@ -62,19 +71,17 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
     const shown = useMemo(() => monthItems.slice(0, MAX_ROWS), [monthItems]);
     const groups = useMemo(() => groupByChart(shown), [shown]);
 
-    // 이름이 필요한 코드 = 그린 행 + **활성 타점**. 활성은 이 달·이 집합 밖일 수 있는데(고정 줄이 있는
+    // 이름이 필요한 코드 = 그린 행 + **지금 선택**. 선택은 이 달·이 집합 밖일 수 있는데(고정 줄이 있는
     // 이유가 그거다) 행에서만 모으면 정작 그 줄만 이름 대신 코드가 뜬다.
     const nameCodes = useMemo(
-        () => (activePoint ? [...shown.map((i) => i.stockCode), activePoint.code] : shown.map((i) => i.stockCode)),
-        [shown, activePoint],
+        () => (subject ? [...shown.map((i) => i.stockCode), subject.code] : shown.map((i) => i.stockCode)),
+        [shown, subject],
     );
     const { nameOf } = useStockNames(nameCodes);
 
-    // 활성 타점이 지금 보는 집합 안에 있나 — 없으면 찾아갈 자리가 없다(달을 바꿔도 행이 없다).
-    const activeInResult = useMemo(
-        () => activeKey !== null && sorted.some((i) => i.time && pointKeyOf(i.stockCode, i.date, i.time) === activeKey),
-        [sorted, activeKey],
-    );
+    // 지금 선택이 보는 집합 안에 있나 — 없으면 찾아갈 자리가 없다(달을 바꿔도 행이 없다).
+    // 하루 선택은 그 차트의 행이 하나라도 있으면 찾아간다(타점 해상도라도 그 하루의 타점 행으로).
+    const activeInResult = useMemo(() => sorted.some(isActiveItem), [sorted, subject]);
 
     const stageIndex = selection ? v.active.findIndex((s) => s.id === selection.stageId) : -1;
     const filterNo = selection ? v.stagesOrdered.findIndex((e) => e.stage.id === selection.stageId) + 1 : 0;
@@ -120,12 +127,12 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                 </span>
             </div>
 
-            {/* 지금 보고 있는 타점 — 조건 밖이라 목록에 없어도 여기엔 남는다(시선은 조건이 아니다). */}
-            {activePoint && (
+            {/* 지금 보고 있는 선택(타점 또는 하루) — 조건 밖이라 목록에 없어도 여기엔 남는다(시선은 조건이 아니다). */}
+            {subject && (
                 <button
                     onClick={() => { if (activeInResult && activeMonth) { setPicked(activeMonth); setJumpAt(Date.now()); } }}
                     disabled={!activeInResult}
-                    title={activeInResult ? "이 타점으로 — 그 달로 옮기고 목록에서 찾아갑니다" : "지금 조건에는 안 걸린 타점입니다(선택은 조건이 아니라 시선이라 여기 남습니다)"}
+                    title={activeInResult ? "이 선택으로 — 그 달로 옮기고 목록에서 찾아갑니다" : "지금 조건에는 안 걸린 선택입니다(선택은 조건이 아니라 시선이라 여기 남습니다)"}
                     style={{
                         flexShrink: 0, display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
                         margin: "0 0 5px", padding: "3px 10px", border: "none", borderLeft: `3px solid ${activeInResult ? ACTIVE : "var(--border-default)"}`,
@@ -134,10 +141,10 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                     }}>
                     <span style={{ flexShrink: 0, fontSize: 9.5, color: "var(--text-tertiary)" }}>선택</span>
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 700, color: activeInResult ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                        {nameOf(activePoint.code)}
+                        {nameOf(subject.code)}
                     </span>
                     <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
-                        {shortDate(activePoint.date)} {activePoint.time.slice(0, 5)}
+                        {shortDate(subject.date)}{subject.time !== null ? ` ${subject.time.slice(0, 5)}` : ""}
                     </span>
                     <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 9.5, color: activeInResult ? ACTIVE : "var(--text-tertiary)" }}>
                         {activeInResult ? "찾아가기 →" : "결과 밖"}
@@ -182,17 +189,19 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                         </thead>
                         <tbody>
                             {groups.map((g) => g.items.map((it, i) => {
-                                const key = it.time ? pointKeyOf(it.stockCode, it.date, it.time) : null;
-                                const active = key !== null && key === activeKey;
+                                const active = isActiveItem(it);
                                 const tied = g.items.length > 1; // 한 차트에 타점 여럿 — 세로선으로 묶는다
                                 return (
                                     <tr key={`${g.key}|${it.time ?? ""}`} ref={active ? activeRowRef : undefined}
-                                        onClick={() => it.time && goToPoint({ date: it.date, code: it.stockCode, time: it.time }, "filter-funnel")}
+                                        // time 있는 행 = 타점 이동, 없는 행 = 하루 이동(타점 없는 하루도 선택이다 — 파일 머리 ④).
+                                        onClick={() => it.time
+                                            ? goToPoint({ date: it.date, code: it.stockCode, time: it.time }, "filter-funnel")
+                                            : goToDay({ date: it.date, code: it.stockCode }, "filter-funnel")}
                                         style={{
                                             // 덩어리 안쪽 행은 위 선을 없애 한 블록으로 보이게 한다.
                                             borderTop: i === 0 ? "1px solid var(--border-subtle)" : "none",
                                             background: active ? ACTIVE_SOFT : "transparent",
-                                            cursor: it.time ? "pointer" : "default",
+                                            cursor: "pointer",
                                         }}>
                                         <td style={{
                                             padding: "3px 10px", color: "var(--text-secondary)",

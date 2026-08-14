@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { skeletonsQuery, anchoredChartsQuery, allPointsQuery } from "../../api/queries.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { pointKey, chartKey } from "../../lib/pointKey.js";
+import { subjectChartKey, subjectPointKeys, subjectStatus, useSubject, type Subject, type SubjectStatus } from "../../lib/subject.js";
 import {
     normalizeSkeleton, pointSkeletons,
     type ChartSkeleton, type OverlayLine, type SkeletonAnchor,
@@ -33,6 +34,15 @@ export interface OverlayData {
     /** 차트키 → 그 차트의 저장 타점들(시간 오름차순). 필터와 무관한 전체(선은 사실을 그린다). */
     pointsByChart: Map<string, ReviewPointListItem[]>;
     nameOf: (code: string) => string;
+    /** 지금 선택(타점 또는 하루) — 아래 두 필드의 기준. */
+    subject: Subject | null;
+    /**
+     * 선택이 이 뷰에서 가리키는 선 키들 — 일봉이면 차트 키 하나, 분봉이면 타점 pk 들
+     * (하루 선택이면 **그날 전 타점** — 사용자 확정). 이 뷰의 선 키 공간과 같아 선택 폴백에 그대로 쓴다.
+     */
+    subjectKeys: ReadonlySet<string>;
+    /** 선택이 안 보일 때 그 이유 — 필터 밖(filtered) vs 재료 없음(absent). 머리글 배지가 말한다. */
+    subjectState: SubjectStatus;
 }
 
 export function useOverlayData(
@@ -134,5 +144,29 @@ export function useOverlayData(
         return feed.minute.reduce((n, e) => n + (pointsByChart.get(chartKey(e))?.length ?? 0), 0);
     }, [feedQ.data, isDaily, pointsByChart]);
 
-    return { feedLoading: feedQ.isLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf };
+    // ── 선택(subject)의 정의역 판정 — 이 패널이 "왜 선택이 안 보이나"를 갈라 말할 재료.
+    //  · 재료(inData) = 골격이 있고(분봉은 타점·전일 종가까지) 그릴 수 있는 상태.
+    //  · shown = 깔때기 필터까지 통과. inData 인데 shown 이 아니면 filtered.
+    //  ⚠ "선택만 보기"(onlyCharts)는 여기 안 넣는다 — 그건 사용자가 손으로 좁힌 패널 로컬 시야라,
+    //    그것 때문에 안 보이는 걸 "필터 밖"이라 말하면 깔때기를 의심하게 만든다.
+    const subject = useSubject();
+    const [subjectKeys, subjectState] = useMemo<[ReadonlySet<string>, SubjectStatus]>(() => {
+        if (!subject) return [new Set(), "absent"];
+        const sck = subjectChartKey(subject);
+        if (isDaily) {
+            const inData = (feedQ.data?.daily ?? []).some((e) => chartKey(e) === sck);
+            const shown = inData && (!chartAllowed || chartAllowed.has(sck));
+            return [new Set([sck]), subjectStatus(inData, shown)];
+        }
+        const entry = (feedQ.data?.minute ?? []).find((e) => chartKey(e) === sck);
+        const times = (pointsByChart.get(sck) ?? []).map((p) => p.time);
+        const pks = subjectPointKeys(subject, times);
+        // 타점 선택 = 그 시각이 저장 타점이어야, 하루 선택 = 그날 타점이 하나라도 있어야 재료다.
+        const hasPoints = subject.time !== null ? times.includes(subject.time) : times.length > 0;
+        const inData = entry !== undefined && entry.prevClose != null && entry.prevClose > 0 && hasPoints;
+        const shownPks = matchedPks ? pks.filter((pk) => matchedPks.has(pk)) : pks;
+        return [new Set(pks), subjectStatus(inData, inData && shownPks.length > 0)];
+    }, [subject, isDaily, feedQ.data, chartAllowed, matchedPks, pointsByChart]);
+
+    return { feedLoading: feedQ.isLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState };
 }

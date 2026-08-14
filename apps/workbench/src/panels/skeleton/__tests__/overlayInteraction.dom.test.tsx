@@ -24,8 +24,13 @@ const badgeOf = (c: HTMLElement): HTMLButtonElement | undefined =>
 /** 짚은 라벨은 굵어진다 — 호버가 풀렸는지 화면에서 직접 읽는 유일한 표식. */
 const pinnedCount = (c: HTMLElement): number => labelChips(c).filter((b) => b.style.fontWeight === "700").length;
 
-beforeEach(() => { useWorkbench.setState({ activePoint: null, skeletonSelection: new Set() }); });
-afterEach(() => { useWorkbench.setState({ activePoint: null, skeletonSelection: new Set() }); localStorage.clear(); });
+// focus 도 리셋한다 — 선택(subject)이 activePoint 없으면 focus 의 (종목,날짜)로 폴백하므로,
+// 앞 테스트가 goToPoint 로 옮긴 focus 가 남으면 다음 테스트에 유령 선택이 생긴다.
+const resetStore = (): void => {
+    useWorkbench.setState({ activePoint: null, skeletonSelection: new Set(), focus: { date: DATE, code: "", time: null } });
+};
+beforeEach(resetStore);
+afterEach(() => { resetStore(); localStorage.clear(); });
 
 // ── 일봉 캔들 ────────────────────────────────────────────────────────────────
 /** 일봉 봉 하나 — 값은 자리만 채운다(환산의 뜻은 candles 테스트의 몫). */

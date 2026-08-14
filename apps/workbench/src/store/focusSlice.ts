@@ -44,6 +44,12 @@ export interface FocusSlice {
     setTime: (time: string | null, origin?: string) => void;
     setFocus: (next: { date: string; code: string; time: string | null }, origin?: string) => void; // review point 원자적 세팅
     goToPoint: (point: { date: string; code: string; time: string }, origin?: string) => void; // 타점 이동 = focus + activePoint 원자 세팅
+    /**
+     * 하루 이동 — 타점 없는 (종목,날짜) 선택. activePoint 를 **명시적으로 푼다**: transitionFocus 는
+     * 같은 종목·같은 날이면 옛 타점을 살려 두는데(드리프트 보호), "하루를 골랐다"는 그 타점 선택의
+     * 부정이지 유지가 아니다. activePoint 의 time 을 nullable 로 넓히지 않는 이유이기도 하다.
+     */
+    goToDay: (day: { date: string; code: string }, origin?: string) => void;
     // Scope 액션 — 각 축 독립 토글(차트 안 건드림).
     setTheme: (theme: string | null) => void;
     clearScope: () => void;
@@ -82,6 +88,11 @@ export const createFocusSlice: StateCreator<WorkbenchState, [], [], FocusSlice> 
     goToPoint: ({ date, code, time }, origin) => {
         set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), activePoint: { code, date, time }, chartZoom: null }));
         if (origin !== "history") get().recordVisit({ date, code, time });
+    },
+    // 하루 이동 = focus 전이 + activePoint 명시 해제(같은 종목·날이라도 옛 타점을 안 살린다 — 위 주석).
+    goToDay: ({ date, code }, origin) => {
+        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time: null }, origin), activePoint: null, chartZoom: null }));
+        if (origin !== "history") get().recordVisit({ date, code, time: null });
     },
 
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
