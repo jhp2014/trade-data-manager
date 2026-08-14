@@ -62,6 +62,18 @@ describe("LiveTape — 틱 접기", () => {
         expect(ticks).toEqual([565, 566]);
     });
 
+    it("기록 창(08:00~16:00) 밖 틱은 버린다 — 장외 스냅샷은 관찰이 아니다(밤새 평평한 가짜 샘플 방지)", async () => {
+        const tape = new LiveTape(sourceOf([]));
+        tape.onTick([quote("005930", 100)], kstMs(17), TODAY); // 00:17 — 새벽(실측 사례)
+        tape.onTick([quote("005930", 100)], kstMs(970), TODAY); // 16:10 — 장 마감 후
+        await flush();
+        const { stocks, ticks } = tape.view(() => true, null);
+        expect(stocks).toHaveLength(0);
+        expect(ticks).toEqual([]);
+        // 창 밖에서도 날짜 롤오버는 돈다 — 자정 지난 첫 틱이 어제 테이프를 비운다
+        expect(tape.tapeDate).toBe(TODAY);
+    });
+
     it("폴링에 안 실린 분은 자리 자체가 없다(구멍 = 조건 이탈의 기록) — 틱 비트맵엔 남는다", async () => {
         const tape = new LiveTape(sourceOf([]));
         tape.onTick([quote("005930", 100)], kstMs(565), TODAY);

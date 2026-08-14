@@ -23,6 +23,13 @@ import type { Quote } from "../engine/types.js";
 
 /** 백필 실패 후 재시도 대기(ms) — 키움 일시 장애에 큐가 폭주하지 않게. */
 const RETRY_MS = 60_000;
+/**
+ * 기록 창(벽시계 분) — 08:00(NXT 프리마켓)~16:00. 엔진은 밤에도 돌고 ka10095 는 장외에도 마지막
+ * 체결가를 돌려주므로(2026-08-15 새벽 실측: ticks 에 00:17 이 찍힘), 창 없이 받으면 밤새 평평한
+ * 가짜 샘플이 쌓여 아침 패널의 x 축이 00:00 부터 시작한다. 창 밖 틱은 날짜 롤오버만 하고 버린다.
+ */
+const SESSION_FROM = 8 * 60;
+const SESSION_TO = 16 * 60;
 /** Quote.tradeValue 단위(백만원) → 원. 복기 cumAmount(원)와 단위 통일. */
 const MILLION = 1_000_000;
 
@@ -81,8 +88,9 @@ export class LiveTape implements TapeSink {
      * 날짜가 바뀌면 테이프를 통째로 새로 시작한다(어제 테이프는 복기 파이프라인 소관).
      */
     onTick(quotes: readonly Quote[], now: number, today: string): void {
-        this.rollover(today);
+        this.rollover(today); // 창 밖에서도 날짜는 굴린다 — 자정 지나면 어제 테이프를 비워야 한다
         const minute = minuteOfDayOf(Math.floor(now / 1000));
+        if (minute < SESSION_FROM || minute >= SESSION_TO) return; // 장외 스냅샷은 관찰이 아니다
         this.tickMinutes.add(minute);
         for (const q of quotes) {
             const e = this.entries.get(q.code);
