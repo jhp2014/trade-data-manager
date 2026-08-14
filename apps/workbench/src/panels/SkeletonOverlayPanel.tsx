@@ -816,8 +816,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     점 색이 어느 선 것인지 말한다(좌측 이름 라벨의 점과 같은 색). */}
                                 {/* 스왑 중(다른 골격선을 짚는 중)엔 거래대금 숫자도 접는다 — 테마·캔들을 접어 놓고
                                     그 숫자들만 남으면 어느 선의 것인지 가리킬 대상이 없어 화면에 뜬 잡음이 된다. */}
-                                {/* 거래대금 숫자 — 스왑 중(다른 골격선을 짚는 중)엔 접는다: 테마·캔들을 접어 놓고
-                                    그 숫자들만 남으면 어느 선의 것인지 가리킬 대상이 없어 화면에 뜬 잡음이 된다. */}
                                 <g data-layer="amount-labels">
                                     {!theme.swapped && (
                                         <AmountLabels labels={amountLabels} colorOf={theme.colorOf} dimmedExcept={theme.hovered} />
