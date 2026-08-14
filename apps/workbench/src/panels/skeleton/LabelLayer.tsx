@@ -7,9 +7,15 @@
 //
 // HTML 이다(SVG 가 아니라): 칩 폭 계산이 공짜이고, d3 가 SVG mousedown 을 삼키는 문제를 피한다.
 // 그림 상자 **위에** 얹히는 층이라 SVG 그리는 순서와 무관하다.
+//
+// ## 손잡이는 **한 목록**이다 — 짚어도 정체가 안 바뀐다(겪은 버그, `labelHandles` 주석 참고)
+// 예전엔 묶음 라벨과 짚은/선택된 라벨을 **다른 배열 두 벌**로 그렸다. 그래서 라벨에 손을 올리는 순간
+// 그 라벨이 배열을 갈아타며 DOM 노드가 부서지고 다시 만들어졌고, 언마운트된 노드는 mouseleave 를 안 쏘니
+// 손을 치워도 호버가 남았다(간헐적). 지금은 목록이 하나고 자리는 `labelHandles` 가 고정한다 —
+// 짚었는지는 `pinned` 플래그(=스타일·툴팁)로만 말하므로 노드가 살아남고 leave 가 정상으로 온다.
 import type { CSSProperties } from "react";
 import { shortDate } from "../../lib/date.js";
-import { labelPointOf, type LabelCluster, type OverlayLine, type SkeletonAnchor } from "./skeletonOverlay.js";
+import type { LabelHandle, OverlayLine } from "./skeletonOverlay.js";
 import { badgeChip, chip, labelBg, labelDot, selectedChip } from "./chips.js";
 
 /** 라벨 칩 한 칸의 크기(화면 px) — 이보다 촘촘하면 뭉쳐서 개수 뱃지가 된다. */
@@ -18,16 +24,12 @@ export const LABEL_CELL = { w: 72, h: 14 };
 const LABEL_GAP = 12;
 
 interface Box { left: number; top: number; width: number; height: number }
-interface Scales { x: (v: number) => number; y: (v: number) => number }
 
 export interface LabelLayerProps {
-    clusters: readonly LabelCluster[];
-    /** 묶음에서 뺀 채 언제나 그리는 것들(선택·호버). */
-    pinnedKeys: ReadonlySet<string>;
+    /** 그릴 손잡이 한 벌 — 자리(화면 좌표)와 정체(id)를 `labelHandles` 가 이미 정했다. */
+    handles: readonly LabelHandle[];
     byKey: ReadonlyMap<string, OverlayLine>;
-    scales: Scales;
     box: Box;
-    labelAnchorMode: SkeletonAnchor;
     /** 라벨이 점의 **왼쪽**에 서나 — 앵커 반대쪽 끝이 어디냐가 정한다. */
     labelAtStart: boolean;
     /** 테마가 펼쳐진 상태 — 선이 접힌 라벨들은 흐리게 남아 손잡이 노릇만 한다. */
@@ -46,7 +48,7 @@ export interface LabelLayerProps {
 }
 
 export function LabelLayer(p: LabelLayerProps): JSX.Element {
-    const { clusters, pinnedKeys, byKey, scales, box, labelAnchorMode, themeMode, visualOf, nameOf } = p;
+    const { handles, byKey, box, themeMode, visualOf, nameOf } = p;
 
     /**
      * 라벨 칩 자리 — **점의 바깥쪽**(선이 뻗어 나가는 반대 방향)에 띄운다.
@@ -79,56 +81,61 @@ export function LabelLayer(p: LabelLayerProps): JSX.Element {
         return dotFirst ? <>{dot}{text}</> : <>{text}{dot}</>;
     };
 
+    /**
+     * 툴팁 — 라벨의 **지금 상태**가 정한다. 예전엔 묶음/짚은 것 두 갈래로 나눠 적었는데, 갈래가 어느 배열에
+     * 그려지느냐를 따라가서 그냥 스친 라벨이 "Ctrl+클릭=선택 해제"라고 말했다(선택된 적이 없는데도).
+     * 상태 하나로 적으면 그런 어긋남이 안 생긴다.
+     */
+    const titleOf = (s: OverlayLine, pinned: boolean, selected: boolean): string => {
+        const lead = p.canToggleCandle(s)
+            ? `다시 클릭=${p.isCandleOn(s.stockCode) ? "캔들 끄기" : "캔들 켜기"}`
+            : "클릭=선택·이동";
+        // 테마 모드에서 선이 접힌 라벨만 "올리면 이 골격선" — 짚은 라벨은 이미 선이 나와 있다.
+        const theme = themeMode && !pinned ? "올리면 이 골격선(테마는 잠시 접힌다) · " : "";
+        return `${nameOf(s.stockCode)} ${s.date} — ${theme}${lead} · Ctrl+클릭=${selected ? "선택 해제" : "다중선택"} · 우클릭=그룹`;
+    };
+
     return (
-        <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
-            {/* 테마 모드에선 선이 숨은 라벨들 — **흐리게 남겨 손잡이 노릇만** 한다(사용자 확정).
-                지우면 그 타점들이 화면에서 영영 사라져 이동·선택·사각선택이 다 죽는다. */}
-            {clusters.map((c) => {
-                const left = c.x - box.left;
-                const top = c.y - box.top;
+        // ⚠ 층 전체를 떠나면 호버를 푼다 — 칩 하나하나의 leave 가 어떤 이유로든 빠져도 여기서 받아 낸다.
+        //   포인터를 안 받는 컨테이너지만(pointerEvents: none) React 의 leave 는 자식에서 바깥으로 나가는
+        //   경로를 훑어 조상에도 준다. 라벨끼리 옮겨 다닐 땐 공통 조상이라 안 불린다(그게 맞다).
+        <div onMouseLeave={() => p.onHover(null)}
+            style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
+            {handles.map((h) => {
+                const left = h.x - box.left;
+                const top = h.y - box.top;
+                const pl = placement(left);
+                // 테마 모드에선 선이 숨은 라벨들 — **흐리게 남겨 손잡이 노릇만** 한다(사용자 확정).
+                // 지우면 그 타점들이 화면에서 영영 사라져 이동·선택·사각선택이 다 죽는다.
                 const faded = themeMode ? { opacity: 0.45 } : null;
-                if (c.members.length > 1) {
+                if (h.kind === "badge") {
                     // 뱃지도 라벨과 같은 쪽(점의 바깥) — 손잡이의 자리 규칙은 하나여야 한다.
                     return (
-                        <button key={`c${c.x}|${c.y}`} onClick={(e) => p.onBadgeOpen({ x: e.clientX, y: e.clientY }, c.members)}
-                            onMouseEnter={() => p.onBadgeHover(c.members)} onMouseLeave={() => p.onBadgeHover(null)}
-                            title={`${c.members.length}개 뭉침 — 올리면 무리가 ${themeMode ? "나타나고(테마는 잠시 접힌다)" : "켜지고"}, 누르면 목록`}
-                            style={{ ...chip, ...placement(left).style, top, ...badgeChip, ...faded }}>
-                            {c.members.length}
+                        <button key={h.id} onClick={(e) => p.onBadgeOpen({ x: e.clientX, y: e.clientY }, h.members)}
+                            onMouseEnter={() => p.onBadgeHover(h.members)} onMouseLeave={() => p.onBadgeHover(null)}
+                            title={`${h.members.length}개 뭉침 — 올리면 무리가 ${themeMode ? "나타나고(테마는 잠시 접힌다)" : "켜지고"}, 누르면 목록`}
+                            style={{ ...chip, ...pl.style, top, ...badgeChip, zIndex: 1, ...faded }}>
+                            {h.members.length}
                         </button>
                     );
                 }
-                const s = byKey.get(c.members[0]);
+                const s = byKey.get(h.key);
                 if (!s) return null;
-                const pl = placement(left);
+                const { selected, color } = visualOf(h.key);
                 return (
-                    <button key={`c${c.x}|${c.y}`} onClick={(e) => p.onLabelClick(s, e)} onContextMenu={(e) => p.onLabelContext(s, e)}
+                    <button key={h.id} onClick={(e) => p.onLabelClick(s, e)} onContextMenu={(e) => p.onLabelContext(s, e)}
                         onMouseEnter={() => p.onHover(s.key)} onMouseLeave={() => p.onHover(null)}
-                        title={`${nameOf(s.stockCode)} ${s.date} — ${themeMode ? "올리면 이 골격선(테마는 잠시 접힌다) · " : ""}클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=그룹`}
-                        style={{ ...chip, ...labelBg, ...pl.style, top, ...faded }}>
-                        {labelOf(s, pl.dotFirst)}
-                    </button>
-                );
-            })}
-            {/* 선택·호버 라벨은 묶음 밖 — 언제나 그린다. ⚠ 호버 핸들러 필수: 라벨이 이 블록으로 옮겨
-                그려질 때 원래 엘리먼트가 언마운트라 mouseleave 를 안 쏜다(없으면 호버가 영영 안 풀린다). */}
-            {[...pinnedKeys].map((key) => {
-                const s = byKey.get(key);
-                if (!s) return null;
-                const pt = labelPointOf(s, labelAnchorMode);
-                const { selected, color } = visualOf(key);
-                const pl = placement(scales.x(pt.x) - box.left);
-                return (
-                    <button key={key} onClick={(e) => p.onLabelClick(s, e)} onContextMenu={(e) => p.onLabelContext(s, e)}
-                        onMouseEnter={() => p.onHover(s.key)} onMouseLeave={() => p.onHover(null)}
-                        title={`${nameOf(s.stockCode)} ${s.date} — ${p.canToggleCandle(s)
-                            ? `다시 클릭=${p.isCandleOn(s.stockCode) ? "캔들 끄기" : "캔들 켜기"} · `
-                            : "클릭=선택·이동 · "}Ctrl+클릭=선택 해제 · 우클릭=그룹`}
+                        title={titleOf(s, h.pinned, selected)}
                         style={{
-                            ...chip, ...labelBg, ...pl.style, top: scales.y(pt.y) - box.top,
-                            color, fontWeight: 700,
+                            ...chip, ...labelBg, ...pl.style, top,
+                            // 짚은/선택된 것만 역할색으로 또렷하게 — 나머지는 이름을 읽히는 게 전부다.
+                            ...(h.pinned ? { color, fontWeight: 700 } : null),
                             // 선택된 것에만 상자 — 상태를 가진 컨트롤이라 그렇게 보여야 한다(눈으로 찾기도 쉽다).
-                            ...(selected ? selectedChip(color) : {}),
+                            ...(selected ? selectedChip(color) : null),
+                            // 짚은 라벨이 위 — 예전엔 **뒤에 그려서** 위에 뒀는데, 그러면 짚는 순간 노드가
+                            // 목록 안에서 자리를 옮긴다. 자리는 고정하고 층만 올린다.
+                            zIndex: h.pinned ? 2 : 1,
+                            ...(h.pinned ? null : faded),
                         }}>
                         {labelOf(s, pl.dotFirst)}
                     </button>

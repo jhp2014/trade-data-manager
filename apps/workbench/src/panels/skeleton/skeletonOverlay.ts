@@ -579,28 +579,66 @@ export interface LabelAnchor {
     y: number;
 }
 
-/** 한 칸에 모인 라벨들. members 가 1이면 라벨을, 여럿이면 개수 뱃지를 그린다. */
-export interface LabelCluster {
-    x: number;
-    y: number;
-    members: string[];
-}
+/**
+ * 라벨 층이 그리는 손잡이 하나 — 선 하나짜리 라벨이거나, 한 칸에 뭉친 개수 뱃지다.
+ *
+ * ## `id` 는 **자리에 안 매인다** — 이게 이 타입의 존재 이유다(겪은 버그)
+ * 예전엔 손잡이가 두 갈래로 나뉘어 있었다: 묶음 라벨은 화면 좌표를 키로, 짚은/선택된 라벨은 선 키를 키로.
+ * 그래서 라벨에 손을 올리는 순간 그 라벨이 한쪽 배열에서 빠져 다른 쪽으로 옮겨 갔고, React 는 그걸
+ * **다른 엘리먼트**로 봐서 커서 밑의 DOM 노드를 부수고 새로 만들었다. 언마운트된 노드는 mouseleave 를
+ * 안 쏘고(루트 위임이라 떨어져 나간 노드의 이벤트는 안 올라온다), 커서 밑에 새로 꽂힌 노드는 마우스가
+ * 멈춰 있으면 mouseover 를 못 받을 수 있다 — 그래서 손을 치워도 호버가 안 풀리는 일이 **간헐적으로** 났다.
+ *
+ * 규칙은 하나다: **호버 때문에 그 손잡이가 언마운트되면 안 된다.** id 를 좌표가 아니라 정체(선 키)로
+ * 잡고, 짚었는지는 목록에서의 자리가 아니라 `pinned` 플래그로만 말한다.
+ */
+export type LabelHandle =
+    | { kind: "label"; id: string; key: string; x: number; y: number; pinned: boolean }
+    | { kind: "badge"; id: string; members: string[]; x: number; y: number };
 
 /**
- * 화면공간 격자로 라벨을 묶는다(지도의 축약과 같은 방식).
+ * 라벨 자리 배치 — 화면공간 격자로 묶되, **짚은 것(pinned)은 묶음에서 빼 언제나 제 손잡이로** 낸다.
  *
  * 개수 임계로 라벨을 **숨기면** 그 골격이 뭔지 알 길이 영영 없어진다. 묶으면 숨기는 게 아니라 **압축**이라,
  * 확대해서 화면 좌표가 벌어지면 칸이 쪼개지며 저절로 풀린다. 그래서 이 함수는 값 좌표가 아니라 **화면 좌표**를
  * 받는다 — 확대 배율이 곧 축약 수준이 되는 게 핵심이다.
  * 대표 위치는 그 칸의 첫 멤버 자리 — 중심을 쓰면 멤버가 하나 드나들 때마다 라벨이 흔들린다.
+ *
+ * ## 순서도 계약이다
+ * 결과는 `anchors` 에서 **처음 나온 순서**다(선 목록 순). 짚은 라벨을 뒤로 몰지 않는 이유: 그러면 짚는
+ * 순간 그 노드가 목록 안에서 자리를 옮기고, DOM 이동은 브라우저의 호버 대상을 놓칠 수 있어 위 버그가
+ * 그대로 재현된다. 짚은 라벨을 **위에 그리는** 일은 자리가 아니라 z(그리는 쪽의 몫)가 진다.
+ * 덕분에 라벨 하나를 짚어도 목록은 그 항목의 `pinned` 만 뒤집힌 채 길이도 순서도 그대로다.
  */
-export function clusterLabels(anchors: readonly LabelAnchor[], cellW: number, cellH: number): LabelCluster[] {
-    const byCell = new Map<string, LabelCluster>();
+export function labelHandles(
+    anchors: readonly LabelAnchor[],
+    pinned: ReadonlySet<string>,
+    cellW: number,
+    cellH: number,
+): LabelHandle[] {
+    interface Slot { x: number; y: number; members: string[]; pinned: boolean }
+    const out: Slot[] = [];
+    const byCell = new Map<string, Slot>();
     for (const a of anchors) {
+        if (pinned.has(a.key)) {
+            out.push({ x: a.x, y: a.y, members: [a.key], pinned: true });
+            continue;
+        }
         const cell = `${Math.floor(a.x / cellW)}|${Math.floor(a.y / cellH)}`;
         const found = byCell.get(cell);
-        if (found) found.members.push(a.key);
-        else byCell.set(cell, { x: a.x, y: a.y, members: [a.key] });
+        if (found) {
+            found.members.push(a.key);
+            continue;
+        }
+        const slot: Slot = { x: a.x, y: a.y, members: [a.key], pinned: false };
+        byCell.set(cell, slot);
+        out.push(slot);
     }
-    return [...byCell.values()];
+    return out.map((s) =>
+        s.members.length === 1
+            // 선 키가 곧 정체 — 묶음에서 빠져나와 짚은 라벨이 돼도 같은 손잡이다.
+            ? { kind: "label", id: `L|${s.members[0]}`, key: s.members[0], x: s.x, y: s.y, pinned: s.pinned }
+            // 뱃지의 정체는 그 무리 — 대표와 머릿수가 같으면 같은 뱃지다(자리는 안 들어간다).
+            : { kind: "badge", id: `B|${s.members[0]}|${s.members.length}`, members: s.members, x: s.x, y: s.y },
+    );
 }

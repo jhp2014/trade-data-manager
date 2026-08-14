@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, pct, lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
+import { normalizeSkeleton, pointSkeletons, overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, pct, lineOpacity, dimOpacity, labelPointOf, labelHandles, lineVisual, keysInRect, amountRuns, minuteIndexOf, minuteAmountOf, pickAmountLabels, spreadByY, segmentIndexOf, LEVEL_QUIET, LEVEL_MISSING } from "../skeletonOverlay.js";
 import type { SkeletonWirePivot } from "@trade-data-manager/wire";
 
 const owner = { stockCode: "005930", date: "2026-08-05", key: "005930|2026-08-05" };
@@ -543,32 +543,64 @@ describe("keysInRect — Ctrl+드래그 사각 선택(라벨 지점 기준)", ()
     });
 });
 
-describe("labelPointOf / clusterLabels", () => {
+describe("labelPointOf / labelHandles", () => {
+    const none: ReadonlySet<string> = new Set();
+
     it("라벨은 앵커 반대쪽 끝에 붙는다 — 앵커 쪽은 전부 한 점에 모인다", () => {
         expect(labelPointOf(normalizeSkeleton(pivots, "last", owner)!, "last").x).toBe(-8); // 왼쪽 끝
         expect(labelPointOf(normalizeSkeleton(pivots, "first", owner)!, "first").x).toBe(8); // 오른쪽 끝
     });
 
-    it("같은 칸에 든 것들이 하나로 묶인다", () => {
-        const c = clusterLabels([
+    it("같은 칸에 든 것들이 하나로 묶여 뱃지가 된다 — 혼자면 라벨", () => {
+        const h = labelHandles([
             { key: "a", x: 10, y: 10 },
             { key: "b", x: 20, y: 12 },
             { key: "c", x: 400, y: 200 },
-        ], 92, 18);
-        expect(c).toHaveLength(2);
-        expect(c[0].members).toEqual(["a", "b"]);
-        expect(c[1].members).toEqual(["c"]);
+        ], none, 92, 18);
+        expect(h).toHaveLength(2);
+        expect(h[0]).toMatchObject({ kind: "badge", members: ["a", "b"] });
+        expect(h[1]).toMatchObject({ kind: "label", key: "c", pinned: false });
     });
 
     it("대표 위치는 첫 멤버 자리 — 중심이면 멤버가 드나들 때마다 라벨이 흔들린다", () => {
-        expect(clusterLabels([{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }], 92, 18)[0]).toMatchObject({ x: 10, y: 10 });
+        expect(labelHandles([{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }], none, 92, 18)[0])
+            .toMatchObject({ x: 10, y: 10 });
     });
 
     it("좌표가 벌어지면(확대) 칸이 쪼개진다 — 숨김이 아니라 압축이라는 성질", () => {
         const near = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 30, y: 10 }];
         const far = near.map((a) => ({ ...a, x: a.x * 8 }));
-        expect(clusterLabels(near, 92, 18)).toHaveLength(1);
-        expect(clusterLabels(far, 92, 18)).toHaveLength(2);
+        expect(labelHandles(near, none, 92, 18)).toHaveLength(1);
+        expect(labelHandles(far, none, 92, 18)).toHaveLength(2);
+    });
+
+    it("짚은 것은 묶음에서 빠져 제 손잡이가 된다 — 뭉친 칸 안에 있어도", () => {
+        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }];
+        const h = labelHandles(anchors, new Set(["b"]), 92, 18);
+        expect(h).toHaveLength(2);
+        expect(h[0]).toMatchObject({ kind: "label", key: "a" }); // 남은 하나는 뱃지가 아니라 라벨
+        expect(h[1]).toMatchObject({ kind: "label", key: "b", pinned: true, x: 20, y: 12 });
+    });
+
+    // ⚠ 이 셋이 이 함수의 존재 이유다 — 손잡이가 호버 때문에 다시 만들어지면 mouseleave 가 안 와서
+    //   손을 치워도 호버가 안 풀린다(실제로 겪은 간헐 버그).
+    it("**라벨 하나를 짚어도 목록의 길이·순서·id 가 안 바뀐다** — pinned 만 뒤집힌다", () => {
+        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 400, y: 200 }, { key: "c", x: 800, y: 400 }];
+        const before = labelHandles(anchors, none, 92, 18);
+        const after = labelHandles(anchors, new Set(["b"]), 92, 18);
+        expect(after.map((h) => h.id)).toEqual(before.map((h) => h.id));
+        expect(before.map((h) => "pinned" in h && h.pinned)).toEqual([false, false, false]);
+        expect(after.map((h) => "pinned" in h && h.pinned)).toEqual([false, true, false]);
+    });
+
+    it("id 는 좌표에 안 매인다 — 이동·확대로 자리가 바뀌어도 같은 손잡이다", () => {
+        const at = (dx: number) => labelHandles([{ key: "a", x: 10 + dx, y: 10 }], none, 92, 18);
+        expect(at(0)[0].id).toBe(at(500)[0].id);
+    });
+
+    it("순서는 선 목록 순 — 짚은 것을 뒤로 몰면 노드가 목록 안에서 자리를 옮긴다", () => {
+        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 400, y: 200 }];
+        expect(labelHandles(anchors, new Set(["a"]), 92, 18).map((h) => "key" in h && h.key)).toEqual(["a", "b"]);
     });
 });
 

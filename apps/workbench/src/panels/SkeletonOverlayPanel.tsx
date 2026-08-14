@@ -3,7 +3,7 @@ import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
 import {
     dailyFrame, pointUnitFrame, splitAtX, polylinePoints, pct,
-    lineOpacity, dimOpacity, labelPointOf, clusterLabels, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
+    lineOpacity, dimOpacity, labelPointOf, labelHandles, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
     amountRuns,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
 } from "./skeleton/skeletonOverlay.js";
@@ -535,14 +535,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const { marquee, onMouseDown: onWrapMouseDown } = useMarquee(wrapRef, !!scales, onMarqueeSelect);
 
     // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
-    // 선택·호버는 묶음에서 빼고 따로 그린다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
+    // 선택·호버는 묶음에서 빼고 제 손잡이로 세운다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
+    // **목록은 한 벌**이고 자리·정체는 labelHandles 가 정한다(호버가 노드를 부수면 leave 가 안 온다 — 그 주석 참고).
     const pinnedKeys = useMemo(() => new Set([...effSelected, ...(hovered ? [hovered] : [])]), [effSelected, hovered]);
-    const clusters = useMemo(() => {
+    const handles = useMemo(() => {
         if (!showLabels || !scales) return [];
         const anchors = lines
-            .filter((s) => !pinnedKeys.has(s.key))
             .map((s) => { const p = labelPointOf(s, labelAnchorMode); return { key: s.key, x: scales.x(p.x), y: scales.y(p.y) }; });
-        return clusterLabels(anchors, LABEL_CELL.w, LABEL_CELL.h);
+        return labelHandles(anchors, pinnedKeys, LABEL_CELL.w, LABEL_CELL.h);
     }, [showLabels, scales, lines, labelAnchorMode, pinnedKeys]);
 
     // ── 그룹 메뉴 — 라벨/마커 우클릭(단일) / 헤더 그룹 버튼(선택 일괄). 그룹핑의 입력 지점.
@@ -912,9 +912,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {/* 라벨 층 — HTML(칩 폭 계산 공짜 + d3 가 SVG mousedown 을 삼키는 문제 회피). 컨테이너는 포인터 통과. */}
                 {scales && showLabels && (
                     <LabelLayer
-                        clusters={clusters} pinnedKeys={pinnedKeys} byKey={byKey}
-                        scales={scales} box={box}
-                        labelAnchorMode={labelAnchorMode} labelAtStart={labelAtStart}
+                        handles={handles} byKey={byKey} box={box}
+                        labelAtStart={labelAtStart}
                         themeMode={theme.mode}
                         visualOf={(key) => { const { v, color } = visualOf(key); return { selected: v.role === "selected", color }; }}
                         nameOf={nameOf}
@@ -953,7 +952,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     <div style={{ maxHeight: 260, overflowY: "auto" }}>
                         {badgeRows.map((s) => (
                             <div key={s.key} onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}>
-                                <MenuItem onClick={() => { onLabelClick(s, { ctrlKey: false, metaKey: false }); closeBadge(); }}>
+                                {/* ⚠ 닫기 전에 호버를 **손으로** 푼다 — 목록이 사라지면 이 행은 언마운트라
+                                    mouseleave 가 영영 안 온다(라벨에서 겪은 것과 같은 부류의 누수).
+                                    거기선 노드를 안 부수는 게 답이지만, 여기선 닫는 게 목적이라 풀어 주는 게 답이다. */}
+                                <MenuItem onClick={() => { onLabelClick(s, { ctrlKey: false, metaKey: false }); setHovered(null); closeBadge(); }}>
                                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                                         <span style={{ width: 6, height: 6, borderRadius: 3, background: groupColorOf(s.key), flexShrink: 0 }} />
                                         <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{shortDate(s.date)}</span>
