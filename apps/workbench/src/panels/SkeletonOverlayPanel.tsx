@@ -18,6 +18,8 @@ import { labelDot } from "./skeleton/chips.js";
 import { amountLevelOf, amountLookupOf, runWidth } from "./skeleton/amountLayer.js";
 import { AmountLabels, useAmountLabels, type AmountSource } from "./skeleton/AmountLabels.js";
 import { useThemeLabels, useThemeOverlay } from "./skeleton/useThemeOverlay.js";
+import { usePivotPins } from "./skeleton/usePivotPins.js";
+import { PinReadout, PinVerticals, PivotHandles, READOUT_OFFSET, readoutBox } from "./skeleton/PinLayer.js";
 import { ThemeGutter, ThemeLeaders, ThemeLines } from "./skeleton/ThemeLayer.js";
 import { CandleLayer } from "./skeleton/CandleLayer.js";
 import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
@@ -106,11 +108,6 @@ interface ReadoutSource {
 const READOUT_TOP = 5;
 /** 판독 칩의 세로 최소 간격(화면 px). */
 const READOUT_GAP = 15;
-/**
- * 세로선과 칩 사이 거리(화면 px). 바짝 붙이면 칩이 세로선 근처의 그림을 덮고, 지시선이 짧아
- * 어느 점의 값인지도 덜 읽힌다(사용자 요구로 10 → 30). 떨어질수록 지시선이 대응을 더 잘 진다.
- */
-const READOUT_OFFSET = 30;
 
 type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
 type XUnit = "day" | "min";
@@ -445,68 +442,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         };
     }, [readoutOn, readoutSources, theme.hovered, singleTarget]);
 
-    // ── 피벗 좌표는 **짚은 점에만** 붙는다(사용자 확정).
-    // 예전엔 조사 중인 골격의 점 **전부**에 값이 떴는데, 분봉 골격은 꺾인 점이 많아 화면이 숫자로 뒤덮였다.
-    // 이제 두 단계다: 손을 올리면 그 하나를 **미리 보고**, 누르면 **붙잡는다**(다시 누르면 뗀다).
-    // 붙잡은 건 선을 떠나도 남아서 여러 점의 값을 나란히 놓고 볼 수 있다 — 이 패널의 선택/호버 문법 그대로.
-    const [hoveredPivot, setHoveredPivot] = useState<{ key: string; i: number } | null>(null);
-    const [pinnedPivots, setPinnedPivots] = useState<ReadonlySet<string>>(() => new Set());
-    const pivotId = (key: string, i: number): string => `${key}|${i}`;
-    const togglePivot = useCallback((key: string, i: number): void => {
-        setPinnedPivots((prev) => {
-            const next = new Set(prev);
-            const id = `${key}|${i}`;
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    }, []);
-    /** 이 점의 값을 지금 그리나 — 붙잡았거나(핀) 손이 올라가 있거나. */
-    const pivotShown = (key: string, i: number): boolean =>
-        pinnedPivots.has(pivotId(key, i)) || (hoveredPivot?.key === key && hoveredPivot.i === i);
-    /** 값을 그리는 점이 하나라도 있는 선 — 그 선은 손잡이(히트 원)를 계속 내줘야 핀을 뗄 수 있다. */
-    const linesWithPins = useMemo(() => {
-        const s = new Set<string>();
-        for (const id of pinnedPivots) s.add(id.slice(0, id.lastIndexOf("|")));
-        return s;
-    }, [pinnedPivots]);
-
-    /**
-     * 붙잡은 피벗 시각의 테마 값 — 그 x 에서 모든 테마 선의 y 를 읽어 **y축 옆에 열로 쌓는다**(사용자 확정).
-     * 핀마다 한 열 묶음이라 x₁·x₂ 의 값이 섞이지 않고, 열이 곧 "어느 시각 것이냐"를 말한다.
-     * 핀은 앵커 골격의 것만 본다 — 테마 선엔 피벗이 없다(분당 경로라 모든 분이 점이다).
-     */
-    /** 앵커 골격의 피벗 시각(벽시계 분) — **테마 점이 설 수 있는 자리**의 전부다(사용자 확정). */
-    const anchorPivotMinutes = useMemo(
-        () => (singleTarget ? singleTarget.points.map((p) => p.x + singleTarget.baseT) : []),
-        [singleTarget],
-    );
-
-    /** 앵커 골격에서 붙잡은 피벗의 x(뷰 공간 — 타점 대비 분, 시각 순) — 테마 값을 펼치는 세로선이 서는 자리.
-     *  테마 선도 뷰 공간이라 이 x 로 바로 값을 찾는다(벽시계는 표시할 때만 + t₀). */
-    const pinnedXs = useMemo(() => {
-        if (!singleTarget) return [];
-        return [...pinnedPivots]
-            .filter((id) => id.slice(0, id.lastIndexOf("|")) === singleTarget.key)
-            .map((id) => Number(id.slice(id.lastIndexOf("|") + 1)))
-            .filter((i) => Number.isInteger(i) && i >= 0 && i < singleTarget.points.length)
-            .map((i) => singleTarget.points[i].x)
-            .sort((a, b) => a - b);
-    }, [singleTarget, pinnedPivots]);
-    /**
-     * 지금 테마 값을 펼쳐 보는 시각 — 상시가 아니라 **손을 올렸을 때만**(사용자 확정).
-     * 두 손짓이 같은 자리로 들어온다: 앵커 골격의 **어느 피벗에든 호버**(붙잡은 것이 아니어도)와,
-     * 붙잡은 핀의 세로선 호버. 값을 보려고 굳이 먼저 클릭해야 할 이유가 없다.
-     */
-    const [hoveredPinLine, setHoveredPinLine] = useState<number | null>(null);
-    useEffect(() => { setHoveredPinLine(null); }, [themeOverlay?.key]);
-    /** 지금 테마 값을 펼쳐 보는 x(뷰 공간) — 핀 세로선과 같은 통화라 그대로 값 조회에 쓴다. */
-    const openReadingX = useMemo(() => {
-        if (hoveredPinLine !== null) return hoveredPinLine;
-        if (!singleTarget || !hoveredPivot || hoveredPivot.key !== singleTarget.key) return null;
-        const p = singleTarget.points[hoveredPivot.i];
-        return p ? p.x : null;
-    }, [hoveredPinLine, singleTarget, hoveredPivot]);
+    // ── 피벗 값 붙잡기 — 상태·판정 전부 usePivotPins 가 소유한다(골격선 층이 `shown` 을 물어본다).
+    const pins = usePivotPins({ target: singleTarget, resetKey: themeOverlay?.key, anchorKey: anchor });
 
     /**
      * 붙잡은 핀 시각의 판독 — **크로스헤어 판독과 같은 규칙**으로 통일했다(사용자 확정):
@@ -515,11 +452,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      * 뽑기도 같은 기준(등락률·누적 대금 상위) — 두 판독이 다른 무리를 보여주면 그게 더 헷갈린다.
      */
     const themeReadingSlots = useMemo(() => {
-        if (!scales || !readoutSources || openReadingX === null) return [];
-        const minute = Math.round(openReadingX) + (readoutSources[0]?.t0 ?? 0);
+        if (!scales || !readoutSources || pins.openReadingX === null) return [];
+        const minute = Math.round(pins.openReadingX) + (readoutSources[0]?.t0 ?? 0);
         const cands: ReadoutCandidate[] = [];
         for (const s of readoutSources) {
-            const y = s.yAt(openReadingX);
+            const y = s.yAt(pins.openReadingX);
             if (y === null) continue;
             cands.push({
                 code: s.code, name: s.name, y, pct: y + s.baseRate,
@@ -532,7 +469,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             { min: box.top + 8, max: box.top + box.height - 8 },
             READOUT_GAP,
         );
-    }, [scales, readoutSources, openReadingX, box.top, box.height]);
+    }, [scales, readoutSources, pins.openReadingX, box.top, box.height]);
 
     /** 라벨 후보를 내는 선들 — 앵커 골격 + 테마 전부. 모양이 같아 한 격자에서 겨룬다(AmountLabels). */
     const amountSources = useMemo<AmountSource[]>(() => {
@@ -541,7 +478,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (theme.runs && themeOverlay) for (const [code, runs] of theme.runs) out.push({ code, runs, baseT: themeOverlay.t0, own: false });
         return out;
     }, [amounts, amountTarget, theme.runs, themeOverlay]);
-    const amountLabels = useAmountLabels(amountSources, scales, anchorPivotMinutes, amountLabelsOn);
+    const amountLabels = useAmountLabels(amountSources, scales, pins.anchorMinutes, amountLabelsOn);
 
 
 
@@ -648,10 +585,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             .sort((a, b) => labelPointOf(b, labelAnchorMode).y - labelPointOf(a, labelAnchorMode).y);
     }, [badge, byKey, labelAnchorMode]);
     useEffect(() => { setBadge(null); setBadgeHover(null); }, [boundsKey, anchor, grain]);
-    // 붙잡아 둔 피벗 값은 **기준(앵커)이 바뀌면** 버린다 — 좌표계가 갈리면 같은 인덱스가 다른 뜻이 된다.
-    // 척도 변경(boundsKey)엔 안 건드린다: 확대·필터는 같은 그림을 다르게 볼 뿐이라 값이 남아야 한다.
-    useEffect(() => { setPinnedPivots(new Set()); }, [anchor]);
-
     /** 지금 조사 중인 선의 그룹 이름들 — 타점 단위 선은 타점 그룹(차트 그룹 상속 포함), 차트 단위 선은 차트 그룹. */
     const inspectGroupNames = useMemo(() => {
         const s = inspectKey ? byKey.get(inspectKey) : null;
@@ -681,8 +614,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     pointKeys: selectedPks,
                     onGroupPoints: openPointGroupMenu,
                     onClearPoints: () => setSelectedPks(new Set()),
-                    pinnedCount: pinnedPivots.size,
-                    onClearPins: () => setPinnedPivots(new Set()),
+                    pinnedCount: pins.count,
+                    onClearPins: pins.clear,
                 }}
                 onlySelected={onlySelected}
                 setOnlySelected={setOnlySelected}
@@ -821,7 +754,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             })()}
                                             {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. 손이 올라간 점은 커진다. */}
                                             {(lit || dotsForAll) && s.points.map((p, i) => {
-                                                const r = pivotShown(s.key, i) ? 5 : lit ? 3 : 2;
+                                                const r = pins.shown(s.key, i) ? 5 : lit ? 3 : 2;
                                                 return p.synthetic
                                                     ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={r} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
                                                     : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={r} fill={color} />;
@@ -838,7 +771,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                             {s.points.map((p, i) => {
                                                 // 원점 제외는 **일봉만** — 앵커 대비 (0,0)은 무의미하지만, 분봉의 원점은
                                                 // 괄호(타점 시각·절대 등락률)가 실값이고 테마 값을 펴는 호버 자리다(사용자 확정).
-                                                if (!pivotShown(s.key, i) || (s.kind !== "point" && p.x === 0 && p.y === 0)) return null;
+                                                if (!pins.shown(s.key, i) || (s.kind !== "point" && p.x === 0 && p.y === 0)) return null;
                                                 const px = scales.x(p.x);
                                                 const py = scales.y(p.y);
                                                 const ax = clamp(scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
@@ -846,7 +779,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                                 const below = ay + 12 <= box.top + box.height; // x축 아래에 자리가 없으면 위로
                                                 const leftSide = ax - box.left > 44; // y축 왼쪽에 자리가 없으면 오른쪽으로
                                                 // 붙잡은 값은 계속 또렷하게, 스치는 미리보기는 한 단계 물러난다(붙잡았다는 게 보이게).
-                                                const pin = pinnedPivots.has(pivotId(s.key, i));
+                                                const pin = pins.isPinned(s.key, i);
                                                 const val: CSSProperties = { fontSize: pin ? 11 : 10, fontWeight: pin ? 700 : 400, fill: color, fontVariantNumeric: "tabular-nums" };
                                                 return (
                                                     <g key={`pv${i}`} opacity={pin ? 1 : 0.75}>
@@ -868,28 +801,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 })}
                                 </g>
 
-                                {/* 붙잡은 피벗의 세로선 — 테마 값을 펼치는 **손잡이**다. 올리면 그 시각의 테마 값이
-                                    선 오른쪽에 펴진다(상시가 아니라 호버 중에만 — 30줄이 늘 떠 있으면 화면이 찬다).
-                                    보이는 선은 얇지만 히트 영역은 넓은 투명 선이 따로 받는다(1px 을 겨냥할 수는 없다).
-                                    ⚠ **피벗 손잡이보다 먼저** 그린다: SVG 는 나중에 그린 게 위라, 이 10px 투명 선이 뒤에
-                                    오면 자기 x 에 있는 피벗 점의 클릭을 통째로 삼킨다(핀을 찍고 나면 못 떼던 버그). */}
-                                <g data-layer="pin-verticals">
-                                {themeOverlay && pinnedXs.map((m) => {
-                                    const x = scales.x(m);
-                                    const open = openReadingX === m;
-                                    return (
-                                        <g key={`pinv-${m}`}>
-                                            <line x1={x} x2={x} y1={box.top} y2={box.top + box.height}
-                                                stroke={open ? ACTIVE : "var(--text-tertiary)"} strokeWidth={open ? 1.2 : 0.8} strokeDasharray="2 3"
-                                                opacity={open ? 0.9 : 0.5} style={{ pointerEvents: "none" }} />
-                                            <line x1={x} x2={x} y1={box.top} y2={box.top + box.height} stroke="transparent" strokeWidth={10}
-                                                style={{ pointerEvents: "auto", cursor: "ew-resize" }}
-                                                onMouseEnter={() => setHoveredPinLine(m)} onMouseLeave={() => setHoveredPinLine(null)} />
-                                        </g>
-                                    );
-                                })}
-
-                                </g>
+                                {/* 붙잡은 피벗의 세로선 — 테마 값을 펼치는 손잡이.
+                                    ⚠ **피벗 손잡이보다 먼저** 그린다(PinLayer 머리 주석 — 겪은 버그). */}
+                                <PinVerticals xs={themeOverlay ? pins.pinnedXs : []} openX={pins.openReadingX}
+                                    scales={scales} box={box} onHover={pins.setHoveredPinLine} />
 
                                 {/* 짚은 골격선의 히트라인 — 테마 선과 같은 손짓(선 위에서 값을 읽는다).
                                     **선택된 것 하나만** 포인터를 받는다: 전체 골격선을 열면 많아질수록 손이 걸리고,
@@ -915,20 +830,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
                                     클릭 = 그 점의 값 붙잡기/떼기(사용자 확정) — 여럿을 나란히 놓고 볼 수 있다.
                                     **맨 위에 그린다** — 위 세로선·아래 선들 어느 것도 이 손잡이를 가리면 안 된다. */}
-                                <g data-layer="pivot-handles">
-                                {[...new Set([...(inspectKey ? [inspectKey] : []), ...linesWithPins])].map((key) => {
-                                    const s = byKey.get(key);
-                                    if (!s) return null;
-                                    // 원점도 분봉에선 손잡이를 받는다(사용자 확정) — 호버 = t₀의 테마 값, 클릭 = 핀 세로선.
-                                    return s.points.map((p, i) => (s.kind !== "point" && p.x === 0 && p.y === 0 ? null : (
-                                        <circle key={`hit-${key}-${i}`} cx={scales.x(p.x)} cy={scales.y(p.y)} r={7} fill="transparent"
-                                            style={{ pointerEvents: "auto", cursor: "pointer" }}
-                                            onClick={() => togglePivot(s.key, i)}
-                                            onMouseEnter={() => { setHovered(s.key); setHoveredPivot({ key: s.key, i }); }}
-                                            onMouseLeave={() => { setHovered(null); setHoveredPivot(null); }} />
-                                    )));
-                                })}
-                                </g>
+                                <PivotHandles
+                                    lines={[...new Set([...(inspectKey ? [inspectKey] : []), ...pins.linesWithPins])]
+                                        .map((key) => byKey.get(key))
+                                        .filter((s): s is Line => !!s)}
+                                    scales={scales}
+                                    onToggle={pins.toggle}
+                                    // 들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
+                                    onHover={(at) => { setHovered(at?.key ?? null); pins.setHoveredPivot(at); }}
+                                />
 
                                 {/* 거래대금 숫자 — **선×세그먼트당 하나 → 화면 x 격자**로 솎아 살아남은 것들.
                                     점은 **터진 그 분의 자리**에 정확히 얹히고(표식), 숫자는 그 오른쪽에 선다.
@@ -989,23 +899,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 </svg>
 
                 {/* 핀 시각의 판독 — 그 세로선 오른쪽에 크로스헤어 판독과 **같은 모양**으로. */}
-                {scales && themeReadingSlots.length > 0 && openReadingX !== null && (
-                    <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-                        {themeReadingSlots.map((s) => (
-                            <div key={`trl-${s.item.code}`} style={{
-                                ...readoutBox, left: scales.x(openReadingX) + READOUT_OFFSET, top: s.labelY,
-                                transform: "translateY(-50%)",
-                                borderColor: s.item.own ? ACTIVE : "var(--border-default)",
-                                fontWeight: s.item.own ? 500 : 400,
-                            }}>
-                                <span style={labelDot(theme.colorOf(s.item.code))} />
-                                <span>{s.item.name}</span>
-                                {s.off && <span style={{ color: "var(--text-tertiary)" }}>{s.off === "up" ? "▲" : "▼"}</span>}
-                                <span style={{ color: s.item.pct >= 0 ? RISE_COLOR : FALL_COLOR }}>{fmtPct(s.item.pct)}</span>
-                                {s.item.amount !== null && <span style={{ color: "var(--text-secondary)" }}>{fmtEok(s.item.amount)}</span>}
-                            </div>
-                        ))}
-                    </div>
+                {scales && themeReadingSlots.length > 0 && pins.openReadingX !== null && (
+                    <PinReadout rows={themeReadingSlots} x={pins.openReadingX} scales={scales} colorOf={theme.colorOf} />
                 )}
 
                 {/* 테마 이름 층 + 넘침 뱃지 목록 — 그림 상자 왼쪽 거터(HTML). */}
@@ -1194,13 +1089,6 @@ function CrosshairLayer({ wrapRef, scales, box, xUnit, abs, readoutAt, colorOf }
     );
 }
 
-/** 선 판독 상자 — 얽힌 선 위에 뜨므로 불투명 배경(반투명이면 뒤 선이 글자를 뚫고 올라온다). */
-const readoutBox: CSSProperties = {
-    position: "absolute", display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-    fontSize: 10, lineHeight: "15px", fontVariantNumeric: "tabular-nums",
-    color: "var(--text-primary)", background: "var(--bg-secondary)", border: "1px solid var(--border-default)",
-    borderRadius: 4, padding: "1px 6px", boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-};
 
 /** 크로스헤어 축 뱃지 — 축 눈금 위에 얹히므로 불투명 배경으로 아래 숫자를 덮는다(겹쳐 보이면 둘 다 못 읽는다). */
 const axisBadge: CSSProperties = {
