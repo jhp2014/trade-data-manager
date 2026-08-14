@@ -28,6 +28,49 @@ export interface ReadoutCandidate {
     own?: boolean;
 }
 
+/** 판독 칩의 세로 최소 간격(화면 px) — 크로스헤어·핀 두 판독이 같은 값을 쓴다. */
+export const READOUT_GAP = 15;
+
+/** 세로선 판독의 재료 한 벌 — 선 하나를 x 로 조회하는 함수 묶음(값은 그리는 층이 읽는다). */
+export interface ReadoutSource {
+    code: string;
+    name: string;
+    /** 이 뷰의 원점 시각(벽시계 분) — x → 분 환산. */
+    t0: number;
+    /** 뷰 y → 전일比 % 로 되돌리는 상수. */
+    baseRate: number;
+    own?: boolean;
+    yAt: (x: number) => number | null;
+    amountAt: ((minute: number) => number | null) | null;
+    cumAt: ((minute: number) => number | null) | null;
+}
+
+/**
+ * x 시각의 판독 후보 조립 — 크로스헤어와 핀 판독이 **같은 함수**를 탄다(두 판독이 다른 무리를
+ * 보여주면 그게 더 헷갈린다 — 사용자 확정으로 규칙을 통일한 이유). y 가 없는 선(범위 밖)은 빠지고,
+ * 거래대금 없음은 null 로 남긴다(0으로 지어내지 않는다). `litCode` 는 지금 짚은 선 — own 으로 세워
+ * 순위와 무관하게 언제나 남긴다.
+ */
+export function readoutCandidatesAt(
+    sources: readonly ReadoutSource[],
+    x: number,
+    litCode: string | null = null,
+): ReadoutCandidate[] {
+    const minute = Math.round(x) + (sources[0]?.t0 ?? 0);
+    const out: ReadoutCandidate[] = [];
+    for (const s of sources) {
+        const y = s.yAt(x);
+        if (y === null) continue;
+        out.push({
+            code: s.code, name: s.name, y, pct: y + s.baseRate,
+            amount: s.amountAt?.(minute) ?? null,
+            cumAmount: s.cumAt?.(minute) ?? 0,
+            ...(s.own || s.code === litCode ? { own: true } : {}),
+        });
+    }
+    return out;
+}
+
 /**
  * 보여줄 후보 고르기 — `own` ∪ 등락률 상위 ∪ 누적 거래대금 상위. 결과는 **값 내림차순**
  * (화면에서 위에 있는 선이 목록에서도 위 — 눈이 안 헤맨다).

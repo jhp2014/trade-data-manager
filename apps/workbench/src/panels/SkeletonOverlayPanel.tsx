@@ -1,11 +1,10 @@
-import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, type RefObject } from "react";
+import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
-import { RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
 import {
-    dailyFrame, pointUnitFrame, pct,
+    dailyFrame, pointUnitFrame,
     lineOpacity, dimOpacity, labelPointOf, labelHandles, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
     amountRuns,
-    type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
+    type LineVisual, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
@@ -14,19 +13,21 @@ import { useOverlayToggles } from "./skeleton/useOverlayToggles.js";
 import { OverlayHeader } from "./skeleton/OverlayHeader.js";
 import { OverlayFooter } from "./skeleton/OverlayFooter.js";
 import { LabelLayer, LABEL_CELL } from "./skeleton/LabelLayer.js";
-import { labelDot } from "./skeleton/chips.js";
 import { amountLevelOf, amountLookupOf } from "./skeleton/amountLayer.js";
 import { AmountLabels, useAmountLabels, type AmountSource } from "./skeleton/AmountLabels.js";
 import { useThemeLabels, useThemeOverlay } from "./skeleton/useThemeOverlay.js";
 import { usePivotPins } from "./skeleton/usePivotPins.js";
-import { PinReadout, PinVerticals, PivotHandles, READOUT_OFFSET, readoutBox } from "./skeleton/PinLayer.js";
+import { PinReadout, PinVerticals, PivotHandles } from "./skeleton/PinLayer.js";
+import { CrosshairLayer } from "./skeleton/CrosshairLayer.js";
+import { LevelsLayer, type LevelOwner } from "./skeleton/LevelsLayer.js";
+import { AxisLayer } from "./skeleton/AxisLayer.js";
 import { ThemeGutter, ThemeLeaders, ThemeHit } from "./skeleton/ThemeLayer.js";
 import { skeletonLinesLayer } from "./skeleton/skeletonLinesLayer.js";
 import { candleLayer } from "./skeleton/candleLayer.js";
 import { themeLinesLayer } from "./skeleton/themeLinesLayer.js";
 import { CanvasLayers } from "./skeleton/CanvasPainter.js";
 import { flatten, orderPaint, type DrawLayer } from "./skeleton/drawList.js";
-import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
+import { pickReadouts, layoutReadoutRows, readoutCandidatesAt, READOUT_GAP, type ReadoutCandidate, type ReadoutSource } from "./skeleton/readout.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -37,7 +38,7 @@ import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
 import { mutedNote } from "../components/ControlChrome.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { ACTIVE, HOVER, seriesColor } from "../styles/palette.js";
-import { fmtEok, fmtPct } from "../lib/format.js";
+import { fmtPct } from "../lib/format.js";
 import { shortDate, timeOfMinutes } from "../lib/date.js";
 import { clamp } from "../lib/num.js";
 
@@ -92,31 +93,14 @@ const RECEDE_OPACITY = 0.3;
 const pathOf = (points: readonly { x: number; y: number }[], scales: Scales, step = 1): string =>
     decimate(points, step).map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
 
-/** 원점 좌표축의 색 — 눈금 격자(border-subtle)보다 진하고 골격 색과는 겹치지 않는 중성색. */
-const AXIS_LINE = "var(--text-secondary)";
-
 /** 화면의 선 하나 — kind 판별 유니온(차트 단위 ChartSkeleton / 타점 단위 PointSkeleton). */
 type Line = OverlayLine;
 
 
-/** 세로선 판독의 재료 한 벌 — 선 하나를 x 로 조회하는 함수 묶음(값은 크로스헤어 층이 읽는다). */
-interface ReadoutSource {
-    code: string;
-    name: string;
-    /** 이 뷰의 원점 시각(벽시계 분) — x → 분 환산. */
-    t0: number;
-    /** 뷰 y → 전일比 % 로 되돌리는 상수. */
-    baseRate: number;
-    own?: boolean;
-    yAt: (x: number) => number | null;
-    amountAt: ((minute: number) => number | null) | null;
-    cumAt: ((minute: number) => number | null) | null;
-}
+// 판독의 재료(ReadoutSource)·후보 조립·칩 간격은 skeleton/readout 으로 — 크로스헤어와 핀이 같은 규칙을 탄다.
 
 /** 판독 칩 상한 — 등락률 상위 N ∪ 누적 거래대금 상위 N(사용자 확정). 합집합이라 최대 2N, 보통 그보다 적다. */
 const READOUT_TOP = 5;
-/** 판독 칩의 세로 최소 간격(화면 px). */
-const READOUT_GAP = 15;
 
 type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
 type XUnit = "day" | "min";
@@ -454,21 +438,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const readoutAt = useMemo<((x: number) => ReadoutCandidate[]) | null>(() => {
         if (!readoutOn || !readoutSources) return null;
         const lit = theme.hovered?.size === 1 ? [...theme.hovered][0] : singleTarget?.stockCode ?? null;
-        return (x) => {
-            const minute = Math.round(x) + (readoutSources[0]?.t0 ?? 0);
-            const cands: ReadoutCandidate[] = [];
-            for (const s of readoutSources) {
-                const y = s.yAt(x);
-                if (y === null) continue;
-                cands.push({
-                    code: s.code, name: s.name, y, pct: y + s.baseRate,
-                    amount: s.amountAt?.(minute) ?? null,
-                    cumAmount: s.cumAt?.(minute) ?? 0,
-                    ...(s.own || s.code === lit ? { own: true } : {}),
-                });
-            }
-            return pickReadouts(cands, READOUT_TOP, READOUT_TOP);
-        };
+        return (x) => pickReadouts(readoutCandidatesAt(readoutSources, x, lit), READOUT_TOP, READOUT_TOP);
     }, [readoutOn, readoutSources, theme.hovered, singleTarget]);
 
     // ── 피벗 값 붙잡기 — 상태·판정 전부 usePivotPins 가 소유한다(골격선 층이 `shown` 을 물어본다).
@@ -482,19 +452,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      */
     const themeReadingSlots = useMemo(() => {
         if (!scales || !readoutSources || pins.openReadingX === null) return [];
-        const minute = Math.round(pins.openReadingX) + (readoutSources[0]?.t0 ?? 0);
-        const cands: ReadoutCandidate[] = [];
-        for (const s of readoutSources) {
-            const y = s.yAt(pins.openReadingX);
-            if (y === null) continue;
-            cands.push({
-                code: s.code, name: s.name, y, pct: y + s.baseRate,
-                amount: s.amountAt?.(minute) ?? null, cumAmount: s.cumAt?.(minute) ?? 0,
-                ...(s.own ? { own: true } : {}),
-            });
-        }
         return layoutReadoutRows(
-            pickReadouts(cands, READOUT_TOP, READOUT_TOP).map((r) => ({ item: r, y: scales.y(r.y) })),
+            pickReadouts(readoutCandidatesAt(readoutSources, pins.openReadingX), READOUT_TOP, READOUT_TOP)
+                .map((r) => ({ item: r, y: scales.y(r.y) })),
             { min: box.top + 8, max: box.top + box.height - 8 },
             READOUT_GAP,
         );
@@ -613,6 +573,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return ids.map((id) => groupsView.groupById.get(id)?.name).filter((n): n is string => !!n);
     }, [inspectKey, byKey, groupsView]);
 
+    // 수준선(기준선·D선)을 받을 골격 — 단일 선택 + (다르면) 호버 하나. 다중 선택이면 호버 것만.
+    const levelOwners = useMemo<LevelOwner[]>(() => {
+        if (!showLevels) return [];
+        const single = effSelected.size === 1 ? [...effSelected][0] : null;
+        const out: LevelOwner[] = [];
+        const sel = single ? byKey.get(single) : null;
+        if (sel) out.push({ s: sel, color: visualOf(sel.key).color, right: true });
+        const hov = hovered && hovered !== single ? byKey.get(hovered) : null;
+        if (hov) out.push({ s: hov, color: visualOf(hov.key).color, right: false });
+        return out;
+    }, [showLevels, effSelected, byKey, hovered, visualOf]);
+
 
 
     /**
@@ -717,36 +689,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     colorOf={theme.colorOf} hovered={theme.hovered} />
                             )}
 
-                            {/* 눈금 — 확대하면 d3 가 새 구간에 맞춰 다시 뽑는다(축이 곧 정보라 라벨이 따라와야 한다).
-                                타점을 하나 선택했으면 **절대값을 아랫줄에** 같이 세운다(사용자 확정): 세로축은 전일比 %,
-                                가로축은 벽시계. 한 줄에 붙이면 좁은 왼쪽 여백(46px)을 넘어 잘린다 — 그래서 두 줄이다. */}
-                            <g data-layer="axis-ticks">
-                            {scales.y.ticks(5).map((v) => (
-                                <g key={`y${v}`}>
-                                    <line x1={box.left} x2={box.left + box.width} y1={scales.y(v)} y2={scales.y(v)} stroke="var(--border-subtle)" strokeWidth={0.5} />
-                                    <text x={box.left - 5} y={scales.y(v) + (axisAbs ? -1 : 3)} textAnchor="end" style={axisText}>{v.toFixed(0)}%</text>
-                                    {axisAbs && (
-                                        <text x={box.left - 5} y={scales.y(v) + 9} textAnchor="end" style={axisAbsText}>{fmtPct(v + axisAbs.baseRate)}</text>
-                                    )}
-                                </g>
-                            ))}
-                            {scales.x.ticks(6).map((v) => (
-                                <g key={`x${v}`}>
-                                    <text x={scales.x(v)} y={size.h - (axisAbs ? 14 : 8)} textAnchor="middle" style={axisText}>{fmtX(v, xUnit)}</text>
-                                    {axisAbs && <text x={scales.x(v)} y={size.h - 4} textAnchor="middle" style={axisAbsText}>{timeOfMinutes(v + axisAbs.baseT)}</text>}
-                                </g>
-                            ))}
-                            </g>
-                            <g clipPath={`url(#${clipId})`}>
-                                {/* 원점 좌표축 — **실선 + 끝 화살표**(사용자 확정, xy 좌표계 그대로). 흐린 점선은 그림에
-                                    묻혀 안 읽혔다. 이 두 선이 피벗 좌표를 읽는 자(尺)다: 값은 여기로 내린 수직·수평
-                                    점선의 발치에서 읽는다. 가로축 = 0(일봉이면 앵커 높이, 분봉이면 타점의 등락률 높이),
-                                    세로축 = t=0(분봉이면 타점 시각). */}
-                                <line x1={box.left} x2={box.left + box.width} y1={scales.y(0)} y2={scales.y(0)} stroke={AXIS_LINE} strokeWidth={1} />
-                                <polygon points={`${box.left + box.width},${scales.y(0)} ${box.left + box.width - 7},${scales.y(0) - 3.5} ${box.left + box.width - 7},${scales.y(0) + 3.5}`} fill={AXIS_LINE} />
-                                <line x1={scales.x(0)} x2={scales.x(0)} y1={box.top} y2={box.top + box.height} stroke={AXIS_LINE} strokeWidth={1} />
-                                <polygon points={`${scales.x(0)},${box.top} ${scales.x(0) - 3.5},${box.top + 7} ${scales.x(0) + 3.5},${box.top + 7}`} fill={AXIS_LINE} />
-                            </g>
+                            {/* 눈금·원점 좌표축 — 표기 규칙 전부 AxisLayer 가 소유(절대값 아랫줄 포함). */}
+                            <AxisLayer scales={scales} box={box} sizeH={size.h}
+                                fmtX={(v: number) => fmtX(v, xUnit)} abs={axisAbs} clipId={clipId} />
                         </>
                     )}
                 </svg>
@@ -822,46 +767,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                     )}
                                 </g>
 
-                                {/* 얹는 선(기준선·D선) — 같은 pct 환산. **주인이 스타일을 정한다**(사용자 확정):
-                                    색은 **그 골격선과 똑같이**(visualOf) — 그룹 목록을 훑을 때 골격선은 무리 색인데
-                                    가로선만 앰버로 뜨면 "이게 어느 골격의 선이냐"를 다시 찾아야 했다(사용자 지적).
-                                    선이 이미 색으로 정해져 있으니 가로선은 그 색을 따라가면 그만이다.
-                                    둘이 동시에 떠도(단일 선택 + 호버) 라벨 위치로 갈린다: 선택 = 오른쪽, 호버 = 왼쪽.
-                                    **둘 다 실선** — 점선은 가격 수준선을 읽기 어렵게만 했다(사용자 확정).
-                                    다중 선택이면 호버 것만(수십 벌이 겹치므로).
-                                    기준선 여부는 선 모양이 아니라 라벨의 "기준" 접두어 — 어차피 최저가 규칙이라 아래가 기준선. */}
-                                <g data-layer="levels">
-                                {showLevels && scales && (() => {
-                                    const single = effSelected.size === 1 ? [...effSelected][0] : null;
-                                    const owners: { s: NormalizedSkeleton; color: string; right: boolean }[] = [];
-                                    const sel = single ? byKey.get(single) : null;
-                                    if (sel) owners.push({ s: sel, color: visualOf(sel.key).color, right: true });
-                                    const hov = hovered && hovered !== single ? byKey.get(hovered) : null;
-                                    if (hov) owners.push({ s: hov, color: visualOf(hov.key).color, right: false });
-                                    return owners.map(({ s, color, right }) => (
-                                        <g key={`lvl-${s.key}`} style={{ pointerEvents: "none" }}>
-                                            {(levelsByChart.get(s.chartKey) ?? []).map((lv, i) => {
-                                                // 가격 → y 는 언제나 pct(price, basePrice) − baseRate — 골격 피벗과 같은 환산이어야 한 공간이다.
-                                                const yPct = pct(lv.price, s.basePrice) - s.baseRate;
-                                                const y = scales.y(yPct);
-                                                return (
-                                                    <g key={i}>
-                                                        {/* 기준선은 **두껍게**(2.6px) — 1.4px 였을 땐 같은 굵기의 x축(0선)과 헷갈렸다(사용자 지적).
-                                                            축은 중성색 1px, 기준선은 선 색 2.6px 라 색과 굵기 둘 다로 갈린다. */}
-                                                        <line x1={box.left} x2={box.left + box.width} y1={y} y2={y}
-                                                            stroke={color} strokeWidth={lv.baseline ? 2.6 : 1.2} opacity={lv.baseline ? 0.95 : 0.8} />
-                                                        <text x={right ? box.left + box.width - 4 : box.left + 4} y={y - 4} textAnchor={right ? "end" : "start"}
-                                                            stroke="var(--bg-primary)" strokeWidth={3} paintOrder="stroke"
-                                                            style={{ fontSize: 9, fill: color, fontVariantNumeric: "tabular-nums" }}>
-                                                            {lv.baseline ? "기준 " : ""}{fmtPct(yPct)}{s.baseRate !== 0 ? ` (${fmtPct(yPct + s.baseRate)})` : ""}
-                                                        </text>
-                                                    </g>
-                                                );
-                                            })}
-                                        </g>
-                                    ));
-                                })()}
-                                </g>
+                                {/* 얹는 선(기준선·D선) — 환산·스타일 규칙은 LevelsLayer 가, **누가 받나**(선택·호버)는
+                                    여기(levelOwners)가 정한다. 다중 선택이면 호버 것만(수십 벌이 겹치므로). */}
+                                <LevelsLayer owners={levelOwners} levelsOf={(ck) => levelsByChart.get(ck) ?? []}
+                                    scaleY={scales.y} box={box} />
                             </g>
                         </>
                     )}
@@ -909,7 +818,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 {/* 크로스헤어 — 자기 상태(마우스 좌표)만 다시 그린다. 부모 렌더에 mousemove 를 태우면
                     이동마다 선 수백 개가 재조정된다(분리한 이유). 팬 중엔 숨긴다(사용자 확정). */}
                 {scales && !dragging && (
-                    <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} xUnit={xUnit} abs={axisAbs}
+                    <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} fmtX={(v: number) => fmtX(v, xUnit)} abs={axisAbs}
                         readoutAt={readoutAt} colorOf={theme.colorOf} />
                 )}
             </div>
@@ -972,107 +881,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     );
 }
 
-/** 크로스헤어 — 마우스 위치의 (시간, %) 읽기. 상태를 여기 가둬 부모(선 수백 개)가 이동마다 안 그려지게. */
-function CrosshairLayer({ wrapRef, scales, box, xUnit, abs, readoutAt, colorOf }: {
-    wrapRef: RefObject<HTMLDivElement | null>;
-    scales: Scales;
-    box: { left: number; top: number; width: number; height: number };
-    xUnit: XUnit;
-    /** 선택된 타점의 원점 — 있으면 뱃지가 절대값(벽시계·전일比 %)을 괄호로 같이 읽는다. */
-    abs: { baseT: number; baseRate: number } | null;
-    /** 세로선 판독기(부모가 만든다) — 커서 x 를 넣으면 그 시각에 보여줄 선들의 값. null 이면 안 펼친다. */
-    readoutAt: ((x: number) => ReadoutCandidate[]) | null;
-    colorOf: (code: string) => string;
-}): JSX.Element | null {
-    const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-    useEffect(() => {
-        const el = wrapRef.current;
-        if (!el) return;
-        const move = (e: MouseEvent): void => {
-            const r = el.getBoundingClientRect();
-            setPos({ x: e.clientX - r.left, y: e.clientY - r.top });
-        };
-        const leave = (): void => setPos(null);
-        el.addEventListener("mousemove", move);
-        el.addEventListener("mouseleave", leave);
-        return () => {
-            el.removeEventListener("mousemove", move);
-            el.removeEventListener("mouseleave", leave);
-        };
-    }, [wrapRef]);
-
-    if (!pos || pos.x < box.left || pos.x > box.left + box.width || pos.y < box.top || pos.y > box.top + box.height) return null;
-    const xv = scales.x.invert(pos.x);
-    const yv = scales.y.invert(pos.y);
-    // 판독은 **선 위의 값**이라 커서 y 와 무관하다 — 세로선이 곧 자(尺)다.
-    const rows = readoutAt ? layoutReadoutRows(
-        readoutAt(xv).map((r) => ({ item: r, y: scales.y(r.y) })),
-        { min: box.top + 8, max: box.top + box.height - 8 },
-        READOUT_GAP,
-    ) : [];
-    // 오른쪽 끝에 닿으면 왼쪽으로 넘긴다 — 잘려서 못 읽는 것보단 잠깐 궤적을 가리는 게 낫다.
-    const flip = pos.x > box.left + box.width - (READOUT_OFFSET + 140);
-    const chipX = pos.x + (flip ? -READOUT_OFFSET : READOUT_OFFSET);
-    // 읽기값은 커서 옆이 아니라 **축 가장자리 뱃지**(사용자 확정) — 차트 보던 습관 그대로 축에서 읽는다.
-    return (
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-            {/* 점선 헤어라인 — 배경 없는 0폭 div 에 dashed border(1px div 배경으로는 점선이 안 된다). */}
-            <div style={{ position: "absolute", left: pos.x, top: box.top, width: 0, height: box.height, borderLeft: "1px dashed var(--border-strong)", opacity: 0.8 }} />
-            <div style={{ position: "absolute", left: box.left, top: pos.y, height: 0, width: box.width, borderTop: "1px dashed var(--border-strong)", opacity: 0.8 }} />
-            {/* y 뱃지 — 왼쪽 % 축 위(눈금 숫자가 서는 자리, 오른끝을 축에 맞춘다). */}
-            <div style={{ ...axisBadge, left: box.left - 2, top: pos.y - 7, transform: "translateX(-100%)" }}>
-                {fmtPct(yv)}{abs && <span style={axisBadgeAbs}> {fmtPct(yv + abs.baseRate)}</span>}
-            </div>
-            {/* x 뱃지 — 아래 시간축 위. */}
-            <div style={{ ...axisBadge, left: pos.x, bottom: 2, transform: "translateX(-50%)" }}>
-                {fmtX(xv, xUnit)}{abs && <span style={axisBadgeAbs}> {timeOfMinutes(xv + abs.baseT)}</span>}
-            </div>
-            {/* 세로선 판독 — 지시선(SVG)이 먼저, 칩(HTML)이 그 위에. 칩은 **포인터를 안 받는다**:
-                커서 밑에 칩이 깔리면 그게 선의 호버를 가로채 판독이 깜빡인다(떴다 사라졌다 반복). */}
-            {rows.length > 0 && (
-                <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-                    {rows.map((r) => (
-                        <g key={r.item.code} opacity={r.item.own ? 0.95 : 0.5}>
-                            <line x1={pos.x} y1={r.anchorY} x2={chipX} y2={r.labelY}
-                                stroke={colorOf(r.item.code)} strokeWidth={0.8} strokeDasharray="2 2" />
-                            <circle cx={pos.x} cy={r.anchorY} r={2.2} fill={colorOf(r.item.code)} />
-                        </g>
-                    ))}
-                </svg>
-            )}
-            {rows.map((r) => (
-                <div key={r.item.code} style={{
-                    ...readoutBox, left: chipX, top: r.labelY,
-                    transform: flip ? "translate(-100%, -50%)" : "translateY(-50%)",
-                    borderColor: r.item.own ? ACTIVE : "var(--border-default)",
-                    fontWeight: r.item.own ? 500 : 400,
-                }}>
-                    <span style={labelDot(colorOf(r.item.code))} />
-                    <span>{r.item.name}</span>
-                    {/* 진짜 값이 화면 밖이라 가장자리로 당겨진 칩 — 어느 쪽에 있는지 남긴다. */}
-                    {r.off && <span style={{ color: "var(--text-tertiary)" }}>{r.off === "up" ? "▲" : "▼"}</span>}
-                    <span style={{ color: r.item.pct >= 0 ? RISE_COLOR : FALL_COLOR }}>{fmtPct(r.item.pct)}</span>
-                    {/* 거래대금은 없을 수 있다(그날 유니버스 밖) — 0으로 지어내지 않고 자리를 비운다. */}
-                    {r.item.amount !== null && <span style={{ color: "var(--text-secondary)" }}>{fmtEok(r.item.amount)}</span>}
-                </div>
-            ))}
-        </div>
-    );
-}
-
-
-/** 크로스헤어 축 뱃지 — 축 눈금 위에 얹히므로 불투명 배경으로 아래 숫자를 덮는다(겹쳐 보이면 둘 다 못 읽는다). */
-const axisBadge: CSSProperties = {
-    position: "absolute", fontSize: 9.5, lineHeight: "13px", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
-    color: "var(--text-primary)", background: "var(--bg-tertiary)", border: "1px solid var(--border-default)",
-    borderRadius: 3, padding: "0 4px",
-};
-
 const wrap: CSSProperties = { display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" };
 /** 안내 문구 — 공용 문구 위에 **덮개**만 얹는다(그림 위에 떠서 포인터를 안 먹게). */
 const muted: CSSProperties = { ...mutedNote, position: "absolute", inset: 0, pointerEvents: "none" };
-const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
-/** 눈금 아랫줄의 절대값 — 상대값(주)보다 한 단계 작고 흐리다. 둘이 같은 무게면 어느 쪽이 축인지 안 잡힌다. */
-const axisAbsText: CSSProperties = { fontSize: 8.5, fill: "var(--text-quaternary, var(--text-tertiary))", opacity: 0.75, fontVariantNumeric: "tabular-nums" };
-/** 크로스헤어 뱃지 안의 절대값 — 같은 뱃지에 이어 붙되 색으로 갈린다(뱃지를 둘로 나누면 축이 복잡해진다). */
-const axisBadgeAbs: CSSProperties = { color: "var(--text-tertiary)" };

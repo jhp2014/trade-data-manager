@@ -1,8 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "../readout.js";
+import { pickReadouts, layoutReadoutRows, readoutCandidatesAt, type ReadoutCandidate, type ReadoutSource } from "../readout.js";
 
 const c = (code: string, pct: number, cumAmount: number, own = false): ReadoutCandidate =>
     ({ code, name: `${code}사`, y: pct, pct, amount: 0, cumAmount, ...(own ? { own: true } : {}) });
+
+describe("readoutCandidatesAt — 크로스헤어·핀 판독의 공용 후보 조립", () => {
+    const src = (code: string, over: Partial<ReadoutSource> = {}): ReadoutSource => ({
+        code, name: `${code}사`, t0: 570, baseRate: 2,
+        yAt: (x) => x + 1, amountAt: (m) => m * 10, cumAt: (m) => m * 100,
+        ...over,
+    });
+
+    it("y·pct(=y+baseRate)·분 환산(x+t0)이 한 번에 조립된다", () => {
+        const [got] = readoutCandidatesAt([src("A")], 30);
+        expect(got).toMatchObject({ code: "A", y: 31, pct: 33, amount: 6000, cumAmount: 60000 });
+    });
+
+    it("범위 밖(yAt null)은 빠지고, 거래대금 없음은 null 로 남는다(0으로 지어내지 않는다)", () => {
+        const out = readoutCandidatesAt([src("A", { yAt: () => null }), src("B", { amountAt: null, cumAt: null })], 0);
+        expect(out.map((r) => r.code)).toEqual(["B"]);
+        expect(out[0].amount).toBeNull();
+        expect(out[0].cumAmount).toBe(0);
+    });
+
+    it("own 표시 — 소스 자신의 own 또는 litCode 일치", () => {
+        const out = readoutCandidatesAt([src("A", { own: true }), src("B"), src("C")], 0, "C");
+        expect(out.filter((r) => r.own).map((r) => r.code)).toEqual(["A", "C"]);
+    });
+});
 
 describe("pickReadouts — 등락률 상위 ∪ 누적 거래대금 상위", () => {
     // 등락률 순: E>D>C>B>A / 누적 대금 순: A>B>C>D>E (정확히 반대)
