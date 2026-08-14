@@ -591,6 +591,13 @@ export interface LabelAnchor {
  *
  * 규칙은 하나다: **호버 때문에 그 손잡이가 언마운트되면 안 된다.** id 를 좌표가 아니라 정체(선 키)로
  * 잡고, 짚었는지는 목록에서의 자리가 아니라 `pinned` 플래그로만 말한다.
+ *
+ * ## 뱃지의 id 에 **머릿수를 넣지 않는다** — 라벨에서 겪은 것과 같은 부류(뒤늦게 발견)
+ * 한때 `B|대표|머릿수` 였다. 그러면 뭉친 것 중 하나가 다른 패널의 손짓으로 짚히는 순간(선택이 바뀌면
+ * 그 하나가 묶음에서 빠진다) 머릿수가 줄며 id 가 바뀌어 **손 밑의 뱃지가 부서졌다** — 그리고 뱃지의
+ * `onMouseLeave` 가 영영 안 와 무리 색이 화면에 눌어붙었다. 머릿수는 **그리는 내용**이지 정체가 아니다.
+ * 대표 하나로 잡으면 멤버가 드나들어도 같은 뱃지이므로 노드가 살아남는다.
+ * (대표 자신이 짚히면 그땐 정말 다른 뱃지다 — 그 잔여는 부르는 쪽이 상태를 파생시켜 받아 낸다.)
  */
 export type LabelHandle =
     | { kind: "label"; id: string; key: string; x: number; y: number; pinned: boolean }
@@ -638,7 +645,7 @@ export function labelHandles(
         s.members.length === 1
             // 선 키가 곧 정체 — 묶음에서 빠져나와 짚은 라벨이 돼도 같은 손잡이다.
             ? { kind: "label", id: `L|${s.members[0]}`, key: s.members[0], x: s.x, y: s.y, pinned: s.pinned }
-            // 뱃지의 정체는 그 무리 — 대표와 머릿수가 같으면 같은 뱃지다(자리는 안 들어간다).
-            : { kind: "badge", id: `B|${s.members[0]}|${s.members.length}`, members: s.members, x: s.x, y: s.y },
+            // 뱃지의 정체는 **대표 하나**다 — 머릿수도 자리도 안 들어간다(위 ## 주석).
+            : { kind: "badge", id: `B|${s.members[0]}`, members: s.members, x: s.x, y: s.y },
     );
 }

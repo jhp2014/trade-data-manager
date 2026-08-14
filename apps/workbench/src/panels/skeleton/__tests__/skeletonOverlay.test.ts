@@ -602,6 +602,29 @@ describe("labelPointOf / labelHandles", () => {
         const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 400, y: 200 }];
         expect(labelHandles(anchors, new Set(["a"]), 92, 18).map((h) => "key" in h && h.key)).toEqual(["a", "b"]);
     });
+
+    // ⚠ 뱃지도 같은 규칙이다 — 라벨만 고치고 여기를 빠뜨려서 같은 누수가 한 번 더 났다.
+    it("**뱃지 id 에 머릿수가 안 들어간다** — 멤버가 빠져도 같은 뱃지라 노드가 안 부서진다", () => {
+        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }, { key: "c", x: 30, y: 11 }];
+        const three = labelHandles(anchors, none, 92, 18);
+        const two = labelHandles(anchors, new Set(["b"]), 92, 18); // b 가 묶음에서 빠진다
+        expect(three[0]).toMatchObject({ kind: "badge", members: ["a", "b", "c"] });
+        expect(two[0]).toMatchObject({ kind: "badge", members: ["a", "c"] });
+        expect(two[0].id).toBe(three[0].id); // ← 옛 `B|대표|머릿수` 에선 갈렸다
+    });
+
+    it("대표가 빠지면 그건 정말 다른 뱃지다 — 정체를 지어내지 않는다", () => {
+        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }, { key: "c", x: 30, y: 11 }];
+        const before = labelHandles(anchors, none, 92, 18);
+        const after = labelHandles(anchors, new Set(["a"]), 92, 18);
+        expect(after.find((h) => h.kind === "badge")!.id).not.toBe(before[0].id);
+    });
+
+    it("뱃지 id 와 라벨 id 는 안 겹친다 — 같은 자리에 다른 것이 꽂히면 안 된다", () => {
+        const asBadge = labelHandles([{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }], none, 92, 18);
+        const asLabel = labelHandles([{ key: "a", x: 10, y: 10 }], none, 92, 18);
+        expect(asBadge[0].id).not.toBe(asLabel[0].id);
+    });
 });
 
 describe("d3 스케일과의 조합", () => {

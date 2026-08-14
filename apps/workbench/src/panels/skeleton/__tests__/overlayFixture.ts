@@ -49,6 +49,34 @@ export const points: ReviewPointListItem[] = [
     { stockCode: CODE, date: DATE, time: TIME, name: "삼성전자" },
 ];
 
+// ── 뭉침(뱃지)을 만드는 재료 한 벌 ─────────────────────────────────────────────
+//
+// 위 픽스처는 골격이 **하나**라 라벨이 절대 안 뭉친다 — 그래서 LabelLayer 의 뱃지 갈래가 화면에서
+// 통째로 안 덮였고, 실제로 그 갈래에 호버 누수가 남아 있었다(뱃지 id 에 머릿수가 들어가 있어서,
+// 뭉친 것 중 하나가 짚히면 손 밑의 뱃지가 부서졌다). 그 자리를 재현하려고 세 골격을 **같은 칸**에 앉힌다.
+//
+// ⚠ 뭉치려면 라벨 지점의 화면 좌표가 한 칸(LABEL_CELL 72×14px) 안에 들어야 한다. 세 골격의 피벗을
+//   똑같이 두면 라벨 지점도 똑같아지므로 배율과 무관하게 항상 뭉친다 — 창 크기가 바뀌어도 안 깨진다.
+
+/** 뭉치는 세 종목 — 첫 번째가 뱃지의 **대표**(id 가 이걸로 잡힌다). */
+export const CLUSTER_CODES = ["005930", "000660", "035720"] as const;
+export const CLUSTER_NAMES: Record<string, string> = { "005930": "삼성전자", "000660": "SK하이닉스", "035720": "카카오" };
+
+/** 라벨 지점이 겹치는 일봉 골격 셋 — 한 칸에 뭉쳐 개수 뱃지("3")가 된다. */
+export const clusterFeed: SkeletonFeed = {
+    daily: CLUSTER_CODES.map((c) => ({
+        stockCode: c,
+        date: DATE,
+        pivots: [{ t: 0, price: 10_000 }, { t: 6, price: 12_000 }],
+    })),
+    minute: [],
+    levels: [],
+};
+
+export const clusterPoints: ReviewPointListItem[] = CLUSTER_CODES.map((c) => ({
+    stockCode: c, date: DATE, time: TIME, name: CLUSTER_NAMES[c],
+}));
+
 /** 분봉 시계열 한 종목 — 값은 단조 증가라 그림이 있는지만 보면 된다(수치의 뜻은 다른 테스트의 몫). */
 function series(code: string, name: string, themes: string[], from: number, to: number, rateAt: (m: number) => number): DayReplay["stocks"][number] {
     const times: number[] = [];

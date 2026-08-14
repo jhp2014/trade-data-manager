@@ -248,9 +248,36 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         [activeSelection, activeKey, byKey],
     );
 
+    // 라벨이 붙는 끝 — 골격 종목 이름은 **언제나 경로의 왼쪽 끝**(사용자 확정).
+    // 테마 라벨은 왼쪽 거터에 살아 자리 싸움이 없고, 미래 점선 쪽(오른쪽)은 결과라 손잡이를 안 둔다.
+    const labelAnchorMode: SkeletonAnchor = isPointUnit ? "last" : anchor;
+    const labelAtStart = isPointUnit || anchor === "last";
+
+    // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
+    // 선택·호버는 묶음에서 빼고 제 손잡이로 세운다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
+    // **목록은 한 벌**이고 자리·정체는 labelHandles 가 정한다(호버가 노드를 부수면 leave 가 안 온다 — 그 주석 참고).
+    // ⚠ 아래 뱃지 호버가 이 목록에서 무리를 되찾으므로 **여기서 먼저** 만든다.
+    const pinnedKeys = useMemo(() => new Set([...effSelected, ...(hovered ? [hovered] : [])]), [effSelected, hovered]);
+    const handles = useMemo(() => {
+        if (!showLabels || !scales) return [];
+        const anchors = lines
+            .map((s) => { const p = labelPointOf(s, labelAnchorMode); return { key: s.key, x: scales.x(p.x), y: scales.y(p.y) }; });
+        return labelHandles(anchors, pinnedKeys, LABEL_CELL.w, LABEL_CELL.h);
+    }, [showLabels, scales, lines, labelAnchorMode, pinnedKeys]);
+
     // 그룹 = 뭉친 라벨 무리. 목록이 열려 있으면 계속 켜둔다(마우스를 목록으로 옮겨도 짝이 유지되게).
-    const [badgeHover, setBadgeHover] = useState<readonly string[] | null>(null);
-    const groupList = badge?.members ?? badgeHover;
+    //
+    // ⚠ 상태로 드는 건 **뱃지 id 하나**고 멤버 목록은 매번 지금 손잡이 목록에서 되찾는다. 멤버 배열을
+    //   그대로 상태에 앉히면 뱃지가 사라진 뒤에도 옛 무리가 살아남는다(겪은 버그: 뭉친 것 중 하나가
+    //   다른 패널의 손짓으로 짚히면 뱃지가 손 밑에서 부서지는데, 언마운트된 노드는 leave 를 안 쏜다).
+    //   id 로 들면 그 뱃지가 없어진 순간 조회가 비므로 **낡은 상태가 표현 불가능**해진다.
+    const [badgeHover, setBadgeHover] = useState<string | null>(null);
+    const hoveredBadgeMembers = useMemo<readonly string[] | null>(() => {
+        if (!badgeHover) return null;
+        const hit = handles.find((h) => h.kind === "badge" && h.id === badgeHover);
+        return hit?.kind === "badge" ? hit.members : null;
+    }, [badgeHover, handles]);
+    const groupList = badge?.members ?? hoveredBadgeMembers;
     const groupSet = useMemo(() => (groupList ? new Set(groupList) : null), [groupList]);
     const groupColorOf = useMemo(() => {
         const m = new Map<string, string>();
@@ -285,10 +312,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const dotsForAll = useMemo(() => lines.reduce((n, s) => n + s.points.length, 0) <= DOT_BUDGET, [lines]);
     const baseOpacity = lineOpacity(lines.length);
     const dimmed = dimOpacity(lines.length);
-    // 라벨이 붙는 끝 — 골격 종목 이름은 **언제나 경로의 왼쪽 끝**(사용자 확정).
-    // 테마 라벨은 왼쪽 거터에 살아 자리 싸움이 없고, 미래 점선 쪽(오른쪽)은 결과라 손잡이를 안 둔다.
-    const labelAnchorMode: SkeletonAnchor = isPointUnit ? "last" : anchor;
-    const labelAtStart = isPointUnit || anchor === "last";
+    // 라벨이 붙는 끝(labelAnchorMode)·자리 배치(handles)는 뱃지 호버가 그 목록을 읽으므로 **위**로 올라갔다.
 
     // 상세(피벗 값·기준선·타점 세로선)를 받을 "지금 조사 중인 하나" — 호버 우선, 없으면 단일 선택.
     const inspectKey = hovered ?? (effSelected.size === 1 ? [...effSelected][0] : null);
@@ -533,17 +557,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (hit.length > 0) setActiveSelection((prev: ReadonlySet<string>) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
     }, [scales, lines, effSelected, labelAnchorMode, setActiveSelection]);
     const { marquee, onMouseDown: onWrapMouseDown } = useMarquee(wrapRef, !!scales, onMarqueeSelect);
-
-    // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
-    // 선택·호버는 묶음에서 빼고 제 손잡이로 세운다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
-    // **목록은 한 벌**이고 자리·정체는 labelHandles 가 정한다(호버가 노드를 부수면 leave 가 안 온다 — 그 주석 참고).
-    const pinnedKeys = useMemo(() => new Set([...effSelected, ...(hovered ? [hovered] : [])]), [effSelected, hovered]);
-    const handles = useMemo(() => {
-        if (!showLabels || !scales) return [];
-        const anchors = lines
-            .map((s) => { const p = labelPointOf(s, labelAnchorMode); return { key: s.key, x: scales.x(p.x), y: scales.y(p.y) }; });
-        return labelHandles(anchors, pinnedKeys, LABEL_CELL.w, LABEL_CELL.h);
-    }, [showLabels, scales, lines, labelAnchorMode, pinnedKeys]);
 
     // ── 그룹 메뉴 — 라벨/마커 우클릭(단일) / 헤더 그룹 버튼(선택 일괄). 그룹핑의 입력 지점.
     // 어느 정션에 쓰느냐는 여기 규약이다: 차트 라벨 → 차트 그룹 / 타점 마커 → 타점 그룹. DB 사전은 하나.

@@ -44,7 +44,11 @@ export interface LabelLayerProps {
     onLabelContext: (line: OverlayLine, ev: { clientX: number; clientY: number; preventDefault: () => void }) => void;
     onHover: (key: string | null) => void;
     onBadgeOpen: (at: { x: number; y: number }, members: string[]) => void;
-    onBadgeHover: (members: readonly string[] | null) => void;
+    /**
+     * 짚은 뱃지의 **id**(멤버 목록이 아니라) — 부르는 쪽이 지금 목록에서 되찾게 한다.
+     * 목록을 넘겨 주면 그 배열이 상태로 굳어, 뱃지가 사라진 뒤에도 옛 무리가 살아남는다(겪은 버그).
+     */
+    onBadgeHover: (badgeId: string | null) => void;
 }
 
 export function LabelLayer(p: LabelLayerProps): JSX.Element {
@@ -99,7 +103,8 @@ export function LabelLayer(p: LabelLayerProps): JSX.Element {
         // ⚠ 층 전체를 떠나면 호버를 푼다 — 칩 하나하나의 leave 가 어떤 이유로든 빠져도 여기서 받아 낸다.
         //   포인터를 안 받는 컨테이너지만(pointerEvents: none) React 의 leave 는 자식에서 바깥으로 나가는
         //   경로를 훑어 조상에도 준다. 라벨끼리 옮겨 다닐 땐 공통 조상이라 안 불린다(그게 맞다).
-        <div onMouseLeave={() => p.onHover(null)}
+        //   **뱃지도 같이 푼다** — 예전엔 라벨만 풀어서, 뱃지 호버가 남으면 층을 떠나도 무리 색이 안 꺼졌다.
+        <div onMouseLeave={() => { p.onHover(null); p.onBadgeHover(null); }}
             style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
             {handles.map((h) => {
                 const left = h.x - box.left;
@@ -112,7 +117,7 @@ export function LabelLayer(p: LabelLayerProps): JSX.Element {
                     // 뱃지도 라벨과 같은 쪽(점의 바깥) — 손잡이의 자리 규칙은 하나여야 한다.
                     return (
                         <button key={h.id} onClick={(e) => p.onBadgeOpen({ x: e.clientX, y: e.clientY }, h.members)}
-                            onMouseEnter={() => p.onBadgeHover(h.members)} onMouseLeave={() => p.onBadgeHover(null)}
+                            onMouseEnter={() => p.onBadgeHover(h.id)} onMouseLeave={() => p.onBadgeHover(null)}
                             title={`${h.members.length}개 뭉침 — 올리면 무리가 ${themeMode ? "나타나고(테마는 잠시 접힌다)" : "켜지고"}, 누르면 목록`}
                             style={{ ...chip, ...pl.style, top, ...badgeChip, zIndex: 1, ...faded }}>
                             {h.members.length}
