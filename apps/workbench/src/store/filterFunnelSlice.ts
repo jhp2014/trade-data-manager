@@ -20,12 +20,29 @@ import {
 import { applyRailPredicate, stagesFor, type RailKey } from "../panels/filter/stageBinding.js";
 import { loadJson, saveJson } from "./persist.js";
 
-const STAGES_KEY = "wb.filterStages";
+const STAGES_KEY = "wb.filterStages"; // 슬롯 도입 전의 단일 벌 — 슬롯 1로 읽어 들이는 이관용(이제 안 쓴다)
+const SLOTS_KEY = "wb.filterSlots";
 const EXPAND_KEY = "wb.filterExpandToPoints";
 const SETS_KEY = "wb.filterFunnelSets";
 
-const loadStages = (): FilterStage[] => loadJson(STAGES_KEY, parseStages) ?? [];
+/** 필터 슬롯 수 — 이름 없는 고정 3칸(사용자 확정). A/B 비교·잠깐 딴 조합을 위한 휘발성 작업면. */
+export const FILTER_SLOT_COUNT = 3;
+
 const loadExpand = (): boolean => loadJson(EXPAND_KEY, (o) => (typeof o === "boolean" ? o : null)) ?? false;
+
+/** 슬롯 3벌 + 활성 인덱스. 옛 단일 키(wb.filterStages)는 슬롯 1로 이관하고 자연히 죽게 둔다. */
+const loadSlots = (): { active: number; slots: FilterStage[][] } => {
+    const raw = loadJson(SLOTS_KEY, (o) => (typeof o === "object" && o !== null ? (o as { active?: unknown; slots?: unknown }) : null));
+    if (raw && Array.isArray(raw.slots)) {
+        const arr = raw.slots as unknown[];
+        const slots = Array.from({ length: FILTER_SLOT_COUNT }, (_, i) => parseStages(arr[i]) ?? []);
+        const active = typeof raw.active === "number" && Number.isInteger(raw.active) && raw.active >= 0 && raw.active < FILTER_SLOT_COUNT ? raw.active : 0;
+        return { active, slots };
+    }
+    const legacy = loadJson(STAGES_KEY, parseStages) ?? [];
+    return { active: 0, slots: [legacy, [], []] };
+};
+const saveSlots = (active: number, slots: FilterStage[][]): void => saveJson(SLOTS_KEY, { active, slots });
 
 /**
  * 저장한 깔때기(단계 리스트 전체 스냅샷) — 이름 붙여 두고 통째로 불러온다. 옛 "저장 필터"의 후계.
@@ -59,7 +76,13 @@ export interface FunnelSelection {
 }
 
 export interface FilterFunnelSlice {
+    /** 활성 슬롯의 단계 리스트 — 소비자(깔때기·보드)는 슬롯을 모르고 이것만 본다. */
     filterStages: FilterStage[];
+    /** 슬롯 3벌(활성 칸은 filterStages 와 같은 참조). 이름 없는 고정 칸 — 잠깐 딴 조합을 보는 작업면. */
+    filterSlots: FilterStage[][];
+    filterSlotIndex: number;
+    /** 슬롯 전환 — 조건 통째 교체라 시선(선택 칸)은 푼다(불러오기와 같은 이유). */
+    setFilterSlot: (i: number) => void;
     /**
      * 결과를 타점까지 펼칠까 — **자동 해상도가 하루일 때만** 뜻이 있다(이미 타점이면 더 내려갈 데가 없다).
      * 위로 올리는 손잡이는 없다: 롤업 규칙이 정의되지 않아서다(stage.displayGrain 주석 참고).
@@ -88,36 +111,49 @@ export interface FilterFunnelSlice {
     deleteFunnelSet: (id: string) => void;
 }
 
-/** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다. */
-const put = (stages: FilterStage[]): { filterStages: FilterStage[] } => {
-    saveJson(STAGES_KEY, stages);
-    return { filterStages: stages };
+/** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다.
+ *  편집은 언제나 **활성 슬롯에** 쓴다(filterStages 와 슬롯 배열이 같은 것을 가리키게 함께 갱신). */
+const put = (s: { filterSlots: FilterStage[][]; filterSlotIndex: number }, stages: FilterStage[]): Pick<FilterFunnelSlice, "filterStages" | "filterSlots"> => {
+    const slots = s.filterSlots.map((x, i) => (i === s.filterSlotIndex ? stages : x));
+    saveSlots(s.filterSlotIndex, slots);
+    return { filterStages: stages, filterSlots: slots };
 };
 
+const initialSlots = loadSlots();
+
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => ({
-    filterStages: loadStages(),
+    filterStages: initialSlots.slots[initialSlots.active],
+    filterSlots: initialSlots.slots,
+    filterSlotIndex: initialSlots.active,
     filterExpandToPoints: loadExpand(),
     funnelSelection: null,
 
-    addFilterStage: (predicates) => set((s) => put(addStage(s.filterStages, predicates ?? []))),
+    setFilterSlot: (i) => set((s) => {
+        if (i === s.filterSlotIndex || i < 0 || i >= FILTER_SLOT_COUNT) return {};
+        saveSlots(i, s.filterSlots);
+        return { filterSlotIndex: i, filterStages: s.filterSlots[i], funnelSelection: null };
+    }),
+
+    addFilterStage: (predicates) => set((s) => put(s, addStage(s.filterStages, predicates ?? []))),
     applyFilterRail: (key, predicate) => set((s) => {
         // 조건이 없어져 필터가 사라지는 경우가 있다 — 그 필터를 짚고 있었으면 시선도 함께 푼다(removeFilterStage 와 같은 이유).
         const doomed = predicate === null ? stagesFor(s.filterStages, key)[0]?.id : undefined;
         return {
-            ...put(applyRailPredicate(s.filterStages, key, predicate)),
+            ...put(s, applyRailPredicate(s.filterStages, key, predicate)),
             ...(doomed !== undefined && s.funnelSelection?.stageId === doomed ? { funnelSelection: null } : {}),
         };
     }),
     // 지운 단계를 계속 짚고 있으면 소비자들이 "사라진 칸"을 본다 — 선택이 그 단계면 같이 푼다.
     removeFilterStage: (id) => set((s) => ({
-        ...put(removeStage(s.filterStages, id)),
+        ...put(s, removeStage(s.filterStages, id)),
         ...(s.funnelSelection?.stageId === id ? { funnelSelection: null } : {}),
     })),
-    toggleFilterStage: (id) => set((s) => put(toggleStage(s.filterStages, id))),
-    moveFilterStage: (from, to) => set((s) => put(moveStage(s.filterStages, from, to))),
-    setFilterStagePredicates: (id, predicates) => set((s) => put(setStagePredicates(s.filterStages, id, predicates))),
-    renameFilterStage: (id, name) => set((s) => put(renameStage(s.filterStages, id, name))),
-    clearFilterStages: () => set(() => put([])),
+    toggleFilterStage: (id) => set((s) => put(s, toggleStage(s.filterStages, id))),
+    moveFilterStage: (from, to) => set((s) => put(s, moveStage(s.filterStages, from, to))),
+    setFilterStagePredicates: (id, predicates) => set((s) => put(s, setStagePredicates(s.filterStages, id, predicates))),
+    renameFilterStage: (id, name) => set((s) => put(s, renameStage(s.filterStages, id, name))),
+    // 비우기 = 활성 슬롯만. 시선도 푼다(짚던 칸의 필터가 사라진다).
+    clearFilterStages: () => set((s) => ({ ...put(s, []), funnelSelection: null })),
     setFilterExpandToPoints: (on) => {
         saveJson(EXPAND_KEY, on);
         set(() => ({ filterExpandToPoints: on }));
@@ -133,7 +169,7 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     applyFunnelSet: (id) => set((s) => {
         const f = s.savedFunnels.find((x) => x.id === id);
         if (!f) return {};
-        return { ...put(f.stages), funnelSelection: null };
+        return { ...put(s, f.stages), funnelSelection: null };
     }),
     deleteFunnelSet: (id) => set((s) => {
         const next = s.savedFunnels.filter((x) => x.id !== id);

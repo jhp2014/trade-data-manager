@@ -12,7 +12,7 @@
 // 그대로 둔다(상류·새로 죽임이 그 순서에 매여 있다). 표시 이름과 모델 이름이 다른 흔한 경우다.
 import { useState } from "react";
 import { useWorkbench } from "../store/workbench.js";
-import { TextToggle } from "../components/ControlChrome.js";
+import { TextToggle, PanelHeader } from "../components/ControlChrome.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import type { FunnelCell } from "@trade-data-manager/market/domain";
 import { useFunnel } from "./filter/FunnelContext.js";
@@ -42,8 +42,9 @@ export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element
     const [tab, setTab] = usePanelUi<BottomTab>(panelId, "bottomTab", "result");
     // 보드의 "걸린 것만"은 **컨트롤 바에** 산다 — 보드 안에 있으면 목록의 일부처럼 보여 눌러야 할 자리로 안 읽힌다.
     const [onlyActive, setOnlyActive] = usePanelUi(panelId, "boardOnlyActive", false);
-    // 아래 절반 접기 — 조건만 훑을 때는 막대에 화면을 다 주고 싶다. 탭 줄은 남겨 다시 열 자리를 지킨다.
-    const [bottomOpen, setBottomOpen] = usePanelUi(panelId, "bottomOpen", true);
+    // **막대(걸린 필터 목록) 접기** — 목록·보드로 일하는 동안 막대에 화면을 내주기 싫을 때. 접는 쪽이
+    // 아래에서 위로 뒤집혔다(사용자 확정): 결과 목록·보드는 늘 열려 있고, 접히는 건 막대뿐이다.
+    const [barsOpen, setBarsOpen] = usePanelUi(panelId, "barsOpen", true);
     const [reveal, setReveal] = useState<BoardReveal | null>(null);
     const [dragId, setDragId] = useState<string | null>(null);
     // 놓일 자리 표시 — 드래그가 되는 줄도 모르던 게 이 목록의 첫 문제였다(손잡이와 이 선이 한 쌍).
@@ -55,7 +56,6 @@ export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element
     /** 보드를 열고 그 조건이 사는 줄로 데려간다 — 편집 입구는 보드 하나뿐이다. */
     const revealIn = (stageId: string): void => {
         setTab("board");
-        setBottomOpen(true); // 접혀 있으면 데려갈 자리가 안 보인다
         setReveal({ stageId, at: Date.now() });
     };
 
@@ -63,7 +63,7 @@ export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element
      * 칸을 짚었으면 **그 결과를 보여준다** — 보드를 열어 둔 채 칸을 눌러 놓고 아무 일도 안 일어나면
      * 눌러도 되는 자리인지부터 의심하게 된다. 칸 짚기의 목적이 곧 목록 보기라 탭을 따라 옮긴다.
      */
-    const showResult = (): void => { setTab("result"); setBottomOpen(true); };
+    const showResult = (): void => setTab("result");
 
     // 칸 클릭 — 같은 필터면 칸 토글(누적), 다른 필터면 그 칸 하나로 갈아탄다.
     const clickCell = (stageId: string, cell: FunnelCell): void => {
@@ -92,9 +92,9 @@ export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
-            <FunnelHeader v={v} expandToPoints={expandToPoints} setExpand={setExpand} />
+            <FunnelHeader v={v} expandToPoints={expandToPoints} setExpand={setExpand} barsOpen={barsOpen} onToggleBars={() => setBarsOpen(!barsOpen)} />
 
-            <div style={bottomOpen ? { flex: "0 0 auto", maxHeight: "46%", overflowY: "auto", padding: "2px 8px 6px" } : { flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 6px" }}>
+            {barsOpen && <div style={{ flex: "0 0 auto", maxHeight: "46%", overflowY: "auto", padding: "2px 8px 6px" }}>
                 {v.isLoading && <Note>불러오는 중…</Note>}
                 {!v.isLoading && grains.map((grain) => {
                     const entries = v.stagesOrdered.filter((e) => e.grain === grain);
@@ -135,30 +135,26 @@ export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element
                         </GrainSection>
                     );
                 })}
-            </div>
+            </div>}
 
-            <Legend />
+            {barsOpen && <Legend />}
 
-            <div style={bottomOpen ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : { flexShrink: 0 }}>
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                 {/* 아래 절반의 컨트롤 바 — 다른 패널 머리글과 같은 결(bg-secondary + 경계선)이라야 "여기서 고르는 자리"로 읽힌다. */}
-                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 3, padding: "3px 8px 0", borderTop: "1px solid var(--border-strong)", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)" }}>
-                    <Tab on={bottomOpen && tab === "result"} onClick={() => { setTab("result"); setBottomOpen(true); }} title="지금 보는 집합(구독 패널들이 보는 것과 같다)">결과 목록</Tab>
-                    <Tab on={bottomOpen && tab === "board"} onClick={() => { setTab("board"); setBottomOpen(true); }} title="조건을 거는 판 — 레일을 끌면 위 막대가 그 자리에서 움직인다">필터 보드</Tab>
-                    <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, paddingBottom: 3 }}>
+                <PanelHeader gap={3} padding="3px 8px 0" style={{ borderTop: "1px solid var(--border-strong)" }}>
+                    <Tab on={tab === "result"} onClick={() => setTab("result")} title="지금 보는 집합(구독 패널들이 보는 것과 같다)">결과 목록</Tab>
+                    <Tab on={tab === "board"} onClick={() => setTab("board")} title="조건을 거는 판 — 레일을 끌면 위 막대가 그 자리에서 움직인다">필터 보드</Tab>
+                    <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, paddingBottom: 3, flexShrink: 0 }}>
                         {/* 탭마다 딸린 컨트롤은 그 탭일 때만 — 안 쓰는 손잡이가 늘 떠 있으면 바가 장식이 된다. */}
-                        {bottomOpen && tab === "board" && (
+                        {tab === "board" && (
                             <TextToggle active={onlyActive} activeColor="var(--accent-primary)" onClick={() => setOnlyActive(!onlyActive)}
                                 title="조건이 걸린 줄만 보기">걸린 것만</TextToggle>
                         )}
-                        <button onClick={() => setBottomOpen(!bottomOpen)} title={bottomOpen ? "아래 접기 — 막대에 화면을 다 준다" : "아래 펼치기"}
-                            style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: "2px 4px" }}>
-                            {bottomOpen ? "▾" : "▴"}
-                        </button>
                     </span>
-                </div>
-                {bottomOpen && (tab === "result"
+                </PanelHeader>
+                {tab === "result"
                     ? <ResultList v={v} selection={selection} />
-                    : <FilterBoard reveal={reveal} onlyActive={onlyActive} />)}
+                    : <FilterBoard reveal={reveal} onlyActive={onlyActive} />}
             </div>
         </div>
     );
@@ -173,7 +169,7 @@ function Tab({ on, onClick, title, children }: { on: boolean; onClick: () => voi
                 background: on ? "var(--bg-primary)" : "transparent",
                 color: on ? "var(--accent-primary)" : "var(--text-secondary)",
                 cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: on ? 700 : 400, padding: "4px 11px",
-                borderColor: on ? "var(--border-default)" : "transparent",
+                borderColor: on ? "var(--border-default)" : "transparent", flexShrink: 0, whiteSpace: "nowrap",
                 position: "relative", top: 1, // 아래 경계선을 덮어 내용과 이어지게
             }}>
             {children}

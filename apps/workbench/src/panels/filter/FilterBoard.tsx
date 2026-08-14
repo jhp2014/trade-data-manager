@@ -129,7 +129,8 @@ export function FilterBoard({ reveal, onlyActive }: {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            {/* 가로 8px — 위 필터 막대 목록과 같은 여백. 층위 칸(GrainSection)의 세로선이 두 화면에서 같은 자리에 서야 한다. */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
                 {/* 사전이 오기 전엔 그리지 않는다 — 빈 레일은 "축이 없다"·"날짜가 없다"고 말하는데 그건 사실이 아니다. */}
                 {v.isLoading && <Note>불러오는 중…</Note>}
                 {!v.isLoading && GRAINS.map((grain) => {
