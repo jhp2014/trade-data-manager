@@ -13,6 +13,7 @@ import {
     type UniverseRuleDraft,
 } from "../api/alerts.js";
 import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 import { kstTime } from "../lib/date.js";
 import { useStockName } from "../lib/useStockName.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -72,7 +73,7 @@ export function UniverseRulesPanel(): JSX.Element {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
+            <PanelHeader>
                 <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>유니버스 알람</span>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "var(--text-tertiary)" }}>
                     {view.isError ? "서버 연결 안 됨" : "매칭 진입(엣지)에 발화 — 서버가 계산"}
@@ -85,8 +86,8 @@ export function UniverseRulesPanel(): JSX.Element {
                         </button>
                     </span>
                 )}
-            </div>
-            {save.isError && <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--rise)", background: "var(--bg-secondary)" }}>저장 실패 — {save.error instanceof Error ? save.error.message : "오류"}</div>}
+            </PanelHeader>
+            {save.isError &&<div style={{ padding: "4px 10px", fontSize: 11, color: "var(--rise)", background: "var(--bg-secondary)" }}>저장 실패 — {save.error instanceof Error ? save.error.message : "오류"}</div>}
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                 {rules.length === 0 && (

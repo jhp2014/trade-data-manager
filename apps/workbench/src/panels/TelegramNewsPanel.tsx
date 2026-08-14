@@ -17,6 +17,7 @@ import {
     useTopVisible,
     type NewsMode,
 } from "../components/news/newsShared.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 
 // 텔레그램 뉴스 패널(양 플레인 공통) — 등록 방 전체 키워드 검색(검색날짜 KST 하루 스코프), 최신순.
 // plane 이 버스를 고른다(백엔드는 동일 — GramJS 라이브 검색이라 오늘/과거 모두 /api/news/telegram):
@@ -148,7 +149,7 @@ export function TelegramNewsPanel({ plane }: { plane: Plane }): JSX.Element {
             {/* 헤더 2줄 */}
             <div style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
                 {/* 1줄 — 플레인·모드·키워드·🔍 … ◂▸·더보기 */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", overflow: "hidden" }}>
+                <PanelHeader chrome={false} gap={6} padding="5px 10px">
                     <PlaneDot plane={plane} />
                     <ModeSegment mode={mode} setMode={switchMode} allTitle="전체 모드 — 종목 자동채움 없음, 빈 검색 = 방들 최근 피드" />
                     <button onClick={() => setEditing(true)} title="검색어 편집" style={{ flexShrink: 1, minWidth: 0, textAlign: "left", fontWeight: 700, fontSize: 14, color: input.trim() ? "var(--text-primary)" : "var(--text-tertiary)", background: "transparent", border: "none", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -174,12 +175,12 @@ export function TelegramNewsPanel({ plane }: { plane: Plane }): JSX.Element {
                             <ChevronDownIcon />
                         </button>
                     </div>
-                </div>
+                </PanelHeader>
                 {/* 2줄 — 현재 보는 날짜·시간 */}
                 {!showEdit && posAt && (
-                    <div className="tabular" style={{ padding: "0 10px 5px", fontSize: 11, color: "var(--text-tertiary)" }}>
-                        {dateLabel(kstDate(posAt))} {kstHmOf(posAt)}
-                    </div>
+                    <PanelHeader chrome={false} padding="0 10px 5px" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                        <span className="tabular" style={{ flexShrink: 0 }}>{dateLabel(kstDate(posAt))} {kstHmOf(posAt)}</span>
+                    </PanelHeader>
                 )}
             </div>
 

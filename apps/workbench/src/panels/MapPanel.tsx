@@ -29,6 +29,7 @@ import { useStockNames } from "../lib/useStockNames.js";
 import { createMap, type MapScope } from "../api/map.js";
 import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group } from "../api/groups.js";
 import { useGroups } from "../lib/GroupsContext.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 import { usePersistedState } from "../store/persist.js";
 import { ACTIVE } from "../styles/palette.js";
 import { MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
@@ -174,7 +175,7 @@ function MapPanelInner(): JSX.Element {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap", overflowX: "auto" }}>
+            <PanelHeader chrome={false} padding="5px 8px" style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
                 <select value={activeMap?.id ?? ""} onChange={(e) => { setSavedId(e.target.value); setPicked(null); }} style={{ fontSize: 12 }}>
                     {maps.map((m) => (
                         <option key={m.id} value={m.id}>{m.name} [{m.scope === "day" ? "하루" : "타점"}]</option>
@@ -182,8 +183,8 @@ function MapPanelInner(): JSX.Element {
                 </select>
                 <button onClick={() => fitView({ duration: 250 })} title="전부 화면에 담기">원위치</button>
                 <NewGroup busy={createGroupMut.isPending} onCreate={(name) => activeMap && createGroupMut.mutate({ name, scope: activeMap.scope })} />
-                <span style={{ color: "var(--text-tertiary)" }}>그룹 {onMap.length}{offMap.length > 0 && ` · 안 올림 ${offMap.length}`}</span>
-            </div>
+                <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>그룹 {onMap.length}{offMap.length > 0 && ` · 안 올림 ${offMap.length}`}</span>
+            </PanelHeader>
 
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
                 <div style={{ flex: 1, minWidth: 0, position: "relative" }}>

@@ -1,6 +1,7 @@
 // 패널 헤더 컨트롤 공용 조각 — 차트 툴바·보드 헤더가 같은 계열(테두리·채움 없는 경량 텍스트)을 쓴다.
 // 구성: 상호배타 그룹은 Dot(·)으로, 그룹 사이는 Sep(│)으로 나누고, 전체를 ControlBar 가 감싼다.
-import type { CSSProperties } from "react";
+// 머리글 줄 자체(PanelHeader)도 여기 산다 — 넘칠 때의 규약이 패널마다 달라지면 안 되기 때문이다.
+import type { CSSProperties, ReactNode } from "react";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 
 /**
@@ -14,6 +15,7 @@ export const miniBtn: CSSProperties = {
     fontSize: 11, padding: "2px 8px", borderRadius: 4,
     background: "transparent", color: "var(--text-tertiary)",
     border: "1px solid var(--border-default)", cursor: "pointer", whiteSpace: "nowrap",
+    flexShrink: 0, // 머리글이 가로 스크롤이라 — 안 그으면 넘치는 대신 버튼들이 쭈그러든다(PanelHeader 주석)
 };
 
 /** 비어 있음·불러오는 중 안내 문구 — 패널 본문 자리에 조용히 앉는다. */
@@ -82,6 +84,49 @@ export function ControlBox({ label, gap = 4, children }: { label?: string; gap?:
             {label && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{label}</span>}
             {children}
         </span>
+    );
+}
+
+/**
+ * 패널 머리글 한 줄 — **넘치면 줄을 바꾸지 않고 가로로 스크롤한다**(사용자 확정, 전 패널 공통).
+ *
+ * 줄바꿈(flexWrap)을 버린 이유는 취향이 아니다: 머리글이 두 줄이 되는 순간 **본문 높이가 변한다**.
+ * 골격 패널에서 칩 하나가 늘 때마다 그림 상자가 튀던 게 그거고(OverlayFooter 주석의 그 사고),
+ * 차트·보드처럼 높이에 그림이 걸린 패널은 전부 같은 성질을 갖는다. 높이는 고정하고 넘치는 폭은
+ * 스크롤로 도달하게 한다 — 잘려 안 보이는 것과 다르다.
+ *
+ * 스크롤바는 숨긴다(.no-scrollbar) — 상시 스크롤바가 머리글 높이를 먹는다. 대신 **가로 휠**이 붙어
+ * 마우스만으로 닿고(useHorizontalWheel), 트랙패드 가로 제스처·드래그도 그대로 먹는다.
+ *
+ * ⚠ 자식은 `flexShrink: 0`(또는 nowrap)이어야 실제로 스크롤이 생긴다. 안 그러면 넘치는 대신
+ * 자기들끼리 쭈그러들어 글자가 뭉개진다 — 일부러 줄어들 자리(이름 ellipsis)만 예외로 둔다.
+ */
+export function PanelHeader({ gap = 8, padding = "6px 10px", chrome = true, title, style, children }: {
+    gap?: number;
+    padding?: string;
+    /** 줄 전체에 걸리는 툴팁(타점 정보의 "종목 · 날짜"처럼 좁아서 못 다 쓴 것을 여기서 말할 때). */
+    title?: string;
+    /**
+     * 바탕·아래 경계선을 이 줄이 그릴까. 머리글이 **두 줄인 패널**(뉴스: 컨트롤 줄 + 날짜 줄)은
+     * 바깥이 이미 그 결을 그리고 있으므로 false — 줄마다 경계선을 그으면 머리글이 표처럼 보인다.
+     */
+    chrome?: boolean;
+    /** 패널별 차이(글자 크기·위 경계선 등)만 덮어쓴다. 넘침 규약은 못 덮는다 — 그러라고 모은 자리다. */
+    style?: CSSProperties;
+    children: ReactNode;
+}): JSX.Element {
+    const wheelRef = useHorizontalWheel<HTMLDivElement>();
+    return (
+        <div ref={wheelRef} className="no-scrollbar" title={title}
+            style={{
+                flexShrink: 0, display: "flex", alignItems: "center", gap, padding,
+                ...(chrome ? { borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)" } : null),
+                ...style,
+                // 넘침 규약은 style 뒤에 — 패널이 실수로 덮어 다시 줄바꿈이 되는 일이 없게.
+                flexWrap: "nowrap", overflowX: "auto", overflowY: "hidden",
+            }}>
+            {children}
+        </div>
     );
 }
 

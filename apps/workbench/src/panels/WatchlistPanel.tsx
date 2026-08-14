@@ -25,6 +25,7 @@ import { useStockName } from "../lib/useStockName.js";
 import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
 import { StockRow } from "../components/board/StockRow.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 import { liveToBoardStock } from "../lib/boardViewModel.js";
 
 // 실시간 모니터링(watchlist) 패널 — 실시간 플레인. 승격한 선택 종목을 항상 폴링·표시하고(2층 구조),
@@ -104,16 +105,17 @@ export function WatchlistPanel(): JSX.Element {
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
             {/* 헤더 — 점·건수 + 시장 토글(등락률·순위 공용, 보드와 공유) */}
-            <div style={{ padding: "3px 10px", fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <PanelHeader chrome={false} gap={6} padding="3px 10px"
+                style={{ fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)" }}>
                 <span style={{ width: 5, height: 5, borderRadius: 999, background: "var(--plane-live)", flexShrink: 0 }} />
-                <span style={{ color: "var(--plane-live)" }}>실시간 모니터링</span>
-                <span className="tabular">{codes.length}종목</span>
-                {error && <span style={{ color: "var(--rise)" }}>연결 오류</span>}
-                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3 }} title="기준 시장(등락률·순위) — 실시간 보드와 공유">
+                <span style={{ color: "var(--plane-live)", flexShrink: 0 }}>실시간 모니터링</span>
+                <span className="tabular" style={{ flexShrink: 0 }}>{codes.length}종목</span>
+                {error && <span style={{ color: "var(--rise)", flexShrink: 0 }}>연결 오류</span>}
+                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }} title="기준 시장(등락률·순위) — 실시간 보드와 공유">
                     <span>시장</span>
                     <button onClick={() => setBoardMarket("live", market === "un" ? "krx" : "un")} style={{ ...plainBtn("var(--accent-primary)"), fontWeight: 600 }}>{market.toUpperCase()}</button>
                 </span>
-            </div>
+            </PanelHeader>
 
             {/* 본문 — 종목별 섹션(시세 행 + 순위줄 + 조건들) */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>

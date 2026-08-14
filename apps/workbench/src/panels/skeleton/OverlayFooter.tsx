@@ -5,7 +5,8 @@
 // 가리기 때문이다. 그 안내를 대신 받는 게 이 줄이다.
 //
 // **높이가 절대 안 변해야 한다**(nowrap + ellipsis). 캔들 상태처럼 켰다 껐다 하는 표시가 여기 사는 것도
-// 그래서다 — 헤더에 두면 칩이 늘었다 줄었다 하며 flexWrap 이 줄을 바꿔 그림 상자 높이가 변하고 화면이 튄다.
+// 그래서다 — 헤더에 두면 칩이 늘었다 줄었다 할 때마다 눈이 컨트롤 줄을 다시 훑어야 했다.
+// (머리글이 줄을 바꿔 그림 상자 높이가 튀던 문제 자체는 사라졌다 — PanelHeader 가 이제 가로로 스크롤한다.)
 import { AMOUNT_LEVEL_EDGES_EOK, AMOUNT_LEVEL_WIDTH } from "../../chart/chartUtils.js";
 import { groupColor } from "../../styles/palette.js";
 

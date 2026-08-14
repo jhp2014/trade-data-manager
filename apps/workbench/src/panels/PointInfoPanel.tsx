@@ -10,6 +10,7 @@ import { useStockName } from "../lib/useStockName.js";
 import { PlacementBadge, PlacementRows } from "../components/Placement.js";
 import { GroupChips } from "../components/GroupChips.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 
 // 타점 정보 패널 — **지금 보고 있는 시각의 타점 하나**를 세로로 읽는다(시트 한 행의 전치).
 // 시트는 행=타점·열=축이라 축이 많으면 가로로 길어져 한 타점을 읽기 나쁘고, 배치 보드는 전 타점 편집면이다.
@@ -42,14 +43,13 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
             style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 12 }}
         >
             {/* 헤더 — 종목 · 시각 · 배치 배지. 종목/날짜는 헤더 툴팁(좁은 셀이라 한 줄). */}
-            <div
+            <PanelHeader chrome={false} gap={6} padding="5px 8px"
                 title={`${name ?? code} · ${viewDate}`}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderBottom: "1px solid var(--border-default)", flexShrink: 0, background: "var(--bg-primary)" }}
-            >
+                style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
                 <span style={{ minWidth: 0, fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name ?? code}</span>
                 <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)", fontWeight: 700 }}>{point.time.slice(0, 5)}</span>
                 <PlacementBadge placed={detail.placed.length} total={placements.axisTotal} style={{ marginLeft: "auto", fontSize: 12 }} />
-            </div>
+            </PanelHeader>
 
             {/* 그룹 줄 — 축 레인 위(명목 분류가 순서 차원보다 먼저 읽힌다). 한 줄 고정: 폭이 좁아도 wrap 하지 않고
                 hover 가로 스크롤로 훑는다(줄 수가 늘면 아래 축 목록이 밀린다). 편집은 차트 ▼ 우클릭에서만. */}

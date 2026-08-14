@@ -1,6 +1,6 @@
 import { useUi } from "../../store/ui.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { TextToggle, Dot, Sep, ControlGroup, ControlBar } from "../ControlChrome.js";
+import { TextToggle, Dot, Sep, ControlGroup, ControlBar, PanelHeader } from "../ControlChrome.js";
 
 // 보드 헤더 컨트롤 — 차트 툴바와 같은 계열(ControlChrome 공용 조각).
 // 거래대금·등락률 = flat 리스트의 정렬 기준, 테마 = 그룹 뷰. 셋은 상호배타(3택1).
@@ -41,7 +41,8 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
     const collapsed = useWorkbench((s) => s.panelControlsCollapsed[panelId]) ?? false;
     const toggleControls = useWorkbench((s) => s.togglePanelControls);
     return (
-        <div style={{ padding: "3px 10px", fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0, overflow: "hidden" }}>
+        <PanelHeader chrome={false} gap={6} padding="3px 10px"
+            style={{ fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)" }}>
             <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 999, background: dotColor, flexShrink: 0 }} />
             {label && <span style={{ color: dotColor, whiteSpace: "nowrap", flexShrink: 0 }}>{label}</span>}
             <span className="tabular" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{count}종목</span>
@@ -81,6 +82,6 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
                     )}
                 </ControlGroup>
             </ControlBar>
-        </div>
+        </PanelHeader>
     );
 }

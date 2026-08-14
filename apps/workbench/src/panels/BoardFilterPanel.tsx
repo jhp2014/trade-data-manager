@@ -11,6 +11,7 @@ import {
 import { useWorkbench, type BoardFilterActions } from "../store/workbench.js";
 import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
 import { TrashIcon } from "../components/icons.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 
 // 배제 필터 패널 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 흐리게/숨김**. 술어는 domain 레지스트리.
 // 보기/편집 분리: 완료된 그룹 = 수식 텍스트 한 덩어리(클릭하면 그 그룹만 편집 모드).
@@ -94,7 +95,7 @@ function FilterPanel({
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
+            <PanelHeader>
                 <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{title}</span>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "var(--text-tertiary)" }}>{subtitle}</span>
                 <button
@@ -105,7 +106,7 @@ function FilterPanel({
                 >
                     <TrashIcon />
                 </button>
-            </div>
+            </PanelHeader>
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                 {!active && (

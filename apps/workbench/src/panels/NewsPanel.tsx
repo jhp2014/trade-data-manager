@@ -18,6 +18,7 @@ import {
     useTopVisible,
     type NewsMode,
 } from "../components/news/newsShared.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 
 // 뉴스 패널(양 플레인 공통) — HTS(시황) 헤드라인을 최신순으로. plane 이 버스·소스를 고른다:
 //  · replay = 복기 버스(focus/search) + DB(/api/news/hts, 커서 (date,srno) 엄격미만)
@@ -170,7 +171,7 @@ export function NewsPanel({ plane }: { plane: Plane }): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
             {/* 헤더 2줄 — 1: 모드·종목명·키워드·아이콘 / 2: 현재 날짜·건수 */}
             <div style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", flexShrink: 0 }}>
-                <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", gap: 6, padding: "5px 10px", overflow: "hidden" }}>
+                <PanelHeader chrome={false} gap={6} padding="5px 10px">
                     <PlaneDot plane={plane} />
                     <ModeSegment mode={mode} setMode={setMode} />
                     <span style={{ fontWeight: 700, fontSize: 14, color: noStock ? "var(--text-tertiary)" : "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>
@@ -212,11 +213,11 @@ export function NewsPanel({ plane }: { plane: Plane }): JSX.Element {
                             <ChevronDownIcon />
                         </IconButton>
                     </div>
-                </div>
-                <div className="tabular" style={{ padding: "0 10px 5px", fontSize: 11, color: "var(--text-tertiary)", display: "flex", gap: 8 }}>
-                    <span>{dateLabel(visibleDate)}</span>
-                    {visibleCount > 0 && <span>{visibleCount}건</span>}
-                </div>
+                </PanelHeader>
+                <PanelHeader chrome={false} gap={8} padding="0 10px 5px" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                    <span className="tabular" style={{ flexShrink: 0 }}>{dateLabel(visibleDate)}</span>
+                    {visibleCount > 0 && <span className="tabular" style={{ flexShrink: 0 }}>{visibleCount}건</span>}
+                </PanelHeader>
             </div>
 
             {/* 본문 */}

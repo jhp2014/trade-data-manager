@@ -4,6 +4,7 @@ import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertTh
 import { kstHm, kstMidnight, kstToday, kstTime } from "../lib/date.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { useWorkbench } from "../store/workbench.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 
 // 근거 문구는 core 술어(predicateEvidence — 서버)가 채운다(4b 통합) — 그대로 렌더.
 function renderEvidence(e: LeafEvidence): string {
@@ -112,7 +113,7 @@ export function AlertLogPanel(): JSX.Element {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderBottom: "1px solid var(--border-default)", flexShrink: 0 }}>
+            <PanelHeader chrome={false} gap={6} padding="5px 8px" style={{ borderBottom: "1px solid var(--border-default)" }}>
                 {/* 가로 스크롤 대상 = 컨트롤들만. 건수는 이 바깥 우측 고정. */}
                 <div ref={headerRef} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", flexWrap: "nowrap", flex: 1, minWidth: 0 }}>
                     <FloorControl effFloor={effFloor} midnight={kstMidnight()} onSet={setFloor} />
@@ -137,7 +138,7 @@ export function AlertLogPanel(): JSX.Element {
                 <span style={{ flexShrink: 0, fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
                     {shown.length !== entries.length ? `${shown.length}/${entries.length}` : entries.length}건
                 </span>
-            </div>
+            </PanelHeader>
 
             <div style={{ flex: 1, overflowY: "auto" }}>
                 {poll.isError && <Empty text={`로그를 못 읽음 — ${poll.error instanceof Error ? poll.error.message : "오류"}`} />}

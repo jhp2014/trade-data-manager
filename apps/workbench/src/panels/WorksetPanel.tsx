@@ -6,6 +6,7 @@ import { type ReviewPointListItem } from "../api/reviewPoints.js";
 import { anchoredChartsQuery, allPointsQuery } from "../api/queries.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { MonthPicker, LocateIcon, DateHeader, Name, PointRow } from "./WorksetRows.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 import { usePlacements } from "../lib/usePlacements.js";
 
 // 작업셋 패널 — 선 있는 (종목,날짜) ∪ 타점을 월별로 브라우징(연대순 진입). 타점 클릭 → date·code·time focus.
@@ -153,21 +154,19 @@ export function WorksetPanel(): JSX.Element {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
             {/* 헤더 — 월 선택 + 조준 아이콘. */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", flexShrink: 0 }}>
-                <div style={{ display: "flex", alignItems: "center" }}>
-                    <MonthPicker month={month} months={months} onPick={setSelMonth} />
-                    {focusCode && (
-                        <button
-                            onClick={pinnedName ? scrollToCurrent : undefined}
-                            disabled={!pinnedName}
-                            title={pinnedName ? "현재 종목 위치로 스크롤" : "선택한 종목은 목록에 없습니다"}
-                            style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", padding: "2px 3px", border: "none", background: "none", cursor: pinnedName ? "pointer" : "default", lineHeight: 0, opacity: pinnedName ? 1 : 0.35 }}
-                        >
-                            <LocateIcon />
-                        </button>
-                    )}
-                </div>
-            </div>
+            <PanelHeader chrome={false} gap={0} style={{ borderBottom: "1px solid var(--border-default)" }}>
+                <MonthPicker month={month} months={months} onPick={setSelMonth} />
+                {focusCode && (
+                    <button
+                        onClick={pinnedName ? scrollToCurrent : undefined}
+                        disabled={!pinnedName}
+                        title={pinnedName ? "현재 종목 위치로 스크롤" : "선택한 종목은 목록에 없습니다"}
+                        style={{ marginLeft: "auto", flexShrink: 0, display: "inline-flex", alignItems: "center", padding: "2px 3px", border: "none", background: "none", cursor: pinnedName ? "pointer" : "default", lineHeight: 0, opacity: pinnedName ? 1 : 0.35 }}
+                    >
+                        <LocateIcon />
+                    </button>
+                )}
+            </PanelHeader>
 
             {/* 스크롤 영역 — 날짜 → 종목 → 타점. */}
             <div style={{ overflowY: "auto", flex: 1 }}>

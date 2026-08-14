@@ -1,6 +1,7 @@
 // 깔때기 다섯 칸의 이름·색·뜻 — 막대·범례·결과 머리글이 **같은 정의**를 봐야 한다.
 // 색이나 문구가 한 곳만 바뀌면 사용자는 두 화면이 다른 걸 세고 있다고 읽는다.
 import type { FunnelCell } from "@trade-data-manager/market/domain";
+import { PanelHeader } from "../../components/ControlChrome.js";
 import { FAIL, GROUP_PLAIN, HOVER, IGNORED_CANDLE, STRONG } from "../../styles/palette.js";
 
 export interface CellMeta {
@@ -23,15 +24,20 @@ export const PASS_CELLS: FunnelCell[] = ["survive", "nearMiss", "upstreamPending
 
 export const cellMeta = (c: FunnelCell): CellMeta => CELLS.find((x) => x.cell === c)!;
 
+/**
+ * 다섯 칸의 범례 — **줄을 바꾸지 않고 가로로 스크롤한다**(머리글과 같은 규약, PanelHeader).
+ * 여기는 특히 그래야 한다: 이 줄이 두 줄이 되면 그만큼 아래 결과 목록·보드가 밀려 내려간다.
+ */
 export function Legend(): JSX.Element {
     return (
-        <div style={{ flexShrink: 0, display: "flex", flexWrap: "wrap", gap: "3px 12px", padding: "6px 10px", borderTop: "1px solid var(--border-subtle)", fontSize: 10.5, color: "var(--text-secondary)" }}>
+        <PanelHeader chrome={false} gap={12} padding="6px 10px"
+            style={{ borderTop: "1px solid var(--border-subtle)", fontSize: 10.5, color: "var(--text-secondary)" }}>
             {CELLS.map(({ cell, label, color, hint }) => (
-                <span key={cell} title={hint} style={{ whiteSpace: "nowrap" }}>
+                <span key={cell} title={hint} style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
                     <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: color, verticalAlign: -1, marginRight: 4 }} />
                     {label}
                 </span>
             ))}
-        </div>
+        </PanelHeader>
     );
 }

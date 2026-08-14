@@ -3,7 +3,7 @@
 // 문구는 복사본이 서로 어긋나기 딱 좋은 자리라 문구까지 여기 가둔다. 다른 건 안쪽에 무엇을 끼우느냐뿐이라 슬롯으로.
 // 헤더 컨트롤 원자(TextToggle·Dot·Sep·ControlGroup·ControlBar)는 components/ControlChrome — 보드 헤더와 공유.
 import type { ReactNode } from "react";
-import { TextToggle, Dot, ControlGroup, ControlBar } from "../components/ControlChrome.js";
+import { TextToggle, Dot, ControlGroup, ControlBar, PanelHeader } from "../components/ControlChrome.js";
 import { StockNameCopy } from "../components/StockNameCopy.js";
 import { PlaneDot } from "../components/PlaneDot.js";
 import { fmtDateKo } from "../lib/date.js";
@@ -73,7 +73,7 @@ export function ChartHeader({
     children: ReactNode;
 }): JSX.Element {
     return (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)", fontSize: 12, flexShrink: 0 }}>
+        <PanelHeader style={{ fontSize: 12 }}>
             {plane === "live" && <PlaneDot plane={plane} />}
             <StockNameCopy code={code} name={name} style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)", flexShrink: 0 }} />
             <span className="tabular" style={{ color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 }}>{fmtDateKo(anchorDate)}</span>
@@ -87,7 +87,7 @@ export function ChartHeader({
             {baseFallback && <span style={{ color: "var(--warning)", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
             {/* 우상단 경량 컨트롤 — 통째로 접힘(패널별), 폭 부족 시 가로 휠. */}
             <ControlBar collapsed={collapsed} onToggle={onToggleControls}>{children}</ControlBar>
-        </div>
+        </PanelHeader>
     );
 }
 

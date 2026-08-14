@@ -3,6 +3,7 @@ import { useWorkbench } from "../store/workbench.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { weekdayOf } from "../lib/date.js";
 import { Name } from "./WorksetRows.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 
 // 최근 탐색 패널 — 세션 방문기록(EOD)을 최신순 flat 목록으로. focus 초크포인트가 기록하므로 워크셋·가설·차트·보드 어디서 이동하든 모임.
 // 단위 = (날짜,종목) 1행 + 마지막 방문 시각. 행 클릭 = 그 시각으로(time 있으면 goToPoint / 없으면 setFocus) 되돌아가기.
@@ -33,9 +34,9 @@ export function RecentHistoryPanel(): JSX.Element {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--border-default)", flexShrink: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>최근 탐색</span>
-                <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{history.length}</span>
+            <PanelHeader chrome={false} style={{ borderBottom: "1px solid var(--border-default)" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", flexShrink: 0 }}>최근 탐색</span>
+                <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}>{history.length}</span>
                 {history.length > 0 && (
                     <button
                         onClick={() => clearHistory()}
@@ -47,7 +48,7 @@ export function RecentHistoryPanel(): JSX.Element {
                         </svg>
                     </button>
                 )}
-            </div>
+            </PanelHeader>
 
             <div style={{ overflowY: "auto", flex: 1 }}>
                 {history.length === 0 && <div style={{ padding: 10, color: "var(--text-tertiary)", fontSize: 12, textAlign: "center" }}>아직 탐색 기록 없음</div>}
