@@ -6,15 +6,23 @@
 //     (핀을 찍고 나면 못 떼던 버그).
 //   · 캔들이 골격선보다 **위에** 오면 "축약이 원본의 어디를 밟았나"가 안 읽힌다.
 //
-// 주석은 사람이 지키고 테스트는 기계가 지킨다. 층을 파일로 떼어내는 중이라(캔들·거래대금 완료,
-// 테마·핀 예정) 부르는 자리가 옮겨 다니는데, 그때 순서가 조용히 뒤집히는 걸 여기서 잡는다.
+// 주석은 사람이 지키고 테스트는 기계가 지킨다. 층을 파일로 떼어내는 중이라 부르는 자리가 옮겨
+// 다니는데, 그때 순서가 조용히 뒤집히는 걸 여기서 잡는다.
 //
-// 층 표식은 `<g data-layer="...">` 다. 그리기와 무관한 속성이라 이 표식 자체가 화면을 안 바꾼다.
+// ## 순서가 이제 **두 곳**에 산다
+// 그림 세 층은 캔버스 한 장으로 갔다. 그래서 재는 자리도 둘로 갈린다:
+//   · 캔버스 **안**의 순서 — 표시목록의 순서(PAINT_ORDER). `drawnNames` 로 읽는다.
+//   · 캔버스와 SVG **사이**의 순서 — 문서 순서. 눈금 SVG → 캔버스 → 손짓·값 SVG 로 겹친다.
+//     `compareDocumentPosition` 이 그걸 잰다(둘은 형제라 층 표식 목록으로는 비교가 안 된다).
+//
+// 층 표식 `<g data-layer="...">` 는 DOM 에 남은 층에만 있다 — 그리기와 무관한 속성이라
+// 이 표식 자체가 화면을 안 바꾼다.
 import { describe, it, expect } from "vitest";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
 import { points, skeletonFeed as feed } from "./overlayFixture.js";
 import { PAINT_ORDER } from "../drawList.js";
+import { drawnNames, drawnOps, kindIn } from "./drawProbe.js";
 
 /** 그림 상자 안(클립 그룹)의 층 표식을 **그린 순서대로**. */
 function layersOf(container: HTMLElement): string[] {
@@ -43,11 +51,8 @@ describe.each([
         // 테마가 꺼져 있으면 지시선·거터는 **아예 없다**(켰을 때만 서는 층 — themeLayer 테스트가 본다).
         expect(layers).toEqual([
             "axis-ticks",
-            // 그림 세 층은 **붙어 있다**(PAINT_ORDER) — 캔버스 한 장이 이 자리를 통째로 대신할 수 있게.
-            "candles",
-            "theme-lines",
-            "skeleton-lines",
-            // 손짓 층은 그 뒤 — 그림은 포인터를 안 받으므로 손짓끼리의 우선순위는 안 바뀐다.
+            // 그림 세 층(candles·theme-lines·skeleton-lines)은 여기 없다 — 캔버스로 갔다.
+            // 그쪽 순서는 아래 `캔버스가 PAINT_ORDER 순서대로 그린다` 가 본다.
             "theme-hit",
             "pin-verticals",
             "line-hit",
@@ -57,25 +62,21 @@ describe.each([
         ]);
     });
 
-    // 3단계(캔버스 전환)의 **전제 조건**을 지킨다. 캔버스 한 장은 스택에서 자리를 하나만 차지하므로
-    // 그림 층 사이에 DOM 손짓 층이 끼면 옮길 때 순서를 재현할 수가 없다. 순서 자체는 PAINT_ORDER 하나가
-    // 쥐고 있으니, 여기서는 그 상수와 화면이 어긋나지 않는지만 본다.
-    it(`${label}: 그림 층이 PAINT_ORDER 순서대로 **붙어서** 나온다`, () => {
-        const layers = layersOf(renderPanel());
-        const at = layers.indexOf(PAINT_ORDER[0]);
-        expect(at, "그림 층이 화면에 없다").toBeGreaterThanOrEqual(0);
-        expect(layers.slice(at, at + PAINT_ORDER.length)).toEqual([...PAINT_ORDER]);
+    // 그림 세 층은 캔버스 한 장 위에 **그리는 순서**로 얹힌다. 순서 자체는 PAINT_ORDER 하나가 쥐고
+    // 있으니, 여기서는 캔버스가 그 상수와 어긋나지 않는지만 본다.
+    it(`${label}: 캔버스가 PAINT_ORDER 순서대로 그린다`, () => {
+        expect(drawnNames(renderPanel())).toEqual([...PAINT_ORDER]);
     });
 
     it(`${label}: 캔들이 맨 아래 — 골격이 그 위를 지나야 축약이 원본의 어디를 밟았나가 읽힌다`, () => {
-        const layers = layersOf(renderPanel());
-        expect(drawnBefore(layers, "candles", "theme-lines")).toBe(true);
-        expect(drawnBefore(layers, "candles", "skeleton-lines")).toBe(true);
+        const drawn = drawnNames(renderPanel());
+        expect(drawnBefore(drawn, "candles", "theme-lines")).toBe(true);
+        expect(drawnBefore(drawn, "candles", "skeleton-lines")).toBe(true);
     });
 
     it(`${label}: 테마 선이 골격선보다 아래 — 배경이고 주인공은 내 골격이다`, () => {
-        const layers = layersOf(renderPanel());
-        expect(drawnBefore(layers, "theme-lines", "skeleton-lines")).toBe(true);
+        const drawn = drawnNames(renderPanel());
+        expect(drawnBefore(drawn, "theme-lines", "skeleton-lines")).toBe(true);
     });
 
     // ⚠ 이 두 개가 이 파일의 존재 이유다 — 겪은 버그가 정확히 여기서 났다.
@@ -90,9 +91,20 @@ describe.each([
     });
 
     it(`${label}: 값(거래대금 숫자·기준선)은 그림 위 — 가려지면 못 읽는다`, () => {
-        const layers = layersOf(renderPanel());
-        expect(drawnBefore(layers, "skeleton-lines", "amount-labels")).toBe(true);
-        expect(drawnBefore(layers, "skeleton-lines", "levels")).toBe(true);
+        // 그림은 캔버스, 값은 그 위 SVG — 문서 순서가 곧 겹치는 순서다.
+        const c = renderPanel();
+        const canvas = c.querySelector("canvas")!;
+        for (const name of ["amount-labels", "levels"]) {
+            const el = c.querySelector(`[data-layer="${name}"]`)!;
+            expect(canvas.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING, `${name} 이 캔버스보다 앞에 있다`).toBeTruthy();
+        }
+    });
+
+    it(`${label}: 눈금은 그림 **아래** — 격자가 선 위에 얹히면 그림이 지저분해진다`, () => {
+        const c = renderPanel();
+        const canvas = c.querySelector("canvas")!;
+        const ticks = c.querySelector('[data-layer="axis-ticks"]')!;
+        expect(ticks.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 });
 
@@ -102,13 +114,13 @@ describe("골격 겹쳐 그리기 — 층이 실제로 재료를 받는다", () 
     // 잘못 잡아 화면이 통째로 비었을 때 이 검사가 그걸 잡아냈다.
     it.each([["daily" as const], ["minute" as const]])("%s: 골격선 층에 폴리라인이 실제로 있다", (grain) => {
         const { container } = renderWithProviders(<SkeletonOverlayPanel grain={grain} />, { skeletons: feed, points });
-        const lines = container.querySelector('[data-layer="skeleton-lines"]');
-        expect(lines?.querySelectorAll("polyline").length ?? 0).toBeGreaterThan(0);
+        expect(kindIn(drawnOps(container, "skeleton-lines"), "polyline").length).toBeGreaterThan(0);
     });
 
     it("골격이 없으면 안내 문구 — 그리고 층 순서 검사가 헛돌지 않게 자리도 없다", () => {
         const { container } = renderWithProviders(<SkeletonOverlayPanel grain="daily" />);
         expect(container.textContent).toContain("골격이 그려진 차트가 없습니다");
         expect(layersOf(container)).toEqual([]);
+        expect(drawnOps(container, "skeleton-lines")).toHaveLength(0);
     });
 });

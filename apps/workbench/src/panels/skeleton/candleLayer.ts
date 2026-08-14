@@ -46,7 +46,14 @@ export function candleLayer({ set, scales, box, anchorShown, memberShown, opacit
                 opacity,
                 ops: [
                     // 꼬리 — 고가~저가. 이게 골격 피벗(high/low)이 앉는 자리다.
-                    { op: "line", x1: cx, y1: scales.y(k.h), x2: cx, y2: scales.y(k.l), stroke: color, width: 1 },
+                    //
+                    // **몸통을 비껴 두 토막**으로 낸다(위꼬리·아래꼬리). 예전엔 고가~저가 한 줄을 긋고
+                    // 몸통이 그 가운데를 덮었는데, 그건 `<g opacity>` 가 자식을 한 번에 합성해 줄 때만
+                    // 같은 그림이다. 캔버스는 op 마다 알파라 겹친 자리가 더 진해져 몸통 한가운데
+                    // 세로줄이 생긴다. 어차피 눈에 보이는 건 몸통 밖 두 토막뿐이라, 안 겹치게 그으면
+                    // 두 페인터가 같은 그림을 낸다.
+                    { op: "line", x1: cx, y1: scales.y(k.h), x2: cx, y2: yTop, stroke: color, width: 1 },
+                    { op: "line", x1: cx, y1: yBot, x2: cx, y2: scales.y(k.l), stroke: color, width: 1 },
                     // 몸통 — 시가~종가. 도지(0폭)는 최소 1px 로 세워 사라지지 않게.
                     { op: "rect", x: cx - w / 2, y: yTop, w, h: Math.max(1, yBot - yTop), fill: color },
                 ],

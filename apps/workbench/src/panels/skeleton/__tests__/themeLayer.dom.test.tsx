@@ -10,6 +10,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
+import { drawnNames, drawnOps, kindIn } from "./drawProbe.js";
+import { PAINT_ORDER } from "../drawList.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { CODE, DATE, MEMBER, TIME, TIME_MIN, points, skeletonFeed, snapshotMinutes, themeSnapshot, unixAtMinute } from "./overlayFixture.js";
 
@@ -63,8 +65,8 @@ describe("픽스처 자신 — 시각이 의도한 분에 놓였나", () => {
 describe("테마 켜짐 — 그려지는가", () => {
     it("테마 선이 실제로 그려진다(멤버 1개) — 0개면 아래 순서 검사가 헛돈다", () => {
         const c = renderThemed();
-        const themeLines = c.querySelector('[data-layer="theme-lines"]');
-        expect(themeLines?.querySelectorAll("polyline").length ?? 0).toBeGreaterThan(0);
+        // 테마 선은 캔버스로 옮겨 가 DOM 에 없다 — 캔버스가 그린 표시목록에서 센다.
+        expect(kindIn(drawnOps(c, "theme-lines"), "polyline").length).toBeGreaterThan(0);
     });
 
     it("테마 선마다 투명 히트라인이 한 벌 — 선 위에서 손짓을 받는 유일한 수단이다", () => {
@@ -89,21 +91,26 @@ describe("테마 켜짐 — 층 순서", () => {
     const layersOf = (c: HTMLElement): string[] =>
         [...c.querySelectorAll("[data-layer]")].map((el) => el.getAttribute("data-layer")!);
 
-    it("테마 선 → 골격선 → 히트라인 순 — 배경이 먼저, 주인공이 그 위, 손짓은 그림 뭉치 뒤", () => {
-        const layers = layersOf(renderThemed());
-        // 그림끼리: 배경(테마)이 주인공(골격) 아래.
-        expect(layers.indexOf("theme-lines")).toBeLessThan(layers.indexOf("skeleton-lines"));
-        // 손짓은 그림 **뒤**로 나가 있다 — 그림 세 층이 붙어 있어야 캔버스 한 장이 그 자리를 대신한다.
-        // 그림 층은 포인터를 안 받으니 이 이동으로 겨냥이 달라지지 않는다.
-        expect(layers.indexOf("skeleton-lines")).toBeLessThan(layers.indexOf("theme-hit"));
+    it("테마 선 → 골격선 순(캔버스 안) — 배경이 먼저, 주인공이 그 위", () => {
+        const drawn = drawnNames(renderThemed());
+        expect(drawn.indexOf("theme-lines")).toBeLessThan(drawn.indexOf("skeleton-lines"));
+    });
+
+    it("손짓은 그림 **뒤** — 캔버스가 문서 순서에서 히트 층보다 앞에 온다", () => {
+        const c = renderThemed();
+        const canvas = c.querySelector("canvas")!;
+        const hit = c.querySelector('[data-layer="theme-hit"]')!;
+        // DOCUMENT_POSITION_FOLLOWING = 히트 층이 캔버스 **뒤**에 있다(= 위에 그려진다).
+        expect(canvas.compareDocumentPosition(hit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         // 손짓끼리의 우선순위는 그대로 — 테마 히트는 골격 히트·피벗 손잡이보다 아래여야 한다.
+        const layers = layersOf(c);
         expect(layers.indexOf("theme-hit")).toBeLessThan(layers.indexOf("line-hit"));
         expect(layers.indexOf("theme-hit")).toBeLessThan(layers.indexOf("pivot-handles"));
     });
 
     it("캔들은 테마보다도 아래 — 참고용 배경의 배경", () => {
-        const layers = layersOf(renderThemed());
-        expect(layers.indexOf("candles")).toBeLessThan(layers.indexOf("theme-lines"));
+        const drawn = drawnNames(renderThemed());
+        expect(drawn.indexOf("candles")).toBeLessThan(drawn.indexOf("theme-lines"));
     });
 
     // ⚠ 지시선은 눈금 숫자 칸을 **가로지른다** — 나중에 그리면 점선이 숫자 위에 얹혀 둘 다 못 읽는다.
@@ -120,13 +127,15 @@ describe("테마 켜짐 — 층 순서", () => {
 
     it("테마가 켜져도 그림 층의 목록과 순서는 그대로 — 켜고 끄는 것이 순서를 안 바꾼다", () => {
         // 켜면 지시선(맨 앞)·거터(맨 뒤)가 **더해질 뿐** 사이의 그림 층은 그대로다.
-        expect(layersOf(renderThemed())).toEqual([
+        const c = renderThemed();
+        // DOM 에 남은 건 눈금·손짓·값뿐 — 그림 세 층은 캔버스로 갔다.
+        expect(layersOf(c)).toEqual([
             "theme-leaders", "axis-ticks",
-            // 그림 세 층은 붙어 있다(PAINT_ORDER) — 그 뒤로 손짓 층들.
-            "candles", "theme-lines", "skeleton-lines",
             "theme-hit", "pin-verticals", "line-hit", "pivot-handles", "amount-labels", "levels",
             "theme-gutter",
         ]);
+        // 캔버스 쪽 순서도 켜고 끄는 것과 무관하게 그대로.
+        expect(drawnNames(c)).toEqual([...PAINT_ORDER]);
     });
 });
 
@@ -151,8 +160,7 @@ describe("테마 켜짐 — 멤버 선정 규칙", () => {
         const { container } = renderWithProviders(<SkeletonOverlayPanel grain="minute" />, {
             skeletons: skeletonFeed, points, daySnapshot: { date: DATE, data: noOverlap },
         });
-        const themeLines = container.querySelector('[data-layer="theme-lines"]');
-        expect(themeLines?.querySelectorAll("polyline").length ?? 0).toBe(0);
+        expect(drawnOps(container, "theme-lines")).toHaveLength(0);
         expect(container.textContent).not.toContain("SK하이닉스");
     });
 
@@ -161,7 +169,7 @@ describe("테마 켜짐 — 멤버 선정 규칙", () => {
         const { container } = renderWithProviders(<SkeletonOverlayPanel grain="minute" />, {
             skeletons: skeletonFeed, points, daySnapshot: { date: DATE, data: onlyAnchor },
         });
-        expect(container.querySelector('[data-layer="theme-lines"]')?.querySelectorAll("polyline").length ?? 0).toBe(0);
+        expect(drawnOps(container, "theme-lines")).toHaveLength(0);
         expect(container.textContent).not.toContain(MEMBER);
     });
 });

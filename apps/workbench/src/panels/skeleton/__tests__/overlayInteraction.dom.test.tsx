@@ -11,6 +11,7 @@ import { fireEvent, act } from "@testing-library/react";
 import type { ChartBundle, DailyCandle } from "@trade-data-manager/wire";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
+import { drawnOps, kindIn } from "./drawProbe.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { CLUSTER_CODES, DATE, clusterFeed, clusterPoints, points, skeletonFeed } from "./overlayFixture.js";
 
@@ -61,8 +62,8 @@ describe("일봉 캔들 — 켜도 패널이 안 죽는다", () => {
         const c = render();
         fireEvent.click(labelChips(c)[0]);
         fireEvent.click(labelChips(c)[0]);
-        const layer = c.querySelector('[data-layer="candles"]');
-        expect(layer?.querySelectorAll("rect, line").length ?? 0).toBeGreaterThan(0);
+        // 캔들은 캔버스로 옮겨 가 DOM 에 없다 — 캔버스가 그린 표시목록에서 봉(몸통)을 센다.
+        expect(kindIn(drawnOps(c, "candles"), "rect").length).toBeGreaterThan(0);
     });
 
     it("푸터가 켠 종목 이름을 말한다 — 옛 흰 화면이 정확히 이 줄에서 났다", () => {
@@ -78,7 +79,7 @@ describe("일봉 캔들 — 켜도 패널이 안 죽는다", () => {
         fireEvent.click(labelChips(c)[0]);
         fireEvent.click(labelChips(c)[0]);
         fireEvent.click(labelChips(c)[0]);
-        expect(c.querySelector('[data-layer="candles"]')?.querySelectorAll("rect, line").length ?? 0).toBe(0);
+        expect(drawnOps(c, "candles")).toHaveLength(0);
     });
 });
 

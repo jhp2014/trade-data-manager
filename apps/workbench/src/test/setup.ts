@@ -32,6 +32,13 @@ if (typeof window !== "undefined") {
         return { x: 0, y: 0, top: 0, left: 0, width: SIZE.width, height: SIZE.height, bottom: SIZE.height, right: SIZE.width, toJSON: () => ({}) } as DOMRect;
     };
 
+    /**
+     * 캔버스 2D 컨텍스트 — jsdom 에 없다. 그냥 두면 부를 때마다 "Not implemented" 를 콘솔에 쏟아 내
+     * 진짜 경고가 묻힌다. 페인터는 컨텍스트가 없으면 **조용히 그리기를 건너뛴다**(표시목록은 그대로
+     * 남는다) — 그림을 보는 검사는 DOM 이 아니라 그 목록을 읽으므로(drawProbe) 여기선 소음만 없앤다.
+     */
+    HTMLCanvasElement.prototype.getContext = (() => null) as unknown as HTMLCanvasElement["getContext"];
+
     // scrollIntoView·PointerCapture — 되짚기·드래그 코드가 부르는데 jsdom 에 없다(호출만 삼킨다).
     Element.prototype.scrollIntoView = function (): void {};
     Element.prototype.setPointerCapture = function (): void {};

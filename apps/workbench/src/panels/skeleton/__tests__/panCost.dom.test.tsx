@@ -12,13 +12,15 @@
 //
 // ## 어떻게 한 프레임을 흉내 내나 — **크기를 1px 흔든다**
 // d3-zoom 을 jsdom 에서 몰지 않는다(`pointer` 가 `getScreenCTM` 을 타는데 jsdom 엔 없다).
-// 대신 패널 크기를 1px 씩 번갈아 통보한다 — 스케일이 새로 서고, 모든 점의 화면 좌표가 바뀌고,
-// 따라서 **모든 polyline 의 points 문자열이 다시 쓰인다**. 팬 프레임에서 벌어지는 일과 같다.
-// (호버로 재면 안 된다: 좌표가 그대로라 문자열이 같아 React 가 DOM 쓰기를 건너뛴다 → ③ 이 빠진다.)
+// 대신 패널 크기를 1px 씩 번갈아 통보한다 — 스케일이 새로 서고 모든 점의 화면 좌표가 바뀐다.
+// 팬 프레임에서 벌어지는 일과 같다. (호버로 재면 안 된다: 좌표가 그대로면 값이 안 바뀌어 ③ 이 빠진다.)
 //
-// ## 이 수치는 **하한**이다
-// jsdom 엔 페인트가 없고 `setAttribute` 가 실제 Blink 보다 싸다(스타일 무효화·레이아웃 표시가 없다).
-// 실제 브라우저는 이보다 나쁘다. "하한에서도 N 선에서 X ms" 로 읽어야 한다.
+// ## 이 수치는 **하한**이다 — 그리고 렌더러마다 빠지는 게 다르다
+// jsdom 엔 페인트가 없어 어느 쪽이든 래스터화는 안 들어간다. 그 위에:
+//   · SVG  — `setAttribute` 가 실제 Blink 보다 싸다(스타일 무효화·레이아웃 표시가 없다).
+//   · 캔버스 — 2D 컨텍스트가 아예 없어 **그리기 호출 자체가 안 돈다**(표시목록까지만 돈다).
+// 그래서 둘의 차이는 "React 재조정 + DOM 쓰기가 걷어진 몫"으로 읽어야지, 최종 프레임 시간의
+// 비율로 읽으면 안 된다. 실제 캔버스 래스터화가 그 자리에 얼마를 채우는지는 브라우저에서 재야 한다.
 //
 // 평소 테스트에선 건너뛴다(느리고 단언이 없다). 돌리려면:
 //   BENCH=1 pnpm --filter @trade-data-manager/workbench exec vitest run src/panels/skeleton/__tests__/panCost.dom.test.tsx
@@ -26,6 +28,7 @@ import { describe, it } from "vitest";
 import { act, cleanup } from "@testing-library/react";
 import { scaleLinear } from "d3-scale";
 import type { SkeletonFeed } from "@trade-data-manager/wire";
+import { drawnOps, kindIn } from "./drawProbe.js";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
 
@@ -90,7 +93,7 @@ function feedOf(n: number, pivotCount: number): SkeletonFeed {
     };
 }
 
-interface Sample { n: number; pivots: number; p50: number; p95: number; nodes: number; points: number; dots: boolean }
+interface Sample { n: number; pivots: number; p50: number; p95: number; nodes: number; ops: number; points: number; dots: boolean }
 
 /**
  * 프레임을 **하나씩** 재고 중앙값·p95 로 낸다. 총시간÷횟수(평균)로 내면 GC 한 번이 통째로 섞여
@@ -102,11 +105,14 @@ function measure(n: number, pivotCount: number, frames: number): Sample {
 
     const { container } = renderWithProviders(<SkeletonOverlayPanel grain="daily" />, { skeletons: feedOf(n, pivotCount) });
 
-    const layer = container.querySelector('[data-layer="skeleton-lines"]');
-    const nodes = layer?.querySelectorAll("*").length ?? 0;
-    // 점 예산(DOT_BUDGET=1200 총점)을 넘으면 피벗 점이 통째로 꺼진다 — 노드 수가 선당 10 → 2 로
-    // 뚝 떨어져 **선을 늘렸는데 프레임이 싸지는** 역전이 생긴다. 표에 상태를 같이 적어 오독을 막는다.
-    const dots = nodes > n * 2;
+    // 그림이 캔버스로 간 뒤 DOM 노드는 0이다 — 무엇을 그렸는지는 표시목록에서 읽는다(drawProbe).
+    // 노드 수는 그대로 남겨 둔다: 이 값이 0이 아니면 그림이 어딘가 DOM 으로 새고 있다는 뜻이다.
+    const nodes = container.querySelector('[data-layer="skeleton-lines"]')?.querySelectorAll("*").length ?? 0;
+    const drawn = drawnOps(container, "skeleton-lines");
+    const ops = drawn.length;
+    // 점 예산(DOT_BUDGET=1200 총점)을 넘으면 피벗 점이 통째로 꺼진다. SVG 일 땐 이게 노드 수를
+    // 선당 10 → 2 로 떨어뜨려 **선을 늘렸는데 프레임이 싸지는** 역전을 만들었다. 표에 상태를 적어 둔다.
+    const dots = kindIn(drawn, "circle").length > 0;
 
     // 워밍업 — 첫 몇 프레임은 JIT·캐시 데우기라 곡선을 왜곡한다.
     for (let i = 0; i < 10; i++) act(() => resizeAll(1000 + (i % 2), 600));
@@ -121,7 +127,7 @@ function measure(n: number, pivotCount: number, frames: number): Sample {
     const at = (q: number): number => times[Math.min(times.length - 1, Math.floor(times.length * q))];
 
     cleanup();
-    return { n, pivots: pivotCount, p50: at(0.5), p95: at(0.95), nodes, points: n * pivotCount, dots };
+    return { n, pivots: pivotCount, p50: at(0.5), p95: at(0.95), nodes, ops, points: n * pivotCount, dots };
 }
 
 /**
@@ -148,7 +154,7 @@ function geometryFloor(n: number, pivotCount: number, frames: number): number {
     return times[Math.floor(times.length / 2)];
 }
 
-describe.runIf(process.env.BENCH)("팬 프레임 비용 — 베이스라인(SVG)", () => {
+describe.runIf(process.env.BENCH)("팬 프레임 비용", () => {
     const rows: Sample[] = [];
 
     it.each([
@@ -175,18 +181,22 @@ describe.runIf(process.env.BENCH)("팬 프레임 비용 — 베이스라인(SVG)
                 ` │ ${s.p50.toFixed(1).padStart(7)} │ ${s.p95.toFixed(1).padStart(7)}` +
                 ` │ ${perLine.padStart(7)}` +
                 ` │ ${(s.n === 0 ? "—" : floor.toFixed(1)).padStart(7)} │ ${gain.padStart(5)}` +
-                ` │ ${String(s.nodes).padStart(6)} │ ${String(s.points).padStart(6)}` +
+                ` │ ${String(s.nodes).padStart(5)} │ ${String(s.ops).padStart(6)} │ ${String(s.points).padStart(6)}` +
                 ` │ ${s.dots ? "켬" : "끔"}`;
         };
         // eslint-disable-next-line no-console
         console.log(
-            `\n  베이스라인 — 팬 한 프레임(SVG, jsdom = 하한)\n` +
-            `  선 × 피벗 │  p50 ms │  p95 ms │ 선당(상수) │  바닥 │ 여지 │  노드 │    점 │ 점\n` +
-            `  ───────────────────────────────────────────────────────────────────────────────────\n` +
+            `\n  팬 한 프레임(jsdom)\n` +
+            `  선 × 피벗 │  p50 ms │  p95 ms │ 선당(상수) │  바닥 │ 여지 │ 노드 │    op │    점 │ 점\n` +
+            `  ─────────────────────────────────────────────────────────────────────────────────────────\n` +
             rows.map(line).join("\n") +
             `\n\n  상수 몫(선 0개) = ${base.toFixed(1)} ms — 헤더·라벨 층·컨텍스트\n` +
-            `  바닥 = 좌표 재계산 + 상수 = **캔버스로 옮겨도 남는 몫**. 여지 = 지금 ÷ 바닥.\n` +
-            `  프레임 예산 16.7 ms (60fps) 기준으로 읽을 것. jsdom 이라 실제 브라우저는 이보다 나쁘다.\n`,
+            `  바닥 = 좌표 재계산 + 상수 = **그림을 어디에 그리든 남는 몫**. 여지 = 지금 ÷ 바닥.\n` +
+            `  노드 = 그림이 DOM 으로 새는지(캔버스로 간 뒤엔 0). op = 표시목록이 실제로 낸 도형 수.\n` +
+            `  프레임 예산 16.7 ms (60fps) 기준.\n` +
+            `  ⚠ jsdom 엔 2D 컨텍스트가 없어 **래스터화는 안 들어간다** — 캔버스 쪽 수치는 JS 몫\n` +
+            `    (표시목록 만들기 + React 렌더)만이다. SVG 쪽은 DOM 쓰기까지 들어 있었으므로,\n` +
+            `    둘의 차이는 "React·DOM 이 걷어진 몫"으로 읽어야지 최종 프레임 시간이 아니다.\n`,
         );
     });
 });

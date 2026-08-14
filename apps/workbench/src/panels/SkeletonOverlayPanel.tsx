@@ -24,7 +24,7 @@ import { ThemeGutter, ThemeLeaders, ThemeHit } from "./skeleton/ThemeLayer.js";
 import { skeletonLinesLayer } from "./skeleton/skeletonLinesLayer.js";
 import { candleLayer } from "./skeleton/candleLayer.js";
 import { themeLinesLayer } from "./skeleton/themeLinesLayer.js";
-import { SvgLayer } from "./skeleton/SvgPainter.js";
+import { CanvasLayers } from "./skeleton/CanvasPainter.js";
 import { flatten, orderPaint, type DrawLayer } from "./skeleton/drawList.js";
 import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
@@ -618,6 +618,47 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
 
 
+    /**
+     * 그림 세 층의 표시목록 — **매 렌더 새로 만든다**(memo 하지 않는다).
+     *
+     * 재료가 열 몇 가지라 memo 의존성 목록이 곧 버그의 온상이 된다(하나 빠지면 화면이 조용히 멈춘다).
+     * 그리고 어차피 팬 프레임마다 좌표가 전부 바뀌므로 memo 가 맞는 상황도 아니다 — 비싼 건 목록을
+     * 만드는 게 아니라 그걸 **DOM 으로 펴는** 일이었고(panCost 벤치), 그 일이 캔버스로 가면서 사라졌다.
+     */
+    const paintLayers: DrawLayer[] = scales && bounds
+        ? orderPaint({
+            candles: candles.set
+                ? candleLayer({
+                    set: candles.set, scales, box,
+                    anchorShown: candles.anchorShown, memberShown: candles.memberShown, opacityOf: candles.opacityOf,
+                })
+                : EMPTY_CANDLES,
+            // 테마 선은 골격보다 아래(배경이고 주인공은 내 골격). 다른 골격선을 보는 동안엔 접는다(swapped).
+            "theme-lines": themeOverlay && !theme.swapped
+                ? themeLinesLayer({
+                    overlay: themeOverlay, runs: theme.runs, hovered: theme.hovered,
+                    project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
+                    clip: viewX, lineStep,
+                })
+                : EMPTY_THEME_LINES,
+            "skeleton-lines": skeletonLinesLayer({
+                lines, scales, box,
+                lineShown: theme.lineShown,
+                visualOf,
+                opacity: { dimmed, recede: RECEDE_OPACITY, base: baseOpacity },
+                isPointUnit,
+                amounts: amountWidthOn ? amounts : null,
+                project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
+                lineStep,
+                dotsForAll,
+                pins,
+                fmtX: (x) => fmtX(x, xUnit),
+                fmtPct,
+                timeOfMinutes,
+                clamp,
+            }),
+        })
+        : [];
     return (
         <div style={wrap}>
             <OverlayHeader
@@ -655,8 +696,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         {isDaily ? "일봉 골격이 그려진 차트가 없습니다." : "분봉 골격 위 타점이 없습니다(필터·선택만 보기·전일 종가 결손에 걸렸을 수도)."}
                     </div>
                 )}
-                <svg ref={svgRef} width={size.w} height={size.h} onDoubleClick={onDoubleClick}
-                    style={{ display: "block", cursor: dragging ? "grabbing" : "default", touchAction: "none" }}>
+                {/* ── 그림판은 **세 겹**이다. 층 순서가 뜻을 지므로 캔버스를 그 사이에 끼워야 한다:
+                       ① SVG(아래) — 눈금·지시선·좌표축. 그림보다 아래에 깔린다.
+                       ② canvas    — 캔들·테마 선·골격선(PAINT_ORDER). 노드 0개.
+                       ③ SVG(위)   — 손짓(히트라인·손잡이)과 값(거래대금·기준선). 줌도 여기 붙는다.
+                    한 SVG 안에 캔버스를 넣을 수가 없어서(foreignObject 는 위험을 안 살 이유가 없다)
+                    셋을 겹쳐 쌓는다 — 문서 순서가 그대로 그리는 순서라 규약이 안 바뀐다. */}
+                <svg width={size.w} height={size.h}
+                    style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
                     <defs>
                         <clipPath id={clipId}><rect x={box.left} y={box.top} width={box.width} height={box.height} /></clipPath>
                     </defs>
@@ -690,10 +737,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 </g>
                             ))}
                             </g>
-
-                            {/* 거터 라벨의 지시선 — **클립 밖**에 그린다(거터는 그림 상자 바깥이라 클립하면 사라진다).
-                                라벨이 제자리를 벗어난 만큼 이 선이 원래 선 시작점을 가리킨다. */}
-
                             <g clipPath={`url(#${clipId})`}>
                                 {/* 원점 좌표축 — **실선 + 끝 화살표**(사용자 확정, xy 좌표계 그대로). 흐린 점선은 그림에
                                     묻혀 안 읽혔다. 이 두 선이 피벗 좌표를 읽는 자(尺)다: 값은 여기로 내린 수직·수평
@@ -703,50 +746,21 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 <polygon points={`${box.left + box.width},${scales.y(0)} ${box.left + box.width - 7},${scales.y(0) - 3.5} ${box.left + box.width - 7},${scales.y(0) + 3.5}`} fill={AXIS_LINE} />
                                 <line x1={scales.x(0)} x2={scales.x(0)} y1={box.top} y2={box.top + box.height} stroke={AXIS_LINE} strokeWidth={1} />
                                 <polygon points={`${scales.x(0)},${box.top} ${scales.x(0) - 3.5},${box.top + 7} ${scales.x(0) + 3.5},${box.top + 7}`} fill={AXIS_LINE} />
+                            </g>
+                        </>
+                    )}
+                </svg>
 
-                                {/* ── 캔들 오버레이 — **맨 아래**(테마 선보다도 아래). 골격이 그 위를 지나야
-                                    "축약이 원본의 어디를 밟았나"가 읽힌다. 참고용이라 흐리다(사용자 확정).
-                                    봉이 좁아지면(축소) 통째로 접힌다 — 400봉이 붙으면 잉크 덩어리일 뿐이다. */}
-                                {/* 다른 라벨을 짚는 동안엔 캔들이 **잠시 사라진다**(사용자 확정) — 같은 종목의 형제 선을
-                                    짚을 때도 마찬가지다. 그 순간의 질문은 "이 선 vs 저 선"이라 봉이 비교를 방해한다.
-                                    진하기 자체는 헤더의 선명도 단계가 정한다 — 배경으로 깔지, 같이 읽을지가 상황마다 다르다. */}
-                                {/* ── 테마 선은 골격보다 **먼저**(배경이고 주인공은 내 골격).
-                                    다른 골격선을 보는 동안엔 접는다(swapped) — 두 무리가 겹치면 안 갈린다.
-                                    접혀 있어도 층의 **자리는 남긴다** — 순서가 켜고 끔에 따라 달라지면 잴 수가 없다.
+                {/* 그림 세 층 — DOM 노드 0개. 무엇을 몇 개 그렸는지는 canvas 의 data-* 로 남는다
+                    (캔버스는 devtools 로 안을 못 본다 — 화면 테스트도 그 값으로 빈 화면을 가려낸다). */}
+                <CanvasLayers layers={paintLayers} width={size.w} height={size.h}
+                    clip={scales && bounds ? box : null} />
 
-                                    ⚠ 세 그림 층은 **붙어 있어야 한다**(PAINT_ORDER 주석): 캔버스 한 장은 스택에서
-                                    자리를 하나만 차지하므로 사이에 손짓 층이 끼면 옮길 때 순서를 재현 못 한다. */}
-                                {orderPaint({
-                                    candles: candles.set
-                                        ? candleLayer({
-                                            set: candles.set, scales, box,
-                                            anchorShown: candles.anchorShown, memberShown: candles.memberShown, opacityOf: candles.opacityOf,
-                                        })
-                                        : EMPTY_CANDLES,
-                                    "theme-lines": themeOverlay && !theme.swapped
-                                        ? themeLinesLayer({
-                                            overlay: themeOverlay, runs: theme.runs, hovered: theme.hovered,
-                                            project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
-                                            clip: viewX, lineStep,
-                                        })
-                                        : EMPTY_THEME_LINES,
-                                    "skeleton-lines": skeletonLinesLayer({
-                                        lines, scales, box,
-                                        lineShown: theme.lineShown,
-                                        visualOf,
-                                        opacity: { dimmed, recede: RECEDE_OPACITY, base: baseOpacity },
-                                        isPointUnit,
-                                        amounts: amountWidthOn ? amounts : null,
-                                        project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
-                                        lineStep,
-                                        dotsForAll,
-                                        pins,
-                                        fmtX: (x) => fmtX(x, xUnit),
-                                        fmtPct,
-                                        timeOfMinutes,
-                                        clamp,
-                                    }),
-                                }).map((l) => <SvgLayer key={l.name} layer={l} />)}
+                <svg ref={svgRef} width={size.w} height={size.h} onDoubleClick={onDoubleClick}
+                    style={{ position: "absolute", inset: 0, cursor: dragging ? "grabbing" : "default", touchAction: "none" }}>
+                    {scales && bounds && (
+                        <>
+                            <g clipPath={`url(#${clipId})`}>
 
                                 {/* 테마 히트라인 — 그림 뭉치 **뒤**에 선다. 그림 층은 포인터를 안 받으므로
                                     손짓끼리의 우선순위(핀 세로선 < 이것 < 골격 히트 < 피벗 손잡이)는 그대로다. */}

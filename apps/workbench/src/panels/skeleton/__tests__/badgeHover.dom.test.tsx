@@ -18,6 +18,7 @@ import { fireEvent, act } from "@testing-library/react";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
+import { drawnOps, kindIn } from "./drawProbe.js";
 import { CLUSTER_CODES, DATE, TIME, clusterFeed, clusterPoints } from "./overlayFixture.js";
 
 const [REP, MEMBER_B, MEMBER_C] = CLUSTER_CODES;
@@ -32,10 +33,12 @@ const renderPanel = (): HTMLElement =>
 const badgeOf = (c: HTMLElement): HTMLButtonElement | undefined =>
     [...c.querySelectorAll("button")].find((b) => (b.title ?? "").includes("개 뭉침"));
 
-/** 골격선들의 획 색 — 무리 색이 실렸는지 그림에서 직접 읽는다. */
+/**
+ * 골격선들의 획 색 — 무리 색이 실렸는지 그림에서 직접 읽는다.
+ * 선은 캔버스로 옮겨 가 DOM 에 없으므로 캔버스가 그린 **표시목록**에서 읽는다(drawProbe).
+ */
 const strokes = (c: HTMLElement): string[] =>
-    [...(c.querySelector('[data-layer="skeleton-lines"]')?.querySelectorAll("polyline") ?? [])]
-        .map((p) => p.getAttribute("stroke") ?? "");
+    kindIn(drawnOps(c, "skeleton-lines"), "polyline").map((p) => p.stroke);
 
 /** 무리 색이 실린 선 수 — 기본색도 선택색(ACTIVE)도 아닌 것들. */
 const groupColored = (c: HTMLElement): number =>
