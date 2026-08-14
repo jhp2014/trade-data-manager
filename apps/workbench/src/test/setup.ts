@@ -37,8 +37,33 @@ if (typeof window !== "undefined") {
     Element.prototype.setPointerCapture = function (): void {};
     Element.prototype.releasePointerCapture = function (): void {};
 
+    /**
+     * 네트워크 그물 — 화면 테스트는 **캐시에 심은 것만** 먹고 살아야 한다(renderPanel 머리 주석).
+     *
+     * 왜 그냥 막는 걸로는 부족한가: 쿼리를 안 심으면 react-query 가 그대로 서버를 부르는데, 실패해도
+     * **react-query 가 에러를 삼킨다**. 그러면 그 화면은 조용히 빈 채로 남고 테스트는 통과한다 —
+     * 이 파일들이 내내 경계하는 "빈 화면을 상대로 헛돈다"가 하네스 층에서 그대로 재현되는 셈이다.
+     * 그래서 막기만 하지 않고 **불렀다는 사실을 기록해 그 테스트를 실패시킨다**.
+     *
+     * 일부러 네트워크를 흉내 내야 하는 테스트는 제 손으로 `fetch` 를 갈아 끼우면 된다 — 기록기가
+     * 통째로 교체되므로 이 그물에 안 걸린다(그게 명시적인 탈출구다).
+     */
+    const networkCalls: string[] = [];
+    window.fetch = ((input: unknown): Promise<Response> => {
+        networkCalls.push(typeof input === "string" ? input : String((input as { url?: string })?.url ?? input));
+        return Promise.reject(new Error("테스트에서 네트워크 금지 — 쿼리를 seed 로 심어라"));
+    }) as typeof fetch;
+
     afterEach(async () => {
         const { cleanup } = await import("@testing-library/react");
         cleanup();
+        const calls = networkCalls.splice(0);
+        if (calls.length > 0) {
+            throw new Error(
+                `테스트가 네트워크를 쳤다(${calls.length}건) — 그 화면은 데이터 없이 그려졌으므로 단언이 헛돈다.\n` +
+                `  ${[...new Set(calls)].join("\n  ")}\n` +
+                `renderWithProviders 의 seed 에 해당 쿼리를 심어라.`,
+            );
+        }
     });
 }
