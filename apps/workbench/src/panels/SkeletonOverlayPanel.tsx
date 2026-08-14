@@ -14,6 +14,8 @@ import { useCandles, type CandleFocus } from "./skeleton/useCandles.js";
 import { useOverlayToggles } from "./skeleton/useOverlayToggles.js";
 import { OverlayHeader } from "./skeleton/OverlayHeader.js";
 import { OverlayFooter } from "./skeleton/OverlayFooter.js";
+import { LabelLayer, LABEL_CELL } from "./skeleton/LabelLayer.js";
+import { badgeChip, chip, labelDot } from "./skeleton/chips.js";
 import { amountLevelOf, amountLookupOf, runWidth } from "./skeleton/amountLayer.js";
 import { AmountLabels, useAmountLabels, type AmountSource } from "./skeleton/AmountLabels.js";
 import { CandleLayer } from "./skeleton/CandleLayer.js";
@@ -68,10 +70,6 @@ const PAD_LEFT = { plain: 46, gutter: 122 };
 const THEME_LABEL_INSET = PAD_LEFT.plain;
 /** 피벗 점 예산 — **원 개수**로 센다(골격당 피벗 수가 3~6으로 제각각이라 골격 수로 세면 임계가 두 배 흔들린다). */
 const DOT_BUDGET = 1200;
-/** 라벨 격자 한 칸(화면 px) — 라벨 하나가 차지하는 자리. 이보다 촘촘하면 뭉쳐서 개수 뱃지가 된다. */
-const LABEL_CELL = { w: 72, h: 14 };
-/** 라벨 칩과 끝점 사이 간격 — 배경 패딩(3px)을 더해도 피벗 손잡이(r=7) 밖에 서야 점 호버를 안 가로챈다. */
-const LABEL_GAP = 12;
 /** 거터에 이름을 둘 테마 선의 최대 수(사용자 확정) — 넘치면 나머지는 개수 뱃지 하나로 묶인다. */
 const THEME_LABEL_CAP = 8;
 /** 거터 라벨의 세로 최소 간격(화면 px). */
@@ -764,37 +762,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return ids.map((id) => groupsView.groupById.get(id)?.name).filter((n): n is string => !!n);
     }, [inspectKey, byKey, groupsView]);
 
-    // 타점 단위 선은 시각까지 — `26.07.08 삼성전자 09:30`(같은 차트의 타점 여러 개가 선 여러 개로 선다).
-    // 시각이 tertiary 면 같은 종목의 타점끼리 구분이 안 잡혔다(사용자 지적) — 타점의 정체가 시각이라 굵게 세운다.
-    const labelOf = (s: Line, dotFirst: boolean): JSX.Element => {
-        const dot = <span style={labelDot(visualOf(s.key).color)} />;
-        const text = (
-            <span>
-                <span style={{ color: "var(--text-tertiary)" }}>{shortDate(s.date)}</span> {nameOf(s.stockCode)}
-                {s.kind === "point" && <span style={{ color: "var(--text-secondary)", fontWeight: 700 }}> {s.time.slice(0, 5)}</span>}
-            </span>
-        );
-        return dotFirst ? <>{dot}{text}</> : <>{text}{dot}</>;
-    };
 
-    /**
-     * 라벨 칩 자리 — **점의 바깥쪽**(선이 뻗어 나가는 반대 방향)에 띄운다.
-     * 예전엔 칩이 끝점에서 안쪽으로 깔려 **끝점 자체를 덮었다**: 선 위를 가려 그림을 읽기 나쁘고,
-     * 무엇보다 그 점의 피벗 손잡이를 칩이 가로채 가장 바깥 점만 호버가 안 됐다(사용자 지적).
-     * 간격 9px = 피벗 손잡이 반경(7) 밖 — 점과 칩이 서로의 히트 영역을 침범하지 않는 최소치.
-     *
-     * 바깥에 칩 폭만큼 자리가 없으면(창 가장자리에 붙은 끝점) **안쪽으로 넘긴다** — 잘려서 못 읽는 것보단
-     * 선 위에 얹히는 게 낫다. 넘겨도 간격은 그대로라 점 호버는 살아 있다.
-     * 색 점은 언제나 칩에서 **점을 마주 보는 끝**에 둔다(dotFirst) — 어느 선의 이름인지 가리키는 게 그 점의 일이다.
-     */
-    const labelPlacement = (leftPx: number): { style: CSSProperties; dotFirst: boolean } => {
-        const outwardLeft = labelAtStart;
-        const room = outwardLeft ? leftPx - LABEL_GAP : box.width - leftPx - LABEL_GAP;
-        const atLeft = room < LABEL_CELL.w ? !outwardLeft : outwardLeft;
-        return atLeft
-            ? { style: { left: leftPx - LABEL_GAP, transform: "translate(-100%, -50%)" }, dotFirst: false }
-            : { style: { left: leftPx + LABEL_GAP, transform: "translateY(-50%)" }, dotFirst: true };
-    };
 
     return (
         <div style={wrap}>
@@ -1240,61 +1208,21 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
                 {/* 라벨 층 — HTML(칩 폭 계산 공짜 + d3 가 SVG mousedown 을 삼키는 문제 회피). 컨테이너는 포인터 통과. */}
                 {scales && showLabels && (
-                    <div style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, overflow: "hidden", pointerEvents: "none" }}>
-                        {/* 테마 모드에선 선이 숨은 라벨들 — **흐리게 남겨 손잡이 노릇만** 한다(사용자 확정).
-                            지우면 그 타점들이 화면에서 영영 사라져 이동·선택·사각선택이 다 죽는다. */}
-                        {clusters.map((c) => {
-                            const left = c.x - box.left;
-                            const top = c.y - box.top;
-                            const faded = themeMode ? { opacity: 0.45 } : null;
-                            if (c.members.length > 1) {
-                                // 뱃지도 라벨과 같은 쪽(점의 바깥) — 손잡이의 자리 규칙은 하나여야 한다.
-                                return (
-                                    <button key={`c${c.x}|${c.y}`} onClick={(e) => setBadge({ x: e.clientX, y: e.clientY, members: c.members })}
-                                        onMouseEnter={() => setBadgeHover(c.members)} onMouseLeave={() => setBadgeHover(null)}
-                                        title={`${c.members.length}개 뭉침 — 올리면 무리가 ${themeMode ? "나타나고(테마는 잠시 접힌다)" : "켜지고"}, 누르면 목록`}
-                                        style={{ ...chip, ...labelPlacement(left).style, top, ...badgeChip, ...faded }}>
-                                        {c.members.length}
-                                    </button>
-                                );
-                            }
-                            const s = byKey.get(c.members[0]);
-                            if (!s) return null;
-                            const pl = labelPlacement(left);
-                            return (
-                                <button key={`c${c.x}|${c.y}`} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openGroupMenuFor(s, e)}
-                                    onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
-                                    title={`${nameOf(s.stockCode)} ${s.date} — ${themeMode ? "올리면 이 골격선(테마는 잠시 접힌다) · " : ""}클릭=선택·이동 · Ctrl+클릭=다중선택 · 우클릭=그룹`}
-                                    style={{ ...chip, ...labelBg, ...pl.style, top, ...faded }}>
-                                    {labelOf(s, pl.dotFirst)}
-                                </button>
-                            );
-                        })}
-                        {/* 선택·호버 라벨은 묶음 밖 — 언제나 그린다. ⚠ 호버 핸들러 필수: 라벨이 이 블록으로 옮겨
-                            그려질 때 원래 엘리먼트가 언마운트라 mouseleave 를 안 쏜다(없으면 호버가 영영 안 풀린다). */}
-                        {[...pinnedKeys].map((key) => {
-                            const s = byKey.get(key);
-                            if (!s) return null;
-                            const p = labelPointOf(s, labelAnchorMode);
-                            const { v, color } = visualOf(key);
-                            const pl = labelPlacement(scales.x(p.x) - box.left);
-                            return (
-                                <button key={key} onClick={(e) => onLabelClick(s, e)} onContextMenu={(e) => openGroupMenuFor(s, e)}
-                                    onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}
-                                    title={`${nameOf(s.stockCode)} ${s.date} — ${(s.kind === "point" || isDaily) && effSelected.has(s.key) && effSelected.size === 1
-                                        ? `다시 클릭=${candles.codes.has(s.stockCode) ? "캔들 끄기" : "캔들 켜기"} · `
-                                        : "클릭=선택·이동 · "}Ctrl+클릭=선택 해제 · 우클릭=그룹`}
-                                    style={{
-                                        ...chip, ...labelBg, ...pl.style, top: scales.y(p.y) - box.top,
-                                        color, fontWeight: 700,
-                                        // 선택된 것에만 상자 — 상태를 가진 컨트롤이라 그렇게 보여야 한다(눈으로 찾기도 쉽다).
-                                        ...(v.role === "selected" ? selectedChip(color) : {}),
-                                    }}>
-                                    {labelOf(s, pl.dotFirst)}
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <LabelLayer
+                        clusters={clusters} pinnedKeys={pinnedKeys} byKey={byKey}
+                        scales={scales} box={box}
+                        labelAnchorMode={labelAnchorMode} labelAtStart={labelAtStart}
+                        themeMode={themeMode}
+                        visualOf={(key) => { const { v, color } = visualOf(key); return { selected: v.role === "selected", color }; }}
+                        nameOf={nameOf}
+                        isCandleOn={(code) => candles.codes.has(code)}
+                        canToggleCandle={(s) => (s.kind === "point" || isDaily) && effSelected.has(s.key) && effSelected.size === 1}
+                        onLabelClick={onLabelClick}
+                        onLabelContext={openGroupMenuFor}
+                        onHover={setHovered}
+                        onBadgeOpen={(at, members) => setBadge({ ...at, members })}
+                        onBadgeHover={setBadgeHover}
+                    />
                 )}
 
                 {/* 사각 선택 상자(Ctrl+드래그) */}
@@ -1508,32 +1436,3 @@ const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
 const axisAbsText: CSSProperties = { fontSize: 8.5, fill: "var(--text-quaternary, var(--text-tertiary))", opacity: 0.75, fontVariantNumeric: "tabular-nums" };
 /** 크로스헤어 뱃지 안의 절대값 — 같은 뱃지에 이어 붙되 색으로 갈린다(뱃지를 둘로 나누면 축이 복잡해진다). */
 const axisBadgeAbs: CSSProperties = { color: "var(--text-tertiary)" };
-// 라벨 — 상자 없이 후광 글자 + 그 선 색의 점(F안). **색 점은 언제나 끝점을 마주 보는 쪽**에 서서
-// 이 글자가 어느 선의 것인지 가리킨다(칩이 점 바깥에 서므로 칩의 안쪽 끝이 곧 점 쪽이다).
-const chip: CSSProperties = {
-    position: "absolute", pointerEvents: "auto", cursor: "pointer", whiteSpace: "nowrap",
-    display: "inline-flex", alignItems: "center", gap: 3,
-    fontFamily: "var(--font-sans)", fontSize: 9, lineHeight: "11px", fontVariantNumeric: "tabular-nums",
-    padding: 0, border: "none", background: "none", color: "var(--text-primary)",
-    textShadow: "0 0 3px var(--bg-primary), 0 0 3px var(--bg-primary), 0 0 2px var(--bg-primary)",
-};
-/**
- * 얽힌 선 **위에 얹히는** 라벨의 판독 배경 — 후광 글자(F안)만으로는 선이 밀집한 자리에서 글자가 묻힌다
- * (사용자 지적: 테마 값·타점 라벨이 골격 선에 가려 안 읽힘). 반투명 배경이 뒤 선을 죽이지 않으면서
- * 글자 자리만 비워 준다. 거터처럼 빈 자리에 서는 라벨은 후광만으로 충분해 이걸 안 얹는다.
- */
-const labelBg: CSSProperties = {
-    background: "color-mix(in srgb, var(--bg-primary) 85%, transparent)",
-    borderRadius: 3, padding: "0 3px", textShadow: "none",
-};
-// 뱃지는 상자 유지 — 누르면 목록이 열리는 컨트롤이라 그렇게 보여야 한다.
-const badgeChip: CSSProperties = {
-    padding: "0 4px", borderRadius: 6, background: "var(--bg-secondary)",
-    border: "1px solid var(--border-subtle)", color: "var(--text-secondary)", textShadow: "none",
-};
-const labelDot = (color: string): CSSProperties => ({ width: 4, height: 4, borderRadius: 2, background: color, flexShrink: 0 });
-/** 선택된 라벨만 상자를 되받는다 — 클릭이 실제로 먹었다는 신호가 색만으로는 약하다. */
-const selectedChip = (color: string): CSSProperties => ({
-    background: "var(--bg-secondary)", border: `1px solid ${color}`, borderRadius: 3,
-    padding: "1px 4px", textShadow: "none",
-});
