@@ -71,13 +71,8 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
     const shown = useMemo(() => monthItems.slice(0, MAX_ROWS), [monthItems]);
     const groups = useMemo(() => groupByChart(shown), [shown]);
 
-    // 이름이 필요한 코드 = 그린 행 + **지금 선택**. 선택은 이 달·이 집합 밖일 수 있는데(고정 줄이 있는
-    // 이유가 그거다) 행에서만 모으면 정작 그 줄만 이름 대신 코드가 뜬다.
-    const nameCodes = useMemo(
-        () => (subject ? [...shown.map((i) => i.stockCode), subject.code] : shown.map((i) => i.stockCode)),
-        [shown, subject],
-    );
-    const { nameOf } = useStockNames(nameCodes);
+    // 종목명 — 사전 한 벌(전량)에서. 선택이 이 달·이 집합 밖이어도(고정 줄이 있는 이유) 이름이 나온다.
+    const { nameOf } = useStockNames();
 
     // 지금 선택이 보는 집합 안에 있나 — 없으면 찾아갈 자리가 없다(달을 바꿔도 행이 없다).
     // 하루 선택은 그 차트의 행이 하나라도 있으면 찾아간다(타점 해상도라도 그 하루의 타점 행으로).

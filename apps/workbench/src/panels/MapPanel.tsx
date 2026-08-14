@@ -251,9 +251,8 @@ function SidePanel({
     onSetParent: (id: string, parentId: string | null) => void;
 }): JSX.Element {
     const members = useMemo(() => (picked ? membersOf(memberships, picked.id) : []), [memberships, picked]);
-    // 상한 `.slice(0, 200)` 은 뺐다 — 그건 큰 요청을 피하려던 자기 나름의 방어였는데, 넘치는 종목이
-    // 이름 없이 남는 대가를 치렀다. 나누는 일은 이제 훅이 한다.
-    const { nameOf } = useStockNames(useMemo(() => members.map((m) => m.stockCode), [members]));
+    const { nameOf } = useStockNames(); // 사전 한 벌(전량) — 코드 모아 넘기던 시절의 인자는 사라졌다
+
 
     return (
         <div style={{ width: 210, flex: "none", borderLeft: "1px solid var(--border-default)", overflowY: "auto", fontSize: 11 }}>

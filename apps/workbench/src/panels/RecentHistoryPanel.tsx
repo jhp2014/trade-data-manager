@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useWorkbench } from "../store/workbench.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { weekdayOf } from "../lib/date.js";
@@ -27,10 +27,8 @@ export function RecentHistoryPanel(): JSX.Element {
         if (e) rowRefs.current.get(`${e.date}|${e.code}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }, [historyCursor, history]);
 
-    // 종목명 해소 — 공용 훅이 이미 받아둔 피드로 먼저 답하고 남은 것만 묻는다. 주석(선/타점) 없는
-    // 종목도 그 배치 조회가 받아내므로, 이 패널이 자기 몫의 이름 조회를 따로 들 이유가 없어졌다.
-    const codes = useMemo(() => history.map((e) => e.code), [history]);
-    const { nameOf } = useStockNames(codes);
+    // 종목명 — 사전 한 벌(전량)에서.
+    const { nameOf } = useStockNames();
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
