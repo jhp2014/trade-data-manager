@@ -100,10 +100,25 @@ describe("테마 켜짐 — 층 순서", () => {
         expect(layers.indexOf("candles")).toBeLessThan(layers.indexOf("theme-lines"));
     });
 
-    it("테마가 켜져도 층 목록과 순서는 그대로 — 켜고 끄는 것이 순서를 안 바꾼다", () => {
+    // ⚠ 지시선은 눈금 숫자 칸을 **가로지른다** — 나중에 그리면 점선이 숫자 위에 얹혀 둘 다 못 읽는다.
+    // 클립 밖이라는 것과는 별개의 규약이고, 테마를 켜야만 존재하므로 여기서만 잴 수 있다.
+    it("지시선이 눈금보다 먼저 — 숫자가 점선 위에 얹혀야 읽힌다", () => {
+        const layers = layersOf(renderThemed());
+        expect(layers.indexOf("theme-leaders")).toBeLessThan(layers.indexOf("axis-ticks"));
+    });
+
+    it("거터 이름은 맨 위 — 그림 상자 밖 HTML 층이라 무엇에도 안 가린다", () => {
+        const layers = layersOf(renderThemed());
+        expect(layers.indexOf("theme-gutter")).toBe(layers.length - 1);
+    });
+
+    it("테마가 켜져도 그림 층의 목록과 순서는 그대로 — 켜고 끄는 것이 순서를 안 바꾼다", () => {
+        // 켜면 지시선(맨 앞)·거터(맨 뒤)가 **더해질 뿐** 사이의 그림 층은 그대로다.
         expect(layersOf(renderThemed())).toEqual([
+            "theme-leaders", "axis-ticks",
             "candles", "theme-lines", "theme-hit", "skeleton-lines",
             "pin-verticals", "line-hit", "pivot-handles", "amount-labels", "levels",
+            "theme-gutter",
         ]);
     });
 });

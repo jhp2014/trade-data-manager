@@ -39,7 +39,9 @@ describe.each([
     it(`${label}: 층이 전부 그려진다 — 조건부로 비어도 자리는 남는다`, () => {
         const layers = layersOf(renderPanel());
         // 자리가 남아야 순서를 잴 수 있다. 내용이 비는 층(테마·핀)도 껍데기 <g> 는 나온다.
+        // 테마가 꺼져 있으면 지시선·거터는 **아예 없다**(켰을 때만 서는 층 — themeLayer 테스트가 본다).
         expect(layers).toEqual([
+            "axis-ticks",
             "candles",
             "theme-lines",
             "theme-hit",
