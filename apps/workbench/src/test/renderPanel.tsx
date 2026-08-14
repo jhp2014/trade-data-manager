@@ -9,7 +9,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { AnchoredChart, AxisLine, CandidateDay, ComputedAxisFeed, RankAxis, ReviewPointListItem, SkeletonFeed } from "@trade-data-manager/wire";
+import type { AnchoredChart, AxisLine, CandidateDay, ComputedAxisFeed, DayReplay, RankAxis, ReviewPointListItem, SkeletonFeed } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
     allPointsQuery, anchoredChartsQuery, axisLinesQuery, candidateDaysQuery, computedAxesQuery,
@@ -30,6 +30,11 @@ export interface Seed {
     axes?: RankAxis[];
     axisLines?: AxisLine[];
     computedAxes?: ComputedAxisFeed[];
+    /**
+     * 그날 복기 파생(테마 선·거래대금의 재료). 키는 골격 패널 전용이다 — 복기 보드와 **일부러 갈라져**
+     * 있다(응답이 ~15MB 라 gcTime 이 긴 보드 캐시와 섞이면 힙에 여러 날이 앉는다, useDaySnapshot 참고).
+     */
+    daySnapshot?: { date: string; data: DayReplay };
 }
 
 const EMPTY_SKELETONS: SkeletonFeed = { daily: [], minute: [], levels: [] };
@@ -51,6 +56,7 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(rankAxesQuery().queryKey, seed.axes ?? []);
     qc.setQueryData(axisLinesQuery().queryKey, seed.axisLines ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
+    if (seed.daySnapshot) qc.setQueryData(["skeleton-day-src", seed.daySnapshot.date], seed.daySnapshot.data);
     return qc;
 }
 

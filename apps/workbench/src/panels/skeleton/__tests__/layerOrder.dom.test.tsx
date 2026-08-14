@@ -11,48 +11,9 @@
 //
 // 층 표식은 `<g data-layer="...">` 다. 그리기와 무관한 속성이라 이 표식 자체가 화면을 안 바꾼다.
 import { describe, it, expect } from "vitest";
-import type { ReviewPointListItem, SkeletonFeed } from "@trade-data-manager/wire";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
-
-const CODE = "005930";
-const DATE = "2026-07-08";
-
-const TIME = "09:30:00";
-/** 타점 시각을 자정 기준 분으로 — 분봉 피벗의 t 가 이 통화다. */
-const TIME_MIN = 9 * 60 + 30;
-
-/**
- * ⚠ 두 해상도의 `t` 는 **통화가 다르다** — 일봉은 창 안 거래일 인덱스, 분봉은 벽시계 분.
- * 그리고 분봉 골격은 **타점 시각에 피벗이 있어야** 선이 선다(합성 규칙: "타점 종가 = 골격의 한 점").
- * 없으면 그 타점을 지어내지 않고 건너뛰므로 화면이 통째로 비고, 그러면 순서 검사가 빈 화면을 상대로
- * 헛돈다. 아래 마지막 테스트가 그 함정을 지킨다.
- */
-const dailyEntry: SkeletonFeed["daily"][number] = {
-    stockCode: CODE,
-    date: DATE,
-    pivots: [{ t: 0, price: 10_000 }, { t: 3, price: 12_000 }, { t: 6, price: 11_000 }],
-};
-const minuteEntry: SkeletonFeed["minute"][number] = {
-    stockCode: CODE,
-    date: DATE,
-    pivots: [
-        { t: TIME_MIN - 5, price: 10_000 },
-        { t: TIME_MIN, price: 12_000, synthetic: true }, // 타점 시각 — 이 점이 없으면 선이 안 선다
-        { t: TIME_MIN + 5, price: 11_000 },
-    ],
-    prevClose: 9_500, // %p 공간의 분모 — 없으면 결손으로 빠진다
-};
-
-const feed: SkeletonFeed = {
-    daily: [dailyEntry],
-    minute: [minuteEntry],
-    levels: [{ stockCode: CODE, date: DATE, levels: [{ price: 9_800, baseline: true }] }],
-};
-
-const points: ReviewPointListItem[] = [
-    { stockCode: CODE, date: DATE, time: TIME, name: "삼성전자" },
-];
+import { points, skeletonFeed as feed } from "./overlayFixture.js";
 
 /** 그림 상자 안(클립 그룹)의 층 표식을 **그린 순서대로**. */
 function layersOf(container: HTMLElement): string[] {
