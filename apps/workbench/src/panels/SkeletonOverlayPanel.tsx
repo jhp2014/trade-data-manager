@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties, 
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import { RISE_COLOR, FALL_COLOR } from "../chart/chartUtils.js";
 import {
-    dailyFrame, pointUnitFrame, splitAtX, polylinePoints, pct,
+    dailyFrame, pointUnitFrame, pct,
     lineOpacity, dimOpacity, labelPointOf, labelHandles, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
     amountRuns,
     type LineVisual, type NormalizedSkeleton, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
@@ -15,13 +15,17 @@ import { OverlayHeader } from "./skeleton/OverlayHeader.js";
 import { OverlayFooter } from "./skeleton/OverlayFooter.js";
 import { LabelLayer, LABEL_CELL } from "./skeleton/LabelLayer.js";
 import { labelDot } from "./skeleton/chips.js";
-import { amountLevelOf, amountLookupOf, runWidth } from "./skeleton/amountLayer.js";
+import { amountLevelOf, amountLookupOf } from "./skeleton/amountLayer.js";
 import { AmountLabels, useAmountLabels, type AmountSource } from "./skeleton/AmountLabels.js";
 import { useThemeLabels, useThemeOverlay } from "./skeleton/useThemeOverlay.js";
 import { usePivotPins } from "./skeleton/usePivotPins.js";
 import { PinReadout, PinVerticals, PivotHandles, READOUT_OFFSET, readoutBox } from "./skeleton/PinLayer.js";
-import { ThemeGutter, ThemeLeaders, ThemeLines } from "./skeleton/ThemeLayer.js";
-import { CandleLayer } from "./skeleton/CandleLayer.js";
+import { ThemeGutter, ThemeLeaders, ThemeHit } from "./skeleton/ThemeLayer.js";
+import { skeletonLinesLayer } from "./skeleton/skeletonLinesLayer.js";
+import { candleLayer } from "./skeleton/candleLayer.js";
+import { themeLinesLayer } from "./skeleton/themeLinesLayer.js";
+import { SvgLayer } from "./skeleton/SvgPainter.js";
+import { flatten, orderPaint, type DrawLayer } from "./skeleton/drawList.js";
 import { pickReadouts, layoutReadoutRows, type ReadoutCandidate } from "./skeleton/readout.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
@@ -66,6 +70,10 @@ const PAD = { right: 14, top: 12, bottom: 24 };
 const PAD_LEFT = { plain: 46, gutter: 122 };
 /** 피벗 점 예산 — **원 개수**로 센다(골격당 피벗 수가 3~6으로 제각각이라 골격 수로 세면 임계가 두 배 흔들린다). */
 const DOT_BUDGET = 1200;
+
+/** 꺼져 있어도 **층의 자리는 남긴다** — 순서 규약을 켜고 끔과 무관하게 재려면 빈 층이 서 있어야 한다. */
+const EMPTY_CANDLES: DrawLayer = { name: "candles", groups: [] };
+const EMPTY_THEME_LINES: DrawLayer = { name: "theme-lines", groups: [] };
 /**
  * 무리(선택·그룹) 안에서 안 짚은 선의 진하기. 색은 그대로 두고 이만큼만 물러난다 —
  * 목록 행을 훑을 때 짚은 하나가 무리 안에서도 또렷이 서게(굵기 차이만으론 약했다, 사용자 지적).
@@ -702,117 +710,53 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                                 {/* 다른 라벨을 짚는 동안엔 캔들이 **잠시 사라진다**(사용자 확정) — 같은 종목의 형제 선을
                                     짚을 때도 마찬가지다. 그 순간의 질문은 "이 선 vs 저 선"이라 봉이 비교를 방해한다.
                                     진하기 자체는 헤더의 선명도 단계가 정한다 — 배경으로 깔지, 같이 읽을지가 상황마다 다르다. */}
-                                <g data-layer="candles">
-                                    {candles.set && (
-                                        <CandleLayer set={candles.set} scales={scales} box={box}
-                                            anchorShown={candles.anchorShown} memberShown={candles.memberShown} opacityOf={candles.opacityOf} />
-                                    )}
-                                </g>
+                                {/* ── 테마 선은 골격보다 **먼저**(배경이고 주인공은 내 골격).
+                                    다른 골격선을 보는 동안엔 접는다(swapped) — 두 무리가 겹치면 안 갈린다.
+                                    접혀 있어도 층의 **자리는 남긴다** — 순서가 켜고 끔에 따라 달라지면 잴 수가 없다.
 
-                                {/* ── 테마 선 + 히트라인 — 골격보다 **먼저** 그린다(배경이고 주인공은 내 골격).
-                                    다른 골격선을 보는 동안엔 접는다(swapped) — 두 무리가 겹치면 안 갈린다. */}
+                                    ⚠ 세 그림 층은 **붙어 있어야 한다**(PAINT_ORDER 주석): 캔버스 한 장은 스택에서
+                                    자리를 하나만 차지하므로 사이에 손짓 층이 끼면 옮길 때 순서를 재현 못 한다. */}
+                                {orderPaint({
+                                    candles: candles.set
+                                        ? candleLayer({
+                                            set: candles.set, scales, box,
+                                            anchorShown: candles.anchorShown, memberShown: candles.memberShown, opacityOf: candles.opacityOf,
+                                        })
+                                        : EMPTY_CANDLES,
+                                    "theme-lines": themeOverlay && !theme.swapped
+                                        ? themeLinesLayer({
+                                            overlay: themeOverlay, runs: theme.runs, hovered: theme.hovered,
+                                            project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
+                                            clip: viewX, lineStep,
+                                        })
+                                        : EMPTY_THEME_LINES,
+                                    "skeleton-lines": skeletonLinesLayer({
+                                        lines, scales, box,
+                                        lineShown: theme.lineShown,
+                                        visualOf,
+                                        opacity: { dimmed, recede: RECEDE_OPACITY, base: baseOpacity },
+                                        isPointUnit,
+                                        amounts: amountWidthOn ? amounts : null,
+                                        project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
+                                        lineStep,
+                                        dotsForAll,
+                                        pins,
+                                        fmtX: (x) => fmtX(x, xUnit),
+                                        fmtPct,
+                                        timeOfMinutes,
+                                        clamp,
+                                    }),
+                                }).map((l) => <SvgLayer key={l.name} layer={l} />)}
+
+                                {/* 테마 히트라인 — 그림 뭉치 **뒤**에 선다. 그림 층은 포인터를 안 받으므로
+                                    손짓끼리의 우선순위(핀 세로선 < 이것 < 골격 히트 < 피벗 손잡이)는 그대로다. */}
                                 {themeOverlay && !theme.swapped ? (
-                                    <ThemeLines overlay={themeOverlay} runs={theme.runs} hovered={theme.hovered}
+                                    <ThemeHit overlay={themeOverlay} hitStep={hitStep}
                                         pathOf={(pts, step) => pathOf(themePath(pts, step), scales)}
-                                        clip={viewX} lineStep={lineStep} hitStep={hitStep}
                                         onHover={theme.setHovered} onToggleCandle={candles.toggle} />
                                 ) : (
-                                    // 접혀 있어도 층의 **자리는 남긴다** — 그리는 순서가 켜고 끔에 따라 달라지면
-                                    // 순서 규약을 잴 수가 없다(층 순서 테스트가 이 빈 자리까지 확인한다).
-                                    <>
-                                        <g data-layer="theme-lines" />
-                                        <g data-layer="theme-hit" />
-                                    </>
+                                    <g data-layer="theme-hit" />
                                 )}
-
-                                <g data-layer="skeleton-lines">
-                                {lines.map((s) => {
-                                    // 테마 모드에선 선택선·짚은 것·뱃지 무리만 그린다(나머지는 라벨만 남는다).
-                                    if (!theme.lineShown(s.key)) return null;
-                                    const { v, color } = visualOf(s.key);
-                                    const pts = polylinePoints(s, scales.x, scales.y);
-                                    const lit = v.role !== "base";
-                                    return (
-                                        // 선은 순수 그림 — 포인터를 안 받는다(손잡이는 라벨). 캔버스로 옮겨도 조작이 안 바뀐다.
-                                        // 진하기 = 역할이 정한다: 흐림(무리 밖) < 물러남(무리 안이지만 안 짚은 것) < 앞(짚은 것).
-                                        <g key={s.key} opacity={v.dim ? dimmed : v.recede ? RECEDE_OPACITY : lit ? 1 : baseOpacity} style={{ pointerEvents: "none" }}>
-                                            {/* 선택에만 넓은 반투명 밑선 — 색만으로는 "붙잡혔다"가 잘 안 읽힌다. */}
-                                            {/* 선택 글로우(넓은 반투명 밑선)는 **폐기**(사용자 확정) — 굵기가 세 번째 차원을
-                                                지는 지금은 글로우가 그 굵기를 가려버린다. 역할은 색이 진다: 선택 = 하늘(ACTIVE),
-                                                호버 = 앰버, 테마 = 무채색. 색이 다른 일(거래대금)을 안 하게 됐으니 그걸로 충분하다. */}
-                                            {/* 미래는 점선 — 타점 단위 선은 원점(자기 시각) 이후 전부.
-                                                타점까지가 판단, 이후는 결과라는 문장이다. */}
-                                            {(() => {
-                                                const splitX = isPointUnit ? 0 : undefined;
-                                                // 거래대금이 붙은 선은 **선분마다 색이 달라** 한 폴리라인으로 못 그린다.
-                                                // 역할색(선택 하늘)을 잃지 않는 건 글로우(위의 넓은 밑선)가 이미 "붙잡혔다"를
-                                                // 말하기 때문 — 그래서 선 색을 통째로 값에 내줄 수 있다(사용자 확정).
-                                                if (amountWidthOn && amounts && amounts.key === s.key) {
-                                                    // 색은 선 본연의 역할색(선택 파랑) 그대로 — 굵기만 거래대금이 정한다.
-                                                    // 미래 구간은 점선 대신 **옅게**(조각이 분 단위라 점선이 굵기와 싸워 둘 다 못 읽힌다).
-                                                    return amounts.runs.map((r, i) => (
-                                                        <polyline key={`rn${i}`} points={pathOf(themePath(r.points, lineStep), scales)} fill="none"
-                                                            stroke={color} strokeWidth={runWidth(r.level, 1)} strokeLinecap="round" strokeLinejoin="round"
-                                                            opacity={splitX != null && r.points[0].x >= splitX ? 0.4 : 1} />
-                                                    ));
-                                                }
-                                                if (splitX == null) return <polyline points={pts} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />;
-                                                const { past, future } = splitAtX(s.points, splitX);
-                                                return (
-                                                    <>
-                                                        {past.length >= 2 && <polyline points={polylinePoints({ ...s, points: past }, scales.x, scales.y)} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" />}
-                                                        {future.length >= 2 && <polyline points={polylinePoints({ ...s, points: future }, scales.x, scales.y)} fill="none" stroke={color} strokeWidth={v.width} strokeLinejoin="round" strokeDasharray="4 4" />}
-                                                    </>
-                                                );
-                                            })()}
-                                            {/* 합성점(타점 종가)은 속 빈 원 — 손으로 찍은 점과 구분된다. 손이 올라간 점은 커진다. */}
-                                            {(lit || dotsForAll) && s.points.map((p, i) => {
-                                                const r = pins.shown(s.key, i) ? 5 : lit ? 3 : 2;
-                                                return p.synthetic
-                                                    ? <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={r} fill="var(--bg-primary)" stroke={color} strokeWidth={1.2} />
-                                                    : <circle key={i} cx={scales.x(p.x)} cy={scales.y(p.y)} r={r} fill={color} />;
-                                            })}
-                                            {/* 피벗 좌표 — **짚은 점에만**(호버 미리보기 또는 클릭으로 붙잡은 것). 예전엔 조사 중인
-                                                골격의 점 전부에 떴는데 분봉은 꺾인 점이 많아 화면이 숫자로 뒤덮였다(사용자 지적).
-                                                **원점 좌표축에 내려 읽는다**(사용자 확정): 점 → 가로축으로 수직 점선, 점 → 세로축으로
-                                                수평 점선, 값은 각 축의 발치에(기간은 x축 아래, %는 y축 옆). 점 옆에 두 값을 붙이면
-                                                라벨끼리 겹치고 "이 점이 축의 어디냐"가 눈으로 안 잡힌다.
-                                                축이 화면 밖으로 밀려나면(팬) 발치를 화면 가장자리로 잡는다 — 값을 못 읽는 것보단 낫다. */}
-                                            {/* 값은 뷰 공간 + **괄호에 절대값**(사용자 확정 — 분봉만): 평행이동량이 상수라
-                                                벽시계 = x + t₀, 전일 종가 대비 % = y + baseRate 로 복원된다. 일봉엔 괄호가 없다
-                                                (baseT 가 거래일 인덱스라 벽시계가 아니고, 앵커 대비 %가 그 자체로 값이다). */}
-                                            {s.points.map((p, i) => {
-                                                // 원점 제외는 **일봉만** — 앵커 대비 (0,0)은 무의미하지만, 분봉의 원점은
-                                                // 괄호(타점 시각·절대 등락률)가 실값이고 테마 값을 펴는 호버 자리다(사용자 확정).
-                                                if (!pins.shown(s.key, i) || (s.kind !== "point" && p.x === 0 && p.y === 0)) return null;
-                                                const px = scales.x(p.x);
-                                                const py = scales.y(p.y);
-                                                const ax = clamp(scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
-                                                const ay = clamp(scales.y(0), box.top, box.top + box.height); // 가로축(기간을 읽는 자리)
-                                                const below = ay + 12 <= box.top + box.height; // x축 아래에 자리가 없으면 위로
-                                                const leftSide = ax - box.left > 44; // y축 왼쪽에 자리가 없으면 오른쪽으로
-                                                // 붙잡은 값은 계속 또렷하게, 스치는 미리보기는 한 단계 물러난다(붙잡았다는 게 보이게).
-                                                const pin = pins.isPinned(s.key, i);
-                                                const val: CSSProperties = { fontSize: pin ? 11 : 10, fontWeight: pin ? 700 : 400, fill: color, fontVariantNumeric: "tabular-nums" };
-                                                return (
-                                                    <g key={`pv${i}`} opacity={pin ? 1 : 0.75}>
-                                                        <line x1={px} x2={px} y1={py} y2={ay} stroke={color} strokeWidth={pin ? 1.2 : 0.8} strokeDasharray="2 3" opacity={pin ? 0.9 : 0.55} />
-                                                        <line x1={px} x2={ax} y1={py} y2={py} stroke={color} strokeWidth={pin ? 1.2 : 0.8} strokeDasharray="2 3" opacity={pin ? 0.9 : 0.55} />
-                                                        <text x={px} y={ay + (below ? 12 : -5)} textAnchor="middle"
-                                                            stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
-                                                            {fmtX(p.x, xUnit)}{s.kind === "point" ? ` (${timeOfMinutes(p.x + s.baseT)})` : ""}
-                                                        </text>
-                                                        <text x={ax + (leftSide ? -4 : 4)} y={py - 3} textAnchor={leftSide ? "end" : "start"}
-                                                            stroke="var(--bg-primary)" strokeWidth={3.5} paintOrder="stroke" style={val}>
-                                                            {fmtPct(p.y)}{s.kind === "point" ? ` (${fmtPct(p.y + s.baseRate)})` : ""}
-                                                        </text>
-                                                    </g>
-                                                );
-                                            })}
-                                        </g>
-                                    );
-                                })}
-                                </g>
 
                                 {/* 붙잡은 피벗의 세로선 — 테마 값을 펼치는 손잡이.
                                     ⚠ **피벗 손잡이보다 먼저** 그린다(PinLayer 머리 주석 — 겪은 버그). */}

@@ -89,10 +89,16 @@ describe("테마 켜짐 — 층 순서", () => {
     const layersOf = (c: HTMLElement): string[] =>
         [...c.querySelectorAll("[data-layer]")].map((el) => el.getAttribute("data-layer")!);
 
-    it("테마 선 → 히트라인 → 골격선 순 — 배경이 먼저, 손잡이가 그 위, 주인공이 맨 위", () => {
+    it("테마 선 → 골격선 → 히트라인 순 — 배경이 먼저, 주인공이 그 위, 손짓은 그림 뭉치 뒤", () => {
         const layers = layersOf(renderThemed());
-        expect(layers.indexOf("theme-lines")).toBeLessThan(layers.indexOf("theme-hit"));
-        expect(layers.indexOf("theme-hit")).toBeLessThan(layers.indexOf("skeleton-lines"));
+        // 그림끼리: 배경(테마)이 주인공(골격) 아래.
+        expect(layers.indexOf("theme-lines")).toBeLessThan(layers.indexOf("skeleton-lines"));
+        // 손짓은 그림 **뒤**로 나가 있다 — 그림 세 층이 붙어 있어야 캔버스 한 장이 그 자리를 대신한다.
+        // 그림 층은 포인터를 안 받으니 이 이동으로 겨냥이 달라지지 않는다.
+        expect(layers.indexOf("skeleton-lines")).toBeLessThan(layers.indexOf("theme-hit"));
+        // 손짓끼리의 우선순위는 그대로 — 테마 히트는 골격 히트·피벗 손잡이보다 아래여야 한다.
+        expect(layers.indexOf("theme-hit")).toBeLessThan(layers.indexOf("line-hit"));
+        expect(layers.indexOf("theme-hit")).toBeLessThan(layers.indexOf("pivot-handles"));
     });
 
     it("캔들은 테마보다도 아래 — 참고용 배경의 배경", () => {
@@ -116,8 +122,9 @@ describe("테마 켜짐 — 층 순서", () => {
         // 켜면 지시선(맨 앞)·거터(맨 뒤)가 **더해질 뿐** 사이의 그림 층은 그대로다.
         expect(layersOf(renderThemed())).toEqual([
             "theme-leaders", "axis-ticks",
-            "candles", "theme-lines", "theme-hit", "skeleton-lines",
-            "pin-verticals", "line-hit", "pivot-handles", "amount-labels", "levels",
+            // 그림 세 층은 붙어 있다(PAINT_ORDER) — 그 뒤로 손짓 층들.
+            "candles", "theme-lines", "skeleton-lines",
+            "theme-hit", "pin-verticals", "line-hit", "pivot-handles", "amount-labels", "levels",
             "theme-gutter",
         ]);
     });

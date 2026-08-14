@@ -3,8 +3,11 @@
 // 세 조각이 서로 다른 좌표계에 산다. 한 파일에 두는 건 셋이 같은 재료(overlay·colorOf·hovered)를 보고
 // 하나만 바뀌어도 나머지가 따라 바뀌기 때문이다:
 //   · ThemeLeaders — 클립 **밖** SVG. 거터 이름과 실제 선을 잇는 지시선.
-//   · ThemeLines   — 클립 **안** SVG. 선(순수 그림)과 그 위의 투명 히트라인.
+//   · ThemeHit     — 클립 **안** SVG. 선 위의 투명 히트라인(손짓만).
 //   · ThemeGutter  — 그림 상자 **왼쪽** HTML. 이름 칩과 넘침 뱃지.
+//
+// 보이는 선 자체는 여기 없다 — 표시목록 빌더(themeLinesLayer)가 진다. 그림은 데이터로 내리고
+// 손짓만 DOM 에 남기는 게 이 패널의 규약이고, 캔버스 전환이 조작을 안 건드리는 이유다.
 //
 // ⚠ **지시선은 눈금보다 먼저 그린다.** 눈금 숫자 칸을 가로지르므로 나중에 그리면 점선이 숫자 위에
 // 얹혀 둘 다 못 읽는다. 클립 밖이라는 것과 별개의 규약이고, 층 순서 테스트가 이걸 잡는다.
@@ -12,8 +15,6 @@ import { fmtPct } from "../../lib/format.js";
 import { clamp, median } from "../../lib/num.js";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 import { badgeChip, chip, labelDot } from "./chips.js";
-import { runWidth } from "./amountLayer.js";
-import { decimate, clipToX, splitAtX, type AmountRun } from "./skeletonOverlay.js";
 import type { ThemeLabel, ThemeOverlay, ThemeView } from "./useThemeOverlay.js";
 
 /**
@@ -61,76 +62,40 @@ export function ThemeLeaders({ labels, scales, box, colorOf, hovered }: {
     );
 }
 
-// ── 선 + 히트라인(클립 안) ──────────────────────────────────────────────────
+// ── 히트라인(클립 안) ───────────────────────────────────────────────────────
 
 /**
- * 분당 종가 경로(%p 평행이동, 세로 간격 보존). 골격보다 **먼저** 그린다: 이건 배경이고 주인공은 내 골격이다.
- * 기본은 무채색 흐림 — 흐린 채색은 색이 아니다(알파가 낮으면 hue 차이가 안 읽힌다).
- * 굵기를 켜면 거래대금 램프로 살아난다. **타점 이후(x ≥ 0)는 앵커 선과 같은 문장** —
- * 폴리라인은 점선, 런은 옅게(굵기와 안 싸우게).
+ * 투명 히트라인 — 선 위에 손을 올리면 거터 라벨과 똑같이 반응한다(사용자 확정).
+ * "선은 순수 그림, 손잡이는 라벨"은 **수백 선**이 얽힐 때 DOM 히트가 겨냥한 걸 안 주기
+ * 때문이었다. 여기 대상은 30선이라 8px 히트 폭이면 충분히 겨냥된다.
+ *
+ * 보이는 선은 표시목록으로 갈라져 나갔다(themeLinesLayer) — 그림은 데이터고 손짓은 DOM 이다.
+ * 캔버스로 옮기는 건 그림 쪽뿐이라 이 층은 그대로 SVG 에 남는다.
+ *
+ * ⚠ **드래그 중이라고 언마운트하면 안 된다**(겪은 버그): d3-zoom 은 움직임이 없어도
+ * **mousedown 에서** 제스처를 시작해 dragging=true 가 된다 → 히트라인이 사라지고 →
+ * mouseup 이 다른 요소에서 나 **click 이 아예 안 뜬다**(선 클릭 캔들 토글이 죽었다).
+ * 이동 비용은 언마운트가 아니라 **화면 구간 자르기 + 솎기**로 줄인다(pathOf).
  */
-export function ThemeLines({ overlay, runs, hovered, pathOf, clip, lineStep, hitStep, onHover, onToggleCandle }: {
+export function ThemeHit({ overlay, pathOf, hitStep, onHover, onToggleCandle }: {
     overlay: ThemeOverlay;
-    runs: ReadonlyMap<string, AmountRun[]> | null;
-    hovered: ReadonlySet<string> | null;
     pathOf: PathOf;
-    /** 보이는 x 구간 — 화면 밖 런은 아예 안 그린다(하루치 런은 대부분 창 밖이다). */
-    clip: { from: number; to: number } | null;
-    lineStep: number;
     hitStep: number;
     onHover: (codes: readonly string[] | null) => void;
     onToggleCandle: (code: string) => void;
 }): JSX.Element {
     return (
-        <>
-            <g data-layer="theme-lines">
-                {overlay.lines.map((l) => {
-                    const lit = hovered?.has(l.code) ?? false;
-                    const r = runs?.get(l.code);
-                    if (!r) {
-                        const { past, future } = splitAtX(decimate(clip ? clipToX(l.points, clip.from, clip.to) : l.points, lineStep), 0);
-                        return (
-                            <g key={`th-${l.code}`} style={{ pointerEvents: "none" }} opacity={lit ? 0.9 : hovered ? 0.2 : 0.45}>
-                                {past.length >= 2 && <polyline points={pathOf(past, 1)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" />}
-                                {future.length >= 2 && <polyline points={pathOf(future, 1)} fill="none" stroke="var(--text-tertiary)" strokeWidth={lit ? 2 : 1} strokeLinejoin="round" strokeDasharray="4 4" />}
-                            </g>
-                        );
-                    }
-                    // 선은 무채색, **굵기가 거래대금**이다. 짚은 것만 또렷해지고 굵기 배수도 커진다.
-                    // 테마 배수를 앵커보다 낮게 잡아 30선이 굵어져도 주인공이 안 묻힌다.
-                    return (
-                        <g key={`th-${l.code}`} style={{ pointerEvents: "none" }} opacity={lit ? 1 : hovered ? 0.25 : 0.55}>
-                            {r.filter((run) => !clip || (run.points[run.points.length - 1].x >= clip.from && run.points[0].x <= clip.to)).map((run, i) => (
-                                <polyline key={i} points={pathOf(run.points, lineStep)} fill="none"
-                                    stroke="var(--text-tertiary)" strokeWidth={runWidth(run.level, lit ? 0.9 : 0.7)}
-                                    strokeLinecap="round" strokeLinejoin="round"
-                                    opacity={run.points[0].x >= 0 ? 0.4 : 1} />
-                            ))}
-                        </g>
-                    );
-                })}
-            </g>
-
-            {/* 투명 히트라인 — 선 위에 손을 올리면 거터 라벨과 똑같이 반응한다(사용자 확정).
-                "선은 순수 그림, 손잡이는 라벨"은 **수백 선**이 얽힐 때 DOM 히트가 겨냥한 걸 안 주기
-                때문이었다. 여기 대상은 30선이라 8px 히트 폭이면 충분히 겨냥된다.
-
-                ⚠ **드래그 중이라고 언마운트하면 안 된다**(겪은 버그): d3-zoom 은 움직임이 없어도
-                **mousedown 에서** 제스처를 시작해 dragging=true 가 된다 → 히트라인이 사라지고 →
-                mouseup 이 다른 요소에서 나 **click 이 아예 안 뜬다**(선 클릭 캔들 토글이 죽었다).
-                이동 비용은 언마운트가 아니라 **화면 구간 자르기 + 솎기**로 줄인다(pathOf). */}
-            <g data-layer="theme-hit">
-                {overlay.lines.map((l) => (
-                    <polyline key={`thh-${l.code}`}
-                        points={pathOf(l.points, hitStep)}
-                        fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
-                        style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                        onClick={() => onToggleCandle(l.code)}
-                        onMouseEnter={() => onHover([l.code])}
-                        onMouseLeave={() => onHover(null)} />
-                ))}
-            </g>
-        </>
+        <g data-layer="theme-hit">
+            {overlay.lines.map((l) => (
+                <polyline key={`thh-${l.code}`}
+                    points={pathOf(l.points, hitStep)}
+                    fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
+                    style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                    onClick={() => onToggleCandle(l.code)}
+                    onMouseEnter={() => onHover([l.code])}
+                    onMouseLeave={() => onHover(null)} />
+            ))}
+        </g>
     );
 }
 

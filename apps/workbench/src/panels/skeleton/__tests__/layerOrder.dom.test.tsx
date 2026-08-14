@@ -14,6 +14,7 @@ import { describe, it, expect } from "vitest";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
 import { points, skeletonFeed as feed } from "./overlayFixture.js";
+import { PAINT_ORDER } from "../drawList.js";
 
 /** 그림 상자 안(클립 그룹)의 층 표식을 **그린 순서대로**. */
 function layersOf(container: HTMLElement): string[] {
@@ -42,16 +43,28 @@ describe.each([
         // 테마가 꺼져 있으면 지시선·거터는 **아예 없다**(켰을 때만 서는 층 — themeLayer 테스트가 본다).
         expect(layers).toEqual([
             "axis-ticks",
+            // 그림 세 층은 **붙어 있다**(PAINT_ORDER) — 캔버스 한 장이 이 자리를 통째로 대신할 수 있게.
             "candles",
             "theme-lines",
-            "theme-hit",
             "skeleton-lines",
+            // 손짓 층은 그 뒤 — 그림은 포인터를 안 받으므로 손짓끼리의 우선순위는 안 바뀐다.
+            "theme-hit",
             "pin-verticals",
             "line-hit",
             "pivot-handles",
             "amount-labels",
             "levels",
         ]);
+    });
+
+    // 3단계(캔버스 전환)의 **전제 조건**을 지킨다. 캔버스 한 장은 스택에서 자리를 하나만 차지하므로
+    // 그림 층 사이에 DOM 손짓 층이 끼면 옮길 때 순서를 재현할 수가 없다. 순서 자체는 PAINT_ORDER 하나가
+    // 쥐고 있으니, 여기서는 그 상수와 화면이 어긋나지 않는지만 본다.
+    it(`${label}: 그림 층이 PAINT_ORDER 순서대로 **붙어서** 나온다`, () => {
+        const layers = layersOf(renderPanel());
+        const at = layers.indexOf(PAINT_ORDER[0]);
+        expect(at, "그림 층이 화면에 없다").toBeGreaterThanOrEqual(0);
+        expect(layers.slice(at, at + PAINT_ORDER.length)).toEqual([...PAINT_ORDER]);
     });
 
     it(`${label}: 캔들이 맨 아래 — 골격이 그 위를 지나야 축약이 원본의 어디를 밟았나가 읽힌다`, () => {
