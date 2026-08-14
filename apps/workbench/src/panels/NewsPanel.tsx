@@ -18,6 +18,7 @@ import {
     useTopVisible,
     type NewsMode,
 } from "../components/news/newsShared.js";
+import { liveNextCursor, replayNextCursor } from "../components/news/newsCursor.js";
 import { PanelHeader } from "../components/ControlChrome.js";
 
 // 뉴스 패널(양 플레인 공통) — HTS(시황) 헤드라인을 최신순으로. plane 이 버스·소스를 고른다:
@@ -48,36 +49,14 @@ function useReplayFeed(args: { code: string; date: string; keyword: string; mode
         initialPageParam: null as HeadlineCursor | null,
         queryFn: ({ pageParam, signal }) =>
             fetchHtsNews({ code: stock ? code : undefined, q: keyword || undefined, date, before: pageParam, limit: PAGE }, signal),
-        getNextPageParam: (lastPage, allPages) => {
-            const dayInitial = stock && !keyword && allPages.length === 1; // "그 날 전체" 페이지 — 짧아도 과거는 남아있다
-            if (!dayInitial && lastPage.length < PAGE) return undefined;
-            for (let i = allPages.length - 1; i >= 0; i--) {
-                const p = allPages[i];
-                if (p.length > 0) {
-                    const oldest = p[p.length - 1];
-                    return { date: oldest.date, srno: oldest.srno };
-                }
-            }
-            return { date, srno: "0" }; // 그 날이 비었어도 과거로는 걸을 수 있다
-        },
+        // 전진 규칙은 newsCursor(순수·테스트) — "그 날 전체" 첫 페이지만 길이 무관 계속.
+        getNextPageParam: (lastPage, allPages) =>
+            replayNextCursor(lastPage, allPages, { date, dayInitial: stock && !keyword && allPages.length === 1, pageSize: PAGE }),
         enabled,
         staleTime: Infinity,
     });
     const items = useMemo(() => flatten(q.data?.pages), [q.data]);
     return { q, items, key };
-}
-
-/** (date,time) 앵커 1초 뒤로 — 한 페이지가 같은 초에 몰려 앵커가 안 움직일 때 강제 전진(무한 루프 방지). */
-function secondBefore({ date, time }: LiveNewsAnchor): LiveNewsAnchor {
-    const [h, m, s] = time.split(":").map(Number);
-    const t = h * 3600 + m * 60 + s - 1;
-    if (t >= 0) {
-        const pad = (n: number): string => String(n).padStart(2, "0");
-        return { date, time: `${pad(Math.floor(t / 3600))}:${pad(Math.floor((t % 3600) / 60))}:${pad(t % 60)}` };
-    }
-    const d = new Date(`${date}T00:00:00`);
-    d.setDate(d.getDate() - 1);
-    return { date: d.toLocaleDateString("en-CA"), time: "23:59:59" };
 }
 
 /** 실시간 피드 — KIS 앵커 되감기. 검색날짜가 오늘이면 최신부터, 과거면 그 날 23:59:59 이하부터. */
@@ -90,13 +69,8 @@ function useLiveFeed(args: { code: string; date: string; keyword: string; mode: 
         initialPageParam: (date === kstToday() ? null : { date, time: "23:59:59" }) as LiveNewsAnchor | null,
         queryFn: ({ pageParam, signal }) =>
             fetchLiveNews({ code: stock ? code : undefined, q: keyword || undefined, before: pageParam ?? undefined }, signal),
-        getNextPageParam: (lastPage, _all, lastPageParam) => {
-            if (lastPage.length === 0) return undefined; // KIS 과거 소진
-            const oldest = lastPage[lastPage.length - 1];
-            const anchor = { date: oldest.date, time: oldest.time };
-            if (lastPageParam && anchor.date === lastPageParam.date && anchor.time === lastPageParam.time) return secondBefore(anchor);
-            return anchor;
-        },
+        // 전진 규칙은 newsCursor(순수·테스트) — 같은 초에 몰려 앵커가 안 움직이면 1초 뒤로 강제 전진.
+        getNextPageParam: (lastPage, _all, lastPageParam) => liveNextCursor(lastPage, lastPageParam),
         enabled,
         staleTime: Infinity,
     });
