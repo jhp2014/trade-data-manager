@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Background,
+    MarkerType,
     ReactFlow,
     ReactFlowProvider,
     applyNodeChanges,
@@ -33,13 +34,16 @@ import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
-import { MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
-import { groupsOnMap, overlaps, placeableGroups, populationCounts, populationFeed, populationMembersOf, type PopulationItem } from "./map/mapView.js";
+import { GROUP_NODE_TYPE, MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
+import { bridgeArrows, groupsOnMap, overlaps, placeableGroups, populationCounts, populationFeed, populationMembersOf, type PopulationItem } from "./map/mapView.js";
 import { chartKey } from "../lib/pointKey.js";
 import { absCenterOf, dropTargetAt, layoutMap, leafSize } from "./map/mapLayout.js";
 
 const SELECTED_KEY = "wb.mapSelected";
 const LIST_KEY = "wb.mapMemberList";
+/** 겹침 숫자 크기 범위 — 이 선택 안의 최댓값이 최대 크기(상대 척도). 정확한 값은 숫자 자체가 준다. */
+const LABEL_MIN_PX = 11;
+const LABEL_MAX_PX = 18;
 
 export function MapPanel(): JSX.Element {
     return (
@@ -49,7 +53,7 @@ export function MapPanel(): JSX.Element {
     );
 }
 
-type MapNode = Node<GroupNodeData, "group">;
+type MapNode = Node<GroupNodeData, typeof GROUP_NODE_TYPE>;
 
 function MapPanelInner(): JSX.Element {
     const mapsQ = useQuery(mapsQuery());
@@ -109,21 +113,43 @@ function MapPanelInner(): JSX.Element {
     }, [bridges, picked]);
 
     // ── 레이아웃 — 컨테이너 좌표 계산은 전부 mapLayout(순수). laid 는 드래그 판정·역변환도 쓴다.
-    // 잎 크기는 **모집단 수**에서 나온다(제곱근 클램프 — leafSize). 기준은 평면에서 가장 큰 잎:
-    // 컨테이너는 자식에서 유도되므로 그 카운트를 최댓값에 넣으면 잎들이 다 같이 작아진다.
-    const sizeById = useMemo(() => {
-        const hasChild = new Set(onMap.map((g) => g.parentId).filter((id): id is string => id !== null));
-        const leafCounts = onMap.filter((g) => !hasChild.has(g.id)).map((g) => counts.get(g.id) ?? 0);
-        const max = leafCounts.length > 0 ? Math.max(...leafCounts) : 0;
-        return new Map(onMap.map((g) => [g.id, leafSize(counts.get(g.id) ?? 0, max)]));
-    }, [onMap, counts]);
-
+    // 잎 크기는 **이름**에서만 나온다(수는 고정 칸 — 필터로 수가 바뀔 때 상자가 들썩이지 않게).
     const laid = useMemo(
         () => layoutMap(onMap.map((g) => {
-            const s = sizeById.get(g.id)!;
+            const s = leafSize(g.name);
             return { id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0, w: s.w, h: s.h };
         })),
-        [onMap, sizeById],
+        [onMap],
+    );
+    const laidById = useMemo(() => new Map(laid.map((n) => [n.id, n])), [laid]);
+
+    /**
+     * 겹침 선 — **짚은 그룹에서 나가는 화살표**. 겹침 자체는 대칭이라 방향은 데이터가 아니라 시선이다
+     * (다른 그룹을 짚으면 통째로 뒤집힌다). 굵기는 전부 같고 **숫자 크기**가 겹침 수를 나른다 —
+     * 두께와 숫자는 같은 값을 두 번 말하는 것이었고, 정확한 값은 숫자가 이미 준다.
+     * 크기는 짚은 그룹 **안에서의 상대**(최댓값이 최대 크기) — 절대 척도면 다들 고만고만해 안 갈린다.
+     * 붙는 변은 두 상자의 상대 위치가 정한다(sidesBetween) — 그래야 곡선이 변의 법선으로 빠져나간다.
+     */
+    const { arrows, anchorsById } = useMemo(() => {
+        const { arrows, anchors } = bridgeArrows(bridges, picked, (id) => laidById.get(id)?.abs);
+        return { arrows, anchorsById: anchors };
+    }, [bridges, picked, laidById]);
+
+    const edges = useMemo<Edge[]>(
+        () =>
+            arrows.map((a) => ({
+                id: a.id,
+                source: a.from,
+                target: a.to,
+                sourceHandle: `${a.fromSide}-s`,
+                targetHandle: `${a.toSide}-t`,
+                label: String(a.count),
+                markerEnd: { type: MarkerType.ArrowClosed, width: 11, height: 11, color: "var(--text-muted)" },
+                style: { stroke: "var(--text-muted)", strokeWidth: 1.5, opacity: 0.65 },
+                labelShowBg: false,
+                labelStyle: { fontSize: LABEL_MIN_PX + (LABEL_MAX_PX - LABEL_MIN_PX) * a.weight, fill: "var(--text-primary)" },
+            })),
+        [arrows],
     );
 
     const derived = useMemo<MapNode[]>(
@@ -134,38 +160,24 @@ function MapPanelInner(): JSX.Element {
                 const dimmed = picked !== null ? n.id !== picked && !bridgeCountOf.has(n.id) : count === 0 && funnel.isFiltering;
                 return {
                     id: n.id,
-                    type: "group" as const,
+                    type: GROUP_NODE_TYPE,
                     position: n.position,
                     ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
                     zIndex: n.depth,
                     style: { width: n.width, height: n.height },
                     data: {
-                        group: g, count, container: n.container, dot: n.dot,
-                        scale: sizeById.get(n.id)?.scale ?? 0,
+                        group: g, count, container: n.container,
+                        anchors: anchorsById.get(n.id) ?? [],
                         dimmed, picked: picked === n.id,
                     },
                 };
             }),
-        [laid, gv.groupById, counts, sizeById, picked, bridgeCountOf, funnel.isFiltering],
+        [laid, gv.groupById, counts, anchorsById, picked, bridgeCountOf, funnel.isFiltering],
     );
 
     const [nodes, setNodes] = useState<MapNode[]>([]);
     useEffect(() => { setNodes(derived); }, [derived]);
     const onNodesChange = useCallback((cs: NodeChange<MapNode>[]) => setNodes((ns) => applyNodeChanges(cs, ns)), []);
-
-    const edges = useMemo<Edge[]>(
-        () =>
-            bridges.map((o) => ({
-                id: `o:${o.aId}-${o.bId}`,
-                source: o.aId,
-                target: o.bId,
-                label: String(o.count),
-                style: { stroke: ACTIVE, strokeWidth: Math.min(6, 1 + Math.sqrt(o.count)), opacity: 0.65 },
-                labelStyle: { fontSize: 10, fill: ACTIVE },
-                labelBgStyle: { fill: "var(--bg-primary)" },
-            })),
-        [bridges],
-    );
 
     // ── 쓰기 ──────────────────────────────────────────────────────────────
     const invalidateGroups = useCallback(() => void qc.invalidateQueries({ queryKey: groupsQuery().queryKey }), [qc]);

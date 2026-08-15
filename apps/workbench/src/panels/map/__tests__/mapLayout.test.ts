@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-    absCenterOf, BOX_HEADER, BOX_PAD, DOT_MAX, DOT_MIN, dropTargetAt, LABEL_H, LABEL_W,
-    layoutMap, leafSize, type LayoutItem,
+    absCenterOf, BOX_HEADER, BOX_PAD, dropTargetAt, LEAF_H as LEAF_H_CONST, LEAF_MAX_W, LEAF_MIN_W,
+    layoutMap, leafSize, sidesBetween, textWidth, type LayoutItem,
 } from "../mapLayout.js";
 
 /** 기본 잎 — 크기는 호출부가 주는 값이라 테스트는 고정치를 쓴다(레이아웃은 크기의 출처를 모른다). */
@@ -9,36 +9,65 @@ const LEAF_W = 120, LEAF_H = 50;
 const item = (id: string, x: number, y: number, parentId: string | null = null, w = LEAF_W, h = LEAF_H): LayoutItem =>
     ({ id, parentId, x, y, w, h });
 
-describe("leafSize — 수를 지름에 싣되 가둔다", () => {
-    it("0은 최소 지름 — 크기로 아무 말도 안 한다", () => {
-        expect(leafSize(0, 12).d).toBe(DOT_MIN);
-        expect(leafSize(0, 12).scale).toBe(0);
+describe("textWidth — 측정 없이 자폭 어림", () => {
+    it("한글이 영문보다 넓다", () => {
+        expect(textWidth("가나")).toBeGreaterThan(textWidth("ab"));
     });
 
-    it("최댓값은 최대 지름", () => {
-        expect(leafSize(12, 12).d).toBe(DOT_MAX);
-        expect(leafSize(12, 12).scale).toBe(1);
+    it("빈 문자열은 0", () => {
+        expect(textWidth("")).toBe(0);
+    });
+});
+
+describe("leafSize — 폭은 이름만 따른다", () => {
+    it("높이는 한 줄 고정", () => {
+        expect(leafSize("아무거나").h).toBe(LEAF_H_CONST);
     });
 
-    it("제곱근이라 중간값이 선형보다 크다 — 작은 차이도 보이되 큰 값이 화면을 안 잡아먹는다", () => {
-        const mid = leafSize(3, 12).d;
-        const linear = DOT_MIN + (DOT_MAX - DOT_MIN) * (3 / 12);
-        expect(mid).toBeGreaterThan(linear);
-        expect(mid).toBeLessThan(DOT_MAX);
+    it("이름이 길수록 넓다", () => {
+        expect(leafSize("타입: 재돌파[S]").w).toBeGreaterThan(leafSize("돌파").w);
     });
 
-    it("전부 0이면(빈 모집단) 전부 최소 — 0/0 이 NaN 이 되지 않는다", () => {
-        expect(leafSize(0, 0).d).toBe(DOT_MIN);
+    it("짧은 이름도 최소 폭을 지킨다", () => {
+        expect(leafSize("A").w).toBe(LEAF_MIN_W);
     });
 
-    it("상자는 원과 라벨을 함께 감싼다 — 레이아웃이 라벨을 알아야 컨테이너가 안 자른다", () => {
-        const s = leafSize(12, 12);
-        expect(s.h).toBe(s.d + LABEL_H);
-        expect(s.w).toBe(Math.max(s.d, LABEL_W));
+    it("아주 긴 이름은 상한에서 멈춘다 — 나머지는 말줄임이 받는다", () => {
+        expect(leafSize("아주아주아주아주아주아주아주 긴 그룹 이름입니다").w).toBe(LEAF_MAX_W);
     });
 
-    it("작은 원이어도 폭은 라벨 칸을 지킨다", () => {
-        expect(leafSize(0, 12).w).toBe(LABEL_W);
+    // 수가 폭에 들어가면 필터를 걸 때마다 상자가 들썩이고, 그 움직임이 뜻 없는 신호가 된다.
+    it("수는 폭에 영향을 주지 않는다 — 인자로 받지도 않는다", () => {
+        expect(leafSize.length).toBe(1);
+    });
+});
+
+describe("sidesBetween — 마주 보는 변끼리 잇는다", () => {
+    const box = (x: number, y: number) => ({ x, y, w: 100, h: 34 });
+
+    it("오른쪽에 있으면 r→l", () => {
+        expect(sidesBetween(box(0, 0), box(400, 0))).toEqual({ source: "r", target: "l" });
+    });
+
+    it("왼쪽에 있으면 l→r", () => {
+        expect(sidesBetween(box(400, 0), box(0, 0))).toEqual({ source: "l", target: "r" });
+    });
+
+    it("아래에 있으면 b→t", () => {
+        expect(sidesBetween(box(0, 0), box(0, 300))).toEqual({ source: "b", target: "t" });
+    });
+
+    it("위에 있으면 t→b — 위/아래 두 개만 두면 여기서 고리가 생겼다(꼬임의 원인)", () => {
+        expect(sidesBetween(box(0, 300), box(0, 0))).toEqual({ source: "t", target: "b" });
+    });
+
+    it("대각선은 더 긴 축이 이긴다", () => {
+        expect(sidesBetween(box(0, 0), box(400, 100)).source).toBe("r");
+        expect(sidesBetween(box(0, 0), box(100, 400)).source).toBe("b");
+    });
+
+    it("완전히 겹쳐도 답을 낸다 — 화면이 멈추지 않게", () => {
+        expect(sidesBetween(box(0, 0), box(0, 0))).toEqual({ source: "r", target: "l" });
     });
 });
 
@@ -53,21 +82,10 @@ describe("layoutMap — 잎", () => {
         expect(n!.parentId).toBeUndefined();
     });
 
-    it("잎마다 크기가 다르다 — 수가 크기를 정하므로", () => {
-        const laid = layoutMap([item("a", 0, 0, null, 104, 52), item("b", 300, 0, null, 160, 96)]);
+    it("잎마다 폭이 다를 수 있다 — 이름 길이가 정하므로", () => {
+        const laid = layoutMap([item("a", 0, 0, null, 104, 34), item("b", 300, 0, null, 160, 34)]);
         expect(laid.find((n) => n.id === "a")!.width).toBe(104);
-        expect(laid.find((n) => n.id === "b")!.height).toBe(96);
-    });
-
-    it("잎의 원 지름은 라벨을 뺀 높이 — 노드가 이걸로 원을 그린다", () => {
-        const s = leafSize(5, 12);
-        const [n] = layoutMap([item("a", 0, 0, null, s.w, s.h)]);
-        expect(n!.dot).toBe(s.d);
-    });
-
-    it("컨테이너는 원이 없다", () => {
-        const laid = layoutMap([item("p", 0, 0), item("c", 0, 0, "p")]);
-        expect(laid.find((n) => n.id === "p")!.dot).toBe(0);
+        expect(laid.find((n) => n.id === "b")!.width).toBe(160);
     });
 });
 
