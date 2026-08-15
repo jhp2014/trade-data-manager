@@ -45,6 +45,19 @@ if (typeof window !== "undefined") {
     Element.prototype.releasePointerCapture = function (): void {};
 
     /**
+     * DOMMatrixReadOnly — jsdom 에 없다. React Flow 가 CSS transform 문자열에서 zoom 을 읽는 데 쓴다
+     * (`new DOMMatrixReadOnly(el.style.transform).m22`). 테스트에서는 변환이 없으니 **항등행렬**이면
+     * 충분하다 — 파싱까지 흉내 내면 그 흉내가 또 하나의 검증 대상이 된다.
+     */
+    if (typeof window.DOMMatrixReadOnly === "undefined") {
+        class TestDOMMatrixReadOnly {
+            m11 = 1; m12 = 0; m21 = 0; m22 = 1; m41 = 0; m42 = 0;
+            a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
+        }
+        window.DOMMatrixReadOnly = TestDOMMatrixReadOnly as unknown as typeof DOMMatrixReadOnly;
+    }
+
+    /**
      * 네트워크 그물 — 화면 테스트는 **캐시에 심은 것만** 먹고 살아야 한다(renderPanel 머리 주석).
      *
      * 왜 그냥 막는 걸로는 부족한가: 쿼리를 안 심으면 react-query 가 그대로 서버를 부르는데, 실패해도

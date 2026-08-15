@@ -1,9 +1,20 @@
-// 유사도 맵 패널의 순수 계산 — 평면 위 그룹의 배치·중첩·겹침. 그리기와 제스처는 React Flow 가 진다.
+// 맵 패널의 순수 계산 — 평면 위 그룹의 소속·겹침을 **모집단 기준**으로 센다.
 //
-// **점은 항목이 아니라 그룹이다.** 그래서 여기 있는 건 좌표 변환이 아니라 관계 계산이다:
-// 어느 그룹이 이 평면에 있나 · 누가 누구 안에 있나 · 두 그룹이 얼마나 겹치나(징검다리).
+// 맵은 깔때기의 여느 구독자와 같다: 재료는 "지금 보는 집합"(짚은 칸 반영, 없으면 최종 생존)이고,
+// 판정은 깔때기와 같은 적용 집합(appliedGroupIdsOf — 직접 ∪ 하루상속 ∪ 계층조상)이다. 맵만 다른
+// 잣대로 세면 골격·시트와 숫자가 어긋나고, 그 어긋남은 화면 어디에도 신호가 없다.
+//
+// 겹침(징검다리)은 저장하지 않고 매번 센다. 조상–자손 쌍은 뺀다 — 포함관계는 컨테이너 영역으로
+// 이미 보이는 것이지 징검다리가 아니다(overlaps 의 groupById 옵션).
 import type { Group, GroupMembership } from "../../api/groups.js";
 import { isAncestorOf } from "../../lib/groupTree.js";
+
+/** 모집단 항목 — 깔때기 FunnelItem 과 같은 모양(시각 없으면 하루). */
+export interface PopulationItem {
+    stockCode: string;
+    date: string;
+    time?: string;
+}
 
 /** 이 평면에 올라와 있는 그룹만(좌표가 있는 것). 안 올린 그룹은 사전에만 있다. */
 export function groupsOnMap(groups: readonly Group[], mapId: string): Group[] {
@@ -15,20 +26,34 @@ export function placeableGroups(groups: readonly Group[], scope: string): Group[
     return groups.filter((g) => g.mapId === null && g.scope === scope);
 }
 
-/** 그룹별 멤버 수 — 노드 크기와 목록에 쓴다. */
-export function memberCounts(feed: readonly GroupMembership[]): Map<string, number> {
+/** 이 그룹의 자식들(직계만). */
+export const childrenOf = (groups: readonly Group[], id: string): Group[] => groups.filter((g) => g.parentId === id);
+
+/**
+ * 모집단 → 의사 멤버십 피드. groupIds = 항목의 **적용** 집합(주입 — 깔때기와 같은 판정).
+ * 카운트·겹침·멤버 목록이 전부 이 피드 하나에서 나온다(항목당 판정 1회).
+ */
+export function populationFeed(
+    items: readonly PopulationItem[],
+    appliedIdsOf: (item: PopulationItem) => readonly string[],
+): GroupMembership[] {
+    return items.map((i) => ({ stockCode: i.stockCode, date: i.date, ...(i.time !== undefined ? { time: i.time } : {}), groupIds: [...appliedIdsOf(i)] }));
+}
+
+/** 그룹별 모집단 소속 수 — 노드에 쓰는 숫자. 적용 집합 기준이라 자식 소속도 부모에 센다(항목당 1회). */
+export function populationCounts(feed: readonly GroupMembership[]): Map<string, number> {
     const m = new Map<string, number>();
     for (const x of feed) for (const id of x.groupIds) m.set(id, (m.get(id) ?? 0) + 1);
     return m;
 }
 
-/** 한 그룹의 멤버 항목들 — 노드를 눌렀을 때 "어떤 종목이 들었나". */
-export function membersOf(feed: readonly GroupMembership[], groupId: string): GroupMembership[] {
+/** 짚은 그룹의 모집단 멤버 — 목록 패널. */
+export function populationMembersOf(feed: readonly GroupMembership[], groupId: string): GroupMembership[] {
     return feed.filter((m) => m.groupIds.includes(groupId));
 }
 
 /**
- * 두 그룹의 멤버 겹침 = **징검다리**. 저장하지 않고 멤버십에서 센다.
+ * 두 그룹의 멤버 겹침 = **징검다리**. 저장하지 않고 피드에서 센다.
  * 한 항목의 그룹이 k 개면 쌍은 k(k-1)/2 — 손으로 붙이는 수라 k 는 작고 전체는 항목 수에 선형이다.
  * `only` 를 주면 그 그룹이 낀 쌍만 — 전부 그리면 그룹이 늘수록 실뭉치가 된다(선택 기반이 기본).
  * `groupById` 를 주면 **조상–자손 쌍은 뺀다** — 상속을 편 피드에서 자식 소속은 부모와 반드시 겹치는데,
@@ -55,21 +80,3 @@ export function overlaps(
         return { aId: aId!, bId: bId!, count };
     });
 }
-
-/**
- * 중첩 깊이 — 부모를 타고 올라간 횟수. 들여쓰기·크기에 쓴다.
- * 순환은 저장 경로가 막지만, 옛 데이터가 있어도 그리기가 멈추지 않게 상한을 둔다.
- */
-export function depthOf(groups: readonly Group[], id: string): number {
-    const byId = new Map(groups.map((g) => [g.id, g]));
-    let d = 0;
-    let cur = byId.get(id);
-    while (cur?.parentId != null && d <= groups.length) {
-        cur = byId.get(cur.parentId);
-        d++;
-    }
-    return d;
-}
-
-/** 이 그룹의 자식들(직계만). */
-export const childrenOf = (groups: readonly Group[], id: string): Group[] => groups.filter((g) => g.parentId === id);

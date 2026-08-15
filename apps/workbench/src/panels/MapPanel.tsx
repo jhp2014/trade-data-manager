@@ -1,20 +1,18 @@
-// 유사도 맵 — **그룹 사이의 구조를 보는 평면**.
+// 그룹 맵 — **그룹 사이의 구조를 보고, 탐색 후보를 재는 평면.**
 //
-// 점은 항목이 아니라 그룹이다. 종목·날짜를 낱개로 흩뿌리면 모든 쌍에 거리가 생기는데 실제로 주장하려던
-// 건 일부 이웃 관계뿐이고, 나머지는 나중에 의미로 오독되는 부산물이다. 묶고 쪼개는 판단은 골격 패널에서
-// 형태를 보며 하고(닮은 골격이 한눈에 보인다), 여기서는 그 결과의 관계만 본다.
+// 맵은 깔때기의 여느 구독자다(읽기): 모집단 = "지금 보는 집합"(짚은 칸 반영, 없으면 최종 생존)이고,
+// 노드 숫자·겹침 선이 전부 그 기준이다 — 골격·시트와 같은 잣대. 그리고 쓰기는 단 하나, 짚은 그룹을
+// **필터에 추가**(addFilterStage 한 번)뿐이다. 맵은 그 단계를 만든 뒤 잊는다 — 지우기·순서·on/off 는
+// 필터 보드의 일이고, 그래서 "탐색하다 실수로 조건을 만들었다"가 원리적으로 없다.
 //
-// 의미는 **명시적인 것**에 있다: 중첩(그룹 안 그룹)과 겹침(징검다리). 위치는 시각화용이다 —
-// 붙여 놓은 둘은 "닮았다"는 주장이지만 멀리 있는 둘은 "안 닮았다"가 아니라 아직 아무 말도 안 한 것이다.
-//
-// ⚠ 겹침 엣지는 **선택한 그룹의 것만** 그린다. 전부 그리면 그룹이 늘수록 실뭉치가 되고, 평소엔 깨끗하되
-// 짚으면 그 그룹의 관계가 드러나는 쪽이 읽기 좋다.
+// 구조(포함관계)는 **영역**으로 그린다: 컨테이너 자리·크기는 자식들에서 유도(mapLayout), 부모 지정은
+// 노드를 영역 안에 떨어뜨리는 드래그다(dropTargetAt — 안에 있음 = 하위다, 시각과 의미가 같다).
+// 겹침(징검다리) 선은 짚은 그룹의 것만 — 전부 그리면 실뭉치가 된다. 조상–자손 쌍은 안 그린다(포함은
+// 영역으로 이미 보인다).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Background,
-    Controls,
-    MiniMap,
     ReactFlow,
     ReactFlowProvider,
     applyNodeChanges,
@@ -27,17 +25,20 @@ import "@xyflow/react/dist/style.css";
 import { mapsQuery, groupsQuery } from "../api/queries.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { createMap, type MapScope } from "../api/map.js";
-import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group } from "../api/groups.js";
+import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group, type GroupMembership, type GroupMove } from "../api/groups.js";
 import { useGroups } from "../lib/GroupsContext.js";
+import { useFunnel } from "./filter/FunnelContext.js";
 import { PanelHeader } from "../components/ControlChrome.js";
 import { usePersistedState } from "../store/persist.js";
+import { useWorkbench } from "../store/workbench.js";
+import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
 import { MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
-import { childrenOf, depthOf, groupsOnMap, memberCounts, membersOf, overlaps, placeableGroups } from "./map/mapView.js";
+import { groupsOnMap, overlaps, placeableGroups, populationCounts, populationFeed, populationMembersOf } from "./map/mapView.js";
+import { absCenterOf, dropTargetAt, layoutMap } from "./map/mapLayout.js";
 
 const SELECTED_KEY = "wb.mapSelected";
-/** 저장 좌표를 노드의 **중심**으로 — 겹침 엣지가 노드 가운데를 잇게. */
-const NODE_ORIGIN: [number, number] = [0.5, 0.5];
+const LIST_KEY = "wb.mapMemberList";
 
 export function MapPanel(): JSX.Element {
     return (
@@ -52,8 +53,10 @@ type MapNode = Node<GroupNodeData, "group">;
 function MapPanelInner(): JSX.Element {
     const mapsQ = useQuery(mapsQuery());
     const gv = useGroups();
+    const funnel = useFunnel();
     const qc = useQueryClient();
-    const { fitView } = useReactFlow();
+    const { fitView, screenToFlowPosition } = useReactFlow();
+    const wrapRef = useRef<HTMLDivElement | null>(null);
 
     const maps = mapsQ.data ?? [];
     const [savedId, setSavedId] = usePersistedState<string | null>(SELECTED_KEY, (o) => (typeof o === "string" ? o : null), null);
@@ -61,81 +64,91 @@ function MapPanelInner(): JSX.Element {
 
     const onMap = useMemo(() => (activeMap ? groupsOnMap(gv.groups, activeMap.id) : []), [gv.groups, activeMap]);
     const offMap = useMemo(() => (activeMap ? placeableGroups(gv.groups, activeMap.scope) : []), [gv.groups, activeMap]);
-    const counts = useMemo(() => memberCounts(gv.memberships), [gv.memberships]);
+    const onMapIds = useMemo(() => new Set(onMap.map((g) => g.id)), [onMap]);
 
-    const [picked, setPicked] = useState<string | null>(null); // 짚은 그룹 — 목록·겹침 엣지의 기준
+    // ── 모집단 — 깔때기 "보는 집합"에 적용 판정(깔때기와 같은 appliedGroupIdsOf)을 항목당 1회.
+    const popFeed = useMemo<GroupMembership[]>(
+        () => (funnel.isLoading ? [] : populationFeed(funnel.viewedItems, (i) => gv.appliedGroupIdsOf(i))),
+        [funnel.isLoading, funnel.viewedItems, gv],
+    );
+    const counts = useMemo(() => populationCounts(popFeed), [popFeed]);
+
+    const [picked, setPicked] = useState<string | null>(null); // 짚은 그룹 — 세션 시선(조건이 아니다)
+    const [showList, setShowList] = usePersistedState<boolean>(LIST_KEY, (o) => (typeof o === "boolean" ? o : null), false);
     const pickedGroup = picked === null ? null : (gv.groupById.get(picked) ?? null);
+    useEffect(() => { if (picked !== null && !onMapIds.has(picked)) setPicked(null); }, [picked, onMapIds]);
 
-    // ── 노드 ──────────────────────────────────────────────────────────────
+    // ── 겹침(징검다리) — 짚은 그룹의 것만, 조상–자손 쌍 제외.
+    const bridges = useMemo(
+        () => (picked === null ? [] : overlaps(popFeed, { within: onMapIds, only: picked, groupById: gv.groupById })),
+        [picked, popFeed, onMapIds, gv.groupById],
+    );
+    const bridgeCountOf = useMemo(() => {
+        const m = new Map<string, number>();
+        for (const b of bridges) m.set(b.aId === picked ? b.bId : b.aId, b.count);
+        return m;
+    }, [bridges, picked]);
+
+    // ── 레이아웃 — 컨테이너 좌표 계산은 전부 mapLayout(순수). laid 는 드래그 판정·역변환도 쓴다.
+    const laid = useMemo(
+        () => layoutMap(onMap.map((g) => ({ id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0 }))),
+        [onMap],
+    );
+
     const derived = useMemo<MapNode[]>(
         () =>
-            onMap.map((g) => ({
-                id: g.id,
-                type: "group" as const,
-                position: { x: g.x ?? 0, y: g.y ?? 0 },
-                data: {
-                    group: g,
-                    count: counts.get(g.id) ?? 0,
-                    depth: depthOf(onMap, g.id),
-                    hasChildren: childrenOf(onMap, g.id).length > 0,
-                },
-            })),
-        [onMap, counts],
+            laid.map((n) => {
+                const g = gv.groupById.get(n.id)!;
+                const count = counts.get(n.id) ?? 0;
+                const dimmed = picked !== null ? n.id !== picked && !bridgeCountOf.has(n.id) : count === 0 && funnel.isFiltering;
+                return {
+                    id: n.id,
+                    type: "group" as const,
+                    position: n.position,
+                    ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
+                    zIndex: n.depth,
+                    style: { width: n.width, height: n.height },
+                    data: { group: g, count, container: n.container, dimmed, picked: picked === n.id },
+                };
+            }),
+        [laid, gv.groupById, counts, picked, bridgeCountOf, funnel.isFiltering],
     );
 
     const [nodes, setNodes] = useState<MapNode[]>([]);
-    useEffect(() => {
-        // 선택은 RF 가 노드에 들고 있으므로 갈아끼울 때 살려 둔다(재계산마다 선택이 풀리지 않게).
-        setNodes((prev) => {
-            const sel = new Map(prev.map((n) => [n.id, n.selected === true]));
-            return derived.map((n) => ({ ...n, selected: sel.get(n.id) ?? false }));
-        });
-    }, [derived]);
+    useEffect(() => { setNodes(derived); }, [derived]);
     const onNodesChange = useCallback((cs: NodeChange<MapNode>[]) => setNodes((ns) => applyNodeChanges(cs, ns)), []);
 
-    // ── 엣지 ──────────────────────────────────────────────────────────────
-    // 중첩(부모→자식)은 상시, 겹침은 짚은 그룹의 것만. 둘을 색으로 가른다.
-    const edges = useMemo<Edge[]>(() => {
-        const ids = new Set(onMap.map((g) => g.id));
-        const nesting: Edge[] = onMap
-            .filter((g) => g.parentId !== null && ids.has(g.parentId))
-            .map((g) => ({
-                id: `n:${g.parentId}-${g.id}`,
-                source: g.parentId!,
-                target: g.id,
-                style: { stroke: "var(--border-strong)", strokeWidth: 1 },
-                animated: false,
-            }));
-        if (picked === null) return nesting;
-        const bridges: Edge[] = overlaps(gv.memberships, { within: ids, only: picked }).map((o) => ({
-            id: `o:${o.aId}-${o.bId}`,
-            source: o.aId,
-            target: o.bId,
-            label: String(o.count),
-            style: { stroke: ACTIVE, strokeWidth: Math.min(6, 1 + Math.sqrt(o.count)) },
-            labelStyle: { fontSize: 10, fill: ACTIVE },
-            labelBgStyle: { fill: "var(--bg-primary)" },
-        }));
-        return [...nesting, ...bridges];
-    }, [onMap, gv.memberships, picked]);
+    const edges = useMemo<Edge[]>(
+        () =>
+            bridges.map((o) => ({
+                id: `o:${o.aId}-${o.bId}`,
+                source: o.aId,
+                target: o.bId,
+                label: String(o.count),
+                style: { stroke: ACTIVE, strokeWidth: Math.min(6, 1 + Math.sqrt(o.count)), opacity: 0.65 },
+                labelStyle: { fontSize: 10, fill: ACTIVE },
+                labelBgStyle: { fill: "var(--bg-primary)" },
+            })),
+        [bridges],
+    );
 
     // ── 쓰기 ──────────────────────────────────────────────────────────────
     const invalidateGroups = useCallback(() => void qc.invalidateQueries({ queryKey: groupsQuery().queryKey }), [qc]);
 
     const moveMut = useMutation({
-        mutationFn: (moves: { id: string; x: number; y: number }[]) => moveGroups(moves),
+        mutationFn: (moves: GroupMove[]) => moveGroups(moves),
         onError: invalidateGroups, // 낙관 갱신이 거짓이 된 채 남지 않게
+    });
+    const parentMut = useMutation({
+        mutationFn: (v: { id: string; parentId: string | null }) => setGroupParent(v.id, v.parentId),
+        onSuccess: invalidateGroups,
+        onError: (e: Error) => { window.alert(e.message); invalidateGroups(); }, // 순환 등은 서버가 막는다 — 이유를 보여준다
     });
     const placeMut = useMutation({
         mutationFn: (v: { id: string; mapId: string; x: number; y: number }) => placeGroup(v.id, v.mapId, v.x, v.y),
         onSuccess: invalidateGroups,
     });
     const unplaceMut = useMutation({ mutationFn: (id: string) => unplaceGroup(id), onSuccess: invalidateGroups });
-    const parentMut = useMutation({
-        mutationFn: (v: { id: string; parentId: string | null }) => setGroupParent(v.id, v.parentId),
-        onSuccess: invalidateGroups,
-        onError: (e: Error) => window.alert(e.message), // 다른 평면·순환은 서버가 막는다 — 이유를 보여준다
-    });
     const createMapMut = useMutation({
         mutationFn: (v: { name: string; scope: MapScope }) => createMap(v.name, v.scope),
         onSuccess: (m) => {
@@ -147,25 +160,78 @@ function MapPanelInner(): JSX.Element {
         mutationFn: (v: { name: string; scope: MapScope }) => createGroup(v.name, v.scope),
         onSuccess: async (g) => {
             if (!activeMap) return;
-            await placeGroup(g.id, activeMap.id, 0, 0); // 만들자마자 평면 가운데에 올린다
+            const c = viewCenter(); // 만들자마자 **보이는 자리**에 — (0,0) 고정은 겹쳐 쌓인다
+            await placeGroup(g.id, activeMap.id, c.x, c.y);
             invalidateGroups();
         },
     });
 
-    /** 드래그가 끝난 노드들의 최종 좌표를 커밋 — 좌표는 클라가 저자라 **invalidate 하지 않는다**. */
-    const commitMove = useCallback(
-        (dragged: MapNode[]) => {
-            const moves = dragged.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }));
-            if (moves.length === 0) return;
-            qc.setQueryData<Group[]>(groupsQuery().queryKey, (cur) =>
-                cur?.map((g) => {
-                    const m = moves.find((v) => v.id === g.id);
-                    return m ? { ...g, x: m.x, y: m.y } : g;
-                }),
-            );
-            moveMut.mutate(moves);
+    /** 지금 보이는 화면의 가운데(flow 좌표) — 새 그룹·올리기의 착지점. */
+    const viewCenter = useCallback((): { x: number; y: number } => {
+        const rect = wrapRef.current?.getBoundingClientRect();
+        if (!rect) return { x: 0, y: 0 };
+        return screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    }, [screenToFlowPosition]);
+
+    /** id 의 자손 전부(맵 위) — 컨테이너를 끌면 자식 절대좌표도 함께 움직인 것이라 같이 커밋해야 한다. */
+    const descendantsOf = useCallback((id: string): Group[] => {
+        const out: Group[] = [];
+        let frontier = [id];
+        while (frontier.length > 0) {
+            const next = onMap.filter((g) => g.parentId !== null && frontier.includes(g.parentId));
+            out.push(...next);
+            frontier = next.map((g) => g.id);
+            if (out.length > onMap.length) break; // 순환 방어(저장 경로가 막지만 옛 데이터 대비)
+        }
+        return out;
+    }, [onMap]);
+
+    /**
+     * 드래그 끝 — 끌던 노드들의 이동 delta 를 절대좌표로 되돌려 커밋하고(자손 포함 — 컨테이너의 자식은
+     * RF 상대좌표가 그대로라 저장 좌표를 직접 밀어야 다음 렌더에서 제자리가 유지된다), 떨어진 자리가
+     * 다른 그룹의 영역이면 부모를 바꾼다. 좌표 커밋은 한 번에(부분 실패 방지, moveGroups 규약).
+     * ⚠ setState 업데이터 밖에서 처리한다 — 업데이터 안의 mutate 는 StrictMode 에서 두 번 발사된다.
+     */
+    const onNodeDragStop = useCallback(
+        (_e: unknown, node: MapNode, dragged: MapNode[]) => {
+            const moves: GroupMove[] = [];
+            for (const d of dragged.length > 0 ? dragged : [node]) {
+                const before = laid.find((n) => n.id === d.id);
+                if (!before) continue;
+                const parent = before.parentId !== undefined ? laid.find((n) => n.id === before.parentId) : undefined;
+                const newAbs = { x: (parent?.abs.x ?? 0) + d.position.x, y: (parent?.abs.y ?? 0) + d.position.y };
+                const dx = newAbs.x - before.abs.x;
+                const dy = newAbs.y - before.abs.y;
+                if (dx === 0 && dy === 0) continue;
+                for (const g of [gv.groupById.get(d.id), ...descendantsOf(d.id)]) {
+                    if (!g || g.x === null || g.y === null) continue;
+                    moves.push({ id: g.id, x: g.x + dx, y: g.y + dy });
+                }
+            }
+            if (moves.length > 0) {
+                qc.setQueryData<Group[]>(groupsQuery().queryKey, (list) =>
+                    list?.map((g) => {
+                        const m = moves.find((v) => v.id === g.id);
+                        return m ? { ...g, x: m.x, y: m.y } : g;
+                    }),
+                );
+                moveMut.mutate(moves);
+            }
+            // 부모 판정은 끌던 노드만 — 떨어진 절대 중심이 어느 영역 안인가(제 자손은 후보에서 빠진다).
+            const center = absCenterOf(laid, node.id, node.position);
+            if (center) {
+                const target = dropTargetAt(laid, center, node.id);
+                const currentParent = gv.groupById.get(node.id)?.parentId ?? null;
+                if (target !== currentParent) parentMut.mutate({ id: node.id, parentId: target });
+            }
         },
-        [qc, moveMut],
+        [laid, gv.groupById, descendantsOf, qc, moveMut, parentMut],
+    );
+
+    const addFilterStage = useWorkbench((s) => s.addFilterStage);
+    const addToFilter = useCallback(
+        (groupId: string) => addFilterStage([{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }]),
+        [addFilterStage],
     );
 
     // ── 렌더 ──────────────────────────────────────────────────────────────
@@ -183,123 +249,145 @@ function MapPanelInner(): JSX.Element {
                 </select>
                 <button onClick={() => fitView({ duration: 250 })} title="전부 화면에 담기">원위치</button>
                 <NewGroup busy={createGroupMut.isPending} onCreate={(name) => activeMap && createGroupMut.mutate({ name, scope: activeMap.scope })} />
-                <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>그룹 {onMap.length}{offMap.length > 0 && ` · 안 올림 ${offMap.length}`}</span>
+                {offMap.length > 0 && activeMap && (
+                    <PlacePalette
+                        groups={offMap}
+                        onPlace={(id) => { const c = viewCenter(); placeMut.mutate({ id, mapId: activeMap.id, x: c.x, y: c.y }); }}
+                    />
+                )}
+                <button onClick={() => setShowList(!showList)} title="짚은 그룹의 모집단 멤버 목록"
+                    style={{ color: showList ? ACTIVE : undefined }}>목록</button>
+                <span style={{ color: "var(--text-tertiary)", flexShrink: 0, marginLeft: "auto" }}>
+                    모집단 {funnel.isLoading ? "…" : popFeed.length}{funnel.isFiltering ? "" : " (전체)"}
+                </span>
             </PanelHeader>
 
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-                <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+                <div ref={wrapRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
                     <ReactFlow<MapNode>
                         nodes={nodes}
                         edges={edges}
                         onNodesChange={onNodesChange}
                         nodeTypes={MAP_NODE_TYPES}
-                        nodeOrigin={NODE_ORIGIN}
-                        onlyRenderVisibleElements
                         nodesConnectable={false}
                         edgesFocusable={false}
                         minZoom={0.05}
                         maxZoom={4}
-                        onNodeDragStop={(_e, _n, dragged) => commitMove(dragged)}
-                        onNodeClick={(_e, n) => setPicked(n.id)}
+                        proOptions={{ hideAttribution: true }}
+                        onNodeDragStop={onNodeDragStop}
+                        onNodeClick={(_e, n) => setPicked((cur) => (cur === n.id ? null : n.id))}
                         onPaneClick={() => setPicked(null)}
                     >
                         <Background gap={40} size={1} />
-                        <Controls showInteractive={false} />
-                        <MiniMap pannable zoomable nodeStrokeWidth={2} style={{ width: 120, height: 80 }} />
                     </ReactFlow>
 
                     {onMap.length === 0 && (
                         <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", color: "var(--text-tertiary)" }}>
-                            그룹을 만들어 올리거나, 오른쪽에서 올리세요
+                            그룹을 만들거나 "올리기"에서 올리세요
                         </div>
+                    )}
+
+                    {pickedGroup && (
+                        <PickedBar
+                            path={gv.pathLabel(pickedGroup.id, pickedGroup.name)}
+                            count={counts.get(pickedGroup.id) ?? 0}
+                            onAddFilter={() => addToFilter(pickedGroup.id)}
+                            onUnplace={() => { unplaceMut.mutate(pickedGroup.id); setPicked(null); }}
+                        />
                     )}
                 </div>
 
-                <SidePanel
-                    picked={pickedGroup}
-                    memberships={gv.memberships}
-                    onMap={onMap}
-                    offMap={offMap}
-                    countOf={(id) => counts.get(id) ?? 0}
-                    onPlace={(id) => activeMap && placeMut.mutate({ id, mapId: activeMap.id, x: 0, y: 0 })}
-                    onUnplace={(id) => { unplaceMut.mutate(id); setPicked(null); }}
-                    onSetParent={(id, parentId) => parentMut.mutate({ id, parentId })}
-                />
+                {showList && (
+                    <MemberList picked={pickedGroup} feed={popFeed} totalOf={(id) => gv.countOf(id)} />
+                )}
             </div>
         </div>
     );
 }
 
-/** 오른쪽 판 — 짚은 그룹의 멤버(어떤 종목이 들었나)와 중첩 편집, 그리고 안 올린 그룹 목록. */
-function SidePanel({
-    picked,
-    memberships,
-    onMap,
-    offMap,
-    countOf,
-    onPlace,
-    onUnplace,
-    onSetParent,
-}: {
-    picked: Group | null;
-    memberships: ReturnType<typeof useGroups>["memberships"];
-    onMap: Group[];
-    offMap: Group[];
-    countOf: (id: string) => number;
-    onPlace: (id: string) => void;
-    onUnplace: (id: string) => void;
-    onSetParent: (id: string, parentId: string | null) => void;
+/** 짚은 그룹의 작업줄 — 맵의 **유일한 쓰기**(필터에 추가)와 배치 해제가 여기 모인다. */
+function PickedBar({ path, count, onAddFilter, onUnplace }: {
+    path: string; count: number;
+    onAddFilter: () => void; onUnplace: () => void;
 }): JSX.Element {
-    const members = useMemo(() => (picked ? membersOf(memberships, picked.id) : []), [memberships, picked]);
-    const { nameOf } = useStockNames(); // 사전 한 벌(전량) — 코드 모아 넘기던 시절의 인자는 사라졌다
+    return (
+        <div style={{
+            position: "absolute", left: 8, bottom: 8, zIndex: 10,
+            display: "flex", alignItems: "center", gap: 8, padding: "5px 9px",
+            background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 7,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.25)", fontSize: 12,
+        }}>
+            <span style={{ fontWeight: 600 }} title={path}>{path}</span>
+            <span style={{ color: "var(--text-tertiary)" }}>모집단 {count}</span>
+            <button onClick={onAddFilter} title="이 그룹을 필터 단계로 추가 — 지우기·수정은 필터 보드에서"
+                style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
+            <button onClick={onUnplace} title="평면에서 내린다(그룹은 남는다)">내리기</button>
+        </div>
+    );
+}
 
+/** 안 올린 그룹 팔레트 — 헤더의 작은 팝오버. 올리면 화면 가운데에 놓인다. */
+function PlacePalette({ groups, onPlace }: { groups: Group[]; onPlace: (id: string) => void }): JSX.Element {
+    const [open, setOpen] = useState(false);
+    return (
+        <span style={{ position: "relative" }}>
+            <button onClick={() => setOpen((v) => !v)} style={{ color: open ? ACTIVE : undefined }}>올리기 {groups.length}</button>
+            {open && (
+                <div style={{
+                    position: "absolute", top: "100%", left: 0, zIndex: 20, minWidth: 150, maxHeight: 240, overflowY: "auto",
+                    background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 6, padding: 4,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                }}>
+                    {groups.map((g) => (
+                        <button key={g.id} onClick={() => { onPlace(g.id); setOpen(false); }}
+                            style={{ display: "block", width: "100%", textAlign: "left", padding: "3px 7px", fontSize: 12, border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer" }}>
+                            {g.name}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </span>
+    );
+}
+
+/**
+ * 짚은 그룹의 모집단 멤버 목록(토글) — 행 클릭 = 그 항목으로 이동(타점이면 goToPoint, 하루면 goToDay).
+ * 맵이 탐색의 출발점이 되는 자리다. 숫자는 노드와 같은 잣대(모집단), 전체 부착 수는 참고로만.
+ */
+function MemberList({ picked, feed, totalOf }: {
+    picked: Group | null;
+    feed: readonly GroupMembership[];
+    totalOf: (groupId: string) => number;
+}): JSX.Element {
+    const { nameOf } = useStockNames();
+    const goToPoint = useWorkbench((s) => s.goToPoint);
+    const goToDay = useWorkbench((s) => s.goToDay);
+    const members = useMemo(() => (picked ? populationMembersOf(feed, picked.id) : []), [feed, picked]);
 
     return (
-        <div style={{ width: 210, flex: "none", borderLeft: "1px solid var(--border-default)", overflowY: "auto", fontSize: 11 }}>
+        <div style={{ width: 200, flex: "none", borderLeft: "1px solid var(--border-default)", overflowY: "auto", fontSize: 11 }}>
             {picked === null ? (
-                <div style={{ padding: 8, color: "var(--text-tertiary)" }}>그룹을 누르면 든 종목과 겹침이 보입니다</div>
+                <div style={{ padding: 8, color: "var(--text-tertiary)" }}>그룹을 짚으면 모집단 멤버가 보입니다</div>
             ) : (
                 <div>
                     <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-default)" }}>
                         <div style={{ fontSize: 12 }}>{picked.name}</div>
-                        <div style={{ color: "var(--text-tertiary)" }}>멤버 {members.length}</div>
-                        <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                            <select
-                                value={picked.parentId ?? ""}
-                                onChange={(e) => onSetParent(picked.id, e.target.value === "" ? null : e.target.value)}
-                                style={{ fontSize: 11, maxWidth: 130 }}
-                                title="이 그룹을 어느 그룹 안에 둘지"
-                            >
-                                <option value="">최상위</option>
-                                {onMap.filter((g) => g.id !== picked.id).map((g) => (
-                                    <option key={g.id} value={g.id}>{g.name} 안</option>
-                                ))}
-                            </select>
-                            <button onClick={() => onUnplace(picked.id)} title="평면에서 내린다(그룹은 남는다)">내리기</button>
-                        </div>
+                        <div style={{ color: "var(--text-tertiary)" }}>모집단 {members.length} · 전체 부착 {totalOf(picked.id)}</div>
                     </div>
-                    {members.slice(0, 200).map((m) => (
-                        <div key={`${m.stockCode}|${m.date}|${m.time ?? ""}`} style={{ padding: "2px 8px", display: "flex", justifyContent: "space-between", gap: 6 }}>
-                            <span>{nameOf(m.stockCode)}</span>
-                            <span style={{ color: "var(--text-tertiary)" }}>{m.date.slice(2)}{m.time ? ` ${m.time.slice(0, 5)}` : ""}</span>
-                        </div>
+                    {members.slice(0, 300).map((m) => (
+                        <button
+                            key={`${m.stockCode}|${m.date}|${m.time ?? ""}`}
+                            onClick={() => (m.time !== undefined
+                                ? goToPoint({ code: m.stockCode, date: m.date, time: m.time })
+                                : goToDay({ code: m.stockCode, date: m.date }))}
+                            title="이 항목으로 이동"
+                            style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 6, padding: "2px 8px", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", textAlign: "left" }}
+                        >
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(m.stockCode)}</span>
+                            <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>{shortDate(m.date)}{m.time ? ` ${m.time.slice(0, 5)}` : ""}</span>
+                        </button>
                     ))}
-                    {members.length > 200 && <div style={{ padding: "2px 8px", color: "var(--text-tertiary)" }}>…외 {members.length - 200}건</div>}
-                </div>
-            )}
-
-            {offMap.length > 0 && (
-                <div style={{ borderTop: "1px solid var(--border-strong)", marginTop: 8 }}>
-                    <div style={{ padding: "6px 8px 3px", color: "var(--text-tertiary)" }}>안 올린 그룹 {offMap.length}</div>
-                    {offMap.map((g) => (
-                        <div key={g.id} style={{ padding: "2px 8px", display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
-                            <span>{g.name}</span>
-                            <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                                <span style={{ color: "var(--text-tertiary)" }}>{countOf(g.id)}</span>
-                                <button onClick={() => onPlace(g.id)} title="이 평면에 올린다">올리기</button>
-                            </span>
-                        </div>
-                    ))}
+                    {members.length > 300 && <div style={{ padding: "2px 8px", color: "var(--text-tertiary)" }}>…외 {members.length - 300}건</div>}
                 </div>
             )}
         </div>
@@ -323,8 +411,8 @@ function NewGroup({ onCreate, busy }: { onCreate: (name: string) => void; busy: 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-                placeholder="새 그룹 (미정1…)"
-                style={{ fontSize: 11, width: 110 }}
+                placeholder="새 그룹"
+                style={{ fontSize: 11, width: 90 }}
             />
             <button disabled={busy || name.trim() === ""} onClick={submit}>추가</button>
         </span>
