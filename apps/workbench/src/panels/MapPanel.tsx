@@ -44,6 +44,14 @@ const LIST_KEY = "wb.mapMemberList";
 /** 겹침 숫자 크기 범위 — 이 선택 안의 최댓값이 최대 크기(상대 척도). 정확한 값은 숫자 자체가 준다. */
 const LABEL_MIN_PX = 11;
 const LABEL_MAX_PX = 18;
+/**
+ * 겹침 선 색 — ⚠ **이 앱 테마에 있는 변수만 쓴다.** `--text-muted` 는 없는 이름이라 stroke 가
+ * 무효값이 되어 선이 통째로 안 그려졌다(화살촉·숫자만 떠 있었다). 정의는 styles/theme.css.
+ */
+const EDGE_COLOR = "var(--text-tertiary)";
+/** 부채꼴 곡률 — 첫 선은 완만하게, 뒤로 갈수록 더 휜다. */
+const EDGE_CURVE_BASE = 0.25;
+const EDGE_CURVE_STEP = 0.22;
 
 export function MapPanel(): JSX.Element {
     return (
@@ -137,15 +145,18 @@ function MapPanelInner(): JSX.Element {
 
     const edges = useMemo<Edge[]>(
         () =>
-            arrows.map((a) => ({
+            arrows.map((a, i) => ({
                 id: a.id,
                 source: a.from,
                 target: a.to,
                 sourceHandle: `${a.fromSide}-s`,
                 targetHandle: `${a.toSide}-t`,
                 label: String(a.count),
-                markerEnd: { type: MarkerType.ArrowClosed, width: 11, height: 11, color: "var(--text-muted)" },
-                style: { stroke: "var(--text-muted)", strokeWidth: 1.5, opacity: 0.65 },
+                // 대상들이 같은 방향에 몰리면(컨테이너와 그 안의 자식) 경로가 거의 포개져 **라벨이 뭉친다**.
+                // 곡률을 하나씩 벌려 부채꼴로 만들면 경로도 라벨 자리(경로 중점)도 함께 갈린다.
+                pathOptions: { curvature: EDGE_CURVE_BASE + EDGE_CURVE_STEP * i },
+                markerEnd: { type: MarkerType.ArrowClosed, width: 11, height: 11, color: EDGE_COLOR },
+                style: { stroke: EDGE_COLOR, strokeWidth: 1.5, opacity: 0.7 },
                 labelShowBg: false,
                 labelStyle: { fontSize: LABEL_MIN_PX + (LABEL_MAX_PX - LABEL_MIN_PX) * a.weight, fill: "var(--text-primary)" },
             })),
