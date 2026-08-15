@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { GroupMembership } from "@trade-data-manager/wire";
-import { applyGroupToggle, buildGroupIndex, buildChartGroupIndex, countByGroup, presetToggle } from "../groupIndex.js";
+import { applyGroupToggle, buildGroupIndex, buildChartGroupIndex, countByGroup } from "../groupIndex.js";
 
 const P1 = { stockCode: "005930", date: "2026-06-30", time: "09:11:00" };
 const P2 = { stockCode: "005930", date: "2026-06-30", time: "10:00:00" };
@@ -57,20 +57,6 @@ describe("groupIndex", () => {
         it("없던 항목에 넣으면 새 항목이 생긴다", () => {
             const out = applyGroupToggle([], P1, "a", true, nameOf);
             expect(out).toEqual([{ ...P1, groupIds: ["a"] }]);
-        });
-    });
-
-    describe("presetToggle — 프리셋 그룹이 전부 있나만 본다", () => {
-        it("빠진 게 있으면 빠진 것만 채운다(이미 있는 건 안 건드림)", () => {
-            expect(presetToggle(["a"], ["a", "b"])).toEqual({ on: true, groupIds: ["b"] });
-        });
-
-        it("전부 있으면 전부 뺀다 — 프리셋 밖 그룹은 그대로", () => {
-            expect(presetToggle(["a", "b", "z"], ["a", "b"])).toEqual({ on: false, groupIds: ["a", "b"] });
-        });
-
-        it("하나도 없으면 전부 채운다", () => {
-            expect(presetToggle([], ["a", "b"])).toEqual({ on: true, groupIds: ["a", "b"] });
         });
     });
 });

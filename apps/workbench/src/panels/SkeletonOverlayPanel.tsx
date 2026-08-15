@@ -849,12 +849,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
             {/* 그룹 메뉴 — 같은 창, 다른 정션: 차트 라벨은 chart_tags, 타점 마커는 review_point_tags. */}
             {groupMenu?.kind === "chart" && (
-                <BulkGroupMenu anchor={groupMenu} targets={groupMenu.charts} label={groupMenu.label} onClose={() => setGroupMenu(null)}
+                <BulkGroupMenu anchor={groupMenu} targets={groupMenu.charts} scope="day" label={groupMenu.label} onClose={() => setGroupMenu(null)}
                     hasGroup={(c, id) => groupsView.chartGroupIdsOf(c).includes(id)}
                     toggle={(c, id, on) => groupsView.toggleChart(c, id, on)} />
             )}
             {groupMenu?.kind === "point" && (
-                <BulkGroupMenu anchor={groupMenu} targets={groupMenu.points} label={groupMenu.label} onClose={() => setGroupMenu(null)}
+                <BulkGroupMenu anchor={groupMenu} targets={groupMenu.points} scope="point" label={groupMenu.label} onClose={() => setGroupMenu(null)}
                     hasGroup={(p, id) => groupsView.has(p, id)}
                     toggle={(p, id, on) => groupsView.toggle(p, id, on)} />
             )}

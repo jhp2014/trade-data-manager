@@ -49,8 +49,6 @@ export interface GroupsView {
     countOf: (groupId: string) => number;
     /** 소속 토글(낙관적). on 생략 = 현재 **직접** 상태의 반대. */
     toggle: (point: PointRef, groupId: string, on?: boolean) => void;
-    /** 여러 그룹을 한 방향으로(프리셋 조합). 각 건이 낙관적이라 화면은 즉시 다 바뀐다. */
-    applyGroups: (point: PointRef, groupIds: string[], on: boolean) => void;
     /** 차트의 하루 소속 그룹 id들(직접만 — 골격 패널의 편집·표시 판정). */
     chartGroupIdsOf: (chart: ChartGroupRef) => string[];
     /** 하루 소속 토글(낙관적). on 생략 = 현재 상태의 반대. */
@@ -118,7 +116,6 @@ export function useGroupsValue(): GroupsView {
             countOf: (groupId) => counts.get(groupId) ?? 0,
             toggle: (p, groupId, on) =>
                 toggleMut.mutate({ item: p, groupId, on: on ?? !directOf(p).includes(groupId) }),
-            applyGroups: (p, groupIds, on) => { for (const id of groupIds) toggleMut.mutate({ item: p, groupId: id, on }); },
             chartGroupIdsOf: chartOf,
             toggleChart: (c, groupId, on) =>
                 toggleMut.mutate({ item: { stockCode: c.stockCode, date: c.date }, groupId, on: on ?? !chartOf(c).includes(groupId) }),

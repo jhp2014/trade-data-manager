@@ -35,21 +35,6 @@ export function countByGroup(feed: readonly GroupMembership[]): Map<string, numb
     return m;
 }
 
-/**
- * 프리셋(그룹 **집합**) 토글 판정 — 숫자키 하나가 조합을 한 번에 다룬다.
- * 판정은 하나뿐이다: **프리셋 그룹이 전부 들어 있나.**
- *   전부 있음 → 전부 뺀다(프리셋 밖 그룹은 안 건드린다)
- *   아니면    → **빠진 것만** 채운다(이미 있는 건 그대로 — 껐다 켜는 깜빡임이 없다)
- * 단일 그룹 프리셋은 이것의 n=1 경우라 규칙이 하나로 유지된다.
- * 부분 상태에서 두 번 눌러야 비워지는 건 의도다("일단 이 조합을 다 달아라"가 주 용도).
- */
-export function presetToggle(attached: readonly string[], preset: readonly string[]): { on: boolean; groupIds: string[] } {
-    const has = new Set(attached);
-    const missing = preset.filter((id) => !has.has(id));
-    if (missing.length > 0) return { on: true, groupIds: missing };
-    return { on: false, groupIds: preset.filter((id) => has.has(id)) };
-}
-
 /** 항목 키 — 하루 소속은 시각이 없다. 피드를 접고 토글 대상을 찾는 기준. */
 const itemKey = (m: GroupItemRef): string => (isDayMembership(m) ? chartKey(m) : pointKey(m as PointRef));
 

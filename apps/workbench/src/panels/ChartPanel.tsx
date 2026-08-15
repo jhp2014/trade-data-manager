@@ -35,8 +35,8 @@ import { SKELETON } from "../styles/palette.js";
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
 // 차트 앵커 편집은 chartAnchorHooks(param 하나 = 훅 하나), 타점 조회는 useReviewPointData — 여긴 뷰 파생+렌더.
 // 선 = 기준선 후보(차트 소유) — 타점 선택 없이 긋고 지운다. 확정 기준선(가격 최저)은 하늘색으로 표시.
-// 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글), 숫자키 1~4=그룹 프리셋(전역 useChartHotkeys).
-// 그룹 편집 입구는 골격 패널/분석 시트뿐(BulkGroupMenu) — 차트는 결과 칩(GroupChips)만 보여준다.
+// 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글) — 전역 useChartHotkeys.
+// 그룹 편집 입구는 골격 패널뿐(BulkGroupMenu) — 차트는 결과 칩(GroupChips)만 보여준다.
 export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, anchorDate, viewDate: searchDate, time, setTime, setSearchDate } = usePlaneBus("replay");
     const mode = useWorkbench((s) => s.chartPriceMode);
