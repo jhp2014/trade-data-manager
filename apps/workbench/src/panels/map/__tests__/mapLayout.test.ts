@@ -1,46 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-    absCenterOf, BOX_HEADER, BOX_PAD, dropTargetAt, LEAF_H as LEAF_H_CONST, LEAF_MAX_W, LEAF_MIN_W,
-    layoutMap, leafSize, sidesBetween, textWidth, type LayoutItem,
+    absCenterOf, BOX_HEADER, BOX_PAD, dropTargetAt, LEAF_H, LEAF_W,
+    layoutMap, sidesBetween, type LayoutItem,
 } from "../mapLayout.js";
 
-/** 기본 잎 — 크기는 호출부가 주는 값이라 테스트는 고정치를 쓴다(레이아웃은 크기의 출처를 모른다). */
-const LEAF_W = 120, LEAF_H = 50;
-const item = (id: string, x: number, y: number, parentId: string | null = null, w = LEAF_W, h = LEAF_H): LayoutItem =>
-    ({ id, parentId, x, y, w, h });
-
-describe("textWidth — 측정 없이 자폭 어림", () => {
-    it("한글이 영문보다 넓다", () => {
-        expect(textWidth("가나")).toBeGreaterThan(textWidth("ab"));
-    });
-
-    it("빈 문자열은 0", () => {
-        expect(textWidth("")).toBe(0);
-    });
-});
-
-describe("leafSize — 폭은 이름만 따른다", () => {
-    it("높이는 한 줄 고정", () => {
-        expect(leafSize("아무거나").h).toBe(LEAF_H_CONST);
-    });
-
-    it("이름이 길수록 넓다", () => {
-        expect(leafSize("타입: 재돌파[S]").w).toBeGreaterThan(leafSize("돌파").w);
-    });
-
-    it("짧은 이름도 최소 폭을 지킨다", () => {
-        expect(leafSize("A").w).toBe(LEAF_MIN_W);
-    });
-
-    it("아주 긴 이름은 상한에서 멈춘다 — 나머지는 말줄임이 받는다", () => {
-        expect(leafSize("아주아주아주아주아주아주아주 긴 그룹 이름입니다").w).toBe(LEAF_MAX_W);
-    });
-
-    // 수가 폭에 들어가면 필터를 걸 때마다 상자가 들썩이고, 그 움직임이 뜻 없는 신호가 된다.
-    it("수는 폭에 영향을 주지 않는다 — 인자로 받지도 않는다", () => {
-        expect(leafSize.length).toBe(1);
-    });
-});
+const item = (id: string, x: number, y: number, parentId: string | null = null): LayoutItem =>
+    ({ id, parentId, x, y });
 
 describe("sidesBetween — 마주 보는 변끼리 잇는다", () => {
     const box = (x: number, y: number) => ({ x, y, w: 100, h: 34 });
@@ -72,7 +37,7 @@ describe("sidesBetween — 마주 보는 변끼리 잇는다", () => {
 });
 
 describe("layoutMap — 잎", () => {
-    it("저장 중심을 왼쪽위로 바꿔 주어진 크기로 놓는다", () => {
+    it("저장 중심을 왼쪽위로 바꿔 고정 크기로 놓는다", () => {
         const [n] = layoutMap([item("a", 100, 50)]);
         expect(n).toMatchObject({
             id: "a", container: false, depth: 0,
@@ -82,10 +47,10 @@ describe("layoutMap — 잎", () => {
         expect(n!.parentId).toBeUndefined();
     });
 
-    it("잎마다 폭이 다를 수 있다 — 이름 길이가 정하므로", () => {
-        const laid = layoutMap([item("a", 0, 0, null, 104, 34), item("b", 300, 0, null, 160, 34)]);
-        expect(laid.find((n) => n.id === "a")!.width).toBe(104);
-        expect(laid.find((n) => n.id === "b")!.width).toBe(160);
+    // 크기가 아무것도 안 나르므로 상자 사이의 차이는 오해거리일 뿐이다(이름 길이가 양으로 읽히면 안 된다).
+    it("잎은 전부 같은 크기 — 이름이 길든 짧든", () => {
+        const laid = layoutMap([item("a", 0, 0), item("b", 300, 0)]);
+        expect(laid.map((n) => [n.width, n.height])).toEqual([[LEAF_W, LEAF_H], [LEAF_W, LEAF_H]]);
     });
 });
 

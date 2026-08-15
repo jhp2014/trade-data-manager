@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Background,
     MarkerType,
+    MiniMap,
     ReactFlow,
     ReactFlowProvider,
     applyNodeChanges,
@@ -35,9 +36,9 @@ import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
 import { GROUP_NODE_TYPE, MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
-import { bridgeArrows, groupsOnMap, overlaps, placeableGroups, populationCounts, populationFeed, populationMembersOf, type PopulationItem } from "./map/mapView.js";
+import { chainCandidates, groupsOnMap, mapArrows, membersOfAll, placeableGroups, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
 import { chartKey } from "../lib/pointKey.js";
-import { absCenterOf, dropTargetAt, layoutMap, leafSize } from "./map/mapLayout.js";
+import { absCenterOf, dropTargetAt, layoutMap } from "./map/mapLayout.js";
 
 const SELECTED_KEY = "wb.mapSelected";
 const LIST_KEY = "wb.mapMemberList";
@@ -104,29 +105,33 @@ function MapPanelInner(): JSX.Element {
     );
     const counts = useMemo(() => populationCounts(popFeed), [popFeed]);
 
-    const [picked, setPicked] = useState<string | null>(null); // 짚은 그룹 — 세션 시선(조건이 아니다)
+    /**
+     * 체인 — 클릭 순서대로 쌓는 **세션 시선**(조건이 아니다. 조건의 저자는 깔때기 하나).
+     * 빈 곳을 눌러도 안 풀린다: 짚어 놓고 화면을 옮기다 실수로 지워지면 쌓은 경로를 잃는다.
+     * 체인 안 노드를 다시 누르면 **거기까지 되감기**(브레드크럼과 같은 손짓).
+     */
+    const [chain, setChain] = useState<string[]>([]);
     const [showList, setShowList] = usePersistedState<boolean>(LIST_KEY, (o) => (typeof o === "boolean" ? o : null), false);
-    const pickedGroup = picked === null ? null : (gv.groupById.get(picked) ?? null);
-    useEffect(() => { if (picked !== null && !onMapIds.has(picked)) setPicked(null); }, [picked, onMapIds]);
+    const chainSet = useMemo(() => new Set(chain), [chain]);
+    const head = chain.length > 0 ? chain[chain.length - 1]! : null;
+    const headGroup = head === null ? null : (gv.groupById.get(head) ?? null);
+    // 평면에서 내려간 그룹은 체인에서도 빠진다 — 죽은 참조가 남으면 화살표가 허공을 가리킨다.
+    useEffect(() => {
+        setChain((cur) => (cur.every((id) => onMapIds.has(id)) ? cur : cur.filter((id) => onMapIds.has(id))));
+    }, [onMapIds]);
 
-    // ── 겹침(징검다리) — 짚은 그룹의 것만, 조상–자손 쌍 제외.
-    const bridges = useMemo(
-        () => (picked === null ? [] : overlaps(popFeed, { within: onMapIds, only: picked, groupById: gv.groupById })),
-        [picked, popFeed, onMapIds, gv.groupById],
+    // ── 갈 수 있는 곳 — 후보별 "체인 전부 ∧ 그 후보" 수(드릴다운). 조상–자손은 뺀다(포함관계는 영역이 보여준다).
+    const candidates = useMemo(
+        () => chainCandidates(popFeed, chain, { within: onMapIds, groupById: gv.groupById }),
+        [popFeed, chain, onMapIds, gv.groupById],
     );
-    const bridgeCountOf = useMemo(() => {
-        const m = new Map<string, number>();
-        for (const b of bridges) m.set(b.aId === picked ? b.bId : b.aId, b.count);
-        return m;
-    }, [bridges, picked]);
+    /** 체인이 공통으로 가진 항목 — 작업줄의 "공통 N" 과 목록 패널이 같은 집합을 본다. */
+    const chainMembers = useMemo(() => (chain.length === 0 ? [] : membersOfAll(popFeed, chain)), [popFeed, chain]);
 
     // ── 레이아웃 — 컨테이너 좌표 계산은 전부 mapLayout(순수). laid 는 드래그 판정·역변환도 쓴다.
     // 잎 크기는 **이름**에서만 나온다(수는 고정 칸 — 필터로 수가 바뀔 때 상자가 들썩이지 않게).
     const laid = useMemo(
-        () => layoutMap(onMap.map((g) => {
-            const s = leafSize(g.name);
-            return { id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0, w: s.w, h: s.h };
-        })),
+        () => layoutMap(onMap.map((g) => ({ id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0 }))),
         [onMap],
     );
     const laidById = useMemo(() => new Map(laid.map((n) => [n.id, n])), [laid]);
@@ -139,36 +144,47 @@ function MapPanelInner(): JSX.Element {
      * 붙는 변은 두 상자의 상대 위치가 정한다(sidesBetween) — 그래야 곡선이 변의 법선으로 빠져나간다.
      */
     const { arrows, anchorsById } = useMemo(() => {
-        const { arrows, anchors } = bridgeArrows(bridges, picked, (id) => laidById.get(id)?.abs);
+        const { arrows, anchors } = mapArrows(chain, candidates, (id) => laidById.get(id)?.abs);
         return { arrows, anchorsById: anchors };
-    }, [bridges, picked, laidById]);
+    }, [chain, candidates, laidById]);
 
-    const edges = useMemo<Edge[]>(
-        () =>
-            arrows.map((a, i) => ({
+    const edges = useMemo<Edge[]>(() => {
+        let fan = 0; // 후보 선만 부채꼴로 벌린다(지나온 길은 자리가 정해져 있다)
+        return arrows.map((a) => {
+            const isChain = a.kind === "chain";
+            return {
                 id: a.id,
                 source: a.from,
                 target: a.to,
                 sourceHandle: `${a.fromSide}-s`,
                 targetHandle: `${a.toSide}-t`,
-                label: String(a.count),
+                ...(isChain ? {} : { label: String(a.count) }),
                 // 대상들이 같은 방향에 몰리면(컨테이너와 그 안의 자식) 경로가 거의 포개져 **라벨이 뭉친다**.
                 // 곡률을 하나씩 벌려 부채꼴로 만들면 경로도 라벨 자리(경로 중점)도 함께 갈린다.
-                pathOptions: { curvature: EDGE_CURVE_BASE + EDGE_CURVE_STEP * i },
+                pathOptions: { curvature: isChain ? EDGE_CURVE_BASE : EDGE_CURVE_BASE + EDGE_CURVE_STEP * fan++ },
                 markerEnd: { type: MarkerType.ArrowClosed, width: 11, height: 11, color: EDGE_COLOR },
-                style: { stroke: EDGE_COLOR, strokeWidth: 1.5, opacity: 0.7 },
-                labelShowBg: false,
+                style: {
+                    stroke: EDGE_COLOR,
+                    strokeWidth: 1.5,
+                    opacity: isChain ? 0.5 : 0.7,
+                    ...(isChain ? { strokeDasharray: "5 4" } : {}), // 지나온 길 = 점선
+                },
+                // 배경을 깔아 선이 숫자를 가로지르지 않게.
+                labelBgStyle: { fill: "var(--bg-primary)" },
+                labelBgPadding: [4, 2] as [number, number],
+                labelBgBorderRadius: 4,
                 labelStyle: { fontSize: LABEL_MIN_PX + (LABEL_MAX_PX - LABEL_MIN_PX) * a.weight, fill: "var(--text-primary)" },
-            })),
-        [arrows],
-    );
+            };
+        });
+    }, [arrows]);
 
     const derived = useMemo<MapNode[]>(
         () =>
             laid.map((n) => {
                 const g = gv.groupById.get(n.id)!;
                 const count = counts.get(n.id) ?? 0;
-                const dimmed = picked !== null ? n.id !== picked && !bridgeCountOf.has(n.id) : count === 0 && funnel.isFiltering;
+                // 체인이 서면 **체인과 후보만** 남기고 흐린다. 체인이 없으면 모집단 0만 흐린다.
+                const dimmed = chain.length > 0 ? !chainSet.has(n.id) && !candidates.has(n.id) : count === 0 && funnel.isFiltering;
                 return {
                     id: n.id,
                     type: GROUP_NODE_TYPE,
@@ -179,11 +195,11 @@ function MapPanelInner(): JSX.Element {
                     data: {
                         group: g, count, container: n.container,
                         anchors: anchorsById.get(n.id) ?? [],
-                        dimmed, picked: picked === n.id,
+                        dimmed, picked: chainSet.has(n.id), head: head === n.id,
                     },
                 };
             }),
-        [laid, gv.groupById, counts, anchorsById, picked, bridgeCountOf, funnel.isFiltering],
+        [laid, gv.groupById, counts, anchorsById, chain, chainSet, candidates, head, funnel.isFiltering],
     );
 
     const [nodes, setNodes] = useState<MapNode[]>([]);
@@ -287,9 +303,25 @@ function MapPanelInner(): JSX.Element {
     );
 
     const addFilterStage = useWorkbench((s) => s.addFilterStage);
-    const addToFilter = useCallback(
-        (groupId: string) => addFilterStage([{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }]),
-        [addFilterStage],
+    /**
+     * 체인 전체를 조건으로 굳힌다 — 그룹마다 **단계 하나씩**. 한 단계에 몰면 깔때기가 "어느 단계가
+     * 무엇을 죽였나"를 못 묻는다(12→8→5 가 12→5 로 뭉친다). 맵은 만들고 잊는다: 지우기·순서는 보드의 일.
+     */
+    const addChainToFilter = useCallback(() => {
+        for (const groupId of chain) addFilterStage([{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }]);
+    }, [chain, addFilterStage]);
+
+    /** 노드 클릭 — 체인에 있으면 거기까지 되감기, 아니면 이어붙이기(갈 수 없는 곳은 무시). */
+    const onNodeClick = useCallback(
+        (id: string) => {
+            setChain((cur) => {
+                const i = cur.indexOf(id);
+                if (i >= 0) return cur.slice(0, i); // 되감기 — 자기 자신도 풀린다
+                if (cur.length === 0 || candidates.has(id)) return [...cur, id];
+                return cur; // 교집합이 없는 그룹 — 이어붙일 자리가 없다
+            });
+        },
+        [candidates],
     );
 
     // ── 렌더 ──────────────────────────────────────────────────────────────
@@ -300,7 +332,7 @@ function MapPanelInner(): JSX.Element {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
             <PanelHeader chrome={false} padding="5px 8px" style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
-                <select value={activeMap?.id ?? ""} onChange={(e) => { setSavedId(e.target.value); setPicked(null); }} style={{ fontSize: 12 }}>
+                <select value={activeMap?.id ?? ""} onChange={(e) => { setSavedId(e.target.value); setChain([]); }} style={{ fontSize: 12 }}>
                     {maps.map((m) => (
                         <option key={m.id} value={m.id}>{m.name} [{m.scope === "day" ? "하루" : "타점"}]</option>
                     ))}
@@ -333,10 +365,11 @@ function MapPanelInner(): JSX.Element {
                         maxZoom={4}
                         proOptions={{ hideAttribution: true }}
                         onNodeDragStop={onNodeDragStop}
-                        onNodeClick={(_e, n) => setPicked((cur) => (cur === n.id ? null : n.id))}
-                        onPaneClick={() => setPicked(null)}
+                        onNodeClick={(_e, n) => onNodeClick(n.id)}
                     >
                         <Background gap={40} size={1} />
+                        <MiniMap pannable zoomable position="bottom-right" style={{ width: 130, height: 90 }}
+                            maskColor="rgba(127,127,127,0.15)" nodeColor="var(--border-strong)" nodeStrokeWidth={2} />
                     </ReactFlow>
 
                     {onMap.length === 0 && (
@@ -345,41 +378,61 @@ function MapPanelInner(): JSX.Element {
                         </div>
                     )}
 
-                    {pickedGroup && (
-                        <PickedBar
-                            path={gv.pathLabel(pickedGroup.id, pickedGroup.name)}
-                            count={counts.get(pickedGroup.id) ?? 0}
-                            onAddFilter={() => addToFilter(pickedGroup.id)}
-                            onUnplace={() => { unplaceMut.mutate(pickedGroup.id); setPicked(null); }}
+                    {chain.length > 0 && (
+                        <ChainBar
+                            chain={chain}
+                            nameOf={(id) => gv.groupById.get(id)?.name ?? "(지워짐)"}
+                            members={chainMembers.length}
+                            onRewind={(i) => setChain((cur) => cur.slice(0, i + 1))}
+                            onClear={() => setChain([])}
+                            onAddFilter={addChainToFilter}
+                            onUnplace={() => { if (head) { unplaceMut.mutate(head); setChain((cur) => cur.slice(0, -1)); } }}
                         />
                     )}
                 </div>
 
                 {showList && (
-                    <MemberList picked={pickedGroup} feed={popFeed} totalOf={(id) => gv.countOf(id)} />
+                    <MemberList head={headGroup} members={chainMembers} totalOf={(id) => gv.countOf(id)} />
                 )}
             </div>
         </div>
     );
 }
 
-/** 짚은 그룹의 작업줄 — 맵의 **유일한 쓰기**(필터에 추가)와 배치 해제가 여기 모인다. */
-function PickedBar({ path, count, onAddFilter, onUnplace }: {
-    path: string; count: number;
-    onAddFilter: () => void; onUnplace: () => void;
+/**
+ * 체인 작업줄 — 지나온 길(브레드크럼)과 맵의 **유일한 쓰기**(필터에 추가)가 여기 모인다.
+ * 브레드크럼 칸을 누르면 거기까지 되감는다(맵에서 그 노드를 다시 누르는 것과 같은 손짓).
+ */
+function ChainBar({ chain, nameOf, members, onRewind, onClear, onAddFilter, onUnplace }: {
+    chain: readonly string[];
+    nameOf: (id: string) => string;
+    members: number;
+    onRewind: (index: number) => void;
+    onClear: () => void;
+    onAddFilter: () => void;
+    onUnplace: () => void;
 }): JSX.Element {
     return (
         <div style={{
-            position: "absolute", left: 8, bottom: 8, zIndex: 10,
-            display: "flex", alignItems: "center", gap: 8, padding: "5px 9px",
+            position: "absolute", left: 8, bottom: 8, right: 8, zIndex: 10,
+            display: "flex", alignItems: "center", gap: 8, padding: "5px 9px", flexWrap: "wrap",
             background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 7,
             boxShadow: "0 2px 8px rgba(0,0,0,0.25)", fontSize: 12,
         }}>
-            <span style={{ fontWeight: 600 }} title={path}>{path}</span>
-            <span style={{ color: "var(--text-tertiary)" }}>모집단 {count}</span>
-            <button onClick={onAddFilter} title="이 그룹을 필터 단계로 추가 — 지우기·수정은 필터 보드에서"
-                style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
-            <button onClick={onUnplace} title="평면에서 내린다(그룹은 남는다)">내리기</button>
+            {chain.map((id, i) => (
+                <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {i > 0 && <span style={{ color: "var(--text-tertiary)" }}>∧</span>}
+                    <button onClick={() => onRewind(i)} title="여기까지 되감기"
+                        style={{ fontWeight: i === chain.length - 1 ? 700 : 400 }}>{nameOf(id)}</button>
+                </span>
+            ))}
+            <span style={{ color: "var(--text-tertiary)" }}>공통 {members}</span>
+            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                <button onClick={onAddFilter} title="체인 전체를 필터 단계로 — 그룹마다 하나씩. 지우기·수정은 필터 보드에서"
+                    style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
+                <button onClick={onUnplace} title="마지막 그룹을 평면에서 내린다(그룹은 남는다)">내리기</button>
+                <button onClick={onClear} title="체인 비우기">✕</button>
+            </span>
         </div>
     );
 }
@@ -409,28 +462,27 @@ function PlacePalette({ groups, onPlace }: { groups: Group[]; onPlace: (id: stri
 }
 
 /**
- * 짚은 그룹의 모집단 멤버 목록(토글) — 행 클릭 = 그 항목으로 이동(타점이면 goToPoint, 하루면 goToDay).
+ * 체인이 공통으로 가진 멤버 목록(토글) — 행 클릭 = 그 항목으로 이동(타점이면 goToPoint, 하루면 goToDay).
  * 맵이 탐색의 출발점이 되는 자리다. 숫자는 노드와 같은 잣대(모집단), 전체 부착 수는 참고로만.
  */
-function MemberList({ picked, feed, totalOf }: {
-    picked: Group | null;
-    feed: readonly GroupMembership[];
+function MemberList({ head, members, totalOf }: {
+    head: Group | null;
+    members: readonly GroupMembership[];
     totalOf: (groupId: string) => number;
 }): JSX.Element {
     const { nameOf } = useStockNames();
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const goToDay = useWorkbench((s) => s.goToDay);
-    const members = useMemo(() => (picked ? populationMembersOf(feed, picked.id) : []), [feed, picked]);
 
     return (
         <div style={{ width: 200, flex: "none", borderLeft: "1px solid var(--border-default)", overflowY: "auto", fontSize: 11 }}>
-            {picked === null ? (
-                <div style={{ padding: 8, color: "var(--text-tertiary)" }}>그룹을 짚으면 모집단 멤버가 보입니다</div>
+            {head === null ? (
+                <div style={{ padding: 8, color: "var(--text-tertiary)" }}>그룹을 짚으면 공통 멤버가 보입니다</div>
             ) : (
                 <div>
                     <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-default)" }}>
-                        <div style={{ fontSize: 12 }}>{picked.name}</div>
-                        <div style={{ color: "var(--text-tertiary)" }}>모집단 {members.length} · 전체 부착 {totalOf(picked.id)}</div>
+                        <div style={{ fontSize: 12 }}>{head.name}</div>
+                        <div style={{ color: "var(--text-tertiary)" }}>공통 {members.length} · 전체 부착 {totalOf(head.id)}</div>
                     </div>
                     {members.slice(0, 300).map((m) => (
                         <button

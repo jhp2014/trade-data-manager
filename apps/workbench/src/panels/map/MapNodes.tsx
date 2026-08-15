@@ -4,9 +4,10 @@
 // (`.react-flow__node-group` — 테두리·배경·padding 10px·width 150px)이 우리 노드에 그대로 얹힌다.
 // 실제로 상자 바깥에 정체불명의 테두리가 하나 더 그려졌었다. CSS 로 덮지 말고 이름을 안 겹치게 둔다.
 //
-// **크기는 수를 나르지 않는다.** 잎은 높이 고정·폭은 이름 길이(mapLayout.leafSize)이고, 겹침 수는
-// 선 위 **숫자 크기**가 맡는다 — 두께와 숫자는 같은 값을 두 번 말하는 것이었고, 정확한 값은 숫자가
-// 이미 준다. 그래서 선은 전부 같은 굵기, 화살촉도 작고 균일하다.
+// **잎은 전부 같은 크기·같은 글씨다.** 크기가 아무것도 안 나르므로 차이는 오해거리일 뿐이다 —
+// 모집단 수는 상자 안 숫자가, 관계의 세기는 선 위 숫자 크기가 나른다. 컨테이너만 제 크기를 갖는다
+// (자식을 담아야 하므로). 잎이 한 줄이고 컨테이너가 헤더+빈 몸통인 건 규칙 하나로 읽힌다:
+// **안이 비어 있냐 아니냐 = 하위 그룹이 있냐 없냐.**
 //
 // Handle 은 **네 변에 하나씩**(source·target 한 쌍씩). 어느 변을 쓸지는 두 노드의 상대 위치가 정하고
 // (mapLayout.sidesBetween), 실제로 쓰이는 변에만 점이 보인다 — 네 변에 늘 찍으면 그룹 열 개에 점이
@@ -27,10 +28,12 @@ export interface GroupNodeData extends Record<string, unknown> {
     container: boolean;
     /** 지금 선이 붙는 변들 — 여기에만 점이 보인다. */
     anchors: readonly Side[];
-    /** 짚은 그룹과 무관해 흐려지는가(겹침 0 = 이리로는 안 퍼진다 · 모집단 0). */
+    /** 체인과 무관해 흐려지는가(교집합 0 = 이리로는 안 퍼진다 · 모집단 0). */
     dimmed: boolean;
-    /** 짚은 그룹인가 — RF selected 와 별개(짚기는 세션 시선). */
+    /** 체인에 든 그룹인가 — RF selected 와 별개(체인은 세션 시선). */
     picked: boolean;
+    /** 체인의 **마지막**(지금 서 있는 자리) — 실선 화살표가 여기서 나간다. */
+    head: boolean;
 }
 
 const SIDES: { side: Side; pos: Position }[] = [
@@ -65,25 +68,38 @@ function SideHandles({ anchors, strong }: { anchors: readonly Side[]; strong: bo
 
 const INVISIBLE = { opacity: 0, pointerEvents: "none" as const };
 
+/** 이름(왼쪽) · 수(오른쪽) 한 줄 — 잎의 본문이자 컨테이너의 헤더. 두 자리가 같은 글씨를 쓴다. */
+function NameRow({ name, count, strong }: { name: string; count: number; strong: boolean }): JSX.Element {
+    return (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 9px", height: LABEL_ROW_H, fontSize: 12, textAlign: "left" }}>
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: strong ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                {name}
+            </span>
+            <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{count}</span>
+        </div>
+    );
+}
+
+const LABEL_ROW_H = 22;
+
 export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: GroupNodeData }) {
-    const { group, count, container, anchors, dimmed, picked } = data;
+    const { group, count, container, anchors, dimmed, picked, head } = data;
+    // 체인에 들면 테두리가 진해지고, 그중 **마지막**만 두껍다 — 지금 서 있는 자리가 어디인지가 보이게.
+    const border = head ? "2px solid var(--text-primary)" : picked ? "1px solid var(--text-primary)" : null;
 
     if (container) {
         return (
             <div
                 style={{
                     width: "100%", height: "100%", borderRadius: 10, boxSizing: "border-box",
-                    border: picked ? "2px solid var(--text-primary)" : "1px solid var(--border-default)",
+                    border: border ?? "1px solid var(--border-default)",
                     opacity: dimmed ? 0.35 : 1,
                     cursor: "grab",
                 }}
                 title={`${group.name} · 모집단 ${count} · 하위 그룹 영역(안에 넣으면 하위가 된다)`}
             >
                 <SideHandles anchors={anchors} strong={picked} />
-                <div style={{ display: "flex", gap: 6, padding: "3px 9px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden" }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{group.name}</span>
-                    <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>{count}</span>
-                </div>
+                <NameRow name={group.name} count={count} strong={picked} />
             </div>
         );
     }
@@ -92,19 +108,18 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: G
         <div
             style={{
                 width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
-                display: "flex", alignItems: "center", gap: 8, padding: "0 10px",
-                border: picked ? "2px solid var(--text-primary)" : "1px solid var(--border-strong)",
+                display: "flex", alignItems: "center",
+                border: border ?? "1px solid var(--border-strong)",
                 background: "var(--bg-primary)",
                 opacity: dimmed ? 0.3 : 1,
-                fontSize: 12, cursor: "grab",
+                cursor: "grab",
             }}
             title={`${group.name} · 모집단 ${count}`}
         >
             <SideHandles anchors={anchors} strong={picked} />
-            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
-                {group.name}
-            </span>
-            <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{count}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <NameRow name={group.name} count={count} strong />
+            </div>
         </div>
     );
 });

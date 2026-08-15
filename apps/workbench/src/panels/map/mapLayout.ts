@@ -15,42 +15,19 @@ export interface LayoutItem {
     /** 저장 좌표 = 절대 **중심**. 잎만 쓴다(컨테이너는 유도). */
     x: number;
     y: number;
-    /** 잎 크기 — 호출부가 leafSize 로 만들어 준다(컨테이너는 무시하고 자식에서 유도). */
-    w: number;
-    h: number;
 }
 
 /**
- * 잎 = **네모 + 안쪽 텍스트**(이름 · 수). 크기는 수를 나르지 않는다 — 양은 겹침 선의 두께가 맡는다.
- * 높이는 한 줄 고정, 폭만 이름 길이를 따른다.
+ * 잎 = **네모 한 줄**(이름 왼쪽 · 수 오른쪽). 크기는 **전부 같다** — 크기가 무엇도 나르지 않으므로
+ * 상자 사이의 차이는 오해거리일 뿐이다(수는 상자 안 숫자가, 관계의 세기는 선 위 숫자가 나른다).
+ * 칸을 넘는 이름은 말줄임 — 전체 이름은 툴팁과 작업줄에 있다.
+ * 컨테이너만 제 크기를 갖는다: 자식을 담아야 해서 자식 바운딩 박스에서 유도된다.
  */
-export const LEAF_H = 34;
-export const LEAF_MIN_W = 96;
-export const LEAF_MAX_W = 220;
+export const LEAF_W = 168;
+export const LEAF_H = 32;
 /** 컨테이너 안쪽 여백과 라벨 줄 높이. */
 export const BOX_PAD = 16;
 export const BOX_HEADER = 22;
-
-const PAD_X = 10;
-/** 수가 앉는 고정 칸 — 필터로 수가 바뀔 때마다 상자가 들썩이지 않게 폭은 **이름만** 보고 정한다. */
-const COUNT_SLOT = 30;
-
-/**
- * 이름 → 글자 폭 추정(측정 없이). 레이아웃이 순수해야 컨테이너 박스를 DOM 없이 계산할 수 있어서,
- * 실측 대신 자폭을 어림한다: 한글·전각은 약 12px, 그 외(영문·숫자·기호)는 약 7px @12px 기준.
- * 어림이 빗나가는 아주 긴 이름은 말줄임이 받는다(전체 이름은 툴팁·작업줄에).
- */
-export function textWidth(s: string): number {
-    let w = 0;
-    for (const ch of s) w += ch.codePointAt(0)! > 0x1100 ? 12 : 7;
-    return w;
-}
-
-/** 잎 크기 — 폭은 이름에서, 높이는 고정. 수는 고정 칸이라 폭에 영향을 주지 않는다. */
-export function leafSize(name: string): { w: number; h: number } {
-    const want = PAD_X * 2 + textWidth(name) + COUNT_SLOT;
-    return { w: Math.max(LEAF_MIN_W, Math.min(LEAF_MAX_W, Math.round(want))), h: LEAF_H };
-}
 
 export interface LaidNode {
     id: string;
@@ -91,7 +68,7 @@ function absBoxes(items: readonly LayoutItem[]): Map<string, Box> {
         const children = kids.get(it.id) ?? [];
         let box: Box;
         if (children.length === 0 || visiting.has(it.id)) {
-            box = { x: it.x - it.w / 2, y: it.y - it.h / 2, w: it.w, h: it.h };
+            box = { x: it.x - LEAF_W / 2, y: it.y - LEAF_H / 2, w: LEAF_W, h: LEAF_H };
         } else {
             visiting.add(it.id);
             const cb = children.map(boxOf);

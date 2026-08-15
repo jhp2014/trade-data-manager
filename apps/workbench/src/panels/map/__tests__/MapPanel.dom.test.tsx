@@ -42,6 +42,13 @@ function renderMap(seed: Seed = SEED, scope: "day" | "point" = "day"): void {
     );
 }
 
+/** 평면 위 노드의 이름 — 체인에 들면 브레드크럼에도 같은 이름이 생겨 맨 이름으로는 모호해진다. */
+function nodeLabel(name: string): HTMLElement {
+    const el = screen.getAllByText(name).find((e) => e.closest(".react-flow__node") !== null);
+    if (!el) throw new Error(`평면에 "${name}" 노드가 없다`);
+    return el;
+}
+
 beforeEach(() => {
     useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null });
 });
@@ -137,9 +144,65 @@ describe("MapPanel — 멤버 목록(토글)", () => {
         expect(s.focus.date).toBe("2026-07-01");
     });
 
-    it("짚은 그룹의 경로가 작업줄에 뜬다 — 이름은 부모 밑에서만 뜻이 선다", () => {
+    it("짚으면 작업줄에 그 그룹과 공통 수가 뜬다", () => {
         renderMap();
         fireEvent.click(screen.getByText("2차전지"));
-        expect(screen.getByText("테마 › 2차전지")).toBeTruthy();
+        expect(screen.getByText("공통 1")).toBeTruthy();
+    });
+});
+
+// 체인은 **세션 시선**이지 조건이 아니다(조건의 저자는 깔때기 하나). 그래서 클릭으로만 자라고,
+// 빈 곳을 눌러도 안 풀린다 — 짚어 놓고 화면을 옮기다 쌓은 경로를 잃으면 안 된다.
+describe("MapPanel — 체인 클릭", () => {
+    const g3 = (id: string, name: string, x: number, y = 0): Group =>
+        ({ id, name, scope: "day", parentId: null, mapId: "m1", x, y });
+    // A: 돌파+갭상승 · B: 돌파+갭상승 · C: 돌파만 → 돌파 3, 갭상승 2, 눌림 0
+    const CHAIN_SEED: Seed = {
+        groups: [g3("g1", "돌파", 0), g3("g2", "갭상승", 400), g3("g3", "눌림", 0, 400)],
+        memberships: [
+            { stockCode: "A", date: "2026-07-01", groupIds: ["g1", "g2"] },
+            { stockCode: "B", date: "2026-07-01", groupIds: ["g1", "g2"] },
+            { stockCode: "C", date: "2026-07-01", groupIds: ["g1"] },
+        ],
+        candidateDays: [
+            { stockCode: "A", date: "2026-07-01", traces: [] },
+            { stockCode: "B", date: "2026-07-01", traces: [] },
+            { stockCode: "C", date: "2026-07-01", traces: [] },
+        ],
+    };
+
+    it("이어 누르면 체인이 자라고 공통 수가 좁아진다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        expect(screen.getByText("공통 3")).toBeTruthy();
+        fireEvent.click(screen.getByText("갭상승"));
+        expect(screen.getByText("공통 2")).toBeTruthy();
+    });
+
+    it("교집합이 없는 그룹은 이어붙지 않는다 — 갈 수 없는 곳", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("눌림"));
+        expect(screen.getByText("공통 3")).toBeTruthy(); // 그대로
+    });
+
+    it("체인 안 노드를 다시 누르면 거기까지 되감긴다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("갭상승"));
+        // 체인에 들면 이름이 노드와 브레드크럼 두 곳에 있다 — 노드 쪽을 짚어 "맵에서 다시 누르기"를 재현.
+        fireEvent.click(nodeLabel("갭상승"));
+        expect(screen.getByText("공통 3")).toBeTruthy();
+    });
+
+    it("필터에 추가 = 체인 전체가 단계 여러 개로 — 한 단계에 몰면 어느 단계가 죽였는지 못 묻는다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("갭상승"));
+        fireEvent.click(screen.getByText("필터에 추가"));
+        const stages = useWorkbench.getState().filterStages;
+        expect(stages).toHaveLength(2);
+        expect(stages.map((s) => (s.predicates[0] as { expr: { groups: { literals: { groupId: string }[] }[] } }).expr.groups[0]!.literals[0]!.groupId))
+            .toEqual(["g1", "g2"]);
     });
 });
