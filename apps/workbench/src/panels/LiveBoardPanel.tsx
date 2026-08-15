@@ -5,6 +5,7 @@ import { usePanelUi } from "../store/usePanelUi.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
 import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
+import { LiveFilterEditor } from "../components/board/BoardFilterEditor.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 import { buildLiveBoardViewModel } from "../lib/boardViewModel.js";
 
@@ -51,6 +52,8 @@ export function LiveBoardPanel({ panelId }: { panelId: string }): JSX.Element {
                 refreshing={refreshing}
                 market={market}
                 onMarketToggle={() => setBoardMarket("live", market === "un" ? "krx" : "un")}
+                filter={liveFilter}
+                filterEditor={(close) => <LiveFilterEditor onClose={close} />}
             />
             {mode === "group" ? (
                 <BoardLayout grouped={vm.grouped} parents={vm.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={vm.excludedByFilter} absentLabel="스캔 밖" />

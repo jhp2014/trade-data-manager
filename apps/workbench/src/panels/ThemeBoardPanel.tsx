@@ -8,6 +8,7 @@ import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
 import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
+import { BoardFilterEditor } from "../components/board/BoardFilterEditor.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 
 // 테마 보드(EOD) — day-summary 일봉 한 방. 상단은 NavRail 만(설정은 전역 모달, 시간/날짜는 전역 툴바).
@@ -34,7 +35,7 @@ export function ThemeBoardPanel({ panelId }: { panelId: string }): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardHeader panelId={panelId} dotColor="var(--plane-eod)" count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("theme", market === "un" ? "krx" : "un")} />
+            <BoardHeader panelId={panelId} dotColor="var(--plane-eod)" count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("theme", market === "un" ? "krx" : "un")} filter={boardFilter} filterEditor={(close) => <BoardFilterEditor onClose={close} />} />
             {mode === "group" ? (
                 <BoardLayout key={date} grouped={board.grouped} parents={board.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={board.excludedByFilter} absentLabel="보드 밖" showIndividuals={st.showIndividuals} showUnclassified={st.showUnclassified} />
             ) : (

@@ -17,7 +17,6 @@ import { FilterFunnelPanel } from "../panels/FilterFunnelPanel.js";
 import { SkeletonOverlayPanel } from "../panels/SkeletonOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
 import { MapPanel } from "../panels/MapPanel.js";
-import { BoardFilterPanel, ReplayFilterPanel, LiveFilterPanel } from "../panels/BoardFilterPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { WatchlistPanel } from "../panels/WatchlistPanel.js";
@@ -45,7 +44,6 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "live-board-1", component: "liveBoard", title: "실시간 테마", plane: "live", render: (id) => <LiveBoardPanel panelId={id} /> },
     { id: "live-chart-1", component: "liveChart", title: "실시간 차트", plane: "live", render: (id) => <RealtimeChartPanel panelId={id} /> },
     { id: "live-chart-2", component: "liveChart", title: "실시간 차트", plane: "live", render: (id) => <RealtimeChartPanel panelId={id} /> },
-    { id: "live-filter-1", component: "liveFilter", title: "실시간 테마 필터", plane: "live", render: () => <LiveFilterPanel /> },
     { id: "live-news-1", component: "liveNews", title: "실시간 뉴스", plane: "live", render: () => <NewsPanel plane="live" /> },
     { id: "live-telegram-1", component: "liveTelegram", title: "실시간 텔레그램", plane: "live", render: () => <TelegramNewsPanel plane="live" /> },
     { id: "live-watchlist-1", component: "liveWatchlist", title: "실시간 모니터링", plane: "live", render: () => <WatchlistPanel /> },
@@ -54,9 +52,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "live-universe-rules-1", component: "liveUniverseRules", title: "유니버스 알람", plane: "live", render: () => <UniverseRulesPanel /> },
     { id: "telegram-news-1", component: "telegramNews", title: "텔레그램", plane: "eod", render: () => <TelegramNewsPanel plane="replay" /> },
     { id: "theme-board-1", component: "themeBoard", title: "테마 [장 마감]", plane: "eod", render: (id) => <ThemeBoardPanel panelId={id} /> },
-    { id: "board-filter-1", component: "boardFilter", title: "테마 [장 마감] 필터", plane: "eod", render: () => <BoardFilterPanel /> },
     { id: "replay-board-1", component: "replayBoard", title: "테마 [복기]", plane: "eod", render: (id) => <ReplayBoardPanel panelId={id} /> },
-    { id: "replay-filter-1", component: "replayFilter", title: "테마 [복기] 필터", plane: "eod", render: () => <ReplayFilterPanel /> },
     { id: "chart-1", component: "chart", title: "차트", plane: "eod", render: (id) => <ChartPanel panelId={id} /> },
     { id: "chart-2", component: "chart", title: "차트", plane: "eod", render: (id) => <ChartPanel panelId={id} /> },
     { id: "workset-1", component: "workset", title: "작업 대상", plane: "eod", render: () => <WorksetPanel /> },

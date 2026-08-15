@@ -8,6 +8,7 @@ import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
 import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
+import { ReplayFilterEditor } from "../components/board/BoardFilterEditor.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 
 // 실시간 복기 보드(②) — 전역 시간(Focus.time) 시점의 장중 스냅샷을 market-eye식으로 재현.
@@ -43,7 +44,7 @@ export function ReplayBoardPanel({ panelId }: { panelId: string }): JSX.Element 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
             {/* label=스크럽 시각 — 시간 설정됐을 때만(미설정 시 상수 라벨 대신 생략, 컨트롤에 폭 양보). */}
-            <BoardHeader panelId={panelId} dotColor="var(--plane-eod)" label={time ? time.slice(0, 5) : undefined} count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("replay", market === "un" ? "krx" : "un")} />
+            <BoardHeader panelId={panelId} dotColor="var(--plane-eod)" label={time ? time.slice(0, 5) : undefined} count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("replay", market === "un" ? "krx" : "un")} filter={replayFilter} filterEditor={(close) => <ReplayFilterEditor onClose={close} />} />
             {mode === "group" ? (
                 <BoardLayout key={date} grouped={board.grouped} parents={board.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={board.excludedByFilter} absentLabel="랭킹 밖" />
             ) : (

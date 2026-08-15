@@ -8,15 +8,17 @@ import {
     type BoardFilterGroup,
     type BoardPredicateDef,
 } from "@trade-data-manager/market/domain";
-import { useWorkbench, type BoardFilterActions } from "../store/workbench.js";
-import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
-import { TrashIcon } from "../components/icons.js";
-import { PanelHeader } from "../components/ControlChrome.js";
+import { useWorkbench, type BoardFilterActions } from "../../store/workbench.js";
+import { AddPredicateBox, PredicateRow } from "../PredicateFormula.js";
+import { TrashIcon } from "../icons.js";
+import { PanelHeader } from "../ControlChrome.js";
 
-// 배제 필터 패널 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 흐리게/숨김**. 술어는 domain 레지스트리.
+// 배제 필터 에디터 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 흐리게/숨김**. 술어는 domain 레지스트리.
+// 예전엔 독립 dockview 패널 3개("… 필터")였는데, 필터는 특정 보드의 설정이지 작업면이 아니라서
+// 보드 헤더의 필터 버튼 → HeaderPopover 안으로 들어왔다(패널 카탈로그에서 제거).
 // 보기/편집 분리: 완료된 그룹 = 수식 텍스트 한 덩어리(클릭하면 그 그룹만 편집 모드).
 // 편집 모드 = 같은 수식에서 토큰만 상호작용(종류=클릭 순환, 옵션=클릭 순환, 숫자=인라인 입력) — 셀렉트 없음.
-// 상태·액션은 보드마다 별개(store.boardFilter / replayFilter / liveFilter)이고 표현은 이 FilterPanel 하나를 공유한다.
+// 상태·액션은 보드마다 별개(store.boardFilter / replayFilter / liveFilter)이고 표현은 이 FilterEditor 하나를 공유한다.
 // 수식 렌더(PredicateFormula·FORMULAS)는 유니버스 알람 규칙 빌더와 공유.
 
 const xBtn: React.CSSProperties = { border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13, padding: 0, flexShrink: 0, font: "inherit" };
@@ -74,13 +76,14 @@ function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemo
     );
 }
 
-function FilterPanel({
+function FilterEditor({
     title,
     subtitle,
     emptyHelp,
     filter,
     actions,
     predicates,
+    onClose,
 }: {
     title: string;
     subtitle: string;
@@ -88,13 +91,15 @@ function FilterPanel({
     filter: BoardFilterExpr;
     actions: BoardFilterActions;
     predicates: BoardPredicateDef[]; // 이 소스가 제공할 술어(capability = requires⊆provides). 소스마다 다름.
+    onClose: () => void;
 }): JSX.Element {
     const active = isBoardFilterActive(filter);
     const firstKind = predicates[0].kind;
     const [editing, setEditing] = useState<number | null>(null); // 편집 중인 그룹 인덱스(한 번에 하나)
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
+        // 크기는 부모(HeaderPopover: 고정 폭 + maxHeight 플렉스 컬럼)가 정한다 — 본문이 넘치면 안에서 스크롤.
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
             <PanelHeader>
                 <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{title}</span>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "var(--text-tertiary)" }}>{subtitle}</span>
@@ -106,6 +111,7 @@ function FilterPanel({
                 >
                     <TrashIcon />
                 </button>
+                <button onClick={onClose} title="닫기 (Esc)" style={{ ...xBtn, fontSize: 14, padding: "0 2px" }}>✕</button>
             </PanelHeader>
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -150,32 +156,34 @@ function FilterPanel({
 }
 
 // 이슈정리 보드(EOD) 배제 필터. 상태=store.boardFilter.
-export function BoardFilterPanel(): JSX.Element {
+export function BoardFilterEditor({ onClose }: { onClose: () => void }): JSX.Element {
     const filter = useWorkbench((s) => s.boardFilter);
     const actions = useWorkbench((s) => s.boardFilterActions);
     return (
-        <FilterPanel
+        <FilterEditor
             title="이슈 필터"
             subtitle="매칭 종목 제외"
             filter={filter}
             actions={actions}
             predicates={EOD_BOARD_PREDICATES}
+            onClose={onClose}
             emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>이슈정리</b> 보드에서 종목을 흐리게/숨김.</>}
         />
     );
 }
 
 // 복기 보드(시점 t 스냅샷) 배제 필터. 상태=store.replayFilter. 술어는 시점 t 지표(누적 대금·시점 등락률·t까지 버킷·매물대)에 재평가.
-export function ReplayFilterPanel(): JSX.Element {
+export function ReplayFilterEditor({ onClose }: { onClose: () => void }): JSX.Element {
     const filter = useWorkbench((s) => s.replayFilter);
     const actions = useWorkbench((s) => s.replayFilterActions);
     return (
-        <FilterPanel
+        <FilterEditor
             title="복기 필터"
             subtitle="매칭 종목 제외"
             filter={filter}
             actions={actions}
             predicates={EOD_BOARD_PREDICATES}
+            onClose={onClose}
             emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>복기</b> 보드에서 현재 시점 종목을 흐리게/숨김.</>}
         />
     );
@@ -187,16 +195,17 @@ const EOD_BOARD_PREDICATES = availablePredicates(EOD_FIELDS);
 const LIVE_BOARD_PREDICATES = availablePredicates(LIVE_FIELDS);
 
 // 실시간 보드 배제 필터. 상태=store.liveFilter.
-export function LiveFilterPanel(): JSX.Element {
+export function LiveFilterEditor({ onClose }: { onClose: () => void }): JSX.Element {
     const filter = useWorkbench((s) => s.liveFilter);
     const actions = useWorkbench((s) => s.liveFilterActions);
     return (
-        <FilterPanel
+        <FilterEditor
             title="실시간 필터"
             subtitle="매칭 종목 제외"
             filter={filter}
             actions={actions}
             predicates={LIVE_BOARD_PREDICATES}
+            onClose={onClose}
             emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>실시간</b> 보드에서 종목을 흐리게/숨김(매물대·시그널·시총·테마순위·고가·일봉대금).</>}
         />
     );
