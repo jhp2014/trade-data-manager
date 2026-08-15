@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Group, GroupMembership } from "../../../api/groups.js";
-import { chainCandidates, chainGraph, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "../mapView.js";
+import { chainCandidates, selectionGraph, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "../mapView.js";
 
 const grp = (id: string, parentId: string | null = null): Group =>
     ({ id, name: id, scope: "day", parentId, mapId: "m", x: 0, y: 0 });
@@ -98,7 +98,7 @@ describe("chainCandidates — 한 걸음 더 갈 수 있는 곳", () => {
     });
 });
 
-describe("chainGraph — 교집합을 물체로 세운다", () => {
+describe("selectionGraph — 고른 것들의 교집합을 가운데 세운다", () => {
     // A(왼쪽 위) · B(오른쪽) · C(아래)
     const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {
         A: { x: 0, y: 0, w: 100, h: 32 },
@@ -106,74 +106,50 @@ describe("chainGraph — 교집합을 물체로 세운다", () => {
         C: { x: 0, y: 400, w: 100, h: 32 },
     };
     const boxOf = (id: string) => boxes[id];
-    const countOf = (prefix: readonly string[]): number => prefix.length * 10; // 자리표시자
 
-    it("체인이 비면 아무것도 안 그린다 — 짚기 전엔 깨끗하다", () => {
-        const g = chainGraph([], new Map([["B", 3]]), boxOf, countOf);
-        expect(g.mids).toEqual([]);
+    it("아무것도 안 고르면 아무것도 안 그린다", () => {
+        const g = selectionGraph([], new Map([["B", 3]]), boxOf, 0);
+        expect(g.mid).toBeNull();
         expect(g.links).toEqual([]);
     });
 
-    it("후보마다 교집합 노드 하나 + 선 둘(노드—교집합—노드)", () => {
-        const g = chainGraph(["A"], new Map([["B", 3]]), boxOf, countOf);
-        expect(g.mids).toHaveLength(1);
-        expect(g.mids[0]).toMatchObject({ id: "m:A+B", count: 3, traversed: false, prefix: ["A", "B"] });
-        expect(g.links.map((l) => [l.from, l.to])).toEqual([["A", "m:A+B"], ["m:A+B", "B"]]);
+    it("하나만 고르면 교집합 노드가 없다 — 제 자신이 곧 그 집합이다", () => {
+        const g = selectionGraph(["A"], new Map([["B", 3]]), boxOf, 40);
+        expect(g.mid).toBeNull();
+        expect(g.links).toHaveLength(1);
+        expect(g.links[0]).toMatchObject({ from: "A", to: "B", count: 3, traversed: false });
     });
 
-    it("교집합 노드는 두 노드 사이에 선다", () => {
-        const g = chainGraph(["A"], new Map([["B", 3]]), boxOf, countOf);
-        // A 중심(50,16) ↔ B 중심(450,16) 의 사이
-        expect(g.mids[0]!.center.x).toBeGreaterThan(50);
-        expect(g.mids[0]!.center.x).toBeLessThan(450);
-        expect(g.mids[0]!.center.y).toBe(16);
+    it("둘 이상 고르면 가운데에 교집합 노드가 서고 고른 것들이 거기로 이어진다", () => {
+        const g = selectionGraph(["A", "B"], new Map(), boxOf, 7);
+        expect(g.mid).toMatchObject({ count: 7, members: ["A", "B"] });
+        // A 중심(50,16) 과 B 중심(450,16) 의 한가운데
+        expect(g.mid!.center).toEqual({ x: 250, y: 16 });
+        expect(g.links.map((l) => [l.from, l.to])).toEqual([["A", "mid"], ["B", "mid"]]);
     });
 
-    // 기하가 재귀적이라는 게 이 설계의 핵심이다: 교집합 노드가 다음 걸음의 출발점이 된다.
-    it("두 걸음: 지나온 교집합이 새 출발점이 되어 거기서 다시 뻗는다", () => {
-        const g = chainGraph(["A", "B"], new Map([["C", 2]]), boxOf, countOf);
-        const traversed = g.mids.filter((m) => m.traversed);
-        const next = g.mids.filter((m) => !m.traversed);
-        expect(traversed.map((m) => m.id)).toEqual(["m:A+B"]);
-        expect(next.map((m) => m.id)).toEqual(["m:A+B+C"]);
-        // 새 선은 **A 가 아니라 교집합 노드**에서 나간다
-        expect(g.links.some((l) => l.from === "m:A+B" && l.to === "m:A+B+C")).toBe(true);
-        expect(g.links.some((l) => l.from === "A" && l.to === "m:A+B+C")).toBe(false);
+    it("후보 선은 **교집합에서** 나간다 — 고른 것 하나에서가 아니라", () => {
+        const g = selectionGraph(["A", "B"], new Map([["C", 2]]), boxOf, 7);
+        const cand = g.links.filter((l) => !l.traversed);
+        expect(cand).toHaveLength(1);
+        expect(cand[0]).toMatchObject({ from: "mid", to: "C", count: 2 });
     });
 
-    // 화살표가 "이 둘이 여기서 만난다"를 말해야지, 어디서 어디로 간다를 말하면 없는 방향을 지어낸다.
-    it("지나온 걸음의 두 선은 **양 끝에서 교집합으로** 모인다", () => {
-        const g = chainGraph(["A", "B"], new Map(), boxOf, countOf);
-        const traversed = g.links.filter((l) => l.traversed);
-        expect(traversed).toHaveLength(2);
-        expect(traversed.every((l) => l.to === "m:A+B")).toBe(true);
-        expect(traversed.map((l) => l.from).sort()).toEqual(["A", "B"]);
-    });
-
-    it("지나온 교집합의 수는 체인 접두사에서 나온다(주입)", () => {
-        const g = chainGraph(["A", "B"], new Map(), boxOf, (p) => p.length * 10);
-        expect(g.mids[0]).toMatchObject({ id: "m:A+B", count: 20, traversed: true });
-    });
-
-    it("id 는 체인 접두사 — 클릭 한 번으로 그 교집합까지의 체인을 복원할 수 있다", () => {
-        const g = chainGraph(["A", "B"], new Map([["C", 1]]), boxOf, countOf);
-        expect(g.mids.map((m) => m.id.slice(2).split("+"))).toEqual([["A", "B"], ["A", "B", "C"]]);
+    // 교집합은 대칭이라 고른 순서가 그림을 바꾸면 안 된다.
+    it("고른 순서가 달라도 같은 그림", () => {
+        const a = selectionGraph(["A", "B"], new Map([["C", 2]]), boxOf, 7);
+        const b = selectionGraph(["B", "A"], new Map([["C", 2]]), boxOf, 7);
+        expect(a.mid!.center).toEqual(b.mid!.center);
+        expect(a.links.map((l) => l.to).sort()).toEqual(b.links.map((l) => l.to).sort());
     });
 
     it("붙는 변은 상대 위치가 정한다 — 오른쪽 이웃이면 r→l", () => {
-        const g = chainGraph(["A"], new Map([["B", 1]]), boxOf, countOf);
-        expect(g.links[0]).toMatchObject({ from: "A", fromSide: "r", toSide: "l" });
+        const g = selectionGraph(["A"], new Map([["B", 1]]), boxOf, 40);
+        expect(g.links[0]).toMatchObject({ fromSide: "r", toSide: "l" });
     });
 
-    it("상자를 못 찾는 짝은 조용히 버린다(막 내려간 그룹)", () => {
-        const g = chainGraph(["A"], new Map([["없음", 3]]), boxOf, countOf);
-        expect(g.mids).toEqual([]);
-    });
-
-    it("한 방향에 몰린 후보들의 교집합 노드는 서로 비켜선다", () => {
-        const near: Record<string, { x: number; y: number; w: number; h: number }> = { ...boxes, D: { x: 400, y: 30, w: 100, h: 32 } };
-        const g = chainGraph(["A"], new Map([["B", 1], ["D", 2]]), (id) => near[id], countOf);
-        const [m1, m2] = g.mids;
-        expect(Math.hypot(m1!.center.x - m2!.center.x, m1!.center.y - m2!.center.y)).toBeGreaterThan(40);
+    it("상자를 못 찾는 그룹은 조용히 버린다(막 내려간 것)", () => {
+        expect(selectionGraph(["없음"], new Map([["B", 1]]), boxOf, 0).links).toEqual([]);
+        expect(selectionGraph(["A"], new Map([["없음", 1]]), boxOf, 40).links).toEqual([]);
     });
 });

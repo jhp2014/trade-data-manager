@@ -28,12 +28,8 @@ export interface GroupNodeData extends Record<string, unknown> {
     container: boolean;
     /** 지금 선이 붙는 변들 — 여기에만 점이 보인다. */
     anchors: readonly Side[];
-    /** 체인과 무관해 흐려지는가(교집합 0 = 이리로는 안 퍼진다 · 모집단 0). */
+    /** 고른 것·후보와 무관해 흐려지는가(교집합 0 = 이리로는 안 퍼진다 · 모집단 0). */
     dimmed: boolean;
-    /** 체인에 든 그룹인가 — RF selected 와 별개(체인은 세션 시선). */
-    picked: boolean;
-    /** 체인의 **마지막**(지금 서 있는 자리) — 실선 화살표가 여기서 나간다. */
-    head: boolean;
 }
 
 const SIDES: { side: Side; pos: Position }[] = [
@@ -82,10 +78,13 @@ function NameRow({ name, count, strong }: { name: string; count: number; strong:
 
 const LABEL_ROW_H = 22;
 
-export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: GroupNodeData }) {
-    const { group, count, container, anchors, dimmed, picked, head } = data;
-    // 체인에 들면 테두리가 진해지고, 그중 **마지막**만 두껍다 — 지금 서 있는 자리가 어디인지가 보이게.
-    const border = head ? "2px solid var(--text-primary)" : picked ? "1px solid var(--text-primary)" : null;
+/**
+ * 그룹 노드. **고름 표시는 RF 의 `selected` 를 그대로 쓴다** — 우리가 따로 상태를 들었다가
+ * 라이브러리의 선택 배선과 어긋났다. 클릭·Ctrl+클릭·빈 곳 해제는 전부 RF 가 한다.
+ */
+export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps & { data: GroupNodeData }) {
+    const { group, count, container, anchors, dimmed } = data;
+    const border = selected === true ? "2px solid var(--text-primary)" : null;
 
     if (container) {
         return (
@@ -98,8 +97,8 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: G
                 }}
                 title={`${group.name} · 모집단 ${count} · 하위 그룹 영역(안에 넣으면 하위가 된다)`}
             >
-                <SideHandles anchors={anchors} strong={picked} />
-                <NameRow name={group.name} count={count} strong={picked} />
+                <SideHandles anchors={anchors} strong={selected === true} />
+                <NameRow name={group.name} count={count} strong={selected === true} />
             </div>
         );
     }
@@ -116,7 +115,7 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: G
             }}
             title={`${group.name} · 모집단 ${count}`}
         >
-            <SideHandles anchors={anchors} strong={picked} />
+            <SideHandles anchors={anchors} strong={selected === true} />
             <div style={{ flex: 1, minWidth: 0 }}>
                 <NameRow name={group.name} count={count} strong />
             </div>
@@ -130,52 +129,29 @@ export const MID_NODE_TYPE = "tdmMid";
 export interface MidNodeData extends Record<string, unknown> {
     /** 교집합에 든 항목 수. */
     count: number;
-    /** 이 교집합의 정체(`돌파 & 재돌파[L]`) — 지나온 것만 텍스트로 편다. */
+    /** 이 교집합의 정체(`돌파 & 재돌파[L]`). */
     label: string;
-    /** 이미 지나온 교집합인가 — 후보면 숫자만, 지나온 것이면 이름까지. */
-    traversed: boolean;
-    /**
-     * 누르면 할 일 — **노드가 제 클릭을 직접 받는다.** RF 의 onNodeClick 을 거치면 그 배선이
-     * (nopan·드래그 임계·평면 이동 같은) 여러 조건에 걸리는데, 여기서 받으면 그냥 DOM 클릭이다.
-     */
-    onPick: () => void;
 }
 
 /**
- * 교집합 노드 — 두 자리 사이에 선 **겹치는 것 그 자체**.
- * 후보일 땐 숫자만 든 점선 알약(아직 가 보지 않은 자리), 지나온 것이면 이름과 수를 든 진짜 상자.
- * 크기는 mapLayout 이 정한다(레이아웃이 크기를 알아야 자리 계산이 순수하게 선다).
+ * 교집합 노드 — 고른 그룹들 가운데에 서서 **겹치는 것 그 자체**를 보여준다.
+ *
+ * ⚠ **손댈 수 없다**(pointer-events 없음 · 선택·드래그 불가). 여기를 눌러 파고들게 만들려다
+ * 라이브러리의 선택·드래그 배선과 계속 싸웠다. 파고들기는 그룹 노드를 Ctrl+클릭으로 더하는 일이고,
+ * 이 노드는 그 결과를 **읽기만** 한다 — 그러면 어긋날 배선이 없다.
+ * 점선 테두리가 "손으로 만든 게 아니라 유도된 것"을 말한다.
  */
 export const MidNode = memo(function MidNode({ data }: NodeProps & { data: MidNodeData }) {
-    const { count, label, traversed, onPick } = data;
-    if (!traversed) {
-        return (
-            <div
-                onClick={onPick}
-                style={{
-                    width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    border: "1px dashed var(--border-strong)", background: "var(--bg-primary)",
-                    fontSize: 12, fontVariantNumeric: "tabular-nums", color: "var(--text-primary)", cursor: "pointer",
-                }}
-                title={`${label} — 눌러서 여기까지 좁히기`}
-            >
-                <SideHandles anchors={ALL_SIDES} strong={false} hidden />
-                {count}
-            </div>
-        );
-    }
+    const { count, label } = data;
     return (
         <div
-            onClick={onPick}
-            onPointerDown={(e) => e.stopPropagation()}
             style={{
                 width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
                 display: "flex", alignItems: "center",
-                border: "2px solid var(--text-primary)", background: "var(--bg-primary)",
-                cursor: "pointer",
+                border: "1px dashed var(--text-primary)", background: "var(--bg-primary)",
+                pointerEvents: "none",
             }}
-            title={`${label} · ${count} — 눌러서 여기까지 되감기`}
+            title={`${label} · ${count}`}
         >
             <SideHandles anchors={ALL_SIDES} strong hidden />
             <div style={{ flex: 1, minWidth: 0 }}>

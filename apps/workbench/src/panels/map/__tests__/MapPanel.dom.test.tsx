@@ -153,7 +153,9 @@ describe("MapPanel — 멤버 목록(토글)", () => {
 
 // 체인은 **세션 시선**이지 조건이 아니다(조건의 저자는 깔때기 하나). 그래서 클릭으로만 자라고,
 // 빈 곳을 눌러도 안 풀린다 — 짚어 놓고 화면을 옮기다 쌓은 경로를 잃으면 안 된다.
-describe("MapPanel — 체인 클릭", () => {
+// 선택은 **RF 가 하는 일 그대로**다(클릭 = 고르기 · Ctrl+클릭 = 더하기). 우리는 그 결과를 읽어
+// 교집합 노드와 후보 선을 유도할 뿐 — 선택 상태를 따로 들지 않는다(들었다가 계속 어긋났다).
+describe("MapPanel — 고르기와 교집합 노드", () => {
     const g3 = (id: string, name: string, x: number, y = 0): Group =>
         ({ id, name, scope: "day", parentId: null, mapId: "m1", x, y });
     // A: 돌파+갭상승 · B: 돌파+갭상승 · C: 돌파만 → 돌파 3, 갭상승 2, 눌림 0
@@ -171,86 +173,60 @@ describe("MapPanel — 체인 클릭", () => {
         ],
     };
 
-    /** 교집합 노드(`m:g1+g2`) — 파고들기는 이 숫자를 누르는 것이다(그룹 노드는 갈아타기). */
-    function midNode(...prefix: string[]): HTMLElement {
-        const el = document.querySelector(`.react-flow__node[data-id="m:${prefix.join("+")}"]`);
-        if (!el) throw new Error(`교집합 노드 m:${prefix.join("+")} 가 없다`);
-        return el as HTMLElement;
-    }
-
-    it("짚으면 후보마다 교집합 노드가 서고, 그 숫자를 누르면 체인이 자란다", () => {
-        renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
-        expect(screen.getByText("공통 3")).toBeTruthy();
-        expect(midNode("g1", "g2").textContent).toBe("2"); // 돌파 ∧ 갭상승 = 2
-        fireEvent.click(midNode("g1", "g2"));
-        expect(screen.getByText("공통 2")).toBeTruthy();
-    });
-
-    it("교집합이 없는 그룹에는 교집합 노드가 안 선다 — 갈 수 없는 곳", () => {
-        renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
-        expect(document.querySelector('.react-flow__node[data-id="m:g1+g3"]')).toBeNull();
-    });
-
-    it("체인 밖 노드를 누르면 거기서 새로 시작한다 — 갈아타기", () => {
-        renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(midNode("g1", "g2"));
-        expect(screen.getByText("공통 2")).toBeTruthy();
-        fireEvent.click(nodeLabel("눌림")); // 후보도 체인도 아닌 그룹
-        expect(screen.getByText("공통 0")).toBeTruthy();
-    });
-
-    it("체인 안 노드를 다시 누르면 거기까지 되감긴다", () => {
-        renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(midNode("g1", "g2"));
-        // 체인에 들면 이름이 노드와 브레드크럼 두 곳에 있다 — 노드 쪽을 짚는다.
-        fireEvent.click(nodeLabel("돌파"));
-        expect(screen.getByText("공통 3")).toBeTruthy();
-    });
-
-    it("지나온 교집합 노드는 이름과 수를 편다 — 무엇과 무엇의 교집합인지", () => {
-        renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(midNode("g1", "g2"));
-        expect(midNode("g1", "g2").textContent).toContain("돌파 & 갭상승");
-    });
-
     /**
-     * ⚠ 실제 마우스로 안 눌리던 이력이 있다. RF 는 `nopan` 을 **draggable 노드에만** 붙이는데
-     * 교집합 노드를 `draggable:false` 로 특수 취급하다 평면 이동이 포인터를 가로챘다.
-     * 지금은 특수 취급을 없앴고(다른 노드와 같은 조건), 클릭도 노드가 **직접** 받는다.
+     * 고르기 = 그냥 클릭(패널이 `selectNodesOnDrag={false}` 라 드래그 내부를 안 거친다).
+     * 여러 개는 Ctrl 을 **누른 채로** — RF 는 키 상태를 문서 이벤트로 듣는다(event.ctrlKey 가 아니라).
      */
-    it("교집합 노드는 다른 노드와 같은 조건 — nopan·draggable 이 그대로 붙는다", () => {
+    const pick = (name: string, ctrl = false): void => {
+        if (ctrl) fireEvent.keyDown(document, { key: "Control" });
+        fireEvent.click(nodeLabel(name));
+        if (ctrl) fireEvent.keyUp(document, { key: "Control" });
+    };
+    const midNode = (): HTMLElement | null => document.querySelector('.react-flow__node[data-id="mid"]');
+
+    it("하나 고르면 공통 수가 뜨고 교집합 노드는 없다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
-        const cls = midNode("g1", "g2").classList;
-        expect(cls.contains("nopan")).toBe(true);
-        expect(cls.contains("draggable")).toBe(true);
+        pick("돌파");
+        expect(screen.getByText("공통 3")).toBeTruthy();
+        expect(midNode()).toBeNull();
     });
 
-    // ⚠ 작업줄이 하단을 가로지르면 그 띠에 걸친 교집합 노드가 클릭을 뺏긴다(실측된 결함).
-    // 브레드크럼은 지나온 교집합 노드가 이미 보여주므로 바에 둘 이유도 없다.
+    it("Ctrl+클릭으로 더하면 가운데에 교집합 노드가 선다", () => {
+        renderMap(CHAIN_SEED);
+        pick("돌파");
+        pick("갭상승", true);
+        expect(midNode()).toBeTruthy();
+        expect(midNode()!.textContent).toContain("돌파 & 갭상승");
+        expect(screen.getByText(/고름 2 · 공통 2/)).toBeTruthy();
+    });
+
+    it("교집합 노드는 손댈 수 없다 — 선택도 드래그도 안 된다", () => {
+        renderMap(CHAIN_SEED);
+        pick("돌파");
+        pick("갭상승", true);
+        const cls = midNode()!.classList;
+        expect(cls.contains("selectable")).toBe(false);
+        expect(cls.contains("draggable")).toBe(false);
+    });
+
+    it("필터에 추가 = 고른 그룹마다 단계 하나씩", () => {
+        renderMap(CHAIN_SEED);
+        pick("돌파");
+        pick("갭상승", true);
+        fireEvent.click(screen.getByText("필터에 추가"));
+        const stages = useWorkbench.getState().filterStages;
+        expect(stages).toHaveLength(2);
+        expect(stages.map((s) => (s.predicates[0] as { expr: { groups: { literals: { groupId: string }[] }[] } }).expr.groups[0]!.literals[0]!.groupId).sort())
+            .toEqual(["g1", "g2"]);
+    });
+
+    // ⚠ 작업줄이 하단을 가로지르면 그 띠에 걸친 노드가 클릭을 뺏긴다(실측된 결함).
     it("작업줄은 우측 상단의 작은 상자다 — 캔버스 하단을 막지 않는다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        pick("돌파");
         const bar = screen.getByText("필터에 추가").closest("div")!;
         expect(bar.style.top).toBe("8px");
         expect(bar.style.right).toBe("8px");
         expect(bar.style.bottom).toBe("");
-        expect(bar.style.left).toBe("");
-    });
-
-    it("필터에 추가 = 체인 전체가 단계 여러 개로 — 한 단계에 몰면 어느 단계가 죽였는지 못 묻는다", () => {
-        renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(midNode("g1", "g2"));
-        fireEvent.click(screen.getByText("필터에 추가"));
-        const stages = useWorkbench.getState().filterStages;
-        expect(stages).toHaveLength(2);
-        expect(stages.map((s) => (s.predicates[0] as { expr: { groups: { literals: { groupId: string }[] }[] } }).expr.groups[0]!.literals[0]!.groupId))
-            .toEqual(["g1", "g2"]);
     });
 });
