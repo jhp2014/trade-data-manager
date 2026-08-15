@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Background,
+    MarkerType,
     MiniMap,
     ReactFlow,
     ReactFlowProvider,
@@ -183,7 +184,10 @@ function MapPanelInner(): JSX.Element {
                 sourceHandle: `${l.fromSide}-s`,
                 targetHandle: `${l.toSide}-t`,
                 // 선은 전부 점선 — 교집합으로 이어진다는 걸 선 모양이 말한다(실선이면 그냥 연결로 읽힌다).
-                // 지나온 길만 **선명한 점선**(진하고 촘촘하게).
+                // 지나온 길만 **선명한 점선**에 화살촉을 달아 양쪽에서 교집합으로 모이게 한다.
+                ...(l.traversed
+                    ? { markerEnd: { type: MarkerType.ArrowClosed, width: 11, height: 11, color: "var(--text-primary)" } }
+                    : {}),
                 style: {
                     stroke: l.traversed ? "var(--text-primary)" : EDGE_COLOR,
                     strokeWidth: l.traversed ? 1.8 : 1.4,
@@ -219,16 +223,15 @@ function MapPanelInner(): JSX.Element {
                     type: MID_NODE_TYPE,
                     position: { x: m.center.x - w / 2, y: m.center.y - h / 2 },
                     style: { width: w, height: h },
-                    draggable: false,
-                    // ⚠ RF 는 `nopan` 을 **draggable 노드에만** 붙인다. 없으면 누르는 순간 평면 이동이
-                    // 포인터를 가로채 클릭이 노드까지 오지 않는다(끌 수 없는 노드는 아예 안 눌렸다).
-                    className: "nopan",
-                    // 그룹·컨테이너보다 확실히 위에 — 겹친 자리에서 클릭이 그룹으로 새면 파고들기가 막힌다.
-                    zIndex: 2000,
+                    // ⚠ **특수 취급을 하지 않는다**(draggable:false + nopan 수동 부착으로 가다 클릭이
+                    // 죽었다). 다른 노드와 같은 조건이면 RF 가 알아서 nopan·포인터를 붙여 준다.
+                    // 자리는 두 끝이 정하므로 끌어도 안 움직인다 — 그 좌표 변경을 안 받으면 그만이다.
+                    zIndex: 2000, // 겹친 자리에서 클릭이 그룹으로 새지 않게
                     data: {
                         count: m.count,
                         label: m.prefix.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)").join(" & "),
                         traversed: m.traversed,
+                        onPick: () => setChain(m.prefix),
                     } satisfies MidNodeData,
                 };
             }),

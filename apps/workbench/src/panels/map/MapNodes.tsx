@@ -130,10 +130,15 @@ export const MID_NODE_TYPE = "tdmMid";
 export interface MidNodeData extends Record<string, unknown> {
     /** 교집합에 든 항목 수. */
     count: number;
-    /** 이 교집합의 정체(`돌파 ∧ 재돌파[L]`) — 지나온 것만 텍스트로 편다. */
+    /** 이 교집합의 정체(`돌파 & 재돌파[L]`) — 지나온 것만 텍스트로 편다. */
     label: string;
     /** 이미 지나온 교집합인가 — 후보면 숫자만, 지나온 것이면 이름까지. */
     traversed: boolean;
+    /**
+     * 누르면 할 일 — **노드가 제 클릭을 직접 받는다.** RF 의 onNodeClick 을 거치면 그 배선이
+     * (nopan·드래그 임계·평면 이동 같은) 여러 조건에 걸리는데, 여기서 받으면 그냥 DOM 클릭이다.
+     */
+    onPick: () => void;
 }
 
 /**
@@ -142,10 +147,12 @@ export interface MidNodeData extends Record<string, unknown> {
  * 크기는 mapLayout 이 정한다(레이아웃이 크기를 알아야 자리 계산이 순수하게 선다).
  */
 export const MidNode = memo(function MidNode({ data }: NodeProps & { data: MidNodeData }) {
-    const { count, label, traversed } = data;
+    const { count, label, traversed, onPick } = data;
     if (!traversed) {
         return (
             <div
+                onClick={onPick}
+                onPointerDown={(e) => e.stopPropagation()} // 평면 이동이 포인터를 가로채지 않게
                 style={{
                     width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
                     display: "flex", alignItems: "center", justifyContent: "center",
@@ -161,6 +168,8 @@ export const MidNode = memo(function MidNode({ data }: NodeProps & { data: MidNo
     }
     return (
         <div
+            onClick={onPick}
+            onPointerDown={(e) => e.stopPropagation()}
             style={{
                 width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
                 display: "flex", alignItems: "center",

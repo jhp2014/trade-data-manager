@@ -219,14 +219,16 @@ describe("MapPanel — 체인 클릭", () => {
     });
 
     /**
-     * ⚠ RF 는 `nopan` 을 **draggable 노드에만** 붙인다(NodeWrapper). 교집합 노드는 끌 수 없어서 그
-     * 클래스가 없었고, 누르는 순간 평면 이동이 포인터를 가로채 **실제 마우스로는 아예 안 눌렸다**.
-     * 합성 click 이벤트는 d3 를 우회해 통과하므로 이 결함은 "클릭이 되나"로는 못 잡는다 — 클래스를 본다.
+     * ⚠ 실제 마우스로 안 눌리던 이력이 있다. RF 는 `nopan` 을 **draggable 노드에만** 붙이는데
+     * 교집합 노드를 `draggable:false` 로 특수 취급하다 평면 이동이 포인터를 가로챘다.
+     * 지금은 특수 취급을 없앴고(다른 노드와 같은 조건), 클릭도 노드가 **직접** 받는다.
      */
-    it("교집합 노드에 nopan 이 붙어 있다 — 없으면 평면 이동이 클릭을 삼킨다", () => {
+    it("교집합 노드는 다른 노드와 같은 조건 — nopan·draggable 이 그대로 붙는다", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
-        expect(midNode("g1", "g2").classList.contains("nopan")).toBe(true);
+        const cls = midNode("g1", "g2").classList;
+        expect(cls.contains("nopan")).toBe(true);
+        expect(cls.contains("draggable")).toBe(true);
     });
 
     // ⚠ 작업줄이 하단을 가로지르면 그 띠에 걸친 교집합 노드가 클릭을 뺏긴다(실측된 결함).

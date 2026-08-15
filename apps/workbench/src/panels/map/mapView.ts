@@ -157,10 +157,12 @@ export function chainGraph(
         const id = midId(prefix);
         const center = { x: (basePos.x + tp.x) / 2, y: (basePos.y + tp.y) / 2 };
         mids.push({ id, center, count: countOfPrefix(prefix), prefix, traversed: true });
+        // 지나온 걸음은 **양 끝에서 가운데로 모이게** 그린다(둘 다 교집합 노드를 향한다) —
+        // 화살표가 "이 둘이 여기서 만난다"를 말하지, 어느 쪽에서 어디로 간다를 말하지 않게.
         const s1 = sides(basePos, center);
-        const s2 = sides(center, tp);
+        const s2 = sides(tp, center);
         links.push({ id: `l:${baseId}>${id}`, from: baseId, to: id, fromSide: s1.source, toSide: s1.target, traversed: true });
-        links.push({ id: `l:${id}>${target}`, from: id, to: target, fromSide: s2.source, toSide: s2.target, traversed: true });
+        links.push({ id: `l:${target}>${id}`, from: target, to: id, fromSide: s2.source, toSide: s2.target, traversed: true });
         baseId = id;
         basePos = center;
     }

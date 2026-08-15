@@ -141,6 +141,15 @@ describe("chainGraph — 교집합을 물체로 세운다", () => {
         expect(g.links.some((l) => l.from === "A" && l.to === "m:A+B+C")).toBe(false);
     });
 
+    // 화살표가 "이 둘이 여기서 만난다"를 말해야지, 어디서 어디로 간다를 말하면 없는 방향을 지어낸다.
+    it("지나온 걸음의 두 선은 **양 끝에서 교집합으로** 모인다", () => {
+        const g = chainGraph(["A", "B"], new Map(), boxOf, countOf);
+        const traversed = g.links.filter((l) => l.traversed);
+        expect(traversed).toHaveLength(2);
+        expect(traversed.every((l) => l.to === "m:A+B")).toBe(true);
+        expect(traversed.map((l) => l.from).sort()).toEqual(["A", "B"]);
+    });
+
     it("지나온 교집합의 수는 체인 접두사에서 나온다(주입)", () => {
         const g = chainGraph(["A", "B"], new Map(), boxOf, (p) => p.length * 10);
         expect(g.mids[0]).toMatchObject({ id: "m:A+B", count: 20, traversed: true });
