@@ -43,6 +43,8 @@ import { absCenterOf, BOX_HEADER, BOX_PAD, dropTargetAt, layoutMap, LEAF_H } fro
 const SELECTED_KEY = "wb.mapSelected";
 const LIST_KEY = "wb.mapMemberList";
 const SIDE_KEY = "wb.mapSidebar";
+/** 멤버 목록에 한 번에 그리는 최대 줄 — 넘으면 "…외 N건"으로 접는다(사전 목록과 같이 스크롤하므로). */
+const MEMBER_CAP = 300;
 /** 겹침 숫자 크기 범위 — 이 선택 안의 최댓값이 최대 크기(상대 척도). 정확한 값은 숫자 자체가 준다. */
 const LABEL_MIN_PX = 11;
 const LABEL_MAX_PX = 18;
@@ -121,7 +123,6 @@ function MapPanelInner(): JSX.Element {
     const [showSide, setShowSide] = usePersistedState<boolean>(SIDE_KEY, (o) => (typeof o === "boolean" ? o : null), true);
     const chainSet = useMemo(() => new Set(chain), [chain]);
     const head = chain.length > 0 ? chain[chain.length - 1]! : null;
-    const headGroup = head === null ? null : (gv.groupById.get(head) ?? null);
     // 평면에서 내려간 그룹은 체인에서도 빠진다 — 죽은 참조가 남으면 화살표가 허공을 가리킨다.
     useEffect(() => {
         setChain((cur) => (cur.every((id) => onMapIds.has(id)) ? cur : cur.filter((id) => onMapIds.has(id))));
@@ -458,6 +459,9 @@ function MapPanelInner(): JSX.Element {
                         onPlace={(id) => { if (!activeMap) return; const c = viewCenter(); placeMut.mutate({ id, mapId: activeMap.id, x: c.x, y: c.y }); }}
                         onCreateGroup={(name) => { if (activeMap) createGroupMut.mutate({ name, scope: activeMap.scope }); }}
                         busyGroup={createGroupMut.isPending}
+                        members={showList && chain.length > 0
+                            ? <MemberList names={chain.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)")} members={chainMembers} />
+                            : null}
                     />
                 )}
                 <div ref={wrapRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
@@ -500,9 +504,6 @@ function MapPanelInner(): JSX.Element {
                     )}
                 </div>
 
-                {showList && (
-                    <MemberList head={headGroup} members={chainMembers} totalOf={(id) => gv.countOf(id)} />
-                )}
             </div>
         </div>
     );
@@ -556,7 +557,7 @@ function ChainBar({ chain, nameOf, members, onRewind, onClear, onAddFilter, onUn
  */
 function GroupSidebar({
     maps, activeMap, onPickMap, onCreateMap, busyMap,
-    onMap, offMap, countOf, chain, onPickGroup, onPlace, onCreateGroup, busyGroup,
+    onMap, offMap, countOf, chain, onPickGroup, onPlace, onCreateGroup, busyGroup, members,
 }: {
     maps: readonly { id: string; name: string; scope: MapScope }[];
     activeMap: { id: string; name: string; scope: MapScope } | null;
@@ -571,11 +572,14 @@ function GroupSidebar({
     onPlace: (id: string) => void;
     onCreateGroup: (name: string) => void;
     busyGroup: boolean;
+    /** 아래 칸 — 고른 그룹들이 공통으로 가진 항목(없으면 안 그린다). */
+    members: ReactNode;
 }): JSX.Element {
     const [adding, setAdding] = useState(false);
     const [makingMap, setMakingMap] = useState(false);
     return (
-        <div style={{ width: 172, flex: "none", borderRight: "1px solid var(--border-default)", overflowY: "auto", fontSize: 11 }}>
+        <div style={{ width: 196, flex: "none", borderRight: "1px solid var(--border-default)", display: "flex", flexDirection: "column", minHeight: 0, fontSize: 11 }}>
+            <div style={{ flex: "1 1 auto", overflowY: "auto", minHeight: 0 }}>
             <SideHead label="평면" action={makingMap ? "취소" : "+ 새로"} onAction={() => setMakingMap((v) => !v)} />
             {maps.map((m) => (
                 <SideRow key={m.id} active={m.id === activeMap?.id} onClick={() => onPickMap(m.id)}
@@ -600,6 +604,12 @@ function GroupSidebar({
                         <SideRow key={g.id} muted onClick={() => onPlace(g.id)} title="이 평면에 올린다" right="올리기">{g.name}</SideRow>
                     ))}
                 </>
+            )}
+            </div>
+            {members !== null && (
+                <div style={{ flex: "1 1 auto", overflowY: "auto", minHeight: 0, borderTop: "1px solid var(--border-strong)" }}>
+                    {members}
+                </div>
             )}
         </div>
     );
@@ -682,42 +692,40 @@ function NewMapForm({ onCreate, busy }: { onCreate: (name: string, scope: MapSco
  * 체인이 공통으로 가진 멤버 목록(토글) — 행 클릭 = 그 항목으로 이동(타점이면 goToPoint, 하루면 goToDay).
  * 맵이 탐색의 출발점이 되는 자리다. 숫자는 노드와 같은 잣대(모집단), 전체 부착 수는 참고로만.
  */
-function MemberList({ head, members, totalOf }: {
-    head: Group | null;
+function MemberList({ names, members }: {
+    names: readonly string[];
     members: readonly GroupMembership[];
-    totalOf: (groupId: string) => number;
 }): JSX.Element {
     const { nameOf } = useStockNames();
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const goToDay = useWorkbench((s) => s.goToDay);
 
     return (
-        <div style={{ width: 200, flex: "none", borderLeft: "1px solid var(--border-default)", overflowY: "auto", fontSize: 11 }}>
-            {head === null ? (
-                <div style={{ padding: 8, color: "var(--text-tertiary)" }}>그룹을 짚으면 공통 멤버가 보입니다</div>
-            ) : (
-                <div>
-                    <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-default)" }}>
-                        <div style={{ fontSize: 12 }}>{head.name}</div>
-                        <div style={{ color: "var(--text-tertiary)" }}>공통 {members.length} · 전체 부착 {totalOf(head.id)}</div>
-                    </div>
-                    {members.slice(0, 300).map((m) => (
-                        <button
-                            key={`${m.stockCode}|${m.date}|${m.time ?? ""}`}
-                            onClick={() => (m.time !== undefined
-                                ? goToPoint({ code: m.stockCode, date: m.date, time: m.time })
-                                : goToDay({ code: m.stockCode, date: m.date }))}
-                            title="이 항목으로 이동"
-                            style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 6, padding: "2px 8px", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", textAlign: "left" }}
-                        >
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(m.stockCode)}</span>
-                            <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>{shortDate(m.date)}{m.time ? ` ${m.time.slice(0, 5)}` : ""}</span>
-                        </button>
-                    ))}
-                    {members.length > 300 && <div style={{ padding: "2px 8px", color: "var(--text-tertiary)" }}>…외 {members.length - 300}건</div>}
-                </div>
+        <>
+            <div style={{ padding: "5px 8px 3px", fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>
+                공통 멤버 {members.length}
+            </div>
+            <div style={{ padding: "0 8px 4px", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                title={names.join(" & ")}>
+                {names.join(" & ")}
+            </div>
+            {members.slice(0, MEMBER_CAP).map((m) => (
+                <button
+                    key={`${m.stockCode}|${m.date}|${m.time ?? ""}`}
+                    onClick={() => (m.time !== undefined
+                        ? goToPoint({ code: m.stockCode, date: m.date, time: m.time })
+                        : goToDay({ code: m.stockCode, date: m.date }))}
+                    title="이 항목으로 이동"
+                    style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 6, padding: "2px 8px", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 11, textAlign: "left" }}
+                >
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(m.stockCode)}</span>
+                    <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>{shortDate(m.date)}{m.time ? ` ${m.time.slice(0, 5)}` : ""}</span>
+                </button>
+            ))}
+            {members.length > MEMBER_CAP && (
+                <div style={{ padding: "2px 8px", color: "var(--text-tertiary)" }}>…외 {members.length - MEMBER_CAP}건</div>
             )}
-        </div>
+        </>
     );
 }
 
