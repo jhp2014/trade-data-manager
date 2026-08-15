@@ -36,6 +36,8 @@ import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
 import { GROUP_NODE_TYPE, MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
+import { BRIDGE_EDGE_TYPE, MAP_EDGE_TYPES, type BridgeEdgeData } from "./map/BridgeEdge.js";
+import { spreadLabelPositions, type LabelSpec } from "./map/edgeLabels.js";
 import { chainCandidates, groupsOnMap, mapArrows, membersOfAll, placeableGroups, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
 import { chartKey } from "../lib/pointKey.js";
 import { absCenterOf, dropTargetAt, layoutMap } from "./map/mapLayout.js";
@@ -148,35 +150,49 @@ function MapPanelInner(): JSX.Element {
         return { arrows, anchorsById: anchors };
     }, [chain, candidates, laidById]);
 
+    /**
+     * 라벨 자리 — 노드 중심을 잇는 직선 위에서 **서로 안 겹치게** 미리 벌려 둔다(edgeLabels, 순수).
+     * 부채꼴 곡률만으로는 방향이 비슷한 선들의 중점이 한 골목에 몰린다. 남는 겹침은 hover 가 받는다.
+     */
+    const labelPos = useMemo(() => {
+        const center = (id: string): { x: number; y: number } | null => {
+            const b = laidById.get(id)?.abs;
+            return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : null;
+        };
+        const specs: LabelSpec[] = [];
+        for (const a of arrows) {
+            if (a.kind !== "candidate") continue; // 점선엔 숫자가 없다
+            const from = center(a.from);
+            const to = center(a.to);
+            if (from && to) specs.push({ id: a.id, from, to });
+        }
+        return spreadLabelPositions(specs);
+    }, [arrows, laidById]);
+
     const edges = useMemo<Edge[]>(() => {
         let fan = 0; // 후보 선만 부채꼴로 벌린다(지나온 길은 자리가 정해져 있다)
         return arrows.map((a) => {
             const isChain = a.kind === "chain";
+            const at = labelPos.get(a.id);
             return {
                 id: a.id,
+                type: BRIDGE_EDGE_TYPE,
                 source: a.from,
                 target: a.to,
                 sourceHandle: `${a.fromSide}-s`,
                 targetHandle: `${a.toSide}-t`,
-                ...(isChain ? {} : { label: String(a.count) }),
-                // 대상들이 같은 방향에 몰리면(컨테이너와 그 안의 자식) 경로가 거의 포개져 **라벨이 뭉친다**.
-                // 곡률을 하나씩 벌려 부채꼴로 만들면 경로도 라벨 자리(경로 중점)도 함께 갈린다.
-                pathOptions: { curvature: isChain ? EDGE_CURVE_BASE : EDGE_CURVE_BASE + EDGE_CURVE_STEP * fan++ },
                 markerEnd: { type: MarkerType.ArrowClosed, width: 11, height: 11, color: EDGE_COLOR },
-                style: {
-                    stroke: EDGE_COLOR,
-                    strokeWidth: 1.5,
-                    opacity: isChain ? 0.5 : 0.7,
-                    ...(isChain ? { strokeDasharray: "5 4" } : {}), // 지나온 길 = 점선
-                },
-                // 배경을 깔아 선이 숫자를 가로지르지 않게.
-                labelBgStyle: { fill: "var(--bg-primary)" },
-                labelBgPadding: [4, 2] as [number, number],
-                labelBgBorderRadius: 4,
-                labelStyle: { fontSize: LABEL_MIN_PX + (LABEL_MAX_PX - LABEL_MIN_PX) * a.weight, fill: "var(--text-primary)" },
+                style: { stroke: EDGE_COLOR, strokeWidth: 1.5, opacity: isChain ? 0.5 : 0.7 },
+                data: {
+                    ...(isChain ? { dashed: true } : { count: a.count }),
+                    ...(at ? { labelX: at.x, labelY: at.y } : {}),
+                    fontSize: LABEL_MIN_PX + (LABEL_MAX_PX - LABEL_MIN_PX) * a.weight,
+                    // 대상들이 같은 방향에 몰리면 경로가 포개진다 — 곡률을 하나씩 벌려 부채꼴로.
+                    curvature: isChain ? EDGE_CURVE_BASE : EDGE_CURVE_BASE + EDGE_CURVE_STEP * fan++,
+                } satisfies BridgeEdgeData,
             };
         });
-    }, [arrows]);
+    }, [arrows, labelPos]);
 
     const derived = useMemo<MapNode[]>(
         () =>
@@ -359,6 +375,7 @@ function MapPanelInner(): JSX.Element {
                         edges={edges}
                         onNodesChange={onNodesChange}
                         nodeTypes={MAP_NODE_TYPES}
+                        edgeTypes={MAP_EDGE_TYPES}
                         nodesConnectable={false}
                         edgesFocusable={false}
                         minZoom={0.05}
