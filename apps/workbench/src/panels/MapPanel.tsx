@@ -245,6 +245,7 @@ function MapPanelInner(): JSX.Element {
                         draggable: false,
                         focusable: false,
                         data: {
+                            anchors: anchorsById.get(n.id) ?? [],
                             count: membersOfAll(popFeed, prefix).length,
                             label: prefix.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)").join(" & "),
                         } satisfies ChipNodeData,

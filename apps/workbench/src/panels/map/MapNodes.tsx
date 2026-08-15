@@ -53,7 +53,7 @@ function SideHandles({ anchors, strong }: { anchors: readonly Side[]; strong: bo
         <>
             {SIDES.map(({ side, pos }) => {
                 const dot = anchors.includes(side)
-                    ? { width: 7, height: 7, borderRadius: "50%", border: "none", background: strong ? "var(--text-primary)" : "var(--text-tertiary)", pointerEvents: "none" as const }
+                    ? { width: DOT, height: DOT, borderRadius: "50%", border: "none", background: strong ? "var(--text-primary)" : "var(--text-tertiary)", pointerEvents: "none" as const }
                     : INVISIBLE;
                 return (
                     <span key={side}>
@@ -67,6 +67,8 @@ function SideHandles({ anchors, strong }: { anchors: readonly Side[]; strong: bo
 }
 
 const INVISIBLE = { opacity: 0, pointerEvents: "none" as const };
+/** 점 지름 — 선이 붙는 자리를 가리키기만 하면 되므로 작게. */
+const DOT = 5;
 
 /** 이름(왼쪽) · 수(오른쪽) 한 줄 — 잎의 본문이자 컨테이너의 헤더. 두 자리가 같은 글씨를 쓴다. */
 function NameRow({ name, count, strong }: { name: string; count: number; strong: boolean }): JSX.Element {
@@ -128,6 +130,8 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: G
 export const CHIP_NODE_TYPE = "tdmChip";
 
 export interface ChipNodeData extends Record<string, unknown> {
+    /** 지금 선이 붙는 변들 — 그룹 노드와 같은 규칙(쓰이는 변에만 점). */
+    anchors: readonly Side[];
     /** 이 교집합에 든 항목 수. */
     count: number;
     /** 이 교집합의 정체(`돌파 & 재돌파[S]`) — 칸을 넘으면 말줄임, 전체는 툴팁에. */
@@ -142,7 +146,7 @@ export interface ChipNodeData extends Record<string, unknown> {
  * 아니라 지금 선택에서 유도된 것"을 말한다 — 선택이 풀리면 사라진다.
  */
 export const ChipNode = memo(function ChipNode({ data }: NodeProps & { data: ChipNodeData }) {
-    const { count, label } = data;
+    const { anchors, count, label } = data;
     return (
         <div
             style={{
@@ -153,7 +157,7 @@ export const ChipNode = memo(function ChipNode({ data }: NodeProps & { data: Chi
             }}
             title={`${label} · ${count}`}
         >
-            <SideHandles anchors={["t", "r", "b", "l"]} strong />
+            <SideHandles anchors={anchors} strong />
             <div style={{ flex: 1, minWidth: 0 }}>
                 <NameRow name={label} count={count} strong />
             </div>
