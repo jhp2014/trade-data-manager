@@ -18,7 +18,7 @@ import { useGroups } from "../../lib/GroupsContext.js";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { groupColor } from "../../styles/palette.js";
 
-export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, toggle, label, onClose }: {
+export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, inheritedVia, toggle, label, onClose }: {
     anchor: { x: number; y: number };
     /** 대상들(1개 = 단일 편집, 여럿 = 다중 선택 일괄). */
     targets: readonly T[];
@@ -26,6 +26,11 @@ export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, toggle, lab
     scope: GroupScope;
     /** 이 대상에 이 그룹이 **직접** 붙어 있나(상속 제외 — 편집 판정). */
     hasGroup: (target: T, groupId: string) => boolean;
+    /**
+     * 계층 상속으로만 적용되면 경유한 하위 그룹 이름, 아니면 null. 주면 상속 행을 흐리게 그리고
+     * 토글을 막는다 — 뺄 직접 부착이 없어 눌러도 아무 일도 안 일어나는 행을 스위치처럼 두지 않는다.
+     */
+    inheritedVia?: (target: T, groupId: string) => string | null;
     toggle: (target: T, groupId: string, on: boolean) => void;
     /** 헤더 표시용(종목명 · 날짜 / "선택 N개"). */
     label: string;
@@ -41,6 +46,17 @@ export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, toggle, lab
         let n = 0;
         for (const t of targets) if (hasGroup(t, groupId)) n++;
         return n === targets.length ? "all" : n > 0 ? "some" : "none";
+    };
+    /** 직접은 없는데 **전원이 상속으로** 적용받는 그룹 — 경유지 이름. 일부만 상속이면 보통 행(채우기 가능). */
+    const inheritedOf = (groupId: string): string | null => {
+        if (!inheritedVia) return null;
+        let name: string | null = null;
+        for (const t of targets) {
+            const via = inheritedVia(t, groupId);
+            if (via === null) return null;
+            name ??= via;
+        }
+        return name;
     };
     const toggleAll = (groupId: string): void => {
         const st = stateOf(groupId);
@@ -103,6 +119,7 @@ export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, toggle, lab
                 {shown.map((t) => (
                     <GroupRow
                         key={t.id} group={t} state={stateOf(t.id)} count={countOf(t.id)}
+                        inheritedVia={stateOf(t.id) === "none" ? inheritedOf(t.id) : null}
                         multi={targets.length > 1}
                         editing={editing === t.id}
                         onToggleAll={() => toggleAll(t.id)}
@@ -121,8 +138,9 @@ export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, toggle, lab
     );
 }
 
-function GroupRow({ group, state, count, multi, editing, onToggleAll, onStartEdit, onCommitEdit, onCancelEdit, onDelete }: {
+function GroupRow({ group, state, count, inheritedVia, multi, editing, onToggleAll, onStartEdit, onCommitEdit, onCancelEdit, onDelete }: {
     group: Group; state: "all" | "some" | "none"; count: number;
+    inheritedVia: string | null; // 전원이 계층 상속으로 적용받으면 경유 그룹 이름 — 흐린 표시 + 토글 차단
     multi: boolean; // targets 가 여럿인가 — 툴팁 문구만 갈린다
     editing: boolean;
     onToggleAll: () => void;
@@ -144,14 +162,20 @@ function GroupRow({ group, state, count, multi, editing, onToggleAll, onStartEdi
             </div>
         );
     }
+    const inherited = inheritedVia !== null;
     return (
         <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px 4px 10px" }}>
-            <button onClick={onToggleAll}
-                title={state === "all" ? "전부에서 떼기" : multi ? "빠진 대상에 채우기" : "붙이기"}
-                style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: "pointer", padding: 0, font: "inherit", textAlign: "left" }}>
-                {/* ●=전원 ◐=일부 ○=없음 — 단일 대상이면 일부가 안 나와 옛 이분 토글과 같은 모양이 된다. */}
-                <span style={{ width: 12, flexShrink: 0, color: c, fontSize: 11 }}>{state === "all" ? "●" : state === "some" ? "◐" : "○"}</span>
-                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12.5, color: state !== "none" ? c : "var(--text-primary)", fontWeight: state === "all" ? 700 : 400 }}>{group.name}</span>
+            <button onClick={inherited ? undefined : onToggleAll} disabled={inherited}
+                title={inherited
+                    ? `"${inheritedVia}" 소속이라 자동 적용 — 빼려면 그 하위 그룹에서 뺀다`
+                    : state === "all" ? "전부에서 떼기" : multi ? "빠진 대상에 채우기" : "붙이기"}
+                style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: inherited ? "default" : "pointer", padding: 0, font: "inherit", textAlign: "left", opacity: inherited ? 0.55 : 1 }}>
+                {/* ●=전원 ◐=일부 ○=없음 — 상속(흐린 ●)은 결과지 스위치가 아니라 누를 수 없다. */}
+                <span style={{ width: 12, flexShrink: 0, color: c, fontSize: 11 }}>{state === "all" || inherited ? "●" : state === "some" ? "◐" : "○"}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12.5, color: state !== "none" || inherited ? c : "var(--text-primary)", fontWeight: state === "all" ? 700 : 400 }}>
+                    {group.name}
+                    {inherited && <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginLeft: 5 }}>하위 {inheritedVia} 경유</span>}
+                </span>
                 <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{count}</span>
             </button>
             <span style={{ display: "inline-flex", gap: 1, flexShrink: 0, visibility: hover ? "visible" : "hidden" }}>

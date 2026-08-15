@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Group } from "../../api/groups.js";
-import { ancestorsOf, groupPathLabel } from "../groupTree.js";
+import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources, isAncestorOf } from "../groupTree.js";
 
 const g = (id: string, name: string, parentId: string | null = null): Group =>
     ({ id, name, scope: "day", parentId, mapId: null, x: null, y: null });
@@ -53,5 +53,60 @@ describe("groupPathLabel — 툴팁용 한 줄", () => {
 
     it("지워진 그룹은 폴백 이름으로", () => {
         expect(groupPathLabel("없음", dict, "(지워짐)")).toBe("(지워짐)");
+    });
+});
+
+describe("expandWithAncestors — 적용 집합(직접 ∪ 조상)", () => {
+    it("직접이 앞, 조상이 뒤", () => {
+        expect(expandWithAncestors(["3"], dict)).toEqual(["3", "1", "2"]);
+    });
+
+    it("조상이 이미 직접이면 중복으로 안 늘어난다", () => {
+        expect(expandWithAncestors(["3", "2"], dict)).toEqual(["3", "2", "1"]);
+    });
+
+    it("최상위만 있으면 그대로 — 같은 내용이면 복사만", () => {
+        expect(expandWithAncestors(["9"], dict)).toEqual(["9"]);
+    });
+
+    it("빈 입력은 빈 배열", () => {
+        expect(expandWithAncestors([], dict)).toEqual([]);
+    });
+
+    it("죽은 참조는 조상 없이 그대로 남는다", () => {
+        expect(expandWithAncestors(["없음"], dict)).toEqual(["없음"]);
+    });
+});
+
+describe("inheritanceSources — 조상 ← 어느 직접 그룹 경유인가", () => {
+    it("조상마다 가져온 직접 그룹을 가리킨다", () => {
+        const via = inheritanceSources(["3"], dict);
+        expect(via.get("1")?.name).toBe("소부장");
+        expect(via.get("2")?.name).toBe("소부장");
+    });
+
+    it("직접 소속인 id 는 키에 없다 — 상속이 아니라 소유", () => {
+        const via = inheritanceSources(["3", "2"], dict);
+        expect(via.has("2")).toBe(false);
+        expect(via.get("1")?.name).toBe("소부장");
+    });
+
+    it("직접이 없으면 비어 있다", () => {
+        expect(inheritanceSources([], dict).size).toBe(0);
+    });
+});
+
+describe("isAncestorOf — 겹침 계산의 조상–자손 쌍 거름망", () => {
+    it("조상이면 참, 반대 방향이면 거짓", () => {
+        expect(isAncestorOf("1", "3", dict)).toBe(true);
+        expect(isAncestorOf("3", "1", dict)).toBe(false);
+    });
+
+    it("자기 자신은 조상이 아니다", () => {
+        expect(isAncestorOf("3", "3", dict)).toBe(false);
+    });
+
+    it("무관한 둘은 거짓", () => {
+        expect(isAncestorOf("9", "3", dict)).toBe(false);
     });
 });

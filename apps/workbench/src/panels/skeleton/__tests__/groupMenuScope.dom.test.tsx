@@ -69,3 +69,42 @@ describe("BulkGroupMenu — scope 계약", () => {
         expect(screen.getByText(/새 그룹으로 만들어 붙이기/)).toBeTruthy();
     });
 });
+
+describe("BulkGroupMenu — 계층 상속 행", () => {
+    beforeEach(() => vi.clearAllMocks());
+    afterEach(cleanup);
+
+    // 테마 ▸ 갭상승 — 대상은 갭상승에만 직접 부착.
+    const HIER: Group[] = [g("p", "테마", "day"), { ...g("c", "갭상승", "day"), parentId: "p" }];
+
+    function openInherited(toggle: (t: unknown, id: string, on: boolean) => void = noop): void {
+        renderWithProviders(
+            <BulkGroupMenu
+                anchor={{ x: 0, y: 0 }}
+                targets={[{ stockCode: "005930", date: "2026-06-30" }]}
+                scope="day"
+                hasGroup={(_, id) => id === "c"}
+                inheritedVia={(_, id) => (id === "p" ? "갭상승" : null)}
+                toggle={toggle}
+                label="테스트"
+                onClose={noop}
+            />,
+            { groups: HIER },
+        );
+    }
+
+    it("상속으로만 적용되는 그룹은 경유지가 표시되고 눌리지 않는다", () => {
+        const toggle = vi.fn();
+        openInherited(toggle);
+        expect(screen.getByText(/하위 갭상승 경유/)).toBeTruthy();
+        fireEvent.click(screen.getByText("테마"));
+        expect(toggle).not.toHaveBeenCalled();
+    });
+
+    it("직접 부착 그룹은 여전히 토글된다", () => {
+        const toggle = vi.fn();
+        openInherited(toggle);
+        fireEvent.click(screen.getByText("갭상승"));
+        expect(toggle).toHaveBeenCalledWith(expect.anything(), "c", false);
+    });
+});

@@ -107,11 +107,8 @@ export function useFilterFunnel(): FunnelView {
 
     const evalLook = useMemo<EvalLookup>(
         () => ({
-            // 시각이 있으면 타점 소속(직접 ∪ 하루 상속), 없으면 그 차트의 하루 소속.
-            groupIdsOf: (i) =>
-                i.time === undefined
-                    ? gv.chartGroupIdsOf({ stockCode: i.stockCode, date: i.date })
-                    : gv.groupIdsOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
+            // 적용 집합(직접 ∪ 하루 상속 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
+            groupIdsOf: (i) => gv.appliedGroupIdsOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
             hasGroup: (id) => gv.groupById.has(id),
             orderKeyOf: (axisId, i) => {
                 const idx = placements.get(axisId);

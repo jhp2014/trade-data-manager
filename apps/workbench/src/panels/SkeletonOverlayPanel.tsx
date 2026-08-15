@@ -851,11 +851,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             {groupMenu?.kind === "chart" && (
                 <BulkGroupMenu anchor={groupMenu} targets={groupMenu.charts} scope="day" label={groupMenu.label} onClose={() => setGroupMenu(null)}
                     hasGroup={(c, id) => groupsView.chartGroupIdsOf(c).includes(id)}
+                    inheritedVia={(c, id) => groupsView.inheritedViaOf(c, id)?.name ?? null}
                     toggle={(c, id, on) => groupsView.toggleChart(c, id, on)} />
             )}
             {groupMenu?.kind === "point" && (
                 <BulkGroupMenu anchor={groupMenu} targets={groupMenu.points} scope="point" label={groupMenu.label} onClose={() => setGroupMenu(null)}
                     hasGroup={(p, id) => groupsView.has(p, id)}
+                    inheritedVia={(p, id) => groupsView.inheritedViaOf(p, id)?.name ?? null}
                     toggle={(p, id, on) => groupsView.toggle(p, id, on)} />
             )}
 

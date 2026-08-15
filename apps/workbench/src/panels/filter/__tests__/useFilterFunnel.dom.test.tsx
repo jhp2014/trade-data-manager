@@ -154,6 +154,33 @@ describe("정산 — 표시와 정산이 같은 순서를 본다", () => {
     });
 });
 
+describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' 소속도 잡힌다", () => {
+    const grp = (id: string, name: string, parentId: string | null = null) =>
+        ({ id, name, scope: "day" as const, parentId, mapId: null, x: null, y: null });
+    const HIER: Seed = {
+        ...SEED,
+        groups: [grp("g-테마", "테마"), grp("g-2차전지", "2차전지", "g-테마")],
+        memberships: [{ stockCode: A, date: D1, groupIds: ["g-2차전지"] }], // A 는 자식에만 직접 부착
+    };
+    const groupStage = (groupId: string): FilterStage =>
+        ({ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }] });
+
+    it("부모 그룹 필터가 자식 소속을 통과시킨다", () => {
+        setStages([groupStage("g-테마")]);
+        expect(read(HIER).viewedItems.map((i) => i.stockCode)).toEqual([A]);
+    });
+
+    it("자식 그룹 필터는 여전히 자식 소속만 — 상속은 위로만 흐른다", () => {
+        setStages([groupStage("g-2차전지")]);
+        expect(read(HIER).viewedItems.map((i) => i.stockCode)).toEqual([A]);
+    });
+
+    it("부모 부정(!테마)은 자식 소속도 떨군다 — 적용 집합 기준의 대칭", () => {
+        setStages([{ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "g-테마", neg: true }] }] } }] }]);
+        expect(read(HIER).viewedItems.map((i) => i.stockCode).sort()).toEqual([B, C].sort());
+    });
+});
+
 describe("칸 짚기 — 보는 집합이 그 칸으로 바뀐다", () => {
     it("안 짚으면 최종 생존", () => {
         setStages([dateStage("s1", D1, D1)]);

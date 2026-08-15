@@ -37,3 +37,36 @@ export function groupPathLabel(groupId: string, groupById: ReadonlyMap<string, G
     const names = [...ancestorsOf(groupId, groupById).map((g) => g.name), self?.name ?? fallback];
     return names.join(" › ");
 }
+
+/**
+ * 직접 소속 ∪ **모든 조상**(계층 상속) — 조회·필터가 보는 "적용" 집합.
+ * 멤버는 자기 그룹만 알고, 상위 포함은 그룹 관계에서 매번 유도한다(저장하면 부모를 바꿀 때마다
+ * 멤버십 마이그레이션이 필요해지고, "하위엔 있는데 상위에서 뺀" 모순 상태가 생길 수 있다).
+ * 직접이 앞(편집 대상이 먼저 보이게), 조상은 발견 순. 중복은 거른다.
+ */
+export function expandWithAncestors(ids: readonly string[], groupById: ReadonlyMap<string, Group>): string[] {
+    if (ids.length === 0) return [];
+    const out = new Set<string>(ids);
+    for (const id of ids) for (const a of ancestorsOf(id, groupById)) out.add(a.id);
+    return out.size === ids.length ? [...ids] : [...out];
+}
+
+/**
+ * 조상 id → 그 상속을 가져온 **직접 그룹**(여럿이면 처음 만난 것) — 팝오버의 "하위 ○○ 경유" 라벨.
+ * 직접 소속인 id 는 키에 없다(상속이 아니라 소유).
+ */
+export function inheritanceSources(directIds: readonly string[], groupById: ReadonlyMap<string, Group>): Map<string, Group> {
+    const direct = new Set(directIds);
+    const via = new Map<string, Group>();
+    for (const id of directIds) {
+        const self = groupById.get(id);
+        if (!self) continue;
+        for (const a of ancestorsOf(id, groupById)) if (!direct.has(a.id) && !via.has(a.id)) via.set(a.id, self);
+    }
+    return via;
+}
+
+/** a 가 b 의 조상인가(자기 자신은 아니다). 겹침(징검다리) 계산에서 조상–자손 쌍을 걸러낼 때 쓴다. */
+export function isAncestorOf(aId: string, bId: string, groupById: ReadonlyMap<string, Group>): boolean {
+    return ancestorsOf(bId, groupById).some((g) => g.id === aId);
+}

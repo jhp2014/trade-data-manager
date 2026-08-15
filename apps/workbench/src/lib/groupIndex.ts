@@ -5,7 +5,8 @@
 //
 // **피드가 하나다**(옛날엔 타점 부착·차트 부착 둘). 멤버십은 시각 유무로 층위가 갈리므로 한 배열에서
 // 접어 두 인덱스를 만든다 — 정션을 합친 스키마와 같은 판단이다.
-import type { GroupMembership, GroupItemRef } from "@trade-data-manager/wire";
+import type { Group, GroupMembership, GroupItemRef } from "@trade-data-manager/wire";
+import { expandWithAncestors } from "./groupTree.js";
 import { pointKey, chartKey, type PointKey, type PointRef } from "./pointKey.js";
 
 /** pk("code|date|time") → 든 그룹 id들(이름순). 그룹 0개인 타점은 키가 없음. */
@@ -33,6 +34,18 @@ export function countByGroup(feed: readonly GroupMembership[]): Map<string, numb
     const m = new Map<string, number>();
     for (const a of feed) for (const id of a.groupIds) m.set(id, (m.get(id) ?? 0) + 1);
     return m;
+}
+
+/**
+ * 피드의 각 항목 groupIds 를 **조상까지 편** 사본 — 조회(맵 카운트·겹침·롤업)용. 편집은 원본을 본다.
+ * 항목 하나가 같은 부모의 자식 둘에 들어 있어도 부모는 항목당 **한 번만** 나온다(expandWithAncestors 가
+ * Set 으로 걸러서) — 그래서 이 결과에 countByGroup 을 그대로 얹으면 dedupe 롤업 건수가 된다.
+ */
+export function expandMemberships(feed: readonly GroupMembership[], groupById: ReadonlyMap<string, Group>): GroupMembership[] {
+    return feed.map((m) => {
+        const groupIds = expandWithAncestors(m.groupIds, groupById);
+        return groupIds.length === m.groupIds.length ? m : { ...m, groupIds };
+    });
 }
 
 /** 항목 키 — 하루 소속은 시각이 없다. 피드를 접고 토글 대상을 찾는 기준. */

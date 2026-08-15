@@ -2,10 +2,14 @@
 // 사전(groups)과 멤버십을 늘 같이 쓰므로 훅 하나로 준다(팔레트 = 사전 + 빈도).
 //
 // **멤버십 피드는 하나**다(옛날엔 타점 부착·차트 부착 둘). 시각 유무로 층위가 갈릴 뿐 같은 사실이라
-// 정션도 캐시도 합쳤다. 다만 **상속 규칙**은 그대로다: 하루 그룹은 그 차트의 모든 타점에 적용된다.
-//   · groupIdsOf/groupsOf(표시·필터) = 타점 직접 ∪ 하루 상속
-//   · has/toggle(편집)          = **직접만** — 상속된 그룹을 타점 메뉴에서 "빼기"하면 no-op 이 되는
-//     혼란을 막는다(상속을 빼려면 차트 쪽에서 뺀다).
+// 정션도 캐시도 합쳤다. **상속은 두 축**이고 규칙은 같다 — 조회는 상속 포함, 편집은 직접만:
+//   · 층위 상속: 하루 그룹은 그 차트의 모든 타점에 적용된다.
+//   · 계층 상속: 자식 그룹 소속이면 조상 그룹에도 적용된다(멤버는 자기 그룹만 알고, 상위 포함은
+//     parentId 에서 매번 유도 — 저장하면 부모 변경마다 멤버십 마이그레이션이 필요해진다).
+//   · groupIdsOf/groupsOf(표시) = 타점 직접 ∪ 하루 상속 (조상은 pathLabel 툴팁이 이미 보여준다)
+//   · appliedGroupIdsOf(필터 판정) = 직접 ∪ 하루 상속 ∪ **조상**
+//   · has/toggle(편집)          = **직접만** — 상속된 그룹을 메뉴에서 "빼기"하면 no-op 이 되는
+//     혼란을 막는다(층위 상속은 차트 쪽에서, 계층 상속은 하위 그룹에서 뺀다).
 //
 // 토글이 **낙관적**인 이유: 차트에서 숫자키를 연타하는 입력이라 왕복을 기다리면 눌린 게 늦게 보이고,
 // 매 요청마다 invalidate 하면 연타 중 refetch 가 겹쳐 화면이 되돌아가는 깜빡임이 난다.
@@ -16,7 +20,7 @@ import type { Group, GroupItemRef, GroupMembership } from "../api/groups.js";
 import { attachGroup, detachGroup } from "../api/groups.js";
 import { groupsQuery, groupMembershipsQuery } from "../api/queries.js";
 import { applyGroupToggle, buildGroupIndex, buildChartGroupIndex, countByGroup } from "./groupIndex.js";
-import { ancestorsOf, groupPathLabel } from "./groupTree.js";
+import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources } from "./groupTree.js";
 import { pointKey, chartKey, type PointRef } from "./pointKey.js";
 
 const TOGGLE_KEY = ["group-toggle"];
@@ -41,8 +45,18 @@ export interface GroupsView {
     pathLabel: (groupId: string, fallback: string) => string;
     /** 이 타점에 적용되는 그룹(이름순) — **직접 ∪ 하루 상속**. */
     groupsOf: (point: PointRef) => Group[];
-    /** 적용 그룹 id만(필터 평가용) — **직접 ∪ 하루 상속**. 없으면 빈 배열. */
+    /** 표시용 적용 id — **직접 ∪ 하루 상속**(조상 제외 — 칩이 늘어지지 않게, 경로는 pathLabel 로). */
     groupIdsOf: (point: PointRef) => string[];
+    /**
+     * 판정용 적용 id — **직접 ∪ 하루 상속 ∪ 조상**(계층 상속까지). 그룹 필터가 "테마"를 걸면
+     * "테마 ▸ 2차전지" 소속도 잡히는 건 이 함수 덕이다. 시각 없으면 하루 항목으로 판정.
+     */
+    appliedGroupIdsOf: (ref: GroupItemRef) => string[];
+    /**
+     * 이 항목에 이 그룹이 **계층 상속으로만** 적용되나 — 그렇다면 상속을 가져온 직접 그룹(경유지).
+     * 팝오버가 흐린 행("하위 ○○ 경유")을 그리고 토글을 막는 근거. 직접 소속이거나 무관하면 null.
+     */
+    inheritedViaOf: (ref: GroupItemRef, groupId: string) => Group | null;
     /** 직접 소속 여부(편집 판정 — 상속은 안 본다). */
     has: (point: PointRef, groupId: string) => boolean;
     /** 이 그룹의 사용 건수(두 층위 합산 — 삭제 확인·팔레트 빈도). */
@@ -98,13 +112,16 @@ export function useGroupsValue(): GroupsView {
     return useMemo(() => {
         const directOf = (p: PointRef): string[] => index.get(pointKey(p)) ?? [];
         const chartOf = (c: ChartGroupRef): string[] => chartIndex.get(chartKey(c)) ?? [];
-        // 상속 합치기 — 직접이 앞(편집 대상이 먼저 보이게), 하루 상속이 뒤. 중복은 Set 으로 거른다.
+        // 층위 상속 합치기 — 직접이 앞(편집 대상이 먼저 보이게), 하루 상속이 뒤. 중복은 Set 으로 거른다.
         const idsOf = (p: PointRef): string[] => {
             const direct = directOf(p);
             const inherited = chartOf(p);
             if (inherited.length === 0) return direct;
             return [...new Set([...direct, ...inherited])];
         };
+        /** 항목의 직접 소속(층위 상속 포함, 계층 상속 제외) — 판정·경유 계산의 재료. */
+        const baseOf = (ref: GroupItemRef): string[] =>
+            ref.time === undefined ? chartOf(ref) : idsOf(ref as PointRef);
         return {
             groups,
             groupById,
@@ -112,6 +129,8 @@ export function useGroupsValue(): GroupsView {
             pathLabel: (id, fallback) => groupPathLabel(id, groupById, fallback),
             groupsOf: (p) => idsOf(p).map((id) => groupById.get(id)).filter((g): g is Group => g != null),
             groupIdsOf: idsOf,
+            appliedGroupIdsOf: (ref) => expandWithAncestors(baseOf(ref), groupById),
+            inheritedViaOf: (ref, groupId) => inheritanceSources(baseOf(ref), groupById).get(groupId) ?? null,
             has: (p, groupId) => directOf(p).includes(groupId),
             countOf: (groupId) => counts.get(groupId) ?? 0,
             toggle: (p, groupId, on) =>
