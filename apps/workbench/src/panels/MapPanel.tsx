@@ -30,7 +30,7 @@ import { createMap, type MapScope } from "../api/map.js";
 import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group, type GroupMembership, type GroupMove } from "../api/groups.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { PanelHeader } from "../components/ControlChrome.js";
+import { ControlBox, Dot, miniBtn, PanelHeader, Sep, TextToggle } from "../components/ControlChrome.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
@@ -412,22 +412,53 @@ function MapPanelInner(): JSX.Element {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
             <PanelHeader chrome={false} padding="5px 8px" style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
-                <select value={activeMap?.id ?? ""} onChange={(e) => { setSavedId(e.target.value); setChain([]); }} style={{ fontSize: 12 }}>
-                    {maps.map((m) => (
-                        <option key={m.id} value={m.id}>{m.name} [{m.scope === "day" ? "하루" : "타점"}]</option>
-                    ))}
-                </select>
-                <button onClick={() => fitView({ duration: 250 })} title="전부 화면에 담기">원위치</button>
-                <NewGroup busy={createGroupMut.isPending} onCreate={(name) => activeMap && createGroupMut.mutate({ name, scope: activeMap.scope })} />
-                {offMap.length > 0 && activeMap && (
-                    <PlacePalette
-                        groups={offMap}
-                        onPlace={(id) => { const c = viewCenter(); placeMut.mutate({ id, mapId: activeMap.id, x: c.x, y: c.y }); }}
-                    />
-                )}
-                <button onClick={() => setShowList(!showList)} title="짚은 그룹의 모집단 멤버 목록"
-                    style={{ color: showList ? ACTIVE : undefined }}>목록</button>
-                <span style={{ color: "var(--text-tertiary)", flexShrink: 0, marginLeft: "auto" }}>
+                <ControlBox label="평면">
+                    <HeaderMenu label={`${activeMap?.name ?? "없음"} ▾`} title="평면 고르기 · 새로 만들기">
+                        {(close) => (
+                            <>
+                                {maps.map((m) => (
+                                    <MenuRow key={m.id} active={m.id === activeMap?.id}
+                                        onClick={() => { setSavedId(m.id); setChain([]); close(); }}>
+                                        {m.name} <span style={{ color: "var(--text-tertiary)" }}>[{m.scope === "day" ? "하루" : "타점"}]</span>
+                                    </MenuRow>
+                                ))}
+                                <MenuDivider />
+                                <NewMapRow busy={createMapMut.isPending}
+                                    onCreate={(name, scope) => { createMapMut.mutate({ name, scope }); close(); }} />
+                            </>
+                        )}
+                    </HeaderMenu>
+                </ControlBox>
+
+                <ControlBox label="그룹">
+                    <HeaderMenu label="+ 새로" title="이 평면 층위로 새 그룹 만들기">
+                        {(close) => (
+                            <NewGroupRow busy={createGroupMut.isPending}
+                                onCreate={(name) => { if (activeMap) createGroupMut.mutate({ name, scope: activeMap.scope }); close(); }} />
+                        )}
+                    </HeaderMenu>
+                    <Dot />
+                    <HeaderMenu label={`올리기 ${offMap.length}`} title="안 올린 그룹을 이 평면에 올린다" disabled={offMap.length === 0}>
+                        {(close) => (
+                            <>
+                                {offMap.map((g) => (
+                                    <MenuRow key={g.id} onClick={() => {
+                                        if (!activeMap) return;
+                                        const c = viewCenter();
+                                        placeMut.mutate({ id: g.id, mapId: activeMap.id, x: c.x, y: c.y });
+                                        close();
+                                    }}>{g.name}</MenuRow>
+                                ))}
+                            </>
+                        )}
+                    </HeaderMenu>
+                </ControlBox>
+
+                <Sep />
+                <TextToggle active={false} onClick={() => fitView({ duration: 250 })} title="전부 화면에 담기">원위치</TextToggle>
+                <TextToggle active={showList} activeColor={ACTIVE} onClick={() => setShowList(!showList)} title="짚은 그룹의 모집단 멤버 목록">목록</TextToggle>
+
+                <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0, marginLeft: "auto" }}>
                     모집단 {funnel.isLoading ? "…" : popFeed.length}{funnel.isFiltering ? "" : " (전체)"}
                 </span>
             </PanelHeader>
@@ -519,27 +550,86 @@ function ChainBar({ chain, nameOf, members, onRewind, onClear, onAddFilter, onUn
     );
 }
 
-/** 안 올린 그룹 팔레트 — 헤더의 작은 팝오버. 올리면 화면 가운데에 놓인다. */
-function PlacePalette({ groups, onPlace }: { groups: Group[]; onPlace: (id: string) => void }): JSX.Element {
+/**
+ * 헤더 메뉴 — 라벨을 누르면 아래로 펼쳐지는 작은 판. 평면 고르기·새 그룹·올리기가 같은 모양을 쓴다.
+ *
+ * 왜 메뉴인가: 머리글은 넘치면 가로 스크롤이라(PanelHeader 규약) 컨트롤을 늘어놓으면 뒤엣것이
+ * 화면 밖으로 밀린다 — 실제로 "올리기" 팔레트가 그렇게 안 보였다. 자주 안 쓰는 손짓을 메뉴로
+ * 접으면 머리글이 짧게 유지되어 애초에 넘치지 않는다.
+ */
+function HeaderMenu({ label, title, disabled = false, children }: {
+    label: string;
+    title: string;
+    disabled?: boolean;
+    children: (close: () => void) => ReactNode;
+}): JSX.Element {
     const [open, setOpen] = useState(false);
     return (
-        <span style={{ position: "relative" }}>
-            <button onClick={() => setOpen((v) => !v)} style={{ color: open ? ACTIVE : undefined }}>올리기 {groups.length}</button>
+        <span style={{ position: "relative", display: "inline-flex" }}>
+            <TextToggle active={open} onClick={() => setOpen((v) => !v)} title={title} disabled={disabled}>{label}</TextToggle>
             {open && (
-                <div style={{
-                    position: "absolute", top: "100%", left: 0, zIndex: 20, minWidth: 150, maxHeight: 240, overflowY: "auto",
-                    background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 6, padding: 4,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
-                }}>
-                    {groups.map((g) => (
-                        <button key={g.id} onClick={() => { onPlace(g.id); setOpen(false); }}
-                            style={{ display: "block", width: "100%", textAlign: "left", padding: "3px 7px", fontSize: 12, border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer" }}>
-                            {g.name}
-                        </button>
-                    ))}
-                </div>
+                <>
+                    {/* 바깥을 누르면 닫힌다 — 메뉴 밖 클릭이 평면으로 새지 않게 덮개를 깐다. */}
+                    <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 30 }} />
+                    <div style={{
+                        position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 31,
+                        minWidth: 160, maxHeight: 260, overflowY: "auto",
+                        background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 6,
+                        padding: "4px 0", boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                    }}>
+                        {children(() => setOpen(false))}
+                    </div>
+                </>
             )}
         </span>
+    );
+}
+
+function MenuRow({ active = false, onClick, children }: { active?: boolean; onClick: () => void; children: ReactNode }): JSX.Element {
+    return (
+        <button onClick={onClick} style={{
+            display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent",
+            padding: "4px 10px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap",
+            color: active ? ACTIVE : "var(--text-primary)", fontWeight: active ? 600 : 400,
+        }}>{children}</button>
+    );
+}
+
+const MenuDivider = (): JSX.Element => <div style={{ height: 1, background: "var(--border-default)", margin: "4px 0" }} />;
+
+/** 메뉴 안의 새 그룹 입력 — 이름만 받는다(층위는 그 평면이 정한다). */
+function NewGroupRow({ onCreate, busy }: { onCreate: (name: string) => void; busy: boolean }): JSX.Element {
+    const [name, setName] = useState("");
+    const submit = (): void => { const n = name.trim(); if (n !== "") onCreate(n); };
+    return (
+        <div style={{ display: "flex", gap: 4, padding: "2px 8px" }}>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+                placeholder="새 그룹 이름" style={{ fontSize: 11, width: 130 }} />
+            <button disabled={busy || name.trim() === ""} onClick={submit} style={miniBtn}>추가</button>
+        </div>
+    );
+}
+
+/** 메뉴 안의 새 평면 — scope 는 만든 뒤 못 바꾼다(올릴 수 있는 그룹의 층위가 곧 평면의 정체). */
+function NewMapRow({ onCreate, busy }: { onCreate: (name: string, scope: MapScope) => void; busy: boolean }): JSX.Element {
+    const [name, setName] = useState("");
+    const [scope, setScope] = useState<MapScope>("day");
+    const submit = (): void => { const n = name.trim(); if (n !== "") onCreate(n, scope); };
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "4px 8px" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>새 평면</span>
+            <input value={name} onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+                placeholder="평면 이름" style={{ fontSize: 11, width: 150 }} />
+            <div style={{ display: "flex", gap: 4 }}>
+                <select value={scope} onChange={(e) => setScope(e.target.value as MapScope)} style={{ fontSize: 11, flex: 1 }}>
+                    <option value="day">하루 그룹</option>
+                    <option value="point">타점 그룹</option>
+                </select>
+                <button disabled={busy || name.trim() === ""} onClick={submit} style={miniBtn}>만들기</button>
+            </div>
+        </div>
     );
 }
 
@@ -583,31 +673,6 @@ function MemberList({ head, members, totalOf }: {
                 </div>
             )}
         </div>
-    );
-}
-
-function NewGroup({ onCreate, busy }: { onCreate: (name: string) => void; busy: boolean }): JSX.Element {
-    const [name, setName] = useState("");
-    const ref = useRef<HTMLInputElement | null>(null);
-    const submit = (): void => {
-        const n = name.trim();
-        if (n === "") return;
-        onCreate(n);
-        setName("");
-        ref.current?.focus();
-    };
-    return (
-        <span style={{ display: "inline-flex", gap: 3 }}>
-            <input
-                ref={ref}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-                placeholder="새 그룹"
-                style={{ fontSize: 11, width: 90 }}
-            />
-            <button disabled={busy || name.trim() === ""} onClick={submit}>추가</button>
-        </span>
     );
 }
 
