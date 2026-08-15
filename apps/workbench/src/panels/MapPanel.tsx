@@ -383,11 +383,20 @@ function MapPanelInner(): JSX.Element {
     }, [chain, addFilterStage]);
 
     /** 노드 클릭 — 체인에 있으면 거기까지 되감기, 아니면 이어붙이기(갈 수 없는 곳은 무시). */
+    /**
+     * 클릭 규칙 — **그냥 클릭은 갈아타기, Ctrl+클릭이 더하기.**
+     * 교집합(칩)은 여러 그룹을 겹칠 때만 뜻이 있는데, 그냥 클릭으로 쌓이면 옆 그룹을 구경하려다
+     * 원치 않는 교집합이 생긴다. 그래서 쌓는 손짓을 **명시적인 것**(Ctrl)으로 따로 뒀다.
+     *   · 클릭        = 그 그룹 하나만 (체인 새로 시작)
+     *   · Ctrl+클릭   = 체인에 더하기(교집합 생김). 이미 든 그룹이면 거기까지 되감기
+     * Ctrl 로도 교집합이 없는 그룹은 이어붙지 않는다 — 갈 수 있는 곳이 아니다.
+     */
     const onNodeClick = useCallback(
-        (id: string) => {
+        (id: string, additive: boolean) => {
             setChain((cur) => {
                 const i = cur.indexOf(id);
-                if (i >= 0) return cur.slice(0, i); // 되감기 — 자기 자신도 풀린다
+                if (!additive) return cur.length === 1 && cur[0] === id ? [] : [id]; // 같은 걸 또 누르면 해제
+                if (i >= 0) return cur.slice(0, i + 1); // 이미 든 그룹 — 거기까지 되감기
                 if (cur.length === 0 || candidates.has(id)) return [...cur, id];
                 return cur; // 교집합이 없는 그룹 — 이어붙일 자리가 없다
             });
@@ -436,7 +445,7 @@ function MapPanelInner(): JSX.Element {
                         maxZoom={4}
                         proOptions={{ hideAttribution: true }}
                         onNodeDragStop={onNodeDragStop as unknown as (e: unknown, n: Node, ns: Node[]) => void}
-                        onNodeClick={(_e, n) => onNodeClick(n.id)}
+                        onNodeClick={(e, n) => onNodeClick(n.id, e.ctrlKey || e.metaKey)}
                         onEdgeMouseEnter={(_e, ed) => setHoverEdge(ed.id)}
                         onEdgeMouseLeave={() => setHoverEdge(null)}
                     >

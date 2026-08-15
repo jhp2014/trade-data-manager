@@ -184,27 +184,46 @@ describe("MapPanel — 체인 클릭", () => {
         throw new Error("엣지 모델을 못 찾았다");
     }
 
-    it("이어 누르면 체인이 자라고 공통 수가 좁아진다", () => {
+    /** 더하기는 **Ctrl+클릭** — 그냥 클릭은 갈아타기다. */
+    const add = (name: string): void => { fireEvent.click(nodeLabel(name), { ctrlKey: true }); };
+
+    it("Ctrl+클릭으로 이어 누르면 체인이 자라고 공통 수가 좁아진다", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
         expect(screen.getByText("공통 3")).toBeTruthy();
-        fireEvent.click(screen.getByText("갭상승"));
+        add("갭상승");
         expect(screen.getByText("공통 2")).toBeTruthy();
+    });
+
+    // 그냥 클릭으로 쌓이면 옆 그룹을 구경하려다 원치 않는 교집합이 생긴다.
+    it("그냥 클릭은 갈아타기 — 교집합이 안 생긴다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("갭상승"));
+        expect(screen.getByText("공통 2")).toBeTruthy(); // 갭상승 하나만 골라진 상태
+        expect(document.querySelector('.react-flow__node[data-id="chip-1"]')).toBeNull();
+    });
+
+    it("같은 노드를 다시 그냥 클릭하면 해제된다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
+        expect(screen.queryByText("필터에 추가")).toBeNull();
     });
 
     it("교집합이 없는 그룹은 이어붙지 않는다 — 갈 수 없는 곳", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(screen.getByText("눌림"));
+        add("눌림");
         expect(screen.getByText("공통 3")).toBeTruthy(); // 그대로
     });
 
     it("체인 안 노드를 다시 누르면 거기까지 되감긴다", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(screen.getByText("갭상승"));
-        // 체인에 들면 이름이 노드와 브레드크럼 두 곳에 있다 — 노드 쪽을 짚어 "맵에서 다시 누르기"를 재현.
-        fireEvent.click(nodeLabel("갭상승"));
+        add("갭상승");
+        // 체인에 들면 이름이 노드와 브레드크럼 두 곳에 있다 — 노드 쪽을 Ctrl+클릭해 되감는다.
+        add("돌파");
         expect(screen.getByText("공통 3")).toBeTruthy();
     });
 
@@ -222,7 +241,7 @@ describe("MapPanel — 체인 클릭", () => {
     it("지나온 길만 화살촉을 단다 — 거기서만 방향이 뜻을 가진다", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(screen.getByText("갭상승"));
+        add("갭상승");
         const e = rfEdges().find((x) => x.id.startsWith("c:"))!;
         expect(e.markerEnd).toBeTruthy();
         expect(e.style.strokeDasharray).toBeUndefined();
@@ -240,7 +259,7 @@ describe("MapPanel — 체인 클릭", () => {
     it("둘째를 고르면 그 그룹 **안에** 칩이 생기고 교집합 수를 편다", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(screen.getByText("갭상승"));
+        add("갭상승");
         const c = chip(1)!;
         expect(c).toBeTruthy();
         expect(c.textContent).toContain("돌파 & 갭상승");
@@ -252,7 +271,7 @@ describe("MapPanel — 체인 클릭", () => {
     it("칩은 손댈 수 없다 — 선택도 드래그도 안 된다", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(screen.getByText("갭상승"));
+        add("갭상승");
         const cls = chip(1)!.classList;
         expect(cls.contains("selectable")).toBe(false);
         expect(cls.contains("draggable")).toBe(false);
@@ -261,8 +280,8 @@ describe("MapPanel — 체인 클릭", () => {
     it("되감으면 칩도 사라진다 — 선택에서 유도된 것이라", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(screen.getByText("갭상승"));
-        fireEvent.click(nodeLabel("돌파")); // 체인 안 노드 = 거기까지 되감기
+        add("갭상승");
+        add("돌파"); // 체인 안 노드 = 거기까지 되감기
         expect(chip(1)).toBeNull();
     });
 
@@ -280,7 +299,7 @@ describe("MapPanel — 체인 클릭", () => {
     it("필터에 추가 = 체인 전체가 단계 여러 개로 — 한 단계에 몰면 어느 단계가 죽였는지 못 묻는다", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
-        fireEvent.click(screen.getByText("갭상승"));
+        add("갭상승");
         fireEvent.click(screen.getByText("필터에 추가"));
         const stages = useWorkbench.getState().filterStages;
         expect(stages).toHaveLength(2);
