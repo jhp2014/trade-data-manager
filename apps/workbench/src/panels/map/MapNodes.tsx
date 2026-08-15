@@ -124,4 +124,41 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: G
     );
 });
 
-export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode } as const;
+/**
+ * ⚠ **임시 진단 노드 — 확인이 끝나면 통째로 지운다.**
+ *
+ * 교집합 노드가 실제 마우스로 클릭도 드래그도 안 되던 원인을 가르기 위한 실험용이다. 후보가 셋이라
+ * 셋을 각각 세워 어느 것이 안 눌리는지 본다: ① 상태 안 + 평범한 id ② 상태 밖 + 평범한 id
+ * ③ 상태 밖 + 특수문자 id(`m:x+y` — `:`·`+` 는 CSS 선택자 메타문자).
+ * 누르면 제 라벨에 눌린 횟수를 적고 `window.__mapProbe` 에도 남긴다(사람이 눌러야 판정이 선다).
+ */
+export const PROBE_NODE_TYPE = "tdmProbe";
+
+export interface ProbeNodeData extends Record<string, unknown> {
+    label: string;
+    hits: number;
+    onHit: () => void;
+}
+
+export const ProbeNode = memo(function ProbeNode({ data }: NodeProps & { data: ProbeNodeData }) {
+    const { label, hits, onHit } = data;
+    return (
+        <div
+            onClick={onHit}
+            style={{
+                width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                border: `2px ${hits > 0 ? "solid" : "dashed"} var(--rise, #e24b4a)`,
+                background: "var(--bg-primary)", fontSize: 11, color: "var(--text-primary)", cursor: "pointer",
+            }}
+            title={`진단용 노드 — 눌러 보세요 (${label})`}
+        >
+            <Handle id="t-t" type="target" position={Position.Top} style={INVISIBLE} />
+            <span>{label}</span>
+            <span style={{ fontWeight: 700 }}>{hits}</span>
+            <Handle id="b-s" type="source" position={Position.Bottom} style={INVISIBLE} />
+        </div>
+    );
+});
+
+export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode, [PROBE_NODE_TYPE]: ProbeNode } as const;

@@ -35,7 +35,7 @@ import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
-import { GROUP_NODE_TYPE, MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
+import { GROUP_NODE_TYPE, MAP_NODE_TYPES, PROBE_NODE_TYPE, type GroupNodeData, type ProbeNodeData } from "./map/MapNodes.js";
 import { chainCandidates, groupsOnMap, mapArrows, membersOfAll, placeableGroups, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
 import { chartKey } from "../lib/pointKey.js";
 import { absCenterOf, dropTargetAt, layoutMap } from "./map/mapLayout.js";
@@ -202,9 +202,37 @@ function MapPanelInner(): JSX.Element {
         [laid, gv.groupById, counts, anchorsById, chain, chainSet, candidates, head, funnel.isFiltering],
     );
 
-    const [nodes, setNodes] = useState<MapNode[]>([]);
-    useEffect(() => { setNodes(derived); }, [derived]);
-    const onNodesChange = useCallback((cs: NodeChange<MapNode>[]) => setNodes((ns) => applyNodeChanges(cs, ns)), []);
+    // ── ⚠ 임시 진단 — 교집합 노드가 왜 실제 마우스로 안 눌렸나. 확인 후 이 블록과 ProbeNode 를 지운다.
+    //
+    // 후보 셋을 각각 세워 어느 것이 안 눌리는지 본다:
+    //   A 상태 안(setNodes 를 거친 노드) + 평범한 id
+    //   B 상태 밖(렌더 직전에 합친 노드) + 평범한 id
+    //   C 상태 밖 + 특수문자 id(`m:x+y` — `:`·`+` 는 CSS 선택자 메타문자)
+    // 교집합 노드는 B·C 조건이었다. 판정은 **사람이 눌러야** 선다(합성·CDP 입력은 이 창에 안 닿는다).
+    const [probeHits, setProbeHits] = useState<Record<string, number>>({});
+    const hit = useCallback((id: string) => {
+        setProbeHits((cur) => {
+            const next = { ...cur, [id]: (cur[id] ?? 0) + 1 };
+            (window as unknown as { __mapProbe?: Record<string, number> }).__mapProbe = next;
+            return next;
+        });
+    }, []);
+    const probes = useMemo<Node[]>(() => {
+        const at = laid[0]?.abs ?? { x: 0, y: 0 };
+        const make = (id: string, label: string, dy: number): Node => ({
+            id, type: PROBE_NODE_TYPE,
+            position: { x: at.x, y: at.y + dy },
+            style: { width: 190, height: 30 },
+            data: { label, hits: probeHits[id] ?? 0, onHit: () => hit(id) } satisfies ProbeNodeData,
+        });
+        return [make("probeA", "A 상태안·평범", -150), make("probeB", "B 상태밖·평범", -110), make("m:x+y", "C 상태밖·특수id", -70)];
+    }, [laid, probeHits, hit]);
+
+    const [nodes, setNodes] = useState<Node[]>([]);
+    // A 만 상태를 거친다(나머지 둘은 렌더에서 합친다) — 그 차이가 이 실험의 전부다.
+    useEffect(() => { setNodes([...derived, probes[0]!]); }, [derived, probes]);
+    const onNodesChange = useCallback((cs: NodeChange<Node>[]) => setNodes((ns) => applyNodeChanges(cs, ns)), []);
+    const rfNodes = useMemo<Node[]>(() => [...nodes, probes[1]!, probes[2]!], [nodes, probes]);
 
     // ── 쓰기 ──────────────────────────────────────────────────────────────
     const invalidateGroups = useCallback(() => void qc.invalidateQueries({ queryKey: groupsQuery().queryKey }), [qc]);
@@ -354,8 +382,8 @@ function MapPanelInner(): JSX.Element {
 
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
                 <div ref={wrapRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
-                    <ReactFlow<MapNode>
-                        nodes={nodes}
+                    <ReactFlow
+                        nodes={rfNodes}
                         edges={edges}
                         onNodesChange={onNodesChange}
                         nodeTypes={MAP_NODE_TYPES}
@@ -364,7 +392,7 @@ function MapPanelInner(): JSX.Element {
                         minZoom={0.05}
                         maxZoom={4}
                         proOptions={{ hideAttribution: true }}
-                        onNodeDragStop={onNodeDragStop}
+                        onNodeDragStop={onNodeDragStop as unknown as (e: unknown, n: Node, ns: Node[]) => void}
                         onNodeClick={(_e, n) => onNodeClick(n.id)}
                     >
                         <Background gap={40} size={1} />
