@@ -42,7 +42,10 @@ function renderMap(seed: Seed = SEED, scope: "day" | "point" = "day"): void {
     );
 }
 
-/** 평면 위 노드의 이름 — 체인에 들면 브레드크럼에도 같은 이름이 생겨 맨 이름으로는 모호해진다. */
+/**
+ * 평면 위 **노드**의 이름 — 같은 이름이 사이드바(그룹 사전)와 브레드크럼에도 있어서
+ * 맨 이름으로 찾으면 어느 것을 눌렀는지가 모호해진다.
+ */
 function nodeLabel(name: string): HTMLElement {
     const el = screen.getAllByText(name).find((e) => e.closest(".react-flow__node") !== null);
     if (!el) throw new Error(`평면에 "${name}" 노드가 없다`);
@@ -117,7 +120,7 @@ describe("MapPanel — 평면 층위로 모집단을 본다", () => {
 describe("MapPanel — 필터에 추가(유일한 쓰기)", () => {
     it("짚고 누르면 그룹 단계가 하나 생긴다 — 맵은 만든 뒤 잊는다", () => {
         renderMap();
-        fireEvent.click(screen.getByText("갭상승"));
+        fireEvent.click(nodeLabel("갭상승"));
         fireEvent.click(screen.getByText("필터에 추가"));
         const stages = useWorkbench.getState().filterStages;
         expect(stages).toHaveLength(1);
@@ -136,7 +139,7 @@ describe("MapPanel — 멤버 목록(토글)", () => {
     it("목록을 켜고 그룹을 짚으면 모집단 멤버가 보이고, 행 클릭 = 그 항목으로 이동", () => {
         renderMap();
         fireEvent.click(screen.getByText("목록"));
-        fireEvent.click(screen.getByText("2차전지"));
+        fireEvent.click(nodeLabel("2차전지"));
         const row = screen.getByTitle("이 항목으로 이동");
         fireEvent.click(row);
         const s = useWorkbench.getState();
@@ -146,7 +149,7 @@ describe("MapPanel — 멤버 목록(토글)", () => {
 
     it("짚으면 작업줄에 그 그룹과 공통 수가 뜬다", () => {
         renderMap();
-        fireEvent.click(screen.getByText("2차전지"));
+        fireEvent.click(nodeLabel("2차전지"));
         expect(screen.getByText("공통 1")).toBeTruthy();
     });
 });
@@ -189,7 +192,7 @@ describe("MapPanel — 체인 클릭", () => {
 
     it("Ctrl+클릭으로 이어 누르면 체인이 자라고 공통 수가 좁아진다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         expect(screen.getByText("공통 3")).toBeTruthy();
         add("갭상승");
         expect(screen.getByText("공통 2")).toBeTruthy();
@@ -198,7 +201,7 @@ describe("MapPanel — 체인 클릭", () => {
     // 그냥 클릭으로 쌓이면 옆 그룹을 구경하려다 원치 않는 교집합이 생긴다.
     it("그냥 클릭은 갈아타기 — 교집합이 안 생긴다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         fireEvent.click(nodeLabel("갭상승"));
         expect(screen.getByText("공통 2")).toBeTruthy(); // 갭상승 하나만 골라진 상태
         expect(document.querySelector('.react-flow__node[data-id="chip-1"]')).toBeNull();
@@ -206,21 +209,21 @@ describe("MapPanel — 체인 클릭", () => {
 
     it("같은 노드를 다시 그냥 클릭하면 해제된다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         fireEvent.click(nodeLabel("돌파"));
         expect(screen.queryByText("필터에 추가")).toBeNull();
     });
 
     it("교집합이 없는 그룹은 이어붙지 않는다 — 갈 수 없는 곳", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         add("눌림");
         expect(screen.getByText("공통 3")).toBeTruthy(); // 그대로
     });
 
     it("체인 안 노드를 다시 누르면 거기까지 되감긴다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         add("갭상승");
         // 체인에 들면 이름이 노드와 브레드크럼 두 곳에 있다 — 노드 쪽을 Ctrl+클릭해 되감는다.
         add("돌파");
@@ -231,7 +234,7 @@ describe("MapPanel — 체인 클릭", () => {
     // 엣지 DOM 은 RF 가 rAF 로 노드를 측정한 뒤에야 생기므로 여기서는 **엣지 모델**을 본다.
     it("후보 선은 점선에 숫자, 화살촉이 없다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         const e = rfEdges().find((x) => x.id.startsWith("o:"))!;
         expect(e.label).toBe("2");
         expect(e.style.strokeDasharray).toBe("5 4");
@@ -240,7 +243,7 @@ describe("MapPanel — 체인 클릭", () => {
 
     it("지나온 길만 화살촉을 단다 — 거기서만 방향이 뜻을 가진다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         add("갭상승");
         const e = rfEdges().find((x) => x.id.startsWith("c:"))!;
         expect(e.markerEnd).toBeTruthy();
@@ -252,13 +255,13 @@ describe("MapPanel — 체인 클릭", () => {
 
     it("하나만 골랐을 땐 칩이 없다 — 교집합이랄 게 없다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         expect(chip(1)).toBeNull();
     });
 
     it("둘째를 고르면 그 그룹 **안에** 칩이 생기고 교집합 수를 편다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         add("갭상승");
         const c = chip(1)!;
         expect(c).toBeTruthy();
@@ -270,7 +273,7 @@ describe("MapPanel — 체인 클릭", () => {
 
     it("칩은 손댈 수 없다 — 선택도 드래그도 안 된다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         add("갭상승");
         const cls = chip(1)!.classList;
         expect(cls.contains("selectable")).toBe(false);
@@ -279,7 +282,7 @@ describe("MapPanel — 체인 클릭", () => {
 
     it("되감으면 칩도 사라진다 — 선택에서 유도된 것이라", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         add("갭상승");
         add("돌파"); // 체인 안 노드 = 거기까지 되감기
         expect(chip(1)).toBeNull();
@@ -288,7 +291,7 @@ describe("MapPanel — 체인 클릭", () => {
     // ⚠ 작업줄이 하단을 가로지르면 그 띠에 걸친 노드·선이 클릭을 뺏긴다(실측된 결함).
     it("작업줄은 우측 상단에 있다 — 캔버스 하단을 막지 않는다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         const bar = screen.getByText("필터에 추가").closest("div")!;
         expect(bar.style.top).toBe("8px");
         expect(bar.style.right).toBe("8px");
@@ -298,7 +301,7 @@ describe("MapPanel — 체인 클릭", () => {
 
     it("필터에 추가 = 체인 전체가 단계 여러 개로 — 한 단계에 몰면 어느 단계가 죽였는지 못 묻는다", () => {
         renderMap(CHAIN_SEED);
-        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(nodeLabel("돌파"));
         add("갭상승");
         fireEvent.click(screen.getByText("필터에 추가"));
         const stages = useWorkbench.getState().filterStages;
