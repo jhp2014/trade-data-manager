@@ -182,10 +182,13 @@ function MapPanelInner(): JSX.Element {
                 target: l.to,
                 sourceHandle: `${l.fromSide}-s`,
                 targetHandle: `${l.toSide}-t`,
+                // 선은 전부 점선 — 교집합으로 이어진다는 걸 선 모양이 말한다(실선이면 그냥 연결로 읽힌다).
+                // 지나온 길만 **선명한 점선**(진하고 촘촘하게).
                 style: {
                     stroke: l.traversed ? "var(--text-primary)" : EDGE_COLOR,
-                    strokeWidth: 1.5,
-                    opacity: l.traversed ? 0.9 : 0.6,
+                    strokeWidth: l.traversed ? 1.8 : 1.4,
+                    strokeDasharray: l.traversed ? "6 3" : "3 4",
+                    opacity: l.traversed ? 0.95 : 0.55,
                 },
             })),
         [links],
@@ -217,10 +220,11 @@ function MapPanelInner(): JSX.Element {
                     position: { x: m.center.x - w / 2, y: m.center.y - h / 2 },
                     style: { width: w, height: h },
                     draggable: false,
-                    zIndex: 50, // 그룹·컨테이너 위에
+                    // 그룹·컨테이너보다 확실히 위에 — 겹친 자리에서 클릭이 그룹으로 새면 파고들기가 막힌다.
+                    zIndex: 2000,
                     data: {
                         count: m.count,
-                        label: m.prefix.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)").join(" ∧ "),
+                        label: m.prefix.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)").join(" & "),
                         traversed: m.traversed,
                     } satisfies MidNodeData,
                 };
@@ -400,6 +404,9 @@ function MapPanelInner(): JSX.Element {
                         onNodesChange={onNodesChange as (cs: NodeChange<Node>[]) => void}
                         nodeTypes={MAP_NODE_TYPES}
                         nodesConnectable={false}
+                        // ⚠ RF 의 "선택"은 안 쓴다(우리 선택은 체인이다). 켜 두면 방금 누른 그룹 노드의
+                        // z 가 1000 올라가 그 위에 있던 교집합 노드를 덮어 클릭이 안 먹는다.
+                        elevateNodesOnSelect={false}
                         edgesFocusable={false}
                         minZoom={0.05}
                         maxZoom={4}
@@ -420,10 +427,7 @@ function MapPanelInner(): JSX.Element {
 
                     {chain.length > 0 && (
                         <ChainBar
-                            chain={chain}
-                            nameOf={(id) => gv.groupById.get(id)?.name ?? "(지워짐)"}
                             members={chainMembers.length}
-                            onRewind={(i) => setChain((cur) => cur.slice(0, i + 1))}
                             onClear={() => setChain([])}
                             onAddFilter={addChainToFilter}
                             onUnplace={() => { if (head) { unplaceMut.mutate(head); setChain((cur) => cur.slice(0, -1)); } }}
@@ -440,39 +444,30 @@ function MapPanelInner(): JSX.Element {
 }
 
 /**
- * 체인 작업줄 — 지나온 길(브레드크럼)과 맵의 **유일한 쓰기**(필터에 추가)가 여기 모인다.
- * 브레드크럼 칸을 누르면 거기까지 되감는다(맵에서 그 노드를 다시 누르는 것과 같은 손짓).
+ * 체인 작업줄 — 맵의 **유일한 쓰기**(필터에 추가)가 여기 모인다. 우측 상단에 작게 둔다:
+ * 하단을 가로지르면 그 띠에 걸친 교집합 노드가 클릭을 뺏긴다(실측된 결함).
+ *
+ * 브레드크럼은 **없다** — 지나온 교집합 노드가 맵 위에 `A & B` 로 떠 있고 그걸 눌러 되감으므로
+ * 같은 것을 두 곳에 두지 않는다.
  */
-function ChainBar({ chain, nameOf, members, onRewind, onClear, onAddFilter, onUnplace }: {
-    chain: readonly string[];
-    nameOf: (id: string) => string;
+function ChainBar({ members, onClear, onAddFilter, onUnplace }: {
     members: number;
-    onRewind: (index: number) => void;
     onClear: () => void;
     onAddFilter: () => void;
     onUnplace: () => void;
 }): JSX.Element {
     return (
         <div style={{
-            position: "absolute", left: 8, bottom: 8, right: 8, zIndex: 10,
-            display: "flex", alignItems: "center", gap: 8, padding: "5px 9px", flexWrap: "wrap",
+            position: "absolute", right: 8, top: 8, zIndex: 10,
+            display: "flex", alignItems: "center", gap: 6, padding: "4px 7px",
             background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 7,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.25)", fontSize: 12,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.25)", fontSize: 12, whiteSpace: "nowrap",
         }}>
-            {chain.map((id, i) => (
-                <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    {i > 0 && <span style={{ color: "var(--text-tertiary)" }}>∧</span>}
-                    <button onClick={() => onRewind(i)} title="여기까지 되감기"
-                        style={{ fontWeight: i === chain.length - 1 ? 700 : 400 }}>{nameOf(id)}</button>
-                </span>
-            ))}
             <span style={{ color: "var(--text-tertiary)" }}>공통 {members}</span>
-            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
-                <button onClick={onAddFilter} title="체인 전체를 필터 단계로 — 그룹마다 하나씩. 지우기·수정은 필터 보드에서"
-                    style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
-                <button onClick={onUnplace} title="마지막 그룹을 평면에서 내린다(그룹은 남는다)">내리기</button>
-                <button onClick={onClear} title="체인 비우기">✕</button>
-            </span>
+            <button onClick={onAddFilter} title="체인 전체를 필터 단계로 — 그룹마다 하나씩. 지우기·수정은 필터 보드에서"
+                style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
+            <button onClick={onUnplace} title="마지막 그룹을 평면에서 내린다(그룹은 남는다)">내리기</button>
+            <button onClick={onClear} title="체인 비우기">✕</button>
         </div>
     );
 }

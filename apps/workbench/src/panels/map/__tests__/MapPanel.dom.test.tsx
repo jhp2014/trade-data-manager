@@ -215,7 +215,19 @@ describe("MapPanel — 체인 클릭", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
         fireEvent.click(midNode("g1", "g2"));
-        expect(midNode("g1", "g2").textContent).toContain("돌파 ∧ 갭상승");
+        expect(midNode("g1", "g2").textContent).toContain("돌파 & 갭상승");
+    });
+
+    // ⚠ 작업줄이 하단을 가로지르면 그 띠에 걸친 교집합 노드가 클릭을 뺏긴다(실측된 결함).
+    // 브레드크럼은 지나온 교집합 노드가 이미 보여주므로 바에 둘 이유도 없다.
+    it("작업줄은 우측 상단의 작은 상자다 — 캔버스 하단을 막지 않는다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        const bar = screen.getByText("필터에 추가").closest("div")!;
+        expect(bar.style.top).toBe("8px");
+        expect(bar.style.right).toBe("8px");
+        expect(bar.style.bottom).toBe("");
+        expect(bar.style.left).toBe("");
     });
 
     it("필터에 추가 = 체인 전체가 단계 여러 개로 — 한 단계에 몰면 어느 단계가 죽였는지 못 묻는다", () => {

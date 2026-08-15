@@ -147,7 +147,7 @@ export const MidNode = memo(function MidNode({ data }: NodeProps & { data: MidNo
         return (
             <div
                 style={{
-                    width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 999,
+                    width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     border: "1px dashed var(--border-strong)", background: "var(--bg-primary)",
                     fontSize: 12, fontVariantNumeric: "tabular-nums", color: "var(--text-primary)", cursor: "pointer",
