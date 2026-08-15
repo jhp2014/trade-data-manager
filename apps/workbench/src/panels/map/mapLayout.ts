@@ -15,14 +15,35 @@ export interface LayoutItem {
     /** 저장 좌표 = 절대 **중심**. 잎만 쓴다(컨테이너는 유도). */
     x: number;
     y: number;
+    /** 잎 크기 — 호출부가 leafSize 로 만들어 준다(컨테이너는 무시하고 자식에서 유도). */
+    w: number;
+    h: number;
 }
 
-/** 잎 노드 고정 크기 — 내용에 안 맡긴다(바운딩 박스 계산이 측정 없이 서야 레이아웃이 순수하다). */
-export const LEAF_W = 118;
-export const LEAF_H = 44;
+/**
+ * 잎 = **원 + 바깥 라벨**. 원 지름만 수를 나르고 이름은 원 밖 고정 폭 칸에 앉는다 —
+ * 이름을 원 안에 넣으면 상자가 "수"와 "이름 길이" 둘에 끌려가 폭이 양으로 잘못 읽힌다.
+ * 라벨 칸을 넘는 이름만 말줄임(전체는 툴팁·작업줄).
+ */
+export const DOT_MIN = 34;
+export const DOT_MAX = 78;
+export const LABEL_W = 124;
+export const LABEL_H = 18;
 /** 컨테이너 안쪽 여백과 라벨 줄 높이. */
 export const BOX_PAD = 16;
 export const BOX_HEADER = 22;
+
+/**
+ * 모집단 수 → 잎 크기. **제곱근**으로 눌러 최소~최대 지름 사이에 가둔다:
+ * 넓이가 수에 비례해야 눈이 양으로 읽는데 지름에 그대로 비례시키면 12건이 3건의 네 배가 되어
+ * 화면을 잡아먹는다. 전부 0이면(무거운 필터·빈 모집단) 전부 최소 지름 — 크기로는 아무 말도 안 한다.
+ * 바깥 상자는 원과 라벨을 함께 감싼다(레이아웃이 라벨을 모르면 컨테이너가 이름을 자른다).
+ */
+export function leafSize(count: number, maxCount: number): { w: number; h: number; d: number; scale: number } {
+    const t = maxCount > 0 && count > 0 ? Math.sqrt(count) / Math.sqrt(maxCount) : 0;
+    const d = Math.round(DOT_MIN + (DOT_MAX - DOT_MIN) * t);
+    return { w: Math.max(d, LABEL_W), h: d + LABEL_H, d, scale: t };
+}
 
 export interface LaidNode {
     id: string;
@@ -34,6 +55,8 @@ export interface LaidNode {
     height: number;
     /** 자식이 있어 영역으로 그려지는가. */
     container: boolean;
+    /** 잎의 원 지름(컨테이너면 0) — 노드가 원을 그리고 Handle 을 그 중심에 두는 데 쓴다. */
+    dot: number;
     /** 중첩 깊이(루트 0) — zIndex(자식이 위로) 재료. */
     depth: number;
     /** 절대 사각형 — 드래그 드롭 판정·좌표 역변환이 이걸 본다. */
@@ -63,7 +86,7 @@ function absBoxes(items: readonly LayoutItem[]): Map<string, Box> {
         const children = kids.get(it.id) ?? [];
         let box: Box;
         if (children.length === 0 || visiting.has(it.id)) {
-            box = { x: it.x - LEAF_W / 2, y: it.y - LEAF_H / 2, w: LEAF_W, h: LEAF_H };
+            box = { x: it.x - it.w / 2, y: it.y - it.h / 2, w: it.w, h: it.h };
         } else {
             visiting.add(it.id);
             const cb = children.map(boxOf);
@@ -110,13 +133,15 @@ export function layoutMap(items: readonly LayoutItem[]): LaidNode[] {
     return ordered.map(({ item, depth, parent }) => {
         const box = boxes.get(item.id)!;
         const parentBox = parent ? boxes.get(parent.id) : undefined;
+        const container = isParentOf.has(item.id);
         return {
             id: item.id,
             ...(parent ? { parentId: parent.id } : {}),
             position: parentBox ? { x: box.x - parentBox.x, y: box.y - parentBox.y } : { x: box.x, y: box.y },
             width: box.w,
             height: box.h,
-            container: isParentOf.has(item.id),
+            container,
+            dot: container ? 0 : Math.min(item.w, item.h - LABEL_H),
             depth,
             abs: box,
         };

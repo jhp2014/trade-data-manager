@@ -1,10 +1,49 @@
 import { describe, it, expect } from "vitest";
-import { absCenterOf, BOX_HEADER, BOX_PAD, dropTargetAt, LEAF_H, LEAF_W, layoutMap, type LayoutItem } from "../mapLayout.js";
+import {
+    absCenterOf, BOX_HEADER, BOX_PAD, DOT_MAX, DOT_MIN, dropTargetAt, LABEL_H, LABEL_W,
+    layoutMap, leafSize, type LayoutItem,
+} from "../mapLayout.js";
 
-const item = (id: string, x: number, y: number, parentId: string | null = null): LayoutItem => ({ id, parentId, x, y });
+/** 기본 잎 — 크기는 호출부가 주는 값이라 테스트는 고정치를 쓴다(레이아웃은 크기의 출처를 모른다). */
+const LEAF_W = 120, LEAF_H = 50;
+const item = (id: string, x: number, y: number, parentId: string | null = null, w = LEAF_W, h = LEAF_H): LayoutItem =>
+    ({ id, parentId, x, y, w, h });
+
+describe("leafSize — 수를 지름에 싣되 가둔다", () => {
+    it("0은 최소 지름 — 크기로 아무 말도 안 한다", () => {
+        expect(leafSize(0, 12).d).toBe(DOT_MIN);
+        expect(leafSize(0, 12).scale).toBe(0);
+    });
+
+    it("최댓값은 최대 지름", () => {
+        expect(leafSize(12, 12).d).toBe(DOT_MAX);
+        expect(leafSize(12, 12).scale).toBe(1);
+    });
+
+    it("제곱근이라 중간값이 선형보다 크다 — 작은 차이도 보이되 큰 값이 화면을 안 잡아먹는다", () => {
+        const mid = leafSize(3, 12).d;
+        const linear = DOT_MIN + (DOT_MAX - DOT_MIN) * (3 / 12);
+        expect(mid).toBeGreaterThan(linear);
+        expect(mid).toBeLessThan(DOT_MAX);
+    });
+
+    it("전부 0이면(빈 모집단) 전부 최소 — 0/0 이 NaN 이 되지 않는다", () => {
+        expect(leafSize(0, 0).d).toBe(DOT_MIN);
+    });
+
+    it("상자는 원과 라벨을 함께 감싼다 — 레이아웃이 라벨을 알아야 컨테이너가 안 자른다", () => {
+        const s = leafSize(12, 12);
+        expect(s.h).toBe(s.d + LABEL_H);
+        expect(s.w).toBe(Math.max(s.d, LABEL_W));
+    });
+
+    it("작은 원이어도 폭은 라벨 칸을 지킨다", () => {
+        expect(leafSize(0, 12).w).toBe(LABEL_W);
+    });
+});
 
 describe("layoutMap — 잎", () => {
-    it("저장 중심을 왼쪽위로 바꿔 고정 크기로 놓는다", () => {
+    it("저장 중심을 왼쪽위로 바꿔 주어진 크기로 놓는다", () => {
         const [n] = layoutMap([item("a", 100, 50)]);
         expect(n).toMatchObject({
             id: "a", container: false, depth: 0,
@@ -12,6 +51,23 @@ describe("layoutMap — 잎", () => {
             width: LEAF_W, height: LEAF_H,
         });
         expect(n!.parentId).toBeUndefined();
+    });
+
+    it("잎마다 크기가 다르다 — 수가 크기를 정하므로", () => {
+        const laid = layoutMap([item("a", 0, 0, null, 104, 52), item("b", 300, 0, null, 160, 96)]);
+        expect(laid.find((n) => n.id === "a")!.width).toBe(104);
+        expect(laid.find((n) => n.id === "b")!.height).toBe(96);
+    });
+
+    it("잎의 원 지름은 라벨을 뺀 높이 — 노드가 이걸로 원을 그린다", () => {
+        const s = leafSize(5, 12);
+        const [n] = layoutMap([item("a", 0, 0, null, s.w, s.h)]);
+        expect(n!.dot).toBe(s.d);
+    });
+
+    it("컨테이너는 원이 없다", () => {
+        const laid = layoutMap([item("p", 0, 0), item("c", 0, 0, "p")]);
+        expect(laid.find((n) => n.id === "p")!.dot).toBe(0);
     });
 });
 

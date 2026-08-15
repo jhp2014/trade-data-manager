@@ -5,7 +5,7 @@
 // (조건의 저자는 깔때기 하나 — 맵이 제 상태로 조건을 들면 진실이 둘이 된다).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { CandidateDay } from "@trade-data-manager/wire";
+import type { CandidateDay, ReviewPointListItem } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../../../api/groups.js";
 import { mapsQuery } from "../../../api/queries.js";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
@@ -32,9 +32,9 @@ const DAYS: CandidateDay[] = [
 ];
 const SEED: Seed = { groups: GROUPS, memberships: MEMBERS, candidateDays: DAYS };
 
-function renderMap(): void {
-    const client = seededClient(SEED);
-    client.setQueryData(mapsQuery().queryKey, [{ id: "m1", name: "일봉", scope: "day" }]);
+function renderMap(seed: Seed = SEED, scope: "day" | "point" = "day"): void {
+    const client = seededClient(seed);
+    client.setQueryData(mapsQuery().queryKey, [{ id: "m1", name: "평면", scope }]);
     render(
         <Providers client={client}>
             <div style={{ width: 800, height: 600 }}><MapPanel /></div>
@@ -68,6 +68,42 @@ describe("MapPanel — 모집단 카운트(읽기)", () => {
         renderMap();
         expect(screen.getByTitle(/^갭상승 · 모집단 1$/)).toBeTruthy();
         expect(screen.getByTitle(/^2차전지 · 모집단 0$/)).toBeTruthy();
+    });
+});
+
+// ⚠ 이 블록이 실측으로 잡은 결함이다: 깔때기 해상도(자동)는 걸린 조건이 정하지 평면이 정하지 않는다.
+// 그대로 쓰면 타점 평면인데 해상도가 하루일 때 타점 소속이 하루 항목에 안 걸려 **전 노드가 0**이 된다.
+describe("MapPanel — 평면 층위로 모집단을 본다", () => {
+    const pgrp = (id: string, name: string, x: number): Group =>
+        ({ id, name, scope: "point", parentId: null, mapId: "m1", x, y: 0 });
+    const POINTS: ReviewPointListItem[] = [
+        { stockCode: "086520", date: "2026-07-01", time: "09:30:00", name: "에코프로" },
+        { stockCode: "086520", date: "2026-07-01", time: "10:00:00", name: "에코프로" },
+    ];
+    const POINT_SEED: Seed = {
+        groups: [pgrp("g-돌파", "돌파", 0), pgrp("g-눌림", "눌림", 300)],
+        memberships: [
+            { stockCode: "086520", date: "2026-07-01", time: "09:30:00", groupIds: ["g-돌파"] },
+            { stockCode: "086520", date: "2026-07-01", time: "10:00:00", groupIds: ["g-돌파"] },
+        ],
+        candidateDays: [{ stockCode: "086520", date: "2026-07-01", traces: [] }],
+        points: POINTS,
+    };
+
+    it("타점 평면은 하루 해상도에서도 타점 소속을 센다 — 0으로 죽지 않는다", () => {
+        renderMap(POINT_SEED, "point");
+        expect(screen.getByTitle(/^돌파 · 모집단 2$/)).toBeTruthy();
+        expect(screen.getByTitle(/^눌림 · 모집단 0$/)).toBeTruthy();
+    });
+
+    it("타점 평면의 분모는 타점 수(하루 항목이 그날 타점 전부로 펼쳐진다)", () => {
+        renderMap(POINT_SEED, "point");
+        expect(screen.getByText(/모집단 2 \(전체\)/)).toBeTruthy();
+    });
+
+    it("하루 평면의 분모는 차트 수 — 타점으로 부풀지 않는다", () => {
+        renderMap({ ...SEED, points: POINTS }, "day");
+        expect(screen.getByText(/모집단 3 \(전체\)/)).toBeTruthy();
     });
 });
 

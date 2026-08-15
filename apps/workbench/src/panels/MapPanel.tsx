@@ -34,8 +34,9 @@ import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
 import { MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
-import { groupsOnMap, overlaps, placeableGroups, populationCounts, populationFeed, populationMembersOf } from "./map/mapView.js";
-import { absCenterOf, dropTargetAt, layoutMap } from "./map/mapLayout.js";
+import { groupsOnMap, overlaps, placeableGroups, populationCounts, populationFeed, populationMembersOf, type PopulationItem } from "./map/mapView.js";
+import { chartKey } from "../lib/pointKey.js";
+import { absCenterOf, dropTargetAt, layoutMap, leafSize } from "./map/mapLayout.js";
 
 const SELECTED_KEY = "wb.mapSelected";
 const LIST_KEY = "wb.mapMemberList";
@@ -66,10 +67,28 @@ function MapPanelInner(): JSX.Element {
     const offMap = useMemo(() => (activeMap ? placeableGroups(gv.groups, activeMap.scope) : []), [gv.groups, activeMap]);
     const onMapIds = useMemo(() => new Set(onMap.map((g) => g.id)), [onMap]);
 
-    // ── 모집단 — 깔때기 "보는 집합"에 적용 판정(깔때기와 같은 appliedGroupIdsOf)을 항목당 1회.
+    // ── 모집단 — 깔때기 "보는 집합"을 **이 평면의 층위로** 맞춰 본다.
+    // ⚠ 깔때기 해상도(자동)는 걸린 조건이 정하지 평면이 정하지 않는다. 그대로 쓰면 타점 평면인데 해상도가
+    // 하루일 때 타점 소속이 하루 항목에 안 걸려 **전 노드가 0**이 된다(실측된 결함). 그래서 타점 평면은
+    // viewedPointRefs(하루 항목이 그날 타점 전부로 펼쳐진 것), 하루 평면은 차트 단위로 접어서 센다 —
+    // FunnelView 가 두 투영을 이미 계약으로 내주는 이유가 이것이다.
+    const population = useMemo<PopulationItem[]>(() => {
+        if (funnel.isLoading) return [];
+        if (activeMap?.scope === "point") return funnel.viewedPointRefs;
+        const seen = new Set<string>();
+        const out: PopulationItem[] = [];
+        for (const it of funnel.viewedItems) {
+            const k = chartKey(it);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            out.push({ stockCode: it.stockCode, date: it.date });
+        }
+        return out;
+    }, [funnel.isLoading, funnel.viewedItems, funnel.viewedPointRefs, activeMap?.scope]);
+
     const popFeed = useMemo<GroupMembership[]>(
-        () => (funnel.isLoading ? [] : populationFeed(funnel.viewedItems, (i) => gv.appliedGroupIdsOf(i))),
-        [funnel.isLoading, funnel.viewedItems, gv],
+        () => populationFeed(population, (i) => gv.appliedGroupIdsOf(i)),
+        [population, gv],
     );
     const counts = useMemo(() => populationCounts(popFeed), [popFeed]);
 
@@ -90,9 +109,21 @@ function MapPanelInner(): JSX.Element {
     }, [bridges, picked]);
 
     // ── 레이아웃 — 컨테이너 좌표 계산은 전부 mapLayout(순수). laid 는 드래그 판정·역변환도 쓴다.
+    // 잎 크기는 **모집단 수**에서 나온다(제곱근 클램프 — leafSize). 기준은 평면에서 가장 큰 잎:
+    // 컨테이너는 자식에서 유도되므로 그 카운트를 최댓값에 넣으면 잎들이 다 같이 작아진다.
+    const sizeById = useMemo(() => {
+        const hasChild = new Set(onMap.map((g) => g.parentId).filter((id): id is string => id !== null));
+        const leafCounts = onMap.filter((g) => !hasChild.has(g.id)).map((g) => counts.get(g.id) ?? 0);
+        const max = leafCounts.length > 0 ? Math.max(...leafCounts) : 0;
+        return new Map(onMap.map((g) => [g.id, leafSize(counts.get(g.id) ?? 0, max)]));
+    }, [onMap, counts]);
+
     const laid = useMemo(
-        () => layoutMap(onMap.map((g) => ({ id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0 }))),
-        [onMap],
+        () => layoutMap(onMap.map((g) => {
+            const s = sizeById.get(g.id)!;
+            return { id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0, w: s.w, h: s.h };
+        })),
+        [onMap, sizeById],
     );
 
     const derived = useMemo<MapNode[]>(
@@ -108,10 +139,14 @@ function MapPanelInner(): JSX.Element {
                     ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
                     zIndex: n.depth,
                     style: { width: n.width, height: n.height },
-                    data: { group: g, count, container: n.container, dimmed, picked: picked === n.id },
+                    data: {
+                        group: g, count, container: n.container, dot: n.dot,
+                        scale: sizeById.get(n.id)?.scale ?? 0,
+                        dimmed, picked: picked === n.id,
+                    },
                 };
             }),
-        [laid, gv.groupById, counts, picked, bridgeCountOf, funnel.isFiltering],
+        [laid, gv.groupById, counts, sizeById, picked, bridgeCountOf, funnel.isFiltering],
     );
 
     const [nodes, setNodes] = useState<MapNode[]>([]);
