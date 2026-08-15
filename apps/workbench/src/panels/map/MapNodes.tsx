@@ -48,11 +48,11 @@ const SIDES: { side: Side; pos: Position }[] = [
  * 점은 **target 핸들만** 그린다: 둘 다 그리면 같은 자리에 똑같은 원이 두 겹으로 쌓인다.
  * 안 쓰이는 변은 투명 — 네 변에 늘 점을 찍으면 그룹 열 개에 점이 마흔 개라 배경이 시끄러워진다.
  */
-function SideHandles({ anchors, strong }: { anchors: readonly Side[]; strong: boolean }): JSX.Element {
+function SideHandles({ anchors, strong, hidden }: { anchors: readonly Side[]; strong: boolean; hidden?: boolean }): JSX.Element {
     return (
         <>
             {SIDES.map(({ side, pos }) => {
-                const dot = anchors.includes(side)
+                const dot = anchors.includes(side) && hidden !== true
                     ? { width: 7, height: 7, borderRadius: "50%", border: "none", background: strong ? "var(--text-primary)" : "var(--text-tertiary)", pointerEvents: "none" as const }
                     : INVISIBLE;
                 return (
@@ -124,4 +124,59 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: G
     );
 });
 
-export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode } as const;
+/** 교집합 노드 타입 키 — 그룹 노드와 생김새·규칙이 달라 타입을 나눈다. */
+export const MID_NODE_TYPE = "tdmMid";
+
+export interface MidNodeData extends Record<string, unknown> {
+    /** 교집합에 든 항목 수. */
+    count: number;
+    /** 이 교집합의 정체(`돌파 ∧ 재돌파[L]`) — 지나온 것만 텍스트로 편다. */
+    label: string;
+    /** 이미 지나온 교집합인가 — 후보면 숫자만, 지나온 것이면 이름까지. */
+    traversed: boolean;
+}
+
+/**
+ * 교집합 노드 — 두 자리 사이에 선 **겹치는 것 그 자체**.
+ * 후보일 땐 숫자만 든 점선 알약(아직 가 보지 않은 자리), 지나온 것이면 이름과 수를 든 진짜 상자.
+ * 크기는 mapLayout 이 정한다(레이아웃이 크기를 알아야 자리 계산이 순수하게 선다).
+ */
+export const MidNode = memo(function MidNode({ data }: NodeProps & { data: MidNodeData }) {
+    const { count, label, traversed } = data;
+    if (!traversed) {
+        return (
+            <div
+                style={{
+                    width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 999,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    border: "1px dashed var(--border-strong)", background: "var(--bg-primary)",
+                    fontSize: 12, fontVariantNumeric: "tabular-nums", color: "var(--text-primary)", cursor: "pointer",
+                }}
+                title={`${label} — 눌러서 여기까지 좁히기`}
+            >
+                <SideHandles anchors={ALL_SIDES} strong={false} hidden />
+                {count}
+            </div>
+        );
+    }
+    return (
+        <div
+            style={{
+                width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
+                display: "flex", alignItems: "center",
+                border: "2px solid var(--text-primary)", background: "var(--bg-primary)",
+                cursor: "pointer",
+            }}
+            title={`${label} · ${count} — 눌러서 여기까지 되감기`}
+        >
+            <SideHandles anchors={ALL_SIDES} strong hidden />
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <NameRow name={label} count={count} strong />
+            </div>
+        </div>
+    );
+});
+
+const ALL_SIDES: Side[] = ["t", "r", "b", "l"];
+
+export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode, [MID_NODE_TYPE]: MidNode } as const;
