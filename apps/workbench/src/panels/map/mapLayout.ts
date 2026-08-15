@@ -29,15 +29,6 @@ export const LEAF_H = 32;
 export const BOX_PAD = 16;
 export const BOX_HEADER = 22;
 
-/**
- * 교집합 노드 크기 — 후보는 숫자만 든 알약, 지나온 것은 이름까지 든 상자.
- * 레이아웃이 크기를 알아야 중점 자리(spreadMidpoints)와 화면 자리가 어긋나지 않는다.
- */
-export const MID_W = 40;
-export const MID_H = 24;
-export const MID_OPEN_W = 190;
-export const MID_OPEN_H = 30;
-
 export interface LaidNode {
     id: string;
     /** RF 부모(있으면 position 이 그 부모의 왼쪽위 기준 상대). */

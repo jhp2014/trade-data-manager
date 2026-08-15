@@ -153,9 +153,7 @@ describe("MapPanel — 멤버 목록(토글)", () => {
 
 // 체인은 **세션 시선**이지 조건이 아니다(조건의 저자는 깔때기 하나). 그래서 클릭으로만 자라고,
 // 빈 곳을 눌러도 안 풀린다 — 짚어 놓고 화면을 옮기다 쌓은 경로를 잃으면 안 된다.
-// 선택은 **RF 가 하는 일 그대로**다(클릭 = 고르기 · Ctrl+클릭 = 더하기). 우리는 그 결과를 읽어
-// 교집합 노드와 후보 선을 유도할 뿐 — 선택 상태를 따로 들지 않는다(들었다가 계속 어긋났다).
-describe("MapPanel — 고르기와 교집합 노드", () => {
+describe("MapPanel — 체인 클릭", () => {
     const g3 = (id: string, name: string, x: number, y = 0): Group =>
         ({ id, name, scope: "day", parentId: null, mapId: "m1", x, y });
     // A: 돌파+갭상승 · B: 돌파+갭상승 · C: 돌파만 → 돌파 3, 갭상승 2, 눌림 0
@@ -173,60 +171,71 @@ describe("MapPanel — 고르기와 교집합 노드", () => {
         ],
     };
 
-    /**
-     * 고르기 = 그냥 클릭(패널이 `selectNodesOnDrag={false}` 라 드래그 내부를 안 거친다).
-     * 여러 개는 Ctrl 을 **누른 채로** — RF 는 키 상태를 문서 이벤트로 듣는다(event.ctrlKey 가 아니라).
-     */
-    const pick = (name: string, ctrl = false): void => {
-        if (ctrl) fireEvent.keyDown(document, { key: "Control" });
-        fireEvent.click(nodeLabel(name));
-        if (ctrl) fireEvent.keyUp(document, { key: "Control" });
-    };
-    const midNode = (): HTMLElement | null => document.querySelector('.react-flow__node[data-id="mid"]');
+    /** ReactFlow 에 넘어간 엣지 모델 — DOM 은 rAF 없이는 안 생겨서 props 를 본다. */
+    function rfEdges(): { id: string; label?: string; markerEnd?: unknown; style: Record<string, unknown> }[] {
+        const el = document.querySelector(".react-flow")!;
+        const key = Object.keys(el).find((k) => k.startsWith("__reactFiber$"))!;
+        let f = (el as unknown as Record<string, { memoizedProps?: { edges?: unknown }; return?: unknown }>)[key];
+        for (let i = 0; i < 40 && f; i++) {
+            const edges = f.memoizedProps?.edges;
+            if (Array.isArray(edges)) return edges as ReturnType<typeof rfEdges>;
+            f = f.return as typeof f;
+        }
+        throw new Error("엣지 모델을 못 찾았다");
+    }
 
-    it("하나 고르면 공통 수가 뜨고 교집합 노드는 없다", () => {
+    it("이어 누르면 체인이 자라고 공통 수가 좁아진다", () => {
         renderMap(CHAIN_SEED);
-        pick("돌파");
+        fireEvent.click(screen.getByText("돌파"));
         expect(screen.getByText("공통 3")).toBeTruthy();
-        expect(midNode()).toBeNull();
+        fireEvent.click(screen.getByText("갭상승"));
+        expect(screen.getByText("공통 2")).toBeTruthy();
     });
 
-    it("Ctrl+클릭으로 더하면 가운데에 교집합 노드가 선다", () => {
+    it("교집합이 없는 그룹은 이어붙지 않는다 — 갈 수 없는 곳", () => {
         renderMap(CHAIN_SEED);
-        pick("돌파");
-        pick("갭상승", true);
-        expect(midNode()).toBeTruthy();
-        expect(midNode()!.textContent).toContain("돌파 & 갭상승");
-        expect(screen.getByText(/고름 2 · 공통 2/)).toBeTruthy();
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("눌림"));
+        expect(screen.getByText("공통 3")).toBeTruthy(); // 그대로
     });
 
-    it("교집합 노드는 손댈 수 없다 — 선택도 드래그도 안 된다", () => {
+    it("체인 안 노드를 다시 누르면 거기까지 되감긴다", () => {
         renderMap(CHAIN_SEED);
-        pick("돌파");
-        pick("갭상승", true);
-        const cls = midNode()!.classList;
-        expect(cls.contains("selectable")).toBe(false);
-        expect(cls.contains("draggable")).toBe(false);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("갭상승"));
+        // 체인에 들면 이름이 노드와 브레드크럼 두 곳에 있다 — 노드 쪽을 짚어 "맵에서 다시 누르기"를 재현.
+        fireEvent.click(nodeLabel("갭상승"));
+        expect(screen.getByText("공통 3")).toBeTruthy();
     });
 
-    it("필터에 추가 = 고른 그룹마다 단계 하나씩", () => {
+    // 선 두 종류가 모양으로 갈린다: 후보는 점선+숫자(방향 없음), 지나온 길은 실선+화살촉(순서가 뜻).
+    // 엣지 DOM 은 RF 가 rAF 로 노드를 측정한 뒤에야 생기므로 여기서는 **엣지 모델**을 본다.
+    it("후보 선은 점선에 숫자, 화살촉이 없다", () => {
         renderMap(CHAIN_SEED);
-        pick("돌파");
-        pick("갭상승", true);
+        fireEvent.click(screen.getByText("돌파"));
+        const e = rfEdges().find((x) => x.id.startsWith("o:"))!;
+        expect(e.label).toBe("2");
+        expect(e.style.strokeDasharray).toBe("5 4");
+        expect(e.markerEnd).toBeUndefined();
+    });
+
+    it("지나온 길만 화살촉을 단다 — 거기서만 방향이 뜻을 가진다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("갭상승"));
+        const e = rfEdges().find((x) => x.id.startsWith("c:"))!;
+        expect(e.markerEnd).toBeTruthy();
+        expect(e.style.strokeDasharray).toBeUndefined();
+    });
+
+    it("필터에 추가 = 체인 전체가 단계 여러 개로 — 한 단계에 몰면 어느 단계가 죽였는지 못 묻는다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("갭상승"));
         fireEvent.click(screen.getByText("필터에 추가"));
         const stages = useWorkbench.getState().filterStages;
         expect(stages).toHaveLength(2);
-        expect(stages.map((s) => (s.predicates[0] as { expr: { groups: { literals: { groupId: string }[] }[] } }).expr.groups[0]!.literals[0]!.groupId).sort())
+        expect(stages.map((s) => (s.predicates[0] as { expr: { groups: { literals: { groupId: string }[] }[] } }).expr.groups[0]!.literals[0]!.groupId))
             .toEqual(["g1", "g2"]);
-    });
-
-    // ⚠ 작업줄이 하단을 가로지르면 그 띠에 걸친 노드가 클릭을 뺏긴다(실측된 결함).
-    it("작업줄은 우측 상단의 작은 상자다 — 캔버스 하단을 막지 않는다", () => {
-        renderMap(CHAIN_SEED);
-        pick("돌파");
-        const bar = screen.getByText("필터에 추가").closest("div")!;
-        expect(bar.style.top).toBe("8px");
-        expect(bar.style.right).toBe("8px");
-        expect(bar.style.bottom).toBe("");
     });
 });

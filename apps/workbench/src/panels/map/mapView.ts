@@ -9,7 +9,6 @@
 import type { Group, GroupMembership } from "../../api/groups.js";
 import { isAncestorOf } from "../../lib/groupTree.js";
 import { sidesBetween, type Side } from "./mapLayout.js";
-import { type Point } from "./midpoints.js";
 
 /** 모집단 항목 — 깔때기 FunnelItem 과 같은 모양(시각 없으면 하루). */
 export interface PopulationItem {
@@ -89,85 +88,70 @@ export function chainCandidates(
  * `groupById` 를 주면 **조상–자손 쌍은 뺀다** — 상속을 편 피드에서 자식 소속은 부모와 반드시 겹치는데,
  * 그건 포함관계(이미 컨테이너로 보인다)지 징검다리가 아니다.
  */
-/** 교집합 노드 id — 선택이 같으면 같은 id(순서는 무관하므로 정렬해 만든다). */
-export const MID_ID = "mid";
-
 /**
- * 선택한 그룹들의 **교집합 그 자체를 물체로** 세운 것.
- *
- * ⚠ 이건 **손댈 수 없는 표시물**이다: 누르지도 끌지도 못하고, 오직 선택에서 유도된다.
- * 교집합을 눌러 파고들게 만들려다 라이브러리의 선택·드래그 배선과 계속 싸웠다 — 선택은 RF 가 이미
- * 잘하는 일(클릭=선택, Ctrl+클릭=추가)이니 그걸 쓰고, 이 노드는 그 결과를 보여주기만 한다.
+ * 화살표 하나. 두 종류가 **역할로 갈린다**:
+ *   · `candidate`(실선) = 체인 끝에서 갈 수 있는 곳. `count` 는 거기까지 갔을 때 남는 수.
+ *   · `chain`(점선)     = 지나온 길(클릭 순서). 수는 없다 — 이미 지나온 자리라 물을 게 없다.
+ * `weight`(0~1)는 후보들 사이의 상대 크기(숫자 크기에 실린다).
  */
-export interface MidNode {
-    id: string;
-    center: Point;
-    count: number;
-    /** 이 교집합의 정체 — 선택된 그룹 이름들이 들어갈 자리(id 목록). */
-    members: string[];
-}
-
-/** 노드끼리 잇는 선. 화살촉이 없다(교집합은 대칭이라 방향이 없다). */
-export interface ChainLink {
+export interface MapArrow {
     id: string;
     from: string;
     to: string;
     fromSide: Side;
     toSide: Side;
-    /** 선택된 그룹 → 교집합(참)인가, 교집합 → 후보(거짓)인가. 진하기가 갈린다. */
-    traversed: boolean;
-    /** 후보 선에만 있는 수 — "저기까지 더하면 몇 개 남나". */
+    kind: "candidate" | "chain";
     count?: number;
+    weight: number;
 }
 
 /**
- * 선택 + 후보 → 그릴 것 전부(교집합 노드 하나와 선들).
+ * 체인 + 후보 → 화살표 모델.
  *
- * 선택이 둘 이상이면 그 **가운데에 교집합 노드**가 서고, 선택된 그룹들이 거기로 이어진다(점선).
- * 후보로 나가는 선은 그 교집합에서 출발한다 — 선택이 하나면 그 그룹 자신이 출발점이다.
- * 순서를 안 쓴다: 교집합은 대칭이라 A,B 를 어느 쪽부터 골랐는지가 그림을 바꾸면 안 된다.
- * 상자를 못 찾는 그룹(평면에서 막 내려간 것)은 조용히 버린다.
+ * **방향은 데이터가 아니라 시선**이다: 겹침은 대칭(A∩B = B∩A)이라 화살표는 "여기서 저기로 퍼진다"는
+ * 탐색 방향이고, 체인을 다시 쌓으면 통째로 바뀐다. 이 규칙이 깨지면 없는 비대칭을 지어내는 그림이 된다.
+ * 실선은 언제나 **체인의 마지막**에서 나간다 — 그게 지금 서 있는 자리다.
+ * 상자를 못 찾는 짝(평면에서 막 내려간 그룹)은 조용히 버린다.
  */
-export function selectionGraph(
-    selected: readonly string[],
+export function mapArrows(
+    chain: readonly string[],
     candidates: ReadonlyMap<string, number>,
     boxOf: (id: string) => { x: number; y: number; w: number; h: number } | undefined,
-    intersectionCount: number,
-): { mid: MidNode | null; links: ChainLink[] } {
-    const links: ChainLink[] = [];
-    if (selected.length === 0) return { mid: null, links };
-    const centerOf = (id: string): Point | undefined => {
-        const b = boxOf(id);
-        return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : undefined;
+): { arrows: MapArrow[]; anchors: Map<string, Side[]> } {
+    const anchors = new Map<string, Side[]>();
+    const arrows: MapArrow[] = [];
+    if (chain.length === 0) return { arrows, anchors };
+    const mark = (id: string, s: Side): void => {
+        const cur = anchors.get(id);
+        if (cur) { if (!cur.includes(s)) cur.push(s); } else anchors.set(id, [s]);
     };
-    /** 교집합 노드는 상자가 없다 — 선 방향을 재려면 점을 상자로 감싸 준다. */
-    const asBox = (p: Point) => ({ x: p.x, y: p.y, w: 0, h: 0 });
-    const sides = (a: Point, b: Point): { source: Side; target: Side } => sidesBetween(asBox(a), asBox(b));
 
-    const placed = selected.map((id) => ({ id, c: centerOf(id) })).filter((x): x is { id: string; c: Point } => x.c !== undefined);
-    if (placed.length === 0) return { mid: null, links };
-
-    // 선택이 하나면 교집합 노드가 없다(제 자신이 곧 그 집합이다).
-    let mid: MidNode | null = null;
-    let from: { id: string; c: Point } = placed[0]!;
-    if (placed.length > 1) {
-        const center = {
-            x: placed.reduce((s, p) => s + p.c.x, 0) / placed.length,
-            y: placed.reduce((s, p) => s + p.c.y, 0) / placed.length,
-        };
-        mid = { id: MID_ID, center, count: intersectionCount, members: placed.map((p) => p.id) };
-        for (const p of placed) {
-            const s = sides(p.c, center);
-            links.push({ id: `l:${p.id}>${MID_ID}`, from: p.id, to: MID_ID, fromSide: s.source, toSide: s.target, traversed: true });
-        }
-        from = { id: MID_ID, c: center };
+    // 지나온 길 — 클릭 순서대로 점선.
+    for (let i = 0; i + 1 < chain.length; i++) {
+        const from = chain[i]!;
+        const to = chain[i + 1]!;
+        const a = boxOf(from);
+        const b = boxOf(to);
+        if (!a || !b) continue;
+        const { source, target } = sidesBetween(a, b);
+        mark(from, source);
+        mark(to, target);
+        arrows.push({ id: `c:${from}-${to}`, from, to, fromSide: source, toSide: target, kind: "chain", weight: 0 });
     }
 
-    for (const [target, count] of candidates) {
-        const tp = centerOf(target);
-        if (!tp) continue;
-        const s = sides(from.c, tp);
-        links.push({ id: `l:${from.id}>${target}`, from: from.id, to: target, fromSide: s.source, toSide: s.target, traversed: false, count });
+    // 갈 수 있는 곳 — 체인 끝에서 실선.
+    const head = chain[chain.length - 1]!;
+    const headBox = boxOf(head);
+    if (!headBox) return { arrows, anchors };
+    let max = 0;
+    for (const c of candidates.values()) max = Math.max(max, c);
+    for (const [id, count] of candidates) {
+        const box = boxOf(id);
+        if (!box) continue;
+        const { source, target } = sidesBetween(headBox, box);
+        mark(head, source);
+        mark(id, target);
+        arrows.push({ id: `o:${head}-${id}`, from: head, to: id, fromSide: source, toSide: target, kind: "candidate", count, weight: max > 0 ? count / max : 0 });
     }
-    return { mid, links };
+    return { arrows, anchors };
 }

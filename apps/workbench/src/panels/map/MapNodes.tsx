@@ -28,8 +28,12 @@ export interface GroupNodeData extends Record<string, unknown> {
     container: boolean;
     /** 지금 선이 붙는 변들 — 여기에만 점이 보인다. */
     anchors: readonly Side[];
-    /** 고른 것·후보와 무관해 흐려지는가(교집합 0 = 이리로는 안 퍼진다 · 모집단 0). */
+    /** 체인과 무관해 흐려지는가(교집합 0 = 이리로는 안 퍼진다 · 모집단 0). */
     dimmed: boolean;
+    /** 체인에 든 그룹인가 — RF selected 와 별개(체인은 세션 시선). */
+    picked: boolean;
+    /** 체인의 **마지막**(지금 서 있는 자리) — 실선 화살표가 여기서 나간다. */
+    head: boolean;
 }
 
 const SIDES: { side: Side; pos: Position }[] = [
@@ -44,11 +48,11 @@ const SIDES: { side: Side; pos: Position }[] = [
  * 점은 **target 핸들만** 그린다: 둘 다 그리면 같은 자리에 똑같은 원이 두 겹으로 쌓인다.
  * 안 쓰이는 변은 투명 — 네 변에 늘 점을 찍으면 그룹 열 개에 점이 마흔 개라 배경이 시끄러워진다.
  */
-function SideHandles({ anchors, strong, hidden }: { anchors: readonly Side[]; strong: boolean; hidden?: boolean }): JSX.Element {
+function SideHandles({ anchors, strong }: { anchors: readonly Side[]; strong: boolean }): JSX.Element {
     return (
         <>
             {SIDES.map(({ side, pos }) => {
-                const dot = anchors.includes(side) && hidden !== true
+                const dot = anchors.includes(side)
                     ? { width: 7, height: 7, borderRadius: "50%", border: "none", background: strong ? "var(--text-primary)" : "var(--text-tertiary)", pointerEvents: "none" as const }
                     : INVISIBLE;
                 return (
@@ -78,13 +82,10 @@ function NameRow({ name, count, strong }: { name: string; count: number; strong:
 
 const LABEL_ROW_H = 22;
 
-/**
- * 그룹 노드. **고름 표시는 RF 의 `selected` 를 그대로 쓴다** — 우리가 따로 상태를 들었다가
- * 라이브러리의 선택 배선과 어긋났다. 클릭·Ctrl+클릭·빈 곳 해제는 전부 RF 가 한다.
- */
-export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps & { data: GroupNodeData }) {
-    const { group, count, container, anchors, dimmed } = data;
-    const border = selected === true ? "2px solid var(--text-primary)" : null;
+export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: GroupNodeData }) {
+    const { group, count, container, anchors, dimmed, picked, head } = data;
+    // 체인에 들면 테두리가 진해지고, 그중 **마지막**만 두껍다 — 지금 서 있는 자리가 어디인지가 보이게.
+    const border = head ? "2px solid var(--text-primary)" : picked ? "1px solid var(--text-primary)" : null;
 
     if (container) {
         return (
@@ -97,8 +98,8 @@ export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps &
                 }}
                 title={`${group.name} · 모집단 ${count} · 하위 그룹 영역(안에 넣으면 하위가 된다)`}
             >
-                <SideHandles anchors={anchors} strong={selected === true} />
-                <NameRow name={group.name} count={count} strong={selected === true} />
+                <SideHandles anchors={anchors} strong={picked} />
+                <NameRow name={group.name} count={count} strong={picked} />
             </div>
         );
     }
@@ -115,7 +116,7 @@ export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps &
             }}
             title={`${group.name} · 모집단 ${count}`}
         >
-            <SideHandles anchors={anchors} strong={selected === true} />
+            <SideHandles anchors={anchors} strong={picked} />
             <div style={{ flex: 1, minWidth: 0 }}>
                 <NameRow name={group.name} count={count} strong />
             </div>
@@ -123,44 +124,4 @@ export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps &
     );
 });
 
-/** 교집합 노드 타입 키 — 그룹 노드와 생김새·규칙이 달라 타입을 나눈다. */
-export const MID_NODE_TYPE = "tdmMid";
-
-export interface MidNodeData extends Record<string, unknown> {
-    /** 교집합에 든 항목 수. */
-    count: number;
-    /** 이 교집합의 정체(`돌파 & 재돌파[L]`). */
-    label: string;
-}
-
-/**
- * 교집합 노드 — 고른 그룹들 가운데에 서서 **겹치는 것 그 자체**를 보여준다.
- *
- * ⚠ **손댈 수 없다**(pointer-events 없음 · 선택·드래그 불가). 여기를 눌러 파고들게 만들려다
- * 라이브러리의 선택·드래그 배선과 계속 싸웠다. 파고들기는 그룹 노드를 Ctrl+클릭으로 더하는 일이고,
- * 이 노드는 그 결과를 **읽기만** 한다 — 그러면 어긋날 배선이 없다.
- * 점선 테두리가 "손으로 만든 게 아니라 유도된 것"을 말한다.
- */
-export const MidNode = memo(function MidNode({ data }: NodeProps & { data: MidNodeData }) {
-    const { count, label } = data;
-    return (
-        <div
-            style={{
-                width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
-                display: "flex", alignItems: "center",
-                border: "1px dashed var(--text-primary)", background: "var(--bg-primary)",
-                pointerEvents: "none",
-            }}
-            title={`${label} · ${count}`}
-        >
-            <SideHandles anchors={ALL_SIDES} strong hidden />
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <NameRow name={label} count={count} strong />
-            </div>
-        </div>
-    );
-});
-
-const ALL_SIDES: Side[] = ["t", "r", "b", "l"];
-
-export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode, [MID_NODE_TYPE]: MidNode } as const;
+export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode } as const;

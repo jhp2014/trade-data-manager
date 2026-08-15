@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Background,
+    MarkerType,
     MiniMap,
     ReactFlow,
     ReactFlowProvider,
@@ -34,18 +35,24 @@ import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
-import { GROUP_NODE_TYPE, MAP_NODE_TYPES, MID_NODE_TYPE, type GroupNodeData, type MidNodeData } from "./map/MapNodes.js";
-import { chainCandidates, selectionGraph, groupsOnMap, membersOfAll, placeableGroups, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
+import { GROUP_NODE_TYPE, MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
+import { chainCandidates, groupsOnMap, mapArrows, membersOfAll, placeableGroups, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
 import { chartKey } from "../lib/pointKey.js";
-import { absCenterOf, dropTargetAt, layoutMap, MID_OPEN_H, MID_OPEN_W, type Side } from "./map/mapLayout.js";
+import { absCenterOf, dropTargetAt, layoutMap } from "./map/mapLayout.js";
 
 const SELECTED_KEY = "wb.mapSelected";
 const LIST_KEY = "wb.mapMemberList";
+/** 겹침 숫자 크기 범위 — 이 선택 안의 최댓값이 최대 크기(상대 척도). 정확한 값은 숫자 자체가 준다. */
+const LABEL_MIN_PX = 11;
+const LABEL_MAX_PX = 18;
 /**
  * 겹침 선 색 — ⚠ **이 앱 테마에 있는 변수만 쓴다.** `--text-muted` 는 없는 이름이라 stroke 가
  * 무효값이 되어 선이 통째로 안 그려졌다(화살촉·숫자만 떠 있었다). 정의는 styles/theme.css.
  */
 const EDGE_COLOR = "var(--text-tertiary)";
+/** 부채꼴 곡률 — 첫 선은 완만하게, 뒤로 갈수록 더 휜다. */
+const EDGE_CURVE_BASE = 0.25;
+const EDGE_CURVE_STEP = 0.22;
 
 export function MapPanel(): JSX.Element {
     return (
@@ -99,45 +106,99 @@ function MapPanelInner(): JSX.Element {
     const counts = useMemo(() => populationCounts(popFeed), [popFeed]);
 
     /**
-     * 선택 = **RF 가 하는 일 그대로**(클릭 = 고르기 · Ctrl+클릭 = 더하기 · 빈 곳 = 해제 · 드래그 = 옮기기).
-     * 선택 상태를 우리가 따로 들지 않는다 — 들었다가 라이브러리 배선과 계속 어긋났다.
-     * 순서는 안 쓴다: 교집합은 대칭이라 어느 쪽부터 골랐는지가 그림을 바꾸면 안 된다.
+     * 체인 — 클릭 순서대로 쌓는 **세션 시선**(조건이 아니다. 조건의 저자는 깔때기 하나).
+     * 빈 곳을 눌러도 안 풀린다: 짚어 놓고 화면을 옮기다 실수로 지워지면 쌓은 경로를 잃는다.
+     * 체인 안 노드를 다시 누르면 **거기까지 되감기**(브레드크럼과 같은 손짓).
      */
+    const [chain, setChain] = useState<string[]>([]);
+    /** 짚은 선 — 숫자를 앞으로 끌어내는 데만 쓴다(세션 시선). */
+    const [hoverEdge, setHoverEdge] = useState<string | null>(null);
     const [showList, setShowList] = usePersistedState<boolean>(LIST_KEY, (o) => (typeof o === "boolean" ? o : null), false);
+    const chainSet = useMemo(() => new Set(chain), [chain]);
+    const head = chain.length > 0 ? chain[chain.length - 1]! : null;
+    const headGroup = head === null ? null : (gv.groupById.get(head) ?? null);
+    // 평면에서 내려간 그룹은 체인에서도 빠진다 — 죽은 참조가 남으면 화살표가 허공을 가리킨다.
+    useEffect(() => {
+        setChain((cur) => (cur.every((id) => onMapIds.has(id)) ? cur : cur.filter((id) => onMapIds.has(id))));
+    }, [onMapIds]);
+
+    // ── 갈 수 있는 곳 — 후보별 "체인 전부 ∧ 그 후보" 수(드릴다운). 조상–자손은 뺀다(포함관계는 영역이 보여준다).
+    const candidates = useMemo(
+        () => chainCandidates(popFeed, chain, { within: onMapIds, groupById: gv.groupById }),
+        [popFeed, chain, onMapIds, gv.groupById],
+    );
+    /** 체인이 공통으로 가진 항목 — 작업줄의 "공통 N" 과 목록 패널이 같은 집합을 본다. */
+    const chainMembers = useMemo(() => (chain.length === 0 ? [] : membersOfAll(popFeed, chain)), [popFeed, chain]);
 
     // ── 레이아웃 — 컨테이너 좌표 계산은 전부 mapLayout(순수). laid 는 드래그 판정·역변환도 쓴다.
+    // 잎 크기는 **이름**에서만 나온다(수는 고정 칸 — 필터로 수가 바뀔 때 상자가 들썩이지 않게).
     const laid = useMemo(
         () => layoutMap(onMap.map((g) => ({ id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0 }))),
         [onMap],
     );
     const laidById = useMemo(() => new Map(laid.map((n) => [n.id, n])), [laid]);
 
-    const [nodes, setNodes] = useState<MapNode[]>([]);
     /**
-     * 고른 그룹들 — RF 의 selected 를 그대로 읽는다(평면에 없는 것은 뺀다).
-     * ⚠ **내용이 같으면 같은 값**이어야 한다. `nodes` 는 매 갱신마다 새 배열이라 그대로 map 하면
-     * 선택이 안 바뀌었는데도 새 배열이 나오고 → derived → setNodes → 다시 파생으로 **무한 루프**가 돈다.
-     * 그래서 문자열 열쇠로 한 번 접었다 편다(정렬해서 — 고른 순서는 뜻이 없다).
+     * 겹침 선 — **짚은 그룹에서 나가는 화살표**. 겹침 자체는 대칭이라 방향은 데이터가 아니라 시선이다
+     * (다른 그룹을 짚으면 통째로 뒤집힌다). 굵기는 전부 같고 **숫자 크기**가 겹침 수를 나른다 —
+     * 두께와 숫자는 같은 값을 두 번 말하는 것이었고, 정확한 값은 숫자가 이미 준다.
+     * 크기는 짚은 그룹 **안에서의 상대**(최댓값이 최대 크기) — 절대 척도면 다들 고만고만해 안 갈린다.
+     * 붙는 변은 두 상자의 상대 위치가 정한다(sidesBetween) — 그래야 곡선이 변의 법선으로 빠져나간다.
      */
-    const selectedKey = nodes.filter((n) => n.selected === true && onMapIds.has(n.id)).map((n) => n.id).sort().join("|");
-    const selected = useMemo(() => (selectedKey === "" ? [] : selectedKey.split("|")), [selectedKey]);
-    const selectedSet = useMemo(() => new Set(selected), [selected]);
+    const { arrows, anchorsById } = useMemo(() => {
+        const { arrows, anchors } = mapArrows(chain, candidates, (id) => laidById.get(id)?.abs);
+        return { arrows, anchorsById: anchors };
+    }, [chain, candidates, laidById]);
 
-    // ── 갈 수 있는 곳 — 후보별 "고른 것 전부 ∧ 그 후보" 수. 조상–자손은 뺀다(포함관계는 영역이 보여준다).
-    const candidates = useMemo(
-        () => chainCandidates(popFeed, selected, { within: onMapIds, groupById: gv.groupById }),
-        [popFeed, selected, onMapIds, gv.groupById],
-    );
-    /** 고른 그룹 전부에 든 항목 — 작업줄의 "공통 N" 과 목록 패널이 같은 집합을 본다. */
-    const chainMembers = useMemo(() => (selected.length === 0 ? [] : membersOfAll(popFeed, selected)), [popFeed, selected]);
+    /**
+     * 선 두 종류가 **모양으로** 갈린다:
+     *   · 후보(갈 수 있는 곳) = 점선 + 숫자, 화살촉 없음. 겹침은 대칭이라 방향이 없다.
+     *   · 지나온 길(체인)     = 실선 + 화살촉. 여기만 방향이 뜻을 가진다(내가 지나온 순서).
+     * 짚은 선(hover)은 **맨 뒤로 보내 앞에 그린다** — SVG 는 그리는 순서가 곧 앞뒤라,
+     * 숫자가 다른 선에 묻힐 때 이 한 수로 풀린다.
+     */
+    const edges = useMemo<Edge[]>(() => {
+        let fan = 0;
+        const list = arrows.map((a) => {
+            const isChain = a.kind === "chain";
+            const hovered = hoverEdge === a.id;
+            return {
+                id: a.id,
+                source: a.from,
+                target: a.to,
+                sourceHandle: `${a.fromSide}-s`,
+                targetHandle: `${a.toSide}-t`,
+                ...(isChain ? {} : { label: String(a.count) }),
+                // 후보가 같은 방향에 몰리면 경로가 포개져 숫자가 뭉친다 — 곡률을 하나씩 벌린다.
+                pathOptions: { curvature: isChain ? EDGE_CURVE_BASE : EDGE_CURVE_BASE + EDGE_CURVE_STEP * fan++ },
+                ...(isChain
+                    ? { markerEnd: { type: MarkerType.ArrowClosed, width: 11, height: 11, color: EDGE_COLOR } }
+                    : {}),
+                style: {
+                    stroke: hovered ? "var(--text-primary)" : EDGE_COLOR,
+                    strokeWidth: hovered ? 2 : 1.5,
+                    opacity: hovered ? 1 : isChain ? 0.55 : 0.7,
+                    ...(isChain ? {} : { strokeDasharray: "5 4" }), // 후보 = 점선
+                },
+                labelBgStyle: { fill: "var(--bg-primary)" },
+                labelBgPadding: [4, 2] as [number, number],
+                labelBgBorderRadius: 4,
+                labelStyle: { fontSize: hovered ? 15 : LABEL_MIN_PX + (LABEL_MAX_PX - LABEL_MIN_PX) * a.weight, fill: "var(--text-primary)" },
+            };
+        });
+        // 짚은 선을 맨 뒤로 — 나중에 그려지는 것이 위에 온다.
+        const at = list.findIndex((e) => e.id === hoverEdge);
+        if (at >= 0) list.push(...list.splice(at, 1));
+        return list;
+    }, [arrows, hoverEdge]);
 
     const derived = useMemo<MapNode[]>(
         () =>
             laid.map((n) => {
                 const g = gv.groupById.get(n.id)!;
                 const count = counts.get(n.id) ?? 0;
-                // 고른 게 있으면 **고른 것과 후보만** 남기고 흐린다. 없으면 모집단 0만 흐린다.
-                const dimmed = selected.length > 0 ? !selectedSet.has(n.id) && !candidates.has(n.id) : count === 0 && funnel.isFiltering;
+                // 체인이 서면 **체인과 후보만** 남기고 흐린다. 체인이 없으면 모집단 0만 흐린다.
+                const dimmed = chain.length > 0 ? !chainSet.has(n.id) && !candidates.has(n.id) : count === 0 && funnel.isFiltering;
                 return {
                     id: n.id,
                     type: GROUP_NODE_TYPE,
@@ -145,109 +206,19 @@ function MapPanelInner(): JSX.Element {
                     ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
                     zIndex: n.depth,
                     style: { width: n.width, height: n.height },
-                    data: { group: g, count, container: n.container, anchors: [], dimmed },
+                    data: {
+                        group: g, count, container: n.container,
+                        anchors: anchorsById.get(n.id) ?? [],
+                        dimmed, picked: chainSet.has(n.id), head: head === n.id,
+                    },
                 };
             }),
-        [laid, gv.groupById, counts, selected, selectedSet, candidates, funnel.isFiltering],
+        [laid, gv.groupById, counts, anchorsById, chain, chainSet, candidates, head, funnel.isFiltering],
     );
 
-    /**
-     * 파생 노드를 상태에 반영하되 **선택은 살려 둔다** — RF 가 든 선택을 우리가 덮어쓰면
-     * 고르는 순간 풀린다(선택의 주인은 RF다).
-     */
-    useEffect(() => {
-        setNodes((prev) => {
-            const sel = new Map(prev.map((n) => [n.id, n.selected === true]));
-            return derived.map((n) => ({ ...n, selected: sel.get(n.id) ?? false }));
-        });
-    }, [derived]);
+    const [nodes, setNodes] = useState<MapNode[]>([]);
+    useEffect(() => { setNodes(derived); }, [derived]);
     const onNodesChange = useCallback((cs: NodeChange<MapNode>[]) => setNodes((ns) => applyNodeChanges(cs, ns)), []);
-
-    /**
-     * 교집합 노드와 선 — 자리는 **살아 있는 노드 위치**에서 나온다: `nodes`(RF 가 드래그 중에도
-     * 갱신하는 상태)를 보므로 노드를 끌면 교집합도 같이 따라온다.
-     */
-    const { mid, links } = useMemo(() => {
-        const liveBox = (id: string): { x: number; y: number; w: number; h: number } | undefined => {
-            const n = nodes.find((x) => x.id === id);
-            const base = laidById.get(id);
-            if (!base) return undefined;
-            const pos = n?.position ?? base.position;
-            // 자식 노드의 position 은 부모 기준 상대 — 절대로 되돌린다.
-            const parent = base.parentId !== undefined ? laidById.get(base.parentId) : undefined;
-            return { x: (parent?.abs.x ?? 0) + pos.x, y: (parent?.abs.y ?? 0) + pos.y, w: base.width, h: base.height };
-        };
-        return selectionGraph(selected, candidates, liveBox, chainMembers.length);
-    }, [selected, candidates, laidById, nodes, chainMembers.length]);
-
-    /** 선 — 전부 점선(교집합으로 이어진다는 걸 선 모양이 말한다). 후보 선에만 수가 붙는다. */
-    const edges = useMemo<Edge[]>(() => {
-        let fan = 0;
-        return links.map((l) => ({
-            id: l.id,
-            source: l.from,
-            target: l.to,
-            sourceHandle: `${l.fromSide}-s`,
-            targetHandle: `${l.toSide}-t`,
-            ...(l.count !== undefined ? { label: String(l.count) } : {}),
-            // 후보가 같은 방향에 몰리면 경로가 포개져 숫자가 뭉친다 — 곡률을 하나씩 벌린다.
-            ...(l.traversed ? {} : { pathOptions: { curvature: 0.25 + 0.22 * fan++ } }),
-            style: {
-                stroke: l.traversed ? "var(--text-primary)" : EDGE_COLOR,
-                strokeWidth: l.traversed ? 1.6 : 1.4,
-                strokeDasharray: l.traversed ? "6 3" : "3 4",
-                opacity: l.traversed ? 0.9 : 0.55,
-            },
-            labelBgStyle: { fill: "var(--bg-primary)" },
-            labelBgPadding: [4, 2] as [number, number],
-            labelBgBorderRadius: 4,
-            labelStyle: { fontSize: 12, fill: "var(--text-primary)" },
-        }));
-    }, [links]);
-
-    /** 선이 붙는 변 — 그룹 노드에만 점을 찍는다(교집합 노드는 제 몸이 이미 표시다). */
-    const anchorsById = useMemo(() => {
-        const m = new Map<string, Side[]>();
-        const mark = (id: string, s: Side): void => {
-            const cur = m.get(id);
-            if (cur) { if (!cur.includes(s)) cur.push(s); } else m.set(id, [s]);
-        };
-        for (const l of links) {
-            mark(l.from, l.fromSide);
-            mark(l.to, l.toSide);
-        }
-        return m;
-    }, [links]);
-
-    /**
-     * 교집합 노드 — **표시물이라 상호작용이 없다**: 선택도 드래그도 포커스도 안 된다.
-     * 자리는 고른 그룹들의 가운데라 손댈 여지도 없다.
-     */
-    const midNodes = useMemo<Node[]>(() => {
-        if (!mid) return [];
-        return [{
-            id: mid.id,
-            type: MID_NODE_TYPE,
-            position: { x: mid.center.x - MID_OPEN_W / 2, y: mid.center.y - MID_OPEN_H / 2 },
-            style: { width: MID_OPEN_W, height: MID_OPEN_H },
-            selectable: false,
-            draggable: false,
-            focusable: false,
-            zIndex: 2000,
-            data: {
-                count: mid.count,
-                label: mid.members.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)").join(" & "),
-            } satisfies MidNodeData,
-        }];
-    }, [mid, gv.groupById]);
-
-    const rfNodes = useMemo<Node[]>(
-        () => [
-            ...nodes.map((n) => ({ ...n, data: { ...n.data, anchors: anchorsById.get(n.id) ?? [] } })),
-            ...midNodes,
-        ],
-        [nodes, anchorsById, midNodes],
-    );
 
     // ── 쓰기 ──────────────────────────────────────────────────────────────
     const invalidateGroups = useCallback(() => void qc.invalidateQueries({ queryKey: groupsQuery().queryKey }), [qc]);
@@ -347,17 +318,25 @@ function MapPanelInner(): JSX.Element {
 
     const addFilterStage = useWorkbench((s) => s.addFilterStage);
     /**
-     * 고른 그룹 전부를 조건으로 굳힌다 — 그룹마다 **단계 하나씩**. 한 단계에 몰면 깔때기가 "어느 단계가
+     * 체인 전체를 조건으로 굳힌다 — 그룹마다 **단계 하나씩**. 한 단계에 몰면 깔때기가 "어느 단계가
      * 무엇을 죽였나"를 못 묻는다(12→8→5 가 12→5 로 뭉친다). 맵은 만들고 잊는다: 지우기·순서는 보드의 일.
      */
     const addChainToFilter = useCallback(() => {
-        for (const groupId of selected) addFilterStage([{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }]);
-    }, [selected, addFilterStage]);
+        for (const groupId of chain) addFilterStage([{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }]);
+    }, [chain, addFilterStage]);
 
-    /** 선택 해제 — RF 의 선택을 우리가 비운다(빈 곳 클릭도 RF 가 같은 일을 한다). */
-    const clearSelection = useCallback(() => {
-        setNodes((ns) => ns.map((n) => (n.selected === true ? { ...n, selected: false } : n)));
-    }, []);
+    /** 노드 클릭 — 체인에 있으면 거기까지 되감기, 아니면 이어붙이기(갈 수 없는 곳은 무시). */
+    const onNodeClick = useCallback(
+        (id: string) => {
+            setChain((cur) => {
+                const i = cur.indexOf(id);
+                if (i >= 0) return cur.slice(0, i); // 되감기 — 자기 자신도 풀린다
+                if (cur.length === 0 || candidates.has(id)) return [...cur, id];
+                return cur; // 교집합이 없는 그룹 — 이어붙일 자리가 없다
+            });
+        },
+        [candidates],
+    );
 
     // ── 렌더 ──────────────────────────────────────────────────────────────
     if (mapsQ.isPending || gv.isLoading) return <Note>불러오는 중…</Note>;
@@ -367,7 +346,7 @@ function MapPanelInner(): JSX.Element {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
             <PanelHeader chrome={false} padding="5px 8px" style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
-                <select value={activeMap?.id ?? ""} onChange={(e) => { setSavedId(e.target.value); clearSelection(); }} style={{ fontSize: 12 }}>
+                <select value={activeMap?.id ?? ""} onChange={(e) => { setSavedId(e.target.value); setChain([]); }} style={{ fontSize: 12 }}>
                     {maps.map((m) => (
                         <option key={m.id} value={m.id}>{m.name} [{m.scope === "day" ? "하루" : "타점"}]</option>
                     ))}
@@ -389,20 +368,20 @@ function MapPanelInner(): JSX.Element {
 
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
                 <div ref={wrapRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
-                    <ReactFlow
-                        nodes={rfNodes}
+                    <ReactFlow<MapNode>
+                        nodes={nodes}
                         edges={edges}
-                        onNodesChange={onNodesChange as (cs: NodeChange<Node>[]) => void}
+                        onNodesChange={onNodesChange}
                         nodeTypes={MAP_NODE_TYPES}
                         nodesConnectable={false}
-                        // 고르기는 **클릭**에서 일어난다(드래그 시작이 아니라) — 끌어 옮기는 동작과
-                        // 고르는 동작이 갈려서, 옮기려다 선택이 바뀌는 일이 없다.
-                        selectNodesOnDrag={false}
                         edgesFocusable={false}
                         minZoom={0.05}
                         maxZoom={4}
                         proOptions={{ hideAttribution: true }}
-                        onNodeDragStop={onNodeDragStop as (e: unknown, n: Node, ns: Node[]) => void}
+                        onNodeDragStop={onNodeDragStop}
+                        onNodeClick={(_e, n) => onNodeClick(n.id)}
+                        onEdgeMouseEnter={(_e, ed) => setHoverEdge(ed.id)}
+                        onEdgeMouseLeave={() => setHoverEdge(null)}
                     >
                         <Background gap={40} size={1} />
                         <MiniMap pannable zoomable position="bottom-right" style={{ width: 130, height: 90 }}
@@ -415,19 +394,21 @@ function MapPanelInner(): JSX.Element {
                         </div>
                     )}
 
-                    {selected.length > 0 && (
+                    {chain.length > 0 && (
                         <ChainBar
-                            picked={selected.length}
+                            chain={chain}
+                            nameOf={(id) => gv.groupById.get(id)?.name ?? "(지워짐)"}
                             members={chainMembers.length}
-                            onClear={clearSelection}
+                            onRewind={(i) => setChain((cur) => cur.slice(0, i + 1))}
+                            onClear={() => setChain([])}
                             onAddFilter={addChainToFilter}
-                            onUnplace={() => { for (const id of selected) unplaceMut.mutate(id); clearSelection(); }}
+                            onUnplace={() => { if (head) { unplaceMut.mutate(head); setChain((cur) => cur.slice(0, -1)); } }}
                         />
                     )}
                 </div>
 
                 {showList && (
-                    <MemberList names={selected.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)")} members={chainMembers} />
+                    <MemberList head={headGroup} members={chainMembers} totalOf={(id) => gv.countOf(id)} />
                 )}
             </div>
         </div>
@@ -435,31 +416,39 @@ function MapPanelInner(): JSX.Element {
 }
 
 /**
- * 체인 작업줄 — 맵의 **유일한 쓰기**(필터에 추가)가 여기 모인다. 우측 상단에 작게 둔다:
- * 하단을 가로지르면 그 띠에 걸친 교집합 노드가 클릭을 뺏긴다(실측된 결함).
- *
- * 브레드크럼은 **없다** — 지나온 교집합 노드가 맵 위에 `A & B` 로 떠 있고 그걸 눌러 되감으므로
- * 같은 것을 두 곳에 두지 않는다.
+ * 체인 작업줄 — 지나온 길(브레드크럼)과 맵의 **유일한 쓰기**(필터에 추가)가 여기 모인다.
+ * 브레드크럼 칸을 누르면 거기까지 되감는다(맵에서 그 노드를 다시 누르는 것과 같은 손짓).
  */
-function ChainBar({ picked, members, onClear, onAddFilter, onUnplace }: {
-    picked: number;
+function ChainBar({ chain, nameOf, members, onRewind, onClear, onAddFilter, onUnplace }: {
+    chain: readonly string[];
+    nameOf: (id: string) => string;
     members: number;
+    onRewind: (index: number) => void;
     onClear: () => void;
     onAddFilter: () => void;
     onUnplace: () => void;
 }): JSX.Element {
     return (
         <div style={{
-            position: "absolute", right: 8, top: 8, zIndex: 10,
-            display: "flex", alignItems: "center", gap: 6, padding: "4px 7px",
+            position: "absolute", left: 8, bottom: 8, right: 8, zIndex: 10,
+            display: "flex", alignItems: "center", gap: 8, padding: "5px 9px", flexWrap: "wrap",
             background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 7,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.25)", fontSize: 12, whiteSpace: "nowrap",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.25)", fontSize: 12,
         }}>
-            <span style={{ color: "var(--text-tertiary)" }}>{picked > 1 ? `고름 ${picked} · 공통 ${members}` : `공통 ${members}`}</span>
-            <button onClick={onAddFilter} title="체인 전체를 필터 단계로 — 그룹마다 하나씩. 지우기·수정은 필터 보드에서"
-                style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
-            <button onClick={onUnplace} title="고른 그룹을 평면에서 내린다(그룹은 남는다)">내리기</button>
-            <button onClick={onClear} title="체인 비우기">✕</button>
+            {chain.map((id, i) => (
+                <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {i > 0 && <span style={{ color: "var(--text-tertiary)" }}>∧</span>}
+                    <button onClick={() => onRewind(i)} title="여기까지 되감기"
+                        style={{ fontWeight: i === chain.length - 1 ? 700 : 400 }}>{nameOf(id)}</button>
+                </span>
+            ))}
+            <span style={{ color: "var(--text-tertiary)" }}>공통 {members}</span>
+            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                <button onClick={onAddFilter} title="체인 전체를 필터 단계로 — 그룹마다 하나씩. 지우기·수정은 필터 보드에서"
+                    style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
+                <button onClick={onUnplace} title="마지막 그룹을 평면에서 내린다(그룹은 남는다)">내리기</button>
+                <button onClick={onClear} title="체인 비우기">✕</button>
+            </span>
         </div>
     );
 }
@@ -492,9 +481,10 @@ function PlacePalette({ groups, onPlace }: { groups: Group[]; onPlace: (id: stri
  * 체인이 공통으로 가진 멤버 목록(토글) — 행 클릭 = 그 항목으로 이동(타점이면 goToPoint, 하루면 goToDay).
  * 맵이 탐색의 출발점이 되는 자리다. 숫자는 노드와 같은 잣대(모집단), 전체 부착 수는 참고로만.
  */
-function MemberList({ names, members }: {
-    names: readonly string[];
+function MemberList({ head, members, totalOf }: {
+    head: Group | null;
     members: readonly GroupMembership[];
+    totalOf: (groupId: string) => number;
 }): JSX.Element {
     const { nameOf } = useStockNames();
     const goToPoint = useWorkbench((s) => s.goToPoint);
@@ -502,13 +492,13 @@ function MemberList({ names, members }: {
 
     return (
         <div style={{ width: 200, flex: "none", borderLeft: "1px solid var(--border-default)", overflowY: "auto", fontSize: 11 }}>
-            {names.length === 0 ? (
-                <div style={{ padding: 8, color: "var(--text-tertiary)" }}>그룹을 고르면 공통 멤버가 보입니다 (Ctrl+클릭으로 여러 개)</div>
+            {head === null ? (
+                <div style={{ padding: 8, color: "var(--text-tertiary)" }}>그룹을 짚으면 공통 멤버가 보입니다</div>
             ) : (
                 <div>
                     <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-default)" }}>
-                        <div style={{ fontSize: 12 }}>{names.join(" & ")}</div>
-                        <div style={{ color: "var(--text-tertiary)" }}>공통 {members.length}</div>
+                        <div style={{ fontSize: 12 }}>{head.name}</div>
+                        <div style={{ color: "var(--text-tertiary)" }}>공통 {members.length} · 전체 부착 {totalOf(head.id)}</div>
                     </div>
                     {members.slice(0, 300).map((m) => (
                         <button

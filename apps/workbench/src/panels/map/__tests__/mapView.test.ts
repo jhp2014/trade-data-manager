@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Group, GroupMembership } from "../../../api/groups.js";
-import { chainCandidates, selectionGraph, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "../mapView.js";
+import { chainCandidates, mapArrows, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "../mapView.js";
 
 const grp = (id: string, parentId: string | null = null): Group =>
     ({ id, name: id, scope: "day", parentId, mapId: "m", x: 0, y: 0 });
@@ -98,58 +98,53 @@ describe("chainCandidates — 한 걸음 더 갈 수 있는 곳", () => {
     });
 });
 
-describe("selectionGraph — 고른 것들의 교집합을 가운데 세운다", () => {
-    // A(왼쪽 위) · B(오른쪽) · C(아래)
+describe("mapArrows — 지나온 길과 갈 수 있는 곳", () => {
     const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {
-        A: { x: 0, y: 0, w: 100, h: 32 },
-        B: { x: 400, y: 0, w: 100, h: 32 },
-        C: { x: 0, y: 400, w: 100, h: 32 },
+        A: { x: 0, y: 0, w: 100, h: 34 },
+        B: { x: 400, y: 0, w: 100, h: 34 },
+        C: { x: 0, y: 300, w: 100, h: 34 },
     };
     const boxOf = (id: string) => boxes[id];
 
-    it("아무것도 안 고르면 아무것도 안 그린다", () => {
-        const g = selectionGraph([], new Map([["B", 3]]), boxOf, 0);
-        expect(g.mid).toBeNull();
-        expect(g.links).toEqual([]);
+    it("체인이 비면 화살표도 없다", () => {
+        expect(mapArrows([], new Map([["B", 3]]), boxOf).arrows).toEqual([]);
     });
 
-    it("하나만 고르면 교집합 노드가 없다 — 제 자신이 곧 그 집합이다", () => {
-        const g = selectionGraph(["A"], new Map([["B", 3]]), boxOf, 40);
-        expect(g.mid).toBeNull();
-        expect(g.links).toHaveLength(1);
-        expect(g.links[0]).toMatchObject({ from: "A", to: "B", count: 3, traversed: false });
+    it("실선은 언제나 **체인의 마지막**에서 나간다 — 지금 서 있는 자리", () => {
+        const { arrows } = mapArrows(["A", "C"], new Map([["B", 3]]), boxOf);
+        const solid = arrows.filter((a) => a.kind === "candidate");
+        expect(solid).toHaveLength(1);
+        expect(solid[0]).toMatchObject({ from: "C", to: "B", count: 3 });
     });
 
-    it("둘 이상 고르면 가운데에 교집합 노드가 서고 고른 것들이 거기로 이어진다", () => {
-        const g = selectionGraph(["A", "B"], new Map(), boxOf, 7);
-        expect(g.mid).toMatchObject({ count: 7, members: ["A", "B"] });
-        // A 중심(50,16) 과 B 중심(450,16) 의 한가운데
-        expect(g.mid!.center).toEqual({ x: 250, y: 16 });
-        expect(g.links.map((l) => [l.from, l.to])).toEqual([["A", "mid"], ["B", "mid"]]);
+    it("점선은 클릭 순서를 잇는다 — 수는 없다(지나온 자리라 물을 게 없다)", () => {
+        const { arrows } = mapArrows(["A", "C"], new Map(), boxOf);
+        const dotted = arrows.filter((a) => a.kind === "chain");
+        expect(dotted).toHaveLength(1);
+        expect(dotted[0]).toMatchObject({ from: "A", to: "C" });
+        expect(dotted[0]!.count).toBeUndefined();
     });
 
-    it("후보 선은 **교집합에서** 나간다 — 고른 것 하나에서가 아니라", () => {
-        const g = selectionGraph(["A", "B"], new Map([["C", 2]]), boxOf, 7);
-        const cand = g.links.filter((l) => !l.traversed);
-        expect(cand).toHaveLength(1);
-        expect(cand[0]).toMatchObject({ from: "mid", to: "C", count: 2 });
+    it("붙는 변은 상대 위치가 정한다 — 아래 이웃은 b→t, 오른쪽 이웃은 r→l", () => {
+        const { arrows } = mapArrows(["A", "C"], new Map([["B", 1]]), boxOf);
+        expect(arrows.find((a) => a.kind === "chain")).toMatchObject({ fromSide: "b", toSide: "t" });
+        expect(arrows.find((a) => a.kind === "candidate")).toMatchObject({ fromSide: "r", toSide: "l" });
     });
 
-    // 교집합은 대칭이라 고른 순서가 그림을 바꾸면 안 된다.
-    it("고른 순서가 달라도 같은 그림", () => {
-        const a = selectionGraph(["A", "B"], new Map([["C", 2]]), boxOf, 7);
-        const b = selectionGraph(["B", "A"], new Map([["C", 2]]), boxOf, 7);
-        expect(a.mid!.center).toEqual(b.mid!.center);
-        expect(a.links.map((l) => l.to).sort()).toEqual(b.links.map((l) => l.to).sort());
+    it("점은 실제로 쓰이는 변에만 — 가운데 노드는 들어온 변과 나가는 변 둘 다", () => {
+        const { anchors } = mapArrows(["A", "C"], new Map([["B", 1]]), boxOf);
+        expect(anchors.get("A")).toEqual(["b"]);
+        expect(anchors.get("C")!.sort()).toEqual(["r", "t"]);
+        expect(anchors.get("B")).toEqual(["l"]);
     });
 
-    it("붙는 변은 상대 위치가 정한다 — 오른쪽 이웃이면 r→l", () => {
-        const g = selectionGraph(["A"], new Map([["B", 1]]), boxOf, 40);
-        expect(g.links[0]).toMatchObject({ fromSide: "r", toSide: "l" });
+    it("weight 는 후보들 사이의 상대값 — 최댓값이 1", () => {
+        const { arrows } = mapArrows(["A"], new Map([["B", 8], ["C", 2]]), boxOf);
+        expect(arrows.find((a) => a.to === "B")!.weight).toBe(1);
+        expect(arrows.find((a) => a.to === "C")!.weight).toBe(0.25);
     });
 
-    it("상자를 못 찾는 그룹은 조용히 버린다(막 내려간 것)", () => {
-        expect(selectionGraph(["없음"], new Map([["B", 1]]), boxOf, 0).links).toEqual([]);
-        expect(selectionGraph(["A"], new Map([["없음", 1]]), boxOf, 40).links).toEqual([]);
+    it("상자를 못 찾는 짝은 조용히 버린다(막 내려간 그룹)", () => {
+        expect(mapArrows(["A"], new Map([["없음", 3]]), boxOf).arrows).toEqual([]);
     });
 });
