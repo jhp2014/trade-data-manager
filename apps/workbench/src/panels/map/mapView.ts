@@ -9,7 +9,6 @@
 import type { Group, GroupMembership } from "../../api/groups.js";
 import { isAncestorOf } from "../../lib/groupTree.js";
 import { sidesBetween, type Side } from "./mapLayout.js";
-import { spreadMidpoints, type MidpointSpec, type Point } from "./midpoints.js";
 
 /** 모집단 항목 — 깔때기 FunnelItem 과 같은 모양(시각 없으면 하루). */
 export interface PopulationItem {
@@ -90,102 +89,69 @@ export function chainCandidates(
  * 그건 포함관계(이미 컨테이너로 보인다)지 징검다리가 아니다.
  */
 /**
- * 두 자리 사이에 **교집합 그 자체를 물체로** 세운 것. 화살표를 안 쓰는 이유가 이것이다 —
- * 겹침은 대칭(A∩B = B∩A)이라 방향을 그리려면 "탐색 방향"이라는 변명이 필요했는데,
- * 교집합을 노드로 만들면 그냥 선 두 개로 이어진 하나의 사실이 된다.
+ * 화살표 하나. 두 종류가 **역할로 갈린다**:
+ *   · `candidate`(실선) = 체인 끝에서 갈 수 있는 곳. `count` 는 거기까지 갔을 때 남는 수.
+ *   · `chain`(점선)     = 지나온 길(클릭 순서). 수는 없다 — 이미 지나온 자리라 물을 게 없다.
+ * `weight`(0~1)는 후보들 사이의 상대 크기(숫자 크기에 실린다).
  */
-export interface MidNode {
-    /** `m:A+B` — 체인 접두사로 만든 안정 id(자리가 바뀌어도 같은 교집합이면 같은 id). */
-    id: string;
-    center: Point;
-    count: number;
-    /** 이 교집합의 정체 — 선택되면 이 이름들을 텍스트로 보여준다. */
-    prefix: string[];
-    /** 이미 지나온 것(체인에 든 것)인가. 아니면 갈 수 있는 후보. */
-    traversed: boolean;
-}
-
-/** 노드—교집합 노드를 잇는 선. 화살촉이 없다(대칭이라 방향이 없다). */
-export interface ChainLink {
+export interface MapArrow {
     id: string;
     from: string;
     to: string;
     fromSide: Side;
     toSide: Side;
-    /** 지나온 길인가 — 그리기가 진하기를 가른다. */
-    traversed: boolean;
+    kind: "candidate" | "chain";
+    count?: number;
+    weight: number;
 }
 
-const midId = (prefix: readonly string[]): string => `m:${prefix.join("+")}`;
-
 /**
- * 체인 + 후보 → 그릴 것 전부(교집합 노드와 선).
+ * 체인 + 후보 → 화살표 모델.
  *
- * 기하는 재귀적이다: `[A]` 면 A 에서 각 후보로 뻗고, `[A,B]` 면 **A∧B 교집합 노드**가 새 출발점이 되어
- * 거기서 다시 뻗는다. 그래서 지나온 길이 공간에 남고 별도의 "경로 표시"가 필요 없다.
- * 자리는 두 끝의 중점이되, 한 골목에 몰리면 제 선 위에서 비켜선다(spreadMidpoints).
+ * **방향은 데이터가 아니라 시선**이다: 겹침은 대칭(A∩B = B∩A)이라 화살표는 "여기서 저기로 퍼진다"는
+ * 탐색 방향이고, 체인을 다시 쌓으면 통째로 바뀐다. 이 규칙이 깨지면 없는 비대칭을 지어내는 그림이 된다.
+ * 실선은 언제나 **체인의 마지막**에서 나간다 — 그게 지금 서 있는 자리다.
  * 상자를 못 찾는 짝(평면에서 막 내려간 그룹)은 조용히 버린다.
  */
-export function chainGraph(
+export function mapArrows(
     chain: readonly string[],
     candidates: ReadonlyMap<string, number>,
     boxOf: (id: string) => { x: number; y: number; w: number; h: number } | undefined,
-    countOfPrefix: (prefix: readonly string[]) => number,
-): { mids: MidNode[]; links: ChainLink[] } {
-    const mids: MidNode[] = [];
-    const links: ChainLink[] = [];
-    if (chain.length === 0) return { mids, links };
-    const centerOf = (id: string): Point | undefined => {
-        const b = boxOf(id);
-        return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : undefined;
+): { arrows: MapArrow[]; anchors: Map<string, Side[]> } {
+    const anchors = new Map<string, Side[]>();
+    const arrows: MapArrow[] = [];
+    if (chain.length === 0) return { arrows, anchors };
+    const mark = (id: string, s: Side): void => {
+        const cur = anchors.get(id);
+        if (cur) { if (!cur.includes(s)) cur.push(s); } else anchors.set(id, [s]);
     };
-    /** 교집합 노드는 상자가 없다 — 선 방향을 재려면 점을 상자로 감싸 준다. */
-    const asBox = (p: Point) => ({ x: p.x, y: p.y, w: 0, h: 0 });
-    const sides = (a: Point, b: Point): { source: Side; target: Side } => sidesBetween(asBox(a), asBox(b));
 
-    let baseId = chain[0]!;
-    const start = centerOf(baseId);
-    if (!start) return { mids, links };
-    let basePos: Point = start;
-
-    // 지나온 걸음들 — 각 단계마다 교집합 노드가 하나 서고, 그게 다음 걸음의 출발점이 된다.
-    for (let i = 1; i < chain.length; i++) {
-        const target = chain[i]!;
-        const tp = centerOf(target);
-        if (!tp) break;
-        const prefix = chain.slice(0, i + 1);
-        const id = midId(prefix);
-        const center = { x: (basePos.x + tp.x) / 2, y: (basePos.y + tp.y) / 2 };
-        mids.push({ id, center, count: countOfPrefix(prefix), prefix, traversed: true });
-        // 지나온 걸음은 **양 끝에서 가운데로 모이게** 그린다(둘 다 교집합 노드를 향한다) —
-        // 화살표가 "이 둘이 여기서 만난다"를 말하지, 어느 쪽에서 어디로 간다를 말하지 않게.
-        const s1 = sides(basePos, center);
-        const s2 = sides(tp, center);
-        links.push({ id: `l:${baseId}>${id}`, from: baseId, to: id, fromSide: s1.source, toSide: s1.target, traversed: true });
-        links.push({ id: `l:${target}>${id}`, from: target, to: id, fromSide: s2.source, toSide: s2.target, traversed: true });
-        baseId = id;
-        basePos = center;
+    // 지나온 길 — 클릭 순서대로 점선.
+    for (let i = 0; i + 1 < chain.length; i++) {
+        const from = chain[i]!;
+        const to = chain[i + 1]!;
+        const a = boxOf(from);
+        const b = boxOf(to);
+        if (!a || !b) continue;
+        const { source, target } = sidesBetween(a, b);
+        mark(from, source);
+        mark(to, target);
+        arrows.push({ id: `c:${from}-${to}`, from, to, fromSide: source, toSide: target, kind: "chain", weight: 0 });
     }
 
-    // 갈 수 있는 곳 — 지금 출발점에서 각 후보로. 중점끼리 몰리면 비켜선다.
-    const specs: MidpointSpec[] = [];
-    for (const [target] of candidates) {
-        const tp = centerOf(target);
-        if (!tp) continue;
-        specs.push({ id: midId([...chain, target]), from: basePos, to: tp });
+    // 갈 수 있는 곳 — 체인 끝에서 실선.
+    const head = chain[chain.length - 1]!;
+    const headBox = boxOf(head);
+    if (!headBox) return { arrows, anchors };
+    let max = 0;
+    for (const c of candidates.values()) max = Math.max(max, c);
+    for (const [id, count] of candidates) {
+        const box = boxOf(id);
+        if (!box) continue;
+        const { source, target } = sidesBetween(headBox, box);
+        mark(head, source);
+        mark(id, target);
+        arrows.push({ id: `o:${head}-${id}`, from: head, to: id, fromSide: source, toSide: target, kind: "candidate", count, weight: max > 0 ? count / max : 0 });
     }
-    const placed = spreadMidpoints(specs);
-    for (const [target, count] of candidates) {
-        const tp = centerOf(target);
-        if (!tp) continue;
-        const prefix = [...chain, target];
-        const id = midId(prefix);
-        const center = placed.get(id) ?? { x: (basePos.x + tp.x) / 2, y: (basePos.y + tp.y) / 2 };
-        mids.push({ id, center, count, prefix, traversed: false });
-        const s1 = sides(basePos, center);
-        const s2 = sides(center, tp);
-        links.push({ id: `l:${baseId}>${id}`, from: baseId, to: id, fromSide: s1.source, toSide: s1.target, traversed: false });
-        links.push({ id: `l:${id}>${target}`, from: id, to: target, fromSide: s2.source, toSide: s2.target, traversed: false });
-    }
-    return { mids, links };
+    return { arrows, anchors };
 }
