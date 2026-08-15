@@ -219,13 +219,19 @@ function MapPanelInner(): JSX.Element {
     }, []);
     const probes = useMemo<Node[]>(() => {
         const at = laid[0]?.abs ?? { x: 0, y: 0 };
-        const make = (id: string, label: string, dy: number): Node => ({
+        const make = (id: string, label: string, dy: number, extra: Partial<Node> = {}, stop = false): Node => ({
             id, type: PROBE_NODE_TYPE,
             position: { x: at.x, y: at.y + dy },
             style: { width: 190, height: 30 },
-            data: { label, hits: probeHits[id] ?? 0, onHit: () => hit(id) } satisfies ProbeNodeData,
+            ...extra,
+            data: { label, hits: probeHits[id] ?? 0, onHit: () => hit(id), stopPointerDown: stop } satisfies ProbeNodeData,
         });
-        return [make("probeA", "A 상태안·평범", -150), make("probeB", "B 상태밖·평범", -110), make("m:x+y", "C 상태밖·특수id", -70)];
+        // 1차 실험(상태 안/밖·id 문자)은 셋 다 통과 — 이제 교집합 노드에만 있던 나머지 둘을 가른다.
+        return [
+            make("probeA", "A 기준(아무 것도 안 함)", -150),
+            make("probeB", "B zIndex 2000", -110, { zIndex: 2000 }),
+            make("probeC", "C pointerdown 막음", -70, {}, true),
+        ];
     }, [laid, probeHits, hit]);
 
     const [nodes, setNodes] = useState<Node[]>([]);

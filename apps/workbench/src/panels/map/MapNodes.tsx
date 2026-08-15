@@ -12,7 +12,7 @@
 // Handle 은 **네 변에 하나씩**(source·target 한 쌍씩). 어느 변을 쓸지는 두 노드의 상대 위치가 정하고
 // (mapLayout.sidesBetween), 실제로 쓰이는 변에만 점이 보인다 — 네 변에 늘 찍으면 그룹 열 개에 점이
 // 마흔 개라 배경이 시끄러워진다.
-import { memo } from "react";
+import { memo, type PointerEvent as ReactPointerEvent } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { Group } from "../../api/groups.js";
 import type { Side } from "./mapLayout.js";
@@ -138,13 +138,16 @@ export interface ProbeNodeData extends Record<string, unknown> {
     label: string;
     hits: number;
     onHit: () => void;
+    /** 교집합 노드에만 있던 차이 — 이게 클릭을 죽이는지 본다. */
+    stopPointerDown?: boolean;
 }
 
 export const ProbeNode = memo(function ProbeNode({ data }: NodeProps & { data: ProbeNodeData }) {
-    const { label, hits, onHit } = data;
+    const { label, hits, onHit, stopPointerDown } = data;
     return (
         <div
             onClick={onHit}
+            {...(stopPointerDown === true ? { onPointerDown: (e: ReactPointerEvent) => e.stopPropagation() } : {})}
             style={{
                 width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
