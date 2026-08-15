@@ -12,7 +12,7 @@
 // Handle 은 **네 변에 하나씩**(source·target 한 쌍씩). 어느 변을 쓸지는 두 노드의 상대 위치가 정하고
 // (mapLayout.sidesBetween), 실제로 쓰이는 변에만 점이 보인다 — 네 변에 늘 찍으면 그룹 열 개에 점이
 // 마흔 개라 배경이 시끄러워진다.
-import { memo, type PointerEvent as ReactPointerEvent } from "react";
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { Group } from "../../api/groups.js";
 import type { Side } from "./mapLayout.js";
@@ -48,11 +48,11 @@ const SIDES: { side: Side; pos: Position }[] = [
  * 점은 **target 핸들만** 그린다: 둘 다 그리면 같은 자리에 똑같은 원이 두 겹으로 쌓인다.
  * 안 쓰이는 변은 투명 — 네 변에 늘 점을 찍으면 그룹 열 개에 점이 마흔 개라 배경이 시끄러워진다.
  */
-function SideHandles({ anchors, strong }: { anchors: readonly Side[]; strong: boolean }): JSX.Element {
+function SideHandles({ anchors, strong, hidden }: { anchors: readonly Side[]; strong: boolean; hidden?: boolean }): JSX.Element {
     return (
         <>
             {SIDES.map(({ side, pos }) => {
-                const dot = anchors.includes(side)
+                const dot = anchors.includes(side) && hidden !== true
                     ? { width: 7, height: 7, borderRadius: "50%", border: "none", background: strong ? "var(--text-primary)" : "var(--text-tertiary)", pointerEvents: "none" as const }
                     : INVISIBLE;
                 return (
@@ -124,44 +124,67 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: G
     );
 });
 
-/**
- * ⚠ **임시 진단 노드 — 확인이 끝나면 통째로 지운다.**
- *
- * 교집합 노드가 실제 마우스로 클릭도 드래그도 안 되던 원인을 가르기 위한 실험용이다. 후보가 셋이라
- * 셋을 각각 세워 어느 것이 안 눌리는지 본다: ① 상태 안 + 평범한 id ② 상태 밖 + 평범한 id
- * ③ 상태 밖 + 특수문자 id(`m:x+y` — `:`·`+` 는 CSS 선택자 메타문자).
- * 누르면 제 라벨에 눌린 횟수를 적고 `window.__mapProbe` 에도 남긴다(사람이 눌러야 판정이 선다).
- */
-export const PROBE_NODE_TYPE = "tdmProbe";
+/** 교집합 노드 타입 키 — 그룹 노드와 생김새·규칙이 달라 타입을 나눈다. */
+export const MID_NODE_TYPE = "tdmMid";
 
-export interface ProbeNodeData extends Record<string, unknown> {
+export interface MidNodeData extends Record<string, unknown> {
+    /** 교집합에 든 항목 수. */
+    count: number;
+    /** 이 교집합의 정체(`돌파 & 재돌파[L]`) — 지나온 것만 텍스트로 편다. */
     label: string;
-    hits: number;
-    onHit: () => void;
-    /** 교집합 노드에만 있던 차이 — 이게 클릭을 죽이는지 본다. */
-    stopPointerDown?: boolean;
+    /** 이미 지나온 교집합인가 — 후보면 숫자만, 지나온 것이면 이름까지. */
+    traversed: boolean;
+    /**
+     * 누르면 할 일 — **노드가 제 클릭을 직접 받는다.** RF 의 onNodeClick 을 거치면 그 배선이
+     * (nopan·드래그 임계·평면 이동 같은) 여러 조건에 걸리는데, 여기서 받으면 그냥 DOM 클릭이다.
+     */
+    onPick: () => void;
 }
 
-export const ProbeNode = memo(function ProbeNode({ data }: NodeProps & { data: ProbeNodeData }) {
-    const { label, hits, onHit, stopPointerDown } = data;
+/**
+ * 교집합 노드 — 두 자리 사이에 선 **겹치는 것 그 자체**.
+ * 후보일 땐 숫자만 든 점선 알약(아직 가 보지 않은 자리), 지나온 것이면 이름과 수를 든 진짜 상자.
+ * 크기는 mapLayout 이 정한다(레이아웃이 크기를 알아야 자리 계산이 순수하게 선다).
+ */
+export const MidNode = memo(function MidNode({ data }: NodeProps & { data: MidNodeData }) {
+    const { count, label, traversed, onPick } = data;
+    if (!traversed) {
+        return (
+            <div
+                onClick={onPick}
+                style={{
+                    width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    border: "1px dashed var(--border-strong)", background: "var(--bg-primary)",
+                    fontSize: 12, fontVariantNumeric: "tabular-nums", color: "var(--text-primary)", cursor: "pointer",
+                }}
+                title={`${label} — 눌러서 여기까지 좁히기`}
+            >
+                <SideHandles anchors={ALL_SIDES} strong={false} hidden />
+                {count}
+            </div>
+        );
+    }
     return (
         <div
-            onClick={onHit}
-            {...(stopPointerDown === true ? { onPointerDown: (e: ReactPointerEvent) => e.stopPropagation() } : {})}
+            onClick={onPick}
+            onPointerDown={(e) => e.stopPropagation()}
             style={{
                 width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 7,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                border: `2px ${hits > 0 ? "solid" : "dashed"} var(--rise, #e24b4a)`,
-                background: "var(--bg-primary)", fontSize: 11, color: "var(--text-primary)", cursor: "pointer",
+                display: "flex", alignItems: "center",
+                border: "2px solid var(--text-primary)", background: "var(--bg-primary)",
+                cursor: "pointer",
             }}
-            title={`진단용 노드 — 눌러 보세요 (${label})`}
+            title={`${label} · ${count} — 눌러서 여기까지 되감기`}
         >
-            <Handle id="t-t" type="target" position={Position.Top} style={INVISIBLE} />
-            <span>{label}</span>
-            <span style={{ fontWeight: 700 }}>{hits}</span>
-            <Handle id="b-s" type="source" position={Position.Bottom} style={INVISIBLE} />
+            <SideHandles anchors={ALL_SIDES} strong hidden />
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <NameRow name={label} count={count} strong />
+            </div>
         </div>
     );
 });
 
-export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode, [PROBE_NODE_TYPE]: ProbeNode } as const;
+const ALL_SIDES: Side[] = ["t", "r", "b", "l"];
+
+export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode, [MID_NODE_TYPE]: MidNode } as const;
