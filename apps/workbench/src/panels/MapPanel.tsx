@@ -220,6 +220,9 @@ function MapPanelInner(): JSX.Element {
                     position: { x: m.center.x - w / 2, y: m.center.y - h / 2 },
                     style: { width: w, height: h },
                     draggable: false,
+                    // ⚠ RF 는 `nopan` 을 **draggable 노드에만** 붙인다. 없으면 누르는 순간 평면 이동이
+                    // 포인터를 가로채 클릭이 노드까지 오지 않는다(끌 수 없는 노드는 아예 안 눌렸다).
+                    className: "nopan",
                     // 그룹·컨테이너보다 확실히 위에 — 겹친 자리에서 클릭이 그룹으로 새면 파고들기가 막힌다.
                     zIndex: 2000,
                     data: {
