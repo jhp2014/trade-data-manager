@@ -418,6 +418,8 @@ function MapPanelInner(): JSX.Element {
 /**
  * 체인 작업줄 — 지나온 길(브레드크럼)과 맵의 **유일한 쓰기**(필터에 추가)가 여기 모인다.
  * 브레드크럼 칸을 누르면 거기까지 되감는다(맵에서 그 노드를 다시 누르는 것과 같은 손짓).
+ *
+ * ⚠ **우측 상단**에 둔다. 하단을 가로지르면 그 띠에 걸친 노드·선이 클릭을 뺏긴다(실측된 결함).
  */
 function ChainBar({ chain, nameOf, members, onRewind, onClear, onAddFilter, onUnplace }: {
     chain: readonly string[];
@@ -430,25 +432,23 @@ function ChainBar({ chain, nameOf, members, onRewind, onClear, onAddFilter, onUn
 }): JSX.Element {
     return (
         <div style={{
-            position: "absolute", left: 8, bottom: 8, right: 8, zIndex: 10,
-            display: "flex", alignItems: "center", gap: 8, padding: "5px 9px", flexWrap: "wrap",
+            position: "absolute", right: 8, top: 8, zIndex: 10, maxWidth: "calc(100% - 16px)",
+            display: "flex", alignItems: "center", gap: 6, padding: "4px 7px", flexWrap: "wrap",
             background: "var(--bg-primary)", border: "1px solid var(--border-strong)", borderRadius: 7,
             boxShadow: "0 2px 8px rgba(0,0,0,0.25)", fontSize: 12,
         }}>
             {chain.map((id, i) => (
-                <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    {i > 0 && <span style={{ color: "var(--text-tertiary)" }}>∧</span>}
+                <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    {i > 0 && <span style={{ color: "var(--text-tertiary)" }}>&</span>}
                     <button onClick={() => onRewind(i)} title="여기까지 되감기"
                         style={{ fontWeight: i === chain.length - 1 ? 700 : 400 }}>{nameOf(id)}</button>
                 </span>
             ))}
             <span style={{ color: "var(--text-tertiary)" }}>공통 {members}</span>
-            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
-                <button onClick={onAddFilter} title="체인 전체를 필터 단계로 — 그룹마다 하나씩. 지우기·수정은 필터 보드에서"
-                    style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
-                <button onClick={onUnplace} title="마지막 그룹을 평면에서 내린다(그룹은 남는다)">내리기</button>
-                <button onClick={onClear} title="체인 비우기">✕</button>
-            </span>
+            <button onClick={onAddFilter} title="체인 전체를 필터 단계로 — 그룹마다 하나씩. 지우기·수정은 필터 보드에서"
+                style={{ color: ACTIVE, fontWeight: 600 }}>필터에 추가</button>
+            <button onClick={onUnplace} title="마지막 그룹을 평면에서 내린다(그룹은 남는다)">내리기</button>
+            <button onClick={onClear} title="체인 비우기">✕</button>
         </div>
     );
 }

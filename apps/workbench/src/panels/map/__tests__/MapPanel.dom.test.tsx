@@ -228,6 +228,17 @@ describe("MapPanel — 체인 클릭", () => {
         expect(e.style.strokeDasharray).toBeUndefined();
     });
 
+    // ⚠ 작업줄이 하단을 가로지르면 그 띠에 걸친 노드·선이 클릭을 뺏긴다(실측된 결함).
+    it("작업줄은 우측 상단에 있다 — 캔버스 하단을 막지 않는다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        const bar = screen.getByText("필터에 추가").closest("div")!;
+        expect(bar.style.top).toBe("8px");
+        expect(bar.style.right).toBe("8px");
+        expect(bar.style.bottom).toBe("");
+        expect(bar.style.left).toBe("");
+    });
+
     it("필터에 추가 = 체인 전체가 단계 여러 개로 — 한 단계에 몰면 어느 단계가 죽였는지 못 묻는다", () => {
         renderMap(CHAIN_SEED);
         fireEvent.click(screen.getByText("돌파"));
