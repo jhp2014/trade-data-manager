@@ -35,10 +35,10 @@ import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
-import { GROUP_NODE_TYPE, MAP_NODE_TYPES, type GroupNodeData } from "./map/MapNodes.js";
-import { chainCandidates, groupsOnMap, mapArrows, membersOfAll, placeableGroups, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
+import { CHIP_NODE_TYPE, GROUP_NODE_TYPE, MAP_NODE_TYPES, type ChipNodeData, type GroupNodeData } from "./map/MapNodes.js";
+import { chainCandidates, chipId, groupsOnMap, mapArrows, membersOfAll, placeableGroups, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
 import { chartKey } from "../lib/pointKey.js";
-import { absCenterOf, dropTargetAt, layoutMap } from "./map/mapLayout.js";
+import { absCenterOf, BOX_HEADER, BOX_PAD, dropTargetAt, layoutMap, LEAF_H } from "./map/mapLayout.js";
 
 const SELECTED_KEY = "wb.mapSelected";
 const LIST_KEY = "wb.mapMemberList";
@@ -53,6 +53,8 @@ const EDGE_COLOR = "var(--text-tertiary)";
 /** 부채꼴 곡률 — 첫 선은 완만하게, 뒤로 갈수록 더 휜다. */
 const EDGE_CURVE_BASE = 0.25;
 const EDGE_CURVE_STEP = 0.22;
+/** 이미 하위 그룹이 있는 노드에 칩을 덧붙일 때의 세로 간격. */
+const CHIP_GAP = 8;
 
 export function MapPanel(): JSX.Element {
     return (
@@ -132,9 +134,42 @@ function MapPanelInner(): JSX.Element {
 
     // ── 레이아웃 — 컨테이너 좌표 계산은 전부 mapLayout(순수). laid 는 드래그 판정·역변환도 쓴다.
     // 잎 크기는 **이름**에서만 나온다(수는 고정 칸 — 필터로 수가 바뀔 때 상자가 들썩이지 않게).
-    const laid = useMemo(
-        () => layoutMap(onMap.map((g) => ({ id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0 }))),
+    const groupItems = useMemo(
+        () => onMap.map((g) => ({ id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0 })),
         [onMap],
+    );
+    /** 칩 없는 배치 — 칩을 **어디에 놓을지** 재는 자(칩이 들어가면 그 부모가 그만큼 자란다). */
+    const baseLaid = useMemo(() => layoutMap(groupItems), [groupItems]);
+
+    /**
+     * 교집합 칩 — 체인의 두 번째부터, **고른 그룹 안에 자식으로** 하나씩. 그룹 안 그룹과 같은 취급이라
+     * 컨테이너 크기가 자식에서 유도되는 기존 레이아웃이 그대로 부풀려 준다.
+     * 자리는 **아래로만** 자라게 잡는다: 잎이면 제 위쪽 모서리를 지키도록 헤더+여백만큼 내려 놓고,
+     * 이미 하위 그룹이 있으면 그 아래 한 칸. 그래야 고르는 순간 노드가 제자리에서 아래로만 늘어난다.
+     */
+    const chipItems = useMemo(() => {
+        if (chain.length < 2) return [];
+        const byId = new Map(baseLaid.map((n) => [n.id, n]));
+        const out: { id: string; parentId: string; x: number; y: number }[] = [];
+        for (let i = 1; i < chain.length; i++) {
+            const parentId = chain[i]!;
+            const p = byId.get(parentId);
+            if (!p) continue;
+            const kids = baseLaid.filter((n) => n.parentId === parentId);
+            const x = kids.length > 0
+                ? (Math.min(...kids.map((k) => k.abs.x)) + Math.max(...kids.map((k) => k.abs.x + k.abs.w))) / 2
+                : p.abs.x + p.abs.w / 2;
+            const y = kids.length > 0
+                ? Math.max(...kids.map((k) => k.abs.y + k.abs.h)) + CHIP_GAP + LEAF_H / 2
+                : p.abs.y + LEAF_H / 2 + BOX_PAD + BOX_HEADER;
+            out.push({ id: chipId(i), parentId, x, y });
+        }
+        return out;
+    }, [chain, baseLaid]);
+
+    const laid = useMemo(
+        () => (chipItems.length === 0 ? baseLaid : layoutMap([...groupItems, ...chipItems])),
+        [chipItems, baseLaid, groupItems],
     );
     const laidById = useMemo(() => new Map(laid.map((n) => [n.id, n])), [laid]);
 
@@ -192,9 +227,29 @@ function MapPanelInner(): JSX.Element {
         return list;
     }, [arrows, hoverEdge]);
 
-    const derived = useMemo<MapNode[]>(
+    const derived = useMemo<Node[]>(
         () =>
             laid.map((n) => {
+                const chipAt = chipItems.findIndex((c) => c.id === n.id);
+                if (chipAt >= 0) {
+                    // 교집합 칩 — 고른 그룹 안의 임시 표시물(선택·드래그 불가).
+                    const prefix = chain.slice(0, chipAt + 2);
+                    return {
+                        id: n.id,
+                        type: CHIP_NODE_TYPE,
+                        position: n.position,
+                        ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
+                        zIndex: n.depth + 1,
+                        style: { width: n.width, height: n.height },
+                        selectable: false,
+                        draggable: false,
+                        focusable: false,
+                        data: {
+                            count: membersOfAll(popFeed, prefix).length,
+                            label: prefix.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)").join(" & "),
+                        } satisfies ChipNodeData,
+                    };
+                }
                 const g = gv.groupById.get(n.id)!;
                 const count = counts.get(n.id) ?? 0;
                 // 체인이 서면 **체인과 후보만** 남기고 흐린다. 체인이 없으면 모집단 0만 흐린다.
@@ -210,15 +265,15 @@ function MapPanelInner(): JSX.Element {
                         group: g, count, container: n.container,
                         anchors: anchorsById.get(n.id) ?? [],
                         dimmed, picked: chainSet.has(n.id), head: head === n.id,
-                    },
+                    } satisfies GroupNodeData,
                 };
             }),
-        [laid, gv.groupById, counts, anchorsById, chain, chainSet, candidates, head, funnel.isFiltering],
+        [laid, chipItems, chain, popFeed, gv.groupById, counts, anchorsById, chainSet, candidates, head, funnel.isFiltering],
     );
 
-    const [nodes, setNodes] = useState<MapNode[]>([]);
+    const [nodes, setNodes] = useState<Node[]>([]);
     useEffect(() => { setNodes(derived); }, [derived]);
-    const onNodesChange = useCallback((cs: NodeChange<MapNode>[]) => setNodes((ns) => applyNodeChanges(cs, ns)), []);
+    const onNodesChange = useCallback((cs: NodeChange<Node>[]) => setNodes((ns) => applyNodeChanges(cs, ns)), []);
 
     // ── 쓰기 ──────────────────────────────────────────────────────────────
     const invalidateGroups = useCallback(() => void qc.invalidateQueries({ queryKey: groupsQuery().queryKey }), [qc]);
@@ -306,9 +361,10 @@ function MapPanelInner(): JSX.Element {
                 moveMut.mutate(moves);
             }
             // 부모 판정은 끌던 노드만 — 떨어진 절대 중심이 어느 영역 안인가(제 자손은 후보에서 빠진다).
+            // ⚠ 칩은 후보에서 뺀다: 임시 표시물이라 그 안에 그룹을 넣는다는 말이 성립하지 않는다.
             const center = absCenterOf(laid, node.id, node.position);
             if (center) {
-                const target = dropTargetAt(laid, center, node.id);
+                const target = dropTargetAt(laid.filter((n) => !n.id.startsWith("chip-")), center, node.id);
                 const currentParent = gv.groupById.get(node.id)?.parentId ?? null;
                 if (target !== currentParent) parentMut.mutate({ id: node.id, parentId: target });
             }
@@ -368,7 +424,7 @@ function MapPanelInner(): JSX.Element {
 
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
                 <div ref={wrapRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
-                    <ReactFlow<MapNode>
+                    <ReactFlow
                         nodes={nodes}
                         edges={edges}
                         onNodesChange={onNodesChange}
@@ -378,7 +434,7 @@ function MapPanelInner(): JSX.Element {
                         minZoom={0.05}
                         maxZoom={4}
                         proOptions={{ hideAttribution: true }}
-                        onNodeDragStop={onNodeDragStop}
+                        onNodeDragStop={onNodeDragStop as unknown as (e: unknown, n: Node, ns: Node[]) => void}
                         onNodeClick={(_e, n) => onNodeClick(n.id)}
                         onEdgeMouseEnter={(_e, ed) => setHoverEdge(ed.id)}
                         onEdgeMouseLeave={() => setHoverEdge(null)}

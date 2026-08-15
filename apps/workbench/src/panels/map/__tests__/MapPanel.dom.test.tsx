@@ -228,6 +228,44 @@ describe("MapPanel — 체인 클릭", () => {
         expect(e.style.strokeDasharray).toBeUndefined();
     });
 
+    /** 교집합 칩 — 고른 그룹 안에 들어가는 임시 자식(`chip-1`, `chip-2`…). */
+    const chip = (i: number): HTMLElement | null => document.querySelector(`.react-flow__node[data-id="chip-${i}"]`);
+
+    it("하나만 골랐을 땐 칩이 없다 — 교집합이랄 게 없다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        expect(chip(1)).toBeNull();
+    });
+
+    it("둘째를 고르면 그 그룹 **안에** 칩이 생기고 교집합 수를 편다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("갭상승"));
+        const c = chip(1)!;
+        expect(c).toBeTruthy();
+        expect(c.textContent).toContain("돌파 & 갭상승");
+        expect(c.textContent).toContain("2");
+        // 그 그룹의 자식으로 들어간다 — RF 는 부모 id 를 노드에 적어 둔다.
+        expect(c.getAttribute("data-id")).toBe("chip-1");
+    });
+
+    it("칩은 손댈 수 없다 — 선택도 드래그도 안 된다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("갭상승"));
+        const cls = chip(1)!.classList;
+        expect(cls.contains("selectable")).toBe(false);
+        expect(cls.contains("draggable")).toBe(false);
+    });
+
+    it("되감으면 칩도 사라진다 — 선택에서 유도된 것이라", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(screen.getByText("돌파"));
+        fireEvent.click(screen.getByText("갭상승"));
+        fireEvent.click(nodeLabel("돌파")); // 체인 안 노드 = 거기까지 되감기
+        expect(chip(1)).toBeNull();
+    });
+
     // ⚠ 작업줄이 하단을 가로지르면 그 띠에 걸친 노드·선이 클릭을 뺏긴다(실측된 결함).
     it("작업줄은 우측 상단에 있다 — 캔버스 하단을 막지 않는다", () => {
         renderMap(CHAIN_SEED);

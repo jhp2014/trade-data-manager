@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Group, GroupMembership } from "../../../api/groups.js";
-import { chainCandidates, mapArrows, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "../mapView.js";
+import { chainCandidates, chipId, mapArrows, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "../mapView.js";
 
 const grp = (id: string, parentId: string | null = null): Group =>
     ({ id, name: id, scope: "day", parentId, mapId: "m", x: 0, y: 0 });
@@ -99,10 +99,12 @@ describe("chainCandidates — 한 걸음 더 갈 수 있는 곳", () => {
 });
 
 describe("mapArrows — 지나온 길과 갈 수 있는 곳", () => {
+    // A(왼쪽 위) · B(오른쪽) · C(아래) · 칩은 고른 그룹 안에 있으므로 그 근처에 둔다.
     const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {
-        A: { x: 0, y: 0, w: 100, h: 34 },
-        B: { x: 400, y: 0, w: 100, h: 34 },
-        C: { x: 0, y: 300, w: 100, h: 34 },
+        A: { x: 0, y: 0, w: 100, h: 32 },
+        B: { x: 400, y: 0, w: 100, h: 32 },
+        C: { x: 0, y: 400, w: 100, h: 32 },
+        [chipId(1)]: { x: 10, y: 440, w: 80, h: 32 }, // C 안의 칩
     };
     const boxOf = (id: string) => boxes[id];
 
@@ -110,32 +112,39 @@ describe("mapArrows — 지나온 길과 갈 수 있는 곳", () => {
         expect(mapArrows([], new Map([["B", 3]]), boxOf).arrows).toEqual([]);
     });
 
-    it("실선은 언제나 **체인의 마지막**에서 나간다 — 지금 서 있는 자리", () => {
+    it("고른 게 하나면 그 그룹 자신에서 후보로 나간다(칩이 없다)", () => {
+        const { arrows } = mapArrows(["A"], new Map([["B", 3]]), boxOf);
+        expect(arrows).toHaveLength(1);
+        expect(arrows[0]).toMatchObject({ from: "A", to: "B", kind: "candidate", count: 3 });
+    });
+
+    // 칩이 곧 "지금 서 있는 자리"다 — 두 번째부터는 그룹이 아니라 칩에서 선이 나간다.
+    it("둘 이상이면 **마지막 칩**에서 후보로 나간다", () => {
         const { arrows } = mapArrows(["A", "C"], new Map([["B", 3]]), boxOf);
-        const solid = arrows.filter((a) => a.kind === "candidate");
-        expect(solid).toHaveLength(1);
-        expect(solid[0]).toMatchObject({ from: "C", to: "B", count: 3 });
+        const cand = arrows.filter((a) => a.kind === "candidate");
+        expect(cand).toHaveLength(1);
+        expect(cand[0]).toMatchObject({ from: chipId(1), to: "B", count: 3 });
     });
 
-    it("점선은 클릭 순서를 잇는다 — 수는 없다(지나온 자리라 물을 게 없다)", () => {
+    it("지나온 길은 첫 그룹 → 칩 으로 이어진다", () => {
         const { arrows } = mapArrows(["A", "C"], new Map(), boxOf);
-        const dotted = arrows.filter((a) => a.kind === "chain");
-        expect(dotted).toHaveLength(1);
-        expect(dotted[0]).toMatchObject({ from: "A", to: "C" });
-        expect(dotted[0]!.count).toBeUndefined();
+        const path = arrows.filter((a) => a.kind === "chain");
+        expect(path).toHaveLength(1);
+        expect(path[0]).toMatchObject({ from: "A", to: chipId(1) });
+        expect(path[0]!.count).toBeUndefined();
     });
 
-    it("붙는 변은 상대 위치가 정한다 — 아래 이웃은 b→t, 오른쪽 이웃은 r→l", () => {
-        const { arrows } = mapArrows(["A", "C"], new Map([["B", 1]]), boxOf);
-        expect(arrows.find((a) => a.kind === "chain")).toMatchObject({ fromSide: "b", toSide: "t" });
-        expect(arrows.find((a) => a.kind === "candidate")).toMatchObject({ fromSide: "r", toSide: "l" });
+    it("붙는 변은 상대 위치가 정한다 — 아래 이웃은 b→t", () => {
+        const { arrows } = mapArrows(["A", "C"], new Map(), boxOf);
+        expect(arrows[0]).toMatchObject({ fromSide: "b", toSide: "t" });
     });
 
-    it("점은 실제로 쓰이는 변에만 — 가운데 노드는 들어온 변과 나가는 변 둘 다", () => {
+    it("점은 실제로 쓰이는 변에만", () => {
         const { anchors } = mapArrows(["A", "C"], new Map([["B", 1]]), boxOf);
+        // A(위) → 칩(아래): A 는 아래 변, 칩은 위 변. 칩 → B(오른쪽 위): 세로 차가 커서 칩 위 변 → B 아래 변.
         expect(anchors.get("A")).toEqual(["b"]);
-        expect(anchors.get("C")!.sort()).toEqual(["r", "t"]);
-        expect(anchors.get("B")).toEqual(["l"]);
+        expect(anchors.get(chipId(1))).toEqual(["t"]);
+        expect(anchors.get("B")).toEqual(["b"]);
     });
 
     it("weight 는 후보들 사이의 상대값 — 최댓값이 1", () => {

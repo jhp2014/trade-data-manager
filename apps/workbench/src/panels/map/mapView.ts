@@ -89,6 +89,16 @@ export function chainCandidates(
  * 그건 포함관계(이미 컨테이너로 보인다)지 징검다리가 아니다.
  */
 /**
+ * 교집합 칩의 id — 체인 i 번째(1부터)를 고르며 생긴 칩. 그 그룹 노드 **안에** 자식으로 들어간다.
+ * 체인 0번 자리에는 칩이 없다(고른 게 하나면 교집합이랄 게 없고, 그 그룹 자신이 곧 그 집합이다).
+ */
+export const chipId = (index: number): string => `chip-${index}`;
+
+/** 체인 i 번째 자리에서 선이 붙는 노드 — 0이면 그룹 자신, 그 뒤는 그 자리의 칩. */
+export const chainAnchor = (chain: readonly string[], index: number): string =>
+    (index === 0 ? chain[0]! : chipId(index));
+
+/**
  * 화살표 하나. 두 종류가 **역할로 갈린다**:
  *   · `candidate`(실선) = 체인 끝에서 갈 수 있는 곳. `count` 는 거기까지 갔을 때 남는 수.
  *   · `chain`(점선)     = 지나온 길(클릭 순서). 수는 없다 — 이미 지나온 자리라 물을 게 없다.
@@ -125,33 +135,23 @@ export function mapArrows(
         const cur = anchors.get(id);
         if (cur) { if (!cur.includes(s)) cur.push(s); } else anchors.set(id, [s]);
     };
-
-    // 지나온 길 — 클릭 순서대로 점선.
-    for (let i = 0; i + 1 < chain.length; i++) {
-        const from = chain[i]!;
-        const to = chain[i + 1]!;
+    const link = (from: string, to: string, kind: "candidate" | "chain", count?: number, weight = 0): void => {
         const a = boxOf(from);
         const b = boxOf(to);
-        if (!a || !b) continue;
+        if (!a || !b) return;
         const { source, target } = sidesBetween(a, b);
         mark(from, source);
         mark(to, target);
-        arrows.push({ id: `c:${from}-${to}`, from, to, fromSide: source, toSide: target, kind: "chain", weight: 0 });
-    }
+        arrows.push({ id: `${kind === "chain" ? "c" : "o"}:${from}-${to}`, from, to, fromSide: source, toSide: target, kind, ...(count !== undefined ? { count } : {}), weight });
+    };
 
-    // 갈 수 있는 곳 — 체인 끝에서 실선.
-    const head = chain[chain.length - 1]!;
-    const headBox = boxOf(head);
-    if (!headBox) return { arrows, anchors };
+    // 지나온 길 — 첫 그룹에서 시작해 칩을 차례로 잇는다(칩이 곧 그 지점의 교집합이다).
+    for (let i = 1; i < chain.length; i++) link(chainAnchor(chain, i - 1), chainAnchor(chain, i), "chain");
+
+    // 갈 수 있는 곳 — **지금 서 있는 자리**(마지막 칩, 없으면 첫 그룹)에서 각 후보로.
+    const head = chainAnchor(chain, chain.length - 1);
     let max = 0;
     for (const c of candidates.values()) max = Math.max(max, c);
-    for (const [id, count] of candidates) {
-        const box = boxOf(id);
-        if (!box) continue;
-        const { source, target } = sidesBetween(headBox, box);
-        mark(head, source);
-        mark(id, target);
-        arrows.push({ id: `o:${head}-${id}`, from: head, to: id, fromSide: source, toSide: target, kind: "candidate", count, weight: max > 0 ? count / max : 0 });
-    }
+    for (const [id, count] of candidates) link(head, id, "candidate", count, max > 0 ? count / max : 0);
     return { arrows, anchors };
 }

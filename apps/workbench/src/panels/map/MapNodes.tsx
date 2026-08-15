@@ -124,4 +124,41 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps & { data: G
     );
 });
 
-export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode } as const;
+/** 교집합 칩 타입 — 고른 그룹 **안에** 임시로 들어가는 자식. 그룹 노드와 규칙이 달라 타입을 나눈다. */
+export const CHIP_NODE_TYPE = "tdmChip";
+
+export interface ChipNodeData extends Record<string, unknown> {
+    /** 이 교집합에 든 항목 수. */
+    count: number;
+    /** 이 교집합의 정체(`돌파 & 재돌파[S]`) — 칸을 넘으면 말줄임, 전체는 툴팁에. */
+    label: string;
+}
+
+/**
+ * 교집합 칩 — 고른 그룹 안에 임시로 서서 "여기까지 좁히면 몇 개"를 보여준다.
+ *
+ * ⚠ **손댈 수 없다**(pointer-events 없음). 되감기는 그룹 노드를 다시 누르는 것이고, 칩까지 클릭
+ * 대상이 되면 라이브러리의 선택·드래그 배선과 다시 싸우게 된다. 점선 테두리가 "손으로 만든 게
+ * 아니라 지금 선택에서 유도된 것"을 말한다 — 선택이 풀리면 사라진다.
+ */
+export const ChipNode = memo(function ChipNode({ data }: NodeProps & { data: ChipNodeData }) {
+    const { count, label } = data;
+    return (
+        <div
+            style={{
+                width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 6,
+                display: "flex", alignItems: "center",
+                border: "1px dashed var(--text-primary)", background: "var(--bg-primary)",
+                pointerEvents: "none",
+            }}
+            title={`${label} · ${count}`}
+        >
+            <SideHandles anchors={["t", "r", "b", "l"]} strong />
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <NameRow name={label} count={count} strong />
+            </div>
+        </div>
+    );
+});
+
+export const MAP_NODE_TYPES = { [GROUP_NODE_TYPE]: GroupNode, [CHIP_NODE_TYPE]: ChipNode } as const;
