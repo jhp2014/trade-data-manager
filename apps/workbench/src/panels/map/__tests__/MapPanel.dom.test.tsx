@@ -10,6 +10,7 @@ import type { Group, GroupMembership } from "../../../api/groups.js";
 import { mapsQuery } from "../../../api/queries.js";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
+import { ACTIVE } from "../../../styles/palette.js";
 import { MapPanel } from "../../MapPanel.js";
 
 const grp = (id: string, name: string, x: number, y: number, parentId: string | null = null): Group =>
@@ -271,6 +272,24 @@ describe("MapPanel — 체인 클릭", () => {
         expect(c.textContent).toContain("2");
         // 그 그룹의 자식으로 들어간다 — RF 는 부모 id 를 노드에 적어 둔다.
         expect(c.getAttribute("data-id")).toBe("chip-1");
+    });
+
+    // 칩은 **채운 알약**이다 — 그룹은 전부 회색조 테두리라, 색으로 채워야 "저장된 그룹이 아니라
+    // 선택에서 유도된 결과"가 갈린다. 옛 1px 점선은 그룹 안에 든 자식이라 하위 그룹처럼 읽혔다.
+    it("칩은 색으로 채운 알약이다 — 하위 그룹과 종족이 다르다", () => {
+        renderMap(CHAIN_SEED);
+        fireEvent.click(nodeLabel("돌파"));
+        add("갭상승");
+        // jsdom 은 색을 rgb() 로 정규화한다 — 소스의 hex 와 글자로 비교되지 않는다.
+        const rgb = (hex: string): string =>
+            `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+        const face = chip(1)!.firstElementChild as HTMLElement;
+        expect(face.style.background).toBe(rgb(ACTIVE));
+        expect(face.style.borderRadius).toBe("999px");
+
+        // 같은 자리의 그룹(하위 그룹)은 여전히 안 채워져 있다 — 대비가 이 규칙의 전부다.
+        const groupFace = nodeLabel("갭상승").closest(".react-flow__node")!.firstElementChild as HTMLElement;
+        expect(groupFace.style.background).not.toBe(rgb(ACTIVE));
     });
 
     it("칩은 손댈 수 없다 — 선택도 드래그도 안 된다", () => {

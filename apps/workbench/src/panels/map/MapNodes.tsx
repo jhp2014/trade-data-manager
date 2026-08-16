@@ -15,6 +15,7 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { Group } from "../../api/groups.js";
+import { ACTIVE } from "../../styles/palette.js";
 import type { Side } from "./mapLayout.js";
 
 /** 노드 타입 키 — RF 내장(`group`·`default`·`input`·`output`)과 겹치지 않아야 한다(위 주석). */
@@ -48,12 +49,12 @@ const SIDES: { side: Side; pos: Position }[] = [
  * 점은 **target 핸들만** 그린다: 둘 다 그리면 같은 자리에 똑같은 원이 두 겹으로 쌓인다.
  * 안 쓰이는 변은 투명 — 네 변에 늘 점을 찍으면 그룹 열 개에 점이 마흔 개라 배경이 시끄러워진다.
  */
-function SideHandles({ anchors, strong }: { anchors: readonly Side[]; strong: boolean }): JSX.Element {
+function SideHandles({ anchors, strong, onFill = false }: { anchors: readonly Side[]; strong: boolean; onFill?: boolean }): JSX.Element {
     return (
         <>
             {SIDES.map(({ side, pos }) => {
                 const dot = anchors.includes(side)
-                    ? { width: DOT, height: DOT, borderRadius: "50%", border: "none", background: strong ? "var(--text-primary)" : "var(--text-tertiary)", pointerEvents: "none" as const }
+                    ? { width: DOT, height: DOT, borderRadius: "50%", border: "none", background: onFill ? "#fff" : strong ? "var(--text-primary)" : "var(--text-tertiary)", pointerEvents: "none" as const }
                     : INVISIBLE;
                 return (
                     <span key={side}>
@@ -70,14 +71,17 @@ const INVISIBLE = { opacity: 0, pointerEvents: "none" as const };
 /** 점 지름 — 선이 붙는 자리를 가리키기만 하면 되므로 작게. */
 const DOT = 5;
 
-/** 이름(왼쪽) · 수(오른쪽) 한 줄 — 잎의 본문이자 컨테이너의 헤더. 두 자리가 같은 글씨를 쓴다. */
-function NameRow({ name, count, strong }: { name: string; count: number; strong: boolean }): JSX.Element {
+/**
+ * 이름(왼쪽) · 수(오른쪽) 한 줄 — 잎의 본문이자 컨테이너의 헤더. 두 자리가 같은 글씨를 쓴다.
+ * `onFill` = 채운 바탕(교집합 칩) 위 — 글자를 흰색으로 뒤집는다.
+ */
+function NameRow({ name, count, strong, onFill = false }: { name: string; count: number; strong: boolean; onFill?: boolean }): JSX.Element {
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 9px", height: LABEL_ROW_H, fontSize: 12, textAlign: "left" }}>
-            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: strong ? "var(--text-primary)" : "var(--text-secondary)" }}>
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: onFill ? "#fff" : strong ? "var(--text-primary)" : "var(--text-secondary)" }}>
                 {name}
             </span>
-            <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{count}</span>
+            <span style={{ flexShrink: 0, color: onFill ? "rgba(255,255,255,0.78)" : "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{count}</span>
         </div>
     );
 }
@@ -141,25 +145,29 @@ export interface ChipNodeData extends Record<string, unknown> {
 /**
  * 교집합 칩 — 고른 그룹 안에 임시로 서서 "여기까지 좁히면 몇 개"를 보여준다.
  *
+ * **채운 알약**이다. 맵의 다른 표식은 전부 회색조 테두리라(그룹은 저장된 것), 칩만 색으로 채우면
+ * "이건 그룹이 아니라 **지금 선택에서 유도된 결과**"가 한눈에 갈린다. 옛 1px 점선은 그 말을 하려다
+ * 실패했다 — 회색 위 회색 점선은 안 보이고, 무엇보다 **그룹 안에 든 자식**이라 하위 그룹처럼 읽혔다
+ * (사용자 지적). 종족이 다르면 모양이 달라야 한다.
+ *
  * ⚠ **손댈 수 없다**(pointer-events 없음). 되감기는 그룹 노드를 다시 누르는 것이고, 칩까지 클릭
- * 대상이 되면 라이브러리의 선택·드래그 배선과 다시 싸우게 된다. 점선 테두리가 "손으로 만든 게
- * 아니라 지금 선택에서 유도된 것"을 말한다 — 선택이 풀리면 사라진다.
+ * 대상이 되면 라이브러리의 선택·드래그 배선과 다시 싸우게 된다. 선택이 풀리면 사라진다.
  */
 export const ChipNode = memo(function ChipNode({ data }: NodeProps & { data: ChipNodeData }) {
     const { anchors, count, label } = data;
     return (
         <div
             style={{
-                width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 6,
+                width: "100%", height: "100%", boxSizing: "border-box", borderRadius: 999,
                 display: "flex", alignItems: "center",
-                border: "1px dashed var(--text-primary)", background: "var(--bg-primary)",
+                border: "none", background: ACTIVE,
                 pointerEvents: "none",
             }}
             title={`${label} · ${count}`}
         >
-            <SideHandles anchors={anchors} strong />
+            <SideHandles anchors={anchors} strong onFill />
             <div style={{ flex: 1, minWidth: 0 }}>
-                <NameRow name={label} count={count} strong />
+                <NameRow name={label} count={count} strong onFill />
             </div>
         </div>
     );
