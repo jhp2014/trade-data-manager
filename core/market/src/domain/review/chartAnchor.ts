@@ -19,8 +19,10 @@
 // 분봉 앵커(anchorTime 있음)의 market 은 **'un' 고정** — 분봉 KRX 는 세션 부재(NXT 단독 시간대)가 있어
 // 앵커로 쓸 수 없다. 홀로 있는 field/market 과 함께 anchorInputError 가 저장 경로에서 막는다.
 //
-// **surrogate id 인 이유**: 같은 캔들에 뜻이 다른 행이 여럿 정당하다(가격선 성질). 같은 좌표의 완전 중복은
-// DB 유니크가 아니라 저장 경로(repository add 멱등)가 막는다 — 옛 자연키 유니크의 방어 이관.
+// **surrogate id 인 이유**: 같은 캔들에 뜻이 다른 행이 여럿 정당하다(가격선 성질). 다만 id 는 **손잡이일 뿐
+// 정체성이 아니다** — 정체성은 좌표 전체이고, API 도 그걸로 지목한다(id 는 와이어를 건너지 않는다:
+// 읽기가 로컬 미러라 원격과 갈릴 수 있다). 같은 좌표의 완전 중복은 두 겹으로 막는다 —
+// 저장 경로(repository add 멱등)가 왕복을 아끼고, DB 유니크(NULLS NOT DISTINCT)가 최종 방어선이다.
 import type { ReviewPointKey } from "./reviewPoint.js";
 
 /** 가격 앵커의 시장. 앵커는 "어느 캔들"이 아니라 "어느 시장의 값"까지 지목할 수 있다(오염 캔들 회피). */

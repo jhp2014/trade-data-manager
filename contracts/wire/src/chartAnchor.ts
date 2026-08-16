@@ -10,3 +10,11 @@ export type { ChartAnchor, NewChartAnchor, AnchoredChart, AnchorField, AnchorMar
  * time 은 예약(타점 소유) — 현재 param 은 전부 chart 소유라 보내면 400.
  */
 export type AddChartAnchorInput = NewChartAnchor;
+
+/**
+ * POST /chart-anchors/remove 요청 바디 — 앵커 삭제. **자연키(좌표)로 지목**하며 id 는 쓰지 않는다:
+ * 읽기가 로컬 미러라 surrogate id 가 원격과 갈릴 수 있어, id 를 되돌려 보내면 엉뚱한 행을 지운다.
+ * 추가와 같은 튜플이라 타입도 같다 — 넣은 것과 같은 좌표를 보내면 그게 지워진다.
+ * DELETE 가 아니라 POST 인 이유: 키가 8필드라 경로/쿼리에 싣기엔 크고, DELETE 바디는 지원이 들쭉날쭉하다.
+ */
+export type RemoveChartAnchorInput = NewChartAnchor;

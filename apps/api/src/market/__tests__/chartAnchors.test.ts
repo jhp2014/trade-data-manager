@@ -19,7 +19,17 @@ function memoryRepo(): ChartAnchorReader & ChartAnchorStore & { rows: ChartAncho
         listByChart: (stockCode, date) => Promise.resolve(rows.filter((r) => r.stockCode === stockCode && r.date === date)),
         listAll: () => Promise.resolve(rows),
         listAnchoredCharts: () => Promise.resolve([]),
-        removeById: (id) => { const i = rows.findIndex((r) => r.id === id); if (i >= 0) rows.splice(i, 1); return Promise.resolve(); },
+        // 자연키 삭제 — 좌표 8필드가 전부 같은 행 하나. NULL 과 undefined 를 같게 보려고 ?? null 로 맞춘다.
+        remove: (a) => {
+            const same = (x?: string | null, y?: string | null): boolean => (x ?? null) === (y ?? null);
+            const i = rows.findIndex(
+                (r) =>
+                    r.stockCode === a.stockCode && r.date === a.date && same(r.time, a.time) && r.param === a.param &&
+                    r.anchorDate === a.anchorDate && same(r.anchorTime, a.anchorTime) && same(r.field, a.field) && same(r.market, a.market),
+            );
+            if (i >= 0) rows.splice(i, 1);
+            return Promise.resolve();
+        },
         removeByParam: (stockCode, date, param) => {
             for (let i = rows.length - 1; i >= 0; i--) if (rows[i].stockCode === stockCode && rows[i].date === date && rows[i].param === param) rows.splice(i, 1);
             return Promise.resolve();

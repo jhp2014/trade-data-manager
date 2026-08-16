@@ -59,11 +59,21 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
         ]);
     });
 
-    it("removeById — 그 행 하나만, 없는 id 는 조용한 no-op", async () => {
+    it("remove — 그 좌표 행 하나만, 없는 좌표는 조용한 no-op", async () => {
         const lines = (await repo.listByChart(CHART.stockCode, CHART.date)).filter((a) => a.param === "baseline");
-        await repo.removeById(lines[0].id);
-        await repo.removeById("999999"); // no-op
+        await repo.remove(lines[0]);
+        await repo.remove({ ...lines[0], anchorDate: "1999-01-01" }); // 없는 좌표 = no-op
         expect((await repo.listByChart(CHART.stockCode, CHART.date)).filter((a) => a.param === "baseline")).toHaveLength(lines.length - 1);
+    });
+
+    it("remove — 키는 **좌표 전체**다(한 필드만 달라도 안 지운다)", async () => {
+        // 자연키 삭제의 핵심 성질: 같은 캔들이라도 field 가 다르면 다른 앵커다(가격선 성질).
+        // 여기가 느슨하면 고점 선을 지우려다 저점 선까지 날아간다.
+        const [saved] = await repo.add([{ ...CHART, param: "skeleton", anchorDate: CHART.date, field: "high", market: "un" }]);
+        await repo.remove({ ...saved, field: "low" }); // field 만 다름 → 안 지워져야
+        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.id === saved.id)).toBe(true);
+        await repo.remove(saved);
+        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.id === saved.id)).toBe(false);
     });
 
     it("removeByPoint — 그 타점 소유 행만(차트 소유 행은 NULL 이라 안 걸린다)", async () => {

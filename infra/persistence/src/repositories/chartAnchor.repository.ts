@@ -12,8 +12,9 @@ export class DrizzleChartAnchorRepository implements ChartAnchorReader, ChartAnc
     async add(anchors: NewChartAnchor[]): Promise<ChartAnchor[]> {
         if (anchors.length === 0) return [];
         // 멱등 중복 방어 — 같은 (차트, param, 좌표, field, market) 행이 있으면 그 행을 돌려준다.
-        // 옛 자연키 유니크의 방어를 저장 경로로 이관(surrogate id 는 중복을 못 막는다). 한 건씩 조회→삽입:
-        // 사람 편집(클릭) 규모라 배치 최적화보다 규칙이 한눈에 보이는 게 낫다.
+        // 한 건씩 조회→삽입: 사람 편집(클릭) 규모라 배치 최적화보다 규칙이 한눈에 보이는 게 낫다.
+        // 이건 왕복을 아끼는 앞단일 뿐이고, 원자적 방어는 DB 유니크(uq_chart_anchor_identity)가 한다 —
+        // 쓰는 프로세스가 둘이면 "조회 후 삽입"은 둘 다 못 찾고 둘 다 넣는다.
         const out: ChartAnchor[] = [];
         for (const a of anchors) {
             const existing = await this.db
@@ -61,8 +62,9 @@ export class DrizzleChartAnchorRepository implements ChartAnchorReader, ChartAnc
         return rows.map((r) => ({ stockCode: r.stockCode, date: r.date, count: Number(r.count) }));
     }
 
-    async removeById(id: string): Promise<void> {
-        await this.db.delete(chartAnchors).where(eq(chartAnchors.id, BigInt(id)));
+    async remove(anchor: NewChartAnchor): Promise<void> {
+        // add 의 멱등 판정과 **같은 술어** — 넣을 때 "이미 있다"고 본 행이 지울 때 지목되는 행이다.
+        await this.db.delete(chartAnchors).where(and(...this.identityConds(anchor)));
     }
 
     async removeByParam(stockCode: string, date: string, param: string): Promise<void> {

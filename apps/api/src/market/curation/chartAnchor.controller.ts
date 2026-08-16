@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Delete, Inject, Query, Param, Body, BadRequestException } from "@nestjs/common";
-import type { AnchoredChart, ChartAnchor, ChartAnchorReader } from "@trade-data-manager/market";
-import type { AddChartAnchorInput } from "@trade-data-manager/wire";
+import { Controller, Get, Post, Inject, Query, Body } from "@nestjs/common";
+import type { AnchoredChart, ChartAnchor, ChartAnchorReader, NewChartAnchor } from "@trade-data-manager/market";
+import type { AddChartAnchorInput, RemoveChartAnchorInput } from "@trade-data-manager/wire";
 import { CHART_ANCHOR_REPO, CHART_ANCHORS, MASTER_CACHE } from "../tokens.js";
 import { ChartAnchors } from "./chartAnchors.js";
 import { MasterCache } from "../board/masterCache.js";
@@ -31,7 +31,21 @@ export class ChartAnchorController {
 
     @Post()
     add(@Body() body: AddChartAnchorInput): Promise<ChartAnchor> {
-        return this.anchors.add({
+        return this.anchors.add(this.assertAnchorKey(body));
+    }
+
+    // 삭제도 추가와 **같은 좌표 튜플**(자연키)을 받는다 — id 는 계약에서 뺐다: 읽기가 로컬 미러라
+    // surrogate id 가 원격과 갈릴 수 있고, 그걸 되돌려 보내면 엉뚱한 행이 지워진다.
+    // 정적 경로라 @Post() 인덱스와 구분된다.
+    @Post("remove")
+    async remove(@Body() body: RemoveChartAnchorInput): Promise<{ ok: true }> {
+        await this.anchors.remove(this.assertAnchorKey(body));
+        return { ok: true };
+    }
+
+    /** HTTP 경계 검증(형식만) — 추가·삭제가 같은 자연키 튜플을 쓰므로 파싱도 한 곳이다. */
+    private assertAnchorKey(body: NewChartAnchor | undefined): NewChartAnchor {
+        return {
             stockCode: assertStockCode(body?.stockCode, "stockCode"),
             date: assertYmd(body?.date),
             time: body?.time != null ? assertHms(body.time) : undefined,
@@ -40,13 +54,6 @@ export class ChartAnchorController {
             anchorTime: body?.anchorTime != null ? assertHms(body.anchorTime, "anchorTime") : undefined,
             field: body?.field,
             market: body?.market,
-        });
-    }
-
-    @Delete(":id")
-    async remove(@Param("id") id: string): Promise<{ ok: true }> {
-        if (!/^\d+$/.test(id)) throw new BadRequestException("id 는 숫자");
-        await this.anchors.removeById(id);
-        return { ok: true };
+        };
     }
 }

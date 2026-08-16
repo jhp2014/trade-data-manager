@@ -64,8 +64,8 @@ export class ChartAnchors {
         return created;
     }
 
-    removeById(id: string): Promise<void> {
-        return this.repo.removeById(id);
+    remove(anchor: NewChartAnchor): Promise<void> {
+        return this.repo.remove(anchor);
     }
 
     /**

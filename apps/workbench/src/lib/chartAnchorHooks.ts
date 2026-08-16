@@ -10,7 +10,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { BASELINE_PARAM, candlePrice, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type SkeletonPivot } from "@trade-data-manager/market/domain";
-import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor } from "../api/chartAnchors.js";
+import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
 import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery, skeletonsQuery, reviewPointsQuery } from "../api/queries.js";
 import { kstToUnix } from "./derive.js";
 import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
@@ -22,10 +22,13 @@ export interface PivotAtCandle {
     market: AnchorMarket;
 }
 
+// 삭제는 **앵커 객체(자연키)** 를 넘긴다 — id 가 아니다. 읽기가 로컬 미러라 surrogate id 는 원격과
+// 갈릴 수 있어 서버로 보내지 않는다. 화면 안에서 id 를 손잡이로 쓰는 건 그대로고(RenderLine.id 등),
+// 그 변환은 이 파일 안에서 끝난다(anchors 가 여기 있으므로).
 interface AnchorMutations {
     add: UseMutationResult<ChartAnchor, Error, AddChartAnchorInput>;
-    remove: UseMutationResult<void, Error, string>;
-    removeMany: (ids: readonly string[]) => void;
+    remove: UseMutationResult<void, Error, RemoveChartAnchorInput>;
+    removeMany: (anchors: readonly RemoveChartAnchorInput[]) => void;
 }
 
 /** 이 차트의 앵커 전부 + 공유 mutation. 각 param 훅이 여기서 걸러 쓴다(쿼리 키 하나 = RQ dedup). */
@@ -45,14 +48,14 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
     const removeManyMut = useMutation({
         // allSettled + onSettled — 부분 실패면 일부는 이미 서버에서 지워졌다. 전 요청이 끝난 뒤(앞질러 재조회하면
         // 비행 중인 삭제가 stale 을 만든다) 성패 무관하게 invalidate 해야 화면이 서버 진실로 수렴한다.
-        mutationFn: async (ids: readonly string[]) => {
-            const results = await Promise.allSettled(ids.map((id) => removeChartAnchor(id)));
+        mutationFn: async (targets: readonly RemoveChartAnchorInput[]) => {
+            const results = await Promise.allSettled(targets.map((a) => removeChartAnchor(a)));
             const failed = results.filter((r) => r.status === "rejected").length;
-            if (failed > 0) throw new Error(`앵커 ${failed}/${ids.length}건 삭제 실패`);
+            if (failed > 0) throw new Error(`앵커 ${failed}/${targets.length}건 삭제 실패`);
         },
         onSettled: invalidate,
     });
-    return { anchors, mut: { add, remove, removeMany: (ids) => removeManyMut.mutate(ids) } };
+    return { anchors, mut: { add, remove, removeMany: (targets) => removeManyMut.mutate(targets) } };
 }
 
 // ── 선(기준선 후보) ─────────────────────────────────────────────────────────
@@ -82,9 +85,14 @@ export function useBaselineLines(code: string, date: string, dailyBundle: ChartB
             if (code && date) mut.add.mutate({ stockCode: code, date, param: BASELINE_PARAM, anchorDate, anchorTime, field, market });
         },
         lineIdAt: (anchorDate, anchorTime) => lines.find((l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime)?.id,
-        removeLineById: (id) => mut.remove.mutate(id),
+        // 바깥(차트·메뉴)은 계속 id 로 지목한다 — RenderLine 이 뷰모델 손잡이로 id 를 들고 다니기 때문.
+        // 서버로 나가기 직전 여기서 좌표로 바꾼다. 이미 지워진 id 면 조용한 no-op.
+        removeLineById: (id) => {
+            const target = lines.find((l) => l.id === id);
+            if (target) mut.remove.mutate(target);
+        },
         // clear — 선만(무시 캔들·골격·저장 타점은 건드리지 않음). 우클릭이 잘 안 잡히는 경우 대비.
-        clear: () => mut.removeMany(lines.map((l) => l.id)),
+        clear: () => mut.removeMany(lines),
     };
 }
 
@@ -103,7 +111,7 @@ export function useIgnoreCandles(code: string, date: string): IgnoreCandles {
         ignoredDates: useMemo(() => ignores.map((a) => a.anchorDate), [ignores]),
         toggleIgnore: (anchorDate) => {
             const existing = ignores.find((a) => a.anchorDate === anchorDate);
-            if (existing) mut.remove.mutate(existing.id);
+            if (existing) mut.remove.mutate(existing);
             else mut.add.mutate({ stockCode: code, date, param: IGNORE_CANDLE_PARAM, anchorDate });
         },
     };
@@ -146,10 +154,10 @@ export function useDailySkeleton(code: string, date: string, dailyBundle: ChartB
         toggle: (anchorDate, field, market) => {
             if (!code || !date) return;
             const existing = mine.find((a) => a.anchorDate === anchorDate && a.anchorTime == null && a.field === field);
-            if (existing) mut.remove.mutate(existing.id);
+            if (existing) mut.remove.mutate(existing);
             else mut.add.mutate({ stockCode: code, date, param: SKELETON_PARAM, anchorDate, field, market });
         },
-        clear: () => mut.removeMany(mine.map((a) => a.id)),
+        clear: () => mut.removeMany(mine),
         hasAny: mine.length > 0,
     };
 }
@@ -187,10 +195,10 @@ export function useMinuteSkeleton(code: string, date: string, minuteBundle: Char
         toggle: (anchorTime, field) => {
             if (!code || !date) return;
             const existing = mine.find((a) => a.anchorTime === anchorTime && a.field === field);
-            if (existing) mut.remove.mutate(existing.id);
+            if (existing) mut.remove.mutate(existing);
             else mut.add.mutate({ stockCode: code, date, param: SKELETON_MINUTE_PARAM, anchorDate: date, anchorTime, field, market: "un" });
         },
-        clear: () => mut.removeMany(mine.map((a) => a.id)),
+        clear: () => mut.removeMany(mine),
         hasAny: mine.length > 0,
     };
 }

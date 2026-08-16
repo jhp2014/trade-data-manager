@@ -23,8 +23,13 @@ export interface ChartAnchorStore {
      * (옛 자연키 유니크의 중복 방어를 저장 경로로 이관 — surrogate id 는 중복을 못 막는다).
      */
     add(anchors: NewChartAnchor[]): Promise<ChartAnchor[]>;
-    /** 앵커 1개 삭제(id 지목). 없는 id 는 조용한 no-op. */
-    removeById(id: string): Promise<void>;
+    /**
+     * 앵커 1개 삭제(**자연키 지목**). 없는 앵커는 조용한 no-op.
+     * id 가 아니라 좌표로 지목하는 이유: 읽기는 로컬 미러, 쓰기는 Supabase 라 **surrogate id 가 두 곳에서
+     * 갈릴 수 있다**(로컬 시퀀스가 따로 돈다). 자연키는 그 불변식을 유지하는 대신 **없앤다** — id 는
+     * 어느 쪽에서도 밖으로 안 나간다. 키 튜플은 add 의 멱등 판정(identityConds)과 같은 것이다.
+     */
+    remove(anchor: NewChartAnchor): Promise<void>;
     /** 이 차트의 그 param 전부 삭제 — 단일 param 의 교체(replace)와 "전부 해제"가 쓰는 재료. */
     removeByParam(stockCode: string, date: string, param: string): Promise<void>;
 
