@@ -52,6 +52,7 @@ import { DataDatesCache } from "./board/dataDatesCache.js";
 import { ThemeAssignment } from "./board/themeAssignment.js";
 import { DailyComments } from "./curation/dailyComments.js";
 import { ChartAnchors } from "./curation/chartAnchors.js";
+import { localReadDualWrite } from "./curation/mirrorWrite.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
@@ -61,11 +62,24 @@ type Pool = ReturnType<typeof createPoolFromEnv>;
 const poolProvider: Provider = { provide: MARKET_POOL, useFactory: (): Pool => createPoolFromEnv() };
 const curationPoolProvider: Provider = { provide: CURATION_POOL, useFactory: (): Pool => createCurationPoolFromEnv() };
 
+/**
+ * 큐레이션 저장소 한 벌 — **읽기는 로컬 미러, 쓰기는 Supabase + 로컬 재생**(mirrorWrite 주석에 이유).
+ * 로컬 미러는 market 과 같은 DB 의 curation 스키마라 MARKET_POOL 로 읽는다(별도 풀이 필요 없다).
+ * writes 목록이 곧 "무엇이 쓰기인가"의 단일 출처 — 여기 안 적힌 메서드는 전부 로컬로만 간다.
+ */
+const curationRepo = <T extends object>(
+    make: (db: ReturnType<typeof createDb>) => T,
+    writes: readonly (keyof T & string)[],
+    label: string,
+    localPool: Pool,
+    remotePool: Pool,
+): T => localReadDualWrite(make(createDb(localPool)), make(createDb(remotePool)), writes, label);
+
 // 계산 축이 읽는 포트 묶음 — 두 소비자(계산 축·골격 좌표)가 **같은 한 벌**을 쓴다.
 // 손으로 두 번 적으면 한쪽만 어댑터를 바꿔도 컴파일이 통과해, 같은 골격이 두 소비자에서 다른 가격으로 풀린다.
-const axisDepsOf = (marketPool: Pool, curationPool: Pool): AxisDeps => {
+const axisDepsOf = (marketPool: Pool): AxisDeps => {
     const db = createDb(marketPool);
-    const curationDb = createDb(curationPool);
+    const curationDb = db; // 읽기 전용 — curation 은 같은 로컬 DB 의 스키마(미러)
     return {
         minute: new DrizzleMinuteCandleRepository(db),
         rawDaily: new DrizzleRawDailyCandleRepository(db),
@@ -118,9 +132,10 @@ const boardProviders: Provider[] = [
     },
     {
         // 보드 읽기모델 — 날짜별 불변 파일 캐시(DerivedCache) + 메모리 캐시 조합. query 포트 직접 호출.
-        // 두 DB를 함께 쓰는 유일한 곳: 시세 파생(market) + 당일 코멘트(curation). SQL 조인이 아니라 각 DB에서 읽어 앱에서 합친다.
+        // 시세 파생 + 당일 코멘트 — **읽기라 둘 다 로컬**이다(curation 은 같은 DB 의 미러 스키마).
+        // 옛날엔 여기가 "두 DB를 함께 쓰는 유일한 곳"이었는데, 읽기가 미러로 내려오며 그 성질이 사라졌다.
         provide: DAY_BOARDS,
-        useFactory: (marketPool: Pool, curationPool: Pool, master: MasterCache, membership: CachedMembership): DayBoards => {
+        useFactory: (marketPool: Pool, master: MasterCache, membership: CachedMembership): DayBoards => {
             const db = createDb(marketPool);
             const dailyRepo = new DrizzleDailyCandleRepository(db); // 스냅샷 배치 + 수정주가 창(AdjustedDailyReader) 겸용
             const derived = new DerivedCache({
@@ -131,10 +146,10 @@ const boardProviders: Provider[] = [
                 dailyCandle: dailyRepo,
                 marketCap: new DrizzleDailyMarketCapRepository(db),
             });
-            const dailyComment = new DrizzleDailyCommentRepository(createDb(curationPool));
+            const dailyComment = new DrizzleDailyCommentRepository(db); // 읽기 — 로컬 미러(같은 DB 의 curation 스키마)
             return new DayBoards({ derived, master, membership, dailyComment });
         },
-        inject: [MARKET_POOL, CURATION_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
+        inject: [MARKET_POOL, MASTER_CACHE, MEMBERSHIP_CACHE],
     },
     {
         // 테마 배정 유스케이스 — 시트 쓰기 + 중복 skip + 캐시 무효화 순서를 소유(컨트롤러는 검증만).
@@ -157,79 +172,87 @@ const curationProviders: Provider[] = [
     {
         // 차트 앵커 저장소 — 읽기(컨트롤러 조회·계산 축)용. 쓰기는 유스케이스(CHART_ANCHORS)를 거친다.
         provide: CHART_ANCHOR_REPO,
-        useFactory: (pool: Pool) => new DrizzleChartAnchorRepository(createDb(pool)),
-        inject: [CURATION_POOL],
+        useFactory: (pool: Pool) => new DrizzleChartAnchorRepository(createDb(pool)), // 읽기 전용 → 로컬 미러
+        inject: [MARKET_POOL],
     },
     {
         // 앵커 쓰기 유스케이스 — 불변식(레지스트리·owner grain·골격 집합·multiple 교체·타점 cascade) 소유.
         provide: CHART_ANCHORS,
-        useFactory: (pool: Pool): ChartAnchors => {
-            const db = createDb(pool);
-            return new ChartAnchors(new DrizzleChartAnchorRepository(db), new DrizzleReviewPointRepository(db));
-        },
-        inject: [CURATION_POOL],
+        useFactory: (marketPool: Pool, curationPool: Pool): ChartAnchors =>
+            new ChartAnchors(
+                curationRepo((db) => new DrizzleChartAnchorRepository(db), ["add", "remove", "removeByParam", "removeByPoint"], "chartAnchor", marketPool, curationPool),
+                curationRepo((db) => new DrizzleReviewPointRepository(db), ["upsert", "remove"], "reviewPoint", marketPool, curationPool),
+            ),
+        inject: [MARKET_POOL, CURATION_POOL],
     },
     {
         // 복기 타점 쓰기(사람 편집) — repo 를 그대로 노출(upsert/list/remove).
         provide: REVIEW_POINT_REPO,
-        useFactory: (pool: Pool) => new DrizzleReviewPointRepository(createDb(pool)),
-        inject: [CURATION_POOL],
+        useFactory: (marketPool: Pool, curationPool: Pool) =>
+            curationRepo((db) => new DrizzleReviewPointRepository(db), ["upsert", "remove"], "reviewPoint", marketPool, curationPool),
+        inject: [MARKET_POOL, CURATION_POOL],
     },
     {
         // 당일 코멘트 유스케이스 — 빈값=삭제 규약과 author 소유(env). 보드도 같은 테이블을 읽지만 그건 DayBoards 가 자체 인스턴스로.
         provide: DAILY_COMMENTS,
-        useFactory: (pool: Pool): DailyComments =>
-            new DailyComments(new DrizzleDailyCommentRepository(createDb(pool)), process.env.CURATION_AUTHOR ?? "jonghun"),
-        inject: [CURATION_POOL],
+        useFactory: (marketPool: Pool, curationPool: Pool): DailyComments =>
+            new DailyComments(
+                curationRepo((db) => new DrizzleDailyCommentRepository(db), ["upsert", "remove"], "dailyComment", marketPool, curationPool),
+                process.env.CURATION_AUTHOR ?? "jonghun",
+            ),
+        inject: [MARKET_POOL, CURATION_POOL],
     },
     {
         // 순위 배치 — repo 를 그대로 노출(축 CRUD·줄 피드·배치/이동/제거). 조립(줄 렌더)은 클라 인메모리(옵션 A).
         provide: RANK_REPO,
-        useFactory: (pool: Pool) => new DrizzleRankRepository(createDb(pool)),
-        inject: [CURATION_POOL],
+        useFactory: (marketPool: Pool, curationPool: Pool) =>
+            curationRepo((db) => new DrizzleRankRepository(db), ["createAxis", "renameAxis", "removeAxis", "place", "unplace"], "rank", marketPool, curationPool),
+        inject: [MARKET_POOL, CURATION_POOL],
     },
     {
         // 계산 축 — 수식으로 나오는 축의 타점별 수치 + 축당 파일 캐시(증분·앵커 지문 자동 무효화).
-        // 배치를 만들지 않으므로 rank repo 와 무관하다. 두 DB를 함께 쓴다: 모집단(타점)·앵커는 curation, 시세는 market.
+        // 배치를 만들지 않으므로 rank repo 와 무관하다. 모집단(타점)·앵커·시세 **전부 읽기라 로컬 한 DB**다.
         provide: COMPUTED_AXES,
-        useFactory: (marketPool: Pool, curationPool: Pool): ComputedAxes =>
+        useFactory: (marketPool: Pool): ComputedAxes =>
             new ComputedAxes({
-                points: new DrizzleReviewPointRepository(createDb(curationPool)),
-                axisDeps: axisDepsOf(marketPool, curationPool),
+                points: new DrizzleReviewPointRepository(createDb(marketPool)), // 읽기 — 로컬 미러
+                axisDeps: axisDepsOf(marketPool),
             }),
-        inject: [MARKET_POOL, CURATION_POOL],
+        inject: [MARKET_POOL],
     },
     {
         // 골격 좌표 — 계산 축과 **같은 재료·다른 결과**(수치 하나가 아니라 피벗 좌표 그대로). 겹쳐 그리기용.
         // 캐시 없음(SkeletonShapes 주석) — 축이 파일 캐시를 갖는 것과 갈리는 지점이다.
         provide: SKELETON_SHAPES,
-        useFactory: (marketPool: Pool, curationPool: Pool): SkeletonShapes => {
+        useFactory: (marketPool: Pool): SkeletonShapes => {
             const db = createDb(marketPool);
             return new SkeletonShapes({
-                points: new DrizzleReviewPointRepository(createDb(curationPool)),
-                axisDeps: axisDepsOf(marketPool, curationPool),
+                points: new DrizzleReviewPointRepository(createDb(marketPool)), // 읽기 — 로컬 미러
+                axisDeps: axisDepsOf(marketPool),
                 prevClose: new DrizzleDailyCandleRepository(db), // 절대 뷰 분모 — 종목별 직전 캔들 전용 조회
             });
         },
-        inject: [MARKET_POOL, CURATION_POOL],
+        inject: [MARKET_POOL],
     },
     {
         // 타점 그룹 — repo 를 그대로 노출(사전 CRUD·전 타점 부착 피드·부착/해제). 축과 달리 순서가 없는 분류.
         provide: GROUP_REPO,
-        useFactory: (pool: Pool) => new DrizzleGroupRepository(createDb(pool)),
-        inject: [CURATION_POOL],
+        useFactory: (marketPool: Pool, curationPool: Pool) =>
+            curationRepo((db) => new DrizzleGroupRepository(db), ["createGroup", "renameGroup", "removeGroup", "attach", "detach", "setPlacement", "moveGroups", "setParent"], "group", marketPool, curationPool),
+        inject: [MARKET_POOL, CURATION_POOL],
     },
     {
         // 유사도 맵 — repo 를 그대로 노출(말뭉치 읽기 + 맵/자리 쓰기). 축·그룹이 못 담는 연속적 닮음.
         provide: MAP_REPO,
-        useFactory: (pool: Pool) => new DrizzleMapRepository(createDb(pool)),
-        inject: [CURATION_POOL],
+        useFactory: (marketPool: Pool, curationPool: Pool) =>
+            curationRepo((db) => new DrizzleMapRepository(db), ["createMap", "renameMap", "removeMap"], "map", marketPool, curationPool),
+        inject: [MARKET_POOL, CURATION_POOL],
     },
     {
         // 후보 하루 — 위 큐레이션 편집물들의 (종목,날짜) 합집합. 읽기 전용 파생이라 Store 가 없다.
         provide: CANDIDATE_DAY_REPO,
-        useFactory: (pool: Pool) => new DrizzleCandidateDayRepository(createDb(pool)),
-        inject: [CURATION_POOL],
+        useFactory: (pool: Pool) => new DrizzleCandidateDayRepository(createDb(pool)), // 읽기 전용 파생 → 로컬 미러
+        inject: [MARKET_POOL],
     },
 ];
 
