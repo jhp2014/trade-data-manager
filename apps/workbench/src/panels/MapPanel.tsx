@@ -30,7 +30,7 @@ import { createMap, type MapScope } from "../api/map.js";
 import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group, type GroupMembership, type GroupMove } from "../api/groups.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { miniBtn, PanelHeader, Sep, TextToggle } from "../components/ControlChrome.js";
+import { Dot, miniBtn, PanelHeader, Sep, TextToggle } from "../components/ControlChrome.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
@@ -41,8 +41,15 @@ import { chartKey } from "../lib/pointKey.js";
 import { absCenterOf, BOX_HEADER, BOX_PAD, dropTargetAt, layoutMap, LEAF_H } from "./map/mapLayout.js";
 
 const SELECTED_KEY = "wb.mapSelected";
-const LIST_KEY = "wb.mapMemberList";
 const SIDE_KEY = "wb.mapSidebar";
+/** 왼쪽 칸에 지금 떠 있는 것 — 택1(둘 다는 없다), "off" 면 칸이 없다. */
+type SidePane = "group" | "list" | "off";
+/** 옛 값(boolean = 그룹 사전 on/off)도 읽는다 — 켜 두고 쓰던 사람의 칸이 재배포로 닫히지 않게. */
+function parseSidePane(raw: unknown): SidePane | null {
+    if (raw === true) return "group";
+    if (raw === false) return "off";
+    return raw === "group" || raw === "list" || raw === "off" ? raw : null;
+}
 /** 멤버 목록에 한 번에 그리는 최대 줄 — 넘으면 "…외 N건"으로 접는다(사전 목록과 같이 스크롤하므로). */
 const MEMBER_CAP = 300;
 /** 겹침 숫자 크기 범위 — 이 선택 안의 최댓값이 최대 크기(상대 척도). 정확한 값은 숫자 자체가 준다. */
@@ -118,9 +125,16 @@ function MapPanelInner(): JSX.Element {
     const [chain, setChain] = useState<string[]>([]);
     /** 짚은 선 — 숫자를 앞으로 끌어내는 데만 쓴다(세션 시선). */
     const [hoverEdge, setHoverEdge] = useState<string | null>(null);
-    const [showList, setShowList] = usePersistedState<boolean>(LIST_KEY, (o) => (typeof o === "boolean" ? o : null), false);
-    /** 그룹 사전(왼쪽) — 기본 켜짐: 안 올린 그룹이 있는지가 늘 보여야 찾아 헤매지 않는다. */
-    const [showSide, setShowSide] = usePersistedState<boolean>(SIDE_KEY, (o) => (typeof o === "boolean" ? o : null), true);
+    /**
+     * 왼쪽 칸 — **한 번에 하나**(그룹 사전 또는 공통 멤버). 둘을 위아래로 겹쳐 놓으면 좁은 칸에서
+     * 서로의 스크롤을 반씩 잘라먹는다. 기본은 그룹 사전: 안 올린 그룹이 있는지가 늘 보여야 찾아
+     * 헤매지 않는다. 같은 것을 다시 누르면 칸이 통째로 접힌다(평면을 넓게 쓰는 손짓).
+     */
+    const [side, setSide] = usePersistedState<SidePane>(SIDE_KEY, parseSidePane, "group");
+    const toggleSide = useCallback(
+        (pane: Exclude<SidePane, "off">) => setSide((cur) => (cur === pane ? "off" : pane)),
+        [setSide],
+    );
     const chainSet = useMemo(() => new Set(chain), [chain]);
     const head = chain.length > 0 ? chain[chain.length - 1]! : null;
     // 평면에서 내려간 그룹은 체인에서도 빠진다 — 죽은 참조가 남으면 화살표가 허공을 가리킨다.
@@ -434,17 +448,21 @@ function MapPanelInner(): JSX.Element {
                 {/* ⚠ 헤더에는 **펼치는 것을 두지 않는다**: PanelHeader 는 overflow-y hidden 이라
                     아래로 펼쳐지는 판이 잘린다(올리기 팔레트가 그렇게 안 보였다). 평면·그룹처럼
                     목록이 필요한 것은 왼쪽 사이드바가 맡는다. */}
-                <TextToggle active={showSide} activeColor={ACTIVE} onClick={() => setShowSide(!showSide)} title="그룹 사전(평면·올린 그룹·안 올린 그룹)">그룹</TextToggle>
+                {/* 왼쪽 칸은 택1 — 그래서 Dot(·)으로 묶고, 성격이 다른 "원위치"는 Sep 너머에 둔다. */}
+                <TextToggle active={side === "group"} activeColor={ACTIVE} onClick={() => toggleSide("group")}
+                    title="그룹 사전(평면·올린 그룹·안 올린 그룹) — 다시 누르면 칸을 접는다">그룹</TextToggle>
+                <Dot />
+                <TextToggle active={side === "list"} activeColor={ACTIVE} onClick={() => toggleSide("list")}
+                    title="짚은 그룹의 공통 멤버 목록 — 다시 누르면 칸을 접는다">목록</TextToggle>
                 <Sep />
                 <TextToggle active={false} onClick={() => fitView({ duration: 250 })} title="전부 화면에 담기">원위치</TextToggle>
-                <TextToggle active={showList} activeColor={ACTIVE} onClick={() => setShowList(!showList)} title="짚은 그룹의 모집단 멤버 목록">목록</TextToggle>
                 <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0, marginLeft: "auto" }}>
                     {activeMap?.name ?? "평면 없음"} · 모집단 {funnel.isLoading ? "…" : popFeed.length}{funnel.isFiltering ? "" : " (전체)"}
                 </span>
             </PanelHeader>
 
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-                {showSide && (
+                {side === "group" && (
                     <GroupSidebar
                         maps={maps}
                         activeMap={activeMap}
@@ -459,10 +477,14 @@ function MapPanelInner(): JSX.Element {
                         onPlace={(id) => { if (!activeMap) return; const c = viewCenter(); placeMut.mutate({ id, mapId: activeMap.id, x: c.x, y: c.y }); }}
                         onCreateGroup={(name) => { if (activeMap) createGroupMut.mutate({ name, scope: activeMap.scope }); }}
                         busyGroup={createGroupMut.isPending}
-                        members={showList && chain.length > 0
-                            ? <MemberList names={chain.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)")} members={chainMembers} />
-                            : null}
                     />
+                )}
+                {side === "list" && (
+                    <SideColumn>
+                        {chain.length > 0
+                            ? <MemberList names={chain.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)")} members={chainMembers} />
+                            : <SideNote>평면에서 그룹을 짚으면 그 공통 멤버가 여기 나옵니다</SideNote>}
+                    </SideColumn>
                 )}
                 <div ref={wrapRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
                     <ReactFlow
@@ -553,11 +575,12 @@ function ChainBar({ chain, nameOf, members, onRewind, onClear, onAddFilter, onUn
  * 왜 사이드바인가: 헤더는 넘치면 가로 스크롤이고 세로는 잘라내는 줄이라(PanelHeader), 거기에
  * 목록을 펼치면 **구조적으로 안 보인다** — 실제로 "올리기" 팔레트가 DOM 에는 있는데 잘려 있었다.
  * 여기로 내리면 잘릴 일이 없고, 무엇보다 **안 올린 그룹이 늘 보인다**(찾아 헤맬 일이 없다).
- * 오른쪽 "목록"과 역할이 갈린다: 왼쪽 = 그룹 사전, 오른쪽 = 고른 그룹의 멤버.
+ * 공통 멤버 목록도 같은 칸을 쓰되 **번갈아** 뜬다(헤더의 그룹·목록 택1) — 한 칸을 둘이 나눠 쓰면
+ * 어느 쪽도 제대로 못 훑는다.
  */
 function GroupSidebar({
     maps, activeMap, onPickMap, onCreateMap, busyMap,
-    onMap, offMap, countOf, chain, onPickGroup, onPlace, onCreateGroup, busyGroup, members,
+    onMap, offMap, countOf, chain, onPickGroup, onPlace, onCreateGroup, busyGroup,
 }: {
     maps: readonly { id: string; name: string; scope: MapScope }[];
     activeMap: { id: string; name: string; scope: MapScope } | null;
@@ -572,14 +595,11 @@ function GroupSidebar({
     onPlace: (id: string) => void;
     onCreateGroup: (name: string) => void;
     busyGroup: boolean;
-    /** 아래 칸 — 고른 그룹들이 공통으로 가진 항목(없으면 안 그린다). */
-    members: ReactNode;
 }): JSX.Element {
     const [adding, setAdding] = useState(false);
     const [makingMap, setMakingMap] = useState(false);
     return (
-        <div style={{ width: 196, flex: "none", borderRight: "1px solid var(--border-default)", display: "flex", flexDirection: "column", minHeight: 0, fontSize: 11 }}>
-            <div style={{ flex: "1 1 auto", overflowY: "auto", minHeight: 0 }}>
+        <SideColumn>
             <SideHead label="평면" action={makingMap ? "취소" : "+ 새로"} onAction={() => setMakingMap((v) => !v)} />
             {maps.map((m) => (
                 <SideRow key={m.id} active={m.id === activeMap?.id} onClick={() => onPickMap(m.id)}
@@ -605,12 +625,18 @@ function GroupSidebar({
                     ))}
                 </>
             )}
-            </div>
-            {members !== null && (
-                <div style={{ flex: "1 1 auto", overflowY: "auto", minHeight: 0, borderTop: "1px solid var(--border-strong)" }}>
-                    {members}
-                </div>
-            )}
+        </SideColumn>
+    );
+}
+
+/** 왼쪽 칸의 껍데기 — 그룹 사전·멤버 목록이 같은 폭·같은 경계선·같은 스크롤을 쓴다. */
+function SideColumn({ children }: { children: ReactNode }): JSX.Element {
+    return (
+        <div style={{
+            width: 196, flex: "none", borderRight: "1px solid var(--border-default)",
+            overflowY: "auto", minHeight: 0, fontSize: 11,
+        }}>
+            {children}
         </div>
     );
 }
