@@ -5,9 +5,9 @@
 // 줄은 전축 한 방(axisLinesQuery) — 축 수만큼 왕복하던 N+1 을 없앴다. 배치 0인 축은 응답에 없으므로 빈 배열로 채운다.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { PlacedPoint, RankAxis } from "@trade-data-manager/wire";
+import type { PlacedPoint } from "@trade-data-manager/wire";
 import { axisLinesQuery, computedAxesQuery, rankAxesQuery } from "../api/queries.js";
-import { computedAxisView } from "./computedAxis.js";
+import { computedAxisView, placedAxisKey, type AxisRef } from "./computedAxis.js";
 import { useWorkbench } from "../store/workbench.js";
 
 /** 계산 축의 화면용 메타 — 값 자체가 아니라 값을 어떻게 놓고 어떻게 읽는지. */
@@ -18,14 +18,14 @@ export interface ComputedAxisMeta {
 }
 
 export interface RankAxesView {
-    /** 사용자 순서(store rankAxisOrder) 적용. pref 에 없는 새 축은 뒤로, 동률은 id 안정 정렬. */
-    axes: RankAxis[];
+    /** 사용자 순서(store rankAxisOrder) 적용. pref 에 없는 새 축은 뒤로, 동률은 키 안정 정렬. */
+    axes: AxisRef[];
     axisIds: string[];
-    /** axisId → 그 축의 배치줄(orderKey 오름차). 모든 축이 키를 가짐(미배치 축 = 빈 배열). */
+    /** 축 키 → 그 축의 배치줄(orderKey 오름차). 모든 축이 키를 가짐(미배치 축 = 빈 배열). */
     linesByAxis: Map<string, PlacedPoint[]>;
-    /** 계산 축만: axisId → (타점키 → 원시 수치). 값 구간 필터·레일 라벨이 쓴다. 판단 축은 키가 없다. */
+    /** 계산 축만: 축 키 → (타점키 → 원시 수치). 값 구간 필터·레일 라벨이 쓴다. 판단 축은 키가 없다. */
     computedValues: Map<string, Map<string, number>>;
-    /** 계산 축만: axisId → 강한 방향(레일 좌표 매핑) + 값 표시 함수(단위가 축마다 다르다 — %·일…). */
+    /** 계산 축만: 축 키 → 강한 방향(레일 좌표 매핑) + 값 표시 함수(단위가 축마다 다르다 — %·일…). */
     computedMeta: Map<string, ComputedAxisMeta>;
     isLoading: boolean;
     /** dragged 축을 target 축 자리로 옮긴다(양 패널 공유 — 한쪽에서 바꾸면 다른 쪽도 따라온다). */
@@ -50,23 +50,23 @@ export function useRankAxesValue(): RankAxesView {
     const computed = useMemo(() => (computedQ.data ?? []).map(computedAxisView), [computedQ.data]);
 
     const rawAxes = useMemo(() => axesQ.data ?? [], [axesQ.data]);
-    const axes = useMemo(() => {
-        const idx = new Map(orderPref.map((id, i) => [id, i]));
-        const all = [...rawAxes, ...computed.map((c) => c.axis)];
-        return all.sort((a, b) => (idx.get(a.id) ?? Infinity) - (idx.get(b.id) ?? Infinity) || (a.id < b.id ? -1 : 1));
+    const axes = useMemo<AxisRef[]>(() => {
+        const idx = new Map(orderPref.map((k, i) => [k, i]));
+        const all: AxisRef[] = [...rawAxes.map((a) => ({ ...a, key: placedAxisKey(a.name) })), ...computed.map((c) => c.axis)];
+        return all.sort((a, b) => (idx.get(a.key) ?? Infinity) - (idx.get(b.key) ?? Infinity) || (a.key < b.key ? -1 : 1));
     }, [rawAxes, computed, orderPref]);
-    const axisIds = useMemo(() => axes.map((a) => a.id), [axes]);
+    const axisIds = useMemo(() => axes.map((a) => a.key), [axes]);
 
     const linesQ = useQuery(axisLinesQuery());
     const linesByAxis = useMemo(() => {
-        const feed = new Map((linesQ.data ?? []).map((l) => [l.axisId, l.placements]));
-        for (const c of computed) feed.set(c.axis.id, c.line);
-        return new Map(axes.map((a) => [a.id, feed.get(a.id) ?? []]));
+        const feed = new Map((linesQ.data ?? []).map((l) => [placedAxisKey(l.axisName), l.placements]));
+        for (const c of computed) feed.set(c.axis.key, c.line);
+        return new Map(axes.map((a) => [a.key, feed.get(a.key) ?? []]));
     }, [axes, linesQ.data, computed]);
 
     const reorder = (draggedId: string, targetId: string): void => {
         if (draggedId === targetId) return;
-        const ids = axes.map((a) => a.id);
+        const ids = axes.map((a) => a.key);
         const from = ids.indexOf(draggedId);
         const to = ids.indexOf(targetId);
         if (from < 0 || to < 0) return;
@@ -74,8 +74,8 @@ export function useRankAxesValue(): RankAxesView {
         setRankAxisOrder(ids);
     };
 
-    const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.id, c.values])), [computed]);
-    const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.id, { strongerWhen: c.strongerWhen, fmt: c.fmt }])), [computed]);
+    const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.key, c.values])), [computed]);
+    const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.key, { strongerWhen: c.strongerWhen, fmt: c.fmt }])), [computed]);
 
     return {
         axes, axisIds, linesByAxis, computedValues, computedMeta,

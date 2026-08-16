@@ -3,8 +3,11 @@
 // 옛 태그 클라를 흡수했다. **부착 피드가 하나**다(옛날엔 타점/차트 둘) — 멤버십은 시각 유무로 층위가
 // 갈릴 뿐 같은 "이게 들었다"라서 나눌 이유가 없었다.
 // 좌표 이동은 **여럿 한 번에**(부분 실패 방지), 겹침(징검다리)은 받지 않고 멤버십에서 계산한다.
+//
+// **지목은 이름으로, 이름은 바디에.** id 는 계약을 안 건넌다(로컬 미러와 Supabase 가 각자 발급 →
+// 동기화를 건넌 참조가 조용히 다른 행을 가리킨다). 이름을 경로에 안 싣는 건 자유 텍스트여서다.
 import type { Group, GroupItemRef, GroupMembership, GroupMove, GroupScope } from "@trade-data-manager/wire";
-import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from "./http.js";
+import { apiGet, apiPost, apiPatch, apiPut } from "./http.js";
 
 export type { Group, GroupScope, GroupItemRef, GroupMembership, GroupMove, GroupOverlap } from "@trade-data-manager/wire";
 
@@ -16,26 +19,28 @@ export const fetchGroupMemberships = (signal?: AbortSignal): Promise<GroupMember
 
 export const createGroup = (name: string, scope: GroupScope): Promise<Group> => apiPost<Group>("groups", { name, scope });
 
-export const renameGroup = (id: string, name: string): Promise<void> => apiPatch(`groups/${id}`, { name });
+export const renameGroup = (name: string, newName: string): Promise<void> => apiPatch("groups/rename", { name, newName });
 
 /** 삭제 — 멤버십도 함께 사라지고 자식 그룹은 부모만 풀린다. 확인은 호출부가 띄운다. */
-export const deleteGroup = (id: string): Promise<void> => apiDelete(`groups/${id}`);
+export const deleteGroup = (name: string): Promise<void> => apiPost("groups/remove", { name }).then(() => undefined);
 
 /** 항목 넣기(멱등). 시각 유무가 그룹 scope 와 맞지 않으면 서버가 거절한다. */
-export const attachGroup = (groupId: string, item: GroupItemRef): Promise<void> => apiPost(`groups/${groupId}/members`, item);
+export const attachGroup = (group: string, item: GroupItemRef): Promise<void> =>
+    apiPost("groups/members", { group, item }).then(() => undefined);
 
-export const detachGroup = (groupId: string, item: GroupItemRef): Promise<void> =>
-    apiDelete(`groups/${groupId}/members`, { code: item.stockCode, date: item.date, ...(item.time ? { time: item.time } : {}) });
+export const detachGroup = (group: string, item: GroupItemRef): Promise<void> =>
+    apiPost("groups/members/remove", { group, item }).then(() => undefined);
 
 /** 평면에 올리기(좌표 포함). 맵 scope 와 그룹 scope 가 다르면 서버가 거절한다. */
-export const placeGroup = (id: string, mapId: string, x: number, y: number): Promise<void> =>
-    apiPut(`groups/${id}/placement`, { mapId, x, y });
+export const placeGroup = (name: string, mapName: string, x: number, y: number): Promise<void> =>
+    apiPut("groups/placement", { name, mapName, x, y });
 
 /** 평면에서 내리기 — 그룹은 남고 좌표·부모만 풀린다(자식들도 함께 내려온다). */
-export const unplaceGroup = (id: string): Promise<void> => apiDelete(`groups/${id}/placement`);
+export const unplaceGroup = (name: string): Promise<void> => apiPost("groups/placement/remove", { name }).then(() => undefined);
 
 /** 좌표 이동(여럿 한 번). 응답 없음 — 좌표는 클라가 저자라 낙관 갱신만 하고 invalidate 하지 않는다. */
 export const moveGroups = (moves: GroupMove[]): Promise<void> => apiPatch("groups/placements", { moves });
 
 /** 그룹 안 그룹. null 이면 최상위로. 같은 평면이 아니거나 순환이면 서버가 거절한다. */
-export const setGroupParent = (id: string, parentId: string | null): Promise<void> => apiPut(`groups/${id}/parent`, { parentId });
+export const setGroupParent = (name: string, parentName: string | null): Promise<void> =>
+    apiPut("groups/parent", { name, parentName });

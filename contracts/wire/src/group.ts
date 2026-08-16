@@ -7,23 +7,38 @@ import type { Group, GroupScope, GroupItemRef, GroupMembership, GroupMove, Group
 
 export type { Group, GroupScope, GroupItemRef, GroupMembership, GroupMove, GroupOverlap };
 
+// **지목은 이름으로, 이름은 바디에.** id 를 안 쓰는 이유는 도메인 타입 주석에 있다(로컬 미러와
+// Supabase 가 각자 발급 → 동기화를 건넌 참조가 다른 행을 가리킨다). 이름을 경로에 안 싣는 이유는
+// 사용자가 아무 문자나 넣을 수 있기 때문이다("타입: 돌파", 슬래시까지) — 인코딩 사고를 원천 차단한다.
+// 그래서 삭제도 DELETE 가 아니라 POST /remove 다(앵커와 같은 규칙).
+
 /** POST /groups 요청 바디(생성 — 같은 이름이면 기존 그룹 반환). */
 export interface CreateGroupInput {
     name: string;
     scope: GroupScope;
 }
 
-/** PATCH /groups/:id 요청 바디(이름 변경). */
+/** PATCH /groups/rename 요청 바디. */
 export interface RenameGroupInput {
+    name: string;
+    newName: string;
+}
+
+/** POST /groups/remove 요청 바디. */
+export interface RemoveGroupInput {
     name: string;
 }
 
-/** POST /groups/:id/members 요청 바디(넣을 항목 — 하루 소속이면 time 없음). */
-export type AttachGroupInput = GroupItemRef;
+/** POST /groups/members(넣기) · /groups/members/remove(빼기) 요청 바디 — 하루 소속이면 item.time 없음. */
+export interface AttachGroupInput {
+    group: string;
+    item: GroupItemRef;
+}
 
-/** PUT /groups/:id/placement 요청 바디 — 평면에 올리기. 내리기는 DELETE. */
+/** PUT /groups/placement 요청 바디 — 평면에 올리기. 내리기는 POST /groups/placement/remove. */
 export interface PlaceGroupInput {
-    mapId: string;
+    name: string;
+    mapName: string;
     x: number;
     y: number;
 }
@@ -33,7 +48,8 @@ export interface MoveGroupsInput {
     moves: GroupMove[];
 }
 
-/** PUT /groups/:id/parent 요청 바디 — 그룹 안 그룹. null 이면 최상위로. */
+/** PUT /groups/parent 요청 바디 — 그룹 안 그룹. parentName null 이면 최상위로. */
 export interface SetGroupParentInput {
-    parentId: string | null;
+    name: string;
+    parentName: string | null;
 }

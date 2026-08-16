@@ -1,21 +1,13 @@
 // 순위 배치 큐레이션 CRUD 클라이언트. wire 타입(RankAxis·AxisLine·PlacedPoint)은 contracts/wire 공유.
-// 전 축 피드(AxisLine[])를 받아 패널이 slotId 로 묶어 타이 셀, orderKey 로 정렬(옵션 A). 대상 타점 = review point 삼중키.
-import type { RankAxis, AxisLine, ComputedAxisFeed } from "@trade-data-manager/wire";
-import { apiGet, apiPost, apiPatch, apiDelete } from "./http.js";
+// 전 축 피드(AxisLine[])를 받아 패널이 **orderKey 로 묶어 타이 셀**, 같은 키로 정렬(옵션 A).
+//
+// **축은 이름으로, 자리는 타점으로 지목한다.** id 는 계약을 안 건넌다(로컬 미러와 Supabase 가 각자
+// 발급 → 동기화를 건넌 참조가 다른 행을 가리킨다). slot 은 이름이 없고 order_key 는 reindex 가 다시
+// 쓰는 값이라, 자리를 가리키는 유일하게 안정된 손잡이가 "그 자리에 있는 타점"이다.
+import type { RankAxis, AxisLine, ComputedAxisFeed, RankPoint, RankTarget } from "@trade-data-manager/wire";
+import { apiGet, apiPost, apiPatch } from "./http.js";
 
-export type { RankAxis, AxisLine, PlacedPoint, ComputedAxisFeed } from "@trade-data-manager/wire";
-
-/** 배치 대상 타점 자연키. */
-export interface RankPoint {
-    stockCode: string;
-    date: string;
-    time: string;
-}
-
-/** 드롭 목표 — 기존 slot 합류(타이) | 두 slot 사이 새 slot(양끝 없으면 끝단). */
-export type RankTarget =
-    | { kind: "slot"; slotId: string }
-    | { kind: "between"; prevSlotId?: string; nextSlotId?: string };
+export type { RankAxis, AxisLine, PlacedPoint, ComputedAxisFeed, RankPoint, RankTarget } from "@trade-data-manager/wire";
 
 export const fetchRankAxes = (signal?: AbortSignal): Promise<RankAxis[]> => apiGet<RankAxis[]>("rank-axes", undefined, signal);
 
@@ -28,12 +20,12 @@ export const fetchComputedAxes = (signal?: AbortSignal): Promise<ComputedAxisFee
 
 export const createRankAxis = (name: string, scope: "point" | "day" = "point"): Promise<RankAxis> => apiPost<RankAxis>("rank-axes", { name, scope });
 
-export const renameRankAxis = (id: string, name: string): Promise<void> => apiPatch(`rank-axes/${id}`, { name });
+export const renameRankAxis = (name: string, newName: string): Promise<void> => apiPatch("rank-axes/rename", { name, newName });
 
-export const deleteRankAxis = (id: string): Promise<void> => apiDelete(`rank-axes/${id}`);
+export const deleteRankAxis = (name: string): Promise<void> => apiPost("rank-axes/remove", { name }).then(() => undefined);
 
-export const placePoint = (axisId: string, point: RankPoint, target: RankTarget): Promise<{ slotId: string; orderKey: number }> =>
-    apiPost<{ slotId: string; orderKey: number }>(`rank-axes/${axisId}/placements`, { ...point, target });
+export const placePoint = (axis: string, point: RankPoint, target: RankTarget): Promise<{ orderKey: number }> =>
+    apiPost<{ orderKey: number }>("rank-axes/placements", { axis, point, target });
 
-export const unplacePoint = (axisId: string, point: RankPoint): Promise<void> =>
-    apiDelete(`rank-axes/${axisId}/placements`, { code: point.stockCode, date: point.date, time: point.time });
+export const unplacePoint = (axis: string, point: RankPoint): Promise<void> =>
+    apiPost("rank-axes/placements/remove", { axis, point }).then(() => undefined);

@@ -3,7 +3,7 @@ import type { RankCell } from "../../../lib/rankIndex.js";
 import { cellView, nextCellMode, parseCellMode } from "../sheetCell.js";
 
 /** 12자리 중 3위, 균등 좌표로는 오른쪽에서 세 번째. */
-const cell: RankCell = { rank: 3, total: 12, frac: 0.82, slotId: "s3", orderKey: 42 };
+const cell: RankCell = { rank: 3, total: 12, frac: 0.82, orderKey: 42 };
 
 describe("cellView — 판단 축(값 없음)", () => {
     it("숫자는 순위 + 분모", () => {

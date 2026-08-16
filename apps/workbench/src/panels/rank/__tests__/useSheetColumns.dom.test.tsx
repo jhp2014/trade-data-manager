@@ -9,11 +9,11 @@
 //   오인해 지운다. 사용자 설정이 조용히 사라지는 종류의 사고고, 되돌릴 방법이 없다.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import type { RankAxis } from "@trade-data-manager/wire";
 import { useWorkbench } from "../../../store/workbench.js";
+import type { AxisRef } from "../../../lib/computedAxis.js";
 import { useSheetColumns } from "../useSheetColumns.js";
 
-const axis = (id: string, name: string): RankAxis => ({ id, name, slots: [], strongerWhen: "higher", scope: "point" } as unknown as RankAxis);
+const axis = (key: string, name: string): AxisRef => ({ key, name, scope: "point" });
 const LIVE = [axis("a1", "축1"), axis("a2", "축2")];
 
 const FROZEN_KEY = "wb.rankSheetFrozenCols";

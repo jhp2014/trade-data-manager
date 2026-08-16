@@ -15,10 +15,7 @@ const daily = (date: string, high: number): DailyCandle => ({
 
 const point = (time = "09:30:00"): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
 
-let seq = 0;
-const line = (anchorDate: string, over: Partial<ChartAnchor> = {}): ChartAnchor => ({
-    id: String(++seq),
-    stockCode: CODE,
+const line = (anchorDate: string, over: Partial<ChartAnchor> = {}): ChartAnchor => ({ stockCode: CODE,
     date: DATE,
     param: "baseline",
     anchorDate,

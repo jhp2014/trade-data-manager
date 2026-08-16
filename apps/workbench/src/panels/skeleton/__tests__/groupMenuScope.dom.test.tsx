@@ -10,16 +10,16 @@ import { BulkGroupMenu } from "../ChartGroupMenu.js";
 // http 층을 통째로 막는다 — 생성(mutation)과 그 뒤 invalidate 의 refetch 가 실제 네트워크를 치지 않게.
 vi.mock("../../../api/http.js", () => ({
     apiGet: vi.fn().mockResolvedValue([]),
-    apiPost: vi.fn().mockResolvedValue({ id: "new", name: "새그룹", scope: "day", parentId: null, mapId: null, x: null, y: null }),
+    apiPost: vi.fn().mockResolvedValue({ name: "새그룹", scope: "day", parentName: null, mapName: null, x: null, y: null }),
     apiPatch: vi.fn().mockResolvedValue(undefined),
     apiPut: vi.fn().mockResolvedValue(undefined),
     apiDelete: vi.fn().mockResolvedValue(undefined),
 }));
 
-const g = (id: string, name: string, scope: Group["scope"]): Group =>
-    ({ id, name, scope, parentId: null, mapId: null, x: null, y: null });
+const g = (name: string, scope: Group["scope"]): Group =>
+    ({ name, scope, parentName: null, mapName: null, x: null, y: null });
 
-const GROUPS: Group[] = [g("d1", "갭상승", "day"), g("d2", "신고가", "day"), g("p1", "돌파타점", "point")];
+const GROUPS: Group[] = [g("갭상승", "day"), g("신고가", "day"), g("돌파타점", "point")];
 
 const noop = (): void => {};
 
@@ -75,7 +75,7 @@ describe("BulkGroupMenu — 계층 상속 행", () => {
     afterEach(cleanup);
 
     // 테마 ▸ 갭상승 — 대상은 갭상승에만 직접 부착.
-    const HIER: Group[] = [g("p", "테마", "day"), { ...g("c", "갭상승", "day"), parentId: "p" }];
+    const HIER: Group[] = [g("테마", "day"), { ...g("갭상승", "day"), parentName: "테마" }];
 
     function openInherited(toggle: (t: unknown, id: string, on: boolean) => void = noop): void {
         renderWithProviders(
@@ -83,8 +83,8 @@ describe("BulkGroupMenu — 계층 상속 행", () => {
                 anchor={{ x: 0, y: 0 }}
                 targets={[{ stockCode: "005930", date: "2026-06-30" }]}
                 scope="day"
-                hasGroup={(_, id) => id === "c"}
-                inheritedVia={(_, id) => (id === "p" ? "갭상승" : null)}
+                hasGroup={(_, name) => name === "갭상승"}
+                inheritedVia={(_, name) => (name === "테마" ? "갭상승" : null)}
                 toggle={toggle}
                 label="테스트"
                 onClose={noop}
@@ -105,6 +105,6 @@ describe("BulkGroupMenu — 계층 상속 행", () => {
         const toggle = vi.fn();
         openInherited(toggle);
         fireEvent.click(screen.getByText("갭상승"));
-        expect(toggle).toHaveBeenCalledWith(expect.anything(), "c", false);
+        expect(toggle).toHaveBeenCalledWith(expect.anything(), "갭상승", false);
     });
 });

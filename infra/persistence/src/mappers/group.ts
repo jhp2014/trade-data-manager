@@ -1,15 +1,21 @@
-// 그룹 ↔ DB 행 매퍼. bigint id 는 무손실 string 계약(도메인)↔bigint(DB) 변환(rank axis 선례).
-// 멤버십(GroupMembership)은 정션 행들을 항목키로 접은 결과라 리포지토리에서 직접 조립한다(단일 행 아님).
+// 그룹 ↔ DB 행 매퍼.
+// **id 는 계약을 못 건넌다** — 부모·맵 참조를 이름으로 바꿔 내보내므로, 행 하나만으로는 변환이 안 된다
+// (그래서 이름표를 받는다). 멤버십(GroupMembership)은 정션 행들을 항목키로 접은 결과라
+// 리포지토리에서 직접 조립한다(단일 행 아님).
 import type { Group, GroupScope } from "@trade-data-manager/market";
 import type { GroupRow } from "../schema/curation.js";
 
-export function rowToGroup(r: GroupRow): Group {
+/** id → 이름 이름표. 키는 String(bigint) — bigint 를 Map 키로 쓰면 호출부마다 형이 갈린다. */
+export type NameTable = ReadonlyMap<string, string>;
+
+export function rowToGroup(r: GroupRow, groupNames: NameTable, mapNames: NameTable): Group {
     return {
-        id: String(r.id),
         name: r.name,
         scope: r.scope as GroupScope,
-        parentId: r.parentId === null ? null : String(r.parentId),
-        mapId: r.mapId === null ? null : String(r.mapId),
+        // 이름표에 없으면 null — 참조가 깨진 경우인데, 여기서 던지면 목록 전체가 죽는다.
+        // 화면에는 "안 올림/최상위"로 보이고, 그건 실제로 복구 가능한 상태다.
+        parentName: r.parentId === null ? null : (groupNames.get(String(r.parentId)) ?? null),
+        mapName: r.mapId === null ? null : (mapNames.get(String(r.mapId)) ?? null),
         x: r.x,
         y: r.y,
     };

@@ -18,9 +18,13 @@
  */
 export type MapScope = "day" | "point";
 
-/** 한 장의 평면. 이름은 전역 유일(몇 장 안 되고, 같은 이름 둘은 사고다). */
+/**
+ * 한 장의 평면. **이름이 곧 정체성**이다 — 전역 유일이고(같은 이름 둘은 사고다), 계약은 이걸로만 지목한다.
+ * DB 의 surrogate id 는 저장소 안에 남지만 밖으로 나오지 않는다: 읽기는 로컬 미러 · 쓰기는 Supabase 라
+ * 두 DB 가 각자 id 를 발급하고, 미러 전체교체 때 로컬 id 는 통째로 갈린다. id 가 계약에 있으면
+ * 동기화를 건넌 순간 다른 행을 가리킨다 — 자연키는 그 문제가 원리적으로 없다.
+ */
 export interface SimilarityMap {
-    id: string;
     name: string;
     scope: MapScope;
 }

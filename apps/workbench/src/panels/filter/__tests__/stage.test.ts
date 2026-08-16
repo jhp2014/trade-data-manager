@@ -270,3 +270,27 @@ describe("parseStages — 반쯤 살아난 조건은 없느니만 못하다", ()
         expect(parseStages([{ enabled: true, predicates: [] }])).toBeNull();
     });
 });
+
+describe("밴드 경계 이관 — 옛 slotId 는 열린 경계로 떨군다", () => {
+    // 옛 저장본의 경계는 DB slotId("52")였다. 지금은 타점 앵커라 영영 안 풀리는데, 그냥 두면
+    // 그 조건이 계속 "판단 불가"로 남아 이유 없이 아무것도 안 걸리는 화면이 된다.
+    const raw = (band: unknown): unknown => [{ id: "s", enabled: true, predicates: [{ kind: "axisBand", axisId: "p:축", band }] }];
+    const bandOf = (o: unknown): unknown => {
+        const pred = parseStages(o)?.[0]?.predicates[0];
+        return pred !== undefined && pred.kind === "axisBand" ? pred.band : undefined;
+    };
+
+    it("옛 slotId 경계는 버린다", () => {
+        expect(bandOf(raw({ lo: "52", hi: "74" }))).toEqual({});
+    });
+
+    it("타점 앵커 경계는 그대로 산다", () => {
+        const lo = "005930|2026-06-30|09:11:00";
+        expect(bandOf(raw({ lo, hi: "000660|2026-06-30|09:30:00" }))).toEqual({ lo, hi: "000660|2026-06-30|09:30:00" });
+    });
+
+    it("한쪽만 옛 값이면 그쪽만 열린다 — 반열림은 정상 상태다", () => {
+        const hi = "005930|2026-06-30|09:11:00";
+        expect(bandOf(raw({ lo: "52", hi }))).toEqual({ hi });
+    });
+});

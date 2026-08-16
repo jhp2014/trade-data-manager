@@ -5,9 +5,9 @@
 // 정션도 캐시도 합쳤다. **상속은 두 축**이고 규칙은 같다 — 조회는 상속 포함, 편집은 직접만:
 //   · 층위 상속: 하루 그룹은 그 차트의 모든 타점에 적용된다.
 //   · 계층 상속: 자식 그룹 소속이면 조상 그룹에도 적용된다(멤버는 자기 그룹만 알고, 상위 포함은
-//     parentId 에서 매번 유도 — 저장하면 부모 변경마다 멤버십 마이그레이션이 필요해진다).
-//   · groupIdsOf/groupsOf(표시) = 타점 직접 ∪ 하루 상속 (조상은 pathLabel 툴팁이 이미 보여준다)
-//   · appliedGroupIdsOf(필터 판정) = 직접 ∪ 하루 상속 ∪ **조상**
+//     parentName 에서 매번 유도 — 저장하면 부모 변경마다 멤버십 마이그레이션이 필요해진다).
+//   · groupNamesOf/groupsOf(표시) = 타점 직접 ∪ 하루 상속 (조상은 pathLabel 툴팁이 이미 보여준다)
+//   · appliedGroupNamesOf(필터 판정) = 직접 ∪ 하루 상속 ∪ **조상**
 //   · has/toggle(편집)          = **직접만** — 상속된 그룹을 메뉴에서 "빼기"하면 no-op 이 되는
 //     혼란을 막는다(층위 상속은 차트 쪽에서, 계층 상속은 하위 그룹에서 뺀다).
 //
@@ -35,38 +35,38 @@ export interface GroupsView {
     /** 그룹 사전(이름 오름차순 — 서버 정렬 그대로). 좌표·부모·맵도 여기 실려 온다. */
     groups: Group[];
     /** id → 그룹(프리셋 슬롯이 id 를 들고 있어 이름을 되찾을 때). 없는 id = 지워진 그룹. */
-    groupById: Map<string, Group>;
+    groupByName: Map<string, Group>;
     /**
      * 이 그룹의 조상들(먼 조상이 앞) — 이름은 부모 밑에서만 뜻이 선다(같은 이름이 두 부모 밑에 있을 수 있다).
      * 규칙(끊긴 사슬·순환·깊이)은 groupTree(순수·테스트됨)에.
      */
-    ancestorsOf: (groupId: string) => Group[];
+    ancestorsOf: (groupName: string) => Group[];
     /** 조상+자신을 한 줄로 — 좁은 자리의 툴팁은 이걸 쓴다. */
-    pathLabel: (groupId: string, fallback: string) => string;
+    pathLabel: (groupName: string, fallback: string) => string;
     /** 이 타점에 적용되는 그룹(이름순) — **직접 ∪ 하루 상속**. */
     groupsOf: (point: PointRef) => Group[];
     /** 표시용 적용 id — **직접 ∪ 하루 상속**(조상 제외 — 칩이 늘어지지 않게, 경로는 pathLabel 로). */
-    groupIdsOf: (point: PointRef) => string[];
+    groupNamesOf: (point: PointRef) => string[];
     /**
      * 판정용 적용 id — **직접 ∪ 하루 상속 ∪ 조상**(계층 상속까지). 그룹 필터가 "테마"를 걸면
      * "테마 ▸ 2차전지" 소속도 잡히는 건 이 함수 덕이다. 시각 없으면 하루 항목으로 판정.
      */
-    appliedGroupIdsOf: (ref: GroupItemRef) => string[];
+    appliedGroupNamesOf: (ref: GroupItemRef) => string[];
     /**
      * 이 항목에 이 그룹이 **계층 상속으로만** 적용되나 — 그렇다면 상속을 가져온 직접 그룹(경유지).
      * 팝오버가 흐린 행("하위 ○○ 경유")을 그리고 토글을 막는 근거. 직접 소속이거나 무관하면 null.
      */
-    inheritedViaOf: (ref: GroupItemRef, groupId: string) => Group | null;
+    inheritedViaOf: (ref: GroupItemRef, groupName: string) => Group | null;
     /** 직접 소속 여부(편집 판정 — 상속은 안 본다). */
-    has: (point: PointRef, groupId: string) => boolean;
+    has: (point: PointRef, groupName: string) => boolean;
     /** 이 그룹의 사용 건수(두 층위 합산 — 삭제 확인·팔레트 빈도). */
-    countOf: (groupId: string) => number;
+    countOf: (groupName: string) => number;
     /** 소속 토글(낙관적). on 생략 = 현재 **직접** 상태의 반대. */
-    toggle: (point: PointRef, groupId: string, on?: boolean) => void;
+    toggle: (point: PointRef, groupName: string, on?: boolean) => void;
     /** 차트의 하루 소속 그룹 id들(직접만 — 골격 패널의 편집·표시 판정). */
-    chartGroupIdsOf: (chart: ChartGroupRef) => string[];
+    chartGroupNamesOf: (chart: ChartGroupRef) => string[];
     /** 하루 소속 토글(낙관적). on 생략 = 현재 상태의 반대. */
-    toggleChart: (chart: ChartGroupRef, groupId: string, on?: boolean) => void;
+    toggleChart: (chart: ChartGroupRef, groupName: string, on?: boolean) => void;
     /** 전 항목 멤버십 원본 — 겹침(징검다리) 계산처럼 접지 않은 피드가 필요한 곳에서 쓴다. */
     memberships: GroupMembership[];
     isLoading: boolean;
@@ -85,23 +85,20 @@ export function useGroupsValue(): GroupsView {
 
     const groups = useMemo(() => groupsQ.data ?? [], [groupsQ.data]);
     const memberships = useMemo(() => memberQ.data ?? [], [memberQ.data]);
-    const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
+    const groupByName = useMemo(() => new Map(groups.map((g) => [g.name, g])), [groups]);
     const index = useMemo(() => buildGroupIndex(memberships), [memberships]);
     const chartIndex = useMemo(() => buildChartGroupIndex(memberships), [memberships]);
     const counts = useMemo(() => countByGroup(memberships), [memberships]);
 
-    // 낙관적 삽입의 정렬 기준. 렌더 스냅숏(groupById)이 우선이되, **막 만든 그룹**은 아직 거기 없다 —
-    // 생성 흐름(BulkGroupMenu)이 사전 캐시에 먼저 심으므로 라이브 캐시를 폴백으로 봐야 id 정렬로 안 빠진다.
-    const nameOf = (id: string): string =>
-        groupById.get(id)?.name ?? qc.getQueryData<Group[]>(groupsQuery().queryKey)?.find((g) => g.id === id)?.name ?? id;
-
+    // 옛 nameOf(id→이름) 조회가 사라졌다 — 이름이 곧 키라 정렬 기준이 키 자신이고,
+    // "막 만든 그룹이 사전에 아직 없어 id 로 정렬되는" 경계 조건도 함께 없어졌다.
     const memberKey = groupMembershipsQuery().queryKey;
     const toggleMut = useMutation({
         mutationKey: TOGGLE_KEY,
-        mutationFn: ({ item, groupId, on }: { item: GroupItemRef; groupId: string; on: boolean }) =>
-            on ? attachGroup(groupId, item) : detachGroup(groupId, item),
-        onMutate: ({ item, groupId, on }) => {
-            qc.setQueryData<GroupMembership[]>(memberKey, (cur) => applyGroupToggle(cur ?? [], item, groupId, on, nameOf));
+        mutationFn: ({ item, groupName, on }: { item: GroupItemRef; groupName: string; on: boolean }) =>
+            on ? attachGroup(groupName, item) : detachGroup(groupName, item),
+        onMutate: ({ item, groupName, on }) => {
+            qc.setQueryData<GroupMembership[]>(memberKey, (cur) => applyGroupToggle(cur ?? [], item, groupName, on));
         },
         // 실패·성공 모두 마지막 한 건에서만 서버와 동기(연타 중엔 낙관적 상태 유지).
         onSettled: () => {
@@ -124,24 +121,24 @@ export function useGroupsValue(): GroupsView {
             ref.time === undefined ? chartOf(ref) : idsOf(ref as PointRef);
         return {
             groups,
-            groupById,
-            ancestorsOf: (id) => ancestorsOf(id, groupById),
-            pathLabel: (id, fallback) => groupPathLabel(id, groupById, fallback),
-            groupsOf: (p) => idsOf(p).map((id) => groupById.get(id)).filter((g): g is Group => g != null),
-            groupIdsOf: idsOf,
-            appliedGroupIdsOf: (ref) => expandWithAncestors(baseOf(ref), groupById),
-            inheritedViaOf: (ref, groupId) => inheritanceSources(baseOf(ref), groupById).get(groupId) ?? null,
-            has: (p, groupId) => directOf(p).includes(groupId),
-            countOf: (groupId) => counts.get(groupId) ?? 0,
-            toggle: (p, groupId, on) =>
-                toggleMut.mutate({ item: p, groupId, on: on ?? !directOf(p).includes(groupId) }),
-            chartGroupIdsOf: chartOf,
-            toggleChart: (c, groupId, on) =>
-                toggleMut.mutate({ item: { stockCode: c.stockCode, date: c.date }, groupId, on: on ?? !chartOf(c).includes(groupId) }),
+            groupByName,
+            ancestorsOf: (id) => ancestorsOf(id, groupByName),
+            pathLabel: (id, fallback) => groupPathLabel(id, groupByName, fallback),
+            groupsOf: (p) => idsOf(p).map((id) => groupByName.get(id)).filter((g): g is Group => g != null),
+            groupNamesOf: idsOf,
+            appliedGroupNamesOf: (ref) => expandWithAncestors(baseOf(ref), groupByName),
+            inheritedViaOf: (ref, groupName) => inheritanceSources(baseOf(ref), groupByName).get(groupName) ?? null,
+            has: (p, groupName) => directOf(p).includes(groupName),
+            countOf: (groupName) => counts.get(groupName) ?? 0,
+            toggle: (p, groupName, on) =>
+                toggleMut.mutate({ item: p, groupName, on: on ?? !directOf(p).includes(groupName) }),
+            chartGroupNamesOf: chartOf,
+            toggleChart: (c, groupName, on) =>
+                toggleMut.mutate({ item: { stockCode: c.stockCode, date: c.date }, groupName, on: on ?? !chartOf(c).includes(groupName) }),
             memberships,
             isLoading: groupsQ.isLoading || memberQ.isLoading,
         };
         // mutation 은 매 렌더 새 객체(useMutation) — 의존성에 넣으면 매번 재생성되므로 제외(mutate 는 안정).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groups, groupById, index, chartIndex, counts, memberships, groupsQ.isLoading, memberQ.isLoading]);
+    }, [groups, groupByName, index, chartIndex, counts, memberships, groupsQ.isLoading, memberQ.isLoading]);
 }

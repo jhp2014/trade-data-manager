@@ -3,6 +3,7 @@
 import { pointKey } from "../../lib/pointKey.js";
 import type { AxisIndex, RankCell } from "../../lib/rankIndex.js";
 import type { ReviewPointListItem } from "../../api/reviewPoints.js";
+import type { RankPoint } from "../../api/rank.js";
 
 /** 시트 한 행 = 타점 + 축별 셀. */
 export interface SheetRow {
@@ -25,14 +26,17 @@ export function buildSheetRows(points: ReviewPointListItem[], axisIds: string[],
     });
 }
 
-/** 정렬 축에서 연속 선택된 행들 → 밴드 앵커(lo=약한 끝, hi=강한 끝). 배치된 셀만 고려. 없으면 null. */
-export function bandFromSelection(cells: (RankCell | null)[]): { lo: string; hi: string } | null {
-    let lo: RankCell | null = null;
-    let hi: RankCell | null = null;
-    for (const c of cells) {
-        if (!c) continue;
-        if (!lo || c.orderKey < lo.orderKey) lo = c;
-        if (!hi || c.orderKey > hi.orderKey) hi = c;
+/**
+ * 정렬 축에서 연속 선택된 행들 → 밴드 앵커(lo=약한 끝, hi=강한 끝). 배치된 셀만 고려. 없으면 null.
+ * 경계는 **그 끝에 선 타점**으로 낸다 — 자리(orderKey)는 reindex 가 다시 쓰는 값이라 저장하면 뜻이 변한다.
+ */
+export function bandFromSelection(rows: { point: RankPoint; cell: RankCell | null }[]): { lo: string; hi: string } | null {
+    let lo: { point: RankPoint; cell: RankCell } | null = null;
+    let hi: { point: RankPoint; cell: RankCell } | null = null;
+    for (const r of rows) {
+        if (!r.cell) continue;
+        if (!lo || r.cell.orderKey < lo.cell.orderKey) lo = { point: r.point, cell: r.cell };
+        if (!hi || r.cell.orderKey > hi.cell.orderKey) hi = { point: r.point, cell: r.cell };
     }
-    return lo && hi ? { lo: lo.slotId, hi: hi.slotId } : null;
+    return lo && hi ? { lo: pointKey(lo.point), hi: pointKey(hi.point) } : null;
 }

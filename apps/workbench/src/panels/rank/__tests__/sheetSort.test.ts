@@ -7,8 +7,8 @@ import type { SheetRow } from "../rankSheet.js";
 import type { RankCell } from "../../../lib/rankIndex.js";
 
 // 축 셀 하나 — rank(강=1)와 orderKey(큼=강)는 서로 반대 방향이라 둘 다 명시한다.
-const cell = (rank: number, total: number, orderKey: number, slotId = `s${orderKey}`): RankCell =>
-    ({ rank, total, frac: total <= 1 ? 0.5 : (total - rank) / (total - 1), slotId, orderKey });
+const cell = (rank: number, total: number, orderKey: number): RankCell =>
+    ({ rank, total, frac: total <= 1 ? 0.5 : (total - rank) / (total - 1), orderKey });
 
 const row = (code: string, over: Partial<SheetRow> & { ax?: RankCell | null } = {}): SheetRow => {
     const { ax, ...rest } = over;

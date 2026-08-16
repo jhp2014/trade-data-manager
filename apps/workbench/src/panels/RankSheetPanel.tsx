@@ -17,7 +17,7 @@ import {
     DEFAULT_CHAIN, buildSheetGroups, cutsActive, dropSort, parseSortChain, pushSort, resetSort, resolveCutKeys,
     sortKeyOf, sortSheetRows, sortStepNo, type SortChain, type SortCtx, type SortKey,
 } from "./rank/sheetSort.js";
-import { buildAxisIndex, slotOrderKeys, type AxisIndex } from "../lib/rankIndex.js";
+import { buildAxisIndex, orderKeyByPoint, type AxisIndex } from "../lib/rankIndex.js";
 import { SheetRowView, ROW_H, type CellCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { useRankAxes } from "../lib/RankAxesContext.js";
 import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js";
@@ -157,10 +157,10 @@ export function RankSheetPanel(): JSX.Element {
 
     // ── 그룹 컷 — 저장·청소는 열 구성 훅이(축 키를 든 다른 설정들과 같은 사정), 여기서는 **읽어 쓰기만**.
     const sortAxisId = primary.key.kind === "axis" ? primary.key.axisId : null;
-    const slotOrderOfSort = useMemo(() => (sortAxisId ? slotOrderKeys(linesByAxis.get(sortAxisId) ?? []) : undefined), [sortAxisId, linesByAxis]);
+    const orderKeyOfSort = useMemo(() => (sortAxisId ? orderKeyByPoint(linesByAxis.get(sortAxisId) ?? []) : undefined), [sortAxisId, linesByAxis]);
     const cutKeys = useMemo(
-        () => (sortAxisId ? resolveCutKeys(cuts[`ax:${sortAxisId}`] ?? [], slotOrderOfSort) : []),
-        [sortAxisId, cuts, slotOrderOfSort],
+        () => (sortAxisId ? resolveCutKeys(cuts[`ax:${sortAxisId}`] ?? [], orderKeyOfSort) : []),
+        [sortAxisId, cuts, orderKeyOfSort],
     );
 
     const sortCtx = useMemo<SortCtx>(() => ({ nameOf }), [nameOf]);
@@ -269,7 +269,7 @@ export function RankSheetPanel(): JSX.Element {
 
 
     // ── 우클릭 이상/이하 경계(드래그 선택 보완) — 어느 축 셀에서든 정밀 단일 경계. 배치 해제도 같은 메뉴에서(셀 = 타점×축 하나).
-    const [ctx, setCtx] = useState<{ axisId: string; slotId: string; point: RankPoint; rank: number; total: number; x: number; y: number } | null>(null);
+    const [ctx, setCtx] = useState<CellCtxPayload | null>(null);
     // ── 열 이름 우클릭 = 고정/숨김 + 정렬 체인에서 빼기 메뉴.
     const [hdrCtx, setHdrCtx] = useState<{ key: string; label: string; canHide: boolean; frozen: boolean; sortKey: SortKey; step: number; axisId?: string; x: number; y: number } | null>(null);
     const [addAxis, setAddAxis] = useState<{ x: number; y: number } | null>(null);
@@ -309,7 +309,7 @@ export function RankSheetPanel(): JSX.Element {
             const tr = rowRefs.current.get(pointKey(row));
             if (!tr) continue;
             const rr = tr.getBoundingClientRect();
-            placed.push({ slotId: cell.slotId, orderKey: cell.orderKey, top: rr.top, bottom: rr.bottom, centerY: rr.top + rr.height / 2 });
+            placed.push({ point: { stockCode: row.stockCode, date: row.date, time: row.time }, orderKey: cell.orderKey, top: rr.top, bottom: rr.bottom, centerY: rr.top + rr.height / 2 });
         }
         return { ...computeRowDrop(placed, clientY, primary.dir, (cr.top + cr.bottom) / 2), x0: cr.left, x1: cr.right };
     };
@@ -496,15 +496,15 @@ export function RankSheetPanel(): JSX.Element {
 
             {/* 셀 우클릭 — 배치 편집만 남았다(밴드·값경계는 필터 패널로 이사). 계산 축은 배치가 없어 메뉴도 없다. */}
             {ctx && !isComputedAxis(ctx.axisId) && (() => {
-                const ax = axes.find((a) => a.id === ctx.axisId);
+                const ax = axes.find((a) => a.key === ctx.axisId);
                 if (!ax) return null;
-                const cutOn = (cuts[`ax:${ctx.axisId}`] ?? []).includes(ctx.slotId);
+                const cutOn = (cuts[`ax:${ctx.axisId}`] ?? []).includes(pointKey(ctx.point));
                 const cutEnabled = sortAxisId === ctx.axisId; // 1차 정렬 축에서만 — 안 보이는 줄엔 선을 못 긋는다
                 return (
                     <AnchoredPopover anchor={ctx} onClose={() => setCtx(null)} minWidth={180} padding={0} placement="beside" offset={6}>
                         <MenuLabel>{ax.name} · {ctx.rank}/{ctx.total}위</MenuLabel>
                         {cutEnabled && (
-                            <MenuItem onClick={() => { cols.toggleCut(ctx.axisId, ctx.slotId); setCtx(null); }}>
+                            <MenuItem onClick={() => { cols.toggleCut(ctx.axisId, pointKey(ctx.point)); setCtx(null); }}>
                                 {cutOn ? "그룹 나누기 해제" : "여기서 그룹 나누기"}
                             </MenuItem>
                         )}

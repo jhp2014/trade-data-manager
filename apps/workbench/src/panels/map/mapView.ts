@@ -5,7 +5,7 @@
 // 잣대로 세면 골격·시트와 숫자가 어긋나고, 그 어긋남은 화면 어디에도 신호가 없다.
 //
 // 겹침(징검다리)은 저장하지 않고 매번 센다. 조상–자손 쌍은 뺀다 — 포함관계는 컨테이너 영역으로
-// 이미 보이는 것이지 징검다리가 아니다(overlaps 의 groupById 옵션).
+// 이미 보이는 것이지 징검다리가 아니다(overlaps 의 groupByName 옵션).
 import type { Group, GroupMembership } from "../../api/groups.js";
 import { isAncestorOf } from "../../lib/groupTree.js";
 import { sidesBetween, type Side } from "./mapLayout.js";
@@ -18,40 +18,40 @@ export interface PopulationItem {
 }
 
 /** 이 평면에 올라와 있는 그룹만(좌표가 있는 것). 안 올린 그룹은 사전에만 있다. */
-export function groupsOnMap(groups: readonly Group[], mapId: string): Group[] {
-    return groups.filter((g) => g.mapId === mapId && g.x !== null && g.y !== null);
+export function groupsOnMap(groups: readonly Group[], mapName: string): Group[] {
+    return groups.filter((g) => g.mapName === mapName && g.x !== null && g.y !== null);
 }
 
 /** 아직 어느 평면에도 안 올린 그룹(scope 가 맞는 것만) — 평면에 올릴 후보. */
 export function placeableGroups(groups: readonly Group[], scope: string): Group[] {
-    return groups.filter((g) => g.mapId === null && g.scope === scope);
+    return groups.filter((g) => g.mapName === null && g.scope === scope);
 }
 
 /** 이 그룹의 자식들(직계만). */
-export const childrenOf = (groups: readonly Group[], id: string): Group[] => groups.filter((g) => g.parentId === id);
+export const childrenOf = (groups: readonly Group[], name: string): Group[] => groups.filter((g) => g.parentName === name);
 
 /**
- * 모집단 → 의사 멤버십 피드. groupIds = 항목의 **적용** 집합(주입 — 깔때기와 같은 판정).
+ * 모집단 → 의사 멤버십 피드. groupNames = 항목의 **적용** 집합(주입 — 깔때기와 같은 판정).
  * 카운트·겹침·멤버 목록이 전부 이 피드 하나에서 나온다(항목당 판정 1회).
  */
 export function populationFeed(
     items: readonly PopulationItem[],
-    appliedIdsOf: (item: PopulationItem) => readonly string[],
+    appliedNamesOf: (item: PopulationItem) => readonly string[],
 ): GroupMembership[] {
-    return items.map((i) => ({ stockCode: i.stockCode, date: i.date, ...(i.time !== undefined ? { time: i.time } : {}), groupIds: [...appliedIdsOf(i)] }));
+    return items.map((i) => ({ stockCode: i.stockCode, date: i.date, ...(i.time !== undefined ? { time: i.time } : {}), groupNames: [...appliedNamesOf(i)] }));
 }
 
 /** 그룹별 모집단 소속 수 — 노드에 쓰는 숫자. 적용 집합 기준이라 자식 소속도 부모에 센다(항목당 1회). */
 export function populationCounts(feed: readonly GroupMembership[]): Map<string, number> {
     const m = new Map<string, number>();
-    for (const x of feed) for (const id of x.groupIds) m.set(id, (m.get(id) ?? 0) + 1);
+    for (const x of feed) for (const id of x.groupNames) m.set(id, (m.get(id) ?? 0) + 1);
     return m;
 }
 
 /** 이 그룹들을 **전부** 가진 항목 — 체인의 분모이자 목록 패널이 보여주는 집합. 빈 체인은 전부. */
-export function membersOfAll(feed: readonly GroupMembership[], groupIds: readonly string[]): GroupMembership[] {
-    if (groupIds.length === 0) return [...feed];
-    return feed.filter((m) => groupIds.every((id) => m.groupIds.includes(id)));
+export function membersOfAll(feed: readonly GroupMembership[], groupNames: readonly string[]): GroupMembership[] {
+    if (groupNames.length === 0) return [...feed];
+    return feed.filter((m) => groupNames.every((id) => m.groupNames.includes(id)));
 }
 
 /**
@@ -63,15 +63,15 @@ export function membersOfAll(feed: readonly GroupMembership[], groupIds: readonl
 export function chainCandidates(
     feed: readonly GroupMembership[],
     chain: readonly string[],
-    opts: { within?: ReadonlySet<string>; groupById?: ReadonlyMap<string, Group> } = {},
+    opts: { within?: ReadonlySet<string>; groupByName?: ReadonlyMap<string, Group> } = {},
 ): Map<string, number> {
     const out = new Map<string, number>();
     if (chain.length === 0) return out;
     const inChain = new Set(chain);
     const blocked = (id: string): boolean =>
-        opts.groupById !== undefined && chain.some((c) => isAncestorOf(id, c, opts.groupById!) || isAncestorOf(c, id, opts.groupById!));
+        opts.groupByName !== undefined && chain.some((c) => isAncestorOf(id, c, opts.groupByName!) || isAncestorOf(c, id, opts.groupByName!));
     for (const m of membersOfAll(feed, chain)) {
-        for (const id of new Set(m.groupIds)) {
+        for (const id of new Set(m.groupNames)) {
             if (inChain.has(id)) continue;
             if (opts.within !== undefined && !opts.within.has(id)) continue;
             if (blocked(id)) continue;
@@ -85,7 +85,7 @@ export function chainCandidates(
  * 두 그룹의 멤버 겹침 = **징검다리**. 저장하지 않고 피드에서 센다.
  * 한 항목의 그룹이 k 개면 쌍은 k(k-1)/2 — 손으로 붙이는 수라 k 는 작고 전체는 항목 수에 선형이다.
  * `only` 를 주면 그 그룹이 낀 쌍만 — 전부 그리면 그룹이 늘수록 실뭉치가 된다(선택 기반이 기본).
- * `groupById` 를 주면 **조상–자손 쌍은 뺀다** — 상속을 편 피드에서 자식 소속은 부모와 반드시 겹치는데,
+ * `groupByName` 를 주면 **조상–자손 쌍은 뺀다** — 상속을 편 피드에서 자식 소속은 부모와 반드시 겹치는데,
  * 그건 포함관계(이미 컨테이너로 보인다)지 징검다리가 아니다.
  */
 /**

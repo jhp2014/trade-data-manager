@@ -112,13 +112,13 @@ export function cutGroupIdx(row: SheetRow, axisId: string, cutKeys: number[]): n
 }
 
 /**
- * 저장된 컷(slotId) → 경계 orderKey. **행이 아니라 축 라인 전체**로 푼다 — 필터가 그 자리의 행을
- * 지워도 경계는 살아 있어야 한다. 사라진 slot(배치 해제·축 정리)은 조용히 버린다.
+ * 저장된 컷(**타점 앵커**) → 경계 orderKey. **행이 아니라 축 라인 전체**로 푼다 — 필터가 그 자리의 행을
+ * 지워도 경계는 살아 있어야 한다. 그 타점이 축에서 빠졌으면(배치 해제·축 정리) 조용히 버린다.
  */
-export function resolveCutKeys(slotIds: string[], orderKeyOfSlot: Map<string, number> | undefined): number[] {
-    if (!orderKeyOfSlot) return [];
+export function resolveCutKeys(anchors: string[], orderKeyOfPoint: Map<string, number> | undefined): number[] {
+    if (!orderKeyOfPoint) return [];
     const keys = new Set<number>();
-    for (const id of slotIds) { const ok = orderKeyOfSlot.get(id); if (ok != null) keys.add(ok); }
+    for (const a of anchors) { const ok = orderKeyOfPoint.get(a); if (ok != null) keys.add(ok); }
     return [...keys].sort((a, b) => b - a); // 강→약
 }
 

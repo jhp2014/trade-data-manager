@@ -9,7 +9,7 @@
 // 지문으로 그 차트/타점만 다시 굽는다).
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
-import { BASELINE_PARAM, candlePrice, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type SkeletonPivot } from "@trade-data-manager/market/domain";
+import { BASELINE_PARAM, candlePrice, chartAnchorKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type SkeletonPivot } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
 import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery, skeletonsQuery, reviewPointsQuery } from "../api/queries.js";
 import { kstToUnix } from "./derive.js";
@@ -84,11 +84,13 @@ export function useBaselineLines(code: string, date: string, dailyBundle: ChartB
         addLine: (anchorDate, anchorTime, field, market) => {
             if (code && date) mut.add.mutate({ stockCode: code, date, param: BASELINE_PARAM, anchorDate, anchorTime, field, market });
         },
-        lineIdAt: (anchorDate, anchorTime) => lines.find((l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime)?.id,
-        // 바깥(차트·메뉴)은 계속 id 로 지목한다 — RenderLine 이 뷰모델 손잡이로 id 를 들고 다니기 때문.
-        // 서버로 나가기 직전 여기서 좌표로 바꾼다. 이미 지워진 id 면 조용한 no-op.
-        removeLineById: (id) => {
-            const target = lines.find((l) => l.id === id);
+        // 손잡이는 좌표 전체(chartAnchorKey) — 화면 안에서만 도는 값이고, 서버로는 앵커 자체를 보낸다.
+        lineIdAt: (anchorDate, anchorTime) => {
+            const hit = lines.find((l) => l.anchorDate === anchorDate && (l.anchorTime ?? undefined) === anchorTime);
+            return hit ? chartAnchorKey(hit) : undefined;
+        },
+        removeLineById: (key) => {
+            const target = lines.find((l) => chartAnchorKey(l) === key);
             if (target) mut.remove.mutate(target);
         },
         // clear — 선만(무시 캔들·골격·저장 타점은 건드리지 않음). 우클릭이 잘 안 잡히는 경우 대비.

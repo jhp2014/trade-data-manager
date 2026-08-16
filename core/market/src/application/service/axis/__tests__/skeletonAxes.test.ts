@@ -21,13 +21,12 @@ const minute = (time: string, price: number): MinuteCandle => ({
     krx: null,
     un: { open: String(price), high: String(price), low: String(price), close: String(price), volume: "10" },
 });
-let seq = 0;
 /** 차트 소유 일봉 골격 피벗 — 타점 시각 없음. */
 const pivot = (anchorDate: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
-    ({ id: String(++seq), stockCode: CODE, date: DATE, param: "skeleton", anchorDate, field: "high", market: "un", ...over });
+    ({ stockCode: CODE, date: DATE, param: "skeleton", anchorDate, field: "high", market: "un", ...over });
 /** 차트 소유 분봉 골격 피벗 — 일봉 pivot 과 같은 소유, anchorTime 만 분봉. */
 const mpivot = (anchorTime: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
-    ({ id: String(++seq), stockCode: CODE, date: DATE, param: "skeleton-minute", anchorDate: DATE, anchorTime, field: "high", market: "un", ...over });
+    ({ stockCode: CODE, date: DATE, param: "skeleton-minute", anchorDate: DATE, anchorTime, field: "high", market: "un", ...over });
 
 function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, MinuteCandle[]>; anchors?: ChartAnchor[]; reviewPoints?: ReviewPointKey[] }): AxisDeps {
     return {

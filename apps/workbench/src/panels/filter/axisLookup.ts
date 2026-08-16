@@ -18,25 +18,22 @@ export interface AxisOrderIndex {
     byPoint: Map<string, number>;
     /** 차트 키 → orderKey(그날 첫 배치). 하루 항목 판정용. */
     byChart: Map<string, number>;
-    /** slotId → orderKey. 밴드 경계가 "그 자리"를 되찾는 데 쓴다. */
-    slots: Map<string, number>;
 }
 
 export function buildAxisOrderIndex(line: readonly PlacedPoint[]): AxisOrderIndex {
     const byPoint = new Map<string, number>();
     const byChart = new Map<string, number>();
-    const slots = new Map<string, number>();
     for (const p of line) {
         byPoint.set(pointKey(p), p.orderKey);
         if (!byChart.has(chartKey(p))) byChart.set(chartKey(p), p.orderKey);
-        if (!slots.has(p.slotId)) slots.set(p.slotId, p.orderKey);
     }
-    return { byPoint, byChart, slots };
+    // 밴드 경계는 **타점 앵커**라 byPoint 하나로 푼다 — 옛 slots(slotId→orderKey) 맵이 통째로 필요 없어졌다.
+    return { byPoint, byChart };
 }
 
 /** 전 축 한 번에 — 축마다 줄이 하나씩 온다(useRankAxes.linesByAxis). */
 export const buildAxisOrderIndexes = (linesByAxis: ReadonlyMap<string, PlacedPoint[]>): Map<string, AxisOrderIndex> =>
-    new Map([...linesByAxis].map(([axisId, line]) => [axisId, buildAxisOrderIndex(line)]));
+    new Map([...linesByAxis].map(([axisKey, line]) => [axisKey, buildAxisOrderIndex(line)]));
 
 /**
  * day 알갱이 계산 축의 **하루 항목** 값 조회 — 값 캐시는 타점 키로 온다(fanout). day 축은 그날 전 타점이

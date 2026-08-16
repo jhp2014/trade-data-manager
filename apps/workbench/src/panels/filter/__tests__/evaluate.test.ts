@@ -9,10 +9,10 @@ const dayItem: FunnelItem = { stockCode: "000880", date: "2025-07-01" };
 
 /** 기본 재료 — g1·g2 는 살아있는 그룹, a1 은 살아있는 축. 그 밖은 없는 것. */
 const base: EvalLookup = {
-    groupIdsOf: () => ["g1"],
+    groupNamesOf: () => ["g1"],
     hasGroup: (id) => id === "g1" || id === "g2",
     orderKeyOf: (axisId) => (axisId === "a1" ? 50 : undefined),
-    slotOrderKey: (axisId, slotId) => (axisId === "a1" ? ({ lo: 10, hi: 90 } as Record<string, number>)[slotId] : undefined),
+    bandBoundOrderKey: (axisId, slotId) => (axisId === "a1" ? ({ lo: 10, hi: 90 } as Record<string, number>)[slotId] : undefined),
     axisValueOf: (axisId) => (axisId === "c1" ? 7 : undefined),
     boundValue: (_axisId, b) => (b.kind === "value" ? b.value : undefined),
 };
@@ -39,7 +39,7 @@ describe("evalGroupExpr3 — DNF 3치", () => {
     });
 
     it("'그룹 없음'은 개수 조건이라 사전을 안 본다", () => {
-        expect(evalGroupExpr3(lit(NO_TAGS), item, look({ groupIdsOf: () => [] }))).toBe(true);
+        expect(evalGroupExpr3(lit(NO_TAGS), item, look({ groupNamesOf: () => [] }))).toBe(true);
         expect(evalGroupExpr3(lit(NO_TAGS), item, look())).toBe(false);
         expect(evalGroupExpr3(lit(NO_TAGS, true), item, look())).toBe(true);
     });

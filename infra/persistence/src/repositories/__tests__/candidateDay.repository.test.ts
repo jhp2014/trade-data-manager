@@ -41,7 +41,7 @@ describe("DrizzleCandidateDayRepository (pglite)", () => {
         // ② 그룹 멤버십만(하루 소속 — 타점 없이도 후보가 된다)
         const groups = new DrizzleGroupRepository(t.db);
         const group = await groups.createGroup("형태:돌파", "day");
-        await groups.attach(group.id, { stockCode: "000660", date: "2026-07-02" });
+        await groups.attach(group.name, { stockCode: "000660", date: "2026-07-02" });
         // ③ 타점만
         await new DrizzleReviewPointRepository(t.db).upsert([{ stockCode: "035420", date: "2026-07-03", time: "09:30:00" }]);
         expect(await keys()).toEqual([

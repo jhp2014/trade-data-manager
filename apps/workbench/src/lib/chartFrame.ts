@@ -4,7 +4,7 @@
 // 실시간은 useChartBundle("live")(REST 폴링). 키를 합치면 캐시 공유가 깨지므로 패널이 각자 고르고,
 // **도착한 번들을 뷰로 만드는 부분**만 여기서 같이 쓴다.
 import { useMemo } from "react";
-import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, type ChartAnchor } from "@trade-data-manager/market/domain";
+import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, chartAnchorKey, type ChartAnchor } from "@trade-data-manager/market/domain";
 import { deriveDailyView, deriveMinuteView, prevCloseAsOf, type DailyPoint, type MinuteView } from "./derive.js";
 import type { ChartBundle } from "../api/chart.js";
 import type { ChartPriceMode } from "../store/workbench.js";
@@ -12,6 +12,11 @@ import type { ChartPriceMode } from "../store/workbench.js";
 /** 차트 렌더용 — 앵커를 로드된 캔들에서 해소한 결과. 차트 컴포넌트는 이것만 안다(와이어 아님, 클라 뷰모델 —
  * 그래서 api/ 가 아니라 여기 산다. api/ 는 와이어 계약 자리다). */
 export interface RenderLine {
+    /**
+     * 손잡이 — 화면 안에서만 도는 값이다(서버로 안 나간다).
+     * 복기 앵커는 **좌표 전체**(chartAnchorKey): DB id 는 계약을 안 건너므로(로컬↔원격에서 갈린다) 못 쓴다.
+     * 실시간 선은 메모리 저장이라 클라가 만든 자체 id 를 그대로 쓴다(ChartLineAnchor.id).
+     */
     id: string;
     price: number; // 해소된 raw 가격(원)
     kind: "D" | "M" | "A"; // 일봉/분봉 앵커(주석) 또는 A=알람 가격조건 — 색·%분모(D=전일종가, M=당일 기준가)
@@ -152,7 +157,7 @@ export function resolveChartAnchorLines(
         const price = candlePrice(raw);
         if (price === null) continue;
         const cand = { price, coord: anchorCoordKey(a) };
-        out.push({ id: a.id, price, kind });
+        out.push({ id: chartAnchorKey(a), price, kind });
         // 확정 표시는 서버 리졸버와 **같은 도메인 함수**(beatsAsBaseline)로 고른다 — 비교식을 여기 다시 적으면
         // 규칙이 한쪽만 바뀌었을 때 하늘색 선 ≠ 축이 재는 선이 되고, 그 선이 육안 검증의 근거라 치명적이다.
         if (!best || beatsAsBaseline(cand, best)) {

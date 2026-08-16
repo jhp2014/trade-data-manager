@@ -25,11 +25,11 @@ export function GroupChips({ groups, scroll = false, short = false, empty, pathO
      * 여기는 경로를 그릴 폭이 없는 자리들이라(밀집 표기), 화면은 이름만 두고 확인은 툴팁으로 준다.
      * 폭이 있는 자리(필터 보드·팔레트)는 GroupPathLabel 로 경로를 직접 그린다.
      */
-    pathOf?: (groupId: string) => string;
+    pathOf?: (groupName: string) => string;
     style?: CSSProperties;
 }): JSX.Element {
     const ref = useHorizontalWheel<HTMLDivElement>(scroll);
-    const labelOf = (t: Group): string => (pathOf ? pathOf(t.id) : t.name);
+    const labelOf = (t: Group): string => (pathOf ? pathOf(t.name) : t.name);
     const full = groups.map(labelOf).join(" · ");
     return (
         <div
@@ -40,7 +40,7 @@ export function GroupChips({ groups, scroll = false, short = false, empty, pathO
         >
             {groups.length === 0 && empty && <span style={{ color: "var(--text-tertiary)" }}>{empty}</span>}
             {groups.map((t, i) => (
-                <span key={t.id} style={{ display: "contents" }}>
+                <span key={t.name} style={{ display: "contents" }}>
                     {i > 0 && <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>·</span>}
                     <span title={labelOf(t)} style={{ color: groupColor(t.name), fontWeight: 600, flexShrink: 0 }}>{short ? groupValueOf(t.name) : t.name}</span>
                 </span>

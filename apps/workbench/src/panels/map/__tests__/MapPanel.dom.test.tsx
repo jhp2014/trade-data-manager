@@ -13,18 +13,18 @@ import { useWorkbench } from "../../../store/workbench.js";
 import { ACTIVE } from "../../../styles/palette.js";
 import { MapPanel } from "../../MapPanel.js";
 
-const grp = (id: string, name: string, x: number, y: number, parentId: string | null = null): Group =>
-    ({ id, name, scope: "day", parentId, mapId: "m1", x, y });
+const grp = (name: string, x: number, y: number, parentName: string | null = null): Group =>
+    ({ name, scope: "day", parentName, mapName: "평면", x, y });
 
 // 평면 위: 테마 ⊃ 2차전지 · 갭상승(독립). 에코프로만 2차전지에 직접 부착.
 const GROUPS: Group[] = [
-    grp("g-테마", "테마", 0, 0),
-    grp("g-2차", "2차전지", 0, 0, "g-테마"),
-    grp("g-갭", "갭상승", 400, 300),
+    grp("테마", 0, 0),
+    grp("2차전지", 0, 0, "테마"),
+    grp("갭상승", 400, 300),
 ];
 const MEMBERS: GroupMembership[] = [
-    { stockCode: "086520", date: "2026-07-01", groupIds: ["g-2차"] },
-    { stockCode: "005930", date: "2026-07-01", groupIds: ["g-갭"] },
+    { stockCode: "086520", date: "2026-07-01", groupNames: ["2차전지"] },
+    { stockCode: "005930", date: "2026-07-01", groupNames: ["갭상승"] },
 ];
 const DAYS: CandidateDay[] = [
     { stockCode: "086520", date: "2026-07-01", traces: [] },
@@ -35,7 +35,7 @@ const SEED: Seed = { groups: GROUPS, memberships: MEMBERS, candidateDays: DAYS }
 
 function renderMap(seed: Seed = SEED, scope: "day" | "point" = "day"): void {
     const client = seededClient(seed);
-    client.setQueryData(mapsQuery().queryKey, [{ id: "m1", name: "평면", scope }]);
+    client.setQueryData(mapsQuery().queryKey, [{ name: "평면", scope }]);
     render(
         <Providers client={client}>
             <div style={{ width: 800, height: 600 }}><MapPanel /></div>
@@ -74,7 +74,7 @@ describe("MapPanel — 모집단 카운트(읽기)", () => {
 
     it("필터가 좁히면 노드 숫자도 좁아진다 — 골격·시트와 같은 잣대", () => {
         useWorkbench.setState({
-            filterStages: [{ id: "s1", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "g-갭", neg: false }] }] } }] }],
+            filterStages: [{ id: "s1", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "갭상승", neg: false }] }] } }] }],
         });
         renderMap();
         expect(screen.getByTitle(/^갭상승 · 모집단 1$/)).toBeTruthy();
@@ -85,17 +85,17 @@ describe("MapPanel — 모집단 카운트(읽기)", () => {
 // ⚠ 이 블록이 실측으로 잡은 결함이다: 깔때기 해상도(자동)는 걸린 조건이 정하지 평면이 정하지 않는다.
 // 그대로 쓰면 타점 평면인데 해상도가 하루일 때 타점 소속이 하루 항목에 안 걸려 **전 노드가 0**이 된다.
 describe("MapPanel — 평면 층위로 모집단을 본다", () => {
-    const pgrp = (id: string, name: string, x: number): Group =>
-        ({ id, name, scope: "point", parentId: null, mapId: "m1", x, y: 0 });
+    const pgrp = (name: string, x: number): Group =>
+        ({ name, scope: "point", parentName: null, mapName: "평면", x, y: 0 });
     const POINTS: ReviewPointListItem[] = [
         { stockCode: "086520", date: "2026-07-01", time: "09:30:00", name: "에코프로" },
         { stockCode: "086520", date: "2026-07-01", time: "10:00:00", name: "에코프로" },
     ];
     const POINT_SEED: Seed = {
-        groups: [pgrp("g-돌파", "돌파", 0), pgrp("g-눌림", "눌림", 300)],
+        groups: [pgrp("돌파", 0), pgrp("눌림", 300)],
         memberships: [
-            { stockCode: "086520", date: "2026-07-01", time: "09:30:00", groupIds: ["g-돌파"] },
-            { stockCode: "086520", date: "2026-07-01", time: "10:00:00", groupIds: ["g-돌파"] },
+            { stockCode: "086520", date: "2026-07-01", time: "09:30:00", groupNames: ["돌파"] },
+            { stockCode: "086520", date: "2026-07-01", time: "10:00:00", groupNames: ["돌파"] },
         ],
         candidateDays: [{ stockCode: "086520", date: "2026-07-01", traces: [] }],
         points: POINTS,
@@ -126,7 +126,7 @@ describe("MapPanel — 필터에 추가(유일한 쓰기)", () => {
         const stages = useWorkbench.getState().filterStages;
         expect(stages).toHaveLength(1);
         expect(stages[0]!.predicates).toEqual([
-            { kind: "group", expr: { groups: [{ literals: [{ groupId: "g-갭", neg: false }] }] } },
+            { kind: "group", expr: { groups: [{ literals: [{ groupId: "갭상승", neg: false }] }] } },
         ]);
     });
 
@@ -160,15 +160,15 @@ describe("MapPanel — 멤버 목록(토글)", () => {
 // 체인은 **세션 시선**이지 조건이 아니다(조건의 저자는 깔때기 하나). 그래서 클릭으로만 자라고,
 // 빈 곳을 눌러도 안 풀린다 — 짚어 놓고 화면을 옮기다 쌓은 경로를 잃으면 안 된다.
 describe("MapPanel — 체인 클릭", () => {
-    const g3 = (id: string, name: string, x: number, y = 0): Group =>
-        ({ id, name, scope: "day", parentId: null, mapId: "m1", x, y });
+    const g3 = (name: string, x: number, y = 0): Group =>
+        ({ name, scope: "day", parentName: null, mapName: "평면", x, y });
     // A: 돌파+갭상승 · B: 돌파+갭상승 · C: 돌파만 → 돌파 3, 갭상승 2, 눌림 0
     const CHAIN_SEED: Seed = {
-        groups: [g3("g1", "돌파", 0), g3("g2", "갭상승", 400), g3("g3", "눌림", 0, 400)],
+        groups: [g3("돌파", 0), g3("갭상승", 400), g3("눌림", 0, 400)],
         memberships: [
-            { stockCode: "A", date: "2026-07-01", groupIds: ["g1", "g2"] },
-            { stockCode: "B", date: "2026-07-01", groupIds: ["g1", "g2"] },
-            { stockCode: "C", date: "2026-07-01", groupIds: ["g1"] },
+            { stockCode: "A", date: "2026-07-01", groupNames: ["돌파", "갭상승"] },
+            { stockCode: "B", date: "2026-07-01", groupNames: ["돌파", "갭상승"] },
+            { stockCode: "C", date: "2026-07-01", groupNames: ["돌파"] },
         ],
         candidateDays: [
             { stockCode: "A", date: "2026-07-01", traces: [] },
@@ -328,6 +328,6 @@ describe("MapPanel — 체인 클릭", () => {
         const stages = useWorkbench.getState().filterStages;
         expect(stages).toHaveLength(2);
         expect(stages.map((s) => (s.predicates[0] as { expr: { groups: { literals: { groupId: string }[] }[] } }).expr.groups[0]!.literals[0]!.groupId))
-            .toEqual(["g1", "g2"]);
+            .toEqual(["돌파", "갭상승"]);
     });
 });

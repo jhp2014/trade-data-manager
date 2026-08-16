@@ -79,8 +79,8 @@ export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, inheritedVi
             // 사전 캐시에 먼저 심는다(이름순 = 서버 정렬) — 심기 전에 토글하면 낙관적 부착 정렬이
             // 이름을 못 찾아 id 기준으로 끼워지고, refetch 때 칩 자리가 한 번 튄다(useGroups.nameOf 폴백의 짝).
             qc.setQueryData<Group[]>(groupsQuery().queryKey, (cur) =>
-                cur && !cur.some((t) => t.id === group.id) ? [...cur, group].sort((a, b) => a.name.localeCompare(b.name)) : cur);
-            for (const t of targets) toggle(t, group.id, true);
+                cur && !cur.some((t) => t.name === group.name) ? [...cur, group].sort((a, b) => a.name.localeCompare(b.name)) : cur);
+            for (const t of targets) toggle(t, group.name, true);
             setQ("");
             invalidate();
         },
@@ -95,7 +95,7 @@ export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, inheritedVi
 
     const submit = (): void => {
         if (canCreate) { createMut.mutate(q.trim()); return; }
-        if (shown.length === 1) { toggleAll(shown[0].id); setQ(""); }
+        if (shown.length === 1) { toggleAll(shown[0].name); setQ(""); }
     };
 
     return (
@@ -118,18 +118,18 @@ export function BulkGroupMenu<T>({ anchor, targets, scope, hasGroup, inheritedVi
                 {shown.length === 0 && !canCreate && <div style={{ ...rowStyle, color: "var(--text-tertiary)" }}>그룹 없음</div>}
                 {shown.map((t) => (
                     <GroupRow
-                        key={t.id} group={t} state={stateOf(t.id)} count={countOf(t.id)}
-                        inheritedVia={stateOf(t.id) === "none" ? inheritedOf(t.id) : null}
+                        key={t.name} group={t} state={stateOf(t.name)} count={countOf(t.name)}
+                        inheritedVia={stateOf(t.name) === "none" ? inheritedOf(t.name) : null}
                         multi={targets.length > 1}
-                        editing={editing === t.id}
-                        onToggleAll={() => toggleAll(t.id)}
-                        onStartEdit={() => setEditing(t.id)}
-                        onCommitEdit={(name) => { setEditing(null); if (name && name !== t.name) renameMut.mutate({ id: t.id, name }); }}
+                        editing={editing === t.name}
+                        onToggleAll={() => toggleAll(t.name)}
+                        onStartEdit={() => setEditing(t.name)}
+                        onCommitEdit={(name) => { setEditing(null); if (name && name !== t.name) renameMut.mutate({ id: t.name, name }); }}
                         onCancelEdit={() => setEditing(null)}
                         onDelete={() => {
-                            const n = countOf(t.id);
+                            const n = countOf(t.name);
                             const warn = n > 0 ? `\n${n}개 타점에 붙어 있습니다 — 그 부착도 함께 사라집니다.` : "";
-                            if (confirm(`그룹 "${t.name}" 을 삭제할까요?${warn}`)) deleteMut.mutate(t.id);
+                            if (confirm(`그룹 "${t.name}" 을 삭제할까요?${warn}`)) deleteMut.mutate(t.name);
                         }}
                     />
                 ))}

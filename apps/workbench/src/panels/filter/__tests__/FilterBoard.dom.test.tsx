@@ -28,8 +28,8 @@ const points: ReviewPointListItem[] = [
 
 /** 판단 축 두 개 — 층위가 갈린다(하루 축 · 타점 축). */
 const axes: RankAxis[] = [
-    { id: "ax-day", name: "하루축", scope: "day" },
-    { id: "ax-point", name: "타점축", scope: "point" },
+    { key: "p:하루축", name: "하루축", scope: "day" },
+    { key: "p:타점축", name: "타점축", scope: "point" },
 ] as unknown as RankAxis[];
 
 /**
@@ -37,10 +37,10 @@ const axes: RankAxis[] = [
  * 이걸 안 심으면 축이 있어도 레일이 "배치 없음"으로 뜬다 — 처음엔 그걸 모르고 축만 심어서,
  * "자리 없는 축은 이유를 적는다" 검사가 **모든 축이 비어 있는 상태로** 통과하고 있었다.
  */
-const lineOf = (axisId: string, slots: string[]): AxisLine => ({
-    axisId,
-    placements: slots.map((slotId, i) => ({
-        slotId, orderKey: i + 1,
+const lineOf = (axisName: string, slots: string[]): AxisLine => ({
+    axisName,
+    placements: slots.map((_slot, i) => ({
+        orderKey: i + 1,
         stockCode: points[i % points.length].stockCode,
         date: points[i % points.length].date,
         time: points[i % points.length].time,
@@ -52,8 +52,8 @@ const lineOf = (axisId: string, slots: string[]): AxisLine => ({
  * 그것도 옳은 동작이지만, 배선을 재려는 검사가 그 규칙에 막혀 0건으로 통과하면 안 된다.
  */
 const axisLines: AxisLine[] = [
-    lineOf("ax-day", ["s1", "s2", "s3", "s4"]),
-    lineOf("ax-point", ["t1", "t2", "t3", "t4"]),
+    lineOf("하루축", ["s1", "s2", "s3", "s4"]),
+    lineOf("타점축", ["t1", "t2", "t3", "t4"]),
 ];
 
 const SEED: Seed = { candidateDays, points, axes, axisLines };
@@ -170,7 +170,7 @@ describe("레일 하나 = 필터 하나 — 그은 선이 store 의 필터가 �
         expect(stages()).toHaveLength(1);
         const p = stages()[0].predicates[0];
         expect(p.kind).toBe("axisBand");
-        expect(p.kind === "axisBand" && p.axisId).toBe("ax-day");
+        expect(p.kind === "axisBand" && p.axisId).toBe("p:하루축");
     });
 
     it("레일이 다르면 필터도 다르다 — 한 필터에 여러 축을 묶지 않는다(기여도가 뭉개진다)", () => {

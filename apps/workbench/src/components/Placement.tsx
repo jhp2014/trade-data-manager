@@ -55,13 +55,13 @@ export function PlacementRows({
     unplaced: RankAxis[];
     unplacedOpen: boolean;
     onToggleUnplaced: () => void;
-    onPickAxis?: (axisId: string) => void; // 축 클릭 → 배치 보드의 그 레인으로
+    onPickAxis?: (axisName: string) => void; // 축 클릭 → 배치 보드의 그 레인으로
 }): JSX.Element {
     const rowStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "0 8px", height: 20, border: "none", background: "none", font: "inherit", textAlign: "left", cursor: onPickAxis ? "pointer" : "default" };
     return (
         <div style={{ fontSize: 11 }}>
             {placed.map((it) => (
-                <button key={it.axisId} onClick={() => onPickAxis?.(it.axisId)} title={`${it.axisName} — ${it.cell.rank}/${it.cell.total}`} style={rowStyle}>
+                <button key={it.axisName} onClick={() => onPickAxis?.(it.axisName)} title={`${it.axisName} — ${it.cell.rank}/${it.cell.total}`} style={rowStyle}>
                     <span style={{ width: 58, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-secondary)" }}>{it.axisName}</span>
                     <Track frac={it.cell.frac} />
                     <span className="tabular" style={{ flexShrink: 0, width: 44, textAlign: "right", color: "var(--text-secondary)", fontWeight: 600 }}>
@@ -80,7 +80,7 @@ export function PlacementRows({
                     </button>
                     {unplacedOpen &&
                         unplaced.map((a) => (
-                            <button key={a.id} onClick={() => onPickAxis?.(a.id)} title={`${a.name} — 이 타점 미배치`} style={{ ...rowStyle, height: 18, color: "var(--text-tertiary)", opacity: 0.75 }}>
+                            <button key={a.name} onClick={() => onPickAxis?.(a.name)} title={`${a.name} — 이 타점 미배치`} style={{ ...rowStyle, height: 18, color: "var(--text-tertiary)", opacity: 0.75 }}>
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
                             </button>
                         ))}

@@ -12,7 +12,13 @@ export interface CreateMapInput {
     scope: MapScope;
 }
 
-/** PATCH /maps/:id 요청 바디(이름 변경). */
+/** PATCH /maps/rename 요청 바디. 지목은 이름으로(id 는 계약을 안 건넌다 — SimilarityMap 주석 참조). */
 export interface RenameMapInput {
+    name: string;
+    newName: string;
+}
+
+/** POST /maps/remove 요청 바디. 이름을 경로에 안 싣는다(자유 텍스트 → 인코딩 사고). */
+export interface RemoveMapInput {
     name: string;
 }

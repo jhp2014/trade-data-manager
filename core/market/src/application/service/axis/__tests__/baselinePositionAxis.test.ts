@@ -22,10 +22,9 @@ const minute = (time: string, close: string, opts: { krx?: string | null; date?:
 });
 
 const point = (time: string): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
-let seq = 0;
 /** 차트 소유 기준선(선=앵커) — 타점 시각이 없다. */
 const anchorOf = (a: Partial<ChartAnchor>): ChartAnchor =>
-    ({ id: String(++seq), stockCode: CODE, date: DATE, param: "baseline", anchorDate: "2026-07-01", field: "high", market: "un", ...a });
+    ({ stockCode: CODE, date: DATE, param: "baseline", anchorDate: "2026-07-01", field: "high", market: "un", ...a });
 
 function deps(v: { minutesByDay?: Record<string, MinuteCandle[]>; dailies?: DailyCandle[]; anchors?: ChartAnchor[] }): AxisDeps {
     return {

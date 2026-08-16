@@ -16,24 +16,29 @@ export interface GroupReader {
     listAllMemberships(): Promise<GroupMembership[]>;
 }
 
-/** 그룹 편집. */
+/**
+ * 그룹 편집. **지목은 언제나 이름으로** — 이름이 전역 유일이라 온전한 키다.
+ * surrogate id 는 저장소 안에 남지만(rename 이 FK 를 타지 않게) 계약을 건너지 않는다:
+ * 로컬 미러와 Supabase 가 각자 id 를 발급하고 미러 전체교체 때 로컬 id 가 통째로 갈리므로,
+ * id 를 계약에 두면 동기화를 건넌 참조가 조용히 다른 행을 가리킨다.
+ */
 export interface GroupStore {
-    /** 생성 → DB 가 부여한 id 를 채워 반환. 같은 이름이면 **그 그룹을 반환**(멱등 — 중복 생성 사고 방지). */
+    /** 생성 → 저장본 반환. 같은 이름이면 **그 그룹을 반환**(멱등 — 중복 생성 사고 방지). */
     createGroup(name: string, scope: GroupScope): Promise<Group>;
-    /** 이름 변경(멤버십은 id 참조라 무관). 없는 id 는 조용한 no-op. */
-    renameGroup(id: string, name: string): Promise<void>;
+    /** 이름 변경(멤버십은 안에서 id 참조라 무관). 없는 이름은 조용한 no-op. */
+    renameGroup(name: string, newName: string): Promise<void>;
     /** 삭제 — 멤버십도 FK cascade 로 함께. 자식 그룹은 부모만 풀린다(SET NULL). 되돌릴 수 없다. */
-    removeGroup(id: string): Promise<void>;
+    removeGroup(name: string): Promise<void>;
 
     /** 항목을 그룹에 넣는다(멱등). ⚠ 항목 키의 시각 유무가 그룹 scope 와 맞는지 여기서 막는다. */
-    attach(groupId: string, item: GroupItemRef): Promise<void>;
+    attach(groupName: string, item: GroupItemRef): Promise<void>;
     /** 뺀다. 안 들어 있으면 조용한 no-op. */
-    detach(groupId: string, item: GroupItemRef): Promise<void>;
+    detach(groupName: string, item: GroupItemRef): Promise<void>;
 
     /** 평면에 올리기(좌표 포함) / 내리기(null). 올릴 때 맵 scope 와 그룹 scope 가 같은지 검사한다. */
-    setPlacement(id: string, placement: GroupPlacement): Promise<void>;
+    setPlacement(name: string, placement: GroupPlacement): Promise<void>;
     /** 좌표 이동 — **배열**. 여럿을 한 번에 끄는 게 정상 조작이라 낱개로 쪼개면 부분 실패가 생긴다. */
     moveGroups(moves: GroupMove[]): Promise<void>;
     /** 그룹 안 그룹. null = 최상위로. 같은 맵인지·순환이 아닌지 여기서 막는다(DB 로는 못 막는 제약). */
-    setParent(id: string, parentId: string | null): Promise<void>;
+    setParent(name: string, parentName: string | null): Promise<void>;
 }

@@ -16,9 +16,8 @@ const bar = (time: string, price: number, over: Partial<NonNullable<MinuteCandle
     krx: null,
     un: { open: String(price), high: String(price), low: String(price), close: String(price), volume: "10", ...over },
 });
-let seq = 0;
 const mp = (anchorTime: string, field: ChartAnchor["field"] = "high"): ChartAnchor =>
-    ({ id: String(++seq), stockCode: CODE, date: DATE, param: "skeleton-minute", anchorDate: DATE, anchorTime, field, market: "un" });
+    ({ stockCode: CODE, date: DATE, param: "skeleton-minute", anchorDate: DATE, anchorTime, field, market: "un" });
 const point = (time: string): ReviewPoint => ({ stockCode: CODE, date: DATE, time });
 
 const deps = (bars: MinuteCandle[], reviewPoints: ReviewPoint[] = []): Pick<AxisDeps, "minute" | "reviewPoints"> => ({

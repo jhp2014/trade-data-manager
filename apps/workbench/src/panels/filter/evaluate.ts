@@ -18,14 +18,18 @@ import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStag
 
 /** 판정에 필요한 바깥 재료. 없는 것은 전부 `undefined` = 판단 불가(탈락 아님). */
 export interface EvalLookup {
-    /** 이 항목에 적용되는 그룹 id들 — **하루 상속 포함**(차트에 붙은 그룹은 그날 타점 전부에 적용). */
-    groupIdsOf: (item: FunnelItem) => readonly string[];
+    /** 이 항목에 적용되는 그룹 이름들 — **하루 상속 포함**(차트에 붙은 그룹은 그날 타점 전부에 적용). */
+    groupNamesOf: (item: FunnelItem) => readonly string[];
     /** 사전에 있는 그룹인가. 없으면 죽은 참조라 그 리터럴은 판단 불가. */
     hasGroup: (groupId: string) => boolean;
     /** 이 항목의 그 축 배치 위치(orderKey). **미배치면 undefined** — 깔때기의 미배치 칸이 여기서 나온다. */
     orderKeyOf: (axisId: string, item: FunnelItem) => number | undefined;
-    /** 밴드 경계 slotId → orderKey. 재배치로 사라진 슬롯이면 undefined(밴드가 깨진 것). */
-    slotOrderKey: (axisId: string, slotId: string) => number | undefined;
+    /**
+     * 밴드 경계(**타점 앵커**) → 그 타점이 선 자리의 orderKey. 그 타점이 이 축에서 빠졌으면 undefined
+     * (밴드가 깨진 것). 옛날엔 slotId 로 지목했는데, slot 은 비면 GC 되어 경계가 조용히 끊겼다 —
+     * 타점 앵커는 계산 축 경계(AxisBound)가 이미 쓰던 규칙이라 두 종류 축의 경계가 같은 성질이 된다.
+     */
+    bandBoundOrderKey: (axisKey: string, point: string) => number | undefined;
     /** 계산 축 값. 결손이면 undefined. */
     axisValueOf: (axisId: string, item: FunnelItem) => number | undefined;
     /** 값 구간 경계 해석 — 타점 앵커면 그 타점의 값, 리터럴이면 그 수. 앵커가 사라졌으면 undefined. */
@@ -49,7 +53,7 @@ export function resolveBound(b: AxisBound, values: Map<string, number> | undefin
  */
 export function evalGroupExpr3(expr: GroupExpr, item: FunnelItem, look: EvalLookup): Verdict {
     if (expr.groups.length === 0) return true; // 빈 식 = 무제한
-    const ids = look.groupIdsOf(item);
+    const ids = look.groupNamesOf(item);
     /** 이 리터럴이 가리키는 사실이 참인가(부정 적용 전). 죽은 그룹은 모름. */
     const holds = (groupId: string): Verdict => {
         // "그룹 없음"은 그룹이 아니라 개수 조건이라 사전을 안 본다(죽을 수가 없다).
@@ -83,9 +87,9 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
             return evalGroupExpr3(p.expr, item, look);
 
         case "axisBand": {
-            // 경계는 슬롯 앵커다. 지정한 경계가 안 풀리면 밴드가 깨진 것이라 판단 불가.
-            const lo = p.band.lo === undefined ? -Infinity : look.slotOrderKey(p.axisId, p.band.lo);
-            const hi = p.band.hi === undefined ? Infinity : look.slotOrderKey(p.axisId, p.band.hi);
+            // 경계는 **타점 앵커**다. 지정한 경계가 안 풀리면 밴드가 깨진 것이라 판단 불가.
+            const lo = p.band.lo === undefined ? -Infinity : look.bandBoundOrderKey(p.axisId, p.band.lo);
+            const hi = p.band.hi === undefined ? Infinity : look.bandBoundOrderKey(p.axisId, p.band.hi);
             if (lo === undefined || hi === undefined) return undefined;
             const ok = look.orderKeyOf(p.axisId, item);
             if (ok === undefined) return undefined; // 미배치

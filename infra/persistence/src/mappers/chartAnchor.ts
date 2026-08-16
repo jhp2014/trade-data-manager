@@ -16,9 +16,10 @@ export function chartAnchorToRow(a: NewChartAnchor): ChartAnchorInsert {
     };
 }
 
+// id 는 옮기지 않는다 — 좌표가 정체성이라 계약에 id 가 없다(도메인 ChartAnchor 주석 참조).
+// 저장소 안에서는 그대로 살아 있다(PK·그린 순서 정렬 기준).
 export function rowToChartAnchor(r: ChartAnchorRow): ChartAnchor {
     return {
-        id: r.id.toString(),
         stockCode: r.stockCode,
         date: r.tradeDate,
         time: r.tradeTime ?? undefined,

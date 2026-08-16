@@ -2,17 +2,29 @@
 //
 // 서버는 값만 준다(`타점 → 수치`). 여기서 값을 정렬 좌표로 바꾼다:
 //  · orderKey = 수치(강한 쪽이 작은 값인 축이면 부호 반전) — buildAxisIndex 관례가 "큰 orderKey = 강".
-//  · slotId   = 값에서 파생 → **같은 수치는 자동으로 같은 자리(타이)**. 판단 축이 slot 행으로 저장하는 것을
-//               계산 축은 값이 대신한다(저장할 위치가 없다).
+//  · 자리     = orderKey 그 자체 → **같은 수치는 자동으로 같은 자리(타이)**. 판단 축이 slot 행으로 저장하는 것을
+//               계산 축은 값이 대신한다(저장할 위치가 없다). 판단 축에서 slotId 가 사라지면서
+//               두 종류가 자리를 표현하는 방식이 완전히 같아졌다.
 //
-// ⚠ slotId 는 값이 바뀌면 함께 바뀐다(수식 수정·재계산). 그래서 slotId 를 **영속 상태의 키로 쓰는 기능**
-//   (밴드 경계·그룹 컷 = rankBands/cuts)은 계산 축에 아직 열지 않는다 — 조용히 끊긴 참조가 되기 때문.
-//   보정(사람이 계산 줄에 개입)이 들어올 때 앵커 방식으로 함께 푼다.
+// ⚠ 자리(orderKey)는 값이 바뀌면 함께 바뀐다(수식 수정·재계산). 그래서 **영속 상태의 키로는 못 쓴다** —
+//   밴드 경계·그룹 컷은 두 종류 모두 **타점 앵커**로 저장한다(그 타점이 있는 자리, 값이 움직여도 따라간다).
 import type { AxisDisplay, ComputedAxisFeed, PlacedPoint, RankAxis } from "@trade-data-manager/wire";
 import { pointKey } from "./pointKey.js";
 
-/** 계산 축 id 접두 — 판단 축 id(DB bigserial 문자열)와 절대 겹치지 않는다. */
+/**
+ * **축 키 정책 — 클라 전용 손잡이다.** 서버로 나가지도, DB 에 저장되지도 않는다(축은 계약에서 이름으로
+ * 지목한다). 화면이 두 종류의 축을 한 목록·한 맵에 담아야 해서 필요한 값일 뿐이다.
+ *
+ * 접두를 양쪽에 붙이는 이유: 판단 축 키가 숫자 id 였을 땐 `c:` 하나로 충분했지만, 이제 판단 축 키가
+ * **사용자가 지은 이름**이라 계산 축 이름과 부딪힐 수 있다("갭 상승률" 축을 손으로 만들 수 있다).
+ * 접두가 갈라 두면 그 충돌이 **구조적으로 불가능**하다 — 서버에 이름 충돌 검증을 넣는 대안은,
+ * 나중에 계산 축이 추가될 때 이미 있는 판단 축과 겹치는 경우를 소급으로 못 막아 조용히 합쳐진다.
+ */
 const COMPUTED_PREFIX = "c:";
+const PLACED_PREFIX = "p:";
+
+/** 판단 축(DB 행)의 클라 키 — 이름이 정체성이라 이름을 싣는다. */
+export const placedAxisKey = (name: string): string => `${PLACED_PREFIX}${name}`;
 
 /** 포화가 실측 최대에서 떨어져 서는 거리 = 축 단위 한 눈금(공백 축이면 1 거래일). 척도를 딱 한 칸만 늘린다. */
 const SATURATED_STEP = 1;
@@ -22,7 +34,15 @@ const SATURATED_LABEL = "∞";
 export const computedAxisId = (key: string): string => `${COMPUTED_PREFIX}${key}`;
 
 /** 이 축이 계산 축인가 — 쓰기(배치/해제/이름변경)가 닿으면 안 되는 축인지 판정. */
-export const isComputedAxis = (axisId: string): boolean => axisId.startsWith(COMPUTED_PREFIX);
+export const isComputedAxis = (axisKey: string): boolean => axisKey.startsWith(COMPUTED_PREFIX);
+
+/**
+ * 화면이 다루는 축 — 계약 축(RankAxis)에 **클라 키**를 얹은 것. 두 종류(판단·계산)가 한 목록에 산다.
+ * RankAxis 를 확장하므로 계약을 받는 자리에 그대로 넘길 수 있다.
+ */
+export interface AxisRef extends RankAxis {
+    key: string;
+}
 
 /**
  * 수치 → 표시 문자열. 규격은 서버(축 정의)가 준다 — 여기에 축별 분기를 두면 축 추가가 클라 수정을 부른다.
@@ -34,7 +54,7 @@ export function formatAxisValue(v: number, display?: AxisDisplay): string {
 }
 
 export interface ComputedAxisView {
-    axis: RankAxis;
+    axis: AxisRef;
     line: PlacedPoint[];
     /**
      * 타점키 → **원시 수치**. 필터·라벨은 orderKey(부호 섞임)가 아니라 이 값을 쓴다("5%~20%"가 그대로 읽히게).
@@ -74,13 +94,15 @@ export function computedAxisView(feed: ComputedAxisFeed): ComputedAxisView {
     const values = new Map<string, number>();
     for (const v of feed.values) {
         const value = v.saturated ? saturatedValue : v.value;
-        line.push({ slotId: `${axisId}#${value}`, orderKey: sign * value, stockCode: v.stockCode, date: v.date, time: v.time });
+        // 자리는 **값이 정한다** — 같은 수치면 orderKey 가 같아지고, 그게 곧 같은 자리(타이)다.
+        // 옛날엔 slotId 를 값에서 지어냈는데, 판단 축에서 slotId 가 사라지면서 그 흉내도 필요 없어졌다.
+        line.push({ orderKey: sign * value, stockCode: v.stockCode, date: v.date, time: v.time });
         values.set(pointKey(v), value);
     }
     return {
         // scope = 서버 축 정의의 grain — 옛날엔 "point" 하드코딩이라 day 성질의 계산 축(매물 공백·기준선
         // 거리·일봉 골격)이 깔때기 해상도를 통째로 타점으로 끌어내렸다. 옛 서버(grain 없음)는 point 폴백.
-        axis: { id: axisId, name: feed.name, scope: feed.grain ?? "point" },
+        axis: { key: axisId, name: feed.name, scope: feed.grain ?? "point" },
         line,
         values,
         strongerWhen: feed.strongerWhen,

@@ -25,9 +25,14 @@ import { NO_TAGS, isGroupExprEmpty } from "../rank/groupFilter.js";
 export type { Grain };
 
 // ── 필터 차원의 모양 — 옛 rankFilterSlice 에서 이사 왔다(전역 필터 store 는 철거, 조건은 단계 안에만 산다).
+/**
+ * 배치 축 밴드 — 양 경계를 **타점 앵커**(pointKey 문자열)로 든다. 계산 축 경계(AxisBound)와 같은 규칙:
+ * 자리(orderKey)는 reindex·재계산이 다시 쓰는 값이라 들고 있으면 뜻이 조용히 바뀌고, slotId 는 그 자리가
+ * 비면 GC 되어 경계가 끊긴다. 타점은 (종목·날짜·시각) 자연키라 둘 다 안 겪는다.
+ */
 export interface RankBand {
-    lo?: string; // 이상 경계(작은 orderKey 쪽) slotId
-    hi?: string; // 이하 경계(큰 orderKey 쪽) slotId
+    lo?: string; // 이상 경계(작은 orderKey 쪽)에 선 타점의 pointKey
+    hi?: string; // 이하 경계(큰 orderKey 쪽)에 선 타점의 pointKey
 }
 export interface DateRange { from: string; to: string } // YYYY-MM-DD (양끝 포함)
 export interface TimeRange { from: string; to: string } // HH:MM (양끝 포함)
@@ -297,6 +302,21 @@ export function parseStages(o: unknown): FilterStage[] | null {
     return out;
 }
 
+/**
+ * 밴드 경계 이관 — 옛 저장본은 경계를 **slotId**(DB bigserial 문자열, 예 "52")로 들고 있다.
+ * 지금은 **타점 앵커**(pointKey "코드|날짜|시각")라 옛 값은 영영 안 풀린다. 그냥 두면 그 조건이
+ * 계속 "판단 불가"로 남아 화면에 이유 없이 아무것도 안 걸리는 상태가 되므로, 여기서 **열린 경계로 떨군다**.
+ * 구분은 모양으로 한다 — 타점 키에는 구분자가 둘 있고 slotId 에는 없다.
+ */
+const isPointAnchor = (v: unknown): v is string => typeof v === "string" && v.split("|").length === 3;
+
+function migrateBand(band: RankBand): RankBand {
+    const out: RankBand = {};
+    if (isPointAnchor(band.lo)) out.lo = band.lo;
+    if (isPointAnchor(band.hi)) out.hi = band.hi;
+    return out;
+}
+
 function parsePredicate(o: unknown): FilterPredicate | null {
     const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown };
     switch (p?.kind) {
@@ -304,7 +324,7 @@ function parsePredicate(o: unknown): FilterPredicate | null {
             return p.expr && typeof p.expr === "object" ? { kind: "group", expr: p.expr as GroupExpr } : null;
         case "axisBand":
             return typeof p.axisId === "string" && p.band && typeof p.band === "object"
-                ? { kind: "axisBand", axisId: p.axisId, band: p.band as RankBand } : null;
+                ? { kind: "axisBand", axisId: p.axisId, band: migrateBand(p.band as RankBand) } : null;
         case "axisValue":
             return typeof p.axisId === "string" && Array.isArray(p.ranges)
                 ? { kind: "axisValue", axisId: p.axisId, ranges: p.ranges as AxisValueRange[] } : null;

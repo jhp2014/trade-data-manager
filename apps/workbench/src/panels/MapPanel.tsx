@@ -26,7 +26,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { mapsQuery, groupsQuery } from "../api/queries.js";
 import { useStockNames } from "../lib/useStockNames.js";
-import { createMap, type MapScope } from "../api/map.js";
+import { createMap, type MapScope, type SimilarityMap } from "../api/map.js";
 import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group, type GroupMembership, type GroupMove } from "../api/groups.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { useFunnel } from "./filter/FunnelContext.js";
@@ -91,12 +91,12 @@ function MapPanelInner(): JSX.Element {
     const wrapRef = useRef<HTMLDivElement | null>(null);
 
     const maps = mapsQ.data ?? [];
-    const [savedId, setSavedId] = usePersistedState<string | null>(SELECTED_KEY, (o) => (typeof o === "string" ? o : null), null);
-    const activeMap = maps.find((m) => m.id === savedId) ?? maps[0] ?? null;
+    const [savedName, setSavedName] = usePersistedState<string | null>(SELECTED_KEY, (o) => (typeof o === "string" ? o : null), null);
+    const activeMap = maps.find((m) => m.name === savedName) ?? maps[0] ?? null;
 
-    const onMap = useMemo(() => (activeMap ? groupsOnMap(gv.groups, activeMap.id) : []), [gv.groups, activeMap]);
+    const onMap = useMemo(() => (activeMap ? groupsOnMap(gv.groups, activeMap.name) : []), [gv.groups, activeMap]);
     const offMap = useMemo(() => (activeMap ? placeableGroups(gv.groups, activeMap.scope) : []), [gv.groups, activeMap]);
-    const onMapIds = useMemo(() => new Set(onMap.map((g) => g.id)), [onMap]);
+    const onMapIds = useMemo(() => new Set(onMap.map((g) => g.name)), [onMap]);
 
     // ── 모집단 — 깔때기 "보는 집합"을 **이 평면의 층위로** 맞춰 본다.
     // ⚠ 깔때기 해상도(자동)는 걸린 조건이 정하지 평면이 정하지 않는다. 그대로 쓰면 타점 평면인데 해상도가
@@ -118,7 +118,7 @@ function MapPanelInner(): JSX.Element {
     }, [funnel.isLoading, funnel.viewedItems, funnel.viewedPointRefs, activeMap?.scope]);
 
     const popFeed = useMemo<GroupMembership[]>(
-        () => populationFeed(population, (i) => gv.appliedGroupIdsOf(i)),
+        () => populationFeed(population, (i) => gv.appliedGroupNamesOf(i)),
         [population, gv],
     );
     const counts = useMemo(() => populationCounts(popFeed), [popFeed]);
@@ -150,8 +150,8 @@ function MapPanelInner(): JSX.Element {
 
     // ── 갈 수 있는 곳 — 후보별 "체인 전부 ∧ 그 후보" 수(드릴다운). 조상–자손은 뺀다(포함관계는 영역이 보여준다).
     const candidates = useMemo(
-        () => chainCandidates(popFeed, chain, { within: onMapIds, groupById: gv.groupById }),
-        [popFeed, chain, onMapIds, gv.groupById],
+        () => chainCandidates(popFeed, chain, { within: onMapIds, groupByName: gv.groupByName }),
+        [popFeed, chain, onMapIds, gv.groupByName],
     );
     /** 체인이 공통으로 가진 항목 — 작업줄의 "공통 N" 과 목록 패널이 같은 집합을 본다. */
     const chainMembers = useMemo(() => (chain.length === 0 ? [] : membersOfAll(popFeed, chain)), [popFeed, chain]);
@@ -159,7 +159,7 @@ function MapPanelInner(): JSX.Element {
     // ── 레이아웃 — 컨테이너 좌표 계산은 전부 mapLayout(순수). laid 는 드래그 판정·역변환도 쓴다.
     // 잎 크기는 **이름**에서만 나온다(수는 고정 칸 — 필터로 수가 바뀔 때 상자가 들썩이지 않게).
     const groupItems = useMemo(
-        () => onMap.map((g) => ({ id: g.id, parentId: g.parentId, x: g.x ?? 0, y: g.y ?? 0 })),
+        () => onMap.map((g) => ({ id: g.name, parentId: g.parentName, x: g.x ?? 0, y: g.y ?? 0 })),
         [onMap],
     );
     /** 칩 없는 배치 — 칩을 **어디에 놓을지** 재는 자(칩이 들어가면 그 부모가 그만큼 자란다). */
@@ -271,11 +271,11 @@ function MapPanelInner(): JSX.Element {
                         data: {
                             anchors: anchorsById.get(n.id) ?? [],
                             count: membersOfAll(popFeed, prefix).length,
-                            label: prefix.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)").join(" & "),
+                            label: prefix.map((id) => gv.groupByName.get(id)?.name ?? "(지워짐)").join(" & "),
                         } satisfies ChipNodeData,
                     };
                 }
-                const g = gv.groupById.get(n.id)!;
+                const g = gv.groupByName.get(n.id)!;
                 const count = counts.get(n.id) ?? 0;
                 // 체인이 서면 **체인과 후보만** 남기고 흐린다. 체인이 없으면 모집단 0만 흐린다.
                 const dimmed = chain.length > 0 ? !chainSet.has(n.id) && !candidates.has(n.id) : count === 0 && funnel.isFiltering;
@@ -293,7 +293,7 @@ function MapPanelInner(): JSX.Element {
                     } satisfies GroupNodeData,
                 };
             }),
-        [laid, chipItems, chain, popFeed, gv.groupById, counts, anchorsById, chainSet, candidates, head, funnel.isFiltering],
+        [laid, chipItems, chain, popFeed, gv.groupByName, counts, anchorsById, chainSet, candidates, head, funnel.isFiltering],
     );
 
     const [nodes, setNodes] = useState<Node[]>([]);
@@ -306,13 +306,13 @@ function MapPanelInner(): JSX.Element {
      */
     const fittedFor = useRef<string | null>(null);
     useEffect(() => {
-        const id = activeMap?.id ?? null;
+        const id = activeMap?.name ?? null;
         if (id === null || onMap.length === 0 || fittedFor.current === id) return;
         fittedFor.current = id;
         // 노드가 붙은 다음 프레임에 재야 크기가 잡혀 있다.
         const t = setTimeout(() => fitView({ duration: 0, padding: 0.2 }), 0);
         return () => clearTimeout(t);
-    }, [activeMap?.id, onMap.length, fitView]);
+    }, [activeMap?.name, onMap.length, fitView]);
     const onNodesChange = useCallback((cs: NodeChange<Node>[]) => setNodes((ns) => applyNodeChanges(cs, ns)), []);
 
     // ── 쓰기 ──────────────────────────────────────────────────────────────
@@ -323,19 +323,19 @@ function MapPanelInner(): JSX.Element {
         onError: invalidateGroups, // 낙관 갱신이 거짓이 된 채 남지 않게
     });
     const parentMut = useMutation({
-        mutationFn: (v: { id: string; parentId: string | null }) => setGroupParent(v.id, v.parentId),
+        mutationFn: (v: { name: string; parentName: string | null }) => setGroupParent(v.name, v.parentName),
         onSuccess: invalidateGroups,
         onError: (e: Error) => { window.alert(e.message); invalidateGroups(); }, // 순환 등은 서버가 막는다 — 이유를 보여준다
     });
     const placeMut = useMutation({
-        mutationFn: (v: { id: string; mapId: string; x: number; y: number }) => placeGroup(v.id, v.mapId, v.x, v.y),
+        mutationFn: (v: { name: string; mapName: string; x: number; y: number }) => placeGroup(v.name, v.mapName, v.x, v.y),
         onSuccess: invalidateGroups,
     });
-    const unplaceMut = useMutation({ mutationFn: (id: string) => unplaceGroup(id), onSuccess: invalidateGroups });
+    const unplaceMut = useMutation({ mutationFn: (name: string) => unplaceGroup(name), onSuccess: invalidateGroups });
     const createMapMut = useMutation({
         mutationFn: (v: { name: string; scope: MapScope }) => createMap(v.name, v.scope),
         onSuccess: (m) => {
-            setSavedId(m.id);
+            setSavedName(m.name);
             void qc.invalidateQueries({ queryKey: mapsQuery().queryKey });
         },
     });
@@ -344,7 +344,7 @@ function MapPanelInner(): JSX.Element {
         onSuccess: async (g) => {
             if (!activeMap) return;
             const c = viewCenter(); // 만들자마자 **보이는 자리**에 — (0,0) 고정은 겹쳐 쌓인다
-            await placeGroup(g.id, activeMap.id, c.x, c.y);
+            await placeGroup(g.name, activeMap.name, c.x, c.y);
             invalidateGroups();
         },
     });
@@ -361,9 +361,9 @@ function MapPanelInner(): JSX.Element {
         const out: Group[] = [];
         let frontier = [id];
         while (frontier.length > 0) {
-            const next = onMap.filter((g) => g.parentId !== null && frontier.includes(g.parentId));
+            const next = onMap.filter((g) => g.parentName !== null && frontier.includes(g.parentName));
             out.push(...next);
-            frontier = next.map((g) => g.id);
+            frontier = next.map((g) => g.name);
             if (out.length > onMap.length) break; // 순환 방어(저장 경로가 막지만 옛 데이터 대비)
         }
         return out;
@@ -386,15 +386,15 @@ function MapPanelInner(): JSX.Element {
                 const dx = newAbs.x - before.abs.x;
                 const dy = newAbs.y - before.abs.y;
                 if (dx === 0 && dy === 0) continue;
-                for (const g of [gv.groupById.get(d.id), ...descendantsOf(d.id)]) {
+                for (const g of [gv.groupByName.get(d.id), ...descendantsOf(d.id)]) {
                     if (!g || g.x === null || g.y === null) continue;
-                    moves.push({ id: g.id, x: g.x + dx, y: g.y + dy });
+                    moves.push({ name: g.name, x: g.x + dx, y: g.y + dy });
                 }
             }
             if (moves.length > 0) {
                 qc.setQueryData<Group[]>(groupsQuery().queryKey, (list) =>
                     list?.map((g) => {
-                        const m = moves.find((v) => v.id === g.id);
+                        const m = moves.find((v) => v.name === g.name);
                         return m ? { ...g, x: m.x, y: m.y } : g;
                     }),
                 );
@@ -405,11 +405,11 @@ function MapPanelInner(): JSX.Element {
             const center = absCenterOf(laid, node.id, node.position);
             if (center) {
                 const target = dropTargetAt(laid.filter((n) => !n.id.startsWith("chip-")), center, node.id);
-                const currentParent = gv.groupById.get(node.id)?.parentId ?? null;
-                if (target !== currentParent) parentMut.mutate({ id: node.id, parentId: target });
+                const currentParent = gv.groupByName.get(node.id)?.parentName ?? null;
+                if (target !== currentParent) parentMut.mutate({ name: node.id, parentName: target });
             }
         },
-        [laid, gv.groupById, descendantsOf, qc, moveMut, parentMut],
+        [laid, gv.groupByName, descendantsOf, qc, moveMut, parentMut],
     );
 
     const addFilterStage = useWorkbench((s) => s.addFilterStage);
@@ -519,7 +519,7 @@ function MapPanelInner(): JSX.Element {
                     {chain.length > 0 && (
                         <ChainBar
                             chain={chain}
-                            nameOf={(id) => gv.groupById.get(id)?.name ?? "(지워짐)"}
+                            nameOf={(id) => gv.groupByName.get(id)?.name ?? "(지워짐)"}
                             members={chainMembers.length}
                             onRewind={(i) => setChain((cur) => cur.slice(0, i + 1))}
                             onClear={() => setChain([])}
@@ -533,7 +533,7 @@ function MapPanelInner(): JSX.Element {
                     <GroupSidebar
                         maps={maps}
                         activeMap={activeMap}
-                        onPickMap={(id) => { setSavedId(id); setChain([]); }}
+                        onPickMap={(name) => { setSavedName(name); setChain([]); }}
                         onCreateMap={(name, scope) => createMapMut.mutate({ name, scope })}
                         busyMap={createMapMut.isPending}
                         onMap={onMap}
@@ -541,7 +541,7 @@ function MapPanelInner(): JSX.Element {
                         countOf={(id) => counts.get(id) ?? 0}
                         chain={chain}
                         onPickGroup={onNodeClick}
-                        onPlace={(id) => { if (!activeMap) return; const c = viewCenter(); placeMut.mutate({ id, mapId: activeMap.id, x: c.x, y: c.y }); }}
+                        onPlace={(name) => { if (!activeMap) return; const c = viewCenter(); placeMut.mutate({ name, mapName: activeMap.name, x: c.x, y: c.y }); }}
                         onCreateGroup={(name) => { if (activeMap) createGroupMut.mutate({ name, scope: activeMap.scope }); }}
                         busyGroup={createGroupMut.isPending}
                     />
@@ -550,7 +550,7 @@ function MapPanelInner(): JSX.Element {
                     // 목록은 표라서 칸이 더 넓어야 한다(날짜·시각·종목 세 열).
                     <SideColumn width={LIST_W}>
                         {chain.length > 0
-                            ? <MemberList names={chain.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)")} members={chainMembers} />
+                            ? <MemberList names={chain.map((id) => gv.groupByName.get(id)?.name ?? "(지워짐)")} members={chainMembers} />
                             : <SideNote>평면에서 그룹을 짚으면 그 공통 멤버가 여기 나옵니다</SideNote>}
                     </SideColumn>
                 )}
@@ -610,8 +610,8 @@ function GroupSidebar({
     maps, activeMap, onPickMap, onCreateMap, busyMap,
     onMap, offMap, countOf, chain, onPickGroup, onPlace, onCreateGroup, busyGroup,
 }: {
-    maps: readonly { id: string; name: string; scope: MapScope }[];
-    activeMap: { id: string; name: string; scope: MapScope } | null;
+    maps: readonly SimilarityMap[];
+    activeMap: SimilarityMap | null;
     onPickMap: (id: string) => void;
     onCreateMap: (name: string, scope: MapScope) => void;
     busyMap: boolean;
@@ -630,7 +630,7 @@ function GroupSidebar({
         <SideColumn>
             <SideHead label="평면" action={makingMap ? "취소" : "+ 새로"} onAction={() => setMakingMap((v) => !v)} />
             {maps.map((m) => (
-                <SideRow key={m.id} active={m.id === activeMap?.id} onClick={() => onPickMap(m.id)}
+                <SideRow key={m.name} active={m.name === activeMap?.name} onClick={() => onPickMap(m.name)}
                     right={m.scope === "day" ? "하루" : "타점"}>{m.name}</SideRow>
             ))}
             {makingMap && <NewMapForm busy={busyMap} onCreate={(n, sc) => { onCreateMap(n, sc); setMakingMap(false); }} />}
@@ -639,17 +639,17 @@ function GroupSidebar({
             {adding && <NewGroupForm busy={busyGroup} onCreate={(n) => { onCreateGroup(n); setAdding(false); }} />}
             {onMap.length === 0 && !adding && <SideNote>아직 없음 — 아래에서 올리거나 새로 만드세요</SideNote>}
             {onMap.map((g) => (
-                <SideRow key={g.id} active={chain.includes(g.id)}
-                    onClick={(e) => onPickGroup(g.id, e.ctrlKey || e.metaKey)}
+                <SideRow key={g.name} active={chain.includes(g.name)}
+                    onClick={(e) => onPickGroup(g.name, e.ctrlKey || e.metaKey)}
                     title="클릭 = 이 그룹만 · Ctrl+클릭 = 교집합에 더하기"
-                    right={String(countOf(g.id))}>{g.name}</SideRow>
+                    right={String(countOf(g.name))}>{g.name}</SideRow>
             ))}
 
             {offMap.length > 0 && (
                 <>
                     <SideHead label={`안 올린 그룹 ${offMap.length}`} />
                     {offMap.map((g) => (
-                        <SideRow key={g.id} muted onClick={() => onPlace(g.id)} title="이 평면에 올린다" right="올리기">{g.name}</SideRow>
+                        <SideRow key={g.name} muted onClick={() => onPlace(g.name)} title="이 평면에 올린다" right="올리기">{g.name}</SideRow>
                     ))}
                 </>
             )}

@@ -8,12 +8,11 @@ import { SkeletonShapes } from "../rank/skeletonShapes.js";
 
 const D = "2026-07-02";
 
-let seq = 0;
 const minutePivot = (code: string, time: string, field: "high" | "low" = "high"): ChartAnchor => ({
-    id: String(++seq), stockCode: code, date: D, param: SKELETON_MINUTE_PARAM, anchorDate: D, anchorTime: time, field, market: "un",
+    stockCode: code, date: D, param: SKELETON_MINUTE_PARAM, anchorDate: D, anchorTime: time, field, market: "un",
 });
 const baselineMinute = (code: string, time: string): ChartAnchor => ({
-    id: String(++seq), stockCode: code, date: D, param: BASELINE_PARAM, anchorDate: D, anchorTime: time, field: "close", market: "un",
+    stockCode: code, date: D, param: BASELINE_PARAM, anchorDate: D, anchorTime: time, field: "close", market: "un",
 });
 
 const bar = (p: number): MinuteCandle["un"] => ({ open: String(p), high: String(p), low: String(p), close: String(p), volume: "1" });

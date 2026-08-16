@@ -51,10 +51,19 @@ export interface NewChartAnchor {
     market?: AnchorMarket;
 }
 
-/** 저장된 앵커 — 조회/응답 단위. id(surrogate bigint) 존재가 타입으로 보장. */
-export interface ChartAnchor extends NewChartAnchor {
-    id: string;
-}
+/**
+ * 저장된 앵커 — 조회/응답 단위. **입력과 모양이 같다**: id 가 정체성이 아니라 좌표가 정체성이라,
+ * 저장 전후에 달라지는 게 없다. surrogate id 는 저장소 안에만 남고 계약을 건너지 않는다.
+ */
+export type ChartAnchor = NewChartAnchor;
+
+/**
+ * 한 앵커의 손잡이 문자열 — 화면이 "이 선"을 가리킬 때 쓴다(React 키·삭제 대상 지목).
+ * 좌표 전체를 잇는다: uq_chart_anchor_identity 가 이 튜플의 유일성을 보장하므로 손잡이로 충분하다.
+ * 옛날엔 DB id 를 이 자리에 썼는데, 그건 로컬 미러와 원격이 갈리는 값이라 손잡이로도 부적격이다.
+ */
+export const chartAnchorKey = (a: NewChartAnchor): string =>
+    [a.stockCode, a.date, a.time ?? "", a.param, a.anchorDate, a.anchorTime ?? "", a.field ?? "", a.market ?? ""].join("|");
 
 /**
  * 앵커가 있는 (종목, 거래일) 1건 — 작업셋 목록용 read model. count 는 그 차트의 기준선(=선) 개수.

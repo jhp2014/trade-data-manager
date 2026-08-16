@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { Group, GroupMembership } from "../../../api/groups.js";
 import { chainCandidates, chipId, mapArrows, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "../mapView.js";
 
-const grp = (id: string, parentId: string | null = null): Group =>
-    ({ id, name: id, scope: "day", parentId, mapId: "m", x: 0, y: 0 });
+const grp = (name: string, parentName: string | null = null): Group =>
+    ({ name, scope: "day", parentName, mapName: "m", x: 0, y: 0 });
 
 // 테마 ▸ 2차전지 · 갭상승(무관)
 const byId = new Map<string, Group>([["테마", grp("테마")], ["2차전지", grp("2차전지", "테마")], ["갭상승", grp("갭상승")]]);
@@ -11,14 +11,14 @@ const byId = new Map<string, Group>([["테마", grp("테마")], ["2차전지", g
 const item = (code: string, groups: string[]): { it: PopulationItem; ids: string[] } =>
     ({ it: { stockCode: code, date: "2026-07-01" }, ids: groups });
 
-const row = (code: string, groupIds: string[]): GroupMembership => ({ stockCode: code, date: "d", groupIds });
+const row = (code: string, groupNames: string[]): GroupMembership => ({ stockCode: code, date: "d", groupNames });
 
 describe("populationFeed — 항목당 적용 집합 판정 1회", () => {
     it("주입된 판정 그대로 의사 피드가 된다", () => {
         const rows = [item("A", ["2차전지", "테마"]), item("B", [])];
         const feed = populationFeed(rows.map((r) => r.it), (i) => rows.find((r) => r.it.stockCode === i.stockCode)!.ids);
         expect(feed).toHaveLength(2);
-        expect(feed[0]!.groupIds).toEqual(["2차전지", "테마"]);
+        expect(feed[0]!.groupNames).toEqual(["2차전지", "테마"]);
     });
 
     it("시각 있는 항목은 시각을 보존한다(목록 행 클릭 = 타점 이동의 재료)", () => {
@@ -86,7 +86,7 @@ describe("chainCandidates — 한 걸음 더 갈 수 있는 곳", () => {
 
     it("조상·자손은 뺀다 — 포함관계는 컨테이너 영역이 이미 보여준다", () => {
         const f = [row("A", ["2차전지", "테마", "갭상승"])];
-        const c = chainCandidates(f, ["2차전지"], { groupById: byId });
+        const c = chainCandidates(f, ["2차전지"], { groupByName: byId });
         expect(c.has("테마")).toBe(false);
         expect(c.get("갭상승")).toBe(1);
     });

@@ -15,10 +15,9 @@ const daily = (date: string, high = 0): DailyCandle => ({
 });
 
 const point = (time = "09:30:00"): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
-let seq = 0;
 /** 차트 소유 기준선(선=앵커) — 타점 시각이 없다. */
 const baseline = (anchorDate: string, anchorTime?: string): ChartAnchor =>
-    ({ id: String(++seq), stockCode: CODE, date: DATE, param: "baseline", anchorDate, anchorTime, field: "high", market: "un" });
+    ({ stockCode: CODE, date: DATE, param: "baseline", anchorDate, anchorTime, field: "high", market: "un" });
 
 function deps(v: { dailies?: DailyCandle[]; anchors?: ChartAnchor[] }): AxisDeps {
     return {

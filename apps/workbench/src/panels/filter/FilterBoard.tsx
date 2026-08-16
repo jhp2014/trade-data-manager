@@ -12,9 +12,8 @@
 // 게다가 그룹 조건은 여러 필터로 나누는 게 의미가 있다(각각의 한계 기여도가 따로 나온다).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { RankAxis } from "@trade-data-manager/wire";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
-import { isComputedAxis } from "../../lib/computedAxis.js";
+import { isComputedAxis, type AxisRef } from "../../lib/computedAxis.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
@@ -194,20 +193,20 @@ export function FilterBoard({ reveal, onlyActive }: {
 
                                 {axes.length === 0 && <Note>이 층위에 축이 없습니다</Note>}
                                 {axes.map((axis) => {
-                                    const key: RailKey = { kind: "axis", axisId: axis.id };
+                                    const key: RailKey = { kind: "axis", axisId: axis.key };
                                     const stage = stageOf(key);
                                     if (!visible(stage !== undefined)) return null;
                                     const rowId = rowIdOfKey(key);
                                     return (
-                                        <div key={axis.id} ref={registerRow(rowId)} style={rowWrap(stage, flash === rowId)}>
-                                            {isComputedAxis(axis.id)
+                                        <div key={axis.key} ref={registerRow(rowId)} style={rowWrap(stage, flash === rowId)}>
+                                            {isComputedAxis(axis.key)
                                                 ? <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey}
-                                                    onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.id, x, y })}
-                                                    onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.id, ranges } : null)} />
-                                                : <SlotAxisRail axis={axis} line={ax.linesByAxis.get(axis.id) ?? []}
+                                                    onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.key, x, y })}
+                                                    onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.key, ranges } : null)} />
+                                                : <SlotAxisRail axis={axis} line={ax.linesByAxis.get(axis.key) ?? []}
                                                     band={predicateOfKind(stages, key, "axisBand")?.band ?? {}}
                                                     markerKey={markerKey}
-                                                    onChange={(band: RankBand | null) => write(key, band ? { kind: "axisBand", axisId: axis.id, band } : null)} />}
+                                                    onChange={(band: RankBand | null) => write(key, band ? { kind: "axisBand", axisId: axis.key, band } : null)} />}
                                         </div>
                                     );
                                 })}
@@ -269,7 +268,7 @@ export function FilterBoard({ reveal, onlyActive }: {
 
 /** 계산 축 레일 — 재료(값·표시 규격)를 꺼내 꽂는 자리. 값이 없는 축은 어댑터가 이유를 적는다. */
 function ComputedAxisRailRow({ axis, stages, markerKey, onType, onChange }: {
-    axis: RankAxis;
+    axis: AxisRef;
     stages: readonly FilterStage[];
     markerKey: string | null;
     onType: (x: number, y: number) => void;
@@ -277,12 +276,12 @@ function ComputedAxisRailRow({ axis, stages, markerKey, onType, onChange }: {
 }): JSX.Element {
     // 축은 Provider 에서 직접 — 부모가 넘겨주지 않는다(어차피 같은 한 벌이라 넘길 이유가 없다).
     const ax = useRankAxes();
-    const meta = ax.computedMeta.get(axis.id);
-    const key: RailKey = { kind: "axis", axisId: axis.id };
+    const meta = ax.computedMeta.get(axis.key);
+    const key: RailKey = { kind: "axis", axisId: axis.key };
     return (
         <ComputedAxisRail
             axis={axis}
-            values={ax.computedValues.get(axis.id) ?? EMPTY_VALUES}
+            values={ax.computedValues.get(axis.key) ?? EMPTY_VALUES}
             strongerWhen={meta?.strongerWhen ?? "higher"}
             fmtValue={meta?.fmt ?? ((n) => n.toFixed(1))}
             ranges={predicateOfKind(stages, key, "axisValue")?.ranges ?? []}

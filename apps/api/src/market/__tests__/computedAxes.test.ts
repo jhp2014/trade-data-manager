@@ -134,7 +134,7 @@ describe("ComputedAxes 앵커 지문", () => {
 
     // 차트 소유 앵커 — 타점 시각이 없다(그 차트의 모든 타점에 적용). id 는 지문이 안 읽으므로 아무 값.
     const anchor = (p: ReviewPointKey, anchorDate: string): ChartAnchor =>
-        ({ id: "0", stockCode: p.stockCode, date: p.date, param: "baseline", anchorDate, field: "high", market: "un" });
+        ({ stockCode: p.stockCode, date: p.date, param: "baseline", anchorDate, field: "high", market: "un" });
 
     /** params 축 — 값 = 앵커가 가리키는 날짜의 일(day). 앵커가 바뀌면 값이 바뀌어야 정상. */
     function paramAxis(): ComputedAxisDef {
@@ -220,7 +220,7 @@ describe("ComputedAxes 앵커 지문", () => {
         return { ...base, key: "mixed-fake", optionalParams: ["ignore-candle"] };
     }
     const ignore = (p: ReviewPointKey, anchorDate: string): ChartAnchor =>
-        ({ id: "0", stockCode: p.stockCode, date: p.date, param: "ignore-candle", anchorDate });
+        ({ stockCode: p.stockCode, date: p.date, param: "ignore-candle", anchorDate });
 
     it("한 param 에 앵커가 여럿일 때 행 순서가 바뀌어도 재계산하지 않는다(지문 정렬)", async () => {
         const points = [pt("001")];

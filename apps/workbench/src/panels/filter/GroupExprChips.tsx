@@ -27,9 +27,9 @@ export interface GroupNaming {
  * 사전 한 벌 → 이름 짓기. **훅이 아니다** — 그룹을 쓰는 화면은 이미 useGroups 를 부르고 있고,
  * 여기서 또 부르면 같은 인덱스(멤버십 수천 건)가 한 벌 더 만들어진다.
  */
-export function namingOf(gv: Pick<GroupsView, "groupById" | "ancestorsOf" | "pathLabel">): GroupNaming {
+export function namingOf(gv: Pick<GroupsView, "groupByName" | "ancestorsOf" | "pathLabel">): GroupNaming {
     return {
-        nameOf: (id) => (id === NO_TAGS ? NONE_LABEL : (gv.groupById.get(id)?.name ?? GONE_LABEL)),
+        nameOf: (id) => (id === NO_TAGS ? NONE_LABEL : (gv.groupByName.get(id)?.name ?? GONE_LABEL)),
         ancestorsOf: (id) => (id === NO_TAGS ? [] : gv.ancestorsOf(id).map((g) => g.name)),
         pathOf: (id) => (id === NO_TAGS ? NONE_LABEL : gv.pathLabel(id, GONE_LABEL)),
     };

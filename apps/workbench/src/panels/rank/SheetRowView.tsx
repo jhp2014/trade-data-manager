@@ -24,7 +24,6 @@ export const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프�
 /** 셀 우클릭 페이로드 — 판단 축=slot 밴드·컷·배치해제 / 계산 축=값 경계 메뉴(패널이 axisId 로 가른다). */
 export interface CellCtxPayload {
     axisId: string;
-    slotId: string;
     point: RankPoint;
     rank: number;
     total: number;
@@ -120,9 +119,9 @@ function SheetRowViewImpl({
             const frozen = leftOf.has(colKey(c));
             return {
                 onClick: () => h.onNav(row),
-                // 우클릭 메뉴는 축 종류에 따라 갈린다(패널의 ctx 렌더): 판단 축=slot 밴드+컷+배치해제,
-                // 계산 축=값 경계(타점 앵커). 계산 축에 배치·컷이 없는 건 slot 이 없어서지 읽기 전용이라서가 아니다.
-                onContextMenu: cell ? (ev) => { ev.preventDefault(); h.onCellCtx({ axisId, slotId: cell.slotId, point, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
+                // 우클릭 메뉴는 축 종류에 따라 갈린다(패널의 ctx 렌더): 판단 축=밴드+컷+배치해제,
+                // 계산 축=값 경계(타점 앵커). 계산 축에 배치·컷이 없는 건 꽂을 자리가 없어서지 읽기 전용이라서가 아니다.
+                onContextMenu: cell ? (ev) => { ev.preventDefault(); h.onCellCtx({ axisId, point, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
                 title: isComputedAxis(axisId) ? "계산 축(수식) — 우클릭 = 이 값 이상/이하 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
                 style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
                 body: <Cell cell={cell} valued={valuedOf(axisId, row)} mode={mode} prominent={focus} barWidth={widthOf(c) - 18} />,

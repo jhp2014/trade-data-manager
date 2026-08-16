@@ -38,15 +38,19 @@ export interface ChartRef {
  */
 export type GroupScope = Grain;
 
-/** 그룹 하나(저장됨 → id 필수). name 은 전역 유일. */
+/**
+ * 그룹 하나. **이름이 곧 정체성**이다(전역 유일) — 계약은 id 가 아니라 이름으로 지목한다.
+ * surrogate id 는 저장소 안에 남는다(rename 이 FK 를 타고 cascade 하지 않게, 조인도 bigint 로).
+ * 다만 밖으로 내보내지 않는다: 로컬 미러와 Supabase 가 각자 id 를 발급하고 전체교체 때 갈리므로,
+ * id 를 계약에 두면 동기화를 건넌 참조가 조용히 다른 행을 가리킨다.
+ */
 export interface Group {
-    id: string;
     name: string;
     scope: GroupScope;
     /** 그룹 안 그룹. null = 최상위. 부모는 같은 맵이어야 하고 순환하면 안 된다(저장 경로가 본다). */
-    parentId: string | null;
+    parentName: string | null;
     /** 어느 평면에 올렸나. null = 아직 안 올림(정상 상태 — 만들기와 올리기는 별개). */
-    mapId: string | null;
+    mapName: string | null;
     x: number | null;
     y: number | null;
 }
@@ -61,26 +65,26 @@ export interface GroupItemRef extends ChartRef {
  * 하루 소속과 타점 소속이 **한 피드**에 온다(시각 유무로 갈린다) — 옛날엔 정션이 둘이라 피드도 둘이었다.
  */
 export interface GroupMembership extends GroupItemRef {
-    groupIds: string[];
+    groupNames: string[];
 }
 
 /** 맵 위에서 그룹을 옮긴 결과. 이동은 언제나 배열 — 여럿을 한 번에 끌면 낱개 요청은 부분 실패를 낳는다. */
 export interface GroupMove {
-    id: string;
+    name: string;
     x: number;
     y: number;
 }
 
 /** 그룹을 평면에 올리기(값) / 내리기(null). 올릴 때 좌표를 함께 정한다. */
-export type GroupPlacement = { mapId: string; x: number; y: number } | null;
+export type GroupPlacement = { mapName: string; x: number; y: number } | null;
 
 /**
  * 두 그룹이 멤버를 얼마나 공유하나 — **징검다리**. 저장하지 않고 멤버십에서 계산한다.
  * count 가 굵기가 되고, 굵을수록 두 그룹이 실은 한 덩어리에 가깝다는 뜻이다.
  */
 export interface GroupOverlap {
-    aId: string;
-    bId: string;
+    a: string; // 그룹 이름(사전순 앞)
+    b: string;
     count: number;
 }
 
@@ -93,18 +97,18 @@ export const groupItemKey = (item: GroupItemRef): string =>
  * 한 항목의 그룹이 k 개면 쌍은 k(k-1)/2 개 — 손으로 붙이는 수라 k 는 작고, 전체는 항목 수에 선형이다.
  */
 export function overlapsOf(memberships: readonly GroupMembership[]): GroupOverlap[] {
-    const byPair = new Map<string, number>();
+    // 중첩 Map 인 이유: 키가 **이름**이고 이름은 자유 텍스트다. 예전처럼 `a|b` 로 이어 붙였다가 다시
+    // 쪼개면 이름에 든 구분자가 쌍을 잘못 가른다("A|B"+"C" 와 "A"+"B|C" 가 같은 키가 된다).
+    const byPair = new Map<string, Map<string, number>>();
     for (const m of memberships) {
-        const ids = [...new Set(m.groupIds)].sort();
-        for (let i = 0; i < ids.length; i++) {
-            for (let j = i + 1; j < ids.length; j++) {
-                const k = `${ids[i]}|${ids[j]}`;
-                byPair.set(k, (byPair.get(k) ?? 0) + 1);
+        const names = [...new Set(m.groupNames)].sort();
+        for (let i = 0; i < names.length; i++) {
+            for (let j = i + 1; j < names.length; j++) {
+                const inner = byPair.get(names[i]!) ?? new Map<string, number>();
+                inner.set(names[j]!, (inner.get(names[j]!) ?? 0) + 1);
+                byPair.set(names[i]!, inner);
             }
         }
     }
-    return [...byPair].map(([k, count]) => {
-        const [aId, bId] = k.split("|");
-        return { aId: aId!, bId: bId!, count };
-    });
+    return [...byPair].flatMap(([a, inner]) => [...inner].map(([b, count]) => ({ a, b, count })));
 }

@@ -8,7 +8,7 @@
 // 방향과 반열림 번역은 railBound(순수·테스트됨)에. 여기는 재료를 프랙션으로 바꾸는 일만 한다.
 import { useMemo } from "react";
 import type { PlacedPoint, RankAxis } from "@trade-data-manager/wire";
-import { assemble } from "../../rank/rankGeometry.js";
+import { assemble, slotAnchorKey } from "../../rank/rankGeometry.js";
 import { nearestPointAt, valueDomain, valueToFrac } from "../../../lib/computedAxis.js";
 import { clampIndex } from "../../../lib/num.js";
 import { pointKey } from "../../../lib/pointKey.js";
@@ -105,26 +105,29 @@ export function SlotAxisRail({
     onChange: (band: RankBand | null) => void;
 }): JSX.Element {
     // 자리는 균등 간격 — 이 축의 좌표는 순서일 뿐 거리가 아니다(값 축과 다른 점).
+    // 레일의 키 = **그 자리에 든 타점**(pointKey). slot 은 이름이 없고 orderKey 는 reindex 가 다시 쓰므로,
+    // 경계로 저장할 수 있는 건 타점뿐이다(계산 축 경계 AxisBound 와 같은 규칙).
     const { slots, fracOf, rankOf } = useMemo(() => {
         const list = assemble([...line]);
         const fracs = new Map<string, number>();
         const ranks = new Map<string, number>();
         list.forEach((s, i) => {
-            fracs.set(s.slotId, list.length <= 1 ? 0.5 : i / (list.length - 1));
-            ranks.set(s.slotId, list.length - i); // 오른쪽(큰 orderKey) = 강 = 1위
+            const k = slotAnchorKey(s);
+            fracs.set(k, list.length <= 1 ? 0.5 : i / (list.length - 1));
+            ranks.set(k, list.length - i); // 오른쪽(큰 orderKey) = 강 = 1위
         });
         return { slots: list, fracOf: fracs, rankOf: ranks };
     }, [line]);
 
-    const frac = (slotId: string): number => fracOf.get(slotId) ?? 0.5;
-    const fmt = (slotId: string): string => {
-        const rank = rankOf.get(slotId);
+    const frac = (anchor: string): number => fracOf.get(anchor) ?? 0.5;
+    const fmt = (anchor: string): string => {
+        const rank = rankOf.get(anchor);
         return rank === undefined ? GONE_LABEL : `${rank}위`;
     };
     const fracs = useMemo(() => [...fracOf.values()], [fracOf]);
 
-    const weakSlot = slots[0]?.slotId;
-    const strongSlot = slots[slots.length - 1]?.slotId;
+    const weakSlot = slots[0] && slotAnchorKey(slots[0]);
+    const strongSlot = slots[slots.length - 1] && slotAnchorKey(slots[slots.length - 1]!);
     // 배치는 언제나 타점 키로 저장된다(하루 축도 그날 전 타점에 fanout) — 그래서 키 하나로 두 층위가 다 맞는다.
     const markerSlot = markerKey === null ? undefined : slots.find((s) => s.points.some((p) => pointKey(p) === markerKey));
 
@@ -136,12 +139,12 @@ export function SlotAxisRail({
             toFrac={frac}
             // 스냅 = 가장 가까운 자리. 자리 사이에는 경계를 세울 수 없다(저장할 자리가 없다).
             // 자리가 균등 간격이라 반올림이 곧 최근접이다.
-            fromFrac={(f) => slots[clampIndex(Math.round(f * (slots.length - 1)), slots.length)]?.slotId ?? ""}
+            fromFrac={(f) => { const s = slots[clampIndex(Math.round(f * (slots.length - 1)), slots.length)]; return s ? slotAnchorKey(s) : ""; }}
             fmt={fmt}
             minLabel="약"
             maxLabel="강"
             ticks={fracs}
-            marker={markerSlot ? { frac: frac(markerSlot.slotId), label: fmt(markerSlot.slotId) } : null}
+            marker={markerSlot ? { frac: frac(slotAnchorKey(markerSlot)), label: fmt(slotAnchorKey(markerSlot)) } : null}
             highlight={highlight}
             disabledNote={slots.length === 0 ? "배치 없음 — 경계로 삼을 자리가 없습니다" : undefined}
             onChange={(next: RailRange<string>[]) => onChange(toRankBand(next, frac))}

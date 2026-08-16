@@ -569,9 +569,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         const s = inspectKey ? byKey.get(inspectKey) : null;
         if (!s) return [];
         const ids = s.kind === "point"
-            ? groupsView.groupIdsOf({ stockCode: s.stockCode, date: s.date, time: s.time })
-            : groupsView.chartGroupIdsOf(s);
-        return ids.map((id) => groupsView.groupById.get(id)?.name).filter((n): n is string => !!n);
+            ? groupsView.groupNamesOf({ stockCode: s.stockCode, date: s.date, time: s.time })
+            : groupsView.chartGroupNamesOf(s);
+        return ids.map((id) => groupsView.groupByName.get(id)?.name).filter((n): n is string => !!n);
     }, [inspectKey, byKey, groupsView]);
 
     // 수준선(기준선·D선)을 받을 골격 — 단일 선택 + (다르면) 호버 하나. 다중 선택이면 호버 것만.
@@ -859,7 +859,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             {/* 그룹 메뉴 — 같은 창, 다른 정션: 차트 라벨은 chart_tags, 타점 마커는 review_point_tags. */}
             {groupMenu?.kind === "chart" && (
                 <BulkGroupMenu anchor={groupMenu} targets={groupMenu.charts} scope="day" label={groupMenu.label} onClose={() => setGroupMenu(null)}
-                    hasGroup={(c, id) => groupsView.chartGroupIdsOf(c).includes(id)}
+                    hasGroup={(c, id) => groupsView.chartGroupNamesOf(c).includes(id)}
                     inheritedVia={(c, id) => groupsView.inheritedViaOf(c, id)?.name ?? null}
                     toggle={(c, id, on) => groupsView.toggleChart(c, id, on)} />
             )}

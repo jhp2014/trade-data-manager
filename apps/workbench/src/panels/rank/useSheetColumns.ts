@@ -8,8 +8,8 @@
 // 청소가 돌면 아직 안 온 계산 축 열의 고정·숨김·폭을 유령으로 오인해 지운다. 사용자 설정이 조용히
 // 사라지는 종류의 사고라 가드가 필수다.
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { RankAxis } from "@trade-data-manager/wire";
 import { isComputedAxis } from "../../lib/computedAxis.js";
+import type { AxisRef } from "../../lib/computedAxis.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
@@ -55,7 +55,7 @@ export interface SheetColumns {
 }
 
 export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
-    axes: RankAxis[];
+    axes: AxisRef[];
     axesLoading: boolean;
     /** 표 스크롤 컨테이너의 폭 — 남는 폭을 축 열들이 나눠 갖는다. */
     containerW: number;
@@ -70,7 +70,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
     // 축을 지우면 그 축 키가 넷 모두에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소(위 ⚠ 참고).
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
-        const ids = axes.map((a) => a.id);
+        const ids = axes.map((a) => a.key);
         setFrozenCols((f) => pruneAxisKeys(f, ids));
         setHiddenCols((h) => pruneAxisKeys(h, ids));
         setColWidths((w) => pruneAxisKeys(w, ids));
@@ -98,7 +98,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
     // 기본 순서 → 숨김 제외 → 고정 먼저(기본순 유지, 좌측 스택) → 비고정. 종목은 항상 표시·고정.
     const baseCols = useMemo<Col[]>(() => [
         { key: "name" }, { key: "date" }, { key: "time" },
-        ...axes.map((a): Col => ({ key: "axis", axisId: a.id, name: a.name, computed: isComputedAxis(a.id) })),
+        ...axes.map((a): Col => ({ key: "axis", axisId: a.key, name: a.name, computed: isComputedAxis(a.key) })),
         { key: "outcome" },
     ], [axes]);
     const layout = useMemo(

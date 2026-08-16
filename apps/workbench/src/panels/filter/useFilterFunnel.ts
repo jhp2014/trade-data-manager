@@ -94,22 +94,22 @@ export function useFilterFunnel(): FunnelView {
         return m;
     }, [pointsQ.data]);
 
-    const axisScopes = useMemo(() => new Map(ax.axes.map((a) => [a.id, a.scope as Grain])), [ax.axes]);
+    const axisScopes = useMemo(() => new Map(ax.axes.map((a) => [a.key, a.scope as Grain])), [ax.axes]);
 
     // ── 조회기 ────────────────────────────────────────────────────────────
     const grainLook = useMemo<GrainLookup>(
         () => ({
-            groupScope: (id) => gv.groupById.get(id)?.scope,
+            groupScope: (id) => gv.groupByName.get(id)?.scope,
             axisScope: (id) => axisScopes.get(id),
         }),
-        [gv.groupById, axisScopes],
+        [gv.groupByName, axisScopes],
     );
 
     const evalLook = useMemo<EvalLookup>(
         () => ({
             // 적용 집합(직접 ∪ 하루 상속 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
-            groupIdsOf: (i) => gv.appliedGroupIdsOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
-            hasGroup: (id) => gv.groupById.has(id),
+            groupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
+            hasGroup: (id) => gv.groupByName.has(id),
             orderKeyOf: (axisId, i) => {
                 const idx = placements.get(axisId);
                 if (!idx) return undefined; // 지워진 축 — 판단 불가
@@ -117,7 +117,7 @@ export function useFilterFunnel(): FunnelView {
                     ? idx.byChart.get(chartKey(i))
                     : idx.byPoint.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }));
             },
-            slotOrderKey: (axisId, slotId) => placements.get(axisId)?.slots.get(slotId),
+            bandBoundOrderKey: (axisKey, point) => placements.get(axisKey)?.byPoint.get(point),
             // 계산 축 값은 타점 키로 온다(fanout). 타점 항목은 제 키로 직접, **하루 항목은 day 알갱이 축에서만**
             // 그날 아무 타점의 값으로(전부 같다 — dayAxisValueOf). point 축은 하루 항목을 판정할 수 없고(시각이
             // 값에 들어간다), 그 경우는 애초에 오지 않는다: point 축 단계가 있으면 해상도가 타점이라 하루 항목이 없다.
@@ -179,10 +179,10 @@ export function useFilterFunnel(): FunnelView {
 
     const labelLook = useMemo<LabelLookup>(
         () => ({
-            groupName: (id) => gv.groupById.get(id)?.name,
-            axisName: (id) => ax.axes.find((a) => a.id === id)?.name,
+            groupName: (id) => gv.groupByName.get(id)?.name,
+            axisName: (id) => ax.axes.find((a) => a.key === id)?.name,
         }),
-        [gv.groupById, ax.axes],
+        [gv.groupByName, ax.axes],
     );
 
     // 막힌 단계는 **앞선 단계만** 본다(상류의 정의). 판정을 다시 부르지만 한 항목뿐이라 값싸다.

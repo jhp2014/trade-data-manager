@@ -18,12 +18,15 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
         await t.close();
     });
 
-    it("add — id 를 채워 돌려주고, 같은 (차트,param,좌표,field,market) 재추가는 멱등(기존 행 반환)", async () => {
+    it("add — 저장본을 돌려주고, 같은 (차트,param,좌표,field,market) 재추가는 멱등(행이 안 는다)", async () => {
         const [line] = await repo.add([{ ...CHART, param: "baseline", anchorDate: "2026-06-27", field: "high", market: "un" }]);
-        expect(line.id).toBeTruthy();
+        expect(line.anchorDate).toBe("2026-06-27");
+        // **계약에 id 가 없다** — 좌표가 정체성이다. id 는 저장소 안에만 산다: 로컬 미러와 Supabase 가
+        // 각자 발급하고 전체교체 때 갈리므로, 밖으로 나가면 동기화를 건넌 참조가 다른 행을 가리킨다.
+        expect(line).not.toHaveProperty("id");
 
         const [again] = await repo.add([{ ...CHART, param: "baseline", anchorDate: "2026-06-27", field: "high", market: "un" }]);
-        expect(again.id).toBe(line.id); // 새 행이 아니라 기존 행
+        expect(again).toEqual(line); // 새 행이 아니라 기존 행
         expect(await repo.listByChart(CHART.stockCode, CHART.date)).toHaveLength(1);
     });
 
@@ -48,7 +51,6 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
         await repo.add([{ ...OTHER_CHART, param: "baseline", anchorDate: "2026-06-30", field: "high", market: "un" }]);
         const mine = await repo.listByChart(CHART.stockCode, CHART.date);
         expect(mine.every((a) => a.date === CHART.date)).toBe(true);
-        expect(mine.map((a) => BigInt(a.id))).toEqual([...mine.map((a) => BigInt(a.id))].sort((x, y) => (x < y ? -1 : 1)));
     });
 
     it("listAnchoredCharts — 기준선만 센다(무시 캔들만 있는 차트는 작업셋이 아니다), 날짜 내림차순", async () => {
@@ -71,9 +73,9 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
         // 여기가 느슨하면 고점 선을 지우려다 저점 선까지 날아간다.
         const [saved] = await repo.add([{ ...CHART, param: "skeleton", anchorDate: CHART.date, field: "high", market: "un" }]);
         await repo.remove({ ...saved, field: "low" }); // field 만 다름 → 안 지워져야
-        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.id === saved.id)).toBe(true);
+        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.param === "skeleton")).toBe(true);
         await repo.remove(saved);
-        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.id === saved.id)).toBe(false);
+        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.param === "skeleton")).toBe(false);
     });
 
     it("removeByPoint — 그 타점 소유 행만(차트 소유 행은 NULL 이라 안 걸린다)", async () => {

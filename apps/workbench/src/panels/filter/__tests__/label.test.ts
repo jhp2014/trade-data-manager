@@ -5,7 +5,7 @@ import type { FilterPredicate, FilterStage } from "../stage.js";
 
 const look: LabelLookup = {
     groupName: (id) => (({ g1: "돌파", g2: "눌림" }) as Record<string, string>)[id],
-    axisName: (id) => (id === "a1" ? "눌림깊이" : undefined),
+    axisName: (id: string) => (id === "a1" ? "눌림깊이" : undefined),
 };
 
 const stage = (predicates: FilterPredicate[], name?: string): FilterStage => ({ id: "s", enabled: true, name, predicates });

@@ -24,12 +24,11 @@ const minute = (date: string, time: string, high: string): MinuteCandle => ({
 });
 
 const point = (time = "09:30:00"): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
-let seq = 0;
 /** 차트 소유 앵커 — 타점 시각이 없다. */
 const baseline = (a: Partial<ChartAnchor> = {}): ChartAnchor =>
-    ({ id: String(++seq), stockCode: CODE, date: DATE, param: "baseline", anchorDate: ANCHOR_DATE, field: "high", market: "un", ...a });
+    ({ stockCode: CODE, date: DATE, param: "baseline", anchorDate: ANCHOR_DATE, field: "high", market: "un", ...a });
 const ignore = (anchorDate: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
-    ({ id: String(++seq), stockCode: CODE, date: DATE, param: IGNORE_CANDLE_PARAM, anchorDate, ...over });
+    ({ stockCode: CODE, date: DATE, param: IGNORE_CANDLE_PARAM, anchorDate, ...over });
 
 function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, MinuteCandle[]>; anchors?: ChartAnchor[] }): AxisDeps {
     return {

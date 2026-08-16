@@ -51,7 +51,7 @@ describe("computedAxisView 포화(우측 절단) 자리잡기", () => {
 
     it("포화끼리는 같은 칸 — slotId 가 같아 자동으로 동률", () => {
         const v = computedAxisView(feed({ values: [pt("09:00:00", 5), pt("09:10:00", 0, true), pt("09:20:00", 300, true)] }));
-        const slots = v.line.filter((p) => p.time !== "09:00:00").map((p) => p.slotId);
+        const slots = v.line.filter((p) => p.time !== "09:00:00").map((p) => p.orderKey);
         expect(new Set(slots).size).toBe(1);
     });
 

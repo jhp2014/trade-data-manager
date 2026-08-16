@@ -28,14 +28,14 @@ export function usePlacements(): PlacementsView {
 
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
-        for (const [axisId, line] of linesByAxis) m.set(axisId, buildAxisIndex(line));
+        for (const [axisKey, line] of linesByAxis) m.set(axisKey, buildAxisIndex(line));
         return m;
     }, [linesByAxis]);
 
-    const judgedAxes = useMemo(() => axes.filter((a) => !isComputedAxis(a.id)), [axes]);
+    const judgedAxes = useMemo(() => axes.filter((a) => !isComputedAxis(a.key)), [axes]);
     const judgedIndex = useMemo(() => {
         const m = new Map<string, AxisIndex>();
-        for (const a of judgedAxes) m.set(a.id, indexByAxis.get(a.id) ?? new Map());
+        for (const a of judgedAxes) m.set(a.key, indexByAxis.get(a.key) ?? new Map());
         return m;
     }, [judgedAxes, indexByAxis]);
     const counts = useMemo(() => countPlacedByPoint(judgedIndex), [judgedIndex]);
@@ -46,7 +46,7 @@ export function usePlacements(): PlacementsView {
             countOf: (p) => counts.get(pointKey(p)) ?? 0,
             detailOf: (p) => {
                 const all = placementsOf(p, axes, indexByAxis);
-                return { placed: all.placed, unplaced: all.unplaced.filter((a) => !isComputedAxis(a.id)) };
+                return { placed: all.placed, unplaced: all.unplaced.filter((a) => !isComputedAxis(a.key)) };
             },
         }),
         [axes, judgedAxes, counts, indexByAxis],

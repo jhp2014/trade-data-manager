@@ -29,13 +29,13 @@ export function GroupFilterEditor({ anchor, scope, expr, onChange, onClose }: {
     onClose: () => void;
 }): JSX.Element {
     const gv = useGroups();
-    const { groups, groupById } = gv;
+    const { groups, groupByName } = gv;
     const naming = useMemo(() => namingOf(gv), [gv]);
     const [q, setQ] = useState("");
 
     const grainLook = useMemo<GrainLookup>(
-        () => ({ groupScope: (id) => groupById.get(id)?.scope, axisScope: () => undefined }),
-        [groupById],
+        () => ({ groupScope: (id) => groupByName.get(id)?.scope, axisScope: () => undefined }),
+        [groupByName],
     );
 
     const needle = q.trim().toLowerCase();
@@ -43,7 +43,7 @@ export function GroupFilterEditor({ anchor, scope, expr, onChange, onClose }: {
     // 검색은 **경로까지** 본다 — `반도체` 로 그 아래 그룹들을 한 번에 좁힐 수 있어야 부모가 뜻을 갖는다.
     const shown = useMemo(
         () => groups.filter((g) =>
-            g.scope === scope && (!needle || naming.pathOf(g.id).toLowerCase().includes(needle)) && canAddGroupLiteral(expr, g.id, grainLook)),
+            g.scope === scope && (!needle || naming.pathOf(g.name).toLowerCase().includes(needle)) && canAddGroupLiteral(expr, g.name, grainLook)),
         [groups, scope, needle, expr, grainLook, naming],
     );
 
@@ -72,12 +72,12 @@ export function GroupFilterEditor({ anchor, scope, expr, onChange, onClose }: {
             <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
                 {shown.length === 0 && <div style={{ ...listRow, color: "var(--text-tertiary)" }}>이 층위({scope === "day" ? "하루" : "타점"})에 고를 그룹 없음</div>}
                 {shown.map((g) => (
-                    <button key={g.id} onClick={() => onChange(addGroupLiteral(expr, g.id))} title={naming.pathOf(g.id)}
+                    <button key={g.name} onClick={() => onChange(addGroupLiteral(expr, g.name))} title={naming.pathOf(g.name)}
                         style={{ ...listRow, display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ width: 7, height: 7, borderRadius: "50%", background: groupColor(g.name), flexShrink: 0 }} />
                         <span style={{ flex: 1, minWidth: 0 }}>
                             {/* 경로가 여기서 제일 중요하다 — 같은 이름이 두 부모 밑에 있으면 목록만 보고는 못 고른다. */}
-                            <GroupPathLabel ancestors={naming.ancestorsOf(g.id)} name={g.name} color={groupColor(g.name)} size={12.5} />
+                            <GroupPathLabel ancestors={naming.ancestorsOf(g.name)} name={g.name} color={groupColor(g.name)} size={12.5} />
                         </span>
                         <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>{g.scope === "day" ? "하루" : "타점"}</span>
                     </button>
