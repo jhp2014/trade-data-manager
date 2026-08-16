@@ -30,7 +30,7 @@ import { createMap, type MapScope } from "../api/map.js";
 import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group, type GroupMembership, type GroupMove } from "../api/groups.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { Dot, miniBtn, PanelHeader, Sep, TextToggle } from "../components/ControlChrome.js";
+import { Dot, miniBtn, PanelHeader, TextToggle } from "../components/ControlChrome.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
@@ -448,16 +448,20 @@ function MapPanelInner(): JSX.Element {
                 {/* ⚠ 헤더에는 **펼치는 것을 두지 않는다**: PanelHeader 는 overflow-y hidden 이라
                     아래로 펼쳐지는 판이 잘린다(올리기 팔레트가 그렇게 안 보였다). 평면·그룹처럼
                     목록이 필요한 것은 왼쪽 사이드바가 맡는다. */}
-                {/* 왼쪽 칸은 택1 — 그래서 Dot(·)으로 묶고, 성격이 다른 "원위치"는 Sep 너머에 둔다. */}
-                <TextToggle active={side === "group"} activeColor={ACTIVE} onClick={() => toggleSide("group")}
-                    title="그룹 사전(평면·올린 그룹·안 올린 그룹) — 다시 누르면 칸을 접는다">그룹</TextToggle>
-                <Dot />
-                <TextToggle active={side === "list"} activeColor={ACTIVE} onClick={() => toggleSide("list")}
-                    title="짚은 그룹의 공통 멤버 목록 — 다시 누르면 칸을 접는다">목록</TextToggle>
-                <Sep />
-                <TextToggle active={false} onClick={() => fitView({ duration: 250 })} title="전부 화면에 담기">원위치</TextToggle>
-                <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0, marginLeft: "auto" }}>
+                {/* 왼쪽은 말(무엇을 보고 있나), 오른쪽은 손 — 전 패널 공통 규약. 좁아지면 오른쪽부터
+                    밀려나므로 "어느 평면을 보는 중인가"가 끝까지 남는다. */}
+                <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}>
                     {activeMap?.name ?? "평면 없음"} · 모집단 {funnel.isLoading ? "…" : popFeed.length}{funnel.isFiltering ? "" : " (전체)"}
+                </span>
+                {/* 왼쪽 칸은 택1이라 Dot(·)으로 묶는다 — 구분선(│)은 전 패널에서 걷어냈지만, 여기 둘은
+                    진짜로 서로를 배제하는 버튼 둘이라 그 힌트가 필요하다. */}
+                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <TextToggle active={side === "group"} activeColor={ACTIVE} onClick={() => toggleSide("group")}
+                        title="그룹 사전(평면·올린 그룹·안 올린 그룹) — 다시 누르면 칸을 접는다">그룹</TextToggle>
+                    <Dot />
+                    <TextToggle active={side === "list"} activeColor={ACTIVE} onClick={() => toggleSide("list")}
+                        title="짚은 그룹의 공통 멤버 목록 — 다시 누르면 칸을 접는다">목록</TextToggle>
+                    <TextToggle active={false} onClick={() => fitView({ duration: 250 })} title="전부 화면에 담기">원위치</TextToggle>
                 </span>
             </PanelHeader>
 

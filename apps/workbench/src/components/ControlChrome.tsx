@@ -1,5 +1,5 @@
 // 패널 헤더 컨트롤 공용 조각 — 차트 툴바·보드 헤더가 같은 계열(테두리·채움 없는 경량 텍스트)을 쓴다.
-// 구성: 상호배타 그룹은 Dot(·)으로, 그룹 사이는 Sep(│)으로 나누고, 전체를 ControlBar 가 감싼다.
+// 구성: 컨트롤 줄 자체는 HeaderControls 가 그린다 — 여기 남은 건 그 줄이 쓰는 낱개 조각들이다.
 // 머리글 줄 자체(PanelHeader)도 여기 산다 — 넘칠 때의 규약이 패널마다 달라지면 안 되기 때문이다.
 import type { CSSProperties, ReactNode } from "react";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
@@ -61,19 +61,17 @@ export function TextToggle({
     );
 }
 
-// 상호배타 옵션 구분점(·) — 한 그룹 안에서 "택1" 임을 알린다(그룹 사이는 Sep).
+// 상호배타 구분점(·) — 서로를 배제하는 버튼 둘 사이에만(맵의 그룹/목록).
 export function Dot(): JSX.Element {
     return <span style={{ color: "var(--border-default)", fontSize: 11 }}>·</span>;
 }
 
-// 컨트롤 그룹 구분자 — 1px 세로 헤어라인. 성격이 다른 그룹 사이에만.
-export function Sep(): JSX.Element {
-    return <span style={{ width: 1, height: 11, background: "var(--border-default)", flexShrink: 0 }} />;
-}
+// Sep(│ 그룹 구분자)은 사라졌다 — 컨트롤 순서를 손이 정하는 순간 묶음 경계는 우연이 되고,
+// 재정렬할 때마다 선이 늘었다 줄었다 한다. 갈래는 더보기 판에서 **이름 앞에** 붙어 그 일을 대신한다.
 
 // ControlGroup(구분자 사이 묶음)·ControlBox(라벨 붙은 옅은 박스)는 사라졌다.
-// 묶음은 이제 **선언의 `group`** 이고, 그 이름은 헤더가 아니라 더보기 판의 섹션 제목으로 산다
-// (라벨은 헤더에 없다 — HeaderControls 규약 ①). 헤더에서 묶음을 보이는 건 Sep 하나뿐이다.
+// 묶음은 이제 **선언의 `group`** 이고, 그 이름은 헤더가 아니라 더보기 판에서 **이름 앞에** 붙는다
+// (라벨은 헤더에 없다 — HeaderControls 규약 ①). 헤더는 묶음을 아예 표시하지 않는다.
 
 /**
  * 패널 머리글 한 줄 — **넘치면 줄을 바꾸지 않고 가로로 스크롤한다**(사용자 확정, 전 패널 공통).

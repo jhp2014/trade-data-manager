@@ -129,24 +129,21 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, subjectB
     return (
         <PanelHeader chrome={false} gap={8}
             style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
-            <HeaderControls controls={controls} storageKey={`wb.headerPins.skeleton.${grain}`} />
-            {/* ── 여기부터 오른쪽은 **말**: 누를 것은 없고, 길어져도 왼쪽 컨트롤을 안 민다. */}
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                {/* 테마 상태 — 손이 아니라 말이라 이쪽에 산다. 꺼져 있으면 아무 말도 안 한다(자리는
-                    오른쪽으로 자라므로 예약이 필요 없다 — 왼쪽 컨트롤을 안 민다). */}
-                {t.showTheme && (
-                    <span style={themeStatus} title={themeStatusTitle(theme)}>테마 {themeStatusText(theme)}</span>
+            {/* ── 왼쪽은 **말**(이 화면이 무엇을 담고 있나). 좁아지면 오른쪽부터 밀려나므로 여기 있는 것이 남는다. */}
+            <span style={count}>
+                {counts.shown}개
+                {counts.population > counts.shown && <span style={{ color: "var(--text-tertiary)" }}> / {counts.population}</span>}
+                {/* 결손은 필터와 별도 표기 — "N/M 차이 = 필터"라는 읽기가 거짓이 되지 않게. */}
+                {counts.missing > 0 && (
+                    <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — %p 공간의 분모가 없어 그릴 수 없는 타점(필터로 빠진 게 아님)"> · 결손 {counts.missing}</span>
                 )}
-                {subjectBadge}
-                <span style={count}>
-                    {counts.shown}개
-                    {counts.population > counts.shown && <span style={{ color: "var(--text-tertiary)" }}> / {counts.population}</span>}
-                    {/* 결손은 필터와 별도 표기 — "N/M 차이 = 필터"라는 읽기가 거짓이 되지 않게. */}
-                    {counts.missing > 0 && (
-                        <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — %p 공간의 분모가 없어 그릴 수 없는 타점(필터로 빠진 게 아님)"> · 결손 {counts.missing}</span>
-                    )}
-                </span>
             </span>
+            {t.showTheme && (
+                <span style={themeStatus} title={themeStatusTitle(theme)}>테마 {themeStatusText(theme)}</span>
+            )}
+            {subjectBadge}
+            {/* 오른쪽은 손 — marginLeft:auto 는 HeaderControls 가 자기 안에 갖고 있다. */}
+            <HeaderControls controls={controls} storageKey={`wb.headerPins.skeleton.${grain}`} />
         </PanelHeader>
     );
 }

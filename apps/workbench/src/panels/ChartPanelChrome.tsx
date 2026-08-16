@@ -79,12 +79,9 @@ export function ChartHeader({
             )}
             {badges}
             {baseFallback && <span style={{ color: "var(--warning)", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }} title="직전 종가 없음 → 당일 첫 시가 기준">상장일 기준</span>}
-            {/* 우상단 컨트롤 — 핀 꽂은 것만 라벨 없이, 나머지는 더보기(⋯) 판에.
-                옛 ControlBar(통째로 접는 셰브론)를 걷어냈다: 접는 단위가 **줄 전체**라 하나를 보려면
-                다 펼쳐야 했고, 그럴 바엔 컨트롤별 핀이 같은 일을 더 잘한다(그리고 규약이 하나가 된다). */}
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                <HeaderControls controls={controls} storageKey={storageKey} />
-            </span>
+            {/* 우상단 컨트롤 — 핀 꽂은 것만 라벨 없이, 나머지는 더보기(⋯) 판에. 오른쪽으로 미는
+                marginLeft:auto 는 HeaderControls 가 자기 안에 갖고 있다(패널이 자리를 못 바꾼다). */}
+            <HeaderControls controls={controls} storageKey={storageKey} />
         </PanelHeader>
     );
 }

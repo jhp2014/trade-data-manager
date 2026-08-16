@@ -82,9 +82,7 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
                     {filterEditor}
                 </HeaderPopover>
             )}
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                <HeaderControls controls={controls} storageKey={`wb.headerPins.board.${panelId}`} />
-            </span>
+            <HeaderControls controls={controls} storageKey={`wb.headerPins.board.${panelId}`} />
         </PanelHeader>
     );
 }

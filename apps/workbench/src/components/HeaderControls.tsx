@@ -14,10 +14,14 @@
 // ## 핀
 // 핀 = "헤더에 올린다". 저장은 **언핀 목록**으로 한다(핀 목록이 아니라) — 그래야 나중에 추가된
 // 컨트롤이 목록에 없다는 이유로 숨겨지지 않는다. 새 컨트롤은 언제나 기본 핀이다.
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { HeaderPopover } from "./HeaderPopover.js";
-import { Sep, TextToggle } from "./ControlChrome.js";
+import { TextToggle } from "./ControlChrome.js";
 import { DotsIcon } from "./icons.js";
+import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { usePersistedState } from "../store/persist.js";
 
 interface ControlBase {
@@ -29,7 +33,10 @@ interface ControlBase {
     name: string;
     /** 더보기 판의 한 줄 설명 — 헤더 툴팁으로도 쓰인다. */
     help?: string;
-    /** 묶음 — 판의 섹션 제목이자, 헤더에서 Sep 이 들어갈 자리. */
+    /**
+     * 갈래 — 더보기 판에서 **이름 앞에** 붙는 말("마커 분봉 대금"). 헤더에는 안 나온다.
+     * 섹션 제목이 아니라 접두인 이유: 순서를 손이 정하므로 섹션은 흩어진다 — 소속은 줄을 따라다녀야 한다.
+     */
     group?: string;
     /**
      * 이 패널에 **있는** 컨트롤인가(기본 true). grain 처럼 패널 정체성으로 갈리는 분기를 데이터로 흡수한다 —
@@ -75,44 +82,53 @@ const CYCLE_MAX = 3;
 const TRIGGER_MAX_W = 96;
 
 /**
- * 머리글 컨트롤 줄 — 핀 꽂힌 것을 라벨 없이 늘어놓고, 끝에 더보기(⋯)를 둔다.
- * ⋯ 옆 숫자 = 접어 둔 개수(숨겼다는 사실 자체를 드러낸다). 0이면 숫자를 안 적는다.
+ * 머리글 컨트롤 줄 — **머리글의 오른쪽 끝**에 붙는다(`marginLeft:auto` 를 자기가 갖는다 — 패널이
+ * 실수로 왼쪽에 두면 규칙이 깨지므로 선택지를 안 준다). 왼쪽은 "무엇을 보고 있나", 오른쪽은 손이다.
+ *
+ * 구분선(│)은 없다. 순서를 손이 정하는 순간 묶음 경계는 우연이 되고, 그럼 재정렬할 때마다 선이
+ * 늘었다 줄었다 한다. 갈래는 더보기 판에서 **이름 앞에** 붙어 그 일을 대신한다.
+ *
+ * ⋯ 는 **스크롤 영역 밖**에 고정한다. 좁아지면 컨트롤은 밀려나도 되지만 더보기까지 밀려나면
+ * 접어 둔 것에 닿을 길이 사라진다(옛 ControlBar 의 셰브론이 밖에 있던 이유가 그거였다).
  */
 export function HeaderControls({ controls, storageKey }: {
     controls: readonly ControlSpec[];
-    /** 언핀 목록의 영속 키 — 패널 **종류** 단위(예: wb.headerPins.skeleton.daily). */
+    /** 핀·순서의 영속 키 — 패널 **종류** 단위(예: wb.headerPins.skeleton.daily). */
     storageKey: string;
 }): JSX.Element {
-    const [unpinned, setUnpinned] = usePersistedState<readonly string[]>(
-        storageKey,
-        (raw) => (Array.isArray(raw) && raw.every((s) => typeof s === "string") ? (raw as string[]) : null),
-        [],
-    );
-    const here = useMemo(() => controls.filter((c) => c.available !== false), [controls]);
-    const unpinnedSet = useMemo(() => new Set(unpinned), [unpinned]);
-    const pinned = here.filter((c) => !unpinnedSet.has(c.id));
-    const foldedCount = here.length - pinned.length;
+    const [pins, setPins] = usePersistedState<PinState>(storageKey, parsePins, EMPTY_PINS);
+    const wheelRef = useHorizontalWheel<HTMLDivElement>();
 
-    const togglePin = (id: string): void =>
-        setUnpinned((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+    const here = useMemo(() => controls.filter((c) => c.available !== false), [controls]);
+    const unpinnedSet = useMemo(() => new Set(pins.unpinned), [pins.unpinned]);
+    /** 손이 정한 순서로 세운 목록 — 저장에 없는 것(새 컨트롤)은 선언된 이웃 뒤에 끼운다. */
+    const ordered = useMemo(() => applyOrder(here, pins.order), [here, pins.order]);
+    const shown = ordered.filter((c) => !unpinnedSet.has(c.id));
+    const foldedCount = ordered.length - shown.length;
+
+    const togglePin = useCallback((id: string): void => setPins((p) => ({
+        ...p,
+        unpinned: p.unpinned.includes(id) ? p.unpinned.filter((x) => x !== id) : [...p.unpinned, id],
+    })), [setPins]);
+    /** 재정렬은 **지금 보이는 목록 전체**를 그대로 굳힌다 — 부분 저장은 다음 이주 규칙과 어긋난다. */
+    const reorder = useCallback((ids: readonly string[]): void =>
+        setPins((p) => ({ ...p, order: [...ids] })), [setPins]);
 
     return (
-        <>
-            {pinned.map((c, i) => (
-                <span key={c.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                    {/* 묶음이 갈리는 자리에만 Sep — 묶음은 판의 섹션 제목과 같은 것이다. */}
-                    {i > 0 && pinned[i - 1]!.group !== c.group && <Sep />}
-                    <ControlValue spec={c} />
-                </span>
-            ))}
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <div ref={wheelRef} className="no-scrollbar"
+                style={{ display: "flex", alignItems: "center", gap: 10, overflowX: "auto", minWidth: 0 }}>
+                {shown.map((c) => <ControlValue key={c.id} spec={c} />)}
+            </div>
             <HeaderPopover
                 width={330}
                 closeOnOutside
                 trigger={(open, toggle) => (
-                    <button onClick={toggle} title="컨트롤 전부 보기 · 헤더에 올릴 것 고르기"
+                    <button onClick={toggle} title="컨트롤 전부 보기 · 헤더에 올릴 것 고르기 · 순서 바꾸기"
                         style={{
                             display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
-                            border: "none", background: "none", padding: "0 2px", cursor: "pointer",
+                            border: "none", background: "none", padding: "0 2px 0 8px", cursor: "pointer",
+                            borderLeft: "1px solid var(--border-default)",
                             font: "inherit", fontSize: 11, lineHeight: 0,
                             color: open ? "var(--text-primary)" : "var(--text-tertiary)",
                         }}>
@@ -121,52 +137,137 @@ export function HeaderControls({ controls, storageKey }: {
                     </button>
                 )}
             >
-                {() => <ControlSheet controls={here} unpinned={unpinnedSet} onTogglePin={togglePin} />}
+                {() => <ControlSheet controls={ordered} unpinned={unpinnedSet} onTogglePin={togglePin} onReorder={reorder} />}
             </HeaderPopover>
-        </>
+        </span>
     );
 }
 
+// ── 핀·순서의 영속 ──────────────────────────────────────────────────────────
+/**
+ * 저장하는 건 **예외뿐**이다: 언핀 목록(핀이 기본)과 손이 바꾼 순서. 그래야 나중에 추가된 컨트롤이
+ * "목록에 없다"는 이유로 숨거나 맨 뒤로 밀리지 않는다 — 모르는 것은 코드가 말하게 둔다.
+ */
+interface PinState {
+    unpinned: readonly string[];
+    order: readonly string[];
+}
+const EMPTY_PINS: PinState = { unpinned: [], order: [] };
+
+const isIds = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
+
+/** 옛 형식(언핀 배열만)도 읽는다 — 순서 기능이 붙기 전에 꽂아 둔 핀이 초기화되지 않게. */
+function parsePins(raw: unknown): PinState | null {
+    if (isIds(raw)) return { unpinned: raw, order: [] };
+    if (raw && typeof raw === "object") {
+        const o = raw as { unpinned?: unknown; order?: unknown };
+        if (isIds(o.unpinned) || isIds(o.order)) {
+            return { unpinned: isIds(o.unpinned) ? o.unpinned : [], order: isIds(o.order) ? o.order : [] };
+        }
+    }
+    return null;
+}
+
+/**
+ * 저장된 순서를 지금 컨트롤 목록에 씌운다.
+ *  · 저장에 있고 지금도 있는 것 → 저장된 순서대로
+ *  · 저장에 **없는 것**(새로 생긴 컨트롤) → 맨 뒤가 아니라 **선언에서 바로 앞에 있던 이웃 뒤**에.
+ *    맨 뒤로 던지면 새 컨트롤이 늘 낯선 자리에 나타나고, 선언 순서가 가진 뜻(비슷한 것끼리 이웃)이 죽는다.
+ *  · 저장에만 있고 지금 없는 것(사라진 컨트롤·다른 grain) → 조용히 무시. 지우지는 않는다 —
+ *    일봉/분봉처럼 available 로 갈리는 패널에서 저쪽 순서를 날려 버리면 안 된다.
+ */
+export function applyOrder<T extends { id: string }>(items: readonly T[], order: readonly string[]): T[] {
+    if (order.length === 0) return [...items];
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const out = order.map((id) => byId.get(id)).filter((x): x is T => x !== undefined);
+    const placed = new Set(out.map((x) => x.id));
+
+    // 선언 순서로 훑는다 — 새 것이 여럿이면 앞의 새 것이 뒤의 새 것에게 다시 이웃이 된다.
+    items.forEach((it, i) => {
+        if (placed.has(it.id)) return;
+        let at = 0;
+        for (let k = i - 1; k >= 0; k--) {
+            const idx = out.findIndex((x) => x.id === items[k]!.id);
+            if (idx >= 0) { at = idx + 1; break; }
+        }
+        out.splice(at, 0, it);
+        placed.add(it.id);
+    });
+    return out;
+}
+
 /** 더보기 판 — 이름·설명이 사는 유일한 자리. 값 컨트롤은 **헤더와 같은 형태**를 쓴다(학습이 한 벌). */
-function ControlSheet({ controls, unpinned, onTogglePin }: {
+function ControlSheet({ controls, unpinned, onTogglePin, onReorder }: {
     controls: readonly ControlSpec[];
     unpinned: ReadonlySet<string>;
     onTogglePin: (id: string) => void;
+    onReorder: (ids: readonly string[]) => void;
 }): JSX.Element {
+    const ids = controls.map((c) => c.id);
+    // 손잡이(⠿)로만 끈다 — 줄 아무 데나 잡히면 값 컨트롤·핀을 누르려다 판이 흔들린다.
+    const sensors = useSensors(useSensor(PointerSensor));
+    const onDragEnd = ({ active, over }: DragEndEvent): void => {
+        if (!over || active.id === over.id) return;
+        onReorder(arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))));
+    };
     return (
         <div style={{ overflowY: "auto", fontSize: 11 }}>
-            {controls.map((c, i) => {
-                const newGroup = i === 0 || controls[i - 1]!.group !== c.group;
-                const pinned = !unpinned.has(c.id);
-                return (
-                    <div key={c.id}>
-                        {newGroup && c.group !== undefined && (
-                            <div style={sheetHead}>{c.group}</div>
-                        )}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px" }}>
-                            <span style={{ flex: 1, minWidth: 0 }}>
-                                <span style={{ color: "var(--text-primary)" }}>{c.name}</span>
-                                {c.help !== undefined && (
-                                    <>
-                                        <br />
-                                        <span style={{ color: "var(--text-tertiary)" }}>{c.help}</span>
-                                    </>
-                                )}
-                            </span>
-                            <ControlValue spec={c} />
-                            <button onClick={() => onTogglePin(c.id)}
-                                title={pinned ? "헤더에서 내린다(여기서는 계속 쓸 수 있다)" : "헤더에 올린다"}
-                                aria-label={pinned ? "헤더에서 내리기" : "헤더에 올리기"}
-                                style={{
-                                    border: "none", background: "none", padding: "0 2px", cursor: "pointer", lineHeight: 0,
-                                    color: pinned ? "var(--accent-primary)" : "var(--border-strong)", flexShrink: 0,
-                                }}>
-                                <PinIcon filled={pinned} />
-                            </button>
-                        </div>
-                    </div>
-                );
-            })}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+                    {controls.map((c) => (
+                        <SheetRow key={c.id} spec={c} pinned={!unpinned.has(c.id)} onTogglePin={onTogglePin} />
+                    ))}
+                </SortableContext>
+            </DndContext>
+        </div>
+    );
+}
+
+/**
+ * 판의 한 줄 — 손잡이 · 이름(갈래 접두) · 설명 · 값 · 핀.
+ * **판의 줄 순서 = 헤더의 순서**라 드래그가 눈에 보이는 그대로다(섹션 제목이 없는 이유이기도 하다:
+ * 순서를 손이 정하면 섹션은 흩어지고, 그럼 "섹션을 넘는 드래그는 갈래를 바꾸나?"라는 규칙이 하나 더 는다).
+ */
+function SheetRow({ spec, pinned, onTogglePin }: {
+    spec: ControlSpec;
+    pinned: boolean;
+    onTogglePin: (id: string) => void;
+}): JSX.Element {
+    const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id: spec.id });
+    return (
+        <div ref={setNodeRef} style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "5px 10px",
+            transform: CSS.Transform.toString(transform), transition,
+            background: isDragging ? "var(--bg-secondary)" : undefined,
+            position: "relative", zIndex: isDragging ? 1 : undefined,
+        }}>
+            <span {...attributes} {...listeners} aria-label="순서 바꾸기" title="끌어서 순서 바꾸기"
+                style={{ display: "inline-flex", color: "var(--border-strong)", cursor: "grab", flexShrink: 0, touchAction: "none" }}>
+                <GripIcon />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+                {/* 갈래는 섹션 제목이 아니라 **이름 앞**에 붙는다 — 줄이 흩어져도 소속이 따라다닌다. */}
+                {spec.group !== undefined && (
+                    <span style={{ color: "var(--text-tertiary)", fontSize: 10 }}>{spec.group} </span>
+                )}
+                <span style={{ color: "var(--text-primary)" }}>{spec.name}</span>
+                {spec.help !== undefined && (
+                    <>
+                        <br />
+                        <span style={{ color: "var(--text-tertiary)" }}>{spec.help}</span>
+                    </>
+                )}
+            </span>
+            <ControlValue spec={spec} />
+            <button onClick={() => onTogglePin(spec.id)}
+                title={pinned ? "헤더에서 내린다(여기서는 계속 쓸 수 있다)" : "헤더에 올린다"}
+                aria-label={pinned ? "헤더에서 내리기" : "헤더에 올리기"}
+                style={{
+                    border: "none", background: "none", padding: "0 2px", cursor: "pointer", lineHeight: 0,
+                    color: pinned ? "var(--accent-primary)" : "var(--border-strong)", flexShrink: 0,
+                }}>
+                <PinIcon filled={pinned} />
+            </button>
         </div>
     );
 }
@@ -237,7 +338,7 @@ function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
                         style={{
                             ...faceButton, ...face,
                             color: open ? "var(--accent-primary)" : "var(--text-primary)",
-                            overflow: "hidden", textOverflow: "ellipsis", display: "block", textAlign: "left",
+                            overflow: "hidden", textOverflow: "ellipsis", display: "block", width: "100%",
                         }}>
                         {cur?.label ?? "—"} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>▾</span>
                     </button>
@@ -272,12 +373,22 @@ function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
  */
 function WidthLock({ alts, max, children }: { alts: readonly ReactNode[]; max?: number; children: ReactNode }): JSX.Element {
     return (
-        <span style={{ display: "inline-grid", flexShrink: 0, maxWidth: max, overflow: "hidden" }}>
+        <span style={{ display: "inline-grid", flexShrink: 0, maxWidth: max, overflow: "hidden", textAlign: "center" }}>
             {alts.map((a, i) => (
                 <span key={i} aria-hidden style={{ gridArea: "1 / 1", visibility: "hidden", whiteSpace: "nowrap" }}>{a}</span>
             ))}
+            {/* 지금 값은 칸 **가운데**에 선다 — 칸이 제일 긴 값에 맞춰져 있어서 왼쪽에 붙이면 짧은 값일 때
+                오른쪽에 빈자리가 몰려 보인다. 이웃은 어느 쪽이든 안 움직인다(칸 폭이 고정이므로). */}
             <span style={{ gridArea: "1 / 1", minWidth: 0, whiteSpace: "nowrap" }}>{children}</span>
         </span>
+    );
+}
+
+function GripIcon(): JSX.Element {
+    return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            {[8, 16].map((x) => [7, 12, 17].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.5" />))}
+        </svg>
     );
 }
 
@@ -304,7 +415,3 @@ function PinIcon({ filled }: { filled: boolean }): JSX.Element {
 const face: CSSProperties = { fontSize: 11, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap" };
 /** 버튼의 겉껍데기만 — 글자 속성은 face 가 **뒤에** 얹혀 이긴다. */
 const faceButton: CSSProperties = { border: "none", background: "none", padding: 0, cursor: "pointer" };
-const sheetHead: CSSProperties = {
-    padding: "5px 10px 3px", fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)",
-    background: "var(--bg-secondary)", borderTop: "1px solid var(--border-default)",
-};

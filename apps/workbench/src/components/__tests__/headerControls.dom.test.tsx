@@ -6,7 +6,7 @@
 //     jsdom 엔 레이아웃이 없어 폭 자체는 못 재므로, 그 폭을 만드는 **숨은 사본**이 있는지를 본다.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, fireEvent, screen, cleanup } from "@testing-library/react";
-import { HeaderControls, type ControlSpec } from "../HeaderControls.js";
+import { applyOrder, HeaderControls, type ControlSpec } from "../HeaderControls.js";
 
 const KEY = "wb.test.headerPins";
 afterEach(() => { cleanup(); localStorage.clear(); });
@@ -124,6 +124,52 @@ describe("택1 — 값 개수가 형태를 정한다", () => {
         fireEvent.click(c.querySelector("button")!);
         expect(set).not.toHaveBeenCalled();
         expect(document.body.textContent).toContain("값3");
+    });
+});
+
+describe("순서 — 손이 정한 것이 이긴다", () => {
+    const ids = (xs: readonly { id: string }[]): string[] => xs.map((x) => x.id);
+    const decl = ["a", "b", "c"].map((id) => ({ id }));
+
+    it("저장이 비면 선언 순서 그대로", () => {
+        expect(ids(applyOrder(decl, []))).toEqual(["a", "b", "c"]);
+    });
+
+    it("저장된 순서를 따른다", () => {
+        expect(ids(applyOrder(decl, ["c", "a", "b"]))).toEqual(["c", "a", "b"]);
+    });
+
+    it("**새 컨트롤은 선언에서 앞에 있던 이웃 뒤로** — 맨 뒤로 던지지 않는다", () => {
+        // 선언은 a,x,b,c 인데 저장은 x 를 모른다(그 시절엔 없던 컨트롤). x 는 a 뒤에 서야 한다.
+        const withNew = [{ id: "a" }, { id: "x" }, { id: "b" }, { id: "c" }];
+        expect(ids(applyOrder(withNew, ["c", "a", "b"]))).toEqual(["c", "a", "x", "b"]);
+    });
+
+    it("선언 맨 앞의 새 컨트롤은 맨 앞에 — 기댈 이웃이 없다", () => {
+        const withNew = [{ id: "x" }, { id: "a" }, { id: "b" }, { id: "c" }];
+        expect(ids(applyOrder(withNew, ["c", "a", "b"]))).toEqual(["x", "c", "a", "b"]);
+    });
+
+    it("새 것이 여럿이면 자기들끼리는 선언 순서를 지킨다", () => {
+        const withNew = [{ id: "a" }, { id: "x" }, { id: "y" }, { id: "b" }];
+        expect(ids(applyOrder(withNew, ["b", "a"]))).toEqual(["b", "a", "x", "y"]);
+    });
+
+    it("저장에만 있고 지금 없는 것은 조용히 빠진다 — grain 으로 갈리는 패널이 있다", () => {
+        expect(ids(applyOrder(decl, ["c", "없는것", "a", "b"]))).toEqual(["c", "a", "b"]);
+    });
+
+    it("영속 — 저장된 순서대로 헤더에 선다", () => {
+        localStorage.setItem(KEY, JSON.stringify({ unpinned: [], order: ["b", "a"] }));
+        const c = draw([toggle("a", "선"), toggle("b", "라벨")]);
+        expect([...c.querySelectorAll("button")].map((b) => b.textContent).slice(0, 2)).toEqual(["라벨", "선"]);
+    });
+
+    it("옛 형식(언핀 배열만)도 읽는다 — 순서 기능 전에 꽂아 둔 핀이 초기화되지 않게", () => {
+        localStorage.setItem(KEY, JSON.stringify(["b"]));
+        const c = draw([toggle("a", "선"), toggle("b", "라벨")]);
+        expect(headerText(c)).toContain("선");
+        expect(headerText(c)).not.toContain("라벨");
     });
 });
 
