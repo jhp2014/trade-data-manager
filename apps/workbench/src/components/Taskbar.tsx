@@ -11,6 +11,7 @@ import { useLiveSnapshot } from "../api/live.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { Popover } from "./Popover.js";
 import { GearButton } from "../ui/controls.js";
+import { MirrorSync } from "./MirrorSync.js";
 
 // 하단 작업표시줄 — 작업화면(프리셋) 표시·순환 + 닫힌(최소화) 창 재오픈 + 종목/날짜/시간 컨텍스트(우측 구석).
 // 컨텍스트는 상단 툴바 대신 여기로 이전: 텍스트처럼 보이되 클릭하면 편집(날짜는 data-aware 피커).
@@ -213,8 +214,9 @@ export function Taskbar(): JSX.Element {
             <LivePlaneGroup code={liveCode} chips={chips(liveClosed, "live")} />
             <span style={sep}>│</span>
             <EodPlaneGroup code={focusCode} date={date} setDate={setDate} time={focusTime} setTime={setTime} chips={chips(eodClosed, "eod")} />
-            {/* 우측: 현재 시각 + 설정 */}
+            {/* 우측: 미러 동기화 + 현재 시각 + 설정 */}
             <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <MirrorSync />
                 <Clock />
                 <span style={sep}>│</span>
                 <GearButton onClick={() => openSettings()} />

@@ -17,6 +17,13 @@ import { fetchDailyComment } from "./comment.js";
 import { fetchDataDates } from "./dataDates.js";
 import { kstToday } from "../lib/date.js";
 
+/**
+ * **curation 표식** — 읽기가 로컬 미러에서 나오는 쿼리들. 미러를 당겨오면(동기화) 이 표식이 붙은 쿼리만
+ * 통째로 무효화한다. 키를 손으로 나열하지 않는 이유: 열댓 개라 새 쿼리를 하나 추가할 때 반드시 빠뜨리고,
+ * 그러면 "동기화했는데 저 패널만 옛 데이터"라는 찾기 힘든 버그가 된다. 표식은 추가할 때 같이 붙는다.
+ */
+const CURATION = { curation: true } as const;
+
 const IMMUTABLE = Infinity;
 const META_STALE = 30 * 60_000; // 마스터 메타 — 새로 수집된 종목·날짜가 세션 내내 안 보이지 않게 30분마다 재조회 허용
 const TODAY_STALE = 60_000; // 오늘 시세 — 수집(20:30 스윕) 중 빈/부분 응답이 세션 내내 굳지 않게 1분 후 재조회 허용
@@ -32,57 +39,57 @@ export const chartQuery = (code: string, date: string) =>
     queryOptions({ queryKey: ["chart", code, date], queryFn: ({ signal }) => fetchChartBundle(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: histStale(date) });
 
 export const daySummaryQuery = (date: string) =>
-    queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: histStale(date) });
+    queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: histStale(date) , meta: CURATION });
 
 // 차트 앵커 — 선(baseline)+무시 캔들 등, 이 차트의 좌표 참조 전부. 편집형(추가/삭제 mutation 이 invalidate) → ∞.
 export const chartAnchorsQuery = (code: string, date: string) =>
-    queryOptions({ queryKey: ["chart-anchors", code, date], queryFn: ({ signal }) => fetchChartAnchors(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["chart-anchors", code, date], queryFn: ({ signal }) => fetchChartAnchors(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE , meta: CURATION });
 
 export const anchoredChartsQuery = () =>
-    queryOptions({ queryKey: ["anchored-charts"], queryFn: ({ signal }) => fetchAnchoredCharts(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["anchored-charts"], queryFn: ({ signal }) => fetchAnchoredCharts(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 export const reviewPointsQuery = (code: string, date: string) =>
-    queryOptions({ queryKey: ["review-points", code, date], queryFn: ({ signal }) => fetchReviewPoints(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["review-points", code, date], queryFn: ({ signal }) => fetchReviewPoints(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE , meta: CURATION });
 
 export const allPointsQuery = () =>
-    queryOptions({ queryKey: ["all-points"], queryFn: ({ signal }) => fetchAllPoints(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["all-points"], queryFn: ({ signal }) => fetchAllPoints(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 순위 배치 — 축 목록 + 전 축 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
 // 줄은 **키 하나**(축별로 쪼개지 않음): 모든 소비자가 전축을 보므로 축 수만큼의 왕복이 사라지고,
 // 패널 간 줄이 어긋날 여지도 없다. 대신 한 번 꽂을 때마다 전축을 다시 받는다(로컬 API, 수백 KB 수준).
 export const rankAxesQuery = () =>
-    queryOptions({ queryKey: ["rank-axes"], queryFn: ({ signal }) => fetchRankAxes(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["rank-axes"], queryFn: ({ signal }) => fetchRankAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 export const axisLinesQuery = () =>
-    queryOptions({ queryKey: ["rank-axis-lines"], queryFn: ({ signal }) => fetchAxisLines(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["rank-axis-lines"], queryFn: ({ signal }) => fetchAxisLines(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 계산 축(수식 축)의 타점별 수치. 판단 축 줄과 **별도 키** — 배치(place/unplace)가 이걸 무효화할 이유가 없고,
 // 반대로 타점이 늘면(타점 mutation) 이쪽만 새로 구우면 된다. 서버가 축당 파일 캐시로 증분 계산한다.
 export const computedAxesQuery = () =>
-    queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 골격 좌표(그림용) — 계산 축과 재료는 같지만 **별도 키**다: 축 값이 다시 구워져도 골격 좌표는 그대로고,
 // 반대로 피벗을 하나 찍으면(앵커 mutation) 이쪽만 무효화하면 된다. 편집형이라 staleTime ∞.
 export const skeletonsQuery = () =>
-    queryOptions({ queryKey: ["skeletons"], queryFn: ({ signal }) => fetchSkeletons(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["skeletons"], queryFn: ({ signal }) => fetchSkeletons(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 그룹 — 사전 + 전 항목 멤버십. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).
 // 타점 캐시(review-points·all-points)와 분리 = 그룹 토글이 타점 목록 refetch 를 유발하지 않는다.
 export const groupsQuery = () =>
-    queryOptions({ queryKey: ["groups"], queryFn: ({ signal }) => fetchGroups(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["groups"], queryFn: ({ signal }) => fetchGroups(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 멤버십은 **한 피드**다(옛날엔 타점 부착·차트 부착 둘) — 시각 유무로 층위가 갈릴 뿐 같은 사실이라
 // 캐시를 나누면 한쪽만 무효화되는 사고가 열린다.
 export const groupMembershipsQuery = () =>
-    queryOptions({ queryKey: ["group-members"], queryFn: ({ signal }) => fetchGroupMemberships(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["group-members"], queryFn: ({ signal }) => fetchGroupMemberships(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 유사도 맵 — **평면 목록만**. 그 위의 점(=그룹)과 좌표는 groupsQuery 가 낸다(그룹이 map_id·x·y 를 든다).
 export const mapsQuery = () =>
-    queryOptions({ queryKey: ["maps"], queryFn: ({ signal }) => fetchMaps(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["maps"], queryFn: ({ signal }) => fetchMaps(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 후보 하루(분석의 모수) — 맵·그룹과 **별도 키**: 앵커·타점 어느 쪽이 늘어도 후보는 변하지만 평면은 그대로다.
 export const candidateDaysQuery = () =>
-    queryOptions({ queryKey: ["candidate-days"], queryFn: ({ signal }) => fetchCandidateDays(signal), staleTime: IMMUTABLE });
+    queryOptions({ queryKey: ["candidate-days"], queryFn: ({ signal }) => fetchCandidateDays(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 /**
  * 종목 마스터 전량(코드·이름·시장) — 이름 사전의 **단일 출처**. 키가 상수라 어느 화면에서 불러도 한 벌이다.
@@ -99,7 +106,7 @@ export const themeContextQuery = (code: string) =>
 
 // 당일 종목 코멘트(date+code 키) — 편집형이라 불변 아님. 저장 mutation 이 이 키를 invalidate 해 갱신하므로 staleTime 0.
 export const dailyCommentQuery = (date: string, code: string) =>
-    queryOptions({ queryKey: ["daily-comment", date, code], queryFn: ({ signal }) => fetchDailyComment(date, code, signal), enabled: date.length > 0 && code.length > 0, staleTime: 0 });
+    queryOptions({ queryKey: ["daily-comment", date, code], queryFn: ({ signal }) => fetchDailyComment(date, code, signal), enabled: date.length > 0 && code.length > 0, staleTime: 0 , meta: CURATION });
 
 // 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커용. 수집으로 새 날짜가 늘 수 있어 30분 stale 후 재조회 허용.
 export const dataDatesQuery = () =>

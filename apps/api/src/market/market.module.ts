@@ -1,4 +1,4 @@
-import { Module, type OnModuleDestroy, type Provider, Inject } from "@nestjs/common";
+import { Module, type OnApplicationBootstrap, type OnModuleDestroy, type Provider, Inject } from "@nestjs/common";
 import {
     createDb,
     createPoolFromEnv,
@@ -21,7 +21,7 @@ import {
 import type { AxisDeps, DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, GROUP_REPO, MAP_REPO, CANDIDATE_DAY_REPO, RANK_MINUTES, COMPUTED_AXES, SKELETON_SHAPES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
+import { CHART_READER, DAY_BOARDS, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, GROUP_REPO, MAP_REPO, CANDIDATE_DAY_REPO, CURATION_SYNC, RANK_MINUTES, COMPUTED_AXES, SKELETON_SHAPES, STOCK_NEWS_REPO, NEWS_SEARCHER, MARKET_POOL, CURATION_POOL, DATA_DATE_READER } from "./tokens.js";
 import { ChartController } from "./chart/chart.controller.js";
 import { ChartReadModel } from "./chart/chartReadModel.js";
 import { RankMinutes } from "./rank/rankMinutes.js";
@@ -53,6 +53,8 @@ import { ThemeAssignment } from "./board/themeAssignment.js";
 import { DailyComments } from "./curation/dailyComments.js";
 import { ChartAnchors } from "./curation/chartAnchors.js";
 import { localReadDualWrite } from "./curation/mirrorWrite.js";
+import { CurationSync } from "./curation/curationSync.js";
+import { CurationSyncController } from "./curation/sync.controller.js";
 
 // pg 를 직접 의존하지 않고 Pool 타입을 persistence 팩토리에서 파생한다(가장자리 결합 최소화).
 type Pool = ReturnType<typeof createPoolFromEnv>;
@@ -254,6 +256,11 @@ const curationProviders: Provider[] = [
         useFactory: (pool: Pool) => new DrizzleCandidateDayRepository(createDb(pool)), // 읽기 전용 파생 → 로컬 미러
         inject: [MARKET_POOL],
     },
+    {
+        // 미러 당겨오기 — 읽기 소스 갱신. 상태 없는 서비스라 팩토리 인자가 없다(설정은 persistence 소유).
+        provide: CURATION_SYNC,
+        useFactory: (): CurationSync => new CurationSync(),
+    },
 ];
 
 const newsProviders: Provider[] = [
@@ -275,6 +282,7 @@ const newsProviders: Provider[] = [
 @Module({
     controllers: [
         ChartController,
+        CurationSyncController,
         RankMinutesController,
         DayReplayController,
         DaySummaryController,
@@ -294,12 +302,25 @@ const newsProviders: Provider[] = [
     ],
     providers: [poolProvider, curationPoolProvider, ...chartProviders, ...boardProviders, ...curationProviders, ...newsProviders],
 })
-export class MarketModule implements OnModuleDestroy {
+export class MarketModule implements OnApplicationBootstrap, OnModuleDestroy {
     constructor(
         @Inject(MARKET_POOL) private readonly pool: Pool,
         @Inject(CURATION_POOL) private readonly curationPool: Pool,
         @Inject(NEWS_SEARCHER) private readonly newsSearcher: LazyTelegramNewsSearcher,
+        @Inject(CURATION_SYNC) private readonly curationSync: CurationSync,
     ) {}
+
+    /**
+     * 부팅 시 미러 한 번 당겨온다 — 읽기가 미러에서 나오므로 켜자마자 최신이어야 한다.
+     * **기다리지 않는다(fire-and-forget)**: Supabase 왕복이 부팅을 막으면 원격이 느리거나 죽었을 때
+     * 앱이 아예 안 뜬다. 미러는 최악이라도 어제치라 그동안 읽기는 정상 동작한다.
+     */
+    onApplicationBootstrap(): void {
+        void this.curationSync
+            .run()
+            .then((r) => console.log(r.skipped ? "[mirror] 원격 없음 — 미러 건너뜀" : `[mirror] 부팅 동기화 완료(${r.rows}행)`))
+            .catch((e: unknown) => console.error("[mirror] 부팅 동기화 실패 — 미러는 직전 상태로 계속 쓴다", e));
+    }
 
     async onModuleDestroy(): Promise<void> {
         await this.newsSearcher.close();

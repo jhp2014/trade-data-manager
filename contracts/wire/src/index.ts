@@ -26,3 +26,4 @@ export type * from "./dataDate.js";
 export type * from "./live.js";
 export type * from "./liveTape.js";
 export type * from "./alerts.js";
+export type * from "./curationSync.js";

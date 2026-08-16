@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Client } from "pg";
 import { config, policy } from "./config";
 import { sourceDbName, withClient } from "./pg";
 import { restore } from "./restore";
+import { syncCuration } from "./syncCuration";
 import { createLogger } from "./logger";
 
 export interface SetupOpts {
@@ -16,8 +16,12 @@ export interface SetupOpts {
 }
 
 /**
- * 새 머신 프로비저닝: 대상 DB 생성(없으면) + market 스키마 복원.
- * curation 은 로컬에 만들지 않는다 — 앱 curation 풀이 공유 Supabase 를 직접 쓰므로.
+ * 새 머신 프로비저닝: 대상 DB 생성(없으면) + market 스키마 복원 + **curation 미러 최초 적재**.
+ *
+ * 미러가 이제 앱의 **읽기 소스**다(옛 주석의 "로컬엔 안 만든다"는 뒤집혔다 — 그땐 앱이 Supabase 를
+ * 직접 읽었다). 미러 없이 앱을 켜면 curation 조회가 전부 빈 결과가 되므로 여기서 함께 채운다.
+ * 마이그레이션은 필요 없다 — 덤프가 DDL 을 들고 오므로 스키마째 재정의된다(협업자 PC 에서 할 일 0).
+ *
  * 전제: PostgreSQL 설치·실행 + DATABASE_URL 계정에 CREATEDB 권한 + PG_BIN_DIR.
  */
 export async function setup(opts: SetupOpts): Promise<void> {
@@ -26,7 +30,7 @@ export async function setup(opts: SetupOpts): Promise<void> {
     const db = sourceDbName();
 
     if (!opts.yes) {
-        log.info(`[DRY-RUN] setup 대상 DB='${db}' — 없으면 생성 후 market 복원. curation 은 Supabase 직접 사용(로컬 미러 X).`);
+        log.info(`[DRY-RUN] setup 대상 DB='${db}' — 없으면 생성 후 market 복원 + curation 미러 최초 적재.`);
         log.info("⚠️ 진행하려면 --yes 를 붙이세요. (지금은 아무것도 안 함)");
         return;
     }
@@ -52,20 +56,12 @@ export async function setup(opts: SetupOpts): Promise<void> {
         yes: true,
     });
 
-    // 3. curation(Supabase) 접속 확인 — 로컬엔 안 만든다(앱 curation 풀 → Supabase).
-    const curUrl = config.curationDatabaseUrl;
-    if (curUrl) {
-        try {
-            const c = new Client({ connectionString: curUrl });
-            await c.connect();
-            await c.query("select 1");
-            await c.end();
-            log.info("curation(Supabase) 접속 OK — 앱은 curation 을 Supabase 에서 직접 사용.");
-        } catch (e) {
-            log.error(`curation(Supabase) 접속 실패 — CURATION_DATABASE_URL 확인: ${e instanceof Error ? e.message : String(e)}`);
-        }
-    } else {
-        log.info("CURATION_DATABASE_URL 미설정 — curation 은 로컬 market DB 폴백(협업하려면 Supabase 스트링 설정).");
+    // 3. curation 미러 최초 적재(Supabase → 로컬). 앱의 읽기 소스라 이게 없으면 큐레이션이 전부 빈 화면이다.
+    //    실패해도 setup 자체는 끝낸다 — market 은 이미 복원됐고, 미러는 앱에서 동기화 버튼으로 다시 받을 수 있다.
+    try {
+        await syncCuration(log);
+    } catch (e) {
+        log.error(`curation 미러 적재 실패 — 앱에서 동기화 버튼으로 다시 시도하세요: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     log.info("=== setup 완료 ===");
