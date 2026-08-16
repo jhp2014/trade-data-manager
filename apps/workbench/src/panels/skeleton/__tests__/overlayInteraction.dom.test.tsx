@@ -135,7 +135,7 @@ describe("t 단축키 — 포인터가 이 패널 안일 때만", () => {
     const render = (): HTMLElement =>
         renderWithProviders(<SkeletonOverlayPanel grain="minute" />, { skeletons: skeletonFeed, points }).container;
     /** 그림 영역(wrapRef) — 이 안에 포인터가 있을 때만 듣는다. */
-    const plot = (c: HTMLElement): HTMLElement => c.querySelector("svg")!.parentElement as HTMLElement;
+    const plot = (c: HTMLElement): HTMLElement => c.querySelector<HTMLElement>("[data-plot]")!;
 
     it("손이 안 올라가 있으면 안 듣는다 — 다른 패널에서 t 를 쳐도 조용하다", () => {
         const c = render();
@@ -181,7 +181,7 @@ describe("t 단축키 — 포인터가 이 패널 안일 때만", () => {
 
     it("일봉 패널은 아예 안 듣는다 — 테마는 분봉 화면의 개념", () => {
         const { container } = renderWithProviders(<SkeletonOverlayPanel grain="daily" />, { skeletons: clusterFeed, points: clusterPoints });
-        fireEvent.mouseOver(container.querySelector("svg")!.parentElement as HTMLElement, { relatedTarget: document.body });
+        fireEvent.mouseOver(container.querySelector<HTMLElement>("[data-plot]")!, { relatedTarget: document.body });
         fireEvent.keyDown(window, { key: "t" });
         expect(localStorage.getItem("wb.skeletonOverlayTheme.daily")).toBe("false");
     });

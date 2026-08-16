@@ -7,6 +7,17 @@ export function ChevronDownIcon(): JSX.Element {
     );
 }
 
+// 더보기(⋯) — 머리글 컨트롤 판의 입구(HeaderControls). 접힌 컨트롤 수가 옆에 붙는다.
+export function DotsIcon(): JSX.Element {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <circle cx="5" cy="12" r="1.6" />
+            <circle cx="12" cy="12" r="1.6" />
+            <circle cx="19" cy="12" r="1.6" />
+        </svg>
+    );
+}
+
 // 검색 모드 해제(←) — Focus 로 돌아가기.
 export function BackIcon(): JSX.Element {
     return (

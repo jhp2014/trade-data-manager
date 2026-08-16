@@ -646,7 +646,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 onToggleLock={() => setLocked(locked ? null : autoBounds)}
             />
 
-            <div ref={wrapRef} onMouseDown={onWrapMouseDown}
+            {/* data-plot — 그림판을 찾는 **이름표**. 테스트가 "첫 번째 svg 의 부모"로 찾고 있었는데,
+                머리글에 아이콘 하나(⋯)가 들어오자 통째로 엉뚱한 곳을 짚었다. 손짓(마퀴·단축키 창)이
+                걸린 상자라 이름으로 잡는 게 맞다. */}
+            <div ref={wrapRef} data-plot onMouseDown={onWrapMouseDown}
                 onMouseEnter={() => setHoveringPanel(true)} onMouseLeave={() => setHoveringPanel(false)}
                 style={{ flex: 1, minHeight: 0, position: "relative" }}>
                 {feedLoading && <div style={muted}>불러오는 중…</div>}

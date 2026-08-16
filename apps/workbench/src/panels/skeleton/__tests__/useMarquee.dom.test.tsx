@@ -164,7 +164,7 @@ describe("패널에 배선된 채로 — 훑으면 그 라벨들이 담긴다", 
 
     it("사각형 안의 골격들이 선택된다 — 무리를 만드는 손짓", () => {
         const { container } = renderWithProviders(<SkeletonOverlayPanel grain="daily" />, { skeletons: clusterFeed, points: clusterPoints });
-        sweep(container.querySelector("svg")!.parentElement as HTMLElement);
+        sweep(container.querySelector<HTMLElement>("[data-plot]")!);
         const picked = useWorkbench.getState().skeletonSelection;
         expect([...picked].sort()).toEqual(CLUSTER_CODES.map((c) => `${c}|${DATE}`).sort());
     });
@@ -172,7 +172,7 @@ describe("패널에 배선된 채로 — 훑으면 그 라벨들이 담긴다", 
     it("빈 자리를 훑으면 아무것도 안 담는다 — 선택을 지우지도 않는다", () => {
         const { container } = renderWithProviders(<SkeletonOverlayPanel grain="daily" />, { skeletons: clusterFeed, points: clusterPoints });
         act(() => { useWorkbench.setState({ skeletonSelection: new Set([`${CLUSTER_CODES[0]}|${DATE}`]) }); });
-        const el = container.querySelector("svg")!.parentElement as HTMLElement;
+        const el = container.querySelector<HTMLElement>("[data-plot]")!;
         fireEvent.mouseDown(el, { ctrlKey: true, clientX: 60, clientY: 30 });
         drag({ x: 160, y: 90 });
         release();
@@ -183,7 +183,7 @@ describe("패널에 배선된 채로 — 훑으면 그 라벨들이 담긴다", 
     it("이미 고른 것에 **더한다** — 훑을 때마다 갈아치우면 무리를 못 키운다", () => {
         const { container } = renderWithProviders(<SkeletonOverlayPanel grain="daily" />, { skeletons: clusterFeed, points: clusterPoints });
         act(() => { useWorkbench.setState({ skeletonSelection: new Set(["미리|고른것"]) }); });
-        sweep(container.querySelector("svg")!.parentElement as HTMLElement);
+        sweep(container.querySelector<HTMLElement>("[data-plot]")!);
         expect(useWorkbench.getState().skeletonSelection.has("미리|고른것")).toBe(true);
         expect(useWorkbench.getState().skeletonSelection.size).toBe(4);
     });
