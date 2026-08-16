@@ -30,7 +30,8 @@ import { createMap, type MapScope } from "../api/map.js";
 import { createGroup, moveGroups, placeGroup, setGroupParent, unplaceGroup, type Group, type GroupMembership, type GroupMove } from "../api/groups.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { Dot, miniBtn, PanelHeader, TextToggle } from "../components/ControlChrome.js";
+import { miniBtn, PanelHeader } from "../components/ControlChrome.js";
+import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { shortDate } from "../lib/date.js";
@@ -437,6 +438,30 @@ function MapPanelInner(): JSX.Element {
         [candidates],
     );
 
+    /**
+     * 헤더 컨트롤 선언 — 다른 패널과 같은 층(HeaderControls)을 쓴다.
+     *
+     * 왼쪽 칸(그룹/목록)은 **택1이면서 둘 다 끌 수 있다**. 순환 한 칸(그룹→목록→접힘)으로 접을 수도
+     * 있었지만 그러면 "같은 걸 다시 눌러 접는다"가 두 번 클릭이 된다(사용자가 정한 손짓이다).
+     * 그래서 토글 둘로 두고 배타는 set 이 지킨다 — 화면에서는 켜진 하나만 굵게 서므로 택1임이 보인다.
+     */
+    const controls = useMemo<ControlSpec[]>(() => [
+        {
+            kind: "toggle", id: "sideGroup", name: "그룹", activeColor: ACTIVE,
+            help: "그룹 사전(평면·올린 그룹·안 올린 그룹) — 다시 누르면 칸을 접는다. 목록과 택1",
+            on: side === "group", set: () => toggleSide("group"),
+        },
+        {
+            kind: "toggle", id: "sideList", name: "목록", activeColor: ACTIVE,
+            help: "짚은 그룹의 공통 멤버 목록 — 다시 누르면 칸을 접는다. 그룹과 택1",
+            on: side === "list", set: () => toggleSide("list"),
+        },
+        {
+            kind: "action", id: "fit", name: "원위치", help: "올린 그룹을 전부 화면에 담는다",
+            run: () => fitView({ duration: 250 }),
+        },
+    ], [side, toggleSide, fitView]);
+
     // ── 렌더 ──────────────────────────────────────────────────────────────
     if (mapsQ.isPending || gv.isLoading) return <Note>불러오는 중…</Note>;
     if (mapsQ.isError) return <Note>평면을 불러오지 못했습니다: {(mapsQ.error as Error).message}</Note>;
@@ -453,16 +478,7 @@ function MapPanelInner(): JSX.Element {
                 <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}>
                     {activeMap?.name ?? "평면 없음"} · 모집단 {funnel.isLoading ? "…" : popFeed.length}{funnel.isFiltering ? "" : " (전체)"}
                 </span>
-                {/* 왼쪽 칸은 택1이라 Dot(·)으로 묶는다 — 구분선(│)은 전 패널에서 걷어냈지만, 여기 둘은
-                    진짜로 서로를 배제하는 버튼 둘이라 그 힌트가 필요하다. */}
-                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                    <TextToggle active={side === "group"} activeColor={ACTIVE} onClick={() => toggleSide("group")}
-                        title="그룹 사전(평면·올린 그룹·안 올린 그룹) — 다시 누르면 칸을 접는다">그룹</TextToggle>
-                    <Dot />
-                    <TextToggle active={side === "list"} activeColor={ACTIVE} onClick={() => toggleSide("list")}
-                        title="짚은 그룹의 공통 멤버 목록 — 다시 누르면 칸을 접는다">목록</TextToggle>
-                    <TextToggle active={false} onClick={() => fitView({ duration: 250 })} title="전부 화면에 담기">원위치</TextToggle>
-                </span>
+                <HeaderControls controls={controls} storageKey="wb.headerPins.map" />
             </PanelHeader>
 
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>

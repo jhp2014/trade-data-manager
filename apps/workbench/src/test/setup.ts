@@ -3,8 +3,26 @@
 // 순수 함수 테스트에도 이 파일이 로드되지만(setupFiles 는 전역), 아래 보정은 전부 `window` 가 있을 때만
 // 걸리므로 node 환경에서는 아무 일도 하지 않는다.
 import { afterEach } from "vitest";
+// ⚠ configure 는 **@testing-library/react 가 재수출하는 것**을 쓴다 — dom 패키지를 직접 부르면
+// pnpm 이 사본을 따로 물고 있을 때 설정이 다른 인스턴스에 걸려 조용히 아무 일도 안 한다.
+import { configure } from "@testing-library/react";
 
 if (typeof window !== "undefined") {
+    /**
+     * 글자 찾기는 `aria-hidden` 을 건너뛴다.
+     *
+     * 머리글 컨트롤의 폭 잠금(HeaderControls.WidthLock)이 **있을 수 있는 모든 모습을 겹쳐 쌓아** 칸을
+     * 잡는다 — 즉 라벨이 화면에 하나, 숨은 사본으로 하나 더 있다. 기본 설정이면 `getByText("목록")` 이
+     * 둘을 집어 "여러 개 찾음"으로 터진다(실제로 맵 테스트가 그렇게 깨졌다).
+     *
+     * 사본에는 전부 `aria-hidden` 이 붙어 있고, 그건 정의상 **읽는 이에게 없는 것**이다. 테스트가
+     * 읽는 이와 같은 것을 보게 맞추는 게 옳지, 테스트마다 getAllByText 로 우회할 일이 아니다.
+     *
+     * ⚠ `[aria-hidden='true'] *` 도 같이 뺀다 — ignore 는 **매치된 그 노드**만 보므로, 사본 안쪽
+     * 엘리먼트(굵은 사본의 `<b>`)는 조상이 숨겨져 있어도 그대로 잡힌다. 실제로 그렇게 새어 나왔다.
+     */
+    configure({ defaultIgnore: "script, style, [aria-hidden='true'], [aria-hidden='true'] *" });
+
     /**
      * ResizeObserver — jsdom 에 없다. 그냥 없는 채로 두면 그림 패널이 **아무것도 안 그린다**:
      * 크기를 못 재면 상자 폭이 0이고, 폭이 0이면 스케일을 만들 수 없어 SVG 안이 통째로 비어 있다.
