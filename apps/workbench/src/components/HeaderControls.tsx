@@ -95,6 +95,7 @@ export function HeaderControls({ controls, storageKey }: {
             ))}
             <HeaderPopover
                 width={330}
+                closeOnOutside
                 trigger={(open, toggle) => (
                     <button onClick={toggle} title="컨트롤 전부 보기 · 헤더에 올릴 것 고르기"
                         style={{
@@ -202,6 +203,7 @@ function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
     return (
         <HeaderPopover
             width={150}
+            closeOnOutside
             trigger={(open, toggle) => (
                 <WidthLock max={TRIGGER_MAX_W} alts={spec.values.map((o) => <span key={o.v} style={face}>{o.label} ▾</span>)}>
                     <button onClick={toggle} title={spec.help ?? spec.name}

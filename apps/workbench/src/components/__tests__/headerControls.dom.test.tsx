@@ -55,6 +55,36 @@ describe("핀 — 헤더에 올릴 것 고르기", () => {
         expect(set).toHaveBeenCalledWith(true);
     });
 
+    it("판 바깥을 누르면 닫힌다 — 다른 패널이든 같은 패널의 그림이든", () => {
+        const c = draw([toggle("a", "선")]);
+        openSheet(c);
+        expect(sheet()).toBeTruthy();
+        // ⚠ 캡처 단계로 듣는다 — 그래프 위에서는 d3 가 mousedown 을 삼켜 버블링으로는 안 온다.
+        fireEvent.mouseDown(document.body);
+        expect(document.body.querySelector("[data-header-popover]")).toBeNull();
+    });
+
+    it("판 안을 누르면 안 닫힌다 — 읽고 고르는 중이다", () => {
+        const c = draw([toggle("a", "선")]);
+        openSheet(c);
+        fireEvent.mouseDown(sheet());
+        expect(document.body.querySelector("[data-header-popover]")).toBeTruthy();
+    });
+
+    it("판 안의 택1 판을 눌러도 부모가 안 닫힌다 — 중첩이라 자식은 바깥이 아니다", () => {
+        localStorage.setItem(KEY, JSON.stringify(["pick"])); // 접어 두면 판 안에서만 만진다
+        const c = draw([toggle("a", "선"), {
+            kind: "choice", id: "pick", name: "고르기", value: "v0",
+            values: [0, 1, 2, 3].map((i) => ({ v: `v${i}`, label: `값${i}` })), set: () => {},
+        }]);
+        openSheet(c);
+        fireEvent.click([...sheet().querySelectorAll("button")].find((b) => b.textContent?.startsWith("값0"))!);
+        const layers = document.body.querySelectorAll("[data-header-popover]");
+        expect(layers.length).toBe(2); // 부모 판 + 택1 판
+        fireEvent.mouseDown([...layers][1]!);
+        expect(document.body.querySelectorAll("[data-header-popover]").length).toBe(2);
+    });
+
     it("available:false 는 이 패널에 없는 것 — 판에도 안 나온다", () => {
         const c = draw([toggle("a", "선"), { ...toggle("b", "라벨"), available: false }]);
         openSheet(c);

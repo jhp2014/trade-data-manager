@@ -1,17 +1,25 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+/** 팝오버 내용의 이름표 — 바깥 클릭 판정이 "다른 팝오버 안"을 바깥으로 세지 않으려고 쓴다(중첩). */
+const LAYER_ATTR = "data-header-popover";
+
 // 패널 헤더에서 **아래로** 열리는 앵커 팝오버 — Popover(작업표시줄 전용, 위로 열림)와 방향·닫힘 규칙이 다르다.
-// **바깥 클릭으로 닫히지 않는다**: 필터 조율처럼 팝오버를 열어둔 채 뒤의 보드를 클릭해 결과(흐리게/숨김)를
-// 확인하는 워크플로가 본론이라, 바깥 클릭 닫힘은 그 자체로 사고다. 닫기 = Esc · 트리거 재클릭 · children 의 close.
+// 기본은 **바깥 클릭으로 닫히지 않는다**: 필터 조율처럼 팝오버를 열어둔 채 뒤의 보드를 클릭해 결과
+// (흐리게/숨김)를 확인하는 워크플로가 본론이라, 거기서는 바깥 클릭 닫힘이 그 자체로 사고다.
+// 닫기 = Esc · 트리거 재클릭 · children 의 close. **메뉴처럼 읽고 고르고 끝나는 판은 `closeOnOutside`** 로
+// 옵트인한다(컨트롤 더보기 판이 그렇다) — 열어 둔 채 뒤를 만질 이유가 없는 판이라 규칙이 반대다.
 // 내용은 document.body 로 portal — 헤더가 overflow 스크롤이라 그냥 두면 잘린다(Popover 와 같은 이유).
 export function HeaderPopover({
     width,
+    closeOnOutside = false,
     trigger,
     children,
 }: {
     /** 팝오버 고정 폭(px) — 뷰포트 가장자리 클램프 계산에 쓴다. */
     width: number;
+    /** 바깥을 누르면 닫는다(기본 false — 위 주석의 이유). */
+    closeOnOutside?: boolean;
     trigger: (open: boolean, toggle: () => void) => ReactNode;
     children: (close: () => void) => ReactNode;
 }): JSX.Element {
@@ -48,6 +56,27 @@ export function HeaderPopover({
         return () => document.removeEventListener("keydown", onKey);
     }, [open]);
 
+    /**
+     * 바깥 클릭 닫기(옵트인) — **캡처 단계**로 듣는다. 그래프 위에서는 d3 가 mousedown 을 삼켜
+     * 버블링으로는 안 오기 때문이다(옛 팝오버들이 그림 위에서만 안 닫히던 이유가 그거였다).
+     *
+     * "바깥"에서 두 가지를 뺀다: 앵커 자신(트리거 재클릭은 트리거의 토글이 처리한다 — 여기서 먼저
+     * 닫으면 곧바로 다시 열려 한 번 눌러 아무 일도 안 일어난 것처럼 보인다)과, **다른 팝오버의 내용**
+     * (더보기 판 안에서 택1 판을 여는 중첩이 실제로 있다 — 자식 판을 눌렀다고 부모가 닫히면 값을 못 고른다).
+     */
+    useEffect(() => {
+        if (!open || !closeOnOutside) return;
+        const onDown = (e: MouseEvent): void => {
+            const t = e.target;
+            const el = t instanceof Element ? t : t instanceof Node ? t.parentElement : null;
+            if (anchorRef.current && el && anchorRef.current.contains(el)) return;
+            if (el?.closest(`[${LAYER_ATTR}]`)) return;
+            setOpen(false);
+        };
+        document.addEventListener("mousedown", onDown, true);
+        return () => document.removeEventListener("mousedown", onDown, true);
+    }, [open, closeOnOutside]);
+
     return (
         <div ref={anchorRef} style={{ display: "inline-flex", flexShrink: 0 }}>
             {trigger(open, () => setOpen((v) => !v))}
@@ -55,6 +84,7 @@ export function HeaderPopover({
                 pos &&
                 createPortal(
                     <div
+                        {...{ [LAYER_ATTR]: "" }}
                         style={{
                             position: "fixed",
                             top: pos.top,
