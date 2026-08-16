@@ -32,9 +32,11 @@ import { useGroups } from "../lib/GroupsContext.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import { miniBtn, PanelHeader } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
+import { ItemRows } from "../components/ItemRows.js";
+import { useSubject } from "../lib/subject.js";
+import { sortItems } from "./filter/resultRows.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
-import { shortDate } from "../lib/date.js";
 import { ACTIVE } from "../styles/palette.js";
 import { CHIP_NODE_TYPE, GROUP_NODE_TYPE, MAP_NODE_TYPES, type ChipNodeData, type GroupNodeData } from "./map/MapNodes.js";
 import { chainCandidates, chipId, groupsOnMap, mapArrows, membersOfAll, placeableGroups, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
@@ -53,6 +55,9 @@ function parseSidePane(raw: unknown): SidePane | null {
 }
 /** 멤버 목록에 한 번에 그리는 최대 줄 — 넘으면 "…외 N건"으로 접는다(사전 목록과 같이 스크롤하므로). */
 const MEMBER_CAP = 300;
+/** 오른쪽 칸 기본 폭(그룹 사전). 목록은 표(날짜·시각·종목)라 더 넓어야 한다. */
+const SIDE_W = 196;
+const LIST_W = 250;
 /** 겹침 숫자 크기 범위 — 이 선택 안의 최댓값이 최대 크기(상대 척도). 정확한 값은 숫자 자체가 준다. */
 const LABEL_MIN_PX = 11;
 const LABEL_MAX_PX = 18;
@@ -481,31 +486,9 @@ function MapPanelInner(): JSX.Element {
                 <HeaderControls controls={controls} storageKey="wb.headerPins.map" />
             </PanelHeader>
 
+            {/* 칸은 **오른쪽**이다 — 그 칸을 여닫는 손잡이(그룹·목록)가 머리글 오른쪽에 있으므로,
+                왼쪽에 열리면 누른 자리와 열리는 자리가 화면 양끝으로 갈린다. */}
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-                {side === "group" && (
-                    <GroupSidebar
-                        maps={maps}
-                        activeMap={activeMap}
-                        onPickMap={(id) => { setSavedId(id); setChain([]); }}
-                        onCreateMap={(name, scope) => createMapMut.mutate({ name, scope })}
-                        busyMap={createMapMut.isPending}
-                        onMap={onMap}
-                        offMap={offMap}
-                        countOf={(id) => counts.get(id) ?? 0}
-                        chain={chain}
-                        onPickGroup={onNodeClick}
-                        onPlace={(id) => { if (!activeMap) return; const c = viewCenter(); placeMut.mutate({ id, mapId: activeMap.id, x: c.x, y: c.y }); }}
-                        onCreateGroup={(name) => { if (activeMap) createGroupMut.mutate({ name, scope: activeMap.scope }); }}
-                        busyGroup={createGroupMut.isPending}
-                    />
-                )}
-                {side === "list" && (
-                    <SideColumn>
-                        {chain.length > 0
-                            ? <MemberList names={chain.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)")} members={chainMembers} />
-                            : <SideNote>평면에서 그룹을 짚으면 그 공통 멤버가 여기 나옵니다</SideNote>}
-                    </SideColumn>
-                )}
                 <div ref={wrapRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
                     <ReactFlow
                         nodes={nodes}
@@ -546,6 +529,31 @@ function MapPanelInner(): JSX.Element {
                     )}
                 </div>
 
+                {side === "group" && (
+                    <GroupSidebar
+                        maps={maps}
+                        activeMap={activeMap}
+                        onPickMap={(id) => { setSavedId(id); setChain([]); }}
+                        onCreateMap={(name, scope) => createMapMut.mutate({ name, scope })}
+                        busyMap={createMapMut.isPending}
+                        onMap={onMap}
+                        offMap={offMap}
+                        countOf={(id) => counts.get(id) ?? 0}
+                        chain={chain}
+                        onPickGroup={onNodeClick}
+                        onPlace={(id) => { if (!activeMap) return; const c = viewCenter(); placeMut.mutate({ id, mapId: activeMap.id, x: c.x, y: c.y }); }}
+                        onCreateGroup={(name) => { if (activeMap) createGroupMut.mutate({ name, scope: activeMap.scope }); }}
+                        busyGroup={createGroupMut.isPending}
+                    />
+                )}
+                {side === "list" && (
+                    // 목록은 표라서 칸이 더 넓어야 한다(날짜·시각·종목 세 열).
+                    <SideColumn width={LIST_W}>
+                        {chain.length > 0
+                            ? <MemberList names={chain.map((id) => gv.groupById.get(id)?.name ?? "(지워짐)")} members={chainMembers} />
+                            : <SideNote>평면에서 그룹을 짚으면 그 공통 멤버가 여기 나옵니다</SideNote>}
+                    </SideColumn>
+                )}
             </div>
         </div>
     );
@@ -649,11 +657,11 @@ function GroupSidebar({
     );
 }
 
-/** 왼쪽 칸의 껍데기 — 그룹 사전·멤버 목록이 같은 폭·같은 경계선·같은 스크롤을 쓴다. */
-function SideColumn({ children }: { children: ReactNode }): JSX.Element {
+/** 오른쪽 칸의 껍데기 — 그룹 사전·멤버 목록이 같은 경계선·같은 스크롤을 쓴다(폭만 다르다). */
+function SideColumn({ width = SIDE_W, children }: { width?: number; children: ReactNode }): JSX.Element {
     return (
         <div style={{
-            width: 196, flex: "none", borderRight: "1px solid var(--border-default)",
+            width, flex: "none", borderLeft: "1px solid var(--border-default)",
             overflowY: "auto", minHeight: 0, fontSize: 11,
         }}>
             {children}
@@ -735,8 +743,12 @@ function NewMapForm({ onCreate, busy }: { onCreate: (name: string, scope: MapSco
 }
 
 /**
- * 체인이 공통으로 가진 멤버 목록(토글) — 행 클릭 = 그 항목으로 이동(타점이면 goToPoint, 하루면 goToDay).
+ * 체인이 공통으로 가진 멤버 목록 — 행 클릭 = 그 항목으로 이동(타점이면 goToPoint, 하루면 goToDay).
  * 맵이 탐색의 출발점이 되는 자리다. 숫자는 노드와 같은 잣대(모집단), 전체 부착 수는 참고로만.
+ *
+ * 표는 **깔때기 결과 목록과 같은 것**(ItemRows) — 같은 성질의 목록 둘이 다르게 생겼을 이유가 없다.
+ * 덕분에 차트 덩어리 묶기·지금 선택 강조가 공짜로 따라온다. 달 페이지는 안 붙인다(그건 그 패널의 규칙이고,
+ * 여기 목록은 짚은 그룹의 공통 멤버라 애초에 그만큼 크지 않다 — 넘치면 상한에서 자른다).
  */
 function MemberList({ names, members }: {
     names: readonly string[];
@@ -745,6 +757,11 @@ function MemberList({ names, members }: {
     const { nameOf } = useStockNames();
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const goToDay = useWorkbench((s) => s.goToDay);
+    const subject = useSubject();
+
+    // ⚠ 정렬해서 넘긴다 — 묶기가 "같은 차트는 붙어 있다"를 가정한다(resultRows 머리 주석).
+    const sorted = useMemo(() => sortItems(members as never), [members]);
+    const shown = useMemo(() => sorted.slice(0, MEMBER_CAP), [sorted]);
 
     return (
         <>
@@ -755,19 +772,16 @@ function MemberList({ names, members }: {
                 title={names.join(" & ")}>
                 {names.join(" & ")}
             </div>
-            {members.slice(0, MEMBER_CAP).map((m) => (
-                <button
-                    key={`${m.stockCode}|${m.date}|${m.time ?? ""}`}
-                    onClick={() => (m.time !== undefined
-                        ? goToPoint({ code: m.stockCode, date: m.date, time: m.time })
-                        : goToDay({ code: m.stockCode, date: m.date }))}
-                    title="이 항목으로 이동"
-                    style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 6, padding: "2px 8px", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 11, textAlign: "left" }}
-                >
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(m.stockCode)}</span>
-                    <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>{shortDate(m.date)}{m.time ? ` ${m.time.slice(0, 5)}` : ""}</span>
-                </button>
-            ))}
+            <ItemRows
+                items={shown}
+                showTime={shown.some((m) => m.time !== undefined)}
+                nameOf={nameOf}
+                isActive={(it) => subject !== null && it.stockCode === subject.code && it.date === subject.date
+                    && (subject.time === null || it.time === undefined || it.time === subject.time)}
+                onPick={(it) => (it.time !== undefined
+                    ? goToPoint({ code: it.stockCode, date: it.date, time: it.time })
+                    : goToDay({ code: it.stockCode, date: it.date }))}
+            />
             {members.length > MEMBER_CAP && (
                 <div style={{ padding: "2px 8px", color: "var(--text-tertiary)" }}>…외 {members.length - MEMBER_CAP}건</div>
             )}

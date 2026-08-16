@@ -136,11 +136,13 @@ describe("MapPanel — 필터에 추가(유일한 쓰기)", () => {
 });
 
 describe("MapPanel — 멤버 목록(토글)", () => {
+    // 표는 깔때기 결과 목록과 같은 공용(ItemRows)이라 행에 title 이 없다 — 종목 이름 칸으로 찾는다.
     it("목록을 켜고 그룹을 짚으면 모집단 멤버가 보이고, 행 클릭 = 그 항목으로 이동", () => {
         renderMap();
         fireEvent.click(screen.getByText("목록"));
         fireEvent.click(nodeLabel("2차전지"));
-        const row = screen.getByTitle("이 항목으로 이동");
+        // 이름 사전을 안 심었으므로 종목 칸에는 코드가 그대로 선다(useStockNames 폴백).
+        const row = screen.getByText("086520").closest("tr")!;
         fireEvent.click(row);
         const s = useWorkbench.getState();
         expect(s.focus.code).toBe("086520");

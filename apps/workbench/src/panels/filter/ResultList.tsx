@@ -21,7 +21,8 @@
 //    못 누르게 두면 "필터로 찾은 하루를 보러 간다"가 이 목록에서 성립하지 않는다. time 없는 행 클릭
 //    = goToDay(하루 선택 — activePoint 는 풀린다).
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FunnelCell } from "@trade-data-manager/market/domain";
+import type { FunnelCell, FunnelItem } from "@trade-data-manager/market/domain";
+import { ItemRows } from "../../components/ItemRows.js";
 import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
 import { useStockNames } from "../../lib/useStockNames.js";
 import { useSubject } from "../../lib/subject.js";
@@ -30,7 +31,7 @@ import { ACTIVE, ACTIVE_SOFT, FAIL, STRONG } from "../../styles/palette.js";
 import type { FunnelSelection } from "../../store/filterFunnelSlice.js";
 import { cellMeta } from "./cells.js";
 import { shortDate } from "../../lib/date.js";
-import { groupByChart, monthBuckets, monthLabel, monthOf, sortItems } from "./resultRows.js";
+import { monthBuckets, monthLabel, monthOf, sortItems } from "./resultRows.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
 /** 한 달이 이보다 크면 그것대로 못 그린다 — 달이 페이지인 이상 잘림은 예외 상황이라 표시만 남긴다. */
@@ -69,7 +70,6 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
 
     const monthItems = useMemo(() => (month === null ? [] : sorted.filter((i) => monthOf(i.date) === month)), [sorted, month]);
     const shown = useMemo(() => monthItems.slice(0, MAX_ROWS), [monthItems]);
-    const groups = useMemo(() => groupByChart(shown), [shown]);
 
     // 종목명 — 사전 한 벌(전량)에서. 선택이 이 달·이 집합 밖이어도(고정 줄이 있는 이유) 이름이 나온다.
     const { nameOf } = useStockNames();
@@ -172,52 +172,25 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 {items.length === 0 && <div style={{ padding: 12, fontSize: 12, color: "var(--text-tertiary)" }}>비어 있습니다.</div>}
-                {groups.length > 0 && (
-                    <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
-                        <thead>
-                            <tr style={{ color: "var(--text-tertiary)", fontSize: 10.5, textAlign: "left" }}>
-                                <th style={{ width: 74, fontWeight: 400, padding: "3px 10px" }}>날짜</th>
-                                {v.grain === "point" && <th style={{ width: 52, fontWeight: 400, padding: "3px 0" }}>시각</th>}
-                                <th style={{ fontWeight: 400, padding: "3px 0" }}>종목</th>
-                                {showBlocked && <th style={{ width: 110, fontWeight: 400, padding: "3px 0" }}>막은 필터</th>}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {groups.map((g) => g.items.map((it, i) => {
-                                const active = isActiveItem(it);
-                                const tied = g.items.length > 1; // 한 차트에 타점 여럿 — 세로선으로 묶는다
-                                return (
-                                    <tr key={`${g.key}|${it.time ?? ""}`} ref={active ? activeRowRef : undefined}
-                                        // time 있는 행 = 타점 이동, 없는 행 = 하루 이동(타점 없는 하루도 선택이다 — 파일 머리 ④).
-                                        onClick={() => it.time
-                                            ? goToPoint({ date: it.date, code: it.stockCode, time: it.time }, "filter-funnel")
-                                            : goToDay({ date: it.date, code: it.stockCode }, "filter-funnel")}
-                                        style={{
-                                            // 덩어리 안쪽 행은 위 선을 없애 한 블록으로 보이게 한다.
-                                            borderTop: i === 0 ? "1px solid var(--border-subtle)" : "none",
-                                            background: active ? ACTIVE_SOFT : "transparent",
-                                            cursor: "pointer",
-                                        }}>
-                                        <td style={{
-                                            padding: "3px 10px", color: "var(--text-secondary)",
-                                            borderLeft: active ? `2px solid ${ACTIVE}` : tied ? "2px solid var(--border-default)" : "2px solid transparent",
-                                        }}>
-                                            {i === 0 ? shortDate(it.date) : ""}
-                                        </td>
-                                        {v.grain === "point" && <td style={{ padding: "3px 0", color: active ? ACTIVE : "var(--accent-primary)", fontWeight: active ? 700 : 400 }}>{it.time?.slice(0, 5) ?? "—"}</td>}
-                                        <td style={{ padding: "3px 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: active ? 700 : 400 }}>
-                                            {i === 0 ? nameOf(it.stockCode) : ""}
-                                        </td>
-                                        {showBlocked && (
-                                            <td style={{ padding: "3px 0", color: FAIL, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                                {v.blockedLabels(it, stageIndex).join(" · ")}
-                                            </td>
-                                        )}
-                                    </tr>
-                                );
-                            }))}
-                        </tbody>
-                    </table>
+                {shown.length > 0 && (
+                    // 표 자체는 공용(ItemRows) — 맵의 공통 멤버 목록이 같은 것을 쓴다.
+                    // time 있는 행 = 타점 이동, 없는 행 = 하루 이동(타점 없는 하루도 선택이다 — 파일 머리 ④).
+                    <ItemRows
+                        items={shown}
+                        showTime={v.grain === "point"}
+                        nameOf={nameOf}
+                        isActive={isActiveItem}
+                        activeRef={activeRowRef}
+                        onPick={(it) => it.time
+                            ? goToPoint({ date: it.date, code: it.stockCode, time: it.time }, "filter-funnel")
+                            : goToDay({ date: it.date, code: it.stockCode }, "filter-funnel")}
+                        extra={showBlocked
+                            ? {
+                                header: "막은 필터", width: 110,
+                                render: (it) => <span style={{ color: FAIL }}>{v.blockedLabels(it as FunnelItem, stageIndex).join(" · ")}</span>,
+                            }
+                            : undefined}
+                    />
                 )}
                 {monthItems.length > MAX_ROWS && (
                     <div style={{ padding: "4px 10px", color: "var(--text-tertiary)", fontSize: 10.5 }}>
