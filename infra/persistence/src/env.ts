@@ -30,3 +30,14 @@ export function getCurationDatabaseUrl(): string | null {
     ensureDbEnvLoaded();
     return process.env.CURATION_DATABASE_URL?.trim() || null;
 }
+
+/**
+ * pg_dump / pg_restore 가 있는 디렉터리(PG_BIN_DIR). 머신마다 다르다.
+ * curation 미러가 이 도구들을 쓰므로 미러를 돌리는 쪽(api·db-ops)이 필요로 한다. 없으면 throw.
+ */
+export function getPgBinDir(): string {
+    ensureDbEnvLoaded();
+    const dir = process.env.PG_BIN_DIR?.trim();
+    if (!dir) throw new Error("PG_BIN_DIR 미설정 — infra/persistence/.env 를 확인하세요.");
+    return dir;
+}
