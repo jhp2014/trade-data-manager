@@ -1,0 +1,1 @@
+ALTER TABLE "curation"."chart_anchors" ADD CONSTRAINT "uq_chart_anchor_identity" UNIQUE NULLS NOT DISTINCT("stock_code","trade_date","trade_time","param","anchor_date","anchor_time","field","market");

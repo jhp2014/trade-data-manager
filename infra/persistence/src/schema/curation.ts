@@ -242,6 +242,18 @@ export const chartAnchors = curation.table(
     (t) => [
         index("idx_chart_anchors_chart").on(t.stockCode, t.tradeDate),
         index("idx_chart_anchors_param").on(t.param, t.tradeDate),
+        // 자연키 유니크 — 좌표가 전부 같은 행은 하나뿐. **id 는 손잡이일 뿐 정체성이 아니다**(API 는 이 튜플로 지목).
+        //
+        // 예전에 이 방어를 저장 경로(repository add 의 조회→삽입)로 옮겼던 건, 4컬럼이 NULL 허용이라
+        // 평범한 UNIQUE 가 무력했기 때문이다(SQL 기본값에서 NULL 은 서로 다르다 → 중복이 그냥 들어온다).
+        // PG15 의 NULLS NOT DISTINCT 가 그 전제를 깬다 — NULL 끼리 같게 봐서 진짜로 잠긴다(양쪽 다 PG17).
+        //
+        // 저장 경로의 멱등은 그대로 둔다(왕복 절약). 이건 그 아래 최종 방어선이다:
+        // 협업으로 **쓰는 프로세스가 둘**이 된 순간 "조회 후 없으면 삽입"은 둘 다 못 찾고 둘 다 넣는다.
+        // 원자적으로 막을 수 있는 층은 DB 뿐이고, 읽기가 로컬 미러라 상대 작업이 안 보여 확률도 올라간다.
+        unique("uq_chart_anchor_identity")
+            .on(t.stockCode, t.tradeDate, t.tradeTime, t.param, t.anchorDate, t.anchorTime, t.field, t.market)
+            .nullsNotDistinct(),
     ],
 );
 
