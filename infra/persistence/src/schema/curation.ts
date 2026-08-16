@@ -93,6 +93,12 @@ export const rankSlots = curation.table(
     },
     (t) => [
         unique("uq_rank_slot_axis_id").on(t.axisId, t.id),
+        // 한 축에 같은 자리는 하나뿐 — **"slot 의 정체성은 자리다"라는 선언**.
+        // 클라가 줄을 그릴 때 orderKey 가 같은 배치를 한 타이 묶음으로 접는데, 그게 참이라는 보장이
+        // 없었다. 실제로 축 11 에 order_key=-1 인 slot 이 둘 있었다(하나는 배치 0건 유령 —
+        // GC 가 놓친 것). surrogate id 가 있어서 "같은 자리인데 다른 것"이 성립할 수 있었던 자리다.
+        // 마이그 0016 이 그 유령을 지우고 이 제약을 건다.
+        unique("uq_rank_slot_position").on(t.axisId, t.orderKey),
         index("idx_rank_slots_axis_order").on(t.axisId, t.orderKey),
     ],
 );

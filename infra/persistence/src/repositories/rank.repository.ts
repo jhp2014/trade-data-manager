@@ -191,14 +191,30 @@ async function midpointKey(tx: DbClient, axis: bigint, prevSlotId?: string, next
 
 /**
  * 한 축의 slot 을 현재 순서대로 0,1,2,…N-1 로 재부여. 정수 간격이라 사이 세분 여지가 복원된다.
- * order_key 에 유일 제약이 없어 갱신 중 일시적 중복도 안전. slot·placement 는 그대로(키만 바뀜) → 순서 보존.
+ * slot·placement 는 그대로(키만 바뀜) → 순서 보존.
+ *
+ * **두 단계로 나누는 이유**: uq_rank_slot_position(axis, order_key) 이 생겼다. 한 건씩 최종값으로 옮기면
+ * 아직 안 옮긴 slot 이 그 값을 쥐고 있어 중간에 부딪힌다(예: [0, 0.5] → 0.5 를 1 로 옮기려는데…가 아니라,
+ * [0.5, 1] 에서 0.5→0 은 되지만 1→1 뒤 다음 것이 겹치는 식). Postgres 는 유니크를 문장 단위가 아니라
+ * **행 단위로** 즉시 검사하므로 한 문장에 몰아도 같다 — DEFERRABLE 아니면 제자리 재번호는 불가능하다.
+ * drizzle 이 유니크에 deferrable 을 표현하지 못해(nullsNotDistinct 만 있다) 스키마에 못 적으므로,
+ * 손 SQL 로 걸어 스냅샷과 어긋나게 두느니 코드가 **매 문장 불변식을 지키게** 한다.
  */
 async function reindexAxis(tx: DbClient, axis: bigint): Promise<void> {
     const slots = await tx
-        .select({ id: rankSlots.id })
+        .select({ id: rankSlots.id, orderKey: rankSlots.orderKey })
         .from(rankSlots)
         .where(eq(rankSlots.axisId, axis))
         .orderBy(asc(rankSlots.orderKey), asc(rankSlots.id));
+    if (slots.length === 0) return;
+
+    // 1단계 — 전부 임시 자리로 비킨다. 현재 최솟값(0 과 비교해 더 작은 쪽) **아래로** 하나씩 내려보내므로
+    // 기존 값과도, 서로와도, 최종값(0 이상)과도 겹치지 않는다.
+    const floor = Math.min(0, ...slots.map((s) => s.orderKey)) - 1;
+    for (let i = 0; i < slots.length; i++) {
+        await tx.update(rankSlots).set({ orderKey: floor - i }).where(eq(rankSlots.id, slots[i].id));
+    }
+    // 2단계 — 최종 자리로. 1단계 값이 전부 음수 아래라 여기서도 안 부딪힌다.
     for (let i = 0; i < slots.length; i++) {
         await tx.update(rankSlots).set({ orderKey: i }).where(eq(rankSlots.id, slots[i].id));
     }
