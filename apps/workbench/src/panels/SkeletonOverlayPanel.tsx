@@ -12,6 +12,7 @@ import { useCandles, type CandleFocus } from "./skeleton/useCandles.js";
 import { useOverlayToggles } from "./skeleton/useOverlayToggles.js";
 import { OverlayHeader } from "./skeleton/OverlayHeader.js";
 import { OverlayFooter } from "./skeleton/OverlayFooter.js";
+import { OverlaySelectionBar } from "./skeleton/OverlaySelectionBar.js";
 import { LabelLayer, LABEL_CELL } from "./skeleton/LabelLayer.js";
 import { amountLevelOf, amountLookupOf } from "./skeleton/amountLayer.js";
 import { AmountLabels, useAmountLabels, type AmountSource } from "./skeleton/AmountLabels.js";
@@ -639,24 +640,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 subjectBadge={<SubjectBadge subject={subject} status={subjectState}
                     name={subject ? nameOf(subject.code) : undefined}
                     absentLabel={isDaily ? "골격 없음" : "골격·타점 없음"} />}
-                selection={{
-                    chartCount: selectedCharts.length,
-                    chartChannelShown: !isPointUnit,
-                    rawChartCount: selectedKeys.size,
-                    onGroupCharts: openGroupMenuForSelection,
-                    onClearCharts: () => setSelectedKeys(new Set()),
-                    pointKeys: selectedPks,
-                    onGroupPoints: openPointGroupMenu,
-                    onClearPoints: () => setSelectedPks(new Set()),
-                    pinnedCount: pins.count,
-                    onClearPins: pins.clear,
-                }}
                 onlySelected={onlySelected}
                 setOnlySelected={setOnlySelected}
                 locked={locked !== null}
                 onToggleLock={() => setLocked(locked ? null : autoBounds)}
-                zoomed={zoomed}
-                onResetZoom={reset}
             />
 
             <div ref={wrapRef} onMouseDown={onWrapMouseDown}
@@ -821,6 +808,25 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} fmtX={(v: number) => fmtX(v, xUnit)} abs={axisAbs}
                         readoutAt={readoutAt} colorOf={theme.colorOf} />
                 )}
+
+                {/* 선택 작업줄 — 지금 고른 것에 대해 할 일(그룹·해제·원위치). 헤더가 아니라 대상 옆에 뜬다.
+                    ⚠ 크로스헤어 **뒤**에 온다: 문서 순서가 곧 겹침 순서라, 앞에 두면 판독 칩이 판 위로 올라온다. */}
+                <OverlaySelectionBar
+                    selection={{
+                        chartCount: selectedCharts.length,
+                        chartChannelShown: !isPointUnit,
+                        rawChartCount: selectedKeys.size,
+                        onGroupCharts: openGroupMenuForSelection,
+                        onClearCharts: () => setSelectedKeys(new Set()),
+                        pointKeys: selectedPks,
+                        onGroupPoints: openPointGroupMenu,
+                        onClearPoints: () => setSelectedPks(new Set()),
+                        pinnedCount: pins.count,
+                        onClearPins: pins.clear,
+                    }}
+                    zoomed={zoomed}
+                    onResetZoom={reset}
+                />
             </div>
 
             {/* 뭉친 라벨의 멤버 목록 — 행 점이 그림의 그 선과 같은 색(목록↔그림을 잇는 유일한 것). */}
