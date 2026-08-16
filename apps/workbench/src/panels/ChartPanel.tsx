@@ -16,19 +16,18 @@ import { MinuteChart } from "../chart/MinuteChart.js";
 import { GroupChips } from "../components/GroupChips.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import {
-    AmountMarkerToggle,
+    amountMarkerControl,
     Center,
     ChartHeader,
     ChartPanes,
-    GuideToggle,
-    MarketToggle,
-    MarkerGroup,
-    PinToggle,
-    ScaleToggle,
-    SearchLineToggle,
-    ViewToggles,
+    guideControl,
+    marketControl,
+    pinControl,
+    scaleControl,
+    searchLineControl,
+    viewControl,
 } from "./ChartPanelChrome.js";
-import { TextToggle, Sep, ControlGroup } from "../components/ControlChrome.js";
+import type { ControlSpec } from "../components/HeaderControls.js";
 import { SKELETON } from "../styles/palette.js";
 
 // 차트 패널(복기 플레인) — 일봉(상) + 분봉(하) 듀얼. 껍데기(헤더·2단·토글)는 ChartPanelChrome 공용.
@@ -46,8 +45,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const view = useWorkbench((s) => s.chartViews[panelId]) ?? defaultChartView(panelId); // 일봉만/분봉만/일봉+분봉(패널별·영속)
     const setChartView = useWorkbench((s) => s.setChartView);
     const setView = (v: ChartView): void => setChartView(panelId, v);
-    const collapsed = useWorkbench((s) => s.panelControlsCollapsed[panelId]) ?? false; // 컨트롤 바 접힘(패널별·영속)
-    const toggleControls = useWorkbench((s) => s.togglePanelControls);
     const expanded: "daily" | "minute" | null = view === "both" ? null : view;
     // 헤더 토글 — 패널별 store 영속(usePanelUi). 프리셋 전환(재마운트)·새로고침에 유지.
     const [showMarkers, setShowMarkers] = usePanelUi(panelId, "showMarkers", true); // 분봉 거래대금 마커 ON/OFF
@@ -100,6 +97,41 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return { un: num(d?.un), krx: num(d?.krx) };
     }, [candleMenu, dailyQ.data, minuteQ.data]);
 
+    // 헤더 컨트롤 선언 — 공통 문구는 ChartPanelChrome 의 공장이 들고, 이 패널에만 있는 셋(타점정보·
+    // 골격·지우기)만 여기서 만든다. 지우기 셋은 할 게 없으면 사라지는 대신 흐려진다(자리 고정 규약).
+    const controls = useMemo<ControlSpec[]>(() => [
+        viewControl(view, setView),
+        pinControl(pinMinute, () => setPinMinute((v) => !v)),
+        scaleControl(lockScale, () => setLockScale((v) => !v)),
+        {
+            kind: "toggle", id: "pointInfo", name: "타점정보", activeColor: "var(--accent-primary)",
+            help: "현재 타점(시간선)의 값 읽기", on: showPointInfo, set: () => setShowPointInfo((v) => !v),
+        },
+        amountMarkerControl(showMarkers, () => setShowMarkers((v) => !v)),
+        searchLineControl(showLine, () => setShowLine((v) => !v)),
+        guideControl(showGuide, () => setShowGuide((v) => !v)),
+        {
+            kind: "toggle", id: "skeleton", name: "골격", group: "마커", activeColor: SKELETON,
+            help: "이 차트에 찍은 골격 선", on: showSkeleton, set: () => setShowSkeleton((v) => !v),
+        },
+        {
+            kind: "action", id: "clearLines", name: "선 지우기", group: "지우기",
+            help: "가격선 전체 지우기", run: lines.clear, disabled: !lines.hasLines,
+        },
+        {
+            kind: "action", id: "clearDailySkeleton", name: "골격 지우기", group: "지우기",
+            help: "일봉 골격 점 전체 지우기(다시 찍기)", run: dailySkeleton.clear, disabled: !dailySkeleton.hasAny,
+        },
+        {
+            kind: "action", id: "clearMinuteSkeleton", name: "분봉골격 지우기", group: "지우기",
+            help: "이 차트의 분봉 골격 점 전체 지우기", run: minuteSkeleton.clear, disabled: !minuteSkeleton.hasAny,
+        },
+        marketControl(mode, setMode),
+    ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showPointInfo, setShowPointInfo,
+        showMarkers, setShowMarkers, showLine, setShowLine, showGuide, setShowGuide, showSkeleton, setShowSkeleton,
+        lines.clear, lines.hasLines, dailySkeleton.clear, dailySkeleton.hasAny,
+        minuteSkeleton.clear, minuteSkeleton.hasAny, mode, setMode]);
+
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
             <ChartHeader
@@ -111,8 +143,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 drifted={drifted}
                 onResetSearch={() => setSearchDate(null)}
                 baseFallback={minuteView?.baseFallback}
-                collapsed={collapsed}
-                onToggleControls={() => toggleControls(panelId)}
+                controls={controls}
+                storageKey="wb.headerPins.chart.replay"
                 badges={
                     focusedPoint ? (
                         // 현재 타점의 그룹(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
@@ -120,29 +152,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                         <GroupChips groups={groupsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
                     ) : null
                 }
-            >
-                <ViewToggles view={view} setView={setView} />
-                <Sep />
-                <ControlGroup>
-                    <PinToggle on={pinMinute} toggle={() => setPinMinute((v) => !v)} />
-                    <ScaleToggle on={lockScale} toggle={() => setLockScale((v) => !v)} />
-                    <TextToggle active={showPointInfo} activeColor="var(--accent-primary)" onClick={() => setShowPointInfo((v) => !v)} title={showPointInfo ? "현재 타점 정보 끄기" : "현재 타점 정보 켜기"}>타점정보</TextToggle>
-                </ControlGroup>
-                <Sep />
-                <MarkerGroup>
-                    <AmountMarkerToggle on={showMarkers} toggle={() => setShowMarkers((v) => !v)} />
-                    <SearchLineToggle on={showLine} toggle={() => setShowLine((v) => !v)} />
-                    <GuideToggle on={showGuide} toggle={() => setShowGuide((v) => !v)} />
-                    <TextToggle active={showSkeleton} activeColor={SKELETON} onClick={() => setShowSkeleton((v) => !v)} title={showSkeleton ? "골격 선 숨기기" : "골격 선 보이기"}>골격</TextToggle>
-                </MarkerGroup>
-                <Sep />
-                <ControlGroup>
-                    <TextToggle active={false} disabled={!lines.hasLines} onClick={() => lines.hasLines && lines.clear()} title="가격선 전체 지우기">선 지우기</TextToggle>
-                    <TextToggle active={false} disabled={!dailySkeleton.hasAny} onClick={() => dailySkeleton.hasAny && dailySkeleton.clear()} title="일봉 골격 점 전체 지우기(다시 찍기)">골격 지우기</TextToggle>
-                    <TextToggle active={false} disabled={!minuteSkeleton.hasAny} onClick={() => minuteSkeleton.hasAny && minuteSkeleton.clear()} title="이 차트의 분봉 골격 점 전체 지우기">분봉골격 지우기</TextToggle>
-                    <MarketToggle mode={mode} setMode={setMode} />
-                </ControlGroup>
-            </ChartHeader>
+            />
 
             <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
                 {!code && <Center text="종목을 선택하세요" />}

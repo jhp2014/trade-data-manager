@@ -1,6 +1,7 @@
 // 깔때기 머리글 — 분모(후보 수)·해상도 손잡이·저장본. 조건 자체는 여기서 못 만진다(보드의 일).
-import { useState } from "react";
-import { TextToggle, PanelHeader } from "../../components/ControlChrome.js";
+import { useMemo, useState } from "react";
+import { PanelHeader } from "../../components/ControlChrome.js";
+import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { FAIL } from "../../styles/palette.js";
@@ -28,6 +29,29 @@ export function FunnelHeader({ v, expandToPoints, setExpand, barsOpen, onToggleB
     const clearStages = useWorkbench((s) => s.clearFilterStages);
     const [setsOpen, setSetsOpen] = useState<{ x: number; y: number } | null>(null);
 
+    // 컨트롤 선언 — 슬롯(1·2·3)과 불러오기는 여기 안 든다: 슬롯은 어디에 뭐가 들었는지를 점으로
+    // **보여주는** 위젯이고, 불러오기는 목록을 여는 손잡이라 값 컨트롤의 문법이 아니다.
+    const controls = useMemo<ControlSpec[]>(() => [
+        {
+            kind: "toggle", id: "expandToPoints", name: "타점으로", available: v.canExpandToPoints,
+            help: "결과를 타점까지 펼친다 — 하루 조건은 그날 타점 전부에 같은 값이라 정직한 반복이다(반대는 롤업 규칙이 없어 막혀 있다)",
+            on: expandToPoints, set: setExpand,
+        },
+        {
+            kind: "toggle", id: "bars", name: "막대", help: "걸린 필터 막대를 펼친다 — 접으면 목록·보드가 화면을 다 쓴다",
+            on: barsOpen, set: onToggleBars,
+        },
+        {
+            kind: "action", id: "clearStages", name: "비우기", group: "필터 한 벌", disabled: stages.length === 0,
+            help: "이 슬롯의 필터 전부 지우기(다른 슬롯은 그대로)", run: clearStages,
+        },
+        {
+            kind: "action", id: "saveSet", name: "저장", group: "필터 한 벌", disabled: stages.length === 0,
+            help: "지금 필터들을 이름 붙여 저장",
+            run: () => { const n = prompt("깔때기 이름", `필터 ${stages.length}개`); if (n?.trim()) saveSet(n.trim()); },
+        },
+    ], [v.canExpandToPoints, expandToPoints, setExpand, barsOpen, onToggleBars, stages.length, clearStages, saveSet]);
+
     return (
         <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
             <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>후보</span>
@@ -36,12 +60,7 @@ export function FunnelHeader({ v, expandToPoints, setExpand, barsOpen, onToggleB
                 {v.universe.toLocaleString("ko-KR")}
             </span>
             <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>{GRAIN_UNIT[v.grain]}</span>
-            {v.canExpandToPoints && (
-                <TextToggle active={expandToPoints} onClick={() => setExpand(!expandToPoints)}
-                    title="결과를 타점까지 펼친다 — 하루 조건은 그날 타점 전부에 같은 값이라 정직한 반복이다. 반대(타점→하루)는 롤업 규칙이 없어 막혀 있다.">
-                    타점으로
-                </TextToggle>
-            )}
+            <HeaderControls controls={controls} storageKey="wb.headerPins.funnel" />
             <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                 {v.deadStageIds.length > 0 && (
                     <span style={{ fontSize: 10.5, color: FAIL, flexShrink: 0 }} title="지워진 그룹·축을 가리키는 조건이 있습니다. 그 필터는 판단 불가(미배치)로 잡힙니다.">
@@ -67,20 +86,9 @@ export function FunnelHeader({ v, expandToPoints, setExpand, barsOpen, onToggleB
                         );
                     })}
                 </span>
-                <button disabled={stages.length === 0} onClick={clearStages}
-                    title={stages.length > 0 ? "이 슬롯의 필터 전부 지우기(다른 슬롯은 그대로)" : "지울 필터가 없습니다"}
-                    style={{ ...headerBtn, opacity: stages.length > 0 ? 1 : 0.45 }}>비우기</button>
-                <button disabled={stages.length === 0}
-                    onClick={() => { const n = prompt("깔때기 이름", `필터 ${stages.length}개`); if (n?.trim()) saveSet(n.trim()); }}
-                    title={stages.length > 0 ? "지금 필터들을 이름 붙여 저장" : "먼저 필터를 거세요"}
-                    style={{ ...headerBtn, opacity: stages.length > 0 ? 1 : 0.45 }}>저장</button>
                 <button disabled={saved.length === 0} onClick={(e) => setSetsOpen({ x: e.clientX, y: e.clientY })}
                     title={saved.length > 0 ? "저장한 깔때기 불러오기(지금 필터를 통째로 교체)" : "저장한 깔때기가 없습니다"}
                     style={{ ...headerBtn, opacity: saved.length > 0 ? 1 : 0.45 }}>불러오기{saved.length > 0 ? ` ${saved.length}` : ""}</button>
-                <button onClick={onToggleBars} title={barsOpen ? "필터 막대 접기 — 목록·보드에 화면을 다 준다" : "필터 막대 펼치기"}
-                    style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: "2px 4px" }}>
-                    {barsOpen ? "▴" : "▾"}
-                </button>
             </span>
             {setsOpen && (
                 <AnchoredPopover anchor={setsOpen} onClose={() => setSetsOpen(null)} minWidth={200} maxWidth={280} maxHeight="min(56vh, 380px)" padding={0} placement="beside" offset={6}>

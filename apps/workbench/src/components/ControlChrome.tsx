@@ -71,21 +71,9 @@ export function Sep(): JSX.Element {
     return <span style={{ width: 1, height: 11, background: "var(--border-default)", flexShrink: 0 }} />;
 }
 
-// 컨트롤 그룹 — 구분자 사이의 토글 묶음(가로 스크롤 중 쪼개지지 않게 flexShrink: 0).
-export function ControlGroup({ gap = 6, children }: { gap?: number; children: React.ReactNode }): JSX.Element {
-    return <span style={{ display: "flex", alignItems: "center", gap, flexShrink: 0 }}>{children}</span>;
-}
-
-// 라벨 붙은 박스 그룹 — 옅은 배경+테두리로 "한 묶음"임을 시각적으로 구분(라벨 텍스트가 토글과 안 헷갈리게).
-// Sep 없이도 그룹 경계가 뚜렷. 라벨 생략 가능.
-export function ControlBox({ label, gap = 4, children }: { label?: string; gap?: number; children: React.ReactNode }): JSX.Element {
-    return (
-        <span style={{ display: "inline-flex", alignItems: "center", gap, flexShrink: 0, padding: "1px 6px", borderRadius: 6, background: "var(--bg-tertiary)", border: "0.5px solid var(--border-default)" }}>
-            {label && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{label}</span>}
-            {children}
-        </span>
-    );
-}
+// ControlGroup(구분자 사이 묶음)·ControlBox(라벨 붙은 옅은 박스)는 사라졌다.
+// 묶음은 이제 **선언의 `group`** 이고, 그 이름은 헤더가 아니라 더보기 판의 섹션 제목으로 산다
+// (라벨은 헤더에 없다 — HeaderControls 규약 ①). 헤더에서 묶음을 보이는 건 Sep 하나뿐이다.
 
 /**
  * 패널 머리글 한 줄 — **넘치면 줄을 바꾸지 않고 가로로 스크롤한다**(사용자 확정, 전 패널 공통).
@@ -130,40 +118,6 @@ export function PanelHeader({ gap = 8, padding = "6px 10px", chrome = true, titl
     );
 }
 
-function ChevronIcon({ dir }: { dir: "left" | "right" }): JSX.Element {
-    return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points={dir === "left" ? "15 18 9 12 15 6" : "9 18 15 12 9 6"} />
-        </svg>
-    );
-}
-
-// 패널 헤더 우측 컨트롤 바 — 통째로 접기/펼치기(패널별 영속) + 폭 부족 시 가로 휠 스크롤.
-// 스크롤바는 숨김(.no-scrollbar) — 좁을 때 컨트롤이 잘려 보이는 편이 상시 스크롤바보다 조용하다.
-// 접기 셰브론은 스크롤 영역 밖에 고정 — 접힌 상태에서도 항상 잡힌다.
-export function ControlBar({ collapsed, onToggle, gap = 10, children }: {
-    collapsed: boolean;
-    onToggle: () => void;
-    gap?: number;
-    children: React.ReactNode;
-}): JSX.Element {
-    const wheelRef = useHorizontalWheel<HTMLDivElement>(!collapsed); // 접힘→펼침 시 새 엘리먼트에 재부착
-    const label = collapsed ? "컨트롤 펼치기" : "컨트롤 접기";
-    return (
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-            {!collapsed && (
-                <div ref={wheelRef} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap, overflowX: "auto", minWidth: 0 }}>
-                    {children}
-                </div>
-            )}
-            <button
-                onClick={onToggle}
-                title={label}
-                aria-label={label}
-                style={{ display: "inline-flex", alignItems: "center", border: "none", background: "none", padding: "0 2px", cursor: "pointer", color: "var(--text-tertiary)", lineHeight: 0, flexShrink: 0 }}
-            >
-                <ChevronIcon dir={collapsed ? "left" : "right"} />
-            </button>
-        </div>
-    );
-}
+// ControlBar(줄 전체를 셰브론으로 접던 것)는 사라졌다 — 접는 단위가 줄 전체라 하나를 보려면 다 펼쳐야
+// 했고, 컨트롤별 핀(HeaderControls 의 더보기 판)이 같은 일을 더 잘한다. 접힘 상태를 담던 store 슬라이스
+// (panelSlice)도 같이 없앴다.

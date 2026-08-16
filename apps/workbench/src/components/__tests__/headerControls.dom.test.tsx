@@ -127,6 +127,34 @@ describe("택1 — 값 개수가 형태를 정한다", () => {
     });
 });
 
+describe("액션 — 누르면 일이 일어난다", () => {
+    const action = (run: (at: { clientX: number; clientY: number }) => void, disabled = false): ControlSpec =>
+        ({ kind: "action", id: "clear", name: "선 지우기", run, disabled });
+
+    it("누르면 실행된다", () => {
+        const run = vi.fn();
+        const c = draw([action(run)]);
+        fireEvent.click(c.querySelector("button")!);
+        expect(run).toHaveBeenCalled();
+    });
+
+    it("할 게 없으면 **사라지는 대신 흐려진다** — 자리가 안 움직여야 한다", () => {
+        const run = vi.fn();
+        const c = draw([action(run, true)]);
+        const btn = c.querySelector("button")!;
+        expect(btn.textContent).toBe("선 지우기"); // 여전히 서 있다
+        fireEvent.click(btn);
+        expect(run).not.toHaveBeenCalled();
+    });
+
+    it("누른 자리를 넘긴다 — 그 자리에 메뉴를 띄우는 손짓이 있다(+ 축)", () => {
+        const run = vi.fn();
+        const c = draw([action(run)]);
+        fireEvent.click(c.querySelector("button")!, { clientX: 120, clientY: 40 });
+        expect(run.mock.calls[0][0]).toMatchObject({ clientX: 120, clientY: 40 });
+    });
+});
+
 describe("폭 잠금 — 값이 바뀌어도 칸이 안 변한다", () => {
     it("순환 칸에 모든 값의 숨은 사본이 서 있다 — 칸을 제일 긴 것에 맞추는 재료", () => {
         const c = draw([{

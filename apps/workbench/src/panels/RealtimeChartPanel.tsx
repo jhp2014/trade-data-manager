@@ -12,19 +12,18 @@ import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import {
-    AmountMarkerToggle,
+    amountMarkerControl,
     Center,
     ChartHeader,
     ChartPanes,
-    GuideToggle,
-    MarketToggle,
-    MarkerGroup,
-    PinToggle,
-    ScaleToggle,
-    SearchLineToggle,
-    ViewToggles,
+    guideControl,
+    marketControl,
+    pinControl,
+    scaleControl,
+    searchLineControl,
+    viewControl,
 } from "./ChartPanelChrome.js";
-import { TextToggle, Sep, ControlGroup } from "../components/ControlChrome.js";
+import type { ControlSpec } from "../components/HeaderControls.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { ALARM } from "../styles/palette.js";
 
@@ -47,8 +46,6 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     const deliverAlertPrice = useWorkbench((s) => s.deliverAlertPrice);
     const draftLines = useWorkbench((s) => s.alertDraftLines); // 편집 중 조건의 draft 가격선(미리보기)
     const captureArmed = captureCode != null && captureCode === code; // 이 차트(포커스 종목)가 무장 대상일 때만
-    const collapsed = useWorkbench((s) => s.panelControlsCollapsed[panelId]) ?? false;
-    const toggleControls = useWorkbench((s) => s.togglePanelControls);
     // 헤더 토글 — 패널별 store 영속(usePanelUi). 프리셋 전환(재마운트)·새로고침에 유지.
     const [view, setView] = usePanelUi<ChartView>(panelId, "view", "both");
     const [showMarkers, setShowMarkers] = usePanelUi(panelId, "showMarkers", true);
@@ -95,6 +92,22 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     const dailyLines = useMemo(() => [...dLines, ...alarmLines, ...draftRenderLines], [dLines, alarmLines, draftRenderLines]);
     const minuteLines = useMemo(() => [...resolvedLines, ...alarmLines, ...draftRenderLines], [resolvedLines, alarmLines, draftRenderLines]);
 
+    // 헤더 컨트롤 선언 — 공통 문구는 ChartPanelChrome 의 공장이 들고, 이 플레인에만 있는 알람선만 여기서.
+    const controls = useMemo<ControlSpec[]>(() => [
+        viewControl(view, setView),
+        pinControl(pinMinute, () => setPinMinute((v) => !v)),
+        scaleControl(lockScale, () => setLockScale((v) => !v)),
+        amountMarkerControl(showMarkers, () => setShowMarkers((v) => !v)),
+        searchLineControl(showLine, () => setShowLine((v) => !v)),
+        guideControl(showGuide, () => setShowGuide((v) => !v)),
+        {
+            kind: "toggle", id: "alarmLines", name: "알람선", group: "마커", activeColor: ALARM,
+            help: "이 종목 알람의 가격 조건을 수평선으로", on: showAlarmLines, set: () => setShowAlarmLines((v) => !v),
+        },
+        marketControl(mode, setMode),
+    ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showMarkers, setShowMarkers,
+        showLine, setShowLine, showGuide, setShowGuide, showAlarmLines, setShowAlarmLines, mode, setMode]);
+
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
             <ChartHeader
@@ -106,32 +119,14 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                 drifted={drifted}
                 onResetSearch={() => setSearchDate(null)}
                 baseFallback={minuteView?.baseFallback}
-                collapsed={collapsed}
-                onToggleControls={() => toggleControls(panelId)}
+                controls={controls}
+                storageKey="wb.headerPins.chart.live"
                 badges={
                     !drifted && (dailyQ.isFetching || minuteQ.isFetching) ? (
                         <span style={{ color: "var(--plane-live)", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>● LIVE</span>
                     ) : null
                 }
-            >
-                <ViewToggles view={view} setView={setView} />
-                <Sep />
-                <ControlGroup>
-                    <PinToggle on={pinMinute} toggle={() => setPinMinute((v) => !v)} />
-                    <ScaleToggle on={lockScale} toggle={() => setLockScale((v) => !v)} />
-                </ControlGroup>
-                <Sep />
-                <MarkerGroup>
-                    <AmountMarkerToggle on={showMarkers} toggle={() => setShowMarkers((v) => !v)} />
-                    <SearchLineToggle on={showLine} toggle={() => setShowLine((v) => !v)} />
-                    <GuideToggle on={showGuide} toggle={() => setShowGuide((v) => !v)} />
-                    <TextToggle active={showAlarmLines} activeColor={ALARM} onClick={() => setShowAlarmLines((v) => !v)} title={showAlarmLines ? "알람 가격선 숨기기" : "알람 가격선 표시"}>알람선</TextToggle>
-                </MarkerGroup>
-                <Sep />
-                <ControlGroup>
-                    <MarketToggle mode={mode} setMode={setMode} />
-                </ControlGroup>
-            </ChartHeader>
+            />
 
             <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
                 {!code && <Center text="종목을 선택하세요" />}

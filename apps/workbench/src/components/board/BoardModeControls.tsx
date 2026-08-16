@@ -1,26 +1,14 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { isBoardFilterActive, type BoardFilterExpr } from "@trade-data-manager/market/domain";
 import { useUi } from "../../store/ui.js";
-import { useWorkbench } from "../../store/workbench.js";
-import { TextToggle, Dot, Sep, ControlGroup, ControlBar, PanelHeader } from "../ControlChrome.js";
+import { TextToggle, PanelHeader } from "../ControlChrome.js";
+import { HeaderControls, type ControlSpec } from "../HeaderControls.js";
 import { HeaderPopover } from "../HeaderPopover.js";
 
-// 보드 헤더 컨트롤 — 차트 툴바와 같은 계열(ControlChrome 공용 조각).
-// 거래대금·등락률 = flat 리스트의 정렬 기준, 테마 = 그룹 뷰. 셋은 상호배타(3택1).
+// 보드 헤더 — 컨트롤은 선언으로 내려갔다(HeaderControls). 보드 셋(실시간·복기·테마)이 같은 선언을 쓴다.
+// 거래대금·등락률 = flat 리스트의 정렬 기준, 테마 = 그룹 뷰. 셋은 상호배타라 순환이다.
 export type BoardMode = "amount" | "rate" | "group";
 export type BoardSort = Exclude<BoardMode, "group">; // flat 리스트 정렬 기준(= 테마 아닌 BoardMode)
-
-export function BoardModeControls({ mode, setMode }: { mode: BoardMode; setMode: (m: BoardMode) => void }): JSX.Element {
-    return (
-        <ControlGroup gap={1}>
-            <TextToggle active={mode === "amount"} onClick={() => setMode("amount")} title="거래대금 많은 순 리스트">거래대금</TextToggle>
-            <Dot />
-            <TextToggle active={mode === "rate"} onClick={() => setMode("rate")} title="등락률 높은 순 리스트">등락률</TextToggle>
-            <Dot />
-            <TextToggle active={mode === "group"} onClick={() => setMode("group")} title="테마 그룹">테마</TextToggle>
-        </ControlGroup>
-    );
-}
 
 // 보드 공용 헤더 — 작은 색 점(플레인·상태) + 종목수 + 우측 컨트롤 바. 컴팩트.
 // 컨트롤은 정렬/뷰 │ 표시 │ 액션·시장 으로 묶고, 통째로 접힘(패널별 영속) + 폭 부족 시 가로 휠.
@@ -46,9 +34,31 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
 }): JSX.Element {
     const showReasons = useUi((s) => s.boardShowReasons);
     const toggleReasons = useUi((s) => s.toggleBoardReasons);
-    const collapsed = useWorkbench((s) => s.panelControlsCollapsed[panelId]) ?? false;
-    const toggleControls = useWorkbench((s) => s.togglePanelControls);
     const filterOn = filter ? isBoardFilterActive(filter) : false;
+
+    // 컨트롤 선언 — 보드 셋(실시간·복기·테마)이 같은 문구를 쓴다. 있고 없고는 available 이 정한다
+    // (새로고침·시장은 실시간 보드에만 있다) — 값에 따라 뜨고 지는 게 아니라 패널 정체성이다.
+    const controls = useMemo<ControlSpec[]>(() => [
+        {
+            kind: "choice", id: "mode", name: "정렬·뷰", help: "무엇을 기준으로 줄 세울까 · 테마는 그룹 뷰",
+            values: [{ v: "amount", label: "거래대금" }, { v: "rate", label: "등락률" }, { v: "group", label: "테마" }],
+            value: mode, set: (v) => setMode(v as BoardMode),
+        },
+        {
+            kind: "toggle", id: "reasons", name: "필터칩", activeColor: "var(--accent-primary)",
+            help: "가려진 종목에 제외 사유 칩을 붙인다", on: showReasons, set: toggleReasons,
+        },
+        {
+            kind: "action", id: "refresh", name: "새로고침", available: !!onRefresh, disabled: refreshing,
+            help: "테마 새로고침(시트 배정·수동편집 반영)", run: () => onRefresh?.(),
+        },
+        {
+            kind: "choice", id: "market", name: "기준 시장", available: !!market && !!onMarketToggle,
+            help: "% 의 분모가 되는 전일종가를 어느 시장에서 볼까",
+            values: [{ v: "krx", label: "KRX" }, { v: "un", label: "UN" }],
+            value: market ?? "krx", set: () => onMarketToggle?.(),
+        },
+    ], [mode, setMode, showReasons, toggleReasons, onRefresh, refreshing, market, onMarketToggle]);
     return (
         <PanelHeader chrome={false} gap={6} padding="3px 10px"
             style={{ fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)" }}>
@@ -72,42 +82,9 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
                     {filterEditor}
                 </HeaderPopover>
             )}
-            <ControlBar collapsed={collapsed} onToggle={() => toggleControls(panelId)}>
-                {/* 정렬/뷰 — 상호배타 3택1. */}
-                <BoardModeControls mode={mode} setMode={setMode} />
-                <Sep />
-                {/* 표시 — dim 종목에 무엇을 보여줄지. */}
-                <ControlGroup>
-                    <TextToggle
-                        active={showReasons}
-                        activeColor="var(--accent-primary)"
-                        onClick={toggleReasons}
-                        title={showReasons ? "필터 칩 켜짐 (제외 사유 표시, 클릭: 끄기)" : "필터 칩 꺼짐 (클릭: 켜기)"}
-                    >
-                        필터칩
-                    </TextToggle>
-                </ControlGroup>
-                {(onRefresh || market) && <Sep />}
-                {/* 액션 · 시장(UN/KRX 단일 토글). */}
-                <ControlGroup>
-                    {onRefresh && (
-                        <TextToggle
-                            active={refreshing === true}
-                            activeColor="var(--accent-primary)"
-                            disabled={refreshing}
-                            onClick={onRefresh}
-                            title="테마 새로고침 (시트 배정·수동편집 반영)"
-                        >
-                            새로고침
-                        </TextToggle>
-                    )}
-                    {market && onMarketToggle && (
-                        <TextToggle active activeColor="var(--accent-primary)" onClick={onMarketToggle} title={`기준 시장 전환 (현재 ${market.toUpperCase()} 전일종가 기준 %)`}>
-                            <span style={{ display: "inline-block", minWidth: 26, textAlign: "center" }}>{market.toUpperCase()}</span>
-                        </TextToggle>
-                    )}
-                </ControlGroup>
-            </ControlBar>
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <HeaderControls controls={controls} storageKey={`wb.headerPins.board.${panelId}`} />
+            </span>
         </PanelHeader>
     );
 }

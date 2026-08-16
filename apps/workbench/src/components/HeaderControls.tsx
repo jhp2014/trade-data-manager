@@ -55,7 +55,19 @@ export interface ChoiceSpec extends ControlBase {
     set: (v: string) => void;
 }
 
-export type ControlSpec = ToggleSpec | ChoiceSpec;
+/**
+ * 누르면 **일이 일어나는** 것(지우기·새로고침). 상태가 없으니 켜짐도 없다.
+ * 할 게 없을 때는 사라지는 게 아니라 `disabled` 로 흐려진다 — 자리가 안 움직여야 한다는 게 이 층의 규약이다.
+ */
+export interface ActionSpec extends ControlBase {
+    kind: "action";
+    label?: string;
+    /** 누른 자리를 받는다 — 메뉴를 그 자리에 띄우는 손짓(+ 축 등)이 있어서다. 안 쓰면 무시하면 된다. */
+    run: (at: { clientX: number; clientY: number }) => void;
+    disabled?: boolean;
+}
+
+export type ControlSpec = ToggleSpec | ChoiceSpec | ActionSpec;
 
 /** 순환으로 그릴 최대 값 수 — 넘으면 팝오버(한 바퀴가 길어지면 되돌리기가 못 견딘다). */
 const CYCLE_MAX = 3;
@@ -162,7 +174,22 @@ function ControlSheet({ controls, unpinned, onTogglePin }: {
 /** 컨트롤 하나의 **손잡이** — 헤더와 판이 같은 것을 쓴다(라벨·설명만 판에 더 붙는다). */
 function ControlValue({ spec }: { spec: ControlSpec }): JSX.Element {
     if (spec.kind === "toggle") return <ToggleControl spec={spec} />;
+    if (spec.kind === "action") return <ActionControl spec={spec} />;
     return spec.values.length <= CYCLE_MAX ? <CycleControl spec={spec} /> : <PickControl spec={spec} />;
+}
+
+/** 지우기·새로고침 류 — 켜짐이 없으니 늘 같은 무게다(폭도 자연히 안 변한다). */
+function ActionControl({ spec }: { spec: ActionSpec }): JSX.Element {
+    return (
+        <button onClick={(e) => spec.run(e)} disabled={spec.disabled} title={spec.help ?? spec.name}
+            style={{
+                border: "none", background: "none", padding: "0 3px", fontSize: 11, fontWeight: 400,
+                color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0,
+                cursor: spec.disabled ? "default" : "pointer", opacity: spec.disabled ? 0.4 : 1,
+            }}>
+            {spec.label ?? spec.name}
+        </button>
+    );
 }
 
 /**

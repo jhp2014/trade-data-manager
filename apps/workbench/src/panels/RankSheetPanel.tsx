@@ -24,7 +24,8 @@ import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js
 import { useFunnel } from "./filter/FunnelContext.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
-import { TextToggle, Dot, ControlBox, PanelHeader, miniBtn, mutedNote } from "../components/ControlChrome.js";
+import { PanelHeader, miniBtn, mutedNote } from "../components/ControlChrome.js";
+import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, parsePointKey } from "../lib/pointKey.js";
 import { subjectStatus, useSubject } from "../lib/subject.js";
@@ -358,6 +359,31 @@ export function RankSheetPanel(): JSX.Element {
         );
     };
 
+    // 헤더 컨트롤 선언 — 눈금·필터모드·축 만들기. 아래 "⤺" 해제 손잡이들은 여기 안 든다:
+    // 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라 성격이 다르다(개수가 곧 정보다).
+    const controls: ControlSpec[] = [
+        {
+            kind: "choice", id: "cellMode", name: "눈금", help: "칸을 무엇으로 읽을까 — 값 눈금은 계산 축에서만 다르다(판단 축은 순위로 폴백)",
+            values: [
+                { v: "number", label: CELL_MODE_LABEL.number },
+                { v: "rank", label: CELL_MODE_LABEL.rank },
+                { v: "value", label: CELL_MODE_LABEL.value },
+            ],
+            value: cellMode, set: (v) => setCellMode(parseCellMode(v) ?? "number"),
+        },
+        {
+            kind: "choice", id: "filterMode", name: "필터 방식", available: bandsActive,
+            help: "매칭만 남길까, 전체를 두고 밖을 흐리게 할까",
+            values: [{ v: "narrow", label: "좁히기" }, { v: "dim", label: "흐리게" }],
+            value: filterMode, set: (v) => setFilterMode(v === "dim" ? "dim" : "narrow"),
+        },
+        {
+            kind: "action", id: "addAxis", name: "+ 축",
+            help: "판단 축 새로 만들기(이름 변경·삭제는 열 이름 우클릭). 계산 축은 코드로 정의된다",
+            run: (at) => setAddAxis({ x: at.clientX, y: at.clientY }),
+        },
+    ];
+
     if (axesLoading || pointsQ.isLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
     if (axes.length === 0) return <Wrap><div style={muted}>축이 없습니다. 위 <b>+ 축</b>으로 먼저 만들어 주세요.</div></Wrap>;
 
@@ -367,21 +393,7 @@ export function RankSheetPanel(): JSX.Element {
             {/* 헤더 컨트롤 — 표시/필터모드/행수(가로 휠 스크롤). 기간은 날짜 필터로 이관. */}
             <PanelHeader gap={0}>
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0, flex: 1 }}>
-                    {/* 표시 — 숫자 · 순위 눈금 · 값 눈금. 값 눈금은 계산 축에서만 다르다(판단 축은 순위로 폴백). */}
-                    <ControlBox label="표시">
-                        <TextToggle active={cellMode === "number"} onClick={() => setCellMode("number")} title="계산 축은 값(순위), 판단 축은 순위">{CELL_MODE_LABEL.number}</TextToggle>
-                        <Dot />
-                        <TextToggle active={cellMode === "rank"} onClick={() => setCellMode("rank")} title="자리를 균등하게 편 눈금 — 순서가 보인다">{CELL_MODE_LABEL.rank}</TextToggle>
-                        <Dot />
-                        <TextToggle active={cellMode === "value"} onClick={() => setCellMode("value")} title="값의 실제 자리(필터 보드 레일과 같은 좌표) — 쏠림이 보인다. 판단 축은 순위 눈금으로 폴백">{CELL_MODE_LABEL.value}</TextToggle>
-                    </ControlBox>
-                    {bandsActive && (
-                        <ControlBox label="필터">
-                            <TextToggle active={filterMode === "narrow"} onClick={() => setFilterMode("narrow")} title="매칭만">좁히기</TextToggle>
-                            <Dot />
-                            <TextToggle active={filterMode === "dim"} onClick={() => setFilterMode("dim")} title="전체 유지·밖은 흐리게">흐리게</TextToggle>
-                        </ControlBox>
-                    )}
+                    <HeaderControls controls={controls} storageKey="wb.headerPins.rankSheet" />
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
@@ -390,8 +402,6 @@ export function RankSheetPanel(): JSX.Element {
                     {sort.length > 1 && <button onClick={() => setSort((s) => [s[0]])} title="2차 이하 정렬 해제(1차만 남김)" style={{ ...miniBtn, flexShrink: 0 }}>정렬 {sort.length}단 ⤺</button>}
                     {cutKeys.length > 0 && <button onClick={() => cols.clearCuts(sortAxisId!)} title="이 축의 그룹 컷 모두 해제" style={{ ...miniBtn, flexShrink: 0 }}>그룹 {cutKeys.length + 1} ⤺</button>}
                     {cols.hiddenCols.length > 0 && <button onClick={cols.showAllHidden} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {cols.hiddenCols.length} ⤺</button>}
-                    {/* 축 만들기 — 계산 축은 코드로 정의되므로 여기서 만드는 건 언제나 판단 축(손으로 꽂는 축)이다. */}
-                    <button onClick={(e) => setAddAxis({ x: e.clientX, y: e.clientY })} title="판단 축 새로 만들기(이름 변경·삭제는 열 이름 우클릭)" style={{ ...miniBtn, flexShrink: 0 }}>+ 축</button>
                     {cols.hasManualWidths && <button onClick={cols.resetWidths} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
                 </div>
             </PanelHeader>
