@@ -115,6 +115,23 @@ describe("폭 잠금 — 값이 바뀌어도 칸이 안 변한다", () => {
         expect(bold[0]!.textContent).toBe("선");
     });
 
+    /**
+     * ⚠ 겪은 버그: `{...face, font:"inherit", fontSize:11}` 로 쓰면 스프레드가 fontSize 를 **앞자리**에
+     * 앉히고 뒤따르는 `font:inherit` 이 크기·굵기를 되돌려 순환 글자만 14px/400 이 됐다. 그러면
+     * 보이는 글자가 숨은 사본(11px)보다 넓어져 **폭 잠금까지 무력해진다** — 증상 둘이 한 원인이었다.
+     * 그래서 "글자가 켜진 토글과 같은 결인가"를 못박는다(단축 속성이 다시 섞이면 여기서 걸린다).
+     */
+    it("순환 글자는 켜진 토글과 같은 결 — 11px / 700", () => {
+        const c = draw([{
+            kind: "choice", id: "pick", name: "고르기", value: "v0",
+            values: [{ v: "v0", label: "가" }, { v: "v1", label: "나" }], set: () => {},
+        }]);
+        const btn = c.querySelector("button")!;
+        // `font` 단축이 뒤에 섞이면 이 둘이 통째로 되돌아간다(그게 그 버그였다) — 그래서 여기가 걸린다.
+        expect(btn.style.fontSize).toBe("11px");
+        expect(btn.style.fontWeight).toBe("700");
+    });
+
     it("숨김은 visibility 다 — display:none 이면 자리를 안 먹어 예약이 무의미해진다", () => {
         const c = draw([toggle("a", "선")]);
         const alt = c.querySelector<HTMLElement>("[aria-hidden]")!;

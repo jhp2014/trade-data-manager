@@ -186,10 +186,10 @@ function CycleControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
     const next = spec.values[(idx + 1) % spec.values.length]!;
     const cur = spec.values[idx]!;
     return (
-        <WidthLock alts={spec.values.map((o) => <span key={o.v} style={cycleFace}>{o.label} ⇄</span>)}>
+        <WidthLock alts={spec.values.map((o) => <span key={o.v} style={face}>{o.label} ⇄</span>)}>
             <button onClick={() => spec.set(next.v)}
                 title={`${spec.help ?? spec.name} · 클릭 = ${next.label}`}
-                style={{ ...cycleFace, border: "none", background: "none", padding: 0, cursor: "pointer", font: "inherit", fontSize: 11 }}>
+                style={{ ...faceButton, ...face }}>
                 {cur.label} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>⇄</span>
             </button>
         </WidthLock>
@@ -203,12 +203,12 @@ function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
         <HeaderPopover
             width={150}
             trigger={(open, toggle) => (
-                <WidthLock max={TRIGGER_MAX_W} alts={spec.values.map((o) => <span key={o.v} style={cycleFace}>{o.label} ▾</span>)}>
+                <WidthLock max={TRIGGER_MAX_W} alts={spec.values.map((o) => <span key={o.v} style={face}>{o.label} ▾</span>)}>
                     <button onClick={toggle} title={spec.help ?? spec.name}
                         style={{
-                            ...cycleFace, border: "none", background: "none", padding: 0, cursor: "pointer",
-                            font: "inherit", fontSize: 11, color: open ? "var(--accent-primary)" : "var(--text-primary)",
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textAlign: "left",
+                            ...faceButton, ...face,
+                            color: open ? "var(--accent-primary)" : "var(--text-primary)",
+                            overflow: "hidden", textOverflow: "ellipsis", display: "block", textAlign: "left",
                         }}>
                         {cur?.label ?? "—"} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>▾</span>
                     </button>
@@ -262,7 +262,19 @@ function PinIcon({ filled }: { filled: boolean }): JSX.Element {
     );
 }
 
-const cycleFace: CSSProperties = { fontSize: 11, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap" };
+/**
+ * 값을 말하는 글자(순환·팝오버 트리거) — **켜진 토글과 같은 결**이다(11px / 700 / text-primary).
+ * 값을 고른 상태라는 점이 활성 토글과 같으므로 무게도 같아야 한다.
+ *
+ * ⚠ 여기에 `font` 단축 속성을 절대 섞지 말 것. `{...face, font:"inherit"}` 처럼 쓰면 스프레드가
+ *   `fontSize` 를 **앞자리**에 앉히고 뒤따르는 `font:inherit` 이 크기·굵기를 통째로 되돌린다(객체
+ *   리터럴은 같은 키의 값만 덮고 자리는 안 옮긴다). 실제로 그렇게 순환 글자만 14px 로 커졌고,
+ *   숨은 사본(11px)보다 넓어지는 바람에 폭 잠금까지 무력해졌다 — 증상 둘이 한 원인이었다.
+ *   버튼의 기본 폰트는 전역 CSS(`button { font: inherit }`)가 이미 지우므로 인라인으로 쓸 일이 없다.
+ */
+const face: CSSProperties = { fontSize: 11, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap" };
+/** 버튼의 겉껍데기만 — 글자 속성은 face 가 **뒤에** 얹혀 이긴다. */
+const faceButton: CSSProperties = { border: "none", background: "none", padding: 0, cursor: "pointer" };
 const sheetHead: CSSProperties = {
     padding: "5px 10px 3px", fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)",
     background: "var(--bg-secondary)", borderTop: "1px solid var(--border-default)",
