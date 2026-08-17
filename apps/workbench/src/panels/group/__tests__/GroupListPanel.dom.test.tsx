@@ -54,6 +54,48 @@ describe("모집단 수 — 맵과 같은 잣대", () => {
     });
 });
 
+/**
+ * ⚠ 겪은 버그: 항목을 차트 단위로만 접어 놓으면 `appliedGroupNamesOf` 가 **하루 소속만** 돌려주므로
+ * (시각 없는 참조 → chartOf) `scope:"point"` 그룹이 전부 0으로 나왔다. 맵은 평면마다 scope 가 있어
+ * 그 함정을 피하고 있었는데 목록으로 옮기며 잃었던 자리다. 그래서 **두 층위를 함께** 못박는다.
+ */
+describe("scope — 층위별로 센다", () => {
+    const TIME = "09:30:00";
+    const POINT_SEED: Seed = {
+        groups: [g("돌파"), { ...g("눌림타점"), scope: "point" }],
+        memberships: [
+            // 하루 소속 하나 + **타점 소속** 하나(시각이 있다).
+            { stockCode: "A", date: "2026-07-01", groupNames: ["돌파"] },
+            { stockCode: "A", date: "2026-07-01", time: TIME, groupNames: ["눌림타점"] },
+        ],
+        candidateDays: [{ stockCode: "A", date: "2026-07-01", traces: [] }],
+        // 타점 모집단(viewedPointRefs)의 재료 — 이게 없으면 타점 피드가 비어 수가 0이 된다.
+        points: [{ stockCode: "A", date: "2026-07-01", time: TIME, outcome: null, axisValues: {} } as never],
+    };
+
+    it("**타점 그룹의 수가 0이 아니다** — 이게 그 버그였다", () => {
+        renderPanel(POINT_SEED);
+        expect(row("눌림타점").children[1]!.textContent).toBe("1");
+    });
+
+    it("하루 그룹은 하루 층위로 센다 — 층위가 섞여도 각자 맞는다", () => {
+        renderPanel(POINT_SEED);
+        expect(row("돌파").children[1]!.textContent).toBe("1");
+    });
+
+    it("행에 scope 배지가 선다 — 수의 단위가 여기서 갈리므로 상시 표기다", () => {
+        renderPanel(POINT_SEED);
+        expect(row("눌림타점").textContent).toContain("타점");
+        expect(row("돌파").textContent).toContain("하루");
+    });
+
+    it("하루 그룹과 타점 그룹의 교집합이 잡힌다 — 타점 층위에서 성립한다", () => {
+        renderPanel(POINT_SEED);
+        pick("돌파");
+        expect(amp("눌림타점")).toContain("1");
+    });
+});
+
 describe("체인 — 맵과 같은 손짓", () => {
     it("클릭하면 짚히고 공통 수가 뜬다", () => {
         renderPanel();

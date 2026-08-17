@@ -4,7 +4,7 @@
 // 좁혀지지 않는 걸음("포함")은 relationOf 가 맡는다. 방어(끊긴 사슬·순환)도 값이 아니라 **안 멈춤**이 본론이다.
 import { describe, it, expect } from "vitest";
 import type { Group } from "../../../api/groups.js";
-import { canReparent, overlapRows, relationOf, treeRows } from "../groupList.js";
+import { canReparent, overlapRows, relationOf, scopeContains, treeRows } from "../groupList.js";
 
 const g = (name: string, parentName: string | null = null): Group =>
     ({ name, scope: "day", parentName, mapName: null, x: null, y: null });
@@ -102,5 +102,31 @@ describe("canReparent — 순환을 여기서 막는다", () => {
     it("최상위로 빼기는 부모가 있을 때만 뜻이 있다", () => {
         expect(canReparent("소재", null, byName)).toBe(true);
         expect(canReparent("돌파", null, byName)).toBe(false);
+    });
+});
+
+/**
+ * 계층 상속은 "자식에 속하면 부모에도 속한다"다. 타점 그룹 밑에 하루 그룹을 넣으면 그 말이 거짓이 된다
+ * (하루가 더 넓다). 맵 시절엔 "부모는 같은 평면"(평면 = scope)이 이 역할을 했고, 맵이 사라지면 이 규칙이 잇는다.
+ */
+describe("scope 규칙 — 부모가 자식보다 넓거나 같아야 한다", () => {
+    const pt = (name: string, parentName: string | null = null): Group =>
+        ({ name, scope: "point", parentName, mapName: null, x: null, y: null });
+    const mixed = [g("테마"), pt("눌림타점"), g("돌파")];
+    const m = new Map(mixed.map((x) => [x.name, x]));
+
+    it("하루 ⊇ 타점 — 하루 그룹 밑에 타점 그룹은 된다", () => {
+        expect(scopeContains("day", "point")).toBe(true);
+        expect(canReparent("눌림타점", "테마", m)).toBe(true);
+    });
+
+    it("같은 층위끼리도 된다", () => {
+        expect(scopeContains("day", "day")).toBe(true);
+        expect(canReparent("돌파", "테마", m)).toBe(true);
+    });
+
+    it("**타점 밑에 하루는 안 된다** — 상속이 거짓이 되는 방향", () => {
+        expect(scopeContains("point", "day")).toBe(false);
+        expect(canReparent("돌파", "눌림타점", m)).toBe(false);
     });
 });

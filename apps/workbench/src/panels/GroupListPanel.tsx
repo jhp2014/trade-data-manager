@@ -11,7 +11,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { createGroup, setGroupParent, type GroupMembership } from "../api/groups.js";
+import { createGroup, setGroupParent, type GroupMembership, type GroupScope } from "../api/groups.js";
 import { groupsQuery } from "../api/queries.js";
 import { PanelHeader, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
@@ -44,42 +44,84 @@ export function GroupListPanel(): JSX.Element {
     const [chain, setChain] = useState<string[]>([]);
     const [adding, setAdding] = useState(false);
     const [newName, setNewName] = useState("");
+    const [newScope, setNewScope] = useState<GroupScope>("day");
 
     /**
-     * 모집단 — 맵과 **같은 잣대**여야 한다(골격·시트와도). 여기만 다르게 세면 숫자가 어긋나는데
-     * 그 어긋남은 화면 어디에도 신호가 없다. 그래서 판정도 깔때기의 적용 집합을 그대로 쓴다.
+     * ── 모집단은 **두 층위로 센다**(하루 · 타점). 그룹의 scope 가 어느 쪽인지 정한다.
      *
-     * 그룹은 하루·타점 두 층위가 있어 항목을 차트 단위로 접는다 — 맵의 하루 평면과 같은 셈법이다.
+     * ⚠ 여기가 처음엔 틀려 있었다: 항목을 차트 단위로만 접어 놓으면 `appliedGroupNamesOf` 가
+     * **하루 소속만** 돌려주므로(시각 없는 참조 → chartOf) `scope:"point"` 그룹은 전부 0으로 나온다.
+     * 맵은 평면마다 scope 가 있어서 이 함정을 피하고 있었다(타점 평면은 viewedPointRefs 를 썼고,
+     * 그 주석에 "해상도가 하루면 전 노드가 0이 된다"는 실측 기록이 남아 있다). 목록으로 옮기며
+     * 그 교훈을 잃었던 자리다.
+     *
+     * 잣대는 여전히 깔때기의 적용 집합 하나다 — 골격·시트와 어긋나면 그 어긋남은 화면에 신호가 없다.
      */
-    const population = useMemo<PopulationItem[]>(() => {
+    const dayFeed = useMemo<GroupMembership[]>(() => {
         if (funnel.isLoading) return [];
         const seen = new Set<string>();
-        const out: PopulationItem[] = [];
+        const items: PopulationItem[] = [];
         for (const it of funnel.viewedItems) {
             const k = chartKey(it);
             if (seen.has(k)) continue;
             seen.add(k);
-            out.push({ stockCode: it.stockCode, date: it.date });
+            items.push({ stockCode: it.stockCode, date: it.date });
         }
-        return out;
-    }, [funnel.isLoading, funnel.viewedItems]);
+        return populationFeed(items, (i) => gv.appliedGroupNamesOf(i));
+    }, [funnel.isLoading, funnel.viewedItems, gv]);
 
-    const popFeed = useMemo<GroupMembership[]>(
-        () => populationFeed(population, (i) => gv.appliedGroupNamesOf(i)),
-        [population, gv],
+    const pointFeed = useMemo<GroupMembership[]>(
+        () => (funnel.isLoading ? [] : populationFeed(funnel.viewedPointRefs, (i) => gv.appliedGroupNamesOf(i))),
+        [funnel.isLoading, funnel.viewedPointRefs, gv],
     );
-    const counts = useMemo(() => populationCounts(popFeed), [popFeed]);
-    /** 후보별 "체인 전부 & 그 후보" 수 — 맵의 화살표 위 숫자와 같은 값(같은 함수를 쓴다). */
-    const candidates = useMemo(
-        () => chainCandidates(popFeed, chain, { groupByName: gv.groupByName }),
-        [popFeed, chain, gv.groupByName],
-    );
-    const chainMembers = useMemo(() => (chain.length === 0 ? [] : membersOfAll(popFeed, chain)), [popFeed, chain]);
 
-    // 지워진 그룹은 체인에서 빠진다 — 죽은 참조가 남으면 머리줄이 허공을 가리킨다.
+    const countsDay = useMemo(() => populationCounts(dayFeed), [dayFeed]);
+    const countsPoint = useMemo(() => populationCounts(pointFeed), [pointFeed]);
+    /** 그룹 행의 "수" — **그 그룹 자신의 층위**에서 센다(체인과 무관한 그룹 고유의 값). */
+    const countOf = useCallback(
+        (g: { name: string; scope: string }): number =>
+            (g.scope === "point" ? countsPoint : countsDay).get(g.name) ?? 0,
+        [countsDay, countsPoint],
+    );
+
+    /**
+     * 체인의 해상도 — **타점 그룹이 하나라도 있으면 타점**, 아니면 하루. 깔때기의 grain 규칙과 같다:
+     * 하루 조건은 그날 타점 전부에 같은 값으로 퍼지므로 `하루 & 타점` 은 타점 층위에서 성립한다.
+     * 반대(타점→하루 롤업)는 규칙이 없어 깔때기에서도 막혀 있고 여기서도 안 한다.
+     */
+    const chainGrain: "day" | "point" = chain.some((n) => gv.groupByName.get(n)?.scope === "point") ? "point" : "day";
+    const chainFeed = chainGrain === "point" ? pointFeed : dayFeed;
+    const chainMembers = useMemo(() => (chain.length === 0 ? [] : membersOfAll(chainFeed, chain)), [chainFeed, chain]);
+
+    /**
+     * 후보별 "체인 전부 & 그 후보" 수 — 맵의 화살표 위 숫자와 같은 값(같은 함수를 쓴다).
+     * 두 벌을 만들어 **행마다 더 세밀한 쪽**을 쓴다: 체인이 하루라도 후보가 타점 그룹이면 그 교집합은
+     * 타점 층위에서만 존재하므로, 하루 피드에서 0으로 적으면 거짓이 된다.
+     * (체인이 타점이면 하루 피드에서 체인 자체가 안 풀리므로 candDay 는 쓰지 않는다.)
+     */
+    const candDay = useMemo(
+        () => (chainGrain === "day" ? chainCandidates(dayFeed, chain, { groupByName: gv.groupByName }) : new Map<string, number>()),
+        [chainGrain, dayFeed, chain, gv.groupByName],
+    );
+    const candPoint = useMemo(
+        () => chainCandidates(pointFeed, chain, { groupByName: gv.groupByName }),
+        [pointFeed, chain, gv.groupByName],
+    );
+    const overlapOf = useCallback(
+        (g: { name: string; scope: string }): number =>
+            (chainGrain === "point" || g.scope === "point" ? candPoint : candDay).get(g.name) ?? 0,
+        [chainGrain, candPoint, candDay],
+    );
+
+    /** 겹침순 정렬은 행마다 고른 값(overlapOf)으로 세운다 — 층위가 섞여도 같은 잣대로 줄을 세운다. */
+    const overlapAll = useMemo(() => {
+        const m = new Map<string, number>();
+        for (const g of gv.groups) m.set(g.name, overlapOf(g));
+        return m;
+    }, [gv.groups, overlapOf]);
     const rows = useMemo<GroupRow[]>(
-        () => (sort === "tree" ? treeRows(gv.groups, collapsed) : overlapRows(gv.groups, candidates, chain, gv.groupByName)),
-        [sort, gv.groups, gv.groupByName, collapsed, candidates, chain],
+        () => (sort === "tree" ? treeRows(gv.groups, collapsed) : overlapRows(gv.groups, overlapAll, chain, gv.groupByName)),
+        [sort, gv.groups, gv.groupByName, collapsed, overlapAll, chain],
     );
 
     const addFilterStage = useWorkbench((s) => s.addFilterStage);
@@ -103,18 +145,25 @@ export function GroupListPanel(): JSX.Element {
             if (!additive) return cur.length === 1 && i === 0 ? [] : [name];
             if (i >= 0) return cur.slice(0, i + 1);
             if (cur.length === 0) return [name];
-            return (candidates.get(name) ?? 0) > 0 ? [...cur, name] : cur;
+            return (overlapAll.get(name) ?? 0) > 0 ? [...cur, name] : cur;
         });
-    }, [candidates]);
+    }, [overlapAll]);
 
     const parentMut = useMutation({
         mutationFn: (v: { name: string; parentName: string | null }) => setGroupParent(v.name, v.parentName),
         onSettled: () => void qc.invalidateQueries({ queryKey: groupsQuery().queryKey }),
     });
     const createMut = useMutation({
-        mutationFn: (name: string) => createGroup(name, "day"),
+        mutationFn: (v: { name: string; scope: GroupScope }) => createGroup(v.name, v.scope),
         onSettled: () => void qc.invalidateQueries({ queryKey: groupsQuery().queryKey }),
     });
+    const submitNew = useCallback((): void => {
+        const n = newName.trim();
+        if (n === "") return;
+        createMut.mutate({ name: n, scope: newScope });
+        setNewName("");
+        setAdding(false);
+    }, [newName, newScope, createMut]);
 
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
     /** 행을 행 위로 = 그 그룹의 하위로. "최상위" 자리에 놓으면 밖으로 뺀다. */
@@ -144,21 +193,27 @@ export function GroupListPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
             <PanelHeader chrome={false} padding="5px 10px"
                 style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
-                <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}>
-                    그룹 {gv.groups.length} · 모집단 {funnel.isLoading ? "…" : population.length}{funnel.isFiltering ? "" : " (전체)"}
+                {/* 모집단을 **두 층위로** 적는다 — 행마다 수의 단위가 그 그룹의 scope 라, 분모도 둘이어야 읽힌다. */}
+                <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}
+                    title="하루 = (종목·날짜) · 타점 = (종목·날짜·시각). 그룹의 scope 가 어느 쪽에서 셀지 정한다">
+                    그룹 {gv.groups.length} · 모집단 {funnel.isLoading ? "…" : `하루 ${dayFeed.length} · 타점 ${pointFeed.length}`}
+                    {funnel.isFiltering ? "" : " (전체)"}
                 </span>
                 <HeaderControls controls={controls} storageKey="wb.headerPins.groupList" />
             </PanelHeader>
 
             {adding && (
+                // scope 는 **만들 때 정하고 못 바꾼다** — 담을 수 있는 항목의 층위가 곧 그룹의 정체다.
                 <div style={{ display: "flex", gap: 4, padding: "4px 10px", borderBottom: "1px solid var(--border-subtle)" }}>
                     <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key !== "Enter") return;
-                            const n = newName.trim();
-                            if (n !== "") { createMut.mutate(n); setNewName(""); setAdding(false); }
-                        }}
+                        onKeyDown={(e) => { if (e.key === "Enter") submitNew(); }}
                         placeholder="새 그룹 이름 (Enter)" style={{ fontSize: 11, flex: 1 }} />
+                    <select value={newScope} onChange={(e) => setNewScope(e.target.value === "point" ? "point" : "day")}
+                        title="담을 항목의 층위 — 하루는 (종목·날짜), 타점은 (종목·날짜·시각)" style={{ fontSize: 11 }}>
+                        <option value="day">하루</option>
+                        <option value="point">타점</option>
+                    </select>
+                    <button onClick={submitNew} disabled={newName.trim() === ""} style={{ ...miniBtn, padding: "1px 6px" }}>추가</button>
                     <button onClick={() => setAdding(false)} style={{ ...miniBtn, padding: "1px 6px" }}>취소</button>
                 </div>
             )}
@@ -203,18 +258,19 @@ export function GroupListPanel(): JSX.Element {
                                 <tr style={{ color: "var(--text-tertiary)", fontSize: 10, textAlign: "left" }}>
                                     <th style={{ fontWeight: 400, padding: "3px 10px" }}>그룹</th>
                                     <th style={{ width: 42, fontWeight: 400, padding: "3px 0", textAlign: "right" }}>수</th>
-                                    <th style={{ width: 86, fontWeight: 400, padding: "3px 10px 3px 8px" }}>
-                                        {chain.length > 0 ? `& ${chain.join(" & ")}` : "겹침"}
-                                    </th>
+                                    {/* **고정 명칭**이다 — 체인 이름을 여기 넣으면 짚을 때마다 열 폭이 출렁인다.
+                                        무엇과의 교집합인지는 바로 위 머리줄이 이미 말한다. */}
+                                    <th style={{ width: 78, fontWeight: 400, padding: "3px 10px 3px 8px" }}
+                                        title="체인 전부와 이 그룹의 교집합 — 이 그룹을 더하면 남는 수">교집합</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {rows.map((r) => (
                                     <GroupRowView key={r.group.name} row={r}
-                                        count={counts.get(r.group.name) ?? 0}
+                                        count={countOf(r.group)}
                                         relation={relationOf(r.group.name, chain, gv.groupByName)}
-                                        overlap={candidates.get(r.group.name) ?? 0}
-                                        maxOverlap={maxOf(candidates)}
+                                        overlap={overlapAll.get(r.group.name) ?? 0}
+                                        maxOverlap={maxOf(overlapAll)}
                                         chainOn={chain.length > 0}
                                         collapsed={collapsed.has(r.group.name)}
                                         onToggleCollapse={() => setCollapsed((cur) =>
@@ -309,6 +365,14 @@ function GroupRowView({ row, count, relation, overlap, maxOverlap, chainOn, coll
                 )}
                 <span style={{ color: picked ? ACTIVE : reachable ? "var(--text-primary)" : "var(--text-tertiary)", fontWeight: picked ? 700 : 400 }}>
                     {group.name}
+                </span>
+                {/* scope 배지 — 이 그룹이 무엇을 담는 바구니인지. 수의 단위가 여기서 갈리므로 상시 표기다.
+                    긴 설명([종목·날짜·시각])은 툴팁으로 — 행마다 반복하면 이름이 밀린다. */}
+                <span style={{
+                    marginLeft: 6, fontSize: 9.5, padding: "0 5px", borderRadius: 3, verticalAlign: "1px",
+                    background: "var(--bg-tertiary)", color: "var(--text-tertiary)", whiteSpace: "nowrap",
+                }} title={group.scope === "point" ? "타점 그룹 — (종목·날짜·시각)" : "하루 그룹 — (종목·날짜)"}>
+                    {group.scope === "point" ? "타점" : "하루"}
                 </span>
             </td>
             <td style={{ padding: "3px 0", textAlign: "right", color: "var(--text-secondary)" }}>{count}</td>
