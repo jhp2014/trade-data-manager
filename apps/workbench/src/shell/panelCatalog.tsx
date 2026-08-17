@@ -16,6 +16,7 @@ import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { FilterFunnelPanel } from "../panels/FilterFunnelPanel.js";
 import { SkeletonOverlayPanel } from "../panels/SkeletonOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
+import { GroupListPanel } from "../panels/GroupListPanel.js";
 import { MapPanel } from "../panels/MapPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
@@ -64,6 +65,8 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "rank-skeleton-minute-1", component: "rankSkeletonMinute", title: "골격 [분봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="minute" /> },
     { id: "rank-point-1", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
     { id: "map-1", component: "map", title: "맵", plane: "eod", render: () => <MapPanel /> },
+    // 그룹 목록 — 맵을 대신할 자리(계층·겹침·드릴다운). 맵은 며칠 병행한 뒤 지운다.
+    { id: "group-list-1", component: "groupList", title: "그룹", plane: "eod", render: () => <GroupListPanel /> },
     { id: "hts-news-1", component: "htsNews", title: "HTS뉴스", plane: "eod", render: () => <NewsPanel plane="replay" /> },
 ];
 
