@@ -10,14 +10,14 @@ import { BulkGroupMenu } from "../ChartGroupMenu.js";
 // http 층을 통째로 막는다 — 생성(mutation)과 그 뒤 invalidate 의 refetch 가 실제 네트워크를 치지 않게.
 vi.mock("../../../api/http.js", () => ({
     apiGet: vi.fn().mockResolvedValue([]),
-    apiPost: vi.fn().mockResolvedValue({ name: "새그룹", scope: "day", parentName: null, mapName: null, x: null, y: null }),
+    apiPost: vi.fn().mockResolvedValue({ name: "새그룹", scope: "day", parentName: null }),
     apiPatch: vi.fn().mockResolvedValue(undefined),
     apiPut: vi.fn().mockResolvedValue(undefined),
     apiDelete: vi.fn().mockResolvedValue(undefined),
 }));
 
 const g = (name: string, scope: Group["scope"]): Group =>
-    ({ name, scope, parentName: null, mapName: null, x: null, y: null });
+    ({ name, scope, parentName: null });
 
 const GROUPS: Group[] = [g("갭상승", "day"), g("신고가", "day"), g("돌파타점", "point")];
 

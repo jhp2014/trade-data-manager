@@ -156,7 +156,7 @@ describe("정산 — 표시와 정산이 같은 순서를 본다", () => {
 
 describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' 소속도 잡힌다", () => {
     const grp = (name: string, parentName: string | null = null) =>
-        ({ name, scope: "day" as const, parentName, mapName: null, x: null, y: null });
+        ({ name, scope: "day" as const, parentName });
     const HIER: Seed = {
         ...SEED,
         groups: [grp("테마"), grp("2차전지", "테마")],

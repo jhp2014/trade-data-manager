@@ -21,7 +21,6 @@ export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.reposit
 export { DrizzleRankRepository } from "./repositories/rank.repository.js";
 export { DrizzleGroupRepository } from "./repositories/group.repository.js";
 export { DrizzleCandidateDayRepository } from "./repositories/candidateDay.repository.js";
-export { DrizzleMapRepository } from "./repositories/map.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
     dailyCandleToRow,

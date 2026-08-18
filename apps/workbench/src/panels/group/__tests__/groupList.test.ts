@@ -7,7 +7,7 @@ import type { Group } from "../../../api/groups.js";
 import { canReparent, overlapRows, relationOf, scopeContains, treeRows } from "../groupList.js";
 
 const g = (name: string, parentName: string | null = null): Group =>
-    ({ name, scope: "day", parentName, mapName: null, x: null, y: null });
+    ({ name, scope: "day", parentName });
 
 // 테마 ⊃ 소재 ⊃ 2차전지 · 테마 ⊃ 반도체 · 돌파(독립)
 const GROUPS: Group[] = [g("테마"), g("소재", "테마"), g("2차전지", "소재"), g("반도체", "테마"), g("돌파")];
@@ -111,7 +111,7 @@ describe("canReparent — 순환을 여기서 막는다", () => {
  */
 describe("scope 규칙 — 부모가 자식보다 넓거나 같아야 한다", () => {
     const pt = (name: string, parentName: string | null = null): Group =>
-        ({ name, scope: "point", parentName, mapName: null, x: null, y: null });
+        ({ name, scope: "point", parentName });
     const mixed = [g("테마"), pt("눌림타점"), g("돌파")];
     const m = new Map(mixed.map((x) => [x.name, x]));
 

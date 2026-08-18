@@ -1,11 +1,11 @@
-// /groups 계약 — 그룹(이름 붙인 집합 + 관계·위치). 도메인 값타입은 core/market 를 **재노출**(단일 출처).
+// /groups 계약 — 그룹(이름 붙인 집합 + 관계). 도메인 값타입은 core/market 를 **재노출**(단일 출처).
 //
 // 옛 태그 계약을 흡수했다. 부착 피드가 둘이었던 게(타점/차트) 하나로 합쳐진다 — 시각 유무로 갈리므로
 // 나눌 이유가 없었다. 겹침(징검다리)은 **내려보내지 않는다**: 멤버십에서 계산되는 값이라 서버가 미리
 // 구우면 같은 걸 두 벌 들고 있게 되고, 화면이 "선택한 그룹만" 같은 규칙으로 걸러 쓰기도 어렵다.
-import type { Group, GroupScope, GroupItemRef, GroupMembership, GroupMove, GroupOverlap } from "@trade-data-manager/market";
+import type { Group, GroupScope, GroupItemRef, GroupMembership } from "@trade-data-manager/market";
 
-export type { Group, GroupScope, GroupItemRef, GroupMembership, GroupMove, GroupOverlap };
+export type { Group, GroupScope, GroupItemRef, GroupMembership };
 
 // **지목은 이름으로, 이름은 바디에.** id 를 안 쓰는 이유는 도메인 타입 주석에 있다(로컬 미러와
 // Supabase 가 각자 발급 → 동기화를 건넌 참조가 다른 행을 가리킨다). 이름을 경로에 안 싣는 이유는
@@ -33,19 +33,6 @@ export interface RemoveGroupInput {
 export interface AttachGroupInput {
     group: string;
     item: GroupItemRef;
-}
-
-/** PUT /groups/placement 요청 바디 — 평면에 올리기. 내리기는 POST /groups/placement/remove. */
-export interface PlaceGroupInput {
-    name: string;
-    mapName: string;
-    x: number;
-    y: number;
-}
-
-/** PATCH /groups/placements 요청 바디 — 좌표 이동은 **여럿 한 번에**(부분 실패 방지). */
-export interface MoveGroupsInput {
-    moves: GroupMove[];
 }
 
 /** PUT /groups/parent 요청 바디 — 그룹 안 그룹. parentName null 이면 최상위로. */

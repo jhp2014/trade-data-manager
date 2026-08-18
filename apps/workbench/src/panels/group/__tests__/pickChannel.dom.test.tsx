@@ -12,7 +12,7 @@ import { GroupListPanel } from "../../GroupListPanel.js";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { clusterFeed, clusterPoints, CLUSTER_CODES, DATE } from "../../skeleton/__tests__/overlayFixture.js";
 
-const g = (name: string): Group => ({ name, scope: "day", parentName: null, mapName: null, x: null, y: null });
+const g = (name: string): Group => ({ name, scope: "day", parentName: null });
 
 // 골격 픽스처의 세 차트 중 **둘만** 그룹에 넣는다 — 짚으면 3 중 2 가 되어야 배선이 산 것이다.
 const SEED: Seed = {

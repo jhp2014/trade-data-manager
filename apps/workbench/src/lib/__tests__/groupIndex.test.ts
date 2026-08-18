@@ -62,7 +62,7 @@ describe("groupIndex", () => {
 
     describe("expandMemberships — 계층 상속을 조회용 사본에 편다", () => {
         const grp = (name: string, parentName: string | null = null): Group =>
-            ({ name, scope: "day", parentName, mapName: null, x: null, y: null });
+            ({ name, scope: "day", parentName });
         // 테마 ▸ {2차전지, 반도체}
         const byName = new Map<string, Group>([["테마", grp("테마")], ["2차전지", grp("2차전지", "테마")], ["반도체", grp("반도체", "테마")]]);
 

@@ -4,8 +4,8 @@
 //   · daily_comments : 당일 종목 코멘트((종목,날짜) 자연키 PK — 종목당 당일 1개)
 //   · chart_anchors  : 차트 앵커 — 캔들 좌표 참조의 단일 테이블(가격선+파라미터 앵커 통합, 아래 9번)
 //   · review_points  : 복기 타점((종목,날짜,시각) 자연키 = caseId. 순위 배치가 하류에서 참조)
-// 분류의 두 갈래: rank_axes = 순서 있는 하나(아래 4~6번) / groups = 이름 붙인 집합 + 관계·위치(7~8번).
-//   maps(9번)는 그룹들을 얹어 **그룹 사이의 구조**를 보는 평면이다.
+// 분류의 두 갈래: rank_axes = 순서 있는 하나(아래 4~6번) / groups = 이름 붙인 집합 + 관계(7~8번).
+
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
 import { sql } from "drizzle-orm";
@@ -135,20 +135,14 @@ export const rankPlacements = curation.table(
 // ── 그룹(named set) ─────────────────────────────────────────────────────────
 // 축(rank_axes)이 "순서를 매길 수 있는 차원"이라면, 그룹은 **이름 붙인 집합**이다. 한 항목에 여럿 붙는다.
 //
-// 옛 태그가 이것이고, 여기에 **관계와 위치**가 붙어 그룹이 됐다. 태그로는 그룹 안 그룹도, 두 그룹이
+// 옛 태그가 이것이고, 여기에 **관계**가 붙어 그룹이 됐다. 태그로는 그룹 안 그룹도, 두 그룹이
 // 얼마나 겹치는지(징검다리)도 볼 수가 없었다 — 관계를 담을 자리가 없었기 때문이다.
 //   · parent_id  : 그룹 안 그룹(임의로 깊어진다 — 연속성을 좌표 대신 **계층의 깊이**로 표현한다)
-//   · map_id·x·y : 어느 평면에 어디쯤 — **시각화용이지 데이터가 아니다**. 붙여 놓은 둘은 "닮았다"는
-//                  주장이지만, 멀리 있는 둘은 "안 닮았다"가 아니라 **아직 아무 말도 안 한 것**이다.
 //   · 징검다리   : 저장하지 않는다. 두 그룹의 **멤버 겹침으로 계산**된다(A·B 를 둘 다 가진 항목).
+// (옛 map_id·x·y 좌표는 맵 패널과 함께 드롭(마이그 0017) — 시각화용이었지 데이터가 아니었다.)
 
 // 7. 그룹 — 이름이 곧 정체(unique). surrogate id 로 부착하므로 이름 변경이 부착을 안 깬다.
 //    이름은 손잡이지 주장이 아니다("미정1" 로 지어도 된다) — 이름을 짓는 비용이 낮아야 잘게 쪼갤 수 있다.
-//
-//    ⚠ **scope 는 맵이 아니라 그룹이 든다**: 그룹은 한 층위에 대한 판단이지 맵에 올려야 비로소 그렇게
-//    되는 게 아니다. 맵에서 내려받게 하면 map_id 가 NULL 인 그룹(= 만들었지만 아직 안 올린 정상 상태)의
-//    grain 이 없어, 첫 부착이 암묵적으로 grain 을 정하게 된다. 맵에 올릴 때 maps.scope 와 일치하는지는
-//    저장 경로가 한 줄로 검사한다.
 export const groups = curation.table(
     "groups",
     {
@@ -156,22 +150,18 @@ export const groups = curation.table(
         name: text("name").notNull(),
         scope: varchar("scope", { length: 10 }).notNull(), // point | day — 멤버가 타점이냐 하루냐
         parentId: bigint("parent_id", { mode: "bigint" }), // NULL = 최상위
-        mapId: bigint("map_id", { mode: "bigint" }), // NULL = 아직 어느 평면에도 안 올림
-        x: doublePrecision("x"),
-        y: doublePrecision("y"),
     },
     (t) => [
         unique("uq_group_name").on(t.name),
         // 부모 층위가 자식을 담아야 하고(하루 ⊇ 타점) 순환하면 안 된다 — 둘 다 DB 로는 못 막아 저장 경로가 본다.
         foreignKey({ columns: [t.parentId], foreignColumns: [t.id], name: "fk_group_parent" }).onDelete("set null"),
-        index("idx_groups_map").on(t.mapId),
     ],
 );
 
 // 8. 그룹 멤버 — 옛 review_point_tags(타점)와 chart_tags(차트)를 **한 테이블로** 합쳤다.
 //    갈라 둘 이유가 없었다: 같은 "이 그룹에 이게 들었다"이고, 다른 건 가리키는 층위뿐이다.
 //
-//    **소유 grain 은 trade_time 유무가 말한다**(chart_anchors·map 자리와 같은 관용구): NULL = 하루 소속 /
+//    **소유 grain 은 trade_time 유무가 말한다**(chart_anchors 와 같은 관용구): NULL = 하루 소속 /
 //    값 = 타점 소속. groups.scope 와 일치해야 하며 그 검사는 저장 경로가 한다.
 //
 //    ⚠ **review_points 복합 FK 는 MATCH SIMPLE(Postgres 기본)** — 참조 컬럼 중 하나라도 NULL 이면 검사를
@@ -278,27 +268,5 @@ export type RankSlotInsert = typeof rankSlots.$inferInsert;
 export type RankPlacementRow = typeof rankPlacements.$inferSelect;
 export type RankPlacementInsert = typeof rankPlacements.$inferInsert;
 
-// ── 유사도 맵 ───────────────────────────────────────────────────────────────
-// 축이 없는 2차원 평면. **점은 항목이 아니라 그룹이다**(위 7번) — 종목 수천 개를 흩뿌리면 모든 쌍 사이에
-// 거리가 생기는데, 실제로 주장하려던 건 일부 이웃 관계뿐이라 나머지는 나중에 의미로 오독되는 부산물이다.
-// 묶고 쪼개는 판단은 골격 패널에서 하고, 이 평면은 **그룹 사이의 구조를 보는 곳**이다:
-// 그룹 안 그룹(groups.parent_id) · 겹침으로 계산되는 징검다리 · 손으로 잡아 둔 대략의 자리.
-
-// 9. 맵 — 한 장의 평면. scope 는 이 평면에 올릴 수 있는 그룹의 층위(그룹도 같은 값을 들고, 저장 경로가 대조).
-//    좌표·부모는 그룹이 들고 있으므로(groups.map_id·x·y) 여긴 평면의 정체만 남는다.
-export const maps = curation.table(
-    "maps",
-    {
-        id: bigserial("id", { mode: "bigint" }).primaryKey(),
-        name: text("name").notNull(),
-        scope: varchar("scope", { length: 10 }).notNull(), // point | day
-    },
-    (t) => [unique("uq_map_name").on(t.name)],
-);
-
-export type MapRow = typeof maps.$inferSelect;
-export type MapInsert = typeof maps.$inferInsert;
-
-// (옛 map_placements·map_groups·tags·review_point_tags·chart_tags 는 마이그 0014 에서 드롭.
-//  항목 단위 자리는 "점 = 그룹" 으로 바뀌며 쓸 데가 없어졌고, map_groups 는 그룹이 map_id 를 직접
-//  들면서 아무도 안 쓰는 조인 자유도가 됐다.)
+// (옛 유사도 맵(maps)은 마이그 0017 에서 드롭 — 그룹 목록(트리)이 계층·겹침·드릴다운을 값으로 대신한다.
+//  옛 map_placements·map_groups·tags·review_point_tags·chart_tags 는 마이그 0014 에서 드롭.)

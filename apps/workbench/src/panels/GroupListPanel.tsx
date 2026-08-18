@@ -22,7 +22,7 @@ import type { PickItem } from "../lib/pick.js";
 import { chartKey } from "../lib/pointKey.js";
 import { ACTIVE } from "../styles/palette.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { chainCandidates, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "./map/mapView.js";
+import { chainCandidates, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "./group/population.js";
 import { canReparent, overlapRows, relationOf, treeRows, type GroupRow } from "./group/groupList.js";
 
 const SORT_KEY = "wb.groupListSort";

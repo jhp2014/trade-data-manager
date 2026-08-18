@@ -10,7 +10,7 @@ import { useWorkbench } from "../../../store/workbench.js";
 import { GroupListPanel } from "../../GroupListPanel.js";
 
 const g = (name: string, parentName: string | null = null): Group =>
-    ({ name, scope: "day", parentName, mapName: null, x: null, y: null });
+    ({ name, scope: "day", parentName });
 
 // A: 돌파+갭상승 · B: 돌파+갭상승 · C: 돌파만 → 돌파 3, 갭상승 2, 눌림 0
 // 테마 ⊃ 2차전지 는 포함관계 판정을 보기 위한 것(2차전지에 A 하나).

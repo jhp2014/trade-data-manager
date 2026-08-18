@@ -1,4 +1,4 @@
-import type { Group, GroupItemRef, GroupMembership, GroupMove, GroupPlacement, GroupScope } from "#domain";
+import type { Group, GroupItemRef, GroupMembership, GroupScope } from "#domain";
 
 // 그룹 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
 // 사전과 멤버십이 한 슬라이스인 이유: 둘은 늘 같이 읽힌다(팔레트 = 사전 + 빈도, 맵 = 사전 + 겹침).
@@ -35,10 +35,6 @@ export interface GroupStore {
     /** 뺀다. 안 들어 있으면 조용한 no-op. */
     detach(groupName: string, item: GroupItemRef): Promise<void>;
 
-    /** 평면에 올리기(좌표 포함) / 내리기(null). 올릴 때 맵 scope 와 그룹 scope 가 같은지 검사한다. */
-    setPlacement(name: string, placement: GroupPlacement): Promise<void>;
-    /** 좌표 이동 — **배열**. 여럿을 한 번에 끄는 게 정상 조작이라 낱개로 쪼개면 부분 실패가 생긴다. */
-    moveGroups(moves: GroupMove[]): Promise<void>;
     /** 그룹 안 그룹. null = 최상위로. 부모 층위가 자식을 담는지(하루 ⊇ 타점)·순환이 아닌지 여기서 막는다(DB 로는 못 막는 제약). */
     setParent(name: string, parentName: string | null): Promise<void>;
 }

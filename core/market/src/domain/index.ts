@@ -36,8 +36,6 @@ export * from "./review/funnel.js";
 // rank — 순위 배치(사람 편집): 축별 상대순위 줄에 복기 타점 배치. review point 를 자연키로 참조.
 export * from "./rank/index.js";
 
-// map — 유사도 맵(사람 편집): 축 없는 평면에 닮은 것끼리. 축·그룹이 못 담는 연속적 닮음.
-export * from "./map/index.js";
 
 // board — 테마 보드 순수 로직(로스터·포함관계·시점 유니버스 선정). 워크벤치 클라가 import.
 export * from "./board/index.js";

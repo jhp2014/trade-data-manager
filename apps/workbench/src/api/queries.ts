@@ -10,7 +10,7 @@ import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchSkeletons } from "./skeletons.js";
 import { fetchGroups, fetchGroupMemberships } from "./groups.js";
-import { fetchMaps, fetchCandidateDays } from "./map.js";
+import { fetchCandidateDays } from "./candidateDays.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
@@ -83,11 +83,7 @@ export const groupsQuery = () =>
 export const groupMembershipsQuery = () =>
     queryOptions({ queryKey: ["group-members"], queryFn: ({ signal }) => fetchGroupMemberships(signal), staleTime: IMMUTABLE , meta: CURATION });
 
-// 유사도 맵 — **평면 목록만**. 그 위의 점(=그룹)과 좌표는 groupsQuery 가 낸다(그룹이 map_id·x·y 를 든다).
-export const mapsQuery = () =>
-    queryOptions({ queryKey: ["maps"], queryFn: ({ signal }) => fetchMaps(signal), staleTime: IMMUTABLE , meta: CURATION });
-
-// 후보 하루(분석의 모수) — 맵·그룹과 **별도 키**: 앵커·타점 어느 쪽이 늘어도 후보는 변하지만 평면은 그대로다.
+// 후보 하루(분석의 모수) — 그룹과 **별도 키**: 앵커·타점 어느 쪽이 늘어도 후보는 변하지만 그룹 사전은 그대로다.
 export const candidateDaysQuery = () =>
     queryOptions({ queryKey: ["candidate-days"], queryFn: ({ signal }) => fetchCandidateDays(signal), staleTime: IMMUTABLE , meta: CURATION });
 

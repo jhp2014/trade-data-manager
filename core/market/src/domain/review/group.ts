@@ -1,12 +1,11 @@
 // core/market/domain/review — 그룹(named set). **이름 붙인 집합** — 한 항목에 여럿 붙는다.
 // 축(domain/rank)과 짝이자 대비: 축 = "상하 순서를 매길 수 있는 하나", 그룹 = "순서 없는 종류".
 //
-// 옛 태그가 이것이고, 여기에 **관계와 위치**가 붙어 그룹이 됐다. 태그로는 그룹 안 그룹도, 두 그룹이
+// 옛 태그가 이것이고, 여기에 **관계**가 붙어 그룹이 됐다. 태그로는 그룹 안 그룹도, 두 그룹이
 // 얼마나 겹치는지(징검다리)도 볼 수 없었다 — 관계를 담을 자리가 없었기 때문이다.
 //   · parent  : 그룹 안 그룹. 연속성을 좌표가 아니라 **계층의 깊이**로 표현한다(임의로 잘게 쪼갠다).
-//   · map·x·y : 어느 평면에 어디쯤. **시각화용이지 데이터가 아니다** — 붙여 놓은 둘은 "닮았다"는 주장이지만,
-//               멀리 있는 둘은 "안 닮았다"가 아니라 **아직 아무 말도 안 한 것**이다.
 //   · 징검다리 : 저장하지 않는다. 두 그룹의 **멤버 겹침으로 계산**된다(A·B 를 둘 다 가진 항목).
+// (옛 map·x·y 좌표는 맵 패널과 함께 드롭 — 시각화용이었지 데이터가 아니었다.)
 //
 // 이름은 손잡이지 주장이 아니다 — "미정1" 로 지어도 된다. 이름 짓는 비용이 낮아야 잘게 쪼갤 수 있고,
 // 그래야 "하나의 이름으로 디테일을 계속 구분할 수 없다"는 원래 문제를 피한다.
@@ -60,10 +59,6 @@ export interface Group {
     scope: GroupScope;
     /** 그룹 안 그룹. null = 최상위. 부모 층위가 자식을 담아야 하고(scopeContains) 순환하면 안 된다(저장 경로가 본다). */
     parentName: string | null;
-    /** 어느 평면에 올렸나. null = 아직 안 올림(정상 상태 — 만들기와 올리기는 별개). */
-    mapName: string | null;
-    x: number | null;
-    y: number | null;
 }
 
 /** 그룹에 든 항목의 키 — scope=day 면 시각이 없다. */
@@ -79,47 +74,3 @@ export interface GroupMembership extends GroupItemRef {
     groupNames: string[];
 }
 
-/** 맵 위에서 그룹을 옮긴 결과. 이동은 언제나 배열 — 여럿을 한 번에 끌면 낱개 요청은 부분 실패를 낳는다. */
-export interface GroupMove {
-    name: string;
-    x: number;
-    y: number;
-}
-
-/** 그룹을 평면에 올리기(값) / 내리기(null). 올릴 때 좌표를 함께 정한다. */
-export type GroupPlacement = { mapName: string; x: number; y: number } | null;
-
-/**
- * 두 그룹이 멤버를 얼마나 공유하나 — **징검다리**. 저장하지 않고 멤버십에서 계산한다.
- * count 가 굵기가 되고, 굵을수록 두 그룹이 실은 한 덩어리에 가깝다는 뜻이다.
- */
-export interface GroupOverlap {
-    a: string; // 그룹 이름(사전순 앞)
-    b: string;
-    count: number;
-}
-
-/** 항목 키 문자열 — 하루 소속은 시각이 없다. 멤버십을 접고 겹침을 세는 기준. */
-export const groupItemKey = (item: GroupItemRef): string =>
-    `${item.stockCode}|${item.date}${item.time ? `|${item.time}` : ""}`;
-
-/**
- * 멤버십 피드에서 그룹 쌍의 겹침을 센다(같은 항목이 A·B 둘 다에 들면 1).
- * 한 항목의 그룹이 k 개면 쌍은 k(k-1)/2 개 — 손으로 붙이는 수라 k 는 작고, 전체는 항목 수에 선형이다.
- */
-export function overlapsOf(memberships: readonly GroupMembership[]): GroupOverlap[] {
-    // 중첩 Map 인 이유: 키가 **이름**이고 이름은 자유 텍스트다. 예전처럼 `a|b` 로 이어 붙였다가 다시
-    // 쪼개면 이름에 든 구분자가 쌍을 잘못 가른다("A|B"+"C" 와 "A"+"B|C" 가 같은 키가 된다).
-    const byPair = new Map<string, Map<string, number>>();
-    for (const m of memberships) {
-        const names = [...new Set(m.groupNames)].sort();
-        for (let i = 0; i < names.length; i++) {
-            for (let j = i + 1; j < names.length; j++) {
-                const inner = byPair.get(names[i]!) ?? new Map<string, number>();
-                inner.set(names[j]!, (inner.get(names[j]!) ?? 0) + 1);
-                byPair.set(names[i]!, inner);
-            }
-        }
-    }
-    return [...byPair].flatMap(([a, inner]) => [...inner].map(([b, count]) => ({ a, b, count })));
-}

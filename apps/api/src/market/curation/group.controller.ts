@@ -5,14 +5,11 @@ import type {
     Group,
     GroupItemRef,
     GroupMembership,
-    GroupMove,
     GroupScope,
     CreateGroupInput,
     RenameGroupInput,
     RemoveGroupInput,
     AttachGroupInput,
-    PlaceGroupInput,
-    MoveGroupsInput,
     SetGroupParentInput,
 } from "@trade-data-manager/wire";
 import { GROUP_REPO } from "../tokens.js";
@@ -70,35 +67,6 @@ export class GroupController {
         return { ok: true };
     }
 
-    /** 좌표 이동 — 여럿 한 번에. 낱개로 쪼개면 여럿을 끌 때 부분 실패가 생긴다. */
-    @Patch("placements")
-    async move(@Body() body: MoveGroupsInput): Promise<{ ok: true }> {
-        const moves = body?.moves;
-        if (!Array.isArray(moves) || moves.length === 0) throw new BadRequestException("moves 필수(빈 배열 불가)");
-        await this.repo.moveGroups(moves.map(assertMove));
-        return { ok: true };
-    }
-
-    /** 평면에 올리기(좌표 포함). 맵 scope 와 그룹 scope 가 다르면 저장 경로가 거절한다. */
-    @Put("placement")
-    async place(@Body() body: PlaceGroupInput): Promise<{ ok: true }> {
-        await guard(() =>
-            this.repo.setPlacement(assertName(body?.name), {
-                mapName: assertName(body?.mapName, "mapName"),
-                x: assertCoord(body?.x, "x"),
-                y: assertCoord(body?.y, "y"),
-            }),
-        );
-        return { ok: true };
-    }
-
-    /** 평면에서 내리기 — 그룹은 남고 좌표·부모만 풀린다(자식들도 함께 내려온다). */
-    @Post("placement/remove")
-    async unplace(@Body() body: RemoveGroupInput): Promise<{ ok: true }> {
-        await this.repo.setPlacement(assertName(body?.name), null);
-        return { ok: true };
-    }
-
     /** 그룹 안 그룹. 부모 층위가 자식을 못 담거나(하루 ⊉ 타점) 순환이면 저장 경로가 거절한다. */
     @Put("parent")
     async setParent(@Body() body: SetGroupParentInput): Promise<{ ok: true }> {
@@ -144,14 +112,4 @@ function assertItem(item: Partial<GroupItemRef> | undefined): GroupItemRef {
     const stockCode = assertStockCode(item?.stockCode, "stockCode");
     const date = assertYmd(item?.date, "date");
     return item?.time === undefined ? { stockCode, date } : { stockCode, date, time: assertHms(item.time, "time") };
-}
-
-function assertMove(m: GroupMove | undefined): GroupMove {
-    return { name: assertName(m?.name, "moves[].name"), x: assertCoord(m?.x, "x"), y: assertCoord(m?.y, "y") };
-}
-
-/** 좌표는 유한 실수만 — NaN/Infinity 가 들어가면 그 점은 화면에서 영영 사라지고 원인이 안 남는다. */
-function assertCoord(v: number | undefined, field: string): number {
-    if (typeof v !== "number" || !Number.isFinite(v)) throw new BadRequestException(`${field} 필수(유한 숫자)`);
-    return v;
 }
