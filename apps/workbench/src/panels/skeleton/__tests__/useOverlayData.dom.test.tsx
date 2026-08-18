@@ -46,12 +46,15 @@ const points: ReviewPointListItem[] = [
     { stockCode: C, date: DATE, time: T1, name: "카카오" },
 ];
 
-// ── 깔때기 구독만 갈아 끼운다 ────────────────────────────────────────────────
+// ── 깔때기 구독만 갈아 끼운다 — 훅은 viewOf(바인딩) 하나로 묻는다(연동 null = 이 목 자체).
 const funnel = {
     isLoading: false,
     isFiltering: false,
+    broken: false,
+    viewedItems: [] as { stockCode: string; date: string; time?: string }[],
     viewedChartKeys: new Set<string>(),
     viewedPointRefs: [] as { stockCode: string; date: string; time: string }[],
+    viewOf: (_ref: unknown) => funnel,
 };
 vi.mock("../../filter/FunnelContext.js", () => ({ useFunnel: () => funnel }));
 
@@ -70,7 +73,7 @@ const wrapper = (seed: Seed) => {
         </QueryClientProvider>;
 };
 const read = (isDaily: boolean, onlyCharts: ReadonlySet<string> | null = null, seed: Seed = { skeletons: feed, points }): ReturnType<typeof useOverlayData> =>
-    renderHook(() => useOverlayData(isDaily, "last", onlyCharts), { wrapper: wrapper(seed) }).result.current;
+    renderHook(() => useOverlayData(isDaily, "last", onlyCharts, null), { wrapper: wrapper(seed) }).result.current;
 
 describe("일봉 — 선은 차트 단위", () => {
     it("차트마다 선 하나, 모집단은 차트 수", () => {

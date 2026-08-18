@@ -21,6 +21,8 @@ import { useWorkbench } from "../store/workbench.js";
 import { chartKey } from "../lib/pointKey.js";
 import { ACTIVE } from "../styles/palette.js";
 import { useFunnel } from "./filter/FunnelContext.js";
+import { useSetBinding } from "./filter/useSetBinding.js";
+import { SetBindingChip } from "./filter/SetBindingChip.js";
 import { chainCandidates, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "./group/population.js";
 import { canReparent, overlapRows, relationOf, treeRows, type GroupRow } from "./group/groupList.js";
 
@@ -57,22 +59,24 @@ export function GroupListPanel(): JSX.Element {
      *
      * 잣대는 여전히 깔때기의 적용 집합 하나다 — 골격·시트와 어긋나면 그 어긋남은 화면에 신호가 없다.
      */
+    // 분모 = 이 패널의 바인딩(디폴트 연동). 필터 결과를 묶으면 "그 생존자들이 그룹에 어떻게 분포하나"가 된다.
+    const binding = useSetBinding("wb.setBinding.groupList");
     const dayFeed = useMemo<GroupMembership[]>(() => {
         if (funnel.isLoading) return [];
         const seen = new Set<string>();
         const items: PopulationItem[] = [];
-        for (const it of funnel.viewedItems) {
+        for (const it of binding.view.viewedItems) {
             const k = chartKey(it);
             if (seen.has(k)) continue;
             seen.add(k);
             items.push({ stockCode: it.stockCode, date: it.date });
         }
         return populationFeed(items, (i) => gv.appliedGroupNamesOf(i));
-    }, [funnel.isLoading, funnel.viewedItems, gv]);
+    }, [funnel.isLoading, binding.view.viewedItems, gv]);
 
     const pointFeed = useMemo<GroupMembership[]>(
-        () => (funnel.isLoading ? [] : populationFeed(funnel.viewedPointRefs, (i) => gv.appliedGroupNamesOf(i))),
-        [funnel.isLoading, funnel.viewedPointRefs, gv],
+        () => (funnel.isLoading ? [] : populationFeed(binding.view.viewedPointRefs, (i) => gv.appliedGroupNamesOf(i))),
+        [funnel.isLoading, binding.view.viewedPointRefs, gv],
     );
 
     const countsDay = useMemo(() => populationCounts(dayFeed), [dayFeed]);
@@ -212,11 +216,12 @@ export function GroupListPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
             <PanelHeader chrome={false} padding="5px 10px"
                 style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
-                {/* 모집단을 **두 층위로** 적는다 — 행마다 수의 단위가 그 그룹의 scope 라, 분모도 둘이어야 읽힌다. */}
+                <SetBindingChip binding={binding} />
+                {/* 분모를 **두 층위로** 적는다 — 행마다 수의 단위가 그 그룹의 scope 라, 분모도 둘이어야 읽힌다. */}
                 <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}
                     title="하루 = (종목·날짜) · 타점 = (종목·날짜·시각). 그룹의 scope 가 어느 쪽에서 셀지 정한다">
-                    그룹 {gv.groups.length} · 모집단 {funnel.isLoading ? "…" : `하루 ${dayFeed.length} · 타점 ${pointFeed.length}`}
-                    {funnel.isFiltering ? "" : " (전체)"}
+                    그룹 {gv.groups.length} · 분모 {funnel.isLoading ? "…" : `하루 ${dayFeed.length} · 타점 ${pointFeed.length}`}
+                    {binding.view.isFiltering ? "" : " (전체)"}
                 </span>
                 <HeaderControls controls={controls} storageKey="wb.headerPins.groupList" />
             </PanelHeader>

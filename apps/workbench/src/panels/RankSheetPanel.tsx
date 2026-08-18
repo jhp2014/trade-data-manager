@@ -21,7 +21,8 @@ import { buildAxisIndex, orderKeyByPoint, type AxisIndex } from "../lib/rankInde
 import { SheetRowView, ROW_H, type CellCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { useRankAxes } from "../lib/RankAxesContext.js";
 import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js";
-import { useFunnel } from "./filter/FunnelContext.js";
+import { useSetBinding } from "./filter/useSetBinding.js";
+import { SetBindingChip } from "./filter/SetBindingChip.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { PanelHeader, miniBtn, mutedNote } from "../components/ControlChrome.js";
@@ -126,11 +127,12 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [allPoints]);
 
-    // ── 보는 집합 — **깔때기를 직접 구독**한다. 예전엔 어댑터(useRankFilterResult)를 한 겹 거쳤는데,
-    //    그 겹이 하던 나머지 일(경로 통계)이 분석 패널과 함께 사라져 남은 건 "이 집합을 타점으로 펼치기"뿐이었다.
-    const funnel = useFunnel();
-    const bandsActive = funnel.isFiltering;
-    const interKeys = useMemo(() => new Set(funnel.viewedPointRefs.map(pointKey)), [funnel.viewedPointRefs]);
+    // ── 보는 집합 — **바인딩 하나로 구독**한다(디폴트 연동 = 깔때기의 보는 집합 그대로).
+    //    참조를 묶으면 이 시트만 그 집합을 본다 — 옆 패널과 다른 집합을 보는 게 이제 정상 상태라,
+    //    무엇을 보는지는 헤더 칩이 상시 말한다.
+    const binding = useSetBinding("wb.setBinding.sheet");
+    const bandsActive = binding.view.isFiltering;
+    const interKeys = useMemo(() => new Set(binding.view.viewedPointRefs.map(pointKey)), [binding.view.viewedPointRefs]);
 
     // 필터 표시 모드 — narrow(교집합만) / dim(전체 유지, 밴드 밖 흐리게). 영속.
     const [filterMode, setFilterMode] = usePersistedState<"narrow" | "dim">(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null), "narrow");
@@ -395,6 +397,7 @@ export function RankSheetPanel(): JSX.Element {
                 컨트롤처럼 늘 서 있는 것이 아니다. */}
             <PanelHeader gap={8}>
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0 }}>
+                    <SetBindingChip binding={binding} />
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />

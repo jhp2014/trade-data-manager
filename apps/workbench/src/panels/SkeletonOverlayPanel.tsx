@@ -35,6 +35,8 @@ import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { inPick, pickKeys, PICK_SOURCE_LABEL } from "../lib/pick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
+import { useSetBinding } from "./filter/useSetBinding.js";
+import { SetBindingChip } from "./filter/SetBindingChip.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { type PointRef } from "../lib/pointKey.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
@@ -155,9 +157,11 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     // 그룹 한 벌 — 그룹 메뉴·발끝 표기(여기) + 차트 그룹 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
     const groupsView = useGroups();
+    // 바인딩 — 이 패널이 보는 집합(디폴트 연동). 일봉·분봉이 별도 패널이라 키에 grain 이 붙는다.
+    const binding = useSetBinding(`wb.setBinding.skeleton.${grain}`);
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
     const { feedLoading, lines: allLines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
-        useOverlayData(isDaily, anchor, onlyCharts);
+        useOverlayData(isDaily, anchor, onlyCharts, binding.ref);
 
     /**
      * ── 짚음(pick) — **다른 패널이 좁혀 놓은 렌즈**(그룹 체인 등). 모집단은 그대로 두고 그 안을 가리킨다.
@@ -678,6 +682,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 candles={candles}
                 counts={{ shown: lines.length, population, missing: missingPrevClose }}
                 theme={{ lineCount: themeOverlay?.lines.length ?? null, hasTarget: singleTarget !== null }}
+                bindingChip={<SetBindingChip binding={binding} />}
                 pick={pick === null ? null : {
                     label: `${PICK_SOURCE_LABEL[pick.source]} · ${pick.label}`,
                     shown: allLines.filter(linePicked).length,

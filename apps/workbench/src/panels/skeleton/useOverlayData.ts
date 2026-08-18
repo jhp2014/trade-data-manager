@@ -17,6 +17,7 @@ import {
     type ChartSkeleton, type OverlayLine, type SkeletonAnchor,
 } from "./skeletonOverlay.js";
 import type { SkeletonWireLevel } from "../../api/skeletons.js";
+import type { SetRef } from "../../lib/setRef.js";
 import type { ReviewPointListItem } from "@trade-data-manager/wire";
 
 export interface OverlayData {
@@ -51,21 +52,24 @@ export function useOverlayData(
     anchor: SkeletonAnchor,
     /** "선택만 보기" — null 이면 제한 없음. 렌더 쪽 선택 상태에서 내려온다(패널 로컬 시야 — 필터와 별개). */
     onlyCharts: ReadonlySet<string> | null,
+    /** 패널 바인딩 — null = 연동(깔때기의 보는 집합 그대로). 참조면 그 집합만 남긴다. */
+    bindingRef: SetRef | null,
 ): OverlayData {
     const feedQ = useQuery(skeletonsQuery());
     const pointsQ = useQuery(allPointsQuery());
     const funnel = useFunnel();
 
-    // 깔때기 구독 — 안 걸려 있으면 null(제한 없음). 로딩 중에도 null: 판정이 안 끝난 집합으로 거르면
-    // 빈 화면이 "조건에 다 걸렸다"로 읽힌다.
-    const filterOn = !funnel.isLoading && funnel.isFiltering;
+    // 보는 집합 구독 — 바인딩 하나로 묻는다(연동이면 깔때기 viewed* 그대로). 안 걸려 있으면 null(제한 없음).
+    // 로딩 중에도 null: 판정이 안 끝난 집합으로 거르면 빈 화면이 "조건에 다 걸렸다"로 읽힌다.
+    const view = funnel.viewOf(bindingRef);
+    const filterOn = !funnel.isLoading && view.isFiltering;
     const chartAllowed = useMemo<ReadonlySet<string> | null>(
-        () => (isDaily && filterOn ? funnel.viewedChartKeys : null),
-        [isDaily, filterOn, funnel.viewedChartKeys],
+        () => (isDaily && filterOn ? view.viewedChartKeys : null),
+        [isDaily, filterOn, view.viewedChartKeys],
     );
     const matchedPks = useMemo<ReadonlySet<string> | null>(
-        () => (!isDaily && filterOn ? new Set(funnel.viewedPointRefs.map((p) => pointKey(p))) : null),
-        [isDaily, filterOn, funnel.viewedPointRefs],
+        () => (!isDaily && filterOn ? new Set(view.viewedPointRefs.map((p) => pointKey(p))) : null),
+        [isDaily, filterOn, view.viewedPointRefs],
     );
 
     // 종목명 — 사전 한 벌(전량)에서. 예전엔 여기서 피드 둘(타점·앵커 차트)로 맵을 지었는데, 그 맵은

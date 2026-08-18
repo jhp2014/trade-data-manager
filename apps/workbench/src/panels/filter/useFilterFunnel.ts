@@ -13,6 +13,7 @@ import {
     blockedBy, expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
 } from "@trade-data-manager/market/domain";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
+import { expandToPointItems } from "../../lib/grainView.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { chartKey, pointKey } from "../../lib/pointKey.js";
@@ -72,6 +73,23 @@ export interface FunnelView {
      * 같은 참조는 캐시로 한 번만 푼다(정규화 키) — 재료가 바뀌면 캐시째 새로 선다. 로딩 중엔 빈 집합.
      */
     resolveSet: (ref: SetRef) => ResolvedSet;
+    /**
+     * 패널이 보는 집합 — **바인딩 하나로 위의 viewed* 계약과 같은 모양**을 돌려준다.
+     * null = 연동(짚은 칸 반영, 없으면 최종 생존 — 위 viewed* 그대로), 참조 = 그 집합(층위 변환 포함).
+     * 소비 패널은 viewOf(자기 바인딩) 하나만 읽으면 되고, 바인딩이 없던 시절의 코드와 같은 필드를 쓴다.
+     */
+    viewOf: (ref: SetRef | null) => ViewedSet;
+}
+
+/** 구독 패널이 소비하는 "보는 집합"의 계약 — FunnelView 의 viewed·isFiltering 필드와 같은 모양. */
+export interface ViewedSet {
+    /** 걸린 게 있나 — false 면 구독자는 거르지 않는다(전체 = 제한 없음). 명시 바인딩은 언제나 true. */
+    isFiltering: boolean;
+    /** 깨진 참조(지워진 그룹·필터·단계) — 빈 집합과 구분해 화면이 이유를 말해야 한다(자동 폴백 금지). */
+    broken: boolean;
+    viewedItems: FunnelItem[];
+    viewedChartKeys: Set<string>;
+    viewedPointRefs: { stockCode: string; date: string; time: string }[];
 }
 
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
@@ -211,6 +229,30 @@ export function useFilterFunnel(): FunnelView {
         };
     }, [candQ.data, timesByChart, gv, evalLook, grainLook, stages, savedFunnels, isLoading]);
 
+    /** 바인딩 뷰 — 연동(null)은 위 viewed* 그대로, 참조는 리졸버 결과를 같은 계약으로 감싼다(키 캐시). */
+    const viewOf = useMemo(() => {
+        const cache = new Map<string, ViewedSet>();
+        const linked: ViewedSet = { isFiltering, broken: false, viewedItems, viewedChartKeys, viewedPointRefs };
+        return (ref: SetRef | null): ViewedSet => {
+            if (ref === null) return linked;
+            const k = setRefKey(ref);
+            const hit = cache.get(k);
+            if (hit) return hit;
+            const r = resolveSet(ref);
+            const v: ViewedSet = {
+                isFiltering: true,
+                broken: r.broken,
+                viewedItems: r.items,
+                viewedChartKeys: new Set(r.items.map((i) => chartKey(i))),
+                // 전개(∀) — 하루 항목은 그날 타점 전부로. 타점 0인 하루는 대표가 없다(결손으로 보일 자리).
+                viewedPointRefs: expandToPointItems(r.items, (c) => timesByChart.get(chartKey(c)) ?? [])
+                    .map((i) => ({ stockCode: i.stockCode, date: i.date, time: i.time! })),
+            };
+            cache.set(k, v);
+            return v;
+        };
+    }, [isFiltering, viewedItems, viewedChartKeys, viewedPointRefs, resolveSet, timesByChart]);
+
     const labelLook = useMemo<LabelLookup>(
         () => ({
             groupName: (id) => gv.groupByName.get(id)?.name,
@@ -245,5 +287,6 @@ export function useFilterFunnel(): FunnelView {
         labelLook,
         blockedLabels,
         resolveSet,
+        viewOf,
     };
 }

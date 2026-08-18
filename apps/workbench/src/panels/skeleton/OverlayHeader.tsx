@@ -52,13 +52,15 @@ export interface OverlayPick {
     clear: () => void;
 }
 
-export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
+export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, bindingChip, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
     grain: "daily" | "minute";
     toggles: OverlayToggles;
     candles: CandlesView;
     counts: OverlayCounts;
     theme: OverlayThemeStatus;
     pick: OverlayPick | null;
+    /** 바인딩 칩(SetBindingChip) — "이 패널이 보는 집합"의 상시 라벨. 왼쪽(말의 자리) 맨 앞에 선다. */
+    bindingChip?: React.ReactNode;
     /** 선택이 이 패널에 안 보일 때 이유를 말하는 배지(SubjectBadge) — 보이면 null 이 온다. */
     subjectBadge?: React.ReactNode;
     /** "선택만 보기"(분봉 전용) — 패널 로컬 시야라 영속 토글에 안 든다. */
@@ -148,6 +150,7 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, su
         <PanelHeader chrome={false} gap={8}
             style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
             {/* ── 왼쪽은 **말**(이 화면이 무엇을 담고 있나). 좁아지면 오른쪽부터 밀려나므로 여기 있는 것이 남는다. */}
+            {bindingChip}
             <span style={count}>
                 {counts.shown}개
                 {counts.population > counts.shown && <span style={{ color: "var(--text-tertiary)" }}> / {counts.population}</span>}

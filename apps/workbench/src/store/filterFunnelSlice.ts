@@ -159,8 +159,14 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     setFunnelSelection: (sel) => set(() => ({ funnelSelection: sel })),
 
     savedFunnels: loadSets(),
+    // 같은 이름 = 같은 물건 — **엎어쓰기**(id 유지). 저장이 늘 새 항목이면 참조(패널 바인딩의 필터 id)가
+    // 옛 스냅샷에 묶여, "필터를 고쳐 저장했는데 바인딩은 옛것"이라는 조용한 갈림이 생긴다.
     saveFunnelSet: (name) => set((s) => {
-        const next = [...s.savedFunnels, { id: `fs${Date.now().toString(36)}`, name, stages: s.filterStages }];
+        const n = name.trim();
+        const at = s.savedFunnels.findIndex((x) => x.name === n);
+        const next = at >= 0
+            ? s.savedFunnels.map((x, i) => (i === at ? { ...x, stages: s.filterStages } : x))
+            : [...s.savedFunnels, { id: `fs${Date.now().toString(36)}`, name: n, stages: s.filterStages }];
         saveJson(SETS_KEY, next);
         return { savedFunnels: next };
     }),

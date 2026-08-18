@@ -117,3 +117,34 @@ describe("시선(funnelSelection)은 활성 단계에만 성립한다", () => {
         expect(store.getState().funnelSelection).toBeNull();
     });
 });
+
+describe("저장한 깔때기 — 같은 이름은 엎어쓴다(같은 이름 = 같은 물건)", () => {
+    it("첫 저장은 새 항목, 같은 이름 재저장은 id 를 지키고 정의만 갈린다", async () => {
+        const storage = stubStorage();
+        const store = await loadStore();
+        store.getState().addFilterStage([datePred]);
+        store.getState().saveFunnelSet("돌파 조건");
+        const first = store.getState().savedFunnels;
+        expect(first).toHaveLength(1);
+        const id = first[0].id;
+
+        store.getState().addFilterStage([datePred]);
+        store.getState().saveFunnelSet("돌파 조건");
+        const again = store.getState().savedFunnels;
+        expect(again).toHaveLength(1); // 새 항목이 아니라 엎어쓰기
+        expect(again[0].id).toBe(id); // 바인딩 참조(id)가 새 정의를 따라온다
+        expect(again[0].stages).toHaveLength(2);
+
+        const saved = JSON.parse(storage.get("wb.filterFunnelSets")!) as { id: string }[];
+        expect(saved).toHaveLength(1);
+    });
+
+    it("이름 앞뒤 공백은 깎는다 — '돌파 '와 '돌파'가 딴 물건이 되지 않게", async () => {
+        stubStorage();
+        const store = await loadStore();
+        store.getState().addFilterStage([datePred]);
+        store.getState().saveFunnelSet("돌파");
+        store.getState().saveFunnelSet(" 돌파 ");
+        expect(store.getState().savedFunnels).toHaveLength(1);
+    });
+});
