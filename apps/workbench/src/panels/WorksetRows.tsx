@@ -1,47 +1,62 @@
 // 작업셋 패널 표현 컴포넌트 — 월 선택 팝오버·조준 아이콘·날짜 헤더·종목명·타점 행.
 // WorksetPanel 본문(데이터 합본)에서 분리한 순수 표현 조각.
-import { useState } from "react";
 import type { ReviewPointListItem } from "../api/reviewPoints.js";
 import { weekdayOf } from "../lib/date.js";
 import { PlacementBadge } from "../components/Placement.js";
+import { HeaderPopover } from "../components/HeaderPopover.js";
 
 function fmtDateHeader(date: string): string {
     return `${date.replace(/-/g, ".")} (${weekdayOf(date)})`;
 }
 
+// 월 선택 — 팝오버는 HeaderPopover(document.body portal). 패널 안에서 absolute 로 열면
+// dockview 패널 경계에 잘려 목록이 안 보인다(옛 버그). 헤더 좌측 컨트롤이라 align="start",
+// 고르고 끝나는 메뉴라 바깥 클릭으로 닫는다.
 export function MonthPicker({ month, months, onPick }: { month: string; months: string[]; onPick: (m: string) => void }): JSX.Element {
-    const [open, setOpen] = useState(false);
     return (
-        <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 2 }}>
-            <span className="tabular" style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: 14 }}>{month.replace("-", ".")}</span>
-            <button
-                onClick={() => setOpen((v) => !v)}
-                title="월 변경"
-                style={{ display: "inline-flex", alignItems: "center", padding: "2px 3px", border: "none", background: "none", color: "var(--text-secondary)", cursor: "pointer", lineHeight: 0 }}
-            >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="6 9 12 15 18 9" />
-                </svg>
-            </button>
-            {open && (
-                <>
-                    <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-                    <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 41, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 6, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", maxHeight: 260, overflowY: "auto", minWidth: 84 }}>
-                        {months.length === 0 && <div style={{ padding: "5px 12px", color: "var(--text-tertiary)", fontSize: 12 }}>없음</div>}
-                        {months.map((m) => (
-                            <button
-                                key={m}
-                                onClick={() => { onPick(m); setOpen(false); }}
-                                className="tabular"
-                                style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: m === month ? "var(--accent-soft)" : "transparent", color: "var(--text-primary)", padding: "5px 12px", cursor: "pointer", font: "inherit", fontWeight: m === month ? 700 : 400 }}
-                            >
-                                {m.replace("-", ".")}
-                            </button>
-                        ))}
-                    </div>
-                </>
+        <HeaderPopover
+            width={100}
+            align="start"
+            closeOnOutside
+            trigger={(open, toggle) => (
+                <button
+                    onClick={toggle}
+                    title="월 변경"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 2, border: "none", background: "none", padding: "2px 3px", cursor: "pointer", font: "inherit" }}
+                >
+                    <span className="tabular" style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: 14 }}>{month.replace("-", ".")}</span>
+                    <svg
+                        width="13"
+                        height="13"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ color: "var(--text-secondary)", transform: open ? "rotate(180deg)" : "none" }}
+                    >
+                        <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                </button>
             )}
-        </div>
+        >
+            {(close) => (
+                <div style={{ overflowY: "auto", padding: "2px 0" }}>
+                    {months.length === 0 && <div style={{ padding: "5px 12px", color: "var(--text-tertiary)", fontSize: 12 }}>없음</div>}
+                    {months.map((m) => (
+                        <button
+                            key={m}
+                            onClick={() => { onPick(m); close(); }}
+                            className="tabular"
+                            style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: m === month ? "var(--accent-soft)" : "transparent", color: "var(--text-primary)", padding: "5px 12px", cursor: "pointer", font: "inherit", fontSize: 13, fontWeight: m === month ? 700 : 400 }}
+                        >
+                            {m.replace("-", ".")}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </HeaderPopover>
     );
 }
 

@@ -12,12 +12,15 @@ const LAYER_ATTR = "data-header-popover";
 // 내용은 document.body 로 portal — 헤더가 overflow 스크롤이라 그냥 두면 잘린다(Popover 와 같은 이유).
 export function HeaderPopover({
     width,
+    align = "end",
     closeOnOutside = false,
     trigger,
     children,
 }: {
     /** 팝오버 고정 폭(px) — 뷰포트 가장자리 클램프 계산에 쓴다. */
     width: number;
+    /** 앵커의 어느 모서리에 맞출지. 기본 "end"(우측) — 헤더 우측 컨트롤이 대다수라서. 좌측 컨트롤은 "start". */
+    align?: "start" | "end";
     /** 바깥을 누르면 닫는다(기본 false — 위 주석의 이유). */
     closeOnOutside?: boolean;
     trigger: (open: boolean, toggle: () => void) => ReactNode;
@@ -35,7 +38,7 @@ export function HeaderPopover({
             const el = anchorRef.current;
             if (!el) return;
             const r = el.getBoundingClientRect();
-            const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8));
+            const left = Math.max(8, Math.min(align === "start" ? r.left : r.right - width, window.innerWidth - width - 8));
             setPos({ top: r.bottom + 6, left });
         };
         place();
@@ -45,7 +48,7 @@ export function HeaderPopover({
             window.removeEventListener("resize", place);
             window.removeEventListener("scroll", place, true);
         };
-    }, [open, width]);
+    }, [open, width, align]);
 
     useEffect(() => {
         if (!open) return;
