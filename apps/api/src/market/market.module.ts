@@ -311,14 +311,20 @@ export class MarketModule implements OnApplicationBootstrap, OnModuleDestroy {
     ) {}
 
     /**
-     * 부팅 시 미러 한 번 당겨온다 — 읽기가 미러에서 나오므로 켜자마자 최신이어야 한다.
+     * 부팅 시 미러가 **하루 넘게 낡았으면** 당겨온다(`runIfStale`). 매번 당기지 않는 이유는 그쪽 주석에.
      * **기다리지 않는다(fire-and-forget)**: Supabase 왕복이 부팅을 막으면 원격이 느리거나 죽었을 때
      * 앱이 아예 안 뜬다. 미러는 최악이라도 어제치라 그동안 읽기는 정상 동작한다.
      */
     onApplicationBootstrap(): void {
         void this.curationSync
-            .run()
-            .then((r) => console.log(r.skipped ? "[mirror] 원격 없음 — 미러 건너뜀" : `[mirror] 부팅 동기화 완료(${r.rows}행)`))
+            .runIfStale()
+            .then((r) => {
+                if (!r) {
+                    console.log("[mirror] 미러가 최신(24시간 이내) — 부팅 동기화 건너뜀");
+                    return;
+                }
+                console.log(r.skipped ? "[mirror] 원격 없음 — 미러 건너뜀" : `[mirror] 부팅 동기화 완료(${r.rows}행)`);
+            })
             .catch((e: unknown) => console.error("[mirror] 부팅 동기화 실패 — 미러는 직전 상태로 계속 쓴다", e));
     }
 
