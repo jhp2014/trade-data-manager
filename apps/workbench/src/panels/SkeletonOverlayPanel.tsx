@@ -169,7 +169,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         useOverlayData(isDaily, anchor, onlyCharts, binding.ref);
 
     /**
-     * ── 짚음(pick) — **다른 패널이 좁혀 놓은 렌즈**(그룹 체인 등). 모집단은 그대로 두고 그 안을 가리킨다.
+     * ── 짚음(pick) — **다른 패널이 좁혀 놓은 렌즈**(그룹 체인 등). 보는 집합은 그대로 두고 그 안을 가리킨다.
      *
      * 이 패널은 표시 방법만 고른다(전 패널 공통 어휘): `흐리게` = 분모가 보인다(41 / 128 — 형태 비교가
      * 본론이라 기본값), `좁히기` = 짚은 것만(척도가 그만큼 커진다). 시트가 밴드에 쓰던 그 택1이다.
@@ -535,7 +535,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 역할 판정은 순수 함수(lineVisual)가, 색 배정은 여기가 한다 — 팔레트는 화면의 몫이라 규칙 층에 안 들인다.
     const visualOf = useCallback((key: string): { v: LineVisual; color: string } => {
         const base = lineVisual(key, { selected: effSelected, hovered, group: groupSet });
-        // 렌즈 밖은 흐리게 — 짚은 것이 앞으로 서고 분모는 배경으로 남는다(모집단이 안 사라진다).
+        // 렌즈 밖은 흐리게 — 짚은 것이 앞으로 서고 분모는 배경으로 남는다(전체가 안 사라진다).
         const v = outOfPick?.has(key) ? { ...base, dim: true } : base;
         const color = v.role === "selected" ? ACTIVE
             : v.role === "group" ? groupColorOf(key)

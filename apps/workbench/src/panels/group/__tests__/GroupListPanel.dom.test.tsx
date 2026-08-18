@@ -43,7 +43,7 @@ const add = (name: string): void => { fireEvent.click(row(name), { ctrlKey: true
 beforeEach(() => { useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null }); });
 afterEach(() => { useWorkbench.setState({ filterStages: [], funnelSelection: null }); cleanup(); localStorage.clear(); });
 
-describe("모집단 수 — 맵과 같은 잣대", () => {
+describe("분모 수 — 깔때기와 같은 잣대", () => {
     it("자식 소속이 부모에도 센다(계층 상속) — 깔때기의 적용 집합을 그대로 쓴다", () => {
         renderPanel();
         // 2차전지에 A 하나 → 테마도 1(상속). 돌파 3·갭상승 2.
@@ -69,7 +69,7 @@ describe("scope — 층위별로 센다", () => {
             { stockCode: "A", date: "2026-07-01", time: TIME, groupNames: ["눌림타점"] },
         ],
         candidateDays: [{ stockCode: "A", date: "2026-07-01", traces: [] }],
-        // 타점 모집단(viewedPointRefs)의 재료 — 이게 없으면 타점 피드가 비어 수가 0이 된다.
+        // 타점 분모(viewedPointRefs)의 재료 — 이게 없으면 타점 피드가 비어 수가 0이 된다.
         points: [{ stockCode: "A", date: "2026-07-01", time: TIME, outcome: null, axisValues: {} } as never],
     };
 

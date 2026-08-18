@@ -1,7 +1,7 @@
 // 레일 한 줄 — **조건을 그어서 거는 자리**. 값이 무엇인지는 모르고 0..1 좌표만 안다.
 //
 // 왜 그리기인가: 숫자를 입력하려면 그 축의 분포를 이미 알아야 한다("5% 위"가 상위 3건인지 300건인지).
-// 실제 자리(틱)를 깔아 두고 그 위를 자르면 **모집단을 보면서** 조건을 정하게 된다 — 옛 값 입력칸이
+// 실제 자리(틱)를 깔아 두고 그 위를 자르면 **유니버스를 보면서** 조건을 정하게 된다 — 옛 값 입력칸이
 // 못 하던 일이고, 이게 레일이 있는 이유 전부다.
 //
 // 손짓 셋(빈 트랙 드래그 = 새 구간 · 경계 라벨 드래그 = 그 경계 이동 · 라벨 ✕ = 구간 삭제)의 대수는
@@ -143,7 +143,7 @@ export function Rail<V>({
                     <span style={endLabel(true)}>{minLabel}</span>
                     <span style={endLabel(false)}>{maxLabel}</span>
 
-                    {/* 실제 자리 — 모집단을 보면서 자르게 하는 표식. */}
+                    {/* 실제 자리 — 유니버스를 보면서 자르게 하는 표식. */}
                     {ticks?.map((f, i) => (
                         <span key={i} aria-hidden style={{ position: "absolute", left: at(f), top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 9, background: "var(--text-tertiary)", opacity: 0.35, pointerEvents: "none" }} />
                     ))}

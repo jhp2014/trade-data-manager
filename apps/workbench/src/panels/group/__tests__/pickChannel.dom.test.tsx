@@ -1,7 +1,7 @@
 // 짚음 채널의 **건너감** — 그룹 패널에서 짚으면 골격이 그걸 받는다.
 //
 // 이 파일이 잠그는 건 배선이지 그림이 아니다: 짚음은 채널 하나이고(전역), 만든 패널이 자기 것만 거두며,
-// 소비 패널은 모집단을 그대로 둔 채 **강조**로 받는다(좁히기는 그 패널의 선택). 두 패널을 한 트리에
+// 소비 패널은 제 보는 집합을 그대로 둔 채 **강조**로 받는다(좁히기는 그 패널의 선택). 두 패널을 한 트리에
 // 같이 세우는 이유가 그것이다 — 따로 두면 "각자 잘 도는데 안 이어지는" 상태를 못 잡는다.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -71,7 +71,7 @@ describe("짚음 채널 — 그룹에서 짚으면 골격이 받는다", () => {
         expect(screen.getByTitle(/그룹 · 돌파 — 2 \/ 3/)).toBeTruthy();
     });
 
-    it("**모집단은 그대로다** — 짚음은 렌즈지 조건이 아니다(기본은 흐리게)", () => {
+    it("**전체는 그대로다** — 짚음은 렌즈지 조건이 아니다(기본은 흐리게)", () => {
         renderBoth();
         fireEvent.click(groupRow("돌파"));
         expect(screen.getByText("3개")).toBeTruthy(); // 셋 다 그려진 채로 둘만 앞에 선다

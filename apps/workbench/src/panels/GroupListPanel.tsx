@@ -51,7 +51,7 @@ export function GroupListPanel(): JSX.Element {
     const [newScope, setNewScope] = useState<GroupScope>("day");
 
     /**
-     * ── 모집단은 **두 층위로 센다**(하루 · 타점). 그룹의 scope 가 어느 쪽인지 정한다.
+     * ── 분모는 **두 층위로 센다**(하루 · 타점). 그룹의 scope 가 어느 쪽인지 정한다.
      *
      * ⚠ 여기가 처음엔 틀려 있었다: 항목을 차트 단위로만 접어 놓으면 `appliedGroupNamesOf` 가
      * **하루 소속만** 돌려주므로(시각 없는 참조 → chartOf) `scope:"point"` 그룹은 전부 0으로 나온다.
@@ -137,7 +137,7 @@ export function GroupListPanel(): JSX.Element {
 
     /**
      * ── 체인을 **짚음 채널로 내보낸다**. 이 패널 안에서만 뜻이 있던 걸 밖으로 내는 자리다:
-     * 골격은 모집단을 다 그리고 이 41건만 앞으로 세운다(좁힐지 흐리게 할지는 그 패널의 선택).
+     * 골격은 제 보는 집합을 다 그리고 이 41건만 앞으로 세운다(좁힐지 흐리게 할지는 그 패널의 선택).
      *
      * 항목이 아니라 **참조**(groupChain)를 싣는다 — 멤버십이 바뀌면 소비 패널의 강조도 따라온다(라이브).
      * ⚠ 조건이 아니라 **시선**이다 — 조건으로 굳히려면 여전히 "필터에 추가"를 눌러야 한다.
@@ -378,7 +378,7 @@ function GroupRowView({ row, count, relation, overlap, maxOverlap, chainOn, coll
             ref={(el) => { drag.setNodeRef(el); drop.setNodeRef(el); }}
             {...drag.attributes} {...drag.listeners}
             onClick={(e) => onClick(e.ctrlKey || e.metaKey)}
-            title={`${pathOf()} · 모집단 ${count}\n클릭 = 이 그룹만 · Ctrl+클릭 = 교집합에 더하기 · 끌어서 다른 그룹 밑으로`}
+            title={`${pathOf()} · 분모 ${count}\n클릭 = 이 그룹만 · Ctrl+클릭 = 교집합에 더하기 · 끌어서 다른 그룹 밑으로`}
             style={{
                 cursor: "pointer", touchAction: "none",
                 borderTop: "1px solid var(--border-subtle)",

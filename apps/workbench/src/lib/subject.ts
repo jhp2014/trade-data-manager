@@ -11,7 +11,7 @@
 //   · shown    — 지금 이 패널에 그려져 있다(배지 없음)
 //   · filtered — 재료는 있는데 지금 필터에서 빠졌다
 //   · absent   — 재료 자체가 없다(타점 없음·골격 미작성·결손 — 패널이 말을 고른다)
-// 판정 재료(모집단·표시 집합)는 패널이 이미 들고 있으므로 여기는 **불리언 둘 → 3치** 접기만 소유한다.
+// 판정 재료(전체·표시 집합)는 패널이 이미 들고 있으므로 여기는 **불리언 둘 → 3치** 접기만 소유한다.
 import { useMemo } from "react";
 import { useWorkbench } from "../store/workbench.js";
 import { chartKeyOf, pointKeyOf } from "./pointKey.js";

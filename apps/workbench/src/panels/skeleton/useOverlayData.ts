@@ -24,7 +24,7 @@ export interface OverlayData {
     feedLoading: boolean;
     /** 화면의 선들 — 일봉은 차트 단위, 분봉은 타점 단위(kind 로 갈린다). */
     lines: OverlayLine[];
-    /** 필터 전 모집단 수 — 헤더의 "N개 / M" 분모. */
+    /** 필터 전 전체 수 — 헤더의 "N개 / M" 분모. */
     population: number;
     /**
      * 분봉에서 전일 종가(%p 분모) 미수집으로 **못 그린 타점 수** — 필터로 빠진 것과 구분해 보여야 한다.
@@ -89,7 +89,7 @@ export function useOverlayData(
         return m;
     }, [pointsQ.data]);
 
-    // 차트 단위 선(일봉) — 분봉 뷰에선 비어 있다(선의 모집단이 다르다).
+    // 차트 단위 선(일봉) — 분봉 뷰에선 비어 있다(선의 전체 집합이 다르다).
     const shapes = useMemo<ChartSkeleton[]>(() => {
         const feed = feedQ.data;
         if (!feed || !isDaily) return [];
@@ -107,7 +107,7 @@ export function useOverlayData(
     // 결손(전일 종가 미수집 → %p 분모 없음)은 **세어서 따로 낸다** — 조용히 빼면 "N개 / M"의 차이가
     // 전부 필터 탓으로 보인다(결손은 수집으로 고칠 일이지 필터를 의심할 일이 아니다).
     //
-    // ⚠ 세는 단위는 **타점**이다. 이 뷰의 선도 모집단도 타점이라 차트를 세면 그 표기만 단위가 달라져
+    // ⚠ 세는 단위는 **타점**이다. 이 뷰의 선도 전체 수도 타점이라 차트를 세면 그 표기만 단위가 달라져
     // "M − N = 필터 + 결손"이 안 맞는다(차트 3개가 빠졌는데 타점은 10개 사라지는 식).
     const [pointLines, missingPrevClose] = useMemo<[OverlayLine[], number]>(() => {
         const feed = feedQ.data;
@@ -136,7 +136,7 @@ export function useOverlayData(
         return m;
     }, [feedQ.data]);
 
-    // 모집단 — 일봉은 차트 수, 분봉은 분봉 골격 차트 위의 타점 수(필터 전).
+    // 전체 수 — 일봉은 차트 수, 분봉은 분봉 골격 차트 위의 타점 수(필터 전).
     const population = useMemo(() => {
         const feed = feedQ.data;
         if (!feed) return 0;

@@ -76,7 +76,7 @@ const read = (isDaily: boolean, onlyCharts: ReadonlySet<string> | null = null, s
     renderHook(() => useOverlayData(isDaily, "last", onlyCharts, null), { wrapper: wrapper(seed) }).result.current;
 
 describe("일봉 — 선은 차트 단위", () => {
-    it("차트마다 선 하나, 모집단은 차트 수", () => {
+    it("차트마다 선 하나, 전체 수는 차트 수", () => {
         const d = read(true);
         expect(d.lines.map((l) => l.stockCode)).toEqual([A, B, C]);
         expect(d.population).toBe(3);
@@ -110,7 +110,7 @@ describe("분봉 — 선은 타점 단위", () => {
         expect(d.lines.every((l) => l.kind === "point")).toBe(true);
     });
 
-    it("모집단은 **분봉 골격이 있는 차트 위의 타점 수** — 차트 수가 아니다", () => {
+    it("전체 수는 **분봉 골격이 있는 차트 위의 타점 수** — 차트 수가 아니다", () => {
         expect(read(false).population).toBe(5);
     });
 
@@ -155,7 +155,7 @@ describe("선택만 보기 — 패널 로컬 시야(필터와 별개)", () => {
         expect(read(false, new Set([ck(C)])).lines.map((l) => l.key)).toEqual([pk(C, T1)]);
     });
 
-    it("모집단은 안 줄어든다 — 시야를 좁힌 것이지 모집단이 바뀐 게 아니다", () => {
+    it("전체 수는 안 줄어든다 — 시야를 좁힌 것이지 전체가 바뀐 게 아니다", () => {
         expect(read(false, new Set([ck(C)])).population).toBe(5);
     });
 });

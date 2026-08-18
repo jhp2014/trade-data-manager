@@ -27,7 +27,7 @@ import type { OverlayToggles } from "./useOverlayToggles.js";
 export interface OverlayCounts {
     /** 실제로 그린 선 수. */
     shown: number;
-    /** 필터 전 모집단. */
+    /** 필터 전 전체 수. */
     population: number;
     /** 재료 결손으로 못 그린 수(필터로 빠진 것과 구분해 표기). */
     missing: number;
