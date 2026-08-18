@@ -31,7 +31,9 @@ import { flatten, orderPaint, type DrawLayer } from "./skeleton/drawList.js";
 import { pickReadouts, layoutReadoutRows, readoutCandidatesAt, READOUT_GAP, type ReadoutCandidate, type ReadoutSource } from "./skeleton/readout.js";
 import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
 import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
+import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
+import { inPick, pickKeys, PICK_SOURCE_LABEL } from "../lib/pick.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { type PointRef } from "../lib/pointKey.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
@@ -153,8 +155,41 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 그룹 한 벌 — 그룹 메뉴·발끝 표기(여기) + 차트 그룹 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
     const groupsView = useGroups();
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
-    const { feedLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
+    const { feedLoading, lines: allLines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
         useOverlayData(isDaily, anchor, onlyCharts);
+
+    /**
+     * ── 짚음(pick) — **다른 패널이 좁혀 놓은 렌즈**(그룹 체인 등). 모집단은 그대로 두고 그 안을 가리킨다.
+     *
+     * 이 패널은 표시 방법만 고른다(전 패널 공통 어휘): `흐리게` = 분모가 보인다(41 / 128 — 형태 비교가
+     * 본론이라 기본값), `좁히기` = 짚은 것만(척도가 그만큼 커진다). 시트가 밴드에 쓰던 그 택1이다.
+     *
+     * ⚠ 선택(손으로 고른 무리)과 **다른 채널**이다. 짚어 놓고 그 안에서 골라 그룹에 붙이는 게 본론이라
+     * 하나로 합치면 두 번째 걸음이 첫 걸음을 덮어쓴다.
+     */
+    const pick = useWorkbench((s) => s.pick);
+    const clearPick = useWorkbench((s) => s.setPick);
+    // 영속 키에 grain 이 붙는다 — 일봉·분봉이 별도 패널이라(useOverlayToggles 와 같은 규칙).
+    const [pickMode, setPickMode] = usePersistedState<"dim" | "narrow">(
+        `wb.skeletonPickMode.${grain}`, (o) => (o === "dim" || o === "narrow" ? o : null), "dim");
+    const picked = useMemo(() => (pick ? pickKeys(pick.items) : null), [pick]);
+    /** 이 선이 렌즈 안에 드나 — 차트 단위 선은 (종목·날짜)로, 타점 단위 선은 시각까지 본다. */
+    const linePicked = useCallback(
+        (s2: Line): boolean =>
+            picked === null || inPick(picked, s2.kind === "point"
+                ? { stockCode: s2.stockCode, date: s2.date, time: s2.time }
+                : { stockCode: s2.stockCode, date: s2.date }),
+        [picked],
+    );
+    const lines = useMemo(
+        () => (picked !== null && pickMode === "narrow" ? allLines.filter(linePicked) : allLines),
+        [allLines, picked, pickMode, linePicked],
+    );
+    /** 흐리게일 때 렌즈 **밖**인 선들 — visualOf 가 dim 을 강제한다(그림 층은 그대로 둔다). */
+    const outOfPick = useMemo(() => {
+        if (picked === null || pickMode === "narrow") return null;
+        return new Set(allLines.filter((l) => !linePicked(l)).map((l) => l.key));
+    }, [allLines, picked, pickMode, linePicked]);
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
     //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.
@@ -474,13 +509,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     // 역할 판정은 순수 함수(lineVisual)가, 색 배정은 여기가 한다 — 팔레트는 화면의 몫이라 규칙 층에 안 들인다.
     const visualOf = useCallback((key: string): { v: LineVisual; color: string } => {
-        const v = lineVisual(key, { selected: effSelected, hovered, group: groupSet });
+        const base = lineVisual(key, { selected: effSelected, hovered, group: groupSet });
+        // 렌즈 밖은 흐리게 — 짚은 것이 앞으로 서고 분모는 배경으로 남는다(모집단이 안 사라진다).
+        const v = outOfPick?.has(key) ? { ...base, dim: true } : base;
         const color = v.role === "selected" ? ACTIVE
             : v.role === "group" ? groupColorOf(key)
                 : v.role === "hovered" ? HOVER
                     : "var(--text-secondary)";
         return { v, color };
-    }, [effSelected, hovered, groupSet, groupColorOf]);
+    }, [effSelected, hovered, groupSet, groupColorOf, outOfPick]);
 
     /** 평클릭 = 이동 + 단일 선택(교체). Ctrl+클릭 = 선택 토글만(이동 없음 — 무리를 만드는 중이다).
      *  타점 단위 선(time 있음)은 자기 타점으로 바로 이동하고 선택은 pk 채널을 쓴다 — 문법은 같다.
@@ -637,6 +674,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 candles={candles}
                 counts={{ shown: lines.length, population, missing: missingPrevClose }}
                 theme={{ lineCount: themeOverlay?.lines.length ?? null, hasTarget: singleTarget !== null }}
+                pick={pick === null ? null : {
+                    label: `${PICK_SOURCE_LABEL[pick.source]} · ${pick.label}`,
+                    shown: allLines.filter(linePicked).length,
+                    total: allLines.length,
+                    mode: pickMode,
+                    setMode: setPickMode,
+                    clear: () => clearPick(null),
+                }}
                 subjectBadge={<SubjectBadge subject={subject} status={subjectState}
                     name={subject ? nameOf(subject.code) : undefined}
                     absentLabel={isDaily ? "골격 없음" : "골격·타점 없음"} />}

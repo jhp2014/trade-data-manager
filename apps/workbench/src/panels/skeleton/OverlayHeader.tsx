@@ -19,7 +19,7 @@ import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import type { SkeletonAnchor } from "./skeletonOverlay.js";
-import { PRICE_LINE } from "../../styles/palette.js";
+import { ACTIVE, PRICE_LINE } from "../../styles/palette.js";
 import type { CandlesView } from "./useCandles.js";
 import type { OverlayToggles } from "./useOverlayToggles.js";
 
@@ -41,12 +41,24 @@ export interface OverlayThemeStatus {
     hasTarget: boolean;
 }
 
-export function OverlayHeader({ grain, toggles, candles, counts, theme, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
+/** 다른 패널이 좁혀 놓은 렌즈(짚음)와 이 패널의 표시 택1. 없으면 null — 컨트롤도 배지도 안 뜬다. */
+export interface OverlayPick {
+    /** "그룹 · 돌파 & 갭상승" — 출처를 앞에 붙인 이름. 왜 강조가 생겼는지 말해 준다. */
+    label: string;
+    shown: number;
+    total: number;
+    mode: "dim" | "narrow";
+    setMode: (m: "dim" | "narrow") => void;
+    clear: () => void;
+}
+
+export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
     grain: "daily" | "minute";
     toggles: OverlayToggles;
     candles: CandlesView;
     counts: OverlayCounts;
     theme: OverlayThemeStatus;
+    pick: OverlayPick | null;
     /** 선택이 이 패널에 안 보일 때 이유를 말하는 배지(SubjectBadge) — 보이면 null 이 온다. */
     subjectBadge?: React.ReactNode;
     /** "선택만 보기"(분봉 전용) — 패널 로컬 시야라 영속 토글에 안 든다. */
@@ -103,6 +115,12 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, subjectB
             on: locked, set: onToggleLock,
         },
         {
+            kind: "choice", id: "pickMode", name: "짚음 표시", available: pick !== null,
+            help: "다른 패널이 좁혀 놓은 렌즈를 어떻게 그릴까 — 흐리게는 분모가 보이고, 좁히기는 척도가 커진다",
+            values: [{ v: "dim", label: "흐리게" }, { v: "narrow", label: "좁히기" }],
+            value: pick?.mode ?? "dim", set: (v) => pick?.setMode(v === "narrow" ? "narrow" : "dim"),
+        },
+        {
             kind: "choice", id: "candleAlpha", name: "선명도", group: "캔들",
             help: "배경으로만 ↔ 봉 하나하나를 짚어 볼 만큼",
             values: [{ v: "low", label: "흐리게" }, { v: "mid", label: "보통" }, { v: "high", label: "진하게" }],
@@ -124,7 +142,7 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, subjectB
             help: "짚은 타점의 앞뒤 창 동안 같은 테마 종목의 분당 종가 경로를 같이 세운다 · 단축키 T",
             on: t.showTheme, set: t.setShowTheme,
         },
-    ], [isDaily, isPointUnit, t, candles.alpha, candles.setAlpha, onlySelected, setOnlySelected, locked, onToggleLock]);
+    ], [isDaily, isPointUnit, t, candles.alpha, candles.setAlpha, onlySelected, setOnlySelected, locked, onToggleLock, pick]);
 
     return (
         <PanelHeader chrome={false} gap={8}
@@ -138,6 +156,22 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, subjectB
                     <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — %p 공간의 분모가 없어 그릴 수 없는 타점(필터로 빠진 게 아님)"> · 결손 {counts.missing}</span>
                 )}
             </span>
+            {/* 짚음 배지 — 강조가 왜 생겼는지 말해 주지 않으면 "왜 이것만 진하지"가 된다. */}
+            {pick && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 11 }}>
+                    <span style={{
+                        background: ACTIVE, color: "#fff", borderRadius: 999, padding: "1px 7px",
+                        maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }} title={`${pick.label} — ${pick.shown} / ${pick.total}`}>
+                        {pick.label}
+                    </span>
+                    <span style={{ color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
+                        {pick.shown}<span style={{ color: "var(--text-tertiary)" }}> / {pick.total}</span>
+                    </span>
+                    <button onClick={pick.clear} title="짚음 풀기"
+                        style={{ border: "none", background: "none", padding: "0 2px", cursor: "pointer", color: "var(--text-tertiary)", font: "inherit", fontSize: 11 }}>✕</button>
+                </span>
+            )}
             {t.showTheme && (
                 <span style={themeStatus} title={themeStatusTitle(theme)}>테마 {themeStatusText(theme)}</span>
             )}

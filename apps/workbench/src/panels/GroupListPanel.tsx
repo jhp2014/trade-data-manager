@@ -8,7 +8,7 @@
 // 맵과 규약은 같다: 깔때기의 여느 구독자(읽기)이고, **쓰기는 "필터에 추가" 하나**다. 조건의 저자는
 // 깔때기 하나여야 하므로 여기서 만든 뒤 잊는다 — 지우기·순서·on/off 는 필터 보드의 일이다.
 // (부모 지정은 조건이 아니라 사전 편집이라 별개다.)
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { createGroup, setGroupParent, type GroupMembership, type GroupScope } from "../api/groups.js";
@@ -18,6 +18,7 @@ import { HeaderControls, type ControlSpec } from "../components/HeaderControls.j
 import { useGroups } from "../lib/GroupsContext.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
+import type { PickItem } from "../lib/pick.js";
 import { chartKey } from "../lib/pointKey.js";
 import { ACTIVE } from "../styles/palette.js";
 import { useFunnel } from "./filter/FunnelContext.js";
@@ -123,6 +124,28 @@ export function GroupListPanel(): JSX.Element {
         () => (sort === "tree" ? treeRows(gv.groups, collapsed) : overlapRows(gv.groups, overlapAll, chain, gv.groupByName)),
         [sort, gv.groups, gv.groupByName, collapsed, overlapAll, chain],
     );
+
+    /**
+     * ── 체인을 **짚음 채널로 내보낸다**. 이 패널 안에서만 뜻이 있던 걸 밖으로 내는 자리다:
+     * 골격은 모집단을 다 그리고 이 41건만 앞으로 세운다(좁힐지 흐리게 할지는 그 패널의 선택).
+     *
+     * ⚠ 조건이 아니라 **시선**이다 — 조건으로 굳히려면 여전히 "필터에 추가"를 눌러야 한다.
+     * 언마운트·체인 비우기에는 **내 것만** 거둔다(남이 짚어 둔 것을 지우면 안 된다).
+     */
+    const setPick = useWorkbench((s) => s.setPick);
+    const clearPickFrom = useWorkbench((s) => s.clearPickFrom);
+    useEffect(() => {
+        if (chain.length === 0) {
+            clearPickFrom("group");
+            return;
+        }
+        setPick({
+            source: "group",
+            label: chain.join(" & "),
+            items: chainMembers.map((m): PickItem => ({ stockCode: m.stockCode, date: m.date, ...(m.time !== undefined ? { time: m.time } : {}) })),
+        });
+    }, [chain, chainMembers, setPick, clearPickFrom]);
+    useEffect(() => () => clearPickFrom("group"), [clearPickFrom]);
 
     const addFilterStage = useWorkbench((s) => s.addFilterStage);
     /**
