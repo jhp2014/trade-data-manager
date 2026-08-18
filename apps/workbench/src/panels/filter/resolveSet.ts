@@ -9,7 +9,7 @@
 // "결손은 결손"(축 규칙 3)이 참조에도 적용되는 것.
 import {
     expandUniverse, finestGrain, tallyFunnel,
-    type ChartRef, type FunnelItem, type Grain,
+    type ChartRef, type FunnelItem, type FunnelResult, type Grain,
 } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../lib/setRef.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
@@ -27,8 +27,22 @@ export interface SetResolveCtx {
     groupScope: (name: string) => Grain | undefined;
     /** 필터 정의. null = 활성 슬롯. undefined 반환 = 지워진 필터(깨진 참조). */
     stagesOf: (filterId: string | null) => readonly FilterStage[] | undefined;
+    /**
+     * 활성 슬롯(filterId=null)의 **이미 끝난 정산** — 깔때기 훅이 방금 만든 것을 그대로 꽂는다.
+     * 없으면 여기서 새로 정산하는데, 그러면 같은 필터를 두 번 평가할 뿐 아니라 **grain 이 갈릴 수 있다**:
+     * 훅은 displayGrain("타점으로 펼치기" 반영)으로 펼치고 리졸버 단독으로는 그 토글을 모른다.
+     * 연동과 "활성 필터" 바인딩이 같은 집합이려면 반드시 이 재사용 경로여야 한다.
+     */
+    activeFilter?: ResolvedFilter;
     evalLook: EvalLookup;
     grainLook: GrainLookup;
+}
+
+/** 필터 한 벌의 정산 결과 — filter/cell 참조가 공유하고, 활성 슬롯은 훅에서 주입된다. */
+export interface ResolvedFilter {
+    grain: Grain;
+    active: FilterStage[];
+    tally: FunnelResult;
 }
 
 export interface ResolvedSet {
@@ -70,13 +84,12 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
 
         case "filter": {
             const r = resolveFilter(ref.filterId, ctx);
-            return r === null ? BROKEN : { broken: false, grain: r.grain, items: r.survivors };
+            return r === null ? BROKEN : { broken: false, grain: r.grain, items: r.tally.survivors };
         }
 
         case "cell": {
-            const stages = ctx.stagesOf(ref.filterId);
-            if (stages === undefined) return BROKEN;
-            const r = resolveFilter(ref.filterId, ctx)!;
+            const r = resolveFilter(ref.filterId, ctx);
+            if (r === null) return BROKEN;
             const i = r.active.findIndex((s) => s.id === ref.stageId);
             // 단계가 지워졌거나 꺼졌으면 그 칸은 존재하지 않는다 — 깨진 참조.
             if (i < 0) return BROKEN;
@@ -94,20 +107,32 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
     }
 }
 
+/** 리졸버 호출 한 번(= ctx 한 벌) 안에서 필터 정산을 filterId 당 한 번만 — 같은 필터의 filter/cell
+ *  참조가 몇 개든 정산은 한 벌이다. ctx 가 재료 변경마다 새로 만들어지므로 낡을 수 없다. */
+const filterMemo = new WeakMap<SetResolveCtx, Map<string | null, ResolvedFilter | null>>();
+
 /**
  * 필터 한 벌을 정산까지. 칸 참조가 같은 정산을 봐야 하므로 filter/cell 이 이 한 함수를 공유한다.
+ * 활성 슬롯은 **훅의 정산을 재사용**한다(ctx.activeFilter — grain·비용 둘 다의 이유, 필드 주석 참조).
  * ⚠ 단계 순서는 깔때기 화면과 같은 규칙(funnelOrder — 하루 먼저)이어야 한다: 칸(근접 탈락)은 순서
  * 종속이라, 여기만 다른 순서로 접으면 짚은 칸과 다른 집합이 나온다.
  */
-function resolveFilter(
-    filterId: string | null,
-    ctx: SetResolveCtx,
-): { grain: Grain; active: FilterStage[]; survivors: FunnelItem[]; tally: ReturnType<typeof tallyFunnel> } | null {
+function resolveFilter(filterId: string | null, ctx: SetResolveCtx): ResolvedFilter | null {
+    if (filterId === null && ctx.activeFilter) return ctx.activeFilter;
+    let memo = filterMemo.get(ctx);
+    if (!memo) filterMemo.set(ctx, (memo = new Map()));
+    const hit = memo.get(filterId);
+    if (hit !== undefined) return hit;
+
     const stages = ctx.stagesOf(filterId);
-    if (stages === undefined) return null;
+    if (stages === undefined) {
+        memo.set(filterId, null);
+        return null;
+    }
     const active = activeStages(funnelOrder(stages, ctx.grainLook).map((e) => e.stage));
     const grain = resolveAutoGrain(stages, ctx.grainLook);
     const items = expandUniverse(ctx.candidates, grain, ctx.timesOf);
-    const tally = tallyFunnel(items, toFunnelStages(active, ctx.evalLook));
-    return { grain, active, survivors: tally.survivors, tally };
+    const r: ResolvedFilter = { grain, active, tally: tallyFunnel(items, toFunnelStages(active, ctx.evalLook)) };
+    memo.set(filterId, r);
+    return r;
 }

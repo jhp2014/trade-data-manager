@@ -165,7 +165,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         `wb.setSidebar.skeleton.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
     const goToDay = useWorkbench((s) => s.goToDay);
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
-    const { feedLoading, lines: allLines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
+    const { feedLoading, lines: allLines, drawableKeys, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
         useOverlayData(isDaily, anchor, onlyCharts, binding.ref);
 
     /**
@@ -182,10 +182,16 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 영속 키에 grain 이 붙는다 — 일봉·분봉이 별도 패널이라(useOverlayToggles 와 같은 규칙).
     const [pickMode, setPickMode] = usePersistedState<"dim" | "narrow">(
         `wb.skeletonPickMode.${grain}`, (o) => (o === "dim" || o === "narrow" ? o : null), "dim");
-    // 채널에는 참조만 실려 있다 — 읽는 순간 리졸버로 푼다(라이브). 깨진 참조는 빈 집합이라 강조가 없다.
+    // 채널에는 참조만 실려 있다 — 읽는 순간 리졸버로 푼다(라이브).
+    // ⚠ 깨진 참조·로딩 중엔 렌즈를 **정지**한다(picked=null — 강조도 좁히기도 없음). 빈 집합으로
+    // 화면을 지우면 "조건에 안 맞았다"로 읽힌다 — 깨졌다는 사실은 머리글 칩(⚠)이 말한다.
     const funnelView = useFunnel();
     const resolvedPick = pick === null ? null : funnelView.resolveSet(pick.ref);
-    const picked = useMemo(() => (resolvedPick ? pickKeys(resolvedPick.items) : null), [resolvedPick]);
+    const pickBroken = resolvedPick?.broken === true;
+    const picked = useMemo(
+        () => (resolvedPick && !resolvedPick.broken && !funnelView.isLoading ? pickKeys(resolvedPick.items) : null),
+        [resolvedPick, funnelView.isLoading],
+    );
     /** 이 선이 렌즈 안에 드나 — 차트 단위 선은 (종목·날짜)로, 타점 단위 선은 시각까지 본다. */
     const linePicked = useCallback(
         (s2: Line): boolean =>
@@ -205,15 +211,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     }, [allLines, picked, pickMode, linePicked]);
 
     /**
-     * ── 집합 멤버(사이드바·칩 n/N 의 재료) — 표현가능 술어 = "그린 선의 키에 있나"(allLines 기준).
-     * 짚음(narrow)·"선택만 보기"는 시야지 재료가 아니라 여기 안 들어간다 — 그것 때문에 안 됨으로 세면
-     * 결손 목록이 렌즈 상태에 따라 출렁여 "채우러 갈 목록"이라는 뜻을 잃는다.
+     * ── 집합 멤버(사이드바·칩 n/N 의 재료) — 표현가능 술어 = "그릴 수 있는 선의 키에 있나".
+     * ⚠ drawableKeys 는 **시야 무관**이다(데이터 훅이 "선택만 보기" 적용 전에 계산) — 짚음(narrow)도
+     * "선택만 보기"도 시야지 재료가 아니라, 그것 때문에 안 됨으로 세면 결손 목록이 렌즈 상태에 따라
+     * 출렁여 "채우러 갈 목록"이라는 뜻을 잃는다(allLines 로 셌다가 실제로 그렇게 깨졌던 자리).
      */
-    const drawnKeys = useMemo(() => new Set(allLines.map((l) => l.key)), [allLines]);
     const setMembers = useMemo(
         () => setMembersOf(binding.view, isDaily ? "day" : "point", (it) =>
-            drawnKeys.has(it.time === undefined ? chartKey(it) : pointKey({ stockCode: it.stockCode, date: it.date, time: it.time }))),
-        [binding.view, isDaily, drawnKeys],
+            drawableKeys.has(it.time === undefined ? chartKey(it) : pointKey({ stockCode: it.stockCode, date: it.date, time: it.time }))),
+        [binding.view, isDaily, drawableKeys],
     );
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
@@ -704,6 +710,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     label: `${PICK_SOURCE_LABEL[pick.source]} · ${pick.label}`,
                     shown: allLines.filter(linePicked).length,
                     total: allLines.length,
+                    broken: pickBroken,
                     mode: pickMode,
                     setMode: setPickMode,
                     clear: () => clearPick(null),

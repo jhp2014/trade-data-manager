@@ -46,7 +46,9 @@ const points: ReviewPointListItem[] = [
     { stockCode: C, date: DATE, time: T1, name: "카카오" },
 ];
 
-// ── 깔때기 구독만 갈아 끼운다 — 훅은 viewOf(바인딩) 하나로 묻는다(연동 null = 이 목 자체).
+// ── 깔때기 구독만 갈아 끼운다 — 훅은 viewOf(바인딩) 하나로 묻는다.
+// ⚠ 로딩 가드는 실제 계약대로 **뷰 안에** 있다(ViewedSet.isFiltering 은 로딩 중 false — useFilterFunnel
+// 의 linkedView 와 같은 식). 목도 그 계약을 지켜야, 훅이 가드를 되풀이하지 않는 현재 구조가 검증된다.
 const funnel = {
     isLoading: false,
     isFiltering: false,
@@ -54,7 +56,7 @@ const funnel = {
     viewedItems: [] as { stockCode: string; date: string; time?: string }[],
     viewedChartKeys: new Set<string>(),
     viewedPointRefs: [] as { stockCode: string; date: string; time: string }[],
-    viewOf: (_ref: unknown) => funnel,
+    viewOf: (_ref: unknown) => ({ ...funnel, isFiltering: !funnel.isLoading && funnel.isFiltering }),
 };
 vi.mock("../../filter/FunnelContext.js", () => ({ useFunnel: () => funnel }));
 

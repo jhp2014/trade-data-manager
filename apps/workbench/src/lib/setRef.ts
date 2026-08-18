@@ -10,7 +10,7 @@
 //
 // ⚠ 칸 참조는 단계의 **정체(id)** 로 잡는다(인덱스 아님) — 재배열해도 같은 단계를 가리킨다. 칸의 내용이
 // 재배열로 바뀌는 건 버그가 아니라 라이브의 뜻이다(근접 탈락은 "어느 단계 기준이냐"에 따라 다른 집합).
-import type { FunnelCell, FunnelItem } from "@trade-data-manager/market/domain";
+import { funnelKey, type FunnelCell, type FunnelItem } from "@trade-data-manager/market/domain";
 
 /** 필터 지목 — null = 활성 슬롯(이름 없는 작업면), 문자열 = 저장한 깔때기의 id. */
 export type FilterRefId = string | null;
@@ -32,17 +32,22 @@ const isCell = (v: unknown): v is FunnelCell => typeof v === "string" && (CELLS 
 
 /**
  * 정규화 키 — 같은 집합을 가리키는 참조는 같은 키(리졸버 캐시·React 메모의 기준).
- * 칸 목록은 정렬해 싣는다(고르는 순서는 집합을 바꾸지 않는다). 이름·라벨은 자유 텍스트라 구분자와
- * 충돌할 수 있지만, 키는 **해시 용도**지 파싱 대상이 아니다(다시 쪼개지 않는다).
+ *
+ * ⚠ **키는 캐시 키다** — 충돌하면 낭비가 아니라 **다른 집합을 돌려준다**(캐시 오염). 그룹 이름·라벨은
+ * 자유 텍스트라(도메인이 일부러 허용) 구분자 이어붙이기로는 안전할 수 없다 — 실제로 `names.join("&")` 는
+ * 그룹 "A&B" 하나짜리 체인과 [A,B] 체인을 같은 키로 만들었다. JSON 배열 인코딩은 모든 문자를
+ * 이스케이프하므로 이 구조들에 대해 단사(injective)다.
+ *
+ * 순서가 집합을 바꾸지 않는 자리(칸 목록·체인 교집합)는 정렬해 싣는다 — 같은 집합은 한 번만 푼다.
  */
 export function setRefKey(r: SetRef): string {
     switch (r.kind) {
         case "universe": return "u";
-        case "group": return `g:${r.name}`;
-        case "filter": return `f:${r.filterId ?? "@active"}`;
-        case "cell": return `c:${r.filterId ?? "@active"}:${r.stageId}:${[...r.cells].sort().join(",")}`;
-        case "groupChain": return `gc:${r.names.join("&")}`;
-        case "items": return `it:${r.label}:${r.items.map((i) => `${i.stockCode}|${i.date}|${i.time ?? ""}`).join(";")}`;
+        case "group": return `g${JSON.stringify([r.name])}`;
+        case "filter": return `f${JSON.stringify([r.filterId])}`;
+        case "cell": return `c${JSON.stringify([r.filterId, r.stageId, [...r.cells].sort()])}`;
+        case "groupChain": return `gc${JSON.stringify([...r.names].sort())}`;
+        case "items": return `it${JSON.stringify([r.label, r.items.map(funnelKey)])}`;
     }
 }
 

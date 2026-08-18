@@ -46,14 +46,19 @@ export function setMembersOf(
             members.push({ ...item, ok: represented?.(item) ?? true, pointCount: f.pointCount });
         }
     } else {
-        // 전개는 viewedPointRefs 가 이미 해뒀다(뷰 계약). 타점 0인 하루만 여기서 되살린다.
+        // 전개는 viewedPointRefs 가 이미 해뒀다(뷰 계약). 타점 0인 하루만 되살려 **한 목록으로 합친 뒤
+        // 한 번에 정렬한다** — 두 갈래를 각자 정렬해 이어붙이면 전역 정렬이 깨져 월 칩(첫 등장 순)이
+        // 비연대순이 되고 기본 달(months[0])이 최신이 아니게 된다.
         const chartsWithPoints = new Set(view.viewedPointRefs.map((p) => chartKey(p)));
-        for (const p of sortItems(view.viewedPointRefs)) {
-            members.push({ stockCode: p.stockCode, date: p.date, time: p.time, ok: represented?.(p) ?? true });
-        }
-        for (const it of sortItems(view.viewedItems)) {
+        const rows: FunnelItem[] = [...view.viewedPointRefs];
+        for (const it of view.viewedItems) {
             if (it.time !== undefined || chartsWithPoints.has(chartKey(it))) continue;
-            members.push({ stockCode: it.stockCode, date: it.date, ok: false }); // 타점 없음 — 이 층위의 결손
+            rows.push({ stockCode: it.stockCode, date: it.date }); // 타점 없음 — 이 층위의 결손
+        }
+        for (const p of sortItems(rows)) {
+            members.push(p.time !== undefined
+                ? { stockCode: p.stockCode, date: p.date, time: p.time, ok: represented?.(p) ?? true }
+                : { stockCode: p.stockCode, date: p.date, ok: false });
         }
     }
     return { members, okCount: members.filter((m) => m.ok).length, total: members.length };

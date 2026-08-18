@@ -24,6 +24,16 @@ describe("setRefKey — 같은 집합이면 같은 키", () => {
     it("활성 슬롯과 저장 필터는 다른 키 — 연동은 따라가고 고정은 안 따라간다는 구분의 뿌리", () => {
         expect(setRefKey({ kind: "filter", filterId: null })).not.toBe(setRefKey({ kind: "filter", filterId: "active" }));
     });
+
+    it("⚠ 자유 텍스트 이름이 키를 오염시키지 못한다 — 'A&B' 그룹 체인 ≠ [A,B] 체인 (캐시 키라 충돌=다른 집합 반환)", () => {
+        expect(setRefKey({ kind: "groupChain", names: ["A&B"] }))
+            .not.toBe(setRefKey({ kind: "groupChain", names: ["A", "B"] }));
+    });
+
+    it("체인 순서는 집합을 안 바꾼다(교집합) — 키가 같아 한 번만 풀린다", () => {
+        expect(setRefKey({ kind: "groupChain", names: ["A", "B"] }))
+            .toBe(setRefKey({ kind: "groupChain", names: ["B", "A"] }));
+    });
 });
 
 describe("parseSetRef — 영속 4종만 받는다", () => {

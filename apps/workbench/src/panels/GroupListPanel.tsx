@@ -46,6 +46,13 @@ export function GroupListPanel(): JSX.Element {
     const collapsed = useMemo(() => new Set(collapsedList), [collapsedList]);
     /** 체인 — 클릭 순서대로 쌓는 **세션 시선**(조건이 아니다. 조건의 저자는 깔때기 하나). */
     const [chain, setChain] = useState<string[]>([]);
+    // 지워진(개명된) 그룹은 체인에서도 뺀다 — 옛 맵의 불변식("내려간 그룹은 체인에서도 빠진다") 계승.
+    // 안 빼면 죽은 이름이 브레드크럼에 남고(행이 없어 클릭 되감기 불가), 발행된 groupChain 참조가
+    // BROKEN 으로 풀려 전 소비 패널의 강조가 한꺼번에 죽는다. 로딩 중엔 안 건드린다(빈 사전 ≠ 삭제).
+    useEffect(() => {
+        if (gv.isLoading) return;
+        setChain((cur) => (cur.every((n) => gv.groupByName.has(n)) ? cur : cur.filter((n) => gv.groupByName.has(n))));
+    }, [gv.isLoading, gv.groupByName]);
     const [adding, setAdding] = useState(false);
     const [newName, setNewName] = useState("");
     const [newScope, setNewScope] = useState<GroupScope>("day");
@@ -140,6 +147,9 @@ export function GroupListPanel(): JSX.Element {
      * 골격은 제 보는 집합을 다 그리고 이 41건만 앞으로 세운다(좁힐지 흐리게 할지는 그 패널의 선택).
      *
      * 항목이 아니라 **참조**(groupChain)를 싣는다 — 멤버십이 바뀌면 소비 패널의 강조도 따라온다(라이브).
+     * ⚠ 참조는 유니버스 기준으로 풀리고, **소비 패널마다 자기 보는 집합과 교차해** 표시한다 — 이 패널의
+     * "공통 N"(체인 ∩ 내 바인딩)과 골격 배지의 수(체인 ∩ 그 패널 선들)가 다른 건 버그가 아니라 패널별
+     * 바인딩의 뜻 그대로다(각 패널의 분모는 제 헤더 칩이 말한다).
      * ⚠ 조건이 아니라 **시선**이다 — 조건으로 굳히려면 여전히 "필터에 추가"를 눌러야 한다.
      * 언마운트·체인 비우기에는 **내 것만** 거둔다(남이 짚어 둔 것을 지우면 안 된다).
      */

@@ -22,8 +22,13 @@ import type { ReviewPointListItem } from "@trade-data-manager/wire";
 
 export interface OverlayData {
     feedLoading: boolean;
-    /** 화면의 선들 — 일봉은 차트 단위, 분봉은 타점 단위(kind 로 갈린다). */
+    /** 화면의 선들 — 일봉은 차트 단위, 분봉은 타점 단위(kind 로 갈린다). "선택만 보기" 시야가 적용된 뒤다. */
     lines: OverlayLine[];
+    /**
+     * 이 패널이 표현할 수 있는 선 키 전부 — **시야("선택만 보기") 무관**. 사이드바의 표현됨/안 됨
+     * 술어가 이걸 봐야 결손 목록이 렌즈·시야 상태에 안 출렁인다("채우러 갈 목록"의 뜻 유지).
+     */
+    drawableKeys: ReadonlySet<string>;
     /** 필터 전 전체 수 — 헤더의 "N개 / M" 분모. */
     population: number;
     /**
@@ -60,9 +65,9 @@ export function useOverlayData(
     const funnel = useFunnel();
 
     // 보는 집합 구독 — 바인딩 하나로 묻는다(연동이면 깔때기 viewed* 그대로). 안 걸려 있으면 null(제한 없음).
-    // 로딩 중에도 null: 판정이 안 끝난 집합으로 거르면 빈 화면이 "조건에 다 걸렸다"로 읽힌다.
+    // 로딩 가드는 뷰 계약(isFiltering) 안에 있다 — 여기서 되풀이하지 않는다.
     const view = funnel.viewOf(bindingRef);
-    const filterOn = !funnel.isLoading && view.isFiltering;
+    const filterOn = view.isFiltering;
     const chartAllowed = useMemo<ReadonlySet<string> | null>(
         () => (isDaily && filterOn ? view.viewedChartKeys : null),
         [isDaily, filterOn, view.viewedChartKeys],
@@ -109,6 +114,9 @@ export function useOverlayData(
     //
     // ⚠ 세는 단위는 **타점**이다. 이 뷰의 선도 전체 수도 타점이라 차트를 세면 그 표기만 단위가 달라져
     // "M − N = 필터 + 결손"이 안 맞는다(차트 3개가 빠졌는데 타점은 10개 사라지는 식).
+    // ⚠ "선택만 보기"(onlyCharts)는 **여기서 걸지 않는다** — 그건 표시층의 패널 로컬 시야다. 이 목록이
+    // 표현가능(drawableKeys)의 재료도 겸하는데, 여기서 걸면 사이드바 결손 판정이 시야에 따라 출렁여
+    // 이미 그려진 차트를 "채우러 갈 목록"에 올린다(실측된 결함 — 시야는 아래 lines 에서만 자른다).
     const [pointLines, missingPrevClose] = useMemo<[OverlayLine[], number]>(() => {
         const feed = feedQ.data;
         if (!feed || isDaily) return [[], 0];
@@ -116,7 +124,6 @@ export function useOverlayData(
         let missing = 0;
         for (const e of feed.minute) {
             const key = chartKey(e);
-            if (onlyCharts && !onlyCharts.has(key)) continue;
             const pts = (pointsByChart.get(key) ?? [])
                 .map((rp) => ({ pk: pointKey(rp), time: rp.time }))
                 .filter((p) => !matchedPks || matchedPks.has(p.pk));
@@ -125,9 +132,16 @@ export function useOverlayData(
             out.push(...pointSkeletons(e.pivots, e.prevClose, pts, { key, stockCode: e.stockCode, date: e.date }));
         }
         return [out, missing];
-    }, [feedQ.data, isDaily, onlyCharts, pointsByChart, matchedPks]);
+    }, [feedQ.data, isDaily, pointsByChart, matchedPks]);
 
-    const lines: OverlayLine[] = isDaily ? shapes : pointLines;
+    const allLines: OverlayLine[] = isDaily ? shapes : pointLines;
+    /** 이 패널이 표현할 수 있는 선 키(시야 무관) — 사이드바의 표현됨/안 됨 술어가 이걸 본다. */
+    const drawableKeys = useMemo(() => new Set(allLines.map((l) => l.key)), [allLines]);
+    // 표시층 시야 — "선택만 보기"는 여기서만 자른다(분봉 전용, 일봉은 onlyCharts 가 null).
+    const lines = useMemo(
+        () => (onlyCharts === null ? allLines : allLines.filter((l) => onlyCharts.has(chartKey(l)))),
+        [allLines, onlyCharts],
+    );
 
     // 선은 언제나 차트 소유 — 모든 뷰가 같은 목록을 본다(타점 단위 선은 chartKey 로 찾는다).
     const levelsByChart = useMemo(() => {
@@ -168,5 +182,5 @@ export function useOverlayData(
         return [new Set(pks), subjectStatus(inData, inData && shownPks.length > 0)];
     }, [subject, isDaily, feedQ.data, chartAllowed, matchedPks, pointsByChart]);
 
-    return { feedLoading: feedQ.isLoading, lines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState };
+    return { feedLoading: feedQ.isLoading, lines, drawableKeys, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState };
 }

@@ -140,6 +140,23 @@ describe("필터·칸 — 판정 엔진은 깔때기 것 그대로", () => {
         const empty: SetResolveCtx = { ...ctx, stagesOf: () => [] };
         expect(codesOf(resolveSetRef({ kind: "filter", filterId: null }, empty))).toEqual(["1", "2", "3"]);
     });
+
+    it("⚠ 활성 슬롯은 주입된 정산(activeFilter)을 **그대로 재사용**한다 — 재평가하면 grain('타점으로 펼치기')이 갈리고 비용이 두 배가 된다", () => {
+        // stagesOf(null) 로 재평가하면 날짜 필터라 A·B 가 나올 것 — 주입본이 오면 재사용이 증명된다.
+        const injected: SetResolveCtx = {
+            ...ctx,
+            activeFilter: {
+                grain: "point",
+                active: [],
+                tally: { universe: 1, stages: [], survivors: [{ stockCode: "000003", date: "2026-07-03", time: "11:00:00" }] },
+            },
+        };
+        const r = resolveSetRef({ kind: "filter", filterId: null }, injected);
+        expect(r.grain).toBe("point");
+        expect(codesOf(r)).toEqual(["3@11:00"]);
+        // 저장 필터(fs1)는 주입본과 무관 — 제 정의로 평가된다.
+        expect(codesOf(resolveSetRef({ kind: "filter", filterId: "fs1" }, injected))).toEqual(["1", "2"]);
+    });
 });
 
 describe("항목 목록(세션) — 판정 없이 그대로", () => {

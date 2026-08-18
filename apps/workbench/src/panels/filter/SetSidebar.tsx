@@ -36,7 +36,9 @@ export function SetSidebar({ binding, members, showTime, onPick }: {
     // ── 월=페이지. 달 목록은 전체 멤버 기준(안 됨 포함 — 결손도 그 달의 사실이다).
     const { months, countByMonth } = useMemo(() => monthBuckets(members.members), [members.members]);
     const [monthSel, setMonthSel] = useState<string | null>(null);
-    const month = monthSel ?? months[0] ?? null;
+    // 고른 달이 지금 집합에 **없으면 버린다**(첫 달로) — 바인딩을 바꾸면 멤버의 달들이 통째로 갈리는데,
+    // 스테일 선택을 그대로 쓰면 inMonth 가 빈다. total>0 이라 "멤버가 없습니다"도 안 떠 말없이 빈 목록이 된다.
+    const month = monthSel !== null && months.includes(monthSel) ? monthSel : (months[0] ?? null);
     const inMonth = useMemo(
         () => (month === null ? [] : members.members.filter((m) => monthOf(m.date) === month)),
         [members.members, month],

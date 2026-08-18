@@ -19,7 +19,7 @@ import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import type { SkeletonAnchor } from "./skeletonOverlay.js";
-import { ACTIVE, PRICE_LINE } from "../../styles/palette.js";
+import { ACTIVE, FAIL, PRICE_LINE } from "../../styles/palette.js";
 import type { CandlesView } from "./useCandles.js";
 import type { OverlayToggles } from "./useOverlayToggles.js";
 
@@ -47,6 +47,8 @@ export interface OverlayPick {
     label: string;
     shown: number;
     total: number;
+    /** 참조가 깨졌다(그룹 삭제 등) — 렌즈는 정지 상태고 배지가 ⚠ 로 이유를 말한다. */
+    broken?: boolean;
     mode: "dim" | "narrow";
     setMode: (m: "dim" | "narrow") => void;
     clear: () => void;
@@ -159,18 +161,23 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, bi
                     <span style={{ color: "var(--text-tertiary)" }} title="전일 종가 미수집 — %p 공간의 분모가 없어 그릴 수 없는 타점(필터로 빠진 게 아님)"> · 결손 {counts.missing}</span>
                 )}
             </span>
-            {/* 짚음 배지 — 강조가 왜 생겼는지 말해 주지 않으면 "왜 이것만 진하지"가 된다. */}
+            {/* 짚음 배지 — 강조가 왜 생겼는지 말해 주지 않으면 "왜 이것만 진하지"가 된다.
+                깨진 참조는 숫자 대신 ⚠ — 0/128 로 두면 "조건에 안 맞았다"로 읽힌다(렌즈는 정지 상태). */}
             {pick && (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 11 }}>
                     <span style={{
-                        background: ACTIVE, color: "#fff", borderRadius: 999, padding: "1px 7px",
+                        background: pick.broken ? FAIL : ACTIVE, color: "#fff", borderRadius: 999, padding: "1px 7px",
                         maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }} title={`${pick.label} — ${pick.shown} / ${pick.total}`}>
-                        {pick.label}
+                    }} title={pick.broken
+                        ? `${pick.label} — 참조가 깨졌다(그룹 삭제 등). 강조는 정지됨 — ✕ 로 풀기`
+                        : `${pick.label} — ${pick.shown} / ${pick.total}`}>
+                        {pick.broken ? "⚠ " : ""}{pick.label}
                     </span>
-                    <span style={{ color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
-                        {pick.shown}<span style={{ color: "var(--text-tertiary)" }}> / {pick.total}</span>
-                    </span>
+                    {!pick.broken && (
+                        <span style={{ color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
+                            {pick.shown}<span style={{ color: "var(--text-tertiary)" }}> / {pick.total}</span>
+                        </span>
+                    )}
                     <button onClick={pick.clear} title="짚음 풀기"
                         style={{ border: "none", background: "none", padding: "0 2px", cursor: "pointer", color: "var(--text-tertiary)", font: "inherit", fontSize: 11 }}>✕</button>
                 </span>
