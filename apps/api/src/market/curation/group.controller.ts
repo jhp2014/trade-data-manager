@@ -99,7 +99,7 @@ export class GroupController {
         return { ok: true };
     }
 
-    /** 그룹 안 그룹. 같은 평면이 아니거나 순환이면 저장 경로가 거절한다. */
+    /** 그룹 안 그룹. 부모 층위가 자식을 못 담거나(하루 ⊉ 타점) 순환이면 저장 경로가 거절한다. */
     @Put("parent")
     async setParent(@Body() body: SetGroupParentInput): Promise<{ ok: true }> {
         const parentName = body?.parentName;

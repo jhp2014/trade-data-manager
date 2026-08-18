@@ -1,5 +1,5 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { GroupInvariantError } from "@trade-data-manager/market";
+import { GroupInvariantError, scopeContains } from "@trade-data-manager/market";
 import type {
     Group,
     GroupItemRef,
@@ -25,7 +25,10 @@ import { rowToGroup, type NameTable } from "../mappers/group.js";
  * DB 로는 못 막아 여기서 지키는 불변식 셋:
  *   · 항목 키의 **시각 유무**가 그룹 scope 와 맞아야 한다(하루 그룹에 타점을 넣으면 같은 하루가 여러 번 든다).
  *   · 평면에 올릴 때 **맵 scope == 그룹 scope**(섞이면 한 평면에서 두 층위의 겹침을 같은 선으로 그린다).
- *   · 부모는 **같은 맵**이고 **순환하지 않는다**(순환하면 중첩을 그리다 무한히 내려간다).
+ *   · 부모 층위가 자식을 **담을 수 있어야** 하고(하루 ⊇ 타점) **순환하지 않는다**(순환하면 조회가 무한히 내려간다).
+ *     ⚠ 옛 규칙은 "부모는 같은 맵"이었다 — 평면이 곧 층위라 그게 scope 검사를 겸했다. 맵을 접으면서
+ *     원래 지키려던 것을 직접 적는다(domain.scopeContains). 덕분에 **평면에 안 올린 그룹도 계층을 가질 수 있다** —
+ *     옛 규칙은 mapId 가 NULL 이면 무조건 거절이라, 맵 없이 쓰는 화면에서는 부모 지정이 통째로 막혀 있었다.
  */
 export class DrizzleGroupRepository implements GroupReader, GroupStore {
     constructor(private readonly db: Database) {}
@@ -156,15 +159,15 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
         }
         if (name === parentName) throw new GroupInvariantError("자기 자신을 부모로 둘 수 없다");
         const rows = await this.db
-            .select({ id: groups.id, name: groups.name, mapId: groups.mapId, parentId: groups.parentId })
+            .select({ id: groups.id, name: groups.name, scope: groups.scope, parentId: groups.parentId })
             .from(groups);
         const byName = new Map(rows.map((r) => [r.name, r]));
         const byId = new Map(rows.map((r) => [String(r.id), r]));
         const self = byName.get(name);
         const parent = byName.get(parentName);
         if (!self || !parent) throw new GroupInvariantError("없는 그룹");
-        if (self.mapId === null || parent.mapId === null || String(self.mapId) !== String(parent.mapId)) {
-            throw new GroupInvariantError("부모는 같은 평면의 그룹이어야 한다");
+        if (!scopeContains(parent.scope as GroupScope, self.scope as GroupScope)) {
+            throw new GroupInvariantError(`부모 그룹의 층위가 더 좁다: ${parent.scope} 아래 ${self.scope} 는 둘 수 없다`);
         }
         // 순환 방지 — 부모를 타고 올라가다 자신을 만나면 거절(그리기가 무한히 내려간다).
         for (let cur = parent, hops = 0; cur.parentId !== null; hops++) {

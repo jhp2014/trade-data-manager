@@ -153,7 +153,7 @@ describe("DrizzleGroupRepository (pglite)", () => {
     });
 
     describe("그룹 안 그룹", () => {
-        it("같은 평면이면 부모가 걸린다", async () => {
+        it("부모가 걸린다 — 같은 층위끼리", async () => {
             const m = await maps.createMap("맵", "point");
             const parent = await repo.createGroup("눌림 계열", "point");
             const child = await repo.createGroup("얕은 눌림", "point");
@@ -164,12 +164,32 @@ describe("DrizzleGroupRepository (pglite)", () => {
             expect((await repo.listGroups()).find((g) => g.name === child.name)?.parentName).toBe(parent.name);
         });
 
-        it("⚠ 다른 평면(또는 안 올린 그룹)은 부모가 될 수 없다", async () => {
-            const m = await maps.createMap("맵", "point");
-            const onMap = await repo.createGroup("올린 것", "point");
-            const off = await repo.createGroup("안 올린 것", "point");
-            await repo.setPlacement(onMap.name, { mapName: m.name, x: 0, y: 0 });
-            await expect(repo.setParent(onMap.name, off.name)).rejects.toThrow();
+        // 옛 규칙("부모는 같은 맵")은 mapId 가 NULL 이면 무조건 거절이라, 맵 없이 쓰는 화면에서는
+        // 계층 편집이 통째로 막혀 있었다(그룹 목록 패널의 드래그가 400 을 받았다).
+        it("평면에 안 올린 그룹도 계층을 가질 수 있다 — 계층은 맵의 것이 아니다", async () => {
+            const parent = await repo.createGroup("테마", "point");
+            const child = await repo.createGroup("눌림", "point");
+
+            await repo.setParent(child.name, parent.name);
+
+            expect((await repo.listGroups()).find((g) => g.name === child.name)?.parentName).toBe(parent.name);
+        });
+
+        it("하루 그룹 아래 타점 그룹은 된다 — 하루가 더 넓다", async () => {
+            await repo.createGroup("하루바구니", "day");
+            await repo.createGroup("타점", "point");
+
+            await repo.setParent("타점", "하루바구니");
+
+            expect((await repo.listGroups()).find((g) => g.name === "타점")?.parentName).toBe("하루바구니");
+        });
+
+        // 계층 상속은 "자식에 속하면 부모에도 속한다" — 타점 밑에 하루를 넣으면 그 말이 거짓이 된다.
+        it("⚠ 타점 그룹 아래 하루 그룹은 안 된다 — 상속이 거짓이 되는 방향", async () => {
+            await repo.createGroup("타점바구니", "point");
+            await repo.createGroup("하루", "day");
+
+            await expect(repo.setParent("하루", "타점바구니")).rejects.toThrow(/층위/);
         });
 
         it("⚠ 순환은 거부된다 — 그리기가 무한히 내려간다", async () => {

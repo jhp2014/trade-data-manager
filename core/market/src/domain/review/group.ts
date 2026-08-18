@@ -14,7 +14,7 @@
 import type { Grain } from "../grain.js";
 
 /**
- * 그룹 불변식 위반 — **호출자의 잘못**이지 서버 고장이 아니다(층위 불일치·순환·다른 평면의 부모).
+ * 그룹 불변식 위반 — **호출자의 잘못**이지 서버 고장이 아니다(층위 불일치·순환·너무 좁은 부모).
  * DB 로는 못 막아 저장 경로가 던지는데, 그냥 Error 로 던지면 가장자리에서 500 이 되어 화면에
  * "Internal server error" 만 뜬다 — 이유를 보여주려면 종류가 구분돼야 한다.
  */
@@ -39,6 +39,17 @@ export interface ChartRef {
 export type GroupScope = Grain;
 
 /**
+ * 부모 그룹이 자식을 담을 수 있나 — **하루 ⊇ 타점**, 같은 층위끼리도 된다.
+ *
+ * 계층 상속은 "자식에 속하면 부모에도 속한다"인데, 타점 그룹 밑에 하루 그룹을 넣으면 그 말이 거짓이
+ * 된다(하루가 더 넓다). 맵이 있던 시절엔 "부모는 같은 평면"이 이 역할을 대신했다 — 평면이 곧 층위라
+ * 같은 평면이면 같은 scope 였기 때문이다. 맵을 접으면서 그 제약이 사라지므로, 원래 지키려던 것을
+ * 직접 적는다(그리고 이쪽이 더 넓다: 하루 그룹 아래 타점 그룹이라는 정상적인 계층을 이제 허용한다).
+ */
+export const scopeContains = (parent: GroupScope, child: GroupScope): boolean =>
+    parent === child || (parent === "day" && child === "point");
+
+/**
  * 그룹 하나. **이름이 곧 정체성**이다(전역 유일) — 계약은 id 가 아니라 이름으로 지목한다.
  * surrogate id 는 저장소 안에 남는다(rename 이 FK 를 타고 cascade 하지 않게, 조인도 bigint 로).
  * 다만 밖으로 내보내지 않는다: 로컬 미러와 Supabase 가 각자 id 를 발급하고 전체교체 때 갈리므로,
@@ -47,7 +58,7 @@ export type GroupScope = Grain;
 export interface Group {
     name: string;
     scope: GroupScope;
-    /** 그룹 안 그룹. null = 최상위. 부모는 같은 맵이어야 하고 순환하면 안 된다(저장 경로가 본다). */
+    /** 그룹 안 그룹. null = 최상위. 부모 층위가 자식을 담아야 하고(scopeContains) 순환하면 안 된다(저장 경로가 본다). */
     parentName: string | null;
     /** 어느 평면에 올렸나. null = 아직 안 올림(정상 상태 — 만들기와 올리기는 별개). */
     mapName: string | null;

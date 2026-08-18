@@ -162,7 +162,7 @@ export const groups = curation.table(
     },
     (t) => [
         unique("uq_group_name").on(t.name),
-        // 부모는 **같은 맵 안**이어야 하고 순환하면 안 된다 — 둘 다 DB 로는 못 막아 저장 경로가 본다.
+        // 부모 층위가 자식을 담아야 하고(하루 ⊇ 타점) 순환하면 안 된다 — 둘 다 DB 로는 못 막아 저장 경로가 본다.
         foreignKey({ columns: [t.parentId], foreignColumns: [t.id], name: "fk_group_parent" }).onDelete("set null"),
         index("idx_groups_map").on(t.mapId),
     ],

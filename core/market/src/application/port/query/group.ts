@@ -39,6 +39,6 @@ export interface GroupStore {
     setPlacement(name: string, placement: GroupPlacement): Promise<void>;
     /** 좌표 이동 — **배열**. 여럿을 한 번에 끄는 게 정상 조작이라 낱개로 쪼개면 부분 실패가 생긴다. */
     moveGroups(moves: GroupMove[]): Promise<void>;
-    /** 그룹 안 그룹. null = 최상위로. 같은 맵인지·순환이 아닌지 여기서 막는다(DB 로는 못 막는 제약). */
+    /** 그룹 안 그룹. null = 최상위로. 부모 층위가 자식을 담는지(하루 ⊇ 타점)·순환이 아닌지 여기서 막는다(DB 로는 못 막는 제약). */
     setParent(name: string, parentName: string | null): Promise<void>;
 }
