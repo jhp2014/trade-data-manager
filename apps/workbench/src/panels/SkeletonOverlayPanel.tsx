@@ -34,6 +34,7 @@ import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { inPick, pickKeys, PICK_SOURCE_LABEL } from "../lib/pick.js";
+import { useFunnel } from "./filter/FunnelContext.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { type PointRef } from "../lib/pointKey.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
@@ -172,7 +173,10 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 영속 키에 grain 이 붙는다 — 일봉·분봉이 별도 패널이라(useOverlayToggles 와 같은 규칙).
     const [pickMode, setPickMode] = usePersistedState<"dim" | "narrow">(
         `wb.skeletonPickMode.${grain}`, (o) => (o === "dim" || o === "narrow" ? o : null), "dim");
-    const picked = useMemo(() => (pick ? pickKeys(pick.items) : null), [pick]);
+    // 채널에는 참조만 실려 있다 — 읽는 순간 리졸버로 푼다(라이브). 깨진 참조는 빈 집합이라 강조가 없다.
+    const funnelView = useFunnel();
+    const resolvedPick = pick === null ? null : funnelView.resolveSet(pick.ref);
+    const picked = useMemo(() => (resolvedPick ? pickKeys(resolvedPick.items) : null), [resolvedPick]);
     /** 이 선이 렌즈 안에 드나 — 차트 단위 선은 (종목·날짜)로, 타점 단위 선은 시각까지 본다. */
     const linePicked = useCallback(
         (s2: Line): boolean =>

@@ -16,10 +16,12 @@ import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { chartKey, pointKey } from "../../lib/pointKey.js";
+import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndexes, dayAxisValueOf } from "./axisLookup.js";
 import { resolveBound, toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { stageLabel, type LabelLookup } from "./label.js";
+import { resolveSetRef, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
 import {
     activeStages, canExpand, displayGrain, funnelOrder, isPredicateDead, resolveAutoGrain,
     type FilterStage, type Grain, type GrainLookup, type OrderedStage,
@@ -64,6 +66,12 @@ export interface FunnelView {
     // 깔때기 계약에 남겨 두면 "축을 어디서 얻나"의 답이 둘이 된다.
     /** 이 항목을 앞선 어느 단계가 막았나(근접 탈락 목록의 "막힌 단계"). 단계 이름으로 돌려준다. */
     blockedLabels: (item: FunnelItem, stageIndex: number) => string[];
+    /**
+     * 집합 참조 풀기 — 짚음 채널·패널 바인딩이 실은 SetRef 를 항목 집합으로. 깔때기가 이미 들고 있는
+     * 재료(유니버스·사전·판정기)를 그대로 쓰므로 **여기가 유일한 리졸버 자리**다(두 벌이면 딴 답을 낸다).
+     * 같은 참조는 캐시로 한 번만 푼다(정규화 키) — 재료가 바뀌면 캐시째 새로 선다. 로딩 중엔 빈 집합.
+     */
+    resolveSet: (ref: SetRef) => ResolvedSet;
 }
 
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
@@ -71,6 +79,7 @@ export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench((s) => s.filterStages);
     const expandToPoints = useWorkbench((s) => s.filterExpandToPoints);
     const selection = useWorkbench((s) => s.funnelSelection);
+    const savedFunnels = useWorkbench((s) => s.savedFunnels);
 
     const gv = useGroups();
     const ax = useRankAxes();
@@ -177,6 +186,31 @@ export function useFilterFunnel(): FunnelView {
         [isLoading, stages, grainLook],
     );
 
+    /**
+     * 리졸버 — 재료가 하나라도 바뀌면 함수째 새로 서고(useMemo), 그 안의 캐시도 같이 버려진다.
+     * 활성 슬롯(null)은 **지금 편집 중인 단계 리스트**를 그대로 본다 — 저장 필터는 저장본을.
+     */
+    const resolveSet = useMemo(() => {
+        const cache = new Map<string, ResolvedSet>();
+        const ctx: SetResolveCtx = {
+            candidates: candQ.data ?? [],
+            timesOf: (c) => timesByChart.get(chartKey(c)) ?? [],
+            appliedGroupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
+            groupScope: (n) => gv.groupByName.get(n)?.scope,
+            stagesOf: (id) => (id === null ? stages : savedFunnels.find((f) => f.id === id)?.stages),
+            evalLook,
+            grainLook,
+        };
+        return (ref: SetRef): ResolvedSet => {
+            const k = setRefKey(ref);
+            const hit = cache.get(k);
+            if (hit) return hit;
+            const r: ResolvedSet = isLoading ? { broken: false, grain: "day", items: [] } : resolveSetRef(ref, ctx);
+            cache.set(k, r);
+            return r;
+        };
+    }, [candQ.data, timesByChart, gv, evalLook, grainLook, stages, savedFunnels, isLoading]);
+
     const labelLook = useMemo<LabelLookup>(
         () => ({
             groupName: (id) => gv.groupByName.get(id)?.name,
@@ -210,5 +244,6 @@ export function useFilterFunnel(): FunnelView {
         deadStageIds,
         labelLook,
         blockedLabels,
+        resolveSet,
     };
 }

@@ -53,14 +53,14 @@ describe("짚음 채널 — 그룹에서 짚으면 골격이 받는다", () => {
         expect(useWorkbench.getState().pick).toBeNull();
     });
 
-    it("그룹 행을 누르면 채널에 출처·이름·항목이 실린다", () => {
+    it("그룹 행을 누르면 채널에 출처·이름·**참조**가 실린다 — 항목 스냅샷이 아니다(라이브)", () => {
         renderBoth();
         fireEvent.click(groupRow("돌파"));
 
         const pick = useWorkbench.getState().pick!;
         expect(pick.source).toBe("group");
         expect(pick.label).toBe("돌파");
-        expect(pick.items).toHaveLength(2);
+        expect(pick.ref).toEqual({ kind: "groupChain", names: ["돌파"] });
     });
 
     it("골격 머리글에 **출처를 붙인 배지**와 분모가 뜬다 — 왜 강조가 생겼는지 말해 준다", () => {

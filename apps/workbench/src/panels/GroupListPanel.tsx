@@ -18,7 +18,6 @@ import { HeaderControls, type ControlSpec } from "../components/HeaderControls.j
 import { useGroups } from "../lib/GroupsContext.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
-import type { PickItem } from "../lib/pick.js";
 import { chartKey } from "../lib/pointKey.js";
 import { ACTIVE } from "../styles/palette.js";
 import { useFunnel } from "./filter/FunnelContext.js";
@@ -129,6 +128,7 @@ export function GroupListPanel(): JSX.Element {
      * ── 체인을 **짚음 채널로 내보낸다**. 이 패널 안에서만 뜻이 있던 걸 밖으로 내는 자리다:
      * 골격은 모집단을 다 그리고 이 41건만 앞으로 세운다(좁힐지 흐리게 할지는 그 패널의 선택).
      *
+     * 항목이 아니라 **참조**(groupChain)를 싣는다 — 멤버십이 바뀌면 소비 패널의 강조도 따라온다(라이브).
      * ⚠ 조건이 아니라 **시선**이다 — 조건으로 굳히려면 여전히 "필터에 추가"를 눌러야 한다.
      * 언마운트·체인 비우기에는 **내 것만** 거둔다(남이 짚어 둔 것을 지우면 안 된다).
      */
@@ -139,12 +139,8 @@ export function GroupListPanel(): JSX.Element {
             clearPickFrom("group");
             return;
         }
-        setPick({
-            source: "group",
-            label: chain.join(" & "),
-            items: chainMembers.map((m): PickItem => ({ stockCode: m.stockCode, date: m.date, ...(m.time !== undefined ? { time: m.time } : {}) })),
-        });
-    }, [chain, chainMembers, setPick, clearPickFrom]);
+        setPick({ source: "group", label: chain.join(" & "), ref: { kind: "groupChain", names: chain } });
+    }, [chain, setPick, clearPickFrom]);
     useEffect(() => () => clearPickFrom("group"), [clearPickFrom]);
 
     const addFilterStage = useWorkbench((s) => s.addFilterStage);
