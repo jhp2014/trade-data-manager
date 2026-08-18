@@ -37,8 +37,10 @@ import { inPick, pickKeys, PICK_SOURCE_LABEL } from "../lib/pick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import { useSetBinding } from "./filter/useSetBinding.js";
 import { SetBindingChip } from "./filter/SetBindingChip.js";
+import { SetSidebar } from "./filter/SetSidebar.js";
+import { setMembersOf } from "./filter/setMembers.js";
 import { useGroups } from "../lib/GroupsContext.js";
-import { type PointRef } from "../lib/pointKey.js";
+import { chartKey, pointKey, type PointRef } from "../lib/pointKey.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
 import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
 import { mutedNote } from "../components/ControlChrome.js";
@@ -159,6 +161,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const groupsView = useGroups();
     // 바인딩 — 이 패널이 보는 집합(디폴트 연동). 일봉·분봉이 별도 패널이라 키에 grain 이 붙는다.
     const binding = useSetBinding(`wb.setBinding.skeleton.${grain}`);
+    const [sideOpen, setSideOpen] = usePersistedState<boolean>(
+        `wb.setSidebar.skeleton.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
+    const goToDay = useWorkbench((s) => s.goToDay);
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
     const { feedLoading, lines: allLines, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
         useOverlayData(isDaily, anchor, onlyCharts, binding.ref);
@@ -198,6 +203,18 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         if (picked === null || pickMode === "narrow") return null;
         return new Set(allLines.filter((l) => !linePicked(l)).map((l) => l.key));
     }, [allLines, picked, pickMode, linePicked]);
+
+    /**
+     * ── 집합 멤버(사이드바·칩 n/N 의 재료) — 표현가능 술어 = "그린 선의 키에 있나"(allLines 기준).
+     * 짚음(narrow)·"선택만 보기"는 시야지 재료가 아니라 여기 안 들어간다 — 그것 때문에 안 됨으로 세면
+     * 결손 목록이 렌즈 상태에 따라 출렁여 "채우러 갈 목록"이라는 뜻을 잃는다.
+     */
+    const drawnKeys = useMemo(() => new Set(allLines.map((l) => l.key)), [allLines]);
+    const setMembers = useMemo(
+        () => setMembersOf(binding.view, isDaily ? "day" : "point", (it) =>
+            drawnKeys.has(it.time === undefined ? chartKey(it) : pointKey({ stockCode: it.stockCode, date: it.date, time: it.time }))),
+        [binding.view, isDaily, drawnKeys],
+    );
 
     // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
     //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.
@@ -682,7 +699,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 candles={candles}
                 counts={{ shown: lines.length, population, missing: missingPrevClose }}
                 theme={{ lineCount: themeOverlay?.lines.length ?? null, hasTarget: singleTarget !== null }}
-                bindingChip={<SetBindingChip binding={binding} />}
+                bindingChip={<SetBindingChip binding={binding} members={setMembers} open={sideOpen} onToggle={() => setSideOpen((v) => !v)} />}
                 pick={pick === null ? null : {
                     label: `${PICK_SOURCE_LABEL[pick.source]} · ${pick.label}`,
                     shown: allLines.filter(linePicked).length,
@@ -700,12 +717,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 onToggleLock={() => setLocked(locked ? null : autoBounds)}
             />
 
+            {/* 그림판과 집합 사이드바가 한 줄 — 사이드바는 오른쪽(여닫는 칩이 왼쪽이라도, 목록이 그림을
+                밀어내는 방향이 오른쪽이어야 척도가 왼쪽 끝에서 안 흔들린다). */}
+            <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
             {/* data-plot — 그림판을 찾는 **이름표**. 테스트가 "첫 번째 svg 의 부모"로 찾고 있었는데,
                 머리글에 아이콘 하나(⋯)가 들어오자 통째로 엉뚱한 곳을 짚었다. 손짓(마퀴·단축키 창)이
                 걸린 상자라 이름으로 잡는 게 맞다. */}
             <div ref={wrapRef} data-plot onMouseDown={onWrapMouseDown}
                 onMouseEnter={() => setHoveringPanel(true)} onMouseLeave={() => setHoveringPanel(false)}
-                style={{ flex: 1, minHeight: 0, position: "relative" }}>
+                style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative" }}>
                 {feedLoading && <div style={muted}>불러오는 중…</div>}
                 {!feedLoading && lines.length === 0 && (
                     <div style={muted}>
@@ -884,6 +904,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     zoomed={zoomed}
                     onResetZoom={reset}
                 />
+            </div>
+            {sideOpen && (
+                <SetSidebar binding={binding} members={setMembers} showTime={!isDaily}
+                    onPick={(it) => (it.time !== undefined
+                        ? goToPoint({ code: it.stockCode, date: it.date, time: it.time })
+                        : goToDay({ code: it.stockCode, date: it.date }))} />
+            )}
             </div>
 
             {/* 뭉친 라벨의 멤버 목록 — 행 점이 그림의 그 선과 같은 색(목록↔그림을 잇는 유일한 것). */}

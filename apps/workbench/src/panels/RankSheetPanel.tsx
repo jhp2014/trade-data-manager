@@ -23,6 +23,8 @@ import { useRankAxes } from "../lib/RankAxesContext.js";
 import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js";
 import { useSetBinding } from "./filter/useSetBinding.js";
 import { SetBindingChip } from "./filter/SetBindingChip.js";
+import { SetSidebar } from "./filter/SetSidebar.js";
+import { setMembersOf } from "./filter/setMembers.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
 import { PanelHeader, miniBtn, mutedNote } from "../components/ControlChrome.js";
@@ -133,6 +135,14 @@ export function RankSheetPanel(): JSX.Element {
     const binding = useSetBinding("wb.setBinding.sheet");
     const bandsActive = binding.view.isFiltering;
     const interKeys = useMemo(() => new Set(binding.view.viewedPointRefs.map(pointKey)), [binding.view.viewedPointRefs]);
+    const [sideOpen, setSideOpen] = usePersistedState<boolean>(
+        "wb.setSidebar.sheet", (o) => (typeof o === "boolean" ? o : null), false);
+    const goToDay = useWorkbench((s) => s.goToDay);
+    // 표현가능 술어 — 시트의 행이 될 수 있나 = 타점 사전에 있나. 타점 0인 하루는 전개가 못 살리므로 안 됨에 선다.
+    const setMembers = useMemo(
+        () => setMembersOf(binding.view, "point", (it) => it.time !== undefined && allByKey.has(pointKey({ stockCode: it.stockCode, date: it.date, time: it.time }))),
+        [binding.view, allByKey],
+    );
 
     // 필터 표시 모드 — narrow(교집합만) / dim(전체 유지, 밴드 밖 흐리게). 영속.
     const [filterMode, setFilterMode] = usePersistedState<"narrow" | "dim">(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null), "narrow");
@@ -397,7 +407,7 @@ export function RankSheetPanel(): JSX.Element {
                 컨트롤처럼 늘 서 있는 것이 아니다. */}
             <PanelHeader gap={8}>
                 <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0 }}>
-                    <SetBindingChip binding={binding} />
+                    <SetBindingChip binding={binding} members={setMembers} open={sideOpen} onToggle={() => setSideOpen((v) => !v)} />
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
@@ -412,7 +422,9 @@ export function RankSheetPanel(): JSX.Element {
             </PanelHeader>
 
             {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
-            <div ref={scrollRef} onScroll={(e) => { sheetScroll = { top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft }; }} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            {/* 표와 집합 사이드바가 한 줄 — 사이드바는 오른쪽(목록이 표를 밀어내는 방향). */}
+            <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+            <div ref={scrollRef} onScroll={(e) => { sheetScroll = { top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft }; }} style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto" }}>
                 {/* border-collapse: separate — 테두리가 셀에 붙어 sticky(고정 열/헤더/핀)를 따라옴(밑줄·세로선 안 밀림). */}
                 <table style={{ tableLayout: "fixed", width: tableW, borderCollapse: "separate", borderSpacing: 0, fontSize: 12 }}>
                     <colgroup>{displayCols.map((c) => <col key={colKey(c)} style={{ width: widthOf(c) }} />)}</colgroup>
@@ -483,6 +495,13 @@ export function RankSheetPanel(): JSX.Element {
                 </table>
                 {/* 고정 블록(핀)은 조건에 맞아서 있는 게 아니다 — 그게 차 있어도 "맞는 게 없다"는 사실은 말해야 한다. */}
                 {mainRows.length === 0 && <div style={muted}>{bandsActive ? "이 조건에 맞는 타점이 없습니다." : "이 기간에 타점이 없습니다."}</div>}
+            </div>
+            {sideOpen && (
+                <SetSidebar binding={binding} members={setMembers} showTime
+                    onPick={(it) => (it.time !== undefined
+                        ? goToPoint({ code: it.stockCode, date: it.date, time: it.time }, "rank-sheet")
+                        : goToDay({ code: it.stockCode, date: it.date }))} />
+            )}
             </div>
 
             <DragOverlay dropAnimation={null}>

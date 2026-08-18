@@ -1,7 +1,8 @@
-// 패널 바인딩 — **이 패널이 보는 집합**을 패널마다 고른다. 여기서 잠그는 계약 셋:
+// 패널 바인딩 + 집합 사이드바 — 여기서 잠그는 계약:
 //   · 디폴트는 연동 — 아무것도 안 만지면 바인딩 도입 전과 화면이 같다.
 //   · 참조를 묶으면 그 패널만 그 집합을 본다(전역 렌즈의 해체 — 옆 패널과 무관).
 //   · 깨진 참조는 **빈 집합 + 경고 칩**이다 — 전체로 조용히 넓어지지 않는다(자동 폴백 금지).
+//   · 칩 = `라벨 n/N`(표현됨/전체) 상시 요약이자 사이드바 토글. 바인딩 고르기는 사이드바 안에 산다.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Group } from "../../../api/groups.js";
@@ -45,29 +46,40 @@ afterEach(() => {
 describe("패널 바인딩 — 골격이 자기 집합을 고른다", () => {
     it("디폴트는 연동 — 칩이 '연동'으로 서고 전체가 그려진다(바인딩 도입 전과 동일)", () => {
         renderPanel();
-        expect(screen.getByText("연동")).toBeTruthy();
+        expect(screen.getByTitle(/보는 집합: 연동/)).toBeTruthy();
         expect(screen.getByText("3개")).toBeTruthy();
     });
 
     it("그룹을 묶으면 그 멤버만 — 전역 렌즈가 아니라 이 패널의 선택", () => {
         localStorage.setItem(BIND_KEY, JSON.stringify({ kind: "group", name: "돌파" }));
         renderPanel();
-        expect(screen.getByText("돌파")).toBeTruthy(); // 칩 = 지금 뭘 보고 있나
+        expect(screen.getByTitle(/보는 집합: 돌파/)).toBeTruthy(); // 칩 = 지금 뭘 보고 있나
         expect(screen.getByText("2개")).toBeTruthy();
     });
 
     it("깨진 참조 = 빈 집합 + 경고 칩 — 전체로 조용히 넓어지지 않는다", () => {
         localStorage.setItem(BIND_KEY, JSON.stringify({ kind: "group", name: "지워진그룹" }));
         renderPanel();
-        expect(screen.getByText(/⚠/)).toBeTruthy();
+        expect(screen.getByTitle(/참조가 깨졌습니다/)).toBeTruthy();
         expect(screen.getByText("0개")).toBeTruthy();
     });
 
-    it("칩에서 연동으로 되돌리면 전체가 돌아온다", () => {
+    it("칩 → 사이드바 → 연동으로 되돌리면 전체가 돌아온다", () => {
         localStorage.setItem(BIND_KEY, JSON.stringify({ kind: "group", name: "돌파" }));
         renderPanel();
-        fireEvent.click(screen.getByText("돌파")); // 칩 열기
+        fireEvent.click(screen.getByTitle(/보는 집합: 돌파/)); // 칩 = 사이드바 토글
+        fireEvent.click(screen.getByTitle("보는 집합 바꾸기")); // 고르는 판 펼치기
         fireEvent.click(screen.getByText("연동"));
         expect(screen.getByText("3개")).toBeTruthy();
+    });
+
+    it("칩의 n/N = 표현됨/전체 — 사이드바에 멤버 목록이 선다", () => {
+        localStorage.setItem(BIND_KEY, JSON.stringify({ kind: "group", name: "돌파" }));
+        renderPanel();
+        const chip = screen.getByTitle(/보는 집합: 돌파/);
+        expect(chip.textContent).toContain("2/2"); // 멤버 둘 다 골격이 있어 표현됨
+        fireEvent.click(chip);
+        // 사이드바 머리에도 같은 n/N — 칩과 사이드바가 같은 한 벌을 본다.
+        expect(screen.getByTitle("보는 집합 바꾸기").textContent).toContain("2/2");
     });
 });

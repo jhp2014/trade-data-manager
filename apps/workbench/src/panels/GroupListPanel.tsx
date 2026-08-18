@@ -23,6 +23,8 @@ import { ACTIVE } from "../styles/palette.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import { useSetBinding } from "./filter/useSetBinding.js";
 import { SetBindingChip } from "./filter/SetBindingChip.js";
+import { SetSidebar } from "./filter/SetSidebar.js";
+import { setMembersOf } from "./filter/setMembers.js";
 import { chainCandidates, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "./group/population.js";
 import { canReparent, overlapRows, relationOf, treeRows, type GroupRow } from "./group/groupList.js";
 
@@ -61,6 +63,11 @@ export function GroupListPanel(): JSX.Element {
      */
     // 분모 = 이 패널의 바인딩(디폴트 연동). 필터 결과를 묶으면 "그 생존자들이 그룹에 어떻게 분포하나"가 된다.
     const binding = useSetBinding("wb.setBinding.groupList");
+    const [sideOpen, setSideOpen] = usePersistedState<boolean>(
+        "wb.setSidebar.groupList", (o) => (typeof o === "boolean" ? o : null), false);
+    const goToDay = useWorkbench((s) => s.goToDay);
+    // 이 패널은 항목을 직접 그리지 않는다(그룹 행을 그린다) — 표현가능 술어 없음 = 전부 표현됨.
+    const setMembers = useMemo(() => setMembersOf(binding.view, "day"), [binding.view]);
     const dayFeed = useMemo<GroupMembership[]>(() => {
         if (funnel.isLoading) return [];
         const seen = new Set<string>();
@@ -216,7 +223,7 @@ export function GroupListPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
             <PanelHeader chrome={false} padding="5px 10px"
                 style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
-                <SetBindingChip binding={binding} />
+                <SetBindingChip binding={binding} members={setMembers} open={sideOpen} onToggle={() => setSideOpen((v) => !v)} />
                 {/* 분모를 **두 층위로** 적는다 — 행마다 수의 단위가 그 그룹의 scope 라, 분모도 둘이어야 읽힌다. */}
                 <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}
                     title="하루 = (종목·날짜) · 타점 = (종목·날짜·시각). 그룹의 scope 가 어느 쪽에서 셀지 정한다">
@@ -274,7 +281,9 @@ export function GroupListPanel(): JSX.Element {
             )}
 
             <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-                <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                {/* 트리와 집합 사이드바가 한 줄 — 사이드바는 오른쪽(분모 집합의 멤버 목록). */}
+                <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+                <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
                     {gv.groups.length === 0 && <div style={mutedNote}>그룹이 없습니다. 위 <b>+ 새 그룹</b>으로 만드세요.</div>}
                     {rows.length > 0 && (
                         <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
@@ -307,6 +316,11 @@ export function GroupListPanel(): JSX.Element {
                         </table>
                     )}
                     <RootDrop />
+                </div>
+                {sideOpen && (
+                    <SetSidebar binding={binding} members={setMembers} showTime={false}
+                        onPick={(it) => goToDay({ code: it.stockCode, date: it.date })} />
+                )}
                 </div>
             </DndContext>
         </div>
