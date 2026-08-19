@@ -3,7 +3,7 @@
 // 정렬·재정렬 코드는 배치와 시트에서 변수명까지 같았다(양방향 동기화라 어긋나면 바로 티가 난다).
 // 파생 모양은 소비자마다 다르므로(Slot 묶음 / 순위 인덱스 / raw) **raw 라인까지만** 여기서 준다.
 // 줄은 전축 한 방(axisLinesQuery) — 축 수만큼 왕복하던 N+1 을 없앴다. 배치 0인 축은 응답에 없으므로 빈 배열로 채운다.
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import { axisLinesQuery, computedAxesQuery, rankAxesQuery } from "../api/queries.js";
@@ -64,7 +64,7 @@ export function useRankAxesValue(): RankAxesView {
         return new Map(axes.map((a) => [a.key, feed.get(a.key) ?? []]));
     }, [axes, linesQ.data, computed]);
 
-    const reorder = (draggedId: string, targetId: string): void => {
+    const reorder = useCallback((draggedId: string, targetId: string): void => {
         if (draggedId === targetId) return;
         const ids = axes.map((a) => a.key);
         const from = ids.indexOf(draggedId);
@@ -72,14 +72,16 @@ export function useRankAxesValue(): RankAxesView {
         if (from < 0 || to < 0) return;
         ids.splice(to, 0, ids.splice(from, 1)[0]);
         setRankAxisOrder(ids);
-    };
+    }, [axes, setRankAxisOrder]);
 
     const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.key, c.values])), [computed]);
     const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.key, { strongerWhen: c.strongerWhen, fmt: c.fmt }])), [computed]);
 
-    return {
-        axes, axisIds, linesByAxis, computedValues, computedMeta,
-        isLoading: axesQ.isLoading || linesQ.isLoading || computedQ.isLoading,
-        reorder,
-    };
+    const isLoading = axesQ.isLoading || linesQ.isLoading || computedQ.isLoading;
+    // 반환 객체도 참조를 고정한다(useGroups 와 같은 이유) — Provider 가 이걸 context value 로 그대로 넘기므로,
+    // 매 렌더 새 객체면 셸이 렌더될 때마다 **구독자 전원**이 따라 렌더된다.
+    return useMemo(
+        () => ({ axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading, reorder }),
+        [axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading, reorder],
+    );
 }

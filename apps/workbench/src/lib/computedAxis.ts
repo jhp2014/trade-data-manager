@@ -26,6 +26,13 @@ const PLACED_PREFIX = "p:";
 /** 판단 축(DB 행)의 클라 키 — 이름이 정체성이라 이름을 싣는다. */
 export const placedAxisKey = (name: string): string => `${PLACED_PREFIX}${name}`;
 
+/**
+ * 클라 키 → 서버 정체성(raw 이름). 접두(`p:`)는 클라 전용이라 서버 API(배치/해제/이름변경/삭제)에
+ * 보내기 전 반드시 벗긴다 — 안 벗기면 place 는 "없는 축" 오류, rename/delete 는 0행 무음 no-op 이 된다.
+ */
+export const placedAxisName = (axisKey: string): string =>
+    axisKey.startsWith(PLACED_PREFIX) ? axisKey.slice(PLACED_PREFIX.length) : axisKey;
+
 /** 포화가 실측 최대에서 떨어져 서는 거리 = 축 단위 한 눈금(공백 축이면 1 거래일). 척도를 딱 한 칸만 늘린다. */
 const SATURATED_STEP = 1;
 /** 포화 표기 — 숫자가 아니라 "상한을 못 잡았다"는 뜻이라 수치로 적지 않는다. */
@@ -142,4 +149,40 @@ export function nearestPointAt(
         if (gap < bestGap) { bestGap = gap; best = key; }
     }
     return best;
+}
+
+/**
+ * nearestPointAt 의 **정렬 준비판** — 레일 드래그는 pointermove 마다 최근접을 묻는데, 매번 전 값을
+ * 선형 스캔하면 비용이 타점 수 × 이동 횟수로 는다. 레일 렌더당 한 번 만들어 두고 이분 탐색한다.
+ * 답은 nearestPointAt 과 같다(동률에서 다른 키가 나올 수 있지만 값이 같아 경계값도 같다).
+ */
+export interface FracIndex {
+    fracs: number[]; // 오름차 정렬
+    keys: string[]; // fracs[i] 자리의 타점 키
+}
+
+export function buildFracIndex(
+    values: Map<string, number>,
+    domain: { min: number; max: number },
+    strongerWhen: "higher" | "lower",
+): FracIndex {
+    const entries = [...values].map(([key, v]) => [valueToFrac(v, domain, strongerWhen), key] as const);
+    entries.sort((a, b) => a[0] - b[0]);
+    return { fracs: entries.map((e) => e[0]), keys: entries.map((e) => e[1]) };
+}
+
+/** 프랙션 → 가장 가까운 타점(이분 탐색). 빈 색인일 때만 null. */
+export function nearestPointInIndex(frac: number, idx: FracIndex): string | null {
+    const { fracs, keys } = idx;
+    if (keys.length === 0) return null;
+    let lo = 0;
+    let hi = fracs.length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (fracs[mid]! < frac) lo = mid + 1;
+        else hi = mid;
+    }
+    // lo = 첫 ≥ frac 자리(전부 < frac 이면 마지막) — 왼쪽 이웃과 거리를 견준다.
+    if (lo > 0 && frac - fracs[lo - 1]! <= fracs[lo]! - frac) return keys[lo - 1]!;
+    return keys[lo]!;
 }

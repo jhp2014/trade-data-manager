@@ -3,7 +3,7 @@
 //   · 배지  = 개수만(n/m). 상시. 축이 많으면 실질 신호는 "0이냐 아니냐"라 0일 때만 흐리게 강조한다.
 //   · 목록  = 도킹 패널(타점 정보) 안에서만. 세로를 사용자가 정하므로 미배치 축까지 담을 수 있다.
 import type { CSSProperties } from "react";
-import type { RankAxis } from "@trade-data-manager/wire";
+import type { AxisRef } from "../lib/computedAxis.js";
 import type { AxisPlacement } from "../lib/rankIndex.js";
 import { heatOf } from "../styles/palette.js";
 
@@ -52,16 +52,17 @@ export function PlacementRows({
     onPickAxis,
 }: {
     placed: AxisPlacement[];
-    unplaced: RankAxis[];
+    unplaced: AxisRef[];
     unplacedOpen: boolean;
     onToggleUnplaced: () => void;
-    onPickAxis?: (axisName: string) => void; // 축 클릭 → 배치 보드의 그 레인으로
+    /** 축 클릭 → 시트의 그 열로(배치 보드는 사라졌다 — 받는 쪽은 revealRankAxis). **축 키**를 준다(이름은 시트 열 키와 안 맞는다). */
+    onPickAxis?: (axisKey: string) => void;
 }): JSX.Element {
     const rowStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "0 8px", height: 20, border: "none", background: "none", font: "inherit", textAlign: "left", cursor: onPickAxis ? "pointer" : "default" };
     return (
         <div style={{ fontSize: 11 }}>
             {placed.map((it) => (
-                <button key={it.axisName} onClick={() => onPickAxis?.(it.axisName)} title={`${it.axisName} — ${it.cell.rank}/${it.cell.total}`} style={rowStyle}>
+                <button key={it.axisKey} onClick={() => onPickAxis?.(it.axisKey)} title={`${it.axisName} — ${it.cell.rank}/${it.cell.total}`} style={rowStyle}>
                     <span style={{ width: 58, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-secondary)" }}>{it.axisName}</span>
                     <Track frac={it.cell.frac} />
                     <span className="tabular" style={{ flexShrink: 0, width: 44, textAlign: "right", color: "var(--text-secondary)", fontWeight: 600 }}>
@@ -80,7 +81,7 @@ export function PlacementRows({
                     </button>
                     {unplacedOpen &&
                         unplaced.map((a) => (
-                            <button key={a.name} onClick={() => onPickAxis?.(a.name)} title={`${a.name} — 이 타점 미배치`} style={{ ...rowStyle, height: 18, color: "var(--text-tertiary)", opacity: 0.75 }}>
+                            <button key={a.key} onClick={() => onPickAxis?.(a.key)} title={`${a.name} — 이 타점 미배치`} style={{ ...rowStyle, height: 18, color: "var(--text-tertiary)", opacity: 0.75 }}>
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
                             </button>
                         ))}

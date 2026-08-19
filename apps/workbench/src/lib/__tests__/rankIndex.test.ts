@@ -68,4 +68,18 @@ describe("placementsOf", () => {
         expect(got.placed).toEqual([]);
         expect(got.unplaced).toHaveLength(3);
     });
+
+    // "저 축 보여줘"(타점 정보 → 시트) 배선의 계약 — 이름이 아니라 **축 키**가 나가야 시트 열 키
+    // (`ax:<키>`)와 맞는다. 판단 축 `p:<이름>` / 계산 축 `c:<키>` 두 형태 모두.
+    it("placed 는 축의 클라 키(axisKey)를 싣는다 — 판단(p:)·계산(c:) 형태 그대로", () => {
+        const keyed = [axis("p:속도", "속도"), axis("c:gap", "갭 상승률")];
+        const indexByAxis = new Map<string, AxisIndex>([
+            ["p:속도", buildAxisIndex([pp("A", 10)])],
+            ["c:gap", buildAxisIndex([pp("A", 20)])],
+        ]);
+        const got = placementsOf(ref("A"), keyed, indexByAxis);
+        expect(got.placed.map((g) => g.axisKey).sort()).toEqual(["c:gap", "p:속도"]);
+        // 미배치 쪽도 AxisRef 그대로라 key 가 산다(타점 정보 패널이 둘 다 같은 손잡이로 지목한다).
+        expect(placementsOf(ref("Z"), keyed, indexByAxis).unplaced.map((a) => a.key)).toEqual(["p:속도", "c:gap"]);
+    });
 });

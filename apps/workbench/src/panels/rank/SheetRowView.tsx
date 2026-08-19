@@ -32,7 +32,6 @@ export interface CellCtxPayload {
 }
 export interface SheetRowHandlers {
     onNav: (row: SheetRow) => void;
-    onHover: (key: string | null) => void;
     onTogglePin: (key: string) => void;
     onCellCtx: (p: CellCtxPayload) => void;
     /** 결과 셀 우클릭 — 손으로 적는 값이라 입력 입구가 표 안에 있어야 한다. */
@@ -58,7 +57,6 @@ export interface SheetRowViewProps {
     valuedOf: (axisId: string, row: SheetRow) => ValuedCell | undefined;
     sortAxisId: string | null;
     focus: boolean;
-    hover: boolean;
     pinned: boolean;
     /** 필터 밖(흐리게 표시) — narrow/dim 판정은 패널이 끝냈다. */
     dim: boolean;
@@ -69,12 +67,12 @@ export interface SheetRowViewProps {
 
 function SheetRowViewImpl({
     row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, sortAxisId,
-    focus, hover, pinned, dim, inPinnedBlock = false, isLastPinned = false, h,
+    focus, pinned, dim, inPinnedBlock = false, isLastPinned = false, h,
 }: SheetRowViewProps): JSX.Element {
     const key = pointKey(row);
-    // 배경 — 핀 행도 일반 행처럼 배경 없음(불투명 bg-primary로 sticky 비침만 방지). 좌측 바·하단 구분선으로 구분.
-    const rowBg = focus ? "var(--accent-soft)" : hover ? "var(--bg-secondary)" : pinned ? "var(--bg-primary)" : "transparent";
-    const cellBgOpaque = focus ? "var(--accent-soft)" : hover ? "var(--bg-secondary)" : "var(--bg-primary)";
+    // 배경은 전부 CSS(.sheet-row, theme.css) — 호버는 React 상태가 아니라 :hover 다.
+    // 행 배경/불투명 셀 배경(sticky 비침 방지)이 --row-bg/--cell-bg 변수 한 쌍으로 갈리고,
+    // focus·pinned 는 data 속성으로 CSS 에 알린다(호버 한 번에 패널 전체가 두 번 리렌더되던 것을 없앴다).
     // 행 구분선(셀에, separate 모드) — 고정 블록 안에서만 마지막만(블록 통합), 그 외(tbody 핀 포함)는 매 행.
     const rowBorder = inPinnedBlock ? (isLastPinned ? "2px solid var(--border-strong)" : "none") : "1px solid var(--border-subtle)";
     const point: RankPoint = { stockCode: row.stockCode, date: row.date, time: row.time };
@@ -82,7 +80,7 @@ function SheetRowViewImpl({
     const stick = (c: Col): CSSProperties => {
         const left = leftOf.get(colKey(c));
         const s: CSSProperties = { borderBottom: rowBorder };
-        if (left != null) { s.position = "sticky"; s.left = left; s.zIndex = 2; s.background = cellBgOpaque; }
+        if (left != null) { s.position = "sticky"; s.left = left; s.zIndex = 2; s.background = "var(--cell-bg)"; }
         if (colKey(c) === lastFrozenKey) s.borderRight = "2px solid var(--border-strong)";
         return s;
     };
@@ -96,10 +94,10 @@ function SheetRowViewImpl({
                     {inPinnedBlock
                         ? <PinnedDragName pkStr={key} name={name} focus={focus} onNav={() => h.onNav(row)} />
                         : <span onClick={() => h.onNav(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>}
-                    {(hover || pinned) && (
-                        <button onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); h.onTogglePin(key); }} title={pinned ? "핀 해제(▼)" : "핀 고정(▲)"}
-                            style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: pinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: `linear-gradient(90deg, transparent, ${cellBgOpaque} 40%)` }}>{pinned ? "▼" : "▲"}</button>
-                    )}
+                    {/* 핀 손잡이 — 늘 렌더하고 노출은 CSS(.sheet-pin: 행 :hover 또는 핀 상태)가 정한다. */}
+                    <button className="sheet-pin" data-pinned={pinned ? "" : undefined}
+                        onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); h.onTogglePin(key); }} title={pinned ? "핀 해제(▼)" : "핀 고정(▲)"}
+                        style={{ position: "absolute", right: 0, top: 0, bottom: 0, alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: pinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: "linear-gradient(90deg, transparent, var(--cell-bg) 40%)" }}>{pinned ? "▼" : "▲"}</button>
                 </>
             ),
         }),
@@ -123,7 +121,7 @@ function SheetRowViewImpl({
                 // 계산 축=값 경계(타점 앵커). 계산 축에 배치·컷이 없는 건 꽂을 자리가 없어서지 읽기 전용이라서가 아니다.
                 onContextMenu: cell ? (ev) => { ev.preventDefault(); h.onCellCtx({ axisId, point, rank: cell.rank, total: cell.total, x: ev.clientX, y: ev.clientY }); } : undefined,
                 title: isComputedAxis(axisId) ? "계산 축(수식) — 우클릭 = 이 값 이상/이하 · 클릭 = 이동" : "우클릭 = 이상/이하 밴드 · 그룹 나누기 · 배치 해제 · 클릭 = 이동",
-                style: { cursor: "pointer", background: frozen ? cellBgOpaque : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
+                style: { cursor: "pointer", background: frozen ? "var(--cell-bg)" : sortAxisId === axisId ? "var(--bg-secondary)" : "transparent" },
                 body: <Cell cell={cell} valued={valuedOf(axisId, row)} mode={mode} prominent={focus} barWidth={widthOf(c) - 18} />,
             };
         },
@@ -139,9 +137,9 @@ function SheetRowViewImpl({
     };
 
     return (
-        <tr onMouseEnter={() => h.onHover(key)} onMouseLeave={() => h.onHover(null)}
+        <tr className="sheet-row" data-focus={focus ? "" : undefined} data-pinned={pinned ? "" : undefined}
             ref={inPinnedBlock ? undefined : (el) => h.registerRef(key, el)}
-            style={{ background: rowBg, opacity: dim ? 0.38 : 1, height: ROW_H }}>
+            style={{ opacity: dim ? 0.38 : 1, height: ROW_H }}>
             {cols.map((c) => {
                 const r = CELLS[c.key](c);
                 return (
@@ -156,13 +154,13 @@ function SheetRowViewImpl({
 }
 
 /**
- * memo — 호버·포커스가 바뀌면 그 행(들)만 리렌더되게. 배열/함수 props 는 얕은 비교가 안 되므로:
- * 핸들러 묶음(h)·레이아웃(leftOf·widthOf)·cols 는 패널이 참조를 고정한다.
+ * memo — 포커스·핀이 바뀌면 그 행(들)만 리렌더되게(호버는 CSS 라 React 를 아예 안 거친다).
+ * 배열/함수 props 는 얕은 비교가 안 되므로: 핸들러 묶음(h)·레이아웃(leftOf·widthOf)·cols 는 패널이 참조를 고정한다.
  */
 export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.row === b.row && a.cols === b.cols && a.leftOf === b.leftOf && a.lastFrozenKey === b.lastFrozenKey &&
     a.widthOf === b.widthOf && a.name === b.name && a.mode === b.mode && a.valuedOf === b.valuedOf &&
-    a.sortAxisId === b.sortAxisId && a.focus === b.focus && a.hover === b.hover &&
+    a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
     a.pinned === b.pinned && a.dim === b.dim &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );

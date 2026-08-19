@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { RankCell } from "../../../lib/rankIndex.js";
-import { cellView, nextCellMode, parseCellMode } from "../sheetCell.js";
+import { cellView, parseCellMode } from "../sheetCell.js";
 
 /** 12자리 중 3위, 균등 좌표로는 오른쪽에서 세 번째. */
 const cell: RankCell = { rank: 3, total: 12, frac: 0.82, orderKey: 42 };
@@ -38,13 +38,7 @@ describe("cellView — 계산 축(값 있음)", () => {
     });
 });
 
-describe("모드 토글·영속", () => {
-    it("한 손잡이로 셋을 돈다", () => {
-        expect(nextCellMode("number")).toBe("rank");
-        expect(nextCellMode("rank")).toBe("value");
-        expect(nextCellMode("value")).toBe("number");
-    });
-
+describe("모드 영속", () => {
     it("옛 저장본(boolean)을 옮겨 읽는다 — 화면 설정이 조용히 초기화되지 않게", () => {
         expect(parseCellMode(true)).toBe("rank");
         expect(parseCellMode(false)).toBe("number");

@@ -62,6 +62,8 @@ export function orderKeyByPoint(line: PlacedPoint[]): Map<string, number> {
 
 /** 한 타점이 한 축에서 차지한 자리(hover 상세 한 줄). */
 export interface AxisPlacement {
+    /** 축의 클라 키(`p:<이름>`·`c:<키>`) — "저 축 보여줘" 같은 축 지목은 이름이 아니라 이걸 쓴다(시트 열 키와 같은 좌표). */
+    axisKey: string;
     axisName: string;
     cell: RankCell;
 }
@@ -95,7 +97,7 @@ export function placementsOf(point: PointRef, axes: AxisRef[], indexByAxis: Map<
     const unplaced: AxisRef[] = [];
     for (const a of axes) {
         const cell = indexByAxis.get(a.key)?.get(key);
-        if (cell) placed.push({ axisName: a.name, cell });
+        if (cell) placed.push({ axisKey: a.key, axisName: a.name, cell });
         else unplaced.push(a);
     }
     placed.sort((x, y) => y.cell.frac - x.cell.frac);

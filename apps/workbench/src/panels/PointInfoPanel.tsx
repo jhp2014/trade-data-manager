@@ -14,7 +14,7 @@ import { PanelHeader } from "../components/ControlChrome.js";
 
 // 타점 정보 패널 — **지금 보고 있는 시각의 타점 하나**를 세로로 읽는다(시트 한 행의 전치).
 // 시트는 행=타점·열=축이라 축이 많으면 가로로 길어져 한 타점을 읽기 나쁘고, 배치 보드는 전 타점 편집면이다.
-// 여기는 조회 전용·좁은 셀용: 그룹 한 줄 + 꽂힌 축을 강한 순으로, 미배치는 접어서. 축 클릭 = 배치 보드의 그 레인으로 링크.
+// 여기는 조회 전용·좁은 셀용: 그룹 한 줄 + 꽂힌 축을 강한 순으로, 미배치는 접어서. 축 클릭 = 시트의 그 열로 링크(revealRankAxis).
 // 데이터는 차트/작업셋과 같은 캐시(usePlacements) — 추가 페치 0.
 export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, viewDate, time } = usePlaneBus("replay");
@@ -35,7 +35,7 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     );
 
     if (!code) return <BoardCenter text="종목을 선택하세요" />;
-    if (placements.axisTotal === 0) return <BoardCenter text="축이 없습니다 — 배치 패널에서 추가" />;
+    if (placements.axisTotal === 0) return <BoardCenter text="축이 없습니다 — 시트의 + 축으로 추가" />;
     if (!point || !detail) return <BoardCenter text={time ? `${time.slice(0, 5)} — 타점 아님` : "시각을 선택하세요"} />;
 
     return (

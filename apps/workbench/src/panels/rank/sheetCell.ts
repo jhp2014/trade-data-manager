@@ -50,9 +50,6 @@ export function cellView(cell: RankCell, mode: CellMode, valued?: ValuedCell): C
         : { text: String(cell.rank), sub: `/${cell.total}`, frac, title: rank };
 }
 
-/** 다음 모드(토글 한 손잡이로 셋을 돈다) — 숫자 → 순위 눈금 → 값 눈금 → 숫자. */
-export const nextCellMode = (m: CellMode): CellMode => CELL_MODES[(CELL_MODES.indexOf(m) + 1) % CELL_MODES.length]!;
-
 /**
  * 영속값 읽기 — 옛 저장본은 `posBar: boolean`(true=눈금 / false=숫자)이었다.
  * 그대로 두면 저장된 화면 설정이 조용히 초기화되므로 여기서 옮겨 읽는다.

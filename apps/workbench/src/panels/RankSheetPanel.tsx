@@ -20,7 +20,7 @@ import {
 import { buildAxisIndex, orderKeyByPoint, type AxisIndex } from "../lib/rankIndex.js";
 import { SheetRowView, ROW_H, type CellCtxPayload, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { useRankAxes } from "../lib/RankAxesContext.js";
-import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js";
+import { isComputedAxis, placedAxisKey, placedAxisName, valueDomain, valueToFrac } from "../lib/computedAxis.js";
 import { useSetBinding } from "./filter/useSetBinding.js";
 import { SetBindingLabel, setBindingControl } from "./filter/SetBindingLabel.js";
 import { SetSidebar } from "./filter/SetSidebar.js";
@@ -63,7 +63,11 @@ const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FILTERMODE_KEY = "wb.rankSheetFilterMode";
 const SORT_KEY = "wb.rankSheetSort"; // 정렬 체인 영속(다른 시트 설정과 동일 패턴) — 프리셋 전환·새로고침에 유지. 옛 단일 정렬도 읽는다.
 // 스크롤 위치는 세션 한정(모듈 메모) — 프리셋 전환(재마운트)엔 이어지고 새로고침엔 초기화(목록 중간 튐 방지).
+// ⚠ 단일 인스턴스 전제(panelCatalog 의 rank-sheet-1 하나) — 모듈 전역이라 시트가 둘이 되면 스크롤을
+//   공유한다. 시트가 패널 id 를 받게 되면 Map<panelId, …> 로 바꿀 것(본격 분해는 후속 단계).
 let sheetScroll = { top: 0, left: 0 };
+// 무필터 상태의 매칭 집합 — 참조 하나로 고정해 useMemo 결과가 렌더마다 안 바뀌게(깔때기 쪽 상수 패턴과 동일).
+const EMPTY_KEYS: ReadonlySet<string> = new Set();
 // 열 헤더 드래그의 두 종류 — 미디어타입으로 갈라 서로의 드롭을 안 받는다(고정 그룹 재정렬 vs 축 서열 변경).
 const AXIS_DND = "application/x-rank-axis";
 const COL_DND = "application/x-rank-col";
@@ -83,8 +87,8 @@ export function RankSheetPanel(): JSX.Element {
         subject !== null && r.stockCode === subject.code && r.date === subject.date &&
         (subject.time === null || r.time === subject.time);
 
-    // 호버는 이 표 안의 일이다 — 예전엔 배치 보드와 링크라 store 였지만 받을 보드가 없어졌다.
-    const [hoveredPoint, setHoveredPoint] = useState<string | null>(null);
+    // 호버는 React 상태가 아니라 CSS :hover 다(.sheet-row, theme.css) — 행 배경·핀 손잡이 노출이
+    // 전부라, 상태로 들면 행 하나 스칠 때마다 패널이 두 번씩 리렌더된다(2026-08-20 검수).
     // 핀(작업셋)·축 순서는 여전히 공유 상태 — 다른 화면(작업 대상·필터 보드 레일)이 같은 걸 본다.
     const pinned = useWorkbench((s) => s.pinned);
     const togglePin = useWorkbench((s) => s.togglePin);
@@ -133,7 +137,11 @@ export function RankSheetPanel(): JSX.Element {
     //    무엇을 보는지는 헤더 칩이 상시 말한다.
     const binding = useSetBinding("wb.setBinding.sheet");
     const bandsActive = binding.view.isFiltering;
-    const interKeys = useMemo(() => new Set(binding.view.viewedPointRefs.map(pointKey)), [binding.view.viewedPointRefs]);
+    // 무필터면 매칭이라는 개념 자체가 없다 — 전 우주 Set 을 짓지 않는다(수천 타점이면 그게 그대로 비용).
+    const interKeys = useMemo<ReadonlySet<string>>(
+        () => (binding.view.isFiltering ? new Set(binding.view.viewedPointRefs.map(pointKey)) : EMPTY_KEYS),
+        [binding.view.isFiltering, binding.view.viewedPointRefs],
+    );
     const [sideOpen, setSideOpen] = usePersistedState<boolean>(
         "wb.setSidebar.sheet", (o) => (typeof o === "boolean" ? o : null), false);
     const goToDay = useWorkbench((s) => s.goToDay);
@@ -215,9 +223,15 @@ export function RankSheetPanel(): JSX.Element {
     const invAxes = (): void => void qc.invalidateQueries({ queryKey: rankAxesQuery().queryKey });
     const invLines = (): void => void qc.invalidateQueries({ queryKey: axisLinesQuery().queryKey });
     const createAxisMut = useMutation({ mutationFn: (v: { name: string; scope: "point" | "day" }) => createRankAxis(v.name, v.scope), onSuccess: invAxes });
-    const renameAxisMut = useMutation({ mutationFn: (v: { id: string; name: string }) => renameRankAxis(v.id, v.name), onSuccess: invAxes });
+    const renameAxisMut = useMutation({
+        // 서버 정체성은 raw 이름 — 클라 키(`p:<이름>`)를 그대로 보내면 무음 no-op 이 된다.
+        mutationFn: (v: { id: string; name: string }) => renameRankAxis(placedAxisName(v.id), v.name),
+        // 열 키(`ax:p:<이름>`)에 이름이 들어 있어 rename 은 곧 키 변경이다 — 고정·숨김·폭·컷·축 순서를
+        // **invalidate 앞에** 이관한다. 새 축 목록이 먼저 오면 청소(prune)가 옛 키를 유령으로 지워 버린다.
+        onSuccess: (_d, v) => { cols.migrateAxisKey(v.id, placedAxisKey(v.name)); invAxes(); },
+    });
     // 축이 사라지면 그 줄도 함께 사라진다 — 줄 캐시까지 무효화해야 열이 유령으로 안 남는다.
-    const deleteAxisMut = useMutation({ mutationFn: (id: string) => deleteRankAxis(id), onSuccess: () => { invAxes(); invLines(); } });
+    const deleteAxisMut = useMutation({ mutationFn: (id: string) => deleteRankAxis(placedAxisName(id)), onSuccess: () => { invAxes(); invLines(); } });
 
     /**
      * 결과(outcome) 저장 — upsert 는 타점을 통째로 덮으므로 **memo 를 같이 실어 보낸다**.
@@ -291,12 +305,12 @@ export function RankSheetPanel(): JSX.Element {
     // ── 드래그 배치 — 핀(고정) 행 이름 → 정렬된 축 열. 정렬이 축일 때만 유효(그때만 열이 세로 라인).
     //  · droppable/over 에 의존 안 함(취약) — DndContext 는 droppable 없이도 onDragMove/End 발화, 포인터 좌표만으로 판정.
     const placeMut = useMutation({
-        mutationFn: (v: { axisId: string; point: RankPoint; target: RankTarget }) => placePoint(v.axisId, v.point, v.target),
+        mutationFn: (v: { axisId: string; point: RankPoint; target: RankTarget }) => placePoint(placedAxisName(v.axisId), v.point, v.target),
         onSuccess: invLines,
     });
     // 배치 해제(셀 우클릭 메뉴) — 같은 뮤테이션·같은 캐시 키.
     const unplaceMut = useMutation({
-        mutationFn: (v: { axisId: string; point: RankPoint }) => unplacePoint(v.axisId, v.point),
+        mutationFn: (v: { axisId: string; point: RankPoint }) => unplacePoint(placedAxisName(v.axisId), v.point),
         onSuccess: invLines,
     });
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -305,23 +319,42 @@ export function RankSheetPanel(): JSX.Element {
     const [dragName, setDragName] = useState<string | null>(null);
     const [drop, setDrop] = useState<SheetDrop | null>(null);
 
-    const computeSheetDrop = (clientX: number, clientY: number): SheetDrop | null => {
+    // 드래그 기하 캐시 — 매 move 마다 행 전수 getBoundingClientRect(각각 강제 레이아웃)를 돌리면
+    // 비용이 행 수에 비례해 드래그가 무거워진다. **시작 때 한 번** 재고, move 에선 스크롤 오프셋만
+    // 보정한다(드래그 중 행 집합·정렬은 안 변한다 — 배치 확정은 드롭 뒤에나 온다).
+    const dragGeom = useRef<{ x0: number; x1: number; colMidY: number; rows: RowGeom[]; scrollTop: number; scrollLeft: number } | null>(null);
+    const captureDragGeom = (): typeof dragGeom.current => {
         if (!dragAxisId) return null;                       // 축으로 정렬 + 열이 순위 순서일 때만 세로 라인
         const th = sortAxisThRef.current;
         if (!th) return null;
         const cr = th.getBoundingClientRect();
-        if (clientX < cr.left || clientX > cr.right) return null; // 정렬 축 열 위에서만
-        // DOM 측정만 여기서 — 판정 규칙(타이 ±px·타이그룹 합류·prev/next 방향)은 rankGeometry(순수, 테스트됨).
-        const placed: RowGeom[] = [];
+        const rows: RowGeom[] = [];
         for (const row of mainRows) {
             const cell = row.cells[dragAxisId];
             if (!cell) continue;
             const tr = rowRefs.current.get(pointKey(row));
             if (!tr) continue;
             const rr = tr.getBoundingClientRect();
-            placed.push({ point: { stockCode: row.stockCode, date: row.date, time: row.time }, orderKey: cell.orderKey, top: rr.top, bottom: rr.bottom, centerY: rr.top + rr.height / 2 });
+            rows.push({ point: { stockCode: row.stockCode, date: row.date, time: row.time }, orderKey: cell.orderKey, top: rr.top, bottom: rr.bottom, centerY: rr.top + rr.height / 2 });
         }
-        return { ...computeRowDrop(placed, clientY, primary.dir, (cr.top + cr.bottom) / 2), x0: cr.left, x1: cr.right };
+        const el = scrollRef.current;
+        return { x0: cr.left, x1: cr.right, colMidY: (cr.top + cr.bottom) / 2, rows, scrollTop: el?.scrollTop ?? 0, scrollLeft: el?.scrollLeft ?? 0 };
+    };
+
+    const computeSheetDrop = (clientX: number, clientY: number): SheetDrop | null => {
+        const g = dragGeom.current;
+        if (!g) return null;
+        // 캐시는 시작 시점의 뷰포트 좌표 — 이후 스크롤한 만큼만 되돌려 현재 좌표로 옮긴다.
+        // (헤더 th 는 세로 sticky 라 y 는 그대로, x 만 가로 스크롤을 따라간다.)
+        const el = scrollRef.current;
+        const dy = (el?.scrollTop ?? g.scrollTop) - g.scrollTop;
+        const dx = (el?.scrollLeft ?? g.scrollLeft) - g.scrollLeft;
+        const x0 = g.x0 - dx;
+        const x1 = g.x1 - dx;
+        if (clientX < x0 || clientX > x1) return null; // 정렬 축 열 위에서만
+        // DOM 측정은 캐시가 끝냈다 — 판정 규칙(타이 ±px·타이그룹 합류·prev/next 방향)은 rankGeometry(순수, 테스트됨).
+        const placed = dy === 0 ? g.rows : g.rows.map((r) => ({ ...r, top: r.top - dy, bottom: r.bottom - dy, centerY: r.centerY - dy }));
+        return { ...computeRowDrop(placed, clientY, primary.dir, g.colMidY), x0, x1 };
     };
 
     const onDragStart = (ev: DragStartEvent): void => {
@@ -329,6 +362,7 @@ export function RankSheetPanel(): JSX.Element {
         dragStart.current = { x: pe.clientX ?? 0, y: pe.clientY ?? 0 };
         const p = draggedPoint(ev.active.id);
         setDragName(p ? nameOf(p.stockCode) : null);
+        dragGeom.current = p ? captureDragGeom() : null;
     };
     const onDragMove = (ev: DragMoveEvent): void => {
         if (!draggedPoint(ev.active.id)) { setDrop(null); return; }
@@ -340,6 +374,7 @@ export function RankSheetPanel(): JSX.Element {
             const d = computeSheetDrop(dragStart.current.x + ev.delta.x, dragStart.current.y + ev.delta.y);
             if (d) placeMut.mutate({ axisId: dragAxisId, point, target: d.target });
         }
+        dragGeom.current = null;
         setDrop(null); setDragName(null);
     };
 
@@ -347,14 +382,13 @@ export function RankSheetPanel(): JSX.Element {
     // 내용물은 매 렌더 최신 클로저로 갱신 — useChartHotkeys 의 h.current 패턴과 같은 이유).
     const rowHandlersRef = useRef<SheetRowHandlers>({} as SheetRowHandlers);
     rowHandlersRef.current.onNav = navRow;
-    rowHandlersRef.current.onHover = setHoveredPoint;
     rowHandlersRef.current.onTogglePin = togglePin;
     rowHandlersRef.current.onCellCtx = (v: CellCtxPayload) => setCtx(v);
     rowHandlersRef.current.onOutcomeCtx = (v) => setOutcomeCtx(v);
     rowHandlersRef.current.registerRef = (key, el) => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); };
     const rowH = rowHandlersRef.current;
 
-    // 한 행 렌더 — 상태 파생(포커스·호버·핀·흐림)만 여기서 계산하고 렌더는 SheetRowView(memo).
+    // 한 행 렌더 — 상태 파생(포커스·핀·흐림)만 여기서 계산하고 렌더는 SheetRowView(memo). 호버는 CSS.
     const renderRow = (row: SheetRow, isLastPinned = false, inPinnedBlock = false): JSX.Element => {
         const key = pointKey(row);
         const isPinned = pinnedSet.has(key);
@@ -363,7 +397,7 @@ export function RankSheetPanel(): JSX.Element {
                 leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
                 name={nameOf(row.stockCode)}
                 mode={cellMode} valuedOf={valuedOf} sortAxisId={sortAxisId}
-                focus={isSubjectRow(row)} hover={hoveredPoint === key} pinned={isPinned}
+                focus={isSubjectRow(row)} pinned={isPinned}
                 dim={bandsActive && !interKeys.has(key) && (isPinned || filterMode === "dim")}
                 inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} h={rowH} />
         );
@@ -400,7 +434,7 @@ export function RankSheetPanel(): JSX.Element {
 
     return (
         <Wrap>
-          <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={() => { setDrop(null); setDragName(null); }}>
+          <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={() => { dragGeom.current = null; setDrop(null); setDragName(null); }}>
             {/* 머리글 — 왼쪽은 말(바인딩 라벨·행수·선택 배지·"⤺" 해제들), 오른쪽은 손(HeaderControls).
                 "⤺" 들이 왼쪽에 남는 건 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라서다 — 개수가 곧 정보고,
                 컨트롤처럼 늘 서 있는 것이 아니다. 바인딩 라벨이 칩(버튼)에서 못 누르는 말로 내려온 것도
@@ -468,7 +502,7 @@ export function RankSheetPanel(): JSX.Element {
                                             {active && sort.length > 1 && <span style={{ flexShrink: 0, fontSize: 8.5, opacity: 0.8, marginRight: 1 }}>{step}</span>}
                                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>
                                         </span>
-                                        <ResizeHandle width={widthOf(c)} onResize={(w) => cols.setWidth(colKey(c), w)} />
+                                        <ResizeHandle width={widthOf(c)} onResize={(w) => cols.previewWidth(colKey(c), w)} onCommit={(w) => cols.commitWidth(colKey(c), w)} />
                                     </th>
                                 );
                             })}

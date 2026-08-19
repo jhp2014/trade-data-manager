@@ -12,7 +12,7 @@ import { isComputedAxis } from "../../lib/computedAxis.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
+import { layoutColumns, migrateColKey, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
 
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
@@ -40,8 +40,18 @@ export interface SheetColumns {
     reorderFrozen: (dragged: string, target: string) => void;
     toggleHidden: (k: string) => void;
     showAllHidden: () => void;
-    setWidth: (k: string, w: number) => void;
+    /** 드래그 중 폭 미리보기 — **메모리로만** 그린다(영속 없음). 확정은 commitWidth 가 한다. */
+    previewWidth: (k: string, w: number) => void;
+    /** 폭 확정(pointerup 1회) — 영속에 적고 미리보기 층을 비운다. */
+    commitWidth: (k: string, w: number) => void;
     resetWidths: () => void;
+    /**
+     * 축 이름 변경의 **키 이관** — 다섯 설정(고정·숨김·폭·컷 + store 축 순서)이 전부 축 키를 들고 있어,
+     * rename 이 그대로면 열 하나의 로컬 설정이 통째로 고아가 된다. 청소(prune)와 한 훅에 사는 이유도 같다:
+     * 어느 키가 살고 죽는지의 규칙은 한 곳에 있어야 어긋나지 않는다.
+     * ⚠ 축 목록 invalidate **앞에** 부를 것 — 새 목록이 먼저 도착하면 prune 이 옛 키를 유령으로 지워 버린다.
+     */
+    migrateAxisKey: (oldAxisId: string, newAxisId: string) => void;
 
     /** 축 열 그룹 컷 — colKey → slotId[]. */
     cuts: Record<string, string[]>;
@@ -66,6 +76,10 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
     const [hiddenCols, setHiddenCols] = usePersistedState<string[]>(HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), []);
     const [colWidths, setColWidths] = usePersistedState<Record<string, number>>(WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null), {});
     const [cuts, setCuts] = usePersistedState<Record<string, string[]>>(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null), {});
+    // 드래그 중 폭의 **미리보기 층**(영속 밖) — pointermove 마다 localStorage 에 동기 기록하면 이벤트
+    // 빈도만큼 JSON 직렬화가 돌아 드래그가 무거워진다. 움직이는 동안은 메모리로만 그리고 손을 뗄 때
+    // commitWidth 가 한 번 영속에 적는다(최종 저장값 의미는 종전과 동일).
+    const [previewWidths, setPreviewWidths] = useState<Record<string, number>>({});
 
     // 축을 지우면 그 축 키가 넷 모두에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소(위 ⚠ 참고).
     useEffect(() => {
@@ -84,8 +98,13 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
     const revealAxis = useWorkbench((s) => s.revealAxis);
     const thRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
     const [flashCol, setFlashCol] = useState<string | null>(null);
+    // 재발화 가드 — store 는 소비 후에도 revealAxis 를 남기므로(요청 큐가 아니라 마지막 요청 상태),
+    // at 비교 없이는 재마운트(프리셋 전환 등)가 지난 요청을 다시 재생한다(번쩍임 + 스크롤 점프).
+    // 마운트 시점에 이미 있던 요청 = 이미 처리된 것으로 본다(ref 초기값).
+    const lastRevealAt = useRef(revealAxis?.at ?? 0);
     useEffect(() => {
-        if (!revealAxis) return;
+        if (!revealAxis || revealAxis.at <= lastRevealAt.current) return;
+        lastRevealAt.current = revealAxis.at;
         const key = `ax:${revealAxis.axisId}`;
         setHiddenCols((h) => h.filter((k) => k !== key));
         setFlashCol(key);
@@ -101,9 +120,14 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
         ...axes.map((a): Col => ({ key: "axis", axisId: a.key, name: a.name, computed: isComputedAxis(a.key) })),
         { key: "outcome" },
     ], [axes]);
+    // 미리보기 층이 영속 폭을 덮는다 — 드래그 중에도 열이 실시간으로 넓어져 보이되 저장은 안 된다.
+    const effectiveWidths = useMemo(
+        () => (Object.keys(previewWidths).length ? { ...colWidths, ...previewWidths } : colWidths),
+        [colWidths, previewWidths],
+    );
     const layout = useMemo(
-        () => layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths, containerW, axisMin }),
-        [baseCols, frozenCols, hiddenCols, colWidths, containerW, axisMin],
+        () => layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths: effectiveWidths, containerW, axisMin }),
+        [baseCols, frozenCols, hiddenCols, effectiveWidths, containerW, axisMin],
     );
 
     const frozenSet = useMemo(() => new Set(frozenCols), [frozenCols]);
@@ -117,8 +141,21 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
         reorderFrozen: (dragged, target) => setFrozenCols((f) => reorderFrozenCols(f, dragged, target)),
         toggleHidden: (k) => setHiddenCols((h) => (h.includes(k) ? h.filter((x) => x !== k) : [...h, k])),
         showAllHidden: () => setHiddenCols([]),
-        setWidth: (k, w) => setColWidths((m) => ({ ...m, [k]: w })),
-        resetWidths: () => setColWidths({}),
+        previewWidth: (k, w) => setPreviewWidths((m) => ({ ...m, [k]: w })),
+        commitWidth: (k, w) => { setColWidths((m) => ({ ...m, [k]: w })); setPreviewWidths({}); },
+        resetWidths: () => { setColWidths({}); setPreviewWidths({}); },
+        migrateAxisKey: (oldAxisId, newAxisId) => {
+            const oldKey = `ax:${oldAxisId}`;
+            const newKey = `ax:${newAxisId}`;
+            setFrozenCols((f) => migrateColKey(f, oldKey, newKey));
+            setHiddenCols((h) => migrateColKey(h, oldKey, newKey));
+            setColWidths((w) => migrateColKey(w, oldKey, newKey));
+            setCuts((c) => migrateColKey(c, oldKey, newKey));
+            // 축 순서(store)는 접두 없는 축 키를 든다 — 같은 rename 사정이라 여기서 함께 이관한다.
+            const s = useWorkbench.getState();
+            const nextOrder = migrateColKey(s.rankAxisOrder, oldAxisId, newAxisId);
+            if (nextOrder !== s.rankAxisOrder) s.setRankAxisOrder(nextOrder);
+        },
         cuts,
         toggleCut: (axisId, slotId) => setCuts((m) => {
             const k = `ax:${axisId}`;

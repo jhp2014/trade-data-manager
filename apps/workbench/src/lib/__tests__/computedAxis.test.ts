@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computedAxisView, formatAxisValue } from "../computedAxis.js";
+import { buildFracIndex, computedAxisView, formatAxisValue, nearestPointAt, nearestPointInIndex, placedAxisKey, placedAxisName, valueDomain } from "../computedAxis.js";
 import type { ComputedAxisFeed, ComputedAxisPoint } from "@trade-data-manager/wire";
 
 const feed = (over: Partial<ComputedAxisFeed> = {}): ComputedAxisFeed => ({
@@ -8,6 +8,16 @@ const feed = (over: Partial<ComputedAxisFeed> = {}): ComputedAxisFeed => ({
     strongerWhen: "higher",
     values: [{ stockCode: "005930", date: "2026-07-02", time: "09:30:00", value: 3 }],
     ...over,
+});
+
+describe("placedAxisName — 클라 키 → 서버 정체성(raw 이름) 역변환", () => {
+    it("placedAxisKey 의 정확한 역이다", () => {
+        expect(placedAxisName(placedAxisKey("갭 상승률"))).toBe("갭 상승률");
+    });
+    it("접두 없는 값은 그대로 돌려준다 — 이중 벗김 없이 멱등", () => {
+        expect(placedAxisName("갭 상승률")).toBe("갭 상승률");
+        expect(placedAxisName(placedAxisName(placedAxisKey("축")))).toBe("축");
+    });
 });
 
 describe("formatAxisValue", () => {
@@ -70,5 +80,33 @@ describe("computedAxisView 포화(우측 절단) 자리잡기", () => {
         const v = computedAxisView(feed({ values: [pt("09:00:00", 5, true), pt("09:10:00", 400, true)] }));
         expect([...v.values.values()]).toEqual([0, 0]);
         expect(v.fmt(0)).toBe("∞");
+    });
+});
+
+describe("정렬 스냅 색인 — nearestPointAt 의 이분 탐색판(레일 드래그용)", () => {
+    /** 무작위스러운 값 지도 — 답 대조는 선형판(nearestPointAt)이 한다(같은 함수 둘이면 같은 버그도 둘). */
+    const values = new Map<string, number>(
+        Array.from({ length: 97 }, (_, i) => [`p${i}`, Math.sin(i * 7.13) * 40 + (i % 5)] as const),
+    );
+
+    (["higher", "lower"] as const).forEach((sw) => {
+        it(`선형판과 같은 자리를 짚는다(strongerWhen=${sw}) — 동률 키는 달라도 값이 같다`, () => {
+            const domain = valueDomain(values)!;
+            const idx = buildFracIndex(values, domain, sw);
+            for (let f = 0; f <= 1.0001; f += 0.037) {
+                const fast = nearestPointInIndex(f, idx);
+                const slow = nearestPointAt(f, values, domain, sw);
+                expect(fast).not.toBeNull();
+                expect(values.get(fast!)).toBe(values.get(slow!));
+            }
+        });
+    });
+
+    it("빈 색인만 null — 값이 하나면 어디를 짚어도 그 타점", () => {
+        expect(nearestPointInIndex(0.5, buildFracIndex(new Map(), { min: 0, max: 1 }, "higher"))).toBeNull();
+        const one = new Map([["only", 3]]);
+        const idx = buildFracIndex(one, valueDomain(one)!, "higher");
+        expect(nearestPointInIndex(0, idx)).toBe("only");
+        expect(nearestPointInIndex(1, idx)).toBe("only");
     });
 });

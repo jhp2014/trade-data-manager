@@ -104,16 +104,24 @@ export function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep
 // 열 폭 손잡이 — 헤더 오른쪽 가장자리 5px. 여기서 드래그 이벤트를 끊는 게 핵심이다:
 // th 는 이미 draggable(열 재정렬)이라 가장자리를 잡아도 열이 옮겨져 버린다(폭 조절이 아예 안 먹는다).
 // 포인터 캡처로 창 밖까지 따라오고, 클릭이 헤더 정렬 토글로 새지 않게 클릭/업에서도 전파를 막는다.
-export function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number) => void }): JSX.Element {
-    const start = useRef<{ x: number; w: number } | null>(null);
+// 이동 중엔 onResize(미리보기 층 — 영속 없음), 손을 뗄 때 onCommit 한 번 — pointermove 마다 영속을
+// 쓰면 이벤트 빈도만큼 localStorage 동기 기록이 돌아 드래그가 무거워진다.
+export function ResizeHandle({ width, onResize, onCommit }: {
+    width: number;
+    /** 드래그 중 실시간 폭(미리보기). */
+    onResize: (w: number) => void;
+    /** 최종 폭 확정(pointerup 1회) — 영속은 여기서만. */
+    onCommit: (w: number) => void;
+}): JSX.Element {
+    const start = useRef<{ x: number; w: number; last: number } | null>(null);
     return (
         <span
             draggable={false}
             onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); start.current = { x: e.clientX, w: width }; e.currentTarget.setPointerCapture(e.pointerId); }}
-            onPointerMove={(e) => { const s = start.current; if (s) onResize(Math.max(MIN_COL_W, Math.round(s.w + (e.clientX - s.x)))); }}
-            onPointerUp={(e) => { start.current = null; e.currentTarget.releasePointerCapture(e.pointerId); e.stopPropagation(); }}
+            onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); start.current = { x: e.clientX, w: width, last: width }; e.currentTarget.setPointerCapture(e.pointerId); }}
+            onPointerMove={(e) => { const s = start.current; if (s) { s.last = Math.max(MIN_COL_W, Math.round(s.w + (e.clientX - s.x))); onResize(s.last); } }}
+            onPointerUp={(e) => { const s = start.current; start.current = null; if (s) onCommit(s.last); e.currentTarget.releasePointerCapture(e.pointerId); e.stopPropagation(); }}
             title="드래그 = 열 폭 조절"
             style={{ position: "absolute", top: 0, right: 0, width: 5, height: "100%", cursor: "col-resize", touchAction: "none", zIndex: 1 }}
         />

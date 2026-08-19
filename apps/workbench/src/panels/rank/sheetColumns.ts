@@ -124,6 +124,20 @@ export function reorderFrozenCols(cols: string[], dragged: string, target: strin
     return next;
 }
 
+/**
+ * 축 이름 변경의 키 이관(고정·숨김·폭·컷·축 순서 공용) — 값은 그대로, 키만 oldKey → newKey.
+ * prune(아래)과 짝이다: 넷 다 키에 축 정체성이 들어 있어, rename 을 이관 없이 두면 prune 이
+ * 옛 키를 유령으로 지워 그 열의 로컬 설정이 전소된다. 바뀔 게 없으면 **같은 배열/객체**를 돌려준다.
+ */
+export function migrateColKey<T extends string[] | Record<string, unknown>>(cur: T, oldKey: string, newKey: string): T {
+    if (Array.isArray(cur)) {
+        if (!cur.includes(oldKey)) return cur;
+        return cur.map((k) => (k === oldKey ? newKey : k)) as T;
+    }
+    if (!(oldKey in cur)) return cur;
+    return Object.fromEntries(Object.entries(cur).map(([k, v]) => [k === oldKey ? newKey : k, v])) as T;
+}
+
 /** 사라진 축의 유령 키 제거(고정·숨김·폭·컷 목록 공용). 바뀔 게 없으면 **같은 배열/객체**를 돌려준다. */
 export function pruneAxisKeys<T extends string[] | Record<string, unknown>>(cur: T, liveAxisIds: string[]): T {
     const live = new Set(liveAxisIds.map((id) => `ax:${id}`));

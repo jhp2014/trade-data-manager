@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildSheetRows, bandFromSelection } from "../rankSheet.js";
+import { buildSheetRows } from "../rankSheet.js";
 import { buildAxisIndex, type AxisIndex } from "../../../lib/rankIndex.js";
-import { pointKey } from "../../../lib/pointKey.js";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import type { ReviewPointListItem } from "../../../api/reviewPoints.js";
 
@@ -19,18 +18,5 @@ describe("buildSheetRows", () => {
         expect(rowA.cells.axA?.rank).toBe(2);
         expect(rowA.cells.axB?.rank).toBe(1);
         expect(rowB.cells.axB).toBeNull();
-    });
-});
-
-describe("bandFromSelection", () => {
-    it("선택된 배치 셀의 약한 끝=lo, 강한 끝=hi.", () => {
-        const idx = buildAxisIndex([pp("A", 10), pp("B", 20), pp("C", 30)]);
-        const rows = [rpitem("B"), rpitem("C")].map((r) => ({ point: r, cell: idx.get(pointKey(r)) ?? null }));
-        // 경계는 그 끝에 선 **타점**으로 나온다(자리는 reindex 가 다시 쓰므로 저장할 수 없다).
-        expect(bandFromSelection(rows)).toEqual({ lo: pointKey(rpitem("B")), hi: pointKey(rpitem("C")) });
-    });
-
-    it("배치 셀 없으면 null.", () => {
-        expect(bandFromSelection([{ point: rpitem("A"), cell: null }])).toBeNull();
     });
 });

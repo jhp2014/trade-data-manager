@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { COL_META, colKey, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "../sheetColumns.js";
+import { COL_META, colKey, layoutColumns, migrateColKey, pruneAxisKeys, reorderFrozenCols, type Col } from "../sheetColumns.js";
 
 const ax = (id: string): Col => ({ key: "axis", axisId: id, name: `축${id}`, computed: false });
 /** 계산 축 — 값이 들어가야 해서 고정폭(분배에서 빠진다). */
@@ -94,6 +94,28 @@ describe("pruneAxisKeys — 사라진 축의 유령 키 청소", () => {
         const obj = { "ax:1": 90 };
         expect(pruneAxisKeys(arr, ["1"])).toBe(arr);
         expect(pruneAxisKeys(obj, ["1"])).toBe(obj);
+    });
+});
+
+describe("migrateColKey — 축 이름 변경의 키 이관", () => {
+    it("배열·객체 모두 키만 바뀌고 값·순서는 그대로", () => {
+        expect(migrateColKey(["date", "ax:p:옛이름", "ax:p:다른축"], "ax:p:옛이름", "ax:p:새이름"))
+            .toEqual(["date", "ax:p:새이름", "ax:p:다른축"]);
+        expect(migrateColKey({ "ax:p:옛이름": 80, name: 120 }, "ax:p:옛이름", "ax:p:새이름"))
+            .toEqual({ "ax:p:새이름": 80, name: 120 });
+        expect(migrateColKey({ "ax:p:옛이름": ["s1", "s2"] }, "ax:p:옛이름", "ax:p:새이름"))
+            .toEqual({ "ax:p:새이름": ["s1", "s2"] }); // 컷 목록(값이 배열)도 통째로 따라온다
+    });
+
+    it("옛 키가 없으면 같은 참조를 돌려준다(불필요한 상태 갱신 방지 — prune 과 같은 계약)", () => {
+        const arr = ["date", "ax:p:다른축"];
+        const obj = { "ax:p:다른축": 90 };
+        expect(migrateColKey(arr, "ax:p:없음", "ax:p:새이름")).toBe(arr);
+        expect(migrateColKey(obj, "ax:p:없음", "ax:p:새이름")).toBe(obj);
+    });
+
+    it("접두 없는 축 키(rankAxisOrder)에도 그대로 쓰인다", () => {
+        expect(migrateColKey(["p:다른축", "p:옛이름"], "p:옛이름", "p:새이름")).toEqual(["p:다른축", "p:새이름"]);
     });
 });
 

@@ -35,8 +35,8 @@ const BASE: Args = { axes: LIVE, axesLoading: false, containerW: 1200, axisMin: 
 const setup = (over: Partial<Args> = {}): ReturnType<typeof renderHook<ReturnType<typeof useSheetColumns>, Args>> =>
     renderHook((a: Args) => useSheetColumns(a), { initialProps: { ...BASE, ...over } });
 
-beforeEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null }); });
-afterEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null }); });
+beforeEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null, rankAxisOrder: [] }); });
+afterEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null, rankAxisOrder: [] }); });
 
 describe("픽스처 자신 — 죽은 키가 실제로 심겼나", () => {
     // 안 심겼으면 아래 "안 지운다" 검사가 통째로 헛돈다.
@@ -115,10 +115,30 @@ describe("열 구성 — 고정·숨김", () => {
     it("손으로 조절한 폭이 있어야 '원위치' 손잡이가 뜬다", () => {
         const { result } = setup();
         expect(result.current.hasManualWidths).toBe(false);
-        act(() => result.current.setWidth("ax:a1", 200));
+        act(() => result.current.commitWidth("ax:a1", 200));
         expect(result.current.hasManualWidths).toBe(true);
         act(() => result.current.resetWidths());
         expect(result.current.hasManualWidths).toBe(false);
+    });
+});
+
+describe("폭 드래그 — 이동 중엔 미리보기, 영속은 pointerup 한 번", () => {
+    it("previewWidth 는 화면 폭만 바꾸고 localStorage 에 안 적는다", () => {
+        const { result } = setup();
+        act(() => result.current.previewWidth("ax:a1", 180));
+        const a1 = result.current.displayCols.find((c) => c.key === "axis" && c.axisId === "a1")!;
+        expect(result.current.widthOf(a1)).toBe(180); // 드래그 중에도 실시간으로 넓어져 보인다
+        expect(stored(WIDTHS_KEY)).toEqual({}); // 이동 중엔 영속이 없다(이벤트 빈도만큼 동기 기록 금지)
+        expect(result.current.hasManualWidths).toBe(false);
+    });
+
+    it("commitWidth 가 최종값을 영속하고 미리보기 층을 비운다 — 저장값 의미는 종전과 동일", () => {
+        const { result } = setup();
+        act(() => result.current.previewWidth("ax:a1", 180));
+        act(() => result.current.commitWidth("ax:a1", 200));
+        expect(stored(WIDTHS_KEY)).toEqual({ "ax:a1": 200 });
+        const a1 = result.current.displayCols.find((c) => c.key === "axis" && c.axisId === "a1")!;
+        expect(result.current.widthOf(a1)).toBe(200);
     });
 });
 
@@ -163,5 +183,48 @@ describe("축 보여줘 — 숨긴 열이면 먼저 꺼낸다", () => {
 
     it("요청이 없으면 강조도 없다", () => {
         expect(setup().result.current.flashCol).toBeNull();
+    });
+
+    // store 는 소비 후에도 revealAxis 를 남긴다(마지막 요청 상태) — at 가드 없이는 프리셋 전환(재마운트)마다
+    // 지난 요청이 다시 재생돼 번쩍임 + 스크롤 점프가 난다.
+    it("재마운트는 지난 요청을 재생하지 않는다 — 마운트 시점에 이미 있던 요청은 소비된 것", () => {
+        act(() => { useWorkbench.setState({ revealAxis: { axisId: "a2", at: Date.now() - 1000 } }); });
+        const { result } = setup();
+        expect(result.current.flashCol).toBeNull();
+    });
+
+    it("재마운트 뒤에도 **새** 요청(at 증가)은 발화한다", () => {
+        act(() => { useWorkbench.setState({ revealAxis: { axisId: "a1", at: Date.now() - 1000 } }); });
+        const { result } = setup();
+        expect(result.current.flashCol).toBeNull();
+
+        act(() => { useWorkbench.setState({ revealAxis: { axisId: "a2", at: Date.now() + 1 } }); });
+        expect(result.current.flashCol).toBe("ax:a2");
+    });
+});
+
+describe("축 이름 변경 — 다섯 설정의 키 이관(고아 방지)", () => {
+    it("고정·숨김·폭·컷의 열 키와 store 축 순서가 함께 옮겨진다", () => {
+        localStorage.setItem(FROZEN_KEY, JSON.stringify(["date", "ax:a1"]));
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(["ax:a1"]));
+        localStorage.setItem(WIDTHS_KEY, JSON.stringify({ "ax:a1": 80, name: 120 }));
+        localStorage.setItem(CUTS_KEY, JSON.stringify({ "ax:a1": ["s1"] }));
+        useWorkbench.getState().setRankAxisOrder(["a2", "a1"]);
+
+        const { result } = setup();
+        act(() => result.current.migrateAxisKey("a1", "a1새이름"));
+
+        expect(stored(FROZEN_KEY)).toEqual(["date", "ax:a1새이름"]);
+        expect(stored(HIDDEN_KEY)).toEqual(["ax:a1새이름"]);
+        expect(stored(WIDTHS_KEY)).toEqual({ "ax:a1새이름": 80, name: 120 });
+        expect(stored(CUTS_KEY)).toEqual({ "ax:a1새이름": ["s1"] });
+        expect(useWorkbench.getState().rankAxisOrder).toEqual(["a2", "a1새이름"]); // 접두 없는 축 키
+    });
+
+    it("옛 키가 없으면 아무것도 안 바꾼다(다른 축·비축 열 무사)", () => {
+        localStorage.setItem(FROZEN_KEY, JSON.stringify(["date", "ax:a2"]));
+        const { result } = setup();
+        act(() => result.current.migrateAxisKey("없는축", "새이름"));
+        expect(stored(FROZEN_KEY)).toEqual(["date", "ax:a2"]);
     });
 });

@@ -199,6 +199,35 @@ button {
     filter: brightness(1.12);
 }
 
+/* 순위 시트 행 — 호버는 CSS 로만(행 하나 스치는 데 React 상태 → 패널 전체 리렌더가 돌지 않게).
+   sticky 셀(고정 열)은 스크롤 비침 방지용 불투명 배경이 필요해, 행 배경(--row-bg)과 셀 배경(--cell-bg)을
+   변수 한 쌍으로 가른다 — 셀은 인라인에서 var(--cell-bg) 만 읽는다.
+   규칙 순서가 곧 우선순위다(동일 특이도): 핀 < 호버 < 포커스(선택 행은 호버에도 색이 안 변한다 — 종전 동작). */
+.sheet-row {
+    --row-bg: transparent;
+    --cell-bg: var(--bg-primary);
+    background: var(--row-bg);
+}
+.sheet-row[data-pinned] {
+    --row-bg: var(--bg-primary);
+}
+.sheet-row:hover {
+    --row-bg: var(--bg-secondary);
+    --cell-bg: var(--bg-secondary);
+}
+.sheet-row[data-focus] {
+    --row-bg: var(--accent-soft);
+    --cell-bg: var(--accent-soft);
+}
+/* 핀 손잡이 — 행 호버 또는 핀 상태에서만 노출(예전 hover React 상태의 두 소비처 중 하나). */
+.sheet-row .sheet-pin {
+    display: none;
+}
+.sheet-row:hover .sheet-pin,
+.sheet-row .sheet-pin[data-pinned] {
+    display: flex;
+}
+
 /* dockview 라이트 테마(theme={themeLight})를 우리 팔레트로 재정렬.
    dockview.css 가 나중 로드라 같은 특이도면 짐 → :root 로 특이도 올려 우리 값이 이기게 한다. */
 :root .dockview-theme-light {
