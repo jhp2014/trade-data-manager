@@ -3,6 +3,7 @@ import {
     createDb,
     createPoolFromEnv,
     createCurationPoolFromEnv,
+    getCurationDatabaseUrl,
     DrizzleDailyCandleRepository,
     DrizzleRawDailyCandleRepository,
     DrizzleMinuteCandleRepository,
@@ -73,7 +74,13 @@ const curationRepo = <T extends object>(
     label: string,
     localPool: Pool,
     remotePool: Pool,
-): T => localReadDualWrite(make(createDb(localPool)), make(createDb(remotePool)), writes, label);
+): T => {
+    const local = make(createDb(localPool));
+    // CURATION_DATABASE_URL 미설정이면 curation 풀은 같은 로컬 DB 로 폴백돼 있다(createCurationPoolFromEnv).
+    // 이때 dual write 를 태우면 **같은 DB 에 모든 쓰기가 두 번** 간다 — 원격이 없으니 프록시 없이 로컬 한 벌.
+    if (getCurationDatabaseUrl() === null) return local;
+    return localReadDualWrite(local, make(createDb(remotePool)), writes, label);
+};
 
 // 계산 축이 읽는 포트 묶음 — 두 소비자(계산 축·골격 좌표)가 **같은 한 벌**을 쓴다.
 // 손으로 두 번 적으면 한쪽만 어댑터를 바꿔도 컴파일이 통과해, 같은 골격이 두 소비자에서 다른 가격으로 풀린다.
@@ -140,6 +147,7 @@ const boardProviders: Provider[] = [
             const dailyRepo = new DrizzleDailyCandleRepository(db); // 스냅샷 배치 + 수정주가 창(AdjustedDailyReader) 겸용
             const derived = new DerivedCache({
                 universe: new DrizzleDailyUniverseProvider(db),
+                scan: dailyRepo, // 수집 완료 판정(기대집합 재계산) — DailyScanRepository 겸용
                 minute: new DrizzleMinuteCandleRepository(db),
                 rawDaily: new DrizzleRawDailyCandleRepository(db),
                 adjDaily: dailyRepo,
@@ -248,9 +256,11 @@ const curationProviders: Provider[] = [
         inject: [MARKET_POOL],
     },
     {
-        // 미러 당겨오기 — 읽기 소스 갱신. 상태 없는 서비스라 팩토리 인자가 없다(설정은 persistence 소유).
+        // 미러 당겨오기 — 읽기 소스 갱신. 상태(마지막 동기화 시각) 읽기는 상주 MARKET_POOL 재사용
+        // (미러는 market 과 같은 로컬 DB) — 분당 폴링이 커넥션을 새로 만들면 안 된다.
         provide: CURATION_SYNC,
-        useFactory: (): CurationSync => new CurationSync(),
+        useFactory: (pool: Pool): CurationSync => new CurationSync(pool),
+        inject: [MARKET_POOL],
     },
 ];
 

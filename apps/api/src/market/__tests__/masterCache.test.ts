@@ -58,4 +58,38 @@ describe("MasterCache — 이름표 전량", () => {
         await cache.getByStockCodes(["005930"]);
         expect(reader.codeCalls).toBe(2);
     });
+
+    it("동시 cold 전량 조회는 한 번으로 묶인다(in-flight dedup)", async () => {
+        const reader = fakeReader(["삼성전자"]);
+        const cache = new MasterCache(reader);
+        const [a, b] = await Promise.all([cache.listAllMeta(), cache.listAllMeta()]);
+        expect(reader.allCalls).toBe(1);
+        expect(a).toEqual(b);
+    });
+
+    it("조회 도중 refresh 가 끼면 그 결과를 캐시로 굳히지 않는다 — 옛 `??=` 재고정 회귀 방지", async () => {
+        // 시나리오: 전량 조회가 나가 있는 사이 수집이 마스터를 갱신하고 refresh() 를 부른다.
+        // 옛 코드는 뒤늦게 도착한 조회 결과를 `??=` 로 캐시에 꽂아, 재시작까지 신규상장이 안 보였다.
+        const names = ["삼성전자"];
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const reader = fakeReader(names);
+        const slow = {
+            ...reader,
+            async listAllMeta(): Promise<Awaited<ReturnType<typeof reader.listAllMeta>>> {
+                const meta = await reader.listAllMeta();
+                await gate; // refresh 가 끼어들 틈
+                return meta;
+            },
+        };
+        const cache = new MasterCache(slow);
+
+        const inflight = cache.listAllMeta(); // 옛 스냅샷을 읽는 중
+        names.push("새로상장");
+        cache.refresh(); // 조회가 끝나기 전에 무효화
+        release();
+        expect(await inflight).toHaveLength(1); // 진행 중이던 호출자는 옛 스냅샷을 받는다(허용)
+
+        expect(await cache.listAllMeta()).toHaveLength(2); // 캐시에 옛 스냅샷이 굳지 않았다
+    });
 });

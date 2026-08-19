@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Inject, Query, Body, BadRequestException } from "@nestjs/common";
+import { Controller, Get, Post, Inject, Query, Body } from "@nestjs/common";
 import type { ThemeContext, AssignThemeInput, AssignThemeResult } from "@trade-data-manager/wire";
-import { assertStockCode } from "../validation.js";
+import { assertStockCode, assertName, assertOptionalText } from "../validation.js";
 import { THEME_ASSIGNMENT } from "../tokens.js";
 import type { ThemeAssignment } from "./themeAssignment.js";
 
@@ -20,9 +20,13 @@ export class ThemeController {
 
     @Post("members")
     assign(@Body() body: AssignThemeInput): Promise<AssignThemeResult> {
-        const theme = body?.theme?.trim();
-        if (!theme) throw new BadRequestException("theme 필수");
-        return this.themes.assign({ theme, code: assertStockCode(body?.code), name: body.name, issue: body.issue });
+        // name/issue 는 시트에 그대로 적히는 자유 텍스트 — 타입 오염(객체·숫자)과 폭주 길이만 경계에서 자른다.
+        return this.themes.assign({
+            theme: assertName(body?.theme, "theme"),
+            code: assertStockCode(body?.code),
+            name: assertOptionalText(body?.name, "name", 100),
+            issue: assertOptionalText(body?.issue, "issue", 500),
+        });
     }
 
     @Post("refresh")

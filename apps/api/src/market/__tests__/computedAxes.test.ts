@@ -120,6 +120,46 @@ describe("ComputedAxes", () => {
         await makeAxes(points, def, store).feeds();
         expect(store.writes).toBe(writesAfterCold);
     });
+
+    it("invalidate 뒤의 요청은 진행 중이던 굽기에 합류하지 않는다(변경 전 재료로 구운 것)", async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const def: ComputedAxisDef = {
+            key: "slow",
+            name: "느린 축",
+            version: 1,
+            strongerWhen: "higher",
+            inputs: [],
+            async compute(points) {
+                seen.push([...points]);
+                await gate; // "굽는 중" 상태를 고정
+                return points.map((p) => ({ ...p, value: 1 }));
+            },
+        };
+        const axes = makeAxes([pt("001")], def, store);
+
+        const first = axes.feeds();
+        await vi.waitFor(() => expect(seen).toHaveLength(1)); // 빌드가 compute 까지 진입
+
+        axes.invalidate(); // 앵커/타점 변경 직후
+        const second = axes.feeds(); // 변경 후 refetch — 옛 굽기에 합류하면 방금 편집이 응답에 없다
+
+        release();
+        await Promise.all([first, second]);
+        expect(seen).toHaveLength(2); // 합류했다면 1
+    });
+
+    it("캐시 쓰기 실패는 피드를 죽이지 않는다 — 값은 메모리에서 그대로 서빙", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const broken: AxisValueStore = {
+            read: () => Promise.resolve(null),
+            write: () => Promise.reject(new Error("EACCES")),
+        };
+        const feeds = await makeAxes([pt("001")], fakeAxis(1, seen), broken).feeds();
+        expect(feeds[0].values.map((v) => v.value)).toEqual([1]);
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
+    });
 });
 
 // ── 앵커 지문 — params 선언 축의 자동 무효화(무효화의 심장) ─────────────────

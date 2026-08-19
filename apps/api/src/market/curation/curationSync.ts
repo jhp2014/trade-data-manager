@@ -1,5 +1,5 @@
-import { getPgBinDir, readLastMirrorSyncAt, syncCurationMirror } from "@trade-data-manager/persistence";
-import type { CurationSyncStatus } from "@trade-data-manager/wire";
+import { getPgBinDir, readLastMirrorSyncAt, syncCurationMirror, type MirrorStateQuerier } from "@trade-data-manager/persistence";
+import type { CurationSyncState, CurationSyncStatus } from "@trade-data-manager/wire";
 
 /** 부팅 동기화 임계 — 이 이상 낡았을 때만 당겨온다. */
 const MIRROR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -17,10 +17,13 @@ const MIRROR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export class CurationSync {
     private inFlight: Promise<CurationSyncStatus> | null = null;
 
+    /** 상태 읽기는 상주 풀(MARKET_POOL — 미러가 사는 로컬 DB)을 재사용한다: 분당 폴링이 커넥션·DDL 을 만들면 안 된다. */
+    constructor(private readonly pool: MirrorStateQuerier) {}
+
     /** 마지막 동기화 시각 — 협업자에겐 이게 "얼마나 낡았나"의 유일한 신호다(그쪽은 야간 작업이 없다). */
-    async status(): Promise<CurationSyncStatus> {
-        const at = await readLastMirrorSyncAt();
-        return { syncedAt: at?.toISOString() ?? null, rows: 0, skipped: false };
+    async status(): Promise<CurationSyncState> {
+        const at = await readLastMirrorSyncAt(this.pool);
+        return { syncedAt: at?.toISOString() ?? null };
     }
 
     /**
@@ -39,7 +42,7 @@ export class CurationSync {
      * 화면이 안 바뀐다 — 위험만 지고 이득이 없다.
      */
     async runIfStale(maxAgeMs: number = MIRROR_MAX_AGE_MS): Promise<CurationSyncStatus | null> {
-        const at = await readLastMirrorSyncAt();
+        const at = await readLastMirrorSyncAt(this.pool);
         // 한 번도 안 돌았으면(새 머신) 무조건 당긴다 — 빈 미러로는 읽기가 성립하지 않는다.
         if (at && Date.now() - at.getTime() < maxAgeMs) return null;
         return this.run();

@@ -54,6 +54,19 @@ describe("ThemeAssignment", () => {
         expect(after.map((m) => m.theme)).toContain("로봇");
     });
 
+    it("같은 (테마,종목) 동시 배정은 한 행만 남는다 — check-then-act 를 사슬로 직렬화", async () => {
+        // 직렬화가 없으면 둘 다 같은 로드(캐시 dedup)에서 "없음"을 보고 둘 다 append → 시트에 중복 행.
+        const { sheet, svc } = build();
+
+        const [r1, r2] = await Promise.all([
+            svc.assign({ theme: "로봇", code: "000660" }),
+            svc.assign({ theme: "로봇", code: "000660" }),
+        ]);
+
+        expect([r1.assigned, r2.assigned].sort()).toEqual([false, true]); // 한쪽만 실제 배정
+        expect(sheet.rows).toHaveLength(1);
+    });
+
     it("편입이슈는 공백만이면 안 싣는다", async () => {
         const { sheet, svc } = build();
 

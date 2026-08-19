@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BadRequestException } from "@nestjs/common";
-import { assertYmd, assertHms, assertStockCode } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode, assertName, assertOptionalText, isUniqueViolation, rejectDuplicateName } from "../validation.js";
 
 describe("assertYmd", () => {
     it("유효 날짜는 그대로 반환", () => {
@@ -42,5 +42,49 @@ describe("assertStockCode", () => {
     });
     it("field 이름이 에러 메시지에 반영", () => {
         expect(() => assertStockCode(undefined, "stockCode")).toThrow(/stockCode/);
+    });
+});
+
+describe("assertName", () => {
+    it("앞뒤 공백은 깎아서 반환 — 유니크 제약 우회('돌파 '≠'돌파') 방지", () => {
+        expect(assertName(" 돌파 ")).toBe("돌파");
+    });
+    it("필수·공백만·비문자열은 400", () => {
+        expect(() => assertName(undefined)).toThrow(BadRequestException);
+        expect(() => assertName("   ")).toThrow(BadRequestException);
+        expect(() => assertName(42)).toThrow(BadRequestException);
+    });
+});
+
+describe("assertOptionalText", () => {
+    it("안 주면(undefined/null) undefined 로 통과 — 선택 필드", () => {
+        expect(assertOptionalText(undefined, "memo", 10)).toBeUndefined();
+        expect(assertOptionalText(null, "memo", 10)).toBeUndefined();
+    });
+    it("주면 문자열 타입 + 길이 상한", () => {
+        expect(assertOptionalText("메모", "memo", 10)).toBe("메모");
+        expect(() => assertOptionalText(42, "memo", 10)).toThrow(BadRequestException);
+        expect(() => assertOptionalText({ a: 1 }, "memo", 10)).toThrow(BadRequestException);
+        expect(() => assertOptionalText("x".repeat(11), "memo", 10)).toThrow(BadRequestException);
+    });
+});
+
+describe("unique 충돌 → 400", () => {
+    // drizzle 은 pg 에러를 DrizzleQueryError 로 감싼다(cause 사슬) — 겉·속 어디 있어도 잡혀야 한다.
+    const pgUnique = Object.assign(new Error("duplicate key value"), { code: "23505" });
+
+    it("cause 사슬을 따라 23505 를 찾는다", () => {
+        expect(isUniqueViolation(pgUnique)).toBe(true);
+        expect(isUniqueViolation(new Error("wrap", { cause: pgUnique }))).toBe(true);
+        expect(isUniqueViolation(new Error("다른 고장"))).toBe(false);
+        expect(isUniqueViolation(Object.assign(new Error("fk"), { code: "23503" }))).toBe(false);
+    });
+
+    it("rejectDuplicateName — unique 충돌만 400, 다른 예외는 그대로(DB 고장을 400 으로 감추지 않는다)", async () => {
+        await expect(rejectDuplicateName(() => Promise.reject(new Error("wrap", { cause: pgUnique })), "돌파")).rejects.toThrow(
+            BadRequestException,
+        );
+        await expect(rejectDuplicateName(() => Promise.reject(new Error("연결 끊김")), "돌파")).rejects.toThrow("연결 끊김");
+        await expect(rejectDuplicateName(() => Promise.resolve("ok"), "돌파")).resolves.toBe("ok");
     });
 });

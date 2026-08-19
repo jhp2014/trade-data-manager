@@ -1,11 +1,13 @@
 // DataDatesCache — data-aware 날짜피커의 "분봉(장중 데이터) 있는 거래일" 목록(전역·종목무관).
 //   cold: 분봉 전체 distinct 1회(≈수초) → 파일 저장
 //   warm: 파일 read-through(과거 거래일은 append-only 라 불변 → 영구 유효)
-//   꼬리: maxDate 초과분만 증분 스캔(월별 파티션 프루닝 → 최신 파티션 1개). 하루 1회로 게이팅.
+//   꼬리: maxDate 초과분만 증분 스캔(월별 파티션 프루닝 → 최신 파티션 1개).
+//   게이트: maxDate ≥ 오늘이면 스캔 생략. maxDate < 오늘이면 요청마다 재확인 — 옛 "하루 1회" 게이팅은
+//   저녁 수집(20:30)분을 다음날까지 숨겼다. 증분 쿼리가 싸서(최신 파티션 1개 distinct) 재확인이 이득이다.
 // DerivedCache/daySnapshotCache 와 같은 idiom(파일 캐시 + 원자적 write + 자가치유: 파일 삭제 시 재빌드).
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { DataDateReader, MinuteDateReader } from "@trade-data-manager/market";
+import { kstToday, type DataDateReader, type MinuteDateReader } from "@trade-data-manager/market";
 
 const DEFAULT_CACHE_FILE = process.env.DATA_DATES_CACHE_FILE ?? path.resolve(process.cwd(), ".cache/data-dates.json");
 
@@ -14,15 +16,6 @@ interface CacheFile {
     dates: string[];
     /** = last(dates). 다음 꼬리 증분의 하한(`> maxDate`). 빈 캐시면 null. */
     maxDate: string | null;
-    /** 마지막 꼬리 확인일(YYYY-MM-DD, 로컬). 같은 날 재스캔 방지(게이팅). */
-    checkedAt: string;
-}
-
-// 로컬(KST 머신) 벽시계 날짜. api 서버가 데이터와 같은 타임존이라 거래일 비교에 충분.
-function localToday(): string {
-    const d = new Date();
-    const p = (n: number): string => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 export class DataDatesCache implements DataDateReader {
@@ -31,27 +24,34 @@ export class DataDatesCache implements DataDateReader {
     constructor(
         private readonly reader: MinuteDateReader,
         private readonly cacheFile: string = DEFAULT_CACHE_FILE,
+        /** 오늘(KST) 공급자 — 거래일 비교의 기준(DerivedCache 와 같은 축). 테스트 주입용. */
+        private readonly today: () => string = kstToday,
     ) {}
 
     async listDataDates(): Promise<string[]> {
         const file = await this.read();
-        const today = localToday();
-        // warm & 최신 — 오늘 이미 확인했거나 maxDate 가 오늘 이상이면 스캔 없이 파일 즉시.
-        if (file && (file.checkedAt === today || (file.maxDate !== null && file.maxDate >= today))) return file.dates;
+        // warm & 최신 — 오늘 데이터까지 들어왔으면(장중 수집 등) 그날은 더 나올 게 없다: 스캔 없이 즉시.
+        // maxDate < 오늘이면 매 요청 꼬리를 재확인한다 — 저녁 수집분이 같은 날 밤 날짜피커에 보여야 한다.
+        if (file && file.maxDate !== null && file.maxDate >= this.today()) return file.dates;
         // cold(파일 없음) 또는 꼬리 갱신 — 동시 요청은 한 번의 스캔으로 묶는다.
         if (!this.inFlight) {
-            this.inFlight = this.refresh(file, today).finally(() => {
+            this.inFlight = this.refresh(file).finally(() => {
                 this.inFlight = null;
             });
         }
         return this.inFlight;
     }
 
-    private async refresh(file: CacheFile | null, today: string): Promise<string[]> {
+    private async refresh(file: CacheFile | null): Promise<string[]> {
         // cold: 전체 distinct. warm: maxDate 초과만(파티션 프루닝으로 최신 파티션 1개).
         const fresh = await this.reader.listMinuteDates(file?.maxDate ?? undefined);
         const dates = file ? mergeSorted(file.dates, fresh) : fresh;
-        await this.write({ dates, maxDate: dates.length > 0 ? dates[dates.length - 1] : null, checkedAt: today });
+        // 저장은 best-effort — 목록은 이미 메모리에 완성돼 있다. 디스크 실패로 날짜피커까지 죽이지 않는다.
+        try {
+            await this.write({ dates, maxDate: dates.length > 0 ? dates[dates.length - 1] : null });
+        } catch (err) {
+            console.warn(`[data-dates] 캐시 쓰기 실패 — 메모리 결과는 그대로 서빙: ${this.cacheFile}`, err);
+        }
         return dates;
     }
 

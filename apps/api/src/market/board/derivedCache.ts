@@ -1,15 +1,18 @@
 // DerivedCache — 날짜별 불변 스냅샷 파일 캐시(빌드 조율 + in-flight dedup). 조립은 DayBoards.
 // core 복합서비스를 감싸지 않고 query 포트를 **직접** 호출 + 순수함수(deriveMinutes·dailyStatsOf)로 빌드한다.
-//   cold: universe → EOD 스칼라 배치(일봉·전일종가·시총) + 종목당 분봉파생(제한 동시성) → (과거면) 파일 저장
-//   warm: 파일 read-through (과거는 불변이라 무한 유효)
+//   cold: universe → EOD 스칼라 배치(일봉·전일종가·시총) + 종목당 분봉파생(제한 동시성) → (과거+수집완료면) 파일 저장
+//   warm: 파일 read-through (수집 완료된 과거는 불변이라 무한 유효)
 //   오늘: 수집중일 수 있어 파일로 안 굳히고 매 요청 재빌드(부분 상태 영구화 방지). isCacheable(date < KST today) 게이트.
+//   완료 판정: 기대집합(일봉 재계산 분봉 후보) ⊆ 저장집합 — collect(MinuteCollector)와 같은 모델. 과거라도 미완료면 안 굳힌다.
 import {
     deriveMinutes,
     dailyStatsByMarket,
     kstToday,
+    selectDailyCandidates,
     RAW_DAILY_LOOKBACK_MONTHS,
     subtractMonths,
     mapWithConcurrency,
+    type DailyScanRepository,
     type DailyUniverseProvider,
     type MinuteReader,
     type RawDailyReader,
@@ -22,8 +25,19 @@ import { fileSnapshotStore, SNAPSHOT_SCHEMA_VERSION, type DaySnapshot, type DayS
 /** 종목당 fetch 인플라이트 상한(분봉+원주가일봉). 날짜당 1회 빌드라 넉넉히. */
 const FETCH_CONCURRENCY = 8;
 
+// 분봉 수집 완료 판정 파라미터 — core minuteSweepService 의 확정값(사용자 2026-06-29) 사본.
+// ⚠ 수집 저장 기준이 그쪽에서 바뀌면 여기도 동반 수정(값이 다르면 완료 판정이 영원히 안 떨어지거나 헐거워진다).
+const STORE_AMOUNT_FLOOR_WON = "20000000000"; // 200억
+const GAINER_RATE_PERCENT = 10;
+const NO_RANK = 0; // 순위 keep 비활성(floor∪등락률만)
+
+/** 완료 판정에 필요한 일봉 읽기 — DailyScanRepository 의 부분집합(ISP). */
+export type CompletionScanReader = Pick<DailyScanRepository, "listDailyCandlesByDate" | "getPreviousTradingDate">;
+
 export interface DerivedCacheDeps {
     universe: DailyUniverseProvider;
+    /** 분봉 수집 완료 판정용 일봉 읽기 — 기대집합(분봉 후보)을 일봉에서 결정적으로 재계산한다. */
+    scan: CompletionScanReader;
     minute: MinuteReader;
     rawDaily: RawDailyReader;
     /** 수정주가 일봉 창(종목당 range) — trailingHighs(KRX/UN 두벌, 수정주가) 원자재. */
@@ -109,9 +123,38 @@ export class DerivedCache {
         });
         const file: DaySnapshotFile = { v: SNAPSHOT_SCHEMA_VERSION, date, stocks: built.filter((s): s is DaySnapshot => s !== null) };
         this.reportBaseAdjustments(file);
-        // 과거 날짜만 파일로 굳힌다. 오늘은 수집 진행 중일 수 있어 부분 상태를 영구화하지 않고 반환만.
-        if (cacheable) await this.store.write(file);
+        // 과거 날짜라도 **수집 완료로 판정된 날만** 굳힌다 — "과거 = 불변"은 수집이 끝났을 때만 참이다.
+        // (스윕 중단·부분 실패로 반쪽인 날을 굳히면 이후 수집이 채워도 캐시가 영구히 반쪽이었다.)
+        // 미완료면 메모리 빌드 결과를 그대로 서빙만 하고, 수집이 채워진 뒤의 요청이 다시 빌드해 굳힌다.
+        if (cacheable && (await this.isMinuteCollectionComplete(date, new Set(codes)))) {
+            // 저장은 best-effort — 스냅샷은 이미 메모리에 완성돼 있다. 디스크 실패로 응답까지 죽이지 않는다.
+            try {
+                await this.store.write(file);
+            } catch (err) {
+                console.warn(`[day-snapshot] ${date} 캐시 쓰기 실패 — 메모리 결과는 그대로 서빙`, err);
+            }
+        }
         return file;
+    }
+
+    /**
+     * 분봉 수집 완료 판정 — collect 파이프라인(MinuteCollector)의 모델을 그대로 옮겼다:
+     * 완료 = 기대집합(일봉에서 결정적으로 재계산한 분봉 후보) ⊆ 저장집합(그 날 분봉 있는 종목 = universe).
+     * 일봉이 아예 없으면 **미완료**로 본다 — 후보 산정이 불가할 뿐 아니라 EOD 스칼라(등락·시총)도 비어,
+     * 그 스냅샷 자체가 부분 상태다(collect 의 "후보 0 = skip"과 달리 여긴 굳히기 게이트라 보수적으로).
+     */
+    private async isMinuteCollectionComplete(date: string, stored: ReadonlySet<string>): Promise<boolean> {
+        const candles = await this.deps.scan.listDailyCandlesByDate(date);
+        if (candles.length === 0) return false;
+        // 고가등락률의 기준가(직전 거래일 UN 종가) 페어링 — core buildDailyRankInputs 와 동일.
+        const prevDate = await this.deps.scan.getPreviousTradingDate(date);
+        const prev = prevDate ? await this.deps.scan.listDailyCandlesByDate(prevDate) : [];
+        const prevClose = new Map(prev.map((c) => [c.stockCode, c.un.close]));
+        const expected = selectDailyCandidates(
+            candles.map((c) => ({ stockCode: c.stockCode, amount: c.un.amount, high: c.un.high, prevClose: prevClose.get(c.stockCode) ?? null })),
+            { amountRankN: NO_RANK, highRateCutPercent: GAINER_RATE_PERCENT, amountFloorWon: STORE_AMOUNT_FLOOR_WON },
+        );
+        return expected.every((code) => stored.has(code));
     }
 
     // 기준가 보정 트립와이어 — factor ≠ 1 종목 집계. 평상시 0~수 종목(실제 감자·액분 이벤트)이 정상.

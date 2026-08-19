@@ -6,7 +6,11 @@ import { parseConnFromUrl, runPgToolOn, withPgClient, type PgConn } from "./pgTo
 
 /**
  * curation 미러 — 단방향 전체교체(Supabase → 로컬).
- *   pg_dump -Fc -n curation (Supabase) → DROP SCHEMA curation CASCADE (로컬) → pg_restore (로컬).
+ *   pg_dump -Fc -n curation (Supabase) → curation 을 curation_prev 로 밀어두고 → pg_restore (로컬).
+ *
+ * **단계식 교체(staged replace)**: 옛 DROP CASCADE → restore 는 restore 가 중간에 죽으면 로컬이
+ * "스키마 없음/반쪽" 상태로 남았다(다음 동기화까지 모든 curation 읽기가 깨진다). RENAME 으로 밀어두면
+ * 실패 시 부분 생성분만 지우고 되돌려, 미러가 최악이라도 직전 상태로 남는다.
  *
  * 덤프에 스키마 DDL 이 포함되므로 로컬 curation 을 스키마째 재정의한다 → 드리프트 0, 그리고
  * **로컬엔 마이그레이션 상태가 없다**(마이그레이션은 Supabase 에만 건다. 협업자 PC 는 할 일 없음).
@@ -44,14 +48,24 @@ async function ensureStateTable(client: { query: (q: string) => Promise<unknown>
     );
 }
 
-/** 로컬 미러의 마지막 동기화 시각. 한 번도 안 돌았으면 null. */
-export async function readLastMirrorSyncAt(): Promise<Date | null> {
-    const local = parseConnFromUrl(getDatabaseUrl());
-    return withPgClient(local, async (c) => {
-        await ensureStateTable(c);
-        const r = await c.query(`select synced_at from ${STATE_TABLE} where name = '${STATE_KEY}'`);
+/** select 만 할 수 있으면 된다 — pg Pool/Client 둘 다 구조적으로 만족(api 는 상주 풀을 재사용). */
+export interface MirrorStateQuerier {
+    query(text: string): Promise<{ rows: Array<Record<string, unknown>> }>;
+}
+
+/**
+ * 로컬 미러의 마지막 동기화 시각. 한 번도 안 돌았으면 null.
+ * 폴링(GET /curation/sync, 분당)이 부르므로 **가볍다**: 주입된 커넥션/풀을 재사용하고 DDL 을 안 돌린다 —
+ * 표 생성은 쓰기 경로(replaceLocalSchema)만 한다. 표가 아직 없으면(첫 동기화 전) null 로 합류.
+ */
+export async function readLastMirrorSyncAt(q: MirrorStateQuerier): Promise<Date | null> {
+    try {
+        const r = await q.query(`select synced_at from ${STATE_TABLE} where name = '${STATE_KEY}'`);
         return r.rows.length > 0 ? (r.rows[0].synced_at as Date) : null;
-    });
+    } catch (e) {
+        if ((e as { code?: string }).code === "42P01") return null; // undefined_table — 아직 한 번도 안 돎
+        throw e;
+    }
 }
 
 /** Supabase → 로컬 전체교체. 원본 URL 미설정이면 아무것도 안 하고 skipped 로 돌아온다. */
@@ -67,16 +81,16 @@ export async function syncCurationMirror(opts: CurationMirrorOptions): Promise<C
     const local = parseConnFromUrl(getDatabaseUrl());
     const workDir = opts.workDir ?? os.tmpdir();
     fs.mkdirSync(workDir, { recursive: true });
-    const tmp = path.join(workDir, "_curation_mirror.dump");
-
-    // 1. Supabase 의 curation 스키마 덤프(스키마+데이터, custom 포맷).
-    //    깨지기 쉬운 네트워크 단계를 DROP 보다 먼저 둔다 — 실패해도 로컬은 손대지 않은 상태로 남는다.
-    //    SSL: pg_dump 는 libpq 라 PGSSLMODE=require(암호화·인증서검증 생략)로 Supabase pooler 호환.
-    await runPgToolOn(opts.pgBinDir, "pg_dump", src, ["-Fc", "-n", "curation", "--no-owner", "--no-privileges", "-f", tmp], {
-        PGSSLMODE: "require",
-    });
+    // 실행마다 고유한 파일명 — 두 프로세스(api 버튼·야간 db-ops)가 겹쳐도 서로의 덤프를 밟지 않는다.
+    const tmp = path.join(workDir, `_curation_mirror.${process.pid}.${Date.now()}.dump`);
 
     try {
+        // 1. Supabase 의 curation 스키마 덤프(스키마+데이터, custom 포맷).
+        //    깨지기 쉬운 네트워크 단계를 스키마 교체보다 먼저 둔다 — 실패해도 로컬은 손대지 않은 상태로 남는다.
+        //    SSL: pg_dump 는 libpq 라 PGSSLMODE=require(암호화·인증서검증 생략)로 Supabase pooler 호환.
+        await runPgToolOn(opts.pgBinDir, "pg_dump", src, ["-Fc", "-n", "curation", "--no-owner", "--no-privileges", "-f", tmp], {
+            PGSSLMODE: "require",
+        });
         const syncedAt = await replaceLocalSchema(local, tmp, opts.pgBinDir);
         const rows = await countMainTables(local);
         log(`curation 미러 완료: Supabase→로컬 (주요 4테이블 ${rows}행)`);
@@ -86,13 +100,36 @@ export async function syncCurationMirror(opts: CurationMirrorOptions): Promise<C
     }
 }
 
-async function replaceLocalSchema(local: PgConn, dumpPath: string, pgBinDir: string): Promise<Date> {
-    await withPgClient(local, (c) => c.query("DROP SCHEMA IF EXISTS curation CASCADE"));
-    // pg_restore 에 -n 필터를 주지 않는다: 덤프가 이미 curation 전용이고, -n 을 주면 CREATE SCHEMA
-    // 엔트리가 "curation 소속"이 아니라 걸러져 스키마가 안 생기고 CREATE TABLE 이 전부 실패한다.
-    await runPgToolOn(pgBinDir, "pg_restore", local, ["--no-owner", "--no-privileges", dumpPath]);
+/** 로컬에 schema 가 존재하나. RENAME/복구 분기의 근거 — 첫 동기화(스키마 없음)와 재동기화를 가른다. */
+async function schemaExists(c: { query: (q: string) => Promise<{ rows: unknown[] }> }, name: string): Promise<boolean> {
+    const r = await c.query(`select 1 from information_schema.schemata where schema_name = '${name}'`);
+    return r.rows.length > 0;
+}
 
+async function replaceLocalSchema(local: PgConn, dumpPath: string, pgBinDir: string): Promise<Date> {
+    // 2. 단계식 교체 — 현행 curation 을 지우지 않고 curation_prev 로 밀어둔다(복원 실패 시 되돌릴 백업).
+    //    남아 있는 curation_prev 는 직전 실패의 잔재라 먼저 치운다(성공 경로는 끝에서 지우고 나온다).
+    await withPgClient(local, async (c) => {
+        await c.query("DROP SCHEMA IF EXISTS curation_prev CASCADE");
+        if (await schemaExists(c, "curation")) await c.query("ALTER SCHEMA curation RENAME TO curation_prev");
+    });
+    try {
+        // pg_restore 에 -n 필터를 주지 않는다: 덤프가 이미 curation 전용이고, -n 을 주면 CREATE SCHEMA
+        // 엔트리가 "curation 소속"이 아니라 걸러져 스키마가 안 생기고 CREATE TABLE 이 전부 실패한다.
+        await runPgToolOn(pgBinDir, "pg_restore", local, ["--no-owner", "--no-privileges", dumpPath]);
+    } catch (e) {
+        // 3-실패. 부분 생성된 curation 을 지우고 밀어둔 스키마를 되살린다 — 미러가 반쪽으로 남지 않는다.
+        //    (복구 자체가 실패하면 curation_prev 가 남고, 다음 실행 첫 단계가 치운다.)
+        await withPgClient(local, async (c) => {
+            await c.query("DROP SCHEMA IF EXISTS curation CASCADE");
+            if (await schemaExists(c, "curation_prev")) await c.query("ALTER SCHEMA curation_prev RENAME TO curation");
+        });
+        throw e;
+    }
+
+    // 3-성공. 백업 폐기 + 동기화 시각 기록(표 생성은 이 쓰기 경로만 한다 — 읽기는 DDL 무비용).
     return withPgClient(local, async (c) => {
+        await c.query("DROP SCHEMA IF EXISTS curation_prev CASCADE");
         await ensureStateTable(c);
         const r = await c.query(
             `insert into ${STATE_TABLE} (name, synced_at) values ('${STATE_KEY}', now())

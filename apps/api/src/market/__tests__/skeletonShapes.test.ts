@@ -123,4 +123,42 @@ describe("SkeletonShapes", () => {
         await shapes.feed();
         expect(prevCalls).toEqual([{ date: D, codes: ["0001", "0003"] }]);
     });
+
+    it("동시 feed 는 굽기 하나를 나눠 받고, invalidate 뒤의 feed 는 합류하지 않는다(변경 전 재료)", async () => {
+        // 앵커 읽기(빌드 첫 단계)를 게이트로 잡아 "굽는 중"을 만든다.
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        let listAllCalls = 0;
+        const axisDeps: AxisDeps = {
+            minute: { getMinuteCandles: () => Promise.resolve([]) },
+            rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
+            adjDaily: { getDailyCandles: () => Promise.resolve([]) },
+            chartAnchor: {
+                listByChart: () => Promise.resolve([]),
+                listAll: async () => {
+                    listAllCalls++;
+                    await gate;
+                    return [];
+                },
+                listAnchoredCharts: () => Promise.resolve([]),
+            },
+            reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve([]) },
+        };
+        const shapes = new SkeletonShapes({
+            points: { listAllPoints: () => Promise.resolve([]), listByChart: () => Promise.resolve([]) },
+            axisDeps,
+            prevClose: { getPreviousCloses: () => Promise.resolve([]) },
+        });
+
+        const first = shapes.feed();
+        expect(shapes.feed()).toBe(first); // 같은 세대 — 굽기 공유
+
+        shapes.invalidate(); // 앵커/타점 변경 직후
+        const second = shapes.feed();
+        expect(second).not.toBe(first); // 변경 전에 시작된 굽기에 합류하지 않는다
+
+        release();
+        await Promise.all([first, second]);
+        expect(listAllCalls).toBe(2);
+    });
 });

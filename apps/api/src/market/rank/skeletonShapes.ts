@@ -67,15 +67,26 @@ export interface SkeletonShapesDeps {
 
 export class SkeletonShapes {
     /** 동시 요청 공유 — 패널을 여러 개 열어도 굽기는 한 번(ComputedAxes.inFlight 와 같은 이유). */
-    private inFlight: Promise<SkeletonFeed> | null = null;
+    private inFlight: { gen: number; promise: Promise<SkeletonFeed> } | null = null;
+    // 변경(앵커·타점) 세대 — 변경 전에 시작된 빌드는 옛 재료를 읽었으므로, 변경 **후** 온 요청이
+    // 거기 합류하면 방금 편집한 것이 응답에 없다. 세대가 다르면 합류하지 않고 새로 굽는다.
+    private generation = 0;
 
     constructor(private readonly deps: SkeletonShapesDeps) {}
 
     feed(): Promise<SkeletonFeed> {
-        if (this.inFlight) return this.inFlight;
-        const p = this.build().finally(() => { this.inFlight = null; });
-        this.inFlight = p;
-        return p;
+        if (this.inFlight && this.inFlight.gen === this.generation) return this.inFlight.promise;
+        const gen = this.generation;
+        const promise = this.build().finally(() => {
+            if (this.inFlight?.promise === promise) this.inFlight = null;
+        });
+        this.inFlight = { gen, promise };
+        return promise;
+    }
+
+    /** 앵커·타점 변경 직후 호출(컨트롤러) — 진행 중 빌드를 취소하진 않고, 새 요청의 합류만 막는다. */
+    invalidate(): void {
+        this.generation++;
     }
 
     private async build(): Promise<SkeletonFeed> {

@@ -7,6 +7,7 @@ export {
     readLastMirrorSyncAt,
     type CurationMirrorOptions,
     type CurationMirrorResult,
+    type MirrorStateQuerier,
 } from "./mirror.js";
 export * as schema from "./schema/index.js";
 export { DrizzleDailyCandleRepository } from "./repositories/dailyCandle.repository.js";

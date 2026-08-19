@@ -13,7 +13,7 @@ import type {
     SetGroupParentInput,
 } from "@trade-data-manager/wire";
 import { GROUP_REPO } from "../tokens.js";
-import { assertYmd, assertHms, assertStockCode } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode, assertName, rejectDuplicateName } from "../validation.js";
 
 // 그룹 큐레이션 — 이름 붙인 집합 + 관계(중첩)·위치. 옛 태그 컨트롤러를 흡수했다.
 // 사전과 멤버십이 한 컨트롤러: 팔레트도 맵도 늘 둘을 같이 읽는다.
@@ -44,7 +44,9 @@ export class GroupController {
 
     @Patch("rename")
     async rename(@Body() body: RenameGroupInput): Promise<{ ok: true }> {
-        await this.repo.renameGroup(assertName(body?.name), assertName(body?.newName, "newName"));
+        const newName = assertName(body?.newName, "newName");
+        // 이름은 전역 유일(유니크 제약) — 이미 있는 이름으로 바꾸려는 건 호출자 잘못이라 500 이 아니라 400 이다.
+        await rejectDuplicateName(() => this.repo.renameGroup(assertName(body?.name), newName), newName);
         return { ok: true };
     }
 
@@ -93,13 +95,6 @@ async function guard<T>(run: () => Promise<T>): Promise<T> {
         if (e instanceof GroupInvariantError) throw new BadRequestException(e.message);
         throw e;
     }
-}
-
-/** 앞뒤 공백은 유니크 제약을 우회하는 사고("돌파 "≠"돌파")라 여기서 깎는다. 이름이 키라 더 중요해졌다. */
-function assertName(name: string | undefined, field = "name"): string {
-    const n = name?.trim();
-    if (!n) throw new BadRequestException(`${field} 필수`);
-    return n;
 }
 
 function assertScope(scope: string | undefined): GroupScope {

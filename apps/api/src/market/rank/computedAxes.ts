@@ -91,11 +91,19 @@ export class ComputedAxes {
     private readonly defs: readonly ComputedAxisDef[];
     private readonly store: AxisValueStore;
     /** 축별 in-flight 공유 — 패널 여럿이 동시에 열려도 굽기는 한 번. */
-    private readonly inFlight = new Map<string, Promise<ComputedAxisFeed>>();
+    private readonly inFlight = new Map<string, { gen: number; promise: Promise<ComputedAxisFeed> }>();
+    // 변경(앵커·타점) 세대 — 변경 전에 시작된 빌드는 옛 재료(앵커 지문 포함)를 읽었으므로, 변경 **후**
+    // 온 refetch 가 거기 합류하면 방금 편집이 응답에 없다. 세대가 다르면 합류하지 않고 새로 굽는다.
+    private generation = 0;
 
     constructor(private readonly deps: ComputedAxesDeps) {
         this.defs = deps.defs ?? COMPUTED_AXES;
         this.store = deps.store ?? fileAxisValueStore;
+    }
+
+    /** 앵커·타점 변경 직후 호출(컨트롤러) — 진행 중 빌드를 취소하진 않고, 새 요청의 합류만 막는다. */
+    invalidate(): void {
+        this.generation++;
     }
 
     /** 전 계산 축의 피드. 판단 축 줄 피드(/placements)와 같은 이유로 축 단건 조회는 두지 않는다. */
@@ -110,10 +118,13 @@ export class ComputedAxes {
 
     private feed(def: ComputedAxisDef, points: ReviewPointKey[], anchors: ChartAnchor[]): Promise<ComputedAxisFeed> {
         const existing = this.inFlight.get(def.key);
-        if (existing) return existing;
-        const p = this.build(def, points, anchors).finally(() => this.inFlight.delete(def.key));
-        this.inFlight.set(def.key, p);
-        return p;
+        if (existing && existing.gen === this.generation) return existing.promise;
+        const gen = this.generation;
+        const promise = this.build(def, points, anchors).finally(() => {
+            if (this.inFlight.get(def.key)?.promise === promise) this.inFlight.delete(def.key);
+        });
+        this.inFlight.set(def.key, { gen, promise });
+        return promise;
     }
 
     /**
@@ -203,7 +214,15 @@ export class ComputedAxes {
             const c = computedByKey.get(k);
             if (c !== undefined) { values[k] = { v: c.value, f: fpOf(p), ...(c.saturated ? { s: true } : {}) }; changed = true; }
         }
-        if (changed) await this.store.write({ v: FILE_SCHEMA_VERSION, key: def.key, version: def.version, values });
+        // 파일 저장은 best-effort — 값은 이미 메모리에 완성돼 있다. 디스크 실패(권한·용량)로 응답까지
+        // 죽이면 손해만 남는다(다음 빌드가 cold 로 다시 굽는 게 전부다).
+        if (changed) {
+            try {
+                await this.store.write({ v: FILE_SCHEMA_VERSION, key: def.key, version: def.version, values });
+            } catch (err) {
+                console.warn(`[rank-axis] ${def.key}: 캐시 쓰기 실패 — 메모리 결과는 그대로 서빙`, err);
+            }
+        }
         // 결손 분모: **필수 파라미터가 다 찍힌 타점**만 — 아직 안 찍은 타점은 결손이 아니라 "입력 전"이다
         // (그걸 분모에 넣으면 정상 상태가 상시 경고가 된다). 지문 유무로 대신 세면 안 된다: 선택 파라미터만
         // 찍힌 타점(무시 캔들만 지정)도 지문이 생겨 입력 완료로 집계된다.

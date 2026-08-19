@@ -34,8 +34,22 @@ export class ThemeAssignment {
         };
     }
 
-    /** 배정. 이미 그 테마면 아무것도 안 하고 assigned:false(규칙 ①). */
-    async assign({ theme, code, name, issue }: AssignInput): Promise<{ assigned: boolean }> {
+    // 배정 직렬화 사슬 — 규칙 ①이 check-then-act 라, 같은 (theme,code) 동시 POST(더블클릭 등)가
+    // 둘 다 "없음"을 보고 둘 다 append 하면 시트에 중복 행이 남는다. 이 클래스는 싱글톤 프로바이더라
+    // 프로세스 내 직렬화로 충분하다(시트엔 원격 잠금이 없다). 실패해도 사슬은 끊기지 않는다.
+    private chain: Promise<unknown> = Promise.resolve();
+
+    /** 배정. 이미 그 테마면 아무것도 안 하고 assigned:false(규칙 ①). 호출은 순차 실행된다(위 사슬). */
+    assign(input: AssignInput): Promise<{ assigned: boolean }> {
+        const run = this.chain.then(() => this.doAssign(input));
+        this.chain = run.then(
+            () => undefined,
+            () => undefined,
+        );
+        return run;
+    }
+
+    private async doAssign({ theme, code, name, issue }: AssignInput): Promise<{ assigned: boolean }> {
         const all = await this.membership.load();
         if (all.some((m) => m.code === code && m.theme === theme)) return { assigned: false };
         await this.store.addMember({ theme, code, name, issue: issue?.trim() || undefined, date: kstToday() });

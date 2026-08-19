@@ -37,3 +37,49 @@ export function assertStockCode(value: string | undefined, field = "code"): stri
     if (!isCanonicalStockCode(value)) throw new BadRequestException(`${field} 형식(6자리 영숫자): ${value}`);
     return value;
 }
+
+/**
+ * 이름 필드(그룹·축·테마 등 **키로 쓰이는** 자유 텍스트) — 필수 + 문자열 타입.
+ * 앞뒤 공백은 유니크 제약을 우회하는 사고("돌파 "≠"돌파")라 여기서 깎는다. 이름이 키라 더 중요하다.
+ */
+export function assertName(name: unknown, field = "name"): string {
+    if (name !== undefined && typeof name !== "string") throw new BadRequestException(`${field} 는 문자열`);
+    const n = name?.trim();
+    if (!n) throw new BadRequestException(`${field} 필수`);
+    return n;
+}
+
+/**
+ * 선택 자유 텍스트(메모·이슈 등) — 주면 문자열 + 길이 상한. 안 주면(undefined/null) undefined 로 통과.
+ * 내용은 검사하지 않는다(자유 텍스트) — 타입 오염(객체·숫자)과 폭주 페이로드만 경계에서 자른다.
+ */
+export function assertOptionalText(value: unknown, field: string, maxLen: number): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== "string") throw new BadRequestException(`${field} 는 문자열`);
+    if (value.length > maxLen) throw new BadRequestException(`${field} 는 ${maxLen}자 이하: 현재 ${value.length}자`);
+    return value;
+}
+
+/**
+ * pg unique 위반(23505) 판별 — drizzle 이 DrizzleQueryError 로 감싸므로 cause 사슬을 따라 내려가 본다.
+ * (dual write 는 원격 쓰기가 먼저라, 충돌은 감싸진 채로 그대로 컨트롤러까지 올라온다.)
+ */
+export function isUniqueViolation(e: unknown): boolean {
+    for (let cur: unknown = e; cur instanceof Error; cur = cur.cause) {
+        if ((cur as { code?: unknown }).code === "23505") return true;
+    }
+    return false;
+}
+
+/**
+ * 이름 unique 충돌을 400 으로 — 중복 이름은 호출자의 잘못이지 서버 고장이 아니다(group guard 와 같은 철학).
+ * 다른 예외는 그대로 500 으로 흘려보낸다 — DB 고장을 400 으로 감추면 안 된다.
+ */
+export async function rejectDuplicateName<T>(run: () => Promise<T>, name: string): Promise<T> {
+    try {
+        return await run();
+    } catch (e) {
+        if (isUniqueViolation(e)) throw new BadRequestException(`이미 있는 이름: ${name}`);
+        throw e;
+    }
+}

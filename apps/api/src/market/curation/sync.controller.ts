@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Inject } from "@nestjs/common";
-import type { CurationSyncStatus } from "@trade-data-manager/wire";
+import type { CurationSyncState, CurationSyncStatus } from "@trade-data-manager/wire";
 import { CURATION_SYNC } from "../tokens.js";
 import { CurationSync } from "./curationSync.js";
 
@@ -8,9 +8,9 @@ import { CurationSync } from "./curationSync.js";
 export class CurationSyncController {
     constructor(@Inject(CURATION_SYNC) private readonly sync: CurationSync) {}
 
-    /** 마지막 동기화 시각 — 화면이 "얼마나 낡았나"를 상시 띄우는 근거. */
+    /** 마지막 동기화 시각 — 화면이 "얼마나 낡았나"를 상시 띄우는 근거. 실행 결과(rows 등)와 계약이 다르다. */
     @Get()
-    status(): Promise<CurationSyncStatus> {
+    status(): Promise<CurationSyncState> {
         return this.sync.status();
     }
 

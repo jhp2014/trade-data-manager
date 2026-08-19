@@ -12,7 +12,7 @@ import type {
 } from "@trade-data-manager/wire";
 import type { ComputedAxes } from "../rank/computedAxes.js";
 import { RANK_REPO, COMPUTED_AXES } from "../tokens.js";
-import { assertYmd, assertHms, assertStockCode } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode, assertName, rejectDuplicateName } from "../validation.js";
 
 // 순위 배치 큐레이션 — 축별 상대순위 줄에 복기 타점 배치. 조립(줄 렌더)은 클라 인메모리(옵션 A).
 // 배치 대상 타점은 자연키(code·date·time) = review point 삼중키. 검색·확률은 후속 슬라이스.
@@ -52,12 +52,15 @@ export class RankController {
     async create(@Body() body: CreateAxisInput): Promise<RankAxis> {
         const scope = body?.scope ?? "point";
         if (scope !== "point" && scope !== "day") throw new BadRequestException('scope 는 "point" | "day"');
-        return this.repo.createAxis(assertName(body?.name), scope);
+        // 축 이름은 유니크 제약 — 중복 생성은 호출자 잘못이라 500 이 아니라 400 이다(group guard 와 같은 철학).
+        const name = assertName(body?.name);
+        return rejectDuplicateName(() => this.repo.createAxis(name, scope), name);
     }
 
     @Patch("rename")
     async rename(@Body() body: RenameAxisInput): Promise<{ ok: true }> {
-        await this.repo.renameAxis(assertName(body?.name), assertName(body?.newName, "newName"));
+        const newName = assertName(body?.newName, "newName");
+        await rejectDuplicateName(() => this.repo.renameAxis(assertName(body?.name), newName), newName);
         return { ok: true };
     }
 
@@ -77,12 +80,6 @@ export class RankController {
         await this.repo.unplace(assertName(body?.axis, "axis"), assertPoint(body?.point));
         return { ok: true };
     }
-}
-
-function assertName(name: string | undefined, field = "name"): string {
-    const n = name?.trim();
-    if (!n) throw new BadRequestException(`${field} 필수`);
-    return n;
 }
 
 /** 타점 자연키 — 배치 대상이자 **자리를 가리키는 손잡이**라 두 쓰임이 같은 검증을 탄다. */

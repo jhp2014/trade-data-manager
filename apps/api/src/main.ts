@@ -9,6 +9,9 @@ const PORT = Number(process.env.API_PORT ?? 3001);
 
 async function bootstrap(): Promise<void> {
     const app = await NestFactory.create(AppModule);
+    // SIGINT/SIGTERM 에 OnModuleDestroy 훅이 실제로 돌게 한다 — 없으면 pool.end()·텔레그램 disconnect 가
+    // 스킵돼 커넥션이 그냥 끊긴다(Nest 는 기본으로 시그널을 안 듣는다).
+    app.enableShutdownHooks();
     app.enableCors();
     // 큰 응답(당일 축약물 등)은 raw JSON 수 MB — gzip 으로 압축해 내려보낸다.
     app.use(compression());
