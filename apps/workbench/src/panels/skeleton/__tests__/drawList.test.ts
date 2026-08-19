@@ -51,9 +51,6 @@ const build = (over: Partial<Parameters<typeof skeletonLinesLayer>[0]> = {}): Dr
         dotsForAll: false,
         pins: noPins,
         fmtX: (x) => `${Math.round(x)}일`,
-        fmtPct: (v) => `${v.toFixed(1)}%`,
-        timeOfMinutes: (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`,
-        clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
         ...over,
     });
 

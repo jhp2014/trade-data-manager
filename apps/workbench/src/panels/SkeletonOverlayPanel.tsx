@@ -1,36 +1,29 @@
-import { useMemo, useRef, useState, useEffect, useCallback, useId, type CSSProperties } from "react";
-import { scaleLinear, type ScaleLinear } from "d3-scale";
+import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties } from "react";
 import {
-    dailyFrame, pointUnitFrame,
-    lineOpacity, dimOpacity, labelPointOf, labelHandles, lineVisual, keysInRect, yAtX, decimate, decimateStep, clipToX,
-    amountRuns,
-    type LineVisual, type OverlayLine, type OverlayBounds, type SkeletonAnchor, type PointSkeleton,
+    lineOpacity, dimOpacity, labelPointOf, labelHandles, lineVisual,
+    type LineVisual, type OverlayLine, type SkeletonAnchor,
 } from "./skeleton/skeletonOverlay.js";
 import { useOverlayData } from "./skeleton/useOverlayData.js";
 import { useDaySnapshot } from "./skeleton/useDaySnapshot.js";
-import { useCandles, type CandleFocus } from "./skeleton/useCandles.js";
+import { useCandles } from "./skeleton/useCandles.js";
 import { useOverlayToggles } from "./skeleton/useOverlayToggles.js";
+import { useOverlayViewport } from "./skeleton/useOverlayViewport.js";
+import { useOverlaySelection } from "./skeleton/useOverlaySelection.js";
+import { useInspection, candleFocusOf } from "./skeleton/useInspection.js";
+import { useAmountReadout } from "./skeleton/useAmountReadout.js";
+import { OverlayPlot, fmtX, type XUnit } from "./skeleton/OverlayPlot.js";
+import { OverlayMenus } from "./skeleton/OverlayMenus.js";
 import { OverlayHeader } from "./skeleton/OverlayHeader.js";
 import { OverlayFooter } from "./skeleton/OverlayFooter.js";
-import { OverlaySelectionBar } from "./skeleton/OverlaySelectionBar.js";
-import { LabelLayer, LABEL_CELL } from "./skeleton/LabelLayer.js";
-import { amountLevelOf, amountLookupOf } from "./skeleton/amountLayer.js";
-import { AmountLabels, useAmountLabels, type AmountSource } from "./skeleton/AmountLabels.js";
+import { LABEL_CELL } from "./skeleton/LabelLayer.js";
+import { amountLookupOf } from "./skeleton/amountLayer.js";
 import { useThemeLabels, useThemeOverlay } from "./skeleton/useThemeOverlay.js";
 import { usePivotPins } from "./skeleton/usePivotPins.js";
-import { PinReadout, PinVerticals, PivotHandles } from "./skeleton/PinLayer.js";
-import { CrosshairLayer } from "./skeleton/CrosshairLayer.js";
-import { LevelsLayer, type LevelOwner } from "./skeleton/LevelsLayer.js";
-import { AxisLayer } from "./skeleton/AxisLayer.js";
-import { ThemeGutter, ThemeLeaders, ThemeHit } from "./skeleton/ThemeLayer.js";
+import { type LevelOwner } from "./skeleton/LevelsLayer.js";
 import { skeletonLinesLayer } from "./skeleton/skeletonLinesLayer.js";
 import { candleLayer } from "./skeleton/candleLayer.js";
 import { themeLinesLayer } from "./skeleton/themeLinesLayer.js";
-import { CanvasLayers } from "./skeleton/CanvasPainter.js";
 import { flatten, orderPaint, type DrawLayer } from "./skeleton/drawList.js";
-import { pickReadouts, layoutReadoutRows, readoutCandidatesAt, READOUT_GAP, type ReadoutCandidate, type ReadoutSource } from "./skeleton/readout.js";
-import { useOverlayZoom, type ZoomRegion } from "./skeleton/useOverlayZoom.js";
-import { useMarquee, type MarqueeRect } from "./skeleton/useMarquee.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { inPick, pickKeys, PICK_SOURCE_LABEL } from "../lib/pick.js";
@@ -40,15 +33,9 @@ import { SetBindingLabel, setBindingControl } from "./filter/SetBindingLabel.js"
 import { SetSidebar } from "./filter/SetSidebar.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { useGroups } from "../lib/GroupsContext.js";
-import { chartKey, pointKey, type PointRef } from "../lib/pointKey.js";
+import { chartKey, pointKey } from "../lib/pointKey.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
-import { BulkGroupMenu } from "./skeleton/ChartGroupMenu.js";
-import { mutedNote } from "../components/ControlChrome.js";
-import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 import { ACTIVE, HOVER, seriesColor } from "../styles/palette.js";
-import { fmtPct } from "../lib/format.js";
-import { shortDate, timeOfMinutes } from "../lib/date.js";
-import { clamp } from "../lib/num.js";
 
 // 골격 겹쳐 그리기 — 차트를 골격으로 축약해 **한 화면에서 서로 비교**하는 주 작업면.
 //
@@ -71,13 +58,13 @@ import { clamp } from "../lib/num.js";
 // ## 상세 정보의 밀도 규칙 — "지금 조사 중인 하나"에만
 // 피벗 값 라벨·기준선(D선)은 호버(우선) 또는 단일 선택에만 붙는다. 다중 선택은 무리를 만드는 손짓이라
 // 상세를 다 띄우면 수십 벌이 겹친다 — 색·굵기로만 답하고, 상세는 하나를 짚었을 때 준다.
+//
+// ## 이 파일은 **배선**이다
+// 상태 채널은 훅들이 나눠 소유한다 — 뷰포트(useOverlayViewport)·선택(useOverlaySelection)·
+// 조사 대상(useInspection)·복기 스냅샷 파생(useAmountReadout)·표시 토글(useOverlayToggles)·
+// 테마(useThemeOverlay)·캔들(useCandles)·핀(usePivotPins). 여기 남는 건 그 사이 배선과
+// 표시목록(paintLayers) 조립, 그리고 훅 하나로 못 접는 자잘한 채널(호버·뱃지 무리·짚음 렌즈)이다.
 
-/**
- * 그림 상자 바깥 여백. **테마를 켜면 왼쪽이 거터(100px)로 넓어진다**(사용자 확정) — 테마 이름 라벨을
- * 그 안에서 세로로 벌려 전부 읽히게 하려고. 평소엔 y축 눈금만 들어가면 되니 46px 이면 족하다.
- */
-const PAD = { right: 14, top: 12, bottom: 24 };
-const PAD_LEFT = { plain: 46, gutter: 122 };
 /** 피벗 점 예산 — **원 개수**로 센다(골격당 피벗 수가 3~6으로 제각각이라 골격 수로 세면 임계가 두 배 흔들린다). */
 const DOT_BUDGET = 1200;
 
@@ -91,28 +78,8 @@ const EMPTY_THEME_LINES: DrawLayer = { name: "theme-lines", groups: [] };
  */
 const RECEDE_OPACITY = 0.3;
 
-// 표기·수 헬퍼는 전부 lib 의 것을 쓴다(`shortDate`=26.07.08 · `timeOfMinutes`=HH:MM · `fmtPct` · clamp·median).
-// 여기 있던 다섯 벌은 lib 의 것과 글자까지 같은 규칙이었다 — 연도 두 자리도, 반올림 순서도.
-
-// 거래대금 척도(구간→굵기 단계·라벨 격자)와 조회기는 skeleton/amountLayer 로 옮겼다 —
-// 셋(골격선 굵기·테마선 굵기·판독 칩)이 나눠 쓰는 **공용 재료**라 층 하나에 매이지 않는다.
-
-/** 화면 좌표 폴리라인 문자열 — 배율에 맞춰 점을 솎는다(step=1이면 원본 그대로). */
-const pathOf = (points: readonly { x: number; y: number }[], scales: Scales, step = 1): string =>
-    decimate(points, step).map((p) => `${scales.x(p.x).toFixed(2)},${scales.y(p.y).toFixed(2)}`).join(" ");
-
 /** 화면의 선 하나 — kind 판별 유니온(차트 단위 ChartSkeleton / 타점 단위 PointSkeleton). */
 type Line = OverlayLine;
-
-
-// 판독의 재료(ReadoutSource)·후보 조립·칩 간격은 skeleton/readout 으로 — 크로스헤어와 핀이 같은 규칙을 탄다.
-
-/** 판독 칩 상한 — 등락률 상위 N ∪ 누적 거래대금 상위 N(사용자 확정). 합집합이라 최대 2N, 보통 그보다 적다. */
-const READOUT_TOP = 5;
-
-type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
-type XUnit = "day" | "min";
-const fmtX = (x: number, unit: XUnit): string => `${Math.round(x)}${unit === "day" ? "일" : "분"}`;
 
 /** 일봉/분봉이 **별도 패널**(카탈로그 2항목)이다 — 시나리오가 "일봉에서 무리 → 분봉으로 확인"의 동시 사용이라
  *  토글 하나로는 두 그림을 오가며 볼 수 없다. grain 은 패널 정체성이라 마운트 후 안 바뀐다. */
@@ -122,7 +89,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const { anchor, showFuture, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme } = toggles;
 
     const goToPoint = useWorkbench((s) => s.goToPoint);
-    const setFocus = useWorkbench((s) => s.setFocus);
 
     const isDaily = grain === "daily";
     /** 분봉 = **타점 단위**(사용자 확정): 선 하나 = 타점 하나(자기 시각 피벗이 원점). 절대 뷰는 폐기 —
@@ -157,14 +123,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const skeletonSelection = useWorkbench((s) => s.skeletonSelection);
     const onlyCharts = !isDaily && onlySelected && skeletonSelection.size > 0 ? skeletonSelection : null;
 
-    // 그룹 한 벌 — 그룹 메뉴·발끝 표기(여기) + 차트 그룹 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
+    // 그룹 한 벌 — 발끝 표기(여기) + 그룹 메뉴(OverlayMenus) + 차트 그룹 필터 판정(데이터 훅)이
+    // 같은 컨텍스트 인스턴스를 본다.
     const groupsView = useGroups();
     // 바인딩 — 이 패널이 보는 집합(디폴트 연동 = 필터 패널을 따라감). 일봉·분봉이 별도 패널이라 키에 grain 이 붙는다.
     const binding = useSetBinding(`wb.setBinding.skeleton.${grain}`);
     const [sideOpen, setSideOpen] = usePersistedState<boolean>(
         `wb.setSidebar.skeleton.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
     const goToDay = useWorkbench((s) => s.goToDay);
-    // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태(선택·호버·확대·메뉴)만 남는다.
+    // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태의 배선만 남는다.
     const { feedLoading, lines: allLines, drawableKeys, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
         useOverlayData(isDaily, anchor, onlyCharts, binding.ref);
 
@@ -222,75 +189,19 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         [binding.view, isDaily, drawableKeys],
     );
 
-    // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
-    //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.
-    //  · 분봉 타점 %p = 상수 창(−60~+10분 · ±20%p), 미래 토글이면 양의 쪽만 데이터까지.
-    const [locked, setLocked] = useState<OverlayBounds | null>(null);
-    const autoBounds = useMemo(
-        () => (lines.length === 0 ? null : isDaily ? dailyFrame(anchor) : pointUnitFrame(lines, 0.01, showFuture)),
-        [isDaily, anchor, showFuture, lines],
-    );
-    const bounds = locked ?? autoBounds;
-
-    const wrapRef = useRef<HTMLDivElement | null>(null);
-    const svgRef = useRef<SVGSVGElement | null>(null);
-    const [size, setSize] = useState({ w: 0, h: 0 });
-    useEffect(() => {
-        const el = wrapRef.current;
-        if (!el) return;
-        const ro = new ResizeObserver((es) => setSize({ w: es[0].contentRect.width, h: es[0].contentRect.height }));
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, []);
-
-    // 거터 판정은 **토글**로 한다(themeOverlay 가 아니라) — 상자가 테마 데이터보다 먼저 정해져야 하고,
-    // 데이터 도착 여부로 여백이 출렁이면 화면이 툭 튄다.
-    const gutter = !isDaily && showTheme;
-    const padLeft = gutter ? PAD_LEFT.gutter : PAD_LEFT.plain;
-    const box = { left: padLeft, top: PAD.top, width: Math.max(0, size.w - padLeft - PAD.right), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
-    const drawable = bounds !== null && box.width > 0 && box.height > 0;
-
     // ── 뭉친 라벨의 멤버 목록. 그래프를 만지면(팬·확대) 닫는다 — d3 가 SVG mousedown 을 삼켜
     //    팝오버의 바깥클릭 감지가 그래프 위에서 안 뜨기 때문(제스처 콜백이 그 자리를 대신한다).
     const [badge, setBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     const closeBadge = useCallback(() => setBadge(null), []);
-    // 제스처 영역 — 아래 스트립=시간축, 왼쪽 스트립=% 축(모서리는 시간축 우선). 스트립에선 그 축만 확대된다.
-    const regionOf = useCallback(
-        (x: number, y: number): ZoomRegion => (y > box.top + box.height ? "x" : x < box.left ? "y" : "body"),
-        [box.top, box.height, box.left],
-    );
-    const { tx, ty, reset, resetAxis, zoomed, dragging } = useOverlayZoom(svgRef, drawable, regionOf, closeBadge);
-    /**
-     * 더블클릭 — **축 스트립에서만, 그 축만** 원위치(사용자 확정). 본문 더블클릭 전체 리셋은 폐기했다:
-     * 선·점을 짚다 보면 더블클릭이 섞여 들어가 애써 맞춘 배율이 통째로 날아갔다.
-     */
-    const onDoubleClick = useCallback((e: React.MouseEvent<SVGSVGElement>): void => {
-        const r = svgRef.current?.getBoundingClientRect();
-        if (!r) return;
-        const region = regionOf(e.clientX - r.left, e.clientY - r.top);
-        if (region !== "body") resetAxis(region);
-    }, [regionOf, resetAxis]);
 
-    // 척도가 바뀌면(필터 변경 등) 뷰포트를 원위치 — 옛 변환이 남아 빈 공간을 보지 않게.
-    const boundsKey = bounds ? `${bounds.minX}|${bounds.maxX}|${bounds.minY}|${bounds.maxY}` : "";
-    useEffect(() => { reset(); }, [boundsKey, reset]);
+    // 거터 판정은 **토글**로 한다(themeOverlay 가 아니라) — 상자가 테마 데이터보다 먼저 정해져야 하고,
+    // 데이터 도착 여부로 여백이 출렁이면 화면이 툭 튄다.
+    const gutter = !isDaily && showTheme;
+    // 뷰포트 절반 — 경계·상자·스케일·확대·솎기는 전부 useOverlayViewport(svgRef·wrapRef 의 주인).
+    const viewport = useOverlayViewport({ isDaily, anchor, showFuture, lines, gutter, onGestureStart: closeBadge });
+    const { box, bounds, boundsKey, scales, viewX, lineStep } = viewport;
 
-    // 변환은 그림이 아니라 **스케일**에 건다 — 선 굵기가 안 늘어나고 눈금이 확대에 맞춰 다시 찍힌다.
-    // 축별 변환 두 벌(tx·ty)이라 가로만 당기고 세로만 당기는 손짓이 성립한다.
-    const scales = useMemo<Scales | null>(() => {
-        if (!bounds) return null;
-        const x = scaleLinear().domain([bounds.minX, bounds.maxX]).range([box.left, box.left + box.width]);
-        const y = scaleLinear().domain([bounds.minY, bounds.maxY]).range([box.top + box.height, box.top]);
-        return { x: tx.rescaleX(x), y: ty.rescaleY(y) };
-    }, [bounds, box.left, box.top, box.width, box.height, tx, ty]);
-
-    // ── 선택(집합)·호버 — 차트 선택은 **store 공유**(skeletonSlice): 일봉 패널에서 만든 무리를
-    //    분봉 패널이 "선택만 보기"로 받는다. 키가 차트키라 두 패널이 같은 집합을 그대로 쓴다.
-    const selectedKeys = skeletonSelection;
-    const setSelectedKeys = useWorkbench((s) => s.setSkeletonSelection);
-    // 타점 선택 — 차트 선택과 **별개 집합**(그룹핑 대상이 다르다: 차트 그룹 vs 타점 그룹).
-    // 분봉 뷰는 선=타점이라 선 자체의 선택 집합이다.
-    const [selectedPks, setSelectedPks] = useState<ReadonlySet<string>>(() => new Set());
+    // ── 호버 — 훅 여럿(선택 폴백·조사 대상·테마·핀)이 나눠 읽는 채널이라 배선 층(여기)이 소유한다.
     const [hovered, setHovered] = useState<string | null>(null);
     const byKey = useMemo(() => new Map(lines.map((s) => [s.key, s])), [lines]);
     // 호버 유령 가드 — 짚고 있던 선이 목록에서 사라지면(필터 변경·singleTarget 교체로 히트라인·손잡이가
@@ -299,21 +210,23 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     useEffect(() => {
         if (hovered !== null && !byKey.has(hovered)) setHovered(null);
     }, [hovered, byKey]);
-    // 이 뷰의 선이 쓰는 선택 채널 — 타점 단위면 pk 집합, 차트 단위면 차트키 집합. 문법은 하나다.
-    const activeSelection = isPointUnit ? selectedPks : selectedKeys;
-    const setActiveSelection = isPointUnit ? setSelectedPks : setSelectedKeys;
-    // 로컬 선택이 없으면 지금 선택(subject)이 가리키는 선들을 선택으로 — 다른 패널과의 링크가 이걸로
-    // 이어진다. 분봉에서 하루 선택이면 그날 **전 타점**이 무리로 선다(subjectKeys 가 그렇게 온다).
-    const effSelected = useMemo<ReadonlySet<string>>(() => {
-        if (activeSelection.size > 0) return activeSelection;
-        const hit = [...subjectKeys].filter((k) => byKey.has(k));
-        return hit.length > 0 ? new Set(hit) : new Set();
-    }, [activeSelection, subjectKeys, byKey]);
 
     // 라벨이 붙는 끝 — 골격 종목 이름은 **언제나 경로의 왼쪽 끝**(사용자 확정).
     // 테마 라벨은 왼쪽 거터에 살아 자리 싸움이 없고, 미래 점선 쪽(오른쪽)은 결과라 손잡이를 안 둔다.
     const labelAnchorMode: SkeletonAnchor = isPointUnit ? "last" : anchor;
     const labelAtStart = isPointUnit || anchor === "last";
+
+    // 캔들 토글의 최신 참조 — 선택 훅의 **유일한 역방향 의존**(useCandles 가 조사 대상에서 파생되어
+    // 선택 훅보다 뒤에 태어난다). 클릭 시점에만 부르는 값이라 최신 참조로 잇는다(useMarquee 의 onSelectRef 와 같은 수).
+    const toggleCandleRef = useRef<(code: string) => void>(() => {});
+    const toggleCandle = useCallback((code: string) => { toggleCandleRef.current(code); }, []);
+
+    // 선택·그룹핑 손짓 절반 — 두 선택 채널(차트/타점)의 계약은 useOverlaySelection 머리 주석.
+    const selection = useOverlaySelection({
+        isDaily, isPointUnit, lines, byKey, subjectKeys, pointsByChart, nameOf,
+        labelAnchorMode, scales, wrapRef: viewport.wrapRef, toggleCandle,
+    });
+    const { effSelected } = selection;
 
     // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
     // 선택·호버는 묶음에서 빼고 제 손잡이로 세운다. 그룹 멤버는 안 뺀다 — 이름은 목록이 대고 그림은 색으로 답한다.
@@ -347,64 +260,14 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return (key: string): string => m.get(key) ?? "var(--text-secondary)";
     }, [groupList]);
 
-    /**
-     * 배율 기반 점 솎기 — 이동이 뻑뻑해진 원인이 **테마 선을 하루 전체로 넓힌 것**이라(선당 ~720점,
-     * 30선 + 히트라인 한 벌 더 = 4만여 점의 좌표 문자열을 이동마다 다시 만든다) 배율에 맞춰 줄인다.
-     * 보이는 선은 1px 간격, 히트라인은 굵기가 8px 라 4px 간격이면 판정에 지장이 없다.
-     */
-    const pxPerMinute = scales ? Math.abs(scales.x(1) - scales.x(0)) : 0;
-    const lineStep = decimateStep(pxPerMinute, 1);
-    const hitStep = decimateStep(pxPerMinute, 4);
-    /**
-     * 보이는 x 구간 — 솎기의 **나머지 절반**. 솎기는 축소 쪽만 답한다(확대하면 step 이 1로 돌아와
-     * 점이 다시 720개가 되는데 그중 화면에 있는 건 수십 개뿐이다). 잘라내면 확대할수록 오히려 가벼워진다.
-     */
-    const viewX = useMemo(
-        () => (scales ? { from: scales.x.invert(box.left), to: scales.x.invert(box.left + box.width) } : null),
-        [scales, box.left, box.width],
-    );
-    /** 테마 선 한 벌을 화면 구간으로 자르고 배율에 맞춰 솎는다(보이는 선·히트라인이 같은 재료를 쓴다). */
-    const themePath = useCallback(
-        (points: readonly { x: number; y: number }[], step: number): readonly { x: number; y: number }[] =>
-            decimate(viewX ? clipToX(points, viewX.from, viewX.to) : points, step),
-        [viewX],
-    );
-
-    /**
-     * clipPath id — **인스턴스별**(useId). 일봉·분봉 패널이 한 문서에 같이 떠 있는데 문자열 상수를 쓰면
-     * `url(#…)` 이 문서의 **첫** clipPath 로 풀려, 한 패널의 손짓 층(테마 히트·피벗 손잡이·기준선·축)이
-     * 다른 패널의 상자 사각형으로 잘렸다. useId 의 구분 문자(:, «»)는 CSS url() 에서 못 쓰니 걸러낸다.
-     */
-    const clipId = `skeleton-overlay-clip-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
     const dotsForAll = useMemo(() => lines.reduce((n, s) => n + s.points.length, 0) <= DOT_BUDGET, [lines]);
     const baseOpacity = lineOpacity(lines.length);
     const dimmed = dimOpacity(lines.length);
-    // 라벨이 붙는 끝(labelAnchorMode)·자리 배치(handles)는 뱃지 호버가 그 목록을 읽으므로 **위**로 올라갔다.
 
-    // 상세(피벗 값·기준선·타점 세로선)를 받을 "지금 조사 중인 하나" — 호버 우선, 없으면 단일 선택.
-    const inspectKey = hovered ?? (effSelected.size === 1 ? [...effSelected][0] : null);
+    // "지금 조사 중인 하나" — 호버/선택 규칙(비용이 다르면 방아쇠도 다르다)은 전부 useInspection.
+    const inspection = useInspection({ isDaily, byKey, effSelected, hovered });
+    const { inspectKey, singleTarget, pointTarget, dailyTarget, candleAnchor } = inspection;
 
-    // ── 구간 거래대금(분봉 전용) — 선분마다 분당 평균을 색에 싣는다.
-    //
-    // **대상이 inspectKey 가 아니라 단일 선택인 이유**: 이 값의 재료는 그날 복기 파생 한 벌(압축 해제 ~15MB)이라
-    // 날짜가 바뀔 때마다 왕복이 생긴다. 호버는 라벨 위를 훑기만 해도 날짜가 계속 갈리는 손짓이라 그걸 방아쇠로
-    // 삼으면 스치는 것마다 15MB 를 당긴다. 선택은 **누른** 것이라 왕복이 클릭 수만큼으로 묶인다.
-    // (피벗 값·기준선 같은 공짜 상세는 지금처럼 호버가 이긴다 — 비용이 다르면 규칙도 갈려야 한다.)
-    /** 거래대금·테마가 같이 보는 "지금 조사 중인 선 하나" — 단일 선택일 때만(위 이유). */
-    const singleTarget = useMemo(
-        () => (isDaily || effSelected.size !== 1 ? null : byKey.get([...effSelected][0]) ?? null),
-        [isDaily, effSelected, byKey],
-    );
-    /**
-     * 축이 절대값을 같이 읽는 기준 — **타점 하나를 선택했을 때만**(사용자 확정).
-     * 뷰 좌표는 그 타점 기준 상대값이라, 축 눈금·크로스헤어에 (벽시계 · 전일比 %)를 나란히 세우면
-     * 화면을 옮겨 다니며 값을 환산할 필요가 없어진다. 호버가 아니라 선택을 방아쇠로 삼는 이유:
-     * 라벨 위를 스치기만 해도 축 전체가 다시 쓰이면 눈이 붙잡을 기준이 사라진다.
-     */
-    const axisAbs = useMemo(
-        () => (singleTarget?.kind === "point" ? { baseT: singleTarget.baseT, baseRate: singleTarget.baseRate } : null),
-        [singleTarget],
-    );
     /**
      * 굵기는 **캔들과 공존한다**(사용자 확정 — 실사용에서 굵기가 제일 잘 듣는 채널로 판명).
      * 한때 캔들을 켜면 굵기를 자동으로 껐는데(획 충돌 우려), 굵기는 30선을 한눈에 훑는 유일한 수단이라
@@ -413,38 +276,15 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      */
     const amountWidthOn = showAmount;
     const amountLabelsOn = showAmountLabels;
-    // 런 계산은 굵기가 꺼져도 필요하다 — 값 라벨의 재료가 같은 런이다.
-    const amountTarget = amountWidthOn || amountLabelsOn ? singleTarget : null;
     // 한 벌만 받는다 — 거래대금과 테마가 같은 날짜의 같은 응답을 쓴다(LRU 도 한 자리만 쓴다).
+    // ⚠ 스냅샷·조회기는 패널 소유다 — 테마 훅이 같은 재료를 먼저 받아야 해서 useAmountReadout 에
+    //   못 들어간다(그 파일 머리 주석). 조회기 두 벌의 쓰임새는 amountLayer 머리 주석.
     const snapQ = useDaySnapshot(showAmount || showAmountLabels || showTheme ? singleTarget?.date ?? null : null);
-    // 두 조회기는 **셋이 나눠 쓴다**(골격선 굵기·테마선 굵기·판독 칩) — 그래서 층이 아니라 공용 재료다.
     const lookup = useMemo(() => amountLookupOf(snapQ.data), [snapQ.data]);
-    const amountLookup = lookup.amountAt;
-    const cumLookup = lookup.cumAt;
-
-    const amounts = useMemo(() => {
-        if (!amountTarget) return null;
-        const at = amountLookup(amountTarget.stockCode);
-        if (!at) return null;
-        return { key: amountTarget.key, runs: amountRuns(amountTarget.points, amountTarget.baseT, at, amountLevelOf) };
-    }, [amountTarget, amountLookup]);
 
     // ── 테마 오버레이 — 상태·계산·모드 규칙 전부 useThemeOverlay 가 소유한다.
     //    짚은 선이 하나일 때만 펼친다: 여러 날의 테마를 한 화면에 겹치면 "이 종목이 혼자 튄 건가"가 흐려진다.
     const replaySettings = useWorkbench((s) => s.replaySettings);
-    const pointTarget: PointSkeleton | null = singleTarget?.kind === "point" ? singleTarget : null;
-    /**
-     * 일봉 패널에서 짚은 차트 하나 — **캔들 오버레이 전용**(사용자 확정). `singleTarget` 은 분봉 전용이라
-     * (거래대금·테마의 재료가 그날 복기 스냅샷이다) 여기서 따로 뽑는다. 일봉 캔들은 그 재료를 안 쓴다 —
-     * `/chart` 번들의 일봉을 그대로 깔면 되고, 그건 이미 차트 패널들과 캐시를 공유한다.
-     */
-    const dailyTarget = useMemo(
-        () => (!isDaily || effSelected.size !== 1 ? null : byKey.get([...effSelected][0]) ?? null),
-        [isDaily, effSelected, byKey],
-    );
-    /** 캔들의 주인공 — 분봉이면 짚은 타점 선, 일봉이면 짚은 차트 선. 재료(차트 번들)는 한 벌이다. */
-    const candleAnchor: Line | null = pointTarget ?? dailyTarget;
-
     const theme = useThemeOverlay({
         enabled: !isDaily && showTheme,
         target: pointTarget,
@@ -460,15 +300,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const themeOverlay = theme.overlay;
     const themeLabels = useThemeLabels(themeOverlay, scales, viewX, box);
 
-    /**
-     * 지금 짚고 있는 대상 — 캔들을 그릴지 정하는 유일한 기준. null 이면 아무것도 안 짚은 상태(전부 그린다).
-     * 골격선 호버는 **선 하나**(키), 테마 라벨·뱃지 호버는 종목 무리.
-     */
-    const candleFocus = useMemo<CandleFocus>(() => {
-        if (theme.hovered) return { kind: "theme", codes: theme.hovered };
-        if (hovered) return { kind: "line", key: hovered };
-        return null;
-    }, [theme.hovered, hovered]);
+    // 지금 짚고 있는 대상(캔들 감추기의 유일한 기준) — 규칙은 candleFocusOf(테마 호버가 이 뒤에 태어나 순수 함수다).
+    const candleFocus = useMemo(() => candleFocusOf(theme.hovered, hovered), [theme.hovered, hovered]);
 
     // ── 캔들 오버레이 — **참고용 배경**(흐리게). 주인공은 여전히 골격 선이다.
     // 상태(켠 종목)·재료(차트 번들·스냅샷)·감추기 규칙은 전부 useCandles 가 안다. 이 패널은 짚고 있는
@@ -476,79 +309,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const candles = useCandles({
         anchor: candleAnchor, pointTarget, dailyTarget, snapshot: snapQ.data, focus: candleFocus, nameOf, grain,
     });
-
-
-
-    /**
-     * ── 세로선 판독 — **선 하나에 손이 올라가면** 교차선의 세로선이 그 시각의 판독 자가 된다(사용자 확정).
-     * 그 x 에서 보이는 선들의 값을 읽어 세로선 **오른쪽**에 칩으로 세운다(왼쪽 = 지나온 궤적이라 안 가린다).
-     *
-     * 여기서는 **재료(조회기)만** 만든다 — 값은 커서를 따라 매 픽셀 바뀌므로 실제 판독·배치·그리기는
-     * 크로스헤어 층이 자기 안에서 한다(부모가 mousemove 를 타면 선 수백 개가 이동마다 재조정된다).
-     * 조회는 O(1) 이어야 한다: 테마 멤버는 1분에 점 하나라 **x → y 색인**을 선당 한 번 만들어 둔다
-     * (yAtX 로 매번 훑으면 30선 × 720점을 마우스 이동마다 반복한다).
-     */
-    const readoutSources = useMemo<ReadoutSource[] | null>(() => {
-        if (isDaily || !pointTarget) return null;
-        const t0 = pointTarget.baseT;
-        const out: ReadoutSource[] = [];
-        const anchorAt = amountLookup(pointTarget.stockCode);
-        const anchorCum = cumLookup(pointTarget.stockCode);
-        out.push({
-            code: pointTarget.stockCode, name: nameOf(pointTarget.stockCode), own: true, t0,
-            baseRate: pointTarget.baseRate,
-            // 골격선은 피벗 몇 개뿐이라 보간이 싸다 — 그리고 피벗 사이 임의 지점도 읽혀야 한다.
-            yAt: (x) => yAtX(pointTarget.points, x),
-            amountAt: anchorAt, cumAt: anchorCum,
-        });
-        for (const l of themeOverlay?.lines ?? []) {
-            const byX = new Map(l.points.map((p) => [p.x, p.y] as const));
-            out.push({
-                code: l.code, name: l.name, t0, baseRate: themeOverlay!.baseRate,
-                yAt: (x) => byX.get(Math.round(x)) ?? null,
-                amountAt: amountLookup(l.code), cumAt: cumLookup(l.code),
-            });
-        }
-        return out;
-    }, [isDaily, pointTarget, themeOverlay, amountLookup, cumLookup, nameOf]);
-
-    /** 판독을 지금 펼치나 — **테마 선이든 골격선이든 하나에 손이 올라갔을 때만**(사용자 확정). */
-    const readoutOn = !!readoutSources && (theme.hovered?.size === 1 || (hovered !== null && hovered === singleTarget?.key));
-    const readoutAt = useMemo<((x: number) => ReadoutCandidate[]) | null>(() => {
-        if (!readoutOn || !readoutSources) return null;
-        const lit = theme.hovered?.size === 1 ? [...theme.hovered][0] : singleTarget?.stockCode ?? null;
-        return (x) => pickReadouts(readoutCandidatesAt(readoutSources, x, lit), READOUT_TOP, READOUT_TOP);
-    }, [readoutOn, readoutSources, theme.hovered, singleTarget]);
+    toggleCandleRef.current = candles.toggle;
 
     // ── 피벗 값 붙잡기 — 상태·판정 전부 usePivotPins 가 소유한다(골격선 층이 `shown` 을 물어본다).
     const pins = usePivotPins({ target: singleTarget, resetKey: themeOverlay?.key, anchorKey: anchor });
 
-    /**
-     * 붙잡은 핀 시각의 판독 — **크로스헤어 판독과 같은 규칙**으로 통일했다(사용자 확정):
-     * 옛 열 쌓기(layoutAxisColumns)는 겹칠수록 오른쪽으로 번져 화면을 넘었고, "어느 시각 것이냐"를
-     * 열로 읽는 규칙을 따로 배워야 했다. 지시선이 이미 대응을 지므로 **한 열에서 위아래로** 벌리면 그만이다.
-     * 뽑기도 같은 기준(등락률·누적 대금 상위) — 두 판독이 다른 무리를 보여주면 그게 더 헷갈린다.
-     */
-    const themeReadingSlots = useMemo(() => {
-        if (!scales || !readoutSources || pins.openReadingX === null) return [];
-        return layoutReadoutRows(
-            pickReadouts(readoutCandidatesAt(readoutSources, pins.openReadingX), READOUT_TOP, READOUT_TOP)
-                .map((r) => ({ item: r, y: scales.y(r.y) })),
-            { min: box.top + 8, max: box.top + box.height - 8 },
-            READOUT_GAP,
-        );
-    }, [scales, readoutSources, pins.openReadingX, box.top, box.height]);
-
-    /** 라벨 후보를 내는 선들 — 앵커 골격 + 테마 전부. 모양이 같아 한 격자에서 겨룬다(AmountLabels). */
-    const amountSources = useMemo<AmountSource[]>(() => {
-        const out: AmountSource[] = [];
-        if (amounts && amountTarget) out.push({ code: amountTarget.stockCode, runs: amounts.runs, baseT: amountTarget.baseT, own: true });
-        if (theme.runs && themeOverlay) for (const [code, runs] of theme.runs) out.push({ code, runs, baseT: themeOverlay.t0, own: false });
-        return out;
-    }, [amounts, amountTarget, theme.runs, themeOverlay]);
-    const amountLabels = useAmountLabels(amountSources, scales, pins.anchorMinutes, amountLabelsOn);
-
-
+    // 복기 스냅샷을 재료로 쓰는 파생 한 벌 — 런·세로선 판독·핀 판독·금액 라벨(useAmountReadout).
+    const amount = useAmountReadout({
+        isDaily, singleTarget, pointTarget, amountWidthOn, amountLabelsOn, lookup,
+        themeOverlay, themeRuns: theme.runs, themeHovered: theme.hovered, hovered,
+        nameOf, scales, box, openReadingX: pins.openReadingX, anchorMinutes: pins.anchorMinutes,
+    });
 
     // 역할 판정은 순수 함수(lineVisual)가, 색 배정은 여기가 한다 — 팔레트는 화면의 몫이라 규칙 층에 안 들인다.
     const visualOf = useCallback((key: string): { v: LineVisual; color: string } => {
@@ -562,95 +333,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return { v, color };
     }, [effSelected, hovered, groupSet, groupColorOf, outOfPick]);
 
-    /** 평클릭 = 이동 + 단일 선택(교체). Ctrl+클릭 = 선택 토글만(이동 없음 — 무리를 만드는 중이다).
-     *  타점 단위 선(time 있음)은 자기 타점으로 바로 이동하고 선택은 pk 채널을 쓴다 — 문법은 같다.
-     *
-     *  **이미 선택된 선의 라벨을 다시 클릭하면 캔들 토글**(사용자 확정) — 테마 라벨과 같은 손짓을
-     *  관찰 종목에도 주되, 첫 클릭의 일(선택·이동)은 안 뺏는다. 이미 선택된 걸 또 누르는 건 원래
-     *  아무 일도 안 했으므로(같은 곳으로 다시 이동할 뿐) 빈자리에 얹은 셈이다. */
-    const onLabelClick = useCallback((s: Line, ev: { ctrlKey: boolean; metaKey: boolean }): void => {
-        // 캔들을 켜는 건 **타점 단위 선(분봉)** 과 **일봉 차트 선** 둘 다(사용자 확정).
-        // 분봉 절대 뷰는 빠진다 — 거기 선은 하루 경로 전체라 캔들의 주인공이 정해지지 않는다.
-        const candleable = s.kind === "point" || isDaily;
-        if (!ev.ctrlKey && !ev.metaKey && candleable && effSelected.size === 1 && effSelected.has(s.key)) {
-            candles.toggle(s.stockCode);
-            return;
-        }
-        if (ev.ctrlKey || ev.metaKey) {
-            setActiveSelection((prev: ReadonlySet<string>) => {
-                const next = new Set(prev.size > 0 ? prev : effSelected); // 활성 타점 폴백 선택도 무리의 시작점이 된다
-                if (next.has(s.key)) next.delete(s.key);
-                else next.add(s.key);
-                return next;
-            });
-            return;
-        }
-        setActiveSelection(new Set([s.key]));
-        if (s.kind === "point") {
-            goToPoint({ code: s.stockCode, date: s.date, time: s.time }, "skeleton-overlay");
-            return;
-        }
-        const pts = pointsByChart.get(s.chartKey);
-        if (pts?.length) goToPoint({ code: s.stockCode, date: s.date, time: pts[0].time }, "skeleton-overlay");
-        else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
-    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus, candles.toggle, isDaily]);
-
-    // ── Ctrl+드래그 사각 선택 — 사각형 역학은 useMarquee 가, **무엇을 담을지**는 여기가 정한다.
-    const onMarqueeSelect = useCallback((rect: MarqueeRect): void => {
-        if (!scales) return;
-        // 라벨 지점 판정 — 이 뷰의 선택 채널로 담는다(차트 단위=차트키, 타점 단위=pk. 문법은 하나).
-        // ⚠ showLabels 와 무관하게 **라벨이 설 자리**(앵커 반대쪽 끝점)로 판정한다(일부러) — 라벨을 꺼도
-        //   손잡이 좌표 규약은 유지돼야 같은 사각이 같은 무리를 담는다(선 기하 판정은 얽힌 곳에서 이미 기각됨).
-        const hit = keysInRect(lines, labelAnchorMode, scales.x, scales.y, rect);
-        if (hit.length > 0) setActiveSelection((prev: ReadonlySet<string>) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
-    }, [scales, lines, effSelected, labelAnchorMode, setActiveSelection]);
-    const { marquee, onMouseDown: onWrapMouseDown } = useMarquee(wrapRef, !!scales, onMarqueeSelect);
-
-    // ── 그룹 메뉴 — 라벨/마커 우클릭(단일) / 헤더 그룹 버튼(선택 일괄). 그룹핑의 입력 지점.
-    // 어느 정션에 쓰느냐는 여기 규약이다: 차트 라벨 → 차트 그룹 / 타점 마커 → 타점 그룹. DB 사전은 하나.
-    type GroupMenuState =
-        | { kind: "chart"; x: number; y: number; charts: { stockCode: string; date: string }[]; label: string }
-        | { kind: "point"; x: number; y: number; points: PointRef[]; label: string };
-    const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
-    /** 선 라벨 우클릭 — 이 선의 정션으로 간다: 타점 단위 선은 타점 그룹, 차트 단위 선은 차트 그룹. */
-    const openGroupMenuFor = useCallback((s: Line, ev: { clientX: number; clientY: number; preventDefault: () => void }): void => {
-        ev.preventDefault();
-        if (s.kind === "point") {
-            setGroupMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points: [{ stockCode: s.stockCode, date: s.date, time: s.time }], label: `${nameOf(s.stockCode)} ${s.time.slice(0, 5)}` });
-            return;
-        }
-        setGroupMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts: [{ stockCode: s.stockCode, date: s.date }], label: `${nameOf(s.stockCode)} ${shortDate(s.date)}` });
-    }, [nameOf]);
-    // 선택 중 **이 패널에 실제로 있는** 차트 — 다른 골격 패널(일봉↔분봉)에서 만든 선택엔 여기 없는
-    // 차트가 섞일 수 있다. 헤더 버튼 숫자와 메뉴 대상이 같은 목록을 봐야 "차트 3 그룹"가 2개만 여는 일이 없다.
-    const selectedCharts = useMemo(
-        () => (isPointUnit ? [] : [...effSelected].map((k) => byKey.get(k)).filter((s): s is Line => !!s)),
-        [isPointUnit, effSelected, byKey],
-    );
-    // 선택 중 이 패널에 실제로 있는 **타점** — selectedCharts 와 같은 규칙. 저장된 선택은 안 지운다
-    // (필터를 풀면 정당하게 되살아난다) — 작업줄의 개수·그룹 대상만 현재 목록(byKey)으로 거른다.
-    const presentPks = useMemo(
-        () => new Set([...selectedPks].filter((k) => byKey.has(k))),
-        [selectedPks, byKey],
-    );
-    const openGroupMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
-        const charts = selectedCharts.map((s) => ({ stockCode: s.stockCode, date: s.date }));
-        if (charts.length === 0) return;
-        setGroupMenu({ kind: "chart", x: ev.clientX, y: ev.clientY, charts, label: charts.length === 1 ? `${nameOf(charts[0].stockCode)} ${shortDate(charts[0].date)}` : `선택 ${charts.length}개` });
-    }, [selectedCharts, nameOf]);
-    const openPointGroupMenu = useCallback((points: PointRef[], label: string, ev: { clientX: number; clientY: number; preventDefault?: () => void }): void => {
-        ev.preventDefault?.();
-        if (points.length > 0) setGroupMenu({ kind: "point", x: ev.clientX, y: ev.clientY, points, label });
-    }, []);
-
-    // 목록 순서 = 라벨 지점의 % 내림차순 — 그림에서 위에 있는 선이 목록에서도 위라 눈이 안 헤맨다.
-    const badgeRows = useMemo(() => {
-        if (!badge) return [];
-        return badge.members
-            .map((k) => byKey.get(k))
-            .filter((s): s is Line => !!s)
-            .sort((a, b) => labelPointOf(b, labelAnchorMode).y - labelPointOf(a, labelAnchorMode).y);
-    }, [badge, byKey, labelAnchorMode]);
     useEffect(() => { setBadge(null); setBadgeHover(null); }, [boundsKey, anchor, grain]);
     /** 지금 조사 중인 선의 그룹 이름들 — 타점 단위 선은 타점 그룹(차트 그룹 상속 포함), 차트 단위 선은 차트 그룹. */
     const inspectGroupNames = useMemo(() => {
@@ -726,12 +408,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             absentLabel={isDaily ? "골격 없음" : "골격·타점 없음"} />,
         [subject, subjectState, nameOf, isDaily],
     );
-    const onToggleLock = useCallback(
-        () => setLocked((l) => (l ? null : autoBounds)),
-        [autoBounds],
-    );
-
-
 
     /**
      * 그림 세 층의 표시목록 — **매 렌더 새로 만든다**(memo 하지 않는다).
@@ -754,7 +430,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     // 런은 값 라벨과 공용 재료라 훅이 (굵기 ∨ 값)으로 굽는다 — **굵기 채널**엔 굵기가 켜졌을 때만 싣는다
                     // (골격선 층의 `amounts: amountWidthOn ? … : null` 과 같은 분리).
                     overlay: themeOverlay, runs: amountWidthOn ? theme.runs : null, hovered: theme.hovered,
-                    project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
+                    project: (pts, step) => flatten(viewport.themePath(pts, step), scales.x, scales.y),
                     clip: viewX, lineStep,
                 })
                 : EMPTY_THEME_LINES,
@@ -764,15 +440,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 visualOf,
                 opacity: { dimmed, recede: RECEDE_OPACITY, base: baseOpacity },
                 isPointUnit,
-                amounts: amountWidthOn ? amounts : null,
-                project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
+                amounts: amountWidthOn ? amount.amounts : null,
+                project: (pts, step) => flatten(viewport.themePath(pts, step), scales.x, scales.y),
                 lineStep,
                 dotsForAll,
                 pins,
                 fmtX: (x) => fmtX(x, xUnit),
-                fmtPct,
-                timeOfMinutes,
-                clamp,
             }),
         })
         : [];
@@ -790,200 +463,60 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 subjectBadge={subjectBadge}
                 onlySelected={onlySelected}
                 setOnlySelected={setOnlySelected}
-                locked={locked !== null}
-                onToggleLock={onToggleLock}
+                locked={viewport.locked}
+                onToggleLock={viewport.onToggleLock}
             />
 
             {/* 그림판과 집합 사이드바가 한 줄 — 사이드바는 오른쪽(여닫는 칩이 왼쪽이라도, 목록이 그림을
                 밀어내는 방향이 오른쪽이어야 척도가 왼쪽 끝에서 안 흔들린다). */}
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-            {/* data-plot — 그림판을 찾는 **이름표**. 테스트가 "첫 번째 svg 의 부모"로 찾고 있었는데,
-                머리글에 아이콘 하나(⋯)가 들어오자 통째로 엉뚱한 곳을 짚었다. 손짓(마퀴·단축키 창)이
-                걸린 상자라 이름으로 잡는 게 맞다. */}
-            <div ref={wrapRef} data-plot onMouseDown={onWrapMouseDown}
-                onMouseEnter={() => setHoveringPanel(true)} onMouseLeave={() => setHoveringPanel(false)}
-                style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative" }}>
-                {feedLoading && <div style={muted}>불러오는 중…</div>}
-                {!feedLoading && lines.length === 0 && (
-                    <div style={muted}>
-                        {isDaily ? "일봉 골격이 그려진 차트가 없습니다." : "분봉 골격 위 타점이 없습니다(필터·선택만 보기·전일 종가 결손에 걸렸을 수도)."}
-                    </div>
-                )}
-                {/* ── 그림판은 **세 겹**이다. 층 순서가 뜻을 지므로 캔버스를 그 사이에 끼워야 한다:
-                       ① SVG(아래) — 눈금·지시선·좌표축. 그림보다 아래에 깔린다.
-                       ② canvas    — 캔들·테마 선·골격선(PAINT_ORDER). 노드 0개.
-                       ③ SVG(위)   — 손짓(히트라인·손잡이)과 값(거래대금·기준선). 줌도 여기 붙는다.
-                    한 SVG 안에 캔버스를 넣을 수가 없어서(foreignObject 는 위험을 안 살 이유가 없다)
-                    셋을 겹쳐 쌓는다 — 문서 순서가 그대로 그리는 순서라 규약이 안 바뀐다. */}
-                <svg width={size.w} height={size.h}
-                    style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-                    <defs>
-                        <clipPath id={clipId}><rect x={box.left} y={box.top} width={box.width} height={box.height} /></clipPath>
-                    </defs>
-                    {scales && bounds && (
-                        <>
-                            {/* 테마 라벨의 지시선 — 클립 밖(거터는 그림 상자 바깥이라 클립하면 사라진다).
-                                ⚠ **눈금보다 먼저** 그린다 — 눈금 숫자 칸을 가로지르므로 나중에 그리면
-                                점선이 숫자 위에 얹혀 둘 다 못 읽는다(층 순서 테스트가 잡는다). */}
-                            {!theme.swapped && themeOverlay && (
-                                <ThemeLeaders labels={themeLabels.named} scales={scales} box={box}
-                                    colorOf={theme.colorOf} hovered={theme.hovered} />
-                            )}
-
-                            {/* 눈금·원점 좌표축 — 표기 규칙 전부 AxisLayer 가 소유(절대값 아랫줄 포함). */}
-                            <AxisLayer scales={scales} box={box} sizeH={size.h}
-                                fmtX={(v: number) => fmtX(v, xUnit)} abs={axisAbs} clipId={clipId} />
-                        </>
-                    )}
-                </svg>
-
-                {/* 그림 세 층 — DOM 노드 0개. 무엇을 몇 개 그렸는지는 canvas 의 data-* 로 남는다
-                    (캔버스는 devtools 로 안을 못 본다 — 화면 테스트도 그 값으로 빈 화면을 가려낸다). */}
-                <CanvasLayers layers={paintLayers} width={size.w} height={size.h}
-                    clip={scales && bounds ? box : null} />
-
-                <svg ref={svgRef} width={size.w} height={size.h} onDoubleClick={onDoubleClick}
-                    style={{ position: "absolute", inset: 0, cursor: dragging ? "grabbing" : "default", touchAction: "none" }}>
-                    {scales && bounds && (
-                        <>
-                            <g clipPath={`url(#${clipId})`}>
-
-                                {/* 테마 히트라인 — 그림 뭉치 **뒤**에 선다. 그림 층은 포인터를 안 받으므로
-                                    손짓끼리의 우선순위(핀 세로선 < 이것 < 골격 히트 < 피벗 손잡이)는 그대로다. */}
-                                {themeOverlay && !theme.swapped ? (
-                                    <ThemeHit overlay={themeOverlay} hitStep={hitStep}
-                                        pathOf={(pts, step) => pathOf(themePath(pts, step), scales)}
-                                        onHover={theme.setHovered} onToggleCandle={candles.toggle} />
-                                ) : (
-                                    <g data-layer="theme-hit" />
-                                )}
-
-                                {/* 붙잡은 피벗의 세로선 — 테마 값을 펼치는 손잡이.
-                                    ⚠ **피벗 손잡이보다 먼저** 그린다(PinLayer 머리 주석 — 겪은 버그). */}
-                                <PinVerticals xs={themeOverlay ? pins.pinnedXs : []} openX={pins.openReadingX}
-                                    scales={scales} box={box} onHover={pins.setHoveredPinLine} />
-
-                                {/* 짚은 골격선의 히트라인 — 테마 선과 같은 손짓(선 위에서 값을 읽는다).
-                                    **선택된 것 하나만** 포인터를 받는다: 전체 골격선을 열면 많아질수록 손이 걸리고,
-                                    그때는 라벨만 손잡이로 남긴다는 게 이 패널의 규약이다(사용자 확정). */}
-                                <g data-layer="line-hit">
-                                {singleTarget && (
-                                    <polyline points={pathOf(singleTarget.points, scales)}
-                                        fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
-                                        style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                                        onClick={() => candles.toggle(singleTarget.stockCode)}
-                                        onMouseEnter={() => setHovered(singleTarget.key)}
-                                        onMouseLeave={() => setHovered(null)} />
-                                )}
-                                </g>
-
-                                {/* ⚠ 그림 위에서 포인터를 받는 것들(히트라인·피벗 손잡이·핀 세로선)엔 **`<title>` 을 두지 않는다**
-                                    (사용자 요구): 값을 읽으려고 손을 올린 그 자리에 브라우저 툴팁이 떠서 판독을 가린다.
-                                    조작 안내는 푸터가 한 줄로 답하고, 값은 판독 칩이 답한다.
-
-                                    피벗 손잡이 — 포인터를 받는 건 **조사 중인 골격 + 값을 붙잡아 둔 골격**의 점들뿐이다
-                                    (선은 여전히 순수 그림). 한두 벌뿐이라 뭉쳐서 못 겨냥하는 문제가 없다.
-                                    핀이 걸린 선까지 넣는 이유: 그 선을 떠난 뒤에도 값이 남는데 손잡이가 사라지면 **뗄 수가 없다**.
-                                    들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
-                                    클릭 = 그 점의 값 붙잡기/떼기(사용자 확정) — 여럿을 나란히 놓고 볼 수 있다.
-                                    **맨 위에 그린다** — 위 세로선·아래 선들 어느 것도 이 손잡이를 가리면 안 된다. */}
-                                <PivotHandles
-                                    lines={[...new Set([...(inspectKey ? [inspectKey] : []), ...pins.linesWithPins])]
-                                        .map((key) => byKey.get(key))
-                                        .filter((s): s is Line => !!s)}
-                                    scales={scales}
-                                    onToggle={pins.toggle}
-                                    // 들어올 때 선 호버도 같이 켠다 — 라벨에서 손이 떠나 조사 대상이 바뀌면 점이 사라져 못 짚는다.
-                                    onHover={(at) => { setHovered(at?.key ?? null); pins.setHoveredPivot(at); }}
-                                />
-
-                                {/* 거래대금 숫자 — **선×세그먼트당 하나 → 화면 x 격자**로 솎아 살아남은 것들.
-                                    점은 **터진 그 분의 자리**에 정확히 얹히고(표식), 숫자는 그 오른쪽에 선다.
-                                    점 색이 어느 선 것인지 말한다(좌측 이름 라벨의 점과 같은 색). */}
-                                {/* 스왑 중(다른 골격선을 짚는 중)엔 거래대금 숫자도 접는다 — 테마·캔들을 접어 놓고
-                                    그 숫자들만 남으면 어느 선의 것인지 가리킬 대상이 없어 화면에 뜬 잡음이 된다. */}
-                                <g data-layer="amount-labels">
-                                    {!theme.swapped && (
-                                        <AmountLabels labels={amountLabels} colorOf={theme.colorOf} dimmedExcept={theme.hovered} />
-                                    )}
-                                </g>
-
-                                {/* 얹는 선(기준선·D선) — 환산·스타일 규칙은 LevelsLayer 가, **누가 받나**(선택·호버)는
-                                    여기(levelOwners)가 정한다. 다중 선택이면 호버 것만(수십 벌이 겹치므로). */}
-                                <LevelsLayer owners={levelOwners} levelsOf={(ck) => levelsByChart.get(ck) ?? []}
-                                    scaleY={scales.y} box={box} />
-                            </g>
-                        </>
-                    )}
-                </svg>
-
-                {/* 핀 시각의 판독 — 그 세로선 오른쪽에 크로스헤어 판독과 **같은 모양**으로. */}
-                {scales && themeReadingSlots.length > 0 && pins.openReadingX !== null && (
-                    <PinReadout rows={themeReadingSlots} x={pins.openReadingX} scales={scales} colorOf={theme.colorOf} />
-                )}
-
-                {/* 테마 이름 층 + 넘침 뱃지 목록 — 그림 상자 왼쪽 거터(HTML). */}
-                {scales && (
-                    <ThemeGutter theme={theme} labels={themeLabels} box={box} swapped={theme.swapped}
-                        isCandleOn={(code) => candles.codes.has(code)} onToggleCandle={candles.toggle} />
-                )}
-
-                {/* 라벨 층 — HTML(칩 폭 계산 공짜 + d3 가 SVG mousedown 을 삼키는 문제 회피). 컨테이너는 포인터 통과. */}
-                {scales && showLabels && (
-                    <LabelLayer
-                        handles={handles} byKey={byKey} box={box}
-                        labelAtStart={labelAtStart}
-                        themeMode={theme.mode}
-                        visualOf={(key) => { const { v, color } = visualOf(key); return { selected: v.role === "selected", color }; }}
-                        nameOf={nameOf}
-                        isCandleOn={(code) => candles.codes.has(code)}
-                        canToggleCandle={(s) => (s.kind === "point" || isDaily) && effSelected.has(s.key) && effSelected.size === 1}
-                        onLabelClick={onLabelClick}
-                        onLabelContext={openGroupMenuFor}
-                        onHover={setHovered}
-                        onBadgeOpen={(at, members) => setBadge({ ...at, members })}
-                        onBadgeHover={setBadgeHover}
-                    />
-                )}
-
-                {/* 사각 선택 상자(Ctrl+드래그) */}
-                {marquee && (
-                    <div style={{
-                        position: "absolute", pointerEvents: "none",
-                        left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1),
-                        width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0),
-                        border: `1px dashed ${ACTIVE}`, background: "rgba(14,165,233,0.08)",
-                    }} />
-                )}
-
-                {/* 크로스헤어 — 자기 상태(마우스 좌표)만 다시 그린다. 부모 렌더에 mousemove 를 태우면
-                    이동마다 선 수백 개가 재조정된다(분리한 이유). 팬 중엔 숨긴다(사용자 확정). */}
-                {scales && !dragging && (
-                    <CrosshairLayer wrapRef={wrapRef} scales={scales} box={box} fmtX={(v: number) => fmtX(v, xUnit)} abs={axisAbs}
-                        readoutAt={readoutAt} colorOf={theme.colorOf} />
-                )}
-
-                {/* 선택 작업줄 — 지금 고른 것에 대해 할 일(그룹·해제·원위치). 헤더가 아니라 대상 옆에 뜬다.
-                    ⚠ 크로스헤어 **뒤**에 온다: 문서 순서가 곧 겹침 순서라, 앞에 두면 판독 칩이 판 위로 올라온다. */}
-                <OverlaySelectionBar
-                    selection={{
-                        chartCount: selectedCharts.length,
-                        chartChannelShown: !isPointUnit,
-                        rawChartCount: selectedKeys.size,
-                        onGroupCharts: openGroupMenuForSelection,
-                        onClearCharts: () => setSelectedKeys(new Set()),
-                        pointKeys: presentPks,
-                        rawPointCount: selectedPks.size,
-                        onGroupPoints: openPointGroupMenu,
-                        onClearPoints: () => setSelectedPks(new Set()),
-                        // 핀도 같은 규칙 — 개수는 화면에 있는 선의 것만, 비우기는 유령까지 전부(usePivotPins.countIn).
-                        pinnedCount: pins.countIn((k) => byKey.has(k)),
-                        onClearPins: pins.clear,
-                    }}
-                    zoomed={zoomed}
-                    onResetZoom={reset}
-                />
-            </div>
+            <OverlayPlot
+                isDaily={isDaily}
+                xUnit={xUnit}
+                feedLoading={feedLoading}
+                linesEmpty={lines.length === 0}
+                showLabels={showLabels}
+                labelAtStart={labelAtStart}
+                viewport={viewport}
+                paintLayers={paintLayers}
+                theme={theme}
+                themeLabels={themeLabels}
+                candles={candles}
+                pins={pins}
+                inspection={inspection}
+                byKey={byKey}
+                setHovered={setHovered}
+                handles={handles}
+                visualOf={visualOf}
+                nameOf={nameOf}
+                effSelected={effSelected}
+                onLabelClick={selection.onLabelClick}
+                onLabelContext={selection.openGroupMenuFor}
+                onBadgeOpen={(at, members) => setBadge({ ...at, members })}
+                onBadgeHover={setBadgeHover}
+                marquee={selection.marquee}
+                onWrapMouseDown={selection.onWrapMouseDown}
+                onHoverPanel={setHoveringPanel}
+                readoutAt={amount.readoutAt}
+                themeReadingSlots={amount.themeReadingSlots}
+                amountLabels={amount.amountLabels}
+                levelOwners={levelOwners}
+                levelsOf={(ck) => levelsByChart.get(ck) ?? []}
+                selection={{
+                    chartCount: selection.selectedCharts.length,
+                    chartChannelShown: !isPointUnit,
+                    rawChartCount: selection.selectedKeys.size,
+                    onGroupCharts: selection.openGroupMenuForSelection,
+                    onClearCharts: selection.clearCharts,
+                    pointKeys: selection.presentPks,
+                    rawPointCount: selection.selectedPks.size,
+                    onGroupPoints: selection.openPointGroupMenu,
+                    onClearPoints: selection.clearPoints,
+                    // 핀도 같은 규칙 — 개수는 화면에 있는 선의 것만, 비우기는 유령까지 전부(usePivotPins.countIn).
+                    pinnedCount: pins.countIn((k) => byKey.has(k)),
+                    onClearPins: pins.clear,
+                }}
+            />
             {sideOpen && (
                 <SetSidebar binding={binding} members={setMembers} showTime={!isDaily}
                     onPick={(it) => (it.time !== undefined
@@ -992,48 +525,23 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             )}
             </div>
 
-            {/* 뭉친 라벨의 멤버 목록 — 행 점이 그림의 그 선과 같은 색(목록↔그림을 잇는 유일한 것). */}
-            {badge && (
-                <AnchoredPopover anchor={badge} onClose={closeBadge} minWidth={190} padding={0} placement="beside" offset={6}>
-                    <MenuLabel>{badge.members.length}개 골격</MenuLabel>
-                    <div style={{ maxHeight: 260, overflowY: "auto" }}>
-                        {badgeRows.map((s) => (
-                            <div key={s.key} onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}>
-                                {/* ⚠ 닫기 전에 호버를 **손으로** 푼다 — 목록이 사라지면 이 행은 언마운트라
-                                    mouseleave 가 영영 안 온다(라벨에서 겪은 것과 같은 부류의 누수).
-                                    거기선 노드를 안 부수는 게 답이지만, 여기선 닫는 게 목적이라 풀어 주는 게 답이다. */}
-                                <MenuItem onClick={() => { onLabelClick(s, { ctrlKey: false, metaKey: false }); setHovered(null); closeBadge(); }}>
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                                        <span style={{ width: 6, height: 6, borderRadius: 3, background: groupColorOf(s.key), flexShrink: 0 }} />
-                                        <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{shortDate(s.date)}</span>
-                                        <span>{nameOf(s.stockCode)}</span>
-                                        {s.kind === "point" && <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{s.time.slice(0, 5)}</span>}
-                                    </span>
-                                </MenuItem>
-                            </div>
-                        ))}
-                    </div>
-                </AnchoredPopover>
-            )}
-
-            {/* 그룹 메뉴 — 같은 창, 다른 정션: 차트 라벨은 chart_tags, 타점 마커는 review_point_tags. */}
-            {groupMenu?.kind === "chart" && (
-                <BulkGroupMenu anchor={groupMenu} targets={groupMenu.charts} scope="day" label={groupMenu.label} onClose={() => setGroupMenu(null)}
-                    hasGroup={(c, id) => groupsView.chartGroupNamesOf(c).includes(id)}
-                    inheritedVia={(c, id) => groupsView.inheritedViaOf(c, id)?.name ?? null}
-                    toggle={(c, id, on) => groupsView.toggleChart(c, id, on)} />
-            )}
-            {groupMenu?.kind === "point" && (
-                <BulkGroupMenu anchor={groupMenu} targets={groupMenu.points} scope="point" label={groupMenu.label} onClose={() => setGroupMenu(null)}
-                    hasGroup={(p, id) => groupsView.has(p, id)}
-                    inheritedVia={(p, id) => groupsView.inheritedViaOf(p, id)?.name ?? null}
-                    toggle={(p, id, on) => groupsView.toggle(p, id, on)} />
-            )}
+            <OverlayMenus
+                badge={badge}
+                onCloseBadge={closeBadge}
+                byKey={byKey}
+                labelAnchorMode={labelAnchorMode}
+                groupColorOf={groupColorOf}
+                nameOf={nameOf}
+                onLabelClick={selection.onLabelClick}
+                setHovered={setHovered}
+                groupMenu={selection.groupMenu}
+                onCloseGroupMenu={selection.closeGroupMenu}
+            />
 
             <OverlayFooter
                 grain={grain}
                 groupNames={inspectGroupNames}
-                locked={locked !== null}
+                locked={viewport.locked}
                 themeMode={theme.mode}
                 themeLineCount={themeOverlay?.lines.length ?? 0}
                 candles={{
@@ -1053,5 +561,3 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 }
 
 const wrap: CSSProperties = { display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" };
-/** 안내 문구 — 공용 문구 위에 **덮개**만 얹는다(그림 위에 떠서 포인터를 안 먹게). */
-const muted: CSSProperties = { ...mutedNote, position: "absolute", inset: 0, pointerEvents: "none" };

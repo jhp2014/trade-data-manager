@@ -9,7 +9,7 @@
 import { minuteOfDayOf, amountBucketIndex } from "@trade-data-manager/market/domain";
 import type { DayReplay } from "@trade-data-manager/wire";
 import { AMOUNT_LEVEL_OF_BUCKET, AMOUNT_LEVEL_WIDTH } from "../../chart/chartUtils.js";
-import { minuteAmountOf, minuteIndexOf, LEVEL_MISSING } from "./skeletonOverlay.js";
+import { minuteAmountOf, minuteIndexOf, LEVEL_MISSING, LEVEL_QUIET } from "./skeletonOverlay.js";
 
 /** 분당 거래대금 조회기 — 없으면 null(그날 유니버스 밖). 있는 것만 값을 준다. */
 export type MinuteAmountAt = ((minute: number) => number | null) | null;
@@ -20,10 +20,10 @@ export type MinuteAmountAt = ((minute: number) => number | null) | null;
  */
 export const AMOUNT_LABEL_CELL = { w: 52, gap: 12 };
 
-/** 거래대금 구간 인덱스 → 굵기 단계. 구간 아래(-1)는 0단계. */
+/** 거래대금 구간 인덱스 → 굵기 단계. 구간 아래(-1)는 조용함(LEVEL_QUIET). */
 export const amountLevelOf = (won: number): number => {
     const b = amountBucketIndex(won);
-    return b < 0 ? 0 : AMOUNT_LEVEL_OF_BUCKET[b];
+    return b < 0 ? LEVEL_QUIET : AMOUNT_LEVEL_OF_BUCKET[b];
 };
 
 /**
@@ -31,7 +31,7 @@ export const amountLevelOf = (won: number): number => {
  * 그리면 "거래가 없었다"와 "모른다"가 한 모양이 된다.
  */
 export const runWidth = (level: number, scale: number): number =>
-    (level === LEVEL_MISSING ? AMOUNT_LEVEL_WIDTH[0] * 0.6 : AMOUNT_LEVEL_WIDTH[level] ?? AMOUNT_LEVEL_WIDTH[0]) * scale;
+    (level === LEVEL_MISSING ? AMOUNT_LEVEL_WIDTH[LEVEL_QUIET] * 0.6 : AMOUNT_LEVEL_WIDTH[level] ?? AMOUNT_LEVEL_WIDTH[LEVEL_QUIET]) * scale;
 
 export interface AmountLookup {
     /** 종목코드 → 분당 거래대금 조회기. 골격 선과 테마 선이 같은 자를 쓴다. */

@@ -422,6 +422,43 @@ export function minuteAmountOf(
 }
 
 /**
+ * 분 시계열의 **내부 갭만** 직전 실값으로 채운다 — "모든 시간에 값이 있다"(사용자 확정, 골격·테마·캔들
+ * 공통) 규칙의 공용 알고리즘. 테마 선(memberPath)과 멤버 캔들(memberCandles)이 같은 걸음을 탄다.
+ *
+ * 채움은 **다음 실제 값이 나올 때만** 확정된다(pending) — 마지막 실값 뒤의 채움은 버려진다.
+ *   · 선두 갭(첫 실값 이전)은 끌어올 직전 값이 없어 안 채운다.
+ *   · 후미 갭(마지막 실값 이후)은 장이 끝난 뒤라 안 채운다 — 안 그러면 20시 이후까지 평탄 값이
+ *     줄줄이 뻗어 없는 시간을 그린다(사용자 지적).
+ * 도메인 densifyMinutes 의 규칙("각 시장의 첫 봉~마지막 봉 사이")과 같은 경계다.
+ *
+ * `at(m)` 은 셋 중 하나를 낸다 — 실값 T / `"gap"`(재료 없음 — 내부면 채운다) / `"skip"`(병적인 값 —
+ * 채우지도 잇지도 않고 그 분만 버린다. 갭과 다르다: 버린 분엔 평탄 값도 안 선다).
+ * `fillOf(m, prev)` 는 직전 실값에서 채움 값을 만든다.
+ */
+export function fillGaps<T extends object>(
+    from: number,
+    to: number,
+    at: (minute: number) => T | "gap" | "skip",
+    fillOf: (minute: number, prev: T) => T,
+): T[] {
+    const out: T[] = [];
+    const pending: T[] = [];
+    let prev: T | null = null;
+    for (let m = from; m <= to; m++) {
+        const v = at(m);
+        if (v === "gap") {
+            if (prev !== null) pending.push(fillOf(m, prev));
+            continue;
+        }
+        if (v === "skip") continue;
+        if (pending.length > 0) { out.push(...pending); pending.length = 0; }
+        prev = v;
+        out.push(v);
+    }
+    return out;
+}
+
+/**
  * 폴리라인을 x0 에서 과거(x ≤ x0)/미래(x ≥ x0)로 가른다 — 경계점은 **양쪽에 포함**(선이 끊겨 보이지 않게).
  * 타점 시각엔 합성 규칙 덕에 정확히 그 x 의 피벗이 있어 보간이 필요 없다(그게 이 함수의 호출측 계약이다 —
  * x0 에 점이 없으면 그 구간이 빈 채 갈라진다).
@@ -488,9 +525,9 @@ export function clipToX<T extends { x: number }>(points: readonly T[], from: num
     return points.slice(lo, hi + 1);
 }
 
-/** 폴리라인 points 속성 문자열. 소수 2자리로 끊어 DOM 문자열이 불필요하게 길어지지 않게. */
-export function polylinePoints(s: NormalizedSkeleton, sx: (x: number) => number, sy: (y: number) => number): string {
-    return s.points.map((p) => `${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" ");
+/** 폴리라인 points 속성 문자열(화면 좌표). 소수 2자리로 끊어 DOM 문자열이 불필요하게 길어지지 않게. */
+export function polylinePoints(points: readonly { x: number; y: number }[], sx: (x: number) => number, sy: (y: number) => number): string {
+    return points.map((p) => `${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" ");
 }
 
 /**

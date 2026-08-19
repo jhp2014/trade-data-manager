@@ -23,7 +23,7 @@
 // 못 채운다 — 끌어올 직전 값이 없다(densifyMinutes 의 규칙과 같다).
 import { computeMinuteTradingAmount } from "@trade-data-manager/market/domain";
 import { minutesOfDay } from "../../lib/date.js";
-import { pct } from "./skeletonOverlay.js";
+import { fillGaps, pct } from "./skeletonOverlay.js";
 
 /** 뷰 공간의 캔들 하나 — x = 타점 대비 분, y 넷은 % 공간. `amount` 는 그 분 거래대금(원, 없으면 0). */
 export interface ViewCandle {
@@ -158,7 +158,7 @@ export interface MinuteOhlcSeries {
  * 테마 멤버 캔들 — 스냅샷 %를 뷰 공간으로(평행이동만). 구간은 **벽시계** `[from, to]`.
  * 빠진 분은 **직전 종가 평탄봉**(O=H=L=C=직전 종가, 거래대금 0)으로 채운다(사용자 확정).
  * 다만 채우는 건 **내부 갭만** — 선두 갭은 끌어올 값이 없어서, **후미 갭(마지막 봉 이후)은 장이 끝난 뒤라서**
- * 안 채운다(안 그러면 20시 이후까지 평탄봉이 줄줄이 선다 — memberPath 와 같은 경계).
+ * 안 채운다. 걸음(pending 확정)은 공용 fillGaps 다 — 테마 선(memberPath)과 같은 경계를 탄다.
  */
 export function memberCandles(
     from: number,
@@ -166,32 +166,26 @@ export function memberCandles(
     series: MinuteOhlcSeries,
     origin: { baseRate: number; baseT: number },
 ): ViewCandle[] {
-    const out: ViewCandle[] = [];
-    // 채움은 **다음 실제 봉이 나올 때만** 확정된다 — 마지막 봉 뒤의 채움은 버려진다.
-    const pending: ViewCandle[] = [];
-    let prevClose: number | null = null;
-    for (let m = from; m <= to; m++) {
-        const i = series.index.get(m);
-        const x = m - origin.baseT;
-        if (i == null) {
-            if (prevClose === null) continue; // 선두 갭 — 지어낼 직전 값이 없다
-            pending.push({ x, o: prevClose, h: prevClose, l: prevClose, c: prevClose, amount: 0 });
-            continue;
-        }
-        const o = series.open[i];
-        const h = series.high[i];
-        const l = series.low[i];
-        const c = series.close[i];
-        if (!Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
-        if (pending.length > 0) { out.push(...pending); pending.length = 0; }
-        const amount = series.cumAmount[i] - (i > 0 ? series.cumAmount[i - 1] : 0);
-        prevClose = c - origin.baseRate;
-        out.push({
-            x, o: o - origin.baseRate, h: h - origin.baseRate, l: l - origin.baseRate, c: prevClose,
-            amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
-        });
-    }
-    return out;
+    return fillGaps<ViewCandle>(
+        from, to,
+        (m) => {
+            const i = series.index.get(m);
+            if (i == null) return "gap";
+            const o = series.open[i];
+            const h = series.high[i];
+            const l = series.low[i];
+            const c = series.close[i];
+            if (!Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return "skip";
+            const amount = series.cumAmount[i] - (i > 0 ? series.cumAmount[i - 1] : 0);
+            return {
+                x: m - origin.baseT,
+                o: o - origin.baseRate, h: h - origin.baseRate, l: l - origin.baseRate, c: c - origin.baseRate,
+                amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+            };
+        },
+        // 평탄봉 — O=H=L=C=직전 실봉의 종가(뷰 공간), 거래대금 0.
+        (m, prev) => ({ x: m - origin.baseT, o: prev.c, h: prev.c, l: prev.c, c: prev.c, amount: 0 }),
+    );
 }
 
 /**

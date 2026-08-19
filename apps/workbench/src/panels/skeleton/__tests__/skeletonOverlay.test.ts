@@ -659,6 +659,6 @@ describe("d3 스케일과의 조합", () => {
         const b = overlayBounds([n])!;
         const x = scaleLinear().domain([b.minX, b.maxX]).range([0, 80]);
         const y = scaleLinear().domain([b.minY, b.maxY]).range([50, 0]); // y 뒤집기 = range 역순
-        expect(polylinePoints(n, x, y)).toBe("0.00,50.00 50.00,0.00 80.00,30.00");
+        expect(polylinePoints(n.points, x, y)).toBe("0.00,50.00 50.00,0.00 80.00,30.00");
     });
 });

@@ -12,7 +12,7 @@
 //
 // 그리는 구간은 **호출측(화면 프레임)이 정한다** — 예전엔 앵커 피벗의 처음~끝이었는데, 미래(타점 이후)까지
 // 같이 보기로 하며(사용자 확정) 창 기준으로 바뀌었다: 기본은 타점 앞뒤 프레임, 미래 토글이면 장 끝까지.
-import { minuteIndexOf, type NormalizedSkeleton } from "./skeletonOverlay.js";
+import { fillGaps, minuteIndexOf, type NormalizedSkeleton } from "./skeletonOverlay.js";
 
 /** 한 종목의 분당 시계열(% 공간) — 벽시계 분으로 찾는다. */
 export interface MinuteSeries {
@@ -38,26 +38,20 @@ export interface PathPoint {
  * 건너뛰면 그 구간이 **직선으로 이어져** 어차피 없던 경로가 그려지고(그것도 기울어진 채) 캔들·골격과
  * x가 어긋난다. 평탄하게 채우면 적어도 "그동안 값이 안 움직였다"는 참인 그림이 되고, 거래대금 채널
  * (굵기·마커)이 0이라 조용했다는 게 같이 읽힌다.
+ * 걸음(내부 갭만·pending 확정)은 공용 fillGaps 다 — 멤버 캔들(memberCandles)과 같은 경계를 탄다.
  * 점이 2개 미만이면 선이 아니다(null).
  */
 export function memberPath(from: number, to: number, series: MinuteSeries): PathPoint[] | null {
-    const out: PathPoint[] = [];
-    // 채움은 **다음 실제 값이 나올 때만** 확정된다(pending) — 마지막 봉 뒤의 채움은 버려진다.
-    // 안 그러면 장이 끝난 뒤(20시 이후)까지 평탄선이 뻗어 없는 시간을 그린다(사용자 지적).
-    const pending: PathPoint[] = [];
-    let prev: number | null = null;
-    for (let m = from; m <= to; m++) {
-        const i = series.index.get(m);
-        if (i == null) {
-            if (prev !== null) pending.push({ x: m, y: prev });
-            continue;
-        }
-        const y = series.close[i];
-        if (!Number.isFinite(y)) continue;
-        if (pending.length > 0) { out.push(...pending); pending.length = 0; }
-        prev = y;
-        out.push({ x: m, y });
-    }
+    const out = fillGaps<PathPoint>(
+        from, to,
+        (m) => {
+            const i = series.index.get(m);
+            if (i == null) return "gap";
+            const y = series.close[i];
+            return Number.isFinite(y) ? { x: m, y } : "skip";
+        },
+        (m, prev) => ({ x: m, y: prev.y }),
+    );
     return out.length >= 2 ? out : null;
 }
 

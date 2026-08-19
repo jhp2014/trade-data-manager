@@ -10,6 +10,9 @@
 import { splitAtX, type AmountRun, type LineVisual, type OverlayLine } from "./skeletonOverlay.js";
 import { runWidth } from "./amountLayer.js";
 import { flatten, compact, type DrawGroup, type DrawLayer, type DrawOp, type Pt } from "./drawList.js";
+import { fmtPct } from "../../lib/format.js";
+import { timeOfMinutes } from "../../lib/date.js";
+import { clamp } from "../../lib/num.js";
 
 interface Box { left: number; top: number; width: number; height: number }
 interface Scales { x: (v: number) => number; y: (v: number) => number }
@@ -38,11 +41,8 @@ export interface SkeletonLinesParams {
         shown: (key: string, i: number) => boolean;
         isPinned: (key: string, i: number) => boolean;
     };
-    /** 축 단위가 붙은 x 표기(`3일`·`12분`) — 단위는 화면의 몫이라 주입받는다. */
+    /** 축 단위가 붙은 x 표기(`3일`·`12분`) — 단위는 화면의 몫이라 이것만 주입받는다(%·시각·클램프는 lib 직수입). */
     fmtX: (x: number) => string;
-    fmtPct: (v: number) => string;
-    timeOfMinutes: (m: number) => string;
-    clamp: (v: number, lo: number, hi: number) => number;
 }
 
 export function skeletonLinesLayer(p: SkeletonLinesParams): DrawLayer {
@@ -113,8 +113,8 @@ export function skeletonLinesLayer(p: SkeletonLinesParams): DrawLayer {
             if (!pins.shown(s.key, i) || (s.kind !== "point" && pt.x === 0 && pt.y === 0)) continue;
             const px = scales.x(pt.x);
             const py = scales.y(pt.y);
-            const ax = p.clamp(scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
-            const ay = p.clamp(scales.y(0), box.top, box.top + box.height); // 가로축(기간을 읽는 자리)
+            const ax = clamp(scales.x(0), box.left, box.left + box.width); // 세로축(%를 읽는 자리)
+            const ay = clamp(scales.y(0), box.top, box.top + box.height); // 가로축(기간을 읽는 자리)
             const below = ay + 12 <= box.top + box.height; // x축 아래에 자리가 없으면 위로
             const leftSide = ax - box.left > 44; // y축 왼쪽에 자리가 없으면 오른쪽으로
             // 붙잡은 값은 계속 또렷하게, 스치는 미리보기는 한 단계 물러난다(붙잡았다는 게 보이게).
@@ -130,12 +130,12 @@ export function skeletonLinesLayer(p: SkeletonLinesParams): DrawLayer {
                     { op: "line", x1: px, y1: py, x2: ax, y2: py, ...guide },
                     {
                         op: "text", x: px, y: ay + (below ? 12 : -5), anchor: "middle",
-                        text: `${p.fmtX(pt.x)}${s.kind === "point" ? ` (${p.timeOfMinutes(pt.x + s.baseT)})` : ""}`,
+                        text: `${p.fmtX(pt.x)}${s.kind === "point" ? ` (${timeOfMinutes(pt.x + s.baseT)})` : ""}`,
                         fill: color, size, weight, halo: HALO,
                     },
                     {
                         op: "text", x: ax + (leftSide ? -4 : 4), y: py - 3, anchor: leftSide ? "end" : "start",
-                        text: `${p.fmtPct(pt.y)}${s.kind === "point" ? ` (${p.fmtPct(pt.y + s.baseRate)})` : ""}`,
+                        text: `${fmtPct(pt.y)}${s.kind === "point" ? ` (${fmtPct(pt.y + s.baseRate)})` : ""}`,
                         fill: color, size, weight, halo: HALO,
                     },
                 ],
