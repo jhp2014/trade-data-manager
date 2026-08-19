@@ -4,7 +4,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { LiveStock } from "@trade-data-manager/wire";
-import { availablePredicates, defaultParams, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
+import { availablePredicates, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
 import { useLiveSnapshot } from "../lib/LiveSnapshotContext.js";
 import {
     addWatch,
@@ -21,7 +21,7 @@ import { optionLabel, predicateText, validatePredicates } from "../lib/predicate
 import { useWorkbench } from "../store/workbench.js";
 import { usePersistedState } from "../store/persist.js";
 import { useStockName } from "../lib/useStockName.js";
-import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
+import { RuleForm, newPredicate } from "../components/RuleForm.js";
 import { StockRow } from "../components/board/StockRow.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { PanelHeader } from "../components/ControlChrome.js";
@@ -29,7 +29,7 @@ import { liveToBoardStock } from "../lib/boardViewModel.js";
 
 // 실시간 모니터링(watchlist) 패널 — 실시간 플레인. 승격한 선택 종목을 항상 폴링·표시하고(2층 구조),
 // 종목별 알람 조건(술어 AND 리스트)을 편집한다. 여러 조건 = OR. 조건 편집기는 유니버스 알람과 공용
-// (PredicateRow, core 레지스트리 구동) — 스코프(code 유무)만 다르고 나머지는 같은 AlarmRule 이다.
+// (RuleForm, core 레지스트리 구동) — 스코프(code 유무)만 다르고 나머지는 같은 AlarmRule 이다.
 // 발화는 서버(apps/live). 종목마다 현재 테마 순위(순환)도 표시. 조건·발화·순위 = /live/watchlist 5초 폴링.
 
 // 모니터링 종목 표시 순서 — 로컬(기기별)만 저장. 서버 watchlist 는 코드 집합만, 순서는 이 오버레이가 결정.
@@ -294,14 +294,12 @@ function RuleLine({ rule, onDelete }: { rule: AlarmRuleView; onDelete: () => voi
 }
 
 // ── 조건 빌더 — core 술어 레지스트리 구동 ─────────────────────────────
-// 종목 알람도 유니버스 알람과 **같은 편집기**(PredicateRow)를 쓴다. 서버는 진작 AlarmRule 하나·
+// 종목 알람도 유니버스 알람과 **같은 편집기**(RuleForm/PredicateRow)를 쓴다. 서버는 진작 AlarmRule 하나·
 // AlarmEngine 한 벌로 통합돼 있었고(스코프 차이는 code 유무뿐) 프론트만 두 벌이었다.
 // 그래서 여기엔 술어 종류별 분기가 없다 — 팔레트는 소스 capability(LIVE_ALARM_FIELDS)가 정하고
 // 입력·검증·표시는 ParamSpec/TextParamSpec 에서 파생된다. core 에 술어를 더하면 여기도 함께 열린다.
 const ALARM_PREDICATES = availablePredicates(LIVE_ALARM_FIELDS);
 const ALARM_KINDS = ALARM_PREDICATES.map((d) => d.kind);
-
-const newPredicate = (kind: string): AlarmPredicateInstance => ({ kind, params: defaultParams(kind) });
 
 /** 조건 추가 폼 — 술어(AND) 리스트 빌더. 저장/취소는 폼 상단 헤더 우측. */
 function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
@@ -370,13 +368,6 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
         setLiveCode(code, originId); // 차트가 이 종목을 보도록(캡처 정합)
     };
 
-    const setKind = (index: number, kind: string): void =>
-        setPredicates((ps) => ps.map((x, j) => (j !== index ? x : newPredicate(kind))));
-    const patchText = (index: number, key: string, value: string): void =>
-        setPredicates((ps) => ps.map((x, j) => (j !== index ? x : { ...x, textParams: { ...x.textParams, [key]: value } })));
-    const addPredicate = (): void => setPredicates((ps) => [...ps, newPredicate("price")]);
-    const removePredicate = (index: number): void => setPredicates((ps) => (ps.length > 1 ? ps.filter((_, j) => j !== index) : ps));
-
     const saveM = useMutation({ mutationFn: createAlertRule, onSuccess: onSaved, onError: (e: Error) => setErr(e.message) });
 
     const submit = (): void => {
@@ -399,55 +390,49 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
         } satisfies CreateRulePayload);
     };
 
-    return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 10, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 6, fontSize: 12 }}>
-            {/* 상단 헤더 — 쿨다운·메모 접기(좌) + 저장/취소(우) */}
-            <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <button onClick={() => setShowOpts((v) => !v)} style={{ border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", fontSize: 11, padding: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        <span style={{ fontSize: 9 }}>{showOpts ? "\u25BE" : "\u25B8"}</span> 쿨다운 {cooldownMin || "0"}분{note ? " · 메모 \u2713" : ""}
-                    </button>
-                    <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                        <button onClick={submit} disabled={saveM.isPending} style={{ border: "none", background: "var(--accent-primary)", color: "#fff", borderRadius: 5, padding: "3px 12px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, opacity: saveM.isPending ? 0.6 : 1 }}>{saveM.isPending ? "저장중…" : "저장"}</button>
-                        <button onClick={onClose} style={{ border: "1px solid var(--border-default)", background: "var(--bg-primary)", color: "var(--text-secondary)", borderRadius: 5, padding: "3px 10px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600 }}>취소</button>
-                    </span>
-                </div>
-                {showOpts && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                            <span style={{ width: 32, flexShrink: 0, color: "var(--text-tertiary)" }}>쿨다운</span>
-                            <span style={{ color: "var(--text-tertiary)" }}>발화 후</span>
-                            <input type="number" min={0} style={{ ...numStyle, width: 40 }} className="tabular" value={cooldownMin} onChange={(e) => setCooldownMin(e.target.value)} title="발화 후 이 시간 안에는 재진입해도 알람 억제(진동 방지)" />
-                            <span style={{ color: "var(--text-tertiary)" }}>분 지나야 다시 알람</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ width: 32, flexShrink: 0, color: "var(--text-tertiary)" }}>메모</span>
-                            <input style={{ ...numStyle, flex: 1, width: "auto", textAlign: "left" }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="알림에 실림" />
-                        </div>
+    // 상단 헤더 — 쿨다운·메모 접기(좌) + 저장/취소(우)
+    const header = (
+        <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button onClick={() => setShowOpts((v) => !v)} style={{ border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", fontSize: 11, padding: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 9 }}>{showOpts ? "\u25BE" : "\u25B8"}</span> 쿨다운 {cooldownMin || "0"}분{note ? " · 메모 \u2713" : ""}
+                </button>
+                <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                    <button onClick={submit} disabled={saveM.isPending} style={{ border: "none", background: "var(--accent-primary)", color: "#fff", borderRadius: 5, padding: "3px 12px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, opacity: saveM.isPending ? 0.6 : 1 }}>{saveM.isPending ? "저장중…" : "저장"}</button>
+                    <button onClick={onClose} style={{ border: "1px solid var(--border-default)", background: "var(--bg-primary)", color: "var(--text-secondary)", borderRadius: 5, padding: "3px 10px", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600 }}>취소</button>
+                </span>
+            </div>
+            {showOpts && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ width: 32, flexShrink: 0, color: "var(--text-tertiary)" }}>쿨다운</span>
+                        <span style={{ color: "var(--text-tertiary)" }}>발화 후</span>
+                        <input type="number" min={0} style={{ ...numStyle, width: 40 }} className="tabular" value={cooldownMin} onChange={(e) => setCooldownMin(e.target.value)} title="발화 후 이 시간 안에는 재진입해도 알람 억제(진동 방지)" />
+                        <span style={{ color: "var(--text-tertiary)" }}>분 지나야 다시 알람</span>
                     </div>
-                )}
-            </div>
-            {/* 조건들(AND) — 유니버스 알람과 같은 수식 줄 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, border: "0.5px solid var(--border-default)", borderRadius: 6, padding: "7px 10px" }}>
-                {predicates.map((p, i) => (
-                    <PredicateRow
-                        key={i}
-                        p={p}
-                        edit
-                        last={i === predicates.length - 1}
-                        kinds={ALARM_KINDS}
-                        onKind={(k) => setKind(i, k)}
-                        onParam={(k, v) => patchParam(i, k, v)}
-                        onText={(k, v) => patchText(i, k, v)}
-                        onRemove={predicates.length > 1 ? () => removePredicate(i) : undefined}
-                        capture={{ activeKey: armedAt?.index === i ? armedAt.key : null, onToggle: (key) => toggleCapture(i, key) }}
-                        suggest={{ theme: themes }}
-                    />
-                ))}
-            </div>
-            <AddPredicateBox onAdd={addPredicate} />
-            {err && <div style={{ color: "var(--rise)" }}>{err}</div>}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ width: 32, flexShrink: 0, color: "var(--text-tertiary)" }}>메모</span>
+                        <input style={{ ...numStyle, flex: 1, width: "auto", textAlign: "left" }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="알림에 실림" />
+                    </div>
+                </div>
+            )}
         </div>
+    );
+
+    // 조건들(AND) — 유니버스 알람과 같은 폼 골격(RuleForm). 리스트 연산은 공용, 캡처만 이 폼의 배선.
+    return (
+        <RuleForm
+            style={{ display: "flex", flexDirection: "column", gap: 8, padding: 10, background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 6, fontSize: 12 }}
+            top={header}
+            predicates={predicates}
+            onPredicates={setPredicates}
+            kinds={ALARM_KINDS}
+            addKind="price"
+            listStyle={{ display: "flex", flexDirection: "column", gap: 8, border: "0.5px solid var(--border-default)", borderRadius: 6, padding: "7px 10px" }}
+            capture={{ activeAt: armedAt, onToggle: toggleCapture }}
+            suggest={{ theme: themes }}
+            error={err}
+        />
     );
 }
 

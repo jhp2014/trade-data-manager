@@ -1,4 +1,4 @@
-import type { Command, Scope } from "./types.js";
+import type { Command } from "./types.js";
 import { canonicalChord } from "./keys.js";
 import { useUi } from "../store/ui.js";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
@@ -69,13 +69,10 @@ export function allCommands(): Command[] {
     return [...staticCommands, ...Object.values(useKeymapDynamic.getState().commands)];
 }
 
-// chord → 발동 커맨드. 전역이 기본. 같은 키에 scope 커맨드가 있고 그 scope 가 활성이면 전역보다 우선(덧씌우기).
-export function resolveCommand(chord: string, activeScope: Scope): Command | undefined {
-    const matches = allCommands().filter((c) => c.run && c.keys === chord);
-    return (
-        matches.find((c) => (c.scope ?? "global") !== "global" && c.scope === activeScope) ??
-        matches.find((c) => (c.scope ?? "global") === "global")
-    );
+// chord → 발동 커맨드. 모든 커맨드는 전역 — 등록 순(정적→동적)의 첫 매치(run 있는 것만).
+// (scope 우선순위 기계는 활성화된 적 없이 삭제됨 — 패널별 덧씌우기가 필요해지면 그때 다시.)
+export function resolveCommand(chord: string): Command | undefined {
+    return allCommands().find((c) => c.run && c.keys === chord);
 }
 
 export interface CommandGroup {

@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { chordOf } from "./keys.js";
 import { resolveCommand } from "./registry.js";
-import { useUi } from "../store/ui.js";
 
 // SELECT 도 편집 취급 — 셀렉트는 글자 타이핑(typeahead)으로 옵션을 고르므로, 수식키 없는 단축키
 // (w/s/tab/? 등)가 가로채면 타이핑 선택이 죽는다. (export 는 테스트용)
@@ -15,7 +14,7 @@ export function isEditable(target: EventTarget | null): boolean {
 export function useKeymap(): void {
     useEffect(() => {
         const onKey = (e: KeyboardEvent): void => {
-            const cmd = resolveCommand(chordOf(e), useUi.getState().activeScope);
+            const cmd = resolveCommand(chordOf(e));
             if (!cmd) return;
             // 입력창 포커스 중엔 수식키 없는 단축키(= 타이핑)를 가로채지 않는다.
             // blockedInInput 커맨드는 수식키가 있어도 입력창에선 양보(ctrl+a 전체선택 등 기본동작 보존).

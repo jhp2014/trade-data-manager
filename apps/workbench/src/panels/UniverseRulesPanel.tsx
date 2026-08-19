@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-    availablePredicates,
-    defaultParams,
-    LIVE_ALARM_FIELDS,
-} from "@trade-data-manager/market/domain";
+import { availablePredicates, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
 import {
     addUniverseBlacklist,
     fetchUniverse,
@@ -12,7 +8,7 @@ import {
     removeUniverseBlacklist,
     type UniverseRuleDraft,
 } from "../api/alerts.js";
-import { AddPredicateBox, PredicateRow } from "../components/PredicateFormula.js";
+import { PredicateList, RuleForm, newPredicate } from "../components/RuleForm.js";
 import { PanelHeader } from "../components/ControlChrome.js";
 import { kstTime } from "../lib/date.js";
 import { useStockName } from "../lib/useStockName.js";
@@ -35,7 +31,7 @@ const chipBtn = (active: boolean): React.CSSProperties => ({
 });
 
 function newRule(): UniverseRuleDraft {
-    return { predicates: [{ kind: KINDS[0], params: defaultParams(KINDS[0]) }], output: "telegram", cooldownKey: "code" };
+    return { predicates: [newPredicate(KINDS[0])], output: "telegram", cooldownKey: "code" };
 }
 
 export function UniverseRulesPanel(): JSX.Element {
@@ -175,24 +171,9 @@ function RuleCard({ r, editing, onEdit, onDone, onRemove, onChange }: {
 }): JSX.Element {
     const cooldownMin = Math.round((r.cooldownMs ?? DEFAULT_COOLDOWN_MIN * 60_000) / 60_000);
     const outputLabel = r.output === "telegram" ? "🔔 텔레그램+로그" : "📋 로그만";
-
-    const predicateRows = (
-        <div onClick={editing ? undefined : onEdit} title={editing ? undefined : "클릭: 편집"} style={{ cursor: editing ? undefined : "pointer", display: "flex", flexDirection: "column", gap: editing ? 8 : 3, fontSize: 12, color: "var(--text-primary)" }}>
-            {r.predicates.map((p, pi) => (
-                <PredicateRow
-                    key={pi}
-                    p={p}
-                    edit={editing}
-                    last={pi === r.predicates.length - 1}
-                    kinds={KINDS}
-                    onKind={(next) => onChange((x) => { x.predicates[pi] = { kind: next, params: defaultParams(next) }; })}
-                    onParam={(k, v) => onChange((x) => { x.predicates[pi] = { ...x.predicates[pi], params: { ...x.predicates[pi].params, [k]: v } }; })}
-                    onText={(k, v) => onChange((x) => { x.predicates[pi] = { ...x.predicates[pi], textParams: { ...x.predicates[pi].textParams, [k]: v } }; })}
-                    onRemove={r.predicates.length > 1 ? () => onChange((x) => { x.predicates.splice(pi, 1); }) : undefined}
-                />
-            ))}
-        </div>
-    );
+    // 술어 리스트 편집 = 공용 골격(RuleForm) — 저장 위치만 draft 뮤테이터로 배선(리스트 교체).
+    const onPredicates = (fn: (ps: UniverseRuleDraft["predicates"]) => UniverseRuleDraft["predicates"]): void =>
+        onChange((x) => { x.predicates = fn(x.predicates); });
 
     if (!editing) {
         return (
@@ -208,59 +189,73 @@ function RuleCard({ r, editing, onEdit, onDone, onRemove, onChange }: {
                     )}
                     <button onClick={onRemove} title="규칙 삭제" style={{ ...xBtn, marginLeft: "auto" }}>✕</button>
                 </div>
-                {predicateRows}
+                <PredicateList
+                    predicates={r.predicates}
+                    edit={false}
+                    kinds={KINDS}
+                    onClick={onEdit}
+                    title="클릭: 편집"
+                    style={{ cursor: "pointer", display: "flex", flexDirection: "column", gap: 3, fontSize: 12, color: "var(--text-primary)" }}
+                />
             </div>
         );
     }
 
     return (
-        <div style={{ border: "1px solid var(--accent-primary)", borderRadius: 8, background: "var(--bg-secondary)", padding: "6px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-            {/* 줄1: 전달 + 완료·삭제(우측 고정 — 공간 보장) */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button
-                    onClick={() => onChange((x) => { x.output = x.output === "telegram" ? "log" : "telegram"; })}
-                    title="발화를 어디로: 텔레그램(쿨다운)+로그 ↔ 로그만"
-                    style={chipBtn(r.output === "telegram")}
-                >
-                    {outputLabel}
-                </button>
-                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                    <button onClick={onDone} style={{ border: "none", background: "var(--accent-primary)", color: "#fff", borderRadius: 5, padding: "2px 11px", cursor: "pointer", font: "inherit", fontSize: 11.5, fontWeight: 600 }}>완료</button>
-                    <button onClick={onRemove} title="규칙 삭제" style={xBtn}>✕</button>
-                </span>
-            </div>
-            {/* 줄2: 이름 */}
-            <input
-                value={r.name ?? ""}
-                onChange={(e) => onChange((x) => { x.name = e.target.value || undefined; })}
-                placeholder="규칙 이름(메시지에 실림)"
-                style={{ width: "100%", boxSizing: "border-box", fontSize: 11.5, padding: "3px 6px", color: "var(--text-primary)", background: "var(--bg-tertiary)", border: "none", borderRadius: 4, outline: "none" }}
-            />
-            {/* 줄3: 쿨다운(텔레그램일 때만) */}
-            {r.output === "telegram" && (
-                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--text-tertiary)" }}>
-                    쿨다운
+        <RuleForm
+            style={{ border: "1px solid var(--accent-primary)", borderRadius: 8, background: "var(--bg-secondary)", padding: "6px 10px", display: "flex", flexDirection: "column", gap: 7 }}
+            predicates={r.predicates}
+            onPredicates={onPredicates}
+            kinds={KINDS}
+            addKind={KINDS[0]}
+            listStyle={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12, color: "var(--text-primary)" }}
+            top={
+                <>
+                    {/* 줄1: 전달 + 완료·삭제(우측 고정 — 공간 보장) */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <button
+                            onClick={() => onChange((x) => { x.output = x.output === "telegram" ? "log" : "telegram"; })}
+                            title="발화를 어디로: 텔레그램(쿨다운)+로그 ↔ 로그만"
+                            style={chipBtn(r.output === "telegram")}
+                        >
+                            {outputLabel}
+                        </button>
+                        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <button onClick={onDone} style={{ border: "none", background: "var(--accent-primary)", color: "#fff", borderRadius: 5, padding: "2px 11px", cursor: "pointer", font: "inherit", fontSize: 11.5, fontWeight: 600 }}>완료</button>
+                            <button onClick={onRemove} title="규칙 삭제" style={xBtn}>✕</button>
+                        </span>
+                    </div>
+                    {/* 줄2: 이름 */}
                     <input
-                        type="number"
-                        min={0}
-                        value={cooldownMin}
-                        onChange={(e) => onChange((x) => { x.cooldownMs = Math.max(0, Number(e.target.value)) * 60_000; })}
-                        style={{ width: 44, fontSize: 10.5, padding: "1px 4px", color: "var(--accent-primary)", fontWeight: 600, background: "var(--bg-tertiary)", border: "none", borderRadius: 4, outline: "none", textAlign: "center" }}
+                        value={r.name ?? ""}
+                        onChange={(e) => onChange((x) => { x.name = e.target.value || undefined; })}
+                        placeholder="규칙 이름(메시지에 실림)"
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: 11.5, padding: "3px 6px", color: "var(--text-primary)", background: "var(--bg-tertiary)", border: "none", borderRadius: 4, outline: "none" }}
                     />
-                    분 ·
-                    <button
-                        onClick={() => onChange((x) => { x.cooldownKey = x.cooldownKey === "codeRule" ? "code" : "codeRule"; })}
-                        title="쿨다운 단위: 종목(넓게 — 같은 종목 알림 한 번) ↔ 종목×규칙(디테일)"
-                        style={{ border: "none", background: "none", color: "var(--text-secondary)", fontWeight: 600, padding: 0, fontSize: 10.5, cursor: "pointer", font: "inherit" }}
-                    >
-                        {r.cooldownKey === "codeRule" ? "종목×규칙" : "종목"}
-                    </button>
-                </div>
-            )}
-            {/* 조건들(AND) + 추가 박스 */}
-            {predicateRows}
-            <AddPredicateBox onAdd={() => onChange((x) => { x.predicates.push({ kind: KINDS[0], params: defaultParams(KINDS[0]) }); })} />
-        </div>
+                    {/* 줄3: 쿨다운(텔레그램일 때만) */}
+                    {r.output === "telegram" && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--text-tertiary)" }}>
+                            쿨다운
+                            <input
+                                type="number"
+                                min={0}
+                                value={cooldownMin}
+                                onChange={(e) => onChange((x) => { x.cooldownMs = Math.max(0, Number(e.target.value)) * 60_000; })}
+                                style={{ width: 44, fontSize: 10.5, padding: "1px 4px", color: "var(--accent-primary)", fontWeight: 600, background: "var(--bg-tertiary)", border: "none", borderRadius: 4, outline: "none", textAlign: "center" }}
+                            />
+                            분 ·
+                            <button
+                                onClick={() => onChange((x) => { x.cooldownKey = x.cooldownKey === "codeRule" ? "code" : "codeRule"; })}
+                                title="쿨다운 단위: 종목(넓게 — 같은 종목 알림 한 번) ↔ 종목×규칙(디테일)"
+                                style={{ border: "none", background: "none", color: "var(--text-secondary)", fontWeight: 600, padding: 0, fontSize: 10.5, cursor: "pointer", font: "inherit" }}
+                            >
+                                {r.cooldownKey === "codeRule" ? "종목×규칙" : "종목"}
+                            </button>
+                        </div>
+                    )}
+                </>
+            }
+        />
     );
 }
 
