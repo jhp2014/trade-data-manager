@@ -1,7 +1,7 @@
 // 머리글 컨트롤 줄의 **규약**을 기계가 지킨다. 셋 다 주석으로만 두면 다음 컨트롤이 붙을 때 조용히 깨진다.
 //
 //   · 핀 = 헤더에 올린다. 저장은 **언핀 목록**이라 나중에 생긴 컨트롤이 저절로 숨지 않는다.
-//   · 택1은 ≤3 순환, 4부터 팝오버.
+//   · 택1은 ≤3 순환, 4부터 팝오버 — **나열(segmented)만 예외**이고, 그 예외가 값을 다 세운다.
 //   · 폭 잠금 — 있을 수 있는 모든 모습이 같은 칸에 겹쳐 서 있다(그래야 값이 바뀌어도 칸이 안 변한다).
 //     jsdom 엔 레이아웃이 없어 폭 자체는 못 재므로, 그 폭을 만드는 **숨은 사본**이 있는지를 본다.
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -124,6 +124,81 @@ describe("택1 — 값 개수가 형태를 정한다", () => {
         fireEvent.click(c.querySelector("button")!);
         expect(set).not.toHaveBeenCalled();
         expect(document.body.textContent).toContain("값3");
+    });
+});
+
+describe("나열 — 순환의 예외(값이 다 서 있다)", () => {
+    const seg = (value = "0", set = (): void => {}): ControlSpec => ({
+        kind: "segmented", id: "slots", name: "슬롯", value, set,
+        values: [
+            { v: "0", label: "1", filled: true, title: "슬롯 1 — 필터 2개" },
+            { v: "1", label: "2" },
+            { v: "2", label: "3" },
+        ],
+    });
+
+    it("값이 전부 헤더에 선다 — 순환이었다면 지금 것 하나뿐이다", () => {
+        const c = draw([seg()]);
+        expect([...c.querySelectorAll("button")].map((b) => b.textContent).slice(0, 3)).toEqual(["1", "2", "3"]);
+    });
+
+    it("**거쳐 가지 않는다** — 3을 누르면 3이다(순환이면 2를 실제로 켜고 지나간다)", () => {
+        const set = vi.fn();
+        const c = draw([seg("0", set)]);
+        fireEvent.click([...c.querySelectorAll("button")].find((b) => b.textContent === "3")!);
+        expect(set).toHaveBeenCalledWith("2");
+        expect(set).toHaveBeenCalledTimes(1);
+    });
+
+    it("지금 값만 눌린 상태 — 스크린리더도 택1임을 안다", () => {
+        const c = draw([seg("1")]);
+        expect([...c.querySelectorAll("button")].slice(0, 3).map((b) => b.getAttribute("aria-pressed")))
+            .toEqual(["false", "true", "false"]);
+    });
+
+    /** 슬롯은 차고 비는 게 일상이라, 점이 자리까지 없앴다면 칸이 4px 씩 출렁였을 것이다(규약 ②). */
+    it("빈 칸의 점도 **자리는 먹는다** — visibility 로만 숨는다", () => {
+        const c = draw([seg()]);
+        // 칸 **안**의 점만 본다 — 숨은 사본의 점은 버튼 밖(잠금 칸)에 있고, ⋯ 의 아이콘도 aria-hidden 이다.
+        const dots = [...c.querySelectorAll<HTMLElement>("button[aria-pressed] [aria-hidden]")];
+        expect(dots.map((d) => d.style.visibility)).toEqual(["visible", "hidden", "hidden"]);
+        expect(dots.every((d) => d.style.display !== "none")).toBe(true);
+    });
+
+    /** 밑줄 하나가 묶음(얇게, 전 칸)과 활성(굵게, 색)을 겸한다 — 이 형태를 고른 이유가 그거다. */
+    it("칸마다 밑줄이 있고 활성만 굵은 선 — 묶음과 활성을 한 장치가 진다", () => {
+        const c = draw([seg("1")]);
+        const shadows = [...c.querySelectorAll<HTMLElement>("button[aria-pressed]")].map((b) => b.style.boxShadow);
+        expect(shadows[0]).toContain("-1px");
+        expect(shadows[1]).toContain("-2px");
+        expect(shadows[1]).toContain("accent");
+        expect(shadows[2]).toContain("-1px");
+    });
+
+    /** 활성이 굵어지는 것만으로도 칸이 넓어진다 — 그 몫을 **보이는 것과 같은 모양**의 사본이 미리 먹는다. */
+    it("굵은 사본은 라벨만이 아니라 점까지 낀 한 벌이다", () => {
+        const c = draw([seg()]);
+        // 숨은 사본은 잠금이 씌운 aria-hidden 칸 **안**에 산다(사본 자신엔 그 표시가 없다).
+        const alt = c.querySelector<HTMLElement>("[aria-hidden] > span[style*='700']")!;
+        expect(alt.style.fontWeight).toBe("700");
+        expect(alt.querySelector("[aria-hidden]")).not.toBeNull();
+    });
+
+    it("값마다 제 툴팁 — 없으면 컨트롤의 것으로 떨어진다", () => {
+        const c = draw([{ ...seg(), help: "칸마다 조건 한 벌" } as ControlSpec]);
+        const btns = [...c.querySelectorAll("button")];
+        expect(btns[0]!.title).toBe("슬롯 1 — 필터 2개");
+        expect(btns[1]!.title).toBe("칸마다 조건 한 벌");
+    });
+
+    it("접으면 더보기 판에서 만진다 — 다른 컨트롤과 같은 대접", () => {
+        localStorage.setItem(KEY, JSON.stringify(["slots"]));
+        const set = vi.fn();
+        const c = draw([toggle("a", "선"), seg("0", set)]);
+        expect(headerText(c)).not.toContain("3");
+        openSheet(c);
+        fireEvent.click([...sheet().querySelectorAll("button")].find((b) => b.textContent === "2")!);
+        expect(set).toHaveBeenCalledWith("1");
     });
 });
 
