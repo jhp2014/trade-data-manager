@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { useWorkbench } from "../../store/workbench.js";
+import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { FAIL } from "../../styles/palette.js";
 import { GRAIN_UNIT } from "./grain.js";
 import type { FunnelView } from "./useFilterFunnel.js";
@@ -16,7 +16,7 @@ export function FunnelHeader({ v, expandToPoints, setExpand, barsOpen, onToggleB
     barsOpen: boolean;
     onToggleBars: () => void;
 }): JSX.Element {
-    const stages = useWorkbench((s) => s.filterStages);
+    const stages = useWorkbench(selectFilterStages);
     // 슬롯 — 이름 없는 고정 3칸. 저장 집합(이름 붙인 보관)과 역할이 다르다: 슬롯은 오늘 이 세션의
     // A/B 비교·"잠깐 이 조합만 보기" 용 작업면이다. 빈 칸으로 갈아타면 "잠시 필터 없음"이 공짜로 나온다.
     const slots = useWorkbench((s) => s.filterSlots);

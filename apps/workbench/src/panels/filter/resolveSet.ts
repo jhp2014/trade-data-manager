@@ -16,7 +16,7 @@ import {
     type ChartRef, type FunnelCell, type FunnelItem, type FunnelResult, type Grain,
 } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../lib/setRef.js";
-import type { SavedSet } from "../../store/filterFunnelSlice.js";
+import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { activeStages, funnelOrder, resolveAutoGrain, type FilterStage, type GrainLookup } from "./stage.js";
 

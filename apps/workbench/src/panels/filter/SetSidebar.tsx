@@ -17,7 +17,8 @@ import { useStockNames } from "../../lib/useStockNames.js";
 import { ACTIVE, FAIL } from "../../styles/palette.js";
 import { monthBuckets, monthLabel, monthOf } from "./resultRows.js";
 import { MONTH_PICK_HINT, useMonthPick } from "./monthPick.js";
-import type { SetBinding } from "./useSetBinding.js";
+import { setRefLabel, type SetBinding } from "./useSetBinding.js";
+import { Head, Hint, Note, partHint, SidebarRow } from "./sidebarRows.js";
 import type { SetMembers } from "./setMembers.js";
 
 export const SET_SIDEBAR_W = 240;
@@ -58,17 +59,18 @@ export function SetSidebar({ binding, members, showTime, onPick }: {
 
     const options = useMemo(() => {
         // 연동과 붙박이 둘(전체·최종 생존)은 늘 있고, 그 아래는 필터 패널이 게시한 저장 집합 전부다.
+        // 이름은 setRefLabel 한 곳에서 온다(연동만 참조가 아니라 여기 문자열로 산다).
         // "최종 생존"이 연동과 따로 있는 이유: 연동은 짚은 칸·목록 선택까지 따라가는데, "내가 칸을
         // 이리저리 짚는 동안 이 패널은 생존자만 보여줘"가 비교의 기본형이라서다.
         const fixed: { ref: SetRef | null; label: string; hint?: string }[] = [
             { ref: null, label: "연동", hint: "필터 패널을 따라간다 (기본)" },
-            { ref: { kind: "universe" }, label: "전체", hint: "필터 이전 후보 전부" },
-            { ref: { kind: "survivors" }, label: "최종 생존", hint: "작업 깔때기 — 짚은 칸을 안 따라간다" },
+            { ref: { kind: "universe" }, label: setRefLabel({ kind: "universe" }, savedSets), hint: "필터 이전 후보 전부" },
+            { ref: { kind: "survivors" }, label: setRefLabel({ kind: "survivors" }, savedSets), hint: "작업 깔때기 — 짚은 칸을 안 따라간다" },
         ];
         const sets = savedSets.map((f) => ({
             ref: { kind: "saved", setId: f.id } as SetRef,
-            label: f.name,
-            hint: f.part.kind === "survivors" ? "생존자" : "칸",
+            label: setRefLabel({ kind: "saved", setId: f.id }, savedSets),
+            hint: partHint(f),
         }));
         return { fixed, sets };
     }, [savedSets]);
@@ -99,24 +101,24 @@ export function SetSidebar({ binding, members, showTime, onPick }: {
             {pickingSet && (
                 <div style={{ overflowY: "auto", maxHeight: "45%", flex: "none", borderBottom: "1px solid var(--border-default)", padding: "3px 0" }}>
                     {binding.broken && (
-                        <OptionRow onClick={() => choose({ kind: "universe" })}>
+                        <SidebarRow onClick={() => choose({ kind: "universe" })}>
                             <span style={{ color: FAIL }}>⚠ 참조가 깨짐 — <b>전체로 전환</b></span>
-                        </OptionRow>
+                        </SidebarRow>
                     )}
                     {options.fixed.map((o) => (
-                        <OptionRow key={o.ref === null ? "@linked" : setRefKey(o.ref)}
+                        <SidebarRow key={o.ref === null ? "@linked" : setRefKey(o.ref)}
                             active={(o.ref === null ? null : setRefKey(o.ref)) === currentKey && !binding.broken}
                             onClick={() => choose(o.ref)}>
                             <span>{o.label}</span>
                             {o.hint && <Hint>{o.hint}</Hint>}
-                        </OptionRow>
+                        </SidebarRow>
                     ))}
                     {options.sets.length > 0 && <Head>저장 집합</Head>}
                     {options.sets.map((o) => (
-                        <OptionRow key={setRefKey(o.ref)} active={setRefKey(o.ref) === currentKey} onClick={() => choose(o.ref)}>
+                        <SidebarRow key={setRefKey(o.ref)} active={setRefKey(o.ref) === currentKey} onClick={() => choose(o.ref)}>
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.label}</span>
                             <Hint>{o.hint}</Hint>
-                        </OptionRow>
+                        </SidebarRow>
                     ))}
                     {options.sets.length === 0 && (
                         <Note>저장 집합이 없습니다 — 필터 패널에서 만듭니다</Note>
@@ -166,28 +168,3 @@ function extraOf(rows: readonly { pointCount?: number }[]): { header: string; wi
         },
     };
 }
-
-function OptionRow({ active = false, onClick, children }: { active?: boolean; onClick: () => void; children: ReactNode }): JSX.Element {
-    return (
-        <button onClick={onClick} style={{
-            display: "flex", width: "100%", alignItems: "center", gap: 6, textAlign: "left",
-            border: "none", background: active ? "var(--bg-tertiary)" : "transparent", cursor: "pointer",
-            padding: "3px 10px", font: "inherit", fontSize: 11.5,
-            color: active ? ACTIVE : "var(--text-primary)", fontWeight: active ? 600 : 400,
-        }}>
-            {children}
-        </button>
-    );
-}
-
-const Head = ({ children }: { children: ReactNode }): JSX.Element => (
-    <div style={{ padding: "5px 10px 2px", fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>{children}</div>
-);
-
-const Hint = ({ children }: { children: ReactNode }): JSX.Element => (
-    <span style={{ marginLeft: "auto", color: "var(--text-tertiary)", fontSize: 10, flexShrink: 0 }}>{children}</span>
-);
-
-const Note = ({ children }: { children: ReactNode }): JSX.Element => (
-    <div style={{ padding: "8px 10px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>{children}</div>
-);

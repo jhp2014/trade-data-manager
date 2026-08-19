@@ -48,13 +48,14 @@ const read = (seed: Seed = SEED): ReturnType<typeof useFilterFunnel> =>
 const dateStage = (id: string, from: string, to: string, enabled = true): FilterStage =>
     ({ id, enabled, predicates: [{ kind: "date", ranges: [{ from, to }] }] });
 
-const setStages = (stages: FilterStage[]): void => { act(() => { useWorkbench.setState({ filterStages: stages }); }); };
+// 단계는 활성 슬롯에 산다(filterStages 필드는 selectFilterStages 파생으로 대체됨) — 슬롯 1에 심는다.
+const setStages = (stages: FilterStage[]): void => { act(() => { useWorkbench.setState({ filterSlots: [stages, [], []], filterSlotIndex: 0 }); }); };
 
 beforeEach(() => {
-    useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null });
+    useWorkbench.setState({ filterSlots: [[], [], []], filterSlotIndex: 0, filterExpandToPoints: false, funnelSelection: null });
 });
 afterEach(() => {
-    useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null });
+    useWorkbench.setState({ filterSlots: [[], [], []], filterSlotIndex: 0, filterExpandToPoints: false, funnelSelection: null });
     localStorage.clear();
     vi.unstubAllGlobals();
 });

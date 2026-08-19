@@ -11,7 +11,7 @@
 import type { FunnelItem, Grain } from "@trade-data-manager/market/domain";
 import { projectToDayFolds } from "../../lib/grainView.js";
 import { chartKey } from "../../lib/pointKey.js";
-import type { ViewedSet } from "./useFilterFunnel.js";
+import type { ViewedSet } from "./useSetViews.js";
 import { sortItems } from "./resultRows.js";
 
 export interface SetMember {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { ChartRef, FunnelItem } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../../lib/setRef.js";
-import type { SavedSet } from "../../../store/filterFunnelSlice.js";
+import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { chartKey } from "../../../lib/pointKey.js";
 import type { EvalLookup } from "../evaluate.js";
 import type { FilterStage } from "../stage.js";

@@ -13,12 +13,13 @@
 // 보인다. 코드의 `stage`(단계)는 core 깔때기 정산의 모델 낱말이라 그대로 둔다(상류·새로 죽임이 그
 // 순서에 매여 있다).
 import { useState } from "react";
-import { useWorkbench } from "../store/workbench.js";
+import { selectFilterStages, useWorkbench } from "../store/workbench.js";
 import { TextToggle, PanelHeader } from "../components/ControlChrome.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import type { FunnelCell } from "@trade-data-manager/market/domain";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { FilterBoard, type BoardReveal } from "./filter/FilterBoard.js";
+import { FilterBoard } from "./filter/FilterBoard.js";
+import type { BoardReveal } from "./filter/boardReveal.js";
 import { FilterRow } from "./filter/FilterRow.js";
 import { FunnelHeader } from "./filter/FunnelHeader.js";
 import { Legend, PASS_CELLS } from "./filter/cells.js";
@@ -29,7 +30,7 @@ import type { Grain } from "./filter/stage.js";
 
 export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element {
     const v = useFunnel();
-    const stages = useWorkbench((s) => s.filterStages);
+    const stages = useWorkbench(selectFilterStages);
     const selection = useWorkbench((s) => s.funnelSelection);
     const setSelection = useWorkbench((s) => s.setFunnelSelection);
     const expandToPoints = useWorkbench((s) => s.filterExpandToPoints);

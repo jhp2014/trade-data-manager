@@ -16,9 +16,9 @@ import { useCallback } from "react";
 import { isPersistableSetRef, parseSetRef, type SetRef } from "../../lib/setRef.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
-import type { SavedSet } from "../../store/filterFunnelSlice.js";
+import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { useFunnel } from "./FunnelContext.js";
-import type { ViewedSet } from "./useFilterFunnel.js";
+import type { ViewedSet } from "./useSetViews.js";
 
 export interface SetBinding {
     /** null = 연동(디폴트) — 필터 패널의 선택 포인터를 따라간다. */

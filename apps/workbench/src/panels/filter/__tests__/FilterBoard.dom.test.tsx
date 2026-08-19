@@ -13,7 +13,7 @@ import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { AxisLine, CandidateDay, RankAxis, ReviewPointListItem } from "@trade-data-manager/wire";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
-import { useWorkbench } from "../../../store/workbench.js";
+import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { RAIL_PAD } from "../rail/Rail.js";
 import { FilterBoard } from "../FilterBoard.js";
 
@@ -83,10 +83,11 @@ const drag = (el: HTMLElement, from: number, to: number): void => {
     fireEvent.pointerMove(el, { clientX: xAt(to), pointerId: 1 });
     fireEvent.pointerUp(el, { pointerId: 1 });
 };
-const stages = (): ReturnType<typeof useWorkbench.getState>["filterStages"] => useWorkbench.getState().filterStages;
+const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(useWorkbench.getState());
 
-beforeEach(() => { useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null, selectedSetRef: null, savedSets: [] }); });
-afterEach(() => { useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null, selectedSetRef: null, savedSets: [] }); localStorage.clear(); });
+const RESET = { filterSlots: [[], [], []], filterSlotIndex: 0, filterExpandToPoints: false, funnelSelection: null, selectedSetRef: null, savedSets: [] };
+beforeEach(() => { useWorkbench.setState(RESET); });
+afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
 // ⚠ 이 블록이 이 파일의 존재 이유 중 하나다.
 describe("사전이 오기 전 — 빈 레일을 그리지 않는다", () => {
@@ -257,7 +258,8 @@ describe("선택 집합 오버레이 — 멤버는 강조색, 나머지 회색�
 
     it("필터가 걸리면 생존 멤버의 자리만 강조되고, 배경 회색은 더 죽는다(전경/배경 분리)", () => {
         useWorkbench.setState({
-            filterStages: [{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }],
+            filterSlots: [[{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }], [], []],
+            filterSlotIndex: 0,
         });
         const { container } = renderBoard(OVL_SEED);
         expect(memberSpans(container)).toHaveLength(1); // 자리 둘 중 A@D0 하나만

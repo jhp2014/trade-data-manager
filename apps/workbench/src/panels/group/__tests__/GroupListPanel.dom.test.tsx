@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Group } from "../../../api/groups.js";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
-import { useWorkbench } from "../../../store/workbench.js";
+import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { GroupListPanel } from "../../GroupListPanel.js";
 
 const g = (name: string, parentName: string | null = null): Group =>
@@ -40,8 +40,8 @@ const amp = (name: string): string => (row(name).lastElementChild?.textContent ?
 const pick = (name: string): void => { fireEvent.click(row(name)); };
 const add = (name: string): void => { fireEvent.click(row(name), { ctrlKey: true }); };
 
-beforeEach(() => { useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null }); });
-afterEach(() => { useWorkbench.setState({ filterStages: [], funnelSelection: null }); cleanup(); localStorage.clear(); });
+beforeEach(() => { useWorkbench.setState({ filterSlots: [[], [], []], filterSlotIndex: 0, filterExpandToPoints: false, funnelSelection: null }); });
+afterEach(() => { useWorkbench.setState({ filterSlots: [[], [], []], filterSlotIndex: 0, funnelSelection: null }); cleanup(); localStorage.clear(); });
 
 describe("분모 수 — 깔때기와 같은 잣대", () => {
     it("자식 소속이 부모에도 센다(계층 상속) — 깔때기의 적용 집합을 그대로 쓴다", () => {
@@ -168,7 +168,7 @@ describe("쓰기는 하나 — 필터에 추가", () => {
         renderPanel();
         pick("돌파");
         add("갭상승");
-        expect(useWorkbench.getState().filterStages).toHaveLength(0);
+        expect(selectFilterStages(useWorkbench.getState())).toHaveLength(0);
     });
 
     it("누르면 **그룹마다 단계 하나**가 생긴다 — 한 단계에 몰면 어느 단계가 무엇을 죽였는지 못 묻는다", () => {
@@ -176,7 +176,7 @@ describe("쓰기는 하나 — 필터에 추가", () => {
         pick("돌파");
         add("갭상승");
         fireEvent.click(screen.getByText("필터에 추가"));
-        const stages = useWorkbench.getState().filterStages;
+        const stages = selectFilterStages(useWorkbench.getState());
         expect(stages).toHaveLength(2);
     });
 });

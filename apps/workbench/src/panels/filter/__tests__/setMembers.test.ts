@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ViewedSet } from "../useFilterFunnel.js";
+import type { ViewedSet } from "../useSetViews.js";
 import { setMembersOf } from "../setMembers.js";
 
 const view = (items: ViewedSet["viewedItems"], pointRefs: ViewedSet["viewedPointRefs"]): ViewedSet => ({

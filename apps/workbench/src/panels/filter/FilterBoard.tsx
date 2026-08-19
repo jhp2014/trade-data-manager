@@ -10,43 +10,31 @@
 // **레일 하나 = 필터 하나**(stageBinding). 그어서 만들고 지워서 없앤다 — "추가" 버튼이 없는 이유다.
 // 그룹만 리스트인 이유도 거기 있다: 축은 존재 자체가 자리를 정하지만 그룹은 그런 고정 자리가 없고,
 // 게다가 그룹 조건은 여러 필터로 나누는 게 의미가 있다(각각의 한계 기여도가 따로 나온다).
-import { useEffect, useMemo, useRef, useState } from "react";
+//
+// 팝오버 편집기 4갈래는 BoardEditors, 그룹 생성 draft 는 useGroupCreateFlow, 되짚기는 boardReveal 에 —
+// 여기는 **레일 격자**(층위 칸·줄 배치)만 남는다.
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
 import { isComputedAxis, type AxisRef } from "../../lib/computedAxis.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
-import { useWorkbench } from "../../store/workbench.js";
-import type { GroupExpr } from "../rank/groupFilter.js";
+import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { useFunnel } from "./FunnelContext.js";
+import { BoardEditors, type BoardEditor } from "./BoardEditors.js";
+import { rowIdOfKey, rowIdOfStage, useBoardReveal, type BoardReveal } from "./boardReveal.js";
 import { GroupExprChips, namingOf } from "./GroupExprChips.js";
-import { GroupFilterEditor } from "./GroupFilterEditor.js";
-import { RangeTextEditor } from "./RangeTextEditor.js";
+import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
 import { ComputedAxisRail, SlotAxisRail } from "./rail/AxisRails.js";
 import { RAIL_LABEL_W, RAIL_ROW_H } from "./rail/Rail.js";
 import { DateRail, TimeRail } from "./rail/RangeRails.js";
-import { parseDate, parseTime, shortDate } from "../../lib/date.js";
 import { GRAIN_TITLE, GrainSection } from "./grain.js";
 import { predicateOfKind, stagesFor, type RailKey } from "./stageBinding.js";
-import type { AxisValueRange, DateRange, FilterPredicate, FilterStage, Grain, RankBand, TimeRange } from "./stage.js";
+import type { AxisValueRange, FilterPredicate, FilterStage, Grain, RankBand } from "./stage.js";
 import { stageKind } from "./stage.js";
 
-/**
- * 위 목록에서 보드로 데려오는 손짓 — 조건 이름을 누르면 그 조건이 사는 줄로.
- * `at` 은 같은 줄을 다시 눌러도 다시 강조되게 하는 손도장이다.
- */
-export interface BoardReveal {
-    stageId: string;
-    at: number;
-}
-
 const GRAINS: Grain[] = ["day", "point"];
-
-type BoardEditor =
-    | { kind: "group"; grain: Grain; stageId?: string; x: number; y: number }
-    | { kind: "date" | "time"; x: number; y: number }
-    | { kind: "axisValue"; axisId: string; x: number; y: number };
 
 export function FilterBoard({ reveal, onlyActive }: {
     reveal: BoardReveal | null;
@@ -54,7 +42,7 @@ export function FilterBoard({ reveal, onlyActive }: {
     onlyActive: boolean;
 }): JSX.Element {
     const v = useFunnel();
-    const stages = useWorkbench((s) => s.filterStages);
+    const stages = useWorkbench(selectFilterStages);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
     const addStage = useWorkbench((s) => s.addFilterStage);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
@@ -64,7 +52,8 @@ export function FilterBoard({ reveal, onlyActive }: {
     const ax = useRankAxes(); // 축 재료는 Provider 에서 직접 — 깔때기가 실어 나르지 않는다
 
     const [editor, setEditor] = useState<BoardEditor | null>(null);
-    const [draft, setDraft] = useState<GroupExpr>({ groups: [] }); // 그룹 생성 흐름의 임시 식
+    // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
+    const groupCreate = useGroupCreateFlow(addStage, setEditor);
 
     // 후보 날짜·타점 시각 — 레일의 척도. 둘 다 깔때기가 이미 받아 둔 쿼리라 캐시에서 온다(왕복 없음).
     const candQ = useQuery(candidateDaysQuery());
@@ -87,26 +76,8 @@ export function FilterBoard({ reveal, onlyActive }: {
 
     const grainOf = useMemo(() => new Map(v.stagesOrdered.map((e) => [e.stage.id, e.grain])), [v.stagesOrdered]);
 
-    // ── 되짚기 — 그 조건이 사는 줄로 스크롤 + 강조 ──
-    const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
-    const revealRowId = useMemo(() => {
-        if (!reveal) return null;
-        const s = stages.find((x) => x.id === reveal.stageId);
-        return s ? rowIdOfStage(s) : null;
-    }, [reveal, stages]);
-    const [flash, setFlash] = useState<string | null>(null);
-    useEffect(() => {
-        if (!revealRowId) return;
-        rowRefs.current.get(revealRowId)?.scrollIntoView({ block: "center", behavior: "smooth" });
-        setFlash(revealRowId);
-        const t = setTimeout(() => setFlash(null), 1400);
-        return () => clearTimeout(t);
-    }, [revealRowId, reveal?.at]);
-
-    const registerRow = (id: string) => (el: HTMLElement | null): void => {
-        if (el) rowRefs.current.set(id, el);
-        else rowRefs.current.delete(id);
-    };
+    // 되짚기 — 그 조건이 사는 줄로 스크롤 + 강조(boardReveal).
+    const { registerRow, flash } = useBoardReveal(reveal, stages);
 
     // ── 조건 쓰기 — 전부 이 한 줄을 지난다(레일 하나 = 필터 하나) ──
     const write = (key: RailKey, predicate: FilterPredicate | null): void => applyRail(key, predicate);
@@ -116,26 +87,6 @@ export function FilterBoard({ reveal, onlyActive }: {
     const visible = (has: boolean): boolean => !onlyActive || has;
 
     const naming = useMemo(() => namingOf(gv), [gv]);
-
-    // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다.
-    // ⚠ ref 가드: Escape 한 번에 input 핸들러와 팝오버 dismiss 가 **둘 다** onClose 를 부른다 —
-    // 같은 이벤트 안이라 state 는 아직 그대로여서, 가드 없이는 draft 가 두 번 커밋돼 필터가 복제된다.
-    const draftCommitted = useRef(false);
-    const closeGroupCreate = (): void => {
-        if (!draftCommitted.current && draft.groups.length > 0) {
-            draftCommitted.current = true;
-            addStage([{ kind: "group", expr: draft }]);
-        }
-        setDraft({ groups: [] });
-        setEditor(null);
-    };
-    const openGroupCreate = (grain: Grain, x: number, y: number): void => {
-        setDraft({ groups: [] });
-        draftCommitted.current = false;
-        setEditor({ kind: "group", grain, x, y });
-    };
-
-    const editingStage = editor?.kind === "group" && editor.stageId ? stages.find((s) => s.id === editor.stageId) : undefined;
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -147,7 +98,7 @@ export function FilterBoard({ reveal, onlyActive }: {
                     const groupStages = stages.filter((s) => stageKind(s) === "group" && (grainOf.get(s.id) ?? "day") === grain);
                     const axes = ax.axes.filter((a) => a.scope === grain);
                     const timeKey: RailKey = grain === "day" ? { kind: "date" } : { kind: "time" };
-                
+
                     return (
                         <div key={grain}>
                             <GrainSection grain={grain} sticky>
@@ -170,7 +121,7 @@ export function FilterBoard({ reveal, onlyActive }: {
                                             );
                                         })}
                                         <BoardRow label={groupStages.length === 0 ? "그룹" : ""}>
-                                            <button onClick={(e) => openGroupCreate(grain, e.clientX, e.clientY)}
+                                            <button onClick={(e) => groupCreate.open(grain, e.clientX, e.clientY)}
                                                 title={`${GRAIN_TITLE[grain]} 층위 그룹 조건 추가 — 여러 개로 나누면 각각의 기여도가 보입니다`}
                                                 style={{ fontSize: 10.5, padding: "1px 8px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer" }}>
                                                 + 그룹 조건
@@ -228,49 +179,11 @@ export function FilterBoard({ reveal, onlyActive }: {
                 <div style={{ height: 8 }} />
             </div>
 
-            {/* ── 편집기(정밀 입력·그룹 팔레트) ── */}
-            {editor?.kind === "group" && (
-                editor.stageId && editingStage
-                    ? <GroupFilterEditor anchor={editor} scope={editor.grain}
-                        expr={(editingStage.predicates.find((p) => p.kind === "group") as Extract<FilterPredicate, { kind: "group" }> | undefined)?.expr ?? { groups: [] }}
-                        onChange={(next) => {
-                            // 식을 다 비우면 조건이 없어진 것 — 빈 필터를 남기지 않는다(레일에서 구간을 다 지운 것과 같다).
-                            if (next.groups.length === 0) { removeStage(editor.stageId!); setEditor(null); return; }
-                            setPredicates(editor.stageId!, [{ kind: "group", expr: next }]);
-                        }}
-                        onClose={() => setEditor(null)} />
-                    : <GroupFilterEditor anchor={editor} scope={editor.grain} expr={draft} onChange={setDraft} onClose={closeGroupCreate} />
-            )}
-
-            {editor?.kind === "date" && (
-                <RangeTextEditor anchor={editor} title="날짜 구간" placeholders={["26.07.01", "26.07.31"]} parse={parseDate}
-                    rows={(predicateOfKind(stages, { kind: "date" }, "date")?.ranges ?? [])
-                        .map((r) => ({ from: shortDate(r.from), to: shortDate(r.to) }))}
-                    onCommit={(pairs) => {
-                        const ranges: DateRange[] = pairs.filter((p) => p.from && p.to).map((p) => ({ from: p.from!, to: p.to! }));
-                        write({ kind: "date" }, ranges.length > 0 ? { kind: "date", ranges } : null);
-                    }}
-                    onClose={() => setEditor(null)} />
-            )}
-
-            {editor?.kind === "time" && (
-                <RangeTextEditor anchor={editor} title="시간 구간" placeholders={["09:00", "10:30"]} parse={parseTime}
-                    rows={(predicateOfKind(stages, { kind: "time" }, "time")?.ranges ?? [])
-                        .map((r) => ({ from: r.from, to: r.to }))}
-                    onCommit={(pairs) => {
-                        const ranges: TimeRange[] = pairs.filter((p) => p.from && p.to).map((p) => ({ from: p.from!, to: p.to! }));
-                        write({ kind: "time" }, ranges.length > 0 ? { kind: "time", ranges } : null);
-                    }}
-                    onClose={() => setEditor(null)} />
-            )}
-
-            {editor?.kind === "axisValue" && (
-                <ValueRangeEditor anchor={editor}
-                    ranges={predicateOfKind(stages, { kind: "axis", axisId: editor.axisId }, "axisValue")?.ranges ?? []}
-                    values={ax.computedValues.get(editor.axisId)}
-                    onCommit={(ranges) => write({ kind: "axis", axisId: editor.axisId }, ranges ? { kind: "axisValue", axisId: editor.axisId, ranges } : null)}
-                    onClose={() => setEditor(null)} />
-            )}
+            {/* ── 편집기(정밀 입력·그룹 팔레트) — 4갈래 배선은 BoardEditors ── */}
+            <BoardEditors editor={editor} stages={stages}
+                draft={groupCreate.draft} onDraftChange={groupCreate.setDraft} onCloseCreate={groupCreate.close}
+                write={write} removeStage={removeStage} setPredicates={setPredicates}
+                onClose={() => setEditor(null)} />
         </div>
     );
 }
@@ -306,38 +219,6 @@ function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, onType, onCh
 }
 const EMPTY_VALUES = new Map<string, number>();
 
-/** 계산 축 값 구간의 정밀 입력 — 비운 쪽은 끝까지(반열림). 앵커가 아니라 **수치**로 굳는다. */
-function ValueRangeEditor({ anchor, ranges, values, onCommit, onClose }: {
-    anchor: { x: number; y: number };
-    ranges: readonly AxisValueRange[];
-    values: Map<string, number> | undefined;
-    onCommit: (ranges: AxisValueRange[] | null) => void;
-    onClose: () => void;
-}): JSX.Element {
-    const text = (b: AxisValueRange["from"]): string => {
-        if (!b) return "";
-        return b.kind === "value" ? String(b.value) : String(values?.get(b.point) ?? "");
-    };
-    return (
-        <RangeTextEditor
-            anchor={anchor} title="값 구간" hint="비운 쪽 = 끝까지 · 앵커 대신 수치로 굳습니다"
-            placeholders={["이상", "이하"]} allowOpen
-            parse={(raw) => (Number.isFinite(Number(raw.trim())) && raw.trim() !== "" ? String(Number(raw.trim())) : null)}
-            rows={ranges.map((r) => ({ from: text(r.from), to: text(r.to) }))}
-            onCommit={(pairs) => {
-                const out: AxisValueRange[] = [];
-                for (const p of pairs) {
-                    const from = p.from === null ? undefined : ({ kind: "value", value: Number(p.from) } as const);
-                    const to = p.to === null ? undefined : ({ kind: "value", value: Number(p.to) } as const);
-                    if (from || to) out.push({ from, to });
-                }
-                onCommit(out.length > 0 ? out : null);
-            }}
-            onClose={onClose}
-        />
-    );
-}
-
 /**
  * 레일이 아닌 줄(그룹·추가 버튼)을 **레일과 같은 격자**에 앉히는 껍데기 — 이름 열 폭·행 높이·구분선이
  * 같아야 목록 하나로 읽힌다. 이게 없을 때 그룹 영역이 조건 목록이 아니라 여백처럼 보였다.
@@ -371,18 +252,3 @@ const rowWrap = (stage: FilterStage | undefined, flash: boolean): React.CSSPrope
     background: flash ? "var(--accent-soft)" : "transparent",
     transition: "background .35s ease",
 });
-
-const rowIdOfKey = (k: RailKey): string => (k.kind === "axis" ? `axis:${k.axisId}` : k.kind);
-
-/** 이 필터가 보드의 어느 줄에 사는가 — 되짚기(위 목록 → 보드)의 유일한 대응표. */
-function rowIdOfStage(s: FilterStage): string {
-    const first = s.predicates[0];
-    if (!first) return `group:${s.id}`;
-    switch (first.kind) {
-        case "group": return `group:${s.id}`;
-        case "axisBand":
-        case "axisValue": return `axis:${first.axisId}`;
-        case "date": return "date";
-        case "time": return "time";
-    }
-}

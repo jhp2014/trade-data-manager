@@ -7,13 +7,16 @@
 //   · 열기 → 보드(활성 슬롯 사본) → **덮어쓰기**를 눌러야 저장물이 실제로 바뀐다(그 집합 하나만).
 //
 // 수(멤버 카운트)는 리졸버가 준다 — 목록의 수와 구독 패널의 분모가 같은 한 벌에서 나와야 한다.
+// 붙박이 이름은 setRefLabel 한 곳에서 온다 — 바인딩 라벨과 이 목록이 같은 것을 두 이름으로 부르면 안 된다.
 import { useMemo, type ReactNode } from "react";
 import { useWorkbench } from "../../store/workbench.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { ACTIVE, FAIL } from "../../styles/palette.js";
 import { cellMeta } from "./cells.js";
 import { useFunnel } from "./FunnelContext.js";
-import type { SavedSet } from "../../store/filterFunnelSlice.js";
+import { setRefLabel } from "./useSetBinding.js";
+import { Head, Note, partBadge, RowAction, SidebarRow } from "./sidebarRows.js";
+import type { SavedSet } from "../../store/savedSetsSlice.js";
 
 export const SET_LIST_W = 232;
 
@@ -87,17 +90,15 @@ export function SetListSidebar(): JSX.Element {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-                {/* 붙박이 — 이름 없는 상수 집합 둘. */}
-                <SetRow label="전체" hint="유니버스" count={counts.of({ kind: "universe" })}
+                {/* 붙박이 — 이름 없는 상수 집합 둘. 이름은 setRefLabel(바인딩 라벨과 같은 출처)에서. */}
+                <SetRow label={setRefLabel({ kind: "universe" }, savedSets)} hint="유니버스" count={counts.of({ kind: "universe" })}
                     active={selectedKey === setRefKey({ kind: "universe" })}
                     onClick={() => toggle({ kind: "universe" })} />
-                <SetRow label="최종 생존" hint="작업 깔때기" count={counts.of({ kind: "survivors" })}
+                <SetRow label={setRefLabel({ kind: "survivors" }, savedSets)} hint="작업 깔때기" count={counts.of({ kind: "survivors" })}
                     active={selectedKey === setRefKey({ kind: "survivors" })}
                     onClick={() => toggle({ kind: "survivors" })} />
 
-                {savedSets.length > 0 && (
-                    <div style={{ padding: "7px 10px 2px", fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>저장한 집합</div>
-                )}
+                {savedSets.length > 0 && <Head padding="7px 10px 2px">저장한 집합</Head>}
                 {savedSets.map((f) => (
                     <SavedRow key={f.id} set={f} opened={openedSetId === f.id}
                         count={counts.of({ kind: "saved", setId: f.id })}
@@ -107,20 +108,13 @@ export function SetListSidebar(): JSX.Element {
                         onDelete={() => { if (confirm(`집합 "${f.name}" 삭제 — 이 집합에 고정된 패널은 깨진 참조가 됩니다.`)) deleteSet(f.id); }} />
                 ))}
                 {savedSets.length === 0 && (
-                    <div style={{ padding: "10px 10px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>
+                    <Note padding="10px 10px" lineHeight={1.6}>
                         저장한 집합이 없습니다.<br />조건을 걸고 위 버튼으로 게시하면, 다른 패널이 이 목록에서 골라 봅니다.
-                    </div>
+                    </Note>
                 )}
             </div>
         </div>
     );
-}
-
-/** 부위 배지 — 같은 조건에서 나온 형제(생존/칸)를 목록에서 구분하는 유일한 표식. */
-function partBadge(set: SavedSet): { text: string; title: string } {
-    if (set.part.kind === "survivors") return { text: "생존자", title: "전 필터 통과" };
-    const cells = set.part.cells.map((c) => cellMeta(c).label).join("+");
-    return { text: cells, title: `저장 당시 짚은 칸: ${cells}` };
 }
 
 function SavedRow({ set, count, active, opened, onClick, onOpen, onDelete }: {
@@ -135,16 +129,11 @@ function SavedRow({ set, count, active, opened, onClick, onOpen, onDelete }: {
     const badge = partBadge(set);
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: 6, borderBottom: "1px solid var(--border-subtle)" }}>
-            <button onClick={onClick}
+            <SidebarRow grow active={active} broken={count.broken} activeBg="var(--accent-soft)" padding="4px 6px 4px 10px"
+                onClick={onClick}
                 title={count.broken
                     ? `${set.name} — 부위(짚은 칸)의 단계가 조건에서 사라져 깨졌습니다. 열어서 다시 저장하세요.`
-                    : `${set.name} — 필터 ${set.stages.length}개 · ${count.n.toLocaleString("ko-KR")}건${opened ? " · 보드에 열려 있음" : ""}`}
-                style={{
-                    flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, textAlign: "left",
-                    border: "none", background: active ? "var(--accent-soft)" : "transparent", cursor: "pointer",
-                    padding: "4px 6px 4px 10px", font: "inherit", fontSize: 11.5,
-                    color: count.broken ? FAIL : active ? ACTIVE : "var(--text-primary)", fontWeight: active ? 600 : 400,
-                }}>
+                    : `${set.name} — 필터 ${set.stages.length}개 · ${count.n.toLocaleString("ko-KR")}건${opened ? " · 보드에 열려 있음" : ""}`}>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {count.broken ? "⚠ " : ""}{set.name}
                 </span>
@@ -155,7 +144,7 @@ function SavedRow({ set, count, active, opened, onClick, onOpen, onDelete }: {
                 <span style={{ marginLeft: "auto", flexShrink: 0, color: active ? ACTIVE : "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>
                     {count.broken ? "—" : count.n.toLocaleString("ko-KR")}
                 </span>
-            </button>
+            </SidebarRow>
             <RowAction onClick={onOpen} title="깔때기로 열기 — 조건 사본이 보드에 펼쳐집니다(저장물은 덮어쓰기 전까지 안 변함)">열기</RowAction>
             <RowAction onClick={onDelete} title="이 집합 삭제" color={FAIL}>✕</RowAction>
         </div>
@@ -170,34 +159,15 @@ function SetRow({ label, hint, count, active, onClick }: {
     onClick: () => void;
 }): JSX.Element {
     return (
-        <button onClick={onClick} title={`${label} — ${count.n.toLocaleString("ko-KR")}건`}
-            style={{
-                display: "flex", width: "100%", alignItems: "center", gap: 6, textAlign: "left",
-                border: "none", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer",
-                background: active ? "var(--accent-soft)" : "transparent",
-                padding: "4px 10px", font: "inherit", fontSize: 11.5,
-                color: active ? ACTIVE : "var(--text-primary)", fontWeight: active ? 600 : 400,
-            }}>
+        <SidebarRow bordered active={active} activeBg="var(--accent-soft)" padding="4px 10px"
+            onClick={onClick} title={`${label} — ${count.n.toLocaleString("ko-KR")}건`}>
             <span>{label}</span>
+            {/* 이름 바로 옆의 낮은 설명 — 공용 Hint(오른쪽 끝)와 자리가 다르다(오른쪽 끝은 카운트의 자리). */}
             <span style={{ fontSize: 9.5, color: "var(--text-tertiary)", fontWeight: 400 }}>{hint}</span>
             <span style={{ marginLeft: "auto", color: active ? ACTIVE : "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>
                 {count.n.toLocaleString("ko-KR")}
             </span>
-        </button>
-    );
-}
-
-function RowAction({ onClick, title, color, children }: {
-    onClick: () => void; title: string; color?: string; children: ReactNode;
-}): JSX.Element {
-    return (
-        <button onClick={onClick} title={title}
-            style={{
-                flexShrink: 0, border: "none", background: "transparent", cursor: "pointer",
-                font: "inherit", fontSize: 10, padding: "2px 3px", color: color ?? "var(--text-tertiary)",
-            }}>
-            {children}
-        </button>
+        </SidebarRow>
     );
 }
 

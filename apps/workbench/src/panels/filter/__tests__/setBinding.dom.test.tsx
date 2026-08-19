@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Group } from "../../../api/groups.js";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
-import type { SavedSet } from "../../../store/filterFunnelSlice.js";
+import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { SkeletonOverlayPanel } from "../../SkeletonOverlayPanel.js";
 import { FAIL } from "../../../styles/palette.js";
 import { clusterFeed, clusterPoints, CLUSTER_CODES, DATE } from "../../skeleton/__tests__/overlayFixture.js";
@@ -56,7 +56,7 @@ const rgb = (hex: string): string => {
 
 beforeEach(() => {
     useWorkbench.setState({
-        pick: null, filterStages: [], funnelSelection: null, skeletonSelection: new Set(), activePoint: null,
+        pick: null, filterSlots: [[], [], []], filterSlotIndex: 0, funnelSelection: null, skeletonSelection: new Set(), activePoint: null,
         savedSets: [], selectedSetRef: null, openedSetId: null,
     });
 });
