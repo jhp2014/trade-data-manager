@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
-import { groupByChart, monthBuckets, monthLabel, monthOf, sortItems } from "../resultRows.js";
+import { flattenRows, monthBuckets, monthLabel, monthOf, sortItems } from "../resultRows.js";
 
 const p = (date: string, stockCode: string, time?: string): FunnelItem => ({ stockCode, date, ...(time ? { time } : {}) });
 
@@ -47,27 +47,34 @@ describe("monthBuckets — 달이 페이지", () => {
     });
 });
 
-describe("groupByChart — 같은 (날짜·종목)은 한 덩어리", () => {
-    it("정렬된 목록에서 붙어 있는 같은 차트를 묶는다", () => {
-        const groups = groupByChart(sortItems([
+describe("flattenRows — 문맥이 줄 안으로 들어온다", () => {
+    // 왜 이 모양인가: 가상화가 목록을 중간에서 자르면 "덩어리의 몇 번째냐"를 바깥에서 못 읽는다.
+    // 그래서 first(날짜·이름을 쓸지)와 tied(세로선을 그을지)를 만들 때 한 번 계산해 줄에 박는다.
+    it("붙어 있는 같은 차트는 첫 줄만 first, 전부 tied", () => {
+        const rows = flattenRows(sortItems([
             p("2026-07-11", "A", "09:32:00"), p("2026-07-11", "A", "10:05:00"), p("2026-07-11", "B", "09:40:00"),
         ]));
-        expect(groups.map((g) => g.items.length)).toEqual([2, 1]);
-        expect(groups[0]!.stockCode).toBe("A");
-        expect(groups[0]!.items.map((i) => i.time)).toEqual(["09:32:00", "10:05:00"]);
+        expect(rows.map((r) => r.kind === "item" && r.first)).toEqual([true, false, true]);
+        expect(rows.map((r) => r.kind === "item" && r.tied)).toEqual([true, true, false]);
     });
 
-    it("같은 종목이라도 날짜가 다르면 다른 덩어리", () => {
-        const groups = groupByChart(sortItems([p("2026-07-11", "A", "09:32:00"), p("2026-07-10", "A", "09:32:00")]));
-        expect(groups).toHaveLength(2);
+    it("같은 종목이라도 날짜가 다르면 다른 덩어리 — 둘 다 first, 둘 다 안 묶임", () => {
+        const rows = flattenRows(sortItems([p("2026-07-11", "A", "09:32:00"), p("2026-07-10", "A", "09:32:00")]));
+        expect(rows.map((r) => r.kind === "item" && r.first)).toEqual([true, true]);
+        expect(rows.map((r) => r.kind === "item" && r.tied)).toEqual([false, false]);
     });
 
-    it("하루 해상도(시각 없음)는 덩어리마다 한 항목", () => {
-        const groups = groupByChart(sortItems([p("2026-07-11", "A"), p("2026-07-10", "A")]));
-        expect(groups.map((g) => g.items.length)).toEqual([1, 1]);
+    it("하루 해상도(시각 없음)는 줄마다 제 덩어리", () => {
+        const rows = flattenRows(sortItems([p("2026-07-11", "A"), p("2026-07-10", "A")]));
+        expect(rows.map((r) => r.kind === "item" && r.first)).toEqual([true, true]);
     });
 
-    it("빈 목록은 덩어리도 없다", () => {
-        expect(groupByChart([])).toEqual([]);
+    it("키는 줄마다 다르다 — 한 차트의 타점 여럿이 같은 키를 쓰면 목록이 섞인다", () => {
+        const rows = flattenRows(sortItems([p("2026-07-11", "A", "09:32:00"), p("2026-07-11", "A", "10:05:00")]));
+        expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+    });
+
+    it("빈 목록은 줄도 없다", () => {
+        expect(flattenRows([])).toEqual([]);
     });
 });

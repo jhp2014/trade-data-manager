@@ -23,9 +23,9 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { HeaderPopover } from "./HeaderPopover.js";
-import { TextToggle } from "./ControlChrome.js";
+import { ScrollRow, TextToggle } from "./ControlChrome.js";
 import { DotsIcon } from "./icons.js";
-import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
+import { FAIL } from "../styles/palette.js";
 import { usePersistedState } from "../store/persist.js";
 
 interface ControlBase {
@@ -47,6 +47,14 @@ interface ControlBase {
      * 값에 따라 켜고 끄는 용도가 아니다(그러면 자리가 출렁인다).
      */
     available?: boolean;
+    /**
+     * 경고 물들임 — **이 컨트롤이 여는 곳에 문제가 있다**("집합" 토글이 가리키는 참조가 깨졌다).
+     * 켜짐/꺼짐과 **직교한다**: `activeColor` 는 켜졌을 때만 칠하는데, 사고는 대개 닫혀 있을 때
+     * 발견되므로 그것으로는 정작 필요한 순간에 아무 말도 못 한다.
+     * ⚠ **색만** 갈린다 — 라벨에 `⚠` 를 붙이면 글자 폭이 갈려 이웃이 밀린다(규약 ②).
+     * 무엇이 잘못됐는지는 왼쪽 말의 자리가 말하고, 이 색은 **고칠 손잡이가 어디인지**만 가리킨다.
+     */
+    tone?: "warn";
 }
 
 export interface ToggleSpec extends ControlBase {
@@ -119,7 +127,6 @@ export function HeaderControls({ controls, storageKey }: {
     storageKey: string;
 }): JSX.Element {
     const [pins, setPins] = usePersistedState<PinState>(storageKey, parsePins, EMPTY_PINS);
-    const wheelRef = useHorizontalWheel<HTMLDivElement>();
 
     const here = useMemo(() => controls.filter((c) => c.available !== false), [controls]);
     const unpinnedSet = useMemo(() => new Set(pins.unpinned), [pins.unpinned]);
@@ -138,10 +145,9 @@ export function HeaderControls({ controls, storageKey }: {
 
     return (
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <div ref={wheelRef} className="no-scrollbar"
-                style={{ display: "flex", alignItems: "center", gap: 10, overflowX: "auto", minWidth: 0 }}>
+            <ScrollRow gap={10}>
                 {shown.map((c) => <ControlValue key={c.id} spec={c} />)}
-            </div>
+            </ScrollRow>
             <HeaderPopover
                 width={330}
                 closeOnOutside
@@ -294,6 +300,9 @@ function SheetRow({ spec, pinned, onTogglePin }: {
     );
 }
 
+/** 경고색으로 물들일까 — 없으면 undefined 라 각 손잡이의 원래 색이 그대로 산다. */
+const toneColor = (spec: ControlBase): string | undefined => (spec.tone === "warn" ? FAIL : undefined);
+
 /** 컨트롤 하나의 **손잡이** — 헤더와 판이 같은 것을 쓴다(라벨·설명만 판에 더 붙는다). */
 function ControlValue({ spec }: { spec: ControlSpec }): JSX.Element {
     if (spec.kind === "toggle") return <ToggleControl spec={spec} />;
@@ -364,7 +373,7 @@ function ActionControl({ spec }: { spec: ActionSpec }): JSX.Element {
         <button onClick={(e) => spec.run(e)} disabled={spec.disabled} title={spec.help ?? spec.name}
             style={{
                 border: "none", background: "none", padding: "0 3px", fontSize: 11, fontWeight: 400,
-                color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0,
+                color: toneColor(spec) ?? "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0,
                 cursor: spec.disabled ? "default" : "pointer", opacity: spec.disabled ? 0.4 : 1,
             }}>
             {spec.label ?? spec.name}
@@ -381,7 +390,7 @@ function ToggleControl({ spec }: { spec: ToggleSpec }): JSX.Element {
     return (
         <WidthLock alts={[<b key="b" style={{ fontWeight: 700 }}>{label}</b>]}>
             <TextToggle active={spec.on} onClick={() => spec.set(!spec.on)}
-                activeColor={spec.activeColor} title={spec.help ?? spec.name}>
+                color={toneColor(spec)} activeColor={spec.activeColor} title={spec.help ?? spec.name}>
                 {label}
             </TextToggle>
         </WidthLock>
@@ -397,7 +406,7 @@ function CycleControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
         <WidthLock alts={spec.values.map((o) => <span key={o.v} style={face}>{o.label} ⇄</span>)}>
             <button onClick={() => spec.set(next.v)}
                 title={`${spec.help ?? spec.name} · 클릭 = ${next.label}`}
-                style={{ ...faceButton, ...face }}>
+                style={{ ...faceButton, ...face, ...(toneColor(spec) !== undefined ? { color: toneColor(spec) } : null) }}>
                 {cur.label} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>⇄</span>
             </button>
         </WidthLock>
@@ -416,7 +425,7 @@ function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
                     <button onClick={toggle} title={spec.help ?? spec.name}
                         style={{
                             ...faceButton, ...face,
-                            color: open ? "var(--accent-primary)" : "var(--text-primary)",
+                            color: toneColor(spec) ?? (open ? "var(--accent-primary)" : "var(--text-primary)"),
                             overflow: "hidden", textOverflow: "ellipsis", display: "block", width: "100%",
                         }}>
                         {cur?.label ?? "—"} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>▾</span>

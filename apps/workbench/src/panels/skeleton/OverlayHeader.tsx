@@ -10,9 +10,13 @@
 // 컨트롤을 JSX 로 손그리지 않는다 — 배열 하나로 선언하고 HeaderControls 가 그린다. 라벨 감추기,
 // 폭 잠금, 순환/팝오버 선택, 핀(더보기 판)이 전부 거기 규약이라 패널마다 갈릴 수가 없다.
 //
-// ## 남은 두 규약 (맵 헤더에서 온 것 — 전 패널 공통으로 가려는 것)
-// **① 왼쪽은 손, 오른쪽은 말.** `marginLeft:auto` 앞은 누르는 것만, 뒤는 읽는 것(테마 상태·선택
-//    배지·개수)만. 말이 길어지면 왼쪽이 아니라 **가운데를 먹으며** 자라므로 컨트롤 자리가 안 움직인다.
+// ## 남은 두 규약 (전 패널 공통)
+// **① 왼쪽은 말, 오른쪽은 손.** `marginLeft:auto`(HeaderControls 가 자기 안에 갖는다) 앞은 읽는
+//    것 — 바인딩 라벨·개수·짚음 배지 —, 뒤는 **상시 컨트롤**이다. 말이 길어지면 오른쪽을 밀지 않고
+//    **가운데를 먹으며** 자라므로 컨트롤 자리가 안 움직인다.
+//    ⚠ 왼쪽에 남는 유일한 손잡이는 **문맥 손잡이**다(짚음 배지의 ✕, 시트의 "정렬 2단 ⤺"): 걸린 게
+//    있을 때만 태어나므로 개수가 곧 정보고, 상시 컨트롤과 성격이 다르다. 바인딩이 오른쪽으로 간 것도
+//    같은 잣대다 — 늘 서 있는 것이 사라지는 자리에 섞여 있었다.
 // **② 자리는 안 사라진다.** 개수에 따라 생겼다 없어지는 손잡이는 이 줄에 안 산다(OverlaySelectionBar).
 //    grain(일봉/분봉)으로 갈리는 것은 예외 — 패널 정체성이라 마운트 후 안 바뀐다(`available`).
 import { useMemo } from "react";
@@ -54,15 +58,17 @@ export interface OverlayPick {
     clear: () => void;
 }
 
-export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, bindingChip, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
+export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, bindingLabel, setControl, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
     grain: "daily" | "minute";
     toggles: OverlayToggles;
     candles: CandlesView;
     counts: OverlayCounts;
     theme: OverlayThemeStatus;
     pick: OverlayPick | null;
-    /** 바인딩 칩(SetBindingChip) — "이 패널이 보는 집합"의 상시 라벨. 왼쪽(말의 자리) 맨 앞에 선다. */
-    bindingChip?: React.ReactNode;
+    /** 바인딩 라벨(SetBindingLabel) — "이 패널이 보는 집합"의 상시 말. 왼쪽(말의 자리) 맨 앞에 선다. */
+    bindingLabel?: React.ReactNode;
+    /** 그 라벨의 손잡이("집합" 토글 — 사이드바 여닫기). 라벨과 쪼개져 컨트롤 줄 맨 앞에 선다. */
+    setControl?: ControlSpec;
     /** 선택이 이 패널에 안 보일 때 이유를 말하는 배지(SubjectBadge) — 보이면 null 이 온다. */
     subjectBadge?: React.ReactNode;
     /** "선택만 보기"(분봉 전용) — 패널 로컬 시야라 영속 토글에 안 든다. */
@@ -86,6 +92,8 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, bi
      *    켰다 하는 데 쓰면 컨트롤 줄이 상태에 따라 출렁인다 — 그걸 없애려고 만든 층이다.
      */
     const controls = useMemo<ControlSpec[]>(() => [
+        // 컨트롤 줄 맨 앞 = 왼쪽 라벨과 가장 가까운 자리. 쪼갠 말과 손이 서로를 보고 서 있게 한다.
+        ...(setControl ? [setControl] : []),
         {
             kind: "choice", id: "anchor", name: "원점", group: "기준", available: isDaily,
             help: "끝을 맞출까(뒤로 퍼짐) 시작을 맞출까(앞으로 퍼짐)",
@@ -146,13 +154,13 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, bi
             help: "짚은 타점의 앞뒤 창 동안 같은 테마 종목의 분당 종가 경로를 같이 세운다 · 단축키 T",
             on: t.showTheme, set: t.setShowTheme,
         },
-    ], [isDaily, isPointUnit, t, candles.alpha, candles.setAlpha, onlySelected, setOnlySelected, locked, onToggleLock, pick]);
+    ], [isDaily, isPointUnit, t, candles.alpha, candles.setAlpha, onlySelected, setOnlySelected, locked, onToggleLock, pick, setControl]);
 
     return (
         <PanelHeader chrome={false} gap={8}
             style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
             {/* ── 왼쪽은 **말**(이 화면이 무엇을 담고 있나). 좁아지면 오른쪽부터 밀려나므로 여기 있는 것이 남는다. */}
-            {bindingChip}
+            {bindingLabel}
             <span style={count}>
                 {counts.shown}개
                 {counts.population > counts.shown && <span style={{ color: "var(--text-tertiary)" }}> / {counts.population}</span>}

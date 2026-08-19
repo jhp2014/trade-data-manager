@@ -57,14 +57,14 @@ export function useOverlayData(
     anchor: SkeletonAnchor,
     /** "선택만 보기" — null 이면 제한 없음. 렌더 쪽 선택 상태에서 내려온다(패널 로컬 시야 — 필터와 별개). */
     onlyCharts: ReadonlySet<string> | null,
-    /** 패널 바인딩 — null = 연동(깔때기의 보는 집합 그대로). 참조면 그 집합만 남긴다. */
+    /** 패널 바인딩 — null = 깔때기 시선(그 화면의 보는 집합 그대로). 참조면 그 집합만 남긴다. */
     bindingRef: SetRef | null,
 ): OverlayData {
     const feedQ = useQuery(skeletonsQuery());
     const pointsQ = useQuery(allPointsQuery());
     const funnel = useFunnel();
 
-    // 보는 집합 구독 — 바인딩 하나로 묻는다(연동이면 깔때기 viewed* 그대로). 안 걸려 있으면 null(제한 없음).
+    // 보는 집합 구독 — 바인딩 하나로 묻는다(시선이면 깔때기 viewed* 그대로). 안 걸려 있으면 null(제한 없음).
     // 로딩 가드는 뷰 계약(isFiltering) 안에 있다 — 여기서 되풀이하지 않는다.
     const view = funnel.viewOf(bindingRef);
     const filterOn = view.isFiltering;

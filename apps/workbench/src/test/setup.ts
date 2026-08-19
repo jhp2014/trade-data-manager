@@ -51,6 +51,17 @@ if (typeof window !== "undefined") {
     };
 
     /**
+     * offsetWidth·offsetHeight — jsdom 은 레이아웃을 안 하므로 **항상 0**이다.
+     *
+     * 이게 특히 위험한 이유: 가상 목록(ItemRows)이 자기 상자 높이를 이 값으로 잰다. 0 이면
+     * "보이는 구간"이 빈 구간이라 **한 줄도 안 그린다** — 오류도 경고도 없이 빈 목록이 되고,
+     * 그 위의 단언은 전부 헛돈다(이 파일이 내내 경계하는 그 실패 방식이다).
+     * getBoundingClientRect 와 **같은 크기**를 준다 — 두 잣대가 갈리면 그것대로 이상한 자리가 나온다.
+     */
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => SIZE.width });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => SIZE.height });
+
+    /**
      * 캔버스 2D 컨텍스트 — jsdom 에 없다. 그냥 두면 부를 때마다 "Not implemented" 를 콘솔에 쏟아 내
      * 진짜 경고가 묻힌다. 페인터는 컨텍스트가 없으면 **조용히 그리기를 건너뛴다**(표시목록은 그대로
      * 남는다) — 그림을 보는 검사는 DOM 이 아니라 그 목록을 읽으므로(drawProbe) 여기선 소음만 없앤다.

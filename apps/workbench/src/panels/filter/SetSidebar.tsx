@@ -3,17 +3,19 @@
 // 선택자가 필요해지고, 그 순간 방금 죽인 전역 렌즈가 축소판으로 부활한다.
 //
 // 내용 셋:
-//   · 바인딩 고르기 — 연동/전체/활성 필터/저장 필터/그룹. 깨진 참조면 맨 위에 "전체로 전환".
-//   · 멤버 목록 — 패널 층위로 변환(setMembers), 월=페이지(결과 목록 조각 승격), 행 클릭=되짚기.
+//   · 바인딩 고르기 — 깔때기 시선/전체/최종 생존/저장 필터/그룹. 깨진 참조면 맨 위에 "전체로 전환".
+//   · 멤버 목록 — 패널 층위로 변환(setMembers), 달로 훑기(여럿 선택 가능), 줄 클릭=되짚기.
 //   · 표현 안 됨 — 이 패널이 못 그린 멤버(결손 목록). 클릭하면 그 항목으로 가서 **채우러 간다**(작업 큐).
 import { useMemo, useState, type ReactNode } from "react";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
-import { ItemRows, type RowItem } from "../../components/ItemRows.js";
+import { ScrollRow } from "../../components/ControlChrome.js";
+import { ItemRows, type ItemSection, type RowItem } from "../../components/ItemRows.js";
 import { useStockNames } from "../../lib/useStockNames.js";
 import { ACTIVE, FAIL } from "../../styles/palette.js";
 import { monthBuckets, monthLabel, monthOf } from "./resultRows.js";
+import { MONTH_PICK_HINT, useMonthPick } from "./monthPick.js";
 import type { SetBinding } from "./useSetBinding.js";
 import type { SetMembers } from "./setMembers.js";
 
@@ -33,24 +35,34 @@ export function SetSidebar({ binding, members, showTime, onPick }: {
     const { nameOf } = useStockNames();
     const [pickingSet, setPickingSet] = useState(false);
 
-    // ── 월=페이지. 달 목록은 전체 멤버 기준(안 됨 포함 — 결손도 그 달의 사실이다).
+    // ── 달로 훑기. 달 목록은 전체 멤버 기준(안 됨 포함 — 결손도 그 달의 사실이다).
     const { months, countByMonth } = useMemo(() => monthBuckets(members.members), [members.members]);
-    const [monthSel, setMonthSel] = useState<string | null>(null);
-    // 고른 달이 지금 집합에 **없으면 버린다**(첫 달로) — 바인딩을 바꾸면 멤버의 달들이 통째로 갈리는데,
-    // 스테일 선택을 그대로 쓰면 inMonth 가 빈다. total>0 이라 "멤버가 없습니다"도 안 떠 말없이 빈 목록이 된다.
-    const month = monthSel !== null && months.includes(monthSel) ? monthSel : (months[0] ?? null);
+    // 여럿 고를 수 있다 — 결과 목록과 **같은 한 벌**(손짓·스테일 처리가 갈리면 두 화면이 다르게 군다).
+    // 바인딩을 바꾸면 멤버의 달들이 통째로 갈리는데, 그 훅이 사라진 달을 버리고 하나는 남긴다.
+    const pick = useMonthPick(months);
     const inMonth = useMemo(
-        () => (month === null ? [] : members.members.filter((m) => monthOf(m.date) === month)),
-        [members.members, month],
+        () => members.members.filter((m) => pick.picked.has(monthOf(m.date))),
+        [members.members, pick.picked],
     );
     const okRows = useMemo(() => inMonth.filter((m) => m.ok), [inMonth]);
     const badRows = useMemo(() => inMonth.filter((m) => !m.ok), [inMonth]);
+    // 표현 안 됨 = 집합의 멤버지만 이 패널이 그릴 재료가 없는 것. 클릭하면 그리로 가서 **채우러 간다**.
+    // 달을 여럿 고르면 표현된 쪽을 달마다 토막낸다(경계가 없으면 두 달이 한 달처럼 읽힌다).
+    const sections = useMemo<ItemSection[]>(() => [
+        ...(pick.multi
+            ? months.filter((ym) => pick.picked.has(ym))
+                .map((ym) => ({ label: monthLabel(ym), items: okRows.filter((m) => monthOf(m.date) === ym) }))
+            : [{ items: okRows }]),
+        { label: `표현 안 됨 ${badRows.length}`, warn: true, items: badRows },
+    ], [okRows, badRows, pick.multi, pick.picked, months]);
 
     const options = useMemo(() => {
+        // 셋 다 한 줄씩 갖는다 — 셋의 차이가 "짚은 칸을 따라가나 / 필터를 거치나" 둘로 갈리는데,
+        // 이름만 봐서는 그 축이 안 보인다("최종 생존"과 "깔때기 시선"은 아무것도 안 짚었으면 같다).
         const fixed: { ref: SetRef | null; label: string; hint?: string }[] = [
-            { ref: null, label: "연동", hint: "짚은 칸·활성 필터를 따라간다 (기본)" },
-            { ref: { kind: "universe" }, label: "전체" },
-            { ref: { kind: "filter", filterId: null }, label: "활성 필터" },
+            { ref: null, label: "깔때기 시선", hint: "짚은 칸까지 따라간다 (기본)" },
+            { ref: { kind: "universe" }, label: "전체", hint: "필터 이전 후보 전부" },
+            { ref: { kind: "filter", filterId: null }, label: "최종 생존", hint: "짚은 칸을 안 따라간다" },
         ];
         const filters = savedFunnels.map((f) => ({ ref: { kind: "filter", filterId: f.id } as SetRef, label: f.name }));
         const groups = gv.groups.map((g) => ({ ref: { kind: "group", name: g.name } as SetRef, label: g.name, scope: g.scope }));
@@ -113,38 +125,30 @@ export function SetSidebar({ binding, members, showTime, onPick }: {
 
             {/* 월 칩 — 결과 목록과 같은 문법(달=페이지). 한 달이면 칩을 안 그린다. */}
             {months.length > 1 && (
-                <div className="no-scrollbar" style={{ display: "flex", gap: 4, padding: "5px 8px", overflowX: "auto", flex: "none", borderBottom: "1px solid var(--border-default)" }}>
-                    {months.map((ym) => (
-                        <button key={ym} onClick={() => setMonthSel(ym)}
-                            title={`${monthLabel(ym)} — ${countByMonth.get(ym)?.toLocaleString("ko-KR")}건`}
-                            style={{
-                                border: "1px solid var(--border-default)", borderRadius: 999, padding: "0 7px",
-                                background: ym === month ? "var(--bg-tertiary)" : "transparent", cursor: "pointer",
-                                font: "inherit", fontSize: 10.5, whiteSpace: "nowrap", flexShrink: 0,
-                                color: ym === month ? ACTIVE : "var(--text-secondary)", fontWeight: ym === month ? 700 : 400,
-                            }}>
-                            {monthLabel(ym)}
-                        </button>
-                    ))}
-                </div>
+                <ScrollRow gap={4} style={{ padding: "5px 8px", flex: "none", borderBottom: "1px solid var(--border-default)" }}>
+                    {months.map((ym) => {
+                        const on = pick.picked.has(ym);
+                        return (
+                            <button key={ym} onClick={(e) => pick.click(ym, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
+                                title={`${monthLabel(ym)} — ${countByMonth.get(ym)?.toLocaleString("ko-KR")}건 · ${MONTH_PICK_HINT}`}
+                                style={{
+                                    border: "1px solid var(--border-default)", borderRadius: 999, padding: "0 7px",
+                                    background: on ? "var(--bg-tertiary)" : "transparent", cursor: "pointer",
+                                    font: "inherit", fontSize: 10.5, whiteSpace: "nowrap", flexShrink: 0,
+                                    color: on ? ACTIVE : "var(--text-secondary)", fontWeight: on ? 700 : 400,
+                                }}>
+                                {monthLabel(ym)}
+                            </button>
+                        );
+                    })}
+                </ScrollRow>
             )}
 
-            <div style={{ overflowY: "auto", minHeight: 0, flex: 1 }}>
-                {members.total === 0 && <Note>{binding.broken ? "참조가 깨져 빈 집합입니다" : "멤버가 없습니다"}</Note>}
-                {okRows.length > 0 && (
-                    <ItemRows items={okRows} showTime={showTime} nameOf={nameOf} onPick={onPick}
-                        extra={extraOf(okRows)} />
-                )}
-                {badRows.length > 0 && (
-                    <>
-                        <div style={{ padding: "6px 10px 2px", fontSize: 10, fontWeight: 700, color: FAIL }}
-                            title="집합의 멤버지만 이 패널이 그릴 재료가 없다 — 클릭해서 채우러 간다">
-                            표현 안 됨 {badRows.length}
-                        </div>
-                        <ItemRows items={badRows} showTime={showTime} nameOf={nameOf} onPick={onPick} />
-                    </>
-                )}
-            </div>
+            {/* 목록 하나에 토막 둘 — "표현 안 됨" 머리는 목록 **안의 구분줄**이다. 밖에 두면 목록이
+                둘로 갈려 스크롤 상자도 둘이 되고, 가상화가 그 자리를 계산에 못 넣는다. */}
+            {members.total === 0
+                ? <Note>{binding.broken ? "참조가 깨져 빈 집합입니다" : "멤버가 없습니다"}</Note>
+                : <ItemRows sections={sections} showTime={showTime} nameOf={nameOf} onPick={onPick} extra={extraOf(okRows)} />}
         </div>
     );
 }

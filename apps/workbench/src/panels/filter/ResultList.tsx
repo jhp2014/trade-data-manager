@@ -22,8 +22,8 @@
 //    = goToDay(하루 선택 — activePoint 는 풀린다).
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FunnelCell, FunnelItem } from "@trade-data-manager/market/domain";
-import { ItemRows } from "../../components/ItemRows.js";
-import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
+import { ScrollRow } from "../../components/ControlChrome.js";
+import { ItemRows, type ItemSection } from "../../components/ItemRows.js";
 import { useStockNames } from "../../lib/useStockNames.js";
 import { useSubject } from "../../lib/subject.js";
 import { useWorkbench } from "../../store/workbench.js";
@@ -32,10 +32,8 @@ import type { FunnelSelection } from "../../store/filterFunnelSlice.js";
 import { cellMeta } from "./cells.js";
 import { shortDate } from "../../lib/date.js";
 import { monthBuckets, monthLabel, monthOf, sortItems } from "./resultRows.js";
+import { MONTH_PICK_HINT, useMonthPick } from "./monthPick.js";
 import type { FunnelView } from "./useFilterFunnel.js";
-
-/** 한 달이 이보다 크면 그것대로 못 그린다 — 달이 페이지인 이상 잘림은 예외 상황이라 표시만 남긴다. */
-const MAX_ROWS = 1000;
 
 export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelSelection | null }): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
@@ -53,23 +51,31 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
         subject !== null && it.stockCode === subject.code && it.date === subject.date &&
         (subject.time === null || it.time === undefined || it.time === subject.time);
 
-    const [picked, setPicked] = useState<string | null>(null);
-    // 고른 달이 조건 편집으로 사라졌으면 가장 최근 달로 — 빈 화면을 보여주지 않는다.
-    const month = picked !== null && months.includes(picked) ? picked : (months[0] ?? null);
+    // 달 고르기 — 여럿 고를 수 있다(손짓은 monthPick 머리 주석). 사이드바와 같은 한 벌을 쓴다.
+    const pick = useMonthPick(months);
 
-    // 찾아가기 — 달을 바꾸고 **그 다음 렌더에서** 스크롤한다(행은 달이 바뀌어야 존재한다).
-    // 그래서 rAF 가 아니라 커밋 뒤에 도는 effect 를 쓴다.
+    // 찾아가기 — 달을 바꾸고 **그 다음 렌더에서** 옮긴다(줄은 달이 바뀌어야 존재한다).
+    // 칩은 아직 DOM 이라 ref 로 밀지만, 목록 줄은 가상화라 안 그려져 있을 수 있어 **키로** 넘긴다.
     const [jumpAt, setJumpAt] = useState(0);
-    const activeRowRef = useRef<HTMLTableRowElement | null>(null);
     const activeChipRef = useRef<HTMLButtonElement | null>(null);
     useEffect(() => {
         if (jumpAt === 0) return;
         activeChipRef.current?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
-        activeRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
     }, [jumpAt]);
+    const jumpTo = jumpAt === 0 ? undefined : { nonce: jumpAt };
 
-    const monthItems = useMemo(() => (month === null ? [] : sorted.filter((i) => monthOf(i.date) === month)), [sorted, month]);
-    const shown = useMemo(() => monthItems.slice(0, MAX_ROWS), [monthItems]);
+    const monthItems = useMemo(() => sorted.filter((i) => pick.picked.has(monthOf(i.date))), [sorted, pick.picked]);
+    // ⚠ 앞 N 건으로 자르던 상한(MAX_ROWS)은 없앴다 — 목록이 가상화라 통째로 그려도 DOM 은 보이는 줄
+    // 수만큼만 산다. 자르기는 "볼 방법이 아예 없는 나머지"를 만드는 일이었다.
+    //
+    // 달을 여럿 고르면 **달마다 토막**으로 나눈다 — 안 나누면 경계가 안 보여 두 달이 한 달처럼 읽힌다.
+    // 토막 머리는 목록 안에서 위에 붙으므로(ItemRows) 긴 달을 훑는 중에도 "지금 몇 월"이 안 사라진다.
+    const sections = useMemo<ItemSection[]>(() => {
+        if (!pick.multi) return [{ items: monthItems }];
+        return months
+            .filter((ym) => pick.picked.has(ym))
+            .map((ym) => ({ label: monthLabel(ym), items: monthItems.filter((i) => monthOf(i.date) === ym) }));
+    }, [pick.multi, pick.picked, months, monthItems]);
 
     // 종목명 — 사전 한 벌(전량)에서. 선택이 이 달·이 집합 밖이어도(고정 줄이 있는 이유) 이름이 나온다.
     const { nameOf } = useStockNames();
@@ -89,8 +95,6 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
         const cells = selection.cells.filter((c) => c !== cell);
         setSelection(cells.length > 0 ? { stageId: selection.stageId, cells } : null);
     };
-
-    const monthWheel = useHorizontalWheel<HTMLDivElement>(true);
 
     return (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -115,8 +119,8 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                     </>
                 )}
                 <span style={{ fontSize: 11, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {months.length > 1 && month !== null
-                        ? `이 달 ${monthItems.length.toLocaleString("ko-KR")} / 전체 ${items.length.toLocaleString("ko-KR")}건`
+                    {months.length > 1
+                        ? `${pick.multi ? `고른 달 ${pick.picked.size} · ` : "이 달 "}${monthItems.length.toLocaleString("ko-KR")} / 전체 ${items.length.toLocaleString("ko-KR")}건`
                         : `${items.length.toLocaleString("ko-KR")}건`}
                     {selection === null && " — 전 필터 통과(순서 무관)"}
                 </span>
@@ -124,8 +128,9 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
 
             {/* 지금 보고 있는 선택(타점 또는 하루) — 조건 밖이라 목록에 없어도 여기엔 남는다(시선은 조건이 아니다). */}
             {subject && (
+                // 찾아가기는 그 달 **하나로** 갈아탄다 — 여러 달을 고른 채로 찾아가면 어디로 갔는지 안 보인다.
                 <button
-                    onClick={() => { if (activeInResult && activeMonth) { setPicked(activeMonth); setJumpAt(Date.now()); } }}
+                    onClick={() => { if (activeInResult && activeMonth) { pick.click(activeMonth, { ctrl: false, shift: false }); setJumpAt(Date.now()); } }}
                     disabled={!activeInResult}
                     title={activeInResult ? "이 선택으로 — 그 달로 옮기고 목록에서 찾아갑니다" : "지금 조건에는 안 걸린 선택입니다(선택은 조건이 아니라 시선이라 여기 남습니다)"}
                     style={{
@@ -147,14 +152,15 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                 </button>
             )}
 
-            {/* 달 = 페이지. 하나뿐이면 고를 게 없다. */}
+            {/* 달 = 시선(여럿 고를 수 있다). 하나뿐이면 고를 게 없다. */}
             {months.length > 1 && (
-                <div ref={monthWheel} className="no-scrollbar" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, padding: "0 10px 5px", overflowX: "auto" }}>
+                <ScrollRow gap={4} style={{ flexShrink: 0, padding: "0 10px 5px" }}>
                     {months.map((ym) => {
-                        const on = ym === month;
+                        const on = pick.picked.has(ym);
                         return (
                             <button key={ym} ref={ym === activeMonth ? activeChipRef : undefined}
-                                onClick={() => setPicked(ym)} title={`${monthLabel(ym)} — ${countByMonth.get(ym)?.toLocaleString("ko-KR")}건`}
+                                onClick={(e) => pick.click(ym, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
+                                title={`${monthLabel(ym)} — ${countByMonth.get(ym)?.toLocaleString("ko-KR")}건 · ${MONTH_PICK_HINT}`}
                                 style={{
                                     flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer",
                                     border: `1px solid ${on ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 4,
@@ -167,20 +173,20 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                             </button>
                         );
                     })}
-                </div>
+                </ScrollRow>
             )}
 
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-                {items.length === 0 && <div style={{ padding: 12, fontSize: 12, color: "var(--text-tertiary)" }}>비어 있습니다.</div>}
-                {shown.length > 0 && (
-                    // 표 자체는 공용(ItemRows) — 맵의 공통 멤버 목록이 같은 것을 쓴다.
-                    // time 있는 행 = 타점 이동, 없는 행 = 하루 이동(타점 없는 하루도 선택이다 — 파일 머리 ④).
+            {items.length === 0
+                ? <div style={{ padding: 12, fontSize: 12, color: "var(--text-tertiary)" }}>비어 있습니다.</div>
+                : (
+                    // 목록 자체는 공용(ItemRows) — 집합 사이드바의 멤버 목록이 같은 것을 쓴다.
+                    // time 있는 줄 = 타점 이동, 없는 줄 = 하루 이동(타점 없는 하루도 선택이다 — 파일 머리 ④).
                     <ItemRows
-                        items={shown}
+                        sections={sections}
                         showTime={v.grain === "point"}
                         nameOf={nameOf}
                         isActive={isActiveItem}
-                        activeRef={activeRowRef}
+                        jumpTo={jumpTo}
                         onPick={(it) => it.time
                             ? goToPoint({ date: it.date, code: it.stockCode, time: it.time }, "filter-funnel")
                             : goToDay({ date: it.date, code: it.stockCode }, "filter-funnel")}
@@ -192,12 +198,6 @@ export function ResultList({ v, selection }: { v: FunnelView; selection: FunnelS
                             : undefined}
                     />
                 )}
-                {monthItems.length > MAX_ROWS && (
-                    <div style={{ padding: "4px 10px", color: "var(--text-tertiary)", fontSize: 10.5 }}>
-                        이 달만 {monthItems.length.toLocaleString("ko-KR")}건 — 앞 {MAX_ROWS.toLocaleString("ko-KR")}건만 그렸습니다
-                    </div>
-                )}
-            </div>
         </div>
     );
 }

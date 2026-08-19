@@ -1,5 +1,5 @@
 import type { ThemeGroup } from "@trade-data-manager/market/domain";
-import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
+import { ScrollRow } from "../ControlChrome.js";
 import type { BoardStock } from "./boardTypes.js";
 
 /**
@@ -28,16 +28,6 @@ function FocusBadgeChip({ badge }: { badge: FocusBadge }): JSX.Element {
 // 보드 상·하단 Rail — NavRail(상단 테마칩 내비) / HiddenRail(하단 숨김 복원). 둘 다 가로 스크롤 칩 줄.
 // BoardLayout 이 소유한 선택/숨김 상태를 콜백으로 받아 렌더만 한다.
 
-/** 가로 스크롤 칩 줄(휠=가로). */
-function ScrollRow({ children }: { children: React.ReactNode }): JSX.Element {
-    const ref = useHorizontalWheel<HTMLDivElement>();
-    return (
-        <div ref={ref} style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none" }}>
-            {children}
-        </div>
-    );
-}
-
 function hiddenChipStyle(contained: boolean): React.CSSProperties {
     return {
         display: "flex",
@@ -61,7 +51,7 @@ export function HiddenRail({ themes, parents, onUnhide }: { themes: ThemeGroup<B
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "5px 8px", borderTop: "1px solid var(--border-default)", background: "var(--bg-primary)", flexShrink: 0 }}>
                 {normal.length > 0 && (
-                    <ScrollRow>
+                    <ScrollRow gap={6}>
                         {normal.map((g) => {
                             const movers = g.stocks.filter((s) => s.isMover || s.signal).length;
                             const hot = g.stocks.filter((s) => s.signal).length;
@@ -76,7 +66,7 @@ export function HiddenRail({ themes, parents, onUnhide }: { themes: ThemeGroup<B
                     </ScrollRow>
                 )}
                 {contained.length > 0 && (
-                    <ScrollRow>
+                    <ScrollRow gap={6}>
                         {contained.map((g) => {
                             const par = parents.get(g.theme) ?? [];
                             return (
@@ -116,7 +106,7 @@ export function NavRail({
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "5px 8px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)", flexShrink: 0 }}>
             {themes.length > 0 && (
-                <ScrollRow>
+                <ScrollRow gap={6}>
                     {themes.map((g) => (
                         <NavChip key={g.theme} g={g} on={selected === g.theme} onClick={() => onPick(g.theme)} />
                     ))}
@@ -125,7 +115,7 @@ export function NavRail({
             {/* 2번째 줄 = 현재 종목의 테마(보드 로스터 기준). 보이는 카드가 없으면 상태 배지(미분류/개별/필터 제외/랭킹·보드 밖). */}
             {focusRow &&
                 (focusRow.themes.length > 0 ? (
-                    <ScrollRow>
+                    <ScrollRow gap={6}>
                         {focusRow.themes.map((g) => (
                             <NavChip key={g.theme} g={g} on={selected === g.theme} onClick={() => focusRow.onPick(g.theme)} dim={focusRow.isHidden(g.theme)} />
                         ))}
@@ -136,7 +126,7 @@ export function NavRail({
                     </div>
                 ) : null)}
             {hotThemes.length > 0 && (
-                <ScrollRow>
+                <ScrollRow gap={6}>
                     {hotThemes.map((g) => (
                         <NavChip key={g.theme} g={g} on={selected === g.theme} onClick={() => onPick(g.theme)} hotOnly />
                     ))}

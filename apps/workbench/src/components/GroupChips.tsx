@@ -11,7 +11,7 @@
 //     (툴팁에는 언제나 전체 이름을 넣는다 — 줄인 표기가 유일한 정보원이 되지 않게.)
 import type { CSSProperties, ReactNode } from "react";
 import type { Group } from "../api/groups.js";
-import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
+import { ScrollRow } from "./ControlChrome.js";
 import { groupColor, groupValueOf } from "../styles/palette.js";
 
 export function GroupChips({ groups, scroll = false, short = false, empty, pathOf, style }: {
@@ -28,15 +28,13 @@ export function GroupChips({ groups, scroll = false, short = false, empty, pathO
     pathOf?: (groupName: string) => string;
     style?: CSSProperties;
 }): JSX.Element {
-    const ref = useHorizontalWheel<HTMLDivElement>(scroll);
     const labelOf = (t: Group): string => (pathOf ? pathOf(t.name) : t.name);
     const full = groups.map(labelOf).join(" · ");
     return (
-        <div
-            ref={ref}
-            className={scroll ? "no-scrollbar" : undefined}
+        <ScrollRow
+            scroll={scroll}
             title={full || undefined}
-            style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflowX: scroll ? "auto" : "hidden", fontSize: 11, lineHeight: 1.4, whiteSpace: "nowrap", ...style }}
+            style={{ fontSize: 11, lineHeight: 1.4, whiteSpace: "nowrap", ...style }}
         >
             {groups.length === 0 && empty && <span style={{ color: "var(--text-tertiary)" }}>{empty}</span>}
             {groups.map((t, i) => (
@@ -45,7 +43,7 @@ export function GroupChips({ groups, scroll = false, short = false, empty, pathO
                     <span title={labelOf(t)} style={{ color: groupColor(t.name), fontWeight: 600, flexShrink: 0 }}>{short ? groupValueOf(t.name) : t.name}</span>
                 </span>
             ))}
-        </div>
+        </ScrollRow>
     );
 }
 

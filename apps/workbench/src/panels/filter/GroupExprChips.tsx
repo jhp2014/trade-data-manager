@@ -4,6 +4,7 @@
 //
 // 칩은 **조상 경로까지** 보여준다(`반도체 › 소부장`) — 같은 이름이 두 부모 밑에 있으면 이름만으로는
 // 어느 조건인지 알 수 없고, 그게 그대로 잘못 건 필터가 된다. 강조는 현재 그룹 하나뿐이다.
+import { ScrollRow } from "../../components/ControlChrome.js";
 import { GroupToken, GroupTokenButton } from "../../components/GroupChips.js";
 import { GroupPathLabel } from "../../components/GroupPathLabel.js";
 import type { GroupsView } from "../../lib/useGroups.js";
@@ -46,7 +47,7 @@ export function GroupExprChips({ expr, naming, empty, onToggleNeg, onRemove }: {
     onRemove?: (clauseIndex: number, literalIndex: number) => void;
 }): JSX.Element {
     return (
-        <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflowX: "auto" }}>
+        <ScrollRow gap={4}>
             {expr.groups.length === 0 && empty && (
                 <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{empty}</span>
             )}
@@ -74,6 +75,6 @@ export function GroupExprChips({ expr, naming, empty, onToggleNeg, onRemove }: {
                     })}
                 </span>
             ))}
-        </div>
+        </ScrollRow>
     );
 }

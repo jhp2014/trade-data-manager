@@ -28,6 +28,7 @@ export function TextToggle({
     disabled = false,
     onClick,
     title,
+    color,
     activeColor = "var(--text-primary)",
     children,
 }: {
@@ -35,6 +36,11 @@ export function TextToggle({
     disabled?: boolean;
     onClick: () => void;
     title: string;
+    /**
+     * 켜짐과 **무관하게** 이 색으로 — 경고 물들임(HeaderControls 의 `tone`)이 쓴다.
+     * activeColor 로는 이 일을 못 한다: 그건 켜졌을 때만 칠하는데, 경고는 꺼져 있을 때도 보여야 한다.
+     */
+    color?: string;
     activeColor?: string;
     children: React.ReactNode;
 }): JSX.Element {
@@ -51,7 +57,7 @@ export function TextToggle({
                 font: "inherit",
                 fontSize: 11,
                 fontWeight: active ? 700 : 400,
-                color: active ? activeColor : "var(--text-tertiary)",
+                color: color ?? (active ? activeColor : "var(--text-tertiary)"),
                 opacity: disabled ? 0.4 : 1,
                 whiteSpace: "nowrap",
             }}
@@ -70,18 +76,58 @@ export function TextToggle({
 // (라벨은 헤더에 없다 — HeaderControls 규약 ①). 헤더는 묶음을 아예 표시하지 않는다.
 
 /**
- * 패널 머리글 한 줄 — **넘치면 줄을 바꾸지 않고 가로로 스크롤한다**(사용자 확정, 전 패널 공통).
+ * **넘치면 줄을 바꾸지 않고 가로로 스크롤하는 한 줄** — 칩 줄·컨트롤 줄·머리글이 다 이것이다.
  *
- * 줄바꿈(flexWrap)을 버린 이유는 취향이 아니다: 머리글이 두 줄이 되는 순간 **본문 높이가 변한다**.
+ * 줄바꿈(flexWrap)을 버린 이유는 취향이 아니다: 줄이 두 줄이 되는 순간 **본문 높이가 변한다**.
  * 골격 패널에서 칩 하나가 늘 때마다 그림 상자가 튀던 게 그거고(OverlayFooter 주석의 그 사고),
  * 차트·보드처럼 높이에 그림이 걸린 패널은 전부 같은 성질을 갖는다. 높이는 고정하고 넘치는 폭은
  * 스크롤로 도달하게 한다 — 잘려 안 보이는 것과 다르다.
  *
- * 스크롤바는 숨긴다(.no-scrollbar) — 상시 스크롤바가 머리글 높이를 먹는다. 대신 **가로 휠**이 붙어
- * 마우스만으로 닿고(useHorizontalWheel), 트랙패드 가로 제스처·드래그도 그대로 먹는다.
+ * ## 왜 컴포넌트인가 (스크롤 못 하는 줄이 반복해서 태어난 이유)
+ * 이 규약은 원래 **세 조각**이었다: `overflowX:auto` + `.no-scrollbar` + `useHorizontalWheel`.
+ * 앞의 둘만 적으면 **스크롤바는 숨겼는데 굴릴 방법이 없는 줄**이 된다 — 마우스만 쓰는 손에게는
+ * 넘친 부분이 그냥 사라진 것과 같다. 집합 사이드바의 달 칩·그룹 체인 줄·그룹 식 칩이 정확히 그
+ * 상태였고, 알람 로그는 훅을 손으로 복사해 갖고 있었다. 셋을 한 컴포넌트로 묶으면 반쪽짜리 줄을
+ * **애초에 못 만든다**.
  *
  * ⚠ 자식은 `flexShrink: 0`(또는 nowrap)이어야 실제로 스크롤이 생긴다. 안 그러면 넘치는 대신
  * 자기들끼리 쭈그러들어 글자가 뭉개진다 — 일부러 줄어들 자리(이름 ellipsis)만 예외로 둔다.
+ */
+export function ScrollRow({ scroll = true, gap = 4, align = "center", title, className, onClick, style, children }: {
+    /**
+     * 넘칠 때 스크롤할까(기본). false = 넘치면 잘린다 — 폭이 없는 밀집 표기(GroupChips 의 `scroll` 끔)처럼
+     * **도달을 포기하는 게 의도인 자리**만 쓴다. 끄면 휠도 안 붙는다(빈 리스너를 남기지 않는다).
+     */
+    scroll?: boolean;
+    gap?: number;
+    align?: CSSProperties["alignItems"];
+    /** 줄 전체에 걸리는 툴팁(좁아서 못 다 쓴 것을 여기서 말할 때). */
+    title?: string;
+    className?: string;
+    /** 이 줄에서 난 클릭을 여기서 삼킬 때(카드 위에 얹힌 칩 줄 — 칩을 누른 게 카드를 누른 게 되면 안 된다). */
+    onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
+    /** 자리별 차이(패딩·바탕·글자)만 덮어쓴다. **넘침 규약은 못 덮는다** — 그러라고 모은 자리다. */
+    style?: CSSProperties;
+    children: ReactNode;
+}): JSX.Element {
+    const wheelRef = useHorizontalWheel<HTMLDivElement>(scroll);
+    return (
+        <div ref={wheelRef} title={title} onClick={onClick}
+            className={[scroll ? "no-scrollbar" : null, className].filter((c) => c !== null).join(" ") || undefined}
+            style={{
+                display: "flex", alignItems: align, gap, minWidth: 0,
+                ...style,
+                // 넘침 규약은 style 뒤에 — 호출부가 실수로 덮어 다시 줄바꿈이 되는 일이 없게.
+                flexWrap: "nowrap", overflowX: scroll ? "auto" : "hidden", overflowY: "hidden",
+            }}>
+            {children}
+        </div>
+    );
+}
+
+/**
+ * 패널 머리글 한 줄 — ScrollRow 에 머리글의 겉모습(경계선·바탕·안 줄어듦)을 입힌 것.
+ * 넘침 동작은 전부 ScrollRow 것이다.
  */
 export function PanelHeader({ gap = 8, padding = "6px 10px", chrome = true, title, style, children }: {
     gap?: number;
@@ -97,18 +143,15 @@ export function PanelHeader({ gap = 8, padding = "6px 10px", chrome = true, titl
     style?: CSSProperties;
     children: ReactNode;
 }): JSX.Element {
-    const wheelRef = useHorizontalWheel<HTMLDivElement>();
     return (
-        <div ref={wheelRef} className="no-scrollbar" title={title}
+        <ScrollRow gap={gap} title={title}
             style={{
-                flexShrink: 0, display: "flex", alignItems: "center", gap, padding,
+                flexShrink: 0, padding,
                 ...(chrome ? { borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)" } : null),
                 ...style,
-                // 넘침 규약은 style 뒤에 — 패널이 실수로 덮어 다시 줄바꿈이 되는 일이 없게.
-                flexWrap: "nowrap", overflowX: "auto", overflowY: "hidden",
             }}>
             {children}
-        </div>
+        </ScrollRow>
     );
 }
 

@@ -21,7 +21,7 @@ describe("setRefKey — 같은 집합이면 같은 키", () => {
         expect(a).toBe(b);
     });
 
-    it("활성 슬롯과 저장 필터는 다른 키 — 연동은 따라가고 고정은 안 따라간다는 구분의 뿌리", () => {
+    it("활성 슬롯과 저장 필터는 다른 키 — 시선은 따라가고 고정은 안 따라간다는 구분의 뿌리", () => {
         expect(setRefKey({ kind: "filter", filterId: null })).not.toBe(setRefKey({ kind: "filter", filterId: "active" }));
     });
 

@@ -75,7 +75,7 @@ export interface FunnelView {
     resolveSet: (ref: SetRef) => ResolvedSet;
     /**
      * 패널이 보는 집합 — **바인딩 하나로 위의 viewed* 계약과 같은 모양**을 돌려준다.
-     * null = 연동(짚은 칸 반영, 없으면 최종 생존 — 위 viewed* 그대로), 참조 = 그 집합(층위 변환 포함).
+     * null = 깔때기 시선(짚은 칸 반영, 없으면 최종 생존 — 위 viewed* 그대로), 참조 = 그 집합(층위 변환 포함).
      * 소비 패널은 viewOf(자기 바인딩) 하나만 읽으면 되고, 바인딩이 없던 시절의 코드와 같은 필드를 쓴다.
      */
     viewOf: (ref: SetRef | null) => ViewedSet;
@@ -184,7 +184,7 @@ export function useFilterFunnel(): FunnelView {
     /**
      * 리졸버 — 재료가 하나라도 바뀌면 함수째 새로 서고(useMemo), 그 안의 캐시도 같이 버려진다.
      * 활성 슬롯(null)은 **위 정산(result)을 그대로 재사용**한다(ctx.activeFilter) — 두 번 평가하지
-     * 않을 뿐 아니라, 연동과 "활성 필터" 바인딩이 같은 grain("타점으로 펼치기" 반영)으로 풀린다.
+     * 않을 뿐 아니라, "깔때기 시선"과 "최종 생존" 바인딩이 같은 grain("타점으로 펼치기" 반영)으로 풀린다.
      */
     const resolveSet = useMemo(() => {
         const cache = new Map<string, ResolvedSet>();
@@ -236,7 +236,7 @@ export function useFilterFunnel(): FunnelView {
         [isLoading, stages, grainLook],
     );
 
-    // 연동 뷰 — 시선(짚은 칸)이 바뀔 때만 새로 선다. 바인딩 뷰 캐시와 **일부러 분리**한다: 명시 바인딩의
+    // 깔때기 시선 뷰 — 시선(짚은 칸)이 바뀔 때만 새로 선다. 바인딩 뷰 캐시와 **일부러 분리**한다: 명시 바인딩의
     // 값은 시선과 무관한데 한 메모에 두면 칸 클릭마다 캐시가 통째로 버려져 바인딩 패널들이 헛돈다.
     // isFiltering 의 로딩 가드는 **뷰 계약 안에** 둔다 — 소비자마다 가드를 되풀이하면 하나는 빠뜨린다
     // (실제로 시트가 빠뜨려 로딩 중을 "조건에 맞는 타점이 없습니다"로 말했다).

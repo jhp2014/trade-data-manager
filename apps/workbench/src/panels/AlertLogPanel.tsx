@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertThemeMember, type LeafEvidence } from "../api/alerts.js";
 import { kstHm, kstMidnight, kstToday, kstTime } from "../lib/date.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { useWorkbench } from "../store/workbench.js";
-import { PanelHeader } from "../components/ControlChrome.js";
+import { PanelHeader, ScrollRow } from "../components/ControlChrome.js";
 
 // 근거 문구는 core 술어(predicateEvidence — 서버)가 채운다(4b 통합) — 그대로 렌더.
 function renderEvidence(e: LeafEvidence): string {
@@ -54,21 +54,7 @@ export function AlertLogPanel(): JSX.Element {
         setFloorState(ms);
         localStorage.setItem(FLOOR_KEY, String(ms));
     };
-    const headerRef = useRef<HTMLDivElement>(null);
     const setLiveCode = useWorkbench((s) => s.setLiveCode); // 로그 줄 클릭 → 실시간 포커스(차트·뉴스가 따라온다)
-
-    // 헤더 가로 스크롤 — 세로 휠을 가로 이동으로(폭 좁을 때). passive:false 라야 preventDefault 로 페이지 스크롤을 막는다.
-    useEffect(() => {
-        const el = headerRef.current;
-        if (!el) return;
-        const onWheel = (e: WheelEvent): void => {
-            if (el.scrollWidth <= el.clientWidth || e.deltaY === 0) return;
-            e.preventDefault();
-            el.scrollLeft += e.deltaY;
-        };
-        el.addEventListener("wheel", onWheel, { passive: false });
-        return () => el.removeEventListener("wheel", onWheel);
-    }, []);
 
     const poll = useQuery({
         queryKey: LOG_KEY,
@@ -115,7 +101,7 @@ export function AlertLogPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)" }}>
             <PanelHeader chrome={false} gap={6} padding="5px 8px" style={{ borderBottom: "1px solid var(--border-default)" }}>
                 {/* 가로 스크롤 대상 = 컨트롤들만. 건수는 이 바깥 우측 고정. */}
-                <div ref={headerRef} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", flexWrap: "nowrap", flex: 1, minWidth: 0 }}>
+                <ScrollRow gap={6} style={{ flex: 1 }}>
                     <FloorControl effFloor={effFloor} midnight={kstMidnight()} onSet={setFloor} />
                     <select value={theme} onChange={(e) => setTheme(e.target.value)} style={selectStyle}>
                         <option value="">전체 테마</option>
@@ -134,7 +120,7 @@ export function AlertLogPanel(): JSX.Element {
                         <option value="sent">전송된 것만</option>
                         <option value="held">억제된 것만</option>
                     </select>
-                </div>
+                </ScrollRow>
                 <span style={{ flexShrink: 0, fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
                     {shown.length !== entries.length ? `${shown.length}/${entries.length}` : entries.length}건
                 </span>

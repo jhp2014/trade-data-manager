@@ -36,7 +36,7 @@ import { useWorkbench } from "../store/workbench.js";
 import { inPick, pickKeys, PICK_SOURCE_LABEL } from "../lib/pick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import { useSetBinding } from "./filter/useSetBinding.js";
-import { SetBindingChip } from "./filter/SetBindingChip.js";
+import { SetBindingLabel, setBindingControl } from "./filter/SetBindingLabel.js";
 import { SetSidebar } from "./filter/SetSidebar.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { useGroups } from "../lib/GroupsContext.js";
@@ -159,7 +159,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     // 그룹 한 벌 — 그룹 메뉴·발끝 표기(여기) + 차트 그룹 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
     const groupsView = useGroups();
-    // 바인딩 — 이 패널이 보는 집합(디폴트 연동). 일봉·분봉이 별도 패널이라 키에 grain 이 붙는다.
+    // 바인딩 — 이 패널이 보는 집합(디폴트 깔때기 시선). 일봉·분봉이 별도 패널이라 키에 grain 이 붙는다.
     const binding = useSetBinding(`wb.setBinding.skeleton.${grain}`);
     const [sideOpen, setSideOpen] = usePersistedState<boolean>(
         `wb.setSidebar.skeleton.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
@@ -705,7 +705,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 candles={candles}
                 counts={{ shown: lines.length, population, missing: missingPrevClose }}
                 theme={{ lineCount: themeOverlay?.lines.length ?? null, hasTarget: singleTarget !== null }}
-                bindingChip={<SetBindingChip binding={binding} members={setMembers} open={sideOpen} onToggle={() => setSideOpen((v) => !v)} />}
+                bindingLabel={<SetBindingLabel binding={binding} members={setMembers} />}
+                setControl={setBindingControl({ binding, open: sideOpen, setOpen: setSideOpen })}
                 pick={pick === null ? null : {
                     label: `${PICK_SOURCE_LABEL[pick.source]} · ${pick.label}`,
                     shown: allLines.filter(linePicked).length,

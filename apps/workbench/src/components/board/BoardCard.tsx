@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useHorizontalWheel } from "../../lib/useHorizontalWheel.js";
+import { ScrollRow } from "../ControlChrome.js";
 import { StarIcon, HideIcon, iconBtn } from "./boardIcons.js";
 import { StockRow } from "./StockRow.js";
 import { AXIS_HI, fmtRate1, type BoardStock, type ListMode, type RelatedInfo } from "./boardTypes.js";
@@ -126,12 +126,11 @@ export function ThemeCard({
 /** 카드 하단 관련 테마 — 포함관계는 박스-인-박스 `[부모 [자식]]`, 부분 겹침은 알약. market-eye InfoLine.
  *  숨긴 테마인 관련칩은 흐릿하게. */
 function InfoLine({ home, related, onGoto, isHidden }: { home: string; related: RelatedInfo[]; onGoto: (theme: string) => void; isHidden?: (theme: string) => boolean }): JSX.Element {
-    const scrollRef = useHorizontalWheel<HTMLDivElement>();
     return (
-        <div
-            ref={scrollRef}
+        <ScrollRow
+            gap={6}
             onClick={(e) => e.stopPropagation()}
-            style={{ display: "flex", gap: 6, padding: "6px 10px", borderTop: "1px solid var(--border-subtle)", overflowX: "auto", scrollbarWidth: "none", whiteSpace: "nowrap" }}
+            style={{ padding: "6px 10px", borderTop: "1px solid var(--border-subtle)", whiteSpace: "nowrap" }}
         >
             {related.map((r) => {
                 const dim = isHidden?.(r.theme) ? 0.45 : 1;
@@ -170,7 +169,7 @@ function InfoLine({ home, related, onGoto, isHidden }: { home: string; related: 
                     </button>
                 );
             })}
-        </div>
+        </ScrollRow>
     );
 }
 

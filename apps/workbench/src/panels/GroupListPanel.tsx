@@ -13,7 +13,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { createGroup, setGroupParent, type GroupMembership, type GroupScope } from "../api/groups.js";
 import { groupsQuery } from "../api/queries.js";
-import { PanelHeader, miniBtn, mutedNote } from "../components/ControlChrome.js";
+import { PanelHeader, ScrollRow, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { usePersistedState } from "../store/persist.js";
@@ -22,7 +22,7 @@ import { chartKey } from "../lib/pointKey.js";
 import { ACTIVE } from "../styles/palette.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import { useSetBinding } from "./filter/useSetBinding.js";
-import { SetBindingChip } from "./filter/SetBindingChip.js";
+import { SetBindingLabel, setBindingControl } from "./filter/SetBindingLabel.js";
 import { SetSidebar } from "./filter/SetSidebar.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { chainCandidates, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "./group/population.js";
@@ -68,7 +68,7 @@ export function GroupListPanel(): JSX.Element {
      *
      * 잣대는 여전히 깔때기의 적용 집합 하나다 — 골격·시트와 어긋나면 그 어긋남은 화면에 신호가 없다.
      */
-    // 분모 = 이 패널의 바인딩(디폴트 연동). 필터 결과를 묶으면 "그 생존자들이 그룹에 어떻게 분포하나"가 된다.
+    // 분모 = 이 패널의 바인딩(디폴트 깔때기 시선). 필터 결과를 묶으면 "그 생존자들이 그룹에 어떻게 분포하나"가 된다.
     const binding = useSetBinding("wb.setBinding.groupList");
     const [sideOpen, setSideOpen] = usePersistedState<boolean>(
         "wb.setSidebar.groupList", (o) => (typeof o === "boolean" ? o : null), false);
@@ -216,6 +216,7 @@ export function GroupListPanel(): JSX.Element {
     };
 
     const controls = useMemo<ControlSpec[]>(() => [
+        setBindingControl({ binding, open: sideOpen, setOpen: setSideOpen }),
         {
             kind: "choice", id: "sort", name: "정렬", help: "계층 그대로 볼까, 지금 체인과 겹치는 순으로 볼까",
             values: [{ v: "tree", label: "계층" }, { v: "overlap", label: "겹침" }],
@@ -225,7 +226,7 @@ export function GroupListPanel(): JSX.Element {
             kind: "action", id: "newGroup", name: "+ 새 그룹", help: "이름만 정하면 된다(층위는 하루)",
             run: () => setAdding((v) => !v),
         },
-    ], [sort, setSort]);
+    ], [sort, setSort, binding, sideOpen, setSideOpen]);
 
     if (gv.isLoading) return <Note>불러오는 중…</Note>;
 
@@ -233,7 +234,7 @@ export function GroupListPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
             <PanelHeader chrome={false} padding="5px 10px"
                 style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
-                <SetBindingChip binding={binding} members={setMembers} open={sideOpen} onToggle={() => setSideOpen((v) => !v)} />
+                <SetBindingLabel binding={binding} members={setMembers} />
                 {/* 분모를 **두 층위로** 적는다 — 행마다 수의 단위가 그 그룹의 scope 라, 분모도 둘이어야 읽힌다. */}
                 <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}
                     title="하루 = (종목·날짜) · 타점 = (종목·날짜·시각). 그룹의 scope 가 어느 쪽에서 셀지 정한다">
@@ -261,11 +262,11 @@ export function GroupListPanel(): JSX.Element {
 
             {/* 머리줄 — 맵의 체인 작업줄이 여기로 왔다. 교집합 칩이 서던 자리가 "공통 N" 이다. */}
             {chain.length > 0 && (
-                <div style={{
-                    flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
+                <ScrollRow gap={6} style={{
+                    flexShrink: 0, padding: "4px 10px",
                     background: "var(--accent-soft)", borderBottom: "1px solid var(--border-default)",
-                    fontSize: 11.5, whiteSpace: "nowrap", overflowX: "auto",
-                }} className="no-scrollbar">
+                    fontSize: 11.5, whiteSpace: "nowrap",
+                }}>
                     {chain.map((name, i) => (
                         <span key={name} style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                             {i > 0 && <span style={{ color: "var(--text-tertiary)" }}>&</span>}
@@ -287,7 +288,7 @@ export function GroupListPanel(): JSX.Element {
                         <button onClick={() => setChain([])} title="체인 비우기"
                             style={{ border: "none", background: "none", cursor: "pointer", font: "inherit", fontSize: 11.5, color: "var(--text-tertiary)" }}>✕</button>
                     </span>
-                </div>
+                </ScrollRow>
             )}
 
             <DndContext sensors={sensors} onDragEnd={onDragEnd}>

@@ -31,7 +31,7 @@ export interface SetResolveCtx {
      * 활성 슬롯(filterId=null)의 **이미 끝난 정산** — 깔때기 훅이 방금 만든 것을 그대로 꽂는다.
      * 없으면 여기서 새로 정산하는데, 그러면 같은 필터를 두 번 평가할 뿐 아니라 **grain 이 갈릴 수 있다**:
      * 훅은 displayGrain("타점으로 펼치기" 반영)으로 펼치고 리졸버 단독으로는 그 토글을 모른다.
-     * 연동과 "활성 필터" 바인딩이 같은 집합이려면 반드시 이 재사용 경로여야 한다.
+     * "깔때기 시선"과 "최종 생존" 바인딩이 같은 집합이려면 반드시 이 재사용 경로여야 한다.
      */
     activeFilter?: ResolvedFilter;
     evalLook: EvalLookup;

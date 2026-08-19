@@ -22,14 +22,13 @@ import { SheetRowView, ROW_H, type CellCtxPayload, type SheetRowHandlers } from 
 import { useRankAxes } from "../lib/RankAxesContext.js";
 import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js";
 import { useSetBinding } from "./filter/useSetBinding.js";
-import { SetBindingChip } from "./filter/SetBindingChip.js";
+import { SetBindingLabel, setBindingControl } from "./filter/SetBindingLabel.js";
 import { SetSidebar } from "./filter/SetSidebar.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { computeRowDrop, type RowGeom } from "./rank/rankGeometry.js";
-import { PanelHeader, miniBtn, mutedNote } from "../components/ControlChrome.js";
+import { PanelHeader, ScrollRow, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
-import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { pointKey, parsePointKey } from "../lib/pointKey.js";
 import { subjectStatus, useSubject } from "../lib/subject.js";
 import { useStockNames } from "../lib/useStockNames.js";
@@ -129,7 +128,7 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [allPoints]);
 
-    // ── 보는 집합 — **바인딩 하나로 구독**한다(디폴트 연동 = 깔때기의 보는 집합 그대로).
+    // ── 보는 집합 — **바인딩 하나로 구독**한다(디폴트 깔때기 시선 = 깔때기의 보는 집합 그대로).
     //    참조를 묶으면 이 시트만 그 집합을 본다 — 옆 패널과 다른 집합을 보는 게 이제 정상 상태라,
     //    무엇을 보는지는 헤더 칩이 상시 말한다.
     const binding = useSetBinding("wb.setBinding.sheet");
@@ -276,7 +275,6 @@ export function RankSheetPanel(): JSX.Element {
         el.scrollLeft = sheetScroll.left;
         restoredRef.current = true;
     }, [dataReady]);
-    const ctrlWheel = useHorizontalWheel<HTMLDivElement>(true); // 헤더 컨트롤 hover 휠 = 가로 스크롤
 
 
 
@@ -374,6 +372,7 @@ export function RankSheetPanel(): JSX.Element {
     // 헤더 컨트롤 선언 — 눈금·필터모드·축 만들기. 아래 "⤺" 해제 손잡이들은 여기 안 든다:
     // 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라 성격이 다르다(개수가 곧 정보다).
     const controls: ControlSpec[] = [
+        setBindingControl({ binding, open: sideOpen, setOpen: setSideOpen }),
         {
             kind: "choice", id: "cellMode", name: "눈금", help: "칸을 무엇으로 읽을까 — 값 눈금은 계산 축에서만 다르다(판단 축은 순위로 폴백)",
             values: [
@@ -402,12 +401,13 @@ export function RankSheetPanel(): JSX.Element {
     return (
         <Wrap>
           <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={() => { setDrop(null); setDragName(null); }}>
-            {/* 머리글 — 왼쪽은 말(행수·선택 배지·"⤺" 해제들), 오른쪽은 손(HeaderControls).
+            {/* 머리글 — 왼쪽은 말(바인딩 라벨·행수·선택 배지·"⤺" 해제들), 오른쪽은 손(HeaderControls).
                 "⤺" 들이 왼쪽에 남는 건 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라서다 — 개수가 곧 정보고,
-                컨트롤처럼 늘 서 있는 것이 아니다. */}
+                컨트롤처럼 늘 서 있는 것이 아니다. 바인딩 라벨이 칩(버튼)에서 못 누르는 말로 내려온 것도
+                그 잣대다: 늘 서 있는 손잡이였으니 사라지는 것들 틈이 아니라 컨트롤 줄이 제자리다. */}
             <PanelHeader gap={8}>
-                <div ref={ctrlWheel} className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 9, overflowX: "auto", minWidth: 0 }}>
-                    <SetBindingChip binding={binding} members={setMembers} open={sideOpen} onToggle={() => setSideOpen((v) => !v)} />
+                <ScrollRow gap={9}>
+                    <SetBindingLabel binding={binding} members={setMembers} />
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
@@ -417,7 +417,7 @@ export function RankSheetPanel(): JSX.Element {
                     {cutKeys.length > 0 && <button onClick={() => cols.clearCuts(sortAxisId!)} title="이 축의 그룹 컷 모두 해제" style={{ ...miniBtn, flexShrink: 0 }}>그룹 {cutKeys.length + 1} ⤺</button>}
                     {cols.hiddenCols.length > 0 && <button onClick={cols.showAllHidden} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {cols.hiddenCols.length} ⤺</button>}
                     {cols.hasManualWidths && <button onClick={cols.resetWidths} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
-                </div>
+                </ScrollRow>
                 <HeaderControls controls={controls} storageKey="wb.headerPins.rankSheet" />
             </PanelHeader>
 

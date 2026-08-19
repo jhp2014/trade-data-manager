@@ -12,7 +12,7 @@ import { backfillTape, fetchTapeThemes } from "../../api/liveTape.js";
 import { LIVE_CADENCE_MS } from "../../lib/liveCadence.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { usePlaneBus } from "../../store/usePlaneBus.js";
-import { TextToggle } from "../../components/ControlChrome.js";
+import { ScrollRow, TextToggle } from "../../components/ControlChrome.js";
 import { CanvasLayers } from "../skeleton/CanvasPainter.js";
 import { layoutReadoutRows } from "../skeleton/readout.js";
 import { machineGaps } from "./tapeData.js";
@@ -117,7 +117,7 @@ export function LiveTapePanel({ panelId }: { panelId: string }): JSX.Element {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)", overflowX: "auto", whiteSpace: "nowrap" }}>
+            <ScrollRow gap={6} style={{ padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)", whiteSpace: "nowrap" }}>
                 {chips.length === 0 && <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{code ? `${code} 테마 없음(시트 미배정)` : "종목을 선택하세요"}</span>}
                 {chips.map((t) => (
                     <button
@@ -141,7 +141,7 @@ export function LiveTapePanel({ panelId }: { panelId: string }): JSX.Element {
                     <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }} title={data.pending.join(", ")}>기준가 대기 {data.pending.length}</span>
                 )}
                 <TextToggle active={amountWidthOn} onClick={() => setAmountWidthOn((v) => !v)} title="선 굵기 = 분당 거래대금">굵기</TextToggle>
-            </div>
+            </ScrollRow>
 
             <div ref={wrapRef} style={{ flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}>
                 {theme === "" ? null : error ? (
