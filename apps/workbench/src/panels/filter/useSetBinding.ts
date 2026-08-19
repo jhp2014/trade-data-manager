@@ -13,7 +13,7 @@
 // 깨진 참조는 빈 집합 + broken 으로 오고, 화면이 라벨과 전환 손잡이를 보여준다 — 유니버스로 조용히
 // 폴백하지 않는다(실패가 넓어지는 방향이라).
 import { useCallback } from "react";
-import { parseSetRef, type SetRef } from "../../lib/setRef.js";
+import { isPersistableSetRef, parseSetRef, type SetRef } from "../../lib/setRef.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
 import type { SavedSet } from "../../store/filterFunnelSlice.js";
@@ -50,7 +50,11 @@ export function useSetBinding(storageKey: string): SetBinding {
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const [ref, setRefState] = usePersistedState<SetRef | null>(storageKey, parseSetRef, null);
-    const setRef = useCallback((r: SetRef | null) => setRefState(r), [setRefState]);
+    // 세션 종류(짚은 칸·체인·항목)는 저장하는 순간 깨진 참조가 된다 — 호출부 실수를 계약 위반으로 만든다.
+    const setRef = useCallback((r: SetRef | null) => {
+        if (r !== null && !isPersistableSetRef(r)) throw new Error(`바인딩에 저장할 수 없는 참조: ${r.kind}`);
+        setRefState(r);
+    }, [setRefState]);
     const view = funnel.viewOf(ref);
     // 연동 라벨은 **지금 따라가는 곳**까지 말한다 — "연동"만으로는 화면들이 왜 같이 움직였는지 안 보인다.
     const label = ref === null

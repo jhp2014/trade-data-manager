@@ -104,8 +104,8 @@ describe("사전이 오기 전 — 아무것도 정하지 않는다", () => {
     it("보는 집합이 빈다 — 구독자는 isLoading 을 같이 봐야 한다(빈 집합 ≠ 전부 탈락)", () => {
         setStages([dateStage("s1", D1, D1)]);
         const v = readPending();
-        expect(v.viewedItems).toEqual([]);
-        expect(v.viewedChartKeys.size).toBe(0);
+        expect(v.viewOf(null).viewedItems).toEqual([]);
+        expect(v.viewOf(null).viewedChartKeys.size).toBe(0);
     });
 });
 
@@ -116,8 +116,8 @@ describe("유니버스 — 분모는 편집에 따라 조용히 변한다", () =
 
     it("걸린 게 없으면 안 거른다 — 구독자에게 '제한 없음'이라고 말한다", () => {
         const v = read();
-        expect(v.isFiltering).toBe(false);
-        expect(v.viewedItems).toHaveLength(3);
+        expect(v.viewOf(null).isFiltering).toBe(false);
+        expect(v.viewOf(null).viewedItems).toHaveLength(3);
     });
 
     it("타점으로 펼치면 분모가 타점 수 — 타점 0인 하루는 항목 하나로 남는다", () => {
@@ -138,8 +138,8 @@ describe("정산 — 표시와 정산이 같은 순서를 본다", () => {
     it("조건이 생존을 좁힌다", () => {
         setStages([dateStage("s1", D1, D1)]);
         const v = read();
-        expect(v.isFiltering).toBe(true);
-        expect(v.viewedItems.map((i) => i.stockCode).sort()).toEqual([B, A].sort());
+        expect(v.viewOf(null).isFiltering).toBe(true);
+        expect(v.viewOf(null).viewedItems.map((i) => i.stockCode).sort()).toEqual([B, A].sort());
     });
 
     it("빈 술어는 평가에서 빠진다 — '무제한'이 '전부 탈락'으로 뒤집히지 않게", () => {
@@ -167,71 +167,71 @@ describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' �
 
     it("부모 그룹 필터가 자식 소속을 통과시킨다", () => {
         setStages([groupStage("테마")]);
-        expect(read(HIER).viewedItems.map((i) => i.stockCode)).toEqual([A]);
+        expect(read(HIER).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([A]);
     });
 
     it("자식 그룹 필터는 여전히 자식 소속만 — 상속은 위로만 흐른다", () => {
         setStages([groupStage("2차전지")]);
-        expect(read(HIER).viewedItems.map((i) => i.stockCode)).toEqual([A]);
+        expect(read(HIER).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([A]);
     });
 
     it("부모 부정(!테마)은 자식 소속도 떨군다 — 적용 집합 기준의 대칭", () => {
         setStages([{ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] } }] }]);
-        expect(read(HIER).viewedItems.map((i) => i.stockCode).sort()).toEqual([B, C].sort());
+        expect(read(HIER).viewOf(null).viewedItems.map((i) => i.stockCode).sort()).toEqual([B, C].sort());
     });
 });
 
 describe("칸 짚기 — 보는 집합이 그 칸으로 바뀐다", () => {
     it("안 짚으면 최종 생존", () => {
         setStages([dateStage("s1", D1, D1)]);
-        expect(read().viewedItems).toHaveLength(2);
+        expect(read().viewOf(null).viewedItems).toHaveLength(2);
     });
 
     it("짚으면 그 칸의 항목들 — **탈락한 것도** 볼 수 있다(그게 깔때기의 쓸모다)", () => {
         setStages([dateStage("s1", D1, D1)]);
         act(() => { useWorkbench.setState({ funnelSelection: { stageId: "s1", cells: ["fail"] } }); });
         const v = read();
-        expect(v.isFiltering).toBe(true);
-        expect(v.viewedItems.map((i) => i.stockCode)).toEqual([C]); // D2 라 걸러진 것
+        expect(v.viewOf(null).isFiltering).toBe(true);
+        expect(v.viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([C]); // D2 라 걸러진 것
     });
 
     it("여러 칸을 짚으면 합집합 — 한 단계 안 칸들은 서로소라 중복이 없다", () => {
         setStages([dateStage("s1", D1, D1)]);
         act(() => { useWorkbench.setState({ funnelSelection: { stageId: "s1", cells: ["survive", "fail"] } }); });
-        expect(read().viewedItems).toHaveLength(3);
+        expect(read().viewOf(null).viewedItems).toHaveLength(3);
     });
 
     it("짚은 단계가 없어졌으면 최종 생존으로 돌아간다 — 유령 선택이 화면을 비우지 않게", () => {
         setStages([dateStage("s1", D1, D1)]);
         act(() => { useWorkbench.setState({ funnelSelection: { stageId: "없는단계", cells: ["fail"] } }); });
-        expect(read().viewedItems).toHaveLength(2);
+        expect(read().viewOf(null).viewedItems).toHaveLength(2);
     });
 });
 
 // ⚠ 이 계약을 골격 분봉·시트·분석이 구독한다 — 여기가 틀리면 세 화면이 같이 틀린다.
 describe("구독자용 펼치기 — 같은 집합을 두 알갱이로 낸다", () => {
     it("차트 열쇠 — 타점 항목은 제 차트로 접힌다", () => {
-        expect([...read().viewedChartKeys].sort()).toEqual([`${A}|${D1}`, `${B}|${D1}`, `${C}|${D2}`].sort());
+        expect([...read().viewOf(null).viewedChartKeys].sort()).toEqual([`${A}|${D1}`, `${B}|${D1}`, `${C}|${D2}`].sort());
     });
 
     it("**하루 항목은 그날 타점 전부로 펼쳐진다** — 하루 조건은 전 타점에 같은 값(정직한 반복)", () => {
-        const refs = read().viewedPointRefs;
+        const refs = read().viewOf(null).viewedPointRefs;
         expect(refs.filter((r) => r.stockCode === A).map((r) => r.time).sort()).toEqual(["09:30:00", "09:35:00"]);
     });
 
     it("**타점 없는 하루는 0개** — 지어내지 않는다", () => {
-        expect(read().viewedPointRefs.some((r) => r.stockCode === C)).toBe(false);
+        expect(read().viewOf(null).viewedPointRefs.some((r) => r.stockCode === C)).toBe(false);
     });
 
     it("펼친 결과가 타점 총수와 맞는다", () => {
-        expect(read().viewedPointRefs).toHaveLength(points.length);
+        expect(read().viewOf(null).viewedPointRefs).toHaveLength(points.length);
     });
 
     it("걸러진 뒤에도 두 알갱이가 같은 집합을 가리킨다", () => {
         setStages([dateStage("s1", D1, D1)]);
         const v = read();
-        expect([...v.viewedChartKeys].sort()).toEqual([`${A}|${D1}`, `${B}|${D1}`].sort());
-        expect(v.viewedPointRefs).toHaveLength(3); // A 2 + B 1
+        expect([...v.viewOf(null).viewedChartKeys].sort()).toEqual([`${A}|${D1}`, `${B}|${D1}`].sort());
+        expect(v.viewOf(null).viewedPointRefs).toHaveLength(3); // A 2 + B 1
     });
 });
 

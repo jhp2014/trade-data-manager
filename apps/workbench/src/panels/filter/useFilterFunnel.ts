@@ -10,7 +10,7 @@
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-    blockedBy, expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
+    expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
 } from "@trade-data-manager/market/domain";
 import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
 import { expandToPointItems } from "../../lib/grainView.js";
@@ -21,7 +21,7 @@ import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndexes, dayAxisValueOf } from "./axisLookup.js";
 import { resolveBound, toFunnelStages, type EvalLookup } from "./evaluate.js";
-import { stageLabel, type LabelLookup } from "./label.js";
+import type { LabelLookup } from "./label.js";
 import { resolveSetRef, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
 import {
     activeStages, canExpand, displayGrain, funnelOrder, isPredicateDead, resolveAutoGrain,
@@ -41,20 +41,9 @@ export interface FunnelView {
     stagesOrdered: OrderedStage[];
     /** 평가에 실제로 들어간 단계 — stagesOrdered 에서 활성만 남긴 것(정산 인덱스와 1:1). */
     active: FilterStage[];
-    /**
-     * 지금 보는 집합 — 짚은 칸들의 합집합, 안 짚었으면 최종 생존. **모든 구독 패널이 이걸 본다** —
-     * 조건을 나눠 주면 패널마다 판정을 재구현해 서로 다른 답을 낸다(필터 UI 가 두 곳이던 문제와 같은 종류).
-     */
-    viewedItems: FunnelItem[];
-    /** 단계나 시선이 하나라도 걸려 있나 — false 면 구독자는 거르지 않는다(전체 = 제한 없음). */
-    isFiltering: boolean;
-    /** 보는 집합의 차트 열쇠(종목|날짜) — 차트 단위 구독자(골격 일봉)용. 타점 항목은 제 차트로 접힌다. */
-    viewedChartKeys: Set<string>;
-    /**
-     * 보는 집합을 **타점으로 펼친 것** — 타점 단위 구독자(시트·분석·골격 분봉)용.
-     * 하루 항목은 그날 타점 전부로(하루 조건은 전 타점에 같은 값 — 정직한 반복), 타점 없는 하루는 0개로.
-     */
-    viewedPointRefs: { stockCode: string; date: string; time: string }[];
+    // ⚠ "지금 보는 집합"(viewedItems 등)은 **계약에 없다** — viewOf 로만 나간다. 한때 최상위 필드였는데,
+    // 선택 포인터 도입 후 그 필드는 포인터를 무시한 작업 깔때기 시선이라, 직접 읽는 소비자가 생기는
+    // 순간 "목록에서 집합을 골랐는데 이 패널만 안 따라온다"는 조용한 갈림이 된다.
     /** 정산 결과. 로딩 중이면 null. */
     result: FunnelResult | null;
     /** 죽은 참조(지워진 그룹·축)를 든 단계 id — 화면이 표시하고, 정리는 사용자가 결정한다. */
@@ -65,8 +54,8 @@ export interface FunnelView {
     // 다시 부르면 계산 축 값 맵이 여러 벌 만들어졌기 때문인데, 이제 RankAxesProvider 가 한 벌을
     // 보장하므로 그 이유가 사라졌다. 축이 필요한 화면은 useRankAxes() 를 직접 부른다 —
     // 깔때기 계약에 남겨 두면 "축을 어디서 얻나"의 답이 둘이 된다.
-    /** 이 항목을 앞선 어느 단계가 막았나(근접 탈락 목록의 "막힌 단계"). 단계 이름으로 돌려준다. */
-    blockedLabels: (item: FunnelItem, stageIndex: number) => string[];
+    // (blockedLabels — "이 항목을 어느 단계가 막았나" — 도 있었다: 결과 목록의 열이었는데 목록과
+    //  함께 갔다. 필요해지면 blockedBy(core)를 다시 감싸면 된다.)
     /**
      * 집합 참조 풀기 — 짚음 채널·패널 바인딩이 실은 SetRef 를 항목 집합으로. 깔때기가 이미 들고 있는
      * 재료(유니버스·사전·판정기)를 그대로 쓰므로 **여기가 유일한 리졸버 자리**다(두 벌이면 딴 답을 낸다).
@@ -285,16 +274,6 @@ export function useFilterFunnel(): FunnelView {
         [gv.groupByName, ax.axes],
     );
 
-    // 막힌 단계는 **앞선 단계만** 본다(상류의 정의). 판정을 다시 부르지만 한 항목뿐이라 값싸다.
-    const blockedLabels = useMemo(
-        () => (item: FunnelItem, stageIndex: number): string[] =>
-            blockedBy(toFunnelStages(active, evalLook), stageIndex, item)
-                .map((id) => active.find((s) => s.id === id))
-                .filter((s): s is FilterStage => s != null)
-                .map((s) => stageLabel(s, labelLook)),
-        [active, evalLook, labelLook],
-    );
-
     return {
         isLoading,
         grain,
@@ -302,14 +281,9 @@ export function useFilterFunnel(): FunnelView {
         universe: items.length,
         stagesOrdered,
         active,
-        viewedItems,
-        isFiltering,
-        viewedChartKeys,
-        viewedPointRefs,
         result,
         deadStageIds,
         labelLook,
-        blockedLabels,
         resolveSet,
         viewOf,
     };
