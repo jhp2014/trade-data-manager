@@ -1,31 +1,31 @@
 // 집합 참조(SetRef) — 패널이 바인딩하고 연동 슬롯에 오르는 **단 하나의 타입**.
 //
-// 산지 여섯, 성질 둘:
-//   · 영속 4종 : 유니버스 / 그룹 / 필터(저장 or 활성 슬롯) / 깔때기 칸 — 패널 바인딩으로 저장할 수 있다.
-//   · 세션 2종 : 그룹 체인(교집합) / 항목 목록(시트 밴드 등) — 연동 슬롯에만 올라타고 저장되지 않는다.
-//     (집합 난립 방지: 짚기·바인딩은 무명·세션 한정, 이름을 붙일 때만 저장물이 된다.)
+// 집합 공장 재편(2026-08-20) 이후의 산지:
+//   · 영속 3종 : 유니버스(전체) / 최종 생존(작업 깔때기) / 저장 집합 — 패널 바인딩으로 저장할 수 있다.
+//     저장 집합만이 이름 있는 저장물이고, 그룹·필터를 직접 가리키는 영속 참조는 폐지됐다
+//     (그룹은 깔때기의 재료지 바인딩 대상이 아니다 — 잠깐 탐색은 연동 모드가 담당한다).
+//   · 세션 3종 : 짚은 칸(작업 깔때기) / 그룹 체인(교집합) / 항목 목록(시트 밴드 등) — 짚음 채널·내부
+//     리졸빙에만 쓰이고 저장되지 않는다. (집합 난립 방지: 이름을 붙일 때만 저장물이 된다.)
+//   · 잔해 1종 : orphan — **파서만 만든다.** 폐지된 옛 바인딩(그룹 직접·칸 직접)이 저장소에 남아 있으면
+//     여기로 변환되고, 리졸버가 항상 깨진 참조로 푼다. 조용히 연동으로 폴백하지 않는 이유: 실패가
+//     소리 없이 다른 집합을 보여주는 방향이라서다("깨진 참조 = 빈 집합 + 라벨" 규칙).
 //
-// 전부 **라이브 참조**다 — 저장하는 건 정의(어느 그룹·어느 필터의 어느 칸)지 결과가 아니다. 결과를
-// 얼리면 배치 하나만 바뀌어도 이름은 "근접 탈락"인데 내용은 낡은 스냅샷인 물건이 생긴다.
-//
-// ⚠ 칸 참조는 단계의 **정체(id)** 로 잡는다(인덱스 아님) — 재배열해도 같은 단계를 가리킨다. 칸의 내용이
-// 재배열로 바뀌는 건 버그가 아니라 라이브의 뜻이다(근접 탈락은 "어느 단계 기준이냐"에 따라 다른 집합).
+// 전부 **라이브 참조**다 — 저장하는 건 정의(어느 집합·어느 칸)지 결과가 아니다. 결과를 얼리면 배치
+// 하나만 바뀌어도 이름은 "근접 탈락"인데 내용은 낡은 스냅샷인 물건이 생긴다.
 import { funnelKey, type FunnelCell, type FunnelItem } from "@trade-data-manager/market/domain";
-
-/** 필터 지목 — null = 활성 슬롯(이름 없는 작업면), 문자열 = 저장한 깔때기의 id. */
-export type FilterRefId = string | null;
 
 export type SetRef =
     | { kind: "universe" }
-    | { kind: "group"; name: string }
-    | { kind: "filter"; filterId: FilterRefId }
-    | { kind: "cell"; filterId: FilterRefId; stageId: string; cells: FunnelCell[] }
+    | { kind: "survivors" }
+    | { kind: "saved"; setId: string }
+    | { kind: "orphan"; label: string }
+    | { kind: "cell"; stageId: string; cells: FunnelCell[] }
     | { kind: "groupChain"; names: string[] }
     | { kind: "items"; label: string; items: FunnelItem[] };
 
-/** 패널 바인딩으로 저장해도 되는 참조인가 — 세션 2종은 정의가 세션 밖에 없어 저장하면 즉시 깨진 참조다. */
+/** 패널 바인딩으로 저장해도 되는 참조인가 — 세션 3종은 정의가 세션 밖에 없어 저장하면 즉시 깨진 참조다. */
 export const isPersistableSetRef = (r: SetRef): boolean =>
-    r.kind === "universe" || r.kind === "group" || r.kind === "filter" || r.kind === "cell";
+    r.kind === "universe" || r.kind === "survivors" || r.kind === "saved";
 
 const CELLS: readonly FunnelCell[] = ["survive", "nearMiss", "upstreamPending", "fail", "pending"];
 const isCell = (v: unknown): v is FunnelCell => typeof v === "string" && (CELLS as readonly string[]).includes(v);
@@ -43,17 +43,21 @@ const isCell = (v: unknown): v is FunnelCell => typeof v === "string" && (CELLS 
 export function setRefKey(r: SetRef): string {
     switch (r.kind) {
         case "universe": return "u";
-        case "group": return `g${JSON.stringify([r.name])}`;
-        case "filter": return `f${JSON.stringify([r.filterId])}`;
-        case "cell": return `c${JSON.stringify([r.filterId, r.stageId, [...r.cells].sort()])}`;
+        case "survivors": return "sv";
+        case "saved": return `s${JSON.stringify([r.setId])}`;
+        case "orphan": return `o${JSON.stringify([r.label])}`;
+        case "cell": return `c${JSON.stringify([r.stageId, [...r.cells].sort()])}`;
         case "groupChain": return `gc${JSON.stringify([...r.names].sort())}`;
         case "items": return `it${JSON.stringify([r.label, r.items.map(funnelKey)])}`;
     }
 }
 
 /**
- * 영속본 파서 — **영속 4종만** 받는다. 세션 2종이 들어 있으면(옛 버그·손편집) 깨진 저장이므로 null.
- * 참조가 가리키는 대상(그룹·필터)이 아직 있는지는 여기서 안 본다 — 그건 리졸버의 일이고,
+ * 영속본 파서 — **영속 3종 + orphan** 만 내놓는다. 옛 형식은 여기서 변환된다:
+ *   · `filter(null)`      → 최종 생존 (뜻이 같다 — 무손실)
+ *   · `filter("fs…")`     → 저장 집합 (옛 저장 필터가 같은 id 의 집합으로 자동 전환되므로 — 무손실)
+ *   · `group` / `cell`    → orphan (직접 바인딩 폐지 — 화면이 "깨진 참조 + 다시 고르기"로 받는다)
+ * 참조가 가리키는 대상(저장 집합)이 아직 있는지는 여기서 안 본다 — 그건 리졸버의 일이고,
  * "깨진 참조 = 빈 집합 + 라벨"로 화면이 받는다(자동 폴백 금지).
  */
 export function parseSetRef(o: unknown): SetRef | null {
@@ -62,17 +66,24 @@ export function parseSetRef(o: unknown): SetRef | null {
     switch (r.kind) {
         case "universe":
             return { kind: "universe" };
-        case "group":
-            return typeof r.name === "string" && r.name !== "" ? { kind: "group", name: r.name } : null;
+        case "survivors":
+            return { kind: "survivors" };
+        case "saved":
+            return typeof r.setId === "string" && r.setId !== "" ? { kind: "saved", setId: r.setId } : null;
+        case "orphan":
+            return typeof r.label === "string" && r.label !== "" ? { kind: "orphan", label: r.label } : null;
+        // ── 옛 형식(집합 공장 이전) — usePersistedState 는 다시 고를 때까지 옛 값을 그대로 두므로,
+        //    이 변환은 일회성 이관이 아니라 **읽기 규칙**이다(멱등).
         case "filter":
-            return r.filterId === null || typeof r.filterId === "string"
-                ? { kind: "filter", filterId: (r.filterId as FilterRefId) }
-                : null;
+            if (r.filterId === null) return { kind: "survivors" };
+            return typeof r.filterId === "string" ? { kind: "saved", setId: r.filterId } : null;
+        case "group":
+            return typeof r.name === "string" && r.name !== "" ? { kind: "orphan", label: `그룹 ${r.name}` } : null;
         case "cell": {
-            if (r.filterId !== null && typeof r.filterId !== "string") return null;
-            if (typeof r.stageId !== "string" || r.stageId === "") return null;
-            if (!Array.isArray(r.cells) || r.cells.length === 0 || !r.cells.every(isCell)) return null;
-            return { kind: "cell", filterId: r.filterId as FilterRefId, stageId: r.stageId, cells: r.cells };
+            if (typeof r.stageId === "string" && Array.isArray(r.cells) && r.cells.length > 0 && r.cells.every(isCell)) {
+                return { kind: "orphan", label: "옛 칸 바인딩" };
+            }
+            return null;
         }
         default:
             return null;

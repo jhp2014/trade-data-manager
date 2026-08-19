@@ -75,7 +75,8 @@ export interface FunnelView {
     resolveSet: (ref: SetRef) => ResolvedSet;
     /**
      * 패널이 보는 집합 — **바인딩 하나로 위의 viewed* 계약과 같은 모양**을 돌려준다.
-     * null = 깔때기 시선(짚은 칸 반영, 없으면 최종 생존 — 위 viewed* 그대로), 참조 = 그 집합(층위 변환 포함).
+     * null = **연동**(필터 패널의 선택 포인터를 따라간다 — 목록에서 고른 집합, 없으면 작업 깔때기 시선),
+     * 참조 = 그 집합에 고정(층위 변환 포함).
      * 소비 패널은 viewOf(자기 바인딩) 하나만 읽으면 되고, 바인딩이 없던 시절의 코드와 같은 필드를 쓴다.
      */
     viewOf: (ref: SetRef | null) => ViewedSet;
@@ -101,7 +102,8 @@ export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench((s) => s.filterStages);
     const expandToPoints = useWorkbench((s) => s.filterExpandToPoints);
     const selection = useWorkbench((s) => s.funnelSelection);
-    const savedFunnels = useWorkbench((s) => s.savedFunnels);
+    const savedSets = useWorkbench((s) => s.savedSets);
+    const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
 
     const gv = useGroups();
     const ax = useRankAxes();
@@ -193,7 +195,8 @@ export function useFilterFunnel(): FunnelView {
             timesOf: (c) => timesByChart.get(chartKey(c)) ?? [],
             appliedGroupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
             groupScope: (n) => gv.groupByName.get(n)?.scope,
-            stagesOf: (id) => (id === null ? stages : savedFunnels.find((f) => f.id === id)?.stages),
+            activeStages: stages,
+            savedSetOf: (id) => savedSets.find((f) => f.id === id),
             ...(result !== null ? { activeFilter: { grain, active, tally: result } } : {}),
             evalLook,
             grainLook,
@@ -206,7 +209,7 @@ export function useFilterFunnel(): FunnelView {
             cache.set(k, r);
             return r;
         };
-    }, [candQ.data, timesByChart, gv, evalLook, grainLook, stages, savedFunnels, isLoading, grain, active, result]);
+    }, [candQ.data, timesByChart, gv, evalLook, grainLook, stages, savedSets, isLoading, grain, active, result]);
 
     // 지금 보는 집합 — 짚은 칸이면 그 **칸 참조를 리졸버로** 푼다(칸 합집합 구현은 리졸버 한 벌뿐이어야
     // 한다 — 두 벌이면 언젠가 다른 답을 낸다). 리졸버는 위 정산을 재사용하므로 비용은 fold 하나 그대로.
@@ -214,7 +217,7 @@ export function useFilterFunnel(): FunnelView {
     const viewedItems = useMemo<FunnelItem[]>(() => {
         if (!result) return [];
         if (selection) {
-            const r = resolveSet({ kind: "cell", filterId: null, stageId: selection.stageId, cells: selection.cells });
+            const r = resolveSet({ kind: "cell", stageId: selection.stageId, cells: selection.cells });
             if (!r.broken) return r.items;
         }
         return result.survivors;
@@ -236,11 +239,11 @@ export function useFilterFunnel(): FunnelView {
         [isLoading, stages, grainLook],
     );
 
-    // 깔때기 시선 뷰 — 시선(짚은 칸)이 바뀔 때만 새로 선다. 바인딩 뷰 캐시와 **일부러 분리**한다: 명시 바인딩의
+    // 작업 깔때기 시선 뷰 — 시선(짚은 칸)이 바뀔 때만 새로 선다. 바인딩 뷰 캐시와 **일부러 분리**한다: 명시 바인딩의
     // 값은 시선과 무관한데 한 메모에 두면 칸 클릭마다 캐시가 통째로 버려져 바인딩 패널들이 헛돈다.
     // isFiltering 의 로딩 가드는 **뷰 계약 안에** 둔다 — 소비자마다 가드를 되풀이하면 하나는 빠뜨린다
     // (실제로 시트가 빠뜨려 로딩 중을 "조건에 맞는 타점이 없습니다"로 말했다).
-    const linkedView = useMemo<ViewedSet>(
+    const gazeView = useMemo<ViewedSet>(
         () => ({ isFiltering: !isLoading && isFiltering, broken: false, viewedItems, viewedChartKeys, viewedPointRefs }),
         [isLoading, isFiltering, viewedItems, viewedChartKeys, viewedPointRefs],
     );
@@ -264,9 +267,14 @@ export function useFilterFunnel(): FunnelView {
             return v;
         };
     }, [resolveSet, timesByChart, isLoading]);
+    // 연동(null) = **선택 포인터를 따라간다**: 목록에서 집합을 고르면 그 집합, 깔때기를 만지는 순간
+    // 작업 깔때기 시선으로 복귀(포인터 리셋은 슬라이스가 한다 — 여기는 읽기만).
     const viewOf = useCallback(
-        (ref: SetRef | null): ViewedSet => (ref === null ? linkedView : boundViewOf(ref)),
-        [linkedView, boundViewOf],
+        (ref: SetRef | null): ViewedSet => {
+            const target = ref ?? selectedSetRef;
+            return target === null ? gazeView : boundViewOf(target);
+        },
+        [gazeView, boundViewOf, selectedSetRef],
     );
 
     const labelLook = useMemo<LabelLookup>(

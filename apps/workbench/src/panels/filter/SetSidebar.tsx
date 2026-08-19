@@ -3,11 +3,12 @@
 // 선택자가 필요해지고, 그 순간 방금 죽인 전역 렌즈가 축소판으로 부활한다.
 //
 // 내용 셋:
-//   · 바인딩 고르기 — 깔때기 시선/전체/최종 생존/저장 필터/그룹. 깨진 참조면 맨 위에 "전체로 전환".
+//   · 바인딩 고르기 — **2모드**: 연동(필터 패널을 따라감) / 고정(집합 목록의 하나). 그룹·필터가 아니라
+//     필터 패널이 만든 **집합**만 선다(생산자/소비자 분리 — 집합의 저자는 필터 패널 하나다).
+//     깨진 참조면 맨 위에 "전체로 전환".
 //   · 멤버 목록 — 패널 층위로 변환(setMembers), 달로 훑기(여럿 선택 가능), 줄 클릭=되짚기.
 //   · 표현 안 됨 — 이 패널이 못 그린 멤버(결손 목록). 클릭하면 그 항목으로 가서 **채우러 간다**(작업 큐).
 import { useMemo, useState, type ReactNode } from "react";
-import { useGroups } from "../../lib/GroupsContext.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { ScrollRow } from "../../components/ControlChrome.js";
@@ -30,8 +31,7 @@ export function SetSidebar({ binding, members, showTime, onPick }: {
     /** 행 클릭 = 되짚기(시각 있으면 타점, 없으면 하루로). */
     onPick: (it: RowItem) => void;
 }): JSX.Element {
-    const gv = useGroups();
-    const savedFunnels = useWorkbench((s) => s.savedFunnels);
+    const savedSets = useWorkbench((s) => s.savedSets);
     const { nameOf } = useStockNames();
     const [pickingSet, setPickingSet] = useState(false);
 
@@ -57,17 +57,21 @@ export function SetSidebar({ binding, members, showTime, onPick }: {
     ], [okRows, badRows, pick.multi, pick.picked, months]);
 
     const options = useMemo(() => {
-        // 셋 다 한 줄씩 갖는다 — 셋의 차이가 "짚은 칸을 따라가나 / 필터를 거치나" 둘로 갈리는데,
-        // 이름만 봐서는 그 축이 안 보인다("최종 생존"과 "깔때기 시선"은 아무것도 안 짚었으면 같다).
+        // 연동과 붙박이 둘(전체·최종 생존)은 늘 있고, 그 아래는 필터 패널이 게시한 저장 집합 전부다.
+        // "최종 생존"이 연동과 따로 있는 이유: 연동은 짚은 칸·목록 선택까지 따라가는데, "내가 칸을
+        // 이리저리 짚는 동안 이 패널은 생존자만 보여줘"가 비교의 기본형이라서다.
         const fixed: { ref: SetRef | null; label: string; hint?: string }[] = [
-            { ref: null, label: "깔때기 시선", hint: "짚은 칸까지 따라간다 (기본)" },
+            { ref: null, label: "연동", hint: "필터 패널을 따라간다 (기본)" },
             { ref: { kind: "universe" }, label: "전체", hint: "필터 이전 후보 전부" },
-            { ref: { kind: "filter", filterId: null }, label: "최종 생존", hint: "짚은 칸을 안 따라간다" },
+            { ref: { kind: "survivors" }, label: "최종 생존", hint: "작업 깔때기 — 짚은 칸을 안 따라간다" },
         ];
-        const filters = savedFunnels.map((f) => ({ ref: { kind: "filter", filterId: f.id } as SetRef, label: f.name }));
-        const groups = gv.groups.map((g) => ({ ref: { kind: "group", name: g.name } as SetRef, label: g.name, scope: g.scope }));
-        return { fixed, filters, groups };
-    }, [savedFunnels, gv.groups]);
+        const sets = savedSets.map((f) => ({
+            ref: { kind: "saved", setId: f.id } as SetRef,
+            label: f.name,
+            hint: f.part.kind === "survivors" ? "생존자" : "칸",
+        }));
+        return { fixed, sets };
+    }, [savedSets]);
     const currentKey = binding.ref === null ? null : setRefKey(binding.ref);
     const choose = (ref: SetRef | null): void => { binding.setRef(ref); setPickingSet(false); };
 
@@ -107,19 +111,16 @@ export function SetSidebar({ binding, members, showTime, onPick }: {
                             {o.hint && <Hint>{o.hint}</Hint>}
                         </OptionRow>
                     ))}
-                    {options.filters.length > 0 && <Head>저장 필터</Head>}
-                    {options.filters.map((o) => (
+                    {options.sets.length > 0 && <Head>저장 집합</Head>}
+                    {options.sets.map((o) => (
                         <OptionRow key={setRefKey(o.ref)} active={setRefKey(o.ref) === currentKey} onClick={() => choose(o.ref)}>
-                            {o.label}
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.label}</span>
+                            <Hint>{o.hint}</Hint>
                         </OptionRow>
                     ))}
-                    {options.groups.length > 0 && <Head>그룹</Head>}
-                    {options.groups.map((o) => (
-                        <OptionRow key={setRefKey(o.ref)} active={setRefKey(o.ref) === currentKey} onClick={() => choose(o.ref)}>
-                            <span>{o.label}</span>
-                            <Hint>{o.scope === "day" ? "하루" : "타점"}</Hint>
-                        </OptionRow>
-                    ))}
+                    {options.sets.length === 0 && (
+                        <Note>저장 집합이 없습니다 — 필터 패널에서 만듭니다</Note>
+                    )}
                 </div>
             )}
 

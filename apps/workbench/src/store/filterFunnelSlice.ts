@@ -13,6 +13,7 @@
 import type { StateCreator } from "zustand";
 import type { FunnelCell } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
+import type { SetRef } from "../lib/setRef.js";
 import {
     activeStages, addStage, moveStage, parseStages, removeStage, renameStage, setStagePredicates, toggleStage,
     type FilterPredicate, type FilterStage,
@@ -23,7 +24,8 @@ import { loadJson, saveJson } from "./persist.js";
 const STAGES_KEY = "wb.filterStages"; // 슬롯 도입 전의 단일 벌 — 슬롯 1로 읽어 들이는 이관용(이제 안 쓴다)
 const SLOTS_KEY = "wb.filterSlots";
 const EXPAND_KEY = "wb.filterExpandToPoints";
-const SETS_KEY = "wb.filterFunnelSets";
+const LEGACY_SETS_KEY = "wb.filterFunnelSets"; // 옛 "저장한 깔때기" — 저장 집합(부위=생존자)으로 읽어 들인다
+const SAVED_SETS_KEY = "wb.savedSets";
 
 /** 필터 슬롯 수 — 이름 없는 고정 3칸(사용자 확정). A/B 비교·잠깐 딴 조합을 위한 휘발성 작업면. */
 export const FILTER_SLOT_COUNT = 3;
@@ -45,24 +47,56 @@ const loadSlots = (): { active: number; slots: FilterStage[][] } => {
 const saveSlots = (active: number, slots: FilterStage[][]): void => saveJson(SLOTS_KEY, { active, slots });
 
 /**
- * 저장한 깔때기(단계 리스트 전체 스냅샷) — 이름 붙여 두고 통째로 불러온다. 옛 "저장 필터"의 후계.
- * 죽은 참조(그 사이 지워진 그룹·축)는 각오한 저장이다 — 불러오면 (지워짐) 표시와 3치가 받아낸다.
+ * 저장 집합의 부위 — 조건 한 벌에서 **무엇을 꺼내 오나**. 생존자(전 단계 통과) 또는 특정 단계의 칸들.
+ * 칸 부위의 stageId 가 (덮어쓰기로) 사라지면 그 집합은 깨진 참조가 된다 — 조용히 생존자로 넓히지 않는다.
  */
-export interface SavedFunnel {
+export type SavedSetPart =
+    | { kind: "survivors" }
+    | { kind: "cell"; stageId: string; cells: FunnelCell[] };
+
+/**
+ * 저장 집합 — **자립 저장물**(이름 + 조건 사본 + 부위). 집합끼리 아무것도 공유하지 않는다: 같은 깔때기에서
+ * 두 집합을 뽑아도 조건이 각자에게 복사되고, 하나를 덮어써도 다른 하나는 절대 안 바뀐다(사용자 확정).
+ * 정의 저장이라 라이브다 — 멤버는 읽는 순간 재계산되고, 죽은 참조(지워진 그룹·축)는 3치가 받아낸다.
+ */
+export interface SavedSet {
     id: string;
     name: string;
     stages: FilterStage[];
+    part: SavedSetPart;
 }
-const loadSets = (): SavedFunnel[] => {
-    const arr = loadJson(SETS_KEY, (o) => (Array.isArray(o) ? o : null)) ?? [];
-    const out: SavedFunnel[] = [];
-    for (const raw of arr) {
-        const f = raw as { id?: unknown; name?: unknown; stages?: unknown };
-        if (typeof f?.id !== "string" || typeof f?.name !== "string") continue;
-        const stages = parseStages(f.stages);
-        if (stages) out.push({ id: f.id, name: f.name, stages });
+
+const CELLS: readonly FunnelCell[] = ["survive", "nearMiss", "upstreamPending", "fail", "pending"];
+const parsePart = (o: unknown): SavedSetPart | null => {
+    if (typeof o !== "object" || o === null) return null;
+    const p = o as { kind?: unknown; stageId?: unknown; cells?: unknown };
+    if (p.kind === "survivors") return { kind: "survivors" };
+    if (p.kind === "cell" && typeof p.stageId === "string" && Array.isArray(p.cells)
+        && p.cells.length > 0 && p.cells.every((c) => (CELLS as readonly unknown[]).includes(c))) {
+        return { kind: "cell", stageId: p.stageId, cells: p.cells as FunnelCell[] };
     }
-    return out;
+    return null;
+};
+
+/** 새 키를 먼저 읽고, 없으면 옛 "저장한 깔때기"를 부위=생존자로 이관한다(id 유지 — 옛 필터 바인딩이
+ *  같은 id 의 saved 참조로 무손실 전환되는 근거). 옛 키는 안 지운다 — 새 키가 생기면 자연히 안 읽힌다. */
+const loadSavedSets = (): SavedSet[] => {
+    const parse = (arr: unknown[], withPart: boolean): SavedSet[] => {
+        const out: SavedSet[] = [];
+        for (const raw of arr) {
+            const f = raw as { id?: unknown; name?: unknown; stages?: unknown; part?: unknown };
+            if (typeof f?.id !== "string" || typeof f?.name !== "string") continue;
+            const stages = parseStages(f.stages);
+            if (!stages) continue;
+            const part = withPart ? parsePart(f.part) : { kind: "survivors" as const };
+            if (part) out.push({ id: f.id, name: f.name, stages, part });
+        }
+        return out;
+    };
+    const fresh = loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null));
+    if (fresh) return parse(fresh, true);
+    const legacy = loadJson(LEGACY_SETS_KEY, (o) => (Array.isArray(o) ? o : null));
+    return legacy ? parse(legacy, false) : [];
 };
 
 /**
@@ -90,6 +124,13 @@ export interface FilterFunnelSlice {
     filterExpandToPoints: boolean;
     /** 짚은 칸(시선) — 세션 한정. 골격·시트 등 구독자가 보는 집합을 정한다. */
     funnelSelection: FunnelSelection | null;
+    /**
+     * 선택 포인터 — 필터 패널 안의 **단 하나의 선택**. null = 작업 깔때기(짚은 칸 반영, 없으면 최종 생존),
+     * 참조 = 집합 목록에서 고른 것. 연동 패널과 레일 오버레이가 전부 이 하나를 본다.
+     * 시선이지 조건이 아니라 영속하지 않고, **깔때기를 만지는 순간 작업 깔때기로 복귀**한다(사용자 확정).
+     */
+    selectedSetRef: SetRef | null;
+    selectSet: (ref: SetRef | null) => void;
     addFilterStage: (predicates?: FilterPredicate[]) => void;
     /**
      * 보드에서 레일을 그은 결과 — 그 레일의 필터를 만들거나 갈아끼우거나(술어) 지운다(null).
@@ -104,11 +145,23 @@ export interface FilterFunnelSlice {
     clearFilterStages: () => void;
     setFilterExpandToPoints: (on: boolean) => void;
     setFunnelSelection: (sel: FunnelSelection | null) => void;
-    /** 저장한 깔때기들(영속). 불러오기 = 단계 리스트 통째 교체(시선은 푼다 — 다른 깔때기의 칸이라서). */
-    savedFunnels: SavedFunnel[];
-    saveFunnelSet: (name: string) => void;
-    applyFunnelSet: (id: string) => void;
-    deleteFunnelSet: (id: string) => void;
+    /** 저장 집합들(영속) — 필터 패널이 만든 산출물. 패널 바인딩·연동 피커의 유일한 저장물 목록. */
+    savedSets: SavedSet[];
+    /**
+     * 지금 조건으로 집합 저장 — 부위는 **저장하는 순간의 시선**에서 온다(칸을 짚었으면 그 칸, 아니면
+     * 생존자). 같은 이름 = 같은 물건 — 엎어쓰기(id 유지 — 그 집합을 고정 구독 중인 바인딩이 따라온다).
+     */
+    saveSet: (name: string) => void;
+    /** 열어 둔 집합에 지금 조건을 덮어쓴다 — **그 집합 하나만** 바뀐다(부위·이름 유지). */
+    overwriteSet: (id: string) => void;
+    /**
+     * 집합을 깔때기로 연다 — 조건 **사본**이 활성 슬롯에 펼쳐진다. 이후 편집은 저장물을 안 흔들고,
+     * 덮어쓰기를 눌러야 실제로 바뀐다(보드에서 만지는 동안 고정 구독 패널이 작업 중간 상태를 받지 않게).
+     */
+    openSet: (id: string) => void;
+    deleteSet: (id: string) => void;
+    /** 마지막으로 연 집합 — 덮어쓰기 버튼의 대상. 슬롯 전환·그 집합 삭제로 풀린다(세션 한정). */
+    openedSetId: string | null;
 }
 
 /** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다.
@@ -120,12 +173,14 @@ export interface FilterFunnelSlice {
 const put = (
     s: { filterSlots: FilterStage[][]; filterSlotIndex: number; funnelSelection: FunnelSelection | null },
     stages: FilterStage[],
-): Pick<FilterFunnelSlice, "filterStages" | "filterSlots" | "funnelSelection"> => {
+): Pick<FilterFunnelSlice, "filterStages" | "filterSlots" | "funnelSelection" | "selectedSetRef"> => {
     const slots = s.filterSlots.map((x, i) => (i === s.filterSlotIndex ? stages : x));
     saveSlots(s.filterSlotIndex, slots);
     const sel = s.funnelSelection;
     const keep = sel !== null && activeStages(stages).some((st) => st.id === sel.stageId);
-    return { filterStages: stages, filterSlots: slots, funnelSelection: keep ? sel : null };
+    // 깔때기를 만졌다 = 선택 포인터는 작업 깔때기로 복귀 — 목록의 집합을 보던 중이라도, 조건을 고치는
+    // 손은 "지금 이걸 보겠다"는 뜻이다(연동 패널이 편집을 따라와야 편집의 대가가 보인다).
+    return { filterStages: stages, filterSlots: slots, funnelSelection: keep ? sel : null, selectedSetRef: null };
 };
 
 const initialSlots = loadSlots();
@@ -136,11 +191,16 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     filterSlotIndex: initialSlots.active,
     filterExpandToPoints: loadExpand(),
     funnelSelection: null,
+    selectedSetRef: null,
+    openedSetId: null,
+
+    selectSet: (ref) => set(() => ({ selectedSetRef: ref })),
 
     setFilterSlot: (i) => set((s) => {
         if (i === s.filterSlotIndex || i < 0 || i >= FILTER_SLOT_COUNT) return {};
         saveSlots(i, s.filterSlots);
-        return { filterSlotIndex: i, filterStages: s.filterSlots[i], funnelSelection: null };
+        // 조건 통째 교체 — 시선·선택 포인터·열린 집합 전부 푼다(다른 깔때기의 것들이라서).
+        return { filterSlotIndex: i, filterStages: s.filterSlots[i], funnelSelection: null, selectedSetRef: null, openedSetId: null };
     }),
 
     // 시선 정리는 전부 put 이 한다 — 삭제·비우기·끄기·레일 해제 어느 경로든 같은 규칙으로 풀린다.
@@ -156,28 +216,43 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
         saveJson(EXPAND_KEY, on);
         set(() => ({ filterExpandToPoints: on }));
     },
-    setFunnelSelection: (sel) => set(() => ({ funnelSelection: sel })),
+    // 칸 짚기도 깔때기를 만지는 손이다 — 선택 포인터는 작업 깔때기로 복귀한다.
+    setFunnelSelection: (sel) => set(() => ({ funnelSelection: sel, selectedSetRef: null })),
 
-    savedFunnels: loadSets(),
-    // 같은 이름 = 같은 물건 — **엎어쓰기**(id 유지). 저장이 늘 새 항목이면 참조(패널 바인딩의 필터 id)가
-    // 옛 스냅샷에 묶여, "필터를 고쳐 저장했는데 바인딩은 옛것"이라는 조용한 갈림이 생긴다.
-    saveFunnelSet: (name) => set((s) => {
+    savedSets: loadSavedSets(),
+    // 같은 이름 = 같은 물건 — **엎어쓰기**(id 유지). 저장이 늘 새 항목이면 참조(패널 바인딩의 saved id)가
+    // 옛 스냅샷에 묶여, "집합을 고쳐 저장했는데 바인딩은 옛것"이라는 조용한 갈림이 생긴다.
+    saveSet: (name) => set((s) => {
         const n = name.trim();
-        const at = s.savedFunnels.findIndex((x) => x.name === n);
-        const next = at >= 0
-            ? s.savedFunnels.map((x, i) => (i === at ? { ...x, stages: s.filterStages } : x))
-            : [...s.savedFunnels, { id: `fs${Date.now().toString(36)}`, name: n, stages: s.filterStages }];
-        saveJson(SETS_KEY, next);
-        return { savedFunnels: next };
+        // 부위 = 저장하는 순간의 시선. 칸을 짚고 저장하면 "그 칸"이 이 집합의 정체가 된다.
+        const part: SavedSetPart = s.funnelSelection
+            ? { kind: "cell", stageId: s.funnelSelection.stageId, cells: [...s.funnelSelection.cells] }
+            : { kind: "survivors" };
+        const at = s.savedSets.findIndex((x) => x.name === n);
+        const saved = at >= 0
+            ? { ...s.savedSets[at]!, stages: s.filterStages, part }
+            : { id: `fs${Date.now().toString(36)}`, name: n, stages: s.filterStages, part };
+        const next = at >= 0 ? s.savedSets.map((x, i) => (i === at ? saved : x)) : [...s.savedSets, saved];
+        saveJson(SAVED_SETS_KEY, next);
+        // 방금 저장한 집합이 곧 "열어 둔 집합" — 이어서 만지면 덮어쓰기가 그 집합을 가리킨다.
+        return { savedSets: next, openedSetId: saved.id };
     }),
-    applyFunnelSet: (id) => set((s) => {
-        const f = s.savedFunnels.find((x) => x.id === id);
+    overwriteSet: (id) => set((s) => {
+        if (!s.savedSets.some((x) => x.id === id)) return {};
+        // 조건만 바뀐다(부위·이름 유지). 같은 조건에서 나온 형제 집합이 있어도 **이 하나만** — 느리지만 암묵이 없다.
+        const next = s.savedSets.map((x) => (x.id === id ? { ...x, stages: s.filterStages } : x));
+        saveJson(SAVED_SETS_KEY, next);
+        return { savedSets: next };
+    }),
+    openSet: (id) => set((s) => {
+        const f = s.savedSets.find((x) => x.id === id);
         if (!f) return {};
-        return { ...put(s, f.stages), funnelSelection: null };
+        // 사본이 활성 슬롯으로(배열 공유는 안전 — 편집 함수들이 늘 새 배열을 만든다). 시선은 푼다(다른 깔때기의 칸).
+        return { ...put(s, f.stages), funnelSelection: null, openedSetId: id };
     }),
-    deleteFunnelSet: (id) => set((s) => {
-        const next = s.savedFunnels.filter((x) => x.id !== id);
-        saveJson(SETS_KEY, next);
-        return { savedFunnels: next };
+    deleteSet: (id) => set((s) => {
+        const next = s.savedSets.filter((x) => x.id !== id);
+        saveJson(SAVED_SETS_KEY, next);
+        return { savedSets: next, ...(s.openedSetId === id ? { openedSetId: null } : {}) };
     }),
 });

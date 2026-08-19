@@ -1,8 +1,8 @@
-// 깔때기 머리글 — 분모(후보 수)·해상도 손잡이·저장본. 조건 자체는 여기서 못 만진다(보드의 일).
-import { useMemo, useState } from "react";
+// 깔때기 머리글 — 분모(후보 수)·해상도 손잡이·슬롯. 조건 자체는 여기서 못 만진다(보드의 일).
+// 저장/불러오기는 여기 없다 — 집합 목록(SetListSidebar)이 저장·열기·덮어쓰기를 전담한다(집합 공장 재편).
+import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { FAIL } from "../../styles/palette.js";
 import { GRAIN_UNIT } from "./grain.js";
@@ -17,22 +17,13 @@ export function FunnelHeader({ v, expandToPoints, setExpand, barsOpen, onToggleB
     onToggleBars: () => void;
 }): JSX.Element {
     const stages = useWorkbench((s) => s.filterStages);
-    const saved = useWorkbench((s) => s.savedFunnels);
-    const saveSet = useWorkbench((s) => s.saveFunnelSet);
-    const applySet = useWorkbench((s) => s.applyFunnelSet);
-    const deleteSet = useWorkbench((s) => s.deleteFunnelSet);
-    // 슬롯 — 이름 없는 고정 3칸. 저장본(이름 붙인 보관)과 역할이 다르다: 슬롯은 오늘 이 세션의
-    // A/B 비교·"잠깐 이 그룹만 보기" 용 작업면이다. 빈 칸으로 갈아타면 "잠시 필터 없음"이 공짜로 나온다.
+    // 슬롯 — 이름 없는 고정 3칸. 저장 집합(이름 붙인 보관)과 역할이 다르다: 슬롯은 오늘 이 세션의
+    // A/B 비교·"잠깐 이 조합만 보기" 용 작업면이다. 빈 칸으로 갈아타면 "잠시 필터 없음"이 공짜로 나온다.
     const slots = useWorkbench((s) => s.filterSlots);
     const slotIndex = useWorkbench((s) => s.filterSlotIndex);
     const setSlot = useWorkbench((s) => s.setFilterSlot);
     const clearStages = useWorkbench((s) => s.clearFilterStages);
-    const [setsOpen, setSetsOpen] = useState<{ x: number; y: number } | null>(null);
 
-    // 컨트롤 선언 — 슬롯도 불러오기도 여기 든다. 한때 빼 뒀던 이유(슬롯은 점을 보여주는 위젯, 불러오기는
-    // 목록을 여는 손잡이)는 문법이 모자랐던 것이지 성질이 달랐던 게 아니다: 슬롯은 나열 택1(segmented,
-    // 점 = 값의 상태)이고 불러오기는 **누른 자리를 받는 액션**이다. 빼 두는 대가가 컸다 — 같은 갈래
-    // "필터 한 벌"이 두 문법으로 쪼개져 저장은 접히는데 불러오기는 안 접혔다.
     const controls = useMemo<ControlSpec[]>(() => [
         {
             kind: "toggle", id: "expandToPoints", name: "타점으로", available: v.canExpandToPoints,
@@ -59,22 +50,8 @@ export function FunnelHeader({ v, expandToPoints, setExpand, barsOpen, onToggleB
             kind: "action", id: "clearStages", name: "비우기", group: "필터 한 벌", disabled: stages.length === 0,
             help: "이 슬롯의 필터 전부 지우기(다른 슬롯은 그대로)", run: clearStages,
         },
-        {
-            kind: "action", id: "saveSet", name: "저장", group: "필터 한 벌", disabled: stages.length === 0,
-            help: "지금 필터들을 이름 붙여 저장",
-            run: () => { const n = prompt("깔때기 이름", `필터 ${stages.length}개`); if (n?.trim()) saveSet(n.trim()); },
-        },
-        {
-            // 개수는 라벨이 아니라 툴팁이 진다 — `불러오기 3` 은 저장본이 늘 때마다 폭이 갈린다(규약 ②).
-            // "있나 없나"는 흐려짐(disabled)이 이미 말한다.
-            kind: "action", id: "loadSet", name: "불러오기", group: "필터 한 벌", disabled: saved.length === 0,
-            help: saved.length > 0
-                ? `저장한 깔때기 ${saved.length}개 — 고르면 지금 필터를 통째로 교체`
-                : "저장한 깔때기가 없습니다",
-            run: (at) => setSetsOpen({ x: at.clientX, y: at.clientY }),
-        },
-    ], [v.canExpandToPoints, expandToPoints, setExpand, barsOpen, onToggleBars, stages.length, clearStages, saveSet,
-        saved.length, slots, slotIndex, setSlot]);
+    ], [v.canExpandToPoints, expandToPoints, setExpand, barsOpen, onToggleBars, stages.length, clearStages,
+        slots, slotIndex, setSlot]);
 
     return (
         <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
@@ -93,20 +70,6 @@ export function FunnelHeader({ v, expandToPoints, setExpand, barsOpen, onToggleB
                 </span>
             )}
             <HeaderControls controls={controls} storageKey="wb.headerPins.funnel" />
-            {setsOpen && (
-                <AnchoredPopover anchor={setsOpen} onClose={() => setSetsOpen(null)} minWidth={200} maxWidth={280} maxHeight="min(56vh, 380px)" padding={0} placement="beside" offset={6}>
-                    <MenuLabel>저장한 깔때기 · 클릭 = 통째로 교체</MenuLabel>
-                    {saved.map((f) => (
-                        <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 6px 0 0", borderTop: "1px solid var(--border-subtle)" }}>
-                            <button onClick={() => { applySet(f.id); setSetsOpen(null); }}
-                                style={{ flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 12.5, padding: "6px 10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {f.name} <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>필터 {f.stages.length}</span>
-                            </button>
-                            <button onClick={() => deleteSet(f.id)} title="이 저장본 삭제" style={{ border: "none", background: "transparent", color: FAIL, cursor: "pointer", fontSize: 10, padding: "2px 4px" }}>✕</button>
-                        </div>
-                    ))}
-                </AnchoredPopover>
-            )}
         </PanelHeader>
     );
 }
