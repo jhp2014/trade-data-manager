@@ -24,13 +24,22 @@ interface CommonProps {
     axis: RankAxis;
     /** 현재 타점 키(pointKey) — 이 축에 값·배치가 있으면 마커로 선다. */
     markerKey: string | null;
+    /**
+     * 선택 집합 멤버의 타점 키들 — 있으면 그 자리들이 강조색으로 겹쳐진다(선택 집합이 이 축의 어디에
+     * 몰리나). null = 오버레이 없음(선택도 필터도 없을 때 — 전부 멤버인 그림은 아무 말도 아니다).
+     */
+    memberKeys?: ReadonlySet<string> | null;
     highlight?: boolean;
 }
+
+/** 전부이거나 하나도 없으면 오버레이를 접는다 — 전경=배경인 그림은 구분이 아니라 소음이다. */
+const properSubset = (member: number[], total: number): number[] | undefined =>
+    member.length > 0 && member.length < total ? member : undefined;
 
 // ── 계산 축 ────────────────────────────────────────────────────────────────
 
 export function ComputedAxisRail({
-    axis, values, strongerWhen, fmtValue, ranges, markerKey, highlight, onType, onChange,
+    axis, values, strongerWhen, fmtValue, ranges, markerKey, memberKeys, highlight, onType, onChange,
 }: CommonProps & {
     /** 타점키 → 수치. */
     values: Map<string, number>;
@@ -64,6 +73,14 @@ export function ComputedAxisRail({
         [values, domain, strongerWhen],
     );
 
+    // 멤버 자리 = 같은 값 지도의 부분집합 — 새 기하 없이 기존 틱에 색만 갈린다.
+    const memberTicks = useMemo(() => {
+        if (!memberKeys || !domain) return undefined;
+        const out: number[] = [];
+        for (const [k, val] of values) if (memberKeys.has(k)) out.push(valueToFrac(val, domain, strongerWhen));
+        return properSubset(out, values.size);
+    }, [memberKeys, values, domain, strongerWhen]);
+
     const railRanges = toRailRanges(ranges, weakEnd, strongEnd, strongerWhen);
     const markerValue = markerKey === null ? undefined : values.get(markerKey);
 
@@ -81,6 +98,7 @@ export function ComputedAxisRail({
             minLabel={fmtValue(strongerWhen === "higher" ? (domain?.min ?? 0) : (domain?.max ?? 0))}
             maxLabel={fmtValue(strongerWhen === "higher" ? (domain?.max ?? 0) : (domain?.min ?? 0))}
             ticks={ticks}
+            memberTicks={memberTicks}
             marker={markerValue === undefined ? null : { frac: frac(markerValue), label: fmtValue(markerValue) }}
             highlight={highlight}
             disabledNote={domain ? undefined : "값 없음 — 이 축의 재료가 아직 없습니다"}
@@ -96,7 +114,7 @@ export function ComputedAxisRail({
 // ── 판단 축 ────────────────────────────────────────────────────────────────
 
 export function SlotAxisRail({
-    axis, line, band, markerKey, highlight, onChange,
+    axis, line, band, markerKey, memberKeys, highlight, onChange,
 }: CommonProps & {
     /** 이 축의 배치줄(orderKey 오름차). */
     line: readonly PlacedPoint[];
@@ -126,6 +144,14 @@ export function SlotAxisRail({
     };
     const fracs = useMemo(() => [...fracOf.values()], [fracOf]);
 
+    // 멤버 자리 = 멤버 타점이 든 슬롯 — 한 슬롯에 여러 멤버가 들어도 자리 하나로 겹친다(자리가 곧 좌표).
+    const memberFracs = useMemo(() => {
+        if (!memberKeys) return undefined;
+        const out: number[] = [];
+        for (const s of slots) if (s.points.some((p) => memberKeys.has(pointKey(p)))) out.push(fracOf.get(slotAnchorKey(s)) ?? 0.5);
+        return properSubset(out, slots.length);
+    }, [memberKeys, slots, fracOf]);
+
     const weakSlot = slots[0] && slotAnchorKey(slots[0]);
     const strongSlot = slots[slots.length - 1] && slotAnchorKey(slots[slots.length - 1]!);
     // 배치는 언제나 타점 키로 저장된다(하루 축도 그날 전 타점에 fanout) — 그래서 키 하나로 두 층위가 다 맞는다.
@@ -144,6 +170,7 @@ export function SlotAxisRail({
             minLabel="약"
             maxLabel="강"
             ticks={fracs}
+            memberTicks={memberFracs}
             marker={markerSlot ? { frac: frac(slotAnchorKey(markerSlot)), label: fmt(slotAnchorKey(markerSlot)) } : null}
             highlight={highlight}
             disabledNote={slots.length === 0 ? "배치 없음 — 경계로 삼을 자리가 없습니다" : undefined}

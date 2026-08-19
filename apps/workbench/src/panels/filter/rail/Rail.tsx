@@ -37,6 +37,12 @@ export interface RailProps<V> {
     maxLabel: string;
     /** 실제 데이터가 있는 자리들(0..1) — 자를 곳을 눈으로 보게 한다. */
     ticks?: readonly number[];
+    /**
+     * 선택 집합 멤버의 자리들(0..1) — **같은 점, 두 상태**. 새 기하가 아니라 ticks 의 부분집합에 색을
+     * 입히는 층이다: 강조색 + 반투명이라 같은 자리에 겹칠수록 저절로 진해진다(알파 누적 = 밀도).
+     * 이게 있으면 나머지 회색은 더 죽는다(전경/배경 분리) — 스냅 과녁 역할은 그대로다.
+     */
+    memberTicks?: readonly number[];
     /** 현재 타점의 자리(있으면). */
     marker?: { frac: number; label: string } | null;
     /** 되짚기 강조 — 위 목록에서 이 조건을 눌러 찾아왔을 때. */
@@ -55,7 +61,7 @@ export interface RailProps<V> {
 
 export function Rail<V>({
     label, ranges, single = false, toFrac, fromFrac, fmt, minLabel, maxLabel,
-    ticks, marker, highlight = false, disabledNote, onType, onChange,
+    ticks, memberTicks, marker, highlight = false, disabledNote, onType, onChange,
 }: RailProps<V>): JSX.Element {
     const trackRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<RailDrag | null>(null);
@@ -143,9 +149,14 @@ export function Rail<V>({
                     <span style={endLabel(true)}>{minLabel}</span>
                     <span style={endLabel(false)}>{maxLabel}</span>
 
-                    {/* 실제 자리 — 유니버스를 보면서 자르게 하는 표식. */}
+                    {/* 실제 자리 — 유니버스를 보면서 자르게 하는 표식. 멤버 층이 켜지면 배경으로 물러난다(전경/배경 분리). */}
                     {ticks?.map((f, i) => (
-                        <span key={i} aria-hidden style={{ position: "absolute", left: at(f), top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 9, background: "var(--text-tertiary)", opacity: 0.35, pointerEvents: "none" }} />
+                        <span key={i} aria-hidden style={{ position: "absolute", left: at(f), top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 9, background: "var(--text-tertiary)", opacity: memberTicks && memberTicks.length > 0 ? 0.12 : 0.35, pointerEvents: "none" }} />
+                    ))}
+
+                    {/* 선택 집합 멤버 — 강조색 + 알파 누적(겹칠수록 진해짐 = 이 축의 어디에 몰리나). */}
+                    {memberTicks?.map((f, i) => (
+                        <span key={`m${i}`} aria-hidden style={{ position: "absolute", left: at(f), top: "50%", transform: "translate(-50%,-50%)", width: 2, height: 12, borderRadius: 1, background: ACTIVE, opacity: 0.3, pointerEvents: "none" }} />
                     ))}
 
                     {shown.map((r, i) => {

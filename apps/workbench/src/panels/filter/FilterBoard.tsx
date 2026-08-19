@@ -74,6 +74,17 @@ export function FilterBoard({ reveal, onlyActive }: {
 
     const markerKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
 
+    // 선택 집합 오버레이의 재료 — **선택 포인터가 보는 것**(viewOf(null): 목록에서 고른 집합, 없으면
+    // 작업 깔때기 시선). 하루 항목은 뷰 계약이 이미 타점으로 전개해 뒀다(∀ — 하루 조건은 전 타점에
+    // 같은 값). 아무것도 안 걸렸으면 null — 전부 멤버인 오버레이는 아무 말도 아니다.
+    const selectedView = v.viewOf(null);
+    const memberKeys = useMemo<ReadonlySet<string> | null>(
+        () => (selectedView.isFiltering && !selectedView.broken
+            ? new Set(selectedView.viewedPointRefs.map((p) => pointKeyOf(p.stockCode, p.date, p.time)))
+            : null),
+        [selectedView],
+    );
+
     const grainOf = useMemo(() => new Map(v.stagesOrdered.map((e) => [e.stage.id, e.grain])), [v.stagesOrdered]);
 
     // ── 되짚기 — 그 조건이 사는 줄로 스크롤 + 강조 ──
@@ -200,12 +211,12 @@ export function FilterBoard({ reveal, onlyActive }: {
                                     return (
                                         <div key={axis.key} ref={registerRow(rowId)} style={rowWrap(stage, flash === rowId)}>
                                             {isComputedAxis(axis.key)
-                                                ? <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey}
+                                                ? <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey} memberKeys={memberKeys}
                                                     onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.key, x, y })}
                                                     onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.key, ranges } : null)} />
                                                 : <SlotAxisRail axis={axis} line={ax.linesByAxis.get(axis.key) ?? []}
                                                     band={predicateOfKind(stages, key, "axisBand")?.band ?? {}}
-                                                    markerKey={markerKey}
+                                                    markerKey={markerKey} memberKeys={memberKeys}
                                                     onChange={(band: RankBand | null) => write(key, band ? { kind: "axisBand", axisId: axis.key, band } : null)} />}
                                         </div>
                                     );
@@ -267,10 +278,11 @@ export function FilterBoard({ reveal, onlyActive }: {
 // ── 조각들 ────────────────────────────────────────────────────────────────
 
 /** 계산 축 레일 — 재료(값·표시 규격)를 꺼내 꽂는 자리. 값이 없는 축은 어댑터가 이유를 적는다. */
-function ComputedAxisRailRow({ axis, stages, markerKey, onType, onChange }: {
+function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, onType, onChange }: {
     axis: AxisRef;
     stages: readonly FilterStage[];
     markerKey: string | null;
+    memberKeys: ReadonlySet<string> | null;
     onType: (x: number, y: number) => void;
     onChange: (ranges: AxisValueRange[] | null) => void;
 }): JSX.Element {
@@ -286,6 +298,7 @@ function ComputedAxisRailRow({ axis, stages, markerKey, onType, onChange }: {
             fmtValue={meta?.fmt ?? ((n) => n.toFixed(1))}
             ranges={predicateOfKind(stages, key, "axisValue")?.ranges ?? []}
             markerKey={markerKey}
+            memberKeys={memberKeys}
             onType={onType}
             onChange={onChange}
         />

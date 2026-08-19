@@ -85,8 +85,8 @@ const drag = (el: HTMLElement, from: number, to: number): void => {
 };
 const stages = (): ReturnType<typeof useWorkbench.getState>["filterStages"] => useWorkbench.getState().filterStages;
 
-beforeEach(() => { useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null }); });
-afterEach(() => { useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null }); localStorage.clear(); });
+beforeEach(() => { useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null, selectedSetRef: null, savedSets: [] }); });
+afterEach(() => { useWorkbench.setState({ filterStages: [], filterExpandToPoints: false, funnelSelection: null, selectedSetRef: null, savedSets: [] }); localStorage.clear(); });
 
 // ⚠ 이 블록이 이 파일의 존재 이유 중 하나다.
 describe("사전이 오기 전 — 빈 레일을 그리지 않는다", () => {
@@ -220,5 +220,53 @@ describe("그룹 — 유일하게 리스트인 조건", () => {
         const { container } = renderBoard();
         const adders = [...container.querySelectorAll("button")].filter((b) => b.textContent === "+ 그룹 조건");
         expect(adders).toHaveLength(2); // 하루·타점
+    });
+});
+
+// ── 선택 집합 오버레이 — 같은 점, 두 상태 ──────────────────────────────────
+// 오버레이 재료: 유니버스 두 차트(A@D0·B@D1), 각각 타점 하나. 타점축 배치줄이 두 타점을 자리로 갖는다.
+// 날짜 필터로 A@D0 만 남기면 축 레일의 자리 둘 중 **하나만** 멤버가 되어야 한다.
+const OVL_CAND: CandidateDay[] = [
+    { stockCode: A, date: DATES[0], traces: [] },
+    { stockCode: B, date: DATES[1], traces: [] },
+];
+const OVL_POINTS: ReviewPointListItem[] = [
+    { stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" },
+    { stockCode: B, date: DATES[1], time: "10:00:00", name: "SK하이닉스" },
+];
+const OVL_LINE: AxisLine = {
+    axisName: "타점축",
+    placements: [
+        { orderKey: 1, stockCode: A, date: DATES[0], time: "09:30:00" },
+        { orderKey: 2, stockCode: B, date: DATES[1], time: "10:00:00" },
+    ],
+};
+const OVL_SEED: Seed = { candidateDays: OVL_CAND, points: OVL_POINTS, axes: [axes[1]], axisLines: [OVL_LINE] };
+
+const memberSpans = (c: HTMLElement): HTMLElement[] =>
+    [...c.querySelectorAll("span")].filter((s) => s.style.width === "2px" && s.style.borderRadius === "1px") as HTMLElement[];
+const baseTicks = (c: HTMLElement): HTMLElement[] =>
+    [...c.querySelectorAll("span")].filter((s) => s.style.width === "1px" && s.style.height === "9px") as HTMLElement[];
+
+describe("선택 집합 오버레이 — 멤버는 강조색, 나머지 회색은 물러난다", () => {
+    it("아무것도 안 걸렸으면 오버레이가 없다 — 전부 멤버인 그림은 아무 말도 아니다", () => {
+        const { container } = renderBoard(OVL_SEED);
+        expect(memberSpans(container)).toHaveLength(0);
+        expect(baseTicks(container).every((t) => t.style.opacity === "0.35")).toBe(true);
+    });
+
+    it("필터가 걸리면 생존 멤버의 자리만 강조되고, 배경 회색은 더 죽는다(전경/배경 분리)", () => {
+        useWorkbench.setState({
+            filterStages: [{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }],
+        });
+        const { container } = renderBoard(OVL_SEED);
+        expect(memberSpans(container)).toHaveLength(1); // 자리 둘 중 A@D0 하나만
+        expect(baseTicks(container).some((t) => t.style.opacity === "0.12")).toBe(true);
+    });
+
+    it("선택 포인터가 전체(유니버스)면 오버레이가 접힌다 — 전경=배경(properSubset 규칙)", () => {
+        useWorkbench.setState({ selectedSetRef: { kind: "universe" } });
+        const { container } = renderBoard(OVL_SEED);
+        expect(memberSpans(container)).toHaveLength(0);
     });
 });
