@@ -63,7 +63,7 @@ export interface FunnelView {
      */
     resolveSet: (ref: SetRef) => ResolvedSet;
     /**
-     * 패널이 보는 집합 — **바인딩 하나로 위의 viewed* 계약과 같은 모양**을 돌려준다.
+     * 패널이 보는 집합 — 바인딩 하나로 ViewedSet 을 돌려준다.
      * null = **연동**(필터 패널의 선택 포인터를 따라간다 — 목록에서 고른 집합, 없으면 작업 깔때기 시선),
      * 참조 = 그 집합에 고정(층위 변환 포함).
      * 소비 패널은 viewOf(자기 바인딩) 하나만 읽으면 되고, 바인딩이 없던 시절의 코드와 같은 필드를 쓴다.
@@ -71,7 +71,7 @@ export interface FunnelView {
     viewOf: (ref: SetRef | null) => ViewedSet;
 }
 
-/** 구독 패널이 소비하는 "보는 집합"의 계약 — FunnelView 의 viewed·isFiltering 필드와 같은 모양. */
+/** 구독 패널이 소비하는 "보는 집합"의 계약 — viewOf 가 돌려주는 유일한 모양. */
 export interface ViewedSet {
     /**
      * 걸린 게 있나 — false 면 구독자는 거르지 않는다(전체 = 제한 없음). 명시 바인딩은 로딩이 끝나면 true.
@@ -175,7 +175,7 @@ export function useFilterFunnel(): FunnelView {
     /**
      * 리졸버 — 재료가 하나라도 바뀌면 함수째 새로 서고(useMemo), 그 안의 캐시도 같이 버려진다.
      * 활성 슬롯(null)은 **위 정산(result)을 그대로 재사용**한다(ctx.activeFilter) — 두 번 평가하지
-     * 않을 뿐 아니라, "깔때기 시선"과 "최종 생존" 바인딩이 같은 grain("타점으로 펼치기" 반영)으로 풀린다.
+     * 않을 뿐 아니라, "연동"과 "최종 생존" 바인딩이 같은 grain("타점으로 펼치기" 반영)으로 풀린다.
      */
     const resolveSet = useMemo(() => {
         const cache = new Map<string, ResolvedSet>();

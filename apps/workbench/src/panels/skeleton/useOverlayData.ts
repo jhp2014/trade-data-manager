@@ -57,7 +57,7 @@ export function useOverlayData(
     anchor: SkeletonAnchor,
     /** "선택만 보기" — null 이면 제한 없음. 렌더 쪽 선택 상태에서 내려온다(패널 로컬 시야 — 필터와 별개). */
     onlyCharts: ReadonlySet<string> | null,
-    /** 패널 바인딩 — null = 깔때기 시선(그 화면의 보는 집합 그대로). 참조면 그 집합만 남긴다. */
+    /** 패널 바인딩 — null = 연동(필터 패널의 선택 포인터 그대로). 참조면 그 집합만 남긴다. */
     bindingRef: SetRef | null,
 ): OverlayData {
     const feedQ = useQuery(skeletonsQuery());

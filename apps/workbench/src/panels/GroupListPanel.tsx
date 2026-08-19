@@ -68,7 +68,7 @@ export function GroupListPanel(): JSX.Element {
      *
      * 잣대는 여전히 깔때기의 적용 집합 하나다 — 골격·시트와 어긋나면 그 어긋남은 화면에 신호가 없다.
      */
-    // 분모 = 이 패널의 바인딩(디폴트 깔때기 시선). 필터 결과를 묶으면 "그 생존자들이 그룹에 어떻게 분포하나"가 된다.
+    // 분모 = 이 패널의 바인딩(디폴트 연동). 필터 결과를 묶으면 "그 생존자들이 그룹에 어떻게 분포하나"가 된다.
     const binding = useSetBinding("wb.setBinding.groupList");
     const [sideOpen, setSideOpen] = usePersistedState<boolean>(
         "wb.setSidebar.groupList", (o) => (typeof o === "boolean" ? o : null), false);

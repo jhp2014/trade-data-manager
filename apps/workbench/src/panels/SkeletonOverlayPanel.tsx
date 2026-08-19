@@ -159,7 +159,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     // 그룹 한 벌 — 그룹 메뉴·발끝 표기(여기) + 차트 그룹 필터 판정(데이터 훅)이 같은 인스턴스를 쓴다.
     const groupsView = useGroups();
-    // 바인딩 — 이 패널이 보는 집합(디폴트 깔때기 시선). 일봉·분봉이 별도 패널이라 키에 grain 이 붙는다.
+    // 바인딩 — 이 패널이 보는 집합(디폴트 연동 = 필터 패널을 따라감). 일봉·분봉이 별도 패널이라 키에 grain 이 붙는다.
     const binding = useSetBinding(`wb.setBinding.skeleton.${grain}`);
     const [sideOpen, setSideOpen] = usePersistedState<boolean>(
         `wb.setSidebar.skeleton.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);

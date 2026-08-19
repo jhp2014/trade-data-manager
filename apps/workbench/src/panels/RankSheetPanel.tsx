@@ -128,7 +128,7 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [allPoints]);
 
-    // ── 보는 집합 — **바인딩 하나로 구독**한다(디폴트 깔때기 시선 = 깔때기의 보는 집합 그대로).
+    // ── 보는 집합 — **바인딩 하나로 구독**한다(디폴트 연동 = 필터 패널의 선택 포인터 그대로).
     //    참조를 묶으면 이 시트만 그 집합을 본다 — 옆 패널과 다른 집합을 보는 게 이제 정상 상태라,
     //    무엇을 보는지는 헤더 칩이 상시 말한다.
     const binding = useSetBinding("wb.setBinding.sheet");
