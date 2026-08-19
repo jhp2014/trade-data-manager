@@ -12,7 +12,7 @@
 //
 // 그리는 구간은 **호출측(화면 프레임)이 정한다** — 예전엔 앵커 피벗의 처음~끝이었는데, 미래(타점 이후)까지
 // 같이 보기로 하며(사용자 확정) 창 기준으로 바뀌었다: 기본은 타점 앞뒤 프레임, 미래 토글이면 장 끝까지.
-import type { NormalizedSkeleton } from "./skeletonOverlay.js";
+import { minuteIndexOf, type NormalizedSkeleton } from "./skeletonOverlay.js";
 
 /** 한 종목의 분당 시계열(% 공간) — 벽시계 분으로 찾는다. */
 export interface MinuteSeries {
@@ -92,8 +92,8 @@ export function hotCodesInRange(
     toMinuteOfDay: (unixSec: number) => number,
     hotOf: (snaps: { code: string; amount: number; changeRate: number }[]) => ReadonlySet<string>,
 ): Set<string> {
-    // 종목별 (분 → 인덱스)를 한 번만 만든다 — 분마다 다시 훑으면 구간 길이 × 종목 수가 된다.
-    const idx = stocks.map((s) => minuteIndex(s.times, toMinuteOfDay));
+    // 종목별 (분 → 인덱스)는 공용 캐시(minuteIndexOf)에서 — 테마 선·거래대금·캔들과 같은 색인을 나눠 쓴다.
+    const idx = stocks.map((s) => minuteIndexOf(s.times, toMinuteOfDay));
     const out = new Set<string>();
     for (let m = fromMinute; m <= toMinute; m++) {
         const snaps: { code: string; amount: number; changeRate: number }[] = [];
@@ -108,11 +108,7 @@ export function hotCodesInRange(
     return out;
 }
 
-const minuteIndex = (times: readonly number[], toMinute: (unixSec: number) => number): Map<number, number> => {
-    const m = new Map<number, number>();
-    for (let i = 0; i < times.length; i++) m.set(toMinute(times[i]), i);
-    return m;
-};
+// (분 → 인덱스) 색인 로컬 사본은 삭제 — skeletonOverlay 의 minuteIndexOf 하나가 캐시까지 소유한다.
 
 /**
  * 짚은 골격 하나 → 테마 선들. 멤버 = **앵커와 테마가 겹치고** 그 구간에 한 번이라도 떴던 종목(앵커 제외).
@@ -139,7 +135,7 @@ export function themeLines(
     for (const s of stocks) {
         if (s.code === anchor.stockCode || !hotCodes.has(s.code)) continue;
         if (!s.themes.some((t) => themes.has(t))) continue;
-        const points = memberPath(from, to, { index: minuteIndex(s.times, toMinuteOfDay), close: s.rate });
+        const points = memberPath(from, to, { index: minuteIndexOf(s.times, toMinuteOfDay), close: s.rate });
         if (points) out.push({ code: s.code, name: s.name ?? s.code, points });
     }
     return out;

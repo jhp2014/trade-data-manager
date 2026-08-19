@@ -23,6 +23,9 @@ import type { ThemeLabel, ThemeOverlay, ThemeView } from "./useThemeOverlay.js";
  */
 export const THEME_LABEL_INSET = 46;
 
+/** 넘침 뱃지의 대략 높이(px) — 클램프 여유분. 칩 글자 11px + 상자 테두리·패딩. */
+const BADGE_H = 14;
+
 interface Box { left: number; top: number; width: number; height: number }
 interface Scales { x: (v: number) => number; y: (v: number) => number }
 
@@ -156,7 +159,10 @@ export function ThemeGutter({ theme, labels, box, swapped, isCandleOn, onToggleC
                         title={`이름을 못 단 ${labels.hidden.length}종목 — 올리면 그 선들이 켜지고, 누르면 목록`}
                         style={{
                             ...chip, ...badgeChip,
-                            left: box.left - THEME_LABEL_INSET, top: median(labels.hidden.map((h) => h.y)) - box.top,
+                            // 중앙값이 상자 밖일 수 있다(숨은 무리가 전부 화면 밖으로 확대된 경우) — 컨테이너가
+                            // overflow:hidden 이라 클램프 없이는 뱃지가 통째로 사라져 그 목록을 열 길이 없다.
+                            left: box.left - THEME_LABEL_INSET,
+                            top: clamp(median(labels.hidden.map((h) => h.y)) - box.top, BADGE_H / 2, box.height - BADGE_H / 2),
                             transform: "translate(-100%, -50%)",
                         }}>
                         +{labels.hidden.length}

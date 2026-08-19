@@ -31,7 +31,7 @@ const lookup = amountLookupOf(themeSnapshot);
 type Args = Parameters<typeof useThemeOverlay>[0];
 const BASE: Args = {
     enabled: true, target, snapshot: themeSnapshot, hot: HOT, lookup,
-    amountWidthOn: false, hoveredLine: null, singleKey: PK, groupSet: null,
+    amountWidthOn: false, amountLabelsOn: false, hoveredLine: null, singleKey: PK, groupSet: null,
 };
 const setup = (over: Partial<Args> = {}): ReturnType<typeof renderHook<ReturnType<typeof useThemeOverlay>, Args>> =>
     renderHook((a: Args) => useThemeOverlay(a), { initialProps: { ...BASE, ...over } });
@@ -150,13 +150,20 @@ describe("색 — 라벨의 점에만 쓴다", () => {
     });
 });
 
-describe("굵기 런 — 켰을 때만 굽는다", () => {
-    it("굵기가 꺼져 있으면 안 굽는다", () => {
-        expect(setup({ amountWidthOn: false }).result.current.runs).toBeNull();
+describe("굵기 런 — 굵기 **또는** 값 라벨이 켜졌을 때만 굽는다", () => {
+    it("둘 다 꺼져 있으면 안 굽는다", () => {
+        expect(setup({ amountWidthOn: false, amountLabelsOn: false }).result.current.runs).toBeNull();
     });
 
-    it("켜면 테마 선마다 런이 나온다 — 자금 유입 타이밍이 한 화면에 깔린다", () => {
+    it("굵기를 켜면 테마 선마다 런이 나온다 — 자금 유입 타이밍이 한 화면에 깔린다", () => {
         const { runs } = setup({ amountWidthOn: true }).result.current;
+        expect(runs?.get(MEMBER)?.length ?? 0).toBeGreaterThan(0);
+    });
+
+    // ⚠ 값 라벨의 재료가 같은 런이다 — 굵기만 보고 거르면 "값 ON·굵기 OFF"에서 앵커 라벨만 서고
+    //   멤버 라벨이 조용히 빈다(실측된 결함). 굵기 채널에 싣는 건 화면의 몫(amountWidthOn ? runs : null).
+    it("값 라벨만 켜도 굽는다 — 라벨이 같은 런을 먹는다", () => {
+        const { runs } = setup({ amountWidthOn: false, amountLabelsOn: true }).result.current;
         expect(runs?.get(MEMBER)?.length ?? 0).toBeGreaterThan(0);
     });
 });

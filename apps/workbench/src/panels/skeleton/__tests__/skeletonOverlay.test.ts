@@ -286,6 +286,27 @@ describe("minuteAmountOf — 누적의 인접 차분이 곧 그 분의 거래대
     });
 });
 
+describe("minuteIndexOf — 스냅샷 하나에 소비자가 넷이라 배열 단위로 캐시한다", () => {
+    const toMin = (v: number): number => v;
+
+    it("같은 times 배열 + 같은 변환이면 **같은 맵**을 돌려준다 — 네 소비자가 색인을 나눠 쓴다", () => {
+        const times = [540, 541, 542];
+        expect(minuteIndexOf(times, toMin)).toBe(minuteIndexOf(times, toMin));
+    });
+
+    it("배열이 다르면(내용이 같아도) 새로 만든다 — 키는 값이 아니라 배열 자신이다", () => {
+        expect(minuteIndexOf([540], toMin)).not.toBe(minuteIndexOf([540], toMin));
+    });
+
+    it("변환 함수가 갈리면 다시 만든다 — 낡은 변환의 색인을 돌려주지 않는다", () => {
+        const times = [540, 541];
+        const a = minuteIndexOf(times, toMin);
+        const b = minuteIndexOf(times, (v) => v + 1);
+        expect(b).not.toBe(a);
+        expect(b.get(541)).toBe(0);
+    });
+});
+
 describe("amountRuns — 골격 선을 분 단위로 잘라 굵기 단계 런으로", () => {
     // 테스트용 단계 판정: 10 이상이면 2단계, 5 이상이면 1단계, 그 아래는 0(구간 아래).
     const levelOf = (won: number): number => (won >= 10 ? 2 : won >= 5 ? 1 : LEVEL_QUIET);

@@ -16,7 +16,7 @@
 // **변환을 그림에 거는 게 아니라 스케일에 건다**(transform 속성 대신 rescaleX/rescaleY).
 // SVG transform 으로 확대하면 선이 같이 굵어지고 축 눈금이 확대에 따라 다시 안 찍힌다 — 여기선 축이 곧
 // 정보(기준 대비 %)라 그건 그림이 거짓말을 하는 것이다. 소비자는 tx·ty 를 받아 스케일을 다시 만든다.
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { select, pointer } from "d3-selection";
 import { zoom as d3zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
 
@@ -188,6 +188,9 @@ export function useOverlayZoom(
         return () => {
             sel.on(".zoom", null);
             behavior.current = null;
+            // 제스처 도중 enabled 가 꺼지면(데이터가 비는 등) end 가 영영 안 온다 — dragging 이 true 로
+            // 눌어붙으면 커서가 grabbing 에 갇히고 크로스헤어가 안 돌아온다. 여기서 손으로 내린다.
+            setDragging(false);
         };
     }, [ref, enabled, min, max]);
 
@@ -212,12 +215,19 @@ export function useOverlayZoom(
         rezero();
     }, [rezero]);
 
+    // ⚠ 변환은 축 상태에 memo — 매 렌더 새 객체를 내면 소비자의 scales useMemo 가 항상 깨져
+    // 그 하류(손잡이·viewX·테마 경로·라벨) 전부가 무관한 렌더마다 다시 돈다.
+    const tx = useMemo(() => zoomIdentity.translate(axes.x.t, 0).scale(axes.x.k), [axes.x]);
+    const ty = useMemo(() => zoomIdentity.translate(0, axes.y.t).scale(axes.y.k), [axes.y]);
+
     return {
-        tx: zoomIdentity.translate(axes.x.t, 0).scale(axes.x.k),
-        ty: zoomIdentity.translate(0, axes.y.t).scale(axes.y.k),
+        tx,
+        ty,
         reset,
         resetAxis,
         dragging,
+        // 부동소수 == 비교는 일부러다: identity 는 reset 이 **정확히** {1,0} 을 앉히는 값이고,
+        // 제스처가 우연히 정확한 1/0 에 되돌아오는 일은 사실상 없다 — 이 플래그는 원위치 버튼만 가른다.
         zoomed: axes.x.k !== 1 || axes.x.t !== 0 || axes.y.k !== 1 || axes.y.t !== 0,
     };
 }

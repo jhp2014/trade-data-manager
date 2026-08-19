@@ -390,10 +390,21 @@ export function segmentIndexOf(boundaries: readonly number[], minute: number): n
     return boundaries.length - 2;
 }
 
-/** `times[]`(unix 초) → 벽시계 분 → 인덱스. 조각마다 훑지 않도록 종목당 한 번 만든다. */
-export function minuteIndexOf(times: readonly number[], toMinute: (unixSec: number) => number): Map<number, number> {
+/**
+ * `times[]`(unix 초) → 벽시계 분 → 인덱스 — **여기가 유일한 출처다**(캐시 포함).
+ *
+ * 같은 스냅샷을 상대로 소비자가 넷이다(테마 hot 판정 · 테마 선 · 거래대금 조회기 두 벌 · 멤버 캔들) —
+ * 각자 색인을 다시 지으면 클릭 하나에 같은 배열을 네 번 훑는다(30종목 × ~720분이 네 벌).
+ * `times` 배열 자체를 키로 WeakMap 에 캐시한다: 스냅샷이 놓이면 색인도 같이 놓이고, 배열이 같으면
+ * 내용도 같다(불변 재료). ⚠ 반환 맵은 공유물이다 — 그래서 ReadonlyMap 으로 낸다(수정 금지).
+ */
+const minuteIndexCache = new WeakMap<readonly number[], { toMinute: (unixSec: number) => number; map: Map<number, number> }>();
+export function minuteIndexOf(times: readonly number[], toMinute: (unixSec: number) => number): ReadonlyMap<number, number> {
+    const hit = minuteIndexCache.get(times);
+    if (hit && hit.toMinute === toMinute) return hit.map;
     const m = new Map<number, number>();
     for (let i = 0; i < times.length; i++) m.set(toMinute(times[i]), i);
+    minuteIndexCache.set(times, { toMinute, map: m });
     return m;
 }
 
@@ -564,7 +575,8 @@ export function lineVisual(key: string, ctx: {
     group: ReadonlySet<string> | null;
 }): LineVisual {
     const anyLit = ctx.selected.size > 0 || ctx.hovered !== null || (ctx.group?.size ?? 0) > 0;
-    // 무리 안에서 하나를 짚고 있는가 — 그렇다면 그 하나만 앞에 서고 나머지 무리는 물러난다.
+    // **어딘가에 손이 올라가 있고** 이 선이 그게 아닌가 — 그러면 강조 무리(선택·그룹)도 한 걸음 물러난다.
+    // 짚은 게 무리 밖의 선이어도 물러난다(일부러): 지금 짚은 하나가 어디서든 또렷이 서는 게 우선이다.
     const recede = ctx.hovered !== null && key !== ctx.hovered;
     if (ctx.selected.has(key)) return { role: "selected", width: key === ctx.hovered ? 2.5 : 2, dim: false, recede };
     if (ctx.group?.has(key)) return { role: "group", width: key === ctx.hovered ? 2.5 : 1.75, dim: false, recede };

@@ -9,7 +9,7 @@
 // 하나 늘 때 그 실수를 반복할 자리가 없다.
 //
 // 예외는 `anchor` 하나다: 기준 앵커는 **일봉 전용 개념**이고 주인이 하나라 일부러 공유한다.
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo, type Dispatch, type SetStateAction } from "react";
 import { usePersistedState } from "../../store/persist.js";
 import type { SkeletonAnchor } from "./skeletonOverlay.js";
 
@@ -53,7 +53,9 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
     const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.skeletonOverlayAmountLabels.${grain}`, bool, false);
     const [showTheme, setShowTheme] = usePersistedState<boolean>(`wb.skeletonOverlayTheme.${grain}`, bool, false);
 
-    return {
+    // 한 벌 객체는 memo — 매 렌더 새로 만들면 이걸 통째로 받는 머리글(React.memo)이 값이 그대로여도
+    // 매번 다시 그린다. 세터들은 useState 산(産)이라 전부 안정이고, 값 일곱이 곧 의존성 전부다.
+    return useMemo(() => ({
         anchor, setAnchor,
         showFuture, setShowFuture,
         showLevels, setShowLevels,
@@ -61,5 +63,8 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
         showAmount, setShowAmount,
         showAmountLabels, setShowAmountLabels,
         showTheme, setShowTheme,
-    };
+    }), [
+        anchor, setAnchor, showFuture, setShowFuture, showLevels, setShowLevels, showLabels, setShowLabels,
+        showAmount, setShowAmount, showAmountLabels, setShowAmountLabels, showTheme, setShowTheme,
+    ]);
 }

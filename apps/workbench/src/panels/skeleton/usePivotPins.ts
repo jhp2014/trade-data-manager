@@ -22,6 +22,12 @@ export interface PivotPins {
     toggle: (key: string, i: number) => void;
     clear: () => void;
     count: number;
+    /**
+     * 지금 화면에 있는 선의 핀 수 — 작업줄 표기용. 저장엔 사라진 선의 핀(유령)이 남는다(일부러 —
+     * 필터를 풀면 되살아난다. selectedCharts 와 같은 규칙). 세는 것만 현재 목록으로 거른다.
+     * ⚠ clear 는 여전히 **전부** 비운다 — 유령만 남기면 비웠는데 개수가 살아나는 이상한 그림이 된다.
+     */
+    countIn: (present: (lineKey: string) => boolean) => number;
     /** 값을 그리는 점이 하나라도 있는 선 — 그 선은 손잡이를 계속 내줘야 핀을 뗄 수 있다. */
     linesWithPins: ReadonlySet<string>;
     setHoveredPivot: (at: { key: string; i: number } | null) => void;
@@ -102,6 +108,11 @@ export function usePivotPins({ target, resetKey, anchorKey }: {
         toggle,
         clear: () => setPinned(new Set()),
         count: pinned.size,
+        countIn: (present) => {
+            let n = 0;
+            for (const id of pinned) if (present(lineOfPin(id))) n++;
+            return n;
+        },
         linesWithPins,
         setHoveredPivot,
         pinnedXs,

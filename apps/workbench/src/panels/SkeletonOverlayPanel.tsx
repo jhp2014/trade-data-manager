@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect, useCallback, type CSSProperties } from "react";
+import { useMemo, useRef, useState, useEffect, useCallback, useId, type CSSProperties } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import {
     dailyFrame, pointUnitFrame,
@@ -293,6 +293,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const [selectedPks, setSelectedPks] = useState<ReadonlySet<string>>(() => new Set());
     const [hovered, setHovered] = useState<string | null>(null);
     const byKey = useMemo(() => new Map(lines.map((s) => [s.key, s])), [lines]);
+    // 호버 유령 가드 — 짚고 있던 선이 목록에서 사라지면(필터 변경·singleTarget 교체로 히트라인·손잡이가
+    // 언마운트) mouseleave 가 영영 안 와 anyLit 이 참으로 남고 **화면 전체가 흐려진 채** 굳는다.
+    // 라벨 층은 노드를 안 부수는 걸로 풀었지만(labelHandles 주석), 언마운트가 정당한 이 자리들은 상태를 손으로 되돌린다.
+    useEffect(() => {
+        if (hovered !== null && !byKey.has(hovered)) setHovered(null);
+    }, [hovered, byKey]);
     // 이 뷰의 선이 쓰는 선택 채널 — 타점 단위면 pk 집합, 차트 단위면 차트키 집합. 문법은 하나다.
     const activeSelection = isPointUnit ? selectedPks : selectedKeys;
     const setActiveSelection = isPointUnit ? setSelectedPks : setSelectedKeys;
@@ -364,7 +370,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         [viewX],
     );
 
-    const clipId = "skeleton-overlay-clip";
+    /**
+     * clipPath id — **인스턴스별**(useId). 일봉·분봉 패널이 한 문서에 같이 떠 있는데 문자열 상수를 쓰면
+     * `url(#…)` 이 문서의 **첫** clipPath 로 풀려, 한 패널의 손짓 층(테마 히트·피벗 손잡이·기준선·축)이
+     * 다른 패널의 상자 사각형으로 잘렸다. useId 의 구분 문자(:, «»)는 CSS url() 에서 못 쓰니 걸러낸다.
+     */
+    const clipId = `skeleton-overlay-clip-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
     const dotsForAll = useMemo(() => lines.reduce((n, s) => n + s.points.length, 0) <= DOT_BUDGET, [lines]);
     const baseOpacity = lineOpacity(lines.length);
     const dimmed = dimOpacity(lines.length);
@@ -441,6 +452,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         hot: replaySettings,
         lookup,
         amountWidthOn,
+        amountLabelsOn,
         hoveredLine: hovered,
         singleKey: singleTarget?.key ?? null,
         groupSet,
@@ -587,6 +599,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const onMarqueeSelect = useCallback((rect: MarqueeRect): void => {
         if (!scales) return;
         // 라벨 지점 판정 — 이 뷰의 선택 채널로 담는다(차트 단위=차트키, 타점 단위=pk. 문법은 하나).
+        // ⚠ showLabels 와 무관하게 **라벨이 설 자리**(앵커 반대쪽 끝점)로 판정한다(일부러) — 라벨을 꺼도
+        //   손잡이 좌표 규약은 유지돼야 같은 사각이 같은 무리를 담는다(선 기하 판정은 얽힌 곳에서 이미 기각됨).
         const hit = keysInRect(lines, labelAnchorMode, scales.x, scales.y, rect);
         if (hit.length > 0) setActiveSelection((prev: ReadonlySet<string>) => new Set([...(prev.size > 0 ? prev : effSelected), ...hit])); // 합집합(누적)
     }, [scales, lines, effSelected, labelAnchorMode, setActiveSelection]);
@@ -612,6 +626,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const selectedCharts = useMemo(
         () => (isPointUnit ? [] : [...effSelected].map((k) => byKey.get(k)).filter((s): s is Line => !!s)),
         [isPointUnit, effSelected, byKey],
+    );
+    // 선택 중 이 패널에 실제로 있는 **타점** — selectedCharts 와 같은 규칙. 저장된 선택은 안 지운다
+    // (필터를 풀면 정당하게 되살아난다) — 작업줄의 개수·그룹 대상만 현재 목록(byKey)으로 거른다.
+    const presentPks = useMemo(
+        () => new Set([...selectedPks].filter((k) => byKey.has(k))),
+        [selectedPks, byKey],
     );
     const openGroupMenuForSelection = useCallback((ev: { clientX: number; clientY: number }): void => {
         const charts = selectedCharts.map((s) => ({ stockCode: s.stockCode, date: s.date }));
@@ -654,6 +674,63 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return out;
     }, [showLevels, effSelected, byKey, hovered, visualOf]);
 
+    /**
+     * ── 머리글 프롭 안정화 — OverlayHeader 는 React.memo 다. 이 패널은 호버·팬마다 통째로 다시
+     * 렌더되는데 머리글은 그때 바뀌는 게 없으니, 인라인으로 만들던 객체·엘리먼트를 전부 memo 로 눌러
+     * 프롭 동일성을 지킨다(하나라도 매 렌더 새 것이면 memo 가 통째로 헛돈다).
+     */
+    const headerCandles = useMemo(
+        () => ({ alpha: candles.alpha, setAlpha: candles.setAlpha }),
+        [candles.alpha, candles.setAlpha],
+    );
+    const headerCounts = useMemo(
+        () => ({ shown: lines.length, population, missing: missingPrevClose }),
+        [lines.length, population, missingPrevClose],
+    );
+    const headerTheme = useMemo(
+        () => ({ lineCount: themeOverlay?.lines.length ?? null, hasTarget: singleTarget !== null }),
+        [themeOverlay, singleTarget],
+    );
+    // O(n) 필터도 memo 안으로 — 렌더마다 전 선을 세던 것이 짚음·목록이 바뀔 때만 돈다.
+    const pickShown = useMemo(
+        () => (pick === null ? 0 : allLines.filter(linePicked).length),
+        [pick, allLines, linePicked],
+    );
+    const headerPick = useMemo(
+        () => (pick === null ? null : {
+            label: `${PICK_SOURCE_LABEL[pick.source]} · ${pick.label}`,
+            shown: pickShown,
+            total: allLines.length,
+            broken: pickBroken,
+            mode: pickMode,
+            setMode: setPickMode,
+            clear: () => clearPick(null),
+        }),
+        [pick, pickShown, allLines.length, pickBroken, pickMode, setPickMode, clearPick],
+    );
+    // binding 통짜는 매 렌더 새 객체(useSetBinding) — 라벨·컨트롤이 실제로 읽는 값만 의존성으로 잡는다.
+    const { label: bindingText, broken: bindingBroken } = binding;
+    const bindingLabel = useMemo(
+        () => <SetBindingLabel binding={binding} members={setMembers} />,
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [bindingText, bindingBroken, setMembers],
+    );
+    const setControl = useMemo(
+        () => setBindingControl({ binding, open: sideOpen, setOpen: setSideOpen }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [bindingBroken, sideOpen, setSideOpen],
+    );
+    const subjectBadge = useMemo(
+        () => <SubjectBadge subject={subject} status={subjectState}
+            name={subject ? nameOf(subject.code) : undefined}
+            absentLabel={isDaily ? "골격 없음" : "골격·타점 없음"} />,
+        [subject, subjectState, nameOf, isDaily],
+    );
+    const onToggleLock = useCallback(
+        () => setLocked((l) => (l ? null : autoBounds)),
+        [autoBounds],
+    );
+
 
 
     /**
@@ -674,7 +751,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             // 테마 선은 골격보다 아래(배경이고 주인공은 내 골격). 다른 골격선을 보는 동안엔 접는다(swapped).
             "theme-lines": themeOverlay && !theme.swapped
                 ? themeLinesLayer({
-                    overlay: themeOverlay, runs: theme.runs, hovered: theme.hovered,
+                    // 런은 값 라벨과 공용 재료라 훅이 (굵기 ∨ 값)으로 굽는다 — **굵기 채널**엔 굵기가 켜졌을 때만 싣는다
+                    // (골격선 층의 `amounts: amountWidthOn ? … : null` 과 같은 분리).
+                    overlay: themeOverlay, runs: amountWidthOn ? theme.runs : null, hovered: theme.hovered,
                     project: (pts, step) => flatten(themePath(pts, step), scales.x, scales.y),
                     clip: viewX, lineStep,
                 })
@@ -702,27 +781,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
             <OverlayHeader
                 grain={grain}
                 toggles={toggles}
-                candles={candles}
-                counts={{ shown: lines.length, population, missing: missingPrevClose }}
-                theme={{ lineCount: themeOverlay?.lines.length ?? null, hasTarget: singleTarget !== null }}
-                bindingLabel={<SetBindingLabel binding={binding} members={setMembers} />}
-                setControl={setBindingControl({ binding, open: sideOpen, setOpen: setSideOpen })}
-                pick={pick === null ? null : {
-                    label: `${PICK_SOURCE_LABEL[pick.source]} · ${pick.label}`,
-                    shown: allLines.filter(linePicked).length,
-                    total: allLines.length,
-                    broken: pickBroken,
-                    mode: pickMode,
-                    setMode: setPickMode,
-                    clear: () => clearPick(null),
-                }}
-                subjectBadge={<SubjectBadge subject={subject} status={subjectState}
-                    name={subject ? nameOf(subject.code) : undefined}
-                    absentLabel={isDaily ? "골격 없음" : "골격·타점 없음"} />}
+                candles={headerCandles}
+                counts={headerCounts}
+                theme={headerTheme}
+                bindingLabel={bindingLabel}
+                setControl={setControl}
+                pick={headerPick}
+                subjectBadge={subjectBadge}
                 onlySelected={onlySelected}
                 setOnlySelected={setOnlySelected}
                 locked={locked !== null}
-                onToggleLock={() => setLocked(locked ? null : autoBounds)}
+                onToggleLock={onToggleLock}
             />
 
             {/* 그림판과 집합 사이드바가 한 줄 — 사이드바는 오른쪽(여닫는 칩이 왼쪽이라도, 목록이 그림을
@@ -903,10 +972,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                         rawChartCount: selectedKeys.size,
                         onGroupCharts: openGroupMenuForSelection,
                         onClearCharts: () => setSelectedKeys(new Set()),
-                        pointKeys: selectedPks,
+                        pointKeys: presentPks,
+                        rawPointCount: selectedPks.size,
                         onGroupPoints: openPointGroupMenu,
                         onClearPoints: () => setSelectedPks(new Set()),
-                        pinnedCount: pins.count,
+                        // 핀도 같은 규칙 — 개수는 화면에 있는 선의 것만, 비우기는 유령까지 전부(usePivotPins.countIn).
+                        pinnedCount: pins.countIn((k) => byKey.has(k)),
                         onClearPins: pins.clear,
                     }}
                     zoomed={zoomed}

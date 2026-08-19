@@ -22,7 +22,7 @@
 // **겹친 자리가 더 진해진다**. 지금 겹치는 건 골격선 위의 피벗 점 하나뿐이고, 그것도 짚은 선
 // (알파 1 — 차이 없음)이 아닌 경우에만이다. 캔들 꼬리는 몸통에 가리던 것을 빌더에서 두 토막으로
 // 갈라 아예 안 겹치게 했다. 묶음마다 오프스크린을 뜨는 건 선 수만큼 캔버스를 만드는 짓이라 안 한다.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DrawLayer, DrawOp, FlatPts } from "./drawList.js";
 
 interface Box { left: number; top: number; width: number; height: number }
@@ -168,6 +168,20 @@ export interface CanvasLayersProps {
 export function CanvasLayers({ layers, width, height, clip }: CanvasLayersProps): JSX.Element {
     const ref = useRef<HTMLCanvasElement | null>(null);
 
+    /**
+     * devicePixelRatio — **변경 이벤트가 없다**. 창을 다른 배율의 모니터로 옮기면 값만 바뀌고 아무도
+     * 안 알려줘서, 마지막 그리기의 물리 픽셀이 그대로 남아 그림이 뭉갠다(또는 과하게 크다).
+     * 표준 우회가 "지금 배율" 미디어쿼리의 change 다 — 발화하면 새 값을 읽고, 쿼리도 새 값으로 다시 건다.
+     */
+    const [dpr, setDpr] = useState(() => window.devicePixelRatio || 1);
+    useEffect(() => {
+        if (typeof window.matchMedia !== "function") return; // jsdom — 배율 변경이 없는 환경
+        const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
+        const onChange = (): void => setDpr(window.devicePixelRatio || 1);
+        mq.addEventListener("change", onChange);
+        return () => mq.removeEventListener("change", onChange);
+    }, [dpr]);
+
     useEffect(() => {
         const canvas = ref.current;
         if (!canvas) return;
@@ -177,8 +191,7 @@ export function CanvasLayers({ layers, width, height, clip }: CanvasLayersProps)
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
-        // 물리 픽셀로 잡고 논리 픽셀로 그린다 — 안 하면 고해상도 화면에서 뭉갠다.
-        const dpr = window.devicePixelRatio || 1;
+        // 물리 픽셀로 잡고 논리 픽셀로 그린다 — 안 하면 고해상도 화면에서 뭉갠다(dpr 은 위 상태 — 모니터 이동을 따라온다).
         const pw = Math.max(1, Math.round(width * dpr));
         const ph = Math.max(1, Math.round(height * dpr));
         if (canvas.width !== pw) canvas.width = pw;
@@ -203,7 +216,7 @@ export function CanvasLayers({ layers, width, height, clip }: CanvasLayersProps)
         }
         ctx.restore();
         ctx.globalAlpha = 1;
-    }, [layers, width, height, clip]);
+    }, [layers, width, height, clip, dpr]);
 
     const ops = layers.reduce((n, l) => n + l.groups.reduce((m, g) => m + g.ops.length, 0), 0);
 

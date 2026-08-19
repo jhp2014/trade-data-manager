@@ -21,7 +21,10 @@ export interface OverlaySelection {
     rawChartCount: number;
     onGroupCharts: (at: { clientX: number; clientY: number }) => void;
     onClearCharts: () => void;
+    /** 이 패널에 실제로 있는 선택 타점(차트와 같은 규칙 — 필터로 빠진 선의 키가 저장엔 남는다). */
     pointKeys: ReadonlySet<string>;
+    /** 저장된 선택 타점 수(유령 포함) — ✕ 는 이걸 보고 선다(보이는 게 0이어도 저장을 비울 수 있어야 한다). */
+    rawPointCount: number;
     onGroupPoints: (points: PointRef[], label: string, at: { clientX: number; clientY: number }) => void;
     onClearPoints: () => void;
     pinnedCount: number;
@@ -37,8 +40,9 @@ export function OverlaySelectionBar({ selection, zoomed, onResetZoom }: {
     const hasCharts = s.chartCount > 0;
     const canClearCharts = s.chartChannelShown && s.rawChartCount > 0;
     const hasPoints = s.pointKeys.size > 0;
+    const canClearPoints = s.rawPointCount > 0;
     const hasPins = s.pinnedCount > 0;
-    if (!hasCharts && !canClearCharts && !hasPoints && !hasPins && !zoomed) return null;
+    if (!hasCharts && !canClearCharts && !hasPoints && !canClearPoints && !hasPins && !zoomed) return null;
 
     return (
         <div
@@ -64,7 +68,7 @@ export function OverlaySelectionBar({ selection, zoomed, onResetZoom }: {
                     타점 {s.pointKeys.size} 그룹
                 </button>
             )}
-            {hasPoints && <button onClick={s.onClearPoints} title="타점 선택 해제" style={miniBtn}>✕</button>}
+            {canClearPoints && <button onClick={s.onClearPoints} title="타점 선택 해제" style={miniBtn}>✕</button>}
             {hasPins && <button onClick={s.onClearPins} title="붙잡아 둔 피벗 값 전부 떼기" style={miniBtn}>값 {s.pinnedCount} ✕</button>}
             {zoomed && <button onClick={onResetZoom} title="원위치(축 스트립 더블클릭도 같음)" style={miniBtn}>원위치 ⤺</button>}
         </div>

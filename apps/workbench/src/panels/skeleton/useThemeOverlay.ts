@@ -87,8 +87,10 @@ export interface UseThemeOverlayArgs {
     /** 보드 hot 판정의 상한(거래대금·등락률 top-N) — 화면에서 보던 것과 같은 무리가 나오게 보드 규칙을 그대로 쓴다. */
     hot: { amountN: number; rateN: number };
     lookup: AmountLookup;
-    /** 굵기를 켰나 — 껐으면 런을 안 굽는다. */
+    /** 굵기를 켰나 — 선 굵기 채널의 스위치. */
     amountWidthOn: boolean;
+    /** 값 라벨을 켰나 — 라벨의 재료도 같은 런이라, 굵기가 꺼져 있어도 이게 켜져 있으면 굽는다(앵커 쪽 amountTarget 과 같은 규칙). */
+    amountLabelsOn: boolean;
     /** 지금 짚은 골격선(테마 접기 판정). */
     hoveredLine: string | null;
     /** 단일 선택된 골격선 키. */
@@ -98,7 +100,7 @@ export interface UseThemeOverlayArgs {
 }
 
 export function useThemeOverlay(args: UseThemeOverlayArgs): ThemeView {
-    const { enabled, target, snapshot, hot, lookup, amountWidthOn, hoveredLine, singleKey, groupSet } = args;
+    const { enabled, target, snapshot, hot, lookup, amountWidthOn, amountLabelsOn, hoveredLine, singleKey, groupSet } = args;
 
     const [hoveredCodes, setHoveredCodes] = useState<readonly string[] | null>(null);
     const [badge, setBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
@@ -127,15 +129,17 @@ export function useThemeOverlay(args: UseThemeOverlayArgs): ThemeView {
         return (code: string): string => m.get(code) ?? "var(--text-secondary)";
     }, [overlay]);
 
+    // 런은 굵기 **또는** 값 라벨이 켜져 있으면 굽는다 — 값 라벨의 재료가 같은 런이라, 굵기만 보고 거르면
+    // "값 ON·굵기 OFF"에서 앵커 라벨만 서고 멤버 라벨이 조용히 빈다(앵커 쪽 amountTarget 과 같은 게이트).
     const runs = useMemo(() => {
-        if (!overlay || !amountWidthOn) return null;
+        if (!overlay || (!amountWidthOn && !amountLabelsOn)) return null;
         const m = new Map<string, AmountRun[]>();
         for (const l of overlay.lines) {
             const at = lookup.amountAt(l.code);
             if (at) m.set(l.code, amountRuns(l.points, overlay.t0, at, amountLevelOf));
         }
         return m;
-    }, [overlay, lookup, amountWidthOn]);
+    }, [overlay, lookup, amountWidthOn, amountLabelsOn]);
 
     const mode = overlay !== null;
     const swapped = mode && ((hoveredLine !== null && hoveredLine !== singleKey) || (groupSet?.size ?? 0) > 0);

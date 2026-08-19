@@ -19,7 +19,7 @@
 //    같은 잣대다 — 늘 서 있는 것이 사라지는 자리에 섞여 있었다.
 // **② 자리는 안 사라진다.** 개수에 따라 생겼다 없어지는 손잡이는 이 줄에 안 산다(OverlaySelectionBar).
 //    grain(일봉/분봉)으로 갈리는 것은 예외 — 패널 정체성이라 마운트 후 안 바뀐다(`available`).
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import type { SkeletonAnchor } from "./skeletonOverlay.js";
@@ -58,10 +58,11 @@ export interface OverlayPick {
     clear: () => void;
 }
 
-export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, bindingLabel, setControl, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
+function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, pick, bindingLabel, setControl, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
     grain: "daily" | "minute";
     toggles: OverlayToggles;
-    candles: CandlesView;
+    /** 캔들에서 머리글이 쓰는 건 선명도뿐 — CandlesView 통짜를 받으면 호버마다 갈리는 파생(anchorShown 등)이 memo 를 깬다. */
+    candles: Pick<CandlesView, "alpha" | "setAlpha">;
     counts: OverlayCounts;
     theme: OverlayThemeStatus;
     pick: OverlayPick | null;
@@ -199,6 +200,12 @@ export function OverlayHeader({ grain, toggles, candles, counts, theme, pick, bi
         </PanelHeader>
     );
 }
+
+/**
+ * memo — 이 패널은 호버·팬마다 통째로 다시 렌더되는데 머리글은 그때 바뀌는 게 없다. 프롭이 전부
+ * 안정(패널 쪽 useMemo·안정 세터)이라는 전제 위의 최적화다 — 새 프롭을 들일 땐 그쪽도 memo 로.
+ */
+export const OverlayHeader = memo(OverlayHeaderImpl);
 
 /** 테마가 켜졌을 때 한 마디 — 셋 중 하나만 말한다(옛 코드는 "3"과 "없음"이 같이 뜰 수 있었다). */
 function themeStatusText(theme: OverlayThemeStatus): string {
