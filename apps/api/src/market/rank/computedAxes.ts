@@ -10,73 +10,21 @@
 // **앵커 지문(무효화의 심장)**: params 를 선언한 축은 값이 사람 입력(타점 파라미터 앵커)에 의존한다.
 // 캐시 항목마다 그 타점의 앵커 지문(f)을 함께 저장하고, 매 요청 현재 앵커와 대조해 **다른 것만** 다시 굽는다 —
 // 앵커를 지정/이동/해제하면 그 타점만 자동 재계산되고, 사용자는 캐시를 의식할 일이 없다.
+// 지문 자체는 순수 함수(axisFingerprint.ts), 파일 계층은 axisValueStore.ts — 여기는 증분 조율만.
 // (시장 데이터 변경(백필·수정주가 재작성)은 지문 밖 — 드물어서 운영 처방 = def.version 상향/캐시 삭제.)
 //
 // 결손(값 없음)은 캐시하지 않는다 — 분봉 미수집 타점이 나중에 채워질 수 있어 "없음"을 굳히면 영구 오염이다
 // (DerivedCache 가 오늘 날짜를 안 굳히는 것과 같은 이유). 대신 결손 비율이 높으면 트립와이어로 알린다.
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import type { ComputedAxisDef, AxisDeps, ChartAnchor, ReviewPointKey, ReviewPointReader } from "@trade-data-manager/market";
 import { COMPUTED_AXES, anchorAppliesTo, chartKeyOf, pointKeyOf } from "@trade-data-manager/market";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
+import { fingerprintParams, fingerprintOf } from "./axisFingerprint.js";
+import { FILE_SCHEMA_VERSION, fileAxisValueStore, type AxisValueEntry, type AxisValueStore } from "./axisValueStore.js";
 
 export type { ComputedAxisFeed };
 
-const CACHE_ROOT = process.env.RANK_AXIS_CACHE_DIR ?? path.resolve(process.cwd(), ".cache/rank-axis");
-
-/** 파일 스키마 버전. 파일 모양(축 정의가 아니라)이 바뀌면 올린다 — 축 계산식 변경은 def.version 쪽.
- *  v2: 값에 입력 지문(f) 동봉 — 앵커 의존 축의 자동 무효화. v1 구파일 = miss(전량 재빌드). */
-const FILE_SCHEMA_VERSION = 2;
-
 /** 결손 경고 임계 — 이 비율을 넘으면 재료 파이프라인 의심(분봉 미수집·시각 이상). */
 const MISSING_WARN_RATIO = 0.2;
-
-/** 지문에 넣을 파라미터 = 필수 ∪ 선택. 선택 파라미터도 바뀌면 값이 바뀌므로 무효화 대상은 같다. */
-const fingerprintParams = (def: ComputedAxisDef): readonly string[] => [...(def.params ?? []), ...(def.optionalParams ?? [])];
-
-/** 캐시 항목 — 수치 + 구운 시점의 입력 지문(앵커 무관 축은 "") + 우측 절단 여부(s, 아니면 생략). */
-export interface AxisValueEntry {
-    v: number;
-    f: string;
-    s?: boolean;
-}
-
-/** 축 하나의 값 파일. values 는 pointKey → 항목(결손은 키 자체가 없다). */
-export interface AxisValueFile {
-    v: number;
-    key: string;
-    /** 구운 시점의 축 계산식 버전. def.version 과 다르면 통째 무효. */
-    version: number;
-    values: Record<string, AxisValueEntry>;
-}
-
-/** 값 저장소 — 파일 I/O 를 분리해 테스트가 in-memory fake 를 주입한다. */
-export interface AxisValueStore {
-    read(key: string): Promise<AxisValueFile | null>;
-    write(file: AxisValueFile): Promise<void>;
-}
-
-const filePath = (key: string): string => path.join(CACHE_ROOT, `${key}.json`);
-
-export const fileAxisValueStore: AxisValueStore = {
-    async read(key) {
-        try {
-            const parsed = JSON.parse(await fs.readFile(filePath(key), "utf8")) as AxisValueFile;
-            return parsed.v === FILE_SCHEMA_VERSION ? parsed : null; // 구스키마 = miss(재빌드가 자가치유)
-        } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-            console.warn(`[rank-axis] 캐시 읽기 실패, 재빌드: ${filePath(key)}`, err);
-            return null;
-        }
-    },
-    async write(file) {
-        await fs.mkdir(CACHE_ROOT, { recursive: true });
-        const fp = filePath(file.key);
-        const tmp = `${fp}.tmp`;
-        await fs.writeFile(tmp, JSON.stringify(file), "utf8");
-        await fs.rename(tmp, fp); // 원자적 교체 — 부분 파일이 남지 않게
-    },
-};
 
 export interface ComputedAxesDeps {
     /** 모집단 = 전 복기 타점. 축은 타점별 독립이라 여기서 순서·집합에 의미를 두지 않는다. */
@@ -127,32 +75,6 @@ export class ComputedAxes {
         return promise;
     }
 
-    /**
-     * 이 축에서 타점의 입력 지문 — 선언된 파라미터(필수+선택) 앵커 좌표의 직렬화. 앵커가 바뀌면 문자열이 바뀐다.
-     * 파라미터 없는 축은 항상 ""(= 지문 대조가 무의미, 캐시 히트는 존재 여부만으로).
-     *
-     * 앵커가 차트 소유가 된 뒤로 지문은 **그 차트에서 타점에 적용되는 앵커들**(anchorAppliesTo)로 만든다 —
-     * 차트에 선 하나를 긋거나 지우면 그 차트의 모든 타점 지문이 바뀌어 같이 다시 구워진다(리졸버의 "가격
-     * 최저"가 어느 선이든 바뀔 수 있으니 정확히 원하는 무효화다).
-     *
-     * **pointCoupled 축은 형제 타점 시각 목록도 지문에 넣는다** — 값이 같은 차트의 다른 타점 존재에
-     * 의존하기 때문(타점 종가 합성). 타점을 추가/삭제하면 그 차트의 타점들이 같이 다시 구워진다.
-     * 없으면 새 타점이 형제의 참값을 바꿨는데 캐시는 그대로인 조용한 스테일이 남는다.
-     *
-     * ⚠ 정렬은 **직렬화한 문자열 전체**로 한다. param 만으로 정렬하면 한 param 에 앵커가 여럿일 때(무시 캔들·
-     *   다중 기준선) 순서가 DB 행 순서에 좌우돼, 아무것도 안 바꿨는데 지문이 달라지고 전량 재계산이 된다.
-     */
-    private fingerprint(def: ComputedAxisDef, applicable: ChartAnchor[], siblingTimes: readonly string[]): string {
-        const params = fingerprintParams(def);
-        if (params.length === 0) return "";
-        const anchorsFp = applicable
-            .filter((a) => params.includes(a.param))
-            .map((a) => `${a.param}@${a.anchorDate}T${a.anchorTime ?? ""}|${a.field ?? ""}|${a.market ?? ""}`)
-            .sort()
-            .join(";");
-        return def.pointCoupled ? `${anchorsFp}#pts=${[...siblingTimes].sort().join(",")}` : anchorsFp;
-    }
-
     private async build(def: ComputedAxisDef, points: ReviewPointKey[], anchors: ChartAnchor[]): Promise<ComputedAxisFeed> {
         const cached = await this.store.read(def.key);
         // 계산식이 바뀌었으면(version 상향) 옛 값은 다른 식의 산물이라 통째로 버린다.
@@ -183,7 +105,7 @@ export class ComputedAxes {
             const k = pointKeyOf(p);
             let fp = fpCache.get(k);
             if (fp === undefined) {
-                fp = this.fingerprint(def, applicableTo(p), timesByChart.get(chartKeyOf(p)) ?? []);
+                fp = fingerprintOf(def, applicableTo(p), timesByChart.get(chartKeyOf(p)) ?? []);
                 fpCache.set(k, fp);
             }
             return fp;

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { AxisDeps, ChartAnchor, ComputedAxisDef, ReviewPoint, ReviewPointKey } from "@trade-data-manager/market";
-import { ComputedAxes, type AxisValueFile, type AxisValueStore } from "../rank/computedAxes.js";
+import { ComputedAxes } from "../rank/computedAxes.js";
+import { fingerprintOf } from "../rank/axisFingerprint.js";
+import type { AxisValueFile, AxisValueStore } from "../rank/axisValueStore.js";
 
 // 인메모리 저장소 — 파일 I/O 없이 증분·무효화 규칙만 본다.
 function memoryStore(): AxisValueStore & { files: Map<string, AxisValueFile>; writes: number } {
@@ -287,6 +289,29 @@ describe("ComputedAxes 앵커 지문", () => {
         // 지문 유무로 분모를 세면 5건 중 4건 결손(80%)이 되어 정상 상태가 상시 경고가 된다.
         expect(warn).not.toHaveBeenCalled();
         warn.mockRestore();
+    });
+
+    // 지문 자체(순수 함수) — 위 시나리오들이 캐시 대조 경로를 보고, 여기는 문자열 규칙만 직접 본다.
+    it("fingerprintOf — 선언 안 된 param 제외·정렬 안정·pointCoupled 형제 시각 접미", () => {
+        const def = { ...paramAxis(), optionalParams: ["ignore-candle"] };
+        const p = pt("001");
+        const base = anchor(p, "2026-06-10");
+        const ig1 = ignore(p, "2026-06-01");
+        const ig2 = ignore(p, "2026-06-02");
+        const alien: ChartAnchor = { ...base, param: "undeclared" }; // 선언 안 된 param 은 지문 밖
+
+        // 같은 집합이면 행 순서와 무관하게 같은 문자열(직렬화 전체 정렬).
+        const fp = fingerprintOf(def, [base, ig1, ig2, alien], []);
+        expect(fingerprintOf(def, [ig2, alien, base, ig1], [])).toBe(fp);
+        expect(fingerprintOf(def, [base, ig1], [])).not.toBe(fp); // 무시 캔들 하나 해제 = 진짜 변경
+
+        // params 없는 축은 항상 ""(캐시 히트는 존재 여부만으로).
+        expect(fingerprintOf({ ...def, params: undefined, optionalParams: undefined }, [base], [])).toBe("");
+
+        // pointCoupled — 형제 시각 목록이 정렬돼 붙는다(순서 무관, 집합 변경만 지문 변경).
+        const coupled = { ...def, pointCoupled: true };
+        expect(fingerprintOf(coupled, [base], ["14:00:00", "10:00:00"])).toBe(fingerprintOf(coupled, [base], ["10:00:00", "14:00:00"]));
+        expect(fingerprintOf(coupled, [base], ["10:00:00"])).not.toBe(fingerprintOf(coupled, [base], ["10:00:00", "14:00:00"]));
     });
 
     it("params 없는 축은 앵커가 바뀌어도 재계산하지 않는다", async () => {
