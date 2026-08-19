@@ -137,6 +137,8 @@ export function GroupListPanel(): JSX.Element {
         for (const g of gv.groups) m.set(g.name, overlapOf(g));
         return m;
     }, [gv.groups, overlapOf]);
+    // 막대 척도의 분모 — 행마다 다시 재면 O(그룹수²)라 한 번만 잰다.
+    const maxOverlap = useMemo(() => maxOf(overlapAll), [overlapAll]);
     const rows = useMemo<GroupRow[]>(
         () => (sort === "tree" ? treeRows(gv.groups, collapsed) : overlapRows(gv.groups, overlapAll, chain, gv.groupByName)),
         [sort, gv.groups, gv.groupByName, collapsed, overlapAll, chain],
@@ -314,7 +316,7 @@ export function GroupListPanel(): JSX.Element {
                                         count={countOf(r.group)}
                                         relation={relationOf(r.group.name, chain, gv.groupByName)}
                                         overlap={overlapAll.get(r.group.name) ?? 0}
-                                        maxOverlap={maxOf(overlapAll)}
+                                        maxOverlap={maxOverlap}
                                         chainOn={chain.length > 0}
                                         collapsed={collapsed.has(r.group.name)}
                                         onToggleCollapse={() => setCollapsed((cur) =>

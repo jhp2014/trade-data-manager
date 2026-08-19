@@ -1,15 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertThemeMember, type LeafEvidence } from "../api/alerts.js";
+import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertThemeMember } from "../api/alerts.js";
 import { kstHm, kstMidnight, kstToday, kstTime } from "../lib/date.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { useWorkbench } from "../store/workbench.js";
+import { usePersistedState } from "../store/persist.js";
 import { PanelHeader, ScrollRow } from "../components/ControlChrome.js";
-
-// 근거 문구는 core 술어(predicateEvidence — 서버)가 채운다(4b 통합) — 그대로 렌더.
-function renderEvidence(e: LeafEvidence): string {
-    return e.text;
-}
+import { useDismiss } from "../ui/useDismiss.js";
 
 /** 배달 상태 배지 — sent 는 배지 없음(정상 배달), 나머지는 왜 텔레그램에 안 갔는지. */
 const DELIVERY_BADGE: Record<string, { icon: string; title: string } | undefined> = {
@@ -46,16 +43,16 @@ export function AlertLogPanel(): JSX.Element {
     const [q, setQ] = useState("");
     const [theme, setTheme] = useState("");
     const [delivery, setDelivery] = useState<Delivery>("all");
-    const [floor, setFloorState] = useState(() => {
-        const n = Number(localStorage.getItem(FLOOR_KEY));
-        return Number.isFinite(n) ? n : 0;
-    });
-    const setFloor = (ms: number): void => {
-        setFloorState(ms);
-        localStorage.setItem(FLOOR_KEY, String(ms));
-    };
+    // 옛 저장분(String(ms) 원시 문자열)도 JSON.parse 가 숫자로 읽는다 — 포맷 호환.
+    const [floor, setFloor] = usePersistedState<number>(
+        FLOOR_KEY, (o) => (typeof o === "number" && Number.isFinite(o) ? o : null), 0,
+    );
     const setLiveCode = useWorkbench((s) => s.setLiveCode); // 로그 줄 클릭 → 실시간 포커스(차트·뉴스가 따라온다)
 
+    // ⚠ 커서 누적 패턴 — queryFn 이 컴포넌트 로컬 ref(cursor)·state(entries) 에 부수효과로 쌓는다.
+    // 이 패널이 **한 번에 하나만** 마운트된다는 전제(같은 LOG_KEY 인스턴스가 둘이면 react-query 가
+    // queryFn 을 한쪽에서만 돌려 다른 쪽 누적이 멎는다). 현 카탈로그에선 단일 패널이라 성립 — 복수
+    // 마운트가 필요해지면 누적을 전역 스토어로 올려야 한다(지금은 구조 유지).
     const poll = useQuery({
         queryKey: LOG_KEY,
         refetchInterval: LIVE_CADENCE_MS,
@@ -147,7 +144,8 @@ function Empty({ text }: { text: string }): JSX.Element {
 function LogRow({ entry, onPick }: { entry: AlertLogEntry; onPick: (code: string) => void }): JSX.Element {
     const { firing: f, delivery } = entry;
     const { changeRate } = f.features;
-    const why = [...f.evidence.map(renderEvidence), ...(f.note ? [f.note] : [])].join(" · ");
+    // 근거 문구는 core 술어(predicateEvidence — 서버)가 채운다(4b 통합) — 그대로 렌더.
+    const why = [...f.evidence.map((ev) => ev.text), ...(f.note ? [f.note] : [])].join(" · ");
     const badge = DELIVERY_BADGE[delivery];
     const sent = delivery === "sent";
     return (
@@ -281,12 +279,16 @@ function parseHHmm(s: string): number | null {
 }
 
 /** 시간 floor — 평소엔 시각만 표시("09:41"/"전체"). 클릭하면 팝오버: [지금][전체] + 직접 입력(24h HH:mm).
- *  팝오버는 헤더의 overflow 클리핑을 피해 fixed 로 띄운다(백드롭 클릭·Esc 로 닫힘). */
+ *  팝오버는 헤더의 overflow 클리핑을 피해 fixed 로 띄운다. 해제(바깥 클릭·Esc)는 수제 백드롭 대신
+ *  공용 useDismiss 한 벌 — 어디에 포커스가 있든 Esc 가 일관되게 닫는다. */
 function FloorControl({ effFloor, midnight, onSet }: { effFloor: number; midnight: number; onSet: (ms: number) => void }): JSX.Element {
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState("");
     const [pos, setPos] = useState({ left: 0, top: 0 });
     const anchorRef = useRef<HTMLSpanElement>(null);
+    // dismiss 판정 범위 = 앵커+팝오버(display:contents 라 레이아웃엔 불참) — 앵커 클릭은 토글이 처리.
+    const wrapRef = useRef<HTMLSpanElement>(null);
+    useDismiss(wrapRef, () => setOpen(false), open);
     const label = effFloor <= midnight ? "전체" : kstHm(effFloor);
 
     const openPop = (): void => {
@@ -306,7 +308,7 @@ function FloorControl({ effFloor, midnight, onSet }: { effFloor: number; midnigh
     };
 
     return (
-        <>
+        <span ref={wrapRef} style={{ display: "contents" }}>
             <span
                 ref={anchorRef}
                 onClick={() => (open ? setOpen(false) : openPop())}
@@ -316,32 +318,29 @@ function FloorControl({ effFloor, midnight, onSet }: { effFloor: number; midnigh
                 {label}
             </span>
             {open && (
-                <>
-                    <div onMouseDown={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 50 }} />
-                    <div
-                        style={{
-                            position: "fixed", left: pos.left, top: pos.top, zIndex: 51,
-                            display: "flex", gap: 4, alignItems: "center", padding: 6,
-                            background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 6,
-                            boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
+                <div
+                    style={{
+                        position: "fixed", left: pos.left, top: pos.top, zIndex: 51,
+                        display: "flex", gap: 4, alignItems: "center", padding: 6,
+                        background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 6,
+                        boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
+                    }}
+                >
+                    <button type="button" onClick={() => apply(Date.now())} title="지금 이후만 — 화면 비우기" style={btnStyle}>지금</button>
+                    <button type="button" onClick={() => apply(0)} title="오늘 전체 표시" style={btnStyle}>전체</button>
+                    <input
+                        autoFocus
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") commitDraft();
+                            else if (e.key === "Escape") setOpen(false);
                         }}
-                    >
-                        <button type="button" onClick={() => apply(Date.now())} title="지금 이후만 — 화면 비우기" style={btnStyle}>지금</button>
-                        <button type="button" onClick={() => apply(0)} title="오늘 전체 표시" style={btnStyle}>전체</button>
-                        <input
-                            autoFocus
-                            value={draft}
-                            onChange={(e) => setDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") commitDraft();
-                                else if (e.key === "Escape") setOpen(false);
-                            }}
-                            placeholder="09:41"
-                            style={{ ...selectStyle, width: 52, textAlign: "center" }}
-                        />
-                    </div>
-                </>
+                        placeholder="09:41"
+                        style={{ ...selectStyle, width: 52, textAlign: "center" }}
+                    />
+                </div>
             )}
-        </>
+        </span>
     );
 }

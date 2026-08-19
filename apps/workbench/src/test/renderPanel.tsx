@@ -17,6 +17,7 @@ import {
 } from "../api/queries.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
 import { GroupsProvider } from "../lib/GroupsContext.js";
+import { LiveSnapshotProvider } from "../lib/LiveSnapshotContext.js";
 import { RankAxesProvider } from "../lib/RankAxesContext.js";
 import { StockNamesProvider } from "../lib/StockNamesContext.js";
 
@@ -88,7 +89,10 @@ export function Providers({ client, children }: { client: QueryClient; children:
             <StockNamesProvider>
                 <GroupsProvider>
                     <RankAxesProvider>
-                        <FunnelProvider>{children}</FunnelProvider>
+                        {/* 실시간 스냅샷 — jsdom 엔 EventSource 가 없어 연결 없이 null 스냅샷(Provider 내부 가드). */}
+                        <LiveSnapshotProvider>
+                            <FunnelProvider>{children}</FunnelProvider>
+                        </LiveSnapshotProvider>
                     </RankAxesProvider>
                 </GroupsProvider>
             </StockNamesProvider>

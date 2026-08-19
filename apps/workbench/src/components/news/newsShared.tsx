@@ -1,7 +1,10 @@
 // 뉴스 패널 공용 조각 — HTS 뉴스(NewsPanel)와 텔레그램(TelegramNewsPanel)이 같이 쓴다.
 // 두 패널은 피드 의미가 정말 다르지만(DB 커서 · KIS 앵커 되감기 · 텔레그램 날짜 페이징)
 // **목록을 훑는 방식**은 같다: 페이지 평탄화+dedup, 스크롤 최상단 추적, 키워드 하이라이트.
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode, type RefObject } from "react";
+
+/** 현재시간 이전(장중 참고가능) 시각 표시 틴트 — --accent-primary 계열. 두 뉴스 패널 공통. */
+export const INTRADAY_TINT = "rgba(22,121,111,0.14)";
 
 /** 페이지 배열 → 평탄화 + 키 dedup(순서 유지). 페이징 경계가 겹쳐 오는 소스(앵커 ≤ 포함)를 흡수한다. */
 export function dedupPages<T>(pages: T[][] | undefined, keyOf: (item: T) => string): T[] {
@@ -53,6 +56,41 @@ export function useTopVisible<T extends HTMLElement>(
 }
 
 const camelToData = (s: string): string => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+
+const UNSET = Symbol("unset"); // 첫 회 센티널 — key=null 도 "아직 처리 안 함"과 구별해 한 번은 처리되게
+
+/**
+ * focus.time 외부 변경 → 목록의 해당 위치로 스크롤 — 두 뉴스 패널의 공통 골격.
+ * 항목이 나중에 도착해도 스크롤되게 **매 렌더 재시도**하되(그래서 deps 없는 effect),
+ * key 단위 "이미 처리함" 가드로 페이징(items 증가) 재실행 때의 재스크롤은 막는다.
+ *  · enabled=false(검색·편집 모드) → 이번 회차 통째 스킵(가드도 안 적는다)
+ *  · selfSetRef: 내가 세팅한 시각(자기 발신) → 스크롤 없이 처리 완료로만 표시(HTS 뉴스의 시각 클릭)
+ *  · resolve 가 false → 재료 미도착. 가드를 안 적어 items 도착 렌더에서 재시도
+ */
+export function useScrollToFocusTime<K>(
+    listRef: RefObject<HTMLElement | null>,
+    opts: {
+        key: K;
+        enabled?: boolean;
+        selfSetRef?: MutableRefObject<boolean>;
+        resolve: (container: HTMLElement) => boolean;
+    },
+): void {
+    const doneRef = useRef<K | typeof UNSET>(UNSET);
+    useEffect(() => {
+        if (opts.selfSetRef?.current) {
+            opts.selfSetRef.current = false;
+            doneRef.current = opts.key; // 자기 발신 — 스크롤 불필요, 완료로 표시
+            return;
+        }
+        if (opts.enabled === false) return;
+        if (doneRef.current === opts.key) return; // 이 키 이미 처리(페이징 재실행 무시)
+        const container = listRef.current;
+        if (!container) return;
+        if (!opts.resolve(container)) return; // 아직 미도착 → 다음 렌더 때 재시도
+        doneRef.current = opts.key;
+    });
+}
 
 /**
  * 키워드 매치를 .tg-hl 칩으로. counter 를 주면 매치마다 전역 인덱스를 매겨 data-hl-index 로 심는다
@@ -121,6 +159,21 @@ export function ModeSegment({ mode, setMode, allTitle }: { mode: NewsMode; setMo
             <span style={{ color: "var(--border-default)" }}>·</span>
             <button style={segBtn(mode === "all")} onClick={() => setMode("all")} title={allTitle ?? "전체 시황 뉴스(종목 무시)"}>전체</button>
         </span>
+    );
+}
+
+/** 헤더 아이콘 버튼(.icon-btn) — 두 뉴스 패널 공용. 미세 배치는 style 로. */
+export function IconButton({ children, onClick, disabled, title, style }: {
+    children: ReactNode;
+    onClick: () => void;
+    disabled?: boolean;
+    title?: string;
+    style?: React.CSSProperties;
+}): JSX.Element {
+    return (
+        <button className="icon-btn" onClick={onClick} disabled={disabled} title={title} style={style}>
+            {children}
+        </button>
     );
 }
 

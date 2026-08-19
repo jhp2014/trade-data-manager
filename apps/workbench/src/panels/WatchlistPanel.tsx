@@ -5,9 +5,8 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import type { LiveStock } from "@trade-data-manager/wire";
 import { availablePredicates, defaultParams, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
-import { useLiveSnapshot } from "../api/live.js";
+import { useLiveSnapshot } from "../lib/LiveSnapshotContext.js";
 import {
-    fetchWatchlist,
     addWatch,
     removeWatch,
     createAlertRule,
@@ -17,7 +16,7 @@ import {
     type CreateRulePayload,
 } from "../api/alerts.js";
 import { kstTime } from "../lib/date.js";
-import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
+import { liveWatchlistQuery } from "../api/queries.js";
 import { optionLabel, predicateText, validatePredicates } from "../lib/predicateUi.js";
 import { useWorkbench } from "../store/workbench.js";
 import { usePersistedState } from "../store/persist.js";
@@ -32,7 +31,6 @@ import { liveToBoardStock } from "../lib/boardViewModel.js";
 // 종목별 알람 조건(술어 AND 리스트)을 편집한다. 여러 조건 = OR. 조건 편집기는 유니버스 알람과 공용
 // (PredicateRow, core 레지스트리 구동) — 스코프(code 유무)만 다르고 나머지는 같은 AlarmRule 이다.
 // 발화는 서버(apps/live). 종목마다 현재 테마 순위(순환)도 표시. 조건·발화·순위 = /live/watchlist 5초 폴링.
-const WATCHLIST_KEY = ["live-watchlist"];
 
 // 모니터링 종목 표시 순서 — 로컬(기기별)만 저장. 서버 watchlist 는 코드 집합만, 순서는 이 오버레이가 결정.
 const ORDER_KEY = "wb.watchlistOrder";
@@ -51,8 +49,8 @@ export function WatchlistPanel(): JSX.Element {
     const [order, setOrder] = usePersistedState<string[]>(ORDER_KEY, parseOrder, []);
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } })); // 5px 이동해야 드래그 시작(클릭은 선택 유지)
 
-    const view = useQuery({ queryKey: WATCHLIST_KEY, queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: LIVE_CADENCE_MS });
-    const invalidate = (): void => void qc.invalidateQueries({ queryKey: WATCHLIST_KEY });
+    const view = useQuery(liveWatchlistQuery());
+    const invalidate = (): void => void qc.invalidateQueries({ queryKey: liveWatchlistQuery().queryKey });
 
     const addM = useMutation({ mutationFn: addWatch, onSettled: invalidate });
     const removeM = useMutation({ mutationFn: removeWatch, onSettled: invalidate });
@@ -386,10 +384,17 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
         const problem = validatePredicates(predicates);
         setErr(problem);
         if (problem) return;
+        // 쿨다운 검증 — NaN 이면 Math.round(NaN*…)=NaN 이 JSON 에서 null 로 새어 서버에 무검증 전달되던 자리.
+        // 빈 값 = 서버 기본값. type="number" 가 대부분 막지만 명시 가드로 최종 방어(음수·비정상 입력).
+        const cdNum = Number(cooldownMin);
+        if (cooldownMin !== "" && (!Number.isFinite(cdNum) || cdNum < 0)) {
+            setErr("쿨다운은 0 이상의 숫자(분)여야 합니다");
+            return;
+        }
         saveM.mutate({
             code,
             predicates,
-            cooldownMs: cooldownMin === "" ? undefined : Math.round(Number(cooldownMin) * 60_000),
+            cooldownMs: cooldownMin === "" ? undefined : Math.round(cdNum * 60_000),
             name: note.trim() || undefined,
         } satisfies CreateRulePayload);
     };
@@ -412,7 +417,7 @@ function ConditionForm({ code, themes, currentPrice, onClose, onSaved }: {
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span style={{ width: 32, flexShrink: 0, color: "var(--text-tertiary)" }}>쿨다운</span>
                             <span style={{ color: "var(--text-tertiary)" }}>발화 후</span>
-                            <input style={{ ...numStyle, width: 40 }} className="tabular" value={cooldownMin} onChange={(e) => setCooldownMin(e.target.value)} title="발화 후 이 시간 안에는 재진입해도 알람 억제(진동 방지)" />
+                            <input type="number" min={0} style={{ ...numStyle, width: 40 }} className="tabular" value={cooldownMin} onChange={(e) => setCooldownMin(e.target.value)} title="발화 후 이 시간 안에는 재진입해도 알람 억제(진동 방지)" />
                             <span style={{ color: "var(--text-tertiary)" }}>분 지나야 다시 알람</span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

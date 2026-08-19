@@ -7,7 +7,7 @@ import { useStockName } from "../lib/useStockName.js";
 import { DatePicker } from "./DatePicker.js";
 import { StockNameCopy } from "./StockNameCopy.js";
 import { fmtStampKo } from "../lib/date.js";
-import { useLiveSnapshot } from "../api/live.js";
+import { useLiveSnapshot } from "../lib/LiveSnapshotContext.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 import { Popover } from "./Popover.js";
 import { GearButton } from "../ui/controls.js";

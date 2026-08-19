@@ -4,7 +4,8 @@ import { useAssign } from "../store/assign.js";
 import { useWorkbench } from "../store/workbench.js";
 import { themeContextQuery, daySummaryQuery, dailyCommentQuery } from "../api/queries.js";
 import { assignTheme, refreshThemes } from "../api/themes.js";
-import { refreshLiveThemes, useLiveSnapshot } from "../api/live.js";
+import { refreshLiveThemes } from "../api/live.js";
+import { useLiveSnapshot } from "../lib/LiveSnapshotContext.js";
 import { saveDailyComment } from "../api/comment.js";
 import { AnchoredPopover } from "../ui/Dialog.js";
 import { Chip, SectionLabel, TextInput, TextArea } from "../ui/controls.js";
@@ -271,6 +272,7 @@ function CommentSection({ code, date }: { code: string; date: string }): JSX.Ele
     const [text, setText] = useState("");
     const [busy, setBusy] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
     // 로드되면 1회 프리필(팝오버는 종목당 remount·date 고정 → isSuccess 는 한 번만 뒤집힌다).
     useEffect(() => {
         if (q.isSuccess) setText(q.data?.comment ?? "");
@@ -280,6 +282,7 @@ function CommentSection({ code, date }: { code: string; date: string }): JSX.Ele
         if (busy) return;
         setBusy(true);
         setSaved(false);
+        setErr(null);
         try {
             await saveDailyComment({ date, code, comment: text.trim() });
             await Promise.all([
@@ -288,6 +291,9 @@ function CommentSection({ code, date }: { code: string; date: string }): JSX.Ele
                 qc.invalidateQueries({ queryKey: ["day-replay"] }),
             ]);
             setSaved(true);
+        } catch (e) {
+            // 침묵 실패 금지 — 배정(assign)과 같은 결로 실패를 화면에 남긴다(입력값은 보존돼 재시도 가능).
+            setErr(e instanceof Error ? e.message : String(e));
         } finally {
             setBusy(false);
         }
@@ -323,6 +329,7 @@ function CommentSection({ code, date }: { code: string; date: string }): JSX.Ele
                 />
                 <EnterButton onClick={() => void save()} disabled={busy} title="저장 (Enter)" />
             </div>
+            {err && <div style={{ color: "var(--fall)", fontSize: 12 }}>⚠️ {err}</div>}
         </div>
     );
 }

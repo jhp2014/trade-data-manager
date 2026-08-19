@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { fmtEok } from "../../lib/format.js";
@@ -31,6 +31,24 @@ export function StockRow({
     const up = s.changeRate >= 0;
     const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
     const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+    // 툴팁 위치는 rAF 로 묶는다 — mousemove 마다 setState 하면 행+portal 이 픽셀 단위로 리렌더된다
+    // (newsShared.useTopVisible 과 같은 처방). 프레임당 마지막 좌표 하나만 커밋.
+    const hoverRaf = useRef(0);
+    const hoverXY = useRef({ x: 0, y: 0 });
+    const moveHover = (e: React.MouseEvent): void => {
+        hoverXY.current = { x: e.clientX, y: e.clientY };
+        if (hoverRaf.current) return;
+        hoverRaf.current = requestAnimationFrame(() => {
+            hoverRaf.current = 0;
+            setHoverPos(hoverXY.current);
+        });
+    };
+    const endHover = (): void => {
+        cancelAnimationFrame(hoverRaf.current);
+        hoverRaf.current = 0;
+        setHoverPos(null);
+    };
+    useEffect(() => () => cancelAnimationFrame(hoverRaf.current), []);
     const openAssign = useAssign((st) => st.open);
     const showReasons = useUi((st) => st.boardShowReasons); // dim 종목: 제외사유 뱃지 vs 테마칩
     return (
@@ -146,9 +164,9 @@ export function StockRow({
             <span
                 className="tabular"
                 style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 11, fontWeight: s.signal ? 600 : 400, color: s.signal ? "var(--rise)" : "var(--text-tertiary)" }}
-                onMouseEnter={s.buckets ? (e) => setHoverPos({ x: e.clientX, y: e.clientY }) : undefined}
-                onMouseMove={s.buckets ? (e) => setHoverPos({ x: e.clientX, y: e.clientY }) : undefined}
-                onMouseLeave={s.buckets ? () => setHoverPos(null) : undefined}
+                onMouseEnter={s.buckets ? moveHover : undefined}
+                onMouseMove={s.buckets ? moveHover : undefined}
+                onMouseLeave={s.buckets ? endHover : undefined}
             >
                 {s.signal ? `+${fmtEok(s.signal.tvDelta)}` : fmtEok(s.amount)}
             </span>

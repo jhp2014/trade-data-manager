@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
-import { useLiveSnapshot, refreshLiveThemes } from "../api/live.js";
+import { refreshLiveThemes } from "../api/live.js";
+import { useLiveSnapshot } from "../lib/LiveSnapshotContext.js";
 import { useWorkbench } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { BoardCenter } from "../components/board/BoardCard.js";

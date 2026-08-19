@@ -4,16 +4,19 @@ import { fetchTelegramNews, type TelegramNewsItem } from "../api/telegramNews.js
 import { useStockName } from "../lib/useStockName.js";
 import { kstDateOf, kstHm, dateLabel } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
-import { ChevronDownIcon, BackIcon } from "../components/icons.js";
+import { ChevronDownIcon, BackIcon, SearchIcon } from "../components/icons.js";
 import { PlaneDot } from "../components/PlaneDot.js";
 import { usePlaneBus, type Plane } from "../store/usePlaneBus.js";
 import {
     DateDivider,
+    IconButton,
+    INTRADAY_TINT,
     ModeSegment,
     NewsCenter,
     countMatches,
     dedupPages,
     highlightMatches,
+    useScrollToFocusTime,
     useTopVisible,
     type NewsMode,
 } from "../components/news/newsShared.js";
@@ -27,14 +30,12 @@ import { PanelHeader } from "../components/ControlChrome.js";
 // 종목/검색어 바뀌면 결과 비우고 중앙 입력. 더보기 = before 날짜 커서로 하루씩 과거 페이징.
 // 헤더 2줄(1=모드·키워드·검색·매치이동·더보기 / 2=현재 보는 날짜·시간). 본문 하이라이트 + Ctrl+F 식 매치 이동.
 // 현재시간 이전(focus.time 이하, 당일)은 시간값 배경으로 구분. focus.time 이동 시 그 이하 최근으로 스크롤.
-const INTRADAY_BG = "rgba(22,121,111,0.14)"; // 현재시간 이전 시간값 배경 — --accent-primary 틴트
 
 export function TelegramNewsPanel({ plane }: { plane: Plane }): JSX.Element {
     // targetDate = 검색하려는 날짜(미확정) — 확정본(searchDate)과 다르면 pending.
     const { live, code, anchorDate: focusDate, viewDate: targetDate, time: focusTime, inSearch, clearSearch } = usePlaneBus(plane);
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
-    const scrolledForCursorRef = useRef<number | null | undefined>(undefined); // 이 cursorMs 로 이미 처리했나 — 페이징 재실행 시 재스크롤 방지
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
 
@@ -118,24 +119,25 @@ export function TelegramNewsPanel({ plane }: { plane: Plane }): JSX.Element {
     }, [activeMatch]);
 
     // focus.time 이동 → 그 시각 이하(과거) 중 가장 최근 항목의 첫 키워드 매치로 스크롤 + 좌우탐색 앵커를 거기로.
-    // 매치 없는 항목이면 항목 자체로 스크롤. items 가 나중에 도착해도 되게 deps 에 items 포함하되,
-    // cursorMs 단위 "이미 처리함" 가드로 페이징(items 증가) 때 재스크롤·activeMatch 리셋을 막는다. (편집 중엔 스킵)
-    useEffect(() => {
-        if (showEdit) return;
-        if (scrolledForCursorRef.current === cursorMs) return; // 이 시각 이미 처리(페이징 재실행 무시)
-        if (cursorMs != null && items.length === 0) return; // 아직 미도착 → items 변경 때 재시도(미표시)
-        const target = cursorMs == null ? undefined : items.find((it) => new Date(it.at).getTime() <= cursorMs);
-        const el = target ? listRef.current?.querySelector<HTMLElement>(`[data-item-ref="${target.ref}"]`) : null;
-        const hl = el?.querySelector<HTMLElement>("[data-hl-index]");
-        if (hl) {
-            setActiveMatch(Number(hl.dataset.hlIndex));
-            hl.scrollIntoView({ block: "center", behavior: "smooth" });
-        } else {
-            setActiveMatch(-1); // 조건 해당 항목/매치 없음 → 이전 활성 해제
-            el?.scrollIntoView({ block: "center", behavior: "smooth" });
-        }
-        scrolledForCursorRef.current = cursorMs;
-    }, [cursorMs, items, showEdit]);
+    // 매치 없는 항목이면 항목 자체로 스크롤. 공통 골격은 useScrollToFocusTime(가드 규칙 주석도 거기).
+    useScrollToFocusTime(listRef, {
+        key: cursorMs,
+        enabled: !showEdit, // 편집 중엔 스킵
+        resolve: (container) => {
+            if (cursorMs != null && items.length === 0) return false; // 아직 미도착 → items 변경 때 재시도(미표시)
+            const target = cursorMs == null ? undefined : items.find((it) => new Date(it.at).getTime() <= cursorMs);
+            const el = target ? container.querySelector<HTMLElement>(`[data-item-ref="${target.ref}"]`) : null;
+            const hl = el?.querySelector<HTMLElement>("[data-hl-index]");
+            if (hl) {
+                setActiveMatch(Number(hl.dataset.hlIndex));
+                hl.scrollIntoView({ block: "center", behavior: "smooth" });
+            } else {
+                setActiveMatch(-1); // 조건 해당 항목/매치 없음 → 이전 활성 해제
+                el?.scrollIntoView({ block: "center", behavior: "smooth" });
+            }
+            return true;
+        },
+    });
 
     const gotoMatch = (delta: number): void => {
         if (totalMatches === 0) return;
@@ -155,25 +157,25 @@ export function TelegramNewsPanel({ plane }: { plane: Plane }): JSX.Element {
                     <button onClick={() => setEditing(true)} title="검색어 편집" style={{ flexShrink: 1, minWidth: 0, textAlign: "left", fontWeight: 700, fontSize: 14, color: input.trim() ? "var(--text-primary)" : "var(--text-tertiary)", background: "transparent", border: "none", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {input.trim() || (stockMode ? "검색" : "전체 최근")}
                     </button>
-                    <button className="icon-btn" onClick={() => setEditing(true)} title="검색" style={{ flexShrink: 0 }}>
+                    <IconButton onClick={() => setEditing(true)} title="검색" style={{ flexShrink: 0 }}>
                         <SearchIcon />
-                    </button>
+                    </IconButton>
                     <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
                         {inSearch && (
-                            <button className="icon-btn" onClick={clearSearch} title={live ? "기준일로 복귀" : "검색 모드 해제 — Focus 로 돌아가기"} style={{ marginRight: 2 }}>
+                            <IconButton onClick={clearSearch} title={live ? "기준일로 복귀" : "검색 모드 해제 — Focus 로 돌아가기"} style={{ marginRight: 2 }}>
                                 <BackIcon />
-                            </button>
+                            </IconButton>
                         )}
                         {!showEdit && totalMatches > 0 && (
                             <>
-                                <button className="icon-btn" onClick={() => gotoMatch(-1)} title="이전 매치" style={{ padding: "0 2px" }}>◂</button>
+                                <IconButton onClick={() => gotoMatch(-1)} title="이전 매치" style={{ padding: "0 2px" }}>◂</IconButton>
                                 <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)", minWidth: 34, textAlign: "center" }}>{activeMatch >= 0 ? activeMatch + 1 : "–"}/{totalMatches}</span>
-                                <button className="icon-btn" onClick={() => gotoMatch(1)} title="다음 매치" style={{ padding: "0 2px" }}>▸</button>
+                                <IconButton onClick={() => gotoMatch(1)} title="다음 매치" style={{ padding: "0 2px" }}>▸</IconButton>
                             </>
                         )}
-                        <button className="icon-btn" onClick={() => void q.fetchNextPage()} disabled={!canLoadMore} title={q.isFetchingNextPage ? "불러오는 중…" : "더보기 — 과거로"} style={{ marginLeft: 4 }}>
+                        <IconButton onClick={() => void q.fetchNextPage()} disabled={!canLoadMore} title={q.isFetchingNextPage ? "불러오는 중…" : "더보기 — 과거로"} style={{ marginLeft: 4 }}>
                             <ChevronDownIcon />
-                        </button>
+                        </IconButton>
                     </div>
                 </PanelHeader>
                 {/* 2줄 — 현재 보는 날짜·시간 */}
@@ -261,7 +263,7 @@ function NewsList({ items, hlRe, activeMatch, focusDate, cursorMs }: { items: Te
                                         fontSize: 11,
                                         color: "var(--accent-primary)",
                                         fontWeight: 600,
-                                        background: intradayPast ? INTRADAY_BG : undefined,
+                                        background: intradayPast ? INTRADAY_TINT : undefined,
                                         borderRadius: intradayPast ? 4 : undefined,
                                         padding: intradayPast ? "1px 5px" : undefined,
                                     }}
@@ -294,13 +296,4 @@ function hostOf(url: string): string {
     } catch {
         return url.slice(0, 40);
     }
-}
-
-function SearchIcon(): JSX.Element {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="7" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-    );
 }

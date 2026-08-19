@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQueryClient, type UseInfiniteQueryResult, type QueryKey } from "@tanstack/react-query";
 import { useWorkbench, type NewsSearchEngine } from "../store/workbench.js";
 import { usePlaneBus, type Plane } from "../store/usePlaneBus.js";
@@ -7,14 +7,17 @@ import { fetchLiveNews, type LiveNewsAnchor } from "../api/liveNews.js";
 import { useStockName } from "../lib/useStockName.js";
 import { dateLabel, kstToday } from "../lib/date.js";
 import { escapeRegExp } from "../lib/text.js";
-import { ChevronDownIcon, BackIcon } from "../components/icons.js";
+import { ChevronDownIcon, BackIcon, RefreshIcon } from "../components/icons.js";
 import { PlaneDot } from "../components/PlaneDot.js";
 import {
     DateDivider,
+    IconButton,
+    INTRADAY_TINT,
     ModeSegment,
     NewsCenter,
     dedupPages,
     highlightMatches,
+    useScrollToFocusTime,
     useTopVisible,
     type NewsMode,
 } from "../components/news/newsShared.js";
@@ -28,7 +31,6 @@ import { PanelHeader } from "../components/ControlChrome.js";
 // 검색 모드(일봉 봉 클릭)면 그 날짜를 따라가고(뱃지/↺ 로 해제) time 상호작용 off. 헤더 2줄.
 // 본문 시각 3계층(당일·장중이전/당일/과거) + 제목 하이라이트(종목명 또는 키워드).
 const PAGE = 30;
-const INTRADAY_FILL = "rgba(22,121,111,0.14)"; // 현재시간 이전(장중 참고가능) 시각 셀 채움 — --accent-primary 틴트
 
 interface Feed {
     q: UseInfiniteQueryResult<unknown>;
@@ -85,7 +87,6 @@ export function NewsPanel({ plane }: { plane: Plane }): JSX.Element {
     const qc = useQueryClient();
     const listRef = useRef<HTMLDivElement | null>(null);
     const selfSet = useRef(false);
-    const scrolledForRef = useRef<string | null>(null); // 이 (date,focus.time) 로 이미 스크롤했나 — 페이징 재실행 시 재스크롤 방지
     const [mode, setMode] = useState<NewsMode>("stock");
     const [input, setInput] = useState(""); // 키워드 입력(미확정)
     const [keyword, setKeyword] = useState(""); // 확정 키워드(Enter) — 쿼리키 반영
@@ -105,25 +106,19 @@ export function NewsPanel({ plane }: { plane: Plane }): JSX.Element {
 
     const visibleCount = useMemo(() => items.filter((it) => it.date === visibleDate).length, [items, visibleDate]);
 
-    // focus.time 외부 변경 → 그 시각 위치로 스크롤. 뉴스가 나중에 도착해도 스크롤되게 deps 에 items 포함하되,
-    // (date,focus.time) 단위 "이미 스크롤함" 가드로 페이징(items 증가) 때 재스크롤은 막는다. 검색 모드에선 스킵.
-    useEffect(() => {
-        const scrollKey = focusTime ? `${date}|${focusTime}` : null;
-        if (selfSet.current) {
-            selfSet.current = false;
-            scrolledForRef.current = scrollKey; // 내가 세팅한 시각 → 스크롤 불필요, 완료로 표시
-            return;
-        }
-        if (inSearch || !focusTime) return;
-        if (scrolledForRef.current === scrollKey) return; // 이 시각으로 이미 스크롤(페이징 재실행 무시)
-        const container = listRef.current;
-        if (!container) return;
-        const today = items.filter((it) => it.date === date);
-        if (today.length === 0) return; // 아직 미도착 → items 변경 때 재시도
-        const target = today.find((it) => it.time <= focusTime) ?? today[today.length - 1];
-        container.querySelector(`[data-srno="${target.srno}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
-        scrolledForRef.current = scrollKey;
-    }, [focusTime, date, items, inSearch]);
+    // focus.time 외부 변경 → 그 시각 위치로 스크롤 — 공통 골격은 useScrollToFocusTime(가드 규칙 주석도 거기).
+    useScrollToFocusTime(listRef, {
+        key: focusTime ? `${date}|${focusTime}` : null,
+        enabled: !inSearch && !!focusTime, // 검색 모드·시각 없음 → 스킵
+        selfSetRef: selfSet,
+        resolve: (container) => {
+            const today = items.filter((it) => it.date === date);
+            if (today.length === 0 || !focusTime) return false; // 아직 미도착 → items 변경 때 재시도
+            const target = today.find((it) => it.time <= focusTime) ?? today[today.length - 1];
+            container.querySelector(`[data-srno="${target.srno}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+            return true;
+        },
+    });
 
     const refresh = (): void => {
         void qc.resetQueries({ queryKey: key });
@@ -257,7 +252,7 @@ function NewsList({
                                     alignItems: "center",
                                     justifyContent: "center",
                                     color: isToday ? "var(--accent-primary)" : "var(--text-tertiary)",
-                                    background: isIntradayPast ? INTRADAY_FILL : undefined,
+                                    background: isIntradayPast ? INTRADAY_TINT : undefined,
                                 }}
                             >
                                 {it.time.slice(0, 5)}
@@ -280,23 +275,6 @@ function NewsList({
                 );
             })}
         </div>
-    );
-}
-
-function IconButton({ children, onClick, disabled, title }: { children: ReactNode; onClick: () => void; disabled?: boolean; title?: string }): JSX.Element {
-    return (
-        <button className="icon-btn" onClick={onClick} disabled={disabled} title={title}>
-            {children}
-        </button>
-    );
-}
-
-function RefreshIcon(): JSX.Element {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-        </svg>
     );
 }
 
