@@ -67,9 +67,9 @@ afterEach(() => {
 });
 
 describe("패널 바인딩 — 골격이 자기 집합을 고른다", () => {
-    it("디폴트는 연동 — 라벨이 따라가는 곳(깔때기)까지 말하고, 전체가 그려진다", () => {
+    it("디폴트는 연동 — 라벨이 따라가는 곳(작업 깔때기)까지 말하고, 전체가 그려진다", () => {
         renderPanel();
-        expect(screen.getByTitle(/보는 집합: 연동 · 깔때기/)).toBeTruthy();
+        expect(screen.getByTitle(/보는 집합: 연동 · 작업 깔때기/)).toBeTruthy();
         expect(screen.getByText("3개")).toBeTruthy();
     });
 
@@ -116,7 +116,7 @@ describe("패널 바인딩 — 골격이 자기 집합을 고른다", () => {
 
     it("라벨은 못 누른다 — 여는 일은 오른쪽 '집합'이 한다(말과 손의 분리)", () => {
         renderPanel();
-        expect(screen.getByTitle(/보는 집합: 연동 · 깔때기/).tagName).not.toBe("BUTTON");
+        expect(screen.getByTitle(/보는 집합: 연동 · 작업 깔때기/).tagName).not.toBe("BUTTON");
         expect(setToggle().tagName).toBe("BUTTON");
     });
 

@@ -11,7 +11,7 @@
 // 트랙 폭은 setup 의 getBoundingClientRect 가 1000px 로 물리므로 frac = (clientX − 22) / 956.
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
-import { Rail, RAIL_PAD } from "../Rail.js";
+import { capTickSpans, MAX_TICK_SPANS, Rail, RAIL_PAD } from "../Rail.js";
 import type { RailRange } from "../railModel.js";
 
 const WIDTH = 1000;
@@ -244,5 +244,31 @@ describe("읽는 재료 — 유니버스를 보면서 자른다", () => {
         const { container } = setup();
         expect(container.textContent).toContain("약");
         expect(container.textContent).toContain("강");
+    });
+});
+
+describe("표식 층 상한 — 비용은 점 수가 아니라 DOM 노드 수가 정한다", () => {
+    const many = (n: number): number[] => Array.from({ length: n }, (_, i) => i / (n - 1));
+
+    it("상한을 넘는 틱은 버킷당 span 하나로 접힌다", () => {
+        const { container } = setup({ ticks: many(3000) });
+        const spans = container.querySelectorAll('span[aria-hidden][style*="width: 1px"]');
+        expect(spans.length).toBeLessThanOrEqual(MAX_TICK_SPANS);
+        expect(spans.length).toBeGreaterThan(0);
+    });
+
+    it("상한 아래면 그대로 — 접기가 정보를 공짜로 버리지 않는다", () => {
+        expect(capTickSpans([0.1, 0.5, 0.9], 0.35)).toEqual([
+            { frac: 0.1, alpha: 0.35 }, { frac: 0.5, alpha: 0.35 }, { frac: 0.9, alpha: 0.35 },
+        ]);
+    });
+
+    it("접힌 버킷은 겹친 수만큼 진하다(알파 누적) — 몰린 자리가 펼쳐 그렸을 때와 같게 읽힌다", () => {
+        // 같은 자리 3개 + 멀리 1개, 상한 2 → 버킷 둘: 진한 것 하나(1-(1-a)^3)와 낱개 하나.
+        const out = capTickSpans([0.1, 0.1, 0.1, 0.9], 0.3, 2);
+        expect(out).toHaveLength(2);
+        expect(out[0]!.alpha).toBeCloseTo(1 - Math.pow(0.7, 3), 5);
+        expect(out[1]!.alpha).toBeCloseTo(0.3, 5);
+        expect(out[0]!.frac).toBeCloseTo(0.1, 5);
     });
 });

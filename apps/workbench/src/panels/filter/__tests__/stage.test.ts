@@ -269,6 +269,34 @@ describe("parseStages — 반쯤 살아난 조건은 없느니만 못하다", ()
         expect(parseStages([{ id: "a", predicates: [{ kind: "옛것" }] }])).toBeNull();
         expect(parseStages([{ enabled: true, predicates: [] }])).toBeNull();
     });
+
+    // 겉껍데기(kind)만 보고 속을 캐스팅하면, 깨진 저장본이 화면에 멀쩡히 뜬 채 평가기에서 터진다.
+    it("그룹 술어의 속(expr)이 깨졌으면 크래시 없이 통째로 버린다 — expr:{} 는 groups 가 없다", () => {
+        expect(parseStages([{ id: "a", predicates: [{ kind: "group", expr: {} }] }])).toBeNull();
+        expect(parseStages([{ id: "a", predicates: [{ kind: "group", expr: { groups: "깨짐" } }] }])).toBeNull();
+        expect(parseStages([{ id: "a", predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: 7 }] }] } }] }])).toBeNull();
+    });
+
+    it("멀쩡한 그룹 술어는 그대로 산다", () => {
+        const expr = { groups: [{ literals: [{ groupId: "g1", neg: true }] }] };
+        const out = parseStages([{ id: "a", predicates: [{ kind: "group", expr }] }]);
+        expect(out?.[0]?.predicates[0]).toEqual({ kind: "group", expr });
+    });
+
+    it("값 구간의 속이 깨졌으면 버린다 — 경계는 point 문자열 또는 유한 수", () => {
+        const raw = (ranges: unknown): unknown => [{ id: "a", predicates: [{ kind: "axisValue", axisId: "c:x", ranges }] }];
+        expect(parseStages(raw([{ from: { kind: "value", value: "5" } }]))).toBeNull(); // 값이 문자열
+        expect(parseStages(raw([{ from: { kind: "point" } }]))).toBeNull(); // 앵커 없음
+        expect(parseStages(raw(["깨짐"]))).toBeNull();
+        expect(parseStages(raw([{ from: { kind: "value", value: 5 }, to: { kind: "point", point: "A|d|t" } }]))).not.toBeNull();
+        expect(parseStages(raw([{}]))).not.toBeNull(); // 양끝 없음 = 빈 구간 — 모양은 맞다(비움은 평가가 거른다)
+    });
+
+    it("날짜·시간 구간의 속이 깨졌으면 버린다 — 양끝 필수 문자열", () => {
+        expect(parseStages([{ id: "a", predicates: [{ kind: "date", ranges: [{ from: "2026-07-01" }] }] }])).toBeNull();
+        expect(parseStages([{ id: "a", predicates: [{ kind: "time", ranges: [{ from: 9, to: 10 }] }] }])).toBeNull();
+        expect(parseStages([{ id: "a", predicates: [{ kind: "date", ranges: [{ from: "2026-07-01", to: "2026-07-31" }] }] }])).not.toBeNull();
+    });
 });
 
 describe("밴드 경계 이관 — 옛 slotId 는 열린 경계로 떨군다", () => {

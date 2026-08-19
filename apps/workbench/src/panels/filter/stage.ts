@@ -18,7 +18,7 @@
 // **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
 import type { Grain } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
-import { NO_TAGS, isGroupExprEmpty } from "../rank/groupFilter.js";
+import { NO_TAGS, isGroupExprEmpty, parseGroupExpr } from "../rank/groupFilter.js";
 
 // 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
 // 필터 모듈들은 stage 만 본다(도메인 경로가 바뀌어도 한 줄).
@@ -317,21 +317,49 @@ function migrateBand(band: RankBand): RankBand {
     return out;
 }
 
+// ── 술어 payload 검증 — 겉껍데기(kind)만 보고 속을 캐스팅하면, 깨진 저장본이 화면에 멀쩡히 뜬 채
+// 평가기에서 터진다(expr:{} 가 groups.flatMap 에서 크래시). 속까지 모양을 확인하고, 안 맞으면 null
+// (= 슬롯 통째 폐기 — 위 parseStages 원칙 그대로).
+
+const isBound = (o: unknown): o is AxisBound => {
+    if (typeof o !== "object" || o === null) return false;
+    const b = o as { kind?: unknown; point?: unknown; value?: unknown };
+    return (b.kind === "point" && typeof b.point === "string")
+        || (b.kind === "value" && typeof b.value === "number" && Number.isFinite(b.value));
+};
+
+const isAxisValueRange = (o: unknown): o is AxisValueRange => {
+    if (typeof o !== "object" || o === null) return false;
+    const r = o as { from?: unknown; to?: unknown };
+    return (r.from === undefined || isBound(r.from)) && (r.to === undefined || isBound(r.to));
+};
+
+/** 날짜·시간 구간 — 양끝 필수 문자열(반열림은 이 두 종류엔 없다). */
+const isFromToRange = (o: unknown): o is { from: string; to: string } => {
+    if (typeof o !== "object" || o === null) return false;
+    const r = o as { from?: unknown; to?: unknown };
+    return typeof r.from === "string" && typeof r.to === "string";
+};
+
 function parsePredicate(o: unknown): FilterPredicate | null {
     const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown };
     switch (p?.kind) {
-        case "group":
-            return p.expr && typeof p.expr === "object" ? { kind: "group", expr: p.expr as GroupExpr } : null;
+        case "group": {
+            const expr = parseGroupExpr(p.expr); // 팔레트 저장본과 같은 검증 한 벌 — 여기만 느슨하면 안 된다
+            return expr ? { kind: "group", expr } : null;
+        }
         case "axisBand":
             return typeof p.axisId === "string" && p.band && typeof p.band === "object"
                 ? { kind: "axisBand", axisId: p.axisId, band: migrateBand(p.band as RankBand) } : null;
         case "axisValue":
-            return typeof p.axisId === "string" && Array.isArray(p.ranges)
-                ? { kind: "axisValue", axisId: p.axisId, ranges: p.ranges as AxisValueRange[] } : null;
+            return typeof p.axisId === "string" && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
+                ? { kind: "axisValue", axisId: p.axisId, ranges: p.ranges } : null;
         case "date":
-            return Array.isArray(p.ranges) ? { kind: "date", ranges: p.ranges as DateRange[] } : null;
+            return Array.isArray(p.ranges) && p.ranges.every(isFromToRange)
+                ? { kind: "date", ranges: p.ranges } : null;
         case "time":
-            return Array.isArray(p.ranges) ? { kind: "time", ranges: p.ranges as TimeRange[] } : null;
+            return Array.isArray(p.ranges) && p.ranges.every(isFromToRange)
+                ? { kind: "time", ranges: p.ranges } : null;
         default:
             return null;
     }

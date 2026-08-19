@@ -86,6 +86,9 @@ export interface ViewedSet {
     viewedPointRefs: { stockCode: string; date: string; time: string }[];
 }
 
+/** 재료 세대 일련번호 — 값 자체엔 뜻이 없고 "바뀌었다"만 말한다(발급은 아래 materialsEpoch). */
+let materialsSeq = 0;
+
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
 export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench((s) => s.filterStages);
@@ -173,7 +176,20 @@ export function useFilterFunnel(): FunnelView {
     );
 
     /**
-     * 리졸버 — 재료가 하나라도 바뀌면 함수째 새로 서고(useMemo), 그 안의 캐시도 같이 버려진다.
+     * 재료 세대 — 정산의 재료(유니버스·타점·사전·축 값·로딩) **전부**를 의존성으로 발급하는 토큰.
+     * 리졸버의 세션 캐시가 이 토큰으로 낡음을 판정한다: 세대가 같으면 저장 집합의 정산을 재사용하고
+     * (무관한 깔때기 편집이 목록 카운트를 전부 다시 돌리지 않게), 재료가 바뀌면 반드시 무효가 된다.
+     * evalLook(그룹·배치·계산 축 값)·grainLook(scope 사전)이 각자의 재료 변경마다 새로 서므로 둘을
+     * 물면 축 값·사전 변경이 전부 잡힌다.
+     */
+    const materialsEpoch = useMemo(
+        () => `e${++materialsSeq}`,
+        [candQ.data, timesByChart, evalLook, grainLook, isLoading],
+    );
+
+    /**
+     * 리졸버 — 재료가 하나라도 바뀌면 함수째 새로 서고(useMemo), 그 안의 캐시도 같이 버려진다
+     * (저장 집합의 정산만 재료 세대 기준 세션 캐시로 살아남는다 — resolveSet.ts 의 sessionDefCache).
      * 활성 슬롯(null)은 **위 정산(result)을 그대로 재사용**한다(ctx.activeFilter) — 두 번 평가하지
      * 않을 뿐 아니라, "연동"과 "최종 생존" 바인딩이 같은 grain("타점으로 펼치기" 반영)으로 풀린다.
      */
@@ -187,6 +203,7 @@ export function useFilterFunnel(): FunnelView {
             activeStages: stages,
             savedSetOf: (id) => savedSets.find((f) => f.id === id),
             ...(result !== null ? { activeFilter: { grain, active, tally: result } } : {}),
+            materialsEpoch,
             evalLook,
             grainLook,
         };
@@ -198,7 +215,7 @@ export function useFilterFunnel(): FunnelView {
             cache.set(k, r);
             return r;
         };
-    }, [candQ.data, timesByChart, gv, evalLook, grainLook, stages, savedSets, isLoading, grain, active, result]);
+    }, [candQ.data, timesByChart, gv, evalLook, grainLook, stages, savedSets, isLoading, grain, active, result, materialsEpoch]);
 
     // 지금 보는 집합 — 짚은 칸이면 그 **칸 참조를 리졸버로** 푼다(칸 합집합 구현은 리졸버 한 벌뿐이어야
     // 한다 — 두 벌이면 언젠가 다른 답을 낸다). 리졸버는 위 정산을 재사용하므로 비용은 fold 하나 그대로.
@@ -274,17 +291,25 @@ export function useFilterFunnel(): FunnelView {
         [gv.groupByName, ax.axes],
     );
 
-    return {
-        isLoading,
-        grain,
-        canExpandToPoints: canExpand(auto),
-        universe: items.length,
-        stagesOrdered,
-        active,
-        result,
-        deadStageIds,
-        labelLook,
-        resolveSet,
-        viewOf,
-    };
+    const canExpandToPoints = canExpand(auto);
+    const universe = items.length;
+
+    // 계약 객체는 필드가 실제로 바뀔 때만 새로 선다 — Provider 로 나가는 값이라, 매 렌더 새 객체면
+    // FunnelContext 구독자 전부가 아무 변화 없이도 리렌더된다.
+    return useMemo<FunnelView>(
+        () => ({
+            isLoading,
+            grain,
+            canExpandToPoints,
+            universe,
+            stagesOrdered,
+            active,
+            result,
+            deadStageIds,
+            labelLook,
+            resolveSet,
+            viewOf,
+        }),
+        [isLoading, grain, canExpandToPoints, universe, stagesOrdered, active, result, deadStageIds, labelLook, resolveSet, viewOf],
+    );
 }

@@ -66,10 +66,13 @@ export function predicateOfKind<K extends PredicateKind>(
 
 /**
  * 레일 편집을 필터 리스트에 반영.
- *   · 술어가 있으면 — 그 레일의 **첫 필터**를 갈아끼우고, 없으면 새로 만든다.
- *   · null(조건 없음) 이면 — 그 필터를 **지운다**. 빈 필터를 남기면 화면에 아무 일도 안 하는 줄이 쌓인다.
- * 둘 이상 매여 있으면 첫 것만 건드린다 — 나머지는 목록에서 손으로 정리하게 두는 편이,
- * 그은 선 하나가 보이지 않는 필터까지 조용히 지우는 것보다 낫다.
+ *   · 술어가 있으면 — 그 레일의 **첫 필터**에서 이 레일의 술어만 갈아끼우고, 없으면 새로 만든다.
+ *   · null(조건 없음) 이면 — 이 레일의 술어를 지운다. 필터에 아무 술어도 안 남으면 필터째 지운다
+ *     (빈 필터를 남기면 화면에 아무 일도 안 하는 줄이 쌓인다).
+ * 갈아끼우는 범위는 **이 레일의 술어뿐**이다 — 옛 저장본은 한 필터에 다른 레일의 술어(다른 축의
+ * 밴드·값구간)가 같이 있을 수 있는데, 통째 교체는 그은 선 하나가 안 보이는 형제 조건까지 조용히 지웠다.
+ * 같은 레일 안에서는 종류가 달라도 교체된다(밴드 ↔ 값구간 — 한 축의 두 손잡이라 자리가 하나다).
+ * 둘 이상 매여 있으면 첫 것만 건드린다 — 나머지는 목록에서 손으로 정리하게 두는 편이 낫다.
  */
 export function applyRailPredicate(
     stages: readonly FilterStage[],
@@ -77,6 +80,14 @@ export function applyRailPredicate(
     predicate: FilterPredicate | null,
 ): FilterStage[] {
     const first = stagesFor(stages, key)[0];
-    if (predicate === null) return first ? removeStage(stages, first.id) : [...stages];
-    return first ? setStagePredicates(stages, first.id, [predicate]) : addStage(stages, [predicate]);
+    if (!first) return predicate === null ? [...stages] : addStage(stages, [predicate]);
+
+    const others = first.predicates.filter((p) => {
+        const k = railKeyOf(p);
+        return k === null || !sameRailKey(k, key);
+    });
+    if (predicate === null) {
+        return others.length > 0 ? setStagePredicates(stages, first.id, others) : removeStage(stages, first.id);
+    }
+    return setStagePredicates(stages, first.id, [...others, predicate]);
 }

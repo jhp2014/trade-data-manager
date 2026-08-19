@@ -9,13 +9,43 @@
 //
 // ⚠ 커밋은 **손을 뗄 때 한 번**이다. 드래그 중에 store 를 갱신하면 유니버스×필터 정산이 프레임마다
 // 돌아 손이 끌리는데, 정작 보고 싶은 숫자(막대)는 뗀 뒤에 봐도 늦지 않다.
-import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { clamp01 } from "../../../lib/num.js";
 import { ACTIVE, FILTER } from "../../../styles/palette.js";
 import { applyDrag, fracOfX, isTapRange, orderRanges, removeAt, type RailDrag, type RailRange } from "./railModel.js";
 
 /** 트랙 좌우 여백(px) — 경계가 끝에 서도 라벨이 잘리지 않을 만큼. */
 export const RAIL_PAD = 22;
+/** 표식 층(틱·멤버) 하나가 그릴 수 있는 span 상한 — 비용은 점 수가 아니라 DOM 노드 수가 정한다. */
+export const MAX_TICK_SPANS = 120;
+
+/** 표식 하나 — 자리와 진하기. 접힌 버킷은 겹친 수만큼 진하다(span 을 겹쳐 그린 것과 같은 알파). */
+interface TickSpan {
+    frac: number;
+    alpha: number;
+}
+
+/**
+ * 표식 층 접기(순수) — 상한을 넘으면 균등 버킷당 span 하나로 줄인다(자리는 버킷 평균). 진하기는
+ * 겹침 수의 알파 누적(1-(1-a)^n)이라 몰린 버킷일수록 진하다 — 펼쳐 그렸을 때와 같은 읽기다.
+ * 스냅은 어댑터의 fromFrac 이 원본 값으로 하므로, 여기 접기는 드래그 정밀도를 건드리지 않는다.
+ */
+export function capTickSpans(fracs: readonly number[], alpha: number, max = MAX_TICK_SPANS): TickSpan[] {
+    if (fracs.length <= max) return fracs.map((frac) => ({ frac, alpha }));
+    const sum = new Float64Array(max);
+    const count = new Uint32Array(max);
+    for (const f of fracs) {
+        const b = Math.min(max - 1, Math.max(0, Math.floor(clamp01(f) * max)));
+        sum[b]! += f;
+        count[b]! += 1;
+    }
+    const out: TickSpan[] = [];
+    for (let b = 0; b < max; b++) {
+        const n = count[b]!;
+        if (n > 0) out.push({ frac: sum[b]! / n, alpha: 1 - Math.pow(1 - alpha, n) });
+    }
+    return out;
+}
 /** 좌측 이름 열 폭 — 레일끼리 세로로 줄이 맞아야 목록으로 읽힌다. */
 export const RAIL_LABEL_W = 96;
 /** 행 높이 — 레일이 아닌 줄(보드의 그룹 행)도 이 높이를 쓴다. */
@@ -111,6 +141,14 @@ export function Rail<V>({
     const at = (f: number): string => `calc(${RAIL_PAD}px + ${clamp01(f)} * (100% - ${2 * RAIL_PAD}px))`;
     const empty = shown.length === 0;
 
+    // 표식 층은 상한까지 접어 그린다 — 계산 축은 유니버스 타점 수만큼 틱이 서는데, 그 수가 곧 DOM 노드 수다.
+    const hasMembers = memberTicks !== undefined && memberTicks.length > 0;
+    const tickSpans = useMemo(
+        () => (ticks ? capTickSpans(ticks, hasMembers ? 0.12 : 0.35) : undefined),
+        [ticks, hasMembers],
+    );
+    const memberSpans = useMemo(() => (memberTicks ? capTickSpans(memberTicks, 0.3) : undefined), [memberTicks]);
+
     return (
         <div style={{
             display: "flex", alignItems: "center", height: RAIL_ROW_H, borderBottom: "1px solid var(--border-subtle)",
@@ -150,13 +188,13 @@ export function Rail<V>({
                     <span style={endLabel(false)}>{maxLabel}</span>
 
                     {/* 실제 자리 — 유니버스를 보면서 자르게 하는 표식. 멤버 층이 켜지면 배경으로 물러난다(전경/배경 분리). */}
-                    {ticks?.map((f, i) => (
-                        <span key={i} aria-hidden style={{ position: "absolute", left: at(f), top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 9, background: "var(--text-tertiary)", opacity: memberTicks && memberTicks.length > 0 ? 0.12 : 0.35, pointerEvents: "none" }} />
+                    {tickSpans?.map((t, i) => (
+                        <span key={i} aria-hidden style={{ position: "absolute", left: at(t.frac), top: "50%", transform: "translate(-50%,-50%)", width: 1, height: 9, background: "var(--text-tertiary)", opacity: t.alpha, pointerEvents: "none" }} />
                     ))}
 
-                    {/* 선택 집합 멤버 — 강조색 + 알파 누적(겹칠수록 진해짐 = 이 축의 어디에 몰리나). */}
-                    {memberTicks?.map((f, i) => (
-                        <span key={`m${i}`} aria-hidden style={{ position: "absolute", left: at(f), top: "50%", transform: "translate(-50%,-50%)", width: 2, height: 12, borderRadius: 1, background: ACTIVE, opacity: 0.3, pointerEvents: "none" }} />
+                    {/* 선택 집합 멤버 — 강조색 + 알파 누적(겹칠수록 진해짐 = 이 축의 어디에 몰리나). 접혀도 같은 셈. */}
+                    {memberSpans?.map((t, i) => (
+                        <span key={`m${i}`} aria-hidden style={{ position: "absolute", left: at(t.frac), top: "50%", transform: "translate(-50%,-50%)", width: 2, height: 12, borderRadius: 1, background: ACTIVE, opacity: t.alpha, pointerEvents: "none" }} />
                     ))}
 
                     {shown.map((r, i) => {

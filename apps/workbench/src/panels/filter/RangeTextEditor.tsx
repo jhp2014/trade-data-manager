@@ -11,11 +11,38 @@ import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { commitBtn, dashedBtn, numInput, xBtn } from "./ui.js";
 
 /** 한 줄의 판정 결과. `open` 이면 한쪽만 있어도 유효(그 방향 무제한). */
-interface ParsedRow {
+export interface ParsedRow {
     from: string | null;
     to: string | null;
     valid: boolean;
     touched: boolean;
+}
+
+/**
+ * 표준값 둘의 순서 — 수치 편집기(계산 축 값)의 표준값은 숫자 **문자열**이라 사전순이 틀린다
+ * ("5" ≤ "30" 이 거짓). 둘 다 수로 읽히면 수로, 아니면(날짜·시각) 사전순 — 그 표기들은 사전순이 곧 순서다.
+ */
+const inOrder = (from: string, to: string): boolean => {
+    const a = Number(from);
+    const b = Number(to);
+    return Number.isFinite(a) && Number.isFinite(b) ? a <= b : from <= to;
+};
+
+/** 줄 판정(순수) — 컴포넌트와 테스트가 같은 규칙을 본다. */
+export function parseRangeRow(
+    r: { from: string; to: string },
+    parse: (raw: string) => string | null,
+    allowOpen: boolean,
+): ParsedRow {
+    const blankFrom = r.from.trim() === "";
+    const blankTo = r.to.trim() === "";
+    const from = blankFrom ? null : parse(r.from);
+    const to = blankTo ? null : parse(r.to);
+    const touched = !blankFrom || !blankTo;
+    const readable = (blankFrom || from !== null) && (blankTo || to !== null);
+    const enough = allowOpen ? from !== null || to !== null : from !== null && to !== null;
+    const ordered = from === null || to === null || inOrder(from, to);
+    return { from, to, valid: readable && enough && ordered, touched };
 }
 
 export function RangeTextEditor({ anchor, title, hint, rows: initial, placeholders, parse, allowOpen = false, onCommit, onClose }: {
@@ -36,17 +63,7 @@ export function RangeTextEditor({ anchor, title, hint, rows: initial, placeholde
         initial && initial.length > 0 ? initial.map((r) => ({ ...r })) : [{ from: "", to: "" }],
     );
 
-    const parsed: ParsedRow[] = rows.map((r) => {
-        const blankFrom = r.from.trim() === "";
-        const blankTo = r.to.trim() === "";
-        const from = blankFrom ? null : parse(r.from);
-        const to = blankTo ? null : parse(r.to);
-        const touched = !blankFrom || !blankTo;
-        const readable = (blankFrom || from !== null) && (blankTo || to !== null);
-        const enough = allowOpen ? from !== null || to !== null : from !== null && to !== null;
-        const ordered = from === null || to === null || from <= to;
-        return { from, to, valid: readable && enough && ordered, touched };
-    });
+    const parsed: ParsedRow[] = rows.map((r) => parseRangeRow(r, parse, allowOpen));
     const canCommit = parsed.some((p) => p.valid);
 
     const setCell = (i: number, edge: "from" | "to", value: string): void =>

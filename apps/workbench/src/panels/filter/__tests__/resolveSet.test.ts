@@ -161,6 +161,57 @@ describe("작업 깔때기의 칸 — 짚은 칸의 유일한 합집합 구현",
     });
 });
 
+describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)로 재사용된다", () => {
+    /** 그룹 판정 호출을 세는 evalLook — 정산이 실제로 돌았는지의 관찰창. */
+    const counting = (): { look: EvalLookup; calls: () => number } => {
+        let n = 0;
+        const look: EvalLookup = { ...evalLook, groupNamesOf: (i) => { n += 1; return appliedGroupNamesOf(i); } };
+        return { look, calls: () => n };
+    };
+
+    it("무관한 깔때기 편집(새 ctx·같은 세대)은 재정산하지 않고, 재료 세대가 바뀌면 반드시 재정산한다", () => {
+        const { look, calls } = counting();
+        const base: SetResolveCtx = { ...ctx, evalLook: look, materialsEpoch: "정찰-세대-1" };
+        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, base))).toEqual(["1", "2"]);
+        const n1 = calls();
+        expect(n1).toBeGreaterThan(0);
+
+        // 활성 슬롯만 바뀐 새 ctx(레일 편집) — 저장 집합의 정의·재료는 그대로라 정산이 안 돈다.
+        const edited: SetResolveCtx = { ...base, activeStages: [] };
+        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, edited))).toEqual(["1", "2"]);
+        expect(calls()).toBe(n1);
+
+        // 재료 세대가 바뀌면(유니버스·사전·축 값 변경) 캐시가 통째로 버려진다.
+        const newMaterials: SetResolveCtx = { ...base, materialsEpoch: "정찰-세대-2" };
+        resolveSetRef({ kind: "saved", setId: "fs1" }, newMaterials);
+        expect(calls()).toBeGreaterThan(n1);
+    });
+
+    it("정의가 바뀐 집합(덮어쓰기)은 같은 세대라도 재정산된다", () => {
+        const { look, calls } = counting();
+        const base: SetResolveCtx = { ...ctx, evalLook: look, materialsEpoch: "정찰-세대-3" };
+        resolveSetRef({ kind: "saved", setId: "fs1" }, base);
+        const n1 = calls();
+
+        const overwritten: SetResolveCtx = {
+            ...base,
+            savedSetOf: (id) => (id === "fs1"
+                ? { id: "fs1", name: "테마 생존", stages: [dateStage("d2", "2026-07-01", "2026-07-01")], part: { kind: "survivors" } }
+                : savedSets.get(id)),
+        };
+        const r = resolveSetRef({ kind: "saved", setId: "fs1" }, overwritten);
+        expect(codesOf(r)).toEqual(["1"]); // 새 정의(날짜 ≤ 07-01)로 다시 정산됐다
+        expect(calls()).toBe(n1); // 날짜 조건은 그룹 판정을 안 부른다 — 낡은 그룹 정산을 안 썼다는 뜻
+    });
+
+    it("작업 깔때기(활성 슬롯)는 세션 캐시를 안 탄다 — 편집마다 정의가 달라 세대 안에서 무한히 쌓인다", () => {
+        const base: SetResolveCtx = { ...ctx, materialsEpoch: "정찰-세대-4" };
+        expect(codesOf(resolveSetRef({ kind: "survivors" }, base))).toEqual(["1", "2"]);
+        const edited: SetResolveCtx = { ...base, activeStages: [] };
+        expect(codesOf(resolveSetRef({ kind: "survivors" }, edited))).toEqual(["1", "2", "3"]); // 편집이 즉시 반영
+    });
+});
+
 describe("항목 목록(세션) — 판정 없이 그대로", () => {
     it("시각이 하나라도 있으면 point 층위", () => {
         const ref: SetRef = {

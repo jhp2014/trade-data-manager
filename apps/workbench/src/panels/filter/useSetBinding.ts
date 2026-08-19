@@ -57,8 +57,9 @@ export function useSetBinding(storageKey: string): SetBinding {
     }, [setRefState]);
     const view = funnel.viewOf(ref);
     // 연동 라벨은 **지금 따라가는 곳**까지 말한다 — "연동"만으로는 화면들이 왜 같이 움직였는지 안 보인다.
+    // "작업 깔때기"는 집합 목록(SetListSidebar)의 어휘와 같아야 한다 — 같은 것을 두 이름으로 부르지 않는다.
     const label = ref === null
-        ? `연동 · ${selectedSetRef === null ? "깔때기" : setRefLabel(selectedSetRef, savedSets)}`
+        ? `연동 · ${selectedSetRef === null ? "작업 깔때기" : setRefLabel(selectedSetRef, savedSets)}`
         : setRefLabel(ref, savedSets);
     return { ref, setRef, view, label, broken: view.broken };
 }

@@ -35,14 +35,18 @@ export function SetListSidebar(): JSX.Element {
     // 행 클릭 = 선택 토글 — 같은 행을 다시 누르면 작업 깔때기로 돌아온다(선택은 시선이지 상태 전환이 아니다).
     const toggle = (ref: SetRef): void => selectSet(selectedKey === setRefKey(ref) ? null : ref);
 
-    /** 저장 손짓 — 이름을 받고 게시한다. 같은 이름이면 엎어쓰기임을 프롬프트가 미리 말한다. */
+    /** 저장 손짓 — 이름을 받고 게시한다. 같은 이름 = 엎어쓰기(saveSet 규칙)라, 덮이기 전에 확인을 받는다. */
     const promptSave = (): void => {
         const name = prompt(
             selection
                 ? `짚은 칸(${selection.cells.map((c) => cellMeta(c).label).join("+")})을 집합으로 저장 — 이름:`
                 : "생존자를 집합으로 저장 — 이름:",
-        );
-        if (name?.trim()) saveSet(name.trim());
+        )?.trim();
+        if (!name) return;
+        // 같은 이름은 새 항목이 아니라 그 집합의 교체다 — 조건 사본과 부위가 전부 지금 것으로 갈린다.
+        if (savedSets.some((x) => x.name === name)
+            && !confirm(`집합 "${name}" 이(가) 이미 있습니다 — 저장하면 그 집합의 조건과 부위가 지금 것으로 바뀝니다. 덮어쓸까요?`)) return;
+        saveSet(name);
     };
 
     const counts = useMemo(() => {
@@ -73,8 +77,10 @@ export function SetListSidebar(): JSX.Element {
                     {selection ? "짚은 칸을 집합으로 저장…" : "생존자를 집합으로 저장…"}
                 </SaveButton>
                 {opened && (
-                    <SaveButton onClick={() => overwriteSet(opened.id)} tone="warn"
-                        title={`열어 둔 집합 "${opened.name}" 에 지금 조건을 덮어씁니다 — 이 집합 하나만 바뀝니다(부위 유지)`}>
+                    <SaveButton onClick={() => overwriteSet(opened.id)} tone="warn" disabled={v.active.length === 0}
+                        title={v.active.length === 0
+                            ? "걸린 필터가 없습니다 — 덮어쓰면 이 집합이 전체와 같아집니다"
+                            : `열어 둔 집합 "${opened.name}" 에 지금 조건을 덮어씁니다 — 이 집합 하나만 바뀝니다(부위 유지)`}>
                         덮어쓰기: {opened.name}
                     </SaveButton>
                 )}

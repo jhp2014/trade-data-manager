@@ -255,4 +255,29 @@ describe("선택 포인터 — 깔때기를 만지는 순간 작업 깔때기로
         store.getState().setFilterSlot(2); // 슬롯 전환
         expect(store.getState().selectedSetRef).toBeNull();
     });
+
+    it("선택한 집합을 지우면 포인터가 풀린다 — 연동 패널 전부가 죽은 참조를 보게 두지 않는다", async () => {
+        stubStorage();
+        const store = await loadStore();
+        store.getState().addFilterStage([datePred]);
+        store.getState().saveSet("돌파");
+        const id = store.getState().savedSets[0].id;
+        store.getState().selectSet({ kind: "saved", setId: id });
+
+        store.getState().deleteSet(id);
+        expect(store.getState().selectedSetRef).toBeNull();
+    });
+
+    it("다른 집합을 지우는 건 포인터를 안 건드린다", async () => {
+        stubStorage();
+        const store = await loadStore();
+        store.getState().addFilterStage([datePred]);
+        store.getState().saveSet("돌파");
+        store.getState().saveSet("눌림");
+        const [a, b] = store.getState().savedSets;
+        store.getState().selectSet({ kind: "saved", setId: a.id });
+
+        store.getState().deleteSet(b.id);
+        expect(store.getState().selectedSetRef).toEqual({ kind: "saved", setId: a.id });
+    });
 });

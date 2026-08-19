@@ -231,7 +231,8 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
         const at = s.savedSets.findIndex((x) => x.name === n);
         const saved = at >= 0
             ? { ...s.savedSets[at]!, stages: s.filterStages, part }
-            : { id: `fs${Date.now().toString(36)}`, name: n, stages: s.filterStages, part };
+            // id 에 난수 꼬리 — 시각만으로는 같은 ms 의 연속 저장이 같은 id 가 된다(newStageId 와 같은 규칙).
+            : { id: `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: n, stages: s.filterStages, part };
         const next = at >= 0 ? s.savedSets.map((x, i) => (i === at ? saved : x)) : [...s.savedSets, saved];
         saveJson(SAVED_SETS_KEY, next);
         // 방금 저장한 집합이 곧 "열어 둔 집합" — 이어서 만지면 덮어쓰기가 그 집합을 가리킨다.
@@ -253,6 +254,13 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     deleteSet: (id) => set((s) => {
         const next = s.savedSets.filter((x) => x.id !== id);
         saveJson(SAVED_SETS_KEY, next);
-        return { savedSets: next, ...(s.openedSetId === id ? { openedSetId: null } : {}) };
+        const sel = s.selectedSetRef;
+        return {
+            savedSets: next,
+            ...(s.openedSetId === id ? { openedSetId: null } : {}),
+            // 선택 포인터도 그 집합이면 푼다(작업 깔때기 복귀) — 연동 패널 전부가 죽은 참조를 보게 두지 않는다.
+            // 고정 바인딩은 일부러 안 푼다(깨진 참조 표시가 그쪽의 계약이다 — 패널마다 라벨과 전환 손잡이가 받는다).
+            ...(sel?.kind === "saved" && sel.setId === id ? { selectedSetRef: null } : {}),
+        };
     }),
 });

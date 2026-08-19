@@ -41,6 +41,12 @@ export interface SetResolveCtx {
      * "연동"과 "최종 생존" 바인딩이 같은 집합이려면 반드시 이 재사용 경로여야 한다.
      */
     activeFilter?: ResolvedFilter;
+    /**
+     * 재료 세대 — 유니버스·타점·사전·축 값 **전부**가 의존성인 토큰(발급은 깔때기 훅). 있으면 저장 집합의
+     * 정산이 세션 캐시(아래)를 탄다: 같은 세대 안에서는 정의가 같은 집합을 재정산하지 않는다.
+     * ⚠ 재료 하나라도 빠진 채 발급되면 낡은 정산이 조용히 살아남는다 — 발급부 의존성 목록이 곧 계약이다.
+     */
+    materialsEpoch?: string;
     evalLook: EvalLookup;
     grainLook: GrainLookup;
 }
@@ -124,6 +130,16 @@ function cellItems(r: ResolvedFilter, stageId: string, cells: readonly FunnelCel
 const filterMemo = new WeakMap<SetResolveCtx, Map<string | null, ResolvedFilter>>();
 
 /**
+ * 세션 캐시 — 저장 집합의 정산을 **(재료 세대 × 정의)**로 기억한다. ctx 는 깔때기 편집마다 새로 서는데
+ * (활성 슬롯이 ctx 의 일부라서), 그때마다 목록의 저장 집합 전부를 재정산하면 무관한 레일 편집 한 번이
+ * O(집합 수 × 유니버스)가 된다. 저장 집합의 정산은 제 정의와 재료에만 의존한다 — 세대가 같고 정의가
+ * 같으면(JSON 직렬화 일치) 재사용하고, 세대가 바뀌면 통째로 버린다(유니버스·사전·축 값 변경은 반드시 무효).
+ * 크기는 저장 집합 수에 유계다 — 작업 깔때기(정의가 편집마다 변함)는 일부러 안 태운다.
+ */
+let sessionEpoch: string | undefined;
+const sessionDefCache = new Map<string, ResolvedFilter>();
+
+/**
  * 조건 한 벌을 정산까지. null = 작업 깔때기(활성 슬롯), 문자열 = 저장 집합의 id(**호출 전에 존재 확인**).
  * 작업 깔때기는 **훅의 정산을 재사용**한다(ctx.activeFilter — grain·비용 둘 다의 이유, 필드 주석 참조).
  * ⚠ 단계 순서는 깔때기 화면과 같은 규칙(funnelOrder — 하루 먼저)이어야 한다: 칸(근접 탈락)은 순서
@@ -137,10 +153,26 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
     if (hit !== undefined) return hit;
 
     const stages = setId === null ? ctx.activeStages : (ctx.savedSetOf(setId)?.stages ?? []);
+
+    let sessionKey: string | null = null;
+    if (setId !== null && ctx.materialsEpoch !== undefined) {
+        if (ctx.materialsEpoch !== sessionEpoch) {
+            sessionEpoch = ctx.materialsEpoch;
+            sessionDefCache.clear();
+        }
+        sessionKey = JSON.stringify(stages);
+        const sHit = sessionDefCache.get(sessionKey);
+        if (sHit !== undefined) {
+            memo.set(setId, sHit);
+            return sHit;
+        }
+    }
+
     const active = activeStages(funnelOrder(stages, ctx.grainLook).map((e) => e.stage));
     const grain = resolveAutoGrain(stages, ctx.grainLook);
     const items = expandUniverse(ctx.candidates, grain, ctx.timesOf);
     const r: ResolvedFilter = { grain, active, tally: tallyFunnel(items, toFunnelStages(active, ctx.evalLook)) };
     memo.set(setId, r);
+    if (sessionKey !== null) sessionDefCache.set(sessionKey, r);
     return r;
 }

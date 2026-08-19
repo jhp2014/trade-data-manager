@@ -86,4 +86,28 @@ describe("applyRailPredicate — 레일 하나 = 필터 하나", () => {
         const before = [stage("s2", [dates]), stage("s1", [band("a1", "x")])];
         expect(applyRailPredicate(before, { kind: "date" }, null).map((s) => s.id)).toEqual(["s1"]);
     });
+
+    // 옛 저장본은 한 필터에 다른 레일의 술어가 같이 있을 수 있다 — 통째 교체는 안 보이는 형제를 지웠다.
+    it("한 필터에 다른 축 술어가 섞여 있으면 — 이 레일 것만 갈아끼우고 형제는 보존한다", () => {
+        const before = [stage("s1", [band("a1", "x"), value("a2", 3)])];
+        const next = applyRailPredicate(before, AX, band("a1", "z"));
+        expect(next).toHaveLength(1);
+        expect(next[0]!.predicates).toEqual([value("a2", 3), band("a1", "z")]);
+    });
+
+    it("같은 레일의 밴드+값구간이 같이 있으면 — 한 축의 두 손잡이라 둘 다 새 술어 하나로 접힌다", () => {
+        const before = [stage("s1", [band("a1", "x"), value("a1", 3)])];
+        const next = applyRailPredicate(before, AX, value("a1", 7));
+        expect(next[0]!.predicates).toEqual([value("a1", 7)]);
+    });
+
+    it("지울 때도 형제는 남는다 — 이 레일 술어만 빠지고, 필터가 비면 그때 필터째 사라진다", () => {
+        const mixed = [stage("s1", [band("a1", "x"), value("a2", 3)])];
+        const next = applyRailPredicate(mixed, AX, null);
+        expect(next).toHaveLength(1);
+        expect(next[0]!.predicates).toEqual([value("a2", 3)]);
+
+        const only = [stage("s1", [band("a1", "x")])];
+        expect(applyRailPredicate(only, AX, null)).toHaveLength(0);
+    });
 });

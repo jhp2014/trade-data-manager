@@ -9,7 +9,7 @@
 import { useMemo } from "react";
 import type { PlacedPoint, RankAxis } from "@trade-data-manager/wire";
 import { assemble, slotAnchorKey } from "../../rank/rankGeometry.js";
-import { nearestPointAt, valueDomain, valueToFrac } from "../../../lib/computedAxis.js";
+import { buildFracIndex, nearestPointInIndex, valueDomain, valueToFrac } from "../../../lib/computedAxis.js";
 import { clampIndex } from "../../../lib/num.js";
 import { pointKey } from "../../../lib/pointKey.js";
 import { resolveBound } from "../evaluate.js";
@@ -53,6 +53,11 @@ export function ComputedAxisRail({
     onChange: (ranges: AxisValueRange[] | null) => void;
 }): JSX.Element {
     const domain = useMemo(() => valueDomain(values), [values]);
+    // 스냅 색인 — 드래그(pointermove마다 최근접 스냅)가 매번 전 타점을 선형 스캔하지 않게 렌더당 한 번 정렬.
+    const fracIndex = useMemo(
+        () => (domain ? buildFracIndex(values, domain, strongerWhen) : null),
+        [values, domain, strongerWhen],
+    );
 
     const frac = (v: number): number => (domain ? valueToFrac(v, domain, strongerWhen) : 0.5);
     const boundFrac = (b: AxisBound): number => {
@@ -91,8 +96,11 @@ export function ComputedAxisRail({
             toFrac={boundFrac}
             // 경계는 늘 **실재하는 타점**에 세운다 — 상대비교(이 타점보다 위)가 이 축을 쓰는 방법이라서.
             fromFrac={(f) => {
-                const key = domain ? nearestPointAt(f, values, domain, strongerWhen) : null;
-                return key ? { kind: "point", point: key } : { kind: "value", value: domain ? domain.min + f * (domain.max - domain.min) : f };
+                // 값이 없으면 레일이 disabledNote 로 드래그를 막는다 — 여기 null 은 도달 불가라 값을 지어내지
+                // 않는다(예전의 값 폴백은 이 잠복 속에서 방향(strongerWhen: "lower")을 무시한 값을 만들었다).
+                const key = fracIndex ? nearestPointInIndex(f, fracIndex) : null;
+                if (key === null) throw new Error("값 없는 계산 축의 드래그 — disabledNote 배선을 확인하세요");
+                return { kind: "point", point: key };
             }}
             fmt={fmt}
             minLabel={fmtValue(strongerWhen === "higher" ? (domain?.min ?? 0) : (domain?.max ?? 0))}
