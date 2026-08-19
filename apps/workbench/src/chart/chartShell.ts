@@ -1,6 +1,6 @@
 // 차트 공통 셸 — chart-review 의 shell(chartOptions·useChartShell·useCrosshairTooltip)을
 // workbench 로 재구현한 것. lightweight-charts 인스턴스 생성/리사이즈/정리 + 크로스헤어 툴팁.
-import { useEffect, useRef, useState, type RefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject, type ReactNode } from "react";
 import {
     createChart,
     LineStyle,
@@ -83,6 +83,34 @@ export function useChartShell(
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return chartRef;
+}
+
+/**
+ * 컨테이너 상대 커서 좌표(툴팁 위치용) — **rAF 스로틀**. mousemove 마다 setState 하면 프레임보다 잦은
+ * 리렌더가 차트 컴포넌트 전체를 태운다(크로스헤어 툴팁 handler 와 같은 이유·같은 패턴). 마지막 좌표를
+ * ref 에 쌓고 프레임당 한 번만 커밋한다. 반환 onMouseMove 는 안정 참조(ref 만 만짐).
+ */
+export function useRafCursor(): { cursor: { x: number; y: number }; onCursorMove: (e: ReactMouseEvent<HTMLDivElement>) => void } {
+    const [cursor, setCursor] = useState({ x: 0, y: 0 });
+    const rafRef = useRef<number | null>(null);
+    const pendingRef = useRef({ x: 0, y: 0 });
+    useEffect(
+        () => () => {
+            if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+        },
+        [],
+    );
+    const onCursorMove = useCallback((e: ReactMouseEvent<HTMLDivElement>): void => {
+        const r = e.currentTarget.getBoundingClientRect();
+        pendingRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+        if (rafRef.current !== null) return;
+        rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            setCursor(pendingRef.current);
+        });
+    }, []);
+    return { cursor, onCursorMove };
 }
 
 export type CrosshairRender = (param: MouseEventParams) => ReactNode | null;

@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { CrosshairMode, LineStyle, type Time } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR } from "./chartUtils.js";
-import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
+import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import {
     useDailyInteraction,
     useDailyPriceLines,
@@ -20,8 +20,7 @@ import { fmtDateKo } from "../lib/date.js";
 import { CHART_LABEL, CHART_VALUE, DRIFT } from "../styles/palette.js";
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
-/** 골격 없음의 안정 참조 — 매 렌더 새 배열이면 오버레이 effect 가 계속 다시 돈다. */
-const EMPTY_SKELETON: readonly { date: string; price: number }[] = [];
+// (골격 미지정의 안정 참조는 오버레이 훅 기본값 — skeletonPath EMPTY_SKELETON — 이 담당한다.)
 
 // 크로스헤어 세로선 날짜 라벨 — "26년 12월 26일 (금)". time 은 일봉 business-day 문자열이지만
 // BusinessDay 객체·UTCTimestamp 도 방어적으로 처리.
@@ -108,11 +107,12 @@ export function DailyChart({
     useDailyVisibleRange(chartRef, points, frameKey, zoom, zoomBars, zoomOutBars);
     useDailyInteraction({ chartRef, containerRef, series, mapRef, lines, onRightClick, onRemoveLine, onLineContext, onCandleClick, onPickPrice, captureArmed: capturePriceArmed });
     useDailyPriceLines(series, lines);
-    useSkeletonOverlay(series, skeleton ?? EMPTY_SKELETON, showSkeleton);
+    useSkeletonOverlay(series, skeleton, showSkeleton);
     useGuideLine(series, pctBase, showGuide);
     const lineX = useSearchDateLine(chartRef, series, searchDate);
 
-    const [cursor, setCursor] = useState({ x: 0, y: 0 });
+    // 툴팁 위치는 실제 커서 위치(rAF 스로틀 — 프레임당 1회, mousemove 마다 리렌더하지 않는다).
+    const { cursor, onCursorMove } = useRafCursor();
     const { state: tip } = useCrosshairTooltip({
         chartRef,
         containerRef,
@@ -151,10 +151,7 @@ export function DailyChart({
     return (
         <div
             ref={containerRef}
-            onMouseMove={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                setCursor({ x: e.clientX - r.left, y: e.clientY - r.top });
-            }}
+            onMouseMove={onCursorMove}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
             {lineX != null && searchDate && (

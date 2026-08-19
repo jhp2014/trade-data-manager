@@ -3,8 +3,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
-import { fetchWatchlist } from "../api/alerts.js";
-import { chartQuery } from "../api/queries.js";
+import { chartQuery, liveWatchlistQuery } from "../api/queries.js";
 import { useChartViews, resolveAnchorLines } from "../lib/chartFrame.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { optionLabel } from "../lib/predicateUi.js";
@@ -66,11 +65,15 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     const { dailyView, minuteView, dailyFrameKey, minuteFrameKey, pctBase } = useChartViews(dailyQ.data, minuteQ.data, mode, viewDate);
 
     // 메모리 선 앵커 → 렌더선(로드된 캔들 고가에 해소). 해소 규칙은 복기 가격선과 같은 함수.
+    // 전환 과도기 가드 — 선 앵커(store)는 새 종목으로 즉시 갈아타는데 번들은 keepPreviousData 로 직전 종목
+    // 것을 잠깐 들고 있다 → 번들이 이 종목의 것일 때만 해소한다(복기 chartAnchorHooks 의 ownBundle 과 같은 규칙).
+    const ownDailyView = dailyQ.data?.stockCode === code ? dailyView : null;
+    const ownMinuteView = minuteQ.data?.stockCode === code ? minuteView : null;
     const anchors = useMemo(() => liveLines[code] ?? [], [liveLines, code]);
-    const resolvedLines = useMemo(() => resolveAnchorLines(anchors, dailyView, minuteView), [anchors, dailyView, minuteView]);
+    const resolvedLines = useMemo(() => resolveAnchorLines(anchors, ownDailyView, ownMinuteView), [anchors, ownDailyView, ownMinuteView]);
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
-    // 알람 가격선(빨강 🔔) — 포커스 종목의 가격 조건 값들을 수평선으로. 워치리스트 쿼리(패널과 캐시 공유).
-    const wl = useQuery({ queryKey: ["live-watchlist"], queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: LIVE_CADENCE_MS });
+    // 알람 가격선(빨강 🔔) — 포커스 종목의 가격 조건 값들을 수평선으로. 워치리스트 쿼리(패널과 캐시 공유 — 정의는 api/queries 한 곳).
+    const wl = useQuery(liveWatchlistQuery());
     const alarmLines = useMemo<RenderLine[]>(() => {
         if (!showAlarmLines) return [];
         const out: RenderLine[] = [];
@@ -168,6 +171,8 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                                     lines={minuteLines}
                                     base={minuteView.base}
                                     pctBase={pctBase}
+                                    // f 줌 — 두 차트 동시(chartHooks 의 약속). 라이브는 저장 타점이 없으니 최신 봉 앵커(null).
+                                    zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: null } : null}
                                     lockTimeScale={lockScale}
                                     onMovePoint={noop}
                                     onRightClick={(a) => toggleLine(code, { anchorDate: a.date, anchorTime: a.time })}

@@ -13,11 +13,11 @@ import {
 } from "lightweight-charts";
 import { RISE_FILL, FALL_FILL, highMarkerColor } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
-import { buildCandleAmountSeries, findLineNearY } from "./candleAmountSeries.js";
+import { buildCandleAmountSeries, extendsPrevBars, findLineNearY, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { useLatest } from "../lib/useLatest.js";
 import { type VertLines } from "./vertLine.js";
-import { type SkeletonPath } from "./skeletonPath.js";
+import { EMPTY_SKELETON, type SkeletonPath } from "./skeletonPath.js";
 import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
@@ -77,19 +77,40 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
  */
 export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ignoredDates: readonly string[] = []): DailyPointMap {
     const mapRef = useRef<Map<string, DailyPoint>>(new Map());
+    const lastAppliedRef = useRef<DailyPoint[] | null>(null); // 시리즈에 실제 적용된 마지막 배열
     useEffect(() => {
         const candle = series.candleRef.current;
         const amount = series.amountRef.current;
         if (!candle || !amount) return;
-        const map = new Map<string, DailyPoint>();
-        candle.setData(
-            points.map((p) => {
-                map.set(p.time, p);
-                return { time: p.time as Time, open: p.open, high: p.high, low: p.low, close: p.close };
-            }),
-        );
-        mapRef.current = map;
-        amount.setData(points.map((p) => ({ time: p.time as Time, value: p.amount / 1e8, color: p.close >= p.open ? RISE_FILL : FALL_FILL })));
+        // 라이브 폴 증분 — 직전 적용분의 연장이면(같은 첫 봉·겹침 (time,close) 동일) 바뀐 꼬리(오늘 형성봉
+        // + 신규 봉)만 update. 어긋나거나 update 가 던지면 전체 setData 폴백(정확성 > 절약). 분봉 훅과 같은 규칙.
+        const prev = lastAppliedRef.current;
+        let incremental = false;
+        if (prev && extendsPrevBars(prev, points, (p) => p.time, (p) => p.close)) {
+            try {
+                for (let i = prev.length - 1; i < points.length; i++) {
+                    const p = points[i];
+                    candle.update({ time: p.time as Time, open: p.open, high: p.high, low: p.low, close: p.close });
+                    amount.update({ time: p.time as Time, value: p.amount / 1e8, color: p.close >= p.open ? RISE_FILL : FALL_FILL });
+                    mapRef.current.set(p.time, p);
+                }
+                incremental = true;
+            } catch {
+                incremental = false; // 아래 전체 setData 가 상태를 복구한다
+            }
+        }
+        if (!incremental) {
+            const map = new Map<string, DailyPoint>();
+            candle.setData(
+                points.map((p) => {
+                    map.set(p.time, p);
+                    return { time: p.time as Time, open: p.open, high: p.high, low: p.low, close: p.close };
+                }),
+            );
+            mapRef.current = map;
+            amount.setData(points.map((p) => ({ time: p.time as Time, value: p.amount / 1e8, color: p.close >= p.open ? RISE_FILL : FALL_FILL })));
+        }
+        lastAppliedRef.current = points;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points]);
 
@@ -100,6 +121,7 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
     // tier 색으로 칠하면 "이 봉 강했다"고 강조하는 셈이 된다(무시는 그 반대 주장이다). 숫자를 남기는 건 읽으라고가
     // 아니라 식별하라고 — 나중에 차트를 다시 열었을 때 "내가 죽인 게 저 봉"을 확인하는 게 무시 표시의 절반이다.
     const ignoredKey = [...ignoredDates].sort().join(",");
+    const lastMarkersRef = useRef<MarkerLike[]>([]);
     useEffect(() => {
         const ignored = new Set(ignoredKey ? ignoredKey.split(",") : []);
         const markers = [];
@@ -115,7 +137,11 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
             if (isIgnored) parts.push("무시");
             markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: parts.join(" · ") });
         }
-        series.markersRef.current?.setMarkers(markers);
+        // setMarkers 는 전체 교체 API — 라이브 폴 틱마다 결과가 같으면(대부분) 건너뛴다(sameMarkers 비교).
+        if (!sameMarkers(markers, lastMarkersRef.current)) {
+            series.markersRef.current?.setMarkers(markers);
+            lastMarkersRef.current = markers;
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points, ignoredKey]);
     return mapRef;
@@ -206,8 +232,10 @@ export function useDailyInteraction(args: {
             const candle = series.candleRef.current;
             const y = e.clientY - el.getBoundingClientRect().top;
             // 1) 기존 선 근처 우클릭 → 그 선 삭제. 판정은 분봉과 같은 규칙(findLineNearY) — 환산만 raw 가격.
+            //    알람선(kind A — 규칙/draft 소유)은 판정에서 뺀다: 우클릭 삭제 대상이 아닌데 근처를 가로채면
+            //    그 자리의 D 선 토글이 소리 없이 막힌다.
             if (candle) {
-                const hit = findLineNearY(cb.current.lines, y, LINE_HIT_PX, (line) => {
+                const hit = findLineNearY(cb.current.lines.filter((l) => l.kind !== "A"), y, LINE_HIT_PX, (line) => {
                     const ly = candle.priceToCoordinate(line.price);
                     return ly == null ? null : (ly as number);
                 });
@@ -293,7 +321,7 @@ export function useSearchDateLine(chartRef: RefObject<IChartApi | null>, series:
  * 시각당 한 점만 받는 LineSeries 로는 그 점들이 화면에서 사라진다(skeletonPath.ts 주석 참조).
  * 점 하나만 찍어도 원이 보이고, 파생된 순번이 함께 적힌다(순서는 입력이 아니라 계산이라 확인이 필요하다).
  */
-export function useSkeletonOverlay(series: DailySeries, pivots: readonly { date: string; price: number }[], visible: boolean): void {
+export function useSkeletonOverlay(series: DailySeries, pivots: readonly { date: string; price: number }[] = EMPTY_SKELETON, visible: boolean = true): void {
     useEffect(() => {
         series.skeletonRef.current?.setPoints(visible ? pivots.map((p) => ({ time: p.date, price: p.price })) : []);
         // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -34,6 +34,12 @@ export interface SkeletonPointSpec {
     price: number;
 }
 
+/**
+ * "골격 없음"의 안정 참조 — 오버레이 훅의 기본값. 매 렌더 새 `[]` 를 만들면 effect 가 계속 다시 돈다.
+ * never[] 라 일봉({date,price})·분봉({time,price}) 어느 피벗 배열 자리에도 들어간다(두 훅이 한 상수를 공유).
+ */
+export const EMPTY_SKELETON: readonly never[] = [];
+
 /** 화면 좌표로 해소된 점. */
 interface ResolvedPoint {
     x: number;

@@ -1,9 +1,9 @@
-// 당일 복기 파생값(day-replay) 위 시점 스냅샷 + 유니버스 시간 경계.
+// 당일 복기 파생값(day-replay) 위 시점 스냅샷.
 // 서버가 종목별 분당 % 시계열을 이미 줬으므로 클라는 이진탐색으로 시점 t 값을 뽑기만 한다(파생 없음).
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { fetchDayReplay, type DayReplay, type MinuteDerived, type ReplayStock } from "../api/dayReplay.js";
-import { histStale } from "../api/queries.js";
+import { type DayReplay, type MinuteDerived, type ReplayStock } from "../api/dayReplay.js";
+import { dayReplayQuery } from "../api/queries.js";
 
 export interface Snapshot {
     code: string;
@@ -38,28 +38,9 @@ export function snapshotAt(s: MinuteDerived, t: number): Snapshot | null {
     return { code: s.code, rate: s.rate[i], openPct: s.open, highPct: s.high[i], lowPct: s.low[i], cumAmount: s.cumAmount[i] };
 }
 
-/** 유니버스 전체의 시간 경계(스크러버 범위 힌트). */
-export function boardTimeBounds(reduction: DayReplay): { start: number; end: number } {
-    let start = Number.POSITIVE_INFINITY;
-    let end = 0;
-    for (const s of reduction.stocks) {
-        if (s.times.length === 0) continue;
-        start = Math.min(start, s.times[0]);
-        end = Math.max(end, s.times[s.times.length - 1]);
-    }
-    return { start: Number.isFinite(start) ? start : 0, end };
-}
-
-// 과거 날짜만 immutable → staleTime∞(histStale — 오늘은 수집중일 수 있어 1분), gcTime 넉넉(브라우저 ~10거래일 캐시).
-// 복기보드 전용(테마보드는 day-summary folding).
+// 쿼리 옵션은 api/queries.ts 의 dayReplayQuery 한 곳("라우팅은 여기 한 곳" 규칙) — 여긴 훅 겉옷만.
 export function useDayReplay(date: string): UseQueryResult<DayReplay> {
-    return useQuery({
-        queryKey: ["day-replay", date],
-        queryFn: ({ signal }) => fetchDayReplay(date, signal),
-        enabled: date.length > 0,
-        staleTime: histStale(date),
-        gcTime: 60 * 60_000,
-    });
+    return useQuery(dayReplayQuery(date));
 }
 
 /** byCode 인덱스(스냅샷+메타 조회용) memo. */

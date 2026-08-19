@@ -8,7 +8,7 @@
 // 달라도 동일하다 — 앵커는 전부 계산 축의 입력이라, 어떤 편집이든 축 값이 즉시 따라와야 한다(서버는
 // 지문으로 그 차트/타점만 다시 굽는다).
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASELINE_PARAM, candlePrice, chartAnchorKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type SkeletonPivot } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
 import { chartAnchorsQuery, anchoredChartsQuery, computedAxesQuery, skeletonsQuery, reviewPointsQuery } from "../api/queries.js";
@@ -25,11 +25,22 @@ export interface PivotAtCandle {
 // 삭제는 **앵커 객체(자연키)** 를 넘긴다 — id 가 아니다. 읽기가 로컬 미러라 surrogate id 는 원격과
 // 갈릴 수 있어 서버로 보내지 않는다. 화면 안에서 id 를 손잡이로 쓰는 건 그대로고(RenderLine.id 등),
 // 그 변환은 이 파일 안에서 끝난다(anchors 가 여기 있으므로).
+// 세 함수 모두 RQ 의 mutate(참조 안정) — 그래서 이 객체와 이걸 닫는 param 훅 반환들이 memo 가능하다.
 interface AnchorMutations {
-    add: UseMutationResult<ChartAnchor, Error, AddChartAnchorInput>;
-    remove: UseMutationResult<void, Error, RemoveChartAnchorInput>;
+    add: (input: AddChartAnchorInput) => void;
+    remove: (input: RemoveChartAnchorInput) => void;
     removeMany: (anchors: readonly RemoveChartAnchorInput[]) => void;
 }
+
+/**
+ * 전환 과도기 가드 — 앵커/골격 쿼리는 새 (종목,날짜)로 **즉시** 갈아타는데, 차트 번들은 keepPreviousData 로
+ * 직전 종목 것을 잠깐(응답 도착까지) 들고 있다. 그 창에서 새 종목 앵커를 옛 종목 캔들에서 해소하면
+ * 엉뚱한 가격에 선·피벗이 선다 → 번들이 **이 차트 종목의 것**일 때만 해소에 쓴다(아니면 창 밖 취급 = 생략).
+ * (앵커 쪽에 keepPreviousData 를 주는 건 반대 방향의 같은 버그 — 옛 종목 앵커를 새 캔들에 그린다 — 라 아니다.)
+ * 날짜는 안 본다: 일봉 번들은 기준일(2년 창)이고 앵커는 검색날짜 소유라 날짜 불일치가 정상이다.
+ */
+const ownBundle = (bundle: ChartBundle | undefined, code: string): ChartBundle | undefined =>
+    bundle && bundle.stockCode === code ? bundle : undefined;
 
 /** 이 차트의 앵커 전부 + 공유 mutation. 각 param 훅이 여기서 걸러 쓴다(쿼리 키 하나 = RQ dedup). */
 function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; mut: AnchorMutations } {
@@ -43,8 +54,8 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey }); // 앵커는 축 입력 — 즉시 재굽기
         void qc.invalidateQueries({ queryKey: skeletonsQuery().queryKey }); // 골격 좌표(겹쳐 그리기)도 같은 입력
     };
-    const add = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
-    const remove = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });
+    const addMut = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
+    const removeMut = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });
     const removeManyMut = useMutation({
         // allSettled + onSettled — 부분 실패면 일부는 이미 서버에서 지워졌다. 전 요청이 끝난 뒤(앞질러 재조회하면
         // 비행 중인 삭제가 stale 을 만든다) 성패 무관하게 invalidate 해야 화면이 서버 진실로 수렴한다.
@@ -55,7 +66,13 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
         },
         onSettled: invalidate,
     });
-    return { anchors, mut: { add, remove, removeMany: (targets) => removeManyMut.mutate(targets) } };
+    // mutate 는 RQ 가 참조 안정을 보장 — 함수 셋만 뽑아 memo 하면 param 훅들의 반환도 안정된다
+    // (ChartPanel 의 controls memo 가 lines.clear 등을 deps 로 갖는데, 매 렌더 새 클로저면 memo 가 헛돈다).
+    const mut = useMemo<AnchorMutations>(
+        () => ({ add: addMut.mutate, remove: removeMut.mutate, removeMany: removeManyMut.mutate }),
+        [addMut.mutate, removeMut.mutate, removeManyMut.mutate],
+    );
+    return { anchors, mut };
 }
 
 // ── 선(기준선 후보) ─────────────────────────────────────────────────────────
@@ -74,15 +91,18 @@ export interface BaselineLines {
 /** 선 = param 'baseline'(옛 가격선 흡수·차트 소유). 해소는 raw 번들의 저장 시장·값 — 모드 토글 무관. */
 export function useBaselineLines(code: string, date: string, dailyBundle: ChartBundle | undefined, minuteBundle: ChartBundle | undefined): BaselineLines {
     const { anchors, mut } = useChartAnchors(code, date);
+    const daily = ownBundle(dailyBundle, code); // 전환 과도기: 직전 종목 번들이면 창 밖 취급(선 생략)
+    const minute = ownBundle(minuteBundle, code);
     const lines = useMemo(() => anchors.filter((a) => a.param === BASELINE_PARAM), [anchors]);
-    const resolvedLines = useMemo(() => resolveChartAnchorLines(lines, dailyBundle, minuteBundle), [lines, dailyBundle, minuteBundle]);
+    const resolvedLines = useMemo(() => resolveChartAnchorLines(lines, daily, minute), [lines, daily, minute]);
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
-    return {
+    // 반환 memo — 컨트롤 선언(ChartPanel controls)이 clear 등을 deps 로 갖는다. 매 렌더 새 클로저면 그 memo 가 헛돈다.
+    return useMemo<BaselineLines>(() => ({
         resolvedLines,
         dLines,
         hasLines: lines.length > 0,
         addLine: (anchorDate, anchorTime, field, market) => {
-            if (code && date) mut.add.mutate({ stockCode: code, date, param: BASELINE_PARAM, anchorDate, anchorTime, field, market });
+            if (code && date) mut.add({ stockCode: code, date, param: BASELINE_PARAM, anchorDate, anchorTime, field, market });
         },
         // 손잡이는 좌표 전체(chartAnchorKey) — 화면 안에서만 도는 값이고, 서버로는 앵커 자체를 보낸다.
         lineIdAt: (anchorDate, anchorTime) => {
@@ -91,11 +111,11 @@ export function useBaselineLines(code: string, date: string, dailyBundle: ChartB
         },
         removeLineById: (key) => {
             const target = lines.find((l) => chartAnchorKey(l) === key);
-            if (target) mut.remove.mutate(target);
+            if (target) mut.remove(target);
         },
         // clear — 선만(무시 캔들·골격·저장 타점은 건드리지 않음). 우클릭이 잘 안 잡히는 경우 대비.
         clear: () => mut.removeMany(lines),
-    };
+    }), [resolvedLines, dLines, lines, code, date, mut]);
 }
 
 // ── 무시 캔들 ───────────────────────────────────────────────────────────────
@@ -109,14 +129,14 @@ export interface IgnoreCandles {
 export function useIgnoreCandles(code: string, date: string): IgnoreCandles {
     const { anchors, mut } = useChartAnchors(code, date);
     const ignores = useMemo(() => anchors.filter((a) => a.param === IGNORE_CANDLE_PARAM), [anchors]);
-    return {
-        ignoredDates: useMemo(() => ignores.map((a) => a.anchorDate), [ignores]),
+    return useMemo<IgnoreCandles>(() => ({
+        ignoredDates: ignores.map((a) => a.anchorDate),
         toggleIgnore: (anchorDate) => {
             const existing = ignores.find((a) => a.anchorDate === anchorDate);
-            if (existing) mut.remove.mutate(existing);
-            else mut.add.mutate({ stockCode: code, date, param: IGNORE_CANDLE_PARAM, anchorDate });
+            if (existing) mut.remove(existing);
+            else mut.add({ stockCode: code, date, param: IGNORE_CANDLE_PARAM, anchorDate });
         },
-    };
+    }), [ignores, code, date, mut]);
 }
 
 // ── 골격(일봉·분봉) — 반환 모양이 같다(points·pivotsAt·toggle·clear·hasAny). ──
@@ -139,29 +159,30 @@ export interface SkeletonEditor<P> {
  */
 export function useDailySkeleton(code: string, date: string, dailyBundle: ChartBundle | undefined): SkeletonEditor<{ date: string; price: number }> {
     const { anchors, mut } = useChartAnchors(code, date);
+    const daily = ownBundle(dailyBundle, code); // 전환 과도기: 직전 종목 번들이면 창 밖 취급(피벗 생략)
     const mine = useMemo(() => anchors.filter((a) => a.param === SKELETON_PARAM && a.field != null && a.market != null), [anchors]);
     const points = useMemo(() => {
         const sorted = sortPivots(mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! })));
         const out: { date: string; price: number }[] = [];
         for (const p of sorted) {
             if (p.anchorTime) continue; // 일봉 골격 — 분봉 좌표는 스키마상 없지만 방어적으로
-            const price = candlePrice(dailyBundle?.daily.find((c) => c.date === p.anchorDate)?.[p.market]?.[p.field]);
+            const price = candlePrice(daily?.daily.find((c) => c.date === p.anchorDate)?.[p.market]?.[p.field]);
             if (price !== null) out.push({ date: p.anchorDate, price }); // 창 밖 피벗은 빠진다(선이 조금 짧아질 뿐)
         }
         return out;
-    }, [mine, dailyBundle]);
-    return {
+    }, [mine, daily]);
+    return useMemo<SkeletonEditor<{ date: string; price: number }>>(() => ({
         points,
         pivotsAt: (anchorDate) => mine.filter((a) => a.anchorDate === anchorDate && a.anchorTime == null).map((a) => ({ field: a.field!, market: a.market! })),
         toggle: (anchorDate, field, market) => {
             if (!code || !date) return;
             const existing = mine.find((a) => a.anchorDate === anchorDate && a.anchorTime == null && a.field === field);
-            if (existing) mut.remove.mutate(existing);
-            else mut.add.mutate({ stockCode: code, date, param: SKELETON_PARAM, anchorDate, field, market });
+            if (existing) mut.remove(existing);
+            else mut.add({ stockCode: code, date, param: SKELETON_PARAM, anchorDate, field, market });
         },
         clear: () => mut.removeMany(mine),
         hasAny: mine.length > 0,
-    };
+    }), [points, mine, code, date, mut]);
 }
 
 /**
@@ -175,6 +196,7 @@ export function useDailySkeleton(code: string, date: string, dailyBundle: ChartB
  */
 export function useMinuteSkeleton(code: string, date: string, minuteBundle: ChartBundle | undefined): SkeletonEditor<{ time: number; price: number }> {
     const { anchors, mut } = useChartAnchors(code, date);
+    const minute = ownBundle(minuteBundle, code); // 전환 과도기: 직전 종목 번들이면 창 밖 취급(피벗 생략)
     const reviewQ = useQuery(reviewPointsQuery(code, date)); // useReviewPointData 와 같은 키 — RQ dedup
     const mine = useMemo(
         () => anchors.filter((a) => a.param === SKELETON_MINUTE_PARAM && a.time == null && a.field != null && a.anchorTime != null),
@@ -186,21 +208,21 @@ export function useMinuteSkeleton(code: string, date: string, minuteBundle: Char
         pivots.push(...syntheticClosePivots(date, new Set(mine.map((a) => a.anchorTime!)), (reviewQ.data ?? []).map((rp) => rp.time)));
         const out: { time: number; price: number }[] = [];
         for (const p of sortPivots(pivots)) {
-            const price = candlePrice(minuteBundle?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field]);
+            const price = candlePrice(minute?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field]);
             if (price !== null) out.push({ time: kstToUnix(p.anchorDate, p.anchorTime!), price });
         }
         return out;
-    }, [mine, reviewQ.data, date, minuteBundle]);
-    return {
+    }, [mine, reviewQ.data, date, minute]);
+    return useMemo<SkeletonEditor<{ time: number; price: number }>>(() => ({
         points,
         pivotsAt: (anchorTime) => mine.filter((a) => a.anchorTime === anchorTime).map((a) => ({ field: a.field!, market: a.market! })),
         toggle: (anchorTime, field) => {
             if (!code || !date) return;
             const existing = mine.find((a) => a.anchorTime === anchorTime && a.field === field);
-            if (existing) mut.remove.mutate(existing);
-            else mut.add.mutate({ stockCode: code, date, param: SKELETON_MINUTE_PARAM, anchorDate: date, anchorTime, field, market: "un" });
+            if (existing) mut.remove(existing);
+            else mut.add({ stockCode: code, date, param: SKELETON_MINUTE_PARAM, anchorDate: date, anchorTime, field, market: "un" });
         },
         clear: () => mut.removeMany(mine),
         hasAny: mine.length > 0,
-    };
+    }), [points, mine, code, date, mut]);
 }

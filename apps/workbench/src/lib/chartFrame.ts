@@ -80,6 +80,23 @@ export function snapToBar(bars: readonly { time: number }[], target: number | nu
     return snapped;
 }
 
+/**
+ * target 이하(≤) **마지막 봉 인덱스** — a/d 이동·f 줌 앵커가 같은 규칙을 탄다.
+ * 전부 target 보다 뒤(target 이 첫 봉보다 이전)면 **0(첫 봉)** — 마지막 봉으로 튀지 않는다
+ * (예전엔 기본값 length-1 이 남아 세션 끝으로 점프했다). 빈 배열이면 -1.
+ * `bars` 는 시간 오름차순(차트 데이터가 전부 그렇다). 키는 unix초든 "HH:MM:SS" 든 비교 가능하면 된다.
+ */
+export function indexAtOrBefore<T>(bars: readonly T[], target: number | string, keyOf: (b: T) => number | string): number {
+    if (bars.length === 0) return -1;
+    if (keyOf(bars[0]) > target) return 0;
+    let idx = 0;
+    for (let i = 0; i < bars.length; i++) {
+        if (keyOf(bars[i]) <= target) idx = i;
+        else break;
+    }
+    return idx;
+}
+
 /** 일봉 앵커에서 읽을 값. 가격선이 저장하는 field 와 같은 집합. */
 type DailyField = "open" | "high" | "low" | "close";
 

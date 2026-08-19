@@ -95,6 +95,45 @@ export function buildCandleAmountSeries(
 }
 
 /**
+ * 라이브 폴 증분 판정 — `next` 가 `prev` 를 **연장**하는가(같은 데이터셋 + 꼬리만 변화).
+ * 조건: 같은 첫 봉 시각 · 길이 ≥ · 마지막 old 봉과 시각 일치(값은 라이브로 변하니 update 로 덮는다) ·
+ * 겹치는 구간(마지막 old 봉 제외)이 (time, close) 로 동일. 참조가 같으면 비교 생략(RQ 구조 공유 대비).
+ * 통과하면 바뀐 꼬리(마지막 old 봉 + 신규 봉)만 series.update() 로 밀 수 있다 — 실패면 전체 setData.
+ * 보수적으로 판정한다: 애매하면 false(정확성 > 절약).
+ */
+export function extendsPrevBars<T>(
+    prev: readonly T[],
+    next: readonly T[],
+    timeOf: (b: T) => number | string,
+    closeOf: (b: T) => number,
+): boolean {
+    if (prev.length === 0 || next.length < prev.length) return false;
+    if (timeOf(prev[0]) !== timeOf(next[0])) return false;
+    if (timeOf(prev[prev.length - 1]) !== timeOf(next[prev.length - 1])) return false;
+    for (let i = 0; i < prev.length - 1; i++) {
+        const a = prev[i];
+        const b = next[i];
+        if (a === b) continue;
+        if (timeOf(a) !== timeOf(b) || closeOf(a) !== closeOf(b)) return false;
+    }
+    return true;
+}
+
+/** setMarkers 스킵 판정용 얕은 비교 — 시각·문구·색이 전부 같으면 같은 마커 한 벌(포지션·모양은 상수). */
+export interface MarkerLike {
+    time: unknown;
+    text?: string;
+    color?: string;
+}
+export function sameMarkers(a: readonly MarkerLike[], b: readonly MarkerLike[]): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i].time !== b[i].time || a[i].text !== b[i].text || a[i].color !== b[i].color) return false;
+    }
+    return true;
+}
+
+/**
  * y(px) 근처의 가격선 찾기 — 우클릭 "이 선을 지운다/메뉴를 연다" 판정. 일봉·분봉이 같은 규칙을 쓰되
  * 가격 → y 환산만 다르다(일봉=raw 가격, 분봉=linePct 로 % 변환) — 그래서 환산을 함수로 받는다.
  * 환산이 null 인 선(분모 없음)은 화면에도 없으므로 판정에서도 빠진다.

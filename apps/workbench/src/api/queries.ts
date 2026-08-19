@@ -5,6 +5,8 @@
 import { queryOptions } from "@tanstack/react-query";
 import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
+import { fetchDayReplay } from "./dayReplay.js";
+import { fetchWatchlist } from "./alerts.js";
 import { fetchChartAnchors, fetchAnchoredCharts } from "./chartAnchors.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
@@ -16,6 +18,7 @@ import { fetchThemeContext } from "./themes.js";
 import { fetchDailyComment } from "./comment.js";
 import { fetchDataDates } from "./dataDates.js";
 import { kstToday } from "../lib/date.js";
+import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 
 /**
  * **curation 표식** — 읽기가 로컬 미러에서 나오는 쿼리들. 미러를 당겨오면(동기화) 이 표식이 붙은 쿼리만
@@ -37,6 +40,22 @@ export const histStale = (date: string): number => (date < kstToday() ? IMMUTABL
 // 소비자마다 queryFn 을 달리 주면 RQ 는 먼저 마운트된 쪽을 쓰므로, 라우팅은 반드시 여기 한 곳에.
 export const chartQuery = (code: string, date: string) =>
     queryOptions({ queryKey: ["chart", code, date], queryFn: ({ signal }) => fetchChartBundle(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: histStale(date) });
+
+// 당일 복기 파생값(분당 시계열 + 메타) — 과거만 불변(histStale), gcTime 넉넉(브라우저 ~10거래일 캐시).
+// 복기보드 전용(테마보드는 day-summary folding). 시점 파생(스냅샷)은 lib/leanModel 이 담당.
+export const dayReplayQuery = (date: string) =>
+    queryOptions({
+        queryKey: ["day-replay", date],
+        queryFn: ({ signal }) => fetchDayReplay(date, signal),
+        enabled: date.length > 0,
+        staleTime: histStale(date),
+        gcTime: 60 * 60_000,
+    });
+
+// 실시간 워치리스트(/live/watchlist) — 모니터링 패널과 실시간 차트(알람 가격선)가 **같은 키 한 벌**을 폴링.
+// 옵션을 각자 적으면 refetchInterval 이 갈라질 수 있어 여기 한 곳에.
+export const liveWatchlistQuery = () =>
+    queryOptions({ queryKey: ["live-watchlist"], queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: LIVE_CADENCE_MS });
 
 export const daySummaryQuery = (date: string) =>
     queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: histStale(date) , meta: CURATION });

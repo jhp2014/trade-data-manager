@@ -13,22 +13,22 @@ import {
 } from "lightweight-charts";
 import { RISE_FILL, FALL_FILL, AMOUNT_BUCKET_COLORS } from "./chartUtils.js";
 import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
-import { buildCandleAmountSeries, findLineNearY } from "./candleAmountSeries.js";
+import { buildCandleAmountSeries, extendsPrevBars, findLineNearY, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { useLatest } from "../lib/useLatest.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
+import { type VertLines, type VertLineSpec } from "./vertLine.js";
+import { EMPTY_SKELETON, type SkeletonPath } from "./skeletonPath.js";
+import { minutesOfDay } from "../lib/date.js";
+import { type MinutePoint } from "../lib/derive.js";
+import { indexAtOrBefore, linePct, snapToBar, type RenderLine } from "../lib/chartFrame.js";
+import { ALARM, PRICE_LINE } from "../styles/palette.js";
 
 /**
  * 타점 ▼ 마커 표식 — 마커 DOM 에 붙이고, 차트 우클릭 핸들러가 이걸 보고 비켜준다(가격선 대신 그룹 입력창).
  * 마커 렌더(MinuteChart)와 판정(여기)이 서로 다른 파일이라 문자열을 양쪽에 적지 않게 상수로 둔다.
  */
 export const GROUP_MARKER_ATTR = "data-group-marker";
-import { type VertLines, type VertLineSpec } from "./vertLine.js";
-import { type SkeletonPath } from "./skeletonPath.js";
-import { minutesOfDay } from "../lib/date.js";
-import { type MinutePoint } from "../lib/derive.js";
-import { linePct, snapToBar, type RenderLine } from "../lib/chartFrame.js";
-import { ALARM, PRICE_LINE } from "../styles/palette.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
 const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
@@ -136,42 +136,79 @@ export interface MinuteLookups {
     pointMapRef: MutableRefObject<Map<number, MinutePoint>>;
 }
 
-/** points → 시리즈 데이터 푸시 + 툴팁/오버레이 lookup 맵 + 거래대금 구간 마커(토글). */
+/**
+ * points → 시리즈 데이터 푸시 + 툴팁/오버레이 lookup 맵 + 거래대금 구간 마커(토글).
+ *
+ * **라이브 폴 증분** — 3초 폴마다 ~400봉 전체 setData 를 태우지 않는다. 새 points 가 직전 적용분의
+ * 연장이면(extendsPrevBars: 같은 첫 봉·겹침 (time,close) 동일) 바뀐 꼬리(마지막 old 봉 + 신규 봉)만
+ * series.update() 로 민다. 판정이 조금이라도 어긋나거나 update 가 던지면 전체 setData 로 폴백
+ * (정확성 > 절약). 표시범위 동작은 동일 — setData/update 둘 다 사용자 줌을 보존하고, 새 봉 추종은
+ * timeScale 옵션의 몫이다. 마커는 계산 결과가 실제로 달라졌을 때만 setMarkers(sameMarkers 비교).
+ */
 export function useMinuteSeriesData(series: MinuteSeries, points: MinutePoint[], showAmountMarkers: boolean): MinuteLookups {
     const amountMapRef = useRef<Map<number, number>>(new Map());
     const cumMapRef = useRef<Map<number, number>>(new Map());
     const pointMapRef = useRef<Map<number, MinutePoint>>(new Map());
+    const lastAppliedRef = useRef<MinutePoint[] | null>(null); // 시리즈에 실제 적용된 마지막 배열
+    const lastMarkersRef = useRef<MarkerLike[]>([]);
 
     useEffect(() => {
         const candle = series.candleRef.current;
         const amount = series.amountRef.current;
         if (!candle || !amount) return;
 
-        candle.setData(
-            points.map((p) => ({ time: p.time as UTCTimestamp, open: p.open, high: p.high, low: p.low, close: p.close })),
-        );
-
-        const amountMap = new Map<number, number>();
-        const cumMap = new Map<number, number>();
-        const pointMap = new Map<number, MinutePoint>();
-        const bars: Array<{ time: Time; value: number; color: string }> = [];
-        for (const p of points) {
-            amountMap.set(p.time, p.amount);
-            cumMap.set(p.time, p.cumAmount);
-            pointMap.set(p.time, p);
-            if (p.amount > 0) {
-                bars.push({
-                    time: p.time as UTCTimestamp,
-                    value: p.amount / 1e8,
-                    color: p.close >= p.open ? RISE_FILL : FALL_FILL,
-                });
+        const prev = lastAppliedRef.current;
+        let incremental = false;
+        // 증분 조건에 하나 더: 마지막 old 봉의 거래대금 막대가 **사라지는** 전이(>0 → 0)는 update 로 못 지운다.
+        if (
+            prev && extendsPrevBars(prev, points, (p) => p.time, (p) => p.close) &&
+            !(prev[prev.length - 1].amount > 0 && points[prev.length - 1].amount === 0)
+        ) {
+            try {
+                for (let i = prev.length - 1; i < points.length; i++) {
+                    const p = points[i];
+                    candle.update({ time: p.time as UTCTimestamp, open: p.open, high: p.high, low: p.low, close: p.close });
+                    if (p.amount > 0) {
+                        amount.update({ time: p.time as UTCTimestamp, value: p.amount / 1e8, color: p.close >= p.open ? RISE_FILL : FALL_FILL });
+                    }
+                    amountMapRef.current.set(p.time, p.amount);
+                    cumMapRef.current.set(p.time, p.cumAmount);
+                    pointMapRef.current.set(p.time, p);
+                }
+                incremental = true;
+            } catch {
+                incremental = false; // update 가 던지면(순서 어긋남 등) 아래 전체 setData 가 상태를 복구한다
             }
         }
-        amountMapRef.current = amountMap;
-        cumMapRef.current = cumMap;
-        pointMapRef.current = pointMap;
-        amount.setData(bars);
+        if (!incremental) {
+            candle.setData(
+                points.map((p) => ({ time: p.time as UTCTimestamp, open: p.open, high: p.high, low: p.low, close: p.close })),
+            );
+            const amountMap = new Map<number, number>();
+            const cumMap = new Map<number, number>();
+            const pointMap = new Map<number, MinutePoint>();
+            const bars: Array<{ time: Time; value: number; color: string }> = [];
+            for (const p of points) {
+                amountMap.set(p.time, p.amount);
+                cumMap.set(p.time, p.cumAmount);
+                pointMap.set(p.time, p);
+                if (p.amount > 0) {
+                    bars.push({
+                        time: p.time as UTCTimestamp,
+                        value: p.amount / 1e8,
+                        color: p.close >= p.open ? RISE_FILL : FALL_FILL,
+                    });
+                }
+            }
+            amountMapRef.current = amountMap;
+            cumMapRef.current = cumMap;
+            pointMapRef.current = pointMap;
+            amount.setData(bars);
+        }
+        lastAppliedRef.current = points;
+
         // 거래대금 마커 — 분당 거래대금 구간(≥30억) 봉 위에 숫자(구간 하한)만. 토글 OFF 면 비움.
+        // setMarkers 는 전체 교체 API 라 증분이 없다 — 대신 결과가 지난번과 같으면(대부분의 폴 틱) 건너뛴다.
         const markers = [];
         if (showAmountMarkers) {
             for (const p of points) {
@@ -179,7 +216,10 @@ export function useMinuteSeriesData(series: MinuteSeries, points: MinutePoint[],
                 if (b >= 0) markers.push({ time: p.time as UTCTimestamp, position: "aboveBar" as const, color: AMOUNT_BUCKET_COLORS[b], shape: "circle" as const, size: 0, text: `${AMOUNT_BUCKETS_EOK[b]}` });
             }
         }
-        series.markersRef.current?.setMarkers(markers);
+        if (!sameMarkers(markers, lastMarkersRef.current)) {
+            series.markersRef.current?.setMarkers(markers);
+            lastMarkersRef.current = markers;
+        }
         series.bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points, showAmountMarkers]);
@@ -265,10 +305,9 @@ export function useMinuteVisibleRange(
             const shift = lockedRef.current.firstMin - firstMin;
             ts.setVisibleLogicalRange({ from: lockedRef.current.from + shift, to: lockedRef.current.to + shift });
         } else if (zoom) {
-            let idx = points.length - 1;
-            if (zoom.anchorTime != null) {
-                for (let i = 0; i < points.length; i++) { if (points[i].time <= zoom.anchorTime) idx = i; else break; }
-            }
+            // 앵커 시각 ≤ 마지막 봉 인덱스. 앵커가 **첫 봉보다 이전**이면 첫 봉(indexAtOrBefore 가 0 반환) —
+            // 예전엔 기본값 length-1 이 남아 세션 끝으로 점프했다. 앵커 없음(null)=마지막 봉 중심.
+            const idx = zoom.anchorTime != null ? indexAtOrBefore(points, zoom.anchorTime, (p) => p.time) : points.length - 1;
             const half = zoom.bars / 2;
             ts.setVisibleLogicalRange({ from: idx - half - LEFT_MARGIN_BARS, to: idx + half });
         } else {
@@ -357,8 +396,10 @@ export function useMinuteInteraction(args: {
             const y = e.clientY - el.getBoundingClientRect().top;
             // 1) 기존 선(라벨/선) 근처 우클릭 → 그 선 삭제(봉 일일이 찾을 필요 없음). 판정은 일봉과 같은
             //    규칙(findLineNearY) — 환산만 렌더와 같은 linePct(% 축). 분모 없는 선은 화면에도 판정에도 없다.
+            //    알람선(kind A — 규칙/draft 소유)은 판정에서 뺀다: 우클릭 삭제 대상이 아닌데 ±6px 을
+            //    가로채면 그 근처의 D/M 선 토글이 소리 없이 막힌다.
             if (candle) {
-                const hit = findLineNearY(cb.current.lines, y, 6, (line) => {
+                const hit = findLineNearY(cb.current.lines.filter((l) => l.kind !== "A"), y, 6, (line) => {
                     const pct = linePct(line, cb.current.base, cb.current.pctBase);
                     if (pct === null) return null;
                     const ly = candle.priceToCoordinate(pct);
@@ -457,7 +498,7 @@ export function useMarkerOverlay(
  */
 export function useMinuteSkeletonOverlay(
     series: MinuteSeries,
-    pivots: readonly { time: number; price: number }[],
+    pivots: readonly { time: number; price: number }[] = EMPTY_SKELETON, // 기본값 = 안정 참조(effect 헛돌지 않게)
     base: number | null,
     visible: boolean,
 ): void {

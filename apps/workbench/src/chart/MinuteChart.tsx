@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { CrosshairMode, LineStyle } from "lightweight-charts";
 import { kstHHmm } from "./chartUtils.js";
-import { baseChartOptions, useChartShell, useCrosshairTooltip } from "./chartShell.js";
+import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { FloatingTooltip } from "./tooltip.js";
 import { MarkerCard, OhlcTooltip } from "./MinuteChartTooltips.js";
 import {
@@ -110,8 +110,7 @@ function MarkerTriangle({ fill, stroke, active = false }: { fill: string; stroke
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
 // 데이터는 이미 파생된 MinutePoint[](%/원). 명령형(lightweight-charts) 배선은 minuteChartHooks 의
 // 훅들이 담당하고, 여기는 훅 조합 + 오버레이(타점 ▼·정보 카드)·툴팁 렌더만.
-/** 골격 없음의 안정 참조 — 매 렌더 새 배열이면 오버레이 effect 가 계속 다시 돈다. */
-const EMPTY_SKELETON: readonly { time: number; price: number }[] = [];
+// (골격 미지정의 안정 참조는 오버레이 훅 기본값 — skeletonPath EMPTY_SKELETON — 이 담당한다.)
 
 export function MinuteChart({
     points,
@@ -185,7 +184,7 @@ export function MinuteChart({
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);
-    useMinuteSkeletonOverlay(series, skeleton ?? EMPTY_SKELETON, base, showSkeleton);
+    useMinuteSkeletonOverlay(series, skeleton, base, showSkeleton);
 
     const { state: tip } = useCrosshairTooltip({
         chartRef,
@@ -211,16 +210,17 @@ export function MinuteChart({
         },
     });
 
-    // 툴팁 위치는 크로스헤어 좌표(pane마다 기준 다름) 대신 실제 커서 위치로 잡는다.
-    const [cursor, setCursor] = useState({ x: 0, y: 0 });
+    // 툴팁 위치는 크로스헤어 좌표(pane마다 기준 다름) 대신 실제 커서 위치로 잡는다(rAF 스로틀 — 프레임당 1회).
+    const { cursor, onCursorMove } = useRafCursor();
 
     // 오버레이(타점 아이콘·현재 타점 정보) — 저장 타점 각각에 hover 아이콘, 현재 타점엔 토글 정보 박스.
+    // hover 손잡이는 **스냅 시각**(s.time) — 배열 인덱스로 잡으면 hover 중 목록이 바뀔 때 옆 타점 카드가 뜬다.
     const [hoveredSaved, setHoveredSaved] = useState<number | null>(null);
     const overlay = useMarkerOverlay(chartRef, series, pointMapRef, savedSnapped, currentSnapped);
 
     // 오버레이 박스 우/좌 판정용 컨테이너 폭 + 현재 hover 중인 저장 타점.
     const containerWidth = containerRef.current?.clientWidth ?? 0;
-    const hoveredCard = hoveredSaved != null ? overlay.saved[hoveredSaved] : null;
+    const hoveredCard = hoveredSaved != null ? overlay.saved.find((s) => s.time === hoveredSaved) ?? null : null;
     // 현재 시각이 저장 타점과 겹치는가 — 겹치면 그 타점 ▼ 를 검게 칠하고 시간선 ▼ 는 그리지 않는다
     // (같은 자리에 두 마커를 겹쳐 그리면 "검정=현재" 와 "채움=배치" 두 규칙이 한 도형에서 충돌한다).
     const currentSaved = currentSnapped != null ? overlay.saved.find((s) => s.time === currentSnapped) : undefined;
@@ -228,25 +228,22 @@ export function MinuteChart({
     return (
         <div
             ref={containerRef}
-            onMouseMove={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                setCursor({ x: e.clientX - r.left, y: e.clientY - r.top });
-            }}
+            onMouseMove={onCursorMove}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
             {/* 저장 타점 ▼ 마커 — 클릭하면 시간선이 그 타점으로. 두 규칙이 겹치지 않게:
                 **색** = 지금 시간선이 여기인가(검정) · **채움** = 이 타점이 어디든 배치됐나. */}
-            {overlay.saved.map((s, i) => {
+            {overlay.saved.map((s) => {
                 if (s.x < 0) return null;
                 const isNow = s.time === currentSnapped;
-                const isActive = hoveredSaved === i || isNow;
+                const isActive = hoveredSaved === s.time || isNow;
                 const unplaced = axisTotal > 0 && s.placed === 0;
                 return (
                     <div
                         key={s.time}
                         {...{ [GROUP_MARKER_ATTR]: "" }}
-                        onMouseEnter={() => setHoveredSaved(i)}
-                        onMouseLeave={() => setHoveredSaved((cur) => (cur === i ? null : cur))}
+                        onMouseEnter={() => setHoveredSaved(s.time)}
+                        onMouseLeave={() => setHoveredSaved((cur) => (cur === s.time ? null : cur))}
                         onClick={() => s.point && onMovePoint(s.point.tradeTime)}
                         onContextMenu={(e) => e.preventDefault()}
                         title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로)` : "저장된 타점 (클릭: 이 타점으로)"}

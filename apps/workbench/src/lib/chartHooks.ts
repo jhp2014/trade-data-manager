@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
 import { reviewPointsQuery, allPointsQuery, chartQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView } from "./derive.js";
+import { indexAtOrBefore } from "./chartFrame.js";
 import { usePlacements } from "./usePlacements.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -52,6 +53,7 @@ export function useReviewPointData(code: string, date: string, time: string | nu
  */
 export function useChartHotkeys(): void {
     const code = useWorkbench((s) => s.focus.code);
+    // 불변식: search 가 있으면 search.code === focus.code — setSearch 호출자는 usePlaneBus.setSearchDate 하나뿐(focus.code 로 조립)이고, 종목이 바뀌면 transitionFocus 가 search 를 해제한다.
     const date = useWorkbench((s) => s.search?.date ?? s.focus.date); // 검색날짜(드리프트) 우선 — 차트 분봉이 보는 날짜와 일치(타점/이동봉이 그 날짜에 작동)
     const time = useWorkbench((s) => s.focus.time);
     const mode = useWorkbench((s) => s.chartPriceMode);
@@ -86,10 +88,9 @@ export function useChartHotkeys(): void {
     h.current.moveBar = (delta) => {
         if (minutePoints.length === 0) return;
         let idx = minutePoints.findIndex((p) => p.tradeTime === time);
-        if (idx < 0) {
-            idx = minutePoints.length - 1;
-            if (time) for (let i = 0; i < minutePoints.length; i++) { if (minutePoints[i].tradeTime <= time) idx = i; else break; }
-        }
+        // 정확히 그 봉이 없으면 time 이하 마지막 봉으로 — time 이 첫 봉보다 이르면 첫 봉(indexAtOrBefore 가
+        // 0 반환, 예전엔 기본값 length-1 이 남아 a/d 가 세션 끝으로 튀었다). time 자체가 없으면 마지막 봉.
+        if (idx < 0) idx = time ? indexAtOrBefore(minutePoints, time, (p) => p.tradeTime) : minutePoints.length - 1;
         const ni = Math.max(0, Math.min(minutePoints.length - 1, idx + delta));
         useWorkbench.getState().setTime(minutePoints[ni].tradeTime);
     };
