@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extendsPrevBars, sameMarkers } from "../candleAmountSeries.js";
+import { barSignature, extendsPrevBars, sameMarkers } from "../candleAmountSeries.js";
 
 // 라이브 폴 증분 갱신의 판정층 — 판정이 틀리면 화면이 조용히 어긋나므로(꼬리만 update 하는데 몸통이 달랐다)
 // 보수성이 요점이다: 애매하면 false(전체 setData 폴백)여야 한다.
@@ -50,6 +50,23 @@ describe("extendsPrevBars", () => {
 
     it("prev 가 비었으면 아니다(첫 로드는 setData)", () => {
         expect(extendsPrevBars([], prev, timeOf, closeOf)).toBe(false);
+    });
+});
+
+describe("barSignature — 겹침 구간 지문", () => {
+    const full = (over: Partial<{ open: number; high: number; low: number; close: number; amount: number }> = {}) =>
+        ({ open: 10, high: 12, low: 9, close: 11, amount: 100, ...over });
+
+    it("close 는 같은데 다른 필드만 정정된 봉을 다른 봉으로 본다 — close 단독 비교의 낡음 구멍 방지", () => {
+        expect(barSignature(full())).not.toBe(barSignature(full({ high: 13 })));
+        expect(barSignature(full())).not.toBe(barSignature(full({ amount: 200 })));
+        expect(barSignature(full())).toBe(barSignature(full()));
+    });
+
+    it("지문이 다르면 extendsPrevBars 가 연장 판정을 기각한다(setData 폴백)", () => {
+        const p = [{ time: 1, ...full() }, { time: 2, ...full() }, { time: 3, ...full() }];
+        const corrected = [{ time: 1, ...full() }, { time: 2, ...full({ high: 13 }) }, { time: 3, ...full() }];
+        expect(extendsPrevBars(p, corrected, (b) => b.time, barSignature)).toBe(false);
     });
 });
 

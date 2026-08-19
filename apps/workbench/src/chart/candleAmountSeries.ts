@@ -97,7 +97,10 @@ export function buildCandleAmountSeries(
 /**
  * 라이브 폴 증분 판정 — `next` 가 `prev` 를 **연장**하는가(같은 데이터셋 + 꼬리만 변화).
  * 조건: 같은 첫 봉 시각 · 길이 ≥ · 마지막 old 봉과 시각 일치(값은 라이브로 변하니 update 로 덮는다) ·
- * 겹치는 구간(마지막 old 봉 제외)이 (time, close) 로 동일. 참조가 같으면 비교 생략(RQ 구조 공유 대비).
+ * 겹치는 구간(마지막 old 봉 제외)이 (time, 지문) 으로 동일. 참조가 같으면 비교 생략(RQ 구조 공유 대비).
+ * 지문은 close 만이 아니라 O/H/L/거래대금까지 묶는다 — 닫힌 봉의 close 는 그대로인데 다른 필드만
+ * 정정되는 드문 케이스에서 close 단독 비교는 통과해 버리고, lastApplied 가 정정본으로 전진해 버려
+ * 이후 폴에서도 차이가 영영 안 보인다(자가치유 없는 낡음). 지문이면 그 정정이 setData 폴백을 탄다.
  * 통과하면 바뀐 꼬리(마지막 old 봉 + 신규 봉)만 series.update() 로 밀 수 있다 — 실패면 전체 setData.
  * 보수적으로 판정한다: 애매하면 false(정확성 > 절약).
  */
@@ -105,7 +108,7 @@ export function extendsPrevBars<T>(
     prev: readonly T[],
     next: readonly T[],
     timeOf: (b: T) => number | string,
-    closeOf: (b: T) => number,
+    sigOf: (b: T) => number | string,
 ): boolean {
     if (prev.length === 0 || next.length < prev.length) return false;
     if (timeOf(prev[0]) !== timeOf(next[0])) return false;
@@ -114,10 +117,14 @@ export function extendsPrevBars<T>(
         const a = prev[i];
         const b = next[i];
         if (a === b) continue;
-        if (timeOf(a) !== timeOf(b) || closeOf(a) !== closeOf(b)) return false;
+        if (timeOf(a) !== timeOf(b) || sigOf(a) !== sigOf(b)) return false;
     }
     return true;
 }
+
+/** extendsPrevBars 용 봉 지문 — 겹침 구간의 "같은 봉" 판정에 쓰는 필드 묶음. */
+export const barSignature = (b: { open: number; high: number; low: number; close: number; amount: number }): string =>
+    `${b.open}|${b.high}|${b.low}|${b.close}|${b.amount}`;
 
 /** setMarkers 스킵 판정용 얕은 비교 — 시각·문구·색이 전부 같으면 같은 마커 한 벌(포지션·모양은 상수). */
 export interface MarkerLike {

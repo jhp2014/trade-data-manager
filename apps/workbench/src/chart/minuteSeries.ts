@@ -13,7 +13,7 @@ import {
     type UTCTimestamp,
 } from "lightweight-charts";
 import { RISE_FILL, FALL_FILL, AMOUNT_BUCKET_COLORS } from "./chartUtils.js";
-import { buildCandleAmountSeries, extendsPrevBars, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
+import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { type VertLines } from "./vertLine.js";
 import { type SkeletonPath } from "./skeletonPath.js";
@@ -114,7 +114,7 @@ export interface MinuteLookups {
  * points → 시리즈 데이터 푸시 + 툴팁/오버레이 lookup 맵 + 거래대금 구간 마커(토글).
  *
  * **라이브 폴 증분** — 3초 폴마다 ~400봉 전체 setData 를 태우지 않는다. 새 points 가 직전 적용분의
- * 연장이면(extendsPrevBars: 같은 첫 봉·겹침 (time,close) 동일) 바뀐 꼬리(마지막 old 봉 + 신규 봉)만
+ * 연장이면(extendsPrevBars: 같은 첫 봉·겹침 (time,지문) 동일) 바뀐 꼬리(마지막 old 봉 + 신규 봉)만
  * series.update() 로 민다. 판정이 조금이라도 어긋나거나 update 가 던지면 전체 setData 로 폴백
  * (정확성 > 절약). 표시범위 동작은 동일 — setData/update 둘 다 사용자 줌을 보존하고, 새 봉 추종은
  * timeScale 옵션의 몫이다. 마커는 계산 결과가 실제로 달라졌을 때만 setMarkers(sameMarkers 비교).
@@ -135,7 +135,7 @@ export function useMinuteSeriesData(series: MinuteSeries, points: MinutePoint[],
         let incremental = false;
         // 증분 조건에 하나 더: 마지막 old 봉의 거래대금 막대가 **사라지는** 전이(>0 → 0)는 update 로 못 지운다.
         if (
-            prev && extendsPrevBars(prev, points, (p) => p.time, (p) => p.close) &&
+            prev && extendsPrevBars(prev, points, (p) => p.time, barSignature) &&
             !(prev[prev.length - 1].amount > 0 && points[prev.length - 1].amount === 0)
         ) {
             try {

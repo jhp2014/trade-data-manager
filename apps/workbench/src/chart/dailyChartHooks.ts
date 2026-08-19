@@ -13,7 +13,7 @@ import {
     type UTCTimestamp,
 } from "lightweight-charts";
 import { RISE_FILL, FALL_FILL, highMarkerColor } from "./chartUtils.js";
-import { buildCandleAmountSeries, extendsPrevBars, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
+import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
 import { useCandleInteraction } from "./candleInteraction.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { type VertLines } from "./vertLine.js";
@@ -81,11 +81,11 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
         const candle = series.candleRef.current;
         const amount = series.amountRef.current;
         if (!candle || !amount) return;
-        // 라이브 폴 증분 — 직전 적용분의 연장이면(같은 첫 봉·겹침 (time,close) 동일) 바뀐 꼬리(오늘 형성봉
+        // 라이브 폴 증분 — 직전 적용분의 연장이면(같은 첫 봉·겹침 (time,지문) 동일) 바뀐 꼬리(오늘 형성봉
         // + 신규 봉)만 update. 어긋나거나 update 가 던지면 전체 setData 폴백(정확성 > 절약). 분봉 훅과 같은 규칙.
         const prev = lastAppliedRef.current;
         let incremental = false;
-        if (prev && extendsPrevBars(prev, points, (p) => p.time, (p) => p.close)) {
+        if (prev && extendsPrevBars(prev, points, (p) => p.time, barSignature)) {
             try {
                 for (let i = prev.length - 1; i < points.length; i++) {
                     const p = points[i];

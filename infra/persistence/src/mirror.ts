@@ -108,10 +108,15 @@ async function schemaExists(c: { query: (q: string) => Promise<{ rows: unknown[]
 
 async function replaceLocalSchema(local: PgConn, dumpPath: string, pgBinDir: string): Promise<Date> {
     // 2. 단계식 교체 — 현행 curation 을 지우지 않고 curation_prev 로 밀어둔다(복원 실패 시 되돌릴 백업).
-    //    남아 있는 curation_prev 는 직전 실패의 잔재라 먼저 치운다(성공 경로는 끝에서 지우고 나온다).
+    //    prev 폐기는 **curation 이 있을 때만** 한다: rename~restore 사이에 프로세스가 죽으면(전원·킬)
+    //    curation_prev 가 유일한 로컬 사본인데, 무조건 지우면 이번 restore 까지 실패하는 이중 장애에서
+    //    사본이 전멸한다. curation 부재 + prev 존재 = 직전 크래시의 생존 사본 → 그대로 두면 아래
+    //    실패 catch 의 prev→curation rename 이 복구를 담당한다.
     await withPgClient(local, async (c) => {
-        await c.query("DROP SCHEMA IF EXISTS curation_prev CASCADE");
-        if (await schemaExists(c, "curation")) await c.query("ALTER SCHEMA curation RENAME TO curation_prev");
+        if (await schemaExists(c, "curation")) {
+            await c.query("DROP SCHEMA IF EXISTS curation_prev CASCADE");
+            await c.query("ALTER SCHEMA curation RENAME TO curation_prev");
+        }
     });
     try {
         // pg_restore 에 -n 필터를 주지 않는다: 덤프가 이미 curation 전용이고, -n 을 주면 CREATE SCHEMA
@@ -119,7 +124,7 @@ async function replaceLocalSchema(local: PgConn, dumpPath: string, pgBinDir: str
         await runPgToolOn(pgBinDir, "pg_restore", local, ["--no-owner", "--no-privileges", dumpPath]);
     } catch (e) {
         // 3-실패. 부분 생성된 curation 을 지우고 밀어둔 스키마를 되살린다 — 미러가 반쪽으로 남지 않는다.
-        //    (복구 자체가 실패하면 curation_prev 가 남고, 다음 실행 첫 단계가 치운다.)
+        //    (복구 자체가 실패하면 curation_prev 가 생존 사본으로 남고, 다음 실행이 보존했다가 여기서 되살린다.)
         await withPgClient(local, async (c) => {
             await c.query("DROP SCHEMA IF EXISTS curation CASCADE");
             if (await schemaExists(c, "curation_prev")) await c.query("ALTER SCHEMA curation_prev RENAME TO curation");

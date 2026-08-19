@@ -154,7 +154,14 @@ export class DerivedCache {
             candles.map((c) => ({ stockCode: c.stockCode, amount: c.un.amount, high: c.un.high, prevClose: prevClose.get(c.stockCode) ?? null })),
             { amountRankN: NO_RANK, highRateCutPercent: GAINER_RATE_PERCENT, amountFloorWon: STORE_AMOUNT_FLOOR_WON },
         );
-        return expected.every((code) => stored.has(code));
+        const missing = expected.filter((code) => !stored.has(code));
+        if (missing.length > 0) {
+            // 침묵 금지 — 영영 안 통과하는 날짜(과거 백필 실패·상장폐지 잔재)는 요청마다 전체 재빌드가 되는데,
+            // 로그가 없으면 그 비용이 비가시다. 어느 종목이 막는지까지 보여야 수동 치유(백필)로 이어진다.
+            console.warn(`[day-snapshot] ${date} 굳히기 보류 — 분봉 미수집 ${missing.length}종목: ${missing.slice(0, 5).join(" ")}`);
+            return false;
+        }
+        return true;
     }
 
     // 기준가 보정 트립와이어 — factor ≠ 1 종목 집계. 평상시 0~수 종목(실제 감자·액분 이벤트)이 정상.
