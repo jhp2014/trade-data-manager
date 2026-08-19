@@ -1,7 +1,8 @@
 // DailyChart 의 lightweight-charts 명령형 어댑터 훅들 — 시리즈 수명주기·데이터 푸시·표시범위(f 줌)·
 // 마우스 상호작용·가격선·가이드선·검색날짜 세로선을 컴포넌트에서 분리.
 // DailyChart.tsx 는 훅 조합 + 툴팁/배지 렌더만 남는다(명령형 API 와 선언형 JSX 의 경계).
-// 자매인 MinuteChart 는 진작 minuteChartHooks 로 갈라져 있었는데 일봉만 안 돼 있었다 — 그 비대칭을 없앤다.
+// 자매인 분봉은 minuteSeries/minuteFraming/minuteOverlays/minuteInteraction 4파일 — 일봉은 양이 절반이라
+// 한 파일이면 족하다. 마우스 정책은 candleInteraction, 골격 수명주기는 useSkeletonPointSet 을 분봉과 공유.
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
     LineStyle,
@@ -12,19 +13,17 @@ import {
     type UTCTimestamp,
 } from "lightweight-charts";
 import { RISE_FILL, FALL_FILL, highMarkerColor } from "./chartUtils.js";
-import { isModifiedClick, type ChartClickParam } from "./chartShell.js";
-import { buildCandleAmountSeries, extendsPrevBars, findLineNearY, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
+import { buildCandleAmountSeries, extendsPrevBars, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
+import { useCandleInteraction } from "./candleInteraction.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
-import { useLatest } from "../lib/useLatest.js";
 import { type VertLines } from "./vertLine.js";
-import { EMPTY_SKELETON, type SkeletonPath } from "./skeletonPath.js";
+import { EMPTY_SKELETON, useSkeletonPointSet, type SkeletonPath } from "./skeletonPath.js";
 import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 
 const LEFT_MARGIN_BARS = 3; // 좌측 여백(빈 논리 인덱스)
 const RIGHT_MARGIN_BARS = 10; // 우측 여백 — 가격선 라벨(D/M)이 오늘 봉을 가리지 않게
-const LINE_HIT_PX = 6; // 우클릭이 "이 선을 지운다"로 해석되는 세로 허용 오차
 
 /** 날짜 → 봉 조회 맵. 항상 존재(초기값 빈 맵)이라 current 가 null 이 아니다. */
 export type DailyPointMap = { readonly current: Map<string, DailyPoint> };
@@ -175,8 +174,8 @@ export function useDailyVisibleRange(
 }
 
 /**
- * 마우스 상호작용 — hover 추적 · 클릭(날짜검색/가격캡처) · 더블클릭 · 우클릭(선 삭제/추가).
- * 구독은 마운트 1회만 하고, 콜백·무장상태는 매 렌더 ref 로 최신화한다(재구독 없이 최신 클로저).
+ * 마우스 상호작용 — 공통 정책(candleInteraction)에 일봉의 차이만 주입하는 어댑터.
+ * 일봉의 몫: 시각=string(날짜)·가격 축이 raw 원화라 캡처/선 판정 모두 환산 없음·주행동=날짜검색.
  */
 export function useDailyInteraction(args: {
     chartRef: RefObject<IChartApi | null>;
@@ -193,72 +192,33 @@ export function useDailyInteraction(args: {
     captureArmed: boolean;
 }): void {
     const { chartRef, containerRef, series, mapRef } = args;
-    const hoveredTimeRef = useRef<string | null>(null);
-    // 리스너는 마운트에 한 번 붙고 args 는 매 렌더 바뀐다 — ref 하나로 최신을 본다(분봉 훅과 같은 방식).
-    const cb = useLatest(args);
-
-    useEffect(() => {
-        const chart = chartRef.current;
-        const el = containerRef.current;
-        if (!chart || !el) return;
-        const onMove = (param: { time?: unknown }): void => {
-            hoveredTimeRef.current = typeof param.time === "string" ? param.time : null;
-        };
-        chart.subscribeCrosshairMove(onMove);
-        // 봉 → 그 날짜로 검색 모드. param.time = 일봉 날짜 문자열(빈 영역이면 undefined).
-        const searchAt = (param: ChartClickParam): void => {
-            if (typeof param.time === "string") cb.current.onCandleClick?.(param.time);
-        };
-        // 무장(가격 조건 편집 중) 시 좌클릭 = 그 y좌표 가격을 캡처(캔들 pane0만) — 날짜검색 억제.
-        // 아니면 ctrl+클릭만 날짜검색(맨 좌클릭은 팬 몫).
-        const onClick = (param: ChartClickParam): void => {
-            if (cb.current.captureArmed) {
-                if (cb.current.onPickPrice && param.point && (param.paneIndex ?? 0) === 0) {
-                    const price = series.candleRef.current?.coordinateToPrice(param.point.y);
-                    if (price != null) cb.current.onPickPrice(price as number);
-                }
-                return; // 무장 중엔 클릭이 캡처 전용
-            }
-            if (isModifiedClick(param)) searchAt(param);
-        };
-        // 더블클릭 = ctrl+클릭과 동등. 무장 중엔 캡처가 클릭을 독점하므로 날짜검색으로 새지 않게 막는다.
-        const onDblClick = (param: ChartClickParam): void => {
-            if (!cb.current.captureArmed) searchAt(param);
-        };
-        chart.subscribeClick(onClick);
-        chart.subscribeDblClick(onDblClick);
-        const onCtx = (e: MouseEvent): void => {
-            e.preventDefault();
-            const candle = series.candleRef.current;
-            const y = e.clientY - el.getBoundingClientRect().top;
-            // 1) 기존 선 근처 우클릭 → 그 선 삭제. 판정은 분봉과 같은 규칙(findLineNearY) — 환산만 raw 가격.
-            //    알람선(kind A — 규칙/draft 소유)은 판정에서 뺀다: 우클릭 삭제 대상이 아닌데 근처를 가로채면
-            //    그 자리의 D 선 토글이 소리 없이 막힌다.
-            if (candle) {
-                const hit = findLineNearY(cb.current.lines.filter((l) => l.kind !== "A"), y, LINE_HIT_PX, (line) => {
-                    const ly = candle.priceToCoordinate(line.price);
-                    return ly == null ? null : (ly as number);
-                });
-                if (hit) {
-                    if (cb.current.onLineContext) cb.current.onLineContext(hit, { x: e.clientX, y: e.clientY });
-                    else cb.current.onRemoveLine(hit);
-                    return;
-                }
-            }
-            // 2) 아니면 hover 봉 컨텍스트 — 복기는 메뉴(가격선 값 선택·파라미터 지정), 실시간은 고가 선 토글.
-            const t = hoveredTimeRef.current;
-            const p = t ? mapRef.current.get(t) : null;
-            if (p) cb.current.onRightClick(p.time, { x: e.clientX, y: e.clientY });
-        };
-        el.addEventListener("contextmenu", onCtx);
-        return () => {
-            chart.unsubscribeCrosshairMove(onMove);
-            chart.unsubscribeClick(onClick);
-            chart.unsubscribeDblClick(onDblClick);
-            el.removeEventListener("contextmenu", onCtx);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    useCandleInteraction<string>({
+        chartRef,
+        containerRef,
+        lines: args.lines,
+        // param.time = 일봉 날짜 문자열(빈 영역이면 undefined).
+        resolveTime: (t) => (typeof t === "string" ? t : null),
+        // 무장 좌클릭 — 일봉은 가격 축이라 y좌표 → raw 가격 그대로.
+        priceOfY: (y) => {
+            const price = series.candleRef.current?.coordinateToPrice(y);
+            return price == null ? null : (price as number);
+        },
+        // 우클릭 선 판정 — 환산 없이 raw 가격 → y좌표.
+        lineYOf: (line) => {
+            const ly = series.candleRef.current?.priceToCoordinate(line.price);
+            return ly == null ? null : (ly as number);
+        },
+        // 봉 → 그 날짜로 검색 모드.
+        onPrimaryAction: (date) => args.onCandleClick?.(date),
+        onRightClickAt: (date, at) => {
+            const p = mapRef.current.get(date);
+            if (p) args.onRightClick(p.time, at);
+        },
+        onRemoveLine: args.onRemoveLine,
+        onLineContext: args.onLineContext,
+        onPickPrice: args.onPickPrice,
+        captureArmed: args.captureArmed,
+    });
 }
 
 /** 가격선(D/A) 렌더 — 일봉은 가격 축이라 raw 가격 그대로. 그리기는 usePriceLineSet. */
@@ -320,10 +280,9 @@ export function useSearchDateLine(chartRef: RefObject<IChartApi | null>, series:
  * 그리기는 SkeletonPath primitive 가 한다 — **한 캔들에 점이 여럿**일 수 있어서(시→고→종 = 윗꼬리 슈팅)
  * 시각당 한 점만 받는 LineSeries 로는 그 점들이 화면에서 사라진다(skeletonPath.ts 주석 참조).
  * 점 하나만 찍어도 원이 보이고, 파생된 순번이 함께 적힌다(순서는 입력이 아니라 계산이라 확인이 필요하다).
+ * 프리미티브에 미는 수명주기는 분봉과 공용(useSkeletonPointSet) — 일봉은 가격 축이라 환산 없이 그대로.
  */
 export function useSkeletonOverlay(series: DailySeries, pivots: readonly { date: string; price: number }[] = EMPTY_SKELETON, visible: boolean = true): void {
-    useEffect(() => {
-        series.skeletonRef.current?.setPoints(visible ? pivots.map((p) => ({ time: p.date, price: p.price })) : []);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pivots, visible]);
+    const pts = useMemo(() => (visible ? pivots.map((p) => ({ time: p.date, price: p.price })) : []), [pivots, visible]);
+    useSkeletonPointSet(series.skeletonRef, pts);
 }

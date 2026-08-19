@@ -4,18 +4,16 @@ import { kstHHmm } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { FloatingTooltip } from "./tooltip.js";
 import { MarkerCard, OhlcTooltip } from "./MinuteChartTooltips.js";
+import { useMinuteSeries, useMinuteSeriesData } from "./minuteSeries.js";
+import { useMinuteVisibleRange } from "./minuteFraming.js";
 import {
     useMarkerOverlay,
     useMarkerVertLines,
-    useMinuteInteraction,
-    useMinuteSeries,
-    useMinuteSeriesData,
-    useMinuteVisibleRange,
     useMinuteSkeletonOverlay,
     usePercentPriceLines,
-    GROUP_MARKER_ATTR,
     type SavedPointInput,
-} from "./minuteChartHooks.js";
+} from "./minuteOverlays.js";
+import { useMinuteInteraction, GROUP_MARKER_ATTR } from "./minuteInteraction.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import type { Group } from "../api/groups.js";
@@ -108,8 +106,9 @@ function MarkerTriangle({ fill, stroke, active = false }: { fill: string; stroke
 }
 
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
-// 데이터는 이미 파생된 MinutePoint[](%/원). 명령형(lightweight-charts) 배선은 minuteChartHooks 의
-// 훅들이 담당하고, 여기는 훅 조합 + 오버레이(타점 ▼·정보 카드)·툴팁 렌더만.
+// 데이터는 이미 파생된 MinutePoint[](%/원). 명령형(lightweight-charts) 배선은 minuteSeries(수명주기·
+// 데이터)·minuteFraming(표시범위)·minuteOverlays(세로선·가격선·골격)·minuteInteraction(마우스) 훅들이
+// 담당하고, 여기는 훅 조합 + 오버레이(타점 ▼·정보 카드)·툴팁 렌더만.
 // (골격 미지정의 안정 참조는 오버레이 훅 기본값 — skeletonPath EMPTY_SKELETON — 이 담당한다.)
 
 export function MinuteChart({

@@ -10,6 +10,7 @@
 // **순번을 함께 적는다.** 골격은 순서를 입력하지 않고 파생한다(시→고→종은 정리, 캔들 간은 날짜) — 그래서
 // 사용자는 자기가 찍은 점들이 **어떤 순서로 읽혔는지** 화면에서 확인할 방법이 필요하다. 이 숫자가 그 확인이고,
 // 서버 형태 계산이 보는 순서와 같은 규칙(도메인 sortPivots)으로 정렬된 결과다.
+import { useEffect, type RefObject } from "react";
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, SeriesType, Time } from "lightweight-charts";
 
 // fancy-canvas 타입이 lightweight-charts 에서 재노출되지 않아 최소 구조만 로컬 선언(vertLine.ts 와 같은 우회).
@@ -178,4 +179,15 @@ export class SkeletonPath {
 /** attachPrimitive/detachPrimitive 에 넘기기 위한 캐스트(fancy-canvas 타입 미노출 우회 — vertLine 과 동일). */
 export function asSkeletonPrimitive(v: SkeletonPath): ISeriesPrimitive<Time> {
     return v as unknown as ISeriesPrimitive<Time>;
+}
+
+/**
+ * 프리미티브에 점 한 벌을 미는 수명주기 훅 — 일봉/분봉 골격 오버레이가 이 한 곳을 공유한다.
+ * 단위 환산(분봉 %)·표시 여부는 호출자가 useMemo 로 끝내고 **결과 배열**만 넘긴다 — 참조가
+ * 바뀔 때만 다시 민다(usePriceLineSet 과 같은 관계: 무엇을 그릴지는 소비자, 수명주기는 여기).
+ */
+export function useSkeletonPointSet(skeletonRef: RefObject<SkeletonPath | null>, points: SkeletonPointSpec[]): void {
+    useEffect(() => {
+        skeletonRef.current?.setPoints(points);
+    }, [points, skeletonRef]);
 }
