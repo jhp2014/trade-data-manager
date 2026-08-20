@@ -6,13 +6,12 @@
 //                                   rev 일치 + since 있으면 델타(minute >= since), 아니면 풀.
 //   POST /tape/backfill {code}      수동 메우기 — 조건 이탈 구멍을 보고 싶을 때만(force 재백필).
 import { Controller, Get, Post, Body, Query, Inject, BadRequestException } from "@nestjs/common";
-import { kstToday } from "@trade-data-manager/market";
+import { isCanonicalStockCode, kstToday } from "@trade-data-manager/market";
 import type { LiveTapeView, LiveTapeStock } from "@trade-data-manager/wire";
 import { LIVE_ENGINE, LIVE_TAPE } from "../tokens.js";
 import type { LiveEngine } from "../engine/engine.js";
 import type { LiveTape } from "./tape.js";
 
-const CODE_RE = /^\d{6}$/;
 /** 소수 둘째 자리 반올림 — 복기 파생(r2)과 같은 정밀도. */
 const r2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -58,7 +57,7 @@ export class TapeController {
     @Post("backfill")
     backfill(@Body() body: { code?: string }): { ok: true } {
         const code = body?.code;
-        if (!code || !CODE_RE.test(code)) throw new BadRequestException("code 형식(6자리 숫자)");
+        if (!code || !isCanonicalStockCode(code)) throw new BadRequestException("code 형식(6자리 영숫자)");
         this.tape.requestBackfill(code, kstToday(), Date.now(), true);
         return { ok: true };
     }

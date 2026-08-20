@@ -118,7 +118,12 @@ export function LiveTapePanel({ panelId }: { panelId: string }): JSX.Element {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
             <ScrollRow gap={6} style={{ padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)", whiteSpace: "nowrap" }}>
-                {chips.length === 0 && <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{code ? `${code} 테마 없음(시트 미배정)` : "종목을 선택하세요"}</span>}
+                {chips.length === 0 && (
+                    themesQ.isError
+                        // 조회 실패를 "미배정"으로 둔갑시키지 않는다 — 검증 400·서버 다운은 별개 상태.
+                        ? <span style={{ fontSize: 12, color: "var(--rise)" }}>{`테마 조회 오류: ${(themesQ.error as Error).message}`}</span>
+                        : <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{code ? `${code} 테마 없음(시트 미배정)` : "종목을 선택하세요"}</span>
+                )}
                 {chips.map((t) => (
                     <button
                         key={t}

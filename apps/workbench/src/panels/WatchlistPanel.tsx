@@ -4,7 +4,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { LiveStock } from "@trade-data-manager/wire";
-import { availablePredicates, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
+import { availablePredicates, isCanonicalStockCode, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
 import { useLiveSnapshot } from "../lib/LiveSnapshotContext.js";
 import {
     addWatch,
@@ -93,7 +93,7 @@ export function WatchlistPanel(): JSX.Element {
     }, [snapshot]);
 
     const submitAdd = (code: string): void => {
-        if (!/^\d{6}$/.test(code)) return;
+        if (!isCanonicalStockCode(code)) return;
         addM.mutate(code);
     };
 

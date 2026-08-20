@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { availablePredicates, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
+import { availablePredicates, isCanonicalStockCode, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
 import {
     addUniverseBlacklist,
     fetchUniverse,
@@ -137,14 +137,14 @@ export function UniverseRulesPanel(): JSX.Element {
                     <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
                         <input
                             value={blCode}
-                            onChange={(e) => setBlCode(e.target.value.trim())}
-                            onKeyDown={(e) => { if (e.key === "Enter" && /^\d{6}$/.test(blCode)) { addBl.mutate({ code: blCode }); setBlCode(""); } }}
+                            onChange={(e) => setBlCode(e.target.value.trim().toUpperCase())}
+                            onKeyDown={(e) => { if (e.key === "Enter" && isCanonicalStockCode(blCode)) { addBl.mutate({ code: blCode }); setBlCode(""); } }}
                             placeholder="종목코드 직접 입력"
                             style={{ width: 130, fontSize: 11, padding: "3px 6px", color: "var(--text-primary)", background: "var(--bg-tertiary)", border: "none", borderRadius: 4, outline: "none" }}
                         />
                         <button
-                            onClick={() => { if (/^\d{6}$/.test(blCode)) { addBl.mutate({ code: blCode }); setBlCode(""); } }}
-                            disabled={!/^\d{6}$/.test(blCode)}
+                            onClick={() => { if (isCanonicalStockCode(blCode)) { addBl.mutate({ code: blCode }); setBlCode(""); } }}
+                            disabled={!isCanonicalStockCode(blCode)}
                             style={{ border: "none", background: "var(--bg-tertiary)", color: "var(--text-secondary)", borderRadius: 4, padding: "3px 10px", cursor: "pointer", font: "inherit", fontSize: 11 }}
                         >
                             추가

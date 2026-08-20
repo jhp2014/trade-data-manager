@@ -1,8 +1,7 @@
 import { Controller, Get, Post, Query, Inject, BadRequestException } from "@nestjs/common";
+import { isCanonicalStockCode } from "@trade-data-manager/market";
 import { LIVE_ENGINE } from "./tokens.js";
 import type { LiveEngine } from "./engine/engine.js";
-
-const CODE_RE = /^\d{6}$/;
 
 // 시트 테마 멤버십 온디맨드 재로드 — 워크벤치 배정(apps/api 경유) 또는 시트 직접편집 후
 // 실시간 보드 분류·칩을 즉시 반영. live 는 시트 읽기전용(write 는 apps/api 경로)이라 read 캐시만 갱신.
@@ -20,7 +19,7 @@ export class ThemeController {
 
     @Get("of")
     of(@Query("code") code?: string): { themes: string[] } {
-        if (!code || !CODE_RE.test(code)) throw new BadRequestException("code 형식(6자리 숫자)");
+        if (!code || !isCanonicalStockCode(code)) throw new BadRequestException("code 형식(6자리 영숫자)");
         return { themes: this.engine.themesOf(code) };
     }
 }

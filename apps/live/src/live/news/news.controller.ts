@@ -1,6 +1,7 @@
 // 실시간 뉴스 엔드포인트 — GET /news (워크벤치는 /live 프록시 경유 → /live/news).
 // apps/api 의 /news/hts(DB, 복기)와 같은 표시 계약(HtsNewsItem)이지만 소스가 KIS 라이브 REST.
 import { Controller, Get, Query, Inject, BadRequestException } from "@nestjs/common";
+import { isCanonicalStockCode } from "@trade-data-manager/market";
 import type { NewsHeadline } from "@trade-data-manager/market";
 import type { HtsNewsItem } from "@trade-data-manager/wire";
 import { LIVE_NEWS } from "../tokens.js";
@@ -8,7 +9,6 @@ import type { LiveNewsService } from "./liveNews.js";
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HMS_RE = /^\d{2}:\d{2}:\d{2}$/;
-const CODE_RE = /^\d{6}$/;
 
 // NewsHeadline → 표시용 wire — 패널이 소스(라이브/DB) 무관하게 같은 모양을 렌더.
 function toWire(h: NewsHeadline): HtsNewsItem {
@@ -31,7 +31,7 @@ export class NewsController {
         @Query("beforeDate") beforeDate?: string,
         @Query("beforeTime") beforeTime?: string,
     ): Promise<HtsNewsItem[]> {
-        if (code && !CODE_RE.test(code)) throw new BadRequestException("code 형식(6자리 숫자)");
+        if (code && !isCanonicalStockCode(code)) throw new BadRequestException("code 형식(6자리 영숫자)");
         let anchor: { date: string; time: string } | undefined;
         if (beforeDate || beforeTime) {
             if (!beforeDate || !YMD_RE.test(beforeDate)) throw new BadRequestException("beforeDate 형식(YYYY-MM-DD)");

@@ -10,16 +10,14 @@
 //  POST   /universe/blacklist   {code,scope?} — 당일 블랙리스트(telegram=텔레그램만/all=로그까지)
 //  DELETE /universe/blacklist/:code
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, Inject, BadRequestException, NotFoundException } from "@nestjs/common";
-import { boardPredicateDef, predicateAvailable, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
+import { boardPredicateDef, isCanonicalStockCode, predicateAvailable, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
 import type { AlarmPredicateInstance, AlarmRule, AlertLogView, UniverseView, WatchlistView } from "./types.js";
 import { AlertConfigStore } from "./configStore.js";
 import type { AlertsRuntime } from "./alertsRuntime.js";
 import { ALERT_CONFIG, ALERTS } from "../tokens.js";
 
-const CODE_RE = /^\d{6}$/;
-
 function assertCode(code?: string): asserts code is string {
-    if (!code || !CODE_RE.test(code)) throw new BadRequestException("code 형식(6자리 숫자)");
+    if (!code || !isCanonicalStockCode(code)) throw new BadRequestException("code 형식(6자리 영숫자)");
 }
 
 // ── 규칙 검증 — 술어 kind 는 core 레지스트리에 있고 알람 소스(LIVE_ALARM_FIELDS)에서 가용해야. ──
