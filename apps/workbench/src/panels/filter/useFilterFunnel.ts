@@ -25,17 +25,15 @@ import type { LabelLookup } from "./label.js";
 import type { ResolvedSet, SetResolveCtx } from "./resolveSet.js";
 import { useSetViews, type ViewedSet } from "./useSetViews.js";
 import {
-    activeStages, canExpand, displayGrain, funnelOrder, isPredicateDead, resolveAutoGrain,
+    activeStages, funnelOrder, isPredicateDead, resolveAutoGrain,
     type FilterStage, type Grain, type GrainLookup, type OrderedStage,
 } from "./stage.js";
 
 export interface FunnelView {
     /** 사전(그룹·축·후보·타점)이 다 오기 전 — 이때 숫자를 읽으면 안 된다. */
     isLoading: boolean;
-    /** 표시 해상도. 자동(걸린 단계 중 가장 가는 것) + 손으로 아래로만. */
+    /** 표시 해상도 — **자동 하나**(걸린 단계 중 가장 가는 층위). 손잡이는 없다(stage.ts 주석 참고). */
     grain: Grain;
-    /** 손으로 타점까지 펼칠 수 있나(자동이 이미 타점이면 더 내려갈 데가 없다). */
-    canExpandToPoints: boolean;
     /** 분모. **편집에 따라 조용히 변하므로 화면에 상시 띄운다**(앵커 하나 지우면 그 하루가 빠진다). */
     universe: number;
     /** 전 단계(빈 것·꺼진 것 포함) — 하루가 먼저, 층위 접힘 포함. 화면의 칸 나누기가 이걸 그대로 쓴다. */
@@ -78,7 +76,6 @@ let materialsSeq = 0;
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
 export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench(selectFilterStages);
-    const expandToPoints = useWorkbench((s) => s.filterExpandToPoints);
     const savedSets = useWorkbench((s) => s.savedSets);
 
     const gv = useGroups();
@@ -146,8 +143,7 @@ export function useFilterFunnel(): FunnelView {
     const active = useMemo(() => activeStages(stagesOrdered.map((e) => e.stage)), [stagesOrdered]);
 
     // 사전이 온 뒤에만 해상도를 확정한다 — 로딩 중의 모름은 "없음"이 아니다.
-    const auto = isLoading ? "day" : resolveAutoGrain(stages, grainLook);
-    const grain = displayGrain(auto, expandToPoints);
+    const grain = isLoading ? "day" : resolveAutoGrain(stages, grainLook);
 
     const items = useMemo<FunnelItem[]>(() => {
         if (isLoading) return [];
@@ -174,7 +170,7 @@ export function useFilterFunnel(): FunnelView {
     /**
      * 리졸버 재료 한 벌 — **재료가 하나라도 바뀌면 새로 선다.** useSetViews 의 리졸버·뷰 캐시 수명이
      * 이 객체의 참조 동일성에 매여 있다(낡은 ctx 로 캐시가 살아남으면 낡은 집합을 돌려준다).
-     * 활성 슬롯의 정산(result)을 activeFilter 로 그대로 꽂는다 — 이유는 SetResolveCtx 필드 주석 참조.
+     * 작업 깔때기의 정산(result)을 activeFilter 로 그대로 꽂는다 — 이유는 SetResolveCtx 필드 주석 참조.
      */
     const setCtx = useMemo<SetResolveCtx>(
         () => ({
@@ -207,7 +203,6 @@ export function useFilterFunnel(): FunnelView {
         [gv.groupByName, ax.axes],
     );
 
-    const canExpandToPoints = canExpand(auto);
     const universe = items.length;
 
     // 계약 객체는 필드가 실제로 바뀔 때만 새로 선다 — Provider 로 나가는 값이라, 매 렌더 새 객체면
@@ -216,7 +211,6 @@ export function useFilterFunnel(): FunnelView {
         () => ({
             isLoading,
             grain,
-            canExpandToPoints,
             universe,
             stagesOrdered,
             active,
@@ -226,6 +220,6 @@ export function useFilterFunnel(): FunnelView {
             resolveSet,
             viewOf,
         }),
-        [isLoading, grain, canExpandToPoints, universe, stagesOrdered, active, result, deadStageIds, labelLook, resolveSet, viewOf],
+        [isLoading, grain, universe, stagesOrdered, active, result, deadStageIds, labelLook, resolveSet, viewOf],
     );
 }

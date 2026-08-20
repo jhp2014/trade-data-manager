@@ -48,14 +48,14 @@ const read = (seed: Seed = SEED): ReturnType<typeof useFilterFunnel> =>
 const dateStage = (id: string, from: string, to: string, enabled = true): FilterStage =>
     ({ id, enabled, predicates: [{ kind: "date", ranges: [{ from, to }] }] });
 
-// 단계는 활성 슬롯에 산다(filterStages 필드는 selectFilterStages 파생으로 대체됨) — 슬롯 1에 심는다.
-const setStages = (stages: FilterStage[]): void => { act(() => { useWorkbench.setState({ filterSlots: [stages, [], []], filterSlotIndex: 0 }); }); };
+// 조건 한 벌은 하나다 — 소비자는 selectFilterStages 로만 읽는다(저장 모양은 슬라이스의 사정).
+const setStages = (stages: FilterStage[]): void => { act(() => { useWorkbench.setState({ filterStages: stages }); }); };
 
 beforeEach(() => {
-    useWorkbench.setState({ filterSlots: [[], [], []], filterSlotIndex: 0, filterExpandToPoints: false, funnelSelection: null });
+    useWorkbench.setState({ filterStages: [], funnelSelection: null });
 });
 afterEach(() => {
-    useWorkbench.setState({ filterSlots: [[], [], []], filterSlotIndex: 0, filterExpandToPoints: false, funnelSelection: null });
+    useWorkbench.setState({ filterStages: [], funnelSelection: null });
     localStorage.clear();
     vi.unstubAllGlobals();
 });
@@ -121,8 +121,9 @@ describe("유니버스 — 분모는 편집에 따라 조용히 변한다", () =
         expect(v.viewOf(null).viewedItems).toHaveLength(3);
     });
 
-    it("타점으로 펼치면 분모가 타점 수 — 타점 0인 하루는 항목 하나로 남는다", () => {
-        act(() => { useWorkbench.setState({ filterExpandToPoints: true }); });
+    it("해상도가 타점이면 분모도 타점 수 — 타점 0인 하루는 항목 하나로 남는다", () => {
+        // 손잡이("타점으로")는 폐지됐다 — 해상도는 걸린 조건이 정한다(시각 조건 = 타점 층위).
+        setStages([{ id: "s1", enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:00" }] }] }]);
         // A 2 + B 1 + C(타점 없음) 1 = 4
         expect(read().universe).toBe(4);
     });

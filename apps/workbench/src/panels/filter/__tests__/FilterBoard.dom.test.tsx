@@ -85,7 +85,7 @@ const drag = (el: HTMLElement, from: number, to: number): void => {
 };
 const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(useWorkbench.getState());
 
-const RESET = { filterSlots: [[], [], []], filterSlotIndex: 0, filterExpandToPoints: false, funnelSelection: null, selectedSetRef: null, savedSets: [] };
+const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [] };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
@@ -258,8 +258,7 @@ describe("선택 집합 오버레이 — 멤버는 강조색, 나머지 회색�
 
     it("필터가 걸리면 생존 멤버의 자리만 강조되고, 배경 회색은 더 죽는다(전경/배경 분리)", () => {
         useWorkbench.setState({
-            filterSlots: [[{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }], [], []],
-            filterSlotIndex: 0,
+            filterStages: [{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }],
         });
         const { container } = renderBoard(OVL_SEED);
         expect(memberSpans(container)).toHaveLength(1); // 자리 둘 중 A@D0 하나만

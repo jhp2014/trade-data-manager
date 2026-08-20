@@ -173,20 +173,12 @@ export function funnelOrder(stages: readonly FilterStage[], look: GrainLookup): 
     return [...entries.filter((e) => e.grain === "day"), ...entries.filter((e) => e.grain === "point")];
 }
 
-/**
- * 표시 해상도 — 자동 위치에서 **아래로만** 내려갈 수 있다(하루 → 타점).
- *
- * ⚠ 위로(타점 → 하루)는 막는다. 올리려면 "타점 3개는 통과, 2개는 탈락인 하루는 통과인가"라는 롤업
- * 규칙이 필요한데 정답이 없고, 어떻게 정하든 그 임의의 규칙이 5칸 숫자에 조용히 섞인다.
- * 아래로는 안전하다 — 하루 조건을 타점에 주면 그 하루의 모든 타점이 같은 값을 받고, 실제로 같은 값이라
- * 정직한 반복이다. 그래서 사다리는 사실상 토글 하나("타점으로 펼치기")로 줄어든다.
- */
-export function displayGrain(auto: Grain, expandToPoints: boolean): Grain {
-    return auto === "point" ? "point" : expandToPoints ? "point" : "day";
-}
-
-/** 내리기 손잡이를 줄 수 있나 — 이미 타점이면 더 내려갈 데가 없다. */
-export const canExpand = (auto: Grain): boolean => auto === "day";
+// 표시 해상도는 **자동 하나**다(resolveAutoGrain — 걸린 조건 중 가장 가는 층위).
+// 한때 "타점으로 펼치기" 손잡이가 있었지만 걷어냈다: 결과 목록이 사라진 뒤 그 토글의 남은 효과는
+// 탤리 숫자의 단위뿐이었고(구독 패널은 viewOf 계약이 이미 하루→타점 전개를 한다), 같은 조건의
+// 같은 화면이 손잡이 하나로 다른 수를 보이는 대가만 남았다.
+// ⚠ 반대 방향(타점 → 하루)은 애초에 없었다 — 롤업 규칙("타점 3 통과·2 탈락인 하루는?")에 정답이 없고,
+// 어떻게 정하든 그 임의의 규칙이 5칸 숫자에 조용히 섞인다.
 
 // ── 단계 구성 제약 — 한 단계는 **한 종류·한 층위** ──────────────────────────
 //
@@ -319,7 +311,7 @@ function migrateBand(band: RankBand): RankBand {
 
 // ── 술어 payload 검증 — 겉껍데기(kind)만 보고 속을 캐스팅하면, 깨진 저장본이 화면에 멀쩡히 뜬 채
 // 평가기에서 터진다(expr:{} 가 groups.flatMap 에서 크래시). 속까지 모양을 확인하고, 안 맞으면 null
-// (= 슬롯 통째 폐기 — 위 parseStages 원칙 그대로).
+// (= 그 저장본 통째 폐기 — 위 parseStages 원칙 그대로).
 
 const isBound = (o: unknown): o is AxisBound => {
     if (typeof o !== "object" || o === null) return false;

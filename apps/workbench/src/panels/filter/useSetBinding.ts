@@ -37,7 +37,7 @@ export function useLinkedSet(): LinkedSet {
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const view = funnel.viewOf(null);
-    // 라벨은 **지금 따라가는 곳**을 말한다 — "작업 깔때기"는 집합 목록(SetListSidebar)의 어휘와 같다.
+    // 라벨은 **지금 따라가는 곳**을 말한다 — "작업 깔때기"는 집합 칩(SetChips)의 어휘와 같다.
     const label = selectedSetRef === null ? "작업 깔때기" : setRefLabel(selectedSetRef, savedSets);
     return { view, label };
 }

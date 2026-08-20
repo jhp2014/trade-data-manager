@@ -39,7 +39,7 @@ const groupRow = (name: string): HTMLElement =>
     screen.getAllByText(name).map((e) => e.closest("tr")).find((t): t is HTMLTableRowElement => t !== null)!;
 
 beforeEach(() => {
-    useWorkbench.setState({ pick: null, filterSlots: [[], [], []], filterSlotIndex: 0, funnelSelection: null, skeletonSelection: new Set(), activePoint: null });
+    useWorkbench.setState({ pick: null, filterStages: [], funnelSelection: null, skeletonSelection: new Set(), activePoint: null });
 });
 afterEach(() => {
     useWorkbench.setState({ pick: null, skeletonSelection: new Set(), activePoint: null });

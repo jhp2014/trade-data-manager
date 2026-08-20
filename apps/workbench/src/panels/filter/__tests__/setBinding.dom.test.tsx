@@ -44,7 +44,7 @@ function renderPanel(): void {
 
 beforeEach(() => {
     useWorkbench.setState({
-        pick: null, filterSlots: [[], [], []], filterSlotIndex: 0, funnelSelection: null, skeletonSelection: new Set(), activePoint: null,
+        pick: null, filterStages: [], funnelSelection: null, skeletonSelection: new Set(), activePoint: null,
         savedSets: [], selectedSetRef: null, openedSetId: null,
         gazeMonths: null, gazePresence: [], // 시선 전체 해제 — 시선 검사는 각 테스트가 명시로 건다
     });

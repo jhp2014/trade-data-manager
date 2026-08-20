@@ -126,6 +126,43 @@ export function ScrollRow({ scroll = true, gap = 4, align = "center", title, cla
 }
 
 /**
+ * 시선 칩 — **"지금 무엇을 보고 있나"**를 말하는 작은 알약. 집합·월처럼 고른 상태가 줄에 서고,
+ * 누르면 고르는 판(팝오버·서랍)이 열린다: 줄은 요약만 들고 긴 목록은 판이 든다.
+ *
+ * 켜짐이 굵기가 아니라 **채움**인 이유: 여기는 상태를 말하는 자리라 "고른 것"과 "고를 수 있는 것"이
+ * 한눈에 갈려야 한다(TextToggle 의 굵기 규약은 손잡이 줄의 것이다 — 자리가 다르면 표기도 다르다).
+ */
+export function GazeChip({ label, active, color, title, tabular = false, dashed = false, disabled = false, onClick, onContextMenu }: {
+    label: ReactNode;
+    active: boolean;
+    /** 켜짐 채움색(기본 accent) — 채널마다 색이 다른 자리(집합=핀 보라)가 있다. */
+    color?: string;
+    title?: string;
+    /** 숫자가 든 칩(월·카운트) — 자리가 안 흔들리게. */
+    tabular?: boolean;
+    /** 아직 없는 것을 만드는 칩(+ 저장) — 점선으로 "빈 자리"라고 말한다. */
+    dashed?: boolean;
+    disabled?: boolean;
+    onClick?: (e: React.MouseEvent) => void;
+    onContextMenu?: (e: React.MouseEvent) => void;
+}): JSX.Element {
+    return (
+        <button onClick={onClick} onContextMenu={onContextMenu} title={title} disabled={disabled}
+            className={tabular ? "tabular" : undefined}
+            style={{
+                flexShrink: 0, cursor: disabled ? "default" : "pointer", font: "inherit", fontSize: 11,
+                padding: "1px 8px", borderRadius: 9, whiteSpace: "nowrap",
+                border: `0.5px ${dashed ? "dashed" : "solid"} ${active ? "transparent" : "var(--border-strong)"}`,
+                background: active ? (color ?? "var(--accent-primary)") : "transparent",
+                color: active ? "#fff" : "var(--text-secondary)", fontWeight: active ? 700 : 400,
+                opacity: disabled ? 0.45 : 1,
+            }}>
+            {label}
+        </button>
+    );
+}
+
+/**
  * 패널 머리글 한 줄 — ScrollRow 에 머리글의 겉모습(경계선·바탕·안 줄어듦)을 입힌 것.
  * 넘침 동작은 전부 ScrollRow 것이다.
  */

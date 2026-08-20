@@ -2,7 +2,7 @@
 //
 // 슬라이스는 **모듈 로드 시점**에 localStorage 를 읽어 초기 상태를 만들므로, 테스트마다
 // ① 스토리지 스텁을 먼저 깔고 ② 모듈을 새로 불러온다(vi.resetModules + 동적 import).
-// 스토어 통째 로드는 의도다 — putStages·loadSlots 등은 비공개 함수라, 계약은 액션 단위로만 잠근다.
+// 스토어 통째 로드는 의도다 — putStages·loadStages 등은 비공개 함수라, 계약은 액션 단위로만 잠근다.
 import { vi } from "vitest";
 import type { FilterPredicate } from "../panels/filter/stage.js";
 

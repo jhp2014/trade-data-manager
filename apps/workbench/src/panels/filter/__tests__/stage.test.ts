@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-    activeStages, addStage, autoGrain, canAddGroupLiteral, canAddPredicate, canExpand, displayGrain,
+    activeStages, addStage, autoGrain, canAddGroupLiteral, canAddPredicate,
     funnelOrder, isPredicateDead, isPredicateEmpty, moveStage, parseStages, predicateGrain, removeStage,
     renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
@@ -195,23 +195,6 @@ describe("funnelOrder — 하루 단계가 타점 단계보다 앞", () => {
         const out = funnelOrder([ptS, deadS], look);
         expect(out.map((e) => e.stage.id)).toEqual(["x", "p1"]);
         expect(out[0].grain).toBe("day");
-    });
-});
-
-describe("displayGrain — 사다리는 아래로만", () => {
-    it("자동이 하루면 손으로 타점까지 내릴 수 있다", () => {
-        expect(displayGrain("day", false)).toBe("day");
-        expect(displayGrain("day", true)).toBe("point");
-    });
-
-    it("자동이 타점이면 올릴 수 없다 — 롤업 규칙이 정의되지 않는다", () => {
-        expect(displayGrain("point", false)).toBe("point");
-        expect(displayGrain("point", true)).toBe("point");
-    });
-
-    it("내리기 손잡이는 자동이 하루일 때만", () => {
-        expect(canExpand("day")).toBe(true);
-        expect(canExpand("point")).toBe(false);
     });
 });
 

@@ -3,7 +3,7 @@ import { datePred, loadStore, stubStorage } from "../test/funnelStoreHarness.js"
 import { selectFilterStages } from "./filterFunnelSlice.js";
 
 // 저장 집합 슬라이스 — 저장(엎어쓰기)·이관·열기·덮어쓰기·삭제와 선택 포인터 정리.
-// 작업 깔때기(슬롯·시선) 쪽 규칙은 filterFunnelSlice.test 에 있다.
+// 작업 깔때기(조건 한 벌·시선) 쪽 규칙은 filterFunnelSlice.test 에 있다.
 
 beforeEach(() => {
     vi.resetModules();
@@ -77,7 +77,7 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
 });
 
 describe("자립 저장물 — 열기·덮어쓰기·삭제", () => {
-    it("열기 = 조건 사본이 활성 슬롯으로. 이후 편집은 저장물을 안 흔들고, 덮어쓰기가 그 집합 하나만 갱신한다", async () => {
+    it("열기 = 조건 사본이 작업 깔때기로. 이후 편집은 저장물을 안 흔들고, 덮어쓰기가 그 집합 하나만 갱신한다", async () => {
         stubStorage();
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
@@ -111,7 +111,7 @@ describe("자립 저장물 — 열기·덮어쓰기·삭제", () => {
         expect(store.getState().savedSets[0].part).toEqual({ kind: "cell", stageId, cells: ["fail"] });
     });
 
-    it("슬롯 전환·그 집합 삭제는 '열어 둔 집합'을 푼다", async () => {
+    it("그 집합을 지우면 '열어 둔 집합'이 풀린다 — 덮어쓰기 버튼이 없는 것을 가리키면 안 된다", async () => {
         stubStorage();
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
@@ -119,10 +119,6 @@ describe("자립 저장물 — 열기·덮어쓰기·삭제", () => {
         const id = store.getState().savedSets[0].id;
         expect(store.getState().openedSetId).toBe(id); // 저장 직후 = 열어 둔 것
 
-        store.getState().setFilterSlot(1);
-        expect(store.getState().openedSetId).toBeNull();
-
-        store.getState().setFilterSlot(0);
         store.getState().openSet(id);
         store.getState().deleteSet(id);
         expect(store.getState().openedSetId).toBeNull();

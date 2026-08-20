@@ -30,14 +30,14 @@ export interface SetResolveCtx {
     appliedGroupNamesOf: (item: FunnelItem) => readonly string[];
     /** 그룹의 층위. undefined = 지워진 그룹(깨진 참조). */
     groupScope: (name: string) => Grain | undefined;
-    /** 작업 깔때기(활성 슬롯)의 단계들 — survivors·cell 참조의 재료. */
+    /** 작업 깔때기의 단계들(조건 한 벌) — survivors·cell 참조의 재료. */
     activeStages: readonly FilterStage[];
     /** 저장 집합 사전. undefined 반환 = 지워진 집합(깨진 참조). */
     savedSetOf: (id: string) => SavedSet | undefined;
     /**
      * 작업 깔때기의 **이미 끝난 정산** — 깔때기 훅이 방금 만든 것을 그대로 꽂는다.
      * 없으면 여기서 새로 정산하는데, 그러면 같은 조건을 두 번 평가할 뿐 아니라 **grain 이 갈릴 수 있다**:
-     * 훅은 displayGrain("타점으로 펼치기" 반영)으로 펼치고 리졸버 단독으로는 그 토글을 모른다.
+     * 훅은 자동 해상도(걸린 조건 중 가장 가는 층위)로 펼치는데, 리졸버 단독으로는 그 판정 재료가 없다.
      * "연동"과 "최종 생존" 바인딩이 같은 집합이려면 반드시 이 재사용 경로여야 한다.
      */
     activeFilter?: ResolvedFilter;
@@ -131,7 +131,7 @@ const filterMemo = new WeakMap<SetResolveCtx, Map<string | null, ResolvedFilter>
 
 /**
  * 세션 캐시 — 저장 집합의 정산을 **(재료 세대 × 정의)**로 기억한다. ctx 는 깔때기 편집마다 새로 서는데
- * (활성 슬롯이 ctx 의 일부라서), 그때마다 목록의 저장 집합 전부를 재정산하면 무관한 레일 편집 한 번이
+ * (작업 깔때기의 조건이 ctx 의 일부라서), 그때마다 목록의 저장 집합 전부를 재정산하면 무관한 레일 편집 한 번이
  * O(집합 수 × 유니버스)가 된다. 저장 집합의 정산은 제 정의와 재료에만 의존한다 — 세대가 같고 정의가
  * 같으면(JSON 직렬화 일치) 재사용하고, 세대가 바뀌면 통째로 버린다(유니버스·사전·축 값 변경은 반드시 무효).
  * 크기는 저장 집합 수에 유계다 — 작업 깔때기(정의가 편집마다 변함)는 일부러 안 태운다.
@@ -140,7 +140,7 @@ let sessionEpoch: string | undefined;
 const sessionDefCache = new Map<string, ResolvedFilter>();
 
 /**
- * 조건 한 벌을 정산까지. null = 작업 깔때기(활성 슬롯), 문자열 = 저장 집합의 id(**호출 전에 존재 확인**).
+ * 조건 한 벌을 정산까지. null = 작업 깔때기, 문자열 = 저장 집합의 id(**호출 전에 존재 확인**).
  * 작업 깔때기는 **훅의 정산을 재사용**한다(ctx.activeFilter — grain·비용 둘 다의 이유, 필드 주석 참조).
  * ⚠ 단계 순서는 깔때기 화면과 같은 규칙(funnelOrder — 하루 먼저)이어야 한다: 칸(근접 탈락)은 순서
  * 종속이라, 여기만 다른 순서로 접으면 짚은 칸과 다른 집합이 나온다.

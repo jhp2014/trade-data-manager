@@ -105,7 +105,7 @@ export function FilterBoard({ reveal, onlyActive }: {
 
                     return (
                         <div key={grain}>
-                            <GrainSection grain={grain} sticky>
+                            <GrainSection grain={grain}>
                                 {/* 그룹 — 유일하게 리스트인 조건(순서가 없어 레일이 안 된다). 그래도 **레일과 같은 행 격자**에
                                     둔다: 이름 열이 축 이름들과 세로로 맞아야 "축·날짜와 나란한 또 하나의 조건 종류"로 읽힌다. */}
                                 {visible(groupStages.length > 0) && (

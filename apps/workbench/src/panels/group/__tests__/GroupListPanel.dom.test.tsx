@@ -40,8 +40,8 @@ const amp = (name: string): string => (row(name).lastElementChild?.textContent ?
 const pick = (name: string): void => { fireEvent.click(row(name)); };
 const add = (name: string): void => { fireEvent.click(row(name), { ctrlKey: true }); };
 
-beforeEach(() => { useWorkbench.setState({ filterSlots: [[], [], []], filterSlotIndex: 0, filterExpandToPoints: false, funnelSelection: null }); });
-afterEach(() => { useWorkbench.setState({ filterSlots: [[], [], []], filterSlotIndex: 0, funnelSelection: null }); cleanup(); localStorage.clear(); });
+beforeEach(() => { useWorkbench.setState({ filterStages: [], funnelSelection: null }); });
+afterEach(() => { useWorkbench.setState({ filterStages: [], funnelSelection: null }); cleanup(); localStorage.clear(); });
 
 describe("분모 수 — 깔때기와 같은 잣대", () => {
     it("자식 소속이 부모에도 센다(계층 상속) — 깔때기의 적용 집합을 그대로 쓴다", () => {

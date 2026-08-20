@@ -34,7 +34,7 @@ const dateStage = (id: string, from: string, to: string): FilterStage =>
 const groupStage = (id: string, groupId: string): FilterStage =>
     stage(id, [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }]);
 
-// 작업 깔때기(활성 슬롯) = 날짜 ≤ 07-02. 저장 집합 둘 — 같은 조건에서 나온 형제(생존/칸)도 각자 사본이다.
+// 작업 깔때기 = 날짜 ≤ 07-02. 저장 집합 둘 — 같은 조건에서 나온 형제(생존/칸)도 각자 사본이다.
 const activeStages: FilterStage[] = [dateStage("d1", "2026-07-01", "2026-07-02")];
 const savedSets = new Map<string, SavedSet>([
     ["fs1", { id: "fs1", name: "테마 생존", stages: [groupStage("g1", "테마")], part: { kind: "survivors" } }],
@@ -143,7 +143,7 @@ describe("작업 깔때기의 칸 — 짚은 칸의 유일한 합집합 구현",
         expect(codesOf(resolveSetRef({ kind: "survivors" }, empty))).toEqual(["1", "2", "3"]);
     });
 
-    it("⚠ 작업 깔때기는 주입된 정산(activeFilter)을 **그대로 재사용**한다 — 재평가하면 grain('타점으로 펼치기')이 갈리고 비용이 두 배가 된다", () => {
+    it("⚠ 작업 깔때기는 주입된 정산(activeFilter)을 **그대로 재사용**한다 — 재평가하면 grain(자동 해상도)이 갈리고 비용이 두 배가 된다", () => {
         // activeStages 로 재평가하면 날짜 필터라 A·B 가 나올 것 — 주입본이 오면 재사용이 증명된다.
         const injected: SetResolveCtx = {
             ...ctx,
@@ -176,7 +176,7 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
         const n1 = calls();
         expect(n1).toBeGreaterThan(0);
 
-        // 활성 슬롯만 바뀐 새 ctx(레일 편집) — 저장 집합의 정의·재료는 그대로라 정산이 안 돈다.
+        // 작업 깔때기 조건만 바뀐 새 ctx(레일 편집) — 저장 집합의 정의·재료는 그대로라 정산이 안 돈다.
         const edited: SetResolveCtx = { ...base, activeStages: [] };
         expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, edited))).toEqual(["1", "2"]);
         expect(calls()).toBe(n1);
@@ -204,7 +204,7 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
         expect(calls()).toBe(n1); // 날짜 조건은 그룹 판정을 안 부른다 — 낡은 그룹 정산을 안 썼다는 뜻
     });
 
-    it("작업 깔때기(활성 슬롯)는 세션 캐시를 안 탄다 — 편집마다 정의가 달라 세대 안에서 무한히 쌓인다", () => {
+    it("작업 깔때기는 세션 캐시를 안 탄다 — 편집마다 정의가 달라 세대 안에서 무한히 쌓인다", () => {
         const base: SetResolveCtx = { ...ctx, materialsEpoch: "정찰-세대-4" };
         expect(codesOf(resolveSetRef({ kind: "survivors" }, base))).toEqual(["1", "2"]);
         const edited: SetResolveCtx = { ...base, activeStages: [] };

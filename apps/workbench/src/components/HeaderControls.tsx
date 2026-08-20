@@ -10,10 +10,10 @@
 //    손으로 px 을 적지 않으므로 폰트가 바뀌어도 맞는다. 너무 길면 상한에서 잘린다(…).
 // **③ 택1은 순환, 넷부터 팝오버.** 값이 제자리에서 갈리므로 판이 안 열리고 자리도 안 변한다.
 //    "다음이 뭔지 모른다"는 순환의 유일한 약점은 툴팁이 받는다(`클릭 = 진하게`).
-//    **예외 = 나열(segmented).** 순환은 두 가지를 전제한다: 값 갈아타기가 싸고, 지금 값 하나만 보이면
-//    된다는 것. 필터 슬롯처럼 **거쳐 가는 값이 실제로 켜지거나**(1→3 이 2를 진짜 적용한다) 값마다의
-//    **상태를 동시에 봐야 하면**(어느 칸이 찼나) 순환으로는 원리적으로 못 한다 — 그때만 자리를 3배
-//    내주고 나열한다. 둘 다 아니면 choice 다.
+//    ⚠ 한때 **나열(segmented)** 이라는 예외가 있었다 — 거쳐 가는 값이 실제로 켜지거나(슬롯 1→3 이 2를
+//    진짜 적용) 값마다의 상태를 동시에 봐야 하는(어느 칸이 찼나) 자리용이었는데, 유일한 소비자였던
+//    필터 슬롯이 폐지되면서 함께 지웠다. 그런 자리가 다시 생기면 그때 되살리는 게 낫다 — 소비자 없는
+//    예외는 규약을 읽는 사람에게 "이걸 언제 쓰지"만 남긴다.
 //
 // ## 핀
 // 핀 = "헤더에 올린다". 저장은 **언핀 목록**으로 한다(핀 목록이 아니라) — 그래야 나중에 추가된
@@ -79,24 +79,6 @@ export interface ChoiceSpec extends ControlBase {
 }
 
 /**
- * 나열 택1 — 값이 다 서 있고 지금 것만 굵다. 규약 ③의 **예외**라 아무 데나 쓰면 안 된다(위 조건 참고).
- * 값마다 `filled` 로 점을 세울 수 있다 — 점 자리는 비어 있을 때도 **먹여 둔다**(안 그러면 칸이 출렁인다).
- */
-export interface SegmentedSpec extends ControlBase {
-    kind: "segmented";
-    values: readonly {
-        v: string;
-        label: string;
-        /** 이 값에 든 게 있나 — 점으로 선다(자리는 없어도 먹는다). */
-        filled?: boolean;
-        /** 값 하나의 툴팁 — 나열은 값마다 사연이 다르다("슬롯 2 — 필터 3개"). 없으면 컨트롤의 help. */
-        title?: string;
-    }[];
-    value: string;
-    set: (v: string) => void;
-}
-
-/**
  * 누르면 **일이 일어나는** 것(지우기·새로고침). 상태가 없으니 켜짐도 없다.
  * 할 게 없을 때는 사라지는 게 아니라 `disabled` 로 흐려진다 — 자리가 안 움직여야 한다는 게 이 층의 규약이다.
  */
@@ -108,7 +90,7 @@ export interface ActionSpec extends ControlBase {
     disabled?: boolean;
 }
 
-export type ControlSpec = ToggleSpec | ChoiceSpec | SegmentedSpec | ActionSpec;
+export type ControlSpec = ToggleSpec | ChoiceSpec | ActionSpec;
 
 /**
  * 머리글 컨트롤 줄 — **머리글의 오른쪽 끝**에 붙는다(`marginLeft:auto` 를 자기가 갖는다 — 패널이

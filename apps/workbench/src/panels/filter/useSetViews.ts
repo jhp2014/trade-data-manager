@@ -72,8 +72,8 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
     /**
      * 리졸버 — 재료가 하나라도 바뀌면 함수째 새로 서고(ctx 메모), 그 안의 캐시도 같이 버려진다
      * (저장 집합의 정산만 재료 세대 기준 세션 캐시로 살아남는다 — resolveSet.ts 의 sessionDefCache).
-     * 활성 슬롯(null)은 **깔때기 정산(result)을 그대로 재사용**한다(ctx.activeFilter) — 두 번 평가하지
-     * 않을 뿐 아니라, "연동"과 "최종 생존" 바인딩이 같은 grain("타점으로 펼치기" 반영)으로 풀린다.
+     * 작업 깔때기(null)는 **깔때기 정산(result)을 그대로 재사용**한다(ctx.activeFilter) — 두 번 평가하지
+     * 않을 뿐 아니라, "연동"과 "최종 생존" 바인딩이 같은 grain(자동 해상도)으로 풀린다.
      */
     const resolveSet = useMemo(() => {
         const cache = new Map<string, ResolvedSet>();

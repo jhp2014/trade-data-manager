@@ -14,7 +14,7 @@ describe("pickKeys / inPick", () => {
         expect(inPick(k, at("10:00:00"))).toBe(false);
     });
 
-    it("**하루 항목은 그 차트의 모든 타점**을 켠다 — 깔때기의 '타점으로 펼치기'와 같은 규칙", () => {
+    it("**하루 항목은 그 차트의 모든 타점**을 켠다 — 깔때기가 하루를 타점으로 펼치는 규칙과 같다", () => {
         const k = pickKeys([day]);
         expect(inPick(k, at("09:30:00"))).toBe(true);
         expect(inPick(k, at("15:20:00"))).toBe(true);

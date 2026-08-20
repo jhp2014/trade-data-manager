@@ -58,8 +58,9 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "workset-1", component: "workset", title: "작업 대상", plane: "eod", render: () => <WorksetPanel /> },
     { id: "history-1", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
     { id: "rank-sheet-1", component: "rankSheet", title: "시트", plane: "eod", render: () => <RankSheetPanel /> },
-    // 필터 깔때기 — 조건의 목록과 집계. 옛 rankFilter("분석")는 결과 대시보드라 다른 패널이다.
-    { id: "filter-funnel-1", component: "filterFunnel", title: "필터", plane: "eod", render: (id) => <FilterFunnelPanel panelId={id} /> },
+    // 집합 편성 — 조건을 걸어 집합을 만드는 자리(다른 패널은 그 집합을 구독만 한다).
+    // component 키는 "filterFunnel" 그대로 — 저장 프리셋에 박히는 값이라 이름이 바뀌어도 못 건드린다.
+    { id: "filter-funnel-1", component: "filterFunnel", title: "집합 편성", plane: "eod", render: (id) => <FilterFunnelPanel panelId={id} /> },
     { id: "rank-skeleton-1", component: "rankSkeleton", title: "골격 [일봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="daily" /> },
     { id: "rank-skeleton-minute-1", component: "rankSkeletonMinute", title: "골격 [분봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="minute" /> },
     { id: "rank-point-1", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },

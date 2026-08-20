@@ -1,6 +1,6 @@
-// 저장 집합 슬라이스 — 필터 패널이 게시한 **이름 붙인 산출물**의 목록(영속).
+// 저장 집합 슬라이스 — 집합 편성 패널이 게시한 **이름 붙인 산출물**의 목록(영속).
 //
-// 작업 깔때기(filterFunnelSlice — 슬롯·시선·선택 포인터)와 일부러 갈라져 있다: 저쪽은 "지금 만지는
+// 작업 깔때기(filterFunnelSlice — 조건 한 벌·시선·선택 포인터)와 일부러 갈라져 있다: 저쪽은 "지금 만지는
 // 조건", 여기는 "이름을 붙여 게시한 저장물"이라 수명이 다르다(깔때기는 편집마다 변하고, 저장물은
 // 저장·덮어쓰기에만 변한다). 접점은 putStages 하나 — 열기(openSet)도 "깔때기에 조건을 쓰는 손"이라
 // 같은 규칙(영속·시선·포인터 정리)을 지난다.
@@ -68,7 +68,7 @@ const loadSavedSets = (): SavedSet[] => {
 };
 
 export interface SavedSetsSlice {
-    /** 저장 집합들(영속) — 필터 패널이 만든 산출물. 패널 바인딩·연동 피커의 유일한 저장물 목록. */
+    /** 저장 집합들(영속) — 집합 편성 패널이 만든 산출물. 집합 칩·연동 피커의 유일한 저장물 목록. */
     savedSets: SavedSet[];
     /**
      * 지금 조건으로 집합 저장 — 부위는 **저장하는 순간의 시선**에서 온다(칸을 짚었으면 그 칸, 아니면
@@ -78,12 +78,12 @@ export interface SavedSetsSlice {
     /** 열어 둔 집합에 지금 조건을 덮어쓴다 — **그 집합 하나만** 바뀐다(부위·이름 유지). */
     overwriteSet: (id: string) => void;
     /**
-     * 집합을 깔때기로 연다 — 조건 **사본**이 활성 슬롯에 펼쳐진다. 이후 편집은 저장물을 안 흔들고,
+     * 집합을 깔때기로 연다 — 조건 **사본**이 작업 깔때기에 펼쳐진다. 이후 편집은 저장물을 안 흔들고,
      * 덮어쓰기를 눌러야 실제로 바뀐다(보드에서 만지는 동안 고정 구독 패널이 작업 중간 상태를 받지 않게).
      */
     openSet: (id: string) => void;
     deleteSet: (id: string) => void;
-    /** 마지막으로 연 집합 — 덮어쓰기 버튼의 대상. 슬롯 전환·그 집합 삭제로 풀린다(세션 한정). */
+    /** 마지막으로 연 집합 — 덮어쓰기 버튼의 대상. 그 집합이 지워지면 풀린다(세션 한정). */
     openedSetId: string | null;
 }
 
@@ -120,7 +120,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     openSet: (id) => set((s) => {
         const f = s.savedSets.find((x) => x.id === id);
         if (!f) return {};
-        // 사본이 활성 슬롯으로(배열 공유는 안전 — 편집 함수들이 늘 새 배열을 만든다). 시선은 푼다(다른 깔때기의 칸).
+        // 사본이 작업 깔때기로(배열 공유는 안전 — 편집 함수들이 늘 새 배열을 만든다). 시선은 푼다(다른 깔때기의 칸).
         return { ...putStages(s, f.stages), funnelSelection: null, openedSetId: id };
     }),
     deleteSet: (id) => set((s) => {

@@ -20,18 +20,20 @@ export const GRAIN_HINT: Record<Grain, string> = {
 /** 층위 칸의 세로선 — 두 층위가 같은 값이다(밝기 차이는 비활성으로 읽힌다). */
 const STRIPE = "var(--text-tertiary)";
 
-/** 층위 한 칸 — 머리 띠 + 그 층위에 속한 줄들을 잇는 세로선. */
-export function GrainSection({ grain, sticky = false, right, children }: {
+/**
+ * 층위 한 칸 — 머리 띠 + 그 층위에 속한 줄들을 잇는 세로선.
+ *
+ * ⚠ 머리 띠는 **안 붙인다**(sticky 폐지). 보드에서만 붙어 있었는데, 스크롤 중에도 "하루/타점"이 보이는
+ * 이득보다 띠가 레일 위에 겹쳐 지나가는 손해가 컸다 — 어느 칸인지는 세로선이 이미 말한다.
+ */
+export function GrainSection({ grain, right, children }: {
     grain: Grain;
-    /** 스크롤되는 목록에서는 머리 띠가 붙어 있어야 어느 칸인지 계속 보인다. */
-    sticky?: boolean;
     right?: ReactNode;
     children: ReactNode;
 }): JSX.Element {
     return (
         <div style={{ marginBottom: 4 }}>
             <div style={{
-                position: sticky ? "sticky" : "static", top: 0, zIndex: 2,
                 display: "flex", alignItems: "center", gap: 7, padding: "3px 8px",
                 background: "var(--bg-tertiary)", borderLeft: `3px solid ${STRIPE}`,
             }}>
