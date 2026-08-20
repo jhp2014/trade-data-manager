@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChartAnchor, GroupMembership } from "@trade-data-manager/wire";
-import { buildPresenceIndex, hasActiveFilter, matchesPresence, nextTriState, PRESENCE_KINDS, type DayPresence } from "../presence.js";
+import { buildPresenceIndex, hasActiveFilter, matchesPresence, matchesPresenceDnf, nextTriState, parsePresenceDnf, PRESENCE_KINDS, type DayPresence } from "../presence.js";
 
 // 존재 지도 — 작업셋 모수·배지·필터의 단일 접기. 핵심 성질:
 //  ① 재료 어느 한 쪽에만 흔적이 있어도 항목이 생긴다(골격만/그룹만/코멘트만 있는 날의 등재가 이번 개편의 목적).
@@ -82,6 +82,47 @@ describe("matchesPresence — 3상 × AND", () => {
         expect(nextTriState("any")).toBe("has");
         expect(nextTriState("has")).toBe("not");
         expect(nextTriState("not")).toBe("any");
+    });
+});
+
+describe("matchesPresenceDnf — 절 사이 OR", () => {
+    const day = (over: Partial<DayPresence>): DayPresence => ({
+        stockCode: "005930", date: "2026-08-01", marks: new Map(), points: 0, groups: [], comment: false, ...over,
+    });
+    const skeletonOnly = day({ marks: new Map([["skeleton", 2]]) });
+    const groupOnly = day({ groups: ["가"] });
+    const pointOnly = day({ points: 1 });
+
+    it('"골격∧!타점" ∨ "그룹" — 어느 절 하나만 맞아도 통과', () => {
+        const dnf = [{ skeleton: "has", point: "not" }, { group: "has" }] as const;
+        expect(matchesPresenceDnf(skeletonOnly, dnf)).toBe(true); // 첫 절
+        expect(matchesPresenceDnf(groupOnly, dnf)).toBe(true); // 둘째 절
+        expect(matchesPresenceDnf(pointOnly, dnf)).toBe(false); // 둘 다 아님
+    });
+
+    it("빈 절은 평가에서 제외 — OR 를 무력화하지 않는다", () => {
+        const dnf = [{}, { skeleton: "has" }] as const;
+        expect(matchesPresenceDnf(pointOnly, dnf)).toBe(false); // 빈 절이 있어도 활성 절이 거른다
+        expect(matchesPresenceDnf(skeletonOnly, dnf)).toBe(true);
+    });
+
+    it("활성 절이 하나도 없으면 전부 통과(필터 없음)", () => {
+        expect(matchesPresenceDnf(pointOnly, [])).toBe(true);
+        expect(matchesPresenceDnf(pointOnly, [{}])).toBe(true);
+    });
+});
+
+describe("parsePresenceDnf — 영속 복원(옛 형식 승계)", () => {
+    it("옛 절-하나 Record 는 [절] 로 감싼다", () => {
+        expect(parsePresenceDnf({ skeleton: "has", point: "not" })).toEqual([{ skeleton: "has", point: "not" }]);
+        expect(parsePresenceDnf({})).toEqual([]); // 옛 빈 필터 = 필터 없음
+    });
+    it("새 절 목록은 그대로, 모르는 상태값은 버린다", () => {
+        expect(parsePresenceDnf([{ skeleton: "has" }, { group: "not", weird: "yes" }])).toEqual([{ skeleton: "has" }, { group: "not" }]);
+    });
+    it("깨진 값은 null — 기본값(필터 없음)으로 폴백해 '전부 숨김' 오독을 막는다", () => {
+        expect(parsePresenceDnf("oops")).toBeNull();
+        expect(parsePresenceDnf(null)).toBeNull();
     });
 });
 

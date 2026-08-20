@@ -95,15 +95,20 @@ export function buildPresenceIndex(
     return out;
 }
 
-// ── 필터(3상 × AND) ──────────────────────────────────────────────────────────
+// ── 필터(DNF: 절 안 AND × 절 사이 OR) ────────────────────────────────────────
+// 알람 조건과 같은 어휘를 쓴다(leaf 는 AND, OR 는 조건을 하나 더) — 이 프로젝트에서 이미 검증된 결합 모델이라
+// 새 표현식 빌더를 만들지 않는다. 절 하나 = 3상 칩들의 AND, 절이 여러 개면 그중 하나만 맞아도 통과.
 
-/** 종류 하나의 필터 상태 — 무관 / 있는 날만 / 없는 날만. 칩 클릭이 이 순서로 순환한다. */
+/** 종류 하나의 필터 상태 — 있는 날만 / 없는 날만. 절 안에서 칩 클릭이 has → not → 제거로 순환한다. */
 export type TriState = "any" | "has" | "not";
 
-/** kind key → 상태. 안 적힌 키는 "any". */
+/** 절(clause) — kind key → 상태. 안 적힌 키는 "any"(무관). */
 export type PresenceFilter = Readonly<Record<string, TriState>>;
 
-/** 켜진 칩들의 AND — "골격 있음 ∧ 타점 없음" 같은 질문이 이 결합 하나로 전부 표현된다(OR 는 칩 다 끄기). */
+/** 절 목록 = 필터 전체. 빈 목록 = 필터 없음. */
+export type PresenceDnf = readonly PresenceFilter[];
+
+/** 절 하나의 AND — "골격 있음 ∧ 타점 없음" 같은 질문. */
 export function matchesPresence(d: DayPresence, filter: PresenceFilter): boolean {
     for (const kind of PRESENCE_KINDS) {
         const st = filter[kind.key] ?? "any";
@@ -114,8 +119,38 @@ export function matchesPresence(d: DayPresence, filter: PresenceFilter): boolean
     return true;
 }
 
-/** 하나라도 걸려 있나 — 칩 줄의 "해제" 손잡이 표시 여부. */
+/** 이 절에 활성 칩이 있나 — **빈 절은 평가에서 제외**된다(빈 절 = 전부 통과라 OR 전체를 무력화하므로). */
 export const hasActiveFilter = (filter: PresenceFilter): boolean => PRESENCE_KINDS.some((k) => (filter[k.key] ?? "any") !== "any");
 
-/** 칩 클릭 순환: any → has → not → any. */
+/** 절들의 OR — 활성 절이 하나도 없으면 전부 통과(필터 없음). */
+export function matchesPresenceDnf(d: DayPresence, dnf: PresenceDnf): boolean {
+    const active = dnf.filter(hasActiveFilter);
+    if (active.length === 0) return true;
+    return active.some((clause) => matchesPresence(d, clause));
+}
+
+/** DNF 에 활성 절이 있나 — "숨김 N" 표기·해제 손잡이의 기준. */
+export const hasActiveDnf = (dnf: PresenceDnf): boolean => dnf.some(hasActiveFilter);
+
+/** 절 안 칩 클릭 순환: has → not → any(제거). 새 칩은 has 로 들어온다. */
 export const nextTriState = (s: TriState): TriState => (s === "any" ? "has" : s === "has" ? "not" : "any");
+
+/**
+ * 영속 복원 — 아는 상태값만 살린다(깨진 저장값이 "전부 숨김"으로 오독되면 안 된다).
+ * 옛 형식(절 하나짜리 Record)은 절 목록 [절] 로 감싸 무손실 승계한다 — usePersistedState 는 다시
+ * 저장할 때까지 옛 값을 그대로 두므로 이 변환은 일회성 이관이 아니라 읽기 규칙이다(setRef 선례).
+ */
+export function parsePresenceDnf(raw: unknown): PresenceDnf | null {
+    const parseClause = (o: unknown): PresenceFilter | null => {
+        if (typeof o !== "object" || o === null || Array.isArray(o)) return null;
+        const out: Record<string, TriState> = {};
+        for (const [k, v] of Object.entries(o)) if (v === "has" || v === "not") out[k] = v;
+        return out;
+    };
+    if (Array.isArray(raw)) {
+        const clauses = raw.map(parseClause).filter((c): c is PresenceFilter => c !== null);
+        return clauses;
+    }
+    const single = parseClause(raw);
+    return single === null ? null : Object.keys(single).length > 0 ? [single] : [];
+}
