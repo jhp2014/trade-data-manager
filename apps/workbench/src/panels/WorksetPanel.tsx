@@ -46,7 +46,7 @@ export function WorksetPanel(): JSX.Element {
     const focusDate = useWorkbench((s) => s.focus.date);
     const focusTime = useWorkbench((s) => s.focus.time);
     const activePoint = useWorkbench((s) => s.activePoint);
-    const setFocus = useWorkbench((s) => s.setFocus);
+    const goToDay = useWorkbench((s) => s.goToDay);
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
@@ -305,7 +305,9 @@ export function WorksetPanel(): JSX.Element {
                     nameOf={nameOf}
                     groupsOf={(p) => groupsOf({ stockCode: p.stockCode, date: p.date, time: p.time })}
                     pathOf={(id) => pathLabel(id, "(지워짐)")}
-                    onPickDay={(e) => setFocus({ date: e.date, code: e.code, time: null })}
+                    // goToDay(setFocus 아님) — setFocus 는 드리프트 보호로 이전 activePoint 를 살려 두어
+                    // "day 를 선택했다"가 완전히 성립하지 않았다(focusSlice.goToDay 주석의 바로 그 사고).
+                    onPickDay={(e) => goToDay({ date: e.date, code: e.code })}
                     onPickPoint={(p) => goToPoint({ date: p.date, code: p.stockCode, time: p.time })}
                     jumpTo={jump.code ? jump : undefined}
                 />

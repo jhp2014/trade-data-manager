@@ -51,7 +51,6 @@ export function useOverlaySelection(args: {
     lines: readonly OverlayLine[];
     byKey: ReadonlyMap<string, OverlayLine>;
     subjectKeys: OverlayData["subjectKeys"];
-    pointsByChart: OverlayData["pointsByChart"];
     nameOf: (code: string) => string;
     labelAnchorMode: SkeletonAnchor;
     scales: Scales | null;
@@ -62,10 +61,10 @@ export function useOverlaySelection(args: {
      */
     toggleCandle: (code: string) => void;
 }): OverlaySelection {
-    const { isDaily, isPointUnit, lines, byKey, subjectKeys, pointsByChart, nameOf, labelAnchorMode, scales, wrapRef, toggleCandle } = args;
+    const { isDaily, isPointUnit, lines, byKey, subjectKeys, nameOf, labelAnchorMode, scales, wrapRef, toggleCandle } = args;
 
     const goToPoint = useWorkbench((s) => s.goToPoint);
-    const setFocus = useWorkbench((s) => s.setFocus);
+    const goToDay = useWorkbench((s) => s.goToDay);
     // ── 선택(집합) — 차트 선택은 **store 공유**(skeletonSlice), 타점 선택은 로컬(위 계약 주석).
     const selectedKeys = useWorkbench((s) => s.skeletonSelection);
     const setSelectedKeys = useWorkbench((s) => s.setSkeletonSelection);
@@ -109,10 +108,10 @@ export function useOverlaySelection(args: {
             goToPoint({ code: s.stockCode, date: s.date, time: s.time }, "skeleton-overlay");
             return;
         }
-        const pts = pointsByChart.get(s.chartKey);
-        if (pts?.length) goToPoint({ code: s.stockCode, date: s.date, time: pts[0].time }, "skeleton-overlay");
-        else setFocus({ code: s.stockCode, date: s.date, time: null }, "skeleton-overlay");
-    }, [setActiveSelection, effSelected, pointsByChart, goToPoint, setFocus, toggleCandle, isDaily]);
+        // 차트 라벨 = **day 선택**(사용자 확정 규칙: "골격 선택 = day scope"). 옛 "첫 타점으로 점프"는
+        // point 선택을 발행해 의미론이 갈렸다 — 타점 순회는 w/s 가 있으니 편의 손실은 작다.
+        goToDay({ code: s.stockCode, date: s.date }, "skeleton-overlay");
+    }, [setActiveSelection, effSelected, goToPoint, goToDay, toggleCandle, isDaily]);
 
     // ── Ctrl+드래그 사각 선택 — 사각형 역학은 useMarquee 가, **무엇을 담을지**는 여기가 정한다.
     const onMarqueeSelect = useCallback((rect: MarqueeRect): void => {

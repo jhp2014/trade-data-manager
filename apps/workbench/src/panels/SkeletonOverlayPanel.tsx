@@ -128,7 +128,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 패널별 고정 바인딩·집합 사이드바는 폐지 — 멤버 브라우징·표현 안 됨은 작업셋(존재 필터 "!골격")이 담당.
     const linked = useLinkedSet();
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태의 배선만 남는다.
-    const { feedLoading, lines: allLines, drawableKeys, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
+    const { feedLoading, lines: allLines, drawableKeys, population, missingPrevClose, levelsByChart, nameOf, subject, subjectKeys, subjectState } =
         useOverlayData(isDaily, anchor, onlyCharts, null);
 
     /**
@@ -219,7 +219,7 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
 
     // 선택·그룹핑 손짓 절반 — 두 선택 채널(차트/타점)의 계약은 useOverlaySelection 머리 주석.
     const selection = useOverlaySelection({
-        isDaily, isPointUnit, lines, byKey, subjectKeys, pointsByChart, nameOf,
+        isDaily, isPointUnit, lines, byKey, subjectKeys, nameOf,
         labelAnchorMode, scales, wrapRef: viewport.wrapRef, toggleCandle,
     });
     const { effSelected } = selection;

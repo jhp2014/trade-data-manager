@@ -81,7 +81,9 @@ export function PresenceBadges({ presence, mono = false, style }: {
     style?: CSSProperties;
 }): JSX.Element | null {
     if (!presence) return null;
-    const active = PRESENCE_KINDS.map((k) => ({ kind: k, n: k.countOf(presence) })).filter((e) => e.n > 0);
+    // 타점은 배지에서 뺀다 — 작업셋은 자식 행으로, 차트는 ▼ 마커로 어차피 보인다(사용자 확정).
+    // 레지스트리에서 빼지 않는 이유: 필터의 타점/!타점과 "타점 찍을 날" 프리셋은 살아야 한다.
+    const active = PRESENCE_KINDS.filter((k) => k.key !== "point").map((k) => ({ kind: k, n: k.countOf(presence) })).filter((e) => e.n > 0);
     if (active.length === 0) return null;
     return (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 10, lineHeight: 1, whiteSpace: "nowrap", ...style }}>

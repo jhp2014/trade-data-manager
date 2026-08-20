@@ -118,7 +118,11 @@ describe("뱃지 목록 — 행을 누르면 호버가 남지 않는다", () => 
         fireEvent.click(row);
 
         expect(document.body.textContent).not.toContain("3개 골격");        // 목록이 닫혔다
-        expect(useWorkbench.getState().activePoint?.code).toBe(CLUSTER_CODES[2]); // 그 타점으로 갔다
+        // 차트 라벨 클릭 = **day 선택**(goToDay — "골격 선택 = day scope", 2026-08-21 사용자 확정).
+        // 옛 "첫 타점으로 점프"는 point 선택을 발행해 작업셋의 계층 선택 규칙과 갈렸다.
+        expect(useWorkbench.getState().focus.code).toBe(CLUSTER_CODES[2]);
+        expect(useWorkbench.getState().focus.time).toBeNull();
+        expect(useWorkbench.getState().activePoint).toBeNull();
 
         // ⚠ 호버가 남았는지는 **다른 것을 선택했을 때** 드러난다. 누른 직후엔 그 선이 선택으로도 굵어서
         //   호버가 남아 있어도 굵은 라벨 수가 같다 — 선택을 옮겨야 옛 호버가 홀로 남아 모습을 드러낸다.

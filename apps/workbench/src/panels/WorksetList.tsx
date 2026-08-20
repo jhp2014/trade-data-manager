@@ -158,7 +158,9 @@ export function WorksetList({ groups, focus, lens, nameOf, groupsOf, pathOf, onP
 
                     const p = r.point;
                     const related = r.entry.code === focus.code && r.entry.date === focus.date;
-                    const current = related && p.time === focus.time;
+                    // 선택은 계층적 — day 선택(time null)은 그 날의 **모든** 타점을 포함한다(시트의
+                    // "하루 선택은 그 차트의 줄 전부 활성" 규칙과 같은 문장). point 선택이면 그 타점만 주선택.
+                    const current = related && (focus.time === null || p.time === focus.time);
                     const pMember = lens ? lens.pointMember(p) : false;
                     const pGroups = groupsOf(p);
                     return (
