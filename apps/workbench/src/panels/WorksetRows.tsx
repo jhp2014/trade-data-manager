@@ -1,9 +1,13 @@
-// 작업셋 패널 표현 컴포넌트 — 월 선택 팝오버·조준 아이콘·날짜 헤더·종목명·타점 행.
+// 작업셋 패널 표현 컴포넌트 — 월 선택 팝오버·조준 아이콘·날짜 헤더·종목명·타점 행·존재 필터 칩 줄.
 // WorksetPanel 본문(데이터 합본)에서 분리한 순수 표현 조각.
 import type { ReviewPointListItem } from "../api/reviewPoints.js";
+import type { Group } from "../api/groups.js";
 import { weekdayOf } from "../lib/date.js";
+import { hasActiveFilter, PRESENCE_KINDS, type PresenceFilter } from "../lib/presence.js";
 import { PlacementBadge } from "../components/Placement.js";
 import { HeaderPopover } from "../components/HeaderPopover.js";
+import { GroupChips } from "../components/GroupChips.js";
+import { ScrollRow } from "../components/ControlChrome.js";
 
 function fmtDateHeader(date: string): string {
     return `${date.replace(/-/g, ".")} (${weekdayOf(date)})`;
@@ -100,6 +104,57 @@ export function DateHeader({ date }: { date: string }): JSX.Element {
     );
 }
 
+/**
+ * 존재 필터 칩 줄 — 종류마다 3상(무관 → 있음 → 없음 !취소선) 순환, 켜진 칩들은 AND.
+ * 항상 보이는 줄이다: 접어두면 "왜 목록이 비었지" 사고가 난다(활성 필터는 화면에 있어야 한다).
+ * hidden = 이 달에서 필터로 숨은 항목 수 — 0 이 "없음"인지 "다 걸러짐"인지 줄 스스로 말한다.
+ */
+export function PresenceFilterRow({ filter, hidden, onCycle, onClear }: {
+    filter: PresenceFilter;
+    hidden: number;
+    onCycle: (kindKey: string) => void;
+    onClear: () => void;
+}): JSX.Element {
+    const active = hasActiveFilter(filter);
+    return (
+        <ScrollRow gap={4} style={{ flexShrink: 0, padding: "3px 8px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)" }}>
+            {PRESENCE_KINDS.map((k) => {
+                const st = filter[k.key] ?? "any";
+                const on = st !== "any";
+                return (
+                    <button
+                        key={k.key}
+                        onClick={() => onCycle(k.key)}
+                        title={`${k.name} — ${st === "any" ? "무관(클릭: 있는 날만)" : st === "has" ? "있는 날만(클릭: 없는 날만)" : "없는 날만(클릭: 해제)"}`}
+                        style={{
+                            flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 10.5, fontWeight: on ? 700 : 400,
+                            padding: "1px 6px", borderRadius: 3, lineHeight: 1.5, whiteSpace: "nowrap",
+                            border: `1px ${st === "not" ? "dashed" : "solid"} ${on ? k.color : "transparent"}`,
+                            background: st === "has" ? `${k.color.startsWith("#") ? `${k.color}1a` : "transparent"}` : "transparent",
+                            color: on ? k.color : "var(--text-tertiary)",
+                            textDecoration: st === "not" ? "line-through" : "none",
+                        }}
+                    >
+                        {st === "not" ? `!${k.name}` : k.name}
+                    </button>
+                );
+            })}
+            {active && (
+                <>
+                    <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-tertiary)" }}>{hidden > 0 ? `${hidden} 숨김` : ""}</span>
+                    <button
+                        onClick={onClear}
+                        title="존재 필터 전부 해제"
+                        style={{ flexShrink: 0, marginLeft: "auto", border: "none", background: "none", cursor: "pointer", font: "inherit", fontSize: 10.5, color: "var(--text-secondary)", whiteSpace: "nowrap" }}
+                    >
+                        해제 ⤺
+                    </button>
+                </>
+            )}
+        </ScrollRow>
+    );
+}
+
 export function Name({ name, code, color, strong }: { name: string | null; code: string; color?: string; strong?: boolean }): JSX.Element {
     return (
         <span style={{ minWidth: 0, color: color ?? "var(--text-primary)", fontWeight: strong ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -114,6 +169,8 @@ export function PointRow({
     current,
     placed,
     axisTotal,
+    groups,
+    pathOf,
     onClick,
 }: {
     p: ReviewPointListItem;
@@ -121,6 +178,9 @@ export function PointRow({
     current?: boolean;
     placed: number; // 배치된 축 수
     axisTotal: number; // 축 총수(0 = 배치 기능 미사용 → 배지 숨김)
+    /** 이 타점에 적용되는 그룹(직접 ∪ 하루 상속) — 타점 낟알의 소속을 행에서 바로 보인다. */
+    groups: Group[];
+    pathOf: (groupName: string) => string;
     onClick: () => void;
 }): JSX.Element {
     return (
@@ -149,7 +209,9 @@ export function PointRow({
                     {p.memo}
                 </span>
             )}
-            {axisTotal > 0 && <PlacementBadge placed={placed} total={axisTotal} style={{ marginLeft: "auto" }} />}
+            {/* 타점 소속 그룹 — short(값만)·잘림(스크롤 없음): 밀집 행이라 폭 대신 툴팁이 전체를 말한다. */}
+            {groups.length > 0 && <GroupChips groups={groups} short pathOf={pathOf} style={{ marginLeft: "auto", maxWidth: 120, flexShrink: 1 }} />}
+            {axisTotal > 0 && <PlacementBadge placed={placed} total={axisTotal} style={{ marginLeft: groups.length > 0 ? 0 : "auto" }} />}
         </button>
     );
 }

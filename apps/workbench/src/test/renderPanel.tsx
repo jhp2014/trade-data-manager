@@ -9,10 +9,10 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { AnchoredChart, AxisLine, CandidateDay, ChartBundle, ComputedAxisFeed, DayReplay, RankAxis, ReviewPointListItem, SkeletonFeed, StockMeta } from "@trade-data-manager/wire";
+import type { AxisLine, CandidateDay, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankAxis, ReviewPointListItem, SkeletonFeed, StockMeta } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
-    allPointsQuery, anchoredChartsQuery, axisLinesQuery, candidateDaysQuery, chartQuery, computedAxesQuery,
+    allAnchorsQuery, allCommentsQuery, allPointsQuery, axisLinesQuery, candidateDaysQuery, chartQuery, computedAxesQuery,
     groupMembershipsQuery, groupsQuery, rankAxesQuery, skeletonsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
@@ -25,7 +25,10 @@ import { StockNamesProvider } from "../lib/StockNamesContext.js";
 export interface Seed {
     skeletons?: SkeletonFeed;
     points?: ReviewPointListItem[];
-    anchoredCharts?: AnchoredChart[];
+    /** 복제본 앵커 테이블(전 param 전량) — 작업셋 모수·배지의 재료. */
+    anchors?: ChartAnchor[];
+    /** 복제본 코멘트 테이블 — 존재 지도의 "코" 배지 재료. */
+    comments?: DailyCommentListItem[];
     candidateDays?: CandidateDay[];
     groups?: Group[];
     memberships?: GroupMembership[];
@@ -56,7 +59,6 @@ const EMPTY_SKELETONS: SkeletonFeed = { daily: [], minute: [], levels: [] };
 function namesFromFeeds(seed: Seed): StockMeta[] {
     const m = new Map<string, string>();
     for (const p of seed.points ?? []) if (p.name) m.set(p.stockCode, p.name);
-    for (const c of seed.anchoredCharts ?? []) if (c.name) m.set(c.stockCode, c.name);
     return [...m].map(([stockCode, name]) => ({ stockCode, name, market: "거래소" }));
 }
 
@@ -70,7 +72,8 @@ export function seededClient(seed: Seed = {}): QueryClient {
     });
     qc.setQueryData(skeletonsQuery().queryKey, seed.skeletons ?? EMPTY_SKELETONS);
     qc.setQueryData(allPointsQuery().queryKey, seed.points ?? []);
-    qc.setQueryData(anchoredChartsQuery().queryKey, seed.anchoredCharts ?? []);
+    qc.setQueryData(allAnchorsQuery().queryKey, seed.anchors ?? []);
+    qc.setQueryData(allCommentsQuery().queryKey, seed.comments ?? []);
     qc.setQueryData(candidateDaysQuery().queryKey, seed.candidateDays ?? []);
     qc.setQueryData(groupsQuery().queryKey, seed.groups ?? []);
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);

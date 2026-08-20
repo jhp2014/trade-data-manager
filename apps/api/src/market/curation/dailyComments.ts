@@ -18,6 +18,11 @@ export class DailyComments {
         return this.repo.getOne(date, stockCode);
     }
 
+    /** 전 코멘트 — 클라 큐레이션 복제본(작업셋 배지·존재 지도)용. 읽기라 규칙 없음(passthrough). */
+    listAll(): Promise<DailyComment[]> {
+        return this.repo.listAll();
+    }
+
     /** 저장. 공백만 남는 코멘트는 삭제로 해석한다(규칙 ①). 저장된 내용을 반환(삭제면 null). */
     async save(date: string, stockCode: string, comment: string): Promise<DailyComment | null> {
         const trimmed = comment.trim();

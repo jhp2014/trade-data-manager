@@ -41,7 +41,7 @@ const makeAxisDeps = (anchors: ChartAnchor[] = []): AxisDeps => ({
     minute: { getMinuteCandles: () => Promise.resolve([]) },
     rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
     adjDaily: { getDailyCandles: () => Promise.resolve([]) },
-    chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(anchors), listAnchoredCharts: () => Promise.resolve([]) },
+    chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(anchors) },
     reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve([]) },
 });
 

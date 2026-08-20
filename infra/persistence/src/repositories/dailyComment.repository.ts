@@ -35,6 +35,12 @@ export class DrizzleDailyCommentRepository implements DailyCommentReader, DailyC
         return rows.length > 0 ? rowToDailyComment(rows[0]) : null;
     }
 
+    async listAll(): Promise<DailyComment[]> {
+        // 전량 — 클라 복제본용. 정렬은 굳이 안 준다(소비자가 (날짜,종목) 키로 접는다).
+        const rows = await this.db.select().from(dailyComments);
+        return rows.map(rowToDailyComment);
+    }
+
     async getByDate(date: string): Promise<DailyComment[]> {
         const rows = await this.db
             .select()

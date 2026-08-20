@@ -1,6 +1,5 @@
-import { and, asc, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
-import type { AnchoredChart, ChartAnchor, ChartAnchorReader, ChartAnchorStore, NewChartAnchor } from "@trade-data-manager/market";
-import { BASELINE_PARAM } from "@trade-data-manager/market";
+import { and, asc, eq, isNull, type SQL } from "drizzle-orm";
+import type { ChartAnchor, ChartAnchorReader, ChartAnchorStore, NewChartAnchor } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { chartAnchors } from "../schema/curation.js";
 import { chartAnchorToRow, rowToChartAnchor } from "../mappers/chartAnchor.js";
@@ -46,21 +45,7 @@ export class DrizzleChartAnchorRepository implements ChartAnchorReader, ChartAnc
         return rows.map(rowToChartAnchor);
     }
 
-    async listAnchoredCharts(): Promise<Omit<AnchoredChart, "name">[]> {
-        // 기준선(=선)이 있는 (종목,날짜)로 집계 — 선 개수. 종목명은 app 레이어가 market.stock_master 로
-        // 붙인다(물리 분리라 조인 불가). 날짜 내림차순, 같은 날 종목코드 오름차순.
-        const rows = await this.db
-            .select({
-                stockCode: chartAnchors.stockCode,
-                date: chartAnchors.tradeDate,
-                count: sql<number>`count(*)::int`,
-            })
-            .from(chartAnchors)
-            .where(eq(chartAnchors.param, BASELINE_PARAM))
-            .groupBy(chartAnchors.stockCode, chartAnchors.tradeDate)
-            .orderBy(desc(chartAnchors.tradeDate), asc(chartAnchors.stockCode));
-        return rows.map((r) => ({ stockCode: r.stockCode, date: r.date, count: Number(r.count) }));
-    }
+    // (옛 listAnchoredCharts — 기준선만 집계한 작업셋 목록 — 는 클라 큐레이션 복제본이 흡수하며 삭제.)
 
     async remove(anchor: NewChartAnchor): Promise<void> {
         // add 의 멱등 판정과 **같은 술어** — 넣을 때 "이미 있다"고 본 행이 지울 때 지목되는 행이다.

@@ -1,18 +1,16 @@
-import type { AnchoredChart, ChartAnchor, NewChartAnchor } from "#domain";
+import type { ChartAnchor, NewChartAnchor } from "#domain";
 
 // 차트 앵커 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
 // 옛 priceLine·pointAnchor 포트를 흡수한 단일 포트. 가격이 아니라 좌표를 저장한다 — in-place 수정 없음.
 // 다중성·owner grain 같은 정책은 레지스트리(AnchorParamDef)를 읽는 호출자(컨트롤러)의 몫 —
 // 저장소가 레지스트리를 알면 curation 쓰기가 도메인 정책에 결합된다(옛 포트와 같은 원칙).
 
-/** 앵커 조회(읽기). 차트 표시(이 차트의 앵커들) + 계산 축(전량) + 작업셋 목록이 의존. */
+/** 앵커 조회(읽기). 차트 표시(이 차트의 앵커들) + 계산 축·클라 복제본(전량)이 의존. */
 export interface ChartAnchorReader {
     /** 이 차트(종목,날짜)의 모든 앵커 — id 오름차순(그린 순서). */
     listByChart(stockCode: string, date: string): Promise<ChartAnchor[]>;
-    /** 전 앵커 — 계산 축 굽기(전 타점 대상)용. 사람 편집 규모라 페이징 불필요. */
+    /** 전 앵커 — 계산 축 굽기(전 타점 대상)·클라 큐레이션 복제본용. 사람 편집 규모라 페이징 불필요. */
     listAll(): Promise<ChartAnchor[]>;
-    /** 기준선(=선)이 하나라도 있는 (종목,날짜)들 — 작업셋 목록(날짜 내림차순). name 없음(app 이 붙임). */
-    listAnchoredCharts(): Promise<Omit<AnchoredChart, "name">[]>;
 }
 
 /** 앵커 편집(쓰기). 차트 우클릭 메뉴가 의존. */

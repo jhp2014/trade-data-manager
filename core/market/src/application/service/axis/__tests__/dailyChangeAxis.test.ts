@@ -24,7 +24,7 @@ function deps(minutes: MinuteCandle[], dailies: DailyCandle[]): AxisDeps {
         minute: { getMinuteCandles: () => Promise.resolve(minutes) },
         rawDaily: { getRawDailyCandles: () => Promise.resolve(dailies) },
         adjDaily: { getDailyCandles: () => Promise.resolve(dailies) },
-        chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]), listAnchoredCharts: () => Promise.resolve([]) },
+        chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]) },
         reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve([]) },
     };
 }
@@ -79,7 +79,7 @@ describe("dailyChangeAxis", () => {
             minute: { getMinuteCandles: () => { reads++; return Promise.resolve(minutes); } },
             rawDaily: { getRawDailyCandles: () => Promise.resolve([PREV, TODAY]) },
             adjDaily: { getDailyCandles: () => Promise.resolve([PREV, TODAY]) },
-            chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]), listAnchoredCharts: () => Promise.resolve([]) },
+            chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]) },
         reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve([]) },
         };
         const out = await axis.compute([point("09:00:00"), point("09:01:00")], d);

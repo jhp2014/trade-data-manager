@@ -30,7 +30,7 @@ function makeShapes(cfg: {
         minute: { getMinuteCandles: (code, date) => Promise.resolve((cfg.minutes ?? []).filter((c) => c.stockCode === code && c.date === date)) },
         rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
         adjDaily: { getDailyCandles: () => Promise.resolve([]) },
-        chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(cfg.anchors ?? []), listAnchoredCharts: () => Promise.resolve([]) },
+        chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(cfg.anchors ?? []) },
         reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve(cfg.points ?? []) },
     };
     return new SkeletonShapes({
@@ -140,7 +140,6 @@ describe("SkeletonShapes", () => {
                     await gate;
                     return [];
                 },
-                listAnchoredCharts: () => Promise.resolve([]),
             },
             reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve([]) },
         };

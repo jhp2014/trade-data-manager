@@ -287,6 +287,7 @@ function CommentSection({ code, date }: { code: string; date: string }): JSX.Ele
             await saveDailyComment({ date, code, comment: text.trim() });
             await Promise.all([
                 qc.invalidateQueries({ queryKey: ["daily-comment", date, code] }),
+                qc.invalidateQueries({ queryKey: ["all-comments"] }), // 복제본 코멘트 테이블 — 작업셋 "코" 배지 반영
                 qc.invalidateQueries({ queryKey: ["day-summary"] }),
                 qc.invalidateQueries({ queryKey: ["day-replay"] }),
             ]);

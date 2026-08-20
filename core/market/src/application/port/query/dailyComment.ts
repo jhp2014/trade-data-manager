@@ -15,6 +15,9 @@ export interface DailyCommentReader {
      * 앱에서 find 했다(그 날 코멘트가 많을수록 낭비이고, 포트가 소비자 요구를 못 맞춘 흔적).
      */
     getOne(date: string, stockCode: string): Promise<DailyComment | null>;
+
+    /** 전 코멘트 행 — 클라 큐레이션 복제본(존재 지도)용. 사람 편집 규모라 페이징 불필요(anchors listAll 선례). */
+    listAll(): Promise<DailyComment[]>;
 }
 
 /** 당일 코멘트 편집(쓰기). 코멘트 편집 컨트롤러가 의존. */

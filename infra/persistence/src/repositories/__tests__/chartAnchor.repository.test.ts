@@ -53,12 +53,11 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
         expect(mine.every((a) => a.date === CHART.date)).toBe(true);
     });
 
-    it("listAnchoredCharts — 기준선만 센다(무시 캔들만 있는 차트는 작업셋이 아니다), 날짜 내림차순", async () => {
-        const out = await repo.listAnchoredCharts();
-        expect(out).toEqual([
-            { stockCode: CHART.stockCode, date: OTHER_CHART.date, count: 1 },
-            { stockCode: CHART.stockCode, date: CHART.date, count: 3 },
-        ]);
+    it("listAll — 전 차트·전 param 전량(클라 복제본 로드)", async () => {
+        const out = await repo.listAll();
+        expect(out).toHaveLength(5); // CHART: baseline 3 + ignore-candle 1, OTHER_CHART: baseline 1
+        expect(out.some((a) => a.param === "ignore-candle")).toBe(true);
+        expect(out.some((a) => a.date === OTHER_CHART.date)).toBe(true);
     });
 
     it("remove — 그 좌표 행 하나만, 없는 좌표는 조용한 no-op", async () => {

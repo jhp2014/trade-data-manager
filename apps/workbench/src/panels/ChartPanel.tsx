@@ -12,6 +12,8 @@ import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { useStockName } from "../lib/useStockName.js";
 import { useGroups } from "../lib/GroupsContext.js";
+import { usePresenceOf } from "../lib/usePresence.js";
+import { PresenceBadges } from "../components/PresenceBadges.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { GroupChips } from "../components/GroupChips.js";
 import { DailyChart } from "../chart/DailyChart.js";
@@ -62,6 +64,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const { groupsOf, pathLabel } = useGroups();
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이.
     const viewDate = pinMinute ? anchorDate : searchDate;
+    // 이 차트(검색날짜)의 큐레이션 존재 요약 — "이 날 내가 뭘 남겼더라"를 헤더에서 답한다.
+    // 재료는 작업셋과 같은 복제본 캐시(usePresence 포트) — 추가 페치 0.
+    const presence = usePresenceOf(code, viewDate);
     const drifted = viewDate !== anchorDate;
     // keepPreviousData: 전환 중 직전 번들 유지 — 차트가 로딩으로 언마운트되지 않아 뷰 상태(스케일 고정)가 보존.
     const dailyQ = useQuery({ ...chartQuery(code, anchorDate), placeholderData: keepPreviousData });
@@ -146,11 +151,15 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 controls={controls}
                 storageKey="wb.headerPins.chart.replay"
                 badges={
-                    focusedPoint ? (
-                        // 현재 타점의 그룹(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
-                        // 옛 앵커 칩은 제거 — 앵커가 차트 소유가 되면서 선이 상시 그려지므로 별도 단서가 필요 없다.
-                        <GroupChips groups={groupsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
-                    ) : null
+                    <>
+                        {/* 존재 배지(day 줄) — 이 날의 큐레이션 요약. 타점이 잡히면 그 타점의 그룹 칩이 뒤에 붙는다(문맥 반응형). */}
+                        <PresenceBadges presence={presence} />
+                        {focusedPoint ? (
+                            // 현재 타점의 그룹(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
+                            // 옛 앵커 칩은 제거 — 앵커가 차트 소유가 되면서 선이 상시 그려지므로 별도 단서가 필요 없다.
+                            <GroupChips groups={groupsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
+                        ) : null}
+                    </>
                 }
             />
 

@@ -1,9 +1,8 @@
 import { Controller, Get, Post, Inject, Query, Body } from "@nestjs/common";
-import type { AnchoredChart, ChartAnchor, ChartAnchorReader, NewChartAnchor } from "@trade-data-manager/market";
+import type { ChartAnchor, ChartAnchorReader, NewChartAnchor } from "@trade-data-manager/market";
 import type { AddChartAnchorInput, RemoveChartAnchorInput } from "@trade-data-manager/wire";
-import { CHART_ANCHOR_REPO, CHART_ANCHORS, MASTER_CACHE, COMPUTED_AXES, SKELETON_SHAPES } from "../tokens.js";
+import { CHART_ANCHOR_REPO, CHART_ANCHORS, COMPUTED_AXES, SKELETON_SHAPES } from "../tokens.js";
 import { ChartAnchors } from "./chartAnchors.js";
-import { MasterCache } from "../board/masterCache.js";
 import { ComputedAxes } from "../rank/computedAxes.js";
 import { SkeletonShapes } from "../rank/skeletonShapes.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
@@ -16,16 +15,16 @@ export class ChartAnchorController {
     constructor(
         @Inject(CHART_ANCHOR_REPO) private readonly repo: ChartAnchorReader,
         @Inject(CHART_ANCHORS) private readonly anchors: ChartAnchors,
-        @Inject(MASTER_CACHE) private readonly master: MasterCache,
         @Inject(COMPUTED_AXES) private readonly computed: ComputedAxes,
         @Inject(SKELETON_SHAPES) private readonly skeletons: SkeletonShapes,
     ) {}
 
-    // 작업셋 — 기준선(=선)이 있는 (종목,날짜) 전부(월 그룹은 클라). 종목명 조인은 MasterCache.attachNames.
+    // 전 앵커(전 param) — 클라 큐레이션 복제본의 테이블 로드. 종목명은 클라 부팅 사전(stock-master)이 붙인다.
+    // (옛 /stocks — 기준선만 집계한 작업셋 목록 — 는 복제본이 흡수하며 은퇴. 접기는 클라 셀렉터의 몫.)
     // 정적 경로라 @Get() 인덱스와 구분됨.
-    @Get("stocks")
-    async listStocks(): Promise<AnchoredChart[]> {
-        return this.master.attachNames(await this.repo.listAnchoredCharts());
+    @Get("all")
+    listAllAnchors(): Promise<ChartAnchor[]> {
+        return this.repo.listAll();
     }
 
     @Get()

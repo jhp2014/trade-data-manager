@@ -7,7 +7,7 @@ import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
 import { fetchDayReplay } from "./dayReplay.js";
 import { fetchWatchlist } from "./alerts.js";
-import { fetchChartAnchors, fetchAnchoredCharts } from "./chartAnchors.js";
+import { fetchChartAnchors, fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchSkeletons } from "./skeletons.js";
@@ -15,7 +15,7 @@ import { fetchGroups, fetchGroupMemberships } from "./groups.js";
 import { fetchCandidateDays } from "./candidateDays.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
-import { fetchDailyComment } from "./comment.js";
+import { fetchDailyComment, fetchAllDailyComments } from "./comment.js";
 import { fetchDataDates } from "./dataDates.js";
 import { kstToday } from "../lib/date.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
@@ -64,8 +64,14 @@ export const daySummaryQuery = (date: string) =>
 export const chartAnchorsQuery = (code: string, date: string) =>
     queryOptions({ queryKey: ["chart-anchors", code, date], queryFn: ({ signal }) => fetchChartAnchors(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE , meta: CURATION });
 
-export const anchoredChartsQuery = () =>
-    queryOptions({ queryKey: ["anchored-charts"], queryFn: ({ signal }) => fetchAnchoredCharts(signal), staleTime: IMMUTABLE , meta: CURATION });
+// ── 큐레이션 복제본(테이블 낟알) — curation "테이블" 전량을 상주 캐시로 들고, 화면은 셀렉터로 접는다.
+// 키가 곧 테이블이라 "쓴 테이블 = 재요청할 키" 1:1 대응 — 투영 키(옛 anchored-charts)가 늘며 자라던
+// 무효화 거미줄을 원리적으로 없앤다. 타점(all-points)·그룹(groups·group-members)도 같은 결의 테이블 키.
+export const allAnchorsQuery = () =>
+    queryOptions({ queryKey: ["all-anchors"], queryFn: ({ signal }) => fetchAllChartAnchors(signal), staleTime: IMMUTABLE , meta: CURATION });
+
+export const allCommentsQuery = () =>
+    queryOptions({ queryKey: ["all-comments"], queryFn: ({ signal }) => fetchAllDailyComments(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 export const reviewPointsQuery = (code: string, date: string) =>
     queryOptions({ queryKey: ["review-points", code, date], queryFn: ({ signal }) => fetchReviewPoints(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE , meta: CURATION });

@@ -65,16 +65,8 @@ export type ChartAnchor = NewChartAnchor;
 export const chartAnchorKey = (a: NewChartAnchor): string =>
     [a.stockCode, a.date, a.time ?? "", a.param, a.anchorDate, a.anchorTime ?? "", a.field ?? "", a.market ?? ""].join("|");
 
-/**
- * 앵커가 있는 (종목, 거래일) 1건 — 작업셋 목록용 read model. count 는 그 차트의 기준선(=선) 개수.
- * name 은 app 레이어가 stock_master 로 붙인다(미등록이면 null — 물리 분리라 SQL 조인 불가).
- */
-export interface AnchoredChart {
-    stockCode: string;
-    date: string;
-    name: string | null;
-    count: number;
-}
+// (옛 AnchoredChart — 기준선만 집계한 작업셋 read model — 는 클라 큐레이션 복제본이 흡수하며 삭제됐다.
+//  작업셋 목록은 이제 클라가 전 앵커(listAll)에서 존재 지도로 접는다 — lib/presence.ts.)
 
 /** field·market 쌍 규칙 — 둘 다 있거나(가격 앵커) 둘 다 없거나(시각 앵커). */
 export function isValidAnchorShape(a: Pick<NewChartAnchor, "field" | "market">): boolean {

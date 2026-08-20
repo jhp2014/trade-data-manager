@@ -18,7 +18,6 @@ function memoryRepo(): ChartAnchorReader & ChartAnchorStore & { rows: ChartAncho
         },
         listByChart: (stockCode, date) => Promise.resolve(rows.filter((r) => r.stockCode === stockCode && r.date === date)),
         listAll: () => Promise.resolve(rows),
-        listAnchoredCharts: () => Promise.resolve([]),
         // 자연키 삭제 — 좌표 8필드가 전부 같은 행 하나. NULL 과 undefined 를 같게 보려고 ?? null 로 맞춘다.
         remove: (a) => {
             const same = (x?: string | null, y?: string | null): boolean => (x ?? null) === (y ?? null);

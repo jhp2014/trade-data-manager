@@ -33,7 +33,7 @@ function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, Minute
         minute: { getMinuteCandles: (_c, date) => Promise.resolve(v.minutesByDay?.[date] ?? []) },
         rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
         adjDaily: { getDailyCandles: (_c, range) => Promise.resolve((v.dailies ?? []).filter((d) => d.date >= range.from && d.date <= range.to)) },
-        chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(v.anchors ?? []), listAnchoredCharts: () => Promise.resolve([]) },
+        chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(v.anchors ?? []) },
         // 타점 종가 합성의 형제 목록 — 실제로는 계산 대상 타점이 언제나 여기 포함된다(listAllPoints).
         reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve(v.reviewPoints ?? []) },
     };
