@@ -63,15 +63,12 @@ function tipOf(kind: PresenceKindDef, n: number): string {
     return n > 1 ? `${kind.name} ${n}` : kind.name;
 }
 
-/** 그룹 hover 카드 내용 — groupColor 로 묶임이 바로 읽히는 이름들(GroupChips 문법). */
+/** 그룹 hover 카드 내용 — groupColor 로 묶임이 읽히는 이름들, **세로 나열**(가로 한 줄은 여럿일 때 안 읽힌다). */
 export function GroupNamesCard({ names }: { names: readonly string[] }): JSX.Element {
     return (
-        <span style={{ display: "inline-flex", gap: 7, fontWeight: 600 }}>
-            {names.map((n, i) => (
-                <span key={n} style={{ display: "contents" }}>
-                    {i > 0 && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>·</span>}
-                    <span style={{ color: groupColor(n) }}>{n}</span>
-                </span>
+        <span style={{ display: "flex", flexDirection: "column", gap: 2, fontWeight: 600 }}>
+            {names.map((n) => (
+                <span key={n} style={{ color: groupColor(n) }}>{n}</span>
             ))}
         </span>
     );
