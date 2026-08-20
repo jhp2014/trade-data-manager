@@ -2,7 +2,7 @@
 //
 // 순수 함수 테스트에도 이 파일이 로드되지만(setupFiles 는 전역), 아래 보정은 전부 `window` 가 있을 때만
 // 걸리므로 node 환경에서는 아무 일도 하지 않는다.
-import { afterEach } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 // ⚠ configure 는 **@testing-library/react 가 재수출하는 것**을 쓴다 — dom 패키지를 직접 부르면
 // pnpm 이 사본을 따로 물고 있을 때 설정이 다른 인스턴스에 걸려 조용히 아무 일도 안 한다.
 import { configure } from "@testing-library/react";
@@ -103,3 +103,11 @@ if (typeof window !== "undefined") {
         }
     });
 }
+
+// ── 전역 시선 리셋 — 월 시선(gazeMonths)의 제품 기본값은 "오늘의 달"인데, 테스트 픽스처의 날짜는
+// 대부분 다른 달이라 그대로 두면 화면이 조용히 비고 단언이 헛돈다(달이 두 벌이던 시절과 같은 오독).
+// 월 시선을 검사하는 테스트는 각자 명시로 건다(setBinding.dom.test 선례).
+beforeEach(async () => {
+    const { useWorkbench } = await import("../store/workbench.js");
+    useWorkbench.setState({ gazeMonths: null });
+});

@@ -21,9 +21,8 @@ import { useWorkbench } from "../store/workbench.js";
 import { chartKey } from "../lib/pointKey.js";
 import { ACTIVE } from "../styles/palette.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { useSetBinding } from "./filter/useSetBinding.js";
-import { SetBindingLabel, setBindingControl } from "./filter/SetBindingLabel.js";
-import { SetSidebar } from "./filter/SetSidebar.js";
+import { useLinkedSet } from "./filter/useSetBinding.js";
+import { SetBindingLabel } from "./filter/SetBindingLabel.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { chainCandidates, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "./group/population.js";
 import { canReparent, overlapRows, relationOf, treeRows, type GroupRow } from "./group/groupList.js";
@@ -68,29 +67,26 @@ export function GroupListPanel(): JSX.Element {
      *
      * 잣대는 여전히 깔때기의 적용 집합 하나다 — 골격·시트와 어긋나면 그 어긋남은 화면에 신호가 없다.
      */
-    // 분모 = 이 패널의 바인딩(디폴트 연동). 필터 결과를 묶으면 "그 생존자들이 그룹에 어떻게 분포하나"가 된다.
-    const binding = useSetBinding("wb.setBinding.groupList");
-    const [sideOpen, setSideOpen] = usePersistedState<boolean>(
-        "wb.setSidebar.groupList", (o) => (typeof o === "boolean" ? o : null), false);
-    const goToDay = useWorkbench((s) => s.goToDay);
+    // 분모 = 보는 집합(연동 하나 — 전역 포인터 + 월 시선 구독, 주인은 작업셋. 사이드바 재편 2026-08-21).
+    const linked = useLinkedSet();
     // 이 패널은 항목을 직접 그리지 않는다(그룹 행을 그린다) — 표현가능 술어 없음 = 전부 표현됨.
-    const setMembers = useMemo(() => setMembersOf(binding.view, "day"), [binding.view]);
+    const setMembers = useMemo(() => setMembersOf(linked.view, "day"), [linked.view]);
     const dayFeed = useMemo<GroupMembership[]>(() => {
         if (funnel.isLoading) return [];
         const seen = new Set<string>();
         const items: PopulationItem[] = [];
-        for (const it of binding.view.viewedItems) {
+        for (const it of linked.view.viewedItems) {
             const k = chartKey(it);
             if (seen.has(k)) continue;
             seen.add(k);
             items.push({ stockCode: it.stockCode, date: it.date });
         }
         return populationFeed(items, (i) => gv.appliedGroupNamesOf(i));
-    }, [funnel.isLoading, binding.view.viewedItems, gv]);
+    }, [funnel.isLoading, linked.view.viewedItems, gv]);
 
     const pointFeed = useMemo<GroupMembership[]>(
-        () => (funnel.isLoading ? [] : populationFeed(binding.view.viewedPointRefs, (i) => gv.appliedGroupNamesOf(i))),
-        [funnel.isLoading, binding.view.viewedPointRefs, gv],
+        () => (funnel.isLoading ? [] : populationFeed(linked.view.viewedPointRefs, (i) => gv.appliedGroupNamesOf(i))),
+        [funnel.isLoading, linked.view.viewedPointRefs, gv],
     );
 
     const countsDay = useMemo(() => populationCounts(dayFeed), [dayFeed]);
@@ -218,7 +214,6 @@ export function GroupListPanel(): JSX.Element {
     };
 
     const controls = useMemo<ControlSpec[]>(() => [
-        setBindingControl({ binding, open: sideOpen, setOpen: setSideOpen }),
         {
             kind: "choice", id: "sort", name: "정렬", help: "계층 그대로 볼까, 지금 체인과 겹치는 순으로 볼까",
             values: [{ v: "tree", label: "계층" }, { v: "overlap", label: "겹침" }],
@@ -228,7 +223,7 @@ export function GroupListPanel(): JSX.Element {
             kind: "action", id: "newGroup", name: "+ 새 그룹", help: "이름만 정하면 된다(층위는 하루)",
             run: () => setAdding((v) => !v),
         },
-    ], [sort, setSort, binding, sideOpen, setSideOpen]);
+    ], [sort, setSort]);
 
     if (gv.isLoading) return <Note>불러오는 중…</Note>;
 
@@ -236,12 +231,12 @@ export function GroupListPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
             <PanelHeader chrome={false} padding="5px 10px"
                 style={{ borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap" }}>
-                <SetBindingLabel binding={binding} members={setMembers} />
+                <SetBindingLabel linked={linked} members={setMembers} />
                 {/* 분모를 **두 층위로** 적는다 — 행마다 수의 단위가 그 그룹의 scope 라, 분모도 둘이어야 읽힌다. */}
                 <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}
                     title="하루 = (종목·날짜) · 타점 = (종목·날짜·시각). 그룹의 scope 가 어느 쪽에서 셀지 정한다">
                     그룹 {gv.groups.length} · 분모 {funnel.isLoading ? "…" : `하루 ${dayFeed.length} · 타점 ${pointFeed.length}`}
-                    {binding.view.isFiltering ? "" : " (전체)"}
+                    {linked.view.isFiltering ? "" : " (전체)"}
                 </span>
                 <HeaderControls controls={controls} storageKey="wb.headerPins.groupList" />
             </PanelHeader>
@@ -330,10 +325,6 @@ export function GroupListPanel(): JSX.Element {
                     )}
                     <RootDrop />
                 </div>
-                {sideOpen && (
-                    <SetSidebar binding={binding} members={setMembers} showTime={false}
-                        onPick={(it) => goToDay({ code: it.stockCode, date: it.date })} />
-                )}
                 </div>
             </DndContext>
         </div>

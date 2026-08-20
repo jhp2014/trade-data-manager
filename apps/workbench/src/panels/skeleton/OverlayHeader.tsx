@@ -58,7 +58,7 @@ export interface OverlayPick {
     clear: () => void;
 }
 
-function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, pick, bindingLabel, setControl, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
+function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, pick, bindingLabel, subjectBadge, onlySelected, setOnlySelected, locked, onToggleLock }: {
     grain: "daily" | "minute";
     toggles: OverlayToggles;
     /** 캔들에서 머리글이 쓰는 건 선명도뿐 — CandlesView 통짜를 받으면 호버마다 갈리는 파생(anchorShown 등)이 memo 를 깬다. */
@@ -69,7 +69,6 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, pick, bindi
     /** 바인딩 라벨(SetBindingLabel) — "이 패널이 보는 집합"의 상시 말. 왼쪽(말의 자리) 맨 앞에 선다. */
     bindingLabel?: React.ReactNode;
     /** 그 라벨의 손잡이("집합" 토글 — 사이드바 여닫기). 라벨과 쪼개져 컨트롤 줄 맨 앞에 선다. */
-    setControl?: ControlSpec;
     /** 선택이 이 패널에 안 보일 때 이유를 말하는 배지(SubjectBadge) — 보이면 null 이 온다. */
     subjectBadge?: React.ReactNode;
     /** "선택만 보기"(분봉 전용) — 패널 로컬 시야라 영속 토글에 안 든다. */
@@ -94,7 +93,6 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, pick, bindi
      */
     const controls = useMemo<ControlSpec[]>(() => [
         // 컨트롤 줄 맨 앞 = 왼쪽 라벨과 가장 가까운 자리. 쪼갠 말과 손이 서로를 보고 서 있게 한다.
-        ...(setControl ? [setControl] : []),
         {
             kind: "choice", id: "anchor", name: "원점", group: "기준", available: isDaily,
             help: "끝을 맞출까(뒤로 퍼짐) 시작을 맞출까(앞으로 퍼짐)",
@@ -155,7 +153,7 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, pick, bindi
             help: "짚은 타점의 앞뒤 창 동안 같은 테마 종목의 분당 종가 경로를 같이 세운다 · 단축키 T",
             on: t.showTheme, set: t.setShowTheme,
         },
-    ], [isDaily, isPointUnit, t, candles.alpha, candles.setAlpha, onlySelected, setOnlySelected, locked, onToggleLock, pick, setControl]);
+    ], [isDaily, isPointUnit, t, candles.alpha, candles.setAlpha, onlySelected, setOnlySelected, locked, onToggleLock, pick]);
 
     return (
         <PanelHeader chrome={false} gap={8}

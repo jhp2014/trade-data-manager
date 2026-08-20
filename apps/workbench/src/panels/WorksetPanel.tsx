@@ -8,6 +8,7 @@ import { BoardCenter } from "../components/board/BoardCard.js";
 import { PanelHeader, ScrollRow } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
 import { WorksetFilterRow, dnfSummary } from "./WorksetFilterRow.js";
+import { HeaderPopover } from "../components/HeaderPopover.js";
 import { WorksetList, type WorksetEntry, type WorksetLens } from "./WorksetList.js";
 import { usePlacements } from "../lib/usePlacements.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
@@ -16,7 +17,7 @@ import { useGroups } from "../lib/GroupsContext.js";
 import { usePersistedState } from "../store/persist.js";
 import { pointKey, chartKeyOf } from "../lib/pointKey.js";
 import { matchesPresenceDnf, hasActiveDnf, parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
-import { useMonthPick, MONTH_PICK_HINT } from "./filter/monthPick.js";
+import { applyMonthClick, normalizeMonths, MONTH_PICK_HINT } from "./filter/monthPick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import type { SetRef } from "../lib/setRef.js";
 import { setRefKey } from "../lib/setRef.js";
@@ -50,6 +51,8 @@ export function WorksetPanel(): JSX.Element {
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const selectSet = useWorkbench((s) => s.selectSet);
+    const gazeMonths = useWorkbench((s) => s.gazeMonths);
+    const setGazeMonths = useWorkbench((s) => s.setGazeMonths);
 
     const placements = usePlacements();
     const { nameOf } = useStockNames();
@@ -63,23 +66,25 @@ export function WorksetPanel(): JSX.Element {
     // ── 존재 필터(DNF) — 영속. 옛 절-하나 형식은 parsePresenceDnf 가 [절] 로 승계한다.
     const [dnf, setDnf] = usePersistedState<PresenceDnf>("wb.workset.presenceFilter", parsePresenceDnf, []);
 
-    // ── 월 시선 — 다중 선택(useMonthPick, 깔때기와 같은 손짓) + "전체"(시선 해제). 세션 상태(저장 안 함).
+    // ── 월 시선 — **전역 하나**(store.gazeMonths, 기본=오늘의 달). 여기가 주인이고 구독 패널은
+    //    viewOf 가 접어 주는 것을 그대로 받는다. null = 전체. 손짓은 깔때기 월 칩과 같은 순수 규칙
+    //    (applyMonthClick — 맨클릭 갈아타기·Ctrl 토글·Shift 범위·마지막 하나 보호).
     const months = useMemo(() => {
         const set = new Set<string>();
         for (const d of presence.index.values()) set.add(monthOf(d.date));
         return [...set].sort().reverse();
     }, [presence.index]);
-    const monthPick = useMonthPick(months);
-    const [allMonths, setAllMonths] = useState(false);
-    // 기본 = 현재(포커스) 달 — monthPick 의 기본은 최근 달이라, 첫 진입에 포커스 달로 맞춘다(1회).
-    const bootRef = useRef(false);
-    useEffect(() => {
-        if (bootRef.current || months.length === 0) return;
-        bootRef.current = true;
-        const fm = monthOf(focusDate);
-        if (months.includes(fm)) monthPick.click(fm, { ctrl: false, shift: false });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [months]);
+    const allMonths = gazeMonths === null;
+    const picked = useMemo<ReadonlySet<string>>(
+        () => (gazeMonths === null ? new Set<string>() : normalizeMonths(new Set(gazeMonths), months)),
+        [gazeMonths, months],
+    );
+    const monthAnchor = useRef<string | null>(null);
+    const clickMonth = (ym: string, mods: { ctrl: boolean; shift: boolean }): void => {
+        const next = applyMonthClick(picked, months, mods.shift ? monthAnchor.current : null, ym, mods);
+        if (!mods.shift) monthAnchor.current = ym;
+        setGazeMonths([...next]);
+    };
 
     // ── 집합 — 전역 선택 포인터(selectedSetRef)를 여기서 정한다(작업셋 = 집합 선택의 집, 연동 패널이 구독).
     const lensRef = lensRefOf(selectedSetRef);
@@ -95,7 +100,7 @@ export function WorksetPanel(): JSX.Element {
     // ── 이 시선의 항목들 — 월(시선) → 존재 DNF(필터) → 좁히기(집합 멤버만). 숨김 수는 필터·좁히기 몫만
     //    센다(월은 페이지가 아니라 시선이라 "숨김"이 아니다).
     const { groups, shownCount, hiddenCount } = useMemo(() => {
-        const inMonth = (date: string): boolean => allMonths || monthPick.picked.has(monthOf(date));
+        const inMonth = (date: string): boolean => allMonths || picked.has(monthOf(date));
         const map = new Map<string, WorksetEntry>();
         let hidden = 0;
         for (const d of presence.index.values()) {
@@ -121,7 +126,7 @@ export function WorksetPanel(): JSX.Element {
             g.stocks.push(e);
         }
         return { groups: out, shownCount: entries.length, hiddenCount: hidden };
-    }, [presence.index, points, allMonths, monthPick.picked, dnf, narrowOn, view, memberPointKeys]);
+    }, [presence.index, points, allMonths, picked, dnf, narrowOn, view, memberPointKeys]);
 
     // 렌즈 판정 — 종목 행은 그 날 밑에 멤버가 하나라도 있으면(부모가 자식 멤버십을 대표), 타점 행은 자신.
     const lens = useMemo<WorksetLens | null>(() => {
@@ -143,7 +148,7 @@ export function WorksetPanel(): JSX.Element {
         if (!focusCode) return;
         const fm = monthOf(focusDate);
         // 다른 달의 항목으로 포커스가 가면 그 달로 시선 전환(전체 시선이면 스크롤만).
-        if (!allMonths && months.includes(fm) && !monthPick.picked.has(fm)) monthPick.click(fm, { ctrl: false, shift: false });
+        if (!allMonths && months.includes(fm) && !picked.has(fm)) { monthAnchor.current = fm; setGazeMonths([fm]); }
         setJump((j) => ({ date: focusDate, code: focusCode, nonce: j.nonce + 1 }));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focusCode, focusDate, focusTime]);
@@ -191,31 +196,37 @@ export function WorksetPanel(): JSX.Element {
     if (pointsQ.isError) return <BoardCenter text={`타점 오류: ${(pointsQ.error as Error).message}`} />;
 
     const filterSummary = dnfSummary(dnf);
-    const setChip = (label: string, ref: SetRef | null, key: string): JSX.Element => {
-        const active = ref === null ? lensRefOf(selectedSetRef) === null : selectedSetRef !== null && setRefKey(selectedSetRef) === setRefKey(ref);
-        return (
-            <button key={key} onClick={() => selectSet(ref)}
-                title={ref === null ? "집합 렌즈 해제" : "이 집합을 선택 — 연동된 패널들이 함께 따라간다"}
-                style={{
-                    flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 11, padding: "1px 8px", borderRadius: 9,
-                    border: `0.5px solid ${active ? "transparent" : "var(--border-strong)"}`, whiteSpace: "nowrap",
-                    background: active ? PIN : "transparent", color: active ? "#fff" : "var(--text-secondary)", fontWeight: active ? 700 : 400,
-                }}>
-                {label}
-            </button>
-        );
-    };
-    const monthChip = (label: string, active: boolean, onClick: (e: React.MouseEvent) => void, title?: string): JSX.Element => (
-        <button key={label} onClick={onClick} title={title}
-            className="tabular"
+    // 칩 하나 — 줄에는 **선택 상태만** 선다("지금 뭘 보고 있나"의 요약이 곧 줄). 편집은 클릭 → 팝오버.
+    const chip = (key: string, label: string, active: boolean, onClick: (e: React.MouseEvent) => void, opts?: { color?: string; title?: string; tabular?: boolean }): JSX.Element => (
+        <button key={key} onClick={onClick} title={opts?.title}
+            className={opts?.tabular ? "tabular" : undefined}
             style={{
                 flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 11, padding: "1px 8px", borderRadius: 9,
                 border: `0.5px solid ${active ? "transparent" : "var(--border-strong)"}`, whiteSpace: "nowrap",
-                background: active ? "var(--accent-primary)" : "transparent", color: active ? "#fff" : "var(--text-secondary)", fontWeight: active ? 700 : 400,
+                background: active ? (opts?.color ?? "var(--accent-primary)") : "transparent",
+                color: active ? "#fff" : "var(--text-secondary)", fontWeight: active ? 700 : 400,
             }}>
             {label}
         </button>
     );
+    const ym2 = (m: string): string => m.slice(2).replace("-", "."); // "2026-08" → "26.08"
+    const setLabel = lensRef === null ? "전체" : lensRef.kind === "saved" ? (savedSets.find((s) => s.id === lensRef.setId)?.name ?? "(지워진 집합)") : "최종 생존";
+    // 팝오버 정렬 — [전체][선택][나머지 최신순]. 긴 목록은 팝오버가 들고, 줄은 요약만 든다.
+    type SetOption = { key: string; label: string; ref: SetRef | null };
+    const setOptions: SetOption[] = ([
+        { key: "none", label: "전체", ref: null },
+        { key: "sv", label: "최종 생존", ref: { kind: "survivors" } },
+        ...savedSets.map((s) => ({ key: s.id, label: s.name, ref: { kind: "saved", setId: s.id } })),
+    ] as SetOption[]).sort((a, b) => {
+        const rank = (o: { ref: SetRef | null }): number =>
+            o.ref === null ? 0 : selectedSetRef !== null && setRefKey(o.ref) === setRefKey(selectedSetRef) ? 1 : 2;
+        return rank(a) - rank(b);
+    });
+    const sortedMonths = [...months].sort((a, b) => {
+        const rank = (m: string): number => (!allMonths && picked.has(m) ? 0 : 1);
+        return rank(a) - rank(b) || (a < b ? 1 : -1); // 선택 먼저, 그 안에서 최신순
+    });
+    const pickedMonthsDesc = allMonths ? [] : [...picked].sort().reverse();
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
@@ -232,24 +243,51 @@ export function WorksetPanel(): JSX.Element {
                 <HeaderControls controls={controls} storageKey="wb.headerPins.workset" />
             </PanelHeader>
 
-            {/* ② 칩 줄 — 집합(전역) + 월(로컬 시선). 넘치면 hover 가로 스크롤(ScrollRow 규약). */}
+            {/* ② 칩 줄 — 집합(전역) + 월(로컬 시선). **선택 상태만** 줄에 서고, 클릭하면 팝오버에서 편집한다
+                (전체 목록을 줄에 깔면 월 14개·집합 수 개가 폭을 다 먹는다 — 긴 목록은 팝오버의 몫). */}
             <ScrollRow gap={4} style={{ flexShrink: 0, padding: "3px 8px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)" }}>
                 <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)" }}>집합</span>
-                {setChip("전체", null, "set-none")}
-                {setChip("최종 생존", { kind: "survivors" }, "set-sv")}
-                {savedSets.map((s) => setChip(s.name, { kind: "saved", setId: s.id }, `set-${s.id}`))}
+                <HeaderPopover width={150} align="start" closeOnOutside
+                    trigger={(_open, toggle) => chip("set", setLabel, lensRef !== null, toggle, { color: PIN, title: "클릭 = 집합 고르기 — 고르면 연동된 패널들이 함께 따라간다" })}>
+                    {(close) => (
+                        <div style={{ overflowY: "auto", padding: "2px 0" }}>
+                            {setOptions.map((o) => {
+                                const active = o.ref === null ? lensRef === null : selectedSetRef !== null && setRefKey(o.ref) === setRefKey(selectedSetRef);
+                                return (
+                                    <button key={o.key} onClick={() => { selectSet(o.ref); close(); }}
+                                        style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: active ? "var(--accent-soft)" : "transparent", color: "var(--text-primary)", padding: "4px 10px", cursor: "pointer", font: "inherit", fontSize: 11.5, fontWeight: active ? 700 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        {o.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </HeaderPopover>
                 <span style={{ flexShrink: 0, width: 1, alignSelf: "stretch", background: "var(--border-default)", margin: "0 3px" }} />
                 <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)" }}>월</span>
-                {monthChip("전체", allMonths, () => setAllMonths(true), "모든 달 — 시선 해제(목록은 가상화라 상한 없음)")}
-                {months.map((m) =>
-                    monthChip(m.replace("-", "."), !allMonths && monthPick.picked.has(m), (e) => {
-                        setAllMonths(false);
-                        monthPick.click(m, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
-                    }, MONTH_PICK_HINT),
-                )}
+                <HeaderPopover width={168} align="start" closeOnOutside
+                    trigger={(_open, toggle) => (
+                        <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
+                            {allMonths
+                                ? chip("m-all", "전체", true, toggle, { title: "클릭 = 달 고르기" })
+                                : pickedMonthsDesc.map((m) => chip(`m-${m}`, ym2(m), true, toggle, { title: `클릭 = 달 고르기 — ${MONTH_PICK_HINT}`, tabular: true }))}
+                        </span>
+                    )}>
+                    {() => (
+                        // 다중 선택이라 골라도 안 닫는다(바깥 클릭으로 닫기) — 정렬은 [전체][선택][나머지 최신순].
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: 8, maxHeight: 180, overflowY: "auto" }}>
+                            {chip("pm-all", "전체", allMonths, () => setGazeMonths(null), { title: "모든 달 — 시선 해제(목록은 가상화라 상한 없음)" })}
+                            {sortedMonths.map((m) =>
+                                chip(`pm-${m}`, ym2(m), !allMonths && picked.has(m), (e) => {
+                                    clickMonth(m, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+                                }, { title: MONTH_PICK_HINT, tabular: true }),
+                            )}
+                        </div>
+                    )}
+                </HeaderPopover>
             </ScrollRow>
 
-            {/* ③ 절 줄 — 존재 필터 DNF. */}
+            {/* ③ 필터 줄 — 존재 필터 DNF. */}
             <WorksetFilterRow dnf={dnf} onChange={setDnf} />
 
             {groups.length === 0 ? (

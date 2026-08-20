@@ -23,6 +23,7 @@ import {
 } from "../panels/filter/stage.js";
 import { applyRailPredicate, type RailKey } from "../panels/filter/stageBinding.js";
 import { loadJson, saveJson } from "./persist.js";
+import { kstToday } from "../lib/date.js";
 
 const STAGES_KEY = "wb.filterStages"; // 슬롯 도입 전의 단일 벌 — 슬롯 1로 읽어 들이는 이관용(이제 안 쓴다)
 const SLOTS_KEY = "wb.filterSlots";
@@ -77,6 +78,12 @@ export interface FilterFunnelSlice {
      */
     selectedSetRef: SetRef | null;
     selectSet: (ref: SetRef | null) => void;
+    /**
+     * 월 시선 — 전역 하나(작업셋 월 줄이 주인, 구독 패널은 viewOf 를 거쳐 자동으로 따른다). null = 전체.
+     * 집합 포인터와 같은 성질(시선이지 조건이 아니다)이라 영속하지 않는다. 기본 = 오늘의 달(사용자 확정).
+     */
+    gazeMonths: string[] | null;
+    setGazeMonths: (months: string[] | null) => void;
     addFilterStage: (predicates?: FilterPredicate[]) => void;
     /**
      * 보드에서 레일을 그은 결과 — 그 레일의 필터를 만들거나 갈아끼우거나(술어) 지운다(null).
@@ -131,8 +138,10 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     filterExpandToPoints: loadExpand(),
     funnelSelection: null,
     selectedSetRef: null,
+    gazeMonths: [kstToday().slice(0, 7)],
 
     selectSet: (ref) => set(() => ({ selectedSetRef: ref })),
+    setGazeMonths: (months) => set(() => ({ gazeMonths: months })),
 
     setFilterSlot: (i) => set((s) => {
         if (i === s.filterSlotIndex || i < 0 || i >= FILTER_SLOT_COUNT) return {};

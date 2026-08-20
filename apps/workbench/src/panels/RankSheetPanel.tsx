@@ -18,9 +18,8 @@ import { useSheetDragPlacement } from "./rank/useSheetDragPlacement.js";
 import { useSessionScroll } from "./rank/useSessionScroll.js";
 import { useRankAxes } from "../lib/RankAxesContext.js";
 import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js";
-import { useSetBinding } from "./filter/useSetBinding.js";
-import { SetBindingLabel, setBindingControl } from "./filter/SetBindingLabel.js";
-import { SetSidebar } from "./filter/SetSidebar.js";
+import { useLinkedSet } from "./filter/useSetBinding.js";
+import { SetBindingLabel } from "./filter/SetBindingLabel.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { PanelHeader, ScrollRow, miniBtn, mutedNote } from "../components/ControlChrome.js";
@@ -118,23 +117,19 @@ export function RankSheetPanel(): JSX.Element {
         return m;
     }, [allPoints]);
 
-    // ── 보는 집합 — **바인딩 하나로 구독**한다(디폴트 연동 = 필터 패널의 선택 포인터 그대로).
-    //    참조를 묶으면 이 시트만 그 집합을 본다 — 옆 패널과 다른 집합을 보는 게 이제 정상 상태라,
-    //    무엇을 보는지는 헤더 칩이 상시 말한다.
-    const binding = useSetBinding("wb.setBinding.sheet");
-    const bandsActive = binding.view.isFiltering;
+    // ── 보는 집합 — 연동 하나(전역 선택 포인터 + 월 시선 구독, 주인은 작업셋). 사이드바 재편(2026-08-21)으로
+    //    패널별 고정 바인딩·집합 사이드바는 폐지 — 멤버 브라우징·표현 안 됨은 작업셋이 담당한다.
+    const linked = useLinkedSet();
+    const bandsActive = linked.view.isFiltering;
     // 무필터면 매칭이라는 개념 자체가 없다 — 전 우주 Set 을 짓지 않는다(수천 타점이면 그게 그대로 비용).
     const interKeys = useMemo<ReadonlySet<string>>(
-        () => (binding.view.isFiltering ? new Set(binding.view.viewedPointRefs.map(pointKey)) : EMPTY_KEYS),
-        [binding.view.isFiltering, binding.view.viewedPointRefs],
+        () => (linked.view.isFiltering ? new Set(linked.view.viewedPointRefs.map(pointKey)) : EMPTY_KEYS),
+        [linked.view.isFiltering, linked.view.viewedPointRefs],
     );
-    const [sideOpen, setSideOpen] = usePersistedState<boolean>(
-        "wb.setSidebar.sheet", (o) => (typeof o === "boolean" ? o : null), false);
-    const goToDay = useWorkbench((s) => s.goToDay);
     // 표현가능 술어 — 시트의 행이 될 수 있나 = 타점 사전에 있나. 타점 0인 하루는 전개가 못 살리므로 안 됨에 선다.
     const setMembers = useMemo(
-        () => setMembersOf(binding.view, "point", (it) => it.time !== undefined && allByKey.has(pointKey({ stockCode: it.stockCode, date: it.date, time: it.time }))),
-        [binding.view, allByKey],
+        () => setMembersOf(linked.view, "point", (it) => it.time !== undefined && allByKey.has(pointKey({ stockCode: it.stockCode, date: it.date, time: it.time }))),
+        [linked.view, allByKey],
     );
 
     // 필터 표시 모드 — narrow(교집합만) / dim(전체 유지, 밴드 밖 흐리게). 영속.
@@ -276,7 +271,6 @@ export function RankSheetPanel(): JSX.Element {
     // 헤더 컨트롤 선언 — 눈금·필터모드·축 만들기. 아래 "⤺" 해제 손잡이들은 여기 안 든다:
     // 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라 성격이 다르다(개수가 곧 정보다).
     const controls: ControlSpec[] = [
-        setBindingControl({ binding, open: sideOpen, setOpen: setSideOpen }),
         {
             kind: "choice", id: "cellMode", name: "눈금", help: "칸을 무엇으로 읽을까 — 값 눈금은 계산 축에서만 다르다(판단 축은 순위로 폴백)",
             values: [
@@ -311,7 +305,7 @@ export function RankSheetPanel(): JSX.Element {
                 그 잣대다: 늘 서 있는 손잡이였으니 사라지는 것들 틈이 아니라 컨트롤 줄이 제자리다. */}
             <PanelHeader gap={8}>
                 <ScrollRow gap={9}>
-                    <SetBindingLabel binding={binding} members={setMembers} />
+                    <SetBindingLabel linked={linked} members={setMembers} />
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
@@ -360,12 +354,6 @@ export function RankSheetPanel(): JSX.Element {
                 {/* 고정 블록(핀)은 조건에 맞아서 있는 게 아니다 — 그게 차 있어도 "맞는 게 없다"는 사실은 말해야 한다. */}
                 {mainRows.length === 0 && <div style={muted}>{bandsActive ? "이 조건에 맞는 타점이 없습니다." : "이 기간에 타점이 없습니다."}</div>}
             </div>
-            {sideOpen && (
-                <SetSidebar binding={binding} members={setMembers} showTime
-                    onPick={(it) => (it.time !== undefined
-                        ? goToPoint({ code: it.stockCode, date: it.date, time: it.time }, "rank-sheet")
-                        : goToDay({ code: it.stockCode, date: it.date }))} />
-            )}
             </div>
 
             {drag.overlay}

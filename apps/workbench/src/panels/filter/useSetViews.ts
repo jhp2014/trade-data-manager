@@ -43,6 +43,14 @@ export interface SetViews {
 export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): SetViews {
     const selection = useWorkbench((s) => s.funnelSelection);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
+    // 월 시선(전역) — "보는 집합 = 집합 ∩ 월"을 **여기 한 곳**에서 접는다. 소비자(골격·시트·그룹목록·
+    // 작업셋 렌즈·레일 오버레이)마다 되풀이하면 하나는 빠뜨리고, 그 화면만 딴 달을 그린다.
+    // 정산(tally·5칸 숫자)은 viewOf 를 안 거치므로 월과 무관하다 — 시선은 조건이 아니다.
+    const gazeMonths = useWorkbench((s) => s.gazeMonths);
+    const inGaze = useCallback(
+        (i: { date: string }): boolean => gazeMonths === null || gazeMonths.includes(i.date.slice(0, 7)),
+        [gazeMonths],
+    );
 
     const isLoading = result === null;
 
@@ -71,13 +79,15 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
         if (!result) return [];
         if (selection) {
             const r = resolveSet({ kind: "cell", stageId: selection.stageId, cells: selection.cells });
-            if (!r.broken) return r.items;
+            if (!r.broken) return r.items.filter(inGaze);
         }
-        return result.survivors;
-    }, [result, selection, resolveSet]);
+        return result.survivors.filter(inGaze);
+    }, [result, selection, resolveSet, inGaze]);
 
     // activeFilter 는 로딩 중에만 없다 — 그때는 어차피 아래 로딩 가드가 isFiltering 을 끈다.
-    const isFiltering = (ctx.activeFilter?.active.length ?? 0) > 0 || selection !== null;
+    // 월 시선도 "걸림"이다 — 조건 없이 달만 좁혀도 구독 패널은 그 달만 그려야 한다(안 그러면
+    // 작업셋에서 달을 눌렀는데 옆 패널이 무반응인, 시선이 두 벌이던 시절의 어긋남이 재생산된다).
+    const isFiltering = (ctx.activeFilter?.active.length ?? 0) > 0 || selection !== null || gazeMonths !== null;
     const viewedChartKeys = useMemo(() => new Set(viewedItems.map((i) => chartKey(i))), [viewedItems]);
     const viewedPointRefs = useMemo(() => {
         const out: { stockCode: string; date: string; time: string }[] = [];
@@ -103,19 +113,20 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
             const hit = cache.get(k);
             if (hit) return hit;
             const r = resolveSet(ref);
+            const items = r.items.filter(inGaze); // 월 시선 — 집합 정의는 그대로, 보이는 창만 좁힌다
             const v: ViewedSet = {
                 isFiltering: !isLoading, // 로딩 중의 빈 집합으로 거르면 "조건에 다 걸렸다"로 읽힌다
                 broken: r.broken,
-                viewedItems: r.items,
-                viewedChartKeys: new Set(r.items.map((i) => chartKey(i))),
+                viewedItems: items,
+                viewedChartKeys: new Set(items.map((i) => chartKey(i))),
                 // 전개(∀) — 하루 항목은 그날 타점 전부로. 타점 0인 하루는 대표가 없다(결손으로 보일 자리).
-                viewedPointRefs: expandToPointItems(r.items, (c) => ctx.timesOf(c))
+                viewedPointRefs: expandToPointItems(items, (c) => ctx.timesOf(c))
                     .map((i) => ({ stockCode: i.stockCode, date: i.date, time: i.time! })),
             };
             cache.set(k, v);
             return v;
         };
-    }, [resolveSet, ctx, isLoading]);
+    }, [resolveSet, ctx, isLoading, inGaze]);
     // 연동(null) = **선택 포인터를 따라간다**: 목록에서 집합을 고르면 그 집합, 깔때기를 만지는 순간
     // 작업 깔때기 시선으로 복귀(포인터 리셋은 슬라이스가 한다 — 여기는 읽기만).
     const viewOf = useCallback(

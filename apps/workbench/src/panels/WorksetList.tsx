@@ -15,10 +15,10 @@ import type { ReviewPointListItem } from "../api/reviewPoints.js";
 import type { Group } from "../api/groups.js";
 import type { DayPresence } from "../lib/presence.js";
 import { weekdayOf } from "../lib/date.js";
-import { PresenceBadges } from "../components/PresenceBadges.js";
-import { GroupChips } from "../components/GroupChips.js";
+import { PresenceBadges, PresenceIcon } from "../components/PresenceBadges.js";
+import { ScrollRow } from "../components/ControlChrome.js";
 import { PlacementBadge } from "../components/Placement.js";
-import { PIN } from "../styles/palette.js";
+import { GROUP_PLAIN, PIN } from "../styles/palette.js";
 
 export interface WorksetEntry {
     date: string;
@@ -147,10 +147,13 @@ export function WorksetList({ groups, focus, lens, nameOf, placedOf, axisTotal, 
                                 boxShadow: member ? `inset 3px 0 0 ${PIN}` : undefined,
                                 opacity: lens && !member ? 0.38 : 1,
                             }}>
-                                <span style={{ minWidth: 0, color: selected ? "#fff" : "var(--text-primary)", fontWeight: selected ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {/* 종목명은 안 줄인다(작업 여부 판단의 1열) — 아이콘이 넘치면 아이콘 영역만 hover 가로 스크롤. */}
+                                <span style={{ flexShrink: 0, color: selected ? "#fff" : "var(--text-primary)", fontWeight: selected ? 700 : 600, whiteSpace: "nowrap" }}>
                                     {nameOf(e.code) ?? e.code}
                                 </span>
-                                <PresenceBadges presence={e.presence} style={{ marginLeft: "auto" }} />
+                                <ScrollRow gap={0} style={{ marginLeft: "auto", minWidth: 0, flexShrink: 1 }}>
+                                    <PresenceBadges presence={e.presence} mono={selected} />
+                                </ScrollRow>
                             </button>
                         );
                     }
@@ -178,7 +181,16 @@ export function WorksetList({ groups, focus, lens, nameOf, placedOf, axisTotal, 
                                     {p.memo}
                                 </span>
                             )}
-                            {pGroups.length > 0 && <GroupChips groups={pGroups} short pathOf={pathOf} style={{ marginLeft: "auto", maxWidth: 120, flexShrink: 1 }} />}
+                            {/* 그룹은 아이콘만(이름은 hover) — 작업 여부 화면이라 이름 칩은 소음이다(존재 배지와 같은 원칙). */}
+                            {pGroups.length > 0 && (
+                                <span
+                                    data-presence-kind="group"
+                                    title={`그룹: ${pGroups.map((g) => pathOf(g.name)).join(", ")}`}
+                                    style={{ marginLeft: "auto", flexShrink: 0, display: "inline-flex", color: GROUP_PLAIN }}
+                                >
+                                    <PresenceIcon kindKey="group" name="그룹" />
+                                </span>
+                            )}
                             {axisTotal > 0 && <PlacementBadge placed={placedOf(p)} total={axisTotal} style={{ marginLeft: pGroups.length > 0 ? 0 : "auto" }} />}
                         </button>
                     );

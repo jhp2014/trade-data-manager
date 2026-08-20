@@ -247,3 +247,14 @@ button {
     --dv-font-family: var(--font-sans);
     --dv-tabs-and-actions-container-height: 24px; /* 탭 윗줄 높이 축소(기본 35 → 24) */
 }
+
+/* 작업셋 필터 토큰 — 편집 손잡이(+·✕)는 hover 에만. 상시 보이면 밀집 줄에서 칩보다 손잡이가 시끄럽다.
+   opacity 전환(display 아님): 폭이 hover 로 변하면 토큰이 옆으로 밀려 클릭하려던 칩이 도망간다. */
+.ws-filter-token .ws-filter-tools {
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+.ws-filter-token:hover .ws-filter-tools,
+.ws-filter-token:focus-within .ws-filter-tools {
+    opacity: 1;
+}

@@ -28,9 +28,8 @@ import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import { inPick, pickKeys, PICK_SOURCE_LABEL } from "../lib/pick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { useSetBinding } from "./filter/useSetBinding.js";
-import { SetBindingLabel, setBindingControl } from "./filter/SetBindingLabel.js";
-import { SetSidebar } from "./filter/SetSidebar.js";
+import { useLinkedSet } from "./filter/useSetBinding.js";
+import { SetBindingLabel } from "./filter/SetBindingLabel.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { chartKey, pointKey } from "../lib/pointKey.js";
@@ -88,7 +87,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const toggles = useOverlayToggles(grain);
     const { anchor, showFuture, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme } = toggles;
 
-    const goToPoint = useWorkbench((s) => s.goToPoint);
 
     const isDaily = grain === "daily";
     /** 분봉 = **타점 단위**(사용자 확정): 선 하나 = 타점 하나(자기 시각 피벗이 원점). 절대 뷰는 폐기 —
@@ -126,14 +124,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     // 그룹 한 벌 — 발끝 표기(여기) + 그룹 메뉴(OverlayMenus) + 차트 그룹 필터 판정(데이터 훅)이
     // 같은 컨텍스트 인스턴스를 본다.
     const groupsView = useGroups();
-    // 바인딩 — 이 패널이 보는 집합(디폴트 연동 = 필터 패널을 따라감). 일봉·분봉이 별도 패널이라 키에 grain 이 붙는다.
-    const binding = useSetBinding(`wb.setBinding.skeleton.${grain}`);
-    const [sideOpen, setSideOpen] = usePersistedState<boolean>(
-        `wb.setSidebar.skeleton.${grain}`, (o) => (typeof o === "boolean" ? o : null), false);
-    const goToDay = useWorkbench((s) => s.goToDay);
+    // 보는 집합 — 연동 하나(전역 선택 포인터 구독, 주인은 작업셋의 집합 칩). 사이드바 재편(2026-08-21)으로
+    // 패널별 고정 바인딩·집합 사이드바는 폐지 — 멤버 브라우징·표현 안 됨은 작업셋(존재 필터 "!골격")이 담당.
+    const linked = useLinkedSet();
     // 데이터 절반 — 조립·필터 판정은 전부 useOverlayData. 이 컴포넌트엔 렌더 상태의 배선만 남는다.
     const { feedLoading, lines: allLines, drawableKeys, population, missingPrevClose, levelsByChart, pointsByChart, nameOf, subject, subjectKeys, subjectState } =
-        useOverlayData(isDaily, anchor, onlyCharts, binding.ref);
+        useOverlayData(isDaily, anchor, onlyCharts, null);
 
     /**
      * ── 짚음(pick) — **다른 패널이 좁혀 놓은 렌즈**(그룹 체인 등). 보는 집합은 그대로 두고 그 안을 가리킨다.
@@ -184,9 +180,9 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
      * 출렁여 "채우러 갈 목록"이라는 뜻을 잃는다(allLines 로 셌다가 실제로 그렇게 깨졌던 자리).
      */
     const setMembers = useMemo(
-        () => setMembersOf(binding.view, isDaily ? "day" : "point", (it) =>
+        () => setMembersOf(linked.view, isDaily ? "day" : "point", (it) =>
             drawableKeys.has(it.time === undefined ? chartKey(it) : pointKey({ stockCode: it.stockCode, date: it.date, time: it.time }))),
-        [binding.view, isDaily, drawableKeys],
+        [linked.view, isDaily, drawableKeys],
     );
 
     // ── 뭉친 라벨의 멤버 목록. 그래프를 만지면(팬·확대) 닫는다 — d3 가 SVG mousedown 을 삼켜
@@ -390,17 +386,12 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         }),
         [pick, pickShown, allLines.length, pickBroken, pickMode, setPickMode, clearPick],
     );
-    // binding 통짜는 매 렌더 새 객체(useSetBinding) — 라벨·컨트롤이 실제로 읽는 값만 의존성으로 잡는다.
-    const { label: bindingText, broken: bindingBroken } = binding;
+    // linked 통짜는 매 렌더 새 객체(useLinkedSet) — 라벨이 실제로 읽는 값만 의존성으로 잡는다.
+    const { label: linkedText } = linked;
     const bindingLabel = useMemo(
-        () => <SetBindingLabel binding={binding} members={setMembers} />,
+        () => <SetBindingLabel linked={linked} members={setMembers} />,
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [bindingText, bindingBroken, setMembers],
-    );
-    const setControl = useMemo(
-        () => setBindingControl({ binding, open: sideOpen, setOpen: setSideOpen }),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [bindingBroken, sideOpen, setSideOpen],
+        [linkedText, setMembers],
     );
     const subjectBadge = useMemo(
         () => <SubjectBadge subject={subject} status={subjectState}
@@ -458,7 +449,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 counts={headerCounts}
                 theme={headerTheme}
                 bindingLabel={bindingLabel}
-                setControl={setControl}
                 pick={headerPick}
                 subjectBadge={subjectBadge}
                 onlySelected={onlySelected}
@@ -517,12 +507,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                     onClearPins: pins.clear,
                 }}
             />
-            {sideOpen && (
-                <SetSidebar binding={binding} members={setMembers} showTime={!isDaily}
-                    onPick={(it) => (it.time !== undefined
-                        ? goToPoint({ code: it.stockCode, date: it.date, time: it.time })
-                        : goToDay({ code: it.stockCode, date: it.date }))} />
-            )}
             </div>
 
             <OverlayMenus

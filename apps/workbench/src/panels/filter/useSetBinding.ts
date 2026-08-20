@@ -1,65 +1,43 @@
-// 패널 바인딩 — **이 패널이 보는 집합**을 패널마다 고른다(영속). 전역 렌즈 하나가 전 패널을 정하던
-// 구조의 해체: 모드는 딱 둘이다 —
-//   · 연동(null, 디폴트) : 필터 패널의 선택 포인터를 따라간다(목록에서 고른 집합, 없으면 작업 깔때기 시선).
-//   · 고정(참조)        : 집합 목록의 하나(전체·최종 생존·저장 집합)에 묶는다.
-// "시선은 따라가고, 고정은 안 따라간다" — HTS 연동 채널과 같은 문법.
+// 보는 집합 구독 — **연동 하나뿐이다**(2026-08-21 사이드바 재편). 패널은 전역 선택 포인터
+// (selectedSetRef — 주인은 작업셋의 집합 칩)를 따라가고, 자기만의 고정 바인딩은 폐지됐다:
+// 집합을 고르는 자리가 작업셋 하나로 모이면서(사용자 확정 — "나머지 패널은 구독만"), 패널별
+// 바인딩·사이드바는 같은 일을 두 곳에서 하는 중복이 됐다. 잠깐 딴 집합을 보고 싶으면 작업셋에서
+// 갈아타면 된다 — 전 패널이 같이 움직이는 게 이제 버그가 아니라 그림이다.
 //
-// ## 어휘 (⚠ "선택"은 여기 안 쓴다)
-// 이 앱에서 **선택**(subject)은 지금 보고 있는 **한 항목**(종목·날짜·시각)이고, 집합을 좁히는 일은
-// **짚음**(pick)이다. 그래서 바인딩 이름에 "선택"을 넣으면 두 낱말이 한 헤더에서 서로 다른 것을
-// 가리키게 된다("선택 집합 128/512" 옆에 "선택만 보기" 토글이 서는 자리다).
-//
-// 저장은 **영속 3종만**(parseSetRef 가 세션 종류를 거르고, 폐지된 옛 바인딩은 orphan 으로 변환한다).
-// 깨진 참조는 빈 집합 + broken 으로 오고, 화면이 라벨과 전환 손잡이를 보여준다 — 유니버스로 조용히
-// 폴백하지 않는다(실패가 넓어지는 방향이라).
-import { useCallback } from "react";
-import { isPersistableSetRef, parseSetRef, type SetRef } from "../../lib/setRef.js";
-import { usePersistedState } from "../../store/persist.js";
-import { useWorkbench } from "../../store/workbench.js";
+// 옛 고정 바인딩의 영속(wb.setBinding.*)은 읽지 않는다 — 새 키가 아니라 개념이 사라진 것이라
+// 변환할 대상이 없고, 안 읽으면 자연히 죽는다(옛 저장 필터 키의 선례).
 import type { SavedSet } from "../../store/savedSetsSlice.js";
+import { useWorkbench } from "../../store/workbench.js";
+import type { SetRef } from "../../lib/setRef.js";
 import { useFunnel } from "./FunnelContext.js";
 import type { ViewedSet } from "./useSetViews.js";
 
-export interface SetBinding {
-    /** null = 연동(디폴트) — 필터 패널의 선택 포인터를 따라간다. */
-    ref: SetRef | null;
-    setRef: (r: SetRef | null) => void;
-    /** 바인딩을 푼 결과 — viewed* 계약 그대로라 소비 코드가 바인딩 이전과 같은 필드를 쓴다. */
+export interface LinkedSet {
+    /** 보는 집합(선택 포인터가 가리키는 것) — viewed* 계약 그대로(월 시선까지 접혀 온다). */
     view: ViewedSet;
-    /** 사람이 읽는 이름 — 헤더 칩이 상시 표시한다("지금 뭘 보고 있나"의 답). */
+    /** 사람이 읽는 이름 — 헤더 라벨이 상시 표시한다("지금 뭘 보고 있나"의 답). */
     label: string;
-    broken: boolean;
 }
 
-/** 바인딩 참조의 이름 — 저장 집합은 저장 사전에서 찾는다(지워졌으면 그렇게 말한다). */
+/** 집합 참조의 이름 — 저장 집합은 저장 사전에서 찾는다(지워졌으면 그렇게 말한다). */
 export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[]): string {
     switch (ref.kind) {
         case "universe": return "전체";
         case "survivors": return "최종 생존";
         case "saved": return savedSets.find((f) => f.id === ref.setId)?.name ?? "(지워진 집합)";
         case "orphan": return `${ref.label} (폐지된 바인딩)`;
-        // 세션 종류는 저장을 못 하니 바인딩에 나타날 일이 없지만, 타입 총망라를 위해 남긴다.
         case "cell": return "짚은 칸";
         case "groupChain": return ref.names.join(" & ");
         case "items": return ref.label;
     }
 }
 
-export function useSetBinding(storageKey: string): SetBinding {
+export function useLinkedSet(): LinkedSet {
     const funnel = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const [ref, setRefState] = usePersistedState<SetRef | null>(storageKey, parseSetRef, null);
-    // 세션 종류(짚은 칸·체인·항목)는 저장하는 순간 깨진 참조가 된다 — 호출부 실수를 계약 위반으로 만든다.
-    const setRef = useCallback((r: SetRef | null) => {
-        if (r !== null && !isPersistableSetRef(r)) throw new Error(`바인딩에 저장할 수 없는 참조: ${r.kind}`);
-        setRefState(r);
-    }, [setRefState]);
-    const view = funnel.viewOf(ref);
-    // 연동 라벨은 **지금 따라가는 곳**까지 말한다 — "연동"만으로는 화면들이 왜 같이 움직였는지 안 보인다.
-    // "작업 깔때기"는 집합 목록(SetListSidebar)의 어휘와 같아야 한다 — 같은 것을 두 이름으로 부르지 않는다.
-    const label = ref === null
-        ? `연동 · ${selectedSetRef === null ? "작업 깔때기" : setRefLabel(selectedSetRef, savedSets)}`
-        : setRefLabel(ref, savedSets);
-    return { ref, setRef, view, label, broken: view.broken };
+    const view = funnel.viewOf(null);
+    // 라벨은 **지금 따라가는 곳**을 말한다 — "작업 깔때기"는 집합 목록(SetListSidebar)의 어휘와 같다.
+    const label = selectedSetRef === null ? "작업 깔때기" : setRefLabel(selectedSetRef, savedSets);
+    return { view, label };
 }

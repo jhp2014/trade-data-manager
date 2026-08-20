@@ -67,11 +67,15 @@ export function FilterBoard({ reveal, onlyActive }: {
     // 작업 깔때기 시선). 하루 항목은 뷰 계약이 이미 타점으로 전개해 뒀다(∀ — 하루 조건은 전 타점에
     // 같은 값). 아무것도 안 걸렸으면 null — 전부 멤버인 오버레이는 아무 말도 아니다.
     const selectedView = v.viewOf(null);
+    // 오버레이는 **조건/집합/짚음이 걸렸을 때만** — 월 시선만으로도 isFiltering 이 켜지는데(전 패널 공통
+    // 접기), 그때의 멤버는 "그 달의 전부"라 레일에 칠하면 정보가 아니라 바탕색이다.
+    const filtersOn = stages.some((st) => st.enabled !== false && st.predicates.length > 0);
+    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null || s.funnelSelection !== null) || filtersOn;
     const memberKeys = useMemo<ReadonlySet<string> | null>(
-        () => (selectedView.isFiltering && !selectedView.broken
+        () => (pointerOn && selectedView.isFiltering && !selectedView.broken
             ? new Set(selectedView.viewedPointRefs.map((p) => pointKeyOf(p.stockCode, p.date, p.time)))
             : null),
-        [selectedView],
+        [pointerOn, selectedView],
     );
 
     const grainOf = useMemo(() => new Map(v.stagesOrdered.map((e) => [e.stage.id, e.grain])), [v.stagesOrdered]);
