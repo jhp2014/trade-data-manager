@@ -46,7 +46,7 @@ beforeEach(() => {
     useWorkbench.setState({
         pick: null, filterSlots: [[], [], []], filterSlotIndex: 0, funnelSelection: null, skeletonSelection: new Set(), activePoint: null,
         savedSets: [], selectedSetRef: null, openedSetId: null,
-        gazeMonths: null, // 월 전체 — 월 시선 검사는 각 테스트가 명시로 건다
+        gazeMonths: null, gazePresence: [], // 시선 전체 해제 — 시선 검사는 각 테스트가 명시로 건다
     });
 });
 afterEach(() => {
@@ -75,6 +75,17 @@ describe("보는 집합 — 전역 포인터·월 시선 구독", () => {
         expect(screen.getByText("3개")).toBeTruthy();
         cleanup();
         useWorkbench.setState({ gazeMonths: ["1999-01"] });
+        renderPanel();
+        expect(screen.getByText("0개")).toBeTruthy();
+    });
+
+    it("존재필터 시선도 구독 패널에 닿는다 — '타점 있음'이면 전체, '타점 없음'이면 0개", () => {
+        // 픽스처 세 차트 전부 타점이 있다(clusterPoints) — 앵커 테이블은 비어 presence 의 marks 는 0.
+        useWorkbench.setState({ gazePresence: [{ point: "has" }] });
+        renderPanel();
+        expect(screen.getByText("3개")).toBeTruthy();
+        cleanup();
+        useWorkbench.setState({ gazePresence: [{ point: "not" }] });
         renderPanel();
         expect(screen.getByText("0개")).toBeTruthy();
     });

@@ -24,6 +24,10 @@ import {
 import { applyRailPredicate, type RailKey } from "../panels/filter/stageBinding.js";
 import { loadJson, saveJson } from "./persist.js";
 import { kstToday } from "../lib/date.js";
+import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
+
+/** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
+const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter";
 
 const STAGES_KEY = "wb.filterStages"; // 슬롯 도입 전의 단일 벌 — 슬롯 1로 읽어 들이는 이관용(이제 안 쓴다)
 const SLOTS_KEY = "wb.filterSlots";
@@ -84,6 +88,13 @@ export interface FilterFunnelSlice {
      */
     gazeMonths: string[] | null;
     setGazeMonths: (months: string[] | null) => void;
+    /**
+     * 존재(curation) 필터 시선 — 월과 함께 전역 시선의 세 번째 성분(보는 집합 = 집합 ∩ 월 ∩ 존재필터).
+     * 주인은 작업셋 필터 줄. 월과 달리 **영속한다**(작업 국면은 재시작을 건너 살아야 한다 — 사용자 확정),
+     * 키는 작업셋 로컬이던 시절 것을 그대로 승계(무손실).
+     */
+    gazePresence: PresenceDnf;
+    setGazePresence: (dnf: PresenceDnf) => void;
     addFilterStage: (predicates?: FilterPredicate[]) => void;
     /**
      * 보드에서 레일을 그은 결과 — 그 레일의 필터를 만들거나 갈아끼우거나(술어) 지운다(null).
@@ -139,9 +150,11 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     funnelSelection: null,
     selectedSetRef: null,
     gazeMonths: [kstToday().slice(0, 7)],
+    gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],
 
     selectSet: (ref) => set(() => ({ selectedSetRef: ref })),
     setGazeMonths: (months) => set(() => ({ gazeMonths: months })),
+    setGazePresence: (dnf) => set(() => { saveJson(GAZE_PRESENCE_KEY, dnf); return { gazePresence: dnf }; }),
 
     setFilterSlot: (i) => set((s) => {
         if (i === s.filterSlotIndex || i < 0 || i >= FILTER_SLOT_COUNT) return {};

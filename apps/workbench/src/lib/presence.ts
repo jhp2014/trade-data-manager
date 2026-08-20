@@ -132,6 +132,19 @@ export function matchesPresenceDnf(d: DayPresence, dnf: PresenceDnf): boolean {
 /** DNF 에 활성 절이 있나 — "숨김 N" 표기·해제 손잡이의 기준. */
 export const hasActiveDnf = (dnf: PresenceDnf): boolean => dnf.some(hasActiveFilter);
 
+/**
+ * 필터 요약 문자열 — 컨트롤 줄·구독 패널 라벨 꼬리("무엇으로 걸렀나")용.
+ * 표기는 & | — 논리 기호(∧∨)는 낯설다는 사용자 확정. 필터 줄의 구분자와 같은 문자를 쓴다.
+ */
+export function dnfSummary(dnf: PresenceDnf): string {
+    const parts = dnf.filter(hasActiveFilter).map((c) =>
+        PRESENCE_KINDS.filter((k) => (c[k.key] ?? "any") !== "any")
+            .map((k) => (c[k.key] === "not" ? `!${k.name}` : k.name))
+            .join(" & "),
+    );
+    return parts.join(" | ");
+}
+
 /** 절 안 칩 클릭 순환: has → not → any(제거). 새 칩은 has 로 들어온다. */
 export const nextTriState = (s: TriState): TriState => (s === "any" ? "has" : s === "has" ? "not" : "any");
 

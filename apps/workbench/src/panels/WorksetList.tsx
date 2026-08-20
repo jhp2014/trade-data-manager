@@ -15,9 +15,9 @@ import type { ReviewPointListItem } from "../api/reviewPoints.js";
 import type { Group } from "../api/groups.js";
 import type { DayPresence } from "../lib/presence.js";
 import { weekdayOf } from "../lib/date.js";
-import { PresenceBadges, PresenceIcon } from "../components/PresenceBadges.js";
+import { PresenceBadges, PresenceIcon, GroupNamesCard } from "../components/PresenceBadges.js";
 import { ScrollRow } from "../components/ControlChrome.js";
-import { PlacementBadge } from "../components/Placement.js";
+import { HoverCard } from "../components/HoverCard.js";
 import { GROUP_PLAIN, PIN } from "../styles/palette.js";
 
 export interface WorksetEntry {
@@ -44,15 +44,13 @@ const DATE_H = 24;
 const STOCK_H = 24;
 const POINT_H = 22;
 
-export function WorksetList({ groups, focus, lens, nameOf, placedOf, axisTotal, groupsOf, pathOf, onPickDay, onPickPoint, jumpTo }: {
+export function WorksetList({ groups, focus, lens, nameOf, groupsOf, pathOf, onPickDay, onPickPoint, jumpTo }: {
     /** 날짜 내림차순 그룹(패널이 접는다) — 여긴 그리기만. */
     groups: readonly { date: string; stocks: readonly WorksetEntry[] }[];
     focus: { code: string; date: string; time: string | null };
     /** null = 렌즈 없음(집합 미선택·전체). */
     lens: WorksetLens | null;
     nameOf: (code: string) => string | null;
-    placedOf: (p: ReviewPointListItem) => number;
-    axisTotal: number;
     groupsOf: (p: ReviewPointListItem) => Group[];
     pathOf: (groupName: string) => string;
     onPickDay: (e: WorksetEntry) => void;
@@ -181,17 +179,17 @@ export function WorksetList({ groups, focus, lens, nameOf, placedOf, axisTotal, 
                                     {p.memo}
                                 </span>
                             )}
-                            {/* 그룹은 아이콘만(이름은 hover) — 작업 여부 화면이라 이름 칩은 소음이다(존재 배지와 같은 원칙). */}
+                            {/* 그룹은 아이콘만 + hover 색 카드(경로는 카드 안에서) — 작업 여부 화면이라 이름 칩은 소음.
+                                배치 배지(n/m)는 뺐다: "어느 축에 안 꽂았나"는 시트의 질문이다(사용자 확정). */}
                             {pGroups.length > 0 && (
-                                <span
-                                    data-presence-kind="group"
-                                    title={`그룹: ${pGroups.map((g) => pathOf(g.name)).join(", ")}`}
-                                    style={{ marginLeft: "auto", flexShrink: 0, display: "inline-flex", color: GROUP_PLAIN }}
-                                >
-                                    <PresenceIcon kindKey="group" name="그룹" />
+                                <span style={{ marginLeft: "auto", flexShrink: 0 }}>
+                                    <HoverCard card={<GroupNamesCard names={pGroups.map((g) => pathOf(g.name))} />}>
+                                        <span data-presence-kind="group" style={{ display: "inline-flex", color: GROUP_PLAIN }}>
+                                            <PresenceIcon kindKey="group" name="그룹" />
+                                        </span>
+                                    </HoverCard>
                                 </span>
                             )}
-                            {axisTotal > 0 && <PlacementBadge placed={placedOf(p)} total={axisTotal} style={{ marginLeft: pGroups.length > 0 ? 0 : "auto" }} />}
                         </button>
                     );
                 })}

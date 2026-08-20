@@ -13,6 +13,11 @@ import { chartKey } from "../../lib/pointKey.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { resolveSetRef, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
+import { usePresenceIndex } from "../../lib/usePresence.js";
+import { hasActiveDnf, matchesPresenceDnf } from "../../lib/presence.js";
+
+const EMPTY_MARKS: ReadonlyMap<string, number> = new Map();
+const EMPTY_GROUPS: readonly string[] = [];
 
 /** 구독 패널이 소비하는 "보는 집합"의 계약 — viewOf 가 돌려주는 유일한 모양. */
 export interface ViewedSet {
@@ -43,13 +48,23 @@ export interface SetViews {
 export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): SetViews {
     const selection = useWorkbench((s) => s.funnelSelection);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    // 월 시선(전역) — "보는 집합 = 집합 ∩ 월"을 **여기 한 곳**에서 접는다. 소비자(골격·시트·그룹목록·
-    // 작업셋 렌즈·레일 오버레이)마다 되풀이하면 하나는 빠뜨리고, 그 화면만 딴 달을 그린다.
-    // 정산(tally·5칸 숫자)은 viewOf 를 안 거치므로 월과 무관하다 — 시선은 조건이 아니다.
+    // 시선(전역) — "보는 집합 = 집합 ∩ 월 ∩ 존재필터"를 **여기 한 곳**에서 접는다. 소비자(골격·시트·
+    // 그룹목록·작업셋 렌즈·레일 오버레이)마다 되풀이하면 하나는 빠뜨리고, 그 화면만 딴 것을 그린다.
+    // 정산(tally·5칸 숫자)은 viewOf 를 안 거치므로 시선과 무관하다 — 시선은 조건이 아니다.
+    // 존재필터의 낟알은 day: 타점 항목도 "그 날이 통과하면 통과"(작업셋 행 필터와 같은 의미론).
     const gazeMonths = useWorkbench((s) => s.gazeMonths);
+    const gazePresence = useWorkbench((s) => s.gazePresence);
+    const { index: presenceIdx } = usePresenceIndex();
+    const presenceOn = hasActiveDnf(gazePresence);
     const inGaze = useCallback(
-        (i: { date: string }): boolean => gazeMonths === null || gazeMonths.includes(i.date.slice(0, 7)),
-        [gazeMonths],
+        (i: { stockCode: string; date: string }): boolean => {
+            if (!(gazeMonths === null || gazeMonths.includes(i.date.slice(0, 7)))) return false;
+            if (!presenceOn) return true;
+            // 지도에 없는 날 = 존재 0 으로 평가(결손을 조용히 통과시키지 않는다 — "!골격"은 통과, "골격"은 탈락).
+            const p = presenceIdx.get(chartKey(i)) ?? { stockCode: i.stockCode, date: i.date, marks: EMPTY_MARKS, points: 0, groups: EMPTY_GROUPS, comment: false };
+            return matchesPresenceDnf(p, gazePresence);
+        },
+        [gazeMonths, presenceOn, gazePresence, presenceIdx],
     );
 
     const isLoading = result === null;
@@ -85,9 +100,9 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
     }, [result, selection, resolveSet, inGaze]);
 
     // activeFilter 는 로딩 중에만 없다 — 그때는 어차피 아래 로딩 가드가 isFiltering 을 끈다.
-    // 월 시선도 "걸림"이다 — 조건 없이 달만 좁혀도 구독 패널은 그 달만 그려야 한다(안 그러면
-    // 작업셋에서 달을 눌렀는데 옆 패널이 무반응인, 시선이 두 벌이던 시절의 어긋남이 재생산된다).
-    const isFiltering = (ctx.activeFilter?.active.length ?? 0) > 0 || selection !== null || gazeMonths !== null;
+    // 월·존재필터 시선도 "걸림"이다 — 조건 없이 시선만 좁혀도 구독 패널은 그만큼만 그려야 한다(안 그러면
+    // 작업셋에서 달/필터를 눌렀는데 옆 패널이 무반응인, 시선이 두 벌이던 시절의 어긋남이 재생산된다).
+    const isFiltering = (ctx.activeFilter?.active.length ?? 0) > 0 || selection !== null || gazeMonths !== null || presenceOn;
     const viewedChartKeys = useMemo(() => new Set(viewedItems.map((i) => chartKey(i))), [viewedItems]);
     const viewedPointRefs = useMemo(() => {
         const out: { stockCode: string; date: string; time: string }[] = [];

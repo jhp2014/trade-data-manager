@@ -109,5 +109,5 @@ if (typeof window !== "undefined") {
 // 월 시선을 검사하는 테스트는 각자 명시로 건다(setBinding.dom.test 선례).
 beforeEach(async () => {
     const { useWorkbench } = await import("../store/workbench.js");
-    useWorkbench.setState({ gazeMonths: null });
+    useWorkbench.setState({ gazeMonths: null, gazePresence: [] });
 });

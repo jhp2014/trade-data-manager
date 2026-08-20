@@ -83,7 +83,7 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         renderWithProviders(<WorksetPanel />, SEED);
         addFilterWith("골격");
         addFilterWith("코멘트");
-        expect(screen.getByText("OR")).toBeTruthy();
+        expect(screen.getByText("|")).toBeTruthy(); // 필터 사이 구분자 = | (AND 는 칩 사이 &)
         expect(screen.getByText("골격만")).toBeTruthy();
         expect(screen.getByText("코멘트만")).toBeTruthy();
         expect(screen.queryByText("타점만")).toBeNull();
@@ -111,10 +111,13 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         const row = screen.getByText("골격만").closest("button");
         expect(row?.querySelector("[data-presence-kind='skeleton']")).toBeTruthy();
         expect(row?.querySelector("[data-presence-kind='comment']")).toBeNull();
-        // 그룹 배지의 상세(그룹명)는 툴팁으로 — 화면에 이름 칩이 서지 않는다.
+        // 그룹명은 hover 색 카드로 — 화면(행)에 이름 칩이 서지 않고, 아이콘에 올리면 즉시 카드가 뜬다.
         const groupRow = screen.getByText("그룹만").closest("button");
-        expect(groupRow?.querySelector("[data-presence-kind='group']")?.getAttribute("title")).toContain("후보");
+        const groupBadge = groupRow?.querySelector("[data-presence-kind='group']");
+        expect(groupBadge).toBeTruthy();
         expect(groupRow?.textContent).not.toContain("후보");
+        fireEvent.mouseEnter(groupBadge!.parentElement!);
+        expect(document.querySelector("[data-hover-card]")?.textContent).toContain("후보");
     });
 
     it("날짜 머리에 그 날 표시 항목 수가 선다", () => {

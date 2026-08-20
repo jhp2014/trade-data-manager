@@ -9,19 +9,28 @@
 // (색 정보는 어차피 툴팁이 대신 말한다). 접근성·테스트 손잡이로 aria-label 과 data-presence-kind.
 import type { CSSProperties } from "react";
 import { PRESENCE_KINDS, type DayPresence, type PresenceKindDef } from "../lib/presence.js";
+import { HoverCard } from "./HoverCard.js";
+import { groupColor } from "../styles/palette.js";
 
 // 12×12 라인 아이콘 — 색·굵기는 부모에서 상속(currentColor). 골격 둘은 **같은 색**이라(차트가 그렇다)
-// 실선/파선으로 가른다: 분봉 골격이 더 잘게 끊긴 경로라는 뜻이 그림에 그대로 있다.
+// 실루엣으로 가른다: 일봉=굵직한 꺾임, 분봉=잘게 꺾인 경로(장중 경로라는 뜻이 그림에 있다).
 const ICONS: Record<string, JSX.Element> = {
-    baseline: <line x1="1" y1="7.5" x2="11" y2="7.5" />, // 그은 선
+    baseline: ( // 선에 걸친 캔들 — 차트에서 기준선이 서는 장면(선 위로 봉이 걸린) 그대로
+        <>
+            <line x1="1" y1="8" x2="11" y2="8" />
+            <line x1="6" y1="1.5" x2="6" y2="10.5" strokeWidth="1" />
+            <rect x="4.4" y="3.5" width="3.2" height="5" rx="0.6" fill="currentColor" stroke="none" />
+        </>
+    ),
     "ignore-candle": ( // 금지 표식 — "없는 셈 치는 봉"
         <>
             <circle cx="6" cy="6" r="4.4" />
             <line x1="2.9" y1="9.1" x2="9.1" y2="2.9" />
         </>
     ),
-    skeleton: <polyline points="1.5,9.5 4.5,3.5 7,7 10.5,1.8" />, // 피벗 경로
-    "skeleton-minute": <polyline points="1.5,9.5 4.5,3.5 7,7 10.5,1.8" strokeDasharray="2 1.3" />,
+    skeleton: <polyline points="1.5,9.5 4.5,3.5 7,7 10.5,1.8" />, // 피벗 경로(굵직한 꺾임 = 일봉)
+    // 분봉 = **잘게 꺾인 경로** — 장중 경로라는 뜻이 실루엣에 있다. 파선(옛)은 일봉과 구분이 약했다(사용자 확정).
+    "skeleton-minute": <polyline points="1,8.5 2.8,5.5 4.4,7.8 6,3 7.6,6.5 9.2,4.2 11,7.2" strokeWidth="1.3" />,
     point: <polygon points="2,2.8 10,2.8 6,10" fill="currentColor" stroke="none" />, // 차트의 타점 ▼ 와 같은 모양
     group: ( // 담긴 것들(층)
         <>
@@ -49,10 +58,23 @@ export function PresenceIcon({ kindKey, name }: { kindKey: string; name: string 
     );
 }
 
-/** 아이콘별 툴팁 — 개수·그룹명 같은 상세는 전부 여기로(화면은 유무만). */
-function tipOf(kind: PresenceKindDef, n: number, p: DayPresence): string {
-    if (kind.key === "group") return `그룹: ${p.groups.join(", ")}`;
+/** 아이콘별 네이티브 툴팁 — 개수 같은 한 줄 상세. 그룹은 색이 정보라 HoverCard 가 대신한다. */
+function tipOf(kind: PresenceKindDef, n: number): string {
     return n > 1 ? `${kind.name} ${n}` : kind.name;
+}
+
+/** 그룹 hover 카드 내용 — groupColor 로 묶임이 바로 읽히는 이름들(GroupChips 문법). */
+export function GroupNamesCard({ names }: { names: readonly string[] }): JSX.Element {
+    return (
+        <span style={{ display: "inline-flex", gap: 7, fontWeight: 600 }}>
+            {names.map((n, i) => (
+                <span key={n} style={{ display: "contents" }}>
+                    {i > 0 && <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>·</span>}
+                    <span style={{ color: groupColor(n) }}>{n}</span>
+                </span>
+            ))}
+        </span>
+    );
 }
 
 export function PresenceBadges({ presence, mono = false, style }: {
@@ -66,17 +88,23 @@ export function PresenceBadges({ presence, mono = false, style }: {
     if (active.length === 0) return null;
     return (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 10, lineHeight: 1, whiteSpace: "nowrap", ...style }}>
-            {active.map(({ kind, n }) => (
-                <span
-                    key={kind.key}
-                    data-presence-kind={kind.key}
-                    aria-label={n > 1 ? `${kind.name} ${n}` : kind.name}
-                    title={tipOf(kind, n, presence)}
-                    style={{ display: "inline-flex", alignItems: "center", color: mono ? "#fff" : kind.color }}
-                >
-                    <PresenceIcon kindKey={kind.key} name={kind.name} />
-                </span>
-            ))}
+            {active.map(({ kind, n }) => {
+                const icon = (
+                    <span
+                        key={kind.key}
+                        data-presence-kind={kind.key}
+                        aria-label={n > 1 ? `${kind.name} ${n}` : kind.name}
+                        title={kind.key === "group" ? undefined : tipOf(kind, n)}
+                        style={{ display: "inline-flex", alignItems: "center", color: mono ? "#fff" : kind.color }}
+                    >
+                        <PresenceIcon kindKey={kind.key} name={kind.name} />
+                    </span>
+                );
+                // 그룹만 색 카드 — 어느 그룹인지가 색으로 바로 들어와야 한다(사용자 확정).
+                return kind.key === "group"
+                    ? <HoverCard key={kind.key} card={<GroupNamesCard names={presence.groups} />}>{icon}</HoverCard>
+                    : icon;
+            })}
         </span>
     );
 }

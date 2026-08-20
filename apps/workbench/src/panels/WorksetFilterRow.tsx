@@ -6,7 +6,7 @@
 //     보는 패널에 맞는 미완 질문("골격 채울 날")을 원클릭으로. 프리셋은 자주 쓰는 필터의 이름일 뿐
 //     별도 개념이 아니다(같은 DNF 로 풀린다).
 // 이 필터는 "작업 완료/미완료"에 가까운 작업 패널 전용 개념 — 깔때기 조건으로 올리지 않는다(사용자 확정).
-import { hasActiveFilter, PRESENCE_KINDS, type PresenceDnf, type PresenceFilter, type TriState } from "../lib/presence.js";
+import { PRESENCE_KINDS, type PresenceDnf, type PresenceFilter, type TriState } from "../lib/presence.js";
 import { HeaderPopover } from "../components/HeaderPopover.js";
 import { ScrollRow } from "../components/ControlChrome.js";
 
@@ -94,7 +94,7 @@ export function WorksetFilterRow({ dnf, onChange }: { dnf: PresenceDnf; onChange
                     // React 키가 인덱스인 것은 수용 — 필터는 참조 정체성이 없고(내용이 전부), 중간 삭제 시
                     // 뒤 필터가 앞 키를 물려받아도 상태가 전부 props 라 오염될 로컬 상태가 없다.
                     <span key={ci} style={{ display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-                        {ci > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", marginRight: 2 }}>OR</span>}
+                        {ci > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", marginRight: 2 }}>|</span>}
                         <span className="ws-filter-token"
                             style={{
                                 display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 4px",
@@ -102,12 +102,15 @@ export function WorksetFilterRow({ dnf, onChange }: { dnf: PresenceDnf; onChange
                             }}
                         >
                             {chips.length === 0 && <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>빈 필터</span>}
-                            {chips.map((k) => (
-                                <ClauseChip key={k.key} name={k.name} color={k.color} state={clause[k.key] ?? "any"} onClick={() => cycleChip(ci, k.key)} />
+                            {chips.map((k, i) => (
+                                <span key={k.key} style={{ display: "contents" }}>
+                                    {i > 0 && <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>&</span>}
+                                    <ClauseChip name={k.name} color={k.color} state={clause[k.key] ?? "any"} onClick={() => cycleChip(ci, k.key)} />
+                                </span>
                             ))}
-                            {/* 편집 손잡이 — hover 에만(theme.css .ws-filter-token). ＋는 칩만 하게, ✕는 더 작게,
-                                둘 사이는 띄운다(오클릭 방지 — 추가하려다 필터를 지우는 사고). */}
-                            <span className="ws-filter-tools" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 2 }}>
+                            {/* 편집 손잡이 — hover 에만 **폭이 늘며** 나타난다(theme.css — 평소엔 자리도 안 차지한다,
+                                사용자 확정). ＋는 칩만 하게, ✕는 더 작게, 둘 사이는 띄운다(오클릭 방지). */}
+                            <span className="ws-filter-tools" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                                 <KindPicker
                                     exclude={clause}
                                     onPick={(key) => setClause(ci, { ...clause, [key]: "has" })}
@@ -141,14 +144,4 @@ export function WorksetFilterRow({ dnf, onChange }: { dnf: PresenceDnf; onChange
             />
         </ScrollRow>
     );
-}
-
-/** 필터 요약 문자열 — 컨트롤 줄 좌측 정보("무엇으로 걸렀나")·툴팁용. */
-export function dnfSummary(dnf: PresenceDnf): string {
-    const parts = dnf.filter(hasActiveFilter).map((c) =>
-        PRESENCE_KINDS.filter((k) => (c[k.key] ?? "any") !== "any")
-            .map((k) => (c[k.key] === "not" ? `!${k.name}` : k.name))
-            .join("∧"),
-    );
-    return parts.join(" ∨ ");
 }

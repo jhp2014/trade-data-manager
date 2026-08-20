@@ -7,16 +7,15 @@ import { allPointsQuery } from "../api/queries.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { PanelHeader, ScrollRow } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
-import { WorksetFilterRow, dnfSummary } from "./WorksetFilterRow.js";
+import { WorksetFilterRow } from "./WorksetFilterRow.js";
 import { HeaderPopover } from "../components/HeaderPopover.js";
 import { WorksetList, type WorksetEntry, type WorksetLens } from "./WorksetList.js";
-import { usePlacements } from "../lib/usePlacements.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { usePersistedState } from "../store/persist.js";
 import { pointKey, chartKeyOf } from "../lib/pointKey.js";
-import { matchesPresenceDnf, hasActiveDnf, parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
+import { matchesPresenceDnf, hasActiveDnf, dnfSummary } from "../lib/presence.js";
 import { applyMonthClick, normalizeMonths, MONTH_PICK_HINT } from "./filter/monthPick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import type { SetRef } from "../lib/setRef.js";
@@ -25,10 +24,11 @@ import { PIN } from "../styles/palette.js";
 
 // 작업셋 패널 — **curation 흔적이 있는 (종목,날짜) 전부**를 브라우징한다(연대순 진입). E안 헤더 3줄:
 //   ① 컨트롤 줄  : 좌측 = 상태 텍스트(N 표시 · M 숨김 · 필터 요약), 우측 = 레지스트리(좁히기·조준·더보기)
-//   ② 칩 줄      : 집합(전역 선택 포인터 — 여기서 고르면 연동 패널 전부가 따라간다) + 월(로컬 시선·다중)
-//   ③ 절 줄      : 존재 필터 DNF(절 안 AND · 절 사이 OR) — 작업 패널 전용 개념(깔때기와 무관)
-// 집합은 기본 **렌즈**(비멤버 흐리게 + 멤버 보라 레일)고 좁히기는 명시 토글. 월은 전파되지 않는
-// 시선("달은 시선이지 조건이 아니다" — monthPick 철학)이라 저장하지 않는다. 목록은 평탄화+가상화
+//   ② 칩 줄      : 집합 + 월 — 둘 다 **전역 시선**(selectedSetRef·gazeMonths). 여기가 조종석이고
+//                  구독 패널(골격·시트·그룹목록)은 viewOf 가 접어 주는 것을 받는다
+//   ③ 필터 줄    : 존재 필터 DNF(& = AND, | = OR) — 이것도 전역 시선(gazePresence, 영속).
+//                  "남은 작업"(골격 채울 날 등)이 구독 패널에도 그대로 좁혀 보이는 이유
+// 집합은 기본 **렌즈**(비멤버 흐리게 + 멤버 보라 레일)고 좁히기는 명시 토글. 목록은 평탄화+가상화
 // (WorksetList) — 월 "전체" 시선의 최악 케이스(전 모수)가 상한이 없어야 해서다.
 
 function monthOf(date: string): string {
@@ -54,7 +54,6 @@ export function WorksetPanel(): JSX.Element {
     const gazeMonths = useWorkbench((s) => s.gazeMonths);
     const setGazeMonths = useWorkbench((s) => s.setGazeMonths);
 
-    const placements = usePlacements();
     const { nameOf } = useStockNames();
     const { groupsOf, pathLabel } = useGroups();
     const funnel = useFunnel();
@@ -63,8 +62,10 @@ export function WorksetPanel(): JSX.Element {
     const pointsQ = useQuery(allPointsQuery());
     const points = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);
 
-    // ── 존재 필터(DNF) — 영속. 옛 절-하나 형식은 parsePresenceDnf 가 [절] 로 승계한다.
-    const [dnf, setDnf] = usePersistedState<PresenceDnf>("wb.workset.presenceFilter", parsePresenceDnf, []);
+    // ── 존재 필터(DNF) — **전역 시선**(store.gazePresence, 슬라이스가 영속·옛 키 승계). 여기가 주인이고
+    //    구독 패널은 viewOf 가 접어 주는 것을 받는다 — "남은 작업"이 골격·시트에도 그대로 보이는 이유.
+    const dnf = useWorkbench((s) => s.gazePresence);
+    const setDnf = useWorkbench((s) => s.setGazePresence);
 
     // ── 월 시선 — **전역 하나**(store.gazeMonths, 기본=오늘의 달). 여기가 주인이고 구독 패널은
     //    viewOf 가 접어 주는 것을 그대로 받는다. null = 전체. 손짓은 깔때기 월 칩과 같은 순수 규칙
@@ -236,7 +237,9 @@ export function WorksetPanel(): JSX.Element {
                     {shownCount} 표시{hasActiveDnf(dnf) || narrowOn ? ` · ${hiddenCount} 숨김` : ""}
                 </span>
                 {filterSummary && (
-                    <span title={filterSummary} style={{ minWidth: 0, fontSize: 10.5, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    // 안 줄인다(flexShrink 0) — 헤더는 ScrollRow 라 넘치면 hover 가로 스크롤로 끝까지 읽는다
+                    // (줄임표는 "정보를 다 못 보는" 상태를 만든다 — 사용자 확정).
+                    <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
                         {filterSummary}
                     </span>
                 )}
@@ -300,8 +303,6 @@ export function WorksetPanel(): JSX.Element {
                     focus={{ code: focusCode, date: focusDate, time: focusTime }}
                     lens={lens}
                     nameOf={nameOf}
-                    placedOf={(p) => placements.countOf(p)}
-                    axisTotal={placements.axisTotal}
                     groupsOf={(p) => groupsOf({ stockCode: p.stockCode, date: p.date, time: p.time })}
                     pathOf={(id) => pathLabel(id, "(지워짐)")}
                     onPickDay={(e) => setFocus({ date: e.date, code: e.code, time: null })}
