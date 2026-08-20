@@ -2,16 +2,19 @@
 // 숨은 필터는 "왜 목록이 비었지" 사고라, 식 전체가 상시 화면에 있고 편집도 이 줄에서 끝난다:
 //   · 필터 토큰 안 칩 클릭 = has → !not → 제거 순환(활성 칩만 그린다)
 //   · 토큰 hover 에만 ＋(종류 추가 AND)·✕(필터 삭제)가 나타난다 — 상시면 칩보다 손잡이가 시끄럽다
-//   · "+ 필터" = 종류 팝오버에서 골라 새 필터(OR). **아무 필터도 없을 때만** 프리셋이 함께 선다 —
-//     보는 패널에 맞는 미완 질문("골격 채울 날")을 원클릭으로. 프리셋은 자주 쓰는 필터의 이름일 뿐
-//     별도 개념이 아니다(같은 DNF 로 풀린다).
+//   · "+ 필터" = 종류 팝오버에서 골라 새 필터(OR).
 // 이 필터는 "작업 완료/미완료"에 가까운 작업 패널 전용 개념 — 깔때기 조건으로 올리지 않는다(사용자 확정).
+//
+// ⚠ 이 줄에는 **펼침/접힘이 없다**(칩 줄들과 다른 점). DNF 는 고를 후보 목록이 아니라 조립식이라
+// 접었을 때 "고른 것"에 해당하는 게 식 전체다 — 접으면 편집 자체가 사라진다.
+//
+// 프리셋은 **제 줄로 독립했다**(ChipRow, 클릭 = 통째 교체). 여기 "+ 필터" 팝오버에는 그 줄이
+// 꺼져 있을 때만 함께 선다 — 프리셋에 닿는 길이 화면에 늘 하나만 있게(둘이면 어느 쪽이 진짜인지 묻게 된다).
 import { PRESENCE_KINDS, type PresenceDnf, type PresenceFilter, type TriState } from "../lib/presence.js";
 import { HeaderPopover } from "../components/HeaderPopover.js";
-import { ScrollRow } from "../components/ControlChrome.js";
 
-/** 필터가 하나도 없을 때 "+ 필터" 팝오버에 서는 프리셋 — 작업 패널들의 "채우러 갈 날" 질문 모음. */
-const FILTER_PRESETS: { name: string; clause: PresenceFilter }[] = [
+/** 작업 패널들의 "채우러 갈 날" 질문 모음 — 프리셋은 자주 쓰는 필터의 **이름일 뿐**이다(같은 DNF 로 풀린다). */
+export const FILTER_PRESETS: { name: string; clause: PresenceFilter }[] = [
     { name: "골격 채울 날", clause: { skeleton: "not" } },
     { name: "분봉 골격 채울 날", clause: { "skeleton-minute": "not" } },
     { name: "타점 찍을 날", clause: { point: "not" } },
@@ -74,7 +77,22 @@ function KindPicker({ exclude, presets, onPick, onPreset, trigger }: {
     );
 }
 
-export function WorksetFilterRow({ dnf, onChange }: { dnf: PresenceDnf; onChange: (next: PresenceDnf) => void }): JSX.Element {
+/** 이 프리셋이 지금 걸린 식인가 — 교체 의미론이라 "식 전체가 이 절 하나"일 때만 켜짐이다. */
+export const isPresetActive = (dnf: PresenceDnf, clause: PresenceFilter): boolean => {
+    if (dnf.length !== 1) return false;
+    const cur = dnf[0] as Record<string, TriState>;
+    const want = clause as Record<string, TriState>;
+    const keys = new Set([...Object.keys(cur), ...Object.keys(want)]);
+    for (const k of keys) if ((cur[k] ?? "any") !== (want[k] ?? "any")) return false;
+    return true;
+};
+
+export function WorksetFilterRow({ dnf, onChange, presets }: {
+    dnf: PresenceDnf;
+    onChange: (next: PresenceDnf) => void;
+    /** "+ 필터" 판에 프리셋도 세울까 — **프리셋 줄이 꺼져 있을 때만** 준다(위 주석). */
+    presets?: readonly { name: string; clause: PresenceFilter }[];
+}): JSX.Element {
     const setClause = (ci: number, next: PresenceFilter): void => onChange(dnf.map((c, i) => (i === ci ? next : c)));
     const cycleChip = (ci: number, key: string): void => {
         const clause = dnf[ci] ?? {};
@@ -87,7 +105,8 @@ export function WorksetFilterRow({ dnf, onChange }: { dnf: PresenceDnf; onChange
     };
 
     return (
-        <ScrollRow gap={5} style={{ flexShrink: 0, padding: "3px 8px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)" }}>
+        // 줄의 껍데기(이름 열·여백·경계선)는 WorksetRowShell 이 진다 — 네 줄이 세로로 맞아야 해서.
+        <>
             {dnf.map((clause, ci) => {
                 const chips = PRESENCE_KINDS.filter((k) => (clause[k.key] ?? "any") !== "any");
                 return (
@@ -132,9 +151,11 @@ export function WorksetFilterRow({ dnf, onChange }: { dnf: PresenceDnf; onChange
             })}
             <KindPicker
                 exclude={{}}
-                presets={dnf.length === 0 ? FILTER_PRESETS : undefined}
+                {...(presets && presets.length > 0 ? { presets } : {})}
                 onPick={(key) => onChange([...dnf, { [key]: "has" }])}
-                onPreset={(clause) => onChange([...dnf, clause])}
+                // 프리셋은 **통째 교체**다(사용자 확정) — 프리셋 줄의 칩과 같은 의미론이라야
+                // "어디서 눌렀느냐"로 결과가 갈리지 않는다.
+                onPreset={(clause) => onChange([clause])}
                 trigger={(_open, toggle) => (
                     <button onClick={toggle} title="필터 추가(OR) — 필터 안은 AND"
                         style={{ flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 10.5, padding: "1px 6px", borderRadius: 3, border: "1px dashed var(--border-strong)", background: "transparent", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
@@ -142,6 +163,6 @@ export function WorksetFilterRow({ dnf, onChange }: { dnf: PresenceDnf; onChange
                     </button>
                 )}
             />
-        </ScrollRow>
+        </>
     );
 }

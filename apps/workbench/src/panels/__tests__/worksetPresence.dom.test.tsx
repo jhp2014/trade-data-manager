@@ -1,9 +1,10 @@
-// 작업셋 E안 — 모수(흔적 전부)·DNF 필터(필터 안 AND, 필터 사이 OR)·집합 팝오버(전역 포인터)를 잠근다.
+// 작업셋 — 모수(흔적 전부)·DNF 필터(필터 안 AND, 필터 사이 OR)·채널 줄 넷(집합·월·필터·프리셋)을 잠근다.
 //
 // 왜 이걸 잠그나: ① 옛 모수(기준선∪타점)로 조용히 돌아가는 회귀는 화면이 짧아질 뿐이라 눈으로 못
 // 잡는다 — 다섯 출처가 각각 혼자서도 행을 만든다는 것을 못박는다. ② DNF 는 "특정 상황을 모아 놓고
 // 작업"하는 도구라 편집 손짓(+ 필터 팝오버·프리셋·3상 순환·✕)이 곧 계약이다. ③ 집합 선택은 **전역**
 // 포인터를 움직인다(연동 패널 구독) — 로컬 상태로 퇴행하면 "작업셋 = 집합 선택의 집" 그림이 깨진다.
+// ④ 프리셋에 닿는 길은 **화면에 하나뿐**이어야 한다(줄이 켜져 있으면 줄, 꺼져 있으면 + 필터 판).
 import { describe, it, expect, beforeEach } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders, type Seed } from "../../test/renderPanel.js";
@@ -30,6 +31,9 @@ const SEED: Seed = {
 
 const ALL = ["골격만", "기준선만", "타점만", "그룹만", "코멘트만"];
 
+/** 채널 줄의 ⋯ — 후보 전부와 고정 손잡이를 든 판(줄에 다 서 있어도 늘 있다). */
+const openList = (label: string): HTMLElement => screen.getByTitle(new RegExp(`^${label} 전부 보기`));
+
 /** "+ 필터" → 종류 팝오버에서 고르기 — 새 필터가 그 종류 has 로 생긴다. */
 const addFilterWith = (kind: string): void => {
     fireEvent.click(screen.getByRole("button", { name: "+ 필터" }));
@@ -48,16 +52,28 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         expect(screen.getByText("5 표시")).toBeTruthy();
     });
 
-    it("필터가 없을 때의 + 필터 팝오버에는 프리셋이 함께 선다 — 채우러 갈 날 원클릭", () => {
+    it("프리셋 줄 — 칩 클릭 = 필터 통째 교체, 다시 누르면 해제", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        fireEvent.click(screen.getByRole("button", { name: "+ 필터" }));
-        expect(screen.getByText("프리셋")).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "골격 채울 날" })); // = !골격
+        expect(useWorkbench.getState().gazePresence).toEqual([{ skeleton: "not" }]);
         expect(screen.queryByText("골격만")).toBeNull();
         for (const name of ALL.filter((n) => n !== "골격만")) expect(screen.getByText(name)).toBeTruthy();
-        // 필터가 이미 있으면 프리셋 섹션은 안 선다(종류만).
+
+        // 다른 프리셋을 누르면 **교체**다(OR 로 쌓이지 않는다) — 식이 늘 절 하나로 유지된다.
+        fireEvent.click(screen.getByRole("button", { name: "타점 찍을 날" }));
+        expect(useWorkbench.getState().gazePresence).toEqual([{ point: "not" }]);
+
+        fireEvent.click(screen.getByRole("button", { name: "타점 찍을 날" })); // 같은 것 재클릭 = 해제
+        expect(useWorkbench.getState().gazePresence).toEqual([]);
+    });
+
+    it("프리셋에 닿는 길은 하나 — 줄이 켜져 있으면 + 필터 판에는 안 선다", () => {
+        renderWithProviders(<WorksetPanel />, SEED);
+        // 프리셋 칩은 줄에 이미 서 있다. 판이 또 들면 같은 이름의 버튼이 둘이 된다 — 그게 이 검사의 눈이다.
+        expect(screen.getAllByRole("button", { name: "골격 채울 날" })).toHaveLength(1);
         fireEvent.click(screen.getByRole("button", { name: "+ 필터" }));
-        expect(screen.queryByText("프리셋")).toBeNull();
+        expect(screen.getAllByRole("button", { name: "골격 채울 날" })).toHaveLength(1);
+        expect(screen.getByRole("button", { name: "골격" })).toBeTruthy(); // 판 안에는 종류만
     });
 
     it("필터 하나(골격 has) — 골격 찍은 날만 남고 숨김 수가 선다", () => {
@@ -93,17 +109,33 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         expect(screen.getByText("코멘트만")).toBeTruthy();
     });
 
-    it("집합 칩 → 팝오버에서 고르면 **전역 선택 포인터**가 움직인다 — 연동 패널이 구독하는 그 값", () => {
+    it("집합 줄 — ⋯ 에서 고르면 **전역 선택 포인터**가 움직이고, 고른 칩이 줄에 선다", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        const openPicker = (): boolean =>
-            fireEvent.click(screen.getByTitle("클릭 = 집합 고르기 — 고르면 연동된 패널들이 함께 따라간다"));
-        openPicker();
-        fireEvent.click(screen.getByRole("button", { name: "최종 생존" }));
+        // 접힘 상태라 줄에는 고른 것(전체)만 서고 나머지는 ⋯ 판에만 있다.
+        expect(screen.queryAllByRole("button", { name: "최종 생존" })).toHaveLength(0);
+        fireEvent.click(openList("집합"));
+        fireEvent.click(screen.getByRole("button", { name: "최종 생존" })); // 판에서 고르면 판이 닫힌다
         expect(useWorkbench.getState().selectedSetRef).toEqual({ kind: "survivors" });
-        openPicker();
-        // 월 줄에도 "전체" 칩이 있다 — 집합 팝오버의 전체는 title 이 없는 쪽이다.
-        fireEvent.click(screen.getAllByRole("button", { name: "전체" }).find((b) => !b.getAttribute("title"))!);
+        // 이제 그 칩이 줄에 선다(고른 것은 접혀 있어도 늘 보인다).
+        fireEvent.click(screen.getByRole("button", { name: "최종 생존" })); // 재클릭 = 해제
         expect(useWorkbench.getState().selectedSetRef).toBeNull();
+    });
+
+    it("고정 — 고르지 않아도 줄에 서고, **판에서도 안 사라진다**(해제하러 갈 자리가 그 판뿐이라)", () => {
+        renderWithProviders(<WorksetPanel />, SEED);
+        fireEvent.click(openList("집합"));
+        const pinBtn = (): HTMLElement => screen.getAllByRole("button", { name: "고정" })
+            .find((b) => (b.title ?? "").startsWith("최종 생존"))!;
+
+        fireEvent.click(pinBtn());
+        // 줄(칩) + 판(행) 둘 다에 있다 — 판에서 사라지면 해제할 길이 없어진다.
+        expect(screen.getAllByRole("button", { name: "최종 생존" })).toHaveLength(2);
+        expect(pinBtn().getAttribute("aria-pressed")).toBe("true"); // 고정/비고정을 눈으로 가른다
+        expect(useWorkbench.getState().selectedSetRef).toBeNull(); // 고정은 시선이 아니다
+
+        fireEvent.click(pinBtn()); // 같은 손잡이로 해제
+        expect(pinBtn().getAttribute("aria-pressed")).toBe("false");
+        expect(screen.getAllByRole("button", { name: "최종 생존" })).toHaveLength(1); // 판에만 남는다
     });
 
     it("종목 행에 존재 배지가 아이콘으로 선다(숫자 없음 — 상세는 hover 툴팁)", () => {

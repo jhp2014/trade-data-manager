@@ -5,11 +5,14 @@ import { useKeymapDynamic } from "../keymap/dynamic.js";
 
 import { allPointsQuery } from "../api/queries.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
-import { PanelHeader, ScrollRow } from "../components/ControlChrome.js";
+import { PanelHeader } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
-import { WorksetFilterRow } from "./WorksetFilterRow.js";
-import { HeaderPopover } from "../components/HeaderPopover.js";
+import { FILTER_PRESETS, isPresetActive, WorksetFilterRow } from "./WorksetFilterRow.js";
 import { WorksetList, type WorksetEntry, type WorksetLens } from "./WorksetList.js";
+import {
+    ChipRow, DEFAULT_ROW_STATE, parseRowState, WORKSET_ROW_IDS, WORKSET_ROW_LABEL, WorksetRowShell,
+    type ChipItem, type WorksetRowId, type WorksetRowState,
+} from "./WorksetChipRow.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { useGroups } from "../lib/GroupsContext.js";
@@ -22,12 +25,19 @@ import type { SetRef } from "../lib/setRef.js";
 import { setRefKey } from "../lib/setRef.js";
 import { PIN } from "../styles/palette.js";
 
-// 작업셋 패널 — **curation 흔적이 있는 (종목,날짜) 전부**를 브라우징한다(연대순 진입). E안 헤더 3줄:
-//   ① 컨트롤 줄  : 좌측 = 상태 텍스트(N 표시 · M 숨김 · 필터 요약), 우측 = 레지스트리(좁히기·조준·더보기)
-//   ② 칩 줄      : 집합 + 월 — 둘 다 **전역 시선**(selectedSetRef·gazeMonths). 여기가 조종석이고
-//                  구독 패널(골격·시트·그룹목록)은 viewOf 가 접어 주는 것을 받는다
-//   ③ 필터 줄    : 존재 필터 DNF(& = AND, | = OR) — 이것도 전역 시선(gazePresence, 영속).
+// 작업셋 패널 — **curation 흔적이 있는 (종목,날짜) 전부**를 브라우징한다(연대순 진입).
+// 머리글 = 컨트롤 줄 + **채널 줄 넷**(집합·월·필터·프리셋 — 각자 한 줄):
+//   ① 컨트롤 줄  : 좌측 = 상태 텍스트(N 표시 · M 숨김), 우측 = 레지스트리(좁히기·조준·줄 토글·더보기)
+//   ② 집합 줄    : 전역 선택 포인터(selectedSetRef). 여기가 조종석이고 구독 패널(골격·시트·그룹목록)은
+//                  viewOf 가 접어 주는 것을 받는다
+//   ③ 월 줄      : 전역 월 시선(gazeMonths). null = 전체
+//   ④ 필터 줄    : 존재 필터 DNF(& = AND, | = OR) — 이것도 전역 시선(gazePresence, 영속).
 //                  "남은 작업"(골격 채울 날 등)이 구독 패널에도 그대로 좁혀 보이는 이유
+//   ⑤ 프리셋 줄  : 자주 쓰는 DNF 의 이름. 클릭 = **통째 교체**(사용자 확정) — 다시 누르면 해제
+//
+// 채널을 한 줄씩 가른 이유: 한 줄에 둘을 넣으면(옛 "집합 + 월") 어느 칩이 어느 채널인지 구분자 하나에
+// 매이고, 후보를 펼칠 자리가 아예 없다. 줄마다 표시/숨김(머리글 토글)과 펼침/접힘(줄 이름 클릭)이
+// 따로 사는 이유는 WorksetChipRow 주석에.
 // 집합은 기본 **렌즈**(비멤버 흐리게 + 멤버 보라 레일)고 좁히기는 명시 토글. 목록은 평탄화+가상화
 // (WorksetList) — 월 "전체" 시선의 최악 케이스(전 모수)가 상한이 없어야 해서다.
 
@@ -97,6 +107,18 @@ export function WorksetPanel(): JSX.Element {
     );
     const [narrow, setNarrow] = usePersistedState<boolean>("wb.workset.narrow", parseBool, false);
     const narrowOn = narrow && lensOn;
+
+    // ── 채널 줄 상태 — 표시·펼침·핀(영속). 한 키에 통째로(WorksetChipRow 주석).
+    const [rows, setRows] = usePersistedState<WorksetRowState>("wb.workset.rows", parseRowState, DEFAULT_ROW_STATE);
+    const toggleRowShown = (id: WorksetRowId): void =>
+        setRows((r) => ({ ...r, shown: { ...r.shown, [id]: !r.shown[id] } }));
+    const toggleRowExpanded = (id: WorksetRowId): void =>
+        setRows((r) => ({ ...r, expanded: { ...r.expanded, [id]: !r.expanded[id] } }));
+    const togglePin = (id: WorksetRowId, key: string): void =>
+        setRows((r) => ({
+            ...r,
+            pins: { ...r.pins, [id]: r.pins[id].includes(key) ? r.pins[id].filter((k) => k !== key) : [...r.pins[id], key] },
+        }));
 
     // ── 이 시선의 항목들 — 월(시선) → 존재 DNF(필터) → 좁히기(집합 멤버만). 숨김 수는 필터·좁히기 몫만
     //    센다(월은 페이지가 아니라 시선이라 "숨김"이 아니다).
@@ -190,44 +212,65 @@ export function WorksetPanel(): JSX.Element {
             help: "현재 종목 위치로 스크롤",
             run: () => setJump((j) => ({ date: focusDate, code: focusCode, nonce: j.nonce + 1 })),
         },
-    ], [lensOn, narrow, setNarrow, canLocate, focusDate, focusCode]);
+        // 채널 줄 토글 넷 — **화면 구성**이라 컨트롤의 일이다(그 줄 안의 펼침/접힘은 줄 이름이 진다).
+        // 선언은 목록에서 접는다: 줄이 늘거나 줄면 여기가 아니라 WORKSET_ROW_IDS 만 바뀐다.
+        ...WORKSET_ROW_IDS.map((id): ControlSpec => ({
+            kind: "toggle", id: `row.${id}`, name: `${WORKSET_ROW_LABEL[id]} 줄`, group: "줄",
+            help: `${WORKSET_ROW_LABEL[id]} 채널 줄을 이 패널에 둘까`,
+            on: rows.shown[id], set: () => toggleRowShown(id),
+        })),
+    ], [lensOn, narrow, setNarrow, canLocate, focusDate, focusCode, rows.shown]);
 
     if (presence.isLoading || pointsQ.isLoading) return <BoardCenter text="작업셋 로딩중…" />;
     if (presence.error) return <BoardCenter text={`작업셋 오류: ${presence.error.message}`} />;
     if (pointsQ.isError) return <BoardCenter text={`타점 오류: ${(pointsQ.error as Error).message}`} />;
 
-    const filterSummary = dnfSummary(dnf);
-    // 칩 하나 — 줄에는 **선택 상태만** 선다("지금 뭘 보고 있나"의 요약이 곧 줄). 편집은 클릭 → 팝오버.
-    const chip = (key: string, label: string, active: boolean, onClick: (e: React.MouseEvent) => void, opts?: { color?: string; title?: string; tabular?: boolean }): JSX.Element => (
-        <button key={key} onClick={onClick} title={opts?.title}
-            className={opts?.tabular ? "tabular" : undefined}
-            style={{
-                flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 11, padding: "1px 8px", borderRadius: 9,
-                border: `0.5px solid ${active ? "transparent" : "var(--border-strong)"}`, whiteSpace: "nowrap",
-                background: active ? (opts?.color ?? "var(--accent-primary)") : "transparent",
-                color: active ? "#fff" : "var(--text-secondary)", fontWeight: active ? 700 : 400,
-            }}>
-            {label}
-        </button>
-    );
+    // 필터 요약은 **필터 줄이 꺼져 있을 때만** 머리글에 선다 — 줄이 켜져 있으면 식 전체가 이미 보인다.
+    const filterSummary = rows.shown.filter ? "" : dnfSummary(dnf);
     const ym2 = (m: string): string => m.slice(2).replace("-", "."); // "2026-08" → "26.08"
-    const setLabel = lensRef === null ? "전체" : lensRef.kind === "saved" ? (savedSets.find((s) => s.id === lensRef.setId)?.name ?? "(지워진 집합)") : "최종 생존";
-    // 팝오버 정렬 — [전체][선택][나머지 최신순]. 긴 목록은 팝오버가 들고, 줄은 요약만 든다.
-    type SetOption = { key: string; label: string; ref: SetRef | null };
-    const setOptions: SetOption[] = ([
-        { key: "none", label: "전체", ref: null },
-        { key: "sv", label: "최종 생존", ref: { kind: "survivors" } },
-        ...savedSets.map((s) => ({ key: s.id, label: s.name, ref: { kind: "saved", setId: s.id } })),
-    ] as SetOption[]).sort((a, b) => {
-        const rank = (o: { ref: SetRef | null }): number =>
-            o.ref === null ? 0 : selectedSetRef !== null && setRefKey(o.ref) === setRefKey(selectedSetRef) ? 1 : 2;
-        return rank(a) - rank(b);
+
+    // ── 채널별 칩 목록 — 줄은 이 모양만 안다(ChipItem). 순서는 **선언 순서 고정**: 고른 것을 앞으로
+    //    당기면 클릭할 때마다 칩이 자리를 바꿔 다음 클릭이 빗나간다(옛 팝오버는 정렬했지만 그건 판이라
+    //    괜찮았다 — 줄은 손이 반복해 찍는 자리다).
+    const setItems: ChipItem[] = [
+        { key: "none", label: "전체", active: lensRef === null, color: PIN, title: "집합 시선 해제 — 흔적이 있는 (종목·날짜) 전부", onClick: () => selectSet(null) },
+        ((): ChipItem => {
+            const ref: SetRef = { kind: "survivors" };
+            const active = selectedSetRef !== null && setRefKey(selectedSetRef) === setRefKey(ref);
+            return {
+                key: "sv", label: "최종 생존", active, color: PIN,
+                title: "작업 깔때기 — 지금 걸린 조건을 전부 통과한 것",
+                onClick: () => selectSet(active ? null : ref),
+            };
+        })(),
+        ...savedSets.map((f): ChipItem => {
+            const ref: SetRef = { kind: "saved", setId: f.id };
+            const active = selectedSetRef !== null && setRefKey(selectedSetRef) === setRefKey(ref);
+            return {
+                key: f.id, label: f.name, active, color: PIN,
+                title: `${f.name} — 고르면 연동된 패널들이 함께 따라간다`,
+                // 같은 칩을 다시 누르면 시선 해제(전체) — 칩 줄의 공통 문법(누른 것을 다시 눌러 되돌린다).
+                onClick: () => selectSet(active ? null : ref),
+            };
+        }),
+    ];
+
+    const monthItems: ChipItem[] = [
+        { key: "all", label: "전체", active: allMonths, title: "모든 달 — 시선 해제(목록은 가상화라 상한 없음)", onClick: () => setGazeMonths(null) },
+        ...months.map((m): ChipItem => ({
+            key: m, label: ym2(m), active: !allMonths && picked.has(m), tabular: true, title: MONTH_PICK_HINT,
+            onClick: (e) => clickMonth(m, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }),
+        })),
+    ];
+
+    const presetItems: ChipItem[] = FILTER_PRESETS.map((p): ChipItem => {
+        const on = isPresetActive(dnf, p.clause);
+        return {
+            key: p.name, label: p.name, active: on,
+            title: on ? `${p.name} — 클릭 = 해제(필터 비움)` : `${p.name} — 클릭 = 이 필터로 통째 교체`,
+            onClick: () => setDnf(on ? [] : [p.clause]),
+        };
     });
-    const sortedMonths = [...months].sort((a, b) => {
-        const rank = (m: string): number => (!allMonths && picked.has(m) ? 0 : 1);
-        return rank(a) - rank(b) || (a < b ? 1 : -1); // 선택 먼저, 그 안에서 최신순
-    });
-    const pickedMonthsDesc = allMonths ? [] : [...picked].sort().reverse();
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
@@ -246,52 +289,25 @@ export function WorksetPanel(): JSX.Element {
                 <HeaderControls controls={controls} storageKey="wb.headerPins.workset" />
             </PanelHeader>
 
-            {/* ② 칩 줄 — 집합(전역) + 월(로컬 시선). **선택 상태만** 줄에 서고, 클릭하면 팝오버에서 편집한다
-                (전체 목록을 줄에 깔면 월 14개·집합 수 개가 폭을 다 먹는다 — 긴 목록은 팝오버의 몫). */}
-            <ScrollRow gap={4} style={{ flexShrink: 0, padding: "3px 8px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)" }}>
-                <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)" }}>집합</span>
-                <HeaderPopover width={150} align="start" closeOnOutside
-                    trigger={(_open, toggle) => chip("set", setLabel, lensRef !== null, toggle, { color: PIN, title: "클릭 = 집합 고르기 — 고르면 연동된 패널들이 함께 따라간다" })}>
-                    {(close) => (
-                        <div style={{ overflowY: "auto", padding: "2px 0" }}>
-                            {setOptions.map((o) => {
-                                const active = o.ref === null ? lensRef === null : selectedSetRef !== null && setRefKey(o.ref) === setRefKey(selectedSetRef);
-                                return (
-                                    <button key={o.key} onClick={() => { selectSet(o.ref); close(); }}
-                                        style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: active ? "var(--accent-soft)" : "transparent", color: "var(--text-primary)", padding: "4px 10px", cursor: "pointer", font: "inherit", fontSize: 11.5, fontWeight: active ? 700 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                        {o.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                </HeaderPopover>
-                <span style={{ flexShrink: 0, width: 1, alignSelf: "stretch", background: "var(--border-default)", margin: "0 3px" }} />
-                <span style={{ flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)" }}>월</span>
-                <HeaderPopover width={168} align="start" closeOnOutside
-                    trigger={(_open, toggle) => (
-                        <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
-                            {allMonths
-                                ? chip("m-all", "전체", true, toggle, { title: "클릭 = 달 고르기" })
-                                : pickedMonthsDesc.map((m) => chip(`m-${m}`, ym2(m), true, toggle, { title: `클릭 = 달 고르기 — ${MONTH_PICK_HINT}`, tabular: true }))}
-                        </span>
-                    )}>
-                    {() => (
-                        // 다중 선택이라 골라도 안 닫는다(바깥 클릭으로 닫기) — 정렬은 [전체][선택][나머지 최신순].
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: 8, maxHeight: 180, overflowY: "auto" }}>
-                            {chip("pm-all", "전체", allMonths, () => setGazeMonths(null), { title: "모든 달 — 시선 해제(목록은 가상화라 상한 없음)" })}
-                            {sortedMonths.map((m) =>
-                                chip(`pm-${m}`, ym2(m), !allMonths && picked.has(m), (e) => {
-                                    clickMonth(m, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
-                                }, { title: MONTH_PICK_HINT, tabular: true }),
-                            )}
-                        </div>
-                    )}
-                </HeaderPopover>
-            </ScrollRow>
-
-            {/* ③ 필터 줄 — 존재 필터 DNF. */}
-            <WorksetFilterRow dnf={dnf} onChange={setDnf} />
+            {rows.shown.set && (
+                <ChipRow id="set" items={setItems} expanded={rows.expanded.set} onToggleExpanded={() => toggleRowExpanded("set")}
+                    pins={rows.pins.set} onTogglePin={(k) => togglePin("set", k)} />
+            )}
+            {rows.shown.month && (
+                <ChipRow id="month" items={monthItems} expanded={rows.expanded.month} onToggleExpanded={() => toggleRowExpanded("month")}
+                    pins={rows.pins.month} onTogglePin={(k) => togglePin("month", k)} />
+            )}
+            {/* 필터 줄만 껍데기를 밖에서 씌운다 — 펼침/접힘이 없어 ChipRow 가 아니다(칩이 아니라 식이다). */}
+            {rows.shown.filter && (
+                <WorksetRowShell label="필터" title="존재 필터 — 필터 안 AND · 필터 사이 OR">
+                    <WorksetFilterRow dnf={dnf} onChange={setDnf}
+                        {...(rows.shown.preset ? {} : { presets: FILTER_PRESETS })} />
+                </WorksetRowShell>
+            )}
+            {rows.shown.preset && (
+                <ChipRow id="preset" items={presetItems} expanded={rows.expanded.preset} onToggleExpanded={() => toggleRowExpanded("preset")}
+                    pins={rows.pins.preset} onTogglePin={(k) => togglePin("preset", k)} />
+            )}
 
             {groups.length === 0 ? (
                 <div style={{ padding: 10, color: "var(--text-tertiary)", fontSize: 12, textAlign: "center" }}>
