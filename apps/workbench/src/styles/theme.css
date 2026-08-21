@@ -248,8 +248,8 @@ button {
     --dv-tabs-and-actions-container-height: 24px; /* 탭 윗줄 높이 축소(기본 35 → 24) */
 }
 
-/* 작업셋 필터 토큰 — 편집 손잡이(+·✕)는 hover 에만. 상시 보이면 밀집 줄에서 칩보다 손잡이가 시끄럽다.
-   opacity 전환(display 아님): 폭이 hover 로 변하면 토큰이 옆으로 밀려 클릭하려던 칩이 도망간다. */
+/* 작업셋 필터 토큰 — 편집 손잡이(＋)는 hover 에만. 상시 보이면 밀집 줄에서 칩보다 손잡이가 시끄럽다.
+   삭제(✕)는 칩 우클릭 메뉴로 갔으므로 여기서 여는 폭은 ＋ 하나치다 — 옆 필터가 밀리는 양이 그만큼 줄었다. */
 .ws-filter-token .ws-filter-tools {
     max-width: 0;
     opacity: 0;
@@ -258,7 +258,7 @@ button {
 }
 .ws-filter-token:hover .ws-filter-tools,
 .ws-filter-token:focus-within .ws-filter-tools {
-    max-width: 48px;
+    max-width: 16px;
     opacity: 1;
     margin-left: 2px;
 }

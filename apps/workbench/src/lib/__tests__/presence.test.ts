@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ChartAnchor, GroupMembership } from "@trade-data-manager/wire";
-import { buildPresenceIndex, candidateDaysOf, hasActiveFilter, matchesPresence, matchesPresenceDnf, nextTriState, parsePresenceDnf, PRESENCE_KINDS, type DayPresence } from "../presence.js";
+import {
+    addKind, buildPresenceIndex, candidateDaysOf, hasActiveFilter, matchesPresence, matchesPresenceDnf,
+    parsePresenceDnf, PRESENCE_KINDS, removeClause, removeKind, toggleKind,
+    type DayPresence, type PresenceDnf,
+} from "../presence.js";
 
 // 존재 지도 — 작업셋 모수·배지·필터의 단일 접기. 핵심 성질:
 //  ① 재료 어느 한 쪽에만 흔적이 있어도 항목이 생긴다(골격만/그룹만/코멘트만 있는 날의 등재가 이번 개편의 목적).
@@ -100,10 +104,43 @@ describe("matchesPresence — 3상 × AND", () => {
         expect(matchesPresence(day({ comment: true }), { comment: "not" })).toBe(false);
     });
 
-    it("칩 순환은 any → has → not → any", () => {
-        expect(nextTriState("any")).toBe("has");
-        expect(nextTriState("has")).toBe("not");
-        expect(nextTriState("not")).toBe("any");
+});
+
+// 칩 손짓 → 식. 좌클릭은 반전만 하고 삭제는 우클릭 메뉴가 진다(WorksetFilterRow) — 그래서
+// "반전하려다 칩이 사라지는" 일이 없고, 대신 **빈 절이 남지 않는 책임**이 지우기 쪽에 생긴다.
+describe("DNF 편집 연산", () => {
+    it("칩 좌클릭 = has ↔ not 만 오간다(제거로 넘어가지 않는다)", () => {
+        const dnf: PresenceDnf = [{ skeleton: "has" }];
+        const notted = toggleKind(dnf, 0, "skeleton");
+        expect(notted).toEqual([{ skeleton: "not" }]);
+        expect(toggleKind(notted, 0, "skeleton")).toEqual([{ skeleton: "has" }]);
+    });
+
+    it("종류 추가는 늘 has 로 들어오고 다른 절은 안 건드린다", () => {
+        const dnf: PresenceDnf = [{ skeleton: "has" }, { group: "not" }];
+        expect(addKind(dnf, 0, "point")).toEqual([{ skeleton: "has", point: "has" }, { group: "not" }]);
+    });
+
+    it("칩 지우기 — 절에 다른 칩이 남으면 절은 산다", () => {
+        const dnf: PresenceDnf = [{ skeleton: "has", point: "not" }];
+        expect(removeKind(dnf, 0, "point")).toEqual([{ skeleton: "has" }]);
+    });
+
+    it("마지막 칩을 지우면 절도 함께 사라진다 — 빈 절(유령 토큰)을 만들지 않는다", () => {
+        const dnf: PresenceDnf = [{ skeleton: "has" }, { group: "has" }];
+        expect(removeKind(dnf, 0, "skeleton")).toEqual([{ group: "has" }]);
+        expect(removeKind([{ skeleton: "has" }], 0, "skeleton")).toEqual([]);
+    });
+
+    it("절 통째 지우기", () => {
+        const dnf: PresenceDnf = [{ skeleton: "has" }, { group: "has" }];
+        expect(removeClause(dnf, 1)).toEqual([{ skeleton: "has" }]);
+    });
+
+    it("모든 연산이 원본을 안 건드린다(식은 props 로만 흐른다)", () => {
+        const dnf: PresenceDnf = [{ skeleton: "has", point: "not" }];
+        toggleKind(dnf, 0, "skeleton"); addKind(dnf, 0, "group"); removeKind(dnf, 0, "point"); removeClause(dnf, 0);
+        expect(dnf).toEqual([{ skeleton: "has", point: "not" }]);
     });
 });
 
@@ -141,6 +178,10 @@ describe("parsePresenceDnf — 영속 복원(옛 형식 승계)", () => {
     });
     it("새 절 목록은 그대로, 모르는 상태값은 버린다", () => {
         expect(parsePresenceDnf([{ skeleton: "has" }, { group: "not", weird: "yes" }])).toEqual([{ skeleton: "has" }, { group: "not" }]);
+    });
+    it("빈 절은 버린다 — 옛 순환(has→not→제거)이 남긴 유령 토큰이 화면에 서지 않게", () => {
+        expect(parsePresenceDnf([{}, { skeleton: "has" }])).toEqual([{ skeleton: "has" }]);
+        expect(parsePresenceDnf([{ weird: "yes" }])).toEqual([]); // 아는 상태값이 하나도 없으면 그것도 빈 절
     });
     it("깨진 값은 null — 기본값(필터 없음)으로 폴백해 '전부 숨김' 오독을 막는다", () => {
         expect(parsePresenceDnf("oops")).toBeNull();

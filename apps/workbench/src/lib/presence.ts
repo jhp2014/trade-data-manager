@@ -159,8 +159,41 @@ export function dnfSummary(dnf: PresenceDnf): string {
     return parts.join(" | ");
 }
 
-/** 절 안 칩 클릭 순환: has → not → any(제거). 새 칩은 has 로 들어온다. */
-export const nextTriState = (s: TriState): TriState => (s === "any" ? "has" : s === "has" ? "not" : "any");
+// ── DNF 편집 연산 ────────────────────────────────────────────────────────────
+// 순수 함수로 모아 둔 이유: "마지막 칩을 지우면 절도 사라진다" 같은 규칙이 JSX 안에 숨으면
+// 읽을 수도 시험할 수도 없다. 화면(WorksetFilterRow)은 손짓을 이 넷 중 하나로 옮길 뿐이다.
+//
+// ⚠ **빈 절은 만들지 않는다**(이 넷의 공통 사후조건). 빈 절은 평가에서 제외돼(hasActiveFilter)
+// 화면엔 서는데 결과엔 영향이 없는 유령이 된다 — 그래서 절이 빌 자리에선 절을 통째로 뺀다.
+
+/** 칩 좌클릭 — has ↔ not 만 오간다(제거는 우클릭 메뉴의 몫이라 여기서 any 로 안 간다). */
+export const toggleTriState = (s: TriState): TriState => (s === "not" ? "has" : "not");
+
+/** 칩 반전 — 절 안의 종류 하나를 has ↔ not. */
+export function toggleKind(dnf: PresenceDnf, ci: number, key: string): PresenceDnf {
+    return dnf.map((c, i) => (i === ci ? { ...c, [key]: toggleTriState(c[key] ?? "has") } : c));
+}
+
+/** 절에 종류 추가(AND) — 새 칩은 늘 has 로 들어온다. */
+export function addKind(dnf: PresenceDnf, ci: number, key: string): PresenceDnf {
+    return dnf.map((c, i) => (i === ci ? { ...c, [key]: "has" } : c));
+}
+
+/** 칩 지우기 — 절의 마지막 칩이었으면 절까지 함께 사라진다(빈 절 금지). */
+export function removeKind(dnf: PresenceDnf, ci: number, key: string): PresenceDnf {
+    const out: PresenceFilter[] = [];
+    dnf.forEach((c, i) => {
+        if (i !== ci) { out.push(c); return; }
+        const { [key]: _drop, ...rest } = c as Record<string, TriState>;
+        if (Object.keys(rest).length > 0) out.push(rest);
+    });
+    return out;
+}
+
+/** 절(필터) 통째 지우기. */
+export function removeClause(dnf: PresenceDnf, ci: number): PresenceDnf {
+    return dnf.filter((_, i) => i !== ci);
+}
 
 /**
  * 영속 복원 — 아는 상태값만 살린다(깨진 저장값이 "전부 숨김"으로 오독되면 안 된다).
@@ -175,8 +208,9 @@ export function parsePresenceDnf(raw: unknown): PresenceDnf | null {
         return out;
     };
     if (Array.isArray(raw)) {
-        const clauses = raw.map(parseClause).filter((c): c is PresenceFilter => c !== null);
-        return clauses;
+        // 빈 절은 버린다 — 평가에선 이미 제외되는데 화면엔 라벨 없는 토큰으로 서던 유령이다
+        // (칩 순환이 has→not→제거였던 시절의 저장본에 남아 있다).
+        return raw.map(parseClause).filter((c): c is PresenceFilter => c !== null && Object.keys(c).length > 0);
     }
     const single = parseClause(raw);
     return single === null ? null : Object.keys(single).length > 0 ? [single] : [];

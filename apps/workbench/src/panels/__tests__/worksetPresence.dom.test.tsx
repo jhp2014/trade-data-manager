@@ -2,7 +2,7 @@
 //
 // 왜 이걸 잠그나: ① 옛 모수(기준선∪타점)로 조용히 돌아가는 회귀는 화면이 짧아질 뿐이라 눈으로 못
 // 잡는다 — 다섯 출처가 각각 혼자서도 행을 만든다는 것을 못박는다. ② DNF 는 "특정 상황을 모아 놓고
-// 작업"하는 도구라 편집 손짓(+ 필터 팝오버·프리셋·3상 순환·✕)이 곧 계약이다. ③ 집합 선택은 **전역**
+// 작업"하는 도구라 편집 손짓(+ 필터 팝오버·프리셋·좌클릭 반전·우클릭 삭제 메뉴)이 곧 계약이다. ③ 집합 선택은 **전역**
 // 포인터를 움직인다(연동 패널 구독) — 로컬 상태로 퇴행하면 "작업셋 = 집합 선택의 집" 그림이 깨진다.
 // ④ 프리셋에 닿는 길은 **화면에 하나뿐**이어야 한다(줄이 켜져 있으면 줄, 꺼져 있으면 + 필터 판).
 import { describe, it, expect, beforeEach } from "vitest";
@@ -39,6 +39,15 @@ const addFilterWith = (kind: string): void => {
     fireEvent.click(screen.getByRole("button", { name: "+ 필터" }));
     fireEvent.click(screen.getByRole("button", { name: kind }));
 };
+
+/** 필터 안 ＋ → 그 필터에 종류 하나 더(AND). */
+const andKind = (ti: number, kind: string): void => {
+    fireEvent.click(screen.getAllByTitle("이 필터에 종류 추가(AND)")[ti]!);
+    fireEvent.click(screen.getByRole("button", { name: kind }));
+};
+
+/** 칩 우클릭 = 편집 메뉴(지우기 · 이 필터 지우기). 삭제가 사는 유일한 자리다. */
+const chipMenu = (chip: string): void => { fireEvent.contextMenu(screen.getByRole("button", { name: chip })); };
 
 describe("작업셋 E안 — 모수·DNF·집합", () => {
     beforeEach(() => {
@@ -84,18 +93,45 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         expect(screen.getByText("1 표시 · 4 숨김")).toBeTruthy();
     });
 
-    it("필터 안 칩 순환 — has 클릭 = !not(취소선), 다시 클릭 = 제거(빈 필터는 평가 제외)", () => {
+    it("칩 좌클릭은 **반전만** — 아무리 눌러도 칩이 사라지지 않는다(삭제는 우클릭의 몫)", () => {
         renderWithProviders(<WorksetPanel />, SEED);
         addFilterWith("골격");
         fireEvent.click(screen.getByRole("button", { name: "골격" })); // has → not
         expect(screen.queryByText("골격만")).toBeNull();
         for (const name of ALL.filter((n) => n !== "골격만")) expect(screen.getByText(name)).toBeTruthy();
-        fireEvent.click(screen.getByRole("button", { name: "!골격" })); // not → 제거
-        expect(screen.getByText("빈 필터")).toBeTruthy(); // 껍데기는 남고(✕로만 소멸) 평가에선 빠진다
+        fireEvent.click(screen.getByRole("button", { name: "!골격" })); // not → has (제거 아님)
+        expect(useWorkbench.getState().gazePresence).toEqual([{ skeleton: "has" }]);
+        expect(screen.getByRole("button", { name: "골격" })).toBeTruthy();
+    });
+
+    it("칩 우클릭 → 지우기 — 절의 마지막 칩이면 필터도 함께 사라진다(빈 필터가 안 남는다)", () => {
+        renderWithProviders(<WorksetPanel />, SEED);
+        addFilterWith("골격");
+        chipMenu("골격");
+        expect(screen.queryByRole("button", { name: "이 필터 지우기" })).toBeNull(); // 1칩이면 "지우기"와 같은 일이라 안 선다
+        fireEvent.click(screen.getByRole("button", { name: "지우기" }));
+        expect(useWorkbench.getState().gazePresence).toEqual([]);
+        expect(screen.queryByText("빈 필터")).toBeNull();
         for (const name of ALL) expect(screen.getByText(name)).toBeTruthy();
     });
 
-    it("필터 두 개 = OR — [골격] ∨ [코멘트] 는 두 날을 함께 남긴다, ✕는 그 필터만 삭제", () => {
+    it("칩 2개짜리 필터 — 지우기는 칩만, 이 필터 지우기는 묶음째", () => {
+        renderWithProviders(<WorksetPanel />, SEED);
+        addFilterWith("골격");
+        andKind(0, "타점");
+        expect(useWorkbench.getState().gazePresence).toEqual([{ skeleton: "has", point: "has" }]);
+
+        chipMenu("타점");
+        fireEvent.click(screen.getByRole("button", { name: "지우기" })); // 칩만 — 필터는 산다
+        expect(useWorkbench.getState().gazePresence).toEqual([{ skeleton: "has" }]);
+
+        andKind(0, "타점");
+        chipMenu("골격");
+        fireEvent.click(screen.getByRole("button", { name: "이 필터 지우기" })); // 묶음째
+        expect(useWorkbench.getState().gazePresence).toEqual([]);
+    });
+
+    it("필터 두 개 = OR — [골격] ∨ [코멘트] 는 두 날을 함께 남긴다, 삭제는 그 필터만", () => {
         renderWithProviders(<WorksetPanel />, SEED);
         addFilterWith("골격");
         addFilterWith("코멘트");
@@ -104,7 +140,8 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         expect(screen.getByText("코멘트만")).toBeTruthy();
         expect(screen.queryByText("타점만")).toBeNull();
         expect(screen.getByText("2 표시 · 3 숨김")).toBeTruthy();
-        fireEvent.click(screen.getAllByRole("button", { name: "✕" })[0]!); // 첫 필터(골격) 삭제
+        chipMenu("골격");
+        fireEvent.click(screen.getByRole("button", { name: "지우기" })); // 첫 필터(골격) 삭제
         expect(screen.queryByText("골격만")).toBeNull(); // 남은 필터 = 코멘트
         expect(screen.getByText("코멘트만")).toBeTruthy();
     });

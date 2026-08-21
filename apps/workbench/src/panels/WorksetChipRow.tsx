@@ -148,8 +148,10 @@ export function ChipRow({ id, items, expanded, onToggleExpanded, pins, onToggleP
     return (
         <WorksetRowShell label={label} caret={expanded ? "open" : "closed"} onLabelClick={onToggleExpanded}
             title={expanded ? `${label} — 클릭 = 접기(고른 것과 고정한 것만 남는다)` : `${label} — 클릭 = 후보 전부 펼치기`}>
-            {/* 칩은 **고르는 일만** 한다 — 핀은 ⋯ 판의 몫이다(사용자 확정). 우클릭에 뜻을 얹으면
-                같은 겉모습의 칩이 패널마다 다른 손짓을 받게 되고, 그게 보이지도 않는다. */}
+            {/* 칩은 **고르는 일만** 한다 — 핀은 ⋯ 판의 몫이다(사용자 확정).
+                ⚠ **고르는 칩**(GazeChip — 둥근 알약, 누르면 시선이 바뀐다)에는 우클릭이 없다: 같은 겉모습의
+                칩이 자리마다 다른 손짓을 받으면 그게 보이지도 않는다. 우클릭에 뜻을 얹는 건 겉모습이 갈리는
+                **조립물의 부품 칩**(필터 줄의 ClauseChip — 종류색 각진 토큰)과 집합 칩(SetChips)뿐이다. */}
             {shown.map((it) => (
                 <GazeChip key={it.key} label={it.label} active={it.active} tabular={it.tabular ?? false}
                     {...(it.color !== undefined ? { color: it.color } : {})}

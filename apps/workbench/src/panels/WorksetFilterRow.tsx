@@ -1,8 +1,17 @@
 // 작업셋 존재 필터 줄 — DNF(필터 안 AND, 필터 사이 OR)를 **항상 펼쳐** 보여준다(E안).
 // 숨은 필터는 "왜 목록이 비었지" 사고라, 식 전체가 상시 화면에 있고 편집도 이 줄에서 끝난다:
-//   · 필터 토큰 안 칩 클릭 = has → !not → 제거 순환(활성 칩만 그린다)
-//   · 토큰 hover 에만 ＋(종류 추가 AND)·✕(필터 삭제)가 나타난다 — 상시면 칩보다 손잡이가 시끄럽다
+//   · 필터 토큰 안 칩 **좌클릭 = has ↔ !not 토글**(활성 칩만 그린다)
+//   · 칩 **우클릭 = 편집 메뉴**(지우기 · 이 필터 지우기) — 삭제를 좌클릭 순환의 끝에 두면 반전하려다
+//     칩이 사라지고, 되돌리려면 어느 종류였는지 기억해 다시 골라야 한다
+//   · 토큰 hover 에만 ＋(종류 추가 AND)가 나타난다 — 상시면 칩보다 손잡이가 시끄럽다
 //   · "+ 필터" = 종류 팝오버에서 골라 새 필터(OR).
+//
+// ⚠ 우클릭에 뜻을 얹는 건 **조립물의 부품 칩**(ClauseChip — 종류색 각진 토큰, 식의 일부)에 한한다.
+// **고르는 칩**(GazeChip — 둥근 알약, 누르면 시선이 바뀐다)에는 우클릭이 없다(WorksetChipRow 주석).
+// 겉모습이 갈려 있어야 같은 손짓이 자리마다 다른 일을 하는 사고가 안 난다 — 집합 칩(SetChips)의 선례와 같다.
+//
+// ⚠ **빈 필터는 없다** — 마지막 칩을 지우면 절도 함께 사라진다(presence.ts removeKind). 빈 절은
+// 평가에서 제외되므로(hasActiveFilter) 화면엔 서는데 결과엔 영향이 없는 유령이 된다.
 // 이 필터는 "작업 완료/미완료"에 가까운 작업 패널 전용 개념 — 깔때기 조건으로 올리지 않는다(사용자 확정).
 //
 // ⚠ 이 줄에는 **펼침/접힘이 없다**(칩 줄들과 다른 점). DNF 는 고를 후보 목록이 아니라 조립식이라
@@ -10,8 +19,13 @@
 //
 // 프리셋은 **제 줄로 독립했다**(ChipRow, 클릭 = 통째 교체). 여기 "+ 필터" 팝오버에는 그 줄이
 // 꺼져 있을 때만 함께 선다 — 프리셋에 닿는 길이 화면에 늘 하나만 있게(둘이면 어느 쪽이 진짜인지 묻게 된다).
-import { PRESENCE_KINDS, type PresenceDnf, type PresenceFilter, type TriState } from "../lib/presence.js";
+import { useState } from "react";
+import {
+    addKind, PRESENCE_KINDS, removeClause, removeKind, toggleKind,
+    type PresenceDnf, type PresenceFilter, type TriState,
+} from "../lib/presence.js";
 import { HeaderPopover } from "../components/HeaderPopover.js";
+import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
 
 /** 작업 패널들의 "채우러 갈 날" 질문 모음 — 프리셋은 자주 쓰는 필터의 **이름일 뿐**이다(같은 DNF 로 풀린다). */
 export const FILTER_PRESETS: { name: string; clause: PresenceFilter }[] = [
@@ -22,12 +36,18 @@ export const FILTER_PRESETS: { name: string; clause: PresenceFilter }[] = [
 ];
 
 /** 필터 안 칩 하나 — 종류색 테두리, !상태는 파선+취소선(부정 리터럴의 기존 문법). */
-function ClauseChip({ name, color, state, onClick }: { name: string; color: string; state: TriState; onClick: () => void }): JSX.Element {
+function ClauseChip({ name, color, state, onClick, onContextMenu }: {
+    name: string; color: string; state: TriState;
+    onClick: () => void;
+    onContextMenu: (e: React.MouseEvent) => void;
+}): JSX.Element {
     const not = state === "not";
     return (
         <button
             onClick={onClick}
-            title={not ? `${name} 없는 날만 (클릭: 필터에서 제거)` : `${name} 있는 날만 (클릭: 없는 날만)`}
+            onContextMenu={onContextMenu}
+            // 우클릭은 안 보이는 손짓이라 툴팁이 유일한 안내다 — 좌·우클릭을 둘 다 적는다.
+            title={`${name} ${not ? "없는" : "있는"} 날만 · 클릭 = ${not ? "있는" : "없는"} 날만 · 우클릭 = 지우기`}
             style={{
                 cursor: "pointer", font: "inherit", fontSize: 10.5, fontWeight: 700, padding: "0 5px", borderRadius: 3,
                 lineHeight: 1.5, whiteSpace: "nowrap", flexShrink: 0,
@@ -93,16 +113,9 @@ export function WorksetFilterRow({ dnf, onChange, presets }: {
     /** "+ 필터" 판에 프리셋도 세울까 — **프리셋 줄이 꺼져 있을 때만** 준다(위 주석). */
     presets?: readonly { name: string; clause: PresenceFilter }[];
 }): JSX.Element {
-    const setClause = (ci: number, next: PresenceFilter): void => onChange(dnf.map((c, i) => (i === ci ? next : c)));
-    const cycleChip = (ci: number, key: string): void => {
-        const clause = dnf[ci] ?? {};
-        // 표시된 칩은 활성뿐이라 순환은 has → not → 제거.
-        if ((clause[key] ?? "any") === "has") setClause(ci, { ...clause, [key]: "not" });
-        else {
-            const { [key]: _drop, ...rest } = clause as Record<string, TriState>;
-            setClause(ci, rest);
-        }
-    };
+    // 우클릭 메뉴 — 어느 칩에서 열렸는지와 좌표. 열려 있는 동안 식이 바뀌면(다른 경로로) 인덱스가
+    // 어긋날 수 있어 메뉴 항목은 실행 직전의 dnf 를 읽는다(아래 removeKind/removeClause 인자).
+    const [menu, setMenu] = useState<{ ci: number; key: string; name: string; chips: number; x: number; y: number } | null>(null);
 
     return (
         // 줄의 껍데기(이름 열·여백·경계선)는 WorksetRowShell 이 진다 — 네 줄이 세로로 맞아야 해서.
@@ -120,19 +133,23 @@ export function WorksetFilterRow({ dnf, onChange, presets }: {
                                 border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)",
                             }}
                         >
-                            {chips.length === 0 && <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>빈 필터</span>}
                             {chips.map((k, i) => (
                                 <span key={k.key} style={{ display: "contents" }}>
                                     {i > 0 && <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>&</span>}
-                                    <ClauseChip name={k.name} color={k.color} state={clause[k.key] ?? "any"} onClick={() => cycleChip(ci, k.key)} />
+                                    <ClauseChip name={k.name} color={k.color} state={clause[k.key] ?? "any"}
+                                        onClick={() => onChange(toggleKind(dnf, ci, k.key))}
+                                        onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            setMenu({ ci, key: k.key, name: k.name, chips: chips.length, x: e.clientX, y: e.clientY });
+                                        }} />
                                 </span>
                             ))}
-                            {/* 편집 손잡이 — hover 에만 **폭이 늘며** 나타난다(theme.css — 평소엔 자리도 안 차지한다,
-                                사용자 확정). ＋는 칩만 하게, ✕는 더 작게, 둘 사이는 띄운다(오클릭 방지). */}
-                            <span className="ws-filter-tools" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            {/* 편집 손잡이는 **＋ 하나뿐**이다 — 삭제는 칩 우클릭 메뉴로 갔다. hover 에만 폭이 늘며
+                                나타나므로(theme.css) 손잡이 하나면 줄이 밀리는 폭도 그만큼 좁다. */}
+                            <span className="ws-filter-tools" style={{ display: "inline-flex", alignItems: "center" }}>
                                 <KindPicker
                                     exclude={clause}
-                                    onPick={(key) => setClause(ci, { ...clause, [key]: "has" })}
+                                    onPick={(key) => onChange(addKind(dnf, ci, key))}
                                     trigger={(_open, toggle) => (
                                         <button onClick={toggle} title="이 필터에 종류 추가(AND)"
                                             style={{ border: "none", background: "none", cursor: "pointer", font: "inherit", fontSize: 12, lineHeight: 1, color: "var(--text-secondary)", padding: 0, flexShrink: 0 }}>
@@ -140,10 +157,6 @@ export function WorksetFilterRow({ dnf, onChange, presets }: {
                                         </button>
                                     )}
                                 />
-                                <button onClick={() => onChange(dnf.filter((_, i) => i !== ci))} title="필터 삭제"
-                                    style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 8.5, lineHeight: 1, padding: 0, flexShrink: 0 }}>
-                                    ✕
-                                </button>
                             </span>
                         </span>
                     </span>
@@ -163,6 +176,24 @@ export function WorksetFilterRow({ dnf, onChange, presets }: {
                     </button>
                 )}
             />
+            {menu && (
+                // 확인창 없음 — 필터는 화면 위 조립물이라 잘못 지워도 다시 만들면 그만이다
+                // (집합 삭제와 다르다 — 그건 저장물이라 confirm 을 건다).
+                <AnchoredPopover anchor={menu} onClose={() => setMenu(null)} minWidth={150} padding={0}>
+                    <MenuLabel>{menu.name}</MenuLabel>
+                    <MenuItem onClick={() => { onChange(removeKind(dnf, menu.ci, menu.key)); setMenu(null); }}
+                        title="이 칩만 지웁니다 — 필터의 마지막 칩이면 필터도 함께 사라집니다">
+                        지우기
+                    </MenuItem>
+                    {/* 칩이 하나뿐이면 위 "지우기"와 같은 일이라 안 세운다(같은 판에 같은 결과의 항목 둘 = 고민거리). */}
+                    {menu.chips > 1 && (
+                        <MenuItem onClick={() => { onChange(removeClause(dnf, menu.ci)); setMenu(null); }}
+                            title="이 필터(AND 묶음)를 통째로 지웁니다">
+                            이 필터 지우기
+                        </MenuItem>
+                    )}
+                </AnchoredPopover>
+            )}
         </>
     );
 }
