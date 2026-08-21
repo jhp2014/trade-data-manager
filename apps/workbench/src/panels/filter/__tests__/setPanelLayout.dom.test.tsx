@@ -47,7 +47,7 @@ describe("두 서랍은 접힌 채로 시작한다 — 처음 보이는 것이 �
 
     it("접혀 있어도 말은 한다 — 상주 칩(지금 보는 집합)과 요약 줄(전체 → 생존)", () => {
         const { container } = renderPanel();
-        expect(btnByTitle(container, "지금 보는 집합").textContent).toContain("작업 깔때기");
+        expect(btnByTitle(container, "지금 보는 집합").textContent).toContain("연동");
         expect(btnByTitle(container, "막대 펼치기").textContent).toContain("→"); // 2 → 2
     });
 });
@@ -60,6 +60,18 @@ describe("서랍은 각자 제 손잡이로 여닫힌다", () => {
         expect(chipByText(container, "연동")).toBeDefined();
     });
 
+    // 칩 줄은 **한 줄로 못 박혀 있다**(ScrollRow): 두 줄이 되면 본문 높이가 튀어 보드가 밀린다.
+    // 안내 문구는 자리를 안 쓰고 줄 툴팁으로 물러났다 — 그 문구 한 줄이 실제로 화면을 밀었다(보고된 자리).
+    it("집합 칩 줄은 줄바꿈하지 않는다 — 넘치면 가로로 굴린다, 안내는 툴팁으로", () => {
+        const { container } = renderPanel();
+        fireEvent.click(btnByTitle(container, "지금 보는 집합"));
+        const row = chipByText(container, "전체")!.parentElement!;
+        expect(row.style.flexWrap).toBe("nowrap");
+        expect(row.style.overflowX).toBe("auto");
+        expect(row.title).toContain("칩으로 섭니다"); // 안내는 줄 툴팁에만 산다
+        expect(container.textContent).not.toContain("칩으로 섭니다"); // 본문에는 자리를 안 쓴다
+    });
+
     it("요약 줄을 누르면 막대가 아래에서 올라온다", () => {
         const { container } = renderPanel();
         fireEvent.click(btnByTitle(container, "막대 펼치기"));
@@ -70,7 +82,7 @@ describe("서랍은 각자 제 손잡이로 여닫힌다", () => {
 });
 
 describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는 그 값", () => {
-    it("저장 집합 칩을 누르면 포인터가 그 집합을 가리키고, 다시 누르면 작업 깔때기로 돌아온다", () => {
+    it("저장 집합 칩을 누르면 포인터가 그 집합을 가리키고, 다시 누르면 연동으로 돌아온다", () => {
         useWorkbench.setState({ savedSets: [{ id: "fs1", name: "돌파", stages: [], part: { kind: "survivors" } }] });
         const { container } = renderPanel();
         fireEvent.click(btnByTitle(container, "지금 보는 집합"));

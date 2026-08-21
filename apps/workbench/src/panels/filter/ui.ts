@@ -9,6 +9,8 @@ import type { CSSProperties } from "react";
 export const dashedBtn: CSSProperties = {
     fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)",
     background: "transparent", color: "var(--text-secondary)", cursor: "pointer",
+    // 칩 줄은 가로 스크롤(ScrollRow)이라 — 안 그으면 넘치는 대신 버튼이 쭈그러들어 글자가 뭉개진다.
+    flexShrink: 0, whiteSpace: "nowrap",
 };
 
 /** 제거(✕) 아이콘 버튼 — 글자만, 배경 없음. */

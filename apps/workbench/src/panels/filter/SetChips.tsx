@@ -1,7 +1,7 @@
 // 집합 칩 서랍 — 패널 **위에서 토글로 내려오는** 집합의 자리. 옛 오른쪽 사이드바(232px 상주)를
 // 대신한다: 집합을 고르는 일은 가끔이고 보드는 늘 쓰는데, 목록이 상시 폭을 물고 있을 이유가 없었다.
 //
-//   · 붙박이 둘 — 전체(유니버스)·최종 생존(작업 깔때기). 이름 안 붙여도 늘 있다.
+//   · 붙박이 둘 — 전체(유니버스)·연동(짚은 칸 > 최종 생존 > 전체 자동). 이름 안 붙여도 늘 있다.
 //   · 저장 집합 — 자립 저장물(이름+조건 사본+부위). 칩 클릭 = **선택 포인터**(연동 패널들이 따라온다).
 //   · 저장/덮어쓰기 — 부위는 저장하는 순간의 시선에서: 칸을 짚었으면 그 칸, 아니면 생존자.
 //   · 열기·삭제는 **우클릭 메뉴**다 — 칩마다 버튼을 달면 칩이 줄이 되고, 그럼 사이드바로 되돌아간다.
@@ -9,7 +9,7 @@
 // 수(멤버 카운트)는 리졸버가 준다 — 칩의 수와 구독 패널의 분모가 같은 한 벌에서 나와야 한다.
 // 붙박이 이름은 setRefLabel 한 곳에서 온다(헤더 상주 칩과 같은 출처 — 같은 것을 두 이름으로 부르지 않는다).
 import { useState } from "react";
-import { GazeChip } from "../../components/ControlChrome.js";
+import { GazeChip, ScrollRow } from "../../components/ControlChrome.js";
 import { AnchoredPopover } from "../../ui/Dialog.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
@@ -88,11 +88,17 @@ export function SetChipDrawer(): JSX.Element {
         ? { kind: "cell", stageId: selection.stageId, cells: selection.cells }
         : { kind: "survivors" };
 
+    // 줄바꿈이 아니라 **가로 스크롤**이다(ScrollRow 규약): 칩이 늘거나 패널이 좁아질 때 줄이 두 줄이
+    // 되면 본문 높이가 튀고, 안내 문구 한 줄 때문에 보드가 밀린다(이미지로 보고된 그 자리). 안내는
+    // 줄 전체의 툴팁으로 물러난다 — 손잡이는 다 칩·버튼에 붙어 있고 문구는 거들 뿐이라 자리를 안 준다.
     return (
-        <div style={{
-            flexShrink: 0, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5,
-            padding: "5px 8px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)",
-        }}>
+        <ScrollRow gap={5} title={savedSets.length === 0
+            ? "조건을 걸고 저장하면 여기 칩으로 섭니다"
+            : "칩 클릭 = 이 집합 보기 · 우클릭 = 열기·삭제"}
+            style={{
+                flexShrink: 0, padding: "5px 8px",
+                borderBottom: "1px solid var(--border-default)", background: "var(--bg-secondary)",
+            }}>
             <GazeChip label={chipLabel(setRefLabel(universeRef, savedSets), countOf(universeRef))}
                 active={isOn(universeRef)} onClick={() => toggle(universeRef)}
                 title="유니버스 — 손이 닿은 흔적(앵커·그룹·타점)이 하나라도 있는 (종목·날짜). 조건과 무관" />
@@ -133,12 +139,6 @@ export function SetChipDrawer(): JSX.Element {
                 </button>
             )}
 
-            <span style={{ fontSize: 10, color: "var(--text-tertiary)", paddingLeft: 2 }}>
-                {savedSets.length === 0
-                    ? "조건을 걸고 저장하면 여기 칩으로 섭니다"
-                    : "클릭 = 이 집합 보기 · 우클릭 = 열기·삭제"}
-            </span>
-
             {menu && (
                 <AnchoredPopover anchor={menu} onClose={() => setMenu(null)} minWidth={150} padding={0}>
                     <button style={listRow}
@@ -155,7 +155,7 @@ export function SetChipDrawer(): JSX.Element {
                     </button>
                 </AnchoredPopover>
             )}
-        </div>
+        </ScrollRow>
     );
 }
 

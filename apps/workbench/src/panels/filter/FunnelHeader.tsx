@@ -14,7 +14,7 @@ import { HeaderControls, type ControlSpec } from "../../components/HeaderControl
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import type { SetRef } from "../../lib/setRef.js";
 import { FAIL, PIN } from "../../styles/palette.js";
-import { setRefLabel } from "./useSetBinding.js";
+import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
 export function FunnelHeader({ v, setsOpen, onToggleSets, barsOpen, onToggleBars, onlyActive, setOnlyActive }: {
@@ -51,15 +51,17 @@ export function FunnelHeader({ v, setsOpen, onToggleSets, barsOpen, onToggleBars
         },
     ], [onlyActive, setOnlyActive, barsOpen, onToggleBars, stages.length, clearStages]);
 
-    // 상주 칩 — 선택 포인터가 가리키는 것. 아무것도 안 골랐으면 작업 깔때기(짚은 칸이 있으면 그 칸)를
+    // 상주 칩 — 선택 포인터가 가리키는 것. 아무것도 안 골랐으면 연동(짚은 칸 > 최종 생존 > 전체)을
     // **채우지 않고** 말한다: 서랍에도 켜진 칩이 없는 상태와 표기가 어긋나면 안 된다.
+    // 어휘는 한 벌뿐이다(linkedTargetLabel) — 머리글·서랍·구독 패널 라벨이 다른 말을 쓰면 같은 상태가
+    // 세 이름으로 읽힌다.
     const workingRef: SetRef = selection
         ? { kind: "cell", stageId: selection.stageId, cells: selection.cells }
         : { kind: "survivors" };
     const shownRef = selectedSetRef ?? workingRef;
     const label = selectedSetRef !== null
         ? setRefLabel(selectedSetRef, savedSets)
-        : selection ? "작업 깔때기 · 짚은 칸" : "작업 깔때기";
+        : linkedTargetLabel(selection !== null, v.active.length);
     const resolved = v.resolveSet(shownRef);
 
     return (
