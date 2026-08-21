@@ -7,6 +7,7 @@
 //
 // 세로선(VertLines)은 캔들 pane 에 항상, 거래대금 pane 에는 옵션으로 붙인다 — 분봉은 타점 세로선이
 // 아래 pane 까지 이어져야 하고(같은 timeScale x 공유), 일봉은 검색날짜 선이 캔들 pane 만 쓴다.
+import { useRef } from "react";
 import {
     CandlestickSeries,
     HistogramSeries,
@@ -120,6 +121,41 @@ export function extendsPrevBars<T>(
         if (timeOf(a) !== timeOf(b) || sigOf(a) !== sigOf(b)) return false;
     }
     return true;
+}
+
+/**
+ * "직전에 적용한 것" 캐시 — **그 값을 받은 시리즈에 묶어서** 기억한다.
+ *
+ * 증분 갱신(extendsPrevBars)·마커 스킵(sameMarkers)은 둘 다 "지금 화면에 붙은 것 = 직전에 내가 밀어
+ * 넣은 것"을 전제로 일을 건너뛴다. 그런데 시리즈는 훅 수명 **안에서** 다시 만들어질 수 있고(StrictMode
+ * 의 이중 effect, Fast Refresh) 그때 **ref 는 살아남는다** — 전제가 조용히 깨진다. 실제로 그렇게 깨졌다:
+ * 첫 차트 마운트에서 setData(2년치) 뒤 시리즈가 새로 태어나고, 살아남은 "직전 적용분"이 연장 판정을
+ * 통과해 **꼬리 1봉만 update** 되어 빈 시리즈에 캔들이 하나만 남았다(2026-08-21 보고).
+ *
+ * 그래서 캐시의 주인을 값이 아니라 **시리즈 인스턴스**로 둔다. 주인이 갈리면 읽기는 null —
+ * "직전 적용분 없음" = 전체 setData 경로다. 판정을 보수적으로(애매하면 전체) 미는 이 파일의 규칙과 같다.
+ */
+export interface AppliedCache<S, V> {
+    /** 이 시리즈에 직전 적용한 값. 시리즈가 갈렸으면 null(그 값은 이미 죽은 시리즈의 것이다). */
+    read: (series: S) => V | null;
+    /** 적용 사실 기록 — 값과 그 값을 받은 시리즈를 함께 묶는다. */
+    write: (series: S, value: V) => void;
+}
+
+export function useAppliedCache<S, V>(): AppliedCache<S, V> {
+    const ownerRef = useRef<S | null>(null);
+    const valueRef = useRef<V | null>(null);
+    const apiRef = useRef<AppliedCache<S, V> | null>(null);
+    if (apiRef.current === null) {
+        apiRef.current = {
+            read: (series) => (ownerRef.current === series ? valueRef.current : null),
+            write: (series, value) => {
+                ownerRef.current = series;
+                valueRef.current = value;
+            },
+        };
+    }
+    return apiRef.current;
 }
 
 /** extendsPrevBars 용 봉 지문 — 겹침 구간의 "같은 봉" 판정에 쓰는 필드 묶음. */

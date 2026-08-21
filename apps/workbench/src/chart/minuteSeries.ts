@@ -13,7 +13,7 @@ import {
     type UTCTimestamp,
 } from "lightweight-charts";
 import { RISE_FILL, FALL_FILL, AMOUNT_BUCKET_COLORS } from "./chartUtils.js";
-import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
+import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, useAppliedCache, type MarkerLike } from "./candleAmountSeries.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { type VertLines } from "./vertLine.js";
 import { type SkeletonPath } from "./skeletonPath.js";
@@ -29,6 +29,8 @@ export interface MinuteSeries {
     /** 오버레이(타점 아이콘·정보 박스) 위치 재계산 트리거 — pan/zoom·리사이즈·데이터 변경 시 bump. */
     overlayTick: number;
     bumpOverlay: () => void;
+    /** 시리즈 세대 — 재생성될 때마다 오른다. 규약·이유는 DailySeries.gen 주석 참조(같은 규칙 한 벌). */
+    gen: number;
 }
 
 /** 시리즈 수명주기 — 캔들(pane0, % 축) + 거래대금(pane1, 억) 1회 생성, 마커 플러그인·세로선 primitive 부착/정리. */
@@ -41,6 +43,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
     const skeletonRef = useRef<SkeletonPath | null>(null);
     const [overlayTick, setOverlayTick] = useState(0);
     const bumpOverlay = (): void => setOverlayTick((v) => v + 1);
+    const [gen, setGen] = useState(0);
 
     useEffect(() => {
         const chart = chartRef.current;
@@ -81,6 +84,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
         candleVertsRef.current = s.candleVerts;
         amountVertsRef.current = s.amountVerts;
         skeletonRef.current = s.skeleton;
+        setGen((g) => g + 1); // 새 시리즈가 났다 — 데이터·마커 effect 를 다시 태운다
         // pan/zoom 시 오버레이 아이콘 위치 갱신.
         const ts = chart.timeScale();
         ts.subscribeVisibleLogicalRangeChange(bumpOverlay);
@@ -101,7 +105,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, skeletonRef, overlayTick, bumpOverlay };
+    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, skeletonRef, overlayTick, bumpOverlay, gen };
 }
 
 export interface MinuteLookups {
@@ -123,15 +127,17 @@ export function useMinuteSeriesData(series: MinuteSeries, points: MinutePoint[],
     const amountMapRef = useRef<Map<number, number>>(new Map());
     const cumMapRef = useRef<Map<number, number>>(new Map());
     const pointMapRef = useRef<Map<number, MinutePoint>>(new Map());
-    const lastAppliedRef = useRef<MinutePoint[] | null>(null); // 시리즈에 실제 적용된 마지막 배열
-    const lastMarkersRef = useRef<MarkerLike[]>([]);
+    // 직전 적용분은 **그 시리즈에 밀어 넣은 것**만 인정한다 — 시리즈가 갈리면(StrictMode 이중 effect·
+    // Fast Refresh) 증분도 마커 스킵도 근거를 잃는다(useAppliedCache 주석 참조). 일봉 훅과 같은 규칙.
+    const applied = useAppliedCache<ISeriesApi<"Candlestick">, MinutePoint[]>();
+    const appliedMarkers = useAppliedCache<ISeriesMarkersPluginApi<Time>, MarkerLike[]>();
 
     useEffect(() => {
         const candle = series.candleRef.current;
         const amount = series.amountRef.current;
         if (!candle || !amount) return;
 
-        const prev = lastAppliedRef.current;
+        const prev = applied.read(candle);
         let incremental = false;
         // 증분 조건에 하나 더: 마지막 old 봉의 거래대금 막대가 **사라지는** 전이(>0 → 0)는 update 로 못 지운다.
         if (
@@ -179,7 +185,7 @@ export function useMinuteSeriesData(series: MinuteSeries, points: MinutePoint[],
             pointMapRef.current = pointMap;
             amount.setData(bars);
         }
-        lastAppliedRef.current = points;
+        applied.write(candle, points);
 
         // 거래대금 마커 — 분당 거래대금 구간(≥30억) 봉 위에 숫자(구간 하한)만. 토글 OFF 면 비움.
         // setMarkers 는 전체 교체 API 라 증분이 없다 — 대신 결과가 지난번과 같으면(대부분의 폴 틱) 건너뛴다.
@@ -190,13 +196,17 @@ export function useMinuteSeriesData(series: MinuteSeries, points: MinutePoint[],
                 if (b >= 0) markers.push({ time: p.time as UTCTimestamp, position: "aboveBar" as const, color: AMOUNT_BUCKET_COLORS[b], shape: "circle" as const, size: 0, text: `${AMOUNT_BUCKETS_EOK[b]}` });
             }
         }
-        if (!sameMarkers(markers, lastMarkersRef.current)) {
-            series.markersRef.current?.setMarkers(markers);
-            lastMarkersRef.current = markers;
+        const plugin = series.markersRef.current;
+        if (plugin) {
+            const prevMarkers = appliedMarkers.read(plugin);
+            if (prevMarkers === null || !sameMarkers(markers, prevMarkers)) {
+                plugin.setMarkers(markers);
+                appliedMarkers.write(plugin, markers);
+            }
         }
         series.bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, showAmountMarkers]);
+    }, [points, showAmountMarkers, series.gen]);
 
     return { amountMapRef, cumMapRef, pointMapRef };
 }

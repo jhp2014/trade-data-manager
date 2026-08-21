@@ -13,7 +13,7 @@ import {
     type UTCTimestamp,
 } from "lightweight-charts";
 import { RISE_FILL, FALL_FILL, highMarkerColor } from "./chartUtils.js";
-import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, type MarkerLike } from "./candleAmountSeries.js";
+import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, useAppliedCache, type MarkerLike } from "./candleAmountSeries.js";
 import { useCandleInteraction } from "./candleInteraction.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { type VertLines } from "./vertLine.js";
@@ -34,6 +34,13 @@ export interface DailySeries {
     markersRef: RefObject<ISeriesMarkersPluginApi<Time> | null>;
     vertRef: RefObject<VertLines | null>;
     skeletonRef: RefObject<SkeletonPath | null>;
+    /**
+     * 시리즈 **세대** — 다시 만들어질 때마다 오른다(StrictMode 이중 effect·Fast Refresh).
+     * 시리즈는 ref 에 담겨 있어 교체가 렌더를 일으키지 않는다 → 이 값이 없으면 "시리즈만 새로 났고
+     * points 는 그대로"인 경우 데이터 effect 가 아예 안 돌아 **빈 차트**가 된다. 소비 effect 의
+     * 의존성에 넣어 "새 시리즈에는 다시 밀어 넣는다"를 강제한다. 분봉(MinuteSeries.gen)과 같은 규약.
+     */
+    gen: number;
 }
 
 /** 시리즈 생성(캔들 + 거래대금 pane + 마커 플러그인 + 세로선 프리미티브). 마운트 1회. */
@@ -43,6 +50,7 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const vertRef = useRef<VertLines | null>(null);
     const skeletonRef = useRef<SkeletonPath | null>(null);
+    const [gen, setGen] = useState(0);
 
     useEffect(() => {
         const chart = chartRef.current;
@@ -56,6 +64,7 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
         markersRef.current = s.markers;
         vertRef.current = s.candleVerts;
         skeletonRef.current = s.skeleton;
+        setGen((g) => g + 1); // 새 시리즈가 났다 — 데이터·마커 effect 를 다시 태운다
         return () => {
             s.dispose();
             candleRef.current = null;
@@ -67,7 +76,7 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, vertRef, skeletonRef };
+    return { candleRef, amountRef, markersRef, vertRef, skeletonRef, gen };
 }
 
 /**
@@ -76,14 +85,15 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
  */
 export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ignoredDates: readonly string[] = []): DailyPointMap {
     const mapRef = useRef<Map<string, DailyPoint>>(new Map());
-    const lastAppliedRef = useRef<DailyPoint[] | null>(null); // 시리즈에 실제 적용된 마지막 배열
+    const applied = useAppliedCache<ISeriesApi<"Candlestick">, DailyPoint[]>(); // 시리즈에 실제 적용된 마지막 배열
     useEffect(() => {
         const candle = series.candleRef.current;
         const amount = series.amountRef.current;
         if (!candle || !amount) return;
         // 라이브 폴 증분 — 직전 적용분의 연장이면(같은 첫 봉·겹침 (time,지문) 동일) 바뀐 꼬리(오늘 형성봉
         // + 신규 봉)만 update. 어긋나거나 update 가 던지면 전체 setData 폴백(정확성 > 절약). 분봉 훅과 같은 규칙.
-        const prev = lastAppliedRef.current;
+        // 직전 적용분은 **이 시리즈에 밀어 넣은 것**만 인정한다(useAppliedCache) — 시리즈가 갈렸으면 전체 setData.
+        const prev = applied.read(candle);
         let incremental = false;
         if (prev && extendsPrevBars(prev, points, (p) => p.time, barSignature)) {
             try {
@@ -109,9 +119,9 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
             mapRef.current = map;
             amount.setData(points.map((p) => ({ time: p.time as Time, value: p.amount / 1e8, color: p.close >= p.open ? RISE_FILL : FALL_FILL })));
         }
-        lastAppliedRef.current = points;
+        applied.write(candle, points);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points]);
+    }, [points, series.gen]);
 
     // 봉 위 마커 한 벌 — 고가 등락률(임계 이상만) + 무시 표시(계산 축이 없는 셈 치는 봉)를 **한 자리에** 적는다.
     // 무시 대상은 대개 고가가 튄 봉이라 둘이 늘 같은 봉에 걸린다 → 따로 그리면 눈이 두 번 움직이고 자리도 다툰다.
@@ -120,8 +130,10 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
     // tier 색으로 칠하면 "이 봉 강했다"고 강조하는 셈이 된다(무시는 그 반대 주장이다). 숫자를 남기는 건 읽으라고가
     // 아니라 식별하라고 — 나중에 차트를 다시 열었을 때 "내가 죽인 게 저 봉"을 확인하는 게 무시 표시의 절반이다.
     const ignoredKey = [...ignoredDates].sort().join(",");
-    const lastMarkersRef = useRef<MarkerLike[]>([]);
+    const appliedMarkers = useAppliedCache<ISeriesMarkersPluginApi<Time>, MarkerLike[]>();
     useEffect(() => {
+        const plugin = series.markersRef.current;
+        if (!plugin) return;
         const ignored = new Set(ignoredKey ? ignoredKey.split(",") : []);
         const markers = [];
         for (const p of points) {
@@ -137,12 +149,14 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
             markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: parts.join(" · ") });
         }
         // setMarkers 는 전체 교체 API — 라이브 폴 틱마다 결과가 같으면(대부분) 건너뛴다(sameMarkers 비교).
-        if (!sameMarkers(markers, lastMarkersRef.current)) {
-            series.markersRef.current?.setMarkers(markers);
-            lastMarkersRef.current = markers;
+        // 스킵의 근거도 **이 플러그인에 적용한 것**뿐이다 — 시리즈(=마커 플러그인)가 갈리면 다시 그린다.
+        const prevMarkers = appliedMarkers.read(plugin);
+        if (prevMarkers === null || !sameMarkers(markers, prevMarkers)) {
+            plugin.setMarkers(markers);
+            appliedMarkers.write(plugin, markers);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, ignoredKey]);
+    }, [points, ignoredKey, series.gen]);
     return mapRef;
 }
 
