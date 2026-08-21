@@ -1,8 +1,7 @@
 import { useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { fetchAlertLog, type AlertLogEntry, type AlertThemeContext, type AlertThemeMember } from "../api/alerts.js";
+import type { AlertLogEntry, AlertThemeContext, AlertThemeMember } from "../api/alerts.js";
 import { kstHm, kstMidnight, kstToday, kstTime } from "../lib/date.js";
-import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
+import { useAlertLog } from "../lib/useAlertLog.js";
 import { useWorkbench } from "../store/workbench.js";
 import { usePersistedState } from "../store/persist.js";
 import { PanelHeader, ScrollRow } from "../components/ControlChrome.js";
@@ -18,11 +17,7 @@ const DELIVERY_BADGE: Record<string, { icon: string; title: string } | undefined
 // 알람 로그 패널 — 실시간 플레인. **발화 전부**를 시간순으로 누적한다(텔레그램으로 간 것 + 쿨다운에 막힌 것).
 // 존재 이유: 텔레그램은 소음을 막으려 쿨다운으로 아끼지만, 알람을 듣고 PC 앞에 앉았을 땐 시장 전체를
 // 봐야 한다 — 그 자리가 여기다. 서버는 발화를 억제하지 않고 전부 로그에 남긴다(억제는 배달 직전).
-//
-// 폴링은 **커서 증분**(seq) — 로그 5,000건을 5초마다 통째로 내리면 수 MB 라, 마지막으로 본 seq 초과분만
-// 받아 클라가 누적한다. 서버 재시작이면 seq 가 0 부터 다시 → latestSeq < 커서 를 보고 리셋한다.
-const LOG_KEY = ["live-alert-log"];
-const CLIENT_MAX = 5_000; // 서버 보유분(LOG_MAX)과 동일 — 하루치(실측 <3,000)를 다 볼 수 있게. 상한은 폭주 방어용.
+// 누적(커서 증분 폴링·재시작 리셋·오늘만 보유)은 읽기 포트 useAlertLog 의 사유 — 여기는 필터와 표시만.
 const FLOOR_KEY = "wb.alertLog.floor"; // 시간 바닥(ms) — remount·재접속 넘어 유지. 하드 바닥은 항상 오늘 자정.
 
 type Delivery = "all" | "sent" | "held";
@@ -38,8 +33,8 @@ function floorFromHHmm(hhmm: string): number {
 }
 
 export function AlertLogPanel(): JSX.Element {
-    const [entries, setEntries] = useState<AlertLogEntry[]>([]); // 최신이 앞
-    const cursor = useRef(0);
+    const poll = useAlertLog(); // 최신이 앞
+    const entries = poll.entries;
     const [q, setQ] = useState("");
     const [theme, setTheme] = useState("");
     const [delivery, setDelivery] = useState<Delivery>("all");
@@ -48,33 +43,6 @@ export function AlertLogPanel(): JSX.Element {
         FLOOR_KEY, (o) => (typeof o === "number" && Number.isFinite(o) ? o : null), 0,
     );
     const setLiveCode = useWorkbench((s) => s.setLiveCode); // 로그 줄 클릭 → 실시간 포커스(차트·뉴스가 따라온다)
-
-    // ⚠ 커서 누적 패턴 — queryFn 이 컴포넌트 로컬 ref(cursor)·state(entries) 에 부수효과로 쌓는다.
-    // 이 패널이 **한 번에 하나만** 마운트된다는 전제(같은 LOG_KEY 인스턴스가 둘이면 react-query 가
-    // queryFn 을 한쪽에서만 돌려 다른 쪽 누적이 멎는다). 현 카탈로그에선 단일 패널이라 성립 — 복수
-    // 마운트가 필요해지면 누적을 전역 스토어로 올려야 한다(지금은 구조 유지).
-    const poll = useQuery({
-        queryKey: LOG_KEY,
-        refetchInterval: LIVE_CADENCE_MS,
-        queryFn: async ({ signal }) => {
-            const view = await fetchAlertLog(cursor.current, signal);
-            if (view.latestSeq < cursor.current) {
-                // 서버 재시작(seq 리셋) — 커서를 되돌려 다음 폴링이 전체를 다시 받게 한다.
-                cursor.current = 0;
-                setEntries([]);
-                return view;
-            }
-            if (view.entries.length > 0) {
-                cursor.current = view.latestSeq;
-                // 오늘(KST) 것만 보유 — 어제 것은 화면뿐 아니라 클라 메모리에서도 뺀다(어제 저장 안 함).
-                const midnight = kstMidnight();
-                setEntries((prev) =>
-                    [...[...view.entries].reverse(), ...prev].filter((e) => e.firing.at >= midnight).slice(0, CLIENT_MAX),
-                );
-            }
-            return view;
-        },
-    });
 
     // 지금까지 본 테마 — 필터 셀렉트 옵션(서버가 발화마다 그 종목의 전체 테마를 실어준다).
     const themes = useMemo(() => [...new Set(entries.flatMap((e) => e.themes))].sort(), [entries]);
@@ -124,7 +92,7 @@ export function AlertLogPanel(): JSX.Element {
             </PanelHeader>
 
             <div style={{ flex: 1, overflowY: "auto" }}>
-                {poll.isError && <Empty text={`로그를 못 읽음 — ${poll.error instanceof Error ? poll.error.message : "오류"}`} />}
+                {poll.isError && <Empty text={`로그를 못 읽음 — ${poll.error?.message ?? "오류"}`} />}
                 {!poll.isError && entries.length === 0 && <Empty text="아직 발화 없음 — 조건에 걸리면 여기 쌓입니다" />}
                 {!poll.isError && entries.length > 0 && shown.length === 0 && <Empty text="필터에 걸리는 발화 없음" />}
                 {shown.map((e) => (

@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
-import { chartQuery } from "../api/queries.js";
+import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { useReviewPointData } from "../lib/chartHooks.js";
@@ -68,9 +67,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 재료는 작업셋과 같은 복제본 캐시(usePresence 포트) — 추가 페치 0.
     const presence = usePresenceOf(code, viewDate);
     const drifted = viewDate !== anchorDate;
-    // keepPreviousData: 전환 중 직전 번들 유지 — 차트가 로딩으로 언마운트되지 않아 뷰 상태(스케일 고정)가 보존.
-    const dailyQ = useQuery({ ...chartQuery(code, anchorDate), placeholderData: keepPreviousData });
-    const minuteQ = useQuery({ ...chartQuery(code, viewDate), placeholderData: keepPreviousData }); // viewDate=anchor 면 같은 쿼리(RQ dedup)
+    // 번들 읽기 포트(useChartBundle) — keepPreviousData 등 observer 규칙은 거기 한 곳. viewDate=anchor 면 같은 쿼리(RQ dedup).
+    const dailyQ = useChartBundle(code, anchorDate);
+    const minuteQ = useChartBundle(code, viewDate);
     const { dailyView, minuteView, dailyFrameKey, minuteFrameKey, pctBase } = useChartViews(dailyQ.data, minuteQ.data, mode, viewDate);
 
     // 차트 앵커 편집 — param 하나 = 훅 하나(chartAnchorHooks). 같은 쿼리 키라 왕복은 하나(RQ dedup).

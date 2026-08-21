@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useWorkbench, type ChartView } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
-import { chartQuery, liveWatchlistQuery } from "../api/queries.js";
+import { liveWatchlistQuery } from "../api/queries.js";
+import { useChartBundle } from "../lib/useChartBundle.js";
 import { useChartViews, resolveAnchorLines } from "../lib/chartFrame.js";
-import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
 import { optionLabel } from "../lib/predicateUi.js";
 import { useStockName } from "../lib/useStockName.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
@@ -58,10 +58,10 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     const drifted = viewDate !== anchorDate;
     const expanded: "daily" | "minute" | null = view === "both" ? null : view;
 
-    // 소스는 chartQuery 가 날짜로 고른다(당일=브로커 / 과거=DB). 여기선 **폴링 주기**만 정한다:
+    // 소스는 chartQuery 가 날짜로 고른다(당일=브로커 / 과거=DB). 여기선 **live 여부**만 정한다(useChartBundle 포트):
     // 일봉=기준일(오늘 형성봉 갱신) 상시 폴, 분봉=검색날짜(오늘이면 폴, 과거로 드리프트했으면 정적).
-    const dailyQ = useQuery({ ...chartQuery(code, anchorDate), refetchInterval: LIVE_CADENCE_MS, placeholderData: keepPreviousData });
-    const minuteQ = useQuery({ ...chartQuery(code, viewDate), refetchInterval: drifted ? false : LIVE_CADENCE_MS, placeholderData: keepPreviousData });
+    const dailyQ = useChartBundle(code, anchorDate, { live: true });
+    const minuteQ = useChartBundle(code, viewDate, { live: !drifted });
     const { dailyView, minuteView, dailyFrameKey, minuteFrameKey, pctBase } = useChartViews(dailyQ.data, minuteQ.data, mode, viewDate);
 
     // 메모리 선 앵커 → 렌더선(로드된 캔들 고가에 해소). 해소 규칙은 복기 가격선과 같은 함수.

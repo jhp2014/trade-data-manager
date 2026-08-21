@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JSX } from "react";
-import { fetchMirrorStatus, runMirrorSync } from "../api/curation.js";
+import { runMirrorSync } from "../api/curation.js";
+import { mirrorStatusQuery } from "../api/queries.js";
 
 // 미러 동기화 — 작업표시줄 한 칸. "얼마나 낡았나"를 상시 보여주고, 누르면 당겨온다.
 //
@@ -8,7 +9,6 @@ import { fetchMirrorStatus, runMirrorSync } from "../api/curation.js";
 // 버튼을 안 누르면 며칠이고 옛 데이터를 본다 — 그런데 화면은 멀쩡해 보인다. "3일 전"이 눈에 보여야
 // 누를 생각을 한다. (내 PC 는 야간 백업이 미러를 같이 갱신해서 대개 최신이다.)
 const MINUTE = 60_000;
-const STATUS_KEY = ["mirror-status"];
 
 /** 상대 시각 — 정확한 시분보다 "얼마나 낡았나"가 판단 재료다. */
 function agoLabel(iso: string | null): string {
@@ -23,18 +23,12 @@ function agoLabel(iso: string | null): string {
 
 export function MirrorSync(): JSX.Element {
     const qc = useQueryClient();
-    const status = useQuery({
-        queryKey: STATUS_KEY,
-        queryFn: ({ signal }) => fetchMirrorStatus(signal),
-        // 시각 표시가 굳지 않게 주기적으로 다시 읽는다(바이트 몇 개짜리 로컬 조회다).
-        refetchInterval: MINUTE,
-        staleTime: MINUTE,
-    });
+    const status = useQuery(mirrorStatusQuery()); // 분당 재조회 — 옵션은 queries.ts 한 곳
 
     const sync = useMutation({
         mutationFn: runMirrorSync,
         onSuccess: (r) => {
-            qc.setQueryData(STATUS_KEY, r);
+            qc.setQueryData(mirrorStatusQuery().queryKey, r);
             // **키를 나열하지 않는다** — 표식으로 건다(queries.ts CURATION). 새 쿼리가 늘어도 안 빠뜨린다.
             // 화면 구성(패널 배치·선택·캔버스)은 건드리지 않는다: 데이터만 갈아끼운다.
             void qc.invalidateQueries({ predicate: (q) => q.meta?.curation === true });

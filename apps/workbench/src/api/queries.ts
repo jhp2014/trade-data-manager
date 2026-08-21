@@ -6,7 +6,10 @@ import { queryOptions } from "@tanstack/react-query";
 import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
 import { fetchDayReplay } from "./dayReplay.js";
-import { fetchWatchlist } from "./alerts.js";
+import { fetchWatchlist, fetchUniverse } from "./alerts.js";
+import { fetchLiveConditions } from "./liveConditions.js";
+import { fetchTapeThemes } from "./liveTape.js";
+import { fetchMirrorStatus } from "./curation.js";
 import { fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
@@ -55,6 +58,23 @@ export const dayReplayQuery = (date: string) =>
 // 옵션을 각자 적으면 refetchInterval 이 갈라질 수 있어 여기 한 곳에.
 export const liveWatchlistQuery = () =>
     queryOptions({ queryKey: ["live-watchlist"], queryFn: ({ signal }) => fetchWatchlist(signal), refetchInterval: LIVE_CADENCE_MS });
+
+// ── 실시간 엔진의 나머지 폴링들 — 옵션을 패널 안에 적지 않는다(같은 키에 다른 옵션이면 먼저 마운트된 쪽이 이긴다).
+/** 유니버스(hot 종목·규칙·블랙리스트) — 규칙 편집 패널. 15초 폴링(엔진 스캐너가 바꾼다). */
+export const liveUniverseQuery = () =>
+    queryOptions({ queryKey: ["live-universe"], queryFn: ({ signal }) => fetchUniverse(signal), refetchInterval: 15_000 });
+
+/** 조건검색 목록(영웅문 서버저장 CNSRLST) — 설정 모달. 엔진 미연결(503)이면 즉시 안내하려 retry 끔. */
+export const liveConditionsQuery = () =>
+    queryOptions({ queryKey: ["live", "conditions"], queryFn: ({ signal }) => fetchLiveConditions(signal), staleTime: 30_000, retry: false });
+
+/** 포커스 종목의 테마 칩(테이프 패널) — 멤버십은 시트가 정본이라 가끔 바뀐다. 포커스 전환마다 재조회면 충분. */
+export const tapeThemesQuery = (code: string) =>
+    queryOptions({ queryKey: ["live-tape-themes", code], queryFn: ({ signal }) => fetchTapeThemes(code, signal), enabled: code !== "", refetchInterval: LIVE_CADENCE_MS * 10 });
+
+// ── 큐레이션 미러 상태(마지막 동기화 시각) — 시각 표시가 굳지 않게 분당 재조회(바이트 몇 개짜리 로컬 조회).
+export const mirrorStatusQuery = () =>
+    queryOptions({ queryKey: ["mirror-status"], queryFn: ({ signal }) => fetchMirrorStatus(signal), refetchInterval: 60_000, staleTime: 60_000 });
 
 export const daySummaryQuery = (date: string) =>
     queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: histStale(date) , meta: CURATION });

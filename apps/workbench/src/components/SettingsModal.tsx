@@ -9,7 +9,8 @@ import { PANEL_CATALOG } from "../shell/panelCatalog.js";
 import { staticCommands, commandsByCategory } from "../keymap/registry.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { formatChord } from "../keymap/keys.js";
-import { fetchLiveConditions, selectLiveCondition } from "../api/liveConditions.js";
+import { selectLiveCondition } from "../api/liveConditions.js";
+import { liveConditionsQuery } from "../api/queries.js";
 
 // 전역 설정 다이얼로그 — 사이드바에서 화면 선택 → 그 화면 설정. 패널별 gear 대신 우상단 전역 1개.
 // 프레임은 고정(폭·높이) — 화면을 바꿔도 창이 안 출렁이게, 내용 영역만 내부 스크롤한다.
@@ -134,15 +135,10 @@ function ChartSettingsView(): JSX.Element {
 // 클릭 = 즉시 적용(엔진 스캐너 교체 + 서버 JSON 영속, 재기동 유지). env 는 부팅 기본값으로 강등.
 function ConditionSettings(): JSX.Element {
     const qc = useQueryClient();
-    const q = useQuery({
-        queryKey: ["live", "conditions"],
-        queryFn: ({ signal }) => fetchLiveConditions(signal),
-        staleTime: 30_000,
-        retry: false, // 엔진 미연결(503)이면 즉시 안내 — 모달 안에서 재시도 버튼으로
-    });
+    const q = useQuery(liveConditionsQuery()); // retry 끔(엔진 미연결 503 즉시 안내) 등 옵션은 queries.ts 한 곳
     const mut = useMutation({
         mutationFn: selectLiveCondition,
-        onSuccess: () => void qc.invalidateQueries({ queryKey: ["live", "conditions"] }),
+        onSuccess: () => void qc.invalidateQueries({ queryKey: liveConditionsQuery().queryKey }),
     });
     const rowBtn: React.CSSProperties = {
         display: "flex",

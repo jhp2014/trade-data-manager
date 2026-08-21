@@ -3,11 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { availablePredicates, isCanonicalStockCode, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
 import {
     addUniverseBlacklist,
-    fetchUniverse,
     putUniverseRules,
     removeUniverseBlacklist,
     type UniverseRuleDraft,
 } from "../api/alerts.js";
+import { liveUniverseQuery } from "../api/queries.js";
 import { PredicateList, RuleForm, newPredicate } from "../components/RuleForm.js";
 import { PanelHeader } from "../components/ControlChrome.js";
 import { kstTime } from "../lib/date.js";
@@ -19,7 +19,7 @@ import { useWorkbench } from "../store/workbench.js";
 // 보드 필터와 달리 설정이 **서버 자원**(live-alerts.json — 서버가 계산·발화) → 편집은 로컬 draft,
 // [저장]으로 PUT 전체 교체(규칙 편집 중 어중간한 식으로 서버가 발화하지 않게).
 // output: 텔레그램(쿨다운)+로그 / 로그만. 블랙리스트 = 당일 만료, 텔레그램만 차단(로그엔 남음) — 즉시 반영.
-const UNIVERSE_KEY = ["live-universe"];
+const UNIVERSE_KEY = liveUniverseQuery().queryKey; // 편집 mutation 들의 invalidate 대상 — 정의는 queries.ts 한 곳
 const PREDICATES = availablePredicates(LIVE_ALARM_FIELDS);
 const KINDS = PREDICATES.map((d) => d.kind);
 const DEFAULT_COOLDOWN_MIN = 3; // 서버 기본(3분)과 표기 일치
@@ -36,7 +36,7 @@ function newRule(): UniverseRuleDraft {
 
 export function UniverseRulesPanel(): JSX.Element {
     const qc = useQueryClient();
-    const view = useQuery({ queryKey: UNIVERSE_KEY, queryFn: ({ signal }) => fetchUniverse(signal), refetchInterval: 15_000 });
+    const view = useQuery(liveUniverseQuery());
     const [draft, setDraft] = useState<UniverseRuleDraft[] | null>(null); // null = 서버 그대로(미편집)
     const [editing, setEditing] = useState<number | null>(null);
     const [blCode, setBlCode] = useState("");

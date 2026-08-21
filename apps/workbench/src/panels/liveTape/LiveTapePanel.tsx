@@ -8,8 +8,8 @@
 // 항상 하루 전체가 보인다(자세한 복기는 장 마감 후 골격 패널의 몫).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { backfillTape, fetchTapeThemes } from "../../api/liveTape.js";
-import { LIVE_CADENCE_MS } from "../../lib/liveCadence.js";
+import { backfillTape } from "../../api/liveTape.js";
+import { tapeThemesQuery } from "../../api/queries.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { usePlaneBus } from "../../store/usePlaneBus.js";
 import { ScrollRow, TextToggle } from "../../components/ControlChrome.js";
@@ -25,13 +25,8 @@ const SESSION_START = 9 * 60; // 회색띠·화면 시작의 기본 하한(데�
 
 export function LiveTapePanel({ panelId }: { panelId: string }): JSX.Element {
     const { code } = usePlaneBus("live");
-    // 포커스 종목의 테마 칩 — 멤버십은 시트가 정본이라 가끔 바뀐다. 포커스 전환 때마다 재조회면 충분.
-    const themesQ = useQuery({
-        queryKey: ["live-tape-themes", code],
-        queryFn: ({ signal }) => fetchTapeThemes(code, signal),
-        enabled: code !== "",
-        refetchInterval: LIVE_CADENCE_MS * 10,
-    });
+    // 포커스 종목의 테마 칩 — 옵션(폴링 주기·enabled)은 queries.ts 한 곳.
+    const themesQ = useQuery(tapeThemesQuery(code));
     const chips = useMemo(() => themesQ.data?.themes ?? [], [themesQ.data]);
 
     // 선택 테마 — 패널별 영속. 칩에 없으면(포커스가 다른 종목으로) 첫 칩으로 자동 이동.
