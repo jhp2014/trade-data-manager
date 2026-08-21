@@ -11,7 +11,7 @@ export const newsControllers = [NewsController, TelegramNewsController];
 
 export const newsProviders: Provider[] = [
     {
-        // HTS(시황) 뉴스 읽기 — repo 를 그대로 노출(getHeadlines 당일 + recentHeadlines 커서 페이징).
+        // HTS(시황) 뉴스 읽기 — repo 를 그대로 노출(getHeadlines 당일 + feedHeadlines 커서 페이징).
         provide: STOCK_NEWS_REPO,
         useFactory: (pool: Pool) => new DrizzleStockNewsRepository(createDb(pool)),
         inject: [MARKET_POOL],

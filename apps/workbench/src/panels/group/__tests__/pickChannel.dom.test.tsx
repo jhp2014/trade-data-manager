@@ -20,7 +20,7 @@ const SEED: Seed = {
     points: clusterPoints,
     groups: [g("돌파")],
     memberships: CLUSTER_CODES.slice(0, 2).map((code) => ({ stockCode: code, date: DATE, groupNames: ["돌파"] })),
-    candidateDays: CLUSTER_CODES.map((code) => ({ stockCode: code, date: DATE, traces: [] })),
+    candidateDays: CLUSTER_CODES.map((code) => ({ stockCode: code, date: DATE })),
 };
 
 function renderBoth(): void {

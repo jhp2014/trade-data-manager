@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChartAnchor, GroupMembership } from "@trade-data-manager/wire";
-import { buildPresenceIndex, hasActiveFilter, matchesPresence, matchesPresenceDnf, nextTriState, parsePresenceDnf, PRESENCE_KINDS, type DayPresence } from "../presence.js";
+import { buildPresenceIndex, candidateDaysOf, hasActiveFilter, matchesPresence, matchesPresenceDnf, nextTriState, parsePresenceDnf, PRESENCE_KINDS, type DayPresence } from "../presence.js";
 
 // 존재 지도 — 작업셋 모수·배지·필터의 단일 접기. 핵심 성질:
 //  ① 재료 어느 한 쪽에만 흔적이 있어도 항목이 생긴다(골격만/그룹만/코멘트만 있는 날의 등재가 이번 개편의 목적).
@@ -52,6 +52,28 @@ describe("buildPresenceIndex", () => {
             [],
         );
         expect(idx.get("005930|2026-08-01")?.groups).toEqual(["가", "나"]);
+    });
+});
+
+describe("candidateDaysOf — 후보 하루(분석 모수) 파생", () => {
+    it("편집물(앵커∪타점∪그룹) 있는 날만 — 코멘트만 남긴 날은 제외(기록≠판단, 옛 서버 union 정의)", () => {
+        const idx = buildPresenceIndex(
+            [anchor({ stockCode: "A" })],
+            [{ stockCode: "B", date: "2026-08-01" }],
+            [membership({ stockCode: "C", groupNames: ["테마"] })],
+            [{ stockCode: "D", date: "2026-08-01" }], // 코멘트만 — 후보 아님
+        );
+        expect(candidateDaysOf(idx).map((c) => c.stockCode)).toEqual(["A", "B", "C"]);
+    });
+
+    it("정렬 — 날짜 내림차순 → 종목 오름차순(옛 서버 정렬 계승, 화면마다 안 흔들리게)", () => {
+        const idx = buildPresenceIndex(
+            [anchor({ stockCode: "B", date: "2026-08-01" }), anchor({ stockCode: "A", date: "2026-08-01" }), anchor({ stockCode: "C", date: "2026-08-02" })],
+            [], [], [],
+        );
+        expect(candidateDaysOf(idx).map((c) => `${c.stockCode}|${c.date}`)).toEqual([
+            "C|2026-08-02", "A|2026-08-01", "B|2026-08-01",
+        ]);
     });
 });
 

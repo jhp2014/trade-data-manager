@@ -4,13 +4,10 @@ import type { DailyComment } from "#domain";
 // comment 가 자연키 밖이라 갱신 가능 → 편집은 upsert/remove(review_points.memo 선례).
 // (date, stockCode) 자연키로 행을 정확히 지목. 자세한 설계는 domain/classification/dailyComment.ts.
 
-/** 당일 코멘트 조회(읽기). 보드 요약(DayBoards)과 복제본 피드가 의존.
- *  (옛 getOne — 팝업 프리필 단건 — 은 클라 복제본 셀렉터가 흡수하며 은퇴.) */
+/** 당일 코멘트 조회(읽기) — 전량 하나. 소비자(클라 복제본 피드·DayBoards)가 전량을 받아 각자 거른다:
+ *  사람 편집 규모라 페이징·하루 필터 SQL 이 불필요(anchors listAll 선례).
+ *  (옛 getOne — 팝업 프리필 단건 — 과 getByDate — 보드 하루치 — 는 소비측 필터가 흡수하며 은퇴.) */
 export interface DailyCommentReader {
-    /** 하루의 전체 코멘트 행(종목 정렬). 보드가 하루치를 통째로 접을 때. */
-    getByDate(date: string): Promise<DailyComment[]>;
-
-    /** 전 코멘트 행 — 클라 큐레이션 복제본(존재 지도·프리필)용. 사람 편집 규모라 페이징 불필요(anchors listAll 선례). */
     listAll(): Promise<DailyComment[]>;
 }
 

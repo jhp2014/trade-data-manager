@@ -6,16 +6,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { CandidateDay } from "@trade-data-manager/wire";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { FilterFunnelPanel } from "../../FilterFunnelPanel.js";
 
 const A = "005930", B = "000660";
 const DATES = ["2026-07-06", "2026-07-07"];
-const candidateDays: CandidateDay[] = [
-    { stockCode: A, date: DATES[0], traces: [] },
-    { stockCode: B, date: DATES[1], traces: [] },
+const candidateDays: Seed["candidateDays"] = [
+    { stockCode: A, date: DATES[0] },
+    { stockCode: B, date: DATES[1] },
 ];
 const points: SeedPoint[] = [{ stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" }];
 const SEED: Seed = { candidateDays, points };

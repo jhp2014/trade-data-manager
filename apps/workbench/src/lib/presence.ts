@@ -6,8 +6,8 @@
 //
 // **모수 = curation 흔적이 있는 날 전부** — 옛 작업셋(기준선 ∪ 타점)이 놓치던 "골격만 찍은 날"·
 // "그룹만 담은 날"·"코멘트만 남긴 날"이 다 올라온다. 걸러 보는 건 필터 칩(3상·AND)의 몫이다.
-// 서버 candidate_days(분석 모수)와 같은 합집합 개념이지만 정의는 각자 소유 — 한 리드모델로 두 소비자를
-// 섬기면 경계 차이(코멘트 유무 등)가 플래그로 자라서, union 한 줄의 중복을 수용했다.
+// 후보 하루(분석 모수)도 이 지도의 파생이다(candidateDaysOf — 경계 차이는 코멘트 하나뿐이라 필터 한 줄).
+// 옛 서버 union(GET /candidate-days)은 이 파생이 흡수하며 은퇴 — 정의가 여기 한 곳이 됐다.
 import { ANCHOR_PARAMS, BASELINE_PARAM, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM } from "@trade-data-manager/market/domain";
 import type { ChartAnchor, DailyCommentListItem, GroupMembership, ReviewPoint } from "@trade-data-manager/wire";
 import { chartKeyOf } from "./pointKey.js";
@@ -93,6 +93,20 @@ export function buildPresenceIndex(
     const out = new Map<string, DayPresence>();
     for (const [k, e] of idx) out.set(k, { ...e, groups: [...e.groups].sort((a, b) => a.localeCompare(b)) });
     return out;
+}
+
+/**
+ * 후보 하루(분석의 모수) — 존재 지도에서 **편집물(앵커∪타점∪그룹) 있는 날**만 추린 것.
+ * 코멘트만 있는 날은 제외한다: 후보는 "차트를 읽고 판단을 남긴 날"이고 코멘트는 기록이지 판단이 아니다
+ * (옛 서버 union 의 정의 그대로 — 소비자는 깔때기 분모·레일 척도라 저장하지 않고 매번 파생한다).
+ * 정렬은 날짜 내림차순 → 종목: 화면마다 순서가 흔들리지 않게 파생이 고정한다(옛 서버 정렬 계승).
+ */
+export function candidateDaysOf(index: ReadonlyMap<string, DayPresence>): { stockCode: string; date: string }[] {
+    const out: { stockCode: string; date: string }[] = [];
+    for (const d of index.values()) {
+        if (d.marks.size > 0 || d.points > 0 || d.groups.length > 0) out.push({ stockCode: d.stockCode, date: d.date });
+    }
+    return out.sort((a, b) => b.date.localeCompare(a.date) || a.stockCode.localeCompare(b.stockCode));
 }
 
 // ── 필터(DNF: 절 안 AND × 절 사이 OR) ────────────────────────────────────────

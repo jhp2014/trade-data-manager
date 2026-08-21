@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DailyComment, DailyCommentReader, DailyCommentStore } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { dailyComments } from "../schema/curation.js";
@@ -26,17 +26,8 @@ export class DrizzleDailyCommentRepository implements DailyCommentReader, DailyC
     }
 
     async listAll(): Promise<DailyComment[]> {
-        // 전량 — 클라 복제본용. 정렬은 굳이 안 준다(소비자가 (날짜,종목) 키로 접는다).
+        // 전량 — 클라 복제본·보드가 각자 거른다. 정렬은 굳이 안 준다(소비자가 (날짜,종목) 키로 접는다).
         const rows = await this.db.select().from(dailyComments);
-        return rows.map(rowToDailyComment);
-    }
-
-    async getByDate(date: string): Promise<DailyComment[]> {
-        const rows = await this.db
-            .select()
-            .from(dailyComments)
-            .where(eq(dailyComments.tradeDate, date))
-            .orderBy(asc(dailyComments.stockCode));
         return rows.map(rowToDailyComment);
     }
 }

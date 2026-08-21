@@ -23,11 +23,14 @@ export class DayBoards {
     constructor(private readonly deps: DayBoardsDeps) {}
 
     async themeBoard(date: string): Promise<EnrichedDaySummary> {
-        const [snap, comments, members] = await Promise.all([
+        // 코멘트는 전량을 읽어 그 날만 거른다 — 사람 편집 규모(수백 행)라 하루 필터 SQL 을 따로 둘 이유가
+        // 없고, 덕분에 DailyCommentReader 가 listAll 하나로 남는다(복제본 피드와 같은 메서드).
+        const [snap, allComments, members] = await Promise.all([
             this.deps.derived.snapshot(date),
-            this.deps.dailyComment.getByDate(date),
+            this.deps.dailyComment.listAll(),
             this.deps.membership.load(),
         ]);
+        const comments = allComments.filter((c) => c.date === date);
         const codes = snap.stocks.map((s) => s.code);
         const masters = await this.deps.master.getByStockCodes(codes);
         const byCode = new Map(snap.stocks.map((s) => [s.code, { stats: s.stats, marketCap: s.marketCap }]));

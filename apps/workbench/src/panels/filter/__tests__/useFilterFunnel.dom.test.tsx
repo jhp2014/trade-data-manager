@@ -12,7 +12,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import type { CandidateDay } from "@trade-data-manager/wire";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { useFilterFunnel } from "../useFilterFunnel.js";
@@ -21,11 +20,11 @@ import type { FilterStage } from "../stage.js";
 const A = "005930", B = "000660", C = "035720";
 const D1 = "2026-07-08", D2 = "2026-07-09";
 
-/** 후보 하루 셋 — A·B 는 D1, C 는 D2. */
-const candidates: CandidateDay[] = [
-    { stockCode: A, date: D1, traces: [] },
-    { stockCode: B, date: D1, traces: [] },
-    { stockCode: C, date: D2, traces: [] },
+/** 후보 하루 셋 — A·B 는 D1, C 는 D2. (시드가 최소 앵커로 세운다 — renderPanel 주석 참고.) */
+const candidates: Seed["candidateDays"] = [
+    { stockCode: A, date: D1 },
+    { stockCode: B, date: D1 },
+    { stockCode: C, date: D2 },
 ];
 
 /** 타점: A 에 둘, B 에 하나, **C 에는 없다**(타점 0인 하루가 어떻게 펼쳐지나가 계약이다). */

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useWorkbench } from "../store/workbench.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 
-import { allPointsQuery } from "../api/queries.js";
+import { useAllPoints } from "../lib/useAllPoints.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { PanelHeader } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
@@ -69,8 +68,8 @@ export function WorksetPanel(): JSX.Element {
     const funnel = useFunnel();
 
     const presence = usePresenceIndex();
-    const pointsQ = useQuery(allPointsQuery());
-    const points = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);
+    const pts = useAllPoints();
+    const points = pts.points;
 
     // ── 존재 필터(DNF) — **전역 시선**(store.gazePresence, 슬라이스가 영속·옛 키 승계). 여기가 주인이고
     //    구독 패널은 viewOf 가 접어 주는 것을 받는다 — "남은 작업"이 골격·시트에도 그대로 보이는 이유.
@@ -221,9 +220,9 @@ export function WorksetPanel(): JSX.Element {
         })),
     ], [lensOn, narrow, setNarrow, canLocate, focusDate, focusCode, rows.shown]);
 
-    if (presence.isLoading || pointsQ.isLoading) return <BoardCenter text="작업셋 로딩중…" />;
+    if (presence.isLoading || pts.isLoading) return <BoardCenter text="작업셋 로딩중…" />;
     if (presence.error) return <BoardCenter text={`작업셋 오류: ${presence.error.message}`} />;
-    if (pointsQ.isError) return <BoardCenter text={`타점 오류: ${(pointsQ.error as Error).message}`} />;
+    if (pts.error) return <BoardCenter text={`타점 오류: ${pts.error.message}`} />;
 
     // 필터 요약은 **필터 줄이 꺼져 있을 때만** 머리글에 선다 — 줄이 켜져 있으면 식 전체가 이미 보인다.
     const filterSummary = rows.shown.filter ? "" : dnfSummary(dnf);

@@ -7,9 +7,8 @@ import {
     DrizzleReviewPointRepository,
     DrizzleRankRepository,
     DrizzleGroupRepository,
-    DrizzleCandidateDayRepository,
 } from "@trade-data-manager/persistence";
-import { CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, GROUP_REPO, CANDIDATE_DAY_REPO, CURATION_SYNC, COMPUTED_AXES, SKELETON_SHAPES, MARKET_POOL, CURATION_POOL } from "../tokens.js";
+import { CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, GROUP_REPO, CURATION_SYNC, COMPUTED_AXES, SKELETON_SHAPES, MARKET_POOL, CURATION_POOL } from "../tokens.js";
 import type { Pool } from "../pool.js";
 import { curationRepo } from "./curationRepo.js";
 import { DailyComments } from "./dailyComments.js";
@@ -23,7 +22,6 @@ import { ReviewPointController } from "./reviewPoint.controller.js";
 import { CommentController } from "./comment.controller.js";
 import { RankController } from "./rank.controller.js";
 import { GroupController } from "./group.controller.js";
-import { CandidateDayController } from "./candidateDay.controller.js";
 import { CurationSyncController } from "./sync.controller.js";
 import { SkeletonController } from "../rank/skeleton.controller.js";
 
@@ -37,7 +35,6 @@ export const curationControllers = [
     RankController,
     SkeletonController,
     GroupController,
-    CandidateDayController,
 ];
 
 export const curationProviders: Provider[] = [
@@ -112,12 +109,6 @@ export const curationProviders: Provider[] = [
         useFactory: (marketPool: Pool, curationPool: Pool) =>
             curationRepo((db) => new DrizzleGroupRepository(db), ["createGroup", "renameGroup", "removeGroup", "attach", "detach", "setParent"], "group", marketPool, curationPool),
         inject: [MARKET_POOL, CURATION_POOL],
-    },
-    {
-        // 후보 하루 — 위 큐레이션 편집물들의 (종목,날짜) 합집합. 읽기 전용 파생이라 Store 가 없다.
-        provide: CANDIDATE_DAY_REPO,
-        useFactory: (pool: Pool) => new DrizzleCandidateDayRepository(createDb(pool)), // 읽기 전용 파생 → 로컬 미러
-        inject: [MARKET_POOL],
     },
     {
         // 미러 당겨오기 — 읽기 소스 갱신. 상태(마지막 동기화 시각) 읽기는 상주 MARKET_POOL 재사용

@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import type { AxisLine, CandidateDay, RankAxis } from "@trade-data-manager/wire";
+import type { AxisLine, RankAxis } from "@trade-data-manager/wire";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { RAIL_PAD } from "../rail/Rail.js";
@@ -20,7 +20,7 @@ import { FilterBoard } from "../FilterBoard.js";
 const A = "005930", B = "000660";
 const DATES = ["2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09"];
 
-const candidateDays: CandidateDay[] = DATES.map((date, i) => ({ stockCode: i % 2 ? A : B, date, traces: [] }));
+const candidateDays: Seed["candidateDays"] = DATES.map((date, i) => ({ stockCode: i % 2 ? A : B, date }));
 const points: SeedPoint[] = [
     { stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" },
     { stockCode: B, date: DATES[1], time: "10:00:00", name: "SK하이닉스" },
@@ -227,9 +227,9 @@ describe("그룹 — 유일하게 리스트인 조건", () => {
 // ── 선택 집합 오버레이 — 같은 점, 두 상태 ──────────────────────────────────
 // 오버레이 재료: 유니버스 두 차트(A@D0·B@D1), 각각 타점 하나. 타점축 배치줄이 두 타점을 자리로 갖는다.
 // 날짜 필터로 A@D0 만 남기면 축 레일의 자리 둘 중 **하나만** 멤버가 되어야 한다.
-const OVL_CAND: CandidateDay[] = [
-    { stockCode: A, date: DATES[0], traces: [] },
-    { stockCode: B, date: DATES[1], traces: [] },
+const OVL_CAND: Seed["candidateDays"] = [
+    { stockCode: A, date: DATES[0] },
+    { stockCode: B, date: DATES[1] },
 ];
 const OVL_POINTS: SeedPoint[] = [
     { stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" },

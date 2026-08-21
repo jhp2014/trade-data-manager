@@ -8,7 +8,6 @@ function fakeRepo(seed: DailyComment[] = []) {
     const rows = new Map(seed.map((c) => [`${c.date}|${c.stockCode}`, c]));
     return {
         rows,
-        getByDate: async (date: string) => [...rows.values()].filter((c) => c.date === date),
         listAll: async () => [...rows.values()],
         upsert: async (c: DailyComment) => void rows.set(`${c.date}|${c.stockCode}`, c),
         remove: async (date: string, stockCode: string) => void rows.delete(`${date}|${stockCode}`),

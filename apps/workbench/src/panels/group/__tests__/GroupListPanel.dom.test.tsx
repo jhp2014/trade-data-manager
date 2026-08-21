@@ -22,9 +22,9 @@ const SEED: Seed = {
         { stockCode: "C", date: "2026-07-01", groupNames: ["돌파"] },
     ],
     candidateDays: [
-        { stockCode: "A", date: "2026-07-01", traces: [] },
-        { stockCode: "B", date: "2026-07-01", traces: [] },
-        { stockCode: "C", date: "2026-07-01", traces: [] },
+        { stockCode: "A", date: "2026-07-01" },
+        { stockCode: "B", date: "2026-07-01" },
+        { stockCode: "C", date: "2026-07-01" },
     ],
 };
 
@@ -68,7 +68,7 @@ describe("scope — 층위별로 센다", () => {
             { stockCode: "A", date: "2026-07-01", groupNames: ["돌파"] },
             { stockCode: "A", date: "2026-07-01", time: TIME, groupNames: ["눌림타점"] },
         ],
-        candidateDays: [{ stockCode: "A", date: "2026-07-01", traces: [] }],
+        candidateDays: [{ stockCode: "A", date: "2026-07-01" }],
         // 타점 분모(viewedPointRefs)의 재료 — 이게 없으면 타점 피드가 비어 수가 0이 된다.
         points: [{ stockCode: "A", date: "2026-07-01", time: TIME, outcome: null, axisValues: {} } as never],
     };

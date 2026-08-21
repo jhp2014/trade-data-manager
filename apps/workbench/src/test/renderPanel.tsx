@@ -9,10 +9,10 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { AxisLine, CandidateDay, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankAxis, ReviewPoint, SkeletonFeed, StockMeta } from "@trade-data-manager/wire";
+import type { AxisLine, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankAxis, ReviewPoint, SkeletonFeed, StockMeta } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
-    allAnchorsQuery, allCommentsQuery, allPointsQuery, axisLinesQuery, candidateDaysQuery, chartQuery, computedAxesQuery,
+    allAnchorsQuery, allCommentsQuery, allPointsQuery, axisLinesQuery, chartQuery, computedAxesQuery,
     groupMembershipsQuery, groupsQuery, rankAxesQuery, skeletonsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
@@ -35,7 +35,13 @@ export interface Seed {
     anchors?: ChartAnchor[];
     /** 복제본 코멘트 테이블 — 존재 지도의 "코" 배지 재료. */
     comments?: DailyCommentListItem[];
-    candidateDays?: CandidateDay[];
+    /**
+     * 후보 하루를 세울 (종목,날짜)들 — 파생 캐시가 아니라 **최소 앵커 행**(baseline 1개)으로 심는다.
+     * 후보는 이제 복제본 테이블에서 파생되므로(candidateDaysOf) 시드도 그 실경로를 태운다 — 직접 캐시를
+     * 심으면 테이블과 후보가 어긋난 세상(실서비스에 없는 상태)을 검증하게 된다. 타점·앵커를 이미 심는
+     * 날은 자동으로 후보가 되니 이 필드는 "편집물 없이 후보만 필요한 날"에만 쓴다.
+     */
+    candidateDays?: { stockCode: string; date: string }[];
     groups?: Group[];
     memberships?: GroupMembership[];
     axes?: RankAxis[];
@@ -78,9 +84,13 @@ export function seededClient(seed: Seed = {}): QueryClient {
     });
     qc.setQueryData(skeletonsQuery().queryKey, seed.skeletons ?? EMPTY_SKELETONS);
     qc.setQueryData(allPointsQuery().queryKey, seed.points ?? []);
-    qc.setQueryData(allAnchorsQuery().queryKey, seed.anchors ?? []);
+    // candidateDays 는 최소 앵커 행으로 변환해 테이블에 합류 — 후보 파생(candidateDaysOf)이 실경로로 돈다.
+    const seededAnchors = [
+        ...(seed.anchors ?? []),
+        ...(seed.candidateDays ?? []).map(({ stockCode, date }): ChartAnchor => ({ stockCode, date, param: "baseline", anchorDate: date })),
+    ];
+    qc.setQueryData(allAnchorsQuery().queryKey, seededAnchors);
     qc.setQueryData(allCommentsQuery().queryKey, seed.comments ?? []);
-    qc.setQueryData(candidateDaysQuery().queryKey, seed.candidateDays ?? []);
     qc.setQueryData(groupsQuery().queryKey, seed.groups ?? []);
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
     qc.setQueryData(rankAxesQuery().queryKey, seed.axes ?? []);

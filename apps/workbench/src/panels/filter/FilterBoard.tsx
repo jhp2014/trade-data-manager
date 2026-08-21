@@ -14,8 +14,8 @@
 // 팝오버 편집기 4갈래는 BoardEditors, 그룹 생성 draft 는 useGroupCreateFlow, 되짚기는 boardReveal 에 —
 // 여기는 **레일 격자**(층위 칸·줄 배치)만 남는다.
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
+import { useAllPoints } from "../../lib/useAllPoints.js";
+import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { isComputedAxis, type AxisRef } from "../../lib/computedAxis.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useGroups } from "../../lib/GroupsContext.js";
@@ -55,11 +55,11 @@ export function FilterBoard({ reveal, onlyActive }: {
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
     const groupCreate = useGroupCreateFlow(addStage, setEditor);
 
-    // 후보 날짜·타점 시각 — 레일의 척도. 둘 다 깔때기가 이미 받아 둔 쿼리라 캐시에서 온다(왕복 없음).
-    const candQ = useQuery(candidateDaysQuery());
-    const pointsQ = useQuery(allPointsQuery());
-    const dates = useMemo(() => [...new Set((candQ.data ?? []).map((c) => c.date))].sort(), [candQ.data]);
-    const times = useMemo(() => (pointsQ.data ?? []).map((p) => p.time), [pointsQ.data]);
+    // 후보 날짜·타점 시각 — 레일의 척도. 둘 다 깔때기와 같은 복제본 재료라 캐시에서 온다(왕복 없음).
+    const cand = useCandidateDays();
+    const pts = useAllPoints();
+    const dates = useMemo(() => [...new Set(cand.candidates.map((c) => c.date))].sort(), [cand.candidates]);
+    const times = useMemo(() => pts.points.map((p) => p.time), [pts.points]);
 
     const markerKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
 

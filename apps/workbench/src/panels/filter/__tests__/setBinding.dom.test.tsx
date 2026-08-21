@@ -21,7 +21,7 @@ const SEED: Seed = {
     points: clusterPoints,
     groups: [g("돌파")],
     memberships: CLUSTER_CODES.slice(0, 2).map((code) => ({ stockCode: code, date: DATE, groupNames: ["돌파"] })),
-    candidateDays: CLUSTER_CODES.map((code) => ({ stockCode: code, date: DATE, traces: [] })),
+    candidateDays: CLUSTER_CODES.map((code) => ({ stockCode: code, date: DATE })),
 };
 
 /** 저장 집합 "돌파 생존" — 그룹 '돌파' 단계 하나짜리 조건 사본, 부위=생존자. */

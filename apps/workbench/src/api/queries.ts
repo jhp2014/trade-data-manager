@@ -12,7 +12,6 @@ import { fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchSkeletons } from "./skeletons.js";
 import { fetchGroups, fetchGroupMemberships } from "./groups.js";
-import { fetchCandidateDays } from "./candidateDays.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
 import { fetchAllDailyComments } from "./comment.js";
@@ -102,10 +101,6 @@ export const groupsQuery = () =>
 // 캐시를 나누면 한쪽만 무효화되는 사고가 열린다.
 export const groupMembershipsQuery = () =>
     queryOptions({ queryKey: ["group-members"], queryFn: ({ signal }) => fetchGroupMemberships(signal), staleTime: IMMUTABLE , meta: CURATION });
-
-// 후보 하루(분석의 모수) — 그룹과 **별도 키**: 앵커·타점 어느 쪽이 늘어도 후보는 변하지만 그룹 사전은 그대로다.
-export const candidateDaysQuery = () =>
-    queryOptions({ queryKey: ["candidate-days"], queryFn: ({ signal }) => fetchCandidateDays(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 /**
  * 종목 마스터 전량(코드·이름·시장) — 이름 사전의 **단일 출처**. 키가 상수라 어느 화면에서 불러도 한 벌이다.

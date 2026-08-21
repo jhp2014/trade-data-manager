@@ -7,7 +7,8 @@
 //   · 분봉(타점 단위) = 보는 집합을 타점으로 펼친 것(하루 항목은 그날 전 타점 — 정직한 반복)
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { skeletonsQuery, allPointsQuery } from "../../api/queries.js";
+import { skeletonsQuery } from "../../api/queries.js";
+import { useAllPoints } from "../../lib/useAllPoints.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { pointKey, chartKey } from "../../lib/pointKey.js";
 import { useStockNames } from "../../lib/useStockNames.js";
@@ -61,7 +62,7 @@ export function useOverlayData(
     bindingRef: SetRef | null,
 ): OverlayData {
     const feedQ = useQuery(skeletonsQuery());
-    const pointsQ = useQuery(allPointsQuery());
+    const pts = useAllPoints();
     const funnel = useFunnel();
 
     // 보는 집합 구독 — 바인딩 하나로 묻는다(시선이면 깔때기 viewed* 그대로). 안 걸려 있으면 null(제한 없음).
@@ -84,7 +85,7 @@ export function useOverlayData(
 
     const pointsByChart = useMemo(() => {
         const m = new Map<string, ReviewPoint[]>();
-        for (const p of pointsQ.data ?? []) {
+        for (const p of pts.points) {
             const k = chartKey(p);
             const list = m.get(k);
             if (list) list.push(p);
@@ -92,7 +93,7 @@ export function useOverlayData(
         }
         for (const list of m.values()) list.sort((a, b) => (a.time < b.time ? -1 : 1));
         return m;
-    }, [pointsQ.data]);
+    }, [pts.points]);
 
     // 차트 단위 선(일봉) — 분봉 뷰에선 비어 있다(선의 전체 집합이 다르다).
     const shapes = useMemo<ChartSkeleton[]>(() => {

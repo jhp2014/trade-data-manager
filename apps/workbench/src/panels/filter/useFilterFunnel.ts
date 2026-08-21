@@ -9,11 +9,11 @@
 // "없음"이 아니라 "곧 옴"이다. 그때 해상도를 확정하면 사전이 도착하는 순간 화면이 통째로 다시 그려지고,
 // 더 나쁘게는 그 사이의 5칸 숫자가 전부 미배치로 부풀어 사용자가 그걸 사실로 읽는다.
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
     expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
 } from "@trade-data-manager/market/domain";
-import { allPointsQuery, candidateDaysQuery } from "../../api/queries.js";
+import { useAllPoints } from "../../lib/useAllPoints.js";
+import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { chartKey, pointKey } from "../../lib/pointKey.js";
@@ -80,10 +80,10 @@ export function useFilterFunnel(): FunnelView {
 
     const gv = useGroups();
     const ax = useRankAxes();
-    const candQ = useQuery(candidateDaysQuery());
-    const pointsQ = useQuery(allPointsQuery());
+    const cand = useCandidateDays(); // 복제본 파생 — 서버 왕복 없음(candidateDaysOf)
+    const pts = useAllPoints();
 
-    const isLoading = gv.isLoading || ax.isLoading || candQ.isLoading || pointsQ.isLoading;
+    const isLoading = gv.isLoading || ax.isLoading || cand.isLoading || pts.isLoading;
 
     // ── 색인 ── 조립 규칙과 그 함정은 axisLookup 에(순수·테스트됨).
     const placements = useMemo(() => buildAxisOrderIndexes(ax.linesByAxis), [ax.linesByAxis]);
@@ -91,14 +91,14 @@ export function useFilterFunnel(): FunnelView {
     /** 후보 하루 → 그 하루의 타점 시각들. 타점 0인 하루는 빈 배열(항목 하나로 남는다). */
     const timesByChart = useMemo(() => {
         const m = new Map<string, string[]>();
-        for (const p of pointsQ.data ?? []) {
+        for (const p of pts.points) {
             const k = chartKey(p);
             const list = m.get(k);
             if (list) list.push(p.time);
             else m.set(k, [p.time]);
         }
         return m;
-    }, [pointsQ.data]);
+    }, [pts.points]);
 
     const axisScopes = useMemo(() => new Map(ax.axes.map((a) => [a.key, a.scope as Grain])), [ax.axes]);
 
@@ -147,8 +147,8 @@ export function useFilterFunnel(): FunnelView {
 
     const items = useMemo<FunnelItem[]>(() => {
         if (isLoading) return [];
-        return expandUniverse(candQ.data ?? [], grain, (c) => timesByChart.get(chartKey(c)) ?? []);
-    }, [isLoading, candQ.data, grain, timesByChart]);
+        return expandUniverse(cand.candidates, grain, (c) => timesByChart.get(chartKey(c)) ?? []);
+    }, [isLoading, cand.candidates, grain, timesByChart]);
 
     const result = useMemo<FunnelResult | null>(
         () => (isLoading ? null : tallyFunnel(items, toFunnelStages(active, evalLook))),
@@ -164,7 +164,7 @@ export function useFilterFunnel(): FunnelView {
      */
     const materialsEpoch = useMemo(
         () => `e${++materialsSeq}`,
-        [candQ.data, timesByChart, evalLook, grainLook, isLoading],
+        [cand.candidates, timesByChart, evalLook, grainLook, isLoading],
     );
 
     /**
@@ -174,7 +174,7 @@ export function useFilterFunnel(): FunnelView {
      */
     const setCtx = useMemo<SetResolveCtx>(
         () => ({
-            candidates: candQ.data ?? [],
+            candidates: cand.candidates,
             timesOf: (c) => timesByChart.get(chartKey(c)) ?? [],
             appliedGroupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
             groupScope: (n) => gv.groupByName.get(n)?.scope,
@@ -185,7 +185,7 @@ export function useFilterFunnel(): FunnelView {
             evalLook,
             grainLook,
         }),
-        [candQ.data, timesByChart, gv, evalLook, grainLook, stages, savedSets, grain, active, result, materialsEpoch],
+        [cand.candidates, timesByChart, gv, evalLook, grainLook, stages, savedSets, grain, active, result, materialsEpoch],
     );
 
     const { resolveSet, viewOf } = useSetViews(result, setCtx);

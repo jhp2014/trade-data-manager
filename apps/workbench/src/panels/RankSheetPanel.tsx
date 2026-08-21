@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { DndContext } from "@dnd-kit/core";
-import { allPointsQuery } from "../api/queries.js";
+import { useAllPoints } from "../lib/useAllPoints.js";
 import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
 import { colKey } from "./rank/sheetColumns.js";
 import { useSheetColumns } from "./rank/useSheetColumns.js";
@@ -109,8 +108,7 @@ export function RankSheetPanel(): JSX.Element {
     const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = cols;
 
     // ── 전체 타점(행 원천) + 기간.
-    const pointsQ = useQuery(allPointsQuery());
-    const allPoints = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);
+    const { points: allPoints, isLoading: pointsLoading } = useAllPoints();
     const allByKey = useMemo(() => {
         const m = new Map<string, ReviewPoint>();
         for (const p of allPoints) m.set(pointKey(p), p);
@@ -231,7 +229,7 @@ export function RankSheetPanel(): JSX.Element {
     }, [valueViews]);
 
     // 스크롤 위치 세션 복원 — 데이터가 그려진(표 렌더된) 뒤 1회. onScroll 로 저장(useSessionScroll).
-    const dataReady = !axesLoading && !pointsQ.isLoading && axes.length > 0;
+    const dataReady = !axesLoading && !pointsLoading && axes.length > 0;
     const scroll = useSessionScroll(scrollRef, dataReady);
 
     // ── 팝업 네 벌(셀/열 우클릭 · 축 만들기 · 결과 입력)의 상태 — opener 만 행·헤더·컨트롤에 나눠 꽂는다.
@@ -293,7 +291,7 @@ export function RankSheetPanel(): JSX.Element {
         },
     ];
 
-    if (axesLoading || pointsQ.isLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
+    if (axesLoading || pointsLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
     if (axes.length === 0) return <Wrap><div style={muted}>축이 없습니다. 위 <b>+ 축</b>으로 먼저 만들어 주세요.</div></Wrap>;
 
     return (

@@ -81,8 +81,9 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
     }
 
     async attach(groupName: string, item: GroupItemRef): Promise<void> {
-        const id = await this.idOf(groupName);
-        await this.assertItemMatchesScope(groupName, item);
+        // id·scope 를 한 조회로 — 같은 행을 두 번 읽던 것(idOf + scopeOf)을 합쳤다.
+        const { id, scope } = await this.metaOf(groupName);
+        assertItemMatchesScope(scope, item);
         // 멱등 — 부분 유니크 인덱스가 grain 별로 잡고 있어 충돌하면 그냥 넘어간다.
         await this.db
             .insert(groupMembers)
@@ -139,9 +140,14 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
 
     /** 이름 → id. 계약(이름)과 저장(id) 사이의 유일한 통로 — 없는 이름은 불변식 위반으로 400 이 된다. */
     private async idOf(name: string): Promise<bigint> {
-        const rows = await this.db.select({ id: groups.id }).from(groups).where(eq(groups.name, name)).limit(1);
+        return (await this.metaOf(name)).id;
+    }
+
+    /** 이름 → {id, scope} 한 조회 — attach 가 id(FK)와 scope(층위 검증)를 같이 쓴다. */
+    private async metaOf(name: string): Promise<{ id: bigint; scope: GroupScope }> {
+        const rows = await this.db.select({ id: groups.id, scope: groups.scope }).from(groups).where(eq(groups.name, name)).limit(1);
         if (rows.length === 0) throw new GroupInvariantError(`없는 그룹: ${name}`);
-        return rows[0]!.id;
+        return { id: rows[0]!.id, scope: rows[0]!.scope as GroupScope };
     }
 
     /** 행 하나를 계약 모양으로 — 부모 이름이 필요해 이름표를 함께 뜬다(몇 행 규모). */
@@ -151,15 +157,9 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
         return rowToGroup(row, new Map(groupRows.map((r) => [String(r.id), r.name])));
     }
 
-    private async scopeOf(name: string): Promise<GroupScope> {
-        const rows = await this.db.select({ scope: groups.scope }).from(groups).where(eq(groups.name, name)).limit(1);
-        if (rows.length === 0) throw new GroupInvariantError(`없는 그룹: ${name}`);
-        return rows[0]!.scope as GroupScope;
-    }
+}
 
-    private async assertItemMatchesScope(groupName: string, item: GroupItemRef): Promise<void> {
-        const scope = await this.scopeOf(groupName);
-        if (scope === "day" && item.time !== undefined) throw new GroupInvariantError("하루 그룹에는 시각을 넣지 않는다(하루가 곧 멤버)");
-        if (scope === "point" && item.time === undefined) throw new GroupInvariantError("타점 그룹에는 시각이 필요하다(타점이 곧 멤버)");
-    }
+function assertItemMatchesScope(scope: GroupScope, item: GroupItemRef): void {
+    if (scope === "day" && item.time !== undefined) throw new GroupInvariantError("하루 그룹에는 시각을 넣지 않는다(하루가 곧 멤버)");
+    if (scope === "point" && item.time === undefined) throw new GroupInvariantError("타점 그룹에는 시각이 필요하다(타점이 곧 멤버)");
 }
