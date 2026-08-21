@@ -6,8 +6,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { CandidateDay, ReviewPointListItem } from "@trade-data-manager/wire";
-import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
+import type { CandidateDay } from "@trade-data-manager/wire";
+import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { FilterFunnelPanel } from "../../FilterFunnelPanel.js";
 
@@ -17,7 +17,7 @@ const candidateDays: CandidateDay[] = [
     { stockCode: A, date: DATES[0], traces: [] },
     { stockCode: B, date: DATES[1], traces: [] },
 ];
-const points: ReviewPointListItem[] = [{ stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" }];
+const points: SeedPoint[] = [{ stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" }];
 const SEED: Seed = { candidateDays, points };
 
 const PANEL = "filter-funnel-1";

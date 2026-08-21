@@ -5,7 +5,8 @@
 // 재료를 여기 모으고, 쓰는 쪽이 "정말 그려졌나"를 따로 단언하게 한다.
 import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import type { DayReplay } from "../../../api/dayReplay.js";
-import type { ReviewPointListItem, SkeletonFeed } from "@trade-data-manager/wire";
+import type { SkeletonFeed } from "@trade-data-manager/wire";
+import type { SeedPoint } from "../../../test/renderPanel.js";
 
 export const CODE = "005930";
 export const MEMBER = "000660";
@@ -45,7 +46,7 @@ export const skeletonFeed: SkeletonFeed = {
     levels: [{ stockCode: CODE, date: DATE, levels: [{ price: 9_800, baseline: true }] }],
 };
 
-export const points: ReviewPointListItem[] = [
+export const points: SeedPoint[] = [
     { stockCode: CODE, date: DATE, time: TIME, name: "삼성전자" },
 ];
 
@@ -73,7 +74,7 @@ export const clusterFeed: SkeletonFeed = {
     levels: [],
 };
 
-export const clusterPoints: ReviewPointListItem[] = CLUSTER_CODES.map((c) => ({
+export const clusterPoints: SeedPoint[] = CLUSTER_CODES.map((c) => ({
     stockCode: c, date: DATE, time: TIME, name: CLUSTER_NAMES[c],
 }));
 

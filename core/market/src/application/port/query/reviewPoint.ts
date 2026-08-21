@@ -3,12 +3,10 @@ import type { ReviewPoint } from "#domain";
 // 복기 타점 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
 // 자연키 (stockCode, date, time) = caseId. 자세한 설계는 domain/review/reviewPoint.ts.
 
-/** 복기 타점 조회(읽기). 차트 주석 표시·월별 작업셋 소비자가 의존. */
+/** 복기 타점 조회(읽기). 복제본 피드·읽기모델(계산 축·골격)이 의존.
+ *  (옛 listByChart — per-chart GET — 은 클라 복제본 셀렉터가 흡수하며 은퇴.) */
 export interface ReviewPointReader {
-    /** 이 차트(종목,날짜)의 타점들(시각 오름차순). */
-    listByChart(stockCode: string, date: string): Promise<ReviewPoint[]>;
-
-    /** 모든 타점(종목명 없음 — 이름은 app 레이어가 market.stock_master 로 붙인다). 날짜 내림차순, 같은 날 시각 오름차순. */
+    /** 모든 타점(종목명 없음 — 이름은 클라 부팅 사전 stock-master). 날짜 내림차순, 같은 날 시각 오름차순. */
     listAllPoints(): Promise<ReviewPoint[]>;
 }
 

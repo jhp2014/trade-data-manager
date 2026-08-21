@@ -7,15 +7,15 @@ import { fetchChartBundle } from "./chart.js";
 import { fetchDaySummary } from "./daySummary.js";
 import { fetchDayReplay } from "./dayReplay.js";
 import { fetchWatchlist } from "./alerts.js";
-import { fetchChartAnchors, fetchAllChartAnchors } from "./chartAnchors.js";
-import { fetchReviewPoints, fetchAllPoints } from "./reviewPoints.js";
+import { fetchAllChartAnchors } from "./chartAnchors.js";
+import { fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
 import { fetchSkeletons } from "./skeletons.js";
 import { fetchGroups, fetchGroupMemberships } from "./groups.js";
 import { fetchCandidateDays } from "./candidateDays.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
-import { fetchDailyComment, fetchAllDailyComments } from "./comment.js";
+import { fetchAllDailyComments } from "./comment.js";
 import { fetchDataDates } from "./dataDates.js";
 import { kstToday } from "../lib/date.js";
 import { LIVE_CADENCE_MS } from "../lib/liveCadence.js";
@@ -60,11 +60,9 @@ export const liveWatchlistQuery = () =>
 export const daySummaryQuery = (date: string) =>
     queryOptions({ queryKey: ["day-summary", date], queryFn: ({ signal }) => fetchDaySummary(date, signal), enabled: date.length > 0, staleTime: histStale(date) , meta: CURATION });
 
-// 차트 앵커 — 선(baseline)+무시 캔들 등, 이 차트의 좌표 참조 전부. 편집형(추가/삭제 mutation 이 invalidate) → ∞.
-export const chartAnchorsQuery = (code: string, date: string) =>
-    queryOptions({ queryKey: ["chart-anchors", code, date], queryFn: ({ signal }) => fetchChartAnchors(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE , meta: CURATION });
-
 // ── 큐레이션 복제본(테이블 낟알) — curation "테이블" 전량을 상주 캐시로 들고, 화면은 셀렉터로 접는다.
+// per-chart 파생(이 차트의 앵커/타점, 이 날의 코멘트)도 서버 왕복이 아니라 이 테이블들의 셀렉터다
+// (lib/useChartPoints·useDailyComment·chartAnchorHooks) — 메모리에 있는 값은 DB 왕복 금지.
 // 키가 곧 테이블이라 "쓴 테이블 = 재요청할 키" 1:1 대응 — 투영 키(옛 anchored-charts)가 늘며 자라던
 // 무효화 거미줄을 원리적으로 없앤다. 타점(all-points)·그룹(groups·group-members)도 같은 결의 테이블 키.
 export const allAnchorsQuery = () =>
@@ -72,9 +70,6 @@ export const allAnchorsQuery = () =>
 
 export const allCommentsQuery = () =>
     queryOptions({ queryKey: ["all-comments"], queryFn: ({ signal }) => fetchAllDailyComments(signal), staleTime: IMMUTABLE , meta: CURATION });
-
-export const reviewPointsQuery = (code: string, date: string) =>
-    queryOptions({ queryKey: ["review-points", code, date], queryFn: ({ signal }) => fetchReviewPoints(code, date, signal), enabled: code.length > 0 && date.length > 0, staleTime: IMMUTABLE , meta: CURATION });
 
 export const allPointsQuery = () =>
     queryOptions({ queryKey: ["all-points"], queryFn: ({ signal }) => fetchAllPoints(signal), staleTime: IMMUTABLE , meta: CURATION });
@@ -124,10 +119,6 @@ export const stockMasterQuery = () =>
 // 종목의 시트 테마+편입이슈(날짜무관·code 키). 배정 mutation 이 ["theme-context"] invalidate 로 갱신하므로 staleTime ∞.
 export const themeContextQuery = (code: string) =>
     queryOptions({ queryKey: ["theme-context", code], queryFn: ({ signal }) => fetchThemeContext(code, signal), enabled: code.length > 0, staleTime: IMMUTABLE });
-
-// 당일 종목 코멘트(date+code 키) — 편집형이라 불변 아님. 저장 mutation 이 이 키를 invalidate 해 갱신하므로 staleTime 0.
-export const dailyCommentQuery = (date: string, code: string) =>
-    queryOptions({ queryKey: ["daily-comment", date, code], queryFn: ({ signal }) => fetchDailyComment(date, code, signal), enabled: date.length > 0 && code.length > 0, staleTime: 0 , meta: CURATION });
 
 // 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커용. 수집으로 새 날짜가 늘 수 있어 30분 stale 후 재조회 허용.
 export const dataDatesQuery = () =>

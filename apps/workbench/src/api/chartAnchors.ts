@@ -6,10 +6,6 @@ import { apiGet, apiPost } from "./http.js";
 
 export type { AddChartAnchorInput, ChartAnchor, RemoveChartAnchorInput, AnchorField, AnchorMarket } from "@trade-data-manager/wire";
 
-/** 이 차트(종목,날짜)의 모든 앵커. */
-export const fetchChartAnchors = (code: string, date: string, signal?: AbortSignal): Promise<ChartAnchor[]> =>
-    apiGet<ChartAnchor[]>("chart-anchors", { code, date }, signal);
-
 /** 앵커 추가 — 같은 좌표 재추가는 멱등(서버가 기존 행 반환). param 규칙 검증은 서버(레지스트리). */
 export const addChartAnchor = (anchor: AddChartAnchorInput): Promise<ChartAnchor> => apiPost<ChartAnchor>("chart-anchors", anchor);
 

@@ -1,7 +1,8 @@
 // /review-points 계약 — 복기 타점(자연키 stockCode·date·time). 저장/조회 값타입은 core/market 재노출.
-import type { ReviewPoint, ReviewPointListItem } from "@trade-data-manager/market";
+// 전량 피드(/all)도 ReviewPoint 그대로다 — 종목명은 클라 부팅 사전(stock-master)이 단일 출처.
+import type { ReviewPoint } from "@trade-data-manager/market";
 
-export type { ReviewPoint, ReviewPointListItem };
+export type { ReviewPoint };
 
 /** POST /review-points 요청(upsert) 바디. */
 export interface UpsertReviewPointInput {

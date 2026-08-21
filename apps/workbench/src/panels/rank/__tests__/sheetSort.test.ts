@@ -13,7 +13,7 @@ const cell = (rank: number, total: number, orderKey: number): RankCell =>
 const row = (code: string, over: Partial<SheetRow> & { ax?: RankCell | null } = {}): SheetRow => {
     const { ax, ...rest } = over;
     return {
-        stockCode: code, date: "2026-07-01", time: "10:00:00", name: `${code}명`,
+        stockCode: code, date: "2026-07-01", time: "10:00:00",
         cells: { A: ax ?? null }, ...rest,
     };
 };

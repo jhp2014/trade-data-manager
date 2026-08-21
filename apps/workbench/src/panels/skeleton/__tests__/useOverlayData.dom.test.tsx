@@ -14,8 +14,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import type { ReviewPointListItem, SkeletonFeed } from "@trade-data-manager/wire";
-import { seededClient, type Seed } from "../../../test/renderPanel.js";
+import type { SkeletonFeed } from "@trade-data-manager/wire";
+import { seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { StockNamesProvider } from "../../../lib/StockNamesContext.js";
 import { useOverlayData } from "../useOverlayData.js";
 
@@ -38,7 +38,7 @@ const feed: SkeletonFeed = {
     levels: [{ stockCode: A, date: DATE, levels: [{ price: 9_800, baseline: true }] }],
 };
 
-const points: ReviewPointListItem[] = [
+const points: SeedPoint[] = [
     { stockCode: A, date: DATE, time: T2, name: "삼성전자" }, // 일부러 뒤집어 넣는다(정렬 확인)
     { stockCode: A, date: DATE, time: T1, name: "삼성전자" },
     { stockCode: B, date: DATE, time: T1, name: "SK하이닉스" },

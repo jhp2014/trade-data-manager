@@ -18,7 +18,7 @@ import {
 } from "./skeletonOverlay.js";
 import type { SkeletonWireLevel } from "../../api/skeletons.js";
 import type { SetRef } from "../../lib/setRef.js";
-import type { ReviewPointListItem } from "@trade-data-manager/wire";
+import type { ReviewPoint } from "@trade-data-manager/wire";
 
 export interface OverlayData {
     feedLoading: boolean;
@@ -39,7 +39,7 @@ export interface OverlayData {
     missingPrevClose: number;
     levelsByChart: Map<string, SkeletonWireLevel[]>;
     /** 차트키 → 그 차트의 저장 타점들(시간 오름차순). 필터와 무관한 전체(선은 사실을 그린다). */
-    pointsByChart: Map<string, ReviewPointListItem[]>;
+    pointsByChart: Map<string, ReviewPoint[]>;
     nameOf: (code: string) => string;
     /** 지금 선택(타점 또는 하루) — 아래 두 필드의 기준. */
     subject: Subject | null;
@@ -83,7 +83,7 @@ export function useOverlayData(
     const { nameOf } = useStockNames();
 
     const pointsByChart = useMemo(() => {
-        const m = new Map<string, ReviewPointListItem[]>();
+        const m = new Map<string, ReviewPoint[]>();
         for (const p of pointsQ.data ?? []) {
             const k = chartKey(p);
             const list = m.get(k);

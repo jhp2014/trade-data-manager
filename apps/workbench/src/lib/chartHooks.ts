@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
-import { reviewPointsQuery, allPointsQuery, chartQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
+import { allPointsQuery, chartQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView } from "./derive.js";
 import { indexAtOrBefore } from "./chartFrame.js";
+import { useChartPoints } from "./useChartPoints.js";
 import { usePlacements } from "./usePlacements.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -27,8 +28,7 @@ export interface ChartReviewPoints {
  * 배치 개수는 여기서 함께 붙인다 — 차트는 스냅된 봉 시각만 들고 다녀서(원래 HH:MM:SS 를 잃는다) 나중에 못 붙인다.
  */
 export function useReviewPointData(code: string, date: string, time: string | null): ChartReviewPoints {
-    const reviewQ = useQuery(reviewPointsQuery(code, date));
-    const reviewPoints = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
+    const reviewPoints = useChartPoints(code, date); // 복제본 셀렉터 — 서버 왕복 없음
     const placements = usePlacements();
 
     const savedPoints = useMemo<SavedPoint[]>(() => {
@@ -62,12 +62,10 @@ export function useChartHotkeys(): void {
 
     const chartQ = useQuery(chartQuery(code, date)); // ChartPanel 과 같은 키 → RQ 캐시 공유(중복 페치 0)
     const minutePoints = useMemo(() => (chartQ.data ? deriveMinuteView(chartQ.data, mode).points : []), [chartQ.data, mode]);
-    const reviewQ = useQuery(reviewPointsQuery(code, date));
-    const reviewPoints = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
+    const reviewPoints = useChartPoints(code, date); // 저장/삭제 판정도 이 소스 — invalidate 는 all-points 하나
     const reviewTimes = useMemo(() => [...reviewPoints.map((rp) => rp.time)].sort(), [reviewPoints]);
 
     const invalidate = (): void => {
-        void qc.invalidateQueries({ queryKey: reviewPointsQuery(code, date).queryKey });
         void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey });
         // 계산 축은 타점 집합에서 나온다 — 타점이 늘거나 줄면 다시 굽는다(서버가 증분이라 새 타점만 계산).
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });

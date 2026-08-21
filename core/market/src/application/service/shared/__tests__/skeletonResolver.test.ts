@@ -22,7 +22,7 @@ const point = (time: string): ReviewPoint => ({ stockCode: CODE, date: DATE, tim
 
 const deps = (bars: MinuteCandle[], reviewPoints: ReviewPoint[] = []): Pick<AxisDeps, "minute" | "reviewPoints"> => ({
     minute: { getMinuteCandles: () => Promise.resolve(bars) },
-    reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve(reviewPoints) },
+    reviewPoints: { listAllPoints: () => Promise.resolve(reviewPoints) },
 });
 
 const BARS = [bar("09:00:00", 4000), bar("09:10:00", 4400), bar("09:20:00", 4100), bar("09:25:00", 4160), bar("14:00:00", 4200)];

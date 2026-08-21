@@ -42,12 +42,12 @@ const makeAxisDeps = (anchors: ChartAnchor[] = []): AxisDeps => ({
     rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
     adjDaily: { getDailyCandles: () => Promise.resolve([]) },
     chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(anchors) },
-    reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve([]) },
+    reviewPoints: { listAllPoints: () => Promise.resolve([]) },
 });
 
 function makeAxes(points: ReviewPoint[], def: ComputedAxisDef, store: AxisValueStore, anchors: ChartAnchor[] = []): ComputedAxes {
     return new ComputedAxes({
-        points: { listAllPoints: () => Promise.resolve(points), listByChart: () => Promise.resolve([]) },
+        points: { listAllPoints: () => Promise.resolve(points) },
         axisDeps: makeAxisDeps(anchors),
         defs: [def],
         store,

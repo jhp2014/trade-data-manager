@@ -9,7 +9,7 @@
 // 서버 candidate_days(분석 모수)와 같은 합집합 개념이지만 정의는 각자 소유 — 한 리드모델로 두 소비자를
 // 섬기면 경계 차이(코멘트 유무 등)가 플래그로 자라서, union 한 줄의 중복을 수용했다.
 import { ANCHOR_PARAMS, BASELINE_PARAM, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM } from "@trade-data-manager/market/domain";
-import type { ChartAnchor, DailyCommentListItem, GroupMembership, ReviewPointListItem } from "@trade-data-manager/wire";
+import type { ChartAnchor, DailyCommentListItem, GroupMembership, ReviewPoint } from "@trade-data-manager/wire";
 import { chartKeyOf } from "./pointKey.js";
 import { ACTIVE, GROUP_PLAIN, IGNORED_CANDLE, PRICE_LINE, SKELETON } from "../styles/palette.js";
 
@@ -62,7 +62,7 @@ export const PRESENCE_KINDS: readonly PresenceKindDef[] = [
 /** 테이블 4개 → chartKey("code|date") → DayPresence. 재료 어느 쪽에든 흔적이 있으면 항목이 생긴다. */
 export function buildPresenceIndex(
     anchors: readonly ChartAnchor[],
-    points: readonly Pick<ReviewPointListItem, "stockCode" | "date">[],
+    points: readonly Pick<ReviewPoint, "stockCode" | "date">[],
     memberships: readonly GroupMembership[],
     comments: readonly Pick<DailyCommentListItem, "stockCode" | "date">[],
 ): Map<string, DayPresence> {

@@ -13,12 +13,7 @@ export class DailyComments {
         private readonly author: string,
     ) {}
 
-    /** 그 (날짜, 종목)의 코멘트. 없으면 null — 팝업이 빈 칸으로 연다. */
-    getOne(date: string, stockCode: string): Promise<DailyComment | null> {
-        return this.repo.getOne(date, stockCode);
-    }
-
-    /** 전 코멘트 — 클라 큐레이션 복제본(작업셋 배지·존재 지도)용. 읽기라 규칙 없음(passthrough). */
+    /** 전 코멘트 — 클라 큐레이션 복제본(작업셋 배지·존재 지도·프리필)용. 읽기라 규칙 없음(passthrough). */
     listAll(): Promise<DailyComment[]> {
         return this.repo.listAll();
     }

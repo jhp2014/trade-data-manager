@@ -31,10 +31,10 @@ function makeShapes(cfg: {
         rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
         adjDaily: { getDailyCandles: () => Promise.resolve([]) },
         chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(cfg.anchors ?? []) },
-        reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve(cfg.points ?? []) },
+        reviewPoints: { listAllPoints: () => Promise.resolve(cfg.points ?? []) },
     };
     return new SkeletonShapes({
-        points: { listAllPoints: () => Promise.resolve(cfg.points ?? []), listByChart: () => Promise.resolve([]) },
+        points: { listAllPoints: () => Promise.resolve(cfg.points ?? []) },
         axisDeps,
         prevClose: {
             getPreviousCloses: (date, codes) => {
@@ -141,10 +141,10 @@ describe("SkeletonShapes", () => {
                     return [];
                 },
             },
-            reviewPoints: { listByChart: () => Promise.resolve([]), listAllPoints: () => Promise.resolve([]) },
+            reviewPoints: { listAllPoints: () => Promise.resolve([]) },
         };
         const shapes = new SkeletonShapes({
-            points: { listAllPoints: () => Promise.resolve([]), listByChart: () => Promise.resolve([]) },
+            points: { listAllPoints: () => Promise.resolve([]) },
             axisDeps,
             prevClose: { getPreviousCloses: () => Promise.resolve([]) },
         });

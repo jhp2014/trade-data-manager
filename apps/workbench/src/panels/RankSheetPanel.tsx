@@ -30,7 +30,7 @@ import { useStockNames } from "../lib/useStockNames.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
-import type { ReviewPointListItem } from "@trade-data-manager/wire";
+import type { ReviewPoint } from "@trade-data-manager/wire";
 
 // 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
 //  · 셀 = 숫자 / 순위 눈금 / 값 눈금(토글). 계산 축은 숫자에 값이 먼저 오고(`+12.3% (3/12)`), 값 눈금은
@@ -112,7 +112,7 @@ export function RankSheetPanel(): JSX.Element {
     const pointsQ = useQuery(allPointsQuery());
     const allPoints = useMemo(() => pointsQ.data ?? [], [pointsQ.data]);
     const allByKey = useMemo(() => {
-        const m = new Map<string, ReviewPointListItem>();
+        const m = new Map<string, ReviewPoint>();
         for (const p of allPoints) m.set(pointKey(p), p);
         return m;
     }, [allPoints]);
@@ -136,9 +136,9 @@ export function RankSheetPanel(): JSX.Element {
     const [filterMode, setFilterMode] = usePersistedState<"narrow" | "dim">(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null), "narrow");
 
     // 행 집합: narrow + 필터 활성 → 매칭 집합만. dim 또는 무필터 → 전체(밴드 밖은 렌더에서 흐리게).
-    const rowPoints = useMemo<ReviewPointListItem[]>(() => {
+    const rowPoints = useMemo<ReviewPoint[]>(() => {
         if (bandsActive && filterMode === "narrow") {
-            const out: ReviewPointListItem[] = [];
+            const out: ReviewPoint[] = [];
             for (const k of interKeys) { const it = allByKey.get(k); if (it) out.push(it); }
             return out;
         }
@@ -170,7 +170,7 @@ export function RankSheetPanel(): JSX.Element {
     // 상단 고정 블록 = **핀만**. 활성 타점의 상시 고정은 폐기했다(사용자 확정) — 목록에 없는 선택을
     // 억지로 상단에 세우는 대신, 행이 있으면 스크롤로 따라가고 없으면 머리글 배지가 이유를 말한다.
     const pinnedRows = useMemo(() => {
-        const items = pinned.map((k) => allByKey.get(k)).filter((x): x is ReviewPointListItem => !!x);
+        const items = pinned.map((k) => allByKey.get(k)).filter((x): x is ReviewPoint => !!x);
         return buildSheetRows(items, axisIds, indexByAxis);
     }, [pinned, allByKey, axisIds, indexByAxis]);
     const mainRows = sorted; // 핀 행도 기존 위치에 그대로(상단 고정 블록에 중복 표시, 삼각형으로 구분)

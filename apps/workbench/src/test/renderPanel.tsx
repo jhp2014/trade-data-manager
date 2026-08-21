@@ -9,7 +9,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { AxisLine, CandidateDay, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankAxis, ReviewPointListItem, SkeletonFeed, StockMeta } from "@trade-data-manager/wire";
+import type { AxisLine, CandidateDay, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankAxis, ReviewPoint, SkeletonFeed, StockMeta } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
     allAnchorsQuery, allCommentsQuery, allPointsQuery, axisLinesQuery, candidateDaysQuery, chartQuery, computedAxesQuery,
@@ -21,10 +21,16 @@ import { LiveSnapshotProvider } from "../lib/LiveSnapshotContext.js";
 import { RankAxesProvider } from "../lib/RankAxesContext.js";
 import { StockNamesProvider } from "../lib/StockNamesContext.js";
 
+/**
+ * 시드용 타점 행 — 피드 타입(ReviewPoint)엔 name 이 없지만(종목명 단일 출처 = 부팅 사전),
+ * 시드에선 name 을 함께 적으면 아래 namesFromFeeds 가 사전을 자동 조립해 준다(테스트 편의 전용).
+ */
+export type SeedPoint = ReviewPoint & { name?: string | null };
+
 /** 심을 수 있는 피드들 — 안 준 것은 **빈 값**으로 심는다(로딩 상태가 남지 않게). */
 export interface Seed {
     skeletons?: SkeletonFeed;
-    points?: ReviewPointListItem[];
+    points?: SeedPoint[];
     /** 복제본 앵커 테이블(전 param 전량) — 작업셋 모수·배지의 재료. */
     anchors?: ChartAnchor[];
     /** 복제본 코멘트 테이블 — 존재 지도의 "코" 배지 재료. */

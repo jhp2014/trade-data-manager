@@ -6,7 +6,7 @@ import { allPointsQuery, axisLinesQuery, rankAxesQuery } from "../../api/queries
 import { createRankAxis, deleteRankAxis, renameRankAxis } from "../../api/rank.js";
 import { upsertReviewPoint } from "../../api/reviewPoints.js";
 import { placedAxisKey, placedAxisName } from "../../lib/computedAxis.js";
-import type { ReviewPointListItem } from "@trade-data-manager/wire";
+import type { ReviewPoint } from "@trade-data-manager/wire";
 import type { SheetRow } from "./rankSheet.js";
 
 export interface AxisAdmin {
@@ -24,7 +24,7 @@ export function useAxisAdmin({ migrateAxisKey, allPoints }: {
      * 이관 손잡이(useSheetColumns.migrateAxisKey)를 받아 **invalidate 앞에** 부른다.
      */
     migrateAxisKey: (oldAxisId: string, newAxisId: string) => void;
-    allPoints: readonly ReviewPointListItem[];
+    allPoints: readonly ReviewPoint[];
 }): AxisAdmin {
     const qc = useQueryClient();
     const invAxes = (): void => void qc.invalidateQueries({ queryKey: rankAxesQuery().queryKey });

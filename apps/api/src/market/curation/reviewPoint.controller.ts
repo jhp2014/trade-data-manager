@@ -1,9 +1,8 @@
 import { Controller, Get, Post, Delete, Inject, Query, Body } from "@nestjs/common";
-import type { ReviewPoint, ReviewPointListItem, ReviewPointReader, ReviewPointStore } from "@trade-data-manager/market";
+import type { ReviewPoint, ReviewPointReader, ReviewPointStore } from "@trade-data-manager/market";
 import type { UpsertReviewPointInput } from "@trade-data-manager/wire";
-import { REVIEW_POINT_REPO, CHART_ANCHORS, MASTER_CACHE, COMPUTED_AXES, SKELETON_SHAPES } from "../tokens.js";
+import { REVIEW_POINT_REPO, CHART_ANCHORS, COMPUTED_AXES, SKELETON_SHAPES } from "../tokens.js";
 import { ChartAnchors } from "./chartAnchors.js";
-import { MasterCache } from "../board/masterCache.js";
 import { ComputedAxes } from "../rank/computedAxes.js";
 import { SkeletonShapes } from "../rank/skeletonShapes.js";
 import { assertYmd, assertHms, assertStockCode, assertOptionalText } from "../validation.js";
@@ -19,21 +18,14 @@ export class ReviewPointController {
     constructor(
         @Inject(REVIEW_POINT_REPO) private readonly repo: ReviewPointReader & ReviewPointStore,
         @Inject(CHART_ANCHORS) private readonly anchors: ChartAnchors,
-        @Inject(MASTER_CACHE) private readonly master: MasterCache,
         @Inject(COMPUTED_AXES) private readonly computed: ComputedAxes,
         @Inject(SKELETON_SHAPES) private readonly skeletons: SkeletonShapes,
     ) {}
 
-    // 작업셋 — 전체 타점 + 종목명(월 그룹은 클라). 종목명 조인은 MasterCache.attachNames(앱레이어 조인).
-    // 정적 경로라 @Get() 인덱스와 구분됨.
+    // 전량 — 클라 큐레이션 복제본의 테이블 로드(per-chart 파생은 클라 셀렉터). 종목명은 부팅 사전(stock-master).
     @Get("all")
-    async listAll(): Promise<ReviewPointListItem[]> {
-        return this.master.attachNames(await this.repo.listAllPoints());
-    }
-
-    @Get()
-    list(@Query("code") code?: string, @Query("date") date?: string): Promise<ReviewPoint[]> {
-        return this.repo.listByChart(assertStockCode(code), assertYmd(date));
+    listAll(): Promise<ReviewPoint[]> {
+        return this.repo.listAllPoints();
     }
 
     @Post()

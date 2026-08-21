@@ -12,8 +12,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import type { CandidateDay, ReviewPointListItem } from "@trade-data-manager/wire";
-import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
+import type { CandidateDay } from "@trade-data-manager/wire";
+import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { useFilterFunnel } from "../useFilterFunnel.js";
 import type { FilterStage } from "../stage.js";
@@ -29,7 +29,7 @@ const candidates: CandidateDay[] = [
 ];
 
 /** 타점: A 에 둘, B 에 하나, **C 에는 없다**(타점 0인 하루가 어떻게 펼쳐지나가 계약이다). */
-const points: ReviewPointListItem[] = [
+const points: SeedPoint[] = [
     { stockCode: A, date: D1, time: "09:30:00", name: "삼성전자" },
     { stockCode: A, date: D1, time: "09:35:00", name: "삼성전자" },
     { stockCode: B, date: D1, time: "10:00:00", name: "SK하이닉스" },

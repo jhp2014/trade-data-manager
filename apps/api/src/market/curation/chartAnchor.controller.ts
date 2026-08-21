@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Inject, Query, Body } from "@nestjs/common";
+import { Controller, Get, Post, Inject, Body } from "@nestjs/common";
 import type { ChartAnchor, ChartAnchorReader, NewChartAnchor } from "@trade-data-manager/market";
 import type { AddChartAnchorInput, RemoveChartAnchorInput } from "@trade-data-manager/wire";
 import { CHART_ANCHOR_REPO, CHART_ANCHORS, COMPUTED_AXES, SKELETON_SHAPES } from "../tokens.js";
@@ -20,16 +20,10 @@ export class ChartAnchorController {
     ) {}
 
     // 전 앵커(전 param) — 클라 큐레이션 복제본의 테이블 로드. 종목명은 클라 부팅 사전(stock-master)이 붙인다.
-    // (옛 /stocks — 기준선만 집계한 작업셋 목록 — 는 복제본이 흡수하며 은퇴. 접기는 클라 셀렉터의 몫.)
-    // 정적 경로라 @Get() 인덱스와 구분됨.
+    // (옛 /stocks — 기준선만 집계한 작업셋 목록 — 와 per-chart GET 은 복제본이 흡수하며 은퇴. 접기·필터는 클라 셀렉터의 몫.)
     @Get("all")
     listAllAnchors(): Promise<ChartAnchor[]> {
         return this.repo.listAll();
-    }
-
-    @Get()
-    list(@Query("code") code?: string, @Query("date") date?: string): Promise<ChartAnchor[]> {
-        return this.repo.listByChart(assertStockCode(code), assertYmd(date));
     }
 
     @Post()

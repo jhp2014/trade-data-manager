@@ -1,9 +1,8 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { usePlaneBus } from "../store/usePlaneBus.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { useWorkbench } from "../store/workbench.js";
-import { reviewPointsQuery } from "../api/queries.js";
+import { useChartPoints } from "../lib/useChartPoints.js";
 import { usePlacements } from "../lib/usePlacements.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { useStockName } from "../lib/useStockName.js";
@@ -22,9 +21,9 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const revealRankAxis = useWorkbench((s) => s.revealRankAxis);
     const [unplacedOpen, setUnplacedOpen] = usePanelUi(panelId, "unplacedOpen", false);
 
-    // 이 시각이 저장된 타점인가 — 차트의 현재 타점 판정과 같은 소스(reviewPointsQuery).
-    const pointsQ = useQuery(reviewPointsQuery(code, viewDate));
-    const point = useMemo(() => (pointsQ.data ?? []).find((rp) => rp.time === time) ?? null, [pointsQ.data, time]);
+    // 이 시각이 저장된 타점인가 — 차트의 현재 타점 판정과 같은 소스(useChartPoints 복제본 셀렉터).
+    const points = useChartPoints(code, viewDate);
+    const point = useMemo(() => points.find((rp) => rp.time === time) ?? null, [points, time]);
 
     const placements = usePlacements();
     const { groupsOf, pathLabel } = useGroups();

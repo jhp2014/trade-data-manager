@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAssign } from "../store/assign.js";
 import { useWorkbench } from "../store/workbench.js";
-import { themeContextQuery, daySummaryQuery, dailyCommentQuery } from "../api/queries.js";
+import { themeContextQuery, daySummaryQuery } from "../api/queries.js";
+import { useDailyComment } from "../lib/useDailyComment.js";
 import { assignTheme, refreshThemes } from "../api/themes.js";
 import { refreshLiveThemes } from "../api/live.js";
 import { useLiveSnapshot } from "../lib/LiveSnapshotContext.js";
@@ -268,15 +269,15 @@ function EnterButton({ onClick, disabled, title }: { onClick: () => void; disabl
 // 당일 코멘트 편집 — (date,code) DB 메모. 프리필 후 저장(빈 값=삭제). 보드 카드도 같은 코멘트를 읽으므로 저장 시 보드 쿼리 무효화.
 function CommentSection({ code, date }: { code: string; date: string }): JSX.Element {
     const qc = useQueryClient();
-    const q = useQuery(dailyCommentQuery(date, code));
+    const { comment, isLoaded } = useDailyComment(date, code); // 복제본 셀렉터 — 대개 첫 렌더부터 로드돼 있다
     const [text, setText] = useState("");
     const [busy, setBusy] = useState(false);
     const [saved, setSaved] = useState(false);
     const [err, setErr] = useState<string | null>(null);
-    // 로드되면 1회 프리필(팝오버는 종목당 remount·date 고정 → isSuccess 는 한 번만 뒤집힌다).
+    // 로드되면 1회 프리필(팝오버는 종목당 remount·date 고정 → isLoaded 는 한 번만 뒤집힌다).
     useEffect(() => {
-        if (q.isSuccess) setText(q.data?.comment ?? "");
-    }, [q.isSuccess]);
+        if (isLoaded) setText(comment?.comment ?? "");
+    }, [isLoaded]);
 
     const save = async (): Promise<void> => {
         if (busy) return;
@@ -286,8 +287,7 @@ function CommentSection({ code, date }: { code: string; date: string }): JSX.Ele
         try {
             await saveDailyComment({ date, code, comment: text.trim() });
             await Promise.all([
-                qc.invalidateQueries({ queryKey: ["daily-comment", date, code] }),
-                qc.invalidateQueries({ queryKey: ["all-comments"] }), // 복제본 코멘트 테이블 — 작업셋 "코" 배지 반영
+                qc.invalidateQueries({ queryKey: ["all-comments"] }), // 복제본 코멘트 테이블 — 프리필·배지가 전부 이 키
                 qc.invalidateQueries({ queryKey: ["day-summary"] }),
                 qc.invalidateQueries({ queryKey: ["day-replay"] }),
             ]);

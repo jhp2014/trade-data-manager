@@ -11,8 +11,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import type { AxisLine, CandidateDay, RankAxis, ReviewPointListItem } from "@trade-data-manager/wire";
-import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
+import type { AxisLine, CandidateDay, RankAxis } from "@trade-data-manager/wire";
+import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { RAIL_PAD } from "../rail/Rail.js";
 import { FilterBoard } from "../FilterBoard.js";
@@ -21,7 +21,7 @@ const A = "005930", B = "000660";
 const DATES = ["2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09"];
 
 const candidateDays: CandidateDay[] = DATES.map((date, i) => ({ stockCode: i % 2 ? A : B, date, traces: [] }));
-const points: ReviewPointListItem[] = [
+const points: SeedPoint[] = [
     { stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" },
     { stockCode: B, date: DATES[1], time: "10:00:00", name: "SK하이닉스" },
 ];
@@ -231,7 +231,7 @@ const OVL_CAND: CandidateDay[] = [
     { stockCode: A, date: DATES[0], traces: [] },
     { stockCode: B, date: DATES[1], traces: [] },
 ];
-const OVL_POINTS: ReviewPointListItem[] = [
+const OVL_POINTS: SeedPoint[] = [
     { stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" },
     { stockCode: B, date: DATES[1], time: "10:00:00", name: "SK하이닉스" },
 ];

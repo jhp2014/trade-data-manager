@@ -2,16 +2,17 @@
 //
 // 옛 useChartAnchorsForChart 는 세 관심사를 한 훅이 12멤버로 반환했고, param 이 늘 때마다 훅·반환 타입·
 // 패널 배선이 같이 자랐다(분봉 골격 때 실제로 그랬다). 쪼개도 **왕복은 늘지 않는다** — 네 훅이 같은
-// 쿼리 키(chartAnchorsQuery)를 쓰므로 React Query 가 dedup 한다. 새 param = 여기 훅 하나.
+// 복제본 테이블 키(all-anchors)를 셀렉터로 보므로 페치는 부팅 1회다. 새 param = 여기 훅 하나.
 //
 // 공유 내부(useAnchorMutations): 추가/삭제 mutation 과 invalidate 집합(anchors·작업셋·계산 축)은 param 이
 // 달라도 동일하다 — 앵커는 전부 계산 축의 입력이라, 어떤 편집이든 축 값이 즉시 따라와야 한다(서버는
 // 지문으로 그 차트/타점만 다시 굽는다).
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASELINE_PARAM, candlePrice, chartAnchorKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type SkeletonPivot } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
-import { chartAnchorsQuery, allAnchorsQuery, computedAxesQuery, skeletonsQuery, reviewPointsQuery } from "../api/queries.js";
+import { allAnchorsQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
+import { useChartPoints } from "./useChartPoints.js";
 import { kstToUnix } from "./derive.js";
 import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
 import type { ChartBundle } from "../api/chart.js";
@@ -42,15 +43,19 @@ interface AnchorMutations {
 const ownBundle = (bundle: ChartBundle | undefined, code: string): ChartBundle | undefined =>
     bundle && bundle.stockCode === code ? bundle : undefined;
 
-/** 이 차트의 앵커 전부 + 공유 mutation. 각 param 훅이 여기서 걸러 쓴다(쿼리 키 하나 = RQ dedup). */
+const EMPTY_ANCHORS: ChartAnchor[] = [];
+
+/** 이 차트의 앵커 전부 + 공유 mutation. 각 param 훅이 여기서 걸러 쓴다(복제본 테이블 키 하나 = 페치는 부팅 1회). */
 function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; mut: AnchorMutations } {
     const qc = useQueryClient();
-    const anchorsQ = useQuery(chartAnchorsQuery(code, date));
-    const anchors = useMemo(() => anchorsQ.data ?? [], [anchorsQ.data]);
+    // select 는 useCallback 고정(useChartPoints 와 같은 이유) — 무관한 차트의 앵커 변경엔 이 조각이
+    // deep-equal 이라 structural sharing 이 재렌더를 막는다.
+    const select = useCallback((all: ChartAnchor[]) => all.filter((a) => a.stockCode === code && a.date === date), [code, date]);
+    const anchorsQ = useQuery({ ...allAnchorsQuery(), select });
+    const anchors = anchorsQ.data ?? EMPTY_ANCHORS;
 
     const invalidate = (): void => {
-        void qc.invalidateQueries({ queryKey: chartAnchorsQuery(code, date).queryKey });
-        void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey }); // 복제본 앵커 테이블 — 작업셋/배지 즉시 반영
+        void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey }); // 복제본 앵커 테이블 — 차트·작업셋·배지가 전부 이 키
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey }); // 앵커는 축 입력 — 즉시 재굽기
         void qc.invalidateQueries({ queryKey: skeletonsQuery().queryKey }); // 골격 좌표(겹쳐 그리기)도 같은 입력
     };
@@ -197,7 +202,7 @@ export function useDailySkeleton(code: string, date: string, dailyBundle: ChartB
 export function useMinuteSkeleton(code: string, date: string, minuteBundle: ChartBundle | undefined): SkeletonEditor<{ time: number; price: number }> {
     const { anchors, mut } = useChartAnchors(code, date);
     const minute = ownBundle(minuteBundle, code); // 전환 과도기: 직전 종목 번들이면 창 밖 취급(피벗 생략)
-    const reviewQ = useQuery(reviewPointsQuery(code, date)); // useReviewPointData 와 같은 키 — RQ dedup
+    const reviewPoints = useChartPoints(code, date); // useReviewPointData 와 같은 셀렉터 — 같은 조각 공유
     const mine = useMemo(
         () => anchors.filter((a) => a.param === SKELETON_MINUTE_PARAM && a.time == null && a.field != null && a.anchorTime != null),
         [anchors],
@@ -205,14 +210,14 @@ export function useMinuteSkeleton(code: string, date: string, minuteBundle: Char
     const points = useMemo(() => {
         const pivots: SkeletonPivot[] = mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime!, field: a.field!, market: a.market! as AnchorMarket }));
         // 합성 규칙은 도메인 단일 출처(서버 리졸버와 같은 함수) — 편집 중 오버레이와 겹쳐 그리기가 같은 경로를 그린다.
-        pivots.push(...syntheticClosePivots(date, new Set(mine.map((a) => a.anchorTime!)), (reviewQ.data ?? []).map((rp) => rp.time)));
+        pivots.push(...syntheticClosePivots(date, new Set(mine.map((a) => a.anchorTime!)), reviewPoints.map((rp) => rp.time)));
         const out: { time: number; price: number }[] = [];
         for (const p of sortPivots(pivots)) {
             const price = candlePrice(minute?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field]);
             if (price !== null) out.push({ time: kstToUnix(p.anchorDate, p.anchorTime!), price });
         }
         return out;
-    }, [mine, reviewQ.data, date, minute]);
+    }, [mine, reviewPoints, date, minute]);
     return useMemo<SkeletonEditor<{ time: number; price: number }>>(() => ({
         points,
         pivotsAt: (anchorTime) => mine.filter((a) => a.anchorTime === anchorTime).map((a) => ({ field: a.field!, market: a.market! })),

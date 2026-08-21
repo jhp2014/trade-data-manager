@@ -24,15 +24,6 @@ export class DrizzleReviewPointRepository implements ReviewPointReader, ReviewPo
             });
     }
 
-    async listByChart(stockCode: string, date: string): Promise<ReviewPoint[]> {
-        const rows = await this.db
-            .select()
-            .from(reviewPoints)
-            .where(and(eq(reviewPoints.stockCode, stockCode), eq(reviewPoints.tradeDate, date)))
-            .orderBy(asc(reviewPoints.tradeTime));
-        return rows.map(rowToReviewPoint);
-    }
-
     async listAllPoints(): Promise<ReviewPoint[]> {
         // 전체 타점(종목명 없음 — 이름은 app 레이어가 market.stock_master 로 붙인다: curation↔market 물리 분리라 조인 불가).
         // 날짜 내림차순, 같은 날 시각 오름차순.

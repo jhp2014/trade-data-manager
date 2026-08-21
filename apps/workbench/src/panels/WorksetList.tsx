@@ -11,7 +11,7 @@
 // 훑기가 성립한다(멤버 타점 하나 있는 날이 흐리면 "이 날에 멤버가 있다"가 안 보인다).
 import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
-import type { ReviewPointListItem } from "../api/reviewPoints.js";
+import type { ReviewPoint } from "../api/reviewPoints.js";
 import type { Group } from "../api/groups.js";
 import type { DayPresence } from "../lib/presence.js";
 import { weekdayOf } from "../lib/date.js";
@@ -24,20 +24,20 @@ export interface WorksetEntry {
     date: string;
     code: string;
     presence: DayPresence;
-    points: ReviewPointListItem[];
+    points: ReviewPoint[];
 }
 
 export interface WorksetLens {
     /** 이 (날짜,종목) 아래에 멤버가 있나 — 종목 행 레일의 기준. */
     dayMember: (e: WorksetEntry) => boolean;
     /** 이 타점이 멤버인가 — 타점 행 레일의 기준. */
-    pointMember: (p: ReviewPointListItem) => boolean;
+    pointMember: (p: ReviewPoint) => boolean;
 }
 
 type Row =
     | { kind: "date"; key: string; date: string; count: number }
     | { kind: "stock"; key: string; entry: WorksetEntry }
-    | { kind: "point"; key: string; entry: WorksetEntry; point: ReviewPointListItem };
+    | { kind: "point"; key: string; entry: WorksetEntry; point: ReviewPoint };
 
 /** 고정 높이(px) — 균일해야 가상화가 재지 않고 앉힌다. 행 안 내용은 한 줄로 자른다. */
 const DATE_H = 24;
@@ -51,10 +51,10 @@ export function WorksetList({ groups, focus, lens, nameOf, groupsOf, pathOf, onP
     /** null = 렌즈 없음(집합 미선택·전체). */
     lens: WorksetLens | null;
     nameOf: (code: string) => string | null;
-    groupsOf: (p: ReviewPointListItem) => Group[];
+    groupsOf: (p: ReviewPoint) => Group[];
     pathOf: (groupName: string) => string;
     onPickDay: (e: WorksetEntry) => void;
-    onPickPoint: (p: ReviewPointListItem) => void;
+    onPickPoint: (p: ReviewPoint) => void;
     /** 찾아가기 — nonce 가 바뀔 때만 그 (날짜,종목)으로(없으면 같은 종목의 아무 날짜로). ItemRows.jumpTo 선례. */
     jumpTo?: { date: string; code: string; nonce: number };
 }): JSX.Element {
