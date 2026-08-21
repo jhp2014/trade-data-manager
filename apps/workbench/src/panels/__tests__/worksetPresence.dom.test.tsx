@@ -148,13 +148,16 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
 
     it("집합 줄 — ⋯ 에서 고르면 **전역 선택 포인터**가 움직이고, 고른 칩이 줄에 선다", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        // 접힘 상태라 줄에는 고른 것(전체)만 서고 나머지는 ⋯ 판에만 있다.
-        expect(screen.queryAllByRole("button", { name: "최종 생존" })).toHaveLength(0);
+        // 접힘 상태라 줄에는 고른 것(연동)만 서고 나머지는 ⋯ 판에만 있다.
+        const universeBtn = (): HTMLElement | undefined => screen.queryAllByRole("button", { name: "전체" })
+            .find((b) => (b.title ?? "").startsWith("유니버스"));
+        expect(universeBtn()).toBeUndefined();
         fireEvent.click(openList("집합"));
-        fireEvent.click(screen.getByRole("button", { name: "최종 생존" })); // 판에서 고르면 판이 닫힌다
-        expect(useWorkbench.getState().selectedSetRef).toEqual({ kind: "survivors" });
-        // 이제 그 칩이 줄에 선다(고른 것은 접혀 있어도 늘 보인다).
-        fireEvent.click(screen.getByRole("button", { name: "최종 생존" })); // 재클릭 = 해제
+        fireEvent.click(universeBtn()!); // 판에서 고르면 판이 닫힌다 — 집합 줄의 전체 = 유니버스
+        expect(useWorkbench.getState().selectedSetRef).toEqual({ kind: "universe" });
+        // 이제 그 칩이 줄에 선다(고른 것은 접혀 있어도 늘 보인다). 연동으로 돌아가는 길은 "연동" 칩.
+        fireEvent.click(openList("집합"));
+        fireEvent.click(screen.getByRole("button", { name: "연동" }));
         expect(useWorkbench.getState().selectedSetRef).toBeNull();
     });
 
@@ -162,17 +165,17 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         renderWithProviders(<WorksetPanel />, SEED);
         fireEvent.click(openList("집합"));
         const pinBtn = (): HTMLElement => screen.getAllByRole("button", { name: "고정" })
-            .find((b) => (b.title ?? "").startsWith("최종 생존"))!;
+            .find((b) => (b.title ?? "").startsWith("전체 —"))!; // 집합 줄의 전체(유니버스) — 연동은 기본 활성이라 늘 줄에 서서 고정을 가릴 수 없다
 
         fireEvent.click(pinBtn());
         // 줄(칩) + 판(행) 둘 다에 있다 — 판에서 사라지면 해제할 길이 없어진다.
-        expect(screen.getAllByRole("button", { name: "최종 생존" })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: "전체" }).filter((b) => (b.title ?? "").startsWith("유니버스"))).toHaveLength(2);
         expect(pinBtn().getAttribute("aria-pressed")).toBe("true"); // 고정/비고정을 눈으로 가른다
         expect(useWorkbench.getState().selectedSetRef).toBeNull(); // 고정은 시선이 아니다
 
         fireEvent.click(pinBtn()); // 같은 손잡이로 해제
         expect(pinBtn().getAttribute("aria-pressed")).toBe("false");
-        expect(screen.getAllByRole("button", { name: "최종 생존" })).toHaveLength(1); // 판에만 남는다
+        expect(screen.getAllByRole("button", { name: "전체" }).filter((b) => (b.title ?? "").startsWith("유니버스"))).toHaveLength(1); // 판에만 남는다
     });
 
     it("종목 행에 존재 배지가 아이콘으로 선다(숫자 없음 — 상세는 hover 툴팁)", () => {

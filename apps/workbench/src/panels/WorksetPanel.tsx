@@ -21,6 +21,7 @@ import { matchesPresenceDnf, hasActiveDnf, dnfSummary } from "../lib/presence.js
 import { applyMonthClick, normalizeMonths, MONTH_PICK_HINT } from "./filter/monthPick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import type { SetRef } from "../lib/setRef.js";
+import { linkedTargetLabel } from "./filter/useSetBinding.js";
 import { setRefKey } from "../lib/setRef.js";
 import { PIN } from "../styles/palette.js";
 
@@ -46,9 +47,6 @@ function monthOf(date: string): string {
 
 const parseBool = (raw: unknown): boolean | null => (typeof raw === "boolean" ? raw : null);
 
-/** 작업셋이 렌즈로 삼는 집합 종류 — 저장 집합·최종 생존만(전체·해제는 렌즈 없음, 세션 종류는 애초에 포인터에 안 옴). */
-const lensRefOf = (ref: SetRef | null): SetRef | null =>
-    ref !== null && (ref.kind === "saved" || ref.kind === "survivors") ? ref : null;
 
 export function WorksetPanel(): JSX.Element {
     const focusCode = useWorkbench((s) => s.focus.code);
@@ -60,6 +58,7 @@ export function WorksetPanel(): JSX.Element {
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const selectSet = useWorkbench((s) => s.selectSet);
+    const funnelSelection = useWorkbench((s) => s.funnelSelection);
     const gazeMonths = useWorkbench((s) => s.gazeMonths);
     const setGazeMonths = useWorkbench((s) => s.setGazeMonths);
 
@@ -97,8 +96,12 @@ export function WorksetPanel(): JSX.Element {
     };
 
     // ── 집합 — 전역 선택 포인터(selectedSetRef)를 여기서 정한다(작업셋 = 집합 선택의 집, 연동 패널이 구독).
-    const lensRef = lensRefOf(selectedSetRef);
-    const view = lensRef !== null ? funnel.viewOf(lensRef) : null;
+    //    칩 어휘는 셋: 전체(universe, 렌즈 없음) · 연동(null — 짚은 칸 > 최종 생존 > 전체로 자동) · 저장 집합.
+    //    렌즈 규칙은 구독 패널과 같은 한 줄 — 보는 집합이 "걸려 있으면" 렌즈다(작업셋만 다른 규칙을 두면
+    //    옆 패널은 좁아졌는데 여기만 무반응인 어긋남이 생긴다). 전체는 걸림이 아니므로 렌즈가 안 선다.
+    const isUniverse = selectedSetRef?.kind === "universe";
+    const linkedView = funnel.viewOf(null);
+    const view = isUniverse ? null : linkedView;
     const lensOn = view !== null && view.isFiltering && !view.broken;
     const memberPointKeys = useMemo(
         () => (view === null ? new Set<string>() : new Set(view.viewedPointRefs.map((r) => pointKey(r)))),
@@ -232,23 +235,20 @@ export function WorksetPanel(): JSX.Element {
     //    당기면 클릭할 때마다 칩이 자리를 바꿔 다음 클릭이 빗나간다(옛 팝오버는 정렬했지만 그건 판이라
     //    괜찮았다 — 줄은 손이 반복해 찍는 자리다).
     const setItems: ChipItem[] = [
-        { key: "none", label: "전체", active: lensRef === null, color: PIN, title: "집합 시선 해제 — 흔적이 있는 (종목·날짜) 전부", onClick: () => selectSet(null) },
-        ((): ChipItem => {
-            const ref: SetRef = { kind: "survivors" };
-            const active = selectedSetRef !== null && setRefKey(selectedSetRef) === setRefKey(ref);
-            return {
-                key: "sv", label: "최종 생존", active, color: PIN,
-                title: "작업 깔때기 — 지금 걸린 조건을 전부 통과한 것",
-                onClick: () => selectSet(active ? null : ref),
-            };
-        })(),
+        { key: "all", label: "전체", active: isUniverse, color: PIN, title: "유니버스 — 흔적(앵커·그룹·타점)이 있는 (종목·날짜) 전부. 집합 편성의 조건과 무관", onClick: () => selectSet({ kind: "universe" }) },
+        {
+            key: "linked", label: "연동", active: selectedSetRef === null, color: PIN,
+            title: `집합 편성을 따라간다 — 짚은 칸이 있으면 그 칸, 없으면 최종 생존, 조건이 없으면 전체
+지금: ${linkedTargetLabel(funnelSelection !== null, funnel.active.length)}`,
+            onClick: () => selectSet(null),
+        },
         ...savedSets.map((f): ChipItem => {
             const ref: SetRef = { kind: "saved", setId: f.id };
             const active = selectedSetRef !== null && setRefKey(selectedSetRef) === setRefKey(ref);
             return {
                 key: f.id, label: f.name, active, color: PIN,
                 title: `${f.name} — 고르면 연동된 패널들이 함께 따라간다`,
-                // 같은 칩을 다시 누르면 시선 해제(전체) — 칩 줄의 공통 문법(누른 것을 다시 눌러 되돌린다).
+                // 같은 칩을 다시 누르면 연동으로 복귀 — 칩 줄의 공통 문법(누른 것을 다시 눌러 되돌린다).
                 onClick: () => selectSet(active ? null : ref),
             };
         }),

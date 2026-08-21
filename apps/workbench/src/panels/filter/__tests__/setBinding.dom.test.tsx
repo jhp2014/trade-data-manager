@@ -1,6 +1,6 @@
 // 보는 집합 구독(연동 단일) + 월 시선 — 사이드바 재편(2026-08-21) 이후 여기서 잠그는 계약:
 //   · 패널은 **전역 선택 포인터 하나를 구독**한다(고정 바인딩 폐지 — 집합을 고르는 자리는 작업셋뿐).
-//     포인터가 비면 작업 깔때기 시선 = 전체가 그려지고, 저장 집합을 고르면 전 구독 패널이 그 멤버만 본다.
+//     포인터가 비면 연동(조건 없음 → 전체)이 그려지고, 저장 집합을 고르면 전 구독 패널이 그 멤버만 본다.
 //   · **월 시선도 같은 접기를 지난다**(viewOf 한 곳) — 작업셋에서 달을 누르면 골격도 그 달만 그린다.
 //     이게 안 잠기면 "달을 눌렀는데 옆 패널이 무반응"(시선이 두 벌이던 시절의 어긋남)이 재생산된다.
 //   · 옛 고정 바인딩 영속(wb.setBinding.*)은 읽지 않는다 — 개념이 사라졌으니 조용히 무시(우회 부활 금지).
@@ -56,9 +56,9 @@ afterEach(() => {
 });
 
 describe("보는 집합 — 전역 포인터·월 시선 구독", () => {
-    it("디폴트(포인터 없음·월 전체) — 라벨은 작업 깔때기, 전체가 그려진다", () => {
+    it("디폴트(포인터 없음·월 전체) — 라벨은 연동·전체, 전체가 그려진다", () => {
         renderPanel();
-        expect(screen.getByTitle(/보는 집합: 작업 깔때기/)).toBeTruthy();
+        expect(screen.getByTitle(/보는 집합: 연동 · 전체/)).toBeTruthy();
         expect(screen.getByText("3개")).toBeTruthy();
     });
 
@@ -93,7 +93,7 @@ describe("보는 집합 — 전역 포인터·월 시선 구독", () => {
     it("옛 고정 바인딩 영속은 무시된다 — 포인터만이 진실이다", () => {
         localStorage.setItem("wb.setBinding.skeleton.daily", JSON.stringify({ kind: "saved", setId: "없는집합" }));
         renderPanel();
-        expect(screen.getByTitle(/보는 집합: 작업 깔때기/)).toBeTruthy();
+        expect(screen.getByTitle(/보는 집합: 연동 · 전체/)).toBeTruthy();
         expect(screen.getByText("3개")).toBeTruthy();
     });
 });

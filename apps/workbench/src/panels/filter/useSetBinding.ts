@@ -32,12 +32,23 @@ export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[]): string
     }
 }
 
+/**
+ * 연동(포인터 없음)이 **지금 실제로 풀리는 대상** — 짚은 칸 > 최종 생존 > 전체(조건 0개). 칩 이름은 "연동"
+ * 하나지만 라벨은 풀린 대상을 같이 말해야 "뭘 보고 있나"에 답이 된다.
+ */
+export function linkedTargetLabel(hasSelection: boolean, activeCount: number): string {
+    return `연동 · ${hasSelection ? "짚은 칸" : activeCount > 0 ? "최종 생존" : "전체"}`;
+}
+
 export function useLinkedSet(): LinkedSet {
     const funnel = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
+    const selection = useWorkbench((s) => s.funnelSelection);
     const view = funnel.viewOf(null);
-    // 라벨은 **지금 따라가는 곳**을 말한다 — "작업 깔때기"는 집합 칩(SetChips)의 어휘와 같다.
-    const label = selectedSetRef === null ? "작업 깔때기" : setRefLabel(selectedSetRef, savedSets);
+    // 라벨은 **지금 따라가는 곳**을 말한다 — 어휘는 작업셋·집합 편성의 칩 줄과 같다(전체/연동/저장 집합).
+    const label = selectedSetRef === null
+        ? linkedTargetLabel(selection !== null, funnel.active.length)
+        : setRefLabel(selectedSetRef, savedSets);
     return { view, label };
 }

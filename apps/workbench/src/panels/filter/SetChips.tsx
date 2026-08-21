@@ -17,7 +17,7 @@ import { FAIL } from "../../styles/palette.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { cellMeta } from "./cells.js";
 import { useFunnel } from "./FunnelContext.js";
-import { setRefLabel } from "./useSetBinding.js";
+import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
 import { commitBtn, dashedBtn, listRow } from "./ui.js";
 
 /**
@@ -62,7 +62,8 @@ export function SetChipDrawer(): JSX.Element {
         const r = v.resolveSet(ref);
         return { n: r.items.length, broken: r.broken };
     };
-    // 칩 클릭 = 선택 토글 — 같은 칩을 다시 누르면 작업 깔때기로 돌아온다(선택은 시선이지 상태 전환이 아니다).
+    // 칩 클릭 = 선택 토글 — 같은 칩을 다시 누르면 연동으로 돌아온다(선택은 시선이지 상태 전환이 아니다).
+    // 어휘는 작업셋의 집합 칩 줄과 동일(전체/연동/저장 집합) — 같은 포인터를 두 자리에서 만진다(편의, 사용자 확정).
     const toggle = (ref: SetRef): void => selectSet(selectedKey === setRefKey(ref) ? null : ref);
     const isOn = (ref: SetRef): boolean => selectedKey === setRefKey(ref);
 
@@ -81,7 +82,11 @@ export function SetChipDrawer(): JSX.Element {
     };
 
     const universeRef: SetRef = { kind: "universe" };
-    const survivorsRef: SetRef = { kind: "survivors" };
+    const linkedTarget = linkedTargetLabel(selection !== null, v.active.length);
+    // 연동 칩의 숫자는 다른 칩과 같은 자(resolveSet — 시선 제외)로 잰다. viewOf 는 월·존재 시선이 섞여 자가 다르다.
+    const linkedRef: SetRef = selection
+        ? { kind: "cell", stageId: selection.stageId, cells: selection.cells }
+        : { kind: "survivors" };
 
     return (
         <div style={{
@@ -90,10 +95,11 @@ export function SetChipDrawer(): JSX.Element {
         }}>
             <GazeChip label={chipLabel(setRefLabel(universeRef, savedSets), countOf(universeRef))}
                 active={isOn(universeRef)} onClick={() => toggle(universeRef)}
-                title="유니버스 — 손이 닿은 흔적(앵커·그룹·타점)이 하나라도 있는 (종목·날짜)" />
-            <GazeChip label={chipLabel(setRefLabel(survivorsRef, savedSets), countOf(survivorsRef))}
-                active={isOn(survivorsRef)} onClick={() => toggle(survivorsRef)}
-                title="작업 깔때기 — 지금 걸린 조건을 전부 통과한 것" />
+                title="유니버스 — 손이 닿은 흔적(앵커·그룹·타점)이 하나라도 있는 (종목·날짜). 조건과 무관" />
+            <GazeChip label={chipLabel("연동", countOf(linkedRef))}
+                active={selectedSetRef === null} onClick={() => selectSet(null)}
+                title={`이 보드를 따라간다 — 짚은 칸이 있으면 그 칸, 없으면 최종 생존, 조건이 없으면 전체
+지금: ${linkedTarget}`} />
 
             {savedSets.length > 0 && <Divider />}
             {savedSets.map((f) => {

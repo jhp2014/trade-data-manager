@@ -53,11 +53,11 @@ describe("두 서랍은 접힌 채로 시작한다 — 처음 보이는 것이 �
 });
 
 describe("서랍은 각자 제 손잡이로 여닫힌다", () => {
-    it("상주 칩을 누르면 집합 칩이 내려온다 — 붙박이 둘(전체·최종 생존)", () => {
+    it("상주 칩을 누르면 집합 칩이 내려온다 — 붙박이 둘(전체·연동)", () => {
         const { container } = renderPanel();
         fireEvent.click(btnByTitle(container, "지금 보는 집합"));
         expect(chipByText(container, "전체")).toBeDefined();
-        expect(chipByText(container, "최종 생존")).toBeDefined();
+        expect(chipByText(container, "연동")).toBeDefined();
     });
 
     it("요약 줄을 누르면 막대가 아래에서 올라온다", () => {
