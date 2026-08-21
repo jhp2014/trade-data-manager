@@ -14,12 +14,11 @@ import { createBoardFilterSlice, type BoardFilterSlice } from "./boardFilterSlic
 import { createSettingsSlice, type SettingsSlice } from "./settingsSlice.js";
 import { createHistorySlice, type HistorySlice } from "./historySlice.js";
 import { createRankViewSlice, type RankViewSlice } from "./rankViewSlice.js";
-import { createSkeletonSlice, type SkeletonSlice } from "./skeletonSlice.js";
 import { createFilterFunnelSlice, type FilterFunnelSlice } from "./filterFunnelSlice.js";
 import { createSavedSetsSlice, type SavedSetsSlice } from "./savedSetsSlice.js";
 import { createPickSlice, type PickSlice } from "./pickSlice.js";
 
-export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & SkeletonSlice & FilterFunnelSlice & SavedSetsSlice & PickSlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & FilterFunnelSlice & SavedSetsSlice & PickSlice;
 
 export type { Focus, Scope, Search, ActivePoint, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
@@ -30,7 +29,6 @@ export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js
 export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMarket, BoardMarketMap, SettingsSlice } from "./settingsSlice.js";
 export type { HistoryEntry, HistorySlice } from "./historySlice.js";
 export type { RankViewSlice } from "./rankViewSlice.js";
-export type { SkeletonSlice } from "./skeletonSlice.js";
 export type { FilterFunnelSlice } from "./filterFunnelSlice.js";
 export { selectFilterStages } from "./filterFunnelSlice.js";
 export type { SavedSet, SavedSetPart, SavedSetsSlice } from "./savedSetsSlice.js";
@@ -46,7 +44,6 @@ export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createSettingsSlice(...a),
     ...createHistorySlice(...a),
     ...createRankViewSlice(...a),
-    ...createSkeletonSlice(...a),
     ...createFilterFunnelSlice(...a),
     ...createSavedSetsSlice(...a),
     ...createPickSlice(...a),

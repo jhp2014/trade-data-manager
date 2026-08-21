@@ -101,8 +101,8 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, pick, bindi
             set: (v) => t.setAnchor(v as SkeletonAnchor),
         },
         {
-            kind: "toggle", id: "onlySelected", name: "선택만", available: !isDaily,
-            help: "골격 패널의 차트 선택만 남긴다 — 선택이 비면 전체",
+            kind: "toggle", id: "onlySelected", name: "이 차트만", available: !isDaily,
+            help: "지금 보는 하루의 선만 남긴다 — 시선이 없으면 전체",
             on: onlySelected, set: setOnlySelected,
         },
         {

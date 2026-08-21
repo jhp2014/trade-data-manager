@@ -23,13 +23,11 @@ import { ThemeGutter, ThemeLeaders, ThemeHit } from "./ThemeLayer.js";
 import { CanvasLayers } from "./CanvasPainter.js";
 import type { DrawLayer } from "./drawList.js";
 import type { PlacedRow, ReadoutCandidate } from "./readout.js";
-import type { MarqueeRect } from "./useMarquee.js";
 import type { OverlayViewport } from "./useOverlayViewport.js";
 import type { CandlesView } from "./useCandles.js";
 import type { PivotPins } from "./usePivotPins.js";
 import type { Inspection } from "./useInspection.js";
 import { mutedNote } from "../../components/ControlChrome.js";
-import { ACTIVE } from "../../styles/palette.js";
 
 export type XUnit = "day" | "min";
 export const fmtX = (x: number, unit: XUnit): string => `${Math.round(x)}${unit === "day" ? "일" : "분"}`;
@@ -60,8 +58,6 @@ export interface OverlayPlotProps {
     onLabelContext: (s: OverlayLine, ev: { clientX: number; clientY: number; preventDefault: () => void }) => void;
     onBadgeOpen: (at: { x: number; y: number }, members: string[]) => void;
     onBadgeHover: (id: string | null) => void;
-    marquee: MarqueeRect | null;
-    onWrapMouseDown: (e: React.MouseEvent) => void;
     /** 패널 안 단축키(t)의 근거 — 포인터가 이 그림판 안에 있나. */
     onHoverPanel: (inside: boolean) => void;
     readoutAt: ((x: number) => ReadoutCandidate[]) | null;
@@ -91,7 +87,7 @@ export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
     // 머리글에 아이콘 하나(⋯)가 들어오자 통째로 엉뚱한 곳을 짚었다. 손짓(마퀴·단축키 창)이
     // 걸린 상자라 이름으로 잡는 게 맞다.
     return (
-        <div ref={viewport.wrapRef} data-plot onMouseDown={p.onWrapMouseDown}
+        <div ref={viewport.wrapRef} data-plot
             onMouseEnter={() => p.onHoverPanel(true)} onMouseLeave={() => p.onHoverPanel(false)}
             style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative" }}>
             {p.feedLoading && <div style={muted}>불러오는 중…</div>}
@@ -233,16 +229,6 @@ export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
                 />
             )}
 
-            {/* 사각 선택 상자(Ctrl+드래그) */}
-            {p.marquee && (
-                <div style={{
-                    position: "absolute", pointerEvents: "none",
-                    left: Math.min(p.marquee.x0, p.marquee.x1), top: Math.min(p.marquee.y0, p.marquee.y1),
-                    width: Math.abs(p.marquee.x1 - p.marquee.x0), height: Math.abs(p.marquee.y1 - p.marquee.y0),
-                    border: `1px dashed ${ACTIVE}`, background: "rgba(14,165,233,0.08)",
-                }} />
-            )}
-
             {/* 크로스헤어 — 자기 상태(마우스 좌표)만 다시 그린다. 부모 렌더에 mousemove 를 태우면
                 이동마다 선 수백 개가 재조정된다(분리한 이유). 팬 중엔 숨긴다(사용자 확정). */}
             {scales && !dragging && (
@@ -250,13 +236,9 @@ export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
                     readoutAt={p.readoutAt} colorOf={theme.colorOf} />
             )}
 
-            {/* 선택 작업줄 — 지금 고른 것에 대해 할 일(그룹·해제·원위치). 헤더가 아니라 대상 옆에 뜬다.
+            {/* 핀 작업줄 — 붙잡은 값을 통째로 떼는 자리. 헤더가 아니라 대상 옆에 뜬다.
                 ⚠ 크로스헤어 **뒤**에 온다: 문서 순서가 곧 겹침 순서라, 앞에 두면 판독 칩이 판 위로 올라온다. */}
-            <OverlaySelectionBar
-                selection={p.selection}
-                zoomed={viewport.zoomed}
-                onResetZoom={viewport.reset}
-            />
+            <OverlaySelectionBar selection={p.selection} />
         </div>
     );
 }

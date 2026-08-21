@@ -27,7 +27,7 @@ const pinnedCount = (c: HTMLElement): number => labelChips(c).filter((b) => b.st
 // focus 도 리셋한다 — 선택(subject)이 activePoint 없으면 focus 의 (종목,날짜)로 폴백하므로,
 // 앞 테스트가 goToPoint 로 옮긴 focus 가 남으면 다음 테스트에 유령 선택이 생긴다.
 const resetStore = (): void => {
-    useWorkbench.setState({ activePoint: null, skeletonSelection: new Set(), focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
 };
 beforeEach(resetStore);
 afterEach(() => { resetStore(); localStorage.clear(); });
@@ -124,10 +124,10 @@ describe("뱃지 목록 — 행을 누르면 호버가 남지 않는다", () => 
         expect(useWorkbench.getState().focus.time).toBeNull();
         expect(useWorkbench.getState().activePoint).toBeNull();
 
-        // ⚠ 호버가 남았는지는 **다른 것을 선택했을 때** 드러난다. 누른 직후엔 그 선이 선택으로도 굵어서
-        //   호버가 남아 있어도 굵은 라벨 수가 같다 — 선택을 옮겨야 옛 호버가 홀로 남아 모습을 드러낸다.
-        act(() => { useWorkbench.setState({ skeletonSelection: new Set([`${CLUSTER_CODES[0]}|${DATE}`]) }); });
-        expect(pinnedCount(c)).toBe(1); // 남아 있으면 2(선택 하나 + 안 풀린 호버 하나)
+        // ⚠ 호버가 남았는지는 **시선을 옮겼을 때** 드러난다. 누른 직후엔 그 선이 시선으로도 굵어서
+        //   호버가 남아 있어도 굵은 라벨 수가 같다 — 시선을 옮겨야 옛 호버가 홀로 남아 모습을 드러낸다.
+        act(() => { useWorkbench.getState().goToDay({ code: CLUSTER_CODES[0], date: DATE }, "test"); });
+        expect(pinnedCount(c)).toBe(1); // 남아 있으면 2(시선 하나 + 안 풀린 호버 하나)
     });
 });
 

@@ -32,7 +32,7 @@ import { useLinkedSet } from "./filter/useSetBinding.js";
 import { SetBindingLabel } from "./filter/SetBindingLabel.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { useGroups } from "../lib/GroupsContext.js";
-import { chartKey, pointKey } from "../lib/pointKey.js";
+import { chartKey, chartKeyOf, pointKey } from "../lib/pointKey.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
 import { ACTIVE, HOVER, seriesColor } from "../styles/palette.js";
 
@@ -116,10 +116,17 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
         return () => window.removeEventListener("keydown", onKey);
     }, [isDaily, hoveringPanel, setShowTheme]);
 
-    // "선택만 보기"(분봉 전용) — 일봉 패널에서 만든 선택 무리만 남긴다. 선택이 비면 제한 없음(빈 화면 함정 방지).
+    // "이 차트만"(분봉 전용) — **지금 보는 하루**의 선만 남긴다. 옛 "선택만"은 일봉 패널에서 만든 선택
+    // 무리가 재료였는데, 다중 선택이 은퇴하면서(useOverlaySelection 주석) 재료를 시선으로 갈았다.
+    // 뜻이 오히려 분명해졌다 — 겹쳐 보다가 하나만 떼어 볼 때 누르는 손잡이다.
+    // 시선이 없으면 제한 없음(빈 화면 함정 방지 — 옛 "선택이 비면 전체"와 같은 규칙).
     const [onlySelected, setOnlySelected] = useState(false);
-    const skeletonSelection = useWorkbench((s) => s.skeletonSelection);
-    const onlyCharts = !isDaily && onlySelected && skeletonSelection.size > 0 ? skeletonSelection : null;
+    const subjectCode = useWorkbench((s) => s.focus.code);
+    const subjectDate = useWorkbench((s) => s.focus.date);
+    const onlyCharts = useMemo(
+        () => (!isDaily && onlySelected && subjectCode ? new Set([chartKeyOf(subjectCode, subjectDate)]) : null),
+        [isDaily, onlySelected, subjectCode, subjectDate],
+    );
 
     // 그룹 한 벌 — 발끝 표기(여기) + 그룹 메뉴(OverlayMenus) + 차트 그룹 필터 판정(데이터 훅)이
     // 같은 컨텍스트 인스턴스를 본다.
@@ -212,16 +219,13 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
     const labelAnchorMode: SkeletonAnchor = isPointUnit ? "last" : anchor;
     const labelAtStart = isPointUnit || anchor === "last";
 
-    // 캔들 토글의 최신 참조 — 선택 훅의 **유일한 역방향 의존**(useCandles 가 조사 대상에서 파생되어
-    // 선택 훅보다 뒤에 태어난다). 클릭 시점에만 부르는 값이라 최신 참조로 잇는다(useMarquee 의 onSelectRef 와 같은 수).
+    // 캔들 토글의 최신 참조 — 손짓 훅의 **유일한 역방향 의존**(useCandles 가 조사 대상에서 파생되어
+    // 손짓 훅보다 뒤에 태어난다). 클릭 시점에만 부르는 값이라 최신 참조로 잇는다.
     const toggleCandleRef = useRef<(code: string) => void>(() => {});
     const toggleCandle = useCallback((code: string) => { toggleCandleRef.current(code); }, []);
 
-    // 선택·그룹핑 손짓 절반 — 두 선택 채널(차트/타점)의 계약은 useOverlaySelection 머리 주석.
-    const selection = useOverlaySelection({
-        isDaily, isPointUnit, lines, byKey, subjectKeys, nameOf,
-        labelAnchorMode, scales, wrapRef: viewport.wrapRef, toggleCandle,
-    });
+    // 손짓 절반 — 굵은 선은 늘 시선이다(선택 채널 없음. 계약은 useOverlaySelection 머리 주석).
+    const selection = useOverlaySelection({ isDaily, byKey, subjectKeys, nameOf, toggleCandle });
     const { effSelected } = selection;
 
     // 라벨 축약 — 화면 좌표로 묶는다. 확대하면 칸이 쪼개지며 뱃지가 저절로 풀린다(숨김이 아니라 압축).
@@ -484,8 +488,6 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 onLabelContext={selection.openGroupMenuFor}
                 onBadgeOpen={(at, members) => setBadge({ ...at, members })}
                 onBadgeHover={setBadgeHover}
-                marquee={selection.marquee}
-                onWrapMouseDown={selection.onWrapMouseDown}
                 onHoverPanel={setHoveringPanel}
                 readoutAt={amount.readoutAt}
                 themeReadingSlots={amount.themeReadingSlots}
@@ -493,16 +495,8 @@ export function SkeletonOverlayPanel({ grain }: { grain: "daily" | "minute" }): 
                 levelOwners={levelOwners}
                 levelsOf={(ck) => levelsByChart.get(ck) ?? []}
                 selection={{
-                    chartCount: selection.selectedCharts.length,
-                    chartChannelShown: !isPointUnit,
-                    rawChartCount: selection.selectedKeys.size,
-                    onGroupCharts: selection.openGroupMenuForSelection,
-                    onClearCharts: selection.clearCharts,
-                    pointKeys: selection.presentPks,
-                    rawPointCount: selection.selectedPks.size,
-                    onGroupPoints: selection.openPointGroupMenu,
-                    onClearPoints: selection.clearPoints,
-                    // 핀도 같은 규칙 — 개수는 화면에 있는 선의 것만, 비우기는 유령까지 전부(usePivotPins.countIn).
+                    // 개수는 화면에 있는 선의 것만, 비우기는 유령까지 전부(usePivotPins.countIn) —
+                    // 필터로 빠진 선의 핀은 필터를 풀면 정당하게 되살아난다.
                     pinnedCount: pins.countIn((k) => byKey.has(k)),
                     onClearPins: pins.clear,
                 }}

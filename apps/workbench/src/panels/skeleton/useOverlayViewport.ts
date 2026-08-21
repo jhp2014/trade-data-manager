@@ -40,10 +40,8 @@ export interface OverlayViewport {
     hitStep: number;
     /** 선 한 벌을 화면 구간으로 자르고 배율에 맞춰 솎는다(보이는 선·히트라인이 같은 재료를 쓴다). */
     themePath: (points: readonly { x: number; y: number }[], step: number) => readonly { x: number; y: number }[];
-    zoomed: boolean;
     dragging: boolean;
-    reset: () => void;
-    /** 더블클릭 — **축 스트립에서만, 그 축만** 원위치(사용자 확정). */
+    /** 더블클릭 — **축 스트립에서만, 그 축만** 원위치(사용자 확정). 전체 원위치 버튼은 은퇴했다. */
     onDoubleClick: (e: React.MouseEvent<SVGSVGElement>) => void;
 }
 
@@ -96,7 +94,7 @@ export function useOverlayViewport(args: {
         (x: number, y: number): ZoomRegion => (y > box.top + box.height ? "x" : x < box.left ? "y" : "body"),
         [box.top, box.height, box.left],
     );
-    const { tx, ty, reset, resetAxis, zoomed, dragging } = useOverlayZoom(svgRef, drawable, regionOf, onGestureStart);
+    const { tx, ty, reset, resetAxis, dragging } = useOverlayZoom(svgRef, drawable, regionOf, onGestureStart);
     /**
      * 더블클릭 — **축 스트립에서만, 그 축만** 원위치(사용자 확정). 본문 더블클릭 전체 리셋은 폐기했다:
      * 선·점을 짚다 보면 더블클릭이 섞여 들어가 애써 맞춘 배율이 통째로 날아갔다.
@@ -147,6 +145,6 @@ export function useOverlayViewport(args: {
         wrapRef, svgRef, size, box, bounds, boundsKey,
         locked: locked !== null, onToggleLock,
         scales, viewX, lineStep, hitStep, themePath,
-        zoomed, dragging, reset, onDoubleClick,
+        dragging, onDoubleClick,
     };
 }

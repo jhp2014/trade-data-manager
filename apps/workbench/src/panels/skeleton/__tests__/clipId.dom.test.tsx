@@ -10,7 +10,7 @@ import { useWorkbench } from "../../../store/workbench.js";
 import { DATE, points, skeletonFeed } from "./overlayFixture.js";
 
 const resetStore = (): void => {
-    useWorkbench.setState({ activePoint: null, skeletonSelection: new Set(), focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
 };
 beforeEach(resetStore);
 afterEach(() => { resetStore(); localStorage.clear(); });

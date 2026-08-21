@@ -21,13 +21,18 @@ import { useWorkbench } from "../../../store/workbench.js";
 import { drawnOps, kindIn } from "./drawProbe.js";
 import { CLUSTER_CODES, DATE, TIME, clusterFeed, clusterPoints } from "./overlayFixture.js";
 
-const [REP, MEMBER_B, MEMBER_C] = CLUSTER_CODES;
+const [REP, MEMBER_B] = CLUSTER_CODES;
 
 /** 안 짚은 선의 색 — 무리 색이 실렸는지는 "이 색이 아닌 것"으로 잰다(팔레트 값에 안 매이게). */
 const BASE_STROKE = "var(--text-secondary)";
 
 const renderPanel = (): HTMLElement =>
     renderWithProviders(<SkeletonOverlayPanel grain="daily" />, { skeletons: clusterFeed, points: clusterPoints }).container;
+
+/** 같은 칸에 뭉치는 **둘짜리** 무리 — 하나만 빼도 뭉침이 풀린다(시선은 한 번에 하나만 뺀다). */
+const pairCodes: readonly string[] = [REP, MEMBER_B];
+const pairFeed = { ...clusterFeed, daily: clusterFeed.daily.filter((e) => pairCodes.includes(e.stockCode)) };
+const pairPoints = clusterPoints.filter((p) => pairCodes.includes(p.stockCode));
 
 /** 개수 뱃지 — 조작 안내로 라벨·헤더 버튼과 갈린다. */
 const badgeOf = (c: HTMLElement): HTMLButtonElement | undefined =>
@@ -52,7 +57,7 @@ const focusFromElsewhere = (code: string): void =>
 // 조용히 "짚은 화면"이 된다(effSelected 폴백). **focus 도 리셋한다** — 선택(subject)이 activePoint
 // 없으면 focus 의 (종목,날짜)로 폴백하므로, goToPoint 가 남긴 focus 만으로도 유령 선택이 선다.
 const resetStore = (): void => {
-    useWorkbench.setState({ activePoint: null, skeletonSelection: new Set(), focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
 };
 beforeEach(resetStore);
 afterEach(() => { resetStore(); localStorage.clear(); });
@@ -113,13 +118,18 @@ describe("뭉친 라벨 — 뱃지가 정말 사라지는 경우", () => {
         expect(groupColored(c)).toBe(0);       // ← 옛 구조(멤버 배열을 상태로)에선 색이 눌어붙었다
     });
 
+    // 무리에서 선을 빼는 손은 이제 **시선 하나뿐**이라(다중 선택 은퇴), 뭉침이 풀리는 순간을 보려면
+    // 애초에 둘짜리 무리여야 한다 — 하나를 빼면 남는 하나는 뱃지가 아니라 라벨이다.
     it("뭉침이 풀려 라벨이 되어도 무리 색이 안 남는다", () => {
-        const c = renderPanel();
+        const c = renderWithProviders(
+            <SkeletonOverlayPanel grain="daily" />,
+            { skeletons: pairFeed, points: pairPoints },
+        ).container;
         fireEvent.mouseOver(badgeOf(c)!, { relatedTarget: document.body });
-        // 셋 중 둘이 빠지면 남는 하나는 뱃지가 아니라 라벨이다.
-        act(() => {
-            useWorkbench.setState({ skeletonSelection: new Set([`${MEMBER_B}|${DATE}`, `${MEMBER_C}|${DATE}`]) });
-        });
+        expect(badgeOf(c)!.textContent).toBe("2");
+
+        focusFromElsewhere(MEMBER_B);
+
         expect(badgeOf(c)).toBeUndefined();
         expect(groupColored(c)).toBe(0);
     });
