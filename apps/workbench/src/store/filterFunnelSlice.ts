@@ -23,7 +23,6 @@ import {
 } from "../panels/filter/stage.js";
 import { applyRailPredicate, type RailKey } from "../panels/filter/stageBinding.js";
 import { loadJson, saveJson } from "./persist.js";
-import { kstToday } from "../lib/date.js";
 import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
@@ -73,7 +72,7 @@ export interface FilterFunnelSlice {
     selectSet: (ref: SetRef | null) => void;
     /**
      * 월 시선 — 전역 하나(작업셋 월 줄이 주인, 구독 패널은 viewOf 를 거쳐 자동으로 따른다). null = 전체.
-     * 집합 포인터와 같은 성질(시선이지 조건이 아니다)이라 영속하지 않는다. 기본 = 오늘의 달(사용자 확정).
+     * 집합 포인터와 같은 성질(시선이지 조건이 아니다)이라 영속하지 않는다. 기본 = 전체(사용자 확정).
      */
     gazeMonths: string[] | null;
     setGazeMonths: (months: string[] | null) => void;
@@ -129,7 +128,7 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     filterStages: loadStages(),
     funnelSelection: null,
     selectedSetRef: null,
-    gazeMonths: [kstToday().slice(0, 7)],
+    gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
     gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],
 
     selectSet: (ref) => set(() => ({ selectedSetRef: ref })),

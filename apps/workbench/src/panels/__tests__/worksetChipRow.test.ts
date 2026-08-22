@@ -36,7 +36,7 @@ describe("parseRowState — 깨진 저장본이 줄 넷을 통째로 초기화�
     it("없는 필드는 기본값으로 채운다", () => {
         const st = parseRowState({ shown: { month: false } })!;
         expect(st.shown.month).toBe(false);
-        expect(st.shown.set).toBe(DEFAULT_ROW_STATE.shown.set); // 안 적힌 줄은 기본값
+        expect(st.shown.preset).toBe(DEFAULT_ROW_STATE.shown.preset); // 안 적힌 줄은 기본값
         expect(st.expanded).toEqual(DEFAULT_ROW_STATE.expanded);
         expect(st.pins.month).toEqual([]);
     });

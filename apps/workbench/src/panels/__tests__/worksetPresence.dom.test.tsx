@@ -1,12 +1,12 @@
-// 작업셋 — 모수(흔적 전부)·DNF 필터(필터 안 AND, 필터 사이 OR)·채널 줄 넷(집합·월·필터·프리셋)을 잠근다.
+// 작업셋 — 모수(흔적 전부)·DNF 필터(필터 안 AND, 필터 사이 OR)·채널 줄 셋(월·필터·프리셋)을 잠근다.
 //
 // 왜 이걸 잠그나: ① 옛 모수(기준선∪타점)로 조용히 돌아가는 회귀는 화면이 짧아질 뿐이라 눈으로 못
 // 잡는다 — 다섯 출처가 각각 혼자서도 행을 만든다는 것을 못박는다. ② DNF 는 "특정 상황을 모아 놓고
-// 작업"하는 도구라 편집 손짓(+ 필터 팝오버·프리셋·좌클릭 반전·우클릭 삭제 메뉴)이 곧 계약이다. ③ 집합 선택은 **전역**
-// 포인터를 움직인다(연동 패널 구독) — 로컬 상태로 퇴행하면 "작업셋 = 집합 선택의 집" 그림이 깨진다.
+// 작업"하는 도구라 편집 손짓(+ 필터 팝오버·프리셋·좌클릭 반전·우클릭 삭제 메뉴)이 곧 계약이다. ③ 집합은 **읽기만**
+// 한다(머리글 라벨) — 고르는 손은 집합 편성 패널 하나다(두 곳이면 어느 쪽이 조종석인지 흐려진다).
 // ④ 프리셋에 닿는 길은 **화면에 하나뿐**이어야 한다(줄이 켜져 있으면 줄, 꺼져 있으면 + 필터 판).
 import { describe, it, expect, beforeEach } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { act, screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders, type Seed } from "../../test/renderPanel.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { WorksetPanel } from "../WorksetPanel.js";
@@ -146,36 +146,33 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         expect(screen.getByText("코멘트만")).toBeTruthy();
     });
 
-    it("집합 줄 — ⋯ 에서 고르면 **전역 선택 포인터**가 움직이고, 고른 칩이 줄에 선다", () => {
+    it("집합은 **읽기만** — 머리글 라벨이 보는 집합을 말하고, 고르는 칩은 이 패널에 없다(집합 편성의 몫)", () => {
+        useWorkbench.setState({ savedSets: [{ id: "fs1", name: "돌파", stages: [], part: { kind: "survivors" } }] });
         renderWithProviders(<WorksetPanel />, SEED);
-        // 접힘 상태라 줄에는 고른 것(연동)만 서고 나머지는 ⋯ 판에만 있다.
-        const universeBtn = (): HTMLElement | undefined => screen.queryAllByRole("button", { name: "전체" })
-            .find((b) => (b.title ?? "").startsWith("유니버스"));
-        expect(universeBtn()).toBeUndefined();
-        fireEvent.click(openList("집합"));
-        fireEvent.click(universeBtn()!); // 판에서 고르면 판이 닫힌다 — 집합 줄의 전체 = 유니버스
-        expect(useWorkbench.getState().selectedSetRef).toEqual({ kind: "universe" });
-        // 이제 그 칩이 줄에 선다(고른 것은 접혀 있어도 늘 보인다). 연동으로 돌아가는 길은 "연동" 칩.
-        fireEvent.click(openList("집합"));
-        fireEvent.click(screen.getByRole("button", { name: "연동" }));
-        expect(useWorkbench.getState().selectedSetRef).toBeNull();
+        expect(screen.getByTitle(/^지금 보는 집합: 연동/)).toBeTruthy();
+        expect(screen.queryByTitle(/^유니버스/)).toBeNull(); // 집합 칩 줄이 없다(월 줄의 "전체"는 다른 채널)
+        expect(screen.queryByTitle(/^집합 전부 보기/)).toBeNull();
+        act(() => { useWorkbench.setState({ selectedSetRef: { kind: "saved", setId: "fs1" } }); });
+        expect(screen.getByTitle(/^지금 보는 집합: 돌파/)).toBeTruthy();
     });
 
-    it("고정 — 고르지 않아도 줄에 서고, **판에서도 안 사라진다**(해제하러 갈 자리가 그 판뿐이라)", () => {
+    it("고정 — 고르지 않아도 줄에 서고, **판에서도 안 사라진다**(해제하러 갈 자리가 그 판뿐이라) — 월 줄", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        fireEvent.click(openList("집합"));
+        expect(useWorkbench.getState().gazeMonths).toBeNull(); // 기본 = 전체
+        expect(screen.queryByRole("button", { name: "26.08" })).toBeNull(); // 안 고른 달은 접힘 줄에 안 선다
+        fireEvent.click(openList("월"));
         const pinBtn = (): HTMLElement => screen.getAllByRole("button", { name: "고정" })
-            .find((b) => (b.title ?? "").startsWith("전체 —"))!; // 집합 줄의 전체(유니버스) — 연동은 기본 활성이라 늘 줄에 서서 고정을 가릴 수 없다
+            .find((b) => (b.title ?? "").startsWith("26.08 —"))!;
 
         fireEvent.click(pinBtn());
         // 줄(칩) + 판(행) 둘 다에 있다 — 판에서 사라지면 해제할 길이 없어진다.
-        expect(screen.getAllByRole("button", { name: "전체" }).filter((b) => (b.title ?? "").startsWith("유니버스"))).toHaveLength(2);
-        expect(pinBtn().getAttribute("aria-pressed")).toBe("true"); // 고정/비고정을 눈으로 가른다
-        expect(useWorkbench.getState().selectedSetRef).toBeNull(); // 고정은 시선이 아니다
+        expect(screen.getAllByRole("button", { name: "26.08" })).toHaveLength(2);
+        expect(pinBtn().getAttribute("aria-pressed")).toBe("true");
+        expect(useWorkbench.getState().gazeMonths).toBeNull(); // 고정은 시선이 아니다
 
         fireEvent.click(pinBtn()); // 같은 손잡이로 해제
         expect(pinBtn().getAttribute("aria-pressed")).toBe("false");
-        expect(screen.getAllByRole("button", { name: "전체" }).filter((b) => (b.title ?? "").startsWith("유니버스"))).toHaveLength(1); // 판에만 남는다
+        expect(screen.getAllByRole("button", { name: "26.08" })).toHaveLength(1); // 판에만 남는다
     });
 
     it("종목 행에 존재 배지가 아이콘으로 선다(숫자 없음 — 상세는 hover 툴팁)", () => {

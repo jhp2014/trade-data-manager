@@ -1,5 +1,9 @@
-// 작업셋 칩 줄 — **채널 하나가 한 줄**(집합·월·필터·프리셋). 네 줄이 같은 골격을 쓰는 이유는
-// 왼쪽 이름 열이 세로로 맞아야 "네 개의 나란한 시선 채널"로 읽히기 때문이다(제각각이면 그냥 띠 넷이다).
+// 작업셋 칩 줄 — **채널 하나가 한 줄**(월·필터·프리셋). 줄들이 같은 골격을 쓰는 이유는
+// 왼쪽 이름 열이 세로로 맞아야 "나란한 시선 채널"로 읽히기 때문이다(제각각이면 그냥 띠다).
+// 집합 편성의 집합 줄(SetRow)도 같은 골격(WorksetRowShell)을 쓴다 — 두 패널이 같은 어휘로 읽히게.
+//
+// ⚠ 집합 줄은 **여기 없다**(2026-08-22 은퇴): 집합 고르기는 집합 편성 패널의 몫이고 작업셋은 읽기만
+// 한다(상태 텍스트). 고르는 손이 두 곳이면 어느 쪽이 조종석인지 흐려진다 — 옛 저장본의 `set` 키는 무시된다.
 //
 // 줄마다 축이 **둘**인데 서로 다른 자리에 산다:
 //   · **표시/숨김** — 머리글 더보기의 토글. "이 채널을 이 패널에 둘까"는 화면 구성이라 컨트롤의 일이다.
@@ -20,12 +24,12 @@ import type { ReactNode } from "react";
 import { GazeChip, ScrollRow } from "../components/ControlChrome.js";
 import { HeaderPopover } from "../components/HeaderPopover.js";
 
-/** 네 채널. 순서가 곧 줄 순서다(더보기 토글도 이 순서로 선다). */
-export const WORKSET_ROW_IDS = ["set", "month", "filter", "preset"] as const;
+/** 세 채널. 순서가 곧 줄 순서다(더보기 토글도 이 순서로 선다). */
+export const WORKSET_ROW_IDS = ["month", "filter", "preset"] as const;
 export type WorksetRowId = (typeof WORKSET_ROW_IDS)[number];
 
 export const WORKSET_ROW_LABEL: Record<WorksetRowId, string> = {
-    set: "집합", month: "월", filter: "필터", preset: "프리셋",
+    month: "월", filter: "필터", preset: "프리셋",
 };
 
 /**
@@ -42,11 +46,11 @@ export interface WorksetRowState {
 }
 
 export const DEFAULT_ROW_STATE: WorksetRowState = {
-    shown: { set: true, month: true, filter: true, preset: true },
-    // 집합·월은 접힘으로 시작한다(고른 것만) — 처음 보이는 화면의 대부분이 목록이어야 한다.
+    shown: { month: true, filter: true, preset: true },
+    // 월은 접힘으로 시작한다(고른 것만) — 처음 보이는 화면의 대부분이 목록이어야 한다.
     // 프리셋은 반대다: 고른 게 없는 게 정상이라 접으면 빈 줄이 된다(이름을 봐야 고른다).
-    expanded: { set: false, month: false, filter: true, preset: true },
-    pins: { set: [], month: [], filter: [], preset: [] },
+    expanded: { month: false, filter: true, preset: true },
+    pins: { month: [], filter: [], preset: [] },
 };
 
 const boolRec = (o: unknown, def: Record<WorksetRowId, boolean>): Record<WorksetRowId, boolean> => {
@@ -84,7 +88,7 @@ export interface ChipItem {
 }
 
 /**
- * 줄에 세울 칩 고르기 — 펼침이면 전부, 접힘이면 **고른 것 + 핀**.
+ * 줄에 세울 칩 고르기 — 펼침이면 전부, 접힘이면 **고른 것 + 핀**. 집합 편성의 집합 줄도 이 규칙을 쓴다.
  * 선언 순서를 지킨다: 고른 것을 앞으로 당기면 클릭할 때마다 칩이 자리를 바꿔 다음 클릭이 빗나간다.
  */
 export function visibleChips(
@@ -102,7 +106,7 @@ export function visibleChips(
 
 const LABEL_W = 40;
 
-/** 네 줄이 공유하는 골격 — 이름 열 + 내용. 칩 모델이 아닌 줄(필터)도 이걸 써야 세로가 맞는다. */
+/** 줄들이 공유하는 골격 — 이름 열 + 내용. 칩 모델이 아닌 줄(필터)과 집합 편성의 집합 줄도 이걸 써야 세로가 맞는다. */
 export function WorksetRowShell({ label, caret, onLabelClick, title, children }: {
     label: string;
     /** 펼침 표시 — 없으면(필터 줄) 이름만 서고 클릭도 안 받는다. */
@@ -151,7 +155,7 @@ export function ChipRow({ id, items, expanded, onToggleExpanded, pins, onToggleP
             {/* 칩은 **고르는 일만** 한다 — 핀은 ⋯ 판의 몫이다(사용자 확정).
                 ⚠ **고르는 칩**(GazeChip — 둥근 알약, 누르면 시선이 바뀐다)에는 우클릭이 없다: 같은 겉모습의
                 칩이 자리마다 다른 손짓을 받으면 그게 보이지도 않는다. 우클릭에 뜻을 얹는 건 겉모습이 갈리는
-                **조립물의 부품 칩**(필터 줄의 ClauseChip — 종류색 각진 토큰)과 집합 칩(SetChips)뿐이다. */}
+                **조립물의 부품 칩**(필터 줄의 ClauseChip — 종류색 각진 토큰)뿐이다. 집합 줄(SetRow)의 칩도 우클릭이 없다 — 관리는 줄 끝 판 하나. */}
             {shown.map((it) => (
                 <GazeChip key={it.key} label={it.label} active={it.active} tabular={it.tabular ?? false}
                     {...(it.color !== undefined ? { color: it.color } : {})}

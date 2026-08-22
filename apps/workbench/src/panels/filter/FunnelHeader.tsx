@@ -1,7 +1,8 @@
-// 집합 편성 머리글 — 왼쪽은 **지금 보는 집합**(상주 칩 + 서랍 손잡이), 오른쪽은 손잡이 줄.
+// 집합 편성 머리글 — 왼쪽은 상태(죽은 참조), 오른쪽은 손잡이 줄.
 //
-// 상주 칩이 접힘 상태에서도 서 있는 이유: 이 패널이 정한 선택 포인터를 **연동 패널 전부가** 따라간다.
-// 서랍을 접었다고 그 답이 사라지면 다른 패널의 모수가 왜 그런지 설명하는 자리가 없어진다.
+// "지금 보는 집합"은 여기 없다 — 바로 아래 **집합 줄**(SetRow)이 상시라 켜진 칩이 곧 그 답이다. 옛
+// 상주 칩은 집합 서랍이 접혔을 때 답을 남기려고 있었는데, 줄이 늘 서 있으니 같은 것을 두 자리에서
+// 말할 이유가 없다.
 //
 // 여기서 사라진 것들과 이유:
 //   · **후보 분모**(5,825 종목·날짜) — 전체는 집합 서랍의 "전체" 칩이 수와 함께 말하고, 걸러진 뒤의
@@ -9,19 +10,14 @@
 //   · **타점으로** — 결과 목록이 사라진 뒤 남은 효과가 탤리 단위뿐이었다(stage.ts 주석).
 //   · **슬롯 1·2·3** — 이름 없는 칸 3개. 그 일은 저장 집합이 이미 한다(집합 = 이름 붙은 슬롯).
 import { useMemo } from "react";
-import { GazeChip, PanelHeader } from "../../components/ControlChrome.js";
+import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
-import type { SetRef } from "../../lib/setRef.js";
-import { FAIL, PIN } from "../../styles/palette.js";
-import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
+import { FAIL } from "../../styles/palette.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
-export function FunnelHeader({ v, setsOpen, onToggleSets, barsOpen, onToggleBars, onlyActive, setOnlyActive }: {
+export function FunnelHeader({ v, barsOpen, onToggleBars, onlyActive, setOnlyActive }: {
     v: FunnelView;
-    /** 집합 칩 서랍 — 위에서 내려온다. 상주 칩이 그 손잡이다(같은 것을 두 자리에서 열지 않는다). */
-    setsOpen: boolean;
-    onToggleSets: () => void;
     /** 막대(걸린 필터 목록) 서랍 — 아래에서 올라온다. 손잡이는 여기와 요약 줄 둘 다(둘 다 같은 상태). */
     barsOpen: boolean;
     onToggleBars: () => void;
@@ -30,9 +26,6 @@ export function FunnelHeader({ v, setsOpen, onToggleSets, barsOpen, onToggleBars
     setOnlyActive: (on: boolean) => void;
 }): JSX.Element {
     const stages = useWorkbench(selectFilterStages);
-    const savedSets = useWorkbench((s) => s.savedSets);
-    const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const selection = useWorkbench((s) => s.funnelSelection);
     const clearStages = useWorkbench((s) => s.clearFilterStages);
 
     const controls = useMemo<ControlSpec[]>(() => [
@@ -51,34 +44,9 @@ export function FunnelHeader({ v, setsOpen, onToggleSets, barsOpen, onToggleBars
         },
     ], [onlyActive, setOnlyActive, barsOpen, onToggleBars, stages.length, clearStages]);
 
-    // 상주 칩 — 선택 포인터가 가리키는 것. 아무것도 안 골랐으면 연동(짚은 칸 > 최종 생존 > 전체)을
-    // **채우지 않고** 말한다: 서랍에도 켜진 칩이 없는 상태와 표기가 어긋나면 안 된다.
-    // 어휘는 한 벌뿐이다(linkedTargetLabel) — 머리글·서랍·구독 패널 라벨이 다른 말을 쓰면 같은 상태가
-    // 세 이름으로 읽힌다.
-    const workingRef: SetRef = selection
-        ? { kind: "cell", stageId: selection.stageId, cells: selection.cells }
-        : { kind: "survivors" };
-    const shownRef = selectedSetRef ?? workingRef;
-    const label = selectedSetRef !== null
-        ? setRefLabel(selectedSetRef, savedSets)
-        : linkedTargetLabel(selection !== null, v.active.length);
-    const resolved = v.resolveSet(shownRef);
-
     return (
         <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
-            <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>집합</span>
-            <GazeChip
-                active={selectedSetRef !== null}
-                color={PIN}
-                onClick={onToggleSets}
-                title={`지금 보는 집합 — 연동 패널이 전부 이걸 따라간다.\n클릭 = 집합 서랍 ${setsOpen ? "접기" : "펼치기"}`}
-                label={<>
-                    {label}
-                    <span style={{ marginLeft: 5, opacity: 0.62, fontVariantNumeric: "tabular-nums" }}>
-                        {resolved.broken ? "—" : resolved.items.length.toLocaleString("ko-KR")}
-                    </span>
-                    <span style={{ marginLeft: 4, opacity: 0.55 }}>{setsOpen ? "▴" : "▾"}</span>
-                </>} />
+            <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>집합 편성</span>
             {/* 죽은 참조는 손잡이가 아니라 **상태**다 — 그래서 컨트롤 줄이 아니라 보는 집합 옆에 선다. */}
             {v.deadStageIds.length > 0 && (
                 <span style={{ fontSize: 10.5, color: FAIL, flexShrink: 0 }} title="지워진 그룹·축을 가리키는 조건이 있습니다. 그 필터는 판단 불가(미배치)로 잡힙니다.">

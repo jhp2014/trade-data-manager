@@ -20,17 +20,16 @@ import { pointKey, chartKeyOf } from "../lib/pointKey.js";
 import { matchesPresenceDnf, hasActiveDnf, dnfSummary } from "../lib/presence.js";
 import { applyMonthClick, normalizeMonths, MONTH_PICK_HINT } from "./filter/monthPick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import type { SetRef } from "../lib/setRef.js";
-import { linkedTargetLabel } from "./filter/useSetBinding.js";
-import { setRefKey } from "../lib/setRef.js";
+import { linkedTargetLabel, setRefLabel } from "./filter/useSetBinding.js";
 import { PIN } from "../styles/palette.js";
+import { useDock } from "../store/dock.js";
+import { panelEntry } from "../shell/panelCatalog.js";
 
 // 작업셋 패널 — **curation 흔적이 있는 (종목,날짜) 전부**를 브라우징한다(연대순 진입).
-// 머리글 = 컨트롤 줄 + **채널 줄 넷**(집합·월·필터·프리셋 — 각자 한 줄):
-//   ① 컨트롤 줄  : 좌측 = 상태 텍스트(N 표시 · M 숨김), 우측 = 레지스트리(좁히기·조준·줄 토글·더보기)
-//   ② 집합 줄    : 전역 선택 포인터(selectedSetRef). 여기가 조종석이고 구독 패널(골격·시트·그룹목록)은
-//                  viewOf 가 접어 주는 것을 받는다
-//   ③ 월 줄      : 전역 월 시선(gazeMonths). null = 전체
+// 머리글 = 컨트롤 줄 + **채널 줄 셋**(월·필터·프리셋 — 각자 한 줄):
+//   ① 컨트롤 줄  : 좌측 = **보는 집합 라벨**(읽기전용 — 클릭하면 집합 편성 패널로) + 상태 텍스트
+//                  (N 표시 · M 숨김), 우측 = 레지스트리(좁히기·조준·줄 토글·더보기)
+//   ③ 월 줄      : 전역 월 시선(gazeMonths). null = 전체(기본)
 //   ④ 필터 줄    : 존재 필터 DNF(& = AND, | = OR) — 이것도 전역 시선(gazePresence, 영속).
 //                  "남은 작업"(골격 채울 날 등)이 구독 패널에도 그대로 좁혀 보이는 이유
 //   ⑤ 프리셋 줄  : 자주 쓰는 DNF 의 이름. 클릭 = **통째 교체**(사용자 확정) — 다시 누르면 해제
@@ -38,6 +37,12 @@ import { PIN } from "../styles/palette.js";
 // 채널을 한 줄씩 가른 이유: 한 줄에 둘을 넣으면(옛 "집합 + 월") 어느 칩이 어느 채널인지 구분자 하나에
 // 매이고, 후보를 펼칠 자리가 아예 없다. 줄마다 표시/숨김(머리글 토글)과 펼침/접힘(줄 이름 클릭)이
 // 따로 사는 이유는 WorksetChipRow 주석에.
+//
+// **두 패널의 경계**(2026-08-22 사용자 확정): 이 패널은 **시선**(월·존재 필터 — 집합을 낳지 않고 보는
+// 방식만 바꾼다, 저장 집합에 안 딸린다)의 집이고, **조건**(그룹·축·날짜 — 집합을 낳아 저장물에 사본으로
+// 딸린다)과 **집합 고르기**는 집합 편성 패널(SetRow)의 집이다. "본격/편의"로 가르지 않는다 — 정도 기준은
+// 한 칸씩 밀려 같은 조건의 집이 둘이 된다(옛 필터 UI 두 곳 사고). 그래서 그룹 필터는 여기 안 들어온다:
+// 편성에서 그룹 레일을 그으면 이 목록이 그 결과를 받는다. 집합 포인터는 여기서 **읽기만** 한다.
 // 집합은 기본 **렌즈**(비멤버 흐리게 + 멤버 보라 레일)고 좁히기는 명시 토글. 목록은 평탄화+가상화
 // (WorksetList) — 월 "전체" 시선의 최악 케이스(전 모수)가 상한이 없어야 해서다.
 
@@ -57,7 +62,6 @@ export function WorksetPanel(): JSX.Element {
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const selectSet = useWorkbench((s) => s.selectSet);
     const funnelSelection = useWorkbench((s) => s.funnelSelection);
     const gazeMonths = useWorkbench((s) => s.gazeMonths);
     const setGazeMonths = useWorkbench((s) => s.setGazeMonths);
@@ -75,7 +79,7 @@ export function WorksetPanel(): JSX.Element {
     const dnf = useWorkbench((s) => s.gazePresence);
     const setDnf = useWorkbench((s) => s.setGazePresence);
 
-    // ── 월 시선 — **전역 하나**(store.gazeMonths, 기본=오늘의 달). 여기가 주인이고 구독 패널은
+    // ── 월 시선 — **전역 하나**(store.gazeMonths, 기본=전체). 여기가 주인이고 구독 패널은
     //    viewOf 가 접어 주는 것을 그대로 받는다. null = 전체. 손짓은 깔때기 월 칩과 같은 순수 규칙
     //    (applyMonthClick — 맨클릭 갈아타기·Ctrl 토글·Shift 범위·마지막 하나 보호).
     const months = useMemo(() => {
@@ -95,11 +99,22 @@ export function WorksetPanel(): JSX.Element {
         setGazeMonths([...next]);
     };
 
-    // ── 집합 — 전역 선택 포인터(selectedSetRef)를 여기서 정한다(작업셋 = 집합 선택의 집, 연동 패널이 구독).
-    //    칩 어휘는 셋: 전체(universe, 렌즈 없음) · 연동(null — 짚은 칸 > 최종 생존 > 전체로 자동) · 저장 집합.
+    // ── 집합 — 전역 선택 포인터(selectedSetRef)를 **읽는다**(고르는 자리는 집합 편성의 SetRow 하나).
     //    렌즈 규칙은 구독 패널과 같은 한 줄 — 보는 집합이 "걸려 있으면" 렌즈다(작업셋만 다른 규칙을 두면
     //    옆 패널은 좁아졌는데 여기만 무반응인 어긋남이 생긴다). 전체는 걸림이 아니므로 렌즈가 안 선다.
     const isUniverse = selectedSetRef?.kind === "universe";
+    // 보는 집합의 이름 — 어휘는 집합 줄과 같은 한 벌(setRefLabel/linkedTargetLabel). 클릭 = 집합 편성 패널로
+    // (닫혀 있으면 연다) — 고르는 손은 거기 하나뿐이라 여기는 길만 낸다.
+    const setLabel = selectedSetRef === null
+        ? linkedTargetLabel(funnelSelection !== null, funnel.active.length)
+        : setRefLabel(selectedSetRef, savedSets);
+    const goToFunnelPanel = (): void => {
+        const api = useDock.getState().api;
+        if (!api) return;
+        const e = panelEntry("filter-funnel-1");
+        const p = api.getPanel(e.id) ?? api.addPanel({ id: e.id, component: e.component, title: e.title });
+        p.api.setActive();
+    };
     const linkedView = funnel.viewOf(null);
     const view = isUniverse ? null : linkedView;
     const lensOn = view !== null && view.isFiltering && !view.broken;
@@ -234,26 +249,6 @@ export function WorksetPanel(): JSX.Element {
     // ── 채널별 칩 목록 — 줄은 이 모양만 안다(ChipItem). 순서는 **선언 순서 고정**: 고른 것을 앞으로
     //    당기면 클릭할 때마다 칩이 자리를 바꿔 다음 클릭이 빗나간다(옛 팝오버는 정렬했지만 그건 판이라
     //    괜찮았다 — 줄은 손이 반복해 찍는 자리다).
-    const setItems: ChipItem[] = [
-        { key: "all", label: "전체", active: isUniverse, color: PIN, title: "유니버스 — 흔적(앵커·그룹·타점)이 있는 (종목·날짜) 전부. 집합 편성의 조건과 무관", onClick: () => selectSet({ kind: "universe" }) },
-        {
-            key: "linked", label: "연동", active: selectedSetRef === null, color: PIN,
-            title: `집합 편성을 따라간다 — 짚은 칸이 있으면 그 칸, 없으면 최종 생존, 조건이 없으면 전체
-지금: ${linkedTargetLabel(funnelSelection !== null, funnel.active.length)}`,
-            onClick: () => selectSet(null),
-        },
-        ...savedSets.map((f): ChipItem => {
-            const ref: SetRef = { kind: "saved", setId: f.id };
-            const active = selectedSetRef !== null && setRefKey(selectedSetRef) === setRefKey(ref);
-            return {
-                key: f.id, label: f.name, active, color: PIN,
-                title: `${f.name} — 고르면 연동된 패널들이 함께 따라간다`,
-                // 같은 칩을 다시 누르면 연동으로 복귀 — 칩 줄의 공통 문법(누른 것을 다시 눌러 되돌린다).
-                onClick: () => selectSet(active ? null : ref),
-            };
-        }),
-    ];
-
     const monthItems: ChipItem[] = [
         { key: "all", label: "전체", active: allMonths, title: "모든 달 — 시선 해제(목록은 가상화라 상한 없음)", onClick: () => setGazeMonths(null) },
         ...months.map((m): ChipItem => ({
@@ -275,6 +270,15 @@ export function WorksetPanel(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
             {/* ① 컨트롤 줄 — 좌측 상태 텍스트, 우측 레지스트리. */}
             <PanelHeader chrome={false} gap={6} style={{ borderBottom: "1px solid var(--border-default)" }}>
+                <button onClick={goToFunnelPanel}
+                    title={`지금 보는 집합: ${setLabel} — 집합 편성 패널이 정한다(클릭 = 그 패널로)`}
+                    style={{
+                        flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 700, padding: "0 7px",
+                        borderRadius: 9, border: "0.5px solid transparent", background: PIN, color: "#fff", whiteSpace: "nowrap",
+                        maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+                    }}>
+                    {setLabel}
+                </button>
                 <span className="tabular" style={{ flexShrink: 0, fontSize: 11, color: "var(--text-secondary)" }}>
                     {shownCount} 표시{hasActiveDnf(dnf) || narrowOn ? ` · ${hiddenCount} 숨김` : ""}
                 </span>
@@ -288,10 +292,6 @@ export function WorksetPanel(): JSX.Element {
                 <HeaderControls controls={controls} storageKey="wb.headerPins.workset" />
             </PanelHeader>
 
-            {rows.shown.set && (
-                <ChipRow id="set" items={setItems} expanded={rows.expanded.set} onToggleExpanded={() => toggleRowExpanded("set")}
-                    pins={rows.pins.set} onTogglePin={(k) => togglePin("set", k)} />
-            )}
             {rows.shown.month && (
                 <ChipRow id="month" items={monthItems} expanded={rows.expanded.month} onToggleExpanded={() => toggleRowExpanded("month")}
                     pins={rows.pins.month} onTogglePin={(k) => togglePin("month", k)} />

@@ -82,6 +82,8 @@ export interface SavedSetsSlice {
      * 덮어쓰기를 눌러야 실제로 바뀐다(보드에서 만지는 동안 고정 구독 패널이 작업 중간 상태를 받지 않게).
      */
     openSet: (id: string) => void;
+    /** 이름만 바꾼다(id·조건·부위 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름·다른 집합과 같은 이름은 무시. */
+    renameSet: (id: string, name: string) => void;
     deleteSet: (id: string) => void;
     /** 마지막으로 연 집합 — 덮어쓰기 버튼의 대상. 그 집합이 지워지면 풀린다(세션 한정). */
     openedSetId: string | null;
@@ -122,6 +124,13 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         if (!f) return {};
         // 사본이 작업 깔때기로(배열 공유는 안전 — 편집 함수들이 늘 새 배열을 만든다). 시선은 푼다(다른 깔때기의 칸).
         return { ...putStages(s, f.stages), funnelSelection: null, openedSetId: id };
+    }),
+    renameSet: (id, name) => set((s) => {
+        const n = name.trim();
+        if (!n || s.savedSets.some((x) => x.id !== id && x.name === n) || !s.savedSets.some((x) => x.id === id)) return {};
+        const next = s.savedSets.map((x) => (x.id === id ? { ...x, name: n } : x));
+        saveJson(SAVED_SETS_KEY, next);
+        return { savedSets: next };
     }),
     deleteSet: (id) => set((s) => {
         const next = s.savedSets.filter((x) => x.id !== id);
