@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
-import { allPointsQuery, chartQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
+import { allAnchorsQuery, allPointsQuery, axisLinesQuery, chartQuery, computedAxesQuery, groupMembershipsQuery, skeletonsQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView } from "./derive.js";
 import { indexAtOrBefore } from "./chartFrame.js";
 import { useChartPoints } from "./useChartPoints.js";
@@ -62,7 +62,7 @@ export function useChartHotkeys(): void {
 
     const chartQ = useQuery(chartQuery(code, date)); // ChartPanel 과 같은 키 → RQ 캐시 공유(중복 페치 0)
     const minutePoints = useMemo(() => (chartQ.data ? deriveMinuteView(chartQ.data, mode).points : []), [chartQ.data, mode]);
-    const reviewPoints = useChartPoints(code, date); // 저장/삭제 판정도 이 소스 — invalidate 는 all-points 하나
+    const reviewPoints = useChartPoints(code, date); // 저장/삭제 판정도 이 소스(all-points 복제본)
     const reviewTimes = useMemo(() => [...reviewPoints.map((rp) => rp.time)].sort(), [reviewPoints]);
 
     const invalidate = (): void => {
@@ -72,8 +72,17 @@ export function useChartHotkeys(): void {
         // 골격 좌표도 — 타점 종가가 분봉 경로에 합성되므로 타점 추가/삭제가 경로를 바꾼다.
         void qc.invalidateQueries({ queryKey: skeletonsQuery().queryKey });
     };
+    // 삭제는 서버가 타점에 딸린 것까지 지운다 — 배치(rank_placements)·그룹 멤버(group_members) FK cascade,
+    // 타점 소유 앵커(ChartAnchors.removePoint). 이 셋의 테이블 키가 ∞ 라 같이 안 비우면 유령이 남는다
+    // (슬롯 수 한 칸 어긋남, 존재 지도가 그날을 "그룹·골격 있음"으로 유지해 작업셋 모수 오염).
+    const invalidateRemoved = (): void => {
+        invalidate();
+        void qc.invalidateQueries({ queryKey: axisLinesQuery().queryKey });
+        void qc.invalidateQueries({ queryKey: groupMembershipsQuery().queryKey });
+        void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey });
+    };
     const upsertMut = useMutation({ mutationFn: upsertReviewPoint, onSuccess: invalidate });
-    const removeMut = useMutation({ mutationFn: (v: { code: string; date: string; time: string }) => removeReviewPoint(v.code, v.date, v.time), onSuccess: invalidate });
+    const removeMut = useMutation({ mutationFn: (v: { code: string; date: string; time: string }) => removeReviewPoint(v.code, v.date, v.time), onSuccess: invalidateRemoved });
 
     // 매 렌더 최신 클로저로 핸들러 갱신(안정 ref 유지) → 등록된 run 은 항상 최신 상태를 본다.
     const h = useRef({ toggle: () => {}, moveBar: (_: number) => {}, jump: (_: number) => {}, navPoint: (_: number) => {} });
