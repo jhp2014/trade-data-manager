@@ -7,7 +7,7 @@
 // 공유 내부(useAnchorMutations): 추가/삭제 mutation 과 invalidate 집합(anchors·작업셋·계산 축)은 param 이
 // 달라도 동일하다 — 앵커는 전부 계산 축의 입력이라, 어떤 편집이든 축 값이 즉시 따라와야 한다(서버는
 // 지문으로 그 차트/타점만 다시 굽는다).
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASELINE_PARAM, candlePrice, chartAnchorKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type SkeletonPivot } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
@@ -71,12 +71,21 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
         },
         onSettled: invalidate,
     });
-    // mutate 는 RQ 가 참조 안정을 보장 — 함수 셋만 뽑아 memo 하면 param 훅들의 반환도 안정된다
-    // (ChartPanel 의 controls memo 가 lines.clear 등을 deps 로 갖는데, 매 렌더 새 클로저면 memo 가 헛돈다).
-    const mut = useMemo<AnchorMutations>(
-        () => ({ add: addMut.mutate, remove: removeMut.mutate, removeMany: removeManyMut.mutate }),
-        [addMut.mutate, removeMut.mutate, removeManyMut.mutate],
-    );
+    // 비행 중 가드 — 토글은 "복제본에 있으면 삭제, 없으면 추가"인데 복제본은 응답+invalidate 뒤에야 바뀐다.
+    // 그 창에서 같은 앵커를 또 누르면(더블클릭) 두 번째도 add 로 가 서버 중복/400. 앵커 정체성(chartAnchorKey)
+    // 으로 비행 중인 것을 기억해 같은 키의 추가/삭제를 응답까지 무시한다. 낙관 갱신은 안 한다 — 복제본이
+    // 서버 진실(존재 지도·배지·축 입력)을 겸하므로 실패 시 되감기 표면이 넓다.
+    const inFlight = useRef(new Set<string>());
+    const mut = useMemo<AnchorMutations>(() => {
+        const guarded = <T extends AddChartAnchorInput | RemoveChartAnchorInput>(run: (input: T, opts: { onSettled: () => void }) => void) =>
+            (input: T): void => {
+                const key = chartAnchorKey(input);
+                if (inFlight.current.has(key)) return;
+                inFlight.current.add(key);
+                run(input, { onSettled: () => inFlight.current.delete(key) });
+            };
+        return { add: guarded(addMut.mutate), remove: guarded(removeMut.mutate), removeMany: removeManyMut.mutate };
+    }, [addMut.mutate, removeMut.mutate, removeManyMut.mutate]);
     return { anchors, mut };
 }
 
