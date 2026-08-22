@@ -34,7 +34,8 @@ export function useAxisAdmin({ migrateAxisKey, allPoints }: {
         // 서버 정체성은 raw 이름 — 클라 키(`p:<이름>`)를 그대로 보내면 무음 no-op 이 된다.
         mutationFn: (v: { id: string; name: string }) => renameRankAxis(placedAxisName(v.id), v.name),
         // 키 이관을 **invalidate 앞에** — 새 축 목록이 먼저 오면 청소(prune)가 옛 키를 유령으로 지워 버린다.
-        onSuccess: (_d, v) => { migrateAxisKey(v.id, placedAxisKey(v.name)); invAxes(); },
+        // 줄 피드도 — 줄은 axisName 으로 키가 잡히므로(useRankAxes.linesByAxis) 옛 이름 줄이 남으면 새 이름 열이 빈다.
+        onSuccess: (_d, v) => { migrateAxisKey(v.id, placedAxisKey(v.name)); invAxes(); invLines(); },
     });
     // 축이 사라지면 그 줄도 함께 사라진다 — 줄 캐시까지 무효화해야 열이 유령으로 안 남는다.
     const deleteAxisMut = useMutation({ mutationFn: (id: string) => deleteRankAxis(placedAxisName(id)), onSuccess: () => { invAxes(); invLines(); } });
