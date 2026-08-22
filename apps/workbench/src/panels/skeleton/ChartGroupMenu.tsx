@@ -10,7 +10,8 @@
 //
 // **scope 는 호출부가 준다** — 하루 대상(차트 라벨)이면 day, 타점 대상(마커)이면 point. 목록도 그 scope 만
 // 보여주고 생성도 그 scope 로 한다. 안 맞는 그룹을 보여줬다 서버 거절로 배우게 하지 않는다.
-import { useRef, useState } from "react";
+import { useState } from "react";
+import { InlineRename } from "../../ui/InlineRename.js";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createGroup, deleteGroup, renameGroup, type Group, type GroupScope } from "../../api/groups.js";
 import { groupsQuery, groupMembershipsQuery } from "../../api/queries.js";
@@ -147,18 +148,12 @@ function GroupRow({ group, state, count, inheritedVia, multi, editing, onToggleA
     onStartEdit: () => void; onCommitEdit: (name: string) => void; onCancelEdit: () => void; onDelete: () => void;
 }): JSX.Element {
     const [hover, setHover] = useState(false);
-    const escRef = useRef(false);
     const c = groupColor(group.name);
 
     if (editing) {
         return (
             <div style={{ ...rowStyle, cursor: "default" }}>
-                <input
-                    autoFocus defaultValue={group.name}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } else if (e.key === "Escape") { e.preventDefault(); escRef.current = true; e.currentTarget.blur(); } }}
-                    onBlur={(e) => { if (escRef.current) { escRef.current = false; onCancelEdit(); } else onCommitEdit(e.currentTarget.value.trim()); }}
-                    style={{ ...inputStyle, padding: "3px 6px" }}
-                />
+                <InlineRename initial={group.name} onCommit={onCommitEdit} onCancel={onCancelEdit} style={{ ...inputStyle, padding: "3px 6px" }} />
             </div>
         );
     }

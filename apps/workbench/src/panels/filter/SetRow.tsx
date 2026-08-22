@@ -18,6 +18,7 @@
 // 작업셋(작업 대상) 패널은 이 포인터를 **읽기만** 한다(상태 텍스트) — 고르는 손이 두 곳이면 어느 쪽이
 // 조종석인지 흐려진다. 기준: 조건(집합을 낳는다)과 집합 고르기는 여기, 시선(월·존재)은 작업셋.
 import { useState } from "react";
+import { InlineRename } from "../../ui/InlineRename.js";
 import { GazeChip } from "../../components/ControlChrome.js";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { useWorkbench } from "../../store/workbench.js";
@@ -133,7 +134,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
     const openedSetId = useWorkbench((s) => s.openedSetId);
 
     const [name, setName] = useState("");
-    const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
+    const [renaming, setRenaming] = useState<string | null>(null); // 이름 편집 중인 집합 id — draft 는 InlineRename 이 든다
     const [armedDelete, setArmedDelete] = useState<string | null>(null);
 
     const nothingToSave = v.active.length === 0;
@@ -174,18 +175,14 @@ function SetManager({ pins, onTogglePin, onPick }: {
                 const active = selectedKey === setRefKey(ref);
                 const pinned = pins.includes(f.id);
                 const opened = openedSetId === f.id;
-                const editing = renaming?.id === f.id;
+                const editing = renaming === f.id;
                 const r = v.resolveSet(ref);
                 return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 6px 2px 4px", background: active ? "var(--accent-soft)" : "transparent" }}>
                         {editing ? (
-                            <input value={renaming.draft} autoFocus
-                                onChange={(e) => setRenaming({ id: f.id, draft: e.target.value })}
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter") { renameSet(f.id, renaming.draft); setRenaming(null); }
-                                    if (e.key === "Escape") setRenaming(null);
-                                }}
-                                onBlur={() => { renameSet(f.id, renaming.draft); setRenaming(null); }}
+                            <InlineRename initial={f.name}
+                                onCommit={(nm) => { renameSet(f.id, nm); setRenaming(null); }}
+                                onCancel={() => setRenaming(null)}
                                 style={{ ...textInput, flex: 1, minWidth: 0, fontSize: 11.5, padding: "2px 6px" }} />
                         ) : (
                             <button onClick={() => onPick(ref)}
@@ -208,7 +205,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
                                 title={nothingToSave ? "걸린 필터가 없습니다 — 덮어쓰면 이 집합이 전체와 같아집니다"
                                     : `"${f.name}" 에 지금 조건을 덮어씁니다 — 이 집합 하나만 바뀝니다(부위·이름 유지)`}>덮어쓰기</button>
                         )}
-                        <button onClick={() => setRenaming({ id: f.id, draft: f.name })} style={smallBtn()} title="이름 바꾸기">이름</button>
+                        <button onClick={() => setRenaming(f.id)} style={smallBtn()} title="이름 바꾸기">이름</button>
                         {armedDelete === f.id ? (
                             <button onClick={() => { deleteSet(f.id); setArmedDelete(null); }} style={smallBtn("danger", true)}
                                 title="정말 삭제 — 이 집합을 보고 있던 패널은 작업 깔때기로 돌아갑니다">정말 삭제</button>
