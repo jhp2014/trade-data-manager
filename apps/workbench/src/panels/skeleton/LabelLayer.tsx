@@ -90,13 +90,13 @@ export function LabelLayer(p: LabelLayerProps): JSX.Element {
      * 그려지느냐를 따라가서 그냥 스친 라벨이 "Ctrl+클릭=선택 해제"라고 말했다(선택된 적이 없는데도).
      * 상태 하나로 적으면 그런 어긋남이 안 생긴다.
      */
-    const titleOf = (s: OverlayLine, pinned: boolean, selected: boolean): string => {
+    const titleOf = (s: OverlayLine, pinned: boolean): string => {
         const lead = p.canToggleCandle(s)
             ? `다시 클릭=${p.isCandleOn(s.stockCode) ? "캔들 끄기" : "캔들 켜기"}`
             : "클릭=선택·이동";
         // 테마 모드에서 선이 접힌 라벨만 "올리면 이 골격선" — 짚은 라벨은 이미 선이 나와 있다.
         const theme = themeMode && !pinned ? "올리면 이 골격선(테마는 잠시 접힌다) · " : "";
-        return `${nameOf(s.stockCode)} ${s.date} — ${theme}${lead} · Ctrl+클릭=${selected ? "선택 해제" : "다중선택"} · 우클릭=그룹`;
+        return `${nameOf(s.stockCode)} ${s.date} — ${theme}${lead} · 우클릭=그룹`;
     };
 
     return (
@@ -130,7 +130,7 @@ export function LabelLayer(p: LabelLayerProps): JSX.Element {
                 return (
                     <button key={h.id} onClick={(e) => p.onLabelClick(s, e)} onContextMenu={(e) => p.onLabelContext(s, e)}
                         onMouseEnter={() => p.onHover(s.key)} onMouseLeave={() => p.onHover(null)}
-                        title={titleOf(s, h.pinned, selected)}
+                        title={titleOf(s, h.pinned)}
                         style={{
                             ...chip, ...labelBg, ...pl.style, top,
                             // 짚은/선택된 것만 역할색으로 또렷하게 — 나머지는 이름을 읽히는 게 전부다.

@@ -5,7 +5,7 @@ import { AXIS_IDENTITY, DRAG_ZOOM_RATE, applyGesture, panAxis, zoomAxisAt, type 
 // (0.5 는 이 파일의 클램프 검증용 값 — 실제 기본 하한은 0.05 다. 기본 창 밖을 축소로 볼 수 있어야 한다.)
 const EXTENT = [0.5, 60] as const;
 const ident = { x: AXIS_IDENTITY, y: AXIS_IDENTITY };
-const delta = (over: Partial<{ dk: number; dx: number; dy: number; px: number; py: number; ctrl: boolean }>) =>
+const delta = (over: Partial<{ dk: number; dx: number; dy: number; px: number; py: number; vertical: boolean }>) =>
     ({ dk: 1, dx: 0, dy: 0, px: 0, py: 0, ...over });
 const origin = { x: 0, y: 0 };
 
@@ -54,15 +54,15 @@ describe("applyGesture — 영역별 손짓 규칙", () => {
         expect(invert(r.x, 80)).toBeCloseTo(80); // 커서 x 고정
     });
 
-    it("본문 **Ctrl+휠**은 세로만 확대한다 — 축 스트립까지 커서를 옮기지 않고 %를 당기는 손짓", () => {
-        const r = applyGesture(ident, "body", delta({ dk: 2, px: 80, py: 40, ctrl: true }), origin, EXTENT);
+    it("본문 **Shift+휠**은 세로만 확대한다 — 축 스트립까지 커서를 옮기지 않고 %를 당기는 손짓", () => {
+        const r = applyGesture(ident, "body", delta({ dk: 2, px: 80, py: 40, vertical: true }), origin, EXTENT);
         expect(r.y.k).toBe(2);
         expect(r.x).toEqual(AXIS_IDENTITY);
         expect(invert(r.y, 40)).toBeCloseTo(40); // 커서 y 고정
     });
 
-    it("Ctrl 은 **확대에만** 뜻이 있다 — 드래그(dk=1)는 Ctrl 이 붙어도 그냥 양축 이동", () => {
-        const r = applyGesture(ident, "body", delta({ dx: 12, dy: -7, ctrl: true }), origin, EXTENT);
+    it("Shift 는 **확대에만** 뜻이 있다 — 드래그(dk=1)는 Shift 가 붙어도 그냥 양축 이동", () => {
+        const r = applyGesture(ident, "body", delta({ dx: 12, dy: -7, vertical: true }), origin, EXTENT);
         expect(r.x).toEqual({ k: 1, t: 12 });
         expect(r.y).toEqual({ k: 1, t: -7 });
     });

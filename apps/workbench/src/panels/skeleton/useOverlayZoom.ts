@@ -6,15 +6,15 @@
 //
 // **왜 축별 두 벌인가**(사용자 확정 — 차트식): 골격은 시간(x)과 %(y)의 관심 배율이 다르다 —
 // 기간을 넓게 보며 되돌림 폭만 당겨 보는 일이 잦다. 단일 변환은 이 손짓이 불가능하다. 손짓은 LWC
-// 차트의 것을 그대로 옮긴다: **본문 휠 = 가로만**(커서 중심) · **본문 Ctrl+휠 = 세로만** · 본문 드래그 =
+// 차트의 것을 그대로 옮긴다: **본문 휠 = 가로만**(커서 중심) · **본문 Shift+휠 = 세로만** · 본문 드래그 =
 // 이동 · **y축 스트립 = 세로만 · x축 스트립 = 가로만**(휠이든 드래그든 그 축 확대) ·
 // **축 스트립 더블클릭 = 그 축만 원위치**(전체 원위치 버튼은 은퇴 — OverlaySelectionBar 주석).
 //
-// Ctrl+휠을 세로에 준 건 축 스트립까지 커서를 옮기지 않고 제자리에서 %를 당기기 위해서다(사용자 요청).
-// Ctrl 이 비어 있었기에 가능했다 — 옛 Ctrl+클릭(다중 선택)·Ctrl+드래그(사각 선택)가 은퇴하면서
-// 본문에서 Ctrl 이 뜻하는 바가 없어졌다.
-// ⚠ 트랙패드 핀치도 ctrlKey 붙은 휠로 온다(브라우저 규약) — 핀치가 세로 확대가 된다. 마우스 휠이
-//   주 입력이라 수용한 트레이드오프고, 가로는 핀치 없이 그냥 휠이면 된다.
+// Shift+휠을 세로에 준 건 축 스트립까지 커서를 옮기지 않고 제자리에서 %를 당기기 위해서다(사용자 요청).
+// 처음엔 Ctrl 이었다가 Shift 로 바꿨다(사용자 요청) — Ctrl 은 트랙패드 핀치와 겹치고(브라우저가 핀치를
+// ctrlKey 휠로 보낸다) d3 가 ctrlKey 휠에 ×10 을 먹여 감도 보정이 따로 필요했다. Shift 는 둘 다 없다.
+// ⚠ **Shift+휠은 브라우저가 deltaY 를 deltaX 로 돌려 보낸다**(Windows/Chrome 의 가로 스크롤 규약) —
+//   d3 기본 wheelDelta 는 deltaY 만 읽어 0 이 되므로 wheelDelta 를 직접 준다(아래).
 //
 // d3-zoom 은 **제스처 정규화만** 맡는다: 내부 단일 변환은 쓰지 않고, 이벤트 간 **델타**(배율비·이동량)를
 // 뽑아 시작 지점의 영역(본문/x축/y축)에 따라 두 축 변환에 나눠 싣는다(applyGesture — 순수, 테스트 대상).
@@ -58,13 +58,13 @@ export interface GestureDelta {
     dy: number;
     px: number;
     py: number;
-    /** 이 확대가 Ctrl(또는 트랙패드 핀치)에서 왔나 — 본문에서 축을 가른다. 이동에는 뜻이 없다. */
-    ctrl?: boolean;
+    /** 이 확대가 Shift+휠에서 왔나 — 본문에서 축을 가른다(세로). 이동에는 뜻이 없다. */
+    vertical?: boolean;
 }
 
 /**
  * 델타 하나를 영역 규칙에 따라 두 축 변환에 싣는다 — **손짓 규칙의 전부가 이 함수다**(순수).
- *   · body: 휠(dk≠1) = **가로만**(커서 중심) / **Ctrl+휠 = 세로만**(커서 중심) / 드래그 = 양축 이동
+ *   · body: 휠(dk≠1) = **가로만**(커서 중심) / **Shift+휠 = 세로만**(커서 중심) / 드래그 = 양축 이동
  *   · x 스트립: 휠 = 가로 확대(커서 중심) / 드래그 = 가로 확대(**제스처 시작점** 중심 — 오른쪽으로 당기면 확대)
  *   · y 스트립: 휠 = 세로 확대 / 드래그 = 세로 확대(위로 당기면 확대 — LWC 가격축 손짓)
  * 드래그 확대의 중심이 시작점인 이유: 드래그 중 커서는 계속 움직이므로 커서 중심이면 기준이 흘러다닌다.
@@ -79,7 +79,7 @@ export function applyGesture(
     const zooming = g.dk !== 1;
     if (region === "body") {
         if (!zooming) return { x: panAxis(axes.x, g.dx), y: panAxis(axes.y, g.dy) };
-        return g.ctrl
+        return g.vertical
             ? { x: axes.x, y: zoomAxisAt(axes.y, g.dk, g.py, extent) }
             : { x: zoomAxisAt(axes.x, g.dk, g.px, extent), y: axes.y };
     }
@@ -159,6 +159,13 @@ export function useOverlayZoom(
         const b = d3zoom<SVGSVGElement, unknown>()
             // 내부 배율은 안 쓴다 — 클램프는 축별로 우리가 한다. 좁게 잡으면 내부 k 가 벽에 닿아 손짓을 먹는다.
             .scaleExtent([1e-9, 1e9])
+            // d3 기본 wheelDelta 와 같은 단위 정규화(deltaMode 별 계수)에서 두 가지를 바꾼다:
+            //   · Shift+휠은 deltaY 가 0 이고 deltaX 에 실려 온다 → 그걸 읽는다(세로 확대의 재료).
+            //   · ctrlKey ×10(핀치 가정)은 뺀다 — Ctrl 은 이제 뜻이 없으니 평휠과 같게.
+            .wheelDelta((ev: WheelEvent) => {
+                const d = ev.deltaY !== 0 ? ev.deltaY : ev.shiftKey ? ev.deltaX : 0;
+                return -d * (ev.deltaMode === 1 ? 0.05 : ev.deltaMode ? 1 : 0.002);
+            })
             .on("start", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => {
                 prev = ev.transform;
                 if (silentRef.current) return;
@@ -178,12 +185,8 @@ export function useOverlayZoom(
                 prev = t;
                 if (silentRef.current || !ev.sourceEvent) return;
                 const [px, py] = pointer(ev.sourceEvent as Event, el);
-                // ⚠ d3 의 기본 wheelDelta 는 ctrlKey 휠에 **×10** 을 먹인다(트랙패드 핀치 가정).
-                //   그대로 두면 Ctrl+휠 한 칸이 세로를 열 칸씩 당겨 손짓이 안 잡힌다 — 지수를 되돌려
-                //   평휠과 같은 감도로 맞춘다(dk^(1/10)).
-                const ctrl = (ev.sourceEvent as { ctrlKey?: boolean }).ctrlKey === true;
-                const k = ctrl && dk > 0 ? Math.pow(dk, 1 / 10) : dk;
-                setAxes((a) => applyGesture(a, region, { dk: k, dx, dy, px, py, ctrl }, startPos, extent));
+                const vertical = (ev.sourceEvent as { shiftKey?: boolean }).shiftKey === true;
+                setAxes((a) => applyGesture(a, region, { dk, dx, dy, px, py, vertical }, startPos, extent));
             })
             .on("end", (ev: D3ZoomEvent<SVGSVGElement, unknown>) => {
                 prev = ev.transform;

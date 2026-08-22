@@ -1,6 +1,11 @@
 // 떠 있는 UI(팝오버·컨텍스트 메뉴)의 해제 규칙 한 벌 — 바깥 mousedown + Esc.
 // 예전엔 팝오버마다 이 useEffect 를 각자 재현했고, 그 바람에 어떤 메뉴는 Esc 로 닫히고
 // 어떤 메뉴는 안 닫히는 불일치가 있었다. 규칙은 여기 하나.
+//
+// **mousedown 은 캡처 단계로 듣는다**(겪은 버그): d3-zoom(골격 본문)은 stopImmediatePropagation,
+// 차트·보드·시트의 여러 요소는 stopPropagation 으로 mousedown 을 삼킨다. 버블로 들으면 그런 영역을
+// 눌렀을 때 document 까지 안 올라와 팝오버가 안 닫혔다. 캡처는 타깃의 어떤 핸들러보다 먼저 돌아
+// 누가 삼키든 상관없다 — "바깥을 누르면 닫힌다"가 영역마다 갈리지 않게 하는 근본 자리.
 import { useEffect, useRef, type RefObject } from "react";
 
 /**
@@ -23,11 +28,11 @@ export function useDismiss(ref: RefObject<HTMLElement | null>, onClose: () => vo
         const onKey = (e: KeyboardEvent): void => {
             if (e.key === "Escape") closeRef.current();
         };
-        const id = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+        const id = setTimeout(() => document.addEventListener("mousedown", onDown, true), 0);
         document.addEventListener("keydown", onKey);
         return () => {
             clearTimeout(id);
-            document.removeEventListener("mousedown", onDown);
+            document.removeEventListener("mousedown", onDown, true);
             document.removeEventListener("keydown", onKey);
         };
     }, [ref, enabled]);

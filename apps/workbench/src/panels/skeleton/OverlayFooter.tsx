@@ -35,7 +35,7 @@ export function OverlayFooter({ grain, groupNames, locked, themeMode, themeLineC
                     ·
                 </span>
             )}
-            {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · Ctrl+클릭/드래그 = 다중선택 · 우클릭 = 그룹 · 점 클릭 = 값 붙잡기
+            {isDaily ? "일봉 · 세로 = 앵커 대비 %" : "분봉·타점 정규화(선 1 = 타점 1 · 원점 이후 점선=미래) · 세로 = 전일 종가 대비 %p 차이 · 괄호 = 절대값(시각·전일比)"} · 휠 = 가로 확대 · Shift+휠 = 세로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · 우클릭 = 그룹 · 점 클릭 = 값 붙잡기
             {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
             <span style={{ color: "var(--text-tertiary)" }}>
                 {isDaily ? " · 선택된 라벨 재클릭 = 캔들 · 축 더블클릭 = 그 축 원위치" : " · 선 클릭 = 캔들 · T = 테마 · 축 더블클릭 = 그 축 원위치"}

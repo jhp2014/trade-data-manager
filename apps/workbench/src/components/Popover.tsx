@@ -44,10 +44,11 @@ export function Popover({
         const onKey = (e: KeyboardEvent): void => {
             if (e.key === "Escape") setOpen(false);
         };
-        document.addEventListener("mousedown", onDown);
+        // 캡처 단계 — 사유는 useDismiss 와 같다(mousedown 을 삼키는 영역에서도 닫히게).
+        document.addEventListener("mousedown", onDown, true);
         document.addEventListener("keydown", onKey);
         return () => {
-            document.removeEventListener("mousedown", onDown);
+            document.removeEventListener("mousedown", onDown, true);
             document.removeEventListener("keydown", onKey);
         };
     }, [open]);
