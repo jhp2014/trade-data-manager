@@ -87,7 +87,12 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const minuteLines = lines.resolvedLines;
 
     // ── 봉 우클릭 메뉴 — 선 긋기(시장×값)와 무시 캔들 토글이 한자리에. 선 근처 우클릭은 삭제 항목만.
-    const [candleMenu, setCandleMenu] = useState<{ x: number; y: number; candle?: { date: string; time?: string }; nearLine?: RenderLine } | null>(null);
+    // 메뉴는 열린 차트(code·viewDate)의 것 — useDismiss 는 mousedown/Esc 만 들어, 메뉴를 둔 채 키보드로 종목·날짜를
+    // 옮기면 옛 봉 날짜로 새 차트에 앵커를 쓰는 사고가 났다. 시선이 바뀌면 렌더에서 접는다(effect 경합 없음).
+    const [rawMenu, setCandleMenu] = useState<{ chart: { code: string; date: string }; x: number; y: number; candle?: { date: string; time?: string }; nearLine?: RenderLine } | null>(null);
+    const candleMenu = rawMenu && rawMenu.chart.code === code && rawMenu.chart.date === viewDate ? rawMenu : null;
+    const openMenu = (at: { x: number; y: number }, rest: { candle?: { date: string; time?: string }; nearLine?: RenderLine }): void =>
+        setCandleMenu({ chart: { code, date: viewDate }, ...at, ...rest });
     const menuBars = useMemo((): { un: MenuBar | null; krx: MenuBar | null } | undefined => {
         const c = candleMenu?.candle;
         if (!c) return undefined;
@@ -181,9 +186,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     zoom={chartZoom != null}
                                     zoomBars={cs.dailyZoomBars}
                                     zoomOutBars={cs.dailyZoomOutBars}
-                                    onRightClick={(d, at) => setCandleMenu({ ...at, candle: { date: d } })}
+                                    onRightClick={(d, at) => openMenu(at, { candle: { date: d } })}
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
-                                    onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
+                                    onLineContext={(l, at) => openMenu(at, { nearLine: l })}
                                     onCandleClick={pinMinute ? undefined : (d) => setSearchDate(d === anchorDate ? null : d)}
                                     searchDate={showLine && drifted ? viewDate : undefined}
                                     pctBase={pctBase}
@@ -210,9 +215,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}
                                     onMovePoint={(t) => setTime(t)}
-                                    onRightClick={(a, at) => setCandleMenu({ ...at, candle: { date: a.date, time: a.time } })}
+                                    onRightClick={(a, at) => openMenu(at, { candle: { date: a.date, time: a.time } })}
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
-                                    onLineContext={(l, at) => setCandleMenu({ ...at, nearLine: l })}
+                                    onLineContext={(l, at) => openMenu(at, { nearLine: l })}
                                     groupsOfTime={(t) => groupsOf({ stockCode: code, date: viewDate, time: t })}
                                     skeleton={minuteSkeleton.points}
                                     showSkeleton={showSkeleton}
