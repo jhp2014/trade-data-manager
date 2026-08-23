@@ -18,7 +18,7 @@
 // **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
 import type { Grain } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
-import { NO_TAGS, isGroupExprEmpty, parseGroupExpr } from "../rank/groupFilter.js";
+import { isGroupExprEmpty, noneScope, parseGroupExpr } from "../rank/groupFilter.js";
 
 // 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
 // 필터 모듈들은 stage 만 본다(도메인 경로가 바뀌어도 한 줄).
@@ -108,8 +108,9 @@ function finest(grains: Iterable<Grain | undefined>): Grain | undefined {
  * 이 술어를 판정하려면 어느 알갱이까지 내려가야 하나. **모르면 모른다고 한다**(undefined).
  *   · 날짜 = 하루 · 시간 = 타점(시각 없이는 판정 자체가 불가)
  *   · 축 = 그 축의 scope. 사전에 없으면 모름 — 로딩 중인지 지워진 건지는 여기서 알 수 없다.
- *   · 그룹 = 참조 그룹 중 가장 가는 것. "그룹 없음"(NO_TAGS)은 실제 그룹이 아니라 알갱이를 안 정한다 —
- *     그것만 있으면 하루로 남고, 옆의 다른 리터럴이 알갱이를 말하게 둔다.
+ *   · 그룹 = 리터럴 중 가장 가는 것. "…그룹 없음"도 **제 층위를 말한다**(리터럴에 실려 있다) —
+ *     한때 층위 없는 `@none` 하나뿐이라 "없음"만 든 필터가 늘 하루로 접혔고, 타점 칸에서 만들어도
+ *     다시 열면 하루 칸에 서 있었다. 층위를 실으면서 그 자리도 같이 닫혔다.
  */
 export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | undefined {
     switch (p.kind) {
@@ -117,13 +118,17 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "time": return "point";
         case "axisBand":
         case "axisValue": return look.axisScope(p.axisId);
-        case "group": return finest(realGroupIds(p.expr).map(look.groupScope));
+        case "group": return finest(literalIds(p.expr).map((id) => literalScope(id, look)));
     }
 }
 
-/** 식 안의 **실제** 그룹 id — NO_TAGS 는 그룹이 아니라 "0개"라는 조건이라 층위를 안 정한다. */
-const realGroupIds = (expr: GroupExpr): string[] =>
-    expr.groups.flatMap((g) => g.literals.map((l) => l.groupId)).filter((id) => id !== NO_TAGS);
+/** 식 안의 리터럴 id 전부(없음 리터럴 포함 — 그것도 층위를 말한다). */
+const literalIds = (expr: GroupExpr): string[] =>
+    expr.groups.flatMap((g) => g.literals.map((l) => l.groupId));
+
+/** 리터럴 하나의 층위 — "없음"은 제가 들고 있고, 실제 그룹은 사전이 답한다(없는 id = 지워진 그룹). */
+const literalScope = (groupId: string, look: GrainLookup): Grain | undefined =>
+    noneScope(groupId) ?? look.groupScope(groupId);
 
 /** 사전이 로드된 뒤에도 알갱이를 모르는 술어 = **죽은 참조**(지워진 그룹·축). 화면이 이걸 표시해야 한다. */
 export function isPredicateDead(p: FilterPredicate, look: GrainLookup): boolean {
@@ -220,14 +225,13 @@ const sameFamily = (a: PredicateKind, b: PredicateKind): boolean =>
 const isAxisKind = (k: PredicateKind): boolean => k === "axisBand" || k === "axisValue";
 
 /**
- * 이 그룹을 그룹 술어에 더해도 되나 — 식 안 그룹들과 **같은 scope** 여야 한다.
- * "그룹 없음"(NO_TAGS)은 층위를 안 정하므로 언제나 허용된다.
+ * 이 리터럴을 그룹 술어에 더해도 되나 — 식 안 리터럴들과 **같은 층위** 여야 한다.
+ * "…그룹 없음"도 층위를 말하므로 같은 규칙을 받는다(하루 없음과 타점 그룹을 한 필터에 섞지 않는다).
  */
 export function canAddGroupLiteral(expr: GroupExpr, groupId: string, look: GrainLookup): boolean {
-    if (groupId === NO_TAGS) return true;
-    const theirs = look.groupScope(groupId);
+    const theirs = literalScope(groupId, look);
     if (theirs === undefined) return true; // 모름은 막지 않는다
-    if (realGroupIds(expr).length === 0) return true; // 아직 층위 없음(빈 식·NO_TAGS 뿐)
+    if (literalIds(expr).length === 0) return true; // 빈 식 — 아직 층위 없음
     const mine = predicateGrain({ kind: "group", expr }, look);
     return mine === undefined || mine === theirs;
 }

@@ -3,7 +3,7 @@
 // 죽은 참조를 이름 없이 id 로 흘리면(또는 조용히 건너뛰면) 화면에는 멀쩡한 조건처럼 보인다.
 // 그래서 이름을 못 찾은 자리는 `(지워짐)` 으로 **눈에 띄게** 남긴다 — 판정에서 그게 미배치를 만들고 있으니
 // 숫자와 화면이 같은 이야기를 해야 한다.
-import { NO_TAGS, type GroupExpr } from "../rank/groupFilter.js";
+import { noneLabelOf, noneScope, type GroupExpr } from "../rank/groupFilter.js";
 import { shortDate } from "../../lib/date.js";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 
@@ -13,7 +13,6 @@ export interface LabelLookup {
 }
 
 const GONE = "(지워짐)";
-const NONE_LABEL = "그룹 없음";
 
 /** DNF 를 한 줄로: 절끼리 `|`, 절 안은 `&`, 부정은 `!`. */
 export function groupExprLabel(expr: GroupExpr, look: LabelLookup): string {
@@ -21,7 +20,8 @@ export function groupExprLabel(expr: GroupExpr, look: LabelLookup): string {
         .map((clause) =>
             clause.literals
                 .map((l) => {
-                    const name = l.groupId === NO_TAGS ? NONE_LABEL : (look.groupName(l.groupId) ?? GONE);
+                    const none = noneScope(l.groupId);
+                    const name = none !== undefined ? noneLabelOf(none) : (look.groupName(l.groupId) ?? GONE);
                     return `${l.neg ? "!" : ""}${name}`;
                 })
                 .join(" & "),

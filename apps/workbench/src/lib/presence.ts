@@ -10,6 +10,7 @@
 // 옛 서버 union(GET /candidate-days)은 이 파생이 흡수하며 은퇴 — 정의가 여기 한 곳이 됐다.
 import { ANCHOR_PARAMS, BASELINE_PARAM, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM } from "@trade-data-manager/market/domain";
 import type { ChartAnchor, DailyCommentListItem, GroupMembership, ReviewPoint } from "@trade-data-manager/wire";
+import { isDayMembership } from "./groupIndex.js";
 import { chartKeyOf } from "./pointKey.js";
 import { ACTIVE, GROUP_PLAIN, IGNORED_CANDLE, PRICE_LINE, SKELETON } from "../styles/palette.js";
 
@@ -21,8 +22,14 @@ export interface DayPresence {
     marks: ReadonlyMap<string, number>;
     /** 복기 타점 수. */
     points: number;
-    /** 이 날에 걸린 그룹 이름들(하루 직접 ∪ 타점 직접, dedupe) — "그룹만 담은 날"도 여기로 잡힌다. */
-    groups: readonly string[];
+    /**
+     * 이 날의 그룹 이름들 — **층위로 나눠 든다**(하루 소속 / 타점 소속, 각각 dedupe·이름순).
+     * 합쳐 두면 "그룹 없는 날"이 층위를 못 가린다: 일봉에서 하루 그룹을 배정한 날은 타점을 하나도
+     * 분류 안 했어도 "그룹 있음"이 되어, 분봉 작업 대상을 고르는 질문이 통째로 무너진다
+     * (필터 깔때기의 "…그룹 없음" 리터럴이 층위를 갖게 된 것과 같은 이유).
+     */
+    dayGroups: readonly string[];
+    pointGroups: readonly string[];
     comment: boolean;
 }
 
@@ -31,11 +38,16 @@ export interface DayPresence {
  * 앵커 4종은 ANCHOR_PARAMS 에서 파생 — param 이 늘면 배지·칩이 자동으로 따라온다.
  */
 export interface PresenceKindDef {
-    key: string; // 앵커는 param key, 나머지는 point/group/comment
+    key: string; // 앵커는 param key, 나머지는 point/group-day/group-point/comment
     name: string;
     /** 배지 색 — palette 의 같은 개념 색을 재사용(차트의 선·골격·무시 마커와 같은 색이라 눈이 잇는다). */
     color: string;
     countOf: (p: DayPresence) => number;
+    /**
+     * 개수 말고 **이름들**을 가진 종류(그룹 둘) — 배지가 hover 카드로 보여준다.
+     * 종류가 아니라 레지스트리가 이걸 말해야 배지 코드에 "그룹이면"이라는 분기가 안 남는다.
+     */
+    namesOf?: (p: DayPresence) => readonly string[];
 }
 
 // 배지 색 — 차트가 그 종류를 그리는 색과 같게 잡는다(선=청록, 골격 둘=황록, 무시=회색).
@@ -55,9 +67,21 @@ export const PRESENCE_KINDS: readonly PresenceKindDef[] = [
         countOf: (d: DayPresence) => d.marks.get(p.key) ?? 0,
     })),
     { key: "point", name: "타점", color: ACTIVE, countOf: (d) => d.points },
-    { key: "group", name: "그룹", color: GROUP_PLAIN, countOf: (d) => d.groups.length },
+    // 그룹은 **두 종류**다 — 하루에 건 것과 타점에 건 것은 다른 작업이라 한 칩으로 물으면 답이 섞인다.
+    { key: "group-day", name: "하루 그룹", color: GROUP_PLAIN, countOf: (d) => d.dayGroups.length, namesOf: (d) => d.dayGroups },
+    { key: "group-point", name: "타점 그룹", color: GROUP_PLAIN, countOf: (d) => d.pointGroups.length, namesOf: (d) => d.pointGroups },
     { key: "comment", name: "코멘트", color: "var(--text-secondary)", countOf: (d) => (d.comment ? 1 : 0) },
 ];
+
+const EMPTY_MARKS: ReadonlyMap<string, number> = new Map();
+const EMPTY_NAMES: readonly string[] = [];
+
+/**
+ * 흔적이 하나도 없는 날 — 지도에 없는 날을 필터에 걸 때의 값("!골격"은 통과, "골격"은 탈락).
+ * 여기 있는 이유: 종류가 늘 때 이 빈 값도 같이 늘어야 하는데, 소비자가 제 손으로 만들면 한 곳이 빠진다.
+ */
+export const emptyPresence = (stockCode: string, date: string): DayPresence =>
+    ({ stockCode, date, marks: EMPTY_MARKS, points: 0, dayGroups: EMPTY_NAMES, pointGroups: EMPTY_NAMES, comment: false });
 
 /** 테이블 4개 → chartKey("code|date") → DayPresence. 재료 어느 쪽에든 흔적이 있으면 항목이 생긴다. */
 export function buildPresenceIndex(
@@ -66,12 +90,12 @@ export function buildPresenceIndex(
     memberships: readonly GroupMembership[],
     comments: readonly Pick<DailyCommentListItem, "stockCode" | "date">[],
 ): Map<string, DayPresence> {
-    const idx = new Map<string, { stockCode: string; date: string; marks: Map<string, number>; points: number; groups: Set<string>; comment: boolean }>();
+    const idx = new Map<string, { stockCode: string; date: string; marks: Map<string, number>; points: number; dayGroups: Set<string>; pointGroups: Set<string>; comment: boolean }>();
     const ensure = (stockCode: string, date: string) => {
         const k = chartKeyOf(stockCode, date);
         let e = idx.get(k);
         if (!e) {
-            e = { stockCode, date, marks: new Map(), points: 0, groups: new Set(), comment: false };
+            e = { stockCode, date, marks: new Map(), points: 0, dayGroups: new Set(), pointGroups: new Set(), comment: false };
             idx.set(k, e);
         }
         return e;
@@ -82,16 +106,18 @@ export function buildPresenceIndex(
         e.marks.set(a.param, (e.marks.get(a.param) ?? 0) + 1);
     }
     for (const p of points) ensure(p.stockCode, p.date).points += 1;
-    // 멤버십 — 하루 소속·타점 소속 둘 다 그 날의 그룹 흔적으로 합산(dedupe). 필터 "그룹 있음"이
-    // 타점에만 붙인 그룹도 잡아야 "후보로 담아놓고 아직 안 본 날" 질문이 성립한다.
+    // 멤버십 — **층위를 유지한 채** 그 날의 흔적으로 담는다(시각 유무가 곧 층위). 둘 다 그 날의
+    // 흔적이라 모수에는 같이 오르지만("타점에만 붙인 그룹"도 흔적이다), 무엇이 있는지는 갈라 센다.
     for (const m of memberships) {
         const e = ensure(m.stockCode, m.date);
-        for (const name of m.groupNames) e.groups.add(name);
+        const bucket = isDayMembership(m) ? e.dayGroups : e.pointGroups;
+        for (const name of m.groupNames) bucket.add(name);
     }
     for (const c of comments) ensure(c.stockCode, c.date).comment = true;
 
+    const sorted = (s: Set<string>): string[] => [...s].sort((a, b) => a.localeCompare(b));
     const out = new Map<string, DayPresence>();
-    for (const [k, e] of idx) out.set(k, { ...e, groups: [...e.groups].sort((a, b) => a.localeCompare(b)) });
+    for (const [k, e] of idx) out.set(k, { ...e, dayGroups: sorted(e.dayGroups), pointGroups: sorted(e.pointGroups) });
     return out;
 }
 
@@ -104,7 +130,9 @@ export function buildPresenceIndex(
 export function candidateDaysOf(index: ReadonlyMap<string, DayPresence>): { stockCode: string; date: string }[] {
     const out: { stockCode: string; date: string }[] = [];
     for (const d of index.values()) {
-        if (d.marks.size > 0 || d.points > 0 || d.groups.length > 0) out.push({ stockCode: d.stockCode, date: d.date });
+        if (d.marks.size > 0 || d.points > 0 || d.dayGroups.length > 0 || d.pointGroups.length > 0) {
+            out.push({ stockCode: d.stockCode, date: d.date });
+        }
     }
     return out.sort((a, b) => b.date.localeCompare(a.date) || a.stockCode.localeCompare(b.stockCode));
 }
@@ -195,8 +223,13 @@ export function removeClause(dnf: PresenceDnf, ci: number): PresenceDnf {
     return dnf.filter((_, i) => i !== ci);
 }
 
+/** 레지스트리에 있는 종류 키 — 영속 복원이 모르는 키를 버리는 기준. */
+const KNOWN_KINDS = new Set(PRESENCE_KINDS.map((k) => k.key));
+
 /**
- * 영속 복원 — 아는 상태값만 살린다(깨진 저장값이 "전부 숨김"으로 오독되면 안 된다).
+ * 영속 복원 — 아는 **종류·상태값**만 살린다(깨진 저장값이 "전부 숨김"으로 오독되면 안 된다).
+ * 모르는 키를 버리는 이유: 평가(matchesPresence)는 레지스트리를 돌기 때문에 사라진 종류의 칩은
+ * 화면에도 안 서고 결과도 안 바꾸는 유령으로 남는다. 옛 층위 없는 `group` 칩이 여기서 정리된다.
  * 옛 형식(절 하나짜리 Record)은 절 목록 [절] 로 감싸 무손실 승계한다 — usePersistedState 는 다시
  * 저장할 때까지 옛 값을 그대로 두므로 이 변환은 일회성 이관이 아니라 읽기 규칙이다(setRef 선례).
  */
@@ -204,7 +237,7 @@ export function parsePresenceDnf(raw: unknown): PresenceDnf | null {
     const parseClause = (o: unknown): PresenceFilter | null => {
         if (typeof o !== "object" || o === null || Array.isArray(o)) return null;
         const out: Record<string, TriState> = {};
-        for (const [k, v] of Object.entries(o)) if (v === "has" || v === "not") out[k] = v;
+        for (const [k, v] of Object.entries(o)) if (KNOWN_KINDS.has(k) && (v === "has" || v === "not")) out[k] = v;
         return out;
     };
     if (Array.isArray(raw)) {

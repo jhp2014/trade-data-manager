@@ -32,10 +32,17 @@ const ICONS: Record<string, JSX.Element> = {
     // 분봉 = **잘게 꺾인 경로** — 장중 경로라는 뜻이 실루엣에 있다. 파선(옛)은 일봉과 구분이 약했다(사용자 확정).
     "skeleton-minute": <polyline points="1,8.5 2.8,5.5 4.4,7.8 6,3 7.6,6.5 9.2,4.2 11,7.2" strokeWidth="1.3" />,
     point: <polygon points="2,2.8 10,2.8 6,10" fill="currentColor" stroke="none" />, // 차트의 타점 ▼ 와 같은 모양
-    group: ( // 담긴 것들(층)
+    // 그룹 둘 — **같은 색**이라(둘 다 그룹이다) 실루엣이 층위를 가른다.
+    "group-day": ( // 담긴 것들(층) — 하루째 담는다
         <>
             <rect x="1.4" y="1.9" width="9.2" height="3.2" rx="0.9" />
             <rect x="1.4" y="6.9" width="9.2" height="3.2" rx="0.9" />
+        </>
+    ),
+    "group-point": ( // 통 하나 + 그 위의 ▼ — 담기는 게 타점이라는 뜻이 그림에 있다
+        <>
+            <polygon points="3.6,1.2 8.4,1.2 6,4.6" fill="currentColor" stroke="none" />
+            <rect x="1.4" y="6.5" width="9.2" height="3.6" rx="0.9" />
         </>
     ),
     comment: ( // 말풍선
@@ -88,20 +95,22 @@ export function PresenceBadges({ presence, mono = false, style }: {
     return (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 10, lineHeight: 1, whiteSpace: "nowrap", ...style }}>
             {active.map(({ kind, n }) => {
+                // 이름을 가진 종류(그룹 둘)는 색 카드가 대신 말한다 — 어느 그룹인지가 색으로 바로 들어와야
+                // 한다(사용자 확정). 무엇이 그런 종류인지는 **레지스트리가** 안다(namesOf).
+                const names = kind.namesOf?.(presence);
                 const icon = (
                     <span
                         key={kind.key}
                         data-presence-kind={kind.key}
                         aria-label={n > 1 ? `${kind.name} ${n}` : kind.name}
-                        title={kind.key === "group" ? undefined : tipOf(kind, n)}
+                        title={names ? undefined : tipOf(kind, n)}
                         style={{ display: "inline-flex", alignItems: "center", color: mono ? "#fff" : kind.color }}
                     >
                         <PresenceIcon kindKey={kind.key} name={kind.name} />
                     </span>
                 );
-                // 그룹만 색 카드 — 어느 그룹인지가 색으로 바로 들어와야 한다(사용자 확정).
-                return kind.key === "group"
-                    ? <HoverCard key={kind.key} card={<GroupNamesCard names={presence.groups} />}>{icon}</HoverCard>
+                return names
+                    ? <HoverCard key={kind.key} card={<GroupNamesCard names={names} />}>{icon}</HoverCard>
                     : icon;
             })}
         </span>

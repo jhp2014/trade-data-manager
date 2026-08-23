@@ -44,6 +44,7 @@ const savedSets = new Map<string, SavedSet>([
 
 const evalLook: EvalLookup = {
     groupNamesOf: appliedGroupNamesOf,
+    anyGroupAt: (i, scope) => (scope === "day" ? true : i.time === undefined ? undefined : true),
     hasGroup: (id) => groupScopes.has(id),
     orderKeyOf: () => undefined,
     bandBoundOrderKey: () => undefined,

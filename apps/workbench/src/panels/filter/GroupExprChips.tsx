@@ -9,16 +9,15 @@ import { GroupToken, GroupTokenButton } from "../../components/GroupChips.js";
 import { GroupPathLabel } from "../../components/GroupPathLabel.js";
 import type { GroupsView } from "../../lib/useGroups.js";
 import { GROUP_PLAIN, groupColor } from "../../styles/palette.js";
-import { NO_TAGS, type GroupExpr } from "../rank/groupFilter.js";
+import { isNoneLiteral, noneLabelOf, noneScope, type GroupExpr } from "../rank/groupFilter.js";
 
-export const NONE_LABEL = "그룹 없음";
 /** 지워진 그룹 — 조용히 건너뛰면 화면에는 멀쩡한 조건처럼 보인다(판정에서는 미배치를 만들고 있는데). */
 export const GONE_LABEL = "(지워짐)";
 
 /** 칩 하나가 이름을 얻는 방법 — 지워진 그룹까지 화면에 남기려면 조회가 실패해도 뭔가는 돌려줘야 한다. */
 export interface GroupNaming {
     nameOf: (groupId: string) => string;
-    /** 조상 이름들(먼 조상이 앞). "그룹 없음"은 그룹이 아니라 조상도 없다. */
+    /** 조상 이름들(먼 조상이 앞). "…그룹 없음"은 그룹이 아니라 조상도 없다. */
     ancestorsOf: (groupId: string) => string[];
     /** 툴팁용 전체 경로. */
     pathOf: (groupId: string) => string;
@@ -29,10 +28,14 @@ export interface GroupNaming {
  * 여기서 또 부르면 같은 인덱스(멤버십 수천 건)가 한 벌 더 만들어진다.
  */
 export function namingOf(gv: Pick<GroupsView, "groupByName" | "ancestorsOf" | "pathLabel">): GroupNaming {
+    const noneName = (id: string): string | undefined => {
+        const scope = noneScope(id);
+        return scope === undefined ? undefined : noneLabelOf(scope);
+    };
     return {
-        nameOf: (id) => (id === NO_TAGS ? NONE_LABEL : (gv.groupByName.get(id)?.name ?? GONE_LABEL)),
-        ancestorsOf: (id) => (id === NO_TAGS ? [] : gv.ancestorsOf(id).map((g) => g.name)),
-        pathOf: (id) => (id === NO_TAGS ? NONE_LABEL : gv.pathLabel(id, GONE_LABEL)),
+        nameOf: (id) => noneName(id) ?? gv.groupByName.get(id)?.name ?? GONE_LABEL,
+        ancestorsOf: (id) => (isNoneLiteral(id) ? [] : gv.ancestorsOf(id).map((g) => g.name)),
+        pathOf: (id) => noneName(id) ?? gv.pathLabel(id, GONE_LABEL),
     };
 }
 
@@ -55,11 +58,11 @@ export function GroupExprChips({ expr, naming, empty, onToggleNeg, onRemove }: {
                 <span key={gi} style={{ display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
                     {gi > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>|</span>}
                     {clause.literals.map((l, li) => {
-                        const none = l.groupId === NO_TAGS;
+                        const none = isNoneLiteral(l.groupId);
                         const name = naming.nameOf(l.groupId);
                         const color = none ? GROUP_PLAIN : groupColor(name);
                         return (
-                            <GroupToken key={li} color={color} hollow={l.neg} title={none ? NONE_LABEL : naming.pathOf(l.groupId)}>
+                            <GroupToken key={li} color={color} hollow={l.neg} title={naming.pathOf(l.groupId)}>
                                 {l.neg && <span style={{ color, fontWeight: 700, fontSize: 10.5 }}>!</span>}
                                 {onToggleNeg ? (
                                     <button onClick={() => onToggleNeg(gi, li)} title={l.neg ? "부정 해제" : "부정으로 — 이 그룹이 아닌 것"}

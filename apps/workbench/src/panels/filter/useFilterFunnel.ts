@@ -115,6 +115,8 @@ export function useFilterFunnel(): FunnelView {
         () => ({
             // 적용 집합(직접 ∪ 하루 상속 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
             groupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
+            // "…그룹 없음"은 **그 층위만** 센다(하루 상속 제외) — 위의 합집합으로는 못 묻는 것.
+            anyGroupAt: (i, scope) => gv.anyGroupAt({ stockCode: i.stockCode, date: i.date, time: i.time }, scope),
             hasGroup: (id) => gv.groupByName.has(id),
             orderKeyOf: (axisId, i) => {
                 const idx = placements.get(axisId);

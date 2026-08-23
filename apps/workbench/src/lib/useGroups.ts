@@ -8,6 +8,8 @@
 //     parentName 에서 매번 유도 — 저장하면 부모 변경마다 멤버십 마이그레이션이 필요해진다).
 //   · groupNamesOf/groupsOf(표시) = 타점 직접 ∪ 하루 상속 (조상은 pathLabel 툴팁이 이미 보여준다)
 //   · appliedGroupNamesOf(필터 판정) = 직접 ∪ 하루 상속 ∪ **조상**
+//   · anyGroupAt(없음 판정)     = **그 층위만** — "타점 그룹 없음"은 하루 상속을 안 센다(안 그러면
+//     하루 그룹 하나가 미분류 타점을 통째로 가린다).
 //   · has/toggle(편집)          = **직접만** — 상속된 그룹을 메뉴에서 "빼기"하면 no-op 이 되는
 //     혼란을 막는다(층위 상속은 차트 쪽에서, 계층 상속은 하위 그룹에서 뺀다).
 //
@@ -16,7 +18,7 @@
 // → 캐시를 먼저 고치고, **마지막 요청이 끝났을 때만** 서버와 맞춘다(비행 중인 게 남았으면 건너뜀).
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Group, GroupItemRef, GroupMembership } from "../api/groups.js";
+import type { Group, GroupItemRef, GroupMembership, GroupScope } from "../api/groups.js";
 import { attachGroup, detachGroup } from "../api/groups.js";
 import { groupsQuery, groupMembershipsQuery } from "../api/queries.js";
 import { applyGroupToggle, buildGroupIndex, buildChartGroupIndex, countByGroup } from "./groupIndex.js";
@@ -57,6 +59,15 @@ export interface GroupsView {
      * 팝오버가 흐린 행("하위 ○○ 경유")을 그리고 토글을 막는 근거. 직접 소속이거나 무관하면 null.
      */
     inheritedViaOf: (ref: GroupItemRef, groupName: string) => Group | null;
+    /**
+     * 이 항목에 **그 층위** 소속이 하나라도 있나 — "…그룹 없음" 필터 판정의 유일한 출처.
+     *   · day   = 그 차트의 하루 소속(타점 항목이면 제 날짜의 차트를 본다)
+     *   · point = 타점 **직접** 소속 — 하루 상속은 안 센다. 그게 층위별로 묻는 이유 전부다:
+     *     합집합에 0개를 물으면 하루 그룹 하나가 "아직 분류 안 한 타점"을 통째로 가린다.
+     * 시각 없는 항목에 point 를 물으면 **undefined**(판단 불가) — 타점이 아직 없는 하루라 답이 없다.
+     * 조상은 볼 필요가 없다: 조상 소속은 직접 소속이 있을 때만 생기므로 "0개냐"를 안 바꾼다.
+     */
+    anyGroupAt: (ref: GroupItemRef, scope: GroupScope) => boolean | undefined;
     /** 직접 소속 여부(편집 판정 — 상속은 안 본다). */
     has: (point: PointRef, groupName: string) => boolean;
     /** 이 그룹의 사용 건수(두 층위 합산 — 삭제 확인·팔레트 빈도). */
@@ -128,6 +139,10 @@ export function useGroupsValue(): GroupsView {
             groupNamesOf: idsOf,
             appliedGroupNamesOf: (ref) => expandWithAncestors(baseOf(ref), groupByName),
             inheritedViaOf: (ref, groupName) => inheritanceSources(baseOf(ref), groupByName).get(groupName) ?? null,
+            anyGroupAt: (ref, scope) =>
+                scope === "day"
+                    ? chartOf(ref).length > 0
+                    : ref.time === undefined ? undefined : directOf(ref as PointRef).length > 0,
             has: (p, groupName) => directOf(p).includes(groupName),
             countOf: (groupName) => counts.get(groupName) ?? 0,
             toggle: (p, groupName, on) =>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { evalGroupExpr3, evalPredicate3, evalStage, toFunnelStages, type EvalLookup } from "../evaluate.js";
-import { NO_TAGS, type GroupExpr } from "../../rank/groupFilter.js";
+import { NONE_DAY, NONE_POINT, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
 
@@ -10,6 +10,7 @@ const dayItem: FunnelItem = { stockCode: "000880", date: "2025-07-01" };
 /** 기본 재료 — g1·g2 는 살아있는 그룹, a1 은 살아있는 축. 그 밖은 없는 것. */
 const base: EvalLookup = {
     groupNamesOf: () => ["g1"],
+    anyGroupAt: (i, scope) => (scope === "day" ? true : i.time === undefined ? undefined : true),
     hasGroup: (id) => id === "g1" || id === "g2",
     orderKeyOf: (axisId) => (axisId === "a1" ? 50 : undefined),
     bandBoundOrderKey: (axisId, slotId) => (axisId === "a1" ? ({ lo: 10, hi: 90 } as Record<string, number>)[slotId] : undefined),
@@ -38,10 +39,28 @@ describe("evalGroupExpr3 — DNF 3치", () => {
         expect(evalGroupExpr3(lit("없는그룹", true), item, look())).toBeUndefined();
     });
 
-    it("'그룹 없음'은 개수 조건이라 사전을 안 본다", () => {
-        expect(evalGroupExpr3(lit(NO_TAGS), item, look({ groupNamesOf: () => [] }))).toBe(true);
-        expect(evalGroupExpr3(lit(NO_TAGS), item, look())).toBe(false);
-        expect(evalGroupExpr3(lit(NO_TAGS, true), item, look())).toBe(true);
+    it("'…그룹 없음'은 개수 조건이라 사전을 안 본다", () => {
+        const 없음 = look({ anyGroupAt: () => false });
+        expect(evalGroupExpr3(lit(NONE_POINT), item, 없음)).toBe(true);
+        expect(evalGroupExpr3(lit(NONE_POINT), item, look())).toBe(false);
+        expect(evalGroupExpr3(lit(NONE_POINT, true), item, look())).toBe(true);
+    });
+
+    it("⚠ '타점 그룹 없음'은 **그 층위만** 센다 — 하루 그룹이 붙어 있어도 타점이 비었으면 참", () => {
+        // 이게 이 리터럴에 층위를 실은 이유 전부다: 합집합(groupNamesOf)에 0개를 물으면 일봉에서
+        // 하루 그룹을 배정한 순간 "아직 분류 안 한 타점"이 영원히 안 잡힌다.
+        const 하루만있음 = look({
+            groupNamesOf: () => ["테마A"], // 하루 상속이 합집합에 들어와 있다
+            anyGroupAt: (_i, scope) => scope === "day",
+        });
+        expect(evalGroupExpr3(lit(NONE_POINT), item, 하루만있음)).toBe(true);
+        expect(evalGroupExpr3(lit(NONE_DAY), item, 하루만있음)).toBe(false);
+    });
+
+    it("층위를 물을 수 없는 항목은 모름 — 탈락시키면 그 하루가 조용히 사라진다", () => {
+        expect(evalGroupExpr3(lit(NONE_POINT), dayItem, look())).toBeUndefined();
+        expect(evalGroupExpr3(lit(NONE_POINT, true), dayItem, look())).toBeUndefined();
+        expect(evalGroupExpr3(lit(NONE_DAY), dayItem, look({ anyGroupAt: () => false }))).toBe(true);
     });
 
     it("절 안은 AND — 하나라도 거짓이면 거짓", () => {

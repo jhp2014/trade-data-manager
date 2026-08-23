@@ -32,6 +32,9 @@ export const FILTER_PRESETS: { name: string; clause: PresenceFilter }[] = [
     { name: "골격 채울 날", clause: { skeleton: "not" } },
     { name: "분봉 골격 채울 날", clause: { "skeleton-minute": "not" } },
     { name: "타점 찍을 날", clause: { point: "not" } },
+    // 타점은 찍었는데 아직 분류를 안 한 날. "타점 있음"을 같이 묻는 이유: 타점이 0 인 날은 분류할 대상이
+    // 아직 없어서(그 날은 "타점 찍을 날"이 받는다) 그것까지 세면 채울 수 없는 날이 목록을 채운다.
+    { name: "타점 그룹 채울 날", clause: { point: "has", "group-point": "not" } },
     { name: "골격만 · 타점 없음", clause: { skeleton: "has", point: "not" } },
 ];
 

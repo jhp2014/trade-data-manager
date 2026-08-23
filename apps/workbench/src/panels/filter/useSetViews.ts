@@ -14,10 +14,8 @@ import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { resolveSetRef, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
 import { usePresenceIndex } from "../../lib/usePresence.js";
-import { hasActiveDnf, matchesPresenceDnf } from "../../lib/presence.js";
+import { emptyPresence, hasActiveDnf, matchesPresenceDnf } from "../../lib/presence.js";
 
-const EMPTY_MARKS: ReadonlyMap<string, number> = new Map();
-const EMPTY_GROUPS: readonly string[] = [];
 
 /** 구독 패널이 소비하는 "보는 집합"의 계약 — viewOf 가 돌려주는 유일한 모양. */
 export interface ViewedSet {
@@ -61,7 +59,7 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
             if (!(gazeMonths === null || gazeMonths.includes(i.date.slice(0, 7)))) return false;
             if (!presenceOn) return true;
             // 지도에 없는 날 = 존재 0 으로 평가(결손을 조용히 통과시키지 않는다 — "!골격"은 통과, "골격"은 탈락).
-            const p = presenceIdx.get(chartKey(i)) ?? { stockCode: i.stockCode, date: i.date, marks: EMPTY_MARKS, points: 0, groups: EMPTY_GROUPS, comment: false };
+            const p = presenceIdx.get(chartKey(i)) ?? emptyPresence(i.stockCode, i.date);
             return matchesPresenceDnf(p, gazePresence);
         },
         [gazeMonths, presenceOn, gazePresence, presenceIdx],

@@ -13,9 +13,9 @@ import { GroupPathLabel } from "../../components/GroupPathLabel.js";
 import { GROUP_PLAIN, groupColor } from "../../styles/palette.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import {
-    NO_TAGS, addGroupLiteral, removeGroupLiteral, toggleGroupNeg, type GroupExpr,
+    addGroupLiteral, noneLabelOf, noneLiteral, removeGroupLiteral, toggleGroupNeg, type GroupExpr,
 } from "../rank/groupFilter.js";
-import { GroupExprChips, NONE_LABEL, namingOf } from "./GroupExprChips.js";
+import { GroupExprChips, namingOf } from "./GroupExprChips.js";
 import { canAddGroupLiteral, type Grain, type GrainLookup } from "./stage.js";
 import { listRow, textInput } from "./ui.js";
 
@@ -65,8 +65,13 @@ export function GroupFilterEditor({ anchor, scope, expr, onChange, onClose }: {
                     placeholder="그룹 검색" style={textInput} />
             </div>
 
-            <button onClick={() => onChange(addGroupLiteral(expr, NO_TAGS))} style={{ ...listRow, borderTop: "1px solid var(--border-subtle)", color: GROUP_PLAIN, fontWeight: 600 }}>
-                ∅ {NONE_LABEL} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>— 아직 분류 안 한 것</span>
+            {/* "없음"도 **칸의 층위**를 받는다 — 타점 칸에서 고르면 하루 그룹 상속은 안 세고 타점에 직접
+                붙은 것만 본다(그래야 일봉에서 이미 분류한 하루가 분봉 미분류 타점을 안 가린다). */}
+            <button onClick={() => onChange(addGroupLiteral(expr, noneLiteral(scope)))} style={{ ...listRow, borderTop: "1px solid var(--border-subtle)", color: GROUP_PLAIN, fontWeight: 600 }}>
+                ∅ {noneLabelOf(scope)}{" "}
+                <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>
+                    {scope === "day" ? "— 아직 분류 안 한 하루" : "— 아직 분류 안 한 타점(하루 그룹은 안 셈)"}
+                </span>
             </button>
 
             <div style={{ borderTop: "1px solid var(--border-subtle)" }}>

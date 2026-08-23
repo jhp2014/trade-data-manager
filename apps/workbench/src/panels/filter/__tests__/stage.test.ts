@@ -5,7 +5,7 @@ import {
     renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
 } from "../stage.js";
-import { NO_TAGS, type GroupExpr } from "../../rank/groupFilter.js";
+import { NONE_DAY, NONE_POINT, type GroupExpr } from "../../rank/groupFilter.js";
 
 const expr = (...ids: string[]): GroupExpr => ({ groups: ids.map((id) => ({ literals: [{ groupId: id, neg: false }] })) });
 const stage = (id: string, predicates: FilterPredicate[], enabled = true): FilterStage => ({ id, enabled, predicates });
@@ -67,9 +67,10 @@ describe("predicateGrain — 알갱이는 저장하지 않고 파생한다", () 
         expect(predicateGrain({ kind: "group", expr: expr("g1", "없는그룹") }, look)).toBeUndefined();
     });
 
-    it("'그룹 없음'만으로는 알갱이를 안 정한다 — 옆 리터럴이 말하게 둔다", () => {
-        expect(predicateGrain({ kind: "group", expr: expr(NO_TAGS) }, look)).toBe("day");
-        expect(predicateGrain({ kind: "group", expr: expr(NO_TAGS, "g2") }, look)).toBe("point");
+    it("'…그룹 없음'도 제 층위를 말한다 — 그것만 있어도 칸이 안 튄다", () => {
+        expect(predicateGrain({ kind: "group", expr: expr(NONE_POINT) }, look)).toBe("point");
+        expect(predicateGrain({ kind: "group", expr: expr(NONE_DAY) }, look)).toBe("day");
+        expect(predicateGrain({ kind: "group", expr: expr(NONE_POINT, "g2") }, look)).toBe("point");
     });
 });
 
@@ -169,9 +170,11 @@ describe("canAddGroupLiteral — 한 식 안에서도 같은 scope", () => {
         expect(canAddGroupLiteral({ groups: [] }, "g2", look)).toBe(true);
     });
 
-    it("'그룹 없음'은 층위를 안 정하니 언제나 허용", () => {
-        expect(canAddGroupLiteral(expr("g2"), NO_TAGS, look)).toBe(true);
-        expect(canAddGroupLiteral(expr(NO_TAGS), "g2", look)).toBe(true);
+    it("'…그룹 없음'도 층위를 말하니 같은 규칙을 받는다", () => {
+        expect(canAddGroupLiteral(expr("g2"), NONE_POINT, look)).toBe(true);
+        expect(canAddGroupLiteral(expr("g2"), NONE_DAY, look)).toBe(false);
+        expect(canAddGroupLiteral(expr(NONE_POINT), "g2", look)).toBe(true);
+        expect(canAddGroupLiteral(expr(NONE_POINT), "g1", look)).toBe(false);
     });
 
     it("모르는 그룹은 막지 않는다", () => {

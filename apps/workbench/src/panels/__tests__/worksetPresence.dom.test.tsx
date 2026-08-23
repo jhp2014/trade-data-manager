@@ -182,7 +182,9 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         expect(row?.querySelector("[data-presence-kind='comment']")).toBeNull();
         // 그룹명은 hover 색 카드로 — 화면(행)에 이름 칩이 서지 않고, 아이콘에 올리면 즉시 카드가 뜬다.
         const groupRow = screen.getByText("그룹만").closest("button");
-        const groupBadge = groupRow?.querySelector("[data-presence-kind='group']");
+        // 하루 소속(시각 없음)이라 배지도 하루 그룹 쪽 — 타점 그룹은 별개 종류다.
+        const groupBadge = groupRow?.querySelector("[data-presence-kind='group-day']");
+        expect(groupRow?.querySelector("[data-presence-kind='group-point']")).toBeNull();
         expect(groupBadge).toBeTruthy();
         expect(groupRow?.textContent).not.toContain("후보");
         fireEvent.mouseEnter(groupBadge!.parentElement!);
