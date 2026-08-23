@@ -7,18 +7,14 @@
 //
 // 소유 규칙(여기가 강제):
 //  ① param 은 레지스트리 키만 ② 행 단위 규칙(anchorInputError: owner grain·field⇔market·candles·분봉=un)
-//  ③ 골격 집합 규칙(skeletonSetError: 상한·같은 캔들 高低·중복 — 여러 행이 모여 하나라 행 단위로 못 본다.
-//     범위는 **소유까지**: 분봉 골격은 타점 소유라 같은 차트의 다른 타점 골격과 안 섞인다)
-//  ④ 단일 param(multiple:false)은 교체 ⑤ 타점 삭제 시 그 시각 소유 앵커 동반 삭제(FK 를 뺀 대가).
+//  ③ 단일 param(multiple:false)은 교체 ④ 타점 삭제 시 그 시각 소유 앵커 동반 삭제(FK 를 뺀 대가).
+// (옛 골격 집합 규칙 — skeletonSetError — 은 골격 param 은퇴와 함께 제거.)
 import { BadRequestException } from "@nestjs/common";
 import {
     ANCHOR_FIELDS,
     ANCHOR_MARKETS,
     anchorInputError,
     anchorParamByKey,
-    skeletonSetError,
-    SKELETON_MINUTE_PARAM,
-    SKELETON_PARAM,
     type AnchorField,
     type AnchorMarket,
     type ChartAnchor,
@@ -26,7 +22,6 @@ import {
     type ChartAnchorStore,
     type NewChartAnchor,
     type ReviewPointStore,
-    type SkeletonPivot,
 } from "@trade-data-manager/market";
 
 // 허용값은 도메인 런타임 목록에서 파생 — 값이 늘 때 여기를 빠뜨리는 사고가 없다(단일 출처).
@@ -49,15 +44,6 @@ export class ChartAnchors {
         const ruleError = anchorInputError(def, input);
         if (ruleError) throw new BadRequestException(ruleError);
 
-        // 골격 집합 규칙 — 기존 피벗을 읽어서 본다(사람 클릭당 1회라 추가 조회 부담 없음).
-        // 두 골격 다 차트 소유(owner 게이트가 time 을 이미 거부) — time 있는 행은 옛 타점 소유의 잔재라 무시.
-        if (def.key === SKELETON_PARAM || def.key === SKELETON_MINUTE_PARAM) {
-            const existing = (await this.repo.listByChart(input.stockCode, input.date))
-                .filter((a) => a.param === def.key && a.field != null && a.market != null && a.time == null)
-                .map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! }));
-            const setError = skeletonSetError({ date: input.date }, existing, input as SkeletonPivot);
-            if (setError) throw new BadRequestException(setError);
-        }
         // 단일 param(multiple:false)은 교체 — 지금 레지스트리엔 없지만, 생기면 저장이 조용히 둘을 만들지 않게 여기서 지운다.
         if (!def.multiple) await this.repo.removeByParam(input.stockCode, input.date, def.key);
         const [created] = await this.repo.add([input]);

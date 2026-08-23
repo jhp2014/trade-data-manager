@@ -26,7 +26,6 @@ export * from "./classification/dailyComment.js";
 // review — 차트 주석(사람 편집): 차트 앵커(선+파라미터 앵커 통합) + 골격(피벗 시퀀스) + 복기 타점 + 타점 그룹
 //   + 후보 하루(그 주석들이 정의하는 **분석의 모수**)
 export * from "./review/chartAnchor.js";
-export * from "./review/skeleton.js";
 export * from "./review/reviewPoint.js";
 export * from "./review/group.js";
 // 후보 하루를 모수로 삼는 필터 깔때기의 정산(단계 독립 평가 · 3치 AND · 5칸 · 한계 기여도).

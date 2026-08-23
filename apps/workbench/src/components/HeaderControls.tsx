@@ -104,7 +104,7 @@ export type ControlSpec = ToggleSpec | ChoiceSpec | ActionSpec;
  */
 export function HeaderControls({ controls, storageKey }: {
     controls: readonly ControlSpec[];
-    /** 핀·순서의 영속 키 — 패널 **종류** 단위(예: wb.headerPins.skeleton.daily). */
+    /** 핀·순서의 영속 키 — 패널 **종류** 단위(예: wb.headerPins.chart.replay). */
     storageKey: string;
 }): JSX.Element {
     const [pins, setPins] = usePersistedState<PinState>(storageKey, parsePins, EMPTY_PINS);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ANCHOR_FIELDS, anchorCoordKey, beatsAsBaseline, candlePrice, chartKeyOf, FIELD_RANK, pointKeyOf } from "#domain";
+import { anchorCoordKey, beatsAsBaseline, candlePrice, chartKeyOf, pointKeyOf } from "#domain";
 
 // 계층 횡단 헬퍼 — 서버(리졸버·캐시 지문)와 클라(차트 표시·키 조인)가 같은 함수를 쓰는 것들.
 // 각자의 소비처 테스트가 행동을 이미 덮지만, 여기서는 **계약 자체**(형식·규칙)를 못박는다.
@@ -38,11 +38,5 @@ describe("beatsAsBaseline — 가격 최저, 타이면 좌표 최신", () => {
         expect(beatsAsBaseline(c(100, newer), c(100, older))).toBe(true);
         expect(beatsAsBaseline(c(100, older), c(100, newer))).toBe(false);
         expect(beatsAsBaseline(c(100, newerMinute), c(100, newer))).toBe(true); // 같은 날 분봉 > 일봉
-    });
-});
-
-describe("ANCHOR_FIELDS — 런타임 목록과 타입의 정합", () => {
-    it("FIELD_RANK(전 필드 Record)와 같은 집합 — 한쪽만 늘면 여기서 잡힌다", () => {
-        expect([...ANCHOR_FIELDS].sort()).toEqual(Object.keys(FIELD_RANK).sort());
     });
 });

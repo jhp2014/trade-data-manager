@@ -13,7 +13,6 @@ import { fetchMirrorStatus } from "./curation.js";
 import { fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchAllPoints } from "./reviewPoints.js";
 import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
-import { fetchSkeletons } from "./skeletons.js";
 import { fetchGroups, fetchGroupMemberships } from "./groups.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
@@ -107,10 +106,6 @@ export const axisLinesQuery = () =>
 export const computedAxesQuery = () =>
     queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
-// 골격 좌표(그림용) — 계산 축과 재료는 같지만 **별도 키**다: 축 값이 다시 구워져도 골격 좌표는 그대로고,
-// 반대로 피벗을 하나 찍으면(앵커 mutation) 이쪽만 무효화하면 된다. 편집형이라 staleTime ∞.
-export const skeletonsQuery = () =>
-    queryOptions({ queryKey: ["skeletons"], queryFn: ({ signal }) => fetchSkeletons(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 그룹 — 사전 + 전 항목 멤버십. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).
 // 타점 캐시(review-points·all-points)와 분리 = 그룹 토글이 타점 목록 refetch 를 유발하지 않는다.

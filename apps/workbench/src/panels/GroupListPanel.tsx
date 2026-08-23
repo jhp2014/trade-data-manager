@@ -140,28 +140,8 @@ export function GroupListPanel(): JSX.Element {
         [sort, gv.groups, gv.groupByName, collapsed, overlapAll, chain],
     );
 
-    /**
-     * ── 체인을 **짚음 채널로 내보낸다**. 이 패널 안에서만 뜻이 있던 걸 밖으로 내는 자리다:
-     * 골격은 제 보는 집합을 다 그리고 이 41건만 앞으로 세운다(좁힐지 흐리게 할지는 그 패널의 선택).
-     *
-     * 항목이 아니라 **참조**(groupChain)를 싣는다 — 멤버십이 바뀌면 소비 패널의 강조도 따라온다(라이브).
-     * ⚠ 참조는 유니버스 기준으로 풀리고, **소비 패널마다 자기 보는 집합과 교차해** 표시한다 — 이 패널의
-     * "공통 N"(체인 ∩ 내 바인딩)과 골격 배지의 수(체인 ∩ 그 패널 선들)가 다른 건 버그가 아니라 패널별
-     * 바인딩의 뜻 그대로다(각 패널의 분모는 제 헤더 칩이 말한다).
-     * ⚠ 조건이 아니라 **시선**이다 — 조건으로 굳히려면 여전히 "필터에 추가"를 눌러야 한다.
-     * 언마운트·체인 비우기에는 **내 것만** 거둔다(남이 짚어 둔 것을 지우면 안 된다).
-     */
-    const setPick = useWorkbench((s) => s.setPick);
-    const clearPickFrom = useWorkbench((s) => s.clearPickFrom);
-    useEffect(() => {
-        if (chain.length === 0) {
-            clearPickFrom("group");
-            return;
-        }
-        setPick({ source: "group", label: chain.join(" & "), ref: { kind: "groupChain", names: chain } });
-    }, [chain, setPick, clearPickFrom]);
-    useEffect(() => () => clearPickFrom("group"), [clearPickFrom]);
-
+    // (옛 pick 방송 — 체인을 짚음 채널로 다른 패널에 내보내던 것 — 은 골격 패널 은퇴와 함께 제거.
+    //  유일한 소비자였다. 체인을 조건으로 굳히는 "필터에 추가"(아래)가 남은 출구다.)
     const addFilterStage = useWorkbench((s) => s.addFilterStage);
     /**
      * 체인 전체를 조건으로 굳힌다 — 그룹마다 **단계 하나씩**. 한 단계에 몰면 깔때기가 "어느 단계가

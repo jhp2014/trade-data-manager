@@ -14,7 +14,6 @@ import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { FilterFunnelPanel } from "../panels/FilterFunnelPanel.js";
-import { SkeletonOverlayPanel } from "../panels/SkeletonOverlayPanel.js";
 import { DailyNormPanel } from "../panels/norm/DailyNormPanel.js";
 import { PointNormPanel } from "../panels/norm/PointNormPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
@@ -63,9 +62,8 @@ export const PANEL_CATALOG: PanelEntry[] = [
     // 집합 편성 — 조건을 걸어 집합을 만드는 자리(다른 패널은 그 집합을 구독만 한다).
     // component 키는 "filterFunnel" 그대로 — 저장 프리셋에 박히는 값이라 이름이 바뀌어도 못 건드린다.
     { id: "filter-funnel-1", component: "filterFunnel", title: "집합 편성", plane: "eod", render: (id) => <FilterFunnelPanel panelId={id} /> },
-    { id: "rank-skeleton-1", component: "rankSkeleton", title: "골격 [일봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="daily" /> },
-    { id: "rank-skeleton-minute-1", component: "rankSkeletonMinute", title: "골격 [분봉]", plane: "eod", render: () => <SkeletonOverlayPanel grain="minute" /> },
-    // 정규화 두 판 — 골격 패널의 후신(골격의 실가치 = 정규화). 실물 캔들/종가선을 원점으로 접어 겹친다.
+    // 정규화 두 판 — 골격 패널의 후신(골격의 실가치 = 정규화, 2026-08-23 은퇴). 실물 캔들/종가선을 원점으로 접어 겹친다.
+    // 옛 골격 컴포넌트("rankSkeleton"/"rankSkeletonMinute")는 저장 프리셋에서 sanitizeLayout 이 걷어낸다(맵 패널과 같은 길).
     { id: "norm-daily-1", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <DailyNormPanel /> },
     { id: "norm-point-1", component: "normPoint", title: "정규화 [타점]", plane: "eod", render: () => <PointNormPanel /> },
     { id: "rank-point-1", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },

@@ -20,8 +20,6 @@ import {
 } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR, AMOUNT_BAR_COLOR } from "./chartUtils.js";
 import { VertLines, asPrimitive } from "./vertLine.js";
-import { SkeletonPath, asSkeletonPrimitive } from "./skeletonPath.js";
-import { SKELETON } from "../styles/palette.js";
 
 export interface CandleAmountSeries {
     candle: ISeriesApi<"Candlestick">;
@@ -30,13 +28,12 @@ export interface CandleAmountSeries {
     candleVerts: VertLines;
     /** amountVerts 옵션을 켰을 때만 — 안 켰으면 null(없는 pane 에 빈 프리미티브를 얹지 않는다). */
     amountVerts: VertLines | null;
-    skeleton: SkeletonPath;
     /** 프리미티브 detach — 차트가 이미 파괴된 뒤 불려도 안전(try/catch). */
     dispose: () => void;
 }
 
 /**
- * 캔들(pane0) + 거래대금 히스토그램(pane1, 억 표기) + 마커 플러그인 + 세로선·골격 프리미티브.
+ * 캔들(pane0) + 거래대금 히스토그램(pane1, 억 표기) + 마커 플러그인 + 세로선 프리미티브.
  * `candleOptions` 가 공통 스타일 위에 덮인다 — 축 표기(priceFormat·autoscale)가 여기로 온다.
  */
 export function buildCandleAmountSeries(
@@ -79,20 +76,15 @@ export function buildCandleAmountSeries(
         amountVerts = new VertLines();
         amount.attachPrimitive(asPrimitive(amountVerts));
     }
-    // 골격 꺾은선 — 일봉·분봉이 같은 프리미티브(마커 모양·순번 규칙이 갈리면 같은 입력이 다르게 읽힌다).
-    const skeleton = new SkeletonPath(SKELETON);
-    candle.attachPrimitive(asSkeletonPrimitive(skeleton));
-
     const dispose = (): void => {
         try {
             candle.detachPrimitive(asPrimitive(candleVerts));
             if (amountVerts) amount.detachPrimitive(asPrimitive(amountVerts));
-            candle.detachPrimitive(asSkeletonPrimitive(skeleton));
         } catch {
             /* 차트가 먼저 파괴됨 */
         }
     };
-    return { candle, amount, markers, candleVerts, amountVerts, skeleton, dispose };
+    return { candle, amount, markers, candleVerts, amountVerts, dispose };
 }
 
 /**

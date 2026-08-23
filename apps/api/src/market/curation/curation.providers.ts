@@ -1,21 +1,19 @@
 import type { Provider } from "@nestjs/common";
 import {
     createDb,
-    DrizzleDailyCandleRepository,
     DrizzleDailyCommentRepository,
     DrizzleChartAnchorRepository,
     DrizzleReviewPointRepository,
     DrizzleRankRepository,
     DrizzleGroupRepository,
 } from "@trade-data-manager/persistence";
-import { CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, GROUP_REPO, CURATION_SYNC, COMPUTED_AXES, SKELETON_SHAPES, MARKET_POOL, CURATION_POOL } from "../tokens.js";
+import { CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, GROUP_REPO, CURATION_SYNC, COMPUTED_AXES, MARKET_POOL, CURATION_POOL } from "../tokens.js";
 import type { Pool } from "../pool.js";
 import { curationRepo } from "./curationRepo.js";
 import { DailyComments } from "./dailyComments.js";
 import { ChartAnchors } from "./chartAnchors.js";
 import { CurationSync } from "./curationSync.js";
 import { ComputedAxes } from "../rank/computedAxes.js";
-import { SkeletonShapes } from "../rank/skeletonShapes.js";
 import { axisDepsOf } from "../rank/axisDeps.js";
 import { ChartAnchorController } from "./chartAnchor.controller.js";
 import { ReviewPointController } from "./reviewPoint.controller.js";
@@ -23,17 +21,14 @@ import { CommentController } from "./comment.controller.js";
 import { RankController } from "./rank.controller.js";
 import { GroupController } from "./group.controller.js";
 import { CurationSyncController } from "./sync.controller.js";
-import { SkeletonController } from "../rank/skeleton.controller.js";
 
 // 큐레이션(사람 편집) 화면의 팩토리 묶음 — 모듈은 이 배열을 그대로 합친다(chart/board/curation/news 1:1).
-// SkeletonController 는 골격 좌표(SKELETON_SHAPES) 소비자라 여기 묶인다.
 export const curationControllers = [
     CurationSyncController,
     ChartAnchorController,
     ReviewPointController,
     CommentController,
     RankController,
-    SkeletonController,
     GroupController,
 ];
 
@@ -45,7 +40,7 @@ export const curationProviders: Provider[] = [
         inject: [MARKET_POOL],
     },
     {
-        // 앵커 쓰기 유스케이스 — 불변식(레지스트리·owner grain·골격 집합·multiple 교체·타점 cascade) 소유.
+        // 앵커 쓰기 유스케이스 — 불변식(레지스트리·owner grain·multiple 교체·타점 cascade) 소유.
         provide: CHART_ANCHORS,
         useFactory: (marketPool: Pool, curationPool: Pool): ChartAnchors =>
             new ChartAnchors(
@@ -87,20 +82,6 @@ export const curationProviders: Provider[] = [
                 points: new DrizzleReviewPointRepository(createDb(marketPool)), // 읽기 — 로컬 미러
                 axisDeps: axisDepsOf(marketPool),
             }),
-        inject: [MARKET_POOL],
-    },
-    {
-        // 골격 좌표 — 계산 축과 **같은 재료·다른 결과**(수치 하나가 아니라 피벗 좌표 그대로). 겹쳐 그리기용.
-        // 캐시 없음(SkeletonShapes 주석) — 축이 파일 캐시를 갖는 것과 갈리는 지점이다.
-        provide: SKELETON_SHAPES,
-        useFactory: (marketPool: Pool): SkeletonShapes => {
-            const db = createDb(marketPool);
-            return new SkeletonShapes({
-                points: new DrizzleReviewPointRepository(createDb(marketPool)), // 읽기 — 로컬 미러
-                axisDeps: axisDepsOf(marketPool),
-                prevClose: new DrizzleDailyCandleRepository(db), // 절대 뷰 분모 — 종목별 직전 캔들 전용 조회
-            });
-        },
         inject: [MARKET_POOL],
     },
     {

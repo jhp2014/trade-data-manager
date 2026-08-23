@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
-import { allAnchorsQuery, allPointsQuery, axisLinesQuery, chartQuery, computedAxesQuery, groupMembershipsQuery, skeletonsQuery } from "../api/queries.js";
+import { allAnchorsQuery, allPointsQuery, axisLinesQuery, chartQuery, computedAxesQuery, groupMembershipsQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView } from "./derive.js";
 import { indexAtOrBefore } from "./chartFrame.js";
 import { useChartPoints } from "./useChartPoints.js";
@@ -69,12 +69,10 @@ export function useChartHotkeys(): void {
         void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey });
         // 계산 축은 타점 집합에서 나온다 — 타점이 늘거나 줄면 다시 굽는다(서버가 증분이라 새 타점만 계산).
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
-        // 골격 좌표도 — 타점 종가가 분봉 경로에 합성되므로 타점 추가/삭제가 경로를 바꾼다.
-        void qc.invalidateQueries({ queryKey: skeletonsQuery().queryKey });
     };
     // 삭제는 서버가 타점에 딸린 것까지 지운다 — 배치(rank_placements)·그룹 멤버(group_members) FK cascade,
     // 타점 소유 앵커(ChartAnchors.removePoint). 이 셋의 테이블 키가 ∞ 라 같이 안 비우면 유령이 남는다
-    // (슬롯 수 한 칸 어긋남, 존재 지도가 그날을 "그룹·골격 있음"으로 유지해 작업셋 모수 오염).
+    // (슬롯 수 한 칸 어긋남, 존재 지도가 그날을 "그룹 있음"으로 유지해 작업셋 모수 오염).
     const invalidateRemoved = (): void => {
         invalidate();
         void qc.invalidateQueries({ queryKey: axisLinesQuery().queryKey });

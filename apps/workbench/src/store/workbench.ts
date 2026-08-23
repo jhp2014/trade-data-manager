@@ -16,9 +16,8 @@ import { createHistorySlice, type HistorySlice } from "./historySlice.js";
 import { createRankViewSlice, type RankViewSlice } from "./rankViewSlice.js";
 import { createFilterFunnelSlice, type FilterFunnelSlice } from "./filterFunnelSlice.js";
 import { createSavedSetsSlice, type SavedSetsSlice } from "./savedSetsSlice.js";
-import { createPickSlice, type PickSlice } from "./pickSlice.js";
 
-export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & FilterFunnelSlice & SavedSetsSlice & PickSlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & FilterFunnelSlice & SavedSetsSlice;
 
 export type { Focus, Scope, Search, ActivePoint, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
@@ -32,7 +31,6 @@ export type { RankViewSlice } from "./rankViewSlice.js";
 export type { FilterFunnelSlice } from "./filterFunnelSlice.js";
 export { selectFilterStages } from "./filterFunnelSlice.js";
 export type { SavedSet, SavedSetPart, SavedSetsSlice } from "./savedSetsSlice.js";
-export type { PickSlice } from "./pickSlice.js";
 
 export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createFocusSlice(...a),
@@ -46,5 +44,4 @@ export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createRankViewSlice(...a),
     ...createFilterFunnelSlice(...a),
     ...createSavedSetsSlice(...a),
-    ...createPickSlice(...a),
 }));

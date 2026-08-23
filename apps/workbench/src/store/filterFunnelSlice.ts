@@ -26,9 +26,9 @@ import { loadJson, saveJson } from "./persist.js";
 import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
-const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter";
+const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter.v2"; // v2: 골격 존재 리터럴 리셋
 
-const STAGES_KEY = "wb.filterStages.v2"; // 지금 쓰는 단일 벌
+const STAGES_KEY = "wb.filterStages.v3"; // 지금 쓰는 단일 벌 — v3: 골격 은퇴(skeleton-* leaf 리셋, savedSetsSlice 와 같은 이유)
 const SLOTS_KEY = "wb.filterSlots"; // 슬롯 시절 — 활성 칸 하나만 이어받는다(나머지 칸은 버린다)
 const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
 
@@ -38,14 +38,10 @@ const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
  * 슬롯을 안 쓰던 사람에게는 애초에 빈 칸이다. 옛 키는 안 지운다 — 새 키가 서면 자연히 안 읽힌다.
  */
 const loadStages = (): FilterStage[] => {
-    const fresh = loadJson(STAGES_KEY, parseStages);
-    if (fresh) return fresh;
-    const slots = loadJson(SLOTS_KEY, (o) => (typeof o === "object" && o !== null ? (o as { active?: unknown; slots?: unknown }) : null));
-    if (slots && Array.isArray(slots.slots)) {
-        const at = typeof slots.active === "number" && Number.isInteger(slots.active) && slots.active >= 0 ? slots.active : 0;
-        return parseStages((slots.slots as unknown[])[at]) ?? [];
-    }
-    return loadJson(LEGACY_STAGES_KEY, parseStages) ?? [];
+    // v3 리셋 이전 키들(v2·슬롯·최초)은 읽지 않는다 — 은퇴한 골격 leaf 가 되살아나는 뒷문이 된다.
+    void SLOTS_KEY;
+    void LEGACY_STAGES_KEY;
+    return loadJson(STAGES_KEY, parseStages) ?? [];
 };
 
 /**

@@ -5,9 +5,9 @@
 //  · 포커스가 맨 위 — 주인공이 무리에 묻히지 않게.
 // 멤버 선의 문법은 복기 테마 오버레이와 같다: 무채색, **굵기가 거래대금**(runWidth 램프),
 // 포커스만 플레인 색. 빈 분은 선이 끊긴 채로 둔다(tapeData.segmentsOf — 결손은 정보).
-import { amountRuns, LEVEL_MISSING } from "../skeleton/skeletonOverlay.js";
-import { amountLevelOf, runWidth } from "../skeleton/amountLayer.js";
-import { flatten, compact, type DrawGroup, type DrawLayer, type DrawOp } from "../skeleton/drawList.js";
+import { amountRuns, LEVEL_MISSING } from "../canvas/amountRuns.js";
+import { amountLevelOf, runWidth } from "../canvas/amountScale.js";
+import { flatten, compact, type DrawGroup, type DrawLayer, type DrawOp } from "../canvas/drawList.js";
 import { segmentsOf, type TapePoint } from "./tapeData.js";
 import type { LiveTapeStock } from "@trade-data-manager/wire";
 

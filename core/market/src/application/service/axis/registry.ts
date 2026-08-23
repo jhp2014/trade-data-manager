@@ -8,7 +8,6 @@ import { dailyChangeAxis } from "./dailyChangeAxis.js";
 import { baselinePositionAxis } from "./baselinePositionAxis.js";
 import { supplyGapAxis } from "./supplyGapAxis.js";
 import { baselineDistanceAxis } from "./baselineDistanceAxis.js";
-import { SKELETON_AXES } from "./skeletonAxes.js";
 
 // KRX 판(dailyChangeAxis("krx"))은 **일부러 안 만든다.** 그 축 자체는 자기완결적이고(분자·분모 둘 다 KRX =
 // HTS 공식 등락률) 틀린 축이 아니다. 안 만드는 이유는 둘:
@@ -22,10 +21,7 @@ export const COMPUTED_AXES: readonly ComputedAxisDef[] = [
     supplyGapAxis(), // baseline 을 문턱으로 왼쪽 스캔 — 같은 앵커를 다른 뜻으로 읽는 두 번째 축
     baselineDistanceAxis(), // 같은 앵커의 **좌표만**(후보 다중일 때만 가격 개입) — 공백과 반대쪽(오른쪽)을 잰다
     // 셋 다 같은 기준선을 본다 — 선택 규칙은 shared/baselineResolver 한 곳(후보 다중이면 가격 최저).
-
-    // 골격 파생(실험) — 손으로 찍은 피벗에서 형태를 잰다. 기준선 축들이 P2 **이후**를 재는 것과 반대쪽
-    // (본상승이 어떻게 만들어졌나 · 얼마나 반납했나). 정의가 바뀔 예정이라 한 파일에 모아뒀다(skeletonAxes.ts).
-    ...SKELETON_AXES,
+    // (옛 골격 축 6개 — skeletonAxes — 는 2026-08-23 골격 은퇴와 함께 삭제. 필요해지면 그때 새로 정의한다.)
 ];
 
 /** key → 정의. 캐시·컨트롤러가 이름으로 지목할 때. */

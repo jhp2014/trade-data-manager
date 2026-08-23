@@ -29,7 +29,7 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
         expect(again[0].id).toBe(id); // 바인딩 참조(id)가 새 정의를 따라온다
         expect(again[0].stages).toHaveLength(2);
 
-        const saved = JSON.parse(storage.get("wb.savedSets")!) as { id: string }[];
+        const saved = JSON.parse(storage.get("wb.savedSets.v2")!) as { id: string }[];
         expect(saved).toHaveLength(1);
     });
 
@@ -56,20 +56,18 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
         expect(cellSet.part).toEqual({ kind: "cell", stageId: id, cells: ["nearMiss"] });
     });
 
-    it("옛 '저장한 깔때기'(wb.filterFunnelSets)는 부위=생존자인 집합으로 id 를 지키며 이관된다", async () => {
+    it("옛 키(wb.savedSets·wb.filterFunnelSets)는 읽지 않는다 — v2 리셋(골격 leaf 부활 금지)", async () => {
         stubStorage({
-            "wb.filterFunnelSets": [{ id: "fs1", name: "돌파", stages: [{ id: "s1", enabled: true, predicates: [datePred] }] }],
+            "wb.filterFunnelSets": [{ id: "fs1", name: "깔때기 시절", stages: [] }],
+            "wb.savedSets": [{ id: "fs2", name: "v1 시절", stages: [], part: { kind: "survivors" } }],
         });
         const store = await loadStore();
-        const sets = store.getState().savedSets;
-        expect(sets).toHaveLength(1);
-        expect(sets[0]).toMatchObject({ id: "fs1", name: "돌파", part: { kind: "survivors" } });
+        expect(store.getState().savedSets).toEqual([]);
     });
 
-    it("새 키가 있으면 옛 키는 안 읽는다 — 이관은 한 방향이다", async () => {
+    it("지금 키(v2)는 그대로 읽는다", async () => {
         stubStorage({
-            "wb.filterFunnelSets": [{ id: "fs1", name: "옛것", stages: [] }],
-            "wb.savedSets": [{ id: "fs2", name: "새것", stages: [], part: { kind: "survivors" } }],
+            "wb.savedSets.v2": [{ id: "fs2", name: "새것", stages: [], part: { kind: "survivors" } }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets.map((s) => s.name)).toEqual(["새것"]);

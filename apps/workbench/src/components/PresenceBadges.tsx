@@ -12,8 +12,7 @@ import { PRESENCE_KINDS, type DayPresence, type PresenceKindDef } from "../lib/p
 import { HoverCard } from "./HoverCard.js";
 import { groupColor } from "../styles/palette.js";
 
-// 12×12 라인 아이콘 — 색·굵기는 부모에서 상속(currentColor). 골격 둘은 **같은 색**이라(차트가 그렇다)
-// 실루엣으로 가른다: 일봉=굵직한 꺾임, 분봉=잘게 꺾인 경로(장중 경로라는 뜻이 그림에 있다).
+// 12×12 라인 아이콘 — 색·굵기는 부모에서 상속(currentColor). 실루엣으로 종류를 가른다.
 const ICONS: Record<string, JSX.Element> = {
     baseline: ( // 선에 걸친 캔들 — 차트에서 기준선이 서는 장면(선 위로 봉이 걸린) 그대로
         <>
@@ -28,9 +27,7 @@ const ICONS: Record<string, JSX.Element> = {
             <line x1="2.9" y1="9.1" x2="9.1" y2="2.9" />
         </>
     ),
-    skeleton: <polyline points="1.5,9.5 4.5,3.5 7,7 10.5,1.8" />, // 피벗 경로(굵직한 꺾임 = 일봉)
     // 분봉 = **잘게 꺾인 경로** — 장중 경로라는 뜻이 실루엣에 있다. 파선(옛)은 일봉과 구분이 약했다(사용자 확정).
-    "skeleton-minute": <polyline points="1,8.5 2.8,5.5 4.4,7.8 6,3 7.6,6.5 9.2,4.2 11,7.2" strokeWidth="1.3" />,
     point: <polygon points="2,2.8 10,2.8 6,10" fill="currentColor" stroke="none" />, // 차트의 타점 ▼ 와 같은 모양
     // 그룹 둘 — **같은 색**이라(둘 다 그룹이다) 실루엣이 층위를 가른다.
     "group-day": ( // 담긴 것들(층) — 하루째 담는다

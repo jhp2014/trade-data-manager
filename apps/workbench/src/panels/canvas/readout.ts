@@ -10,7 +10,7 @@
 // 예전 핀 판독은 겹치면 옆 열로 밀었는데, 열이 늘면 화면 오른쪽을 넘고 "어느 시각 것이냐"를 열로 읽는
 // 규칙까지 따로 배워야 했다. 지시선이 이미 대응을 지고 있으니 **한 열에서 위아래로 벌리면** 그만이다
 // — 거터 이름 라벨과 같은 문법이 되어 이 패널의 라벨 규칙이 하나로 통일된다.
-import { spreadByY } from "./skeletonOverlay.js";
+import { spreadByY } from "./amountRuns.js";
 
 /** 판독 후보 하나 — 어떤 x 에서 읽은 한 선의 값. */
 export interface ReadoutCandidate {

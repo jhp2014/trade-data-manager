@@ -70,17 +70,17 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
     it("remove — 키는 **좌표 전체**다(한 필드만 달라도 안 지운다)", async () => {
         // 자연키 삭제의 핵심 성질: 같은 캔들이라도 field 가 다르면 다른 앵커다(가격선 성질).
         // 여기가 느슨하면 고점 선을 지우려다 저점 선까지 날아간다.
-        const [saved] = await repo.add([{ ...CHART, param: "skeleton", anchorDate: CHART.date, field: "high", market: "un" }]);
+        const [saved] = await repo.add([{ ...CHART, param: "param-b", anchorDate: CHART.date, field: "high", market: "un" }]);
         await repo.remove({ ...saved, field: "low" }); // field 만 다름 → 안 지워져야
-        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.param === "skeleton")).toBe(true);
+        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.param === "param-b")).toBe(true);
         await repo.remove(saved);
-        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.param === "skeleton")).toBe(false);
+        expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.param === "param-b")).toBe(false);
     });
 
     it("removeByPoint — 그 타점 소유 행만(차트 소유 행은 NULL 이라 안 걸린다)", async () => {
         await repo.add([
-            { ...CHART, time: "09:30:00", param: "skeleton-minute", anchorDate: CHART.date, anchorTime: "09:10:00", field: "high", market: "un" },
-            { ...CHART, time: "10:00:00", param: "skeleton-minute", anchorDate: CHART.date, anchorTime: "09:50:00", field: "high", market: "un" },
+            { ...CHART, time: "09:30:00", param: "point-owned-x", anchorDate: CHART.date, anchorTime: "09:10:00", field: "high", market: "un" },
+            { ...CHART, time: "10:00:00", param: "point-owned-x", anchorDate: CHART.date, anchorTime: "09:50:00", field: "high", market: "un" },
         ]);
         const before = (await repo.listByChart(CHART.stockCode, CHART.date)).length;
         await repo.removeByPoint(CHART.stockCode, CHART.date, "09:30:00");

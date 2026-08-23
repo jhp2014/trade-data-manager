@@ -1,10 +1,9 @@
-// MinuteChart 의 오버레이들 — 타점 세로선·타점 아이콘 좌표·가격선(%)·골격(%).
+// MinuteChart 의 오버레이들 — 타점 세로선·타점 아이콘 좌표·가격선(%).
 // 시리즈/데이터는 minuteSeries, 표시범위는 minuteFraming, 마우스는 minuteInteraction.
 import { useEffect, useMemo, type MutableRefObject, type RefObject } from "react";
 import { type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { type VertLineSpec } from "./vertLine.js";
-import { EMPTY_SKELETON, useSkeletonPointSet } from "./skeletonPath.js";
 import { type MinutePoint } from "../lib/derive.js";
 import { linePct, snapToBar, type RenderLine } from "../lib/chartFrame.js";
 import { ALARM, PRICE_LINE } from "../styles/palette.js";
@@ -116,28 +115,4 @@ export function useMarkerOverlay(
         return { saved, current };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [series.overlayTick, savedSnapped, currentSnapped]);
-}
-
-/**
- * 분봉 골격 오버레이 — 그 **타점**이 찍은 장중 피벗들. 그리기는 일봉과 **같은 SkeletonPath 프리미티브**다.
- *
- * LineSeries 를 안 쓰는 이유가 분봉에서 더 크다: 시각당 점 하나만 받으므로 **한 봉의 시→고→종**이 뭉개지고
- * (분봉에서 훨씬 흔한 입력이다), 점 하나만 찍었을 땐 아무것도 안 그려져 "찍었는데 반응이 없다"가 된다.
- * 프리미티브는 x·y 를 각각 해소해 같은 봉의 두 점을 세로 선분으로 그리고, 점 하나여도 X 마커를 남긴다.
- *
- * **% 변환은 여기서 한다** — 분봉 pane 이 %축이라 raw 가격을 그대로 넘기면 화면 밖으로 날아간다.
- * 분모는 언제나 `base`(당일 원주가): 골격 피벗은 언제나 당일 분봉이라 D 선처럼 pctBase 를 쓸 경우가 없다.
- * 프리미티브에 미는 수명주기는 일봉과 공용(useSkeletonPointSet) — 여긴 환산·표시 여부만 정한다.
- */
-export function useMinuteSkeletonOverlay(
-    series: MinuteSeries,
-    pivots: readonly { time: number; price: number }[] = EMPTY_SKELETON, // 기본값 = 안정 참조(effect 헛돌지 않게)
-    base: number | null,
-    visible: boolean,
-): void {
-    const pts = useMemo(() => {
-        const show = visible && base !== null && base > 0;
-        return show ? pivots.map((p) => ({ time: p.time, price: ((p.price - base!) / base!) * 100 })) : [];
-    }, [pivots, base, visible]);
-    useSkeletonPointSet(series.skeletonRef, pts);
 }

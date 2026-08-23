@@ -9,7 +9,6 @@ import { useMinuteVisibleRange } from "./minuteFraming.js";
 import {
     useMarkerOverlay,
     useMarkerVertLines,
-    useMinuteSkeletonOverlay,
     usePercentPriceLines,
     type SavedPointInput,
 } from "./minuteOverlays.js";
@@ -109,7 +108,6 @@ function MarkerTriangle({ fill, stroke, active = false }: { fill: string; stroke
 // 데이터는 이미 파생된 MinutePoint[](%/원). 명령형(lightweight-charts) 배선은 minuteSeries(수명주기·
 // 데이터)·minuteFraming(표시범위)·minuteOverlays(세로선·가격선·골격)·minuteInteraction(마우스) 훅들이
 // 담당하고, 여기는 훅 조합 + 오버레이(타점 ▼·정보 카드)·툴팁 렌더만.
-// (골격 미지정의 안정 참조는 오버레이 훅 기본값 — skeletonPath EMPTY_SKELETON — 이 담당한다.)
 
 export function MinuteChart({
     points,
@@ -131,8 +129,6 @@ export function MinuteChart({
     capturePriceArmed = false,
     axisTotal = 0,
     groupsOfTime,
-    skeleton,
-    showSkeleton = true,
 }: {
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
@@ -155,8 +151,6 @@ export function MinuteChart({
     axisTotal?: number; // 순위 축 총수(배지 분모). 0 = 배치 기능 미사용 → 배지/상세 없음
     groupsOfTime?: (tradeTime: string) => Group[]; // 그 시각 타점에 붙은 그룹(카드 아랫줄). 없으면 그룹 줄 없음.
     /** 현재 타점의 분봉 골격 피벗(unix초·raw 가격) — % 변환은 오버레이가 base 로 한다. */
-    skeleton?: readonly { time: number; price: number }[];
-    showSkeleton?: boolean;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -183,7 +177,6 @@ export function MinuteChart({
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);
-    useMinuteSkeletonOverlay(series, skeleton, base, showSkeleton);
 
     const { state: tip } = useCrosshairTooltip({
         chartRef,

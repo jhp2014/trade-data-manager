@@ -12,16 +12,16 @@ import { useWorkbench } from "../../store/workbench.js";
 import { WorksetPanel } from "../WorksetPanel.js";
 
 const SEED: Seed = {
-    // 앵커 — 골격만 찍은 날(A) / 기준선만 그은 날(B). param 이 곧 출처다.
+    // 앵커 — 무시 캔들만 찍은 날(A) / 기준선만 그은 날(B). param 이 곧 출처다.
     anchors: [
-        { stockCode: "AAAAA", date: "2026-08-05", param: "skeleton", anchorDate: "2026-08-04", field: "high", market: "un" },
+        { stockCode: "AAAAA", date: "2026-08-05", param: "ignore-candle", anchorDate: "2026-08-04" },
         { stockCode: "BBBBB", date: "2026-08-06", param: "baseline", anchorDate: "2026-08-01", field: "low", market: "un" },
     ],
     points: [{ stockCode: "CCCCC", date: "2026-08-07", time: "09:30:00", name: null }],
     memberships: [{ stockCode: "DDDDD", date: "2026-08-04", groupNames: ["후보"] }],
     comments: [{ stockCode: "EEEEE", date: "2026-08-03", comment: "메모", author: "me" }],
     stockNames: [
-        { stockCode: "AAAAA", name: "골격만", market: "거래소" },
+        { stockCode: "AAAAA", name: "무시만", market: "거래소" },
         { stockCode: "BBBBB", name: "기준선만", market: "거래소" },
         { stockCode: "CCCCC", name: "타점만", market: "거래소" },
         { stockCode: "DDDDD", name: "그룹만", market: "거래소" },
@@ -29,7 +29,7 @@ const SEED: Seed = {
     ],
 };
 
-const ALL = ["골격만", "기준선만", "타점만", "그룹만", "코멘트만"];
+const ALL = ["무시만", "기준선만", "타점만", "그룹만", "코멘트만"];
 
 /** 채널 줄의 ⋯ — 후보 전부와 고정 손잡이를 든 판(줄에 다 서 있어도 늘 있다). */
 const openList = (label: string): HTMLElement => screen.getByTitle(new RegExp(`^${label} 전부 보기`));
@@ -55,7 +55,7 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         useWorkbench.setState({ selectedSetRef: null, savedSets: [] });
     });
 
-    it("다섯 출처가 각각 혼자서도 행을 만든다 — 골격만/그룹만/코멘트만 있는 날 포함", () => {
+    it("다섯 출처가 각각 혼자서도 행을 만든다 — 무시만/그룹만/코멘트만 있는 날 포함", () => {
         renderWithProviders(<WorksetPanel />, SEED);
         for (const name of ALL) expect(screen.getByText(name)).toBeTruthy();
         expect(screen.getByText("5 표시")).toBeTruthy();
@@ -63,51 +63,51 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
 
     it("프리셋 줄 — 칩 클릭 = 필터 통째 교체, 다시 누르면 해제", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        fireEvent.click(screen.getByRole("button", { name: "골격 채울 날" })); // = !골격
-        expect(useWorkbench.getState().gazePresence).toEqual([{ skeleton: "not" }]);
-        expect(screen.queryByText("골격만")).toBeNull();
-        for (const name of ALL.filter((n) => n !== "골격만")) expect(screen.getByText(name)).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "타점 찍을 날" })); // = !타점
+        expect(useWorkbench.getState().gazePresence).toEqual([{ point: "not" }]);
+        expect(screen.queryByText("타점만")).toBeNull();
+        for (const name of ALL.filter((n) => n !== "타점만")) expect(screen.getByText(name)).toBeTruthy();
 
         // 다른 프리셋을 누르면 **교체**다(OR 로 쌓이지 않는다) — 식이 늘 절 하나로 유지된다.
-        fireEvent.click(screen.getByRole("button", { name: "타점 찍을 날" }));
-        expect(useWorkbench.getState().gazePresence).toEqual([{ point: "not" }]);
+        fireEvent.click(screen.getByRole("button", { name: "타점 그룹 채울 날" }));
+        expect(useWorkbench.getState().gazePresence).toEqual([{ point: "has", "group-point": "not" }]);
 
-        fireEvent.click(screen.getByRole("button", { name: "타점 찍을 날" })); // 같은 것 재클릭 = 해제
+        fireEvent.click(screen.getByRole("button", { name: "타점 그룹 채울 날" })); // 같은 것 재클릭 = 해제
         expect(useWorkbench.getState().gazePresence).toEqual([]);
     });
 
     it("프리셋에 닿는 길은 하나 — 줄이 켜져 있으면 + 필터 판에는 안 선다", () => {
         renderWithProviders(<WorksetPanel />, SEED);
         // 프리셋 칩은 줄에 이미 서 있다. 판이 또 들면 같은 이름의 버튼이 둘이 된다 — 그게 이 검사의 눈이다.
-        expect(screen.getAllByRole("button", { name: "골격 채울 날" })).toHaveLength(1);
+        expect(screen.getAllByRole("button", { name: "타점 찍을 날" })).toHaveLength(1);
         fireEvent.click(screen.getByRole("button", { name: "+ 필터" }));
-        expect(screen.getAllByRole("button", { name: "골격 채울 날" })).toHaveLength(1);
-        expect(screen.getByRole("button", { name: "골격" })).toBeTruthy(); // 판 안에는 종류만
+        expect(screen.getAllByRole("button", { name: "타점 찍을 날" })).toHaveLength(1);
+        expect(screen.getByRole("button", { name: "기준선" })).toBeTruthy(); // 판 안에는 종류만
     });
 
-    it("필터 하나(골격 has) — 골격 찍은 날만 남고 숨김 수가 선다", () => {
+    it("필터 하나(기준선 has) — 기준선 그은 날만 남고 숨김 수가 선다", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        addFilterWith("골격");
-        expect(screen.getByText("골격만")).toBeTruthy();
-        for (const name of ALL.filter((n) => n !== "골격만")) expect(screen.queryByText(name)).toBeNull();
+        addFilterWith("기준선");
+        expect(screen.getByText("기준선만")).toBeTruthy();
+        for (const name of ALL.filter((n) => n !== "기준선만")) expect(screen.queryByText(name)).toBeNull();
         expect(screen.getByText("1 표시 · 4 숨김")).toBeTruthy();
     });
 
     it("칩 좌클릭은 **반전만** — 아무리 눌러도 칩이 사라지지 않는다(삭제는 우클릭의 몫)", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        addFilterWith("골격");
-        fireEvent.click(screen.getByRole("button", { name: "골격" })); // has → not
-        expect(screen.queryByText("골격만")).toBeNull();
-        for (const name of ALL.filter((n) => n !== "골격만")) expect(screen.getByText(name)).toBeTruthy();
-        fireEvent.click(screen.getByRole("button", { name: "!골격" })); // not → has (제거 아님)
-        expect(useWorkbench.getState().gazePresence).toEqual([{ skeleton: "has" }]);
-        expect(screen.getByRole("button", { name: "골격" })).toBeTruthy();
+        addFilterWith("기준선");
+        fireEvent.click(screen.getByRole("button", { name: "기준선" })); // has → not
+        expect(screen.queryByText("기준선만")).toBeNull();
+        for (const name of ALL.filter((n) => n !== "기준선만")) expect(screen.getByText(name)).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "!기준선" })); // not → has (제거 아님)
+        expect(useWorkbench.getState().gazePresence).toEqual([{ baseline: "has" }]);
+        expect(screen.getByRole("button", { name: "기준선" })).toBeTruthy();
     });
 
     it("칩 우클릭 → 지우기 — 절의 마지막 칩이면 필터도 함께 사라진다(빈 필터가 안 남는다)", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        addFilterWith("골격");
-        chipMenu("골격");
+        addFilterWith("기준선");
+        chipMenu("기준선");
         expect(screen.queryByRole("button", { name: "이 필터 지우기" })).toBeNull(); // 1칩이면 "지우기"와 같은 일이라 안 선다
         fireEvent.click(screen.getByRole("button", { name: "지우기" }));
         expect(useWorkbench.getState().gazePresence).toEqual([]);
@@ -117,32 +117,32 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
 
     it("칩 2개짜리 필터 — 지우기는 칩만, 이 필터 지우기는 묶음째", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        addFilterWith("골격");
+        addFilterWith("기준선");
         andKind(0, "타점");
-        expect(useWorkbench.getState().gazePresence).toEqual([{ skeleton: "has", point: "has" }]);
+        expect(useWorkbench.getState().gazePresence).toEqual([{ baseline: "has", point: "has" }]);
 
         chipMenu("타점");
         fireEvent.click(screen.getByRole("button", { name: "지우기" })); // 칩만 — 필터는 산다
-        expect(useWorkbench.getState().gazePresence).toEqual([{ skeleton: "has" }]);
+        expect(useWorkbench.getState().gazePresence).toEqual([{ baseline: "has" }]);
 
         andKind(0, "타점");
-        chipMenu("골격");
+        chipMenu("기준선");
         fireEvent.click(screen.getByRole("button", { name: "이 필터 지우기" })); // 묶음째
         expect(useWorkbench.getState().gazePresence).toEqual([]);
     });
 
-    it("필터 두 개 = OR — [골격] ∨ [코멘트] 는 두 날을 함께 남긴다, 삭제는 그 필터만", () => {
+    it("필터 두 개 = OR — [기준선] ∨ [코멘트] 는 두 날을 함께 남긴다, 삭제는 그 필터만", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        addFilterWith("골격");
+        addFilterWith("기준선");
         addFilterWith("코멘트");
         expect(screen.getByText("|")).toBeTruthy(); // 필터 사이 구분자 = | (AND 는 칩 사이 &)
-        expect(screen.getByText("골격만")).toBeTruthy();
+        expect(screen.getByText("기준선만")).toBeTruthy();
         expect(screen.getByText("코멘트만")).toBeTruthy();
         expect(screen.queryByText("타점만")).toBeNull();
         expect(screen.getByText("2 표시 · 3 숨김")).toBeTruthy();
-        chipMenu("골격");
-        fireEvent.click(screen.getByRole("button", { name: "지우기" })); // 첫 필터(골격) 삭제
-        expect(screen.queryByText("골격만")).toBeNull(); // 남은 필터 = 코멘트
+        chipMenu("기준선");
+        fireEvent.click(screen.getByRole("button", { name: "지우기" })); // 첫 필터(기준선) 삭제
+        expect(screen.queryByText("기준선만")).toBeNull(); // 남은 필터 = 코멘트
         expect(screen.getByText("코멘트만")).toBeTruthy();
     });
 
@@ -177,8 +177,8 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
 
     it("종목 행에 존재 배지가 아이콘으로 선다(숫자 없음 — 상세는 hover 툴팁)", () => {
         renderWithProviders(<WorksetPanel />, SEED);
-        const row = screen.getByText("골격만").closest("button");
-        expect(row?.querySelector("[data-presence-kind='skeleton']")).toBeTruthy();
+        const row = screen.getByText("무시만").closest("button");
+        expect(row?.querySelector("[data-presence-kind='ignore-candle']")).toBeTruthy();
         expect(row?.querySelector("[data-presence-kind='comment']")).toBeNull();
         // 그룹명은 hover 색 카드로 — 화면(행)에 이름 칩이 서지 않고, 아이콘에 올리면 즉시 카드가 뜬다.
         const groupRow = screen.getByText("그룹만").closest("button");

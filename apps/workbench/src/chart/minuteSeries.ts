@@ -16,7 +16,6 @@ import { RISE_FILL, FALL_FILL, AMOUNT_BUCKET_COLORS } from "./chartUtils.js";
 import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, useAppliedCache, type MarkerLike } from "./candleAmountSeries.js";
 import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { type VertLines } from "./vertLine.js";
-import { type SkeletonPath } from "./skeletonPath.js";
 import { type MinutePoint } from "../lib/derive.js";
 
 export interface MinuteSeries {
@@ -25,7 +24,6 @@ export interface MinuteSeries {
     markersRef: MutableRefObject<ISeriesMarkersPluginApi<Time> | null>;
     candleVertsRef: MutableRefObject<VertLines | null>;
     amountVertsRef: MutableRefObject<VertLines | null>;
-    skeletonRef: MutableRefObject<SkeletonPath | null>;
     /** 오버레이(타점 아이콘·정보 박스) 위치 재계산 트리거 — pan/zoom·리사이즈·데이터 변경 시 bump. */
     overlayTick: number;
     bumpOverlay: () => void;
@@ -40,7 +38,6 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const candleVertsRef = useRef<VertLines | null>(null);
     const amountVertsRef = useRef<VertLines | null>(null);
-    const skeletonRef = useRef<SkeletonPath | null>(null);
     const [overlayTick, setOverlayTick] = useState(0);
     const bumpOverlay = (): void => setOverlayTick((v) => v + 1);
     const [gen, setGen] = useState(0);
@@ -83,7 +80,6 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
         markersRef.current = s.markers;
         candleVertsRef.current = s.candleVerts;
         amountVertsRef.current = s.amountVerts;
-        skeletonRef.current = s.skeleton;
         setGen((g) => g + 1); // 새 시리즈가 났다 — 데이터·마커 effect 를 다시 태운다
         // pan/zoom 시 오버레이 아이콘 위치 갱신.
         const ts = chart.timeScale();
@@ -100,12 +96,11 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
             markersRef.current = null;
             candleVertsRef.current = null;
             amountVertsRef.current = null;
-            skeletonRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, skeletonRef, overlayTick, bumpOverlay, gen };
+    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, overlayTick, bumpOverlay, gen };
 }
 
 export interface MinuteLookups {

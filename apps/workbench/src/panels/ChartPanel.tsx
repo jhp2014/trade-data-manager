@@ -6,7 +6,7 @@ import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { useReviewPointData } from "../lib/chartHooks.js";
-import { useBaselineLines, useDailySkeleton, useIgnoreCandles, useMinuteSkeleton } from "../lib/chartAnchorHooks.js";
+import { useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { useStockName } from "../lib/useStockName.js";
@@ -29,7 +29,6 @@ import {
     viewControl,
 } from "./ChartPanelChrome.js";
 import type { ControlSpec } from "../components/HeaderControls.js";
-import { SKELETON } from "../styles/palette.js";
 
 // 차트 패널(복기 플레인) — 일봉(상) + 분봉(하) 듀얼. 껍데기(헤더·2단·토글)는 ChartPanelChrome 공용.
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
@@ -54,8 +53,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [pinMinute, setPinMinute] = usePanelUi(panelId, "pinMinute", false); // 분봉 기준일 고정(일봉 클릭 무시)
     const [lockScale, setLockScale] = usePanelUi(panelId, "lockScale", false); // 분봉 스케일 고정
     const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
-    const [showSkeleton, setShowSkeleton] = usePanelUi(panelId, "showSkeleton", true); // 골격 오버레이(거래대금 마커식 on/off)
-    // 우클릭 메뉴의 기준 시장 — 선·골격이 함께 따른다. 패널에 남겨(sticky) 오염 회피로 KRX 를 보는 중에
+    // 우클릭 메뉴의 기준 시장 — 선 줄이 따른다. 패널에 남겨(sticky) 오염 회피로 KRX 를 보는 중에
     // 봉마다 다시 누르지 않게 한다. 분봉·KRX 부재 봉에서는 메뉴가 UN 으로 되돌린다(없는 시장은 못 지목).
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
 
@@ -75,10 +73,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 차트 앵커 편집 — param 하나 = 훅 하나(chartAnchorHooks). 같은 쿼리 키라 왕복은 하나(RQ dedup).
     const lines = useBaselineLines(code, viewDate, dailyQ.data, minuteQ.data);
     const ignore = useIgnoreCandles(code, viewDate);
-    const dailySkeleton = useDailySkeleton(code, viewDate, dailyQ.data);
     const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
-    // 분봉 골격도 차트 소유 — 타점 없이도 그 날의 장중 경로를 찍는다(타점별 상한은 읽기 절단의 몫).
-    const minuteSkeleton = useMinuteSkeleton(code, viewDate, minuteQ.data);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
@@ -106,8 +101,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return { un: num(d?.un), krx: num(d?.krx) };
     }, [candleMenu, dailyQ.data, minuteQ.data]);
 
-    // 헤더 컨트롤 선언 — 공통 문구는 ChartPanelChrome 의 공장이 들고, 이 패널에만 있는 셋(타점정보·
-    // 골격·지우기)만 여기서 만든다. 지우기 셋은 할 게 없으면 사라지는 대신 흐려진다(자리 고정 규약).
+    // 헤더 컨트롤 선언 — 공통 문구는 ChartPanelChrome 의 공장이 들고, 이 패널에만 있는 것(타점정보·
+    // 지우기)만 여기서 만든다. 지우기는 할 게 없으면 사라지는 대신 흐려진다(자리 고정 규약).
     const controls = useMemo<ControlSpec[]>(() => [
         viewControl(view, setView),
         pinControl(pinMinute, () => setPinMinute((v) => !v)),
@@ -120,26 +115,13 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         searchLineControl(showLine, () => setShowLine((v) => !v)),
         guideControl(showGuide, () => setShowGuide((v) => !v)),
         {
-            kind: "toggle", id: "skeleton", name: "골격", group: "마커", activeColor: SKELETON,
-            help: "이 차트에 찍은 골격 선", on: showSkeleton, set: () => setShowSkeleton((v) => !v),
-        },
-        {
             kind: "action", id: "clearLines", name: "선 지우기", group: "지우기",
             help: "가격선 전체 지우기", run: lines.clear, disabled: !lines.hasLines,
         },
-        {
-            kind: "action", id: "clearDailySkeleton", name: "골격 지우기", group: "지우기",
-            help: "일봉 골격 점 전체 지우기(다시 찍기)", run: dailySkeleton.clear, disabled: !dailySkeleton.hasAny,
-        },
-        {
-            kind: "action", id: "clearMinuteSkeleton", name: "분봉골격 지우기", group: "지우기",
-            help: "이 차트의 분봉 골격 점 전체 지우기", run: minuteSkeleton.clear, disabled: !minuteSkeleton.hasAny,
-        },
         marketControl(mode, setMode),
     ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showPointInfo, setShowPointInfo,
-        showMarkers, setShowMarkers, showLine, setShowLine, showGuide, setShowGuide, showSkeleton, setShowSkeleton,
-        lines.clear, lines.hasLines, dailySkeleton.clear, dailySkeleton.hasAny,
-        minuteSkeleton.clear, minuteSkeleton.hasAny, mode, setMode]);
+        showMarkers, setShowMarkers, showLine, setShowLine, showGuide, setShowGuide,
+        lines.clear, lines.hasLines, mode, setMode]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
@@ -194,8 +176,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     pctBase={pctBase}
                                     showGuide={showGuide}
                                     ignoredDates={ignore.ignoredDates}
-                                    skeleton={dailySkeleton.points}
-                                    showSkeleton={showSkeleton}
                                 />
                             ) : null
                         }
@@ -219,8 +199,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => openMenu(at, { nearLine: l })}
                                     groupsOfTime={(t) => groupsOf({ stockCode: code, date: viewDate, time: t })}
-                                    skeleton={minuteSkeleton.points}
-                                    showSkeleton={showSkeleton}
                                 />
                             ) : null
                         }
@@ -244,14 +222,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     ignore={{
                         on: candleMenu.candle ? ignore.ignoredDates.includes(candleMenu.candle.date) : false,
                         onToggle: () => candleMenu.candle && ignore.toggleIgnore(candleMenu.candle.date),
-                    }}
-                    dailySkeleton={{
-                        pivots: candleMenu.candle && !candleMenu.candle.time ? dailySkeleton.pivotsAt(candleMenu.candle.date) : [],
-                        onToggle: (field, market) => candleMenu.candle && dailySkeleton.toggle(candleMenu.candle.date, field, market),
-                    }}
-                    minuteSkeleton={{
-                        pivots: candleMenu.candle?.time ? minuteSkeleton.pivotsAt(candleMenu.candle.time) : [],
-                        onToggle: (field) => candleMenu.candle?.time && minuteSkeleton.toggle(candleMenu.candle.time, field, "un"),
                     }}
                     onClose={() => setCandleMenu(null)}
                 />

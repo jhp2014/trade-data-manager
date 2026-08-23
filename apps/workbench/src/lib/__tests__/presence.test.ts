@@ -21,12 +21,12 @@ const membership = (over: Partial<GroupMembership> & Pick<GroupMembership, "grou
 describe("buildPresenceIndex", () => {
     it("한 재료만 있어도 항목이 생긴다 — 골격만 찍은 날·그룹만 담은 날·코멘트만 남긴 날", () => {
         const idx = buildPresenceIndex(
-            [anchor({ stockCode: "A", param: "skeleton" })],
+            [anchor({ stockCode: "A", param: "baseline" })],
             [],
             [membership({ stockCode: "B", groupNames: ["테마:2차전지"] })],
             [{ stockCode: "C", date: "2026-08-01" }],
         );
-        expect(idx.get("A|2026-08-01")?.marks.get("skeleton")).toBe(1);
+        expect(idx.get("A|2026-08-01")?.marks.get("baseline")).toBe(1);
         expect(idx.get("B|2026-08-01")?.dayGroups).toEqual(["테마:2차전지"]);
         expect(idx.get("C|2026-08-01")?.comment).toBe(true);
         expect(idx.size).toBe(3);
@@ -94,9 +94,9 @@ describe("matchesPresence — 3상 × AND", () => {
     });
 
     it('"골격 있음 ∧ 타점 없음" — 다음 작업 후보 질문', () => {
-        const f = { skeleton: "has", point: "not" } as const;
-        expect(matchesPresence(day({ marks: new Map([["skeleton", 4]]) }), f)).toBe(true);
-        expect(matchesPresence(day({ marks: new Map([["skeleton", 4]]), points: 1 }), f)).toBe(false);
+        const f = { baseline: "has", point: "not" } as const;
+        expect(matchesPresence(day({ marks: new Map([["baseline", 4]]) }), f)).toBe(true);
+        expect(matchesPresence(day({ marks: new Map([["baseline", 4]]), points: 1 }), f)).toBe(false);
         expect(matchesPresence(day({ points: 1 }), f)).toBe(false);
     });
 
@@ -120,37 +120,37 @@ describe("matchesPresence — 3상 × AND", () => {
 // "반전하려다 칩이 사라지는" 일이 없고, 대신 **빈 절이 남지 않는 책임**이 지우기 쪽에 생긴다.
 describe("DNF 편집 연산", () => {
     it("칩 좌클릭 = has ↔ not 만 오간다(제거로 넘어가지 않는다)", () => {
-        const dnf: PresenceDnf = [{ skeleton: "has" }];
-        const notted = toggleKind(dnf, 0, "skeleton");
-        expect(notted).toEqual([{ skeleton: "not" }]);
-        expect(toggleKind(notted, 0, "skeleton")).toEqual([{ skeleton: "has" }]);
+        const dnf: PresenceDnf = [{ baseline: "has" }];
+        const notted = toggleKind(dnf, 0, "baseline");
+        expect(notted).toEqual([{ baseline: "not" }]);
+        expect(toggleKind(notted, 0, "baseline")).toEqual([{ baseline: "has" }]);
     });
 
     it("종류 추가는 늘 has 로 들어오고 다른 절은 안 건드린다", () => {
-        const dnf: PresenceDnf = [{ skeleton: "has" }, { group: "not" }];
-        expect(addKind(dnf, 0, "point")).toEqual([{ skeleton: "has", point: "has" }, { group: "not" }]);
+        const dnf: PresenceDnf = [{ baseline: "has" }, { group: "not" }];
+        expect(addKind(dnf, 0, "point")).toEqual([{ baseline: "has", point: "has" }, { group: "not" }]);
     });
 
     it("칩 지우기 — 절에 다른 칩이 남으면 절은 산다", () => {
-        const dnf: PresenceDnf = [{ skeleton: "has", point: "not" }];
-        expect(removeKind(dnf, 0, "point")).toEqual([{ skeleton: "has" }]);
+        const dnf: PresenceDnf = [{ baseline: "has", point: "not" }];
+        expect(removeKind(dnf, 0, "point")).toEqual([{ baseline: "has" }]);
     });
 
     it("마지막 칩을 지우면 절도 함께 사라진다 — 빈 절(유령 토큰)을 만들지 않는다", () => {
-        const dnf: PresenceDnf = [{ skeleton: "has" }, { "group-day": "has" }];
-        expect(removeKind(dnf, 0, "skeleton")).toEqual([{ "group-day": "has" }]);
-        expect(removeKind([{ skeleton: "has" }], 0, "skeleton")).toEqual([]);
+        const dnf: PresenceDnf = [{ baseline: "has" }, { "group-day": "has" }];
+        expect(removeKind(dnf, 0, "baseline")).toEqual([{ "group-day": "has" }]);
+        expect(removeKind([{ baseline: "has" }], 0, "baseline")).toEqual([]);
     });
 
     it("절 통째 지우기", () => {
-        const dnf: PresenceDnf = [{ skeleton: "has" }, { "group-day": "has" }];
-        expect(removeClause(dnf, 1)).toEqual([{ skeleton: "has" }]);
+        const dnf: PresenceDnf = [{ baseline: "has" }, { "group-day": "has" }];
+        expect(removeClause(dnf, 1)).toEqual([{ baseline: "has" }]);
     });
 
     it("모든 연산이 원본을 안 건드린다(식은 props 로만 흐른다)", () => {
-        const dnf: PresenceDnf = [{ skeleton: "has", point: "not" }];
-        toggleKind(dnf, 0, "skeleton"); addKind(dnf, 0, "group-day"); removeKind(dnf, 0, "point"); removeClause(dnf, 0);
-        expect(dnf).toEqual([{ skeleton: "has", point: "not" }]);
+        const dnf: PresenceDnf = [{ baseline: "has", point: "not" }];
+        toggleKind(dnf, 0, "baseline"); addKind(dnf, 0, "group-day"); removeKind(dnf, 0, "point"); removeClause(dnf, 0);
+        expect(dnf).toEqual([{ baseline: "has", point: "not" }]);
     });
 });
 
@@ -158,21 +158,21 @@ describe("matchesPresenceDnf — 절 사이 OR", () => {
     const day = (over: Partial<DayPresence>): DayPresence => ({
         stockCode: "005930", date: "2026-08-01", marks: new Map(), points: 0, dayGroups: [], pointGroups: [], comment: false, ...over,
     });
-    const skeletonOnly = day({ marks: new Map([["skeleton", 2]]) });
+    const baselineOnly = day({ marks: new Map([["baseline", 2]]) });
     const groupOnly = day({ dayGroups: ["가"] });
     const pointOnly = day({ points: 1 });
 
     it('"골격∧!타점" ∨ "그룹" — 어느 절 하나만 맞아도 통과', () => {
-        const dnf = [{ skeleton: "has", point: "not" }, { "group-day": "has" }] as const;
-        expect(matchesPresenceDnf(skeletonOnly, dnf)).toBe(true); // 첫 절
+        const dnf = [{ baseline: "has", point: "not" }, { "group-day": "has" }] as const;
+        expect(matchesPresenceDnf(baselineOnly, dnf)).toBe(true); // 첫 절
         expect(matchesPresenceDnf(groupOnly, dnf)).toBe(true); // 둘째 절
         expect(matchesPresenceDnf(pointOnly, dnf)).toBe(false); // 둘 다 아님
     });
 
     it("빈 절은 평가에서 제외 — OR 를 무력화하지 않는다", () => {
-        const dnf = [{}, { skeleton: "has" }] as const;
+        const dnf = [{}, { baseline: "has" }] as const;
         expect(matchesPresenceDnf(pointOnly, dnf)).toBe(false); // 빈 절이 있어도 활성 절이 거른다
-        expect(matchesPresenceDnf(skeletonOnly, dnf)).toBe(true);
+        expect(matchesPresenceDnf(baselineOnly, dnf)).toBe(true);
     });
 
     it("활성 절이 하나도 없으면 전부 통과(필터 없음)", () => {
@@ -183,18 +183,18 @@ describe("matchesPresenceDnf — 절 사이 OR", () => {
 
 describe("parsePresenceDnf — 영속 복원(옛 형식 승계)", () => {
     it("옛 절-하나 Record 는 [절] 로 감싼다", () => {
-        expect(parsePresenceDnf({ skeleton: "has", point: "not" })).toEqual([{ skeleton: "has", point: "not" }]);
+        expect(parsePresenceDnf({ baseline: "has", point: "not" })).toEqual([{ baseline: "has", point: "not" }]);
         expect(parsePresenceDnf({})).toEqual([]); // 옛 빈 필터 = 필터 없음
     });
     it("새 절 목록은 그대로, 모르는 상태값은 버린다", () => {
-        expect(parsePresenceDnf([{ skeleton: "has" }, { point: "not", weird: "yes" }])).toEqual([{ skeleton: "has" }, { point: "not" }]);
+        expect(parsePresenceDnf([{ baseline: "has" }, { point: "not", weird: "yes" }])).toEqual([{ baseline: "has" }, { point: "not" }]);
     });
     it("모르는 **종류**도 버린다 — 층위 없던 옛 'group' 칩은 화면에도 안 서는 유령이라 여기서 정리된다", () => {
-        expect(parsePresenceDnf([{ skeleton: "has", group: "has" }])).toEqual([{ skeleton: "has" }]);
+        expect(parsePresenceDnf([{ baseline: "has", group: "has" }])).toEqual([{ baseline: "has" }]);
         expect(parsePresenceDnf([{ group: "has" }])).toEqual([]); // 그것뿐이었으면 절째 사라진다
     });
     it("빈 절은 버린다 — 옛 순환(has→not→제거)이 남긴 유령 토큰이 화면에 서지 않게", () => {
-        expect(parsePresenceDnf([{}, { skeleton: "has" }])).toEqual([{ skeleton: "has" }]);
+        expect(parsePresenceDnf([{}, { baseline: "has" }])).toEqual([{ baseline: "has" }]);
         expect(parsePresenceDnf([{ weird: "yes" }])).toEqual([]); // 아는 상태값이 하나도 없으면 그것도 빈 절
     });
     it("깨진 값은 null — 기본값(필터 없음)으로 폴백해 '전부 숨김' 오독을 막는다", () => {
@@ -204,8 +204,8 @@ describe("parsePresenceDnf — 영속 복원(옛 형식 승계)", () => {
 });
 
 describe("PRESENCE_KINDS", () => {
-    it("앵커 4종(레지스트리 파생) + 타점·그룹 둘·코멘트 = 8종", () => {
-        expect(PRESENCE_KINDS.map((k) => k.key)).toEqual(["baseline", "ignore-candle", "skeleton", "skeleton-minute", "point", "group-day", "group-point", "comment"]);
+    it("앵커 2종(레지스트리 파생) + 타점·그룹 둘·코멘트 = 6종 — 골격 2종은 은퇴", () => {
+        expect(PRESENCE_KINDS.map((k) => k.key)).toEqual(["baseline", "ignore-candle", "point", "group-day", "group-point", "comment"]);
     });
 
     it("이름을 가진 종류는 그룹 둘뿐 — 배지의 색 카드가 이걸 보고 선다", () => {

@@ -2,7 +2,7 @@
 // 마우스 상호작용·가격선·가이드선·검색날짜 세로선을 컴포넌트에서 분리.
 // DailyChart.tsx 는 훅 조합 + 툴팁/배지 렌더만 남는다(명령형 API 와 선언형 JSX 의 경계).
 // 자매인 분봉은 minuteSeries/minuteFraming/minuteOverlays/minuteInteraction 4파일 — 일봉은 양이 절반이라
-// 한 파일이면 족하다. 마우스 정책은 candleInteraction, 골격 수명주기는 useSkeletonPointSet 을 분봉과 공유.
+// 한 파일이면 족하다. 마우스 정책은 candleInteraction 이 따로 든다.
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
     LineStyle,
@@ -17,7 +17,6 @@ import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, us
 import { useCandleInteraction } from "./candleInteraction.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { type VertLines } from "./vertLine.js";
-import { EMPTY_SKELETON, useSkeletonPointSet, type SkeletonPath } from "./skeletonPath.js";
 import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
@@ -33,7 +32,6 @@ export interface DailySeries {
     amountRef: RefObject<ISeriesApi<"Histogram"> | null>;
     markersRef: RefObject<ISeriesMarkersPluginApi<Time> | null>;
     vertRef: RefObject<VertLines | null>;
-    skeletonRef: RefObject<SkeletonPath | null>;
     /**
      * 시리즈 **세대** — 다시 만들어질 때마다 오른다(StrictMode 이중 effect·Fast Refresh).
      * 시리즈는 ref 에 담겨 있어 교체가 렌더를 일으키지 않는다 → 이 값이 없으면 "시리즈만 새로 났고
@@ -49,7 +47,6 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const vertRef = useRef<VertLines | null>(null);
-    const skeletonRef = useRef<SkeletonPath | null>(null);
     const [gen, setGen] = useState(0);
 
     useEffect(() => {
@@ -63,7 +60,6 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
         amountRef.current = s.amount;
         markersRef.current = s.markers;
         vertRef.current = s.candleVerts;
-        skeletonRef.current = s.skeleton;
         setGen((g) => g + 1); // 새 시리즈가 났다 — 데이터·마커 effect 를 다시 태운다
         return () => {
             s.dispose();
@@ -71,12 +67,11 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
             amountRef.current = null;
             markersRef.current = null;
             vertRef.current = null;
-            skeletonRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, vertRef, skeletonRef, gen };
+    return { candleRef, amountRef, markersRef, vertRef, gen };
 }
 
 /**
@@ -287,16 +282,4 @@ export function useSearchDateLine(chartRef: RefObject<IChartApi | null>, series:
     }, [searchDate]);
 
     return lineX;
-}
-
-/**
- * 골격 오버레이 — 피벗들을 이어 그린다(형태 분류의 입력을 눈으로 확인하는 용도).
- * 그리기는 SkeletonPath primitive 가 한다 — **한 캔들에 점이 여럿**일 수 있어서(시→고→종 = 윗꼬리 슈팅)
- * 시각당 한 점만 받는 LineSeries 로는 그 점들이 화면에서 사라진다(skeletonPath.ts 주석 참조).
- * 점 하나만 찍어도 원이 보이고, 파생된 순번이 함께 적힌다(순서는 입력이 아니라 계산이라 확인이 필요하다).
- * 프리미티브에 미는 수명주기는 분봉과 공용(useSkeletonPointSet) — 일봉은 가격 축이라 환산 없이 그대로.
- */
-export function useSkeletonOverlay(series: DailySeries, pivots: readonly { date: string; price: number }[] = EMPTY_SKELETON, visible: boolean = true): void {
-    const pts = useMemo(() => (visible ? pivots.map((p) => ({ time: p.date, price: p.price })) : []), [pivots, visible]);
-    useSkeletonPointSet(series.skeletonRef, pts);
 }

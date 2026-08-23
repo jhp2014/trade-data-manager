@@ -5,8 +5,8 @@ import { selectFilterStages } from "./filterFunnelSlice.js";
 // 필터 깔때기 슬라이스 — 조건 한 벌의 이관·영속·시선(선택 칸) 정리 규칙.
 // 저장 집합(저장·열기·덮어쓰기·삭제)은 savedSetsSlice.test 로 갈라져 있다.
 //
-// 슬롯 3칸은 폐지됐다(집합 = 이름 붙은 슬롯이라 익명 칸이 할 일이 없었다) — 그래서 이관 시험이
-// **두 갈래**다: 슬롯 저장본의 활성 칸, 그리고 슬롯 이전의 단일 벌.
+// 옛 키 이관은 v3 리셋(2026-08-23 골격 은퇴)에서 끊었다 — 은퇴한 골격 leaf 가 되살아나는 뒷문이라
+// 옛 저장본(슬롯·v2·최초 키)은 읽지 않는다. 여기는 그 **안 읽음**을 잠근다.
 
 beforeEach(() => {
     vi.resetModules();
@@ -16,28 +16,18 @@ afterEach(() => {
 });
 
 describe("조건 한 벌 로드·이관", () => {
-    it("슬롯 저장본은 **활성 칸 하나만** 이어받는다(나머지 칸은 이름이 없어 살릴 자리가 없다)", async () => {
+    it("옛 키(슬롯·v2·최초)는 읽지 않는다 — v3 리셋(골격 leaf 부활 금지)", async () => {
         stubStorage({
-            "wb.filterSlots": {
-                active: 1,
-                slots: [[{ id: "s0", enabled: true, predicates: [datePred] }], [{ id: "s1", enabled: true, predicates: [datePred] }], []],
-            },
+            "wb.filterStages.v2": [{ id: "old2", enabled: true, predicates: [datePred] }],
+            "wb.filterStages": [{ id: "old0", enabled: true, predicates: [datePred] }],
+            "wb.filterSlots": { active: 0, slots: [[{ id: "slot", enabled: true, predicates: [datePred] }], [], []] },
         });
         const store = await loadStore();
-        expect(selectFilterStages(store.getState()).map((s) => s.id)).toEqual(["s1"]);
+        expect(selectFilterStages(store.getState())).toEqual([]);
     });
 
-    it("슬롯 이전의 단일 벌(wb.filterStages)도 그대로 이어받는다", async () => {
-        stubStorage({ "wb.filterStages": [{ id: "s1", enabled: true, predicates: [datePred] }] });
-        const store = await loadStore();
-        expect(selectFilterStages(store.getState()).map((s) => s.id)).toEqual(["s1"]);
-    });
-
-    it("지금 키가 있으면 옛 키는 안 본다 — 이관은 한 번뿐이다", async () => {
-        stubStorage({
-            "wb.filterStages.v2": [{ id: "now", enabled: true, predicates: [datePred] }],
-            "wb.filterSlots": { active: 0, slots: [[{ id: "old", enabled: true, predicates: [datePred] }], [], []] },
-        });
+    it("지금 키(v3)는 그대로 읽는다", async () => {
+        stubStorage({ "wb.filterStages.v3": [{ id: "now", enabled: true, predicates: [datePred] }] });
         const store = await loadStore();
         expect(selectFilterStages(store.getState()).map((s) => s.id)).toEqual(["now"]);
     });
@@ -49,7 +39,7 @@ describe("편집은 곧 영속", () => {
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
         expect(selectFilterStages(store.getState())).toHaveLength(1);
-        const saved = JSON.parse(storage.get("wb.filterStages.v2")!) as unknown[];
+        const saved = JSON.parse(storage.get("wb.filterStages.v3")!) as unknown[];
         expect(saved).toHaveLength(1);
     });
 });

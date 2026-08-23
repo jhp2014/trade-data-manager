@@ -9,11 +9,11 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { AxisLine, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankAxis, ReviewPoint, SkeletonFeed, StockMeta } from "@trade-data-manager/wire";
+import type { AxisLine, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, RankAxis, ReviewPoint, StockMeta } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
     allAnchorsQuery, allCommentsQuery, allPointsQuery, axisLinesQuery, chartQuery, computedAxesQuery,
-    groupMembershipsQuery, groupsQuery, rankAxesQuery, skeletonsQuery, stockMasterQuery,
+    groupMembershipsQuery, groupsQuery, rankAxesQuery, stockMasterQuery,
 } from "../api/queries.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
 import { GroupsProvider } from "../lib/GroupsContext.js";
@@ -29,7 +29,6 @@ export type SeedPoint = ReviewPoint & { name?: string | null };
 
 /** 심을 수 있는 피드들 — 안 준 것은 **빈 값**으로 심는다(로딩 상태가 남지 않게). */
 export interface Seed {
-    skeletons?: SkeletonFeed;
     points?: SeedPoint[];
     /** 복제본 앵커 테이블(전 param 전량) — 작업셋 모수·배지의 재료. */
     anchors?: ChartAnchor[];
@@ -51,7 +50,6 @@ export interface Seed {
      * 그날 복기 파생(테마 선·거래대금의 재료). 키는 골격 패널 전용이다 — 복기 보드와 **일부러 갈라져**
      * 있다(응답이 ~15MB 라 gcTime 이 긴 보드 캐시와 섞이면 힙에 여러 날이 앉는다, useDaySnapshot 참고).
      */
-    daySnapshot?: { date: string; data: DayReplay };
     /**
      * 차트 번들(원주가 분봉 + 2년 일봉) — **캔들 오버레이의 재료**. 종목·날짜별이라 목록으로 받는다.
      * 안 심고 캔들을 켜면 setup 의 네트워크 그물에 걸린다(그게 의도다 — 빈 캔들로 통과하지 않게).
@@ -64,8 +62,6 @@ export interface Seed {
      */
     stockNames?: StockMeta[];
 }
-
-const EMPTY_SKELETONS: SkeletonFeed = { daily: [], minute: [], levels: [] };
 
 /** 피드에 실려 온 이름들 → 마스터 사전. 이름 없는 행은 마스터에 없는 종목이므로 뺀다. */
 function namesFromFeeds(seed: Seed): StockMeta[] {
@@ -82,7 +78,6 @@ export function seededClient(seed: Seed = {}): QueryClient {
     const qc = new QueryClient({
         defaultOptions: { queries: { retry: false, refetchOnMount: false, refetchOnWindowFocus: false, gcTime: Infinity } },
     });
-    qc.setQueryData(skeletonsQuery().queryKey, seed.skeletons ?? EMPTY_SKELETONS);
     qc.setQueryData(allPointsQuery().queryKey, seed.points ?? []);
     // candidateDays 는 최소 앵커 행으로 변환해 테이블에 합류 — 후보 파생(candidateDaysOf)이 실경로로 돈다.
     const seededAnchors = [
@@ -97,7 +92,6 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(axisLinesQuery().queryKey, seed.axisLines ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
-    if (seed.daySnapshot) qc.setQueryData(["skeleton-day-src", seed.daySnapshot.date], seed.daySnapshot.data);
     for (const c of seed.charts ?? []) qc.setQueryData(chartQuery(c.code, c.date).queryKey, c.data);
     return qc;
 }

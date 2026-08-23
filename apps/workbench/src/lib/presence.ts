@@ -4,15 +4,15 @@
 // (fetch·훅은 usePresence.ts — 포트/구현 분리로 소비자는 재료가 복제본인지 서버 조회인지 모른다).
 // 작업셋 목록의 모수·배지·필터 칩·차트 헤더 배지가 전부 이 한 지도를 본다.
 //
-// **모수 = curation 흔적이 있는 날 전부** — 옛 작업셋(기준선 ∪ 타점)이 놓치던 "골격만 찍은 날"·
-// "그룹만 담은 날"·"코멘트만 남긴 날"이 다 올라온다. 걸러 보는 건 필터 칩(3상·AND)의 몫이다.
+// **모수 = curation 흔적이 있는 날 전부** — 옛 작업셋(기준선 ∪ 타점)이 놓치던 "그룹만 담은 날"·
+// "코멘트만 남긴 날"이 다 올라온다. 걸러 보는 건 필터 칩(3상·AND)의 몫이다.
 // 후보 하루(분석 모수)도 이 지도의 파생이다(candidateDaysOf — 경계 차이는 코멘트 하나뿐이라 필터 한 줄).
 // 옛 서버 union(GET /candidate-days)은 이 파생이 흡수하며 은퇴 — 정의가 여기 한 곳이 됐다.
-import { ANCHOR_PARAMS, BASELINE_PARAM, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM } from "@trade-data-manager/market/domain";
+import { ANCHOR_PARAMS, BASELINE_PARAM, IGNORE_CANDLE_PARAM } from "@trade-data-manager/market/domain";
 import type { ChartAnchor, DailyCommentListItem, GroupMembership, ReviewPoint } from "@trade-data-manager/wire";
 import { isDayMembership } from "./groupIndex.js";
 import { chartKeyOf } from "./pointKey.js";
-import { ACTIVE, GROUP_PLAIN, IGNORED_CANDLE, PRICE_LINE, SKELETON } from "../styles/palette.js";
+import { ACTIVE, GROUP_PLAIN, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 
 /** 한 (종목,날짜)의 큐레이션 존재 요약 — 유무·개수만(상세는 각 도메인 쿼리가 소유). */
 export interface DayPresence {
@@ -40,7 +40,7 @@ export interface DayPresence {
 export interface PresenceKindDef {
     key: string; // 앵커는 param key, 나머지는 point/group-day/group-point/comment
     name: string;
-    /** 배지 색 — palette 의 같은 개념 색을 재사용(차트의 선·골격·무시 마커와 같은 색이라 눈이 잇는다). */
+    /** 배지 색 — palette 의 같은 개념 색을 재사용(차트의 선·무시 마커와 같은 색이라 눈이 잇는다). */
     color: string;
     countOf: (p: DayPresence) => number;
     /**
@@ -50,13 +50,10 @@ export interface PresenceKindDef {
     namesOf?: (p: DayPresence) => readonly string[];
 }
 
-// 배지 색 — 차트가 그 종류를 그리는 색과 같게 잡는다(선=청록, 골격 둘=황록, 무시=회색).
-// 분봉 골격이 일봉 골격과 **같은 색**인 것도 차트를 따른 것이다 — 배지에서는 아이콘(실선/파선)이 가른다.
+// 배지 색 — 차트가 그 종류를 그리는 색과 같게 잡는다(선=청록, 무시=회색).
 const ANCHOR_COLORS: Record<string, string> = {
     [BASELINE_PARAM]: PRICE_LINE,
     [IGNORE_CANDLE_PARAM]: IGNORED_CANDLE,
-    [SKELETON_PARAM]: SKELETON,
-    [SKELETON_MINUTE_PARAM]: SKELETON,
 };
 
 export const PRESENCE_KINDS: readonly PresenceKindDef[] = [
@@ -77,7 +74,7 @@ const EMPTY_MARKS: ReadonlyMap<string, number> = new Map();
 const EMPTY_NAMES: readonly string[] = [];
 
 /**
- * 흔적이 하나도 없는 날 — 지도에 없는 날을 필터에 걸 때의 값("!골격"은 통과, "골격"은 탈락).
+ * 흔적이 하나도 없는 날 — 지도에 없는 날을 필터에 걸 때의 값("!선"은 통과, "선"은 탈락).
  * 여기 있는 이유: 종류가 늘 때 이 빈 값도 같이 늘어야 하는데, 소비자가 제 손으로 만들면 한 곳이 빠진다.
  */
 export const emptyPresence = (stockCode: string, date: string): DayPresence =>
@@ -150,7 +147,7 @@ export type PresenceFilter = Readonly<Record<string, TriState>>;
 /** 절 목록 = 필터 전체. 빈 목록 = 필터 없음. */
 export type PresenceDnf = readonly PresenceFilter[];
 
-/** 절 하나의 AND — "골격 있음 ∧ 타점 없음" 같은 질문. */
+/** 절 하나의 AND — "선 있음 ∧ 타점 없음" 같은 질문. */
 export function matchesPresence(d: DayPresence, filter: PresenceFilter): boolean {
     for (const kind of PRESENCE_KINDS) {
         const st = filter[kind.key] ?? "any";

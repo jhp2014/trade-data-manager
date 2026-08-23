@@ -92,7 +92,7 @@ export const IGNORED_CANDLE = "#6b7280"; // 무시 캔들 마커 — 회색이 �
 //              172° 청록(가격선) · 200° 하늘(기준선) · 217° 파랑(하락봉) · 271° 보라(고가마커 30%+·가이드선).
 // 옛 마젠타(292°)는 그 보라 둘과 이웃이라 겹쳐 보였다. 마커도 원이 아니라 **X** 로 그려 고가·무시 마커(원)와
 // 모양으로도 갈린다 — 색만으로 가르면 작은 크기에서 결국 섞인다.
-export const SKELETON = "#65a30d";
+
 export const CHART_LABEL = "#a0a0a0"; // 차트 툴팁의 라벨 회색(툴팁 배경 위 — 본문 --text-tertiary 와 다름)
 export const CHART_VALUE = "#d4d4d8"; // 차트 툴팁의 값 회색(라벨보다 밝게)
 
@@ -107,7 +107,7 @@ export const CHART_VALUE = "#d4d4d8"; // 차트 툴팁의 값 회색(라벨보�
 // 중간대에 묶어 라이트·다크 둘 다에서 읽힌다.
 //
 // 자홍인 이유: 이 화면에 이미 찬 자리를 피한다 — ACTIVE 하늘 · HOVER 앰버 · PIN/GUIDE 보라 ·
-// FAIL/ALARM 빨강 · PRICE_LINE 청록 · SKELETON 황록. 역할(선택·호버)은 글로우와 굵기가 지므로
+// FAIL/ALARM 빨강 · PRICE_LINE 청록. 역할(선택·호버)은 글로우와 굵기가 지므로
 // 이 색은 온전히 값의 몫이다.
 const AMOUNT_RAMP: [number, number, number][] = [
     [133, 123, 129], // 0.0 — 거의 무채색(조용한 구간)

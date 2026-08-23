@@ -1,4 +1,4 @@
-// 차트 앵커 편집 훅 — **param 하나 = 훅 하나**(선·무시 캔들·일봉 골격·분봉 골격).
+// 차트 앵커 편집 훅 — **param 하나 = 훅 하나**(선·무시 캔들). 골격 훅 두 개는 2026-08-23 골격 은퇴로 제거.
 //
 // 옛 useChartAnchorsForChart 는 세 관심사를 한 훅이 12멤버로 반환했고, param 이 늘 때마다 훅·반환 타입·
 // 패널 배선이 같이 자랐다(분봉 골격 때 실제로 그랬다). 쪼개도 **왕복은 늘지 않는다** — 네 훅이 같은
@@ -9,19 +9,11 @@
 // 지문으로 그 차트/타점만 다시 굽는다).
 import { useCallback, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASELINE_PARAM, candlePrice, chartAnchorKey, IGNORE_CANDLE_PARAM, SKELETON_MINUTE_PARAM, SKELETON_PARAM, sortPivots, syntheticClosePivots, type SkeletonPivot } from "@trade-data-manager/market/domain";
+import { BASELINE_PARAM, chartAnchorKey, IGNORE_CANDLE_PARAM } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
-import { allAnchorsQuery, computedAxesQuery, skeletonsQuery } from "../api/queries.js";
-import { useChartPoints } from "./useChartPoints.js";
-import { kstToUnix } from "./derive.js";
+import { allAnchorsQuery, computedAxesQuery } from "../api/queries.js";
 import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
 import type { ChartBundle } from "../api/chart.js";
-
-/** 이 캔들에 찍힌 골격 점 — 값 + 저장된 시장(메뉴 배지). 일봉·분봉 골격이 같은 모양(B12 명명 통일). */
-export interface PivotAtCandle {
-    field: AnchorField;
-    market: AnchorMarket;
-}
 
 // 삭제는 **앵커 객체(자연키)** 를 넘긴다 — id 가 아니다. 읽기가 로컬 미러라 surrogate id 는 원격과
 // 갈릴 수 있어 서버로 보내지 않는다. 화면 안에서 id 를 손잡이로 쓰는 건 그대로고(RenderLine.id 등),
@@ -57,7 +49,6 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
     const invalidate = (): void => {
         void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey }); // 복제본 앵커 테이블 — 차트·작업셋·배지가 전부 이 키
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey }); // 앵커는 축 입력 — 즉시 재굽기
-        void qc.invalidateQueries({ queryKey: skeletonsQuery().queryKey }); // 골격 좌표(겹쳐 그리기)도 같은 입력
     };
     const addMut = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
     const removeMut = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });
@@ -151,92 +142,4 @@ export function useIgnoreCandles(code: string, date: string): IgnoreCandles {
             else mut.add({ stockCode: code, date, param: IGNORE_CANDLE_PARAM, anchorDate });
         },
     }), [ignores, code, date, mut]);
-}
-
-// ── 골격(일봉·분봉) — 반환 모양이 같다(points·pivotsAt·toggle·clear·hasAny). ──
-export interface SkeletonEditor<P> {
-    /** 오버레이용 피벗 — 시간순 정렬(도메인 sortPivots — 서버 형태 계산과 같은 규칙)에 가격을 붙인 것. */
-    points: P[];
-    /** 이 캔들에 찍힌 값들(메뉴 토글 상태 + 저장된 시장 배지). */
-    pivotsAt: (coord: string) => PivotAtCandle[];
-    /** 이 캔들의 점 토글. 집합 규칙 위반(상한·같은 캔들 高低)은 서버가 400 으로 막는다. */
-    toggle: (coord: string, field: AnchorField, market: AnchorMarket) => void;
-    /** 이 골격 전체 삭제(다시 찍기). */
-    clear: () => void;
-    hasAny: boolean;
-}
-
-/**
- * 일봉 골격(차트 소유) — coord = anchorDate.
- * 같은 캔들·같은 값은 시장이 달라도 **한 점**이다(정렬 위치가 같아 순서가 모호해지므로 서버도 막는다).
- * 그래서 해제 판정에 market 을 안 본다 — KRX 로 보는 중에 UN 점을 눌러도 그 점이 꺼진다(눈에 보이는 대로).
- */
-export function useDailySkeleton(code: string, date: string, dailyBundle: ChartBundle | undefined): SkeletonEditor<{ date: string; price: number }> {
-    const { anchors, mut } = useChartAnchors(code, date);
-    const daily = ownBundle(dailyBundle, code); // 전환 과도기: 직전 종목 번들이면 창 밖 취급(피벗 생략)
-    const mine = useMemo(() => anchors.filter((a) => a.param === SKELETON_PARAM && a.field != null && a.market != null), [anchors]);
-    const points = useMemo(() => {
-        const sorted = sortPivots(mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime, field: a.field!, market: a.market! })));
-        const out: { date: string; price: number }[] = [];
-        for (const p of sorted) {
-            if (p.anchorTime) continue; // 일봉 골격 — 분봉 좌표는 스키마상 없지만 방어적으로
-            const price = candlePrice(daily?.daily.find((c) => c.date === p.anchorDate)?.[p.market]?.[p.field]);
-            if (price !== null) out.push({ date: p.anchorDate, price }); // 창 밖 피벗은 빠진다(선이 조금 짧아질 뿐)
-        }
-        return out;
-    }, [mine, daily]);
-    return useMemo<SkeletonEditor<{ date: string; price: number }>>(() => ({
-        points,
-        pivotsAt: (anchorDate) => mine.filter((a) => a.anchorDate === anchorDate && a.anchorTime == null).map((a) => ({ field: a.field!, market: a.market! })),
-        toggle: (anchorDate, field, market) => {
-            if (!code || !date) return;
-            const existing = mine.find((a) => a.anchorDate === anchorDate && a.anchorTime == null && a.field === field);
-            if (existing) mut.remove(existing);
-            else mut.add({ stockCode: code, date, param: SKELETON_PARAM, anchorDate, field, market });
-        },
-        clear: () => mut.removeMany(mine),
-        hasAny: mine.length > 0,
-    }), [points, mine, code, date, mut]);
-}
-
-/**
- * 분봉 골격(차트 소유·당일 장중 경로) — coord = anchorTime. 일봉 골격과 같은 소유라 activeTime 이 없어도
- * 편집된다(타점별 상한은 읽기 절단 — resolveMinuteSkeletons — 의 몫이지 쓰기의 몫이 아니다).
- * 시장은 언제나 UN(분봉 앵커 규칙)이라 toggle 의 market 인자는 무시된다.
- *
- * **표시 경로에는 타점 종가를 합성한다**("타점 종가 = 골격의 한 점" — 서버 리졸버와 같은 규칙):
- * 손 피벗이 하나라도 있을 때, 손 피벗 없는 캔들의 저장 타점 종가를 경로에 병합한다. 편집(mine·토글)은
- * 손 피벗만 — 합성점은 지울 대상이 아니다(타점을 지우면 사라진다).
- */
-export function useMinuteSkeleton(code: string, date: string, minuteBundle: ChartBundle | undefined): SkeletonEditor<{ time: number; price: number }> {
-    const { anchors, mut } = useChartAnchors(code, date);
-    const minute = ownBundle(minuteBundle, code); // 전환 과도기: 직전 종목 번들이면 창 밖 취급(피벗 생략)
-    const reviewPoints = useChartPoints(code, date); // useReviewPointData 와 같은 셀렉터 — 같은 조각 공유
-    const mine = useMemo(
-        () => anchors.filter((a) => a.param === SKELETON_MINUTE_PARAM && a.time == null && a.field != null && a.anchorTime != null),
-        [anchors],
-    );
-    const points = useMemo(() => {
-        const pivots: SkeletonPivot[] = mine.map((a) => ({ anchorDate: a.anchorDate, anchorTime: a.anchorTime!, field: a.field!, market: a.market! as AnchorMarket }));
-        // 합성 규칙은 도메인 단일 출처(서버 리졸버와 같은 함수) — 편집 중 오버레이와 겹쳐 그리기가 같은 경로를 그린다.
-        pivots.push(...syntheticClosePivots(date, new Set(mine.map((a) => a.anchorTime!)), reviewPoints.map((rp) => rp.time)));
-        const out: { time: number; price: number }[] = [];
-        for (const p of sortPivots(pivots)) {
-            const price = candlePrice(minute?.minutes.find((c) => c.date === p.anchorDate && c.time === p.anchorTime)?.un?.[p.field]);
-            if (price !== null) out.push({ time: kstToUnix(p.anchorDate, p.anchorTime!), price });
-        }
-        return out;
-    }, [mine, reviewPoints, date, minute]);
-    return useMemo<SkeletonEditor<{ time: number; price: number }>>(() => ({
-        points,
-        pivotsAt: (anchorTime) => mine.filter((a) => a.anchorTime === anchorTime).map((a) => ({ field: a.field!, market: a.market! })),
-        toggle: (anchorTime, field) => {
-            if (!code || !date) return;
-            const existing = mine.find((a) => a.anchorTime === anchorTime && a.field === field);
-            if (existing) mut.remove(existing);
-            else mut.add({ stockCode: code, date, param: SKELETON_MINUTE_PARAM, anchorDate: date, anchorTime, field, market: "un" });
-        },
-        clear: () => mut.removeMany(mine),
-        hasAny: mine.length > 0,
-    }), [points, mine, code, date, mut]);
 }

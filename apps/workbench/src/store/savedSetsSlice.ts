@@ -12,7 +12,9 @@ import { putStages, selectFilterStages } from "./filterFunnelSlice.js";
 import { loadJson, saveJson } from "./persist.js";
 
 const LEGACY_SETS_KEY = "wb.filterFunnelSets"; // 옛 "저장한 깔때기" — 저장 집합(부위=생존자)으로 읽어 들인다
-const SAVED_SETS_KEY = "wb.savedSets";
+// v2 로 키를 올린 이유(2026-08-23): 골격 은퇴로 skeleton-* 축·존재 리터럴이 사라졌다 — 옛 저장분의
+// 그 leaf 들은 참조가 깨진 채 남으므로 통째로 리셋한다(사용자 확정: "어차피 나중에 다시 만들면 돼").
+const SAVED_SETS_KEY = "wb.savedSets.v2";
 
 /**
  * 저장 집합의 부위 — 조건 한 벌에서 **무엇을 꺼내 오나**. 생존자(전 단계 통과) 또는 특정 단계의 칸들.
@@ -63,8 +65,9 @@ const loadSavedSets = (): SavedSet[] => {
     };
     const fresh = loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null));
     if (fresh) return parse(fresh, true);
-    const legacy = loadJson(LEGACY_SETS_KEY, (o) => (Array.isArray(o) ? o : null));
-    return legacy ? parse(legacy, false) : [];
+    // v2 리셋 이전 키들(wb.savedSets·LEGACY)은 읽지 않는다 — 골격 leaf 가 되살아나는 뒷문이 된다.
+    void LEGACY_SETS_KEY;
+    return [];
 };
 
 export interface SavedSetsSlice {
