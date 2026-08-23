@@ -14,6 +14,7 @@ import {
     LineSeries,
     LineStyle,
     createSeriesMarkers,
+    type IChartApi,
     type ISeriesApi,
     type ISeriesMarkersPluginApi,
     type SeriesMarker,
@@ -99,20 +100,38 @@ export function NormChart({ series, mode, xKind, fitTick, renderExtra }: {
 
     // 만든 시리즈 목록 — 툴팁이 (시리즈 → 항목) 역조회에 쓴다. 재구축 effect 만 쓴다.
     const createdRef = useRef<Created[]>([]);
-    /** 척도 잠금 — 첫 데이터에서 한 번 맞춘 뒤 autoScale off. */
-    const lockedRef = useRef(false);
+    /**
+     * 척도를 맞춘 **차트 인스턴스** — 잠금은 차트마다 한 번이다(boolean 이 아니라 인스턴스로 드는 이유).
+     * StrictMode 이중 effect·Fast Refresh 로 차트가 새로 나면 잠금도 새로 잡아야 한다 — boolean 이면
+     * 이미 참이라 **새 차트가 맞춰지지 않은 채** 남는다(일봉·분봉 시리즈 훅의 gen 세대 규약과 같은 이유).
+     */
+    const fittedChartRef = useRef<IChartApi | null>(null);
 
     // ── 시리즈 재구축 — 항목·모드가 바뀌면 전부 지우고 다시 만든다. N 이 수십이라 재구축이 증분보다
-    //    단순하고 충분히 싸다(같은 이유로 골격 패널도 표시목록을 매번 새로 만들었다).
+    //    단순하고 충분히 싸다(같은 이유로 옛 골격 패널도 표시목록을 매번 새로 만들었다).
+    //
+    // ⚠ 정리는 **cleanup 이 제가 만든 차트에서만** 한다. 옛날엔 다음 실행 머리에서 지웠는데, 그 사이에
+    //   차트가 새로 나면(StrictMode 이중 effect) 옛 시리즈 핸들로 **새 차트**의 removeSeries 를 불러
+    //   lightweight-charts 가 ensureDefined 로 던졌다 — 패널이 통째로 흰 화면이 되던 자리다.
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
-        for (const c of createdRef.current) {
-            c.markers?.setMarkers([]);
-            chart.removeSeries(c.api);
-        }
-        createdRef.current = [];
-        if (series.length === 0) return;
+        const created: Created[] = [];
+        createdRef.current = created;
+        // 정리 — 차트가 **먼저** 파괴됐으면(useChartShell cleanup 이 먼저 돈다) 지울 것도 없다.
+        // candleAmountSeries 의 dispose 와 같은 이유·같은 처방(try/catch).
+        const cleanup = (): void => {
+            for (const c of created) {
+                try {
+                    c.markers?.setMarkers([]);
+                    chart.removeSeries(c.api);
+                } catch {
+                    /* 차트가 먼저 파괴됨 */
+                }
+            }
+            if (createdRef.current === created) createdRef.current = [];
+        };
+        if (series.length === 0) return cleanup;
 
         // 시선(emphasized)이 맨 위 — 나중에 add 된 시리즈가 위에 그려진다.
         const ordered = [...series].sort((a, b) => Number(a.emphasized === true) - Number(b.emphasized === true));
@@ -155,21 +174,25 @@ export function NormChart({ series, mode, xKind, fitTick, renderExtra }: {
                 };
                 markers.setMarkers([m]);
             }
-            createdRef.current.push({ api, meta: s, markers });
+            created.push({ api, meta: s, markers });
         }
         // 0% 기준선 — 원점의 자리. 재구축마다 첫 시리즈에 다시 붙인다(시리즈 없이는 선을 못 그린다).
-        createdRef.current[0]?.api.createPriceLine({
+        created[0]?.api.createPriceLine({
             price: 0, color: "rgba(150,150,150,0.5)", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "",
         });
 
-        // 첫 데이터 = 한 번 맞추고 잠근다. 이후 재구축은 사용자의 척도를 건드리지 않는다.
-        if (!lockedRef.current) {
+        // 이 차트의 첫 데이터 = 한 번 맞추고 잠근다. 이후 재구축은 사용자의 척도를 건드리지 않는다.
+        if (fittedChartRef.current !== chart) {
             chart.timeScale().fitContent();
+            // 잠금은 다음 프레임에 — 같은 프레임에 끄면 fitContent 가 반영되기 전 범위가 굳는다.
+            // ⚠ 그 사이 차트가 갈렸으면(재생성) 건드리지 않는다 — 새 차트는 제 effect 가 맞춘다.
             requestAnimationFrame(() => {
-                chartRef.current?.priceScale("right").applyOptions({ autoScale: false });
+                if (chartRef.current !== chart) return;
+                chart.priceScale("right").applyOptions({ autoScale: false });
             });
-            lockedRef.current = true;
+            fittedChartRef.current = chart;
         }
+        return cleanup;
     }, [series, mode, xKind, chartRef]);
 
     // 맞춤 — 잠금을 한 프레임 풀어 현재 데이터에 맞추고 다시 잠근다.
@@ -182,7 +205,8 @@ export function NormChart({ series, mode, xKind, fitTick, renderExtra }: {
         chart.priceScale("right").applyOptions({ autoScale: true });
         chart.timeScale().fitContent();
         requestAnimationFrame(() => {
-            chartRef.current?.priceScale("right").applyOptions({ autoScale: false });
+            if (chartRef.current !== chart) return; // 그 사이 차트가 갈렸다 — 남의 척도를 잠그지 않는다
+            chart.priceScale("right").applyOptions({ autoScale: false });
         });
     }, [fitTick, chartRef]);
 
