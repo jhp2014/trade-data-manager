@@ -84,3 +84,17 @@ export interface DrawLayer {
 /** 빈 묶음·빈 층을 걸러 낸다 — 목록에 빈 껍데기가 쌓이면 순서 검사가 읽기 나빠진다. */
 export const compact = (groups: readonly DrawGroup[]): DrawGroup[] =>
     groups.filter((g) => g.ops.length > 0);
+
+/**
+ * 그림 층의 **그리는 순서** — 먼저가 아래. 순서는 미학이 아니라 뜻이다:
+ *   · 캔들이 맨 아래 — 선이 그 위를 지나야 "선이 원본의 어디를 밟았나"가 읽힌다.
+ *   · 테마 선이 정규화 선보다 아래 — 배경이고 주인공은 내 선이다.
+ * **세 층은 반드시 붙어 있어야 한다** — 캔버스 한 장이 스택 자리 하나를 차지하므로,
+ * 사이에 DOM 층이 끼면 순서를 재현할 수 없다(손짓 층은 이 뭉치 뒤로 나가 있다).
+ */
+export const PAINT_ORDER = ["candles", "theme-lines", "lines"] as const;
+export type PaintName = typeof PAINT_ORDER[number];
+
+/** 이름표 붙은 층들을 **정해진 순서로** — 부르는 자리가 순서를 못 정하게 한다. */
+export const orderPaint = (byName: Record<PaintName, DrawLayer>): DrawLayer[] =>
+    PAINT_ORDER.map((name) => byName[name]);

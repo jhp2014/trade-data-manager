@@ -10,6 +10,7 @@
 // 예전 핀 판독은 겹치면 옆 열로 밀었는데, 열이 늘면 화면 오른쪽을 넘고 "어느 시각 것이냐"를 열로 읽는
 // 규칙까지 따로 배워야 했다. 지시선이 이미 대응을 지고 있으니 **한 열에서 위아래로 벌리면** 그만이다
 // — 거터 이름 라벨과 같은 문법이 되어 이 패널의 라벨 규칙이 하나로 통일된다.
+import type { CSSProperties } from "react";
 import { spreadByY } from "./amountRuns.js";
 
 /** 판독 후보 하나 — 어떤 x 에서 읽은 한 선의 값. */
@@ -126,3 +127,15 @@ export function layoutReadoutRows<T>(
     const shift = lo < range.min ? range.min - lo : hi > range.max ? range.max - hi : 0;
     return spread.map((s) => ({ item: s.item, anchorY: s.anchorY, labelY: s.labelY + shift, off: s.off }));
 }
+
+/** 판독 칩이 세로선에서 떨어지는 거리(px) — 크로스헤어·핀 두 판독이 같은 값을 쓴다. */
+export const READOUT_OFFSET = 30;
+
+/** 판독 칩 하나의 상자 — 크로스헤어 판독과 핀 판독이 같은 모양을 쓴다(옛 PinLayer 소유였던 것). */
+export const readoutBox: CSSProperties = {
+    position: "absolute", transform: "translateY(-50%)", pointerEvents: "none",
+    display: "inline-flex", alignItems: "center", gap: 5,
+    background: "var(--bg-primary)", border: "1px solid var(--border-subtle)", borderRadius: 4,
+    padding: "0 5px", fontSize: 10, lineHeight: "16px", whiteSpace: "nowrap",
+    fontVariantNumeric: "tabular-nums",
+};

@@ -9,7 +9,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { AxisLine, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, RankAxis, ReviewPoint, StockMeta } from "@trade-data-manager/wire";
+import type { AxisLine, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankAxis, ReviewPoint, StockMeta } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
     allAnchorsQuery, allCommentsQuery, allPointsQuery, axisLinesQuery, chartQuery, computedAxesQuery,
@@ -45,6 +45,8 @@ export interface Seed {
     memberships?: GroupMembership[];
     axes?: RankAxis[];
     axisLines?: AxisLine[];
+    /** 그날 복기 파생(정규화 패널의 테마·거래대금 재료 — useDaySnapshot 키). */
+    daySnapshot?: { date: string; data: DayReplay };
     computedAxes?: ComputedAxisFeed[];
     /**
      * 그날 복기 파생(테마 선·거래대금의 재료). 키는 골격 패널 전용이다 — 복기 보드와 **일부러 갈라져**
@@ -92,6 +94,7 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(axisLinesQuery().queryKey, seed.axisLines ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
+    if (seed.daySnapshot) qc.setQueryData(["skeleton-day-src", seed.daySnapshot.date], seed.daySnapshot.data);
     for (const c of seed.charts ?? []) qc.setQueryData(chartQuery(c.code, c.date).queryKey, c.data);
     return qc;
 }

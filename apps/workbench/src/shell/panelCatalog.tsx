@@ -14,8 +14,7 @@ import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { FilterFunnelPanel } from "../panels/FilterFunnelPanel.js";
-import { DailyNormPanel } from "../panels/norm/DailyNormPanel.js";
-import { PointNormPanel } from "../panels/norm/PointNormPanel.js";
+import { NormOverlayPanel } from "../panels/norm/NormOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
 import { GroupListPanel } from "../panels/GroupListPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
@@ -64,8 +63,8 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "filter-funnel-1", component: "filterFunnel", title: "집합 편성", plane: "eod", render: (id) => <FilterFunnelPanel panelId={id} /> },
     // 정규화 두 판 — 골격 패널의 후신(골격의 실가치 = 정규화, 2026-08-23 은퇴). 실물 캔들/종가선을 원점으로 접어 겹친다.
     // 옛 골격 컴포넌트("rankSkeleton"/"rankSkeletonMinute")는 저장 프리셋에서 sanitizeLayout 이 걷어낸다(맵 패널과 같은 길).
-    { id: "norm-daily-1", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <DailyNormPanel /> },
-    { id: "norm-point-1", component: "normPoint", title: "정규화 [타점]", plane: "eod", render: () => <PointNormPanel /> },
+    { id: "norm-daily-1", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <NormOverlayPanel grain="daily" /> },
+    { id: "norm-point-1", component: "normPoint", title: "정규화 [타점]", plane: "eod", render: () => <NormOverlayPanel grain="minute" /> },
     { id: "rank-point-1", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
     // 그룹 목록 — 계층·겹침·드릴다운. 옛 맵 패널("map")은 삭제 — 저장 프리셋의 맵 칸은 sanitizeLayout 이 걷어낸다.
     { id: "group-list-1", component: "groupList", title: "그룹", plane: "eod", render: () => <GroupListPanel /> },
