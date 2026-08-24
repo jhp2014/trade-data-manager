@@ -3,11 +3,11 @@
 //
 // ## 모수는 명시 등록이다(사용자 확정 — 깔때기 구독 폐기)
 // 깔때기가 접어 준 월 전체를 다 그리던 옛 모수는 "전체 겹쳐 훑기"가 실제로 안 쓰인다는 실측으로 은퇴했다.
-// 여기 모수는 **시선(focus 자동 교체) + 고정(라벨 우클릭, 리셋 없음)** 뿐이다 — 수 개~십수 개라
+// 여기 모수는 **시선(focus 자동 교체) + 고정(라벨 클릭, 리셋 없음)** 뿐이다 — 수 개~십수 개라
 // 항목당 GET /chart 하나(chartQuery 벌크)가 감당되고, 차트 패널과 캐시 한 벌을 공유한다.
 //
 // ## 정규화 공간 — overlay.ts 머리 주석의 그 공간을 여기서 만든다
-//   · 일봉: basePrice = D−1 종가(시장 토글), baseRate = 0, x = 거래일 오프셋(D=0).
+//   · 일봉: basePrice = D−1 종가(시장 토글), baseRate = 0, x = **전일(D−1) 기준** 거래일 오프셋(당일 = +1).
 //   · 분봉: basePrice = 전일 UN 종가(번들 basePrice — %p 공간의 분모), baseRate = 원점(타점 시각
 //     종가)의 전일比%, x = 타점 시각 대비 분. 테마 선과 세로 간격이 보존되는 그 공간이다.
 // 재료 결손(전일 종가 없음·원점 분봉 미수집)은 **결손으로 센다** — 지어내지 않는다.
@@ -27,6 +27,7 @@ import { parsePins, pinKey, type NormPin } from "./normShared.js";
 import { pct, type ChartLine, type OverlayLine, type PointLine } from "./overlay.js";
 import { anchorCandles, dailyOverlayCandles, type ViewCandle } from "./candles.js";
 import type { NormLevel } from "./LevelsLayer.js";
+import type { ZeroLine } from "./useOverlayToggles.js";
 
 const priceOf = (s: string | undefined): number | null => candlePrice(s);
 
@@ -46,7 +47,7 @@ export interface NormItemsView {
     loading: boolean;
     nameOf: (code: string) => string;
     isPinned: (line: OverlayLine) => boolean;
-    /** 라벨 우클릭 = 고정 토글(사용자 확정 — 헤더 버튼이 아니라 라벨이 손잡이다). */
+    /** 라벨 클릭 = 고정 토글(사용자 확정 — 헤더 버튼이 아니라 라벨이 손잡이다. 시선 이동은 Ctrl+클릭). */
     togglePin: (line: OverlayLine) => void;
     clearPins: () => void;
     pinCount: number;
@@ -63,7 +64,7 @@ interface ItemSpec {
 
 const pinOf = (it: ItemSpec): NormPin => (it.time === undefined ? { code: it.code, date: it.date } : { code: it.code, date: it.date, time: it.time });
 
-export function useNormLines(grain: "daily" | "minute", dailyMarket: "krx" | "un"): NormItemsView {
+export function useNormLines(grain: "daily" | "minute", dailyMarket: "krx" | "un", zeroLine: ZeroLine): NormItemsView {
     const isDaily = grain === "daily";
     const focusCode = useWorkbench((s) => s.focus.code);
     const focusDate = useWorkbench((s) => s.focus.date);
@@ -154,7 +155,11 @@ export function useNormLines(grain: "daily" | "minute", dailyMarket: "krx" | "un
             candlesByKey.set(line.key, candles);
             if (it.subject) subjectKeys.add(line.key);
             if (it.pinned) pinnedKeys.add(line.key);
-            if (!levelsByChart.has(ck)) levelsByChart.set(ck, levelsOf(bundle, baselineAnchors.filter((a) => chartKeyOf(a.stockCode, a.date) === ck)));
+            if (!levelsByChart.has(ck)) {
+                const anchored = levelsOf(bundle, baselineAnchors.filter((a) => chartKeyOf(a.stockCode, a.date) === ck));
+                const zero = isDaily ? null : zeroLevelOf(bundle, zeroLine);
+                levelsByChart.set(ck, zero ? [...anchored, zero] : anchored);
+            }
         }
 
         const byKey = new Map(lines.map((l) => [l.key, l] as const));
@@ -175,10 +180,16 @@ export function useNormLines(grain: "daily" | "minute", dailyMarket: "krx" | "un
             clearPins: () => setPins([]),
             pinCount: pins.length,
         };
-    }, [items, bundles, isDaily, dailyMarket, baselineAnchors, pins, setPins, nameOf]);
+    }, [items, bundles, isDaily, dailyMarket, zeroLine, baselineAnchors, pins, setPins, nameOf]);
 }
 
-/** 일봉 선 — 원점 = D−1 종가(시장 토글). D−1 결측(상장일 등)은 당일 시가 폴백(basePrice 규칙과 동일). */
+/**
+ * 일봉 선 — 원점 = D−1 종가(시장 토글). D−1 결측(상장일 등)은 당일 시가 폴백(basePrice 규칙과 동일).
+ *
+ * ## x 의 원점도 **전일**이다(사용자 확정)
+ * `baseT = last − 1` 이라 D−1 이 x=0 — 원점 (0,0)이 **선 위의 한 점**이 된다(옛 D=0 에선 원점이
+ * 선 밖의 허공이었다). 당일 D 는 +1(DAILY_EVENT_X)이고, 캔들도 같은 baseT 를 받아 함께 움직인다.
+ */
 function dailyLineOf(
     bundle: ChartBundle,
     market: "krx" | "un",
@@ -189,14 +200,16 @@ function dailyLineOf(
     const last = daily.length - 1;
     const basePrice = daily.length >= 2 ? priceOf(daily[last - 1][market].close) : priceOf(daily[last][market].open);
     if (basePrice === null) return null;
+    // 원점 = 전일(D−1). 봉이 하나뿐이면 그 자신이 원점이지만, 그 경우 점이 2개 미만이라 아래에서 걸러진다.
+    const baseT = daily.length >= 2 ? last - 1 : last;
     const points: { x: number; y: number }[] = [];
     for (let i = 0; i < daily.length; i++) {
         const c = priceOf(daily[i][market].close);
         if (c === null) continue; // 값 없는 봉은 건너뛴다(0% 평탄값을 지어내지 않는다)
-        points.push({ x: i - last, y: pct(c, basePrice) });
+        points.push({ x: i - baseT, y: pct(c, basePrice) });
     }
     if (points.length < 2) return null;
-    return { kind: "chart", ...owner, basePrice, baseRate: 0, baseT: last, points };
+    return { kind: "chart", ...owner, basePrice, baseRate: 0, baseT, points };
 }
 
 /** 분봉 선 — %p 공간(분모=전일 UN 종가), 원점 = 타점 시각 UN 종가. 하루 전체(타점 이후 포함). */
@@ -244,4 +257,19 @@ function levelsOf(bundle: ChartBundle, anchors: readonly ChartAnchor[]): NormLev
     let winner = resolved[0];
     for (const r of resolved) if (beatsAsBaseline(r, winner)) winner = r;
     return resolved.map((r) => ({ price: r.price, baseline: r === winner }));
+}
+
+/**
+ * 전일 종가선(0%) — **분봉 전용**. 분봉 뷰는 타점 시각을 원점으로 끌어내린 %p 공간이라 "진짜 0%"가
+ * 화면에서 사라진다(선마다 `y = −baseRate` 로 흩어진다). 그 자리를 되돌려 놓는 선이다.
+ *
+ * 재료는 번들의 시장별 기준가 하나뿐이고, 환산은 수준선과 **같은 식**(pct − baseRate)이라 선마다
+ * 제 높이에 선다 — 그래서 이건 공용 가로선이 아니라 **항목마다 하나**다(주인이 색을 준다).
+ * 일봉엔 안 붙는다: 거기선 y=0 자체가 전일 종가라 이미 가로 0선이 그 자리다.
+ */
+function zeroLevelOf(bundle: ChartBundle, zeroLine: ZeroLine): NormLevel | null {
+    if (zeroLine === "off") return null;
+    const price = bundle.basePrice?.[zeroLine] ?? null;
+    if (price === null || price <= 0) return null; // 기준가 결손 — 지어내지 않는다
+    return { price, baseline: false, zero: zeroLine };
 }

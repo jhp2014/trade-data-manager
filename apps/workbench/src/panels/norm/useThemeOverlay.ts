@@ -20,15 +20,9 @@ import { minuteOfDayOf, selectHotUniverse } from "@trade-data-manager/market/dom
 import type { DayReplay } from "@trade-data-manager/wire";
 import { seriesColor } from "../../styles/palette.js";
 import { amountLevelOf, type AmountLookup } from "./amountLayer.js";
-import { layoutReadoutRows } from "../canvas/readout.js";
-import { POINT_FRAME, yAtX, type PointLine } from "./overlay.js";
+import { POINT_FRAME, type PointLine } from "./overlay.js";
 import { amountRuns, type AmountRun } from "../canvas/amountRuns.js";
 import { hotCodesInRange, themeLines, type ThemeLine } from "./themeSkeleton.js";
-
-/** 거터에 이름을 둘 테마 선의 최대 수(사용자 확정) — 넘치면 나머지는 개수 뱃지 하나로 묶인다. */
-const THEME_LABEL_CAP = 8;
-/** 거터 라벨의 세로 최소 간격(화면 px). */
-const THEME_LABEL_GAP = 14;
 
 /** 뷰 공간으로 옮겨진 테마 선 한 벌 + 절대값 복원 상수. */
 export interface ThemeOverlay {
@@ -42,19 +36,6 @@ export interface ThemeOverlay {
 }
 
 /** 거터에 세운 이름 하나 — `labelY` 는 세로로 벌린 뒤의 자리, `anchorY` 는 선이 실제로 있는 높이. */
-export interface ThemeLabel {
-    code: string;
-    name: string;
-    at: { x: number; y: number };
-    labelY: number;
-    anchorY: number;
-    /** 상자 밖으로 밀려 가장자리에 당겨졌으면 어느 쪽인지(안 밀렸으면 null). */
-    off: "up" | "down" | null;
-}
-
-interface Box { left: number; top: number; width: number; height: number }
-interface Scales { x: { (v: number): number; invert: (px: number) => number }; y: (v: number) => number }
-
 export interface ThemeView {
     /** 펼쳐진 테마(없으면 null). */
     overlay: ThemeOverlay | null;
@@ -157,49 +138,4 @@ export function useThemeOverlay(args: UseThemeOverlayArgs): ThemeView {
         openBadge: (at, members) => setBadge({ ...at, members }),
         closeBadge: () => setBadge(null),
     };
-}
-
-/**
- * 거터 이름의 자리 — **왼쪽 여백에 세로로 벌려** 놓는다(사용자 확정 B안). 선 시작점에 그대로 붙이면
- * 등락률이 비슷한 종목끼리 글자가 겹쳐 뭉개지고, 관찰 종목 라벨이 그 위를 덮었다.
- *
- * 다만 거터도 무한하지 않다 — 30종목을 다 벌리면 화면 높이를 넘는다. 그래서 **상한 8개**(사용자 확정):
- * 위(등락률 큰 쪽)에서 여덟만 이름을 두고 나머지는 **개수 뱃지 하나**로 묶어 누르면 목록이 열린다.
- * 위쪽이 살아남는 건 아래쪽이 0% 언저리에 뭉쳐 있어 어차피 이름을 못 읽기 때문이다.
- *
- * 앵커는 **화면 좌단에서 선이 잘리는 값**(사용자 확정). 하루 전체를 그리게 되면서 "첫 점"은 대개
- * 08:00 = 화면 밖이 됐고, 그러면 라벨이 죄다 그 시각의 값(≈0%)에 뭉쳐 지금 보는 그림과 무관해진다.
- * 좌단 기준이면 팬·줌 할 때마다 다시 계산돼 라벨이 선을 따라다닌다.
- */
-export function useThemeLabels(
-    overlay: ThemeOverlay | null,
-    scales: Scales | null,
-    viewX: { from: number; to: number } | null,
-    box: Box,
-): { named: ThemeLabel[]; hidden: { code: string; name: string; y: number }[] } {
-    return useMemo(() => {
-        if (!overlay || !scales || !viewX) return { named: [], hidden: [] };
-        // 좌단에 선이 아직/이미 없으면 가까운 끝점으로 물러난다 — 목록에서 종목이 사라지지 않게.
-        const items = overlay.lines
-            .map((l) => {
-                const edge = yAtX(l.points, viewX.from);
-                const at = edge !== null ? { x: viewX.from, y: edge }
-                    : l.points[0].x > viewX.from ? l.points[0]
-                        : l.points[l.points.length - 1];
-                return { code: l.code, name: l.name, at };
-            })
-            .sort((a, b) => b.at.y - a.at.y);
-        const head = items.slice(0, THEME_LABEL_CAP);
-        const hidden = items.slice(THEME_LABEL_CAP).map((i) => ({ code: i.code, name: i.name, y: scales.y(i.at.y) }));
-        // 라벨은 **제 높이를 고집하지 않는다**(사용자 확정) — 값이 붙은 종목끼리도 편히 벌어져 서고,
-        // 어느 선의 이름인지는 지시선이 답한다. 그래서 최소 간격만 지키면 자리는 자유다.
-        // 상자 밖(확대로 y 범위를 벗어난 선)은 가장자리로 당기고 ▲▼ 로 남긴다 — 예전엔 overflow 에
-        // 잘려 **그 종목이 목록에서 조용히 사라졌다**(판독 칩과 같은 규칙, layoutReadoutRows).
-        const named = layoutReadoutRows(
-            head.map((i) => ({ item: i, y: scales.y(i.at.y) })),
-            { min: box.top + 6, max: box.top + box.height - 6 },
-            THEME_LABEL_GAP,
-        ).map((r) => ({ ...r.item, labelY: r.labelY, anchorY: r.anchorY, off: r.off }));
-        return { named, hidden };
-    }, [overlay, scales, viewX, box.top, box.height]);
 }

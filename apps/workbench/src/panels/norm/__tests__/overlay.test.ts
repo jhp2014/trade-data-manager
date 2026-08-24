@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, lineOpacity, dimOpacity, labelAnchorAt, labelHandles, lineVisual, minuteIndexOf, minuteAmountOf, pickAmountLabels, segmentIndexOf, type NormLine, type OverlayBounds } from "../overlay.js";
+import { overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, lineOpacity, dimOpacity, labelAnchorAt, lineVisual, minuteIndexOf, minuteAmountOf, pickAmountLabels, segmentIndexOf, type NormLine, type OverlayBounds } from "../overlay.js";
 
 /** 정규화 선 하나(값 공간) — 경계·라벨 검사용 최소 빌더. */
 const lineOf = (key: string, pts: [number, number][]): NormLine => ({
@@ -344,9 +344,7 @@ describe("lineVisual", () => {
     });
 });
 
-describe("labelAnchorAt / labelHandles", () => {
-    const none: ReadonlySet<string> = new Set();
-
+describe("labelAnchorAt — 거터 칩이 가리키는 점", () => {
     // ── labelAnchorAt — 라벨은 **지금 보이는 창에서 선이 잘리는 자리**(사용자 확정: 줌·팬과 무관하게 손잡이가 남는다).
     const view: OverlayBounds = { minX: -60, maxX: 10, minY: -20, maxY: 20 };
     const path = [{ x: -80, y: -10 }, { x: -40, y: 0 }, { x: 0, y: 8 }];
@@ -372,81 +370,6 @@ describe("labelAnchorAt / labelHandles", () => {
         expect(labelAnchorAt([{ x: 20, y: 0 }, { x: 40, y: 5 }], view)).toBeNull();
         expect(labelAnchorAt([{ x: -200, y: 0 }, { x: -100, y: 5 }], view)).toBeNull();
         expect(labelAnchorAt([], view)).toBeNull();
-    });
-
-    it("같은 칸에 든 것들이 하나로 묶여 뱃지가 된다 — 혼자면 라벨", () => {
-        const h = labelHandles([
-            { key: "a", x: 10, y: 10 },
-            { key: "b", x: 20, y: 12 },
-            { key: "c", x: 400, y: 200 },
-        ], none, 92, 18);
-        expect(h).toHaveLength(2);
-        expect(h[0]).toMatchObject({ kind: "badge", members: ["a", "b"] });
-        expect(h[1]).toMatchObject({ kind: "label", key: "c", pinned: false });
-    });
-
-    it("대표 위치는 첫 멤버 자리 — 중심이면 멤버가 드나들 때마다 라벨이 흔들린다", () => {
-        expect(labelHandles([{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }], none, 92, 18)[0])
-            .toMatchObject({ x: 10, y: 10 });
-    });
-
-    it("좌표가 벌어지면(확대) 칸이 쪼개진다 — 숨김이 아니라 압축이라는 성질", () => {
-        const near = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 30, y: 10 }];
-        const far = near.map((a) => ({ ...a, x: a.x * 8 }));
-        expect(labelHandles(near, none, 92, 18)).toHaveLength(1);
-        expect(labelHandles(far, none, 92, 18)).toHaveLength(2);
-    });
-
-    it("짚은 것은 묶음에서 빠져 제 손잡이가 된다 — 뭉친 칸 안에 있어도", () => {
-        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }];
-        const h = labelHandles(anchors, new Set(["b"]), 92, 18);
-        expect(h).toHaveLength(2);
-        expect(h[0]).toMatchObject({ kind: "label", key: "a" }); // 남은 하나는 뱃지가 아니라 라벨
-        expect(h[1]).toMatchObject({ kind: "label", key: "b", pinned: true, x: 20, y: 12 });
-    });
-
-    // ⚠ 이 셋이 이 함수의 존재 이유다 — 손잡이가 호버 때문에 다시 만들어지면 mouseleave 가 안 와서
-    //   손을 치워도 호버가 안 풀린다(실제로 겪은 간헐 버그).
-    it("**라벨 하나를 짚어도 목록의 길이·순서·id 가 안 바뀐다** — pinned 만 뒤집힌다", () => {
-        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 400, y: 200 }, { key: "c", x: 800, y: 400 }];
-        const before = labelHandles(anchors, none, 92, 18);
-        const after = labelHandles(anchors, new Set(["b"]), 92, 18);
-        expect(after.map((h) => h.id)).toEqual(before.map((h) => h.id));
-        expect(before.map((h) => "pinned" in h && h.pinned)).toEqual([false, false, false]);
-        expect(after.map((h) => "pinned" in h && h.pinned)).toEqual([false, true, false]);
-    });
-
-    it("id 는 좌표에 안 매인다 — 이동·확대로 자리가 바뀌어도 같은 손잡이다", () => {
-        const at = (dx: number) => labelHandles([{ key: "a", x: 10 + dx, y: 10 }], none, 92, 18);
-        expect(at(0)[0].id).toBe(at(500)[0].id);
-    });
-
-    it("순서는 선 목록 순 — 짚은 것을 뒤로 몰면 노드가 목록 안에서 자리를 옮긴다", () => {
-        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 400, y: 200 }];
-        expect(labelHandles(anchors, new Set(["a"]), 92, 18).map((h) => "key" in h && h.key)).toEqual(["a", "b"]);
-    });
-
-    // ⚠ 뱃지도 같은 규칙이다 — 라벨만 고치고 여기를 빠뜨려서 같은 누수가 한 번 더 났다.
-    it("**뱃지 id 에 머릿수가 안 들어간다** — 멤버가 빠져도 같은 뱃지라 노드가 안 부서진다", () => {
-        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }, { key: "c", x: 30, y: 11 }];
-        const three = labelHandles(anchors, none, 92, 18);
-        const two = labelHandles(anchors, new Set(["b"]), 92, 18); // b 가 묶음에서 빠진다
-        expect(three[0]).toMatchObject({ kind: "badge", members: ["a", "b", "c"] });
-        expect(two[0]).toMatchObject({ kind: "badge", members: ["a", "c"] });
-        expect(two[0].id).toBe(three[0].id); // ← 옛 `B|대표|머릿수` 에선 갈렸다
-    });
-
-    it("대표가 빠지면 그건 정말 다른 뱃지다 — 정체를 지어내지 않는다", () => {
-        const anchors = [{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }, { key: "c", x: 30, y: 11 }];
-        const before = labelHandles(anchors, none, 92, 18);
-        const after = labelHandles(anchors, new Set(["a"]), 92, 18);
-        expect(after.find((h) => h.kind === "badge")!.id).not.toBe(before[0].id);
-    });
-
-    it("뱃지 id 와 라벨 id 는 안 겹친다 — 같은 자리에 다른 것이 꽂히면 안 된다", () => {
-        const asBadge = labelHandles([{ key: "a", x: 10, y: 10 }, { key: "b", x: 20, y: 12 }], none, 92, 18);
-        const asLabel = labelHandles([{ key: "a", x: 10, y: 10 }], none, 92, 18);
-        expect(asBadge[0].id).not.toBe(asLabel[0].id);
     });
 });
 

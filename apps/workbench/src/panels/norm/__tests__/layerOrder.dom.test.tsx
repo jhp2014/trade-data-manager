@@ -46,13 +46,20 @@ describe.each([
     it(`${label}: 층이 전부 그려진다 — 조건부로 비어도 자리는 남는다`, () => {
         const layers = layersOf(renderPanel());
         // 자리가 남아야 순서를 잴 수 있다. 내용이 비는 층(테마 히트)도 껍데기 <g> 는 나온다.
+        // **거터는 분봉 전용**이라 목록이 grain 으로 갈린다(사용자 확정: 일봉엔 적을 값이 없다).
         expect(layers).toEqual([
-            "axis-ticks",
+            // 거터 지시선이 맨 아래 — 눈금 숫자 칸을 가로지르므로 눈금보다 **먼저** 그린다.
+            ...(grain === "minute" ? ["gutter-leaders"] : []),
+            "axis-ticks", "axis-origin",
             // 그림 세 층(candles·theme-lines·lines)은 여기 없다 — 캔버스로 갔다.
             "theme-hit",
             "line-hit",
             "amount-labels",
             "levels",
+            // 원점 점선 → (거터) → 원점 스택 순으로 맨 위. 스택이 마지막이라 무엇에도 안 가린다.
+            "origin-leader",
+            ...(grain === "minute" ? ["gutter"] : []),
+            "origin-stack",
         ]);
     });
 

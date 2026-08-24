@@ -12,7 +12,8 @@ export interface OverlayMenusProps {
     /** 목록 행 점의 색 — 그림의 그 선과 같은 색(목록↔그림을 잇는 유일한 것). */
     groupColorOf: (key: string) => string;
     nameOf: (code: string) => string;
-    onLabelClick: (s: OverlayLine, ev: { ctrlKey: boolean; metaKey: boolean }) => void;
+    /** 목록에서 이름을 고르면 **시선 이동** — 라벨의 더블클릭과 같은 일이다(목록은 고르는 자리라 한 번이면 된다). */
+    onGoTo: (s: OverlayLine) => void;
     setHovered: (key: string | null) => void;
 }
 
@@ -41,7 +42,7 @@ export function OverlayMenus(p: OverlayMenusProps): JSX.Element {
                                 {/* ⚠ 닫기 전에 호버를 **손으로** 푼다 — 목록이 사라지면 이 행은 언마운트라
                                     mouseleave 가 영영 안 온다(라벨에서 겪은 것과 같은 부류의 누수).
                                     거기선 노드를 안 부수는 게 답이지만, 여기선 닫는 게 목적이라 풀어 주는 게 답이다. */}
-                                <MenuItem onClick={() => { p.onLabelClick(s, { ctrlKey: false, metaKey: false }); p.setHovered(null); p.onCloseBadge(); }}>
+                                <MenuItem onClick={() => { p.onGoTo(s); p.setHovered(null); p.onCloseBadge(); }}>
                                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                                         <span style={{ width: 6, height: 6, borderRadius: 3, background: p.groupColorOf(s.key), flexShrink: 0 }} />
                                         <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{shortDate(s.date)}</span>

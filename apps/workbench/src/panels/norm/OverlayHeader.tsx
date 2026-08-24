@@ -12,7 +12,7 @@ import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { PRICE_LINE } from "../../styles/palette.js";
 import type { CandlesView } from "./useCandles.js";
-import { AUTO_CANDLE_MAX, type DrawMode, type OverlayToggles } from "./useOverlayToggles.js";
+import { AUTO_CANDLE_MAX, type DrawMode, type OverlayToggles, type ZeroLine } from "./useOverlayToggles.js";
 
 /** 화면에 선 수와 그 분모 — "N개 / M · 결손 K". 셋 다 **같은 단위**여야 뺄셈이 성립한다. */
 export interface OverlayCounts {
@@ -42,7 +42,7 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, locked, onT
     /** 척도 고정 — 지금 범위를 붙들어 항목 전후를 비교한다. */
     locked: boolean;
     onToggleLock: () => void;
-    /** 고정 슬롯 수 — 비우기 액션의 활성 근거(고정 자체는 라벨 우클릭의 몫이다). */
+    /** 고정 슬롯 수 — 비우기 액션의 활성 근거(고정 자체는 라벨 클릭의 몫이다). */
     pinCount: number;
     onClearPins: () => void;
 }): JSX.Element {
@@ -79,8 +79,17 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, locked, onT
             on: t.showLevels, set: t.setShowLevels,
         },
         {
-            kind: "toggle", id: "labels", name: "라벨",
-            help: "선이 잘리는 자리에 종목·날짜 — 뭉치면 개수 뱃지, 눌러서 목록. 클릭=시선 이동 · 우클릭=고정",
+            kind: "choice", id: "zeroLine", name: "0%", group: "기준", available: !isDaily,
+            help: "전일 종가선(진짜 0%)을 시선 항목에 얹는다 — %p 공간에선 선마다 높이가 다르다. 시장은 그 종가의 출처",
+            values: [{ v: "off", label: "끄기" }, { v: "un", label: "UN" }, { v: "krx", label: "KRX" }],
+            value: t.zeroLine,
+            set: (v) => t.setZeroLine(v as ZeroLine),
+        },
+        {
+            kind: "toggle", id: "labels", name: "이름",
+            help: isDaily
+                ? "원점 아래 스택에 날짜·종목(원점 표식 겸용). 클릭=고정 · Ctrl+클릭=시선 이동"
+                : "원점 스택(날짜·시각·종목) + 오른쪽 거터의 값(테마 멤버도 같은 목록). 클릭=고정 · Ctrl+클릭=시선 이동",
             on: t.showLabels, set: t.setShowLabels,
         },
         {
@@ -90,7 +99,7 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, locked, onT
         },
         {
             kind: "action", id: "clearPins", name: "고정 비우기", label: "비우기", group: "기준",
-            help: "고정 슬롯 전부 해제(고정 하나는 라벨 우클릭)",
+            help: "고정 슬롯 전부 해제(고정 하나는 라벨 클릭)",
             disabled: pinCount === 0,
             run: onClearPins,
         },
@@ -122,7 +131,7 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, locked, onT
         <PanelHeader chrome={false} gap={8}
             style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
             {/* ── 왼쪽은 **말**(이 화면이 무엇을 담고 있나). */}
-            <span style={count} title="시선 1(focus 자동 교체) + 고정 N(라벨 우클릭). 결손 = 재료 부족(전일 종가·원점 분봉 미수집)">
+            <span style={count} title="시선 1(focus 자동 교체) + 고정 N(라벨 클릭). 결손 = 재료 부족(전일 종가·원점 분봉 미수집)">
                 {counts.shown}개
                 {counts.population > counts.shown && <span style={{ color: "var(--text-tertiary)" }}> / {counts.population}</span>}
                 {counts.missing > 0 && (

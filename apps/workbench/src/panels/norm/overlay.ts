@@ -3,7 +3,8 @@
 //
 // ## 정규화 공간(사용자 확정 — 골격 시절의 공간을 원점만 자동으로 바꿔 승계)
 //   · 일봉: y = 전일(D−1) 종가 대비 % (원점 0% = 전일 종가 — last 앵커를 사실상 전일 종가로 찍던 관행의 자동화).
-//           x = D 로부터의 거래일 오프셋(D=0, 과거가 음수).
+//           x = **전일(D−1)로부터의** 거래일 오프셋 — 원점 (0,0)이 선 위의 한 점이고 당일 D 는 +1.
+//           분봉과 같은 문장이 된다: "원점은 언제나 선 위의 점".
 //   · 분봉: y = **전일 종가 대비 %p 차이** 공간 — 절대 배치(전일 종가 대비 %)를 평행이동해 타점 시각을
 //           원점에 놓는다. 자기 가격 대비 %로 재기저하지 않는 이유: 테마 선(등락률 공간)과 **세로 간격이
 //           보존**되고, 절대값 복원이 상수 하나(y + baseRate)로 남는다. x = 타점 시각으로부터의 분.
@@ -115,11 +116,16 @@ export function trimmedBounds(items: readonly NormLine[], q: number): OverlayBou
 }
 
 /**
- * 일봉 정규화 뷰의 기본 창(사용자 확정 — 상수): **뒤로 60일 · 앞으로 10일 · −60%~+40%**.
+ * 일봉 정규화 뷰의 기본 창(사용자 확정 — 상수): **뒤로 60일 · 앞으로 2일 · −60%~+40%**.
  * 데이터에서 뽑지 않는 이유: 항목을 바꿔도 같은 되돌림이 같은 크기로 서야 비교가 된다(공통 척도 원칙).
- * D(원점)가 오른쪽 — 과거가 창의 대부분을 차지한다(옛 last 앵커 창의 승계).
+ * 원점(전일 종가)이 오른쪽 — 과거가 창의 대부분을 차지한다(옛 last 앵커 창의 승계).
+ *
+ * 앞 여백이 10 → 2 로 줄어든 건 이름이 **거터로 나갔기** 때문이다. 예전엔 칩이 선 끝(당일 D, x=+1)에
+ * 붙어 여백이 그 자리였는데, 이제 그림엔 글자가 없으니 여백은 **D 봉이 가장자리에 닿지 않을 만큼**이면
+ * 족하다. 남는 폭은 과거(왼쪽)로 간다 — 이 뷰의 관심사가 "그날까지 어떻게 왔나"라서.
  */
-export const DAILY_FRAME = { back: 60, forward: 10, minY: -60, maxY: 40 } as const;
+export const DAILY_FRAME = { back: 60, forward: 2, minY: -60, maxY: 40 } as const;
+
 
 export const dailyFrame = (): OverlayBounds =>
     ({ minX: -DAILY_FRAME.back, maxX: DAILY_FRAME.forward, minY: DAILY_FRAME.minY, maxY: DAILY_FRAME.maxY });
@@ -374,10 +380,10 @@ export function lineVisual(key: string, ctx: {
 }
 
 /**
- * 라벨이 붙는 점 — **지금 보이는 창에서 선이 잘리는 자리**(사용자 확정).
+ * 거터 칩이 가리키는 점 — **지금 보이는 창에서 선이 잘리는 자리**(사용자 확정).
  *
- * 옛 규칙(경로의 한쪽 끝 고정)은 확대하면 그 끝이 화면 밖으로 나가 라벨이 통째로 사라졌다 — 손잡이가
- * 없어지는 것이라 컨트롤이 끊긴다. 새 규칙: 선의 **최신 쪽 끝**을 기준으로 하되,
+ * 옛 규칙(경로의 한쪽 끝 고정)은 확대하면 그 끝이 화면 밖으로 나가 그 선이 목록에서 통째로 사라졌다.
+ * 새 규칙: 선의 **최신 쪽 끝**을 기준으로 하되,
  *   · 끝이 오른쪽 창 밖이면 오른쪽 가장자리에서 선의 y 를 보간해 그 자리에
  *   · 그 y 가 세로 창 밖이면 위/아래 가장자리로 클램프(세로 확대로 잘린 선도 손잡이는 남는다)
  * 선이 x 창과 아예 안 겹치면 null — 화면에 없는 선의 라벨을 지어내지 않는다.
@@ -394,63 +400,4 @@ export function labelAnchorAt(
     if (rawY === null) return null;
     const y = Math.min(view.maxY, Math.max(view.minY, rawY));
     return { x, y };
-}
-
-/** 라벨 자리 하나(화면 좌표). */
-export interface LabelAnchor {
-    key: string;
-    x: number;
-    y: number;
-}
-
-/**
- * 라벨 층이 그리는 손잡이 하나 — 선 하나짜리 라벨이거나, 한 칸에 뭉친 개수 뱃지다.
- *
- * ## `id` 는 **자리에 안 매인다** — 이게 이 타입의 존재 이유다(골격 시절에 겪은 버그)
- * 호버 때문에 손잡이가 언마운트되면 mouseleave 가 영영 안 와 호버가 화면에 눌어붙는다.
- * id 를 좌표가 아니라 정체(선 키)로 잡고, 짚었는지는 `pinned` 플래그로만 말한다.
- * 뱃지의 정체는 **대표 하나**다 — 머릿수도 자리도 id 에 안 들어간다(멤버가 드나들어도 같은 뱃지).
- */
-export type LabelHandle =
-    | { kind: "label"; id: string; key: string; x: number; y: number; pinned: boolean }
-    | { kind: "badge"; id: string; members: string[]; x: number; y: number };
-
-/**
- * 라벨 자리 배치 — 화면공간 격자로 묶되, **짚은 것(pinned)은 묶음에서 빼 언제나 제 손잡이로** 낸다.
- *
- * 개수 임계로 라벨을 숨기면 그 선이 뭔지 알 길이 없어진다. 묶으면 숨기는 게 아니라 **압축**이라,
- * 확대해서 화면 좌표가 벌어지면 칸이 쪼개지며 저절로 풀린다(확대 배율 = 축약 수준).
- * 대표 위치는 그 칸의 첫 멤버 자리 — 중심을 쓰면 멤버가 하나 드나들 때마다 라벨이 흔들린다.
- * 결과 순서는 `anchors` 순서 그대로 — 짚은 라벨을 뒤로 몰면 DOM 이동으로 호버 대상을 놓친다.
- */
-export function labelHandles(
-    anchors: readonly LabelAnchor[],
-    pinned: ReadonlySet<string>,
-    cellW: number,
-    cellH: number,
-): LabelHandle[] {
-    interface Slot { x: number; y: number; members: string[]; pinned: boolean }
-    const out: Slot[] = [];
-    const byCell = new Map<string, Slot>();
-    for (const a of anchors) {
-        if (pinned.has(a.key)) {
-            out.push({ x: a.x, y: a.y, members: [a.key], pinned: true });
-            continue;
-        }
-        const cell = `${Math.floor(a.x / cellW)}|${Math.floor(a.y / cellH)}`;
-        const found = byCell.get(cell);
-        if (found) {
-            found.members.push(a.key);
-            continue;
-        }
-        const slot: Slot = { x: a.x, y: a.y, members: [a.key], pinned: false };
-        byCell.set(cell, slot);
-        out.push(slot);
-    }
-    return out.map((s) =>
-        s.members.length === 1
-            // 선 키가 곧 정체 — 묶음에서 빠져나와 짚은 라벨이 돼도 같은 손잡이다.
-            ? { kind: "label", id: `L|${s.members[0]}`, key: s.members[0], x: s.x, y: s.y, pinned: s.pinned }
-            : { kind: "badge", id: `B|${s.members[0]}`, members: s.members, x: s.x, y: s.y },
-    );
 }

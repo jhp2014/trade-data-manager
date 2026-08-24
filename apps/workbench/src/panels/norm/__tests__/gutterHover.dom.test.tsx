@@ -1,4 +1,4 @@
-// 라벨 손잡이의 **정체가 호버로 안 바뀐다**는 걸 실제 DOM 에서 못박는다.
+// 거터 칩(손잡이)의 **정체가 호버로 안 바뀐다**는 걸 실제 DOM 에서 못박는다.
 //
 // 겪은 버그: 라벨에 손을 올렸다가 다른 곳으로 옮겨도 호버가 남았다(간헐적). 원인은 그림이 아니라 정체였다 —
 // 묶음 라벨과 짚은 라벨을 **다른 배열 두 벌**로 그려서, 짚는 순간 그 라벨이 배열을 갈아타며 커서 밑의
@@ -17,17 +17,20 @@ import { NormOverlayPanel } from "../NormOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
 import { CODE, DATE, dailyBundle, dailyPin, minuteBundle, minutePin, seedPins, stockNames } from "./overlayFixture.js";
 
-/** 선 라벨 칩들 — **그림판 안**의, 조작 안내가 붙은 버튼(헤더 컨트롤의 비슷한 툴팁과 갈라야 한다). */
-function labelChips(container: HTMLElement): HTMLButtonElement[] {
-    const plot = container.querySelector("[data-plot]");
-    if (!plot) return [];
-    return [...plot.querySelectorAll("button")].filter((b) => (b.title ?? "").includes("우클릭=고정"));
+/**
+ * 이름 칩들 — grain 마다 사는 층이 다르다: 일봉은 바닥 **원점 스택**, 분봉은 오른쪽 **거터**
+ * (거터는 분봉 전용 — 일봉엔 적을 값이 없다). 두 층의 칩이 같은 손짓·같은 호버 규칙을 쓴다.
+ */
+function labelChips(container: HTMLElement, grain: "daily" | "minute"): HTMLButtonElement[] {
+    const layer = container.querySelector(`[data-layer="${grain === "daily" ? "origin-stack" : "gutter"}"]`);
+    if (!layer) return [];
+    return [...layer.querySelectorAll("button")].filter((b) => (b.title ?? "").includes("클릭=고정"));
 }
 
 describe.each([
     ["daily" as const, "일봉"],
     ["minute" as const, "분봉"],
-])("정규화 라벨 호버(%s)", (grain, label) => {
+])("정규화 거터 호버(%s)", (grain, label) => {
     const renderPanel = (): HTMLElement => {
         localStorage.clear();
         seedPins(grain, grain === "daily" ? [dailyPin] : [minutePin]);
@@ -37,23 +40,23 @@ describe.each([
         }).container;
     };
 
-    it(`${label}: 라벨이 손잡이로 서 있다 — 아래 검사가 빈 화면을 상대로 헛돌지 않게`, () => {
-        expect(labelChips(renderPanel())).toHaveLength(1);
+    it(`${label}: 거터 칩이 손잡이로 서 있다 — 아래 검사가 빈 화면을 상대로 헛돌지 않게`, () => {
+        expect(labelChips(renderPanel(), grain)).toHaveLength(1);
     });
 
     it(`${label}: **짚어도 그 노드가 안 부서진다** — 부서지면 mouseleave 가 영영 안 온다`, () => {
-        const [chip] = labelChips(renderPanel());
+        const [chip] = labelChips(renderPanel(), grain);
         expect(chip.style.fontWeight).not.toBe("700"); // 아직 안 짚은 상태
 
         fireEvent.mouseOver(chip, { relatedTarget: document.body });
 
         expect(chip.isConnected).toBe(true); // ← 옛 구조에선 여기서 떨어져 나갔다
         expect(chip.style.fontWeight).toBe("700"); // 같은 노드가 짚은 모습으로 바뀐 것
-        expect(labelChips(document.body)).toHaveLength(1); // 새 노드가 따로 생기지도 않았다
+        expect(labelChips(document.body, grain)).toHaveLength(1); // 새 노드가 따로 생기지도 않았다
     });
 
     it(`${label}: 손을 치우면 호버가 풀린다 — 짚었던 그 노드에서 leave 가 온다`, () => {
-        const [chip] = labelChips(renderPanel());
+        const [chip] = labelChips(renderPanel(), grain);
         fireEvent.mouseOver(chip, { relatedTarget: document.body });
         fireEvent.mouseOut(chip, { relatedTarget: document.body });
 

@@ -1,6 +1,6 @@
 // 골격 겹쳐 그리기의 **칩 어휘** — 그림 위에 얹히는 작은 글자 손잡이의 공통 모양.
 //
-// 어느 한 층의 소유가 아니다: 선 라벨(LabelLayer)과 테마 이름 거터가 같은 칩을 쓴다. 한쪽에 두고
+// 어느 한 층의 소유가 아니다: 거터의 항목 칩·테마 칩·넘침 뱃지가 같은 어휘를 쓴다. 한쪽에 두고
 // 다른 쪽이 가져다 쓰면 "왜 저기 있나"가 생기므로 어휘만 따로 세운다.
 import type { CSSProperties } from "react";
 
@@ -31,6 +31,19 @@ export const badgeChip: CSSProperties = {
     padding: "0 4px", borderRadius: 6, background: "var(--bg-secondary)",
     border: "1px solid var(--border-subtle)", color: "var(--text-secondary)", textShadow: "none",
 };
+
+/**
+ * 고정 슬롯인 라벨 — **채운 배경 + 왼쪽에 그 선 색 바**. 시선(상자)과 겹쳐도 서로를 안 지운다:
+ * 상자는 테두리 전체, 이건 왼쪽 변이라 둘 다 보인다(고정과 시선은 직교하는 두 상태다).
+ * 반투명 후광(labelBg)만으로는 "고정된 것"이 화면에서 안 잡혔다(사용자 지적).
+ */
+export const pinnedChip = (color: string): CSSProperties => ({
+    background: "var(--bg-secondary)", textShadow: "none",
+    // 낱개 속성으로 적는다 — `borderLeft` 단축은 값에 var() 가 섞이면 통째로 무시될 수 있다(그러면 표식이
+    // 조용히 사라진다). 색이 팔레트 상수든 CSS 변수든 같은 그림이 나와야 한다.
+    borderLeftWidth: 2, borderLeftStyle: "solid", borderLeftColor: color,
+    borderRadius: 2, padding: "0 3px 0 4px",
+});
 
 /** 선택된 라벨만 상자를 되받는다 — 클릭이 실제로 먹었다는 신호가 색만으로는 약하다. */
 export const selectedChip = (color: string): CSSProperties => ({

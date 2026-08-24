@@ -63,8 +63,8 @@ export function CrosshairLayer({ wrapRef, scales, box, fmtX, abs, readoutAt, col
             {/* 점선 헤어라인 — 배경 없는 0폭 div 에 dashed border(1px div 배경으로는 점선이 안 된다). */}
             <div style={{ position: "absolute", left: pos.x, top: box.top, width: 0, height: box.height, borderLeft: "1px dashed var(--border-strong)", opacity: 0.8 }} />
             <div style={{ position: "absolute", left: box.left, top: pos.y, height: 0, width: box.width, borderTop: "1px dashed var(--border-strong)", opacity: 0.8 }} />
-            {/* y 뱃지 — 왼쪽 % 축 위(눈금 숫자가 서는 자리, 오른끝을 축에 맞춘다). */}
-            <div style={{ ...axisBadge, left: box.left - 2, top: pos.y - 7, transform: "translateX(-100%)" }}>
+            {/* y 뱃지 — **오른쪽** % 축 위(눈금 숫자가 서는 자리, 왼끝을 축에 맞춘다). */}
+            <div style={{ ...axisBadge, left: box.left + box.width + 2, top: pos.y - 7 }}>
                 {fmtPct(yv)}{abs && <span style={axisBadgeAbs}> {fmtPct(yv + abs.baseRate)}</span>}
             </div>
             {/* x 뱃지 — 아래 시간축 위. */}

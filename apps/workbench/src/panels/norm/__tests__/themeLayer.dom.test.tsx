@@ -75,7 +75,7 @@ describe("테마 켜짐 — 그려지는가", () => {
         expect(hit?.querySelectorAll("polyline").length ?? 0).toBeGreaterThan(0);
     });
 
-    it("거터에 멤버 이름이 선다 — 테마를 켜면 왼쪽 여백이 이름 자리로 넓어진다", () => {
+    it("거터에 멤버 이름이 선다 — 내 항목과 **같은 오른쪽 목록**에 (칩 모양으로 갈린다)", () => {
         const c = renderThemed();
         expect(c.textContent).toContain("SK하이닉스");
     });
@@ -116,12 +116,13 @@ describe("테마 켜짐 — 층 순서", () => {
     // 클립 밖이라는 것과는 별개의 규약이고, 테마를 켜야만 존재하므로 여기서만 잴 수 있다.
     it("지시선이 눈금보다 먼저 — 숫자가 점선 위에 얹혀야 읽힌다", () => {
         const layers = layersOf(renderThemed());
-        expect(layers.indexOf("theme-leaders")).toBeLessThan(layers.indexOf("axis-ticks"));
+        expect(layers.indexOf("gutter-leaders")).toBeLessThan(layers.indexOf("axis-ticks"));
     });
 
-    it("거터 이름은 맨 위 — 그림 상자 밖 HTML 층이라 무엇에도 안 가린다", () => {
+    it("이름 층들은 맨 위 — 그림 상자 밖 HTML 이라 무엇에도 안 가린다", () => {
         const layers = layersOf(renderThemed());
-        expect(layers.indexOf("theme-gutter")).toBe(layers.length - 1);
+        expect(layers.indexOf("origin-stack")).toBe(layers.length - 1);
+        expect(layers.indexOf("gutter")).toBe(layers.length - 2);
     });
 
     it("테마가 켜져도 그림 층의 목록과 순서는 그대로 — 켜고 끄는 것이 순서를 안 바꾼다", () => {
@@ -129,9 +130,9 @@ describe("테마 켜짐 — 층 순서", () => {
         const c = renderThemed();
         // DOM 에 남은 건 눈금·손짓·값뿐 — 그림 세 층은 캔버스로 갔다.
         expect(layersOf(c)).toEqual([
-            "theme-leaders", "axis-ticks",
+            "gutter-leaders", "axis-ticks", "axis-origin",
             "theme-hit", "line-hit", "amount-labels", "levels",
-            "theme-gutter",
+            "origin-leader", "gutter", "origin-stack",
         ]);
         // 캔버스 쪽 순서도 켜고 끄는 것과 무관하게 그대로.
         expect(drawnNames(c)).toEqual([...PAINT_ORDER]);
@@ -142,7 +143,7 @@ describe("테마 켜짐 — 멤버 선정 규칙", () => {
     it("앵커 자신은 테마 선에 안 든다 — 자기와의 동조는 잴 게 없다", () => {
         const c = renderThemed();
         const gutter = c.textContent ?? "";
-        // 거터 이름 목록에 멤버는 있고, 앵커(삼성전자)는 선 라벨 쪽에만 있다.
+        // 거터에 멤버 이름은 있고(테마 칩), 앵커(삼성전자)는 항목 칩 쪽에 선다.
         expect(gutter).toContain("SK하이닉스");
         const themeHit = c.querySelector('[data-layer="theme-hit"]');
         expect(themeHit?.querySelectorAll("polyline").length).toBe(1); // 멤버 하나뿐

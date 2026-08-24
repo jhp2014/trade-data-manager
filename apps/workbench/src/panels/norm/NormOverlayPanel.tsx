@@ -1,18 +1,18 @@
-// 정규화 겹치기 패널 — 옛 골격 패널의 골조(캔버스 3겹·라벨 손잡이·공통 척도·테마·거래대금)에
+// 정규화 겹치기 패널 — 옛 골격 패널의 골조(캔버스 3겹·거터 손잡이·공통 척도·테마·거래대금)에
 // 새 데이터 모델(시선 1 + 고정 N 슬롯, chartQuery 벌크, 자동 원점)을 끼운 것.
 //
 // ## 무엇이 갈렸나(골격 시절 대비)
-//  · 모수: 깔때기 구독 → **명시 등록**(시선=focus 자동, 고정=라벨 우클릭·리셋 없음) — 사용자 확정.
+//  · 모수: 깔때기 구독 → **명시 등록**(시선=focus 자동, 고정=거터 칩 클릭·리셋 없음) — 사용자 확정.
 //  · 선: 손 피벗 골격 → **실물 정규화 종가선**(일봉=D−1 종가 원점 / 분봉=타점 시각 원점 %p).
 //  · 캔들: 참고용 배경(클릭 토글) → **기본 렌더**(적으면 캔들, 많으면 선 — 자동+수동 토글).
-//  · 라벨: 경로 왼쪽 끝 고정 → **화면에서 잘리는 자리**(줌·팬과 무관하게 항상 손잡이가 남는다).
+//  · 이름: 그림 안 라벨 → **바닥 원점 스택**(정체·범례·원점 표식) + **오른쪽 거터**(분봉의 값 순위표).
 //
 // ## 이 파일은 **배선**이다
 // 상태 채널은 훅들이 나눠 소유한다 — 데이터(useNormLines)·뷰포트(useOverlayViewport)·
 // 조사 대상(useInspection)·표시 토글(useOverlayToggles)·테마(useThemeOverlay)·멤버 캔들(useCandles)·
 // 복기 파생(useAmountReadout). 여기 남는 건 그 사이 배선과 표시목록(paintLayers) 조립뿐이다.
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { labelAnchorAt, labelHandles, lineOpacity, dimOpacity, lineVisual, type LineVisual, type OverlayLine } from "./overlay.js";
+import { lineOpacity, dimOpacity, lineVisual, type LineVisual, type OverlayLine } from "./overlay.js";
 import { useNormLines } from "./useNormLines.js";
 import { useDaySnapshot } from "./useDaySnapshot.js";
 import { useCandles, type CandlesView } from "./useCandles.js";
@@ -24,15 +24,19 @@ import { OverlayPlot, type XUnit } from "./OverlayPlot.js";
 import { OverlayMenus } from "./OverlayMenus.js";
 import { OverlayHeader } from "./OverlayHeader.js";
 import { OverlayFooter } from "./OverlayFooter.js";
-import { LABEL_CELL } from "./LabelLayer.js";
+import { useGutter } from "./useGutter.js";
+import { ORIGIN_CAP, type OriginItem, type OriginStackProps } from "./OriginStack.js";
+import type { GutterCandidate } from "./gutter.js";
+import type { GutterHandlers, GutterView } from "./GutterLayer.js";
 import { amountLookupOf } from "./amountLayer.js";
-import { useThemeLabels, useThemeOverlay } from "./useThemeOverlay.js";
-import { type LevelOwner } from "./LevelsLayer.js";
+import { useThemeOverlay } from "./useThemeOverlay.js";
+import { type LevelOwner, type NormLevel } from "./LevelsLayer.js";
 import { normLinesLayer } from "./linesLayer.js";
 import { candleLayer, type CandleSeries } from "./candleLayer.js";
 import { themeLinesLayer } from "./themeLinesLayer.js";
 import { flatten, orderPaint, type DrawLayer } from "../canvas/drawList.js";
 import { useWorkbench } from "../../store/workbench.js";
+import { shortDate } from "../../lib/date.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { ACTIVE, HOVER, seriesColor } from "../../styles/palette.js";
 
@@ -42,17 +46,19 @@ const EMPTY_THEME_LINES: DrawLayer = { name: "theme-lines", groups: [] };
 const EMPTY_LINES: DrawLayer = { name: "lines", groups: [] };
 /** 무리(뱃지) 안에서 안 짚은 선의 진하기 — 색은 그대로 두고 이만큼만 물러난다. */
 const RECEDE_OPACITY = 0.3;
-/** 캔들 모드에서 시선이 아닌 항목의 진하기 배율 — 적/청이 공통이라 진하기가 항목을 가른다(라벨이 정체를 진다). */
+/** 캔들 모드에서 시선이 아닌 항목의 진하기 배율 — 적/청이 공통이라 진하기가 항목을 가른다(거터가 정체를 진다). */
 const CANDLE_OTHER_RATIO = 0.45;
 
 /** 일봉/분봉이 **별도 패널**(카탈로그 2항목)이다 — "일봉에서 훑고 분봉으로 확인"의 동시 사용 시나리오. */
 export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.Element {
     const toggles = useOverlayToggles(grain);
-    const { mode, dailyMarket, showFuture, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme } = toggles;
+    const { mode, dailyMarket, zeroLine, showFuture, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme } = toggles;
 
     const isDaily = grain === "daily";
     const isPointUnit = !isDaily;
     const xUnit: XUnit = isDaily ? "day" : "min";
+    /** 전일 종가선이 켜져 있나 — 기준선과 **따로** 켜지므로 수준선 층의 존재 근거가 둘이다. */
+    const zeroOn = !isDaily && zeroLine !== "off";
 
     // 패널 안 단축키 — **t**(테마). 포인터가 이 패널 안에 있을 때만 듣는다(전역 충돌 방지 — 옛 규칙 그대로).
     const [hoveringPanel, setHoveringPanel] = useState(false);
@@ -71,7 +77,7 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
     }, [isDaily, hoveringPanel, setShowTheme]);
 
     // ── 데이터 절반 — 슬롯 해소·정규화·캔들·수준선 전부 useNormLines.
-    const data = useNormLines(grain, dailyMarket);
+    const data = useNormLines(grain, dailyMarket, zeroLine);
     const { lines, byKey, subjectKeys, nameOf } = data;
 
     // 캔들/선 — 자동은 항목 수가 정한다(적으면 캔들 — 사용자 확정: 기본은 캔들).
@@ -84,38 +90,23 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
         if (hovered !== null && !byKey.has(hovered)) setHovered(null);
     }, [hovered, byKey]);
 
-    // ── 뭉친 라벨의 멤버 목록(뱃지). 그래프를 만지면(팬·확대) 닫는다.
+    // ── 거터 넘침 뱃지가 여는 멤버 목록. 그래프를 만지면(팬·확대) 닫는다.
     const [badge, setBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
     const closeBadge = useCallback(() => setBadge(null), []);
 
-    const gutter = !isDaily && showTheme;
-    const viewport = useOverlayViewport({ isDaily, showFuture, lines, gutter, onGestureStart: closeBadge });
+    // 거터는 **분봉 전용**(사용자 확정) — 일봉의 이름·정체는 바닥 원점 스택이 진다.
+    // 자리는 데이터가 아니라 **토글**이 정한다 — 값이 도착할 때 폭이 출렁이지 않게.
+    const showGutter = !isDaily && showLabels;
+    const viewport = useOverlayViewport({ isDaily, showFuture, lines, gutter: showGutter, onGestureStart: closeBadge });
     const { box, bounds, boundsKey, scales, viewX } = viewport;
 
     // "지금 조사 중인 하나" — 시선이 단일일 때만 비싼 파생(테마·거래대금·판독)이 붙는다(옛 규칙 승계).
     const inspection = useInspection({ isDaily, byKey, effSelected: subjectKeys, hovered });
     const { inspectKey, singleTarget, pointTarget } = inspection;
 
-    // 라벨 축약 — 화면 좌표로 묶는다. 시선·호버는 묶음에서 빼고 제 손잡이로 세운다.
-    const pinnedForHandles = useMemo(() => new Set([...subjectKeys, ...(hovered ? [hovered] : [])]), [subjectKeys, hovered]);
-    const handles = useMemo(() => {
-        if (!showLabels || !scales || !viewport.view) return [];
-        const anchors = [];
-        for (const s of lines) {
-            const p = labelAnchorAt(s.points, viewport.view);
-            if (p) anchors.push({ key: s.key, x: scales.x(p.x), y: scales.y(p.y) });
-        }
-        return labelHandles(anchors, pinnedForHandles, LABEL_CELL.w, LABEL_CELL.h);
-    }, [showLabels, scales, viewport.view, lines, pinnedForHandles]);
-
-    // 뱃지 호버 무리 — id 하나만 상태로 들고 멤버는 지금 목록에서 되찾는다(낡은 상태 표현 불가능 — 옛 규칙).
-    const [badgeHover, setBadgeHover] = useState<string | null>(null);
-    const hoveredBadgeMembers = useMemo<readonly string[] | null>(() => {
-        if (!badgeHover) return null;
-        const hit = handles.find((h) => h.kind === "badge" && h.id === badgeHover);
-        return hit?.kind === "badge" ? hit.members : null;
-    }, [badgeHover, handles]);
-    const groupList = badge?.members ?? hoveredBadgeMembers;
+    // 넘침 뱃지에 손을 올린 동안의 무리 — 팝오버를 열면 그 목록이 대신 무리가 된다.
+    const [badgeHover, setBadgeHover] = useState<readonly string[] | null>(null);
+    const groupList = badge?.members ?? badgeHover;
     const groupSet = useMemo(() => (groupList ? new Set(groupList) : null), [groupList]);
     const groupColorOf = useMemo(() => {
         const m = new Map<string, string>();
@@ -147,7 +138,6 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
         groupSet,
     });
     const themeOverlay = theme.overlay;
-    const themeLabels = useThemeLabels(themeOverlay, scales, viewX, box);
 
     const candleFocus = useMemo(() => candleFocusOf(theme.hovered, hovered), [theme.hovered, hovered]);
 
@@ -172,6 +162,117 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
 
     useEffect(() => { setBadge(null); setBadgeHover(null); }, [boundsKey, grain]);
 
+    // ── 손짓: 거터 칩 **클릭 = 고정 토글**(이 패널의 본론이 모수 구성이라 한 번 누르는 자리를 준다),
+    //    Ctrl(⌘)+클릭 = 시선 이동(차트 패널·타점 정보가 따라온다). 규칙과 그 이유는 GutterLayer 주석.
+    const goToPoint = useWorkbench((s) => s.goToPoint);
+    const goToDay = useWorkbench((s) => s.goToDay);
+    const onGoTo = useCallback((s: OverlayLine): void => {
+        if (s.kind === "point") goToPoint({ code: s.stockCode, date: s.date, time: s.time }, "norm-overlay");
+        else goToDay({ code: s.stockCode, date: s.date }, "norm-overlay");
+    }, [goToPoint, goToDay]);
+
+    // ── 오른쪽 이름 거터 — 내 항목과 테마가 한 목록에 서고, 칩 모양으로 갈린다(사용자 확정).
+    const gutterLayoutView = useGutter({
+        lines: showGutter ? lines : [], view: viewport.view, viewX, scaleY: scales?.y ?? null, box,
+        nameOf, subjectKeys, hovered,
+        themeOverlay: showGutter ? themeOverlay : null,
+        themeHovered: theme.hovered,
+    });
+    const gutterHandlers = useMemo<GutterHandlers>(() => ({
+        onItemClick: (key, ev) => {
+            const s = byKey.get(key);
+            if (!s) return;
+            if (ev.ctrlKey || ev.metaKey) onGoTo(s); else data.togglePin(s);
+        },
+        onItemContext: (key, ev) => {
+            ev.preventDefault();
+            const s = byKey.get(key);
+            // ⌃클릭이 contextmenu 로 오는 mac 은 비켜 간다 — 같은 손짓이 두 번 먹으면 안 된다.
+            if (s && !ev.ctrlKey && !ev.metaKey) data.togglePin(s);
+        },
+        onItemHover: setHovered,
+        onThemeClick: candles.toggle,
+        onThemeHover: theme.setHovered,
+        onItemBadge: (at, keys) => setBadge({ ...at, members: keys }),
+        onItemBadgeHover: setBadgeHover,
+        onThemeBadge: theme.openBadge,
+    }), [byKey, data, onGoTo, candles.toggle, theme.setHovered, theme.openBadge]);
+    /**
+     * 바닥 원점 스택 — **등록 순**(시선 먼저, 그다음 고정 순 — 사용자 확정)으로 상한까지 세우고
+     * 나머지는 뱃지 하나로 접는다. 한 줄 표기는 grain 이 정한다: 일봉 `날짜 종목` / 분봉 `날짜 시각 종목`.
+     */
+    const originItems = useMemo<OriginItem[]>(() => {
+        const ordered = [...lines].sort((a, b) => Number(subjectKeys.has(b.key)) - Number(subjectKeys.has(a.key)));
+        return ordered.map((s) => ({
+            key: s.key,
+            text: s.kind === "point"
+                ? `${shortDate(s.date)} ${s.time.slice(0, 5)} ${nameOf(s.stockCode)}`
+                : `${shortDate(s.date)} ${nameOf(s.stockCode)}`,
+            color: visualOf(s.key).color,
+            selected: subjectKeys.has(s.key),
+            pinned: data.isPinned(s),
+            lit: subjectKeys.has(s.key) || s.key === hovered,
+        }));
+    }, [lines, subjectKeys, hovered, nameOf, visualOf, data]);
+
+    /**
+     * 점선이 시작할 높이 — **원점 봉의 저가**(캔들이 있으면 그중 가장 낮은 것, 없으면 0선).
+     * 봉에서 살짝 떨어져 내려와야 그림을 안 가린다(사용자 확정) — 그 간격은 OriginStack 이 더한다.
+     */
+    const originLowY = useMemo(() => {
+        if (!scales) return 0;
+        let lowest: number | null = null;
+        if (effCandles) {
+            for (const s of lines) {
+                const k = data.candlesByKey.get(s.key)?.find((c) => c.x === 0);
+                if (k && (lowest === null || k.l < lowest)) lowest = k.l;
+            }
+        }
+        return scales.y(lowest ?? 0);
+    }, [scales, effCandles, lines, data.candlesByKey]);
+
+    const origin = useMemo<Omit<OriginStackProps, "box">>(() => ({
+        items: originItems.slice(0, ORIGIN_CAP),
+        hidden: originItems.slice(ORIGIN_CAP),
+        x0: scales ? scales.x(0) : 0,
+        lowY: originLowY,
+        onClick: (key, ev) => {
+            const s = byKey.get(key);
+            if (!s) return;
+            if (ev.ctrlKey || ev.metaKey) onGoTo(s); else data.togglePin(s);
+        },
+        onContext: (key, ev) => {
+            ev.preventDefault();
+            const s = byKey.get(key);
+            if (s && !ev.ctrlKey && !ev.metaKey) data.togglePin(s);
+        },
+        onHover: setHovered,
+        onBadge: (at, keys) => setBadge({ ...at, members: keys }),
+        onBadgeHover: setBadgeHover,
+    }), [originItems, scales, originLowY, byKey, data, onGoTo]);
+
+    const gutter = useMemo<GutterView>(() => ({
+        layout: gutterLayoutView,
+        colorOf: (c: GutterCandidate) => (c.kind === "item" ? visualOf(c.key).color : theme.colorOf(c.key)),
+        litOf: (c: GutterCandidate) => (c.kind === "item"
+            ? c.key === hovered || subjectKeys.has(c.key)
+            : theme.hovered?.has(c.key) ?? false),
+        stateOf: (key: string) => {
+            const s = byKey.get(key);
+            return { selected: visualOf(key).v.role === "selected", pinned: s ? data.isPinned(s) : false };
+        },
+        isCandleOn: (code: string) => candles.codes.has(code),
+        themeHovered: theme.hovered,
+        themeSwapped: theme.swapped,
+        // 툴팁의 전일比 — 일봉은 원점이 곧 전일 종가(baseRate=0)라 되돌릴 값이 없다(없음으로 둔다).
+        absOf: (c: GutterCandidate) => {
+            if (c.kind === "theme") return themeOverlay ? c.y + themeOverlay.baseRate : null;
+            const s = byKey.get(c.key);
+            return s && s.baseRate !== 0 ? c.y + s.baseRate : null;
+        },
+        handlers: gutterHandlers,
+    }), [gutterLayoutView, visualOf, theme, hovered, subjectKeys, byKey, data, candles.codes, themeOverlay, gutterHandlers]);
+
     /** 지금 조사 중인 선의 그룹 이름들 — 발끝 표기(읽기 전용 — 그룹 편집 입구는 다른 패널의 몫). */
     const groupsView = useGroups();
     const inspectGroupNames = useMemo(() => {
@@ -183,29 +284,31 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
         return ids.map((id) => groupsView.groupByName.get(id)?.name).filter((n): n is string => !!n);
     }, [inspectKey, byKey, groupsView]);
 
-    // 수준선(기준선)을 받을 선 — 시선 단일 + (다르면) 호버 하나(옛 규칙 그대로).
+    // 수준선(기준선·전일 종가선)을 받을 선 — 시선 단일 + (다르면) 호버 하나(옛 규칙 그대로).
+    // 수준선 라벨은 위/아래로 갈린다: 선택 = 위, 호버 = 아래(둘 다 왼쪽 — 오른쪽은 눈금과 거터의 자리다).
     const levelOwners = useMemo<LevelOwner[]>(() => {
-        if (!showLevels) return [];
+        if (!showLevels && !zeroOn) return [];
         const single = subjectKeys.size === 1 ? [...subjectKeys][0] : null;
         const out: LevelOwner[] = [];
         const sel = single ? byKey.get(single) : null;
-        if (sel) out.push({ s: sel, color: visualOf(sel.key).color, right: true });
+        if (sel) out.push({ s: sel, color: visualOf(sel.key).color, above: true });
         const hov = hovered && hovered !== single ? byKey.get(hovered) : null;
-        if (hov) out.push({ s: hov, color: visualOf(hov.key).color, right: false });
+        if (hov) out.push({ s: hov, color: visualOf(hov.key).color, above: false });
         return out;
-    }, [showLevels, subjectKeys, byKey, hovered, visualOf]);
+    }, [showLevels, zeroOn, subjectKeys, byKey, hovered, visualOf]);
 
-    // ── 손짓: 라벨 클릭 = 시선 이동(차트 패널·타점 정보가 따라온다) / 라벨 우클릭 = 고정 토글(사용자 확정).
-    const goToPoint = useWorkbench((s) => s.goToPoint);
-    const goToDay = useWorkbench((s) => s.goToDay);
-    const onLabelClick = useCallback((s: OverlayLine): void => {
-        if (s.kind === "point") goToPoint({ code: s.stockCode, date: s.date, time: s.time }, "norm-overlay");
-        else goToDay({ code: s.stockCode, date: s.date }, "norm-overlay");
-    }, [goToPoint, goToDay]);
-    const onLabelContext = useCallback((s: OverlayLine, ev: { preventDefault: () => void }): void => {
-        ev.preventDefault();
-        data.togglePin(s);
-    }, [data]);
+    /**
+     * 그 차트가 낼 수준선 — **두 토글이 따로 자른다**: 기준선(앵커)은 showLevels, 전일 종가선은 zeroLine.
+     * 재료는 데이터 훅이 이미 켜진 것만 실어 오므로(zeroLevelOf) 여기선 기준선 쪽만 걸러 낸다.
+     */
+    const levelsOf = useCallback(
+        (ck: string): NormLevel[] => {
+            const all = data.levelsByChart.get(ck) ?? [];
+            return showLevels ? all : all.filter((lv) => lv.zero !== undefined);
+        },
+        [data.levelsByChart, showLevels],
+    );
+
 
     // ── 머리글 프롭 안정화 — OverlayHeader 는 React.memo 다.
     const headerCandles = useMemo(
@@ -296,24 +399,17 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
                 viewport={viewport}
                 paintLayers={paintLayers}
                 theme={theme}
-                themeLabels={themeLabels}
+                gutter={gutter}
+                origin={origin}
+                showGutter={showGutter}
                 candles={candles}
                 inspection={inspection}
-                byKey={byKey}
                 setHovered={setHovered}
-                handles={handles}
-                visualOf={visualOf}
-                nameOf={nameOf}
-                isPinnedItem={data.isPinned}
-                onLabelClick={onLabelClick}
-                onLabelContext={onLabelContext}
-                onBadgeOpen={(at, members) => setBadge({ ...at, members })}
-                onBadgeHover={setBadgeHover}
                 onHoverPanel={setHoveringPanel}
                 readoutAt={amount.readoutAt}
                 amountLabels={amount.amountLabels}
                 levelOwners={levelOwners}
-                levelsOf={(ck) => data.levelsByChart.get(ck) ?? []}
+                levelsOf={levelsOf}
             />
             </div>
 
@@ -323,7 +419,7 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
                 byKey={byKey}
                 groupColorOf={groupColorOf}
                 nameOf={nameOf}
-                onLabelClick={onLabelClick}
+                onGoTo={onGoTo}
                 setHovered={setHovered}
             />
 

@@ -1,22 +1,23 @@
 // 정규화 겹치기의 **그림판** — 층을 쌓는 순서 규약이 이 파일의 본론이다.
 //
 // ## 그림판은 **세 겹**이다. 층 순서가 뜻을 지므로 캔버스를 그 사이에 끼워야 한다:
-//    ① SVG(아래) — 눈금·지시선·좌표축. 그림보다 아래에 깔린다.
+//    ① SVG(아래) — 지시선·눈금·원점 표식. 그림보다 아래에 깔린다.
 //    ② canvas    — 캔들·테마 선·정규화 선(PAINT_ORDER). 노드 0개.
 //    ③ SVG(위)   — 손짓(히트라인)과 값(거래대금·기준선). 줌도 여기 붙는다.
 // 한 SVG 안에 캔버스를 넣을 수가 없어서(foreignObject 는 위험을 안 살 이유가 없다)
 // 셋을 겹쳐 쌓는다 — 문서 순서가 그대로 그리는 순서라 규약이 안 바뀐다.
 //
-// 그 위로 HTML 층(거터·라벨·크로스헤어)이 문서 순서대로 겹친다.
+// 그 위로 HTML 층(이름 거터·크로스헤어)이 문서 순서대로 겹친다.
 import { useId, type ComponentProps, type CSSProperties } from "react";
-import { polylinePoints, type LabelHandle, type LineVisual, type OverlayLine } from "./overlay.js";
-import { LabelLayer } from "./LabelLayer.js";
+import { polylinePoints } from "./overlay.js";
 import { AmountLabels, type AmountLabel } from "./AmountLabels.js";
-import { useThemeLabels, type ThemeView } from "./useThemeOverlay.js";
+import { type ThemeView } from "./useThemeOverlay.js";
 import { CrosshairLayer } from "./CrosshairLayer.js";
 import { LevelsLayer, type LevelOwner } from "./LevelsLayer.js";
 import { AxisLayer } from "./AxisLayer.js";
-import { ThemeGutter, ThemeLeaders, ThemeHit } from "./ThemeLayer.js";
+import { Gutter, GutterLeaders, type GutterView } from "./GutterLayer.js";
+import { OriginLeader, OriginStack, type OriginStackProps } from "./OriginStack.js";
+import { ThemeHit, ThemeOverflowMenu } from "./ThemeLayer.js";
 import { CanvasLayers } from "../canvas/CanvasPainter.js";
 import type { DrawLayer } from "../canvas/drawList.js";
 import type { ReadoutCandidate } from "../canvas/readout.js";
@@ -34,24 +35,21 @@ export interface OverlayPlotProps {
     loading: boolean;
     /** 그릴 선이 하나도 없나 — 안내 문구가 뜬다(로딩과 구분). */
     linesEmpty: boolean;
+    /** 이름 거터를 세우나(라벨 토글) — 끄면 스트립이 눈금 칸만 남는다. */
     showLabels: boolean;
     viewport: OverlayViewport;
     /** 그림 세 층의 표시목록 — 조립(무엇을 넣나)은 패널의 몫, 펴기(캔버스)는 여기의 몫. */
     paintLayers: DrawLayer[];
     theme: ThemeView;
-    themeLabels: ReturnType<typeof useThemeLabels>;
+    /** 오른쪽 이름 거터 한 벌 — 칩·지시선이 같은 값을 본다(패널이 조립한다). 일봉은 비어 있다. */
+    gutter: GutterView;
+    /** 바닥 원점 스택 한 벌(범례 + 원점 표식) — 상자 좌표만 그림판이 채운다. */
+    origin: Omit<OriginStackProps, "box">;
+    /** 거터를 세우나 — 분봉만(일봉은 눈금 칸만 남는다). */
+    showGutter: boolean;
     candles: CandlesView;
     inspection: Inspection;
-    byKey: ReadonlyMap<string, OverlayLine>;
     setHovered: (key: string | null) => void;
-    handles: readonly LabelHandle[];
-    visualOf: (key: string) => { v: LineVisual; color: string };
-    nameOf: (code: string) => string;
-    isPinnedItem: (line: OverlayLine) => boolean;
-    onLabelClick: (s: OverlayLine, ev: { ctrlKey: boolean; metaKey: boolean }) => void;
-    onLabelContext: (s: OverlayLine, ev: { clientX: number; clientY: number; preventDefault: () => void }) => void;
-    onBadgeOpen: (at: { x: number; y: number }, members: string[]) => void;
-    onBadgeHover: (id: string | null) => void;
     /** 패널 안 단축키(t)의 근거 — 포인터가 이 그림판 안에 있나. */
     onHoverPanel: (inside: boolean) => void;
     readoutAt: ((x: number) => ReadoutCandidate[]) | null;
@@ -61,7 +59,7 @@ export interface OverlayPlotProps {
 }
 
 export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
-    const { viewport, theme, candles, inspection, byKey } = p;
+    const { viewport, theme, candles, inspection } = p;
     const { size, box, bounds, scales, dragging } = viewport;
     const themeOverlay = theme.overlay;
     const { singleTarget } = inspection;
@@ -80,7 +78,7 @@ export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
             {p.loading && <div style={muted}>불러오는 중…</div>}
             {!p.loading && p.linesEmpty && (
                 <div style={muted}>
-                    {p.isDaily ? "겹칠 차트가 없습니다 — 종목을 선택하거나(시선) 라벨 우클릭으로 고정하세요." : "겹칠 타점이 없습니다 — 타점을 고르거나 라벨 우클릭으로 고정하세요."}
+                    {p.isDaily ? "겹칠 차트가 없습니다 — 종목을 선택하거나(시선) 이름 칩을 클릭해 고정하세요." : "겹칠 타점이 없습니다 — 타점을 고르거나 이름 칩을 클릭해 고정하세요."}
                 </div>
             )}
             {/* ── ① SVG(아래) — 눈금·지시선·좌표축(머리 주석의 세 겹 규약). */}
@@ -91,15 +89,12 @@ export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
                 </defs>
                 {scales && bounds && (
                     <>
-                        {/* 테마 라벨의 지시선 — 클립 밖(거터는 그림 상자 바깥이라 클립하면 사라진다).
+                        {/* 거터 칩의 지시선 — 클립 밖(거터는 그림 상자 바깥이라 클립하면 사라진다).
                             ⚠ **눈금보다 먼저** 그린다 — 눈금 숫자 칸을 가로지르므로 나중에 그리면
                             점선이 숫자 위에 얹혀 둘 다 못 읽는다(층 순서 테스트가 잡는다). */}
-                        {!theme.swapped && themeOverlay && (
-                            <ThemeLeaders labels={p.themeLabels.named} scales={scales} box={box}
-                                colorOf={theme.colorOf} hovered={theme.hovered} />
-                        )}
+                        {p.showGutter && <GutterLeaders view={p.gutter} box={box} scaleX={scales.x} />}
 
-                        {/* 눈금·원점 좌표축 — 표기 규칙 전부 AxisLayer 가 소유(절대값 아랫줄 포함). */}
+                        {/* 눈금·원점 0선·사건 표식 — 표기 규칙 전부 AxisLayer 가 소유(절대값 아랫줄 포함). */}
                         <AxisLayer scales={scales} box={box} sizeH={size.h}
                             fmtX={fmtXAxis} abs={inspection.axisAbs} clipId={clipId} />
                     </>
@@ -152,32 +147,23 @@ export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
                                 패널(levelOwners)이 정한다. */}
                             <LevelsLayer owners={p.levelOwners} levelsOf={p.levelsOf}
                                 scaleY={scales.y} box={box} />
+
+                            {/* 원점 세로 점선 — 봉 아래에서 바닥 스택까지(옛 세로축의 후임). */}
+                            {p.showLabels && <OriginLeader {...p.origin} box={box} />}
                         </g>
                     </>
                 )}
             </svg>
 
-            {/* 테마 이름 층 + 넘침 뱃지 목록 — 그림 상자 왼쪽 거터(HTML). */}
-            {scales && (
-                <ThemeGutter theme={theme} labels={p.themeLabels} box={box} swapped={theme.swapped}
-                    isCandleOn={(code) => candles.codes.has(code)} onToggleCandle={candles.toggle} />
-            )}
+            {/* 이름 거터(HTML) — 내 항목과 테마가 한 목록에 서고, 칩 모양으로 갈린다.
+                그림 안엔 글자가 없다(옛 라벨 층 폐지 — 사용자 확정). 컨테이너는 포인터 통과. */}
+            {scales && p.showGutter && <Gutter view={p.gutter} box={box} />}
 
-            {/* 라벨 층 — HTML(칩 폭 계산 공짜 + d3 가 SVG mousedown 을 삼키는 문제 회피). 컨테이너는 포인터 통과. */}
-            {scales && p.showLabels && (
-                <LabelLayer
-                    handles={p.handles} byKey={byKey} box={box}
-                    themeMode={theme.mode}
-                    visualOf={(key) => { const { v, color } = p.visualOf(key); return { selected: v.role === "selected", color }; }}
-                    nameOf={p.nameOf}
-                    isPinnedItem={p.isPinnedItem}
-                    onLabelClick={p.onLabelClick}
-                    onLabelContext={p.onLabelContext}
-                    onHover={p.setHovered}
-                    onBadgeOpen={p.onBadgeOpen}
-                    onBadgeHover={p.onBadgeHover}
-                />
-            )}
+            {/* 바닥 원점 스택 — 범례이자 원점 표식. 일봉·분봉 공통(내용만 갈린다). */}
+            {scales && p.showLabels && <OriginStack {...p.origin} box={box} />}
+
+            {/* 거터에서 이름을 못 단 테마 종목 목록 — 넘침 뱃지가 여는 팝오버. */}
+            <ThemeOverflowMenu theme={theme} onToggleCandle={candles.toggle} />
 
             {/* 크로스헤어 — 자기 상태(마우스 좌표)만 다시 그린다. 부모 렌더에 mousemove 를 태우면
                 이동마다 선 수백 개가 재조정된다(분리한 이유). 팬 중엔 숨긴다(사용자 확정). */}

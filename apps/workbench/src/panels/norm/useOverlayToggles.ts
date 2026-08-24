@@ -14,6 +14,15 @@ const bool = (o: unknown): boolean | null => (typeof o === "boolean" ? o : null)
 
 /** 그리기 모드 — 자동은 항목 수가 정한다(적으면 캔들, 많으면 선 — 사용자 확정: 기본은 캔들). */
 export type DrawMode = "auto" | "candles" | "lines";
+
+/**
+ * 전일 종가선(0%) — **분봉 전용**. 끄기 / UN / KRX 3택(사용자 확정).
+ * 분봉 %p 공간은 타점 시각을 원점으로 끌어내려 "진짜 0%"가 선마다 흩어진다 — 그 자리를 되돌려 놓는다.
+ * 시장을 고르는 이유: 분모가 UN 전일 종가라 UN 선은 정확히 −baseRate 지만, KRX 전일 종가는 다를 수
+ * 있고(NXT·정규장 종가 괴리) **그 간격 자체가 정보**다.
+ */
+export type ZeroLine = "off" | "un" | "krx";
+
 /** 자동 모드의 캔들 상한 — 이 수를 넘으면 종가선(겹친 캔들은 서로를 가린다). */
 export const AUTO_CANDLE_MAX = 3;
 
@@ -30,6 +39,9 @@ export interface OverlayToggles {
     /** 시선 항목의 기준선·D선을 얹나. */
     showLevels: boolean;
     setShowLevels: Setter<boolean>;
+    /** 전일 종가선(0%)을 얹나 — 분봉 전용, 어느 시장 종가인지까지 이 값이 진다. */
+    zeroLine: ZeroLine;
+    setZeroLine: Setter<ZeroLine>;
     /** 선 끝의 종목·날짜 라벨. */
     showLabels: boolean;
     setShowLabels: Setter<boolean>;
@@ -57,6 +69,11 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
     );
     const [showFuture, setShowFuture] = usePersistedState<boolean>(`wb.normFuture.${grain}`, bool, false);
     const [showLevels, setShowLevels] = usePersistedState<boolean>(`wb.normLevels.${grain}`, bool, true);
+    const [zeroLine, setZeroLine] = usePersistedState<ZeroLine>(
+        `wb.normZeroLine.${grain}`,
+        (o) => (o === "off" || o === "un" || o === "krx" ? o : null),
+        "un",
+    );
     const [showLabels, setShowLabels] = usePersistedState<boolean>(`wb.normLabels.${grain}`, bool, true);
     const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.normAmount.${grain}`, bool, true);
     const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.normAmountLabels.${grain}`, bool, false);
@@ -69,12 +86,14 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
         dailyMarket, setDailyMarket,
         showFuture, setShowFuture,
         showLevels, setShowLevels,
+        zeroLine, setZeroLine,
         showLabels, setShowLabels,
         showAmount, setShowAmount,
         showAmountLabels, setShowAmountLabels,
         showTheme, setShowTheme,
     }), [
         mode, setMode, dailyMarket, setDailyMarket, showFuture, setShowFuture, showLevels, setShowLevels,
+        zeroLine, setZeroLine,
         showLabels, setShowLabels, showAmount, setShowAmount, showAmountLabels, setShowAmountLabels, showTheme, setShowTheme,
     ]);
 }

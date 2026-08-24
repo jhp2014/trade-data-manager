@@ -7,14 +7,18 @@ import {
     dailyFrame, pointUnitFrame, decimate, decimateStep, clipToX,
     type OverlayBounds, type OverlayLine,
 } from "./overlay.js";
+import { AXIS_W, GUTTER_W } from "./gutter.js";
 import { useOverlayZoom, type ZoomRegion } from "./useOverlayZoom.js";
 
 /**
- * 그림 상자 바깥 여백. **테마를 켜면 왼쪽이 거터(100px)로 넓어진다**(사용자 확정) — 테마 이름 라벨을
- * 그 안에서 세로로 벌려 전부 읽히게 하려고. 평소엔 y축 눈금만 들어가면 되니 46px 이면 족하다.
+ * 그림 상자 바깥 여백. **오른쪽 한 스트립에 축과 이름이 같이 산다**(사용자 확정):
+ * 그림에 붙은 눈금 칸(AXIS_W) + 그 바깥의 이름 거터(GUTTER_W). 왼쪽은 여백만 — 옛 왼쪽 테마 거터는
+ * 은퇴했고(테마 이름도 오른쪽 한 목록으로 합쳤다) 그 폭은 그림, 즉 과거 구간에 돌아갔다.
+ *
+ * 거터는 **라벨 토글이 켜져 있을 때만** 자리를 먹는다 — 데이터가 아니라 토글이 정하므로 값이
+ * 도착할 때 폭이 출렁이지 않는다(옛 gutter 판정의 규칙 승계).
  */
-const PAD = { right: 14, top: 12, bottom: 24 };
-const PAD_LEFT = { plain: 46, gutter: 122 };
+const PAD = { left: 14, top: 12, bottom: 24 };
 
 export type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
 
@@ -51,7 +55,7 @@ export function useOverlayViewport(args: {
     isDaily: boolean;
     showFuture: boolean;
     lines: readonly OverlayLine[];
-    /** 왼쪽 여백을 거터로 넓히나 — 판정은 **토글**이 한다(패널 주석 참고: 데이터 도착으로 출렁이지 않게). */
+    /** 오른쪽에 이름 거터를 세우나(라벨 토글) — 스트립 폭이 갈린다. */
     gutter: boolean;
     /**
      * 제스처(팬·확대)가 시작될 때 한 번 — 뭉친 라벨 팝오버를 닫는 자리다. d3 가 SVG mousedown 을
@@ -86,14 +90,15 @@ export function useOverlayViewport(args: {
         return () => ro.disconnect();
     }, []);
 
-    const padLeft = gutter ? PAD_LEFT.gutter : PAD_LEFT.plain;
-    const box = { left: padLeft, top: PAD.top, width: Math.max(0, size.w - padLeft - PAD.right), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
+    const padRight = AXIS_W + (gutter ? GUTTER_W : 0);
+    const box = { left: PAD.left, top: PAD.top, width: Math.max(0, size.w - PAD.left - padRight), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
     const drawable = bounds !== null && box.width > 0 && box.height > 0;
 
-    // 제스처 영역 — 아래 스트립=시간축, 왼쪽 스트립=% 축(모서리는 시간축 우선). 스트립에선 그 축만 확대된다.
+    // 제스처 영역 — 아래 스트립=시간축, **오른쪽** 스트립=% 축(축이 그리로 갔다. 모서리는 시간축 우선).
+    // 거터도 그 스트립 안이다: 칩만 포인터를 받고 빈 자리는 세로 확대 손짓으로 남는다.
     const regionOf = useCallback(
-        (x: number, y: number): ZoomRegion => (y > box.top + box.height ? "x" : x < box.left ? "y" : "body"),
-        [box.top, box.height, box.left],
+        (x: number, y: number): ZoomRegion => (y > box.top + box.height ? "x" : x > box.left + box.width ? "y" : "body"),
+        [box.top, box.height, box.left, box.width],
     );
     const { tx, ty, reset, resetAxis, dragging } = useOverlayZoom(svgRef, drawable, regionOf, onGestureStart);
     /**
