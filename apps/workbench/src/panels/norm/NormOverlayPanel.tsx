@@ -44,9 +44,15 @@ import { ACTIVE, HOVER, seriesColor } from "../../styles/palette.js";
 const EMPTY_CANDLES: DrawLayer = { name: "candles", groups: [] };
 const EMPTY_THEME_LINES: DrawLayer = { name: "theme-lines", groups: [] };
 const EMPTY_LINES: DrawLayer = { name: "lines", groups: [] };
-/** 무리(뱃지) 안에서 안 짚은 선의 진하기 — 색은 그대로 두고 이만큼만 물러난다. */
-const RECEDE_OPACITY = 0.3;
-/** 캔들 모드에서 시선이 아닌 항목의 진하기 배율 — 적/청이 공통이라 진하기가 항목을 가른다(거터가 정체를 진다). */
+/**
+ * **호버 중** 딴 걸 짚었을 때 나머지가 물러나는 진하기(사용자 확정: "겹쳤을 때 하나에 손을 올리면
+ * 나머지가 많이 흐려져야 한다"). 평소의 dim/base(항상 켜진 구분용 흐림)보다 한 단계 더 낮다 —
+ * 그래야 "지금 이 순간 뭘 짚고 있나"가 상시 흐림과 겹쳐도 뚜렷하게 갈린다.
+ */
+const RECEDE_OPACITY = 0.12;
+/** 캔들 모드의 같은 값(선보다 면적이 커서 시각적으로 더 진하게 느껴지므로 살짝 더 낮춘다). */
+const CANDLE_RECEDE_RATIO = 0.15;
+/** 캔들 모드에서 시선이 아닌 항목의 **평소** 진하기 배율(호버와 무관 — 적/청이 공통이라 이 값이 항목을 가른다). */
 const CANDLE_OTHER_RATIO = 0.45;
 
 /** 일봉/분봉이 **별도 패널**(카탈로그 2항목)이다 — "일봉에서 훑고 분봉으로 확인"의 동시 사용 시나리오. */
@@ -338,8 +344,10 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
             const lit = v.role !== "base";
             candleSets.push({
                 key: s.key, candles: ks,
-                // 시선·짚은 것은 온전한 선명도, 나머지는 물러난다 — 적/청이 공통이라 진하기가 항목을 가른다.
-                opacity: candles.opacityOf(false) * (v.dim ? CANDLE_OTHER_RATIO : v.recede ? 0.7 : lit ? 1 : CANDLE_OTHER_RATIO),
+                // 시선·짚은 것은 온전한 선명도. **recede 가 최우선**(사용자 지적 — 겹쳤을 때 호버해도
+                // 남이 안 죽어서 뭘 짚었는지 잘 안 보였다): 지금 딴 걸 짚고 있으면 base 든 시선·무리든
+                // 전부 한 단계 더 죽는다. recede 가 아닐 때만 평소 규칙(적/청 공통이라 진하기가 항목을 가름).
+                opacity: candles.opacityOf(false) * (v.recede ? CANDLE_RECEDE_RATIO : v.dim ? CANDLE_OTHER_RATIO : lit ? 1 : CANDLE_OTHER_RATIO),
                 markers: subjectKeys.size === 1 && subjectKeys.has(s.key),
             });
         }

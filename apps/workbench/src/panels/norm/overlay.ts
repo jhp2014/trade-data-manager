@@ -365,6 +365,12 @@ export interface LineVisual {
  * 강조 상태 → 표시 규격. 우선순위는 selected → group → hovered 다. group 이 hovered 보다 위인 게
  * 핵심인데, 그러지 않으면 목록 행에 손을 올린 순간 그 선만 색이 바뀌어 색으로 짝을 찾던 대응이 끊긴다.
  * 대신 굵기로 답하고(짚은 것은 더 굵게), 나머지 무리는 recede 로 물러난다.
+ *
+ * ## recede 는 **모든 역할에 붙는다**(사용자 지적 — 겹쳤을 때 호버해도 남이 안 죽어서 잘 안 보였다)
+ * 예전엔 base 역할이 recede 를 안 받았다: base 는 `dim`(무언가 강조돼 있으면 항상 참)만 봤는데, 그
+ * 값은 호버 여부와 무관하게 늘 같은 수라 "호버하면 남이 더 흐려진다"가 base 항목엔 아예 안 먹혔다
+ * (고정만 해 둔 항목들이 대개 base다). recede 는 오직 "지금 이 순간 딴 걸 짚고 있나"만 보므로, 호출부가
+ * `recede` 를 `dim` 보다 먼저 검사하면 호버 중엔 base 도 한 단계 더 죽는다(호출부 우선순위가 계약이다).
  */
 export function lineVisual(key: string, ctx: {
     selected: ReadonlySet<string>;
@@ -376,7 +382,7 @@ export function lineVisual(key: string, ctx: {
     if (ctx.selected.has(key)) return { role: "selected", width: key === ctx.hovered ? 2.5 : 2, dim: false, recede };
     if (ctx.group?.has(key)) return { role: "group", width: key === ctx.hovered ? 2.5 : 1.75, dim: false, recede };
     if (key === ctx.hovered) return { role: "hovered", width: 2, dim: false, recede: false };
-    return { role: "base", width: 1.25, dim: anyLit, recede: false };
+    return { role: "base", width: 1.25, dim: anyLit, recede };
 }
 
 /**

@@ -39,8 +39,9 @@ export function normLinesLayer(p: NormLinesParams): DrawLayer {
         if (!p.lineShown(s.key)) continue;
         const { v, color } = visualOf(s.key);
         const lit = v.role !== "base";
-        // 진하기 = 역할이 정한다: 흐림(무리 밖) < 물러남(무리 안이지만 안 짚은 것) < 앞(짚은 것).
-        const lineOpacity = v.dim ? opacity.dimmed : v.recede ? opacity.recede : lit ? 1 : opacity.base;
+        // 진하기 = 역할이 정한다. **recede 가 최우선**(사용자 지적) — 지금 딴 걸 짚고 있으면
+        // base 역할도 recede 를 받아 평소 흐림(dim/base)보다 한 단계 더 죽는다(overlay.ts lineVisual 주석).
+        const lineOpacity = v.recede ? opacity.recede : v.dim ? opacity.dimmed : lit ? 1 : opacity.base;
 
         const ops: DrawOp[] = [];
 

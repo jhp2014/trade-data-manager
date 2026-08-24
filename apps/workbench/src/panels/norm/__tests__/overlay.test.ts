@@ -334,9 +334,17 @@ describe("lineVisual", () => {
         expect(lineVisual("b", ctx).recede).toBe(false);
     });
 
-    it("무리 밖은 물러남이 아니라 흐림이다 — 두 상태를 겹쳐 쓰지 않는다", () => {
-        const ctx = { selected: sel("a"), hovered: "a", group: null };
+    it("무리 밖은 평소엔 흐림뿐 — 아무도 안 짚었으면 물러남은 안 켜진다", () => {
+        const ctx = { selected: sel("a"), hovered: null, group: null };
         expect(lineVisual("z", ctx)).toMatchObject({ role: "base", dim: true, recede: false });
+    });
+
+    it("**딴 걸 짚으면 무리 밖도 같이 물러난다**(사용자 지적 — 겹쳤을 때 호버해도 남이 안 죽어서 잘 안 보였다)", () => {
+        // 옛 규칙: base 는 dim 만 받고 recede 는 못 받아, 호버 여부와 무관하게 늘 같은 흐림이었다.
+        // 이젠 recede 도 base 에 붙는다 — dim(늘 흐림)과 동시에 참일 수 있고, 렌더러가 recede 를
+        // 먼저 봐서(우선순위가 계약) 호버 중엔 base 도 평소보다 한 단계 더 죽는다.
+        const ctx = { selected: sel("a"), hovered: "a", group: null };
+        expect(lineVisual("z", ctx)).toMatchObject({ role: "base", dim: true, recede: true });
     });
 
     it("빈 그룹은 강조가 아니다 — 목록을 닫은 직후 전부 흐려지는 걸 막는다", () => {
