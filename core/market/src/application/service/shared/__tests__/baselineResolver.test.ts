@@ -6,11 +6,12 @@ import { resolveBaselines } from "../baselineResolver.js";
 const CODE = "005930";
 const DATE = "2026-07-02";
 
-const daily = (date: string, high: number): DailyCandle => ({
+/** 후보 가격은 high 로 읽고, close 는 스케일 환산비(rawScaleOf)의 재료다 — 기본은 high 와 같은 값. */
+const daily = (date: string, high: number, close = high): DailyCandle => ({
     stockCode: CODE,
     date,
-    krx: { open: "0", high: String(high), low: "0", close: "0", volume: "0", amount: "0" },
-    un: { open: "0", high: String(high), low: "0", close: "0", volume: "0", amount: "0" },
+    krx: { open: "0", high: String(high), low: "0", close: String(close), volume: "0", amount: "0" },
+    un: { open: "0", high: String(high), low: "0", close: String(close), volume: "0", amount: "0" },
 });
 
 const point = (time = "09:30:00"): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
@@ -24,14 +25,18 @@ const line = (anchorDate: string, over: Partial<ChartAnchor> = {}): ChartAnchor 
     ...over,
 });
 
-function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, MinuteCandle[]> }) {
+function deps(v: { dailies?: DailyCandle[]; rawDailies?: DailyCandle[]; minutesByDay?: Record<string, MinuteCandle[]> }) {
     let dailyReads = 0;
+    const window = (rows: DailyCandle[] | undefined, range: { from: string; to: string }): DailyCandle[] =>
+        (rows ?? []).filter((x) => x.date >= range.from && x.date <= range.to);
     const d = {
         minute: { getMinuteCandles: (_c: string, date: string) => Promise.resolve(v.minutesByDay?.[date] ?? []) },
+        // 원주가 일봉 — 분봉 앵커(원주가)를 수정주가 스케일로 되돌리는 환산비의 재료. 안 주면 비를 못 구해 1.
+        rawDaily: { getRawDailyCandles: (_c: string, range: { from: string; to: string }) => Promise.resolve(window(v.rawDailies, range)) },
         adjDaily: {
             getDailyCandles: (_c: string, range: { from: string; to: string }) => {
                 dailyReads++;
-                return Promise.resolve((v.dailies ?? []).filter((x) => x.date >= range.from && x.date <= range.to));
+                return Promise.resolve(window(v.dailies, range));
             },
         },
     };
@@ -82,6 +87,26 @@ describe("resolveBaselines", () => {
             un: { open: "9000", high: "9000", low: "9000", close: "9000", volume: "1" },
         };
         const { d } = deps({ dailies: [daily("2026-06-25", 12000)], minutesByDay: { "2026-06-30": [bar] } });
+        const minuteLine = line("2026-06-30", { anchorTime: "13:00:00" });
+        const out = await resolveBaselines([P], [line("2026-06-25"), minuteLine], d);
+        expect(out.get(KEY)).toEqual(minuteLine);
+    });
+
+    it("분봉 앵커는 **수정주가 스케일로 되돌린 뒤** 겨룬다 — 이벤트가 낀 종목에서 최저가 뒤집히지 않게", async () => {
+        // 그 뒤 액분 2:1 → 그 날 수정주가는 원주가의 1/2. 분봉 앵커 원주가 9,000 은 수정주가로 4,500 이라
+        // 일봉 후보(수정주가 6,000)보다 낮다. 되돌리지 않으면 9,000 > 6,000 이라 일봉 선이 이긴다.
+        const bar: MinuteCandle = {
+            stockCode: CODE,
+            date: "2026-06-30",
+            time: "13:00:00",
+            krx: null,
+            un: { open: "9000", high: "9000", low: "9000", close: "9000", volume: "1" },
+        };
+        const { d } = deps({
+            dailies: [daily("2026-06-25", 6000), daily("2026-06-30", 5000)],
+            rawDailies: [daily("2026-06-30", 10000)],
+            minutesByDay: { "2026-06-30": [bar] },
+        });
         const minuteLine = line("2026-06-30", { anchorTime: "13:00:00" });
         const out = await resolveBaselines([P], [line("2026-06-25"), minuteLine], d);
         expect(out.get(KEY)).toEqual(minuteLine);

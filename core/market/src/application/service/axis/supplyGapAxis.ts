@@ -18,6 +18,10 @@
 // 무시 캔들은 **차트(종목,날짜) 소유** — 그 차트의 모든 타점에 같은 판정이 적용되고, 다른 날짜 복기에는 안 샌다
 // (전역이면 오늘 표시 하나가 과거 축 값을 소급해 흔든다 — 손배치의 근거가 움직이면 안 된다).
 //
+// **문턱과 스캔은 같은 스케일**(수정주가)이다. 왼쪽 스캔이 수정주가 일봉이라 문턱도 거기 맞춘다 —
+// 일봉 앵커는 이미 수정주가고, 분봉 앵커(원주가)만 그 날 환산비(rawScaleOf)로 올려서 넣는다. 안 그러면
+// 감자·액분이 낀 종목에서 문턱이 배율만큼 어긋나 공백이 0 또는 포화로 통째로 뒤집힌다.
+//
 // **창은 차트가 보여주는 범위**(타점 날짜 기준 2년, chartDailyRange)다. 창을 더 늘리면 값에 영향을 준 캔들이
 // 화면 밖에 생겨 육안 검증이 불가능해진다 — 창 길이는 자유 노브가 아니라 차트 깊이에 묶인 값이다.
 // 조회 상한이 타점 날짜라 규칙 2(타점 이후 정보 금지)도 질의 자체로 지켜진다.
@@ -28,7 +32,7 @@
 //   같게 취급하는 선택이고, 화면에서 그 타점의 차트를 보면 바로 구분되므로 감수한다.
 //
 // 결손(축에서 빠짐): 기준선 없음/확정불가 · 앵커 캔들이 창 밖이거나 미수집 · 기준값 0.
-import { BASELINE_PARAM, candlePrice, chartKeyOf, IGNORE_CANDLE_PARAM, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
+import { BASELINE_PARAM, candlePrice, chartKeyOf, IGNORE_CANDLE_PARAM, rawScaleOf, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
 import { resolveBaselines, type BaselineAnchor } from "../shared/baselineResolver.js";
@@ -41,13 +45,13 @@ export function supplyGapAxis(): ComputedAxisDef {
     return {
         key: "supply-gap",
         name: "매물 공백(일)",
-        version: 5, // v5: 당일 기준선 가드(day 알갱이 절단선 — 당일 캔들에 그은 선은 재료가 아니다)
+        version: 6, // v6: 문턱(분봉 앵커)을 수정주가 스케일로 환산 — 스캔과 자를 맞춘다
         strongerWhen: "higher",
         // 값 = 앵커 왼쪽(과거 일봉)만 — 타점 시각이 값에 안 들어가 그날 전 타점이 같은 값이다.
         // 당일 캔들에 그은 기준선은 compute 가 거른다(dropSameDayAnchors — 당일 가격이 문턱이 되면 미래).
         grain: "day",
         display: { suffix: "일", decimals: 0, signed: false }, // 거래일 수 — 정수이고 부호가 뜻이 없다
-        inputs: ["minute", "adjDaily"],
+        inputs: ["minute", "rawDaily", "adjDaily"],
         params: [BASELINE_PARAM],
         optionalParams: [IGNORE_CANDLE_PARAM],
         compute: computeSupplyGap,
@@ -87,14 +91,23 @@ async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDep
     const minuteKeys = new Map<string, { stockCode: string; date: string }>();
     for (const { base } of jobs) if (base.anchorTime) minuteKeys.set(`${base.stockCode}|${base.anchorDate}`, { stockCode: base.stockCode, date: base.anchorDate });
     const minutesByDay = new Map<string, MinuteCandle[]>();
+    // 분봉 앵커 값은 원주가라 그 날 환산비도 함께 읽는다(수정주가 스캔과 같은 자에 놓기 위해).
+    const scaleByDay = new Map<string, number>();
     await mapWithConcurrency([...minuteKeys.values()], DAY_CONCURRENCY, async (d) => {
-        minutesByDay.set(`${d.stockCode}|${d.date}`, await deps.minute.getMinuteCandles(d.stockCode, d.date));
+        const range = { from: d.date, to: d.date };
+        const [minutes, raw, adj] = await Promise.all([
+            deps.minute.getMinuteCandles(d.stockCode, d.date),
+            deps.rawDaily.getRawDailyCandles(d.stockCode, range),
+            deps.adjDaily.getDailyCandles(d.stockCode, range),
+        ]);
+        minutesByDay.set(`${d.stockCode}|${d.date}`, minutes);
+        scaleByDay.set(`${d.stockCode}|${d.date}`, rawScaleOf(raw, adj, d.date));
     });
 
     const out: ComputedAxisValue[] = [];
     for (const { p, base } of jobs) {
         const daily = dailyByDay.get(`${p.stockCode}|${p.date}`) ?? [];
-        const threshold = baselinePrice(base, daily, minutesByDay);
+        const threshold = baselinePrice(base, daily, minutesByDay, scaleByDay);
         if (threshold === null) continue;
 
         // 왼쪽 = 앵커보다 과거, 최신순. 무시 캔들과 UN 고가를 못 읽는 날은 **접촉이 아닐 뿐 날수로는 센다** —
@@ -122,12 +135,21 @@ async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDep
 }
 
 /**
- * 기준선 값 — 앵커가 지목한 캔들의 그 시장·그 값. 일봉 앵커는 이미 읽어둔 창에서 찾는다(창 밖 앵커는 결손:
- * 화면 밖 캔들이라 어차피 육안 검증도 안 된다), 분봉 앵커는 그 날 분봉에서.
+ * 기준선 값(문턱) — 앵커가 지목한 캔들의 그 시장·그 값을 **수정주가 스케일로**. 일봉 앵커는 이미 읽어둔 창에서
+ * 찾고(창 밖 앵커는 결손: 화면 밖 캔들이라 어차피 육안 검증도 안 된다), 분봉 앵커는 그 날 분봉에서 꺼내
+ * 그 날 환산비로 올린다.
  */
-function baselinePrice(a: BaselineAnchor, daily: DailyCandle[], minutesByDay: Map<string, MinuteCandle[]>): number | null {
-    const raw = a.anchorTime ? pickMinute(a, minutesByDay) : daily.find((c) => c.date === a.anchorDate)?.[a.market]?.[a.field];
-    return candlePrice(raw); // 값 해석(미수집/0/비수치=null)은 도메인 규칙 한 곳
+function baselinePrice(
+    a: BaselineAnchor,
+    daily: DailyCandle[],
+    minutesByDay: Map<string, MinuteCandle[]>,
+    scaleByDay: Map<string, number>,
+): number | null {
+    if (!a.anchorTime) return candlePrice(daily.find((c) => c.date === a.anchorDate)?.[a.market]?.[a.field]);
+    const price = candlePrice(pickMinute(a, minutesByDay)); // 값 해석(미수집/0/비수치=null)은 도메인 규칙 한 곳
+    if (price === null) return null;
+    const scale = scaleByDay.get(`${a.stockCode}|${a.anchorDate}`) ?? 1;
+    return scale > 0 ? price / scale : price;
 }
 
 function pickMinute(a: BaselineAnchor, minutesByDay: Map<string, MinuteCandle[]>): string | undefined {

@@ -4,11 +4,14 @@
 //  · minutes : 당일 분봉 → densifyMinutes(VI/무거래 flat-fill, 도메인 단일 채움정책)
 //  · basePrice : 분봉 % 기준가(basePricesOf) = 직전 거래일 원주가 종가 + 감자·액분 조정계수 보정(당일 원주가 스케일).
 //               분봉이 원주가라 base 도 원주가 스케일이어야 맞고, 이벤트가 낀 날은 보정 없인 %가 배율만큼 폭주한다.
+//  · rawScale  : 수정주가 → 그 날 원주가 스케일 환산비(rawScaleOf). 번들이 두 스케일을 같이 싣기 때문에
+//               일봉(수정주가)에서 꺼낸 가격을 분봉(원주가) 위에 얹는 소비자가 이 계수로 자를 맞춘다.
 import {
     chartDailyRange,
     subtractMonths,
     densifyMinutes,
     basePricesOf,
+    rawScaleOf,
     RAW_DAILY_LOOKBACK_MONTHS,
     type AdjustedDailyReader,
     type MinuteReader,
@@ -43,6 +46,7 @@ export class ChartReadModel {
             daily,
             minutes: densifyMinutes(rawMinutes),
             basePrice: base.krx === null && base.un === null ? null : base,
+            rawScale: rawScaleOf(rawDaily, daily, date),
         };
     }
 }

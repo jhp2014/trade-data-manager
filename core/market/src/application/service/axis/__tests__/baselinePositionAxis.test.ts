@@ -26,10 +26,11 @@ const point = (time: string): ReviewPointKey => ({ stockCode: CODE, date: DATE, 
 const anchorOf = (a: Partial<ChartAnchor>): ChartAnchor =>
     ({ stockCode: CODE, date: DATE, param: "baseline", anchorDate: "2026-07-01", field: "high", market: "un", ...a });
 
-function deps(v: { minutesByDay?: Record<string, MinuteCandle[]>; dailies?: DailyCandle[]; anchors?: ChartAnchor[] }): AxisDeps {
+function deps(v: { minutesByDay?: Record<string, MinuteCandle[]>; dailies?: DailyCandle[]; rawDailies?: DailyCandle[]; anchors?: ChartAnchor[] }): AxisDeps {
     return {
         minute: { getMinuteCandles: (_c, date) => Promise.resolve(v.minutesByDay?.[date] ?? []) },
-        rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
+        // 원주가 일봉 — 스케일 환산비(rawScaleOf)의 재료. 안 주면 비를 못 구해 1(= 이벤트 없는 평상일).
+        rawDaily: { getRawDailyCandles: (_c, range) => Promise.resolve((v.rawDailies ?? []).filter((d) => d.date >= range.from && d.date <= range.to)) },
         adjDaily: { getDailyCandles: (_c, range) => Promise.resolve((v.dailies ?? []).filter((d) => d.date >= range.from && d.date <= range.to)) },
         chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(v.anchors ?? []) },
         reviewPoints: { listAllPoints: () => Promise.resolve([]) },
@@ -102,6 +103,35 @@ describe("baselinePositionAxis", () => {
             anchors: [anchorOf({})],
         });
         expect(await axis.compute([P], zeroBase)).toEqual([]);
+    });
+
+    it("타점일 뒤에 액분이 있었던 종목 — 수정주가 분모를 타점일 원주가 스케일로 되돌린다", async () => {
+        // 실측(LS ELECTRIC 2025-07-31): 그 뒤 액분 5:1 → 그 날들의 수정주가는 전부 원주가의 1/5.
+        // 되돌리지 않으면 311,500 / 61,100 = +409.8% 로 폭주한다. 되돌리면 311,500 / 305,500 = +1.96%.
+        const d = deps({
+            minutesByDay: { [DATE]: [minute("09:30:00", "311500")] },
+            dailies: [daily("2026-07-01", "61100", "61100"), daily(DATE, "62300", "62300")],
+            rawDailies: [daily("2026-07-01", "305500", "305500"), daily(DATE, "311500", "311500")],
+            anchors: [anchorOf({ field: "high", market: "un" })],
+        });
+        const out = await axis.compute([P], d);
+        expect(out[0].value).toBeCloseTo(1.9639, 3); // (311500-305500)/305500
+    });
+
+    it("분봉 앵커도 같은 자로 — 원주가 앵커를 수정주가로 올렸다가 타점일 스케일로 함께 내린다", async () => {
+        // 앵커일(액분 전, 원주가 10000)과 타점일(액분 후) 사이에 2:1 액분이 낀 경우.
+        // 원주가끼리 그냥 나누면 배율이 남는다 — 수정주가에서 만나야 5250/5000 = +5% 가 나온다.
+        const d = deps({
+            minutesByDay: {
+                [DATE]: [minute("09:30:00", "5250")],
+                "2026-07-01": [minute("13:00:00", "10000", { date: "2026-07-01" })],
+            },
+            dailies: [daily("2026-07-01", "5000", "5000"), daily(DATE, "5250", "5250")], // 수정주가(오늘 스케일)
+            rawDailies: [daily("2026-07-01", "10000", "10000"), daily(DATE, "5250", "5250")],
+            anchors: [anchorOf({ anchorTime: "13:00:00", field: "close", market: "un" })],
+        });
+        const out = await axis.compute([P], d);
+        expect(out[0].value).toBe(5);
     });
 
     it("선이 여럿이면 가격 최저가 분모 — 리졸버 규칙이 이 축에도 적용", async () => {

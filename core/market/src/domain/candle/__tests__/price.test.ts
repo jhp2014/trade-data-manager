@@ -7,6 +7,7 @@ import {
     countByAmountThreshold,
     previousCloseFromDaily,
     basePricesOf,
+    rawScaleOf,
 } from "../price.js";
 import type { DailyCandle } from "../model.js";
 
@@ -177,5 +178,45 @@ describe("basePricesOf", () => {
     it("원주가 직전 종가 없으면(상장일) base null", () => {
         const raw = [candle("2026-07-10", "108", "108")];
         expect(basePricesOf(raw, raw, "2026-07-10").base).toEqual({ krx: null, un: null });
+    });
+});
+
+describe("rawScaleOf", () => {
+    const bar = (close: string) => ({ open: close, high: close, low: close, close, volume: "1", amount: "1" });
+    const candle = (date: string, krxClose: string, unClose: string): DailyCandle => ({
+        stockCode: "000001",
+        date,
+        krx: bar(krxClose),
+        un: bar(unClose),
+    });
+
+    it("평상일(수정=원주) — 1(항등)", () => {
+        const raw = [candle("2026-07-10", "10000", "10000")];
+        expect(rawScaleOf(raw, raw, "2026-07-10")).toBe(1);
+    });
+
+    it("나중에 액분 5:1 이 있었던 과거일 — 수정주가는 1/5, 되돌리는 계수는 5", () => {
+        // 실측(LS ELECTRIC 2025-07-30): 원주 305,500 / 수정 61,100
+        const raw = [candle("2025-07-30", "305500", "305500")];
+        const adj = [candle("2025-07-30", "61100", "61100")];
+        expect(rawScaleOf(raw, adj, "2025-07-30")).toBe(5);
+        expect(61100 * rawScaleOf(raw, adj, "2025-07-30")).toBe(305500); // 수정주가 값 → 그 날 원주가 값
+    });
+
+    it("반올림 잔차는 1로 흡수 — 소급 재작성의 원 단위 반올림이 계수로 새지 않게", () => {
+        const raw = [candle("2026-07-10", "10000", "10000")];
+        const adj = [candle("2026-07-10", "10005", "10005")]; // 0.05% 차 — 실제 이벤트 배율과 겹치지 않는 폭
+        expect(rawScaleOf(raw, adj, "2026-07-10")).toBe(1);
+    });
+
+    it("UN 이 없으면 KRX 로 — 계수는 종목 전체의 이벤트 배율이라 시장이 갈리지 않는다", () => {
+        const raw = [candle("2026-07-10", "10000", "0")];
+        const adj = [candle("2026-07-10", "5000", "0")];
+        expect(rawScaleOf(raw, adj, "2026-07-10")).toBe(2);
+    });
+
+    it("그 날 일봉이 없으면 1 — 보정 포기(basePricesOf 와 같은 물러남)", () => {
+        expect(rawScaleOf([], [], "2026-07-10")).toBe(1);
+        expect(rawScaleOf([candle("2026-07-10", "10000", "10000")], [], "2026-07-10")).toBe(1);
     });
 });

@@ -149,6 +149,11 @@ export const ANCHOR_LINE_COLOR = "#0ea5e9";
  *
  * **확정 기준선 표시**: 해소된 선 중 가격 최저(타이=좌표 최신)를 하늘색+라벨로 갈라 보인다 —
  * 서버 리졸버(core baselineResolver)와 같은 규칙이라, 화면의 하늘색 선 = 계산 축이 쓰는 그 선이다.
+ *
+ * ⚠ **비교는 수정주가 스케일에서** 한다: D 는 수정주가(일봉 번들), M 은 원주가(분봉)라 감자·액분이 낀 종목에선
+ * 두 값이 배율만큼 다른 자에 있다 — 그대로 겨루면 "최저"가 뒤집힌다. M 을 그 날 환산비(rawScale)로 되돌려
+ * 겨루되, **그리는 값(price)은 그대로** 둔다: 분봉 pane 은 M/A 를 원주가 기준가로, D 를 수정주가 전일종가로
+ * 나눠 %를 내므로(linePct) 각 선은 자기 스케일 그대로여야 제자리에 선다.
  */
 export function resolveChartAnchorLines(
     anchors: readonly ChartAnchor[],
@@ -158,6 +163,7 @@ export function resolveChartAnchorLines(
     const out: RenderLine[] = [];
     let bestIdx = -1;
     let best: { price: number; coord: string } | null = null;
+    const rawScale = minuteBundle?.rawScale ?? 1; // 없으면(옛 서버) 1 — 계수가 없던 시절의 동작
     for (const a of anchors) {
         if (a.param !== BASELINE_PARAM || !a.field || !a.market) continue;
         let raw: string | undefined;
@@ -173,7 +179,8 @@ export function resolveChartAnchorLines(
         }
         const price = candlePrice(raw);
         if (price === null) continue;
-        const cand = { price, coord: anchorCoordKey(a) };
+        // 겨루기용 가격만 한 스케일(수정주가)로 — 원주가인 M 만 되돌린다.
+        const cand = { price: kind === "M" && rawScale > 0 ? price / rawScale : price, coord: anchorCoordKey(a) };
         out.push({ id: chartAnchorKey(a), price, kind });
         // 확정 표시는 서버 리졸버와 **같은 도메인 함수**(beatsAsBaseline)로 고른다 — 비교식을 여기 다시 적으면
         // 규칙이 한쪽만 바뀌었을 때 하늘색 선 ≠ 축이 재는 선이 되고, 그 선이 육안 검증의 근거라 치명적이다.

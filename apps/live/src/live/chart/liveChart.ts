@@ -8,6 +8,7 @@ import {
     subtractMonths,
     densifyMinutes,
     basePricesOf,
+    rawScaleOf,
     RAW_DAILY_LOOKBACK_MONTHS,
     kstToday,
 } from "@trade-data-manager/market";
@@ -39,6 +40,13 @@ export class LiveChartService {
             this.rawDaily.getRawDailyCandles(stockCode, rawRange),
         ]);
         const { base } = basePricesOf(rawDaily, daily, sessionDate);
-        return { stockCode, daily, minutes: densifyMinutes(rawMinutes), basePrice: base.krx === null && base.un === null ? null : base };
+        return {
+            stockCode,
+            daily,
+            minutes: densifyMinutes(rawMinutes),
+            basePrice: base.krx === null && base.un === null ? null : base,
+            // 수정주가↔원주가 환산비 — 라이브도 같은 계약을 채운다(과거 날짜 탐색에선 1이 아닐 수 있다).
+            rawScale: rawScaleOf(rawDaily, daily, sessionDate),
+        };
     }
 }

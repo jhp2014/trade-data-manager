@@ -164,3 +164,35 @@ export function previousCloseFromDaily(
     if (prev === null) return null;
     return { krxClose: prev.krx.close, unClose: prev.un.close };
 }
+
+/**
+ * 수정주가 → **그 날 원주가 스케일** 환산비(raw/adj). 두 스케일을 잇는 유일한 다리다.
+ *
+ * 수정주가는 감자·액분·무증이 생길 때마다 **그 이전 전 구간이 소급 재작성**돼 언제나 "오늘 스케일" 한 벌인
+ * 반면, 원주가(일봉 raw·분봉)는 그 날 실제로 체결된 값이다. 그래서 이벤트를 사이에 둔 두 값을 그냥 나누면
+ * 비율이 이벤트 배율만큼 튄다(액분 5:1 이면 +400%). 분자·분모의 스케일을 맞추는 게 이 함수의 일:
+ *
+ *   원주가(그 날 스케일) = 수정주가 × rawScaleOf(...)
+ *
+ * 평상일은 raw = adj 라 1(항등) — 이벤트가 없는 절대다수 종목에선 아무것도 안 한다.
+ * 시장은 UN 우선·KRX 폴백이다: 계수는 **종목 전체의 이벤트 배율**이라 시장별로 다를 이유가 없고(정수 반올림
+ * 잔차뿐), 한쪽 종가가 없어도 다른 쪽으로 구해진다. 반올림 잔차는 basePricesOf 와 같은 폭으로 1에 흡수한다.
+ *
+ * 그 날 일봉이 한쪽이라도 없으면 **1**(보정 포기 = 지금까지의 동작). basePricesOf 가 전일 수정주가 결손에서
+ * factor 1 로 물러나는 것과 같은 선택이다 — 이벤트는 드물고, 여기서 결손을 내면 일봉 미수집일의 타점이
+ * 통째로 축에서 사라진다.
+ */
+export function rawScaleOf(rawDaily: readonly DailyCandle[], adjDaily: readonly DailyCandle[], date: string): number {
+    const raw = rawDaily.find((c) => c.date === date);
+    const adj = adjDaily.find((c) => c.date === date);
+    return ratioOf(raw?.un.close, adj?.un.close) ?? ratioOf(raw?.krx.close, adj?.krx.close) ?? 1;
+}
+
+/** 두 종가의 비. 한쪽이라도 못 읽으면(미수집·0·비수치) null — 호출자가 다음 시장·1로 물러난다. */
+function ratioOf(raw: string | undefined, adj: string | undefined): number | null {
+    const r = Number(raw);
+    const a = Number(adj);
+    if (raw === undefined || adj === undefined || !Number.isFinite(r) || !Number.isFinite(a) || r <= 0 || a <= 0) return null;
+    const ratio = r / a;
+    return Math.abs(ratio - 1) < BASE_FACTOR_EPSILON ? 1 : ratio;
+}

@@ -8,13 +8,15 @@
 //   · 후보 1 → **가격을 읽지 않고** 확정. 거리 축의 견고성(앵커 캔들 값이 미수집이어도 좌표만으로 동작)이
 //     흔한 경우(선 하나)에 그대로 보존된다.
 //   · 후보 ≥2 → 각 후보의 가격을 읽어 **최저가**를 고른다(사용자 규칙: 아래 있는 선이 기준을 가져간다).
+//     비교는 **수정주가 스케일 한 벌**에서 한다 — 일봉 앵커는 수정주가, 분봉 앵커는 원주가라 이벤트(감자·액분)를
+//     사이에 두면 배율만큼 튄 값끼리 겨루게 된다(rawScaleOf 로 분봉 쪽을 되돌린다).
 //     하나라도 못 읽으면 null(결손) — 못 읽은 선이 더 낮을 수 있어 "아무거나"를 고르면 조용한 오류다
 //     (axis.ts 규칙 3: 지어내지 않는다). 같은 가격 타이는 **앵커 좌표가 최신인 것** — 그 가격대를 마지막으로
 //     건드린 선이 살아있는 저항이고, 거리류 축에서 결정적이도록 좌표로 고정한다(비결정 금지).
 //
 // 타점 소유(time 있는) 앵커는 후보에서 뺀다 — 현재 레지스트리는 전부 chart 소유라 실데이터가 없고,
 // 두 grain 의 병합 규칙은 첫 "both" param 이 실사용례를 들고 올 때 정한다(상상으로 미리 정하지 않는다).
-import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, chartKeyOf, type AnchorField, type AnchorMarket, type ChartAnchor, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
+import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, chartKeyOf, rawScaleOf, type AnchorField, type AnchorMarket, type ChartAnchor, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import type { AxisDeps } from "../axis/axis.js";
 
@@ -32,7 +34,7 @@ const DAY_CONCURRENCY = 8;
 export async function resolveBaselines(
     points: readonly ReviewPointKey[],
     anchors: readonly ChartAnchor[],
-    deps: Pick<AxisDeps, "adjDaily" | "minute">,
+    deps: Pick<AxisDeps, "adjDaily" | "minute" | "rawDaily">,
 ): Promise<Map<string, BaselineAnchor | null>> {
     const charts = new Set(points.map(chartKeyOf));
     const candidates = new Map<string, BaselineAnchor[]>();
@@ -70,8 +72,18 @@ export async function resolveBaselines(
         dailyByKey.set(`${d.stockCode}|${d.date}`, rows.find((r) => r.date === d.date));
     });
     const minutesByKey = new Map<string, MinuteCandle[]>();
+    // 분봉 앵커는 원주가라 그 날 환산비도 같이 읽는다(그 날 raw·adj 일봉 한 줄씩) — 수정주가 스케일로 되돌려
+    // 일봉 앵커와 같은 자에 놓기 위해서다. 분봉 앵커 자체가 드물어 이 읽기는 보통 일어나지 않는다.
+    const scaleByKey = new Map<string, number>();
     await mapWithConcurrency([...minuteKeys.values()], DAY_CONCURRENCY, async (d) => {
-        minutesByKey.set(`${d.stockCode}|${d.date}`, await deps.minute.getMinuteCandles(d.stockCode, d.date));
+        const range = { from: d.date, to: d.date };
+        const [minutes, raw, adj] = await Promise.all([
+            deps.minute.getMinuteCandles(d.stockCode, d.date),
+            deps.rawDaily.getRawDailyCandles(d.stockCode, range),
+            deps.adjDaily.getDailyCandles(d.stockCode, range),
+        ]);
+        minutesByKey.set(`${d.stockCode}|${d.date}`, minutes);
+        scaleByKey.set(`${d.stockCode}|${d.date}`, rawScaleOf(raw, adj, d.date));
     });
 
     for (const { key, cands } of multi) {
@@ -79,7 +91,7 @@ export async function resolveBaselines(
         let best: { a: BaselineAnchor; price: number; coord: string } | null = null;
         let broken = false;
         for (const a of cands) {
-            const price = anchorPrice(a, dailyByKey, minutesByKey);
+            const price = anchorPrice(a, dailyByKey, minutesByKey, scaleByKey);
             if (price === null) { broken = true; break; } // 못 읽은 후보가 더 낮을 수 있다 — 확정 불가(결손)
             const cand = { a, price, coord: anchorCoordKey(a) };
             if (!best || beatsAsBaseline(cand, best)) best = cand;
@@ -89,10 +101,20 @@ export async function resolveBaselines(
     return out;
 }
 
-/** 후보 하나의 가격 — 앵커가 지목한 캔들의 그 시장·그 값. 값 해석(미수집/0/비수치=null)은 도메인 candlePrice. */
-function anchorPrice(a: BaselineAnchor, dailyByKey: Map<string, DailyCandle | undefined>, minutesByKey: Map<string, MinuteCandle[]>): number | null {
-    const raw = a.anchorTime
-        ? (minutesByKey.get(`${a.stockCode}|${a.anchorDate}`)?.find((c) => c.time === a.anchorTime)?.[a.market] ?? undefined)?.[a.field]
-        : dailyByKey.get(`${a.stockCode}|${a.anchorDate}`)?.[a.market]?.[a.field];
-    return candlePrice(raw);
+/**
+ * 후보 하나의 가격 — 앵커가 지목한 캔들의 그 시장·그 값을 **수정주가 스케일로** 낸다.
+ * 값 해석(미수집/0/비수치=null)은 도메인 candlePrice. 분봉 앵커(원주가)만 그 날 환산비로 나눠 자를 맞춘다.
+ */
+function anchorPrice(
+    a: BaselineAnchor,
+    dailyByKey: Map<string, DailyCandle | undefined>,
+    minutesByKey: Map<string, MinuteCandle[]>,
+    scaleByKey: Map<string, number>,
+): number | null {
+    if (!a.anchorTime) return candlePrice(dailyByKey.get(`${a.stockCode}|${a.anchorDate}`)?.[a.market]?.[a.field]);
+    const bar = minutesByKey.get(`${a.stockCode}|${a.anchorDate}`)?.find((c) => c.time === a.anchorTime)?.[a.market] ?? undefined;
+    const price = candlePrice(bar?.[a.field]);
+    if (price === null) return null;
+    const scale = scaleByKey.get(`${a.stockCode}|${a.anchorDate}`) ?? 1;
+    return scale > 0 ? price / scale : price;
 }

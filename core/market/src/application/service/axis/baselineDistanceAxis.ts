@@ -31,7 +31,7 @@ export function baselineDistanceAxis(): ComputedAxisDef {
     return {
         key: "baseline-distance",
         name: "기준선 거리(일)",
-        version: 3, // v3: 당일 기준선 가드(day 알갱이 절단선 — 세 축이 같은 선을 봐야 하므로 공백 축과 함께)
+        version: 4, // v4: 리졸버가 후보를 한 스케일(수정주가)에서 겨루게 — 고르는 선이 바뀔 수 있다
         strongerWhen: "higher", // 멀수록 = 오래 묵은 저항을 깨는 자리
         // 값 = 앵커→타점 **날짜** 거래일 수 — 시각이 값에 안 들어가 그날 전 타점이 같은 값이다.
         // 당일 앵커는 compute 가 거른다(dropSameDayAnchors). 이 축 단독으론 당일 앵커=0 이 무해해 보이지만,

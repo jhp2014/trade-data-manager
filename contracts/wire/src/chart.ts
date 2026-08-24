@@ -22,4 +22,11 @@ export interface ChartBundle {
     daily: DailyCandle[];
     minutes: MinuteCandle[];
     basePrice: BasePrice | null;
+    /**
+     * 수정주가 → **그 날 원주가 스케일** 환산비(core rawScaleOf). 한 번들에 두 스케일이 같이 실려 오기 때문에
+     * (daily=수정주가 / minutes=원주가) 둘을 섞는 소비자 — 분봉 pane 에 얹는 기준선·수준선 — 가 이 계수를
+     * 곱해야 자가 맞는다. 평상일 1, 감자·액분이 그 뒤에 있었던 날은 그 배율.
+     * 옛 서버(배포 격차)는 안 보내므로 소비자는 `?? 1` 폴백 — 그게 이 계수가 없던 시절의 동작이다.
+     */
+    rawScale?: number;
 }

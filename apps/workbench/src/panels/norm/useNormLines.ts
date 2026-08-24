@@ -156,7 +156,8 @@ export function useNormLines(grain: "daily" | "minute", dailyMarket: "krx" | "un
             if (it.subject) subjectKeys.add(line.key);
             if (it.pinned) pinnedKeys.add(line.key);
             if (!levelsByChart.has(ck)) {
-                const anchored = levelsOf(bundle, baselineAnchors.filter((a) => chartKeyOf(a.stockCode, a.date) === ck));
+                // 수준선은 선과 **같은 스케일**이어야 한다: 일봉 뷰는 수정주가 공간(1), 분봉 뷰는 원주가 공간(rawScale).
+                const anchored = levelsOf(bundle, baselineAnchors.filter((a) => chartKeyOf(a.stockCode, a.date) === ck), isDaily ? 1 : (bundle.rawScale ?? 1));
                 const zero = isDaily ? null : zeroLevelOf(bundle, zeroLine);
                 levelsByChart.set(ck, zero ? [...anchored, zero] : anchored);
             }
@@ -242,8 +243,16 @@ function minuteLineOf(
 /**
  * 수준선 — 이 차트의 기준선 후보 전부를 번들 캔들에서 해소하고, **가격 최저**(도메인 단일 규칙
  * beatsAsBaseline — 서버 리졸버·차트 하늘색 선과 같은 함수)를 기준선으로 표시한다.
+ *
+ * ## 스케일 (viewScale)
+ * 번들은 두 스케일을 같이 싣는다: `daily` = 수정주가(전 구간 오늘 스케일), `minutes` = 원주가(그 날 값).
+ * 감자·액분이 차트 날짜 뒤에 있었던 종목은 둘이 배율만큼 다른 자에 있어, 섞어서 %로 환산하면 선이 엉뚱한
+ * 높이에 선다. 그래서 **후보를 전부 수정주가 스케일로 모은 뒤**(분봉 앵커만 rawScale 로 되돌린다) 화면 공간의
+ * 스케일로 함께 내린다 — 일봉 뷰는 수정주가 공간이라 1, 분봉 뷰는 원주가 공간이라 rawScale.
+ * 최저 선택도 이 한 스케일에서 이뤄진다(자가 다른 값끼리 겨루면 "최저"가 뒤집힌다).
  */
-function levelsOf(bundle: ChartBundle, anchors: readonly ChartAnchor[]): NormLevel[] {
+function levelsOf(bundle: ChartBundle, anchors: readonly ChartAnchor[], viewScale: number): NormLevel[] {
+    const rawScale = bundle.rawScale ?? 1; // 없으면(옛 서버) 1 — 계수가 없던 시절의 동작
     const resolved: { price: number; coord: string }[] = [];
     for (const a of anchors) {
         if (a.field == null || a.market == null) continue;
@@ -251,7 +260,9 @@ function levelsOf(bundle: ChartBundle, anchors: readonly ChartAnchor[]): NormLev
             ? bundle.minutes.find((m) => m.date === a.anchorDate && m.time === a.anchorTime)?.[a.market]?.[a.field]
             : bundle.daily.find((d) => d.date === a.anchorDate)?.[a.market]?.[a.field];
         const price = candlePrice(raw);
-        if (price !== null) resolved.push({ price, coord: anchorCoordKey(a) });
+        if (price === null) continue;
+        const adj = a.anchorTime && rawScale > 0 ? price / rawScale : price; // 원주가(분봉 앵커)만 되돌린다
+        resolved.push({ price: adj * viewScale, coord: anchorCoordKey(a) });
     }
     if (resolved.length === 0) return [];
     let winner = resolved[0];
