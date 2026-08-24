@@ -155,33 +155,36 @@ describe("스택은 넘치지도, 사라지지도 않는다", () => {
 });
 
 describe("전일 종가선(0%) — 분봉 전용 토글", () => {
-    /** 수준선 층의 글자들. */
+    /** 값 칩 글자들 — 시장 이름은 좌측 태그가 진다(2026-08-24 표기 개편: 좌=종류, 우단=값). */
     const levelTexts = (c: HTMLElement): string[] =>
         [...c.querySelectorAll('[data-layer="levels"] text')].map((t) => t.textContent ?? "");
+    const tagTexts = (c: HTMLElement): string[] =>
+        [...c.querySelectorAll('[data-layer="level-tags"] text')].map((t) => t.textContent ?? "");
 
-    it("켜면 그 시장 이름과 함께 선다 — 픽스처 타점은 +26.3% 라 0% 는 창 밖, 그래서 ▼ 와 거리가 붙는다", () => {
+    it("켜면 그 시장 태그와 함께 선다 — 픽스처 타점은 +26.3% 라 0% 는 창 밖, 그래서 값 칩이 ▼ 를 단다", () => {
         seedZero("un");
         gazePoint();
-        const texts = levelTexts(renderMinute());
-        expect(texts.some((t) => t.startsWith("0% (UN)"))).toBe(true);
-        expect(texts.some((t) => t.includes("▼26.3%p"))).toBe(true);
+        const c = renderMinute();
+        expect(tagTexts(c)).toContain("전일 UN");
+        // 옛 `0% (KRX)` 특례의 후임 — 일반 규칙 `화면값 (절대값)` 이 정확히 "이 선이 진짜 0%"를 말한다.
+        expect(levelTexts(c).some((t) => t.includes("▼-26.3% (+0.0%)"))).toBe(true);
     });
 
     it("KRX 로 바꾸면 그 시장 종가를 잰다 — 두 시장 종가가 갈리면 그 간격이 곧 정보다", () => {
         seedZero("krx");
         gazePoint();
-        expect(levelTexts(renderMinute()).some((t) => t.startsWith("0% (KRX)"))).toBe(true);
+        expect(tagTexts(renderMinute())).toContain("전일 KRX");
     });
 
     it("끄면 사라진다 — 기준선(앵커)과 **따로** 켜지는 스위치다", () => {
         seedZero("off");
         gazePoint();
-        expect(levelTexts(renderMinute()).some((t) => t.includes("0% ("))).toBe(false);
+        expect(tagTexts(renderMinute()).some((t) => t.startsWith("전일"))).toBe(false);
     });
 
     it("일봉엔 안 붙는다 — 거기선 y=0 자체가 전일 종가라 가로 0선이 그 자리다", () => {
         localStorage.setItem("wb.normZeroLine.daily", JSON.stringify("un"));
         useWorkbench.getState().goToDay({ code: CODE, date: DATE }, "test");
-        expect(levelTexts(renderDaily()).some((t) => t.includes("0% ("))).toBe(false);
+        expect(tagTexts(renderDaily()).some((t) => t.startsWith("전일"))).toBe(false);
     });
 });

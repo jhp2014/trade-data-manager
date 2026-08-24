@@ -8,12 +8,13 @@
 // 셋을 겹쳐 쌓는다 — 문서 순서가 그대로 그리는 순서라 규약이 안 바뀐다.
 //
 // 그 위로 HTML 층(이름 거터·크로스헤어)이 문서 순서대로 겹친다.
-import { useId, type ComponentProps, type CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
 import { polylinePoints } from "./overlay.js";
 import { AmountLabels, type AmountLabel } from "./AmountLabels.js";
 import { type ThemeView } from "./useThemeOverlay.js";
 import { CrosshairLayer } from "./CrosshairLayer.js";
-import { LevelsLayer, type LevelOwner } from "./LevelsLayer.js";
+import { LevelsLayer, LevelTags, type LevelRowsView } from "./LevelsLayer.js";
+import { AnchorMarksLayer, type MarkGroup } from "./AnchorMarksLayer.js";
 import { AxisLayer } from "./AxisLayer.js";
 import { Gutter, GutterLeaders, type GutterView } from "./GutterLayer.js";
 import { OriginLeader, OriginStack, type OriginStackProps } from "./OriginStack.js";
@@ -54,8 +55,10 @@ export interface OverlayPlotProps {
     onHoverPanel: (inside: boolean) => void;
     readoutAt: ((x: number) => ReadoutCandidate[]) | null;
     amountLabels: AmountLabel[];
-    levelOwners: LevelOwner[];
-    levelsOf: ComponentProps<typeof LevelsLayer>["levelsOf"];
+    /** 자리 잡은 수준선 줄들 — 가로선·값 칩(클립 안)과 좌측 태그(클립 밖)가 같은 줄을 본다. */
+    levels: LevelRowsView;
+    /** 상단 표식 무리(주인별) — 상시. */
+    markGroups: readonly MarkGroup[];
 }
 
 export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
@@ -143,11 +146,18 @@ export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
                                 )}
                             </g>
 
-                            {/* 얹는 선(기준선) — 환산·스타일 규칙은 LevelsLayer 가, **누가 받나**(시선·호버)는
-                                패널(levelOwners)이 정한다. */}
-                            <LevelsLayer owners={p.levelOwners} levelsOf={p.levelsOf}
-                                scaleY={scales.y} box={box} />
+                        </g>
 
+                        {/* 얹는 선(기준선·전일 종가선) — 가로선·값 칩은 층 안에서 자기 클립을 걸고,
+                            좌측 태그(클립 밖)는 LevelTags 가 같은 줄(rows)로 그린다. **누가 받나**
+                            (시선·호버)는 패널이 정한다. */}
+                        <LevelsLayer view={p.levels} box={box} clipId={clipId} />
+                        <LevelTags view={p.levels} box={box} />
+
+                        {/* 상단 앵커 표식 — 종류 칩 + 봉당 드롭선 하나. 상시(토글 없음). */}
+                        <AnchorMarksLayer groups={p.markGroups} scales={scales} box={box} clipId={clipId} />
+
+                        <g clipPath={`url(#${clipId})`}>
                             {/* 원점 세로 점선 — 봉 아래에서 바닥 스택까지(옛 세로축의 후임). */}
                             {p.showLabels && <OriginLeader {...p.origin} box={box} />}
                         </g>

@@ -8,17 +8,18 @@ import {
     type OverlayBounds, type OverlayLine,
 } from "./overlay.js";
 import { AXIS_W, GUTTER_W } from "./gutter.js";
+import { TAG_W } from "./anchorDisplay.js";
 import { useOverlayZoom, type ZoomRegion } from "./useOverlayZoom.js";
 
 /**
  * 그림 상자 바깥 여백. **오른쪽 한 스트립에 축과 이름이 같이 산다**(사용자 확정):
- * 그림에 붙은 눈금 칸(AXIS_W) + 그 바깥의 이름 거터(GUTTER_W). 왼쪽은 여백만 — 옛 왼쪽 테마 거터는
- * 은퇴했고(테마 이름도 오른쪽 한 목록으로 합쳤다) 그 폭은 그림, 즉 과거 구간에 돌아갔다.
+ * 그림에 붙은 눈금 칸(AXIS_W) + 그 바깥의 이름 거터(GUTTER_W). **왼쪽은 수준선 종류 태그 칸**(TAG_W,
+ * 상시 — 토글이 아니라 상수라 폭이 출렁일 일이 없다). 옛 왼쪽 테마 거터 폭은 그림(과거 구간)에 돌아갔다.
  *
  * 거터는 **라벨 토글이 켜져 있을 때만** 자리를 먹는다 — 데이터가 아니라 토글이 정하므로 값이
  * 도착할 때 폭이 출렁이지 않는다(옛 gutter 판정의 규칙 승계).
  */
-const PAD = { left: 14, top: 12, bottom: 24 };
+const PAD = { left: 4 + TAG_W, top: 12, bottom: 24 };
 
 export type Scales = { x: ScaleLinear<number, number>; y: ScaleLinear<number, number> };
 

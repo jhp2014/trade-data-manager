@@ -55,7 +55,10 @@ describe.each([
             "theme-hit",
             "line-hit",
             "amount-labels",
+            // 수준선 → 좌측 태그 → 상단 표식 — 태그는 클립 밖(상자 왼쪽 바깥)이라 층이 갈린다.
             "levels",
+            "level-tags",
+            "anchor-marks",
             // 원점 점선 → (거터) → 원점 스택 순으로 맨 위. 스택이 마지막이라 무엇에도 안 가린다.
             "origin-leader",
             ...(grain === "minute" ? ["gutter"] : []),

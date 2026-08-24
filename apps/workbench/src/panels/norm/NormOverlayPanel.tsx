@@ -30,7 +30,8 @@ import type { GutterCandidate } from "./gutter.js";
 import type { GutterHandlers, GutterView } from "./GutterLayer.js";
 import { amountLookupOf } from "./amountLayer.js";
 import { useThemeOverlay } from "./useThemeOverlay.js";
-import { type LevelOwner, type NormLevel } from "./LevelsLayer.js";
+import { buildLevelRows, type LevelOwner, type LevelRowsView, type NormLevel } from "./LevelsLayer.js";
+import type { MarkGroup } from "./AnchorMarksLayer.js";
 import { normLinesLayer } from "./linesLayer.js";
 import { candleLayer, type CandleSeries } from "./candleLayer.js";
 import { themeLinesLayer } from "./themeLinesLayer.js";
@@ -290,18 +291,19 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
         return ids.map((id) => groupsView.groupByName.get(id)?.name).filter((n): n is string => !!n);
     }, [inspectKey, byKey, groupsView]);
 
-    // 수준선(기준선·전일 종가선)을 받을 선 — 시선 단일 + (다르면) 호버 하나(옛 규칙 그대로).
-    // 수준선 라벨은 위/아래로 갈린다: 선택 = 위, 호버 = 아래(둘 다 왼쪽 — 오른쪽은 눈금과 거터의 자리다).
-    const levelOwners = useMemo<LevelOwner[]>(() => {
-        if (!showLevels && !zeroOn) return [];
+    /**
+     * 앵커 표기(수준선·표식)를 받을 주인 — 시선 단일 + (다르면) 호버 하나(옛 규칙 그대로).
+     * 토글과 무관하게 뽑는다: 수준선은 토글이 자르지만 **상단 표식은 상시**라(사용자 확정) 주인이 먼저다.
+     */
+    const annOwners = useMemo<LevelOwner[]>(() => {
         const single = subjectKeys.size === 1 ? [...subjectKeys][0] : null;
         const out: LevelOwner[] = [];
         const sel = single ? byKey.get(single) : null;
-        if (sel) out.push({ s: sel, color: visualOf(sel.key).color, above: true });
+        if (sel) out.push({ s: sel, color: visualOf(sel.key).color });
         const hov = hovered && hovered !== single ? byKey.get(hovered) : null;
-        if (hov) out.push({ s: hov, color: visualOf(hov.key).color, above: false });
+        if (hov) out.push({ s: hov, color: visualOf(hov.key).color });
         return out;
-    }, [showLevels, zeroOn, subjectKeys, byKey, hovered, visualOf]);
+    }, [subjectKeys, byKey, hovered, visualOf]);
 
     /**
      * 그 차트가 낼 수준선 — **두 토글이 따로 자른다**: 기준선(앵커)은 showLevels, 전일 종가선은 zeroLine.
@@ -314,6 +316,24 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
         },
         [data.levelsByChart, showLevels],
     );
+
+    // 자리 잡은 수준선 줄 — 가로선·값 칩·좌측 태그가 **같은 줄**을 본다(칩·태그가 같은 높이라는 계약).
+    const levelRows = useMemo<LevelRowsView>(() => {
+        if (!scales || (!showLevels && !zeroOn)) return { rows: [], hidden: [] };
+        return buildLevelRows(annOwners, levelsOf, scales.y, box, !isDaily, nameOf);
+    }, [scales, showLevels, zeroOn, annOwners, levelsOf, box, isDaily, nameOf]);
+
+    // 상단 표식 무리 — 상시(토글 없음). 고가 조회는 항목 캔들(선과 같은 값 공간)에서.
+    const markGroups = useMemo<MarkGroup[]>(() => annOwners
+        .map(({ s, color }) => {
+            const candles = data.candlesByKey.get(s.key);
+            return {
+                line: s, color,
+                marks: data.marksByChart.get(s.chartKey) ?? [],
+                highAt: (x: number) => candles?.find((c) => c.x === x)?.h ?? null,
+            };
+        })
+        .filter((g) => g.marks.length > 0), [annOwners, data.candlesByKey, data.marksByChart]);
 
 
     // ── 머리글 프롭 안정화 — OverlayHeader 는 React.memo 다.
@@ -416,8 +436,8 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
                 onHoverPanel={setHoveringPanel}
                 readoutAt={amount.readoutAt}
                 amountLabels={amount.amountLabels}
-                levelOwners={levelOwners}
-                levelsOf={levelsOf}
+                levels={levelRows}
+                markGroups={markGroups}
             />
             </div>
 

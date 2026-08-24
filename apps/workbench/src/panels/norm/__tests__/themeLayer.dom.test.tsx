@@ -131,7 +131,7 @@ describe("테마 켜짐 — 층 순서", () => {
         // DOM 에 남은 건 눈금·손짓·값뿐 — 그림 세 층은 캔버스로 갔다.
         expect(layersOf(c)).toEqual([
             "gutter-leaders", "axis-ticks", "axis-origin",
-            "theme-hit", "line-hit", "amount-labels", "levels",
+            "theme-hit", "line-hit", "amount-labels", "levels", "level-tags", "anchor-marks",
             "origin-leader", "gutter", "origin-stack",
         ]);
         // 캔버스 쪽 순서도 켜고 끄는 것과 무관하게 그대로.

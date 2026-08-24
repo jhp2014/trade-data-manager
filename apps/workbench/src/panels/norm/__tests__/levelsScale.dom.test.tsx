@@ -31,11 +31,13 @@ const anchors: ChartAnchor[] = [
     { stockCode: CODE, date: DATE, param: "baseline", anchorDate: ANCHOR_DATE, field: "high", market: "un" },
 ];
 
-/** 기준선 라벨들 — LevelsLayer 는 "기준 " 접두어로 확정 선을 갈라 적는다. */
-function baselineLabels(container: HTMLElement): string[] {
-    return [...container.querySelectorAll('[data-layer="levels"] text')]
-        .map((el) => el.textContent ?? "")
-        .filter((t) => t.startsWith("기준 "));
+/** 값 칩 글자들(그림 안 우단) — 종류는 좌측 태그가 따로 진다(2026-08-24 표기 개편). */
+function valueChips(container: HTMLElement): string[] {
+    return [...container.querySelectorAll('[data-layer="levels"] text')].map((el) => el.textContent ?? "");
+}
+/** 좌측 종류 태그 글자들. */
+function tagChips(container: HTMLElement): string[] {
+    return [...container.querySelectorAll('[data-layer="level-tags"] text')].map((el) => el.textContent ?? "");
 }
 
 const render = (rawScale: number | undefined): HTMLElement =>
@@ -61,11 +63,15 @@ describe("정규화 분봉 뷰 — 기준선의 스케일", () => {
     // 타점 시각 원주가 12,000 · 전일 종가 9,500 → 원점(타점)의 전일比 +26.3%.
     // 기준선 원주가 = 2,000 × 5 = 10,000 → 전일比 +5.3% → 원점 대비 −21.1%p.
     it("일봉 앵커(수정주가)를 rawScale 로 원주가 자에 내려놓는다", () => {
-        expect(baselineLabels(render(SCALE))).toEqual(["기준 -21.1% (+5.3%)"]);
+        const c = render(SCALE);
+        expect(valueChips(c).some((t) => t.includes("-21.1% (+5.3%)"))).toBe(true);
+        // 분봉 패널의 일봉 앵커 승자 — grain 접두가 붙는다(표식은 grain 일치만 받으므로 이게 그 설명).
+        expect(tagChips(c)).toContain("일 기준");
     });
 
     it("계수가 없는(옛 서버) 번들은 1 로 — 계수가 없던 시절의 동작 그대로", () => {
         // 되돌리지 않으면 2,000 은 전일 종가의 21% 밖에 안 되는 값이라 선이 화면 한참 아래에 선다.
-        expect(baselineLabels(render(undefined))).toEqual(["기준 -105.3% (-78.9%)"]);
+        // 창(±20%p) 밖이라 값 칩은 가장자리로 당겨지고 ▼ 를 단다(창 밖 일반 규칙).
+        expect(valueChips(render(undefined)).some((t) => t.includes("-105.3% (-78.9%)"))).toBe(true);
     });
 });
