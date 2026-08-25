@@ -1,6 +1,6 @@
 // 전역 설정 슬라이스 — 설정 모달(사이드바)이 편집, 각 패널/보드가 구독. 패널별 gear 대신 전역 1개.
 import type { StateCreator } from "zustand";
-import { loadJson, saveJson } from "./persist.js";
+import { mergeShape, persistedField } from "./persist.js";
 import type { WorkbenchState } from "./workbench.js";
 
 export type NewsSearchEngine = "naver" | "google"; // HTS 뉴스 제목 클릭 시 웹 검색 엔진(네이버=제목+날짜, 구글=제목만)
@@ -34,31 +34,56 @@ export interface SettingsSlice {
     setBoardMarket: (board: keyof BoardMarketMap, market: BoardMarket) => void;
 }
 
-// 보드 기준 시장 — localStorage 영속. 기본 UN(통합, 기존 동작).
-const BOARD_MARKET_KEY = "wb.boardMarket";
-function loadBoardMarket(): BoardMarketMap {
-    const isMarket = (v: unknown): v is BoardMarket => v === "krx" || v === "un";
-    const raw = loadJson(BOARD_MARKET_KEY, (o) => (o && typeof o === "object" ? (o as Partial<BoardMarketMap>) : null));
-    return {
-        theme: isMarket(raw?.theme) ? raw.theme : "un",
-        replay: isMarket(raw?.replay) ? raw.replay : "un",
-        live: isMarket(raw?.live) ? raw.live : "un",
-    };
-}
+// ── 영속 필드 — 키·로드·저장이 한 자리에 묶인다(persistedField). 설정 모달이 편집하는 것들이
+//    전부 여기 있다: 예전엔 setter 가 그냥 set() 만 해서 새로고침마다 기본값으로 돌아갔다.
+const NEWS_ENGINE = persistedField<NewsSearchEngine>(
+    "wb.newsSearchEngine",
+    (o) => (o === "naver" || o === "google" ? o : null),
+    "naver",
+);
+
+const THEME_BOARD_DEFAULT: ThemeBoardSettings = { showIndividuals: true, showUnclassified: true };
+const THEME_BOARD = persistedField<ThemeBoardSettings>(
+    "wb.themeBoardSettings",
+    (o) => mergeShape(o, THEME_BOARD_DEFAULT),
+    THEME_BOARD_DEFAULT,
+);
+
+const REPLAY_DEFAULT: ReplayBoardSettings = { amountN: 80, rateN: 40 };
+const REPLAY = persistedField<ReplayBoardSettings>(
+    "wb.replaySettings",
+    (o) => mergeShape(o, REPLAY_DEFAULT),
+    REPLAY_DEFAULT,
+);
+
+// 보드 기준 시장 — 유니온 문자열이라 mergeShape 로는 못 거른다(typeof 는 string 까지만 본다).
+const BOARD_MARKET_DEFAULT: BoardMarketMap = { theme: "un", replay: "un", live: "un" };
+const BOARD_MARKET = persistedField<BoardMarketMap>(
+    "wb.boardMarket",
+    (o) => {
+        const isMarket = (v: unknown): v is BoardMarket => v === "krx" || v === "un";
+        if (!o || typeof o !== "object") return null;
+        const r = o as Partial<BoardMarketMap>;
+        return {
+            theme: isMarket(r.theme) ? r.theme : BOARD_MARKET_DEFAULT.theme,
+            replay: isMarket(r.replay) ? r.replay : BOARD_MARKET_DEFAULT.replay,
+            live: isMarket(r.live) ? r.live : BOARD_MARKET_DEFAULT.live,
+        };
+    },
+    BOARD_MARKET_DEFAULT,
+);
 
 export const createSettingsSlice: StateCreator<WorkbenchState, [], [], SettingsSlice> = (set) => ({
-    newsSearchEngine: "naver",
-    themeBoardSettings: { showIndividuals: true, showUnclassified: true },
-    replaySettings: { amountN: 80, rateN: 40 },
-    boardMarket: loadBoardMarket(),
+    newsSearchEngine: NEWS_ENGINE.load(),
+    themeBoardSettings: THEME_BOARD.load(),
+    replaySettings: REPLAY.load(),
+    boardMarket: BOARD_MARKET.load(),
 
-    setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: engine })),
-    setThemeBoardSettings: (patch) => set((s) => ({ themeBoardSettings: { ...s.themeBoardSettings, ...patch } })),
-    setReplaySettings: (patch) => set((s) => ({ replaySettings: { ...s.replaySettings, ...patch } })),
+    setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: NEWS_ENGINE.save(engine) })),
+    setThemeBoardSettings: (patch) =>
+        set((s) => ({ themeBoardSettings: THEME_BOARD.save({ ...s.themeBoardSettings, ...patch }) })),
+    setReplaySettings: (patch) =>
+        set((s) => ({ replaySettings: REPLAY.save({ ...s.replaySettings, ...patch }) })),
     setBoardMarket: (board, market) =>
-        set((s) => {
-            const next: BoardMarketMap = { ...s.boardMarket, [board]: market };
-            saveJson(BOARD_MARKET_KEY, next);
-            return { boardMarket: next };
-        }),
+        set((s) => ({ boardMarket: BOARD_MARKET.save({ ...s.boardMarket, [board]: market }) })),
 });

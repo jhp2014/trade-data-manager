@@ -1,6 +1,6 @@
 // 차트 뷰 상태 슬라이스 — 줌(전역 f 토글)·패널별 뷰(영속)·% 기준 시장·이동/줌 설정.
 import type { StateCreator } from "zustand";
-import { loadJson, saveJson } from "./persist.js";
+import { mergeShape, persistedField } from "./persist.js";
 import type { WorkbenchState } from "./workbench.js";
 
 export type ChartPriceMode = "krx" | "un"; // 분봉 등락률 기준 시장(UN=통합, KRX)
@@ -26,24 +26,36 @@ export interface ChartSlice {
     setChartSettings: (patch: Partial<ChartSettings>) => void;
 }
 
-// 차트 패널별 뷰 — localStorage 영속(그래프위치·프리셋 선례). 화면(프리셋) 전환으로 remount 돼도 유지.
-const CHART_VIEWS_KEY = "wb.chartViews";
+// ── 영속 필드. 차트 패널별 뷰는 화면(프리셋) 전환으로 remount 돼도 유지돼야 하고,
+//    설정·기준 시장은 보드 쪽 boardMarket 과 짝을 맞춘다(한쪽만 휘발이면 새로고침마다 어긋난다).
+const CHART_VIEWS = persistedField<Record<string, ChartView>>(
+    "wb.chartViews",
+    (o) => (o && typeof o === "object" ? (o as Record<string, ChartView>) : null),
+    {},
+);
+const PRICE_MODE = persistedField<ChartPriceMode>(
+    "wb.chartPriceMode",
+    (o) => (o === "krx" || o === "un" ? o : null),
+    "un",
+);
+const CHART_SETTINGS_DEFAULT: ChartSettings = { jumpBars: 20, minuteZoomBars: 200, dailyZoomBars: 60, dailyZoomOutBars: 250 };
+const CHART_SETTINGS = persistedField<ChartSettings>(
+    "wb.chartSettings",
+    (o) => mergeShape(o, CHART_SETTINGS_DEFAULT),
+    CHART_SETTINGS_DEFAULT,
+);
 
 export const createChartSlice: StateCreator<WorkbenchState, [], [], ChartSlice> = (set) => ({
     chartZoom: null,
-    chartViews: loadJson(CHART_VIEWS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, ChartView>) : null)) ?? {},
-    chartPriceMode: "un",
-    chartSettings: { jumpBars: 20, minuteZoomBars: 200, dailyZoomBars: 60, dailyZoomOutBars: 250 },
+    chartViews: CHART_VIEWS.load(),
+    chartPriceMode: PRICE_MODE.load(),
+    chartSettings: CHART_SETTINGS.load(),
 
-    setChartPriceMode: (mode) => set(() => ({ chartPriceMode: mode })),
+    setChartPriceMode: (mode) => set(() => ({ chartPriceMode: PRICE_MODE.save(mode) })),
     setChartView: (panelId, view) =>
-        set((s) => {
-            const next = { ...s.chartViews, [panelId]: view };
-            saveJson(CHART_VIEWS_KEY, next);
-            return { chartViews: next };
-        }),
+        set((s) => ({ chartViews: CHART_VIEWS.save({ ...s.chartViews, [panelId]: view }) })),
     // f 줌 토글 — 켤 때 현재 시각(focus.time)을 anchor(unix초)로 캡처. 시간 없으면 마지막 봉 기준(null).
     toggleChartZoom: () =>
         set((s) => ({ chartZoom: s.chartZoom ? null : { anchor: s.focus.time ? Math.floor(Date.parse(`${s.focus.date}T${s.focus.time}+09:00`) / 1000) : null } })),
-    setChartSettings: (patch) => set((s) => ({ chartSettings: { ...s.chartSettings, ...patch } })),
+    setChartSettings: (patch) => set((s) => ({ chartSettings: CHART_SETTINGS.save({ ...s.chartSettings, ...patch }) })),
 });

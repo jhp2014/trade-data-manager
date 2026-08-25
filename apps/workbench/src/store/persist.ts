@@ -29,3 +29,49 @@ export function usePersistedState<T>(key: string, parse: (raw: unknown) => T | n
     useEffect(() => saveJson(key, value), [key, value]);
     return [value, setValue];
 }
+
+/**
+ * 저장된 객체에서 **기본값과 같은 타입인 필드만** 승계한다 — 어긋난 항목은 조용히 기본값.
+ * 평평한 설정 객체(설정 모달이 편집하는 것들)의 파서가 필드마다 `typeof` 를 되풀이하던 걸 한 벌로.
+ * ⚠ 유니온 문자열(`"krx" | "un"`)은 이걸로 못 거른다 — `typeof` 는 `string` 까지만 본다. 그런 필드는
+ *   전용 파서를 쓸 것.
+ */
+export function mergeShape<T extends object>(raw: unknown, defaults: T): T | null {
+    if (!raw || typeof raw !== "object") return null;
+    const src = raw as Record<string, unknown>;
+    const out = { ...defaults };
+    for (const k of Object.keys(defaults) as (keyof T & string)[]) {
+        const v = src[k];
+        if (typeof v !== typeof defaults[k]) continue;
+        if (typeof v === "number" && !Number.isFinite(v)) continue;
+        (out as Record<string, unknown>)[k] = v;
+    }
+    return out;
+}
+
+/**
+ * 영속 필드 한 벌 — **키 상수 + 로드 + 저장**을 한 자리에 묶는다.
+ *
+ * 슬라이스마다 `const X_KEY = "wb.x"` 를 두고 초기값에서 `loadJson`, setter 에서 `saveJson` 을 손으로
+ * 부르던 패턴이 여덟 군데 복제돼 있었고, **setter 를 새로 만들면서 저장을 빼먹는 사고**가 실제로 났다
+ * (설정 모달 3화면이 통째로 휘발하던 원인). `save` 가 값을 그대로 돌려주므로 setter 는
+ * `return { x: FIELD.save(next) }` 한 줄이 되고, 저장을 건너뛰려면 일부러 안 써야 한다.
+ *
+ * `load` 가 함수인 건 **호출 시점에** 읽기 위해서다 — 필드 선언(모듈 로드)과 슬라이스 생성 사이에
+ * 값이 굳지 않게. 슬라이스 생성자를 직접 불러 초기값을 검사할 수 있는 것도 이 덕이다(persist.dom.test).
+ */
+export interface PersistedField<T> {
+    load: () => T;
+    /** 저장하고 **그 값을 그대로** 돌려준다(setter 안에서 바로 쓰라고). */
+    save: (v: T) => T;
+}
+
+export function persistedField<T>(key: string, parse: (raw: unknown) => T | null, fallback: T): PersistedField<T> {
+    return {
+        load: () => loadJson(key, parse) ?? fallback,
+        save: (v) => {
+            saveJson(key, v);
+            return v;
+        },
+    };
+}
