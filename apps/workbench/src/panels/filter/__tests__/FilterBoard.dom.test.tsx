@@ -277,3 +277,47 @@ describe("선택 집합 오버레이 — 멤버는 강조색, 나머지 회색�
         expect(memberSpans(container)).toHaveLength(0);
     });
 });
+
+// ⚠ 마커는 **subject 계약**을 따른다(useSubject) — 타점을 골랐으면 타점, 하루만 골랐으면 그 하루.
+// 옛날엔 activePoint 만 봐서 하루 선택이면 마커가 통째로 사라졌다: goToDay 가 activePoint 를 명시적으로
+// 푸는 게 계약이라, 날짜도 일봉 축 값도 멀쩡히 있는데 "지금 어디쯤인가"가 안 보였다.
+const markerOf = (c: HTMLElement, label: string): string | null => {
+    const name = [...c.querySelectorAll("div")].find((d) => d.title === label);
+    if (!name) throw new Error(`레일 '${label}' 의 이름 열이 없다`);
+    const row = name.parentElement!.parentElement!;
+    return row.querySelector("[data-marker]")?.getAttribute("data-marker") ?? null;
+};
+
+describe("현재 자리 마커 — 하루만 골라도 하루 층위엔 선다", () => {
+    const DAY = { date: DATES[0], code: A, time: null };
+    afterEach(() => { useWorkbench.setState({ activePoint: null, focus: { date: DATES[0], code: "", time: null } }); });
+
+    it("하루 선택(타점 없음)이면 하루 축과 날짜에 마커가 선다 — 차트 키로 값 맵에 닿는다", () => {
+        useWorkbench.setState({ activePoint: null, focus: DAY });
+        const { container } = renderBoard();
+        expect(markerOf(container, "하루축")).toBe("+1.0%"); // A@D0 = 첫 행
+        expect(markerOf(container, "날짜")).toBe("26.07.06");
+    });
+
+    it("하루 선택은 타점 축엔 안 선다 — 분기가 아니라 키 공간이 갈려서다(차트 키가 그 맵엔 없다)", () => {
+        useWorkbench.setState({ activePoint: null, focus: DAY });
+        const { container } = renderBoard();
+        expect(markerOf(container, "타점축")).toBeNull();
+        expect(markerOf(container, "시간")).toBeNull();
+    });
+
+    it("타점 선택이면 두 층위 다 선다 — 타점 키는 시각을 벗겨 하루 축에도 닿는다(회귀 방지)", () => {
+        useWorkbench.setState({ activePoint: { code: A, date: DATES[0], time: "09:30:00" }, focus: { ...DAY, time: "09:30:00" } });
+        const { container } = renderBoard();
+        expect(markerOf(container, "하루축")).toBe("+1.0%");
+        expect(markerOf(container, "타점축")).toBe("+1.0%");
+        expect(markerOf(container, "시간")).toBe("09:30");
+    });
+
+    it("종목이 없으면(초기 상태) 아무 데도 안 선다 — 날짜만으로는 고른 자리가 아니다", () => {
+        useWorkbench.setState({ activePoint: null, focus: { date: DATES[0], code: "", time: null } });
+        const { container } = renderBoard();
+        expect(markerOf(container, "하루축")).toBeNull();
+        expect(markerOf(container, "날짜")).toBeNull();
+    });
+});

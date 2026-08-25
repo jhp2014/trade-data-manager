@@ -17,7 +17,8 @@ import { useMemo, useState } from "react";
 import { useAllPoints } from "../../lib/useAllPoints.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { type AxisRef } from "../../lib/computedAxis.js";
-import { pointKeyOf } from "../../lib/pointKey.js";
+import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
+import { useSubject } from "../../lib/subject.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
@@ -47,7 +48,6 @@ export function FilterBoard({ reveal, onlyActive }: {
     const addStage = useWorkbench((s) => s.addFilterStage);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const removeStage = useWorkbench((s) => s.removeFilterStage);
-    const activePoint = useWorkbench((s) => s.activePoint);
     const gv = useGroups();
     const ax = useRankAxes(); // 축 재료는 Provider 에서 직접 — 깔때기가 실어 나르지 않는다
 
@@ -61,7 +61,15 @@ export function FilterBoard({ reveal, onlyActive }: {
     const dates = useMemo(() => [...new Set(cand.candidates.map((c) => c.date))].sort(), [cand.candidates]);
     const times = useMemo(() => pts.points.map((p) => p.time), [pts.points]);
 
-    const markerKey = activePoint ? pointKeyOf(activePoint.code, activePoint.date, activePoint.time) : null;
+    // 마커(지금 고른 자리) — **subject 계약**을 그대로 쓴다: 타점을 골랐으면 타점, 하루만 골랐으면 그 하루.
+    // 옛날엔 activePoint 만 봐서, 하루 선택(goToDay 가 activePoint 를 명시적으로 푼다)이면 하루 층위
+    // 레일까지 통째로 마커가 사라졌다 — 날짜도 일봉 축 값도 있는데 안 보였다.
+    // 키가 곧 층위다(rowKey 규약): 타점 키는 point 축 값 맵에, 차트 키는 day 축 값 맵에 닿는다.
+    // 그래서 하루 선택이 분봉 축에서 안 뜨는 건 분기가 아니라 **키 공간이 갈려서**다(조회가 miss).
+    const subject = useSubject();
+    const markerKey = subject === null ? null
+        : subject.time !== null ? pointKeyOf(subject.code, subject.date, subject.time)
+            : chartKeyOf(subject.code, subject.date);
 
     // 선택 집합 오버레이의 재료 — **선택 포인터가 보는 것**(viewOf(null): 목록에서 고른 집합, 없으면
     // 작업 깔때기 시선). 하루 항목은 뷰 계약이 이미 타점으로 전개해 뒀다(∀ — 하루 조건은 전 타점에
@@ -141,7 +149,7 @@ export function FilterBoard({ reveal, onlyActive }: {
                                             <DateRail
                                                 dates={dates}
                                                 ranges={predicateOfKind(stages, timeKey, "date")?.ranges ?? []}
-                                                marker={activePoint?.date ?? null}
+                                                marker={subject?.date ?? null}
                                                 onType={(x, y) => setEditor({ kind: "date", x, y })}
                                                 onChange={(next) => write(timeKey, next ? { kind: "date", ranges: next } : null)}
                                             />
@@ -149,7 +157,7 @@ export function FilterBoard({ reveal, onlyActive }: {
                                             <TimeRail
                                                 tickTimes={times}
                                                 ranges={predicateOfKind(stages, timeKey, "time")?.ranges ?? []}
-                                                marker={activePoint?.time ?? null}
+                                                marker={subject?.time ?? null}
                                                 onType={(x, y) => setEditor({ kind: "time", x, y })}
                                                 onChange={(next) => write(timeKey, next ? { kind: "time", ranges: next } : null)}
                                             />

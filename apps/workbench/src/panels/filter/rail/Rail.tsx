@@ -230,7 +230,7 @@ export function Rail<V>({
                             <div aria-hidden style={{ position: "absolute", left: at(marker.frac), top: "50%", width: 0, height: 0, zIndex: 6, pointerEvents: "none" }}>
                                 <CurrentMarker color={ACTIVE} />
                             </div>
-                            <span style={{ position: "absolute", top: "calc(50% - 21px)", left: at(marker.frac), transform: marker.frac > 0.5 ? "translateX(-100%)" : "none", marginLeft: marker.frac > 0.5 ? -8 : 8, fontSize: 9.5, fontWeight: 700, color: ACTIVE, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 4 }}>
+                            <span data-marker={marker.label} style={{ position: "absolute", top: "calc(50% - 21px)", left: at(marker.frac), transform: marker.frac > 0.5 ? "translateX(-100%)" : "none", marginLeft: marker.frac > 0.5 ? -8 : 8, fontSize: 9.5, fontWeight: 700, color: ACTIVE, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 4 }}>
                                 {marker.label}
                             </span>
                         </>

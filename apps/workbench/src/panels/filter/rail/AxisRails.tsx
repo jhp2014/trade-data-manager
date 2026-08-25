@@ -16,7 +16,10 @@ const GONE_LABEL = "?"; // 앵커가 사라진 경계 — 숫자를 지어내지
 
 interface CommonProps {
     axis: RankAxis;
-    /** 현재 타점 키(pointKey) — 이 축에 값·배치가 있으면 마커로 선다. */
+    /**
+     * 지금 고른 자리의 **행 키** — 타점을 골랐으면 타점 키(3조각), 하루만 골랐으면 차트 키(2조각).
+     * 이 축의 값 맵에 닿으면 마커로 선다. 하루 선택이 point 축에서 안 뜨는 건 그래서다(그 맵엔 차트 키가 없다).
+     */
     markerKey: string | null;
     /**
      * 선택 집합 멤버의 타점 키들 — 있으면 그 자리들이 강조색으로 겹쳐진다(선택 집합이 이 축의 어디에
@@ -81,7 +84,8 @@ export function ComputedAxisRail({
     }, [memberKeys, values, domain, strongerWhen]);
 
     const railRanges = toRailRanges(ranges, weakEnd, strongEnd, strongerWhen);
-    // 마커(현재 타점)는 타점 키로 온다 — day 축 값 맵(차트 키 행)엔 시각을 벗겨 닿는다.
+    // 제 행 키로 먼저 묻고, 없으면 시각을 벗겨 차트 키로(rowLookup 과 같은 폴백) — 타점 선택도 day 축에 선다.
+    // 차트 키로 온 하루 선택은 벗길 게 없어 그대로 한 번 더 묻는다(point 축이면 두 번 다 miss = 마커 없음).
     const markerValue = markerKey === null ? undefined : (values.get(markerKey) ?? values.get(rowKeyToChartKey(markerKey)));
 
     return (
