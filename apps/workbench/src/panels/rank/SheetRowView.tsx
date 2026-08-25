@@ -17,8 +17,9 @@ import type { RankCell } from "../../lib/rankIndex.js";
 import { PIN, heatOf, outcomeColor } from "../../styles/palette.js";
 import { cellView, type CellMode, type ValuedCell } from "./sheetCell.js";
 
-// 행 피치 두 종류 — 둘 다 box-sizing:border-box 로 테두리까지 이 높이 안에 넣는다(행 피치가 상수와
-// 정확히 같아야 한다).
+// 행 피치 두 종류 — **가상화기의 estimateSize 가 이 상수를 그대로 쓴다**(측정 안 함).
+// 그래서 행/그룹 머리 둘 다 box-sizing:border-box 로 테두리까지 이 안에 넣는다 — 실제 높이가
+// 상수와 1px 이라도 어긋나면 스크롤 아래로 갈수록 자리가 밀린다.
 export const ROW_H = 30;
 /** 그룹 머리 줄 높이. */
 export const GROUP_H = 22;
@@ -38,8 +39,6 @@ export interface SheetRowHandlers {
     onCellCtx: (p: CellCtxPayload) => void;
     /** 결과 셀 우클릭 — 손으로 적는 값이라 입력 입구가 표 안에 있어야 한다. */
     onOutcomeCtx: (p: { row: SheetRow; x: number; y: number }) => void;
-    /** 본문 행만 등록(핀 블록 복사본 제외) — 선택 따라가기 스크롤 대상. */
-    registerRef: (key: string, el: HTMLDivElement | null) => void;
 }
 
 export interface SheetRowViewProps {
@@ -64,12 +63,17 @@ export interface SheetRowViewProps {
     dim: boolean;
     inPinnedBlock?: boolean;
     isLastPinned?: boolean;
+    /**
+     * 가상 목록에서 이 행이 앉을 자리(총 높이 상자 안 y). 없으면 흐름 배치(머리 블록의 핀 행).
+     * **스칼라다** — 자리 스타일 객체를 받으면 매 렌더 새 참조라 아래 memo 가 조용히 죽는다.
+     */
+    top?: number;
     h: SheetRowHandlers;
 }
 
 function SheetRowViewImpl({
     row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, sortAxisId,
-    focus, pinned, dim, inPinnedBlock = false, isLastPinned = false, h,
+    focus, pinned, dim, inPinnedBlock = false, isLastPinned = false, top, h,
 }: SheetRowViewProps): JSX.Element {
     const key = rowKey(row);
     // 배경은 전부 CSS(.sheet-row, theme.css) — 호버는 React 상태가 아니라 :hover 다.
@@ -163,8 +167,11 @@ function SheetRowViewImpl({
     //   .claude/decisions.md "워크벤치 목록 렌더링" 참고.
     return (
         <div className="sheet-row" data-focus={focus ? "" : undefined} data-pinned={pinned ? "" : undefined}
-            ref={inPinnedBlock ? undefined : (el) => h.registerRef(key, el)}
-            style={{ display: "flex", width: "100%", height: ROW_H, boxSizing: "border-box", borderBottom: rowBorder, opacity: dim ? 0.38 : 1 }}>
+            style={{
+                display: "flex", width: "100%", height: ROW_H, boxSizing: "border-box",
+                borderBottom: rowBorder, opacity: dim ? 0.38 : 1,
+                ...(top !== undefined ? { position: "absolute" as const, top, left: 0 } : null),
+            }}>
             {cols.map((c) => {
                 const r = CELLS[c.key](c);
                 return (
@@ -192,7 +199,7 @@ export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.row === b.row && a.cols === b.cols && a.leftOf === b.leftOf && a.lastFrozenKey === b.lastFrozenKey &&
     a.widthOf === b.widthOf && a.name === b.name && a.mode === b.mode && a.valuedOf === b.valuedOf &&
     a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
-    a.pinned === b.pinned && a.dim === b.dim &&
+    a.pinned === b.pinned && a.dim === b.dim && a.top === b.top &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );
 

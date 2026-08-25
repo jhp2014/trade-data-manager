@@ -9,7 +9,9 @@ import {
     sortSheetRows, type SortChain, type SortCtx, type SortKey,
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, orderKeyByPoint, type AxisIndex } from "../lib/rankIndex.js";
-import { GROUP_H, SheetRowView, type SheetRowHandlers } from "./rank/SheetRowView.js";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { GROUP_H, ROW_H, SheetRowView, type SheetRowHandlers } from "./rank/SheetRowView.js";
+import { flatIndexOfRow, flattenSheetGroups } from "./rank/sheetFlatRows.js";
 import { SheetHeaderRow } from "./rank/SheetHeaderRow.js";
 import { SheetMenusHost, useSheetMenus } from "./rank/SheetMenusHost.js";
 import { useOutcome } from "./rank/useOutcome.js";
@@ -198,6 +200,30 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     }, [dayMode, pinned, allByKey, axisIds, indexByAxis]);
     const mainRows = sorted; // 핀 행도 기존 위치에 그대로(상단 고정 블록에 중복 표시, 삼각형으로 구분)
 
+    // ── 가상화 — 그룹 머리와 행을 한 배열로 편 뒤(sheetFlatRows) **보이는 줄만** 그린다.
+    //  · day 모드 모수가 후보 하루 전부(수천)라 전 행을 그리면 크롬이 얼어붙는다. 모수를 좁히는 건 답이
+    //    아니다 — "값 없는 날 = 아직 안 한 날"을 한 화면에서 보는 게 이 모드의 존재 이유다.
+    //  · 높이는 **측정하지 않는다**(estimateSize 가 상수를 돌려주고 measureElement 를 안 단다) —
+    //    행·머리 둘 다 border-box 고정 높이라 산술이 정확하다.
+    const flat = useMemo(() => flattenSheetGroups(groups), [groups]);
+    // 머리 블록 높이 = 헤더 줄 + 핀 행들. **측정이 아니라 이 값이 레이아웃을 정한다**(머리 블록의 height 도
+    // 이걸 쓴다) — 그래서 관측자가 하나도 안 늘어난다. day 모드는 핀이 없어 늘 ROW_H.
+    const headH = ROW_H * (1 + pinnedRows.length);
+    const virt = useVirtualizer({
+        count: flat.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: (i) => (flat[i]?.kind === "group" ? GROUP_H : ROW_H),
+        getItemKey: (i) => flat[i]?.key ?? i,
+        overscan: 8,
+        // 스크롤 상자 안에서 가상 목록이 시작하는 지점(머리 블록 아래). 헤더를 상자 **밖**으로 빼면
+        // 가로 스크롤이 갈려 고정 열이 죽으므로, 빼는 대신 이 보정을 준다.
+        scrollMargin: headH,
+        // 따라가기(scrollToIndex)가 행을 머리 블록 **밑에** 숨기지 않게.
+        // align:"center" 와 함께 쓰면 행이 가시영역 정중앙에서 headH/2 만큼 **아래**로 앉는다
+        // (virtual-core 가 center 보정을 scrollPaddingStart 를 뺀 뒤에 얹는다). 빼는 쪽이 나쁘다 —
+        // 그러면 같은 크기만큼 머리 블록 **쪽으로** 치우친다. 지금 방향이 안전한 쪽이라 그대로 둔다.
+        scrollPaddingStart: headH,
+    });
 
     // 선택의 정의역 판정 — 시트의 재료는 타점이다. 하루 선택이면 그날 타점 아무거나(subject.ts 규칙).
     const subjectRowKey = useMemo(() => {
@@ -212,18 +238,23 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     );
     const status = subjectStatus(subjectInData, subjectRowKey !== null);
 
-    const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());     // 행 pk → 행 div(선택 따라가기)
     // 선택 따라가기 — 행이 있으면 그 자리로 스크롤(사용자 확정: 고정 대신 스크롤).
     //  · 내가(rank-sheet) 바꾼 선택엔 안 움직인다 — 행을 눌렀는데 화면이 튀면 클릭이 벌이 된다.
     //  · 마운트 첫 판정도 건너뛴다 — 세션 스크롤 복원(useSessionScroll)과 싸우지 않게.
+    //  · 가상 목록이라 ref+scrollIntoView 가 아니라 **가상화기 API**로 간다(화면 밖 행엔 DOM 이 없다).
+    //    flat 은 ref 로 읽는다 — deps 에 넣으면 정렬·필터가 바뀔 때마다 도는데, 이 effect 의 트리거는
+    //    어디까지나 "선택이 바뀌었나" 하나여야 한다.
+    const flatRef = useRef(flat);
+    flatRef.current = flat;
     const followedRef = useRef<string | null>(null);
     useEffect(() => {
         if (followedRef.current === null) { followedRef.current = subjectRowKey ?? ""; return; }
         if (subjectRowKey === null || subjectRowKey === followedRef.current) { followedRef.current = subjectRowKey ?? ""; return; }
         followedRef.current = subjectRowKey;
         if (useWorkbench.getState().lastFocusOrigin === "rank-sheet") return;
-        rowRefs.current.get(subjectRowKey)?.scrollIntoView({ block: "center" });
-    }, [subjectRowKey]);
+        const i = flatIndexOfRow(flatRef.current, subjectRowKey);
+        if (i >= 0) virt.scrollToIndex(i, { align: "center" });
+    }, [subjectRowKey, virt]);
 
     // ── 결과 저장(뮤테이션 배선) — useOutcome.
     const outcome = useOutcome(allPoints);
@@ -250,9 +281,16 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
         return view && v !== undefined ? { frac: valueToFrac(v, view.domain, view.strongerWhen), text: view.fmt(v) } : undefined;
     }, [valueViews]);
 
-    // 스크롤 위치 세션 복원 — 데이터가 그려진(표 렌더된) 뒤 1회. onScroll 로 저장(useSessionScroll).
-    const dataReady = !axesLoading && !pointsLoading && axes.length > 0;
-    const scroll = useSessionScroll(scrollRef, dataReady);
+    // 스크롤 위치 세션 복원 — 줄이 실제로 그려진 뒤 1회. onScroll 로 저장(useSessionScroll).
+    //  · day 모드의 후보 하루(candLoading)까지 기다린다 — 이게 빠져 있으면 dataReady 가 조기 반환 중에
+    //    true 로 튀어 scrollRef 가 null 인 채 지나가고, deps 가 다시 안 바뀌어 **복원이 영영 안 일어난다**.
+    //  · 세로 복원은 **가상화기 API**로 — DOM 에 직접 scrollTop 을 쓰면 가상화기가 그 사실을 못 배워
+    //    스크롤바와 그리는 구간이 어긋난다. 가로는 가상화기에 축이 없어 DOM 이 맡는다.
+    //  · flat.length 조건 때문에 **필터가 0행으로 좁힌 채 마운트되면 복원이 그 순간 안 일어나고,
+    //    나중에 행이 생길 때 일어난다.** 그게 맞다 — 빈 목록은 총 높이가 0이라 복원해도 0으로 clamp 돼
+    //    사라질 뿐이고, 0행 상태에선 사용자가 스크롤로 덮어쓸 것도 없다(스크롤될 내용이 없다).
+    const dataReady = !axesLoading && !pointsLoading && !(dayMode && candLoading) && axes.length > 0 && flat.length > 0;
+    const scroll = useSessionScroll(scrollRef, dataReady, (top) => virt.scrollToOffset(top));
 
     // ── 팝업 네 벌(셀/열 우클릭 · 축 만들기 · 결과 입력)의 상태 — opener 만 행·헤더·컨트롤에 나눠 꽂는다.
     const menus = useSheetMenus();
@@ -269,11 +307,12 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     rowHandlersRef.current.onTogglePin = togglePin;
     rowHandlersRef.current.onCellCtx = menus.openCellCtx;
     rowHandlersRef.current.onOutcomeCtx = menus.openOutcomeCtx;
-    rowHandlersRef.current.registerRef = (key, el) => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); };
     const rowH = rowHandlersRef.current;
 
     // 한 행 렌더 — 상태 파생(포커스·핀·흐림)만 여기서 계산하고 렌더는 SheetRowView(memo). 호버는 CSS.
-    const renderRow = (row: SheetRow, isLastPinned = false, inPinnedBlock = false): JSX.Element => {
+    // top 이 있으면 가상 목록의 그 자리에 앉는다(없으면 흐름 배치 = 머리 블록의 핀 행).
+    // **스칼라로 넘긴다** — 자리 스타일 객체를 만들어 넘기면 매 렌더 새 참조라 memo 가 조용히 죽는다.
+    const renderRow = (row: SheetRow, isLastPinned = false, inPinnedBlock = false, top?: number): JSX.Element => {
         const key = rowKey(row);
         const isPinned = pinnedSet.has(key);
         return (
@@ -283,7 +322,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
                 mode={cellMode} valuedOf={valuedOf} sortAxisId={sortAxisId}
                 focus={isSubjectRow(row)} pinned={isPinned}
                 dim={bandsActive && !interKeys.has(matchKeyOf(row)) && (isPinned || filterMode === "dim")}
-                inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} h={rowH} />
+                inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} top={top} h={rowH} />
         );
     };
 
@@ -343,29 +382,33 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
                   좌측 고정 열의 sticky 가 조용히 죽는다. 말줄임은 셀 자신의 overflow 로 한다. */}
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
             <div ref={scrollRef} onScroll={scroll.onScroll} style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", fontSize: 12 }}>
-                {/* 머리 블록 = 열 헤더 + 핀 행(둘 다 상단 sticky, 틈·비침 없이 하나로).
+                {/* 머리 블록 = 열 헤더 + 핀 행(둘 다 상단 sticky, 틈·비침 없이 하나로). 높이(headH)는
+                    측정하지 않고 **이 값이 정한다** — 같은 값이 가상화기의 scrollMargin 으로 간다.
                     헤더를 스크롤 상자 **밖**으로 빼면 안 된다 — 가로 스크롤이 갈려 고정 열이 죽는다. */}
-                <div style={{ position: "sticky", top: 0, zIndex: 5, width: tableW, background: "var(--bg-secondary)" }}>
+                <div style={{ position: "sticky", top: 0, zIndex: 5, width: tableW, height: headH, boxSizing: "border-box", background: "var(--bg-secondary)" }}>
                     <SheetHeaderRow displayCols={displayCols} cols={cols} sort={sort}
                         reorderAxis={reorderAxis}
                         onSort={clickHeader} onHeaderCtx={menus.openHdrCtx} />
                     {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1, true))}
                 </div>
-                {/* 본문 상자 — 가상화의 총 높이 상자가 될 자리(그래서 지금부터 position:relative). z-index 를
-                    주지 않는다: 주면 sticky 머리 블록이 행 밑으로 깔린다. */}
-                <div style={{ width: tableW, position: "relative" }}>
-                    {/* 그룹 = 1차 키에서만 접는다(이산 열은 저절로, 축은 사람이 그은 컷). label=null 이면 통짜 → 헤더 없음. */}
-                    {groups.flatMap((g) => {
-                        const out: JSX.Element[] = [];
-                        if (g.label != null) out.push(
-                            <div key={`g-${g.id}`} style={{ display: "flex", alignItems: "center", width: tableW, height: GROUP_H, boxSizing: "border-box", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", background: "var(--bg-secondary)", borderTop: "1px solid var(--border-strong)", borderBottom: "1px solid var(--border-default)" }}>
+                {/* 본문 상자 = 가상 목록의 총 높이 상자. z-index 를 주지 않는다(주면 sticky 머리 블록이 행 밑으로 깔린다). */}
+                <div style={{ width: tableW, height: virt.getTotalSize(), position: "relative" }}>
+                    {/* 보이는 줄만. 그룹 머리는 1차 키에서만 선다(이산 열은 저절로, 축은 사람이 그은 컷) —
+                        평탄화(sheetFlatRows)가 그 규칙을 이미 적용해 둔 배열이라 여기선 kind 만 갈라 그린다. */}
+                    {virt.getVirtualItems().map((v) => {
+                        const f = flat[v.index];
+                        if (!f) return null;
+                        // v.start 에는 scrollMargin 이 더해져 있다 — 상자 안 좌표로 되돌린다.
+                        // 빼먹으면 전 줄이 머리 블록 높이만큼 밀리고 꼬리에 빈 공간이 남는다(원인 짚기 고약한 증상).
+                        const top = v.start - headH;
+                        if (f.kind === "group") return (
+                            <div key={f.key} style={{ position: "absolute", top, left: 0, display: "flex", alignItems: "center", width: tableW, height: GROUP_H, boxSizing: "border-box", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", background: "var(--bg-secondary)", borderTop: "1px solid var(--border-strong)", borderBottom: "1px solid var(--border-default)" }}>
                                 <span style={{ position: "sticky", left: 0, padding: "0 10px", whiteSpace: "nowrap" }}>
-                                    {g.label}<span style={{ fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 6 }}>· {g.rows.length}행</span>
+                                    {f.label}<span style={{ fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 6 }}>· {f.count}행</span>
                                 </span>
-                            </div>,
+                            </div>
                         );
-                        for (const row of g.rows) out.push(renderRow(row));
-                        return out;
+                        return renderRow(f.row, false, false, top);
                     })}
                 </div>
                 {/* 고정 블록(핀)은 조건에 맞아서 있는 게 아니다 — 그게 차 있어도 "맞는 게 없다"는 사실은 말해야 한다. */}
