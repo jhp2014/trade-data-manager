@@ -53,3 +53,27 @@ export const chartKey = (c: ChartRef): string => domainChartKey(c);
 
 /** 필드 2개로 직접 — Focus/ActivePoint({code,date}) 처럼 필드명이 다른 값에서 만들 때. */
 export const chartKeyOf = (stockCode: string, date: string): string => domainChartKey({ stockCode, date });
+
+// ── 행 키 — grain 이 행의 정체성을 가른 뒤(2026-08-25)의 공용 어휘.
+// point 축 행 = 타점(시각 있음, 3조각 키) / day 축 행 = 차트(시각 없음, 2조각 키).
+// 두 키 공간이 구분자 수로 갈려 **한 맵에 섞여도 충돌하지 않는다** — 폴백 조회(rowLookup)의 전제.
+
+/** 줄·값 행의 키 — time 유무가 곧 grain 이라 분기 없이 양쪽을 다 만든다. */
+export const rowKey = (p: { stockCode: string; date: string; time?: string }): string =>
+    p.time !== undefined ? domainPointKey(p as PointRef) : domainChartKey(p);
+
+/**
+ * 타점으로 행 값을 찾는 폴백 조회 — 타점 키로 묻고(point 축), 없으면 차트 키로(day 축: 그 하루의 행).
+ * point 축 맵엔 차트 키가 없고 day 축 맵엔 타점 키가 없어, 폴백이 잘못 맞을 수 없다.
+ */
+export const rowLookup = <V>(m: ReadonlyMap<string, V> | undefined, ref: PointRef): V | undefined =>
+    m === undefined ? undefined : (m.get(pointKey(ref)) ?? m.get(chartKey(ref)));
+
+/**
+ * 행 키에서 시각을 벗겨 차트 키로 — 저장된 옛 경계(day 축인데 타점 키로 저장된 것)를 읽기에서 흡수한다.
+ * 이미 차트 키면 그대로.
+ */
+export const rowKeyToChartKey = (key: string): string => {
+    const parts = key.split(SEP);
+    return parts.length === 3 ? `${parts[0]}${SEP}${parts[1]}` : key;
+};

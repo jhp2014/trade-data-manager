@@ -9,7 +9,8 @@ export type { AxisDisplay };
 export interface ComputedAxisPoint {
     stockCode: string;
     date: string; // YYYY-MM-DD
-    time: string; // HH:MM:SS
+    /** HH:MM:SS — point 축 행에만 있다. **day 축 행은 (종목,날짜)가 정체성**이라 시각이 없다. */
+    time?: string;
     value: number;
     /**
      * 상한이 안 잡힌 값(우측 절단) — `value` 는 참값이 아니라 하한이다. 자리(실측 최대 다음 칸)와 표기(∞)는
@@ -25,8 +26,8 @@ export interface ComputedAxisFeed {
     /** 강한 쪽(rank 1)이 큰 값인지 작은 값인지 — 클라가 orderKey 부호를 정한다. */
     strongerWhen: "higher" | "lower";
     /**
-     * 값의 알갱이 — "day" = 그날 전 타점이 같은 값(재료가 앵커·과거 일봉뿐). 생략 = "point"(옛 서버 호환).
-     * values 는 알갱이와 무관하게 타점별 행(fanout)이다 — 이 필드는 전송 모양이 아니라 **뜻의 선언**이고,
+     * 값의 알갱이 = **행의 정체성**. "day" = 행이 차트(종목,날짜, time 없음) — 모수도 타점이 아니라
+     * 필수 param 앵커가 있는 차트 전부라, 타점 0인 하루도 값이 온다. 생략 = "point"(행 = 타점).
      * 클라 축 scope(깔때기 해상도·필터 층위 칸)가 이걸 그대로 입는다.
      */
     grain?: Grain;

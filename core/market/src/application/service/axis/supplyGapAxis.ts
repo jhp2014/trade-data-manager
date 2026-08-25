@@ -32,22 +32,22 @@
 //   같게 취급하는 선택이고, 화면에서 그 타점의 차트를 보면 바로 구분되므로 감수한다.
 //
 // 결손(축에서 빠짐): 기준선 없음/확정불가 · 앵커 캔들이 창 밖이거나 미수집 · 기준값 0.
-import { BASELINE_PARAM, candlePrice, chartKeyOf, IGNORE_CANDLE_PARAM, rawScaleOf, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
+import { BASELINE_PARAM, candlePrice, chartKeyOf, IGNORE_CANDLE_PARAM, rawScaleOf, type ChartRef, type DailyCandle, type MinuteCandle } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
 import { resolveBaselines, type BaselineAnchor } from "../shared/baselineResolver.js";
-import { dropSameDayAnchors, type AxisDeps, type ComputedAxisDef, type ComputedAxisValue } from "./axis.js";
+import { dropSameDayAnchors, type AxisDeps, type DayAxisValue, type DayComputedAxisDef } from "./axis.js";
 
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
 
-export function supplyGapAxis(): ComputedAxisDef {
+export function supplyGapAxis(): DayComputedAxisDef {
     return {
         key: "supply-gap",
         name: "매물 공백(일)",
         version: 6, // v6: 문턱(분봉 앵커)을 수정주가 스케일로 환산 — 스캔과 자를 맞춘다
         strongerWhen: "higher",
-        // 값 = 앵커 왼쪽(과거 일봉)만 — 타점 시각이 값에 안 들어가 그날 전 타점이 같은 값이다.
+        // 값 = 앵커 왼쪽(과거 일봉)만 — 행 = 차트(종목,날짜). 타점이 없어도 기준선만 있으면 값이 나온다.
         // 당일 캔들에 그은 기준선은 compute 가 거른다(dropSameDayAnchors — 당일 가격이 문턱이 되면 미래).
         grain: "day",
         display: { suffix: "일", decimals: 0, signed: false }, // 거래일 수 — 정수이고 부호가 뜻이 없다
@@ -58,11 +58,11 @@ export function supplyGapAxis(): ComputedAxisDef {
     };
 }
 
-async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]> {
+async function computeSupplyGap(charts: readonly ChartRef[], deps: AxisDeps): Promise<DayAxisValue[]> {
     const anchors = await deps.chartAnchor.listAll();
     // day 알갱이 가드 — 당일 캔들에 그은 기준선은 그 값(당일 가격)이 문턱이 되어 이른 타점엔 미래다.
     // 무시 캔들(optionalParams)은 안 거른다: 그건 "그날 거래는 없던 걸로"라는 판정이지 가격 재료가 아니다.
-    const baselineOf = await resolveBaselines(points, dropSameDayAnchors(anchors, BASELINE_PARAM), deps);
+    const baselineOf = await resolveBaselines(charts, dropSameDayAnchors(anchors, BASELINE_PARAM), deps);
     // 무시 캔들 — 차트 소유(time 없음). 차트키로 모은다(그 차트의 모든 타점이 같은 목록을 본다).
     const ignoredOf = new Map<string, Set<string>>();
     for (const a of anchors) {
@@ -72,7 +72,7 @@ async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDep
         if (set) set.add(a.anchorDate);
         else ignoredOf.set(key, new Set([a.anchorDate]));
     }
-    const jobs = points.flatMap((p) => {
+    const jobs = charts.flatMap((p) => {
         const base = baselineOf.get(chartKeyOf(p));
         return base ? [{ p, base }] : []; // 기준선 없음(입력 전)·확정 불가(결손)는 재료를 읽기 전에 빠진다
     });
@@ -104,7 +104,7 @@ async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDep
         scaleByDay.set(`${d.stockCode}|${d.date}`, rawScaleOf(raw, adj, d.date));
     });
 
-    const out: ComputedAxisValue[] = [];
+    const out: DayAxisValue[] = [];
     for (const { p, base } of jobs) {
         const daily = dailyByDay.get(`${p.stockCode}|${p.date}`) ?? [];
         const threshold = baselinePrice(base, daily, minutesByDay, scaleByDay);
@@ -129,7 +129,7 @@ async function computeSupplyGap(points: readonly ReviewPointKey[], deps: AxisDep
                 break;
             }
         }
-        out.push({ stockCode: p.stockCode, date: p.date, time: p.time, value: gap, ...(saturated ? { saturated: true } : {}) });
+        out.push({ stockCode: p.stockCode, date: p.date, value: gap, ...(saturated ? { saturated: true } : {}) });
     }
     return out;
 }

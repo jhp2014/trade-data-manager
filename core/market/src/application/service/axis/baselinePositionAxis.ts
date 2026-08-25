@@ -33,12 +33,12 @@
 import { BASELINE_PARAM, candlePrice, chartKeyOf, computeChangeRate, rawScaleOf, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { resolveBaselines } from "../shared/baselineResolver.js";
-import type { AxisDeps, ComputedAxisDef, ComputedAxisValue } from "./axis.js";
+import type { AxisDeps, PointComputedAxisDef, ComputedAxisValue } from "./axis.js";
 
 /** (종목,날) 동시 읽기 상한 — dailyChangeAxis 와 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
 
-export function baselinePositionAxis(): ComputedAxisDef {
+export function baselinePositionAxis(): PointComputedAxisDef {
     return {
         key: "baseline-position",
         name: "기준선 대비 %",

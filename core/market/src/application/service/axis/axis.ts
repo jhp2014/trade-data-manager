@@ -13,7 +13,7 @@
 //     "이 조건인 상황들의 결과 분포"가 순환논증이 된다.
 //  3. **결손은 결손으로**: 재료가 없으면(분봉 부재·기준가 부재·해당 시장 세션 없음) 값을 지어내지 않고
 //     결과에서 뺀다 = 그 축에 미배치. 소비자(3치 술어)가 이미 결손을 다룬다.
-import type { ChartAnchor, Grain, ReviewPointKey } from "#domain";
+import type { ChartAnchor, ChartRef, Grain, ReviewPointKey } from "#domain";
 import type { AdjustedDailyReader, ChartAnchorReader, MinuteReader, RawDailyReader, ReviewPointReader } from "#port/query";
 
 /** 시장 구분 — 축은 하나의 시장을 고른다(둘 다 보고 싶으면 축을 둘로. 축 안 토글 금지). */
@@ -51,25 +51,34 @@ export interface AxisDisplay {
     signed?: boolean;
 }
 
-/** 한 타점의 계산값. 결손인 타점은 아예 배열에 없다(null 을 싣지 않는다). */
-export interface ComputedAxisValue extends ReviewPointKey {
+/**
+ * 우측 절단 표식 — "창 안에서 못 찾았다"처럼 **더 크다는 것만 아는** 경우.
+ * 이때 `value` 는 참값이 아니라 **하한**(적어도 이만큼)이고, 줄에서의 자리는 실측 최댓값 **다음 칸**이다.
+ *
+ * 큰 상수(999 같은 것)로 대신하지 않는 이유가 둘: 척도가 찌그러져 실제 값들이 한쪽에 눌리고, "얼마나 큰지"를
+ * 모르는데 아는 척하게 된다. 자리를 정하려면 모집단이 필요한데 축은 항목별 독립이라(규칙 1) 알 수 없으므로,
+ * **축은 표시만 하고 자리는 질의 시점(클라)이 잡는다** — 백분위를 축에 안 넣는 것과 같은 이유다.
+ */
+interface AxisValueMark {
     value: number;
-    /**
-     * 상한이 안 잡힌 값인가(우측 절단) — "창 안에서 못 찾았다"처럼 **더 크다는 것만 아는** 경우.
-     * 이때 `value` 는 참값이 아니라 **하한**(적어도 이만큼)이고, 줄에서의 자리는 실측 최댓값 **다음 칸**이다.
-     *
-     * 큰 상수(999 같은 것)로 대신하지 않는 이유가 둘: 척도가 찌그러져 실제 값들이 한쪽에 눌리고, "얼마나 큰지"를
-     * 모르는데 아는 척하게 된다. 자리를 정하려면 모집단이 필요한데 축은 타점별 독립이라(규칙 1) 알 수 없으므로,
-     * **축은 표시만 하고 자리는 질의 시점(클라)이 잡는다** — 백분위를 축에 안 넣는 것과 같은 이유다.
-     */
     saturated?: boolean;
 }
 
+/** point 축 한 타점의 계산값. 결손인 타점은 아예 배열에 없다(null 을 싣지 않는다). */
+export interface ComputedAxisValue extends ReviewPointKey, AxisValueMark {}
+
 /**
- * 계산 축 하나의 정의. **축 하나 = 파일 하나**가 원칙 — 재료를 모으는 방법과 순수 계산 호출이 한자리에 있어야
- * 축을 고칠 때 한 파일만 본다. 순수 산술은 domain(candle/price 등)에 두고 여기서는 호출만 한다.
+ * day 축 한 차트(종목,날짜)의 계산값 — **시각이 타입에 없다**: "타점 시각까지만"(규칙 2)의 day 판
+ * ("그 하루가 시작하기 전까지만")이 주석이 아니라 타입으로 지켜진다. 결손인 차트는 배열에 없다.
  */
-export interface ComputedAxisDef {
+export interface DayAxisValue extends ChartRef, AxisValueMark {}
+
+/**
+ * 계산 축 하나의 정의(공통부). **축 하나 = 파일 하나**가 원칙 — 재료를 모으는 방법과 순수 계산 호출이
+ * 한자리에 있어야 축을 고칠 때 한 파일만 본다. 순수 산술은 domain(candle/price 등)에 두고 여기서는 호출만 한다.
+ * grain 이 compute 의 입력·출력 모양을 가른다(아래 두 정의) — **grain = 행의 정체성**이다.
+ */
+interface ComputedAxisDefCommon {
     /**
      * 안정 식별자. 캐시 파일명과 클라 축 id(`c:${key}`)에 쓰인다 —
      * ⚠ 바꾸면 캐시가 무효화되고 저장된 열 설정(고정·숨김·폭·컷)이 유령 키가 된다. 이름은 name 으로 바꿀 것.
@@ -81,19 +90,6 @@ export interface ComputedAxisDef {
     version: number;
     /** 강한 쪽(줄의 오른쪽/rank 1)이 큰 값인가 작은 값인가. 클라가 orderKey 부호를 정하는 근거. */
     strongerWhen: "higher" | "lower";
-    /**
-     * 값의 알갱이 — 생략 = "point"(타점마다 다른 값). **"day" = 그날 모든 타점이 같은 값**(재료가
-     * 앵커·과거 일봉뿐이라 시각이 값에 안 들어가는 축). 판단 축 scope·깔때기 Grain 과 같은 어휘.
-     *
-     * 왜 선언하나: 깔때기의 결과 해상도가 "걸린 조건 중 가장 가는 알갱이"인데, day 성질의 축이 point 로
-     * 남아 있으면 그 축 하나가 화면 전체를 타점으로 끌어내려 "새로 죽임"이 타점 수만큼 부풀고(하루 하나
-     * 죽였는데 8), 타점 0인 후보 하루가 영영 미배치가 된다.
-     *
-     * ⚠ 규칙 2("타점 시각까지만")의 모양이 바뀐다 — day 에는 기댈 시각이 없으므로 절단선은 **그 하루가
-     * 시작하기 전**(전일까지, 사용자 확정). 당일 데이터가 값에 들어가는 축은 day 로 선언하면 안 된다.
-     * 값 전달은 그대로 타점별 행(fanout)이다 — 저장·전송 모양이 아니라 **뜻의 선언**이다.
-     */
-    grain?: Grain;
     /** 값 표시 규격. 생략 = 등락률 모양. */
     display?: AxisDisplay;
     /** 읽는 재료 선언. */
@@ -110,6 +106,14 @@ export interface ComputedAxisDef {
      * 타점이 입력 완료로 집계돼 정상 상태가 상시 결손 경고가 된다.
      */
     optionalParams?: readonly string[];
+}
+
+/**
+ * point 알갱이 축 — 행 = 타점(종목,날짜,시각). 값에 타점 시각이 들어간다(당일 % 류).
+ */
+export interface PointComputedAxisDef extends ComputedAxisDefCommon {
+    /** 생략 = "point". 깔때기 해상도·필터 층위 칸이 이 어휘를 그대로 입는다. */
+    grain?: Extract<Grain, "point">;
     /**
      * 값이 **같은 차트의 형제 타점 집합**에 의존하는가(규칙 1의 예외). true 면 캐시 계층이 그 차트의
      * 타점 시각 목록을 지문에 넣는다 — 타점을 추가/삭제하면 그 차트의 타점들이 자동 재계산된다.
@@ -123,6 +127,27 @@ export interface ComputedAxisDef {
      */
     compute(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]>;
 }
+
+/**
+ * day 알갱이 축 — **행 = 차트(종목,날짜)**. 재료가 앵커·과거 일봉뿐이라 시각이 값에 안 들어간다.
+ * 모수도 타점이 아니라 차트다: 분봉 타점을 아직 안 찍었어도 curation 입력(필수 param 앵커)이 있으면
+ * 값이 나온다 — "계산 안 됨"이 "미배치"로 위장하던 옛 fanout 모델(타점 행)의 교정.
+ *
+ * ⚠ 규칙 2("타점 시각까지만")의 day 판: 절단선은 **그 하루가 시작하기 전**(전일까지, 사용자 확정).
+ * 당일 데이터가 값에 들어가는 축은 day 로 선언하면 안 된다 — compute 가 시각을 아예 못 받으므로
+ * (ChartRef 에 time 이 없다) 이 규칙 위반은 타입 수준에서 어렵게 되어 있다.
+ */
+export interface DayComputedAxisDef extends ComputedAxisDefCommon {
+    grain: Extract<Grain, "day">;
+    /** 배치 계산 — 차트 집합을 받아 값 있는 것만 돌려준다(결손·확정불가는 배열에 없음). */
+    compute(charts: readonly ChartRef[], deps: AxisDeps): Promise<DayAxisValue[]>;
+}
+
+/**
+ * 계산 축 정의 — grain 이 행 정체성을 가른다. 소비자(캐시·피드)는 grain 으로 분기해
+ * 행 키(pointKeyOf/chartKeyOf)와 모수(타점/차트)를 고른다.
+ */
+export type ComputedAxisDef = PointComputedAxisDef | DayComputedAxisDef;
 
 /**
  * day 알갱이 축의 절단선 — **당일 앵커는 재료가 아니다**(전일까지, ComputedAxisDef.grain 주석).

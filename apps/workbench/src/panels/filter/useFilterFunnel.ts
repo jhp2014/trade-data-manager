@@ -16,10 +16,10 @@ import { useAllPoints } from "../../lib/useAllPoints.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
-import { chartKey, pointKey } from "../../lib/pointKey.js";
+import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { SetRef } from "../../lib/setRef.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
-import { buildAxisOrderIndexes, dayAxisValueOf } from "./axisLookup.js";
+import { buildAxisOrderIndexes } from "./axisLookup.js";
 import { resolveBound, toFunnelStages, type EvalLookup } from "./evaluate.js";
 import type { LabelLookup } from "./label.js";
 import type { ResolvedSet, SetResolveCtx } from "./resolveSet.js";
@@ -121,23 +121,28 @@ export function useFilterFunnel(): FunnelView {
             orderKeyOf: (axisId, i) => {
                 const idx = placements.get(axisId);
                 if (!idx) return undefined; // 지워진 축 — 판단 불가
+                // 타점 항목은 타점 키 → 차트 키 폴백(day 축 행 = 차트) · 하루 항목은 차트 키만.
                 return i.time === undefined
-                    ? idx.byChart.get(chartKey(i))
-                    : idx.byPoint.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }));
+                    ? idx.get(chartKey(i))
+                    : (idx.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time })) ?? idx.get(chartKey(i)));
             },
-            bandBoundOrderKey: (axisKey, point) => placements.get(axisKey)?.byPoint.get(point),
-            // 계산 축 값은 타점 키로 온다(fanout). 타점 항목은 제 키로 직접, **하루 항목은 day 알갱이 축에서만**
-            // 그날 아무 타점의 값으로(전부 같다 — dayAxisValueOf). point 축은 하루 항목을 판정할 수 없고(시각이
-            // 값에 들어간다), 그 경우는 애초에 오지 않는다: point 축 단계가 있으면 해상도가 타점이라 하루 항목이 없다.
+            // 경계 앵커 키는 그 축의 행 키다. 옛 저장물(day 축인데 타점 키)은 시각을 벗겨 흡수(rowKeyToChartKey).
+            bandBoundOrderKey: (axisKey, point) => {
+                const idx = placements.get(axisKey);
+                return idx?.get(point) ?? idx?.get(rowKeyToChartKey(point));
+            },
+            // 값 맵의 키 = 행 키. 타점 항목은 폴백으로 day 축 행(차트)에 닿고, 하루 항목은 차트 키로 직접.
+            // point 축을 하루 항목이 만나는 일은 없다(단계에 point 축이 있으면 해상도가 타점).
             axisValueOf: (axisId, i) => {
                 const values = ax.computedValues.get(axisId);
-                if (i.time !== undefined) return values?.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }));
-                if (axisScopes.get(axisId) !== "day") return undefined;
-                return dayAxisValueOf(values, i, timesByChart.get(chartKey(i)) ?? []);
+                if (!values) return undefined;
+                return i.time === undefined
+                    ? values.get(chartKey(i))
+                    : (values.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time })) ?? values.get(chartKey(i)));
             },
             boundValue: (axisId, b) => resolveBound(b, ax.computedValues.get(axisId)),
         }),
-        [gv, placements, ax.computedValues, axisScopes, timesByChart],
+        [gv, placements, ax.computedValues],
     );
 
     // ── 정산 ── 표시와 정산이 **같은 순서**를 봐야 한다(하루 먼저) — 어긋나면 "상류"가 화면과 다른 걸 가리킨다.

@@ -10,7 +10,7 @@ import { basePricesOf, computeChangeRate, type MinuteCandle } from "#domain";
 import type { ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { subtractMonths } from "../shared/dailyRange.js";
-import { groupByDay, type AxisDeps, type AxisMarket, type ComputedAxisDef, type ComputedAxisValue } from "./axis.js";
+import { groupByDay, type AxisDeps, type AxisMarket, type PointComputedAxisDef, type ComputedAxisValue } from "./axis.js";
 
 /** 기준가 조회 창 — basePricesOf 는 직전 거래일 하나만 있으면 되지만 연휴를 넉넉히 덮는다. */
 const BASE_LOOKBACK_MONTHS = 1;
@@ -21,7 +21,7 @@ const DAY_CONCURRENCY = 8;
  * 당일 % 축 팩토리. 시장별로 **별개 축**을 만든다 — 하나의 축에 토글을 다는 대신 축을 늘린다.
  * KRX 추가는 레지스트리에 `dailyChangeAxis("krx")` 한 줄이면 끝난다.
  */
-export function dailyChangeAxis(market: AxisMarket): ComputedAxisDef {
+export function dailyChangeAxis(market: AxisMarket): PointComputedAxisDef {
     return {
         key: `daily-change-${market}`,
         name: `당일 % (${market.toUpperCase()})`,

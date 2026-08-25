@@ -39,7 +39,11 @@ const feedOf = (key: string, name: string, grain: "day" | "point", n: number): C
     name,
     strongerWhen: "higher",
     grain,
-    values: points.slice(0, n).map((pt, i) => ({ stockCode: pt.stockCode, date: pt.date, time: pt.time, value: i + 1 })),
+    // 행 = grain 의 정체성: day 축 행은 차트(시각 없음), point 축 행은 타점 — 실서버 피드와 같은 모양.
+    values: points.slice(0, n).map((pt, i) =>
+        grain === "day"
+            ? { stockCode: pt.stockCode, date: pt.date, value: i + 1 }
+            : { stockCode: pt.stockCode, date: pt.date, time: pt.time, value: i + 1 }),
 });
 /**
  * ⚠ 자리를 넷 둔다(둘이 아니라). 자리가 둘이면 트랙을 끝에서 끝까지 그을 수밖에 없는데, 양끝에

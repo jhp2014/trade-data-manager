@@ -1,66 +1,44 @@
 import { describe, it, expect } from "vitest";
-import { buildAxisOrderIndex, buildAxisOrderIndexes, dayAxisValueOf } from "../axisLookup.js";
+import { buildAxisOrderIndex, buildAxisOrderIndexes } from "../axisLookup.js";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 
 const pl = (stockCode: string, date: string, time: string, orderKey: number): PlacedPoint =>
     ({ stockCode, date, time, orderKey });
+/** day 축 줄 항목 — 행 = 차트(시각 없음). */
+const chartRow = (stockCode: string, date: string, orderKey: number): PlacedPoint => ({ stockCode, date, orderKey });
 
-describe("buildAxisOrderIndex", () => {
-    it("타점 키로 위치를 찾는다", () => {
+describe("buildAxisOrderIndex — 행 키 색인(point 축 = 타점 키 · day 축 = 차트 키)", () => {
+    it("point 축 줄은 타점 키로 위치를 찾는다", () => {
         const idx = buildAxisOrderIndex([pl("A", "2025-07-01", "09:21:00", 10)]);
-        expect(idx.byPoint.get("A|2025-07-01|09:21:00")).toBe(10);
+        expect(idx.get("A|2025-07-01|09:21:00")).toBe(10);
     });
 
-    it("배치 안 된 타점은 키가 없다 — 이게 미배치다", () => {
+    it("값 없는 타점은 키가 없다 — 이게 미배치다", () => {
         const idx = buildAxisOrderIndex([pl("A", "2025-07-01", "09:21:00", 10)]);
-        expect(idx.byPoint.get("A|2025-07-01|10:00:00")).toBeUndefined();
+        expect(idx.get("A|2025-07-01|10:00:00")).toBeUndefined();
     });
 
-    it("차트 키로도 찾는다 — 하루 항목을 판정하려면 필요하다", () => {
+    it("point 축 줄에 차트 키는 **없다** — 폴백 조회가 point 축에서 잘못 맞을 수 없다", () => {
         const idx = buildAxisOrderIndex([pl("A", "2025-07-01", "09:21:00", 10)]);
-        expect(idx.byChart.get("A|2025-07-01")).toBe(10);
+        expect(idx.get("A|2025-07-01")).toBeUndefined();
     });
 
-    it("day 축은 그날 전 타점이 같은 orderKey 라 어느 걸 집든 같다(fanout)", () => {
-        const idx = buildAxisOrderIndex([
-            pl("A", "2025-07-01", "09:21:00", 10),
-            pl("A", "2025-07-01", "13:05:00", 10),
-        ]);
-        expect(idx.byChart.get("A|2025-07-01")).toBe(10);
+    it("day 축 줄(시각 없는 행)은 차트 키로 선다 — 하루 항목·타점 폴백이 둘 다 이 키에 닿는다", () => {
+        const idx = buildAxisOrderIndex([chartRow("A", "2025-07-01", 10)]);
+        expect(idx.get("A|2025-07-01")).toBe(10);
+        expect(idx.get("A|2025-07-01|09:21:00")).toBeUndefined();
     });
 
-    it("타이(같은 자리에 여럿)여도 타점 키는 각각", () => {
+    it("타이(같은 자리에 여럿)여도 행 키는 각각", () => {
         const idx = buildAxisOrderIndex([
             pl("A", "2025-07-01", "09:21:00", 10),
             pl("B", "2025-07-02", "09:30:00", 10),
         ]);
-        expect(idx.byPoint.size).toBe(2);
+        expect(idx.size).toBe(2);
     });
 
     it("빈 줄은 빈 색인 — 그 축은 전부 미배치", () => {
-        const idx = buildAxisOrderIndex([]);
-        expect(idx.byPoint.size).toBe(0);
-        expect(idx.byChart.size).toBe(0);
-    });
-});
-
-describe("dayAxisValueOf — day 계산 축의 하루 항목 값", () => {
-    const chart = { stockCode: "A", date: "2025-07-01" };
-
-    it("값이 있는 첫 타점의 값 — day 축은 전부 같아 어느 걸 집든 같다", () => {
-        const values = new Map([["A|2025-07-01|09:21:00", 7], ["A|2025-07-01|13:05:00", 7]]);
-        expect(dayAxisValueOf(values, chart, ["09:21:00", "13:05:00"])).toBe(7);
-    });
-
-    it("첫 타점이 결손이어도 형제에게 값이 남아 있으면 그걸 쓴다(부분 캐시)", () => {
-        const values = new Map([["A|2025-07-01|13:05:00", 7]]);
-        expect(dayAxisValueOf(values, chart, ["09:21:00", "13:05:00"])).toBe(7);
-    });
-
-    it("타점 0인 후보 하루·전부 결손·값 캐시 없음 = undefined(미배치)", () => {
-        expect(dayAxisValueOf(new Map(), chart, [])).toBeUndefined();
-        expect(dayAxisValueOf(new Map(), chart, ["09:21:00"])).toBeUndefined();
-        expect(dayAxisValueOf(undefined, chart, ["09:21:00"])).toBeUndefined();
+        expect(buildAxisOrderIndex([]).size).toBe(0);
     });
 });
 
@@ -72,7 +50,7 @@ describe("buildAxisOrderIndexes — 축마다 하나씩", () => {
         ]);
         const out = buildAxisOrderIndexes(lines);
         expect([...out.keys()]).toEqual(["a1", "a2"]);
-        expect(out.get("a1")!.byPoint.get("A|2025-07-01|09:21:00")).toBe(10);
-        expect(out.get("a2")!.byPoint.size).toBe(0);
+        expect(out.get("a1")!.get("A|2025-07-01|09:21:00")).toBe(10);
+        expect(out.get("a2")!.size).toBe(0);
     });
 });

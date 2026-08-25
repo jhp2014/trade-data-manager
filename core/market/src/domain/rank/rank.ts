@@ -22,5 +22,6 @@ export interface PlacedPoint {
     orderKey: number;
     stockCode: string;
     date: string; // YYYY-MM-DD (거래일)
-    time: string; // HH:MM:SS (분봉 시각)
+    /** HH:MM:SS (분봉 시각). **day 축 줄 항목엔 없다** — 행 = 차트(종목,날짜). */
+    time?: string;
 }

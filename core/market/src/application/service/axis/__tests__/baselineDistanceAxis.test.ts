@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { ChartAnchor, DailyCandle, ReviewPointKey } from "#domain";
+import type { ChartAnchor, ChartRef, DailyCandle } from "#domain";
 import { baselineDistanceAxis } from "../baselineDistanceAxis.js";
 import type { AxisDeps } from "../axis.js";
 
 const CODE = "005930";
-const DATE = "2026-07-02"; // 타점 날 = 창의 상한
+const DATE = "2026-07-02"; // 차트 날 = 창의 상한
 
 /** 이 축은 값이 아니라 좌표만 읽는다 — OHLC 는 0(리졸버가 가격을 읽었다면 0 은 무효라 결손이 났을 것). */
 const daily = (date: string, high = 0): DailyCandle => ({
@@ -14,7 +14,8 @@ const daily = (date: string, high = 0): DailyCandle => ({
     un: { open: "0", high: String(high), low: "0", close: "0", volume: "0", amount: "0" },
 });
 
-const point = (time = "09:30:00"): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
+/** 행 = 차트(종목,날짜) — day 축은 타점 없이도 계산된다. */
+const chart = (): ChartRef => ({ stockCode: CODE, date: DATE });
 /** 차트 소유 기준선(선=앵커) — 타점 시각이 없다. */
 const baseline = (anchorDate: string, anchorTime?: string): ChartAnchor =>
     ({ stockCode: CODE, date: DATE, param: "baseline", anchorDate, anchorTime, field: "high", market: "un" });
@@ -34,7 +35,7 @@ const HISTORY = ["2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-0
 
 describe("baselineDistanceAxis", () => {
     const axis = baselineDistanceAxis();
-    const P = point();
+    const P = chart();
 
     it("앵커 다음 거래일부터 타점 날까지의 거래일 수 — 선 하나면 가격을 안 읽는다(고가 0 이어도 동작)", async () => {
         const out = await axis.compute([P], deps({ dailies: HISTORY, anchors: [baseline("2026-06-29")] }));
@@ -80,7 +81,7 @@ describe("baselineDistanceAxis", () => {
         expect(out).toEqual([]);
     });
 
-    it("기준선 없는 타점은 캔들 읽기 없이 빠진다", async () => {
+    it("기준선 없는 차트는 캔들 읽기 없이 빠진다", async () => {
         let reads = 0;
         const d = deps({ anchors: [] });
         d.adjDaily = { getDailyCandles: () => { reads++; return Promise.resolve([]); } };
@@ -96,12 +97,11 @@ describe("baselineDistanceAxis", () => {
 
     it("당일 앵커는 걸러진다 — 세 축이 같은 후보 집합을 봐야 한다(공백 축과 동일 가드)", async () => {
         const d = deps({ dailies: HISTORY, anchors: [baseline(DATE)] });
-        expect(await axis.compute([point()], d)).toEqual([]);
+        expect(await axis.compute([chart()], d)).toEqual([]);
     });
 
-    it("차트 소유 — 같은 차트의 두 타점이 같은 기준선을 본다", async () => {
-        const other = point("10:00:00");
-        const out = await axis.compute([P, other], deps({ dailies: HISTORY, anchors: [baseline("2026-06-29")] }));
-        expect(out.map((v) => v.value)).toEqual([3, 3]);
+    it("행 = 차트 — 값에 시각이 없다", async () => {
+        const out = await axis.compute([P], deps({ dailies: HISTORY, anchors: [baseline("2026-06-29")] }));
+        expect(out).toEqual([{ stockCode: CODE, date: DATE, value: 3 }]);
     });
 });

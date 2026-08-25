@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IGNORE_CANDLE_PARAM, type ChartAnchor, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
+import { IGNORE_CANDLE_PARAM, type ChartAnchor, type ChartRef, type DailyCandle, type MinuteCandle } from "#domain";
 import { supplyGapAxis } from "../supplyGapAxis.js";
 import type { AxisDeps } from "../axis.js";
 
@@ -23,7 +23,8 @@ const minute = (date: string, time: string, high: string): MinuteCandle => ({
     un: { open: high, high, low: high, close: high, volume: "10" },
 });
 
-const point = (time = "09:30:00"): ReviewPointKey => ({ stockCode: CODE, date: DATE, time });
+/** 행 = 차트(종목,날짜) — day 축은 타점 없이도 계산된다. */
+const chart = (over: Partial<ChartRef> = {}): ChartRef => ({ stockCode: CODE, date: DATE, ...over });
 /** 차트 소유 앵커 — 타점 시각이 없다. */
 const baseline = (a: Partial<ChartAnchor> = {}): ChartAnchor =>
     ({ stockCode: CODE, date: DATE, param: "baseline", anchorDate: ANCHOR_DATE, field: "high", market: "un", ...a });
@@ -60,7 +61,7 @@ const WITH_OLDER_CONTACT: DailyCandle[] = [daily("2026-06-19", 110), ...HISTORY]
 
 describe("supplyGapAxis", () => {
     const axis = supplyGapAxis();
-    const P = point();
+    const P = chart();
 
     it("앵커 왼쪽으로 첫 접촉(고가 ≥ 기준선)까지의 거래일 수", async () => {
         const out = await axis.compute([P], deps({ dailies: HISTORY, anchors: [baseline()] }));
@@ -99,12 +100,10 @@ describe("supplyGapAxis", () => {
         expect(out[0]).toEqual({ ...P, value: 7 });
     });
 
-    it("무시 캔들은 차트 소유 — 같은 차트의 모든 타점이 같은 무시 목록을 본다", async () => {
-        const other = point("10:00:00");
+    it("행 = 차트 — 값에 시각이 없다(그날 전 타점이 아니라 하루가 한 행이다)", async () => {
         const anchors = [baseline(), ignore("2026-06-25")];
-        const out = await axis.compute([P, other], deps({ dailies: WITH_OLDER_CONTACT, anchors }));
-        expect(out.find((v) => v.time === P.time)?.value).toBe(7);
-        expect(out.find((v) => v.time === other.time)?.value).toBe(7);
+        const out = await axis.compute([P], deps({ dailies: WITH_OLDER_CONTACT, anchors }));
+        expect(out).toEqual([{ stockCode: CODE, date: DATE, value: 7 }]);
     });
 
     it("다른 차트(날짜)의 무시 캔들은 안 샌다 — 소급 오염 방지", async () => {
@@ -144,17 +143,17 @@ describe("supplyGapAxis", () => {
     it("⚠ 당일 캔들에 그은 기준선은 재료가 아니다 — 문턱이 당일 가격이면 이른 타점엔 미래(결손)", async () => {
         // 유일한 기준선이 타점 날(DATE) 캔들 위 → 걸러져 후보 0 = 입력 전과 같이 빠진다.
         const d = deps({ dailies: [...HISTORY, daily(DATE, 100)], anchors: [baseline({ anchorDate: DATE })] });
-        expect(await axis.compute([point()], d)).toEqual([]);
+        expect(await axis.compute([chart()], d)).toEqual([]);
     });
 
     it("당일 기준선이 걸러져도 전일 기준선이 남으면 그걸로 잰다 — 리졸버 후보에서 빠질 뿐", async () => {
         // 당일 선(더 낮아 리졸버가 골랐을 것) + 전일 선 → 당일 선은 후보에서 빠지고 전일 선이 문턱.
         const d = deps({ dailies: [...HISTORY, daily(DATE, 60)], anchors: [baseline({ anchorDate: DATE, field: "low" }), baseline()] });
-        const out = await axis.compute([point()], d);
+        const out = await axis.compute([chart()], d);
         expect(out.length).toBe(1); // 전일(7/01 고가=100) 기준 — 값 산출 자체가 산다
     });
 
-    it("기준선 없는 타점은 캔들 읽기 없이 빠진다", async () => {
+    it("기준선 없는 차트는 캔들 읽기 없이 빠진다", async () => {
         let reads = 0;
         const d = deps({ anchors: [] });
         d.adjDaily = { getDailyCandles: () => { reads++; return Promise.resolve([]); } };

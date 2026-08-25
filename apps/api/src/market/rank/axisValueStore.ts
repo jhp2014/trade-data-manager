@@ -7,8 +7,9 @@ import path from "node:path";
 const CACHE_ROOT = process.env.RANK_AXIS_CACHE_DIR ?? path.resolve(process.cwd(), ".cache/rank-axis");
 
 /** 파일 스키마 버전. 파일 모양(축 정의가 아니라)이 바뀌면 올린다 — 축 계산식 변경은 def.version 쪽.
- *  v2: 값에 입력 지문(f) 동봉 — 앵커 의존 축의 자동 무효화. v1 구파일 = miss(전량 재빌드). */
-export const FILE_SCHEMA_VERSION = 2;
+ *  v3: day 축 행 키가 pointKey → chartKey(행 = 차트). 구파일 = miss(전량 재빌드).
+ *  v2: 값에 입력 지문(f) 동봉 — 앵커 의존 축의 자동 무효화. */
+export const FILE_SCHEMA_VERSION = 3;
 
 /** 캐시 항목 — 수치 + 구운 시점의 입력 지문(앵커 무관 축은 "") + 우측 절단 여부(s, 아니면 생략). */
 export interface AxisValueEntry {
@@ -17,7 +18,7 @@ export interface AxisValueEntry {
     s?: boolean;
 }
 
-/** 축 하나의 값 파일. values 는 pointKey → 항목(결손은 키 자체가 없다). */
+/** 축 하나의 값 파일. values 는 행 키(point 축=pointKey·day 축=chartKey) → 항목(결손은 키 자체가 없다). */
 export interface AxisValueFile {
     v: number;
     key: string;

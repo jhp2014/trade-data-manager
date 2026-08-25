@@ -1,10 +1,10 @@
 // 축 배치줄 → 타점별 순위 셀. 시트·작업셋·차트가 공유하는 순수 파생(추가 fetch 0).
 //  · 셀 = 그 축에서 이 타점의 위치. rank(자리 번호, 강=1)·total(slot 수)·frac(0약..1강). 미배치 = null.
 //  · 관례: 큰 orderKey = 오른쪽 = 강/좋음(RankPanel 과 동일). rank 1 = 가장 강.
-//  · day 축은 place 시 그날 전 타점에 fanout 되어 라인에 per-point 로 존재 → point 축과 동일 조립(특례 없음).
+//  · day 축의 줄 항목은 **차트 행**(time 없음, 키 = chartKey) — 타점 조회는 rowLookup 폴백이 잇는다.
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import type { AxisRef } from "./computedAxis.js";
-import { pointKey, type PointKey, type PointRef } from "./pointKey.js";
+import { rowKey, rowLookup, type PointKey, type PointRef } from "./pointKey.js";
 
 /**
  * 한 축에서 한 타점의 위치.
@@ -20,7 +20,7 @@ export interface RankCell {
     orderKey: number;
 }
 
-/** pk("code|date|time") → 셀. 그 축에 배치된 타점만 키를 가짐. */
+/** 행 키(point 축 = "code|date|time" · day 축 = "code|date") → 셀. 값 있는 행만 키를 가짐. */
 export type AxisIndex = Map<PointKey, RankCell>;
 
 /** 한 축 라인(PlacedPoint[]) → pk별 순위 셀. 세는 단위는 slot(위 RankCell 주석). */
@@ -40,7 +40,7 @@ export function buildAxisIndex(line: PlacedPoint[]): AxisIndex {
     });
 
     for (const p of line) {
-        idx.set(pointKey(p), {
+        idx.set(rowKey(p), {
             rank: rankByOK.get(p.orderKey) ?? 1,
             total,
             frac: fracByOK.get(p.orderKey) ?? 0.5,
@@ -56,7 +56,7 @@ export function buildAxisIndex(line: PlacedPoint[]): AxisIndex {
  */
 export function orderKeyByPoint(line: PlacedPoint[]): Map<string, number> {
     const m = new Map<string, number>();
-    for (const p of line) m.set(pointKey(p), p.orderKey);
+    for (const p of line) m.set(rowKey(p), p.orderKey);
     return m;
 }
 
@@ -66,16 +66,6 @@ export interface AxisPlacement {
     axisKey: string;
     axisName: string;
     cell: RankCell;
-}
-
-/**
- * 타점별 배치 축 수(= 배지의 분자). 전 타점을 한 번에 세어 두고 행마다 Map 조회만 한다.
- * 축이 많아도 비용은 배치 건수 합계(라인 길이 총합) 1회 순회.
- */
-export function countPlacedByPoint(indexByAxis: Map<string, AxisIndex>): Map<PointKey, number> {
-    const counts = new Map<PointKey, number>();
-    for (const idx of indexByAxis.values()) for (const key of idx.keys()) counts.set(key, (counts.get(key) ?? 0) + 1);
-    return counts;
 }
 
 /** 한 타점을 축 전체에 비춘 결과 — 꽂힌 축(강한 순)과 안 꽂힌 축(축 순서). */
@@ -92,11 +82,10 @@ export interface PointPlacements {
  * 보고 있는 타점 하나에만 도는 온디맨드 계산이라 축 수만큼의 Map 조회로 끝난다.
  */
 export function placementsOf(point: PointRef, axes: AxisRef[], indexByAxis: Map<string, AxisIndex>): PointPlacements {
-    const key = pointKey(point);
     const placed: AxisPlacement[] = [];
     const unplaced: AxisRef[] = [];
     for (const a of axes) {
-        const cell = indexByAxis.get(a.key)?.get(key);
+        const cell = rowLookup(indexByAxis.get(a.key), point); // day 축은 차트 행 — 폴백이 닿는다
         if (cell) placed.push({ axisKey: a.key, axisName: a.name, cell });
         else unplaced.push(a);
     }

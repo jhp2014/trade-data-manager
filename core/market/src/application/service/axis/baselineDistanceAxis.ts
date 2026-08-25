@@ -18,22 +18,22 @@
 // 우측 절단(saturated): 앵커가 창(2년)보다 이르면 그 사이 거래일을 셀 수 없다 → 값은 창 안 거래일 수 = 하한.
 // 결손: 기준선 없음/확정불가 · 타점 날 일봉 미수집(셀 자가 없다) · **앵커가 타점보다 미래**(검색날짜 드리프트로
 //   잘못 찍은 입력. 음수를 조용히 내면 정렬이 이상해지고 원인을 못 짚는다 — 규칙 2를 어기는 입력이기도 하다).
-import { BASELINE_PARAM, chartKeyOf, type DailyCandle, type ReviewPointKey } from "#domain";
+import { BASELINE_PARAM, chartKeyOf, type ChartRef, type DailyCandle } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import { chartDailyRange } from "../shared/dailyRange.js";
 import { resolveBaselines } from "../shared/baselineResolver.js";
-import { dropSameDayAnchors, type AxisDeps, type ComputedAxisDef, type ComputedAxisValue } from "./axis.js";
+import { dropSameDayAnchors, type AxisDeps, type DayAxisValue, type DayComputedAxisDef } from "./axis.js";
 
 /** (종목,날) 동시 읽기 상한 — 다른 축과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;
 
-export function baselineDistanceAxis(): ComputedAxisDef {
+export function baselineDistanceAxis(): DayComputedAxisDef {
     return {
         key: "baseline-distance",
         name: "기준선 거리(일)",
         version: 4, // v4: 리졸버가 후보를 한 스케일(수정주가)에서 겨루게 — 고르는 선이 바뀔 수 있다
         strongerWhen: "higher", // 멀수록 = 오래 묵은 저항을 깨는 자리
-        // 값 = 앵커→타점 **날짜** 거래일 수 — 시각이 값에 안 들어가 그날 전 타점이 같은 값이다.
+        // 값 = 앵커→차트 날짜 거래일 수 — 행 = 차트(종목,날짜). 타점이 없어도 기준선만 있으면 값이 나온다.
         // 당일 앵커는 compute 가 거른다(dropSameDayAnchors). 이 축 단독으론 당일 앵커=0 이 무해해 보이지만,
         // 리졸버 후보가 축마다 다르면 세 축이 서로 다른 선을 재는 상태가 조용히 생긴다 — 공백 축과 같이 거른다.
         grain: "day",
@@ -44,11 +44,11 @@ export function baselineDistanceAxis(): ComputedAxisDef {
     };
 }
 
-async function computeBaselineDistance(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]> {
+async function computeBaselineDistance(charts: readonly ChartRef[], deps: AxisDeps): Promise<DayAxisValue[]> {
     const anchors = await deps.chartAnchor.listAll();
     // day 알갱이 가드 — 공백 축과 같은 후보 집합을 봐야 한다(리졸버 규칙이 한 곳인 이유와 같은 이유).
-    const baselineOf = await resolveBaselines(points, dropSameDayAnchors(anchors, BASELINE_PARAM), deps);
-    const jobs = points.flatMap((p) => {
+    const baselineOf = await resolveBaselines(charts, dropSameDayAnchors(anchors, BASELINE_PARAM), deps);
+    const jobs = charts.flatMap((p) => {
         const base = baselineOf.get(chartKeyOf(p));
         return base ? [{ p, base }] : []; // 기준선 없음(입력 전)·확정 불가(결손)는 재료를 읽기 전에 빠진다
     });
@@ -63,7 +63,7 @@ async function computeBaselineDistance(points: readonly ReviewPointKey[], deps: 
         dailyByDay.set(`${d.stockCode}|${d.date}`, rows);
     });
 
-    const out: ComputedAxisValue[] = [];
+    const out: DayAxisValue[] = [];
     for (const { p, base } of jobs) {
         if (base.anchorDate > p.date) continue; // 미래 앵커 — 이 축이 답할 수 있는 입력이 아니다
         const rows = dailyByDay.get(`${p.stockCode}|${p.date}`) ?? [];
@@ -73,7 +73,7 @@ async function computeBaselineDistance(points: readonly ReviewPointKey[], deps: 
         const value = rows.filter((c) => c.date > base.anchorDate).length;
         // 앵커가 가진 일봉보다 이르면 그 사이를 못 센다 → 값은 하한.
         const saturated = base.anchorDate < rows[0].date;
-        out.push({ stockCode: p.stockCode, date: p.date, time: p.time, value, ...(saturated ? { saturated: true } : {}) });
+        out.push({ stockCode: p.stockCode, date: p.date, value, ...(saturated ? { saturated: true } : {}) });
     }
     return out;
 }

@@ -6,6 +6,7 @@
 import { useMemo } from "react";
 import type { RankAxis } from "@trade-data-manager/wire";
 import { buildFracIndex, nearestPointInIndex, valueDomain, valueToFrac } from "../../../lib/computedAxis.js";
+import { rowKeyToChartKey } from "../../../lib/pointKey.js";
 import { resolveBound } from "../evaluate.js";
 import type { AxisBound, AxisValueRange } from "../stage.js";
 import { Rail } from "./Rail.js";
@@ -80,7 +81,8 @@ export function ComputedAxisRail({
     }, [memberKeys, values, domain, strongerWhen]);
 
     const railRanges = toRailRanges(ranges, weakEnd, strongEnd, strongerWhen);
-    const markerValue = markerKey === null ? undefined : values.get(markerKey);
+    // 마커(현재 타점)는 타점 키로 온다 — day 축 값 맵(차트 키 행)엔 시각을 벗겨 닿는다.
+    const markerValue = markerKey === null ? undefined : (values.get(markerKey) ?? values.get(rowKeyToChartKey(markerKey)));
 
     return (
         <Rail<AxisBound>

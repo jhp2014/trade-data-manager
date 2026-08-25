@@ -16,7 +16,7 @@
 //
 // 타점 소유(time 있는) 앵커는 후보에서 뺀다 — 현재 레지스트리는 전부 chart 소유라 실데이터가 없고,
 // 두 grain 의 병합 규칙은 첫 "both" param 이 실사용례를 들고 올 때 정한다(상상으로 미리 정하지 않는다).
-import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, chartKeyOf, rawScaleOf, type AnchorField, type AnchorMarket, type ChartAnchor, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
+import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, chartKeyOf, rawScaleOf, type AnchorField, type AnchorMarket, type ChartAnchor, type ChartRef, type DailyCandle, type MinuteCandle } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
 import type { AxisDeps } from "../axis/axis.js";
 
@@ -27,16 +27,16 @@ export type BaselineAnchor = ChartAnchor & { field: AnchorField; market: AnchorM
 const DAY_CONCURRENCY = 8;
 
 /**
- * 타점들이 속한 차트의 기준선을 일괄 확정한다.
+ * 차트들의 기준선을 일괄 확정한다(point 축은 타점을 그대로 넘겨도 된다 — 차트키만 쓴다).
  * 반환 맵: 차트키 → 확정 기준선. **키 없음 = 후보 없음**(입력 전) / **null = 후보 ≥2 인데 확정 불가**(결손).
  * 소비 축은 non-null 만 잡으면 두 경우 모두 자연히 빠진다.
  */
 export async function resolveBaselines(
-    points: readonly ReviewPointKey[],
+    items: readonly ChartRef[],
     anchors: readonly ChartAnchor[],
     deps: Pick<AxisDeps, "adjDaily" | "minute" | "rawDaily">,
 ): Promise<Map<string, BaselineAnchor | null>> {
-    const charts = new Set(points.map(chartKeyOf));
+    const charts = new Set(items.map(chartKeyOf));
     const candidates = new Map<string, BaselineAnchor[]>();
     for (const a of anchors) {
         if (a.param !== BASELINE_PARAM || a.time != null) continue;

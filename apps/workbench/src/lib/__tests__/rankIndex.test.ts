@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildAxisIndex, countPlacedByPoint, placementsOf, type AxisIndex } from "../rankIndex.js";
+import { buildAxisIndex, placementsOf, type AxisIndex } from "../rankIndex.js";
 import { pointKey } from "../pointKey.js";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import type { AxisRef } from "../computedAxis.js";
@@ -32,19 +32,6 @@ describe("buildAxisIndex", () => {
     });
 });
 
-describe("countPlacedByPoint", () => {
-    it("타점이 꽂힌 축 수를 센다(미배치 타점은 키 자체가 없음).", () => {
-        const indexByAxis = new Map<string, AxisIndex>([
-            ["ax1", buildAxisIndex([pp("A", 10), pp("B", 20)])],
-            ["ax2", buildAxisIndex([pp("A", 5)])],
-            ["ax3", buildAxisIndex([])], // 빈 축은 아무 타점도 안 셈
-        ]);
-        const counts = countPlacedByPoint(indexByAxis);
-        expect(counts.get(pointKey(ref("A")))).toBe(2);
-        expect(counts.get(pointKey(ref("B")))).toBe(1);
-        expect(counts.get(pointKey(ref("C")))).toBeUndefined();
-    });
-});
 
 describe("placementsOf", () => {
     const axes = [axis("ax1", "속도"), axis("ax2", "매물대"), axis("ax3", "수급")];

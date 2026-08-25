@@ -325,3 +325,80 @@ describe("ComputedAxes 앵커 지문", () => {
         expect(seen).toHaveLength(1); // 두 번째 호출은 전부 캐시 히트
     });
 });
+
+
+// ── day 축 — 행 = 차트(종목,날짜), 모수 = 필수 param 앵커가 있는 차트 ─────────────
+describe("ComputedAxes day 축", () => {
+    let store: ReturnType<typeof memoryStore>;
+    let seenCharts: { stockCode: string; date: string }[][];
+
+    /** 값 = 종목코드 숫자. 행 = 차트 — 결과에 time 이 없다. */
+    function dayAxis(version: number): ComputedAxisDef {
+        return {
+            key: "fake-day",
+            name: "가짜 day 축",
+            version,
+            strongerWhen: "higher",
+            grain: "day",
+            inputs: [],
+            params: ["baseline"],
+            compute(charts) {
+                seenCharts.push([...charts]);
+                return Promise.resolve(charts.map((c) => ({ stockCode: c.stockCode, date: c.date, value: Number(c.stockCode) })));
+            },
+        };
+    }
+
+    const line = (code: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
+        ({ stockCode: code, date: "2026-07-02", param: "baseline", anchorDate: "2026-07-01", field: "high", market: "un", ...over });
+
+    beforeEach(() => {
+        store = memoryStore();
+        seenCharts = [];
+    });
+
+    it("모수 = 필수 param 앵커가 있는 차트 — **타점이 0이어도** 행이 된다(재편의 수용 기준)", async () => {
+        // 타점은 001 하나뿐인데 기준선은 001·002 두 차트에 있다 → 행은 둘.
+        const axes = makeAxes([pt("001")], dayAxis(1), store, [line("001"), line("002")]);
+        const feeds = await axes.feeds();
+        expect(feeds[0].values).toEqual([
+            { stockCode: "001", date: "2026-07-02", value: 1 },
+            { stockCode: "002", date: "2026-07-02", value: 2 },
+        ]);
+        expect(feeds[0].values.every((v) => v.time === undefined)).toBe(true); // 행 = 차트, 시각 없음
+    });
+
+    it("필수 앵커 없는 차트는 모수 밖(입력 전) — 타점이 있어도 compute 에 안 들어간다", async () => {
+        const axes = makeAxes([pt("003")], dayAxis(1), store, [line("001")]);
+        const feeds = await axes.feeds();
+        expect(seenCharts[0].map((c) => c.stockCode)).toEqual(["001"]);
+        expect(feeds[0].values.map((v) => v.stockCode)).toEqual(["001"]);
+    });
+
+    it("캐시 행 키 = chartKey — warm 에서 재계산하지 않고, 앵커 해제로 행이 소멸하면 지운다", async () => {
+        const anchors = [line("001"), line("002")];
+        await makeAxes([], dayAxis(1), store, anchors).feeds();
+        expect(Object.keys(store.files.get("fake-day")!.values).sort()).toEqual(["001|2026-07-02", "002|2026-07-02"]);
+
+        await makeAxes([], dayAxis(1), store, anchors).feeds();
+        expect(seenCharts).toHaveLength(1); // warm — compute 재호출 없음
+
+        const after = await makeAxes([], dayAxis(1), store, [line("001")]).feeds(); // 002 해제
+        expect(after[0].values.map((v) => v.stockCode)).toEqual(["001"]);
+        expect(Object.keys(store.files.get("fake-day")!.values)).toEqual(["001|2026-07-02"]);
+    });
+
+    it("차트 소유 앵커가 바뀌면 그 차트만 다시 굽는다 — 타점 소유 앵커는 day 축 지문 밖", async () => {
+        const anchors = [line("001"), line("002")];
+        await makeAxes([], dayAxis(1), store, anchors).feeds();
+
+        const moved = [line("001", { anchorDate: "2026-06-30" }), line("002")];
+        await makeAxes([], dayAxis(1), store, moved).feeds();
+        expect(seenCharts[1].map((c) => c.stockCode)).toEqual(["001"]); // 002 는 캐시 히트
+
+        // 타점 소유 앵커(time 있음)는 재료가 아니다 — 지문도 모수도 안 바뀐다.
+        const withPointAnchor = [...moved, line("001", { time: "09:00:00", param: "baseline" })];
+        await makeAxes([], dayAxis(1), store, withPointAnchor).feeds();
+        expect(seenCharts).toHaveLength(2); // 재계산 없음
+    });
+});

@@ -28,5 +28,5 @@ export const fingerprintOf = (def: ComputedAxisDef, applicable: ChartAnchor[], s
         .map((a) => `${a.param}@${a.anchorDate}T${a.anchorTime ?? ""}|${a.field ?? ""}|${a.market ?? ""}`)
         .sort()
         .join(";");
-    return def.pointCoupled ? `${anchorsFp}#pts=${[...siblingTimes].sort().join(",")}` : anchorsFp;
+    return def.grain !== "day" && def.pointCoupled ? `${anchorsFp}#pts=${[...siblingTimes].sort().join(",")}` : anchorsFp;
 };

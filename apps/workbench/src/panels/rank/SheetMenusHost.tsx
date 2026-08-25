@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
-import { pointKey } from "../../lib/pointKey.js";
+import { chartKey, pointKey } from "../../lib/pointKey.js";
 import { HeaderMenu, OutcomeMenu } from "./SheetMenus.js";
 import type { CellCtxPayload } from "./SheetRowView.js";
 import type { HdrCtxPayload } from "./SheetHeaderRow.js";
@@ -59,13 +59,16 @@ export function SheetMenusHost({ m, axes, cols, sortAxisId, sortLen, dropSortKey
             {ctx && (() => {
                 const ax = axes.find((a) => a.key === ctx.axisId);
                 if (!ax) return null;
-                const cutOn = (cols.cuts[`ax:${ctx.axisId}`] ?? []).includes(pointKey(ctx.point));
+                // 컷 키 = 그 축의 **행 키** — day 축 줄의 자리는 차트(시각 없음)라 차트 키로 저장해야
+                // orderKeyByPoint(행 키 색인)와 만난다. 타점 키로 저장하면 컷이 조용한 no-op 이 된다.
+                const cutKey = ax.scope === "day" ? chartKey(ctx.point) : pointKey(ctx.point);
+                const cutOn = (cols.cuts[`ax:${ctx.axisId}`] ?? []).includes(cutKey);
                 const cutEnabled = sortAxisId === ctx.axisId; // 1차 정렬 축에서만 — 안 보이는 줄엔 선을 못 긋는다
                 if (!cutEnabled && !cutOn) return null;
                 return (
                     <AnchoredPopover anchor={ctx} onClose={m.close.ctx} minWidth={180} padding={0} placement="beside" offset={6}>
                         <MenuLabel>{ax.name} · {ctx.rank}/{ctx.total}위</MenuLabel>
-                        <MenuItem onClick={() => { cols.toggleCut(ctx.axisId, pointKey(ctx.point)); m.close.ctx(); }}>
+                        <MenuItem onClick={() => { cols.toggleCut(ctx.axisId, cutKey); m.close.ctx(); }}>
                             {cutOn ? "그룹 나누기 해제" : "여기서 그룹 나누기"}
                         </MenuItem>
                     </AnchoredPopover>

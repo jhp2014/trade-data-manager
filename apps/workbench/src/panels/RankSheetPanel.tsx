@@ -21,7 +21,7 @@ import { setMembersOf } from "./filter/setMembers.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { PanelHeader, ScrollRow, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
-import { pointKey } from "../lib/pointKey.js";
+import { pointKey, rowLookup } from "../lib/pointKey.js";
 import { subjectStatus, useSubject } from "../lib/subject.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
@@ -209,7 +209,7 @@ export function RankSheetPanel(): JSX.Element {
     // 참조 고정 — SheetRowView(memo)가 얕은 비교로 재사용하도록.
     const valuedOf = useMemo(() => (axisId: string, row: SheetRow): ValuedCell | undefined => {
         const view = valueViews.get(axisId);
-        const v = view?.values.get(pointKey(row));
+        const v = view ? rowLookup(view.values, row) : undefined; // day 축 값은 차트 행 — 폴백
         return view && v !== undefined ? { frac: valueToFrac(v, view.domain, view.strongerWhen), text: view.fmt(v) } : undefined;
     }, [valueViews]);
 

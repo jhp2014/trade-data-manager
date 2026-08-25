@@ -9,7 +9,7 @@
 // ⚠ 자리(orderKey)는 값이 바뀌면 함께 바뀐다(수식 수정·재계산). 그래서 **영속 상태의 키로는 못 쓴다** —
 //   밴드 경계·그룹 컷은 두 종류 모두 **타점 앵커**로 저장한다(그 타점이 있는 자리, 값이 움직여도 따라간다).
 import type { AxisDisplay, ComputedAxisFeed, PlacedPoint, RankAxis } from "@trade-data-manager/wire";
-import { pointKey } from "./pointKey.js";
+import { rowKey } from "./pointKey.js";
 
 /**
  * **축 키 정책 — 클라 전용 손잡이다.** 서버로 나가지도, DB 에 저장되지도 않는다(축은 계약에서 이름으로
@@ -88,9 +88,10 @@ export function computedAxisView(feed: ComputedAxisFeed): ComputedAxisView {
     for (const v of feed.values) {
         const value = v.saturated ? saturatedValue : v.value;
         // 자리는 **값이 정한다** — 같은 수치면 orderKey 가 같아지고, 그게 곧 같은 자리(타이)다.
-        // 옛날엔 slotId 를 값에서 지어냈는데, 판단 축에서 slotId 가 사라지면서 그 흉내도 필요 없어졌다.
-        line.push({ orderKey: sign * value, stockCode: v.stockCode, date: v.date, time: v.time });
-        values.set(pointKey(v), value);
+        // day 축 행은 time 이 없다(행 = 차트) — 키도 줄 항목도 그 정체성을 그대로 싣는다(rowKey).
+        if (v.time !== undefined) line.push({ orderKey: sign * value, stockCode: v.stockCode, date: v.date, time: v.time });
+        else line.push({ orderKey: sign * value, stockCode: v.stockCode, date: v.date });
+        values.set(rowKey(v), value);
     }
     return {
         // scope = 서버 축 정의의 grain — 옛날엔 "point" 하드코딩이라 day 성질의 계산 축(매물 공백·기준선

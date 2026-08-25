@@ -13,6 +13,7 @@
 // 3치 대수(and3·or3·not3)는 **도메인의 것**이다 — 여기서 다시 정의하면 "모름을 어떻게 다루나"라는
 // 같은 규칙이 두 곳에서 각자 자란다. 이 파일은 그 대수로 술어를 조립하는 일만 한다.
 import { and3, not3, or3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
+import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import { noneScope, type GroupExpr } from "../rank/groupFilter.js";
 import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStage, type Grain } from "./stage.js";
 
@@ -49,7 +50,10 @@ export interface EvalLookup {
  * 앵커 소실을 한쪽은 모름으로, 다른 쪽은 0 으로 읽는 식으로 갈라진다 — 그래서 여기 한 곳에 둔다.
  */
 export function resolveBound(b: AxisBound, values: Map<string, number> | undefined): number | undefined {
-    return b.kind === "value" ? (Number.isFinite(b.value) ? b.value : undefined) : values?.get(b.point);
+    if (b.kind === "value") return Number.isFinite(b.value) ? b.value : undefined;
+    // 앵커 키는 그 축의 행 키(point 축 = 타점 키 · day 축 = 차트 키). 옛 저장물(day 축인데 타점 키로
+    // 저장된 경계)은 시각을 벗겨 흡수한다 — 저장물 마이그레이션 없이 읽기가 감당한다.
+    return values?.get(b.point) ?? values?.get(rowKeyToChartKey(b.point));
 }
 
 /**
