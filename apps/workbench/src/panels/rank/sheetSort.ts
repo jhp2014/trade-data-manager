@@ -55,7 +55,7 @@ export function dropSort(chain: SortChain, k: SortKey): SortChain {
 }
 
 // ── 영속 복원 ───────────────────────────────────────────────────────────────
-const SORT_KINDS: readonly string[] = ["name", "date", "time", "outcome", "axis"];
+const SORT_KINDS: readonly string[] = ["name", "date", "time", "outcome", "axis", "points", "comment"];
 function parseStep(o: unknown): SortStep | null {
     if (!o || typeof o !== "object") return null;
     const s = o as { key?: { kind?: unknown; axisId?: unknown }; dir?: unknown };

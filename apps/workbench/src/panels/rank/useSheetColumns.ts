@@ -60,9 +60,15 @@ export interface SheetColumns {
     flashCol: string | null;
 }
 
-export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point" }: {
+export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point", pruneAxisIds }: {
     axes: AxisRef[];
     axesLoading: boolean;
+    /**
+     * 유령 키 청소의 기준 축 목록 — **전체 축**(모드 필터 전). day 모드는 axes 를 day 축으로 좁혀
+     * 넘기는데, 그 목록으로 프룬하면 공유 주머니(컷)의 point 축 키를 유령으로 오인해 지운다.
+     * 생략 = axes 그대로(point 모드).
+     */
+    pruneAxisIds?: string[];
     /** 표 스크롤 컨테이너의 폭 — 남는 폭을 축 열들이 나눠 갖는다. */
     containerW: number;
     /** 축 열의 최소 폭(셀 표시 모드가 정한다 — 눈금 모드는 그릴 폭이 필요하다). */
@@ -83,13 +89,13 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     // 축을 지우면 그 축 키가 넷 모두에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소(위 ⚠ 참고).
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
-        const ids = axes.map((a) => a.key);
+        const ids = pruneAxisIds ?? axes.map((a) => a.key);
         setFrozenCols((f) => pruneAxisKeys(f, ids));
         setHiddenCols((h) => pruneAxisKeys(h, ids));
         setColWidths((w) => pruneAxisKeys(w, ids));
         setCuts((c) => pruneAxisKeys(c, ids));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [axes, axesLoading]);
+    }, [axes, axesLoading, pruneAxisIds]);
 
     // ── "저 축 보여줘"(타점 정보 → 여기) — 그 축 **열**로 가로 스크롤하고 잠깐 강조한다.
     //    시트에서는 열이 곧 축이고 축이 많으면 가로로 넘치므로 찾아 주는 일이 필요하다.
