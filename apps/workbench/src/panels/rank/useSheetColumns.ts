@@ -12,7 +12,7 @@ import { isComputedAxis } from "../../lib/computedAxis.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { layoutColumns, migrateColKey, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
+import { layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
 
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
@@ -45,13 +45,6 @@ export interface SheetColumns {
     /** 폭 확정(pointerup 1회) — 영속에 적고 미리보기 층을 비운다. */
     commitWidth: (k: string, w: number) => void;
     resetWidths: () => void;
-    /**
-     * 축 이름 변경의 **키 이관** — 다섯 설정(고정·숨김·폭·컷 + store 축 순서)이 전부 축 키를 들고 있어,
-     * rename 이 그대로면 열 하나의 로컬 설정이 통째로 고아가 된다. 청소(prune)와 한 훅에 사는 이유도 같다:
-     * 어느 키가 살고 죽는지의 규칙은 한 곳에 있어야 어긋나지 않는다.
-     * ⚠ 축 목록 invalidate **앞에** 부를 것 — 새 목록이 먼저 도착하면 prune 이 옛 키를 유령으로 지워 버린다.
-     */
-    migrateAxisKey: (oldAxisId: string, newAxisId: string) => void;
 
     /** 축 열 그룹 컷 — colKey → slotId[]. */
     cuts: Record<string, string[]>;
@@ -144,18 +137,6 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
         previewWidth: (k, w) => setPreviewWidths((m) => ({ ...m, [k]: w })),
         commitWidth: (k, w) => { setColWidths((m) => ({ ...m, [k]: w })); setPreviewWidths({}); },
         resetWidths: () => { setColWidths({}); setPreviewWidths({}); },
-        migrateAxisKey: (oldAxisId, newAxisId) => {
-            const oldKey = `ax:${oldAxisId}`;
-            const newKey = `ax:${newAxisId}`;
-            setFrozenCols((f) => migrateColKey(f, oldKey, newKey));
-            setHiddenCols((h) => migrateColKey(h, oldKey, newKey));
-            setColWidths((w) => migrateColKey(w, oldKey, newKey));
-            setCuts((c) => migrateColKey(c, oldKey, newKey));
-            // 축 순서(store)는 접두 없는 축 키를 든다 — 같은 rename 사정이라 여기서 함께 이관한다.
-            const s = useWorkbench.getState();
-            const nextOrder = migrateColKey(s.rankAxisOrder, oldAxisId, newAxisId);
-            if (nextOrder !== s.rankAxisOrder) s.setRankAxisOrder(nextOrder);
-        },
         cuts,
         toggleCut: (axisId, slotId) => setCuts((m) => {
             const k = `ax:${axisId}`;

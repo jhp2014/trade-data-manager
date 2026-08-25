@@ -17,9 +17,9 @@ function Track({ frac }: { frac: number }): JSX.Element {
 }
 
 /**
- * 배치 상세 목록 — 꽂힌 축(강한 순) → 구분선 → 미배치 축(접힘 기본).
- * 미배치를 접어 두는 이유: 축이 많으면 대부분이 미배치라 펼친 채로는 강점/약점 읽기를 방해한다.
- * 그래도 목록의 일부로 두는 건 "무엇을 아직 안 꽂았나" 가 곧 다음 할 일이기 때문.
+ * 축 값 상세 목록 — 값 있는 축(강한 순) → 구분선 → 값 없는 축(접힘 기본).
+ * 값 없는 축을 접어 두는 이유: 결손·입력 전(기준선 미지정)이 많으면 펼친 채로는 강점/약점 읽기를
+ * 방해한다. 그래도 목록의 일부로 두는 건 "어느 축의 재료가 비었나"가 곧 다음 입력 거리이기 때문.
  */
 export function PlacementRows({
     placed,
@@ -54,11 +54,11 @@ export function PlacementRows({
                         onClick={onToggleUnplaced}
                         style={{ ...rowStyle, cursor: "pointer", height: 18, marginTop: placed.length > 0 ? 3 : 0, borderTop: placed.length > 0 ? "1px solid var(--border-subtle)" : undefined, color: "var(--text-tertiary)", fontSize: 10 }}
                     >
-                        <span>{unplacedOpen ? "▾" : "▸"} 미배치 {unplaced.length}</span>
+                        <span>{unplacedOpen ? "▾" : "▸"} 값 없음 {unplaced.length}</span>
                     </button>
                     {unplacedOpen &&
                         unplaced.map((a) => (
-                            <button key={a.key} onClick={() => onPickAxis?.(a.key)} title={`${a.name} — 이 타점 미배치`} style={{ ...rowStyle, height: 18, color: "var(--text-tertiary)", opacity: 0.75 }}>
+                            <button key={a.key} onClick={() => onPickAxis?.(a.key)} title={`${a.name} — 이 타점은 값 없음(결손·입력 전)`} style={{ ...rowStyle, height: 18, color: "var(--text-tertiary)", opacity: 0.75 }}>
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
                             </button>
                         ))}

@@ -202,29 +202,3 @@ describe("축 보여줘 — 숨긴 열이면 먼저 꺼낸다", () => {
         expect(result.current.flashCol).toBe("ax:a2");
     });
 });
-
-describe("축 이름 변경 — 다섯 설정의 키 이관(고아 방지)", () => {
-    it("고정·숨김·폭·컷의 열 키와 store 축 순서가 함께 옮겨진다", () => {
-        localStorage.setItem(FROZEN_KEY, JSON.stringify(["date", "ax:a1"]));
-        localStorage.setItem(HIDDEN_KEY, JSON.stringify(["ax:a1"]));
-        localStorage.setItem(WIDTHS_KEY, JSON.stringify({ "ax:a1": 80, name: 120 }));
-        localStorage.setItem(CUTS_KEY, JSON.stringify({ "ax:a1": ["s1"] }));
-        useWorkbench.getState().setRankAxisOrder(["a2", "a1"]);
-
-        const { result } = setup();
-        act(() => result.current.migrateAxisKey("a1", "a1새이름"));
-
-        expect(stored(FROZEN_KEY)).toEqual(["date", "ax:a1새이름"]);
-        expect(stored(HIDDEN_KEY)).toEqual(["ax:a1새이름"]);
-        expect(stored(WIDTHS_KEY)).toEqual({ "ax:a1새이름": 80, name: 120 });
-        expect(stored(CUTS_KEY)).toEqual({ "ax:a1새이름": ["s1"] });
-        expect(useWorkbench.getState().rankAxisOrder).toEqual(["a2", "a1새이름"]); // 접두 없는 축 키
-    });
-
-    it("옛 키가 없으면 아무것도 안 바꾼다(다른 축·비축 열 무사)", () => {
-        localStorage.setItem(FROZEN_KEY, JSON.stringify(["date", "ax:a2"]));
-        const { result } = setup();
-        act(() => result.current.migrateAxisKey("없는축", "새이름"));
-        expect(stored(FROZEN_KEY)).toEqual(["date", "ax:a2"]);
-    });
-});
