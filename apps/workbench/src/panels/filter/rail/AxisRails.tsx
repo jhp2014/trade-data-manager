@@ -1,22 +1,15 @@
-// 축 레일 둘 — 계산 축(값 구간)과 판단 축(자리 밴드). 둘 다 Rail 에 도메인을 꽂는 얇은 어댑터다.
-//
-// 갈리는 건 **자리를 무엇이 정하나** 하나뿐이다:
-//   · 계산 축 — 수식이 정한 값. 척도는 실측 최소~최대, 경계는 가장 가까운 **타점 앵커**로 스냅한다.
-//     앵커로 두면 수식을 고쳐 값이 통째로 움직여도 "이 타점보다 위"라는 판단이 따라 움직인다.
-//   · 판단 축 — 사람이 꽂은 자리(slot). 자리끼리 균등 간격이고 경계는 그 자리 자체다.
+// 계산 축 레일 — Rail 에 도메인을 꽂는 얇은 어댑터. 척도는 실측 최소~최대, 경계는 가장 가까운
+// **타점 앵커**로 스냅한다: 앵커로 두면 수식을 고쳐 값이 통째로 움직여도 "이 타점보다 위"라는 판단이
+// 따라 움직인다. (옛 판단 축 레일 SlotAxisRail 은 2026-08-25 판단축 폐지로 삭제.)
 //
 // 방향과 반열림 번역은 railBound(순수·테스트됨)에. 여기는 재료를 프랙션으로 바꾸는 일만 한다.
 import { useMemo } from "react";
-import type { PlacedPoint, RankAxis } from "@trade-data-manager/wire";
-import { assemble, slotAnchorKey } from "../../rank/rankGeometry.js";
+import type { RankAxis } from "@trade-data-manager/wire";
 import { buildFracIndex, nearestPointInIndex, valueDomain, valueToFrac } from "../../../lib/computedAxis.js";
-import { clampIndex } from "../../../lib/num.js";
-import { pointKey } from "../../../lib/pointKey.js";
 import { resolveBound } from "../evaluate.js";
-import type { AxisBound, AxisValueRange, RankBand } from "../stage.js";
+import type { AxisBound, AxisValueRange } from "../stage.js";
 import { Rail } from "./Rail.js";
-import { toRailBand, toRailRanges, toRankBand, toValueRanges } from "./railBound.js";
-import type { RailRange } from "./railModel.js";
+import { toRailRanges, toValueRanges } from "./railBound.js";
 
 const GONE_LABEL = "?"; // 앵커가 사라진 경계 — 숫자를 지어내지 않는다
 
@@ -115,74 +108,6 @@ export function ComputedAxisRail({
                 const out = toValueRanges(next, boundFrac, strongerWhen);
                 onChange(out.length > 0 ? out : null);
             }}
-        />
-    );
-}
-
-// ── 판단 축 ────────────────────────────────────────────────────────────────
-
-export function SlotAxisRail({
-    axis, line, band, markerKey, memberKeys, highlight, onChange,
-}: CommonProps & {
-    /** 이 축의 배치줄(orderKey 오름차). */
-    line: readonly PlacedPoint[];
-    band: RankBand;
-    /** 조건이 안 남으면 null — 호출부가 그 필터를 지운다. */
-    onChange: (band: RankBand | null) => void;
-}): JSX.Element {
-    // 자리는 균등 간격 — 이 축의 좌표는 순서일 뿐 거리가 아니다(값 축과 다른 점).
-    // 레일의 키 = **그 자리에 든 타점**(pointKey). slot 은 이름이 없고 orderKey 는 reindex 가 다시 쓰므로,
-    // 경계로 저장할 수 있는 건 타점뿐이다(계산 축 경계 AxisBound 와 같은 규칙).
-    const { slots, fracOf, rankOf } = useMemo(() => {
-        const list = assemble([...line]);
-        const fracs = new Map<string, number>();
-        const ranks = new Map<string, number>();
-        list.forEach((s, i) => {
-            const k = slotAnchorKey(s);
-            fracs.set(k, list.length <= 1 ? 0.5 : i / (list.length - 1));
-            ranks.set(k, list.length - i); // 오른쪽(큰 orderKey) = 강 = 1위
-        });
-        return { slots: list, fracOf: fracs, rankOf: ranks };
-    }, [line]);
-
-    const frac = (anchor: string): number => fracOf.get(anchor) ?? 0.5;
-    const fmt = (anchor: string): string => {
-        const rank = rankOf.get(anchor);
-        return rank === undefined ? GONE_LABEL : `${rank}위`;
-    };
-    const fracs = useMemo(() => [...fracOf.values()], [fracOf]);
-
-    // 멤버 자리 = 멤버 타점이 든 슬롯 — 한 슬롯에 여러 멤버가 들어도 자리 하나로 겹친다(자리가 곧 좌표).
-    const memberFracs = useMemo(() => {
-        if (!memberKeys) return undefined;
-        const out: number[] = [];
-        for (const s of slots) if (s.points.some((p) => memberKeys.has(pointKey(p)))) out.push(fracOf.get(slotAnchorKey(s)) ?? 0.5);
-        return properSubset(out, slots.length);
-    }, [memberKeys, slots, fracOf]);
-
-    const weakSlot = slots[0] && slotAnchorKey(slots[0]);
-    const strongSlot = slots[slots.length - 1] && slotAnchorKey(slots[slots.length - 1]!);
-    // 배치는 언제나 타점 키로 저장된다(하루 축도 그날 전 타점에 fanout) — 그래서 키 하나로 두 층위가 다 맞는다.
-    const markerSlot = markerKey === null ? undefined : slots.find((s) => s.points.some((p) => pointKey(p) === markerKey));
-
-    return (
-        <Rail<string>
-            label={axis.name}
-            ranges={toRailBand(band, weakSlot, strongSlot)}
-            single
-            toFrac={frac}
-            // 스냅 = 가장 가까운 자리. 자리 사이에는 경계를 세울 수 없다(저장할 자리가 없다).
-            // 자리가 균등 간격이라 반올림이 곧 최근접이다.
-            fromFrac={(f) => { const s = slots[clampIndex(Math.round(f * (slots.length - 1)), slots.length)]; return s ? slotAnchorKey(s) : ""; }}
-            fmt={fmt}
-            minLabel="약"
-            maxLabel="강"
-            ticks={fracs}
-            memberTicks={memberFracs}
-            marker={markerSlot ? { frac: frac(slotAnchorKey(markerSlot)), label: fmt(slotAnchorKey(markerSlot)) } : null}
-            highlight={highlight}
-            disabledNote={slots.length === 0 ? "배치 없음 — 경계로 삼을 자리가 없습니다" : undefined}
-            onChange={(next: RailRange<string>[]) => onChange(toRankBand(next, frac))}
         />
     );
 }

@@ -1,33 +1,10 @@
-// 타점 배치 현황 표시 조각(순수 표현) — 작업셋/차트 행 배지 · "타점 정보" 패널 목록.
-// 두 층으로 나눈 이유: 축이 많아 "어느 축에 어떻게" 를 목록/차트 옆에 상시 띄우면 다 가린다.
-//   · 배지  = 개수만(n/m). 상시. 축이 많으면 실질 신호는 "0이냐 아니냐"라 0일 때만 흐리게 강조한다.
-//   · 목록  = 도킹 패널(타점 정보) 안에서만. 세로를 사용자가 정하므로 미배치 축까지 담을 수 있다.
+// 타점 축 값 현황 목록(순수 표현) — "타점 정보" 패널이 쓴다.
+// (옛 배지 n/m 은 2026-08-25 판단축 폐지와 함께 삭제 — "몇 축에 꽂았나"라는 질문이 사라졌다.)
+//   · 목록 = 도킹 패널(타점 정보) 안에서만. 세로를 사용자가 정하므로 값 없는 축까지 담을 수 있다.
 import type { CSSProperties } from "react";
 import type { AxisRef } from "../lib/computedAxis.js";
 import type { AxisPlacement } from "../lib/rankIndex.js";
 import { heatOf } from "../styles/palette.js";
-
-/** 배치 축 수 배지 — `3/18`. 0 이면 흐리게(미배치 타점 스캔용). */
-export function PlacementBadge({ placed, total, style }: { placed: number; total: number; style?: CSSProperties }): JSX.Element {
-    const none = placed === 0;
-    return (
-        <span
-            className="tabular"
-            title={none ? `미배치 (축 ${total}개)` : `${total}개 축 중 ${placed}개에 배치됨`}
-            style={{
-                flexShrink: 0,
-                fontSize: 11,
-                fontWeight: none ? 400 : 600,
-                color: none ? "var(--text-tertiary)" : "var(--text-secondary)",
-                opacity: none ? 0.45 : 1,
-                ...style,
-            }}
-        >
-            {placed}
-            <span style={{ fontWeight: 400, color: "var(--text-tertiary)" }}>/{total}</span>
-        </span>
-    );
-}
 
 /** 한 축에서의 위치 눈금 — 얇은 트랙 + frac 위치 틱(색=강약). 시트 셀과 같은 시각 언어. */
 function Track({ frac }: { frac: number }): JSX.Element {

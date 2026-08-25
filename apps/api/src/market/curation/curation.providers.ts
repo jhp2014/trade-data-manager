@@ -4,10 +4,9 @@ import {
     DrizzleDailyCommentRepository,
     DrizzleChartAnchorRepository,
     DrizzleReviewPointRepository,
-    DrizzleRankRepository,
     DrizzleGroupRepository,
 } from "@trade-data-manager/persistence";
-import { CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, RANK_REPO, GROUP_REPO, CURATION_SYNC, COMPUTED_AXES, MARKET_POOL, CURATION_POOL } from "../tokens.js";
+import { CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, GROUP_REPO, CURATION_SYNC, COMPUTED_AXES, MARKET_POOL, CURATION_POOL } from "../tokens.js";
 import type { Pool } from "../pool.js";
 import { curationRepo } from "./curationRepo.js";
 import { DailyComments } from "./dailyComments.js";
@@ -67,15 +66,8 @@ export const curationProviders: Provider[] = [
         inject: [MARKET_POOL, CURATION_POOL],
     },
     {
-        // 순위 배치 — repo 를 그대로 노출(축 CRUD·줄 피드·배치/이동/제거). 조립(줄 렌더)은 클라 인메모리(옵션 A).
-        provide: RANK_REPO,
-        useFactory: (marketPool: Pool, curationPool: Pool) =>
-            curationRepo((db) => new DrizzleRankRepository(db), ["createAxis", "renameAxis", "removeAxis", "place", "unplace"], "rank", marketPool, curationPool),
-        inject: [MARKET_POOL, CURATION_POOL],
-    },
-    {
         // 계산 축 — 수식으로 나오는 축의 타점별 수치 + 축당 파일 캐시(증분·앵커 지문 자동 무효화).
-        // 배치를 만들지 않으므로 rank repo 와 무관하다. 모집단(타점)·앵커·시세 **전부 읽기라 로컬 한 DB**다.
+        // 모집단(타점)·앵커·시세 **전부 읽기라 로컬 한 DB**다.
         provide: COMPUTED_AXES,
         useFactory: (marketPool: Pool): ComputedAxes =>
             new ComputedAxes({

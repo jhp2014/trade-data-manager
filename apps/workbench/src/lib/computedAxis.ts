@@ -13,25 +13,11 @@ import { pointKey } from "./pointKey.js";
 
 /**
  * **축 키 정책 — 클라 전용 손잡이다.** 서버로 나가지도, DB 에 저장되지도 않는다(축은 계약에서 이름으로
- * 지목한다). 화면이 두 종류의 축을 한 목록·한 맵에 담아야 해서 필요한 값일 뿐이다.
- *
- * 접두를 양쪽에 붙이는 이유: 판단 축 키가 숫자 id 였을 땐 `c:` 하나로 충분했지만, 이제 판단 축 키가
- * **사용자가 지은 이름**이라 계산 축 이름과 부딪힐 수 있다("갭 상승률" 축을 손으로 만들 수 있다).
- * 접두가 갈라 두면 그 충돌이 **구조적으로 불가능**하다 — 서버에 이름 충돌 검증을 넣는 대안은,
- * 나중에 계산 축이 추가될 때 이미 있는 판단 축과 겹치는 경우를 소급으로 못 막아 조용히 합쳐진다.
+ * 지목한다). `c:` 접두는 옛 판단 축 키(`p:<이름>`)와 한 목록에 살던 시절의 유산이지만 **유지한다** —
+ * 저장물(열 설정·필터의 축 지목·rankAxisOrder)이 이 키를 들고 있고, 저장된 옛 `p:` 조건은 축 맵에
+ * 없어 "판단 불가"로 우아하게 죽는다(자동 제거하지 않는다 — 조건이 말없이 사라지는 게 더 나쁘다).
  */
 const COMPUTED_PREFIX = "c:";
-const PLACED_PREFIX = "p:";
-
-/** 판단 축(DB 행)의 클라 키 — 이름이 정체성이라 이름을 싣는다. */
-export const placedAxisKey = (name: string): string => `${PLACED_PREFIX}${name}`;
-
-/**
- * 클라 키 → 서버 정체성(raw 이름). 접두(`p:`)는 클라 전용이라 서버 API(배치/해제/이름변경/삭제)에
- * 보내기 전 반드시 벗긴다 — 안 벗기면 place 는 "없는 축" 오류, rename/delete 는 0행 무음 no-op 이 된다.
- */
-export const placedAxisName = (axisKey: string): string =>
-    axisKey.startsWith(PLACED_PREFIX) ? axisKey.slice(PLACED_PREFIX.length) : axisKey;
 
 /** 포화가 실측 최대에서 떨어져 서는 거리 = 축 단위 한 눈금(공백 축이면 1 거래일). 척도를 딱 한 칸만 늘린다. */
 const SATURATED_STEP = 1;

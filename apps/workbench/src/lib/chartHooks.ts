@@ -3,44 +3,36 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
-import { allAnchorsQuery, allPointsQuery, axisLinesQuery, chartQuery, computedAxesQuery, groupMembershipsQuery } from "../api/queries.js";
+import { allAnchorsQuery, allPointsQuery, chartQuery, computedAxesQuery, groupMembershipsQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView } from "./derive.js";
 import { indexAtOrBefore } from "./chartFrame.js";
 import { useChartPoints } from "./useChartPoints.js";
-import { usePlacements } from "./usePlacements.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { Command } from "../keymap/types.js";
 
 export interface SavedPoint {
     time: number; // 저장 타점 시각(unix초) — 분봉 세로선/아이콘
-    placed: number; // 이 타점이 배치된 축 수(▼ 채움·배지). 축별 상세는 "타점 정보" 패널.
 }
 
 export interface ChartReviewPoints {
     savedPoints: SavedPoint[];
     focusedPoint: ReviewPoint | undefined; // 현재 Focus.time 에 저장된 타점(헤더 배지)
-    axisTotal: number; // 순위 축 총수(배지 분모)
 }
 
 /**
- * 복기 타점 조회 데이터(차트 렌더용) — 저장타점 세로선·hover 카드·현재타점 배지. 단축키 등록은 전역 useChartHotkeys 로 이관.
- * 배치 개수는 여기서 함께 붙인다 — 차트는 스냅된 봉 시각만 들고 다녀서(원래 HH:MM:SS 를 잃는다) 나중에 못 붙인다.
+ * 복기 타점 조회 데이터(차트 렌더용) — 저장타점 세로선·hover 카드. 단축키 등록은 전역 useChartHotkeys 로 이관.
  */
 export function useReviewPointData(code: string, date: string, time: string | null): ChartReviewPoints {
     const reviewPoints = useChartPoints(code, date); // 복제본 셀렉터 — 서버 왕복 없음
-    const placements = usePlacements();
 
     const savedPoints = useMemo<SavedPoint[]>(() => {
         if (!date) return [];
-        return reviewPoints.map((rp) => {
-            const ref = { stockCode: code, date, time: rp.time };
-            return { time: kstToUnix(date, rp.time), placed: placements.countOf(ref) };
-        });
-    }, [reviewPoints, code, date, placements]);
+        return reviewPoints.map((rp) => ({ time: kstToUnix(date, rp.time) }));
+    }, [reviewPoints, date]);
 
     const focusedPoint = useMemo(() => reviewPoints.find((rp) => rp.time === time), [reviewPoints, time]);
-    return { savedPoints, focusedPoint, axisTotal: placements.axisTotal };
+    return { savedPoints, focusedPoint };
 }
 
 /**
@@ -70,12 +62,11 @@ export function useChartHotkeys(): void {
         // 계산 축은 타점 집합에서 나온다 — 타점이 늘거나 줄면 다시 굽는다(서버가 증분이라 새 타점만 계산).
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
     };
-    // 삭제는 서버가 타점에 딸린 것까지 지운다 — 배치(rank_placements)·그룹 멤버(group_members) FK cascade,
-    // 타점 소유 앵커(ChartAnchors.removePoint). 이 셋의 테이블 키가 ∞ 라 같이 안 비우면 유령이 남는다
-    // (슬롯 수 한 칸 어긋남, 존재 지도가 그날을 "그룹 있음"으로 유지해 작업셋 모수 오염).
+    // 삭제는 서버가 타점에 딸린 것까지 지운다 — 그룹 멤버(group_members) FK cascade,
+    // 타점 소유 앵커(ChartAnchors.removePoint). 같이 안 비우면 유령이 남는다
+    // (존재 지도가 그날을 "그룹 있음"으로 유지해 작업셋 모수 오염).
     const invalidateRemoved = (): void => {
         invalidate();
-        void qc.invalidateQueries({ queryKey: axisLinesQuery().queryKey });
         void qc.invalidateQueries({ queryKey: groupMembershipsQuery().queryKey });
         void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey });
     };

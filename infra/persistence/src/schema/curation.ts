@@ -4,12 +4,12 @@
 //   · daily_comments : 당일 종목 코멘트((종목,날짜) 자연키 PK — 종목당 당일 1개)
 //   · chart_anchors  : 차트 앵커 — 캔들 좌표 참조의 단일 테이블(가격선+파라미터 앵커 통합, 아래 9번)
 //   · review_points  : 복기 타점((종목,날짜,시각) 자연키 = caseId. 순위 배치가 하류에서 참조)
-// 분류의 두 갈래: rank_axes = 순서 있는 하나(아래 4~6번) / groups = 이름 붙인 집합 + 관계(7~8번).
+// 분류: groups = 이름 붙인 집합 + 관계(아래 7~8번). (옛 rank_axes 판단축은 2026-08-25 폐지 — 계산 축이 대체.)
 
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
 import { sql } from "drizzle-orm";
-import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, doublePrecision, primaryKey, foreignKey, unique, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, primaryKey, foreignKey, unique, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const curation = pgSchema("curation");
 
@@ -39,7 +39,7 @@ export const dailyComments = curation.table(
 // 3. 복기 타점 — 차트에서 찍은 타점. 자연키 (stockCode, tradeDate, tradeTime) 삼중키(시각 필수).
 //    **옛 case 를 흡수** = 이 타점이 곧 case. outcome(트레이드 결과)·memo 는 타점 자체 속성.
 //    셋업 유형(옛 `type` varchar)은 그룹(아래 7·8번)로 이관 — 명목형은 한 타점에 여럿이라 단일 칸이 자리가 아니었다.
-//    순위 배치(rank_placements)가 이 자연키를 하류에서 참조. PK 가 (stock,date) prefix 커버 → listByChart 별도 인덱스 불필요.
+//    PK 가 (stock,date) prefix 커버 → listByChart 별도 인덱스 불필요.
 export const reviewPoints = curation.table(
     "review_points",
     {
@@ -57,83 +57,11 @@ export type DailyCommentInsert = typeof dailyComments.$inferInsert;
 export type ReviewPointRow = typeof reviewPoints.$inferSelect;
 export type ReviewPointInsert = typeof reviewPoints.$inferInsert;
 
-// ── 순위 배치(ordinal placement) ────────────────────────────────────────────
-// 점수를 매기지 않고, 각 비교 차원(축)마다 기존 타점들이 늘어선 '줄' 위에서 상대 위치만 정한다.
-// 위치(백분위)는 저장 순간의 절대점수가 아니라 데이터에 대한 상대 순서 → 기준 드리프트에 강함.
-// 검색은 "A 타점보다 위·B 타점보다 아래"처럼 참조 타점으로 경계를 잡아 축마다 AND. outcome 은 reviewPoint 가 이미 보유.
-
-// 4. 순위 축(rank axis) — 순서를 매길 수 있는 하나의 비교 차원(일봉-형태, 테마, 거래대금, 끼 …). 앱에서 CRUD.
-//    원칙: 한 축 = "일관되게 상하 순서를 매길 수 있는 하나". 순서를 못 매기겠으면 두 축이 엉킨 신호 → 분리.
-//    순서 자체가 없는 '종류'(테마 분류 등 명목형)는 축이 아니라 그룹으로 다룬다(여기 안 넣음).
-export const rankAxes = curation.table(
-    "rank_axes",
-    {
-        id: bigserial("id", { mode: "bigint" }).primaryKey(),
-        name: text("name").notNull(),
-        // 배치 단위(grain). point=(종목·날짜·시각) 타점별 / day=(종목·날짜) 하루 일관(place 시 그날 전 타점에 fanout).
-        // 저장은 언제나 실재 타점(placement 무변경) — day 는 "쓰기 확장" 편의일 뿐, 읽기(줄)는 point 와 동일.
-        scope: varchar("scope", { length: 10 }).notNull().default("point"),
-    },
-    (t) => [unique("uq_rank_axis_name").on(t.name)],
-);
-
-// 5. 슬롯(slot) — 한 축의 줄 위 한 '위치'. order_key 로 정렬. 사이 삽입 = 두 이웃 order_key 의 중간값
-//    (같은 틈에 반복 삽입해 double 정밀도가 바닥나면 그 축만 order_key 재부여=reindex).
-//    타이(같은 순위) = 여러 placement 가 한 slot 을 공유 → slot 이 유일한 키를 든다(재정렬해도 타이 안 깨짐).
-//    unique(axis_id, id) = placement 의 (axis_id, slot_id) 복합 FK 대상. slot 이 선언된 축과 다른 축에 꽂히는
-//    모순을 DB 가 차단(앱 검증 불필요).
-export const rankSlots = curation.table(
-    "rank_slots",
-    {
-        id: bigserial("id", { mode: "bigint" }).primaryKey(),
-        axisId: bigint("axis_id", { mode: "bigint" })
-            .notNull()
-            .references(() => rankAxes.id, { onDelete: "cascade" }),
-        orderKey: doublePrecision("order_key").notNull(),
-    },
-    (t) => [
-        unique("uq_rank_slot_axis_id").on(t.axisId, t.id),
-        // 한 축에 같은 자리는 하나뿐 — **"slot 의 정체성은 자리다"라는 선언**.
-        // 클라가 줄을 그릴 때 orderKey 가 같은 배치를 한 타이 묶음으로 접는데, 그게 참이라는 보장이
-        // 없었다. 실제로 축 11 에 order_key=-1 인 slot 이 둘 있었다(하나는 배치 0건 유령 —
-        // GC 가 놓친 것). surrogate id 가 있어서 "같은 자리인데 다른 것"이 성립할 수 있었던 자리다.
-        // 마이그 0016 이 그 유령을 지우고 이 제약을 건다.
-        unique("uq_rank_slot_position").on(t.axisId, t.orderKey),
-        index("idx_rank_slots_axis_order").on(t.axisId, t.orderKey),
-    ],
-);
-
-// 6. 배치(placement) — 한 복기 타점(reviewPoint)을 한 축의 한 slot 에 꽂음. situation = reviewPoint 재사용.
-//     PK (stock,date,time,axis) = "한 타점은 한 축에 최대 한 번"(=한 slot). reviewPoint 삼중키로 FK(cascade).
-//     (axis_id, slot_id) 복합 FK → rank_slots(axis_id, id): slot 의 축 == placement 의 축을 DB 가 보장.
-//     축 삭제 → slot cascade → placement cascade / 타점 삭제 → placement cascade.
-export const rankPlacements = curation.table(
-    "rank_placements",
-    {
-        stockCode: varchar("stock_code", { length: 10 }).notNull(),
-        tradeDate: date("trade_date").notNull(),
-        tradeTime: time("trade_time").notNull(),
-        axisId: bigint("axis_id", { mode: "bigint" }).notNull(),
-        slotId: bigint("slot_id", { mode: "bigint" }).notNull(),
-    },
-    (t) => [
-        primaryKey({ columns: [t.stockCode, t.tradeDate, t.tradeTime, t.axisId] }),
-        foreignKey({
-            columns: [t.stockCode, t.tradeDate, t.tradeTime],
-            foreignColumns: [reviewPoints.stockCode, reviewPoints.tradeDate, reviewPoints.tradeTime],
-            name: "fk_rank_placement_review_point",
-        }).onDelete("cascade"),
-        foreignKey({
-            columns: [t.axisId, t.slotId],
-            foreignColumns: [rankSlots.axisId, rankSlots.id],
-            name: "fk_rank_placement_slot",
-        }).onDelete("cascade"),
-        index("idx_rank_placements_slot").on(t.slotId),
-    ],
-);
+// ── (옛 순위 배치 rank_axes/rank_slots/rank_placements 는 2026-08-25 판단축 폐지로 드롭 — 마이그 참조.
+//     판단의 근거가 될 사실은 chart_anchors(param)로 기록하고 계산 축이 값으로 뽑는다.) ──────────────
 
 // ── 그룹(named set) ─────────────────────────────────────────────────────────
-// 축(rank_axes)이 "순서를 매길 수 있는 차원"이라면, 그룹은 **이름 붙인 집합**이다. 한 항목에 여럿 붙는다.
+// 그룹은 **이름 붙인 집합**이다. 한 항목에 여럿 붙는다.
 //
 // 옛 태그가 이것이고, 여기에 **관계**가 붙어 그룹이 됐다. 태그로는 그룹 안 그룹도, 두 그룹이
 // 얼마나 겹치는지(징검다리)도 볼 수가 없었다 — 관계를 담을 자리가 없었기 때문이다.
@@ -260,13 +188,6 @@ export type ChartAnchorInsert = typeof chartAnchors.$inferInsert;
 
 export type GroupRow = typeof groups.$inferSelect;
 export type GroupInsert = typeof groups.$inferInsert;
-
-export type RankAxisRow = typeof rankAxes.$inferSelect;
-export type RankAxisInsert = typeof rankAxes.$inferInsert;
-export type RankSlotRow = typeof rankSlots.$inferSelect;
-export type RankSlotInsert = typeof rankSlots.$inferInsert;
-export type RankPlacementRow = typeof rankPlacements.$inferSelect;
-export type RankPlacementInsert = typeof rankPlacements.$inferInsert;
 
 // (옛 유사도 맵(maps)은 마이그 0017 에서 드롭 — 그룹 목록(트리)이 계층·겹침·드릴다운을 값으로 대신한다.
 //  옛 map_placements·map_groups·tags·review_point_tags·chart_tags 는 마이그 0014 에서 드롭.)

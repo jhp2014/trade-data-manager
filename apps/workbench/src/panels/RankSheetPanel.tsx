@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DndContext } from "@dnd-kit/core";
 import { useAllPoints } from "../lib/useAllPoints.js";
 import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
 import { colKey } from "./rank/sheetColumns.js";
 import { useSheetColumns } from "./rank/useSheetColumns.js";
 import {
-    DEFAULT_CHAIN, buildSheetGroups, cutsActive, dropSort, parseSortChain, pushSort, resetSort, resolveCutKeys,
+    DEFAULT_CHAIN, buildSheetGroups, dropSort, parseSortChain, pushSort, resetSort, resolveCutKeys,
     sortSheetRows, type SortChain, type SortCtx, type SortKey,
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, orderKeyByPoint, type AxisIndex } from "../lib/rankIndex.js";
 import { SheetRowView, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { SheetHeaderRow } from "./rank/SheetHeaderRow.js";
 import { SheetMenusHost, useSheetMenus } from "./rank/SheetMenusHost.js";
-import { useAxisAdmin } from "./rank/useAxisAdmin.js";
-import { useSheetDragPlacement } from "./rank/useSheetDragPlacement.js";
+import { useOutcome } from "./rank/useOutcome.js";
 import { useSessionScroll } from "./rank/useSessionScroll.js";
 import { useRankAxes } from "../lib/RankAxesContext.js";
-import { isComputedAxis, valueDomain, valueToFrac } from "../lib/computedAxis.js";
+import { valueDomain, valueToFrac } from "../lib/computedAxis.js";
 import { useLinkedSet } from "./filter/useSetBinding.js";
 import { SetBindingLabel } from "./filter/SetBindingLabel.js";
 import { setMembersOf } from "./filter/setMembers.js";
@@ -31,20 +29,16 @@ import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPoint } from "@trade-data-manager/wire";
 
-// 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. 배치 현황과 결과 목록을 한 표로 통합.
-//  · 셀 = 숫자 / 순위 눈금 / 값 눈금(토글). 계산 축은 숫자에 값이 먼저 오고(`+12.3% (3/12)`), 값 눈금은
-//    **필터 보드 레일과 같은 좌표**라 쏠림이 보인다. 판단 축은 순서뿐이라 값 눈금이 순위 눈금으로 폴백한다.
-//    미배치 = 빈칸.
+// 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. (축은 전부 계산 축 — 판단축은 2026-08-25 폐지.)
+//  · 셀 = 숫자 / 순위 눈금 / 값 눈금(토글). 숫자엔 값이 먼저 오고(`+12.3% (3/12)`), 값 눈금은
+//    **필터 보드 레일과 같은 좌표**라 쏠림이 보인다. 값 없음(결손·입력 전) = 빈칸.
 //  · 헤더 클릭 = 그 열로 정렬(축은 강 먼저) · **Shift+클릭 = 정렬 단 추가**(n차). 정렬 축에서 행범위
 //    체인·그룹 규칙은 sheetSort(순수·테스트)에. 필터(밴드·값구간)는 필터 패널로 이사 — 시트는 결과를 구독만.
-//  · **행 묶기**: 1차 키에서만 접는다. 날짜·결과·배치수처럼 값이 몇 가지뿐인 열은 저절로, 축처럼 값이 거의
+//  · **행 묶기**: 1차 키에서만 접는다. 날짜·결과처럼 값이 몇 가지뿐인 열은 저절로, 축처럼 값이 거의
 //    유일한 열은 셀 우클릭 **그룹 나누기(컷)** 를 그었을 때만. 컷은 "한 구간만 남기는" 밴드와 달리 아무것도
 //    안 버리고 N개로 나눈다 → 구간끼리 한 화면에서 비교된다(밴드는 분석 모수까지 좁힌다는 게 다른 점).
-//  · 드래그 배치는 축 열이 **순위 순서 그대로일 때만** 유효 — 깨지는 건 컷과 2차 정렬이 둘 다 있을 때뿐이다
-//    (2차는 원래 1차 동률 안에서만 도니까 열은 단조로 남는다). 그때만 끄고 헤더에 사유를 띄운다.
 //  · 필터 활성 시 행=보는 집합(좁히기) 또는 전체+흐리게. **깔때기를 직접 구독**한다(어댑터 없음).
-//  · **배치 보드가 사라져 여기가 축의 유일한 입구다**: 만들기(컨트롤 바 `+ 축`) · 이름 변경·삭제(열 이름 우클릭) ·
-//    꽂기(핀 행을 정렬 축 열로 드래그) · 해제(셀 우클릭). 계산 축은 코드가 정의라 만들기·이름·배치가 없다.
+//  · 축은 코드가 정의한다(파일 하나 + 레지스트리 한 줄) — 만들기·이름 변경·배치가 화면에 없다.
 //  · **비고정** 축 열의 드래그 재정렬은 store rankAxisOrder 를 만진다(필터 보드 레일 순서와 공유).
 //    고정한 열은 시트 전용 자리 — 고정 그룹 안에서만 순서를 바꾼다(순서 소스가 둘이라 규칙을 갈랐다).
 //  · 열 폭은 손으로 조절 가능(헤더 오른쪽 가장자리 드래그). **수동 폭과 계산 축이 고정폭**이고, 나머지 축 열이
@@ -53,9 +47,8 @@ import type { ReviewPoint } from "@trade-data-manager/wire";
 //  · **그룹(태그)은 시트에 없다** — 좁은 셀에 넣으면 이름이 잘려 색만 남고, 그 색을 읽으려면 결국 다른 패널을
 //    봐야 한다. 그룹은 조상 경로까지 보여야 뜻이 서므로 폭이 있는 자리(필터 보드·팔레트·타점 정보)의 일이다.
 //
-// 구성(분해): 열 구성=useSheetColumns · 헤더 줄=SheetHeaderRow · 드래그 배치=useSheetDragPlacement ·
-// 축 관리/결과=useAxisAdmin · 팝업 네 벌=SheetMenusHost · 세션 스크롤=useSessionScroll.
-// 본체는 **데이터 파생과 조립**만 한다.
+// 구성(분해): 열 구성=useSheetColumns · 헤더 줄=SheetHeaderRow · 결과=useOutcome ·
+// 팝업 세 벌=SheetMenusHost · 세션 스크롤=useSessionScroll. 본체는 **데이터 파생과 조립**만 한다.
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
 const FILTERMODE_KEY = "wb.rankSheetFilterMode";
@@ -78,9 +71,7 @@ export function RankSheetPanel(): JSX.Element {
     const togglePin = useWorkbench((s) => s.togglePin);
     const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
 
-    // ── 축 + 라인(배치 보드와 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
-    // 계산 축을 함께 본다 — 판단 축과 같은 줄 모양으로 합쳐져 열·정렬·순위 셀이 구분 없이 동작한다.
-    // 다만 **읽기 전용**: 배치/해제·밴드·컷은 계산 축 열에서 열리지 않는다(isComputedAxis 가드).
+    // ── 축 + 라인(필터 보드 레일과 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
     const { axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes();
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
@@ -197,20 +188,14 @@ export function RankSheetPanel(): JSX.Element {
         rowRefs.current.get(subjectRowKey)?.scrollIntoView({ block: "center" });
     }, [subjectRowKey]);
 
-    // ── 축 관리·결과 저장(뮤테이션 배선) — useAxisAdmin. 키 이관은 invalidate 앞에(훅 주석 참고).
-    const admin = useAxisAdmin({ migrateAxisKey: cols.migrateAxisKey, allPoints });
+    // ── 결과 저장(뮤테이션 배선) — useOutcome.
+    const outcome = useOutcome(allPoints);
 
     const clickHeader = (key: SortKey, shift: boolean): void => setSort((s) => (shift ? pushSort(s, key) : resetSort(s, key)));
     const unplacedOnSort = sortAxisId ? mainRows.filter((row) => !row.cells[sortAxisId]).length : 0;
-    // 드래그 배치는 **축 열이 순위 순서 그대로일 때만** 유효하다(행 사이 = 순위 구간이어야 하므로).
-    // 순서가 깨지는 건 컷과 2차 정렬이 **둘 다** 있을 때뿐 — 컷만 있거나 2차만 있으면 열은 여전히 단조다.
-    const dragBroken = cutsActive(sort, cutKeys) && sort.length > 1;
-    // 계산 축은 드롭 대상이 아니다 — 자리를 값이 정하므로 꽂을 곳이 없다(보정은 후속 브릭).
-    const dragAxisId = dragBroken || (sortAxisId && isComputedAxis(sortAxisId)) ? null : sortAxisId;
 
     /**
-     * 계산 축이 이 타점에 대해 아는 값 — 값의 자리(레일과 같은 좌표)와 표기.
-     * 판단 축은 값이 없어 undefined 를 준다(셀이 순위로 폴백).
+     * 축이 이 타점에 대해 아는 값 — 값의 자리(레일과 같은 좌표)와 표기.
      */
     const valueViews = useMemo(() => {
         const m = new Map<string, { values: Map<string, number>; domain: { min: number; max: number }; strongerWhen: "higher" | "lower"; fmt: (v: number) => string }>();
@@ -237,9 +222,6 @@ export function RankSheetPanel(): JSX.Element {
 
     const navRow = (row: SheetRow): void => goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
     const totalCols = displayCols.length;
-
-    // ── 드래그 배치 — 핀(고정) 행 이름 → 정렬된 축 열. 정렬이 축일 때만 유효(그때만 열이 세로 라인).
-    const drag = useSheetDragPlacement({ dragAxisId, mainRows, rowRefs, scrollRef, primaryDir: primary.dir, nameOf });
 
     // 행 핸들러 묶음 — SheetRowView(memo)가 얕은 비교로 재사용하도록 **참조를 고정**한다(useRef 경유,
     // 내용물은 매 렌더 최신 클로저로 갱신 — useChartHotkeys 의 h.current 패턴과 같은 이유).
@@ -284,19 +266,13 @@ export function RankSheetPanel(): JSX.Element {
             values: [{ v: "narrow", label: "좁히기" }, { v: "dim", label: "흐리게" }],
             value: filterMode, set: (v) => setFilterMode(v === "dim" ? "dim" : "narrow"),
         },
-        {
-            kind: "action", id: "addAxis", name: "+ 축",
-            help: "판단 축 새로 만들기(이름 변경·삭제는 열 이름 우클릭). 계산 축은 코드로 정의된다",
-            run: (at) => menus.openAddAxis({ x: at.clientX, y: at.clientY }),
-        },
     ];
 
     if (axesLoading || pointsLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
-    if (axes.length === 0) return <Wrap><div style={muted}>축이 없습니다. 위 <b>+ 축</b>으로 먼저 만들어 주세요.</div></Wrap>;
+    if (axes.length === 0) return <Wrap><div style={muted}>계산 축이 없습니다 — 서버 축 레지스트리가 비어 있습니다.</div></Wrap>;
 
     return (
         <Wrap>
-          <DndContext sensors={drag.sensors} onDragStart={drag.onDragStart} onDragMove={drag.onDragMove} onDragEnd={drag.onDragEnd} onDragCancel={drag.onDragCancel}>
             {/* 머리글 — 왼쪽은 말(바인딩 라벨·행수·선택 배지·"⤺" 해제들), 오른쪽은 손(HeaderControls).
                 "⤺" 들이 왼쪽에 남는 건 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라서다 — 개수가 곧 정보고,
                 컨트롤처럼 늘 서 있는 것이 아니다. 바인딩 라벨이 칩(버튼)에서 못 누르는 말로 내려온 것도
@@ -307,8 +283,6 @@ export function RankSheetPanel(): JSX.Element {
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
-                    {/* 컷과 2차 정렬이 둘 다 걸리면 축 열이 순위 순서가 아니라 행 사이 드롭이 뜻을 잃는다 — 왜 안 되는지 보이게. */}
-                    {dragBroken && <span style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", flexShrink: 0 }}>· 그룹 안 정렬 중 — 배치 드래그 꺼짐</span>}
                     {sort.length > 1 && <button onClick={() => setSort((s) => [s[0]])} title="2차 이하 정렬 해제(1차만 남김)" style={{ ...miniBtn, flexShrink: 0 }}>정렬 {sort.length}단 ⤺</button>}
                     {cutKeys.length > 0 && <button onClick={() => cols.clearCuts(sortAxisId!)} title="이 축의 그룹 컷 모두 해제" style={{ ...miniBtn, flexShrink: 0 }}>그룹 {cutKeys.length + 1} ⤺</button>}
                     {cols.hiddenCols.length > 0 && <button onClick={cols.showAllHidden} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {cols.hiddenCols.length} ⤺</button>}
@@ -326,8 +300,8 @@ export function RankSheetPanel(): JSX.Element {
                     <colgroup>{displayCols.map((c) => <col key={colKey(c)} style={{ width: widthOf(c) }} />)}</colgroup>
                     {/* 헤더 블록 = 열 헤더 + 핀 행(둘 다 상단 sticky, 틈·비침 없이 하나로) */}
                     <thead style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--bg-secondary)" }}>
-                        <SheetHeaderRow displayCols={displayCols} cols={cols} sort={sort} sortAxisId={sortAxisId}
-                            sortAxisThRef={drag.sortAxisThRef} reorderAxis={reorderAxis}
+                        <SheetHeaderRow displayCols={displayCols} cols={cols} sort={sort}
+                            reorderAxis={reorderAxis}
                             onSort={clickHeader} onHeaderCtx={menus.openHdrCtx} />
                         {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1, true))}
                     </thead>
@@ -354,13 +328,8 @@ export function RankSheetPanel(): JSX.Element {
             </div>
             </div>
 
-            {drag.overlay}
-          </DndContext>
-
-          {drag.indicator}
-
           <SheetMenusHost m={menus} axes={axes} cols={cols} sortAxisId={sortAxisId} sortLen={sort.length}
-              dropSortKey={(k) => setSort((s) => dropSort(s, k))} unplace={drag.unplace} admin={admin} />
+              dropSortKey={(k) => setSort((s) => dropSort(s, k))} outcome={outcome} />
         </Wrap>
     );
 }

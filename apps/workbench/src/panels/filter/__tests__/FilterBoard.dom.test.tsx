@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import type { AxisLine, RankAxis } from "@trade-data-manager/wire";
+import type { ComputedAxisFeed } from "@trade-data-manager/wire";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { RAIL_PAD } from "../rail/Rail.js";
@@ -24,39 +24,38 @@ const candidateDays: Seed["candidateDays"] = DATES.map((date, i) => ({ stockCode
 const points: SeedPoint[] = [
     { stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" },
     { stockCode: B, date: DATES[1], time: "10:00:00", name: "SK하이닉스" },
+    { stockCode: A, date: DATES[2], time: "09:40:00" },
+    { stockCode: B, date: DATES[3], time: "10:20:00" },
 ];
 
-/** 판단 축 두 개 — 층위가 갈린다(하루 축 · 타점 축). */
-const axes: RankAxis[] = [
-    { key: "p:하루축", name: "하루축", scope: "day" },
-    { key: "p:타점축", name: "타점축", scope: "point" },
-] as unknown as RankAxis[];
-
 /**
- * ⚠ 레일의 자리는 축 정의가 아니라 **배치줄**에서 온다(손으로 배치한 타점들이 자리를 만든다).
- * 이걸 안 심으면 축이 있어도 레일이 "배치 없음"으로 뜬다 — 처음엔 그걸 모르고 축만 심어서,
- * "자리 없는 축은 이유를 적는다" 검사가 **모든 축이 비어 있는 상태로** 통과하고 있었다.
+ * 계산 축 두 개 — 층위가 갈린다(하루 축 · 타점 축).
+ * ⚠ 레일의 자리는 축 정의가 아니라 **값 피드**에서 온다(값 있는 타점이 자리를 만든다).
+ * 이걸 안 심으면 축이 있어도 레일이 "값 없음"으로 뜬다 — "값 없는 축은 이유를 적는다" 검사가
+ * **모든 축이 비어 있는 상태로** 통과하지 않게, 값을 심는 시드와 안 심는 시드를 가른다.
  */
-const lineOf = (axisName: string, slots: string[]): AxisLine => ({
-    axisName,
-    placements: slots.map((_slot, i) => ({
-        orderKey: i + 1,
-        stockCode: points[i % points.length].stockCode,
-        date: points[i % points.length].date,
-        time: points[i % points.length].time,
-    })),
+const feedOf = (key: string, name: string, grain: "day" | "point", n: number): ComputedAxisFeed => ({
+    key,
+    name,
+    strongerWhen: "higher",
+    grain,
+    values: points.slice(0, n).map((pt, i) => ({ stockCode: pt.stockCode, date: pt.date, time: pt.time, value: i + 1 })),
 });
 /**
  * ⚠ 자리를 넷 둔다(둘이 아니라). 자리가 둘이면 트랙을 끝에서 끝까지 그을 수밖에 없는데, 양끝에
  * 닿은 경계는 "무제한"이라 **조건이 통째로 비어** 필터가 안 선다(railBound 의 반열림 규칙).
  * 그것도 옳은 동작이지만, 배선을 재려는 검사가 그 규칙에 막혀 0건으로 통과하면 안 된다.
  */
-const axisLines: AxisLine[] = [
-    lineOf("하루축", ["s1", "s2", "s3", "s4"]),
-    lineOf("타점축", ["t1", "t2", "t3", "t4"]),
+/**
+ * ⚠ 자리를 넷 둔다(둘이 아니라). 자리가 둘이면 트랙을 끝에서 끝까지 그을 수밖에 없는데, 양끝에
+ * 닿은 경계는 무제한(반열림)으로 접혀 "축 id 까지 매인다" 검사가 경계 없는 필터를 상대로 헛돈다.
+ */
+const feeds: ComputedAxisFeed[] = [
+    feedOf("day-ax", "하루축", "day", 4),
+    feedOf("pt-ax", "타점축", "point", 4),
 ];
 
-const SEED: Seed = { candidateDays, points, axes, axisLines };
+const SEED: Seed = { candidateDays, points, computedAxes: feeds };
 
 const renderBoard = (seed: Seed = SEED, onlyActive = false): ReturnType<typeof render> =>
     render(<FilterBoard reveal={null} onlyActive={onlyActive} />, {
@@ -124,20 +123,20 @@ describe("층위 칸 — 무엇이 어디에 사나", () => {
     });
 
     it("그 층위에 축이 없으면 그렇게 적는다 — 빈 자리로 두면 왜 없는지 모른다", () => {
-        const { container } = renderBoard({ ...SEED, axes: [axes[0]] });
+        const { container } = renderBoard({ ...SEED, computedAxes: [feeds[0]] });
         expect(container.textContent).toContain("이 층위에 축이 없습니다");
     });
 
-    // ⚠ 자리는 축 정의가 아니라 **배치줄**에서 온다 — 축만 있고 배치가 없으면 그을 수 없다.
-    it("배치가 없는 축은 트랙 대신 이유를 적는다 — 빈 트랙을 주면 그을 수 있는 줄 안다", () => {
-        const { container } = renderBoard({ ...SEED, axisLines: [] });
-        expect(container.textContent).toContain("배치 없음");
+    // ⚠ 자리는 축 정의가 아니라 **값 피드**에서 온다 — 축만 있고 값이 없으면 그을 수 없다.
+    it("값이 없는 축은 트랙 대신 이유를 적는다 — 빈 트랙을 주면 그을 수 있는 줄 안다", () => {
+        const { container } = renderBoard({ ...SEED, computedAxes: feeds.map((f) => ({ ...f, values: [] })) });
+        expect(container.textContent).toContain("값 없음");
         expect(() => trackOf(container, "하루축")).toThrow();
     });
 
-    it("배치가 있으면 그을 수 있다 — 위 검사가 '늘 배치 없음'을 상대로 헛돌지 않게", () => {
+    it("값이 있으면 그을 수 있다 — 위 검사가 '늘 값 없음'을 상대로 헛돌지 않게", () => {
         const { container } = renderBoard();
-        expect(container.textContent).not.toContain("배치 없음");
+        expect(container.textContent).not.toContain("값 없음");
         expect(trackOf(container, "하루축")).toBeTruthy();
     });
 });
@@ -165,13 +164,13 @@ describe("레일 하나 = 필터 하나 — 그은 선이 store 의 필터가 �
         expect(p.kind === "date" && DATES).toContain(p.kind === "date" ? p.ranges[0].to : "");
     });
 
-    it("판단 축 레일을 그으면 그 축의 필터가 선다 — 축 id 까지 매인다", () => {
+    it("축 레일을 그으면 그 축의 필터가 선다 — 축 id 까지 매인다", () => {
         const { container } = renderBoard();
         drag(trackOf(container, "하루축"), 0.35, 0.7); // 양끝을 안 건드린다(끝에 닿으면 무제한)
         expect(stages()).toHaveLength(1);
         const p = stages()[0].predicates[0];
-        expect(p.kind).toBe("axisBand");
-        expect(p.kind === "axisBand" && p.axisId).toBe("p:하루축");
+        expect(p.kind).toBe("axisValue");
+        expect(p.kind === "axisValue" && p.axisId).toBe("c:day-ax");
     });
 
     it("레일이 다르면 필터도 다르다 — 한 필터에 여러 축을 묶지 않는다(기여도가 뭉개진다)", () => {
@@ -225,7 +224,7 @@ describe("그룹 — 유일하게 리스트인 조건", () => {
 });
 
 // ── 선택 집합 오버레이 — 같은 점, 두 상태 ──────────────────────────────────
-// 오버레이 재료: 유니버스 두 차트(A@D0·B@D1), 각각 타점 하나. 타점축 배치줄이 두 타점을 자리로 갖는다.
+// 오버레이 재료: 유니버스 두 차트(A@D0·B@D1), 각각 타점 하나. 타점축 값 피드가 두 타점을 자리로 갖는다.
 // 날짜 필터로 A@D0 만 남기면 축 레일의 자리 둘 중 **하나만** 멤버가 되어야 한다.
 const OVL_CAND: Seed["candidateDays"] = [
     { stockCode: A, date: DATES[0] },
@@ -235,14 +234,17 @@ const OVL_POINTS: SeedPoint[] = [
     { stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" },
     { stockCode: B, date: DATES[1], time: "10:00:00", name: "SK하이닉스" },
 ];
-const OVL_LINE: AxisLine = {
-    axisName: "타점축",
-    placements: [
-        { orderKey: 1, stockCode: A, date: DATES[0], time: "09:30:00" },
-        { orderKey: 2, stockCode: B, date: DATES[1], time: "10:00:00" },
+const OVL_FEED: ComputedAxisFeed = {
+    key: "pt-ax",
+    name: "타점축",
+    strongerWhen: "higher",
+    grain: "point",
+    values: [
+        { stockCode: A, date: DATES[0], time: "09:30:00", value: 1 },
+        { stockCode: B, date: DATES[1], time: "10:00:00", value: 2 },
     ],
 };
-const OVL_SEED: Seed = { candidateDays: OVL_CAND, points: OVL_POINTS, axes: [axes[1]], axisLines: [OVL_LINE] };
+const OVL_SEED: Seed = { candidateDays: OVL_CAND, points: OVL_POINTS, computedAxes: [OVL_FEED] };
 
 const memberSpans = (c: HTMLElement): HTMLElement[] =>
     [...c.querySelectorAll("span")].filter((s) => s.style.width === "2px" && s.style.borderRadius === "1px") as HTMLElement[];

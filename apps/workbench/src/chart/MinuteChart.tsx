@@ -127,7 +127,6 @@ export function MinuteChart({
     onLineContext,
     onPickPrice,
     capturePriceArmed = false,
-    axisTotal = 0,
     groupsOfTime,
 }: {
     points: MinutePoint[];
@@ -148,7 +147,6 @@ export function MinuteChart({
     onLineContext?: (line: RenderLine, at: { x: number; y: number }) => void;
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표 → 가격(base×(1+%/100)) 캡처
     capturePriceArmed?: boolean;
-    axisTotal?: number; // 순위 축 총수(배지 분모). 0 = 배치 기능 미사용 → 배지/상세 없음
     groupsOfTime?: (tradeTime: string) => Group[]; // 그 시각 타점에 붙은 그룹(카드 아랫줄). 없으면 그룹 줄 없음.
     /** 현재 타점의 분봉 골격 피벗(unix초·raw 가격) — % 변환은 오버레이가 base 로 한다. */
 }): JSX.Element {
@@ -223,13 +221,11 @@ export function MinuteChart({
             onMouseMove={onCursorMove}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
-            {/* 저장 타점 ▼ 마커 — 클릭하면 시간선이 그 타점으로. 두 규칙이 겹치지 않게:
-                **색** = 지금 시간선이 여기인가(검정) · **채움** = 이 타점이 어디든 배치됐나. */}
+            {/* 저장 타점 ▼ 마커 — 클릭하면 시간선이 그 타점으로. **색** = 지금 시간선이 여기인가(검정). */}
             {overlay.saved.map((s) => {
                 if (s.x < 0) return null;
                 const isNow = s.time === currentSnapped;
                 const isActive = hoveredSaved === s.time || isNow;
-                const unplaced = axisTotal > 0 && s.placed === 0;
                 return (
                     <div
                         key={s.time}
@@ -238,12 +234,12 @@ export function MinuteChart({
                         onMouseLeave={() => setHoveredSaved((cur) => (cur === s.time ? null : cur))}
                         onClick={() => s.point && onMovePoint(s.point.tradeTime)}
                         onContextMenu={(e) => e.preventDefault()}
-                        title={axisTotal > 0 ? `저장된 타점 — 배치 ${s.placed}/${axisTotal} (클릭: 이 타점으로)` : "저장된 타점 (클릭: 이 타점으로)"}
+                        title="저장된 타점 (클릭: 이 타점으로)"
                         style={{ ...markerBoxStyle(s.x, 8), cursor: "pointer" }}
                     >
                         <MarkerTriangle
                             active={isActive}
-                            fill={isNow ? (unplaced ? "var(--bg-primary, #ffffff)" : MARKER_NOW) : unplaced ? "rgba(255,255,255,0.25)" : "var(--bg-primary, #ffffff)"}
+                            fill={isNow ? MARKER_NOW : "var(--bg-primary, #ffffff)"}
                             stroke={isNow ? MARKER_NOW : "rgba(90,90,105,0.95)"}
                         />
                     </div>
@@ -258,13 +254,13 @@ export function MinuteChart({
             {/* 저장 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). 축별 상세는 "타점 정보" 패널. */}
             {hoveredCard && hoveredCard.point && hoveredCard.x >= 0 && (
                 <AnchoredBox x={hoveredCard.x} top={1} containerWidth={containerWidth} zIndex={10}>
-                    <MarkerCard point={hoveredCard.point} axisTotal={axisTotal} placed={hoveredCard.placed} groups={groupsOfTime?.(hoveredCard.point.tradeTime) ?? []} />
+                    <MarkerCard point={hoveredCard.point} groups={groupsOfTime?.(hoveredCard.point.tradeTime) ?? []} />
                 </AnchoredBox>
             )}
-            {/* 현재 타점(시간선) readout — 토글 ON 시 세로선 우측 한 줄. 그 시각이 저장 타점이면 배지(n/m)까지. */}
+            {/* 현재 타점(시간선) readout — 토글 ON 시 세로선 우측 한 줄. */}
             {showPointInfo && overlay.current && overlay.current.point && (
                 <AnchoredBox x={overlay.current.x} top={1} containerWidth={containerWidth} zIndex={9}>
-                    <MarkerCard point={overlay.current.point} axisTotal={currentSaved ? axisTotal : 0} placed={currentSaved?.placed ?? 0} groups={groupsOfTime?.(overlay.current.point.tradeTime) ?? []} />
+                    <MarkerCard point={overlay.current.point} groups={groupsOfTime?.(overlay.current.point.tradeTime) ?? []} />
                 </AnchoredBox>
             )}
             {tip.visible && (

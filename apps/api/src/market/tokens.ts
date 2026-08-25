@@ -11,7 +11,6 @@ export const CHART_ANCHORS = Symbol("ChartAnchors");            // 앵커 쓰기
 export const REVIEW_POINT_REPO = Symbol("ReviewPointRepository");
 export const DAILY_COMMENTS = Symbol("DailyComments");          // 코멘트 유스케이스(빈값=삭제·author 소유)
 export const THEME_ASSIGNMENT = Symbol("ThemeAssignment");      // 테마 배정 유스케이스(중복 skip·캐시 무효화)
-export const RANK_REPO = Symbol("RankRepository");
 export const GROUP_REPO = Symbol("GroupRepository");
 export const CURATION_SYNC = Symbol("CurationSync"); // 로컬 미러 당겨오기 — 읽기 소스 갱신(단일 비행)
 export const COMPUTED_AXES = Symbol("ComputedAxes");      // 계산 축 값(타점→수치) 읽기모델 + 파일 캐시

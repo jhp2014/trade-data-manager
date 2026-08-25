@@ -73,7 +73,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 차트 앵커 편집 — param 하나 = 훅 하나(chartAnchorHooks). 같은 쿼리 키라 왕복은 하나(RQ dedup).
     const lines = useBaselineLines(code, viewDate, dailyQ.data, minuteQ.data);
     const ignore = useIgnoreCandles(code, viewDate);
-    const { savedPoints, focusedPoint, axisTotal } = useReviewPointData(code, viewDate, time);
+    const { savedPoints, focusedPoint } = useReviewPointData(code, viewDate, time);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
@@ -190,7 +190,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     pctBase={pctBase}
                                     markerTime={markerTime}
                                     savedPoints={savedPoints}
-                                    axisTotal={axisTotal}
                                     showPointInfo={showPointInfo}
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}

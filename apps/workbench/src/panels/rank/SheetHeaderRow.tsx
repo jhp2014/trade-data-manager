@@ -14,16 +14,13 @@ const COL_DND = "application/x-rank-col";
 /** 열 이름 우클릭의 payload — 메뉴(SheetMenusHost)가 소비한다. */
 export interface HdrCtxPayload {
     key: string; label: string; canHide: boolean; frozen: boolean;
-    sortKey: SortKey; step: number; axisId?: string; x: number; y: number;
+    sortKey: SortKey; step: number; x: number; y: number;
 }
 
-export function SheetHeaderRow({ displayCols, cols, sort, sortAxisId, sortAxisThRef, reorderAxis, onSort, onHeaderCtx }: {
+export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, onHeaderCtx }: {
     displayCols: Col[];
     cols: SheetColumns;
     sort: SortChain;
-    sortAxisId: string | null;
-    /** 정렬 축 헤더 th 등록 — 드래그 배치(useSheetDragPlacement)가 열 x 범위를 여기서 읽는다. */
-    sortAxisThRef: React.MutableRefObject<HTMLTableCellElement | null>;
     /** 비고정 축 열의 서열 변경(store rankAxisOrder — 필터 보드 레일 순서와 공유). */
     reorderAxis: (draggedId: string, targetId: string) => void;
     /** 평클릭=리셋 · Shift+클릭=단 추가 — 규칙은 본체(sheetSort)가 든다. */
@@ -58,11 +55,10 @@ export function SheetHeaderRow({ displayCols, cols, sort, sortAxisId, sortAxisTh
                 return (
                     <th key={colKey(c)} {...dnd} title={`${colLabel(c)} — 클릭=이 열로 정렬 · Shift+클릭=정렬 단 추가`}
                         ref={(el) => {
-                            if (c.key === "axis" && c.axisId === sortAxisId) sortAxisThRef.current = el;
                             cols.registerTh(colKey(c), el);
                         }}
                         onClick={(e) => onSort(sk, e.shiftKey)}
-                        onContextMenu={(e) => { e.preventDefault(); onHeaderCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), sortKey: sk, step, axisId: c.key === "axis" && !c.computed ? c.axisId : undefined, x: e.clientX, y: e.clientY }); }}
+                        onContextMenu={(e) => { e.preventDefault(); onHeaderCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), sortKey: sk, step, x: e.clientX, y: e.clientY }); }}
                         style={{ ...thBase, position: "relative", cursor: "pointer", color: step === 1 ? "var(--accent-primary)" : active ? "var(--text-secondary)" : "var(--text-tertiary)", ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}), ...(flashCol === colKey(c) ? { background: "var(--accent-soft)", boxShadow: "inset 0 -2px 0 var(--accent-primary)" } : {}) }}>
                         <span style={{ display: "flex", alignItems: "center", justifyContent: justify, gap: 2, minWidth: 0 }}>
                             {active && <span style={{ flexShrink: 0 }}>{sort[step - 1].dir === 1 ? "▲" : "▼"}</span>}

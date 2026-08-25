@@ -16,7 +16,7 @@
 import { useMemo, useState } from "react";
 import { useAllPoints } from "../../lib/useAllPoints.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
-import { isComputedAxis, type AxisRef } from "../../lib/computedAxis.js";
+import { type AxisRef } from "../../lib/computedAxis.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
@@ -26,12 +26,12 @@ import { BoardEditors, type BoardEditor } from "./BoardEditors.js";
 import { rowIdOfKey, rowIdOfStage, useBoardReveal, type BoardReveal } from "./boardReveal.js";
 import { GroupExprChips, namingOf } from "./GroupExprChips.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
-import { ComputedAxisRail, SlotAxisRail } from "./rail/AxisRails.js";
+import { ComputedAxisRail } from "./rail/AxisRails.js";
 import { RAIL_LABEL_W, RAIL_ROW_H } from "./rail/Rail.js";
 import { DateRail, TimeRail } from "./rail/RangeRails.js";
 import { GRAIN_TITLE, GrainSection } from "./grain.js";
 import { predicateOfKind, stagesFor, type RailKey } from "./stageBinding.js";
-import type { AxisValueRange, FilterPredicate, FilterStage, Grain, RankBand } from "./stage.js";
+import type { AxisValueRange, FilterPredicate, FilterStage, Grain } from "./stage.js";
 import { stageKind } from "./stage.js";
 
 const GRAINS: Grain[] = ["day", "point"];
@@ -165,14 +165,9 @@ export function FilterBoard({ reveal, onlyActive }: {
                                     const rowId = rowIdOfKey(key);
                                     return (
                                         <div key={axis.key} ref={registerRow(rowId)} style={rowWrap(stage, flash === rowId)}>
-                                            {isComputedAxis(axis.key)
-                                                ? <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey} memberKeys={memberKeys}
-                                                    onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.key, x, y })}
-                                                    onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.key, ranges } : null)} />
-                                                : <SlotAxisRail axis={axis} line={ax.linesByAxis.get(axis.key) ?? []}
-                                                    band={predicateOfKind(stages, key, "axisBand")?.band ?? {}}
-                                                    markerKey={markerKey} memberKeys={memberKeys}
-                                                    onChange={(band: RankBand | null) => write(key, band ? { kind: "axisBand", axisId: axis.key, band } : null)} />}
+                                            <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey} memberKeys={memberKeys}
+                                                onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.key, x, y })}
+                                                onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.key, ranges } : null)} />
                                         </div>
                                     );
                                 })}

@@ -152,8 +152,7 @@ async function countMainTables(local: PgConn): Promise<number> {
                 "select coalesce(sum(n),0)::int total from (" +
                     "select count(*) n from curation.review_points " +
                     "union all select count(*) from curation.chart_anchors " +
-                    "union all select count(*) from curation.daily_comments " +
-                    "union all select count(*) from curation.rank_placements) x",
+                    "union all select count(*) from curation.daily_comments) x",
             )
             .then((r) => r.rows[0].total as number),
     );

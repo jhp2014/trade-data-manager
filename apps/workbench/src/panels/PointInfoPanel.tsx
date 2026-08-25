@@ -6,7 +6,7 @@ import { useChartPoints } from "../lib/useChartPoints.js";
 import { usePlacements } from "../lib/usePlacements.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { useStockName } from "../lib/useStockName.js";
-import { PlacementBadge, PlacementRows } from "../components/Placement.js";
+import { PlacementRows } from "../components/Placement.js";
 import { GroupChips } from "../components/GroupChips.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { PanelHeader } from "../components/ControlChrome.js";
@@ -34,20 +34,18 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     );
 
     if (!code) return <BoardCenter text="종목을 선택하세요" />;
-    if (placements.axisTotal === 0) return <BoardCenter text="축이 없습니다 — 시트의 + 축으로 추가" />;
     if (!point || !detail) return <BoardCenter text={time ? `${time.slice(0, 5)} — 타점 아님` : "시각을 선택하세요"} />;
 
     return (
         <div
             style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 12 }}
         >
-            {/* 헤더 — 종목 · 시각 · 배치 배지. 종목/날짜는 헤더 툴팁(좁은 셀이라 한 줄). */}
+            {/* 헤더 — 종목 · 시각. 종목/날짜는 헤더 툴팁(좁은 셀이라 한 줄). */}
             <PanelHeader chrome={false} gap={6} padding="5px 8px"
                 title={`${name ?? code} · ${viewDate}`}
                 style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
                 <span style={{ minWidth: 0, fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name ?? code}</span>
                 <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)", fontWeight: 700 }}>{point.time.slice(0, 5)}</span>
-                <PlacementBadge placed={detail.placed.length} total={placements.axisTotal} style={{ marginLeft: "auto", fontSize: 12 }} />
             </PanelHeader>
 
             {/* 그룹 줄 — 축 레인 위(명목 분류가 순서 차원보다 먼저 읽힌다). 한 줄 고정: 폭이 좁아도 wrap 하지 않고

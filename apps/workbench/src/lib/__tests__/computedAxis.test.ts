@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildFracIndex, computedAxisView, formatAxisValue, nearestPointAt, nearestPointInIndex, placedAxisKey, placedAxisName, valueDomain } from "../computedAxis.js";
+import { buildFracIndex, computedAxisView, formatAxisValue, nearestPointAt, nearestPointInIndex, valueDomain } from "../computedAxis.js";
 import type { ComputedAxisFeed, ComputedAxisPoint } from "@trade-data-manager/wire";
 
 const feed = (over: Partial<ComputedAxisFeed> = {}): ComputedAxisFeed => ({
@@ -10,15 +10,6 @@ const feed = (over: Partial<ComputedAxisFeed> = {}): ComputedAxisFeed => ({
     ...over,
 });
 
-describe("placedAxisName — 클라 키 → 서버 정체성(raw 이름) 역변환", () => {
-    it("placedAxisKey 의 정확한 역이다", () => {
-        expect(placedAxisName(placedAxisKey("갭 상승률"))).toBe("갭 상승률");
-    });
-    it("접두 없는 값은 그대로 돌려준다 — 이중 벗김 없이 멱등", () => {
-        expect(placedAxisName("갭 상승률")).toBe("갭 상승률");
-        expect(placedAxisName(placedAxisName(placedAxisKey("축")))).toBe("축");
-    });
-});
 
 describe("formatAxisValue", () => {
     it("규격이 없으면 등락률 모양 — 기존 축 둘의 표시가 그대로 유지된다", () => {

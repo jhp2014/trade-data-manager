@@ -12,10 +12,9 @@ import { type MinuteSeries } from "./minuteSeries.js";
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
 const SAVED_LINE_COLOR = "rgba(120,120,130,0.45)"; // 저장된 복기 타점 — 흐린 회색
 
-/** 저장 타점 입력(스냅 전) — unix초 + 배치된 축 수(▼ 채움·배지). 축별 상세는 "타점 정보" 패널 몫. */
+/** 저장 타점 입력(스냅 전) — unix초. 축별 상세는 "타점 정보" 패널 몫. */
 export interface SavedPointInput {
     time: number;
-    placed: number; // 배치된 축 수(0 = 미배치)
 }
 
 /** 타점 세로선 — markerTime/저장타점을 실제 봉 시각으로 스냅(≤ target 최대)해 두 pane primitive 에 push. */
@@ -33,7 +32,7 @@ export function useMarkerVertLines(
             const s = snapToBar(points, sp.time);
             if (s != null && !seen.has(s)) {
                 seen.add(s);
-                out.push({ ...sp, time: s }); // 스냅해도 배치 현황은 그 타점의 것을 그대로 들고 간다
+                out.push({ ...sp, time: s });
             }
         }
         return out;
@@ -85,7 +84,7 @@ export function usePercentPriceLines(
 }
 
 export interface MarkerOverlay {
-    saved: Array<{ x: number; point: MinutePoint | null; time: number; placed: number }>;
+    saved: Array<{ x: number; point: MinutePoint | null; time: number }>;
     current: { x: number; point: MinutePoint | null } | null;
 }
 

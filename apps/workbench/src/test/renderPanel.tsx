@@ -9,11 +9,11 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { AxisLine, ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankAxis, ReviewPoint, StockMeta } from "@trade-data-manager/wire";
+import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, ReviewPoint, StockMeta } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
-    allAnchorsQuery, allCommentsQuery, allPointsQuery, axisLinesQuery, chartQuery, computedAxesQuery,
-    groupMembershipsQuery, groupsQuery, rankAxesQuery, stockMasterQuery,
+    allAnchorsQuery, allCommentsQuery, allPointsQuery, chartQuery, computedAxesQuery,
+    groupMembershipsQuery, groupsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
 import { GroupsProvider } from "../lib/GroupsContext.js";
@@ -43,8 +43,6 @@ export interface Seed {
     candidateDays?: { stockCode: string; date: string }[];
     groups?: Group[];
     memberships?: GroupMembership[];
-    axes?: RankAxis[];
-    axisLines?: AxisLine[];
     /** 그날 복기 파생(정규화 패널의 테마·거래대금 재료 — useDaySnapshot 키). */
     daySnapshot?: { date: string; data: DayReplay };
     computedAxes?: ComputedAxisFeed[];
@@ -90,8 +88,6 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(allCommentsQuery().queryKey, seed.comments ?? []);
     qc.setQueryData(groupsQuery().queryKey, seed.groups ?? []);
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
-    qc.setQueryData(rankAxesQuery().queryKey, seed.axes ?? []);
-    qc.setQueryData(axisLinesQuery().queryKey, seed.axisLines ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
     if (seed.daySnapshot) qc.setQueryData(["skeleton-day-src", seed.daySnapshot.date], seed.daySnapshot.data);

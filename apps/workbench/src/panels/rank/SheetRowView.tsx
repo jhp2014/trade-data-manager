@@ -9,13 +9,11 @@
 //
 // 열을 붙이는 법은 그대로: CELLS 항목 하나 + sheetColumns 의 COL_META 한 줄.
 import { memo, type CSSProperties, type ReactNode } from "react";
-import { useDraggable } from "@dnd-kit/core";
 import { COL_META, colKey, type Col, type ColKind } from "./sheetColumns.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
 import { pointKey } from "../../lib/pointKey.js";
 import type { SheetRow } from "./rankSheet.js";
 import type { RankCell } from "../../lib/rankIndex.js";
-import type { RankPoint } from "../../api/rank.js";
 import { PIN, heatOf, outcomeColor } from "../../styles/palette.js";
 import { cellView, type CellMode, type ValuedCell } from "./sheetCell.js";
 
@@ -24,7 +22,7 @@ export const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프�
 /** 셀 우클릭 페이로드 — 판단 축=slot 밴드·컷·배치해제 / 계산 축=값 경계 메뉴(패널이 axisId 로 가른다). */
 export interface CellCtxPayload {
     axisId: string;
-    point: RankPoint;
+    point: { stockCode: string; date: string; time: string };
     rank: number;
     total: number;
     x: number;
@@ -75,7 +73,7 @@ function SheetRowViewImpl({
     // focus·pinned 는 data 속성으로 CSS 에 알린다(호버 한 번에 패널 전체가 두 번 리렌더되던 것을 없앴다).
     // 행 구분선(셀에, separate 모드) — 고정 블록 안에서만 마지막만(블록 통합), 그 외(tbody 핀 포함)는 매 행.
     const rowBorder = inPinnedBlock ? (isLastPinned ? "2px solid var(--border-strong)" : "none") : "1px solid var(--border-subtle)";
-    const point: RankPoint = { stockCode: row.stockCode, date: row.date, time: row.time };
+    const point = { stockCode: row.stockCode, date: row.date, time: row.time };
 
     const stick = (c: Col): CSSProperties => {
         const left = leftOf.get(colKey(c));
@@ -91,9 +89,7 @@ function SheetRowViewImpl({
             style: { fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}` },
             body: (
                 <>
-                    {inPinnedBlock
-                        ? <PinnedDragName pkStr={key} name={name} focus={focus} onNav={() => h.onNav(row)} />
-                        : <span onClick={() => h.onNav(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>}
+                    <span onClick={() => h.onNav(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>
                     {/* 핀 손잡이 — 늘 렌더하고 노출은 CSS(.sheet-pin: 행 :hover 또는 핀 상태)가 정한다. */}
                     <button className="sheet-pin" data-pinned={pinned ? "" : undefined}
                         onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); h.onTogglePin(key); }} title={pinned ? "핀 해제(▼)" : "핀 고정(▲)"}
@@ -166,13 +162,6 @@ export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
 );
 
 // 핀(고정) 행 이름 = 드래그 소스(chip:{pk}). 정렬 축 열에 드롭해 배치. 그냥 클릭=이동(dnd distance 4 로 클릭/드래그 자동 구분).
-function PinnedDragName({ pkStr, name, focus, onNav }: { pkStr: string; name: string; focus: boolean; onNav: () => void }): JSX.Element {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `chip:${pkStr}` });
-    return (
-        <span ref={setNodeRef} {...listeners} {...attributes} onClick={onNav} title={`${name} — 드래그해 정렬 축에 배치 · 클릭=이동`}
-            style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "grab", touchAction: "none", opacity: isDragging ? 0.4 : 1, color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>
-    );
-}
 
 // ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.
 function Cell({ cell, valued, mode, prominent, barWidth }: {

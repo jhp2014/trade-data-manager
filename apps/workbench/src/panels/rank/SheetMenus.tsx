@@ -1,39 +1,11 @@
-// 시트의 팝업·손잡이 조각들 — 열 이름 우클릭 메뉴 · 축 만들기 · 결과 입력 · 열 폭 손잡이.
+// 시트의 팝업·손잡이 조각들 — 열 이름 우클릭 메뉴 · 결과 입력 · 열 폭 손잡이.
 //
 // 전부 **props 만 보는 표시 조각**이다(시트의 상태를 안 읽는다). 본체에 있을 땐 그 사실이 안 보였고,
-// 화면을 읽으려면 팝업 네 벌을 지나쳐야 했다. 여기로 옮기면 본체는 "표를 그리는 일"만 남는다.
+// 화면을 읽으려면 팝업 세 벌을 지나쳐야 했다. 여기로 옮기면 본체는 "표를 그리는 일"만 남는다.
 import { useRef, useState } from "react";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 import { outcomeColor } from "../../styles/palette.js";
 import { MIN_COL_W } from "./sheetColumns.js";
-
-/** 축 만들기 — 이름 + 층위. 층위는 만들 때 정하고 못 바꾼다(그 축에 무엇이 꽂히는지가 층위로 정해진다). */
-export function AddAxisMenu({ anchor, onCreate, onClose }: {
-    anchor: { x: number; y: number };
-    onCreate: (name: string, scope: "point" | "day") => void;
-    onClose: () => void;
-}): JSX.Element {
-    const [name, setName] = useState("");
-    const [scope, setScope] = useState<"point" | "day">("point");
-    const submit = (): void => { const n = name.trim(); if (n) onCreate(n, scope); };
-    return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={220} padding={0} placement="beside" offset={6}>
-            <MenuLabel>판단 축 만들기</MenuLabel>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 10px 9px" }}>
-                <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") submit(); else if (e.key === "Escape") onClose(); }}
-                    placeholder="축 이름(예: 눌림 깊이)"
-                    style={{ flex: 1, minWidth: 0, border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "4px 8px", fontSize: 12.5, outline: "none" }} />
-                <select value={scope} onChange={(e) => setScope(e.target.value as "point" | "day")} title="배치 단위"
-                    style={{ border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)", padding: "4px 6px", fontSize: 12 }}>
-                    <option value="point">타점</option>
-                    <option value="day">하루</option>
-                </select>
-                <button onClick={submit} disabled={!name.trim()} style={{ border: "none", borderRadius: 4, background: "var(--accent-primary)", color: "#fff", cursor: "pointer", fontSize: 12, padding: "4px 10px", opacity: name.trim() ? 1 : 0.45 }}>추가</button>
-            </div>
-        </AnchoredPopover>
-    );
-}
 
 /**
  * 결과 입력 — **손으로 적는 값**이라 고정 목록이 없다(도메인이 "허용값은 클라"라고만 말한다).
@@ -73,12 +45,10 @@ export function OutcomeMenu({ anchor, current, choices, onPick, onClose }: {
 
 // 열 이름 우클릭 메뉴 — 왼쪽 고정/해제 · 숨기기 · 정렬 체인에서 빼기.
 //  정렬 빼기가 여기 있는 이유: Shift+클릭은 방향 토글이라 뺄 손짓이 없다. 체인이 2단 이상일 때만 뜬다.
-export function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep, axis, onToggleFreeze, onHide, onDropSort, onClose }: {
+export function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep, onToggleFreeze, onHide, onDropSort, onClose }: {
     anchor: { x: number; y: number }; label: string; frozen: boolean; canHide: boolean; canFreeze: boolean;
     /** 이 열의 정렬 단(1부터). 0 = 체인에 없거나 1단짜리 정렬 → 항목 숨김. */
     sortStep: number;
-    /** 판단 축 열일 때만 — 축 자체를 고치는 손잡이(배치 보드가 사라져 여기가 유일한 입구다). 계산 축은 코드가 정의라 없다. */
-    axis?: { onRename: () => void; onDelete: () => void };
     onToggleFreeze: () => void; onHide: () => void; onDropSort: () => void; onClose: () => void;
 }): JSX.Element {
     return (
@@ -90,12 +60,6 @@ export function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep
                 <MenuItem onClick={onHide} style={{ borderTop: canFreeze ? "1px solid var(--border-subtle)" : undefined, color: "var(--text-secondary)" }}>
                     이 열 숨기기
                 </MenuItem>
-            )}
-            {axis && (
-                <>
-                    <MenuItem onClick={axis.onRename} style={{ borderTop: "1px solid var(--border-subtle)" }}>✎ 축 이름 변경</MenuItem>
-                    <MenuItem onClick={axis.onDelete} style={{ color: "var(--rise)" }}>🗑 축 삭제</MenuItem>
-                </>
             )}
         </AnchoredPopover>
     );

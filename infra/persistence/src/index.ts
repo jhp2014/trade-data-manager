@@ -19,7 +19,6 @@ export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.
 export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repository.js";
 export { DrizzleChartAnchorRepository } from "./repositories/chartAnchor.repository.js";
 export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
-export { DrizzleRankRepository } from "./repositories/rank.repository.js";
 export { DrizzleGroupRepository } from "./repositories/group.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
@@ -54,5 +53,4 @@ export {
     reviewPointToRow,
     rowToReviewPoint,
 } from "./mappers/reviewPoint.js";
-export { rowToRankAxis } from "./mappers/rank.js";
 export { rowToGroup } from "./mappers/group.js";

@@ -12,7 +12,7 @@ import { fetchTapeThemes } from "./liveTape.js";
 import { fetchMirrorStatus } from "./curation.js";
 import { fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchAllPoints } from "./reviewPoints.js";
-import { fetchRankAxes, fetchAxisLines, fetchComputedAxes } from "./rank.js";
+import { fetchComputedAxes } from "./rank.js";
 import { fetchGroups, fetchGroupMemberships } from "./groups.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext } from "./themes.js";
@@ -93,16 +93,8 @@ export const allPointsQuery = () =>
     queryOptions({ queryKey: ["all-points"], queryFn: ({ signal }) => fetchAllPoints(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 순위 배치 — 축 목록 + 전 축 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
-// 줄은 **키 하나**(축별로 쪼개지 않음): 모든 소비자가 전축을 보므로 축 수만큼의 왕복이 사라지고,
-// 패널 간 줄이 어긋날 여지도 없다. 대신 한 번 꽂을 때마다 전축을 다시 받는다(로컬 API, 수백 KB 수준).
-export const rankAxesQuery = () =>
-    queryOptions({ queryKey: ["rank-axes"], queryFn: ({ signal }) => fetchRankAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
-
-export const axisLinesQuery = () =>
-    queryOptions({ queryKey: ["rank-axis-lines"], queryFn: ({ signal }) => fetchAxisLines(signal), staleTime: IMMUTABLE , meta: CURATION });
-
-// 계산 축(수식 축)의 타점별 수치. 판단 축 줄과 **별도 키** — 배치(place/unplace)가 이걸 무효화할 이유가 없고,
-// 반대로 타점이 늘면(타점 mutation) 이쪽만 새로 구우면 된다. 서버가 축당 파일 캐시로 증분 계산한다.
+// 계산 축(수식 축)의 타점별 수치 — **키 하나**(모든 소비자가 전축을 본다). 타점·앵커 mutation 이 무효화한다.
+// 서버가 축당 파일 캐시로 증분 계산한다.
 export const computedAxesQuery = () =>
     queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
