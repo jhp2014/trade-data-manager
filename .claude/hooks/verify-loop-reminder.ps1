@@ -11,12 +11,12 @@ try {
         return
     }
 
-    $normalized = $path -replace '\\', '/'
+    $normalized = $path.Replace([char]92, "/")
     $isMarkdown = $normalized -match '\.md$'
     $isTargetDir = $normalized -match '/(core|apps|infra|contracts)/'
 
     if ((-not $isMarkdown) -and $isTargetDir) {
-        $message = "코드 변경 감지: $path -- code-reviewer 서브에이전트 호출을 검토하세요 (헥사고날 경계 / ISP / market-curation 스키마 분리 체크)."
+        $message = "코드 변경 감지: $path -- 이번 구현이 끝났으면 verify-loop 스킬로 검증 루프를 도세요 (리뷰 -> A/B/C 분류 -> 수정 -> 재확인, UI 변경이면 실측까지). 아직 편집 중이면 무시하고 계속하세요."
         $output = @{
             hookSpecificOutput = @{
                 hookEventName = 'PostToolUse'

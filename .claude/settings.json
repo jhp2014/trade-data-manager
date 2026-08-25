@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File .claude/hooks/code-reviewer-reminder.ps1",
+            "command": "pwsh -NoProfile -File .claude/hooks/verify-loop-reminder.ps1",
             "timeout": 15
           }
         ]
