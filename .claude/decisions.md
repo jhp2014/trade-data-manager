@@ -15,6 +15,9 @@
 - **계산 축의 grain 이 행의 정체성을 정한다.** `grain: "point"` 축의 행 = 타점(종목,날짜,시각). `grain: "day"` 축의 행 = **차트(종목,날짜)** — 모수는 "그날 타점이 있나"가 아니라 "그 축이 요구하는 필수 param 앵커가 그 차트에 있나"다. 그래서 분봉 타점을 아직 안 찍은 하루도 기준선만 그어져 있으면 매물 공백·기준선 거리 값이 나온다. 이 규칙은 core(`ComputedAxisDef` 타입 분기)·api(`computedAxes.ts` 캐시 키·모수)·wire(`time?` 옵셔널)·workbench(`rowKey`/`rowLookup` 폴백) 네 레이어에 걸쳐 있다 — 한 곳만 보고 고치면 나머지가 깨진다.
   - 커밋: 3c4dff9c. 근거: [[computed-axis-day-rows]].
 
+- **축 순서는 화면마다 별개 저장물이다.** 시트 열 = store `rankAxisOrder`(`wb.rankAxisOrder`), 집합 편성 보드 레일 = 패널 로컬 `wb.filterAxisOrder`(`panels/filter/axisOrder.ts`). 시트는 읽는 순서, 보드는 조건 거는 순서라 같은 축이 두 화면에서 다른 자리에 서는 편이 낫다는 판단(2026-08-25, 그전의 "한 벌 공유"를 뒤집음 — 공유 시절 주석은 전부 갱신됨). 보드 pref 가 비면 시트 서열을 따르므로 안 만진 사람에겐 예전과 같다. **드래그 미디어타입도 갈라 둘 것**(`x-rank-axis` vs `x-filter-axis`) — 같으면 시트 열을 보드에 떨어뜨렸을 때 엉뚱한 순서가 바뀐다.
+  - 커밋: bd022e75. 근거: [[filter-funnel-design]].
+
 - **day grain 축은 당일 데이터를 값에 못 쓴다(타입으로 강제).** `DayComputedAxisDef.compute` 는 `ChartRef[]`(시각 없음)를 받아 시각 자체가 입력에 없다 — "그 하루가 시작하기 전까지만" 절단선이 주석이 아니라 타입 시그니처다.
 
 ## 헥사고날 경계 (구조는 CLAUDE.md, 여긴 왜)
