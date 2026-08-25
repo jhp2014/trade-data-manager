@@ -7,6 +7,12 @@ import { PANEL_CATALOG } from "../shell/panelCatalog.js";
 export const PRESET_COUNT = 5;
 const PRESETS_KEY = "wb.layoutPresets";
 const RINGS_KEY = "wb.tabRings";
+// 마지막 배치 — 손대는 족족 자동 저장되는 **이어받기** 층. 프리셋과 성격이 갈린다:
+// 프리셋은 "이름 붙여 굳힌 배치"(설정에서 명시적으로 저장할 때만 갱신), 이쪽은 "방금까지 보던 자리".
+// 그래서 자동저장이 프리셋을 덮을 일이 없고, 배치가 꼬이면 Ctrl+숫자로 굳혀 둔 자리에 돌아갈 수 있다.
+const LAST_KEY = "wb.layout.last";
+/** 자동저장 디바운스(ms) — 드래그 한 번에 onDidLayoutChange 가 수십 번 온다. */
+const REMEMBER_DELAY = 300;
 
 // api.toJSON() 직렬화 형태. 버전에 안 묶이게 ReturnType 로 파생.
 type LayoutJSON = ReturnType<DockviewApi["toJSON"]>;
@@ -113,6 +119,21 @@ function loadRings(): RingSlots {
     return out;
 }
 
+/**
+ * 마지막 배치 읽기 — 프리셋과 같은 자가치유(sanitize)를 거친다. 없거나 깨졌으면 null 이고,
+ * 그때의 기본 배치는 **빈 도화지**다(사용자 확정 — 창은 작업표시줄에서 연다).
+ */
+export function loadLastLayout(): LayoutJSON | null {
+    try {
+        const raw = localStorage.getItem(LAST_KEY);
+        if (!raw) return null;
+        return sanitizeLayout(JSON.parse(raw) as LayoutJSON).json;
+    } catch {
+        /* 없음/파싱 실패/비호환 → 도화지 */
+        return null;
+    }
+}
+
 // 프리셋 JSON 에 실제 들어있는 패널 id 목록. 링 편집 UI·저장 시 프루닝 공용.
 function panelIdsInPreset(p: LayoutJSON | null): string[] {
     const panels = (p as { panels?: Record<string, unknown> } | null)?.panels;
@@ -133,7 +154,12 @@ interface DockState {
     clearPreset: (n: number) => void; // 슬롯 n 저장 배치 삭제(+링 비우기)
     cyclePreset: () => void; // 저장된 프리셋들을 순환
     setRing: (n: number, ids: string[]) => void; // 화면 n 의 Tab 순환 링 지정
+    rememberLayout: () => void; // 현재 배치를 "마지막 배치"로 자동 저장(디바운스). onDidLayoutChange 가 부른다.
+    resetLayout: () => void; // 기본 배치(빈 도화지)로 — 자동저장이 꼬였을 때의 마지막 탈출구
 }
+
+// 자동저장 디바운스 타이머(모듈 수명) — 스토어 상태가 아니다(렌더와 무관하고 구독자도 없다).
+let rememberTimer: ReturnType<typeof setTimeout> | null = null;
 
 function persistRings(rings: RingSlots): void {
     try {
@@ -214,6 +240,41 @@ export const useDock = create<DockState>((set, get) => ({
         rings[n - 1] = ids;
         persistRings(rings);
         set({ rings });
+    },
+    // 배치 자동저장 — 프리셋과 달리 "저장" 손짓이 없으므로 여기가 유일한 기록 지점이다.
+    // activePreset 은 **안 적는다**: 부팅 시 복원되는 건 프리셋이 아니라 마지막 상태라,
+    // 작업표시줄이 "화면 3"으로 켜져 있는데 실제론 거기서 손댄 배치인 상황을 안 만든다.
+    rememberLayout: () => {
+        if (!get().api) return;
+        if (rememberTimer) clearTimeout(rememberTimer);
+        rememberTimer = setTimeout(() => {
+            rememberTimer = null;
+            const api = get().api;
+            if (!api) return;
+            try {
+                localStorage.setItem(LAST_KEY, JSON.stringify(api.toJSON()));
+            } catch {
+                /* 영속 실패 무시 */
+            }
+        }, REMEMBER_DELAY);
+    },
+    resetLayout: () => {
+        const api = get().api;
+        if (!api) return;
+        api.clear();
+        // ⚠ 순서가 중요하다. `clear()` 는 **동기로** onDidLayoutChange 를 발화시켜 자동저장 타이머를
+        //   걸어 두므로, 그 타이머를 먼저 끄지 않으면 300ms 뒤 빈 배치가 도로 기록돼 아래 removeItem 이
+        //   무의미해진다(둘 다 도화지로 읽히긴 하지만, 코드가 하는 말과 실제가 어긋난다).
+        if (rememberTimer) {
+            clearTimeout(rememberTimer);
+            rememberTimer = null;
+        }
+        try {
+            localStorage.removeItem(LAST_KEY);
+        } catch {
+            /* 무시 */
+        }
+        set({ activePreset: null, ringSource: null, openPanelIds: [] });
     },
 }));
 

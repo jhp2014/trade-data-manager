@@ -7,38 +7,41 @@ import {
     type IDockviewPanelHeaderProps,
 } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
-import { useDock } from "../store/dock.js";
-import { panelComponents, panelEntry, planeOf } from "./panelCatalog.js";
+import { loadLastLayout, useDock } from "../store/dock.js";
+import { panelComponents, planeOf } from "./panelCatalog.js";
 
-// dockview 도킹 셸 — 패널 목록·렌더는 전부 panelCatalog 가 소유하고, 여기는 셸(탭·헤더 액션·기본 배치)만.
+// dockview 도킹 셸 — 패널 목록·렌더는 전부 panelCatalog 가 소유하고, 여기는 셸(탭·헤더 액션·복원)만.
 const components = panelComponents();
 
-// 기본 배치의 탭 순서 — 카탈로그 순서와 별개인 **레이아웃 결정**이라 여기 남긴다.
-// 카탈로그에 없는 id 는 panelEntry 가 부팅 때 던진다(오타 즉시 발각). 여기 없는 패널(차트2·필터류 등)은
-// 처음엔 안 열리고 작업표시줄에서 꺼낸다.
-const TAB_PANELS = [
-    "live-board-1", "live-watchlist-1", "live-alert-log-1", "live-universe-rules-1", "live-news-1", "live-telegram-1",
-    "replay-board-1", "workset-1", "history-1", "rank-sheet-1", "rank-point-1", "hts-news-1", "telegram-news-1",
-];
-
+/**
+ * 부팅 배치 — **마지막 배치를 이어받는다.** 없거나 깨졌으면 기본 배치는 **빈 도화지**다(사용자 확정):
+ * 열린 창이 하나도 없고, 아래 작업표시줄에서 필요한 것만 꺼낸다. 옛 하드코딩 기본 배치(이슈정리 보드 +
+ * 차트 + 탭 13개)는 새로고침마다 그걸 다시 밀어 넣어, 손으로 맞춘 자리를 매번 덮었다.
+ *
+ * ⚠ 자동저장이 붙은 뒤로는 **꼬인 배치가 영구히 남는다**(예전엔 F5 가 곧 리셋이었다). 탈출 사다리가
+ *   두 칸 있다: Ctrl+숫자(굳혀 둔 프리셋) → 설정 > 레이아웃 "기본 배치로 되돌리기"(도화지).
+ */
 function onReady(event: DockviewReadyEvent): void {
     const api = event.api;
     // 프리셋 전환·작업표시줄이 조작할 수 있게 api 를 dock 스토어에 노출.
     useDock.getState().setApi(api);
-    // 이슈정리 보드(좌) | 차트(우) + 나머지는 이슈정리 보드에 탭으로. 필요시 드래그로 띄우거나(플로팅) 분할.
-    const boardEntry = panelEntry("theme-board-1");
-    const board = api.addPanel({ id: boardEntry.id, component: boardEntry.component, title: boardEntry.title });
-    const { component: chartComponent, title: chartTitle } = panelEntry("chart-1");
-    api.addPanel({ id: "chart-1", component: chartComponent, title: chartTitle, position: { referencePanel: board, direction: "right" } });
-    for (const id of TAB_PANELS) {
-        const { component, title } = panelEntry(id);
-        api.addPanel({ id, component, title, position: { referencePanel: board, direction: "within" } }); // 이슈정리와 탭 그룹
+
+    const last = loadLastLayout();
+    if (last) {
+        try {
+            api.fromJSON(last);
+        } catch {
+            api.clear(); // sanitize 로도 못 살린 배치 → 도화지에서 다시 시작
+        }
     }
+
     // 열린 패널 추적 → 작업표시줄 "닫힌 창" 목록.
     const sync = (): void => useDock.getState().setOpenPanels(api.panels.map((p) => p.id));
     api.onDidAddPanel(sync);
     api.onDidRemovePanel(sync);
     sync();
+    // 손대는 족족 저장(디바운스). 프리셋과 달리 "저장" 손짓이 없어 여기가 유일한 기록 지점이다.
+    api.onDidLayoutChange(() => useDock.getState().rememberLayout());
 }
 
 // 커스텀 탭 — 기본 X 대신 "−"(최소화) 버튼. 닫아도 사라지지 않고 작업표시줄로 회수되므로 최소화로 표기.
@@ -98,9 +101,27 @@ function HeaderActions(props: IDockviewHeaderActionsProps): JSX.Element {
     );
 }
 
-export function WorkbenchShell(): JSX.Element {
+/**
+ * 도화지 안내 — dockview 의 기본 워터마크는 **빈 div** 라 아무 말도 안 한다. 창이 하나도 없을 때
+ * 여는 길(작업표시줄)을 가리키지 않으면 첫 부팅이 막다른 화면이 된다. 포인터는 통과시킨다.
+ */
+function EmptyHint(): JSX.Element {
     return (
-        <div style={{ flex: 1, minHeight: 0 }}>
+        <div style={{
+            position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", gap: 6, pointerEvents: "none",
+            color: "var(--text-tertiary)", fontSize: 13,
+        }}>
+            <span>열린 창이 없습니다</span>
+            <span style={{ fontSize: 12 }}>아래 작업표시줄에서 창을 열거나, Ctrl+1~5 로 저장한 화면을 불러옵니다</span>
+        </div>
+    );
+}
+
+export function WorkbenchShell(): JSX.Element {
+    const openPanelIds = useDock((s) => s.openPanelIds);
+    return (
+        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
             <DockviewReact
                 components={components}
                 onReady={onReady}
@@ -108,6 +129,7 @@ export function WorkbenchShell(): JSX.Element {
                 rightHeaderActionsComponent={HeaderActions}
                 theme={themeLight}
             />
+            {openPanelIds !== null && openPanelIds.length === 0 && <EmptyHint />}
         </div>
     );
 }

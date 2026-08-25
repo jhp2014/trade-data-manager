@@ -271,6 +271,7 @@ function LayoutSettings(): JSX.Element {
     const savePreset = useDock((s) => s.savePreset);
     const loadPreset = useDock((s) => s.loadPreset);
     const clearPreset = useDock((s) => s.clearPreset);
+    const resetLayout = useDock((s) => s.resetLayout);
     // 저장 확인 — 클릭한 슬롯을 잠깐 "저장됨 ✓"로 표기(덮어쓰기도 액션이 보이게). 타이머는 재클릭/언마운트 시 정리.
     const [justSaved, setJustSaved] = useState<number | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -296,7 +297,7 @@ function LayoutSettings(): JSX.Element {
     const delBtn: React.CSSProperties = { ...btn, borderColor: "var(--danger, #dc2626)", color: "var(--danger, #dc2626)" };
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>현재 창 배치를 슬롯에 저장. Ctrl+숫자 또는 하단 작업표시줄 클릭으로 전환. 삭제하면 그 슬롯이 비워집니다.</div>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>배치는 손댈 때마다 자동 저장돼 다음 부팅에 이어집니다. 아래 슬롯은 그와 별개로 <b>굳혀 두는</b> 배치 — 명시적으로 저장할 때만 갱신되고, Ctrl+숫자 또는 하단 작업표시줄 클릭으로 전환합니다.</div>
             {presets.map((p, i) => {
                 const n = i + 1;
                 const filled = !!p;
@@ -316,6 +317,12 @@ function LayoutSettings(): JSX.Element {
                     </div>
                 );
             })}
+            {/* 마지막 탈출구 — 자동저장이 붙은 뒤로는 꼬인 배치가 새로고침으로 안 풀린다.
+                기본 배치는 빈 도화지라, 되돌린 뒤엔 작업표시줄에서 필요한 창만 다시 꺼낸다. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, paddingTop: 10, borderTop: "1px solid var(--border-subtle)" }}>
+                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>배치가 꼬였을 때 — 모든 창을 닫고 빈 화면에서 다시 시작합니다(저장한 화면은 안 지워집니다).</span>
+                <button style={{ ...btn, marginLeft: "auto", whiteSpace: "nowrap" }} onClick={resetLayout}>기본 배치로 되돌리기</button>
+            </div>
         </div>
     );
 }
