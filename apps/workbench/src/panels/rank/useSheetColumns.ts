@@ -55,7 +55,7 @@ export interface SheetColumns {
     clearCuts: (axisId: string) => void;
 
     /** 열 헤더 등록(되짚기 스크롤 대상). */
-    registerTh: (key: string, el: HTMLTableCellElement | null) => void;
+    registerTh: (key: string, el: HTMLElement | null) => void;
     /** 지금 강조 중인 열 키. */
     flashCol: string | null;
 }
@@ -101,7 +101,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     //    시트에서는 열이 곧 축이고 축이 많으면 가로로 넘치므로 찾아 주는 일이 필요하다.
     //    숨긴 열이면 먼저 꺼내 준다 — 안 그러면 눌러도 아무 일이 없다.
     const revealAxis = useWorkbench((s) => s.revealAxis);
-    const thRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+    const thRefs = useRef<Map<string, HTMLElement>>(new Map());
     const [flashCol, setFlashCol] = useState<string | null>(null);
     // 재발화 가드 — store 는 소비 후에도 revealAxis 를 남기므로(요청 큐가 아니라 마지막 요청 상태),
     // at 비교 없이는 재마운트(프리셋 전환 등)가 지난 요청을 다시 재생한다(번쩍임 + 스크롤 점프).

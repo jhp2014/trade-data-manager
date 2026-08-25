@@ -29,7 +29,7 @@ export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, o
 }): JSX.Element {
     const { leftOf, lastFrozenKey, widthOf, frozenSet, flashCol } = cols;
     return (
-        <tr style={{ height: ROW_H }}>
+        <div style={{ display: "flex", width: "100%", height: ROW_H, boxSizing: "border-box" }}>
             {displayCols.map((c) => {
                 const sk = sortKeyOf(c);
                 const step = sortStepNo(sort, sk); // 0=미정렬, 1=1차, 2…=2차 이하
@@ -53,24 +53,24 @@ export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, o
                     onDrop: (e: React.DragEvent) => { const id = e.dataTransfer.getData(AXIS_DND); if (id) reorderAxis(id, (c as { axisId: string }).axisId); },
                 } : {};
                 return (
-                    <th key={colKey(c)} {...dnd} title={`${colLabel(c)} — 클릭=이 열로 정렬 · Shift+클릭=정렬 단 추가`}
+                    <div key={colKey(c)} {...dnd} title={`${colLabel(c)} — 클릭=이 열로 정렬 · Shift+클릭=정렬 단 추가`}
                         ref={(el) => {
                             cols.registerTh(colKey(c), el);
                         }}
                         onClick={(e) => onSort(sk, e.shiftKey)}
                         onContextMenu={(e) => { e.preventDefault(); onHeaderCtx({ key: colKey(c), label: colLabel(c), canHide: c.key !== "name", frozen: c.key === "name" || frozenSet.has(colKey(c)), sortKey: sk, step, x: e.clientX, y: e.clientY }); }}
-                        style={{ ...thBase, position: "relative", cursor: "pointer", color: step === 1 ? "var(--accent-primary)" : active ? "var(--text-secondary)" : "var(--text-tertiary)", ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}), ...(flashCol === colKey(c) ? { background: "var(--accent-soft)", boxShadow: "inset 0 -2px 0 var(--accent-primary)" } : {}) }}>
-                        <span style={{ display: "flex", alignItems: "center", justifyContent: justify, gap: 2, minWidth: 0 }}>
+                        style={{ ...thBase, width: widthOf(c), flex: "0 0 auto", boxSizing: "border-box", minWidth: 0, display: "flex", alignItems: "center", position: "relative", cursor: "pointer", color: step === 1 ? "var(--accent-primary)" : active ? "var(--text-secondary)" : "var(--text-tertiary)", ...(colKey(c) === lastFrozenKey ? { borderRight: "2px solid var(--border-strong)" } : {}), ...(left != null ? { position: "sticky", left, zIndex: 6, background: "var(--bg-secondary)" } : {}), ...(flashCol === colKey(c) ? { background: "var(--accent-soft)", boxShadow: "inset 0 -2px 0 var(--accent-primary)" } : {}) }}>
+                        <span style={{ display: "flex", alignItems: "center", justifyContent: justify, gap: 2, flex: 1, minWidth: 0 }}>
                             {active && <span style={{ flexShrink: 0 }}>{sort[step - 1].dir === 1 ? "▲" : "▼"}</span>}
                             {/* 단 번호는 체인이 2단 이상일 때만 — 기본 화면(1단)은 지금과 똑같이 보인다. */}
                             {active && sort.length > 1 && <span style={{ flexShrink: 0, fontSize: 8.5, opacity: 0.8, marginRight: 1 }}>{step}</span>}
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>
                         </span>
                         <ResizeHandle width={widthOf(c)} onResize={(w) => cols.previewWidth(colKey(c), w)} onCommit={(w) => cols.commitWidth(colKey(c), w)} />
-                    </th>
+                    </div>
                 );
             })}
-        </tr>
+        </div>
     );
 }
 

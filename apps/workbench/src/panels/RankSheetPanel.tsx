@@ -3,14 +3,13 @@ import { useAllPoints } from "../lib/useAllPoints.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
-import { colKey } from "./rank/sheetColumns.js";
 import { useSheetColumns } from "./rank/useSheetColumns.js";
 import {
     DEFAULT_CHAIN, buildSheetGroups, dropSort, parseSortChain, pushSort, resetSort, resolveCutKeys,
     sortSheetRows, type SortChain, type SortCtx, type SortKey,
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, orderKeyByPoint, type AxisIndex } from "../lib/rankIndex.js";
-import { SheetRowView, type SheetRowHandlers } from "./rank/SheetRowView.js";
+import { GROUP_H, SheetRowView, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { SheetHeaderRow } from "./rank/SheetHeaderRow.js";
 import { SheetMenusHost, useSheetMenus } from "./rank/SheetMenusHost.js";
 import { useOutcome } from "./rank/useOutcome.js";
@@ -199,6 +198,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     }, [dayMode, pinned, allByKey, axisIds, indexByAxis]);
     const mainRows = sorted; // 핀 행도 기존 위치에 그대로(상단 고정 블록에 중복 표시, 삼각형으로 구분)
 
+
     // 선택의 정의역 판정 — 시트의 재료는 타점이다. 하루 선택이면 그날 타점 아무거나(subject.ts 규칙).
     const subjectRowKey = useMemo(() => {
         const r = mainRows.find(isSubjectRow);
@@ -212,7 +212,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     );
     const status = subjectStatus(subjectInData, subjectRowKey !== null);
 
-    const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());     // 행 pk → tr(드롭 Y 판정 + 선택 따라가기)
+    const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());     // 행 pk → 행 div(선택 따라가기)
     // 선택 따라가기 — 행이 있으면 그 자리로 스크롤(사용자 확정: 고정 대신 스크롤).
     //  · 내가(rank-sheet) 바꾼 선택엔 안 움직인다 — 행을 눌렀는데 화면이 튀면 클릭이 벌이 된다.
     //  · 마운트 첫 판정도 건너뛴다 — 세션 스크롤 복원(useSessionScroll)과 싸우지 않게.
@@ -261,7 +261,6 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
         if (row.time === undefined) goToDay({ date: row.date, code: row.stockCode }, "rank-sheet");
         else goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
     };
-    const totalCols = displayCols.length;
 
     // 행 핸들러 묶음 — SheetRowView(memo)가 얕은 비교로 재사용하도록 **참조를 고정**한다(useRef 경유,
     // 내용물은 매 렌더 최신 클로저로 갱신 — useChartHotkeys 의 h.current 패턴과 같은 이유).
@@ -337,38 +336,38 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
                 <HeaderControls controls={controls} storageKey="wb.headerPins.rankSheet" />
             </PanelHeader>
 
-            {/* 표 — 고정폭(table-layout:fixed)·유연 축폭·열 고정(좌측 스택)·핀 행=헤더 블록 상단 고정·날짜 그룹 */}
-            {/* 표와 집합 사이드바가 한 줄 — 사이드바는 오른쪽(목록이 표를 밀어내는 방향). */}
+            {/* 표가 아니라 **div 그리드**다 — 폭·고정 오프셋은 전부 layoutColumns 가 이미 계산해 두므로
+                <table> 은 그 숫자를 받아 쓰기만 하는 껍데기였고, <tr> 이 절대배치를 못 받아 가상화 좌표계가
+                둘로 갈렸다(.claude/decisions.md "워크벤치 목록 렌더링").
+                ⚠ 이 안의 어떤 상자에도 overflow 를 걸지 말 것 — 걸리는 순간 그게 새 스크롤 기준이 돼
+                  좌측 고정 열의 sticky 가 조용히 죽는다. 말줄임은 셀 자신의 overflow 로 한다. */}
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-            <div ref={scrollRef} onScroll={scroll.onScroll} style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto" }}>
-                {/* border-collapse: separate — 테두리가 셀에 붙어 sticky(고정 열/헤더/핀)를 따라옴(밑줄·세로선 안 밀림). */}
-                <table style={{ tableLayout: "fixed", width: tableW, borderCollapse: "separate", borderSpacing: 0, fontSize: 12 }}>
-                    <colgroup>{displayCols.map((c) => <col key={colKey(c)} style={{ width: widthOf(c) }} />)}</colgroup>
-                    {/* 헤더 블록 = 열 헤더 + 핀 행(둘 다 상단 sticky, 틈·비침 없이 하나로) */}
-                    <thead style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--bg-secondary)" }}>
-                        <SheetHeaderRow displayCols={displayCols} cols={cols} sort={sort}
-                            reorderAxis={reorderAxis}
-                            onSort={clickHeader} onHeaderCtx={menus.openHdrCtx} />
-                        {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1, true))}
-                    </thead>
-                    <tbody>
-                        {/* 그룹 = 1차 키에서만 접는다(이산 열은 저절로, 축은 사람이 그은 컷). label=null 이면 통짜 → 헤더 없음. */}
-                        {groups.flatMap((g) => {
-                            const out: JSX.Element[] = [];
-                            if (g.label != null) out.push(
-                                <tr key={`g-${g.id}`} style={{ height: 22 }}>
-                                    <td colSpan={totalCols} style={{ padding: 0, fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", background: "var(--bg-secondary)", borderTop: "1px solid var(--border-strong)", borderBottom: "1px solid var(--border-default)" }}>
-                                        <span style={{ position: "sticky", left: 0, display: "inline-block", padding: "3px 10px" }}>
-                                            {g.label}<span style={{ fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 6 }}>· {g.rows.length}행</span>
-                                        </span>
-                                    </td>
-                                </tr>,
-                            );
-                            for (const row of g.rows) out.push(renderRow(row));
-                            return out;
-                        })}
-                    </tbody>
-                </table>
+            <div ref={scrollRef} onScroll={scroll.onScroll} style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", fontSize: 12 }}>
+                {/* 머리 블록 = 열 헤더 + 핀 행(둘 다 상단 sticky, 틈·비침 없이 하나로).
+                    헤더를 스크롤 상자 **밖**으로 빼면 안 된다 — 가로 스크롤이 갈려 고정 열이 죽는다. */}
+                <div style={{ position: "sticky", top: 0, zIndex: 5, width: tableW, background: "var(--bg-secondary)" }}>
+                    <SheetHeaderRow displayCols={displayCols} cols={cols} sort={sort}
+                        reorderAxis={reorderAxis}
+                        onSort={clickHeader} onHeaderCtx={menus.openHdrCtx} />
+                    {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1, true))}
+                </div>
+                {/* 본문 상자 — 가상화의 총 높이 상자가 될 자리(그래서 지금부터 position:relative). z-index 를
+                    주지 않는다: 주면 sticky 머리 블록이 행 밑으로 깔린다. */}
+                <div style={{ width: tableW, position: "relative" }}>
+                    {/* 그룹 = 1차 키에서만 접는다(이산 열은 저절로, 축은 사람이 그은 컷). label=null 이면 통짜 → 헤더 없음. */}
+                    {groups.flatMap((g) => {
+                        const out: JSX.Element[] = [];
+                        if (g.label != null) out.push(
+                            <div key={`g-${g.id}`} style={{ display: "flex", alignItems: "center", width: tableW, height: GROUP_H, boxSizing: "border-box", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", background: "var(--bg-secondary)", borderTop: "1px solid var(--border-strong)", borderBottom: "1px solid var(--border-default)" }}>
+                                <span style={{ position: "sticky", left: 0, padding: "0 10px", whiteSpace: "nowrap" }}>
+                                    {g.label}<span style={{ fontWeight: 400, color: "var(--text-tertiary)", marginLeft: 6 }}>· {g.rows.length}행</span>
+                                </span>
+                            </div>,
+                        );
+                        for (const row of g.rows) out.push(renderRow(row));
+                        return out;
+                    })}
+                </div>
                 {/* 고정 블록(핀)은 조건에 맞아서 있는 게 아니다 — 그게 차 있어도 "맞는 게 없다"는 사실은 말해야 한다. */}
                 {mainRows.length === 0 && <div style={muted}>{bandsActive ? `이 조건에 맞는 ${dayMode ? "하루가" : "타점이"} 없습니다.` : dayMode ? "후보 하루가 없습니다." : "이 기간에 타점이 없습니다."}</div>}
             </div>

@@ -17,7 +17,11 @@ import type { RankCell } from "../../lib/rankIndex.js";
 import { PIN, heatOf, outcomeColor } from "../../styles/palette.js";
 import { cellView, type CellMode, type ValuedCell } from "./sheetCell.js";
 
-export const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
+// 행 피치 두 종류 — 둘 다 box-sizing:border-box 로 테두리까지 이 높이 안에 넣는다(행 피치가 상수와
+// 정확히 같아야 한다).
+export const ROW_H = 30;
+/** 그룹 머리 줄 높이. */
+export const GROUP_H = 22;
 
 /** 셀 우클릭 페이로드 — 그룹 나누기(컷) 메뉴. day 행은 time 이 없다. */
 export interface CellCtxPayload {
@@ -34,8 +38,8 @@ export interface SheetRowHandlers {
     onCellCtx: (p: CellCtxPayload) => void;
     /** 결과 셀 우클릭 — 손으로 적는 값이라 입력 입구가 표 안에 있어야 한다. */
     onOutcomeCtx: (p: { row: SheetRow; x: number; y: number }) => void;
-    /** tbody 행만 등록(핀 블록 복사본 제외) — 드래그 배치의 드롭 Y 판정용. */
-    registerRef: (key: string, el: HTMLTableRowElement | null) => void;
+    /** 본문 행만 등록(핀 블록 복사본 제외) — 선택 따라가기 스크롤 대상. */
+    registerRef: (key: string, el: HTMLDivElement | null) => void;
 }
 
 export interface SheetRowViewProps {
@@ -71,13 +75,16 @@ function SheetRowViewImpl({
     // 배경은 전부 CSS(.sheet-row, theme.css) — 호버는 React 상태가 아니라 :hover 다.
     // 행 배경/불투명 셀 배경(sticky 비침 방지)이 --row-bg/--cell-bg 변수 한 쌍으로 갈리고,
     // focus·pinned 는 data 속성으로 CSS 에 알린다(호버 한 번에 패널 전체가 두 번 리렌더되던 것을 없앴다).
-    // 행 구분선(셀에, separate 모드) — 고정 블록 안에서만 마지막만(블록 통합), 그 외(tbody 핀 포함)는 매 행.
+    // 행 구분선 — **행 div 가 한 번** 긋는다(표 시절엔 셀마다 그었다: border-collapse:separate 라 그래야 했다).
+    // 고정 블록 안에서만 마지막만(블록 통합), 그 외(본문 핀 포함)는 매 행.
     const rowBorder = inPinnedBlock ? (isLastPinned ? "2px solid var(--border-strong)" : "none") : "1px solid var(--border-subtle)";
     const point = { stockCode: row.stockCode, date: row.date, time: row.time };
 
+    // 좌측 고정 열 — layoutColumns 가 계산한 오프셋을 그대로 left 에 꽂는다(2단 이상도 그대로 선다).
+    // 불투명 배경(--cell-bg)은 필수: 고정 셀 밑으로 지나가는 셀이 비친다.
     const stick = (c: Col): CSSProperties => {
         const left = leftOf.get(colKey(c));
-        const s: CSSProperties = { borderBottom: rowBorder };
+        const s: CSSProperties = {};
         if (left != null) { s.position = "sticky"; s.left = left; s.zIndex = 2; s.background = "var(--cell-bg)"; }
         if (colKey(c) === lastFrozenKey) s.borderRight = "2px solid var(--border-strong)";
         return s;
@@ -89,7 +96,8 @@ function SheetRowViewImpl({
             style: { fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}` },
             body: (
                 <>
-                    <span onClick={() => h.onNav(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>
+                    {/* flex 셀 안이라 minWidth:0 이 없으면 min-content 로 부풀어 말줄임이 안 걸린다. */}
+                    <span onClick={() => h.onNav(row)} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>
                     {/* 핀 손잡이 — 늘 렌더하고 노출은 CSS(.sheet-pin: 행 :hover 또는 핀 상태)가 정한다.
                         day 행엔 없다 — 핀(작업 대상)은 타점의 개념이다. */}
                     {row.time !== undefined && <button className="sheet-pin" data-pinned={pinned ? "" : undefined}
@@ -150,20 +158,29 @@ function SheetRowViewImpl({
         }),
     };
 
+    // ⚠ 행 div 에 overflow 를 걸지 말 것 — 걸리는 순간 그게 새 스크롤 기준이 돼 좌측 고정 열의
+    //   sticky 가 조용히 죽는다(같이 밀려난다). 말줄임은 **셀 자신**의 overflow:hidden 으로 한다.
+    //   .claude/decisions.md "워크벤치 목록 렌더링" 참고.
     return (
-        <tr className="sheet-row" data-focus={focus ? "" : undefined} data-pinned={pinned ? "" : undefined}
+        <div className="sheet-row" data-focus={focus ? "" : undefined} data-pinned={pinned ? "" : undefined}
             ref={inPinnedBlock ? undefined : (el) => h.registerRef(key, el)}
-            style={{ opacity: dim ? 0.38 : 1, height: ROW_H }}>
+            style={{ display: "flex", width: "100%", height: ROW_H, boxSizing: "border-box", borderBottom: rowBorder, opacity: dim ? 0.38 : 1 }}>
             {cols.map((c) => {
                 const r = CELLS[c.key](c);
                 return (
-                    <td key={colKey(c)} onClick={r.onClick} onContextMenu={r.onContextMenu} title={r.title}
-                        style={{ ...COL_META[c.key].td, ...r.style, ...stick(c) }}>
+                    <div key={colKey(c)} onClick={r.onClick} onContextMenu={r.onContextMenu} title={r.title}
+                        style={{
+                            width: widthOf(c), flex: "0 0 auto", boxSizing: "border-box", minWidth: 0,
+                            // 세로 가운데는 td 가 공짜로 주던 것(vertical-align:middle), 가로는 COL_META.justify —
+                            // 헤더가 이미 쓰던 그 필드다(정렬 소스가 헤더/본문 두 벌이던 게 한 벌로 합쳐졌다).
+                            display: "flex", alignItems: "center", justifyContent: COL_META[c.key].justify,
+                            ...COL_META[c.key].td, ...r.style, ...stick(c),
+                        }}>
                         {r.body}
-                    </td>
+                    </div>
                 );
             })}
-        </tr>
+        </div>
     );
 }
 
@@ -178,8 +195,6 @@ export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.pinned === b.pinned && a.dim === b.dim &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );
-
-// 핀(고정) 행 이름 = 드래그 소스(chip:{pk}). 정렬 축 열에 드롭해 배치. 그냥 클릭=이동(dnd distance 4 로 클릭/드래그 자동 구분).
 
 // ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.
 function Cell({ cell, valued, mode, prominent, barWidth }: {
