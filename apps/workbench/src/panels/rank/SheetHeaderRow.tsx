@@ -21,7 +21,7 @@ export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, o
     displayCols: Col[];
     cols: SheetColumns;
     sort: SortChain;
-    /** 비고정 축 열의 서열 변경(store rankAxisOrder — 필터 보드 레일 순서와 공유). */
+    /** 비고정 축 열의 서열 변경(store rankAxisOrder — 시트 전용. 집합 편성 보드는 제 순서를 따로 든다). */
     reorderAxis: (draggedId: string, targetId: string) => void;
     /** 평클릭=리셋 · Shift+클릭=단 추가 — 규칙은 본체(sheetSort)가 든다. */
     onSort: (key: SortKey, shift: boolean) => void;
@@ -38,7 +38,7 @@ export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, o
                 const justify = COL_META[c.key].justify;
                 // 드래그 재정렬 두 종류 — **고정 여부로 갈린다**(순서 소스가 둘이기 때문).
                 //   고정 열  = 시트 전용 자리 → frozenCols 배열만 재배치(배치 보드 무관)
-                //   비고정 축 = 축 서열 그 자체 → reorderAxis(배치 보드 레인 순서도 따라온다)
+                //   비고정 축 = 축 서열 그 자체 → reorderAxis(store rankAxisOrder)
                 // 종목 열은 언제나 맨 앞 붙박이라 어느 쪽도 아니다.
                 const frozenHere = c.key !== "name" && frozenSet.has(colKey(c));
                 const dnd = frozenHere ? {

@@ -11,6 +11,9 @@
 // 그룹만 리스트인 이유도 거기 있다: 축은 존재 자체가 자리를 정하지만 그룹은 그런 고정 자리가 없고,
 // 게다가 그룹 조건은 여러 필터로 나누는 게 의미가 있다(각각의 한계 기여도가 따로 나온다).
 //
+// 레일 순서는 **이름 열을 끌어** 바꾼다(트랙은 조건 긋기라 잡이가 못 된다). 그 순서는 이 보드만의
+// 로컬 저장물이다 — 시트 축 서열과 갈라져 있고, 셈은 axisOrder(순수)에 있다.
+//
 // 팝오버 편집기 4갈래는 BoardEditors, 그룹 생성 draft 는 useGroupCreateFlow, 되짚기는 boardReveal 에 —
 // 여기는 **레일 격자**(층위 칸·줄 배치)만 남는다.
 import { useMemo, useState } from "react";
@@ -22,6 +25,7 @@ import { useSubject } from "../../lib/subject.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { usePersistedState } from "../../store/persist.js";
 import { useFunnel } from "./FunnelContext.js";
 import { BoardEditors, type BoardEditor } from "./BoardEditors.js";
 import { rowIdOfKey, rowIdOfStage, useBoardReveal, type BoardReveal } from "./boardReveal.js";
@@ -32,10 +36,19 @@ import { RAIL_LABEL_W, RAIL_ROW_H } from "./rail/Rail.js";
 import { DateRail, TimeRail } from "./rail/RangeRails.js";
 import { GRAIN_TITLE, GrainSection } from "./grain.js";
 import { predicateOfKind, stagesFor, type RailKey } from "./stageBinding.js";
+import { dropEdge, moveAxis, orderAxes, parseAxisOrder } from "./axisOrder.js";
 import type { AxisValueRange, FilterPredicate, FilterStage, Grain } from "./stage.js";
 import { stageKind } from "./stage.js";
 
 const GRAINS: Grain[] = ["day", "point"];
+
+/** 레일 순서 pref(로컬 전용). 시트 축 서열(store rankAxisOrder)과 **다른 저장물**이다 — axisOrder.ts 참조. */
+const AXIS_ORDER_KEY = "wb.filterAxisOrder";
+/**
+ * 순서 드래그의 미디어타입 — 시트 열 헤더의 것(`x-rank-axis`)과 **일부러 다르다**. 순서 저장물이
+ * 둘로 갈린 마당에 같은 타입이면 시트 열을 보드에 떨어뜨렸을 때 엉뚱한 순서가 바뀐다.
+ */
+const AXIS_DND = "application/x-filter-axis";
 
 export function FilterBoard({ reveal, onlyActive }: {
     reveal: BoardReveal | null;
@@ -88,6 +101,25 @@ export function FilterBoard({ reveal, onlyActive }: {
 
     const grainOf = useMemo(() => new Map(v.stagesOrdered.map((e) => [e.stage.id, e.grain])), [v.stagesOrdered]);
 
+    // ── 레일 순서 — **이 보드만의 것**(시트 축 서열과 별개 저장물, 사용자 확정). 조건이 아니라 보기
+    // 순서라 store 슬라이스가 아니라 패널 로컬 영속으로 둔다(usePersistedState — 패널 설정의 관례).
+    const [axisOrder, setAxisOrder] = usePersistedState<string[]>(AXIS_ORDER_KEY, parseAxisOrder, []);
+    const orderedAxes = useMemo(() => orderAxes(ax.axes, axisOrder), [ax.axes, axisOrder]);
+    const orderedIds = useMemo(() => orderedAxes.map((a) => a.key), [orderedAxes]);
+    // 끌고 있는 축 — 표시선과 층위 검사에 쓴다. dragover 는 dataTransfer 값을 못 읽어서(브라우저 보안)
+    // 미디어타입만 보이므로, **id 는 여기서** 든다.
+    const [dragAxis, setDragAxis] = useState<string | null>(null);
+    const scopeOf = useMemo(() => new Map(ax.axes.map((a) => [a.key, a.scope])), [ax.axes]);
+    /** 이 축 위에 놓을 수 있나 — **같은 층위**여야 한다. 축의 scope 는 서버 정의라 드래그가 바꿀 값이 아니다. */
+    const canDropOn = (axisKey: string): boolean =>
+        dragAxis !== null && dragAxis !== axisKey && scopeOf.get(dragAxis) === scopeOf.get(axisKey);
+    const dropAxis = (targetKey: string): void => {
+        if (dragAxis === null || !canDropOn(targetKey)) return;
+        const next = moveAxis(orderedIds, dragAxis, targetKey);
+        if (next) setAxisOrder(next);
+        setDragAxis(null);
+    };
+
     // 되짚기 — 그 조건이 사는 줄로 스크롤 + 강조(boardReveal).
     const { registerRow, flash } = useBoardReveal(reveal, stages);
 
@@ -108,7 +140,7 @@ export function FilterBoard({ reveal, onlyActive }: {
                 {v.isLoading && <Note>불러오는 중…</Note>}
                 {!v.isLoading && GRAINS.map((grain) => {
                     const groupStages = stages.filter((s) => stageKind(s) === "group" && (grainOf.get(s.id) ?? "day") === grain);
-                    const axes = ax.axes.filter((a) => a.scope === grain);
+                    const axes = orderedAxes.filter((a) => a.scope === grain);
                     const timeKey: RailKey = grain === "day" ? { kind: "date" } : { kind: "time" };
 
                     return (
@@ -171,9 +203,19 @@ export function FilterBoard({ reveal, onlyActive }: {
                                     const stage = stageOf(key);
                                     if (!visible(stage !== undefined)) return null;
                                     const rowId = rowIdOfKey(key);
+                                    // 드롭은 **줄 전체**가 받는다(잡이보다 과녁이 넓어야 손이 편하다). 트랙과 안 부딪힌다 —
+                                    // HTML5 드래그 중에는 pointer 이벤트가 안 간다.
+                                    const edge = canDropOn(axis.key) ? dropEdge(orderedIds, dragAxis!, axis.key) : null;
                                     return (
-                                        <div key={axis.key} ref={registerRow(rowId)} style={rowWrap(stage, flash === rowId)}>
+                                        <div key={axis.key} ref={registerRow(rowId)}
+                                            onDragOver={(e) => { if (canDropOn(axis.key) && e.dataTransfer.types.includes(AXIS_DND)) e.preventDefault(); }}
+                                            onDrop={(e) => { e.preventDefault(); dropAxis(axis.key); }}
+                                            style={{ ...rowWrap(stage, flash === rowId), ...(edge ? { boxShadow: `inset 0 ${edge === "before" ? "2px" : "-2px"} 0 var(--accent-primary)` } : {}) }}>
                                             <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey} memberKeys={memberKeys}
+                                                dragHandle={{
+                                                    onDragStart: (e) => { e.dataTransfer.setData(AXIS_DND, axis.key); e.dataTransfer.effectAllowed = "move"; setDragAxis(axis.key); },
+                                                    onDragEnd: () => setDragAxis(null),
+                                                }}
                                                 onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.key, x, y })}
                                                 onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.key, ranges } : null)} />
                                         </div>
@@ -198,11 +240,12 @@ export function FilterBoard({ reveal, onlyActive }: {
 // ── 조각들 ────────────────────────────────────────────────────────────────
 
 /** 계산 축 레일 — 재료(값·표시 규격)를 꺼내 꽂는 자리. 값이 없는 축은 어댑터가 이유를 적는다. */
-function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, onType, onChange }: {
+function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, dragHandle, onType, onChange }: {
     axis: AxisRef;
     stages: readonly FilterStage[];
     markerKey: string | null;
     memberKeys: ReadonlySet<string> | null;
+    dragHandle: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
     onType: (x: number, y: number) => void;
     onChange: (ranges: AxisValueRange[] | null) => void;
 }): JSX.Element {
@@ -219,6 +262,7 @@ function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, onType, onCh
             ranges={predicateOfKind(stages, key, "axisValue")?.ranges ?? []}
             markerKey={markerKey}
             memberKeys={memberKeys}
+            dragHandle={dragHandle}
             onType={onType}
             onChange={onChange}
         />

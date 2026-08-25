@@ -27,6 +27,8 @@ interface CommonProps {
      */
     memberKeys?: ReadonlySet<string> | null;
     highlight?: boolean;
+    /** 순서 잡이(이름 열) — 그대로 레일에 넘긴다. 보드가 층위·저장을 지고 여기는 통로다. */
+    dragHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
 }
 
 /** 전부이거나 하나도 없으면 오버레이를 접는다 — 전경=배경인 그림은 구분이 아니라 소음이다. */
@@ -36,7 +38,7 @@ const properSubset = (member: number[], total: number): number[] | undefined =>
 // ── 계산 축 ────────────────────────────────────────────────────────────────
 
 export function ComputedAxisRail({
-    axis, values, strongerWhen, fmtValue, ranges, markerKey, memberKeys, highlight, onType, onChange,
+    axis, values, strongerWhen, fmtValue, ranges, markerKey, memberKeys, highlight, dragHandle, onType, onChange,
 }: CommonProps & {
     /** 타점키 → 수치. */
     values: Map<string, number>;
@@ -108,6 +110,7 @@ export function ComputedAxisRail({
             memberTicks={memberTicks}
             marker={markerValue === undefined ? null : { frac: frac(markerValue), label: fmtValue(markerValue) }}
             highlight={highlight}
+            dragHandle={dragHandle}
             disabledNote={domain ? undefined : "값 없음 — 이 축의 재료가 아직 없습니다"}
             onType={onType}
             onChange={(next) => {

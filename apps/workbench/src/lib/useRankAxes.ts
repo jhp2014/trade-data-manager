@@ -16,7 +16,10 @@ export interface ComputedAxisMeta {
 }
 
 export interface RankAxesView {
-    /** 사용자 순서(store rankAxisOrder) 적용. pref 에 없는 새 축은 뒤로, 동률은 키 안정 정렬. */
+    /**
+     * 시트 축 서열(store rankAxisOrder) 적용. pref 에 없는 새 축은 뒤로, 동률은 키 안정 정렬.
+     * ⚠ 집합 편성 보드는 이 순서 **위에** 제 순서를 한 겹 더 입힌다(패널 로컬 — panels/filter/axisOrder.ts).
+     */
     axes: AxisRef[];
     axisIds: string[];
     /** 축 키 → 그 축의 줄(orderKey 오름차). 모든 축이 키를 가짐(값 없는 축 = 빈 배열). */
@@ -26,7 +29,7 @@ export interface RankAxesView {
     /** 축 키 → 강한 방향(레일 좌표 매핑) + 값 표시 함수(단위가 축마다 다르다 — %·일…). */
     computedMeta: Map<string, ComputedAxisMeta>;
     isLoading: boolean;
-    /** dragged 축을 target 축 자리로 옮긴다(양 패널 공유 — 한쪽에서 바꾸면 다른 쪽도 따라온다). */
+    /** dragged 축을 target 축 자리로 옮긴다 — **시트 서열**을 만진다(집합 편성 보드는 제 순서를 따로 든다). */
     reorder: (draggedId: string, targetId: string) => void;
 }
 

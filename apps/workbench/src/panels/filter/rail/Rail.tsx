@@ -85,13 +85,19 @@ export interface RailProps<V> {
      * 자리를 클릭하는 게 이미 정밀 입력인 레일(판단 축)은 안 준다.
      */
     onType?: (x: number, y: number) => void;
+    /**
+     * 이 레일을 끌어 순서를 바꾸는 잡이 — **이름 열에만** 붙는다. 트랙엔 못 붙인다: 거기 pointerdown 은
+     * 조건 긋기이고, HTML5 draggable 이 그 위에 얹히면 손짓을 통째로 삼킨다.
+     * 안 주면 그 레일은 자리가 고정이다(날짜·시간처럼 층위 안에서 자리가 정해진 레일).
+     */
+    dragHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
     /** 손을 뗄 때 한 번. 정렬(from ≤ to)까지 마친 구간 리스트가 온다. */
     onChange: (ranges: RailRange<V>[]) => void;
 }
 
 export function Rail<V>({
     label, ranges, single = false, toFrac, fromFrac, fmt, minLabel, maxLabel,
-    ticks, memberTicks, marker, highlight = false, disabledNote, onType, onChange,
+    ticks, memberTicks, marker, highlight = false, disabledNote, dragHandle, onType, onChange,
 }: RailProps<V>): JSX.Element {
     const trackRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<RailDrag | null>(null);
@@ -154,8 +160,13 @@ export function Rail<V>({
             display: "flex", alignItems: "center", height: RAIL_ROW_H, borderBottom: "1px solid var(--border-subtle)",
             background: highlight ? "var(--accent-soft)" : "transparent", transition: "background .35s ease",
         }}>
-            <div style={{ width: RAIL_LABEL_W, flexShrink: 0, padding: "0 6px 0 8px", minWidth: 0 }}>
-                <div title={label} style={{ fontSize: 12, fontWeight: 700, color: empty ? "var(--text-secondary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {/* 이름 열 = 순서 잡이(잡이가 있을 때). 이름 자체를 끄는 건 시트 열 헤더와 같은 손짓이라
+                두 화면의 어휘가 갈리지 않는다. 아래 "입력" 버튼의 클릭은 그대로 산다. */}
+            <div
+                {...(dragHandle ? { draggable: true, onDragStart: dragHandle.onDragStart, onDragEnd: dragHandle.onDragEnd } : {})}
+                style={{ width: RAIL_LABEL_W, flexShrink: 0, padding: "0 6px 0 8px", minWidth: 0, ...(dragHandle ? { cursor: "grab" } : {}) }}
+            >
+                <div title={dragHandle ? `${label} — 끌어서 순서 바꾸기` : label} style={{ fontSize: 12, fontWeight: 700, color: empty ? "var(--text-secondary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {label}
                 </div>
                 {onType && (

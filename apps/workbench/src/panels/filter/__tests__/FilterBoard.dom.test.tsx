@@ -73,10 +73,17 @@ const xAt = (frac: number): number => RAIL_PAD + frac * (WIDTH - 2 * RAIL_PAD);
  * ⚠ 조상을 타고 끝까지 올라가면 안 된다: 못 찾으면 옆 줄(날짜 레일)의 트랙을 집어 와서,
  *   "이 레일은 못 긋는다"를 재려던 검사가 엉뚱한 레일을 긋고 통과한다(한 번 밟았다).
  */
-const trackOf = (c: HTMLElement, label: string): HTMLElement => {
-    const name = [...c.querySelectorAll("div")].find((d) => d.title === label);
+/**
+ * 레일의 이름 칸(제목 div) — 축 이름이 그대로 title 이다. 순서 잡이가 달린 레일은 뒤에 안내가 붙으므로
+ * 접두로 찾는다(`하루축 — 끌어서 순서 바꾸기`). 트랙·마커·잡이를 찾는 세 helper 가 이 한 자리를 공유한다.
+ */
+const nameOf = (c: HTMLElement, label: string): HTMLElement => {
+    const name = [...c.querySelectorAll("div")].find((d) => d.title === label || d.title.startsWith(`${label} —`));
     if (!name) throw new Error(`레일 '${label}' 의 이름 열이 없다`);
-    const row = name.parentElement!.parentElement!;
+    return name;
+};
+const trackOf = (c: HTMLElement, label: string): HTMLElement => {
+    const row = nameOf(c, label).parentElement!.parentElement!;
     const track = row.querySelector('[title^="빈 곳을 끌면"]');
     if (!track) throw new Error(`레일 '${label}' 에 그을 수 있는 트랙이 없다(disabledNote 상태)`);
     return track as HTMLElement;
@@ -281,12 +288,8 @@ describe("선택 집합 오버레이 — 멤버는 강조색, 나머지 회색�
 // ⚠ 마커는 **subject 계약**을 따른다(useSubject) — 타점을 골랐으면 타점, 하루만 골랐으면 그 하루.
 // 옛날엔 activePoint 만 봐서 하루 선택이면 마커가 통째로 사라졌다: goToDay 가 activePoint 를 명시적으로
 // 푸는 게 계약이라, 날짜도 일봉 축 값도 멀쩡히 있는데 "지금 어디쯤인가"가 안 보였다.
-const markerOf = (c: HTMLElement, label: string): string | null => {
-    const name = [...c.querySelectorAll("div")].find((d) => d.title === label);
-    if (!name) throw new Error(`레일 '${label}' 의 이름 열이 없다`);
-    const row = name.parentElement!.parentElement!;
-    return row.querySelector("[data-marker]")?.getAttribute("data-marker") ?? null;
-};
+const markerOf = (c: HTMLElement, label: string): string | null =>
+    nameOf(c, label).parentElement!.parentElement!.querySelector("[data-marker]")?.getAttribute("data-marker") ?? null;
 
 describe("현재 자리 마커 — 하루만 골라도 하루 층위엔 선다", () => {
     const DAY = { date: DATES[0], code: A, time: null };
@@ -319,5 +322,74 @@ describe("현재 자리 마커 — 하루만 골라도 하루 층위엔 선다",
         const { container } = renderBoard();
         expect(markerOf(container, "하루축")).toBeNull();
         expect(markerOf(container, "날짜")).toBeNull();
+    });
+});
+
+// ── 레일 순서 바꾸기 — 잡이는 **이름 열**이다(트랙은 조건 긋기라 못 쓴다).
+// 저장물은 이 보드 전용(wb.filterAxisOrder) — 시트 축 서열(store rankAxisOrder)과 갈라져 있다(사용자 확정).
+const ORDER_KEY = "wb.filterAxisOrder";
+const ORDER_SEED: Seed = {
+    candidateDays, points,
+    computedAxes: [feedOf("day-a", "하루축A", "day", 4), feedOf("day-b", "하루축B", "day", 4), feedOf("pt-ax", "타점축", "point", 4)],
+};
+/** 그려진 레일 이름들(축만) — 순서가 정말 화면에 반영됐는지 재는 건 store 가 아니라 이 목록이다. */
+const railNames = (c: HTMLElement): string[] =>
+    [...c.querySelectorAll("div")].map((d) => d.title.split(" — ")[0]).filter((t) => t.startsWith("하루축") || t === "타점축");
+/** dataTransfer 는 jsdom 에 없다 — 우리가 실제로 쓰는 세 가지(setData·types·effectAllowed)만 흉내낸다. */
+const fakeDt = (): DataTransfer => {
+    const store = new Map<string, string>();
+    return {
+        setData: (t: string, v: string) => { store.set(t, v); },
+        getData: (t: string) => store.get(t) ?? "",
+        get types() { return [...store.keys()]; },
+        effectAllowed: "none",
+    } as unknown as DataTransfer;
+};
+const dragAxisOnto = (c: HTMLElement, from: string, to: string): void => {
+    const handle = nameOf(c, from).parentElement!;
+    const targetRow = nameOf(c, to).parentElement!.parentElement!.parentElement!;
+    const dataTransfer = fakeDt();
+    fireEvent.dragStart(handle, { dataTransfer });
+    fireEvent.dragOver(targetRow, { dataTransfer });
+    fireEvent.drop(targetRow, { dataTransfer });
+};
+
+describe("레일 순서 — 이름 열을 끌어 바꾸고, 로컬에 남는다", () => {
+    it("같은 층위 안에서 자리가 바뀐다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        expect(railNames(container)).toEqual(["하루축A", "하루축B", "타점축"]);
+
+        dragAxisOnto(container, "하루축A", "하루축B");
+
+        expect(railNames(container)).toEqual(["하루축B", "하루축A", "타점축"]);
+    });
+
+    it("바꾼 순서가 로컬에 남는다 — 다시 열어도 그대로", () => {
+        const { container, unmount } = renderBoard(ORDER_SEED);
+        dragAxisOnto(container, "하루축A", "하루축B");
+        expect(JSON.parse(localStorage.getItem(ORDER_KEY)!)).toEqual(["c:day-b", "c:day-a", "c:pt-ax"]);
+        unmount();
+
+        const again = renderBoard(ORDER_SEED);
+        expect(railNames(again.container)).toEqual(["하루축B", "하루축A", "타점축"]);
+    });
+
+    // ⚠ 층위는 축 정의(scope)가 정한다 — 드래그가 바꿀 값이 아니다.
+    it("층위는 못 넘는다 — 하루 축을 타점 축에 떨어뜨려도 아무 일도 없다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        dragAxisOnto(container, "하루축A", "타점축");
+        expect(railNames(container)).toEqual(["하루축A", "하루축B", "타점축"]);
+    });
+
+    it("시트 축 서열은 안 건드린다 — 두 순서는 별개 저장물이다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        dragAxisOnto(container, "하루축A", "하루축B");
+        expect(useWorkbench.getState().rankAxisOrder).toEqual([]);
+    });
+
+    it("날짜·시간 레일엔 잡이가 없다 — 층위 안에서 자리가 정해진 줄이다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        expect(nameOf(container, "날짜").parentElement!.draggable).toBe(false);
+        expect(nameOf(container, "하루축A").parentElement!.draggable).toBe(true);
     });
 });
