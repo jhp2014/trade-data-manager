@@ -15,7 +15,7 @@ import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { Col } from "./sheetColumns.js";
 
 export type SortKey =
-    | { kind: "name" | "date" | "time" | "outcome" }
+    | { kind: "name" | "date" | "time" | "outcome" | "points" | "comment" }
     | { kind: "axis"; axisId: string };
 export type SortKind = SortKey["kind"];
 export interface SortStep { key: SortKey; dir: 1 | -1 }
@@ -86,8 +86,10 @@ export function sortValueOf(k: SortKey, row: SheetRow, ctx: SortCtx): string | n
     switch (k.kind) {
         case "name": return ctx.nameOf(row.stockCode);
         case "date": return row.date;
-        case "time": return row.time;
+        case "time": return row.time ?? null; // day 행(시각 없음)은 언제나 바닥 — 그 열 자체가 day 모드엔 없다
         case "outcome": return row.outcome || null;
+        case "points": return row.pointCount ?? null;
+        case "comment": return row.comment ? 1 : null;
         case "axis": return row.cells[k.axisId]?.rank ?? null;
     }
 }

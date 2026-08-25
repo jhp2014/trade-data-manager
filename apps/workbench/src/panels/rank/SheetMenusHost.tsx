@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
-import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
+import { chartKey, rowKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { HeaderMenu, OutcomeMenu } from "./SheetMenus.js";
 import type { CellCtxPayload } from "./SheetRowView.js";
 import type { HdrCtxPayload } from "./SheetHeaderRow.js";
@@ -64,7 +64,7 @@ export function SheetMenusHost({ m, axes, cols, sortAxisId, sortLen, dropSortKey
                 // 옛 저장물(재편 전 day 축 컷 = 타점 키)은 그 키 그대로 토글해야 해제가 실제로 지운다.
                 // 그 날 어느 타점 키로 저장됐든 찾는다 — 우클릭한 타점과 다른 타점의 키일 수 있다.
                 const stored = cols.cuts[`ax:${ctx.axisId}`] ?? [];
-                const freshKey = ax.scope === "day" ? chartKey(ctx.point) : pointKey(ctx.point);
+                const freshKey = ax.scope === "day" ? chartKey(ctx.point) : rowKey(ctx.point);
                 const legacyKey = ax.scope === "day" ? stored.find((k) => k !== freshKey && rowKeyToChartKey(k) === freshKey) : undefined;
                 const cutKey = stored.includes(freshKey) ? freshKey : (legacyKey ?? freshKey);
                 const cutOn = stored.includes(cutKey);

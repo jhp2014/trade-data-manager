@@ -19,6 +19,9 @@ const HIDDEN_KEY = "wb.rankSheetHiddenCols";
 const WIDTHS_KEY = "wb.rankSheetColWidths";
 /** 축 열 그룹 컷 — colKey(`ax:<id>`) → slotId[]. 시트 전용(축의 속성이 아님)이라 로컬. */
 const CUTS_KEY = "wb.rankSheetCuts";
+/** day 행 모드는 고정·숨김·폭을 **딴 주머니**에 — 모드 토글이 열 배치를 섞으면 안 된다.
+ *  컷(CUTS_KEY)만 공유: 컷은 축의 자리(orderKey 앵커)라 행 모드와 무관하게 같은 뜻이다. */
+const dayKey = (k: string): string => `${k}.day`;
 
 /** 되짚기 강조가 남는 시간(ms) — 스크롤이 멎고 눈이 따라잡을 만큼. */
 const FLASH_MS = 1400;
@@ -57,17 +60,20 @@ export interface SheetColumns {
     flashCol: string | null;
 }
 
-export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
+export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point" }: {
     axes: AxisRef[];
     axesLoading: boolean;
     /** 표 스크롤 컨테이너의 폭 — 남는 폭을 축 열들이 나눠 갖는다. */
     containerW: number;
     /** 축 열의 최소 폭(셀 표시 모드가 정한다 — 눈금 모드는 그릴 폭이 필요하다). */
     axisMin: number;
+    /** 행 모드 — day 는 기본 열(시간·결과 대신 타점 수·코멘트)과 저장 주머니가 다르다. */
+    rowMode?: "point" | "day";
 }): SheetColumns {
-    const [frozenCols, setFrozenCols] = usePersistedState<string[]>(FROZEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), ["date", "time"]);
-    const [hiddenCols, setHiddenCols] = usePersistedState<string[]>(HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), []);
-    const [colWidths, setColWidths] = usePersistedState<Record<string, number>>(WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null), {});
+    const day = rowMode === "day";
+    const [frozenCols, setFrozenCols] = usePersistedState<string[]>(day ? dayKey(FROZEN_KEY) : FROZEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), day ? ["date"] : ["date", "time"]);
+    const [hiddenCols, setHiddenCols] = usePersistedState<string[]>(day ? dayKey(HIDDEN_KEY) : HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), []);
+    const [colWidths, setColWidths] = usePersistedState<Record<string, number>>(day ? dayKey(WIDTHS_KEY) : WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null), {});
     const [cuts, setCuts] = usePersistedState<Record<string, string[]>>(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null), {});
     // 드래그 중 폭의 **미리보기 층**(영속 밖) — pointermove 마다 localStorage 에 동기 기록하면 이벤트
     // 빈도만큼 JSON 직렬화가 돌아 드래그가 무거워진다. 움직이는 동안은 메모리로만 그리고 손을 뗄 때
@@ -108,11 +114,13 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin }: {
     }, [revealAxis, setHiddenCols]);
 
     // 기본 순서 → 숨김 제외 → 고정 먼저(기본순 유지, 좌측 스택) → 비고정. 종목은 항상 표시·고정.
+    // day 모드: 시간·결과(타점 소유)는 아예 없고, 타점 수·코멘트(존재 지도)가 뒤에 선다.
     const baseCols = useMemo<Col[]>(() => [
-        { key: "name" }, { key: "date" }, { key: "time" },
+        { key: "name" }, { key: "date" },
+        ...(day ? [] : [{ key: "time" } as Col]),
         ...axes.map((a): Col => ({ key: "axis", axisId: a.key, name: a.name, computed: isComputedAxis(a.key) })),
-        { key: "outcome" },
-    ], [axes]);
+        ...(day ? [{ key: "points" } as Col, { key: "comment" } as Col] : [{ key: "outcome" } as Col]),
+    ], [axes, day]);
     // 미리보기 층이 영속 폭을 덮는다 — 드래그 중에도 열이 실시간으로 넓어져 보이되 저장은 안 된다.
     const effectiveWidths = useMemo(
         () => (Object.keys(previewWidths).length ? { ...colWidths, ...previewWidths } : colWidths),

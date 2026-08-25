@@ -63,11 +63,11 @@ export const rowKey = (p: { stockCode: string; date: string; time?: string }): s
     p.time !== undefined ? domainPointKey(p as PointRef) : domainChartKey(p);
 
 /**
- * 타점으로 행 값을 찾는 폴백 조회 — 타점 키로 묻고(point 축), 없으면 차트 키로(day 축: 그 하루의 행).
- * point 축 맵엔 차트 키가 없고 day 축 맵엔 타점 키가 없어, 폴백이 잘못 맞을 수 없다.
+ * 행 참조로 값을 찾는 폴백 조회 — 제 행 키로 묻고(타점이면 타점 키), 없으면 차트 키로
+ * (day 축: 그 하루의 행). point 축 맵엔 차트 키가 없고 day 축 맵엔 타점 키가 없어, 폴백이 잘못 맞을 수 없다.
  */
-export const rowLookup = <V>(m: ReadonlyMap<string, V> | undefined, ref: PointRef): V | undefined =>
-    m === undefined ? undefined : (m.get(pointKey(ref)) ?? m.get(chartKey(ref)));
+export const rowLookup = <V>(m: ReadonlyMap<string, V> | undefined, ref: { stockCode: string; date: string; time?: string }): V | undefined =>
+    m === undefined ? undefined : (m.get(rowKey(ref)) ?? m.get(chartKey(ref)));
 
 /**
  * 행 키에서 시각을 벗겨 차트 키로 — 저장된 옛 경계(day 축인데 타점 키로 저장된 것)를 읽기에서 흡수한다.

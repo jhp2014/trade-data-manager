@@ -11,7 +11,7 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
 import { COL_META, colKey, type Col, type ColKind } from "./sheetColumns.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
-import { pointKey } from "../../lib/pointKey.js";
+import { rowKey } from "../../lib/pointKey.js";
 import type { SheetRow } from "./rankSheet.js";
 import type { RankCell } from "../../lib/rankIndex.js";
 import { PIN, heatOf, outcomeColor } from "../../styles/palette.js";
@@ -19,10 +19,10 @@ import { cellView, type CellMode, type ValuedCell } from "./sheetCell.js";
 
 export const ROW_H = 30; // 모든 행 고정 높이 → 핀 sticky top 오프셋을 정확히 계산.
 
-/** 셀 우클릭 페이로드 — 판단 축=slot 밴드·컷·배치해제 / 계산 축=값 경계 메뉴(패널이 axisId 로 가른다). */
+/** 셀 우클릭 페이로드 — 그룹 나누기(컷) 메뉴. day 행은 time 이 없다. */
 export interface CellCtxPayload {
     axisId: string;
-    point: { stockCode: string; date: string; time: string };
+    point: { stockCode: string; date: string; time?: string };
     rank: number;
     total: number;
     x: number;
@@ -67,7 +67,7 @@ function SheetRowViewImpl({
     row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, sortAxisId,
     focus, pinned, dim, inPinnedBlock = false, isLastPinned = false, h,
 }: SheetRowViewProps): JSX.Element {
-    const key = pointKey(row);
+    const key = rowKey(row);
     // 배경은 전부 CSS(.sheet-row, theme.css) — 호버는 React 상태가 아니라 :hover 다.
     // 행 배경/불투명 셀 배경(sticky 비침 방지)이 --row-bg/--cell-bg 변수 한 쌍으로 갈리고,
     // focus·pinned 는 data 속성으로 CSS 에 알린다(호버 한 번에 패널 전체가 두 번 리렌더되던 것을 없앴다).
@@ -90,10 +90,11 @@ function SheetRowViewImpl({
             body: (
                 <>
                     <span onClick={() => h.onNav(row)} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: focus ? "var(--accent-primary)" : undefined }}>{name}</span>
-                    {/* 핀 손잡이 — 늘 렌더하고 노출은 CSS(.sheet-pin: 행 :hover 또는 핀 상태)가 정한다. */}
-                    <button className="sheet-pin" data-pinned={pinned ? "" : undefined}
+                    {/* 핀 손잡이 — 늘 렌더하고 노출은 CSS(.sheet-pin: 행 :hover 또는 핀 상태)가 정한다.
+                        day 행엔 없다 — 핀(작업 대상)은 타점의 개념이다. */}
+                    {row.time !== undefined && <button className="sheet-pin" data-pinned={pinned ? "" : undefined}
                         onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); h.onTogglePin(key); }} title={pinned ? "핀 해제(▼)" : "핀 고정(▲)"}
-                        style={{ position: "absolute", right: 0, top: 0, bottom: 0, alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: pinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: "linear-gradient(90deg, transparent, var(--cell-bg) 40%)" }}>{pinned ? "▼" : "▲"}</button>
+                        style={{ position: "absolute", right: 0, top: 0, bottom: 0, alignItems: "center", padding: "0 4px 0 8px", border: "none", cursor: "pointer", color: pinned ? PIN : "var(--text-secondary)", fontSize: 12, lineHeight: 1, background: "linear-gradient(90deg, transparent, var(--cell-bg) 40%)" }}>{pinned ? "▼" : "▲"}</button>}
                 </>
             ),
         }),
@@ -105,7 +106,7 @@ function SheetRowViewImpl({
         time: () => ({
             onClick: () => h.onNav(row),
             style: { whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontWeight: 600, color: "var(--accent-primary)" },
-            body: row.time.slice(0, 5),
+            body: row.time?.slice(0, 5) ?? "—",
         }),
         axis: (c) => {
             const axisId = (c as { axisId: string }).axisId;
@@ -128,6 +129,23 @@ function SheetRowViewImpl({
             style: { cursor: "context-menu" },
             body: row.outcome
                 ? <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span>
+                : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
+        }),
+        // day 행 전용 — 타점 수(분봉 작업 진도). 0 은 흐리게(아직 분봉 작업 전인 하루가 한눈에).
+        points: () => ({
+            onClick: () => h.onNav(row),
+            title: "이 날 찍은 복기 타점 수",
+            style: { cursor: "pointer" },
+            body: (row.pointCount ?? 0) > 0
+                ? <span className="tabular" style={{ fontWeight: 600 }}>{row.pointCount}</span>
+                : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
+        }),
+        comment: () => ({
+            onClick: () => h.onNav(row),
+            title: "당일 코멘트 유무",
+            style: { cursor: "pointer" },
+            body: row.comment
+                ? <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>코</span>
                 : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
         }),
     };

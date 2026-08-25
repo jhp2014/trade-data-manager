@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAllPoints } from "../lib/useAllPoints.js";
-import { buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
+import { useCandidateDays } from "../lib/useCandidateDays.js";
+import { usePresenceIndex } from "../lib/usePresence.js";
+import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
 import { colKey } from "./rank/sheetColumns.js";
 import { useSheetColumns } from "./rank/useSheetColumns.js";
 import {
@@ -21,7 +23,7 @@ import { setMembersOf } from "./filter/setMembers.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
 import { PanelHeader, ScrollRow, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
-import { pointKey, rowLookup } from "../lib/pointKey.js";
+import { chartKey, pointKey, rowKey, rowLookup } from "../lib/pointKey.js";
 import { subjectStatus, useSubject } from "../lib/subject.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
@@ -51,18 +53,30 @@ import type { ReviewPoint } from "@trade-data-manager/wire";
 // 팝업 세 벌=SheetMenusHost · 세션 스크롤=useSessionScroll. 본체는 **데이터 파생과 조립**만 한다.
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
+const ROWMODE_KEY = "wb.rankSheetRowMode";
+type RowMode = "point" | "day";
+const parseRowMode = (o: unknown): RowMode | null => (o === "day" ? "day" : o === "point" ? "point" : null);
 const FILTERMODE_KEY = "wb.rankSheetFilterMode";
 const SORT_KEY = "wb.rankSheetSort"; // 정렬 체인 영속(다른 시트 설정과 동일 패턴) — 프리셋 전환·새로고침에 유지. 옛 단일 정렬도 읽는다.
 // 무필터 상태의 매칭 집합 — 참조 하나로 고정해 useMemo 결과가 렌더마다 안 바뀌게(깔때기 쪽 상수 패턴과 동일).
 const EMPTY_KEYS: ReadonlySet<string> = new Set();
 
 export function RankSheetPanel(): JSX.Element {
+    // 행 모드 — 타점(분석의 기본) / 하루(후보 하루 × day 축). day 는 열·정렬의 저장 주머니가 달라
+    // **모드째 리마운트**한다(usePersistedState 가 키 변경을 안 따라가므로 — 옛 상태가 새 키를 덮는 사고 방지).
+    const [rowMode, setRowMode] = usePersistedState<RowMode>(ROWMODE_KEY, parseRowMode, "point");
+    return <SheetBody key={rowMode} rowMode={rowMode} setRowMode={setRowMode} />;
+}
+
+function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: RowMode) => void }): JSX.Element {
+    const dayMode = rowMode === "day";
     const goToPoint = useWorkbench((s) => s.goToPoint);
+    const goToDay = useWorkbench((s) => s.goToDay);
     // 지금 선택(subject) — 타점 또는 하루. 행 강조·스크롤 따라가기·머리글 배지가 이걸 본다.
     const subject = useSubject();
-    const isSubjectRow = (r: { stockCode: string; date: string; time: string }): boolean =>
+    const isSubjectRow = (r: { stockCode: string; date: string; time?: string }): boolean =>
         subject !== null && r.stockCode === subject.code && r.date === subject.date &&
-        (subject.time === null || r.time === subject.time);
+        (r.time === undefined || subject.time === null || r.time === subject.time);
 
     // 호버는 React 상태가 아니라 CSS :hover 다(.sheet-row, theme.css) — 행 배경·핀 손잡이 노출이
     // 전부라, 상태로 들면 행 하나 스칠 때마다 패널이 두 번씩 리렌더된다(2026-08-20 검수).
@@ -72,7 +86,10 @@ export function RankSheetPanel(): JSX.Element {
     const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
 
     // ── 축 + 라인(필터 보드 레일과 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
-    const { axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes();
+    const { axes: allAxes, linesByAxis, computedValues, computedMeta, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes();
+    // day 모드의 열은 day 축만 — point 축은 행(하루)에 값을 정의할 수 없다(시각이 값에 들어간다).
+    const axes = useMemo(() => (dayMode ? allAxes.filter((a) => a.scope === "day") : allAxes), [allAxes, dayMode]);
+    const axisIds = useMemo(() => axes.map((a) => a.key), [axes]);
     const indexByAxis = useMemo(() => {
         const m = new Map<string, AxisIndex>();
         for (const [axisId, placed] of linesByAxis) m.set(axisId, buildAxisIndex(placed));
@@ -95,11 +112,13 @@ export function RankSheetPanel(): JSX.Element {
     const axisMin = cellMode === "number" ? 56 : 76; // 눈금 모드는 그릴 폭이 필요하다
 
     // ── 열 구성(고정·숨김·폭·컷 + 되짚기) — 넷 다 축 키를 들어 청소 규칙이 같으므로 한 훅이 소유한다.
-    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin });
+    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode });
     const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = cols;
 
-    // ── 전체 타점(행 원천) + 기간.
+    // ── 전체 타점(행 원천) + 기간. day 모드는 후보 하루(존재 지도 파생)가 행 원천이다.
     const { points: allPoints, isLoading: pointsLoading } = useAllPoints();
+    const { candidates, isLoading: candLoading } = useCandidateDays();
+    const { index: presenceIdx } = usePresenceIndex();
     const allByKey = useMemo(() => {
         const m = new Map<string, ReviewPoint>();
         for (const p of allPoints) m.set(pointKey(p), p);
@@ -111,14 +130,21 @@ export function RankSheetPanel(): JSX.Element {
     const linked = useLinkedSet();
     const bandsActive = linked.view.isFiltering;
     // 무필터면 매칭이라는 개념 자체가 없다 — 전 우주 Set 을 짓지 않는다(수천 타점이면 그게 그대로 비용).
-    const interKeys = useMemo<ReadonlySet<string>>(
-        () => (linked.view.isFiltering ? new Set(linked.view.viewedPointRefs.map(pointKey)) : EMPTY_KEYS),
-        [linked.view.isFiltering, linked.view.viewedPointRefs],
-    );
-    // 표현가능 술어 — 시트의 행이 될 수 있나 = 타점 사전에 있나. 타점 0인 하루는 전개가 못 살리므로 안 됨에 선다.
+    const interKeys = useMemo<ReadonlySet<string>>(() => {
+        if (!linked.view.isFiltering) return EMPTY_KEYS;
+        // day 모드의 매칭 단위는 하루(차트 키) — 뷰가 이미 들고 있다. point 모드는 타점 키.
+        return dayMode ? linked.view.viewedChartKeys : new Set(linked.view.viewedPointRefs.map(pointKey));
+    }, [dayMode, linked.view.isFiltering, linked.view.viewedChartKeys, linked.view.viewedPointRefs]);
+    const matchKeyOf = (r: { stockCode: string; date: string; time?: string }): string =>
+        dayMode ? chartKey(r) : pointKey({ stockCode: r.stockCode, date: r.date, time: r.time ?? "" });
+    // 표현가능 술어 — 시트의 행이 될 수 있나. point 모드 = 타점 사전에 있나(타점 0인 하루는 전개가 못 살린다).
+    // day 모드 = 후보 하루인가(존재 지도에 있나).
+    const candSet = useMemo(() => new Set(candidates.map(chartKey)), [candidates]);
     const setMembers = useMemo(
-        () => setMembersOf(linked.view, "point", (it) => it.time !== undefined && allByKey.has(pointKey({ stockCode: it.stockCode, date: it.date, time: it.time }))),
-        [linked.view, allByKey],
+        () => (dayMode
+            ? setMembersOf(linked.view, "day", (it) => candSet.has(chartKey(it)))
+            : setMembersOf(linked.view, "point", (it) => it.time !== undefined && allByKey.has(pointKey({ stockCode: it.stockCode, date: it.date, time: it.time })))),
+        [dayMode, linked.view, allByKey, candSet],
     );
 
     // 필터 표시 모드 — narrow(교집합만) / dim(전체 유지, 밴드 밖 흐리게). 영속.
@@ -126,19 +152,25 @@ export function RankSheetPanel(): JSX.Element {
 
     // 행 집합: narrow + 필터 활성 → 매칭 집합만. dim 또는 무필터 → 전체(밴드 밖은 렌더에서 흐리게).
     const rowPoints = useMemo<ReviewPoint[]>(() => {
+        if (dayMode) return [];
         if (bandsActive && filterMode === "narrow") {
             const out: ReviewPoint[] = [];
             for (const k of interKeys) { const it = allByKey.get(k); if (it) out.push(it); }
             return out;
         }
         return allPoints;
-    }, [bandsActive, filterMode, interKeys, allByKey, allPoints]);
+    }, [dayMode, bandsActive, filterMode, interKeys, allByKey, allPoints]);
 
-    const rows = useMemo(() => buildSheetRows(rowPoints, axisIds, indexByAxis), [rowPoints, axisIds, indexByAxis]);
+    const rows = useMemo(() => {
+        if (!dayMode) return buildSheetRows(rowPoints, axisIds, indexByAxis);
+        // day 행 = 후보 하루 전부(빈 셀 = 진도 정보). narrow 필터는 차트 키로 좁힌다.
+        const base = bandsActive && filterMode === "narrow" ? candidates.filter((c) => interKeys.has(chartKey(c))) : candidates;
+        return buildDaySheetRows(base, axisIds, indexByAxis, (c) => presenceIdx.get(chartKey(c)));
+    }, [dayMode, rowPoints, axisIds, indexByAxis, bandsActive, filterMode, candidates, interKeys, presenceIdx]);
 
     // ── 정렬 체인(n차). 평클릭=리셋 · Shift+클릭=단 추가. 규칙 전부는 sheetSort(순수·테스트) 에.
     //    축 정렬 = 강(rank↑) 먼저, 값 없음(미배치·미산정)은 방향 무관 바닥. localStorage 영속(옛 단일 정렬도 읽는다).
-    const [sort, setSort] = usePersistedState<SortChain>(SORT_KEY, parseSortChain, DEFAULT_CHAIN);
+    const [sort, setSort] = usePersistedState<SortChain>(dayMode ? `${SORT_KEY}.day` : SORT_KEY, parseSortChain, DEFAULT_CHAIN);
     const primary = sort[0];
     // 종목명 — 사전 한 벌(전량)에서. 타점 피드에 실려 오는 이름은 안 읽는다: 같은 마스터에서 나온
     // 부분집합이라 더 알려주는 게 없고, 출처가 둘이면 어느 쪽이 맞는지의 문제가 생긴다.
@@ -159,19 +191,22 @@ export function RankSheetPanel(): JSX.Element {
     // 상단 고정 블록 = **핀만**. 활성 타점의 상시 고정은 폐기했다(사용자 확정) — 목록에 없는 선택을
     // 억지로 상단에 세우는 대신, 행이 있으면 스크롤로 따라가고 없으면 머리글 배지가 이유를 말한다.
     const pinnedRows = useMemo(() => {
+        if (dayMode) return []; // 핀(작업 대상)은 타점의 개념 — day 행엔 핀 손잡이도 없다
         const items = pinned.map((k) => allByKey.get(k)).filter((x): x is ReviewPoint => !!x);
         return buildSheetRows(items, axisIds, indexByAxis);
-    }, [pinned, allByKey, axisIds, indexByAxis]);
+    }, [dayMode, pinned, allByKey, axisIds, indexByAxis]);
     const mainRows = sorted; // 핀 행도 기존 위치에 그대로(상단 고정 블록에 중복 표시, 삼각형으로 구분)
 
     // 선택의 정의역 판정 — 시트의 재료는 타점이다. 하루 선택이면 그날 타점 아무거나(subject.ts 규칙).
     const subjectRowKey = useMemo(() => {
         const r = mainRows.find(isSubjectRow);
-        return r ? pointKey(r) : null;
+        return r ? rowKey(r) : null;
     }, [mainRows, subject]);
     const subjectInData = useMemo(
-        () => subject !== null && allPoints.some(isSubjectRow),
-        [allPoints, subject],
+        () => subject !== null && (dayMode
+            ? candidates.some((c) => c.stockCode === subject.code && c.date === subject.date)
+            : allPoints.some(isSubjectRow)),
+        [dayMode, candidates, allPoints, subject],
     );
     const status = subjectStatus(subjectInData, subjectRowKey !== null);
 
@@ -220,7 +255,10 @@ export function RankSheetPanel(): JSX.Element {
     // ── 팝업 네 벌(셀/열 우클릭 · 축 만들기 · 결과 입력)의 상태 — opener 만 행·헤더·컨트롤에 나눠 꽂는다.
     const menus = useSheetMenus();
 
-    const navRow = (row: SheetRow): void => goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
+    const navRow = (row: SheetRow): void => {
+        if (row.time === undefined) goToDay({ date: row.date, code: row.stockCode }, "rank-sheet");
+        else goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
+    };
     const totalCols = displayCols.length;
 
     // 행 핸들러 묶음 — SheetRowView(memo)가 얕은 비교로 재사용하도록 **참조를 고정**한다(useRef 경유,
@@ -235,7 +273,7 @@ export function RankSheetPanel(): JSX.Element {
 
     // 한 행 렌더 — 상태 파생(포커스·핀·흐림)만 여기서 계산하고 렌더는 SheetRowView(memo). 호버는 CSS.
     const renderRow = (row: SheetRow, isLastPinned = false, inPinnedBlock = false): JSX.Element => {
-        const key = pointKey(row);
+        const key = rowKey(row);
         const isPinned = pinnedSet.has(key);
         return (
             <SheetRowView key={key} row={row} cols={displayCols}
@@ -243,7 +281,7 @@ export function RankSheetPanel(): JSX.Element {
                 name={nameOf(row.stockCode)}
                 mode={cellMode} valuedOf={valuedOf} sortAxisId={sortAxisId}
                 focus={isSubjectRow(row)} pinned={isPinned}
-                dim={bandsActive && !interKeys.has(key) && (isPinned || filterMode === "dim")}
+                dim={bandsActive && !interKeys.has(matchKeyOf(row)) && (isPinned || filterMode === "dim")}
                 inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} h={rowH} />
         );
     };
@@ -251,6 +289,12 @@ export function RankSheetPanel(): JSX.Element {
     // 헤더 컨트롤 선언 — 눈금·필터모드·축 만들기. 아래 "⤺" 해제 손잡이들은 여기 안 든다:
     // 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라 성격이 다르다(개수가 곧 정보다).
     const controls: ControlSpec[] = [
+        {
+            kind: "choice", id: "rowMode", name: "행",
+            help: "행의 단위 — 타점(분봉 시각까지) / 하루(후보 하루 × day 축, 타점 없이도 값이 선다)",
+            values: [{ v: "point", label: "타점" }, { v: "day", label: "하루" }],
+            value: rowMode, set: (v) => setRowMode(parseRowMode(v) ?? "point"),
+        },
         {
             kind: "choice", id: "cellMode", name: "눈금", help: "칸을 무엇으로 읽을까 — 값 눈금은 계산 축에서만 다르다(판단 축은 순위로 폴백)",
             values: [
@@ -268,7 +312,7 @@ export function RankSheetPanel(): JSX.Element {
         },
     ];
 
-    if (axesLoading || pointsLoading) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
+    if (axesLoading || pointsLoading || (dayMode && candLoading)) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
     if (axes.length === 0) return <Wrap><div style={muted}>계산 축이 없습니다 — 서버 축 레지스트리가 비어 있습니다.</div></Wrap>;
 
     return (
@@ -280,7 +324,7 @@ export function RankSheetPanel(): JSX.Element {
             <PanelHeader gap={8}>
                 <ScrollRow gap={9}>
                     <SetBindingLabel linked={linked} members={setMembers} />
-                    <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 미배치 ${unplacedOnSort}` : ""}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 값 없음 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
                     {sort.length > 1 && <button onClick={() => setSort((s) => [s[0]])} title="2차 이하 정렬 해제(1차만 남김)" style={{ ...miniBtn, flexShrink: 0 }}>정렬 {sort.length}단 ⤺</button>}
@@ -324,7 +368,7 @@ export function RankSheetPanel(): JSX.Element {
                     </tbody>
                 </table>
                 {/* 고정 블록(핀)은 조건에 맞아서 있는 게 아니다 — 그게 차 있어도 "맞는 게 없다"는 사실은 말해야 한다. */}
-                {mainRows.length === 0 && <div style={muted}>{bandsActive ? "이 조건에 맞는 타점이 없습니다." : "이 기간에 타점이 없습니다."}</div>}
+                {mainRows.length === 0 && <div style={muted}>{bandsActive ? `이 조건에 맞는 ${dayMode ? "하루가" : "타점이"} 없습니다.` : dayMode ? "후보 하루가 없습니다." : "이 기간에 타점이 없습니다."}</div>}
             </div>
             </div>
 

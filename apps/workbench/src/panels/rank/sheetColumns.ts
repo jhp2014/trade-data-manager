@@ -25,7 +25,10 @@ export type Col =
     | { key: "time" }
     /** computed = 계산 축(값을 아는 축). 폭·표기가 갈리는 유일한 자리라 열 기술자가 들고 있는다. */
     | { key: "axis"; axisId: string; name: string; computed: boolean }
-    | { key: "outcome" };
+    | { key: "outcome" }
+    /** day 행 모드 전용 둘 — 타점 수(분봉 작업 진도) · 당일 코멘트 유무(존재 지도 재사용). */
+    | { key: "points" }
+    | { key: "comment" };
 export type ColKind = Col["key"];
 
 // td 기본 스타일 3종 — COL_META 가 참조하므로 먼저 선언한다.
@@ -47,6 +50,8 @@ export const COL_META: Record<ColKind, ColMeta> = {
     time: { width: TIME_W, label: "시간", justify: "center", td: td },
     axis: { width: AXIS_W, label: "", justify: "center", td: tdCell },
     outcome: { width: OUT_W, label: "결과", justify: "flex-start", td: td },
+    points: { width: 52, label: "타점", justify: "center", td: tdCell },
+    comment: { width: 40, label: "코", justify: "center", td: tdCell },
 };
 
 export const colKey = (c: Col): string => (c.key === "axis" ? `ax:${c.axisId}` : c.key);

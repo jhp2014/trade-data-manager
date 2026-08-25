@@ -20,7 +20,8 @@ export function useOutcome(allPoints: readonly ReviewPoint[]): OutcomeAdmin {
      * 안 그러면 결과를 적는 순간 메모가 조용히 지워진다.
      */
     const outcomeMut = useMutation({
-        mutationFn: (v: { row: SheetRow; outcome: string }) =>
+        // 결과는 타점의 속성 — day 행(시각 없음)은 결과 열 자체가 없어 여기 못 온다(타입 가드만 남긴다).
+        mutationFn: (v: { row: SheetRow & { time: string }; outcome: string }) =>
             upsertReviewPoint({ stockCode: v.row.stockCode, date: v.row.date, time: v.row.time, outcome: v.outcome || undefined, memo: v.row.memo }),
         onSuccess: () => void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey }),
     });
@@ -32,7 +33,7 @@ export function useOutcome(allPoints: readonly ReviewPoint[]): OutcomeAdmin {
     }, [allPoints]);
 
     return {
-        saveOutcome: (row, outcome) => outcomeMut.mutate({ row, outcome }),
+        saveOutcome: (row, outcome) => { if (row.time !== undefined) outcomeMut.mutate({ row: row as SheetRow & { time: string }, outcome }); },
         outcomeChoices,
     };
 }
