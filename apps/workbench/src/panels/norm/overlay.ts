@@ -76,44 +76,27 @@ export interface OverlayBounds {
     maxY: number;
 }
 
-/** 여러 선의 공통 경계. y 는 0(원점 선)을 항상 포함시킨다 — 기준선이 화면 밖이면 읽을 수가 없다. */
-export function overlayBounds(items: readonly NormLine[]): OverlayBounds | null {
-    if (items.length === 0) return null;
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = 0;
-    let maxY = 0;
-    for (const s of items) {
-        for (const p of s.points) {
-            if (p.x < minX) minX = p.x;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.y > maxY) maxY = p.y;
-        }
+/**
+ * 선 하나의 경계 상자 — **"확실히 화면 밖"** 판정 재료(머리글의 `밖 N`).
+ * 점을 하나하나 훑는 대신 상자끼리 겹치는지만 보므로 팬·확대 매 프레임에 돌려도 싸다.
+ * ⚠ 근사다: U 자로 휘어 상자만 걸치는 선은 "안"으로 세어진다 — 그쪽으로 틀리는 게 맞다
+ *   (안 보이는 걸 안 세는 건 사고지만, 보이는 걸 덜 세는 건 조용하다).
+ */
+export function lineBox(line: NormLine): OverlayBounds | null {
+    if (line.points.length === 0) return null;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of line.points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
     }
-    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
-    return { minX, maxX, minY, maxY };
+    return Number.isFinite(minX) && Number.isFinite(minY) ? { minX, maxX, minY, maxY } : null;
 }
 
-/**
- * 이상치를 뺀 초기 범위 — 값들의 [q, 1−q] 분위수.
- *
- * 공통 척도의 유일한 실질 문제가 이것이다: +300% 짜리 하나가 나머지를 전부 바닥에 눌러버린다.
- * **자르는 게 아니라 초기 뷰만 좁히는 것**이라 잘린 선은 확대·이동으로 그대로 닿는다(정보를 안 버린다).
- * 0(원점 선)은 언제나 포함 — 기준이 화면 밖이면 되돌림을 읽을 수가 없다.
- */
-export function trimmedBounds(items: readonly NormLine[], q: number): OverlayBounds | null {
-    if (items.length === 0 || q <= 0) return overlayBounds(items);
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (const s of items) for (const p of s.points) { xs.push(p.x); ys.push(p.y); }
-    if (xs.length === 0) return null;
-    xs.sort((a, b) => a - b);
-    ys.sort((a, b) => a - b);
-    const lo = (v: number[]): number => v[Math.floor((v.length - 1) * q)];
-    const hi = (v: number[]): number => v[Math.ceil((v.length - 1) * (1 - q))];
-    return { minX: Math.min(lo(xs), 0), maxX: Math.max(hi(xs), 0), minY: Math.min(lo(ys), 0), maxY: Math.max(hi(ys), 0) };
-}
+/** 두 경계 상자가 겹치나. 맞닿기만 해도(경계 공유) 겹친 것으로 본다. */
+export const boundsOverlap = (a: OverlayBounds, b: OverlayBounds): boolean =>
+    a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 
 /**
  * 일봉 정규화 뷰의 기본 창(사용자 확정 — 상수): **뒤로 60일 · 앞으로 2일 · −60%~+40%**.
@@ -137,16 +120,15 @@ export const dailyFrame = (): OverlayBounds =>
 export const POINT_FRAME = { back: 60, forward: 10, minY: -20, maxY: 20 } as const;
 
 /**
- * `includeFuture` 면 **양의 쪽만** 데이터까지 넓힌다 — "타점 뒤로 어디까지 갔나"를 볼 때. 축소로도 닿지만
- * 기본 창에서 한 번에 보고 싶다는 요구(사용자)에 대한 답이고, 원위치(리셋)도 이 창으로 돌아온다.
+ * 분봉 타점 정규화 뷰의 기본 창 — 일봉과 같은 **상수**다. 인자가 없는 게 이 함수의 요점이다:
+ * 창이 항목을 따라 움직이면 "같은 되돌림이 같은 크기로 선다"는 이 패널의 전제가 깨진다.
+ *
+ * 옛 `pointUnitFrame(items, q, includeFuture)` 은 미래 토글이 켜졌을 때만 데이터까지 넓혔는데,
+ * **그게 이 패널에서 데이터가 창에 닿는 유일한 경로**였고 그래서 항목이 바뀔 때마다 창이 흔들렸다.
+ * 미래 구간은 어차피 점선으로 늘 그려져 있으므로, 보고 싶으면 축소해서 본다(사용자 확정).
  */
-export function pointUnitFrame(items: readonly NormLine[], q: number, includeFuture = false): OverlayBounds | null {
-    if (items.length === 0) return null;
-    const base: OverlayBounds = { minX: -POINT_FRAME.back, maxX: POINT_FRAME.forward, minY: POINT_FRAME.minY, maxY: POINT_FRAME.maxY };
-    if (!includeFuture) return base;
-    const t = trimmedBounds(items, q);
-    return t ? { ...base, maxX: Math.max(base.maxX, t.maxX), maxY: Math.max(base.maxY, t.maxY) } : base;
-}
+export const pointFrame = (): OverlayBounds =>
+    ({ minX: -POINT_FRAME.back, maxX: POINT_FRAME.forward, minY: POINT_FRAME.minY, maxY: POINT_FRAME.maxY });
 
 /**
  * 금액 라벨 솎기 — **두 단계, 둘 다 같은 종목 안에서만**(사용자 확정).

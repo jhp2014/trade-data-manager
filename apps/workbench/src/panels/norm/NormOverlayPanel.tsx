@@ -12,7 +12,7 @@
 // 조사 대상(useInspection)·표시 토글(useOverlayToggles)·테마(useThemeOverlay)·멤버 캔들(useCandles)·
 // 복기 파생(useAmountReadout). 여기 남는 건 그 사이 배선과 표시목록(paintLayers) 조립뿐이다.
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { lineOpacity, dimOpacity, lineVisual, type LineVisual, type OverlayLine } from "./overlay.js";
+import { boundsOverlap, lineBox, lineOpacity, dimOpacity, lineVisual, type LineVisual, type OverlayLine } from "./overlay.js";
 import { useNormLines } from "./useNormLines.js";
 import { useDaySnapshot } from "./useDaySnapshot.js";
 import { useCandles, type CandlesView } from "./useCandles.js";
@@ -59,7 +59,7 @@ const CANDLE_OTHER_RATIO = 0.45;
 /** 일봉/분봉이 **별도 패널**(카탈로그 2항목)이다 — "일봉에서 훑고 분봉으로 확인"의 동시 사용 시나리오. */
 export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.Element {
     const toggles = useOverlayToggles(grain);
-    const { mode, dailyMarket, zeroLine, showFuture, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme } = toggles;
+    const { mode, dailyMarket, zeroLine, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme } = toggles;
 
     const isDaily = grain === "daily";
     const isPointUnit = !isDaily;
@@ -104,8 +104,8 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
     // 거터는 **분봉 전용**(사용자 확정) — 일봉의 이름·정체는 바닥 원점 스택이 진다.
     // 자리는 데이터가 아니라 **토글**이 정한다 — 값이 도착할 때 폭이 출렁이지 않게.
     const showGutter = !isDaily && showLabels;
-    const viewport = useOverlayViewport({ isDaily, showFuture, lines, gutter: showGutter, onGestureStart: closeBadge });
-    const { box, bounds, boundsKey, scales, viewX } = viewport;
+    const viewport = useOverlayViewport({ isDaily, gutter: showGutter, onGestureStart: closeBadge });
+    const { box, bounds, scales, viewX } = viewport;
 
     // "지금 조사 중인 하나" — 시선이 단일일 때만 비싼 파생(테마·거래대금·판독)이 붙는다(옛 규칙 승계).
     const inspection = useInspection({ isDaily, byKey, effSelected: subjectKeys, hovered });
@@ -167,7 +167,9 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
         return { v, color };
     }, [subjectKeys, hovered, groupSet, groupColorOf]);
 
-    useEffect(() => { setBadge(null); setBadgeHover(null); }, [boundsKey, grain]);
+    // 모수가 갈리면 열려 있던 넘침 목록을 닫는다 — 사라진 선의 이름이 목록에 남지 않게.
+    // (예전엔 척도 변경에 매달아 뒀는데, 창이 상수가 된 지금 이 목록이 실제로 상하는 계기는 모수뿐이다.)
+    useEffect(() => { setBadge(null); setBadgeHover(null); }, [byKey]);
 
     // ── 손짓: 거터 칩 **클릭 = 고정 토글**(이 패널의 본론이 모수 구성이라 한 번 누르는 자리를 준다),
     //    Ctrl(⌘)+클릭 = 시선 이동(차트 패널·타점 정보가 따라온다). 규칙과 그 이유는 GutterLayer 주석.
@@ -341,9 +343,22 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
         () => ({ alpha: candles.alpha, setAlpha: candles.setAlpha }),
         [candles.alpha, candles.setAlpha],
     );
+    /**
+     * "확실히 화면 밖"인 선 수 — 창이 붙들려 있는 대가를 머리글이 말한다.
+     * 선마다 경계 상자를 **모수가 갈릴 때 한 번** 접어 두고, 팬·확대 프레임마다는 상자끼리만 견준다
+     * (선당 700점 × 30선을 매 프레임 훑으면 이동이 뻑뻑해진다 — 솎기를 넣은 것과 같은 이유).
+     */
+    const lineBoxes = useMemo(() => lines.map(lineBox), [lines]);
+    // ⚠ 상자에 넓이가 생기기 전(ResizeObserver 첫 발화 전)에는 세지 않는다 — 폭 0 이면 d3 가 보이는
+    //   구간을 한 점으로 접어, 멀쩡한 선들이 한 프레임 동안 "밖"으로 세어진다(숫자가 번쩍인다).
+    const measured = box.width > 0 && box.height > 0;
+    const outOfView = useMemo(
+        () => (measured && viewport.view ? lineBoxes.filter((b) => b !== null && !boundsOverlap(b, viewport.view!)).length : 0),
+        [measured, lineBoxes, viewport.view],
+    );
     const headerCounts = useMemo(
-        () => ({ shown: lines.length, population: data.population, missing: data.missing }),
-        [lines.length, data.population, data.missing],
+        () => ({ shown: lines.length, population: data.population, missing: data.missing, outOfView }),
+        [lines.length, data.population, data.missing, outOfView],
     );
     const headerTheme = useMemo(
         () => ({ lineCount: themeOverlay?.lines.length ?? null, hasTarget: pointTarget !== null }),
@@ -411,8 +426,7 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
                 candles={headerCandles}
                 counts={headerCounts}
                 theme={headerTheme}
-                locked={viewport.locked}
-                onToggleLock={viewport.onToggleLock}
+                onResetView={viewport.onResetView}
                 pinCount={data.pinCount}
                 onClearPins={data.clearPins}
             />
@@ -454,7 +468,6 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
             <OverlayFooter
                 grain={grain}
                 groupNames={inspectGroupNames}
-                locked={viewport.locked}
                 themeMode={theme.mode}
                 themeLineCount={themeOverlay?.lines.length ?? 0}
                 candles={{

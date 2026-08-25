@@ -22,6 +22,11 @@ export interface OverlayCounts {
     population: number;
     /** 재료 결손으로 못 그린 수. */
     missing: number;
+    /**
+     * 그렸지만 **지금 화면 밖**인 수. 창이 상수로 붙들려 있는 대가가 "넣었는데 안 보임"이라, 그 대가를
+     * 말하는 자리다 — 결손(재료가 없어 못 그림)과 같은 뺄셈의 다른 항이라 나란히 선다.
+     */
+    outOfView: number;
 }
 
 /** 테마 칩이 말할 세 가지 상태 — 몇 선인지 / 짚은 게 없는지 / 있는데 비었는지. */
@@ -32,16 +37,15 @@ export interface OverlayThemeStatus {
     hasTarget: boolean;
 }
 
-function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, locked, onToggleLock, pinCount, onClearPins }: {
+function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, onResetView, pinCount, onClearPins }: {
     grain: "daily" | "minute";
     toggles: OverlayToggles;
     /** 캔들에서 머리글이 쓰는 건 선명도뿐 — CandlesView 통짜를 받으면 호버마다 갈리는 파생이 memo 를 깬다. */
     candles: Pick<CandlesView, "alpha" | "setAlpha">;
     counts: OverlayCounts;
     theme: OverlayThemeStatus;
-    /** 척도 고정 — 지금 범위를 붙들어 항목 전후를 비교한다. */
-    locked: boolean;
-    onToggleLock: () => void;
+    /** 기본 뷰 — 배율·위치를 표준 창으로. 창은 상수라 "고정" 토글이 따로 없다. */
+    onResetView: () => void;
     /** 고정 슬롯 수 — 비우기 액션의 활성 근거(고정 자체는 라벨 클릭의 몫이다). */
     pinCount: number;
     onClearPins: () => void;
@@ -69,11 +73,6 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, locked, onT
             set: (v) => t.setDailyMarket(v === "krx" ? "krx" : "un"),
         },
         {
-            kind: "toggle", id: "future", name: "미래", available: !isDaily,
-            help: "타점 이후(점선 구간)까지 기본 창에 담는다",
-            on: t.showFuture, set: t.setShowFuture,
-        },
-        {
             kind: "toggle", id: "levels", name: "기준선", label: "선", activeColor: PRICE_LINE,
             help: "시선 항목의 기준선 후보들을 같은 % 공간에 얹는다(최저가가 기준선)",
             on: t.showLevels, set: t.setShowLevels,
@@ -93,9 +92,9 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, locked, onT
             on: t.showLabels, set: t.setShowLabels,
         },
         {
-            kind: "toggle", id: "lockScale", name: "척도 고정",
-            help: "지금 범위를 붙든다 — 항목을 넣고 빼도 척도가 안 움직여 전후가 비교된다",
-            on: locked, set: onToggleLock,
+            kind: "action", id: "resetView", name: "기본 뷰", group: "척도",
+            help: "배율·위치를 표준 창으로 되돌린다(축 스트립 더블클릭 = 그 축만)",
+            run: onResetView,
         },
         {
             kind: "action", id: "clearPins", name: "고정 비우기", label: "비우기", group: "기준",
@@ -125,17 +124,20 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, locked, onT
             help: "시선 타점의 앞뒤 창 동안 같은 테마 종목의 분당 종가 경로를 같이 세운다 · 단축키 T",
             on: t.showTheme, set: t.setShowTheme,
         },
-    ], [isDaily, t, candles.alpha, candles.setAlpha, locked, onToggleLock, pinCount, onClearPins]);
+    ], [isDaily, t, candles.alpha, candles.setAlpha, onResetView, pinCount, onClearPins]);
 
     return (
         <PanelHeader chrome={false} gap={8}
             style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
             {/* ── 왼쪽은 **말**(이 화면이 무엇을 담고 있나). */}
-            <span style={count} title="시선 1(focus 자동 교체) + 고정 N(라벨 클릭). 결손 = 재료 부족(전일 종가·원점 분봉 미수집)">
+            <span style={count} title="시선 1(focus 자동 교체) + 고정 N(라벨 클릭). 결손 = 재료 부족(전일 종가·원점 분봉 미수집) · 밖 = 그렸지만 지금 화면 범위 밖(기본 뷰로 되돌리거나 축소)">
                 {counts.shown}개
                 {counts.population > counts.shown && <span style={{ color: "var(--text-tertiary)" }}> / {counts.population}</span>}
                 {counts.missing > 0 && (
                     <span style={{ color: "var(--text-tertiary)" }}> · 결손 {counts.missing}</span>
+                )}
+                {counts.outOfView > 0 && (
+                    <span style={{ color: "var(--warning)" }}> · 밖 {counts.outOfView}</span>
                 )}
             </span>
             {t.showTheme && !isDaily && (

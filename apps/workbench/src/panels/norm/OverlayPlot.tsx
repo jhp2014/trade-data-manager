@@ -63,7 +63,13 @@ export interface OverlayPlotProps {
 
 export function OverlayPlot(p: OverlayPlotProps): JSX.Element {
     const { viewport, theme, candles, inspection } = p;
-    const { size, box, bounds, scales, dragging } = viewport;
+    const { size, box, bounds, dragging } = viewport;
+    /**
+     * 항목이 없으면 그림 층을 통째로 접는다. 창(bounds)이 상수가 된 뒤로는 선이 없어도 척도가 있지만,
+     * 빈 패널에 눈금만 세워 두면 "겹칠 차트가 없습니다" 안내 뒤로 격자가 비쳐 안내가 안내로 안 읽힌다 —
+     * **아래 층들의 `scales &&` 가드가 곧 이 판정**이라 한 자리에서 접는다.
+     */
+    const scales = p.linesEmpty ? null : viewport.scales;
     const themeOverlay = theme.overlay;
     const { singleTarget } = inspection;
     const fmtXAxis = (v: number): string => fmtX(v, p.xUnit);

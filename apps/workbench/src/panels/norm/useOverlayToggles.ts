@@ -33,9 +33,6 @@ export interface OverlayToggles {
     /** 일봉 전용 — 어느 시장의 봉·원점(전일 종가)인가. 봉과 원점이 **함께** 갈린다(사용자 확정). */
     dailyMarket: "krx" | "un";
     setDailyMarket: Setter<"krx" | "un">;
-    /** 타점 이후(점선 구간)까지 기본 창에 담나(분봉 전용). */
-    showFuture: boolean;
-    setShowFuture: Setter<boolean>;
     /** 시선 항목의 기준선·D선을 얹나. */
     showLevels: boolean;
     setShowLevels: Setter<boolean>;
@@ -67,7 +64,6 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
         (o) => (o === "krx" || o === "un" ? o : null),
         "un",
     );
-    const [showFuture, setShowFuture] = usePersistedState<boolean>(`wb.normFuture.${grain}`, bool, false);
     const [showLevels, setShowLevels] = usePersistedState<boolean>(`wb.normLevels.${grain}`, bool, true);
     const [zeroLine, setZeroLine] = usePersistedState<ZeroLine>(
         `wb.normZeroLine.${grain}`,
@@ -84,7 +80,6 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
     return useMemo(() => ({
         mode, setMode,
         dailyMarket, setDailyMarket,
-        showFuture, setShowFuture,
         showLevels, setShowLevels,
         zeroLine, setZeroLine,
         showLabels, setShowLabels,
@@ -92,7 +87,7 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
         showAmountLabels, setShowAmountLabels,
         showTheme, setShowTheme,
     }), [
-        mode, setMode, dailyMarket, setDailyMarket, showFuture, setShowFuture, showLevels, setShowLevels,
+        mode, setMode, dailyMarket, setDailyMarket, showLevels, setShowLevels,
         zeroLine, setZeroLine,
         showLabels, setShowLabels, showAmount, setShowAmount, showAmountLabels, setShowAmountLabels, showTheme, setShowTheme,
     ]);

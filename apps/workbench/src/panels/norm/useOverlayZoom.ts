@@ -24,6 +24,7 @@
 // SVG transform 으로 확대하면 선이 같이 굵어지고 축 눈금이 확대에 따라 다시 안 찍힌다 — 여기선 축이 곧
 // 정보(기준 대비 %)라 그건 그림이 거짓말을 하는 것이다. 소비자는 tx·ty 를 받아 스케일을 다시 만든다.
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useSessionUi } from "../../store/useSessionUi.js";
 import { select, pointer } from "d3-selection";
 import { zoom as d3zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
 
@@ -34,6 +35,9 @@ export interface AxisTransform {
 }
 
 export const AXIS_IDENTITY: AxisTransform = { k: 1, t: 0 };
+
+/** 두 축이 다 원위치인 상태 — **모듈 상수**여야 한다(렌더마다 새 객체를 내면 tx·ty memo 가 매번 깨진다). */
+const IDENTITY_AXES: { x: AxisTransform; y: AxisTransform } = { x: AXIS_IDENTITY, y: AXIS_IDENTITY };
 
 /** 제스처가 시작된 영역 — 본문 / 아래 시간축 스트립 / 왼쪽 % 축 스트립. */
 export type ZoomRegion = "body" | "x" | "y";
@@ -126,6 +130,8 @@ export function useOverlayZoom(
      * 닫는 것 같은 일은 여기서 해야 한다.
      */
     onGestureStart?: () => void,
+    /** 축 변환이 사는 세션 스코프 — 재마운트를 건너 이어지는 단위(패널 하나). */
+    scopeId: string = "overlay",
     /**
      * 배율 한계. 하한이 넉넉한 이유(0.05): 기본 창이 관심 구간만 담으므로 **창 밖을 보려면 축소가 유일한 길**이다.
      * 0.5 였을 때는 두 배까지만 넓어져 타점 뒤 몇 시간이 창 밖에 남았고, 그걸 이동으로 찾아다녀야 했다(사용자 지적).
@@ -133,7 +139,12 @@ export function useOverlayZoom(
      */
     scaleExtent: readonly [number, number] = [0.05, 60],
 ): OverlayZoom {
-    const [axes, setAxes] = useState<{ x: AxisTransform; y: AxisTransform }>({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
+    /**
+     * 축 변환 — 컴포넌트 useState 가 아니라 **세션 스토어**에 산다. 프리셋 전환은 dockview 재마운트라
+     * useState 였을 때는 화면만 바꿔도 애써 맞춘 배율이 날아갔다. 새로고침에는 초기화된다(의도 — 배율은
+     * 그때 보던 항목을 겨냥해 맞춘 것이라 다음 날 데이터에 씌우면 어긋난 자리에서 시작한다).
+     */
+    const [axes, setAxes] = useSessionUi<{ x: AxisTransform; y: AxisTransform }>(scopeId, "axes", IDENTITY_AXES);
     const [dragging, setDragging] = useState(false);
     const behavior = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     /** 재영점 중 이벤트 무시 — ref 인 이유: 제스처 end(효과 내부)와 reset(효과 밖) 둘 다 재영점을 한다.
@@ -223,7 +234,7 @@ export function useOverlayZoom(
     }, [ref]);
 
     const reset = useCallback(() => {
-        setAxes({ x: AXIS_IDENTITY, y: AXIS_IDENTITY });
+        setAxes(IDENTITY_AXES);
         rezero();
     }, [rezero]);
 

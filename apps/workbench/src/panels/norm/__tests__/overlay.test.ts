@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleLinear } from "d3-scale";
-import { overlayBounds, trimmedBounds, dailyFrame, DAILY_FRAME, pointUnitFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, lineOpacity, dimOpacity, labelAnchorAt, lineVisual, minuteIndexOf, minuteAmountOf, pickAmountLabels, segmentIndexOf, type NormLine, type OverlayBounds } from "../overlay.js";
+import { lineBox, boundsOverlap, dailyFrame, DAILY_FRAME, pointFrame, POINT_FRAME, splitAtX, polylinePoints, yAtX, decimate, decimateStep, clipToX, lineOpacity, dimOpacity, labelAnchorAt, lineVisual, minuteIndexOf, minuteAmountOf, pickAmountLabels, segmentIndexOf, type NormLine, type OverlayBounds } from "../overlay.js";
 
 /** 정규화 선 하나(값 공간) — 경계·라벨 검사용 최소 빌더. */
 const lineOf = (key: string, pts: [number, number][]): NormLine => ({
@@ -9,42 +9,30 @@ const lineOf = (key: string, pts: [number, number][]): NormLine => ({
     points: pts.map(([x, y]) => ({ x, y })),
 });
 
-describe("overlayBounds", () => {
-    it("y 는 0(기준선)을 항상 포함한다 — 화면 밖이면 되돌림을 읽을 수 없다", () => {
-        // 전부 기준 위에 있는 선 하나 → minY 가 0 으로 내려와야 한다.
-        const b = overlayBounds([lineOf("a", [[0, 0], [5, 50], [8, 20]])])!;
-        expect(b.minY).toBe(0);
-        expect(b.maxY).toBeCloseTo(50);
-        expect(b.minX).toBe(0);
-        expect(b.maxX).toBe(8);
+describe("lineBox — 선 하나의 경계 상자", () => {
+    it("점들의 최소·최대를 그대로 준다(0 을 억지로 안 넣는다 — 이건 척도가 아니라 판정 재료다)", () => {
+        const b = lineBox(lineOf("a", [[0, 10], [5, 50], [8, 20]]))!;
+        expect(b).toEqual({ minX: 0, maxX: 8, minY: 10, maxY: 50 });
     });
 
-    it("빈 목록은 경계가 없다", () => {
-        expect(overlayBounds([])).toBeNull();
+    it("점이 없으면 상자가 없다", () => {
+        expect(lineBox(lineOf("a", []))).toBeNull();
     });
 });
 
-describe("trimmedBounds", () => {
-    // 이상치 하나가 나머지를 바닥에 누르는 상황 — 공통 척도의 유일한 실질 문제.
-    const many = Array.from({ length: 20 }, (_, i) => lineOf(`k${i}`, [[0, 0], [2, 10]]));
-    const outlier = lineOf("out", [[0, 0], [2, 300]]);
+describe("boundsOverlap — 화면 밖 판정", () => {
+    const view = { minX: 0, maxX: 10, minY: 0, maxY: 10 };
 
-    it("양끝 분위수를 뺀 범위를 준다 — 이상치가 척도를 지배하지 않게", () => {
-        const full = overlayBounds([...many, outlier])!;
-        const trimmed = trimmedBounds([...many, outlier], 0.05)!;
-        expect(full.maxY).toBeCloseTo(300);
-        expect(trimmed.maxY).toBeLessThan(full.maxY);
+    it("겹치면 참", () => {
+        expect(boundsOverlap({ minX: 5, maxX: 20, minY: 5, maxY: 20 }, view)).toBe(true);
     });
 
-    it("0(앵커 선)은 언제나 범위 안 — 기준이 화면 밖이면 되돌림을 못 읽는다", () => {
-        const b = trimmedBounds(many, 0.4)!;
-        expect(b.minY).toBeLessThanOrEqual(0);
-        expect(b.maxY).toBeGreaterThanOrEqual(0);
-        expect(b.minX).toBeLessThanOrEqual(0);
+    it("가로는 걸쳐도 세로가 어긋나면 밖이다 — 두 축을 다 봐야 한다", () => {
+        expect(boundsOverlap({ minX: 0, maxX: 10, minY: 40, maxY: 50 }, view)).toBe(false);
     });
 
-    it("q 가 0이면 전체 범위 그대로", () => {
-        expect(trimmedBounds([...many, outlier], 0)).toEqual(overlayBounds([...many, outlier]));
+    it("맞닿기만 해도 안으로 본다(경계에 걸친 선은 보인다)", () => {
+        expect(boundsOverlap({ minX: 10, maxX: 20, minY: 10, maxY: 20 }, view)).toBe(true);
     });
 });
 
@@ -54,34 +42,13 @@ describe("dailyFrame — 일봉 정규화 기본 창(상수)", () => {
     });
 });
 
-describe("pointUnitFrame — 분봉 타점 정규화 기본 창", () => {
-    // 타점(원점) 이전 90분 · −30% 까지 내려갔다가 이후 +50% 간 골격.
-    const wide = [{
-        key: "k", chartKey: "c", stockCode: "005930", date: "2026-08-05", basePrice: 100, baseRate: 0, baseT: 0,
-        points: [{ x: -90, y: -30 }, { x: 0, y: 0 }, { x: 120, y: 50 }],
-    }];
-
-    it("상수 창 — 타점 이전 60분·이후 10분·±20%. 데이터가 넘쳐도 창은 안 흔들린다(비교 기준)", () => {
-        expect(pointUnitFrame(wide, 0)).toEqual({ minX: -POINT_FRAME.back, maxX: POINT_FRAME.forward, minY: -20, maxY: 20 });
+describe("pointFrame — 분봉 타점 정규화 기본 창(상수)", () => {
+    it("타점 이전 60분·이후 10분·±20%p — **인자가 없다**(창이 항목을 따라 움직이면 비교가 깨진다)", () => {
+        expect(pointFrame()).toEqual({ minX: -POINT_FRAME.back, maxX: POINT_FRAME.forward, minY: -20, maxY: 20 });
     });
 
-    it("미래 포함이면 **양의 쪽만** 데이터까지 — 과거 쪽 창은 그대로", () => {
-        const f = pointUnitFrame(wide, 0, true)!;
-        expect(f.maxX).toBe(120);
-        expect(f.maxY).toBe(50);
-        expect(f.minX).toBe(-POINT_FRAME.back);
-        expect(f.minY).toBe(POINT_FRAME.minY);
-    });
-
-    it("미래 포함이어도 기본 창 아래로는 안 좁아진다 — 데이터가 원점에서 안 벗어난 경우", () => {
-        const flat = [{ ...wide[0], points: [{ x: 0, y: 0 }, { x: 2, y: 1 }] }];
-        const f = pointUnitFrame(flat, 0, true)!;
-        expect(f.maxX).toBe(POINT_FRAME.forward);
-        expect(f.maxY).toBe(POINT_FRAME.maxY);
-    });
-
-    it("빈 목록은 창이 없다", () => {
-        expect(pointUnitFrame([], 0.01)).toBeNull();
+    it("몇 번을 불러도 같은 창 — 미래 토글이 데이터까지 넓히던 옛 경로는 은퇴했다", () => {
+        expect(pointFrame()).toEqual(pointFrame());
     });
 });
 
@@ -393,7 +360,7 @@ describe("d3 스케일과의 조합", () => {
             basePrice: 100, baseRate: 0, baseT: 0,
             points: [{ x: 0, y: 0 }, { x: 5, y: 50 }, { x: 8, y: 20 }],
         };
-        const b = overlayBounds([n])!;
+        const b = lineBox(n)!;
         const x = scaleLinear().domain([b.minX, b.maxX]).range([0, 80]);
         const y = scaleLinear().domain([b.minY, b.maxY]).range([50, 0]); // y 뒤집기 = range 역순
         expect(polylinePoints(n.points, x, y)).toBe("0.00,50.00 50.00,0.00 80.00,30.00");

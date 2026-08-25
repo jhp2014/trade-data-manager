@@ -4,8 +4,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import {
-    dailyFrame, pointUnitFrame, decimate, decimateStep, clipToX,
-    type OverlayBounds, type OverlayLine,
+    dailyFrame, pointFrame, decimate, decimateStep, clipToX,
+    type OverlayBounds,
 } from "./overlay.js";
 import { AXIS_W, GUTTER_W } from "./gutter.js";
 import { TAG_W } from "./anchorDisplay.js";
@@ -32,11 +32,10 @@ export interface OverlayViewport {
     svgRef: React.MutableRefObject<SVGSVGElement | null>;
     size: { w: number; h: number };
     box: OverlayBox;
-    bounds: OverlayBounds | null;
-    /** 척도가 바뀌었나를 한 문자열로 — 뷰포트 원위치·뱃지 접기의 방아쇠. */
-    boundsKey: string;
-    locked: boolean;
-    onToggleLock: () => void;
+    /** 값 공간의 창 — **패널 종류만이 정하는 상수**라 마운트 뒤로 안 바뀐다. */
+    bounds: OverlayBounds;
+    /** 기본 뷰 — 배율·위치를 표준 창으로 되돌린다(창 자체는 원래 안 움직인다). */
+    onResetView: () => void;
     scales: Scales | null;
     /** 보이는 x 구간(값 공간) — 자르기의 기준. */
     viewX: { from: number; to: number } | null;
@@ -54,8 +53,6 @@ export interface OverlayViewport {
 
 export function useOverlayViewport(args: {
     isDaily: boolean;
-    showFuture: boolean;
-    lines: readonly OverlayLine[];
     /** 오른쪽에 이름 거터를 세우나(라벨 토글) — 스트립 폭이 갈린다. */
     gutter: boolean;
     /**
@@ -64,21 +61,19 @@ export function useOverlayViewport(args: {
      */
     onGestureStart: () => void;
 }): OverlayViewport {
-    const { isDaily, showFuture, lines, gutter, onGestureStart } = args;
+    const { isDaily, gutter, onGestureStart } = args;
 
-    // ── 척도: 기본 창(뷰마다 다른 규칙) vs 고정(그 순간의 범위를 붙든다 — 필터 좁히기 전후 비교용).
-    //  · 일봉 정규화 = 상수 창(−60~+10일 · −60~+40%) — 필터가 바뀌어도 같은 되돌림이 같은 크기로 선다.
-    //  · 분봉 타점 %p = 상수 창(−60~+10분 · ±20%p), 미래 토글이면 양의 쪽만 데이터까지.
-    const [locked, setLocked] = useState<OverlayBounds | null>(null);
-    const autoBounds = useMemo(
-        () => (lines.length === 0 ? null : isDaily ? dailyFrame() : pointUnitFrame(lines, 0.01, showFuture)),
-        [isDaily, showFuture, lines],
-    );
-    const bounds = locked ?? autoBounds;
-    const onToggleLock = useCallback(
-        () => setLocked((l) => (l ? null : autoBounds)),
-        [autoBounds],
-    );
+    /**
+     * ── 창(값 공간) — **패널 종류 하나만이 정하는 상수**다. 일봉 −60~+2일·−60~+40%, 분봉 −60~+10분·±20%p.
+     *
+     * 예전엔 여기에 항목 목록·로딩 공백·미래 토글이 함께 물려 있었고, 그래서 `boundsKey` 가 수시로
+     * 튀며 아래 있던 "창이 바뀌면 줌 원위치" 효과가 **손으로 맞춘 배율을 날렸다**(종목을 바꾸거나
+     * 필터로 모수가 잠깐 0이 되기만 해도). 창을 상수로 못 박으면 그 효과가 돌 일 자체가 없어지고,
+     * "척도 고정" 토글도 필요 없어진다 — 붙들려 있는 게 기본이다.
+     *
+     * 선이 없어도 창은 있다(빈 격자를 그린다) — 옛 `null` 은 로딩 한 프레임을 척도 변경으로 둔갑시켰다.
+     */
+    const bounds = useMemo(() => (isDaily ? dailyFrame() : pointFrame()), [isDaily]);
 
     const wrapRef = useRef<HTMLDivElement | null>(null);
     const svgRef = useRef<SVGSVGElement | null>(null);
@@ -93,7 +88,7 @@ export function useOverlayViewport(args: {
 
     const padRight = AXIS_W + (gutter ? GUTTER_W : 0);
     const box = { left: PAD.left, top: PAD.top, width: Math.max(0, size.w - PAD.left - padRight), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
-    const drawable = bounds !== null && box.width > 0 && box.height > 0;
+    const drawable = box.width > 0 && box.height > 0;
 
     // 제스처 영역 — 아래 스트립=시간축, **오른쪽** 스트립=% 축(축이 그리로 갔다. 모서리는 시간축 우선).
     // 거터도 그 스트립 안이다: 칩만 포인터를 받고 빈 자리는 세로 확대 손짓으로 남는다.
@@ -101,7 +96,9 @@ export function useOverlayViewport(args: {
         (x: number, y: number): ZoomRegion => (y > box.top + box.height ? "x" : x > box.left + box.width ? "y" : "body"),
         [box.top, box.height, box.left, box.width],
     );
-    const { tx, ty, reset, resetAxis, dragging } = useOverlayZoom(svgRef, drawable, regionOf, onGestureStart);
+    // 배율·위치의 세션 스코프 — 패널 하나(일봉/분봉)당 한 벌. grain 이 곧 패널 정체성이라 이게 그 단위다.
+    const zoomScope = isDaily ? "norm.daily" : "norm.minute";
+    const { tx, ty, reset, resetAxis, dragging } = useOverlayZoom(svgRef, drawable, regionOf, onGestureStart, zoomScope);
     /**
      * 더블클릭 — **축 스트립에서만, 그 축만** 원위치(사용자 확정). 본문 더블클릭 전체 리셋은 폐기했다:
      * 선·점을 짚다 보면 더블클릭이 섞여 들어가 애써 맞춘 배율이 통째로 날아갔다.
@@ -113,14 +110,10 @@ export function useOverlayViewport(args: {
         if (region !== "body") resetAxis(region);
     }, [regionOf, resetAxis]);
 
-    // 척도가 바뀌면(필터 변경 등) 뷰포트를 원위치 — 옛 변환이 남아 빈 공간을 보지 않게.
-    const boundsKey = bounds ? `${bounds.minX}|${bounds.maxX}|${bounds.minY}|${bounds.maxY}` : "";
-    useEffect(() => { reset(); }, [boundsKey, reset]);
 
     // 변환은 그림이 아니라 **스케일**에 건다 — 선 굵기가 안 늘어나고 눈금이 확대에 맞춰 다시 찍힌다.
     // 축별 변환 두 벌(tx·ty)이라 가로만 당기고 세로만 당기는 손짓이 성립한다.
-    const scales = useMemo<Scales | null>(() => {
-        if (!bounds) return null;
+    const scales = useMemo<Scales>(() => {
         const x = scaleLinear().domain([bounds.minX, bounds.maxX]).range([box.left, box.left + box.width]);
         const y = scaleLinear().domain([bounds.minY, bounds.maxY]).range([box.top + box.height, box.top]);
         return { x: tx.rescaleX(x), y: ty.rescaleY(y) };
@@ -156,8 +149,8 @@ export function useOverlayViewport(args: {
     );
 
     return {
-        wrapRef, svgRef, size, box, bounds, boundsKey,
-        locked: locked !== null, onToggleLock,
+        wrapRef, svgRef, size, box, bounds,
+        onResetView: reset,
         scales, viewX, view, lineStep, hitStep, themePath,
         dragging, onDoubleClick,
     };

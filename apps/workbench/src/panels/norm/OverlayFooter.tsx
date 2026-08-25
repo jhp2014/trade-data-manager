@@ -10,11 +10,10 @@
 import { AMOUNT_LEVEL_EDGES_EOK, AMOUNT_LEVEL_WIDTH } from "../../chart/chartUtils.js";
 import { groupColor } from "../../styles/palette.js";
 
-export function OverlayFooter({ grain, groupNames, locked, themeMode, themeLineCount, candles, amountWidthOn }: {
+export function OverlayFooter({ grain, groupNames, themeMode, themeLineCount, candles, amountWidthOn }: {
     grain: "daily" | "minute";
     /** 지금 조사 중인 선의 그룹 이름들 — 소속이 발끝에서 바로 읽힌다(따로 열어보지 않게). */
     groupNames: readonly string[];
-    locked: boolean;
     /** 테마 모드(짚은 하나에 테마를 펼친 상태) — 흐린 라벨 호버의 뜻이 달라진다. */
     themeMode: boolean;
     /** 펼쳐진 테마 선 수(0이면 안 적는다). */
@@ -36,7 +35,6 @@ export function OverlayFooter({ grain, groupNames, locked, themeMode, themeLineC
                 </span>
             )}
             {isDaily ? "일봉 · 세로 = 전일(D−1) 종가 대비 %" : "분봉 · 선 1 = 타점 1(원점 이후 점선=미래) · 세로 = 타점 시각 원점 %p · 괄호 = 절대값(전일比)"} · 휠 = 가로 확대 · Shift+휠 = 세로 확대 · 축 드래그 = 그 축 확대 · 드래그 이동 · 라벨 클릭 = 시선 이동 · 라벨 우클릭 = 고정
-            {locked && <span style={{ color: "var(--text-secondary)" }}> · 척도 고정됨</span>}
             <span style={{ color: "var(--text-tertiary)" }}>
                 {isDaily ? " · 축 더블클릭 = 그 축 원위치" : " · T = 테마 · 축 더블클릭 = 그 축 원위치"}
             </span>
