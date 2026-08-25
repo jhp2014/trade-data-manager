@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
-import { chartKey, pointKey } from "../../lib/pointKey.js";
+import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { HeaderMenu, OutcomeMenu } from "./SheetMenus.js";
 import type { CellCtxPayload } from "./SheetRowView.js";
 import type { HdrCtxPayload } from "./SheetHeaderRow.js";
@@ -61,8 +61,13 @@ export function SheetMenusHost({ m, axes, cols, sortAxisId, sortLen, dropSortKey
                 if (!ax) return null;
                 // 컷 키 = 그 축의 **행 키** — day 축 줄의 자리는 차트(시각 없음)라 차트 키로 저장해야
                 // orderKeyByPoint(행 키 색인)와 만난다. 타점 키로 저장하면 컷이 조용한 no-op 이 된다.
-                const cutKey = ax.scope === "day" ? chartKey(ctx.point) : pointKey(ctx.point);
-                const cutOn = (cols.cuts[`ax:${ctx.axisId}`] ?? []).includes(cutKey);
+                // 옛 저장물(재편 전 day 축 컷 = 타점 키)은 그 키 그대로 토글해야 해제가 실제로 지운다.
+                // 그 날 어느 타점 키로 저장됐든 찾는다 — 우클릭한 타점과 다른 타점의 키일 수 있다.
+                const stored = cols.cuts[`ax:${ctx.axisId}`] ?? [];
+                const freshKey = ax.scope === "day" ? chartKey(ctx.point) : pointKey(ctx.point);
+                const legacyKey = ax.scope === "day" ? stored.find((k) => k !== freshKey && rowKeyToChartKey(k) === freshKey) : undefined;
+                const cutKey = stored.includes(freshKey) ? freshKey : (legacyKey ?? freshKey);
+                const cutOn = stored.includes(cutKey);
                 const cutEnabled = sortAxisId === ctx.axisId; // 1차 정렬 축에서만 — 안 보이는 줄엔 선을 못 긋는다
                 if (!cutEnabled && !cutOn) return null;
                 return (

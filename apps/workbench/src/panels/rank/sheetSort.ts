@@ -11,6 +11,7 @@
 // 돌면 축 열이 더 이상 순위 순서가 아니다. 그래서 비교자 순서가 [그룹 → 2차… → 1차 원값]이 된다
 // (2차가 없으면 1차 원값만 남아 컷 없는 정렬과 완전히 같아진다 → 드래그 배치도 그대로 살아 있다).
 import type { SheetRow } from "./rankSheet.js";
+import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { Col } from "./sheetColumns.js";
 
 export type SortKey =
@@ -118,7 +119,12 @@ export function cutGroupIdx(row: SheetRow, axisId: string, cutKeys: number[]): n
 export function resolveCutKeys(anchors: string[], orderKeyOfPoint: Map<string, number> | undefined): number[] {
     if (!orderKeyOfPoint) return [];
     const keys = new Set<number>();
-    for (const a of anchors) { const ok = orderKeyOfPoint.get(a); if (ok != null) keys.add(ok); }
+    for (const a of anchors) {
+        // 옛 저장물 흡수 — day 축 컷이 타점 키(3조각)로 남아 있으면 시각을 벗겨 차트 행 키로 푼다
+        // (resolveBound·레일 마커와 같은 규칙: 저장물 마이그레이션 대신 읽기가 감당).
+        const ok = orderKeyOfPoint.get(a) ?? orderKeyOfPoint.get(rowKeyToChartKey(a));
+        if (ok != null) keys.add(ok);
+    }
     return [...keys].sort((a, b) => b - a); // 강→약
 }
 
