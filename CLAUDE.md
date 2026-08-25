@@ -34,6 +34,13 @@ DB 스키마 2개, `infra/persistence/src/schema/{market,curation}.ts`. 배포�
 - **market**: 각자 로컬 Postgres (pg_dump로 시딩)
 - **curation**: 공유 Supabase, 로컬은 읽기 전용 미러 + dual write (egress 제한 있음, 아래 참조)
 
+## 참고 자료
+
+- **`.claude/architecture-map.md`** — 어디가 무슨 책임인지(성긴 구조 지도). 세부 구현 전에 "이미 있는 걸 새로 만드는 건 아닌지" 확인할 때.
+- **`.claude/decisions.md`** — 왜 이렇게 정했고 뭘 기각했는지(현재 상태만, 이력 아님). 설계 논의 중 과거 결정과 부딪히는지 확인할 때 — 코드 쓰기 전에 여기서 걸러지는 게 가장 싸다. `code-reviewer`·`planner` 서브에이전트도 참고하지만, **대화 중 메인 세션이 먼저 참고하는 게 제일 이르고 값지다**.
+
+둘 다 "내비게이션/현재 규칙"일 뿐 최종 근거는 실제 코드 — 둘이 실제와 다르면 코드를 믿고, 그 자리에서 갱신할지 판단한다(`decisions.md` 갱신은 `/decision-log` 스킬).
+
 ## 알려진 함정
 
 - **서버에서 `tsc` 금지**: live VPS(iwinv, RAM 961MB)에서 `tsc --noEmit` 돌리면 V8 힙(~480MB) 초과로 OOM(`exit 134`). 코드 문제로 오독하기 쉬움 — 서버는 애초에 `tsx`로 실행만 하고 빌드/타입체크 단계가 없음(배포 게이트 아님). 타입 검증은 로컬에서 끝내고, 서버 검증은 런타임 로그·엔드포인트 curl로 할 것.
