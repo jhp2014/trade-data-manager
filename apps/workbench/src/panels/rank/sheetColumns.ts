@@ -51,7 +51,7 @@ export const COL_META: Record<ColKind, ColMeta> = {
     axis: { width: AXIS_W, label: "", justify: "center", td: tdCell },
     outcome: { width: OUT_W, label: "결과", justify: "flex-start", td: td },
     points: { width: 52, label: "타점", justify: "center", td: tdCell },
-    comment: { width: 40, label: "코", justify: "center", td: tdCell },
+    comment: { width: 52, label: "메모", justify: "center", td: tdCell },
 };
 
 export const colKey = (c: Col): string => (c.key === "axis" ? `ax:${c.axisId}` : c.key);

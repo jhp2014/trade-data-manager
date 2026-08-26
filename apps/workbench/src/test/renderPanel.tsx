@@ -32,7 +32,7 @@ export interface Seed {
     points?: SeedPoint[];
     /** 복제본 앵커 테이블(전 param 전량) — 작업셋 모수·배지의 재료. */
     anchors?: ChartAnchor[];
-    /** 복제본 코멘트 테이블 — 존재 지도의 "코" 배지 재료. */
+    /** 복제본 코멘트 테이블 — 존재 지도의 메모 배지 재료. */
     comments?: DailyCommentListItem[];
     /**
      * 후보 하루를 세울 (종목,날짜)들 — 파생 캐시가 아니라 **최소 앵커 행**(baseline 1개)으로 심는다.

@@ -328,6 +328,9 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
 
     // 헤더 컨트롤 선언 — 눈금·필터모드·축 만들기. 아래 "⤺" 해제 손잡이들은 여기 안 든다:
     // 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라 성격이 다르다(개수가 곧 정보다).
+    // **폭 원위치만 예외로 여기 든다** — 그것 하나는 실을 개수가 없다(정렬 2단·그룹 3·숨긴 열 2 와 달리
+    // "몇 개인지"를 말하지 않는 순수 액션이다). 개수가 정보가 아니면 나타났다 사라질 이유도 없고,
+    // 그러면 늘 같은 자리에 서서 할 게 없을 땐 흐려지는 컨트롤 줄의 규약이 더 맞다.
     const controls: ControlSpec[] = [
         {
             kind: "choice", id: "rowMode", name: "행",
@@ -350,6 +353,12 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
             values: [{ v: "narrow", label: "좁히기" }, { v: "dim", label: "흐리게" }],
             value: filterMode, set: (v) => setFilterMode(v === "dim" ? "dim" : "narrow"),
         },
+        {
+            kind: "action", id: "resetWidths", name: "폭 원위치", label: "원위치", group: "열",
+            help: "손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)",
+            disabled: !cols.hasManualWidths,
+            run: cols.resetWidths,
+        },
     ];
 
     if (axesLoading || pointsLoading || (dayMode && candLoading)) return <Wrap><div style={muted}>불러오는 중…</div></Wrap>;
@@ -360,7 +369,8 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
             {/* 머리글 — 왼쪽은 말(바인딩 라벨·행수·선택 배지·"⤺" 해제들), 오른쪽은 손(HeaderControls).
                 "⤺" 들이 왼쪽에 남는 건 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라서다 — 개수가 곧 정보고,
                 컨트롤처럼 늘 서 있는 것이 아니다. 바인딩 라벨이 칩(버튼)에서 못 누르는 말로 내려온 것도
-                그 잣대다: 늘 서 있는 손잡이였으니 사라지는 것들 틈이 아니라 컨트롤 줄이 제자리다. */}
+                그 잣대다: 늘 서 있는 손잡이였으니 사라지는 것들 틈이 아니라 컨트롤 줄이 제자리다.
+                같은 잣대로 "폭 원위치"도 컨트롤 줄로 갔다 — 셋과 달리 실을 개수가 없었다(controls 선언 참고). */}
             <PanelHeader gap={8}>
                 <ScrollRow gap={9}>
                     <SetBindingLabel linked={linked} members={setMembers} />
@@ -370,7 +380,6 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
                     {sort.length > 1 && <button onClick={() => setSort((s) => [s[0]])} title="2차 이하 정렬 해제(1차만 남김)" style={{ ...miniBtn, flexShrink: 0 }}>정렬 {sort.length}단 ⤺</button>}
                     {cutKeys.length > 0 && <button onClick={() => cols.clearCuts(sortAxisId!)} title="이 축의 그룹 컷 모두 해제" style={{ ...miniBtn, flexShrink: 0 }}>그룹 {cutKeys.length + 1} ⤺</button>}
                     {cols.hiddenCols.length > 0 && <button onClick={cols.showAllHidden} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {cols.hiddenCols.length} ⤺</button>}
-                    {cols.hasManualWidths && <button onClick={cols.resetWidths} title="손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)" style={{ ...miniBtn, flexShrink: 0 }}>폭 원위치 ⤺</button>}
                 </ScrollRow>
                 <HeaderControls controls={controls} storageKey="wb.headerPins.rankSheet" />
             </PanelHeader>

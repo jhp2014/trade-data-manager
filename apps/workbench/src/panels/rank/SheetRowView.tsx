@@ -152,12 +152,14 @@ function SheetRowViewImpl({
                 ? <span className="tabular" style={{ fontWeight: 600 }}>{row.pointCount}</span>
                 : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
         }),
+        // day 행 전용 — 당일 코멘트 유무. 셀은 **중립 표식**이다: 헤더 라벨("메모")과 같은 글자를 셀에도
+        // 찍으면 헤더가 아래로 반복되는 것처럼 읽혀 열의 정체가 흐려진다(옛 "코"/"코").
         comment: () => ({
             onClick: () => h.onNav(row),
             title: "당일 코멘트 유무",
             style: { cursor: "pointer" },
             body: row.comment
-                ? <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>코</span>
+                ? <span style={{ fontSize: 9, color: "var(--text-secondary)" }}>●</span>
                 : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
         }),
     };

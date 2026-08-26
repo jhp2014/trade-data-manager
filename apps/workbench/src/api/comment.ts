@@ -6,7 +6,7 @@ import { apiGet, apiPost } from "./http.js";
 
 export type { DailyCommentListItem, UpsertDailyCommentInput } from "@trade-data-manager/wire";
 
-/** 전 코멘트 행 — 클라 큐레이션 복제본의 테이블 로드(존재 지도의 "코" 배지·프리필 재료). */
+/** 전 코멘트 행 — 클라 큐레이션 복제본의 테이블 로드(존재 지도의 메모 배지·프리필 재료). */
 export const fetchAllDailyComments = (signal?: AbortSignal): Promise<DailyCommentListItem[]> =>
     apiGet<DailyCommentListItem[]>("comment/all", undefined, signal);
 
