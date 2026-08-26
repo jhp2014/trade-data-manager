@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { AxisDeps, ChartAnchor, ComputedAxisDef, ReviewPoint, ReviewPointKey } from "@trade-data-manager/market";
+import type { AxisDeps, ChartAnchor, ComputedAxisDef, GroupMembership, ReviewPoint, ReviewPointKey } from "@trade-data-manager/market";
 import { ComputedAxes } from "../rank/computedAxes.js";
 import { fingerprintOf } from "../rank/axisFingerprint.js";
 import type { AxisValueFile, AxisValueStore } from "../rank/axisValueStore.js";
@@ -45,9 +45,16 @@ const makeAxisDeps = (anchors: ChartAnchor[] = []): AxisDeps => ({
     reviewPoints: { listAllPoints: () => Promise.resolve([]) },
 });
 
-function makeAxes(points: ReviewPoint[], def: ComputedAxisDef, store: AxisValueStore, anchors: ChartAnchor[] = []): ComputedAxes {
+function makeAxes(
+    points: ReviewPoint[],
+    def: ComputedAxisDef,
+    store: AxisValueStore,
+    anchors: ChartAnchor[] = [],
+    memberships: GroupMembership[] = [],
+): ComputedAxes {
     return new ComputedAxes({
         points: { listAllPoints: () => Promise.resolve(points) },
+        groups: { listAllMemberships: () => Promise.resolve(memberships) },
         axisDeps: makeAxisDeps(anchors),
         defs: [def],
         store,
@@ -400,5 +407,69 @@ describe("ComputedAxes day 축", () => {
         const withPointAnchor = [...moved, line("001", { time: "09:00:00", param: "baseline" })];
         await makeAxes([], dayAxis(1), store, withPointAnchor).feeds();
         expect(seenCharts).toHaveLength(2); // 재계산 없음
+    });
+});
+
+// ── 앵커 무관 day 축 — 모수 = 후보 하루 전부(앵커 ∪ 타점 ∪ 그룹) ─────────────────
+// 클라 candidateDaysOf 와 같은 정의여야 한다. 옛 규칙(타점 차트로 폴백)은 실측 54행이라 축이 조용히 비었다.
+describe("ComputedAxes 앵커 무관 day 축", () => {
+    let store: ReturnType<typeof memoryStore>;
+    let seenCharts: { stockCode: string; date: string }[][];
+
+    /** params 없는 day 축 — 재료가 시장 데이터로 완결되는 축(전일 고가 % 류). */
+    function openDayAxis(): ComputedAxisDef {
+        return {
+            key: "fake-open-day",
+            name: "가짜 앵커무관 day 축",
+            version: 1,
+            strongerWhen: "higher",
+            grain: "day",
+            inputs: [],
+            compute(charts) {
+                seenCharts.push([...charts]);
+                return Promise.resolve(charts.map((c) => ({ stockCode: c.stockCode, date: c.date, value: Number(c.stockCode) })));
+            },
+        };
+    }
+
+    const line = (code: string, over: Partial<ChartAnchor> = {}): ChartAnchor =>
+        ({ stockCode: code, date: "2026-07-02", param: "baseline", anchorDate: "2026-07-01", field: "high", market: "un", ...over });
+    const member = (code: string, time?: string): GroupMembership =>
+        ({ stockCode: code, date: "2026-07-02", ...(time ? { time } : {}), groupNames: ["형태:돌파"] });
+
+    beforeEach(() => {
+        store = memoryStore();
+        seenCharts = [];
+    });
+
+    it("모수 = 앵커 ∪ 타점 ∪ 그룹 — 셋 중 무엇이든 흔적이 있으면 행이 된다", async () => {
+        const axes = makeAxes([pt("001")], openDayAxis(), store, [line("002")], [member("003")]);
+        const feeds = await axes.feeds();
+        expect(feeds[0].values.map((v) => v.stockCode).sort()).toEqual(["001", "002", "003"]);
+        expect(feeds[0].values.every((v) => v.time === undefined)).toBe(true); // 행 = 차트
+    });
+
+    it("타점 소유 앵커·타점 소속 그룹도 그 하루를 모수에 올린다 — 여기서 흔적은 재료가 아니라 '손댔나'다", async () => {
+        const axes = makeAxes([], openDayAxis(), store, [line("001", { time: "09:00:00" })], [member("002", "09:30:00")]);
+        const feeds = await axes.feeds();
+        expect(feeds[0].values.map((v) => v.stockCode).sort()).toEqual(["001", "002"]);
+    });
+
+    it("흔적이 하나도 없으면 모수가 빈다 — 없는 하루를 지어내지 않는다", async () => {
+        const feeds = await makeAxes([], openDayAxis(), store).feeds();
+        expect(feeds[0].values).toEqual([]);
+        expect(seenCharts[0] ?? []).toEqual([]);
+    });
+
+    it("같은 하루가 여러 흔적을 가져도 행은 하나다", async () => {
+        const axes = makeAxes([pt("001")], openDayAxis(), store, [line("001")], [member("001")]);
+        const feeds = await axes.feeds();
+        expect(feeds[0].values).toHaveLength(1);
+    });
+
+    it("앵커를 옮겨도 재계산이 없다 — 지문이 비어 있다(캐시 영구 히트, version 상향이 유일한 처방)", async () => {
+        await makeAxes([], openDayAxis(), store, [line("001")]).feeds();
+        await makeAxes([], openDayAxis(), store, [line("001", { anchorDate: "2026-06-30" })]).feeds();
+        expect(seenCharts).toHaveLength(1);
     });
 });

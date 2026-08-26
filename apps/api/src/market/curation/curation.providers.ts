@@ -72,6 +72,7 @@ export const curationProviders: Provider[] = [
         useFactory: (marketPool: Pool): ComputedAxes =>
             new ComputedAxes({
                 points: new DrizzleReviewPointRepository(createDb(marketPool)), // 읽기 — 로컬 미러
+                groups: new DrizzleGroupRepository(createDb(marketPool)), // 읽기(모수 재료) — 로컬 미러
                 axisDeps: axisDepsOf(marketPool),
             }),
         inject: [MARKET_POOL],
