@@ -29,6 +29,21 @@
 
 - **가상 목록의 세로 스크롤 이동은 가상화기 API 로 한다(`el.scrollTop = …` 금지) — 가로축은 DOM 직접.** DOM 에 직접 쓰면 가상화기가 그 사실을 못 배워 스크롤바와 그리는 구간이 어긋난다(`ItemRows` 에서 실제로 났다). 가상화기는 세로축 하나만 아는 물건이라 가로 복원·"축 보여줘" 같은 가로 이동은 여전히 DOM 이 맡는다 — 세션 복원(`rank/useSessionScroll`)이 두 축을 가른 이유가 이것.
 
+## 차트 앵커 표기 (정규화 패널 + 차트 패널)
+
+- **앵커 표기는 param → 뷰모델(`AnchorMark`) 로 공용화한다 — 차트 컴포넌트는 `ChartAnchor` 를 모른다.** 표기 레지스트리·`buildMarks`·계단식 쌓기가 `lib/anchorMarks.ts` 한 곳이고, 새 param = 레지스트리 한 줄 → **두 화면(정규화·차트) 동시 등장, 차트 컴포넌트 무변경**. 좌표 원본(`anchorDate`/`anchorTime`)만 싣고 **x 환산은 화면 몫**이다 — 차트는 lightweight-charts `Time`, 정규화는 `t − baseT` 라 단위가 애초에 다르다.
+  - 기각: 차트에 `ChartAnchor[]` 를 그대로 내려보내기. `DailyChart`/`MinuteChart` 는 복기·실시간 두 패널이 공유하는데 **실시간엔 `ChartAnchor` 가 없어**(메모리 `ChartLineAnchor` + 알람선) 가짜 앵커를 지어내야 하고, grain 필터·승자 판정·param→글자가 차트 안으로 들어가 param 마다 자란다.
+  - 실시간 플레인은 이 표식을 **안 쓴다**(사용자 확정) — 마크 prop 미전달 = 표식 없음.
+  - `AnchorDisplayDef.line`(가로 수준선 + 값 칩)은 **정규화만 소비한다** — 차트는 제 가로선 경로(`resolveChartAnchorLines` → `usePriceLineSet`)가 따로 있다. 공유되는 건 `mark` 쪽이다.
+
+- **표식은 두 층으로 그린다 — 칩은 SVG 오버레이, 드롭선은 series primitive.** 요구가 정반대라 갈린다: 칩은 툴팁·클릭이 필요하고 x(timeScale)만 알면 되지만, 드롭선은 상호작용이 없고 **가격축까지 따라야 한다** — 오버레이 tick 은 `subscribeVisibleLogicalRangeChange` 라 가격축만 바뀌는 조작에 안 깨어나 끝점이 봉을 놓친다. 반대로 캔버스 primitive 는 툴팁·클릭을 못 준다. 계단식 쌓기(`stackMarkRows`)는 **React 한 곳에서** 계산해 칩 자리를 정하고, primitive 엔 `{time, 그 봉 칩 무더기 줄 수}` 만 넘긴다(시작 y 는 pane 상단 기준 픽셀 = 가격 스케일 무관). primitive 는 좌표를 `update()` 가 아니라 **`draw()` 에서** 푼다(`vertLine.ts` 와 다른 점) — 가격축 변경에 `updateAllViews` 가 불린다는 보장이 없다.
+
+- **승자 판정은 `resolveChartAnchorLines` 하나뿐이다.** 하늘색 가로선과 채운 "기준" 칩이 같은 판정에서 나와야 한다 — 칩 쪽에서 `beatsAsBaseline` 을 다시 돌리면 둘이 조용히 갈리고, 그 선이 육안 검증의 근거라 치명적이다. 그래서 이 함수가 `winnerCoord` 를 반환해 화면이 받아 쓴다.
+
+- **같은 사실을 두 자리에 적지 않는다 — 무시 캔들은 상단 칩 층이 진다.** 봉 위 마커(`useDailySeriesData`)에는 등락률 숫자만 남기고 "무시" 글자는 뺀다. 단 **tier 색을 회색으로 덮는 규칙은 유지** — 그 숫자가 오염된 고가의 산물이라는 표시는 색이 계속 져야 한다. 지목(어느 봉인지)은 드롭선이 가져간다.
+
+- (2026-08-26 확정, 구현 착수. 근거: [[norm-panel-anchor-marks-design]])
+
 ## 헥사고날 경계 (구조는 CLAUDE.md, 여긴 왜)
 
 - **`core/`가 순수해야 하는 이유는 어댑터 교체 가능성이 아니라 테스트 속도·도메인 규칙의 단일 출처다.** infra/프레임워크 의존이 들어가면 순수 계산 로직(예: `baselineResolver`, `dropSameDayAnchors`)의 유닛 테스트가 DB 없이 못 돈다.

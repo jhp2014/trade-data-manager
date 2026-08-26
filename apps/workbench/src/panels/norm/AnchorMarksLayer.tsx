@@ -14,7 +14,9 @@
 // ## 창 밖 앵커는 ◀▶ 칩만
 // 드롭선은 x 를 주장하는 물건이라 x 가 화면에 없으면 안 긋는다 — 가장자리 칩이 "저 밖에 있다"까지만
 // 말한다(원점 스택의 ◀▶ 클램프와 같은 문법). 정체는 툴팁이 진다.
-import { HIGH_GAP, MARK_H, MARK_ROW_H, MARK_W, stackMarkRows, type NormMark } from "./anchorDisplay.js";
+import { HIGH_GAP, MARK_H, MARK_ROW_H, MARK_W, stackMarkRows } from "../../lib/anchorMarks.js";
+import { EdgeChip, MarkChip } from "../../components/MarkChip.js";
+import type { NormMark } from "./anchorDisplay.js";
 import type { NormLine } from "./overlay.js";
 
 interface Box { left: number; top: number; width: number; height: number }
@@ -97,35 +99,3 @@ export function AnchorMarksLayer({ groups, scales, box, clipId }: {
 }
 
 const tipOf = (p: { m: NormMark }): string => p.m.tip;
-
-function MarkChip({ x, y, short, solid, color, tip }: {
-    x: number; y: number; short: string; solid: boolean; color: string; tip: string;
-}): JSX.Element {
-    return (
-        <g style={{ pointerEvents: "all" }}>
-            <title>{tip}</title>
-            <rect x={x - MARK_W / 2} y={y} width={MARK_W} height={MARK_H} rx={3}
-                fill={solid ? color : "var(--bg-primary)"} fillOpacity={solid ? 1 : 0.92}
-                stroke={color} strokeWidth={solid ? 0 : 0.7} />
-            <text x={x} y={y + 9.5} textAnchor="middle"
-                style={{ fontSize: 8, fill: solid ? "var(--bg-primary)" : color, fontWeight: solid ? 700 : 400 }}>
-                {short}
-            </text>
-        </g>
-    );
-}
-
-/** 창 밖 표식의 가장자리 칩 — 개수와 방향만. x 를 주장하지 않으므로 드롭선은 없다. */
-function EdgeChip({ x, y, side, items, color }: {
-    x: number; y: number; side: "left" | "right"; items: readonly string[]; color: string;
-}): JSX.Element {
-    const label = side === "left" ? `◀${items.length > 1 ? items.length : ""}` : `${items.length > 1 ? items.length : ""}▶`;
-    return (
-        <g style={{ pointerEvents: "all" }}>
-            <title>{`창 밖 표식 ${items.length}개\n${items.join("\n")}`}</title>
-            <rect x={x - MARK_W / 2} y={y} width={MARK_W} height={MARK_H} rx={3}
-                fill="var(--bg-primary)" fillOpacity={0.92} stroke={color} strokeWidth={0.7} />
-            <text x={x} y={y + 9.5} textAnchor="middle" style={{ fontSize: 8, fill: color }}>{label}</text>
-        </g>
-    );
-}

@@ -12,11 +12,15 @@ import {
     useSearchDateLine,
 } from "./dailyChartHooks.js";
 import { FloatingTooltip } from "./tooltip.js";
+import { AnchorMarkLayer } from "./AnchorMarkLayer.js";
+import { CHIP_TOP_PAD, useAnchorMarkOverlay } from "./anchorMarkOverlay.js";
+import { useDailyAnchorMarkArgs } from "./anchorMarkArgs.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 import { fmtDateKo } from "../lib/date.js";
 import { CHART_LABEL, CHART_VALUE, DRIFT } from "../styles/palette.js";
+import type { AnchorMark } from "../lib/anchorMarks.js";
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -56,8 +60,13 @@ export interface DailyChartProps {
     /** 검색일 전일종가 — 크로스헤어 위치 %·+30% 가이드선의 분모. */
     pctBase?: number | null;
     showGuide?: boolean;
-    /** 이 차트가 무시 캔들로 지목한 거래일 — 봉 위 마커에 함께 적힌다. 값이 아니라 "안 본다"는 뜻이라 선이 아니다. */
+    /** 이 차트가 무시 캔들로 지목한 거래일 — 봉 색(회색 덮기)이 진다. 값이 아니라 "안 본다"는 뜻이라 선이 아니다. */
     ignoredDates?: readonly string[];
+    /**
+     * 상단 앵커 표식(일봉 grain 만) — 칩 + 봉당 드롭선. 안 넘기면 표식이 없다(실시간 차트가 그렇다).
+     * **도메인 ChartAnchor 가 아니라 뷰모델**이다 — 새 param 이 늘어도 이 컴포넌트는 안 바뀐다.
+     */
+    anchorMarks?: readonly AnchorMark[];
 }
 
 // 일봉 차트 — 캔들은 raw 가격(분봉과 달리 %가 아님) + 거래대금 pane + 고가 등락률(전일비) 마커.
@@ -80,6 +89,7 @@ export function DailyChart({
     pctBase,
     showGuide = false,
     ignoredDates,
+    anchorMarks,
 }: DailyChartProps): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -102,6 +112,13 @@ export function DailyChart({
     useDailyPriceLines(series, lines);
     useGuideLine(series, pctBase, showGuide);
     const lineX = useSearchDateLine(chartRef, series, searchDate);
+
+    // 앵커 표식 — 칩은 아래 SVG 층, 드롭선은 primitive(가격축까지 따라야 해서 층이 갈린다).
+    const markArgs = useDailyAnchorMarkArgs(chartRef, points, anchorMarks);
+    const markLayout = useAnchorMarkOverlay({
+        chartRef, containerRef, dropRef: series.dropRef, overlayTick: series.overlayTick, gen: series.gen,
+        topPad: CHIP_TOP_PAD, ...markArgs,
+    });
 
     // 툴팁 위치는 실제 커서 위치(rAF 스로틀 — 프레임당 1회, mousemove 마다 리렌더하지 않는다).
     const { cursor, onCursorMove } = useRafCursor();
@@ -171,6 +188,7 @@ export function DailyChart({
                     {fmtDateKo(searchDate)}
                 </div>
             )}
+            <AnchorMarkLayer layout={markLayout} onGoTo={markArgs.goTo} />
             {tip.visible && <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</FloatingTooltip>}
         </div>
     );

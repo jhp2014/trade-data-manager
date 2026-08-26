@@ -13,6 +13,7 @@ import { BASELINE_PARAM, chartAnchorKey, IGNORE_CANDLE_PARAM } from "@trade-data
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
 import { allAnchorsQuery, computedAxesQuery } from "../api/queries.js";
 import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
+import { buildMarks, type AnchorMark } from "./anchorMarks.js";
 import type { ChartBundle } from "../api/chart.js";
 
 // 삭제는 **앵커 객체(자연키)** 를 넘긴다 — id 가 아니다. 읽기가 로컬 미러라 surrogate id 는 원격과
@@ -29,10 +30,13 @@ interface AnchorMutations {
  * 전환 과도기 가드 — 앵커/골격 쿼리는 새 (종목,날짜)로 **즉시** 갈아타는데, 차트 번들은 keepPreviousData 로
  * 직전 종목 것을 잠깐(응답 도착까지) 들고 있다. 그 창에서 새 종목 앵커를 옛 종목 캔들에서 해소하면
  * 엉뚱한 가격에 선·피벗이 선다 → 번들이 **이 차트 종목의 것**일 때만 해소에 쓴다(아니면 창 밖 취급 = 생략).
+ * 표식(칩)도 같은 창에 같은 사고를 겪는다 — `timeToCoordinate(날짜)` 는 옛 종목 캔들에도 같은 날짜가
+ * 있으면 좌표를 내주므로, 패널이 이 술어로 마크 전달을 막는다(그래서 export 다 — 판정이 두 벌이 되면
+ * 한쪽만 고쳐진다).
  * (앵커 쪽에 keepPreviousData 를 주는 건 반대 방향의 같은 버그 — 옛 종목 앵커를 새 캔들에 그린다 — 라 아니다.)
  * 날짜는 안 본다: 일봉 번들은 기준일(2년 창)이고 앵커는 검색날짜 소유라 날짜 불일치가 정상이다.
  */
-const ownBundle = (bundle: ChartBundle | undefined, code: string): ChartBundle | undefined =>
+export const ownBundle = (bundle: ChartBundle | undefined, code: string): ChartBundle | undefined =>
     bundle && bundle.stockCode === code ? bundle : undefined;
 
 const EMPTY_ANCHORS: ChartAnchor[] = [];
@@ -84,6 +88,8 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
 export interface BaselineLines {
     resolvedLines: RenderLine[]; // D+M 해소된 선(분봉용). 확정 기준선(가격 최저)은 하늘색.
     dLines: RenderLine[]; // 일봉용(D만)
+    /** 확정 기준선의 앵커 키 — 상단 표식이 "기준"(채운 칩)과 "후보"(빈 칩)를 가르는 재료. 판정은 리졸버 한 곳. */
+    winnerKey: string | null;
     hasLines: boolean;
     /** 이 캔들에 선 추가 — field·market 은 메뉴가 고른다. 분봉은 market 'un' 고정(서버 규칙). */
     addLine: (anchorDate: string, anchorTime: string | undefined, field: AnchorField, market: AnchorMarket) => void;
@@ -99,12 +105,14 @@ export function useBaselineLines(code: string, date: string, dailyBundle: ChartB
     const daily = ownBundle(dailyBundle, code); // 전환 과도기: 직전 종목 번들이면 창 밖 취급(선 생략)
     const minute = ownBundle(minuteBundle, code);
     const lines = useMemo(() => anchors.filter((a) => a.param === BASELINE_PARAM), [anchors]);
-    const resolvedLines = useMemo(() => resolveChartAnchorLines(lines, daily, minute), [lines, daily, minute]);
+    const resolved = useMemo(() => resolveChartAnchorLines(lines, daily, minute), [lines, daily, minute]);
+    const resolvedLines = resolved.lines;
     const dLines = useMemo(() => resolvedLines.filter((l) => l.kind === "D"), [resolvedLines]);
     // 반환 memo — 컨트롤 선언(ChartPanel controls)이 clear 등을 deps 로 갖는다. 매 렌더 새 클로저면 그 memo 가 헛돈다.
     return useMemo<BaselineLines>(() => ({
-        resolvedLines,
+        resolvedLines: resolved.lines,
         dLines,
+        winnerKey: resolved.winnerKey,
         hasLines: lines.length > 0,
         addLine: (anchorDate, anchorTime, field, market) => {
             if (code && date) mut.add({ stockCode: code, date, param: BASELINE_PARAM, anchorDate, anchorTime, field, market });
@@ -120,7 +128,7 @@ export function useBaselineLines(code: string, date: string, dailyBundle: ChartB
         },
         // clear — 선만(무시 캔들·골격·저장 타점은 건드리지 않음). 우클릭이 잘 안 잡히는 경우 대비.
         clear: () => mut.removeMany(lines),
-    }), [resolvedLines, dLines, lines, code, date, mut]);
+    }), [resolved, dLines, lines, code, date, mut]);
 }
 
 // ── 무시 캔들 ───────────────────────────────────────────────────────────────
@@ -142,4 +150,25 @@ export function useIgnoreCandles(code: string, date: string): IgnoreCandles {
             else mut.add({ stockCode: code, date, param: IGNORE_CANDLE_PARAM, anchorDate });
         },
     }), [ignores, code, date, mut]);
+}
+
+// ── 상단 표식(칩 + 드롭선) ──────────────────────────────────────────────────
+
+/** 이 차트의 표식 한 벌 — grain 별로 갈라 둔다(일봉 차트엔 일봉 앵커만, 분봉 차트엔 분봉 앵커만). */
+export interface AnchorMarks {
+    daily: AnchorMark[];
+    minute: AnchorMark[];
+}
+
+/**
+ * 표식 = 등록된 param **전부**(기준선 하나가 아니다) — 무엇이 뜨는지는 표기 레지스트리가 정한다.
+ * 페치는 늘지 않는다: 같은 복제본 테이블 키(all-anchors)를 셀렉터로 한 번 더 볼 뿐이다.
+ * `winnerKey` 는 **리졸버가 고른 것**을 받는다 — 여기서 다시 판정하면 채운 칩 ≠ 하늘색 선이 된다.
+ */
+export function useAnchorMarks(code: string, date: string, winnerKey: string | null): AnchorMarks {
+    const { anchors } = useChartAnchors(code, date);
+    return useMemo<AnchorMarks>(() => ({
+        daily: buildMarks(anchors, { minutePanel: false, winnerKey }),
+        minute: buildMarks(anchors, { minutePanel: true, winnerKey }),
+    }), [anchors, winnerKey]);
 }

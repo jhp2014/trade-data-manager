@@ -155,13 +155,27 @@ export const ANCHOR_LINE_COLOR = "#0ea5e9";
  * 겨루되, **그리는 값(price)은 그대로** 둔다: 분봉 pane 은 M/A 를 원주가 기준가로, D 를 수정주가 전일종가로
  * 나눠 %를 내므로(linePct) 각 선은 자기 스케일 그대로여야 제자리에 선다.
  */
+export interface ChartAnchorLines {
+    lines: RenderLine[];
+    /**
+     * 확정 기준선의 **앵커 전체 키**(`chartAnchorKey`) — 후보가 하나도 안 해소되면 null.
+     * 좌표(anchorCoordKey)가 아닌 이유: 같은 봉에 field 만 다른 기준선 둘이 정당한데, 좌표로 지목하면
+     * 표식이 그 둘을 **모두** 승자로 읽어 하늘색 선 1 : 채운 칩 2 로 갈린다(실측에서 실제로 났다).
+     * **승자 판정은 이 함수 하나뿐이다**: 하늘색 가로선과 상단 표식의 채운 "기준" 칩이 같은 판정에서
+     * 나와야 한다. 표식 쪽에서 `beatsAsBaseline` 을 다시 돌리면 둘이 조용히 갈리고, 그 선이 육안 검증의
+     * 근거라 치명적이다. 그래서 가격이 아니라 **키**를 내보낸다(화면은 키로만 지목한다).
+     */
+    winnerKey: string | null;
+}
+
 export function resolveChartAnchorLines(
     anchors: readonly ChartAnchor[],
     dailyBundle: ChartBundle | undefined,
     minuteBundle: ChartBundle | undefined,
-): RenderLine[] {
+): ChartAnchorLines {
     const out: RenderLine[] = [];
     let bestIdx = -1;
+    let bestKey: string | null = null;
     let best: { price: number; coord: string } | null = null;
     const rawScale = minuteBundle?.rawScale ?? 1; // 없으면(옛 서버) 1 — 계수가 없던 시절의 동작
     for (const a of anchors) {
@@ -186,11 +200,12 @@ export function resolveChartAnchorLines(
         // 규칙이 한쪽만 바뀌었을 때 하늘색 선 ≠ 축이 재는 선이 되고, 그 선이 육안 검증의 근거라 치명적이다.
         if (!best || beatsAsBaseline(cand, best)) {
             bestIdx = out.length - 1;
+            bestKey = chartAnchorKey(a);
             best = cand;
         }
     }
     if (bestIdx >= 0) {
         out[bestIdx] = { ...out[bestIdx], color: ANCHOR_LINE_COLOR, label: "기준선" };
     }
-    return out;
+    return { lines: out, winnerKey: bestKey };
 }

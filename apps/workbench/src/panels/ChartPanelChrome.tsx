@@ -156,6 +156,12 @@ export const amountMarkerControl = (on: boolean, toggle: () => void): ControlSpe
     help: "분봉 거래대금 마커", on, set: toggle,
 });
 
+/** 상단 앵커 표식(칩 + 봉당 드롭선) — 끄면 칩과 선이 함께 사라진다(무시 칩도 그 안에 있다). */
+export const anchorMarkControl = (on: boolean, toggle: () => void): ControlSpec => ({
+    kind: "toggle", id: "anchorMark", name: "앵커 표식", group: "마커", activeColor: ACCENT,
+    help: "기준선·무시 캔들이 어느 봉인지 (상단 칩 + 드롭선)", on, set: toggle,
+});
+
 export const searchLineControl = (on: boolean, toggle: () => void): ControlSpec => ({
     kind: "toggle", id: "searchLine", name: "검색 날짜", group: "마커", activeColor: ACCENT,
     help: "검색 날짜 세로선", on, set: toggle,

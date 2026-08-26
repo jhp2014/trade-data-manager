@@ -6,7 +6,7 @@ import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { useReviewPointData } from "../lib/chartHooks.js";
-import { useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
+import { ownBundle, useAnchorMarks, useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { useStockName } from "../lib/useStockName.js";
@@ -18,6 +18,7 @@ import { GroupChips } from "../components/GroupChips.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import {
     amountMarkerControl,
+    anchorMarkControl,
     Center,
     ChartHeader,
     ChartPanes,
@@ -53,6 +54,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [pinMinute, setPinMinute] = usePanelUi(panelId, "pinMinute", false); // 분봉 기준일 고정(일봉 클릭 무시)
     const [lockScale, setLockScale] = usePanelUi(panelId, "lockScale", false); // 분봉 스케일 고정
     const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
+    const [showAnchorMarks, setShowAnchorMarks] = usePanelUi(panelId, "showAnchorMarks", true); // 상단 앵커 표식(칩+드롭선)
     // 우클릭 메뉴의 기준 시장 — 선 줄이 따른다. 패널에 남겨(sticky) 오염 회피로 KRX 를 보는 중에
     // 봉마다 다시 누르지 않게 한다. 분봉·KRX 부재 봉에서는 메뉴가 UN 으로 되돌린다(없는 시장은 못 지목).
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
@@ -80,6 +82,14 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 
     const dailyLines = lines.dLines;
     const minuteLines = lines.resolvedLines;
+
+    // 상단 앵커 표식 — 승자 좌표는 **리졸버가 고른 것**을 그대로 물려받는다(칩이 재판정하면 하늘색 선과 갈린다).
+    // ⚠ 번들 종목 게이트: 선은 ownBundle 이 막아 주지만 표식은 `timeToCoordinate(날짜)` 로 x 를 얻어
+    // 전환 과도기(keepPreviousData 로 직전 종목 캔들이 남은 창)에 **옛 봉 위에 그대로 선다** — 같은 날짜가
+    // 그쪽에도 있기 때문이다. 선이 쓰는 **그 술어**(ownBundle)로 막는다 — 판정이 두 벌이면 한쪽만 고쳐진다.
+    const allMarks = useAnchorMarks(code, viewDate, lines.winnerKey);
+    const dailyMarks = showAnchorMarks && ownBundle(dailyQ.data, code) ? allMarks.daily : undefined;
+    const minuteMarks = showAnchorMarks && ownBundle(minuteQ.data, code) ? allMarks.minute : undefined;
 
     // ── 봉 우클릭 메뉴 — 선 긋기(시장×값)와 무시 캔들 토글이 한자리에. 선 근처 우클릭은 삭제 항목만.
     // 메뉴는 열린 차트(code·viewDate)의 것 — useDismiss 는 mousedown/Esc 만 들어, 메뉴를 둔 채 키보드로 종목·날짜를
@@ -114,6 +124,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         amountMarkerControl(showMarkers, () => setShowMarkers((v) => !v)),
         searchLineControl(showLine, () => setShowLine((v) => !v)),
         guideControl(showGuide, () => setShowGuide((v) => !v)),
+        anchorMarkControl(showAnchorMarks, () => setShowAnchorMarks((v) => !v)),
         {
             kind: "action", id: "clearLines", name: "선 지우기", group: "지우기",
             help: "가격선 전체 지우기", run: lines.clear, disabled: !lines.hasLines,
@@ -121,6 +132,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         marketControl(mode, setMode),
     ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showPointInfo, setShowPointInfo,
         showMarkers, setShowMarkers, showLine, setShowLine, showGuide, setShowGuide,
+        showAnchorMarks, setShowAnchorMarks,
         lines.clear, lines.hasLines, mode, setMode]);
 
     return (
@@ -176,6 +188,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     pctBase={pctBase}
                                     showGuide={showGuide}
                                     ignoredDates={ignore.ignoredDates}
+                                    anchorMarks={dailyMarks}
                                 />
                             ) : null
                         }
@@ -198,6 +211,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => openMenu(at, { nearLine: l })}
                                     groupsOfTime={(t) => groupsOf({ stockCode: code, date: viewDate, time: t })}
+                                    anchorMarks={minuteMarks}
                                 />
                             ) : null
                         }

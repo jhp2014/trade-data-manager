@@ -13,7 +13,7 @@
 // 재료 결손(전일 종가 없음·원점 분봉 미수집)은 **결손으로 센다** — 지어내지 않는다.
 import { useCallback, useMemo } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { candlePrice, beatsAsBaseline, anchorCoordKey } from "@trade-data-manager/market/domain";
+import { candlePrice, beatsAsBaseline, anchorCoordKey, chartAnchorKey } from "@trade-data-manager/market/domain";
 import type { ChartAnchor } from "@trade-data-manager/wire";
 import { allAnchorsQuery, chartQuery } from "../../api/queries.js";
 import type { ChartBundle } from "../../api/chart.js";
@@ -26,7 +26,8 @@ import { chartKeyOf, pointKey } from "../../lib/pointKey.js";
 import { parsePins, pinKey, type NormPin } from "./normShared.js";
 import { pct, type ChartLine, type OverlayLine, type PointLine } from "./overlay.js";
 import { anchorCandles, dailyOverlayCandles, type ViewCandle } from "./candles.js";
-import { buildMarks, displayOf, type NormMark } from "./anchorDisplay.js";
+import { buildMarks, displayOf } from "../../lib/anchorMarks.js";
+import { toNormMarks, type NormMark } from "./anchorDisplay.js";
 import type { NormLevel } from "./LevelsLayer.js";
 import type { ZeroLine } from "./useOverlayToggles.js";
 
@@ -39,7 +40,7 @@ export interface NormItemsView {
     candlesByKey: ReadonlyMap<string, ViewCandle[]>;
     /** 차트키 → 수준선(기준선 후보 전부 + 최저가 승자 표시). 앵커 복제본을 번들 캔들로 해소한 것. */
     levelsByChart: ReadonlyMap<string, NormLevel[]>;
-    /** 차트키 → 상단 표식(이 패널 grain 의 앵커만) — 표식 층이 그린다. 표기 규칙은 anchorDisplay. */
+    /** 차트키 → 상단 표식(이 패널 grain 의 앵커만) — 표식 층이 그린다. 표기 규칙은 lib/anchorMarks. */
     marksByChart: ReadonlyMap<string, NormMark[]>;
     /** 시선 선 키들 — 강조(selected 역할)와 파생(테마·거래대금) 대상. */
     subjectKeys: ReadonlySet<string>;
@@ -123,7 +124,7 @@ export function useNormLines(grain: "daily" | "minute", dailyMarket: "krx" | "un
     });
 
     // 표기 대상 앵커 — 복제본 테이블에서 이 항목 차트들 것만(수 개라 필터가 싸다).
-    // param 필터는 표기 레지스트리(anchorDisplay)가 진다 — 기준선 하나가 아니라 등록된 전부.
+    // param 필터는 표기 레지스트리(lib/anchorMarks)가 진다 — 기준선 하나가 아니라 등록된 전부.
     const chartKeySet = useMemo(() => new Set(charts.map((c) => chartKeyOf(c.code, c.date))), [charts]);
     const anchorSelect = useCallback(
         (all: ChartAnchor[]) => all.filter((a) => displayOf(a.param) !== undefined && chartKeySet.has(chartKeyOf(a.stockCode, a.date))),
@@ -163,15 +164,14 @@ export function useNormLines(grain: "daily" | "minute", dailyMarket: "krx" | "un
             if (!levelsByChart.has(ck)) {
                 const mine = displayAnchors.filter((a) => chartKeyOf(a.stockCode, a.date) === ck);
                 // 수준선은 선과 **같은 스케일**이어야 한다: 일봉 뷰는 수정주가 공간(1), 분봉 뷰는 원주가 공간(rawScale).
-                const { levels, winnerCoord } = levelsOf(bundle, mine, isDaily ? 1 : (bundle.rawScale ?? 1));
+                const { levels, winnerKey } = levelsOf(bundle, mine, isDaily ? 1 : (bundle.rawScale ?? 1));
                 const zero = isDaily ? null : zeroLevelOf(bundle, zeroLine);
                 levelsByChart.set(ck, zero ? [...levels, zero] : levels);
                 // 표식은 **패널 grain 의 앵커만** — 승자 좌표는 수준선 계산의 것을 그대로 물려받는다
                 // (다른 grain 의 승자면 이 패널엔 "후보" 표식만 남는다 — 태그의 grain 접두가 그 설명이다).
-                marksByChart.set(ck, buildMarks(mine, {
-                    minutePanel: !isDaily,
+                marksByChart.set(ck, toNormMarks(buildMarks(mine, { minutePanel: !isDaily, winnerKey }), {
+                    minute: !isDaily,
                     dailyIndexOf: (d) => bundle.daily.findIndex((c) => c.date === d),
-                    winnerCoord,
                 }));
             }
         }
@@ -268,9 +268,9 @@ function levelsOf(
     bundle: ChartBundle,
     anchors: readonly ChartAnchor[],
     viewScale: number,
-): { levels: NormLevel[]; winnerCoord: string | null } {
+): { levels: NormLevel[]; winnerKey: string | null } {
     const rawScale = bundle.rawScale ?? 1; // 없으면(옛 서버) 1 — 계수가 없던 시절의 동작
-    const resolved: { price: number; coord: string; minute: boolean }[] = [];
+    const resolved: { price: number; coord: string; key: string; minute: boolean }[] = [];
     for (const a of anchors) {
         if (!displayOf(a.param)?.line) continue; // 가로선을 받는 param 만(표기 레지스트리가 가른다)
         if (a.field == null || a.market == null) continue;
@@ -280,14 +280,14 @@ function levelsOf(
         const price = candlePrice(raw);
         if (price === null) continue;
         const adj = a.anchorTime && rawScale > 0 ? price / rawScale : price; // 원주가(분봉 앵커)만 되돌린다
-        resolved.push({ price: adj * viewScale, coord: anchorCoordKey(a), minute: a.anchorTime != null });
+        resolved.push({ price: adj * viewScale, coord: anchorCoordKey(a), key: chartAnchorKey(a), minute: a.anchorTime != null });
     }
-    if (resolved.length === 0) return { levels: [], winnerCoord: null };
+    if (resolved.length === 0) return { levels: [], winnerKey: null };
     let winner = resolved[0];
     for (const r of resolved) if (beatsAsBaseline(r, winner)) winner = r;
     return {
         levels: resolved.map((r) => ({ price: r.price, baseline: r === winner, minute: r.minute })),
-        winnerCoord: winner.coord,
+        winnerKey: winner.key,
     };
 }
 

@@ -17,6 +17,7 @@ import { barSignature, buildCandleAmountSeries, extendsPrevBars, sameMarkers, us
 import { useCandleInteraction } from "./candleInteraction.js";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { type VertLines } from "./vertLine.js";
+import { type DropLines } from "./dropLine.js";
 import { ALARM, DRIFT, GUIDE, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 import type { DailyPoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
@@ -32,6 +33,13 @@ export interface DailySeries {
     amountRef: RefObject<ISeriesApi<"Histogram"> | null>;
     markersRef: RefObject<ISeriesMarkersPluginApi<Time> | null>;
     vertRef: RefObject<VertLines | null>;
+    /** 앵커 표식 드롭선 primitive — 표식 층이 spec 을 민다(안 밀면 빈 채로 아무것도 안 그린다). */
+    dropRef: RefObject<DropLines | null>;
+    /**
+     * 오버레이(앵커 표식 칩) 위치 재계산 트리거 — pan/zoom 시 bump. 분봉(MinuteSeries.overlayTick)과 같은 규약.
+     * **x 만 담당한다**: 드롭선의 y 는 가격축까지 따라야 해서 이 신호로는 부족하고, 그래서 primitive 가 진다.
+     */
+    overlayTick: number;
     /**
      * 시리즈 **세대** — 다시 만들어질 때마다 오른다(StrictMode 이중 effect·Fast Refresh).
      * 시리즈는 ref 에 담겨 있어 교체가 렌더를 일으키지 않는다 → 이 값이 없으면 "시리즈만 새로 났고
@@ -47,6 +55,9 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
     const amountRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const vertRef = useRef<VertLines | null>(null);
+    const dropRef = useRef<DropLines | null>(null);
+    const [overlayTick, setOverlayTick] = useState(0);
+    const bumpOverlay = (): void => setOverlayTick((v) => v + 1);
     const [gen, setGen] = useState(0);
 
     useEffect(() => {
@@ -60,18 +71,28 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
         amountRef.current = s.amount;
         markersRef.current = s.markers;
         vertRef.current = s.candleVerts;
+        dropRef.current = s.drops;
         setGen((g) => g + 1); // 새 시리즈가 났다 — 데이터·마커 effect 를 다시 태운다
+        // pan/zoom 시 표식 칩 x 갱신(분봉과 같은 수법 — 검색날짜 선의 자체 구독과는 별개다).
+        const ts = chart.timeScale();
+        ts.subscribeVisibleLogicalRangeChange(bumpOverlay);
         return () => {
+            try {
+                ts.unsubscribeVisibleLogicalRangeChange(bumpOverlay);
+            } catch {
+                /* 차트가 먼저 파괴됨 */
+            }
             s.dispose();
             candleRef.current = null;
             amountRef.current = null;
             markersRef.current = null;
             vertRef.current = null;
+            dropRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, vertRef, gen };
+    return { candleRef, amountRef, markersRef, vertRef, dropRef, overlayTick, gen };
 }
 
 /**
@@ -118,12 +139,12 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [points, series.gen]);
 
-    // 봉 위 마커 한 벌 — 고가 등락률(임계 이상만) + 무시 표시(계산 축이 없는 셈 치는 봉)를 **한 자리에** 적는다.
-    // 무시 대상은 대개 고가가 튄 봉이라 둘이 늘 같은 봉에 걸린다 → 따로 그리면 눈이 두 번 움직이고 자리도 다툰다.
+    // 봉 위 마커 한 벌 — **고가 등락률(임계 이상)만** 적는다. 무시 캔들의 정체("이 봉을 죽였다")는
+    // 2026-08-26 부터 상단 앵커 표식 칩이 진다 — 같은 사실을 두 자리에 적으면 한 봉에 두 번 나온다.
     //
-    // 무시 캔들은 tier 색을 회색으로 덮는다. 그 등락률 숫자 자체가 **못 믿겠다고 선언한 고가**에서 나온 값이라,
-    // tier 색으로 칠하면 "이 봉 강했다"고 강조하는 셈이 된다(무시는 그 반대 주장이다). 숫자를 남기는 건 읽으라고가
-    // 아니라 식별하라고 — 나중에 차트를 다시 열었을 때 "내가 죽인 게 저 봉"을 확인하는 게 무시 표시의 절반이다.
+    // 그래도 무시는 여기서 **색을 덮는다**(tier → 회색). 그 등락률 숫자 자체가 못 믿겠다고 선언한 고가에서
+    // 나온 값이라, tier 색으로 칠하면 "이 봉 강했다"고 강조하는 셈이 된다(무시는 그 반대 주장이다).
+    // 숫자가 없는 봉(임계 미만)은 마커도 없다 — 글자 없는 회색 점은 아무 말도 안 하고, 그 봉의 정체는 칩이 진다.
     const ignoredKey = [...ignoredDates].sort().join(",");
     const appliedMarkers = useAppliedCache<ISeriesMarkersPluginApi<Time>, MarkerLike[]>();
     useEffect(() => {
@@ -136,12 +157,9 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[], ig
             // 등락률은 원래 규칙 그대로(전일종가 없거나 임계 미만이면 없음) — 무시라고 없던 숫자를 만들지 않는다.
             const pct = p.prevClose && p.prevClose > 0 ? ((p.high - p.prevClose) / p.prevClose) * 100 : null;
             const tier = pct === null ? null : highMarkerColor(pct);
+            if (tier === null || pct === null) continue; // 적을 숫자가 없다 = 마커도 없다
             const color = isIgnored ? IGNORED_CANDLE : tier;
-            if (color === null) continue; // 등락률도 임계 미만이고 무시도 아님 = 적을 게 없다
-            const parts: string[] = [];
-            if (tier !== null && pct !== null) parts.push(pct.toFixed(1));
-            if (isIgnored) parts.push("무시");
-            markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: parts.join(" · ") });
+            markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: pct.toFixed(1) });
         }
         // setMarkers 는 전체 교체 API — 라이브 폴 틱마다 결과가 같으면(대부분) 건너뛴다(sameMarkers 비교).
         // 스킵의 근거도 **이 플러그인에 적용한 것**뿐이다 — 시리즈(=마커 플러그인)가 갈리면 다시 그린다.

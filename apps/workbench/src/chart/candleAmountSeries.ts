@@ -20,12 +20,15 @@ import {
 } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR, AMOUNT_BAR_COLOR } from "./chartUtils.js";
 import { VertLines, asPrimitive } from "./vertLine.js";
+import { DropLines, asDropPrimitive } from "./dropLine.js";
 
 export interface CandleAmountSeries {
     candle: ISeriesApi<"Candlestick">;
     amount: ISeriesApi<"Histogram">;
     markers: ISeriesMarkersPluginApi<Time>;
     candleVerts: VertLines;
+    /** 앵커 표식의 드롭선 — spec 이 비면 아무것도 안 그린다(실시간 차트는 그대로 빈 채로 산다). */
+    drops: DropLines;
     /** amountVerts 옵션을 켰을 때만 — 안 켰으면 null(없는 pane 에 빈 프리미티브를 얹지 않는다). */
     amountVerts: VertLines | null;
     /** 프리미티브 detach — 차트가 이미 파괴된 뒤 불려도 안전(try/catch). */
@@ -71,6 +74,9 @@ export function buildCandleAmountSeries(
     const markers = createSeriesMarkers(candle);
     const candleVerts = new VertLines();
     candle.attachPrimitive(asPrimitive(candleVerts));
+    // 드롭선은 **항상** 붙인다 — 빈 프리미티브는 아무것도 안 그리므로 옵션으로 가를 이유가 없다.
+    const drops = new DropLines();
+    candle.attachPrimitive(asDropPrimitive(drops));
     let amountVerts: VertLines | null = null;
     if (opts.amountVerts) {
         amountVerts = new VertLines();
@@ -79,12 +85,13 @@ export function buildCandleAmountSeries(
     const dispose = (): void => {
         try {
             candle.detachPrimitive(asPrimitive(candleVerts));
+            candle.detachPrimitive(asDropPrimitive(drops));
             if (amountVerts) amount.detachPrimitive(asPrimitive(amountVerts));
         } catch {
             /* 차트가 먼저 파괴됨 */
         }
     };
-    return { candle, amount, markers, candleVerts, amountVerts, dispose };
+    return { candle, amount, markers, candleVerts, drops, amountVerts, dispose };
 }
 
 /**

@@ -4,6 +4,10 @@ import { kstHHmm } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { FloatingTooltip } from "./tooltip.js";
 import { MarkerCard, OhlcTooltip } from "./MinuteChartTooltips.js";
+import { AnchorMarkLayer } from "./AnchorMarkLayer.js";
+import { CHIP_TOP_PAD_MINUTE, useAnchorMarkOverlay } from "./anchorMarkOverlay.js";
+import { useMinuteAnchorMarkArgs } from "./anchorMarkArgs.js";
+import type { AnchorMark } from "../lib/anchorMarks.js";
 import { useMinuteSeries, useMinuteSeriesData } from "./minuteSeries.js";
 import { useMinuteVisibleRange } from "./minuteFraming.js";
 import {
@@ -128,6 +132,7 @@ export function MinuteChart({
     onPickPrice,
     capturePriceArmed = false,
     groupsOfTime,
+    anchorMarks,
 }: {
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
@@ -148,7 +153,11 @@ export function MinuteChart({
     onPickPrice?: (price: number) => void; // 무장 시 좌클릭 y좌표 → 가격(base×(1+%/100)) 캡처
     capturePriceArmed?: boolean;
     groupsOfTime?: (tradeTime: string) => Group[]; // 그 시각 타점에 붙은 그룹(카드 아랫줄). 없으면 그룹 줄 없음.
-    /** 현재 타점의 분봉 골격 피벗(unix초·raw 가격) — % 변환은 오버레이가 base 로 한다. */
+    /**
+     * 상단 앵커 표식(분봉 grain 만) — 칩 + 봉당 드롭선. 안 넘기면 표식이 없다(실시간 차트가 그렇다).
+     * **도메인 ChartAnchor 가 아니라 뷰모델**이다 — 새 param 이 늘어도 이 컴포넌트는 안 바뀐다.
+     */
+    anchorMarks?: readonly AnchorMark[];
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -175,6 +184,13 @@ export function MinuteChart({
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);
+
+    // 앵커 표식 — 칩은 SVG 층(타점 ▼ 아래에서 시작), 드롭선은 primitive(가격축까지 따라야 해서 층이 갈린다).
+    const markArgs = useMinuteAnchorMarkArgs(chartRef, points, anchorMarks, showAmountMarkers);
+    const markLayout = useAnchorMarkOverlay({
+        chartRef, containerRef, dropRef: series.dropRef, overlayTick: series.overlayTick, gen: series.gen,
+        topPad: CHIP_TOP_PAD_MINUTE, ...markArgs,
+    });
 
     const { state: tip } = useCrosshairTooltip({
         chartRef,
@@ -221,6 +237,7 @@ export function MinuteChart({
             onMouseMove={onCursorMove}
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
+            <AnchorMarkLayer layout={markLayout} onGoTo={markArgs.goTo} />
             {/* 저장 타점 ▼ 마커 — 클릭하면 시간선이 그 타점으로. **색** = 지금 시간선이 여기인가(검정). */}
             {overlay.saved.map((s) => {
                 if (s.x < 0) return null;

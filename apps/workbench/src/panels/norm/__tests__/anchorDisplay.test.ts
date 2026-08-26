@@ -1,28 +1,12 @@
-// 앵커 표기 레지스트리·표식·수준선 줄의 **계약**(2026-08-24 확정)을 못박는다.
-//
-// 제일 중요한 건 첫 검사다: **도메인 레지스트리 전수가 표기 레지스트리에 있는가.**
-// 표기는 param 별 명시라(도메인 성질에서 파생하지 않는다 — 사용자 확정) 새 param 을 등록하고
-// 표기를 빠뜨리면 그 param 이 이 패널에서 **조용히 안 뜬다** — 이 테스트가 그 침묵을 소리로 바꾼다.
+// 정규화 패널이 **이 화면에서만** 지는 몫의 계약: x 환산(toNormMarks)과 수준선 줄(buildLevelRows).
+// 레지스트리·표식 계산·계단식 쌓기는 두 화면 공용이라 lib/__tests__/anchorMarks.test.ts 가 잰다.
 import { describe, it, expect } from "vitest";
-import { ANCHOR_PARAMS, BASELINE_PARAM, IGNORE_CANDLE_PARAM, type ChartAnchor } from "@trade-data-manager/market/domain";
-import { ANCHOR_DISPLAY, buildMarks, displayOf, stackMarkRows } from "../anchorDisplay.js";
+import { BASELINE_PARAM, type ChartAnchor } from "@trade-data-manager/market/domain";
+import { buildMarks } from "../../../lib/anchorMarks.js";
+import { toNormMarks } from "../anchorDisplay.js";
 import { buildLevelRows, type LevelOwner, type NormLevel } from "../LevelsLayer.js";
 
-describe("표기 레지스트리", () => {
-    it("도메인 param 전수가 표기를 갖는다 — 누락 = 화면에서 조용히 사라지는 param", () => {
-        for (const p of ANCHOR_PARAMS) {
-            expect(displayOf(p.key), `param '${p.key}' 의 표기가 ANCHOR_DISPLAY 에 없다`).toBeDefined();
-        }
-    });
-
-    it("표기 레지스트리에 유령이 없다 — 도메인에 없는 param 의 표기는 죽은 줄이다", () => {
-        for (const key of Object.keys(ANCHOR_DISPLAY)) {
-            expect(ANCHOR_PARAMS.some((p) => p.key === key), `표기 '${key}' 가 가리키는 param 이 도메인에 없다`).toBe(true);
-        }
-    });
-});
-
-// ── 표식(buildMarks) ────────────────────────────────────────────────────────
+// ── x 환산(toNormMarks) ──────────────────────────────────────
 
 const CK = { stockCode: "005930", date: "2026-07-08" };
 const dailyAnchor = (anchorDate: string, extra?: Partial<ChartAnchor>): ChartAnchor =>
@@ -31,51 +15,18 @@ const dailyAnchor = (anchorDate: string, extra?: Partial<ChartAnchor>): ChartAnc
 const DATES = ["2026-07-01", "2026-07-02", "2026-07-03"];
 const dailyIndexOf = (d: string): number => DATES.indexOf(d);
 
-describe("buildMarks — grain·승자·결손", () => {
-    it("패널과 grain 이 같은 앵커만 — 일봉 앵커는 일봉 패널에, 분봉 앵커는 분봉 패널에", () => {
-        const anchors = [
-            dailyAnchor("2026-07-01"),
-            dailyAnchor("2026-07-08", { anchorTime: "09:30:00" }),
-        ];
-        const daily = buildMarks(anchors, { minutePanel: false, dailyIndexOf, winnerCoord: null });
-        const minute = buildMarks(anchors, { minutePanel: true, dailyIndexOf, winnerCoord: null });
-        expect(daily.map((m) => m.t)).toEqual([0]); // 일봉 앵커의 번들 인덱스
-        expect(minute.map((m) => m.t)).toEqual([9 * 60 + 30]); // 분봉 앵커의 벽시계 분
-    });
-
-    it("기준선 승자만 채운 '기준', 나머지는 빈 '후보' — 무시 캔들은 언제나 채운 '무시'", () => {
-        const anchors = [
-            dailyAnchor("2026-07-01"), // coord 2026-07-01T
-            dailyAnchor("2026-07-02"), // coord 2026-07-02T ← 승자로 지정
-            { ...CK, param: IGNORE_CANDLE_PARAM, anchorDate: "2026-07-03" },
-        ];
-        const marks = buildMarks(anchors, { minutePanel: false, dailyIndexOf, winnerCoord: "2026-07-02T" });
-        expect(marks.map((m) => [m.short, m.solid])).toEqual([["후보", false], ["기준", true], ["무시", true]]);
+describe("toNormMarks — 이 패널의 자로 환산", () => {
+    it("일봉은 번들 인덱스, 분봉은 벽시계 분 — 선·캔들이 x 를 만들 때 쓴 바로 그 단위", () => {
+        const daily = toNormMarks(buildMarks([dailyAnchor("2026-07-02")], { minutePanel: false, winnerKey: null }), { minute: false, dailyIndexOf });
+        const minute = toNormMarks(buildMarks([dailyAnchor("2026-07-08", { anchorTime: "09:30:00" })], { minutePanel: true, winnerKey: null }), { minute: true, dailyIndexOf });
+        expect(daily.map((m) => m.t)).toEqual([1]);
+        expect(minute.map((m) => m.t)).toEqual([9 * 60 + 30]);
     });
 
     it("번들 창 밖(dailyIndexOf −1)은 버린다 — x 를 지어내지 않는다", () => {
-        expect(buildMarks([dailyAnchor("2020-01-01")], { minutePanel: false, dailyIndexOf, winnerCoord: null })).toEqual([]);
-    });
-});
-
-// ── 계단식 쌓기(stackMarkRows) ──────────────────────────────────────────────
-
-describe("stackMarkRows — 같은 봉이든 이웃 봉이든 한 규칙", () => {
-    const xs = (items: { x: number; row: number }[]): [number, number][] => items.map((i) => [i.x, i.row]);
-
-    it("같은 x 는 아래로 쌓인다(같은 봉에 표식 여럿)", () => {
-        const rows = stackMarkRows([{ item: "a", x: 100 }, { item: "b", x: 100 }], 28, 2);
-        expect(xs(rows)).toEqual([[100, 0], [100, 1]]);
-    });
-
-    it("가까운 이웃 봉은 계단으로, 멀면 같은 줄로 — 뭉침을 +N 으로 접지 않는다(x 가 본론이다)", () => {
-        const rows = stackMarkRows([{ item: "a", x: 100 }, { item: "b", x: 110 }, { item: "c", x: 200 }], 28, 2);
-        expect(xs(rows)).toEqual([[100, 0], [110, 1], [200, 0]]);
-    });
-
-    it("입력 순서와 무관 — x 오름차순으로 배치한다", () => {
-        const rows = stackMarkRows([{ item: "b", x: 110 }, { item: "a", x: 100 }], 28, 2);
-        expect(xs(rows)).toEqual([[100, 0], [110, 1]]);
+        const marks = buildMarks([dailyAnchor("2020-01-01")], { minutePanel: false, winnerKey: null });
+        expect(marks).toHaveLength(1); // 공용 계산은 좌표만 보므로 살아있다
+        expect(toNormMarks(marks, { minute: false, dailyIndexOf })).toEqual([]); // 버리는 건 환산하는 쪽
     });
 });
 
