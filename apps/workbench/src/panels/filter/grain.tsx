@@ -26,9 +26,11 @@ const STRIPE = "var(--text-tertiary)";
  * ⚠ 머리 띠는 **안 붙인다**(sticky 폐지). 보드에서만 붙어 있었는데, 스크롤 중에도 "하루/타점"이 보이는
  * 이득보다 띠가 레일 위에 겹쳐 지나가는 손해가 컸다 — 어느 칸인지는 세로선이 이미 말한다.
  */
-export function GrainSection({ grain, right, children }: {
+export function GrainSection({ grain, right, footer, children }: {
     grain: Grain;
     right?: ReactNode;
+    /** 칸의 **맨 아래** 줄(서랍) — 세로선 안에 든다. 그 칸에 속한 것이지 다음 칸의 머리가 아니라서. */
+    footer?: ReactNode;
     children: ReactNode;
 }): JSX.Element {
     return (
@@ -43,7 +45,10 @@ export function GrainSection({ grain, right, children }: {
                 <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{GRAIN_UNIT[grain]}</span>
                 {right && <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>{right}</span>}
             </div>
-            <div style={{ borderLeft: `3px solid ${STRIPE}` }}>{children}</div>
+            <div style={{ borderLeft: `3px solid ${STRIPE}` }}>
+                {children}
+                {footer}
+            </div>
         </div>
     );
 }

@@ -89,6 +89,17 @@ button {
     opacity: 1;
 }
 
+/* 레일 이름 열의 서랍 손잡이 — 평상시 숨김, 그 줄 hover/포커스 시 노출.
+   상시 노출이면 축 이름 아래가 손잡이 두 개로 늘 시끄럽다(레일은 목록이고 목록은 조용해야 훑힌다). */
+.rail-row .rail-stow {
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.rail-row:hover .rail-stow,
+.rail-row:focus-within .rail-stow {
+    opacity: 1;
+}
+
 /* 가로 휠 스크롤 영역(차트 컨트롤 바 등) — 스크롤바는 숨기고 휠로만 이동. 폭이 좁으면 잘려 보이는 게 정상. */
 .no-scrollbar {
     scrollbar-width: none;

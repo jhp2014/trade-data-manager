@@ -16,7 +16,7 @@
 //
 // 팝오버 편집기 4갈래는 BoardEditors, 그룹 생성 draft 는 useGroupCreateFlow, 되짚기는 boardReveal 에 —
 // 여기는 **레일 격자**(층위 칸·줄 배치)만 남는다.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAllPoints } from "../../lib/useAllPoints.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { type AxisRef } from "../../lib/computedAxis.js";
@@ -37,6 +37,8 @@ import { DateRail, TimeRail } from "./rail/RangeRails.js";
 import { GRAIN_TITLE, GrainSection } from "./grain.js";
 import { predicateOfKind, stagesFor, type RailKey } from "./stageBinding.js";
 import { dropEdge, moveAxis, orderAxes, parseAxisOrder } from "./axisOrder.js";
+import { drawerCountsOf, drawerVisible, parseDrawerIds, parseDrawerOpen, pruneDrawer, splitByDrawer } from "./axisDrawer.js";
+import { FILTER } from "../../styles/palette.js";
 import type { AxisValueRange, FilterPredicate, FilterStage, Grain } from "./stage.js";
 import { stageKind } from "./stage.js";
 
@@ -49,6 +51,9 @@ const AXIS_ORDER_KEY = "wb.filterAxisOrder";
  * 둘로 갈린 마당에 같은 타입이면 시트 열을 보드에 떨어뜨렸을 때 엉뚱한 순서가 바뀐다.
  */
 const AXIS_DND = "application/x-filter-axis";
+/** 서랍 저장물 2개(보드 로컬) — 시트 숨김 열(`wb.rankSheetHiddenCols`)과 **다른 주머니**다(axisDrawer.ts 참조). */
+const DRAWER_KEY = "wb.filterDrawerAxes";
+const DRAWER_OPEN_KEY = "wb.filterDrawerOpen";
 
 export function FilterBoard({ reveal, onlyActive }: {
     reveal: BoardReveal | null;
@@ -110,9 +115,24 @@ export function FilterBoard({ reveal, onlyActive }: {
     // 미디어타입만 보이므로, **id 는 여기서** 든다.
     const [dragAxis, setDragAxis] = useState<string | null>(null);
     const scopeOf = useMemo(() => new Map(ax.axes.map((a) => [a.key, a.scope])), [ax.axes]);
-    /** 이 축 위에 놓을 수 있나 — **같은 층위**여야 한다. 축의 scope 는 서버 정의라 드래그가 바꿀 값이 아니다. */
+
+    // ── 서랍 — 축을 치워 두는 자리(보기 상태, 조건은 안 건드린다). 셈은 axisDrawer(순수)에.
+    const [drawerIds, setDrawerIds] = usePersistedState<string[]>(DRAWER_KEY, parseDrawerIds, []);
+    const [drawerOpen, setDrawerOpen] = usePersistedState<Partial<Record<Grain, boolean>>>(DRAWER_OPEN_KEY, parseDrawerOpen, {});
+    const drawerSet = useMemo(() => new Set(drawerIds), [drawerIds]);
+    const toggleDrawer = (axisKey: string): void =>
+        setDrawerIds((ids) => (ids.includes(axisKey) ? ids.filter((k) => k !== axisKey) : [...ids, axisKey]));
+    // 죽은 축 id 청소 — **로딩 중엔 금지**(아직 안 온 축을 유령으로 오인해 지운다, 시트 열 설정과 같은 함정).
+    useEffect(() => {
+        if (ax.isLoading || ax.axes.length === 0) return;
+        const live = ax.axes.map((a) => a.key);
+        setDrawerIds((ids) => pruneDrawer(ids, live));
+    }, [ax.isLoading, ax.axes, setDrawerIds]);
+
+    /** 이 축 위에 놓을 수 있나 — **같은 층위 · 같은 편(서랍 안/밖)**. 편이 다르면 안 보이는 자리로 순서가 옮겨진다. */
     const canDropOn = (axisKey: string): boolean =>
-        dragAxis !== null && dragAxis !== axisKey && scopeOf.get(dragAxis) === scopeOf.get(axisKey);
+        dragAxis !== null && dragAxis !== axisKey && scopeOf.get(dragAxis) === scopeOf.get(axisKey)
+        && drawerSet.has(dragAxis) === drawerSet.has(axisKey);
     const dropAxis = (targetKey: string): void => {
         if (dragAxis === null || !canDropOn(targetKey)) return;
         const next = moveAxis(orderedIds, dragAxis, targetKey);
@@ -120,11 +140,35 @@ export function FilterBoard({ reveal, onlyActive }: {
         setDragAxis(null);
     };
 
-    // 되짚기 — 그 조건이 사는 줄로 스크롤 + 강조(boardReveal).
-    const { registerRow, flash } = useBoardReveal(reveal, stages);
+    // 되짚기 — 그 조건이 사는 줄로 스크롤 + 강조(boardReveal). 서랍에 든 줄이면 **먼저 펼친다**
+    // (접힌 서랍의 줄은 DOM 에 없어 누르면 아무 일도 안 나는 상태가 된다).
+    const { registerRow, flash } = useBoardReveal(reveal, stages, {
+        onBeforeScroll: (rowId) => {
+            const axisId = rowId.startsWith("axis:") ? rowId.slice("axis:".length) : null;
+            if (axisId === null || !drawerSet.has(axisId)) return;
+            const g = scopeOf.get(axisId);
+            if (g) setDrawerOpen((o) => ({ ...o, [g]: true }));
+        },
+    });
 
     // ── 조건 쓰기 — 전부 이 한 줄을 지난다(레일 하나 = 필터 하나) ──
     const write = (key: RailKey, predicate: FilterPredicate | null): void => applyRail(key, predicate);
+
+    /**
+     * 조건이 걸린 축들 — **서랍 배지의 재료**. 조건 유무로 서랍 멤버십을 움직이지는 않는다.
+     *
+     * 설계 초안엔 "서랍 밖 경로로 조건이 생기면 자동으로 꺼낸다"가 있었지만 **넣지 않았다.**
+     * 축 조건(axisValue)을 만드는 손은 실제로 두 가지뿐이다 — ① 이 보드의 레일(서랍 안이든 밖이든
+     * 사용자가 그 줄을 보며 한 일이라 자리를 옮기면 손이 튄다) ② 저장 집합 적용·복원(조건을 통째로
+     * 갈아 끼운다 — 여기서 꺼내면 집합을 바꿔 낄 때마다 서랍이 비어 "치웠다"가 유지되지 않는다,
+     * 사용자 확정으로 예외). 남는 경로가 없으니 배출기는 죽은 코드거나 ②를 오작동시키는 코드였다.
+     * 서랍에 든 조건을 찾아가는 길은 배지(있다는 사실) + 되짚기(그 줄로 데려가며 서랍을 편다)다.
+     */
+    const conditionedAxes = useMemo(() => {
+        const s = new Set<string>();
+        for (const st of stages) for (const p of st.predicates) if (p.kind === "axisValue" || p.kind === "axisBand") s.add(p.axisId);
+        return s;
+    }, [stages]);
     const stageOf = (key: RailKey): FilterStage | undefined => stagesFor(stages, key)[0];
 
     /** 이 줄을 그릴까 — "걸린 것만"이 켜져 있으면 조건이 있는 줄만. */
@@ -141,11 +185,65 @@ export function FilterBoard({ reveal, onlyActive }: {
                 {!v.isLoading && GRAINS.map((grain) => {
                     const groupStages = stages.filter((s) => stageKind(s) === "group" && (grainOf.get(s.id) ?? "day") === grain);
                     const axes = orderedAxes.filter((a) => a.scope === grain);
+                    // 서랍 안/밖 — 같은 목록을 두 자리에 나눠 그린다(**한 축이 두 곳에 서면 안 된다**: 레일 하나 = 필터 하나).
+                    const { outside, inside } = splitByDrawer(axes, drawerSet);
+                    const counts = drawerCountsOf(inside, (k) => conditionedAxes.has(k));
+                    const open = drawerOpen[grain] === true;
                     const timeKey: RailKey = grain === "day" ? { kind: "date" } : { kind: "time" };
+
+                    /** 축 줄 하나 — 서랍 안/밖이 **같은 줄**을 쓴다(들여쓰기·바탕은 서랍 본문이 진다). */
+                    const axisRow = (axis: AxisRef, inDrawer: boolean): JSX.Element | null => {
+                        const key: RailKey = { kind: "axis", axisId: axis.key };
+                        const stage = stageOf(key);
+                        if (!visible(stage !== undefined)) return null;
+                        const rowId = rowIdOfKey(key);
+                        // 드롭은 **줄 전체**가 받는다(잡이보다 과녁이 넓어야 손이 편하다). 트랙과 안 부딪힌다 —
+                        // HTML5 드래그 중에는 pointer 이벤트가 안 간다.
+                        const edge = canDropOn(axis.key) ? dropEdge(orderedIds, dragAxis!, axis.key) : null;
+                        return (
+                            <div key={axis.key} ref={registerRow(rowId)}
+                                onDragOver={(e) => { if (canDropOn(axis.key) && e.dataTransfer.types.includes(AXIS_DND)) e.preventDefault(); }}
+                                onDrop={(e) => { e.preventDefault(); dropAxis(axis.key); }}
+                                style={{ ...rowWrap(stage, flash === rowId), ...(edge ? { boxShadow: `inset 0 ${edge === "before" ? "2px" : "-2px"} 0 var(--accent-primary)` } : {}) }}>
+                                <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey} memberKeys={memberKeys}
+                                    dragHandle={{
+                                        onDragStart: (e) => { e.dataTransfer.setData(AXIS_DND, axis.key); e.dataTransfer.effectAllowed = "move"; setDragAxis(axis.key); },
+                                        onDragEnd: () => setDragAxis(null),
+                                    }}
+                                    stow={{ hidden: inDrawer, onToggle: () => toggleDrawer(axis.key) }}
+                                    onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.key, x, y })}
+                                    onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.key, ranges } : null)} />
+                            </div>
+                        );
+                    };
 
                     return (
                         <div key={grain}>
-                            <GrainSection grain={grain}>
+                            <GrainSection grain={grain} footer={drawerVisible(counts, onlyActive) ? (
+                                <div style={{ background: "var(--bg-secondary)", borderTop: "1px solid var(--border-subtle)" }}>
+                                    <button onClick={() => setDrawerOpen((o) => ({ ...o, [grain]: !open }))}
+                                        title={`${GRAIN_TITLE[grain]} 층위에서 치워 둔 축 — 조건은 서랍 안에서도 그대로 걸립니다`}
+                                        style={{
+                                            display: "flex", alignItems: "center", gap: 6, width: "100%", height: DRAWER_ROW_H,
+                                            padding: "0 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left",
+                                        }}>
+                                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                                            {open ? "▾" : "▸"} 서랍 {onlyActive ? counts.conditioned : counts.total}
+                                        </span>
+                                        {counts.conditioned > 0 && (
+                                            <span title="서랍 안에서도 걸려 있는 조건 수" style={{
+                                                fontSize: 10, color: FILTER, border: `1px solid ${FILTER}`, borderRadius: 8, padding: "0 6px",
+                                            }}>
+                                                조건 {counts.conditioned}
+                                            </span>
+                                        )}
+                                    </button>
+                                    {/* 들여쓰기·바탕은 **본문 컨테이너**가 진다 — 줄 자체는 밖과 같은 것이라야 격자가 안 갈린다. */}
+                                    {open && <div style={{ paddingLeft: 10, borderLeft: "2px solid var(--border-default)", marginLeft: 6 }}>
+                                        {inside.map((a) => axisRow(a, true))}
+                                    </div>}
+                                </div>
+                            ) : undefined}>
                                 {/* 그룹 — 유일하게 리스트인 조건(순서가 없어 레일이 안 된다). 그래도 **레일과 같은 행 격자**에
                                     둔다: 이름 열이 축 이름들과 세로로 맞아야 "축·날짜와 나란한 또 하나의 조건 종류"로 읽힌다. */}
                                 {visible(groupStages.length > 0) && (
@@ -197,30 +295,9 @@ export function FilterBoard({ reveal, onlyActive }: {
                                     </div>
                                 )}
 
+                                {/* "축이 없다"는 **서랍 포함**으로 판단한다 — 전부 치운 칸에서 이 말은 거짓말이다. */}
                                 {axes.length === 0 && <Note>이 층위에 축이 없습니다</Note>}
-                                {axes.map((axis) => {
-                                    const key: RailKey = { kind: "axis", axisId: axis.key };
-                                    const stage = stageOf(key);
-                                    if (!visible(stage !== undefined)) return null;
-                                    const rowId = rowIdOfKey(key);
-                                    // 드롭은 **줄 전체**가 받는다(잡이보다 과녁이 넓어야 손이 편하다). 트랙과 안 부딪힌다 —
-                                    // HTML5 드래그 중에는 pointer 이벤트가 안 간다.
-                                    const edge = canDropOn(axis.key) ? dropEdge(orderedIds, dragAxis!, axis.key) : null;
-                                    return (
-                                        <div key={axis.key} ref={registerRow(rowId)}
-                                            onDragOver={(e) => { if (canDropOn(axis.key) && e.dataTransfer.types.includes(AXIS_DND)) e.preventDefault(); }}
-                                            onDrop={(e) => { e.preventDefault(); dropAxis(axis.key); }}
-                                            style={{ ...rowWrap(stage, flash === rowId), ...(edge ? { boxShadow: `inset 0 ${edge === "before" ? "2px" : "-2px"} 0 var(--accent-primary)` } : {}) }}>
-                                            <ComputedAxisRailRow axis={axis} stages={stages} markerKey={markerKey} memberKeys={memberKeys}
-                                                dragHandle={{
-                                                    onDragStart: (e) => { e.dataTransfer.setData(AXIS_DND, axis.key); e.dataTransfer.effectAllowed = "move"; setDragAxis(axis.key); },
-                                                    onDragEnd: () => setDragAxis(null),
-                                                }}
-                                                onType={(x, y) => setEditor({ kind: "axisValue", axisId: axis.key, x, y })}
-                                                onChange={(ranges) => write(key, ranges ? { kind: "axisValue", axisId: axis.key, ranges } : null)} />
-                                        </div>
-                                    );
-                                })}
+                                {outside.map((axis) => axisRow(axis, false))}
                             </GrainSection>
                         </div>
                     );
@@ -240,12 +317,13 @@ export function FilterBoard({ reveal, onlyActive }: {
 // ── 조각들 ────────────────────────────────────────────────────────────────
 
 /** 계산 축 레일 — 재료(값·표시 규격)를 꺼내 꽂는 자리. 값이 없는 축은 어댑터가 이유를 적는다. */
-function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, dragHandle, onType, onChange }: {
+function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, dragHandle, stow, onType, onChange }: {
     axis: AxisRef;
     stages: readonly FilterStage[];
     markerKey: string | null;
     memberKeys: ReadonlySet<string> | null;
     dragHandle: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
+    stow: { hidden: boolean; onToggle: () => void };
     onType: (x: number, y: number) => void;
     onChange: (ranges: AxisValueRange[] | null) => void;
 }): JSX.Element {
@@ -263,6 +341,7 @@ function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, dragHandle, 
             markerKey={markerKey}
             memberKeys={memberKeys}
             dragHandle={dragHandle}
+            stow={stow}
             onType={onType}
             onChange={onChange}
         />
@@ -303,3 +382,6 @@ const rowWrap = (stage: FilterStage | undefined, flash: boolean): React.CSSPrope
     background: flash ? "var(--accent-soft)" : "transparent",
     transition: "background .35s ease",
 });
+
+/** 서랍 머리 줄 높이 — 레일(46)보다 낮다. 조건이 아니라 **자리 안내**라 목록의 일부처럼 커지면 안 된다. */
+const DRAWER_ROW_H = 26;

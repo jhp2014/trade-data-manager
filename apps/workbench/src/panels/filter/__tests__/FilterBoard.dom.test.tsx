@@ -8,7 +8,7 @@
 //   그건 사실이 아니다.** 그리고 그 빈 레일은 그을 수 있게 생겨서, 사용자가 아직 안 온 척도 위에
 //   조건을 긋게 된다.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
@@ -391,5 +391,140 @@ describe("레일 순서 — 이름 열을 끌어 바꾸고, 로컬에 남는다"
         const { container } = renderBoard(ORDER_SEED);
         expect(nameOf(container, "날짜").parentElement!.draggable).toBe(false);
         expect(nameOf(container, "하루축A").parentElement!.draggable).toBe(true);
+    });
+});
+
+// ── 서랍 — 축을 치워 두는 자리. **보기 상태일 뿐 조건을 안 건드린다**(이 블록의 핵심 수용 기준) ──
+const DRAWER_KEY = "wb.filterDrawerAxes";
+/** 이름 열 안의 서랍 손잡이(넣기/꺼내기) — 값 입력 버튼과 같은 자리에 산다. */
+const stowOf = (c: HTMLElement, label: string): HTMLElement => {
+    const btn = nameOf(c, label).parentElement!.querySelector<HTMLElement>('button[title^="이 축을 서랍"]');
+    if (!btn) throw new Error(`레일 '${label}' 에 서랍 손잡이가 없다`);
+    return btn;
+};
+/** 층위 칸의 서랍 머리 줄. 없으면 null(그릴 게 없다는 뜻도 검사 대상이다). */
+const drawerHeadOf = (c: HTMLElement, grain: "하루" | "타점"): HTMLElement | null =>
+    [...c.querySelectorAll("button")].find((b) => b.title.startsWith(`${grain} 층위에서 치워 둔 축`)) ?? null;
+
+describe("서랍 — 축을 치우되 조건은 살려 둔다", () => {
+    it("넣으면 밖 목록에서 빠지고 서랍이 센다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        expect(drawerHeadOf(container, "하루")).toBeNull(); // 빈 서랍은 줄도 없다
+
+        fireEvent.click(stowOf(container, "하루축A"));
+
+        expect(railNames(container)).toEqual(["하루축B", "타점축"]);
+        expect(drawerHeadOf(container, "하루")!.textContent).toContain("서랍 1");
+    });
+
+    it("**조건은 그대로 걸려 있다** — 배지가 그 사실을 말한다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        drag(trackOf(container, "하루축A"), 0.35, 0.7);
+        const before = stages();
+        expect(before).toHaveLength(1);
+
+        fireEvent.click(stowOf(container, "하루축A"));
+
+        expect(stages()).toEqual(before); // 숨겼다고 조건이 사라지지 않는다
+        expect(drawerHeadOf(container, "하루")!.textContent).toContain("조건 1");
+    });
+
+    it("펼치면 같은 레일이 서고, 거기서 그으면 그 축의 필터가 선다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        fireEvent.click(stowOf(container, "하루축A"));
+        fireEvent.click(drawerHeadOf(container, "하루")!);
+
+        expect(railNames(container).filter((n) => n === "하루축A")).toHaveLength(1); // 두 곳에 서지 않는다
+        drag(trackOf(container, "하루축A"), 0.35, 0.7);
+        const p = stages()[0].predicates[0];
+        expect(p.kind === "axisValue" && p.axisId).toBe("c:day-a");
+    });
+
+    it("저장 집합을 적용해 조건이 통째로 갈려도 서랍은 그대로 — 치운 자리가 유지되어야 서랍이 쓸모 있다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        drag(trackOf(container, "하루축A"), 0.35, 0.7);
+        act(() => {
+            const st = useWorkbench.getState();
+            st.saveSet("집합");
+            st.removeFilterStage(stages()[0].id); // 조건을 지운 상태에서 치운다
+        });
+        fireEvent.click(stowOf(container, "하루축A"));
+
+        act(() => useWorkbench.getState().openSet(useWorkbench.getState().savedSets[0].id));
+
+        expect(stages()).toHaveLength(1); // 조건은 돌아왔고
+        expect(JSON.parse(localStorage.getItem(DRAWER_KEY)!)).toEqual(["c:day-a"]); // 서랍에 그대로 있다
+    });
+
+    it("서랍 안에서 직접 그은 조건은 자리를 안 옮긴다 — 손이 튀면 안 된다", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        fireEvent.click(stowOf(container, "하루축A"));
+        fireEvent.click(drawerHeadOf(container, "하루")!);
+
+        drag(trackOf(container, "하루축A"), 0.35, 0.7);
+
+        expect(JSON.parse(localStorage.getItem(DRAWER_KEY)!)).toEqual(["c:day-a"]); // 서랍에 그대로
+    });
+
+    it("'걸린 것만 보기'에서 조건 없는 서랍은 줄도 안 그린다 — 못 찾을 1개를 세어 봐야 소용없다", () => {
+        // 그 모드에서는 조건 없는 레일이 아예 안 그려지므로 손잡이도 없다 — 치운 상태를 저장물로 심는다.
+        localStorage.setItem(DRAWER_KEY, JSON.stringify(["c:day-a"]));
+        const { container } = renderBoard(ORDER_SEED, true);
+        expect(drawerHeadOf(container, "하루")).toBeNull();
+    });
+
+    it("접힌 서랍의 조건을 되짚으면 서랍이 펼쳐진다 — 안 그러면 눌러도 아무 일이 없다", async () => {
+        const scrollInto = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = () => {};
+        try {
+            const { container, rerender } = renderBoard(ORDER_SEED);
+            drag(trackOf(container, "하루축A"), 0.35, 0.7);
+            fireEvent.click(stowOf(container, "하루축A"));
+            expect(railNames(container)).not.toContain("하루축A"); // 접힌 상태
+
+            const id = stages()[0].id;
+            rerender(<FilterBoard reveal={{ stageId: id, at: 1 }} onlyActive={false} />);
+
+            expect(railNames(container)).toContain("하루축A");
+        } finally {
+            Element.prototype.scrollIntoView = scrollInto;
+        }
+    });
+
+    it("서랍은 로컬에 남는다 — 다시 열어도 치운 그대로", () => {
+        const { container, unmount } = renderBoard(ORDER_SEED);
+        fireEvent.click(stowOf(container, "하루축A"));
+        expect(JSON.parse(localStorage.getItem(DRAWER_KEY)!)).toEqual(["c:day-a"]);
+        unmount();
+
+        const again = renderBoard(ORDER_SEED);
+        expect(railNames(again.container)).toEqual(["하루축B", "타점축"]);
+    });
+
+    it("축이 아직 안 왔을 땐 청소하지 않는다 — 유령으로 오인해 지우면 설정이 조용히 사라진다", () => {
+        localStorage.setItem(DRAWER_KEY, JSON.stringify(["c:day-a"]));
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+        const original = window.fetch;
+        window.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+        try {
+            render(<FilterBoard reveal={null} onlyActive={false} />, {
+                wrapper: ({ children }: { children: ReactNode }) => <Providers client={client}>{children}</Providers>,
+            });
+            expect(JSON.parse(localStorage.getItem(DRAWER_KEY)!)).toEqual(["c:day-a"]);
+        } finally {
+            window.fetch = original;
+        }
+    });
+
+    it("순서 드래그는 편을 못 넘는다 — 서랍 안 축을 밖 축에 떨어뜨려도 그대로", () => {
+        const { container } = renderBoard(ORDER_SEED);
+        fireEvent.click(stowOf(container, "하루축A"));
+        fireEvent.click(drawerHeadOf(container, "하루")!);
+
+        dragAxisOnto(container, "하루축A", "하루축B");
+
+        expect(JSON.parse(localStorage.getItem(DRAWER_KEY)!)).toEqual(["c:day-a"]); // 서랍에 그대로
+        // 서랍은 그 층위 칸의 **맨 아래**라 하루 칸 안(타점 칸보다 위)에 그려진다.
+        expect(railNames(container)).toEqual(["하루축B", "하루축A", "타점축"]);
     });
 });

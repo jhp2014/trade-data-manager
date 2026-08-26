@@ -77,6 +77,12 @@ export interface RailProps<V> {
     marker?: { frac: number; label: string } | null;
     /** 되짚기 강조 — 위 목록에서 이 조건을 눌러 찾아왔을 때. */
     highlight?: boolean;
+    /**
+     * 서랍 손잡이(계산 축만) — 이 축을 층위 칸 서랍에 넣거나 꺼낸다. **보기 상태일 뿐 조건은 안 건드린다**.
+     * 이름 열 안에 두는 이유: 그 열이 이미 "이 축 자체"를 다루는 자리(순서 잡이·값 입력)라서다.
+     * ⚠ 이름 열은 `draggable` 잡이라 손잡이가 그걸 훔치면 안 된다 — draggable=false + 이벤트 격리.
+     */
+    stow?: { hidden: boolean; onToggle: () => void };
     /** 그릴 수 없는 레일(값 없음·배치 없음) — 트랙 대신 이유를 적는다. */
     disabledNote?: string;
     /**
@@ -97,7 +103,7 @@ export interface RailProps<V> {
 
 export function Rail<V>({
     label, ranges, single = false, toFrac, fromFrac, fmt, minLabel, maxLabel,
-    ticks, memberTicks, marker, highlight = false, disabledNote, dragHandle, onType, onChange,
+    ticks, memberTicks, marker, highlight = false, disabledNote, dragHandle, stow, onType, onChange,
 }: RailProps<V>): JSX.Element {
     const trackRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<RailDrag | null>(null);
@@ -156,7 +162,7 @@ export function Rail<V>({
     const memberSpans = useMemo(() => (memberTicks ? capTickSpans(memberTicks, 0.3) : undefined), [memberTicks]);
 
     return (
-        <div style={{
+        <div className="rail-row" style={{
             display: "flex", alignItems: "center", height: RAIL_ROW_H, borderBottom: "1px solid var(--border-subtle)",
             background: highlight ? "var(--accent-soft)" : "transparent", transition: "background .35s ease",
         }}>
@@ -169,12 +175,23 @@ export function Rail<V>({
                 <div title={dragHandle ? `${label} — 끌어서 순서 바꾸기` : label} style={{ fontSize: 12, fontWeight: 700, color: empty ? "var(--text-secondary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {label}
                 </div>
-                {onType && (
-                    <button onClick={(e) => onType(e.clientX, e.clientY)} title="값을 직접 입력(드래그로 못 맞추는 자리)"
-                        style={{ border: "none", background: "transparent", padding: 0, font: "inherit", fontSize: 9.5, color: "var(--text-tertiary)", cursor: "pointer", textDecoration: "underline dotted" }}>
-                        입력
-                    </button>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {onType && (
+                        <button onClick={(e) => onType(e.clientX, e.clientY)} title="값을 직접 입력(드래그로 못 맞추는 자리)"
+                            style={miniLink}>
+                            입력
+                        </button>
+                    )}
+                    {stow && (
+                        // draggable=false + dragstart 차단: 이 버튼 위에서 시작한 드래그가 순서 이동이 되면 안 된다.
+                        <button className="rail-stow" draggable={false} onDragStart={(e) => e.preventDefault()}
+                            onClick={(e) => { e.stopPropagation(); stow.onToggle(); }}
+                            title={stow.hidden ? "이 축을 서랍에서 꺼내기" : "이 축을 서랍에 넣기 — 조건은 그대로 살아 있습니다"}
+                            style={miniLink}>
+                            {stow.hidden ? "꺼내기" : "서랍에"}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {disabledNote ? (
@@ -263,6 +280,12 @@ function CurrentMarker({ color }: { color: string }): JSX.Element {
         </span>
     );
 }
+
+/** 이름 열 아래의 작은 글자 손잡이(값 입력·서랍) — 둘이 나란히 서므로 모양이 같아야 한 종류로 읽힌다. */
+const miniLink: CSSProperties = {
+    border: "none", background: "transparent", padding: 0, font: "inherit", fontSize: 9.5,
+    color: "var(--text-tertiary)", cursor: "pointer", textDecoration: "underline dotted",
+};
 
 const endLabel = (left: boolean): CSSProperties => ({
     position: "absolute", top: "calc(50% - 19px)", [left ? "left" : "right"]: 2,

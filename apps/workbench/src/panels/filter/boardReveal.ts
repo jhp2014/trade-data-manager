@@ -29,10 +29,20 @@ export function rowIdOfStage(s: FilterStage): string {
 }
 
 /** 줄 등록 + 스크롤·강조 — 보드는 registerRow 로 줄을 알려 주고 flash 로 강조 여부를 읽는다. */
-export function useBoardReveal(reveal: BoardReveal | null, stages: readonly FilterStage[]): {
+export function useBoardReveal(reveal: BoardReveal | null, stages: readonly FilterStage[], opts: {
+    /**
+     * 스크롤 **전에** 그 줄을 화면에 존재하게 만드는 기회 — 접힌 서랍 안 줄은 DOM 에 아예 없어
+     * 등록된 ref 가 없다(누르면 아무 일도 안 나는 상태). 여기서 서랍을 펼치고, 스크롤은 다음 프레임에.
+     * 시트가 숨긴 열을 먼저 꺼내고 rAF 뒤에 스크롤하는 것과 같은 대응(useSheetColumns).
+     */
+    onBeforeScroll?: (rowId: string) => void;
+} = {}): {
     registerRow: (id: string) => (el: HTMLElement | null) => void;
     flash: string | null;
 } {
+    // effect 안에서 최신 콜백을 읽는다 — 매 렌더 새 함수가 와도 effect 가 재발화하지 않게(재스크롤 방지).
+    const beforeScroll = useRef(opts.onBeforeScroll);
+    beforeScroll.current = opts.onBeforeScroll;
     const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
     const revealRowId = useMemo(() => {
         if (!reveal) return null;
@@ -42,10 +52,13 @@ export function useBoardReveal(reveal: BoardReveal | null, stages: readonly Filt
     const [flash, setFlash] = useState<string | null>(null);
     useEffect(() => {
         if (!revealRowId) return;
-        rowRefs.current.get(revealRowId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+        beforeScroll.current?.(revealRowId);
+        // 방금 펼친 줄은 이 tick 에 아직 없다 — 다음 프레임에 찾는다(있던 줄이면 한 프레임 늦을 뿐).
+        const raf = requestAnimationFrame(() =>
+            rowRefs.current.get(revealRowId)?.scrollIntoView({ block: "center", behavior: "smooth" }));
         setFlash(revealRowId);
         const t = setTimeout(() => setFlash(null), 1400);
-        return () => clearTimeout(t);
+        return () => { cancelAnimationFrame(raf); clearTimeout(t); };
     }, [revealRowId, reveal?.at]);
 
     const registerRow = (id: string) => (el: HTMLElement | null): void => {
