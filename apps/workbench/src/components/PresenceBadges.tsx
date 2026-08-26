@@ -14,11 +14,15 @@ import { groupColor } from "../styles/palette.js";
 
 // 12×12 라인 아이콘 — 색·굵기는 부모에서 상속(currentColor). 실루엣으로 종류를 가른다.
 const ICONS: Record<string, JSX.Element> = {
-    baseline: ( // 선에 걸친 캔들 — 차트에서 기준선이 서는 장면(선 위로 봉이 걸린) 그대로
+    // 고가에 걸친 파선 — 차트에서 기준선이 서는 장면 그대로다. 선질까지 같은 이유: 실제 기준선은
+    // 파선으로 그어진다(chart/priceLines.ts 의 LineStyle.Dashed). 몸통을 아래로 내린 건 **윗꼬리를
+    // 살리려고**다 — 꼬리가 선까지 닿아야 "고가에 그은 값"으로 읽히는데, 12px 에선 꼬리가 짧으면
+    // 선·심지·몸통이 T자 한 덩어리로 뭉친다(사용자 확정).
+    baseline: (
         <>
-            <line x1="1" y1="8" x2="11" y2="8" />
-            <line x1="6" y1="1.5" x2="6" y2="10.5" strokeWidth="1" />
-            <rect x="4.4" y="3.5" width="3.2" height="5" rx="0.6" fill="currentColor" stroke="none" />
+            <line x1="1" y1="2.4" x2="11" y2="2.4" strokeDasharray="2.4 1.8" />
+            <line x1="6" y1="2.4" x2="6" y2="10.6" strokeWidth="1.1" />
+            <rect x="4.3" y="6.2" width="3.4" height="3.4" rx="0.6" fill="currentColor" stroke="none" />
         </>
     ),
     "ignore-candle": ( // 금지 표식 — "없는 셈 치는 봉"

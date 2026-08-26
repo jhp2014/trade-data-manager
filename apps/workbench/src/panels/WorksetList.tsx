@@ -186,8 +186,8 @@ export function WorksetList({ groups, focus, lens, nameOf, groupsOf, pathOf, onP
                             {pGroups.length > 0 && (
                                 <span style={{ marginLeft: "auto", flexShrink: 0 }}>
                                     <HoverCard card={<GroupNamesCard names={pGroups.map((g) => pathOf(g.name))} />}>
-                                        <span data-presence-kind="group" style={{ display: "inline-flex", color: GROUP_PLAIN }}>
-                                            <PresenceIcon kindKey="group" name="그룹" />
+                                        <span data-presence-kind="group-point" aria-label="타점 그룹" style={{ display: "inline-flex", color: GROUP_PLAIN }}>
+                                            <PresenceIcon kindKey="group-point" name="타점 그룹" />
                                         </span>
                                     </HoverCard>
                                 </span>
