@@ -1,7 +1,7 @@
-// 골격 패널의 그날 분봉 파생 소스 — /day-replay 한 벌(거래대금 구간값 + 테마 선의 재료).
+// 그날 분봉 파생 소스(공용 lib) — 소비자: 정규화 패널(테마·거래대금)·테마 순위 패널(스크럽 단면) — /day-replay 한 벌(거래대금 구간값 + 테마 선의 재료).
 //
 // **왜 복기 보드와 캐시를 안 나누는가**(별도 쿼리 키): 응답 하나가 압축 해제 기준 ~15MB(536종목 × 720분)다.
-// 복기 보드는 이걸 `["day-replay", date]` 에 gcTime 60분으로 잡아 두는데, 골격 패널은 선을 짚을 때마다
+// 복기 보드는 이걸 `["day-replay", date]` 에 gcTime 60분으로 잡아 두는데, 이쪽 소비자(정규화·테마 순위)는 짚을 때마다
 // **날짜가 바뀐다** — 같은 키를 쓰면 react-query 가 옵저버 중 **최대 gcTime** 을 쓰므로 60분이 이기고,
 // 스무 개를 짚어보는 동안 화면엔 하나인데 힙엔 스무 날이 앉는다. 키를 갈라 우리가 직접 버린다.
 // 캐시를 비울 때 복기 보드가 보던 날짜를 같이 날리는 사고도 이 분리로 막힌다(같은 날짜 두 벌은 감수).
@@ -10,13 +10,13 @@
 // 최근 것들 사이를 오가는 건 즉시 뜨고 힙은 상한이 있는, 그 사이의 값이 CAP 이다.
 import { useEffect } from "react";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { fetchDayReplay, type DayReplay } from "../../api/dayReplay.js";
-import { histStale } from "../../api/queries.js";
+import { fetchDayReplay, type DayReplay } from "../api/dayReplay.js";
+import { histStale } from "../api/queries.js";
 
 /** 동시에 들고 있을 날짜 수. 힙 = 이 값 × ~15MB 가 상한이다. */
 const CAP = 4;
 
-const keyOf = (date: string): unknown[] => ["skeleton-day-src", date];
+const keyOf = (date: string): unknown[] => ["day-replay-lru", date]; // 메모리 전용 키 — 옛 "skeleton-day-src"(은퇴한 골격 패널의 이름)에서 개명
 
 /** 마운트된 소비자가 지금 쓰는 날짜(참조 수) — 0인 것만 버린다(쓰는 중인 걸 버리면 즉시 재요청된다). */
 const inUse = new Map<string, number>();

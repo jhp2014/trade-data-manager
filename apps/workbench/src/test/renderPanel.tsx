@@ -90,7 +90,7 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
-    if (seed.daySnapshot) qc.setQueryData(["skeleton-day-src", seed.daySnapshot.date], seed.daySnapshot.data);
+    if (seed.daySnapshot) qc.setQueryData(["day-replay-lru", seed.daySnapshot.date], seed.daySnapshot.data);
     for (const c of seed.charts ?? []) qc.setQueryData(chartQuery(c.code, c.date).queryKey, c.data);
     return qc;
 }

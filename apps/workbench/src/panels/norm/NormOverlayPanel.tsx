@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { boundsOverlap, lineBox, lineOpacity, dimOpacity, lineVisual, type LineVisual, type OverlayLine } from "./overlay.js";
 import { useNormLines } from "./useNormLines.js";
-import { useDaySnapshot } from "./useDaySnapshot.js";
+import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useCandles, type CandlesView } from "./useCandles.js";
 import { AUTO_CANDLE_MAX, useOverlayToggles } from "./useOverlayToggles.js";
 import { useOverlayViewport } from "./useOverlayViewport.js";

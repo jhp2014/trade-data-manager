@@ -93,6 +93,9 @@ export const IGNORED_CANDLE = "#6b7280"; // 무시 캔들 마커 — 회색이 �
 // 옛 마젠타(292°)는 그 보라 둘과 이웃이라 겹쳐 보였다. 마커도 원이 아니라 **X** 로 그려 고가·무시 마커(원)와
 // 모양으로도 갈린다 — 색만으로 가르면 작은 크기에서 결국 섞인다.
 
+// ── 테마 순위 패널(순위 평면)
+export const THEME_PEER = "#16796f"; // 테마 동료 점 — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다)
+
 export const CHART_LABEL = "#a0a0a0"; // 차트 툴팁의 라벨 회색(툴팁 배경 위 — 본문 --text-tertiary 와 다름)
 export const CHART_VALUE = "#d4d4d8"; // 차트 툴팁의 값 회색(라벨보다 밝게)
 
