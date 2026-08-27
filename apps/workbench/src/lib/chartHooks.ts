@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
-import { allAnchorsQuery, allPointsQuery, chartQuery, computedAxesQuery, groupMembershipsQuery } from "../api/queries.js";
+import { allAnchorsQuery, allPointsQuery, chartQuery, computedAxesQuery, groupMembershipsQuery, rankSectionsQuery } from "../api/queries.js";
 import { kstToUnix, deriveMinuteView } from "./derive.js";
 import { indexAtOrBefore } from "./chartFrame.js";
 import { useChartPoints } from "./useChartPoints.js";
@@ -61,6 +61,8 @@ export function useChartHotkeys(): void {
         void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey });
         // 계산 축은 타점 집합에서 나온다 — 타점이 늘거나 줄면 다시 굽는다(서버가 증분이라 새 타점만 계산).
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
+        // 순위 단면도 같은 모수(타점 집합 = 단면 (날짜,분) 집합) — 서버 대사가 빠진 단면만 굽는다.
+        void qc.invalidateQueries({ queryKey: rankSectionsQuery().queryKey });
     };
     // 삭제는 서버가 타점에 딸린 것까지 지운다 — 그룹 멤버(group_members) FK cascade,
     // 타점 소유 앵커(ChartAnchors.removePoint). 같이 안 비우면 유령이 남는다

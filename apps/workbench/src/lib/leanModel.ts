@@ -2,6 +2,7 @@
 // 서버가 종목별 분당 % 시계열을 이미 줬으므로 클라는 이진탐색으로 시점 t 값을 뽑기만 한다(파생 없음).
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { lastIndexAtOrBefore } from "@trade-data-manager/market/domain";
 import { type DayReplay, type MinuteDerived, type ReplayStock } from "../api/dayReplay.js";
 import { dayReplayQuery } from "../api/queries.js";
 
@@ -14,22 +15,9 @@ export interface Snapshot {
     cumAmount: number; // t 까지 누적 거래대금(원)
 }
 
-/** times 에서 t 이하 마지막 인덱스(이진탐색). 없으면 -1. */
-export function lastIndexAtOrBefore(times: number[], t: number): number {
-    let lo = 0;
-    let hi = times.length - 1;
-    let ans = -1;
-    while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (times[mid] <= t) {
-            ans = mid;
-            lo = mid + 1;
-        } else {
-            hi = mid - 1;
-        }
-    }
-    return ans;
-}
+// 시점 인덱스(이진탐색, carry-forward)는 core 한 벌 — 서버가 굽는 순위 단면(rankSectionOf)과 같은
+// 자를 써야 두 화면의 분모(M)가 안 갈린다. 여긴 재노출만(호출부 무변경).
+export { lastIndexAtOrBefore };
 
 /** 시점 t의 종목 스냅샷. t 이전 데이터 없으면 null(아직 미개장). 값은 이미 % — 서버가 base 반영 완료. */
 export function snapshotAt(s: MinuteDerived, t: number): Snapshot | null {

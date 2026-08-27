@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Inject, Query, Body } from "@nestjs/common";
+import type { ThemeMember } from "@trade-data-manager/market";
 import type { ThemeContext, AssignThemeInput, AssignThemeResult } from "@trade-data-manager/wire";
 import { assertStockCode, assertName, assertOptionalText } from "../validation.js";
 import { THEME_ASSIGNMENT } from "../tokens.js";
@@ -16,6 +17,13 @@ export class ThemeController {
     @Get("members")
     members(@Query("code") code?: string): Promise<ThemeContext> {
         return this.themes.contextOf(assertStockCode(code));
+    }
+
+    // 시트 멤버십 전량 — 클라가 테마↔종목 양방향 인덱스를 스스로 접는다(buildThemeIndex).
+    // "members" 는 리터럴 세그먼트라 ?code= 경로와 충돌 없음.
+    @Get("members/all")
+    allMembers(): Promise<ThemeMember[]> {
+        return this.themes.allMembers();
     }
 
     @Post("members")

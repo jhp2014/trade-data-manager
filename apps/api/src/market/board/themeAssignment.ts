@@ -5,7 +5,7 @@
 //     (같은 종목이 여러 테마에 속하는 건 정상이므로 "그 테마에 이미 있는가"만 본다.)
 //  ② **쓰기 뒤 캐시 무효화 순서** — 시트에 append 한 다음 멤버십 캐시를 비워야 다음 조회가 새 행을 본다.
 //     반대로 하면 append 전 상태를 다시 캐싱해 배정이 화면에 안 나타난다.
-import { kstToday, type ThemeMembershipStore } from "@trade-data-manager/market";
+import { kstToday, type ThemeMember, type ThemeMembershipStore } from "@trade-data-manager/market";
 import type { ThemeContext } from "@trade-data-manager/wire";
 import type { CachedMembership } from "./cachedMembership.js";
 import type { MasterCache } from "./masterCache.js";
@@ -24,6 +24,15 @@ export class ThemeAssignment {
         private readonly master: MasterCache,
         private readonly store: ThemeMembershipStore,
     ) {}
+
+    /**
+     * 시트 멤버십 전량 — 클라 테마 인덱스(테마↔종목 양방향)의 원자재. 캐시(CachedMembership)가 이미
+     * 프로세스 1회 로드를 들고 있어 위임 한 줄이다. **읽기 시점 현재 상태**를 주는 게 이 경로의 의미다
+     * (테마 강도류 파생에 멤버십을 굽지 않는다는 확정 설계의 배급구 — decisions.md "테마 강도·순위 단면").
+     */
+    allMembers(): Promise<ThemeMember[]> {
+        return this.membership.load();
+    }
 
     /** 종목 우클릭 팝업용 — 이 종목의 (테마, 편입이슈) 전부 + 자동완성용 전체 테마. */
     async contextOf(code: string): Promise<ThemeContext> {

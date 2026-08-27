@@ -40,3 +40,5 @@ export * from "./board/index.js";
 
 // replay — 복기 파생 순수 계산(deriveMinutes·themeStatsOf) + 타입(MinuteDerived·ThemeStats·DayReplay).
 export * from "./replay/dayReplay.js";
+// 순위 단면 — (날짜,분) 전 종목 서수(rankSectionOf·descendingOrdinals·lastIndexAtOrBefore). 서버 캐시·클라 즉석 계산의 단일 자.
+export * from "./replay/rankSection.js";

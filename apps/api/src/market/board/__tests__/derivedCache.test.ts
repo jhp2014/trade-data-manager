@@ -90,6 +90,9 @@ class MemStore implements DaySnapshotStore {
         this.writes.push(file.date);
         this.map.set(file.date, file);
     }
+    async has(date: string): Promise<boolean> {
+        return this.map.has(date);
+    }
 }
 
 function make(byDate: Record<string, string[]>, today: string, store = new MemStore(), dailyByDate = byDate) {

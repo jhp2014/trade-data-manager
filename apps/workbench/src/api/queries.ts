@@ -13,9 +13,10 @@ import { fetchMirrorStatus } from "./curation.js";
 import { fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchAllPoints } from "./reviewPoints.js";
 import { fetchComputedAxes } from "./rank.js";
+import { fetchRankSections } from "./rankSections.js";
 import { fetchGroups, fetchGroupMemberships } from "./groups.js";
 import { fetchStockMaster } from "./stocks.js";
-import { fetchThemeContext } from "./themes.js";
+import { fetchThemeContext, fetchAllThemeMembers } from "./themes.js";
 import { fetchAllDailyComments } from "./comment.js";
 import { fetchDataDates } from "./dataDates.js";
 import { kstToday } from "../lib/date.js";
@@ -98,6 +99,11 @@ export const allPointsQuery = () =>
 export const computedAxesQuery = () =>
     queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
+// 순위 단면 번들(타점 있는 날짜·분의 전 종목 서수) — **키 하나**(전 소비자가 통째를 본다). 모수가 타점이라
+// 타점 mutation(chartHooks.invalidate)과 미러 동기화(CURATION)가 무효화한다. 서수 자체는 불변 원료.
+export const rankSectionsQuery = () =>
+    queryOptions({ queryKey: ["rank-sections"], queryFn: ({ signal }) => fetchRankSections(signal), staleTime: IMMUTABLE , meta: CURATION });
+
 
 // 그룹 — 사전 + 전 항목 멤버십. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).
 // 타점 캐시(review-points·all-points)와 분리 = 그룹 토글이 타점 목록 refetch 를 유발하지 않는다.
@@ -121,6 +127,11 @@ export const stockMasterQuery = () =>
 // 종목의 시트 테마+편입이슈(날짜무관·code 키). 배정 mutation 이 ["theme-context"] invalidate 로 갱신하므로 staleTime ∞.
 export const themeContextQuery = (code: string) =>
     queryOptions({ queryKey: ["theme-context", code], queryFn: ({ signal }) => fetchThemeContext(code, signal), enabled: code.length > 0, staleTime: IMMUTABLE });
+
+// 시트 멤버십 전량(테마↔종목 인덱스 원자재) — 시트는 사람이 편집하므로 ∞는 위험, 마스터 메타와 같은 30분.
+// 배정 mutation·/theme/refresh 가 ["theme-members-all"] invalidate 로 즉시 갱신한다(AssignThemeModal).
+export const allThemeMembersQuery = () =>
+    queryOptions({ queryKey: ["theme-members-all"], queryFn: ({ signal }) => fetchAllThemeMembers(signal), staleTime: META_STALE });
 
 // 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커용. 수집으로 새 날짜가 늘 수 있어 30분 stale 후 재조회 허용.
 export const dataDatesQuery = () =>

@@ -66,6 +66,14 @@ export class DerivedCache {
         return date < this.today();
     }
 
+    /**
+     * 그 날짜가 **굳었나**(과거 ∧ 수집 완료 = 파일 존재). 순위 단면이 부분 유니버스 위 서수를 파일로
+     * 남기지 않기 위한 게이트 — DaySnapshotFile 에 플래그를 심지 않는 이유는 스키마 상향 = 전량 재빌드라서.
+     */
+    async isSealed(date: string): Promise<boolean> {
+        return this.isCacheable(date) && (await this.store.has(date));
+    }
+
     /** 그 거래일 스냅샷. 과거면 warm 파일 우선, 오늘/cold 면 1회 빌드(오늘은 파일로 안 굳힘). */
     async snapshot(date: string): Promise<DaySnapshotFile> {
         if (this.isCacheable(date)) {

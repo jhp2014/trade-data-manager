@@ -71,6 +71,7 @@ function AssignBody(): JSX.Element {
             void refreshLiveThemes().catch(() => {}); // 실시간 보드(apps/live) 즉시 반영 — best-effort(미기동 무시)
             await Promise.all([
                 qc.invalidateQueries({ queryKey: ["theme-context"] }),
+                qc.invalidateQueries({ queryKey: ["theme-members-all"] }), // 전량 인덱스 — 안 비우면 방금 배정한 종목이 테마 파생(순위 평면·묶음 필터)에서 그 테마 밖
                 qc.invalidateQueries({ queryKey: ["day-summary"] }),
                 qc.invalidateQueries({ queryKey: ["day-replay"] }),
             ]);
@@ -98,6 +99,7 @@ function AssignBody(): JSX.Element {
             void refreshLiveThemes().catch(() => {}); // 실시간 보드(apps/live)도 함께 — best-effort(미기동 무시)
             await Promise.all([
                 qc.invalidateQueries({ queryKey: ["theme-context"] }),
+                qc.invalidateQueries({ queryKey: ["theme-members-all"] }),
                 qc.invalidateQueries({ queryKey: ["day-summary"] }),
                 qc.invalidateQueries({ queryKey: ["day-replay"] }),
             ]);

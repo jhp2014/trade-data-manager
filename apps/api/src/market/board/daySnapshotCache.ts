@@ -74,12 +74,22 @@ export async function readSnapshot(date: string): Promise<DaySnapshotFile | null
 export interface DaySnapshotStore {
     read(date: string): Promise<DaySnapshotFile | null>;
     write(file: DaySnapshotFile): Promise<void>;
+    /** 굳은 파일이 있는가 — read 없이 존재만(순위 단면의 sealed 판정이 11MB 파싱 없이 물어야 한다). */
+    has(date: string): Promise<boolean>;
 }
 
 /** 기본 파일 저장소 — 모듈 함수 read/writeSnapshot 를 그대로 노출. */
 export const fileSnapshotStore: DaySnapshotStore = {
     read: readSnapshot,
     write: writeSnapshot,
+    async has(date) {
+        try {
+            await fs.stat(filePath(date));
+            return true;
+        } catch {
+            return false;
+        }
+    },
 };
 
 /** 스냅샷을 gzip 파일로 저장한다. */

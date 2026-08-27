@@ -19,13 +19,13 @@
 
 ## contracts/wire/src — 서버↔클라 계약
 
-- 도메인별 파일(엔드포인트별 아님): `chart`, `daySummary`, `dayReplay`, `theme`, `comment`, `chartAnchor`, `reviewPoint`, `group`, `rank`, `rankComputed`, `rankPaths`, `news`, `telegramNews`, `stockMeta`, `dataDate`, `live`, `liveTape`, `alerts`, `curationSync`
+- 도메인별 파일(엔드포인트별 아님): `chart`, `daySummary`, `dayReplay`, `theme`, `comment`, `chartAnchor`, `reviewPoint`, `group`, `rank`, `rankComputed`, `rankPaths`, `rankSection`, `news`, `telegramNews`, `stockMeta`, `dataDate`, `live`, `liveTape`, `alerts`, `curationSync`
 - 런타임 코드 0, 전부 `export type`. 원칙: core를 그대로 타는 값타입은 core 재노출, 화면 전용 read model만 여기서 정의
 
 ## apps/api/src — NestJS
 
-- `market.module.ts` 산하 서브도메인별 컨트롤러: **board**(dates/dayReplay/daySummary/theme) / **chart**(chart) / **curation**(chartAnchor/comment/group/rank/reviewPoint/sync) / **news**(news/telegramNews) / **stocks**(stocks)
-- 각 그룹 옆에 캐시/read-model 파일 동거: `masterCache`, `derivedCache`, `daySnapshotCache`, `chartReadModel`, `computedAxes`
+- `market.module.ts` 산하 서브도메인별 컨트롤러: **board**(dates/dayReplay/daySummary/theme/rankSection) / **chart**(chart) / **curation**(chartAnchor/comment/group/rank/reviewPoint/sync) / **news**(news/telegramNews) / **stocks**(stocks)
+- 각 그룹 옆에 캐시/read-model 파일 동거: `masterCache`, `derivedCache`(DERIVED_CACHE 단일 인스턴스 — DayBoards·RankSections 공유), `daySnapshotCache`, `rankSections`+`rankSectionStore`(타점 (날짜,분) 순위 단면 대사), `chartReadModel`, `computedAxes`
 
 ## apps/workbench/src
 
