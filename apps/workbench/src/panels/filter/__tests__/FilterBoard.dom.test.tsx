@@ -528,3 +528,50 @@ describe("서랍 — 축을 치우되 조건은 살려 둔다", () => {
         expect(railNames(container)).toEqual(["하루축B", "하루축A", "타점축"]);
     });
 });
+
+describe("테마 칸 — 라이브 미러 스냅샷과 동결", () => {
+    // themeRankParams 는 전역 RESET 에 없어 테스트끼리 흘러간다 — 여기서 직접 기본값으로 되돌린다.
+    beforeEach(() => {
+        useWorkbench.getState().setThemeRankParams({
+            zoneRateN: 30, zoneAmountN: 40, basis: "rate",
+            countOn: true, countMin: 3, baseRankOn: false, baseRankMax: 3, zoneRankOn: false, zoneRankMax: 2,
+        });
+    });
+
+    it("미러 클릭 = 그 순간 값으로 묶음 필터가 서고, 이후 패널 탐색값 변경에 안 흔들린다(동결)", () => {
+        useWorkbench.getState().setThemeRankParams({ zoneRateN: 11, zoneAmountN: 22, countOn: true, countMin: 4 });
+        const { container } = renderBoard();
+        const mirror = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("(현재 패널값)"));
+        expect(mirror?.textContent).toContain("테마 11/22"); // 눌리기 전에 찍힐 값이 보인다
+        act(() => { fireEvent.click(mirror!); });
+        const stages = selectFilterStages(useWorkbench.getState());
+        const theme = stages.find((s) => s.predicates[0]?.kind === "themeStrength");
+        const p = theme!.predicates[0] as Extract<ReturnType<typeof selectFilterStages>[number]["predicates"][number], { kind: "themeStrength" }>;
+        expect(p.params.zoneRateN).toBe(11);
+        expect(p.params.countMin).toBe(4);
+        // 동결 — 패널 탐색값을 바꿔도 술어는 그대로.
+        act(() => useWorkbench.getState().setThemeRankParams({ zoneRateN: 99 }));
+        const after = selectFilterStages(useWorkbench.getState()).find((s) => s.predicates[0]?.kind === "themeStrength")!
+            .predicates[0] as typeof p;
+        expect(after.params.zoneRateN).toBe(11);
+    });
+
+    it("동결 행의 인라인 임계값 변경은 술어만 바꾸고 N/M(정체성)은 그대로", () => {
+        useWorkbench.getState().setThemeRankParams({ zoneRateN: 11, zoneAmountN: 22 });
+        const { container } = renderBoard();
+        const mirror = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("(현재 패널값)"));
+        act(() => { fireEvent.click(mirror!); });
+        // 행 안의 "동료 ≥" 숫자칸을 8 로 — 커밋은 blur 한 번(키 입력마다 재정산하지 않는 보드 규약).
+        const row = [...container.querySelectorAll("label")].find((l) => l.title.includes("존 내 테마 종목 수"));
+        const num = row!.querySelector("input[type=number]")!;
+        act(() => {
+            fireEvent.change(num, { target: { value: "8" } });
+            fireEvent.blur(num, { target: { value: "8" } });
+        });
+        const p = selectFilterStages(useWorkbench.getState()).find((s) => s.predicates[0]?.kind === "themeStrength")!
+            .predicates[0] as Extract<ReturnType<typeof selectFilterStages>[number]["predicates"][number], { kind: "themeStrength" }>;
+        expect(p.params.countMin).toBe(8);
+        expect(p.params.zoneRateN).toBe(11); // 동결 유지
+        expect(p.params.zoneAmountN).toBe(22);
+    });
+});

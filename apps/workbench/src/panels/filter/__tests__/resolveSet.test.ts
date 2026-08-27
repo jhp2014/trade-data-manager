@@ -50,6 +50,8 @@ const evalLook: EvalLookup = {
     bandBoundOrderKey: () => undefined,
     axisValueOf: () => undefined,
     boundValue: () => undefined,
+    sectionRanksAt: () => null,
+    themeProj: null,
 };
 
 const ctx: SetResolveCtx = {

@@ -7,8 +7,8 @@
 // ⚠ 존 N/M 은 **교집합**(등락 서수 ≤ N ∧ 대금 서수 ≤ M) — 복기 보드 replaySettings 의 N/M(합집합
 // hot 유니버스)과 뜻이 정반대라 재사용·이름 공유 금지(themeStrength.ts 참고).
 import type { StateCreator } from "zustand";
-import { mergeShape, persistedField } from "./persist.js";
-import { DEFAULT_THEME_STRENGTH, type ThemeStrengthParams } from "../lib/themeStrength.js";
+import { persistedField } from "./persist.js";
+import { DEFAULT_THEME_STRENGTH, parseThemeStrengthParams, type ThemeStrengthParams } from "../lib/themeStrength.js";
 import type { WorkbenchState } from "./workbench.js";
 
 export interface ThemeRankSlice {
@@ -16,16 +16,8 @@ export interface ThemeRankSlice {
     setThemeRankParams: (patch: Partial<ThemeStrengthParams>) => void;
 }
 
-// basis 는 유니온 문자열 — mergeShape 는 string 까지만 보므로(persist.ts 경고) 전용 가드로 후검증.
-const THEME_RANK = persistedField<ThemeStrengthParams>(
-    "wb.themeRankParams",
-    (o) => {
-        const merged = mergeShape(o, DEFAULT_THEME_STRENGTH);
-        if (!merged) return null;
-        return { ...merged, basis: merged.basis === "amount" ? "amount" : "rate" };
-    },
-    DEFAULT_THEME_STRENGTH,
-);
+// 파서는 lib/themeStrength 한 벌 — 깔때기 술어(parsePredicate)와 같은 유효성 정의를 봐야 한다.
+const THEME_RANK = persistedField<ThemeStrengthParams>("wb.themeRankParams", parseThemeStrengthParams, DEFAULT_THEME_STRENGTH);
 
 export const createThemeRankSlice: StateCreator<WorkbenchState, [], [], ThemeRankSlice> = (set) => ({
     themeRankParams: THEME_RANK.load(),

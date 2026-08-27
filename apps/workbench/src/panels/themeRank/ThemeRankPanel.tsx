@@ -12,9 +12,11 @@ import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { SubjectBadge } from "../../components/SubjectBadge.js";
-import { Checkbox, NumberField } from "../../ui/controls.js";
+import { NumberField } from "../../ui/controls.js";
 import { CanvasLayers } from "../canvas/CanvasPainter.js";
-import { useWorkbench } from "../../store/workbench.js";
+import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { ThemeStrengthFields } from "../../components/ThemeStrengthFields.js";
+import { themeStrengthLabel } from "../filter/label.js";
 import { useSubject, subjectStatus } from "../../lib/subject.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useChartPoints } from "../../lib/useChartPoints.js";
@@ -87,6 +89,16 @@ export function ThemeRankPanel(): JSX.Element {
         out.delete(subject.code);
         return out;
     }, [themesView.index, subject]);
+
+    // ── 흔적 — 깔때기 단계 목록의 파생(useFunnel 을 물지 않는다 — 이 패널은 시선이라 정산 구독이 필요 없다).
+    const stages = useWorkbench(selectFilterStages);
+    const themeTraces = useMemo(
+        () => stages.flatMap((s) => {
+            const p = s.predicates.find((x) => x.kind === "themeStrength");
+            return p && p.kind === "themeStrength" ? [{ id: s.id, enabled: s.enabled, params: p.params }] : [];
+        }),
+        [stages],
+    );
 
     // ── 컷선 드래그 — 미리보기는 로컬, 커밋은 손 뗄 때 한 번(Rail 규약). 그림·카운트는 미리보기 값을 본다.
     const [preview, setPreview] = useState<Partial<ThemeStrengthParams> | null>(null);
@@ -203,7 +215,8 @@ export function ThemeRankPanel(): JSX.Element {
     ], [params.basis, setParams]);
 
     // 빈 입력은 커밋하지 않는다 — NumberField 버퍼가 빈칸을 유지하게 두고, 유효 숫자만 스토어로.
-    const onNum = (key: "countMin" | "baseRankMax" | "zoneRankMax" | "zoneRateN" | "zoneAmountN") =>
+    // (하위 조건 3종은 공용 ThemeStrengthFields 가 blur 커밋으로 진다 — 여긴 존 N/M 둘뿐.)
+    const onNum = (key: "zoneRateN" | "zoneAmountN") =>
         (e: React.ChangeEvent<HTMLInputElement>): void => {
             const n = Math.floor(Number(e.target.value));
             if (Number.isFinite(n) && n >= 1) setParams({ [key]: n });
@@ -302,23 +315,27 @@ export function ThemeRankPanel(): JSX.Element {
                     </span>
                 )}
                 <span style={{ flex: 1 }} />
-                <label style={cond} title="존 내 테마 종목 수 ≥ x (자신 포함)">
-                    <Checkbox checked={params.countOn} onChange={(e) => setParams({ countOn: e.target.checked })} />
-                    동료 ≥ <NumberField min={1} value={eff.countMin} onChange={onNum("countMin")} style={numBox} />
-                </label>
-                <label style={cond} title="테마 내 기본 순위 ≤ r (존 무관, 전 멤버 중)">
-                    <Checkbox checked={params.baseRankOn} onChange={(e) => setParams({ baseRankOn: e.target.checked })} />
-                    기본순위 ≤ <NumberField min={1} value={eff.baseRankMax} onChange={onNum("baseRankMax")} style={numBox} />
-                </label>
-                <label style={cond} title="테마 내 존 순위 ≤ r (존에 든 멤버 중 — 자신이 존 밖이면 불만족)">
-                    <Checkbox checked={params.zoneRankOn} onChange={(e) => setParams({ zoneRankOn: e.target.checked })} />
-                    존순위 ≤ <NumberField min={1} value={eff.zoneRankMax} onChange={onNum("zoneRankMax")} style={numBox} />
-                </label>
+                {/* 하위 조건 3종 — 보드의 동결 행과 **같은 컴포넌트**(레이블·툴팁이 갈리면 두 화면이 딴말을 한다). */}
+                <ThemeStrengthFields value={params} onChange={setParams} />
                 <span style={cond} title="존 컷(그림의 빨간 선과 같은 값) — 등락 서수 ≤ N ∧ 대금 서수 ≤ M">
                     존 N <NumberField min={1} value={eff.zoneRateN} onChange={onNum("zoneRateN")} style={numBox} />
                     M <NumberField min={1} value={eff.zoneAmountN} onChange={onNum("zoneAmountN")} style={numBox} />
                 </span>
             </div>
+
+            {/* 흔적 — 깔때기에 걸린 테마 필터들의 **파생 뷰**(별도 저장물 없음). 클릭 = 그 동결값을 탐색값으로 복원. */}
+            {themeTraces.length > 0 && (
+                <div style={{ ...footer, borderTop: "1px dashed var(--border-subtle)", paddingTop: 3 }}>
+                    <span style={{ color: "var(--text-tertiary)" }}>흔적(깔때기)</span>
+                    {themeTraces.map((t, i) => (
+                        <button key={t.id} style={{ ...btn, opacity: t.enabled ? 1 : 0.5 }}
+                            title="집합 편성 보드에 걸린 테마 필터 — 클릭하면 그 동결값을 이 패널의 탐색값으로 복원"
+                            onClick={() => setParams(t.params)}>
+                            {themeStrengthLabel(t.params)}{themeTraces.length > 1 ? ` #${i + 1}` : ""}
+                        </button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -332,5 +349,5 @@ const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
 const footer: CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "4px 10px", borderTop: "1px solid var(--border-default)", fontSize: 11, color: "var(--text-secondary)", flexWrap: "wrap" };
 const cond: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" };
 const mono: CSSProperties = { fontVariantNumeric: "tabular-nums", color: "var(--text-primary)", fontWeight: 500 };
-const numBox: CSSProperties = { width: 44, fontSize: 11, padding: "1px 4px", border: "1px solid var(--border-default)", borderRadius: 3, background: "var(--bg-primary)", color: "var(--text-primary)" };
+const numBox: CSSProperties = { width: 44, fontSize: 11, padding: "1px 4px" }; // 나머지는 NumberField(inputBase) 것 — 공용 필드 칸과 같은 겉이어야 한다
 const btn: CSSProperties = { border: "1px solid var(--border-default)", borderRadius: 3, padding: "0 5px", fontSize: 11, background: "var(--bg-secondary)", cursor: "pointer" };

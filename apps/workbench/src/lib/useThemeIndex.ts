@@ -12,6 +12,12 @@ const EMPTY_INDEX: ThemeIndex = buildThemeIndex([]);
 export interface ThemeIndexView {
     index: ThemeIndex;
     isLoading: boolean;
+    /**
+     * 데이터가 실제로 도착했나 — isLoading 만으로는 못 가른다(RQ v5 의 paused 등 "pending 인데
+     * fetching 아님" 상태에서 isLoading=false·data=undefined). 판정 소비자(깔때기)는 이걸로 투영을
+     * null(판단 불가)로 접어야 빈 인덱스가 "테마 없음 = 전부 탈락"으로 위장하지 않는다.
+     */
+    ready: boolean;
     /** 첫 로드 실패 — 빈 인덱스를 "테마 없음"으로 오독하지 않게 겉으로 낸다. */
     error: Error | null;
 }
@@ -22,6 +28,7 @@ export function useThemeIndex(): ThemeIndexView {
         () => ({
             index: q.data ? buildThemeIndex(q.data) : EMPTY_INDEX,
             isLoading: q.isLoading,
+            ready: q.data !== undefined,
             error: (q.error as Error | null) ?? null,
         }),
         [q.data, q.isLoading, q.error],

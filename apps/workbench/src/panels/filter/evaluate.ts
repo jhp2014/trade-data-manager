@@ -14,6 +14,7 @@
 // 같은 규칙이 두 곳에서 각자 자란다. 이 파일은 그 대수로 술어를 조립하는 일만 한다.
 import { and3, not3, or3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
 import { rowKeyToChartKey } from "../../lib/pointKey.js";
+import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
 import { noneScope, type GroupExpr } from "../rank/groupFilter.js";
 import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStage, type Grain } from "./stage.js";
 
@@ -41,6 +42,10 @@ export interface EvalLookup {
     axisValueOf: (axisId: string, item: FunnelItem) => number | undefined;
     /** 값 구간 경계 해석 — 타점 앵커면 그 타점의 값, 리터럴이면 그 수. 앵커가 사라졌으면 undefined. */
     boundValue: (axisId: string, bound: AxisBound) => number | undefined;
+    /** (날짜, 시각) → 순위 단면. 재료 미도착·단면 없음(pending·미수집)은 null = 판단 불가(탈락 아님). */
+    sectionRanksAt: (date: string, time: string) => SectionRanks | null;
+    /** 테마 멤버십 투영(읽기 시점 — 굽지 않는다). 재료 미도착이면 null. */
+    themeProj: ThemeProjection | null;
 }
 
 /**
@@ -111,6 +116,15 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
             if (ok === undefined) return undefined; // 미배치
             const [from, to] = lo <= hi ? [lo, hi] : [hi, lo]; // 어느 쪽을 먼저 찍었든 구간은 하나
             return ok >= from && ok <= to;
+        }
+
+        case "themeStrength": {
+            // 시각 없는 항목(타점 없는 후보 하루)은 단면을 지목할 수 없다 — time 술어와 같은 결.
+            if (item.time === undefined) return undefined;
+            if (look.themeProj === null) return undefined; // 멤버십 재료 미도착
+            const section = look.sectionRanksAt(item.date, item.time);
+            if (section === null) return undefined; // 단면 없음(pending·미수집) = 결손이지 탈락이 아니다
+            return passesPoint(item.stockCode, section, p.params, look.themeProj);
         }
 
         case "axisValue": {

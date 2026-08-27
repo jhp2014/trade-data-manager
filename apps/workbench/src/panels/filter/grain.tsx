@@ -21,13 +21,16 @@ export const GRAIN_HINT: Record<Grain, string> = {
 const STRIPE = "var(--text-tertiary)";
 
 /**
- * 층위 한 칸 — 머리 띠 + 그 층위에 속한 줄들을 잇는 세로선.
+ * 칸 껍데기 — 머리 띠 + 그 칸의 줄들을 잇는 세로선. 층위 칸(GrainSection)과 테마 칸(UI 그룹핑 —
+ * 행 정체성은 타점이라 grain 이 아니다)이 같은 겉을 써야 보드가 목록 하나로 읽힌다.
  *
  * ⚠ 머리 띠는 **안 붙인다**(sticky 폐지). 보드에서만 붙어 있었는데, 스크롤 중에도 "하루/타점"이 보이는
  * 이득보다 띠가 레일 위에 겹쳐 지나가는 손해가 컸다 — 어느 칸인지는 세로선이 이미 말한다.
  */
-export function GrainSection({ grain, right, footer, children }: {
-    grain: Grain;
+export function Section({ title, unit, hint, right, footer, children }: {
+    title: string;
+    unit: string;
+    hint: string;
     right?: ReactNode;
     /** 칸의 **맨 아래** 줄(서랍) — 세로선 안에 든다. 그 칸에 속한 것이지 다음 칸의 머리가 아니라서. */
     footer?: ReactNode;
@@ -39,10 +42,10 @@ export function GrainSection({ grain, right, footer, children }: {
                 display: "flex", alignItems: "center", gap: 7, padding: "3px 8px",
                 background: "var(--bg-tertiary)", borderLeft: `3px solid ${STRIPE}`,
             }}>
-                <span title={GRAIN_HINT[grain]} style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "0.02em" }}>
-                    {GRAIN_TITLE[grain]}
+                <span title={hint} style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "0.02em" }}>
+                    {title}
                 </span>
-                <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{GRAIN_UNIT[grain]}</span>
+                <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{unit}</span>
                 {right && <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>{right}</span>}
             </div>
             <div style={{ borderLeft: `3px solid ${STRIPE}` }}>
@@ -50,5 +53,19 @@ export function GrainSection({ grain, right, footer, children }: {
                 {footer}
             </div>
         </div>
+    );
+}
+
+/** 층위 한 칸 — Section 의 층위 어휘 래퍼(기존 소비자 시그니처 유지). */
+export function GrainSection({ grain, right, footer, children }: {
+    grain: Grain;
+    right?: ReactNode;
+    footer?: ReactNode;
+    children: ReactNode;
+}): JSX.Element {
+    return (
+        <Section title={GRAIN_TITLE[grain]} unit={GRAIN_UNIT[grain]} hint={GRAIN_HINT[grain]} right={right} footer={footer}>
+            {children}
+        </Section>
     );
 }

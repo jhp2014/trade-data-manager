@@ -25,6 +25,7 @@ export function rowIdOfStage(s: FilterStage): string {
         case "axisValue": return `axis:${first.axisId}`;
         case "date": return "date";
         case "time": return "time";
+        case "themeStrength": return `theme:${s.id}`;
     }
 }
 

@@ -5,6 +5,7 @@
 // 숫자와 화면이 같은 이야기를 해야 한다.
 import { noneLabelOf, noneScope, type GroupExpr } from "../rank/groupFilter.js";
 import { shortDate } from "../../lib/date.js";
+import type { ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 
 export interface LabelLookup {
@@ -42,7 +43,19 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
             return p.ranges.length === 1
                 ? `${p.ranges[0]!.from}~${p.ranges[0]!.to}`
                 : `시간 ${p.ranges.length}구간`;
+        case "themeStrength": return themeStrengthLabel(p.params);
     }
+}
+
+/** 테마 강도 묶음 한 줄 — 동결 N/M(정체성) + 활성 하위 조건. 보드 행·막대·패널 흔적이 같은 표기를 쓴다. */
+export function themeStrengthLabel(p: ThemeStrengthParams): string {
+    const conds = [
+        p.countOn ? `동료≥${p.countMin}` : null,
+        p.baseRankOn ? `기본≤${p.baseRankMax}` : null,
+        p.zoneRankOn ? `존내≤${p.zoneRankMax}` : null,
+    ].filter((s): s is string => s !== null);
+    const basis = p.basis === "amount" ? "대금" : "등락";
+    return `테마 ${p.zoneRateN}/${p.zoneAmountN}·${basis}${conds.length > 0 ? ` ${conds.join(" ")}` : ""}`;
 }
 
 /** 단계가 무슨 도구인가 — 막대 아래 한 줄. 한 단계는 한 종류라 첫 술어가 곧 단계의 종류다. */
@@ -53,6 +66,7 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "axisValue": return "축";
         case "date": return "날짜";
         case "time": return "시간";
+        case "themeStrength": return "테마";
         default: return "";
     }
 }

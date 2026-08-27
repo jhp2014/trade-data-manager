@@ -9,11 +9,11 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, ReviewPoint, StockMeta } from "@trade-data-manager/wire";
+import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankSectionBundle, ReviewPoint, StockMeta, ThemeMember } from "@trade-data-manager/wire";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
-    allAnchorsQuery, allCommentsQuery, allPointsQuery, chartQuery, computedAxesQuery,
-    groupMembershipsQuery, groupsQuery, stockMasterQuery,
+    allAnchorsQuery, allCommentsQuery, allPointsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
+    groupMembershipsQuery, groupsQuery, rankSectionsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
 import { GroupsProvider } from "../lib/GroupsContext.js";
@@ -55,6 +55,10 @@ export interface Seed {
      * 안 심고 캔들을 켜면 setup 의 네트워크 그물에 걸린다(그게 의도다 — 빈 캔들로 통과하지 않게).
      */
     charts?: { code: string; date: string; data: ChartBundle }[];
+    /** 순위 단면 번들(테마 강도 필터·패널 카운트의 재료). 안 주면 빈 번들. */
+    rankSections?: RankSectionBundle;
+    /** 시트 테마 멤버십 전량(테마 인덱스 재료). 안 주면 빈 목록. */
+    themeMembers?: ThemeMember[];
     /**
      * 종목명 사전(마스터 전량). **안 주면 피드에 실린 이름들로 자동 조립한다** — 실제 서버에서도
      * 피드의 이름이 같은 마스터에서 나오므로(상위집합) 그 유도가 거짓이 아니고, 이름을 쓰는 테스트가
@@ -89,6 +93,8 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(groupsQuery().queryKey, seed.groups ?? []);
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
+    qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 1, dates: [], pending: [] });
+    qc.setQueryData(allThemeMembersQuery().queryKey, seed.themeMembers ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
     if (seed.daySnapshot) qc.setQueryData(["day-replay-lru", seed.daySnapshot.date], seed.daySnapshot.data);
     for (const c of seed.charts ?? []) qc.setQueryData(chartQuery(c.code, c.date).queryKey, c.data);

@@ -49,6 +49,7 @@ describe("kindLabel — 축은 밴드든 값이든 축", () => {
         expect(kindLabel("group")).toBe("그룹");
         expect(kindLabel("axisBand")).toBe("축");
         expect(kindLabel("axisValue")).toBe("축");
+        expect(kindLabel("themeStrength")).toBe("테마"); // 컴파일러가 안 잡는 자리(default "") — 빠지면 빈 라벨로 조용히 뜬다
         expect(kindLabel(undefined)).toBe("");
     });
 });

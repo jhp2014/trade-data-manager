@@ -26,6 +26,7 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
         case "date": return { kind: "date" };
         case "time": return { kind: "time" };
         case "group": return null;
+        case "themeStrength": return null; // 레일이 아니다 — 보드 테마 칸의 목록 행(그룹과 동형)
     }
 }
 

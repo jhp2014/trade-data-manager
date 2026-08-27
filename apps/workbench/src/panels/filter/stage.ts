@@ -19,6 +19,7 @@
 import type { Grain } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { isGroupExprEmpty, noneScope, parseGroupExpr } from "../rank/groupFilter.js";
+import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 
 // 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
 // 필터 모듈들은 stage 만 본다(도메인 경로가 바뀌어도 한 줄).
@@ -55,7 +56,10 @@ export type FilterPredicate =
     | { kind: "axisBand"; axisId: string; band: RankBand }
     | { kind: "axisValue"; axisId: string; ranges: AxisValueRange[] }
     | { kind: "date"; ranges: DateRange[] }
-    | { kind: "time"; ranges: TimeRange[] };
+    | { kind: "time"; ranges: TimeRange[] }
+    // 테마 강도 묶음 — **동결 파라미터가 payload 안에 산다**(SavedSet 이 stages 를 통째 복사하므로
+    // 슬라이스 참조로 두면 집합의 자립이 깨진다). N/M(존)은 정체성(동결), 임계값·활성은 보드에서 조절.
+    | { kind: "themeStrength"; params: ThemeStrengthParams };
 
 export type PredicateKind = FilterPredicate["kind"];
 
@@ -77,6 +81,7 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "axisValue": return p.ranges.length === 0;
         case "date": return p.ranges.length === 0;
         case "time": return p.ranges.length === 0;
+        case "themeStrength": return !anyConditionOn(p.params); // 활성 하위 조건 0 = 무제한 통과
     }
 }
 
@@ -119,6 +124,7 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "axisBand":
         case "axisValue": return look.axisScope(p.axisId);
         case "group": return finest(literalIds(p.expr).map((id) => literalScope(id, look)));
+        case "themeStrength": return "point"; // 단면 조회에 시각이 필수 — 행 정체성은 타점(보드 테마 칸은 UI 그룹핑)
     }
 }
 
@@ -338,8 +344,16 @@ const isFromToRange = (o: unknown): o is { from: string; to: string } => {
 };
 
 function parsePredicate(o: unknown): FilterPredicate | null {
-    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown };
+    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; params?: unknown };
     switch (p?.kind) {
+        case "themeStrength": {
+            // 관대한 병합 — 필드가 늘어도 옛 저장물이 통째 안 죽는다. payload 자체가 누락·오염이어도
+            // **조건-off 로 살린다**: 이 파서의 null 은 저장본 한 벌 통째 폐기라, 지어낸 활성 조건(기본값)보다
+            // "조건 없음"으로 보이는 빈 술어가 정직하고 덜 파괴적이다.
+            const params = parseThemeStrengthParams(p.params)
+                ?? { ...DEFAULT_THEME_STRENGTH, countOn: false, baseRankOn: false, zoneRankOn: false };
+            return { kind: "themeStrength", params };
+        }
         case "group": {
             const expr = parseGroupExpr(p.expr); // 팔레트 저장본과 같은 검증 한 벌 — 여기만 느슨하면 안 된다
             return expr ? { kind: "group", expr } : null;

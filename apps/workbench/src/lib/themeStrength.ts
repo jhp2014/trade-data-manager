@@ -60,6 +60,31 @@ export const DEFAULT_THEME_STRENGTH: ThemeStrengthParams = {
 
 export const anyConditionOn = (p: ThemeStrengthParams): boolean => p.countOn || p.baseRankOn || p.zoneRankOn;
 
+/**
+ * 저장물 파서 — 슬라이스(wb.themeRankParams)와 깔때기 술어(parsePredicate)가 **같은 유효성 정의**를
+ * 본다(갈리면 패널에서 만든 값이 필터로 얼렸을 때 저장 왕복에서 조용히 접힌다). 정책은 관대한 병합:
+ * 객체가 아니면 null, 필드는 맞는 것만 승계·나머지 기본값 — 필드가 나중에 늘어도 옛 저장물(필터 한 벌·
+ * 저장 집합)이 통째로 소멸하지 않아야 해서다(parseStages 는 null 하나에 전체를 폐기한다).
+ */
+export function parseThemeStrengthParams(o: unknown): ThemeStrengthParams | null {
+    if (!o || typeof o !== "object") return null;
+    const r = o as Record<string, unknown>;
+    const d = DEFAULT_THEME_STRENGTH;
+    const num = (v: unknown, fb: number): number => (typeof v === "number" && Number.isFinite(v) && v >= 1 ? Math.floor(v) : fb);
+    const bool = (v: unknown, fb: boolean): boolean => (typeof v === "boolean" ? v : fb);
+    return {
+        zoneRateN: num(r.zoneRateN, d.zoneRateN),
+        zoneAmountN: num(r.zoneAmountN, d.zoneAmountN),
+        basis: r.basis === "amount" ? "amount" : "rate",
+        countOn: bool(r.countOn, d.countOn),
+        countMin: num(r.countMin, d.countMin),
+        baseRankOn: bool(r.baseRankOn, d.baseRankOn),
+        baseRankMax: num(r.baseRankMax, d.baseRankMax),
+        zoneRankOn: bool(r.zoneRankOn, d.zoneRankOn),
+        zoneRankMax: num(r.zoneRankMax, d.zoneRankMax),
+    };
+}
+
 /** 테마 멤버십의 루프용 투영 — 복사는 여기서 한 번뿐. */
 export interface ThemeProjection {
     themesByCode: ReadonlyMap<string, readonly string[]>;

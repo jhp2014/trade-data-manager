@@ -247,3 +247,55 @@ describe("죽은 참조 — 화면이 표시하고 정리는 사용자가 정한
         expect(read().deadStageIds).toEqual([]);
     });
 });
+
+describe("테마 강도 배선 — 실제 시드(번들·멤버십)로 판정까지", () => {
+    // 단면: D1 09:30 에 A(1,1)·B(2,2) — 존(30/40) 안. 09:35 단면은 **없다**(그 타점은 미배치가 돼야 한다).
+    const rankSections: Seed["rankSections"] = {
+        version: 1,
+        dates: [{
+            date: D1, sealed: true, codes: [A, B],
+            sections: [
+                { time: "09:30", n: 2, rate: [1, 2], amount: [1, 2] },
+                { time: "10:00", n: 2, rate: [2, 1], amount: [2, 1] },
+            ],
+        }],
+        pending: [],
+    };
+    const themeMembers: Seed["themeMembers"] = [
+        { theme: "반도체", code: A },
+        { theme: "반도체", code: B },
+    ];
+    const themeStage = (countMin: number): FilterStage => ({
+        id: "th1", enabled: true,
+        predicates: [{
+            kind: "themeStrength",
+            params: { zoneRateN: 30, zoneAmountN: 40, basis: "rate", countOn: true, countMin, baseRankOn: false, baseRankMax: 3, zoneRankOn: false, zoneRankMax: 2 },
+        }],
+    });
+
+    it("테마 단계가 서면 해상도가 타점으로 내려가고, HH:MM:SS 타점이 HH:MM 단면에 맞물려 판정된다", () => {
+        setStages([themeStage(2)]);
+        const v = read({ ...SEED, rankSections, themeMembers });
+        expect(v.grain).toBe("point");
+        expect(v.universe).toBe(4); // 타점 3 + 타점 0인 하루(C@D2) 1
+        // A@09:30·B@10:00 은 단면 有 → 동료 2(자신 포함) 통과. A@09:35 는 단면 無 → 미배치(pending 칸).
+        const t = v.result!.stages[0].counts;
+        expect(t.survive).toBe(2);
+        expect(t.pending).toBe(2); // 단면 없는 A@09:35 + 시각 없는 C@D2 하루 항목
+        expect(t.fail).toBe(0); // 결손이 탈락으로 새지 않는다 — 이 검사가 이 테스트의 존재 이유
+    });
+
+    it("멤버십 재료가 아직 없으면(미도착) 전부 미배치 — 빈 인덱스가 '전부 탈락'으로 위장하지 않는다", () => {
+        setStages([themeStage(1)]);
+        vi.stubGlobal("fetch", () => new Promise(() => {})); // 영원히 도착하지 않는 응답 = pending 상태
+        const client = seededClient({ ...SEED, rankSections });
+        client.removeQueries({ queryKey: ["theme-members-all"] }); // 도착 전 상태를 흉내
+        const { result } = renderHook(() => useFilterFunnel(), {
+            wrapper: ({ children }: { children: ReactNode }): JSX.Element => <Providers client={client}>{children}</Providers>,
+        });
+        const t = result.current.result!.stages[0].counts;
+        expect(t.fail).toBe(0);
+        expect(t.survive).toBe(0);
+        expect(t.pending).toBe(result.current.universe);
+    });
+});
