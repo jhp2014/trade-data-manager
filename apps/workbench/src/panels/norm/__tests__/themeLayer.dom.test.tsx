@@ -7,6 +7,7 @@
 // 이 화면이 나오려면 다섯 가지가 동시에 맞아야 한다(overlayFixture.themeSnapshot 주석) — 하나라도
 // 어긋나면 선이 0개인데 순서 검사는 통과한다. 그래서 여기서는 **선이 몇 개인지**부터 단언한다.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { cleanup } from "@testing-library/react";
 import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import { NormOverlayPanel } from "../NormOverlayPanel.js";
 import { renderWithProviders } from "../../../test/renderPanel.js";
@@ -136,6 +137,58 @@ describe("테마 켜짐 — 층 순서", () => {
         ]);
         // 캔버스 쪽 순서도 켜고 끄는 것과 무관하게 그대로.
         expect(drawnNames(c)).toEqual([...PAINT_ORDER]);
+    });
+});
+
+describe("테마 구간 토글(재적) — 배선과 이탈 절단", () => {
+    // 스토어는 모듈 싱글톤 — 여기서 좁힌 top-1 설정이 다음 테스트의 hot 판정으로 새면 멤버가 조용히 빠진다.
+    const prevSettings = useWorkbench.getState().replaySettings;
+    afterEach(() => useWorkbench.setState({ replaySettings: prevSettings }));
+
+    /** 재적 모드는 영속 토글이라 렌더 전에 심는다 — armTheme 과 같은 이유. 값은 JSON 이다(seedMode 관례). */
+    const armSpan = (span: "day" | "hot"): void => localStorage.setItem("wb.normThemeSpan.minute", JSON.stringify(span));
+    /** theme-lines 층이 실제로 그린 점 수 — 폴리라인 pts 는 [x,y,…] 평평한 배열이라 /2. */
+    const drawnPts = (c: HTMLElement): number =>
+        kindIn(drawnOps(c, "theme-lines"), "polyline").reduce((s, op) => s + (op as { pts: readonly number[] }).pts.length / 2, 0);
+
+    it("내내 재적인 멤버는 하루 모드와 같은 그림이다 — 토글이 모집단을 안 건드린다", () => {
+        armSpan("hot");
+        const c = renderThemed();
+        expect(kindIn(drawnOps(c, "theme-lines"), "polyline").length).toBeGreaterThan(0);
+        expect(c.textContent).toContain("SK하이닉스");
+    });
+
+    it("이탈하면 선이 거기서 끊긴다 — 재적 모드의 점 수 < 하루 모드의 점 수", () => {
+        // top-1 로 좁혀 이탈을 만든다: 멤버가 초반 거래대금 1위 → t0−3 부터 D(다른 테마)가 추월.
+        // 등락률 1위는 내내 앵커(테마 선 아님)라 멤버의 hot 은 거래대금 슬롯뿐이다.
+        useWorkbench.setState({ replaySettings: { amountN: 1, rateN: 1 } });
+        const t0 = TIME_MIN;
+        const mins = themeSnapshot.stocks[0].times.map(minuteOfDayOf);
+        const memberCum = mins.map((_, i) => 100e9 + i); // 사실상 평탄(단조 유지)
+        const rivalCum = mins.map((m) => (m < t0 - 3 ? 1e9 : 200e9)); // t0−3 부터 압도
+        const snapshot = {
+            ...themeSnapshot,
+            stocks: [
+                themeSnapshot.stocks[0],
+                { ...themeSnapshot.stocks[1], cumAmount: memberCum },
+                { ...themeSnapshot.stocks[0], code: "035720", name: "카카오", themes: ["기타"], cumAmount: rivalCum },
+            ],
+        };
+        armSpan("hot");
+        const hotC = renderThemed(snapshot);
+        const hotPts = drawnPts(hotC);
+        // 모집단 보존 — 점 수가 준 것이 "멤버가 통째로 빠져서"가 아님을 못박는다(그게 이 테스트의 제목이다).
+        expect(hotC.textContent).toContain("SK하이닉스");
+        cleanup(); // 첫 패널을 내리고 저장소를 다시 심는다 — 산 채로 clear 하면 저장 타이밍 변경에 조용히 깨진다
+        localStorage.clear();
+        armTheme();
+        armSpan("day");
+        useWorkbench.setState({ replaySettings: { amountN: 1, rateN: 1 } });
+        const dayC = renderThemed(snapshot);
+        const dayPts = drawnPts(dayC);
+        expect(dayC.textContent).toContain("SK하이닉스");
+        expect(hotPts).toBeGreaterThan(0);
+        expect(dayPts).toBeGreaterThan(hotPts); // 이탈 이후 분들이 재적 모드에서 빠졌다
     });
 });
 

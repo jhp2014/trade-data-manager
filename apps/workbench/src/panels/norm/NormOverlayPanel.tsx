@@ -59,7 +59,7 @@ const CANDLE_OTHER_RATIO = 0.45;
 /** 일봉/분봉이 **별도 패널**(카탈로그 2항목)이다 — "일봉에서 훑고 분봉으로 확인"의 동시 사용 시나리오. */
 export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.Element {
     const toggles = useOverlayToggles(grain);
-    const { mode, dailyMarket, zeroLine, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme } = toggles;
+    const { mode, dailyMarket, zeroLine, showLevels, showLabels, showAmount, showAmountLabels, showTheme, setShowTheme, themeSpan } = toggles;
 
     const isDaily = grain === "daily";
     const isPointUnit = !isDaily;
@@ -137,6 +137,7 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
         target: pointTarget,
         snapshot: snapQ.data,
         hot: replaySettings,
+        span: themeSpan,
         lookup,
         amountWidthOn,
         amountLabelsOn,

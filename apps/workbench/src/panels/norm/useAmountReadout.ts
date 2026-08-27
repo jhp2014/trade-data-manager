@@ -89,7 +89,9 @@ export function useAmountReadout(args: {
             amountAt: anchorAt, cumAt: anchorCum,
         });
         for (const l of themeOverlay?.lines ?? []) {
-            const byX = new Map(l.points.map((p) => [p.x, p.y] as const));
+            // 전 조각 평탄화 — 정확분 조회(byX)라 갭(이탈) 분은 자연히 null = 판독 없음이 된다(보간 아님).
+            const byX = new Map<number, number>();
+            for (const seg of l.segments) for (const p of seg) byX.set(p.x, p.y);
             out.push({
                 code: l.code, name: l.name, t0, baseRate: themeOverlay!.baseRate,
                 yAt: (x) => byX.get(Math.round(x)) ?? null,

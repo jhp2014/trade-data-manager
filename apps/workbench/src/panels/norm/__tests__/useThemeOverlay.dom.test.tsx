@@ -30,7 +30,7 @@ const lookup = amountLookupOf(themeSnapshot);
 
 type Args = Parameters<typeof useThemeOverlay>[0];
 const BASE: Args = {
-    enabled: true, target, snapshot: themeSnapshot, hot: HOT, lookup,
+    enabled: true, target, snapshot: themeSnapshot, hot: HOT, span: "day", lookup,
     amountWidthOn: false, amountLabelsOn: false, hoveredLine: null, singleKey: PK, groupSet: null,
 };
 const setup = (over: Partial<Args> = {}): ReturnType<typeof renderHook<ReturnType<typeof useThemeOverlay>, Args>> =>
@@ -76,14 +76,21 @@ describe("좌표 이사 — 재기저가 아니라 평행이동", () => {
     // ⚠ 멤버를 자기 값으로 재기저하면 여기가 0 이 된다 — 그래도 그림은 그럴듯하게 나온다.
     it("타점 시각의 멤버 값이 **앵커 대비 %p 간격**으로 남는다", () => {
         const { overlay } = setup().result.current;
-        const at0 = overlay!.lines[0].points.find((p) => p.x === 0)!;
+        const at0 = overlay!.lines[0].segments[0].find((p) => p.x === 0)!;
         expect(at0.y).toBeCloseTo(18 - target.baseRate); // 멤버 18% − 앵커 26.3% ≈ −8.3%p
     });
 
     it("x 는 타점 시각 기준 분 — 앞뒤로 벌어진다", () => {
-        const xs = setup().result.current.overlay!.lines[0].points.map((p) => p.x);
+        const xs = setup().result.current.overlay!.lines[0].segments[0].map((p) => p.x);
         expect(Math.min(...xs)).toBe(-10);
         expect(Math.max(...xs)).toBe(10);
+    });
+
+    it("재적 모드도 같은 평행이동을 탄다 — 조각 좌표가 (t₀, baseRate)만큼 옮겨져 있다", () => {
+        const { overlay } = setup({ span: "hot" }).result.current;
+        // 픽스처의 두 종목뿐인 보드라 멤버는 내내 재적 → 조각 1개, 하루 모드와 같은 좌표.
+        const at0 = overlay!.lines[0].segments[0].find((p) => p.x === 0)!;
+        expect(at0.y).toBeCloseTo(18 - target.baseRate);
     });
 });
 

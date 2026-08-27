@@ -7,7 +7,8 @@
 // 테마는 우단의 보간값. 하루 전체를 그리는 선이라 "마지막 점"을 쓰면 창 밖 값에 칩이 뭉친다 —
 // 옛 왼쪽 거터가 좌단을 쓰던 것과 같은 이유, 방향만 뒤집혔다.
 import { useMemo } from "react";
-import { labelAnchorAt, yAtX, type OverlayBounds, type OverlayLine } from "./overlay.js";
+import { labelAnchorAt, type OverlayBounds, type OverlayLine } from "./overlay.js";
+import { segmentAnchorAt } from "./themeSkeleton.js";
 import { gutterLayout, type GutterCandidate, type GutterLayout } from "./gutter.js";
 import type { ThemeOverlay } from "./useThemeOverlay.js";
 import { shortDate } from "../../lib/date.js";
@@ -48,11 +49,9 @@ export function useGutter(args: {
             });
         }
         for (const l of themeOverlay?.lines ?? []) {
-            // 우단에 선이 아직/이미 없으면 가까운 끝점으로 물러난다 — 목록에서 종목이 사라지지 않게.
-            const edge = yAtX(l.points, viewX.to);
-            const at = edge !== null ? { x: viewX.to, y: edge }
-                : l.points[l.points.length - 1].x < viewX.to ? l.points[l.points.length - 1]
-                    : l.points[0];
+            // 우단을 덮는 조각에서만 보간, 없으면 가까운 끝점 — 규칙과 이유는 segmentAnchorAt(순수 함수) 주석.
+            const at = segmentAnchorAt(l.segments, viewX.to);
+            if (!at) continue;
             cands.push({
                 kind: "theme", key: l.code, name: l.name, sub: null,
                 x: at.x, y: at.y,

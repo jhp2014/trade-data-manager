@@ -37,15 +37,16 @@ export function ThemeHit({ overlay, pathOf, hitStep, onHover, onToggleCandle }: 
 }): JSX.Element {
     return (
         <g data-layer="theme-hit">
-            {overlay.lines.map((l) => (
-                <polyline key={`thh-${l.code}`}
-                    points={pathOf(l.points, hitStep)}
+            {/* 조각마다 히트라인 하나 — 이어 붙이면 갭(이탈) 위 빈 공간에서도 선이 켜진다. 1점 조각은 히트 없음(겨냥할 획이 없다). */}
+            {overlay.lines.flatMap((l) => l.segments.filter((seg) => seg.length >= 2).map((seg, i) => (
+                <polyline key={`thh-${l.code}-${i}`}
+                    points={pathOf(seg, hitStep)}
                     fill="none" stroke="transparent" strokeWidth={8} strokeLinejoin="round"
                     style={{ pointerEvents: "stroke", cursor: "pointer" }}
                     onClick={() => onToggleCandle(l.code)}
                     onMouseEnter={() => onHover([l.code])}
                     onMouseLeave={() => onHover(null)} />
-            ))}
+            )))}
         </g>
     );
 }
@@ -77,7 +78,8 @@ export function ThemeOverflowMenu({ theme, onToggleCandle }: {
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                                     <span style={{ width: 6, height: 6, borderRadius: 3, background: theme.colorOf(code), flexShrink: 0 }} />
                                     <span>{l.name}</span>
-                                    <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.points[0].y + overlay.baseRate)}</span>
+                                    {/* 첫 점의 등락률 — 재적 모드에선 "첫 재적 분"의 값이다(하루 시작 아님). */}
+                                    <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.segments[0][0].y + overlay.baseRate)}</span>
                                 </span>
                             </MenuItem>
                         </div>

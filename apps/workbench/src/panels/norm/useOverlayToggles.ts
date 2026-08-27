@@ -26,6 +26,14 @@ export type ZeroLine = "off" | "un" | "krx";
 /** 자동 모드의 캔들 상한 — 이 수를 넘으면 종가선(겹친 캔들은 서로를 가린다). */
 export const AUTO_CANDLE_MAX = 3;
 
+/**
+ * 테마 골격의 그리는 구간 — **분봉 전용**. "day" = 하루 전체 선(기본) / "hot" = 순위 재적 구간만
+ * (top-N 에 실제로 들어 있던 분만 긋고, 이탈 = 선 끊김 — 장중 테마 테이프의 어휘와 같다).
+ * 모집단(어떤 멤버가 그려지나)은 두 모드 사실상 동일 — 이 토글은 각 멤버의 **선을 어디까지 긋나**만
+ * 바꾼다. 유일한 예외는 하루에 봉이 1개뿐인 멤버(day 는 2점 미만이라 선이 못 서고, hot 은 점으로 선다).
+ */
+export type ThemeSpan = "day" | "hot";
+
 export interface OverlayToggles {
     /** 그리기 모드(자동/캔들/선). 실제 적용값은 패널이 항목 수와 함께 정한다(effMode). */
     mode: DrawMode;
@@ -51,6 +59,9 @@ export interface OverlayToggles {
     /** 같은 테마 종목들의 분당 경로를 같이 세우나(분봉 전용). */
     showTheme: boolean;
     setShowTheme: Setter<boolean>;
+    /** 테마 멤버 선의 그리는 구간(하루 전체/순위 재적) — 분봉 전용. */
+    themeSpan: ThemeSpan;
+    setThemeSpan: Setter<ThemeSpan>;
 }
 
 export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
@@ -74,6 +85,11 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
     const [showAmount, setShowAmount] = usePersistedState<boolean>(`wb.normAmount.${grain}`, bool, true);
     const [showAmountLabels, setShowAmountLabels] = usePersistedState<boolean>(`wb.normAmountLabels.${grain}`, bool, false);
     const [showTheme, setShowTheme] = usePersistedState<boolean>(`wb.normTheme.${grain}`, bool, false);
+    const [themeSpan, setThemeSpan] = usePersistedState<ThemeSpan>(
+        `wb.normThemeSpan.${grain}`,
+        (o) => (o === "day" || o === "hot" ? o : null),
+        "day",
+    );
 
     // 한 벌 객체는 memo — 매 렌더 새로 만들면 이걸 통째로 받는 머리글(React.memo)이 값이 그대로여도
     // 매번 다시 그린다. 세터들은 useState 산(産)이라 전부 안정이고, 값들이 곧 의존성 전부다.
@@ -86,9 +102,11 @@ export function useOverlayToggles(grain: "daily" | "minute"): OverlayToggles {
         showAmount, setShowAmount,
         showAmountLabels, setShowAmountLabels,
         showTheme, setShowTheme,
+        themeSpan, setThemeSpan,
     }), [
         mode, setMode, dailyMarket, setDailyMarket, showLevels, setShowLevels,
         zeroLine, setZeroLine,
         showLabels, setShowLabels, showAmount, setShowAmount, showAmountLabels, setShowAmountLabels, showTheme, setShowTheme,
+        themeSpan, setThemeSpan,
     ]);
 }

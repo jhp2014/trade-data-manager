@@ -30,23 +30,37 @@ export interface ThemeLinesParams {
 export function themeLinesLayer({ overlay, runs, hovered, project, clip, lineStep }: ThemeLinesParams): DrawLayer {
     const groups: DrawGroup[] = [];
 
+    // 1분 재적 조각 — 선이 못 되는 "떴다"는 사실을 점으로 남긴다(테이프의 1점 조각과 같은 어휘).
+    // 짚었을 때 점도 커진다 — 선만 굵어지면 1분 멤버는 짚어도 티가 안 난다(tapeLayers 의 r=max(…,width) 규칙과 같은 결).
+    const dot = (ops: DrawOp[], p: { x: number; y: number }, lit: boolean): void => {
+        if (clip && (p.x < clip.from || p.x > clip.to)) return;
+        const [cx, cy] = project([p], 1);
+        ops.push({ op: "circle", cx, cy, r: lit ? 2.2 : 1.5, fill: THEME_STROKE });
+    };
+
     for (const l of overlay.lines) {
         const lit = hovered?.has(l.code) ?? false;
         const r = runs?.get(l.code);
 
         if (!r) {
-            const { past, future } = splitAtX(decimate(clip ? clipToX(l.points, clip.from, clip.to) : l.points, lineStep), 0);
             const width = lit ? 2 : 1;
             const ops: DrawOp[] = [];
-            if (past.length >= 2) ops.push({ op: "polyline", pts: project(past, 1), stroke: THEME_STROKE, width, join: "round" });
-            if (future.length >= 2) ops.push({ op: "polyline", pts: project(future, 1), stroke: THEME_STROKE, width, join: "round", dash: "4 4" });
+            // 조각마다 따로 자른다·솎는다·가른다 — 조각을 이어 붙이면 갭 위로 선이 지나가 이탈이 지워진다.
+            for (const seg of l.segments) {
+                if (seg.length === 1) { dot(ops, seg[0], lit); continue; }
+                const { past, future } = splitAtX(decimate(clip ? clipToX(seg, clip.from, clip.to) : seg, lineStep), 0);
+                if (past.length >= 2) ops.push({ op: "polyline", pts: project(past, 1), stroke: THEME_STROKE, width, join: "round" });
+                if (future.length >= 2) ops.push({ op: "polyline", pts: project(future, 1), stroke: THEME_STROKE, width, join: "round", dash: "4 4" });
+            }
             groups.push({ opacity: lit ? 0.9 : hovered ? 0.2 : 0.45, ops });
             continue;
         }
 
         // 선은 무채색, **굵기가 거래대금**이다. 짚은 것만 또렷해지고 굵기 배수도 커진다.
         // 테마 배수를 앵커보다 낮게 잡아 30선이 굵어져도 주인공이 안 묻힌다.
+        // 런은 조각마다 구워져 있어(useThemeOverlay) 조각을 가로지르는 런이 없다 — 1점 조각만 여기서 점으로.
         const ops: DrawOp[] = [];
+        for (const seg of l.segments) if (seg.length === 1) dot(ops, seg[0], lit);
         for (const run of r) {
             if (clip && !(run.points[run.points.length - 1].x >= clip.from && run.points[0].x <= clip.to)) continue;
             ops.push({

@@ -124,6 +124,13 @@ function OverlayHeaderImpl({ grain, toggles, candles, counts, theme, onResetView
             help: "시선 타점의 앞뒤 창 동안 같은 테마 종목의 분당 종가 경로를 같이 세운다 · 단축키 T",
             on: t.showTheme, set: t.setShowTheme,
         },
+        {
+            kind: "choice", id: "themeSpan", name: "테마 구간", group: "테마", available: !isDaily,
+            help: "하루 = 멤버 선을 하루 전체로 / 재적 = 순위(top-N)에 들어 있던 분만 — 끊긴 선이 이탈이다(모집단은 동일)",
+            values: [{ v: "day", label: "하루" }, { v: "hot", label: "재적" }],
+            value: t.themeSpan,
+            set: (v) => t.setThemeSpan(v === "hot" ? "hot" : "day"),
+        },
     ], [isDaily, t, candles.alpha, candles.setAlpha, onResetView, pinCount, onClearPins]);
 
     return (

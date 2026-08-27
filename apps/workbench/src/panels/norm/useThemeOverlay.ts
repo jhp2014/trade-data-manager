@@ -22,7 +22,8 @@ import { seriesColor } from "../../styles/palette.js";
 import { amountLevelOf, type AmountLookup } from "./amountLayer.js";
 import { POINT_FRAME, type PointLine } from "./overlay.js";
 import { amountRuns, type AmountRun } from "../canvas/amountRuns.js";
-import { hotCodesInRange, themeLines, type ThemeLine } from "./themeSkeleton.js";
+import { codesHotWithin, dayResidencyOf, hotMinutesInRange, themeLines, type ThemeLine } from "./themeSkeleton.js";
+import type { ThemeSpan } from "./useOverlayToggles.js";
 
 /** 뷰 공간으로 옮겨진 테마 선 한 벌 + 절대값 복원 상수. */
 export interface ThemeOverlay {
@@ -68,6 +69,11 @@ export interface UseThemeOverlayArgs {
     snapshot: DayReplay | undefined;
     /** 보드 hot 판정의 상한(거래대금·등락률 top-N) — 화면에서 보던 것과 같은 무리가 나오게 보드 규칙을 그대로 쓴다. */
     hot: { amountN: number; rateN: number };
+    /**
+     * 그리는 구간 — "day" = 하루 전체 선(현행) / "hot" = 순위 재적 구간만(이탈 = 선 끊김).
+     * 모집단(자격)은 두 모드 동일 — 스캔 창만 갈리고 자격 판정은 codesHotWithin 한 곳이다.
+     */
+    span: ThemeSpan;
     lookup: AmountLookup;
     /** 굵기를 켰나 — 선 굵기 채널의 스위치. */
     amountWidthOn: boolean;
@@ -82,7 +88,7 @@ export interface UseThemeOverlayArgs {
 }
 
 export function useThemeOverlay(args: UseThemeOverlayArgs): ThemeView {
-    const { enabled, target, snapshot, hot, lookup, amountWidthOn, amountLabelsOn, hoveredLine, singleKey, groupSet } = args;
+    const { enabled, target, snapshot, hot, span, lookup, amountWidthOn, amountLabelsOn, hoveredLine, singleKey, groupSet } = args;
 
     const [hoveredCodes, setHoveredCodes] = useState<readonly string[] | null>(null);
     const [badge, setBadge] = useState<{ x: number; y: number; members: string[] } | null>(null);
@@ -94,11 +100,15 @@ export function useThemeOverlay(args: UseThemeOverlayArgs): ThemeView {
         const baseRate = target.baseRate;
         const hotFrom = Math.max(0, t0 - POINT_FRAME.back);
         const hotTo = t0 + POINT_FRAME.forward;
-        const hotCodes = hotCodesInRange(src, hotFrom, hotTo, minuteOfDayOf, (snaps) => selectHotUniverse(snaps, hot.amountN, hot.rateN));
-        const lines = themeLines(target, src, hotCodes, minuteOfDayOf, { from: 0, to: 1439 })
-            .map((l) => ({ ...l, points: l.points.map((p) => ({ x: p.x - t0, y: p.y - baseRate })) }));
+        // 재적 모드만 하루 전체를 스캔한다(앵커 무관 → 스냅샷 기준 캐시). 하루 모드는 자격 창만(현행 비용).
+        const residency = span === "hot"
+            ? dayResidencyOf(src, hot.amountN, hot.rateN)
+            : hotMinutesInRange(src, hotFrom, hotTo, minuteOfDayOf, (snaps) => selectHotUniverse(snaps, hot.amountN, hot.rateN));
+        const hotCodes = codesHotWithin(residency, hotFrom, hotTo);
+        const lines = themeLines(target, src, hotCodes, minuteOfDayOf, { from: 0, to: 1439 }, span === "hot" ? residency : null)
+            .map((l) => ({ ...l, segments: l.segments.map((seg) => seg.map((p) => ({ x: p.x - t0, y: p.y - baseRate }))) }));
         return { key: target.key, t0, baseRate, lines };
-    }, [enabled, target, snapshot, hot.amountN, hot.rateN]);
+    }, [enabled, target, snapshot, hot.amountN, hot.rateN, span]);
 
     // 대상이 바뀌면 호버·뱃지를 접는다 — 다른 날의 무리라 그대로 두면 뜻이 안 맞는다.
     useEffect(() => { setHoveredCodes(null); setBadge(null); }, [overlay?.key]);
@@ -118,7 +128,8 @@ export function useThemeOverlay(args: UseThemeOverlayArgs): ThemeView {
         const m = new Map<string, AmountRun[]>();
         for (const l of overlay.lines) {
             const at = lookup.amountAt(l.code);
-            if (at) m.set(l.code, amountRuns(l.points, overlay.t0, at, amountLevelOf));
+            // 런은 조각마다 따로 굽는다 — 이어 붙여 돌리면 갭을 잇는 굵기 런이 생겨 끊긴 선이 굵기 층에서 되살아난다.
+            if (at) m.set(l.code, l.segments.flatMap((seg) => amountRuns(seg, overlay.t0, at, amountLevelOf)));
         }
         return m;
     }, [overlay, lookup, amountWidthOn, amountLabelsOn]);
