@@ -32,6 +32,12 @@ export interface DragOptions {
      * 저장 모양(RankBand)에 자리가 하나뿐이라, 덧붙이면 화면에만 있고 저장 못 하는 구간이 생긴다.
      */
     single?: boolean;
+    /**
+     * 상한 컷 레일(테마 존 N/M·존순위) — from 이 **강한 끝(프랙션 0)에 못 박힌** 단일 구간.
+     * 빈 트랙 드래그가 anchorFrac 을 무시하고 {0 → at} 으로 갈아탄다(= single 함의): 저장 모양이
+     * "값 하나(상한)"라 from 이 움직이는 순간 컷의 뜻("N위 이내")이 깨진다.
+     */
+    cut?: boolean;
 }
 
 /**
@@ -43,11 +49,11 @@ export function applyDrag<V>(
     drag: RailDrag,
     at: number,
     fromFrac: (frac: number) => V,
-    { single = false }: DragOptions = {},
+    { single = false, cut = false }: DragOptions = {},
 ): RailRange<V>[] {
     if (drag.kind === "new") {
-        const fresh: RailRange<V> = { from: fromFrac(drag.anchorFrac), to: fromFrac(at) };
-        return single ? [fresh] : [...ranges, fresh];
+        const fresh: RailRange<V> = { from: fromFrac(cut ? 0 : drag.anchorFrac), to: fromFrac(at) };
+        return single || cut ? [fresh] : [...ranges, fresh];
     }
     return ranges.map((r, i) => (i === drag.index ? { ...r, [drag.edge]: fromFrac(at) } : r));
 }

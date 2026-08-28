@@ -212,6 +212,56 @@ describe("구간 삭제 — ✕", () => {
     });
 });
 
+describe("cut 레일 — from 이 강한 끝에 못 박힌 상한 컷", () => {
+    const cutTrack = (c: HTMLElement): HTMLElement => c.querySelector('[title^="누르거나 끌어서"]') as HTMLElement;
+    const edgeLabels = (c: HTMLElement): HTMLElement[] =>
+        [...c.querySelectorAll("span")].filter((s) => s.title === "끌어서 이 경계 조정");
+
+    it("from 경계의 손잡이·라벨이 없다 — 끌 수 없는 걸 그리면 거짓 손잡이다", () => {
+        const { container } = setup({ ranges: [range(0, 0.4)], cut: true, removable: false });
+        expect(edgeLabels(container)).toHaveLength(1);
+    });
+
+    it("✕ 가 없다 — 컷은 조건이 항상 존재한다", () => {
+        const { container } = setup({ ranges: [range(0, 0.4)], cut: true, removable: false });
+        expect([...container.querySelectorAll("button")].filter((b) => b.title === "이 구간 삭제")).toHaveLength(0);
+    });
+
+    it("트랙 어디를 눌러 끌어도 {0 → 뗀 자리} 로 갈아탄다", () => {
+        const { container, onChange } = setup({ ranges: [range(0, 0.3)], cut: true, removable: false });
+        const track = cutTrack(container);
+        fireEvent.pointerDown(track, { button: 0, clientX: xAt(0.5), pointerId: 1 });
+        fireEvent.pointerMove(track, { clientX: xAt(0.7), pointerId: 1 });
+        fireEvent.pointerUp(track, { pointerId: 1 });
+        expect(onChange).toHaveBeenCalledOnce();
+        const next = onChange.mock.calls[0][0] as RailRange<number>[];
+        expect(next).toHaveLength(1);
+        expect(next[0].from).toBe(0);
+        expect(next[0].to).toBeCloseTo(0.7, 2);
+    });
+
+    it("탭 = 그 자리로 컷 이동(from 0 고정이라 폭 있는 구간 — 탭 무시에 안 걸린다)", () => {
+        const { container, onChange } = setup({ ranges: [range(0, 0.3)], cut: true, removable: false });
+        const track = cutTrack(container);
+        fireEvent.pointerDown(track, { button: 0, clientX: xAt(0.6), pointerId: 1 });
+        fireEvent.pointerUp(track, { pointerId: 1 });
+        expect(onChange).toHaveBeenCalledOnce();
+        const next = onChange.mock.calls[0][0] as RailRange<number>[];
+        expect(next[0].to).toBeCloseTo(0.6, 2);
+    });
+
+    it("커밋은 여전히 손 뗄 때 한 번", () => {
+        const { container, onChange } = setup({ ranges: [range(0, 0.3)], cut: true, removable: false });
+        const track = cutTrack(container);
+        fireEvent.pointerDown(track, { button: 0, clientX: xAt(0.4), pointerId: 1 });
+        fireEvent.pointerMove(track, { clientX: xAt(0.5), pointerId: 1 });
+        fireEvent.pointerMove(track, { clientX: xAt(0.6), pointerId: 1 });
+        expect(onChange).not.toHaveBeenCalled();
+        fireEvent.pointerUp(track, { pointerId: 1 });
+        expect(onChange).toHaveBeenCalledOnce();
+    });
+});
+
 describe("안 받는 손짓", () => {
     it("오른쪽 버튼은 무시한다 — 그건 메뉴다", () => {
         const { track, onChange } = setup();

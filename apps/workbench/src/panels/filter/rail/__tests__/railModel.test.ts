@@ -20,6 +20,21 @@ describe("applyDrag — 빈 트랙 드래그는 새 구간", () => {
     });
 });
 
+describe("applyDrag — cut 레일은 from 이 0 에 못 박힌다", () => {
+    it("빈 트랙 드래그가 anchorFrac 을 무시하고 {0 → at} 으로 갈아탄다", () => {
+        expect(applyDrag([r(0, 0.3)], { kind: "new", anchorFrac: 0.5 }, 0.7, fromFrac, { cut: true })).toEqual([r(0, 0.7)]);
+    });
+
+    it("탭도 그 자리로 컷 이동이다(from 0 고정 = 폭 있는 구간이라 탭 판정에 안 걸린다)", () => {
+        const out = applyDrag([r(0, 0.3)], { kind: "new", anchorFrac: 0.6 }, 0.6, fromFrac, { cut: true });
+        expect(out).toEqual([r(0, 0.6)]);
+    });
+
+    it("to 경계 드래그는 일반 edge 규칙 그대로다", () => {
+        expect(applyDrag([r(0, 0.3)], { kind: "edge", index: 0, edge: "to" }, 0.8, fromFrac, { cut: true })).toEqual([r(0, 0.8)]);
+    });
+});
+
 describe("applyDrag — 경계 드래그는 그 경계만", () => {
     it("반대쪽 경계와 다른 구간은 손대지 않는다(안 건드린 앵커 보존)", () => {
         const before = [r(0.1, 0.4), r(0.6, 0.9)];

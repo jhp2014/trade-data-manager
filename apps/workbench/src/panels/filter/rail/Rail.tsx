@@ -57,6 +57,14 @@ export interface RailProps<V> {
     ranges: readonly RailRange<V>[];
     /** 구간이 하나뿐인 레일(판단 축 밴드) — 새로 그으면 갈아탄다. */
     single?: boolean;
+    /**
+     * 상한 컷 레일 — from 이 강한 끝(프랙션 0)에 못 박힌 단일 구간(railModel cut). from 경계의
+     * 손잡이·라벨을 그리지 않는다(끌 수 없는 걸 그리면 거짓 손잡이다). 트랙 탭 = 그 자리로 컷 이동
+     * (from 0 고정이라 탭도 폭 있는 구간 — isTapRange 에 안 걸리는 게 의도).
+     */
+    cut?: boolean;
+    /** 구간 삭제(✕) 허용 여부 — 컷 레일처럼 "조건이 항상 존재"하는 레일은 끈다. 기본 true. */
+    removable?: boolean;
     toFrac: (v: V) => number;
     /** 프랙션 → 경계값. 스냅(가장 가까운 실제 자리)은 여기서 한다. */
     fromFrac: (frac: number) => V;
@@ -102,7 +110,7 @@ export interface RailProps<V> {
 }
 
 export function Rail<V>({
-    label, ranges, single = false, toFrac, fromFrac, fmt, minLabel, maxLabel,
+    label, ranges, single = false, cut = false, removable = true, toFrac, fromFrac, fmt, minLabel, maxLabel,
     ticks, memberTicks, marker, highlight = false, disabledNote, dragHandle, stow, onType, onChange,
 }: RailProps<V>): JSX.Element {
     const trackRef = useRef<HTMLDivElement | null>(null);
@@ -121,7 +129,7 @@ export function Rail<V>({
     const beginDrag = (e: ReactPointerEvent, drag: RailDrag): void => {
         if (e.button !== 0 || disabledNote) return;
         dragRef.current = drag;
-        setPreview(applyDrag(ranges, drag, fracAt(e.clientX), fromFrac, { single }));
+        setPreview(applyDrag(ranges, drag, fracAt(e.clientX), fromFrac, { single, cut }));
         trackRef.current?.setPointerCapture(e.pointerId);
     };
 
@@ -133,7 +141,7 @@ export function Rail<V>({
     const onMove = (e: ReactPointerEvent): void => {
         const drag = dragRef.current;
         if (!drag) return;
-        setPreview(applyDrag(ranges, drag, fracAt(e.clientX), fromFrac, { single }));
+        setPreview(applyDrag(ranges, drag, fracAt(e.clientX), fromFrac, { single, cut }));
     };
 
     const onUp = (): void => {
@@ -205,7 +213,7 @@ export function Rail<V>({
                     onPointerMove={onMove}
                     onPointerUp={onUp}
                     onPointerCancel={onUp}
-                    title="빈 곳을 끌면 새 구간 · 경계 값을 끌면 조정"
+                    title={cut ? "누르거나 끌어서 컷 이동" : "빈 곳을 끌면 새 구간 · 경계 값을 끌면 조정"}
                     style={{ position: "relative", flex: 1, minWidth: 0, height: "100%", cursor: "crosshair", userSelect: "none", WebkitUserSelect: "none", touchAction: "none" }}
                 >
                     {/* 기준선 — 조건이 없으면 전체가 걸린 색(전부 통과라는 뜻). */}
@@ -231,7 +239,7 @@ export function Rail<V>({
                         return (
                             <div key={i}>
                                 <div style={{ position: "absolute", top: "50%", height: 3, transform: "translateY(-50%)", left: at(lo), width: `calc(${clamp01(hi) - clamp01(lo)} * (100% - ${2 * RAIL_PAD}px))`, background: FILTER, boxShadow: `0 0 7px 1px ${FILTER}66`, pointerEvents: "none", zIndex: 1 }} />
-                                {(["from", "to"] as const).map((edge) => {
+                                {(cut ? (["to"] as const) : (["from", "to"] as const)).map((edge) => {
                                     const f = edge === "from" ? a : b;
                                     return (
                                         <div key={edge}>
@@ -245,7 +253,7 @@ export function Rail<V>({
                                         </div>
                                     );
                                 })}
-                                {preview === null && (
+                                {removable && preview === null && (
                                     <button onClick={() => onChange(removeAt(ranges, i))} title="이 구간 삭제"
                                         style={{ position: "absolute", top: "calc(50% - 19px)", left: at((lo + hi) / 2), transform: "translateX(-50%)", border: "none", background: "transparent", color: FILTER, cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 0, zIndex: 5 }}>✕</button>
                                 )}
