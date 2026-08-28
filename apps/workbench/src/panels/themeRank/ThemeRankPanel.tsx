@@ -26,6 +26,8 @@ import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
 import { anyConditionOn, DEFAULT_THEME_STRENGTH, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
+import { TimelineBar } from "./TimelineBar.js";
+import { bandSegmentsOf, subjectOrdinalTrack } from "./zoneTrack.js";
 import { FILTER } from "../../styles/palette.js";
 
 const PAD = { left: 44, top: 14, right: 14, bottom: 30 };
@@ -189,6 +191,24 @@ export function ThemeRankPanel(): JSX.Element {
         });
     };
 
+    // ── 타임라인 재료 — 트랙(분당 서수, 시선/날짜당 한 번)과 띠 필터(컷 드래그마다 O(분))를 가른다.
+    const track = useMemo(
+        () => (stocks && subject && minuteRange ? subjectOrdinalTrack(stocks, subject.date, subject.code, minuteRange) : null),
+        [stocks, subject, minuteRange],
+    );
+    const segments = useMemo(
+        () => (track && minuteRange && zone !== null ? bandSegmentsOf(track, minuteRange.lo, minuteRange.hi, zone.rateN, zone.amountN) : null),
+        [track, minuteRange, zone],
+    );
+    // 저장 타점의 분들 — ▼ 마커(클릭 = 점프, 옛 ↺ 의 후계).
+    const pointMinutes = useMemo(
+        () => chartPoints.map((p) => {
+            const [h, m] = p.time.split(":");
+            return Number(h) * 60 + Number(m);
+        }),
+        [chartPoints],
+    );
+
     // ── 호버 — 위 SVG 층에서 가까운 점 선형 스캔(수백 개 — 공짜).
     const [hover, setHover] = useState<{ x: number; y: number; code: string; rate: number; amount: number } | null>(null);
     const onHoverMove = (e: React.PointerEvent<SVGSVGElement>): void => {
@@ -320,20 +340,14 @@ export function ThemeRankPanel(): JSX.Element {
                 </div>
             )}
 
-            {/* footer = 시각 스크럽만 — 조건 폼은 없다(조건은 보드 행·컷선이 전부다). */}
-            {subject && section && (
+            {/* footer = 시각 타임라인만 — 조건 폼은 없다(조건은 보드 행·컷선이 전부다).
+                띠 = 시선 종목의 존 재적(연동 행 N/M 기준, 끊김 = 이탈/결손) · ▼ = 저장 타점(클릭 = 점프). */}
+            {subject && section && minuteRange && (
                 <div style={footer}>
-                    <span style={cond}>
-                        시각
-                        <input type="range" min={minuteRange?.lo ?? 540} max={minuteRange?.hi ?? 930} step={1}
-                            value={minute ?? minuteRange?.lo ?? 540}
-                            onChange={(e) => setSessionUi("themeRank", subjectKey, Number(e.target.value))}
-                            style={{ width: 160 }} />
-                        <b style={mono}>{minute !== null ? fmtMin(minute) : "—"}</b>
-                        {scrub !== undefined && (
-                            <button style={btn} title="타점 시각으로 되돌리기" onClick={() => setSessionUi("themeRank", subjectKey, undefined)}>↺</button>
-                        )}
-                    </span>
+                    <span style={{ ...cond, flexShrink: 0 }}>시각</span>
+                    <TimelineBar lo={minuteRange.lo} hi={minuteRange.hi} minute={minute}
+                        pointMinutes={pointMinutes} segments={segments}
+                        onScrub={(m) => setSessionUi("themeRank", subjectKey, m)} />
                 </div>
             )}
         </div>
@@ -351,5 +365,3 @@ const chipsRow: CSSProperties = { display: "flex", alignItems: "center", gap: 6,
 // border 는 낱개 속성으로 — 활성 칩이 borderColor 만 덮는데, 축약(border)과 섞이면 React 가 경고한다.
 const chipBtn: CSSProperties = { fontSize: 10.5, color: "var(--text-secondary)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--border-default)", borderRadius: 8, padding: "1px 8px", background: "transparent", cursor: "pointer", whiteSpace: "nowrap" };
 const cond: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" };
-const mono: CSSProperties = { fontVariantNumeric: "tabular-nums", color: "var(--text-primary)", fontWeight: 500 };
-const btn: CSSProperties = { border: "1px solid var(--border-default)", borderRadius: 3, padding: "0 5px", fontSize: 11, background: "var(--bg-secondary)", cursor: "pointer" };
