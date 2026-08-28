@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { buildThemeIndex } from "@trade-data-manager/market/domain";
 import {
-    DEFAULT_THEME_STRENGTH, bestZoneRanksOf, countPassing, passesPoint, selfOrdinalsOf, themeProjectionOf,
-    type SectionRanks, type ThemeStrengthParams,
+    DEFAULT_THEME_STRENGTH, bestZoneRanksOf, countPassing, parseThemeStrengthParams, passesPoint, selfOrdinalsOf,
+    themeProjectionOf, type SectionRanks, type ThemeStrengthParams,
 } from "../themeStrength.js";
 
 /** 코드 → (등락 서수, 대금 서수). 없는 코드 = 유니버스 밖(null). */
@@ -77,6 +77,20 @@ describe("passesPoint — 테마 단위 AND · 테마 간 ∃", () => {
         const section = sectionOf({ s: [1, 9], m1: [9, 1] }); // s 는 등락 1위·대금 꼴찌
         expect(passesPoint("s", section, P({ countOn: false, baseRankOn: true, baseRankMax: 1, basis: "rate" }), proj)).toBe(true);
         expect(passesPoint("s", section, P({ countOn: false, baseRankOn: true, baseRankMax: 1, basis: "amount" }), proj)).toBe(false);
+    });
+});
+
+describe("parseThemeStrengthParams — 관대한 병합(옛 저장물이 통째로 죽지 않게)", () => {
+    it("깨진 basis 유니온은 기본값, 빠진 필드는 기본값이 채운다(전용 가드 — mergeShape 는 string 까지만 본다)", () => {
+        const p = parseThemeStrengthParams({ zoneRateN: 12, basis: "nasdaq" })!;
+        expect(p.zoneRateN).toBe(12);
+        expect(p.basis).toBe("rate");
+        expect(p.zoneAmountN).toBe(40);
+    });
+
+    it("객체가 아니면 null", () => {
+        expect(parseThemeStrengthParams("x")).toBeNull();
+        expect(parseThemeStrengthParams(null)).toBeNull();
     });
 });
 

@@ -61,8 +61,7 @@ export const DEFAULT_THEME_STRENGTH: ThemeStrengthParams = {
 export const anyConditionOn = (p: ThemeStrengthParams): boolean => p.countOn || p.baseRankOn || p.zoneRankOn;
 
 /**
- * 저장물 파서 — 슬라이스(wb.themeRankParams)와 깔때기 술어(parsePredicate)가 **같은 유효성 정의**를
- * 본다(갈리면 패널에서 만든 값이 필터로 얼렸을 때 저장 왕복에서 조용히 접힌다). 정책은 관대한 병합:
+ * 저장물 파서 — 깔때기 술어(parsePredicate)의 유효성 정의 한 벌. 정책은 관대한 병합:
  * 객체가 아니면 null, 필드는 맞는 것만 승계·나머지 기본값 — 필드가 나중에 늘어도 옛 저장물(필터 한 벌·
  * 저장 집합)이 통째로 소멸하지 않아야 해서다(parseStages 는 null 하나에 전체를 폐기한다).
  */

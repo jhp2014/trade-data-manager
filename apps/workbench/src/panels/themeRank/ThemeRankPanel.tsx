@@ -1,31 +1,31 @@
-// 테마 순위 패널 — **순수 시선**: 순위 평면(x=거래대금 서수·y=등락률 서수)에 그날 유니버스를 점으로
-// 세우고, 시선 종목의 테마 동료를 켠 채 N/M 존 컷선과 시각 스크럽으로 테마 상황을 탐색한다.
+// 테마 순위 패널 — **연동 거울**: 순위 평면(x=거래대금 서수·y=등락률 서수)에 그날 유니버스를 점으로
+// 세우고, 시선 종목의 테마 동료를 켠 채 시각 스크럽으로 테마 상황을 탐색한다.
 //
-// 조건은 여기서 만들지 않는다 — 탐색값(themeRankParams)은 영속 슬라이스에 살고, 조건화(동결)는
-// 집합 편성 보드의 풀 스냅샷이 한다(decisions.md "테마 강도·순위 단면"). 흔적 영역도 그 파생 뷰라
-// 이번엔 자리만 있다.
+// 조건은 여기서 만들지 않는다 — 행이 조건의 실체고 그 행은 집합 편성 보드가 소유한다(2026-08-28 재편,
+// decisions.md "조건을 만드는 손은 편성 보드 하나"). 이 패널은 테마 행 중 하나(themeLink — 보드의
+// 펼친 행과 같은 id)를 비추고, 존 컷선 드래그는 **그 행의 N/M 을 직접** 고친다(커밋 = 손 뗄 때 한 번,
+// Rail 규약). 행이 없거나 연동을 풀면 컷선·존 틴트 없는 순수 산점이다. 상단 칩 스트립 = 테마 행
+// 목록의 파생 뷰(클릭 = 연동 전환) — 옛 "흔적" 줄의 승격.
 //
 // 산점은 **항상 /day-replay 재계산 단면**을 그린다(scrubSection 머리 주석 — 서수 출처 단일화).
 // 구운 번들은 헤더의 라이브 통과 카운트(모수 전체) 전용이다.
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import { PanelHeader } from "../../components/ControlChrome.js";
-import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { SubjectBadge } from "../../components/SubjectBadge.js";
-import { NumberField } from "../../ui/controls.js";
 import { CanvasLayers } from "../canvas/CanvasPainter.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
-import { ThemeStrengthFields } from "../../components/ThemeStrengthFields.js";
+import { useWorkbench } from "../../store/workbench.js";
 import { themeStrengthLabel } from "../filter/label.js";
+import { themeParamsOf, useLinkedThemeStage } from "../filter/themeLink.js";
 import { useSubject, subjectStatus } from "../../lib/subject.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useChartPoints } from "../../lib/useChartPoints.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
-import { anyConditionOn, type ThemeStrengthParams } from "../../lib/themeStrength.js";
+import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
+import { anyConditionOn, DEFAULT_THEME_STRENGTH, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
-import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
 import { FILTER } from "../../styles/palette.js";
 
 const PAD = { left: 44, top: 14, right: 14, bottom: 30 };
@@ -36,9 +36,13 @@ const fmtMin = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, 
 
 export function ThemeRankPanel(): JSX.Element {
     const subject = useSubject();
-    const params = useWorkbench((s) => s.themeRankParams);
-    const setParams = useWorkbench((s) => s.setThemeRankParams);
     const { nameOf } = useStockNamesDict();
+
+    // ── 연동 행 — 보드와 같은 상태 하나(펼침 ≡ 연동). 이 행의 params 가 존·카운트의 유일한 재료다.
+    const { themeStages, linkedId, setLinked } = useLinkedThemeStage();
+    const linked = useMemo(() => (linkedId === null ? null : themeStages.find((s) => s.id === linkedId) ?? null), [themeStages, linkedId]);
+    const linkedParams = useMemo(() => (linked ? themeParamsOf(linked) : null), [linked]);
+    const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
 
     // ── 그날 스냅샷(복기 파생) — 정규화 패널과 같은 공용 LRU 캐시.
     const snapQ = useDaySnapshot(subject?.date ?? null);
@@ -90,19 +94,12 @@ export function ThemeRankPanel(): JSX.Element {
         return out;
     }, [themesView.index, subject]);
 
-    // ── 흔적 — 깔때기 단계 목록의 파생(useFunnel 을 물지 않는다 — 이 패널은 시선이라 정산 구독이 필요 없다).
-    const stages = useWorkbench(selectFilterStages);
-    const themeTraces = useMemo(
-        () => stages.flatMap((s) => {
-            const p = s.predicates.find((x) => x.kind === "themeStrength");
-            return p && p.kind === "themeStrength" ? [{ id: s.id, enabled: s.enabled, params: p.params }] : [];
-        }),
-        [stages],
-    );
-
-    // ── 컷선 드래그 — 미리보기는 로컬, 커밋은 손 뗄 때 한 번(Rail 규약). 그림·카운트는 미리보기 값을 본다.
+    // ── 컷선 드래그 — 미리보기는 로컬, 커밋은 손 뗄 때 한 번(Rail 규약) **연동 행의 술어로**.
     const [preview, setPreview] = useState<Partial<ThemeStrengthParams> | null>(null);
-    const eff: ThemeStrengthParams = useMemo(() => ({ ...params, ...preview }), [params, preview]);
+    const eff: ThemeStrengthParams = useMemo(
+        () => ({ ...(linkedParams ?? DEFAULT_THEME_STRENGTH), ...preview }),
+        [linkedParams, preview],
+    );
     // 카운트만 한 프레임 뒤로 — 존 틴트·점은 즉시 따라와야 손이 안 끌린다.
     const countParams = useDeferredValue(eff);
     const count = useThemeStrengthStats(countParams);
@@ -150,17 +147,20 @@ export function ThemeRankPanel(): JSX.Element {
         return out;
     }, [section]);
 
+    // 존은 연동 행이 있을 때만 — 없으면 동료 전부 채운 점(존 안/밖 구분 자체가 없다).
+    const zone = linkedParams === null ? null : { rateN: eff.zoneRateN, amountN: eff.zoneAmountN };
     const layers = useMemo(
-        () => [scatterLayer({ points: participants, subject: subject?.code ?? null, peers, zone: { rateN: eff.zoneRateN, amountN: eff.zoneAmountN }, scales })],
-        [participants, subject, peers, eff.zoneRateN, eff.zoneAmountN, scales],
+        () => [scatterLayer({ points: participants, subject: subject?.code ?? null, peers, zone, scales })],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [participants, subject, peers, zone?.rateN, zone?.amountN, linkedParams === null, scales],
     );
 
-    // ── 컷선 드래그(위 SVG 층이 포인터 소유 — 캔버스는 포인터를 안 받는다).
+    // ── 컷선 드래그(위 SVG 층이 포인터 소유 — 캔버스는 포인터를 안 받는다). 연동 행 없으면 손짓도 없다.
     const dragRef = useRef<"rate" | "amount" | null>(null);
     const cutX = scales.x(eff.zoneAmountN); // 세로선(거래대금 컷)
     const cutY = scales.y(eff.zoneRateN); // 가로선(등락률 컷)
     const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
-        if (e.button !== 0) return; // 우클릭·휠클릭이 드래그를 시작시키지 않게(Rail 규약)
+        if (e.button !== 0 || linkedParams === null) return; // 우클릭·휠클릭·비연동이 드래그를 시작시키지 않게
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -181,7 +181,10 @@ export function ThemeRankPanel(): JSX.Element {
         dragRef.current = null;
         e.currentTarget.releasePointerCapture(e.pointerId);
         setPreview((p) => {
-            if (p) setParams(p); // 커밋은 여기 한 번 — 보드 라이브 미러가 드래그 내내 떨리지 않게
+            // 커밋은 여기 한 번, **연동 행의 술어로** — 보드 행·막대·저장물이 같이 바뀐다.
+            if (p && linked !== null && linkedParams !== null) {
+                setPredicates(linked.id, [{ kind: "themeStrength", params: { ...linkedParams, ...p } }]);
+            }
             return null;
         });
     };
@@ -204,34 +207,26 @@ export function ThemeRankPanel(): JSX.Element {
         setHover(best);
     };
 
-    const controls = useMemo<ControlSpec[]>(() => [
-        {
-            kind: "choice", id: "basis", name: "순위 기준", group: "조건",
-            help: "테마 내 순위 조건(②③)이 타는 서수 — 등락률이 기본(사용자 확정)",
-            values: [{ v: "rate", label: "등락" }, { v: "amount", label: "대금" }],
-            value: params.basis,
-            set: (v) => setParams({ basis: v === "amount" ? "amount" : "rate" }),
-        },
-    ], [params.basis, setParams]);
-
-    // 빈 입력은 커밋하지 않는다 — NumberField 버퍼가 빈칸을 유지하게 두고, 유효 숫자만 스토어로.
-    // (하위 조건 3종은 공용 ThemeStrengthFields 가 blur 커밋으로 진다 — 여긴 존 N/M 둘뿐.)
-    const onNum = (key: "zoneRateN" | "zoneAmountN") =>
-        (e: React.ChangeEvent<HTMLInputElement>): void => {
-            const n = Math.floor(Number(e.target.value));
-            if (Number.isFinite(n) && n >= 1) setParams({ [key]: n });
-        };
-
     return (
         <div style={wrap}>
             <PanelHeader chrome={false} gap={8} style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
-                <span style={label} title="현재 묶음 조건을 타점 모수 전체에 적용한 수 — 통과/판정가능. 결손 = 단면 없음(오늘 이후·미수집)">
-                    {count.error ? <span style={{ color: FILTER }}>모수 재료 오류</span>
-                        : count.isLoading ? "…"
-                            : anyConditionOn(countParams)
-                                ? <>통과 {count.passed.toLocaleString()} / {count.evaluable.toLocaleString()}{count.missing > 0 && <span style={{ color: "var(--text-tertiary)" }}> · 결손 {count.missing}</span>}</>
-                                : <span style={{ color: "var(--text-tertiary)" }}>조건 없음 — 판정가능 {count.evaluable.toLocaleString()}</span>}
+                <span style={label} title="연동 행의 조건을 타점 모수 전체에 적용한 수 — 통과/판정가능. 결손 = 단면 없음(오늘 이후·미수집)">
+                    {linkedParams === null
+                        ? <span style={{ color: "var(--text-tertiary)" }}>
+                            {themeStages.length === 0 ? "테마 조건 행 없음 — 편성 보드에서 ＋ 테마 조건" : "연동 없음 — 아래 칩으로 행을 고르세요"}
+                        </span>
+                        : count.error ? <span style={{ color: FILTER }}>모수 재료 오류</span>
+                            : count.isLoading ? "…"
+                                : anyConditionOn(countParams)
+                                    ? <>통과 {count.passed.toLocaleString()} / {count.evaluable.toLocaleString()}{count.missing > 0 && <span style={{ color: "var(--text-tertiary)" }}> · 결손 {count.missing}</span>}</>
+                                    : <span style={{ color: "var(--text-tertiary)" }}>조건 없음 — 판정가능 {count.evaluable.toLocaleString()}</span>}
                 </span>
+                {linked !== null && !linked.enabled && (
+                    <span title="연동 행이 꺼져 있어 깔때기에 안 낀다 — 위 카운트는 켰을 때의 값(탐색용)"
+                        style={{ ...label, color: "var(--text-tertiary)", border: "1px solid var(--border-default)", borderRadius: 8, padding: "0 6px" }}>
+                        꺼짐
+                    </span>
+                )}
                 {subject && (
                     <span style={{ ...label, color: "var(--text-tertiary)" }}>
                         {nameOf(subject.code)} · {subject.date}{minute !== null && ` ${fmtMin(minute)}`}
@@ -245,8 +240,29 @@ export function ThemeRankPanel(): JSX.Element {
                             participants.some((p) => p.code === subject?.code),
                         )
                         : "shown"} />
-                <HeaderControls controls={controls} storageKey="wb.headerPins.themeRank" />
             </PanelHeader>
+
+            {/* 칩 스트립 — 테마 행 목록의 파생 뷰(별도 저장물 없음). 클릭 = 연동 전환(보드의 펼침도 따라온다). */}
+            {themeStages.length > 0 && (
+                <div style={chipsRow}>
+                    {themeStages.map((s) => {
+                        const p = themeParamsOf(s);
+                        if (!p) return null;
+                        const active = s.id === linkedId;
+                        return (
+                            <button key={s.id} onClick={() => setLinked(active ? null : s.id)}
+                                title={active ? "연동 중 — 클릭하면 해제(컷선 없는 순수 산점)" : "이 행을 비추기 — 컷선 드래그가 이 행의 N/M 을 직접 고칩니다"}
+                                style={{
+                                    ...chipBtn,
+                                    ...(active ? { color: "var(--accent-primary)", borderColor: "var(--accent-primary)", background: "var(--accent-soft)" } : {}),
+                                    opacity: s.enabled ? 1 : 0.55,
+                                }}>
+                                {themeStrengthLabel(p)}{!s.enabled && " · 꺼짐"}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
             {!subject && <div style={empty}>차트·시트에서 종목(타점)을 짚으면 그 시각의 순위 평면이 선다</div>}
             {subject && snapQ.isError && <div style={{ ...empty, color: FILTER }}>복기 파생 로드 실패 — {(snapQ.error as Error).message}</div>}
@@ -255,9 +271,11 @@ export function ThemeRankPanel(): JSX.Element {
 
             {subject && section && (
                 <div ref={wrapRef} style={{ position: "relative", flex: 1, minHeight: 0 }}>
-                    {/* 아래 SVG — 축·존 틴트(그림 밑) */}
+                    {/* 아래 SVG — 축·존 틴트(그림 밑). 존은 연동 행이 있을 때만. */}
                     <svg width={size.w} height={size.h} style={underSvg}>
-                        <rect x={box.left} y={box.top} width={Math.max(0, cutX - box.left)} height={Math.max(0, cutY - box.top)} fill="var(--accent-soft)" opacity={0.7} />
+                        {linkedParams !== null && (
+                            <rect x={box.left} y={box.top} width={Math.max(0, cutX - box.left)} height={Math.max(0, cutY - box.top)} fill="var(--accent-soft)" opacity={0.7} />
+                        )}
                         <line x1={box.left} y1={box.top} x2={box.left} y2={box.top + box.height} stroke="var(--border-strong)" />
                         <line x1={box.left} y1={box.top + box.height} x2={box.left + box.width} y2={box.top + box.height} stroke="var(--border-strong)" />
                         <text x={box.left - 6} y={box.top + 10} textAnchor="end" style={axisText}>1위</text>
@@ -271,21 +289,25 @@ export function ThemeRankPanel(): JSX.Element {
                         <CanvasLayers layers={layers} width={size.w} height={size.h} clip={null} />
                     </div>
 
-                    {/* 위 SVG — 컷선·손잡이·호버(포인터 소유) */}
+                    {/* 위 SVG — 컷선·손잡이·호버(포인터 소유). 컷선은 연동 행이 있을 때만. */}
                     <svg width={size.w} height={size.h} style={overSvg}
                         onPointerDown={onPointerDown}
                         onPointerMove={(e) => { onPointerMove(e); onHoverMove(e); }}
                         onPointerUp={onPointerUp}
                         onPointerCancel={onPointerUp} // 터치·제스처 가로채기로 up 이 안 올 때 드래그가 끼지 않게(Rail 규약)
                         onPointerLeave={() => setHover(null)}>
-                        <line x1={cutX} y1={box.top} x2={cutX} y2={box.top + box.height} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" style={{ cursor: "ew-resize" }} />
-                        <line x1={box.left} y1={cutY} x2={box.left + box.width} y2={cutY} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" style={{ cursor: "ns-resize" }} />
-                        <g style={{ fontSize: 10, fill: "#fff", fontVariantNumeric: "tabular-nums" }}>
-                            <rect x={cutX - 26} y={box.top + box.height + 3} width={52} height={14} rx={3} fill={FILTER} />
-                            <text x={cutX} y={box.top + box.height + 14} textAnchor="middle">대금 {eff.zoneAmountN}</text>
-                            <rect x={box.left + box.width - 54} y={cutY - 16} width={52} height={14} rx={3} fill={FILTER} />
-                            <text x={box.left + box.width - 28} y={cutY - 5} textAnchor="middle">등락 {eff.zoneRateN}</text>
-                        </g>
+                        {linkedParams !== null && (
+                            <>
+                                <line x1={cutX} y1={box.top} x2={cutX} y2={box.top + box.height} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" style={{ cursor: "ew-resize" }} />
+                                <line x1={box.left} y1={cutY} x2={box.left + box.width} y2={cutY} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" style={{ cursor: "ns-resize" }} />
+                                <g style={{ fontSize: 10, fill: "#fff", fontVariantNumeric: "tabular-nums" }}>
+                                    <rect x={cutX - 26} y={box.top + box.height + 3} width={52} height={14} rx={3} fill={FILTER} />
+                                    <text x={cutX} y={box.top + box.height + 14} textAnchor="middle">대금 {eff.zoneAmountN}</text>
+                                    <rect x={box.left + box.width - 54} y={cutY - 16} width={52} height={14} rx={3} fill={FILTER} />
+                                    <text x={box.left + box.width - 28} y={cutY - 5} textAnchor="middle">등락 {eff.zoneRateN}</text>
+                                </g>
+                            </>
+                        )}
                         {hover && (
                             <g style={{ pointerEvents: "none" }}>
                                 <rect x={hover.x + 10} y={hover.y - 24} width={150} height={18} rx={3} fill="var(--bg-tertiary)" stroke="var(--border-default)" strokeWidth={0.5} />
@@ -298,10 +320,9 @@ export function ThemeRankPanel(): JSX.Element {
                 </div>
             )}
 
-            {/* 조건 줄은 **상시** — 이 값들은 영속이라 화면에 안 보여도 카운트(와 다음 단계의 보드 미러)를
-                계속 바꾼다. 안 보이는데 숫자가 달라지는 사고 방지(축 서랍 배지와 같은 논리). 스크럽만 단면 전제. */}
-            <div style={footer}>
-                {subject && section && (
+            {/* footer = 시각 스크럽만 — 조건 폼은 없다(조건은 보드 행·컷선이 전부다). */}
+            {subject && section && (
+                <div style={footer}>
                     <span style={cond}>
                         시각
                         <input type="range" min={minuteRange?.lo ?? 540} max={minuteRange?.hi ?? 930} step={1}
@@ -313,27 +334,6 @@ export function ThemeRankPanel(): JSX.Element {
                             <button style={btn} title="타점 시각으로 되돌리기" onClick={() => setSessionUi("themeRank", subjectKey, undefined)}>↺</button>
                         )}
                     </span>
-                )}
-                <span style={{ flex: 1 }} />
-                {/* 하위 조건 3종 — 보드의 동결 행과 **같은 컴포넌트**(레이블·툴팁이 갈리면 두 화면이 딴말을 한다). */}
-                <ThemeStrengthFields value={params} onChange={setParams} />
-                <span style={cond} title="존 컷(그림의 빨간 선과 같은 값) — 등락 서수 ≤ N ∧ 대금 서수 ≤ M">
-                    존 N <NumberField min={1} value={eff.zoneRateN} onChange={onNum("zoneRateN")} style={numBox} />
-                    M <NumberField min={1} value={eff.zoneAmountN} onChange={onNum("zoneAmountN")} style={numBox} />
-                </span>
-            </div>
-
-            {/* 흔적 — 깔때기에 걸린 테마 필터들의 **파생 뷰**(별도 저장물 없음). 클릭 = 그 동결값을 탐색값으로 복원. */}
-            {themeTraces.length > 0 && (
-                <div style={{ ...footer, borderTop: "1px dashed var(--border-subtle)", paddingTop: 3 }}>
-                    <span style={{ color: "var(--text-tertiary)" }}>흔적(깔때기)</span>
-                    {themeTraces.map((t, i) => (
-                        <button key={t.id} style={{ ...btn, opacity: t.enabled ? 1 : 0.5 }}
-                            title="집합 편성 보드에 걸린 테마 필터 — 클릭하면 그 동결값을 이 패널의 탐색값으로 복원"
-                            onClick={() => setParams(t.params)}>
-                            {themeStrengthLabel(t.params)}{themeTraces.length > 1 ? ` #${i + 1}` : ""}
-                        </button>
-                    ))}
                 </div>
             )}
         </div>
@@ -347,7 +347,9 @@ const underSvg: CSSProperties = { position: "absolute", inset: 0, pointerEvents:
 const overSvg: CSSProperties = { position: "absolute", inset: 0, touchAction: "none", userSelect: "none" };
 const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
 const footer: CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "4px 10px", borderTop: "1px solid var(--border-default)", fontSize: 11, color: "var(--text-secondary)", flexWrap: "wrap" };
+const chipsRow: CSSProperties = { display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderBottom: "1px solid var(--border-subtle)", overflowX: "auto", flexShrink: 0 };
+// border 는 낱개 속성으로 — 활성 칩이 borderColor 만 덮는데, 축약(border)과 섞이면 React 가 경고한다.
+const chipBtn: CSSProperties = { fontSize: 10.5, color: "var(--text-secondary)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--border-default)", borderRadius: 8, padding: "1px 8px", background: "transparent", cursor: "pointer", whiteSpace: "nowrap" };
 const cond: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" };
 const mono: CSSProperties = { fontVariantNumeric: "tabular-nums", color: "var(--text-primary)", fontWeight: 500 };
-const numBox: CSSProperties = { width: 44, fontSize: 11, padding: "1px 4px" }; // 나머지는 NumberField(inputBase) 것 — 공용 필드 칸과 같은 겉이어야 한다
 const btn: CSSProperties = { border: "1px solid var(--border-default)", borderRadius: 3, padding: "0 5px", fontSize: 11, background: "var(--bg-secondary)", cursor: "pointer" };

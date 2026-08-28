@@ -251,8 +251,9 @@ function ThemeMaterialBadge(): JSX.Element | null {
     );
 }
 
+// border 는 낱개 속성으로 — 활성/꺼짐 상태가 borderColor·borderStyle 만 덮는데, 축약과 섞이면 React 가 경고한다.
 const chip: CSSProperties = {
-    fontSize: 10.5, color: "var(--text-secondary)", border: "1px solid var(--border-default)",
+    fontSize: 10.5, color: "var(--text-secondary)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--border-default)",
     borderRadius: 8, padding: "1px 7px", background: "transparent", cursor: "pointer", whiteSpace: "nowrap",
 };
 const stepBtn: CSSProperties = {

@@ -6,7 +6,6 @@ import { mergeShape, persistedField } from "./persist.js";
 import { useWorkbench } from "./workbench.js";
 import { createSettingsSlice } from "./settingsSlice.js";
 import { createChartSlice } from "./chartSlice.js";
-import { createThemeRankSlice } from "./themeRankSlice.js";
 
 const stored = (key: string): unknown => JSON.parse(localStorage.getItem(key) ?? "null");
 
@@ -120,20 +119,4 @@ describe("부팅 시 저장된 설정을 읽어 온다", () => {
         expect(initialOf(createChartSlice).chartPriceMode).toBe("un");
     });
 
-    it("테마 순위 params — basis 유니온은 전용 가드로 거른다(mergeShape 는 string 까지만 본다)", () => {
-        localStorage.setItem("wb.themeRankParams", JSON.stringify({ zoneRateN: 12, basis: "nasdaq" }));
-        const p = initialOf(createThemeRankSlice).themeRankParams;
-        expect(p.zoneRateN).toBe(12);
-        expect(p.basis).toBe("rate"); // 깨진 유니온 → 기본값
-        expect(p.zoneAmountN).toBe(40); // 빠진 필드 → 기본값 채움
-    });
-});
-
-describe("테마 순위 params setter 가 실제로 저장한다", () => {
-    it("패치가 localStorage 에 병합 기록된다", () => {
-        useWorkbench.getState().setThemeRankParams({ zoneRateN: 15, countOn: false });
-        const raw = stored("wb.themeRankParams") as { zoneRateN: number; countOn: boolean };
-        expect(raw.zoneRateN).toBe(15);
-        expect(raw.countOn).toBe(false);
-    });
 });

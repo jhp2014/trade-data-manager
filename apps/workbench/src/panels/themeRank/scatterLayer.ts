@@ -19,7 +19,8 @@ export interface ScatterArgs {
     subject: string | null;
     /** 시선 종목의 테마 동료(자신 제외). */
     peers: ReadonlySet<string>;
-    zone: { rateN: number; amountN: number };
+    /** 존 컷 — null 은 연동 행 없음(존 개념 자체가 없다): 동료 전부 채운 점으로 그린다. */
+    zone: { rateN: number; amountN: number } | null;
     scales: ScatterScales;
 }
 
@@ -37,7 +38,7 @@ export function scatterLayer({ points, subject, peers, zone, scales }: ScatterAr
             continue;
         }
         if (peers.has(p.code)) {
-            const inZone = p.rate <= zone.rateN && p.amount <= zone.amountN;
+            const inZone = zone === null || (p.rate <= zone.rateN && p.amount <= zone.amountN);
             if (inZone) peersIn.push({ op: "circle", cx, cy, r: 4, fill: THEME_PEER });
             else peersOut.push({ op: "circle", cx, cy, r: 4, stroke: THEME_PEER, width: 1.5 });
             continue;
