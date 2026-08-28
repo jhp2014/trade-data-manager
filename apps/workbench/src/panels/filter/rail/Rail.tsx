@@ -151,7 +151,9 @@ export function Rail<V>({
         setPreview(null);
         if (!drag || !next) return;
         // 새 구간인데 폭이 없으면 그건 클릭이다 — 아무것도 통과 못 하는 조건을 남기지 않는다.
-        if (drag.kind === "new") {
+        // ⚠ cut 은 예외: from 이 0 에 못 박혀 강한 끝 탭 = "컷을 1위로"라는 **정상값**이다(무시하면
+        // 왼쪽 끝만 손이 안 닿는 자리가 된다).
+        if (drag.kind === "new" && !cut) {
             const fresh = next[next.length - 1];
             if (!fresh || isTapRange(fresh, toFrac)) return;
         }

@@ -193,13 +193,17 @@ export function ThemeRankPanel(): JSX.Element {
     };
 
     // ── 타임라인 재료 — 트랙(분당 서수, 시선/날짜당 한 번)과 띠 필터(컷 드래그마다 O(분))를 가른다.
+    // 띠는 연동 행의 존 기준이므로 연동 없을 땐 트랙 자체를 안 굽는다(~390분 × 정렬 — 공짜가 아니다).
+    const hasLink = linkedParams !== null;
     const track = useMemo(
-        () => (stocks && subject && minuteRange ? subjectOrdinalTrack(stocks, subject.date, subject.code, minuteRange) : null),
-        [stocks, subject, minuteRange],
+        () => (hasLink && stocks && subject && minuteRange ? subjectOrdinalTrack(stocks, subject.date, subject.code, minuteRange) : null),
+        [hasLink, stocks, subject, minuteRange],
     );
+    // 의존성은 **원시값**(zone 은 렌더마다 새 객체 — layers 메모와 같은 함정, 호버 move 마다 재계산·재렌더가 된다).
     const segments = useMemo(
         () => (track && minuteRange && zone !== null ? bandSegmentsOf(track, minuteRange.lo, minuteRange.hi, zone.rateN, zone.amountN) : null),
-        [track, minuteRange, zone],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [track, minuteRange, zone === null, zone?.rateN, zone?.amountN],
     );
     // 저장 타점의 분들 — ▼ 마커(클릭 = 점프, 옛 ↺ 의 후계).
     const pointMinutes = useMemo(

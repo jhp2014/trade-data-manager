@@ -250,6 +250,16 @@ describe("cut 레일 — from 이 강한 끝에 못 박힌 상한 컷", () => {
         expect(next[0].to).toBeCloseTo(0.6, 2);
     });
 
+    it("강한 끝(왼쪽) 탭도 커밋된다 — 컷에선 폭 0 이 '1위'라는 정상값이다", () => {
+        const { container, onChange } = setup({ ranges: [range(0, 0.3)], cut: true, removable: false });
+        const track = cutTrack(container);
+        fireEvent.pointerDown(track, { button: 0, clientX: xAt(0.001), pointerId: 1 });
+        fireEvent.pointerUp(track, { pointerId: 1 });
+        expect(onChange).toHaveBeenCalledOnce();
+        const next = onChange.mock.calls[0][0] as RailRange<number>[];
+        expect(next[0].to).toBeCloseTo(0.001, 2);
+    });
+
     it("커밋은 여전히 손 뗄 때 한 번", () => {
         const { container, onChange } = setup({ ranges: [range(0, 0.3)], cut: true, removable: false });
         const track = cutTrack(container);

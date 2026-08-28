@@ -4,12 +4,14 @@
 // 바뀔 때 한 번이고, 컷 드래그 중에는 bandSegmentsOf(O(분))만 다시 돈다 — 드래그가 정렬을 못 건드린다.
 //
 // 계산 주체는 core `rankSectionOf` 하나여야 한다(decisions.md 서수 출처 단일화) — 자체 "나보다 좋은
-// 개수 세기"를 새로 쓰지 않고 scrubSectionOf(core 위임 어댑터)를 분마다 부른다.
+// 개수 세기"를 새로 쓰지 않는다. 단면 어댑터(scrubSectionOf)를 안 거치는 이유: 저건 분마다 조회
+// Map(~600)을 새로 짓는데, 여기는 종목 하나의 값만 필요해 배열 인덱스 한 번이면 된다(서수 배열은
+// stocks 순서 정렬 — rankSectionOf 계약).
 //
 // ⚠ 존은 교집합(등락 ≤ N ∧ 대금 ≤ M) — norm 테마 골격의 재적(dayResidencyOf, 합집합 hot)과 뜻이
 // 정반대다. 재사용 금지(themeStrength.ts 머리 주석과 같은 경고).
+import { rankSectionOf } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
-import { scrubSectionOf } from "./scrubSection.js";
 
 const fmtMin = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
@@ -23,9 +25,13 @@ export function subjectOrdinalTrack(
     range: { lo: number; hi: number },
 ): OrdinalTrack {
     const out = new Map<number, { rate: number; amount: number }>();
+    const i = stocks.findIndex((s) => s.code === code);
+    if (i < 0) return out; // 유니버스 밖 — 지어내지 않는다
     for (let m = range.lo; m <= range.hi; m++) {
-        const r = scrubSectionOf(stocks, date, fmtMin(m)).ranksOf(code);
-        if (r !== null && r.rate !== null && r.amount !== null) out.set(m, { rate: r.rate, amount: r.amount });
+        const section = rankSectionOf(stocks, date, fmtMin(m));
+        const rate = section.rate[i];
+        const amount = section.amount[i];
+        if (rate !== null && amount !== null) out.set(m, { rate, amount });
     }
     return out;
 }

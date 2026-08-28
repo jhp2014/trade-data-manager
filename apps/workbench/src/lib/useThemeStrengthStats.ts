@@ -83,8 +83,11 @@ export function useThemeStrengthStats(params: ThemeStrengthParams): ThemeStrengt
     const index = useMemo(() => (membersQ.data ? buildThemeIndex(membersQ.data) : null), [membersQ.data]);
 
     return useMemo(() => {
-        const isLoading = points.isLoading || sections.isLoading || membersQ.isLoading;
         const error = points.error ?? sections.error ?? ((membersQ.error as Error | null) ?? null);
+        // index === null(멤버십 data 미도착)도 로딩으로 접는다 — RQ v5 의 paused(pending 인데 fetching
+        // 아님)에서 isLoading=false·data=undefined 라, 안 접으면 "통과 0/0" 으로 위장된다(useThemeIndex
+        // 가 ready 를 따로 둔 것과 같은 이유).
+        const isLoading = points.isLoading || sections.isLoading || membersQ.isLoading || (error === null && index === null);
         const universeMax = sections.bundle?.dates.reduce((m, d) => Math.max(m, d.codes.length), 0) ?? 0;
         const empty: StrengthTicks = { universeMax, rateOrds: EMPTY_ORDS, amountOrds: EMPTY_ORDS, zoneRanks: EMPTY_ORDS };
         if (isLoading || error !== null || index === null || points.points.length === 0) {
