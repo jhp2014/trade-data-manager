@@ -32,20 +32,17 @@ import { rowIdOfKey, rowIdOfStage, useBoardReveal, type BoardReveal } from "./bo
 import { GroupExprChips, namingOf } from "./GroupExprChips.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
 import { ComputedAxisRail } from "./rail/AxisRails.js";
-import { RAIL_LABEL_W, RAIL_ROW_H } from "./rail/Rail.js";
 import { DateRail, TimeRail } from "./rail/RangeRails.js";
-import { GRAIN_TITLE, GrainSection, Section } from "./grain.js";
-import { ThemeStrengthFields } from "../../components/ThemeStrengthFields.js";
-import { themeStrengthLabel } from "./label.js";
+import { GRAIN_TITLE, GrainSection } from "./grain.js";
+import { BoardRow } from "./BoardRow.js";
+import { ThemeSection } from "./ThemeRow.js";
+import { THEME_LINK_KEY, THEME_LINK_SCOPE } from "./themeLink.js";
 import { predicateOfKind, stagesFor, type RailKey } from "./stageBinding.js";
 import { dropEdge, moveAxis, orderAxes, parseAxisOrder } from "./axisOrder.js";
 import { drawerCountsOf, drawerVisible, parseDrawerIds, parseDrawerOpen, pruneDrawer, splitByDrawer } from "./axisDrawer.js";
 import { FILTER } from "../../styles/palette.js";
 import type { AxisValueRange, FilterPredicate, FilterStage, Grain } from "./stage.js";
 import { stageKind } from "./stage.js";
-import { anyConditionOn, type ThemeStrengthParams } from "../../lib/themeStrength.js";
-import { useRankSections } from "../../lib/useRankSections.js";
-import { useThemeIndex } from "../../lib/useThemeIndex.js";
 
 const GRAINS: Grain[] = ["day", "point"];
 
@@ -146,9 +143,15 @@ export function FilterBoard({ reveal, onlyActive }: {
     };
 
     // 되짚기 — 그 조건이 사는 줄로 스크롤 + 강조(boardReveal). 서랍에 든 줄이면 **먼저 펼친다**
-    // (접힌 서랍의 줄은 DOM 에 없어 누르면 아무 일도 안 나는 상태가 된다).
+    // (접힌 서랍의 줄은 DOM 에 없어 누르면 아무 일도 안 나는 상태가 된다). 테마 행도 같은 이유로
+    // 먼저 연동(=펼침)한다 — 접힌 행의 레일은 DOM 에 없다.
+    const setSessionUi = useWorkbench((s) => s.setSessionUi);
     const { registerRow, flash } = useBoardReveal(reveal, stages, {
         onBeforeScroll: (rowId) => {
+            if (rowId.startsWith("theme:")) {
+                setSessionUi(THEME_LINK_SCOPE, THEME_LINK_KEY, rowId.slice("theme:".length));
+                return;
+            }
             const axisId = rowId.startsWith("axis:") ? rowId.slice("axis:".length) : null;
             if (axisId === null || !drawerSet.has(axisId)) return;
             const g = scopeOf.get(axisId);
@@ -307,39 +310,9 @@ export function FilterBoard({ reveal, onlyActive }: {
                         </div>
                     );
                 })}
-                {/* ── 테마 칸 — UI 그룹핑이지 층위가 아니다(행 정체성은 타점, decisions.md). 조건을 만드는
-                    손은 이 보드 하나: 라이브 미러(현재 패널 탐색값)를 눌러 그 순간 값을 **동결**한 묶음
-                    필터를 만든다. N/M(존)은 정체성이라 여기선 읽기 전용, 임계값·활성만 인라인 조절. */}
-                {!v.isLoading && (() => {
-                    const themeStages = stages.filter((s) => stageKind(s) === "themeStrength");
-                    if (onlyActive && themeStages.length === 0) return null;
-                    return (
-                        <Section title="테마" unit="타점 묶음 — 테마 AND · 테마 간 ∃"
-                            hint="테마 강도 묶음 필터 — 행 정체성은 타점이라 이 필터가 걸리면 깔때기 해상도가 타점으로 내려간다(분모가 바뀌는 게 정상)"
-                            right={themeStages.length > 0 ? <ThemeMaterialBadge /> : undefined}>
-                            {themeStages.map((s, i) => {
-                                const p = s.predicates.find((x) => x.kind === "themeStrength") as Extract<FilterPredicate, { kind: "themeStrength" }> | undefined;
-                                if (!p) return null;
-                                const rowId = rowIdOfStage(s);
-                                const basis = p.params.basis === "amount" ? "대금" : "등락";
-                                return (
-                                    <BoardRow key={s.id} innerRef={registerRow(rowId)} label={i === 0 ? "테마" : ""}
-                                        flash={flash === rowId} dimmed={!s.enabled}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, fontSize: 11, color: "var(--text-secondary)", flexWrap: "wrap" }}>
-                                            <span title="스냅샷에 동결된 존 컷(정체성) — 바꾸려면 패널에서 조절해 재스냅샷"
-                                                style={{ fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap" }}>
-                                                존 {p.params.zoneRateN}/{p.params.zoneAmountN} · {basis}{themeStages.length > 1 ? ` #${i + 1}` : ""}
-                                            </span>
-                                            <ThemeStrengthFields value={p.params}
-                                                onChange={(patch) => setPredicates(s.id, [{ kind: "themeStrength", params: { ...p.params, ...patch } }])} />
-                                        </div>
-                                    </BoardRow>
-                                );
-                            })}
-                            {!onlyActive && <ThemeMirrorRow first={themeStages.length === 0} onSnapshot={(params) => addStage([{ kind: "themeStrength", params }])} />}
-                        </Section>
-                    );
-                })()}
+                {/* ── 테마 칸 — UI 그룹핑이지 층위가 아니다(행 정체성은 타점, decisions.md). 행이 조건의
+                    실체고 펼친(=패널 연동) 행만 레일 카드로 선다 — 전부 ThemeRow 가 진다. */}
+                {!v.isLoading && <ThemeSection registerRow={registerRow} flash={flash} onlyActive={onlyActive} />}
                 <div style={{ height: 8 }} />
             </div>
 
@@ -386,70 +359,6 @@ function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, dragHandle, 
     );
 }
 const EMPTY_VALUES = new Map<string, number>();
-
-/**
- * 레일이 아닌 줄(그룹·추가 버튼)을 **레일과 같은 격자**에 앉히는 껍데기 — 이름 열 폭·행 높이·구분선이
- * 같아야 목록 하나로 읽힌다. 이게 없을 때 그룹 영역이 조건 목록이 아니라 여백처럼 보였다.
- */
-function BoardRow({ label, innerRef, flash = false, dimmed = false, children }: {
-    label: string;
-    innerRef?: (el: HTMLElement | null) => void;
-    flash?: boolean;
-    dimmed?: boolean;
-    children: React.ReactNode;
-}): JSX.Element {
-    return (
-        <div ref={innerRef} style={{
-            display: "flex", alignItems: "center", height: RAIL_ROW_H, borderBottom: "1px solid var(--border-subtle)",
-            background: flash ? "var(--accent-soft)" : "transparent", opacity: dimmed ? 0.5 : 1, transition: "background .35s ease",
-        }}>
-            <div style={{ width: RAIL_LABEL_W, flexShrink: 0, padding: "0 6px 0 8px", fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>
-                {label}
-            </div>
-            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", paddingRight: 8 }}>{children}</div>
-        </div>
-    );
-}
-
-/**
- * 테마 재료 오류 배지 — 재료가 죽으면 테마 행이 멀쩡한 필터처럼 보이면서 결과만 전부 미배치가 된다.
- * 숫자와 화면이 같은 이야기를 해야 하므로(라벨 GONE 규칙과 같은 결) 칸 머리에서 한 번 말한다.
- */
-function ThemeMaterialBadge(): JSX.Element | null {
-    const sections = useRankSections();
-    const themes = useThemeIndex();
-    const err = sections.error ?? themes.error;
-    if (!err) return null;
-    return (
-        <span title={`테마 재료 로드 실패 — 이 칸의 필터는 전부 미배치로 세어집니다: ${err.message}`}
-            style={{ fontSize: 10, color: FILTER, border: `1px solid ${FILTER}`, borderRadius: 8, padding: "0 6px" }}>
-            재료 오류
-        </span>
-    );
-}
-
-/**
- * 라이브 미러 — 테마 순위 패널의 현재 탐색값(영속 슬라이스)을 **상시 표시**하다 클릭 순간 동결한다.
- * 눌리기 전에 찍힐 값이 보이는 게 이 항목의 존재 이유다(안 보고 찍기 방지 — decisions.md).
- */
-function ThemeMirrorRow({ first, onSnapshot }: {
-    first: boolean;
-    onSnapshot: (params: ThemeStrengthParams) => void;
-}): JSX.Element {
-    const params = useWorkbench((s) => s.themeRankParams);
-    const empty = !anyConditionOn(params); // 활성 조건 0 = 빈 술어 — 찍혀도 아무 일도 안 하는 줄만 쌓인다
-    return (
-        <BoardRow label={first ? "테마" : ""}>
-            <button onClick={() => !empty && onSnapshot({ ...params })} disabled={empty}
-                title={empty
-                    ? "활성 하위 조건이 없어 스냅샷할 게 없습니다 — 테마 순위 패널에서 조건을 켜세요"
-                    : "테마 순위 패널의 현재 탐색값(패널이 닫혀 있어도 마지막 값) — 누르면 이 순간 값이 동결된 묶음 필터가 됩니다. N/M 을 바꾸려면 패널에서 조절해 다시 스냅샷"}
-                style={{ fontSize: 10.5, padding: "1px 8px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-tertiary)", cursor: empty ? "default" : "pointer", whiteSpace: "nowrap", opacity: empty ? 0.5 : 1 }}>
-                ＋ {themeStrengthLabel(params)} <span style={{ opacity: 0.7 }}>(현재 패널값)</span>
-            </button>
-        </BoardRow>
-    );
-}
 
 function Note({ children }: { children: React.ReactNode }): JSX.Element {
     return <div style={{ padding: "4px 10px 8px", fontSize: 10.5, color: "var(--text-tertiary)" }}>{children}</div>;

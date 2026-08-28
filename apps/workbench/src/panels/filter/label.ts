@@ -47,15 +47,15 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
     }
 }
 
-/** 테마 강도 묶음 한 줄 — 동결 N/M(정체성) + 활성 하위 조건. 보드 행·막대·패널 흔적이 같은 표기를 쓴다. */
+/** 테마 강도 묶음 한 줄 — 존 N/M·기준 + 활성 하위 조건. 보드 행·막대·패널 칩이 같은 표기를 쓴다. */
 export function themeStrengthLabel(p: ThemeStrengthParams): string {
     const conds = [
         p.countOn ? `동료≥${p.countMin}` : null,
         p.baseRankOn ? `기본≤${p.baseRankMax}` : null,
-        p.zoneRankOn ? `존내≤${p.zoneRankMax}` : null,
+        p.zoneRankOn ? `존순위≤${p.zoneRankMax}` : null,
     ].filter((s): s is string => s !== null);
     const basis = p.basis === "amount" ? "대금" : "등락";
-    return `테마 ${p.zoneRateN}/${p.zoneAmountN}·${basis}${conds.length > 0 ? ` ${conds.join(" ")}` : ""}`;
+    return `존 ${p.zoneRateN}/${p.zoneAmountN} · ${basis}${conds.length > 0 ? ` · ${conds.join(" · ")}` : ""}`;
 }
 
 /** 단계가 무슨 도구인가 — 막대 아래 한 줄. 한 단계는 한 종류라 첫 술어가 곧 단계의 종류다. */
