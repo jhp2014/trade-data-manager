@@ -25,7 +25,7 @@ import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { anyConditionOn, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
-import { useThemeRankCount } from "./useThemeRankCount.js";
+import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
 import { FILTER } from "../../styles/palette.js";
 
 const PAD = { left: 44, top: 14, right: 14, bottom: 30 };
@@ -105,7 +105,7 @@ export function ThemeRankPanel(): JSX.Element {
     const eff: ThemeStrengthParams = useMemo(() => ({ ...params, ...preview }), [params, preview]);
     // 카운트만 한 프레임 뒤로 — 존 틴트·점은 즉시 따라와야 손이 안 끌린다.
     const countParams = useDeferredValue(eff);
-    const count = useThemeRankCount(countParams);
+    const count = useThemeStrengthStats(countParams);
 
     // ── 그림 상자 — **안정 콜백 ref**. 이 div 는 subject && section 일 때만 마운트되는데, 1회성 effect 로
     // 관찰을 붙이면 최초 렌더(시선 없음)에서 ref 가 null 이라 영영 안 붙는다(실측: 캔버스 0×0 고정).

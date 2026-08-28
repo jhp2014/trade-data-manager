@@ -106,7 +106,10 @@ export function themeProjectionOf(index: ThemeIndex): ThemeProjection {
     return { themesByCode, codesByTheme };
 }
 
-const inZone = (r: { rate: number | null; amount: number | null }, p: ThemeStrengthParams): boolean =>
+/** 존 판정에 필요한 조각 — 틱 재료 함수는 임계값 없이 이만큼만 받는다(의존이 좁을수록 캐시가 오래 산다). */
+export type ZoneParams = Pick<ThemeStrengthParams, "zoneRateN" | "zoneAmountN" | "basis">;
+
+const inZone = (r: { rate: number | null; amount: number | null }, p: ZoneParams): boolean =>
     r.rate !== null && r.amount !== null && r.rate <= p.zoneRateN && r.amount <= p.zoneAmountN;
 
 /**
@@ -179,4 +182,63 @@ export function countPassing(
         if (passesPoint(p.stockCode, section, params, proj)) passed++;
     }
     return { passed, evaluable, missing };
+}
+
+// ── 컷 레일 틱 재료 ────────────────────────────────────────────────────────
+// ⚠ 아래 둘은 **근사·참고용**이다(∃ 최선 테마 기준·타점별 독립) — 판정은 여전히 passesPoint 의
+// 묶음 AND·∃ 하나뿐이고, 이 값들로 통과/탈락을 셈하는 코드를 만들면 분해 금지가 무너진다.
+// 레일에 "내 타점들이 대개 어디 있었나"를 깔아 컷을 정하게 하는 것까지가 이 함수들의 소임이다.
+
+/** 모수 타점들의 자기 서수(단면 있는 타점만) — 존 N/M 컷 레일의 틱. 파라미터 무관. */
+export function selfOrdinalsOf(
+    points: readonly { stockCode: string; date: string; time: string }[],
+    sectionAt: (date: string, time: string) => SectionRanks | null,
+): { rateOrds: number[]; amountOrds: number[] } {
+    const rateOrds: number[] = [];
+    const amountOrds: number[] = [];
+    for (const p of points) {
+        const r = sectionAt(p.date, p.time)?.ranksOf(p.stockCode);
+        if (!r) continue;
+        if (r.rate !== null) rateOrds.push(r.rate);
+        if (r.amount !== null) amountOrds.push(r.amount);
+    }
+    return { rateOrds, amountOrds };
+}
+
+/**
+ * 타점별 ∃ 최선(최소) 테마 내 존 순위 — 존순위 컷 레일의 틱. 자신이 존에 든 타점만 값이 나온다
+ * (존 밖 = ③의 즉시 불만족과 같은 자리 — 값을 지어내지 않는다). 존/기준(N·M·basis)에만 의존.
+ */
+export function bestZoneRanksOf(
+    points: readonly { stockCode: string; date: string; time: string }[],
+    sectionAt: (date: string, time: string) => SectionRanks | null,
+    zone: ZoneParams,
+    proj: ThemeProjection,
+): number[] {
+    const out: number[] = [];
+    for (const p of points) {
+        const section = sectionAt(p.date, p.time);
+        if (section === null) continue;
+        const self = section.ranksOf(p.stockCode);
+        if (self === null || !inZone(self, zone)) continue;
+        const selfBasis = zone.basis === "rate" ? self.rate : self.amount; // 존 안 = 둘 다 non-null
+        const themes = proj.themesByCode.get(p.stockCode);
+        if (!themes || themes.length === 0) continue;
+        let best = Infinity;
+        for (const t of themes) {
+            const members = proj.codesByTheme.get(t);
+            if (!members) continue;
+            let zoneBetter = 0;
+            for (const m of members) {
+                if (m === p.stockCode) continue;
+                const r = section.ranksOf(m);
+                if (r === null || !inZone(r, zone)) continue;
+                const b = zone.basis === "rate" ? r.rate : r.amount;
+                if (b !== null && selfBasis !== null && b < selfBasis) zoneBetter++;
+            }
+            if (zoneBetter + 1 < best) best = zoneBetter + 1;
+        }
+        if (Number.isFinite(best)) out.push(best);
+    }
+    return out;
 }

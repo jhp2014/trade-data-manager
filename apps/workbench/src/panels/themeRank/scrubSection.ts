@@ -4,7 +4,7 @@
 //
 // 화면(산점)은 **항상 이 재계산 단면**을 그린다 — 번들(/rank-sections)에는 타점 분의 단면만 있어
 // 스크럽하는 순간 어차피 이 경로로 넘어가고, 두 경로를 섞으면 위 사고 모양이 된다. 번들은 모수 전체를
-// 도는 카운트(useThemeRankCount) 전용. 두 재료가 같다는 근거: dayBoards.replayBoard 와 RankSections
+// 도는 카운트(useThemeStrengthStats) 전용. 두 재료가 같다는 근거: dayBoards.replayBoard 와 RankSections
 // 가 같은 derived.snapshot(date).stocks[].minutes 를 쓴다.
 import { rankSectionOf, type RankSection } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
