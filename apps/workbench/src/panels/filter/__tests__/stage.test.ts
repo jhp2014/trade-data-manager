@@ -312,7 +312,7 @@ describe("밴드 경계 이관 — 옛 slotId 는 열린 경계로 떨군다", (
 describe("themeStrength 술어 — 저장 왕복·빈 판정", () => {
     const params = { zoneRateN: 12, zoneAmountN: 34, basis: "amount" as const, countOn: true, countMin: 5, baseRankOn: false, baseRankMax: 3, zoneRankOn: true, zoneRankMax: 2 };
 
-    it("parseStages 왕복이 동결 파라미터를 보존한다 — 파서 누락은 저장본 한 벌 통째 폐기라 여기가 회귀 방지선", () => {
+    it("parseStages 왕복이 테마 파라미터를 보존한다 — 파서 누락은 저장본 한 벌 통째 폐기라 여기가 회귀 방지선", () => {
         const stages: FilterStage[] = [{ id: "t1", enabled: true, predicates: [{ kind: "themeStrength", params }] }];
         const back = parseStages(JSON.parse(JSON.stringify(stages)));
         expect(back).toEqual(stages);

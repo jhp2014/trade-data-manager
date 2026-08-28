@@ -57,8 +57,8 @@ export type FilterPredicate =
     | { kind: "axisValue"; axisId: string; ranges: AxisValueRange[] }
     | { kind: "date"; ranges: DateRange[] }
     | { kind: "time"; ranges: TimeRange[] }
-    // 테마 강도 묶음 — **동결 파라미터가 payload 안에 산다**(SavedSet 이 stages 를 통째 복사하므로
-    // 슬라이스 참조로 두면 집합의 자립이 깨진다). N/M(존)은 정체성(동결), 임계값·활성은 보드에서 조절.
+    // 테마 강도 묶음 — **파라미터가 payload 안에 산다**(SavedSet 이 stages 를 통째 복사하므로
+    // 외부 참조로 두면 집합의 자립이 깨진다). 전 파라미터는 보드 행(레일·칩)에서 직접 편집한다.
     | { kind: "themeStrength"; params: ThemeStrengthParams };
 
 export type PredicateKind = FilterPredicate["kind"];

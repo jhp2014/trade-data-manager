@@ -27,6 +27,7 @@ import { anyConditionOn, DEFAULT_THEME_STRENGTH, type ThemeStrengthParams } from
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
 import { TimelineBar } from "./TimelineBar.js";
+import { tooltipBoxOf } from "./tooltipBox.js";
 import { bandSegmentsOf, subjectOrdinalTrack } from "./zoneTrack.js";
 import { FILTER } from "../../styles/palette.js";
 
@@ -328,14 +329,17 @@ export function ThemeRankPanel(): JSX.Element {
                                 </g>
                             </>
                         )}
-                        {hover && (
-                            <g style={{ pointerEvents: "none" }}>
-                                <rect x={hover.x + 10} y={hover.y - 24} width={150} height={18} rx={3} fill="var(--bg-tertiary)" stroke="var(--border-default)" strokeWidth={0.5} />
-                                <text x={hover.x + 16} y={hover.y - 11} style={{ fontSize: 11, fill: "var(--text-primary)" }}>
-                                    {nameOf(hover.code)} · 등락 {hover.rate}위 · 대금 {hover.amount}위
-                                </text>
-                            </g>
-                        )}
+                        {hover && (() => {
+                            // 자리는 순수 셈(tooltipBox) — 경계에서 플립·클램프, 폭은 글자에서.
+                            const text = `${nameOf(hover.code)} · 등락 ${hover.rate}위 · 대금 ${hover.amount}위`;
+                            const tb = tooltipBoxOf(hover, text, { w: size.w, h: size.h });
+                            return (
+                                <g style={{ pointerEvents: "none" }}>
+                                    <rect x={tb.x} y={tb.y} width={tb.w} height={tb.h} rx={3} fill="var(--bg-tertiary)" stroke="var(--border-default)" strokeWidth={0.5} />
+                                    <text x={tb.x + 6} y={tb.y + 13} style={{ fontSize: 11, fill: "var(--text-primary)" }}>{text}</text>
+                                </g>
+                            );
+                        })()}
                     </svg>
                 </div>
             )}
