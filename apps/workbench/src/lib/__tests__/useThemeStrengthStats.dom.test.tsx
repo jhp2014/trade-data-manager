@@ -63,13 +63,10 @@ describe("useThemeStrengthStats — 모듈 캐시", () => {
         expect(strict.result.current.passed).toBe(0);
     });
 
-    it("틱 재료 — 자기 서수와 존순위가 같은 렌더에서 나온다", () => {
+    it("반환은 카운트 3항 + 상태 둘뿐 — 옛 틱 재료는 소비자가 없어 폐지됐다", () => {
         const client = seededClient(SEED);
         const wrapper = ({ children }: { children: ReactNode }): JSX.Element => <Providers client={client}>{children}</Providers>;
         const { result } = renderHook(() => useThemeStrengthStats(P()), { wrapper });
-        expect(result.current.ticks.universeMax).toBe(3);
-        expect(result.current.ticks.rateOrds).toEqual([1]); // 000001 의 등락 서수
-        expect(result.current.ticks.amountOrds).toEqual([2]);
-        expect(result.current.ticks.zoneRanks).toEqual([1]); // T 존 멤버 중 기본(등락) 최상위
+        expect(Object.keys(result.current).sort()).toEqual(["error", "evaluable", "isLoading", "missing", "passed"]);
     });
 });

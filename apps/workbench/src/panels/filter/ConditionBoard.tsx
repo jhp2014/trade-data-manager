@@ -11,8 +11,9 @@
 //
 // 하루가 늘 앞이라 "새로 죽임"이 넓은 조건부터 세어진다(순서는 결과가 아니라 서술을 정한다).
 // 칸 클릭 = 시선(다중 가능) — 결과 목록은 없다: 멤버 열람은 구독 패널들의 몫이다.
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { FunnelCell } from "@trade-data-manager/market/domain";
+import { useDismiss } from "../../ui/useDismiss.js";
 import { openAndFocus } from "../../lib/openPanel.js";
 import { DEFAULT_THEME_STRENGTH } from "../../lib/themeStrength.js";
 import { useRankSections } from "../../lib/useRankSections.js";
@@ -25,7 +26,7 @@ import { useFunnel } from "./FunnelContext.js";
 import { GrainSection, Note } from "./grain.js";
 import { GroupEditors, type GroupEditorAnchor } from "./ConditionEditors.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
-import { RAIL_REVEAL, useRevealSignal } from "./boardReveal.js";
+import { RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
 import { useLinkedThemeStage } from "./themeLink.js";
 import { stageLabel } from "./label.js";
 import { stageKind, type FilterStage, type Grain } from "./stage.js";
@@ -54,7 +55,7 @@ export function ConditionBoard({ barsOpen }: {
     const [overId, setOverId] = useState<string | null>(null);
 
     // ── 편집면으로 데려가기 ──
-    const { send: sendReveal } = useRevealSignal(RAIL_REVEAL);
+    const sendReveal = useRevealSender(RAIL_REVEAL);
     const { linkedId, setLinked } = useLinkedThemeStage();
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
@@ -191,6 +192,10 @@ function AddCondition({ onRails, onGroup, onTheme }: {
     onTheme: () => void;
 }): JSX.Element {
     const [open, setOpen] = useState(false);
+    // 해제(바깥 클릭·Esc)는 수제 백드롭이 아니라 공용 규칙 한 벌 — 어떤 영역이 mousedown 을 삼켜도
+    // 캡처 단계라 일관되게 닫힌다(useDismiss 머리 주석). 판정 범위 = 손잡이+판(손잡이 클릭은 토글이 처리).
+    const wrapRef = useRef<HTMLDivElement>(null);
+    useDismiss(wrapRef, () => setOpen(false), open);
     const item = (label: string, hint: string, run: (e: React.MouseEvent) => void): JSX.Element => (
         <button onClick={(e) => { setOpen(false); run(e); }} title={hint}
             style={{
@@ -201,7 +206,7 @@ function AddCondition({ onRails, onGroup, onTheme }: {
         </button>
     );
     return (
-        <div style={{ position: "relative", padding: "6px 2px 2px" }}>
+        <div ref={wrapRef} style={{ position: "relative", padding: "6px 2px 2px" }}>
             <button onClick={() => setOpen(!open)}
                 title="조건 만들기 — 종류를 고르면 그 조건의 편집면이 열립니다"
                 style={{ fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer" }}>

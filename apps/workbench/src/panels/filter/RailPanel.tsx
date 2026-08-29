@@ -30,7 +30,7 @@ import { usePanelUi } from "../../store/usePanelUi.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useFunnel } from "./FunnelContext.js";
 import { RailEditors, type RailEditor } from "./ConditionEditors.js";
-import { RAIL_REVEAL, rowIdOfKey, useBoardReveal, useRevealSignal } from "./boardReveal.js";
+import { RAIL_REVEAL, rowIdOfKey, useBoardReveal, useRevealConsumer } from "./boardReveal.js";
 import { ComputedAxisRail } from "./rail/AxisRails.js";
 import { DateRail, TimeRail } from "./rail/RangeRails.js";
 import { GRAIN_TITLE, GrainSection, Note } from "./grain.js";
@@ -132,8 +132,9 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
 
     // 되짚기 — 보드 목록에서 온 신호(패널 경계를 넘는다). 서랍에 든 줄이면 **먼저 펼친다**
     // (접힌 서랍의 줄은 DOM 에 없어 누르면 아무 일도 안 나는 상태가 된다).
-    const { reveal } = useRevealSignal(RAIL_REVEAL);
+    const { reveal, markHandled } = useRevealConsumer(RAIL_REVEAL);
     const { registerRow, flash } = useBoardReveal(reveal, stages, {
+        onHandled: markHandled,
         onBeforeScroll: (rowId) => {
             const axisId = rowId.startsWith("axis:") ? rowId.slice("axis:".length) : null;
             if (axisId === null || !drawerSet.has(axisId)) return;

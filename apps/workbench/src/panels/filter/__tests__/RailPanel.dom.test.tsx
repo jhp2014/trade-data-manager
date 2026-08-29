@@ -488,6 +488,30 @@ describe("서랍 — 축을 치우되 조건은 살려 둔다", () => {
         }
     });
 
+    // ⚠ 신호는 세션에 남는다(대상이 닫혀 있다 막 열릴 수 있어서) — 그래서 **한 손도장은 한 번만**
+    //   발화해야 한다. 안 그러면 재마운트마다 서랍을 되펴 영속 설정(wb.filterDrawerOpen)이 조용히 되돌아간다.
+    it("같은 손도장은 재마운트에서 다시 안 편다 — 접어 둔 서랍이 되돌아가지 않게", () => {
+        const scrollInto = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = () => {};
+        try {
+            const { container, unmount } = renderRails(ORDER_SEED);
+            drag(trackOf(container, "하루축A"), 0.35, 0.7);
+            fireEvent.click(stowOf(container, "하루축A"));
+            const id = stages()[0].id;
+            act(() => useWorkbench.getState().setSessionUi(REVEAL_SCOPE, RAIL_REVEAL, { stageId: id, at: 1 }));
+            expect(railNames(container)).toContain("하루축A"); // 한 번은 펴진다
+
+            // 사용자가 다시 접고 패널을 닫았다 연다 — 옛 손도장이 다시 발화하면 안 된다.
+            fireEvent.click(drawerHeadOf(container, "하루")!);
+            unmount();
+            const again = renderRails(ORDER_SEED);
+
+            expect(railNames(again.container)).not.toContain("하루축A");
+        } finally {
+            Element.prototype.scrollIntoView = scrollInto;
+        }
+    });
+
     it("서랍은 로컬에 남는다 — 다시 열어도 치운 그대로", () => {
         const { container, unmount } = renderRails(ORDER_SEED);
         fireEvent.click(stowOf(container, "하루축A"));

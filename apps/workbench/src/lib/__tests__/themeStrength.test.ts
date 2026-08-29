@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildThemeIndex } from "@trade-data-manager/market/domain";
 import {
-    DEFAULT_THEME_STRENGTH, bestZoneRanksOf, countPassing, parseThemeStrengthParams, passesPoint, selfOrdinalsOf,
+    DEFAULT_THEME_STRENGTH, countPassing, parseThemeStrengthParams, passesPoint,
     themeProjectionOf, type SectionRanks, type ThemeStrengthParams,
 } from "../themeStrength.js";
 
@@ -91,49 +91,6 @@ describe("parseThemeStrengthParams — 관대한 병합(옛 저장물이 통째�
     it("객체가 아니면 null", () => {
         expect(parseThemeStrengthParams("x")).toBeNull();
         expect(parseThemeStrengthParams(null)).toBeNull();
-    });
-});
-
-describe("selfOrdinalsOf — 컷 레일 틱(자기 서수)", () => {
-    it("단면 있는 타점의 서수만 모으고, 결손 축은 그 축만 빠진다", () => {
-        const section = sectionOf({ a: [3, 7], b: [null, 12] });
-        const points = [
-            { stockCode: "a", date: "2026-08-14", time: "09:30:00" },
-            { stockCode: "b", date: "2026-08-14", time: "09:30:00" },
-            { stockCode: "a", date: "2026-08-28", time: "09:30:00" }, // 단면 없음 — 통째 제외
-        ];
-        const out = selfOrdinalsOf(points, (d) => (d === "2026-08-14" ? section : null));
-        expect(out.rateOrds).toEqual([3]); // b 의 등락은 결손
-        expect(out.amountOrds).toEqual([7, 12]);
-    });
-});
-
-describe("bestZoneRanksOf — ∃ 최선 테마 내 존 순위 틱(근사·참고용)", () => {
-    it("여러 테마 중 가장 좋은(작은) 존 순위를 딴다", () => {
-        const proj = projOf({ A: ["s", "a1", "a2"], B: ["s", "b1"] });
-        // 존(30/40) 안: s=10위, a1=5, a2=3(A 에서 s 는 존 3위), b1=20(B 에서 s 는 존 1위)
-        const section = sectionOf({ s: [10, 10], a1: [5, 5], a2: [3, 3], b1: [20, 20] });
-        const points = [{ stockCode: "s", date: "2026-08-14", time: "09:30:00" }];
-        const out = bestZoneRanksOf(points, () => section, P({}), proj);
-        expect(out).toEqual([1]); // B 가 최선
-    });
-
-    it("자신이 존 밖이거나 테마가 없으면 값이 안 나온다 — 지어내지 않는다", () => {
-        const proj = projOf({ A: ["s", "a1"] });
-        const section = sectionOf({ s: [99, 99], a1: [1, 1], noTheme: [2, 2] }); // s 존 밖
-        const points = [
-            { stockCode: "s", date: "2026-08-14", time: "09:30:00" },
-            { stockCode: "noTheme", date: "2026-08-14", time: "09:30:00" },
-        ];
-        expect(bestZoneRanksOf(points, () => section, P({}), proj)).toEqual([]);
-    });
-
-    it("존 순위 셈은 경쟁 순위 — 존 밖 멤버는 순위를 밀지 않는다", () => {
-        const proj = projOf({ A: ["s", "m1", "m2"] });
-        // m1 은 존 밖(등락 50) — 기준 서수가 s 보다 좋아도 존 순위엔 안 낀다. m2 만 앞선다 → s 존 2위.
-        const section = sectionOf({ s: [10, 10], m1: [50, 5], m2: [2, 2] });
-        const points = [{ stockCode: "s", date: "2026-08-14", time: "09:30:00" }];
-        expect(bestZoneRanksOf(points, () => section, P({}), proj)).toEqual([2]);
     });
 });
 

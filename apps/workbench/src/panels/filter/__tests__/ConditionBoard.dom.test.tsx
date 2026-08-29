@@ -121,6 +121,65 @@ describe("＋ 조건 — 생성 입구 하나", () => {
     });
 });
 
+// ⚠ 순서는 결과가 아니라 **서술**을 정한다(어느 필터가 무엇을 죽였나) — 그래서 표시 순서와 store
+//   배열 인덱스의 사상이 어긋나면 숫자가 조용히 틀린다. 층위를 넘는 드롭 차단도 여기서 잰다.
+describe("순서 — 표시 순서를 store 배열 인덱스로 옮긴다", () => {
+    const AX_DAY = {
+        id: "a1", enabled: true,
+        predicates: [{ kind: "axisValue" as const, axisId: "c:day-ax", ranges: [{ from: { kind: "value" as const, value: 1 } }] }],
+    };
+    const TIME_POINT = { id: "p1", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:00" }] }] };
+    /** dataTransfer 는 jsdom 에 없다 — 우리가 실제로 쓰는 셋(setData·types·effectAllowed)만 흉내낸다. */
+    const fakeDt = (): DataTransfer => {
+        const bag = new Map<string, string>();
+        return {
+            setData: (t: string, v: string) => { bag.set(t, v); },
+            getData: (t: string) => bag.get(t) ?? "",
+            get types() { return [...bag.keys()]; },
+            effectAllowed: "none",
+        } as unknown as DataTransfer;
+    };
+    /** 줄 전체(draggable div) — 이름 버튼의 조상 중 draggable 인 것. */
+    const rowOf = (c: HTMLElement, text: string): HTMLElement => {
+        let el: HTMLElement | null = byText(c, text) ?? null;
+        while (el && !el.draggable) el = el.parentElement;
+        if (!el) throw new Error(`'${text}' 줄이 없다`);
+        return el;
+    };
+    /**
+     * ⚠ 세 이벤트를 한 `act` 로 묶으면 안 된다 — dragStart 가 심은 `dragId` 가 커밋되기 전에 drop
+     * 핸들러가 옛 클로저를 읽어 아무 일도 안 난다(검사가 조용히 통과하는 게 아니라 조용히 실패한다).
+     * fireEvent 는 각자 act 로 감싸므로 나눠 부르면 사이에 리렌더가 낀다.
+     */
+    const dragRow = (c: HTMLElement, from: string, to: string): void => {
+        const dataTransfer = fakeDt();
+        fireEvent.dragStart(rowOf(c, from), { dataTransfer });
+        fireEvent.dragOver(rowOf(c, to), { dataTransfer });
+        fireEvent.drop(rowOf(c, to), { dataTransfer });
+    };
+
+    const ids = (): string[] => stages().map((s) => s.id);
+
+    it("같은 층위 안에서 자리가 바뀐다", () => {
+        useWorkbench.setState({ filterStages: [DATE_STAGE, AX_DAY] });
+        const { container } = renderBoard();
+        expect(ids()).toEqual(["d1", "a1"]);
+
+        dragRow(container, "26.07.06~26.07.07", "값");
+
+        expect(ids()).toEqual(["a1", "d1"]);
+    });
+
+    it("층위는 못 넘는다 — 하루 조건을 타점 조건에 떨어뜨려도 그대로", () => {
+        useWorkbench.setState({ filterStages: [DATE_STAGE, TIME_POINT] });
+        const { container } = renderBoard();
+
+        dragRow(container, "26.07.06~26.07.07", "09:00~10:00");
+
+        expect(ids()).toEqual(["d1", "p1"]);
+    });
+});
+
 describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
     it("◉ 토글로 깔때기에서 빼고, ✕ 로 지운다", () => {
         useWorkbench.setState({ filterStages: [DATE_STAGE] });

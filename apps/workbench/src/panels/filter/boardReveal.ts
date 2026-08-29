@@ -24,15 +24,35 @@ export const REVEAL_SCOPE = "funnelReveal";
 /** 레일 줄(축·날짜·시간)이 사는 화면의 자리 — 보내는 손과 받는 화면이 이 키 하나로 만난다. */
 export const RAIL_REVEAL = "rails";
 
-/** 되짚기 신호 한 자리 — 보내는 쪽(보드)과 받는 쪽(편집면)이 같은 키를 본다. */
-export function useRevealSignal(key: string): { reveal: BoardReveal | null; send: (stageId: string) => void } {
-    const stored = useWorkbench((s) => s.sessionUi[REVEAL_SCOPE]?.[key]) as BoardReveal | undefined;
+/** 되짚기를 보내는 쪽(조건 목록). */
+export function useRevealSender(key: string): (stageId: string) => void {
     const setSessionUi = useWorkbench((s) => s.setSessionUi);
-    const send = useCallback(
+    return useCallback(
         (stageId: string) => setSessionUi(REVEAL_SCOPE, key, { stageId, at: Date.now() }),
         [setSessionUi, key],
     );
-    return { reveal: stored ?? null, send };
+}
+
+/**
+ * 되짚기를 받는 쪽(편집면) — **한 손도장은 한 번만 발화한다.**
+ *
+ * 신호를 지우지 않고 남겨 두는 이유는 대상 패널이 닫혀 있다가 막 열리는 경우를 위해서인데, 그러면
+ * 재마운트(패널 재개봉·프리셋 전환)마다 옛 신호로 다시 발화한다. `onBeforeScroll` 이 **영속 상태**
+ * (`wb.filterDrawerOpen`)를 건드리므로 그 재발화는 사용자가 접어 둔 서랍을 조용히 되펴 저장까지 한다.
+ * 그래서 신호는 남기되 **처리한 손도장(at)** 을 같이 적어, 같은 도장에는 두 번 반응하지 않는다.
+ * (지우는 대신 도장을 적는 이유: 지우면 그 렌더에서 reveal 이 null 이 되어 강조 타이머까지 딸려
+ * 취소된다 — 신호 수명과 강조 수명은 엮이면 안 된다.)
+ */
+export function useRevealConsumer(key: string): { reveal: BoardReveal | null; markHandled: () => void } {
+    const stored = useWorkbench((s) => s.sessionUi[REVEAL_SCOPE]?.[key]) as BoardReveal | undefined;
+    const handledAt = useWorkbench((s) => s.sessionUi[REVEAL_SCOPE]?.[`${key}:handledAt`]) as number | undefined;
+    const setSessionUi = useWorkbench((s) => s.setSessionUi);
+    const fresh = stored !== undefined && stored.at !== handledAt ? stored : null;
+    const markHandled = useCallback(() => {
+        const cur = useWorkbench.getState().sessionUi[REVEAL_SCOPE]?.[key] as BoardReveal | undefined;
+        if (cur) setSessionUi(REVEAL_SCOPE, `${key}:handledAt`, cur.at);
+    }, [setSessionUi, key]);
+    return { reveal: fresh, markHandled };
 }
 
 export const rowIdOfKey = (k: RailKey): string => (k.kind === "axis" ? `axis:${k.axisId}` : k.kind);
@@ -59,6 +79,8 @@ export function useBoardReveal(reveal: BoardReveal | null, stages: readonly Filt
      * 시트가 숨긴 열을 먼저 꺼내고 rAF 뒤에 스크롤하는 것과 같은 대응(useSheetColumns).
      */
     onBeforeScroll?: (rowId: string) => void;
+    /** 이 손도장을 처리했다고 적는다 — 재마운트 재발화 방지(useRevealConsumer 머리 주석). */
+    onHandled?: () => void;
 } = {}): {
     registerRow: (id: string) => (el: HTMLElement | null) => void;
     flash: string | null;
@@ -66,22 +88,31 @@ export function useBoardReveal(reveal: BoardReveal | null, stages: readonly Filt
     // effect 안에서 최신 콜백을 읽는다 — 매 렌더 새 함수가 와도 effect 가 재발화하지 않게(재스크롤 방지).
     const beforeScroll = useRef(opts.onBeforeScroll);
     beforeScroll.current = opts.onBeforeScroll;
+    const handled = useRef(opts.onHandled);
+    handled.current = opts.onHandled;
     const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
     const revealRowId = useMemo(() => {
         if (!reveal) return null;
         const s = stages.find((x) => x.id === reveal.stageId);
         return s ? rowIdOfStage(s) : null;
     }, [reveal, stages]);
-    const [flash, setFlash] = useState<string | null>(null);
+    // 강조는 **스스로 꺼진다** — 신호 소비와 수명을 엮으면 신호를 처리한 렌더에서 reveal 이 사라지며
+    // 위 effect 의 cleanup 이 타이머까지 취소한다(강조가 영영 안 꺼지거나 즉시 사라진다).
+    const [flash, setFlash] = useState<{ rowId: string; at: number } | null>(null);
+    useEffect(() => {
+        if (flash === null) return;
+        const t = setTimeout(() => setFlash(null), 1400);
+        return () => clearTimeout(t);
+    }, [flash]);
     useEffect(() => {
         if (!revealRowId) return;
         beforeScroll.current?.(revealRowId);
         // 방금 펼친 줄은 이 tick 에 아직 없다 — 다음 프레임에 찾는다(있던 줄이면 한 프레임 늦을 뿐).
         const raf = requestAnimationFrame(() =>
             rowRefs.current.get(revealRowId)?.scrollIntoView({ block: "center", behavior: "smooth" }));
-        setFlash(revealRowId);
-        const t = setTimeout(() => setFlash(null), 1400);
-        return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+        setFlash({ rowId: revealRowId, at: reveal?.at ?? 0 });
+        handled.current?.();
+        return () => cancelAnimationFrame(raf);
     }, [revealRowId, reveal?.at]);
 
     const registerRow = (id: string) => (el: HTMLElement | null): void => {
@@ -89,5 +120,5 @@ export function useBoardReveal(reveal: BoardReveal | null, stages: readonly Filt
         else rowRefs.current.delete(id);
     };
 
-    return { registerRow, flash };
+    return { registerRow, flash: flash?.rowId ?? null };
 }

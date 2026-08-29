@@ -84,7 +84,6 @@ export interface RailProps<V> {
     /** 현재 타점의 자리(있으면). */
     marker?: { frac: number; label: string } | null;
     /** 되짚기 강조 — 위 목록에서 이 조건을 눌러 찾아왔을 때. */
-    highlight?: boolean;
     /**
      * 서랍 손잡이(계산 축만) — 이 축을 층위 칸 서랍에 넣거나 꺼낸다. **보기 상태일 뿐 조건은 안 건드린다**.
      * 이름 열 안에 두는 이유: 그 열이 이미 "이 축 자체"를 다루는 자리(순서 잡이·값 입력)라서다.
@@ -111,7 +110,7 @@ export interface RailProps<V> {
 
 export function Rail<V>({
     label, ranges, single = false, cut = false, removable = true, toFrac, fromFrac, fmt, minLabel, maxLabel,
-    ticks, memberTicks, marker, highlight = false, disabledNote, dragHandle, stow, onType, onChange,
+    ticks, memberTicks, marker, disabledNote, dragHandle, stow, onType, onChange,
 }: RailProps<V>): JSX.Element {
     const trackRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<RailDrag | null>(null);
@@ -174,7 +173,6 @@ export function Rail<V>({
     return (
         <div className="rail-row" style={{
             display: "flex", alignItems: "center", height: RAIL_ROW_H, borderBottom: "1px solid var(--border-subtle)",
-            background: highlight ? "var(--accent-soft)" : "transparent", transition: "background .35s ease",
         }}>
             {/* 이름 열 = 순서 잡이(잡이가 있을 때). 이름 자체를 끄는 건 시트 열 헤더와 같은 손짓이라
                 두 화면의 어휘가 갈리지 않는다. 아래 "입력" 버튼의 클릭은 그대로 산다. */}

@@ -17,13 +17,12 @@ const TIME_MIN = minutesOfDay("08:00");
 const TIME_MAX = minutesOfDay("20:00");
 const TIME_STEP = 5; // 분 — 이보다 잘게 자르는 조건은 손이 아니라 정밀 입력의 일
 
-export function DateRail({ dates, ranges, marker, highlight, onType, onChange }: {
+export function DateRail({ dates, ranges, marker, onType, onChange }: {
     /** 후보 거래일(오름차 정렬·중복 없음). 이 목록이 곧 척도다. */
     dates: readonly string[];
     ranges: readonly DateRange[];
     /** 현재 보고 있는 날짜. */
     marker: string | null;
-    highlight?: boolean;
     onType: (x: number, y: number) => void;
     onChange: (ranges: DateRange[] | null) => void;
 }): JSX.Element {
@@ -49,7 +48,6 @@ export function DateRail({ dates, ranges, marker, highlight, onType, onChange }:
             // 거래일이 수백 개면 틱이 벽이 된다 — 척도가 이미 균등하니 표식이 주는 정보가 없다.
             ticks={dates.length <= 60 ? fracs : undefined}
             marker={marker ? { frac: fracOf(marker), label: shortDate(marker) } : null}
-            highlight={highlight}
             disabledNote={dates.length === 0 ? "후보 날짜가 없습니다" : undefined}
             onType={onType}
             onChange={(next) => onChange(next.length > 0 ? next.map((r) => ({ from: r.from, to: r.to })) : null)}
@@ -57,12 +55,11 @@ export function DateRail({ dates, ranges, marker, highlight, onType, onChange }:
     );
 }
 
-export function TimeRail({ ranges, tickTimes, marker, highlight, onType, onChange }: {
+export function TimeRail({ ranges, tickTimes, marker, onType, onChange }: {
     ranges: readonly TimeRange[];
     /** 실제 타점 시각들(HH:MM:SS) — 분포를 틱으로. */
     tickTimes: readonly string[];
     marker: string | null;
-    highlight?: boolean;
     onType: (x: number, y: number) => void;
     onChange: (ranges: TimeRange[] | null) => void;
 }): JSX.Element {
@@ -83,7 +80,6 @@ export function TimeRail({ ranges, tickTimes, marker, highlight, onType, onChang
             maxLabel={timeOfMinutes(TIME_MAX)}
             ticks={ticks}
             marker={marker ? { frac: timeFrac(marker), label: marker.slice(0, 5) } : null}
-            highlight={highlight}
             onType={onType}
             onChange={(next) => onChange(next.length > 0 ? next.map((r) => ({ from: r.from, to: r.to })) : null)}
         />
