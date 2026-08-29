@@ -1,7 +1,7 @@
 // 그룹 생성 흐름 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다.
 import { useRef, useState } from "react";
 import type { GroupExpr } from "../rank/groupFilter.js";
-import type { GroupEditorAnchor } from "./BoardEditors.js";
+import type { GroupEditorAnchor } from "./ConditionEditors.js";
 import type { FilterPredicate, Grain } from "./stage.js";
 
 /**

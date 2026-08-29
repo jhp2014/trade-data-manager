@@ -23,7 +23,7 @@ import { Legend, PASS_CELLS } from "./cells.js";
 import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import { GrainSection, Note } from "./grain.js";
-import { GroupEditors, type GroupEditorAnchor } from "./BoardEditors.js";
+import { GroupEditors, type GroupEditorAnchor } from "./ConditionEditors.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
 import { RAIL_REVEAL, useRevealSignal } from "./boardReveal.js";
 import { useLinkedThemeStage } from "./themeLink.js";

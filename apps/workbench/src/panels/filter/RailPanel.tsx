@@ -29,7 +29,7 @@ import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useFunnel } from "./FunnelContext.js";
-import { RailEditors, type RailEditor } from "./BoardEditors.js";
+import { RailEditors, type RailEditor } from "./ConditionEditors.js";
 import { RAIL_REVEAL, rowIdOfKey, useBoardReveal, useRevealSignal } from "./boardReveal.js";
 import { ComputedAxisRail } from "./rail/AxisRails.js";
 import { DateRail, TimeRail } from "./rail/RangeRails.js";
