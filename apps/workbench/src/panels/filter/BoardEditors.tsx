@@ -1,5 +1,6 @@
-// 보드의 편집기(정밀 입력·그룹 팔레트) — 팝오버 4갈래(그룹 편집/생성 · 날짜 · 시간 · 축 값)를
-// 한 자리에서 배선한다. 어느 갈래든 쓰기는 보드의 write(레일 하나 = 필터 하나)를 그대로 지난다.
+// 조건의 정밀 입력 팝오버들 — **두 화면이 나눠 갖는다**: 레일 갈래 셋(날짜·시간·축 값)은 필터 레일
+// 패널의 onType 입구가, 그룹 팔레트는 편성 보드가 연다. 한 컴포넌트로 두면 그룹 생성 draft 배선을
+// 레일 패널까지 끌고 가야 해서 갈랐다 — 쓰기는 여전히 각 화면의 write(레일 하나 = 필터 하나)를 지난다.
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { parseDate, parseTime, shortDate } from "../../lib/date.js";
 import type { GroupExpr } from "../rank/groupFilter.js";
@@ -8,47 +9,54 @@ import { RangeTextEditor } from "./RangeTextEditor.js";
 import { predicateOfKind, type RailKey } from "./stageBinding.js";
 import type { AxisValueRange, DateRange, FilterPredicate, FilterStage, Grain, TimeRange } from "./stage.js";
 
-/** 보드에 떠 있는 편집기 하나 — null 이면 아무 팝오버도 없다.
+/** 레일 줄에서 여는 편집기 하나 — null 이면 아무 팝오버도 없다.
  *  날짜/시간을 한 멤버("date" | "time")로 접지 않는 이유: kind 가 합집합인 멤버는 판별 검사로
  *  갈래가 안 좁혀져, 마지막 갈래(axisValue)가 타입상 담판이 안 난다. */
-export type BoardEditor =
-    | { kind: "group"; grain: Grain; stageId?: string; x: number; y: number }
+export type RailEditor =
     | { kind: "date"; x: number; y: number }
     | { kind: "time"; x: number; y: number }
     | { kind: "axisValue"; axisId: string; x: number; y: number };
 
-export function BoardEditors({ editor, stages, draft, onDraftChange, onCloseCreate, write, removeStage, setPredicates, onClose }: {
-    editor: BoardEditor | null;
+/** 그룹 팔레트 — 편집(stageId 있음)과 생성(draft)이 같은 팝오버를 쓴다. */
+export type GroupEditorAnchor = { grain: Grain; stageId?: string; x: number; y: number };
+
+export function GroupEditors({ editor, stages, draft, onDraftChange, onCloseCreate, removeStage, setPredicates, onClose }: {
+    editor: GroupEditorAnchor | null;
     stages: readonly FilterStage[];
-    /** 그룹 **생성** 흐름의 임시 식(useGroupCreateFlow) — 편집(stageId 있음)과 같은 팝오버를 쓴다. */
+    /** 그룹 **생성** 흐름의 임시 식(useGroupCreateFlow). */
     draft: GroupExpr;
     onDraftChange: (e: GroupExpr) => void;
     /** 생성 팝오버 닫기 — draft 커밋 규칙(이중 커밋 가드)이 이 안에 있다. */
     onCloseCreate: () => void;
-    /** 조건 쓰기 — 전부 이 한 줄을 지난다(레일 하나 = 필터 하나). */
-    write: (key: RailKey, predicate: FilterPredicate | null) => void;
     removeStage: (id: string) => void;
     setPredicates: (id: string, predicates: FilterPredicate[]) => void;
     onClose: () => void;
 }): JSX.Element | null {
+    const editingStage = editor?.stageId ? stages.find((s) => s.id === editor.stageId) : undefined;
+    if (editor === null) return null;
+    return editor.stageId && editingStage
+        ? <GroupFilterEditor anchor={editor} scope={editor.grain}
+            expr={(editingStage.predicates.find((p) => p.kind === "group") as Extract<FilterPredicate, { kind: "group" }> | undefined)?.expr ?? { groups: [] }}
+            onChange={(next) => {
+                // 식을 다 비우면 조건이 없어진 것 — 빈 필터를 남기지 않는다(레일에서 구간을 다 지운 것과 같다).
+                if (next.groups.length === 0) { removeStage(editor.stageId!); onClose(); return; }
+                setPredicates(editor.stageId!, [{ kind: "group", expr: next }]);
+            }}
+            onClose={onClose} />
+        : <GroupFilterEditor anchor={editor} scope={editor.grain} expr={draft} onChange={onDraftChange} onClose={onCloseCreate} />;
+}
+
+export function RailEditors({ editor, stages, write, onClose }: {
+    editor: RailEditor | null;
+    stages: readonly FilterStage[];
+    /** 조건 쓰기 — 전부 이 한 줄을 지난다(레일 하나 = 필터 하나). */
+    write: (key: RailKey, predicate: FilterPredicate | null) => void;
+    onClose: () => void;
+}): JSX.Element | null {
     // 축 재료는 Provider 에서 직접 — 부모가 넘겨주지 않는다(어차피 같은 한 벌이라 넘길 이유가 없다).
     const ax = useRankAxes();
-    const editingStage = editor?.kind === "group" && editor.stageId ? stages.find((s) => s.id === editor.stageId) : undefined;
 
     if (editor === null) return null;
-
-    if (editor.kind === "group") {
-        return editor.stageId && editingStage
-            ? <GroupFilterEditor anchor={editor} scope={editor.grain}
-                expr={(editingStage.predicates.find((p) => p.kind === "group") as Extract<FilterPredicate, { kind: "group" }> | undefined)?.expr ?? { groups: [] }}
-                onChange={(next) => {
-                    // 식을 다 비우면 조건이 없어진 것 — 빈 필터를 남기지 않는다(레일에서 구간을 다 지운 것과 같다).
-                    if (next.groups.length === 0) { removeStage(editor.stageId!); onClose(); return; }
-                    setPredicates(editor.stageId!, [{ kind: "group", expr: next }]);
-                }}
-                onClose={onClose} />
-            : <GroupFilterEditor anchor={editor} scope={editor.grain} expr={draft} onChange={onDraftChange} onClose={onCloseCreate} />;
-    }
 
     if (editor.kind === "date") {
         return (

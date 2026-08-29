@@ -56,6 +56,11 @@ export function Section({ title, unit, hint, right, footer, children }: {
     );
 }
 
+/** 칸 안의 안내 한 줄(불러오는 중·축 없음) — 조건 줄과 밝기·크기로 갈린다. 두 화면이 같은 말투를 쓴다. */
+export function Note({ children }: { children: ReactNode }): JSX.Element {
+    return <div style={{ padding: "4px 10px 8px", fontSize: 10.5, color: "var(--text-tertiary)" }}>{children}</div>;
+}
+
 /** 층위 한 칸 — Section 의 층위 어휘 래퍼(기존 소비자 시그니처 유지). */
 export function GrainSection({ grain, right, footer, children }: {
     grain: Grain;

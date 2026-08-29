@@ -1,7 +1,7 @@
 // 그룹 생성 흐름 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다.
 import { useRef, useState } from "react";
 import type { GroupExpr } from "../rank/groupFilter.js";
-import type { BoardEditor } from "./BoardEditors.js";
+import type { GroupEditorAnchor } from "./BoardEditors.js";
 import type { FilterPredicate, Grain } from "./stage.js";
 
 /**
@@ -10,7 +10,7 @@ import type { FilterPredicate, Grain } from "./stage.js";
  */
 export function useGroupCreateFlow(
     addStage: (predicates?: FilterPredicate[]) => void,
-    setEditor: (e: BoardEditor | null) => void,
+    setEditor: (e: GroupEditorAnchor | null) => void,
 ): {
     draft: GroupExpr;
     setDraft: (e: GroupExpr) => void;
@@ -30,7 +30,7 @@ export function useGroupCreateFlow(
     const open = (grain: Grain, x: number, y: number): void => {
         setDraft({ groups: [] });
         draftCommitted.current = false;
-        setEditor({ kind: "group", grain, x, y });
+        setEditor({ grain, x, y });
     };
     return { draft, setDraft, open, close };
 }
