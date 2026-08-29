@@ -37,13 +37,13 @@ const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, s
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
-describe("집합 줄은 상시 한 줄, 막대 서랍은 접힌 채로 시작한다 — 처음 보이는 것이 곧 본론(보드)이다", () => {
-    it("붙박이 둘(전체·연동)은 늘 서 있고, 막대 목록은 안 펼쳐져 있다", () => {
+describe("집합 줄은 상시 한 줄, 막대는 접힌 채로 시작한다 — 처음 보이는 것이 곧 본론(조건 목록)이다", () => {
+    it("붙박이 둘(전체·연동)은 늘 서 있고, 막대는 안 펼쳐져 있다", () => {
         const { container } = renderPanel();
         expect(chipByText(container, "전체")).toBeDefined();
         expect(chipByText(container, "연동")).toBeDefined();
-        expect(container.textContent).not.toContain("근접 탈락"); // 막대 서랍(칸 범례 포함)은 접혀 있다
-        expect(btnByTitle(container, "막대 펼치기").textContent).toContain("→"); // 2 → 2
+        expect(container.textContent).not.toContain("근접 탈락"); // 칸 범례 = 막대가 펼쳐졌다는 표식
+        expect(container.textContent).toContain("→"); // 전체 → 생존은 머리글이 상시로 말한다
     });
 
     // 칩 줄은 **한 줄로 못 박혀 있다**(ScrollRow): 두 줄이 되면 본문 높이가 튀어 보드가 밀린다.
@@ -56,11 +56,15 @@ describe("집합 줄은 상시 한 줄, 막대 서랍은 접힌 채로 시작한
         expect(container.textContent).not.toContain("칩으로 섭니다");
     });
 
-    it("요약 줄을 누르면 막대가 아래에서 올라온다", () => {
+    // 손잡이는 머리글 컨트롤 하나뿐이다(옛 아래 서랍의 요약 줄은 없어졌다) — 목록 전체가 같이 펴진다.
+    it("머리글 '막대' 를 누르면 줄마다 막대가 펴지고, 다시 누르면 접힌다", () => {
+        useWorkbench.setState({
+            filterStages: [{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[1] }] }] }],
+        });
         const { container } = renderPanel();
-        fireEvent.click(btnByTitle(container, "막대 펼치기"));
+        fireEvent.click(btnByTitle(container, "줄마다 5칸 막대"));
         expect(container.textContent).toContain("근접 탈락"); // 칸 범례 = 막대가 펼쳐졌다는 표식
-        fireEvent.click(btnByTitle(container, "막대 접기"));
+        fireEvent.click(btnByTitle(container, "줄마다 5칸 막대"));
         expect(container.textContent).not.toContain("근접 탈락");
     });
 });
