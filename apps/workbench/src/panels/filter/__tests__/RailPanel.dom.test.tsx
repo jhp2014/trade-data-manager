@@ -488,6 +488,30 @@ describe("서랍 — 축을 치우되 조건은 살려 둔다", () => {
         }
     });
 
+    /**
+     * ⚠ 이 검사는 `scrollIntoView` 를 **스텁이 아니라 스파이**로 둔다. 다른 되짚기 검사들은 no-op 으로
+     * 덮어 버려서, 신호 소비(handledAt)가 자기 effect 의 cleanup 을 돌려 스크롤 rAF 를 취소하던
+     * 회귀를 통째로 놓쳤다 — 서랍은 펴지고 강조도 뜨는데 목록만 안 움직이던 상태.
+     */
+    it("되짚은 줄로 실제로 스크롤한다 — 신호 소비가 그 예약을 취소하면 안 된다", async () => {
+        const calls: Element[] = [];
+        const scrollInto = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = function scrollSpy(this: Element): void { calls.push(this); };
+        try {
+            const { container } = renderRails(ORDER_SEED);
+            drag(trackOf(container, "하루축A"), 0.35, 0.7);
+            const id = stages()[0].id;
+
+            act(() => useWorkbench.getState().setSessionUi(REVEAL_SCOPE, RAIL_REVEAL, { stageId: id, at: 7 }));
+            // 스크롤은 **다음 프레임**이다(방금 펼친 줄이 이 tick 엔 DOM 에 없을 수 있어서).
+            await act(async () => { await new Promise((r) => requestAnimationFrame(() => r(null))); });
+
+            expect(calls).toHaveLength(1);
+        } finally {
+            Element.prototype.scrollIntoView = scrollInto;
+        }
+    });
+
     // ⚠ 신호는 세션에 남는다(대상이 닫혀 있다 막 열릴 수 있어서) — 그래서 **한 손도장은 한 번만**
     //   발화해야 한다. 안 그러면 재마운트마다 서랍을 되펴 영속 설정(wb.filterDrawerOpen)이 조용히 되돌아간다.
     it("같은 손도장은 재마운트에서 다시 안 편다 — 접어 둔 서랍이 되돌아가지 않게", () => {

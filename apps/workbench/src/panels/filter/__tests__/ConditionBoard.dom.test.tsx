@@ -124,10 +124,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
 // ⚠ 순서는 결과가 아니라 **서술**을 정한다(어느 필터가 무엇을 죽였나) — 그래서 표시 순서와 store
 //   배열 인덱스의 사상이 어긋나면 숫자가 조용히 틀린다. 층위를 넘는 드롭 차단도 여기서 잰다.
 describe("순서 — 표시 순서를 store 배열 인덱스로 옮긴다", () => {
-    const AX_DAY = {
-        id: "a1", enabled: true,
-        predicates: [{ kind: "axisValue" as const, axisId: "c:day-ax", ranges: [{ from: { kind: "value" as const, value: 1 } }] }],
-    };
+    const DATE_2 = { id: "d2", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
     const TIME_POINT = { id: "p1", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:00" }] }] };
     /** dataTransfer 는 jsdom 에 없다 — 우리가 실제로 쓰는 셋(setData·types·effectAllowed)만 흉내낸다. */
     const fakeDt = (): DataTransfer => {
@@ -160,14 +157,16 @@ describe("순서 — 표시 순서를 store 배열 인덱스로 옮긴다", () =
 
     const ids = (): string[] => stages().map((s) => s.id);
 
-    it("같은 층위 안에서 자리가 바뀐다", () => {
-        useWorkbench.setState({ filterStages: [DATE_STAGE, AX_DAY] });
+    // ⚠ **표시 순서 ≠ store 순서**로 심는다(타점 조건이 배열 맨 앞인데 화면에선 하루 칸이 먼저 선다).
+    //   둘이 같은 배열로 재면 인덱스 사상이 어긋나도 항등이라 통과한다 — 재려던 걸 안 재는 검사가 된다.
+    it("표시로는 이웃이어도 store 인덱스로 옮긴다", () => {
+        useWorkbench.setState({ filterStages: [TIME_POINT, DATE_STAGE, DATE_2] });
         const { container } = renderBoard();
-        expect(ids()).toEqual(["d1", "a1"]);
+        expect(ids()).toEqual(["p1", "d1", "d2"]);
 
-        dragRow(container, "26.07.06~26.07.07", "값");
+        dragRow(container, "26.07.07~26.07.07", "26.07.06~26.07.07"); // d2 를 d1 자리로
 
-        expect(ids()).toEqual(["a1", "d1"]);
+        expect(ids()).toEqual(["p1", "d2", "d1"]);
     });
 
     it("층위는 못 넘는다 — 하루 조건을 타점 조건에 떨어뜨려도 그대로", () => {
