@@ -15,12 +15,11 @@
 // ⚠ 어휘 — **필터는 과정, 집합은 산출물.** 보드·레일·막대에는 "필터"가, 칩·바인딩·피커에는 "집합"만
 // 보인다. 코드의 `stage`(단계)는 core 깔때기 정산의 모델 낱말이라 그대로 둔다(상류·새로 죽임이 그
 // 순서에 매여 있다).
-import { useState } from "react";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import { FilterBars } from "./filter/FilterBars.js";
 import { FilterBoard } from "./filter/FilterBoard.js";
-import type { BoardReveal } from "./filter/boardReveal.js";
+import { RAIL_REVEAL, useRevealSignal } from "./filter/boardReveal.js";
 import { FunnelHeader } from "./filter/FunnelHeader.js";
 import { SetRow } from "./filter/SetRow.js";
 
@@ -30,7 +29,8 @@ export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element
     const [onlyActive, setOnlyActive] = usePanelUi(panelId, "boardOnlyActive", false);
     // 막대 서랍은 **기본 접힘** — 처음 열었을 때 보이는 것이 곧 이 패널의 본론이어야 한다(보드).
     const [barsOpen, setBarsOpen] = usePanelUi(panelId, "barsOpen", false);
-    const [reveal, setReveal] = useState<BoardReveal | null>(null);
+    // 되짚기 — 신호는 세션 상태에 남는다(레일이 제 패널로 나가면 이 손짓이 패널 경계를 넘는다).
+    const { reveal, send: sendReveal } = useRevealSignal(RAIL_REVEAL);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
@@ -44,9 +44,9 @@ export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element
                 <FilterBoard reveal={reveal} onlyActive={onlyActive} />
             </div>
 
-            {/* 되짚기 — 막대의 이름을 누르면 보드의 그 줄로 데려간다(편집 입구는 보드 하나뿐이다). */}
+            {/* 되짚기 — 막대의 이름을 누르면 그 조건의 편집면(레일)으로 데려간다. */}
             <FilterBars open={barsOpen} onToggle={() => setBarsOpen(!barsOpen)}
-                onReveal={(stageId) => setReveal({ stageId, at: Date.now() })} />
+                onReveal={sendReveal} />
         </div>
     );
 }

@@ -22,8 +22,7 @@ import { applyMonthClick, normalizeMonths, MONTH_PICK_HINT } from "./filter/mont
 import { useFunnel } from "./filter/FunnelContext.js";
 import { linkedTargetLabel, setRefLabel } from "./filter/useSetBinding.js";
 import { PIN } from "../styles/palette.js";
-import { useDock } from "../store/dock.js";
-import { panelEntry } from "../shell/panelCatalog.js";
+import { openAndFocus } from "../lib/openPanel.js";
 
 // 작업셋 패널 — **curation 흔적이 있는 (종목,날짜) 전부**를 브라우징한다(연대순 진입).
 // 머리글 = 컨트롤 줄 + **채널 줄 셋**(월·필터·프리셋 — 각자 한 줄):
@@ -108,13 +107,7 @@ export function WorksetPanel(): JSX.Element {
     const setLabel = selectedSetRef === null
         ? linkedTargetLabel(funnelSelection !== null, funnel.active.length)
         : setRefLabel(selectedSetRef, savedSets);
-    const goToFunnelPanel = (): void => {
-        const api = useDock.getState().api;
-        if (!api) return;
-        const e = panelEntry("filter-funnel-1");
-        const p = api.getPanel(e.id) ?? api.addPanel({ id: e.id, component: e.component, title: e.title });
-        p.api.setActive();
-    };
+    const goToFunnelPanel = (): void => openAndFocus("filter-funnel-1");
     const linkedView = funnel.viewOf(null);
     const view = isUniverse ? null : linkedView;
     const lensOn = view !== null && view.isFiltering && !view.broken;
