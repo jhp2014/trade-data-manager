@@ -71,6 +71,62 @@ describe("칩 스트립 — 행 목록의 파생 뷰, 클릭 = 연동 전환", (
     });
 });
 
+// ⚠ 이 블록이 2026-08-29 재편의 수용 기준이다 — 값 편집의 집이 여기 하나다(보드 행은 요약 줄).
+describe("손잡이 줄 — 연동 행의 파라미터를 직접 고친다", () => {
+    type ThemePredicate = Extract<ReturnType<typeof selectFilterStages>[number]["predicates"][number], { kind: "themeStrength" }>;
+    const paramsOf = (id: string): ThemePredicate["params"] => {
+        const s = selectFilterStages(useWorkbench.getState()).find((x) => x.id === id)!;
+        return (s.predicates[0] as ThemePredicate).params;
+    };
+    const btn = (c: HTMLElement, pred: (b: HTMLButtonElement) => boolean): HTMLButtonElement =>
+        [...c.querySelectorAll("button")].find(pred) as HTMLButtonElement;
+
+    it("연동 행이 없으면 손잡이 줄도 없다 — 고칠 대상이 없는 폼은 거짓말이다", () => {
+        const { container } = renderPanel();
+        expect(btn(container, (b) => b.title === "1 늘리기")).toBeUndefined();
+    });
+
+    /** 그 이름의 칩 안에 있는 ＋/− — 칩마다 스텝퍼가 있어 title 만으로는 못 가른다. */
+    const stepIn = (c: HTMLElement, chipText: string, sign: "＋" | "−"): HTMLButtonElement => {
+        const chip = [...c.querySelectorAll("span")].find((s) => (s.textContent ?? "").startsWith(chipText));
+        const found = [...(chip?.querySelectorAll("button") ?? [])].find((b) => b.textContent === sign);
+        if (!found) throw new Error(`'${chipText}' 칩의 ${sign} 가 없다`);
+        return found;
+    };
+
+    it("스텝퍼 1클릭 = 1커밋 — 동료 ＋ 가 countMin 을 한 칸 올리고 나머지는 그대로", () => {
+        const a = addThemeRow();
+        const { container } = renderPanel();
+        act(() => { fireEvent.click(stepIn(container, "✓ 동료 ≥", "＋")); });
+        expect(paramsOf(a).countMin).toBe(DEFAULT_THEME_STRENGTH.countMin + 1);
+        expect(paramsOf(a).zoneRateN).toBe(DEFAULT_THEME_STRENGTH.zoneRateN);
+    });
+
+    // 옛 보드 카드의 √ 척도 레일이 하던 "한 위씩 다듬기" — 산점 컷선(선형)은 상위권에서 위를 건너뛴다.
+    it("존 N/M 은 ±1 스테퍼로도 고쳐진다 — 컷선 드래그와 같은 값을 본다", () => {
+        const a = addThemeRow();
+        const { container } = renderPanel();
+        act(() => { fireEvent.click(stepIn(container, "존 등락 ≤", "−")); });
+        expect(paramsOf(a).zoneRateN).toBe(DEFAULT_THEME_STRENGTH.zoneRateN - 1);
+        act(() => { fireEvent.click(stepIn(container, "존 대금 ≤", "＋")); });
+        expect(paramsOf(a).zoneAmountN).toBe(DEFAULT_THEME_STRENGTH.zoneAmountN + 1);
+    });
+
+    it("존순위 칩을 켜면 술어가 바뀐다 — 옛 보드 카드의 레일이 하던 일", () => {
+        const a = addThemeRow();
+        const { container } = renderPanel();
+        act(() => { fireEvent.click(btn(container, (b) => (b.textContent ?? "").includes("존순위"))); });
+        expect(paramsOf(a).zoneRankOn).toBe(!DEFAULT_THEME_STRENGTH.zoneRankOn);
+    });
+
+    it("기준(basis) 택1 은 그 행의 파라미터다 — 2026-08-28 에 지운 패널 헤더 컨트롤과 다른 물건", () => {
+        const a = addThemeRow();
+        const { container } = renderPanel();
+        act(() => { fireEvent.click(btn(container, (b) => b.textContent === "대금" && b.title.startsWith("순위 조건"))); });
+        expect(paramsOf(a).basis).toBe("amount");
+    });
+});
+
 describe("꺼진 행 연동 — 탐색 상태를 화면이 말한다", () => {
     it("'꺼짐' 배지가 선다(깔때기 숫자와 패널 숫자가 다른 이유)", () => {
         const a = addThemeRow();

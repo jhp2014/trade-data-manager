@@ -1,11 +1,12 @@
 // 테마 순위 패널 — **연동 거울**: 순위 평면(x=거래대금 서수·y=등락률 서수)에 그날 유니버스를 점으로
 // 세우고, 시선 종목의 테마 동료를 켠 채 시각 스크럽으로 테마 상황을 탐색한다.
 //
-// 조건은 여기서 만들지 않는다 — 행이 조건의 실체고 그 행은 집합 편성 보드가 소유한다(2026-08-28 재편,
-// decisions.md "조건을 만드는 손은 편성 보드 하나"). 이 패널은 테마 행 중 하나(themeLink — 보드의
-// 펼친 행과 같은 id)를 비추고, 존 컷선 드래그는 **그 행의 N/M 을 직접** 고친다(커밋 = 손 뗄 때 한 번,
-// Rail 규약). 행이 없거나 연동을 풀면 컷선·존 틴트 없는 순수 산점이다. 상단 칩 스트립 = 테마 행
-// 목록의 파생 뷰(클릭 = 연동 전환) — 옛 "흔적" 줄의 승격.
+// 조건을 **만드는** 손은 여기 없다(행은 집합 편성 보드의 ＋ 조건이 낳는다). 대신 이 패널이 테마 조건의
+// **유일한 편집면**이다(2026-08-29 재편) — 보드 행은 요약 줄·정산·순서만 진다. 행 하나(themeLink)를
+// 비추고, 존 컷선 드래그는 그 행의 N/M 을(커밋 = 손 뗄 때 한 번, Rail 규약), 손잡이 줄
+// (ThemeParamControls)은 나머지 파라미터를 직접 고친다. 사본이 없으므로 동기화 개념도 없다.
+// 행이 없거나 연동을 풀면 컷선·존 틴트 없는 순수 산점이다. 상단 칩 스트립 = 테마 행 목록의 파생 뷰
+// (클릭 = 연동 전환).
 //
 // 산점은 **항상 /day-replay 재계산 단면**을 그린다(scrubSection 머리 주석 — 서수 출처 단일화).
 // 구운 번들은 헤더의 라이브 통과 카운트(모수 전체) 전용이다.
@@ -26,6 +27,7 @@ import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
 import { anyConditionOn, DEFAULT_THEME_STRENGTH, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
+import { ThemeParamControls } from "./ThemeParamControls.js";
 import { TimelineBar } from "./TimelineBar.js";
 import { tooltipBoxOf } from "./tooltipBox.js";
 import { bandSegmentsOf, subjectOrdinalTrack } from "./zoneTrack.js";
@@ -267,7 +269,13 @@ export function ThemeRankPanel(): JSX.Element {
                         : "shown"} />
             </PanelHeader>
 
-            {/* 칩 스트립 — 테마 행 목록의 파생 뷰(별도 저장물 없음). 클릭 = 연동 전환(보드의 펼침도 따라온다). */}
+            {/* 연동 행의 편집 손잡이 — 컷선으로 못 그리는 값들(존 N/M 은 산점 드래그가 진다). */}
+            {linked !== null && linkedParams !== null && (
+                <ThemeParamControls params={linkedParams}
+                    onPatch={(p) => setPredicates(linked.id, [{ kind: "themeStrength", params: { ...linkedParams, ...p } }])} />
+            )}
+
+            {/* 칩 스트립 — 테마 행 목록의 파생 뷰(별도 저장물 없음). 클릭 = 연동 전환(보드 요약 줄도 같은 상태를 본다). */}
             {themeStages.length > 0 && (
                 <div style={chipsRow}>
                     {themeStages.map((s) => {

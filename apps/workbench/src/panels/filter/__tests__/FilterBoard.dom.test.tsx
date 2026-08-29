@@ -9,7 +9,6 @@ import type { ReactNode } from "react";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
-import { RAIL_PAD } from "../rail/Rail.js";
 import { FilterBoard } from "../FilterBoard.js";
 
 const A = "005930", B = "000660";
@@ -46,9 +45,6 @@ const renderBoard = (seed: Seed = SEED, onlyActive = false): ReturnType<typeof r
         wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
     });
 
-const WIDTH = 1000;
-const xAt = (frac: number): number => RAIL_PAD + frac * (WIDTH - 2 * RAIL_PAD);
-
 const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [] };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
@@ -75,7 +71,9 @@ describe("그룹 — 유일하게 리스트인 조건", () => {
     });
 });
 
-describe("테마 칸 — 행이 조건의 실체(소유권 보드 단일화)", () => {
+// ⚠ 재편의 반대편 수용 기준 — 보드는 **관리만** 한다. 값 편집이 여기 있으면 조건을 두 문법으로
+//   만지게 된다(편집면 검사는 ThemeRankPanel.dom.test.tsx).
+describe("테마 칸 — 요약 줄뿐, 값은 여기서 안 고친다", () => {
     type ThemePredicate = Extract<ReturnType<typeof selectFilterStages>[number]["predicates"][number], { kind: "themeStrength" }>;
     const themePred = (): ThemePredicate => {
         const s = selectFilterStages(useWorkbench.getState()).find((x) => x.predicates[0]?.kind === "themeStrength");
@@ -88,67 +86,49 @@ describe("테마 칸 — 행이 조건의 실체(소유권 보드 단일화)", (
     /** 연동은 sessionUi 라 테스트끼리 흘러간다 — 매번 비운다. */
     beforeEach(() => { useWorkbench.setState({ sessionUi: {} }); });
 
-    it("＋ 테마 조건 = 켜진 기본값 행이 서고 바로 펼쳐진다(연동)", () => {
+    it("＋ 테마 조건 = 켜진 기본값 행이 선다", () => {
         const { container } = renderBoard();
         addRow(container);
         const stages = selectFilterStages(useWorkbench.getState());
         expect(stages).toHaveLength(1);
         expect(stages[0].enabled).toBe(true);
         expect(themePred().params.zoneRateN).toBe(30); // DEFAULT_THEME_STRENGTH
-        // 펼침 = 컷 레일이 DOM 에 있다(접힌 행엔 없다).
-        expect(container.querySelectorAll('[title^="누르거나 끌어서"]').length).toBeGreaterThan(0);
     });
 
-    it("존 N 레일 드래그 — 커밋은 손 뗄 때 한 번, √ 척도의 정수 서수로", () => {
+    it("행에는 편집 손잡이가 없다 — 컷 레일도 스텝퍼도 서지 않는다", () => {
         const { container } = renderBoard();
         addRow(container);
-        const track = container.querySelector('[title^="누르거나 끌어서"]') as HTMLElement; // 첫 레일 = 존 N
-        fireEvent.pointerDown(track, { button: 0, clientX: xAt(0.3), pointerId: 1 });
-        fireEvent.pointerMove(track, { clientX: xAt(0.5), pointerId: 1 });
-        expect(themePred().params.zoneRateN).toBe(30); // 끄는 동안엔 커밋 없음
-        fireEvent.pointerUp(track, { pointerId: 1 });
-        // 도메인 = max(universeMax=0(빈 번들), 30, 40, 2) = 40 → 0.5² · 39 ≈ 10 + 1
-        expect(themePred().params.zoneRateN).toBe(1 + Math.round(0.25 * 39));
+        addRow(container);
+        expect(container.querySelectorAll('[title^="누르거나 끌어서"]')).toHaveLength(0); // 컷 레일 없음
+        expect([...container.querySelectorAll("button")].filter((b) => b.title === "1 늘리기")).toHaveLength(0);
     });
 
-    it("스텝퍼 1클릭 = 1커밋 — 동료 ＋ 가 countMin 을 한 칸 올린다", () => {
+    it("행마다 요약 한 줄 — 어느 것이 연동 중인지 표시가 갈린다", () => {
         const { container } = renderBoard();
         addRow(container);
-        const plus = [...container.querySelectorAll("button")].find((b) => b.title === "1 늘리기");
-        act(() => { fireEvent.click(plus!); });
-        expect(themePred().params.countMin).toBe(4);
-        expect(themePred().params.zoneRateN).toBe(30); // 다른 값은 그대로
+        addRow(container); // 마지막에 만든 행이 연동을 가져간다
+        // 행 = 끝에 연동 표시가 달린 줄(＋ 추가 버튼도 안내에 패널 이름을 쓰므로 title 로는 못 가른다).
+        const rows = [...container.querySelectorAll("button")]
+            .filter((b) => (b.textContent ?? "").includes("◆ 연동") || (b.textContent ?? "").includes("▸ 패널에서"));
+        expect(rows).toHaveLength(2);
+        expect(rows.filter((b) => b.textContent?.includes("◆ 연동"))).toHaveLength(1);
+        expect(rows[0]!.textContent).toContain("존 30/40 · 등락 · 동료≥3"); // 요약 표기 = 칩·막대와 같은 한 벌
     });
 
-    it("행 둘이면 연동 안 된 행은 요약 한 줄로 접힌다 — 클릭하면 갈아탄다", () => {
-        const { container } = renderBoard();
-        addRow(container);
-        addRow(container); // 두 번째가 연동을 가져간다(추가 = 펼침)
-        const collapsed = [...container.querySelectorAll("button")].filter((b) => b.title.startsWith("펼쳐서 레일로"));
-        expect(collapsed).toHaveLength(1);
-        expect(collapsed[0]!.textContent).toContain("존 30/40 · 등락 · 동료≥3"); // 새 요약 표기
-        act(() => { fireEvent.click(collapsed[0]!); });
-        // 갈아탄 뒤에도 펼친 행은 하나뿐이다(펼침 ≡ 연동 상태 하나).
-        expect([...container.querySelectorAll("button")].filter((b) => b.title.startsWith("펼쳐서 레일로"))).toHaveLength(1);
-    });
-
-    it("◉ 토글 = 행 끄기 — 꺼져도 펼침(연동)은 유지되고 '꺼짐' 배지가 말한다", () => {
+    it("◉ 토글 = 행 끄기 — '꺼짐' 배지가 그 사실을 말한다(깔때기 불변)", () => {
         const { container } = renderBoard();
         addRow(container);
         const toggle = [...container.querySelectorAll("button")].find((b) => b.title.startsWith("이 조건 끄기"));
         act(() => { fireEvent.click(toggle!); });
         expect(selectFilterStages(useWorkbench.getState())[0].enabled).toBe(false);
         expect(container.textContent).toContain("꺼짐");
-        expect(container.querySelectorAll('[title^="누르거나 끌어서"]').length).toBeGreaterThan(0); // 레일 유지(탐색)
     });
 
-    it("존순위 칩을 켜면 레일이 서고, 값 편집은 레일이 진다", () => {
+    it("✕ = 행 삭제 — 관리는 보드가 진다", () => {
         const { container } = renderBoard();
         addRow(container);
-        const before = container.querySelectorAll('[title^="누르거나 끌어서"]').length; // 존 N·M 둘
-        const zoneChip = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("존순위 ≤"));
-        act(() => { fireEvent.click(zoneChip!); });
-        expect(themePred().params.zoneRankOn).toBe(true);
-        expect(container.querySelectorAll('[title^="누르거나 끌어서"]').length).toBe(before + 1);
+        const del = [...container.querySelectorAll("button")].find((b) => b.title === "이 조건 삭제");
+        act(() => { fireEvent.click(del!); });
+        expect(selectFilterStages(useWorkbench.getState())).toHaveLength(0);
     });
 });
