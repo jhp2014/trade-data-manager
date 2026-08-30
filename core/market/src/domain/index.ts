@@ -31,6 +31,10 @@ export * from "./review/group.js";
 // 후보 하루를 모수로 삼는 필터 깔때기의 정산(단계 독립 평가 · 3치 AND · 5칸 · 한계 기여도).
 export * from "./review/funnel.js";
 
+// grid — 자동 타점 격자(순수 검출): zigzag 피벗 + 신고가 캔들 목록 + 기준선 첫 터치. Point 판정은 읽기 층(points).
+export * from "./grid/grid.js";
+export * from "./grid/points.js";
+
 // rank — 축 어휘(계산 축의 메타·줄 항목) + 진입가 경로(rankPath). 옛 순위 배치(사람 편집)는 2026-08-25 폐지.
 export * from "./rank/index.js";
 
