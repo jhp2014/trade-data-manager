@@ -23,10 +23,17 @@ export const fingerprintParams = (def: ComputedAxisDef): readonly string[] => [.
 export const fingerprintOf = (def: ComputedAxisDef, applicable: ChartAnchor[], siblingTimes: readonly string[]): string => {
     const params = fingerprintParams(def);
     if (params.length === 0) return "";
-    const anchorsFp = applicable
+    const anchorsFp = anchorsFingerprint(applicable, params);
+    return def.grain !== "day" && def.pointCoupled ? `${anchorsFp}#pts=${[...siblingTimes].sort().join(",")}` : anchorsFp;
+};
+
+/**
+ * 앵커 좌표 직렬화 자체 — 축 정의와 무관한 순수 조각. 자동 타점 격자(grid/pointGrids)가 기준선 무효화
+ * 지문으로 같은 직렬화를 쓴다 — 손으로 다시 적으면 정렬 규칙이 두 벌이 된다(위 ⚠의 재발).
+ */
+export const anchorsFingerprint = (anchors: readonly ChartAnchor[], params: readonly string[]): string =>
+    anchors
         .filter((a) => params.includes(a.param))
         .map((a) => `${a.param}@${a.anchorDate}T${a.anchorTime ?? ""}|${a.field ?? ""}|${a.market ?? ""}`)
         .sort()
         .join(";");
-    return def.grain !== "day" && def.pointCoupled ? `${anchorsFp}#pts=${[...siblingTimes].sort().join(",")}` : anchorsFp;
-};
