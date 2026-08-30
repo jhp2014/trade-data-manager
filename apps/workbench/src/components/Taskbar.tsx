@@ -56,7 +56,8 @@ function textBtn(active = false): React.CSSProperties {
 // 종목 — 이름만 표시(코드 숨김), 클릭하면 종목코드 클립보드 복사(HTS 붙여넣기 연동).
 function NameCopyControl({ code }: { code: string }): JSX.Element {
     const name = useStockName(code);
-    return <StockNameCopy code={code} name={name ?? undefined} style={{ ...textBtn(), cursor: code ? "pointer" : "default" }} />;
+    // 좁은 폭에서 컨텍스트가 줄어야 할 때 여기가 먼저 말줄임된다(다른 조각은 flexShrink 0).
+    return <StockNameCopy code={code} name={name ?? undefined} style={{ ...textBtn(), cursor: code ? "pointer" : "default", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} />;
 }
 
 // 시간 — 텍스트로 보이다 클릭하면 시각 스크러버(08:00~20:00) 팝오버. 버스별 time/setTime 을 prop 으로 받는다.
@@ -83,10 +84,20 @@ function TimeControl({ time, setTime }: { time: string | null; setTime: (t: stri
     );
 }
 
-// 플레인 그룹 공통 골격 — 좌측 고정 컨텍스트(라벨·종목·날짜/시간) + 우측 가로 스크롤 칩 스트립.
-// region 은 작업표시줄 가운데를 반씩(flex 1) 차지 → 창이 많아도 자기 영역 안에서만 스크롤(서로 안 밀림·줄바꿈 없음).
-const REGION: React.CSSProperties = { display: "flex", alignItems: "center", gap: 4, flex: "1 1 0", minWidth: 0, overflow: "hidden" };
-const CONTEXT: React.CSSProperties = { display: "flex", alignItems: "center", gap: 4, flexShrink: 0 };
+// 플레인 그룹 공통 골격 — 좌측 컨텍스트(라벨·종목·날짜/시간) + 우측 가로 스크롤 칩 스트립.
+// region 은 작업표시줄 가운데를 나눠 갖는다. basis=auto(내용 기준) — 칩이 많은 쪽이 더 넓게 시작하고,
+// 모자라면 각자 내용 비례로 줄어든다(옛 1 1 0 50/50 고정은 한쪽 컨텍스트가 절반을 넘기면 칩이 0px 로 찌부러졌다).
+const REGION: React.CSSProperties = { display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0, overflow: "hidden" };
+// 컨텍스트도 줄어든다 — 줄어드는 건 종목명 하나(위 말줄임), 나머지 조각은 flexShrink 0 으로 원형 유지.
+// 그래도 모자라는 좁은 폭에서는 플레인 라벨 텍스트를 통째로 감춘다(.plane-label, theme.css 미디어쿼리) —
+// 플레인은 색 점·칩 색이 이미 말해주므로 라벨은 여기서 가장 먼저 포기할 수 있는 조각.
+const CONTEXT: React.CSSProperties = { display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden" };
+// 최소화 = 닫기 통합이라 이 칩 스트립이 창을 되찾는 유일한 입구 → 칩이 있으면 컨텍스트보다 먼저 폭을 확보한다.
+// (칩이 없을 땐 최소 폭 없음 = 컨텍스트가 다 쓴다.)
+const CHIP_STRIP_MIN = 72;
+function chipStripStyle(count: number): React.CSSProperties | undefined {
+    return count > 0 ? { minWidth: CHIP_STRIP_MIN } : undefined;
+}
 function planeDot(color: string): React.CSSProperties {
     return { display: "inline-block", width: 5, height: 5, borderRadius: 999, background: color, flexShrink: 0 };
 }
@@ -104,16 +115,16 @@ function EodPlaneGroup({ code, date, setDate, time, setTime, chips }: {
     return (
         <span style={REGION}>
             <span style={CONTEXT}>
-                <span style={planeDot("var(--plane-eod)")} />
-                <span style={{ color: "var(--plane-eod)", fontWeight: 600 }}>분석</span>
+                <span style={planeDot("var(--plane-eod)")} title="분석(복기) 플레인" />
+                <span className="plane-label" style={{ color: "var(--plane-eod)", fontWeight: 600, flexShrink: 0 }}>분석</span>
                 <NameCopyControl code={code} />
                 {/* 날짜+시간 = 복기 시점 한 덩어리(gap 좁게) */}
-                <span style={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
                     <DatePicker value={date} onChange={setDate} />
                     <TimeControl time={time} setTime={setTime} />
                 </span>
             </span>
-            <span ref={wheelRef} className="taskbar-chips">{chips}</span>
+            <span ref={wheelRef} className="taskbar-chips" style={chipStripStyle(chips.length)}>{chips}</span>
         </span>
     );
 }
@@ -128,11 +139,11 @@ function LivePlaneGroup({ code, chips }: { code: string; chips: JSX.Element[] })
         <span style={REGION} title={`실시간 연결: ${snapshot?.status ?? "끊김"}`}>
             <span style={CONTEXT}>
                 <span style={planeDot(live ? "var(--plane-live)" : "var(--text-tertiary)")} />
-                <span style={{ color: "var(--plane-live)", fontWeight: 600 }}>실시간</span>
+                <span className="plane-label" style={{ color: "var(--plane-live)", fontWeight: 600, flexShrink: 0 }}>실시간</span>
                 <NameCopyControl code={code} />
-                {t && <span className="tabular" style={{ color: "var(--text-tertiary)" }}>{t}</span>}
+                {t && <span className="tabular" style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>{t}</span>}
             </span>
-            <span ref={wheelRef} className="taskbar-chips">{chips}</span>
+            <span ref={wheelRef} className="taskbar-chips" style={chipStripStyle(chips.length)}>{chips}</span>
         </span>
     );
 }
