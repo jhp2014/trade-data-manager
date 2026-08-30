@@ -164,7 +164,9 @@ export function detectGrid(
             const canDown = lows[i] <= highs[candHiIdx] * down;
             if (canUp || canDown) {
                 // 둘 다 성립(한 봉에 상하 ±임계)하면 **더 오래 서 있던 극값**이 선두 피벗이 된다 —
-                // 같은 봉에서 나온 극값끼리면 봉의 방향(양봉 = 저점이 먼저)으로 가른다. 결정적 규칙.
+                // 두 극값이 같은 봉 출신이면 **확정 봉(bars[i])의 방향**으로 가른다(양봉 = 저점이 먼저).
+                // 극값 봉이 아니라 확정 봉을 읽는 이유: 극값 봉은 방향이 갈린 원인이 아니라 그릇일 뿐이고,
+                // 어느 쪽이 먼저였는지의 마지막 단서는 지금 봉의 종가 방향이다. 결정적 규칙.
                 const goUp = canUp !== canDown ? canUp : candLoIdx !== candHiIdx ? candLoIdx < candHiIdx : Number(bars[i].un.close) > Number(bars[i].un.open);
                 if (goUp) {
                     commit("low", candLoIdx, i);
@@ -193,8 +195,9 @@ export function detectGrid(
         }
     }
     // 마지막 마디 — 장 끝까지 반대 임계가 안 와 미확정(confirmedMin null)으로 싣는다(읽기 층 판단).
-    // 방향 미정(온종일 임계 미달)이면 피벗 0 — 무사건 격자.
-    if (dir !== 0) {
+    // 방향 미정(온종일 임계 미달)이면 피벗 0 — 무사건 격자. 마지막 확정이 장 마지막 봉에서 났으면
+    // 되짚을 후보가 그 봉 자신뿐이라 꼬리를 안 만든다(같은 min 의 퇴화 피벗이 단조 증가 가정을 깬다).
+    if (dir !== 0 && extIdx !== lastPivotIdx) {
         pivots.push({
             kind: dir === 1 ? "high" : "low",
             min: mins[extIdx],

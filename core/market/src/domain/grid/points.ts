@@ -74,6 +74,9 @@ export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_D
         maxKept = p.price;
     }
 
+    // 레벨별 독립 판정이라 게이트 비대칭(기준선 50 > 재돌파 30) 탓에 breakout Point 없이 renewal 만
+    // 서는 날이 있을 수 있다 — 의도된 동작: 돌파 사건 자체는 touchMin 이 증언하고, "유효 breakout 있는
+    // 날만 보기"는 읽기 층 필터의 몫이다(격자·판정이 미리 좁히지 않는다).
     const gateBase = BigInt(def.baselineGateEok) * KRW_PER_EOK;
     const gateRenewal = BigInt(def.renewalGateEok) * KRW_PER_EOK;
     const chosen = new Map<number, { levelIdx: number; e: GridNewHigh }>();

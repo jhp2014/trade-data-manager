@@ -31,6 +31,7 @@ function harness(init: {
     anchors: ChartAnchor[];
     minutes?: Record<string, MinuteCandle[]>;
     adjDaily?: Record<string, DailyCandle[]>;
+    rawDaily?: Record<string, DailyCandle[]>;
 }) {
     let anchors = init.anchors;
     let nowMs = 0;
@@ -49,13 +50,15 @@ function harness(init: {
                 return init.minutes?.[`${code}|${date}`] ?? [];
             },
         },
-        rawDaily: { getRawDailyCandles: async () => [] },
+        rawDaily: { getRawDailyCandles: async (code: string, r: { from: string }) => init.rawDaily?.[`${code}|${r.from}`] ?? [] },
         adjDaily: { getDailyCandles: async (code: string, r: { from: string }) => init.adjDaily?.[`${code}|${r.from}`] ?? [] },
         chartAnchor: { listAll: async () => anchors },
     } as unknown as PointGridsDeps["deps"];
-    const grids = new PointGrids({ deps, store, today: () => TODAY, now: () => nowMs });
+    const make = (detect?: PointGridsDeps["detect"]): PointGrids =>
+        new PointGrids({ deps, store, detect, today: () => TODAY, now: () => nowMs });
     return {
-        grids,
+        grids: make(),
+        make,
         files,
         minuteCalls,
         setAnchors: (a: ChartAnchor[]) => (anchors = a),
@@ -77,6 +80,46 @@ describe("PointGrids 대사", () => {
         expect(file?.version).toBe(POINT_GRID_CALC_VERSION);
         expect(file?.charts["A"].grid.base).toBe(9000);
         expect(file?.charts["A"].grid.touchMin).toBe(9 * 60 + 10);
+    });
+
+    it("이벤트(감자·액분) 낀 차트 — 수정주가 승자를 그 날 원주가 스케일로 되돌려 굽는다", async () => {
+        // 차트일의 raw(5000) ≠ adj(10000) → 환산비 0.5. 앵커 캔들 값 9000(수정주가) → base 4500(원주가).
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)], [`A|${D}`]: [dc("A", D, 10000)] },
+            rawDaily: { [`A|${D}`]: [dc("A", D, 5000)] },
+        });
+        await h.grids.reconcile();
+        expect(h.files.get(D)?.charts["A"].grid.base).toBe(4500);
+    });
+
+    it("분봉 앵커 — 원주가 값을 앵커일 환산비로 **나눠** 수정주가로 올린 뒤 굽는다", async () => {
+        // 앵커일 raw 5000 / adj 10000 → scale 0.5. 분봉 값 9000(원주가) ÷ 0.5 = 수정주가 18000.
+        // 차트일은 항등(scale 1) → base 18000. 나눗셈·곱셈 방향이 뒤집히면 4500 이 나와 잡힌다.
+        const h = harness({
+            anchors: [
+                { stockCode: "A", date: D, param: BASELINE_PARAM, anchorDate: "2026-06-20", anchorTime: "10:00:00", field: "high", market: "un" },
+            ],
+            minutes: { [`A|${D}`]: [fm("A", D, "09:10:00", 20000), fm("A", D, "09:20:00", 20100)], "A|2026-06-20": [fm("A", "2026-06-20", "10:00:00", 9000)] },
+            rawDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 5000)] },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 10000)] },
+        });
+        const r = await h.grids.reconcile();
+        expect(r).toMatchObject({ baked: 1, materialMissing: [] });
+        expect(h.files.get(D)?.charts["A"].grid.base).toBe(18000);
+    });
+
+    it("검출 파라미터가 바뀌면 앵커가 그대로여도 다시 굽는다(지문에 옵션 포함)", async () => {
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)] },
+        });
+        await h.grids.reconcile();
+        const other = h.make({ floorEok: 10 });
+        const r = await other.reconcile();
+        expect(r).toMatchObject({ baked: 1, kept: 0 });
     });
 
     it("무변경 재대사 — 지문 히트, 분봉 읽기 0회", async () => {

@@ -15,12 +15,13 @@
 // 재료 없음(분봉 0건·기준선 캔들 미수집)은 **안 굽는다**(무사건 격자와 다른 것) — 나중에 수집되면
 // 자가치유되도록 항목을 만들지 않되, TTL 음성 메모로 대사마다의 재조회 폭주만 막는다.
 //
-// ⚠ 재료 수리(원주가 재작성·분봉 재백필)엔 자동 무효화가 없다 — 지문은 앵커 좌표만 본다.
-//   처방은 계산 축과 동일: POINT_GRID_CALC_VERSION 상향 또는 캐시 삭제.
+// ⚠ 재료 수리(원주가 재작성·분봉 재백필)엔 자동 무효화가 없다 — 지문은 검출 파라미터+앵커 좌표를 볼 뿐
+//   재료 내용은 못 본다. 처방은 계산 축과 동일: POINT_GRID_CALC_VERSION 상향 또는 캐시 삭제.
 import {
     BASELINE_PARAM,
     candlePrice,
     chartKeyOf,
+    DEFAULT_GRID_OPTIONS,
     detectGrid,
     dropSameDayAnchors,
     kstToday,
@@ -37,7 +38,8 @@ import { anchorsFingerprint } from "../rank/axisFingerprint.js";
 import type { GridStore, PointGridEntry } from "./gridStore.js";
 import { POINT_GRID_FILE_VERSION } from "./gridStore.js";
 
-/** 검출 규칙 버전 — 격자 스키마·검출 파라미터(2% zigzag·floor 20억·세션 창 08:00~15:30)가 바뀌면 올린다(전량 재굽기). */
+/** 검출 규칙 버전 — 격자 **스키마·알고리즘**이 바뀌면 올린다(전량 재굽기). 검출 파라미터(zigzag·floor·세션 창)
+ *  변경은 여기가 아니라 차트 지문(optsKey)이 자동으로 잡는다 — 버전은 코드 변경, 지문은 설정 변경. */
 export const POINT_GRID_CALC_VERSION = 1;
 
 /** (종목,날) 동시 읽기 상한 — 축·리졸버와 같은 이유(커넥션 풀 포화 방지). */
@@ -72,6 +74,8 @@ export interface GridReconcileReport {
     removedCharts: number;
     /** GC 로 지운 날짜 파일. */
     removedDates: number;
+    /** 굽기 중 예외(일시적 DB 오류 등) — 음성 메모 없이 다음 대사에서 재시도. */
+    failed: number;
     tookMs: number;
 }
 
@@ -113,6 +117,13 @@ export class PointGrids {
         }
         const resolved = await resolveBaselines(chartRefs, usable, this.cfg.deps);
 
+        // 검출 파라미터도 지문의 일부다 — 앵커 좌표만 보면 recon A/B(--floor 등)가 같은 디렉터리에서
+        // 전량 히트해 "리포트의 파라미터 ≠ 실제 격자"인 조용한 거짓이 되고, 실캐시가 비표준 격자로 오염된다.
+        // 손 나열 대신 통째 직렬화 — GridDetectOptions 에 필드가 늘 때 여기를 잊으면 같은 버그가 재발한다.
+        // 키 순서는 DEFAULT 스프레드가 고정하므로(선언 순) 결정적이다.
+        const o = { ...DEFAULT_GRID_OPTIONS, ...this.cfg.detect };
+        const optsKey = JSON.stringify(o);
+
         // 기대집합: 날짜 → (코드 → 확정 기준선). null(확정 불가)은 결손으로 센다.
         const expected = new Map<string, Map<string, BaselineAnchor>>();
         let unresolved = 0;
@@ -136,8 +147,14 @@ export class PointGrids {
             unresolved,
             removedCharts: 0,
             removedDates: 0,
+            failed: 0,
             tookMs: 0,
         };
+
+        // 기대집합을 떠난 차트의 음성 메모는 여기서 턴다 — "읽기에서 무시"로만 남아 영원히 쌓이지 않게(RankSections gc 와 대칭).
+        const expectedKeys = new Set<string>();
+        for (const [date, byCode] of expected) for (const code of byCode.keys()) expectedKeys.add(chartKeyOf({ stockCode: code, date }));
+        for (const k of this.missingAt.keys()) if (!expectedKeys.has(k)) this.missingAt.delete(k);
 
         // 날짜별 파일 대조 — kept 는 파일에서 그대로, 나머지는 굽기 잡에 쌓는다.
         interface Bake {
@@ -154,14 +171,15 @@ export class PointGrids {
             const state = { prior, next: {} as Record<string, PointGridEntry>, dirty: false };
             perDate.set(date, state);
             for (const [code, anchor] of byCode) {
-                const f = anchorsFingerprint(baselineByChart.get(`${code}|${date}`) ?? [], [BASELINE_PARAM]);
+                const chartKey = chartKeyOf({ stockCode: code, date });
+                const f = `${optsKey}#${anchorsFingerprint(baselineByChart.get(chartKey) ?? [], [BASELINE_PARAM])}`;
                 const prev = prior[code];
                 if (prev && prev.f === f) {
                     state.next[code] = prev;
                     report.kept++;
                     continue;
                 }
-                const missedAt = this.missingAt.get(`${code}|${date}`);
+                const missedAt = this.missingAt.get(chartKey);
                 if (missedAt !== undefined && nowMs - missedAt < MATERIAL_MISSING_TTL_MS) {
                     report.materialMissing.push({ stockCode: code, date });
                     continue; // 방금 재료 없음이었던 차트 — TTL 안에서는 재조회하지 않는다
@@ -171,31 +189,48 @@ export class PointGrids {
         }
 
         await mapWithConcurrency(bakes, BAKE_CONCURRENCY, async (b) => {
-            const entry = await this.bake(b.code, b.date, b.anchor, b.f);
             const state = perDate.get(b.date)!;
+            let entry: PointGridEntry | null;
+            try {
+                entry = await this.bake(b.code, b.date, b.anchor, b.f);
+            } catch (err) {
+                // 예외 격리 — 한 차트의 일시적 DB 오류가 전수 대사를 통째로 날리지 않게(mapWithConcurrency 는
+                // 예외를 전파한다). 재료 없음과 달리 음성 메모를 안 적는다 — 다음 대사가 곧장 재시도.
+                // 옛 항목이 있었다면 **보존**한다 — 실패는 "결손 확정"이 아니라 "모름"이라, 걷어내면(=removed 로
+                // 세면) 일시 오류 하나가 파일 항목·심하면 날짜 파일까지 지운다. 낡은 지문이 남으니 재시도도 자동.
+                if (state.prior[b.code]) {
+                    state.next[b.code] = state.prior[b.code];
+                }
+                report.failed++;
+                console.warn(`[point-grid] ${b.code} ${b.date} 굽기 실패 — 다음 대사에서 재시도`, err);
+                return;
+            }
             if (entry === null) {
-                this.missingAt.set(`${b.code}|${b.date}`, nowMs);
+                this.missingAt.set(chartKeyOf({ stockCode: b.code, date: b.date }), nowMs);
                 report.materialMissing.push({ stockCode: b.code, date: b.date });
                 // 옛 항목이 있었다면(지문 불일치인데 새 재료가 없음) 낡은 격자를 남기지 않는다 — 결손은 결손.
                 if (state.prior[b.code]) state.dirty = true;
                 return;
             }
-            this.missingAt.delete(`${b.code}|${b.date}`);
+            this.missingAt.delete(chartKeyOf({ stockCode: b.code, date: b.date }));
             state.next[b.code] = entry;
             state.dirty = true;
             report.baked++;
         });
 
         // 파일 반영 — 바뀐 날짜만 쓴다. 기대집합에서 빠진 차트(기준선 삭제)는 next 에 없어 자연히 걷힌다.
+        // 쓰기는 best-effort(RankSections 와 동일) — 디스크 오류로 대사 전체를 reject 하지 않는다.
+        // 실패한 날짜는 파일에 항목이 없으니 다음 대사의 지문 miss 가 자연 재시도다(별도 재시도 집합 불필요).
         for (const [date, state] of perDate) {
             const removed = Object.keys(state.prior).filter((c) => !(c in state.next)).length;
             report.removedCharts += removed;
             if (!state.dirty && removed === 0) continue;
-            if (Object.keys(state.next).length === 0) {
-                await this.cfg.store.remove(date);
-                continue;
+            try {
+                if (Object.keys(state.next).length === 0) await this.cfg.store.remove(date);
+                else await this.cfg.store.write({ v: POINT_GRID_FILE_VERSION, version: POINT_GRID_CALC_VERSION, date, charts: state.next });
+            } catch (err) {
+                console.warn(`[point-grid] ${date} 캐시 쓰기 실패 — 다음 대사에서 재굽기`, err);
             }
-            await this.cfg.store.write({ v: POINT_GRID_FILE_VERSION, version: POINT_GRID_CALC_VERSION, date, charts: state.next });
         }
 
         // GC — 기대집합에 없는 날짜 파일. 기대집합이 비면 통째 skip(미러 초기화 순간 전량 삭제 사고 방지).
@@ -221,6 +256,9 @@ export class PointGrids {
      * 척도: 기준선은 **수정주가 자**(리졸버 계약), 분봉은 **원주가 자**다. 승자 값을 수정주가로 얻은 뒤
      * 차트 날짜의 환산비(rawScaleOf)를 **곱해** 그 날 원주가로 되돌려 검출기에 넣는다 — 안 맞추면
      * 감자·액분 종목에서 첫 터치가 통째로 사라지거나 첫 봉에 붙는다(supplyGap v6 이 반대 방향으로 밟은 함정).
+     *
+     * 값(문턱)은 앵커가 지목한 시장(krx 가능)에서 읽고 검출 스캔은 언제나 UN 분봉이다 — supplyGap 과
+     * 같은 선택(시장 토글 없음, NXT 오염 캔들의 처방은 무시 캔들·앵커의 시장 지목).
      */
     private async bake(code: string, date: string, anchor: BaselineAnchor, f: string): Promise<PointGridEntry | null> {
         const { minute, rawDaily, adjDaily } = this.cfg.deps;

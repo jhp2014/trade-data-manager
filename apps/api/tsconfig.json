@@ -6,6 +6,6 @@
         "noEmit": true,
         "types": ["node", "reflect-metadata"]
     },
-    "include": ["src/**/*"],
+    "include": ["src/**/*", "recon/**/*"],
     "exclude": ["node_modules", "dist"]
 }

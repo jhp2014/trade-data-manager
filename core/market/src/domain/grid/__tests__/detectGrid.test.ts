@@ -142,6 +142,24 @@ describe("detectGrid — zigzag", () => {
         expect(g?.pivots[0]).toMatchObject({ kind: "high", min: 540, confirmedMin: 541 });
     });
 
+    it("마지막 봉에서 확정이 나면 같은 봉의 퇴화 꼬리 피벗을 만들지 않는다(min 단조 증가 보존)", () => {
+        const g = detectGrid(
+            [flat("09:00:00", 10000, 1), flat("09:01:00", 10210, 1), mc("09:02:00", 10210, 10450, 10241, 10300, 1)],
+            null,
+        );
+        expect(g?.pivots.map((p) => [p.kind, p.min])).toEqual([
+            ["low", 540],
+            ["high", 542],
+        ]);
+    });
+
+    it("동시 확정 타이 — 두 극값이 같은 봉 출신이면 확정 봉의 방향으로 가른다", () => {
+        // 극값 둘 다 09:00 봉(고 10000·저 9600). 09:01 봉(9795 보합)에서 상하 확정이 같이 성립 —
+        // 확정 봉이 양봉이 아니므로 고점이 선두 피벗.
+        const g = detectGrid([mc("09:00:00", 9800, 10000, 9600, 9700, 1), flat("09:01:00", 9795, 1)], null);
+        expect(g?.pivots[0]).toMatchObject({ kind: "high", min: 540, price: 10000, confirmedMin: 541 });
+    });
+
     it("legAmount — 직전 피벗 다음 봉부터 피벗 봉까지 누적(무손실)", () => {
         const g = detectGrid(
             [flat("09:00:00", 10000, 100000), flat("09:01:00", 10210, 100000), mc("09:02:00", 10210, 10210, 10005, 10005, 100000)],
