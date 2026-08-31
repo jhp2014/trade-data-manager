@@ -18,7 +18,8 @@ export interface PointGridsView {
     version: number | null;
 }
 
-export function usePointGrids(): PointGridsView {
+/** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(소비는 PointGridsContext 의 usePointGrids). */
+export function usePointGridsValue(): PointGridsView {
     const q = useQuery(pointGridsQuery());
     return useMemo<PointGridsView>(() => {
         const data = q.data ?? null;
@@ -51,7 +52,8 @@ export interface AutoPointsView {
 
 const EMPTY: DerivedPoint[] = [];
 
-export function useAutoPoints(): AutoPointsView {
+/** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(파생이 인스턴스마다 복제된다). */
+export function useAutoPointsValue(): AutoPointsView {
     const q = useQuery(pointGridsQuery());
     const def = useWorkbench((s) => s.pointDef);
     return useMemo<AutoPointsView>(() => {

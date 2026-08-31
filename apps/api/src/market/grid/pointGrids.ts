@@ -114,7 +114,14 @@ export class PointGrids {
 
     /** 와이어 번들 — 게으른 대사 후 메모에서 조립. 바뀐 날짜만 다시 인코딩한다. */
     async bundle(): Promise<PointGridBundle> {
-        await this.reconcile();
+        // 비행 중 gen 이 밀렸으면(앵커 편집) 그 비행은 산출물을 하나도 반영하지 못했다 — 그대로 조립하면
+        // 콜드 상태에서 **빈 번들을 200 으로** 주고 클라가 "자동 Point 0"을 정상으로 오독한다. 한 번 더 돈다.
+        // 상한 3회 — 편집 폭주 중엔 어차피 곧 새 요청이 온다(무한 재시도 금지).
+        for (let i = 0; i < 3; i++) {
+            const g = this.gen;
+            await this.reconcile();
+            if (g === this.gen) break;
+        }
         const dates: PointGridDate[] = [];
         for (const date of [...this.memo.keys()].sort()) {
             const m = this.memo.get(date)!;
@@ -246,13 +253,14 @@ export class PointGrids {
                 return;
             }
             if (entry === null) {
-                this.missingAt.set(chartKeyOf({ stockCode: b.code, date: b.date }), nowMs);
+                // 음성 메모도 자기 세대일 때만 — 낡은 비행이 새 비행이 방금 구운 차트에 TTL 딱지를 붙이지 않게.
+                if (gen === this.gen) this.missingAt.set(chartKeyOf({ stockCode: b.code, date: b.date }), nowMs);
                 report.materialMissing.push({ stockCode: b.code, date: b.date });
                 // 옛 항목이 있었다면(지문 불일치인데 새 재료가 없음) 낡은 격자를 남기지 않는다 — 결손은 결손.
                 if (state.prior[b.code]) state.dirty = true;
                 return;
             }
-            this.missingAt.delete(chartKeyOf({ stockCode: b.code, date: b.date }));
+            if (gen === this.gen) this.missingAt.delete(chartKeyOf({ stockCode: b.code, date: b.date }));
             state.next[b.code] = entry;
             state.dirty = true;
             report.baked++;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
+import { useAllPoints } from "../lib/useAllPoints.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
@@ -115,11 +116,12 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     // ── 열 구성(고정·숨김·폭·컷 + 되짚기) — 넷 다 축 키를 들어 청소 규칙이 같으므로 한 훅이 소유한다.
     // 유령 키 청소 기준은 전체 축 — day 모드의 좁힌 목록으로 프룬하면 공유 컷의 point 축 키가 지워진다.
     const pruneAxisIds = useMemo(() => allAxes.map((a) => a.key), [allAxes]);
-    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode, pruneAxisIds });
+    const autoRows = useWorkbench((s) => s.pointSource) === "auto"; // usePointRows.source 와 같은 값 — 열 구성이 행 원천보다 먼저 선다
+    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode, pruneAxisIds, hideOutcome: autoRows });
     const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = cols;
 
     // ── 전체 타점(행 원천) + 기간. day 모드는 후보 하루(존재 지도 파생)가 행 원천이다.
-    const { points: allPoints, isLoading: pointsLoading } = usePointRows(); // point 행 원천(출처 토글 auto/hand)
+    const { points: allPoints, isLoading: pointsLoading, source: pointSource } = usePointRows(); // point 행 원천(출처 토글 auto/hand)
     const { candidates, isLoading: candLoading } = useCandidateDays();
     const { index: presenceIdx } = usePresenceIndex();
     const allByKey = useMemo(() => {
@@ -256,8 +258,15 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
         if (i >= 0) virt.scrollToIndex(i, { align: "center" });
     }, [subjectRowKey, virt]);
 
-    // ── 결과 저장(뮤테이션 배선) — useOutcome.
-    const outcome = useOutcome(allPoints);
+    // ── 결과 저장(뮤테이션 배선) — useOutcome. **손 타점 전용**: outcome 은 review_points 의 속성이라
+    // 자동 행에서 저장하면 캘리브레이션 셋(동결)에 자동 판정 산물이 새 손 타점으로 태어나고, 화면 칸은
+    // 여전히 빈칸이라(자동 행엔 outcome 이 없다) "안 먹혔다"로 보인다. 후보 목록도 손 타점에서 모은다.
+    const handPoints = useAllPoints();
+    const outcomeBase = useOutcome(handPoints.points);
+    const outcome = useMemo(
+        () => (pointSource === "auto" ? { ...outcomeBase, saveOutcome: () => {} } : outcomeBase),
+        [pointSource, outcomeBase],
+    );
 
     const clickHeader = (key: SortKey, shift: boolean): void => setSort((s) => (shift ? pushSort(s, key) : resetSort(s, key)));
     const unplacedOnSort = sortAxisId ? mainRows.filter((row) => !row.cells[sortAxisId]).length : 0;

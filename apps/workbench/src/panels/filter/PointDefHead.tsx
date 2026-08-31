@@ -2,6 +2,7 @@
 // 조건 목록의 줄이 아니라 머리인 이유: 정의는 깔때기 단이 아니라 모수 선언이라(decisions.md), 돌리면
 // 전 레일 분포가 재계산된다 — 필터와 같은 줄에 섞으면 "조건 하나 만졌는데 다른 조건 숫자가 다 변하는"
 // 화면이 된다. SavedSet 저장/열기에 사본으로 실린다(집합 자립).
+import { useEffect, useState } from "react";
 import { useWorkbench } from "../../store/workbench.js";
 import { isDefaultPointDef } from "../../lib/pointDef.js";
 import type { PointDefinition } from "@trade-data-manager/market/domain";
@@ -14,16 +15,27 @@ function NumField({ label, suffix, value, min, onCommit, title }: {
     onCommit: (v: number) => void;
     title?: string;
 }): JSX.Element {
+    // 커밋은 blur/Enter 에서만 — 정의는 모수 선언이라 한 번 바뀌면 전 파생(1만 Point·특징·깔때기)이
+    // 재계산된다. onChange 즉시 커밋이면 "150" 타이핑이 1→15→150 세 번 계산을 물고, 지운 순간의
+    // 빈 문자열이 Number("")===0 으로 게이트 0 을 커밋하는 함정까지 있다.
+    const [draft, setDraft] = useState(String(value));
+    useEffect(() => setDraft(String(value)), [value]);
+    const commit = (): void => {
+        const v = Number(draft);
+        if (draft.trim() !== "" && Number.isFinite(v) && v >= (min ?? 0)) onCommit(v);
+        else setDraft(String(value)); // 무효 입력은 되돌린다(조용한 0 커밋 금지)
+    };
     return (
         <label title={title} style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
             <span>{label}</span>
             <input
                 type="number"
                 min={min ?? 0}
-                value={value}
-                onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v) && v >= (min ?? 0)) onCommit(v);
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") commit();
                 }}
                 style={{
                     width: 44,

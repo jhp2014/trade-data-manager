@@ -50,4 +50,24 @@ describe("gridFeatureFeeds", () => {
     it("격자가 없는 차트의 Point 는 전 특징에서 결손", () => {
         expect(gridFeatureFeeds(view, () => undefined).every((f) => f.values.length === 0)).toBe(true);
     });
+
+    it("base 가 없거나 0 이하인 격자 — 기준선 대비만 결손, 나머지 특징은 산다", () => {
+        const noBase: PointGrid = { ...grid, base: null };
+        const feeds2 = gridFeatureFeeds(view, () => noBase);
+        expect(feeds2.find((f) => f.key === "grid-baseline-pct")!.values).toHaveLength(0);
+        expect(feeds2.find((f) => f.key === "grid-prior-levels")!.values).toHaveLength(2);
+    });
+
+    it("창 안에 저점 피벗이 여럿이면 최저가 뽑힌다", () => {
+        const deep: PointGrid = {
+            ...grid,
+            pivots: [
+                ...grid.pivots,
+                { kind: "low", min: 595, price: 10050, confirmedMin: 596, legAmount: "0" },
+            ],
+        };
+        const v = gridFeatureFeeds(view, () => deep).find((f) => f.key === "grid-pullback-pct")!.values;
+        // (10300 − 10050) / 10300 ≈ 2.43%
+        expect(v).toEqual([{ stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 2.43 }]);
+    });
 });

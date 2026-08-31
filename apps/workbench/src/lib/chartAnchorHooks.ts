@@ -50,13 +50,14 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
     const anchorsQ = useQuery({ ...allAnchorsQuery(), select });
     const anchors = anchorsQ.data ?? EMPTY_ANCHORS;
 
-    const invalidate = (): void => {
+    const invalidate = (param?: string): void => {
         void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey }); // 복제본 앵커 테이블 — 차트·작업셋·배지가 전부 이 키
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey }); // 앵커는 축 입력 — 즉시 재굽기
-        void qc.invalidateQueries({ queryKey: pointGridsQuery().queryKey }); // 격자 기대집합·기준선 승자도 앵커 파생
+        // 격자는 **기준선 앵커만** 재료 — 무시 캔들 편집이 2.5MB 재다운로드+전 파생 재계산을 물지 않게 가린다.
+        if (param === undefined || param === BASELINE_PARAM) void qc.invalidateQueries({ queryKey: pointGridsQuery().queryKey });
     };
-    const addMut = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
-    const removeMut = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });
+    const addMut = useMutation({ mutationFn: addChartAnchor, onSuccess: (_d, v) => invalidate(v.param) });
+    const removeMut = useMutation({ mutationFn: removeChartAnchor, onSuccess: (_d, v) => invalidate(v.param) });
     const removeManyMut = useMutation({
         // allSettled + onSettled — 부분 실패면 일부는 이미 서버에서 지워졌다. 전 요청이 끝난 뒤(앞질러 재조회하면
         // 비행 중인 삭제가 stale 을 만든다) 성패 무관하게 invalidate 해야 화면이 서버 진실로 수렴한다.
@@ -65,7 +66,7 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
             const failed = results.filter((r) => r.status === "rejected").length;
             if (failed > 0) throw new Error(`앵커 ${failed}/${targets.length}건 삭제 실패`);
         },
-        onSettled: invalidate,
+        onSettled: (_d, _e, targets) => invalidate(targets.some((t) => t.param === BASELINE_PARAM) ? BASELINE_PARAM : "-"),
     });
     // 비행 중 가드 — 토글은 "복제본에 있으면 삭제, 없으면 추가"인데 복제본은 응답+invalidate 뒤에야 바뀐다.
     // 그 창에서 같은 앵커를 또 누르면(더블클릭) 두 번째도 add 로 가 서버 중복/400. 앵커 정체성(chartAnchorKey)

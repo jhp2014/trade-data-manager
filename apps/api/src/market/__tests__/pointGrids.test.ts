@@ -277,6 +277,29 @@ describe("PointGrids 대사", () => {
         expect(h.files.has(D)).toBe(false); // 낡은 비행의 산출물이 파일로 남지 않음
     });
 
+    it("bundle — 비행 중 invalidate 로 gen 이 밀리면 재대사해 빈 번들 200 을 주지 않는다", async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((res) => (release = res));
+        let block = true;
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)] },
+            beforeMinutes: async (k) => {
+                if (k === `A|${D}` && block) await gate;
+            },
+        });
+        const p = h.grids.bundle(); // 콜드 — 첫 대사가 A 분봉 문턱에서 정지(gen0)
+        await new Promise((r) => setTimeout(r, 0));
+        h.grids.invalidate(); // 앵커 편집 — gen0 비행의 산출물은 전부 버려진다
+        block = false;
+        release();
+        const bundle = await p; // 재대사(gen1)가 돌아 실제 격자가 실려야 한다
+        expect(bundle.dates).toHaveLength(1);
+        expect(bundle.dates[0].charts).toHaveLength(1);
+        expect(decodeChartGrid(bundle.dates[0].charts[0]).stockCode).toBe("A");
+    });
+
     it("기준선 캔들을 못 읽으면(미수집) 재료 없음 — 낡은 항목도 남기지 않는다", async () => {
         const h = harness({
             anchors: [anchor("A", D, "2026-06-20")],

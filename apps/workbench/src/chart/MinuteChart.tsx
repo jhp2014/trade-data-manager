@@ -73,6 +73,11 @@ function AnchoredBox({
  */
 const MARKER_BOX = { w: 18, h: 14 } as const;
 
+// prop 기본값은 모듈 상수로 — `= []` 인라인이면 렌더마다 새 참조라 세로선 effect(setLines+bumpOverlay)가
+// 매 렌더 발화한다(실시간 차트처럼 안 넘기는 호출자에서).
+const NO_SAVED: SavedPointInput[] = [];
+const NO_AUTO: AutoPointInput[] = [];
+
 function markerBoxStyle(x: number, zIndex: number): CSSProperties {
     return {
         position: "absolute",
@@ -144,8 +149,8 @@ export function MinuteChart({
     base,
     pctBase,
     markerTime = null,
-    savedPoints = [],
-    autoPoints = [],
+    savedPoints = NO_SAVED,
+    autoPoints = NO_AUTO,
     showPointInfo = false,
     zoom = null,
     lockTimeScale = false,

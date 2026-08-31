@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Inject, Body } from "@nestjs/common";
-import type { ChartAnchor, ChartAnchorReader, NewChartAnchor } from "@trade-data-manager/market";
+import { BASELINE_PARAM, type ChartAnchor, type ChartAnchorReader, type NewChartAnchor } from "@trade-data-manager/market";
 import type { AddChartAnchorInput, RemoveChartAnchorInput } from "@trade-data-manager/wire";
 import { CHART_ANCHOR_REPO, CHART_ANCHORS, COMPUTED_AXES, POINT_GRIDS } from "../tokens.js";
 import { ChartAnchors } from "./chartAnchors.js";
@@ -29,7 +29,7 @@ export class ChartAnchorController {
     @Post()
     async add(@Body() body: AddChartAnchorInput): Promise<ChartAnchor> {
         const created = await this.anchors.add(this.assertAnchorKey(body));
-        this.invalidateReadModels();
+        this.invalidateReadModels(created.param);
         return created;
     }
 
@@ -38,16 +38,19 @@ export class ChartAnchorController {
     // 정적 경로라 @Post() 인덱스와 구분된다.
     @Post("remove")
     async remove(@Body() body: RemoveChartAnchorInput): Promise<{ ok: true }> {
-        await this.anchors.remove(this.assertAnchorKey(body));
-        this.invalidateReadModels();
+        const key = this.assertAnchorKey(body);
+        await this.anchors.remove(key);
+        this.invalidateReadModels(key.param);
         return { ok: true };
     }
 
     /** 앵커 변경 직후 굽기 세대 상향 — 변경 **전에** 시작된 in-flight 빌드에 이후 refetch 가 합류하지 않게
      *  (파일 캐시의 지문 무효화는 다음 빌드에서 작동하지만, 이미 굽는 중인 빌드는 옛 앵커를 읽었다). */
-    private invalidateReadModels(): void {
+    private invalidateReadModels(param: string): void {
         this.computed.invalidate();
-        this.grids.invalidate(); // 격자 기대집합·기준선 승자가 앵커 파생 — 같은 순간 세대 상향
+        // 격자는 **기준선 앵커만** 재료다 — 무시 캔들 등 다른 param 편집이 in-flight 웜업(콜드 43s)을
+        // 통째로 버리고 전량 대사를 다시 물게 하지 않는다(계산 축은 전 param 이 입력이라 가리지 않는다).
+        if (param === BASELINE_PARAM) this.grids.invalidate();
     }
 
     /** HTTP 경계 검증(형식만) — 추가·삭제가 같은 자연키 튜플을 쓰므로 파싱도 한 곳이다. */

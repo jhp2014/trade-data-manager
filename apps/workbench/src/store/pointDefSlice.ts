@@ -19,9 +19,17 @@ export const persistPointDef = (def: PointDefinition): PointDefinition => POINT_
 export type PointSource = "auto" | "hand";
 const POINT_SOURCE = persistedField<PointSource>(
     "wb.pointSource.v1",
-    (o) => (o === "auto" || o === "hand" ? o : null),
+    parsePointSource,
     "auto",
 );
+
+/** SavedSet payload 파서와 슬라이스가 같은 유효성 정의를 본다(parsePointDef 와 같은 규칙). */
+export function parsePointSource(o: unknown): PointSource | null {
+    return o === "auto" || o === "hand" ? o : null;
+}
+
+/** 저장까지 한 손에 — 집합 열기가 출처를 되돌릴 때도 같은 영속 경로를 지난다. */
+export const persistPointSource = (source: PointSource): PointSource => POINT_SOURCE.save(source);
 
 export interface PointDefSlice {
     /** 자동 타점 판정 정의 — pointsOf 의 유일한 입력(usePointGrids·차트 마커·특징 축이 같은 한 벌을 본다). */

@@ -14,7 +14,9 @@ import type { AutoPointsView } from "./usePointGrids.js";
 
 const r2 = (x: number): number => Math.round(x * 100) / 100;
 
-/** Point 가 넘은 레벨(마디)에서 Point 캔들까지의 최저 저점 피벗 — 없으면 null(breakout 등, 결손은 결손). */
+/** Point 가 넘은 레벨(마디)에서 Point 캔들까지의 최저 저점 피벗 — 없으면 null(breakout 등, 결손은 결손).
+ *  저점의 confirmedMin 은 안 본다(의도) — 가격 자체는 Point 시각 이전에 일어난 사실이라 미래 누출이 아니고,
+ *  묻는 것이 "확정 마디 저점"이 아니라 "그 구간을 지나며 실제로 어디까지 빠졌나"이기 때문. */
 function pullbackDepthPct(grid: PointGrid, levelMin: number | null, levelPrice: number, pointMin: number): number | null {
     if (levelMin === null) return null;
     let low = Infinity;

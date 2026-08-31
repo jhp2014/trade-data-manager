@@ -3,11 +3,15 @@
 // auto = 격자 파생(useAutoPoints — 정의 반영, outcome/memo 없음), hand = 수동 review_points.
 // 합집합은 만들지 않는다(같은 분의 키 충돌 + 출처 불명 화면). 차트의 저장/삭제 판정(useChartPoints)은
 // 손 타점 고정이라 이 토글의 영향 밖 — space 토글이 자동 행을 지우려 드는 사고가 없다.
+//
+// ⚠ 존재 지도(usePresence)·후보 하루·시트 day 행의 타점 배지/카운트도 **손 타점 고정**이다(의도된 절충,
+// 2026-08-31 planner Q3) — auto 출처에서 "타점 없음" 존재 필터를 건 줄에 자동 Point 가 붙어 보일 수 있다.
+// 모수 정합(자동 Point 차트 ⊆ 앵커 차트 ⊆ 후보 하루)은 유지되므로 깔때기 층위 중첩은 안전하다.
 import { useMemo } from "react";
 import type { ReviewPoint } from "../api/reviewPoints.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useAllPoints } from "./useAllPoints.js";
-import { useAutoPoints } from "./usePointGrids.js";
+import { useAutoPoints } from "./PointGridsContext.js";
 
 export interface PointRowsView {
     /** 날짜 내림차순, 같은 날 시각 오름차순(useAllPoints 피드 정렬과 동일 계약). */

@@ -6,7 +6,7 @@ import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { useReviewPointData } from "../lib/chartHooks.js";
-import { autoPointsOfChart, useAutoPoints } from "../lib/usePointGrids.js";
+import { autoPointsOfChart, useAutoPoints } from "../lib/PointGridsContext.js";
 import { minuteToHms } from "@trade-data-manager/market/domain";
 import type { AutoPointInput } from "../chart/minuteOverlays.js";
 import { ownBundle, useAnchorMarks, useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";

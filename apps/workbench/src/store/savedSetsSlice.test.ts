@@ -149,3 +149,66 @@ describe("삭제와 선택 포인터", () => {
         expect(store.getState().selectedSetRef).toEqual({ kind: "saved", setId: a.id });
     });
 });
+
+describe("저장 집합 — 타점 정의·출처 payload (additive, 키 상향 없음)", () => {
+    it("저장은 현재 정의·출처의 사본을 싣고, 열기는 그 집합의 것으로 되돌린다(같은 영속 경로)", async () => {
+        const storage = stubStorage();
+        const store = await loadStore();
+        store.getState().addFilterStage([datePred]);
+        store.getState().setPointDef({ renewalGateEok: 60 });
+        store.getState().setPointSource("hand");
+        store.getState().saveSet("게이트60·손");
+        const id = store.getState().savedSets[0].id;
+        expect(store.getState().savedSets[0].pointDef?.renewalGateEok).toBe(60);
+        expect(store.getState().savedSets[0].pointSource).toBe("hand");
+
+        // 정의·출처를 딴 값으로 바꿨다가 열면 집합의 사본으로 복귀 + localStorage(같은 영속 경로)에도 반영.
+        store.getState().setPointDef({ renewalGateEok: 30 });
+        store.getState().setPointSource("auto");
+        store.getState().openSet(id);
+        expect(store.getState().pointDef.renewalGateEok).toBe(60);
+        expect(store.getState().pointSource).toBe("hand");
+        expect(JSON.parse(storage.get("wb.pointDef.v1")!).renewalGateEok).toBe(60);
+        expect(JSON.parse(storage.get("wb.pointSource.v1")!)).toBe("hand");
+    });
+
+    it("옛 저장물(정의·출처 없음)은 살아남고, 열어도 현재 정의·출처를 유지한다", async () => {
+        const storage = stubStorage();
+        const store0 = await loadStore();
+        store0.getState().addFilterStage([datePred]);
+        store0.getState().saveSet("옛집합");
+        // 저장물에서 새 필드를 지워 "옛 포맷"을 흉내낸다.
+        const raw = JSON.parse(storage.get("wb.savedSets.v2")!) as Record<string, unknown>[];
+        for (const f of raw) {
+            delete f.pointDef;
+            delete f.pointSource;
+        }
+        storage.set("wb.savedSets.v2", JSON.stringify(raw));
+
+        vi.resetModules();
+        const store = await loadStore();
+        expect(store.getState().savedSets).toHaveLength(1); // 통째 폐기되지 않는다
+        store.getState().setPointDef({ baselineGateEok: 70 });
+        store.getState().setPointSource("hand");
+        store.getState().openSet(store.getState().savedSets[0].id);
+        expect(store.getState().pointDef.baselineGateEok).toBe(70); // 현재 유지
+        expect(store.getState().pointSource).toBe("hand");
+    });
+
+    it("오염된 pointDef 는 필드만 생략된다 — 집합 통째 폐기 사유가 아니다", async () => {
+        const storage = stubStorage();
+        const store0 = await loadStore();
+        store0.getState().addFilterStage([datePred]);
+        store0.getState().saveSet("오염");
+        const raw = JSON.parse(storage.get("wb.savedSets.v2")!) as Record<string, unknown>[];
+        raw[0].pointDef = "garbage";
+        raw[0].pointSource = 123;
+        storage.set("wb.savedSets.v2", JSON.stringify(raw));
+
+        vi.resetModules();
+        const store = await loadStore();
+        expect(store.getState().savedSets).toHaveLength(1);
+        expect(store.getState().savedSets[0].pointDef).toBeUndefined();
+        expect(store.getState().savedSets[0].pointSource).toBeUndefined();
+    });
+});

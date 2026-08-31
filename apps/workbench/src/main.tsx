@@ -6,6 +6,7 @@ import { App } from "./App.js";
 import { GroupsProvider } from "./lib/GroupsContext.js";
 import { LiveSnapshotProvider } from "./lib/LiveSnapshotContext.js";
 import { RankAxesProvider } from "./lib/RankAxesContext.js";
+import { PointGridsProvider } from "./lib/PointGridsContext.js";
 import { StockNamesProvider } from "./lib/StockNamesContext.js";
 
 const queryClient = new QueryClient();
@@ -22,11 +23,13 @@ createRoot(root).render(
         <QueryClientProvider client={queryClient}>
             <StockNamesProvider>
                 <GroupsProvider>
+                    <PointGridsProvider>
                     <RankAxesProvider>
                         <LiveSnapshotProvider>
                             <App />
                         </LiveSnapshotProvider>
                     </RankAxesProvider>
+                    </PointGridsProvider>
                 </GroupsProvider>
             </StockNamesProvider>
         </QueryClientProvider>

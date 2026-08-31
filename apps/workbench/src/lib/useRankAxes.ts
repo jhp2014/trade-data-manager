@@ -7,7 +7,7 @@ import type { PlacedPoint } from "@trade-data-manager/wire";
 import { computedAxesQuery } from "../api/queries.js";
 import { computedAxisView, type AxisRef } from "./computedAxis.js";
 import { gridFeatureFeeds } from "./gridFeatures.js";
-import { useAutoPoints, usePointGrids } from "./usePointGrids.js";
+import { useAutoPoints, usePointGrids } from "./PointGridsContext.js";
 import { useWorkbench } from "../store/workbench.js";
 
 /** 계산 축의 화면용 메타 — 값 자체가 아니라 값을 어떻게 놓고 어떻게 읽는지. */
