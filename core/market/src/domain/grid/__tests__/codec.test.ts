@@ -9,8 +9,9 @@ describe("grid codec", () => {
             base: 4500.000123,
             touchMin: 550,
             pivots: [
-                { kind: "low", min: 540, price: 10000, confirmedMin: 542, legAmount: "1000000000" },
-                { kind: "high", min: 560, price: 10450, confirmedMin: null, legAmount: "2595000000" },
+                { kind: "high", min: 560, price: 10450, confirmedMin: 562, legAmount: "2595000000", renewalAmount: null },
+                { kind: "low", min: 563, price: 10000, confirmedMin: null, legAmount: "1000000000", renewalAmount: null },
+                { kind: "high", min: 570, price: 10700, confirmedMin: 573, legAmount: "3100000000", renewalAmount: "1200000000" },
             ],
             newHighs: [
                 { min: 541, open: 10100, high: 10210, low: 10050, close: 10210, tv: "2000000000" },
@@ -31,9 +32,21 @@ describe("grid codec", () => {
         const grid: PointGrid = {
             base: 100,
             touchMin: 541,
-            pivots: [{ kind: "low", min: 540, price: 9900, confirmedMin: null, legAmount: "77" }],
+            pivots: [
+                { kind: "low", min: 540, price: 9900, confirmedMin: null, legAmount: "77", renewalAmount: null },
+                { kind: "high", min: 545, price: 9990, confirmedMin: 546, legAmount: "99", renewalAmount: "55" },
+            ],
             newHighs: [{ min: 541, open: 1, high: 2, low: 3, close: 4, tv: "5" }],
         };
-        expect(encodeChartGrid("A", grid)).toEqual(["A", 100, 541, [[1, 540, 9900, -1, "77"]], [[541, 1, 2, 3, 4, "5"]]]);
+        expect(encodeChartGrid("A", grid)).toEqual([
+            "A",
+            100,
+            541,
+            [
+                [1, 540, 9900, -1, "77", "-1"],
+                [0, 545, 9990, 546, "99", "55"],
+            ],
+            [[541, 1, 2, 3, 4, "5"]],
+        ]);
     });
 });

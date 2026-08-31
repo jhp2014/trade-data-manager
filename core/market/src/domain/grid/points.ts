@@ -21,8 +21,8 @@ export interface PointDefinition {
      *  재현율 67→80% 차이의 원인이 이 기본값이었다). 노브는 유지 — 필요하면 읽기 시점에 올린다. */
     excludeUptoMin: number;
     /** 유효 마디 하한(%) — 직전 저점 대비 상승폭이 이보다 작은 마디는 레벨에서 병합(잔 갱신 무시). 기본 0 = 병합 없음.
-     *  ⚠ 축약 격자(compressPivots)에선 "직전 저점"이 그 구간의 **최저** 저점이고 첫 마디는 선행 저점이
-     *  없어 병합이 안 걸린다 — 노브를 올리면 원출력 대비 병합이 덜 걸리는 쪽으로 편향된다(수용, 2026-08-31). */
+     *  ⚠ "직전 저점" = 인접 확정 고점 사이 구간의 **봉 최저**(재정식화 격자), 첫 마디는 선행 저점이
+     *  없어 병합이 안 걸린다 — 잔 눌림 기준보다 병합이 덜 걸리는 쪽으로 편향된다(수용, 2026-08-31). */
     mergeRisePct: number;
     /** 양봉(종가 > 시가) 캔들만 Point 자격. 기본 true. 양봉 여부는 격자 OHLC 의 읽기 파생이라 끄는 데 재굽기 불필요. */
     bullOnly: boolean;
@@ -78,6 +78,7 @@ export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_D
             lastLow = p.price;
             continue;
         }
+        // 재정식화 격자에선 미확정 고점·비단조 고점이 애초에 안 실려 아래 두 가드는 도달 불가 — 방어로만 유지.
         if (p.confirmedMin === null) continue;
         if (p.price <= maxKept) continue;
         if (def.mergeRisePct > 0 && lastLow !== null && ((p.price - lastLow) / lastLow) * 100 < def.mergeRisePct) continue;

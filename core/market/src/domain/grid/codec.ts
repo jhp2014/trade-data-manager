@@ -9,8 +9,8 @@
 // 갈리면 위치 계약이 어긋나는 날 그림이 조용히 뒤틀린다. 왕복 보존은 codec.test 가 못 박는다.
 import type { GridNewHigh, GridPivot, PointGrid } from "./grid.js";
 
-/** [kind(0=high, 1=low), min, price, confirmedMin(−1=미확정), legAmount] */
-export type WirePivot = [number, number, number, number, string];
+/** [kind(0=high, 1=low), min, price, confirmedMin(−1=null — 저점은 항상), legAmount, renewalAmount("-1"=null — 첫 고점·저점)] */
+export type WirePivot = [number, number, number, number, string, string];
 /** [min, open, high, low, close, tv] */
 export type WireNewHigh = [number, number, number, number, number, string];
 /** [stockCode, base(null=기준선 값 없음), touchMin(−1=미터치), pivots, newHighs] */
@@ -21,7 +21,7 @@ export function encodeChartGrid(stockCode: string, g: PointGrid): WireChartGrid 
         stockCode,
         g.base,
         g.touchMin ?? -1,
-        g.pivots.map((p): WirePivot => [p.kind === "high" ? 0 : 1, p.min, p.price, p.confirmedMin ?? -1, p.legAmount]),
+        g.pivots.map((p): WirePivot => [p.kind === "high" ? 0 : 1, p.min, p.price, p.confirmedMin ?? -1, p.legAmount, p.renewalAmount ?? "-1"]),
         g.newHighs.map((e): WireNewHigh => [e.min, e.open, e.high, e.low, e.close, e.tv]),
     ];
 }
@@ -33,7 +33,14 @@ export function decodeChartGrid(w: WireChartGrid): { stockCode: string; grid: Po
             base: w[1],
             touchMin: w[2] < 0 ? null : w[2],
             pivots: w[3].map(
-                (p): GridPivot => ({ kind: p[0] === 0 ? "high" : "low", min: p[1], price: p[2], confirmedMin: p[3] < 0 ? null : p[3], legAmount: p[4] }),
+                (p): GridPivot => ({
+                    kind: p[0] === 0 ? "high" : "low",
+                    min: p[1],
+                    price: p[2],
+                    confirmedMin: p[3] < 0 ? null : p[3],
+                    legAmount: p[4],
+                    renewalAmount: p[5] === "-1" ? null : p[5],
+                }),
             ),
             newHighs: w[4].map((e): GridNewHigh => ({ min: e[0], open: e[1], high: e[2], low: e[3], close: e[4], tv: e[5] })),
         },

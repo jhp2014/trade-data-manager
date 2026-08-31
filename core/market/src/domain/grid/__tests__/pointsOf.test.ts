@@ -12,8 +12,9 @@ const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh =>
     close: bull ? high : high - 100,
     tv: String(eok * 100_000_000),
 });
-const hi = (min: number, price: number, confirmedMin: number | null): GridPivot => ({ kind: "high", min, price, confirmedMin, legAmount: "0" });
-const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: min + 1, legAmount: "0" });
+const hi = (min: number, price: number, confirmedMin: number | null): GridPivot => ({ kind: "high", min, price, confirmedMin, legAmount: "0", renewalAmount: null });
+// 재정식화 격자의 저점: confirmedMin·renewalAmount 항상 null — 헬퍼가 규칙을 증언한다.
+const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, legAmount: "0", renewalAmount: null });
 const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touchMin: 550, pivots: [], newHighs: [], ...partial });
 
 describe("pointsOf", () => {
@@ -106,8 +107,8 @@ describe("pointsOf", () => {
         ]);
     });
 
-    it("축약 격자 — 첫 마디는 선행 저점이 없어 mergeRisePct 병합이 안 걸린다(수용된 편향)", () => {
-        // compressPivots 는 첫 kept 고점 이전 선행 저점을 버린다 — lastLow 가 null 이라 병합 검사가 스킵.
+    it("첫 마디는 선행 저점이 없어 mergeRisePct 병합이 안 걸린다(수용된 편향)", () => {
+        // 재정식화 격자엔 첫 확정 고점 이전 선행 저점이 없다 — lastLow 가 null 이라 병합 검사가 스킵.
         const g = grid({
             pivots: [hi(570, 10250, 580)],
             newHighs: [nh(590, 10280, 35)],

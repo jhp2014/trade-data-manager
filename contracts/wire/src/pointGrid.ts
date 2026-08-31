@@ -15,6 +15,7 @@
 // 이 값 상향(또는 캐시 삭제)이 처방이다(순위 단면과 같은 성질).
 import type { WireChartGrid } from "@trade-data-manager/market";
 
+// WirePivot 은 6칸: [kind, min, price, confirmedMin(−1=null), legAmount, renewalAmount("-1"=null)] — 위치 계약은 core codec.ts 한 곳.
 export type { WirePivot, WireNewHigh, WireChartGrid, PointGrid, GridPivot, GridNewHigh, DerivedPoint, PointDefinition } from "@trade-data-manager/market";
 
 /** 날짜 하나의 격자 묶음. */

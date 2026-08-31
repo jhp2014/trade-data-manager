@@ -31,7 +31,7 @@ export * from "./review/group.js";
 // 후보 하루를 모수로 삼는 필터 깔때기의 정산(단계 독립 평가 · 3치 AND · 5칸 · 한계 기여도).
 export * from "./review/funnel.js";
 
-// grid — 자동 타점 격자(순수 검출): zigzag 피벗 + 신고가 캔들 목록 + 기준선 첫 터치. Point 판정은 읽기 층(points).
+// grid — 자동 타점 격자(순수 검출): 확정 고점·구간 저점 피벗 + 신고가 캔들 목록 + 기준선 첫 터치. Point 판정은 읽기 층(points).
 // codec = 와이어 튜플 인코딩(서버 인코드·클라 디코드가 같은 한 벌).
 export * from "./grid/grid.js";
 export * from "./grid/points.js";

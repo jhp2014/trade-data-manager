@@ -1,7 +1,7 @@
 // core/market/domain/grid — 자동 타점 격자 검출(순수, I/O 0). 규칙 전문: .claude/decisions.md "자동 타점 격자" 절.
 //
 // 격자 = 앵커 차트(종목,날짜) 하나의 분봉을 "읽기 층이 Point 의미론을 자유 조절할 수 있는 최소 압축물"로
-// 구운 것: ① zigzag 피벗(가격 구조 + leg 누적 거래대금) ② floor 이상 대금의 신고가 캔들 목록
+// 구운 것: ① 피벗(확정 고점 + 구간 저점, leg·갱신 누적 대금) ② floor 이상 대금의 신고가 캔들 목록
 // ③ 기준선 첫 터치. Point 판정·게이트(50억/30억)·제외 창·축약 병합은 여기 없다 — points.ts(읽기 층)가
 // 격자만 보고 계산한다. 굽는 값은 전부 "하한(격자)"이고 읽기 층은 위로만 조인다.
 //
@@ -17,18 +17,24 @@ import type { MinuteCandle } from "../candle/model.js";
 import { densifyMinutes } from "../candle/minuteBackfill.js";
 import { computeMinuteTradingAmount } from "../candle/price.js";
 
-/** zigzag 피벗 — 마디 고점/저점. 시각은 KST 자정기준 분(int). */
+/** 피벗 — 확정 고점 또는 구간 저점(2026-08-31 재정식화, 정의는 detectGrid 본문 주석). 시각은 KST 자정기준 분(int). */
 export interface GridPivot {
     kind: "high" | "low";
     /** 극값 발생 시각(분). */
     min: number;
     /** 극값(그 날 원주가, 원). */
     price: number;
-    /** 반대 방향 임계 도달로 소급 확정된 시각(분). 장 끝까지 미확정(마지막 마디)이면 null — 읽기 층이 판단. */
+    /** 고점: −zigzagPct 터치로 소급 확정된 봉 시각 — 항상 존재(미확정 고점은 안 싣는다, outcome 시뮬
+     *  진입선의 장래 소비처). 저점: null 고정(확정 개념 없음 — 저점 확정은 소비처 0 실측). */
     confirmedMin: number | null;
-    /** 직전 (kept) 피벗 다음 봉부터 이 피벗 봉까지 누적 거래대금(원, 무손실 string).
-     *  검출 시엔 leg 하나 몫이지만, 축약(compressPivots) 후엔 버려진 피벗 몫이 합산된 구간 합이다. */
+    /** 직전 피벗 다음 봉부터 이 피벗 봉까지(포함) 누적 거래대금(원, 무손실 string). 첫 피벗은 세션 첫 봉부터,
+     *  마지막 저점 이후 잔여는 어디에도 안 실린다(소비자 0). */
     legAmount: string;
+    /** 고점 전용 — 직전 확정 고점 가격을 처음 넘은 봉(strict >, 포함)부터 이 고점 봉까지 누적 대금
+     *  ("전고점 돌파 후 실린 추격 대금"). 갱신 경계는 순수 가격 사건(볼륨 무관). 첫 확정 고점(전고점 없음)과
+     *  저점은 null — 기준선 크로싱으로 대체하지 않는다(결손은 결손). 불변식: 0 < renewalAmount ≤ legAmount.
+     *  저점→갱신 전 눌림 조각은 legAmount − renewalAmount 파생(별도 저장 없음). */
+    renewalAmount: string | null;
 }
 
 /** 신고가 캔들 — 세션 창 안 당일 러닝 최고가를 갱신했고 tv ≥ floor 인 봉. Point 후보의 전체 모집합.
@@ -55,7 +61,8 @@ export interface PointGrid {
     base: number | null;
     /** 기준선 첫 터치(고가 ≥ base) 시각(분). 볼륨 무관 — floor 에 걸러질 수 있어 명시 저장. 미터치면 null. */
     touchMin: number | null;
-    /** zigzag 피벗(시간 오름차순, high/low 교대). 임계 미달의 잔잔한 날은 빈 배열(무사건 격자 — 정상). */
+    /** 피벗(시간 오름차순). 구조 불변식: 항상 high 로 시작해 low 로 끝나는 교대·짝수 길이
+     *  (확정 고점 뒤엔 터치 봉이 반드시 있어 구간 저점이 절대 결손 안 남). 확정 고점 0개인 날은 빈 배열(무사건 — 정상). */
     pivots: GridPivot[];
     /** 신고가 캔들 목록(시간 오름차순). */
     newHighs: GridNewHigh[];
@@ -100,9 +107,10 @@ export const minuteToHms = (min: number): string => {
 const toMin = hmsToMinute;
 
 /**
- * 격자 검출. 입력은 그 종목·그 날의 raw 분봉(존재하는 봉만, 시간 오름차순) — dense 화는 여기서 한다.
- * 채움봉(거래량 0·직전 종가 평탄)은 신고가·피벗·legAmount 어디에도 영향이 없다(불변성은 테스트로 못 박음) —
- * 유지하는 이유는 "직전 봉" 류 의미론이 다시 생길 때 호출측마다 갈리지 않게 한 곳에 고정해 두는 것.
+ * 격자 검출. 입력은 그 종목·그 날의 raw 분봉(존재하는 봉만, 시간 오름차순) — dense 화는 여기서 하고,
+ * 봉 우주는 **dense 분봉**이다(호출측마다 갈리지 않게 한 곳에 고정). 채움봉(거래량 0·직전 종가 평탄)은
+ * 신고가·legAmount 에 영향 없지만 **피벗에는 참여한다** — 저가(=직전 종가)가 "그 분의 서 있던 가격"으로서
+ * 터치 확정·구간 최저가 될 수 있다(거래 없음 ≠ 가격 없음. 넓은 봉 다음 빈 분이 그 종가로 확정하는 케이스).
  * 분봉이 없거나 세션 창에 한 봉도 없으면 null(재료 없음 — 캐시 층이 "무사건 격자"와 구분해 안 굽는다).
  */
 export function detectGrid(
@@ -141,95 +149,74 @@ export function detectGrid(
     const legAmount = (fromIdxExclusive: number, toIdx: number): string =>
         (prefix[toIdx] - (fromIdxExclusive >= 0 ? prefix[fromIdxExclusive] : 0n)).toString();
 
-    // ── zigzag ───────────────────────────────────────────────────────────────
-    // 방향 미정 → 러닝 극값 둘을 추적하다 먼저 임계(≥)를 넘는 쪽이 선두 피벗을 확정한다.
-    // **자기 봉 확정 금지(2026-08-31 A안)**: 반전 확정은 극값을 세운 봉보다 **뒤의 봉**에서만 —
-    // 봉 내부 고·저 순서는 알 수 없어, 장대 양봉의 자기 저가는 "고점에서 밀린 자리"가 아니라
-    // "상승이 시작된 자리"다(자기확정 고점의 88%가 이 아티팩트였다). 저점도 대칭. 순서는 유지:
-    // 현 방향 극값을 먼저 갱신한 뒤, 검사 봉이 극값 봉 자신이 아닐 때만 반전을 검사한다(세 지점 공통 게이트).
-    const up = 1 + o.zigzagPct / 100;
+    // ── 피벗: 확정 고점 + 구간 저점 ──────────────────────────────────────────
+    // 상태기계 없음 — 정의를 그대로 계산한다(2026-08-31 재정식화, decisions.md "자동 타점 격자" 절):
+    //  · 확정 고점 = 세션 러닝 최고가를 갱신한 봉(strict >) 중, **더 높은 고가가 나오기 전에** 뒤 봉의
+    //    저가가 그 고가 대비 −zigzagPct(≤) 내려간 것. confirmedMin = 그 터치 봉 시각.
+    //    같은 봉에 터치와 상향 갱신이 동시면 **갱신이 이긴다**(확정 아님 — 봉 내부 순서 증명 불가):
+    //    아래 루프의 "초과 검사 먼저 → continue" 순서가 이 규칙의 실현이다. 자기 봉 확정 금지도
+    //    같은 continue 가 내장한다. 갱신 전 터치가 없어 소멸한 고점(미확정 꼬리 포함)은 싣지 않는다.
+    //  · 저점 = (확정 고점 봉, 그 고점 가격의 크로싱 봉) **열린 구간**의 봉 최저 1개 — 크로싱이 끝내
+    //    없으면(꼬리) ~세션 마지막 봉까지. 동가 tie 는 이른 봉. 양끝이 열려 있어 고점 봉·크로싱 봉의
+    //    저가는 자연히 빠진다(봉 내부 순서 증명 불가). 첫 확정 고점 이전 선행 저점은 없다.
+    //    ⚠ "인접 확정 고점 사이 최저" 단축은 동치가 아니다 — 크로싱 뒤 넓은 갱신 봉(깊은 저가+새 고가,
+    //    갱신 승리로 터치 생략)이 최저를 차지하면 저점이 크로싱 뒤로 가 renewal ≤ leg 가 깨진다(실측 1건).
+    //  구조 불변식(정의에서 따라 나옴): 확정 고점의 터치 봉은 크로싱 봉보다 앞이므로(터치 저가 ≤
+    //  0.98×고점인데 크로싱 이후는 확정 아니면 갱신뿐) 구간 저점 후보가 절대 비지 않는다 → 피벗은 항상
+    //  high 시작·low 끝·교대·짝수 길이, 구간 저점 봉 < 크로싱 봉 → 0 < renewalAmount ≤ legAmount.
     const down = 1 - o.zigzagPct / 100;
-    const pivots: GridPivot[] = [];
-    let lastPivotIdx = -1;
-    let dir: -1 | 0 | 1 = 0;
-    let extIdx = 0; // 현재 후보 극값의 봉 인덱스
-
-    /** 피벗 확정 후 다음 후보 극값 초기화 — (피벗 봉, 현재 봉]에서 반대 방향 극값을 다시 찾는다.
-     *  피벗 봉 자신은 제외한다(같은 분 고·저 퇴화 쌍 방지 — 피벗 min 강한 단조 증가의 근거).
-     *  전제: toIdx > fromIdx — 자기 봉 확정 금지로 확정 봉 > 피벗 봉이 항상 성립해 구간이 비지 않는다. */
-    const rescanExtreme = (fromIdx: number, toIdx: number, want: "high" | "low"): number => {
-        let best = fromIdx + 1;
-        for (let j = fromIdx + 2; j <= toIdx; j++) {
-            if (want === "high" ? highs[j] > highs[best] : lows[j] < lows[best]) best = j;
+    const confirmedHighs: { idx: number; confirmIdx: number; crossIdx: number }[] = [];
+    let sessMax = -Infinity;
+    let candIdx = -1; // 현재 러닝 최고가 봉(확정 대기). -1 = 확정 직후(다음 갱신 대기)
+    let crossIdx = -1; // 직전 확정 고점 가격을 처음 넘은 봉(이 구간의 갱신 봉). 첫 구간은 세션 첫 봉
+    for (let i = 0; i < n; i++) {
+        if (highs[i] > sessMax) {
+            if (crossIdx < 0) crossIdx = i;
+            sessMax = highs[i];
+            candIdx = i;
+            continue; // 갱신 승리 — 이 봉의 터치는 검사하지 않는다
         }
-        return best;
-    };
-    const commit = (kind: "high" | "low", pivotIdx: number, confirmIdx: number): void => {
-        pivots.push({
-            kind,
-            min: mins[pivotIdx],
-            price: kind === "high" ? highs[pivotIdx] : lows[pivotIdx],
-            confirmedMin: mins[confirmIdx],
-            legAmount: legAmount(lastPivotIdx, pivotIdx),
-        });
-        lastPivotIdx = pivotIdx;
-    };
-
-    let candHiIdx = 0;
-    let candLoIdx = 0;
-    for (let i = 1; i < n; i++) {
-        if (dir === 0) {
-            if (highs[i] > highs[candHiIdx]) candHiIdx = i;
-            if (lows[i] < lows[candLoIdx]) candLoIdx = i;
-            // 자기 봉 확정 금지 — 후보 극값이 검사 봉 자신이면 그 방향 확정은 뒤 봉으로 미룬다.
-            const canUp = candLoIdx !== i && highs[i] >= lows[candLoIdx] * up;
-            const canDown = candHiIdx !== i && lows[i] <= highs[candHiIdx] * down;
-            if (canUp || canDown) {
-                // 둘 다 성립(한 봉에 상하 ±임계)은 자기 봉 게이트 하에서 **두 극값이 같은 봉 출신일 때만**
-                // 도달 가능하다(서로 다른 봉 출신이면 나중에 선 후보의 확정 실패 조건과 모순) —
-                // **확정 봉(bars[i])의 방향**으로 가른다(양봉 = 저점이 먼저). 극값 봉이 아니라 확정 봉을
-                // 읽는 이유: 어느 쪽이 먼저였는지의 마지막 단서는 지금 봉의 종가 방향이다. 결정적 규칙.
-                // 앞의 "더 오래 서 있던 극값" 비교는 도달 불가로 추정되나 결정적 폴백으로 남긴다.
-                const goUp = canUp !== canDown ? canUp : candLoIdx !== candHiIdx ? candLoIdx < candHiIdx : Number(bars[i].un.close) > Number(bars[i].un.open);
-                if (goUp) {
-                    commit("low", candLoIdx, i);
-                    dir = 1;
-                    extIdx = rescanExtreme(candLoIdx, i, "high");
-                } else {
-                    commit("high", candHiIdx, i);
-                    dir = -1;
-                    extIdx = rescanExtreme(candHiIdx, i, "low");
-                }
-            }
-        } else if (dir === 1) {
-            if (highs[i] > highs[extIdx]) extIdx = i;
-            // 자기 봉 확정 금지 — 이 봉이 극값 봉이면 검사 생략(직전 낮은 고점 대비 검사도 함께 버린다:
-            // 뒤 봉들은 더 높은 새 고점 기준으로 검사하므로 잃는 건 이 봉 자신의 저가뿐).
-            if (extIdx !== i && lows[i] <= highs[extIdx] * down) {
-                commit("high", extIdx, i);
-                dir = -1;
-                extIdx = rescanExtreme(extIdx, i, "low");
-            }
-        } else {
-            if (lows[i] < lows[extIdx]) extIdx = i;
-            if (extIdx !== i && highs[i] >= lows[extIdx] * up) {
-                commit("low", extIdx, i);
-                dir = 1;
-                extIdx = rescanExtreme(extIdx, i, "high");
-            }
+        if (candIdx >= 0 && lows[i] <= highs[candIdx] * down) {
+            confirmedHighs.push({ idx: candIdx, confirmIdx: i, crossIdx });
+            candIdx = -1;
+            crossIdx = -1;
         }
     }
-    // 마지막 마디 — 장 끝까지 반대 임계가 안 와 미확정(confirmedMin null)으로 싣는다(읽기 층 판단).
-    // 방향 미정(온종일 임계 미달)이면 피벗 0 — 무사건 격자. 마지막 확정이 장 마지막 봉에서 났으면
-    // 확정 봉 위치의 미확정 꼬리가 실린다(재탐색이 피벗 다음 봉부터라 퇴화 없음 — 축약 ③의 정상 소비물).
-    if (dir !== 0) {
+    const tailCrossIdx = crossIdx; // 마지막 확정 고점 뒤의 크로싱 봉(소멸 후보의 것) — 꼬리 저점 후보 제외용
+
+    const pivots: GridPivot[] = [];
+    let prevKeptIdx = -1;
+    for (let k = 0; k < confirmedHighs.length; k++) {
+        const h = confirmedHighs[k];
         pivots.push({
-            kind: dir === 1 ? "high" : "low",
-            min: mins[extIdx],
-            price: dir === 1 ? highs[extIdx] : lows[extIdx],
-            confirmedMin: null,
-            legAmount: legAmount(lastPivotIdx, extIdx),
+            kind: "high",
+            min: mins[h.idx],
+            price: highs[h.idx],
+            confirmedMin: mins[h.confirmIdx],
+            legAmount: legAmount(prevKeptIdx, h.idx),
+            // 첫 확정 고점은 전고점이 없어 null(crossIdx 는 세션 첫 봉일 뿐 크로싱 사건이 아니다).
+            renewalAmount: k === 0 ? null : legAmount(h.crossIdx - 1, h.idx),
         });
+        prevKeptIdx = h.idx;
+
+        // 저점 구간 = (이 고점 봉, 이 고점 가격의 크로싱 봉) — 다음 확정 고점의 crossIdx 가 곧 그 크로싱.
+        // 꼬리에서 크로싱이 있었다면(소멸 후보) 거기서 끝, 없었으면 세션 끝까지.
+        const crossEnd = k + 1 < confirmedHighs.length ? confirmedHighs[k + 1].crossIdx : tailCrossIdx >= 0 ? tailCrossIdx : n;
+        let lowIdx = -1;
+        for (let j = h.idx + 1; j < crossEnd; j++) {
+            if (lowIdx < 0 || lows[j] < lows[lowIdx]) lowIdx = j;
+        }
+        // 불변식 위반은 침묵 오염 대신 즉사 — 터치 봉이 항상 후보라 도달 불가(위 구조 불변식 주석).
+        if (lowIdx < 0) throw new Error(`detectGrid: 구간 저점 결손(고점 min=${mins[h.idx]}) — 정의 불변식 위반`);
+        pivots.push({
+            kind: "low",
+            min: mins[lowIdx],
+            price: lows[lowIdx],
+            confirmedMin: null,
+            legAmount: legAmount(prevKeptIdx, lowIdx),
+            renewalAmount: null,
+        });
+        prevKeptIdx = lowIdx;
     }
 
     // ── 신고가 캔들 목록 + 기준선 첫 터치 ────────────────────────────────────
@@ -252,68 +239,5 @@ export function detectGrid(
         });
     }
 
-    // 봉별 러닝 최고가(자기 봉 포함) — 축약의 kept ① 판정("러닝 최고가를 갱신한 확정 고점")에 넘긴다.
-    // 재탐색이 피벗 봉을 제외하면서 "이전 kept 고점보다 높음"과 "러닝 최고가 갱신"이 갈라졌다(넓은 피벗 봉의
-    // 반대편 극값이 구조에서 빠짐) — 근사가 아니라 실제 최고가로 판정해야 앞 시각 캔들이 레벨을 넘는 역전이 없다.
-    const runMaxByMin = new Map<number, number>();
-    let runMax = -Infinity;
-    for (let i = 0; i < n; i++) {
-        if (highs[i] > runMax) runMax = highs[i];
-        runMaxByMin.set(mins[i], runMax);
-    }
-    return { base, touchMin, pivots: compressPivots(pivots, (min) => runMaxByMin.get(min) ?? Infinity), newHighs };
-}
-
-/**
- * 피벗 축약(B안, 2026-08-31) — zigzag 원출력에서 **소비되는 것만** 남긴다:
- *  ① 러닝 최고가를 갱신한 확정 고점(pointsOf 레벨 후보의 상위집합). "이전 모든 kept 고점보다 높음"에
- *    더해 runningMaxOf(그 봉까지의 실제 세션 최고가)와 일치해야 한다 — 자기 봉 확정 금지 이후 재탐색이
- *    피벗 봉을 제외하므로 둘이 다를 수 있다(넓은 피벗 봉의 고가보다 낮은 확정 고점 = 레벨 아님, B류 취급).
- *    runningMaxOf 생략 시(합성 배열 테스트) 이 검사는 통과 취급.
- *  ② kept 고점↔다음 kept 고점 구간별 최저 저점 1개(눌림 깊이의 원자재)
- *  ③ 마지막 kept 고점 이후 꼬리 최저 저점 1개(미확정 허용)
- * B류(하락 중 낮은 반등) 고점·중간 저점·미확정 꼬리 고점·첫 kept 고점 이전 선행 저점은 저장하지 않는다 —
- * 확정 고점이 하나도 없는 날(종일 단조 상승 등)은 피벗 0(무사건 격자와 같은 취급, 소비자 손실 없음).
- *
- * legAmount 는 kept 이웃 구간 합으로 재계산한다: 원본 legAmount 가 (직전 피벗, 이 피벗] 구간합이고
- * 피벗 인덱스가 강한 단조 증가라 구간이 정확히 분할되므로, 버려진 피벗의 몫을 다음 kept 피벗에
- * BigInt 합산하면 무손실(총합 보존). 뜻은 "직전 **kept** 피벗 다음 봉부터 이 피벗 봉까지"로 넓어진다.
- * 꼬리 이후 잔여 leg(마지막 kept 저점 뒤 버려진 피벗들 몫)는 어디에도 실리지 않는다 — 소비자 0.
- */
-export function compressPivots(pivots: GridPivot[], runningMaxOf?: (min: number) => number): GridPivot[] {
-    const keep = new Array<boolean>(pivots.length).fill(false);
-    let maxKept = -Infinity;
-    let lastKeptHigh = -1;
-    for (let i = 0; i < pivots.length; i++) {
-        const p = pivots[i];
-        if (p.kind !== "high" || p.confirmedMin === null || p.price <= maxKept) continue;
-        if (runningMaxOf !== undefined && p.price < runningMaxOf(p.min)) continue;
-        keep[i] = true;
-        maxKept = p.price;
-        // 직전 kept 고점 이후 ~ 이 고점 사이의 최저 저점 1개(첫 kept 고점 이전 선행 저점은 저장 안 함).
-        if (lastKeptHigh >= 0) markLowestLow(pivots, keep, lastKeptHigh + 1, i);
-        lastKeptHigh = i;
-    }
-    if (lastKeptHigh >= 0) markLowestLow(pivots, keep, lastKeptHigh + 1, pivots.length);
-    else return []; // kept 고점 0개 — 선행/꼬리 저점만으로는 소비자가 쓸 수 없다.
-
-    const out: GridPivot[] = [];
-    let acc = 0n;
-    for (let i = 0; i < pivots.length; i++) {
-        acc += BigInt(pivots[i].legAmount);
-        if (!keep[i]) continue;
-        out.push({ ...pivots[i], legAmount: acc.toString() });
-        acc = 0n;
-    }
-    return out;
-}
-
-/** [from, toExclusive) 구간에서 가장 낮은 low 피벗 하나를 keep 표시(동가면 이른 쪽). 저점이 없으면 무동작. */
-function markLowestLow(pivots: GridPivot[], keep: boolean[], from: number, toExclusive: number): void {
-    let best = -1;
-    for (let j = from; j < toExclusive; j++) {
-        if (pivots[j].kind !== "low") continue;
-        if (best < 0 || pivots[j].price < pivots[best].price) best = j;
-    }
-    if (best >= 0) keep[best] = true;
+    return { base, touchMin, pivots, newHighs };
 }
