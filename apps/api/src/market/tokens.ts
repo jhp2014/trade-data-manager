@@ -16,6 +16,7 @@ export const CURATION_SYNC = Symbol("CurationSync"); // 로컬 미러 당겨오�
 export const COMPUTED_AXES = Symbol("ComputedAxes");      // 계산 축 값(타점→수치) 읽기모델 + 파일 캐시
 export const DERIVED_CACHE = Symbol("DerivedCache");      // 날짜별 day 스냅샷 캐시 — DayBoards·RankSections 가 한 인스턴스를 나눠 쓴다(in-flight dedup 공유)
 export const RANK_SECTIONS = Symbol("RankSections");      // 순위 단면(타점 있는 날짜·분의 전 종목 서수) 읽기모델 + 파일 캐시
+export const POINT_GRIDS = Symbol("PointGrids");          // 자동 타점 격자(앵커 차트당 zigzag+신고가 목록) 읽기모델 + 파일 캐시
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");
 export const MARKET_POOL = Symbol("MarketPool");

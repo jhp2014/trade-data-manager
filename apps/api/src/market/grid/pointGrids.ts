@@ -34,6 +34,8 @@ import {
     type ChartRef,
     type GridDetectOptions,
 } from "@trade-data-manager/market";
+import { encodeChartGrid } from "@trade-data-manager/market";
+import type { PointGridBundle, PointGridDate } from "@trade-data-manager/wire";
 import { anchorsFingerprint } from "../rank/axisFingerprint.js";
 import type { GridStore, PointGridEntry } from "./gridStore.js";
 import { POINT_GRID_FILE_VERSION } from "./gridStore.js";
@@ -81,10 +83,24 @@ export interface GridReconcileReport {
 
 export class PointGrids {
     private inFlight: Promise<GridReconcileReport> | null = null;
+    /** invalidate 세대 — 낡은 기대집합으로 시작한 비행이 새 비행의 산출물(파일·메모)을 덮거나 지우는 경합을
+     *  막는다(RankSections 와 같은 이유·같은 세 자리: 파일 write/remove·GC·메모 반영). */
+    private gen = 0;
     /** 재료 없음 음성 메모 — 차트키 → 기록 시각(ms). */
     private readonly missingAt = new Map<string, number>();
+    /** 날짜별 상주 메모 — 파일과 동일 내용(charts) + 튜플 인코딩 캐시(wire). 없으면 warm 요청마다
+     *  날짜 파일 전량(280개) read+parse 를 문다. wire=null 은 "내용이 바뀌어 재인코딩 필요". */
+    private readonly memo = new Map<string, { charts: Record<string, PointGridEntry>; wire: PointGridDate | null }>();
+    /** 파일 쓰기 실패 날짜 — 메모는 최신이라 서빙은 정상, 다음 대사가 재굽기 없이 쓰기만 재시도. */
+    private readonly unwritten = new Set<string>();
 
     constructor(private readonly cfg: PointGridsDeps) {}
+
+    /** 앵커 편집 직후 호출 — 변경 전에 시작된 in-flight 에 이후 요청이 합류하지 않게 + 세대 상향. */
+    invalidate(): void {
+        this.gen++;
+        this.inFlight = null;
+    }
 
     /** 전체 대사 — 동시 호출은 한 비행을 나눠 탄다. */
     reconcile(): Promise<GridReconcileReport> {
@@ -96,7 +112,27 @@ export class PointGrids {
         return p;
     }
 
+    /** 와이어 번들 — 게으른 대사 후 메모에서 조립. 바뀐 날짜만 다시 인코딩한다. */
+    async bundle(): Promise<PointGridBundle> {
+        await this.reconcile();
+        const dates: PointGridDate[] = [];
+        for (const date of [...this.memo.keys()].sort()) {
+            const m = this.memo.get(date)!;
+            if (!m.wire) {
+                m.wire = {
+                    date,
+                    charts: Object.keys(m.charts)
+                        .sort()
+                        .map((code) => encodeChartGrid(code, m.charts[code].grid)),
+                };
+            }
+            dates.push(m.wire);
+        }
+        return { version: POINT_GRID_CALC_VERSION, dates };
+    }
+
     private async doReconcile(): Promise<GridReconcileReport> {
+        const gen = this.gen;
         const t0 = (this.cfg.now ?? Date.now)();
         const today = (this.cfg.today ?? kstToday)();
         const anchors = await this.cfg.deps.chartAnchor.listAll();
@@ -166,8 +202,12 @@ export class PointGrids {
         const perDate = new Map<string, { prior: Record<string, PointGridEntry>; next: Record<string, PointGridEntry>; dirty: boolean }>();
         const bakes: Bake[] = [];
         for (const [date, byCode] of expected) {
-            const file = await this.cfg.store.read(date);
-            const prior = file && file.version === POINT_GRID_CALC_VERSION ? file.charts : {};
+            // prior = 상주 메모 우선(파일과 동일 내용) — 콜드일 때만 파일을 읽는다.
+            let prior = this.memo.get(date)?.charts;
+            if (!prior) {
+                const file = await this.cfg.store.read(date);
+                prior = file && file.version === POINT_GRID_CALC_VERSION ? file.charts : {};
+            }
             const state = { prior, next: {} as Record<string, PointGridEntry>, dirty: false };
             perDate.set(date, state);
             for (const [code, anchor] of byCode) {
@@ -218,23 +258,33 @@ export class PointGrids {
             report.baked++;
         });
 
-        // 파일 반영 — 바뀐 날짜만 쓴다. 기대집합에서 빠진 차트(기준선 삭제)는 next 에 없어 자연히 걷힌다.
-        // 쓰기는 best-effort(RankSections 와 동일) — 디스크 오류로 대사 전체를 reject 하지 않는다.
-        // 실패한 날짜는 파일에 항목이 없으니 다음 대사의 지문 miss 가 자연 재시도다(별도 재시도 집합 불필요).
+        // 파일·메모 반영 — 바뀐 날짜만 쓴다. 기대집합에서 빠진 차트(기준선 삭제)는 next 에 없어 자연히 걷힌다.
+        // 쓰기는 best-effort — 실패 시 메모(최신)로 서빙을 잇고 unwritten 에 적어 다음 대사가 쓰기만 재시도.
+        // **전부 자기 세대일 때만** — invalidate 뒤의 새 비행이 만든 파일·메모를, 낡은 기대집합의 이 비행이
+        // 좁은 next 로 덮거나 지우면 안 된다.
         for (const [date, state] of perDate) {
             const removed = Object.keys(state.prior).filter((c) => !(c in state.next)).length;
             report.removedCharts += removed;
-            if (!state.dirty && removed === 0) continue;
-            try {
-                if (Object.keys(state.next).length === 0) await this.cfg.store.remove(date);
-                else await this.cfg.store.write({ v: POINT_GRID_FILE_VERSION, version: POINT_GRID_CALC_VERSION, date, charts: state.next });
-            } catch (err) {
-                console.warn(`[point-grid] ${date} 캐시 쓰기 실패 — 다음 대사에서 재굽기`, err);
+            if (gen !== this.gen) continue;
+            const changed = state.dirty || removed > 0;
+            if (changed || this.unwritten.has(date)) {
+                try {
+                    if (Object.keys(state.next).length === 0) await this.cfg.store.remove(date);
+                    else await this.cfg.store.write({ v: POINT_GRID_FILE_VERSION, version: POINT_GRID_CALC_VERSION, date, charts: state.next });
+                    this.unwritten.delete(date);
+                } catch (err) {
+                    this.unwritten.add(date);
+                    console.warn(`[point-grid] ${date} 캐시 쓰기 실패 — 메모리로 서빙, 다음 대사에서 쓰기 재시도`, err);
+                }
             }
+            if (Object.keys(state.next).length === 0) this.memo.delete(date);
+            else this.memo.set(date, { charts: state.next, wire: changed ? null : (this.memo.get(date)?.wire ?? null) });
         }
 
-        // GC — 기대집합에 없는 날짜 파일. 기대집합이 비면 통째 skip(미러 초기화 순간 전량 삭제 사고 방지).
-        if (expected.size > 0) {
+        // GC — 기대집합에 없는 날짜 파일·메모. 기대집합이 비면 통째 skip(미러 초기화 순간 전량 삭제 사고 방지).
+        if (expected.size > 0 && gen === this.gen) {
+            for (const d of [...this.memo.keys()]) if (!expected.has(d)) this.memo.delete(d);
+            for (const d of this.unwritten) if (!expected.has(d)) this.unwritten.delete(d);
             try {
                 for (const d of await this.cfg.store.listDates()) {
                     if (expected.has(d)) continue;

@@ -32,8 +32,10 @@ export * from "./review/group.js";
 export * from "./review/funnel.js";
 
 // grid — 자동 타점 격자(순수 검출): zigzag 피벗 + 신고가 캔들 목록 + 기준선 첫 터치. Point 판정은 읽기 층(points).
+// codec = 와이어 튜플 인코딩(서버 인코드·클라 디코드가 같은 한 벌).
 export * from "./grid/grid.js";
 export * from "./grid/points.js";
+export * from "./grid/codec.js";
 
 // rank — 축 어휘(계산 축의 메타·줄 항목) + 진입가 경로(rankPath). 옛 순위 배치(사람 편집)는 2026-08-25 폐지.
 export * from "./rank/index.js";

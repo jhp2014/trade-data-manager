@@ -1,7 +1,7 @@
 // PointGrids 대사 — fake store/anchor/minute 주입. 검증 대상은 "언제 굽고·언제 안 읽고·언제 지우나".
 import { describe, expect, it } from "vitest";
 import type { ChartAnchor, DailyBar, DailyCandle, MinuteCandle } from "@trade-data-manager/market";
-import { BASELINE_PARAM } from "@trade-data-manager/market";
+import { BASELINE_PARAM, decodeChartGrid } from "@trade-data-manager/market";
 import { POINT_GRID_FILE_VERSION, type GridStore, type PointGridFile } from "../grid/gridStore.js";
 import { PointGrids, POINT_GRID_CALC_VERSION, type PointGridsDeps } from "../grid/pointGrids.js";
 
@@ -32,13 +32,19 @@ function harness(init: {
     minutes?: Record<string, MinuteCandle[]>;
     adjDaily?: Record<string, DailyCandle[]>;
     rawDaily?: Record<string, DailyCandle[]>;
+    /** 분봉 읽기 직전 훅 — gen 가드 테스트가 비행을 문턱에서 세울 때 쓴다. */
+    beforeMinutes?: (key: string) => Promise<void>;
 }) {
     let anchors = init.anchors;
     let nowMs = 0;
     const minuteCalls: string[] = [];
+    const storeReads: string[] = [];
     const files = new Map<string, PointGridFile>();
     const store: GridStore = {
-        read: async (d) => files.get(d) ?? null,
+        read: async (d) => {
+            storeReads.push(d);
+            return files.get(d) ?? null;
+        },
         write: async (f) => void files.set(f.date, f),
         remove: async (d) => void files.delete(d),
         listDates: async () => [...files.keys()],
@@ -47,6 +53,7 @@ function harness(init: {
         minute: {
             getMinuteCandles: async (code: string, date: string) => {
                 minuteCalls.push(`${code}|${date}`);
+                await init.beforeMinutes?.(`${code}|${date}`);
                 return init.minutes?.[`${code}|${date}`] ?? [];
             },
         },
@@ -61,6 +68,7 @@ function harness(init: {
         make,
         files,
         minuteCalls,
+        storeReads,
         setAnchors: (a: ChartAnchor[]) => (anchors = a),
         setNow: (ms: number) => (nowMs = ms),
     };
@@ -214,6 +222,59 @@ describe("PointGrids 대사", () => {
         h.setNow(11 * 60_000);
         await h.grids.reconcile();
         expect(h.minuteCalls.length).toBeGreaterThan(calls); // TTL 경과 — 재시도
+    });
+
+    it("재대사는 날짜 파일을 다시 읽지 않는다(상주 메모)", async () => {
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)] },
+        });
+        await h.grids.reconcile();
+        const reads = h.storeReads.length;
+        const r = await h.grids.reconcile();
+        expect(r).toMatchObject({ kept: 1 });
+        expect(h.storeReads.length).toBe(reads);
+    });
+
+    it("bundle — 튜플 인코딩 왕복이 파일 캐시의 격자와 일치한다", async () => {
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)] },
+        });
+        const bundle = await h.grids.bundle();
+        expect(bundle.version).toBe(POINT_GRID_CALC_VERSION);
+        expect(bundle.dates).toHaveLength(1);
+        const decoded = decodeChartGrid(bundle.dates[0].charts[0]);
+        expect(decoded.stockCode).toBe("A");
+        expect(decoded.grid).toEqual(h.files.get(D)?.charts["A"].grid);
+    });
+
+    it("gen 가드 — 낡은 비행의 쓰기·GC 가 새 비행의 산출물을 건드리지 않는다", async () => {
+        const D2 = "2026-06-30";
+        let release!: () => void;
+        const gate = new Promise<void>((res) => (release = res));
+        let block = true;
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D), [`B|${D2}`]: twoBars("B", D2) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)], "B|2026-06-21": [dc("B", "2026-06-21", 9500)] },
+            beforeMinutes: async (k) => {
+                if (k === `A|${D}` && block) await gate;
+            },
+        });
+        const stale = h.grids.reconcile(); // gen0 — A 분봉 읽기 문턱에서 정지
+        await new Promise((r) => setTimeout(r, 0));
+        h.grids.invalidate();
+        block = false;
+        h.setAnchors([anchor("B", D2, "2026-06-21")]);
+        await h.grids.reconcile(); // gen1 — B 파일 생성, A 는 기대집합 밖
+        expect(h.files.has(D2)).toBe(true);
+        release();
+        await stale; // gen0 완료 — 쓰기·메모·GC 전부 스킵돼야 한다
+        expect(h.files.has(D2)).toBe(true); // 낡은 GC 가 새 파일을 안 지움
+        expect(h.files.has(D)).toBe(false); // 낡은 비행의 산출물이 파일로 남지 않음
     });
 
     it("기준선 캔들을 못 읽으면(미수집) 재료 없음 — 낡은 항목도 남기지 않는다", async () => {

@@ -1,10 +1,12 @@
 import { Module, type OnApplicationBootstrap, type OnModuleDestroy, type Provider, Inject } from "@nestjs/common";
 import { createPoolFromEnv, createCurationPoolFromEnv } from "@trade-data-manager/persistence";
-import { MARKET_POOL, CURATION_POOL, NEWS_SEARCHER, CURATION_SYNC } from "./tokens.js";
+import { MARKET_POOL, CURATION_POOL, NEWS_SEARCHER, CURATION_SYNC, POINT_GRIDS } from "./tokens.js";
+import { PointGrids } from "./grid/pointGrids.js";
 import type { Pool } from "./pool.js";
 import { chartControllers, chartProviders } from "./chart/chart.providers.js";
 import { boardControllers, boardProviders } from "./board/board.providers.js";
 import { curationControllers, curationProviders } from "./curation/curation.providers.js";
+import { gridControllers, gridProviders } from "./grid/grid.providers.js";
 import { newsControllers, newsProviders } from "./news/news.providers.js";
 import { LazyTelegramNewsSearcher } from "./news/telegramNewsSearcher.js";
 import { CurationSync } from "./curation/curationSync.js";
@@ -18,8 +20,8 @@ const curationPoolProvider: Provider = { provide: CURATION_POOL, useFactory: ():
 // 화면별 팩토리 묶음은 폴더별 *.providers.ts 로 — 변경/테스트 단위가 도메인별로 작아진다.
 // 읽기모델: 캐시(DerivedCache 파일 · MasterCache/Membership 메모리) → DayBoards 조립. Symbol 토큰 배선.
 @Module({
-    controllers: [...chartControllers, ...boardControllers, ...curationControllers, ...newsControllers],
-    providers: [poolProvider, curationPoolProvider, ...chartProviders, ...boardProviders, ...curationProviders, ...newsProviders],
+    controllers: [...chartControllers, ...boardControllers, ...curationControllers, ...gridControllers, ...newsControllers],
+    providers: [poolProvider, curationPoolProvider, ...chartProviders, ...boardProviders, ...curationProviders, ...gridProviders, ...newsProviders],
 })
 export class MarketModule implements OnApplicationBootstrap, OnModuleDestroy {
     constructor(
@@ -27,6 +29,7 @@ export class MarketModule implements OnApplicationBootstrap, OnModuleDestroy {
         @Inject(CURATION_POOL) private readonly curationPool: Pool,
         @Inject(NEWS_SEARCHER) private readonly newsSearcher: LazyTelegramNewsSearcher,
         @Inject(CURATION_SYNC) private readonly curationSync: CurationSync,
+        @Inject(POINT_GRIDS) private readonly grids: PointGrids,
     ) {}
 
     /**
@@ -44,7 +47,16 @@ export class MarketModule implements OnApplicationBootstrap, OnModuleDestroy {
                 }
                 console.log(r.skipped ? "[mirror] 원격 없음 — 미러 건너뜀" : `[mirror] 부팅 동기화 완료(${r.rows}행)`);
             })
-            .catch((e: unknown) => console.error("[mirror] 부팅 동기화 실패 — 미러는 직전 상태로 계속 쓴다", e));
+            .catch((e: unknown) => console.error("[mirror] 부팅 동기화 실패 — 미러는 직전 상태로 계속 쓴다", e))
+            // 격자 웜업 — 미러 동기화 **뒤에**(먼저 돌면 낡은 기대집합으로 두 번 굽는다), 역시 fire-and-forget.
+            // 콜드 전수는 ~43초라 첫 사용자 요청이 물면 안 된다. 개발 재시작 부담이 크면 env 로 끈다.
+            .then(() => {
+                if (process.env.POINT_GRID_WARMUP === "0") return;
+                void this.grids
+                    .reconcile()
+                    .then((g) => console.log(`[point-grid] 웜업 — 기대 ${g.charts} · 구움 ${g.baked} · 히트 ${g.kept} · ${g.tookMs}ms`))
+                    .catch((e: unknown) => console.error("[point-grid] 웜업 실패 — 첫 요청이 대사를 문다", e));
+            });
     }
 
     async onModuleDestroy(): Promise<void> {
