@@ -76,11 +76,22 @@ export const DEFAULT_GRID_OPTIONS: Required<GridDetectOptions> = {
 
 const KRW_PER_EOK = 100_000_000n;
 
-/** "HH:MM:SS" → 자정기준 분. 분봉 초는 항상 00(minuteBackfill 과 같은 해석). */
-const toMin = (time: string): number => {
+/**
+ * "HH:MM[:SS]" → 자정기준 분. 분봉 초는 항상 00 이라 무손실(minuteBackfill 과 같은 해석).
+ * 격자(분 int)와 앱의 시각 문자열(타점 자연키·차트 tradeTime)을 잇는 **유일한 자** — 짝은 minuteToHms.
+ */
+export const hmsToMinute = (time: string): number => {
     const [h, m] = time.split(":");
     return Number(h) * 60 + Number(m);
 };
+
+/** 자정기준 분 → "HH:MM:00" — 격자 시각을 타점 자연키·차트 시각 문자열로 되돌린다. hmsToMinute 의 짝. */
+export const minuteToHms = (min: number): string => {
+    const p = (n: number): string => String(n).padStart(2, "0");
+    return `${p(Math.floor(min / 60))}:${p(min % 60)}:00`;
+};
+
+const toMin = hmsToMinute;
 
 /**
  * 격자 검출. 입력은 그 종목·그 날의 raw 분봉(존재하는 봉만, 시간 오름차순) — dense 화는 여기서 한다

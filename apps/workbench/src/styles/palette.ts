@@ -96,6 +96,8 @@ export const IGNORED_CANDLE = "#6b7280"; // 무시 캔들 마커 — 회색이 �
 // ── 테마 순위 패널(순위 평면)
 export const THEME_PEER = "#16796f"; // 테마 동료 점 — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다)
 
+export const AUTO_POINT = "#16796f"; // 자동 Point(격자 파생) 마커 ◇ — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다)
+
 export const CHART_LABEL = "#a0a0a0"; // 차트 툴팁의 라벨 회색(툴팁 배경 위 — 본문 --text-tertiary 와 다름)
 export const CHART_VALUE = "#d4d4d8"; // 차트 툴팁의 값 회색(라벨보다 밝게)
 

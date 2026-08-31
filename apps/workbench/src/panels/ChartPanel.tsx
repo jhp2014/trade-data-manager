@@ -6,6 +6,9 @@ import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { useReviewPointData } from "../lib/chartHooks.js";
+import { autoPointsOfChart, useAutoPoints } from "../lib/usePointGrids.js";
+import { minuteToHms } from "@trade-data-manager/market/domain";
+import type { AutoPointInput } from "../chart/minuteOverlays.js";
 import { ownBundle, useAnchorMarks, useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
@@ -76,6 +79,17 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const lines = useBaselineLines(code, viewDate, dailyQ.data, minuteQ.data);
     const ignore = useIgnoreCandles(code, viewDate);
     const { savedPoints, focusedPoint } = useReviewPointData(code, viewDate, time);
+
+    // 자동 Point(격자 파생) — 정의(pointDef) 반영 즉석 파생. ◇ 마커가 품질 육안 검증 입구다(재현율 대신).
+    const autoView = useAutoPoints();
+    const autoPoints = useMemo<AutoPointInput[]>(
+        () =>
+            autoPointsOfChart(autoView, code, viewDate).map((p) => ({
+                time: kstToUnix(viewDate, minuteToHms(p.min)),
+                label: `자동 ${p.kind === "breakout" ? "돌파" : "재돌파"} ${p.ordinal + 1}번째 · 레벨 ${p.levelPrice.toLocaleString()} · 대금 ${(Number(p.tvMax2) / 1e8).toFixed(0)}억`,
+            })),
+        [autoView, code, viewDate],
+    );
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
@@ -203,6 +217,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     pctBase={pctBase}
                                     markerTime={markerTime}
                                     savedPoints={savedPoints}
+                                    autoPoints={autoPoints}
                                     showPointInfo={showPointInfo}
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}

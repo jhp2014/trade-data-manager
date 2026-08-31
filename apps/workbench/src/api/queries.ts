@@ -14,6 +14,7 @@ import { fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchAllPoints } from "./reviewPoints.js";
 import { fetchComputedAxes } from "./rank.js";
 import { fetchRankSections } from "./rankSections.js";
+import { fetchPointGrids } from "./pointGrids.js";
 import { fetchGroups, fetchGroupMemberships } from "./groups.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext, fetchAllThemeMembers } from "./themes.js";
@@ -103,6 +104,11 @@ export const computedAxesQuery = () =>
 // 타점 mutation(chartHooks.invalidate)과 미러 동기화(CURATION)가 무효화한다. 서수 자체는 불변 원료.
 export const rankSectionsQuery = () =>
     queryOptions({ queryKey: ["rank-sections"], queryFn: ({ signal }) => fetchRankSections(signal), staleTime: IMMUTABLE , meta: CURATION });
+
+// 자동 타점 격자 번들 — **키 하나**. 기대집합·기준선 승자가 앵커(큐레이션) 파생이라 앵커 mutation
+// (chartAnchorHooks.invalidate)과 미러 동기화(CURATION)가 무효화한다. Point 판정은 클라 파생(usePointGrids).
+export const pointGridsQuery = () =>
+    queryOptions({ queryKey: ["point-grids"], queryFn: ({ signal }) => fetchPointGrids(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 
 // 그룹 — 사전 + 전 항목 멤버십. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).

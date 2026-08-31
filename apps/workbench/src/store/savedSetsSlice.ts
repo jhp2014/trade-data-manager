@@ -5,10 +5,12 @@
 // 저장·덮어쓰기에만 변한다). 접점은 putStages 하나 — 열기(openSet)도 "깔때기에 조건을 쓰는 손"이라
 // 같은 규칙(영속·시선·포인터 정리)을 지난다.
 import type { StateCreator } from "zustand";
-import type { FunnelCell } from "@trade-data-manager/market/domain";
+import type { FunnelCell, PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages, type FilterStage } from "../panels/filter/stage.js";
 import { putStages, selectFilterStages } from "./filterFunnelSlice.js";
+import { parsePointDef } from "../lib/pointDef.js";
+import { persistPointDef } from "./pointDefSlice.js";
 import { loadJson, saveJson } from "./persist.js";
 
 const LEGACY_SETS_KEY = "wb.filterFunnelSets"; // 옛 "저장한 깔때기" — 저장 집합(부위=생존자)으로 읽어 들인다
@@ -34,6 +36,9 @@ export interface SavedSet {
     name: string;
     stages: FilterStage[];
     part: SavedSetPart;
+    /** 자동 타점 정의 사본(집합 자립 — 게이트가 다르면 같은 조건도 다른 모수를 센다). 옛 저장물엔 없음 →
+     *  열 때 현재 정의 유지(관대한 병합 — additive, 키 상향 금지 규칙). */
+    pointDef?: PointDefinition;
 }
 
 const CELLS: readonly FunnelCell[] = ["survive", "nearMiss", "upstreamPending", "fail", "pending"];
@@ -54,12 +59,14 @@ const loadSavedSets = (): SavedSet[] => {
     const parse = (arr: unknown[], withPart: boolean): SavedSet[] => {
         const out: SavedSet[] = [];
         for (const raw of arr) {
-            const f = raw as { id?: unknown; name?: unknown; stages?: unknown; part?: unknown };
+            const f = raw as { id?: unknown; name?: unknown; stages?: unknown; part?: unknown; pointDef?: unknown };
             if (typeof f?.id !== "string" || typeof f?.name !== "string") continue;
             const stages = parseStages(f.stages);
             if (!stages) continue;
             const part = withPart ? parsePart(f.part) : { kind: "survivors" as const };
-            if (part) out.push({ id: f.id, name: f.name, stages, part });
+            // 정의는 additive — 없거나 오염이면 필드 생략(열 때 현재 정의 유지). 집합 통째 폐기 사유가 아니다.
+            const pointDef = f.pointDef !== undefined ? (parsePointDef(f.pointDef) ?? undefined) : undefined;
+            if (part) out.push({ id: f.id, name: f.name, stages, part, ...(pointDef ? { pointDef } : {}) });
         }
         return out;
     };
@@ -106,10 +113,11 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
             ? { kind: "cell", stageId: s.funnelSelection.stageId, cells: [...s.funnelSelection.cells] }
             : { kind: "survivors" };
         const at = s.savedSets.findIndex((x) => x.name === n);
+        // 정의도 사본으로 — stages 와 같은 이유(자립). 저장 순간의 정의가 이 집합의 모수 정의다.
         const saved = at >= 0
-            ? { ...s.savedSets[at]!, stages, part }
+            ? { ...s.savedSets[at]!, stages, part, pointDef: s.pointDef }
             // id 에 난수 꼬리 — 시각만으로는 같은 ms 의 연속 저장이 같은 id 가 된다(newStageId 와 같은 규칙).
-            : { id: `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: n, stages, part };
+            : { id: `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: n, stages, part, pointDef: s.pointDef };
         const next = at >= 0 ? s.savedSets.map((x, i) => (i === at ? saved : x)) : [...s.savedSets, saved];
         saveJson(SAVED_SETS_KEY, next);
         // 방금 저장한 집합이 곧 "열어 둔 집합" — 이어서 만지면 덮어쓰기가 그 집합을 가리킨다.
@@ -117,8 +125,8 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     }),
     overwriteSet: (id) => set((s) => {
         if (!s.savedSets.some((x) => x.id === id)) return {};
-        // 조건만 바뀐다(부위·이름 유지). 같은 조건에서 나온 형제 집합이 있어도 **이 하나만** — 느리지만 암묵이 없다.
-        const next = s.savedSets.map((x) => (x.id === id ? { ...x, stages: selectFilterStages(s) } : x));
+        // 조건·정의만 바뀐다(부위·이름 유지). 같은 조건에서 나온 형제 집합이 있어도 **이 하나만** — 느리지만 암묵이 없다.
+        const next = s.savedSets.map((x) => (x.id === id ? { ...x, stages: selectFilterStages(s), pointDef: s.pointDef } : x));
         saveJson(SAVED_SETS_KEY, next);
         return { savedSets: next };
     }),
@@ -126,7 +134,8 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         const f = s.savedSets.find((x) => x.id === id);
         if (!f) return {};
         // 사본이 작업 깔때기로(배열 공유는 안전 — 편집 함수들이 늘 새 배열을 만든다). 시선은 푼다(다른 깔때기의 칸).
-        return { ...putStages(s, f.stages), funnelSelection: null, openedSetId: id };
+        // 정의도 그 집합의 것으로 되돌린다(같은 영속 경로 persistPointDef) — 없는 옛 저장물은 현재 정의 유지.
+        return { ...putStages(s, f.stages), funnelSelection: null, openedSetId: id, ...(f.pointDef ? { pointDef: persistPointDef(f.pointDef) } : {}) };
     }),
     renameSet: (id, name) => set((s) => {
         const n = name.trim();

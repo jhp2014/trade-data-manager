@@ -13,8 +13,9 @@ import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, 
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
     allAnchorsQuery, allCommentsQuery, allPointsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
-    groupMembershipsQuery, groupsQuery, rankSectionsQuery, stockMasterQuery,
+    groupMembershipsQuery, groupsQuery, pointGridsQuery, rankSectionsQuery, stockMasterQuery,
 } from "../api/queries.js";
+import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
 import { GroupsProvider } from "../lib/GroupsContext.js";
 import { LiveSnapshotProvider } from "../lib/LiveSnapshotContext.js";
@@ -57,6 +58,8 @@ export interface Seed {
     charts?: { code: string; date: string; data: ChartBundle }[];
     /** 순위 단면 번들(테마 강도 필터·패널 카운트의 재료). 안 주면 빈 번들. */
     rankSections?: RankSectionBundle;
+    /** 자동 타점 격자(디코딩 후 형태 — usePointGrids 재료). 안 주면 빈 번들(자동 Point 0). */
+    pointGrids?: DecodedPointGrids;
     /** 시트 테마 멤버십 전량(테마 인덱스 재료). 안 주면 빈 목록. */
     themeMembers?: ThemeMember[];
     /**
@@ -94,6 +97,7 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 1, dates: [], pending: [] });
+    qc.setQueryData(pointGridsQuery().queryKey, seed.pointGrids ?? { version: 1, byDate: new Map() });
     qc.setQueryData(allThemeMembersQuery().queryKey, seed.themeMembers ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
     if (seed.daySnapshot) qc.setQueryData(["day-replay-lru", seed.daySnapshot.date], seed.daySnapshot.data);

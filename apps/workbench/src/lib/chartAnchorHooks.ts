@@ -11,7 +11,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASELINE_PARAM, chartAnchorKey, IGNORE_CANDLE_PARAM } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
-import { allAnchorsQuery, computedAxesQuery } from "../api/queries.js";
+import { allAnchorsQuery, computedAxesQuery, pointGridsQuery } from "../api/queries.js";
 import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
 import { buildMarks, type AnchorMark } from "./anchorMarks.js";
 import type { ChartBundle } from "../api/chart.js";
@@ -53,6 +53,7 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
     const invalidate = (): void => {
         void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey }); // 복제본 앵커 테이블 — 차트·작업셋·배지가 전부 이 키
         void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey }); // 앵커는 축 입력 — 즉시 재굽기
+        void qc.invalidateQueries({ queryKey: pointGridsQuery().queryKey }); // 격자 기대집합·기준선 승자도 앵커 파생
     };
     const addMut = useMutation({ mutationFn: addChartAnchor, onSuccess: invalidate });
     const removeMut = useMutation({ mutationFn: removeChartAnchor, onSuccess: invalidate });

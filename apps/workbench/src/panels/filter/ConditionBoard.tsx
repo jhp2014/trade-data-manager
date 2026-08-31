@@ -25,6 +25,7 @@ import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import { GrainSection, Note } from "./grain.js";
 import { GroupEditors, type GroupEditorAnchor } from "./ConditionEditors.js";
+import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
 import { RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
 import { useLinkedThemeStage } from "./themeLink.js";
@@ -113,6 +114,7 @@ export function ConditionBoard({ barsOpen }: {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
+                <PointDefHead />
                 {v.isLoading && <Note>불러오는 중…</Note>}
                 {!v.isLoading && GRAINS.map((grain) => {
                     const entries = v.stagesOrdered.filter((e) => e.grain === grain);

@@ -14,13 +14,14 @@ import {
     useMarkerOverlay,
     useMarkerVertLines,
     usePercentPriceLines,
+    type AutoPointInput,
     type SavedPointInput,
 } from "./minuteOverlays.js";
 import { useMinuteInteraction, GROUP_MARKER_ATTR } from "./minuteInteraction.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import type { Group } from "../api/groups.js";
-import { MARKER_NOW } from "../styles/palette.js";
+import { AUTO_POINT, MARKER_NOW } from "../styles/palette.js";
 
 /**
  * 세로선(x) 우측에 붙이는 오버레이 박스 — 우측 공간이 모자라면 좌측으로 뒤집는다.
@@ -108,6 +109,28 @@ function MarkerTriangle({ fill, stroke, active = false }: { fill: string; stroke
     );
 }
 
+/** 자동 Point ◇ — 손 타점 ▼(채움/검정 규칙)과 **모양으로** 갈린다(색만으로 가르면 작은 크기에서 섞인다). */
+function MarkerDiamond({ active = false }: { active?: boolean }): JSX.Element {
+    return (
+        <svg
+            width={10}
+            height={10}
+            viewBox="0 0 10 10"
+            style={{
+                display: "block",
+                overflow: "visible",
+                pointerEvents: "none",
+                filter: active ? "drop-shadow(0 2px 2.5px rgba(0,0,0,0.5))" : "drop-shadow(0 1px 1.5px rgba(0,0,0,0.3))",
+                transform: active ? "scale(1.3)" : "none",
+                transformOrigin: "50% 50%",
+                transition: "transform 0.1s ease",
+            }}
+        >
+            <polygon points="5,1 9,5 5,9 1,5" fill="var(--bg-primary, #ffffff)" stroke={AUTO_POINT} strokeWidth={1.4} />
+        </svg>
+    );
+}
+
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
 // 데이터는 이미 파생된 MinutePoint[](%/원). 명령형(lightweight-charts) 배선은 minuteSeries(수명주기·
 // 데이터)·minuteFraming(표시범위)·minuteOverlays(세로선·가격선·골격)·minuteInteraction(마우스) 훅들이
@@ -122,6 +145,7 @@ export function MinuteChart({
     pctBase,
     markerTime = null,
     savedPoints = [],
+    autoPoints = [],
     showPointInfo = false,
     zoom = null,
     lockTimeScale = false,
@@ -142,6 +166,9 @@ export function MinuteChart({
     pctBase: number | null; // % 기준가(수정주가 전일종가) — D 선 분모
     markerTime?: number | null; // 현재 타점 세로선(unix초). null = 없음.
     savedPoints?: SavedPointInput[]; // 저장된 복기 타점(unix초). 흐린 세로선 + hover 카드.
+    /** 자동 Point(격자 파생, unix초+라벨). ◇ 마커 + 청록 세로선 — 안 넘기면 없음(실시간 차트가 그렇다).
+     *  저장 타점과 **별도 리스트**(같은 분의 손·자동이 스냅 dedupe 에 서로 먹히지 않게). */
+    autoPoints?: AutoPointInput[];
     showPointInfo?: boolean; // 현재 타점 정보 박스 토글
     zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 세션 기본(07:50/08:50~15:30).
     lockTimeScale?: boolean; // 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지(리프레임 안 함)
@@ -180,7 +207,7 @@ export function MinuteChart({
     // 명령형 배선 — 시리즈 수명주기 → 데이터 푸시 → 타점 세로선 → 표시범위 → 상호작용 → 가격선(%).
     const series = useMinuteSeries(chartRef);
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
-    const { currentSnapped, savedSnapped } = useMarkerVertLines(series, points, markerTime, savedPoints);
+    const { currentSnapped, savedSnapped, autoSnapped } = useMarkerVertLines(series, points, markerTime, savedPoints, autoPoints);
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);
@@ -223,6 +250,10 @@ export function MinuteChart({
     // hover 손잡이는 **스냅 시각**(s.time) — 배열 인덱스로 잡으면 hover 중 목록이 바뀔 때 옆 타점 카드가 뜬다.
     const [hoveredSaved, setHoveredSaved] = useState<number | null>(null);
     const overlay = useMarkerOverlay(chartRef, series, pointMapRef, savedSnapped, currentSnapped);
+    // 자동 Point ◇ 좌표 — 같은 변환기를 별도 리스트로 한 번 더(라벨은 스냅 시각으로 되찾는다).
+    const [hoveredAuto, setHoveredAuto] = useState<number | null>(null);
+    const autoOverlay = useMarkerOverlay(chartRef, series, pointMapRef, autoSnapped, null);
+    const autoLabelOf = (time: number): string => autoSnapped.find((a) => a.time === time)?.label ?? "자동 Point";
 
     // 오버레이 박스 우/좌 판정용 컨테이너 폭 + 현재 hover 중인 저장 타점.
     const containerWidth = containerRef.current?.clientWidth ?? 0;
@@ -238,6 +269,24 @@ export function MinuteChart({
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
             <AnchorMarkLayer layout={markLayout} onGoTo={markArgs.goTo} />
+            {/* 자동 Point ◇ — ▼ 줄 아래(같은 분의 손 타점 ▼ 를 가리지 않게). 클릭 = 시간선 이동, title = 요약. */}
+            {autoOverlay.saved.map((a) => {
+                if (a.x < 0) return null;
+                return (
+                    <div
+                        key={`auto-${a.time}`}
+                        {...{ [GROUP_MARKER_ATTR]: "" }}
+                        onMouseEnter={() => setHoveredAuto(a.time)}
+                        onMouseLeave={() => setHoveredAuto((cur) => (cur === a.time ? null : cur))}
+                        onClick={() => a.point && onMovePoint(a.point.tradeTime)}
+                        onContextMenu={(e) => e.preventDefault()}
+                        title={autoLabelOf(a.time)}
+                        style={{ ...markerBoxStyle(a.x, 7), top: MARKER_BOX.h - 1, cursor: "pointer" }}
+                    >
+                        <MarkerDiamond active={hoveredAuto === a.time} />
+                    </div>
+                );
+            })}
             {/* 저장 타점 ▼ 마커 — 클릭하면 시간선이 그 타점으로. **색** = 지금 시간선이 여기인가(검정). */}
             {overlay.saved.map((s) => {
                 if (s.x < 0) return null;
