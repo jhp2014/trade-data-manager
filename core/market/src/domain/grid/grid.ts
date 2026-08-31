@@ -6,8 +6,9 @@
 // 격자만 보고 계산한다. 굽는 값은 전부 "하한(격자)"이고 읽기 층은 위로만 조인다.
 //
 // 반면 **세션 창·신고가 기준은 읽기 층이 못 되돌리는 상태값**이라 검출기가 진다(2026-08-30 사용자 확정):
-//  · 세션 창 = [08:00, 15:30] — NXT 프리마켓 포함, 시간외 제외. 러닝 최고가가 상태값이라
-//    창 밖 체결 하나가 그날 신고가 캔들 목록을 통째로 바꾼다 — 창을 바꾸면 격자 version 상향.
+//  · 세션 창 = [08:00, 20:00] — NXT 프리·애프터마켓을 정규장과 동일 취급(2026-08-31 사용자 확정).
+//    러닝 최고가가 상태값이라 창 밖 체결 하나가 그날 신고가 캔들 목록을 통째로 바꾼다 —
+//    창을 바꾸면 격자 version 상향.
 //  · 신고가 = 세션 창 안 **당일 러닝 최고가** 갱신. 마디 기준 재단은 읽기 층이 피벗으로 할 수 있지만 역은 불가.
 //
 // 기준선(base)은 호출자가 확정·환산해 넘긴다(resolveBaselines 승자를 rawScaleOf 로 **그 날 원주가 스케일**로
@@ -25,22 +26,27 @@ export interface GridPivot {
     price: number;
     /** 반대 방향 임계 도달로 소급 확정된 시각(분). 장 끝까지 미확정(마지막 마디)이면 null — 읽기 층이 판단. */
     confirmedMin: number | null;
-    /** 직전 피벗 다음 봉부터 이 피벗 봉까지 leg 누적 거래대금(원, 무손실 string). */
+    /** 직전 (kept) 피벗 다음 봉부터 이 피벗 봉까지 누적 거래대금(원, 무손실 string).
+     *  검출 시엔 leg 하나 몫이지만, 축약(compressPivots) 후엔 버려진 피벗 몫이 합산된 구간 합이다. */
     legAmount: string;
 }
 
-/** 신고가 캔들 — 세션 창 안 당일 러닝 최고가를 갱신했고 tvMax2 ≥ floor 인 봉. Point 후보의 전체 모집합. */
+/** 신고가 캔들 — 세션 창 안 당일 러닝 최고가를 갱신했고 tv ≥ floor 인 봉. Point 후보의 전체 모집합.
+ *  OHLC 를 절대가(그 날 원주가, 원)로 완결 수록한다 — %(몸통·꼬리·종가위치)는 분모 선택이 정책이라
+ *  굽지 않고 전부 읽기 층 파생(양봉 여부도 close > open 파생 — bullOnly 노브가 읽는다). */
 export interface GridNewHigh {
     /** 시각(분). */
     min: number;
+    /** 그 봉 시가(원주가, 원). */
+    open: number;
     /** 그 봉 고가 = 갱신된 러닝 최고가(원주가, 원). */
     high: number;
-    /** 그 봉 거래대금(원, string). */
+    /** 그 봉 저가(원주가, 원). */
+    low: number;
+    /** 그 봉 종가(원주가, 원). */
+    close: number;
+    /** 그 봉 거래대금(원, string) — 수록·게이트 기준 모두 자기 봉 대금(직전 봉 max 구제는 2026-08-31 폐기). */
     tv: string;
-    /** max(직전 dense 봉, 현재 봉) 거래대금 — VI 로 대금이 직전 봉에 쏠린 경우 구제(원, string). */
-    tvMax2: string;
-    /** 양봉(종가 > 시가). Point 자격 조건이지만 판정은 읽기 층 — 격자는 사실만 싣는다. */
-    bull: boolean;
 }
 
 /** 자동 타점 격자 — 앵커 차트(종목,날짜) 하나의 압축물. 직렬화 그대로 파일 캐시에 실린다. */
@@ -63,7 +69,7 @@ export interface GridDetectOptions {
     floorEok?: number;
     /** 세션 창 시작(자정기준 분, 이상). 기본 480 = 08:00(프리마켓 포함). */
     sessionStartMin?: number;
-    /** 세션 창 끝(자정기준 분, 이하). 기본 930 = 15:30(시간외 제외). */
+    /** 세션 창 끝(자정기준 분, 이하). 기본 1200 = 20:00(NXT 애프터마켓 포함). */
     sessionEndMin?: number;
 }
 
@@ -71,7 +77,7 @@ export const DEFAULT_GRID_OPTIONS: Required<GridDetectOptions> = {
     zigzagPct: 2,
     floorEok: 20,
     sessionStartMin: 8 * 60,
-    sessionEndMin: 15 * 60 + 30,
+    sessionEndMin: 20 * 60,
 };
 
 const KRW_PER_EOK = 100_000_000n;
@@ -94,9 +100,9 @@ export const minuteToHms = (min: number): string => {
 const toMin = hmsToMinute;
 
 /**
- * 격자 검출. 입력은 그 종목·그 날의 raw 분봉(존재하는 봉만, 시간 오름차순) — dense 화는 여기서 한다
- * (호출측에 맡기면 tvMax2 의 "직전 봉" 의미론이 조용히 갈린다: dense 라 VI·무거래 갭엔 거래량 0 평탄봉이
- * 들어가고, 그 직후 봉의 tvMax2 = 자기 자신이다. 의도된 규칙 — 테스트로 못 박음).
+ * 격자 검출. 입력은 그 종목·그 날의 raw 분봉(존재하는 봉만, 시간 오름차순) — dense 화는 여기서 한다.
+ * 채움봉(거래량 0·직전 종가 평탄)은 신고가·피벗·legAmount 어디에도 영향이 없다(불변성은 테스트로 못 박음) —
+ * 유지하는 이유는 "직전 봉" 류 의미론이 다시 생길 때 호출측마다 갈리지 않게 한 곳에 고정해 두는 것.
  * 분봉이 없거나 세션 창에 한 봉도 없으면 null(재료 없음 — 캐시 층이 "무사건 격자"와 구분해 안 굽는다).
  */
 export function detectGrid(
@@ -227,16 +233,66 @@ export function detectGrid(
         if (base !== null && touchMin === null && highs[i] >= base) touchMin = mins[i];
         if (highs[i] <= runningMax) continue;
         runningMax = highs[i];
-        const tvMax2 = i > 0 && tvs[i - 1] > tvs[i] ? tvs[i - 1] : tvs[i];
-        if (tvMax2 < floorWon) continue;
+        if (tvs[i] < floorWon) continue;
         newHighs.push({
             min: mins[i],
+            open: Number(bars[i].un.open),
             high: highs[i],
+            low: lows[i],
+            close: Number(bars[i].un.close),
             tv: tvs[i].toString(),
-            tvMax2: tvMax2.toString(),
-            bull: Number(bars[i].un.close) > Number(bars[i].un.open),
         });
     }
 
-    return { base, touchMin, pivots, newHighs };
+    return { base, touchMin, pivots: compressPivots(pivots), newHighs };
+}
+
+/**
+ * 피벗 축약(B안, 2026-08-31) — zigzag 원출력에서 **소비되는 것만** 남긴다:
+ *  ① 러닝 최고가를 갱신한 확정 고점(이전 모든 kept 고점보다 높은 확정 고점 — pointsOf 레벨 후보의 상위집합)
+ *  ② kept 고점↔다음 kept 고점 구간별 최저 저점 1개(눌림 깊이의 원자재)
+ *  ③ 마지막 kept 고점 이후 꼬리 최저 저점 1개(미확정 허용)
+ * B류(하락 중 낮은 반등) 고점·중간 저점·미확정 꼬리 고점·첫 kept 고점 이전 선행 저점은 저장하지 않는다 —
+ * 확정 고점이 하나도 없는 날(종일 단조 상승 등)은 피벗 0(무사건 격자와 같은 취급, 소비자 손실 없음).
+ *
+ * legAmount 는 kept 이웃 구간 합으로 재계산한다: 원본 legAmount 가 (직전 피벗, 이 피벗] 구간합이고
+ * 피벗 인덱스가 강한 단조 증가라 구간이 정확히 분할되므로, 버려진 피벗의 몫을 다음 kept 피벗에
+ * BigInt 합산하면 무손실(총합 보존). 뜻은 "직전 **kept** 피벗 다음 봉부터 이 피벗 봉까지"로 넓어진다.
+ * 꼬리 이후 잔여 leg(마지막 kept 저점 뒤 버려진 피벗들 몫)는 어디에도 실리지 않는다 — 소비자 0.
+ */
+export function compressPivots(pivots: GridPivot[]): GridPivot[] {
+    const keep = new Array<boolean>(pivots.length).fill(false);
+    let maxKept = -Infinity;
+    let lastKeptHigh = -1;
+    for (let i = 0; i < pivots.length; i++) {
+        const p = pivots[i];
+        if (p.kind !== "high" || p.confirmedMin === null || p.price <= maxKept) continue;
+        keep[i] = true;
+        maxKept = p.price;
+        // 직전 kept 고점 이후 ~ 이 고점 사이의 최저 저점 1개(첫 kept 고점 이전 선행 저점은 저장 안 함).
+        if (lastKeptHigh >= 0) markLowestLow(pivots, keep, lastKeptHigh + 1, i);
+        lastKeptHigh = i;
+    }
+    if (lastKeptHigh >= 0) markLowestLow(pivots, keep, lastKeptHigh + 1, pivots.length);
+    else return []; // kept 고점 0개 — 선행/꼬리 저점만으로는 소비자가 쓸 수 없다.
+
+    const out: GridPivot[] = [];
+    let acc = 0n;
+    for (let i = 0; i < pivots.length; i++) {
+        acc += BigInt(pivots[i].legAmount);
+        if (!keep[i]) continue;
+        out.push({ ...pivots[i], legAmount: acc.toString() });
+        acc = 0n;
+    }
+    return out;
+}
+
+/** [from, toExclusive) 구간에서 가장 낮은 low 피벗 하나를 keep 표시(동가면 이른 쪽). 저점이 없으면 무동작. */
+function markLowestLow(pivots: GridPivot[], keep: boolean[], from: number, toExclusive: number): void {
+    let best = -1;
+    for (let j = from; j < toExclusive; j++) {
+        if (pivots[j].kind !== "low") continue;
+        if (best < 0 || pivots[j].price < pivots[best].price) best = j;
+    }
+    if (best >= 0) keep[best] = true;
 }

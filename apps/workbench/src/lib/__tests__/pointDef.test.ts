@@ -19,4 +19,10 @@ describe("parsePointDef", () => {
         expect(parsePointDef({})).toEqual(DEFAULT_POINT_DEFINITION);
         expect(isDefaultPointDef(parsePointDef({})!)).toBe(true);
     });
+
+    it("bullOnly — 옛 저장물(필드 없음)은 true, boolean 아닌 오염은 기본값, false 는 보존", () => {
+        expect(parsePointDef({})!.bullOnly).toBe(true);
+        expect(parsePointDef({ bullOnly: 1 })!.bullOnly).toBe(true);
+        expect(parsePointDef({ bullOnly: false })!.bullOnly).toBe(false);
+    });
 });

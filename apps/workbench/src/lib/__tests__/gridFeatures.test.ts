@@ -20,9 +20,9 @@ const view = {
     byChart: new Map(),
     points: [
         // 돌파 Point — 기준선 대비 +0.5%, 직전 마디 0, 눌림 없음(levelMin null → 결손)
-        { stockCode: "A", date: "2026-07-01", time: "09:20:00", point: { kind: "breakout", ordinal: 0, min: 560, high: 10050, tvMax2: "0", levelPrice: 10000, levelIdx: 0, levelMin: null } },
+        { stockCode: "A", date: "2026-07-01", time: "09:20:00", point: { kind: "breakout", ordinal: 0, min: 560, high: 10050, tv: "0", levelPrice: 10000, levelIdx: 0, levelMin: null } },
         // 재돌파 Point — 마디(10300, min 575) 갱신. 눌림 = (10300−10100)/10300 ≈ 1.94%
-        { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 1, min: 600, high: 10350, tvMax2: "0", levelPrice: 10300, levelIdx: 1, levelMin: 575 } },
+        { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 1, min: 600, high: 10350, tv: "0", levelPrice: 10300, levelIdx: 1, levelMin: 575 } },
     ],
 } as unknown as AutoPointsView;
 
@@ -59,6 +59,7 @@ describe("gridFeatureFeeds", () => {
     });
 
     it("창 안에 저점 피벗이 여럿이면 최저가 뽑힌다", () => {
+        // 축약 격자(compressPivots)는 구간당 저점 1개라 이 모양이 안 나오지만, 함수는 임의 목록을 견뎌야 한다.
         const deep: PointGrid = {
             ...grid,
             pivots: [
@@ -69,5 +70,19 @@ describe("gridFeatureFeeds", () => {
         const v = gridFeatureFeeds(view, () => deep).find((f) => f.key === "grid-pullback-pct")!.values;
         // (10300 − 10050) / 10300 ≈ 2.43%
         expect(v).toEqual([{ stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 2.43 }]);
+    });
+
+    it("구간 최저 저점이 Point 시각 이후면 눌림 깊이는 결손(축약의 수용된 귀결)", () => {
+        // 축약 격자는 kept 구간당 최저 저점 1개만 남긴다 — 그 저점이 Point(min 600) 뒤(605)에 있으면
+        // 창(levelMin, pointMin] 안에 후보가 없어 결손이 된다. 창이 kept 구간 여럿을 걸치면 결손 대신
+        // 더 얕은 값이 나올 수도 있다(실데이터 6,016차트 실측: 결손 전환 2.01%·값 변화 1건 — 수용).
+        const lateLow: PointGrid = {
+            ...grid,
+            pivots: [
+                { kind: "high", min: 575, price: 10300, confirmedMin: 585, legAmount: "0" },
+                { kind: "low", min: 605, price: 10020, confirmedMin: 606, legAmount: "0" },
+            ],
+        };
+        expect(gridFeatureFeeds(view, () => lateLow).find((f) => f.key === "grid-pullback-pct")!.values).toHaveLength(0);
     });
 });

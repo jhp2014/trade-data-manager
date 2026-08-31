@@ -7,11 +7,13 @@ export function parsePointDef(raw: unknown): PointDefinition | null {
     if (!raw || typeof raw !== "object") return null;
     const r = raw as Partial<Record<keyof PointDefinition, unknown>>;
     const num = (v: unknown, d: number): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : d);
+    const bool = (v: unknown, d: boolean): boolean => (typeof v === "boolean" ? v : d); // num 재사용 금지 — ≥0 가드가 boolean 을 조용히 먹는다
     return {
         baselineGateEok: num(r.baselineGateEok, DEFAULT_POINT_DEFINITION.baselineGateEok),
         renewalGateEok: num(r.renewalGateEok, DEFAULT_POINT_DEFINITION.renewalGateEok),
         excludeUptoMin: num(r.excludeUptoMin, DEFAULT_POINT_DEFINITION.excludeUptoMin),
         mergeRisePct: num(r.mergeRisePct, DEFAULT_POINT_DEFINITION.mergeRisePct),
+        bullOnly: bool(r.bullOnly, DEFAULT_POINT_DEFINITION.bullOnly), // 2026-08-31 추가 — 옛 저장물엔 없어 기본 true 로 채워진다
     };
 }
 

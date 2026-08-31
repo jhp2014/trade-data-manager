@@ -3,7 +3,7 @@
 //
 // 실행 전 미러 신선도: pnpm --filter @trade-data-manager/db-ops sync (안 하면 최근 손 타점이 안 보인다)
 // 실행(CWD = apps/api): pnpm --filter @trade-data-manager/api recon:grid-recall -- --tolerance 3
-// 플래그: --tolerance(분) + 01 과 같은 검출/판정 플래그(--dir·--zigzag·--floor·--sessionStart/End·--gateBase/Renewal·--exclude·--merge)
+// 플래그: --tolerance(분) + 01 과 같은 검출/판정 플래그(--dir·--zigzag·--floor·--sessionStart/End·--gateBase/Renewal·--exclude·--merge·--bull)
 import { createPoolFromEnv } from "@trade-data-manager/persistence";
 import {
     DEFAULT_GRID_OPTIONS,
@@ -25,10 +25,10 @@ function diagnose(grid: PointGrid | undefined, handMin: number, def: typeof DEFA
     if (grid.touchMin === null) return "기준선 미터치(그날 기준선에 안 닿음)";
     const near = grid.newHighs.filter((e) => Math.abs(e.min - handMin) <= tolerance);
     if (near.length === 0) return "근처 신고가 캔들 없음(신고가 아님 또는 floor 20억 미달)";
-    if (near.every((e) => !e.bull)) return "근처 후보 전부 음봉";
+    if (def.bullOnly && near.every((e) => !(e.close > e.open))) return "근처 후보 전부 음봉";
     if (near.every((e) => e.min <= def.excludeUptoMin)) return `제외 창(~${def.excludeUptoMin}분) 안`;
     const gate = BigInt(def.renewalGateEok) * KRW_PER_EOK;
-    if (near.every((e) => BigInt(e.tvMax2) < gate)) return `게이트 미달(재돌파 ${def.renewalGateEok}억 기준)`;
+    if (near.every((e) => BigInt(e.tv) < gate)) return `게이트 미달(재돌파 ${def.renewalGateEok}억 기준)`;
     return "레벨 불충족(그 레벨 Point 를 다른 캔들이 선점·마디 미확정·병합)";
 }
 
@@ -46,6 +46,7 @@ async function main(): Promise<void> {
         renewalGateEok: numFlag("gateRenewal", DEFAULT_POINT_DEFINITION.renewalGateEok),
         excludeUptoMin: numFlag("exclude", DEFAULT_POINT_DEFINITION.excludeUptoMin),
         mergeRisePct: numFlag("merge", DEFAULT_POINT_DEFINITION.mergeRisePct),
+        bullOnly: numFlag("bull", DEFAULT_POINT_DEFINITION.bullOnly ? 1 : 0) !== 0,
     };
 
     const pool = createPoolFromEnv();

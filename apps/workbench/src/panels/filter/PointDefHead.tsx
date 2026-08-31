@@ -52,14 +52,15 @@ function NumField({ label, suffix, value, min, onCommit, title }: {
     );
 }
 
-/** 편성 보드 머리 한 줄 — 정의 4노브 + 기본값 되돌리기(비기본일 때만). */
+/** 편성 보드 머리 한 줄 — 정의 5노브(게이트 2·제외·병합·양봉만) + 기본값 되돌리기(비기본일 때만). */
 export function PointDefHead(): JSX.Element {
     const def = useWorkbench((s) => s.pointDef);
     const setDef = useWorkbench((s) => s.setPointDef);
     const reset = useWorkbench((s) => s.resetPointDef);
     const source = useWorkbench((s) => s.pointSource);
     const setSource = useWorkbench((s) => s.setPointSource);
-    const patch = (k: keyof PointDefinition) => (v: number) => setDef({ [k]: v });
+    type NumKey = Exclude<keyof PointDefinition, "bullOnly">;
+    const patch = (k: NumKey) => (v: number) => setDef({ [k]: v });
     return (
         <div
             style={{
@@ -93,10 +94,25 @@ export function PointDefHead(): JSX.Element {
             >
                 {source === "auto" ? "자동" : "손"}
             </button>
-            <NumField label="돌파" suffix="억" value={def.baselineGateEok} onCommit={patch("baselineGateEok")} title="기준선 돌파 게이트(분봉 tvMax2)" />
+            <NumField label="돌파" suffix="억" value={def.baselineGateEok} onCommit={patch("baselineGateEok")} title="기준선 돌파 게이트(분봉 거래대금)" />
             <NumField label="재돌파" suffix="억" value={def.renewalGateEok} onCommit={patch("renewalGateEok")} title="마디 갱신 게이트" />
             <NumField label="제외~" suffix="분" value={def.excludeUptoMin} onCommit={patch("excludeUptoMin")} title="이 분(자정기준) 이하 캔들은 Point 자격 없음 — 0 = 프리마켓·시초 포함(기본)" />
             <NumField label="병합" suffix="%" value={def.mergeRisePct} onCommit={patch("mergeRisePct")} title="직전 저점 대비 상승폭이 이보다 작은 마디는 레벨에서 병합(잔 갱신 무시) — 0 = 병합 없음" />
+            <button
+                onClick={() => setDef({ bullOnly: !def.bullOnly })}
+                title="양봉(종가>시가) 캔들만 Point 자격 — 격자의 캔들 사실에서 파생하는 읽기 노브(끄는 데 재계산만, 재굽기 없음)"
+                style={{
+                    fontSize: 11,
+                    padding: "0 6px",
+                    border: "1px solid var(--border-default)",
+                    borderRadius: 3,
+                    color: def.bullOnly ? "var(--accent-primary)" : "var(--text-secondary)",
+                    background: def.bullOnly ? "var(--accent-soft)" : "transparent",
+                    fontWeight: 600,
+                }}
+            >
+                양봉만
+            </button>
             {!isDefaultPointDef(def) && (
                 <button
                     onClick={reset}

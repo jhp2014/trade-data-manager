@@ -11,7 +11,7 @@ const grid: PointGrid = {
     base: 10000,
     touchMin: 550,
     pivots: [],
-    newHighs: [{ min: 560, high: 10050, tv: "6000000000", tvMax2: "6000000000", bull: true }],
+    newHighs: [{ min: 560, open: 9950, high: 10050, low: 9900, close: 10050, tv: "6000000000" }],
 };
 
 function Probe(): JSX.Element {

@@ -86,7 +86,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         () =>
             autoPointsOfChart(autoView, code, viewDate).map((p) => ({
                 time: kstToUnix(viewDate, minuteToHms(p.min)),
-                label: `자동 ${p.kind === "breakout" ? "돌파" : "재돌파"} ${p.ordinal + 1}번째 · 레벨 ${p.levelPrice.toLocaleString()} · 대금 ${(Number(p.tvMax2) / 1e8).toFixed(0)}억`,
+                label: `자동 ${p.kind === "breakout" ? "돌파" : "재돌파"} ${p.ordinal + 1}번째 · 레벨 ${p.levelPrice.toLocaleString()} · 대금 ${(Number(p.tv) / 1e8).toFixed(0)}억`,
             })),
         [autoView, code, viewDate],
     );

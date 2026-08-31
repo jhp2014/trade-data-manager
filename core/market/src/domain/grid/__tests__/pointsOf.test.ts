@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import type { GridNewHigh, GridPivot, PointGrid } from "../grid.js";
 import { DEFAULT_POINT_DEFINITION, pointsOf } from "../points.js";
 
+// 양봉/음봉은 OHLC 파생(close > open)이라 픽스처가 몸통 방향으로 표현한다.
 const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh => ({
     min,
+    open: bull ? high - 100 : high,
     high,
+    low: high - 150,
+    close: bull ? high : high - 100,
     tv: String(eok * 100_000_000),
-    tvMax2: String(eok * 100_000_000),
-    bull,
 });
 const hi = (min: number, price: number, confirmedMin: number | null): GridPivot => ({ kind: "high", min, price, confirmedMin, legAmount: "0" });
 const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: min + 1, legAmount: "0" });
@@ -48,9 +50,14 @@ describe("pointsOf", () => {
         expect(excluded[0]).toMatchObject({ kind: "breakout", min: 560 });
     });
 
-    it("음봉은 게이트를 넘어도 Point 가 아니다", () => {
+    it("음봉은 게이트를 넘어도 Point 가 아니다(기본 bullOnly)", () => {
         const g = grid({ newHighs: [nh(560, 10050, 60, false), nh(570, 10100, 60)] });
         expect(pointsOf(g)[0]).toMatchObject({ kind: "breakout", min: 570 });
+    });
+
+    it("bullOnly 를 끄면 음봉도 Point 자격이 있다(읽기 노브 — 재굽기 없이 뒤집힌다)", () => {
+        const g = grid({ newHighs: [nh(560, 10050, 60, false), nh(570, 10100, 60)] });
+        expect(pointsOf(g, { ...DEFAULT_POINT_DEFINITION, bullOnly: false })[0]).toMatchObject({ kind: "breakout", min: 560 });
     });
 
     it("한 캔들이 기준선+마디를 한 번에 넘으면 Point 는 하나(낮은 레벨 몫)", () => {
@@ -97,5 +104,14 @@ describe("pointsOf", () => {
             [550, 10000],
             [620, 10600],
         ]);
+    });
+
+    it("축약 격자 — 첫 마디는 선행 저점이 없어 mergeRisePct 병합이 안 걸린다(수용된 편향)", () => {
+        // compressPivots 는 첫 kept 고점 이전 선행 저점을 버린다 — lastLow 가 null 이라 병합 검사가 스킵.
+        const g = grid({
+            pivots: [hi(570, 10250, 580)],
+            newHighs: [nh(590, 10280, 35)],
+        });
+        expect(pointsOf(g, { ...DEFAULT_POINT_DEFINITION, mergeRisePct: 99 }).map((p) => p.min)).toEqual([590]);
     });
 });

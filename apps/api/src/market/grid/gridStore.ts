@@ -9,7 +9,7 @@ import path from "node:path";
 import type { PointGrid } from "@trade-data-manager/market";
 
 /** 파일 스키마 버전(파일 모양). 검출 규칙 변경은 POINT_GRID_CALC_VERSION(pointGrids.ts) 쪽. */
-export const POINT_GRID_FILE_VERSION = 1;
+export const POINT_GRID_FILE_VERSION = 2; // 2: 2026-08-31 개정(tvMax2 폐기·newHighs OHLC·피벗 축약)
 
 /** 차트 하나의 캐시 항목 — f = 기준선 앵커 지문(불일치 시 그 차트만 재굽기). */
 export interface PointGridEntry {

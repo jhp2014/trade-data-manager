@@ -13,8 +13,8 @@ describe("grid codec", () => {
                 { kind: "high", min: 560, price: 10450, confirmedMin: null, legAmount: "2595000000" },
             ],
             newHighs: [
-                { min: 541, high: 10210, tv: "2000000000", tvMax2: "2000000000", bull: true },
-                { min: 560, high: 10450, tv: "10050000", tvMax2: "2000000000", bull: false },
+                { min: 541, open: 10100, high: 10210, low: 10050, close: 10210, tv: "2000000000" },
+                { min: 560, open: 10450, high: 10450, low: 10300, close: 10310, tv: "10050000" },
             ],
         };
         const decoded = decodeChartGrid(encodeChartGrid("005930", grid));
@@ -25,5 +25,15 @@ describe("grid codec", () => {
     it("무사건·미터치 격자(널 투성이)도 보존된다", () => {
         const grid: PointGrid = { base: null, touchMin: null, pivots: [], newHighs: [] };
         expect(decodeChartGrid(encodeChartGrid("A", grid)).grid).toEqual(grid);
+    });
+
+    it("튜플 위치 자체를 고정한다 — 왕복만으론 encode·decode 가 같은 방향으로 밀린 걸 못 잡는다", () => {
+        const grid: PointGrid = {
+            base: 100,
+            touchMin: 541,
+            pivots: [{ kind: "low", min: 540, price: 9900, confirmedMin: null, legAmount: "77" }],
+            newHighs: [{ min: 541, open: 1, high: 2, low: 3, close: 4, tv: "5" }],
+        };
+        expect(encodeChartGrid("A", grid)).toEqual(["A", 100, 541, [[1, 540, 9900, -1, "77"]], [[541, 1, 2, 3, 4, "5"]]]);
     });
 });

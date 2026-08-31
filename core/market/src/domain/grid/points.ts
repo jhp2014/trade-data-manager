@@ -4,7 +4,7 @@
 // 여기 파라미터(게이트·제외 창·병합)는 전부 읽기 시점 조절이고, 격자의 floor(20억) **위에서만** 움직인다.
 // 서버(recon 재현율)·클라(깔때기/시트)가 같은 함수를 쓴다 — rankSectionOf 와 같은 공유 방식.
 //
-// Point = 레벨(기준선 또는 유효 마디)을 넘는 **첫 자격 캔들**(신고가·양봉·게이트·제외 창 밖).
+// Point = 레벨(기준선 또는 유효 마디)을 넘는 **첫 자격 캔들**(신고가·게이트·제외 창 밖·bullOnly 시 양봉).
 // 게이트를 올리면 Point 가 목록 안의 뒤 캔들로 **이동**한다(사라지는 게 아니라) — 격자에 floor 이상
 // 신고가 캔들이 전부 실려 있어 가능한 의미론. 한 캔들이 여러 레벨을 한 번에 넘으면 Point 는 하나다
 // (가장 낮은 레벨 몫 — "몇 개 갱신했나"는 후속 특징 층의 파생).
@@ -20,8 +20,12 @@ export interface PointDefinition {
      *  프리마켓·시초도 정규장과 동일 취급(2026-08-31 사용자 확정: 손 타점 85건 중 12건이 실제로 그 시간대,
      *  재현율 67→80% 차이의 원인이 이 기본값이었다). 노브는 유지 — 필요하면 읽기 시점에 올린다. */
     excludeUptoMin: number;
-    /** 유효 마디 하한(%) — 직전 저점 대비 상승폭이 이보다 작은 마디는 레벨에서 병합(잔 갱신 무시). 기본 0 = 병합 없음. */
+    /** 유효 마디 하한(%) — 직전 저점 대비 상승폭이 이보다 작은 마디는 레벨에서 병합(잔 갱신 무시). 기본 0 = 병합 없음.
+     *  ⚠ 축약 격자(compressPivots)에선 "직전 저점"이 그 구간의 **최저** 저점이고 첫 마디는 선행 저점이
+     *  없어 병합이 안 걸린다 — 노브를 올리면 원출력 대비 병합이 덜 걸리는 쪽으로 편향된다(수용, 2026-08-31). */
     mergeRisePct: number;
+    /** 양봉(종가 > 시가) 캔들만 Point 자격. 기본 true. 양봉 여부는 격자 OHLC 의 읽기 파생이라 끄는 데 재굽기 불필요. */
+    bullOnly: boolean;
 }
 
 export const DEFAULT_POINT_DEFINITION: PointDefinition = {
@@ -29,6 +33,7 @@ export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     renewalGateEok: 30,
     excludeUptoMin: 0,
     mergeRisePct: 0,
+    bullOnly: true,
 };
 
 /** 판정된 Point. 파생 특징(기준선 대비 %·저점 깊이 등)은 특징 층이 격자+이 목록에서 계산한다. */
@@ -41,8 +46,8 @@ export interface DerivedPoint {
     min: number;
     /** Point 캔들 고가(그 시점 러닝 최고가, 원주가). */
     high: number;
-    /** max(직전, 현재) 거래대금(원, string) — 게이트 판정에 쓴 값. */
-    tvMax2: string;
+    /** Point 캔들 자신의 거래대금(원, string) — 게이트 판정에 쓴 값. */
+    tv: string;
     /** 넘은 레벨 가격 — breakout 은 기준선 값, renewal 은 (병합 후) 마디 가격. */
     levelPrice: number;
     /** 넘은 레벨의 서수 — 0 = 기준선, n = (병합 후) n번째 유효 마디. "직전 마디 수" 특징의 원자재. */
@@ -91,10 +96,10 @@ export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_D
         const gate = level.renewal ? gateRenewal : gateBase;
         for (const e of grid.newHighs) {
             if (e.min <= def.excludeUptoMin) continue;
-            if (!e.bull) continue;
+            if (def.bullOnly && !(e.close > e.open)) continue; // 양봉 여부는 격자 OHLC 에서 파생(사실만 굽는 원칙)
             // 기준선은 스침(≥)이 돌파, 마디는 초과(>)가 갱신 — 터치 의미론과 러닝 최고가 갱신 의미론의 차이.
             if (level.renewal ? e.high <= level.price : e.high < level.price) continue;
-            if (BigInt(e.tvMax2) < gate) continue;
+            if (BigInt(e.tv) < gate) continue;
             if (!chosen.has(e.min)) chosen.set(e.min, { levelIdx: li, e });
             break; // 이 레벨의 첫 자격 캔들 — 못 찾으면 그 레벨은 Point 없음
         }
@@ -107,7 +112,7 @@ export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_D
             ordinal: i,
             min: c.e.min,
             high: c.e.high,
-            tvMax2: c.e.tvMax2,
+            tv: c.e.tv,
             levelPrice: levels[c.levelIdx].price,
             levelIdx: c.levelIdx,
             levelMin: levels[c.levelIdx].min,

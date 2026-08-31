@@ -5,7 +5,7 @@
 //   pnpm --filter @trade-data-manager/api recon:grid-scale
 // A/B(검출 파라미터·별도 캐시 루트 — 실캐시 오염 없음):
 //   pnpm --filter @trade-data-manager/api recon:grid-scale -- --dir .cache/point-grid-ab --sessionStart 540
-// 플래그: --dir · --zigzag(%) · --floor(억) · --sessionStart/--sessionEnd(분) · --gateBase/--gateRenewal(억) · --exclude(분) · --merge(%)
+// 플래그: --dir · --zigzag(%) · --floor(억) · --sessionStart/--sessionEnd(분) · --gateBase/--gateRenewal(억) · --exclude(분) · --merge(%) · --bull(1|0)
 import { gzipSync } from "node:zlib";
 import { createPoolFromEnv } from "@trade-data-manager/persistence";
 import { DEFAULT_GRID_OPTIONS, DEFAULT_POINT_DEFINITION, pointsOf } from "@trade-data-manager/market";
@@ -27,6 +27,7 @@ async function main(): Promise<void> {
         renewalGateEok: numFlag("gateRenewal", DEFAULT_POINT_DEFINITION.renewalGateEok),
         excludeUptoMin: numFlag("exclude", DEFAULT_POINT_DEFINITION.excludeUptoMin),
         mergeRisePct: numFlag("merge", DEFAULT_POINT_DEFINITION.mergeRisePct),
+        bullOnly: numFlag("bull", DEFAULT_POINT_DEFINITION.bullOnly ? 1 : 0) !== 0,
     };
 
     const pool = createPoolFromEnv();
@@ -47,6 +48,9 @@ async function main(): Promise<void> {
     let rawTotal = 0;
     let gzTotal = 0;
     let touchless = 0;
+    // 세션 창 확장(15:30→20:00)의 기여분 — 시간외(930분 초과) 신고가·Point 가 전체에서 차지하는 몫.
+    let afterHoursNewHighs = 0;
+    let afterHoursPoints = 0;
     const dates = (await store.listDates()).sort();
     for (const date of dates) {
         const file = await store.read(date);
@@ -59,7 +63,10 @@ async function main(): Promise<void> {
             chartBytes.push(JSON.stringify(entry.grid).length);
             pivotCounts.push(entry.grid.pivots.length);
             newHighCounts.push(entry.grid.newHighs.length);
-            pointCounts.push(pointsOf(entry.grid, def).length);
+            const pts = pointsOf(entry.grid, def);
+            pointCounts.push(pts.length);
+            afterHoursNewHighs += entry.grid.newHighs.filter((e) => e.min > 930).length;
+            afterHoursPoints += pts.filter((p) => p.min > 930).length;
             if (entry.grid.touchMin === null) touchless++;
         }
     }
@@ -76,11 +83,13 @@ async function main(): Promise<void> {
         pivots: distributionOf(pivotCounts),
         newHighs: distributionOf(newHighCounts),
         pointsPerChart: distributionOf(pointCounts),
+        afterHours: { newHighs: afterHoursNewHighs, points: afterHoursPoints },
     };
     console.log(`📐 총량: raw ${(rawTotal / 1e6).toFixed(1)}MB · gzip ${(gzTotal / 1e6).toFixed(1)}MB · ${dates.length}일 ${chartBytes.length}차트`);
     console.log(`   차트당 격자: p50 ${summary.chartGridBytes.p50}B · p90 ${summary.chartGridBytes.p90}B · max ${summary.chartGridBytes.max}B`);
     console.log(`   피벗 p50 ${summary.pivots.p50} · 신고가 p50 ${summary.newHighs.p50} · Point/차트 p50 ${summary.pointsPerChart.p50} (합 ${summary.pointsPerChart.sum})`);
     console.log(`   미터치 차트 ${touchless} · 재료없음 ${recon.materialMissing.length}`);
+    console.log(`   시간외(15:30 초과) 몫: 신고가 ${afterHoursNewHighs}/${summary.newHighs.sum} · Point ${afterHoursPoints}/${summary.pointsPerChart.sum}`);
 
     saveReport("grid-scale", { ...summary, materialMissing: recon.materialMissing });
     await pool.end();

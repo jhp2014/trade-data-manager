@@ -25,7 +25,7 @@
 ## apps/api/src — NestJS
 
 - `market.module.ts` 산하 서브도메인별 컨트롤러: **board**(dates/dayReplay/daySummary/theme/rankSection) / **chart**(chart) / **curation**(chartAnchor/comment/group/rank/reviewPoint/sync) / **news**(news/telegramNews) / **stocks**(stocks)
-- 각 그룹 옆에 캐시/read-model 파일 동거: `masterCache`, `derivedCache`(DERIVED_CACHE 단일 인스턴스 — DayBoards·RankSections 공유), `daySnapshotCache`, `rankSections`+`rankSectionStore`(타점 (날짜,분) 순위 단면 대사), `grid/`(`pointGrids`+`gridStore` — 자동 타점 격자 파일 캐시 대사, Nest 미배선·recon 구동), `chartReadModel`, `computedAxes`
+- 각 그룹 옆에 캐시/read-model 파일 동거: `masterCache`, `derivedCache`(DERIVED_CACHE 단일 인스턴스 — DayBoards·RankSections 공유), `daySnapshotCache`, `rankSections`+`rankSectionStore`(타점 (날짜,분) 순위 단면 대사), `grid/`(`pointGrids`+`gridStore`+`pointGrid.controller` — 자동 타점 격자 파일 캐시 대사, `/point-grids` 튜플 서빙), `chartReadModel`, `computedAxes`
 
 ## apps/workbench/src
 
