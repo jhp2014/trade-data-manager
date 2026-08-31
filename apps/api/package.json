@@ -11,6 +11,7 @@
         "test:watch": "vitest",
         "recon:grid-scale": "tsx recon/01-grid-scale.ts",
         "recon:grid-recall": "tsx recon/02-grid-recall.ts",
+        "recon:grid-diff": "tsx recon/03-grid-diff.ts",
         "clean": "rimraf dist",
         "clean:cache": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo"
     },
