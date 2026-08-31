@@ -42,7 +42,7 @@ import { POINT_GRID_FILE_VERSION } from "./gridStore.js";
 
 /** 검출 규칙 버전 — 격자 **스키마·알고리즘**이 바뀌면 올린다(전량 재굽기). 검출 파라미터(zigzag·floor·세션 창)
  *  변경은 여기가 아니라 차트 지문(optsKey)이 자동으로 잡는다 — 버전은 코드 변경, 지문은 설정 변경. */
-export const POINT_GRID_CALC_VERSION = 2; // 2: 2026-08-31 개정(검출 규칙 — 자기 봉 대금·compressPivots)
+export const POINT_GRID_CALC_VERSION = 3; // 3: 2026-08-31 zigzag 자기 봉 확정 금지(A안 — 반전 확정은 극값 봉 뒤에서만)
 
 /** (종목,날) 동시 읽기 상한 — 축·리졸버와 같은 이유(커넥션 풀 포화 방지). */
 const BAKE_CONCURRENCY = 8;

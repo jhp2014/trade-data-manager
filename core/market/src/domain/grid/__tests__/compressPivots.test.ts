@@ -31,6 +31,14 @@ describe("compressPivots", () => {
         expect(compressPivots(full)).toEqual([hi(600, 100, 601, 8)]);
     });
 
+    it("runningMaxOf — 실제 세션 최고가에 못 미치는 확정 고점은 B류 취급(legAmount 는 다음 kept 에 합산)", () => {
+        // 확정 고점 100(600분)이 그 시각 세션 최고가 105(예: 넓은 피벗 봉의 반대편 극값)보다 낮다 —
+        // kept 에서 제외돼야 앞 시각 캔들이 이 레벨을 넘는 역전이 없다. 120(640분)은 실제 갱신이라 kept.
+        const full = [lo(540, 80, 541, 1), hi(600, 100, 601, 2), lo(610, 90, 611, 3), hi(640, 120, 641, 4)];
+        const runMax = new Map([[600, 105], [640, 120]]);
+        expect(compressPivots(full, (min) => runMax.get(min) ?? Infinity)).toEqual([hi(640, 120, 641, 10)]);
+    });
+
     it("확정 kept 고점이 하나도 없으면 빈 배열(저점만으론 소비자가 못 쓴다)", () => {
         expect(compressPivots([])).toEqual([]);
         expect(compressPivots([lo(540, 80, 541), hi(600, 100, null)])).toEqual([]); // 미확정 고점 꼬리뿐
