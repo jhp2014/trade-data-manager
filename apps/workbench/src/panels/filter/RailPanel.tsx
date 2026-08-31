@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { useAllPoints } from "../../lib/useAllPoints.js";
+import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { type AxisRef } from "../../lib/computedAxis.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
@@ -71,7 +71,7 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
 
     // 후보 날짜·타점 시각 — 레일의 척도. 둘 다 깔때기와 같은 복제본 재료라 캐시에서 온다(왕복 없음).
     const cand = useCandidateDays();
-    const pts = useAllPoints();
+    const pts = usePointRows(); // point 행 원천(출처 토글 auto/hand) — 시간 레일 척도도 같은 모수를 본다
     const dates = useMemo(() => [...new Set(cand.candidates.map((c) => c.date))].sort(), [cand.candidates]);
     const times = useMemo(() => pts.points.map((p) => p.time), [pts.points]);
 

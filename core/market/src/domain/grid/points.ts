@@ -45,6 +45,10 @@ export interface DerivedPoint {
     tvMax2: string;
     /** 넘은 레벨 가격 — breakout 은 기준선 값, renewal 은 (병합 후) 마디 가격. */
     levelPrice: number;
+    /** 넘은 레벨의 서수 — 0 = 기준선, n = (병합 후) n번째 유효 마디. "직전 마디 수" 특징의 원자재. */
+    levelIdx: number;
+    /** 넘은 마디의 발생 시각(분). breakout(기준선)은 null — 저점 깊이·간격 특징이 창의 왼쪽 끝으로 쓴다. */
+    levelMin: number | null;
 }
 
 const KRW_PER_EOK = 100_000_000n;
@@ -61,7 +65,7 @@ const KRW_PER_EOK = 100_000_000n;
 export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
     if (grid.base === null || grid.touchMin === null) return [];
 
-    const levels: { price: number; renewal: boolean }[] = [{ price: grid.base, renewal: false }];
+    const levels: { price: number; renewal: boolean; min: number | null }[] = [{ price: grid.base, renewal: false, min: null }];
     let maxKept = grid.base;
     let lastLow: number | null = null;
     for (const p of grid.pivots) {
@@ -72,7 +76,7 @@ export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_D
         if (p.confirmedMin === null) continue;
         if (p.price <= maxKept) continue;
         if (def.mergeRisePct > 0 && lastLow !== null && ((p.price - lastLow) / lastLow) * 100 < def.mergeRisePct) continue;
-        levels.push({ price: p.price, renewal: true });
+        levels.push({ price: p.price, renewal: true, min: p.min });
         maxKept = p.price;
     }
 
@@ -105,5 +109,7 @@ export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_D
             high: c.e.high,
             tvMax2: c.e.tvMax2,
             levelPrice: levels[c.levelIdx].price,
+            levelIdx: c.levelIdx,
+            levelMin: levels[c.levelIdx].min,
         }));
 }

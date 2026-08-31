@@ -12,7 +12,7 @@ import { useMemo } from "react";
 import {
     expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
 } from "@trade-data-manager/market/domain";
-import { useAllPoints } from "../../lib/useAllPoints.js";
+import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
@@ -90,7 +90,7 @@ export function useFilterFunnel(): FunnelView {
     const gv = useGroups();
     const ax = useRankAxes();
     const cand = useCandidateDays(); // 복제본 파생 — 서버 왕복 없음(candidateDaysOf)
-    const pts = useAllPoints();
+    const pts = usePointRows(); // point 행 원천(출처 토글 auto/hand) — 깔때기 모수가 여기서 갈린다
 
     const isLoading = gv.isLoading || ax.isLoading || cand.isLoading || pts.isLoading;
 

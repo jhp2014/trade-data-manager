@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import { computedAxesQuery } from "../api/queries.js";
 import { computedAxisView, type AxisRef } from "./computedAxis.js";
+import { gridFeatureFeeds } from "./gridFeatures.js";
+import { useAutoPoints, usePointGrids } from "./usePointGrids.js";
 import { useWorkbench } from "../store/workbench.js";
 
 /** 계산 축의 화면용 메타 — 값 자체가 아니라 값을 어떻게 놓고 어떻게 읽는지. */
@@ -43,7 +45,17 @@ export function useRankAxesValue(): RankAxesView {
     const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
 
     const computedQ = useQuery(computedAxesQuery());
-    const computed = useMemo(() => (computedQ.data ?? []).map(computedAxisView), [computedQ.data]);
+    // 격자 특징(클라 파생) — 서버 피드 뒤에 같은 모양으로 이어 붙인다(축 종류를 하류가 구분하지 않게).
+    // 키 접두 `grid-` 는 서버 레지스트리가 안 쓰는 예약 — gridFeatures.ts 머리 주석이 계약이다.
+    // **모수가 있을 때만 선다**: 출처가 손 타점이거나 자동 Point 0 이면 값이 전부 결손이라 "값 없음"
+    // 레일 3개가 상시 소음이 된다 — 축 자체를 안 만든다(새 축 기본 "보임" 규칙과 충돌하지 않게).
+    const autoView = useAutoPoints();
+    const gridsView = usePointGrids();
+    const pointSource = useWorkbench((s) => s.pointSource);
+    const computed = useMemo(() => {
+        const synth = pointSource === "auto" && autoView.points.length > 0 ? gridFeatureFeeds(autoView, gridsView.gridOf) : [];
+        return [...(computedQ.data ?? []), ...synth].map(computedAxisView);
+    }, [computedQ.data, autoView, gridsView, pointSource]);
 
     const axes = useMemo<AxisRef[]>(() => {
         const idx = new Map(orderPref.map((k, i) => [k, i]));

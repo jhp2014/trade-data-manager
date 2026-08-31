@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAllPoints } from "../lib/useAllPoints.js";
+import { usePointRows } from "../lib/usePointRows.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
@@ -119,7 +119,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = cols;
 
     // ── 전체 타점(행 원천) + 기간. day 모드는 후보 하루(존재 지도 파생)가 행 원천이다.
-    const { points: allPoints, isLoading: pointsLoading } = useAllPoints();
+    const { points: allPoints, isLoading: pointsLoading } = usePointRows(); // point 행 원천(출처 토글 auto/hand)
     const { candidates, isLoading: candLoading } = useCandidateDays();
     const { index: presenceIdx } = usePresenceIndex();
     const allByKey = useMemo(() => {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkbench } from "../store/workbench.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 
-import { useAllPoints } from "../lib/useAllPoints.js";
+import { usePointRows } from "../lib/usePointRows.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { PanelHeader } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
@@ -70,7 +70,7 @@ export function WorksetPanel(): JSX.Element {
     const funnel = useFunnel();
 
     const presence = usePresenceIndex();
-    const pts = useAllPoints();
+    const pts = usePointRows(); // point 행 원천(출처 토글 auto/hand)
     const points = pts.points;
 
     // ── 존재 필터(DNF) — **전역 시선**(store.gazePresence, 슬라이스가 영속·옛 키 승계). 여기가 주인이고
