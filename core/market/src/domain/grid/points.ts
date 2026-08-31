@@ -16,7 +16,9 @@ export interface PointDefinition {
     baselineGateEok: number;
     /** 재돌파(마디 갱신) 게이트(억원). 기본 30. */
     renewalGateEok: number;
-    /** 이 분(자정기준) **이하**의 캔들은 Point 자격 없음(구조에는 참여). 기본 545 = ~09:05 제외. */
+    /** 이 분(자정기준) **이하**의 캔들은 Point 자격 없음(구조에는 참여). 기본 0 = 제외 없음 —
+     *  프리마켓·시초도 정규장과 동일 취급(2026-08-31 사용자 확정: 손 타점 85건 중 12건이 실제로 그 시간대,
+     *  재현율 67→80% 차이의 원인이 이 기본값이었다). 노브는 유지 — 필요하면 읽기 시점에 올린다. */
     excludeUptoMin: number;
     /** 유효 마디 하한(%) — 직전 저점 대비 상승폭이 이보다 작은 마디는 레벨에서 병합(잔 갱신 무시). 기본 0 = 병합 없음. */
     mergeRisePct: number;
@@ -25,7 +27,7 @@ export interface PointDefinition {
 export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     baselineGateEok: 50,
     renewalGateEok: 30,
-    excludeUptoMin: 9 * 60 + 5,
+    excludeUptoMin: 0,
     mergeRisePct: 0,
 };
 

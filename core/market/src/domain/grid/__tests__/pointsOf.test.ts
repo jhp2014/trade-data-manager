@@ -41,9 +41,11 @@ describe("pointsOf", () => {
         expect(raised.find((p) => p.kind === "renewal")?.min).toBe(620);
     });
 
-    it("제외 창(~09:05) — 이하 시각 캔들은 자격 없음, 다음 자격 캔들로 이동", () => {
-        const g = grid({ touchMin: 540, newHighs: [nh(545, 10100, 60), nh(560, 10150, 60)] });
-        expect(pointsOf(g)[0]).toMatchObject({ kind: "breakout", min: 560 });
+    it("제외 창 — 기본은 꺼짐(프리마켓도 Point 자격), 올리면 다음 자격 캔들로 이동", () => {
+        const g = grid({ touchMin: 500, newHighs: [nh(505, 10100, 60), nh(560, 10150, 60)] });
+        expect(pointsOf(g)[0]).toMatchObject({ kind: "breakout", min: 505 }); // 08:25 프리마켓 캔들이 그대로 Point
+        const excluded = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, excludeUptoMin: 9 * 60 + 5 });
+        expect(excluded[0]).toMatchObject({ kind: "breakout", min: 560 });
     });
 
     it("음봉은 게이트를 넘어도 Point 가 아니다", () => {

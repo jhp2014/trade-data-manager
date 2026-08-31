@@ -26,7 +26,7 @@ function diagnose(grid: PointGrid | undefined, handMin: number, def: typeof DEFA
     const near = grid.newHighs.filter((e) => Math.abs(e.min - handMin) <= tolerance);
     if (near.length === 0) return "근처 신고가 캔들 없음(신고가 아님 또는 floor 20억 미달)";
     if (near.every((e) => !e.bull)) return "근처 후보 전부 음봉";
-    if (near.every((e) => e.min <= def.excludeUptoMin)) return "제외 창(~09:05) 안";
+    if (near.every((e) => e.min <= def.excludeUptoMin)) return `제외 창(~${def.excludeUptoMin}분) 안`;
     const gate = BigInt(def.renewalGateEok) * KRW_PER_EOK;
     if (near.every((e) => BigInt(e.tvMax2) < gate)) return `게이트 미달(재돌파 ${def.renewalGateEok}억 기준)`;
     return "레벨 불충족(그 레벨 Point 를 다른 캔들이 선점·마디 미확정·병합)";
