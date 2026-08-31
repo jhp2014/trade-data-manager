@@ -25,6 +25,19 @@
       "name": "workbench-attach",
       "url": "http://localhost:3100",
       "port": 3100
+    },
+    {
+      "name": "workbench-wt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@trade-data-manager/workbench",
+        "dev",
+        "--port",
+        "3110",
+        "--strictPort"
+      ],
+      "port": 3110
     }
   ]
 }

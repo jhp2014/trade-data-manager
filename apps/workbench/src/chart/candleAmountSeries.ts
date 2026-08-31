@@ -31,7 +31,12 @@ export interface CandleAmountSeries {
     drops: DropLines;
     /** amountVerts 옵션을 켰을 때만 — 안 켰으면 null(없는 pane 에 빈 프리미티브를 얹지 않는다). */
     amountVerts: VertLines | null;
-    /** 프리미티브 detach — 차트가 이미 파괴된 뒤 불려도 안전(try/catch). */
+    /**
+     * 프리미티브 detach — ⚠**살아있는 차트에서만** 부를 것. chart.remove() 뒤에 부르면 detachPrimitive
+     * 가 동기로 안 던지고 model.fullUpdate() 로 새 draw rAF 를 심어, 다음 프레임에 파괴된 캔버스
+     * 바인딩을 그리다 "Object is disposed"(fancy-canvas)가 비동기로 터진다 — try/catch 로 못 잡는다.
+     * 호출자(useDailySeries·useMinuteSeries cleanup)가 chartRef.current 생존 확인으로 그 계약을 지킨다.
+     */
     dispose: () => void;
 }
 
@@ -82,14 +87,12 @@ export function buildCandleAmountSeries(
         amountVerts = new VertLines();
         amount.attachPrimitive(asPrimitive(amountVerts));
     }
+    // try/catch 없음 — 죽은 차트에서의 detachPrimitive 는 안 던지고 비동기로 터지므로(위 dispose 주석)
+    // catch 는 보호가 아니라 착시였다. 계약(살아있는 차트에서만)은 호출자가 지킨다.
     const dispose = (): void => {
-        try {
-            candle.detachPrimitive(asPrimitive(candleVerts));
-            candle.detachPrimitive(asDropPrimitive(drops));
-            if (amountVerts) amount.detachPrimitive(asPrimitive(amountVerts));
-        } catch {
-            /* 차트가 먼저 파괴됨 */
-        }
+        candle.detachPrimitive(asPrimitive(candleVerts));
+        candle.detachPrimitive(asDropPrimitive(drops));
+        if (amountVerts) amount.detachPrimitive(asPrimitive(amountVerts));
     };
     return { candle, amount, markers, candleVerts, drops, amountVerts, dispose };
 }

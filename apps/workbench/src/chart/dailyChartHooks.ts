@@ -77,12 +77,15 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
         const ts = chart.timeScale();
         ts.subscribeVisibleLogicalRangeChange(bumpOverlay);
         return () => {
-            try {
+            // 셸(useChartShell)이 먼저 선언돼 언마운트 cleanup 도 먼저 돈다 — 여기 올 땐 chart.remove()
+            // 가 이미 끝났을 수 있다(그때 chartRef.current === null). 죽은 차트에 detachPrimitive 를
+            // 부르면 동기로는 안 던지고 model.fullUpdate() 가 새 draw rAF 를 심는다 → 다음 프레임에
+            // 파괴된 캔버스 바인딩을 그리다 "Object is disposed"(fancy-canvas)가 비동기로 터진다.
+            // 차트가 살아있는 재실행(StrictMode 이중 effect·Fast Refresh)에서만 실제로 걷는다.
+            if (chartRef.current !== null) {
                 ts.unsubscribeVisibleLogicalRangeChange(bumpOverlay);
-            } catch {
-                /* 차트가 먼저 파괴됨 */
+                s.dispose();
             }
-            s.dispose();
             candleRef.current = null;
             amountRef.current = null;
             markersRef.current = null;

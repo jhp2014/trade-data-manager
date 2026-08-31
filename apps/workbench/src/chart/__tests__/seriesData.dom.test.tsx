@@ -10,7 +10,7 @@
 // 데이터 푸시)을 실제로 태우고, 마지막에 살아 있는 시리즈에 봉이 전부 들어갔는지 본다. 판정 함수
 // (extendsPrevBars) 단위 테스트는 candleAmountSeries.test.ts 몫 — 여긴 배선이 관심사다.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { StrictMode, type RefObject } from "react";
+import { StrictMode, type MutableRefObject, type RefObject } from "react";
 import { render } from "@testing-library/react";
 import type { IChartApi } from "lightweight-charts";
 import { useDailySeries, useDailySeriesData } from "../dailyChartHooks.js";
@@ -48,8 +48,11 @@ class FakeSeries {
         this.updateCount++;
         this.bars.set(bar.time, bar);
     }
+    detachCount = 0;
     attachPrimitive(): void {}
-    detachPrimitive(): void {}
+    detachPrimitive(): void {
+        this.detachCount++;
+    }
     applyOptions(): void {}
     createPriceLine(): object {
         return {};
@@ -57,7 +60,7 @@ class FakeSeries {
 }
 
 /** addSeries 호출마다 새 가짜 시리즈 — 생성 순서는 캔들, 거래대금(골조가 그 순서로 만든다). */
-function fakeChart(): { chartRef: RefObject<IChartApi | null>; series: FakeSeries[] } {
+function fakeChart(): { chartRef: MutableRefObject<IChartApi | null>; series: FakeSeries[] } {
     const series: FakeSeries[] = [];
     const chart = {
         addSeries: () => {
@@ -150,6 +153,33 @@ describe("일봉 데이터 푸시", () => {
         rerender(<DailyHarness chartRef={chartRef} points={[daily("2025-01-02", 500), daily("2025-01-03", 510)]} />);
         expect(candle.setDataCount).toBe(setDataBefore + 1);
         expect(candle.bars.size).toBe(2);
+    });
+});
+
+describe("시리즈 정리(cleanup) 계약", () => {
+    // 언마운트에선 셸(useChartShell) cleanup 이 먼저 돌아 chart.remove() 후 chartRef 를 null 로 둔다.
+    // 그 뒤 시리즈 cleanup 이 죽은 차트에 detachPrimitive 를 부르면 model.fullUpdate() 가 새 draw
+    // rAF 를 심어 다음 프레임에 "Object is disposed"(fancy-canvas)가 비동기로 터진다(2026-08-31 실측).
+    // 계약: 차트가 이미 죽었으면(chartRef.current === null) 차트를 아예 안 만진다.
+    it.each([
+        ["일봉", (chartRef: RefObject<IChartApi | null>) => <DailyHarness chartRef={chartRef} points={DAILY} />],
+        ["분봉", (chartRef: RefObject<IChartApi | null>) => <MinuteHarness chartRef={chartRef} points={MINUTE} />],
+    ])("%s: 차트가 먼저 죽었으면 detachPrimitive 를 부르지 않는다", (_label, harness) => {
+        const { chartRef, series } = fakeChart();
+        const { unmount } = render(harness(chartRef));
+        chartRef.current = null; // 셸 cleanup 이 먼저 돈 상태를 흉내
+        unmount();
+        expect(series.every((s) => s.detachCount === 0)).toBe(true);
+    });
+
+    it.each([
+        ["일봉", (chartRef: RefObject<IChartApi | null>) => <DailyHarness chartRef={chartRef} points={DAILY} />],
+        ["분봉", (chartRef: RefObject<IChartApi | null>) => <MinuteHarness chartRef={chartRef} points={MINUTE} />],
+    ])("%s: 차트가 살아 있으면 프리미티브를 실제로 걷는다", (_label, harness) => {
+        const { chartRef, series } = fakeChart();
+        const { unmount } = render(harness(chartRef));
+        unmount(); // chartRef 생존 = StrictMode 재실행/Fast Refresh 경로
+        expect(series.some((s) => s.detachCount > 0)).toBe(true);
     });
 });
 
