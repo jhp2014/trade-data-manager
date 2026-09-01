@@ -10,10 +10,8 @@
 // 이름은 손잡이지 주장이 아니다 — "미정1" 로 지어도 된다. 이름 짓는 비용이 낮아야 잘게 쪼갤 수 있고,
 // 그래야 "하나의 이름으로 디테일을 계속 구분할 수 없다"는 원래 문제를 피한다.
 
-import type { Grain } from "../grain.js";
-
 /**
- * 그룹 불변식 위반 — **호출자의 잘못**이지 서버 고장이 아니다(층위 불일치·순환·너무 좁은 부모).
+ * 그룹 불변식 위반 — **호출자의 잘못**이지 서버 고장이 아니다(순환·없는 부모).
  * DB 로는 못 막아 저장 경로가 던지는데, 그냥 Error 로 던지면 가장자리에서 500 이 되어 화면에
  * "Internal server error" 만 뜬다 — 이유를 보여주려면 종류가 구분돼야 한다.
  */
@@ -30,23 +28,8 @@ export interface ChartRef {
     date: string; // YYYY-MM-DD
 }
 
-/**
- * 그룹의 멤버가 무엇이냐 — 하루냐 타점이냐.
- * ⚠ **맵이 아니라 그룹이 든다**: 그룹은 한 층위에 대한 판단이지 맵에 올려야 비로소 그렇게 되는 게 아니다.
- * 맵에서 내려받게 하면 아직 안 올린 그룹(정상 상태)의 층위가 없어 첫 부착이 암묵적으로 정하게 된다.
- */
-export type GroupScope = Grain;
-
-/**
- * 부모 그룹이 자식을 담을 수 있나 — **하루 ⊇ 타점**, 같은 층위끼리도 된다.
- *
- * 계층 상속은 "자식에 속하면 부모에도 속한다"인데, 타점 그룹 밑에 하루 그룹을 넣으면 그 말이 거짓이
- * 된다(하루가 더 넓다). 맵이 있던 시절엔 "부모는 같은 평면"이 이 역할을 대신했다 — 평면이 곧 층위라
- * 같은 평면이면 같은 scope 였기 때문이다. 맵을 접으면서 그 제약이 사라지므로, 원래 지키려던 것을
- * 직접 적는다(그리고 이쪽이 더 넓다: 하루 그룹 아래 타점 그룹이라는 정상적인 계층을 이제 허용한다).
- */
-export const scopeContains = (parent: GroupScope, child: GroupScope): boolean =>
-    parent === child || (parent === "day" && child === "point");
+// (옛 GroupScope·scopeContains — 그룹이 하루냐 타점이냐 — 는 2026-09-01 타점 층위 폐지로 삭제.
+//  그룹의 멤버는 이제 언제나 차트(하루) 하나뿐이라 층위를 말할 게 없다.)
 
 /**
  * 그룹 하나. **이름이 곧 정체성**이다(전역 유일) — 계약은 id 가 아니라 이름으로 지목한다.
@@ -56,20 +39,14 @@ export const scopeContains = (parent: GroupScope, child: GroupScope): boolean =>
  */
 export interface Group {
     name: string;
-    scope: GroupScope;
-    /** 그룹 안 그룹. null = 최상위. 부모 층위가 자식을 담아야 하고(scopeContains) 순환하면 안 된다(저장 경로가 본다). */
+    /** 그룹 안 그룹. null = 최상위. 순환하면 안 된다(DB 로는 못 막아 저장 경로가 본다). */
     parentName: string | null;
 }
 
-/** 그룹에 든 항목의 키 — scope=day 면 시각이 없다. */
-export interface GroupItemRef extends ChartRef {
-    time?: string; // HH:MM:SS
-}
+/** 그룹에 든 항목의 키 — 언제나 차트(종목, 날짜). */
+export type GroupItemRef = ChartRef;
 
-/**
- * 한 항목에 붙은 그룹들(멤버십 피드 항목). 전 항목을 한 번에 받아 화면이 키로 접는다.
- * 하루 소속과 타점 소속이 **한 피드**에 온다(시각 유무로 갈린다) — 옛날엔 정션이 둘이라 피드도 둘이었다.
- */
+/** 한 항목에 붙은 그룹들(멤버십 피드 항목). 전 항목을 한 번에 받아 화면이 키로 접는다. */
 export interface GroupMembership extends GroupItemRef {
     groupNames: string[];
 }

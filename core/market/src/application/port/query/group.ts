@@ -1,4 +1,4 @@
-import type { Group, GroupItemRef, GroupMembership, GroupScope } from "#domain";
+import type { Group, GroupItemRef, GroupMembership } from "#domain";
 
 // 그룹 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
 // 사전과 멤버십이 한 슬라이스인 이유: 둘은 늘 같이 읽힌다(팔레트 = 사전 + 빈도, 맵 = 사전 + 겹침).
@@ -10,8 +10,7 @@ export interface GroupReader {
     listGroups(): Promise<Group[]>;
     /**
      * 전 항목의 멤버십을 한 번에(그룹이 하나라도 붙은 항목만 항목을 가짐).
-     * 하루 소속과 타점 소속이 **한 피드**에 온다 — 시각 유무로 갈린다. 소비자(차트·시트·골격·맵)가
-     * 모두 전체를 보므로 왕복 1회·캐시 1개면 화면 간 어긋날 여지가 없다(rank 의 listAllLines 와 같은 판단).
+     * 소비자(차트·시트·정규화)가 모두 전체를 보므로 왕복 1회·캐시 1개면 화면 간 어긋날 여지가 없다(rank 의 listAllLines 와 같은 판단).
      */
     listAllMemberships(): Promise<GroupMembership[]>;
 }
@@ -24,17 +23,17 @@ export interface GroupReader {
  */
 export interface GroupStore {
     /** 생성 → 저장본 반환. 같은 이름이면 **그 그룹을 반환**(멱등 — 중복 생성 사고 방지). */
-    createGroup(name: string, scope: GroupScope): Promise<Group>;
+    createGroup(name: string): Promise<Group>;
     /** 이름 변경(멤버십은 안에서 id 참조라 무관). 없는 이름은 조용한 no-op. */
     renameGroup(name: string, newName: string): Promise<void>;
     /** 삭제 — 멤버십도 FK cascade 로 함께. 자식 그룹은 부모만 풀린다(SET NULL). 되돌릴 수 없다. */
     removeGroup(name: string): Promise<void>;
 
-    /** 항목을 그룹에 넣는다(멱등). ⚠ 항목 키의 시각 유무가 그룹 scope 와 맞는지 여기서 막는다. */
+    /** 항목(차트)을 그룹에 넣는다(멱등). */
     attach(groupName: string, item: GroupItemRef): Promise<void>;
     /** 뺀다. 안 들어 있으면 조용한 no-op. */
     detach(groupName: string, item: GroupItemRef): Promise<void>;
 
-    /** 그룹 안 그룹. null = 최상위로. 부모 층위가 자식을 담는지(하루 ⊇ 타점)·순환이 아닌지 여기서 막는다(DB 로는 못 막는 제약). */
+    /** 그룹 안 그룹. null = 최상위로. 순환이 아닌지 여기서 막는다(DB 로는 못 막는 제약). */
     setParent(name: string, parentName: string | null): Promise<void>;
 }

@@ -9,7 +9,7 @@ import type { RankSections } from "../board/rankSections.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
 // 차트 앵커 HTTP 어댑터 — 읽기는 repo 그대로, **쓰기는 유스케이스(ChartAnchors)** 를 거친다.
-// 쓰기 불변식(레지스트리·owner grain·multiple 교체·타점 cascade)은 전부 유스케이스 소유 —
+// 쓰기 불변식(레지스트리·행 단위 규칙·multiple 교체)은 전부 유스케이스 소유 —
 // 여기는 HTTP 경계 검증(형식)만 한다. 규칙이 컨트롤러에 살면 repo 를 직접 부르는 다른 경로가 전부 우회한다.
 @Controller("chart-anchors")
 export class ChartAnchorController {
@@ -64,7 +64,6 @@ export class ChartAnchorController {
         return {
             stockCode: assertStockCode(body?.stockCode, "stockCode"),
             date: assertYmd(body?.date),
-            time: body?.time != null ? assertHms(body.time) : undefined,
             param: body?.param ?? "",
             anchorDate: assertYmd(body?.anchorDate, "anchorDate"),
             anchorTime: body?.anchorTime != null ? assertHms(body.anchorTime, "anchorTime") : undefined,

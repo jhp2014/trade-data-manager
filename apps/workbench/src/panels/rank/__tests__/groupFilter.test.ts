@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-    NONE_DAY, NONE_POINT, addGroupLiteral, moveGroupLiteral, noneLabelOf, noneLiteral, noneScope, parseGroupExpr, removeGroupLiteral, groupLiteralCount, toggleGroupNeg, type GroupExpr,
+    NONE_GROUP, NONE_LABEL, addGroupLiteral, isNoneLiteral, moveGroupLiteral, parseGroupExpr, removeGroupLiteral, groupLiteralCount, toggleGroupNeg, type GroupExpr,
 } from "../groupFilter.js";
 
 /** 읽기 쉬운 식 리터럴 — "a,!b | c" = (a ∧ !b) ∨ (c). */
@@ -11,22 +11,20 @@ const expr = (s: string): GroupExpr => ({
 });
 const show = (e: GroupExpr): string => e.groups.map((g) => g.literals.map((l) => (l.neg ? "!" : "") + l.groupId).join(",")).join("|");
 
-describe("'…그룹 없음' 리터럴 — 층위를 제가 든다", () => {
-    it("층위 ↔ 리터럴 왕복", () => {
-        expect(noneLiteral("day")).toBe(NONE_DAY);
-        expect(noneLiteral("point")).toBe(NONE_POINT);
-        expect(noneScope(NONE_DAY)).toBe("day");
-        expect(noneScope(NONE_POINT)).toBe("point");
+describe("'그룹 없음' 리터럴", () => {
+    it("저장 문자열은 승계값이다 — 바꾸면 저장된 필터의 리터럴이 유령이 된다", () => {
+        expect(NONE_GROUP).toBe("@none:day");
+        expect(isNoneLiteral(NONE_GROUP)).toBe(true);
     });
 
-    it("실제 그룹 이름은 없음이 아니다 — 옛 층위 없는 값도 포함", () => {
-        expect(noneScope("돌파")).toBeUndefined();
-        expect(noneScope("@none")).toBeUndefined();
+    it("실제 그룹 이름·옛 리터럴은 없음이 아니다", () => {
+        expect(isNoneLiteral("돌파")).toBe(false);
+        expect(isNoneLiteral("@none")).toBe(false);
+        expect(isNoneLiteral("@none:point")).toBe(false);
     });
 
-    it("이름에 층위가 들어간다 — 칩만 보고도 어느 층위인지 안다", () => {
-        expect(noneLabelOf("day")).toBe("하루 그룹 없음");
-        expect(noneLabelOf("point")).toBe("타점 그룹 없음");
+    it("화면 이름은 한 곳에서 온다", () => {
+        expect(NONE_LABEL).toBe("그룹 없음");
     });
 });
 
@@ -92,12 +90,13 @@ describe("parseGroupExpr — 영속 값 검증", () => {
     it("neg 누락은 false 로 채운다(옛 저장본 호환)", () => {
         expect(show(parseGroupExpr({ groups: [{ literals: [{ groupId: "a" }] }] })!)).toBe("a");
     });
-    it("층위 없는 옛 '@none' 은 리터럴째 버린다 — 그 조건만 넓어지고 나머지 절은 그대로", () => {
+    it("옛 없음 리터럴(@none·@none:point)은 리터럴째 버린다 — 그 조건만 넓어지고 나머지 절은 그대로", () => {
         expect(show(parseGroupExpr({ groups: [{ literals: [{ groupId: "@none", neg: false }, { groupId: "a", neg: false }] }] })!)).toBe("a");
+        expect(show(parseGroupExpr({ groups: [{ literals: [{ groupId: "@none:point", neg: false }, { groupId: "a", neg: false }] }] })!)).toBe("a");
         // 절이 그것뿐이었으면 절째 사라진다(빈 절은 남기지 않는다)
         expect(show(parseGroupExpr({ groups: [{ literals: [{ groupId: "@none", neg: true }] }, { literals: [{ groupId: "b", neg: false }] }] })!)).toBe("b");
     });
-    it("층위 있는 없음은 그대로 산다", () => {
-        expect(show(parseGroupExpr({ groups: [{ literals: [{ groupId: NONE_POINT, neg: false }] }] })!)).toBe(NONE_POINT);
+    it("지금 쓰는 없음 리터럴은 그대로 산다", () => {
+        expect(show(parseGroupExpr({ groups: [{ literals: [{ groupId: NONE_GROUP, neg: false }] }] })!)).toBe(NONE_GROUP);
     });
 });

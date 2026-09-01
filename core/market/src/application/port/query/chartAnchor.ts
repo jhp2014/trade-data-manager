@@ -30,11 +30,4 @@ export interface ChartAnchorStore {
     remove(anchor: NewChartAnchor): Promise<void>;
     /** 이 차트의 그 param 전부 삭제 — 단일 param 의 교체(replace)와 "전부 해제"가 쓰는 재료. */
     removeByParam(stockCode: string, date: string, param: string): Promise<void>;
-
-    /**
-     * 이 **타점 소유** 앵커 전부 삭제(차트 소유 행은 안 건드린다).
-     * FK 를 뺀 대가를 갚는 자리다 — 타점이 사라지면 그 시각 소유 앵커(분봉 골격)는 읽을 주인이 없어
-     * 조용히 쌓이기만 한다. 타점 삭제 경로가 이걸 함께 부른다.
-     */
-    removeByPoint(stockCode: string, date: string, time: string): Promise<void>;
 }

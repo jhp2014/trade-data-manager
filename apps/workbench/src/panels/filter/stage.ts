@@ -18,7 +18,7 @@
 // **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
 import type { Grain } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
-import { isGroupExprEmpty, noneScope, parseGroupExpr } from "../rank/groupFilter.js";
+import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr } from "../rank/groupFilter.js";
 import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 
 // 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
@@ -92,7 +92,8 @@ export function activeStages(stages: readonly FilterStage[]): FilterStage[] {
 
 /** 알갱이 판정에 필요한 바깥 지식 — 사전이 답한다(없는 id = 지워진 그룹·축). */
 export interface GrainLookup {
-    groupScope: (groupId: string) => Grain | undefined;
+    /** 사전에 있는 그룹인가 — 없으면 죽은 참조(그 술어의 알갱이를 못 정한다). */
+    hasGroup: (groupId: string) => boolean;
     axisScope: (axisId: string) => Grain | undefined;
 }
 
@@ -128,13 +129,13 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
     }
 }
 
-/** 식 안의 리터럴 id 전부(없음 리터럴 포함 — 그것도 층위를 말한다). */
+/** 식 안의 리터럴 id 전부(없음 리터럴 포함 — 그것도 알갱이를 말한다). */
 const literalIds = (expr: GroupExpr): string[] =>
     expr.groups.flatMap((g) => g.literals.map((l) => l.groupId));
 
-/** 리터럴 하나의 층위 — "없음"은 제가 들고 있고, 실제 그룹은 사전이 답한다(없는 id = 지워진 그룹). */
+/** 리터럴 하나의 층위 — 그룹은 전부 하루(차트) 층위다. 사전에 없는 id 는 지워진 그룹 = 모름. */
 const literalScope = (groupId: string, look: GrainLookup): Grain | undefined =>
-    noneScope(groupId) ?? look.groupScope(groupId);
+    isNoneLiteral(groupId) || look.hasGroup(groupId) ? "day" : undefined;
 
 /** 사전이 로드된 뒤에도 알갱이를 모르는 술어 = **죽은 참조**(지워진 그룹·축). 화면이 이걸 표시해야 한다. */
 export function isPredicateDead(p: FilterPredicate, look: GrainLookup): boolean {

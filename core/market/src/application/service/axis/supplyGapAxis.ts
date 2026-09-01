@@ -63,10 +63,10 @@ async function computeSupplyGap(charts: readonly ChartRef[], deps: AxisDeps): Pr
     // day 알갱이 가드 — 당일 캔들에 그은 기준선은 그 값(당일 가격)이 문턱이 되어 이른 타점엔 미래다.
     // 무시 캔들(optionalParams)은 안 거른다: 그건 "그날 거래는 없던 걸로"라는 판정이지 가격 재료가 아니다.
     const baselineOf = await resolveBaselines(charts, dropSameDayAnchors(anchors, BASELINE_PARAM), deps);
-    // 무시 캔들 — 차트 소유(time 없음). 차트키로 모은다(그 차트의 모든 타점이 같은 목록을 본다).
+    // 무시 캔들 — 차트키로 모은다(그 차트의 모든 타점이 같은 목록을 본다).
     const ignoredOf = new Map<string, Set<string>>();
     for (const a of anchors) {
-        if (a.param !== IGNORE_CANDLE_PARAM || a.time != null) continue;
+        if (a.param !== IGNORE_CANDLE_PARAM) continue;
         const key = chartKeyOf(a);
         const set = ignoredOf.get(key);
         if (set) set.add(a.anchorDate);

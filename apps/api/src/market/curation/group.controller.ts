@@ -5,7 +5,6 @@ import type {
     Group,
     GroupItemRef,
     GroupMembership,
-    GroupScope,
     CreateGroupInput,
     RenameGroupInput,
     RemoveGroupInput,
@@ -13,7 +12,7 @@ import type {
     SetGroupParentInput,
 } from "@trade-data-manager/wire";
 import { GROUP_REPO } from "../tokens.js";
-import { assertYmd, assertHms, assertStockCode, assertName, rejectDuplicateName } from "../validation.js";
+import { assertYmd, assertStockCode, assertName, rejectDuplicateName } from "../validation.js";
 
 // 그룹 큐레이션 — 이름 붙인 집합 + 관계(중첩)·위치. 옛 태그 컨트롤러를 흡수했다.
 // 사전과 멤버십이 한 컨트롤러: 팔레트도 맵도 늘 둘을 같이 읽는다.
@@ -31,7 +30,7 @@ export class GroupController {
         return this.repo.listGroups();
     }
 
-    /** 전 항목의 멤버십 한 번에. 하루 소속과 타점 소속이 한 피드에 온다(시각 유무로 갈린다). */
+    /** 전 항목의 멤버십 한 번에 — 항목은 언제나 차트(종목, 날짜). */
     @Get("members")
     members(): Promise<GroupMembership[]> {
         return this.repo.listAllMemberships();
@@ -39,7 +38,7 @@ export class GroupController {
 
     @Post()
     create(@Body() body: CreateGroupInput): Promise<Group> {
-        return this.repo.createGroup(assertName(body?.name), assertScope(body?.scope));
+        return this.repo.createGroup(assertName(body?.name));
     }
 
     @Patch("rename")
@@ -69,7 +68,7 @@ export class GroupController {
         return { ok: true };
     }
 
-    /** 그룹 안 그룹. 부모 층위가 자식을 못 담거나(하루 ⊉ 타점) 순환이면 저장 경로가 거절한다. */
+    /** 그룹 안 그룹. 없는 부모를 가리키거나 순환이면 저장 경로가 거절한다. */
     @Put("parent")
     async setParent(@Body() body: SetGroupParentInput): Promise<{ ok: true }> {
         const parentName = body?.parentName;
@@ -84,7 +83,7 @@ export class GroupController {
 }
 
 /**
- * 불변식 위반만 400 으로 바꾼다 — 층위 불일치·순환·다른 평면의 부모·**없는 이름**은 호출자의 잘못이고,
+ * 불변식 위반만 400 으로 바꾼다 — 순환·**없는 이름**은 호출자의 잘못이고,
  * 화면이 이유를 보여줘야 한다(그냥 두면 500 "Internal server error" 만 뜬다).
  * 다른 예외는 그대로 500 으로 흘려보낸다 — DB 고장을 400 으로 감추면 안 된다.
  */
@@ -97,14 +96,7 @@ async function guard<T>(run: () => Promise<T>): Promise<T> {
     }
 }
 
-function assertScope(scope: string | undefined): GroupScope {
-    if (scope !== "day" && scope !== "point") throw new BadRequestException("scope 는 day|point");
-    return scope;
-}
-
-/** 항목 키 — time 은 **있으면** 검증한다. 있고 없고가 그룹 scope 와 맞는지는 저장 경로가 본다. */
+/** 항목 키 — 차트(종목, 날짜). */
 function assertItem(item: Partial<GroupItemRef> | undefined): GroupItemRef {
-    const stockCode = assertStockCode(item?.stockCode, "stockCode");
-    const date = assertYmd(item?.date, "date");
-    return item?.time === undefined ? { stockCode, date } : { stockCode, date, time: assertHms(item.time, "time") };
+    return { stockCode: assertStockCode(item?.stockCode, "stockCode"), date: assertYmd(item?.date, "date") };
 }

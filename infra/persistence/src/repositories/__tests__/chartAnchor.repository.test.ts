@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createTestDb, type TestDb } from "../../test-support/testDb.js";
 import { DrizzleChartAnchorRepository } from "../chartAnchor.repository.js";
 
-// 차트 소유 — 타점(review_points)이 없어도 앵커를 매달 수 있다(FK 없음: 선은 타점보다 오래 산다).
+// 앵커는 언제나 차트(종목, 날짜) 소유다 — 옛 타점 소유(trade_time)는 2026-09-01 폐지.
 const CHART = { stockCode: "005930", date: "2026-06-30" };
 const OTHER_CHART = { stockCode: "005930", date: "2026-07-01" };
 
@@ -44,7 +44,6 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
         const ignored = (await repo.listByChart(CHART.stockCode, CHART.date)).filter((a) => a.param === "ignore-candle");
         expect(ignored).toHaveLength(1);
         expect(ignored[0].field).toBeUndefined(); // 시각 앵커 — NULL → undefined 왕복
-        expect(ignored[0].time).toBeUndefined(); // 차트 소유 — trade_time NULL
     });
 
     it("listByChart — 그 차트만, id(그린 순서) 오름차순", async () => {
@@ -75,21 +74,6 @@ describe("DrizzleChartAnchorRepository (pglite)", () => {
         expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.param === "param-b")).toBe(true);
         await repo.remove(saved);
         expect((await repo.listByChart(CHART.stockCode, CHART.date)).some((a) => a.param === "param-b")).toBe(false);
-    });
-
-    it("removeByPoint — 그 타점 소유 행만(차트 소유 행은 NULL 이라 안 걸린다)", async () => {
-        await repo.add([
-            { ...CHART, time: "09:30:00", param: "point-owned-x", anchorDate: CHART.date, anchorTime: "09:10:00", field: "high", market: "un" },
-            { ...CHART, time: "10:00:00", param: "point-owned-x", anchorDate: CHART.date, anchorTime: "09:50:00", field: "high", market: "un" },
-        ]);
-        const before = (await repo.listByChart(CHART.stockCode, CHART.date)).length;
-        await repo.removeByPoint(CHART.stockCode, CHART.date, "09:30:00");
-        const left = await repo.listByChart(CHART.stockCode, CHART.date);
-        expect(left).toHaveLength(before - 1);
-        expect(left.filter((a) => a.time === "09:30:00")).toHaveLength(0);
-        expect(left.filter((a) => a.time === "10:00:00")).toHaveLength(1); // 다른 타점 보존
-        expect(left.filter((a) => a.time === undefined).length).toBeGreaterThan(0); // 차트 소유 보존
-        await repo.removeByPoint(CHART.stockCode, CHART.date, "10:00:00");
     });
 
     it("removeByParam — 그 차트의 그 param 전부(다른 차트·다른 param 은 보존)", async () => {

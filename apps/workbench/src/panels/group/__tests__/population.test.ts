@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { Group, GroupMembership } from "../../../api/groups.js";
-import { chainCandidates, membersOfAll, populationCounts, populationFeed, type PopulationItem } from "../population.js";
+import type { Group } from "../../../api/groups.js";
+import { chainCandidates, membersOfAll, populationCounts, populationFeed, type PopulationItem, type PopulationRow } from "../population.js";
 
-const grp = (name: string, parentName: string | null = null): Group => ({ name, scope: "day", parentName });
+const grp = (name: string, parentName: string | null = null): Group => ({ name, parentName });
 
 // 테마 ▸ 2차전지 · 갭상승(무관)
 const byId = new Map<string, Group>([["테마", grp("테마")], ["2차전지", grp("2차전지", "테마")], ["갭상승", grp("갭상승")]]);
@@ -10,7 +10,7 @@ const byId = new Map<string, Group>([["테마", grp("테마")], ["2차전지", g
 const item = (code: string, groups: string[]): { it: PopulationItem; ids: string[] } =>
     ({ it: { stockCode: code, date: "2026-07-01" }, ids: groups });
 
-const row = (code: string, groupNames: string[]): GroupMembership => ({ stockCode: code, date: "d", groupNames });
+const row = (code: string, groupNames: string[]): PopulationRow => ({ stockCode: code, date: "d", groupNames });
 
 describe("populationFeed — 항목당 적용 집합 판정 1회", () => {
     it("주입된 판정 그대로 의사 피드가 된다", () => {
@@ -20,9 +20,9 @@ describe("populationFeed — 항목당 적용 집합 판정 1회", () => {
         expect(feed[0]!.groupNames).toEqual(["2차전지", "테마"]);
     });
 
-    it("시각 있는 항목은 시각을 보존한다(목록 행 클릭 = 타점 이동의 재료)", () => {
-        const feed = populationFeed([{ stockCode: "A", date: "2026-07-01", time: "09:30:00" }], () => []);
-        expect(feed[0]!.time).toBe("09:30:00");
+    it("항목 키는 차트(종목·날짜) — 그룹이 붙는 층위 그대로다", () => {
+        const feed = populationFeed([{ stockCode: "A", date: "2026-07-01" }], () => []);
+        expect(feed[0]).toEqual({ stockCode: "A", date: "2026-07-01", groupNames: [] });
     });
 });
 

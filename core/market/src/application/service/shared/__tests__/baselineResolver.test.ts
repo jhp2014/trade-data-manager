@@ -112,7 +112,7 @@ describe("resolveBaselines", () => {
         expect(out.get(KEY)).toEqual(minuteLine);
     });
 
-    it("다른 차트·다른 param·타점 소유·시각 앵커는 후보에서 빠진다", async () => {
+    it("다른 차트·다른 param·시각 앵커는 후보에서 빠진다", async () => {
         const { d } = deps({});
         const mine = line("2026-06-30");
         const out = await resolveBaselines(
@@ -121,7 +121,6 @@ describe("resolveBaselines", () => {
                 mine,
                 line("2026-06-29", { date: "2026-07-01" }), // 다른 차트
                 line("2026-06-28", { param: "ignore-candle", field: undefined, market: undefined }), // 다른 param
-                line("2026-06-27", { time: "09:30:00" }), // 타점 소유(예약) — 병합 규칙 미정이라 제외
                 line("2026-06-26", { field: undefined, market: undefined }), // 시각 앵커 — 값을 못 꺼낸다
             ],
             d,

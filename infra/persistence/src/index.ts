@@ -18,7 +18,6 @@ export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.r
 export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.js";
 export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repository.js";
 export { DrizzleChartAnchorRepository } from "./repositories/chartAnchor.repository.js";
-export { DrizzleReviewPointRepository } from "./repositories/reviewPoint.repository.js";
 export { DrizzleGroupRepository } from "./repositories/group.repository.js";
 export { DrizzleDailyUniverseProvider } from "./repositories/dailyUniverse.provider.js";
 export {
@@ -49,8 +48,4 @@ export {
     chartAnchorToRow,
     rowToChartAnchor,
 } from "./mappers/chartAnchor.js";
-export {
-    reviewPointToRow,
-    rowToReviewPoint,
-} from "./mappers/reviewPoint.js";
 export { rowToGroup } from "./mappers/group.js";

@@ -93,7 +93,7 @@ export async function syncCurationMirror(opts: CurationMirrorOptions): Promise<C
         });
         const syncedAt = await replaceLocalSchema(local, tmp, opts.pgBinDir);
         const rows = await countMainTables(local);
-        log(`curation 미러 완료: Supabase→로컬 (주요 4테이블 ${rows}행)`);
+        log(`curation 미러 완료: Supabase→로컬 (주요 테이블 ${rows}행)`);
         return { syncedAt, rows, skipped: false };
     } finally {
         if (fs.existsSync(tmp)) fs.rmSync(tmp);
@@ -149,10 +149,13 @@ async function countMainTables(local: PgConn): Promise<number> {
     return withPgClient(local, (c) =>
         c
             .query(
+                // 사람 편집물 전 테이블의 행 합 — 동기화가 "빈 스키마로 교체"되지 않았는지 보는 눈.
+                // ⚠ 목록이 스키마와 함께 움직인다: review_points 는 2026-09-01 드롭됐다(타점은 격자 파생).
                 "select coalesce(sum(n),0)::int total from (" +
-                    "select count(*) n from curation.review_points " +
-                    "union all select count(*) from curation.chart_anchors " +
-                    "union all select count(*) from curation.daily_comments) x",
+                    "select count(*) n from curation.chart_anchors " +
+                    "union all select count(*) from curation.daily_comments " +
+                    "union all select count(*) from curation.groups " +
+                    "union all select count(*) from curation.group_members) x",
             )
             .then((r) => r.rows[0].total as number),
     );

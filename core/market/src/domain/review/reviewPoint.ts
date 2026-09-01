@@ -1,12 +1,10 @@
-// core/market/domain/review — 복기 타점(사람 편집). 차트에서 찍은 관찰 지점.
-// 자연키 (stockCode, date, time) 삼중키(시각 필수). **옛 caseId/case 개념을 흡수 = 이 타점이 곧 case.**
-// outcome(트레이드 결과)·memo 는 타점 자체의 큐레이션 속성.
-// 셋업 유형(돌파/눌림…)은 단일 varchar `type` 이었다가 **그룹으로 이관**(domain/review/group.ts) — 원래 다중이어야 할
-// 명목형 분류를 한 칸에 눌러 담고 있었고, 그래서 순서 없는 분류를 순위 축의 배치 유무로 대신 표현하는 우회까지 낳았다.
-// 순위 배치(curation.rank_placements)가 이 타점을 자연키로 참조하는 하류.
+// core/market/domain/review — 타점 좌표. **저장물이 아니다**(2026-09-01 손 타점 폐지):
+// 타점은 이제 격자(domain/grid)에서 읽기 시점에 파생되고, 여기 남은 건 그 파생물을 지목하는
+// 좌표 타입과 키 직렬화뿐이다 — 화면·캐시·맵이 같은 문자열 계약을 봐야 해서 도메인에 산다.
+// (옛 review_points 테이블·outcome·memo·순위 배치 하류는 전부 사라졌다.)
 
 /**
- * 타점 자연키 삼중키 — 하류(순위 배치·그룹)가 타점을 지목할 때 쓰는 최소 식별자.
+ * 타점 좌표 삼중키 — 화면·캐시·시트가 파생 타점 하나를 지목할 때 쓰는 최소 식별자.
  * 큐레이션 속성(outcome·memo) 없이 "어느 타점이냐"만 말한다.
  */
 export interface ReviewPointKey {
@@ -24,10 +22,3 @@ export const pointKeyOf = (p: ReviewPointKey): string => `${p.stockCode}|${p.dat
 
 /** 차트 키 직렬화 — `stockCode|date`. 차트(종목,날짜) grain 의 맵 키. pointKeyOf 와 같은 계약. */
 export const chartKeyOf = (c: { stockCode: string; date: string }): string => `${c.stockCode}|${c.date}`;
-
-/** 한 종목·거래일·시각의 복기 타점 1건. 종목명은 싣지 않는다 — 단일 출처는 클라 부팅 사전(stock-master).
- *  (옛 ReviewPointListItem — name 붙인 read model — 은 그 사전 도입으로 잔재가 돼 은퇴.) */
-export interface ReviewPoint extends ReviewPointKey {
-    outcome?: string; // 트레이드 결과(선택). 허용값은 클라.
-    memo?: string; // 타점 메모(선택)
-}

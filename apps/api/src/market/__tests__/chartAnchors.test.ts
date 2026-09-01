@@ -18,12 +18,12 @@ function memoryRepo(): ChartAnchorReader & ChartAnchorStore & { rows: ChartAncho
         },
         listByChart: (stockCode, date) => Promise.resolve(rows.filter((r) => r.stockCode === stockCode && r.date === date)),
         listAll: () => Promise.resolve(rows),
-        // 자연키 삭제 — 좌표 8필드가 전부 같은 행 하나. NULL 과 undefined 를 같게 보려고 ?? null 로 맞춘다.
+        // 자연키 삭제 — 좌표 7필드가 전부 같은 행 하나. NULL 과 undefined 를 같게 보려고 ?? null 로 맞춘다.
         remove: (a) => {
             const same = (x?: string | null, y?: string | null): boolean => (x ?? null) === (y ?? null);
             const i = rows.findIndex(
                 (r) =>
-                    r.stockCode === a.stockCode && r.date === a.date && same(r.time, a.time) && r.param === a.param &&
+                    r.stockCode === a.stockCode && r.date === a.date && r.param === a.param &&
                     r.anchorDate === a.anchorDate && same(r.anchorTime, a.anchorTime) && same(r.field, a.field) && same(r.market, a.market),
             );
             if (i >= 0) rows.splice(i, 1);
@@ -31,10 +31,6 @@ function memoryRepo(): ChartAnchorReader & ChartAnchorStore & { rows: ChartAncho
         },
         removeByParam: (stockCode, date, param) => {
             for (let i = rows.length - 1; i >= 0; i--) if (rows[i].stockCode === stockCode && rows[i].date === date && rows[i].param === param) rows.splice(i, 1);
-            return Promise.resolve();
-        },
-        removeByPoint: (stockCode, date, time) => {
-            for (let i = rows.length - 1; i >= 0; i--) if (rows[i].stockCode === stockCode && rows[i].date === date && rows[i].time === time) rows.splice(i, 1);
             return Promise.resolve();
         },
     };
@@ -67,11 +63,6 @@ describe("ChartAnchors 유스케이스 — 행 단위 규칙", () => {
     it("기준선의 분봉 앵커에 krx 는 거부 — 분봉 앵커는 'un' 고정", async () => {
         await expect(c.add({ ...CHART, param: "baseline", anchorDate: "2026-06-24", anchorTime: "09:30:00", field: "high", market: "krx" }))
             .rejects.toThrow(/market 은 'un'/);
-    });
-
-    it("차트 소유 param 에 타점 시각을 실으면 거부(owner 게이트)", async () => {
-        await expect(c.add({ ...CHART, time: "09:30:00", param: "baseline", anchorDate: "2026-06-24", field: "high", market: "un" }))
-            .rejects.toThrow(/차트 소유/);
     });
 
     it("무시 캔들은 시각 앵커 — field·market 을 실으면 거부, 분봉 좌표도 거부(candles: daily)", async () => {

@@ -15,19 +15,18 @@
 import { and3, not3, or3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
 import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
-import { noneScope, type GroupExpr } from "../rank/groupFilter.js";
-import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStage, type Grain } from "./stage.js";
+import { isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
+import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
 
 /** 판정에 필요한 바깥 재료. 없는 것은 전부 `undefined` = 판단 불가(탈락 아님). */
 export interface EvalLookup {
     /** 이 항목에 적용되는 그룹 이름들 — **하루 상속 포함**(차트에 붙은 그룹은 그날 타점 전부에 적용). */
     groupNamesOf: (item: FunnelItem) => readonly string[];
     /**
-     * 이 항목에 **그 층위** 그룹이 하나라도 붙어 있나 — "…그룹 없음" 리터럴이 묻는 것.
-     * 위의 groupNamesOf(합집합)로는 못 묻는다: 하루 그룹이 하나만 있어도 "타점 그룹 없음"이
-     * 영원히 거짓이 되어 아직 분류 안 한 타점을 못 찾는다. 층위를 물을 수 없는 항목은 undefined.
+     * 이 항목의 차트에 그룹이 하나라도 붙어 있나 — "그룹 없음" 리터럴이 묻는 것.
+     * 위의 groupNamesOf(조상까지 편 집합)로는 못 묻는다 — 조상은 개수를 안 바꾸지만 이름은 늘린다.
      */
-    anyGroupAt: (item: FunnelItem, scope: Grain) => boolean | undefined;
+    anyGroupAt: (item: FunnelItem) => boolean;
     /** 사전에 있는 그룹인가. 없으면 죽은 참조라 그 리터럴은 판단 불가. */
     hasGroup: (groupId: string) => boolean;
     /** 이 항목의 그 축 배치 위치(orderKey). **미배치면 undefined** — 깔때기의 미배치 칸이 여기서 나온다. */
@@ -74,11 +73,8 @@ export function evalGroupExpr3(expr: GroupExpr, item: FunnelItem, look: EvalLook
     const ids = (): readonly string[] => (cached ??= look.groupNamesOf(item));
     /** 이 리터럴이 가리키는 사실이 참인가(부정 적용 전). 죽은 그룹은 모름. */
     const holds = (groupId: string): Verdict => {
-        // "…그룹 없음"은 그룹이 아니라 **그 층위의 개수 조건**이라 사전을 안 본다(죽을 수가 없다).
-        // 합집합(ids)이 아니라 층위별로 묻는다 — 하루 그룹은 그날 타점 전부에 상속되므로, 합집합에
-        // 0개를 물으면 "타점 그룹 없음"이 하루 그룹 하나에 통째로 가려진다.
-        const none = noneScope(groupId);
-        if (none !== undefined) return not3(look.anyGroupAt(item, none));
+        // "그룹 없음"은 그룹이 아니라 **개수 조건**이라 사전을 안 본다(죽을 수가 없다).
+        if (isNoneLiteral(groupId)) return not3(look.anyGroupAt(item));
         if (!look.hasGroup(groupId)) return undefined;
         return ids().includes(groupId);
     };

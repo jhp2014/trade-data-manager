@@ -91,14 +91,14 @@ export const allCommentsQuery = () =>
     queryOptions({ queryKey: ["all-comments"], queryFn: ({ signal }) => fetchAllDailyComments(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 순위 배치 — 축 목록 + 전 축 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
-// 계산 축(수식 축)의 타점별 수치 — **키 하나**(모든 소비자가 전축을 본다). 타점·앵커 mutation 이 무효화한다.
+// 계산 축(수식 축)의 하루별 수치 — **키 하나**(모든 소비자가 전축을 본다). 앵커·그룹 mutation 이 무효화한다.
 // 서버가 축당 파일 캐시로 증분 계산한다.
 export const computedAxesQuery = () =>
     queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
-// 순위 단면 번들(타점 있는 날짜·분의 전 종목 서수) — **키 하나**(전 소비자가 통째를 본다). 모수가 타점이라
-// 기준선 앵커 편집(chartAnchorHooks — 그게 곧 후보 집합의 변경)·테마 배정·미러 동기화(CURATION)가
-// 무효화한다. 서수 자체는 불변 원료다.
+// 순위 단면 번들(격자 후보 캔들이 선 날짜·분의 서수) — **키 하나**(전 소비자가 통째를 본다). 모수가
+// 격자 후보라 기준선 앵커 편집(chartAnchorHooks — 그게 곧 후보 집합의 변경)·테마 배정(접기가 바뀐다)·
+// 미러 동기화(CURATION)가 무효화한다. 서수 자체는 불변 원료다.
 export const rankSectionsQuery = () =>
     queryOptions({ queryKey: ["rank-sections"], queryFn: ({ signal }) => fetchRankSections(signal), staleTime: IMMUTABLE , meta: CURATION });
 
@@ -113,8 +113,7 @@ export const pointGridsQuery = () =>
 export const groupsQuery = () =>
     queryOptions({ queryKey: ["groups"], queryFn: ({ signal }) => fetchGroups(signal), staleTime: IMMUTABLE , meta: CURATION });
 
-// 멤버십은 **한 피드**다(옛날엔 타점 부착·차트 부착 둘) — 시각 유무로 층위가 갈릴 뿐 같은 사실이라
-// 캐시를 나누면 한쪽만 무효화되는 사고가 열린다.
+// 멤버십은 **한 피드**다 — 항목은 언제나 차트(종목, 날짜)이고, 캐시를 나누면 한쪽만 무효화되는 사고가 열린다.
 export const groupMembershipsQuery = () =>
     queryOptions({ queryKey: ["group-members"], queryFn: ({ signal }) => fetchGroupMemberships(signal), staleTime: IMMUTABLE , meta: CURATION });
 

@@ -288,9 +288,7 @@ export function NormOverlayPanel({ grain }: { grain: "daily" | "minute" }): JSX.
     const inspectGroupNames = useMemo(() => {
         const s = inspectKey ? byKey.get(inspectKey) : null;
         if (!s) return [];
-        const ids = s.kind === "point"
-            ? groupsView.groupNamesOf({ stockCode: s.stockCode, date: s.date, time: s.time })
-            : groupsView.chartGroupNamesOf(s);
+        const ids = groupsView.chartGroupNamesOf(s);
         return ids.map((id) => groupsView.groupByName.get(id)?.name).filter((n): n is string => !!n);
     }, [inspectKey, byKey, groupsView]);
 

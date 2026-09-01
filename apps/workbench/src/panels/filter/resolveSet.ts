@@ -12,7 +12,7 @@
 // **넓어지는** 방향이라, 집합 하나 지웠는데 어느 패널이 전체를 보며 틀린 분모로 계속 읽게 된다.
 // "결손은 결손"(축 규칙 3)이 참조에도 적용되는 것.
 import {
-    expandUniverse, finestGrain, tallyFunnel,
+    expandUniverse, tallyFunnel,
     type ChartRef, type FunnelCell, type FunnelItem, type FunnelResult, type Grain,
 } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../lib/setRef.js";
@@ -26,10 +26,10 @@ export interface SetResolveCtx {
     candidates: readonly ChartRef[];
     /** 그 하루의 타점 시각들(타점 0이면 빈 배열). */
     timesOf: (c: ChartRef) => readonly string[];
-    /** 적용 그룹(직접 ∪ 하루상속 ∪ 계층조상) — 깔때기와 같은 판정. */
+    /** 적용 그룹(직접 ∪ 계층조상) — 깔때기와 같은 판정. */
     appliedGroupNamesOf: (item: FunnelItem) => readonly string[];
-    /** 그룹의 층위. undefined = 지워진 그룹(깨진 참조). */
-    groupScope: (name: string) => Grain | undefined;
+    /** 사전에 있는 그룹인가. false = 지워진 그룹(깨진 참조). */
+    hasGroup: (name: string) => boolean;
     /** 작업 깔때기의 단계들(조건 한 벌) — survivors·cell 참조의 재료. */
     activeStages: readonly FilterStage[];
     /** 저장 집합 사전. undefined 반환 = 지워진 집합(깨진 참조). */
@@ -93,10 +93,9 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
         }
 
         case "groupChain": {
-            // 교집합 판정은 **가장 가는 층위**에서 — 하루 그룹은 상속(∀ 전개와 동치)으로 타점에 적용된다.
-            const scopes = ref.names.map((n) => ctx.groupScope(n));
-            if (scopes.some((s) => s === undefined)) return BROKEN;
-            const grain = finestGrain(scopes as Grain[]);
+            // 그룹은 전부 하루(차트) 층위다 — 판정도 그 층위에서 한다.
+            if (ref.names.some((n) => !ctx.hasGroup(n))) return BROKEN;
+            const grain: Grain = "day";
             const items = expandUniverse(ctx.candidates, grain, ctx.timesOf).filter((i) => {
                 const applied = ctx.appliedGroupNamesOf(i);
                 return ref.names.every((n) => applied.includes(n));

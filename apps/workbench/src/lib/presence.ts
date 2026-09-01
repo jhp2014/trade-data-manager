@@ -86,7 +86,7 @@ export function buildPresenceIndex(
         }
         return e;
     };
-    // 앵커 — param 무관 전부(타점 소유 행도 그 차트의 흔적이다).
+    // 앵커 — param 무관 전부(차트 소유 하나뿐이다).
     for (const a of anchors) {
         const e = ensure(a.stockCode, a.date);
         e.marks.set(a.param, (e.marks.get(a.param) ?? 0) + 1);
@@ -132,7 +132,7 @@ export type PresenceFilter = Readonly<Record<string, TriState>>;
 /** 절 목록 = 필터 전체. 빈 목록 = 필터 없음. */
 export type PresenceDnf = readonly PresenceFilter[];
 
-/** 절 하나의 AND — "선 있음 ∧ 타점 없음" 같은 질문. */
+/** 절 하나의 AND — "선 있음 ∧ 코멘트 없음" 같은 질문. */
 export function matchesPresence(d: DayPresence, filter: PresenceFilter): boolean {
     for (const kind of PRESENCE_KINDS) {
         const st = filter[kind.key] ?? "any";

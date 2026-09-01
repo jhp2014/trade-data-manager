@@ -102,13 +102,10 @@ export function overlapRows(
 /**
  * 이 그룹을 저 그룹 밑으로 넣을 수 있나. `null` 은 최상위로 빼기.
  *
- * 막는 것 셋:
+ * 막는 것 둘:
  *   · 자기 자신 · **자기 자손** 밑으로 — 트리가 끊긴다
  *   · 이미 그 부모 — 할 일이 없다
- *   · **부모가 자식보다 좁을 때** — 하루 ⊇ 타점 이어야 한다. 계층 상속은 "자식에 속하면 부모에도
- *     속한다"인데, 타점 그룹 밑에 하루 그룹을 넣으면 그 말이 거짓이 된다(하루가 더 넓다).
- *     맵 시절엔 "부모는 같은 평면"이 이 역할을 했다(평면 = scope) — 맵이 사라지면 이 규칙이 그 자리를 잇는다.
- *     ⚠ 서버 규칙(setGroupParent)은 아직 "같은 맵"이라, 여기서 막는 건 화면의 방어일 뿐이다.
+ * (옛 층위 규칙 — 부모가 자식보다 좁으면 거절 — 은 2026-09-01 타점 층위 폐지로 사라졌다.)
  */
 export function canReparent(
     name: string,
@@ -120,11 +117,5 @@ export function canReparent(
     if (parentName === name) return false;
     if (isAncestorOf(name, parentName, groupByName)) return false;
     if (self?.parentName === parentName) return false;
-    const parent = groupByName.get(parentName);
-    if (self && parent && !scopeContains(parent.scope, self.scope)) return false;
     return true;
 }
-
-/** 부모 scope 가 자식 scope 를 담을 수 있나 — 하루 ⊇ 타점, 같은 층위끼리도 된다. */
-export const scopeContains = (parent: string, child: string): boolean =>
-    parent === child || (parent === "day" && child === "point");

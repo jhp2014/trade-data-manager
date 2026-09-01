@@ -36,7 +36,7 @@ export const curationProviders: Provider[] = [
         inject: [MARKET_POOL],
     },
     {
-        // 앵커 쓰기 유스케이스 — 불변식(레지스트리·owner grain·multiple 교체·타점 cascade) 소유.
+        // 앵커 쓰기 유스케이스 — 불변식(레지스트리·행 단위 규칙·multiple 교체) 소유.
         provide: CHART_ANCHORS,
         useFactory: (marketPool: Pool, curationPool: Pool): ChartAnchors =>
             new ChartAnchors(
@@ -66,7 +66,7 @@ export const curationProviders: Provider[] = [
         inject: [MARKET_POOL],
     },
     {
-        // 타점 그룹 — repo 를 그대로 노출(사전 CRUD·전 타점 부착 피드·부착/해제). 축과 달리 순서가 없는 분류.
+        // 그룹 — repo 를 그대로 노출(사전 CRUD·전 항목 부착 피드·부착/해제). 축과 달리 순서가 없는 분류.
         provide: GROUP_REPO,
         useFactory: (marketPool: Pool, curationPool: Pool) =>
             curationRepo((db) => new DrizzleGroupRepository(db), ["createGroup", "renameGroup", "removeGroup", "attach", "detach", "setParent"], "group", marketPool, curationPool),

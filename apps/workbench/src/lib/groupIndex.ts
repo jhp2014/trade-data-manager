@@ -4,33 +4,22 @@
 //    부착 직후와 서버 응답 후의 칩 순서가 안 흔들린다(부착 순으로 붙이면 refetch 때 자리가 튄다).
 //    **이름이 곧 키**라 정렬 기준이 키 자신이다 — 옛 nameOf 조회 함수가 통째로 필요 없어졌다.
 //
-// **피드가 하나다**(옛날엔 타점 부착·차트 부착 둘). 멤버십은 시각 유무로 층위가 갈리므로 한 배열에서
-// 접어 두 인덱스를 만든다 — 정션을 합친 스키마와 같은 판단이다.
+// **항목은 언제나 차트(종목, 날짜)다** — 2026-09-01 타점 층위 폐지로 피드가 한 층위만 남았다
+// (옛 isDayMembership·타점 인덱스는 그때 사라졌다).
 import type { Group, GroupMembership, GroupItemRef } from "@trade-data-manager/wire";
 import { expandWithAncestors } from "./groupTree.js";
-import { pointKey, chartKey, type PointKey, type PointRef } from "./pointKey.js";
+import { chartKey } from "./pointKey.js";
 
-/** pk("code|date|time") → 든 그룹 이름들(이름순). 그룹 0개인 타점은 키가 없음. */
-export type GroupIndex = Map<PointKey, string[]>;
+/** 차트키("code|date") → 든 그룹 이름들(이름순). 그룹 0개인 차트는 키가 없음. */
+export type GroupIndex = Map<string, string[]>;
 
-/** 멤버십 하나가 하루 소속인가(시각이 없다). */
-export const isDayMembership = (m: GroupItemRef): boolean => m.time === undefined;
-
-/** 타점 소속만 골라 접는다. */
 export function buildGroupIndex(feed: readonly GroupMembership[]): GroupIndex {
     const idx: GroupIndex = new Map();
-    for (const m of feed) if (!isDayMembership(m)) idx.set(pointKey(m as PointRef), m.groupNames);
+    for (const m of feed) idx.set(chartKey(m), m.groupNames);
     return idx;
 }
 
-/** 차트키("code|date") → 하루 소속 그룹 이름들. 같은 피드에서 시각 없는 것만 접는다. */
-export function buildChartGroupIndex(feed: readonly GroupMembership[]): Map<string, string[]> {
-    const idx = new Map<string, string[]>();
-    for (const m of feed) if (isDayMembership(m)) idx.set(chartKey(m), m.groupNames);
-    return idx;
-}
-
-/** 그룹별 사용 건수(삭제 확인 "N건에 들어 있음" · 팔레트 빈도). 두 층위를 **합산**한다. */
+/** 그룹별 사용 건수(삭제 확인 "N건에 들어 있음" · 팔레트 빈도). */
 export function countByGroup(feed: readonly GroupMembership[]): Map<string, number> {
     const m = new Map<string, number>();
     for (const a of feed) for (const name of a.groupNames) m.set(name, (m.get(name) ?? 0) + 1);
@@ -49,12 +38,8 @@ export function expandMemberships(feed: readonly GroupMembership[], groupByName:
     });
 }
 
-/** 항목 키 — 하루 소속은 시각이 없다. 피드를 접고 토글 대상을 찾는 기준. */
-const itemKey = (m: GroupItemRef): string => (isDayMembership(m) ? chartKey(m) : pointKey(m as PointRef));
-
 /**
  * 낙관적 토글 — 멤버십 피드에서 한 그룹을 넣거나 뺀 결과(불변 갱신).
- * **하루·타점 둘 다 이 함수 하나**가 다룬다(시각 유무로 갈릴 뿐 규칙이 같다).
  * 그룹이 0개가 된 항목은 항목째 제거(서버 표현과 동일).
  */
 export function applyGroupToggle(
@@ -63,8 +48,8 @@ export function applyGroupToggle(
     groupName: string,
     on: boolean,
 ): GroupMembership[] {
-    const key = itemKey(item);
-    const idx = feed.findIndex((m) => itemKey(m) === key);
+    const key = chartKey(item);
+    const idx = feed.findIndex((m) => chartKey(m) === key);
 
     // 바뀔 게 없으면 **같은 배열을 그대로** 돌려준다 — 내용만 같은 새 배열을 만들면 이걸 deps 로 삼은
     // useMemo(인덱스·건수)가 통째로 헛돈다(멤버십 수백 건이면 매 토글마다 재계산).

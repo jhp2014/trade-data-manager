@@ -35,7 +35,7 @@ export function GroupEditors({ editor, stages, draft, onDraftChange, onCloseCrea
     const editingStage = editor?.stageId ? stages.find((s) => s.id === editor.stageId) : undefined;
     if (editor === null) return null;
     return editor.stageId && editingStage
-        ? <GroupFilterEditor anchor={editor} scope={editor.grain}
+        ? <GroupFilterEditor anchor={editor}
             expr={(editingStage.predicates.find((p) => p.kind === "group") as Extract<FilterPredicate, { kind: "group" }> | undefined)?.expr ?? { groups: [] }}
             onChange={(next) => {
                 // 식을 다 비우면 조건이 없어진 것 — 빈 필터를 남기지 않는다(레일에서 구간을 다 지운 것과 같다).
@@ -43,7 +43,7 @@ export function GroupEditors({ editor, stages, draft, onDraftChange, onCloseCrea
                 setPredicates(editor.stageId!, [{ kind: "group", expr: next }]);
             }}
             onClose={onClose} />
-        : <GroupFilterEditor anchor={editor} scope={editor.grain} expr={draft} onChange={onDraftChange} onClose={onCloseCreate} />;
+        : <GroupFilterEditor anchor={editor} expr={draft} onChange={onDraftChange} onClose={onCloseCreate} />;
 }
 
 export function RailEditors({ editor, stages, write, onClose }: {

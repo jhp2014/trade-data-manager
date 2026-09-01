@@ -133,7 +133,7 @@ export function useFilterFunnel(): FunnelView {
     // ── 조회기 ────────────────────────────────────────────────────────────
     const grainLook = useMemo<GrainLookup>(
         () => ({
-            groupScope: (id) => gv.groupByName.get(id)?.scope,
+            hasGroup: (id) => gv.groupByName.has(id),
             axisScope: (id) => axisScopes.get(id),
         }),
         [gv.groupByName, axisScopes],
@@ -141,10 +141,10 @@ export function useFilterFunnel(): FunnelView {
 
     const evalLook = useMemo<EvalLookup>(
         () => ({
-            // 적용 집합(직접 ∪ 하루 상속 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
-            groupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
-            // "…그룹 없음"은 **그 층위만** 센다(하루 상속 제외) — 위의 합집합으로는 못 묻는 것.
-            anyGroupAt: (i, scope) => gv.anyGroupAt({ stockCode: i.stockCode, date: i.date, time: i.time }, scope),
+            // 적용 집합(직접 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
+            groupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
+            // "그룹 없음"은 **직접 소속 0개**를 센다 — 위의 합집합으로는 못 묻는 것.
+            anyGroupAt: (i) => gv.anyGroupAt({ stockCode: i.stockCode, date: i.date }),
             hasGroup: (id) => gv.groupByName.has(id),
             orderKeyOf: (axisId, i) => {
                 const idx = placements.get(axisId);
@@ -214,8 +214,8 @@ export function useFilterFunnel(): FunnelView {
         () => ({
             candidates: cand.candidates,
             timesOf: (c) => timesByChart.get(chartKey(c)) ?? [],
-            appliedGroupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
-            groupScope: (n) => gv.groupByName.get(n)?.scope,
+            appliedGroupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
+            hasGroup: (n) => gv.groupByName.has(n),
             activeStages: stages,
             savedSetOf: (id) => savedSets.find((f) => f.id === id),
             ...(result !== null ? { activeFilter: { grain, active, tally: result } } : {}),

@@ -43,7 +43,7 @@ export async function resolveBaselineLevelsForCharts(
     type Candidate = ChartAnchor & { field: AnchorField; market: AnchorMarket };
     const byChart = new Map<string, Candidate[]>();
     for (const a of anchors) {
-        if (a.param !== BASELINE_PARAM || a.time != null) continue; // 차트 소유만(baselineResolver 와 같은 범위)
+        if (a.param !== BASELINE_PARAM) continue;
         if (a.field == null || a.market == null) continue; // 가격 앵커만
         const key = chartKeyOf(a);
         if (!charts.has(key)) continue;

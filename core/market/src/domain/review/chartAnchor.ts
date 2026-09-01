@@ -4,9 +4,8 @@
 // **가격을 저장하지 않는다**: 항상 어떤 캔들의 어떤 값(field)을 가리키는 좌표만 저장하고, 값은 읽기 시점에
 // 그 캔들에서 읽는다 — 수정계수가 바뀌어(권리락/액분) 캔들 스케일이 달라져도 자동으로 따라간다.
 //
-// **소유 grain 은 time 유무가 말한다**: 없으면 차트(종목,날짜) 소유, 있으면 타점 소유(예약).
-// 현재 레지스트리의 param 은 전부 chart 소유다 — 타점 시각이 들어오면 저장 경로가 owner 선언과 대조해 거부한다.
-// 첫 "both" param 이 생길 때 두 grain 의 병합 규칙(합집합/덮어쓰기/같은 후보 풀)을 그 param 의 성질로 정한다.
+// **소유는 차트(종목,날짜) 하나다**(2026-09-01): 타점이 읽기 층 파생물이 되면서 "타점 소유 앵커"라는
+// 예약 자리(trade_time·AnchorParamDef.owner)가 뜻을 잃어 함께 사라졌다 — 실사용자가 없던 예약이다.
 //
 // **기준선(baseline)은 다중이다**: 차트에 그은 선 하나하나가 곧 기준선 후보이고(선=앵커 통합의 핵심),
 // 계산 축이 쓸 "그 기준선"은 리졸버가 고른다 — 후보가 여럿이면 **가격이 가장 낮은 것**(사용자 규칙:
@@ -23,7 +22,6 @@
 // 정체성이 아니다** — 정체성은 좌표 전체이고, API 도 그걸로 지목한다(id 는 와이어를 건너지 않는다:
 // 읽기가 로컬 미러라 원격과 갈릴 수 있다). 같은 좌표의 완전 중복은 두 겹으로 막는다 —
 // 저장 경로(repository add 멱등)가 왕복을 아끼고, DB 유니크(NULLS NOT DISTINCT)가 최종 방어선이다.
-import type { ReviewPointKey } from "./reviewPoint.js";
 
 /** 가격 앵커의 시장. 앵커는 "어느 캔들"이 아니라 "어느 시장의 값"까지 지목할 수 있다(오염 캔들 회피). */
 export type AnchorMarket = "krx" | "un";
@@ -43,7 +41,6 @@ export const ANCHOR_MARKETS: readonly AnchorMarket[] = ["un", "krx"];
 export interface NewChartAnchor {
     stockCode: string;
     date: string; // YYYY-MM-DD — 소유 차트의 거래일(로드 단위)
-    time?: string; // HH:MM:SS — 있으면 타점 소유(예약. 현재 param 은 전부 chart — owner 게이트가 거부)
     param: string; // 파라미터 이름 — ANCHOR_PARAMS 레지스트리 키
     anchorDate: string; // YYYY-MM-DD — 가리키는 캔들의 거래일
     anchorTime?: string; // HH:MM:SS — 있으면 분봉 앵커(market 'un' 고정), 없으면 일봉 앵커
@@ -63,7 +60,7 @@ export type ChartAnchor = NewChartAnchor;
  * 옛날엔 DB id 를 이 자리에 썼는데, 그건 로컬 미러와 원격이 갈리는 값이라 손잡이로도 부적격이다.
  */
 export const chartAnchorKey = (a: NewChartAnchor): string =>
-    [a.stockCode, a.date, a.time ?? "", a.param, a.anchorDate, a.anchorTime ?? "", a.field ?? "", a.market ?? ""].join("|");
+    [a.stockCode, a.date, a.param, a.anchorDate, a.anchorTime ?? "", a.field ?? "", a.market ?? ""].join("|");
 
 // (옛 AnchoredChart — 기준선만 집계한 작업셋 read model — 는 클라 큐레이션 복제본이 흡수하며 삭제됐다.
 //  작업셋 목록은 이제 클라가 전 앵커(listAll)에서 존재 지도로 접는다 — lib/presence.ts.)
@@ -84,12 +81,6 @@ export interface AnchorParamDef {
     /** 가격 앵커인가 — true 면 field+market 필수, false 면 금지. */
     needsPrice: boolean;
     /**
-     * 소유 grain — 이 param 의 앵커가 붙는 곳. DB 컬럼(trade_time nullable)은 둘 다 표현할 수 있지만,
-     * **한 param 이 두 grain 을 동시에 쓰는 병합 규칙은 아직 없다** — "both" 는 첫 실사용자가 규칙을 들고
-     * 올 때까지 금지(저장 경로가 owner 와 time 유무 불일치를 거부한다).
-     */
-    owner: "chart" | "point";
-    /**
      * 한 차트에 여러 개 매달 수 있는가. false = 그 param 의 앵커는 하나(재지정 = 교체), true = 좌표마다
      * 쌓인다(같은 좌표 재지정은 멱등 no-op — repository add 가 보장).
      * ⚠ DB 는 다중을 막지 않는다(surrogate id) — 단일 보장은 이 플래그를 읽는 저장 경로의 몫이다.
@@ -105,11 +96,9 @@ export interface AnchorParamDef {
 
 /**
  * 저장 규칙 종합 검증 — 위반이면 사유 문자열, 통과면 null. 컨트롤러(400 사유)와 테스트가 공유한다.
- * 규칙: ① owner grain 일치 ② field⇔market 쌍(needsPrice) ③ 캔들 종류 제한 ④ 분봉 앵커 market='un'.
+ * 규칙: ① field⇔market 쌍(needsPrice) ② 캔들 종류 제한 ③ 분봉 앵커 market='un'.
  */
 export function anchorInputError(def: AnchorParamDef, a: NewChartAnchor): string | null {
-    if (def.owner === "chart" && a.time != null) return `${def.name} 은 차트 소유 — 타점 시각을 받지 않습니다`;
-    if (def.owner === "point" && a.time == null) return `${def.name} 은 타점 소유 — 타점 시각이 필요합니다`;
     if (def.needsPrice) {
         if (!a.field || !a.market) return `${def.key} 는 field·market 필수(가격 앵커)`;
     } else if (a.field != null || a.market != null) {
@@ -143,20 +132,12 @@ export const IGNORE_CANDLE_PARAM = "ignore-candle";
  *  정규화 패널이 실물 캔들로 대신한다. DB 행도 함께 삭제 — 야간 백업에 복구본이 남아 있다.)
  */
 export const ANCHOR_PARAMS: readonly AnchorParamDef[] = [
-    { key: BASELINE_PARAM, name: "기준선", needsPrice: true, owner: "chart", multiple: true },
-    { key: IGNORE_CANDLE_PARAM, name: "무시 캔들", needsPrice: false, owner: "chart", multiple: true, candles: "daily" },
+    { key: BASELINE_PARAM, name: "기준선", needsPrice: true, multiple: true },
+    { key: IGNORE_CANDLE_PARAM, name: "무시 캔들", needsPrice: false, multiple: true, candles: "daily" },
 ];
 
 /** key → 정의. 검증·표시가 이름으로 지목할 때. */
 export const anchorParamByKey = new Map(ANCHOR_PARAMS.map((p) => [p.key, p]));
-
-/**
- * 이 앵커가 이 타점에 적용되는가 — 차트 소유(time 없음)는 그 차트의 모든 타점에, 타점 소유는 그 시각에만.
- * 계산 축 지문(ComputedAxes)과 축 구현이 같은 판정을 봐야 해서 도메인에 둔다.
- */
-export function anchorAppliesTo(a: ChartAnchor, p: ReviewPointKey): boolean {
-    return a.stockCode === p.stockCode && a.date === p.date && (a.time == null || a.time === p.time);
-}
 
 /** 앵커 좌표의 정렬 키 — `anchorDate T anchorTime`. 좌표 최신 비교(기준선 타이브레이크)가 이 문자열 사전순. */
 export const anchorCoordKey = (a: Pick<NewChartAnchor, "anchorDate" | "anchorTime">): string => `${a.anchorDate}T${a.anchorTime ?? ""}`;

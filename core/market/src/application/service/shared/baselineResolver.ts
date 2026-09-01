@@ -39,7 +39,7 @@ export async function resolveBaselines(
     const charts = new Set(items.map(chartKeyOf));
     const candidates = new Map<string, BaselineAnchor[]>();
     for (const a of anchors) {
-        if (a.param !== BASELINE_PARAM || a.time != null) continue;
+        if (a.param !== BASELINE_PARAM) continue;
         if (a.field == null || a.market == null) continue; // 가격 앵커만 유효(서버 검증 — 방어적으로 거른다)
         const key = chartKeyOf(a);
         if (!charts.has(key)) continue;

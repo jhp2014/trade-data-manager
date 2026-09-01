@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { groupExprLabel, kindLabel, predicateLabel, stageLabel, type LabelLookup } from "../label.js";
-import { NONE_POINT, type GroupExpr } from "../../rank/groupFilter.js";
+import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 
 const look: LabelLookup = {
@@ -22,7 +22,7 @@ describe("groupExprLabel — DNF 한 줄", () => {
     });
 
     it("'…그룹 없음'은 층위까지 제 이름으로", () => {
-        expect(groupExprLabel({ groups: [{ literals: [{ groupId: NONE_POINT, neg: false }] }] }, look)).toBe("타점 그룹 없음");
+        expect(groupExprLabel({ groups: [{ literals: [{ groupId: NONE_GROUP, neg: false }] }] }, look)).toBe("그룹 없음");
     });
 
     it("⚠ 지워진 그룹은 눈에 띄게 남긴다 — 조용히 건너뛰면 멀쩡한 조건처럼 보인다", () => {

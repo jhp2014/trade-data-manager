@@ -3,7 +3,7 @@ import type { Group } from "../../api/groups.js";
 import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources, isAncestorOf } from "../groupTree.js";
 
 const g = (name: string, parentName: string | null = null): Group =>
-    ({ name, scope: "day", parentName });
+    ({ name, parentName });
 
 /** 대형주 › 반도체 › 소부장 · 그리고 최상위 하나. **키가 곧 이름**이다(이름이 정체성). */
 const dict = new Map<string, Group>([

@@ -1,68 +1,61 @@
 import { describe, it, expect } from "vitest";
 import type { GroupMembership } from "@trade-data-manager/wire";
 import type { Group } from "@trade-data-manager/wire";
-import { applyGroupToggle, buildGroupIndex, buildChartGroupIndex, countByGroup, expandMemberships } from "../groupIndex.js";
+import { applyGroupToggle, buildGroupIndex, countByGroup, expandMemberships } from "../groupIndex.js";
 
-const P1 = { stockCode: "005930", date: "2026-06-30", time: "09:11:00" };
-const P2 = { stockCode: "005930", date: "2026-06-30", time: "10:00:00" };
 const DAY1 = { stockCode: "005930", date: "2026-06-30" };
+const DAY2 = { stockCode: "000660", date: "2026-06-30" };
 
 const feed = (...xs: GroupMembership[]): GroupMembership[] => xs;
 
 describe("groupIndex", () => {
-    describe("한 피드에서 두 층위를 접는다", () => {
-        const f = feed({ ...P1, groupNames: ["a", "b"] }, { ...DAY1, groupNames: ["c"] });
+    describe("피드를 차트키로 접는다", () => {
+        const f = feed({ ...DAY1, groupNames: ["a", "b"] }, { ...DAY2, groupNames: ["c"] });
 
-        it("타점 인덱스는 시각 있는 것만", () => {
+        it("인덱스 키 = 차트키", () => {
             const idx = buildGroupIndex(f);
-            expect(idx.size).toBe(1);
-            expect(idx.get("005930|2026-06-30|09:11:00")).toEqual(["a", "b"]);
+            expect(idx.size).toBe(2);
+            expect(idx.get("005930|2026-06-30")).toEqual(["a", "b"]);
+            expect(idx.get("000660|2026-06-30")).toEqual(["c"]);
         });
 
-        it("차트 인덱스는 시각 없는 것만", () => {
-            const idx = buildChartGroupIndex(f);
-            expect(idx.size).toBe(1);
-            expect(idx.get("005930|2026-06-30")).toEqual(["c"]);
-        });
-
-        it("건수는 두 층위 합산", () => {
+        it("건수는 항목 전부를 센다", () => {
             expect(countByGroup(f)).toEqual(new Map([["a", 1], ["b", 1], ["c", 1]]));
         });
     });
 
-    describe("applyGroupToggle — 하루·타점을 한 함수가 다룬다", () => {
-        it("타점에 넣기(이름순 삽입)", () => {
-            const out = applyGroupToggle(feed({ ...P1, groupNames: ["b"] }), P1, "a", true);
+    describe("applyGroupToggle", () => {
+        it("넣기(이름순 삽입)", () => {
+            const out = applyGroupToggle(feed({ ...DAY1, groupNames: ["b"] }), DAY1, "a", true);
             expect(out[0]!.groupNames).toEqual(["a", "b"]);
         });
 
-        it("하루에 넣기 — 같은 종목·날짜의 타점 항목과 섞이지 않는다", () => {
-            const out = applyGroupToggle(feed({ ...P1, groupNames: ["a"] }), DAY1, "c", true);
+        it("다른 차트는 안 건드린다", () => {
+            const out = applyGroupToggle(feed({ ...DAY1, groupNames: ["a"] }), DAY2, "c", true);
             expect(out).toHaveLength(2);
-            expect(out.find((m) => m.time === undefined)?.groupNames).toEqual(["c"]);
-            expect(out.find((m) => m.time === P1.time)?.groupNames).toEqual(["a"]);
+            expect(out.find((m) => m.stockCode === DAY2.stockCode)?.groupNames).toEqual(["c"]);
+            expect(out.find((m) => m.stockCode === DAY1.stockCode)?.groupNames).toEqual(["a"]);
         });
 
         it("빼면 항목이 비고, 비면 항목째 사라진다", () => {
-            const out = applyGroupToggle(feed({ ...P1, groupNames: ["a"] }), P1, "a", false);
+            const out = applyGroupToggle(feed({ ...DAY1, groupNames: ["a"] }), DAY1, "a", false);
             expect(out).toEqual([]);
         });
 
         it("바뀔 게 없으면 **같은 배열**을 그대로 — 이걸 deps 로 쓰는 useMemo 가 헛돌지 않게", () => {
-            const f = feed({ ...P1, groupNames: ["a"] });
-            expect(applyGroupToggle(f, P1, "a", true)).toBe(f); // 이미 있음
-            expect(applyGroupToggle(f, P2, "z", false)).toBe(f); // 없는 걸 빼기
+            const f = feed({ ...DAY1, groupNames: ["a"] });
+            expect(applyGroupToggle(f, DAY1, "a", true)).toBe(f); // 이미 있음
+            expect(applyGroupToggle(f, DAY2, "z", false)).toBe(f); // 없는 걸 빼기
         });
 
         it("없던 항목에 넣으면 새 항목이 생긴다", () => {
-            const out = applyGroupToggle([], P1, "a", true);
-            expect(out).toEqual([{ ...P1, groupNames: ["a"] }]);
+            const out = applyGroupToggle([], DAY1, "a", true);
+            expect(out).toEqual([{ ...DAY1, groupNames: ["a"] }]);
         });
     });
 
     describe("expandMemberships — 계층 상속을 조회용 사본에 편다", () => {
-        const grp = (name: string, parentName: string | null = null): Group =>
-            ({ name, scope: "day", parentName });
+        const grp = (name: string, parentName: string | null = null): Group => ({ name, parentName });
         // 테마 ▸ {2차전지, 반도체}
         const byName = new Map<string, Group>([["테마", grp("테마")], ["2차전지", grp("2차전지", "테마")], ["반도체", grp("반도체", "테마")]]);
 

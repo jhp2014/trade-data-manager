@@ -157,7 +157,7 @@ describe("정산 — 표시와 정산이 같은 순서를 본다", () => {
 
 describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' 소속도 잡힌다", () => {
     const grp = (name: string, parentName: string | null = null) =>
-        ({ name, scope: "day" as const, parentName });
+        ({ name, parentName });
     const HIER: Seed = {
         ...SEED,
         groups: [grp("테마"), grp("2차전지", "테마")],
@@ -179,6 +179,38 @@ describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' �
     it("부모 부정(!테마)은 자식 소속도 떨군다 — 적용 집합 기준의 대칭", () => {
         setStages([{ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] } }] }]);
         expect(read(HIER).viewOf(null).viewedItems.map((i) => i.stockCode).sort()).toEqual([B, C].sort());
+    });
+});
+
+describe("그룹의 층위 상속 — 하루 그룹이 그날 타점 전부에 적용된다", () => {
+    // 2026-09-01 타점 층위 폐지 뒤 이게 **유일한** 상속 경로다: 그룹은 차트에만 붙고, 이 훅의 조회기가
+    // 타점 항목에서 시각을 벗겨 그날 차트로 묻는다(day→point ∀ 전개). 그 배선이 끊기면 해상도가
+    // 타점인 순간 모든 그룹 조건이 조용히 거짓이 된다 — 화면엔 "0건"만 뜨고 이유가 안 보인다.
+    const DAY_GROUP: Seed = {
+        ...SEED,
+        groups: [{ name: "테마", parentName: null }],
+        memberships: [{ stockCode: A, date: D1, groupNames: ["테마"] }], // 차트에만 붙는다(타점 아님)
+    };
+    const groupStage = (groupId: string): FilterStage =>
+        ({ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }] });
+    /** 해상도를 타점으로 끌어내리는 단계 — 시각 조건은 사전을 안 봐서 배선만 재기에 좋다. */
+    const timeStage: FilterStage =
+        { id: "st", enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }] };
+
+    it("해상도가 타점이어도 하루 그룹 조건이 그날 타점들을 통과시킨다", () => {
+        setStages([groupStage("테마"), timeStage]);
+        const v = read(DAY_GROUP);
+        expect(v.grain).toBe("point");
+        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`))
+            .toEqual([`${A}@09:30:00`, `${A}@09:35:00`]); // B 의 타점은 그 그룹이 아니다
+    });
+
+    it("부정도 같은 잣대 — 그 하루가 아닌 타점만 남는다", () => {
+        setStages([
+            { id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] } }] },
+            timeStage,
+        ]);
+        expect(read(DAY_GROUP).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([B]);
     });
 });
 

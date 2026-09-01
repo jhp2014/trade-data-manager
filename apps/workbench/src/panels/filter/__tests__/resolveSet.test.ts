@@ -16,15 +16,16 @@ const times = new Map<string, string[]>([
     [chartKey(C), ["11:00:00"]],
 ]);
 
-// 그룹: "테마"(day) ∋ A·B — 상속으로 A 의 타점 전부에도 적용 / "돌파"(point) ∋ A@09:30 · C@11:00
-const groupScopes = new Map([["테마", "day" as const], ["돌파", "point" as const]]);
-const dayMembers = new Map([["테마", new Set([chartKey(A), chartKey(B)])]]);
-const pointMembers = new Map([["돌파", new Set([`${chartKey(A)}|09:30:00`, `${chartKey(C)}|11:00:00`])]]);
+// 그룹은 전부 차트(하루) 소속이다 — "테마" ∋ A·B / "돌파" ∋ A·C
+const knownGroups = new Set(["테마", "돌파"]);
+const dayMembers = new Map([
+    ["테마", new Set([chartKey(A), chartKey(B)])],
+    ["돌파", new Set([chartKey(A), chartKey(C)])],
+]);
 
 const appliedGroupNamesOf = (i: FunnelItem): string[] => {
     const out: string[] = [];
-    for (const [g, set] of dayMembers) if (set.has(chartKey(i))) out.push(g); // 하루 소속은 타점에도 상속
-    if (i.time !== undefined) for (const [g, set] of pointMembers) if (set.has(`${chartKey(i)}|${i.time}`)) out.push(g);
+    for (const [g, set] of dayMembers) if (set.has(chartKey(i))) out.push(g);
     return out;
 };
 
@@ -44,8 +45,8 @@ const savedSets = new Map<string, SavedSet>([
 
 const evalLook: EvalLookup = {
     groupNamesOf: appliedGroupNamesOf,
-    anyGroupAt: (i, scope) => (scope === "day" ? true : i.time === undefined ? undefined : true),
-    hasGroup: (id) => groupScopes.has(id),
+    anyGroupAt: () => true,
+    hasGroup: (id: string) => knownGroups.has(id),
     orderKeyOf: () => undefined,
     bandBoundOrderKey: () => undefined,
     axisValueOf: () => undefined,
@@ -58,11 +59,11 @@ const ctx: SetResolveCtx = {
     candidates: [A, B, C],
     timesOf: (c) => times.get(chartKey(c)) ?? [],
     appliedGroupNamesOf,
-    groupScope: (n) => groupScopes.get(n),
+    hasGroup: (n) => knownGroups.has(n),
     activeStages,
     savedSetOf: (id) => savedSets.get(id),
     evalLook,
-    grainLook: { groupScope: (n) => groupScopes.get(n), axisScope: () => undefined },
+    grainLook: { hasGroup: (n) => knownGroups.has(n), axisScope: () => undefined },
 };
 
 const codesOf = (r: { items: FunnelItem[] }): string[] => r.items.map((i) => `${i.stockCode.slice(-1)}${i.time ? "@" + i.time.slice(0, 5) : ""}`);
@@ -85,14 +86,14 @@ describe("resolveSetRef — 산지별 풀이", () => {
     });
 });
 
-describe("그룹 체인 — 층위 변환 법칙의 첫 실전(짚음 채널)", () => {
-    it("day ∩ point 는 가장 가는 층위(point)에서 판정 — 하루 그룹은 상속으로 타점에 적용", () => {
+describe("그룹 체인 — 교집합은 하루(차트) 층위에서", () => {
+    it("체인은 전부를 가진 하루만", () => {
         const r = resolveSetRef({ kind: "groupChain", names: ["테마", "돌파"] }, ctx);
-        expect(r.grain).toBe("point");
-        expect(codesOf(r)).toEqual(["1@09:30"]); // A@09:30 만 둘 다 — B 는 타점이 없어 돌파일 수 없다
+        expect(r.grain).toBe("day");
+        expect(codesOf(r)).toEqual(["1"]); // A 만 둘 다
     });
 
-    it("day 만의 체인은 day 층위 그대로", () => {
+    it("하나짜리 체인도 같은 층위", () => {
         const r = resolveSetRef({ kind: "groupChain", names: ["테마"] }, ctx);
         expect(r.grain).toBe("day");
         expect(codesOf(r)).toEqual(["1", "2"]);

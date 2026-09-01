@@ -5,14 +5,14 @@ import {
     renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
 } from "../stage.js";
-import { NONE_DAY, NONE_POINT, type GroupExpr } from "../../rank/groupFilter.js";
+import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 
 const expr = (...ids: string[]): GroupExpr => ({ groups: ids.map((id) => ({ literals: [{ groupId: id, neg: false }] })) });
 const stage = (id: string, predicates: FilterPredicate[], enabled = true): FilterStage => ({ id, enabled, predicates });
 
-/** g1=하루 그룹 · g2=타점 그룹 / a1=하루 축 · a2=타점 축. 그 밖은 지워진 것(undefined). */
+/** g1·g2 = 살아있는 그룹(전부 하루 층위) / a1=하루 축 · a2=타점 축. 그 밖은 지워진 것. */
 const look: GrainLookup = {
-    groupScope: (id) => (({ g1: "day", g2: "point" }) as Record<string, Grain>)[id],
+    hasGroup: (id) => id === "g1" || id === "g2",
     axisScope: (id) => (({ a1: "day", a2: "point" }) as Record<string, Grain>)[id],
 };
 
@@ -54,23 +54,17 @@ describe("predicateGrain — 알갱이는 저장하지 않고 파생한다", () 
         expect(predicateGrain({ kind: "axisBand", axisId: "없는축", band: {} }, look)).toBeUndefined();
     });
 
-    it("그룹은 타점 scope 가 하나라도 섞이면 타점", () => {
-        expect(predicateGrain({ kind: "group", expr: expr("g1") }, look)).toBe("day");
-        expect(predicateGrain({ kind: "group", expr: expr("g1", "g2") }, look)).toBe("point");
+    it("그룹은 전부 하루 층위 — 여럿이 섞여도 하루", () => {
+        expect(predicateGrain({ kind: "group", expr: expr("g1", "g2") }, look)).toBe("day");
     });
 
-    it("타점을 이미 찾았으면 모르는 그룹이 섞여도 타점 — 모름이 더 가늘게 만들 수는 없다", () => {
-        expect(predicateGrain({ kind: "group", expr: expr("g2", "없는그룹") }, look)).toBe("point");
-    });
-
-    it("하루만 아는데 모름이 섞이면 모름 — 그 모름이 실은 타점이었을 수 있다", () => {
+    it("모르는 그룹이 섞이면 모름 — 그 모름이 실은 무엇이었는지 말할 수 없다", () => {
         expect(predicateGrain({ kind: "group", expr: expr("g1", "없는그룹") }, look)).toBeUndefined();
     });
 
-    it("'…그룹 없음'도 제 층위를 말한다 — 그것만 있어도 칸이 안 튄다", () => {
-        expect(predicateGrain({ kind: "group", expr: expr(NONE_POINT) }, look)).toBe("point");
-        expect(predicateGrain({ kind: "group", expr: expr(NONE_DAY) }, look)).toBe("day");
-        expect(predicateGrain({ kind: "group", expr: expr(NONE_POINT, "g2") }, look)).toBe("point");
+    it("'그룹 없음'도 제 층위(하루)를 말한다 — 그것만 있어도 칸이 안 튄다", () => {
+        expect(predicateGrain({ kind: "group", expr: expr(NONE_GROUP) }, look)).toBe("day");
+        expect(predicateGrain({ kind: "group", expr: expr(NONE_GROUP, "g1") }, look)).toBe("day");
     });
 });
 
@@ -102,7 +96,7 @@ describe("stageGrain / autoGrain — 가장 가는 것으로", () => {
     it("자동 해상도 = 걸린 단계 중 가장 가는 것", () => {
         const stages = [
             stage("a", [{ kind: "date", ranges: [{ from: "x", to: "y" }] }]),
-            stage("b", [{ kind: "group", expr: expr("g2") }]),
+            stage("b", [{ kind: "time", ranges: [{ from: "09:00", to: "10:00" }] }]),
         ];
         expect(autoGrain(stages, look)).toBe("point");
     });
@@ -132,11 +126,12 @@ describe("stageGrain / autoGrain — 가장 가는 것으로", () => {
 
 describe("단계 구성 — 한 종류·한 층위", () => {
     const dayGroup: FilterPredicate = { kind: "group", expr: expr("g1") };
-    const pointGroup: FilterPredicate = { kind: "group", expr: expr("g2") };
+    const dayAxis: FilterPredicate = { kind: "axisBand", axisId: "a1", band: { lo: "s1" } };
+    const pointAxis: FilterPredicate = { kind: "axisBand", axisId: "a2", band: { lo: "s1" } };
 
     it("빈 단계는 무엇이든 받는다", () => {
         expect(stageKind(stage("a", []))).toBeUndefined();
-        expect(canAddPredicate(stage("a", []), pointGroup, look)).toBe(true);
+        expect(canAddPredicate(stage("a", []), dayGroup, look)).toBe(true);
     });
 
     it("다른 종류는 못 섞는다 — 그룹은 그룹끼리, 축은 축끼리", () => {
@@ -149,32 +144,30 @@ describe("단계 구성 — 한 종류·한 층위", () => {
     });
 
     it("같은 종류라도 층위가 다르면 못 넣는다 — 쪼개도 결과가 같고 진단은 더 나온다", () => {
-        expect(canAddPredicate(stage("a", [dayGroup]), pointGroup, look)).toBe(false);
-        expect(canAddPredicate(stage("a", [dayGroup]), { kind: "group", expr: expr("g1") }, look)).toBe(true);
+        expect(canAddPredicate(stage("a", [dayAxis]), pointAxis, look)).toBe(false);
+        expect(canAddPredicate(stage("a", [dayAxis]), { kind: "axisBand", axisId: "a1", band: { hi: "s2" } }, look)).toBe(true);
     });
 
     it("모름은 막지 않는다 — 알 수 없는 것으로 손을 막으면 사전이 늦을 때 멀쩡한 편집이 거부된다", () => {
         const unknown: FilterPredicate = { kind: "group", expr: expr("없는그룹") };
         expect(canAddPredicate(stage("a", [dayGroup]), unknown, look)).toBe(true);
-        expect(canAddPredicate(stage("a", [unknown]), pointGroup, look)).toBe(true);
+        expect(canAddPredicate(stage("a", [unknown]), dayGroup, look)).toBe(true);
     });
 });
 
-describe("canAddGroupLiteral — 한 식 안에서도 같은 scope", () => {
-    it("같은 scope 는 받고 다른 scope 는 막는다", () => {
+describe("canAddGroupLiteral — 그룹은 전부 하루 층위라 서로 막지 않는다", () => {
+    it("살아있는 그룹끼리는 언제나 받는다", () => {
         expect(canAddGroupLiteral(expr("g1"), "g1", look)).toBe(true);
-        expect(canAddGroupLiteral(expr("g1"), "g2", look)).toBe(false);
+        expect(canAddGroupLiteral(expr("g1"), "g2", look)).toBe(true);
     });
 
-    it("빈 식은 무엇이든 받는다 — 첫 리터럴이 층위를 정한다", () => {
+    it("빈 식도 받는다", () => {
         expect(canAddGroupLiteral({ groups: [] }, "g2", look)).toBe(true);
     });
 
-    it("'…그룹 없음'도 층위를 말하니 같은 규칙을 받는다", () => {
-        expect(canAddGroupLiteral(expr("g2"), NONE_POINT, look)).toBe(true);
-        expect(canAddGroupLiteral(expr("g2"), NONE_DAY, look)).toBe(false);
-        expect(canAddGroupLiteral(expr(NONE_POINT), "g2", look)).toBe(true);
-        expect(canAddGroupLiteral(expr(NONE_POINT), "g1", look)).toBe(false);
+    it("'그룹 없음'도 같은 층위라 섞인다", () => {
+        expect(canAddGroupLiteral(expr("g2"), NONE_GROUP, look)).toBe(true);
+        expect(canAddGroupLiteral(expr(NONE_GROUP), "g2", look)).toBe(true);
     });
 
     it("모르는 그룹은 막지 않는다", () => {
@@ -184,7 +177,7 @@ describe("canAddGroupLiteral — 한 식 안에서도 같은 scope", () => {
 
 describe("funnelOrder — 하루 단계가 타점 단계보다 앞", () => {
     const dayS = stage("d1", [{ kind: "group", expr: expr("g1") }]);
-    const ptS = stage("p1", [{ kind: "group", expr: expr("g2") }]);
+    const ptS = stage("p1", [{ kind: "axisBand", axisId: "a2", band: { lo: "s1" } }]);
     const ptS2 = stage("p2", [{ kind: "time", ranges: [{ from: "09:00", to: "10:00" }] }]);
 
     it("층위로 갈라 하루 먼저 — 같은 층위 안에서는 저장 순서(안정)", () => {
@@ -331,6 +324,6 @@ describe("themeStrength 술어 — 저장 왕복·빈 판정", () => {
         const off = { ...params, countOn: false, zoneRankOn: false };
         expect(isPredicateEmpty({ kind: "themeStrength", params: off })).toBe(true);
         expect(isPredicateEmpty({ kind: "themeStrength", params })).toBe(false);
-        expect(predicateGrain({ kind: "themeStrength", params }, { groupScope: () => undefined, axisScope: () => undefined })).toBe("point");
+        expect(predicateGrain({ kind: "themeStrength", params }, { hasGroup: () => false, axisScope: () => undefined })).toBe("point");
     });
 });

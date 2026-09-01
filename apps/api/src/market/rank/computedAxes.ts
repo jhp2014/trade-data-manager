@@ -55,7 +55,7 @@ export class ComputedAxes {
     private readonly store: AxisValueStore;
     /** 축별 in-flight 공유 — 패널 여럿이 동시에 열려도 굽기는 한 번. */
     private readonly inFlight = new Map<string, { gen: number; promise: Promise<ComputedAxisFeed> }>();
-    // 변경(앵커·타점) 세대 — 변경 전에 시작된 빌드는 옛 재료(앵커 지문 포함)를 읽었으므로, 변경 **후**
+    // 변경(앵커·테마 배정) 세대 — 변경 전에 시작된 빌드는 옛 재료(앵커 지문 포함)를 읽었으므로, 변경 **후**
     // 온 refetch 가 거기 합류하면 방금 편집이 응답에 없다. 세대가 다르면 합류하지 않고 새로 굽는다.
     private generation = 0;
 
@@ -64,7 +64,7 @@ export class ComputedAxes {
         this.store = deps.store ?? fileAxisValueStore;
     }
 
-    /** 앵커·타점 변경 직후 호출(컨트롤러) — 진행 중 빌드를 취소하진 않고, 새 요청의 합류만 막는다. */
+    /** 앵커·그룹 변경 직후 호출(컨트롤러) — 진행 중 빌드를 취소하진 않고, 새 요청의 합류만 막는다. */
     invalidate(): void {
         this.generation++;
     }
@@ -107,8 +107,8 @@ export class ComputedAxes {
         const required = def.params ?? [];
         if (required.length === 0) {
             const seen = new Map<string, ChartRef>();
-            // 앵커는 타점 소유(a.time != null)도 센다 — 여기서 앵커는 이 축의 **재료가 아니라 흔적**이라
-            // "그 하루에 사람이 손댔나"만 묻는다(차트 소유만 세는 아래 규칙과 목적이 다르다).
+            // 여기서 앵커·멤버십은 이 축의 **재료가 아니라 흔적**이라 param 을 안 가린다 — "그 하루에
+            // 사람이 손댔나"만 묻는다(재료로 쓰는 아래 규칙은 required param 을 다 갖췄는지 본다).
             // 타점은 항이 아니다 — 격자 파생물이라 사람 편집물이 아니고, 클라 candidateDaysOf 도 같다.
             for (const r of [...anchors, ...memberships]) {
                 const k = chartKeyOf(r);
@@ -119,7 +119,6 @@ export class ComputedAxes {
         const paramsByChart = new Map<string, Set<string>>();
         const refByChart = new Map<string, ChartRef>();
         for (const a of anchors) {
-            if (a.time != null) continue; // 타점 소유 앵커는 day 축의 재료가 아니다(값이 시각에 물든다)
             const k = chartKeyOf(a);
             let set = paramsByChart.get(k);
             if (!set) { set = new Set(); paramsByChart.set(k, set); refByChart.set(k, { stockCode: a.stockCode, date: a.date }); }
@@ -138,8 +137,7 @@ export class ComputedAxes {
         // 계산식이 바뀌었으면(version 상향) 옛 값은 다른 식의 산물이라 통째로 버린다.
         const known = cached && cached.version === def.version ? cached.values : {};
 
-        // 차트(종목,날짜) 단위로 모아두고 행마다 적용 앵커로 좁힌다 — 그 차트의 **차트 소유** 앵커 전부
-        // (타점 소유는 재료가 아니다 — dayCharts 와 같은 규칙).
+        // 차트(종목,날짜) 단위로 모아둔다 — 앵커는 전부 차트 소유라 그 차트의 앵커 전부가 곧 적용 집합이다.
         const anchorsByChart = new Map<string, ChartAnchor[]>();
         for (const a of anchors) {
             const k = chartKeyOf(a);
@@ -147,7 +145,7 @@ export class ComputedAxes {
             if (list) list.push(a);
             else anchorsByChart.set(k, [a]);
         }
-        const applicableTo = (r: ChartRef): ChartAnchor[] => (anchorsByChart.get(chartKeyOf(r)) ?? []).filter((a) => a.time == null);
+        const applicableTo = (r: ChartRef): ChartAnchor[] => anchorsByChart.get(chartKeyOf(r)) ?? [];
         const fpCache = new Map<string, string>();
         const fpOf = (r: ChartRef): string => {
             const k = rowKey(r);
@@ -175,7 +173,7 @@ export class ComputedAxes {
         let changed = !cached || cached.version !== def.version;
         for (const [k, entry] of Object.entries(known)) {
             const r = itemByKey.get(k);
-            if (!live.has(k) || r === undefined) { changed = true; continue; } // 행 소멸(타점 삭제·앵커 해제)
+            if (!live.has(k) || r === undefined) { changed = true; continue; } // 행 소멸(앵커 해제·그룹 탈퇴)
             if (entry.f !== fpOf(r)) { changed = true; continue; } // stale — 아래 computed 가 있으면 새로 채움
             values[k] = entry;
         }

@@ -189,7 +189,7 @@ export class PointGrids {
         const usable = dropSameDayAnchors(anchors, BASELINE_PARAM);
         const baselineByChart = new Map<string, ChartAnchor[]>();
         for (const a of usable) {
-            if (a.param !== BASELINE_PARAM || a.time != null) continue;
+            if (a.param !== BASELINE_PARAM) continue;
             const k = chartKeyOf(a);
             const list = baselineByChart.get(k);
             if (list) list.push(a);

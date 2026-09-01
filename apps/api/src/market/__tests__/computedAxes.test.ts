@@ -353,9 +353,9 @@ describe("ComputedAxes day 축", () => {
         await makeAxes(dayAxis(1), store, moved).feeds();
         expect(seenCharts[1].map((c) => c.stockCode)).toEqual(["001"]); // 002 는 캐시 히트
 
-        // 타점 소유 앵커(time 있음)는 재료가 아니다 — 지문도 모수도 안 바뀐다.
-        const withPointAnchor = [...moved, line("001", { time: "09:00:00", param: "baseline" })];
-        await makeAxes(dayAxis(1), store, withPointAnchor).feeds();
+        // 같은 차트에 다른 param 앵커가 붙어도 그 축의 재료가 아니면 지문이 안 바뀐다.
+        const withOtherParam = [...moved, line("001", { param: "ignore-candle", field: undefined, market: undefined })];
+        await makeAxes(dayAxis(1), store, withOtherParam).feeds();
         expect(seenCharts).toHaveLength(2); // 재계산 없음
     });
 });
@@ -382,8 +382,7 @@ describe("ComputedAxes 앵커 무관 day 축", () => {
         };
     }
 
-    const member = (code: string, time?: string): GroupMembership =>
-        ({ stockCode: code, date: "2026-07-02", ...(time ? { time } : {}), groupNames: ["형태:돌파"] });
+    const member = (code: string): GroupMembership => ({ stockCode: code, date: "2026-07-02", groupNames: ["형태:돌파"] });
 
     beforeEach(() => {
         store = memoryStore();
@@ -396,12 +395,6 @@ describe("ComputedAxes 앵커 무관 day 축", () => {
         const feeds = await axes.feeds();
         expect(feeds[0].values.map((v) => v.stockCode).sort()).toEqual(["002", "003"]);
         expect(feeds[0].values.every((v) => v.time === undefined)).toBe(true); // 행 = 차트
-    });
-
-    it("타점 소유 앵커·타점 소속 그룹도 그 하루를 모수에 올린다 — 여기서 흔적은 재료가 아니라 '손댔나'다", async () => {
-        const axes = makeAxes(openDayAxis(), store, [line("001", { time: "09:00:00" })], [member("002", "09:30:00")]);
-        const feeds = await axes.feeds();
-        expect(feeds[0].values.map((v) => v.stockCode).sort()).toEqual(["001", "002"]);
     });
 
     it("흔적이 하나도 없으면 모수가 빈다 — 없는 하루를 지어내지 않는다", async () => {

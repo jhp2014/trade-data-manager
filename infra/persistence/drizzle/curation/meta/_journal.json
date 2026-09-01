@@ -134,6 +134,13 @@
       "when": 1787637707296,
       "tag": "0018_panoramic_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788256234478,
+      "tag": "0019_hot_tyger_tiger",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,7 @@ import { GroupToken, GroupTokenButton } from "../../components/GroupChips.js";
 import { GroupPathLabel } from "../../components/GroupPathLabel.js";
 import type { GroupsView } from "../../lib/useGroups.js";
 import { GROUP_PLAIN, groupColor } from "../../styles/palette.js";
-import { isNoneLiteral, noneLabelOf, noneScope, type GroupExpr } from "../rank/groupFilter.js";
+import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 
 /** 지워진 그룹 — 조용히 건너뛰면 화면에는 멀쩡한 조건처럼 보인다(판정에서는 미배치를 만들고 있는데). */
 export const GONE_LABEL = "(지워짐)";
@@ -28,10 +28,7 @@ export interface GroupNaming {
  * 여기서 또 부르면 같은 인덱스(멤버십 수천 건)가 한 벌 더 만들어진다.
  */
 export function namingOf(gv: Pick<GroupsView, "groupByName" | "ancestorsOf" | "pathLabel">): GroupNaming {
-    const noneName = (id: string): string | undefined => {
-        const scope = noneScope(id);
-        return scope === undefined ? undefined : noneLabelOf(scope);
-    };
+    const noneName = (id: string): string | undefined => (isNoneLiteral(id) ? NONE_LABEL : undefined);
     return {
         nameOf: (id) => noneName(id) ?? gv.groupByName.get(id)?.name ?? GONE_LABEL,
         ancestorsOf: (id) => (isNoneLiteral(id) ? [] : gv.ancestorsOf(id).map((g) => g.name)),
