@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import type { GroupEditorAnchor } from "./ConditionEditors.js";
-import type { FilterPredicate, Grain } from "./stage.js";
+import type { FilterPredicate } from "./stage.js";
 
 /**
  * ⚠ ref 가드: Escape 한 번에 input 핸들러와 팝오버 dismiss 가 **둘 다** close 를 부른다 —
@@ -14,7 +14,7 @@ export function useGroupCreateFlow(
 ): {
     draft: GroupExpr;
     setDraft: (e: GroupExpr) => void;
-    open: (grain: Grain, x: number, y: number) => void;
+    open: (x: number, y: number) => void;
     close: () => void;
 } {
     const [draft, setDraft] = useState<GroupExpr>({ groups: [] }); // 그룹 생성 흐름의 임시 식
@@ -27,10 +27,10 @@ export function useGroupCreateFlow(
         setDraft({ groups: [] });
         setEditor(null);
     };
-    const open = (grain: Grain, x: number, y: number): void => {
+    const open = (x: number, y: number): void => {
         setDraft({ groups: [] });
         draftCommitted.current = false;
-        setEditor({ grain, x, y });
+        setEditor({ x, y });
     };
     return { draft, setDraft, open, close };
 }

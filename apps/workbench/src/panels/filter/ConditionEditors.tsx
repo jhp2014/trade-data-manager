@@ -7,7 +7,7 @@ import type { GroupExpr } from "../rank/groupFilter.js";
 import { GroupFilterEditor } from "./GroupFilterEditor.js";
 import { RangeTextEditor } from "./RangeTextEditor.js";
 import { predicateOfKind, type RailKey } from "./stageBinding.js";
-import type { AxisValueRange, DateRange, FilterPredicate, FilterStage, Grain, TimeRange } from "./stage.js";
+import type { AxisValueRange, DateRange, FilterPredicate, FilterStage, TimeRange } from "./stage.js";
 
 /** 레일 줄에서 여는 편집기 하나 — null 이면 아무 팝오버도 없다.
  *  날짜/시간을 한 멤버("date" | "time")로 접지 않는 이유: kind 가 합집합인 멤버는 판별 검사로
@@ -17,8 +17,9 @@ export type RailEditor =
     | { kind: "time"; x: number; y: number }
     | { kind: "axisValue"; axisId: string; x: number; y: number };
 
-/** 그룹 팔레트 — 편집(stageId 있음)과 생성(draft)이 같은 팝오버를 쓴다. */
-export type GroupEditorAnchor = { grain: Grain; stageId?: string; x: number; y: number };
+/** 그룹 팔레트 — 편집(stageId 있음)과 생성(draft)이 같은 팝오버를 쓴다.
+ *  층위를 안 든다: 그룹은 하루(차트) 하나뿐이라 팝오버가 칸의 층위를 볼 이유가 없다(2026-09-01). */
+export type GroupEditorAnchor = { stageId?: string; x: number; y: number };
 
 export function GroupEditors({ editor, stages, draft, onDraftChange, onCloseCreate, removeStage, setPredicates, onClose }: {
     editor: GroupEditorAnchor | null;

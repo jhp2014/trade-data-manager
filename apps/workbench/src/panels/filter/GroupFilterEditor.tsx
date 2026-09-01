@@ -64,7 +64,7 @@ export function GroupFilterEditor({ anchor, expr, onChange, onClose }: {
 
             <button onClick={() => onChange(addGroupLiteral(expr, NONE_GROUP))} style={{ ...listRow, borderTop: "1px solid var(--border-subtle)", color: GROUP_PLAIN, fontWeight: 600 }}>
                 ∅ {NONE_LABEL}{" "}
-                <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>— 아직 분류 안 한 하루</span>
+                <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>— 아무 그룹에도 안 든 하루</span>
             </button>
 
             <div style={{ borderTop: "1px solid var(--border-subtle)" }}>

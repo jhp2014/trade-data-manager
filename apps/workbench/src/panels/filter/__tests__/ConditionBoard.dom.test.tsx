@@ -112,10 +112,14 @@ describe("＋ 조건 — 생성 입구 하나", () => {
         expect(stages()).toHaveLength(0);
     });
 
-    it("그룹은 층위를 골라 팔레트를 연다 — 판이 없는 유일한 종류라 그 자리에서", () => {
+    it("그룹은 그 자리에서 팔레트를 연다 — 판이 없는 유일한 종류라", () => {
         const { container, baseElement } = renderBoard();
         openMenu(container);
-        act(() => { fireEvent.click(byText(container, "그룹 조건 (하루)")!); });
+        // 진입점은 **하나**다 — 그룹이 하루 층위 하나뿐이라(2026-09-01) 옛 "(하루)/(타점)" 두 항목은
+        // 같은 팝오버로 가는 죽은 중복이었다. 층위 어휘가 메뉴에 다시 생기면 여기서 걸린다.
+        expect(byText(container, "그룹 조건 (하루)")).toBeUndefined();
+        expect(byText(container, "그룹 조건 (타점)")).toBeUndefined();
+        act(() => { fireEvent.click(byText(container, "그룹 조건")!); });
         expect(stages()).toHaveLength(0); // 식을 쓰기 전엔 필터가 아니다(draft)
         expect(baseElement.textContent).toContain("그룹");
     });

@@ -77,7 +77,7 @@ export function ConditionBoard({ barsOpen }: {
                 openAndFocus(THEME_PANEL);
                 return;
             case "group":
-                setGroupEditor({ grain: grainOf(stage.id), stageId: stage.id, x: e.clientX, y: e.clientY });
+                setGroupEditor({ stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
             default:
                 sendReveal(stage.id);
@@ -160,7 +160,7 @@ export function ConditionBoard({ barsOpen }: {
                 {!v.isLoading && (
                     <AddCondition
                         onRails={() => openAndFocus(RAIL_PANEL)}
-                        onGroup={(grain, e) => groupCreate.open(grain, e.clientX, e.clientY)}
+                        onGroup={(e) => groupCreate.open(e.clientX, e.clientY)}
                         onTheme={() => {
                             addStage([{ kind: "themeStrength", params: { ...DEFAULT_THEME_STRENGTH } }]);
                             openAndFocus(THEME_PANEL);
@@ -190,7 +190,7 @@ export function ConditionBoard({ barsOpen }: {
  */
 function AddCondition({ onRails, onGroup, onTheme }: {
     onRails: () => void;
-    onGroup: (grain: Grain, e: React.MouseEvent) => void;
+    onGroup: (e: React.MouseEvent) => void;
     onTheme: () => void;
 }): JSX.Element {
     const [open, setOpen] = useState(false);
@@ -221,8 +221,7 @@ function AddCondition({ onRails, onGroup, onTheme }: {
                     boxShadow: "0 2px 8px rgba(0,0,0,.12)", padding: "3px 0",
                 }}>
                     {item("레일 — 계산 축 · 날짜 · 시간", "필터 레일 판으로 — 분포를 보며 그으면 그 자리에서 조건이 됩니다(빈 조건은 안 만듭니다)", onRails)}
-                    {item("그룹 조건 (하루)", "종목·날짜 층위 그룹 식 — 여러 개로 나누면 각각의 기여도가 보입니다", (e) => onGroup("day", e))}
-                    {item("그룹 조건 (타점)", "종목·날짜·시각 층위 그룹 식", (e) => onGroup("point", e))}
+                    {item("그룹 조건", "그룹 식 — 여러 개로 나누면 각각의 기여도가 보입니다(그룹은 하루 층위 하나뿐)", onGroup)}
                     {item("테마 강도", "기본값으로 켜진 행을 만들고 테마 순위 패널에서 엽니다", onTheme)}
                 </div>
             )}
